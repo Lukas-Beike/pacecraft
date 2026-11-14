@@ -366,7 +366,8 @@ class QualityBaselineTests(unittest.TestCase):
         # makes it write UTF-8.
         for tool in (
             f"import sys; sys.stdout.buffer.write({text.encode()!r}); sys.exit(1)",
-            f"import sys; print({text!r}, end=''); sys.exit(1)",
+            # !a: an ASCII locale cannot carry the text on the command line.
+            f"import sys; print({text!a}, end=''); sys.exit(1)",
         ):
             with self.subTest(tool=tool):
                 result = child(
