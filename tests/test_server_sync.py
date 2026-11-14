@@ -2,6 +2,7 @@
 
 import json
 import signal
+import sqlite3
 import sys
 import tempfile
 import threading
@@ -89,6 +90,57 @@ class ServerSyncTests(ServerTestCase):
             }
         )
         return recorder, client
+
+    def test_a_wrong_app_password_stops_startup_with_one_plain_reason(self):
+        # A key that does not open the database showed only the driver's
+        # traceback (#2912); nothing starts and no secret reaches the log.
+        sentinel = "sentinel-app-password-2912"
+        config = replace(server.CONFIG_HOLDER.value, app_password=sentinel)
+        for error, refused in (
+            (sqlite3.DatabaseError("file is not a database"), True),
+            (sqlite3.DatabaseError("database disk image is malformed"), False),
+        ):
+            with (
+                self.subTest(refused=refused),
+                patch.object(server.observability, "configure_logging"),
+                patch.object(server.CONFIG_HOLDER, "value", config),
+                patch.object(
+                    server.app_config,
+                    "security_configuration_error",
+                    return_value=None,
+                ),
+                patch.object(server, "initialise_database", side_effect=error),
+                patch.object(http_server_module, "CoachHTTPServer") as http_server,
+                self.assertLogs(server.LOGGER, "DEBUG") as logs,
+                self.assertRaises(
+                    SystemExit if refused else sqlite3.DatabaseError
+                ) as raised,
+            ):
+                server.main()
+            http_server.assert_not_called()
+            critical = [r for r in logs.records if r.levelname == "CRITICAL"]
+            if not refused:
+                self.assertEqual([], critical)
+                continue
+            self.assertEqual(1, len(critical))
+            self.assertEqual("secure_startup_refused", critical[0].event)
+            self.assertEqual(
+                {"reason": "database_unreadable", "error_class": "DatabaseError"},
+                critical[0].context,
+            )
+            self.assertEqual(
+                "Die Datenbank lässt sich mit diesem App-Passwort nicht öffnen: "
+                "Das Passwort passt nicht, oder die Datei ist beschädigt. "
+                "Die Datenbank wurde nicht verändert.",
+                raised.exception.code,
+            )
+            for text in (
+                *logs.output,
+                str(critical[0].__dict__),
+                str(raised.exception),
+            ):
+                self.assertNotIn(sentinel, text)
+                self.assertNotIn("file is not a database", text)
 
     def test_startup_explicitly_recovers_jobs_before_starting_workers(self):
         order = []
