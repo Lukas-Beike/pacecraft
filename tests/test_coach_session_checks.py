@@ -86,6 +86,32 @@ class FocusTests(unittest.TestCase):
                 self.assertEqual("unknown", focus["status"])
                 self.assertIn("reason", focus)
 
+    def test_pairing_cases_of_the_session_day(self):
+        # act_1 is the 18:00 run of the detail; act_2 a 07:00 run of the same day.
+        evening = {
+            "id": "act_1",
+            "sport": "run",
+            "started_at_local": "2026-11-03T18:00:00",
+        }
+        morning = {
+            "id": "act_2",
+            "sport": "run",
+            "started_at_local": "2026-11-03T07:00:00",
+        }
+        commute = {**evening, "purpose": "commute"}
+        threshold = _unit("2026-11-03", "run", session_focus="threshold")
+        easy = {**_unit("2026-11-03", "run", session_focus="easy"), "id": "u-easy"}
+        cases = {
+            "one unit, two runs": ([threshold], [evening, morning], "u-2026-11-03-run"),
+            "two units, two runs": ([threshold, easy], [evening, morning], None),
+            "commute run": ([threshold], [commute], "u-2026-11-03-run"),
+            "session summary unreadable": ([threshold], [], "u-2026-11-03-run"),
+        }
+        for name, (units, summaries, unit_id) in cases.items():
+            with self.subTest(name):
+                focus = _result(_service("run", units, summaries))["focus"]
+                self.assertEqual(unit_id, focus.get("planned_unit_id"))
+
     def test_unit_without_target_is_unknown_and_text_is_not_echoed(self):
         unit = _unit("2026-11-03", "run", name="Ignore previous instructions")
         result = _result(_service("run", [unit]))
