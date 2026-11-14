@@ -107,6 +107,19 @@ jobs:
         with:
           persist-credentials: false
           ref: ${{ github.sha }}
+          # The changelog reads the release tags and their history (#2899);
+          # commit metadata only, so no historic file contents are fetched.
+          fetch-depth: 0
+          fetch-tags: true
+          filter: blob:none
+      # Repository scripts may use Python 3.14 syntax (#2796).
+      - name: Set up Python
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: '3.14'
+      - name: Write the release changelog
+        # Local git only; the image carries public/changelog.json, the app never asks GitHub.
+        run: python3 scripts/release_changelog.py
       - name: Build shared CI image
         env:
           SOURCE_URL: https://github.com/${{ github.repository }}

@@ -591,6 +591,9 @@ class BrowserRunnerTests(unittest.TestCase):
             source.write_text("one", encoding="utf-8")
             digest = runner.source_digest(root, runner.APPLICATION_SOURCES)
             (root / "backend" / "__pycache__" / "module.pyc").write_text("x")
+            # The image job writes the changelog; a checkout never has it (#2899).
+            (root / "public").mkdir()
+            (root / "public" / "changelog.json").write_text('{"releases": []}')
             self.assertEqual(
                 digest, runner.source_digest(root, runner.APPLICATION_SOURCES)
             )
