@@ -89,6 +89,7 @@ handler's docstring. Regenerate it with
 | POST | `/api/nutrition/products/favorite` | Session + CSRF | after access | Mark or unmark a product as favorite. |
 | POST | `/api/nutrition/products/lookup` | Session + CSRF | after access | Look a product up by barcode or name, local products first. |
 | POST | `/api/nutrition/refresh` | Session + CSRF | after access | Run a targeted nutrition refresh. |
+| GET | `/api/nutrition/session-fuelling` | Session | no | Drinking and carbohydrates for a long planned run or ride (#2804). |
 | GET | `/api/nutrition/week` | Session | no | Nutrition week summary of the closed days before today. |
 | POST | `/api/nutrition/yazio/check` | Session + CSRF | after access | Explicitly check Yazio authentication; the result is kept in memory. |
 | GET | `/api/nutrition/yazio/status` | Session | no | Last local Yazio authentication check, without contacting Yazio. |
@@ -1030,6 +1031,23 @@ Anfrageinhalt." for another key; 400 "Ungültiges Datumsformat '{value}'.
 Erwartet wird YYYY-MM-DD." for an invalid `date`; 400 "Der Zeitraum muss 14 oder
 84 Tage umfassen."; 400 "Das Datum darf nicht in der Zukunft liegen."; 503
 `provider_busy` "Garmin wird bereits aktualisiert."
+
+### `GET /api/nutrition/session-fuelling`
+
+Request: query `sport` (`run`, `ride`), `environment` (`indoor` and
+`virtual` are indoors, anything else outdoors), `date` (YYYY-MM-DD) and `duration_s` (planned
+seconds, up to 24 h); no body.
+
+Response: 200 with `status` `not_long` (another sport or under 60 min)
+or `ready` with `duration_s`, `forecast_c` (cached forecast, outdoors),
+`sweat_rate` (`l_per_h`, `sessions`, `similar`, `temperature_c`; null
+without own data), `drinking` (`l_per_h`, `total_l`, `max_l_per_h`,
+`sodium_g_per_l`, or `generic_l_per_h` without own data),
+`drinking_source`, `carbohydrates`, `carbohydrate_source` and
+`weight`. It reads stored data only and fetches nothing.
+
+Errors: 400 `invalid_session_fuelling` "Ungültige Angaben für die
+Verpflegungsempfehlung." for a missing or invalid query value.
 
 ### `GET /api/nutrition/week`
 

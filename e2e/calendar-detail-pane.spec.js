@@ -5,6 +5,36 @@ const { openCalendar, renderSyntheticCalendar } = require("./helpers/calendar");
 // One test per feature of an opened calendar card, in alphabetical order of the
 // title after its tag: a new feature goes to its own place, so parallel PRs do
 // not all append at the file end.
+test("@responsive a long planned unit shows drinking and carbohydrates with their basis", async ({ page, request }) => {
+  const queries = [];
+  await page.route("**/api/nutrition/session-fuelling*", (route) => {
+    queries.push(new URL(route.request().url()).searchParams.toString());
+    return route.fulfill({ json: {
+      status: "ready", duration_s: 9900, forecast_c: 18,
+      sweat_rate: { l_per_h: 0.9, sessions: 6, similar: true, temperature_c: [13, 23] },
+      drinking: { l_per_h: 0.39, total_l: 1.1, max_l_per_h: 0.9, sodium_g_per_l: [0.5, 0.7] },
+      carbohydrate_source: "Thomas, Erdman und Burke 2016",
+      carbohydrates: { step: "high", low_g: 60, high_g: 120, established_max_g: 90 },
+    } });
+  });
+  await openCalendar(page, request);
+  const days = await renderSyntheticCalendar(page);
+  await page.evaluate(() => {
+    const unit = state.data.training_calendar.find((item) => item.id === "next-plan");
+    Object.assign(unit, { sport: "ride", environment: "outdoor", planned_duration_s: 9900 });
+    renderPlanned(state.data.training_calendar);
+  });
+  await showCalendarDay(page, days.next);
+  const card = page.locator(`.planned-day[data-date="${days.next}"] .planned-entry`).first();
+  if (!await card.evaluate((element) => element.open)) await card.locator(":scope > summary").click();
+  const block = card.locator(".planned-fuelling");
+  await expect(block).toContainText("Schweißrate 0,9 l/h · 6 Einheiten bei 13–23 °C");
+  await expect(block).toContainText("1,1 l · Natrium 0,5–0,7 g/l");
+  await expect(block).toContainText("60–120 g/h");
+  expect(queries).toEqual([`sport=ride&environment=outdoor&date=${days.next}&duration_s=9900`]);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBeTruthy();
+});
+
 test("@responsive a planned unit lists its steps with zone and target range instead of the workout notation", async ({ page, request }) => {
   await openCalendar(page, request);
   const days = await renderSyntheticCalendar(page);

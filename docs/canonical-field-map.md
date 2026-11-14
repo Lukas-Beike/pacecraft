@@ -606,7 +606,7 @@ General rules: first alias that carries a value wins (`_present`: not `None`, no
 | `elevation_high_m`, `elevation_low_m` | `maxElevation`, `minElevation` | m, -500..9000 | `_ordered_pair`: a minimum above its maximum drops both with one issue on `minElevation`. |
 | `elevation_loss_m` | `elevationLoss` | m | |
 | `min_temp_c`, `max_temp_c` | `minTemperature`, `maxTemperature` | deg C, -60..70 | Same pair rule. |
-| `water_estimated_ml` | `waterEstimated` | ml, Garmin's sweat-loss estimate | |
+| `water_estimated_ml` | `waterEstimated` | ml, Garmin's sweat-loss estimate | Read by the fuelling advice of long planned units (#2804). |
 | `lap_count` | `lapCount` | count | |
 | `ground_contact_time_ms` | `avgGroundContactTime` | ms (observed 264.5) | Running dynamics; `_running_dynamics`. Garmin writes 0 for a value it did not measure (observed: `avgVerticalOscillation` 0 beside a vertical ratio of 8.04), so 0 is no value and no issue. Absence is normal. |
 | `ground_contact_balance_pct` | `avgGroundContactBalance` -> `avgGroundContactBalanceLeft` | percent on the left foot, 0..100 (observed 49.63) | Top-level key observed; the `Left` spelling is the lap and `summaryDTO` name. |
@@ -798,7 +798,7 @@ Tie-break note: the summary and the `activity_detail.v1` document's `session` bl
 | qualifiers | `terrain` (left out when `unknown`), `assist` (present only as `electric`) | measured | `session_terrain`, `session_assist` |
 | local time | `started_at_local`, `local_offset_minutes` | measured | offset = first record with `local_offset_minutes`; `started_at_local` = primary `started_at` read on that offset, else on the athlete zone (`session_local_start`, `wall_time`), naive ISO to the second; `local_offset_minutes` present only when some record has one |
 | measured values | `moving_duration_s`, `elapsed_duration_s`, `distance_m`, `elevation_gain_m`, `elevation_loss_m`, `avg_hr`, `max_hr`, `avg_power`, `avg_cadence`, `avg_speed_mps`, `max_speed_mps`, `avg_temp_c`, `min_temp_c`, `max_temp_c`, `device_name`, `energy_kj`, `energy_kcal` | measured (`_MEASURED`) | same name |
-| derived values | `normalized_power`, `weighted_avg_speed_mps`, `pace_mps`, `provider_intensity` (from `intensity`), `grade_adjusted_speed_mps`, `ftp_w`, `vo2max`, `planned_event_id` | derived (`_DERIVED`) | same name except `provider_intensity` |
+| derived values | `normalized_power`, `weighted_avg_speed_mps`, `pace_mps`, `provider_intensity` (from `intensity`), `grade_adjusted_speed_mps`, `ftp_w`, `vo2max`, `planned_event_id`, `water_estimated_ml` | derived (`_DERIVED`) | same name except `provider_intensity` |
 | provider zones | `power_zone_times`, `heart_rate_zone_times`, `pace_zone_times` | derived order over records whose provider is not Intervals.icu (#1743) | `power_zone_times_s`, `hr_zone_times_s`, `pace_zone_times_s`, as `[{"id": "Z1", "secs": ...}]` |
 | ratings | `rpe`, `feel` | rating | `rpe`, `feel` |
 | provider load | `provider_training_load`, `provider_load_model` | first derived record with `load` not `None` and `load_model` in `TSS_LIKE_LOAD_MODELS` (`intervals_training_load`, `tss`); a Garmin load is never TSS-like | `load`, `load_model` |

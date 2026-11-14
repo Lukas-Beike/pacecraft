@@ -1425,10 +1425,71 @@ function plannedZoneBuckets(zone) {
 
 // Built when the card first opens, as most cards never are: the larger profile and, for a session,
 // the time in zones from the session read of "Details" (#2195).
+// Drinking and carbohydrates of a planned run or ride of at least an hour (#2804).
+function plannedFuellingQuery(entry, dateKey) {
+  const sport = String(entry?.sport || "").toLowerCase();
+  const seconds = Number(entry?.planned_duration_s);
+  if (!["run", "ride"].includes(sport) || !(seconds >= 3600)) return null;
+  return new URLSearchParams({ sport, environment: String(entry.environment || ""), date: dateKey, duration_s: String(Math.round(seconds)) }).toString();
+}
+
+function plannedFuellingRows(drink) {
+  const litres = (value) => `${RACE_PLAN_KM.format(value)} l`;
+  const sodium = Array.isArray(drink.sodium_g_per_l) ? `Natrium ${RACE_PLAN_KM.format(drink.sodium_g_per_l[0])}–${RACE_PLAN_KM.format(drink.sodium_g_per_l[1])} g/l` : null;
+  if (Array.isArray(drink.generic_l_per_h)) return [["Pro Stunde", `${RACE_PLAN_KM.format(drink.generic_l_per_h[0])}–${litres(drink.generic_l_per_h[1])}`], sodium ? ["Gesamt", sodium] : null];
+  if (drink.l_per_h == null) return [["Pro Stunde", `bis ${litres(drink.max_l_per_h)}`], sodium ? ["Gesamt", sodium] : null];
+  return [["Pro Stunde", litres(drink.l_per_h)], ["Gesamt", [litres(drink.total_l), sodium].filter(Boolean).join(" · ")]];
+}
+
+function plannedFuellingBlock(plan) {
+  const rate = plan.sweat_rate;
+  const band = rate?.similar && Array.isArray(rate.temperature_c) ? ` bei ${rate.temperature_c[0]}–${rate.temperature_c[1]} °C` : "";
+  const sessions = rate?.sessions === 1 ? "1 Einheit" : `${rate?.sessions} Einheiten`;
+  const basis = rate ? `Schweißrate ${RACE_PLAN_KM.format(rate.l_per_h)} l/h · ${sessions}${band}` : "Startwert ohne eigene Daten";
+  const rows = (items) => h("div", "race-plan-rows", items.filter(Boolean).map(([label, value]) => h("div", null, h("span", null, label), h("strong", null, value))));
+  return [
+    h("h4", null, "Verpflegung"),
+    racePlanHeading("Trinken", basis),
+    rows(plannedFuellingRows(plan.drinking || {})),
+    racePlanHeading("Kohlenhydrate", plan.carbohydrate_source),
+    rows([["Pro Stunde", racePlanDuring(plan.carbohydrates) || "–"]]),
+  ];
+}
+
+function loadPlannedFuelling(section, query) {
+  if (section.dataset.state === "loading" || section.dataset.state === "ready") return;
+  section.dataset.state = "loading";
+  const status = h("output", null, "Verpflegung wird berechnet …");
+  section.replaceChildren(h("h4", null, "Verpflegung"), status);
+  api(`/api/nutrition/session-fuelling?${query}`, { timeoutMs: DATA_LOAD_TIMEOUT_MS }).then((plan) => {
+    section.dataset.state = "ready";
+    if (plan?.status === "ready") section.replaceChildren(...plannedFuellingBlock(plan));
+    else section.remove();
+  }).catch(() => {
+    section.dataset.state = "failed";
+    const retry = h("button", { type: "button", className: "secondary-button" }, "Erneut laden");
+    retry.addEventListener("click", () => loadPlannedFuelling(section, query));
+    status.textContent = "Verpflegung konnte nicht geladen werden.";
+    section.append(retry);
+  });
+}
+
 function appendOpenedPlannedParts(details, head, entry, actual) {
   if (!details.querySelector(".planned-detail-profile")) {
     const detailProfile = plannedDetailProfile(actual?.workout_profile || entry.workout_profile);
     if (detailProfile) head.after(detailProfile);
+  }
+  const upcoming = details.dataset.dateKey >= timezoneDateKey(state.data?.profile?.timezone, new Date());
+  const fuellingQuery = actual || !upcoming ? null : plannedFuellingQuery(entry, details.dataset.dateKey);
+  if (fuellingQuery) {
+    let section = details.querySelector(".planned-fuelling");
+    if (!section) {
+      section = h("section", "race-plan planned-fuelling");
+      const steps = details.querySelector(".planned-steps");
+      if (steps) steps.after(section);
+      else details.append(section);
+    }
+    loadPlannedFuelling(section, fuellingQuery);
   }
   const activityId = actual ? String(actual.activity_id || actual.id || "") : "";
   if (activityId && !details.querySelector(".planned-zone-time")) {
@@ -1477,7 +1538,7 @@ function renderPlannedEntry(entry, dateKey, todayKey, dayContext = {}, weekHasPl
     plannedConflict(entry, dateKey),
     plannedGarminBlocked(entry, dateKey, todayKey, actual));
   const head = plannedDetailHead(entry, actual, title, dateKey, status, plannedDetailStatus(entry, dateKey, todayKey, restDayLabel, weekHasPlan), plannedDayWeather(dayContext, dateKey));
-  const details = h("div", "planned-entry-details", head);
+  const details = h("div", { className: "planned-entry-details", dataset: { dateKey } }, head);
   card.addEventListener("toggle", () => {
     if (card.open) appendOpenedPlannedParts(details, head, entry, actual);
   });
