@@ -4,7 +4,7 @@
 
 ## Import rules
 
-The AST layer tests in `tests/test_backend_layer_contracts.py` enforce the permitted imports of each layer below (generated from their layer map by `python tests/test_backend_layer_contracts.py --write`), an empty package-cycle baseline, and one rule on top: `athlete` imports no other domain package. No backend module imports or reaches `server`.
+The AST layer tests in `tests/test_backend_layer_contracts.py` enforce the permitted imports of each layer below (generated from their layer map by `python tests/test_backend_layer_contracts.py --write`), an empty package-cycle baseline, and two rules on top: `athlete` imports no other domain package, and `canonical` imports nothing outside the standard library and itself. No backend module imports or reaches `server`.
 
 <!-- BEGIN GENERATED LAYER RULES -->
 | Layer | Packages | May import |
