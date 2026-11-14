@@ -207,6 +207,10 @@ The system SHALL save explicitly entered main equipment/components with validate
 - **WHEN** a component is saved
 - **THEN** it needs an existing parent that is no component, has no parent itself, is not the item and has the same sport and environment; only a component may have a parent.
 
+#### Scenario: Athlete saves without the Coach
+- **WHEN** the athlete creates, edits or retires an item through `POST /api/equipment` (session and CSRF, body at most 16 KiB)
+- **THEN** the same validation and change history with receipt and undo apply as for the Coach, Garmin is never required, and every save with `status` `archived` (retiring, or editing a retired item) is refused with 409 "Das Ausmustern muss bestätigt werden." unless the request carries `"confirmed": true`; a new item beyond the 100th is refused with 409 "Höchstens 100 Ausrüstungsgegenstände.", and a non-text `kind` or `status` is a 400.
+
 #### Scenario: Unknown or stale item
 - **WHEN** the id is unknown or `expected_revision` differs from the stored revision
 - **THEN** the answer is 404 "Ausrüstung nicht gefunden." or 409 "Ausrüstung geändert; neu lesen.".
@@ -268,7 +272,15 @@ The system SHALL assign only resolved canonical completed activities to compatib
 
 #### Scenario: Explicit assignment beats provider link
 - **WHEN** Garmin links an activity to gear but a local assignment or unassignment exists
-- **THEN** the explicit local decision takes precedence without inferring a favorite bicycle or shoe.
+- **THEN** the explicit local decision takes precedence; no favorite bicycle or shoe is ever assigned by inference.
+
+#### Scenario: Athlete assigns without the Coach
+- **WHEN** the athlete posts `{"activity_id", "equipment_id"}` to `POST /api/equipment/assignment` (session and CSRF, body at most 16 KiB), `null` meaning no equipment
+- **THEN** the assignment or unassignment is saved and tracked with receipt and undo exactly as the Coach's.
+
+#### Scenario: Choice and suggestion for one session
+- **WHEN** one session's details are read
+- **THEN** `equipment_choice` lists the items it can take (`options` with id and name), its own explicit choice (`assigned`, `explicit`) and `suggested`: the item last explicitly assigned to a session of the same sport pair (indoor and outdoor apart) that this session can still take, else null; the suggestion is derived on each read, never stored and never assigned without the athlete.
 
 #### Scenario: Bounded lists and incomplete history
 - **WHEN** assignment display exceeds its list bound or provider history is incomplete/stale
@@ -294,6 +306,10 @@ Evidence:
 - `backend/athlete/equipment.py:_update_garmin_lifetime_target`
 - `backend/athlete/equipment.py:_update_usage`
 - `backend/athlete/equipment.py:EquipmentService.assign`
+- `backend/athlete/equipment.py:_assignment_choice`
+- `backend/http_api/equipment_post.py:EquipmentPostRoutes`
+- `tests/test_equipment_history.py:test_a_session_read_offers_its_items_and_suggests_the_last_assigned`
+- `tests/test_equipment_post_route.py:test_retiring_needs_an_explicit_confirmation_in_the_request`
 - `backend/athlete/equipment.py:EquipmentService.read`
 - `tests/test_equipment_canonical_sessions.py:test_an_assignment_under_an_alias_session_id_applies_and_newest_wins`
 - `tests/test_equipment_canonical_sessions.py:test_an_assignment_under_the_session_id_wins_over_a_legacy_one`

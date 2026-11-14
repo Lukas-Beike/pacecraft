@@ -51,6 +51,7 @@ COACH_ACTIVITY_DETAIL_MAX_SERIES_POINTS: Final = 2000
 _ENVELOPE_KEYS: Final = (
     "activity_feedback",
     "equipment",
+    "equipment_choice",
     "activity_validation",
     "session_rpe_load",
 )
