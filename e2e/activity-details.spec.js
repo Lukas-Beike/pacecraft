@@ -505,4 +505,14 @@ test("@responsive a completed session's card assigns its equipment only by Über
   await card.locator(".planned-equipment").getByRole("button", { name: "Rückgängig" }).click();
   await expect(card.locator(".planned-equipment-status")).toContainText("Zurückgenommen.");
   await expect(card.locator(".planned-equipment").getByRole("combobox", { name: "Schuh" })).toHaveValue("shoe-a");
+  // An own choice that can no longer be assigned stays shown and offers no replacement by itself.
+  await page.route(/\/api\/activities\/act_eq2$/, (route) => route.fulfill({ json: {
+    session: { activity_id: "act_eq2", sport: "run" }, metrics: {}, detail_data: { providers: [] },
+    equipment_choice: { options: [{ id: "shoe-a", name: "Pegasus 40" }], assigned: "shoe-retired", explicit: true, suggested: "shoe-a" },
+  } }));
+  await renderCalendarSessions(page, [{ id: "act_eq2", name: "Synthetic retired shoe run", sport: "run", started_at_local: "2026-10-17T09:00:00", moving_duration_s: 1800, distance_m: 6000 }]);
+  const again = page.locator(".planned-entry.is-completed").filter({ hasText: "Synthetic retired shoe run" }).first();
+  await again.evaluate((element) => { element.open = true; });
+  await expect(again.locator(".planned-equipment").getByRole("combobox", { name: "Schuh" })).toHaveValue("shoe-retired");
+  await expect(again.locator(".planned-equipment").getByRole("button", { name: "Übernehmen" })).toBeHidden();
 });
