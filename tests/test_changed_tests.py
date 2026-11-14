@@ -227,6 +227,8 @@ class SelectModulesTests(unittest.TestCase):
         )
         self.assertIn("test_nutrition_macro_ranges", modules)
         self.assertNotIn("test_fixture_standard_data", modules)
+        # #2887: the encoding scan globs backend/, so a backend edit selects it.
+        self.assertIn("test_source_encoding", modules)
         # A frontend-only change with Node tests and their golden fixtures (#2516)
         # keeps the Python readers of the changed files and the repository checks.
         modules, _reason = changed_tests.select_modules(
