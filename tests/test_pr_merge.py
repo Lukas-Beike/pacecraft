@@ -35,7 +35,7 @@ def view(state="OPEN", checks=(GREEN,), **extra):
     }  # fmt: skip
 
 
-def run(case, *args, auto_error="", views=None):
+def run(case, *args, auto_error="", views=None, behind=0):
     """Run main against a stub that answers `pr view` from `views` in order."""
     calls, views = [], list(views or [view()])
 
@@ -43,6 +43,10 @@ def run(case, *args, auto_error="", views=None):
         calls.append(argv[1:])
         if argv[1:3] == ["pr", "view"]:
             return subprocess.CompletedProcess(argv, 0, json.dumps(views.pop(0)), "")
+        if argv[1:2] == ["api"] and "/compare/feedc0de...develop" in argv[2]:
+            return subprocess.CompletedProcess(
+                argv, 0, json.dumps({"behind": behind}), ""
+            )
         failed = auto_error and "--auto" in argv
         return subprocess.CompletedProcess(argv, int(bool(failed)), "", auto_error)
 
@@ -81,6 +85,14 @@ class PrMergeTests(unittest.TestCase):
                 code, _, writes, _ = run(self, 7, **kwargs)
                 self.assertEqual(code, expect)
                 self.assertNotIn(["pr", "merge", "7", *PIN], writes)
+
+    def test_require_current_refuses_a_head_behind_develop(self):
+        # #2901: with merge rules off, only a head that contains develop arms.
+        code, out, writes, _ = run(self, 7, "--require-current", behind=2)
+        self.assertEqual((code, writes), (1, []))
+        self.assertIn("2 commit(s) behind develop", out)
+        code, _, writes, _ = run(self, 7, "--require-current", behind=0)
+        self.assertEqual((code, writes), (0, [["pr", "merge", "7", "--auto", *PIN]]))
 
     def test_wait_polls_in_turn_until_merged(self):
         # #2795: no yield on a watcher that may never wake on the merge

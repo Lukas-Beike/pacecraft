@@ -1,6 +1,6 @@
 """Squash-merge one develop pull request through auto-merge and optionally wait.
 
-    python scripts/pr_merge.py <pr> [--wait MINUTES]
+    python scripts/pr_merge.py <pr> [--wait MINUTES] [--require-current]
 
 Arms `gh pr merge --auto --squash` pinned to the current head, unless it is
 armed already; when GitHub refuses because the PR is already in clean status,
@@ -8,7 +8,9 @@ merges that head at once with `--squash` (#2776). `--wait` then polls every 20 s
 in the same turn until the PR is merged or closed, a check fails or new
 feedback (comment or review) arrives, at most MINUTES (#2795): the host's PR
 watcher does not reliably wake on the merge itself.
-Exit 0: merged (or armed, without --wait); 1: refused (base is not develop),
+With --require-current it first refuses a head that lacks commits of develop
+(#2901). Exit 0: merged (or armed, without --wait); 1: refused (base is not
+develop, or a head behind develop with --require-current),
 closed unmerged, a failing check or new feedback; 2: bad input or a failed gh
 call; 3: still open when the wait ended.
 """
@@ -72,12 +74,25 @@ def main(argv: list[str] | None = None) -> int:
     top = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     top.add_argument("number", type=positive_int)
     top.add_argument("--wait", type=int, default=0, metavar="MINUTES")
+    top.add_argument(
+        "--require-current",
+        action="store_true",
+        help="refuse a head that lacks commits of develop (merge rules off, #2901)",
+    )
     args = top.parse_args(argv)
     try:
         pr = view(args.number)
         if pr.get("baseRefName") != "develop":
             print(f"refused: base is {pr.get('baseRefName')}, not develop")
             return 1
+        if args.require_current and pr.get("state") == "OPEN":
+            path = f"repos/{{owner}}/{{repo}}/compare/{pr['headRefOid']}...develop"
+            behind = gh_json("api", path, "--jq", "{behind: .ahead_by}")["behind"]
+            if behind:
+                print(
+                    f"refused: head is {behind} commit(s) behind develop; rebase first"
+                )
+                return 1
         if pr.get("state") == "OPEN":
             print(f"PR #{args.number}: {arm(args.number, pr)}")
             if args.wait <= 0:
