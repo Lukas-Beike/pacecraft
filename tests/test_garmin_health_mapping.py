@@ -2132,6 +2132,23 @@ class MorningReadinessTests(unittest.TestCase):
                 )["points"]
                 self.assertEqual(point["value"], 60)
 
+    def test_a_re_projected_day_takes_the_reading_the_mapper_dates_to_it(self) -> None:
+        # #2870 review: a stored day can list a reading whose date keys disagree, so
+        # the mapper dates it to no day and keeps it beside the dated one. Every
+        # reading of that day re-projects the dated one, listed first or last.
+        undated = {"summaryDate": DAY, "date": "2026-10-09", "score": 40}
+        dated = {"calendarDate": DAY, "score": 60}
+        for order in ((undated, dated), (dated, undated)):
+            items = split_section(list(order))
+            for item in items:
+                with self.subTest(first=order[0]["score"], reading=item.key):
+                    chosen = canonical_plans.garmin_day_reading(
+                        f"readiness/{item.key}",
+                        {"readiness": [item.value]},
+                        lambda *_, day=items: day,
+                    )
+                    self.assertEqual([one.value["score"] for one in chosen or ()], [60])
+
     def test_readiness_level_follows_the_morning_reading(self) -> None:
         for section in ("readiness", "training_readiness_history"):
             with self.subTest(section=section):
