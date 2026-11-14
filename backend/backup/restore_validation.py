@@ -84,7 +84,11 @@ class DatabaseRestoreValidationService:
         try:
             if self._config.app_password:
                 self._config.configure_cipher(connection, self._config.app_password)
-            return bool(self._config.schema_is_current(connection))
+            if not self._config.schema_is_current(connection):
+                return False
+            # The schema check reads no data page; a damaged copy must not count.
+            rows = connection.execute("PRAGMA quick_check").fetchall()
+            return len(rows) == 1 and str(rows[0][0]).casefold() == "ok"
         except Exception:  # noqa: BLE001 - a copy that does not open is not verified
             return False
         finally:

@@ -71,6 +71,31 @@ class DatabaseRestoreValidationTests(unittest.TestCase):
                 ["athlete.db.pre-restore-copy", "garbage.db"],
             )
 
+    def test_verify_copy_rejects_a_damaged_data_page_behind_an_intact_schema(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            copy = root / "athlete.db.pre-restore-damaged"
+            with closing(sqlite3.connect(copy)) as connection:
+                connection.execute("CREATE TABLE kv (key TEXT)")
+                connection.execute("CREATE INDEX kv_key ON kv(key)")
+                connection.executemany(
+                    "INSERT INTO kv VALUES (?)", [(f"k{i:04}",) for i in range(500)]
+                )
+                connection.commit()
+                page_size = connection.execute("PRAGMA page_size").fetchone()[0]
+                index_page = connection.execute(
+                    "SELECT rootpage FROM sqlite_master WHERE name = 'kv_key'"
+                ).fetchone()[0]
+            data = bytearray(copy.read_bytes())
+            start = (index_page - 1) * page_size
+            data[start : start + page_size] = b"\xff" * page_size
+            copy.write_bytes(bytes(data))
+            current = service(root, schema_is_current=lambda _connection: True)
+
+            self.assertFalse(current.verify_copy(copy, len(data)))
+
     def test_stage_enforces_payload_boundary_and_uses_uuid_filename(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             validator = service(Path(directory), maximum_bytes=4)
