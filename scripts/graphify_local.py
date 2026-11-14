@@ -313,9 +313,9 @@ def process_lock(path: Path, deadline: float | None = None):
     path.parent.mkdir(parents=True, exist_ok=True)
     handle = path.open("a+b")
     try:
+        # Try before checking the deadline: a slow open on a loaded machine
+        # must not turn a free lock into a timeout (#2937).
         while True:
-            if time.monotonic() >= deadline:
-                raise Unavailable("graph update lock timed out")
             try:
                 if os.name == "nt":
                     msvcrt = __import__("msvcrt")
@@ -332,6 +332,8 @@ def process_lock(path: Path, deadline: float | None = None):
                     fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
                 break
             except OSError:
+                if time.monotonic() >= deadline:
+                    raise Unavailable("graph update lock timed out") from None
                 time.sleep(0.05)
         try:
             yield

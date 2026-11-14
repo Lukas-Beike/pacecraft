@@ -183,6 +183,9 @@ class ServerWeatherCalendarTests(ServerTestCase):
         self.assertFalse(server.key_value_service().get(weather_cache.HISTORY_KEY))
 
     def test_privacy_delete_drains_a_direct_weather_read(self):
+        # The gate is process-wide: an operation leaked by an earlier test
+        # would hold the drain below and look like a timing flake (#2937).
+        gate = runtime_maintenance.MAINTENANCE_GATE
         server.ATHLETE_DATA.profile().save({"weather_location": "Synthetic city"})
         entered, release, deleted = (
             threading.Event(),
@@ -227,7 +230,10 @@ class ServerWeatherCalendarTests(ServerTestCase):
                 reader.join(5)
             deletion.join(5)
         self.assertEqual(failures, [])
-        self.assertTrue(deleted.is_set())
+        self.assertTrue(
+            deleted.is_set(),
+            f"delete still draining: {gate.active} gated operation(s) active",
+        )
         self.assertFalse(server.key_value_service().get(weather_cache.CACHE_KEY))
         self.assertFalse(server.key_value_service().get(weather_cache.HISTORY_KEY))
 
