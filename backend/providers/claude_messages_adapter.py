@@ -107,20 +107,19 @@ def _messages(request: ModelRequest) -> list[dict[str, Any]]:
         messages.append(
             {"role": "assistant", "content": [dict(b) for b in step.opaque_state]}
         )
-        if step.tool_results:
-            messages.append(
-                {
-                    "role": "user",
-                    "content": [
-                        {
-                            "type": "tool_result",
-                            "tool_use_id": result["call_id"],
-                            "content": result["output"],
-                        }
-                        for result in step.tool_results
-                    ],
-                }
-            )
+        content: list[dict[str, Any]] = [
+            {
+                "type": "tool_result",
+                "tool_use_id": result["call_id"],
+                "content": result["output"],
+            }
+            for result in step.tool_results
+        ]
+        if step.notice:
+            # After the last tool_result, never inside one.
+            content.append({"type": "text", "text": step.notice})
+        if content:
+            messages.append({"role": "user", "content": content})
     return messages
 
 

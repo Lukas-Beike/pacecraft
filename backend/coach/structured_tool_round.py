@@ -17,11 +17,6 @@ from backend.coach.context import CoachTrainingContextService
 from backend.coach.context_selection import select_coach_context
 from backend.coach.job_store import CoachJobStore
 from backend.coach.proposal_models import coach_action_hash
-from backend.coach.request_payload import (
-    LOCAL_ATTACHMENT_SUMMARY_NOTICE,
-    RESUMED_STEPS_NOTICE,
-    compose_model_instructions,
-)
 from backend.coach.response_transport import raise_if_chat_cancelled
 from backend.coach.structured_response import CoachStructuredResponseService
 from backend.coach.tool_call_metadata import structured_tool_call_metadata
@@ -62,8 +57,10 @@ _TURN_RELEASED = {
 
 # Sent when the model still wants tools after the last round, so the answer
 # states what is unfinished instead of implying the meal or change was saved.
+# It follows the not-executed tool results in the user turn: the instructions
+# stay byte-identical for the whole turn (thinking blocks and cache stay valid).
 _TOOL_BUDGET_NOTICE = (
-    "\n\n<turn_notices>\nTool step limit reached for this turn: no further tools "
+    "<turn_notices>\nTool step limit reached for this turn: no further tools "
     "can run. Nothing beyond the confirmed tool results was saved or sent. Tell the "
     "athlete plainly which parts are done and which are not, never claim an "
     'unfinished change, and say that replying "weiter" continues the request.'
@@ -215,7 +212,6 @@ class CoachStructuredToolRoundService:
         )
         step_key = name
         repair_key = scope_repair_key = request_binding_key = plan_effect_key = None
-        model_instructions = state.model_instructions
         try:
             metadata = structured_tool_call_metadata(
                 item, state.tools, state.command_receipts
@@ -261,7 +257,12 @@ class CoachStructuredToolRoundService:
             if result.get("synchronous_refresh") or (
                 name == "get_sync_job" and result.get("ok")
             ):
-                model_instructions = self._refreshed_instructions(state)
+                # Fresh data arrive in this tool's output (escaped like every
+                # tool output); the receipt keeps the result without it.
+                result = {
+                    **result,
+                    "refreshed_athlete_context": self._refreshed_context(state),
+                }
             if action.get("period"):
                 self._update_plan_scope(state, action)
         except (AppError, ValueError, TypeError, KeyError) as exc:
@@ -280,7 +281,6 @@ class CoachStructuredToolRoundService:
             )
             if state.write_gate is not None:
                 state.write_gate.settle(result)
-        state.model_instructions = model_instructions
         return name, call_id, result, action
 
     def _execute_and_record(
@@ -363,7 +363,8 @@ class CoachStructuredToolRoundService:
             )
         return result
 
-    def _refreshed_instructions(self, state: StructuredCoachRoundState) -> str:
+    def _refreshed_context(self, state: StructuredCoachRoundState) -> str:
+        """The athlete context after a refresh, without the fixed coaching rules."""
         selection = select_coach_context(
             state.message,
             state.context,
@@ -371,18 +372,11 @@ class CoachStructuredToolRoundService:
             has_receipts=True,
             request_kind=state.request_kind,
         )
-        return compose_model_instructions(
-            self._training_context.build(
-                selection=selection,
-                local_date=state.context.get("local_date", ""),
-            ),
-            allow_mutations=state.allow_mutations,
-            attachment_summary=LOCAL_ATTACHMENT_SUMMARY_NOTICE
-            in state.model_instructions,
-            request_kind=selection.kind,
-            nutrition="nutrition_products" in selection.sections,
-            resumed_steps=RESUMED_STEPS_NOTICE in state.model_instructions,
+        context = self._training_context.build(
+            selection=selection, local_date=state.context.get("local_date", "")
         )
+        start = context.find("<athlete_context>")
+        return context[start:] if start >= 0 else context
 
     def _update_plan_scope(
         self, state: StructuredCoachRoundState, action: dict[str, Any]
@@ -430,19 +424,17 @@ class CoachStructuredToolRoundService:
             return result
         state.budget_exhausted = True
         _log_budget_exhausted(state, rounds)
-        final = cast(
-            ModelRequest,
-            replace(
-                followup,
-                instructions=state.model_instructions + _TOOL_BUDGET_NOTICE,
-                tool_choice="none",
-            ),
-        )
+        final = cast(ModelRequest, replace(followup, tool_choice="none"))
         not_executed = [
             {"call_id": str(item.get("call_id") or ""), "output": _NOT_EXECUTED}
             for item in calls
         ]
-        return self._respond(self._continued(final, result, not_executed, state), state)
+        return self._respond(
+            self._continued(
+                final, result, not_executed, state, notice=_TOOL_BUDGET_NOTICE
+            ),
+            state,
+        )
 
     @staticmethod
     def _continued(
@@ -450,11 +442,13 @@ class CoachStructuredToolRoundService:
         turn: ModelTurn,
         results: list[dict[str, str]],
         state: StructuredCoachRoundState,
+        notice: str = "",
     ) -> ModelRequest:
         """Continue a turn: the conversation holds its items, else resend them."""
         if request.conversation_id:
-            return cast(ModelRequest, replace(request, steps=[ModelStep([], results)]))
-        state.steps = [*state.steps, ModelStep(turn.opaque_state, results)]
+            step = ModelStep([], results, notice)
+            return cast(ModelRequest, replace(request, steps=[step]))
+        state.steps = [*state.steps, ModelStep(turn.opaque_state, results, notice)]
         return cast(ModelRequest, replace(request, steps=list(state.steps)))
 
     def _respond(

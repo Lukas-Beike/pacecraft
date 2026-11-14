@@ -11,7 +11,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from backend.providers.model_seam import ModelRequest, ModelTurn
+from backend.providers.model_seam import ModelRequest, ModelStep, ModelTurn
 from backend.providers.openai_responses import response_text
 
 ENCRYPTED_REASONING_INCLUDE = "reasoning.encrypted_content"
@@ -58,15 +58,19 @@ def model_input(text: str, attachments: list[dict[str, Any]]) -> Any:
     return [{"role": "user", "content": parts}]
 
 
-def _tool_outputs(results: list[dict[str, str]]) -> list[dict[str, Any]]:
-    return [
+def _tool_outputs(step: ModelStep) -> list[dict[str, Any]]:
+    outputs: list[dict[str, Any]] = [
         {
             "type": "function_call_output",
             "call_id": result["call_id"],
             "output": result["output"],
         }
-        for result in results
+        for result in step.tool_results
     ]
+    if step.notice:
+        # App text follows the outputs; the instructions stay fixed for the turn.
+        outputs.append({"role": "user", "content": step.notice})
+    return outputs
 
 
 def _input(request: ModelRequest) -> Any:
@@ -90,7 +94,7 @@ def _input(request: ModelRequest) -> Any:
         return model_input(request.input, request.attachments)
     if request.conversation_id:
         # The conversation holds the earlier items: send only the new results.
-        return _tool_outputs(request.steps[-1].tool_results)
+        return _tool_outputs(request.steps[-1])
     first = model_input(request.input, request.attachments)
     # Nothing is stored remotely: resend the turn's items so far, the model's
     # calls and (encrypted) reasoning, and the new tool outputs.
@@ -100,7 +104,7 @@ def _input(request: ModelRequest) -> Any:
         else [{"role": "user", "content": str(first or "")}]
     )
     for step in request.steps:
-        items = [*items, *step.opaque_state, *_tool_outputs(step.tool_results)]
+        items = [*items, *step.opaque_state, *_tool_outputs(step)]
     return items
 
 
