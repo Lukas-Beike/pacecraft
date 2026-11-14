@@ -2,23 +2,25 @@
 
 from __future__ import annotations
 
+import functools
 import logging
 import platform
 import shutil
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
+from zoneinfo import ZoneInfo
 
-from backend.athlete.profile import ProfileService
+from backend.athlete.profile import ProfileService, timezone_name
 from backend.backup.recovery_copies import RecoveryCopies
 from backend.calendar.external import ExternalCalendarReader
 from backend.canonical.garmin_payload import RETIRED_SNAPSHOT_KEY, STATE_KEY
 from backend.canonical.vocabulary import ProviderId
 from backend.coach.morning import MorningCheckinStateService
 from backend.config import DEFAULT_ANTHROPIC_BASE_URL, DEFAULT_OPENAI_BASE_URL, Config
-from backend.db import planning_store
+from backend.db import equipment_store, planning_store
 from backend.db.manager import DatabaseManager
 from backend.db.repositories import KeyValueRepository
 from backend.diagnostics.canonical_backfill import (
@@ -32,7 +34,11 @@ from backend.diagnostics.canonical_read import (
 )
 from backend.diagnostics.history import CoachDiagnosticHistoryService
 from backend.diagnostics.logs import RecentLogEntriesService
-from backend.diagnostics.plan_sync import summarize_garmin_removal, summarize_plan_sync
+from backend.diagnostics.plan_sync import (
+    summarize_garmin_removal,
+    summarize_garmin_strength_push,
+    summarize_plan_sync,
+)
 from backend.diagnostics.provider_composition import summarize_provider_composition
 from backend.diagnostics.provider_sync import summarize_provider_sync
 from backend.diagnostics.session_conflicts import summarize_session_conflicts
@@ -55,6 +61,7 @@ from backend.sync.external_calendar import ExternalCalendarSyncService
 from backend.sync.freshness import ProviderFreshnessService
 from backend.sync.garmin import GarminFixtureLoader, GarminSyncStateService
 from backend.sync.garmin_projection_service import GarminProjectionService
+from backend.sync.jobs import utc_timestamp
 from backend.sync.library import WorkoutLibrarySyncStateService
 from backend.sync.local_load import summarize_local_load
 from backend.sync.profile_weekly_plan_removal import (
@@ -69,6 +76,8 @@ from backend.sync.state import last_error_key, last_sync_key
 from backend.sync.stream_backfill import fit_inventory_counts
 
 LOGGER = logging.getLogger("intervals_coach")
+# Plan push counts per provider cover this many days (#2878).
+PUSH_WINDOW_DAYS = 7
 
 
 @dataclass(frozen=True)
@@ -104,10 +113,10 @@ class DiagnosticReportDependencies:
     garmin_change_check: Callable[[], dict[str, Any]] | None = None
     # Rides with a steady power band per variation limit, counts only (#2535).
     lt1_ride_coverage: Callable[[], dict[str, Any]] | None = None
+    # The all-time curve build: state word, count and last duration (#2852).
+    curve_build: Callable[[], dict[str, Any]] | None = None
     # The database file: its sizes, free space and recovery copies (#2848).
     database_path: Callable[[], Path] | None = None
-    # Decoupling eligibility counts for the M8 rule decision, until #2780 (#2779).
-    decoupling_eligibility: Callable[[], dict[str, Any]] | None = None
 
 
 # Large kv values whose stored size the report shows: the Garmin state, the
@@ -137,6 +146,10 @@ class DiagnosticReportService:
             "athlete_checkins": count("athlete_checkins"),
             "activity_feedback": count("activity_feedback"),
             "change_history": count("change_history"),
+            # Sensor links nothing writes any more; counted before #2903 decides on them.
+            "sensor_equipment_links": equipment_store.count(
+                db, equipment_store.SENSOR_EQUIPMENT_PREFIX
+            ),
         }
         counts["stored_payload_bytes"] = self._stored_payload_bytes(db)
         return counts | self._storage()
@@ -177,6 +190,21 @@ class DiagnosticReportService:
         stored = {row["key"]: row["bytes"] for row in rows}
         return {key: stored.get(key, 0) for key in _PAYLOAD_KEYS}
 
+    def _local_today(self, profile: dict[str, Any]) -> str:
+        """The athlete's local day, as the Garmin past-workout removal uses it."""
+        zone = ZoneInfo(timezone_name(profile.get("timezone")))
+        return (
+            datetime.fromisoformat(self._deps.utc_now())
+            .astimezone(zone)
+            .date()
+            .isoformat()
+        )
+
+    def _push_window_start(self) -> str:
+        """The start of the plan push count window (#2878)."""
+        now = datetime.fromisoformat(self._deps.utc_now())
+        return utc_timestamp(now - timedelta(days=PUSH_WINDOW_DAYS))
+
     def _recovery_copies(self) -> dict[str, Any]:
         if self._deps.database_path is None:
             return {"available": False}
@@ -209,6 +237,8 @@ class DiagnosticReportService:
     def report(self) -> dict[str, Any]:
         deps = self._deps
         section = self._section
+        # Read once per report, by the sections that need it.
+        athlete_profile = functools.cache(deps.profile.get)
         diagnostic_capture_entries = deps.diagnostic_capture.entries()
         diagnostic_capture_status = deps.diagnostic_capture.status()
         # Reading the rotated log files must not hold the WAL snapshot open.
@@ -262,7 +292,7 @@ class DiagnosticReportService:
 
             def provider_freshness() -> Any:
                 return deps.provider_freshness.current(
-                    profile=deps.profile.get(),
+                    profile=athlete_profile(),
                     garmin_has_core_error=bool(
                         deps.garmin_sync_state.core_error_entries()
                     ),
@@ -302,6 +332,7 @@ class DiagnosticReportService:
                     "platform": platform.platform(),
                     "process_memory": process_memory(),
                     **process_settings(),
+                    "reader_slots": deps.database_manager.reader_slot_waits(),
                 },
                 "recovery_copies": section("recovery_copies", self._recovery_copies),
                 "configuration": section("configuration", configuration),
@@ -327,10 +358,19 @@ class DiagnosticReportService:
                         datetime.fromisoformat(deps.utc_now()),
                     ),
                 ),
-                "plan_sync": section("plan_sync", lambda: summarize_plan_sync(db)),
+                "plan_sync": section(
+                    "plan_sync",
+                    lambda: summarize_plan_sync(db, self._push_window_start()),
+                ),
                 "garmin_past_workout_removal": section(
                     "garmin_past_workout_removal",
                     lambda: summarize_garmin_removal(db),
+                ),
+                "garmin_strength_push": section(
+                    "garmin_strength_push",
+                    lambda: summarize_garmin_strength_push(
+                        db, self._local_today(athlete_profile())
+                    ),
                 ),
                 "canonical_coverage": summarize_canonical_coverage(
                     deps.canonical_coverage, db
@@ -358,9 +398,8 @@ class DiagnosticReportService:
                     "lt1_ride_coverage",
                     deps.lt1_ride_coverage or (lambda: {"available": False}),
                 ),
-                "decoupling_eligibility": section(
-                    "decoupling_eligibility",
-                    deps.decoupling_eligibility or (lambda: {"available": False}),
+                "curve_build": section(
+                    "curve_build", deps.curve_build or (lambda: {"available": False})
                 ),
                 "stream_backfill": section(
                     "stream_backfill",

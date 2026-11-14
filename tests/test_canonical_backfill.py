@@ -3,15 +3,17 @@
 from __future__ import annotations
 
 import hashlib
+import itertools
 import json
 import logging
 import threading
 import time
 import unittest
 from collections.abc import Callable, Mapping
-from contextlib import nullcontext
+from contextlib import contextmanager, nullcontext
 from dataclasses import replace
 from datetime import date, datetime, timedelta
+from functools import partial
 from pathlib import Path
 from typing import Any
 from unittest.mock import Mock, patch
@@ -32,7 +34,7 @@ from support import temp_database
 
 from backend.activities.session_linking import link_activity_sessions
 from backend.canonical.vocabulary import ActivityLinkKind, MetricKind, ProviderId
-from backend.db import DatabaseManager, canonical_store, row_factory
+from backend.db import DatabaseManager, canonical_store, garmin_store, row_factory
 from backend.db import manager as manager_module
 from backend.db.repositories import KeyValueRepository
 from backend.db.schema import initialize_schema
@@ -75,16 +77,16 @@ GENERATED_IDS = frozenset({"activity_id", "merged_into", "merged_into_retained"}
 # bumped mapper versions, taken on the code before the helpers were shared.
 PINNED_ROW_DIGESTS = [
     {
-        "provider_records": "48cd921ba14bafbbb3736ed987ca126497a9728f235880efb63400ce598dbbee",
+        "provider_records": "9b60e7aee962974d98600159e027ea73f793ae243a3297ad38e302affb3c92be",
         "activity_records": "b3490140813867886fe9a5c127151fd651b6c1c6186e86504ec4e99eae056a0c",
         "activity_sessions": "95a5fcc0408cfc6f43b3f624f801dfc383ff14196b98eac887eb3f00743c06c3",
-        "observations": "5bfa5424749c9c4c93f17f52baa65de47bf8c57685a4e42441e88c414718ddee",
+        "observations": "0966507eb4a99f456a7fb17f7a937c326afa4f4567441daa693b0a299d23fc6b",
     },
     {
-        "provider_records": "5aae914b346d01814e28bf563a7f0a913cb0bca0ca0be57216849a3a0af71e52",
+        "provider_records": "3278e0102b460563ca647869a5b950c139edca6b9b13c97197c71c22a8483819",
         "activity_records": "b3490140813867886fe9a5c127151fd651b6c1c6186e86504ec4e99eae056a0c",
         "activity_sessions": "95a5fcc0408cfc6f43b3f624f801dfc383ff14196b98eac887eb3f00743c06c3",
-        "observations": "5bfa5424749c9c4c93f17f52baa65de47bf8c57685a4e42441e88c414718ddee",
+        "observations": "0966507eb4a99f456a7fb17f7a937c326afa4f4567441daa693b0a299d23fc6b",
     },
 ]
 FIXTURES = Path(__file__).resolve().parent / "fixtures" / "providers"
@@ -457,6 +459,147 @@ class ReprojectionTests(BackfillFixture):
             ),
             rows,
         )
+
+    def test_reprojection_keeps_the_dedicated_section_of_a_shared_key(self) -> None:
+        # #2782: readiness and its history, and the latest and the historical FTP,
+        # report one natural key for the same day; the dedicated section wins in
+        # the live ingest and must win in the re-projection too.
+        day = "2026-10-03"
+        self.set_garmin(
+            self.manager,
+            garmin_payload(
+                readiness=[{"calendarDate": day, "score": 81}],
+                training_readiness_history=[{"calendarDate": day, "score": 66}],
+                cycling_ftp={"calendarDate": day, "functionalThresholdPower": 260},
+                cycling_ftp_history=[
+                    {"calendarDate": day, "functionalThresholdPower": 250}
+                ],
+            ),
+        )
+        live = self.canonical_snapshot()
+        self.assertEqual(
+            self.rows(
+                "SELECT metric, value, owner_record_id FROM observations "
+                "WHERE metric IN ('readiness', 'ftp') ORDER BY metric"
+            ),
+            [
+                {"metric": "ftp", "value": 260.0, "owner_record_id": "cycling_ftp"},
+                {
+                    "metric": "readiness",
+                    "value": 81.0,
+                    "owner_record_id": f"readiness/{day}",
+                },
+            ],
+        )
+
+        bumped = {
+            key: value + 1 for key, value in canonical_plans._MAPPER_VERSIONS.items()
+        }
+        with patch.dict(canonical_plans._MAPPER_VERSIONS, bumped):
+            self.run_to_completion(self.make_backfill())
+
+        self.assertEqual(self.canonical_snapshot(), live)
+
+    def test_two_sections_of_one_payload_with_their_own_fetch_times(self) -> None:
+        # #2782 (Gitar): a section retained from an earlier read keeps that read's
+        # time; inside one payload the later retrieval wins as in the re-projection.
+        day = "2026-10-03"
+        payload = garmin_payload(
+            readiness=[{"calendarDate": day, "score": 81}],
+            training_readiness_history=[{"calendarDate": day, "score": 66}],
+        )
+        payload["source_freshness"] = {
+            "readiness": {"fetched_at": "2026-09-19T06:00:00+00:00"},
+            "training_readiness_history": {"fetched_at": NOW},
+        }
+        self.set_garmin(self.manager, payload)
+        live = self.canonical_snapshot()
+        self.assertEqual(
+            self.rows(
+                "SELECT value, owner_record_id FROM observations "
+                "WHERE metric = 'readiness' AND state = 'active'"
+            ),
+            [
+                {
+                    "value": 66.0,
+                    "owner_record_id": f"training_readiness_history/{day}",
+                }
+            ],
+        )
+
+        bumped = {
+            key: value + 1 for key, value in canonical_plans._MAPPER_VERSIONS.items()
+        }
+        with patch.dict(canonical_plans._MAPPER_VERSIONS, bumped):
+            self.run_to_completion(self.make_backfill())
+
+        self.assertEqual(self.canonical_snapshot(), live)
+
+    def test_a_day_of_readiness_snapshots_keeps_the_wake_up_reading(self) -> None:
+        # #2844: Garmin returns several readiness snapshots a day; the stored value
+        # is the wake-up reading in the live ingest and in the re-projection.
+        day = "2026-10-03"
+        afternoon = {
+            "calendarDate": day,
+            "timestamp": f"{day}T14:00:00",
+            "score": 40,
+            "level": "LOW",
+        }
+        wake_up = {
+            "calendarDate": day,
+            "timestamp": f"{day}T06:10:00",
+            "inputContext": "AFTER_WAKEUP_RESET",
+            "score": 64,
+            "level": "MODERATE",
+        }
+        self.set_garmin(
+            self.manager,
+            garmin_payload(
+                readiness=[afternoon, wake_up],
+                training_readiness_history=[afternoon, wake_up],
+            ),
+        )
+        query = (
+            "SELECT value, owner_record_id FROM observations "
+            "WHERE metric = 'readiness' AND state = 'active'"
+        )
+        levels = (
+            "SELECT code, source_record_id FROM categorical_observations "
+            "WHERE domain = 'readiness_level' AND state = 'active' ORDER BY code"
+        )
+        self.assertEqual(
+            self.rows(query),
+            [{"value": 64.0, "owner_record_id": f"readiness/{day}#1"}],
+        )
+        live, live_levels = self.canonical_snapshot(), self.rows(levels)
+        self.assertEqual({row["code"] for row in live_levels}, {"MODERATE"})
+
+        # Whatever reading the re-projection takes first, it projects the day's
+        # wake-up reading owned by that reading, so the day never loses its value.
+        stored = self.rows(
+            "SELECT provider, record_kind, source_record_id, payload, fetched_at "
+            "FROM provider_records WHERE source_record_id = ?",
+            (f"readiness/{day}",),
+        )[0]
+        with self.manager.reader() as db:
+            plan = canonical_plans.reprojection_plan(
+                stored, zone=ZONE, day_items=partial(garmin_store.day_items, db)
+            )
+        assert plan is not None
+        self.assertEqual(
+            [(item.observation.value.value, item.owner) for item in plan.observations],
+            [(64.0, f"readiness/{day}#1")],
+        )
+        self.assertEqual(plan.domain_batches, ())
+
+        bumped = {
+            key: value + 1 for key, value in canonical_plans._MAPPER_VERSIONS.items()
+        }
+        with patch.dict(canonical_plans._MAPPER_VERSIONS, bumped):
+            self.run_to_completion(self.make_backfill())
+
+        self.assertEqual(self.canonical_snapshot(), live)
+        self.assertEqual(self.rows(levels), live_levels)
 
     def garmin_activity_rows(self) -> list[dict[str, Any]]:
         return self.rows(
@@ -1183,10 +1326,8 @@ class ReprojectionTests(BackfillFixture):
         """Patch the plan the backfill uses; the real mapper runs, then ``transform`` edits it."""
         real = backfill_module.reprojection_plan
 
-        def plan(
-            raw_row: Mapping[str, Any], *, zone: Any, training_loads: Any = None
-        ) -> Any:
-            result = real(raw_row, zone=zone, training_loads=training_loads)
+        def plan(raw_row: Mapping[str, Any], **kwargs: Any) -> Any:
+            result = real(raw_row, **kwargs)
             return None if result is None else transform(raw_row, result)
 
         return patch(
@@ -2058,6 +2199,70 @@ class WorkerTests(BackfillFixture):
         self.assertTrue(flags and all(flags))
         self.assertLessEqual(batches_before_foreground[0], 5)
         self.assertFalse(manager_module._BACKGROUND_WRITER.get())
+
+    def test_batches_rest_as_long_as_their_own_work(self) -> None:
+        # #2818: a long pass (a method-version recompute) rests after each batch,
+        # the stage's last one included, as long as the batch's thread time,
+        # outside the writer and the maintenance gate.
+        in_unit: list[bool] = []
+
+        class Database:
+            def unit_of_work(self) -> Any:
+                @contextmanager
+                def unit() -> Any:
+                    in_unit.append(True)
+                    try:
+                        yield Mock()
+                    finally:
+                        in_unit.pop()
+
+                return unit()
+
+        gate = MaintenanceGate()
+        ticks = itertools.count(0.0, 0.25)
+        pauses: list[tuple[float, bool, int]] = []
+        backfill = Mock()
+        backfill.run_batch.side_effect = [
+            BatchReport(items=1, done=False),
+            BatchReport(items=1, done=False),
+            BatchReport(items=0, done=True),
+        ]
+        worker = CanonicalBackfillWorker(
+            backfill=backfill,
+            database=Database,
+            maintenance_gate=gate,
+            poll_seconds=0,
+            clock=lambda: next(ticks),
+            pause=lambda seconds: pauses.append((seconds, bool(in_unit), gate.active)),
+        )
+        worker.run_loop()
+
+        self.assertEqual(backfill.run_batch.call_count, 3)
+        self.assertEqual(pauses, [(0.25, False, 0)] * 3)
+
+    def test_stop_ends_a_rest_at_once(self) -> None:
+        # The default rest waits on the stop event, so stop() during a long rest
+        # ends the loop without waiting the rest out.
+        ticks = itertools.count(0.0, 60.0)
+        backfill = Mock()
+        backfill.run_batch.return_value = BatchReport(items=1, done=False)
+        worker = CanonicalBackfillWorker(
+            backfill=backfill,
+            database=FakeDatabase,
+            maintenance_gate=MaintenanceGate(),
+            poll_seconds=0,
+            clock=lambda: next(ticks),
+        )
+        thread = threading.Thread(target=worker.run_loop)
+        thread.start()
+        deadline = time.monotonic() + 5
+        while backfill.run_batch.call_count == 0 and time.monotonic() < deadline:
+            time.sleep(0.01)
+        worker.stop()
+        thread.join(5)
+
+        self.assertFalse(thread.is_alive())
+        self.assertEqual(backfill.run_batch.call_count, 1)
 
     def test_loop_ends_when_the_backfill_reports_done(self) -> None:
         backfill = Mock()

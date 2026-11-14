@@ -1,5 +1,10 @@
 # Repository AI skills
 
+Contents: [Layers](#layers), [Routing](#routing) with [Base skills](#base-skills),
+[Selecting a workflow](#selecting-a-workflow),
+[OpenSpec integration](#openspec-integration),
+[Claude Code compatibility](#claude-code-compatibility).
+
 Project-specific skills live only in this repository. Never copy, synchronize,
 or install them into a user-global skill directory or an application cache.
 
@@ -87,6 +92,7 @@ output never echoes text that can quote a file.
 | [pacecraft-issue-status](pacecraft-issue-status/SKILL.md) | Open checkboxes and linked PRs of an issue |
 | [pacecraft-status-snapshot](pacecraft-status-snapshot/SKILL.md) | Compact repository status: release, open PRs, merged work |
 | [pacecraft-pr-state](pacecraft-pr-state/SKILL.md) | PR head, checks, review threads and merge state |
+| [pacecraft-ci-run-stats](pacecraft-ci-run-stats/SKILL.md) | CI run times, run types and queue time with one fixed definition |
 | [pacecraft-resolve-thread](pacecraft-resolve-thread/SKILL.md) | Resolve a review thread on your own PR after the fix reply |
 | [pacecraft-pr-merge](pacecraft-pr-merge/SKILL.md) | Arm squash auto-merge (or merge a clean PR) and wait for the merge in-turn |
 | [pacecraft-branch-sync](pacecraft-branch-sync/SKILL.md) | Rebase the feature branch and push it safely |

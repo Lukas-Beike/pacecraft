@@ -79,6 +79,8 @@ def build_app_image(root: Path) -> int:
         cwd=root,
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
         check=False,
     )
     if tag.returncode:
@@ -127,6 +129,8 @@ def npm_outdated(root: Path, npm: str) -> dict[str, tuple[str, str]]:
         cwd=root,
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
         timeout=NPM_TIMEOUT,
         check=False,
     )

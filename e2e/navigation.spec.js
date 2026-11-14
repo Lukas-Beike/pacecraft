@@ -97,3 +97,79 @@ test("@responsive each navigation item is a stable hash link that opens and focu
     await expect(page.locator("#chatPanel")).toHaveClass(/active/);
   }
 });
+
+test("@responsive Alt+1 to Alt+5 switch the main views outside text fields and are listed in Darstellung", async ({ page }) => {
+  await page.route("**/api/state/events*", (route) => route.abort());
+  await page.goto("/");
+  await expect(page.locator("#appShell")).toBeVisible();
+  await expect.poll(() => page.evaluate(() => Boolean(state.data))).toBe(true);
+  const current = page.locator(".bottom-nav .nav-item[aria-current='page'], .desktop-nav .nav-item[aria-current='page']").first();
+  // Navigation order, as the nav lists them (#2812).
+  for (const [digit, name, hash] of [[2, "Kalender", /#plan/], [3, "Analyse", /#analysis/], [4, "Ernährung", /#nutrition/], [5, "Mehr", /#more/], [1, "Coach", /#coach/]]) {
+    await page.keyboard.press(`Alt+Digit${digit}`);
+    await expect(page).toHaveURL(hash);
+    await expect(current).toHaveAttribute("aria-label", name);
+    await expect(page.locator(`.desktop-nav .nav-item[aria-label='${name}']`)).toHaveAttribute("aria-keyshortcuts", `Alt+${digit}`);
+  }
+  // Typing keeps the view; Ctrl+Alt (AltGr) types characters and switches nothing.
+  await page.locator("#messageInput").focus();
+  await page.keyboard.press("Alt+Digit2");
+  await page.locator("#messageInput").blur();
+  await page.keyboard.press("Control+Alt+Digit2");
+  // An open dialog or popover menu keeps the view behind it; an open tooltip does not.
+  const probe = (role) => page.evaluate((kind) => {
+    const layer = document.body.appendChild(document.createElement(kind === "dialog" ? "dialog" : "div"));
+    layer.id = "shortcutProbe";
+    if (kind === "dialog") return layer.showModal();
+    layer.setAttribute("role", kind);
+    layer.popover = "manual";
+    layer.showPopover();
+  }, role);
+  for (const role of ["dialog", "menu"]) {
+    await probe(role);
+    await page.keyboard.press("Alt+Digit2");
+    await page.evaluate(() => document.getElementById("shortcutProbe").remove());
+  }
+  await expect(page).toHaveURL(/#coach/);
+  await probe("tooltip");
+  await page.keyboard.press("Alt+Digit3");
+  await expect(page).toHaveURL(/#analysis/);
+  await page.evaluate(async () => { document.getElementById("shortcutProbe").remove(); await AppRouter.navigate("more/appearance", { historyMode: "replace" }); });
+  const help = page.locator(".shortcut-help");
+  if ((page.viewportSize()?.width || 0) < 768) {
+    await expect(help).toBeHidden();
+    return;
+  }
+  await help.locator("summary").click();
+  await expect(help.locator("dt")).toHaveText(["Alt+1", "Alt+2", "Alt+3", "Alt+4", "Alt+5"]);
+  await expect(help.locator("dd")).toHaveText(["Coach", "Kalender", "Analyse", "Ernährung", "Mehr"]);
+});
+
+test("@responsive Betrieb & Diagnose lists the release changes from the image as plain text, a build without them keeps the version line", async ({ page }) => {
+  const releases = [
+    { version: "2.1.15", commits: ["feat(calendar): sport filter (#2853)", "fix(sync): keeps the error", "docs(spec): <img src=x onerror=\"window.injected=1\">"] },
+    { version: "2.1.14", commits: ["feat(analysis): pace zones (#2839)"] },
+  ];
+  let served = true;
+  // The context route also answers the service worker's request after the reload.
+  await page.context().route("**/changelog.json", (route) => (served ? route.fulfill({ json: { releases } }) : route.fulfill({ status: 404, body: "" })));
+  await page.goto("/#more/operations");
+  const changelog = page.locator(".release-changelog");
+  await expect(changelog.locator(":scope > summary")).toHaveText(/^Version v\d+\.\d+\.\d+ · Änderungen$/);
+  // The newest release is open; older ones are collapsed (#2899).
+  await expect(changelog.locator(":scope > h4")).toHaveText(["Neu", "Behoben"]);
+  await expect(changelog.locator(":scope > ul").first()).toHaveText("calendar: sport filter");
+  await changelog.locator(":scope > details > summary", { hasText: "Technik (1)" }).click();
+  await expect(changelog.getByText("spec: <img src=x onerror=\"window.injected=1\">")).toBeVisible();
+  expect(await page.evaluate(() => window.injected)).toBeUndefined();
+  // Older releases sit, each collapsed, under one collapsed "Frühere Versionen (n)".
+  const earlier = changelog.locator(":scope > details", { has: page.locator(":scope > summary", { hasText: "Frühere Versionen (1)" }) });
+  await earlier.locator(":scope > summary").click();
+  await expect(earlier.locator(":scope > details > summary")).toHaveText(["Version 2.1.14"]);
+  await expect(changelog.getByText("analysis: pace zones")).toBeHidden();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  served = false;
+  await page.reload();
+  await expect(page.locator("#settingsAppVersion")).toHaveText(/^v\d+\.\d+\.\d+/);
+  await expect(page.locator(".release-changelog")).toHaveCount(0);
+});

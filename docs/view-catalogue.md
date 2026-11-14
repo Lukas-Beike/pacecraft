@@ -82,6 +82,8 @@ expression. Other inline status lines are not listed.
 | `showProfileCardsState` | `createErrorState` | (computed) ` error.message ` |  |
 | `showProfileCardsState` | `createLoadingState` | (computed) `` `${title} wird geladen…` `` |  |
 | `renderRunningBestEfforts` | `markValueMissing` | – |  |
+| `renderRunningDynamicsTrend` | `createLoadingState` | Lauftechnik wird geladen… |  |
+| `renderRunningDynamicsTrend` | `createErrorState` | (computed) ` error?.message \|\| "Konnte nicht geladen werden." ` |  |
 | `renderBodyAnalysis` | `h(.empty)` | Noch keine Körper-Historie verfügbar. |  |
 | `renderTrainingRecords` | `createLoadingState` | Ausrüstung wird geladen… |  |
 | `renderTrainingRecords` | `createErrorState` | (computed) ` error?.message ` |  |
@@ -127,6 +129,7 @@ texts.
 | Where | Title | Message | Button |
 | --- | --- | --- | --- |
 | `public/activity-details.js` `renderBundle` | Aktivität löschen? | Diese Aktivität mit allen Aufzeichnungen lokal löschen? Bei den Anbietern bleibt sie erhalten. | Löschen |
+| `public/analysis.js` `retireEquipment` | Ausrüstung ausmustern? | (computed) `` `${item.name} ausmustern?` `` | Ausmustern |
 | `public/auth.js` `logout` | Abmelden? | Du wirst auf diesem Gerät abgemeldet. Deine Daten bleiben verschlüsselt gespeichert. | Bestätigen |
 | `public/coach.js` `resetCoachChat` | Coach-Chat zurücksetzen? | Coach-Chat wirklich zurücksetzen und eine neue Unterhaltung beginnen? | Bestätigen |
 | `public/coach.js` `undoCoachTurn` | Änderungen zurücknehmen? | Alle lokalen Änderungen dieser Coach-Antwort zurücknehmen? Intervals.icu bleibt unverändert. | Zurücknehmen |

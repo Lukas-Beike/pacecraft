@@ -29,7 +29,10 @@ modules; the run prints the reason. A changed file under `tests/fixtures/`
 selects every test whose sources or imported modules name `fixtures` as a path
 segment (loaders build fixture paths from parts); a fixture in a subdirectory
 such as `tests/fixtures/chart-golden/` also needs that subdirectory named the
-same way, unless one of those modules scans directories. Every change also selects
+same way, unless one of those modules scans directories. A glob literal such as
+`backend/**/*.py` names its directory (`backend`) for a module that scans, so
+`test_source_encoding` runs for changes under the roots it globs (#2887).
+Every change also selects
 `test_line_endings` and `test_ai_docs_contract`, which check tracked files
 across the repository. The slow tooling modules
 `test_fixture_standard_data` and `test_ci_contracts` run under `--changed` only
@@ -56,6 +59,12 @@ IDs without running them:
 python tests/run_tests.py --shard 1 --total 4
 python tests/run_tests.py --shard 1 --total 4 --list
 ```
+CI passes `--hang-timeout 600` to the shards and the container suite: a run
+still going after 10 minutes (the shard step normally takes under 3) prints
+every thread's stack, which names the hanging test or import, and fails. The
+docs-only step, which can fall back to the whole suite in one process, gets
+1800 seconds. The jobs' `timeout-minutes` (40 for the shards, 20 for the
+container suite) free the runner as a last resort (#2900).
 A pull request that changes documentation alone skips the suites (#2747).
 `.github/scripts/ci_changes.py` diffs the merge commit against its base parent;
 documentation is Markdown or text under `docs/`, `.agents/skills/` (outside
@@ -283,6 +292,18 @@ wall time. Compare at least five naturally occurring successful runs with
 comparable selections and environments before claiming an improved median;
 report failed and cold-cache runs separately. Do not dispatch extra workflows
 just to populate a benchmark.
+
+CI-speed baselines use one definition (#2816):
+`python scripts/ci_run_stats.py --since <UTC> --until <UTC> [--event pull_request] [--queue]`.
+It counts successful `publish-container.yml` runs of the event created in the
+window, measures each from `created_at` to `updated_at` in minutes, and reports
+the median and a linear-interpolated p90 (`statistics.quantiles`, inclusive).
+It splits runs into `full` (mobile or tablet browser shards ran),
+`desktop-only`, `docs-only` (neither browser shards nor container unit tests)
+and `other` (a reused run), with their job counts; `--queue` adds the job queue
+time from creation to start. A re-run counts with its whole span and is
+reported; `--first-attempts` leaves re-runs out. Quote the command with each
+baseline.
 
 The provisional goals of the archived `accelerate-test-execution` change are a
 GitHub validation median below six minutes and at least 30% less local wall time

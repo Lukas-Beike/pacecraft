@@ -17,6 +17,7 @@ from canonical_consumer_cases import MAX_METRICS_DAILY
 
 from backend.canonical.mapping import IssueReason, MappingResult
 from backend.canonical.records import Observation
+from backend.canonical.section_items import split_section
 from backend.canonical.vocabulary import (
     MetricKind,
     ObservationAggregation,
@@ -26,6 +27,7 @@ from backend.canonical.vocabulary import (
     Sport,
 )
 from backend.providers import canonical_plans
+from backend.providers.canonical_plans import garmin_morning_keys
 from backend.providers.garmin_health_mapping import (
     GARMIN_LABEL,
     MAPPER_VERSION,
@@ -34,7 +36,7 @@ from backend.providers.garmin_health_mapping import (
 from backend.providers.garmin_personal import wrap_daily_sleep
 from backend.providers.garmin_status_mapping import map_garmin_status_codes
 from backend.sync.garmin_metric_history import projected_metric
-from backend.sync.garmin_performance_history import readiness_score_value
+from backend.sync.garmin_performance_history import current_garmin_metrics
 
 type Triple = tuple[str | None, str, IssueReason]
 
@@ -810,6 +812,71 @@ class AliasAndUnitTests(unittest.TestCase):
                 result = _map({"weight": {"calendarDate": DAY, "weight": raw}})
                 self.assertEqual(_rows(result), [("weight", expected, DAY, "-")])
                 self.assertEqual(_issues(result), [])
+
+    def test_nested_weights_inherit_the_date_and_accept_key_aliases(self) -> None:
+        result = _map(
+            {
+                "weight": {
+                    "calendarDate": "2026-08-30",
+                    "entries": [
+                        {"weightKg": 70},
+                        {"weight_kg": 70},
+                        {"date": "2026-08-31", "weight": 71},
+                    ],
+                }
+            }
+        )
+
+        self.assertEqual(
+            _rows(result),
+            [
+                ("weight", 70.0, "2026-08-30", "-"),
+                ("weight", 70.0, "2026-08-30", "-"),
+                ("weight", 71.0, "2026-08-31", "-"),
+            ],
+        )
+
+    def test_weight_list_cap_and_excluded_summary_keys(self) -> None:
+        entries = [
+            {"date": "2026-08-30", "weightKg": 70 + index / 100} for index in range(501)
+        ]
+        result = _map(
+            {
+                "weight": {
+                    "records": entries,
+                    "minWeight": {"date": "2026-08-30", "weightKg": 999},
+                    "max-weight": {"date": "2026-08-30", "weightKg": 999},
+                    "weightDelta": {"date": "2026-08-30", "weightKg": 999},
+                    "totalAverage": {"weightKg": 71.0},
+                }
+            }
+        )
+
+        values = [obs.value.value for obs in result.records]
+        self.assertEqual((len(values), values[0], values[-1]), (500, 70.0, 74.99))
+        self.assertEqual(result.issues, ())
+
+    def test_weight_bounds_are_inclusive_in_kilograms(self) -> None:
+        cases: list[tuple[dict[str, object], float | None]] = [
+            ({"weightKg": 30}, 30.0),
+            ({"weight_kg": 300}, 300.0),
+            ({"weight": 154.323583, "unit": "lb"}, 70.0),
+            ({"weight": 71000}, 71.0),
+            ({"weight": 29.99}, None),
+            ({"weight": 300.01}, None),
+        ]
+        for fields, expected in cases:
+            with self.subTest(fields=fields):
+                result = _map({"weight": [{"calendarDate": DAY, **fields}]})
+                if expected is None:
+                    self.assertEqual(result.records, ())
+                    self.assertEqual(
+                        _issues(result),
+                        [("weight[0]", "weight", IssueReason.OUT_OF_RANGE)],
+                    )
+                else:
+                    (obs,) = result.records
+                    self.assertAlmostEqual(obs.value.value, expected, places=2)
 
     def test_whitespace_weight_unit_uses_the_magnitude_guess(self) -> None:
         result = _map(
@@ -1750,6 +1817,94 @@ class RacePredictionTests(unittest.TestCase):
                 )
         self.assertEqual(self._seconds({"5k": "25:30"}), {"race_prediction_5k": 1530.0})
 
+    def test_personal_records_follow_the_sdk_documented_running_types(self) -> None:
+        # garminconnect 0.3.20 ``get_personal_record``: running typeId 1 = 1 km,
+        # 2 = 1 mile, 3 = 5 km, 4 = 10 km, 5 = half marathon, 6 = marathon,
+        # 7 = longest run (#2806).
+        def record(type_id: int, value: float, sport: str = "running") -> dict:
+            return {
+                "typeId": type_id,
+                "activityType": sport,
+                "value": value,
+                "prStartTimeLocalFormatted": "2025-04-12T09:01:22.0",
+            }
+
+        result = _map(
+            {
+                "personal_records": [
+                    record(1, 228.0),
+                    record(2, 380.0),
+                    record(3, 1236.4),
+                    record(4, 2581.0),
+                    {
+                        **record(5, 5772.0),
+                        "prStartTimeLocalFormatted": None,
+                        "prStartTimeLocal": 1_744_448_482_000,
+                    },
+                    record(6, 12_400.0),
+                    record(7, 42_500.0),
+                    record(8, 1_000.0, "cycling"),
+                ]
+            }
+        )
+
+        self.assertEqual(
+            _rows(result),
+            [
+                ("personal_record_10k", 2581.0, "2025-04-12", "run"),
+                ("personal_record_1k", 228.0, "2025-04-12", "run"),
+                ("personal_record_5k", 1236.4, "2025-04-12", "run"),
+                ("personal_record_full", 12400.0, "2025-04-12", "run"),
+                ("personal_record_half", 5772.0, "2025-04-12", "run"),
+            ],
+        )
+        self.assertEqual(_issues(result), [])
+        observation = _find(result, MetricKind.PERSONAL_RECORD_5K, Sport.RUN)
+        self.assertEqual(
+            observation.provenance.source_record_id,
+            "personal_records:2025-04-12:personal_record_5k",
+        )
+
+    def test_unknown_record_types_and_undated_records_are_reported(self) -> None:
+        result = _map(
+            {
+                "personal_records": [
+                    {"typeId": 99, "activityType": "running", "value": 300},
+                    {"activityType": "running", "value": 300},
+                    {"typeId": 3.5, "activityType": "running", "value": 300},
+                    {"typeId": 3, "activityType": "running", "value": 1236},
+                    {
+                        "typeId": 3,
+                        "activityType": "running",
+                        "value": 1236,
+                        "prStartTimeLocalFormatted": "12.04.2025",
+                    },
+                    # Step and goal records carry no activity type: no issue.
+                    {"typeId": 12, "activityType": None, "value": 30_000},
+                ]
+            }
+        )
+
+        self.assertEqual(result.records, ())
+        self.assertEqual(
+            _issues(result),
+            [
+                ("personal_records[0]", "typeId", IssueReason.UNKNOWN_VALUE),
+                ("personal_records[1]", "typeId", IssueReason.UNKNOWN_VALUE),
+                ("personal_records[2]", "typeId", IssueReason.UNKNOWN_VALUE),
+                (
+                    "personal_records[3]",
+                    "prStartTimeLocalFormatted",
+                    IssueReason.MISSING,
+                ),
+                (
+                    "personal_records[4]",
+                    "prStartTimeLocalFormatted",
+                    IssueReason.INVALID_TYPE,
+                ),
+            ],
+        )
+
 
 class EnduranceScoreTests(unittest.TestCase):
     def test_wrapped_endurance_score_is_mapped(self) -> None:
@@ -1913,8 +2068,11 @@ class MorningReadinessTests(unittest.TestCase):
         result = _map({"readiness": [utc_only, local]})
         self.assertEqual(_find(result, MetricKind.READINESS).value.value, 70.0)
 
-    def test_legacy_readiness_reads_the_morning_reading(self) -> None:
-        self.assertEqual(readiness_score_value([_MORNING, _AFTERNOON]), 78)
+    def test_current_readiness_reads_the_morning_reading(self) -> None:
+        metrics = current_garmin_metrics(
+            {"readiness": [_MORNING, _AFTERNOON]}, date(2026, 10, 11)
+        )
+        self.assertEqual(metrics["readiness"]["value"], 78)
 
     def test_legacy_readiness_history_keeps_the_morning_reading(self) -> None:
         projected = projected_metric(
@@ -1927,6 +2085,69 @@ class MorningReadinessTests(unittest.TestCase):
         )
         (point,) = projected["points"]
         self.assertEqual(point["value"], 78)
+
+    def test_a_non_text_context_is_an_ordinary_reading(self) -> None:
+        # #2870: provider data is untrusted; a list or a mapping as inputContext
+        # neither breaks the mapper nor counts as a re-score or a wake-up: beside
+        # an earlier ordinary reading, the earlier one wins.
+        earlier = {
+            "calendarDate": DAY,
+            "score": 60,
+            "level": "MODERATE",
+            "timestampLocal": "2026-10-10T10:00:00.0",
+        }
+        for context in (["AFTER_WAKEUP_RESET"], {"name": "UPDATE_REALTIME_VARIABLES"}):
+            with self.subTest(context=type(context).__name__):
+                odd = {**_AFTERNOON, "inputContext": context, "score": 55}
+                for section in ("readiness", "training_readiness_history"):
+                    self.assertEqual(
+                        _find(_map({section: [odd]}), MetricKind.READINESS).value.value,
+                        55.0,
+                    )
+                    self.assertEqual(
+                        _find(
+                            _map({section: [odd, earlier]}), MetricKind.READINESS
+                        ).value.value,
+                        60.0,
+                    )
+                    codes = map_garmin_status_codes(
+                        section,
+                        [odd],
+                        source_record_id=section,
+                        retrieved_at=RETRIEVED_AT,
+                    )
+                    self.assertEqual([code.code for code in codes], ["LOW"])
+                # The callers that choose a day's reading across stored elements.
+                items = split_section([odd, earlier])
+                self.assertEqual(
+                    garmin_morning_keys("readiness", items), frozenset({f"{DAY}#1"})
+                )
+                (point,) = projected_metric(
+                    [odd, earlier],
+                    start=date(2026, 10, 1),
+                    end=date(2026, 10, 31),
+                    aggregation="daily",
+                    metric="training_readiness_history",
+                    synced_at=None,
+                )["points"]
+                self.assertEqual(point["value"], 60)
+
+    def test_a_re_projected_day_takes_the_reading_the_mapper_dates_to_it(self) -> None:
+        # #2870 review: a stored day can list a reading whose date keys disagree, so
+        # the mapper dates it to no day and keeps it beside the dated one. Every
+        # reading of that day re-projects the dated one, listed first or last.
+        undated = {"summaryDate": DAY, "date": "2026-10-09", "score": 40}
+        dated = {"calendarDate": DAY, "score": 60}
+        for order in ((undated, dated), (dated, undated)):
+            items = split_section(list(order))
+            for item in items:
+                with self.subTest(first=order[0]["score"], reading=item.key):
+                    chosen = canonical_plans.garmin_day_reading(
+                        f"readiness/{item.key}",
+                        {"readiness": [item.value]},
+                        lambda *_, day=items: day,
+                    )
+                    self.assertEqual([one.value["score"] for one in chosen or ()], [60])
 
     def test_readiness_level_follows_the_morning_reading(self) -> None:
         for section in ("readiness", "training_readiness_history"):
@@ -1975,7 +2196,7 @@ class PersonalApiShapeTests(unittest.TestCase):
 
 class ContractTests(unittest.TestCase):
     def test_mapper_version_is_pinned(self) -> None:
-        self.assertEqual(MAPPER_VERSION, 23)
+        self.assertEqual(MAPPER_VERSION, 24)
 
     def test_non_mapping_sections_yield_one_issue(self) -> None:
         for sections in (["sleep"], "sleep", None, 5):

@@ -15,7 +15,7 @@ every named number the code fixes. A test fails when it is out of date.
 | `ACTIVITY_HISTORY_DAYS` | `365` | `backend/performance/canonical_inputs.py` | Activities older than this are not read for the performance inputs. |
 | `DAILY_HEALTH_DAYS` | `7` | `backend/performance/canonical_inputs.py` | Daily totals of the days before as_of that the 7-day averages read. |
 | `ANALYSIS_VERSION` | `3` | `backend/performance/canonical_session_analysis.py` | Stored activity_detail_analysis.analysis_version of canonical analyses. |
-| `METHOD_VERSION` | `8` | `backend/performance/canonical_session_analysis.py` | Bump when the computation below changes, so the stage recomputes every row. v3: grade-adjusted Pa:HR of outdoor runs (#1770). v4: the heart rate and power source, and the optical heart rate warning (#1869). v5: the running form drift of long runs (#1870). v6: the calendar profile uses the thresholds of the zone times (#1892). v7: samples use the adaptive gap rule of the zone times (#1950). v8: the calendar profile uses the session's configured zone limits (#2136). The stored heart-rate histogram has its own version in the fingerprint. |
+| `METHOD_VERSION` | `9` | `backend/performance/canonical_session_analysis.py` | Bump when the computation below changes, so the stage recomputes every row. v3: grade-adjusted Pa:HR of outdoor runs (#1770). v4: the heart rate and power source, and the optical heart rate warning (#1869). v5: the running form drift of long runs (#1870). v6: the calendar profile uses the thresholds of the zone times (#1892). v7: samples use the adaptive gap rule of the zone times (#1950). v8: the calendar profile uses the session's configured zone limits (#2136). v9: the aerobic decoupling's steady-output rule reads 60 s rolling means (#1832). The stored heart-rate histogram has its own version in the fingerprint. |
 | `METRIC_KEYS` | `('cycling_ftp_watts', 'run_threshold_pace_seconds_per_km', 'cycling_vo2max_ml_kg_min', 'running_v... (sha256 fffe8d45)` | `backend/performance/chart_history.py` |  |
 | `METHOD` | `'comparable-sessions-v1'` | `backend/performance/comparable_sessions.py` |  |
 | `COMPARE_DAYS` | `84` | `backend/performance/comparable_sessions.py` |  |
@@ -52,17 +52,6 @@ every named number the code fixes. A test fails when it is out of date.
 | `LT1_FIXED_SHARE` | `'fixed_share'` | `backend/performance/current_metrics.py` |  |
 | `DAILY_HEALTH_FIELDS` | `('steps', 'floors', 'calories')` | `backend/performance/daily_health.py` | The 7-day averaged daily totals and the energy components of one day. |
 | `DAILY_EXPENDITURE_FIELDS` | `('active_kcal', 'resting_kcal', 'total_kcal')` | `backend/performance/daily_health.py` |  |
-| `DEFAULT_DAYS` | `365` | `backend/performance/decoupling_eligibility.py` |  |
-| `WARMUP_S` | `600.0` | `backend/performance/decoupling_eligibility.py` |  |
-| `COOLDOWN_S` | `600.0` | `backend/performance/decoupling_eligibility.py` |  |
-| `MIN_SESSION_S` | `1800.0` | `backend/performance/decoupling_eligibility.py` |  |
-| `MIN_COVERAGE` | `0.85` | `backend/performance/decoupling_eligibility.py` |  |
-| `MAX_HALF_DIFFERENCE` | `0.1` | `backend/performance/decoupling_eligibility.py` |  |
-| `WINDOWS_S` | `(1, 30, 60)` | `backend/performance/decoupling_eligibility.py` |  |
-| `PERCENTILES` | `(25, 50, 75, 90)` | `backend/performance/decoupling_eligibility.py` |  |
-| `MIN_DISTRIBUTION` | `3` | `backend/performance/decoupling_eligibility.py` | Fewer values would show single sessions' values as quartiles. |
-| `CURRENT` | `'cv_1s_15'` | `backend/performance/decoupling_eligibility.py` |  |
-| `RIDE_ONLY_RULES` | `frozenset({'vi_30s_105', 'vi_30s_110'})` | `backend/performance/decoupling_eligibility.py` |  |
 | `ESTIMATE_DAYS` | `60` | `backend/performance/first_threshold_estimate.py` |  |
 | `MIN_SESSIONS` | `3` | `backend/performance/first_threshold_estimate.py` |  |
 | `GOOD_MIN_SESSIONS` | `5` | `backend/performance/first_threshold_estimate.py` | The estimate is good with this many sessions that agree within this spread (percentage points of the threshold HR); otherwise it is low. |
@@ -95,7 +84,6 @@ every named number the code fixes. A test fails when it is out of date.
 | `STEP_LENGTH_FALL_PCT` | `5.0` | `backend/performance/form_drift.py` |  |
 | `ACTIVITY_MAX_HR_CATEGORIES` | `('cycling', 'running')` | `backend/performance/garmin_canonical.py` |  |
 | `GARMIN_RUN_PREDICTION_SOURCE` | `'Garmin Connect Laufprognose'` | `backend/performance/garmin_metrics.py` |  |
-| `RACE_PREDICTION_KEYS` | `('run_5k_seconds', 'run_10k_seconds', 'run_half_marathon_seconds', 'run_marathon_seconds')` | `backend/performance/garmin_metrics.py` |  |
 | `GARMIN_SOURCE` | `'Garmin Connect'` | `backend/performance/garmin_projection.py` |  |
 | `GRADE_SPAN_M` | `200.0` | `backend/performance/grade_adjustment.py` |  |
 | `MAX_GRADE` | `0.45` | `backend/performance/grade_adjustment.py` | Validity range of the Minetti polynomial, as a fraction. |
@@ -188,9 +176,27 @@ every named number the code fixes. A test fails when it is out of date.
 | `MIN_BASELINE_NIGHTS` | `14` | `backend/performance/rolling_hrv.py` |  |
 | `OK_BASELINE_NIGHTS` | `28` | `backend/performance/rolling_hrv.py` |  |
 | `RANGE_SD` | `0.5` | `backend/performance/rolling_hrv.py` |  |
+| `METHOD` | `'running-dynamics-pace-bands-v1'` | `backend/performance/running_dynamics.py` | Bump when the per-run bands change, so session curves recompute. |
+| `BAND_S_PER_KM` | `15` | `backend/performance/running_dynamics.py` |  |
+| `MIN_RUN_SPEED_MPS` | `2.0` | `backend/performance/running_dynamics.py` | Slower than this is walking (8:20/km); faster than this is a GPS spike (2:30/km). |
+| `MAX_RUN_SPEED_MPS` | `1000 / 150` | `backend/performance/running_dynamics.py` |  |
+| `MIN_BAND_S` | `120.0` | `backend/performance/running_dynamics.py` | A run counts in a band with at least this much time in it. |
+| `MIN_PEERS` | `5` | `backend/performance/running_dynamics.py` | A band is rated against at least this many earlier runs of the window. |
+| `WINDOW_DAYS` | `84` | `backend/performance/running_dynamics.py` |  |
+| `MIN_MONTH_BAND_S` | `600.0` | `backend/performance/running_dynamics.py` | A month's trend point needs this much time of the band across its runs. |
+| `TREND_MONTHS` | `12` | `backend/performance/running_dynamics.py` |  |
+| `TREND_BANDS` | `4` | `backend/performance/running_dynamics.py` |  |
+| `AVERAGE_KEYS` | `{'ground_contact_time_ms': 'ground_contact_time_ms', 'vertical_oscillation_cm': 'vertical_oscilla... (sha256 73afc366)` | `backend/performance/running_dynamics.py` | The run averages a provider reports, by metric (cadence per leg). |
+| `METRICS` | `(('ground_contact_time_ms', 'ground_contact_time', -1), ('vertical_oscillation_cm', 'vertical_osc... (sha256 d5f91a56)` | `backend/performance/running_dynamics.py` | (metric, stream key of the analysis input, direction): -1 lower is better, 1 higher is better, 0 no verdict; "balance" is better closer to 50 %. |
+| `SCOPE` | `"Per 15 s/km pace band, the run's time-weighted mean against the same band of the athlete's runs ... (sha256 ce4f1e9b)` | `backend/performance/running_dynamics.py` |  |
+| `GARMIN_SOURCE` | `'Garmin-Einordnung (Brustgurt), Garmin EPIX Handbuch'` | `backend/performance/running_dynamics.py` | Garmin's colour bands from the EPIX (Gen 2) owner's manual, the newest generation that still lists all five values ("Color Gauges and Running Dynamics Data", "Vertical Oscillation and Vertical Ratio Data", "Ground Contact Time Balance Data"; the Forerunner 945 manual has the same limits): population percentiles of Garmin's runners, purple > 95th, blue 70-95th, green 30-69th, orange 5-29th, red < 5th. The athlete runs with a chest strap (HRM-Pro/HRM-600), so vertical oscillation and ratio take the chest column. Each entry: the upper bounds of the colours in rising order of the value. |
+| `GARMIN_BALANCE_GREEN` | `0.7` | `backend/performance/running_dynamics.py` | Balance: green within 50.7 % on either side, orange up to 52.2 %, red beyond. |
+| `GARMIN_BALANCE_ORANGE` | `2.2` | `backend/performance/running_dynamics.py` |  |
 | `TARGET_BASIS_FTP_KEY` | `'ftp'` | `backend/performance/session_analysis.py` |  |
-| `METHOD` | `'time-weighted-session-analysis-v2'` | `backend/performance/session_analysis.py` | v2: Pa:HR of outdoor runs uses grade-adjusted speed (card M8 v2, #1770). |
+| `METHOD` | `'time-weighted-session-analysis-v3'` | `backend/performance/session_analysis.py` | v2: Pa:HR of outdoor runs uses grade-adjusted speed (card M8 v2, #1770). v3: the steady-output rule reads the CV of 60 s rolling means (#1832). |
 | `GRADE_ADJUSTED_SPEED` | `'grade_adjusted_speed'` | `backend/performance/session_analysis.py` |  |
+| `STEADY_WINDOW_S` | `60.0` | `backend/performance/session_analysis.py` | Steady output (athlete decision 2026-11-14, #1832): the coefficient of variation of the output's 60 s rolling means is at most 15 % in each half, one rule for runs and rides; 1 s samples excluded almost every outdoor ride. |
+| `MAX_STEADY_CV` | `0.15` | `backend/performance/session_analysis.py` |  |
 | `HEART_RATE_HISTOGRAM_VERSION` | `2` | `backend/performance/session_analysis.py` | Bump when heart_rate_histogram counts differently, so stored rows recompute. v2: steps up to the adaptive gap rule of the zone times count (#1950). |
 | `HISTOGRAM_MIN_BPM` | `30` | `backend/performance/session_analysis.py` |  |
 | `HISTOGRAM_MAX_BPM` | `240` | `backend/performance/session_analysis.py` |  |
@@ -218,7 +224,7 @@ every named number the code fixes. A test fails when it is out of date.
 | `CADENCE_LOCK_MIN_SPREAD_SPM` | `3.0` | `backend/performance/session_execution.py` |  |
 | `CADENCE_LOCK_MIN_CORRELATION` | `0.8` | `backend/performance/session_execution.py` |  |
 | `METHOD_ID` | `'local-session-metrics'` | `backend/performance/session_metrics.py` |  |
-| `METHOD_VERSION` | `4` | `backend/performance/session_metrics.py` | v2: grade-adjusted Pa:HR of outdoor runs (#1770). v3: the decoupling's output per heartbeat is named apart from the session EF, and run work names Garmin's running-power model (card M8 v3, #1773). v4: positive duration fallback; stream work counts moving samples only (#1950). |
+| `METHOD_VERSION` | `5` | `backend/performance/session_metrics.py` | v2: grade-adjusted Pa:HR of outdoor runs (#1770). v3: the decoupling's output per heartbeat is named apart from the session EF, and run work names Garmin's running-power model (card M8 v3, #1773). v4: positive duration fallback; stream work counts moving samples only (#1950). v5: decoupling's steady-output rule reads 60 s rolling means (#1832). |
 | `CARD` | `'M8'` | `backend/performance/session_metrics.py` |  |
 | `MAX_SAMPLE_GAP_S` | `5.0` | `backend/performance/session_metrics.py` | A stream sample longer than this is a gap, as in the session analysis. |
 | `MIN_WORK_COVERAGE` | `0.85` | `backend/performance/session_metrics.py` | Share of the moving duration the power stream must cover for a work value. |
@@ -284,6 +290,7 @@ every named number the code fixes. A test fails when it is out of date.
 
 | Constant | Value | Module | Code comment |
 | --- | --- | --- | --- |
+| `TRAINING_EFFECT_KEYS` | `('training_effect_label', 'aerobic_training_effect', 'anaerobic_training_effect')` | `backend/activities/activity_summary.py` | The training-effect keys a summary takes from one record; the load joins them as training_effect_load (Garmin's own load model only). |
 | `CALENDAR_ACTIVITY_FIELDS` | `('id', 'started_at_local', 'name', 'sport', 'environment', 'moving_duration_s', 'elapsed_duration... (sha256 06f78964)` | `backend/activities/calendar_projection.py` |  |
 | `DURATION_FLOOR_S` | `120.0` | `backend/activities/canonical_sessions.py` |  |
 | `DISTANCE_FLOOR_M` | `500.0` | `backend/activities/canonical_sessions.py` |  |

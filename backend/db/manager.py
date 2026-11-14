@@ -32,6 +32,16 @@ BACKGROUND_WRITER_BYPASS_LIMIT = 8
 JOURNAL_SIZE_LIMIT_BYTES = 64 * 1024 * 1024
 
 _LOGGER = logging.getLogger("intervals_coach")
+# Reader connections of the app's database (#2788). Python's sqlite3 releases
+# and retakes the GIL around every row step, so threads reading large result
+# sets at once thrash the handoff: on the fixture with 900 synthetic sessions,
+# seven parallel view requests took 2.7 times their sequential sum with four
+# readers, 1.36 times with two and 0.91 times with one (right after a restart
+# 1.8-3.9 s, 0.4-1.8 s and 0.1-1.3 s per request). Two keep most of that gain
+# and leave one slot free while a request holds a slow read.
+APP_READER_CONNECTIONS = 2
+# A reader-slot wait above this counts in the diagnostics (#2788).
+_SLOW_READER_WAIT_S = 1.0
 _BACKGROUND_WRITER: ContextVar[bool] = ContextVar(
     "database_background_writer", default=False
 )
@@ -171,7 +181,7 @@ class DatabaseManager:
         password: str = "",
         configure: Callable[[Any, str], None] | None = None,
         row_factory: Callable[[Any, tuple[Any, ...]], Any] | None = None,
-        reader_count: int = 4,
+        reader_count: int = APP_READER_CONNECTIONS,
         timeout: float = 20.0,
         persist_connections: bool = True,
     ):
@@ -206,6 +216,33 @@ class DatabaseManager:
             f"database_manager_lease_{id(self)}", default=False
         )
         self._reader_slots = threading.BoundedSemaphore(self.reader_count)
+        self._slow_reader_waits = 0
+        self._reader_timeouts = 0
+        self._longest_reader_wait_s = 0.0
+
+    def _acquire_reader_slot(self) -> None:
+        """Take a reader slot, timing only a wait; time out as busy."""
+        if self._reader_slots.acquire(blocking=False):
+            return
+        started = time.monotonic()
+        acquired = self._reader_slots.acquire(timeout=self.timeout)
+        waited = time.monotonic() - started
+        with self._state:
+            self._longest_reader_wait_s = max(self._longest_reader_wait_s, waited)
+            self._slow_reader_waits += waited > _SLOW_READER_WAIT_S
+            self._reader_timeouts += not acquired
+        if not acquired:
+            raise DatabaseBusyError("reader")
+
+    def reader_slot_waits(self) -> dict[str, Any]:
+        """Counts only: slots, slow waits, timed-out waits, longest wait (#2788)."""
+        with self._state:
+            return {
+                "slots": self.reader_count,
+                "waits_over_1s": self._slow_reader_waits,
+                "timeouts": self._reader_timeouts,
+                "longest_wait_s": round(self._longest_reader_wait_s, 3),
+            }
 
     def _connect(self) -> Any:
         connection = self.backend.connect(
@@ -340,8 +377,7 @@ class DatabaseManager:
             yield current
             return
         with self._lease():
-            if not self._reader_slots.acquire(timeout=self.timeout):
-                raise DatabaseBusyError("reader")
+            self._acquire_reader_slot()
             try:
                 try:
                     connection = self._readers.get_nowait()
@@ -392,8 +428,7 @@ class DatabaseManager:
             yield current
             return
         with self._lease():
-            if not self._reader_slots.acquire(timeout=self.timeout):
-                raise DatabaseBusyError("reader")
+            self._acquire_reader_slot()
             try:
                 try:
                     connection = self._readers.get_nowait()
@@ -553,7 +588,7 @@ class DatabaseHolder:
                     password=password,
                     configure=self._configure,
                     row_factory=self._row_factory,
-                    reader_count=4,
+                    reader_count=APP_READER_CONNECTIONS,
                     timeout=20,
                     persist_connections=bool(password),
                 )

@@ -2,18 +2,26 @@ const assert = require("node:assert/strict");
 const { test } = require("node:test");
 const { extractFunctions, fakeDocument } = require("./frontend-harness.cjs");
 
-const RECEIPT_TOOLS = ["HIDDEN_CHAT_RECEIPT_TOOLS", "COACH_RECEIPT_LABELS", "SYNC_JOB_RECEIPT_LABELS", "receiptIsVisible", "syncJobReceipt", "commandReceiptTitle", "commandReceiptMessage", "commandReceiptStatus", "commandReceipt", "addStructuredCoachReceipts"];
+const RECEIPT_TOOLS = ["HIDDEN_CHAT_RECEIPT_TOOLS", "COACH_RECEIPT_LABELS", "SYNC_JOB_RECEIPT_LABELS", "receiptIsVisible", "syncJobReceipt", "commandReceiptTitle", "commandReceiptMessage", "commandReceiptStatus", "commandReceipt", "COACH_EQUIPMENT_TOOLS", "addStructuredCoachReceipts"];
 const EXECUTE_ACTIONS = ["coachActionReceipt", "isHttpClientRejection", "reconcileCoachActionProposal", "executeCoachActionProposal", "showCoachReceiptArea", "lockUnknownCoachActionOutcome", "rejectCoachActionProposal"];
 
-function render(commands) {
+function render(commands, invalidated = []) {
   const cards = [];
   const context = extractFunctions("coach.js", RECEIPT_TOOLS, {
-    state: {}, toast() {},
+    state: {}, toast() {}, invalidateEquipmentNotice: () => invalidated.push(true),
   });
   context.toastCoachReceipts = (receipts) => cards.push(...receipts);
   context.addStructuredCoachReceipts({ command_receipts: commands });
   return cards;
 }
+
+test("a Coach change to equipment makes the status strip read it again, a failed one does not", () => {
+  const invalidated = [];
+  render([{ tool: "log_equipment_maintenance", result: { ok: false, error: "Synthetic failure" } }, { tool: "save_food_entry", result: { ok: true } }], invalidated);
+  assert.equal(invalidated.length, 0);
+  render([{ tool: "log_equipment_maintenance", result: { ok: true } }], invalidated);
+  assert.equal(invalidated.length, 1, "#2809");
+});
 
 test("a repaired planning attempt shows the successful result without a red card", () => {
   const cards = render([

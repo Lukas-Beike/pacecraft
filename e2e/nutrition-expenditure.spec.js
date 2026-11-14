@@ -43,7 +43,7 @@ test("@responsive nutrition diary presents Garmin energy expenditure and unavail
     const mode = responseMode;
     if (mode === "error") return route.abort();
     if (holdResponse) await new Promise((resolve) => { releaseResponse = resolve; });
-    const energyExpenditure = mode === "measured"
+    const energyExpenditure = mode !== "unavailable"
       ? {
         status: "measured",
         total_kcal: 2100,
@@ -55,7 +55,7 @@ test("@responsive nutrition diary presents Garmin energy expenditure and unavail
         source: "Garmin Connect",
         measured_date: requestedDate,
         date: requestedDate,
-        freshness: "current",
+        freshness: mode === "stale" ? "stale" : "current",
         provisional: true,
         fetched_at: "2026-10-06T09:00:00Z",
         synced_at: "2026-10-06T09:15:00Z",
@@ -89,9 +89,7 @@ test("@responsive nutrition diary presents Garmin energy expenditure and unavail
   expect(requestedDates[0]).toBe("2026-10-06");
   expect(requestedDateQueries[0]).toBeNull();
   await expect(page.locator("#nutritionDate")).toHaveValue("2026-10-06");
-  await expect(expenditure).toContainText("Garmin Connect");
-  await expect(expenditure).toContainText("Aktuell");
-  await expect(expenditure).toContainText("Vorläufig");
+  // A current day needs no status sentence; the total names its source in a chip (#2846).
   await expect(expenditure).toContainText("06.10.2026");
   await expect(expenditure).toContainText("2.100 kcal");
   await expect(expenditure.locator("#nutritionExpenditureDate")).toHaveText(/^Sync: 06[.]10[.]2026, [0-9]{2}:[0-9]{2}$/);
@@ -99,15 +97,19 @@ test("@responsive nutrition diary presents Garmin energy expenditure and unavail
   await expect(expenditure).not.toContainText("Abgerufen:");
   await expect(expenditure).not.toContainText("Garmin-Sync:");
   const totals = expenditure.locator("#nutritionExpenditureTotals");
+  await expect(expenditure.locator("#nutritionExpenditureStatus")).toBeEmpty();
+  await expect(expenditure).not.toContainText("Vorläufig");
+  await expect(totals.locator(".nutrition-total").first().locator(".source-chip")).toHaveText("Garmin");
   await expect(totals).toContainText("Aktivkalorien");
-  // "Vorläufig" is said once, in the status line, not again on the tiles.
-  await expect(totals).not.toContainText("vorläufig");
-  await expect(expenditure.getByText("Vorläufig")).toHaveCount(1);
   await expect(totals).toContainText("600 kcal");
   await expect(totals).toContainText("1.500 kcal");
   await expect(totals).toContainText("Prognose Tagesverbrauch");
   await expect(totals).toContainText("2.350 kcal");
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  // A problem keeps its line.
+  responseMode = "stale";
+  await page.evaluate(() => loadNutrition());
+  await expect(expenditure.locator("#nutritionExpenditureStatus")).toHaveText("Garmin Connect · Veraltet · Vorläufig, da der Tag noch läuft");
 
   responseMode = "unavailable";
   holdResponse = true;

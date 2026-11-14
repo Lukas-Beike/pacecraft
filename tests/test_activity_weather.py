@@ -50,6 +50,7 @@ from backend.weather.activity_weather import (
 )
 from backend.weather.activity_weather_store import (
     home_coordinates,
+    session_temperatures,
     stored_activity_weather,
     weather_block,
 )
@@ -337,6 +338,11 @@ class StageTests(StageCase):
             {"Open-Meteo Modell, Startposition"}, {r["label"] for r in rows}
         )
         self.assertEqual({"act_g1"}, {r["owner_record_id"] for r in rows})
+        # The fuelling advice reads the stored air temperature per session (#2804).
+        with self.manager.reader() as db:
+            self.assertEqual(
+                {"act_g1": 12.0}, session_temperatures(db, ["act_g1", "act_none"])
+            )
 
     def test_a_stored_result_is_never_fetched_again(self) -> None:
         store_track(self.manager)

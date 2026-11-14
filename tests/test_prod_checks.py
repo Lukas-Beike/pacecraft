@@ -57,23 +57,30 @@ def report(messages=40):
                     "items": [{"status": "failed", "error_class": "HTTPError"}],
                 }
             ],
+            # Every push of the count window per provider, settled items too.
+            "push_counts": {
+                "garmin": {
+                    "jobs": {"failed": 1},
+                    "items": {"failed": 1, "completed": 4},
+                    "job_errors": {"HTTPError": 1},
+                    "item_errors": {"HTTPError": 1, "boom: remote said no": 1},
+                },
+                "intervals": {"jobs": {"completed": 2}, "items": {"completed": 6}},
+                "text never printed": {"jobs": {"Done!": 1}},
+            },
         },
         "runtime": {"process_memory": {"rss_bytes": 1000}},
-        "decoupling_eligibility": {
+        "fit_inventory": {
             "status": "ready",
-            "current": True,
-            "days": 365,
             "note": "text never printed",
-            "groups": {
-                "ride/outdoor": {
-                    "sessions": 6,
-                    "without_streams": 1,
-                    "act_secret": 1,
-                    "counts": {"pass_cv_1s_15": 1, "label": "text never printed"},
-                    "max_half_distribution": {"cv_1s": {"n": 4, "p90": None}},
+            "garmin": {
+                "ride": {
+                    "files": 5,
+                    "messages": {"216": 5},
+                    "label": "text never printed",
                 },
-                "act_secret/outdoor": {"sessions": 2},
             },
+            "act_secret": {"ride": {"files": 1}},
         },
     }
 
@@ -171,8 +178,35 @@ class ProdChecksTests(unittest.TestCase):
         self.assertIn("FAIL sync last_error set: True", text)
         self.assertIn("ok provider garmin last sync", text)
         self.assertIn("info provider wahoo last sync never", text)
-        self.assertIn("2 unsynced, 1 with error; error kinds: HTTPError 2", text)
+        # Error kinds of the whole count window (#2878).
+        self.assertIn("2 unsynced, 1 with error; error kinds: ? 1, HTTPError 2", text)
         self.assertIn("info workout library: pending 1", text)
+        # Per provider and level (#2849); other text prints as `?`.
+        self.assertIn(
+            "info plan push garmin: item completed 4, item error ? 1, "
+            "item error HTTPError 1, item failed 1, job error HTTPError 1, "
+            "job failed 1",
+            text,
+        )
+        self.assertIn(
+            "info plan push intervals: item completed 6, job completed 2", text
+        )
+        self.assertIn("info plan push ?: job ? 1", text)
+        self.assertEqual(
+            prod_diagnostics.error_kind({"error_class": "boom: remote said no"}), "?"
+        )
+        # A malformed provider entry or count prints nothing instead of crashing;
+        # a report without the counts says so.
+        self.assertEqual(
+            prod_diagnostics.plan_pushes(
+                {"garmin": ["x"], "wahoo": {"jobs": {"failed": float("nan")}}}
+            ),
+            {"garmin": {}, "wahoo": {}},
+        )
+        self.assertEqual(
+            prod_diagnostics.push_lines({"push_counts_reported": False}),
+            [("info", "plan push counts: not in this report")],
+        )
         self.assertIn("ok logout 200", text)
         self.assertEqual(FakeApp.state["logouts"], 1)
         self.assertEqual(json.loads(result.read_text())["counts"]["messages"], 40)
@@ -210,38 +244,33 @@ class ProdChecksTests(unittest.TestCase):
     def test_section_prints_only_allow_listed_fields_in_path_order(self):
         code, text = self.run_main(
             prod_diagnostics, "--url", self.url, "--password-file", str(self.secret),
-            "--section", "decoupling_eligibility",
+            "--section", "fit_inventory",
         )  # fmt: skip
         self.assertEqual(code, 0)  # the checks (sync.last_error) are not run
-        prefix = "info decoupling_eligibility."
+        prefix = "info fit_inventory."
         self.assertEqual(
             text.splitlines(),
             [
                 "ok health",
                 "ok logout 200",
-                f"{prefix}current true",
-                f"{prefix}days 365",
-                f"{prefix}groups.ride/outdoor.counts.pass_cv_1s_15 1",
-                f"{prefix}groups.ride/outdoor.max_half_distribution.cv_1s.n 4",
-                f"{prefix}groups.ride/outdoor.max_half_distribution.cv_1s.p90 null",
-                f"{prefix}groups.ride/outdoor.sessions 6",
-                f"{prefix}groups.ride/outdoor.without_streams 1",
+                f"{prefix}garmin.ride.files 5",
+                f"{prefix}garmin.ride.messages.216 5",
                 f'{prefix}status "ready"',
             ],
         )
         self.assertEqual(
-            prod_diagnostics.section_lines({}, "decoupling_eligibility"),
-            [("FAIL", "section decoupling_eligibility missing")],
+            prod_diagnostics.section_lines({}, "fit_inventory"),
+            [("FAIL", "section fit_inventory missing")],
         )
-        failed = {"decoupling_eligibility": {"status": "failed"}}
+        failed = {"fit_inventory": {"status": "failed"}}
         self.assertEqual(
-            prod_diagnostics.section_lines(failed, "decoupling_eligibility"),
-            [("FAIL", 'decoupling_eligibility.status "failed"')],
+            prod_diagnostics.section_lines(failed, "fit_inventory"),
+            [("FAIL", 'fit_inventory.status "failed"')],
         )
         with mock.patch("sys.stderr"), self.assertRaises(SystemExit):
             prod_diagnostics.main(
                 ["--url", self.url, "--password-file", str(self.secret),
-                 "--section", "decoupling_eligibility", "--expect-version", "2.1.2"]
+                 "--section", "fit_inventory", "--expect-version", "2.1.2"]
             )  # fmt: skip
 
     def test_post_release_sections_print_counts_and_state_words_only(self):
@@ -262,11 +291,30 @@ class ProdChecksTests(unittest.TestCase):
                 "process_memory": {"rss_bytes": 1000},
                 "uptime_s": 3600,
                 "malloc_arena_max": 2,
+                "reader_slots": {
+                    "slots": 2,
+                    "waits_over_1s": 3,
+                    "timeouts": 0,
+                    "longest_wait_s": 1.25,
+                },
             },
             "recovery_copies": {
                 "count": 1,
                 "newest_age_hours": 2.0,
                 "total_bytes": 2048,
+            },
+            "garmin_strength_push": {
+                "garmin": {"units": 2, "several_exercises": 1, "with_kg": 1},
+                "intervals": {"units": 2, "without_structure": 1},
+                "unit_name": "text never printed",
+            },
+            "curve_build": {
+                "status": "building",
+                "builds": 3,
+                "failures": 0,
+                "last_build_s": 41.5,
+                "building_s": 12.0,
+                "failed_age_s": None,
             },
             "garmin_past_workout_removal": {
                 "one_time_done": True,
@@ -312,10 +360,20 @@ class ProdChecksTests(unittest.TestCase):
             ],
             "runtime": [
                 "malloc_arena_max 2", "process_memory.rss_bytes 1000",
+                "reader_slots.longest_wait_s 1.25", "reader_slots.slots 2",
+                "reader_slots.timeouts 0", "reader_slots.waits_over_1s 3",
                 "uptime_s 3600",
             ],
             "recovery_copies": [
                 "count 1", "newest_age_hours 2.0", "total_bytes 2048",
+            ],
+            "garmin_strength_push": [
+                "garmin.several_exercises 1", "garmin.units 2", "garmin.with_kg 1",
+                "intervals.units 2", "intervals.without_structure 1",
+            ],
+            "curve_build": [
+                "building_s 12.0", "builds 3", "failed_age_s null", "failures 0",
+                "last_build_s 41.5", 'status "building"',
             ],
         }  # fmt: skip
         now = datetime.fromisoformat(RECENT) + timedelta(hours=2)
@@ -328,11 +386,11 @@ class ProdChecksTests(unittest.TestCase):
         # One login reads several sections; a missing one fails the run.
         code, text = self.run_main(
             prod_diagnostics, "--url", self.url, "--password-file", str(self.secret),
-            "--section", "decoupling_eligibility",
+            "--section", "fit_inventory",
             "--section", "garmin_past_workout_removal",
         )  # fmt: skip
         self.assertEqual(code, 1)
-        self.assertIn("info decoupling_eligibility.days 365", text)
+        self.assertIn("info fit_inventory.garmin.ride.files 5", text)
         self.assertIn("FAIL section garmin_past_workout_removal missing", text)
         # A stopped or failed state is a FAIL line; an empty section is no failure.
         stopped = {

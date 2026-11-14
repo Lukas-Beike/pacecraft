@@ -224,6 +224,20 @@ def garmin_remote_ids_from(
     return {str(row["remote_id"]) for row in rows}
 
 
+def linked_unit_rows(db: Any, entity_kind: str, provider: str) -> list[Any]:
+    """Planned units with a remote copy: payload, the providers that hold one and
+    ``provider``'s stored push fingerprint. The caller parses and filters the
+    payload, so one malformed row cannot fail the read."""
+    return db.execute(
+        "SELECT p.payload, group_concat(DISTINCT l.provider) AS providers, "
+        "max(CASE WHEN l.provider=? THEN l.baseline_hash END) AS baseline "
+        "FROM planned_units p JOIN remote_links l ON l.local_id = p.local_id "
+        "AND l.entity_kind=? AND l.remote_id IS NOT NULL "
+        "WHERE p.tombstone=0 GROUP BY p.local_id",
+        (provider, entity_kind),
+    ).fetchall()
+
+
 def garmin_exercise_rows(db: Any) -> list[Any]:
     """Active units and templates naming a Garmin exercise, oldest change first."""
     return db.execute(

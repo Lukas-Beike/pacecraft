@@ -104,7 +104,13 @@ COMPOSITION_ROOT = "server"
 
 def _git(*args: str, root: Path) -> list[str]:
     output = subprocess.run(
-        ["git", *args], cwd=root, check=True, capture_output=True, text=True
+        ["git", *args],
+        cwd=root,
+        check=True,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",  # a non-ASCII path left stdout None on Windows (#2895)
+        errors="replace",
     ).stdout
     return [line.strip() for line in output.splitlines() if line.strip()]
 
@@ -125,6 +131,16 @@ def _module_name(path: Path, root: Path) -> str:
     if parts[0] == "tests":
         parts.pop(0)  # tests run with tests/ on sys.path
     return ".".join(parts)
+
+
+def _path_literals(value: str) -> set[str]:
+    """The path forms a string literal names; a glob such as "backend/**/*.py"
+    also names its directory (#2887)."""
+    literal = value.strip().replace("\\", "/").removeprefix("./")
+    if not literal or "\n" in literal or len(literal) >= 200:
+        return set()
+    base = literal.split("*")[0].strip("/") if "*" in literal else ""
+    return {literal.strip("/"), base} - {""}
 
 
 class _Source:
@@ -148,9 +164,7 @@ class _Source:
             elif isinstance(node, ast.Name) and node.id in SCAN_CALLS:
                 self.scans = True  # from os import listdir; from glob import glob
             elif isinstance(node, ast.Constant) and isinstance(node.value, str):
-                literal = node.value.strip().replace("\\", "/").removeprefix("./")
-                if literal and "\n" not in literal and len(literal) < 200:
-                    self.literals.add(literal.strip("/"))
+                self.literals.update(_path_literals(node.value))
 
         # Path segments of the path-like literals, for the fixture rule.
         self.segments = {

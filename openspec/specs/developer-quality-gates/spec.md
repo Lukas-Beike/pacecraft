@@ -142,7 +142,7 @@ Evidence: `tests/run_tests.py` (`select_shard`, `assign_classes`, `class_weights
 
 #### Scenario: Selection rule
 - **WHEN** a path changes
-- **THEN** a test module is selected if its own file changed, it transitively imports a changed module, or a string literal in it or in a test support module it imports names the changed path, a parent directory, the file name or the dotted module; `test_line_endings` and `test_ai_docs_contract`, which check tracked files across the repository, are selected for every change (#2502)
+- **THEN** a test module is selected if its own file changed, it transitively imports a changed module, or a string literal in it or in a test support module it imports names the changed path, a parent directory, the file name or the dotted module (a glob literal such as `backend/**/*.py` names its directory in a module that scans, #2887); `test_line_endings` and `test_ai_docs_contract`, which check tracked files across the repository, are selected for every change (#2502)
 
 #### Scenario: Reach through the composition root
 - **WHEN** a module is reached only through `server.py`

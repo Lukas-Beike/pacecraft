@@ -48,6 +48,8 @@ from backend.performance.power_profile import (
     power_profile,
     running_profile,
 )
+from backend.performance.running_dynamics import METHOD as DYNAMICS_METHOD
+from backend.performance.running_dynamics import pace_bands
 from backend.performance.session_execution import METHOD as EXECUTION_METHOD
 from backend.performance.session_execution import (
     comparison_metrics,
@@ -64,7 +66,7 @@ _RETRY_AFTER_S: Final = 60.0
 
 @dataclass(frozen=True, slots=True)
 class SessionCurve:
-    """The power and running curves, the pace- and power-at-heart-rate bins of one session and the fingerprint of their input."""
+    """The power and running curves, the pace- and power-at-heart-rate bins, the running-dynamics pace bands of one session and the fingerprint of their input."""
 
     power: dict[str, Any]
     running: dict[str, Any]
@@ -74,6 +76,8 @@ class SessionCurve:
     # The comparison numbers of the session's execution (streams and current
     # laps); only these are kept, not the full per-rep execution.
     execution_summary: dict[str, Any] | None = None
+    # A run's running dynamics per pace band (#2829), None without them.
+    running_dynamics: dict[str, Any] | None = None
 
 
 class SessionCurveReader:
@@ -85,11 +89,8 @@ class SessionCurveReader:
         *,
         capacity: int = _DEFAULT_CAPACITY,
         spawn: Callable[[Callable[[], None]], None] | None = None,
-        # Names the background build in its log event and error (#2779).
-        background_name: str = "session_curves",
     ) -> None:
         self._session_records = session_records
-        self._background_name = background_name
         self._capacity = capacity
         self._memo: OrderedDict[str, SessionCurve] = OrderedDict()
         # Fingerprints being computed; each is set when its computation ends,
@@ -99,6 +100,11 @@ class SessionCurveReader:
         self._background: tuple[str, tuple[Mapping[str, Any], ...]] | None = None
         self._building = False
         self._failed: tuple[str, float] | None = None
+        # Background build outcomes, the last one's duration and when the
+        # running one started (#2852).
+        self._outcomes = {"builds": 0, "failures": 0}
+        self._last_build_s: float | None = None
+        self._build_started: float | None = None
         self._spawn = spawn or _daemon_thread
         self._lock = threading.Lock()
 
@@ -213,7 +219,7 @@ class SessionCurveReader:
                 and failed[0] == stamp
                 and time.monotonic() - failed[1] < _RETRY_AFTER_S
             ):
-                raise RuntimeError(f"background {self._background_name} failed")
+                raise RuntimeError("background session curves failed")
             start = not self._building
             self._building = True
         if start:
@@ -231,19 +237,55 @@ class SessionCurveReader:
         self, stamp: str, build: Callable[[], Iterable[Mapping[str, Any]]]
     ) -> None:
         built = None
+        started = time.monotonic()
+        with self._lock:
+            self._build_started = started
         try:
             built = tuple(MappingProxyType(record) for record in build())
         except Exception:
             _LOGGER.exception(
-                "Background build failed",
-                extra={"event": f"background_{self._background_name}_failed"},
+                "Background session curves failed",
+                extra={"event": "background_session_curves_failed"},
             )
+        finished = time.monotonic()
         with self._lock:
             if built is None:
-                self._failed = (stamp, time.monotonic())
+                self._failed = (stamp, finished)
             else:
                 self._background, self._failed = (stamp, built), None
-            self._building = False
+            self._building, self._build_started = False, None
+            self._outcomes["failures" if built is None else "builds"] += 1
+            self._last_build_s = finished - started
+
+    def background_state(self) -> dict[str, Any]:
+        """The background build as a state word, counts and seconds (#2852).
+
+        ``building`` while one runs (``building_s`` so far, so a stall shows),
+        else ``failed`` after a failed one (``failed_age_s`` since then),
+        ``ready`` once records exist (a changed input rebuilds on the next
+        all-time read, so they may be older), ``pending`` before the first.
+        ``builds`` and ``failures`` count finished builds by outcome.
+        """
+        now = time.monotonic()
+        with self._lock:
+            started, failed = self._build_started, self._failed
+            if self._building:
+                status = "building"
+            elif failed:
+                status = "failed"
+            else:
+                status = "ready" if self._background else "pending"
+            return {
+                "status": status,
+                **self._outcomes,
+                "last_build_s": _seconds(self._last_build_s),
+                "building_s": _seconds(None if started is None else now - started),
+                "failed_age_s": _seconds(None if failed is None else now - failed[1]),
+            }
+
+
+def _seconds(value: float | None) -> float | None:
+    return None if value is None else round(value, 1)
 
 
 def _daemon_thread(run: Callable[[], None]) -> None:
@@ -342,6 +384,18 @@ def _session_curve(
                 ),
             )
         ),
+        running_dynamics=pace_bands(
+            adapted.activity,
+            source_label=adapted.label_for(
+                "ground_contact_time",
+                "ground_contact_balance",
+                "vertical_oscillation",
+                "vertical_ratio",
+                "step_length",
+                "cadence",
+                "velocity_smooth",
+            ),
+        ),
     )
 
 
@@ -358,6 +412,7 @@ def _fingerprint(
             PACE_METHOD,
             POWER_METHOD,
             EXECUTION_METHOD,
+            DYNAMICS_METHOD,
             sorted([key.content_sha256, key.fetched_at] for key in laps),
             analysis_sport(primary_analysis_record(records), measured_order(records)),
             sorted(

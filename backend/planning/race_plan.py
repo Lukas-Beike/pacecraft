@@ -225,13 +225,8 @@ def race_plan(
     """The race plan of one competition; ``weight`` is ``{value, source}``."""
     duration = _duration(competition)
     seconds = None if duration is None else duration["seconds"]
-    weight_kg = None if not weight else weight.get("value")
-    if (
-        isinstance(weight_kg, bool)
-        or not isinstance(weight_kg, (int, float))
-        or weight_kg <= 0
-    ):
-        weight_kg = None
+    resolved = fuelling.weight_block(weight)
+    weight_kg = None if resolved is None else resolved["kg"]
     return {
         "competition_id": str(competition.get("id") or ""),
         "method_version": METHOD_VERSION,
@@ -241,8 +236,6 @@ def race_plan(
             "source": fuelling.POSITION_STAND,
             "during": fuelling.carbohydrate_per_hour(seconds),
             "before": fuelling.pre_race_carbohydrates(seconds, weight_kg),
-            "weight": None
-            if weight_kg is None
-            else {"kg": weight_kg, "source": (weight or {}).get("source")},
+            "weight": resolved,
         },
     }

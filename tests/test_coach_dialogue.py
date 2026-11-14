@@ -2530,8 +2530,14 @@ class CoachDialogueTests(DialogueHarness, unittest.TestCase):
         self.assertEqual(model.call_args_list[1].args[0]["tool_choice"], "auto")
         followup = model.call_args_list[2].args[0]
         self.assertEqual(followup["tool_choice"], "none")
-        self.assertIn("Tool step limit reached", followup["instructions"])
-        refused = latest_tool_outputs(followup)[0]
+        # The instructions stay identical; the notice follows the tool outputs.
+        self.assertEqual(
+            followup["instructions"], model.call_args_list[1].args[0]["instructions"]
+        )
+        self.assertNotIn("Tool step limit reached", followup["instructions"])
+        self.assertEqual(followup["input"][-1]["role"], "user")
+        self.assertIn("Tool step limit reached", followup["input"][-1]["content"])
+        refused = latest_tool_outputs({"input": followup["input"][:-1]})[0]
         self.assertEqual(refused["call_id"], "call-after-limit")
         self.assertIn("tool_step_limit_reached", refused["output"])
         self.assertEqual(self.meal_count(), 0)
@@ -3031,13 +3037,22 @@ class CoachDialogueTests(DialogueHarness, unittest.TestCase):
             )
         self.assertEqual(result["status"], "completed")
         self.assertEqual(context.call_count, 2)
-        instructions = transport_factory.return_value.stream_request.call_args.args[
-            0
-        ].instructions
-        # The refreshed context replaces the stale one; static rules lead for
-        # prompt caching and the per-turn context follows them.
-        self.assertTrue(instructions.startswith(coach_dialogue.INSTRUCTIONS))
-        self.assertIn("\n\nFresh Garmin data", instructions)
+        first, followup = (
+            call.args[0]
+            for call in transport_factory.return_value.stream_request.call_args_list
+        )
+        # The instructions stay byte-identical for the turn; the refreshed
+        # context arrives in the get_sync_job tool output instead.
+        self.assertEqual(followup.instructions, first.instructions)
+        self.assertTrue(
+            first.instructions.startswith(
+                "<dialogue_rules>" + coach_dialogue.INSTRUCTIONS
+            )
+        )
+        self.assertIn("Old Garmin data", followup.instructions)
+        self.assertNotIn("Fresh Garmin data", followup.instructions)
+        output = json.loads(followup.steps[-1].tool_results[0]["output"])
+        self.assertEqual(output["refreshed_athlete_context"], "Fresh Garmin data")
 
 
 if __name__ == "__main__":

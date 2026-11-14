@@ -23,7 +23,6 @@ from backend.athlete.local_date import iso_date_prefix
 from backend.canonical.vocabulary import ProviderId
 from backend.runtime.clock import utc_now as system_utc_now
 from backend.sync.provider_registry import DEFAULT_PROVIDER_REGISTRY
-from backend.sync.refresh import settle_interrupted_refreshes
 
 PROVIDERS = frozenset(DEFAULT_PROVIDER_REGISTRY.ids())
 JOB_TYPES = frozenset(
@@ -234,6 +233,50 @@ def list_jobs(
         (*((job_type,) if job_type else ()), limit),
     ).fetchall()
     return [job_dto(job, read_job(db, job["id"])[1]) for job in jobs]
+
+
+def status_counts(
+    db: Any, job_type: str, since: str
+) -> dict[str, dict[str, dict[str, int]]]:
+    """Per provider: job and item statuses and error classes of jobs since ``since``.
+
+    Counts only, settled items included; ``since`` is a ``utc_timestamp``. A
+    job still queued or running counts whatever its age, so a stuck one stays
+    visible.
+    """
+    result: dict[str, dict[str, dict[str, int]]] = {}
+    queries = (
+        (
+            "job",
+            (
+                "SELECT provider, status, error_class, count(*) AS n FROM sync_jobs "
+                "WHERE type=? AND (created_at >= ? OR status IN ('queued', 'running')) "
+                "GROUP BY provider, status, error_class"
+            ),
+        ),
+        (
+            "item",
+            (
+                "SELECT j.provider, i.status, i.error_class, count(*) AS n "
+                "FROM sync_job_items i JOIN sync_jobs j ON j.id = i.job_id "
+                "WHERE j.type=? AND (j.created_at >= ? OR j.status IN ('queued', 'running')) "
+                "GROUP BY j.provider, i.status, i.error_class"
+            ),
+        ),
+    )
+    for level, query in queries:
+        for row in db.execute(query, (job_type, since)).fetchall():
+            provider = result.setdefault(
+                str(row["provider"]),
+                {"jobs": {}, "items": {}, "job_errors": {}, "item_errors": {}},
+            )
+            counts = provider[f"{level}s"]
+            counts[row["status"]] = counts.get(row["status"], 0) + row["n"]
+            if row["error_class"]:
+                errors = provider[f"{level}_errors"]
+                kind = row["error_class"]
+                errors[kind] = errors.get(kind, 0) + row["n"]
+    return result
 
 
 def has_active_job(db: Any, provider: str, job_type: str) -> bool:
@@ -835,25 +878,13 @@ class SyncJobStore:
 
         A restart is a lost outcome like any other (#2137, A-501): a job that may
         have written to a remote service, or that used up its attempts, fails
-        with ``outcome_not_persisted`` instead of running again. Provider
-        refreshes the stopped process left running are closed as well (#2707),
-        and a Garmin operation it left running is no longer shown as one: a
-        later Garmin push holding the same lock would show it live (#2706).
+        with ``outcome_not_persisted`` instead of running again. The other sync
+        state a stopped process left running settles with the start-up
+        invariants (``settle_interrupted_sync_state``, #2888).
         """
         self._fail_unreplayable_running()
         now = self._now()
         with self._database_manager.unit_of_work() as db:
-            settle_interrupted_refreshes(db, now=now)
-            if db.execute(
-                "SELECT 1 FROM kv WHERE key='sync_operation_status' AND value='running'"
-            ).fetchone():
-                db.execute(
-                    "UPDATE kv SET value=CASE key WHEN 'sync_operation_progress' "
-                    "THEN '0' ELSE '' END, updated_at=? WHERE key IN "
-                    "('sync_operation_status', 'sync_operation_phase', "
-                    "'sync_operation_progress', 'sync_operation_message')",
-                    (now,),
-                )
             return self._requeue_running(db, now)
 
     def requeue_unowned_running(self) -> int:

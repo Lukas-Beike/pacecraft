@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import re
 import sys
 from datetime import UTC, datetime
@@ -33,30 +34,41 @@ COUNTS = (
     "athlete_checkins",
     "activity_feedback",
     "change_history",
+    "sensor_equipment_links",
     "external_calendar_events",
 )
 MEMORY = ("rss_bytes", "peak_rss_bytes")
 # Storage and runtime health compared between releases (#2848).
 STORAGE = ("file_bytes", "wal_bytes", "data_dir_free_bytes")
+# Hours. Provider and calendar syncs are due hourly (backend/sync/daily.py), so
+# STALE_HOURS flags only a long outage; a job still open after 2 h is stuck.
 STALE_HOURS = 36
 STUCK_HOURS = 2
 OPEN_JOB = {"queued", "running", "pending"}
+WORD = re.compile(r"[a-z][a-z_]{0,31}")
+ERROR_KIND = re.compile(r"[A-Za-z_][A-Za-z0-9_.]{0,63}")
 # What `--section` prints of a section: dotted paths of numbers and flags, and
 # state words from STATES; nothing else of the section is printed (#2779, #2781).
 SECTION_FIELDS = {
-    "decoupling_eligibility": re.compile(
-        r"status|available|current|days|groups\.(ride|run)/(outdoor|indoor)\."
-        r"(sessions|without_streams|evaluation_error|counts\.[a-z0-9_]+"
-        r"|max_half_distribution\.[a-z0-9_]+\.(n|p[0-9]+))"
-    ),
     # Storage and runtime health for the post-release check (#2848).
     "database": re.compile(
         "|".join(("schema_version", *COUNTS, *STORAGE))
         + r"|(workout_library_state|stored_payload_bytes)\.[a-z_]+"
     ),
-    "runtime": re.compile(r"uptime_s|malloc_arena_max|process_memory\.[a-z_]+"),
+    "runtime": re.compile(
+        r"uptime_s|malloc_arena_max|process_memory\.[a-z_]+|reader_slots\.[a-z_0-9]+"
+    ),
     "recovery_copies": re.compile(
         r"status|available|count|newest_age_hours|total_bytes"
+    ),
+    # The all-time curve build (#2852).
+    "curve_build": re.compile(
+        r"status|available|builds|failures|last_build_s|building_s|failed_age_s"
+    ),
+    # Strength units sent to Garmin by shape, and Intervals.icu-only ones (#2850).
+    "garmin_strength_push": re.compile(
+        r"status|garmin\.(units|changed_since_push|without_structure|one_exercise"
+        r"|several_exercises|with_kg)|intervals\.(units|without_structure)"
     ),
     "garmin_past_workout_removal": re.compile(
         r"status|one_time_done|checked|removed|last_run_hours|last_outcome"
@@ -76,6 +88,7 @@ SECTION_FIELDS = {
 }
 STATES = {
     "ready",
+    "building",
     "pending",
     "ok",
     "skipped",
@@ -117,9 +130,61 @@ def plan_errors(jobs: list[dict[str, Any]]) -> dict[str, int]:
     kinds: dict[str, int] = {}
     for job in jobs:
         for item in [job, *(job.get("items") or [])]:
-            kind = str(item.get("error_class") or "")[:64]
-            if kind:
+            if kind := error_kind(item):
                 kinds[kind] = kinds.get(kind, 0) + 1
+    return kinds
+
+
+def error_kind(item: dict[str, Any]) -> str:
+    """The error class as an identifier, `?` for anything else, `` for none."""
+    kind = str(item.get("error_class") or "")
+    return kind if not kind or ERROR_KIND.fullmatch(kind) else "?"
+
+
+def word(value: Any) -> str:
+    """A provider or status word; `?` for anything else, so no text is printed."""
+    text = str(value or "")
+    return text if WORD.fullmatch(text) else "?"
+
+
+def plan_pushes(push_counts: Any) -> dict[str, dict[str, int]]:
+    """Per provider: job and item statuses and error kinds (#2849, #2878).
+
+    Read from the report's ``plan_sync.push_counts``: every push of the count
+    window, settled items included. Providers and statuses print as short
+    words, error kinds as identifiers, anything else as ``?``.
+    """
+
+    def kind_name(kind: Any) -> str:
+        return error_kind({"error_class": kind})
+
+    result: dict[str, dict[str, int]] = {}
+    for provider, groups in (
+        push_counts if isinstance(push_counts, dict) else {}
+    ).items():
+        counts = result.setdefault(word(provider), {})
+        for group, label, name in (
+            ("jobs", "job", word),
+            ("items", "item", word),
+            ("job_errors", "job error", kind_name),
+            ("item_errors", "item error", kind_name),
+        ):
+            values = groups.get(group) if isinstance(groups, dict) else None
+            for value, count in numbers(values).items():
+                if math.isfinite(count):
+                    key = f"{label} {name(value)}"
+                    counts[key] = counts.get(key, 0) + int(count)
+    return result
+
+
+def push_error_kinds(pushes: dict[str, dict[str, int]]) -> dict[str, int]:
+    """Error kinds of every push of the window, all providers and levels."""
+    kinds: dict[str, int] = {}
+    for counts in pushes.values():
+        for key, count in counts.items():
+            if " error " in key:
+                kind = key.split(" error ", 1)[1]
+                kinds[kind] = kinds.get(kind, 0) + count
     return kinds
 
 
@@ -138,6 +203,7 @@ def extract(report: dict[str, Any], now: datetime) -> dict[str, Any]:
     plan = report.get("plan_sync") or {}
     jobs = plan.get("recent_jobs") or []
     calendar = report.get("external_calendar") or {}
+    pushes = plan_pushes(plan.get("push_counts"))
     runtime = report.get("runtime") or {}
     memory = numbers(runtime.get("process_memory"))
     copies = report.get("recovery_copies") or {}
@@ -164,7 +230,12 @@ def extract(report: dict[str, Any], now: datetime) -> dict[str, Any]:
         "units_with_error": sum(
             1 for unit in plan.get("unsynced_units") or [] if unit.get("has_error")
         ),
-        "plan_error_classes": plan_errors(jobs),
+        # Error kinds of the count window when the report has it (#2878).
+        "plan_error_classes": push_error_kinds(pushes)
+        if "push_counts" in plan
+        else plan_errors(jobs),
+        "plan_pushes": pushes,
+        "push_counts_reported": "push_counts" in plan,
         "stuck_jobs": stuck_jobs(jobs, now),
         "memory": {key: memory[key] for key in MEMORY if key in memory},
         "storage": numbers(storage),
@@ -252,6 +323,17 @@ def plan_line(result: dict[str, Any]) -> tuple[str, str]:
     return ("info", f"{text}; error kinds: {kinds}" if kinds else text)
 
 
+def push_lines(result: dict[str, Any]) -> list[tuple[str, str]]:
+    """One line per provider of the plan pushes of the count window, sorted."""
+    if not result.get("push_counts_reported"):
+        return [("info", "plan push counts: not in this report")]
+    lines = []
+    for provider, counts in sorted((result.get("plan_pushes") or {}).items()):
+        text = ", ".join(f"{key} {count}" for key, count in sorted(counts.items()))
+        lines.append(("info", f"plan push {provider}: {text}"))
+    return lines
+
+
 def comparison_lines(
     result: dict[str, Any], previous: dict[str, Any] | None
 ) -> list[tuple[str, str]]:
@@ -308,6 +390,7 @@ def checks(
             result["stuck_jobs"] == 0, f"stuck plan-sync jobs: {result['stuck_jobs']}"
         ),
         plan_line(result),
+        *push_lines(result),
         (
             "info",
             "workout library: "

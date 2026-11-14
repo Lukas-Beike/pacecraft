@@ -93,6 +93,8 @@ _DERIVED: Final = (
     ("ftp_w", "ftp_w"),
     ("vo2max", "vo2max"),
     ("planned_event_id", "planned_event_id"),
+    # Garmin's sweat-loss estimate, read by the fuelling advice (#2804).
+    ("water_estimated_ml", "water_estimated_ml"),
 )
 # Summary key -> ActivityRecord field of provider zone times, in derived order
 # without Intervals.icu records (#1743): the readers replace them with the
@@ -189,15 +191,20 @@ def activity_summary(
     return summary  # type: ignore[return-value]
 
 
+# The training-effect keys a summary takes from one record; the load joins
+# them as ``training_effect_load`` (Garmin's own load model only).
+TRAINING_EFFECT_KEYS: Final = (
+    "training_effect_label",
+    "aerobic_training_effect",
+    "anaerobic_training_effect",
+)
+
+
 def _training_effect(
     summary: dict[str, Any], sources: dict[str, str], record: ActivityRecord
 ) -> None:
     """Set the training-effect label, values and load of one record."""
-    for key in (
-        "training_effect_label",
-        "aerobic_training_effect",
-        "anaerobic_training_effect",
-    ):
+    for key in TRAINING_EFFECT_KEYS:
         value = getattr(record, key)
         if value is not None:
             summary[key] = value

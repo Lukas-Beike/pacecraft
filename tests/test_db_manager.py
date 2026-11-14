@@ -1,4 +1,5 @@
 import inspect
+import itertools
 import sqlite3
 import tempfile
 import threading
@@ -7,10 +8,12 @@ import unittest
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 from pathlib import Path
+from unittest.mock import patch
 
 from support import temp_database
 
 from backend.config import load_config
+from backend.db import manager as manager_module
 from backend.db.manager import (
     DatabaseHolder,
     DatabaseManager,
@@ -23,6 +26,15 @@ from backend.db.schema import (
     initialize_schema,
 )
 from backend.errors import DATABASE_BUSY_MESSAGE, DatabaseBusyError
+
+
+def _capture(errors: list[BaseException], read) -> None:
+    """Enter one ``read`` lease, keeping the error it raises for the test."""
+    try:
+        with read():
+            pass
+    except BaseException as error:  # noqa: BLE001 - handed back to the test
+        errors.append(error)
 
 
 def make_holder(root: Path) -> tuple[DatabaseHolder, dict[str, Path]]:
@@ -117,6 +129,8 @@ class DatabaseManagerTests(unittest.TestCase):
             first = holder()
             self.assertIs(holder(), first)
             self.assertIs(holder.manager, first)
+            # Two readers measured fastest without head-of-line blocking (#2788).
+            self.assertEqual(2, first.reader_count)
 
             state["path"] = Path(root) / "second.db"
             second = holder()
@@ -350,6 +364,58 @@ class DatabaseManagerTests(unittest.TestCase):
                 self.assertFalse(contender.is_alive())
                 self.assertEqual(failures, ["reader"])
             manager.close()
+
+    def test_a_third_snapshot_waits_for_one_of_two_slots_and_is_counted(self):
+        # Two readers (#2788): a third concurrent read waits, then succeeds.
+        manager = self.make_wal_manager(reader_count=2)
+        holding, release, done = threading.Barrier(3), threading.Event(), []
+
+        def hold():
+            with manager.read_snapshot():
+                holding.wait(5)
+                release.wait(5)
+
+        holders = [threading.Thread(target=hold) for _ in range(2)]
+        for thread in holders:
+            thread.start()
+        holding.wait(5)
+
+        def third():
+            with manager.read_snapshot() as db:
+                done.append(self.count(db))
+
+        waiter = threading.Thread(target=third)
+        waiter.start()
+        waiter.join(0.1)
+        self.assertEqual([], done, "the third read waits for a slot")
+        release.set()
+        waiter.join(5)
+        for thread in holders:
+            thread.join(5)
+        self.assertEqual([1], done)
+
+    def test_reader_slot_waits_count_slow_and_timed_out_waits_only(self):
+        manager = temp_database(self, "waits.db", reader_count=1, timeout=0.05)
+        # A wait is timed only when no slot is free; a free slot costs no clock.
+        clock = itertools.chain([0.0], itertools.repeat(1.5))
+        with (
+            manager.reader(),
+            patch.object(manager_module.time, "monotonic", side_effect=clock),
+            self.assertRaises(DatabaseBusyError),
+        ):
+            thread_result: list[BaseException] = []
+            contender = threading.Thread(
+                target=lambda: _capture(thread_result, manager.reader)
+            )
+            contender.start()
+            contender.join(5)
+            raise thread_result[0]
+        with manager.reader():
+            pass
+        self.assertEqual(
+            {"slots": 1, "waits_over_1s": 1, "timeouts": 1, "longest_wait_s": 1.5},
+            manager.reader_slot_waits(),
+        )
 
     def make_wal_manager(self, **options) -> DatabaseManager:
         manager = temp_database(self, "snapshot.db", **options)

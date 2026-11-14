@@ -83,6 +83,7 @@ from backend.http_api.sync_get import SyncGetRoutes
 from backend.http_api.transcribe_post import TranscribePostRoutes
 from backend.http_api.wahoo import WahooGetRoutes, WahooPostRoutes
 from backend.nutrition.macro_context import body_weight, macro_context
+from backend.nutrition.session_fuelling import read_session_fuelling
 from backend.performance.canonical_current import read_zone_thresholds
 from backend.performance.canonical_inputs import (
     CanonicalPerformanceSource,
@@ -105,6 +106,7 @@ from backend.sync.analysis_refresh import AnalysisRefreshService
 from backend.sync.library import workout_library_sync_running
 from backend.sync.provider_registry import DEFAULT_PROVIDER_REGISTRY
 from backend.sync.status import SyncPublicStateService
+from backend.weather.activity_weather_store import session_temperatures
 from backend.weather.recommendations import PLANNED_WORKOUT_LABEL
 
 
@@ -325,6 +327,11 @@ class HttpApi:
 
 def _local_today(ctx: Any) -> Any:
     return ctx.clock.now().date()
+
+
+def _session_temperatures(ctx: Any, session_ids: list[str]) -> dict[str, float]:
+    with ctx.database().reader() as db:
+        return session_temperatures(db, session_ids)
 
 
 def _session_rpe_load(ctx: Any, activity_id: str) -> Any:
@@ -548,6 +555,16 @@ def _domain_routes(
                 public.performance_state_service,
                 public.plan_state_service,
                 ctx.athlete.profile,
+            ),
+            partial(
+                read_session_fuelling,
+                lambda start, end: ctx.activity_reads.activity_read().summaries_between(
+                    start, end
+                ),
+                partial(_session_temperatures, ctx),
+                lambda: ctx.weather.service().state(refresh=False).get("days") or [],
+                partial(body_weight, public.performance_state_service, ctx.athlete.profile),
+                lambda: _local_today(ctx),
             ),
         ),
         NutritionPutRoutes(nutrition.meal_library_service),

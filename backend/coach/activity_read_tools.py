@@ -45,6 +45,8 @@ _LIST_OMITTED_KEYS: Final = frozenset(
         "heart_rate_zone_times",
         "pace_zone_times",
         "strength_sets",
+        # Garmin's sweat-loss estimate serves the fuelling advice only (#2804).
+        "water_estimated_ml",
     }
 )
 
@@ -170,6 +172,8 @@ class CoachActivityReadToolService:
             # Per-second running dynamics are for the calendar's charts; the Coach
             # reads their averages from the metrics.
             detail.pop("running_dynamics_streams", None)
+            # The provider-values section repeats the effect metrics (#2831).
+            detail.pop("training_effect", None)
             result = self._with_session_context(detail)
             session = detail.get("session")
             if self._session_corrections is not None and isinstance(session, dict):

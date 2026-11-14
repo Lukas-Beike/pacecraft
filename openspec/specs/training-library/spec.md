@@ -843,7 +843,7 @@ Templates (`workout_library`) and dated units (`planned_units`) SHALL each be on
 - **THEN** Intervals.icu is offered a unit in `local` or `sync_error`, the sync preview and summary also list `remote_missing` and `conflict` rows, and `syncing` (written before a library export and between a repair's upsert and its verification) is never offered.
 
 #### Scenario: Interrupted push
-- **WHEN** the application starts and a row is still `syncing`
+- **WHEN** the application starts, or a backup is restored, and a row is still `syncing`
 - **THEN** it is set to `sync_error` with the text "Die Übertragung wurde unterbrochen." so that it is offered again.
 
 Detailed contract: a unit row adds `sync_conflict`, `baseline_hash`, `plan_id`, `revision`, `tombstone` and `command_id` to the template columns; the remote identities per provider live in `remote_links` with a unique `(provider, entity_kind, remote_id)`.
@@ -852,8 +852,9 @@ Evidence:
 - `backend/db/planning_store.py:reset_interrupted_syncs`
 - `backend/planning/planned_unit_service.py:_is_focus_only`
 - `backend/planning/push_state.py:_intervals_pending`
-- `backend/sync/library.py:WorkoutLibrarySyncStateService.reset_interrupted`
+- `backend/sync/state.py:settle_interrupted_sync_state`
 - `tests/test_plan_push_hash.py:test_startup_offers_a_stranded_syncing_unit_again`
+- `tests/test_database_restore_validation.py:test_validate_applies_startup_invariants_to_the_restored_database`
 - `tests/test_planned_unit_service.py:test_focus_only_update_keeps_the_sync_state`
 
 ### Requirement: Planned-unit sync state persistence

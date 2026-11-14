@@ -8,8 +8,9 @@ Expected values are worked out by hand in the comments, not recomputed.
 import json
 import unittest
 from dataclasses import replace
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime, timedelta
 from typing import Any
+from unittest.mock import Mock
 from zoneinfo import ZoneInfo
 
 from backend.activities.detail_contract import _channels, _coverage, _streams
@@ -29,12 +30,23 @@ from backend.canonical.vocabulary import (
     StreamChannel,
     StreamResolution,
 )
+from backend.errors import AppError
+from backend.http_api.analysis import AnalysisRoutes
 from backend.performance.analysis_input import analysis_input
 from backend.performance.canonical_session_analysis import session_analysis
 from backend.performance.form_drift import FLAG_LABEL, form_drift
+from backend.performance.report_service import TrainingProfileSelectionService
+from backend.performance.running_dynamics import (
+    garmin_band,
+    monthly_trend,
+    pace_bands,
+    session_rating,
+)
 from backend.providers.fit_activity_detail_mapping import map_fit_activity_detail
 from backend.providers.garmin_activity_mapping import map_garmin_activities
 from tests import test_fit_file as fit_builder
+from tests.session_stream_support import synthetic_session
+from tests.support import dispatch_route
 from tests.test_activity_detail_merge import candidate
 from tests.test_activity_detail_store import GARMIN, provenance
 
@@ -490,6 +502,289 @@ class FormDriftTests(unittest.TestCase):
         result = drift(activity)
 
         self.assertEqual(250.0, result["metrics"]["contact_time"]["first"])
+
+
+# Running dynamics against the athlete's own runs at the same pace (#2829).
+DAY = date(2026, 11, 10)
+# 4:00/km and 6:00/km: two pace bands of 15 s/km.
+FAST, SLOW = 1000 / 240, 1000 / 360
+# Fast runs touch the ground shorter than slow ones, as speed demands.
+HISTORY: dict[float, list[float]] = {
+    FAST: [226, 228, 230, 232, 234, 236],
+    SLOW: [274, 276, 278, 280, 282, 284],
+}
+
+
+def _run(segments: list[tuple[int, float]], **dynamics: float) -> dict[str, Any]:
+    """A 1 Hz run of (seconds, speed) parts with constant running dynamics."""
+    session = synthetic_session(
+        [("lap", seconds, speed, (140.0, 150.0)) for seconds, speed in segments],
+        kinds=False,
+    )
+    length = len(session["streams"]["time"])
+    values = {
+        "ground_contact_time": 250.0,
+        "vertical_oscillation": 8.5,
+        "vertical_ratio": 7.6,
+        "ground_contact_balance": 50.3,
+        "step_length": 1.15,
+        **dynamics,
+    }
+    for key, value in values.items():
+        session["streams"][key] = [value] * length
+    return session
+
+
+def _record(days_before: int, bands: dict[str, Any] | None, key: str) -> dict[str, Any]:
+    return {
+        "activity_id": key,
+        "date": (DAY - timedelta(days=days_before)).isoformat(),
+        "sport": "run",
+        "running_dynamics": bands,
+    }
+
+
+def _history(contact_times: dict[float, list[float]]) -> list[dict[str, Any]]:
+    """Earlier runs, one per contact time, at each speed's own pace."""
+    records = []
+    for speed, values in contact_times.items():
+        for index, value in enumerate(values):
+            bands = pace_bands(_run([(600, speed)], ground_contact_time=value))
+            records.append(_record(index + 1, bands, f"act_{speed:.2f}_{index}"))
+    return records
+
+
+class PaceBandTests(unittest.TestCase):
+    def test_a_run_keeps_time_and_means_per_pace_band(self) -> None:
+        bands = pace_bands(_run([(600, FAST), (600, SLOW), (300, 1.5)]))
+        assert bands is not None
+        # 1.5 m/s is walking and left out; cadence 85 rpm is 170 steps per minute.
+        self.assertEqual(sorted(bands["bands"]), ["240", "360"])
+        slow = bands["bands"]["360"]
+        self.assertEqual(slow["seconds"], 600)
+        self.assertEqual(
+            (
+                slow["ground_contact_time_ms"],
+                slow["cadence_spm"],
+                slow["step_length_m"],
+            ),
+            (250.0, 170.0, 1.15),
+        )
+
+    def test_steep_samples_are_left_out_and_the_source_is_named(self) -> None:
+        run = _run([(600, SLOW), (600, SLOW)])
+        # The second half climbs 6 %, steeper than the 3 % of a flat sample.
+        run["streams"]["grade_smooth"] = [0.0] * 600 + [6.0] * 601
+        bands = pace_bands(run, source_label="Garmin")
+        assert bands is not None
+        self.assertEqual(
+            (bands["source"], bands["bands"]["360"]["seconds"]), ("Garmin", 600)
+        )
+
+    def test_rides_trail_runs_and_runs_without_dynamics_have_none(self) -> None:
+        trail = {**_run([(600, FAST)]), "trail": True}
+        plain = synthetic_session([("lap", 600, FAST, (140.0, 150.0))], kinds=False)
+        ride = {**_run([(600, FAST)]), "sport": "ride"}
+        short = _run([(100, FAST)])
+        for activity in (trail, plain, ride, short):
+            self.assertIsNone(pace_bands(activity))
+
+
+class SessionRatingTests(unittest.TestCase):
+    def _rate(
+        self, speed: float, averages: dict[str, float] | None = None, **dynamics: float
+    ) -> dict[str, Any]:
+        own = _record(0, pace_bands(_run([(600, speed)], **dynamics)), "act_own")
+        own["dynamics_averages"] = averages or {}
+        return session_rating(own, [*_history(HISTORY), own])
+
+    def test_a_slow_run_is_not_worse_for_being_slow(self) -> None:
+        # 279 ms is long against the fast runs but usual at 6:00/km.
+        slow = self._rate(SLOW, ground_contact_time=279)
+        fast = self._rate(FAST, ground_contact_time=231)
+        for result in (slow, fast):
+            self.assertEqual(
+                result["metrics"]["ground_contact_time_ms"]["verdict"], "usual"
+            )
+        band = slow["bands"][0]
+        self.assertEqual(band["band_s_per_km"], 360)
+        contact = band["metrics"]["ground_contact_time_ms"]
+        self.assertEqual((contact["peers"], contact["usual"]), (6, [277.33, 280.67]))
+
+    def test_each_value_is_rated_in_its_own_direction(self) -> None:
+        rating = self._rate(
+            SLOW,
+            # Garmin reports 251 ms for the whole run (walking included).
+            {"ground_contact_time_ms": 251, "avg_cadence": 92},
+            ground_contact_time=290,
+            vertical_oscillation=7.0,
+            ground_contact_balance=50.0,
+            step_length=1.30,
+        )
+        result = rating["metrics"]
+        verdicts = {metric: item["verdict"] for metric, item in result.items()}
+        # The history has one value per metric except contact time: its middle
+        # third is that value, so lower oscillation is better, a longer step
+        # only longer, a balance at 50/50 better than 50.3.
+        self.assertEqual(verdicts["ground_contact_time_ms"], "worse")
+        self.assertEqual(verdicts["vertical_oscillation_cm"], "better")
+        self.assertEqual(verdicts["step_length_m"], "higher")
+        self.assertEqual(verdicts["ground_contact_balance_pct"], "better")
+        self.assertEqual(verdicts["cadence_spm"], "usual")
+        # Garmin's colour is that of the run average Garmin shows: 251 ms is
+        # green, 92 rpm per leg is 184 spm, purple; the oscillation has no
+        # average from the provider, so its mean of 7.0 cm is blue.
+        self.assertEqual(
+            [
+                result[key]["reference_band"]
+                for key in (
+                    "ground_contact_time_ms",
+                    "cadence_spm",
+                    "vertical_oscillation_cm",
+                )
+            ],
+            ["green", "purple", "blue"],
+        )
+        # The balance's usual range is the middle third of its distance from 50 %.
+        balance = rating["bands"][0]["metrics"]["ground_contact_balance_pct"]
+        self.assertEqual(balance["usual"], [0.3, 0.3])
+
+    def test_too_few_or_out_of_window_runs_leave_the_band_unrated(self) -> None:
+        own = _record(0, pace_bands(_run([(600, SLOW)])), "act_own")
+        earlier = [
+            _record(days, pace_bands(_run([(600, SLOW)])), f"act_{days}")
+            for days in (1, 2, 3, 4, 85, -1)
+        ]
+        result = session_rating(own, [*earlier, own])
+        contact = result["bands"][0]["metrics"]["ground_contact_time_ms"]
+        # Days 85 and the day after the run are outside the 84 days before it.
+        self.assertEqual((contact["peers"], contact["verdict"]), (4, "too_few"))
+        self.assertEqual(
+            result["metrics"]["ground_contact_time_ms"]["verdict"], "too_few"
+        )
+        self.assertEqual(
+            session_rating(_record(0, None, "act_own"), [])["status"], "not_covered"
+        )
+        # A treadmill run is set only against treadmill runs.
+        indoor = {**own, "environment": "indoor"}
+        recent = [{**record, "environment": "outdoor"} for record in earlier[:4]]
+        contact = session_rating(indoor, [*recent, indoor])["bands"][0]["metrics"]
+        self.assertEqual(contact["ground_contact_time_ms"]["peers"], 0)
+
+
+class GarminBandTests(unittest.TestCase):
+    def test_bands_follow_garmins_manual(self) -> None:
+        # EPIX (Gen 2) manual, chest strap: contact time purple < 218, blue 218-248,
+        # green 249-277, orange 278-308, red > 308 ms; cadence purple > 183,
+        # blue 174-183, green 164-173, orange 153-163, red < 153 spm;
+        # balance green up to 50.7 %, orange 50.8-52.2 %, red beyond.
+        cases = [
+            ("ground_contact_time_ms", 217, "purple"),
+            ("ground_contact_time_ms", 218, "blue"),
+            ("ground_contact_time_ms", 249, "green"),
+            ("ground_contact_time_ms", 308, "orange"),
+            ("ground_contact_time_ms", 309, "red"),
+            ("cadence_spm", 152, "red"),
+            ("cadence_spm", 153, "orange"),
+            ("cadence_spm", 183, "blue"),
+            ("cadence_spm", 184, "purple"),
+            ("vertical_oscillation_cm", 8.2, "green"),
+            ("vertical_ratio_pct", 6.0, "purple"),
+            ("ground_contact_balance_pct", 49.3, "green"),
+            ("ground_contact_balance_pct", 50.8, "orange"),
+            ("ground_contact_balance_pct", 52.3, "red"),
+            ("step_length_m", 1.2, None),
+        ]
+        for metric, value, colour in cases:
+            with self.subTest(metric=metric, value=value):
+                self.assertEqual(garmin_band(metric, value), colour)
+
+
+class MonthlyTrendTests(unittest.TestCase):
+    def test_monthly_medians_per_band_need_enough_time(self) -> None:
+        records = [
+            {
+                "date": "2026-10-03",
+                "running_dynamics": {
+                    "bands": {"360": {"seconds": 400, "ground_contact_time_ms": 280}}
+                },
+            },
+            {
+                "date": "2026-10-20",
+                "running_dynamics": {
+                    "bands": {"360": {"seconds": 400, "ground_contact_time_ms": 270}}
+                },
+            },
+            {
+                "date": "2026-11-02",
+                "running_dynamics": {
+                    "bands": {"360": {"seconds": 300, "ground_contact_time_ms": 260}}
+                },
+            },
+            {
+                "date": "2025-01-02",
+                "running_dynamics": {
+                    "bands": {"360": {"seconds": 900, "ground_contact_time_ms": 300}}
+                },
+            },
+        ]
+        trend = monthly_trend(records, DAY)
+        self.assertEqual(
+            (trend["months"][0], trend["months"][-1]), ("2025-12", "2026-11")
+        )
+        series = trend["bands"][0]["series"]["ground_contact_time_ms"]
+        # October: median of 280 and 270 over 800 s; November: 300 s is too little.
+        self.assertEqual((series[-2], series[-1]), (275, None))
+
+
+class RunningDynamicsReadTests(unittest.TestCase):
+    def _service(self, every: Any) -> TrainingProfileSelectionService:
+        service = TrainingProfileSelectionService(lambda: DAY)
+        service.all_time_records = every  # type: ignore[method-assign]
+        return service
+
+    def test_the_read_waits_for_the_background_records(self) -> None:
+        self.assertEqual(
+            self._service(lambda: None).running_dynamics(), {"status": "pending"}
+        )
+        self.assertEqual(
+            self._service(Mock(side_effect=RuntimeError)).running_dynamics(),
+            {"status": "failed"},
+        )
+        own = _record(0, pace_bands(_run([(600, SLOW)])), "act_own")
+        result = self._service(lambda: ((own,), False)).running_dynamics("act_own")
+        self.assertEqual((result["status"], result["stale"]), ("ok", True))
+        self.assertEqual(result["session"]["status"], "ok")
+        self.assertNotIn("trend", result)
+        # Without an activity only the trend is read.
+        trend = self._service(lambda: ((own,), True)).running_dynamics()
+        self.assertEqual(set(trend), {"status", "stale", "trend"})
+        # A run missing from a current build is left out (a commute); from an
+        # older build it may still come, so the answer stays open.
+        current = self._service(lambda: ((own,), True)).running_dynamics("act_other")
+        older = self._service(lambda: ((own,), False)).running_dynamics("act_other")
+        self.assertEqual(
+            (current["session"], older["session"]), ({"status": "not_covered"}, None)
+        )
+
+    def test_the_route_passes_the_activity_and_bounds_it(self) -> None:
+        reports = Mock()
+        reports.profiles.running_dynamics.return_value = {"status": "pending"}
+        handler = Mock()
+        routes = AnalysisRoutes(lambda: reports)
+        self.assertTrue(
+            dispatch_route(
+                routes, handler, "/api/analysis/running-dynamics?activity_id=act_1"
+            )
+        )
+        reports.profiles.running_dynamics.assert_called_once_with("act_1")
+        handler.send_json.assert_called_once_with(200, {"status": "pending"})
+        with self.assertRaises(AppError):
+            dispatch_route(
+                routes,
+                Mock(),
+                f"/api/analysis/running-dynamics?activity_id={'a' * 201}",
+            )
 
 
 if __name__ == "__main__":

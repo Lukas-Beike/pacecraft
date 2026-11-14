@@ -49,6 +49,13 @@ class DocsVersionDriftTest(unittest.TestCase):
                     text, rf"[Vv]ersion {version} (adds|records|stores|gives)"
                 )
 
+    def test_feature_list_lines_stay_short_enough_to_merge(self) -> None:
+        # Git conflicts on whole lines; one sentence per line keeps parallel
+        # features from colliding in one long bullet (#2864).
+        lines = (ROOT / "docs/features.md").read_text(encoding="utf-8").splitlines()
+        long = [number for number, line in enumerate(lines, 1) if len(line) > 1000]
+        self.assertEqual(long, [], "split these docs/features.md lines at sentences")
+
 
 if __name__ == "__main__":
     unittest.main()

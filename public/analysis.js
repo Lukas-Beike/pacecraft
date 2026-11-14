@@ -47,9 +47,9 @@ function analysisPercent(value) {
   return `${Number(value).toLocaleString("de-DE", { maximumFractionDigits: 1 })}%`;
 }
 
-function analysisLegendText(item, latest, unit) {
+function analysisLegendText(item, latest, unit, dateText = dateLabel) {
   if (!latest) return `${item.label}: keine Werte`;
-  return `${item.label}: ${analysisPointValue(item, latest, unit)} · ${dateLabel(latest.observedDate || latest.date)}`;
+  return `${item.label}: ${analysisPointValue(item, latest, unit)} · ${dateText(latest.observedDate || latest.date)}`;
 }
 
 function analysisPointValue(item, point, unit) {
@@ -101,9 +101,11 @@ function bindAnalysisPopover(button, info) {
 }
 
 function analysisChart(title, series, unit, start, end, note, {
-  sparse = false, zeroCentered = false, showLegend = true, calendarWeeks = false, caption = analysisAxisCaption(unit), estimate = false,
+  sparse = false, zeroCentered = false, showLegend = true, calendarWeeks = false, monthTicks = false, caption = analysisAxisCaption(unit), estimate = false,
 } = {}) {
   if (!analysisHasData(series)) return null;
+  // A chart of monthly points names months, not days, on its axis, tooltips and table (#2922).
+  const dates = monthTicks ? ANALYSIS_MONTH_DATES : ANALYSIS_DAY_DATES;
   const heading = h("h3", null, title, estimate && [" ", createEstimateChip()]);
   const section = h("section", "analysis-chart-card", heading);
   const valid = analysisValidPoint;
@@ -113,20 +115,20 @@ function analysisChart(title, series, unit, start, end, note, {
     const latest = analysisLatestPoint(item);
     const label = item.legendLabel || item.label;
     const sourceInfo = item.source ? " · Quelle: " + item.source : "";
-    const info = h("div", { className: "analysis-info-tooltip", id: `analysis-info-${++analysisInfoId}`, dataset: { series: String(index) } }, `${analysisLegendText(item, latest, unit)}${sourceInfo}. ${item.explanation || note}`);
+    const info = h("div", { className: "analysis-info-tooltip", id: `analysis-info-${++analysisInfoId}`, dataset: { series: String(index) } }, `${analysisLegendText(item, latest, unit, dates.text)}${sourceInfo}. ${item.explanation || note}`);
     const button = h("button", { className: "analysis-legend-info", type: "button", "aria-label": `Erklärung zu ${label}`, "aria-describedby": info.id }, label);
     bindAnalysisPopover(button, info);
     const entry = h("li", { dataset: { color: String(item.color ?? index), line: analysisLineStyle(item, index) } }, button, info);
     const sourceSuffix = item.source ? " · " + item.source : "";
-    if (latest) info.append(h("span", "analysis-metric-meta", `${dateLabel(latest.observedDate || latest.date)}${sourceSuffix}`));
+    if (latest) info.append(h("span", "analysis-metric-meta", `${dates.text(latest.observedDate || latest.date)}${sourceSuffix}`));
     if (item.referenceLabel) info.append(h("span", "analysis-metric-context", item.referenceLabel));
     const readings = item.points.filter(valid);
-    info.append(h("span", "analysis-metric-meta", item.coverageShort || analysisCoverageText(readings.length, item.points.length, item.cadenceDays === 7 ? "Wochen" : "Tagen")));
+    info.append(h("span", "analysis-metric-meta", item.coverageShort || analysisCoverageText(readings.length, item.points.length, item.cadenceDays === 7 ? "Wochen" : dates.units)));
     if (readings.length > 1) {
       const first = readings[0];
       const delta = Number(latest.value) - Number(first.value);
       const change = analysisChange(delta, item.unit || unit);
-      info.append(h("span", "analysis-metric-change", `Seit ${dateLabel(first.observedDate || first.date)}: ${change}`));
+      info.append(h("span", "analysis-metric-change", `Seit ${dates.text(first.observedDate || first.date)}: ${change}`));
     }
     legend.append(entry);
   });
@@ -136,23 +138,25 @@ function analysisChart(title, series, unit, start, end, note, {
 
   if (!series.some(analysisPlottable)) {
     section.append(h("p", "empty", "Ein einzelner Messwert zeigt noch keinen Verlauf; mindestens zwei datierte Werte sind erforderlich."));
-    appendAnalysisTable(section, title, series, unit, caption);
+    appendAnalysisTable(section, title, series, unit, caption, dates);
     return section;
   }
   const fewReadings = sparse && series.every((item) => item.points.filter(valid).length < 3);
   if (fewReadings) section.querySelectorAll(".analysis-info-tooltip").forEach((info) => info.append(h("p", "analysis-sparse-note", "Wenige Messungen · kein belastbarer Trend.")));
-  const scales = analysisPlotScales(series, start, end, { unit, zeroCentered });
+  const scales = { ...analysisPlotScales(series, start, end, { unit, zeroCentered }), dateText: dates.text };
   const svg = svgNode("svg", { viewBox: `0 0 ${scales.chartWidth} 200`, role: "group", "aria-label": `${title}: datierter Verlauf. Tageswerte auswählen oder Werte ansehen öffnen.` });
-  svg.append(svgNode("title", {}, `${title} · ${dateLabel(start)} bis ${dateLabel(end)}`));
+  svg.append(svgNode("title", {}, `${title} · ${dates.text(start)} bis ${dates.text(end)}`));
   svg.append(svgNode("desc", {}, `Eigene Skala: ${caption}. Fehlende Messungen bleiben unbekannt.`));
   appendAnalysisAxes(svg, unit, scales, caption);
   appendAnalysisSeries(svg, series, unit, scales, zeroCentered, caption);
   const weekTicks = calendarWeeks && series.length > 0 && series.every((item) => item.cadenceDays === 7);
-  appendAnalysisDateTicks(svg, start, end, scales, weekTicks ? analysisWeekTickLabel : analysisDayTickLabel);
+  let tickMode = weekTicks ? "week" : "day";
+  if (monthTicks) tickMode = "month";
+  appendAnalysisDateTicks(svg, start, end, scales, tickMode);
   appendAnalysisPointInspectors(section, svg, series, unit, scales);
   section.append(svg);
   appendAnalysisReferenceNotes(section, series, unit);
-  appendAnalysisTable(section, title, series, unit, caption);
+  appendAnalysisTable(section, title, series, unit, caption, dates);
   return section;
 }
 
@@ -230,16 +234,16 @@ function collectAnalysisChart(missing, title, ...chartArguments) {
   return chart;
 }
 
-function appendAnalysisTable(section, title, series, unit, caption = analysisAxisCaption(unit)) {
+function appendAnalysisTable(section, title, series, unit, caption = analysisAxisCaption(unit), dates = ANALYSIS_DAY_DATES) {
   const scroll = makeScrollRegionFocusable(h("div", "analysis-chart-table"), `${title}: Einzelwerte`);
-  const dates = [...new Set(series.flatMap((item) => item.points.filter(analysisValidPoint).map((point) => point.date)))].sort((a, b) => a.localeCompare(b));
-  const rows = dates.map((date) => [h("th", { scope: "row" }, dateLabel(date)), ...series.map((item) => {
+  const days = [...new Set(series.flatMap((item) => item.points.filter(analysisValidPoint).map((point) => point.date)))].sort((a, b) => a.localeCompare(b));
+  const rows = days.map((date) => [h("th", { scope: "row" }, dates.text(date)), ...series.map((item) => {
     const point = item.points.find((candidate) => candidate.date === date);
     let value = analysisValidPoint(point) ? analysisPointValue(item, point, unit) : "–";
     if (point?.count || point?.weekReadings || point?.observedDate) value += analysisReadingDetails(point, item.unit || unit);
     return value;
   })]);
-  scroll.append(table(["Tag", ...series.map((item) => item.label)], rows, { caption: `${title} · ${caption} · nur vorhandene Werte` }));
+  scroll.append(table([dates.heading, ...series.map((item) => item.label)], rows, { caption: `${title} · ${caption} · nur vorhandene Werte` }));
   section.append(h("details", null, h("summary", null, "Werte ansehen"), scroll));
 }
 
@@ -339,7 +343,7 @@ function appendAnalysisPointMark(svg, item, point, index, unit, scales, obstacle
     return;
   }
   const dot = svgNode("circle", { cx: x(point.date), cy: y(point.value), r: 2.5, "data-series": index, "data-color": item.color ?? index });
-  dot.append(svgNode("title", {}, `${item.label} · ${dateLabel(point.date)}: ${analysisPointValue(item, point, unit)}`));
+  dot.append(svgNode("title", {}, `${item.label} · ${(scales.dateText || dateLabel)(point.date)}: ${analysisPointValue(item, point, unit)}`));
   svg.append(dot);
   obstacles.push({ left: x(point.date) - 3, right: x(point.date) + 3, top: y(point.value) - 3, bottom: y(point.value) + 3 });
 }
@@ -461,16 +465,35 @@ function analysisWeekTickLabel(dateKey) {
   return analysisDayTickLabel(dateKey);
 }
 
+const ANALYSIS_MONTH_TICK_FORMAT = new Intl.DateTimeFormat("de-DE", { month: "short", timeZone: "UTC" });
+const ANALYSIS_MONTH_FORMAT = new Intl.DateTimeFormat("de-DE", { month: "long", year: "numeric", timeZone: "UTC" });
+
+function analysisMonthTickLabel(dateKey) {
+  return ANALYSIS_MONTH_TICK_FORMAT.format(new Date(`${dateKey.slice(0, 7)}-01T00:00:00Z`)).replace(".", "");
+}
+
+function analysisMonthLabel(dateKey) {
+  return ANALYSIS_MONTH_FORMAT.format(new Date(`${dateKey.slice(0, 7)}-01T00:00:00Z`));
+}
+
+// How a chart names its dates: one day, or one month for monthly points.
+const ANALYSIS_DAY_DATES = { text: (date) => dateLabel(date), heading: "Tag", units: "Tagen" };
+const ANALYSIS_MONTH_DATES = { text: analysisMonthLabel, heading: "Monat", units: "Monaten" };
+
 function analysisDayTickLabel(dateKey) {
   return dateKey.slice(5).split("-").reverse().join(".");
 }
 
-// Tick marks sit on every day (or every week start of a weekly chart); labels repeat at an even step counted back from the latest tick.
-function appendAnalysisDateTicks(svg, start, end, { chartWidth, x }, tickLabel = analysisDayTickLabel) {
-  const weekly = tickLabel === analysisWeekTickLabel;
-  const dates = analysisTickDates(start, end, weekly);
+// Tick marks sit on every day, every week start of a weekly chart or every month start of a monthly one (`mode`);
+// labels repeat at an even step counted back from the latest tick.
+function appendAnalysisDateTicks(svg, start, end, { chartWidth, x }, mode = "day") {
+  const weekly = mode === "week";
+  const monthly = mode === "month";
+  const dates = monthly ? analysisMonthDates(start, end) : analysisTickDates(start, end, weekly);
+  const tickLabel = { day: analysisDayTickLabel, week: analysisWeekTickLabel, month: analysisMonthTickLabel }[mode];
   const maxLabels = chartWidth < 600 ? 4 : 7;
-  const step = [1, 2, 3, 4, 7, 14, 28].find((candidate) => Math.floor((dates.length - 1) / candidate) + 1 <= maxLabels) || 28;
+  const steps = monthly ? [1, 2, 3, 6, 12] : [1, 2, 3, 4, 7, 14, 28];
+  const step = steps.find((candidate) => Math.floor((dates.length - 1) / candidate) + 1 <= maxLabels) || steps.at(-1);
   dates.forEach((date, index) => {
     const labelled = (dates.length - 1 - index) % step === 0;
     if (!labelled && dates.length > 31) return;
@@ -478,6 +501,20 @@ function appendAnalysisDateTicks(svg, start, end, { chartWidth, x }, tickLabel =
     if (labelled) svg.append(svgNode("text", { x: x(date), y: 188, "text-anchor": "middle", class: "analysis-date-tick" }, tickLabel(date)));
   });
   if (weekly) svg.append(svgNode("text", { x: 4, y: 188, class: "analysis-week-caption" }, "Woche ab"));
+}
+
+// The first day of every month from start to end; a start after the 1st begins with the next month.
+function analysisMonthDates(start, end) {
+  const dates = [];
+  const [year, month, day] = start.split("-").map(Number);
+  // Months counted from year 0, so the year follows from the index.
+  const first = year * 12 + month - 1 + (day > 1 ? 1 : 0);
+  for (let index = first; index < first + 120; index += 1) {
+    const date = `${Math.floor(index / 12)}-${String(index % 12 + 1).padStart(2, "0")}-01`;
+    if (date > end) break;
+    dates.push(date);
+  }
+  return dates;
 }
 
 function analysisTickDates(start, end, weekly) {
@@ -510,7 +547,7 @@ function analysisPointTooltip(section, marker, title, lines) {
   section.append(tooltip);
 }
 
-function appendAnalysisPointInspectors(section, svg, series, unit, { x, chartRight }) {
+function appendAnalysisPointInspectors(section, svg, series, unit, { x, chartRight, dateText = dateLabel }) {
   const dates = [...new Set(series.flatMap((item) => item.points.map((point) => point.date)))].sort((a, b) => a.localeCompare(b));
   const hitWidth = Math.min(44, (chartRight - 60) / Math.max(1, dates.length - 1));
   const candidates = [];
@@ -523,7 +560,7 @@ function appendAnalysisPointInspectors(section, svg, series, unit, { x, chartRig
       const source = item.source ? " · " + item.source : "";
       return `${item.legendLabel || item.label}: ${analysisPointValue(item, point, unit)}${source}${analysisReadingDetails(point, item.unit || unit)}`;
     });
-    analysisPointTooltip(section, marker, dateLabel(date), lines);
+    analysisPointTooltip(section, marker, dateText(date), lines);
     const tooltip = section.lastElementChild;
     candidates.push({ date, marker, tooltip });
     marker.addEventListener("mouseenter", () => { if (matchMedia("(hover: hover)").matches && !tooltip.matches(":popover-open")) tooltip.showPopover(); });
@@ -765,8 +802,15 @@ function renderPowerProfile(result) {
 }
 
 // The fastest observed time per race distance of all stored sessions (#2694); running bests
-// are distances only, every row stays with a dash where no best exists (#2786).
+// are distances only, every row stays with a dash where no best exists (#2786). A missing own
+// best takes the provider's personal record, marked with a chip of its short source label (#2806).
 const RUNNING_BEST_DISTANCES = [[1000, "1 km"], [5000, "5 km"], [10000, "10 km"], [21097.5, "Halbmarathon"], [42195, "Marathon"]];
+
+function recordSourceChip(label) {
+  const chip = createStatusChip(label);
+  chip.classList.add("source-chip");
+  return chip;
+}
 
 function renderRunningBestEfforts(result) {
   const root = document.getElementById("runningBestEfforts");
@@ -774,9 +818,12 @@ function renderRunningBestEfforts(result) {
   root.replaceChildren(h("h4", null, "Bestwerte"));
   const body = h("tbody");
   let values = 0;
+  const records = state.data?.performance?.personal_records || [];
   for (const [meters, label] of RUNNING_BEST_DISTANCES) {
-    const point = points.find((item) => item.distance_meters === meters && item.seconds > 0);
+    const own = points.find((item) => item.distance_meters === meters && item.seconds > 0);
+    const point = own || records.find((item) => item.distance_meters === meters && item.seconds > 0);
     const cell = h("td", { title: point?.source }, point && AppFormat.clock(point.seconds));
+    if (point && !own) cell.append(recordSourceChip(point.label));
     if (point) values += 1; else markValueMissing(cell, "–");
     body.append(h("tr", { dataset: { runningBest: `distance:${meters}` } }, h("th", { scope: "row" }, label), cell, h("td", null, point ? dateLabel(point.date) : null)));
   }
@@ -786,6 +833,62 @@ function renderRunningBestEfforts(result) {
   const criticalSpeed = criticalPowerLine(result, "run", values > 0);
   if (criticalSpeed) root.append(criticalSpeed);
   root.dataset.analysisEmpty = String(!values && !criticalSpeed);
+}
+
+// Monthly medians of the running dynamics per pace band (#2829); the server builds them off the request path.
+const RUNNING_DYNAMICS_PATH = "/api/analysis/running-dynamics";
+const RUNNING_DYNAMICS_METRICS = [
+  ["ground_contact_time_ms", "Bodenkontaktzeit", "ms"], ["cadence_spm", "Schrittfrequenz", "spm"], ["vertical_oscillation_cm", "Vertikale Oszillation", "cm"],
+  ["vertical_ratio_pct", "Vertikales Verhältnis", "%"], ["ground_contact_balance_pct", "Bodenkontakt links", "%"], ["step_length_m", "Schrittlänge", "m"],
+];
+let runningDynamicsGeneration = 0;
+let runningDynamicsMetric = RUNNING_DYNAMICS_METRICS[0][0];
+
+async function renderRunningDynamicsTrend() {
+  if (!ANALYSIS_PERFORMANCE_ROUTES.has(state.route) || !state.data?.performance) return;
+  const generation = ++runningDynamicsGeneration;
+  const session = state.sessionGeneration;
+  const current = () => generation === runningDynamicsGeneration && session === state.sessionGeneration && ANALYSIS_PERFORMANCE_ROUTES.has(state.route);
+  const root = document.getElementById("runningDynamicsTrend");
+  const title = () => h("h4", null, "Lauftechnik je Monat");
+  if (!root.childElementCount) root.replaceChildren(title(), createLoadingState("Lauftechnik wird geladen…"));
+  try {
+    const result = await requestAnalysisReport(RUNNING_DYNAMICS_PATH);
+    if (!current()) return;
+    if (result?.status !== "ok" || result.stale) invalidateAnalysisReport(RUNNING_DYNAMICS_PATH);
+    if (result?.status === "failed") throw new Error("Konnte nicht geladen werden.");
+    if (result?.status === "pending" || result?.stale) setTimeout(() => { if (current()) void renderRunningDynamicsTrend(); }, ALL_TIME_RETRY_MS);
+    if (result?.status === "pending") return;
+    renderRunningDynamicsChart(root, title, result.trend);
+  } catch (error) {
+    if (!current()) return;
+    root.dataset.analysisEmpty = "failed";
+    root.replaceChildren(title(), createErrorState(error?.message || "Konnte nicht geladen werden.", () => void renderRunningDynamicsTrend()));
+  }
+  renderAnalysisSegmentsIfActive();
+}
+
+function renderRunningDynamicsChart(root, title, trend) {
+  const bands = trend?.bands || [];
+  const months = trend?.months || [];
+  const shown = RUNNING_DYNAMICS_METRICS.filter(([key]) => bands.some((band) => band.series?.[key]?.some((value) => value != null)));
+  root.dataset.analysisEmpty = String(!shown.length);
+  if (!shown.length) { root.replaceChildren(title(), h("p", "muted", "Noch keine Laufdynamik.")); return; }
+  if (!shown.some(([key]) => key === runningDynamicsMetric)) runningDynamicsMetric = shown[0][0];
+  const select = h("select", { "aria-label": "Laufdynamik-Wert" }, shown.map(([key, label]) => h("option", { value: key, selected: key === runningDynamicsMetric }, label)));
+  const chartSlot = h("div");
+  const draw = () => {
+    const [key, label, unit] = RUNNING_DYNAMICS_METRICS.find(([item]) => item === runningDynamicsMetric);
+    const series = bands.map((band, index) => ({
+      label: `${AppFormat.clock(band.band_s_per_km)}–${AppFormat.clock(band.band_s_per_km + 15)}/km`,
+      color: index,
+      points: months.map((month, position) => ({ date: `${month}-01`, value: band.series?.[key]?.[position] ?? null })),
+    }));
+    chartSlot.replaceChildren(analysisChart(label, series, unit, `${months[0]}-01`, `${months.at(-1)}-01`, "Monatsmittel (Median) deiner Läufe in diesem Tempo-Bereich.", { sparse: true, monthTicks: true }) || h("p", "muted", "Noch keine Laufdynamik."));
+  };
+  select.addEventListener("change", () => { runningDynamicsMetric = select.value; draw(); });
+  draw();
+  root.replaceChildren(title(), select, chartSlot);
 }
 
 function equipmentRouteActive() {
@@ -843,9 +946,11 @@ function renderAnalysisHistory(history) { // NOSONAR
   const predictions = document.getElementById("performancePredictions");
   const powerProfile = document.getElementById("cyclingPowerProfile");
   const runningBest = document.getElementById("runningBestEfforts");
+  const runningDynamics = document.getElementById("runningDynamicsTrend");
   powerProfile.remove();
   predictions.remove();
   runningBest.remove();
+  runningDynamics.remove();
   predictions.classList.remove("analysis-chart-card");
   predictions.classList.add("analysis-subchart");
   renderBodyAnalysis(history?.body);
@@ -855,7 +960,7 @@ function renderAnalysisHistory(history) { // NOSONAR
   root.replaceChildren(); loadRoot.replaceChildren(); enduranceRoot.replaceChildren(); periodRoot.replaceChildren();
   if (!history?.start || !history?.end) {
     // Without a history window there are no charts, so no empty sport groups; the async tables stay attached.
-    root.append(predictions, runningBest, powerProfile);
+    root.append(predictions, runningBest, runningDynamics, powerProfile);
     for (const target of [root, loadRoot, enduranceRoot]) target.dataset.analysisEmpty = "true";
     Object.assign(root.dataset, { analysisEmptyRunning: "true", analysisEmptyCycling: "true" });
     return;
@@ -933,7 +1038,7 @@ function renderAnalysisHistory(history) { // NOSONAR
     const group = analysisChartGroup("Entwicklung", charts, sportSeries, "Letzte 12 Kalenderwochen einschließlich der laufenden Woche: alle datierten Garmin-FTP-Werte, letzter gültiger Wochenwert für Schwellenpace, Wochenmedian für VO₂max. Fehlende Messungen bleiben Lücken. Garmin. VO₂max ist eine Schätzung. Quellen und Messdatum bleiben sichtbar.");
     makeAnalysisSectionCollapsible(group, `development-${sport}`);
     group.dataset.analysisSport = analysisSport;
-    if (sport === "Lauf") group.querySelector(".analysis-section-content").append(predictions, runningBest);
+    if (sport === "Lauf") group.querySelector(".analysis-section-content").append(predictions, runningBest, runningDynamics);
     else group.querySelector(".analysis-section-content").prepend(powerProfile);
     root.append(group);
   }
@@ -1196,8 +1301,12 @@ function renderBodyAnalysis(body) {
 let trainingRecordsGeneration = 0;
 let equipmentTab = "bike";
 
-async function renderTrainingRecords() { // NOSONAR
+// `background` is a refresh nobody asked for (a state load, a route render): it waits while the athlete
+// has an equipment form open, so typed values are not lost (#2879).
+async function renderTrainingRecords({ background = false } = {}) { // NOSONAR
   if (!state.data || !equipmentRouteActive()) return;
+  const editing = [...document.querySelectorAll("#equipmentItems .equipment-form:not([hidden])")].some((form) => form.checkVisibility?.() ?? form.offsetParent !== null);
+  if (background && editing) return;
   const generation = ++trainingRecordsGeneration;
   const session = state.sessionGeneration;
   const gear = document.getElementById("equipmentItems");
@@ -1214,6 +1323,9 @@ async function renderTrainingRecords() { // NOSONAR
     const keep = receipt?.dataset.tab === equipmentTab && receipt.dataset.session === String(session);
     gear.replaceChildren(heading(), ...(keep ? [receipt] : []));
     const equipment = result.equipment || {};
+    // The notice reuses this read, so it does not read the same state a second time (#2809).
+    updateStatusSources({ equipment: equipmentStatusItem(equipment) });
+    equipmentNoticeKey = equipmentNoticeState();
     const items = equipment.garmin_items || [];
     const tabs = h("div", { className: "segmented-control equipment-tabs", "aria-label": "Ausrüstung nach Sportart" });
     tabs.setAttribute("role", "tablist");
@@ -1225,6 +1337,7 @@ async function renderTrainingRecords() { // NOSONAR
     };
     const isArchivedEquipment = (item) => item.status === "archived";
     const activeLocalItems = localItems.filter((item) => !isArchivedEquipment(item));
+    equipmentFormBikes = activeLocalItems.filter((item) => item.kind === "bike" && !item.parent_id);
     const archivedLocalItems = localItems.filter(isArchivedEquipment);
     const activeGarminItems = items.filter((item) => item.status !== "archived");
     const archivedGarminItems = items.filter((item) => item.status === "archived");
@@ -1257,6 +1370,7 @@ async function renderTrainingRecords() { // NOSONAR
       tab.setAttribute("role", "tab"); tabs.append(tab);
       const panel = h("div", { className: "equipment-tab-panel", id: `equipmentPanel-${key}`, "aria-labelledby": tab.id, tabIndex: 0, hidden: equipmentTab !== key });
       panel.setAttribute("role", "tabpanel");
+      panel.append(equipmentAddRow(key));
       for (const item of groups[key].items) panel.append(card(key)({ item, source: "local" }));
       for (const item of garminGroups[key]) panel.append(card(key)({ item, source: "provider" }));
       if (archivedGroups[key].length) panel.append(archive(key, archivedGroups[key]));
@@ -1301,7 +1415,7 @@ async function renderTrainingRecords() { // NOSONAR
 // without a marker, still loading or failed counts as not empty; period controls stay visible.
 // A container shared by both sports names the marker of the sport's part (#2265).
 const ANALYSIS_SEGMENT_CONTENT = {
-  running: [["currentPerformance", "analysisEmptyRunning"], ["analysisHistoryCharts", "analysisEmptyRunning"], ["performancePredictions"], ["runningBestEfforts"]],
+  running: [["currentPerformance", "analysisEmptyRunning"], ["analysisHistoryCharts", "analysisEmptyRunning"], ["performancePredictions"], ["runningBestEfforts"], ["runningDynamicsTrend"]],
   cycling: [["currentPerformance", "analysisEmptyCycling"], ["analysisHistoryCharts", "analysisEmptyCycling"], ["cyclingPowerProfile"]],
   load: [["sessionPerformance"], ["analysisLoadCharts"], ["trainingZoneCharts"], ["performanceEnduranceCharts"]],
   recovery: [["personalRecovery"]],
@@ -1409,8 +1523,9 @@ const analysisRefresh = AppViewRefresh.create({
       if (route === "analysis/load") renderTrainingFocus(performance.training_focus_periods?.[analysisHistoryPeriod] || performance.training_focus);
       else {
         renderPerformance(performance, { refreshCharts: false });
-        // The cleared report cache is read again for the power profile and the running best efforts.
+        // The cleared report cache is read again for the power profile, the running best efforts and technique.
         void renderCyclingPowerProfile();
+        void renderRunningDynamicsTrend();
       }
     }
   },
@@ -1578,8 +1693,16 @@ function equipmentCard(item, source, parents, place) {
   if (provider) body.append(provider);
   if (local && item.status !== "archived") {
     const actions = h("div", "connection-actions");
-    actions.append(maintenanceButton(item));
-    body.append(actions);
+    const form = equipmentForm(place, item);
+    const edit = h("button", { className: "secondary-button", type: "button", "aria-expanded": "false" }, "Bearbeiten");
+    edit.addEventListener("click", () => {
+      form.hidden = !form.hidden;
+      edit.setAttribute("aria-expanded", String(!form.hidden));
+    });
+    const retire = h("button", { className: "secondary-button", type: "button" }, "Ausmustern");
+    retire.addEventListener("click", () => void retireEquipment(item, retire));
+    actions.append(maintenanceButton(item), edit, retire);
+    body.append(actions, form);
   }
   card.append(summary, body);
   return card;
@@ -1646,6 +1769,162 @@ function equipmentState(item, local, life) {
   if (local && item.usage?.maintenance_due === true) return ["unchecked", "Wartung f\u00e4llig"];
   if (local && item.usage?.maintenance_due === false) return ["ok", "Wartung ok"];
   return life.percent == null ? ["off", "Ziel unbekannt"] : ["ok", "Ziel ok"];
+}
+
+// Pure (#2809): one status-strip notice naming the active items whose lifetime target is exceeded
+// or whose maintenance is due, by the rules of the equipment cards; exceeded targets come first.
+function equipmentStatusItem(equipment) {
+  const due = [
+    ...(equipment?.items || []).map((item) => [item, true, item.usage?.distance_km, item.lifetime_target_km]),
+    ...(equipment?.garmin_items || []).map((item) => [item, false, item.distance_km, item.goal_km]),
+  ].map(([item, local, distance, target]) => [item.name, ...equipmentState(item, local, equipmentLifetime(item.lifetime, distance, target))])
+    .filter(([, kind]) => kind === "error" || kind === "unchecked")
+    .sort(([, left], [, right]) => (left === "error" ? 0 : 1) - (right === "error" ? 0 : 1));
+  if (!due.length) return null;
+  const [[name, , label]] = due;
+  return { level: "warning", title: `${name}: ${label}`, detail: due.length > 1 ? `+${due.length - 1}` : "", action: { href: "#more/equipment", label: "Ansehen" } };
+}
+
+let equipmentNoticeKey = null;
+
+// The state an equipment read belongs to: the session and the activity and Garmin versions.
+function equipmentNoticeState() {
+  const versions = state.data?.state_versions || {};
+  return JSON.stringify([state.sessionGeneration, versions.activities, versions.garmin]);
+}
+
+// The equipment read takes seconds on a long history (#2809), so the notice reads it, through the cache the
+// Ausrüstung view shares, only when the browser is idle on a visible page and only once per session and
+// activity or Garmin state; a chat turn does not read it again. A failed read keeps the last notice and
+// waits for the next state; a hidden page leaves the read to the next status render. The device snapshot
+// shown before the fresh state reads nothing, and without an idle callback (Safari) the read waits 2 s.
+function refreshEquipmentNotice() {
+  if (!state.data || state.replaceDataOnLoad) return;
+  const session = state.sessionGeneration;
+  const key = equipmentNoticeState();
+  if (key === equipmentNoticeKey) return;
+  equipmentNoticeKey = key;
+  const idle = globalThis.requestIdleCallback || ((callback) => setTimeout(callback, 2000));
+  idle(() => {
+    if (session !== state.sessionGeneration || !state.data) return;
+    if (document.visibilityState === "hidden") {
+      equipmentNoticeKey = null;
+      return;
+    }
+    requestAnalysisReport("/api/analysis/training-records").then((result) => {
+      if (session === state.sessionGeneration) updateStatusSources({ equipment: equipmentStatusItem(result?.equipment) });
+    }).catch(() => {});
+  });
+}
+
+// A Coach turn that changed equipment makes the next status render read it again (#2809).
+function invalidateEquipmentNotice() {
+  equipmentNoticeKey = null;
+  invalidateAnalysisReport("/api/analysis/training-records");
+}
+
+// The athlete's own equipment editor (#2879): create in a tab, edit or retire a local item. Every save
+// shows its receipt with undo; retiring is confirmed here and again by the server ("confirmed").
+let equipmentFormBikes = [];
+const EQUIPMENT_FORM_CHOICES = {
+  bike: { sports: [["ride/outdoor", "Radfahren"], ["ride/indoor", "Rad indoor"]], kinds: [["bike", "Fahrrad"], ["component", "Komponente"], ["other", "Sonstiges"]] },
+  run: { sports: [["run/outdoor", "Laufen"]], kinds: [["shoes", "Schuh"], ["other", "Sonstiges"]] },
+};
+const EQUIPMENT_SAVED_FIELDS = ["name", "sport", "environment", "kind", "status", "parent_id", "start_date", "initial_distance_km", "initial_hours", "maintenance_km", "maintenance_hours", "lifetime_target_km"];
+
+function equipmentAddRow(tab) {
+  const form = equipmentForm(tab, null);
+  const add = h("button", { className: "secondary-button equipment-add", type: "button", "aria-expanded": "false" }, "+ Hinzufügen");
+  add.addEventListener("click", () => {
+    form.hidden = !form.hidden;
+    add.setAttribute("aria-expanded", String(!form.hidden));
+  });
+  return h("div", "equipment-add-row", add, form);
+}
+
+function equipmentForm(tab, item) {
+  const choices = EQUIPMENT_FORM_CHOICES[tab] || EQUIPMENT_FORM_CHOICES.bike;
+  const select = (name, options, value) => h("select", { name, required: true }, options.map(([key, label]) => h("option", { value: key, selected: key === value }, label)));
+  const number = (name, value, required = false) => h("input", { type: "number", name, min: "0", step: "any", inputMode: "decimal", required, value: value ?? (required ? "0" : "") });
+  const pair = item ? `${item.sport}/${item.environment}` : choices.sports[0][0];
+  const sports = choices.sports.some(([key]) => key === pair) ? choices.sports : [...choices.sports, [pair, activitySportLabel(item)]];
+  const kinds = !item || choices.kinds.some(([key]) => key === item.kind) ? choices.kinds : [...choices.kinds, [item.kind, item.kind]];
+  // The current parent stays selectable even when it is no longer an active bike.
+  const bikes = equipmentFormBikes.filter((bike) => bike.id !== item?.id).map((bike) => [bike.id, bike.name]);
+  const parents = item?.parent_id && !bikes.some(([id]) => id === item.parent_id) ? [[item.parent_id, "Bisheriges Rad"], ...bikes] : bikes;
+  const parentSelect = select("parent_id", parents, item?.parent_id);
+  parentSelect.required = false;
+  const parent = h("label", null, "Gehört zu", parentSelect);
+  const kind = select("kind", kinds, item?.kind || kinds[0][0]);
+  // A hidden or empty parent field never blocks the form: it is disabled, so validation skips it.
+  const showParent = () => { parent.hidden = kind.value !== "component"; parentSelect.disabled = parent.hidden; };
+  kind.addEventListener("change", showParent);
+  showParent();
+  const error = h("p", { className: "error", role: "alert" });
+  const form = h("form", { className: "equipment-form", hidden: true },
+    h("label", null, "Name", h("input", { name: "name", required: true, maxLength: 200, value: item?.name || "" })),
+    h("label", null, "Sportart", select("sport", sports, pair)),
+    h("label", null, "Art", kind), parent,
+    h("label", null, "Im Einsatz seit", h("input", { type: "date", name: "start_date", required: true, value: item?.start_date || timezoneDateKey(state.data?.profile?.timezone, new Date()) })),
+    h("label", null, "Kilometer vorher", number("initial_distance_km", item?.initial_distance_km, true)),
+    h("label", null, "Stunden vorher", number("initial_hours", item?.initial_hours, true)),
+    h("label", null, "Lebensdauer-Ziel km", number("lifetime_target_km", item?.lifetime_target_km)),
+    h("label", null, "Wartung alle km", number("maintenance_km", item?.maintenance_km)),
+    h("label", null, "Wartung alle Stunden", number("maintenance_hours", item?.maintenance_hours)),
+    error, h("button", { className: "secondary-button", type: "submit" }, "Speichern"));
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const submit = form.querySelector("button[type='submit']");
+    if (submit.disabled) return;
+    if (kind.value === "component" && !parents.length) {
+      error.textContent = "Zuerst ein Fahrrad anlegen.";
+      return;
+    }
+    const data = new FormData(form);
+    const text = (name) => { const value = data.get(name); return typeof value === "string" ? value : ""; };
+    const optional = (name) => (text(name) === "" ? null : Number(text(name)));
+    const [sport, environment] = text("sport").split("/");
+    const component = text("kind") === "component";
+    error.textContent = "";
+    // One tap, one save: a second tap while the first runs would create the item twice.
+    submit.disabled = true;
+    const saved = await saveEquipment({
+      ...(item ? { id: item.id, expected_revision: item.revision } : {}),
+      name: text("name").trim(), sport, environment, kind: text("kind"),
+      // Always explicit: an omitted status would save as active.
+      status: item?.status || "active",
+      parent_id: component ? text("parent_id") || null : null,
+      start_date: text("start_date"),
+      initial_distance_km: Number(text("initial_distance_km") || 0), initial_hours: Number(text("initial_hours") || 0),
+      lifetime_target_km: optional("lifetime_target_km"), maintenance_km: optional("maintenance_km"), maintenance_hours: optional("maintenance_hours"),
+    }, "Ausrüstung gespeichert. ", error);
+    if (!saved) submit.disabled = false;
+  });
+  return form;
+}
+
+async function retireEquipment(item, button) {
+  const confirmed = await requestConfirmation(`${item.name} ausmustern?`, { title: "Ausrüstung ausmustern?", confirmLabel: "Ausmustern" });
+  if (!confirmed) return;
+  button.disabled = true;
+  const saved = Object.fromEntries(EQUIPMENT_SAVED_FIELDS.filter((key) => key in item).map((key) => [key, item[key]]));
+  const ok = await saveEquipment({ ...saved, initial_distance_km: item.initial_distance_km ?? 0, initial_hours: item.initial_hours ?? 0, id: item.id, expected_revision: item.revision, status: "archived", confirmed: true }, "Ausgemustert. ");
+  if (!ok) button.disabled = false;
+}
+
+async function saveEquipment(payload, message, errorNode = null) {
+  try {
+    const result = await api("/api/equipment", { method: "POST", body: JSON.stringify(payload) });
+    invalidateAnalysisReport("/api/analysis/training-records");
+    await renderTrainingRecords();
+    showMaintenanceReceipt(result?.change, message);
+    return true;
+  } catch (error) {
+    if (isSessionEndedError(error)) return false;
+    if (errorNode) errorNode.textContent = error.message;
+    else showMaintenanceReceipt(null, `${error.message} `);
+    return false;
+  }
 }
 
 function maintenanceButton(item) {

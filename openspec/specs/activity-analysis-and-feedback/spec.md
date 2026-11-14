@@ -120,7 +120,7 @@ The system SHALL read local details without implicit provider refresh, serve onl
 
 #### Scenario: One stored analysis for every consumer
 - **WHEN** a session's records, stream or lap sets, staleness, frozen targets or locally resolved thresholds change, or the method version changes
-- **THEN** the canonical backfill stage `session_analysis` recomputes its `activity_detail_analysis` version 3 row (analysis, recorded workout profile, carried-over target snapshot, input fingerprint) in bounded batches, an unchanged input writes nothing, and the detail view, Coach detail tool, calendar profiles and recurring comparisons show the same values for Garmin- and Wahoo-only sessions too.
+- **THEN** the canonical backfill stage `session_analysis` recomputes its `activity_detail_analysis` version 3 row (analysis, recorded workout profile, carried-over target snapshot, input fingerprint) in bounded, paced batches (#2818), an unchanged input writes nothing, and the detail view, Coach detail tool, calendar profiles and recurring comparisons show the same values for Garmin- and Wahoo-only sessions too.
 
 #### Scenario: Intervals.icu copy not served
 - **WHEN** a session holds a stored Intervals.icu record with detail sets, zone times or a failure note
@@ -387,10 +387,10 @@ The system SHALL calculate aerobic efficiency/drift only from sufficiently conti
 - **THEN** the analysis reports insufficient data instead of a confident drift value.
 
 #### Scenario: Decoupling eligibility
-- **WHEN** a ride with power or a non-trail run with speed is analysed (`time-weighted-session-analysis-v2`)
-- **THEN** the recording must span at least 1800 s, the first 600 s are excluded and the rest is split at its midpoint, and each half needs paired output and heart-rate time of at least 85 % of the half, an output coefficient of variation of at most 15 % and mean outputs within 10 % of each other; samples need a heart rate of 30 to 240 bpm, an output above 0 and a step of at most `max(30 s, 3 × the median step)`; the drift is `(EF1 − EF2) / EF1 × 100` to 0.01 with `long_session` from 5400 s, and an outdoor run uses grade-adjusted speed.
+- **WHEN** a ride with power or a non-trail run with speed is analysed (`time-weighted-session-analysis-v3`)
+- **THEN** the recording must span at least 1800 s, the first 600 s are excluded and the rest is split at its midpoint, and each half needs paired output and heart-rate time of at least 85 % of the half, a coefficient of variation of the output's 60 s rolling means of at most 15 % (#1832) and mean outputs within 10 % of each other; samples need a heart rate of 30 to 240 bpm, an output above 0 and a step of at most `max(30 s, 3 × the median step)`; the drift is `(EF1 − EF2) / EF1 × 100` to 0.01 with `long_session` from 5400 s, and an outdoor run uses grade-adjusted speed.
 
-Evidence: `backend/performance/session_analysis.py:aerobic_analysis`, `backend/performance/report_service.py:TrainingRecordsService.endurance`; `tests/test_session_analysis.py:test_irregular_time_spacing_preserves_time_weighted_result`, `tests/test_session_analysis.py:test_missing_pulse_stops_and_variable_intervals_stay_open`, `tests/test_session_analysis.py:test_source_label_names_the_stream_provider`.
+Evidence: `backend/performance/session_analysis.py:aerobic_analysis`, `backend/performance/report_service.py:TrainingRecordsService.endurance`; `tests/test_session_analysis.py:test_irregular_time_spacing_preserves_time_weighted_result`, `tests/test_session_analysis.py:test_missing_pulse_stops_and_variable_intervals_stay_open`, `tests/test_session_analysis.py:test_second_to_second_output_noise_is_steady_on_60_second_means`, `tests/test_session_analysis.py:test_source_label_names_the_stream_provider`.
 
 ### Requirement: Running form drift of long steady runs
 The system SHALL compare the first and the last third of a non-trail run (method `running-form-drift-v1`) and flag the run "Laufstil lässt nach" only when the ground contact time rose. The thresholds are heuristics of this app, not validated limits, and SHALL NOT be presented as an injury-risk score.
@@ -409,6 +409,42 @@ Evidence:
 - `public/activity-details.js::formDriftLines`
 - `tests/test_running_dynamics.py:test_a_trail_run_or_other_sport_has_no_drift_key_at_all`
 - `tests/test_running_dynamics.py:test_only_a_run_analysis_carries_the_drift_key`
+
+### Requirement: The provider's own session values in the session details
+The system SHALL serve with the detail document the provider's own training-effect values of the session (aerobic and anaerobic effect, the effect label and the provider's load) with their source label, and the calendar's session details SHALL show the present ones in a section of their own, titled after the provider; nothing SHALL be derived from them.
+
+#### Scenario: Values present
+- **WHEN** the session's summary carries training-effect values
+- **THEN** `training_effect` holds each present value and `source`, an effect of 0.0 included, and the section shows the effects with one decimal and a bar on the 0 to 5 scale, the label in German ("Tempo", "Schwelle", ...) and the load.
+
+#### Scenario: Values absent or undocumented
+- **WHEN** a session has no training-effect values, or a value such as stamina or performance condition has no documented source field and no recorded occurrence
+- **THEN** no section or tile is shown for it.
+
+Evidence:
+- `backend/performance/activity_read_service.py:_provider_training_effect`
+- `public/activity-analysis.js::providerEffect`
+- `tests/test_activity_read_service.py:test_detail_carries_the_providers_own_training_effect`
+- `e2e/calendar-detail-pane.spec.js`
+
+### Requirement: Running dynamics against the athlete's own runs at the same pace
+The system SHALL keep per non-trail run with running dynamics streams the time and time-weighted mean of each running-dynamics value per 15 s/km pace band (method `running-dynamics-pace-bands-v1`), rate a run per band against the athlete's runs of the 84 days before it, show Garmin's published colour band as a labelled second reference and draw monthly medians per pace band in Analyse; it SHALL name no universal good value.
+
+#### Scenario: Rating a run
+- **WHEN** a run's band has at least 5 earlier runs of the window with at least 2 minutes in it (samples at 2.0 m/s or faster, moving, steps of at most 5 s)
+- **THEN** the best third of those runs is "besser als sonst", the middle third "üblich", the weakest third "schlechter als sonst" (shorter contact time, lower vertical oscillation and ratio, higher cadence and a balance nearer 50 % are better; step length is only "länger" or "kürzer"), each value of the run takes the verdict holding most of its rated time, and fewer runs give "zu wenig Vergleich".
+
+#### Scenario: Garmin reference and trend
+- **WHEN** the session details or Analyse → Laufen are opened
+- **THEN** each value carries Garmin's chest-strap colour band of its running mean ("Garmin-Einordnung (Brustgurt)", EPIX manual), a table lists the run's pace bands, and "Lauftechnik je Monat" draws for the 4 bands with most time the monthly medians of the last 12 months, a month only with 10 minutes in the band; both read every stored session in the background build and show nothing while it is pending.
+
+Evidence:
+- `backend/performance/running_dynamics.py`
+- `backend/performance/report_service.py:TrainingProfileSelectionService.running_dynamics`
+- `backend/http_api/analysis.py`
+- `public/activity-analysis.js`, `public/analysis.js::renderRunningDynamicsTrend`
+- `tests/test_running_dynamics.py:test_a_slow_run_is_not_worse_for_being_slow`
+- `e2e/calendar-detail-pane.spec.js`, `e2e/analysis-on-demand.spec.js`
 
 ### Requirement: Pace at heart rate
 The system SHALL derive per run with full-resolution streams the time and distance per 5 bpm heart-rate bin (method `pace-at-heart-rate-v2`) and compare runs in one fixed 10 bpm band; it SHALL make no fitness claim from it. The LT1 pace of M9 reads the same bins.

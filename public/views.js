@@ -326,6 +326,7 @@ function renderMoreSegments(segment) {
   document.querySelectorAll("[data-more-segment-panel]").forEach((panel) => {
     panel.hidden = panel.dataset.moreSegmentPanel !== selected;
   });
+  if (selected === "operations") loadReleaseChangelog();
   document.querySelectorAll("[data-more-segment]").forEach((link) => {
     const active = link.dataset.moreSegment === selected;
     link.classList.toggle("active", active);
@@ -554,6 +555,53 @@ function renderThinkingLevel(thinkingLevel, tasks = {}) {
 function renderAppVersion(app = {}) {
   const settingsVersionNode = $("#settingsAppVersion");
   if (settingsVersionNode) settingsVersionNode.textContent = app.version ? `v${app.version}` : "unbekannt";
+}
+
+// Pure (#2899): one release's commit subjects as "Neu" (feat), "Behoben" (fix) and the rest, each
+// as "scope: subject" without its type and pull request number.
+function releaseChangeGroups(commits) {
+  const groups = { feat: [], fix: [], other: [] };
+  for (const subject of commits || []) {
+    const match = /^([a-z]+)(?:\(([^)]*)\))?!?: (.+?)(?: \(#\d+\))?$/.exec(String(subject));
+    const text = match ? [match[2], match[3]].filter(Boolean).join(": ") : String(subject);
+    (match?.[1] === "feat" || match?.[1] === "fix" ? groups[match[1]] : groups.other).push(text);
+  }
+  return groups;
+}
+
+function releaseChangeList(release) {
+  const groups = releaseChangeGroups(release.commits);
+  const list = (items) => h("ul", null, items.map((text) => h("li", null, text)));
+  return [
+    ...[["feat", "Neu"], ["fix", "Behoben"]].filter(([key]) => groups[key].length).flatMap(([key, label]) => [h("h4", null, label), list(groups[key])]),
+    groups.other.length ? h("details", null, h("summary", null, `Technik (${groups.other.length})`), list(groups.other)) : null,
+  ];
+}
+
+// The image carries the commit changelog of every release (#2899). It is read from this server once,
+// when Betrieb & Diagnose opens; a build without it keeps the plain version line.
+let releaseChangelogRequest = null;
+function loadReleaseChangelog() {
+  releaseChangelogRequest ||= fetch("/changelog.json", { cache: "no-cache", credentials: "same-origin" })
+    .then((response) => (response.ok && /json/.test(response.headers.get("content-type") || "") ? response.json() : null))
+    .catch(() => null)
+    // A failed or missing read is tried again the next time the area opens.
+    .then((data) => { if (!renderReleaseChangelog(data?.releases)) releaseChangelogRequest = null; });
+}
+
+function renderReleaseChangelog(releases) {
+  const line = $("#settingsAppVersion")?.closest(".settings-app-version");
+  if (!line || !Array.isArray(releases) || !releases.length) return false;
+  const [current, ...older] = releases;
+  const label = (release) => (release.version ? `Version ${release.version}` : `Seit ${release.after}`);
+  const changelog = h("details", { className: "release-changelog", open: true },
+    h("summary", null, ...line.childNodes, " · Änderungen"),
+    current.version ? null : h("h4", null, label(current)),
+    releaseChangeList(current),
+    older.length ? h("details", null, h("summary", null, `Frühere Versionen (${older.length})`),
+      older.map((release) => h("details", null, h("summary", null, label(release)), releaseChangeList(release)))) : null);
+  line.replaceWith(changelog);
+  return true;
 }
 
 function aiConnectionConfigurationDetail() { return "OPENAI_API_KEY nicht konfiguriert"; }

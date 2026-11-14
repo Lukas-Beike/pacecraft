@@ -20,9 +20,11 @@ It checks health, logs in with the password read from the file, reads
 `/api/diagnostics`, and logs out with the CSRF token. One line per check:
 version and schema against the expected values, whether `sync.last_error` is
 set (never its text), provider and calendar refresh ages, stuck plan-sync
-jobs, unsynced plan units with error kinds (never error text), record counts,
-and process memory. With `--compare`, a lower record count is a `FAIL`: an
-unexplained drop stops the check. `external_calendar_events` is only `info`:
+jobs, unsynced plan units with error kinds (never error text), the plan
+pushes per provider of the last 7 days (job and item statuses, settled items
+included, and error kinds; #2878), record counts, process memory and storage. With
+`--compare`, a lower record count is a `FAIL`: an unexplained drop stops the
+check. `external_calendar_events` is only `info`:
 the calendar sync refills it from today on every refresh.
 
 Exit 0 all ok, 1 a check failed, 2 unreachable or login refused. The script
@@ -40,11 +42,10 @@ words from `STATES`, and a `*_at` time as its age `*_hours`, sorted by path. A
 state word in `FAIL_STATES` (`failed`, `unavailable`, `blocked`) and a missing
 section print as `FAIL`; an empty section is `info`. Free text, ids and any
 field not on the allow-list are never printed. Sections with an allow-list:
-`decoupling_eligibility` (temporary, #2779), `database`, `runtime`,
-`recovery_copies`, `garmin_past_workout_removal`, `stream_backfill` and
-`fit_inventory`. A section without an allow-list entry is
-refused; add the entry and its test in `tests/test_prod_checks.py` together
-with the section.
+`curve_build`, `database`, `runtime`, `recovery_copies`,
+`garmin_past_workout_removal`, `garmin_strength_push`, `stream_backfill` and
+`fit_inventory`. A section without an allow-list entry is refused; add the
+entry and its test in `tests/test_prod_checks.py` together with the section.
 
 ## Temporary production probe
 

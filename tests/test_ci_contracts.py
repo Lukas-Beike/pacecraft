@@ -285,6 +285,15 @@ class WorkflowSourceTests(unittest.TestCase):
         image = workflow.split("  image:\n", 1)[1].split("  test_shards:\n", 1)[0]
         self.assertIn("docker build --tag pacecraft:ci\n", image)
         self.assertIn("needs: source\n", image)
+        # The image carries the release changelog written from the full local history (#2899).
+        self.assertIn("fetch-depth: 0\n", image)
+        self.assertIn("fetch-tags: true\n", image)
+        self.assertIn("filter: blob:none\n", image)  # metadata only
+        self.assertLess(image.index("python-version: '3.14'"), image.index("release_changelog"))
+        self.assertLess(
+            image.index("run: python3 scripts/release_changelog.py\n"),
+            image.index("docker build --tag pacecraft:ci\n"),
+        )
         upload = image.split("actions/upload-artifact@", 1)[1].split("- name:", 1)[0]
         self.assertIn("name: pacecraft-ci-image", upload)
         self.assertIn("retention-days: 1", upload)
@@ -1233,6 +1242,16 @@ class ChangedFileClassifierTests(unittest.TestCase):
             ("docs", "node --test tests/*.cjs"),
         ):
             self.assertIn(f"if: env.MODE == '{mode}'\n        run: {command}", shards)
+        # #2900: a hung shard dumps its stacks before the job frees the runner.
+        container = _job(workflow, "container_tests", "test")
+        for job, limit, commands in (
+            (shards, 40, ('--total "$PYTHON_TEST_SHARDS" --hang-timeout 600',
+                          "--with-heavy --hang-timeout 1800")),
+            (container, 20, ("--suite container --hang-timeout 600",)),
+        ):  # fmt: skip
+            self.assertIn(f"\n    timeout-minutes: {limit}\n", job.split("steps:", 1)[0])
+            for command in commands:
+                self.assertIn(f"{command}\n", job)
         # The scripts may use Python 3.14 syntax; the runner's own Python is older.
         self.assertLess(
             source.index("python-version: '3.14'"),

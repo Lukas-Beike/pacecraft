@@ -57,6 +57,8 @@ class _Database:
         table = query.rsplit("FROM ", 1)[1]
         if table == "kv WHERE key = ?":
             return SimpleNamespace(fetchone=lambda: None)
+        if table == "kv WHERE key LIKE ?":
+            return SimpleNamespace(fetchone=lambda: {"count": 2})
         if table.startswith("kv WHERE key IN"):
             return SimpleNamespace(
                 fetchall=lambda: [
@@ -77,6 +79,10 @@ class _DatabaseManager:
     def read_snapshot(self):
         self.transactions += 1
         yield self.database
+
+    @staticmethod
+    def reader_slot_waits():
+        return {"slots": 2, "waits_over_1s": 3, "longest_wait_s": 1.25}
 
 
 class DiagnosticReportServiceTests(unittest.TestCase):
@@ -170,6 +176,11 @@ class DiagnosticReportServiceTests(unittest.TestCase):
         report = self.service.report()
 
         self.assertEqual(report["generated_at"], "2026-09-23T10:00:00Z")
+        # Counts only, so slow reads after a start show in production (#2788).
+        self.assertEqual(
+            {"slots": 2, "waits_over_1s": 3, "longest_wait_s": 1.25},
+            report["runtime"]["reader_slots"],
+        )
         self.assertEqual(report["app"], {"name": "Test Coach", "version": "1.2.3"})
         self.assertEqual(
             set(report),
@@ -197,7 +208,8 @@ class DiagnosticReportServiceTests(unittest.TestCase):
                 "local_load",
                 "garmin_change_check",
                 "lt1_ride_coverage",
-                "decoupling_eligibility",
+                "curve_build",
+                "garmin_strength_push",
                 "recovery_copies",
                 "stream_backfill",
                 "fit_inventory",
@@ -257,6 +269,7 @@ class DiagnosticReportServiceTests(unittest.TestCase):
                 "athlete_checkins": 6,
                 "activity_feedback": 7,
                 "change_history": 8,
+                "sensor_equipment_links": 2,
                 "stored_payload_bytes": {
                     "garmin_state": 4096,
                     "garmin_snapshot_legacy": 0,
@@ -317,8 +330,10 @@ class DiagnosticReportServiceTests(unittest.TestCase):
         # three domain tables) to the same snapshot; the stream backfill counts
         # add two (Garmin records, the stream cursor); the provider sync times add
         # two (refresh history, push jobs); the schema version adds one; the
-        # Garmin past-workout removal adds its stored state.
-        self.assertEqual(len(self.db.queries), 23)
+        # Garmin past-workout removal adds its stored state; the strength push
+        # counts add two reads: the remembered Garmin exercises and the linked
+        # units (#2850); the plan push counts add two (jobs, items; #2878).
+        self.assertEqual(len(self.db.queries), 28)
         self.assertEqual(
             [query.rsplit("FROM ", 1)[1] for query in count_queries],
             [
@@ -328,6 +343,7 @@ class DiagnosticReportServiceTests(unittest.TestCase):
                 "athlete_checkins",
                 "activity_feedback",
                 "change_history",
+                "kv WHERE key LIKE ?",
                 "kv WHERE key IN (?, ?, ?)",
                 "kv WHERE key = ?",
                 "provider_sync_cursors WHERE provider=? AND stream=?",
@@ -372,6 +388,14 @@ class DiagnosticReportServiceTests(unittest.TestCase):
         )
         self.assertEqual(self.service._recovery_copies(), {"available": False})
 
+    def test_strength_push_counts_start_on_the_athletes_local_day(self):
+        # 10:00 UTC is already the next day at UTC+14 (#2850).
+        self.assertEqual(self.service._local_today({}), "2026-09-23")
+        self.assertEqual(
+            self.service._local_today({"timezone": "Pacific/Kiritimati"}),
+            "2026-09-24",
+        )
+
     def test_payload_sizes_count_utf8_bytes_without_fetching_the_payload(self):
         with closing(sqlite3.connect(":memory:")) as db:
             db.row_factory = sqlite3.Row
@@ -397,7 +421,12 @@ class DiagnosticReportServiceTests(unittest.TestCase):
                     # The retired key of the former byte count is not measured.
                     ("garmin_snapshot", payload),
                     ("synthetic_other_value", "x" * 10000),
+                    # A legacy sensor link is counted, its content never read (#2903).
+                    ("sensor_equipment:heart_rate:1", '{"equipment_id":"x"}'),
                 ],
+            )
+            self.assertEqual(
+                self.service._database_counts(db)["sensor_equipment_links"], 1
             )
             sizes = self.service._database_counts(db)["stored_payload_bytes"]
             self.assertEqual(

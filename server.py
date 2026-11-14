@@ -197,7 +197,10 @@ from backend.sync.retry_hold import ProviderRetryHold
 from backend.sync.scheduler_wiring import SyncSchedulerServices, build_sync_schedulers
 from backend.sync.session_focus_backfill import SessionFocusBackfill
 from backend.sync.session_rebundle import SessionRebundle
-from backend.sync.state import SyncStateRepository, resync_reset_keys
+from backend.sync.state import (
+    SyncStateRepository,
+    settle_interrupted_sync_state,
+)
 from backend.sync.wahoo_connection import WahooSecretRegistry
 from backend.sync.wahoo_wiring import (
     WahooConnectionServices,
@@ -232,7 +235,7 @@ DATA_DIR = Path(os.environ.get("DATA_DIR", ROOT / "data"))
 DB_PATH = DATA_DIR / "intervals-coach.db"
 LOG_PATH = DATA_DIR / "intervals-coach.log"
 APP_NAME = "Pacecraft · AI Coach"
-APP_VERSION = "2.1.14"
+APP_VERSION = "2.1.15"
 MAX_BODY_BYTES = 1_000_000
 MAX_AUDIO_BODY_BYTES = 8_000_000
 COACH_CONVERSATION_GATE = CoachConversationGate()
@@ -487,7 +490,7 @@ def initialise_database() -> None:
             now=runtime_clock.utc_now(),
             current_time=datetime.now(UTC),
             default_profile_json=json.dumps(DEFAULT_PROFILE),
-            provider_resync_keys=resync_reset_keys(),
+            settle_interrupted=settle_interrupted_sync_state,
             retention_days=int(getattr(CONFIG_HOLDER.value, "data_retention_days", -1)),
         )
     PROVIDER_CREDENTIAL_SERVICE.refresh()
@@ -1021,7 +1024,11 @@ def main() -> None:
             "context": {"version": APP_VERSION, "port": CONFIG_HOLDER.value.port},
         },
     )
-    initialise_database()
+    try:
+        initialise_database()
+    except Exception as error:
+        app_config.refuse_wrong_database_key(error, LOGGER)
+        raise
     remove_orphaned_staging_files(DATA_DIR, LOGGER)
     server = http_server.CoachHTTPServer(
         ("0.0.0.0", CONFIG_HOLDER.value.port), HTTP_API.request_handler_class()
@@ -1037,7 +1044,6 @@ def main() -> None:
     if sys.platform != "win32":
         faulthandler.register(signal.SIGUSR1, all_threads=True)
     try:
-        WORKOUT_LIBRARY_SYNC.sync_state_service().reset_interrupted()
         SYNC_JOB_QUEUE.service().resume_interrupted()
         COACH_BACKGROUND_JOBS.job_store().resume_interrupted(
             COACH_BACKGROUND_JOBS.turn_failure_service()

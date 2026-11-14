@@ -38,6 +38,7 @@ handler's docstring. Regenerate it with
 | POST | `/api/activities/{id}/session` | Session + CSRF | after access | Confirm, split, merge or delete one session bundle, with a change receipt. |
 | GET | `/api/analysis/power-profiles` | Session | no | Analysis projection: power profiles or training records. |
 | POST | `/api/analysis/refresh` | Session + CSRF | after access | Run a targeted refresh of one analysis area. |
+| GET | `/api/analysis/running-dynamics` | Session | no | Running dynamics against the athlete's own runs at the same pace (#2829). |
 | GET | `/api/analysis/training-records` | Session | no | Analysis projection: power profiles or training records. |
 | GET | `/api/auth/status` | Public | no | Current login status. |
 | GET | `/api/bootstrap` | Session | no | Initial authenticated client state. |
@@ -56,6 +57,8 @@ handler's docstring. Regenerate it with
 | GET | `/api/context-preview` | Session | no | Preview of the context the Coach receives. |
 | GET | `/api/diagnostics` | Session | no | Diagnostic report. |
 | POST | `/api/diagnostics/delete` | Session + CSRF | after access | Clear the stored diagnostics. |
+| POST | `/api/equipment` | Session + CSRF | after access | Create, edit or retire one piece of equipment, stored locally (#2879). |
+| POST | `/api/equipment/assignment` | Session + CSRF | after access | Assign one session its equipment, or none, stored locally (#2879). |
 | POST | `/api/equipment/maintenance` | Session + CSRF | after access | Record one maintenance entry for a piece of equipment, stored locally. |
 | POST | `/api/external-calendar/decisions` | Session + CSRF | after access | Set or remove how one calendar event affects training; nothing remote. |
 | POST | `/api/external-calendar/sync` | Session + CSRF | after access | Queue a provider synchronization, or a targeted refresh of the external calendars or the weather. |
@@ -88,6 +91,7 @@ handler's docstring. Regenerate it with
 | POST | `/api/nutrition/products/favorite` | Session + CSRF | after access | Mark or unmark a product as favorite. |
 | POST | `/api/nutrition/products/lookup` | Session + CSRF | after access | Look a product up by barcode or name, local products first. |
 | POST | `/api/nutrition/refresh` | Session + CSRF | after access | Run a targeted nutrition refresh. |
+| GET | `/api/nutrition/session-fuelling` | Session | no | Drinking and carbohydrates for a long planned run or ride (#2804). |
 | GET | `/api/nutrition/week` | Session | no | Nutrition week summary of the closed days before today. |
 | POST | `/api/nutrition/yazio/check` | Session + CSRF | after access | Explicitly check Yazio authentication; the result is kept in memory. |
 | GET | `/api/nutrition/yazio/status` | Session | no | Last local Yazio authentication check, without contacting Yazio. |
@@ -260,6 +264,21 @@ its status string). Garmin is read for every area, Wahoo also for
 Errors: 400 "Ungültiger Analysebereich."; 400 "Ungültiger Analysezeitraum.";
 503 `analysis_refresh_unavailable` "Die gezielte Aktualisierung ist nicht
 verfügbar.".
+
+### `GET /api/analysis/running-dynamics`
+
+Request: optional query `activity_id` (the local session id, at most
+200 characters); no body.
+
+Response: 200 with `status` (`pending` before the first background read
+of every stored session finished, `failed` after a failed one, else
+`ok`), and with `ok` `stale`, `trend` (`months` and per pace band
+`band_s_per_km` and `series` of monthly medians per value) and
+`session` (the run's rating per pace band and per value; null without
+`activity_id` or a stored run).
+
+Errors: 400 "Ungültige Aktivitäts-ID." for an id longer than 200
+characters.
 
 ### `GET /api/auth/status`
 
@@ -525,7 +544,7 @@ Response: 200 with the redacted report of `DiagnosticReportService.report`,
 read from one database snapshot. Top-level keys include `generated_at`,
 `app`, `runtime`, `configuration`, `openai`, `coach_commands`, `sync`,
 `garmin`, `wahoo`, `provider_freshness`, `external_calendar`, `database`,
-`recovery_copies`, `plan_sync`, the `canonical_*` sections, `logs` (recent warnings, errors
+`recovery_copies`, `curve_build`, `plan_sync`, `garmin_strength_push`, the `canonical_*` sections, `logs` (recent warnings, errors
 and INFO entries), `debug_capture` (status and captured request and
 response shapes) and `note`. A section that cannot be built is
 `{"status": "unavailable"}`.
@@ -540,6 +559,46 @@ Response: 200 with `ok` (`true`) and `entries` (`0`): the captured
 technical diagnostic entries are emptied.
 
 Errors: 500 "Diagnose konnte nicht gelöscht werden." when clearing fails.
+
+### `POST /api/equipment`
+
+Request: JSON body of at most 16 KiB with the item fields `id` (omit to
+create), `expected_revision` (required with `id`), `name`, `sport`,
+`environment`, `kind` (`shoes`, `bike`, `component`, `other`), `status`
+(`active` or `archived`), `parent_id`, `start_date` (YYYY-MM-DD),
+`initial_distance_km`, `initial_hours`, `maintenance_km`,
+`maintenance_hours`, `lifetime_target_km`, plus `confirmed`; no other
+key. Every save with `status` `archived` (retiring, or editing an item
+that stays retired) needs `"confirmed": true`.
+
+Response: 200 `{"ok": true, "stored_locally": true, "equipment": {...},
+"change"}`; `change` is the undo reference.
+
+Errors: 400 "Ungültige Ausrüstung." for an unknown key or a body that is
+not an object; 400 "Name, Sport, Art oder Status der Ausrüstung
+ungültig."; 400 "Startdatum oder Ausrüstungs-ID ungültig."; 400
+"Ausrüstungsbeginn liegt außerhalb des gültigen Zeitraums."; 400
+"Ausrüstungszähler oder Wartungsintervall ungültig."; 404 "Ausrüstung
+nicht gefunden." for an unknown `id`; 409 "Ausrüstung geändert; neu
+lesen." for a stale `expected_revision`; 409 "Das Ausmustern muss
+bestätigt werden." for an unconfirmed save with `status` `archived`; 409 "Höchstens 100
+Ausrüstungsgegenstände." for a new item beyond the 100th.
+
+### `POST /api/equipment/assignment`
+
+Request: JSON body of at most 16 KiB, exactly `{"activity_id": string,
+"equipment_id": string | null}`; `null` records that the session used
+no equipment ("Keiner"), which also overrides Garmin's gear links.
+
+Response: 200 `{"ok": true, "stored_locally": true, "assignment":
+{"activity_id", "equipment_id", "observed_at"}, "change"}`; `change` is
+the undo reference.
+
+Errors: 400 "Aktivität und Ausrüstung sind erforderlich." for another
+body shape; 404 "Kanonische Aktivität nicht gefunden." for an unknown
+session; 400 "Aktive passende Hauptausrüstung erforderlich." for an
+unknown item or one that is archived, a component, unresolved or of
+another sport.
 
 ### `POST /api/equipment/maintenance`
 
@@ -1014,6 +1073,23 @@ Anfrageinhalt." for another key; 400 "Ungültiges Datumsformat '{value}'.
 Erwartet wird YYYY-MM-DD." for an invalid `date`; 400 "Der Zeitraum muss 14 oder
 84 Tage umfassen."; 400 "Das Datum darf nicht in der Zukunft liegen."; 503
 `provider_busy` "Garmin wird bereits aktualisiert."
+
+### `GET /api/nutrition/session-fuelling`
+
+Request: query `sport` (`run`, `ride`), `environment` (`indoor` and
+`virtual` are indoors, anything else outdoors), `date` (YYYY-MM-DD) and `duration_s` (planned
+seconds, up to 24 h); no body.
+
+Response: 200 with `status` `not_long` (another sport or under 60 min)
+or `ready` with `duration_s`, `forecast_c` (cached forecast, outdoors),
+`sweat_rate` (`l_per_h`, `sessions`, `similar`, `temperature_c`; null
+without own data), `drinking` (`l_per_h`, `total_l`, `max_l_per_h`,
+`sodium_g_per_l`, or `generic_l_per_h` without own data),
+`drinking_source`, `carbohydrates`, `carbohydrate_source` and
+`weight`. It reads stored data only and fetches nothing.
+
+Errors: 400 `invalid_session_fuelling` "Ungültige Angaben für die
+Verpflegungsempfehlung." for a missing or invalid query value.
 
 ### `GET /api/nutrition/week`
 

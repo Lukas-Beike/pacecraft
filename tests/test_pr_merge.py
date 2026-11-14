@@ -31,11 +31,12 @@ def view(state="OPEN", checks=(GREEN,), **extra):
     return {
         "state": state, "baseRefName": "develop", "headRefOid": "feedc0de",
         "autoMergeRequest": None, "mergeCommit": merge,
-        "statusCheckRollup": list(checks), "comments": [], "reviews": [], **extra,
+        "statusCheckRollup": list(checks), "comments": [], "reviews": [],
+        **extra,
     }  # fmt: skip
 
 
-def run(case, *args, auto_error="", views=None):
+def run(case, *args, auto_error="", views=None, behind=0, moved=()):
     """Run main against a stub that answers `pr view` from `views` in order."""
     calls, views = [], list(views or [view()])
 
@@ -43,6 +44,13 @@ def run(case, *args, auto_error="", views=None):
         calls.append(argv[1:])
         if argv[1:3] == ["pr", "view"]:
             return subprocess.CompletedProcess(argv, 0, json.dumps(views.pop(0)), "")
+        if argv[1:3] == ["pr", "diff"]:  # the full file list, past 100 files
+            files = "\n".join([*(f"f{n}" for n in range(150)), "scripts/pr_merge.py"])
+            return subprocess.CompletedProcess(argv, 0, files, "")
+        if argv[1:2] == ["api"] and "/compare/feedc0de...develop" in argv[2]:
+            return subprocess.CompletedProcess(
+                argv, 0, json.dumps({"behind": behind, "files": list(moved)}), ""
+            )
         failed = auto_error and "--auto" in argv
         return subprocess.CompletedProcess(argv, int(bool(failed)), "", auto_error)
 
@@ -81,6 +89,25 @@ class PrMergeTests(unittest.TestCase):
                 code, _, writes, _ = run(self, 7, **kwargs)
                 self.assertEqual(code, expect)
                 self.assertNotIn(["pr", "merge", "7", *PIN], writes)
+
+    def test_develop_changes_to_this_prs_files_refuse_and_disarm(self):
+        # #2901: rebase when develop moved in the PR's files (lane rule).
+        armed = view(autoMergeRequest={"mergeMethod": "SQUASH"})
+        mine, other = ["scripts/pr_merge.py"], ["backend/other.py"]
+        arms = [["pr", "merge", "7", "--auto", *PIN]]
+        for args, kwargs, expect, merge_calls in (
+            ((), {"behind": 2, "moved": mine}, 1, []),
+            ((), {"behind": 2, "moved": mine, "views": [armed]}, 1,
+             [["pr", "merge", "7", "--disable-auto"]]),
+            ((), {"behind": 2, "moved": other}, 0, arms),  # no overlap: arm
+            ((), {"behind": None}, 2, []),  # no count: fail closed
+            (("--allow-behind",), {"behind": 2, "moved": mine}, 0, arms),
+        ):  # fmt: skip
+            with self.subTest(args=args, **kwargs):
+                code, out, writes, _ = run(self, 7, *args, **kwargs)
+                self.assertEqual((code, writes), (expect, merge_calls))
+                if expect == 1:
+                    self.assertIn("develop changed scripts/pr_merge.py", out)
 
     def test_wait_polls_in_turn_until_merged(self):
         # #2795: no yield on a watcher that may never wake on the merge

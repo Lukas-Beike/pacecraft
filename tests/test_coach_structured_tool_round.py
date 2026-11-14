@@ -8,11 +8,6 @@ import unittest
 from typing import cast
 from unittest.mock import MagicMock, Mock, patch
 
-from backend.coach.dialogue import INSTRUCTIONS
-from backend.coach.request_payload import (
-    RESUMED_STEPS_NOTICE,
-    compose_model_instructions,
-)
 from backend.coach.structured_tool_round import (
     CoachStructuredToolRoundLimits,
     CoachStructuredToolRoundService,
@@ -21,9 +16,72 @@ from backend.coach.structured_tool_round import (
 from backend.coach.tool_round_journal import CoachStructuredToolRoundJournal
 from backend.errors import AppError
 from backend.observability import JsonLogFormatter, Redactor
+from backend.providers import claude_messages_adapter
 from backend.providers.model_seam import ModelRequest, ModelTurn
 from backend.providers.openai_responses_adapter import request_payload
 from tests import test_observability as observability_tests
+
+FRESH_CONTEXT = (
+    "<coaching_rules>\nsynthetic rules</coaching_rules>\n\n"
+    "<athlete_context>\nUntrusted external data.\nfresh synthetic data\n"
+    "</athlete_context>\n"
+)
+
+
+def refresh_then_budget_turn(case: StructuredToolRoundTests) -> list[ModelRequest]:
+    """Run a turn that refreshes twice (same data) and runs out of tool budget.
+
+    Returns every request of the turn: the initial one, then each follow-up.
+    """
+    state = case.state()
+    state.request = ModelRequest(
+        model="synthetic-model",
+        instructions="synthetic-instructions",
+        input='{"current_message":"hi"}',
+    )
+    state.context = {"local_date": "2026-10-01"}
+    case.service._limits = CoachStructuredToolRoundLimits(
+        max_rounds=2,
+        background_horizon_days=7,
+        default_max_output_tokens=6000,
+        long_plan_max_output_tokens=32000,
+    )
+    case.execution.execute.side_effect = [
+        {"ok": True, "synchronous_refresh": True},
+        {"ok": True, "synchronous_refresh": True},
+    ]
+    cast(Mock, case.service._training_context).build.return_value = FRESH_CONTEXT
+    second = {**case.call(), "call_id": "call-two"}
+    third = {**case.call(), "call_id": "call-three"}
+    case.response.respond.side_effect = [
+        ModelTurn(tool_calls=[second], opaque_state=[second]),
+        ModelTurn(tool_calls=[third], opaque_state=[third]),
+        ModelTurn(),
+    ]
+    case.service.run(
+        ModelTurn(tool_calls=[case.call()], opaque_state=[case.call()]),
+        rounds=0,
+        question="",
+        cancelled=False,
+        state=state,
+    )
+    case.assertTrue(state.budget_exhausted)
+    # The receipt keeps the tool result without the refreshed context.
+    case.assertNotIn("refreshed_athlete_context", state.command_receipts[0]["result"])
+    case.assertEqual(state.model_instructions, "synthetic-instructions")
+    # Every later request hands the turn's latest refreshed context to the
+    # conversation recovery, whichever round's steps it still holds.
+    case.assertEqual(
+        [
+            call.kwargs["refreshed_context"].startswith("<athlete_context>")
+            for call in case.response.respond.call_args_list
+        ],
+        [True, True, True],
+    )
+    return [
+        state.request,
+        *(call.args[0] for call in case.response.respond.call_args_list),
+    ]
 
 
 class StructuredToolRoundTests(unittest.TestCase):
@@ -421,14 +479,17 @@ class StructuredToolRoundTests(unittest.TestCase):
             for call in self.response.respond.call_args_list
         )
         self.assertEqual(last["tool_choice"], "auto")
-        self.assertNotIn("Tool step limit reached", last["instructions"])
         self.assertEqual(final["tool_choice"], "none")
-        self.assertTrue(final["instructions"].startswith("synthetic-instructions"))
-        self.assertIn("Tool step limit reached", final["instructions"])
+        # The instructions never change inside a turn; the notice is user text.
+        self.assertEqual(final["instructions"], last["instructions"])
+        self.assertNotIn("Tool step limit reached", final["instructions"])
         self.assertNotIn("previous_response_id", final)
-        # The call the model still wanted is answered as not executed.
-        self.assertEqual(final["input"][-1]["call_id"], "call-one")
-        self.assertFalse(json.loads(final["input"][-1]["output"])["executed"])
+        # The call the model still wanted is answered as not executed, then
+        # the notice follows the outputs.
+        self.assertEqual(final["input"][-2]["call_id"], "call-one")
+        self.assertFalse(json.loads(final["input"][-2]["output"])["executed"])
+        self.assertEqual(final["input"][-1]["role"], "user")
+        self.assertIn("Tool step limit reached", final["input"][-1]["content"])
         self.assertTrue(state.budget_exhausted)
         self.assertEqual(state.model_instructions, "synthetic-instructions")
         [record] = logs.records
@@ -459,19 +520,7 @@ class StructuredToolRoundTests(unittest.TestCase):
         execute.assert_not_called()
         self.response.respond.assert_not_called()
 
-    def test_refresh_rebuild_keeps_the_requeued_turn_notice(self) -> None:
-        state = self.state()
-        state.context = {"local_date": "2026-10-01"}
-        state.model_instructions = "synthetic" + RESUMED_STEPS_NOTICE
-        cast(Mock, self.service._training_context).build.return_value = "fresh context"
-
-        self.assertIn(RESUMED_STEPS_NOTICE, self.service._refreshed_instructions(state))
-        state.model_instructions = "synthetic"
-        self.assertNotIn(
-            RESUMED_STEPS_NOTICE, self.service._refreshed_instructions(state)
-        )
-
-    def test_refresh_rebuild_keeps_compact_profile(self) -> None:
+    def test_refresh_returns_compact_context_in_the_tool_result(self) -> None:
         state = self.state()
         state.message = "Was ist das Training fuer heute?"
         state.context = {"local_date": "2026-10-01"}
@@ -479,50 +528,134 @@ class StructuredToolRoundTests(unittest.TestCase):
             "ok": True,
             "synchronous_refresh": True,
         }
-        self.service._training_context.build.return_value = "fresh synthetic context"
-        self.service._execute_tool_call(
+        build = cast(Mock, self.service._training_context).build
+        build.return_value = FRESH_CONTEXT
+        _, _, result, _ = self.service._execute_tool_call(
             self.call(), state=state, question="", cancelled=False
         )
-        arguments = self.service._training_context.build.call_args.kwargs
+        arguments = build.call_args.kwargs
         self.assertEqual(arguments["selection"].name, "today_training")
         self.assertEqual(arguments["selection"].horizon_days, 3)
         self.assertEqual(arguments["local_date"], "2026-10-01")
-        self.assertIn("fresh synthetic context", state.model_instructions)
-        self.assertIn(
-            "Do not change data or pending requests.", state.model_instructions
+        # Only the athlete context, not the fixed coaching rules again.
+        self.assertEqual(
+            result["refreshed_athlete_context"],
+            "<athlete_context>\nUntrusted external data.\nfresh synthetic data\n"
+            "</athlete_context>\n",
         )
-        # Static rules first, per-turn context last (provider prompt caching).
-        self.assertTrue(state.model_instructions.startswith(INSTRUCTIONS))
-        self.assertLess(
-            state.model_instructions.index("fresh synthetic context"),
-            state.model_instructions.index("Do not change data or pending requests."),
-        )
+        self.assertEqual(state.model_instructions, "synthetic-instructions")
 
-    def test_refresh_rebuild_keeps_turn_attachment_notices(self) -> None:
-        state = self.state()
-        state.allow_mutations = True
-        state.model_instructions = compose_model_instructions(
-            "stale synthetic context", allow_mutations=True, attachment_summary=True
+    def test_claude_system_is_identical_through_refresh_and_budget(self) -> None:
+        requests = refresh_then_budget_turn(self)
+        payloads = [claude_messages_adapter.request_payload(r) for r in requests]
+        # The initial request and the three follow-ups.
+        self.assertEqual(len(payloads), 4)
+        self.assertEqual(
+            [p["system"][0]["text"] for p in payloads],
+            ["synthetic-instructions"] * 4,
         )
-        self.execution.execute.return_value = {
-            "ok": True,
-            "synchronous_refresh": True,
-        }
+        # The refreshed context arrives in the first tool result, escaped.
+        refreshed = payloads[1]["messages"][-1]["content"][0]["content"]
+        self.assertIn("refreshed_athlete_context", refreshed)
+        self.assertIn("fresh synthetic data", refreshed)
+        self.assertNotIn("<", refreshed)
+        # The same data again are not resent.
+        again = json.loads(payloads[2]["messages"][-1]["content"][0]["content"])
+        self.assertNotIn("refreshed_athlete_context", again)
+        self.assertTrue(again["refreshed_athlete_context_unchanged"])
+        # The budget notice follows the not-executed tool result as text.
+        final = payloads[-1]["messages"][-1]["content"]
+        self.assertEqual([block["type"] for block in final], ["tool_result", "text"])
+        self.assertIn("Tool step limit reached", final[-1]["text"])
+        self.assertEqual(requests[-1].tool_choice, "none")
+
+    def test_openai_instructions_are_identical_through_refresh_and_budget(
+        self,
+    ) -> None:
+        requests = refresh_then_budget_turn(self)
+        payloads = [request_payload(r) for r in requests]
+        self.assertEqual(len(payloads), 4)
+        self.assertEqual(
+            [p["instructions"] for p in payloads], ["synthetic-instructions"] * 4
+        )
+        refreshed = payloads[1]["input"][-1]["output"]
+        self.assertIn("refreshed_athlete_context", refreshed)
+        self.assertNotIn("<", refreshed)
+        final = payloads[-1]["input"]
+        self.assertEqual(final[-2]["type"], "function_call_output")
+        self.assertEqual(final[-1]["role"], "user")
+        self.assertIn("Tool step limit reached", final[-1]["content"])
+
+    def test_stored_openai_conversation_gets_the_notice_in_instructions(
+        self,
+    ) -> None:
+        state = self.state()
+        state.request = ModelRequest(
+            model="synthetic-model",
+            instructions="synthetic-instructions",
+            input="text",
+            conversation_id="conv-1",
+        )
+        self.response.respond.side_effect = [
+            ModelTurn(tool_calls=[self.call()], opaque_state=[self.call()]),
+            ModelTurn(),
+        ]
         with patch.object(
-            self.service._training_context,
-            "build",
-            return_value="fresh synthetic context",
+            self.service,
+            "_execute_tool_call",
+            return_value=("read_profile", "call-one", {"ok": True}, {}),
         ):
-            self.service._execute_tool_call(
+            self.service.run(
+                ModelTurn(tool_calls=[self.call()]),
+                rounds=0,
+                question="",
+                cancelled=False,
+                state=state,
+            )
+        last, final = (
+            request_payload(call.args[0])
+            for call in self.response.respond.call_args_list
+        )
+        # The conversation stores every input item into later turns: the
+        # notice goes to the (unstored) instructions of that request only.
+        self.assertEqual(last["instructions"], "synthetic-instructions")
+        self.assertEqual(
+            [item["type"] for item in final["input"]], ["function_call_output"]
+        )
+        self.assertTrue(final["instructions"].startswith("synthetic-instructions\n\n"))
+        self.assertIn("Tool step limit reached", final["instructions"])
+
+    def test_only_completed_refresh_jobs_bring_fresh_context(self) -> None:
+        cases = (
+            ({"ok": True, "job": {"type": "refresh", "status": "completed"}}, True),
+            ({"ok": True, "job": {"type": "refresh", "status": "queued"}}, False),
+            ({"ok": True, "job": {"type": "push", "status": "completed"}}, False),
+            ({"ok": False, "job": {"type": "refresh", "status": "completed"}}, False),
+        )
+        cast(Mock, self.service._training_context).build.return_value = FRESH_CONTEXT
+        for result, fresh in cases:
+            with self.subTest(result=result):
+                state = self.state()
+                self.execution.execute.return_value = result
+                call = {**self.call(), "name": "get_sync_job"}
+                state.tools = [{"name": "get_sync_job"}]
+                _, _, output, _ = self.service._execute_tool_call(
+                    call, state=state, question="", cancelled=False
+                )
+                self.assertEqual("refreshed_athlete_context" in output, fresh)
+
+    def test_failed_context_build_keeps_the_successful_refresh(self) -> None:
+        state = self.state()
+        self.execution.execute.return_value = {"ok": True, "synchronous_refresh": True}
+        build = cast(Mock, self.service._training_context).build
+        build.side_effect = ValueError("synthetic")
+        with self.assertLogs("intervals_coach", level="WARNING"):
+            _, _, result, _ = self.service._execute_tool_call(
                 self.call(), state=state, question="", cancelled=False
             )
-        self.assertEqual(
-            state.model_instructions,
-            compose_model_instructions(
-                "fresh synthetic context", allow_mutations=True, attachment_summary=True
-            ),
-        )
-        self.assertIn("untrusted evidence", state.model_instructions)
+        self.assertTrue(result["ok"])
+        self.assertTrue(result["refreshed_athlete_context_unavailable"])
+        self.failure.project.assert_not_called()
 
     def test_refresh_rebuild_preserves_attachment_context(self) -> None:
         state = self.state()

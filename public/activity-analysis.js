@@ -224,7 +224,8 @@
     return activity?.sport === "strength" ? times.reverse() : times;
   }
 
-  function overview(activity, metrics) {
+  // Running values move to their own section when it is shown (#2829).
+  function overview(activity, metrics, dynamicsShown = false) {
     const speed = speedChannel(activity);
     const averageSpeed = speedText(speed, metrics.avg_speed_mps);
     const cadence = cadenceChannel(activity, metrics);
@@ -237,7 +238,7 @@
       ["Ø Leistung", measure(metrics.avg_power, "W")],
       ["Normalized Power", measure(metrics.normalized_power, "W")],
       ["Max. Leistung", measure(metrics.max_power_w, "W")],
-      [`Ø ${cadence.label}`, measure(cadence.average, cadence.unit)],
+      [`Ø ${cadence.label}`, dynamicsShown ? null : measure(cadence.average, cadence.unit)],
       ["Anstieg", measure(metrics.elevation_gain_m, "m")],
       ["Kalorien", measure(metrics.energy_kcal ?? metrics.calories_kcal, "kcal")],
       // Local session metrics (card M8): descriptive values, no verdict.
@@ -248,7 +249,7 @@
       ["Trainingsbelastung", measure(metrics.load)],
       // Intensity arrives as a fraction or in percent; the calendar helper normalizes both.
       ["Intensität", calendarIntensityLabel(metrics.intensity)],
-      ...ActivityDetails.runningDynamics(metrics),
+      ...(dynamicsShown ? [] : ActivityDetails.runningDynamics(metrics)),
     ].filter(([, value]) => value);
     if (!values.length) return null;
     return h("dl", "activity-analysis-stats", values.map(([label, value]) => h("div", null, h("dt", null, label), h("dd", null, value))));
@@ -372,11 +373,9 @@
     const activity = { sport: session.sport, environment: session.environment };
     const metrics = payload ? ActivityDetails.metricValues(payload) : rowMetrics(summary);
     if (payload?.metrics?.efficiency_factor?.unit) metrics.efficiency_factor_unit = payload.metrics.efficiency_factor.unit;
-    const stats = overview(activity, metrics);
-    if (stats) panel.append(stats);
+    const dynamics = runningDynamicsSection(activity, metrics, payload && { panel, token, activityId: payload.session?.activity_id });
     const planned = payload?.planned_adherence;
-    const steps = adherence(planned);
-    if (steps) panel.append(steps);
+    panel.append(...[overview(activity, metrics, Boolean(dynamics)), adherence(planned), dynamics, providerEffect(payload?.training_effect)].filter(Boolean));
     const driftLines = ActivityDetails.formDriftLines(payload?.analysis?.form_drift);
     if (driftLines.length) panel.append(h("div", null, driftLines.map((line) => h("p", null, line))));
     // The running dynamics share the time axis of the other channels.
@@ -390,6 +389,125 @@
     if (streams && !charts.length) panel.append(h("p", "muted", "Keine darstellbaren Messreihen"));
     panel.append(...ActivityDetails.providerNotes(payload));
     appendRefresh(panel, summary, payload, token);
+  }
+
+  // The provider's own session values (#2831): shown as reported and labelled with their source, never derived.
+  const EFFECT_BENEFITS = {
+    RECOVERY: "Erholung", AEROBIC_BASE: "Basis", LOW_AEROBIC: "Aerob niedrig", TEMPO: "Tempo", THRESHOLD: "Schwelle",
+    LACTATE_THRESHOLD: "Laktatschwelle", VO2MAX: "VO2max", VO2_MAX: "VO2max", HIGH_AEROBIC: "Aerob hoch",
+    ANAEROBIC_CAPACITY: "Anaerobe Kapazität", SPEED: "Sprint", ANAEROBIC: "Anaerob", NO_BENEFIT: "Kein Nutzen",
+  };
+  // Training effect runs from 0 to 5 and always shows one decimal, as Garmin shows it.
+  const EFFECT_SCALE = 5;
+  const effectText = (value) => AppFormat.number(value, { digits: 1, minDigits: 1 });
+  // An unknown category reads as words, not as an upper-case code.
+  const effectBenefit = (code) => EFFECT_BENEFITS[code] || String(code).toLowerCase().replaceAll("_", " ").replace(/^./, (letter) => letter.toUpperCase());
+
+  // `effect` (0 to 5) adds a bar on the training-effect scale.
+  function effectTile(label, text, effect = null) {
+    const tile = h("div", null, h("dt", null, label), h("dd", null, text));
+    if (finite(effect)) {
+      const bar = h("span", { className: "activity-effect-bar", "aria-hidden": "true" });
+      bar.style.setProperty("--effect-share", `${Math.round(Math.min(1, Math.max(0, effect / EFFECT_SCALE)) * 100)}%`);
+      tile.append(bar);
+    }
+    return tile;
+  }
+
+  function providerEffect(effect) {
+    if (!effect) return null;
+    const tiles = [
+      finite(effect.aerobic_training_effect) && effectTile("Trainingseffekt aerob", effectText(effect.aerobic_training_effect), effect.aerobic_training_effect),
+      finite(effect.anaerobic_training_effect) && effectTile("Trainingseffekt anaerob", effectText(effect.anaerobic_training_effect), effect.anaerobic_training_effect),
+      effect.training_effect_label && effectTile("Hauptnutzen", effectBenefit(effect.training_effect_label)),
+      finite(effect.training_effect_load) && effectTile("Belastung", numberText(effect.training_effect_load)),
+    ].filter(Boolean);
+    if (!tiles.length) return null;
+    const source = String(effect.source || "");
+    // Titled after the provider, whatever the casing of its label ("garmin" without a label).
+    const provider = source.split(" ")[0];
+    const title = provider ? `${provider[0].toUpperCase()}${provider.slice(1)}-Werte` : "Werte des Anbieters";
+    return h("section", "activity-effect", h("div", "activity-effect-header", h("h4", null, title), source && h("span", "activity-effect-source", source)),
+      h("dl", "activity-analysis-stats", tiles));
+  }
+
+  // Running dynamics against the athlete's own runs at the same pace (#2829): each value with its
+  // verdict and Garmin's colour band, then a table per pace band of the run.
+  const DYNAMICS_VERDICTS = { better: "besser als sonst", usual: "üblich", worse: "schlechter als sonst", higher: "länger als sonst", lower: "kürzer als sonst", too_few: "zu wenig Vergleich" };
+  const DYNAMICS_SHORT = { better: "besser", usual: "üblich", worse: "schlechter", higher: "länger", lower: "kürzer" };
+  const REFERENCE_COLOURS = { purple: "lila", blue: "blau", green: "grün", orange: "orange", red: "rot" };
+  const DYNAMICS_TABLE = [["ground_contact_time_ms", "Kontakt", 0], ["cadence_spm", "Frequenz", 0], ["vertical_oscillation_cm", "Vertikal", 1]];
+  const DYNAMICS_RETRY_MS = 10_000;
+  const DYNAMICS_RETRIES = 6;
+
+  function dynamicsValues(activity, metrics) {
+    const cadence = cadenceChannel(activity, metrics);
+    const values = ActivityDetails.RUNNING_DYNAMICS.filter(([key]) => finite(metrics[key])).map(([key, label, unit, digits]) => [key, label, `${numberText(metrics[key], digits)} ${unit}`]);
+    if (finite(cadence.average)) values.splice(1, 0, ["cadence_spm", cadence.label, `${numberText(cadence.average)} ${cadence.unit}`]);
+    return values;
+  }
+
+  // `load` (the loaded document's panel, token and session id) starts the rating read.
+  function runningDynamicsSection(activity, metrics, load) {
+    if (sportKind(activity) !== "run") return null;
+    const values = dynamicsValues(activity, metrics);
+    if (!values.some(([key]) => key !== "cadence_spm")) return null;
+    const tiles = h("dl", "activity-analysis-stats activity-dynamics-values");
+    for (const [key, label, text] of values) tiles.append(h("div", { className: "activity-dynamics-value", dataset: { metric: key } }, h("dt", null, label), h("dd", null, text), h("span", "activity-dynamics-rating")));
+    const section = h("section", "activity-dynamics", h("h4", null, "Laufdynamik"), tiles);
+    if (load?.activityId) void loadDynamicsRating(load.panel, section, String(load.activityId), load.token);
+    return section;
+  }
+
+  function dynamicsChip(verdict, short = false) {
+    const text = (short ? DYNAMICS_SHORT : DYNAMICS_VERDICTS)[verdict];
+    return text ? h("span", { className: "activity-dynamics-chip", dataset: { verdict } }, text) : null;
+  }
+
+  function dynamicsBands(bands) {
+    const rows = bands.map((band) => [
+      h("th", { scope: "row" }, `${clock(band.band_s_per_km)}–${clock(band.band_s_per_km + 15)}`),
+      `${Math.round(band.seconds / 60)}′`,
+      ...DYNAMICS_TABLE.map(([key, , digits]) => {
+        const item = band.metrics?.[key];
+        return item ? h("span", null, `${numberText(item.value, digits)} `, dynamicsChip(item.verdict, true)) : "—";
+      }),
+    ]);
+    const wrap = makeScrollRegionFocusable(h("div", "analysis-chart-table"), "Laufdynamik je Tempo-Bereich");
+    wrap.append(table(["Tempo", "Zeit", ...DYNAMICS_TABLE.map(([, label]) => label)], rows));
+    return h("section", "activity-dynamics-bands", h("h4", null, "Je Tempo-Bereich"), wrap);
+  }
+
+  function renderDynamicsRating(section, rating) {
+    for (const tile of section.querySelectorAll(".activity-dynamics-value")) {
+      const item = rating.metrics?.[tile.dataset.metric];
+      const slot = tile.querySelector(".activity-dynamics-rating");
+      slot.replaceChildren(...[
+        item && dynamicsChip(item.verdict),
+        item?.reference_band && h("span", { className: "activity-dynamics-reference", dataset: { band: item.reference_band }, title: `${rating.garmin_source}: ${REFERENCE_COLOURS[item.reference_band]}` }, "Garmin-Einordnung"),
+      ].filter(Boolean));
+    }
+    section.querySelector(".activity-dynamics-bands")?.remove();
+    if (rating.bands?.length) section.append(dynamicsBands(rating.bands));
+  }
+
+  // The rating reads every stored run in the server's background build; a pending read asks again.
+  async function loadDynamicsRating(panel, section, activityId, token, attempt = 0) {
+    const current = () => panelLoads.get(panel) === token && section.isConnected;
+    let result;
+    try {
+      result = await api(`/api/analysis/running-dynamics?activity_id=${encodeURIComponent(activityId)}`, { timeoutMs: DATA_LOAD_TIMEOUT_MS });
+    } catch {
+      return;
+    }
+    if (!current()) return;
+    // Pending, or an older build that does not hold the run yet: ask again.
+    const waiting = result?.status === "pending" || (result?.status === "ok" && (result.stale || !result.session));
+    if (waiting && attempt < DYNAMICS_RETRIES) {
+      setTimeout(() => { if (current()) void loadDynamicsRating(panel, section, activityId, token, attempt + 1); }, DYNAMICS_RETRY_MS);
+      return;
+    }
+    if (result?.status === "ok" && result.session?.status === "ok") renderDynamicsRating(section, result.session);
   }
 
   // The newest activities are preloaded after each provider refresh; older ones load through these actions.

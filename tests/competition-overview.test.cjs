@@ -37,7 +37,7 @@ test("race results show time, distance, pace or power and their source", () => {
   assert.equal(context.competitionResult({ sport: "run", source: "Garmin Connect" }), null);
 });
 
-const rendered = loadPublicScript("plan-views.js", { AppFormat: require("../public/format.js"), document: fakeDocument() });
+const rendered = loadPublicScript("plan-views.js", { AppFormat: require("../public/format.js"), document: fakeDocument(), URLSearchParams });
 const race = { event_date: "2026-11-28", starts_at_local: "2026-11-28T09:00:00" };
 
 test("race plan pacing shows sections with pace or power and its rule", () => {
@@ -75,4 +75,26 @@ test("race plan carbohydrates name the days, the meal window and the rate", () =
   assert.match(rendered.racePlanMeal("2026-11-28", "2026-11-28T02:00:00", [4, 1]), /^Fr\.? 22:00 – Sa\.? 01:00$/);
   assert.equal(rendered.racePlanDuring({ step: "mouth_rinse" }), "kleine Mengen oder Mund spülen");
   assert.equal(rendered.racePlanDays("kein Datum", 1), "1 Tag davor");
+});
+
+test("long planned units ask for fuelling and show drinking and carbohydrates with their basis", () => {
+  assert.equal(rendered.plannedFuellingQuery({ sport: "ride", environment: "outdoor", planned_duration_s: 9900 }, "2026-11-20"), "sport=ride&environment=outdoor&date=2026-11-20&duration_s=9900");
+  // The card's duration in minutes leads, as for the shown duration.
+  assert.match(rendered.plannedFuellingQuery({ sport: "run", duration_minutes: 150, planned_duration_s: 1800 }, "2026-11-20"), /duration_s=9000$/);
+  for (const entry of [{ sport: "ride", planned_duration_s: 3599 }, { sport: "swim", planned_duration_s: 7200 }, { sport: "run" }]) {
+    assert.equal(rendered.plannedFuellingQuery(entry, "2026-11-20"), null);
+  }
+  const text = rendered.plannedFuellingBlock({
+    sweat_rate: { l_per_h: 0.9, sessions: 6, similar: true, temperature_c: [13, 23] },
+    drinking: { l_per_h: 0.39, total_l: 1.1, max_l_per_h: 0.9, sodium_g_per_l: [0.5, 0.7] },
+    carbohydrate_source: "Thomas, Erdman und Burke 2016",
+    carbohydrates: { step: "high", low_g: 60, high_g: 120, established_max_g: 90 },
+  }).map(textOf).join("|");
+  assert.match(text, /Schweißrate 0,9 l\/h · 6 Einheiten bei 13–23 °C/);
+  assert.match(text, /Pro Stunde0,39 l/);
+  assert.match(text, /Gesamt1,1 l.*Natrium0,5–0,7 g\/l/);
+  assert.match(text, /Thomas, Erdman und Burke 2016.*Pro Stunde60–120 g\/h/);
+  const generic = rendered.plannedFuellingBlock({ sweat_rate: null, drinking: { generic_l_per_h: [0.4, 0.8] }, carbohydrates: { step: "moderate", low_g: 30, high_g: 60 } }).map(textOf).join("|");
+  assert.match(generic, /Startwert ohne eigene Daten.*Pro Stunde0,4–0,8 l/);
+  assert.equal(rendered.plannedFuellingRows({ max_l_per_h: 1.2 }).filter(Boolean).map((row) => row.join(":")).join("|"), "Pro Stunde:bis 1,2 l");
 });

@@ -57,6 +57,21 @@ def stored_activity_weather(
     return result
 
 
+def session_temperatures(db: Any, session_ids: Iterable[str]) -> dict[str, float]:
+    """The stored air temperature of each session that has one (#2804)."""
+    metric = MetricKind.ACTIVITY_WEATHER_TEMPERATURE.value
+    result: dict[str, float] = {}
+    for session_id, rows in stored_activity_weather(db, session_ids).items():
+        value = rows.get(metric, {}).get("value")
+        if (
+            isinstance(value, (int, float))
+            and not isinstance(value, bool)
+            and math.isfinite(value)
+        ):
+            result[session_id] = float(value)
+    return result
+
+
 def weather_block(rows: Mapping[str, Mapping[str, Any]]) -> dict[str, Any] | None:
     """The compact block of one session's rows, or None without a stored value.
 

@@ -184,6 +184,11 @@ Each kind has exactly one canonical unit (`MetricKind.unit`) and a plausibility 
 | `race_prediction_10k` | `s` | 60 to 100,000 | Garmin predicted 10 km time. | `garmin_health_mapping.py` | read |
 | `race_prediction_half` | `s` | 60 to 100,000 | Garmin predicted half-marathon time. | `garmin_health_mapping.py` | read |
 | `race_prediction_full` | `s` | 60 to 100,000 | Garmin predicted marathon time. | `garmin_health_mapping.py` | read |
+| `personal_record_1k` | `s` | 60 to 100,000 | Garmin personal record over 1 km, dated by the record's own day. | `garmin_health_mapping.py` | read |
+| `personal_record_5k` | `s` | 60 to 100,000 | Garmin personal record over 5 km. | `garmin_health_mapping.py` | read |
+| `personal_record_10k` | `s` | 60 to 100,000 | Garmin personal record over 10 km. | `garmin_health_mapping.py` | read |
+| `personal_record_half` | `s` | 60 to 100,000 | Garmin personal record over the half marathon. | `garmin_health_mapping.py` | read |
+| `personal_record_full` | `s` | 60 to 100,000 | Garmin personal record over the marathon. | `garmin_health_mapping.py` | read |
 | `endurance_score` | `score` | 0 to 20,000 | Garmin endurance score. | `garmin_health_mapping.py` | read |
 | `daily_energy_resting` | `kcal` | 0 to 20,000 | Resting energy expenditure of the day. | `garmin_health_mapping.py` | read |
 | `body_battery_charged` | `score` | 0 to 500 | Body Battery charged over the day (total). | `garmin_health_mapping.py` | export only: no reader |
@@ -601,7 +606,7 @@ General rules: first alias that carries a value wins (`_present`: not `None`, no
 | `elevation_high_m`, `elevation_low_m` | `maxElevation`, `minElevation` | m, -500..9000 | `_ordered_pair`: a minimum above its maximum drops both with one issue on `minElevation`. |
 | `elevation_loss_m` | `elevationLoss` | m | |
 | `min_temp_c`, `max_temp_c` | `minTemperature`, `maxTemperature` | deg C, -60..70 | Same pair rule. |
-| `water_estimated_ml` | `waterEstimated` | ml, Garmin's sweat-loss estimate | |
+| `water_estimated_ml` | `waterEstimated` | ml, Garmin's sweat-loss estimate | Read by the fuelling advice of long planned units (#2804). |
 | `lap_count` | `lapCount` | count | |
 | `ground_contact_time_ms` | `avgGroundContactTime` | ms (observed 264.5) | Running dynamics; `_running_dynamics`. Garmin writes 0 for a value it did not measure (observed: `avgVerticalOscillation` 0 beside a vertical ratio of 8.04), so 0 is no value and no issue. Absence is normal. |
 | `ground_contact_balance_pct` | `avgGroundContactBalance` -> `avgGroundContactBalanceLeft` | percent on the left foot, 0..100 (observed 49.63) | Top-level key observed; the `Left` spelling is the lap and `summaryDTO` name. |
@@ -793,7 +798,7 @@ Tie-break note: the summary and the `activity_detail.v1` document's `session` bl
 | qualifiers | `terrain` (left out when `unknown`), `assist` (present only as `electric`) | measured | `session_terrain`, `session_assist` |
 | local time | `started_at_local`, `local_offset_minutes` | measured | offset = first record with `local_offset_minutes`; `started_at_local` = primary `started_at` read on that offset, else on the athlete zone (`session_local_start`, `wall_time`), naive ISO to the second; `local_offset_minutes` present only when some record has one |
 | measured values | `moving_duration_s`, `elapsed_duration_s`, `distance_m`, `elevation_gain_m`, `elevation_loss_m`, `avg_hr`, `max_hr`, `avg_power`, `avg_cadence`, `avg_speed_mps`, `max_speed_mps`, `avg_temp_c`, `min_temp_c`, `max_temp_c`, `device_name`, `energy_kj`, `energy_kcal` | measured (`_MEASURED`) | same name |
-| derived values | `normalized_power`, `weighted_avg_speed_mps`, `pace_mps`, `provider_intensity` (from `intensity`), `grade_adjusted_speed_mps`, `ftp_w`, `vo2max`, `planned_event_id` | derived (`_DERIVED`) | same name except `provider_intensity` |
+| derived values | `normalized_power`, `weighted_avg_speed_mps`, `pace_mps`, `provider_intensity` (from `intensity`), `grade_adjusted_speed_mps`, `ftp_w`, `vo2max`, `planned_event_id`, `water_estimated_ml` | derived (`_DERIVED`) | same name except `provider_intensity` |
 | provider zones | `power_zone_times`, `heart_rate_zone_times`, `pace_zone_times` | derived order over records whose provider is not Intervals.icu (#1743) | `power_zone_times_s`, `hr_zone_times_s`, `pace_zone_times_s`, as `[{"id": "Z1", "secs": ...}]` |
 | ratings | `rpe`, `feel` | rating | `rpe`, `feel` |
 | provider load | `provider_training_load`, `provider_load_model` | first derived record with `load` not `None` and `load_model` in `TSS_LIKE_LOAD_MODELS` (`intervals_training_load`, `tss`); a Garmin load is never TSS-like | `load`, `load_model` |
@@ -1587,7 +1592,7 @@ Conventions used in the tables of this part:
 
 Status: Live. `map_garmin_health` is called per stored element by `canonical_plans.py` (ingest and re-projection,
 one-element list per list section, the record itself for single-record sections) and by `snapshot_projection.py`.
-Mapper version: **23** (`MAPPER_VERSION`). Also carries the versions of `garmin_training_mapping.py` (the six
+Mapper version: **24** (`MAPPER_VERSION`). Also carries the versions of `garmin_training_mapping.py` (the six
 training sections and the endurance `groupMap`, see "Training sections" below), which is replayed by this module.
 Inputs: the Garmin snapshot as a mapping section name → record or list of records (`GARMIN_HEALTH_SECTION_NAMES`);
 `zone` = athlete zone (`ZoneInfo`), `retrieved_at` = fetch time of that section (`garmin_section_retrieved_at`: the
@@ -1629,7 +1634,7 @@ Garmin's own calendar day, never converted by the athlete zone. Undated records 
 Exceptions: Body Battery samples are dated by their own instant in the athlete zone (`local_date(observed_at, zone)`);
 weight epoch milliseconds are read as a UTC date (`_epoch_day`).
 
-Section emission order (`_SECTION_ORDER`, exported as `GARMIN_HEALTH_SECTION_NAMES`; `map_sections` and the canonical plan visit sections in it): `sleep`, `hrv`, `resting_hr`, `readiness`, `max_metrics`, `running_threshold`, `cycling_ftp`, `cycling_ftp_history`, `heart_rate_zones`, `weight` (weight and body fat), `daily_stats`, `race_predictions`, `endurance_score`, `body_battery`, the `TRAINING_SECTIONS` (`daily_training_status`, `training_load_balance`, `training_status`, `weekly_training_status`, `running_tolerance`, `training_readiness_history`), and last `performance_history`. Ingest keeps the first value of a natural key, so when two sections emit the same key (for example `readiness` and `training_readiness_history` on one day) the earlier section wins; the order is part of the mapping.
+Section emission order (`_SECTION_ORDER`, exported as `GARMIN_HEALTH_SECTION_NAMES`; `map_sections` and the canonical plan visit sections in it): `sleep`, `hrv`, `resting_hr`, `readiness`, `max_metrics`, `running_threshold`, `cycling_ftp`, `cycling_ftp_history`, `heart_rate_zones`, `weight` (weight and body fat), `daily_stats`, `race_predictions`, `personal_records`, `endurance_score`, `body_battery`, the `TRAINING_SECTIONS` (`daily_training_status`, `training_load_balance`, `training_status`, `weekly_training_status`, `running_tolerance`, `training_readiness_history`), and last `performance_history`. Ingest keeps the first value of a natural key, so when two sections emit the same key (for example `readiness` and `training_readiness_history` on one day) the earlier section wins; the order is part of the mapping. Across records the store applies one rule (`canonical_plans.GARMIN_SECTION_RANKS`, `canonical_store.upsert_observation`), in the live ingest and the re-projection alike: the fill-only history loses to any other section; otherwise the later retrieval wins, then the earlier section (#2782).
 
 #### Section index (collector call → section → mapper entry)
 
@@ -1648,6 +1653,7 @@ Section emission order (`_SECTION_ORDER`, exported as `GARMIN_HEALTH_SECTION_NAM
 | `daily_stats` | `get_daily_summaries(start, end)` (Personal `/usersummary-service/v2/dailysummaries`), per-day `get_user_summary(day)` fallback and `_with_resting_energy` | `_GROUPED_SECTIONS["daily_stats"]` after `flatten_daily_summary` | observed `garmin_personal_dailysummaries` |
 | `body_battery` | `get_body_battery(start, end)` (Personal `/wellness-service/wellness/bodyBattery/reports/daily`), read by the morning flow (`garmin_morning.py`), by the first refresh of each local day over the last 7 days (`_collect_body_battery`) and by the wellness history backfill in ranges of at most 31 days | `_GROUPED_SECTIONS["body_battery"]` + `_map_body_battery_levels` | documented, fixture `body_battery` |
 | `race_predictions` | SDK `get_race_predictions()` | `_map_race_predictions` | documented, fixture `race_predictions` |
+| `personal_records` | SDK `get_personal_record()` | `_map_personal_records` | documented (garminconnect 0.3.20 `get_personal_record` type ids) |
 | `endurance_score` | SDK `get_endurance_score(start, end, aggregation="daily")` | `_GROUPED_SECTIONS["endurance_score"]` | documented, fixture `endurance_score` |
 | `performance_history` | none: written by `append_garmin_performance_history` (90 days of `{date, metrics}`) | `_map_performance_history` | documented |
 | training sections | SDK calls named in "Training sections" | `training_values`, `endurance_group_values` | documented |
@@ -1712,7 +1718,7 @@ list only) and which the mapper alone reports as `MISSING` `calendarDate`. The P
 
 | Canonical field | Provider key(s) | Unit / conversion | Notes |
 |---|---|---|---|
-| `readiness` | `score` → `trainingReadinessScore` → `overallReadinessScore` → `readinessScore` → `trainingReadiness` (`GARMIN_READINESS_ALIASES`, the one order of every readiness reader) | score 0 to 100, 0 rejected | Src `provider_reported`. Documented, fixture `readiness`. When two spellings are present, the earlier one wins (`score` over `trainingReadinessScore`). Garmin lists several readings per day; `morning_readiness` keeps one per `calendarDate` (first drop `inputContext` in `AFTER_POST_EXERCISE_RESET`, `UPDATE_REALTIME_VARIABLES`; then scored before unscored, then `inputContext` = `AFTER_WAKEUP_RESET`, then earliest `timestampLocal`, then earliest `timestamp`). |
+| `readiness` | `score` → `trainingReadinessScore` → `overallReadinessScore` → `readinessScore` → `trainingReadiness` (`GARMIN_READINESS_ALIASES`, the one order of every readiness reader) | score 0 to 100, 0 rejected | Src `provider_reported`. Documented, fixture `readiness`. When two spellings are present, the earlier one wins (`score` over `trainingReadinessScore`). Garmin lists several readings per day; `morning_readiness` keeps one per `calendarDate` (first drop `inputContext` in `AFTER_POST_EXERCISE_RESET`, `UPDATE_REALTIME_VARIABLES`; then scored before unscored, then `inputContext` = `AFTER_WAKEUP_RESET`, then earliest `timestampLocal`, then earliest `timestamp`). Each reading is stored as its own element, so the canonical plan applies this choice across the day's elements, live and in the re-projection: only the chosen element emits the day's READINESS (`canonical_plans.garmin_morning_keys`, also for `training_readiness_history`, #2844). |
 
 The categorical `level` of the same reading becomes a `readiness_level` code (see `CategoricalObservation`).
 
@@ -1754,7 +1760,7 @@ requests the latest value).
 
 #### Heart-rate zones (`heart_rate_zones`)
 
-Two outputs: the `max_hr` observations below and, from mapper version 20, the watch zones as `ZoneConfiguration` records (`garmin_zone_mapping.py`, one per sport set, see "Canonical record `ZoneConfiguration`"). The floors `zone1Floor` .. `zone5Floor` are absolute bpm and are used as reported, for every `trainingMethod` (percent of max HR, heart-rate reserve, percent of lactate threshold HR, custom). A set with a missing, non-numeric or non-ascending floor, a missing `maxHeartRateUsed` or an unknown sport is left out. The section accumulates (`MERGE_SECTIONS`). A set is valid from the day it was first fetched: the sync stamps a set that differs from the newest stored set of its sport with `id` (`<day>-<sport>`) and `fetchedOn` (`_stamp_changed_zone_sets`), stores it as a new element and leaves the earlier ones; an unchanged set is not stored again, a set that returns to an earlier value counts as changed. So the zones valid on a session's day apply to it. Sets stored before the stamping are dated by their retrieval day. `garmin_profile_max_hr` reads the newest set per sport category.
+Two outputs: the `max_hr` observations below and, from mapper version 20, the watch zones as `ZoneConfiguration` records (`garmin_zone_mapping.py`, one per sport set, see "Canonical record `ZoneConfiguration`"). The floors `zone1Floor` .. `zone5Floor` are absolute bpm and are used as reported, for every `trainingMethod` (percent of max HR, heart-rate reserve, percent of lactate threshold HR, custom). A set with a missing, non-numeric or non-ascending floor, a missing `maxHeartRateUsed` or an unknown sport is left out. The section accumulates (`MERGE_SECTIONS`). A set is valid from the day it was first fetched: the sync stamps a set that differs from the newest stored set of its sport with `id` (`<day>-<sport>`) and `fetchedOn` (`_stamp_changed_zone_sets`), stores it as a new element and leaves the earlier ones; an unchanged set is not stored again, a set that returns to an earlier value counts as changed. So the zones valid on a session's day apply to it. Sets stored before the stamping are dated by their retrieval day. Each stored set is mapped on its own fetch day, so the profile maximum heart rate (`garmin_canonical._profile_max_hr`) follows the newest set per sport category.
 
 Day = `calendarDate` else sync day. The whole record is walked (`_heart_rate_nodes`: the record, then every nested
 mapping, list items capped at 100); every node yields at most one value.
@@ -1823,6 +1829,22 @@ digits only, order matters): contains `halfmarathon` or `half` → half; `marath
 | `race_prediction_full` | key named for marathon, e.g. fixture `marathon` | same | |
 
 The module docstring says deeper nesting is not searched; the code searches nested containers to depth 8.
+
+#### Personal records (`personal_records`)
+
+One record per running type, read by the `typeId` that garminconnect 0.3.20 documents in `get_personal_record`. Day =
+`prStartTimeLocalFormatted`, else the `prStartTimeLocal` epoch milliseconds; a record without either is MISSING, an
+unreadable one INVALID_TYPE. A record without a running `activityType` (another sport, or none for steps and goals) is
+skipped; running type 2 (mile) and 7 (longest run) are skipped; another or non-integer running type is UNKNOWN_VALUE.
+Source record id `personal_records:<day>:<kind>`.
+
+| Canonical field | Provider key(s) | Unit / conversion | Notes |
+|---|---|---|---|
+| `personal_record_1k` | `typeId` 1, `value` | seconds, rounded to 2 decimals; bounds 60 to 100000 | Src `provider_reported`; sport `run`. Documented. |
+| `personal_record_5k` | `typeId` 3, `value` | same | |
+| `personal_record_10k` | `typeId` 4, `value` | same | |
+| `personal_record_half` | `typeId` 5, `value` | same | |
+| `personal_record_full` | `typeId` 6, `value` | same | |
 
 #### Endurance score (`endurance_score`)
 
@@ -2357,7 +2379,7 @@ Not mapped: provider TSS/intensity/load values (`LoadModel` provider loads are o
 ### `session_metrics.py`
 
 Status: Live. `SessionMetricsStage` (`backend/sync/session_metrics.py`) is a follow-up stage of the canonical backfill worker, after `local_load`; the arithmetic is in `backend/performance/session_metrics.py`.
-Method: `METHOD_ID` = `local-session-metrics`, `METHOD_VERSION` = **4**, `CARD` = `M8` (card `docs/performance-methods/m8-local-session-metrics.md`). Decoupling uses `session_analysis.METHOD` = `time-weighted-session-analysis-v2`, which is part of the fingerprint.
+Method: `METHOD_ID` = `local-session-metrics`, `METHOD_VERSION` = **5**, `CARD` = `M8` (card `docs/performance-methods/m8-local-session-metrics.md`). Decoupling uses `session_analysis.METHOD` = `time-weighted-session-analysis-v3`, which is part of the fingerprint.
 Inputs: sessions with sport `ride` or `run` only (`METRIC_SPORTS`, `wants_metrics`); the summary values `avg_hr`, `avg_power`, `normalized_power`, `grade_adjusted_speed_mps`, `avg_speed_mps`, `energy_kj`, `moving_duration_s`, `elapsed_duration_s`; and, where stored, the merged full-resolution stream sets (`time`, `watts`, `heartrate`, speed, grade/altitude) of the session's Garmin, Wahoo and local records. Intervals.icu streams and downsampled sets are never read; missing streams are not fetched here. Provider values of these metrics (Intervals.icu `icu_efficiency_factor`, `icu_variability_index`, `decoupling`, `icu_joules`) are never used.
 
 | Canonical field | Derivation / formula | Unit | Notes |
@@ -2365,10 +2387,10 @@ Inputs: sessions with sport `ride` or `run` only (`METRIC_SPORTS`, `wants_metric
 | `efficiency_factor` | needs `avg_hr` in 30..240 (`HEART_RATE_RANGE`). Ride: `normalized_power / avg_hr` (needs `normalized_power` > 0). Run: `speed * 60 / avg_hr` with `speed` = `grade_adjusted_speed_mps`, else `avg_speed_mps`, > 0 | ride W/bpm, run (m/min)/bpm; `Observation` unit `ratio`; bounds 0..20 | `details.basis` `normalized_power` (`EF_POWER_BASIS`), `grade_adjusted_speed` (`EF_GAP_BASIS`) or `average_speed` (`EF_SPEED_BASIS`); `details.unit` names the unit. Uses the summary NP, not recomputed from streams. |
 | `variability_index` | `normalized_power / avg_power`, `ride` only, both > 0; dropped when outside 0.5..5.0 (`VARIABILITY_BOUNDS`) | `ratio`; bounds 0..10 | `details` empty. |
 | `mechanical_work` | `ride` or `run`. Device total `energy_kj` > 0 (`basis` `device_total`), else the power stream: `sum(P_i * dt_i) / 1000` over consecutive `time` samples, skipping `dt` <= 0 or > `MAX_SAMPLE_GAP_S` 5 s and a missing or negative `watts`; needs `len(time)` >= 2, equal `watts` length, coverage `sum(dt) / duration` >= `MIN_WORK_COVERAGE` 0.85 (duration = `summary_duration_s`) and a positive sum (`basis` `power_stream`, `coverage` rounded to 3 decimals, capped at 1) | `kJ` (`JOULES_PER_KJ` 1000); bounds up to 1,000,000 | For `run` the derivation adds `power_model` = `running_power_model` (`RUN_POWER_MODEL`): Garmin's running-power model, not a measured force. `energy_kj` is mapped by the Wahoo activity mapper only (Garmin sets `energy_kcal`, which is not used here). |
-| `aerobic_decoupling` | `aerobic_analysis` on the merged streams: `100 * (EF1 - EF2) / EF1`, `EF_h` = time-weighted mean non-zero output / mean HR of half `h`. Output: `watts` for rides, `velocity_smooth` for road runs (trail runs excluded; outdoor runs use the Minetti 2002 grade-adjusted speed per sample, needing a grade or altitude plus distance stream; indoor/virtual runs stay flat). Starts 600 s after the first sample, split at the midpoint of the remainder | `%`; bounds -100..100; positive = less output per heartbeat in the second half | Eligibility (else no row): `status` `ok`, recording >= 1800 s, >= 85 % paired output and HR time (HR 30..240, gaps > 5 s and stops excluded, output > 0) in each half, output coefficient of variation <= 15 % per half, half means within 10 %. `details`: `sensor` (`watts`, `velocity_smooth` or `grade_adjusted_speed`), `unit` (`W/bpm` or `(m/s)/bpm`), `steady_output_per_hr` (both halves: sum of mean outputs / sum of mean HRs), `halves[]` (`measured_seconds`, `mean_output`, `mean_hr`, `output_per_hr`), `long_session` (end - start >= 5400 s). Not the session EF (that uses NP / Garmin's grade-adjusted speed). |
+| `aerobic_decoupling` | `aerobic_analysis` on the merged streams: `100 * (EF1 - EF2) / EF1`, `EF_h` = time-weighted mean non-zero output / mean HR of half `h`. Output: `watts` for rides, `velocity_smooth` for road runs (trail runs excluded; outdoor runs use the Minetti 2002 grade-adjusted speed per sample, needing a grade or altitude plus distance stream; indoor/virtual runs stay flat). Starts 600 s after the first sample, split at the midpoint of the remainder | `%`; bounds -100..100; positive = less output per heartbeat in the second half | Eligibility (else no row): `status` `ok`, recording >= 1800 s, >= 85 % paired output and HR time (HR 30..240, gaps > 5 s and stops excluded, output > 0) in each half, coefficient of variation of the 60 s rolling output means <= 15 % per half (#1832), half means within 10 %. `details`: `sensor` (`watts`, `velocity_smooth` or `grade_adjusted_speed`), `unit` (`W/bpm` or `(m/s)/bpm`), `steady_output_per_hr` (both halves: sum of mean outputs / sum of mean HRs), `halves[]` (`measured_seconds`, `mean_output`, `mean_hr`, `output_per_hr`), `long_session` (end - start >= 5400 s). Not the session EF (that uses NP / Garmin's grade-adjusted speed). |
 
 - `Observation` arguments: `kind` (per row above), `value`, `observed_on`, `observed_at`, `sport`, `method`, `method_version`, `input_fingerprint`, `provenance` with `provider` none, `source_kind` `derived`, `source_record_id` (session id), `recorded_by` (summary `recorded_by`; `unknown` when it is not a `RecordingOrigin`), `retrieved_at` none, `label` `derived`. The stage skips stream sets of provider `intervals`.
-- Envelope as above with `method` = `local-session-metrics`, `method_version` = 3. A session gets only the kinds that pass their rules; a session without any value has no row and is never zero. Sessions without full-resolution streams get EF, VI and a device work total only.
+- Envelope as above with `method` = `local-session-metrics`, `method_version` = 5. A session gets only the kinds that pass their rules; a session without any value has no row and is never zero. Sessions without full-resolution streams get EF, VI and a device work total only.
 - Fingerprint (`metrics_fingerprint`, computed before any stream is decoded): `fingerprint_inputs` of `method`, `method_version`, `analysis_method`, the summary inputs (`started_at`, `local_offset_minutes`, `recorded_by`, `sport`, `environment`, `terrain`, `assist`, `moving_duration_s`, `elapsed_duration_s`, `avg_hr`, `avg_power`, `normalized_power`, `grade_adjusted_speed_mps`, `avg_speed_mps`, `energy_kj`), `local_date`, the sorted content hashes of the stream sets, and the session members in merge order (provider, activity id, recording origin, device type). All kinds of one session share the fingerprint.
 - Recompute: a changed fingerprint recomputes the session, at most `DEFAULT_BATCH_SIZE` 100 sessions per transaction; an unchanged session is neither decoded nor written; a computed session with no value keeps its fingerprint in the stage state (`empty`) so it is not decoded again. Rows not written or kept (sessions gone, a metric that no longer passes) are retired by `retire_derived_observations`. Owner: the session id.
 

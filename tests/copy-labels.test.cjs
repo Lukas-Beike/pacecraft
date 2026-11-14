@@ -56,3 +56,19 @@ test("the context preview shows readable values and keeps deeply nested provider
   assert.equal(longList.children.length, 26);
   assert.equal(longList.children[25].textContent, "… 5 weitere Einträge");
 });
+
+test("release changes are grouped as Neu, Behoben and the rest, without type and pull request number", () => {
+  const { releaseChangeGroups } = extractFunctions("views.js", ["releaseChangeGroups"]);
+  const groups = releaseChangeGroups([
+    "feat(calendar): sport filter for the week and month (#2853)",
+    "fix: a restart closes the refreshes left running",
+    "feat!: breaking change",
+    "docs(spec): unlinking a race (#2860)",
+    "Revert \"feat(x): something\"",
+  ]);
+  assert.deepEqual(JSON.parse(JSON.stringify(groups)), {
+    feat: ["calendar: sport filter for the week and month", "breaking change"],
+    fix: ["a restart closes the refreshes left running"],
+    other: ["spec: unlinking a race", "Revert \"feat(x): something\""],
+  });
+});

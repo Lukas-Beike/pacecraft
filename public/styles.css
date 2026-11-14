@@ -309,6 +309,10 @@ h2 {
 .icon-button:active { transform: scale(.94); }
 .icon-button.busy { animation: spin 1s linear infinite; }
 .settings-app-version { margin: 0; color: var(--subtle); font-size: .72rem; }
+.release-changelog { display: grid; gap: 6px; color: var(--muted); font-size: .78rem; }
+.release-changelog summary { color: var(--subtle); cursor: pointer; }
+.release-changelog h4 { margin: 6px 0 0; color: var(--ink); font-size: .78rem; }
+.release-changelog ul { margin: 0; padding-left: 18px; overflow-wrap: anywhere; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
 .status-strip { margin: 0 0 12px; color: var(--ink); font-size: .78rem; line-height: 1.4; --strip-ink: var(--ink); }
@@ -373,7 +377,7 @@ h2 {
 .analysis-line-key { display: flex; align-items: center; gap: 8px; margin: 4px 0 0; color: var(--muted); font-size: .72rem; }
 .analysis-line-key-swatch { flex: none; width: 24px; height: 0; border-top: 2px dashed currentColor; }
 .analysis-chart-legend li[data-line="dashed"]::before { mask: repeating-linear-gradient(90deg, var(--ink) 0 6px, var(--transparent) 6px 9px); }
-.estimate-chip { margin-left: 4px; vertical-align: middle; border: 1px dashed var(--muted); color: var(--muted); background: var(--transparent); font-weight: 700; }
+.estimate-chip, .source-chip { margin-left: 4px; vertical-align: middle; border: 1px dashed var(--muted); color: var(--muted); background: var(--transparent); font-weight: 700; }
 /* One popover surface family: the analysis tooltip and the quick-action menu. */
 .analysis-info-tooltip, .quick-action-menu { position: fixed; inset: auto; margin: 0; max-height: calc(100dvh - 24px); border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--surface); color: var(--ink); box-shadow: 0 8px 24px var(--tooltip-shadow); }
 .analysis-info-tooltip { width: min(340px, calc(100vw - 24px)); overflow: auto; padding: 12px; font-size: .8rem; line-height: 1.5; }
@@ -1103,6 +1107,8 @@ h2 {
 .chip span { display: inline-flex; align-items: center; min-height: 44px; padding: 0 16px; border: 1px solid var(--line-strong); border-radius: 999px; color: var(--ink); background: var(--surface-input); font-size: .85rem; font-weight: 650; }
 .chip input:checked + span { border-color: var(--accent); color: var(--on-accent); background: var(--accent); }
 .chip input:checked + span::before { content: "✓"; margin-right: 6px; }
+/* The mark shows the state the radio or checkbox already announces, so where the browser can, its alternative text is empty (#2859). */
+@supports (content: "a" / "") { .chip input:checked + span::before { content: "✓" / ""; } }
 .chip input:focus-visible + span { outline: 2px solid var(--accent-bright); outline-offset: 2px; }
 .chip input:disabled { cursor: wait; }
 .chip input:disabled + span { opacity: .55; }
@@ -1201,6 +1207,11 @@ h2 {
 .collapsible-section > summary::-webkit-details-marker { display: none; }
 .collapsible-section > summary::after, .library-sport > summary::after, .connection-card > summary::after, .nutrition-product-section > summary::after { content: ""; flex: none; width: .5rem; height: .5rem; margin: 0 4px 3px 2px; border: solid var(--accent-bright); border-width: 0 2px 2px 0; transform: rotate(45deg); transition: transform .16s ease; }
 .collapsible-section[open] > summary::after, .library-sport[open] > summary::after, .connection-card[open] > summary::after, .nutrition-product-section[open] > summary::after { margin-bottom: -3px; transform: rotate(-135deg); }
+.shortcut-list { display: grid; grid-template-columns: max-content 1fr; align-items: center; gap: 8px 16px; margin: 0; }
+.shortcut-list dd { margin: 0; color: var(--ink); }
+.shortcut-list kbd { padding: 1px 6px; border: 1px solid var(--line-strong); border-bottom-width: 2px; border-radius: 6px; color: var(--ink); background: var(--surface-raised); font: inherit; font-size: .8rem; font-weight: 650; }
+/* The shortcuts need a keyboard, so phones do not list them (#2812). */
+@media (max-width: 767px) { .shortcut-help { display: none; } }
 .collapsible-section > summary:hover, .collapsible-section[open] > summary { background: var(--card-hover-surface); }
 .collapsible-section[open] > summary { border-bottom: 1px solid var(--line); }
 .collapsible-summary-title { min-width: 0; color: var(--ink); font-size: 1.02rem; font-weight: 700; line-height: 1.25; overflow-wrap: anywhere; }
@@ -1236,6 +1247,11 @@ h2 {
 .equipment-card > summary::after { order: 1; }
 .equipment-card > summary > :is(.equipment-card-line, progress) { order: 2; flex: 1 1 100%; }
 .equipment-card > summary progress { height: 4px; }
+.equipment-add-row { display: grid; gap: 10px; margin-bottom: 12px; justify-items: start; }
+.equipment-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 12rem), 1fr)); gap: 10px; width: 100%; margin-top: 10px; }
+.equipment-form[hidden], .equipment-form [hidden] { display: none; }
+.equipment-form label { display: grid; gap: 4px; color: var(--muted); font-size: .8rem; }
+.equipment-form :is(.error, button[type="submit"]) { grid-column: 1 / -1; justify-self: start; }
 .equipment-card[data-state="unchecked"] { --bar-color: var(--orange); }
 .equipment-card[data-state="error"] { --bar-color: var(--danger); }
 .equipment-card[data-state="off"] { --bar-color: var(--subtle); }
@@ -1643,6 +1659,8 @@ button:focus-visible, a:focus-visible, summary:focus-visible {
 .nutrition-total.nutrition-below-range { box-shadow: inset 0 -3px 0 var(--orange), var(--shadow-soft); }
 .nutrition-total.nutrition-above-range { box-shadow: inset 0 -3px 0 var(--blue), var(--shadow-soft); }
 #nutritionExpenditureTotals .nutrition-total { border: 0; background: var(--surface-raised); box-shadow: none; }
+/* A current day has no status line (#2846). */
+#nutritionExpenditureStatus:empty { display: none; }
 .nutrition-total strong { display: block; font-size: 1.4rem; overflow-wrap: anywhere; }
 .nutrition-unit { color: var(--muted); font-size: .6em; font-weight: 600; }
 #nutritionTotals { grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 8px; max-width: 40rem; }
@@ -1861,6 +1879,28 @@ button:focus-visible, a:focus-visible, summary:focus-visible {
 .activity-adherence-legend span::before { content: ""; display: inline-block; width: 12px; height: 6px; margin-right: 4px; border-radius: 3px; vertical-align: 1px; }
 .activity-adherence-legend .is-plan::before { box-sizing: border-box; border: 1px dashed var(--muted); }
 .activity-adherence-legend .is-actual::before { background: var(--muted); }
+/* Running dynamics against the athlete's own runs at the same pace, with Garmin's band (#2829). */
+.activity-dynamics { display: grid; gap: 10px; }
+.activity-dynamics-rating { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
+.activity-dynamics-rating:empty { display: none; }
+.activity-dynamics-chip { --verdict: var(--muted); padding: 2px 7px; border-radius: 999px; background: color-mix(in srgb, var(--verdict) 16%, var(--transparent)); color: var(--verdict); font-size: .72rem; font-weight: 700; white-space: nowrap; }
+.activity-dynamics-chip[data-verdict="better"] { --verdict: var(--accent); }
+.activity-dynamics-chip[data-verdict="worse"] { --verdict: var(--danger); }
+.activity-dynamics-reference { --band: var(--muted); flex-basis: 100%; min-width: 0; overflow: hidden; color: var(--muted); font-size: .72rem; text-overflow: ellipsis; white-space: nowrap; }
+.activity-dynamics-reference::before { content: ""; display: inline-block; width: 9px; height: 9px; margin-right: 4px; border-radius: 50%; background: var(--band); vertical-align: -1px; }
+.activity-dynamics-reference[data-band="purple"] { --band: var(--training-zone-6); }
+.activity-dynamics-reference[data-band="blue"] { --band: var(--blue); }
+.activity-dynamics-reference[data-band="green"] { --band: var(--training-zone-2); }
+.activity-dynamics-reference[data-band="orange"] { --band: var(--orange); }
+.activity-dynamics-reference[data-band="red"] { --band: var(--danger); }
+.activity-dynamics-bands { display: grid; gap: 8px; }
+/* The provider's own session values, kept apart from the app's analyses (#2831). */
+.activity-effect { display: grid; gap: 8px; }
+.activity-effect-header { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 10px; }
+.activity-effect-source { color: var(--garmin-ink); font-size: .72rem; font-weight: 600; }
+.activity-effect-bar { display: block; height: 6px; border-radius: 3px; background: linear-gradient(90deg, var(--garmin-ink) var(--effect-share), var(--surface-raised) var(--effect-share)); }
+.activity-dynamics-bands td .activity-dynamics-chip { margin-left: 2px; }
+.activity-dynamics-bands :is(th, td) { white-space: nowrap; }
 .activity-analysis-laps { display: grid; gap: 8px; }
 .activity-analysis-laps td, .activity-analysis-laps th { font-variant-numeric: tabular-nums; }
 

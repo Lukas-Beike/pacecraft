@@ -37,6 +37,67 @@ class RunnerEvidenceTests(unittest.TestCase):
             code = run_tests.main()
         return code, json.loads(path.read_text())
 
+    def test_hang_timeout_dumps_the_hanging_test_and_exits(self):
+        # #2900: a hung shard names the test in a stack dump and fails fast.
+        child = (
+            "import time\nfrom tests import run_tests\n"
+            "def test_hangs_forever():\n    time.sleep(60)\n"
+            "run_tests.arm_hang_dump(1)\ntest_hangs_forever()\n"
+        )
+        started = time.monotonic()
+        result = subprocess.run(
+            [sys.executable, "-c", child],
+            cwd=Path(__file__).resolve().parents[1],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            timeout=30,
+            check=False,
+        )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertLess(time.monotonic() - started, 20)
+        self.assertIn("Timeout (0:00:01)!", result.stderr)  # faulthandler's dump
+        self.assertIn("line 4 in test_hangs_forever", result.stderr)
+
+        class Quick(unittest.TestCase):
+            def test_case(self):
+                pass
+
+        tests = list(
+            run_tests.iter_tests(unittest.defaultTestLoader.loadTestsFromTestCase(Quick))
+        )
+        # 600: armed before discovery, disarmed after. 0 (a nested in-process
+        # main() inside an armed shard): never cancels the shard's timer.
+        calls = []
+        for argv, expected in (
+            (["--hang-timeout", "600"], ["arm", "discover", "cancel"]),
+            ([], ["discover"]),
+        ):
+            calls.clear()
+            with (
+                self.subTest(argv=argv),
+                mock.patch.object(
+                    run_tests.faulthandler,
+                    "dump_traceback_later",
+                    side_effect=lambda *a, **k: calls.append("arm"),
+                ),
+                mock.patch.object(
+                    run_tests.faulthandler,
+                    "cancel_dump_traceback_later",
+                    side_effect=lambda: calls.append("cancel"),
+                ),
+                mock.patch.object(sys, "argv", ["run_tests.py", *argv]),
+                mock.patch.object(
+                    run_tests,
+                    "discover_tests",
+                    side_effect=lambda: calls.append("discover") or tests,
+                ),
+                contextlib.redirect_stdout(io.StringIO()),
+                contextlib.redirect_stderr(io.StringIO()),
+            ):
+                self.assertEqual(run_tests.main(), 0)
+                self.assertEqual(calls, expected)
+
     def test_setup_class_error_does_not_claim_selected_tests_ran(self):
         class Broken(unittest.TestCase):
             @classmethod

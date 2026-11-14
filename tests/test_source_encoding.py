@@ -1,5 +1,6 @@
 """Regression tests for source text encoding."""
 
+import ast
 import unittest
 from pathlib import Path
 
@@ -37,4 +38,24 @@ class SourceEncodingTests(unittest.TestCase):
                 failures.append(
                     f"{path.relative_to(ROOT)} contains a literal \\u00 escape"
                 )
+        self.assertEqual(failures, [])
+
+    def test_local_scripts_decode_captured_text_as_utf8(self):
+        # #2889, #2895: text=True without encoding decodes with the Windows
+        # code page; a byte it cannot decode leaves stdout None. The scripts
+        # agents run on Windows name the encoding (.github/scripts run on Linux).
+        failures = []
+        runners = ("tests/run_tests.py", "tests/changed_tests.py")
+        for pattern in ("scripts/**/*.py", "tools/**/*.py", *runners):
+            for path in sorted(ROOT.glob(pattern)):
+                tree = ast.parse(path.read_text(encoding="utf-8"))
+                for node in ast.walk(tree):
+                    keywords = getattr(node, "keywords", [])
+                    text = any(
+                        k.arg in ("text", "universal_newlines")
+                        and getattr(k.value, "value", None) is True
+                        for k in keywords
+                    )
+                    if text and "encoding" not in {k.arg for k in keywords}:
+                        failures.append(f"{path.relative_to(ROOT)}:{node.lineno}")
         self.assertEqual(failures, [])

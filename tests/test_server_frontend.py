@@ -617,14 +617,22 @@ class ServerFrontendTests(ServerTestCase):
         self.assertNotIn("Endurance Score", analysis)
         self.assertNotIn("Running Tolerance", analysis)
         self.assertIn("unit: providerMetricUnit(key)", analysis)
-        self.assertIn('item.cadenceDays === 7 ? "Wochen" : "Tagen"', analysis)
+        # Coverage counts weeks for weekly series, else the chart's date unit:
+        # days, or months for a monthly chart (#2922).
+        self.assertIn('item.cadenceDays === 7 ? "Wochen" : dates.units', analysis)
+        self.assertIn('heading: "Tag", units: "Tagen"', analysis)
+        self.assertIn('heading: "Monat", units: "Monaten"', analysis)
         self.assertNotIn("Tage mit Messung", analysis)
         self.assertNotIn("${readings.length}/${item.points.length}", analysis)
         self.assertNotIn("function analysisIsoWeek(dateKey)", analysis)
         self.assertNotIn("renderExistingPerformanceReports", analysis)
         self.assertNotIn("renderRacePredictionCharts", analysis)
+        # Weekly series keep week ticks; the tick mode picks their label (#2922).
+        self.assertIn('let tickMode = weekTicks ? "week" : "day";', analysis)
         self.assertIn(
-            "weekTicks ? analysisWeekTickLabel : analysisDayTickLabel", analysis
+            "day: analysisDayTickLabel, week: analysisWeekTickLabel, "
+            "month: analysisMonthTickLabel",
+            analysis,
         )
         self.assertIn("calendarWeeks: true", analysis)
         self.assertIn("calendarWeeks = false", analysis)
@@ -926,7 +934,13 @@ class ServerFrontendTests(ServerTestCase):
             copy_public(public)
             (public / ".hidden.js").write_text("secret()", encoding="utf-8")
             (public / "notes.md").write_text("notes", encoding="utf-8")
+            # The image build writes the release changelog into public/ (#2899).
+            (public / "changelog.json").write_text('{"releases":[]}', encoding="utf-8")
             service = StaticAssetService(public)
+            changelog = service.render("/changelog.json", "/changelog.json", None)
+            self.assertEqual(changelog.body, b'{"releases":[]}')
+            self.assertIn(("Content-Type", "application/json"), changelog.headers)
+            (public / "changelog.json").unlink()
             shell = service.render("/", "/", None).body
             served = {
                 path.name

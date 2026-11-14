@@ -32,7 +32,10 @@ class NutritionGetRoutes:
         meal_library_service: Callable[[], NutritionMealLibraryService],
         local_now: Callable[[], datetime],
         macro_context: Callable[[str], tuple[Any, Any]] | None = None,
+        session_fuelling: Callable[[dict[str, list[str]]], dict[str, Any]]
+        | None = None,
     ) -> None:
+        self._session_fuelling = session_fuelling
         self._diary_service = diary_service
         self._meal_library_service = meal_library_service
         self._local_now = local_now
@@ -75,12 +78,43 @@ class NutritionGetRoutes:
         }
 
     def routes(self) -> list[Route]:
-        return [
+        routes = [
             Route("GET", "/api/nutrition/yazio/status", Access.SESSION, self._yazio),
             Route("GET", "/api/nutrition/day", Access.SESSION, self._day),
             Route("GET", "/api/nutrition/week", Access.SESSION, self._week),
             Route("GET", NUTRITION_PRODUCTS_PATH, Access.SESSION, self._product_list),
         ]
+        if self._session_fuelling is not None:
+            routes.append(
+                Route(
+                    "GET",
+                    "/api/nutrition/session-fuelling",
+                    Access.SESSION,
+                    self._fuelling,
+                )
+            )
+        return routes
+
+    def _fuelling(self, handler: Any, request: RouteRequest) -> None:
+        """Drinking and carbohydrates for a long planned run or ride (#2804).
+
+        Request: query `sport` (`run`, `ride`), `environment` (`indoor` and
+        `virtual` are indoors, anything else outdoors), `date` (YYYY-MM-DD) and `duration_s` (planned
+        seconds, up to 24 h); no body.
+
+        Response: 200 with `status` `not_long` (another sport or under 60 min)
+        or `ready` with `duration_s`, `forecast_c` (cached forecast, outdoors),
+        `sweat_rate` (`l_per_h`, `sessions`, `similar`, `temperature_c`; null
+        without own data), `drinking` (`l_per_h`, `total_l`, `max_l_per_h`,
+        `sodium_g_per_l`, or `generic_l_per_h` without own data),
+        `drinking_source`, `carbohydrates`, `carbohydrate_source` and
+        `weight`. It reads stored data only and fetches nothing.
+
+        Errors: 400 `invalid_session_fuelling` "Ungültige Angaben für die
+        Verpflegungsempfehlung." for a missing or invalid query value.
+        """
+        assert self._session_fuelling is not None
+        handler.send_json(200, self._session_fuelling(request.query))
 
     def _yazio(self, handler: Any, _request: RouteRequest) -> None:
         """Last local Yazio authentication check, without contacting Yazio.

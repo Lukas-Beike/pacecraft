@@ -12,6 +12,9 @@ test("number uses de-DE separators and honours digits", () => {
   assert.equal(AppFormat.number(12.345), "12,3");
   assert.equal(AppFormat.number(12), "12");
   assert.equal(AppFormat.number("7.25", { digits: 2 }), "7,25");
+  // #2831: a minimum keeps trailing zeros, such as a training effect of 0,0.
+  assert.equal(AppFormat.number(0, { digits: 1, minDigits: 1 }), "0,0");
+  assert.equal(AppFormat.number(3.45, { digits: 1, minDigits: 1 }), "3,5");
   assert.equal(AppFormat.number(1234.56, { digits: 0 }), "1.235");
   assert.equal(AppFormat.number(NaN), null);
   assert.equal(AppFormat.number(Infinity), null);

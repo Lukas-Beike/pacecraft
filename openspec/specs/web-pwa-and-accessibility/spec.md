@@ -13,6 +13,10 @@ The client SHALL provide Coach, plan, nutrition, analysis, and more navigation w
 - **WHEN** the athlete selects or returns to a recognized hash
 - **THEN** the matching panel and segment render once, inactive panels stay hidden, and navigation exposes the current page.
 
+#### Scenario: Keyboard shortcuts for the main views
+- **WHEN** the athlete presses Alt+1 to Alt+5 while no text field has focus and no dialog or popover menu is open
+- **THEN** Coach, Kalender, Analyse, Ernährung or Mehr opens as if its navigation item were selected; with Ctrl or AltGr, while typing or behind a dialog or menu nothing changes; the navigation items name their key in `aria-keyshortcuts`, and Mehr › Darstellung lists the keys in a collapsed "Tastenkürzel" section on screens at least 768 px wide.
+
 #### Scenario: Unsaved profile form
 - **WHEN** navigation would leave a dirty profile panel
 - **THEN** the athlete can cancel discarding edits and remain on that route; ordinary navigation does not silently drop the dirty form.
@@ -21,7 +25,7 @@ The client SHALL provide Coach, plan, nutrition, analysis, and more navigation w
 - **WHEN** the athlete returns to Coach or opens the plan overview
 - **THEN** route-specific scroll restoration preserves Coach reading position or reveals the planned-today section according to the recorded navigation state.
 
-Evidence: `public/navigation.js::AppRouter.navigate`, `public/shared.js::restoreRouteScroll`, `public/views.js::renderPlanSegments`; `e2e/navigation.spec.js::@responsive each hash navigation renders its target once`, `e2e/coach.spec.js::login, main views, dialog and profile form state`, `e2e/settings-hub.spec.js::@responsive sports are toggle chips of at least 44 px and need no hint`, `e2e/contracts.spec.js::plan overview deep link focuses and reveals today after loading`.
+Evidence: `public/navigation.js::AppRouter.navigate`, `public/shared.js::restoreRouteScroll`, `public/views.js::renderPlanSegments`; `e2e/navigation.spec.js::@responsive each hash navigation renders its target once`, `e2e/navigation.spec.js::@responsive Alt+1 to Alt+5 switch the main views outside text fields and are listed in Darstellung`, `e2e/coach.spec.js::login, main views, dialog and profile form state`, `e2e/settings-hub.spec.js::@responsive sports are toggle chips of at least 44 px and need no hint`, `e2e/contracts.spec.js::plan overview deep link focuses and reveals today after loading`.
 
 ### Requirement: Responsive controls remain named and keyboard reachable
 The client SHALL use semantic labels, focusable controls and scroll regions, current-route indications, and responsive layouts for the supported mobile, tablet, and desktop views. Icon actions SHALL retain accessible names and the existing touch target sizing.
@@ -116,7 +120,7 @@ The client SHALL keep the application behind the required login dialog until suc
 Evidence: `public/auth.js::installLoginDialogGuards`, `public/auth.js::loginErrorMessage`, `public/auth.js::logout`, `public/auth.js::showLogin`, `public/sync-status.js::renderMaintenanceStatus`; `e2e/login-dialog.spec.js::Escape keeps the login dialog open and logout shows it again @responsive`, `public/auth.js::bootstrapAuth`, `public/auth.js::retryBootstrapAuth`, `public/auth.js::showAppShellLoading`, `tests/frontend-failure-paths.test.cjs::a failed logout request keeps the app open, reports the error and allows a retry`, `e2e/update-start.spec.js::a start after an update without a reachable server shows the stored data @responsive`, `tests/login-errors.test.cjs::a rate-limited login names the wait from Retry-After`, `tests/login-errors.test.cjs::a lasting server error keeps its own message instead of asking to retry`.
 
 ### Requirement: One status strip ranks the notices above every screen
-The client SHALL show at most one status strip above every screen: the most severe notice as text, the others behind a count button. Severity SHALL rank the start loading notice, which shows alone, then maintenance, offline, OpenAI key, Coach error, data load failure, provider attention, Garmin hint, thresholds, and last the dismissible Intervals.icu key hint, which appears only when nothing else does.
+The client SHALL show at most one status strip above every screen: the most severe notice as text, the others behind a count button. Severity SHALL rank the start loading notice, which shows alone, then maintenance, offline, OpenAI key, Coach error, data load failure, provider attention, Garmin hint, thresholds, the Intervals.icu key hint, which appears only when nothing else does and can be dismissed, and due equipment.
 
 #### Scenario: Age of device data
 - **WHEN** the offline or load-failure notice shows data from the device
@@ -130,11 +134,15 @@ The client SHALL show at most one status strip above every screen: the most seve
 - **WHEN** the browser is offline, the Coach reports an error and an optional provider key is missing
 - **THEN** one strip shows the offline notice with a "+N Hinweise" button ("+1 Hinweis" for one further notice), and the button lists the Coach error.
 
+#### Scenario: Due equipment
+- **WHEN** an active item has exceeded its lifetime target or a local item is due for maintenance, by the rules of the equipment cards
+- **THEN** one warning names the first item ("Pegasus 40: Ziel überschritten", exceeded targets first, "+N" for more) with "Ansehen" to Mehr › Ausrüstung; archived items and items without a target never show; the equipment read is the Ausrüstung view's cached `/api/analysis/training-records`, made when the browser is idle (else after 2 s) on a visible page, never for the device snapshot, once per session and activity or Garmin state or after a Coach change to equipment, and never repeated after a failure until that state changes.
+
 #### Scenario: Low screen
 - **WHEN** the viewport is lower than 500 px
 - **THEN** the strip is one line, non-critical notices appear only as a count button, and the composer is one row.
 
-Evidence: `public/status-strip.js::statusStripItems`, `public/status-strip.js::renderStatusStrip`, `public/shared.js::renderStatus`, `public/sync-status.js::renderProviderAttention`, `public/settings.js::thresholdStatusItem`; `e2e/status-strip.spec.js::offline, a Coach error and the missing Intervals.icu key show one strip @responsive`, `tests/status-strip.test.cjs::the strip ranks notices by the athlete's order and shows only one as text`, `tests/status-strip.test.cjs::the loading notice stands alone`.
+Evidence: `public/status-strip.js::statusStripItems`, `public/status-strip.js::renderStatusStrip`, `public/shared.js::renderStatus`, `public/sync-status.js::renderProviderAttention`, `public/settings.js::thresholdStatusItem`, `public/analysis.js::equipmentStatusItem`, `public/analysis.js::refreshEquipmentNotice`; `e2e/status-strip.spec.js::@responsive due equipment is one notice of the strip that opens Mehr › Ausrüstung`, `tests/analysis-presentation.test.cjs::the equipment notice names exceeded targets first and never archived items or items without a target`, `tests/analysis-report-cache.test.cjs::the equipment notice reads once per activity state when idle and never retries a failed read`, `e2e/status-strip.spec.js::offline, a Coach error and the missing Intervals.icu key show one strip @responsive`, `tests/status-strip.test.cjs::the strip ranks notices by the athlete's order and shows only one as text`, `tests/status-strip.test.cjs::the loading notice stands alone`.
 
 ### Requirement: Mehr groups settings under one title with text status and a structured profile
 The client SHALL show the settings areas under the fixed title "Mehr" as one swipeable row whose active area is filled, show every provider connection as one collapsible card that states its status as a text chip (Verbunden, Nicht eingerichtet, Fehler or Nicht geprüft) and let the athlete pick sports by touch. The profile SHALL be four collapsible sections with a one-line summary each and a save bar that stays above the navigation and shows the unsaved state.
@@ -368,6 +376,10 @@ The client SHALL present domain-provided planning, performance, activity, and eq
 - **WHEN** the athlete opens a completed session's "Details" in its calendar card or its "Feedback" dialog
 - **THEN** sport-appropriate pace/speed and cadence/step-frequency channels, units, missing points, and available metadata remain readable; failed detail loading retains the session summary and its explicit refresh path.
 
+#### Scenario: Equipment editor
+- **WHEN** the athlete opens "+ Hinzufügen" in a tab of Mehr › Ausrüstung, or "Bearbeiten" or "Ausmustern" in an active local item's card
+- **THEN** one form holds name, sport (per tab), kind, the parent bike for a component, start date, kilometres and hours before, lifetime target and maintenance intervals and saves through `POST /api/equipment` with the item's revision and an explicit status; "Ausmustern" asks in the confirmation dialog and sends `confirmed`; each save re-reads the list and shows a receipt with "Rückgängig", a refusal stays in the form, and Garmin is never needed
+
 #### Scenario: Equipment and maintenance
 - **WHEN** equipment is displayed or maintenance is requested
 - **THEN** each item is one collapsible card that starts collapsed on every visit and shows its name (with a Garmin source tag for Garmin-only items), one status chip, one short line (parent bike for components, distance, lifetime percent) and a slim lifetime bar; a screen reader hears the name (and the Garmin source tag), the state and the lifetime percent once, with its meaning and an exceeded target the chip does not name, because the bar is decorative and hidden from the accessibility tree; an open card shows usage, maintenance with its history, Garmin state and status conflict, and the maintenance action with its receipt and undo, which only eligible active local gear offers under the equipment domain contract and whose receipt a background refresh of the list keeps during the same visit, tab and session; archived items appear only in a collapsed "Ausgemustert (n)" group.
@@ -455,7 +467,7 @@ The client SHALL mark every derived or estimated value with one "Schätzung" chi
 - **WHEN** the diary, the history or the product tab renders
 - **THEN** calories form one hero tile above one macro row, runs of days without data collapse to one row, and the product tab has one primary action.
 
-Evidence: `public/components.js::createEstimateChip`, `public/performance-view.js::predictionTime`, `public/analysis.js::appendAnalysisLineKey`, `public/nutrition.js::nutritionChartRows`, `tests/test_css_design_tokens.py::test_training_focus_percentages_use_neutral_text_in_both_themes`, `tests/analysis-presentation.test.cjs::race prediction rows exclude body weight and empty states give a reason`, `backend/sync/garmin_payload_metrics.py:_garmin_collect_vo2_values`, `tests/test_performance_garmin_metrics.py:test_precise_vo2max_wins_over_its_rounded_twin`, `e2e/estimates-targets.spec.js`.
+Evidence: `public/components.js::createEstimateChip`, `public/performance-view.js::predictionTime`, `public/analysis.js::appendAnalysisLineKey`, `public/nutrition.js::nutritionChartRows`, `tests/test_css_design_tokens.py::test_training_focus_percentages_use_neutral_text_in_both_themes`, `tests/analysis-presentation.test.cjs::race prediction rows exclude body weight and empty states give a reason`, `backend/providers/garmin_health_mapping.py:_map_max_metrics`, `tests/test_performance_garmin_metrics.py:test_precise_vo2max_wins_over_its_rounded_twin`, `e2e/estimates-targets.spec.js`.
 
 ### Requirement: Selection, sources and axes read consistently
 The client SHALL fill the selected tab or range with one accent style everywhere, show the app name, a password toggle and an invalid-field border on the login, and show a meal source only when it differs from the manual local default. Charts SHALL keep a minimum axis span, draw a flat series as a line and space tick labels evenly, naming weeks "Woche ab". Session detail SHALL show one muted source line with the provenance folded away.
@@ -527,7 +539,7 @@ The Analyse tab SHALL show the segments Laufen, Radfahren, Belastung and Erholun
 
 #### Scenario: Laufen
 - **WHEN** the athlete opens Analyse › Laufen
-- **THEN** it shows the running current values (LT2 pace, power and heart rate as "Anaerobe Schwelle (LT2) · …", LT1 pace and heart rate as "Aerobe Schwelle (LT1) · …", VO2max), the development charts (threshold pace with the LT1 pace line, VO2max, running tolerance), the race predictions, directly below them the all-time best efforts under the title "Bestwerte" (only the best time over 1 km, 5 km, 10 km, half marathon and marathon, always these five rows, each with its date in its own column and its source, "–" where no best exists; no per-minute rows) with the experimental critical-speed line; no cycling value appears.
+- **THEN** it shows the running current values (LT2 pace, power and heart rate as "Anaerobe Schwelle (LT2) · …", LT1 pace and heart rate as "Aerobe Schwelle (LT1) · …", VO2max), the development charts (threshold pace with the LT1 pace line, VO2max, running tolerance), the race predictions, directly below them the all-time best efforts under the title "Bestwerte" (only the best time over 1 km, 5 km, 10 km, half marathon and marathon, always these five rows, each with its date in its own column and its source; a distance without an own best shows Garmin's personal record with its record date and a dashed "Garmin" chip, and "–" where neither exists; no per-minute rows) with the experimental critical-speed line; no cycling value appears.
 
 #### Scenario: Radfahren
 - **WHEN** the athlete opens Analyse › Radfahren
@@ -814,6 +826,10 @@ Evidence: `public/format.js` (`number`, `distance`, `duration`, `clock`, `relati
 
 Betrieb & Diagnose SHALL read the newest 250 log entries and show each as "[time] LEVEL event: message {context}". Downloads SHALL use a 130-second deadline and the names `pacecraft-server-logs-<date>.jsonl`, `pacecraft-diagnostics-<date>.json`, `pacecraft-export-<date>.zip` and `pacecraft-database-<date>.backup`. The area SHALL offer no change-history view; undo is offered on receipts only.
 
+#### Scenario: Release changes
+- **WHEN** Betrieb & Diagnose opens and the image carries `/changelog.json`
+- **THEN** the version line becomes an open "Version … · Änderungen" section: the running release's changes under "Neu" (feat) and "Behoben" (fix), the rest in a collapsed "Technik (n)", each as "scope: subject" without type and pull request number, and every older release as a collapsed "Version x.y.z" inside a collapsed "Frühere Versionen (n)"; the file is read once from the app's own server, never from GitHub, not precached, and shown as plain text; without the file the plain version line stays
+
 #### Scenario: GPS tracks
 - **WHEN** "GPS-Spuren speichern" is switched
 - **THEN** the setting is saved at once and reverted on failure; "GPS-Spuren löschen (N)" appears only while storage is off and asks for the confirmation text the server supplies
@@ -822,4 +838,4 @@ Betrieb & Diagnose SHALL read the newest 250 log entries and show each as "[time
 - **WHEN** the deletion succeeded
 - **THEN** a failed remote OpenAI conversation delete or Wahoo revocation is named, and so are recovery copies and server log files that could not be removed
 
-Evidence: `public/diagnostics.js::loadLogs`; `public/diagnostics.js::formatLogEntry`; `public/diagnostics.js::downloadServerLogs`; `public/settings.js::downloadDatabaseBackup`; `public/settings.js::saveGpsTracks`; `public/settings.js::deleteGpsTracks`; `public/settings.js::deletePrivacyData`. Tests: `e2e/downloads.spec.js::settings and diagnostics downloads carry the Pacecraft name`; `e2e/first-threshold-gps.spec.js::the GPS-tracks switch takes clicks once loaded and a failed save restores the confirmed state`; `e2e/history-undo.spec.js::history panel is absent while diagnosis and logs remain available`.
+Evidence: `public/views.js::renderReleaseChangelog`, `public/views.js::releaseChangeGroups`, `e2e/navigation.spec.js::@responsive Betrieb & Diagnose lists the release changes from the image as plain text, a build without them keeps the version line`, `tests/copy-labels.test.cjs::release changes are grouped as Neu, Behoben and the rest, without type and pull request number`; `public/diagnostics.js::loadLogs`; `public/diagnostics.js::formatLogEntry`; `public/diagnostics.js::downloadServerLogs`; `public/settings.js::downloadDatabaseBackup`; `public/settings.js::saveGpsTracks`; `public/settings.js::deleteGpsTracks`; `public/settings.js::deletePrivacyData`. Tests: `e2e/downloads.spec.js::settings and diagnostics downloads carry the Pacecraft name`; `e2e/first-threshold-gps.spec.js::the GPS-tracks switch takes clicks once loaded and a failed save restores the confirmed state`; `e2e/history-undo.spec.js::history panel is absent while diagnosis and logs remain available`.

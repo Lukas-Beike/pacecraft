@@ -198,10 +198,11 @@ function renderCurrentPerformance(metrics, history, status = [], thresholds = nu
 
 function renderPerformance(performance, { refreshCharts = true } = {}) {
   if (refreshCharts) {
-    void renderTrainingRecords();
+    void renderTrainingRecords({ background: true });
     renderPersonalRecovery(performance?.personal_recovery);
     renderAnalysisHistory(performance?.history);
     void renderCyclingPowerProfile();
+    void renderRunningDynamicsTrend();
     renderTrainingFocus(performance?.training_focus_periods?.[analysisHistoryPeriod] || performance?.training_focus);
   }
   const root = $("#performancePredictions");

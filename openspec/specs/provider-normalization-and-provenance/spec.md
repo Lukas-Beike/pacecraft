@@ -198,6 +198,10 @@ The system SHALL normalize Garmin health and body values to canonical units usin
 - **WHEN** Garmin supplies sleep duration and score, night SpO2, respiration and sleeping heart rate, last-night RMSSD, weekly HRV average, resting heart rate, readiness, body measurements, daily counts and energy, VO2max, thresholds, race predictions or endurance score
 - **THEN** each is mapped through its supported aliases and plausible bounds, and an invalid value is dropped with a content-free issue.
 
+#### Scenario: Garmin personal records
+- **WHEN** Garmin's personal records include running records
+- **THEN** the records of the types the pinned SDK documents as 1 km (1), 5 km (3), 10 km (4), half marathon (5) and marathon (6) become `personal_record_1k`, `_5k`, `_10k`, `_half` and `_full` in seconds, each dated by its own local start day; other sports, the mile and the longest run are skipped, and another running type or a record without a day is a content-free issue.
+
 #### Scenario: Declared weight unit
 - **WHEN** a valid Garmin weigh-in explicitly declares pounds or grams
 - **THEN** canonical weight is converted once to kilograms and its dated provenance is retained.
@@ -247,7 +251,7 @@ The system SHALL keep FTP and threshold sport scope, Garmin scaled running speed
 
 #### Scenario: Garmin performance values at ingest
 - **WHEN** the Garmin sync merges a fetched payload into the performance history
-- **THEN** it keeps cycling FTP and running threshold power within 50 to 700 W, threshold heart rate within 80 to 230 bpm, the profile maximum heart rate within 80 to 260 bpm and VO2max within 20 to 100, and drops other values; a race prediction counts within 60 to 100,000 s (a larger number is read as milliseconds), a threshold pace within 120 to 900 s/km (a value below 1 is read as 100 / value, below 20 as metres per second) and a weight within 30 to 300 kg (pounds x 0.45359237, an undeclared value above 300 as grams).
+- **THEN** it reads the latest-value sections through the Garmin health mapper and keeps cycling FTP and running threshold power within 50 to 700 W, threshold heart rate within 80 to 230 bpm, the profile maximum heart rate within 80 to 250 bpm and VO2max within 20 to 100, and drops other values; a race prediction counts within 60 to 100,000 s (a larger number is read as milliseconds), a threshold pace within 120 to 900 s/km (a value below 1 is read as 100 / value, below 20 as metres per second) and a weight within 30 to 300 kg (pounds x 0.45359237, an undeclared value above 300 as grams).
 
 #### Scenario: Performance history retention
 - **WHEN** the merge stores the performance history
@@ -259,13 +263,16 @@ Evidence: `backend/providers/garmin_health_mapping.py:map_garmin_health`, `backe
 
 Added evidence:
 - `backend/performance/activity_validation.py:bounded_performance_metric`
-- `backend/sync/garmin_metric_history.py:ftp_points`
-- `backend/sync/garmin_payload_metrics.py:_garmin_pace_seconds`
-- `backend/sync/garmin_payload_metrics.py:garmin_duration_seconds`
-- `backend/sync/garmin_payload_metrics.py:garmin_profile_max_hr`
+- `backend/performance/garmin_canonical.py:_pace_seconds_per_km`
+- `backend/performance/garmin_canonical.py:_profile_max_hr`
+- `backend/providers/garmin_health_mapping.py:_race_seconds`
+- `backend/providers/garmin_health_mapping.py:_weight_kg`
+- `backend/sync/garmin_performance_history.py:_ftp_history`
 - `backend/sync/garmin_performance_history.py:_provider_metric_state`
 - `backend/sync/garmin_performance_history.py:append_garmin_performance_history`
-- `backend/sync/garmin_weight.py:_garmin_weight_kg`
+- `backend/sync/garmin_performance_history.py:current_garmin_metrics`
+- `tests/test_garmin_health_parity.py:test_legacy_ingest_shapes_the_mapper_does_not_read`
+- `tests/test_garmin_performance_history_canonical.py:test_the_history_reprojects_to_the_pinned_observations_and_context`
 - `tests/test_garmin_health_parity.py:test_race_predictions_match_legacy_seconds`
 - `tests/test_garmin_health_parity.py:test_threshold_pace_converts_to_legacy_seconds_per_kilometre`
 - `tests/test_performance_history.py:test_historical_ftp_rows_are_added_without_backfilling_current_ftp`
@@ -530,7 +537,7 @@ Consumer packages (performance, Coach, HTTP API, planning, activities, athlete, 
 
 Detailed contract: rules `snapshot_key`, `legacy_read`, `source_label` and `field_module_import` in `tests/provider_coupling.py:OWNER_READ_ALLOWLIST`. No value read remains in the consumer packages (#1416): plan zones read canonical thresholds, equipment reads canonical gear items and links (a gear-listed Garmin activity links the rows of its canonical session; the sync no longer computes or reads `activity_matches`), and the energy views take a day's presence after a targeted refresh from its canonical Garmin totals; the stored snapshot is read there only for sync status (`provider_sync`, Garmin state).
 
-Evidence: `tests/provider_coupling.py:scan_owner_reads`, `backend/sync/garmin_payload_metrics.py:garmin_payload_performance_metrics`, `backend/sync/garmin_performance_history.py:append_garmin_performance_history`; `tests/test_provider_coupling_guard.py:OwnerReadGuardTests.test_consumers_cannot_read_raw_provider_views`, `tests/test_provider_coupling_guard.py:OwnerReadGuardTests.test_allowlisted_raw_view_owner_passes_and_a_stale_entry_fails`, `tests/test_provider_coupling_guard.py:OwnerReadGuardTests.test_source_tree_reads_only_through_allowlisted_owners`.
+Evidence: `tests/provider_coupling.py:scan_owner_reads`, `backend/sync/garmin_performance_history.py:current_garmin_metrics`, `backend/sync/garmin_performance_history.py:append_garmin_performance_history`; `tests/test_provider_coupling_guard.py:OwnerReadGuardTests.test_consumers_cannot_read_raw_provider_views`, `tests/test_provider_coupling_guard.py:OwnerReadGuardTests.test_allowlisted_raw_view_owner_passes_and_a_stale_entry_fails`, `tests/test_provider_coupling_guard.py:OwnerReadGuardTests.test_source_tree_reads_only_through_allowlisted_owners`.
 
 ### Requirement: Athlete-preferred source per metric group
 The system SHALL let the athlete choose Garmin or the default (the newest measurement) as preferred source for weight and body fat, as a local profile setting with receipt and undo (also through the Coach's profile update); a stored `intervals` value is ignored. Every consumer SHALL apply it in the same read. The settings SHALL show only source controls that change an outcome (#2084).
@@ -587,6 +594,14 @@ The system SHALL store one observation row per natural key `provider|metric|spor
 - **WHEN** a fill-only observation (Garmin `performance_history`) meets an active row that another source record wrote at the same or a newer mapper version
 - **THEN** the stored row stays; the fill-only value only inserts, updates its own row, revives a retired row or replaces a row left at an older mapper version.
 
+#### Scenario: Two Garmin sections with one key
+- **WHEN** a Garmin health observation meets an active row of the same natural key that another source record wrote at the same or a newer mapper version
+- **THEN** a fill-only history value loses to any other section; otherwise the later retrieval wins, then the section that comes first in the Garmin section order (for example `readiness` before `training_readiness_history`, `cycling_ftp` before `cycling_ftp_history`), in the live ingest and the re-projection alike, so a re-projection reproduces the live rows; a Garmin raw record delivered again unchanged keeps its row and takes the later fetch time.
+
+#### Scenario: A day of Garmin readiness snapshots
+- **WHEN** the `readiness` or `training_readiness_history` section holds several readings of one day, each stored as its own element
+- **THEN** only the element of the day's morning reading (the wake-up reading, else the earliest) emits that day's readiness, in the live ingest and the re-projection alike.
+
 #### Scenario: Local per-session value
 - **WHEN** a locally derived per-session kind (session load, intensity factor, efficiency factor, variability index, mechanical work, aerobic decoupling, the five activity weather kinds) is stored without a provider
 - **THEN** its series is `session:<session id>`, so two sessions with the same sport and start keep separate rows.
@@ -615,6 +630,12 @@ Evidence:
 - `tests/test_canonical_domain_store.py:test_a_provider_replace_keeps_local_configurations`
 - `tests/test_canonical_domain_store.py:test_a_row_another_source_record_emits_moves_to_that_record`
 - `tests/test_canonical_ingest.py:test_duplicate_natural_keys_keep_the_first_and_count_the_rest`
+- `backend/providers/canonical_plans.py:GARMIN_SECTION_RANKS`
+- `tests/test_canonical_backfill.py:test_reprojection_keeps_the_dedicated_section_of_a_shared_key`
+- `backend/providers/canonical_plans.py:garmin_morning_keys`
+- `tests/test_canonical_backfill.py:test_a_day_of_readiness_snapshots_keeps_the_wake_up_reading`
+- `tests/test_canonical_store.py:test_same_payload_and_version_is_unchanged_and_not_rewritten`
+- `tests/test_garmin_performance_history_canonical.py:test_the_history_reprojects_to_the_pinned_observations_and_context`
 - `tests/test_canonical_store.py:test_natural_key_uses_provider_metric_sport_and_observation_time`
 - `tests/test_garmin_performance_history_canonical.py:test_history_refills_a_day_whose_dedicated_row_is_outdated`
 - `tests/test_garmin_performance_history_canonical.py:test_the_dedicated_ftp_of_a_day_survives_the_next_sync`
@@ -629,6 +650,10 @@ One background worker SHALL re-project stored raw records in batches of at most 
 #### Scenario: Writer busy or maintenance
 - **WHEN** the writer is held by another transaction or the maintenance gate refuses the operation
 - **THEN** the worker waits 5 seconds and repeats the same batch; the run is not marked failed.
+
+#### Scenario: Paced batches
+- **WHEN** a batch of any stage ends
+- **THEN** the worker rests, outside the writer transaction and the maintenance gate, as long as that batch's own thread time took before it runs the next batch or stage (at most half the interpreter, #2818); a stop request ends the rest at once.
 
 #### Scenario: Start while a pass runs
 - **WHEN** the worker is started again while its thread runs a pass (for example after a restore)

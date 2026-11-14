@@ -24,6 +24,7 @@ from backend.db import DatabaseManager, row_factory
 from backend.db.bootstrap import initialize_application_database
 from backend.db.repositories import KeyValueRepository
 from backend.sync.canonical_table_reader import CanonicalTableReader
+from backend.sync.state import settle_interrupted_sync_state
 
 STAMP = "2026-09-20T11:00:00+00:00"
 STATE_SQL = {
@@ -82,7 +83,7 @@ class LinkedSessionPersistenceTests(LinkingCase):
                 now=STAMP,
                 current_time=datetime(2026, 9, 20, 12, tzinfo=UTC),
                 default_profile_json="{}",
-                provider_resync_keys=(),
+                settle_interrupted=settle_interrupted_sync_state,
                 retention_days=-1,
             )
         with reopened.reader() as db:

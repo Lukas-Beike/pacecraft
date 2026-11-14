@@ -107,6 +107,19 @@ jobs:
         with:
           persist-credentials: false
           ref: ${{ github.sha }}
+          # The changelog reads the release tags and their history (#2899);
+          # commit metadata only, so no historic file contents are fetched.
+          fetch-depth: 0
+          fetch-tags: true
+          filter: blob:none
+      # Repository scripts may use Python 3.14 syntax (#2796).
+      - name: Set up Python
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: '3.14'
+      - name: Write the release changelog
+        # Local git only; the image carries public/changelog.json, the app never asks GitHub.
+        run: python3 scripts/release_changelog.py
       - name: Build shared CI image
         env:
           SOURCE_URL: https://github.com/${{ github.repository }}
@@ -160,6 +173,10 @@ jobs:
     # Ruleset-required check names: keep the denominator equal to PYTHON_TEST_SHARDS.
     name: Test shard ${{ matrix.shard }}/4
     runs-on: ubuntu-latest
+    # A hung shard frees its runner instead of holding it for 6 hours (#2900);
+    # the test steps dump the hanging test's stack well before this (the
+    # docs-only step may fall back to the whole suite in one process).
+    timeout-minutes: 40
     strategy:
       fail-fast: false
       matrix:
@@ -199,12 +216,13 @@ jobs:
       - name: Install dependencies
         if: env.MODE == 'full' || env.MODE == 'docs'
         run: python -m pip install "--only-binary=:all:" --require-hashes -r requirements.txt -r requirements-dev.txt
+      # The step takes 1.6 min median, 2.4 min p95 (212 shards, 2026-11-14).
       - name: Run unit tests
         if: env.MODE == 'full'
-        run: coverage run tests/run_tests.py --shard "${{ matrix.shard }}" --total "$PYTHON_TEST_SHARDS"
+        run: coverage run tests/run_tests.py --shard "${{ matrix.shard }}" --total "$PYTHON_TEST_SHARDS" --hang-timeout 600
       - name: Run the Python tests the documentation change affects
         if: env.MODE == 'docs'
-        run: python tests/run_tests.py --changed --base HEAD^1 --with-heavy
+        run: python tests/run_tests.py --changed --base HEAD^1 --with-heavy --hang-timeout 1800
       - name: Set up Node.js
         if: env.MODE == 'docs'
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v6.0.0
@@ -238,6 +256,8 @@ jobs:
     if: needs.source.outputs.docs_only != 'true'
     name: Container unit tests
     runs-on: ubuntu-latest
+    # The suite step takes under a minute; a hang dumps and frees the runner (#2900).
+    timeout-minutes: 20
     steps:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -273,7 +293,7 @@ jobs:
           --volume "${GITHUB_WORKSPACE}/.github:/review/.github:ro"
           --volume "${GITHUB_WORKSPACE}/scripts:/review/scripts:ro"
           --env PYTHONPATH=/app:/review/tests --workdir /app pacecraft:ci
-          python /review/tests/run_tests.py --suite container
+          python /review/tests/run_tests.py --suite container --hang-timeout 600
 
   test:
     if: always()

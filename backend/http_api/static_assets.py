@@ -16,9 +16,9 @@ ASSET_INDEX_HTML = "index.html"
 ASSET_SERVICE_WORKER_JS = "service-worker.js"
 ASSET_MANIFEST = "manifest.webmanifest"
 # Every non-hidden file of public/ with one of these suffixes is served; other
-# files there (AGENTS.md, notes) are not.
+# files there (AGENTS.md, notes) are not. The image build writes changelog.json (#2899).
 STATIC_SUFFIXES = frozenset(
-    {".html", ".js", ".css", ".svg", ".png", ".webmanifest", ".woff2"}
+    {".html", ".js", ".css", ".svg", ".png", ".webmanifest", ".woff2", ".json"}
 )
 STATIC_REVALIDATE_ASSETS = frozenset(
     {ASSET_INDEX_HTML, ASSET_SERVICE_WORKER_JS, ASSET_MANIFEST}

@@ -174,6 +174,48 @@ def _imports(
     }
 
 
+ARCHITECTURE_DOC = REPOSITORY_ROOT / "docs" / "architecture.md"
+LAYER_RULES_BEGIN = "<!-- BEGIN GENERATED LAYER RULES -->\n"
+LAYER_RULES_END = "<!-- END GENERATED LAYER RULES -->\n"
+FIXED_LAYERS = ("canonical", "providers", "http_api", "db", "runtime")
+
+
+def _named_roots(roots: frozenset[str]) -> str:
+    """Name a permitted set, grouping the domain and shared roots."""
+    parts = []
+    rest = set(roots)
+    for group, members in (
+        ("domain packages", DOMAIN_ROOTS),
+        ("shared modules", SHARED_ROOTS),
+    ):
+        if members <= rest:
+            parts.append(group)
+            rest -= members
+    return ", ".join(parts + [f"`{root}`" for root in sorted(rest)])
+
+
+def layer_rules_table() -> str:
+    """The permitted imports per layer as ``docs/architecture.md`` carries them."""
+    members = {layer: f"`backend.{layer}`" for layer in FIXED_LAYERS}
+    members["domain"] = ", ".join(f"`{root}`" for root in sorted(DOMAIN_ROOTS))
+    fixed = {f"backend.{layer}" for layer in FIXED_LAYERS}
+    members["shared"] = (
+        "every other `backend` package or module, among them "
+        + ", ".join(
+            f"`{root}`" for root in sorted((SHARED_ROOTS | {"backend.app"}) - fixed)
+        )
+    )
+    lines = ["| Layer | Packages | May import |", "| --- | --- | --- |"]
+    for layer, permitted in PERMITTED_IMPORTS_BY_LAYER.items():
+        lines.append(f"| {layer} | {members[layer]} | {_named_roots(permitted)} |")
+    legend = ", ".join(f"`{root}`" for root in sorted(SHARED_ROOTS))
+    lines += [
+        "",
+        f"Shared modules: {legend}. Domain packages: the packages of the domain layer.",
+    ]
+    return "\n".join(lines) + "\n"
+
+
 def _layer(source: str) -> str:
     for layer in ("canonical", "providers", "http_api", "db", "runtime"):
         if source == f"backend.{layer}" or source.startswith(f"backend.{layer}."):
@@ -395,6 +437,14 @@ def _database_lock_names(root: Path) -> list[str]:
 
 
 class BackendLayerContractTests(unittest.TestCase):
+    def test_architecture_doc_states_the_current_layer_rules(self) -> None:
+        document = ARCHITECTURE_DOC.read_text(encoding="utf-8").replace("\r\n", "\n")
+        self.assertEqual(
+            document.split(LAYER_RULES_BEGIN, 1)[1].split(LAYER_RULES_END, 1)[0],
+            layer_rules_table(),
+            "Regenerate with: python tests/test_backend_layer_contracts.py --write",
+        )
+
     def test_athlete_has_no_domain_package_dependencies(self) -> None:
         self.assertEqual(
             set(),
@@ -763,4 +813,17 @@ class BackendLayerContractTests(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    unittest.main()
+    if "--write" in sys.argv[1:]:
+        text = ARCHITECTURE_DOC.read_text(encoding="utf-8").replace("\r\n", "\n")
+        before, rest = text.split(LAYER_RULES_BEGIN, 1)
+        ARCHITECTURE_DOC.write_text(
+            before
+            + LAYER_RULES_BEGIN
+            + layer_rules_table()
+            + LAYER_RULES_END
+            + rest.split(LAYER_RULES_END, 1)[1],
+            encoding="utf-8",
+            newline="\n",
+        )
+    else:
+        unittest.main()

@@ -14,6 +14,7 @@ const STATUS_SOURCE_RANK = {
   provider_key: 7,
   thresholds: 8,
   intervals_key: 9,
+  equipment: 10,
 };
 const STATUS_STAND_REFRESH_MS = 60_000;
 

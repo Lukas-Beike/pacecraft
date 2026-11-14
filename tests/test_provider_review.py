@@ -28,8 +28,8 @@ from backend.providers.garmin import (
 )
 from backend.runtime import maintenance as runtime_maintenance
 from backend.sync import garmin as garmin_sync
-from backend.sync import garmin_payload_metrics, garmin_service
 from backend.sync import garmin_performance_history as performance_history
+from backend.sync import garmin_service
 from backend.sync.worker import SyncJobWorker
 
 server = fixtures.server
@@ -323,7 +323,7 @@ class ProviderReviewTests(unittest.TestCase):
         performance_history.append_garmin_performance_history(
             payload, {}, server.ATHLETE_CLOCK.now().date()
         )
-        metric = garmin_payload_metrics.garmin_payload_performance_metrics(
+        metric = performance_history.current_garmin_metrics(
             payload, server.ATHLETE_CLOCK.now().date()
         )["cycling_ftp_watts"]
         self.assertEqual(metric["freshness"], "current")
@@ -684,6 +684,7 @@ class GarminRangeContractTests(unittest.TestCase):
                 "get_training_four_week_load_balance",
                 "get_training_readiness",
                 "get_race_predictions",
+                "get_personal_record",
                 "get_max_metrics_range",
             ]
         )
@@ -702,6 +703,8 @@ class GarminRangeContractTests(unittest.TestCase):
         client.get_training_four_week_load_balance.return_value = {"load": 321}
         client.get_training_readiness.return_value = {"score": 80}
         client.get_race_predictions.return_value = []
+        records = [{"typeId": 3, "activityType": "running", "value": 1236.4}]
+        client.get_personal_record.return_value = records
         client.get_max_metrics_range.return_value = []
         windows = [(date(2026, 9, 1), date(2026, 9, 3))]
         calls = []
@@ -730,6 +733,9 @@ class GarminRangeContractTests(unittest.TestCase):
         )
         self.assertNotIn("calendarDate", result["daily_training_status"])
         self.assertEqual(result["training_load_balance"], {"load": 321})
+        # The running records are one read-only call without arguments (#2806).
+        self.assertEqual(result["personal_records"], records)
+        client.get_personal_record.assert_called_once_with()
         self.assertEqual(client.get_daily_training_status.call_count, 1)
         self.assertEqual(
             [details for source, details in calls if source == "daily_training_status"],

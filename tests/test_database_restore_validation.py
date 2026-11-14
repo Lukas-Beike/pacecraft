@@ -18,6 +18,7 @@ from backend.db.repositories import KeyValueRepository, PlanningStateRepository
 from backend.db.schema import CURRENT_SCHEMA_VERSION, database_schema_is_current
 from backend.errors import AppError
 from backend.planning.revision import PlanningRevisionService
+from backend.sync.state import settle_interrupted_sync_state
 
 # Schema v26, release 2.0.5: the schema production runs and the only baseline.
 BASELINE_FIXTURE = Path(__file__).with_name("fixtures") / "schema_v26.sql.txt"
@@ -143,7 +144,20 @@ class DatabaseRestoreValidationTests(unittest.TestCase):
                 connection.execute(
                     "INSERT INTO kv(key, value, updated_at) VALUES "
                     "('garmin_full_resync_running', '1', 'then'), "
-                    "('garmin_full_resync_status', 'running', 'then')"
+                    "('garmin_full_resync_status', 'running', 'then'), "
+                    "('sync_operation_status', 'running', 'then')"
+                )
+                # Taken mid library push and mid refresh (#2888): restore used to
+                # leave these stuck until the next restart.
+                connection.execute(
+                    "INSERT INTO workout_library(id, local_id, payload, sync_state, "
+                    "updated_at) VALUES ('w-1', 'local-1', '{}', 'syncing', 'then')"
+                )
+                connection.execute(
+                    "INSERT INTO provider_refresh_history(id, provider, area, "
+                    "operation_id, trigger, started_at, phase, status) VALUES "
+                    "('r-1', 'garmin', 'data', 'op', 'scheduler', 'then', "
+                    "'fetching', 'running')"
                 )
                 connection.commit()
             key_values = KeyValueRepository(lambda: "2026-11-09T08:00:00+00:00")
@@ -157,9 +171,7 @@ class DatabaseRestoreValidationTests(unittest.TestCase):
                     key_values=key_values,
                     now="2026-11-09T08:00:00+00:00",
                     default_profile_json='{"name": "Synthetic"}',
-                    provider_resync_keys=(
-                        ("garmin_full_resync_running", "garmin_full_resync_status"),
-                    ),
+                    settle_interrupted=settle_interrupted_sync_state,
                 ),
                 row_factory=row_factory,
             ).validate(path)
@@ -173,6 +185,23 @@ class DatabaseRestoreValidationTests(unittest.TestCase):
                 )
                 self.assertEqual(
                     key_values.get(connection, "profile"), '{"name": "Synthetic"}'
+                )
+                self.assertEqual(
+                    "", key_values.get(connection, "sync_operation_status")
+                )
+                unit = connection.execute(
+                    "SELECT sync_state, sync_error FROM workout_library"
+                ).fetchone()
+                self.assertEqual(
+                    ("sync_error", "Die Übertragung wurde unterbrochen."),
+                    (unit["sync_state"], unit["sync_error"]),
+                )
+                refresh = connection.execute(
+                    "SELECT status, error_code FROM provider_refresh_history"
+                ).fetchone()
+                self.assertEqual(
+                    ("skipped", "process_interrupted"),
+                    (refresh["status"], refresh["error_code"]),
                 )
                 revision = PlanningRevisionService(
                     PlanningStateRepository(), lambda: "2026-11-09T09:00:00+00:00"
