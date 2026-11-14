@@ -262,7 +262,8 @@ uncontrolled outdoor sessions.
   controlled laboratory sessions, not everyday outdoor files.
 - **Steady-output rule (v5, #1832):** the output CV ≤ 15 % on ~1 s samples
   excluded almost every outdoor ride. Measured on the athlete's last 365 days
-  (diagnostics `decoupling_eligibility`, 2026-11-14, counts only): of the 20
+  (the temporary diagnostics section `decoupling_eligibility`, 2026-11-14,
+  counts only; removed again by #2780): of the 20
   outdoor rides past the coverage gate the 1 s rule passed 0 and the CV of
   60 s rolling means 17; of 81 outdoor runs 55 and 60. The athlete chose the
   60 s rule for runs and rides alike, without a cool-down trim (2026-11-14).

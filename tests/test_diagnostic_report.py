@@ -210,7 +210,6 @@ class DiagnosticReportServiceTests(unittest.TestCase):
                 "lt1_ride_coverage",
                 "curve_build",
                 "garmin_strength_push",
-                "decoupling_eligibility",
                 "recovery_copies",
                 "stream_backfill",
                 "fit_inventory",
