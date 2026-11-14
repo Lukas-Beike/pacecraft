@@ -101,7 +101,7 @@ function bindAnalysisPopover(button, info) {
 }
 
 function analysisChart(title, series, unit, start, end, note, {
-  sparse = false, zeroCentered = false, showLegend = true, calendarWeeks = false, caption = analysisAxisCaption(unit), estimate = false,
+  sparse = false, zeroCentered = false, showLegend = true, calendarWeeks = false, monthTicks = false, caption = analysisAxisCaption(unit), estimate = false,
 } = {}) {
   if (!analysisHasData(series)) return null;
   const heading = h("h3", null, title, estimate && [" ", createEstimateChip()]);
@@ -148,7 +148,10 @@ function analysisChart(title, series, unit, start, end, note, {
   appendAnalysisAxes(svg, unit, scales, caption);
   appendAnalysisSeries(svg, series, unit, scales, zeroCentered, caption);
   const weekTicks = calendarWeeks && series.length > 0 && series.every((item) => item.cadenceDays === 7);
-  appendAnalysisDateTicks(svg, start, end, scales, weekTicks ? analysisWeekTickLabel : analysisDayTickLabel);
+  let tickLabel = weekTicks ? analysisWeekTickLabel : analysisDayTickLabel;
+  // A chart of monthly points names its months (#2922).
+  if (monthTicks) tickLabel = analysisMonthTickLabel;
+  appendAnalysisDateTicks(svg, start, end, scales, tickLabel);
   appendAnalysisPointInspectors(section, svg, series, unit, scales);
   section.append(svg);
   appendAnalysisReferenceNotes(section, series, unit);
@@ -461,6 +464,12 @@ function analysisWeekTickLabel(dateKey) {
   return analysisDayTickLabel(dateKey);
 }
 
+const ANALYSIS_MONTH_TICK_FORMAT = new Intl.DateTimeFormat("de-DE", { month: "short", timeZone: "UTC" });
+
+function analysisMonthTickLabel(dateKey) {
+  return ANALYSIS_MONTH_TICK_FORMAT.format(new Date(`${dateKey.slice(0, 7)}-01T00:00:00Z`)).replace(".", "");
+}
+
 function analysisDayTickLabel(dateKey) {
   return dateKey.slice(5).split("-").reverse().join(".");
 }
@@ -468,7 +477,7 @@ function analysisDayTickLabel(dateKey) {
 // Tick marks sit on every day (or every week start of a weekly chart); labels repeat at an even step counted back from the latest tick.
 function appendAnalysisDateTicks(svg, start, end, { chartWidth, x }, tickLabel = analysisDayTickLabel) {
   const weekly = tickLabel === analysisWeekTickLabel;
-  const dates = analysisTickDates(start, end, weekly);
+  const dates = tickLabel === analysisMonthTickLabel ? analysisMonthDates(start, end) : analysisTickDates(start, end, weekly);
   const maxLabels = chartWidth < 600 ? 4 : 7;
   const step = [1, 2, 3, 4, 7, 14, 28].find((candidate) => Math.floor((dates.length - 1) / candidate) + 1 <= maxLabels) || 28;
   dates.forEach((date, index) => {
@@ -478,6 +487,18 @@ function appendAnalysisDateTicks(svg, start, end, { chartWidth, x }, tickLabel =
     if (labelled) svg.append(svgNode("text", { x: x(date), y: 188, "text-anchor": "middle", class: "analysis-date-tick" }, tickLabel(date)));
   });
   if (weekly) svg.append(svgNode("text", { x: 4, y: 188, class: "analysis-week-caption" }, "Woche ab"));
+}
+
+// The first day of every month from start to end.
+function analysisMonthDates(start, end) {
+  const dates = [];
+  for (let [year, month] = start.split("-").map(Number); dates.length < 120; month += 1) {
+    if (month > 12) { year += 1; month = 1; }
+    const date = `${year}-${String(month).padStart(2, "0")}-01`;
+    if (date > end) break;
+    dates.push(date);
+  }
+  return dates;
 }
 
 function analysisTickDates(start, end, weekly) {
@@ -847,7 +868,7 @@ function renderRunningDynamicsChart(root, title, trend) {
       color: index,
       points: months.map((month, position) => ({ date: `${month}-01`, value: band.series?.[key]?.[position] ?? null })),
     }));
-    chartSlot.replaceChildren(analysisChart(label, series, unit, `${months[0]}-01`, `${months.at(-1)}-01`, "Monatsmittel (Median) deiner Läufe in diesem Tempo-Bereich.", { sparse: true }) || h("p", "muted", "Noch keine Laufdynamik."));
+    chartSlot.replaceChildren(analysisChart(label, series, unit, `${months[0]}-01`, `${months.at(-1)}-01`, "Monatsmittel (Median) deiner Läufe in diesem Tempo-Bereich.", { sparse: true, monthTicks: true }) || h("p", "muted", "Noch keine Laufdynamik."));
   };
   select.addEventListener("change", () => { runningDynamicsMetric = select.value; draw(); });
   draw();
