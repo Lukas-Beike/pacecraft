@@ -68,17 +68,17 @@ def report(messages=40):
             ],
         },
         "runtime": {"process_memory": {"rss_bytes": 1000}},
-        "stream_backfill": {
+        "fit_inventory": {
             "status": "ready",
             "note": "text never printed",
             "garmin": {
-                "stored": 12,
-                "cursor": "finished",
-                "finished": True,
-                "act_secret": 3,
-                "label": "text never printed",
+                "ride": {
+                    "files": 5,
+                    "messages": {"216": 5},
+                    "label": "text never printed",
+                },
             },
-            "act_secret": {"stored": 1},
+            "act_secret": {"ride": {"files": 1}},
         },
     }
 
@@ -229,34 +229,33 @@ class ProdChecksTests(unittest.TestCase):
     def test_section_prints_only_allow_listed_fields_in_path_order(self):
         code, text = self.run_main(
             prod_diagnostics, "--url", self.url, "--password-file", str(self.secret),
-            "--section", "stream_backfill",
+            "--section", "fit_inventory",
         )  # fmt: skip
         self.assertEqual(code, 0)  # the checks (sync.last_error) are not run
-        prefix = "info stream_backfill."
+        prefix = "info fit_inventory."
         self.assertEqual(
             text.splitlines(),
             [
                 "ok health",
                 "ok logout 200",
-                f'{prefix}garmin.cursor "finished"',
-                f"{prefix}garmin.finished true",
-                f"{prefix}garmin.stored 12",
+                f"{prefix}garmin.ride.files 5",
+                f"{prefix}garmin.ride.messages.216 5",
                 f'{prefix}status "ready"',
             ],
         )
         self.assertEqual(
-            prod_diagnostics.section_lines({}, "stream_backfill"),
-            [("FAIL", "section stream_backfill missing")],
+            prod_diagnostics.section_lines({}, "fit_inventory"),
+            [("FAIL", "section fit_inventory missing")],
         )
-        failed = {"stream_backfill": {"status": "failed"}}
+        failed = {"fit_inventory": {"status": "failed"}}
         self.assertEqual(
-            prod_diagnostics.section_lines(failed, "stream_backfill"),
-            [("FAIL", 'stream_backfill.status "failed"')],
+            prod_diagnostics.section_lines(failed, "fit_inventory"),
+            [("FAIL", 'fit_inventory.status "failed"')],
         )
         with mock.patch("sys.stderr"), self.assertRaises(SystemExit):
             prod_diagnostics.main(
                 ["--url", self.url, "--password-file", str(self.secret),
-                 "--section", "stream_backfill", "--expect-version", "2.1.2"]
+                 "--section", "fit_inventory", "--expect-version", "2.1.2"]
             )  # fmt: skip
 
     def test_post_release_sections_print_counts_and_state_words_only(self):
@@ -372,11 +371,11 @@ class ProdChecksTests(unittest.TestCase):
         # One login reads several sections; a missing one fails the run.
         code, text = self.run_main(
             prod_diagnostics, "--url", self.url, "--password-file", str(self.secret),
-            "--section", "stream_backfill",
+            "--section", "fit_inventory",
             "--section", "garmin_past_workout_removal",
         )  # fmt: skip
         self.assertEqual(code, 1)
-        self.assertIn("info stream_backfill.garmin.stored 12", text)
+        self.assertIn("info fit_inventory.garmin.ride.files 5", text)
         self.assertIn("FAIL section garmin_past_workout_removal missing", text)
         # A stopped or failed state is a FAIL line; an empty section is no failure.
         stopped = {

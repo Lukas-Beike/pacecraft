@@ -39,9 +39,13 @@ Athlete decisions (2026-11-07, #1680):
 - Calories come from the device as `energy_kcal`, not from a local formula.
 - Card 3 (2026-11-08, #1773): the decoupling's output per heartbeat is named
   `steady_output_per_hr` (halves: `output_per_hr`), apart from the session
-  EF; run work carries `power_model: running_power_model`; the steady-output
-  rule for outdoor rides is re-measured after the stream history is fetched
-  again (#1763).
+  EF; run work carries `power_model: running_power_model`.
+- Card 5 (2026-11-14, #1832): the steady-output rule reads the CV of the
+  output's 60 s rolling means instead of ~1 s samples, for runs and rides
+  alike, without a cool-down trim. Measured on the athlete's last 365 days
+  with a temporary counts-only diagnostics section (removed by #2780): of the
+  20 outdoor rides past the coverage gate the 1 s rule passed 0 and the 60 s
+  rule 17; of 81 outdoor runs 55 and 60.
 - Provider values of these metrics (Intervals.icu `icu_efficiency_factor`,
   `icu_variability_index`, `decoupling`, `icu_joules`) are never used.
 
@@ -158,7 +162,8 @@ uncontrolled outdoor sessions.
   zeros" power-averaging setting: excluding zeros raises the average and
   lowers VI for rides with coasting. The setting is not reported.
 - The second half includes any cool-down at the end of the session; a
-  symmetric trim is evaluated together with the steady-output rule (#1763).
+  symmetric trim was evaluated with the steady-output rule and not chosen
+  (#1832).
 - Stream work misses the skipped samples; its coverage is stored. Mechanical
   work is not energy expenditure: gross efficiency is about 20 % and varies
   with work rate and training (R41-R43).
@@ -260,13 +265,6 @@ uncontrolled outdoor sessions.
   51 trained cyclists, HR decoupling over about 2.5 h of moderate cycling
   tracked the fall of power at the first ventilatory threshold (r = −0.76);
   controlled laboratory sessions, not everyday outdoor files.
-- **Steady-output rule (v5, #1832):** the output CV ≤ 15 % on ~1 s samples
-  excluded almost every outdoor ride. Measured on the athlete's last 365 days
-  (the temporary diagnostics section `decoupling_eligibility`, 2026-11-14,
-  counts only; removed again by #2780): of the 20
-  outdoor rides past the coverage gate the 1 s rule passed 0 and the CV of
-  60 s rolling means 17; of 81 outdoor runs 55 and 60. The athlete chose the
-  60 s rule for runs and rides alike, without a cool-down trim (2026-11-14).
 - **History:** sessions without stored full-resolution streams have no stream
   work and no decoupling until the follow-up stream re-fetch.
 - **EF trend:** an EF or decoupling trend over comparable sessions is not
