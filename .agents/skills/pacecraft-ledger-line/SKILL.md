@@ -19,8 +19,8 @@ Prints one line for the orchestrator ledger:
   `Part of #N` PR); run it after closing the issue.
 - The note is the first non-blank line of `--note-file`, else the PR title.
 - The balance comes from the merge commit (see
-  [line-balance](../pacecraft-line-balance/SKILL.md)); fetch the base branch
-  first so the commit is available locally.
+  [line-balance](../pacecraft-line-balance/SKILL.md)); a merge commit that is
+  not local yet is fetched once (#2920).
 - Exit 0: printed. Exit 1: the PR is not merged; do not write a ledger line
   yet. Exit 2: bad input, credential-shaped note, a missing commit or a failed
   `gh` call.

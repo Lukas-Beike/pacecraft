@@ -4,9 +4,9 @@
 
 Prints: <YYYY-MM-DD> #N closed|part via PR #M <sha> prod +a/-b tests +c/-d other
 +e/-f: <first line of the note, else the PR title>; "part" while the issue
-stays open (the PR delivered one part of it). The merge commit must be
-fetched locally. Exit 0 ok; 1 refused, the PR is not merged; 2 bad input or a
-failed gh/git call.
+stays open (the PR delivered one part of it). A merge commit that is not local
+yet is fetched once (#2920). Exit 0 ok; 1 refused, the PR is not merged; 2 bad
+input or a failed gh/git call.
 """
 
 from __future__ import annotations
@@ -14,7 +14,7 @@ from __future__ import annotations
 import argparse
 import sys
 
-from gh_cli import CliError, gh_json, positive_int, read_body
+from gh_cli import CliError, gh_json, git, positive_int, read_body
 from line_balance import balance
 
 LABELS = (("prod", "production"), ("tests", "tests"), ("other", "other"))
@@ -28,6 +28,10 @@ def ledger_line(issue: int, pr: int, note: str | None = None) -> str | None:
         return None
     issue_state = gh_json("issue", "view", str(issue), "--json", "state")["state"]
     outcome = "closed" if issue_state == "CLOSED" else "part"
+    try:
+        git("cat-file", "-e", f"{sha}^{{commit}}")
+    except CliError:  # right after a merge the squash commit is often not local
+        git("fetch", "--quiet", "origin", sha)
     counts = balance(commit=sha)
     parts = " ".join(
         f"{label} +{counts[name][0]}/-{counts[name][1]}" for label, name in LABELS
