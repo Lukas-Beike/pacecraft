@@ -19,7 +19,9 @@ import shlex
 import sys
 from pathlib import Path
 
-from guard_destructive_git import CONTINUATION, SEGMENT  # one shell reading
+from guard_destructive_git import CONTINUATION  # one continuation rule
+
+SEPARATORS = ";&|()"  # guard_destructive_git's segment marks, read outside quotes
 
 WRITES = {
     "pr": {"create", "edit", "comment", "review"},
@@ -67,12 +69,31 @@ def _empty_file(value: str, cwd: Path) -> bool:
     return not text.strip().strip("\ufeff\x00").strip()
 
 
-def _gh_writes(segment: str) -> list[tuple[str, list[str]]]:
+def _segments(text: str) -> list[list[str]]:
+    """The words of each shell segment, split on ; & | ( ) and newlines outside
+    quotes: a title like "fix(x): y" stays one word (Gitar P2)."""
+    parts: list[str] = []
+    current, quote = "", ""
+    for char in text.replace("\n", ";"):
+        if quote:
+            quote = "" if char == quote else quote
+        elif char in "\"'":
+            quote = char
+        elif char in SEPARATORS:
+            parts, current = [*parts, current], ""
+            continue
+        current += char
+    segments = []
+    for part in [*parts, current]:
+        try:  # Windows paths: shlex would read their backslashes as escapes
+            segments.append(shlex.split(part.replace("\\", "/")))
+        except ValueError:  # an unbalanced quote
+            continue
+    return segments
+
+
+def _gh_writes(words: list[str]) -> list[tuple[str, list[str]]]:
     """(verb, arguments) of each gh PR or issue write in one shell segment."""
-    try:  # Windows paths: shlex would read their backslashes as escapes
-        words = shlex.split(segment.replace("\\", "/"))
-    except ValueError:
-        return []
     return [
         (words[start + 2], words[start + 3 :])
         for start, word in enumerate(words[:-2])
@@ -84,8 +105,8 @@ def _gh_writes(segment: str) -> list[tuple[str, list[str]]]:
 def blocked(command: str, cwd: Path) -> bool:
     text = CONTINUATION.sub(" ", command)
     written = {m.group(1) for m in WRITTEN.finditer(text.replace("\\", "/"))}
-    for segment in SEGMENT.split(text):
-        for verb, args in _gh_writes(segment):
+    for words in _segments(text):
+        for verb, args in _gh_writes(words):
             texts = _values(args, TEXT_FLAGS) if verb == "edit" else []
             files = [v for v in _values(args, FILE_FLAGS) if v not in written]
             if any(not t.strip() for t in texts) or any(

@@ -58,6 +58,9 @@ class GuardEmptyBodyTests(unittest.TestCase):
             "gh pr edit 2938 `\n  --body-file empty.md",  # PowerShell continuation
             "echo $(gh pr edit 2938 --body-file empty.md)",
             "gh pr edit 2938 --body-file $env:BODY_DIR/empty.md",
+            # Gitar P2: separators inside a quoted title stay inside it.
+            'gh pr create --title "fix(hooks): a; b & c | d" --body-file empty.md',
+            "gh pr edit 2938 --title 'x (y)' --body-file empty.md",
         ):
             with self.subTest(command=command):
                 self.assertEqual(run_hook(command, self.cwd), 2)
