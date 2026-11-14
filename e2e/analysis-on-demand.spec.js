@@ -96,8 +96,12 @@ test("@responsive running analysis shows no running technique card", async ({ pa
   const reads = [];
   page.on("request", (request) => { if (request.url().includes("/api/analysis/running-dynamics")) reads.push(request.url()); });
   await waitForInitialState(page);
+  const profiles = page.waitForResponse(`**${POWER_PROFILES}`);
   await routeTo(page, "#analysis/running");
-  await expect(page.locator("#runningBestEfforts")).toBeAttached();
+  await expect(page.locator("#dataPanel")).toHaveClass(/active/);
+  // The view's report reads start together, so once the best efforts are drawn any card read was sent.
+  await profiles;
+  await expect(page.locator("#runningBestEfforts")).toHaveAttribute("data-analysis-empty", /.+/);
   await expect(page.getByText("Lauftechnik je Monat")).toHaveCount(0);
   await expect(page.locator("#runningDynamicsTrend")).toHaveCount(0);
   expect(reads).toEqual([]);
