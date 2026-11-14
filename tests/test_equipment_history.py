@@ -267,6 +267,18 @@ class EquipmentHistoryTests(unittest.TestCase):
             ["create", "update", "undo", "update", "undo"],
         )
 
+    def test_a_save_refuses_non_text_kinds_and_more_than_100_items(self) -> None:
+        # The athlete's own route reaches save directly (#2879).
+        for field, value in (("status", []), ("kind", {})):
+            with self.subTest(field=field), self.assertRaises(AppError) as refused:
+                self.service.save({**BIKE, field: value})
+            self.assertEqual(refused.exception.status, 400)
+        for index in range(100):
+            self.bike(name=f"Bike {index}")
+        with self.assertRaises(AppError) as full:
+            self.bike(name="One more")
+        self.assertEqual(full.exception.status, 409)
+
     def test_a_session_read_offers_its_items_and_suggests_the_last_assigned(
         self,
     ) -> None:

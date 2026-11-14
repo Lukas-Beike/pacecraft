@@ -278,6 +278,12 @@ class EquipmentService:
             previous = json.loads(old) if old is not None else None
             if payload.get("id") and not previous:
                 raise AppError(404, "Ausrüstung nicht gefunden.")
+            # The read lists 100 items; more could never be managed (#2879).
+            if (
+                previous is None
+                and len(equipment_store.values(db, EQUIPMENT_PREFIX)) >= 100
+            ):
+                raise AppError(409, "Höchstens 100 Ausrüstungsgegenstände.")
             if previous and payload.get("expected_revision") != previous["revision"]:
                 raise AppError(409, "Ausrüstung geändert; neu lesen.")
             parent_id = _equipment_parent(db, payload, item_id)
@@ -782,7 +788,9 @@ def _equipment_identity(payload: dict, today: date) -> tuple[str, date, str]:
         not name
         or len(name) > 200
         or _payload_sport(payload) is None
+        or not isinstance(payload.get("kind"), str)
         or payload.get("kind") not in {"shoes", "bike", "component", "other"}
+        or not isinstance(payload.get("status", "active"), str)
         or payload.get("status", "active") not in {"active", "archived"}
     ):
         raise AppError(400, "Name, Sport, Art oder Status der Ausrüstung ungültig.")

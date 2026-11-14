@@ -57,7 +57,8 @@ class EquipmentPostRoutes:
         "Ausrüstungszähler oder Wartungsintervall ungültig."; 404 "Ausrüstung
         nicht gefunden." for an unknown `id`; 409 "Ausrüstung geändert; neu
         lesen." for a stale `expected_revision`; 409 "Das Ausmustern muss
-        bestätigt werden." for an unconfirmed retirement.
+        bestätigt werden." for an unconfirmed retirement; 409 "Höchstens 100
+        Ausrüstungsgegenstände." for a new item beyond the 100th.
         """
         payload = handler.read_json(EQUIPMENT_BODY_MAX_BYTES)
         if not isinstance(payload, dict):
