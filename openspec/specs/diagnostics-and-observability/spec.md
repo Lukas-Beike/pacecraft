@@ -101,7 +101,7 @@ The diagnostic report SHALL include the state of the local method passes as coun
 
 #### Scenario: Garmin strength push counts
 - **WHEN** the report is generated
-- **THEN** `garmin_strength_push` counts the active strength units with a Garmin copy by their exercise structure (none, one, several) and with a load in kilograms, and the units that went only to Intervals.icu with and without a structure; counts only, never names, ids or dates (#2850)
+- **THEN** `garmin_strength_push` counts the active strength units dated today or later: with a Garmin copy, those changed since their push, and of the others their exercise structure (none, one, several) and whether a weight is sent; and the units the app sent only to Intervals.icu, with and without a structure; imports from Intervals.icu are left out; counts only, never names, ids or dates (#2850)
 
 #### Scenario: All-time curve build
 - **WHEN** the report is generated

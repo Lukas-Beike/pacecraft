@@ -320,8 +320,9 @@ class DiagnosticReportServiceTests(unittest.TestCase):
         # add two (Garmin records, the stream cursor); the provider sync times add
         # two (refresh history, push jobs); the schema version adds one; the
         # Garmin past-workout removal adds its stored state; the strength push
-        # counts add one read of the linked units (#2850).
-        self.assertEqual(len(self.db.queries), 24)
+        # counts add two reads: the remembered Garmin exercises and the linked
+        # units (#2850).
+        self.assertEqual(len(self.db.queries), 25)
         self.assertEqual(
             [query.rsplit("FROM ", 1)[1] for query in count_queries],
             [

@@ -68,8 +68,8 @@ SECTION_FIELDS = {
     ),
     # Strength units sent to Garmin by shape, and Intervals.icu-only ones (#2850).
     "garmin_strength_push": re.compile(
-        r"status|garmin(_without_structure|_one_exercise|_several_exercises"
-        r"|_with_kg)?|intervals_only(_without_structure)?"
+        r"status|garmin\.(units|changed_since_push|without_structure|one_exercise"
+        r"|several_exercises|with_kg)|intervals\.(units|without_structure)"
     ),
     "garmin_past_workout_removal": re.compile(
         r"status|one_time_done|checked|removed|last_run_hours|last_outcome"

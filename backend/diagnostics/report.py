@@ -340,7 +340,7 @@ class DiagnosticReportService:
                 ),
                 "garmin_strength_push": section(
                     "garmin_strength_push",
-                    lambda: summarize_garmin_strength_push(db),
+                    lambda: summarize_garmin_strength_push(db, deps.utc_now()[:10]),
                 ),
                 "canonical_coverage": summarize_canonical_coverage(
                     deps.canonical_coverage, db

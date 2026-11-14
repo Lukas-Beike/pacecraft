@@ -292,11 +292,8 @@ class ProdChecksTests(unittest.TestCase):
                 "total_bytes": 2048,
             },
             "garmin_strength_push": {
-                "garmin": 2,
-                "garmin_several_exercises": 1,
-                "garmin_with_kg": 1,
-                "intervals_only": 2,
-                "intervals_only_without_structure": 1,
+                "garmin": {"units": 2, "several_exercises": 1, "with_kg": 1},
+                "intervals": {"units": 2, "without_structure": 1},
                 "unit_name": "text never printed",
             },
             "curve_build": {
@@ -357,8 +354,8 @@ class ProdChecksTests(unittest.TestCase):
                 "count 1", "newest_age_hours 2.0", "total_bytes 2048",
             ],
             "garmin_strength_push": [
-                "garmin 2", "garmin_several_exercises 1", "garmin_with_kg 1",
-                "intervals_only 2", "intervals_only_without_structure 1",
+                "garmin.several_exercises 1", "garmin.units 2", "garmin.with_kg 1",
+                "intervals.units 2", "intervals.without_structure 1",
             ],
             "curve_build": [
                 "building_s 12.0", "builds 3", "failed_age_s null", "failures 0",
