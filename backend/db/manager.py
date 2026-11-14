@@ -217,26 +217,30 @@ class DatabaseManager:
         )
         self._reader_slots = threading.BoundedSemaphore(self.reader_count)
         self._slow_reader_waits = 0
+        self._reader_timeouts = 0
         self._longest_reader_wait_s = 0.0
 
     def _acquire_reader_slot(self) -> None:
-        """Wait for a reader slot and count a slow wait; time out as busy."""
+        """Take a reader slot, timing only a wait; time out as busy."""
+        if self._reader_slots.acquire(blocking=False):
+            return
         started = time.monotonic()
         acquired = self._reader_slots.acquire(timeout=self.timeout)
         waited = time.monotonic() - started
         with self._state:
             self._longest_reader_wait_s = max(self._longest_reader_wait_s, waited)
-            if waited > _SLOW_READER_WAIT_S:
-                self._slow_reader_waits += 1
+            self._slow_reader_waits += waited > _SLOW_READER_WAIT_S
+            self._reader_timeouts += not acquired
         if not acquired:
             raise DatabaseBusyError("reader")
 
     def reader_slot_waits(self) -> dict[str, Any]:
-        """Counts only: slots, waits over a second and the longest wait (#2788)."""
+        """Counts only: slots, slow waits, timed-out waits, longest wait (#2788)."""
         with self._state:
             return {
                 "slots": self.reader_count,
                 "waits_over_1s": self._slow_reader_waits,
+                "timeouts": self._reader_timeouts,
                 "longest_wait_s": round(self._longest_reader_wait_s, 3),
             }
 
