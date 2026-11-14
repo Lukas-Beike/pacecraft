@@ -20,7 +20,8 @@ other: +E / -F
 - Production is `backend/`, `server.py` and `public/`; tests are `tests/` and
   `e2e/`; other is docs, skills, scripts and configuration. Binary files
   count as 0.
-- Fetch the base first (`git fetch origin`) so the numbers match the PR.
+- Fetch the base first (`git fetch origin`) so the numbers match the PR. With
+  `--commit`, a merge commit that is not local yet is fetched once (#2920).
 - Exit 0: printed. Exit 2: bad input or a failed `git` call.
 - Other scripts reuse `line_balance.balance()`, which returns the same counts
   as a dict of `(added, removed)` pairs.

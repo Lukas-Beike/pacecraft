@@ -29,17 +29,21 @@ NUMSTAT = (
 
 
 class FakeGit:
-    def __init__(self):
+    def __init__(self, missing=0):
         self.calls = []
+        self.missing = missing  # diffs that fail like an unfetched commit
 
     def __call__(self, argv, **_kwargs):
         self.calls.append(argv)
+        if argv[1] == "diff" and self.missing:
+            self.missing -= 1
+            return subprocess.CompletedProcess(argv, 128, "", "fatal: bad revision")
         return subprocess.CompletedProcess(argv, 0, NUMSTAT, "")
 
 
 class LineBalanceTests(unittest.TestCase):
-    def balance(self, **kwargs):
-        fake = FakeGit()
+    def balance(self, missing=0, **kwargs):
+        fake = FakeGit(missing)
         with mock.patch.object(gh_cli.subprocess, "run", fake):
             return line_balance.balance(**kwargs), fake
 
@@ -58,6 +62,16 @@ class LineBalanceTests(unittest.TestCase):
         self.assertEqual(fake.calls[0][-1], "origin/main...topic")
         _, fake = self.balance(commit="abc123")
         self.assertEqual(fake.calls[0][-1], "abc123^..abc123")
+
+    def test_an_unfetched_merge_commit_is_fetched_once_then_diffed(self):
+        # #2920: right after an auto-merge the squash commit is not local yet.
+        result, fake = self.balance(missing=1, commit="abc123")
+        self.assertEqual(result["production"], (20, 3))
+        self.assertEqual([call[1] for call in fake.calls], ["diff", "fetch", "diff"])
+        self.assertEqual(fake.calls[1][1:], ["fetch", "--quiet", "origin", "abc123"])
+        for kwargs in ({"missing": 2, "commit": "abc123"}, {"missing": 1}):
+            with self.subTest(**kwargs), self.assertRaises(gh_cli.CliError):
+                self.balance(**kwargs)  # still missing, or a range: no fetch
 
     def test_main_prints_three_pasteable_lines(self):
         out = io.StringIO()

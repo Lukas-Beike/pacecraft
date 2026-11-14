@@ -48,7 +48,16 @@ def balance(
     span = f"{commit}^..{commit}" if commit else f"{base}...{head}"
     totals = {"production": [0, 0], "tests": [0, 0], "other": [0, 0]}
     # Renames count only their changed lines, not the whole moved file.
-    for line in git("diff", "--numstat", "-M", span, cwd=cwd).splitlines():
+    try:
+        numstat = git("diff", "--numstat", "-M", span, cwd=cwd)
+    except CliError:
+        if not commit:
+            raise
+        # Right after a merge the squash commit (or its parent) is often not
+        # local yet: fetch it once, then diff again (#2920).
+        git("fetch", "--quiet", "origin", commit, cwd=cwd)
+        numstat = git("diff", "--numstat", "-M", span, cwd=cwd)
+    for line in numstat.splitlines():
         added, removed, path = line.split("\t", 2)
         path = destination(path)
         if added.isdigit() and removed.isdigit():  # binary files show "-"
