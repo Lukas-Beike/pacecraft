@@ -129,8 +129,8 @@ class DatabaseManagerTests(unittest.TestCase):
             first = holder()
             self.assertIs(holder(), first)
             self.assertIs(holder.manager, first)
-            # Two readers measured fastest without head-of-line blocking (#2788).
-            self.assertEqual(2, first.reader_count)
+            # Two readers starved views on the production history (#2965).
+            self.assertEqual(4, first.reader_count)
 
             state["path"] = Path(root) / "second.db"
             second = holder()

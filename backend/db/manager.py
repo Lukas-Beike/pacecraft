@@ -37,9 +37,11 @@ _LOGGER = logging.getLogger("intervals_coach")
 # sets at once thrash the handoff: on the fixture with 900 synthetic sessions,
 # seven parallel view requests took 2.7 times their sequential sum with four
 # readers, 1.36 times with two and 0.91 times with one (right after a restart
-# 1.8-3.9 s, 0.4-1.8 s and 0.1-1.3 s per request). Two keep most of that gain
-# and leave one slot free while a request holds a slow read.
-APP_READER_CONNECTIONS = 2
+# 1.8-3.9 s, 0.4-1.8 s and 0.1-1.3 s per request). Two readers starved views on
+# the production history (2.1.15, #2965): requests holding a snapshot for
+# seconds took both slots (193 waits over 1 s, longest 19 s, view caps of 15 s
+# at 25 minutes of uptime), so four readers stay until those reads leave the slot.
+APP_READER_CONNECTIONS = 4
 # A reader-slot wait above this counts in the diagnostics (#2788).
 _SLOW_READER_WAIT_S = 1.0
 _BACKGROUND_WRITER: ContextVar[bool] = ContextVar(
