@@ -1,18 +1,19 @@
 """Squash-merge one develop pull request through auto-merge and optionally wait.
 
-    python scripts/pr_merge.py <pr> [--wait MINUTES] [--require-current]
+    python scripts/pr_merge.py <pr> [--wait MINUTES] [--allow-behind]
 
-Arms `gh pr merge --auto --squash` pinned to the current head, unless it is
-armed already; when GitHub refuses because the PR is already in clean status,
-merges that head at once with `--squash` (#2776). `--wait` then polls every 20 s
-in the same turn until the PR is merged or closed, a check fails or new
-feedback (comment or review) arrives, at most MINUTES (#2795): the host's PR
-watcher does not reliably wake on the merge itself.
-With --require-current it first refuses a head that lacks commits of develop
-(#2901). Exit 0: merged (or armed, without --wait); 1: refused (base is not
-develop, or a head behind develop with --require-current),
-closed unmerged, a failing check or new feedback; 2: bad input or a failed gh
-call; 3: still open when the wait ended.
+Refuses a head that lacks commits of develop, and disarms an armed auto-merge
+then (#2901: "up to date before merge" is off while lanes run); --allow-behind
+skips that. Arms `gh pr merge --auto --squash` pinned to the current head,
+unless it is armed already; when GitHub refuses because the PR is already in
+clean status, merges that head at once with `--squash` (#2776). `--wait` then
+polls every 20 s in the same turn until the PR is merged or closed, a check
+fails or new feedback (comment or review) arrives, at most MINUTES (#2795): the
+host's PR watcher does not reliably wake on the merge itself. The develop check
+runs at arming, as the lane rule asks; develop moving during CI is accepted.
+Exit 0: merged (or armed, without --wait); 1: refused (base is not develop, or
+a head behind develop), closed unmerged, a failing check or new feedback; 2:
+bad input or a failed gh call; 3: still open when the wait ended.
 """
 
 from __future__ import annotations
@@ -51,6 +52,19 @@ def arm(number: int, pr: dict[str, Any]) -> str:
     return f"already clean, merged {pr['headRefOid'][:10]} directly"
 
 
+def behind_develop(number: int, pr: dict[str, Any]) -> bool:
+    """Whether develop has commits the head lacks; disarms auto-merge if so."""
+    path = f"repos/{{owner}}/{{repo}}/compare/{pr['headRefOid']}...develop"
+    behind = gh_json("api", path, "--jq", "{behind: .ahead_by}")["behind"]
+    if not isinstance(behind, int):
+        raise CliError("the develop comparison returned no commit count")
+    if behind and pr.get("autoMergeRequest"):
+        gh("pr", "merge", str(number), "--disable-auto")
+    if behind:
+        print(f"refused: head is {behind} commit(s) behind develop; rebase first")
+    return behind > 0
+
+
 def wait(number: int, minutes: int, seen: int) -> int:
     polls = minutes * POLLS_PER_MINUTE + 1
     for poll in range(polls):
@@ -75,25 +89,20 @@ def main(argv: list[str] | None = None) -> int:
     top.add_argument("number", type=positive_int)
     top.add_argument("--wait", type=int, default=0, metavar="MINUTES")
     top.add_argument(
-        "--require-current",
+        "--allow-behind",
         action="store_true",
-        help="refuse a head that lacks commits of develop (merge rules off, #2901)",
+        help="arm even when develop has commits the head lacks (#2901)",
     )
     args = top.parse_args(argv)
+    current = not args.allow_behind
     try:
         pr = view(args.number)
         if pr.get("baseRefName") != "develop":
             print(f"refused: base is {pr.get('baseRefName')}, not develop")
             return 1
-        if args.require_current and pr.get("state") == "OPEN":
-            path = f"repos/{{owner}}/{{repo}}/compare/{pr['headRefOid']}...develop"
-            behind = gh_json("api", path, "--jq", "{behind: .ahead_by}")["behind"]
-            if behind:
-                print(
-                    f"refused: head is {behind} commit(s) behind develop; rebase first"
-                )
-                return 1
         if pr.get("state") == "OPEN":
+            if current and behind_develop(args.number, pr):
+                return 1
             print(f"PR #{args.number}: {arm(args.number, pr)}")
             if args.wait <= 0:
                 return 0

@@ -117,14 +117,12 @@ confirmation. List every unfixed finding with its reason in the PR body.
   rule is not textual. For each match, comment on that PR, tell the orchestrator
   (or the user), and keep auto-merge off until the match is fixed, or until that
   PR merged and this branch is rebased so its own CI shows the result (#2645).
-  Code merged after this head counts too: rebase onto develop first and pass
-  `--require-current` below (#2906 turned develop red that way).
 - Then enable squash auto-merge with [pr-merge](../pacecraft-pr-merge/SKILL.md)
   `--wait 30` only when the base is `develop`, Gitar has reviewed the current
   head, and no feedback is open: review comments do not block an armed
   auto-merge (#2520 merged past one). It merges a PR GitHub already calls clean
-  directly (#2776). While merge rules are off (rebase before auto-merge), add
-  `--require-current`: it refuses a head behind develop (#2901).
+  directly (#2776), and refuses a head behind develop (#2901): rebase, let CI
+  and Gitar see the new head, rerun.
 
 ## 4. Monitor to merge
 

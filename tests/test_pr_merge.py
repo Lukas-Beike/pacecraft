@@ -86,13 +86,30 @@ class PrMergeTests(unittest.TestCase):
                 self.assertEqual(code, expect)
                 self.assertNotIn(["pr", "merge", "7", *PIN], writes)
 
-    def test_require_current_refuses_a_head_behind_develop(self):
+    def test_a_head_behind_develop_is_refused_and_disarmed(self):
         # #2901: with merge rules off, only a head that contains develop arms.
-        code, out, writes, _ = run(self, 7, "--require-current", behind=2)
-        self.assertEqual((code, writes), (1, []))
-        self.assertIn("2 commit(s) behind develop", out)
-        code, _, writes, _ = run(self, 7, "--require-current", behind=0)
-        self.assertEqual((code, writes), (0, [["pr", "merge", "7", "--auto", *PIN]]))
+        armed = view(autoMergeRequest={"mergeMethod": "SQUASH"})
+        for args, kwargs, expect, merge_calls in (
+            ((), {"behind": 2}, 1, []),
+            (
+                (),
+                {"behind": 2, "views": [armed]},
+                1,
+                [["pr", "merge", "7", "--disable-auto"]],
+            ),
+            ((), {"behind": None}, 2, []),  # no count: fail closed
+            (
+                ("--allow-behind",),
+                {"behind": 2},
+                0,
+                [["pr", "merge", "7", "--auto", *PIN]],
+            ),
+        ):
+            with self.subTest(args=args, **kwargs):
+                code, out, writes, _ = run(self, 7, *args, **kwargs)
+                self.assertEqual((code, writes), (expect, merge_calls))
+                if expect == 1:
+                    self.assertIn("2 commit(s) behind develop", out)
 
     def test_wait_polls_in_turn_until_merged(self):
         # #2795: no yield on a watcher that may never wake on the merge
