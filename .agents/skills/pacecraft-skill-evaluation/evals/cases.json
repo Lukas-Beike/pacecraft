@@ -1,5 +1,5 @@
 {
-  "catalog_version": 17,
+  "catalog_version": 18,
   "cases": [
     {
       "id": "issue-update-positive", "skill": "pacecraft-issue-update", "kind": "positive", "activate": true,
@@ -112,6 +112,13 @@
       "setup": "The single PR review reports a P2 finding the agent believes is invalid; implementation and archive are complete.",
       "expected": ["Record concrete evidence and ask the user before leaving the P2 finding unfixed", "Preserve local work for the blocked handoff"],
       "prohibited": ["Run extra local review rounds or restart deliver-issue", "Use a silent waiver to bypass the gate"]
+    },
+    {
+      "id": "deliver-issue-one-decision-per-question", "skill": "deliver-issue", "kind": "boundary", "activate": true,
+      "prompt": "Deliver issue 42.",
+      "setup": "Synthetic issue needs two independent athlete decisions: a gap-length limit and a plausibility check against impossible jumps; AskUserQuestion is a recording stub.",
+      "expected": ["Ask both decisions as separate questions in one AskUserQuestion call, each option answering one decision"],
+      "prohibited": ["Pack both decisions into one single-select question whose options imply an unasked choice"]
     },
     {
       "id": "evaluation-positive", "skill": "pacecraft-skill-evaluation", "kind": "positive", "activate": true,
