@@ -2253,7 +2253,7 @@ class WorkerTests(BackfillFixture):
             poll_seconds=0,
             clock=lambda: next(ticks),
         )
-        thread = threading.Thread(target=worker.run_loop)
+        thread = threading.Thread(target=worker.run_loop, daemon=True)
         thread.start()
         deadline = time.monotonic() + 5
         while backfill.run_batch.call_count == 0 and time.monotonic() < deadline:
