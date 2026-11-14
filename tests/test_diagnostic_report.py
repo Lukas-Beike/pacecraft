@@ -57,6 +57,8 @@ class _Database:
         table = query.rsplit("FROM ", 1)[1]
         if table == "kv WHERE key = ?":
             return SimpleNamespace(fetchone=lambda: None)
+        if table == "kv WHERE key LIKE ?":
+            return SimpleNamespace(fetchone=lambda: {"count": 2})
         if table.startswith("kv WHERE key IN"):
             return SimpleNamespace(
                 fetchall=lambda: [
@@ -268,6 +270,7 @@ class DiagnosticReportServiceTests(unittest.TestCase):
                 "athlete_checkins": 6,
                 "activity_feedback": 7,
                 "change_history": 8,
+                "sensor_equipment_links": 2,
                 "stored_payload_bytes": {
                     "garmin_state": 4096,
                     "garmin_snapshot_legacy": 0,
@@ -331,7 +334,7 @@ class DiagnosticReportServiceTests(unittest.TestCase):
         # Garmin past-workout removal adds its stored state; the strength push
         # counts add two reads: the remembered Garmin exercises and the linked
         # units (#2850).
-        self.assertEqual(len(self.db.queries), 25)
+        self.assertEqual(len(self.db.queries), 26)
         self.assertEqual(
             [query.rsplit("FROM ", 1)[1] for query in count_queries],
             [
@@ -341,6 +344,7 @@ class DiagnosticReportServiceTests(unittest.TestCase):
                 "athlete_checkins",
                 "activity_feedback",
                 "change_history",
+                "kv WHERE key LIKE ?",
                 "kv WHERE key IN (?, ?, ?)",
                 "kv WHERE key = ?",
                 "provider_sync_cursors WHERE provider=? AND stream=?",
@@ -418,7 +422,12 @@ class DiagnosticReportServiceTests(unittest.TestCase):
                     # The retired key of the former byte count is not measured.
                     ("garmin_snapshot", payload),
                     ("synthetic_other_value", "x" * 10000),
+                    # A legacy sensor link is counted, its content never read (#2903).
+                    ("sensor_equipment:heart_rate:1", '{"equipment_id":"x"}'),
                 ],
+            )
+            self.assertEqual(
+                self.service._database_counts(db)["sensor_equipment_links"], 1
             )
             sizes = self.service._database_counts(db)["stored_payload_bytes"]
             self.assertEqual(

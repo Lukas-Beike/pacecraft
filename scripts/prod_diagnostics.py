@@ -33,6 +33,7 @@ COUNTS = (
     "athlete_checkins",
     "activity_feedback",
     "change_history",
+    "sensor_equipment_links",
     "external_calendar_events",
 )
 MEMORY = ("rss_bytes", "peak_rss_bytes")

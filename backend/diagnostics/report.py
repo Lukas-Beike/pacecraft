@@ -20,7 +20,7 @@ from backend.canonical.garmin_payload import RETIRED_SNAPSHOT_KEY, STATE_KEY
 from backend.canonical.vocabulary import ProviderId
 from backend.coach.morning import MorningCheckinStateService
 from backend.config import DEFAULT_ANTHROPIC_BASE_URL, DEFAULT_OPENAI_BASE_URL, Config
-from backend.db import planning_store
+from backend.db import equipment_store, planning_store
 from backend.db.manager import DatabaseManager
 from backend.db.repositories import KeyValueRepository
 from backend.diagnostics.canonical_backfill import (
@@ -145,6 +145,10 @@ class DiagnosticReportService:
             "athlete_checkins": count("athlete_checkins"),
             "activity_feedback": count("activity_feedback"),
             "change_history": count("change_history"),
+            # Sensor links nothing writes any more; counted before #2903 decides on them.
+            "sensor_equipment_links": equipment_store.count(
+                db, equipment_store.SENSOR_EQUIPMENT_PREFIX
+            ),
         }
         counts["stored_payload_bytes"] = self._stored_payload_bytes(db)
         return counts | self._storage()
