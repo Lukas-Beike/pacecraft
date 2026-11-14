@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Describe bounded local audit history and optimistic undo for profile, workout-library, planned-unit, competition, training-plan, zone-configuration, activity-feedback, activity-session, nutrition-entry, nutrition-template, nutrition-product, check-in, equipment, equipment-assignment and equipment-maintenance records, the listed-but-never-undone metric export entries, together with receipt visibility and the narrower complete-turn undo surface.
+Describe bounded local audit history and optimistic undo for profile, workout-library, planned-unit, competition, training-plan, zone-configuration, activity-feedback, activity-session, nutrition-entry, nutrition-template, nutrition-product, stored-food, check-in, equipment, equipment-assignment and equipment-maintenance records, the listed-but-never-undone metric export entries, together with receipt visibility and the narrower complete-turn undo surface.
 
 ## Requirements
 
@@ -23,6 +23,35 @@ The system SHALL record supported local creates, updates, deletes and undos usin
 
 Evidence: `backend/change_history.py:audit_projection`, `backend/change_history.py:audit_hash`, `backend/change_history.py:audit_diff`, `backend/change_history.py:record_change`; `tests/test_change_history.py:test_projection_keeps_allowlisted_bounded_fields_only`, `tests/test_change_history.py:test_record_change_persists_hashes_and_private_diff`, `tests/test_change_history.py:test_unchanged_record_is_skipped_but_undo_is_retained`, `tests/test_change_history.py:test_every_persisted_profile_field_is_audited`.
 
+### Requirement: HU1a Audit projection, hash and diff format
+A change entry SHALL store the hashes and diff of the audit projection of its entity type, and the projection, hash function and diff layout SHALL stay compatible across releases, so that entries written earlier still match the current state.
+
+#### Scenario: Projection
+- **WHEN** a record is projected
+- **THEN** only the allowlisted fields of its entity type that are present are kept, in the constants of `backend/change_history.py` (`PROFILE_FIELDS`, `LIBRARY_FIELDS`, `PLANNED_UNIT_FIELDS`, `COMPETITION_FIELDS`, `PLAN_FIELDS`, `ZONE_CONFIGURATION_FIELDS`, `NUTRITION_*_FIELDS`, `FOOD_DATABASE_ENTRY_FIELDS`, `CHECKIN_FIELDS`, `EQUIPMENT_*_FIELDS`, `METRIC_EXPORT_FIELDS`); feedback is the one field `rows` (all stored rows of a session group, at most 32) and a session correction the one field `sessions`; library and planned-unit rows are read from their stored document with `sync_status` taken from the row's sync state
+
+#### Scenario: Field size limit
+- **WHEN** the compact JSON text of one field is longer than its limit
+- **THEN** that field is left out of projection, hash and diff and the others are kept; the limit is 4,000 characters, 400,000 for `activity_feedback`, 100,000 for `nutrition_entry` and `nutrition_template`, and 20,000 for `activity_session`, `checkin` and `equipment_maintenance`
+
+#### Scenario: Hash and diff
+- **WHEN** an entry is recorded
+- **THEN** each hash is the SHA-256 hex of the projection (`{}` when there is none, so an absent and an empty record hash alike) as JSON with sorted keys, no ASCII escaping, separators `,` and `:` and non-JSON values as text; the private diff is `{"fields": {name: {"before", "after"}}, "before_present", "after_present"}` over the changed fields only
+
+#### Scenario: Entry fields
+- **WHEN** an entry is stored
+- **THEN** it holds a UUID4 `id`, the `entity_type`, the `entity_id` as text, an `action` of `create`, `update`, `delete` or `undo`, a `source` cut to 40 characters (default `local`) and the UTC ISO `created_at`; an unsupported type or action raises `ValueError`
+
+#### Scenario: Deliberately untracked state
+- **WHEN** only sync bookkeeping of a nutrition entry, the update time of a template or product, a product's favorite flag, or an equipment item's revision, update time or Garmin-owned mileage changes
+- **THEN** no entry is written and an earlier change of that record stays undoable
+
+#### Scenario: Age of a value
+- **WHEN** a service asks when a value was last written and no matching entry is left
+- **THEN** the time of the oldest kept entry is returned as a lower bound, or nothing for an empty history
+
+Evidence: `backend/change_history.py::audit_projection`, `backend/change_history.py::audit_hash`, `backend/change_history.py::audit_diff`, `backend/change_history.py::record_change`, `backend/change_history.py::value_recorded_at`, the `*_FIELDS` constants and `_FIELD_LIMITS`. Tests: `tests/test_change_history.py::test_projection_keeps_allowlisted_bounded_fields_only`; `tests/test_change_history.py::test_record_change_persists_hashes_and_private_diff`; `tests/test_change_history.py::test_every_persisted_profile_field_is_audited`; `tests/test_change_history.py::test_each_profile_field_alone_records_a_restorable_change`; `tests/test_change_history.py::test_planned_unit_time_only_edit_is_recorded`; `tests/test_nutrition_product_history.py::test_create_update_and_archive_each_record_one_change` (the favorite flag). No test pins the size limits or `value_recorded_at`.
+
 ### Requirement: HU2 Retention and private public history
 The system SHALL expose bounded newest-first history for the 180-day retention window, cap retained rows at one thousand and keep actual before/after values out of the public history representation.
 
@@ -34,11 +63,15 @@ The system SHALL expose bounded newest-first history for the 180-day retention w
 - **WHEN** history contains expired or excessive entries
 - **THEN** reads hide entries older than the retention cutoff and clamp limits; normal history recording performs retention cleanup and makes room for its own row first, so at most one thousand rows remain after it.
 
+#### Scenario: Where the list is read
+- **WHEN** the history list is needed
+- **THEN** only the Coach tool `list_change_history` reads it (limit clamped to 1 through 500, default 100; a non-integer limit is rejected with 400, reason `invalid_list_request`); no HTTP route lists the history and the browser has no history panel, as undo is offered on Coach receipts and on the views that own a record
+
 #### Scenario: Atomic operation exceeds capacity
 - **WHEN** a replacement reserves more than one thousand audit rows
 - **THEN** it is rejected instead of silently pruning part of its own audit evidence or claiming complete undo coverage.
 
-Evidence: `backend/history/service.py:ChangeHistoryService.list`; `backend/change_history.py:public_view`, `backend/change_history.py:cleanup`, `backend/change_history.py:reserve_capacity`; `tests/test_history_service.py:test_list_clamps_limits_orders_rows_and_returns_private_projection`, `tests/test_history_service.py:test_list_hides_expired_and_caps_rows_without_deleting`; `tests/test_change_history.py:test_public_view_never_exposes_diff_values`, `tests/test_change_history.py:test_cleanup_and_capacity_preserve_bounds`.
+Evidence: `backend/history/service.py:ChangeHistoryService.list`; `backend/change_history.py:public_view`, `backend/change_history.py:cleanup`, `backend/change_history.py:reserve_capacity`; `tests/test_history_service.py:test_list_clamps_limits_orders_rows_and_returns_private_projection`, `tests/test_history_service.py:test_list_hides_expired_and_caps_rows_without_deleting`; `tests/test_change_history.py:test_public_view_never_exposes_diff_values`, `tests/test_change_history.py:test_cleanup_and_capacity_preserve_bounds`; `backend/coach/read_tools.py` (`list_change_history`); `e2e/history-undo.spec.js` ("history panel is absent while diagnosis and logs remain available"); `docs/api-routes.md` lists no change-history GET route.
 
 ### Requirement: HU3 Read-only undo previews bound to current state
 The system SHALL preview undo only for an existing supported create/update/delete whose recorded after-state still matches the current local projection, returning a safe proposal with the expected current hash.
@@ -58,7 +91,7 @@ The system SHALL preview undo only for an existing supported create/update/delet
 Evidence: `backend/history/undo_service.py:HistoryUndoService.preview`, `backend/history/undo_service.py:HistoryUndoService._load_history`; `backend/history/service.py:ChangeHistoryService.target`; `tests/test_history_undo_service.py:test_preview_returns_safe_proposal_and_opens_one_uow`, `tests/test_history_undo_service.py:test_preview_rejects_changed_current_hash`, `tests/test_history_undo_service.py:test_invalid_missing_and_repeated_change_ids_are_rejected`; `tests/test_history_service.py:test_target_preserves_action_diff_and_error_semantics`.
 
 ### Requirement: HU3a Supported entities and never-undone entries
-The system SHALL audit and restore the entity types profile, workout_library, planned_unit, competition, training_plan, zone_configuration, activity_feedback, activity_session, nutrition_entry, nutrition_template, nutrition_product, checkin, equipment, equipment_assignment and equipment_maintenance through their owning services, and SHALL keep `metric_export` entries of confirmed metric exports and entries whose diff carries `undoable: false` listed but never undo them.
+The system SHALL audit and restore the entity types profile, workout_library, planned_unit, competition, training_plan, zone_configuration, activity_feedback, activity_session, nutrition_entry, nutrition_template, nutrition_product, food_database_entry, checkin, equipment, equipment_assignment and equipment_maintenance through their owning services, and SHALL keep `metric_export` entries of confirmed metric exports and entries whose diff carries `undoable: false` listed but never undo them.
 
 #### Scenario: Metric export entry
 - **WHEN** a confirmed or automatic metric export writes values to the provider
@@ -92,7 +125,7 @@ The system SHALL preserve supported current metadata while restoring audited loc
 
 #### Scenario: Legacy profile history
 - **WHEN** an older history row predates added profile audit fields but still describes the same supported local state
-- **THEN** its accepted legacy hash remains matchable, while an actual later edit still causes a conflict.
+- **THEN** its accepted legacy hash remains matchable, also when a field added later holds another value, while an edit of a field the row already knew still causes a conflict.
 
 #### Scenario: Recreate or remove local object
 - **WHEN** undo targets a deleted record or reverses a creation
@@ -103,6 +136,52 @@ The system SHALL preserve supported current metadata while restoring audited loc
 - **THEN** the planning restore rejects the collision and location restoration uses the existing cache invalidation hook.
 
 Evidence: `backend/change_history.py:accepted_audit_hashes`; `backend/athlete/profile.py:ProfileService.restore_in_transaction`; `backend/planning/planned_unit_service.py:PlannedUnitService.restore_in_transaction`; `tests/test_history_undo_service.py:test_legacy_profile_row_stays_undoable_and_later_edits_still_conflict`, `tests/test_history_undo_service.py:test_legacy_row_accepts_batch_after_hash_and_rejects_wrong_expected_hash`; `tests/test_server_planning.py:test_planned_unit_undo_rejects_a_new_date_conflict`, `tests/test_server_planning.py:test_deleted_local_library_entry_can_be_undone_without_provider_write`; `tests/test_athlete_profile_service.py:test_restore_of_location_change_invokes_location_hook_and_clears_weather`.
+
+### Requirement: HU5a Accepted hash generations
+An entry SHALL stay undoable when its after-hash equals the hash of the current projection with the fields of later audit generations removed, or with a retired field restored at its empty value.
+
+#### Scenario: Entry older than a new field
+- **WHEN** an entry was hashed before a projection field existed (for the profile, for example `first_threshold_origin`) and the record is otherwise unchanged
+- **THEN** its undo is accepted
+
+#### Scenario: Generations and retired fields
+- **WHEN** the current projection is compared with an entry
+- **THEN** the generations of `_FIELDS_ADDED_TO_AUDIT` (profile, planned unit, workout library, stored food) are stripped newest first and cumulatively, and each stripped form is also accepted with the retired field of `_FIELDS_RETIRED_FROM_AUDIT` (profile `weekly_plan`, empty) added back
+
+#### Scenario: New audit field in a later release
+- **WHEN** a release adds a field to an audit projection
+- **THEN** it appends a generation, so entries written earlier stay matchable
+
+Evidence: `backend/change_history.py::accepted_audit_hashes`, `backend/change_history.py::_FIELDS_ADDED_TO_AUDIT`, `backend/change_history.py::_FIELDS_RETIRED_FROM_AUDIT`. Tests: `tests/test_change_history.py::test_each_released_profile_generation_stays_matchable`; `tests/test_change_history.py::test_legacy_hash_matches_projection_without_added_fields`; `tests/test_change_history.py::test_a_stored_food_change_recorded_before_its_origin_marks_stays_undoable`; `tests/test_feedback_history.py::test_changes_recorded_before_schema_v18_keep_their_undo`.
+
+### Requirement: HU5b Entity-specific undo guards
+Undo of an equipment item, equipment assignment, maintenance entry, saved product, stored food or activity feedback SHALL be refused when the restored state would no longer be valid, and SHALL keep data that other records still use.
+
+#### Scenario: Created equipment already used
+- **WHEN** the creation of an equipment item is undone after the item was used
+- **THEN** the undo is refused with 409 "Die Ausrüstung wird bereits verwendet und bleibt erhalten."
+
+#### Scenario: Equipment edit and parent
+- **WHEN** an equipment edit is undone
+- **THEN** the restored item is validated like a save (a parent that no longer fits refuses the undo), its revision advances and the Garmin-owned mileage keeps its current value
+
+#### Scenario: Assignment or maintenance target gone
+- **WHEN** an undo would reassign gear that is archived, incomplete or of another sport, or restore a maintenance entry of a vanished item
+- **THEN** the undo is refused with 409
+
+#### Scenario: Product barcode taken
+- **WHEN** undoing a product change would restore a barcode another product now has
+- **THEN** the undo is refused with 409 (reason `nutrition_product_barcode_conflict`); diary entries and saved meals that used the product keep their own values
+
+#### Scenario: Stored food gap fill
+- **WHEN** a gap fill of a stored food is undone
+- **THEN** exactly the fields that change wrote are emptied, an earlier fill and other values stay, and the undo is refused with 409 once the food changed or is gone
+
+#### Scenario: Feedback after a merge
+- **WHEN** the session of a feedback change was merged afterwards
+- **THEN** the undo follows the surviving session and restores hidden originals and full-length notes; a restored row whose activity id another group now holds refuses with 409
+
+Evidence: `backend/athlete/equipment_history.py`; `backend/nutrition/catalog.py::ProductCatalogService.restore_in_transaction`; `backend/nutrition/food_mirror.py::FoodDatabaseMirror.restore_in_transaction`; `backend/activities/feedback.py::ActivityFeedbackService.restore_in_transaction`; dispatch in `backend/history/undo_service.py::HistoryUndoService._restore`. Tests: `tests/test_equipment_history.py::test_undo_of_a_created_item_is_refused_once_it_is_used`; `tests/test_equipment_history.py::test_undo_is_refused_when_the_parent_no_longer_fits`; `tests/test_equipment_history.py::test_undo_keeps_garmin_owned_mileage`; `tests/test_equipment_history.py::test_undo_of_a_reassignment_is_refused_when_the_old_gear_is_archived`; `tests/test_nutrition_product_history.py::test_undo_is_refused_when_the_barcode_was_taken`; `tests/test_nutrition_product_history.py::test_undo_keeps_diary_entries_that_used_the_product`; `tests/test_nutrition_product_history.py::test_undo_of_a_gap_fill_empties_exactly_the_filled_fields`; `tests/test_nutrition_product_history.py::test_undo_of_a_gap_fill_is_refused_after_the_food_changed`; `tests/test_feedback_history.py::test_undo_follows_a_session_merged_after_the_edit`; `tests/test_feedback_history.py::test_undoing_a_clear_restores_hidden_originals_and_long_notes`.
 
 ### Requirement: HU6 Scoped Coach undo and explicit proposal path
 The system SHALL require matching operation/change scope for the Coach undo tool, support direct local apply of an update or deletion when explicitly requested by that tool path, and return a session-bound proposal for previews and creation undo requiring explicit approval.
@@ -162,3 +241,24 @@ The system SHALL undo an eligible completed turn's collected local changes newes
 - **THEN** the request fails explicitly and cannot apply the turn twice.
 
 Evidence: `backend/coach/turn_undo.py:CoachTurnUndoService.undo`; `backend/history/undo_service.py:HistoryUndoService.apply_many`; `public/coach.js:undoCoachTurn`; `tests/test_server_coach_turn_undo.py:test_turn_changes_show_on_the_answer_and_undo_together`, `tests/test_server_coach_turn_undo.py:test_a_record_changed_after_the_turn_aborts_the_whole_undo`, `tests/test_server_coach_turn_undo.py:test_a_turn_with_untracked_writes_cannot_be_undone`, `tests/test_server_coach_turn_undo.py:test_unknown_and_invalid_turns_are_rejected`; `tests/coach-turn-undo.test.cjs` (UI receipt refresh contracts). Whole-turn undo is an authenticated single-athlete API action; per-session ownership is not asserted beyond the implemented route.
+
+### Requirement: HU8a Undo routes
+The API SHALL apply an undo with an authenticated, CSRF-protected `POST /api/change-history/undo` and a whole-turn undo with `POST /api/change-history/undo-turn`; request, response and error texts are in `docs/api-routes.md`. The undo preview is served to the Coach tool only.
+
+#### Scenario: Undo request
+- **WHEN** an undo request has an id that is not 36 characters of `0-9`, `a-f` and `-`, an unknown id, an undo entry, a metric export, or an entry marked not undoable
+- **THEN** the answers are 400 "Ungültige Änderungshistorie-ID.", 404 "Änderung nicht gefunden.", 409 "Eine Undo-Aktion kann nicht erneut zurückgenommen werden.", 400 "Ein Export an einen Anbieter lässt sich nicht zurücknehmen." and 400 "Diese Änderung lässt sich nicht mehr zurücknehmen."
+
+#### Scenario: Changed state or missing hash
+- **WHEN** the current state differs, or `expected_current_hash` is neither the current hash nor the entry's after-hash (a missing one counts as empty)
+- **THEN** the answer is 409 "Die lokale Änderung wurde inzwischen weiter geändert; Undo wurde abgebrochen." even when the record is unchanged; an unreadable diff gives 409 "Die Änderungshistorie ist beschädigt."; an unsupported entity gives 400 "Unbekannte lokale Änderung."
+
+#### Scenario: Success
+- **WHEN** an undo succeeds
+- **THEN** the answer is `{"status": "undone", "change_id", "entity_type", "entity_id", "remote_untouched": true}`, with `session_rpe_load` added for an activity feedback entry whose `activity_id` is given
+
+#### Scenario: Whole-turn request
+- **WHEN** a turn undo has an empty id or one above 120 characters, an unknown or not completed turn, a turn without a change summary, an already undone turn, or one that is not collectively undoable
+- **THEN** the answers are 400 "Ungültiger Coach-Auftrag.", 404 "Coach-Antwort nicht gefunden.", 409 "Diese Coach-Antwort hat nichts geändert.", 409 "Diese Coach-Änderungen wurden bereits zurückgenommen." and 409 "Diese Coach-Änderungen können nicht gesammelt zurückgenommen werden."; a history row that is gone answers 404 and rolls the whole undo back
+
+Evidence: `backend/http_api/history_undo_post.py::HistoryUndoPostRoutes`; `backend/history/undo_service.py::HistoryUndoService`; `backend/coach/turn_undo.py::CoachTurnUndoService.undo`. Tests: `tests/test_history_undo_service.py::test_apply_requires_preview_hash_even_when_current_is_unchanged`; `tests/test_history_undo_service.py::test_invalid_missing_and_repeated_change_ids_are_rejected`; `tests/test_server_coach_turn_undo.py::test_unknown_and_invalid_turns_are_rejected`; `tests/test_server_coach_turn_undo.py::test_a_turn_with_untracked_writes_cannot_be_undone`.
