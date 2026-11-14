@@ -47,8 +47,14 @@ def open_checkboxes(body):
 
 
 def gh_json(*args):
+    # gh writes UTF-8; the Windows code page would leave stdout None (#2895).
     output = subprocess.run(
-        ["gh", *args], capture_output=True, text=True, check=True
+        ["gh", *args],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        check=True,
     ).stdout
     return json.loads(output or "null")
 
