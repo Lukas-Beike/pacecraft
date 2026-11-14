@@ -422,8 +422,9 @@ def finding(item: dict) -> str:
 
 
 def note_key(item: dict) -> str:
-    """One finding's message key: two errors of a code can share a line."""
-    return f"{finding(item)} {item.get('column')}"
+    """One finding's message key: its message hash, as two errors of a code
+    can share a line and even a column."""
+    return f"{finding(item)} {item['message_sha256']}"
 
 
 def check(

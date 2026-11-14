@@ -129,23 +129,28 @@ class QualityBaselineTests(unittest.TestCase):
                     "ruff 0.16.10\n",
                     "mypy 2.4.0\n",
                     "[]",
-                    json.dumps({
-                        "file": "sample.py", "line": 1, "column": 0, "code": "misc",
-                        "message": "Synthetic mypy text", "severity": "error",
-                    }),
+                    "\n".join(
+                        json.dumps({
+                            "file": "sample.py", "line": 1, "column": 0,
+                            "code": "misc", "message": f"Synthetic {word}",
+                            "severity": "error",
+                        })
+                        for word in ("one", "two")
+                    ),
                 ]  # fmt: skip
                 notes: dict[str, str] = {}
                 _, diagnostics = quality_baseline.collect(root, notes)
             commands = [call.args[0] for call in mocked_run.call_args_list]
-        # #2944: the record stays hashed; the message prints beside NEW only.
+        # #2944: the record stays hashed; the message prints beside NEW only,
+        # each finding its own even at the same position.
         self.assertNotIn("Synthetic", str(diagnostics))
-        self.assertEqual(notes, {"mypy sample.py:1 misc 0": ": Synthetic mypy text"})
         output = io.StringIO()
         with contextlib.redirect_stdout(output):
             quality_baseline.check(self.baseline, self.versions, diagnostics, (), notes)
-        self.assertIn(
-            "NEW mypy sample.py:1 misc: Synthetic mypy text", output.getvalue()
-        )
+        for word in ("one", "two"):
+            self.assertIn(
+                f"NEW mypy sample.py:1 misc: Synthetic {word}", output.getvalue()
+            )
         ruff = quality_baseline.tool_command("ruff")
         mypy = quality_baseline.tool_command("mypy")
         self.assertTrue(
