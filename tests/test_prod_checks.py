@@ -51,21 +51,23 @@ def report(messages=40):
             "unsynced_units": [{"has_error": True}, {"has_error": False}],
             "recent_jobs": [
                 {
-                    "provider": "garmin",
                     "status": "failed",
                     "error_class": "HTTPError",
                     "created_at": RECENT,
                     "items": [{"status": "failed", "error_class": "HTTPError"}],
-                },
-                {
-                    # The report leaves settled items out; a running one stays.
-                    "provider": "intervals",
-                    "status": "running",
-                    "items": [{"status": "running"}],
-                },
-                {"provider": "intervals", "status": "completed"},
-                {"provider": "text never printed", "status": "Done!"},
+                }
             ],
+            # Every push of the count window per provider, settled items too.
+            "push_counts": {
+                "garmin": {
+                    "jobs": {"failed": 1},
+                    "items": {"failed": 1, "completed": 4},
+                    "job_errors": {"HTTPError": 1},
+                    "item_errors": {"HTTPError": 1, "boom: remote said no": 1},
+                },
+                "intervals": {"jobs": {"completed": 2}, "items": {"completed": 6}},
+                "text never printed": {"jobs": {"Done!": 1}},
+            },
         },
         "runtime": {"process_memory": {"rss_bytes": 1000}},
         "fit_inventory": {
@@ -180,13 +182,13 @@ class ProdChecksTests(unittest.TestCase):
         self.assertIn("info workout library: pending 1", text)
         # Per provider and level (#2849); other text prints as `?`.
         self.assertIn(
-            "info plan push garmin: item error HTTPError 1, item failed 1, "
-            "job error HTTPError 1, job failed 1",
+            "info plan push garmin: item completed 4, item error ? 1, "
+            "item error HTTPError 1, item failed 1, job error HTTPError 1, "
+            "job failed 1",
             text,
         )
         self.assertIn(
-            "info plan push intervals: item running 1, job completed 1, job running 1",
-            text,
+            "info plan push intervals: item completed 6, job completed 2", text
         )
         self.assertIn("info plan push ?: job ? 1", text)
         self.assertEqual(

@@ -78,6 +78,36 @@ class PlanSyncDiagnosticsTests(unittest.TestCase):
                 }
             ],
         )
+        self.assertNotIn("push_counts", report)
+
+        # #2878: every push of the window per provider, settled items included,
+        # however many newer jobs of other providers exist; older ones are out.
+        for job_id, provider, status, created in (
+            ("g1", "garmin", "completed", "2026-11-10T08:00:00+00:00"),
+            ("g0", "garmin", "failed", "2026-11-01T08:00:00+00:00"),
+        ):
+            db.execute(
+                "INSERT INTO sync_jobs VALUES (?,?,'plan_push',?,'{}','coach',1,"
+                "NULL,NULL,NULL,NULL,?,?)",
+                (job_id, provider, status, created, created),
+            )
+        for item_id, status in (("g1-0", "completed"), ("g1-1", "completed")):
+            db.execute(
+                "INSERT INTO sync_job_items VALUES (?,'g1','a','plan_push',NULL,?,1,"
+                "NULL,NULL,'t','t')",
+                (item_id, status),
+            )
+        windowed = summarize_plan_sync(db, "2026-11-07T00:00:00+00:00")
+        self.assertEqual(
+            windowed["push_counts"]["garmin"],
+            {
+                "jobs": {"completed": 1},
+                "items": {"completed": 2},
+                "job_errors": {},
+                "item_errors": {},
+            },
+        )
+        self.assertNotIn("secret-token", json.dumps(windowed["push_counts"]))
 
     def test_a_unit_with_an_invalid_payload_has_no_date_and_does_not_fail(self):
         db = sqlite3.connect(":memory:")

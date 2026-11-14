@@ -21,9 +21,8 @@ It checks health, logs in with the password read from the file, reads
 version and schema against the expected values, whether `sync.last_error` is
 set (never its text), provider and calendar refresh ages, stuck plan-sync
 jobs, unsynced plan units with error kinds (never error text), the plan
-pushes per provider (job and item statuses and error kinds of the 10 most
-recent push jobs of all providers; items only while open or failed, the report
-leaves settled ones out), record counts, process memory and storage. With
+pushes per provider of the last 7 days (job and item statuses, settled items
+included, and error kinds; #2878), record counts, process memory and storage. With
 `--compare`, a lower record count is a `FAIL`: an unexplained drop stops the
 check. `external_calendar_events` is only `info`:
 the calendar sync refills it from today on every refresh.
