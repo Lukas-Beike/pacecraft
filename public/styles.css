@@ -1881,7 +1881,7 @@ button:focus-visible, a:focus-visible, summary:focus-visible {
 .activity-dynamics-chip { --verdict: var(--muted); padding: 2px 7px; border-radius: 999px; background: color-mix(in srgb, var(--verdict) 16%, var(--transparent)); color: var(--verdict); font-size: .72rem; font-weight: 700; white-space: nowrap; }
 .activity-dynamics-chip[data-verdict="better"] { --verdict: var(--accent); }
 .activity-dynamics-chip[data-verdict="worse"] { --verdict: var(--danger); }
-.activity-dynamics-reference { --band: var(--muted); color: var(--muted); font-size: .72rem; }
+.activity-dynamics-reference { --band: var(--muted); flex-basis: 100%; min-width: 0; overflow: hidden; color: var(--muted); font-size: .72rem; text-overflow: ellipsis; white-space: nowrap; }
 .activity-dynamics-reference::before { content: ""; display: inline-block; width: 9px; height: 9px; margin-right: 4px; border-radius: 50%; background: var(--band); vertical-align: -1px; }
 .activity-dynamics-reference[data-band="purple"] { --band: var(--training-zone-6); }
 .activity-dynamics-reference[data-band="blue"] { --band: var(--blue); }

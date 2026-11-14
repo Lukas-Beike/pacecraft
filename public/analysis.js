@@ -47,9 +47,9 @@ function analysisPercent(value) {
   return `${Number(value).toLocaleString("de-DE", { maximumFractionDigits: 1 })}%`;
 }
 
-function analysisLegendText(item, latest, unit) {
+function analysisLegendText(item, latest, unit, dateText = dateLabel) {
   if (!latest) return `${item.label}: keine Werte`;
-  return `${item.label}: ${analysisPointValue(item, latest, unit)} · ${dateLabel(latest.observedDate || latest.date)}`;
+  return `${item.label}: ${analysisPointValue(item, latest, unit)} · ${dateText(latest.observedDate || latest.date)}`;
 }
 
 function analysisPointValue(item, point, unit) {
@@ -101,9 +101,11 @@ function bindAnalysisPopover(button, info) {
 }
 
 function analysisChart(title, series, unit, start, end, note, {
-  sparse = false, zeroCentered = false, showLegend = true, calendarWeeks = false, caption = analysisAxisCaption(unit), estimate = false,
+  sparse = false, zeroCentered = false, showLegend = true, calendarWeeks = false, monthTicks = false, caption = analysisAxisCaption(unit), estimate = false,
 } = {}) {
   if (!analysisHasData(series)) return null;
+  // A chart of monthly points names months, not days, on its axis, tooltips and table (#2922).
+  const dates = monthTicks ? ANALYSIS_MONTH_DATES : ANALYSIS_DAY_DATES;
   const heading = h("h3", null, title, estimate && [" ", createEstimateChip()]);
   const section = h("section", "analysis-chart-card", heading);
   const valid = analysisValidPoint;
@@ -113,20 +115,20 @@ function analysisChart(title, series, unit, start, end, note, {
     const latest = analysisLatestPoint(item);
     const label = item.legendLabel || item.label;
     const sourceInfo = item.source ? " · Quelle: " + item.source : "";
-    const info = h("div", { className: "analysis-info-tooltip", id: `analysis-info-${++analysisInfoId}`, dataset: { series: String(index) } }, `${analysisLegendText(item, latest, unit)}${sourceInfo}. ${item.explanation || note}`);
+    const info = h("div", { className: "analysis-info-tooltip", id: `analysis-info-${++analysisInfoId}`, dataset: { series: String(index) } }, `${analysisLegendText(item, latest, unit, dates.text)}${sourceInfo}. ${item.explanation || note}`);
     const button = h("button", { className: "analysis-legend-info", type: "button", "aria-label": `Erklärung zu ${label}`, "aria-describedby": info.id }, label);
     bindAnalysisPopover(button, info);
     const entry = h("li", { dataset: { color: String(item.color ?? index), line: analysisLineStyle(item, index) } }, button, info);
     const sourceSuffix = item.source ? " · " + item.source : "";
-    if (latest) info.append(h("span", "analysis-metric-meta", `${dateLabel(latest.observedDate || latest.date)}${sourceSuffix}`));
+    if (latest) info.append(h("span", "analysis-metric-meta", `${dates.text(latest.observedDate || latest.date)}${sourceSuffix}`));
     if (item.referenceLabel) info.append(h("span", "analysis-metric-context", item.referenceLabel));
     const readings = item.points.filter(valid);
-    info.append(h("span", "analysis-metric-meta", item.coverageShort || analysisCoverageText(readings.length, item.points.length, item.cadenceDays === 7 ? "Wochen" : "Tagen")));
+    info.append(h("span", "analysis-metric-meta", item.coverageShort || analysisCoverageText(readings.length, item.points.length, item.cadenceDays === 7 ? "Wochen" : dates.units)));
     if (readings.length > 1) {
       const first = readings[0];
       const delta = Number(latest.value) - Number(first.value);
       const change = analysisChange(delta, item.unit || unit);
-      info.append(h("span", "analysis-metric-change", `Seit ${dateLabel(first.observedDate || first.date)}: ${change}`));
+      info.append(h("span", "analysis-metric-change", `Seit ${dates.text(first.observedDate || first.date)}: ${change}`));
     }
     legend.append(entry);
   });
@@ -136,23 +138,25 @@ function analysisChart(title, series, unit, start, end, note, {
 
   if (!series.some(analysisPlottable)) {
     section.append(h("p", "empty", "Ein einzelner Messwert zeigt noch keinen Verlauf; mindestens zwei datierte Werte sind erforderlich."));
-    appendAnalysisTable(section, title, series, unit, caption);
+    appendAnalysisTable(section, title, series, unit, caption, dates);
     return section;
   }
   const fewReadings = sparse && series.every((item) => item.points.filter(valid).length < 3);
   if (fewReadings) section.querySelectorAll(".analysis-info-tooltip").forEach((info) => info.append(h("p", "analysis-sparse-note", "Wenige Messungen · kein belastbarer Trend.")));
-  const scales = analysisPlotScales(series, start, end, { unit, zeroCentered });
+  const scales = { ...analysisPlotScales(series, start, end, { unit, zeroCentered }), dateText: dates.text };
   const svg = svgNode("svg", { viewBox: `0 0 ${scales.chartWidth} 200`, role: "group", "aria-label": `${title}: datierter Verlauf. Tageswerte auswählen oder Werte ansehen öffnen.` });
-  svg.append(svgNode("title", {}, `${title} · ${dateLabel(start)} bis ${dateLabel(end)}`));
+  svg.append(svgNode("title", {}, `${title} · ${dates.text(start)} bis ${dates.text(end)}`));
   svg.append(svgNode("desc", {}, `Eigene Skala: ${caption}. Fehlende Messungen bleiben unbekannt.`));
   appendAnalysisAxes(svg, unit, scales, caption);
   appendAnalysisSeries(svg, series, unit, scales, zeroCentered, caption);
   const weekTicks = calendarWeeks && series.length > 0 && series.every((item) => item.cadenceDays === 7);
-  appendAnalysisDateTicks(svg, start, end, scales, weekTicks ? analysisWeekTickLabel : analysisDayTickLabel);
+  let tickMode = weekTicks ? "week" : "day";
+  if (monthTicks) tickMode = "month";
+  appendAnalysisDateTicks(svg, start, end, scales, tickMode);
   appendAnalysisPointInspectors(section, svg, series, unit, scales);
   section.append(svg);
   appendAnalysisReferenceNotes(section, series, unit);
-  appendAnalysisTable(section, title, series, unit, caption);
+  appendAnalysisTable(section, title, series, unit, caption, dates);
   return section;
 }
 
@@ -230,16 +234,16 @@ function collectAnalysisChart(missing, title, ...chartArguments) {
   return chart;
 }
 
-function appendAnalysisTable(section, title, series, unit, caption = analysisAxisCaption(unit)) {
+function appendAnalysisTable(section, title, series, unit, caption = analysisAxisCaption(unit), dates = ANALYSIS_DAY_DATES) {
   const scroll = makeScrollRegionFocusable(h("div", "analysis-chart-table"), `${title}: Einzelwerte`);
-  const dates = [...new Set(series.flatMap((item) => item.points.filter(analysisValidPoint).map((point) => point.date)))].sort((a, b) => a.localeCompare(b));
-  const rows = dates.map((date) => [h("th", { scope: "row" }, dateLabel(date)), ...series.map((item) => {
+  const days = [...new Set(series.flatMap((item) => item.points.filter(analysisValidPoint).map((point) => point.date)))].sort((a, b) => a.localeCompare(b));
+  const rows = days.map((date) => [h("th", { scope: "row" }, dates.text(date)), ...series.map((item) => {
     const point = item.points.find((candidate) => candidate.date === date);
     let value = analysisValidPoint(point) ? analysisPointValue(item, point, unit) : "–";
     if (point?.count || point?.weekReadings || point?.observedDate) value += analysisReadingDetails(point, item.unit || unit);
     return value;
   })]);
-  scroll.append(table(["Tag", ...series.map((item) => item.label)], rows, { caption: `${title} · ${caption} · nur vorhandene Werte` }));
+  scroll.append(table([dates.heading, ...series.map((item) => item.label)], rows, { caption: `${title} · ${caption} · nur vorhandene Werte` }));
   section.append(h("details", null, h("summary", null, "Werte ansehen"), scroll));
 }
 
@@ -339,7 +343,7 @@ function appendAnalysisPointMark(svg, item, point, index, unit, scales, obstacle
     return;
   }
   const dot = svgNode("circle", { cx: x(point.date), cy: y(point.value), r: 2.5, "data-series": index, "data-color": item.color ?? index });
-  dot.append(svgNode("title", {}, `${item.label} · ${dateLabel(point.date)}: ${analysisPointValue(item, point, unit)}`));
+  dot.append(svgNode("title", {}, `${item.label} · ${(scales.dateText || dateLabel)(point.date)}: ${analysisPointValue(item, point, unit)}`));
   svg.append(dot);
   obstacles.push({ left: x(point.date) - 3, right: x(point.date) + 3, top: y(point.value) - 3, bottom: y(point.value) + 3 });
 }
@@ -461,16 +465,35 @@ function analysisWeekTickLabel(dateKey) {
   return analysisDayTickLabel(dateKey);
 }
 
+const ANALYSIS_MONTH_TICK_FORMAT = new Intl.DateTimeFormat("de-DE", { month: "short", timeZone: "UTC" });
+const ANALYSIS_MONTH_FORMAT = new Intl.DateTimeFormat("de-DE", { month: "long", year: "numeric", timeZone: "UTC" });
+
+function analysisMonthTickLabel(dateKey) {
+  return ANALYSIS_MONTH_TICK_FORMAT.format(new Date(`${dateKey.slice(0, 7)}-01T00:00:00Z`)).replace(".", "");
+}
+
+function analysisMonthLabel(dateKey) {
+  return ANALYSIS_MONTH_FORMAT.format(new Date(`${dateKey.slice(0, 7)}-01T00:00:00Z`));
+}
+
+// How a chart names its dates: one day, or one month for monthly points.
+const ANALYSIS_DAY_DATES = { text: (date) => dateLabel(date), heading: "Tag", units: "Tagen" };
+const ANALYSIS_MONTH_DATES = { text: analysisMonthLabel, heading: "Monat", units: "Monaten" };
+
 function analysisDayTickLabel(dateKey) {
   return dateKey.slice(5).split("-").reverse().join(".");
 }
 
-// Tick marks sit on every day (or every week start of a weekly chart); labels repeat at an even step counted back from the latest tick.
-function appendAnalysisDateTicks(svg, start, end, { chartWidth, x }, tickLabel = analysisDayTickLabel) {
-  const weekly = tickLabel === analysisWeekTickLabel;
-  const dates = analysisTickDates(start, end, weekly);
+// Tick marks sit on every day, every week start of a weekly chart or every month start of a monthly one (`mode`);
+// labels repeat at an even step counted back from the latest tick.
+function appendAnalysisDateTicks(svg, start, end, { chartWidth, x }, mode = "day") {
+  const weekly = mode === "week";
+  const monthly = mode === "month";
+  const dates = monthly ? analysisMonthDates(start, end) : analysisTickDates(start, end, weekly);
+  const tickLabel = { day: analysisDayTickLabel, week: analysisWeekTickLabel, month: analysisMonthTickLabel }[mode];
   const maxLabels = chartWidth < 600 ? 4 : 7;
-  const step = [1, 2, 3, 4, 7, 14, 28].find((candidate) => Math.floor((dates.length - 1) / candidate) + 1 <= maxLabels) || 28;
+  const steps = monthly ? [1, 2, 3, 6, 12] : [1, 2, 3, 4, 7, 14, 28];
+  const step = steps.find((candidate) => Math.floor((dates.length - 1) / candidate) + 1 <= maxLabels) || steps.at(-1);
   dates.forEach((date, index) => {
     const labelled = (dates.length - 1 - index) % step === 0;
     if (!labelled && dates.length > 31) return;
@@ -478,6 +501,20 @@ function appendAnalysisDateTicks(svg, start, end, { chartWidth, x }, tickLabel =
     if (labelled) svg.append(svgNode("text", { x: x(date), y: 188, "text-anchor": "middle", class: "analysis-date-tick" }, tickLabel(date)));
   });
   if (weekly) svg.append(svgNode("text", { x: 4, y: 188, class: "analysis-week-caption" }, "Woche ab"));
+}
+
+// The first day of every month from start to end; a start after the 1st begins with the next month.
+function analysisMonthDates(start, end) {
+  const dates = [];
+  const [year, month, day] = start.split("-").map(Number);
+  // Months counted from year 0, so the year follows from the index.
+  const first = year * 12 + month - 1 + (day > 1 ? 1 : 0);
+  for (let index = first; index < first + 120; index += 1) {
+    const date = `${Math.floor(index / 12)}-${String(index % 12 + 1).padStart(2, "0")}-01`;
+    if (date > end) break;
+    dates.push(date);
+  }
+  return dates;
 }
 
 function analysisTickDates(start, end, weekly) {
@@ -510,7 +547,7 @@ function analysisPointTooltip(section, marker, title, lines) {
   section.append(tooltip);
 }
 
-function appendAnalysisPointInspectors(section, svg, series, unit, { x, chartRight }) {
+function appendAnalysisPointInspectors(section, svg, series, unit, { x, chartRight, dateText = dateLabel }) {
   const dates = [...new Set(series.flatMap((item) => item.points.map((point) => point.date)))].sort((a, b) => a.localeCompare(b));
   const hitWidth = Math.min(44, (chartRight - 60) / Math.max(1, dates.length - 1));
   const candidates = [];
@@ -523,7 +560,7 @@ function appendAnalysisPointInspectors(section, svg, series, unit, { x, chartRig
       const source = item.source ? " · " + item.source : "";
       return `${item.legendLabel || item.label}: ${analysisPointValue(item, point, unit)}${source}${analysisReadingDetails(point, item.unit || unit)}`;
     });
-    analysisPointTooltip(section, marker, dateLabel(date), lines);
+    analysisPointTooltip(section, marker, dateText(date), lines);
     const tooltip = section.lastElementChild;
     candidates.push({ date, marker, tooltip });
     marker.addEventListener("mouseenter", () => { if (matchMedia("(hover: hover)").matches && !tooltip.matches(":popover-open")) tooltip.showPopover(); });
@@ -847,7 +884,7 @@ function renderRunningDynamicsChart(root, title, trend) {
       color: index,
       points: months.map((month, position) => ({ date: `${month}-01`, value: band.series?.[key]?.[position] ?? null })),
     }));
-    chartSlot.replaceChildren(analysisChart(label, series, unit, `${months[0]}-01`, `${months.at(-1)}-01`, "Monatsmittel (Median) deiner Läufe in diesem Tempo-Bereich.", { sparse: true }) || h("p", "muted", "Noch keine Laufdynamik."));
+    chartSlot.replaceChildren(analysisChart(label, series, unit, `${months[0]}-01`, `${months.at(-1)}-01`, "Monatsmittel (Median) deiner Läufe in diesem Tempo-Bereich.", { sparse: true, monthTicks: true }) || h("p", "muted", "Noch keine Laufdynamik."));
   };
   select.addEventListener("change", () => { runningDynamicsMetric = select.value; draw(); });
   draw();

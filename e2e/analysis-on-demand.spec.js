@@ -110,6 +110,11 @@ test("@responsive running technique draws monthly medians per pace band and swit
   await expect(select.locator("option")).toHaveText(["Bodenkontaktzeit", "Schrittfrequenz"]);
   await expect(card.locator(".analysis-chart-legend li button")).toHaveText(["4:00–4:15/km", "6:00–6:15/km"]);
   await expect(card.locator("h3")).toHaveText("Bodenkontaktzeit");
+  // Monthly points name their months on the axis (#2922).
+  await expect(card.locator(".analysis-date-tick").last()).toHaveText("Nov");
+  await card.getByText("Werte ansehen").click();
+  await expect(card.locator(".analysis-chart-table thead th").first()).toHaveText("Monat");
+  await expect(card.locator(".analysis-chart-table tbody th").first()).toHaveText("Juni 2026");
   await select.selectOption("cadence_spm");
   await expect(card.locator("h3")).toHaveText("Schrittfrequenz");
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBeTruthy();
