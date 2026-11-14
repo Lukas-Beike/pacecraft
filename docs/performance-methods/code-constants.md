@@ -158,8 +158,10 @@ every named number the code fixes. A test fails when it is out of date.
 | `RUNNING_DURATIONS` | `(60, 180, 300, 420, 720, 1200)` | `backend/performance/power_profile.py` |  |
 | `RUNNING_DISTANCES` | `(1000, 5000, 10000, 21097.5, 42195)` | `backend/performance/power_profile.py` | 1 km, 5 km, 10 km, half marathon and marathon (#2786). |
 | `METHOD_ID` | `'mean-max-curve'` | `backend/performance/power_profile.py` |  |
-| `METHOD_VERSION` | `2` | `backend/performance/power_profile.py` | Version 1: time-weighted windows that must be fully covered by valid samples. Version 2 (card M4 v4, #1773): an outdoor running window counts only when its net altitude change is at most 1 % of its distance; without altitude it does not count. |
+| `METHOD_VERSION` | `3` | `backend/performance/power_profile.py` | Version 1: time-weighted windows that must be fully covered by valid samples. Version 2 (card M4 v4, #1773): an outdoor running window counts only when its net altitude change is at most 1 % of its distance; without altitude it does not count. Version 3 (#2818): a running distance window is timed like a race clock; a stop and a recording gap of at most MAX_DISTANCE_GAP_S count as elapsed time. Every stored session analysis is recomputed once, in paced batches. |
 | `MAX_RUNNING_NET_GRADE` | `0.01` | `backend/performance/power_profile.py` |  |
+| `MAX_DISTANCE_GAP_S` | `600` | `backend/performance/power_profile.py` | A distance best is timed like a race clock (athlete decision, #2818): a stop inside the window counts as elapsed time, and so does a recording gap (auto-pause, signal loss) of at most this many seconds; a longer gap breaks the window. |
+| `MAX_GAP_SPEED_MPS` | `1000 / 150` | `backend/performance/power_profile.py` | A recording gap (a step above 5 s) across which the distance implies a pace faster than 2:30 min/km is a measurement error and breaks the window (#2818). |
 | `METHOD` | `'weekly-progress-v1'` | `backend/performance/progress_report.py` |  |
 | `SPORT_BUCKETS` | `('run', 'ride', 'strength')` | `backend/performance/progress_report.py` |  |
 | `ZONE_BANDS` | `{'many': (3, 5), 'five': (3, 4)}` | `backend/performance/progress_report.py` | First zone number of the moderate and of the high band, by the number of zones of the session's zone set: 6 or more (default 7-zone power and heart rate) or up to 5 (5-zone heart rate). |

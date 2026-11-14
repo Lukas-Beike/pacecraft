@@ -488,7 +488,7 @@ The system SHALL compute observed power-duration and running speed/distance effo
 Evidence: `backend/performance/power_profile.py:power_profile`, `backend/performance/power_profile.py:running_profile`, `backend/performance/activity_validation.py:activity_performance_validation`; `tests/test_power_profile.py:test_sprint_is_not_lost_to_display_downsampling`, `tests/test_power_profile.py:test_missing_or_stopped_recording_never_yields_peak`, `tests/test_activity_performance_validation.py:test_unknown_sport_and_no_activity_are_explicit`. Added evidence: `tests/test_activity_performance_validation.py`, `tests/test_activity_performance_validation.py:test_implausible_measured_evidence_is_omitted`.
 
 ### Requirement: Canonical mean-maximal curve
-The analysis power and running best-effort curve (`mean-max-curve` version 2, windows including 180, 420, 720 and 1200 s) SHALL be computed at read time only from full-resolution canonical stream sets, count each canonical session once, give overlapping bests of one session the same effort group, and carry the method, version and an input fingerprint. The stored Intervals.icu power curve is not read by any view.
+The analysis power and running best-effort curve (`mean-max-curve` version 3, windows including 180, 420, 720 and 1200 s) SHALL be computed at read time only from full-resolution canonical stream sets, count each canonical session once, give overlapping bests of one session the same effort group, and carry the method, version and an input fingerprint. The stored Intervals.icu power curve is not read by any view.
 
 #### Scenario: Protocol windows
 - **WHEN** a full-resolution stream holds 3, 7, 12 and 20 minute efforts between gaps and pauses
@@ -504,7 +504,7 @@ The analysis power and running best-effort curve (`mean-max-curve` version 2, wi
 
 #### Scenario: Valid samples
 - **WHEN** samples are read
-- **THEN** a sample counts with a step above 0 and at most 5 s, the moving flag when a moving stream exists, and a power of 0 W or more, or a running speed above 0 (from the `velocity`, `speed` or `velocity_smooth` stream, else from the distance difference) with a non-decreasing distance; a window counts only when valid samples cover it completely; power is rounded to 0.01 W, speed to 0.001 m/s and time to 0.01 s.
+- **THEN** a sample counts with a step above 0 and at most 5 s, the moving flag when a moving stream exists, and a power of 0 W or more, or a running speed above 0 (from the `velocity`, `speed` or `velocity_smooth` stream, else from the distance difference) with a non-decreasing distance; a window counts only when valid samples cover it completely; power is rounded to 0.01 W, speed to 0.001 m/s and time to 0.01 s. A running distance window is timed like a race clock (#2818): a step counts when both distances are present, the distance does not decrease and the time step is above 0 and at most 600 s, whatever the speed or moving flag, so a stop and a recording gap of up to ten minutes count as elapsed time; a longer gap, or a gap above 5 s across which the distance implies a pace faster than 2:30 min/km (a measurement jump), breaks the window.
 
 #### Scenario: Selection
 - **WHEN** the best values are selected
