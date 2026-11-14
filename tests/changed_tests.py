@@ -133,6 +133,16 @@ def _module_name(path: Path, root: Path) -> str:
     return ".".join(parts)
 
 
+def _path_literals(value: str) -> set[str]:
+    """The path forms a string literal names; a glob such as "backend/**/*.py"
+    also names its directory (#2887)."""
+    literal = value.strip().replace("\\", "/").removeprefix("./")
+    if not literal or "\n" in literal or len(literal) >= 200:
+        return set()
+    base = literal.split("*")[0].strip("/") if "*" in literal else ""
+    return {literal.strip("/"), base} - {""}
+
+
 class _Source:
     def __init__(self, path: Path, root: Path):
         self.module = _module_name(path, root)
@@ -154,12 +164,7 @@ class _Source:
             elif isinstance(node, ast.Name) and node.id in SCAN_CALLS:
                 self.scans = True  # from os import listdir; from glob import glob
             elif isinstance(node, ast.Constant) and isinstance(node.value, str):
-                literal = node.value.strip().replace("\\", "/").removeprefix("./")
-                if literal and "\n" not in literal and len(literal) < 200:
-                    self.literals.add(literal.strip("/"))
-                    # A glob such as "backend/**/*.py" names its directory (#2887).
-                    if "*" in literal and (base := literal.split("*")[0].strip("/")):
-                        self.literals.add(base)
+                self.literals.update(_path_literals(node.value))
 
         # Path segments of the path-like literals, for the fixture rule.
         self.segments = {
