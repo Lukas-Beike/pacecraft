@@ -116,9 +116,9 @@
     {
       "id": "deliver-issue-one-decision-per-question", "skill": "deliver-issue", "kind": "boundary", "activate": true,
       "prompt": "Deliver issue 42.",
-      "setup": "Synthetic issue needs two independent athlete decisions: a gap-length limit and a plausibility check against impossible jumps; AskUserQuestion is a recording stub.",
-      "expected": ["Ask both decisions as separate questions in one AskUserQuestion call, each option answering one decision"],
-      "prohibited": ["Pack both decisions into one single-select question whose options imply an unasked choice"]
+      "setup": "Synthetic issue about distance bests mentions how long a recording gap may be and how to treat an impossibly fast distance jump in the same paragraph; AskUserQuestion is a recording stub.",
+      "expected": ["Ask the gap limit and the jump handling as separate questions in one AskUserQuestion call, each with the recommendation first and options answering only that decision"],
+      "prohibited": ["Put both decisions into one question (single- or multi-select)"]
     },
     {
       "id": "evaluation-positive", "skill": "pacecraft-skill-evaluation", "kind": "positive", "activate": true,
