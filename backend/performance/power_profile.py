@@ -21,7 +21,10 @@ METHOD_ID: Final = "mean-max-curve"
 # Version 2 (card M4 v4, #1773): an outdoor running window counts only when its
 # net altitude change is at most 1 % of its distance; without altitude it does
 # not count.
-METHOD_VERSION: Final = 2
+# Version 3 (#2818): a running distance window is timed like a race clock; a
+# stop and a recording gap of at most ``MAX_DISTANCE_GAP_S`` count as elapsed
+# time. Every stored session analysis is recomputed once, in paced batches.
+METHOD_VERSION: Final = 3
 MAX_RUNNING_NET_GRADE: Final = 0.01
 # A distance best is timed like a race clock (athlete decision, #2818): a stop
 # inside the window counts as elapsed time, and so does a recording gap (auto-pause,

@@ -34,7 +34,7 @@ from backend.canonical.vocabulary import (
 from backend.db import activity_detail_store, canonical_domain_store, canonical_store
 from backend.db.activity_detail_store import replace_detail_set, save_analysis
 from backend.db.repositories import KeyValueRepository
-from backend.performance import canonical_session_analysis
+from backend.performance import canonical_session_analysis, power_profile
 from backend.performance.canonical_detail import CanonicalDetailReader
 from backend.performance.canonical_session_analysis import ANALYSIS_VERSION
 from backend.performance.session_analysis_reads import (
@@ -311,6 +311,48 @@ class SessionAnalysisStageTests(unittest.TestCase):
             changed = self._run()
 
         self.assertEqual(1, changed["counts"]["computed"])
+
+    def test_the_race_clock_bump_recomputes_resumably_and_keeps_targets(self) -> None:
+        # #2818: mean-max-curve version 3 recomputes every row stored under 2; a
+        # restart mid-pass resumes only the rows still on the old fingerprint,
+        # and a frozen target snapshot carries over unchanged.
+        self.assertEqual(3, power_profile.METHOD_VERSION)
+        add_session_record(self.manager, GARMIN, "g2", "act_g2")
+        self._write(
+            lambda db: _streams(db, GARMIN, "g1"),
+            lambda db: _streams(db, GARMIN, "g2"),
+            lambda db: save_analysis(
+                db,
+                "act_g1",
+                analysis_version=2,
+                input_sha256="0" * 64,
+                payload={"target_snapshot": TARGETS},
+                now=NOW,
+            ),
+        )
+        with patch.object(power_profile, "METHOD_VERSION", 2):
+            self.assertEqual("complete", self._run()["status"])
+
+        def restarted() -> SessionAnalysisStage:
+            return SessionAnalysisStage(
+                key_values=self.key_values,
+                zone_provider=lambda: ZONE,
+                clock=lambda: NOW,
+                batch_size=1,
+            )
+
+        states = [self._run(restarted()) for _ in range(3)]
+
+        self.assertEqual(
+            [("running", 1, 1), ("complete", 1, 0), ("complete", 0, 0)],
+            [
+                (s["status"], s["counts"]["computed"], s["counts"]["pending"])
+                for s in states
+            ],
+        )
+        row = self._row("act_g1")
+        assert row is not None
+        self.assertEqual(TARGETS, row["payload"]["target_snapshot"])
 
     def test_detail_document_and_stored_analysis_agree(self) -> None:
         self._write(

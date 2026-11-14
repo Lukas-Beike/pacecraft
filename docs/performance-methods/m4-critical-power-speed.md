@@ -3,7 +3,7 @@
 - **Card:** M4
 - **Card version:** 4
 - **Method ID:** critical-power-speed v2 (`backend/performance/critical_power.py`)
-- **Status:** implemented as an experimental model estimate (#1431) on the local mean-maximal curve (#1430, `mean-max-curve` v2)
+- **Status:** implemented as an experimental model estimate (#1431) on the local mean-maximal curve (#1430, `mean-max-curve` v3)
 - **Classification:** model estimate
 - **Literature checked:** 2026-10-24
 - **Review:** released 2026-11-08 (athlete)
@@ -86,7 +86,7 @@ recreational marathon runners, no lab reference.
   Efforts from before and after the marker come from different meters, and no
   offset between meters is corrected. Wahoo and Garmin files name a strap or
   meter only when the device lists it, so a meter is missed when the file omits it.
-- Running windows (`mean-max-curve` v2, card 4): an outdoor window counts only
+- Running windows (`mean-max-curve` v3, card 4): an outdoor window counts only
   when its net altitude change is at most 1 % of its distance; an outdoor
   window without altitude at both ends does not count. Treadmill and virtual
   runs are not checked. The same rule applies to the displayed running bests,
@@ -124,7 +124,7 @@ athlete's power meter or GPS.
 ## Deviations from the studied procedure
 
 - Efforts from everyday files are not verified as maximal, unlike lab trials.
-- The best-effort curve (`mean-max-curve` v2) has 180, 420, 720 and 1,200 s
+- The best-effort curve (`mean-max-curve` v3) has 180, 420, 720 and 1,200 s
   windows among others, but its points are best values from everyday files,
   not CP test data.
 - A freely chosen period such as "best of the last 90 days" is not one
