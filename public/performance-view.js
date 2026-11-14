@@ -198,7 +198,7 @@ function renderCurrentPerformance(metrics, history, status = [], thresholds = nu
 
 function renderPerformance(performance, { refreshCharts = true } = {}) {
   if (refreshCharts) {
-    void renderTrainingRecords();
+    void renderTrainingRecords({ background: true });
     renderPersonalRecovery(performance?.personal_recovery);
     renderAnalysisHistory(performance?.history);
     void renderCyclingPowerProfile();

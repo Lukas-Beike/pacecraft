@@ -1247,6 +1247,11 @@ h2 {
 .equipment-card > summary::after { order: 1; }
 .equipment-card > summary > :is(.equipment-card-line, progress) { order: 2; flex: 1 1 100%; }
 .equipment-card > summary progress { height: 4px; }
+.equipment-add-row { display: grid; gap: 10px; margin-bottom: 12px; justify-items: start; }
+.equipment-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 12rem), 1fr)); gap: 10px; width: 100%; margin-top: 10px; }
+.equipment-form[hidden], .equipment-form [hidden] { display: none; }
+.equipment-form label { display: grid; gap: 4px; color: var(--muted); font-size: .8rem; }
+.equipment-form :is(.error, button[type="submit"]) { grid-column: 1 / -1; justify-self: start; }
 .equipment-card[data-state="unchecked"] { --bar-color: var(--orange); }
 .equipment-card[data-state="error"] { --bar-color: var(--danger); }
 .equipment-card[data-state="off"] { --bar-color: var(--subtle); }

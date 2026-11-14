@@ -113,7 +113,7 @@ function ensureRouteData(route = state.route) {
   // Skip areas an earlier request is already loading, such as the startup load.
   if (panelRoute === "plan") requested.push(...["plan", "library"].filter((area) => !state.loadedAreas.has(area) && !areaLoading(area)));
   if (requested.length) load("/api/bootstrap?local=1", requested);
-  if (route === "more/equipment") void renderTrainingRecords();
+  if (route === "more/equipment") void renderTrainingRecords({ background: true });
   refreshOpenProviderChecks();
   if (ANALYSIS_PERFORMANCE_ROUTES.has(route)) {
     void renderCyclingPowerProfile();
@@ -130,6 +130,9 @@ function renderActiveRoute(mainRoute, panelRoute) {
   const moreSegment = mainRoute === "more" ? AppRouter.moreSegmentFromRoute(panelRoute) : null;
   if (moreSegment && moreSegment !== shownMoreSegment) {
     document.querySelectorAll(".connection-card[open], #equipmentItems details[open], #profilePanel details.profile-section[open]").forEach((card) => { card.open = false; });
+    // An equipment form belongs to its visit too; a form left open would hold back every refresh (#2879).
+    document.querySelectorAll("#equipmentItems .equipment-form").forEach((form) => { form.hidden = true; });
+    document.querySelectorAll("#equipmentItems [aria-expanded='true']").forEach((toggle) => toggle.setAttribute("aria-expanded", "false"));
     // A maintenance receipt belongs to its visit, like the open cards.
     document.querySelector("#equipmentItems > .maintenance-receipt")?.remove();
   }
