@@ -28,6 +28,8 @@ characters`); bot reviewers often report findings there, so read them too.
   re-run this script and validate the new head.
 - Never infer completion from green checks or auto-merge: the PR is done when
   the state is `MERGED` and no thread is open.
+- A failing `SonarCloud Code Analysis (cancelled on this head: ...)` has no
+  log to read: only a new push re-runs it (#2934).
 - For a failing check, read only that run: `gh run view <id> --log-failed`,
   narrowed to the failing step. For Sonar, query the target branch or PR key.
 - Triage each review item against the current diff and reachable behavior as
