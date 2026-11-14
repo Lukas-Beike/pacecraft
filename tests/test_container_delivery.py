@@ -157,6 +157,9 @@ class DemoContainerScriptTests(unittest.TestCase):
             env=environment,
             capture_output=True,
             text=True,
+            # A refused parameter prints PowerShell's localized console text.
+            encoding="utf-8",
+            errors="replace",
             timeout=120,
             check=False,
         )
@@ -286,6 +289,22 @@ class DemoContainerScriptTests(unittest.TestCase):
         self.assertEqual(own[own.index("python") - 1], "pacecraft:x")
         self.assertNotIn("pacecraft:local", own)
         self.assertFalse([c for c in calls if c[0] in {"build", "tag"}])
+        self.assertIn(["image", "inspect", "pacecraft:x"], calls)
+        for required in ("127.0.0.1:8091:8090", "AI_COACH_DISPOSABLE_FIXTURE=1"):
+            self.assertIn(required, own)
+        self.assertEqual(own[own.index("--pull") + 1], "never")  # no registry image
+        # A missing tag stops before an existing demo is removed; a value
+        # docker would read as a flag never reaches docker.
+        result, calls = self.run_script(
+            "-Name", DEMO_NAME, "-Image", "pacecraft:typo", ps_output="old\n",
+            fail=("image",),
+        )  # fmt: skip
+        self.assertEqual(
+            (result.returncode != 0, calls),
+            (True, [["image", "inspect", "pacecraft:typo"]]),
+        )
+        result, calls = self.run_script("-Name", DEMO_NAME, "-Image", "--network=host")
+        self.assertEqual((result.returncode != 0, calls), (True, []))
 
     def test_persist_uses_a_named_volume_and_never_removes_volumes(self):
         _, calls = self.run_script(

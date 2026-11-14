@@ -422,8 +422,9 @@ it. Run it with
 `-Persist` to keep the data in a named volume, `-Port`/`-Name` to adjust the
 container, `-HeavyHistory <n>` (1 to 1000) for a large synthetic history with
 full streams for performance checks (seeded once, about 5 minutes for 900),
-`-Image <tag>` to run your own image as is instead of building and running the
-shared `pacecraft:local` (#2957), and `-Stop` to remove it again (never its
+`-Image <tag>` to run your own local image instead of building and running the
+shared `pacecraft:local` (#2957; never pulled, and the fixture code still comes
+from this checkout's `e2e/`), and `-Stop` to remove it again (never its
 volume). `-Name` must start with `demo` or `fixture` (optionally after an
 `pacecraft-` or `ai-coach-` prefix); the production container `pacecraft` (formerly `ai-coach`) and every other name are
 refused before anything is built, stopped or removed. The fixture refuses to

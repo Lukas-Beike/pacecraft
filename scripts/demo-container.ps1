@@ -8,7 +8,8 @@ Only fake data is used; providers stay blocked. Password: e2e-fixture-password-1
   .\scripts\demo-container.ps1 -SkipBuild -Port 8091
   .\scripts\demo-container.ps1 -Stop            # remove it again (never its volume)
   .\scripts\demo-container.ps1 -HeavyHistory 900  # plus 900 synthetic long sessions (performance checks)
-  .\scripts\demo-container.ps1 -Image pacecraft:x -Persist  # run that tag as is: no build, no retag
+  .\scripts\demo-container.ps1 -Image pacecraft:x -Persist  # run that local tag: no build, no retag
+                                                  # (the fixture code still comes from this checkout's e2e/)
 #>
 param(
     [string]$Name = "pacecraft-demo",
@@ -17,8 +18,9 @@ param(
     [switch]$SkipBuild,
     [switch]$Stop,
     [ValidateRange(0, 1000)][int]$HeavyHistory = 0,
-    # Another lane's demo may run the shared pacecraft:local tag (#2957).
-    [string]$Image = "pacecraft:local"
+    # Another lane's demo may run the shared pacecraft:local tag (#2957). A
+    # tag only: never a value docker run would read as a flag.
+    [ValidatePattern('^[a-z0-9][a-z0-9._/:@-]*$')][string]$Image = "pacecraft:local"
 )
 $ErrorActionPreference = "Stop"
 Set-Location (Split-Path -Parent $PSScriptRoot)
@@ -31,9 +33,16 @@ if ($Name -in @("pacecraft", "ai-coach") -or $Name -notmatch '^(pacecraft-|ai-co
 
 # $ErrorActionPreference does not stop on native exit codes in Windows PowerShell 5.1,
 # so every native call is followed by an explicit $LASTEXITCODE check.
-if (-not $SkipBuild -and -not $Stop -and -not $PSBoundParameters.ContainsKey("Image")) {
+# Another -Image is run as is: no build into or retag of pacecraft:local, and it
+# must exist locally before an existing demo is removed (run never pulls).
+$ownImage = $Image -ne "pacecraft:local"
+if (-not $SkipBuild -and -not $Stop -and -not $ownImage) {
     docker build -q -t pacecraft:local . | Out-Null
     if ($LASTEXITCODE -ne 0) { throw "Image build failed (exit $LASTEXITCODE)." }
+}
+if ($ownImage -and -not $Stop) {
+    docker image inspect $Image | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw "Image '$Image' is not present locally (exit $LASTEXITCODE)." }
 }
 $existingContainer = docker ps -aq --filter "name=^$Name$"
 if ($LASTEXITCODE -ne 0) { throw "Listing containers failed (exit $LASTEXITCODE)." }
@@ -47,7 +56,7 @@ if ($Stop) {
     if ($existingContainer) { Write-Host "Demo removed: $Name" } else { Write-Host "No container named $Name" }
     exit 0
 }
-$dockerArguments = @("run", "-d", "--name", $Name, "-p", "127.0.0.1:${Port}:8090",
+$dockerArguments = @("run", "-d", "--pull", "never", "--name", $Name, "-p", "127.0.0.1:${Port}:8090",
     "-e", "FIXTURE_AUTO_SEED=1", "-e", "AI_COACH_DISPOSABLE_FIXTURE=1", "-v", "${PWD}\e2e:/app/e2e:ro")
 if ($Persist) { $dockerArguments += @("-v", "${Name}-data:/data") }
 if ($HeavyHistory -gt 0) { $dockerArguments += @("-e", "FIXTURE_HEAVY_HISTORY=$HeavyHistory") }
