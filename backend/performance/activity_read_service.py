@@ -110,7 +110,7 @@ class ActivityAnalysisReadService(ActivityReadService):
         except ValueError:
             return None
         units = self._planned_units().list_between(day, day)
-        unit = _paired_unit(
+        unit = paired_unit(
             units, self.summaries_between(day, day) or [], session.get("activity_id")
         )
         if unit is None:
@@ -288,12 +288,16 @@ class ActivityAnalysisReadService(ActivityReadService):
         return {"ok": True, **document, "data_scope": _data_scope(document, records)}
 
 
-def _paired_unit(
+def paired_unit(
     units: Sequence[dict[str, Any]],
     activities: Sequence[ActivitySummary],
     session_id: Any,
 ) -> dict[str, Any] | None:
-    """The local planned unit the calendar pairs with the session, if one."""
+    """The local planned unit the calendar pairs with the session, if one.
+
+    ``units`` and ``activities`` are the session day's; the session details and
+    the Coach (#2863) both pair this way.
+    """
     planned = canonical_planned_workouts(list(units), len(units))
     keys = [
         planned[index].get("local_id")

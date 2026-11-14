@@ -219,7 +219,7 @@ The system SHALL pair the executed work laps of a run or ride in order with the 
 
 #### Scenario: Choosing the work steps
 - **WHEN** a plan mixes warm-up, work and recovery steps or rises in a progression
-- **THEN** the hardest steps form the work steps when their count fits the executed laps, else the steps within 10 % of the hardest target, each as a fraction of its threshold; the unit is the focus unit, else the one unit of that day and sport; single values count as plus or minus 2.5 %, the top zone is open upwards, and heart-rate targets of laps under 120 s stay unscored.
+- **THEN** the hardest steps form the work steps when their count fits the executed laps, else the steps within 10 % of the hardest target, each as a fraction of its threshold; the unit is the one the calendar pairs with the session (else, when the day's sessions cannot be read, the one unit of that day and sport); single values count as plus or minus 2.5 %, the top zone is open upwards, and heart-rate targets of laps under 120 s stay unscored.
 
 #### Scenario: Rep slower than its target
 - **WHEN** a planned 4:20-4:30/km rep is run at 4:38/km

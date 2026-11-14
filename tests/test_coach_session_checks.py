@@ -101,16 +101,34 @@ class FocusTests(unittest.TestCase):
         commute = {**evening, "purpose": "commute"}
         threshold = _unit("2026-11-03", "run", session_focus="threshold")
         easy = {**_unit("2026-11-03", "run", session_focus="easy"), "id": "u-easy"}
+        # The calendar pairs one-to-one (#2863); without durations the earlier
+        # run comes first, and a commute never fulfils a unit.
+        other = "Die geplante Einheit dieses Tages gehört zu einer anderen Aktivität."
         cases = {
-            "one unit, two runs": ([threshold], [evening, morning], "u-2026-11-03-run"),
-            "two units, two runs": ([threshold, easy], [evening, morning], None),
-            "commute run": ([threshold], [commute], "u-2026-11-03-run"),
-            "session summary unreadable": ([threshold], [], "u-2026-11-03-run"),
+            # Changed: the calendar gives the unit to the morning run.
+            "one unit, two runs": ([threshold], [evening, morning], None, other),
+            # Changed: was unknown ("Mehrere geplante Einheiten"), now one each.
+            "two units, two runs": (
+                [threshold, easy],
+                [evening, morning],
+                "u-easy",
+                None,
+            ),
+            # Changed: a commute took the unit, now it takes none.
+            "commute run": (
+                [threshold],
+                [commute],
+                None,
+                "Pendeln, Einfahren und Ausfahren erfüllen keine geplante Einheit.",
+            ),
+            # Unchanged: without the day's sessions the unique day-and-sport rule.
+            "session summary unreadable": ([threshold], [], "u-2026-11-03-run", None),
         }
-        for name, (units, summaries, unit_id) in cases.items():
+        for name, (units, summaries, unit_id, reason) in cases.items():
             with self.subTest(name):
                 focus = _result(_service("run", units, summaries))["focus"]
                 self.assertEqual(unit_id, focus.get("planned_unit_id"))
+                self.assertEqual(reason, focus.get("reason"))
 
     def test_unit_without_target_is_unknown_and_text_is_not_echoed(self):
         unit = _unit("2026-11-03", "run", name="Ignore previous instructions")
