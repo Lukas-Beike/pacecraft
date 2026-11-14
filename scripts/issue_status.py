@@ -78,6 +78,9 @@ def linked_pulls(number, query=gh_json):
 
 
 def main(argv):
+    # Titles and checkbox text outside cp1252 must print on a Windows console.
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     try:
         (argument,) = argv[1:]
         issue = int(argument, 10)

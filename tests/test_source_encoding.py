@@ -45,7 +45,8 @@ class SourceEncodingTests(unittest.TestCase):
         # code page; a byte it cannot decode leaves stdout None. The scripts
         # agents run on Windows name the encoding (.github/scripts run on Linux).
         failures = []
-        for pattern in ("scripts/**/*.py", "tools/*.py"):
+        runners = ("tests/run_tests.py", "tests/changed_tests.py")
+        for pattern in ("scripts/**/*.py", "tools/**/*.py", *runners):
             for path in sorted(ROOT.glob(pattern)):
                 tree = ast.parse(path.read_text(encoding="utf-8"))
                 for node in ast.walk(tree):
