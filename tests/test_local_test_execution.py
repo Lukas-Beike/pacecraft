@@ -130,9 +130,7 @@ class RunnerEvidenceTests(unittest.TestCase):
                 pass
 
         tests = list(
-            run_tests.iter_tests(
-                unittest.defaultTestLoader.loadTestsFromTestCase(Quick)
-            )
+            run_tests.iter_tests(unittest.defaultTestLoader.loadTestsFromTestCase(Quick))
         )
         # 600: armed before discovery, disarmed after. 0 (a nested in-process
         # main() inside an armed shard): never cancels the shard's timer.
@@ -299,26 +297,10 @@ def passed(selection):
     }
 
 
-def remove_when_released(temporary, seconds=10.0):
-    """Remove the directory once Windows has closed the log handles of the
-    processes a job just ended: the job reports them gone slightly before, and
-    under load that window failed the teardown (#2964). A process that still
-    holds a file after the bound fails the test as before."""
-    deadline = time.monotonic() + seconds
-    while True:
-        try:
-            temporary.cleanup()
-            return
-        except PermissionError:
-            if time.monotonic() >= deadline:
-                raise
-            time.sleep(0.05)
-
-
 class SupervisorTests(unittest.TestCase):
     def setUp(self):
         temporary = tempfile.TemporaryDirectory()
-        self.addCleanup(remove_when_released, temporary)
+        self.addCleanup(temporary.cleanup)
         self.root = Path(temporary.name)
         self.args = local.parse_args(
             ["--results-dir", str(self.root), "--workers", "2"]
@@ -636,9 +618,7 @@ class SupervisorTests(unittest.TestCase):
                 except (FileNotFoundError, PermissionError) as error:
                     last_error = error
                     time.sleep(0.02)
-            self.assertIsNotNone(
-                observed, f"owned descendant reached readiness: {last_error!r}"
-            )
+            self.assertIsNotNone(observed, f"owned descendant reached readiness: {last_error!r}")
             if os.name == "nt":
                 kernel = ctypes.WinDLL("kernel32", use_last_error=True)
                 kernel.OpenProcess.argtypes = [
@@ -660,6 +640,9 @@ class SupervisorTests(unittest.TestCase):
                 self.assertEqual(connection.recv(1), b"x")
             cleaned = self.owner.cleanup()
             self.assertTrue(cleaned)
+            # #2964: cleanup returns only after the ended processes closed the
+            # log they inherited; under load a delete here met WinError 32.
+            (self.owner.output / "tree.log").unlink()
             self.assertIsNotNone(child.poll())
             if kernel is not None:
                 self.assertEqual(kernel.WaitForSingleObject(descendant_handle, 5000), 0)
