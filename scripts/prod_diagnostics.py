@@ -36,6 +36,8 @@ COUNTS = (
     "external_calendar_events",
 )
 MEMORY = ("rss_bytes", "peak_rss_bytes")
+# Hours. Provider and calendar syncs are due hourly (backend/sync/daily.py), so
+# STALE_HOURS flags only a long outage; a job still open after 2 h is stuck.
 STALE_HOURS = 36
 STUCK_HOURS = 2
 OPEN_JOB = {"queued", "running", "pending"}
