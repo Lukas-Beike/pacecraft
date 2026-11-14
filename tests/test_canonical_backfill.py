@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 import hashlib
+import itertools
 import json
 import logging
 import threading
 import time
 import unittest
 from collections.abc import Callable, Mapping
-from contextlib import nullcontext
+from contextlib import contextmanager, nullcontext
 from dataclasses import replace
 from datetime import date, datetime, timedelta
 from pathlib import Path
@@ -2058,6 +2059,44 @@ class WorkerTests(BackfillFixture):
         self.assertTrue(flags and all(flags))
         self.assertLessEqual(batches_before_foreground[0], 5)
         self.assertFalse(manager_module._BACKGROUND_WRITER.get())
+
+    def test_unfinished_batches_rest_as_long_as_their_own_work(self) -> None:
+        # #2818: a long pass (a method-version recompute) rests after each
+        # unfinished batch as long as the batch's thread time, outside the writer.
+        in_unit: list[bool] = []
+
+        class Database:
+            def unit_of_work(self) -> Any:
+                @contextmanager
+                def unit() -> Any:
+                    in_unit.append(True)
+                    try:
+                        yield Mock()
+                    finally:
+                        in_unit.pop()
+
+                return unit()
+
+        ticks = itertools.count(0.0, 0.25)
+        pauses: list[tuple[float, bool]] = []
+        backfill = Mock()
+        backfill.run_batch.side_effect = [
+            BatchReport(items=1, done=False),
+            BatchReport(items=1, done=False),
+            BatchReport(items=0, done=True),
+        ]
+        worker = CanonicalBackfillWorker(
+            backfill=backfill,
+            database=Database,
+            maintenance_gate=MaintenanceGate(),
+            poll_seconds=0,
+            clock=lambda: next(ticks),
+            pause=lambda seconds: pauses.append((seconds, bool(in_unit))),
+        )
+        worker.run_loop()
+
+        self.assertEqual(backfill.run_batch.call_count, 3)
+        self.assertEqual(pauses, [(0.25, False), (0.25, False)])
 
     def test_loop_ends_when_the_backfill_reports_done(self) -> None:
         backfill = Mock()

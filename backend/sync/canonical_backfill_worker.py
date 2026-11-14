@@ -6,6 +6,10 @@ batches. A failed batch rolls back, and the failure is recorded as ``failed`` in
 own transaction; a delayed retry resumes from the last committed cursor.
 Batches run as background writers, so a waiting foreground request (a login,
 for example) is served between two batches instead of queuing behind the loop.
+After each batch that leaves its stage unfinished the worker rests as long as that
+batch's own work took (its thread time), a duty cycle of at most 50 %, so a long
+pass such as a method-version recompute leaves request threads the interpreter
+(#2818, the pattern of the all-time curve build in #2761).
 
 Follow-up stages run one after another once the canonical backfill is complete. Each
 keeps its own state, so a failed follow-up is recorded on its own and leaves the
@@ -24,6 +28,7 @@ from __future__ import annotations
 
 import logging
 import threading
+import time
 from collections.abc import Callable, Sequence
 from typing import Any, Final, Protocol, cast
 
@@ -69,6 +74,8 @@ class CanonicalBackfillWorker:
         retry_seconds: float = DEFAULT_RETRY_SECONDS,
         thread_factory: Callable[..., threading.Thread] | None = None,
         followups: Sequence[BackfillStage] = (),
+        clock: Callable[[], float] = time.thread_time,
+        pause: Callable[[float], object] | None = None,
     ) -> None:
         self._backfill = backfill
         self._database = database
@@ -78,6 +85,9 @@ class CanonicalBackfillWorker:
         self._thread_factory = thread_factory or threading.Thread
         self._followups = tuple(followups)
         self._stop_event = threading.Event()
+        self._clock = clock
+        # A rest ends early when stop() is requested.
+        self._pause = pause or self._stop_event.wait
         self._start_lock = threading.Lock()
         self._thread: threading.Thread | None = None
         # Guarded by _start_lock. _passes_active stays True until the thread has
@@ -138,6 +148,7 @@ class CanonicalBackfillWorker:
     def _run_stage(self, stage: BatchStage, name: str) -> bool:
         """Run one stage's batches; return True once it is complete."""
         while not self._stop_event.is_set():
+            started = self._clock()
             try:
                 report = self._run_batch(stage)
             except DatabaseBusyError:
@@ -156,6 +167,8 @@ class CanonicalBackfillWorker:
                 return False
             if report.done:
                 return True
+            # Outside the writer transaction: rest as long as the batch worked.
+            self._pause(max(0.0, self._clock() - started))
         return False
 
     def _run_batch(self, stage: BatchStage) -> BatchReport:
