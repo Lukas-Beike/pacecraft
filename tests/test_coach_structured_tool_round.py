@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import threading
 import unittest
+from typing import cast
 from unittest.mock import MagicMock, Mock, patch
 
 from backend.coach.structured_tool_round import (
@@ -49,7 +50,7 @@ def refresh_then_budget_turn(case: StructuredToolRoundTests) -> list[ModelReques
         {"ok": True, "synchronous_refresh": True},
         {"ok": True, "synchronous_refresh": True},
     ]
-    case.service._training_context.build.return_value = FRESH_CONTEXT
+    cast(Mock, case.service._training_context).build.return_value = FRESH_CONTEXT
     second = {**case.call(), "call_id": "call-two"}
     third = {**case.call(), "call_id": "call-three"}
     case.response.respond.side_effect = [
@@ -518,11 +519,12 @@ class StructuredToolRoundTests(unittest.TestCase):
             "ok": True,
             "synchronous_refresh": True,
         }
-        self.service._training_context.build.return_value = FRESH_CONTEXT
+        build = cast(Mock, self.service._training_context).build
+        build.return_value = FRESH_CONTEXT
         _, _, result, _ = self.service._execute_tool_call(
             self.call(), state=state, question="", cancelled=False
         )
-        arguments = self.service._training_context.build.call_args.kwargs
+        arguments = build.call_args.kwargs
         self.assertEqual(arguments["selection"].name, "today_training")
         self.assertEqual(arguments["selection"].horizon_days, 3)
         self.assertEqual(arguments["local_date"], "2026-10-01")
@@ -621,7 +623,7 @@ class StructuredToolRoundTests(unittest.TestCase):
             ({"ok": True, "job": {"type": "push", "status": "completed"}}, False),
             ({"ok": False, "job": {"type": "refresh", "status": "completed"}}, False),
         )
-        self.service._training_context.build.return_value = FRESH_CONTEXT
+        cast(Mock, self.service._training_context).build.return_value = FRESH_CONTEXT
         for result, fresh in cases:
             with self.subTest(result=result):
                 state = self.state()
@@ -636,7 +638,8 @@ class StructuredToolRoundTests(unittest.TestCase):
     def test_failed_context_build_keeps_the_successful_refresh(self) -> None:
         state = self.state()
         self.execution.execute.return_value = {"ok": True, "synchronous_refresh": True}
-        self.service._training_context.build.side_effect = ValueError("synthetic")
+        build = cast(Mock, self.service._training_context).build
+        build.side_effect = ValueError("synthetic")
         with self.assertLogs("intervals_coach", level="WARNING"):
             _, _, result, _ = self.service._execute_tool_call(
                 self.call(), state=state, question="", cancelled=False

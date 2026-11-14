@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "base": "d17ba69bda3cc2f56b841b37c027d10554f74a72",
+  "base": "6813c0e17f3282805c2412147660b5683a567180",
   "versions": {
     "ruff": "0.17.4",
     "mypy": "2.4.1"
@@ -281,12 +281,6 @@
       "path": "tests/coach_live_eval.py",
       "code": "S3776",
       "message_sha256": "dce450cae724c1b3495c182cb5eb43e4097dcb7b5dff9a0f852dea0e9a401043"
-    },
-    {
-      "tool": "cognitive",
-      "path": "backend/coach/structured_tool_round.py",
-      "code": "S3776",
-      "message_sha256": "df2f39ccaaa5ef28bc5020da0ff0469a8c70a8774995e74cc56d662b87357536"
     },
     {
       "tool": "cognitive",
@@ -800,12 +794,6 @@
     },
     {
       "tool": "mypy",
-      "path": "tests/test_coach_structured_tool_round.py",
-      "code": "attr-defined",
-      "message_sha256": "67dc3abcce848ea579afb90b68bb9a18046ab2bad3059c092c839866cf34e435"
-    },
-    {
-      "tool": "mypy",
       "path": "tests/test_planning_change_service.py",
       "code": "attr-defined",
       "message_sha256": "682546f5082752e1c00e4680e57dea0e350e0f823edfa0852ecf1b4ec657f83e"
@@ -815,12 +803,6 @@
       "path": "tests/test_server_composition_architecture.py",
       "code": "attr-defined",
       "message_sha256": "6894ca72a82864efd4dfd27c3771f0a621eec6084e87ce8d26dc3d7e29294744"
-    },
-    {
-      "tool": "mypy",
-      "path": "tests/test_coach_structured_tool_round.py",
-      "code": "attr-defined",
-      "message_sha256": "7407b09a1ecada8941987b551f9890e5f2d5073325710393f260d125aa4841c6"
     },
     {
       "tool": "mypy",
