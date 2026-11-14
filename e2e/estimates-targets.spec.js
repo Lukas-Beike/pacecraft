@@ -26,7 +26,12 @@ test("@responsive light analysis load has no axe violation and no control below 
   await open(page, "analysis/load", "#sessionPerformance h3");
   await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
   const focus = page.locator("#sessionPerformance");
-  await expect(focus.locator(".training-focus-legend strong").first()).toHaveCSS("color", await focus.locator("h3").evaluate((node) => getComputedStyle(node).color));
+  // #2973: both colours from one moment, retried; one early h3 sample could stay unreachable.
+  const colours = () => focus.evaluate((root) => ["h3", ".training-focus-legend strong"].map((selector) => {
+    const node = root.querySelector(selector);
+    return node ? getComputedStyle(node).color : `no ${selector}`; // mid re-render: try again
+  }));
+  await expect.poll(async () => { const [heading, legend] = await colours(); return legend === heading ? "same" : `legend ${legend}, heading ${heading}`; }).toBe("same");
   expect((await new AxeBuilder({ page }).include("#dataPanel").analyze()).violations).toEqual([]);
   expect(await smallControls(page)).toEqual([]);
   await page.goto("/#analysis/running");
