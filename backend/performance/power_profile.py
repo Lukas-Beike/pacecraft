@@ -126,8 +126,16 @@ def running_profile(
         for duration in RUNNING_DURATIONS
     ]
     distances = [_number(value) for value in distance]
+    # The race-clock steps, read once for every distance target (#2818).
+    race_clock = (
+        _valid_run_ends(
+            [_race_clock_segment(times, distances, i) for i in range(len(times) - 1)]
+        )
+        if len(distances) == len(times)
+        else []
+    )
     distance_points = [
-        _best_running_distance(times, distances, target, flat)
+        _best_running_distance(times, distances, race_clock, target, flat)
         for target in RUNNING_DISTANCES
     ]
     ok = any(point["speed_mps"] is not None for point in speed_points) or any(
@@ -241,7 +249,11 @@ def _best_running_speed(
 
 
 def _best_running_distance(
-    times: list, distances: list, target: float, flat: WindowCheck
+    times: list,
+    distances: list,
+    run_end: list[int],
+    target: float,
+    flat: WindowCheck,
 ) -> dict[str, Any]:
     if len(distances) != len(times):
         return {
@@ -251,10 +263,7 @@ def _best_running_distance(
             "coverage": None,
             "status": "unknown",
         }
-    valid = [
-        _race_clock_segment(times, distances, index) for index in range(len(times) - 1)
-    ]
-    best = _fastest_distance_window(times, valid, distances, target, flat)
+    best = _fastest_distance_window(times, run_end, distances, target, flat)
     return {
         "distance_meters": target,
         "seconds": round(best[0], 2) if best else None,
@@ -285,19 +294,22 @@ def _race_clock_segment(times: list, distances: list, index: int) -> bool:
 
 def _fastest_distance_window(
     times: list,
-    valid: list[bool],
+    run_end: list[int],
     distances: list,
     target: float,
     flat: WindowCheck,
 ) -> tuple[float, Any] | None:
-    """The shortest time over ``target`` metres and its start, among flat windows."""
-    run_end = _valid_run_ends(valid)
+    """The shortest time over ``target`` metres and its start, among flat windows.
+
+    ``run_end[i]`` is the end of the race-clock run sample ``i`` starts; a sample
+    that starts no valid step ends its own run.
+    """
     best = None
     # No window of ``target`` metres starts beyond this; skipping those starts
     # keeps the half marathon and marathon cheap on shorter runs (#2786).
     last_start = max((d for d in distances if d is not None), default=0.0) - target
     for start in range(len(times) - 1):
-        if not valid[start] or distances[start] > last_start:
+        if run_end[start] == start or distances[start] > last_start:
             continue
         candidate = _running_distance_candidate(
             times, distances, start, run_end[start], target
