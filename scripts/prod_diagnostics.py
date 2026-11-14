@@ -187,6 +187,18 @@ def push_error_kinds(pushes: dict[str, dict[str, int]]) -> dict[str, int]:
     return kinds
 
 
+def reported_stuck(push_counts: Any) -> int:
+    """Open jobs past the report's stuck limit, summed over providers (#2953)."""
+    providers = push_counts.values() if isinstance(push_counts, dict) else []
+    return sum(
+        int(stuck)
+        for counts in providers
+        if isinstance(counts, dict)
+        and isinstance(stuck := counts.get("stuck"), int)
+        and not isinstance(stuck, bool)
+    )
+
+
 def stuck_jobs(jobs: list[dict[str, Any]], now: datetime) -> int:
     return sum(
         1
@@ -235,7 +247,10 @@ def extract(report: dict[str, Any], now: datetime) -> dict[str, Any]:
         else plan_errors(jobs),
         "plan_pushes": pushes,
         "push_counts_reported": "push_counts" in plan,
-        "stuck_jobs": stuck_jobs(jobs, now),
+        # Every provider's open jobs when the report counts them (#2953).
+        "stuck_jobs": reported_stuck(plan.get("push_counts"))
+        if "push_counts" in plan
+        else stuck_jobs(jobs, now),
         "memory": {key: memory[key] for key in MEMORY if key in memory},
         "storage": numbers(storage),
     }

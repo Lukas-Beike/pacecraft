@@ -117,6 +117,11 @@ class PlanSyncDiagnosticsTests(unittest.TestCase):
             },
         )
         self.assertNotIn("secret-token", json.dumps(windowed["push_counts"]))
+        # #2953: the old running job is stuck; open jobs since the limit are not.
+        limited = summarize_plan_sync(
+            db, "2026-11-07T00:00:00+00:00", "2026-11-14T06:00:00+00:00"
+        )
+        self.assertEqual(limited["push_counts"]["garmin"]["stuck"], 1)
 
     def test_a_unit_with_an_invalid_payload_has_no_date_and_does_not_fail(self):
         db = sqlite3.connect(":memory:")

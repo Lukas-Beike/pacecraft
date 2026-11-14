@@ -63,6 +63,7 @@ def report(messages=40):
                     "jobs": {"failed": 1},
                     "items": {"failed": 1, "completed": 4},
                     "job_errors": {"HTTPError": 1},
+                    "stuck": 1,
                     "item_errors": {"HTTPError": 1, "boom: remote said no": 1},
                 },
                 "intervals": {"jobs": {"completed": 2}, "items": {"completed": 6}},
@@ -192,6 +193,9 @@ class ProdChecksTests(unittest.TestCase):
             "info plan push intervals: item completed 6, job completed 2", text
         )
         self.assertIn("info plan push ?: job ? 1", text)
+        # A stuck job of any provider fails the check, not only among the newest
+        # ten jobs (#2953).
+        self.assertIn("FAIL stuck plan-sync jobs: 1", text)
         self.assertEqual(
             prod_diagnostics.error_kind({"error_class": "boom: remote said no"}), "?"
         )

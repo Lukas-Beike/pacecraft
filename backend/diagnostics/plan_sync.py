@@ -20,7 +20,9 @@ _JOB_LIMIT = 10
 _UNIT_LIMIT = 50
 
 
-def summarize_plan_sync(db: Any, since: str | None = None) -> dict[str, Any]:
+def summarize_plan_sync(
+    db: Any, since: str | None = None, stuck_before: str | None = None
+) -> dict[str, Any]:
     """Report plan_push outcomes by status and error class, never provider error text.
 
     The unsynced units are the local planned calendar units Intervals.icu takes,
@@ -28,7 +30,8 @@ def summarize_plan_sync(db: Any, since: str | None = None) -> dict[str, Any]:
     in ``sync.providers``. With ``since`` (a ``utc_timestamp``), ``push_counts``
     holds every provider's job and item statuses and error classes of the
     pushes since then, settled items included (#2878): the recent jobs above
-    are only the newest ten of all providers.
+    are only the newest ten of all providers. ``stuck_before`` adds each
+    provider's open jobs created before it (#2953).
     """
 
     jobs = list_jobs(db, _JOB_LIMIT, "plan_push")
@@ -74,7 +77,7 @@ def summarize_plan_sync(db: Any, since: str | None = None) -> dict[str, Any]:
         **(
             {}
             if since is None
-            else {"push_counts": status_counts(db, "plan_push", since)}
+            else {"push_counts": status_counts(db, "plan_push", since, stuck_before)}
         ),
     }
 

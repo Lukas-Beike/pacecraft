@@ -329,8 +329,9 @@ class DiagnosticReportServiceTests(unittest.TestCase):
         # two (refresh history, push jobs); the schema version adds one; the
         # Garmin past-workout removal adds its stored state; the strength push
         # counts add two reads: the remembered Garmin exercises and the linked
-        # units (#2850); the plan push counts add two (jobs, items; #2878).
-        self.assertEqual(len(self.db.queries), 27)
+        # units (#2850); the plan push counts add three (jobs, items, stuck jobs;
+        # #2878, #2953).
+        self.assertEqual(len(self.db.queries), 28)
         self.assertEqual(
             [query.rsplit("FROM ", 1)[1] for query in count_queries],
             [

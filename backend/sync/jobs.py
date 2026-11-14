@@ -236,15 +236,16 @@ def list_jobs(
 
 
 def status_counts(
-    db: Any, job_type: str, since: str
-) -> dict[str, dict[str, dict[str, int]]]:
+    db: Any, job_type: str, since: str, stuck_before: str | None = None
+) -> dict[str, dict[str, Any]]:
     """Per provider: job and item statuses and error classes of jobs since ``since``.
 
     Counts only, settled items included; ``since`` is a ``utc_timestamp``. A
     job still queued or running counts whatever its age, so a stuck one stays
-    visible.
+    visible. With ``stuck_before``, ``stuck`` counts the provider's jobs still
+    queued or running that were created before it (#2953).
     """
-    result: dict[str, dict[str, dict[str, int]]] = {}
+    result: dict[str, dict[str, Any]] = {}
     queries = (
         (
             "job",
@@ -276,6 +277,15 @@ def status_counts(
                 errors = provider[f"{level}_errors"]
                 kind = row["error_class"]
                 errors[kind] = errors.get(kind, 0) + row["n"]
+    if stuck_before is not None:
+        for counts in result.values():
+            counts["stuck"] = 0
+        for row in db.execute(
+            "SELECT provider, count(*) AS n FROM sync_jobs WHERE type=? "
+            "AND status IN ('queued', 'running') AND created_at < ? GROUP BY provider",
+            (job_type, stuck_before),
+        ).fetchall():
+            result[str(row["provider"])]["stuck"] = row["n"]
     return result
 
 
