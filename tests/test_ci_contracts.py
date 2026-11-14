@@ -288,6 +288,8 @@ class WorkflowSourceTests(unittest.TestCase):
         # The image carries the release changelog written from the full local history (#2899).
         self.assertIn("fetch-depth: 0\n", image)
         self.assertIn("fetch-tags: true\n", image)
+        self.assertIn("filter: blob:none\n", image)  # metadata only
+        self.assertLess(image.index("python-version: '3.14'"), image.index("release_changelog"))
         self.assertLess(
             image.index("run: python3 scripts/release_changelog.py\n"),
             image.index("docker build --tag pacecraft:ci\n"),

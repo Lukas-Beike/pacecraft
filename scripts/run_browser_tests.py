@@ -724,13 +724,15 @@ def source_digest(root, names):
     import json
     from pathlib import Path
 
-    # Documentation and OS or editor leftovers do not change the app (#2644).
+    # Documentation and OS or editor leftovers do not change the app (#2644);
+    # the image job writes public/changelog.json from git history (#2899).
     def counts(item):
         name = item.name
         return not (
             "__pycache__" in item.parts
             or name.endswith((".md", ".swp", "~"))
             or name in {"Thumbs.db", "desktop.ini", ".DS_Store"}
+            or item.parts[-2:] == ("public", "changelog.json")
         )
 
     files = {}
