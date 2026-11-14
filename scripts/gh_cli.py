@@ -55,7 +55,10 @@ def run(
             hook = [
                 x for x in lines if not x.startswith(("error", "To ", " ! ", "hint:"))
             ]
-            detail = "\n".join([detail, *hook[-5:]])
+            # Git leaves a hook's stdout alone, and the quality ratchet prints
+            # its findings there: show every one of them (#2944).
+            new = [x for x in (done.stdout or "").splitlines() if x.startswith("NEW ")]
+            detail = "\n".join([detail, *new, *hook[-5:]])
         raise CliError(f"{program} {' '.join(args[:2])} failed: {detail}")
     return done.stdout
 

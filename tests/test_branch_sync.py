@@ -172,8 +172,12 @@ class BranchSyncTests(unittest.TestCase):
         )
         self.assertTrue((self.work / "hook-ran").exists())
 
+        # #2944: the ratchet prints its findings to the hook's stdout, which
+        # git leaves alone; every one of them reaches the refusal.
+        findings = "".join(f"echo 'NEW mypy a.py:{n} misc: m{n}'\n" for n in range(7))
         (hooks / "pre-push").write_text(
-            "#!/bin/sh\necho 'Push blocked: the quality ratchet could not run' >&2\nexit 1\n",
+            f"#!/bin/sh\n{findings}echo 'progress line'\n"
+            "echo 'Push blocked: the quality ratchet could not run' >&2\nexit 1\n",
             encoding="utf-8",
             newline="\n",
         )
@@ -183,6 +187,9 @@ class BranchSyncTests(unittest.TestCase):
         self.assertEqual(code, 2)
         self.assertIn("failed to push", err)
         self.assertIn("Push blocked: the quality ratchet could not run", err)
+        for n in range(7):
+            self.assertIn(f"NEW mypy a.py:{n} misc: m{n}", err)
+        self.assertNotIn("progress line", err)
 
     def test_push_keeps_remote_work_the_branch_has_not_seen(self):
         commit(self.work, "c.txt", "1\n", "feat(ui): add c")
