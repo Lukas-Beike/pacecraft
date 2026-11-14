@@ -113,7 +113,7 @@ function ensureRouteData(route = state.route) {
   // Skip areas an earlier request is already loading, such as the startup load.
   if (panelRoute === "plan") requested.push(...["plan", "library"].filter((area) => !state.loadedAreas.has(area) && !areaLoading(area)));
   if (requested.length) load("/api/bootstrap?local=1", requested);
-  if (route === "more/equipment") void renderTrainingRecords();
+  if (route === "more/equipment") void renderTrainingRecords({ background: true });
   refreshOpenProviderChecks();
   if (ANALYSIS_PERFORMANCE_ROUTES.has(route)) {
     void renderCyclingPowerProfile();

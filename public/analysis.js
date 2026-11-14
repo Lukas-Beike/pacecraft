@@ -1301,8 +1301,11 @@ function renderBodyAnalysis(body) {
 let trainingRecordsGeneration = 0;
 let equipmentTab = "bike";
 
-async function renderTrainingRecords() { // NOSONAR
+// `background` is a refresh nobody asked for (a state load, a route render): it waits while the athlete
+// has an equipment form open, so typed values are not lost (#2879).
+async function renderTrainingRecords({ background = false } = {}) { // NOSONAR
   if (!state.data || !equipmentRouteActive()) return;
+  if (background && document.querySelector("#equipmentItems .equipment-form:not([hidden])")) return;
   const generation = ++trainingRecordsGeneration;
   const session = state.sessionGeneration;
   const gear = document.getElementById("equipmentItems");

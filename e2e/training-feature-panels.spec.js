@@ -396,6 +396,9 @@ test("@responsive the athlete adds, edits and retires equipment without Garmin, 
   const add = runPanel.locator(".equipment-add-row .equipment-form");
   await add.getByLabel("Name").fill("Fixture Pegasus");
   await add.getByLabel("Lebensdauer-Ziel km").fill("800");
+  // A background refresh while the form is open keeps what the athlete typed.
+  await page.evaluate(() => renderTrainingRecords({ background: true }));
+  await expect(add.getByLabel("Name")).toHaveValue("Fixture Pegasus");
   await add.getByRole("button", { name: "Speichern" }).click();
   const receipt = page.locator("#equipmentItems [role='status']");
   await expect(receipt).toContainText("Ausrüstung gespeichert.");
