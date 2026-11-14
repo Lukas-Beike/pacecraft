@@ -88,9 +88,10 @@ or one with a new trigger or impact is reported normally. Notes the agent wrote
 in a PR body or thread settle nothing. A finding that contradicts an earlier
 round must say so and cite that decision instead of re-raising it as new. When
 the diff changes only
-Markdown instructions, skills, or docs, ask the review for P0/P1 findings and
-real security gaps only; guidelines may have exceptions, and hypothetical edge
-cases in prose are not findings.
+Markdown instructions, skills, or docs, let the review report every finding
+with its priority, then act only on P0/P1 findings and real security gaps;
+guidelines may have exceptions, and hypothetical edge cases in prose are not
+findings.
 
 Fix valid findings with new commits and rerun the affected checks, then push. A
 finding you consider invalid needs concrete evidence (file and line, or the
