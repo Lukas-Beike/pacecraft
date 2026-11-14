@@ -1,23 +1,102 @@
-"""Carbohydrate rules for races and long sessions (athlete decision, #2803).
+"""Fuelling and drinking rules for races and long sessions (#2803, #2804).
 
-The single owner of the fuelling rules; the race plan and #2804 read them here.
-Steps by duration follow Thomas, Erdman and Burke (2016), the joint position
-statement of the American College of Sports Medicine, the Academy of Nutrition
-and Dietetics and Dietitians of Canada (Med Sci Sports Exerc 48(3):543-568).
-Above 2.5 h the athlete chose up to 120 g/h (Hearris et al. 2022; Podlogar et
-al. 2022); the step is flagged because a benefit above 90 g/h is not yet shown
-(Wallis and Podlogar 2022). Pure: no I/O.
+The single owner of the fuelling rules; the race plan and the long planned
+units read them here. Carbohydrate steps by duration follow Thomas, Erdman and
+Burke (2016), the joint position statement of the American College of Sports
+Medicine, the Academy of Nutrition and Dietetics and Dietitians of Canada (Med
+Sci Sports Exerc 48(3):543-568). Above 2.5 h the athlete chose up to 120 g/h
+(Hearris et al. 2022; Podlogar et al. 2022); the step is flagged because a
+benefit above 90 g/h is not yet shown (Wallis and Podlogar 2022).
+Drinking follows the ACSM position stand on exercise and fluid replacement
+(Sawka et al. 2007, Med Sci Sports Exerc 39:377-390) and the NATA statement
+(McDermott et al. 2017, J Athl Train 52:877-895): keep the loss below 2 % of
+body mass and never drink more than the sweat loss. The ±5 °C band and the
+minimum of 3 sessions are the athlete's design choice (#2804). Pure: no I/O.
 """
 
 from __future__ import annotations
 
+from statistics import median
 from typing import Any, Final
 
 METHOD_ID: Final = "carbohydrate-fuelling"
 POSITION_STAND: Final = "Thomas, Erdman und Burke 2016"
+FLUID_POSITION_STAND: Final = "Sawka 2007"
 # Above this rate the athlete's chosen ceiling exceeds the position stand.
 ESTABLISHED_MAX_G_PER_H: Final = 90
+# ACSM starting range in L/h when no own sweat rate is known.
+GENERIC_SWEAT_L_PER_H: Final = (0.4, 0.8)
+# Share of body mass a session may lose (ACSM, NATA).
+MAX_LOSS_SHARE: Final = 0.02
+# Sodium per litre of drink for sessions from 2 h on (ACSM 2007).
+SODIUM_G_PER_L: Final = (0.5, 0.7)
+SODIUM_FROM_S: Final = 2 * 3600
+# Athlete design choice (#2804): similar temperature band and its minimum.
+SIMILAR_TEMPERATURE_C: Final = 5.0
+MIN_SIMILAR_SESSIONS: Final = 3
 _MINUTES: Final = 60.0
+
+
+def sweat_rate(
+    samples: list[tuple[float, float | None]], temperature_c: float | None
+) -> dict[str, Any] | None:
+    """The median sweat rate in L/h of ``(rate, temperature)`` samples.
+
+    With a temperature, only samples within ``SIMILAR_TEMPERATURE_C`` count
+    when at least ``MIN_SIMILAR_SESSIONS`` exist; otherwise all samples count
+    and ``similar`` is False.
+    """
+    if not samples:
+        return None
+    similar = (
+        [
+            (rate, temp)
+            for rate, temp in samples
+            if temp is not None and abs(temp - temperature_c) <= SIMILAR_TEMPERATURE_C
+        ]
+        if temperature_c is not None
+        else []
+    )
+    chosen = similar if len(similar) >= MIN_SIMILAR_SESSIONS else samples
+    temps = [temp for _rate, temp in chosen if temp is not None]
+    return {
+        "l_per_h": round(median(rate for rate, _temp in chosen), 2),
+        "sessions": len(chosen),
+        "similar": chosen is similar,
+        "temperature_c": [round(min(temps)), round(max(temps))] if temps else None,
+    }
+
+
+def weight_block(weight: dict[str, Any] | None) -> dict[str, Any] | None:
+    """``{kg, source}`` of a resolved ``{value, source}`` weight, else None."""
+    value = (weight or {}).get("value")
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or value <= 0:
+        return None
+    return {"kg": float(value), "source": (weight or {}).get("source")}
+
+
+def drinking(
+    rate_l_per_h: float | None, duration_s: float, weight_kg: float | None
+) -> dict[str, Any]:
+    """Litres per hour and in total: the expected loss minus 2 % of body mass.
+
+    Never more than the sweat rate; without a weight the sweat rate is only the
+    upper bound, and without a sweat rate the ACSM starting range applies. From
+    2 h on, the sodium range per litre is added while there is something to
+    drink.
+    """
+    if rate_l_per_h is None:
+        result: dict[str, Any] = {"generic_l_per_h": list(GENERIC_SWEAT_L_PER_H)}
+    else:
+        hours = duration_s / 3600
+        result = {"max_l_per_h": round(rate_l_per_h, 2)}
+        if weight_kg is not None and hours > 0:
+            total = max(0.0, rate_l_per_h * hours - weight_kg * MAX_LOSS_SHARE)
+            result["l_per_h"] = round(min(rate_l_per_h, total / hours), 2)
+            result["total_l"] = round(total, 1)
+    if duration_s >= SODIUM_FROM_S and result.get("total_l", 1) > 0:
+        result["sodium_g_per_l"] = list(SODIUM_G_PER_L)
+    return result
 
 
 def carbohydrate_per_hour(duration_s: Any) -> dict[str, Any] | None:

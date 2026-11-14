@@ -6,6 +6,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo
 
+from backend.activities.activity_summary import activity_summary
 from backend.activities.detail_contract import (
     ACTIVITY_DETAIL_CONTRACT,
     ProviderStatus,
@@ -541,21 +542,25 @@ class MetricTests(unittest.TestCase):
 
     def test_garmin_summary_values_are_labelled_metrics(self) -> None:
         # #1724: Garmin's own estimates are derived; its extremes are measured.
-        doc = build(
-            [
-                record(
-                    GARMIN,
-                    "g-run-1",
-                    recorded_by=RecordingOrigin.GARMIN,
-                    label="Garmin Connect",
-                    aerobic_training_effect=3.7,
-                    water_estimated_ml=826.0,
-                    elevation_loss_m=28.0,
-                    min_temp_c=15.0,
-                    max_temp_c=24.0,
-                    lap_count=13.0,
-                )
-            ]
+        garmin = record(
+            GARMIN,
+            "g-run-1",
+            recorded_by=RecordingOrigin.GARMIN,
+            label="Garmin Connect",
+            aerobic_training_effect=3.7,
+            water_estimated_ml=826.0,
+            elevation_loss_m=28.0,
+            min_temp_c=15.0,
+            max_temp_c=24.0,
+            lap_count=13.0,
+        )
+        doc = build([garmin])
+        # The session summary carries the sweat loss for the fuelling advice (#2804).
+        self.assertEqual(
+            826.0,
+            activity_summary("act_1", [garmin], ZoneInfo("Europe/Berlin"))[
+                "water_estimated_ml"
+            ],
         )
 
         metrics = doc["metrics"]

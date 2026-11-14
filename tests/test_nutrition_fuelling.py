@@ -1,6 +1,11 @@
 import unittest
 
-from backend.nutrition.fuelling import carbohydrate_per_hour, pre_race_carbohydrates
+from backend.nutrition.fuelling import (
+    carbohydrate_per_hour,
+    drinking,
+    pre_race_carbohydrates,
+    sweat_rate,
+)
 
 
 class FuellingRuleTests(unittest.TestCase):
@@ -57,6 +62,43 @@ class FuellingRuleTests(unittest.TestCase):
         self.assertEqual([None, None], [entry["grams"] for entry in unweighed])
         self.assertEqual([4, 1], unweighed[1]["hours_before"])
         self.assertEqual([], pre_race_carbohydrates(None, 70))
+
+    def test_sweat_rate_prefers_sessions_of_similar_temperature(self):
+        # #2804: median of sessions within ±5 °C when at least 3 exist.
+        samples = [(0.6, 10.0), (0.7, 12.0), (0.8, 14.0), (1.4, 28.0), (1.5, None)]
+        self.assertEqual(
+            {"l_per_h": 0.7, "sessions": 3, "similar": True, "temperature_c": [10, 14]},
+            sweat_rate(samples, 12.0),
+        )
+        # Too few similar sessions (or no forecast): all sessions count.
+        for temperature in (27.0, None):
+            with self.subTest(temperature=temperature):
+                result = sweat_rate(samples, temperature)
+                self.assertEqual((0.8, 5, False), (
+                    result["l_per_h"], result["sessions"], result["similar"]
+                ))
+        self.assertIsNone(sweat_rate([], 12.0))
+
+    def test_drinking_keeps_the_loss_at_two_percent_and_never_above_the_sweat_rate(self):
+        # 0.9 L/h for 2:45 h is a loss of 2.475 L; 2 % of 70 kg is 1.4 L, so
+        # 1.075 L remain to drink: 0.39 L/h, 1.1 L in total (worked by hand).
+        self.assertEqual(
+            {"max_l_per_h": 0.9, "l_per_h": 0.39, "total_l": 1.1, "sodium_g_per_l": [0.5, 0.7]},
+            drinking(0.9, 9900, 70),
+        )
+        # A short session within the 2 % needs nothing; without weight only the bound.
+        self.assertEqual(
+            {"max_l_per_h": 0.5, "l_per_h": 0.0, "total_l": 0.0}, drinking(0.5, 3600, 70)
+        )
+        self.assertEqual({"max_l_per_h": 0.9}, drinking(0.9, 3600, None))
+        # Nothing to drink means no sodium advice; without a rate the ACSM range.
+        self.assertEqual(
+            {"max_l_per_h": 0.4, "l_per_h": 0.0, "total_l": 0.0}, drinking(0.4, 7200, 80)
+        )
+        self.assertEqual(
+            {"generic_l_per_h": [0.4, 0.8], "sodium_g_per_l": [0.5, 0.7]},
+            drinking(None, 7200, 70),
+        )
 
 
 if __name__ == "__main__":

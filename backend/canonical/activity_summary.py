@@ -68,6 +68,8 @@ class ActivitySummary(TypedDict, total=False):
     max_temp_c: float
     energy_kj: float
     energy_kcal: float
+    # The provider's estimated sweat loss of the session (#2804).
+    water_estimated_ml: float
     # Running dynamics averages (#1870), only with a supporting sensor.
     ground_contact_time_ms: float
     ground_contact_balance_pct: float

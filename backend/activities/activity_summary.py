@@ -93,6 +93,8 @@ _DERIVED: Final = (
     ("ftp_w", "ftp_w"),
     ("vo2max", "vo2max"),
     ("planned_event_id", "planned_event_id"),
+    # Garmin's sweat-loss estimate, read by the fuelling advice (#2804).
+    ("water_estimated_ml", "water_estimated_ml"),
 )
 # Summary key -> ActivityRecord field of provider zone times, in derived order
 # without Intervals.icu records (#1743): the readers replace them with the

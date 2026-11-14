@@ -129,6 +129,20 @@ class NutritionHttpApiTests(unittest.TestCase):
         dispatch_route(routes, self.handler, "/api/nutrition/day")
         context.assert_called_once_with("2026-09-24")
 
+    def test_session_fuelling_route_passes_the_query_to_its_reader(self):
+        path = "/api/nutrition/session-fuelling?sport=ride&duration_s=7200"
+        self.assertFalse(dispatch_route(self.get_routes, self.handler, path))
+        reader = Mock(return_value={"status": "not_long"})
+        routes = NutritionGetRoutes(
+            lambda: self.diary_service,
+            lambda: self.meal_library_service,
+            self.local_now,
+            session_fuelling=reader,
+        )
+        self.assertTrue(dispatch_route(routes, self.handler, path))
+        reader.assert_called_once_with({"sport": ["ride"], "duration_s": ["7200"]})
+        self.handler.send_json.assert_called_once_with(200, {"status": "not_long"})
+
     def test_day_reference_failure_preserves_diary(self) -> None:
         self.handler.path = "/api/nutrition/day?date=2026-09-24"
         self.diary_service.sync_status.get_day_summary.return_value = {
