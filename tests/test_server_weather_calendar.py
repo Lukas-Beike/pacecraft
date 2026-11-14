@@ -229,10 +229,12 @@ class ServerWeatherCalendarTests(ServerTestCase):
                 release.set()
                 reader.join(5)
             deletion.join(5)
+            with gate.condition:
+                active = gate.active
         self.assertEqual(failures, [])
         self.assertTrue(
             deleted.is_set(),
-            f"delete still draining: {gate.active} gated operation(s) active",
+            f"delete still draining: {active} gated operation(s) active",
         )
         self.assertFalse(server.key_value_service().get(weather_cache.CACHE_KEY))
         self.assertFalse(server.key_value_service().get(weather_cache.HISTORY_KEY))
