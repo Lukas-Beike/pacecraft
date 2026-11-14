@@ -270,17 +270,17 @@ Restore SHALL keep the live database as a recovery copy beside the new one, and 
 
 #### Scenario: Many restores
 - **WHEN** a restore completes and its new recovery copy has the size of the database it copied, opens read-only with the key and has the current schema
-- **THEN** the older `pre-restore` copies are deleted and exactly the newest remains; `pre-intervals-purge` copies, marker files and any other file are never touched, and a deletion that fails is logged without failing the finished restore
+- **THEN** the `pre-restore` copies whose name carries an earlier time are deleted, so the newest remains; a copy of the same second or later (an overlapping restore), `pre-intervals-purge` copies, marker files and any other file are never touched, and a deletion that fails is logged without failing the finished restore
 
 #### Scenario: Restore or copy not confirmed
-- **WHEN** the restore fails at any step, including the resume after the swap, or its new copy cannot be verified
+- **WHEN** the restore fails at any step, including the resume after the swap, its new copy cannot be verified, or the live database had a non-empty `-wal` file when it was copied (the copy may miss the last commits)
 - **THEN** every existing recovery copy stays
 
 #### Scenario: Erasure and report
 - **WHEN** the local erasure runs or the diagnostic report is built
 - **THEN** the erasure counts and removes the matching files and reports the failures, and the report shows only their count, newest age and total size
 
-Evidence: `backend/backup/recovery_copies.py::RecoveryCopies`, `backend/backup/recovery_copies.py::RecoveryCopies.prune_restore_copies`; `backend/backup/restore.py::DatabaseRestoreService._copy_previous`, `backend/backup/restore.py::DatabaseRestoreService._prune_older_copies`; `backend/backup/restore_validation.py::DatabaseRestoreValidationService.verify_copy`. Tests: `tests/test_database_restore_service.py::test_two_restores_keep_only_the_newest_recovery_copy`; `tests/test_database_restore_service.py::test_an_unverified_or_failed_restore_keeps_every_recovery_copy`; `tests/test_recovery_copies.py::test_pruning_keeps_the_newest_restore_copy_and_every_other_file`; `tests/test_database_restore_validation.py::test_verify_copy_needs_the_whole_file_and_the_current_schema`; `tests/test_db_encrypted_upgrade_matrix.py::test_an_encrypted_backup_at_the_baseline_restores_the_same_rows`; `tests/test_privacy_provider_data.py::test_the_preview_counts_recovery_copies_and_the_delete_erases_them`; `tests/test_privacy_provider_data.py::test_a_recovery_copy_that_cannot_be_removed_is_reported_not_raised`; `tests/test_diagnostic_report.py::test_storage_and_recovery_copies_are_sizes_and_ages_only`.
+Evidence: `backend/backup/recovery_copies.py::RecoveryCopies`, `backend/backup/recovery_copies.py::RecoveryCopies.prune_restore_copies`; `backend/backup/restore.py::DatabaseRestoreService._copy_previous`, `backend/backup/restore.py::DatabaseRestoreService._prune_older_copies`; `backend/backup/restore_validation.py::DatabaseRestoreValidationService.verify_copy`. Tests: `tests/test_database_restore_service.py::test_two_restores_keep_only_the_newest_recovery_copy`; `tests/test_database_restore_service.py::test_an_unverified_or_failed_restore_keeps_every_recovery_copy`; `tests/test_database_restore_service.py::test_a_copy_taken_beside_an_unflushed_wal_keeps_the_older_copies`; `tests/test_recovery_copies.py::test_pruning_keeps_the_newest_restore_copy_and_every_other_file`; `tests/test_database_restore_validation.py::test_verify_copy_needs_the_whole_file_and_the_current_schema`; `tests/test_db_encrypted_upgrade_matrix.py::test_an_encrypted_backup_at_the_baseline_restores_the_same_rows`; `tests/test_privacy_provider_data.py::test_the_preview_counts_recovery_copies_and_the_delete_erases_them`; `tests/test_privacy_provider_data.py::test_a_recovery_copy_that_cannot_be_removed_is_reported_not_raised`; `tests/test_diagnostic_report.py::test_storage_and_recovery_copies_are_sizes_and_ages_only`.
 
 ### Requirement: Truthful post-restore recovery
 

@@ -83,21 +83,24 @@ class RecoveryCopies:
         return self._remove(self.paths())
 
     def prune_restore_copies(self, keep: str) -> RecoveryCopyErasure:
-        """Delete every older restore copy, keeping ``keep`` (athlete, 2026-11-14).
+        """Delete the restore copies older than ``keep`` (athlete, 2026-11-14).
 
-        Only copies with the restore label go; purge copies, markers and every
-        other file stay. Nothing is deleted unless ``keep`` is itself a restore
-        copy that exists.
+        Only copies with the restore label and an earlier time in their name go;
+        a copy of the same second or newer (an overlapping restore) stays, as do
+        purge copies, markers and every other file. Nothing is deleted unless
+        ``keep`` is itself a restore copy that exists.
         """
-        restore_copies = [
-            path
+        made = {
+            path.name: match["made"]
             for path in self.paths()
             if (match := self._copy_pattern.fullmatch(path.name))
             and match["label"] == RESTORE_LABEL
-        ]
-        if keep not in {path.name for path in restore_copies}:
+        }
+        if keep not in made:
             return RecoveryCopyErasure(removed=0, failed=0)
-        return self._remove([path for path in restore_copies if path.name != keep])
+        return self._remove(
+            [self._data_dir / name for name, when in made.items() if when < made[keep]]
+        )
 
     @staticmethod
     def _remove(paths: list[Path]) -> RecoveryCopyErasure:

@@ -70,6 +70,9 @@ class RecoveryCopiesTests(unittest.TestCase):
         newest = f"{DATABASE}.pre-restore-20261102120000-{'b' * 32}"
         kept = (
             newest,
+            # An overlapping restore's copy, newer or of the same second, stays.
+            f"{DATABASE}.pre-restore-20261103120000-{'c' * 32}",
+            f"{DATABASE}.pre-restore-20261102120000-{'d' * 32}",
             f"{DATABASE}.{BACKUP_LABEL}-{STAMP}",
             PURGE_MARKER_FILE,
             DATABASE,
