@@ -191,15 +191,20 @@ def activity_summary(
     return summary  # type: ignore[return-value]
 
 
+# The training-effect keys a summary takes from one record; the load joins
+# them as ``training_effect_load`` (Garmin's own load model only).
+TRAINING_EFFECT_KEYS: Final = (
+    "training_effect_label",
+    "aerobic_training_effect",
+    "anaerobic_training_effect",
+)
+
+
 def _training_effect(
     summary: dict[str, Any], sources: dict[str, str], record: ActivityRecord
 ) -> None:
     """Set the training-effect label, values and load of one record."""
-    for key in (
-        "training_effect_label",
-        "aerobic_training_effect",
-        "anaerobic_training_effect",
-    ):
+    for key in TRAINING_EFFECT_KEYS:
         value = getattr(record, key)
         if value is not None:
             summary[key] = value

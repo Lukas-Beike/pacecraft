@@ -375,7 +375,7 @@
     if (payload?.metrics?.efficiency_factor?.unit) metrics.efficiency_factor_unit = payload.metrics.efficiency_factor.unit;
     const dynamics = runningDynamicsSection(activity, metrics, payload && { panel, token, activityId: payload.session?.activity_id });
     const planned = payload?.planned_adherence;
-    panel.append(...[overview(activity, metrics, Boolean(dynamics)), adherence(planned), dynamics].filter(Boolean));
+    panel.append(...[overview(activity, metrics, Boolean(dynamics)), adherence(planned), dynamics, providerEffect(payload?.training_effect)].filter(Boolean));
     const driftLines = ActivityDetails.formDriftLines(payload?.analysis?.form_drift);
     if (driftLines.length) panel.append(h("div", null, driftLines.map((line) => h("p", null, line))));
     // The running dynamics share the time axis of the other channels.
@@ -389,6 +389,46 @@
     if (streams && !charts.length) panel.append(h("p", "muted", "Keine darstellbaren Messreihen"));
     panel.append(...ActivityDetails.providerNotes(payload));
     appendRefresh(panel, summary, payload, token);
+  }
+
+  // The provider's own session values (#2831): shown as reported and labelled with their source, never derived.
+  const EFFECT_BENEFITS = {
+    RECOVERY: "Erholung", AEROBIC_BASE: "Basis", LOW_AEROBIC: "Aerob niedrig", TEMPO: "Tempo", THRESHOLD: "Schwelle",
+    LACTATE_THRESHOLD: "Laktatschwelle", VO2MAX: "VO2max", VO2_MAX: "VO2max", HIGH_AEROBIC: "Aerob hoch",
+    ANAEROBIC_CAPACITY: "Anaerobe Kapazität", SPEED: "Sprint", ANAEROBIC: "Anaerob", NO_BENEFIT: "Kein Nutzen",
+  };
+  // Training effect runs from 0 to 5 and always shows one decimal, as Garmin shows it.
+  const EFFECT_SCALE = 5;
+  const effectText = (value) => AppFormat.number(value, { digits: 1, minDigits: 1 });
+  // An unknown category reads as words, not as an upper-case code.
+  const effectBenefit = (code) => EFFECT_BENEFITS[code] || String(code).toLowerCase().replaceAll("_", " ").replace(/^./, (letter) => letter.toUpperCase());
+
+  // `effect` (0 to 5) adds a bar on the training-effect scale.
+  function effectTile(label, text, effect = null) {
+    const tile = h("div", null, h("dt", null, label), h("dd", null, text));
+    if (finite(effect)) {
+      const bar = h("span", { className: "activity-effect-bar", "aria-hidden": "true" });
+      bar.style.setProperty("--effect-share", `${Math.round(Math.min(1, Math.max(0, effect / EFFECT_SCALE)) * 100)}%`);
+      tile.append(bar);
+    }
+    return tile;
+  }
+
+  function providerEffect(effect) {
+    if (!effect) return null;
+    const tiles = [
+      finite(effect.aerobic_training_effect) && effectTile("Trainingseffekt aerob", effectText(effect.aerobic_training_effect), effect.aerobic_training_effect),
+      finite(effect.anaerobic_training_effect) && effectTile("Trainingseffekt anaerob", effectText(effect.anaerobic_training_effect), effect.anaerobic_training_effect),
+      effect.training_effect_label && effectTile("Hauptnutzen", effectBenefit(effect.training_effect_label)),
+      finite(effect.training_effect_load) && effectTile("Belastung", numberText(effect.training_effect_load)),
+    ].filter(Boolean);
+    if (!tiles.length) return null;
+    const source = String(effect.source || "");
+    // Titled after the provider, whatever the casing of its label ("garmin" without a label).
+    const provider = source.split(" ")[0];
+    const title = provider ? `${provider[0].toUpperCase()}${provider.slice(1)}-Werte` : "Werte des Anbieters";
+    return h("section", "activity-effect", h("div", "activity-effect-header", h("h4", null, title), source && h("span", "activity-effect-source", source)),
+      h("dl", "activity-analysis-stats", tiles));
   }
 
   // Running dynamics against the athlete's own runs at the same pace (#2829): each value with its

@@ -159,6 +159,7 @@
   The unofficial login stays an optional supplement for what the Personal API does not serve: training readiness, training status, training load, load balance, VO2 max, FTP, lactate threshold, race predictions, personal records, endurance score, running tolerance, gear, activity splits and per-activity zone times.
   Activity details also download the original FIT file through the Personal API; its full-resolution record streams and device laps replace the downsampled charts and splits.
   Garmin's own zone times, training effect, altitude and temperature range come from the activity list; the RPE, feel and minimum heart rate rated on the watch come from one single-activity read per new activity and per activity of the last three days (at most 30 per sync).
+  The calendar card's "Details" show the training effect (aerobic and anaerobic effect, main benefit, Garmin's load) in their own "Garmin-Werte" section, labelled with the source and nothing derived from them; stamina and performance condition are not read, because no documented field carries them.
   Each night's sleep record also gives the mean and lowest SpO2, the mean respiration rate and the mean sleeping heart rate (both transports); the Coach recovery section shows the latest night with each value's 14-day mean.
   Garmin's whole-day pulse-ox and respiration summaries are not imported.
   Either transport works alone; both together write each activity and day once.

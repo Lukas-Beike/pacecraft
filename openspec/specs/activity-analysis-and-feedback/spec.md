@@ -410,6 +410,23 @@ Evidence:
 - `tests/test_running_dynamics.py:test_a_trail_run_or_other_sport_has_no_drift_key_at_all`
 - `tests/test_running_dynamics.py:test_only_a_run_analysis_carries_the_drift_key`
 
+### Requirement: The provider's own session values in the session details
+The system SHALL serve with the detail document the provider's own training-effect values of the session (aerobic and anaerobic effect, the effect label and the provider's load) with their source label, and the calendar's session details SHALL show the present ones in a section of their own, titled after the provider; nothing SHALL be derived from them.
+
+#### Scenario: Values present
+- **WHEN** the session's summary carries training-effect values
+- **THEN** `training_effect` holds each present value and `source`, an effect of 0.0 included, and the section shows the effects with one decimal and a bar on the 0 to 5 scale, the label in German ("Tempo", "Schwelle", ...) and the load.
+
+#### Scenario: Values absent or undocumented
+- **WHEN** a session has no training-effect values, or a value such as stamina or performance condition has no documented source field and no recorded occurrence
+- **THEN** no section or tile is shown for it.
+
+Evidence:
+- `backend/performance/activity_read_service.py:_provider_training_effect`
+- `public/activity-analysis.js::providerEffect`
+- `tests/test_activity_read_service.py:test_detail_carries_the_providers_own_training_effect`
+- `e2e/calendar-detail-pane.spec.js`
+
 ### Requirement: Running dynamics against the athlete's own runs at the same pace
 The system SHALL keep per non-trail run with running dynamics streams the time and time-weighted mean of each running-dynamics value per 15 s/km pace band (method `running-dynamics-pace-bands-v1`), rate a run per band against the athlete's runs of the 84 days before it, show Garmin's published colour band as a labelled second reference and draw monthly medians per pace band in Analyse; it SHALL name no universal good value.
 

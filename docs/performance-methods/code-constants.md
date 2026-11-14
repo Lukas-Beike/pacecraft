@@ -290,6 +290,7 @@ every named number the code fixes. A test fails when it is out of date.
 
 | Constant | Value | Module | Code comment |
 | --- | --- | --- | --- |
+| `TRAINING_EFFECT_KEYS` | `('training_effect_label', 'aerobic_training_effect', 'anaerobic_training_effect')` | `backend/activities/activity_summary.py` | The training-effect keys a summary takes from one record; the load joins them as training_effect_load (Garmin's own load model only). |
 | `CALENDAR_ACTIVITY_FIELDS` | `('id', 'started_at_local', 'name', 'sport', 'environment', 'moving_duration_s', 'elapsed_duration... (sha256 06f78964)` | `backend/activities/calendar_projection.py` |  |
 | `DURATION_FLOOR_S` | `120.0` | `backend/activities/canonical_sessions.py` |  |
 | `DISTANCE_FLOOR_M` | `500.0` | `backend/activities/canonical_sessions.py` |  |

@@ -34,10 +34,11 @@
     return new Intl.DateTimeFormat(LOCALE, options).format(date);
   }
 
-  function number(value, { digits = 1 } = {}) {
+  // `minDigits` keeps trailing zeros, such as a training effect of 0,0.
+  function number(value, { digits = 1, minDigits = 0 } = {}) {
     const numeric = Number(value);
     if (!Number.isFinite(numeric)) return null;
-    return new Intl.NumberFormat(LOCALE, { maximumFractionDigits: digits }).format(numeric);
+    return new Intl.NumberFormat(LOCALE, { minimumFractionDigits: minDigits, maximumFractionDigits: Math.max(digits, minDigits) }).format(numeric);
   }
 
   function distance(meters) {

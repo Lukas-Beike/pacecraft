@@ -95,6 +95,7 @@ class CoachActivityReadToolServiceTests(unittest.TestCase):
         read.detail.return_value = {
             "session": {"activity_id": "act_1"},
             "running_dynamics_streams": {"ground_contact_time_ms": {"values": [250]}},
+            "training_effect": {"aerobic_training_effect": 3.4, "source": "Garmin Connect"},
         }
         corrections = Mock()
         corrections.bundle.return_value = {"activity_id": "act_1", "members": []}
@@ -110,6 +111,8 @@ class CoachActivityReadToolServiceTests(unittest.TestCase):
         self.assertEqual(result["session_bundle"]["activity_id"], "act_1")
         # #2258: the per-second running dynamics are for the calendar, not the Coach.
         self.assertNotIn("running_dynamics_streams", result)
+        # #2831: the calendar's provider-values block repeats the effect metrics.
+        self.assertNotIn("training_effect", result)
 
     def test_report_can_select_body_history_and_sleep_timing_variability(self):
         report = Mock()
