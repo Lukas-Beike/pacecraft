@@ -36,7 +36,12 @@ def _values(args: list[str], flags: set[str]) -> list[str]:
 
 
 def _local(path: str, cwd: Path) -> Path:
-    """A shell path as Python opens it (`/c/x` is `c:/x` under Git Bash)."""
+    """A shell path as Python opens it (`/c/x` is `c:/x` under Git Bash).
+
+    Exported variables expand; a variable set only in the command does not,
+    and its path then counts as missing.
+    """
+    path = os.path.expanduser(os.path.expandvars(path))
     if os.name == "nt" and (drive := re.match(r"/([A-Za-z])/", path)):
         path = f"{drive.group(1)}:/{path[3:]}"
     return cwd / path

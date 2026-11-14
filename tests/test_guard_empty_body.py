@@ -1,6 +1,7 @@
 """The agent shell hook blocks a gh PR or issue write with an empty body (#2954)."""
 
 import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -18,6 +19,7 @@ def run_hook(command: str, cwd: Path) -> int:
         input=body.encode("utf-8"),
         capture_output=True,
         check=False,
+        env={**os.environ, "BODY_DIR": str(cwd)},
     ).returncode
 
 
@@ -41,6 +43,7 @@ class GuardEmptyBodyTests(unittest.TestCase):
             "gh issue comment 5 --body-file empty.md",
             "gh pr review 7 --comment -F empty.md",
             f'gh pr edit 2938 --body-file "{absolute}"',
+            'gh pr edit 2938 --body-file "$BODY_DIR/empty.md"',  # exported variable
             'gh pr edit 2938 --body ""',
             "gh issue edit 5 -b '  '",
             "git status && gh pr edit 2938 --body-file empty.md",
