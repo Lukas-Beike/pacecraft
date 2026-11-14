@@ -1589,30 +1589,42 @@ class ServerDatabaseTests(ServerTestCase):
                 patch.object(server, "DATA_DIR", root),
                 patch.object(server, "DB_PATH", root / "test.db"),
                 patch.object(server, "LOG_PATH", root / "test.log"),
-                canonical_backfill_stopped(server),
+                # The reset follows the stopped worker the restore started (#2892).
+                canonical_backfill_stopped(server, reset_database=True),
             ):
-                try:
-                    server.initialise_database()
-                    job = server.SYNC_JOB_QUEUE.service().enqueue(
-                        "garmin", "refresh", {"days": 1}
-                    )
-                    server.SYNC_JOB_QUEUE.store().claim()
-                    backup = server.BACKUP.backup_service().read_bytes()
-                    server.SYNC_JOB_QUEUE.outcome_service().update(
-                        job["id"], "completed"
-                    )
-                    self.assertTrue(
-                        server.BACKUP.restore_service().restore(backup)["restored"]
-                    )
-                    self.assertEqual(
-                        server.SYNC_JOB_QUEUE.service().state(job["id"])["status"],
-                        "queued",
-                    )
-                    self.assertEqual(
-                        server.SYNC_JOB_QUEUE.store().claim()["id"], job["id"]
-                    )
-                finally:
-                    server.database_manager.reset()
+                server.initialise_database()
+                job = server.SYNC_JOB_QUEUE.service().enqueue(
+                    "garmin", "refresh", {"days": 1}
+                )
+                server.SYNC_JOB_QUEUE.store().claim()
+                backup = server.BACKUP.backup_service().read_bytes()
+                server.SYNC_JOB_QUEUE.outcome_service().update(job["id"], "completed")
+                self.assertTrue(
+                    server.BACKUP.restore_service().restore(backup)["restored"]
+                )
+                self.assertEqual(
+                    server.SYNC_JOB_QUEUE.service().state(job["id"])["status"],
+                    "queued",
+                )
+                self.assertEqual(server.SYNC_JOB_QUEUE.store().claim()["id"], job["id"])
+
+    def test_the_backfill_stops_before_the_database_reset(self):
+        # #2892: a reset while the restore-started worker still ran its paced
+        # pass let it reopen the database during the close and hung CI.
+        calls: list[str] = []
+        worker = SimpleNamespace(
+            stop=lambda: calls.append("stop"),
+            join=lambda timeout: calls.append(f"join {timeout}"),
+        )
+        fake = SimpleNamespace(
+            CANONICAL_BACKFILL=SimpleNamespace(worker=worker),
+            database_manager=SimpleNamespace(reset=lambda: calls.append("reset")),
+        )
+
+        with canonical_backfill_stopped(fake, reset_database=True):
+            calls.append("restore")
+
+        self.assertEqual(["restore", "stop", "join 10.0", "reset"], calls)
 
     def test_readiness_fails_when_database_is_unavailable(self):
         manager = server.database_manager()

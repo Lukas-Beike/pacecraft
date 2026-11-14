@@ -305,13 +305,22 @@ def athlete_checkin(server, service: Any):
 
 
 @contextmanager
-def canonical_backfill_stopped(server, timeout: float = 10.0):
-    """Stop and join the backfill thread a real restore starts before cleanup."""
+def canonical_backfill_stopped(
+    server, timeout: float = 10.0, *, reset_database: bool = False
+):
+    """Stop and join the backfill thread a real restore starts before cleanup.
+
+    ``reset_database`` resets the database manager only after the worker has
+    stopped. A reset while its paced pass still runs lets the worker reopen the
+    database as the old manager closes, which hung a CI shard (#2892).
+    """
     try:
         yield
     finally:
         server.CANONICAL_BACKFILL.worker.stop()
         server.CANONICAL_BACKFILL.worker.join(timeout)
+        if reset_database:
+            server.database_manager.reset()
 
 
 @contextmanager
