@@ -12,7 +12,7 @@ from backend.planning.exercise_mappings import remembered_exercises
 from backend.planning.push_state import garmin_fingerprint, skips_intervals
 from backend.planning.sport import planned_sport_environment
 from backend.sync.garmin_strength_push import APP_WORKOUT_CLEANUP_KEY
-from backend.sync.jobs import list_jobs, status_counts
+from backend.sync.jobs import list_jobs, status_counts, stuck_counts
 
 _OUTCOMES = frozenset({"ok", "failed", "skipped"})
 
@@ -31,7 +31,8 @@ def summarize_plan_sync(
     holds every provider's job and item statuses and error classes of the
     pushes since then, settled items included (#2878): the recent jobs above
     are only the newest ten of all providers. ``stuck_before`` adds each
-    provider's open jobs created before it (#2953).
+    provider's open jobs that should have finished by then as ``stuck_jobs``
+    (#2953).
     """
 
     jobs = list_jobs(db, _JOB_LIMIT, "plan_push")
@@ -77,7 +78,12 @@ def summarize_plan_sync(
         **(
             {}
             if since is None
-            else {"push_counts": status_counts(db, "plan_push", since, stuck_before)}
+            else {"push_counts": status_counts(db, "plan_push", since)}
+        ),
+        **(
+            {}
+            if stuck_before is None
+            else {"stuck_jobs": stuck_counts(db, "plan_push", stuck_before)}
         ),
     }
 

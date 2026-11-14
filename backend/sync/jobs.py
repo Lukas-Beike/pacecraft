@@ -236,16 +236,15 @@ def list_jobs(
 
 
 def status_counts(
-    db: Any, job_type: str, since: str, stuck_before: str | None = None
-) -> dict[str, dict[str, Any]]:
+    db: Any, job_type: str, since: str
+) -> dict[str, dict[str, dict[str, int]]]:
     """Per provider: job and item statuses and error classes of jobs since ``since``.
 
     Counts only, settled items included; ``since`` is a ``utc_timestamp``. A
     job still queued or running counts whatever its age, so a stuck one stays
-    visible. With ``stuck_before``, ``stuck`` counts the provider's jobs still
-    queued or running that were created before it (#2953).
+    visible.
     """
-    result: dict[str, dict[str, Any]] = {}
+    result: dict[str, dict[str, dict[str, int]]] = {}
     queries = (
         (
             "job",
@@ -277,16 +276,24 @@ def status_counts(
                 errors = provider[f"{level}_errors"]
                 kind = row["error_class"]
                 errors[kind] = errors.get(kind, 0) + row["n"]
-    if stuck_before is not None:
-        for counts in result.values():
-            counts["stuck"] = 0
-        for row in db.execute(
-            "SELECT provider, count(*) AS n FROM sync_jobs WHERE type=? "
-            "AND status IN ('queued', 'running') AND created_at < ? GROUP BY provider",
-            (job_type, stuck_before),
-        ).fetchall():
-            result[str(row["provider"])]["stuck"] = row["n"]
     return result
+
+
+def stuck_counts(db: Any, job_type: str, before: str) -> dict[str, int]:
+    """Per provider: open jobs that should have finished by ``before`` (#2953).
+
+    A queued job counts once its planned start (``available_at``, else
+    ``created_at``) is before ``before``, so a retry backoff or a requeue is not
+    stuck; a running job counts once it started before ``before``.
+    """
+    rows = db.execute(
+        "SELECT provider, count(*) AS n FROM sync_jobs WHERE type=? AND ("
+        "(status='queued' AND COALESCE(available_at, created_at) < ?) OR "
+        "(status='running' AND COALESCE(started_at, created_at) < ?)) "
+        "GROUP BY provider",
+        (job_type, before, before),
+    ).fetchall()
+    return {str(row["provider"]): row["n"] for row in rows}
 
 
 def has_active_job(db: Any, provider: str, job_type: str) -> bool:

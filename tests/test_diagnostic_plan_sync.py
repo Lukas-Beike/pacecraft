@@ -117,11 +117,22 @@ class PlanSyncDiagnosticsTests(unittest.TestCase):
             },
         )
         self.assertNotIn("secret-token", json.dumps(windowed["push_counts"]))
-        # #2953: the old running job is stuck; open jobs since the limit are not.
+        # #2953: the old running job is stuck; a job that started recently and a
+        # queued retry whose backoff ends later are not; a provider without a
+        # stuck job is absent.
+        for job_id, provider, status, available, started in (
+            ("g3", "garmin", "running", None, "2026-11-14T07:30:00+00:00"),
+            ("w1", "wahoo", "queued", "2026-11-14T10:00:00+00:00", None),
+        ):
+            db.execute(
+                "INSERT INTO sync_jobs VALUES (?,?,'plan_push',?,'{}','coach',1,"
+                "?,?,NULL,NULL,'2026-11-13T08:00:00+00:00','t')",
+                (job_id, provider, status, available, started),
+            )
         limited = summarize_plan_sync(
             db, "2026-11-07T00:00:00+00:00", "2026-11-14T06:00:00+00:00"
         )
-        self.assertEqual(limited["push_counts"]["garmin"]["stuck"], 1)
+        self.assertEqual(limited["stuck_jobs"], {"garmin": 1})
 
     def test_a_unit_with_an_invalid_payload_has_no_date_and_does_not_fail(self):
         db = sqlite3.connect(":memory:")

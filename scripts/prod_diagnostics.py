@@ -187,16 +187,16 @@ def push_error_kinds(pushes: dict[str, dict[str, int]]) -> dict[str, int]:
     return kinds
 
 
-def reported_stuck(push_counts: Any) -> int:
-    """Open jobs past the report's stuck limit, summed over providers (#2953)."""
-    providers = push_counts.values() if isinstance(push_counts, dict) else []
-    return sum(
-        int(stuck)
-        for counts in providers
-        if isinstance(counts, dict)
-        and isinstance(stuck := counts.get("stuck"), int)
-        and not isinstance(stuck, bool)
-    )
+def stuck_count(plan: dict[str, Any], now: datetime) -> int | None:
+    """Stuck plan-push jobs: every provider's from the report's ``stuck_jobs``
+    (#2953), else among the recent jobs; None when the section is unavailable.
+    """
+    if plan.get("status") == "unavailable":
+        return None
+    reported = plan.get("stuck_jobs")
+    if isinstance(reported, dict):
+        return int(sum(numbers(reported).values()))
+    return stuck_jobs(plan.get("recent_jobs") or [], now)
 
 
 def stuck_jobs(jobs: list[dict[str, Any]], now: datetime) -> int:
@@ -247,10 +247,7 @@ def extract(report: dict[str, Any], now: datetime) -> dict[str, Any]:
         else plan_errors(jobs),
         "plan_pushes": pushes,
         "push_counts_reported": "push_counts" in plan,
-        # Every provider's open jobs when the report counts them (#2953).
-        "stuck_jobs": reported_stuck(plan.get("push_counts"))
-        if "push_counts" in plan
-        else stuck_jobs(jobs, now),
+        "stuck_jobs": stuck_count(plan, now),
         "memory": {key: memory[key] for key in MEMORY if key in memory},
         "storage": numbers(storage),
     }
@@ -401,7 +398,8 @@ def checks(
         ),
         *freshness_lines(result),
         mark(
-            result["stuck_jobs"] == 0, f"stuck plan-sync jobs: {result['stuck_jobs']}"
+            result["stuck_jobs"] == 0,
+            f"stuck plan-sync jobs: {result['stuck_jobs'] if result['stuck_jobs'] is not None else 'unknown'}",
         ),
         plan_line(result),
         *push_lines(result),
