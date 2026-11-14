@@ -387,7 +387,18 @@ def _session_curve(
                 ),
             )
         ),
-        running_dynamics=pace_bands(adapted.activity),
+        running_dynamics=pace_bands(
+            adapted.activity,
+            source_label=adapted.label_for(
+                "ground_contact_time",
+                "ground_contact_balance",
+                "vertical_oscillation",
+                "vertical_ratio",
+                "step_length",
+                "cadence",
+                "velocity_smooth",
+            ),
+        ),
     )
 
 

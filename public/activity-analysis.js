@@ -461,7 +461,9 @@
       return;
     }
     if (!current()) return;
-    if (result?.status === "pending" && attempt < DYNAMICS_RETRIES) {
+    // Pending, or an older build that does not hold the run yet: ask again.
+    const waiting = result?.status === "pending" || (result?.status === "ok" && (result.stale || !result.session));
+    if (waiting && attempt < DYNAMICS_RETRIES) {
       setTimeout(() => { if (current()) void loadDynamicsRating(panel, section, activityId, token, attempt + 1); }, DYNAMICS_RETRY_MS);
       return;
     }

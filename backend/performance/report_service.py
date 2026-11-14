@@ -45,7 +45,11 @@ from backend.performance.power_profile import (
     RUNNING_DURATIONS,
 )
 from backend.performance.progress_report import weekly_progress
-from backend.performance.running_dynamics import monthly_trend, session_rating
+from backend.performance.running_dynamics import (
+    AVERAGE_KEYS,
+    monthly_trend,
+    session_rating,
+)
 from backend.performance.season_inputs import (
     SeasonSource,
     read_activity_summaries,
@@ -297,15 +301,17 @@ class TrainingProfileSelectionService:
         if every is None:
             return {"status": "pending"}
         records = [row for row in every[0] if row.get("sport") == "run"]
+        result: dict[str, Any] = {"status": "ok", "stale": not every[1]}
+        if activity_id is None:
+            return {**result, "trend": monthly_trend(records, self._today())}
         own = next(
             (row for row in records if row.get("activity_id") == activity_id), None
         )
-        return {
-            "status": "ok",
-            "stale": not every[1],
-            "trend": monthly_trend(records, self._today()),
-            "session": None if own is None else session_rating(own, records),
-        }
+        if own is not None:
+            return {**result, "session": session_rating(own, records)}
+        # A current build without the run leaves it out (a commute, a warm-up).
+        session = None if not every[1] else {"status": "not_covered"}
+        return {**result, "session": session}
 
     def power_profiles(
         self, records: list[dict[str, Any]] | None = None, *, all_time: bool = False
@@ -890,6 +896,14 @@ def _curve_record(
         "power_at_hr_profile": {} if curve is None else curve.power_at_hr,
         "execution_summary": None if curve is None else curve.execution_summary,
         "running_dynamics": None if curve is None else curve.running_dynamics,
+        # The run averages the provider reports, for Garmin's colour bands (#2829).
+        "dynamics_averages": {
+            key: summary.get(key)
+            for key in AVERAGE_KEYS.values()
+            if summary.get(key) is not None
+        }
+        if curve is not None and curve.running_dynamics
+        else {},
         "avg_temp_c": summary.get("avg_temp_c"),
         "fingerprint": None if curve is None else curve.fingerprint,
     }

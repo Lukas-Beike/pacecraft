@@ -721,8 +721,6 @@ function showProfileCardsState(error) {
 
 async function renderCyclingPowerProfile() {
   if (!ANALYSIS_PERFORMANCE_ROUTES.has(state.route) || !state.data?.performance) return;
-  // The running technique trend reads the same background records in a request of its own (#2829).
-  void renderRunningDynamicsTrend();
   const generation = ++cyclingPowerProfileGeneration;
   const session = state.sessionGeneration;
   showProfileCardsState(null);
@@ -810,20 +808,23 @@ let runningDynamicsGeneration = 0;
 let runningDynamicsMetric = RUNNING_DYNAMICS_METRICS[0][0];
 
 async function renderRunningDynamicsTrend() {
+  if (!ANALYSIS_PERFORMANCE_ROUTES.has(state.route) || !state.data?.performance) return;
   const generation = ++runningDynamicsGeneration;
+  const session = state.sessionGeneration;
+  const current = () => generation === runningDynamicsGeneration && session === state.sessionGeneration && ANALYSIS_PERFORMANCE_ROUTES.has(state.route);
   const root = document.getElementById("runningDynamicsTrend");
   const title = () => h("h4", null, "Lauftechnik je Monat");
   if (!root.childElementCount) root.replaceChildren(title(), createLoadingState("Lauftechnik wird geladen…"));
   try {
     const result = await requestAnalysisReport(RUNNING_DYNAMICS_PATH);
-    if (generation !== runningDynamicsGeneration) return;
+    if (!current()) return;
     if (result?.status !== "ok" || result.stale) invalidateAnalysisReport(RUNNING_DYNAMICS_PATH);
     if (result?.status === "failed") throw new Error("Konnte nicht geladen werden.");
-    if (result?.status === "pending" || result?.stale) setTimeout(() => { if (generation === runningDynamicsGeneration) void renderRunningDynamicsTrend(); }, ALL_TIME_RETRY_MS);
+    if (result?.status === "pending" || result?.stale) setTimeout(() => { if (current()) void renderRunningDynamicsTrend(); }, ALL_TIME_RETRY_MS);
     if (result?.status === "pending") return;
     renderRunningDynamicsChart(root, title, result.trend);
   } catch (error) {
-    if (generation !== runningDynamicsGeneration) return;
+    if (!current()) return;
     root.dataset.analysisEmpty = "failed";
     root.replaceChildren(title(), createErrorState(error?.message || "Konnte nicht geladen werden.", () => void renderRunningDynamicsTrend()));
   }
@@ -1479,8 +1480,9 @@ const analysisRefresh = AppViewRefresh.create({
       if (route === "analysis/load") renderTrainingFocus(performance.training_focus_periods?.[analysisHistoryPeriod] || performance.training_focus);
       else {
         renderPerformance(performance, { refreshCharts: false });
-        // The cleared report cache is read again for the power profile and the running best efforts.
+        // The cleared report cache is read again for the power profile, the running best efforts and technique.
         void renderCyclingPowerProfile();
+        void renderRunningDynamicsTrend();
       }
     }
   },

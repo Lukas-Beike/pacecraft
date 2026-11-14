@@ -11,8 +11,13 @@ vertical oscillation and ratio, higher cadence (Heiderscheit 2011) and a balance
 closer to 50 % count as better; step length is only longer or shorter. No value
 is a universal norm (Moore 2016, Folland 2017).
 
+Hills change the dynamics at the same pace, so with a slope stream only samples
+within the flat slope of the pace-at-heart-rate bins count, and runs are set only
+against runs of the same environment (treadmill against treadmill).
+
 Garmin's colour bands are a second, labelled reference: population percentiles
-of Garmin's runners, independent of pace, from Garmin's own manual. Pure: no I/O.
+of Garmin's runners, independent of pace, from Garmin's own manual, applied to
+the run's averages as Garmin reports them. Pure: no I/O.
 """
 
 from __future__ import annotations
@@ -24,14 +29,17 @@ from collections.abc import Iterator, Mapping, Sequence
 from datetime import date, timedelta
 from typing import Any, Final
 
+from backend.performance.form_drift import MAX_GAP_S
+from backend.performance.grade_adjustment import grade_stream
+from backend.performance.pace_at_hr import FLAT_GRADE_PCT
+from backend.performance.session_execution import RUN_CADENCE_FACTOR
+
 # Bump when the per-run bands change, so session curves recompute.
 METHOD: Final = "running-dynamics-pace-bands-v1"
 BAND_S_PER_KM: Final = 15
 # Slower than this is walking (8:20/km); faster than this is a GPS spike (2:30/km).
 MIN_RUN_SPEED_MPS: Final = 2.0
 MAX_RUN_SPEED_MPS: Final = 1000 / 150
-# A sample step longer than this is a pause, as in the form drift analysis.
-MAX_GAP_S: Final = 5.0
 # A run counts in a band with at least this much time in it.
 MIN_BAND_S: Final = 120.0
 # A band is rated against at least this many earlier runs of the window.
@@ -41,7 +49,15 @@ WINDOW_DAYS: Final = 84
 MIN_MONTH_BAND_S: Final = 600.0
 TREND_MONTHS: Final = 12
 TREND_BANDS: Final = 4
-RUN_CADENCE_FACTOR: Final = 2.0
+# The run averages a provider reports, by metric (cadence per leg).
+AVERAGE_KEYS: Final = {
+    "ground_contact_time_ms": "ground_contact_time_ms",
+    "vertical_oscillation_cm": "vertical_oscillation_cm",
+    "vertical_ratio_pct": "vertical_ratio_pct",
+    "ground_contact_balance_pct": "ground_contact_balance_pct",
+    "step_length_m": "step_length_m",
+    "cadence_spm": "avg_cadence",
+}
 # (metric, stream key of the analysis input, direction): -1 lower is better,
 # 1 higher is better, 0 no verdict; "balance" is better closer to 50 %.
 METRICS: Final[tuple[tuple[str, str, int | str], ...]] = (
@@ -63,17 +79,22 @@ _DIGITS: Final = {
 SCOPE: Final = (
     "Per 15 s/km pace band, the run's time-weighted mean against the same band "
     "of the athlete's runs of the 84 days before it (at least 5 runs with 2 "
-    "minutes in the band): best third better, middle third usual, weakest third "
-    "worse. Walking (under 2.0 m/s), stops and gaps over 5 s are left out."
+    "minutes in the band, same environment): best third better, middle third "
+    "usual, weakest third worse. Walking (under 2.0 m/s), stops, gaps over 5 s "
+    "and, with a slope stream, samples steeper than 3 % are left out. For the "
+    "balance, usual is the middle third of the distance from 50 %."
 )
 
 
-def pace_bands(activity: Mapping[str, Any]) -> dict[str, Any] | None:
+def pace_bands(
+    activity: Mapping[str, Any], *, source_label: str = ""
+) -> dict[str, Any] | None:
     """The run's time and mean running dynamics per pace band, or None.
 
     Only non-trail runs with at least one running-dynamics stream have bands;
     a band needs ``MIN_BAND_S`` of running in it. The input is the
-    legacy-shaped activity dict of ``analysis_input``.
+    legacy-shaped activity dict of ``analysis_input``; ``source_label`` names
+    the providers of the streams read.
     """
     if activity.get("sport") != "run" or activity.get("trail"):
         return None
@@ -103,7 +124,9 @@ def pace_bands(activity: Mapping[str, Any]) -> dict[str, Any] | None:
         for band, totals in sorted(sums.items())
         if totals["seconds"][0] >= MIN_BAND_S
     }
-    return {"method": METHOD, "bands": bands} if bands else None
+    if not bands:
+        return None
+    return {"method": METHOD, "source": source_label, "bands": bands}
 
 
 def _dynamics_streams(streams: Mapping[str, Any]) -> list[tuple[str, list[Any]]]:
@@ -130,16 +153,20 @@ def _dynamics_streams(streams: Mapping[str, Any]) -> list[tuple[str, list[Any]]]
 def _running_steps(streams: Mapping[str, Any]) -> Iterator[tuple[int, float, int]]:
     """Each sample of running: its index, the time it covers and its pace band.
 
-    Stops, walking, implausible speeds and gaps over ``MAX_GAP_S`` are left out.
+    Stops, walking, implausible speeds and gaps over ``MAX_GAP_S`` are left
+    out, and with a slope stream every sample steeper than ``FLAT_GRADE_PCT``.
     """
     times, speeds = streams["time"], streams["velocity_smooth"]
     moving = streams.get("moving")
+    grades = grade_stream(streams)
     for index in range(len(times) - 1):
         step = _number(times[index + 1]) - _number(times[index])
         speed = _number(speeds[index])
         running = MIN_RUN_SPEED_MPS <= speed <= MAX_RUN_SPEED_MPS
         moved = not moving or (index < len(moving) and moving[index] is True)
-        if 0 < step <= MAX_GAP_S and running and moved:
+        grade = None if grades is None else grades[index]
+        flat = grades is None or (grade is not None and abs(grade) <= FLAT_GRADE_PCT)
+        if 0 < step <= MAX_GAP_S and running and moved and flat:
             # Rounded first, so 4:00/km exactly is not 3:59.99 in floating point.
             yield (
                 index,
@@ -154,8 +181,9 @@ def session_rating(
     """Rate one run's bands against the earlier runs of the window.
 
     ``own`` and ``records`` are session curve records (``date``,
-    ``activity_id``, ``running_dynamics``); records after the run or before
-    its window are left out.
+    ``activity_id``, ``environment``, ``running_dynamics`` and the provider's
+    ``dynamics_averages``); records after the run, before its window or of
+    another environment are left out.
     """
     base = {"method": METHOD, "scope": SCOPE, "window_days": WINDOW_DAYS}
     bands = (own.get("running_dynamics") or {}).get("bands") or {}
@@ -168,13 +196,15 @@ def session_rating(
         for record in records
         if first <= str(record.get("date")) < day.isoformat()
         and record.get("activity_id") != own.get("activity_id")
+        and record.get("environment") == own.get("environment")
     ]
     rated = [_band(int(band), values, peers) for band, values in bands.items()]
     return {
         **base,
         "status": "ok",
+        "source": (own.get("running_dynamics") or {}).get("source"),
         "bands": rated,
-        "metrics": _run_verdicts(rated),
+        "metrics": _run_verdicts(rated, own.get("dynamics_averages") or {}),
         "garmin_source": GARMIN_SOURCE,
     }
 
@@ -206,17 +236,16 @@ def _verdict(
     """The verdict of ``value`` among ``earlier`` and their middle third."""
     if len(earlier) < MIN_PEERS:
         return {"verdict": "too_few"}
-    ordered = sorted(earlier)
-    low, high = _tertiles(ordered)
-    usual = [round(low, 2), round(high, 2)]
     if direction == "balance":
-        distances = sorted(abs(item - 50) for item in earlier)
-        near, far = _tertiles(distances)
+        # The middle third of the distance from 50 %, as offsets either side.
+        near, far = _tertiles(sorted(abs(item - 50) for item in earlier))
         distance = abs(value - 50)
         verdict = (
             "better" if distance < near else "worse" if distance > far else "usual"
         )
-        return {"verdict": verdict, "usual": usual}
+        return {"verdict": verdict, "usual": [round(near, 2), round(far, 2)]}
+    low, high = _tertiles(sorted(earlier))
+    usual = [round(low, 2), round(high, 2)]
     if low <= value <= high:
         return {"verdict": "usual", "usual": usual}
     above = value > high
@@ -232,32 +261,40 @@ def _tertiles(ordered: Sequence[float]) -> tuple[float, float]:
     return low, high
 
 
-def _run_verdicts(bands: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+def _run_verdicts(
+    bands: Sequence[Mapping[str, Any]], averages: Mapping[str, Any]
+) -> dict[str, Any]:
     """Per metric, the verdict holding the most rated time of the run.
 
-    ``value`` is the run's mean over its bands, weighted by their time, and
-    ``garmin`` Garmin's colour of it.
+    ``value`` is the run's mean over its bands, weighted by their time;
+    ``garmin`` is Garmin's colour of the provider's run average (the value the
+    session shows), else of that mean.
     """
     result: dict[str, Any] = {}
     for metric, _key, _direction in METRICS:
+        rated = [
+            (band["metrics"][metric], float(band.get("seconds") or 0))
+            for band in bands
+            if band["metrics"].get(metric)
+        ]
+        total = sum(seconds for _, seconds in rated)
+        if total <= 0:
+            continue
+        value = round(
+            sum(item["value"] * seconds for item, seconds in rated) / total,
+            _DIGITS[metric],
+        )
         time: dict[str, float] = {}
-        weighted = [0.0, 0.0]
-        for band in bands:
-            item = band["metrics"].get(metric)
-            if not item:
-                continue
-            seconds = float(band.get("seconds") or 0)
-            weighted[0] += item["value"] * seconds
-            weighted[1] += seconds
+        for item, seconds in rated:
             if item["verdict"] != "too_few":
                 time[item["verdict"]] = time.get(item["verdict"], 0.0) + seconds
-        if weighted[1] <= 0:
-            continue
-        value = round(weighted[0] / weighted[1], _DIGITS[metric])
+        reported = _number(averages.get(AVERAGE_KEYS[metric]))
+        if metric == "cadence_spm":
+            reported *= RUN_CADENCE_FACTOR
         result[metric] = {
             "verdict": max(time, key=lambda key: time[key]) if time else "too_few",
             "value": value,
-            "garmin": garmin_band(metric, value),
+            "garmin": garmin_band(metric, reported or value),
         }
     return result
 

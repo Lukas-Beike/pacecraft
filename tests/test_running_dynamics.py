@@ -571,6 +571,16 @@ class PaceBandTests(unittest.TestCase):
             (250.0, 170.0, 1.15),
         )
 
+    def test_steep_samples_are_left_out_and_the_source_is_named(self) -> None:
+        run = _run([(600, SLOW), (600, SLOW)])
+        # The second half climbs 6 %, steeper than the 3 % of a flat sample.
+        run["streams"]["grade_smooth"] = [0.0] * 600 + [6.0] * 601
+        bands = pace_bands(run, source_label="Garmin")
+        assert bands is not None
+        self.assertEqual(
+            (bands["source"], bands["bands"]["360"]["seconds"]), ("Garmin", 600)
+        )
+
     def test_rides_trail_runs_and_runs_without_dynamics_have_none(self) -> None:
         trail = {**_run([(600, FAST)]), "trail": True}
         plain = synthetic_session([("lap", 600, FAST, (140.0, 150.0))], kinds=False)
@@ -581,8 +591,11 @@ class PaceBandTests(unittest.TestCase):
 
 
 class SessionRatingTests(unittest.TestCase):
-    def _rate(self, speed: float, **dynamics: float) -> dict[str, Any]:
+    def _rate(
+        self, speed: float, averages: dict[str, float] | None = None, **dynamics: float
+    ) -> dict[str, Any]:
         own = _record(0, pace_bands(_run([(600, speed)], **dynamics)), "act_own")
+        own["dynamics_averages"] = averages or {}
         return session_rating(own, [*_history(HISTORY), own])
 
     def test_a_slow_run_is_not_worse_for_being_slow(self) -> None:
@@ -599,13 +612,16 @@ class SessionRatingTests(unittest.TestCase):
         self.assertEqual((contact["peers"], contact["usual"]), (6, [277.33, 280.67]))
 
     def test_each_value_is_rated_in_its_own_direction(self) -> None:
-        result = self._rate(
+        rating = self._rate(
             SLOW,
+            # Garmin reports 251 ms for the whole run (walking included).
+            {"ground_contact_time_ms": 251, "avg_cadence": 92},
             ground_contact_time=290,
             vertical_oscillation=7.0,
             ground_contact_balance=50.0,
             step_length=1.30,
-        )["metrics"]
+        )
+        result = rating["metrics"]
         verdicts = {metric: item["verdict"] for metric, item in result.items()}
         # The history has one value per metric except contact time: its middle
         # third is that value, so lower oscillation is better, a longer step
@@ -615,7 +631,23 @@ class SessionRatingTests(unittest.TestCase):
         self.assertEqual(verdicts["step_length_m"], "higher")
         self.assertEqual(verdicts["ground_contact_balance_pct"], "better")
         self.assertEqual(verdicts["cadence_spm"], "usual")
-        self.assertEqual(result["ground_contact_time_ms"]["garmin"], "orange")
+        # Garmin's colour is that of the run average Garmin shows: 251 ms is
+        # green, 92 rpm per leg is 184 spm, purple; the oscillation has no
+        # average from the provider, so its mean of 7.0 cm is blue.
+        self.assertEqual(
+            [
+                result[key]["garmin"]
+                for key in (
+                    "ground_contact_time_ms",
+                    "cadence_spm",
+                    "vertical_oscillation_cm",
+                )
+            ],
+            ["green", "purple", "blue"],
+        )
+        # The balance's usual range is the middle third of its distance from 50 %.
+        balance = rating["bands"][0]["metrics"]["ground_contact_balance_pct"]
+        self.assertEqual(balance["usual"], [0.3, 0.3])
 
     def test_too_few_or_out_of_window_runs_leave_the_band_unrated(self) -> None:
         own = _record(0, pace_bands(_run([(600, SLOW)])), "act_own")
@@ -633,6 +665,11 @@ class SessionRatingTests(unittest.TestCase):
         self.assertEqual(
             session_rating(_record(0, None, "act_own"), [])["status"], "not_covered"
         )
+        # A treadmill run is set only against treadmill runs.
+        indoor = {**own, "environment": "indoor"}
+        recent = [{**record, "environment": "outdoor"} for record in earlier[:4]]
+        contact = session_rating(indoor, [*recent, indoor])["bands"][0]["metrics"]
+        self.assertEqual(contact["ground_contact_time_ms"]["peers"], 0)
 
 
 class GarminBandTests(unittest.TestCase):
@@ -718,8 +755,16 @@ class RunningDynamicsReadTests(unittest.TestCase):
         result = self._service(lambda: ((own,), False)).running_dynamics("act_own")
         self.assertEqual((result["status"], result["stale"]), ("ok", True))
         self.assertEqual(result["session"]["status"], "ok")
-        self.assertIsNone(
-            self._service(lambda: ((own,), True)).running_dynamics()["session"]
+        self.assertNotIn("trend", result)
+        # Without an activity only the trend is read.
+        trend = self._service(lambda: ((own,), True)).running_dynamics()
+        self.assertEqual(set(trend), {"status", "stale", "trend"})
+        # A run missing from a current build is left out (a commute); from an
+        # older build it may still come, so the answer stays open.
+        current = self._service(lambda: ((own,), True)).running_dynamics("act_other")
+        older = self._service(lambda: ((own,), False)).running_dynamics("act_other")
+        self.assertEqual(
+            (current["session"], older["session"]), ({"status": "not_covered"}, None)
         )
 
     def test_the_route_passes_the_activity_and_bounds_it(self) -> None:
