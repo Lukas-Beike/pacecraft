@@ -545,7 +545,10 @@ class ServerCompositionArchitectureTests(unittest.TestCase):
         )
         statements = [ast.unparse(statement) for statement in main.body]
         sweep = statements.index(sweeps[0])
-        self.assertEqual("initialise_database()", statements[sweep - 1])
+        # The database opens first; a wrong key stops start-up there (#2912).
+        self.assertTrue(
+            statements[sweep - 1].startswith("try:\n    initialise_database()\n")
+        )
         first_start = min(
             index
             for index, statement in enumerate(main.body)
