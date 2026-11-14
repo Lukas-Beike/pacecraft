@@ -1024,7 +1024,11 @@ def main() -> None:
             "context": {"version": APP_VERSION, "port": CONFIG_HOLDER.value.port},
         },
     )
-    initialise_database()
+    try:
+        initialise_database()
+    except Exception as error:
+        app_config.refuse_wrong_database_key(error, LOGGER)
+        raise
     remove_orphaned_staging_files(DATA_DIR, LOGGER)
     server = http_server.CoachHTTPServer(
         ("0.0.0.0", CONFIG_HOLDER.value.port), HTTP_API.request_handler_class()

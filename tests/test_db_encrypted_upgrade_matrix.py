@@ -28,6 +28,7 @@ from backend.backup.restore_validation import (
     DatabaseRestoreValidationConfig,
     DatabaseRestoreValidationService,
 )
+from backend.config import DATABASE_KEY_MISMATCH_MESSAGE, refuse_wrong_database_key
 from backend.db import migrations, row_factory
 from backend.db.manager import DatabaseManager
 from backend.db.migrations import migrate_schema
@@ -262,12 +263,19 @@ class EncryptedUpgradeMatrixTests(unittest.TestCase):
             self.assertTrue(database_schema_is_current(db))
         manager.close()
         self.assertEqual(self.rows(path), opened)
+        stored = path.read_bytes()
         wrong = self.connect(path, "another synthetic phrase")
         try:
-            with self.assertRaises(cipher_backend.DatabaseError):
+            with self.assertRaises(cipher_backend.DatabaseError) as raised:
                 wrong.execute("SELECT COUNT(*) FROM sqlite_master").fetchone()
         finally:
             wrong.close()
+        # The pinned driver's wrong-key error is the one start-up refuses with a
+        # plain reason, and the database file is untouched (#2912).
+        with self.assertRaises(SystemExit) as refused:
+            refuse_wrong_database_key(raised.exception, mock.Mock())
+        self.assertEqual(DATABASE_KEY_MISMATCH_MESSAGE, refused.exception.code)
+        self.assertEqual(stored, path.read_bytes())
 
     def test_an_encrypted_backup_at_the_baseline_restores_the_same_rows(self) -> None:
         path = self.opened_baseline()

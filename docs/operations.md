@@ -3,6 +3,8 @@
 ## SQLCipher Encryption
 All persistent application state is stored in `/data/intervals-coach.db` encrypted with AES-256 via SQLCipher. The database key is derived from `APP_PASSWORD`. The application will refuse to start without SQLCipher libraries present.
 
+If `APP_PASSWORD` does not open the existing database, start-up stops with one critical log entry (`secure_startup_refused`, reason `database_key_mismatch`) and the message "Das App-Passwort passt nicht zur vorhandenen Datenbank. Die Datenbank wurde nicht verändert." and exits non-zero. Set `APP_PASSWORD` back to the value the database was created with; the database is not modified (#2912).
+
 Each pooled database connection uses a 16 MiB page-cache budget to reduce repeated encrypted reads of large histories. The default pool has two readers and one writer (up to 48 MiB of page caches, allocated as needed); more readers made parallel view requests slower, because Python's sqlite3 hands the interpreter lock back and forth on every row (#2788).
 
 ## Maintenance Mode & Database Restoration

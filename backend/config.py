@@ -235,6 +235,38 @@ class ConfigHolder:
         self.generation += 1
 
 
+DATABASE_KEY_MISMATCH_MESSAGE = (
+    "Das App-Passwort passt nicht zur vorhandenen Datenbank. "
+    "Die Datenbank wurde nicht verändert."
+)
+
+
+def refuse_wrong_database_key(error: BaseException, logger: logging.Logger) -> None:
+    """Stop start-up with one plain reason when APP_PASSWORD does not open the database.
+
+    SQLCipher notices a wrong key only at the first read and reports it as the
+    driver's ``DatabaseError`` "file is not a database"; the file is unchanged.
+    Logs one critical event without driver text, key or path, and exits non-zero
+    (#2912). Any other error returns, for the caller to re-raise.
+    """
+    if not (
+        type(error).__name__ == "DatabaseError"
+        and str(error).strip().lower() == "file is not a database"
+    ):
+        return
+    logger.critical(
+        "Secure startup refused",
+        extra={
+            "event": "secure_startup_refused",
+            "context": {
+                "reason": "database_key_mismatch",
+                "error_class": type(error).__name__,
+            },
+        },
+    )
+    raise SystemExit(DATABASE_KEY_MISMATCH_MESSAGE) from None
+
+
 def security_configuration_error(
     config: Config, *, sqlcipher_available: bool
 ) -> str | None:
