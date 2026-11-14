@@ -144,3 +144,32 @@ test("@responsive Alt+1 to Alt+5 switch the main views outside text fields and a
   await expect(help.locator("dt")).toHaveText(["Alt+1", "Alt+2", "Alt+3", "Alt+4", "Alt+5"]);
   await expect(help.locator("dd")).toHaveText(["Coach", "Kalender", "Analyse", "Ernährung", "Mehr"]);
 });
+
+test("@responsive Betrieb & Diagnose lists the release changes from the image as plain text, a build without them keeps the version line", async ({ page }) => {
+  const releases = [
+    { version: "2.1.15", commits: ["feat(calendar): sport filter (#2853)", "fix(sync): keeps the error", "docs(spec): <img src=x onerror=\"window.injected=1\">"] },
+    { version: "2.1.14", commits: ["feat(analysis): pace zones (#2839)"] },
+  ];
+  let served = true;
+  // The context route also answers the service worker's request after the reload.
+  await page.context().route("**/changelog.json", (route) => (served ? route.fulfill({ json: { releases } }) : route.fulfill({ status: 404, body: "" })));
+  await page.goto("/#more/operations");
+  const changelog = page.locator(".release-changelog");
+  await expect(changelog.locator(":scope > summary")).toHaveText(/^Version v\d+\.\d+\.\d+ · Änderungen$/);
+  // The newest release is open; older ones are collapsed (#2899).
+  await expect(changelog.locator(":scope > h4")).toHaveText(["Neu", "Behoben"]);
+  await expect(changelog.locator(":scope > ul").first()).toHaveText("calendar: sport filter");
+  await changelog.locator(":scope > details > summary", { hasText: "Technik (1)" }).click();
+  await expect(changelog.getByText("spec: <img src=x onerror=\"window.injected=1\">")).toBeVisible();
+  expect(await page.evaluate(() => window.injected)).toBeUndefined();
+  // Older releases sit, each collapsed, under one collapsed "Frühere Versionen (n)".
+  const earlier = changelog.locator(":scope > details", { has: page.locator(":scope > summary", { hasText: "Frühere Versionen (1)" }) });
+  await earlier.locator(":scope > summary").click();
+  await expect(earlier.locator(":scope > details > summary")).toHaveText(["Version 2.1.14"]);
+  await expect(changelog.getByText("analysis: pace zones")).toBeHidden();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  served = false;
+  await page.reload();
+  await expect(page.locator("#settingsAppVersion")).toHaveText(/^v\d+\.\d+\.\d+/);
+  await expect(page.locator(".release-changelog")).toHaveCount(0);
+});

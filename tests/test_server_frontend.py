@@ -926,7 +926,13 @@ class ServerFrontendTests(ServerTestCase):
             copy_public(public)
             (public / ".hidden.js").write_text("secret()", encoding="utf-8")
             (public / "notes.md").write_text("notes", encoding="utf-8")
+            # The image build writes the release changelog into public/ (#2899).
+            (public / "changelog.json").write_text('{"releases":[]}', encoding="utf-8")
             service = StaticAssetService(public)
+            changelog = service.render("/changelog.json", "/changelog.json", None)
+            self.assertEqual(changelog.body, b'{"releases":[]}')
+            self.assertIn(("Content-Type", "application/json"), changelog.headers)
+            (public / "changelog.json").unlink()
             shell = service.render("/", "/", None).body
             served = {
                 path.name

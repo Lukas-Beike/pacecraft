@@ -7,6 +7,8 @@ __pycache__/
 node_modules/
 playwright-report/
 test-results/
+# Written by scripts/release_changelog.py when the image is built (#2899).
+public/changelog.json
 playwright/.auth/
 .graphify-local/
 .openspec-local/

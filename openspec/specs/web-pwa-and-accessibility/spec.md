@@ -822,6 +822,10 @@ Evidence: `public/format.js` (`number`, `distance`, `duration`, `clock`, `relati
 
 Betrieb & Diagnose SHALL read the newest 250 log entries and show each as "[time] LEVEL event: message {context}". Downloads SHALL use a 130-second deadline and the names `pacecraft-server-logs-<date>.jsonl`, `pacecraft-diagnostics-<date>.json`, `pacecraft-export-<date>.zip` and `pacecraft-database-<date>.backup`. The area SHALL offer no change-history view; undo is offered on receipts only.
 
+#### Scenario: Release changes
+- **WHEN** Betrieb & Diagnose opens and the image carries `/changelog.json`
+- **THEN** the version line becomes an open "Version … · Änderungen" section: the running release's changes under "Neu" (feat) and "Behoben" (fix), the rest in a collapsed "Technik (n)", each as "scope: subject" without type and pull request number, and every older release as a collapsed "Version x.y.z" inside a collapsed "Frühere Versionen (n)"; the file is read once from the app's own server, never from GitHub, not precached, and shown as plain text; without the file the plain version line stays
+
 #### Scenario: GPS tracks
 - **WHEN** "GPS-Spuren speichern" is switched
 - **THEN** the setting is saved at once and reverted on failure; "GPS-Spuren löschen (N)" appears only while storage is off and asks for the confirmation text the server supplies
@@ -830,4 +834,4 @@ Betrieb & Diagnose SHALL read the newest 250 log entries and show each as "[time
 - **WHEN** the deletion succeeded
 - **THEN** a failed remote OpenAI conversation delete or Wahoo revocation is named, and so are recovery copies and server log files that could not be removed
 
-Evidence: `public/diagnostics.js::loadLogs`; `public/diagnostics.js::formatLogEntry`; `public/diagnostics.js::downloadServerLogs`; `public/settings.js::downloadDatabaseBackup`; `public/settings.js::saveGpsTracks`; `public/settings.js::deleteGpsTracks`; `public/settings.js::deletePrivacyData`. Tests: `e2e/downloads.spec.js::settings and diagnostics downloads carry the Pacecraft name`; `e2e/first-threshold-gps.spec.js::the GPS-tracks switch takes clicks once loaded and a failed save restores the confirmed state`; `e2e/history-undo.spec.js::history panel is absent while diagnosis and logs remain available`.
+Evidence: `public/views.js::renderReleaseChangelog`, `public/views.js::releaseChangeGroups`, `e2e/navigation.spec.js::@responsive Betrieb & Diagnose lists the release changes from the image as plain text, a build without them keeps the version line`, `tests/copy-labels.test.cjs::release changes are grouped as Neu, Behoben and the rest, without type and pull request number`; `public/diagnostics.js::loadLogs`; `public/diagnostics.js::formatLogEntry`; `public/diagnostics.js::downloadServerLogs`; `public/settings.js::downloadDatabaseBackup`; `public/settings.js::saveGpsTracks`; `public/settings.js::deleteGpsTracks`; `public/settings.js::deletePrivacyData`. Tests: `e2e/downloads.spec.js::settings and diagnostics downloads carry the Pacecraft name`; `e2e/first-threshold-gps.spec.js::the GPS-tracks switch takes clicks once loaded and a failed save restores the confirmed state`; `e2e/history-undo.spec.js::history panel is absent while diagnosis and logs remain available`.
