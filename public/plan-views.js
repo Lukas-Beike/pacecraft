@@ -1525,6 +1525,8 @@ async function appendPlannedEquipment(details, activityId, actual) {
   const preset = saved ?? choice.suggested ?? null;
   const select = h("select", { "aria-label": label },
     saved === null && !choice.suggested ? h("option", { value: "-", selected: true }, "–") : null,
+    // An own choice that can no longer be assigned (retired, another sport) stays shown as it is.
+    saved && !choice.options.some((item) => item.id === saved) ? h("option", { value: saved, selected: true, disabled: true }, "Nicht mehr verfügbar") : null,
     choice.options.map((item) => h("option", { value: item.id, selected: item.id === preset }, item.name)),
     h("option", { value: "", selected: preset === "" }, "Keiner"));
   const hint = h("span", { className: "status-chip planned-equipment-suggestion", hidden: !(saved === null && choice.suggested) }, "Vorschlag");
@@ -1552,14 +1554,19 @@ async function appendPlannedEquipment(details, activityId, actual) {
 function plannedEquipmentChanged(activityId) {
   plannedSessionReads.delete(activityId);
   globalThis.invalidateEquipmentNotice?.();
-  globalThis.invalidateAnalysisReport?.("/api/analysis/training-records");
 }
 
 function plannedEquipmentReceipt(row, details, activityId, actual, change, message = "Gespeichert. ") {
   row.remove();
   void appendPlannedEquipment(details, activityId, actual).then(() => {
-    const status = details.querySelector(".planned-equipment-status");
-    if (!status) return;
+    // The receipt stays even when the session cannot be read again.
+    let status = details.querySelector(".planned-equipment-status");
+    if (!status) {
+      status = h("p", { className: "planned-equipment-status", role: "status" });
+      const holder = h("div", "planned-equipment", status);
+      details.querySelector(":scope > .planned-activity-more")?.before(holder);
+      if (!holder.isConnected) details.append(holder);
+    }
     status.textContent = message;
     if (!change?.id) return;
     const undo = h("button", { className: "message-undo", type: "button" }, "Rückgängig");
@@ -1571,7 +1578,7 @@ function plannedEquipmentReceipt(row, details, activityId, actual, change, messa
         plannedEquipmentReceipt(details.querySelector(".planned-equipment") || row, details, activityId, actual, null, "Zurückgenommen.");
       } catch (error) {
         undo.disabled = false;
-        status.firstChild.textContent = `${error.message} `;
+        if (!isSessionEndedError(error)) status.firstChild.textContent = `${error.message} `;
       }
     });
     status.append(undo);
