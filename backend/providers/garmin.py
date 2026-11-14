@@ -1905,8 +1905,10 @@ def _record_device_sync(
     state keeps the previous time; the run stays complete, and the answer is
     never logged here. ``device_sync_read_at`` says how current the time is.
     """
+    if not current:
+        return
     fetch = getattr(client, "get_sync_timestamp", None)
-    if not current or not callable(fetch):
+    if not callable(fetch):
         return
     try:
         value = external_call("garmin", "device_sync_timestamp", fetch, None)

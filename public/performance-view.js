@@ -45,7 +45,8 @@ function deviceSyncSentence(deviceSyncedAt, now = Date.now()) {
   if (!Number.isFinite(at)) return "";
   const days = Math.floor((now - at) / 86_400_000);
   if (days < 1) return "";
-  return `Die Uhr hat seit ${days === 1 ? "einem Tag" : `${days} Tagen`} nichts übertragen.`;
+  const span = days === 1 ? "einem Tag" : `${days} Tagen`;
+  return `Die Uhr hat seit ${span} nichts übertragen.`;
 }
 
 function garminDetailText(garmin) {
