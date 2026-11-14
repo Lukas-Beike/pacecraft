@@ -209,7 +209,7 @@ The system SHALL save explicitly entered main equipment/components with validate
 
 #### Scenario: Athlete saves without the Coach
 - **WHEN** the athlete creates, edits or retires an item through `POST /api/equipment` (session and CSRF, body at most 16 KiB)
-- **THEN** the same validation and change history with receipt and undo apply as for the Coach, Garmin is never required, and retiring (`status` `archived`) is refused with 409 "Das Ausmustern muss bestätigt werden." unless the request carries `"confirmed": true`; a new item beyond the 100th is refused with 409 "Höchstens 100 Ausrüstungsgegenstände.", and a non-text `kind` or `status` is a 400.
+- **THEN** the same validation and change history with receipt and undo apply as for the Coach, Garmin is never required, and every save with `status` `archived` (retiring, or editing a retired item) is refused with 409 "Das Ausmustern muss bestätigt werden." unless the request carries `"confirmed": true`; a new item beyond the 100th is refused with 409 "Höchstens 100 Ausrüstungsgegenstände.", and a non-text `kind` or `status` is a 400.
 
 #### Scenario: Unknown or stale item
 - **WHEN** the id is unknown or `expected_revision` differs from the stored revision

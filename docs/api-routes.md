@@ -567,7 +567,8 @@ create), `expected_revision` (required with `id`), `name`, `sport`,
 (`active` or `archived`), `parent_id`, `start_date` (YYYY-MM-DD),
 `initial_distance_km`, `initial_hours`, `maintenance_km`,
 `maintenance_hours`, `lifetime_target_km`, plus `confirmed`; no other
-key. Retiring (`status` `archived`) needs `"confirmed": true`.
+key. Every save with `status` `archived` (retiring, or editing an item
+that stays retired) needs `"confirmed": true`.
 
 Response: 200 `{"ok": true, "stored_locally": true, "equipment": {...},
 "change"}`; `change` is the undo reference.
@@ -579,7 +580,7 @@ ungültig."; 400 "Startdatum oder Ausrüstungs-ID ungültig."; 400
 "Ausrüstungszähler oder Wartungsintervall ungültig."; 404 "Ausrüstung
 nicht gefunden." for an unknown `id`; 409 "Ausrüstung geändert; neu
 lesen." for a stale `expected_revision`; 409 "Das Ausmustern muss
-bestätigt werden." for an unconfirmed retirement; 409 "Höchstens 100
+bestätigt werden." for an unconfirmed save with `status` `archived`; 409 "Höchstens 100
 Ausrüstungsgegenstände." for a new item beyond the 100th.
 
 ### `POST /api/equipment/assignment`
