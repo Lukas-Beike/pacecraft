@@ -31,7 +31,8 @@ test("@responsive a long planned unit shows drinking and carbohydrates with thei
   await expect(block).toContainText("Schweißrate 0,9 l/h · 6 Einheiten bei 13–23 °C");
   await expect(block).toContainText("1,1 l · Natrium 0,5–0,7 g/l");
   await expect(block).toContainText("60–120 g/h");
-  expect(queries).toEqual([`sport=ride&environment=outdoor&date=${days.next}&duration_s=9900`]);
+  // On wide screens a unit is open from the start and read before the test lengthens it.
+  expect(queries.at(-1)).toBe(`sport=ride&environment=outdoor&date=${days.next}&duration_s=9900`);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBeTruthy();
 });
 

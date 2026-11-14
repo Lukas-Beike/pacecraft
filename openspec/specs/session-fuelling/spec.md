@@ -1,10 +1,11 @@
-## Purpose
+# session-fuelling Specification
 
+## Purpose
 Recommend drinking and carbohydrates for long planned run and ride units from
 the athlete's own stored sweat losses, the forecast and the shared fuelling
 rules, with the basis visible and local data only.
 
-## ADDED Requirements
+## Requirements
 
 ### Requirement: SF1 Personal sweat rate
 The sweat rate SHALL be the median of Garmin's sweat-loss estimate per hour of the stored sessions of the last 365 days with the same sport and setting (indoor or outdoor). Outdoors, only sessions whose stored activity-weather temperature lies within 5 °C of the forecast day temperature SHALL count when at least 3 exist; otherwise all count and the basis says so.
