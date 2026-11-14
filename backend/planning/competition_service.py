@@ -39,6 +39,39 @@ def _competition_id(value: Any, *, required: bool = False) -> str:
         raise AppError(400, "Ungültige lokale Wettkampf-ID.") from exc
 
 
+# The fields a full local update writes, except the location, which never
+# enters an Intervals.icu payload (#2803).
+_SYNCED_UPDATE_FIELDS = (
+    "name",
+    "event_date",
+    "sport",
+    "environment",
+    "sport_detail",
+    "priority",
+    "distance",
+    "target",
+    "course_profile",
+    "notes",
+    "category",
+    "starts_at_local",
+    "description",
+    "planned_duration_s",
+)
+
+
+def _only_local_fields_changed(
+    existing: dict[str, Any], normalized: dict[str, Any]
+) -> bool:
+    """Whether the edit changes nothing a full update would mark for sync.
+
+    Any other difference, including None against an empty string, counts as a
+    synced change, so the competition is pushed again when in doubt.
+    """
+    return all(
+        existing.get(field) == normalized.get(field) for field in _SYNCED_UPDATE_FIELDS
+    )
+
+
 def _coach_payload(arguments: Any) -> dict[str, Any]:
     if not isinstance(arguments, dict):
         raise AppError(400, "Die Wettkampfdaten müssen als Objekt übergeben werden.")
@@ -184,7 +217,13 @@ class CompetitionService:
                     400,
                     "Es können maximal 20 anstehende Wettkämpfe gespeichert werden.",
                 )
-            if existing:
+            sync_state = "local"
+            if existing and _only_local_fields_changed(existing, normalized):
+                # The location never leaves the app, so the sync state stays.
+                self._repository.update_location(db, normalized, now)
+                sync_state = str(existing.get("sync_state") or "local")
+                status = "updated"
+            elif existing:
                 self._repository.update_local(db, normalized, now)
                 status = "updated"
             else:
@@ -196,7 +235,7 @@ class CompetitionService:
                 normalized["id"],
                 "create" if status == "created" else "update",
                 existing,
-                {**normalized, "sync_state": "local"},
+                {**normalized, "sync_state": sync_state},
             )
             all_competitions = self._repository.list(db)
             saved = next(

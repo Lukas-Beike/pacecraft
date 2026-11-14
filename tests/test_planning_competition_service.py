@@ -156,6 +156,30 @@ class CompetitionServiceTests(unittest.TestCase):
         self.assertIn("target", diff)
         self.assertIn("notes", diff)
 
+    def test_a_location_only_edit_keeps_the_sync_state(self):
+        # The location never leaves the app, so a synced race stays synced;
+        # any other edit marks it for the next Intervals.icu sync (#2803).
+        created = self.service.save(self.competition())["competition"]
+        with self.manager.unit_of_work() as db:
+            db.execute(
+                "UPDATE competitions SET sync_dirty=0, sync_state='synced', "
+                "external_id='remote', intervals_event_id='42' WHERE id=?",
+                (created["id"],),
+            )
+
+        def stored():
+            with self.manager.reader() as db:
+                row = db.execute(
+                    "SELECT location, sync_dirty, sync_state FROM competitions WHERE id=?",
+                    (created["id"],),
+                ).fetchone()
+            return (row["location"], row["sync_dirty"], row["sync_state"])
+
+        self.service.save({"competition_id": created["id"], "location": "Berlin"})
+        self.assertEqual(("Berlin", 0, "synced"), stored())
+        self.service.save({"competition_id": created["id"], "target": "Sub 3:20"})
+        self.assertEqual(("Berlin", 1, "local"), stored())
+
     def test_clearing_the_start_time_falls_back_to_the_race_day(self):
         created = self.service.save(
             self.competition(starts_at_local="2027-09-26T09:30")

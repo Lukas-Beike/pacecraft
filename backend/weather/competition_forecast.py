@@ -23,7 +23,13 @@ from backend.weather.projection import WEATHER_FORECAST_DAYS, daily_summary
 CACHE_KEY: Final = "competition_weather"
 MAX_LOCATIONS: Final = 5
 BUDGET_SECONDS: Final = 60.0
+# A place starts only with this much budget left: geocoding, the ECMWF and the
+# ICON-D2 request take up to 10 s each, so a run stays within the budget.
+PLACE_WORST_SECONDS: Final = 30.0
 CACHE_SECONDS: Final = 10800
+# The location's daily series may start a day before the athlete's day, so the
+# last forecast day is left out rather than stored as unavailable.
+HORIZON_DAYS: Final = WEATHER_FORECAST_DAYS - 1
 _LOGGER = logging.getLogger("intervals_coach")
 
 
@@ -41,7 +47,7 @@ def in_horizon(competition: dict[str, Any], today: date) -> bool:
         event = date.fromisoformat(_day(competition))
     except ValueError:
         return False
-    return today <= event < today + timedelta(days=WEATHER_FORECAST_DAYS)
+    return today <= event < today + timedelta(days=HORIZON_DAYS)
 
 
 def due(competitions: list[dict[str, Any]], today: date) -> list[dict[str, Any]]:
@@ -72,16 +78,24 @@ def entry_for(cache: dict[str, Any], competition: dict[str, Any]) -> dict[str, A
 
 
 def _fresh(entry: Any, now: datetime) -> bool:
-    try:
-        fetched = datetime.fromisoformat(str(entry.get("fetched_at")))
-    except AttributeError, TypeError, ValueError:
+    """Fetched, or last attempted after a failure, within the cache time."""
+    if not isinstance(entry, dict):
         return False
-    return (now - fetched).total_seconds() < CACHE_SECONDS
+    try:
+        times = [
+            datetime.fromisoformat(str(entry[key]))
+            for key in ("fetched_at", "attempted_at")
+            if entry.get(key)
+        ]
+    except TypeError, ValueError:
+        return False
+    return bool(times) and (now - max(times)).total_seconds() < CACHE_SECONDS
 
 
 def stale(cache: dict[str, Any], items: list[dict[str, Any]], now: datetime) -> bool:
-    """Whether a due competition has no fresh forecast."""
-    return any(
+    """Whether a due competition has no fresh forecast or an entry is obsolete."""
+    current = {item["id"] for item in items}
+    return bool(set(cache) - current) or any(
         not (_matches(cache.get(item["id"]), item) and _fresh(cache[item["id"]], now))
         for item in items
     )
@@ -130,7 +144,7 @@ def refreshed_cache(
     deadline = clock() + BUDGET_SECONDS
     stamp = now.astimezone(UTC).isoformat()
     for group in list(places.values())[:MAX_LOCATIONS]:
-        if clock() >= deadline:
+        if clock() + PLACE_WORST_SECONDS > deadline:
             break
         try:
             result.update(_fetched_entries(fetch(group[0]["location"]), group, stamp))
@@ -159,8 +173,10 @@ def _failed(
     for item in group:
         previous = result.get(item["id"])
         if status == "unavailable" and previous and previous.get("status") == "ready":
-            continue
-        result[item["id"]] = {**item, "status": status, "fetched_at": stamp}
+            # Keep the earlier forecast; the attempt waits out the cache time.
+            result[item["id"]] = {**previous, "attempted_at": stamp}
+        else:
+            result[item["id"]] = {**item, "status": status, "fetched_at": stamp}
 
 
 def race_day_weather(
@@ -210,8 +226,8 @@ class CompetitionWeather:
         return value if isinstance(value, dict) else {}
 
     def configured(self) -> bool:
-        """Whether an upcoming competition has a location within the horizon."""
-        return bool(due(self._competitions(), self._today()))
+        """A located competition within the horizon, or entries left to prune."""
+        return bool(due(self._competitions(), self._today()) or self._cache())
 
     def refresh_due(self) -> bool:
         return stale(self._cache(), due(self._competitions(), self._today()), self._now())

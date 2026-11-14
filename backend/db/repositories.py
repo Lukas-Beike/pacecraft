@@ -992,6 +992,13 @@ class CompetitionRepository:
             ),
         )
 
+    def update_location(self, db: Any, competition: dict[str, Any], now: str) -> None:
+        """Change only the local location, keeping the sync state (#2803)."""
+        db.execute(
+            "UPDATE competitions SET location=?, updated_at=? WHERE id=?",
+            (competition.get("location") or "", now, competition["id"]),
+        )
+
     def update_local(self, db: Any, competition: dict[str, Any], now: str) -> None:
         db.execute(
             "UPDATE competitions SET name=?, event_date=?, sport=?, environment=?, sport_detail=?, priority=?, distance=?, target=?, course_profile=?, notes=?, category=?, starts_at_local=?, description=?, planned_duration_s=?, location=?, sync_dirty=1, sync_state='local', sync_conflict='', updated_at=? WHERE id=?",

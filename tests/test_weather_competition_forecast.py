@@ -43,9 +43,9 @@ class CompetitionForecastTests(unittest.TestCase):
     def test_only_located_races_within_the_horizon_are_due(self):
         items = forecast.due(
             [
-                race("later", 13),
+                race("later", 12),
                 race("past", -1),
-                race("beyond", 14),
+                race("beyond", 13),
                 race("none", 3, location="  "),
                 race("first", 0, location="  Muster   stadt "),
             ],
@@ -61,6 +61,8 @@ class CompetitionForecastTests(unittest.TestCase):
         day = items[0]["event_date"]
         fetch = Mock(return_value=provider_result(day))
         cache = {"gone": {"location": PLACE, "event_date": day, "status": "ready"}}
+        # An obsolete entry makes the cache stale, so the job runs to prune it.
+        self.assertTrue(forecast.stale(cache, [], NOW))
         result = forecast.refreshed_cache(cache, items, fetch, now=NOW)
         fetch.assert_called_once_with(PLACE)
         self.assertEqual({"a", "b"}, set(result))
@@ -85,7 +87,11 @@ class CompetitionForecastTests(unittest.TestCase):
 
         with self.assertLogs("intervals_coach", "WARNING") as logs:
             result = forecast.refreshed_cache({"a": earlier}, items, fetch, now=NOW)
-        self.assertEqual(earlier, result["a"])
+        # The earlier forecast stays; the failed attempt waits out the cache
+        # time, so the job does not retry every scheduler pass.
+        self.assertEqual({**earlier, "attempted_at": NOW.isoformat()}, result["a"])
+        self.assertFalse(forecast.stale(result, items, NOW))
+        self.assertTrue(forecast.stale(result, items, NOW + timedelta(hours=3)))
         self.assertEqual("not_found", result["b"]["status"])
         self.assertNotIn("Nirgendwo", " ".join(logs.output))
         self.assertNotIn(PLACE, " ".join(logs.output))

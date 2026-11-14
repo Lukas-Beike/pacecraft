@@ -109,10 +109,13 @@ class WeatherSyncServiceTests(unittest.TestCase):
 
     def test_provider_error_without_days_is_raised(self):
         service = self.make_service(weather={"days": [], "error": "offline"})
+        service._competition_weather = Mock()
 
         with self.assertRaises(AppError) as raised:
             service.sync()
 
+        # A failed profile forecast still lets the race-day forecasts run.
+        service._competition_weather.refresh.assert_called_once_with()
         self.assertEqual(raised.exception.status, 502)
         self.assertEqual(raised.exception.message, "offline")
 

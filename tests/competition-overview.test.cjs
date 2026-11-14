@@ -161,9 +161,10 @@ test("race plan weather shows the race-day forecast or names what is missing", (
   }).map(textOf).join("|");
   assert.match(ready, /Open-Meteo · Musterstadt, Deutschland/);
   assert.match(ready, /🌧️ Leichter Regen · 6–11 °C · Wind 14 km\/h · Regen 40 %/);
-  for (const [status, text] of [["pending", "Noch keine Vorhersage"], ["not_in_horizon", "Noch keine Vorhersage"], ["not_found", "Ort nicht gefunden"], ["unavailable", "Vorhersage nicht verfügbar"], ["ready", "Vorhersage nicht verfügbar"]]) {
+  for (const [status, text] of [["pending", "Noch keine Vorhersage"], ["not_found", "Ort nicht gefunden"], ["unavailable", "Vorhersage nicht verfügbar"], ["ready", "Vorhersage nicht verfügbar"]]) {
     assert.match(rendered.racePlanWeather({ status }).map(textOf).join(""), new RegExp(text));
   }
   assert.equal(rendered.racePlanWeather({ status: "no_location" }).length, 0);
+  assert.equal(rendered.racePlanWeather({ status: "not_in_horizon" }).length, 0);
   assert.equal(rendered.racePlanWeather(undefined).length, 0);
 });

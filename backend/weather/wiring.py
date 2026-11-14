@@ -24,15 +24,16 @@ class WeatherServices:
 def build_weather(ctx: AppContext) -> WeatherServices:
     """The weather service, cached per database manager."""
 
-    def client() -> weather_provider.WeatherClient:
+    def client(overlays: bool = True) -> weather_provider.WeatherClient:
+        """The forecast client; race-day forecasts skip air quality and pollen."""
         request = ctx.provider_transport.json_http_client().request
         return weather_provider.WeatherClient(
             request,
             runtime_clock.utc_now,
             ctx.logger,
             forecast_days=WEATHER_FORECAST_DAYS,
-            air_quality_client=air_quality.AirQualityClient(request),
-            pollen_client=dwd_pollen.DwdPollenClient(request),
+            air_quality_client=air_quality.AirQualityClient(request) if overlays else None,
+            pollen_client=dwd_pollen.DwdPollenClient(request) if overlays else None,
         )
 
     def service() -> weather.WeatherService:
@@ -52,21 +53,12 @@ def build_weather(ctx: AppContext) -> WeatherServices:
             lambda: ctx.clock.now().date(),
         )
 
-    def race_client() -> weather_provider.WeatherClient:
-        """The forecast without air-quality and pollen overlays."""
-        return weather_provider.WeatherClient(
-            ctx.provider_transport.json_http_client().request,
-            runtime_clock.utc_now,
-            ctx.logger,
-            forecast_days=WEATHER_FORECAST_DAYS,
-        )
-
     def competition_weather() -> CompetitionWeather:
         return CompetitionWeather(
             ctx.database(),
             ctx.key_values,
             lambda: ctx.planning.competition().list(),
-            race_client,
+            lambda: client(overlays=False),
             lambda: datetime.now(UTC),
             lambda: ctx.clock.now().date(),
         )

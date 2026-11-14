@@ -1,7 +1,7 @@
 ## ADDED Requirements
 
 ### Requirement: CS14 Competition location
-A competition SHALL keep an optional free-text location (city or postal code, at most 200 characters) for its race-day weather. The Coach's `save_competition` SHALL keep it when an edit leaves it out and clear it on an empty string; change history and undo SHALL carry it, and changes recorded before the location existed SHALL stay undoable. The location stays local and never enters an Intervals.icu payload.
+A competition SHALL keep an optional free-text location (city or postal code, at most 200 characters) for its race-day weather. The Coach's `save_competition` SHALL keep it when an edit leaves it out and clear it on an empty string; change history and undo SHALL carry it, and changes recorded before the location existed SHALL stay undoable. The location stays local, never enters an Intervals.icu payload, and a location-only edit keeps the sync state.
 
 #### Scenario: Edit without the location
 - **WHEN** a competition with location "Berlin" gets only a new target
@@ -20,4 +20,5 @@ Evidence:
 - `backend/planning/competition_service.py:_coach_payload`
 - `public/plan-views.js:competitionCard`
 - `tests/test_history_undo_service.py::test_legacy_profile_row_stays_undoable_and_later_edits_still_conflict`
+- `tests/test_planning_competition_service.py::test_a_location_only_edit_keeps_the_sync_state`
 - `tests/test_planning_competition_service.py::test_empty_values_clear_optional_fields_and_absent_ones_keep_them`

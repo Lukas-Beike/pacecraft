@@ -2460,9 +2460,9 @@ function racePlanPacing(pacing) {
   return [racePlanHeading("Tempo", badge), table(columns, rows, { className: "race-plan-table" })];
 }
 
-const RACE_PLAN_WEATHER_STATUS = { pending: "Noch keine Vorhersage", not_in_horizon: "Noch keine Vorhersage", not_found: "Ort nicht gefunden", unavailable: "Vorhersage nicht verfügbar" };
+const RACE_PLAN_WEATHER_STATUS = { pending: "Noch keine Vorhersage", not_found: "Ort nicht gefunden", unavailable: "Vorhersage nicht verfügbar" };
 
-// Race-day forecast at the competition location; nothing without a location.
+// Race-day forecast at the competition location; nothing without a location or before the forecast reaches race day.
 function racePlanWeather(weather) {
   const day = weather?.status === "ready" ? weather.day : null;
   if (!day) {

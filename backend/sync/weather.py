@@ -55,13 +55,20 @@ class WeatherSyncService:
         return bool(self._competition_weather and self._competition_weather.configured())
 
     def _sync_inner(self, reason: str, force: bool) -> dict[str, Any]:
-        # Race-day forecasts run here only, outside the profile forecast's lock
-        # and never from a request; they cannot fail the profile forecast.
-        competitions = (
-            self._competition_weather.refresh() if self._competition_weather else {}
-        )
+        # Race-day forecasts run here only, after the profile forecast, outside
+        # its lock and never from a request; a profile failure does not skip
+        # them, and they never fail the job (#2803).
+        try:
+            result = self._profile_forecast(reason, force)
+        finally:
+            competitions = (
+                self._competition_weather.refresh() if self._competition_weather else {}
+            )
+        return {**result, **competitions}
+
+    def _profile_forecast(self, reason: str, force: bool) -> dict[str, Any]:
         if not self._profile_service.get().get("weather_location", "").strip():
-            return {"status": "not_configured", **competitions}
+            return {"status": "not_configured"}
         weather = self._weather_service.state(
             refresh=True,
             force=force,
@@ -79,7 +86,6 @@ class WeatherSyncService:
             "reason": reason,
             "fetched_at": weather.get("fetched_at"),
             **replan,
-            **competitions,
         }
 
     def _refresh_adaptive_preview(self) -> dict[str, Any]:

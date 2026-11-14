@@ -8,8 +8,8 @@ The race plan SHALL include the stored race-day forecast of the competition's lo
 - **THEN** the "Wetter" block shows condition, temperature range, wind and rain probability with the badge "Open-Meteo · <place>, <country>".
 
 #### Scenario: Nothing to show yet
-- **WHEN** race day is beyond the forecast days, the job has not run, or the place was not found
-- **THEN** the block shows only "Noch keine Vorhersage", "Ort nicht gefunden" or "Vorhersage nicht verfügbar"; without a location there is no block.
+- **WHEN** the job has not run yet, the place was not found, or the forecast failed
+- **THEN** the block shows only "Noch keine Vorhersage", "Ort nicht gefunden" or "Vorhersage nicht verfügbar"; without a location, or while race day is beyond the forecast, there is no block.
 
 Evidence:
 - `backend/planning/race_plan.py:read_race_plan`
