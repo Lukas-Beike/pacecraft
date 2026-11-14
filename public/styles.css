@@ -1652,6 +1652,8 @@ button:focus-visible, a:focus-visible, summary:focus-visible {
 .nutrition-total.nutrition-below-range { box-shadow: inset 0 -3px 0 var(--orange), var(--shadow-soft); }
 .nutrition-total.nutrition-above-range { box-shadow: inset 0 -3px 0 var(--blue), var(--shadow-soft); }
 #nutritionExpenditureTotals .nutrition-total { border: 0; background: var(--surface-raised); box-shadow: none; }
+/* A current day has no status line (#2846). */
+#nutritionExpenditureStatus:empty { display: none; }
 .nutrition-total strong { display: block; font-size: 1.4rem; overflow-wrap: anywhere; }
 .nutrition-unit { color: var(--muted); font-size: .6em; font-weight: 600; }
 #nutritionTotals { grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 8px; max-width: 40rem; }
