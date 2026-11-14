@@ -7,6 +7,7 @@ date. The supported baseline, the schema production runs (version 26, release
 2.0.5), is frozen as `tests/fixtures/schema_v26.sql.txt` with its digest in
 `backend/db/schema_history.py`; [schema-history.md](schema-history.md) lists the
 releases and what each version added.
+The keys of the `kv` table are listed in [kv-catalogue.md](kv-catalogue.md).
 
 ## Accepting a database
 
