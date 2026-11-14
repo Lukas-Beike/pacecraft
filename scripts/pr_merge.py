@@ -27,7 +27,7 @@ from typing import Any
 from gh_cli import CliError, gh, gh_json, positive_int
 from pr_state import check_outcome
 
-FIELDS = "state,baseRefName,headRefOid,autoMergeRequest,mergeCommit,statusCheckRollup,comments,reviews,files"
+FIELDS = "state,baseRefName,headRefOid,autoMergeRequest,mergeCommit,statusCheckRollup,comments,reviews"
 POLLS_PER_MINUTE = 3
 
 
@@ -68,7 +68,8 @@ def behind_develop(number: int, pr: dict[str, Any]) -> bool:
     behind, moved = develop["behind"], set(develop["files"] or [])
     if not isinstance(behind, int):
         raise CliError("the develop comparison returned no commit count")
-    mine = {item["path"] for item in pr.get("files") or []}
+    # `pr view --json files` stops at 100 files; the diff lists them all.
+    mine = set(gh("pr", "diff", str(number), "--name-only").split())
     shared = sorted(mine & moved)
     if len(moved) >= COMPARE_FILE_CAP:
         shared = shared or ["(develop changed too many files to compare)"]

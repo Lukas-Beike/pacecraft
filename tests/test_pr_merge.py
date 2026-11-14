@@ -32,7 +32,7 @@ def view(state="OPEN", checks=(GREEN,), **extra):
         "state": state, "baseRefName": "develop", "headRefOid": "feedc0de",
         "autoMergeRequest": None, "mergeCommit": merge,
         "statusCheckRollup": list(checks), "comments": [], "reviews": [],
-        "files": [{"path": "scripts/pr_merge.py"}], **extra,
+        **extra,
     }  # fmt: skip
 
 
@@ -44,6 +44,9 @@ def run(case, *args, auto_error="", views=None, behind=0, moved=()):
         calls.append(argv[1:])
         if argv[1:3] == ["pr", "view"]:
             return subprocess.CompletedProcess(argv, 0, json.dumps(views.pop(0)), "")
+        if argv[1:3] == ["pr", "diff"]:  # the full file list, past 100 files
+            files = "\n".join([*(f"f{n}" for n in range(150)), "scripts/pr_merge.py"])
+            return subprocess.CompletedProcess(argv, 0, files, "")
         if argv[1:2] == ["api"] and "/compare/feedc0de...develop" in argv[2]:
             return subprocess.CompletedProcess(
                 argv, 0, json.dumps({"behind": behind, "files": list(moved)}), ""
