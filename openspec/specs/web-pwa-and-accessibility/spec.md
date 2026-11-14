@@ -136,7 +136,7 @@ The client SHALL show at most one status strip above every screen: the most seve
 
 #### Scenario: Due equipment
 - **WHEN** an active item has exceeded its lifetime target or a local item is due for maintenance, by the rules of the equipment cards
-- **THEN** one warning names the first item ("Pegasus 40: Ziel überschritten", exceeded targets first, "+N" for more) with "Ansehen" to Mehr › Ausrüstung; archived items and items without a target never show; the equipment read is the Ausrüstung view's cached `/api/analysis/training-records`, made when the browser is idle on a visible page, once per session and activity or Garmin state, and never repeated after a failure until that state changes.
+- **THEN** one warning names the first item ("Pegasus 40: Ziel überschritten", exceeded targets first, "+N" for more) with "Ansehen" to Mehr › Ausrüstung; archived items and items without a target never show; the equipment read is the Ausrüstung view's cached `/api/analysis/training-records`, made when the browser is idle (else after 2 s) on a visible page, never for the device snapshot, once per session and activity or Garmin state, and never repeated after a failure until that state changes.
 
 #### Scenario: Low screen
 - **WHEN** the viewport is lower than 500 px

@@ -1678,16 +1678,18 @@ let equipmentNoticeKey = null;
 // The equipment read takes seconds on a long history (#2809), so the notice reads it, through the cache the
 // Ausrüstung view shares, only when the browser is idle on a visible page and only once per session and
 // activity or Garmin state; a chat turn does not read it again. A failed read keeps the last notice and
-// waits for the next state; a hidden page leaves the read to the next status render.
+// waits for the next state; a hidden page leaves the read to the next status render. The device snapshot
+// shown before the fresh state reads nothing, and without an idle callback (Safari) the read waits 2 s.
 function refreshEquipmentNotice() {
-  if (!state.data) return;
+  if (!state.data || state.replaceDataOnLoad) return;
   const session = state.sessionGeneration;
   const versions = state.data.state_versions || {};
   const key = JSON.stringify([session, versions.activities, versions.garmin]);
   if (key === equipmentNoticeKey) return;
   equipmentNoticeKey = key;
-  const idle = globalThis.requestIdleCallback || ((callback) => setTimeout(callback, 0));
+  const idle = globalThis.requestIdleCallback || ((callback) => setTimeout(callback, 2000));
   idle(() => {
+    if (session !== state.sessionGeneration || !state.data) return;
     if (document.visibilityState === "hidden") {
       equipmentNoticeKey = null;
       return;

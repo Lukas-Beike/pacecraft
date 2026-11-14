@@ -48,7 +48,7 @@ test("the equipment notice reads once per activity state when idle and never ret
   const calls = [];
   const updates = [];
   const idle = [];
-  const state = { data: { state_versions: { training: 1 } }, sessionGeneration: 1 };
+  const state = { data: { state_versions: { training: 1 } }, sessionGeneration: 1, replaceDataOnLoad: true };
   const page = { visibilityState: "hidden" };
   const context = extractFunctions("analysis.js", ["analysisReportCache", "analysisReportVersionKey", "requestAnalysisReport", "equipmentNoticeKey", "refreshEquipmentNotice"], {
     state,
@@ -63,6 +63,10 @@ test("the equipment notice reads once per activity state when idle and never ret
       return { equipment: { notice: "due" } };
     },
   });
+  // The device snapshot shown before the fresh state reads nothing.
+  context.refreshEquipmentNotice();
+  assert.equal(idle.length, 0);
+  state.replaceDataOnLoad = false;
   // A hidden page reads nothing and leaves the read to the next status render.
   context.refreshEquipmentNotice();
   idle.shift()();
