@@ -42,6 +42,35 @@ def service(data_dir: Path, **overrides: object) -> DatabaseRestoreValidationSer
 
 
 class DatabaseRestoreValidationTests(unittest.TestCase):
+    def test_verify_copy_needs_the_whole_file_and_the_current_schema(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            copy = root / "athlete.db.pre-restore-copy"
+            with closing(sqlite3.connect(copy)) as connection:
+                connection.execute("PRAGMA journal_mode=WAL")
+                connection.execute("CREATE TABLE kv (key TEXT)")
+                connection.commit()
+            size = copy.stat().st_size
+            current = service(root, schema_is_current=lambda _connection: True)
+            outdated = service(root, schema_is_current=lambda _connection: False)
+
+            self.assertTrue(current.verify_copy(copy, size))
+            self.assertFalse(current.verify_copy(copy, size + 1))
+            self.assertFalse(outdated.verify_copy(copy, size))
+            self.assertFalse(current.verify_copy(root / "missing.db", size))
+            garbage = root / "garbage.db"
+            garbage.write_bytes(b"x" * size)
+            self.assertFalse(
+                service(root, schema_is_current=database_schema_is_current).verify_copy(
+                    garbage, size
+                )
+            )
+            # Read-only and immutable: no journal or sidecar beside the copy.
+            self.assertEqual(
+                sorted(path.name for path in root.iterdir()),
+                ["athlete.db.pre-restore-copy", "garbage.db"],
+            )
+
     def test_stage_enforces_payload_boundary_and_uses_uuid_filename(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             validator = service(Path(directory), maximum_bytes=4)

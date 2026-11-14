@@ -15,6 +15,7 @@ import sqlite3
 import tempfile
 import unittest
 from collections.abc import Callable
+from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -295,23 +296,30 @@ class EncryptedUpgradeMatrixTests(unittest.TestCase):
             mock.Mock(),
         ).read_bytes()
         self.assertNotEqual(backup[:16], PLAINTEXT_HEADER)
-        validation = DatabaseRestoreValidationService(
-            DatabaseRestoreValidationConfig(
-                data_dir=self.root / "restore",
-                maximum_bytes=50_000_000,
-                app_password=CIPHER_PHRASE,
-                sqlcipher_available=True,
-                sqlite_backend=cipher_backend,
-                configure_cipher=configure_cipher,
-                row_factory=row_factory,
-                schema_is_current=database_schema_is_current,
-                startup_invariants=lambda _db: None,
-            )
+        config = DatabaseRestoreValidationConfig(
+            data_dir=self.root / "restore",
+            maximum_bytes=50_000_000,
+            app_password=CIPHER_PHRASE,
+            sqlcipher_available=True,
+            sqlite_backend=cipher_backend,
+            configure_cipher=configure_cipher,
+            row_factory=row_factory,
+            schema_is_current=database_schema_is_current,
+            startup_invariants=lambda _db: None,
         )
+        validation = DatabaseRestoreValidationService(config)
         staged = validation.stage(backup)
         validation.validate(staged)
         self.assertEqual(self.rows(staged), opened)
         self.assert_encrypted(staged)
+        # A recovery copy is verified read-only with the key before older ones go (#2914).
+        size = staged.stat().st_size
+        self.assertTrue(validation.verify_copy(staged, size))
+        wrong_key = DatabaseRestoreValidationService(
+            replace(config, app_password="another-phrase-1234")
+        )
+        self.assertFalse(wrong_key.verify_copy(staged, size))
+        self.assertEqual(self.rows(staged), opened)
 
 
 if __name__ == "__main__":

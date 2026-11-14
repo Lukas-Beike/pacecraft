@@ -16,7 +16,9 @@ from pathlib import Path
 
 # ``<database>.<label>-<timestamp>-<id>`` as written by the restore service and,
 # in release 2.0.0, by the Intervals.icu purge (removed; its copies stay on disk).
-_COPY_LABELS = r"(?:pre-restore|pre-intervals-purge-v\d+)"
+_COPY_LABELS = r"(?P<label>pre-restore|pre-intervals-purge-v\d+)"
+# The label of the copy a restore writes; only these are pruned (#2914).
+RESTORE_LABEL = "pre-restore"
 _MARKER_PATTERN = re.compile(r"intervals-purge-v\d+\.done")
 
 
@@ -78,8 +80,29 @@ class RecoveryCopies:
         }
 
     def erase(self) -> RecoveryCopyErasure:
+        return self._remove(self.paths())
+
+    def prune_restore_copies(self, keep: str) -> RecoveryCopyErasure:
+        """Delete every older restore copy, keeping ``keep`` (athlete, 2026-11-14).
+
+        Only copies with the restore label go; purge copies, markers and every
+        other file stay. Nothing is deleted unless ``keep`` is itself a restore
+        copy that exists.
+        """
+        restore_copies = [
+            path
+            for path in self.paths()
+            if (match := self._copy_pattern.fullmatch(path.name))
+            and match["label"] == RESTORE_LABEL
+        ]
+        if keep not in {path.name for path in restore_copies}:
+            return RecoveryCopyErasure(removed=0, failed=0)
+        return self._remove([path for path in restore_copies if path.name != keep])
+
+    @staticmethod
+    def _remove(paths: list[Path]) -> RecoveryCopyErasure:
         removed = failed = 0
-        for path in self.paths():
+        for path in paths:
             try:
                 path.unlink()
                 removed += 1

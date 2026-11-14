@@ -65,6 +65,36 @@ class RecoveryCopiesTests(unittest.TestCase):
             outcome = self.copies.erase()
         self.assertEqual((outcome.removed, outcome.failed), (1, 1))
 
+    def test_pruning_keeps_the_newest_restore_copy_and_every_other_file(self) -> None:
+        older = f"{DATABASE}.pre-restore-20261101120000-{'a' * 32}"
+        newest = f"{DATABASE}.pre-restore-20261102120000-{'b' * 32}"
+        kept = (
+            newest,
+            f"{DATABASE}.{BACKUP_LABEL}-{STAMP}",
+            PURGE_MARKER_FILE,
+            DATABASE,
+            f"other.db.pre-restore-{STAMP}",
+        )
+        self.touch(older, *kept)
+
+        outcome = self.copies.prune_restore_copies(newest)
+
+        self.assertEqual((outcome.removed, outcome.failed), (1, 0))
+        self.assertFalse((self.root / older).exists())
+        for name in kept:
+            self.assertTrue((self.root / name).exists())
+
+    def test_pruning_deletes_nothing_without_the_copy_to_keep(self) -> None:
+        older = f"{DATABASE}.pre-restore-{STAMP}"
+        self.touch(older)
+        for keep in (
+            f"{DATABASE}.pre-restore-20261102120000-{'b' * 32}",
+            PURGE_MARKER_FILE,
+        ):
+            with self.subTest(keep=keep):
+                self.assertEqual(self.copies.prune_restore_copies(keep).removed, 0)
+        self.assertTrue((self.root / older).exists())
+
     def test_a_missing_data_directory_has_no_copies(self) -> None:
         missing = RecoveryCopies(self.root / "missing", DATABASE)
         self.assertEqual(missing.count(), 0)

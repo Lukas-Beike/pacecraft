@@ -236,7 +236,7 @@ The restore endpoint SHALL require authentication and CSRF, delete sessions from
 
 #### Scenario: Repeated restores
 - **WHEN** two valid backups are restored in quick succession
-- **THEN** their pre-restore recovery-copy names remain distinct
+- **THEN** their pre-restore recovery-copy names are distinct, and after the second only its copy remains (see "Recovery copies and purge markers")
 
 #### Scenario: Gate refuses promotion
 - **WHEN** another maintenance restore already owns the gate
@@ -258,25 +258,29 @@ The restore endpoint SHALL require authentication and CSRF, delete sessions from
 - **WHEN** the live database has `-wal` or `-shm` files at the swap
 - **THEN** they never stay beside the restored file, and a `.restore-aside` file left by a kill during the swap is inert and not removed by the startup sweep
 
-Evidence: `backend/http_api/privacy_restore_post.py::PrivacyRestorePostRoutes.routes`; `backend/backup/restore_validation.py::DatabaseRestoreValidationService.validate`; `backend/backup/restore.py::DatabaseRestoreService._replace`. Tests: `tests/test_http_privacy_restore_post.py::test_success_reads_body_restores_and_clears_cookies`; `tests/test_database_restore_validation.py::test_validate_commits_session_scrubbing_after_schema_integrity_and_fk_checks`; `tests/test_database_restore_service.py::test_two_restores_keep_distinct_recovery_copies`; `tests/test_database_restore_service.py::test_restore_returns_409_within_the_bound_and_keeps_the_database`; `tests/test_database_restore_service.py::test_restore_cancels_a_running_coach_turn_before_draining`; `tests/test_database_restore_service.py::test_restore_continues_when_damaged_database_checkpoint_fails`; `tests/test_database_restore_service.py::test_full_disk_during_recovery_copy_reports_507_without_partial_copy`; `tests/test_database_restore_service.py::test_refused_swap_puts_the_live_sidecars_back`; `tests/test_database_restore_service.py::test_swap_failure_preserves_previous_database_and_releases_gate`. No test pins the `.restore-aside` leftover or the no-live-file result.
+Evidence: `backend/http_api/privacy_restore_post.py::PrivacyRestorePostRoutes.routes`; `backend/backup/restore_validation.py::DatabaseRestoreValidationService.validate`; `backend/backup/restore.py::DatabaseRestoreService._replace`. Tests: `tests/test_http_privacy_restore_post.py::test_success_reads_body_restores_and_clears_cookies`; `tests/test_database_restore_validation.py::test_validate_commits_session_scrubbing_after_schema_integrity_and_fk_checks`; `tests/test_database_restore_service.py::test_two_restores_keep_only_the_newest_recovery_copy`; `tests/test_database_restore_service.py::test_restore_returns_409_within_the_bound_and_keeps_the_database`; `tests/test_database_restore_service.py::test_restore_cancels_a_running_coach_turn_before_draining`; `tests/test_database_restore_service.py::test_restore_continues_when_damaged_database_checkpoint_fails`; `tests/test_database_restore_service.py::test_full_disk_during_recovery_copy_reports_507_without_partial_copy`; `tests/test_database_restore_service.py::test_refused_swap_puts_the_live_sidecars_back`; `tests/test_database_restore_service.py::test_swap_failure_preserves_previous_database_and_releases_gate`. No test pins the `.restore-aside` leftover or the no-live-file result.
 
 ### Requirement: Recovery copies and purge markers
 
-Restore SHALL keep the live database as a recovery copy beside the new one. Recovery copies, and the purge marker files that release 2.0.0 left, SHALL stay until the confirmed local erasure removes them; nothing prunes them automatically.
+Restore SHALL keep the live database as a recovery copy beside the new one, and after a complete restore whose new copy is verified SHALL delete the older restore copies so that only the newest remains (athlete, 2026-11-14, #2914). Purge copies and marker files of release 2.0.0 stay until the confirmed local erasure removes them.
 
 #### Scenario: Names
 - **WHEN** the data directory is scanned for recovery copies
 - **THEN** regular files named `<database name>.pre-restore-<14 digits>-<32 hex>` or `<database name>.pre-intervals-purge-v<N>-<14 digits>-<32 hex>`, and marker files named `intervals-purge-v<N>.done`, match; symbolic links and other names never match and are never followed or removed
 
 #### Scenario: Many restores
-- **WHEN** several restores run over time
-- **THEN** each leaves one more full recovery copy and none is removed automatically
+- **WHEN** a restore completes and its new recovery copy has the size of the database it copied, opens read-only with the key and has the current schema
+- **THEN** the older `pre-restore` copies are deleted and exactly the newest remains; `pre-intervals-purge` copies, marker files and any other file are never touched, and a deletion that fails is logged without failing the finished restore
+
+#### Scenario: Restore or copy not confirmed
+- **WHEN** the restore fails at any step, including the resume after the swap, or its new copy cannot be verified
+- **THEN** every existing recovery copy stays
 
 #### Scenario: Erasure and report
 - **WHEN** the local erasure runs or the diagnostic report is built
 - **THEN** the erasure counts and removes the matching files and reports the failures, and the report shows only their count, newest age and total size
 
-Evidence: `backend/backup/recovery_copies.py::RecoveryCopies`; `backend/backup/restore.py::DatabaseRestoreService._copy_previous`. Tests: `tests/test_database_restore_service.py::test_two_restores_keep_distinct_recovery_copies`; `tests/test_privacy_provider_data.py::test_the_preview_counts_recovery_copies_and_the_delete_erases_them`; `tests/test_privacy_provider_data.py::test_a_recovery_copy_that_cannot_be_removed_is_reported_not_raised`; `tests/test_diagnostic_report.py::test_storage_and_recovery_copies_are_sizes_and_ages_only`.
+Evidence: `backend/backup/recovery_copies.py::RecoveryCopies`, `backend/backup/recovery_copies.py::RecoveryCopies.prune_restore_copies`; `backend/backup/restore.py::DatabaseRestoreService._copy_previous`, `backend/backup/restore.py::DatabaseRestoreService._prune_older_copies`; `backend/backup/restore_validation.py::DatabaseRestoreValidationService.verify_copy`. Tests: `tests/test_database_restore_service.py::test_two_restores_keep_only_the_newest_recovery_copy`; `tests/test_database_restore_service.py::test_an_unverified_or_failed_restore_keeps_every_recovery_copy`; `tests/test_recovery_copies.py::test_pruning_keeps_the_newest_restore_copy_and_every_other_file`; `tests/test_database_restore_validation.py::test_verify_copy_needs_the_whole_file_and_the_current_schema`; `tests/test_db_encrypted_upgrade_matrix.py::test_an_encrypted_backup_at_the_baseline_restores_the_same_rows`; `tests/test_privacy_provider_data.py::test_the_preview_counts_recovery_copies_and_the_delete_erases_them`; `tests/test_privacy_provider_data.py::test_a_recovery_copy_that_cannot_be_removed_is_reported_not_raised`; `tests/test_diagnostic_report.py::test_storage_and_recovery_copies_are_sizes_and_ages_only`.
 
 ### Requirement: Truthful post-restore recovery
 
