@@ -45,6 +45,7 @@ from backend.performance.power_profile import (
     RUNNING_DURATIONS,
 )
 from backend.performance.progress_report import weekly_progress
+from backend.performance.running_dynamics import monthly_trend, session_rating
 from backend.performance.season_inputs import (
     SeasonSource,
     read_activity_summaries,
@@ -280,6 +281,31 @@ class TrainingProfileSelectionService:
         # Values of an earlier read while a newer one runs; the cards ask again.
         window["stale"] = not every[1]
         return window
+
+    def running_dynamics(self, activity_id: str | None = None) -> dict[str, Any]:
+        """The monthly running-dynamics trend and, with ``activity_id``, its run's rating (#2829).
+
+        Both read ``all_time_records``, built off the request path: ``status``
+        is ``pending`` before its first build, ``failed`` after a failed one,
+        else ``ok`` with ``stale`` while a newer build runs. ``session`` is
+        None for a session without a stored record.
+        """
+        try:
+            every = self.all_time_records()
+        except RuntimeError:
+            return {"status": "failed"}
+        if every is None:
+            return {"status": "pending"}
+        records = [row for row in every[0] if row.get("sport") == "run"]
+        own = next(
+            (row for row in records if row.get("activity_id") == activity_id), None
+        )
+        return {
+            "status": "ok",
+            "stale": not every[1],
+            "trend": monthly_trend(records, self._today()),
+            "session": None if own is None else session_rating(own, records),
+        }
 
     def power_profiles(
         self, records: list[dict[str, Any]] | None = None, *, all_time: bool = False
@@ -863,6 +889,7 @@ def _curve_record(
         "pace_at_hr_profile": {} if curve is None else curve.pace_at_hr,
         "power_at_hr_profile": {} if curve is None else curve.power_at_hr,
         "execution_summary": None if curve is None else curve.execution_summary,
+        "running_dynamics": None if curve is None else curve.running_dynamics,
         "avg_temp_c": summary.get("avg_temp_c"),
         "fingerprint": None if curve is None else curve.fingerprint,
     }

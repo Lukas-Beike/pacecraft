@@ -1870,6 +1870,22 @@ button:focus-visible, a:focus-visible, summary:focus-visible {
 .activity-adherence-legend span::before { content: ""; display: inline-block; width: 12px; height: 6px; margin-right: 4px; border-radius: 3px; vertical-align: 1px; }
 .activity-adherence-legend .is-plan::before { box-sizing: border-box; border: 1px dashed var(--muted); }
 .activity-adherence-legend .is-actual::before { background: var(--muted); }
+/* Running dynamics against the athlete's own runs at the same pace, with Garmin's band (#2829). */
+.activity-dynamics { display: grid; gap: 10px; }
+.activity-dynamics-rating { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
+.activity-dynamics-rating:empty { display: none; }
+.activity-dynamics-chip { --verdict: var(--muted); padding: 2px 7px; border-radius: 999px; background: color-mix(in srgb, var(--verdict) 16%, var(--transparent)); color: var(--verdict); font-size: .72rem; font-weight: 700; white-space: nowrap; }
+.activity-dynamics-chip[data-verdict="better"] { --verdict: var(--accent); }
+.activity-dynamics-chip[data-verdict="worse"] { --verdict: var(--danger); }
+.activity-dynamics-garmin { --garmin: var(--muted); color: var(--muted); font-size: .72rem; }
+.activity-dynamics-garmin::before { content: ""; display: inline-block; width: 9px; height: 9px; margin-right: 4px; border-radius: 50%; background: var(--garmin); vertical-align: -1px; }
+.activity-dynamics-garmin[data-garmin="purple"] { --garmin: var(--training-zone-6); }
+.activity-dynamics-garmin[data-garmin="blue"] { --garmin: var(--blue); }
+.activity-dynamics-garmin[data-garmin="green"] { --garmin: var(--training-zone-2); }
+.activity-dynamics-garmin[data-garmin="orange"] { --garmin: var(--orange); }
+.activity-dynamics-garmin[data-garmin="red"] { --garmin: var(--danger); }
+.activity-dynamics-bands { display: grid; gap: 8px; }
+.activity-dynamics-bands td .activity-dynamics-chip { margin-left: 2px; }
 .activity-analysis-laps { display: grid; gap: 8px; }
 .activity-analysis-laps td, .activity-analysis-laps th { font-variant-numeric: tabular-nums; }
 

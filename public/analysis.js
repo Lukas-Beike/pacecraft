@@ -721,6 +721,8 @@ function showProfileCardsState(error) {
 
 async function renderCyclingPowerProfile() {
   if (!ANALYSIS_PERFORMANCE_ROUTES.has(state.route) || !state.data?.performance) return;
+  // The running technique trend reads the same background records in a request of its own (#2829).
+  void renderRunningDynamicsTrend();
   const generation = ++cyclingPowerProfileGeneration;
   const session = state.sessionGeneration;
   showProfileCardsState(null);
@@ -798,6 +800,59 @@ function renderRunningBestEfforts(result) {
   root.dataset.analysisEmpty = String(!values && !criticalSpeed);
 }
 
+// Monthly medians of the running dynamics per pace band (#2829); the server builds them off the request path.
+const RUNNING_DYNAMICS_PATH = "/api/analysis/running-dynamics";
+const RUNNING_DYNAMICS_METRICS = [
+  ["ground_contact_time_ms", "Bodenkontaktzeit", "ms"], ["cadence_spm", "Schrittfrequenz", "spm"], ["vertical_oscillation_cm", "Vertikale Oszillation", "cm"],
+  ["vertical_ratio_pct", "Vertikales Verhältnis", "%"], ["ground_contact_balance_pct", "Bodenkontakt links", "%"], ["step_length_m", "Schrittlänge", "m"],
+];
+let runningDynamicsGeneration = 0;
+let runningDynamicsMetric = RUNNING_DYNAMICS_METRICS[0][0];
+
+async function renderRunningDynamicsTrend() {
+  const generation = ++runningDynamicsGeneration;
+  const root = document.getElementById("runningDynamicsTrend");
+  const title = () => h("h4", null, "Lauftechnik je Monat");
+  if (!root.childElementCount) root.replaceChildren(title(), createLoadingState("Lauftechnik wird geladen…"));
+  try {
+    const result = await requestAnalysisReport(RUNNING_DYNAMICS_PATH);
+    if (generation !== runningDynamicsGeneration) return;
+    if (result?.status !== "ok" || result.stale) invalidateAnalysisReport(RUNNING_DYNAMICS_PATH);
+    if (result?.status === "failed") throw new Error("Konnte nicht geladen werden.");
+    if (result?.status === "pending" || result?.stale) setTimeout(() => { if (generation === runningDynamicsGeneration) void renderRunningDynamicsTrend(); }, ALL_TIME_RETRY_MS);
+    if (result?.status === "pending") return;
+    renderRunningDynamicsChart(root, title, result.trend);
+  } catch (error) {
+    if (generation !== runningDynamicsGeneration) return;
+    root.dataset.analysisEmpty = "failed";
+    root.replaceChildren(title(), createErrorState(error?.message || "Konnte nicht geladen werden.", () => void renderRunningDynamicsTrend()));
+  }
+  renderAnalysisSegmentsIfActive();
+}
+
+function renderRunningDynamicsChart(root, title, trend) {
+  const bands = trend?.bands || [];
+  const months = trend?.months || [];
+  const shown = RUNNING_DYNAMICS_METRICS.filter(([key]) => bands.some((band) => band.series?.[key]?.some((value) => value != null)));
+  root.dataset.analysisEmpty = String(!shown.length);
+  if (!shown.length) { root.replaceChildren(title(), h("p", "muted", "Noch keine Laufdynamik.")); return; }
+  if (!shown.some(([key]) => key === runningDynamicsMetric)) runningDynamicsMetric = shown[0][0];
+  const select = h("select", { "aria-label": "Laufdynamik-Wert" }, shown.map(([key, label]) => h("option", { value: key, selected: key === runningDynamicsMetric }, label)));
+  const chartSlot = h("div");
+  const draw = () => {
+    const [key, label, unit] = RUNNING_DYNAMICS_METRICS.find(([item]) => item === runningDynamicsMetric);
+    const series = bands.map((band, index) => ({
+      label: `${AppFormat.clock(band.band_s_per_km)}–${AppFormat.clock(band.band_s_per_km + 15)}/km`,
+      color: index,
+      points: months.map((month, position) => ({ date: `${month}-01`, value: band.series?.[key]?.[position] ?? null })),
+    }));
+    chartSlot.replaceChildren(analysisChart(label, series, unit, `${months[0]}-01`, `${months.at(-1)}-01`, "Monatsmittel (Median) deiner Läufe in diesem Tempo-Bereich.", { sparse: true }) || h("p", "muted", "Noch keine Laufdynamik."));
+  };
+  select.addEventListener("change", () => { runningDynamicsMetric = select.value; draw(); });
+  draw();
+  root.replaceChildren(title(), select, chartSlot);
+}
+
 function equipmentRouteActive() {
   return state.route === "more/equipment";
 }
@@ -853,9 +908,11 @@ function renderAnalysisHistory(history) { // NOSONAR
   const predictions = document.getElementById("performancePredictions");
   const powerProfile = document.getElementById("cyclingPowerProfile");
   const runningBest = document.getElementById("runningBestEfforts");
+  const runningDynamics = document.getElementById("runningDynamicsTrend");
   powerProfile.remove();
   predictions.remove();
   runningBest.remove();
+  runningDynamics.remove();
   predictions.classList.remove("analysis-chart-card");
   predictions.classList.add("analysis-subchart");
   renderBodyAnalysis(history?.body);
@@ -865,7 +922,7 @@ function renderAnalysisHistory(history) { // NOSONAR
   root.replaceChildren(); loadRoot.replaceChildren(); enduranceRoot.replaceChildren(); periodRoot.replaceChildren();
   if (!history?.start || !history?.end) {
     // Without a history window there are no charts, so no empty sport groups; the async tables stay attached.
-    root.append(predictions, runningBest, powerProfile);
+    root.append(predictions, runningBest, runningDynamics, powerProfile);
     for (const target of [root, loadRoot, enduranceRoot]) target.dataset.analysisEmpty = "true";
     Object.assign(root.dataset, { analysisEmptyRunning: "true", analysisEmptyCycling: "true" });
     return;
@@ -943,7 +1000,7 @@ function renderAnalysisHistory(history) { // NOSONAR
     const group = analysisChartGroup("Entwicklung", charts, sportSeries, "Letzte 12 Kalenderwochen einschließlich der laufenden Woche: alle datierten Garmin-FTP-Werte, letzter gültiger Wochenwert für Schwellenpace, Wochenmedian für VO₂max. Fehlende Messungen bleiben Lücken. Garmin. VO₂max ist eine Schätzung. Quellen und Messdatum bleiben sichtbar.");
     makeAnalysisSectionCollapsible(group, `development-${sport}`);
     group.dataset.analysisSport = analysisSport;
-    if (sport === "Lauf") group.querySelector(".analysis-section-content").append(predictions, runningBest);
+    if (sport === "Lauf") group.querySelector(".analysis-section-content").append(predictions, runningBest, runningDynamics);
     else group.querySelector(".analysis-section-content").prepend(powerProfile);
     root.append(group);
   }
@@ -1314,7 +1371,7 @@ async function renderTrainingRecords() { // NOSONAR
 // without a marker, still loading or failed counts as not empty; period controls stay visible.
 // A container shared by both sports names the marker of the sport's part (#2265).
 const ANALYSIS_SEGMENT_CONTENT = {
-  running: [["currentPerformance", "analysisEmptyRunning"], ["analysisHistoryCharts", "analysisEmptyRunning"], ["performancePredictions"], ["runningBestEfforts"]],
+  running: [["currentPerformance", "analysisEmptyRunning"], ["analysisHistoryCharts", "analysisEmptyRunning"], ["performancePredictions"], ["runningBestEfforts"], ["runningDynamicsTrend"]],
   cycling: [["currentPerformance", "analysisEmptyCycling"], ["analysisHistoryCharts", "analysisEmptyCycling"], ["cyclingPowerProfile"]],
   load: [["sessionPerformance"], ["analysisLoadCharts"], ["trainingZoneCharts"], ["performanceEnduranceCharts"]],
   recovery: [["personalRecovery"]],

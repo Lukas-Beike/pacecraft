@@ -90,6 +90,81 @@
             <span class="activity-adherence-actual" style.width="100%">
           <span aria-label="Soll 2′, Ist 2′" class="activity-analysis-zone-value">
             "2′ / 2′"
+  <section class="activity-dynamics">
+    <h4>
+      "Laufdynamik"
+    <dl class="activity-analysis-stats activity-dynamics-values">
+      <div class="activity-dynamics-value" data-metric="ground_contact_time_ms">
+        <dt>
+          "Bodenkontaktzeit"
+        <dd>
+          "243 ms"
+        <span class="activity-dynamics-rating">
+          <span class="activity-dynamics-chip" data-verdict="better">
+            "besser als sonst"
+          <span class="activity-dynamics-garmin" data-garmin="blue" title="Garmin-Einordnung (Brustgurt), Garmin EPIX Handbuch: blau">
+            "Garmin"
+      <div class="activity-dynamics-value" data-metric="cadence_spm">
+        <dt>
+          "Schrittfrequenz"
+        <dd>
+          "172 spm"
+        <span class="activity-dynamics-rating">
+          <span class="activity-dynamics-chip" data-verdict="usual">
+            "üblich"
+          <span class="activity-dynamics-garmin" data-garmin="blue" title="Garmin-Einordnung (Brustgurt), Garmin EPIX Handbuch: blau">
+            "Garmin"
+      <div class="activity-dynamics-value" data-metric="vertical_oscillation_cm">
+        <dt>
+          "Vertikale Oszillation"
+        <dd>
+          "8,9 cm"
+        <span class="activity-dynamics-rating">
+          <span class="activity-dynamics-chip" data-verdict="worse">
+            "schlechter als sonst"
+          <span class="activity-dynamics-garmin" data-garmin="green" title="Garmin-Einordnung (Brustgurt), Garmin EPIX Handbuch: grün">
+            "Garmin"
+      <div class="activity-dynamics-value" data-metric="step_length_m">
+        <dt>
+          "Schrittlänge"
+        <dd>
+          "1,18 m"
+        <span class="activity-dynamics-rating">
+          <span class="activity-dynamics-chip" data-verdict="higher">
+            "länger als sonst"
+    <section class="activity-dynamics-bands">
+      <h4>
+        "Je Tempo-Bereich"
+      <div aria-label="Laufdynamik je Tempo-Bereich" class="analysis-chart-table" role="region" tabIndex="0">
+        <table>
+          <thead>
+            <tr>
+              <th scope="col">
+                "Tempo"
+              <th scope="col">
+                "Zeit"
+              <th scope="col">
+                "Kontakt"
+              <th scope="col">
+                "Frequenz"
+              <th scope="col">
+                "Vertikal"
+          <tbody>
+            <tr>
+              <th scope="row">
+                "5:00–5:15"
+              <td>
+                "20′"
+              <td>
+                <span>
+                  "243 "
+                  <span class="activity-dynamics-chip" data-verdict="better">
+                    "besser"
+              <td>
+                <span>
+                  "172 "
+              <td>
+                "—"
   <div>
     <p>
       "Form ließ nach"
