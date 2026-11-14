@@ -30,6 +30,9 @@ MAX_RUNNING_NET_GRADE: Final = 0.01
 # inside the window counts as elapsed time, and so does a recording gap (auto-pause,
 # signal loss) of at most this many seconds; a longer gap breaks the window.
 MAX_DISTANCE_GAP_S: Final = 600
+# A recording gap (a step above 5 s) across which the distance implies a pace
+# faster than 2:30 min/km is a measurement error and breaks the window (#2818).
+MAX_GAP_SPEED_MPS: Final = 1000 / 150
 
 # Whether the window from sample ``start`` to sample ``stop`` over ``metres`` counts.
 type WindowCheck = Callable[[int, int, float], bool]
@@ -83,7 +86,7 @@ def running_profile(
         "method": METHOD_ID,
         "method_version": METHOD_VERSION,
         "source": f"{source_label} original speed/distance streams",
-        "scope": "Beobachtete Laufbelastungen; Lücken und Pausen bleiben unbekannt.",
+        "scope": "Beobachtete Laufbelastungen. Bestzeiten über Strecken zählen Pausen wie eine Wettkampfuhr mit; eine Aufzeichnungslücke über zehn Minuten oder mit unmöglich schnellem Streckensprung trennt sie.",
     }
     if activity.get("sport") != "run":
         return {
@@ -281,18 +284,17 @@ def _race_clock_segment(times: list, distances: list, index: int) -> bool:
 
     Speed and the moving flag do not matter: a stop is elapsed time. The step needs
     both distances, no backwards distance and a time step of at most
-    ``MAX_DISTANCE_GAP_S``.
+    ``MAX_DISTANCE_GAP_S``; a gap above 5 s must not imply more than
+    ``MAX_GAP_SPEED_MPS``.
     """
     left, right = _number(times[index]), _number(times[index + 1])
     before, after = distances[index], distances[index + 1]
-    return (
-        left is not None
-        and right is not None
-        and 0 < right - left <= MAX_DISTANCE_GAP_S
-        and before is not None
-        and after is not None
-        and after >= before
-    )
+    if left is None or right is None or before is None or after is None:
+        return False
+    step, metres = right - left, after - before
+    if not 0 < step <= MAX_DISTANCE_GAP_S or metres < 0:
+        return False
+    return step <= 5 or metres / step <= MAX_GAP_SPEED_MPS
 
 
 def _fastest_distance_window(

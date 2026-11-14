@@ -70,8 +70,9 @@ class PowerProfileTests(unittest.TestCase):
 
     def test_distance_bests_time_stops_and_short_gaps_like_a_race_clock(self):
         # #2818: a recorded standstill and a recording gap of at most ten minutes
-        # count as elapsed time; a longer gap breaks the window.
-        def paused(stop_seconds: int, *, recorded: bool) -> dict:
+        # count as elapsed time; a longer gap breaks the window, and so does a gap
+        # whose distance jump implies a pace faster than 2:30 min/km.
+        def paused(stop_seconds: int, *, recorded: bool, jump: float = 0.0) -> dict:
             run = steady_run(43)
             streams = run["streams"]
             cut = len(streams["time"]) // 2
@@ -83,18 +84,21 @@ class PowerProfileTests(unittest.TestCase):
                 moving += [0] * stop_seconds
             shift = times[-1] + (1 if recorded else stop_seconds) - streams["time"][cut]
             times += [t + shift for t in streams["time"][cut:]]
-            distance += streams["distance"][cut:]
+            distance += [d + jump for d in streams["distance"][cut:]]
             moving += [1] * (len(times) - len(moving))
             run["streams"] = {"time": times, "distance": distance, "moving": moving}
             return run
 
-        for stop, recorded, marathon in (
-            (60, True, 42195 / 3.5 + 60),
-            (300, False, 42195 / 3.5 + 299),
-            (700, False, None),
+        for stop, recorded, jump, marathon in (
+            (60, True, 0.0, 42195 / 3.5 + 60),
+            (300, False, 0.0, 42195 / 3.5 + 299),
+            (700, False, 0.0, None),
+            # 4 km in 300 s is 13 m/s, a GPS jump: the gap breaks the window.
+            (300, False, 4000.0, None),
         ):
-            with self.subTest(stop=stop, recorded=recorded):
-                distance = running_profile(paused(stop, recorded=recorded))["distance"]
+            with self.subTest(stop=stop, recorded=recorded, jump=jump):
+                run = paused(stop, recorded=recorded, jump=jump)
+                distance = running_profile(run)["distance"]
                 best = {p["distance_meters"]: p["seconds"] for p in distance}
                 if marathon is None:
                     self.assertIsNone(best[42195])
@@ -133,7 +137,7 @@ class PowerProfileTests(unittest.TestCase):
             {duration: best[duration]["start_seconds"] for duration in (180, 420, 720)},
         )
         self.assertEqual(
-            ("mean-max-curve", 2), (result["method"], result["method_version"])
+            ("mean-max-curve", 3), (result["method"], result["method_version"])
         )
 
         speed = [3.0] * len(times)
@@ -162,7 +166,7 @@ class PowerProfileTests(unittest.TestCase):
             {180: 5.0, 420: 4.5, 720: 4.2}, {d: fastest[d] for d in (180, 420, 720)}
         )
         self.assertEqual(
-            ("mean-max-curve", 2), (running["method"], running["method_version"])
+            ("mean-max-curve", 3), (running["method"], running["method_version"])
         )
 
     def test_source_label_names_the_stream_provider(self):

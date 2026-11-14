@@ -92,7 +92,8 @@ recreational marathon runners, no lab reference.
   runs are not checked. The same rule applies to the displayed running bests,
   so a downhill stretch is never a best effort. A displayed distance best is
   timed like a race clock (#2818): a stop and a recording gap of up to ten
-  minutes inside the window count as elapsed time, a longer gap breaks it. The
+  minutes inside the window count as elapsed time, a longer gap breaks it, and so
+  does a gap whose distance jump implies a pace faster than 2:30 min/km. The
   per-duration speed points that feed Critical Speed keep the strict rule
   (steps of at most 5 s while moving).
 - Power source (card 3, #1770): neither Garmin nor Wahoo delivers a signal
