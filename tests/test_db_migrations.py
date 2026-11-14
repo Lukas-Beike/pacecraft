@@ -39,6 +39,7 @@ from backend.db.schema_history import (
     released_shape,
     signature_digest,
 )
+from backend.sync.state import settle_interrupted_sync_state
 
 INTERVALS = ProviderId.INTERVALS.value
 STAMP = "2026-10-16T08:00:00+00:00"
@@ -491,7 +492,7 @@ class DatabaseSchemaGateTests(unittest.TestCase):
                         now=STAMP,
                         current_time=datetime.now(UTC),
                         default_profile_json="{}",
-                        provider_resync_keys=(),
+                        settle_interrupted=settle_interrupted_sync_state,
                         retention_days=-1,
                     )
             finally:

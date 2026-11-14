@@ -26,6 +26,7 @@ from backend.db.schema import configure_cipher, database_schema_is_current
 from backend.privacy import MAX_PRIVACY_EXPORT_BYTES, PrivacyServices, build_privacy
 from backend.runtime import clock as runtime_clock
 from backend.runtime import maintenance as runtime_maintenance
+from backend.sync.state import settle_interrupted_sync_state
 from backend.sync.worker import shared_sync_job_wake_event
 
 
@@ -249,13 +250,9 @@ class BackupBuilderTests(unittest.TestCase):
         self.assertEqual("db", invariants.call_args.args[0])
         self.assertIs(ctx.key_values, kwargs["key_values"])
         self.assertEqual(json.dumps(DEFAULT_PROFILE), kwargs["default_profile_json"])
-        self.assertEqual(
-            [
-                ("garmin_full_resync_running", "garmin_full_resync_status"),
-                ("wahoo_full_resync_running", "wahoo_full_resync_status"),
-            ],
-            list(kwargs["provider_resync_keys"]),
-        )
+        # A restored database settles what was left running, as at start (#2888),
+        # the full-resync flags included (tests/test_sync_state.py).
+        self.assertIs(settle_interrupted_sync_state, kwargs["settle_interrupted"])
 
 
 if __name__ == "__main__":

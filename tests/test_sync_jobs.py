@@ -655,12 +655,6 @@ class SyncJobStoreTests(unittest.TestCase):
                 CREATE TABLE kv (
                     key TEXT PRIMARY KEY, value TEXT, updated_at TEXT NOT NULL
                 );
-                CREATE TABLE provider_refresh_history (
-                    id TEXT PRIMARY KEY, provider TEXT NOT NULL, area TEXT NOT NULL,
-                    operation_id TEXT NOT NULL, trigger TEXT NOT NULL,
-                    started_at TEXT NOT NULL, finished_at TEXT, phase TEXT NOT NULL,
-                    status TEXT NOT NULL, error_code TEXT, next_retry_at TEXT
-                );
                 """
             )
         self.current_now = self.now
@@ -1003,37 +997,6 @@ class SyncJobStoreTests(unittest.TestCase):
         self.assertEqual([job["id"] for job in listed], ["old-4", "old-3"])
         self.assertEqual(len(listed[0]["items"]), 1)
 
-    def test_a_restart_closes_the_refreshes_left_running(self):
-        # A crash left refresh rows running, and freshness showed "syncing"
-        # until the next attempt (#2707); a live refresh between claims stays.
-        with self.manager.unit_of_work() as db:
-            for row_id, status in (("r-1", "running"), ("r-2", "success")):
-                db.execute(
-                    "INSERT INTO provider_refresh_history(id, provider, area, "
-                    "operation_id, trigger, started_at, finished_at, phase, status) "
-                    "VALUES (?, 'garmin', 'data', 'op', 'scheduler', ?, NULL, "
-                    "'fetching', ?)",
-                    (row_id, self.now, status),
-                )
-
-        def rows():
-            with self.manager.reader() as db:
-                return {
-                    row["id"]: (row["status"], row["error_code"], row["finished_at"])
-                    for row in db.execute("SELECT * FROM provider_refresh_history")
-                }
-
-        self.store.requeue_unowned_running()
-        self.assertEqual(("running", None, None), rows()["r-1"])
-        self.store.resume_interrupted()
-        self.assertEqual(
-            {
-                "r-1": ("skipped", "process_interrupted", self.now),
-                "r-2": ("success", None, None),
-            },
-            rows(),
-        )
-
     def test_resume_interrupted_resets_running_records_and_claims_again(self):
         job, _ = self.enqueue(
             operations=[
@@ -1181,43 +1144,22 @@ class SyncJobStoreTests(unittest.TestCase):
             db.execute("DELETE FROM sync_job_items")
             db.execute("DELETE FROM sync_jobs")
 
-    def test_a_restart_ends_a_garmin_operation_left_running(self):
-        # A stale "running" would show as live while a later Garmin push holds
-        # the same lock (#2706); between claims the live operation stays.
-        def operation():
-            with self.manager.reader() as db:
-                return {
-                    row["key"]: row["value"]
-                    for row in db.execute("SELECT key, value FROM kv")
-                }
-
-        running = {
-            "sync_operation_status": "running",
-            "sync_operation_phase": "fetching",
-            "sync_operation_progress": "10",
-            "sync_operation_message": "Garmin-Daten werden gelesen…",
-            "sync_operation_id": "op-1",
-        }
+    def test_job_settles_leave_a_live_garmin_operation_alone(self):
+        # Only the start-up settle ends a running operation (#2706, #2888); the
+        # worker's recovery between claims runs while the operation may be live.
         with self.manager.unit_of_work() as db:
-            for key, value in running.items():
-                db.execute(
-                    "INSERT INTO kv(key, value, updated_at) VALUES (?, ?, ?)",
-                    (key, value, self.now),
-                )
+            db.execute(
+                "INSERT INTO kv(key, value, updated_at) "
+                "VALUES ('sync_operation_status', 'running', ?)",
+                (self.now,),
+            )
         self.store.requeue_unowned_running()
-        self.assertEqual(running, operation())
         self.store.resume_interrupted()
-        # The whole running projection ends; the id names the last operation.
-        self.assertEqual(
-            {
-                "sync_operation_status": "",
-                "sync_operation_phase": "",
-                "sync_operation_progress": "0",
-                "sync_operation_message": "",
-                "sync_operation_id": "op-1",
-            },
-            operation(),
-        )
+        with self.manager.reader() as db:
+            status = db.execute(
+                "SELECT value FROM kv WHERE key='sync_operation_status'"
+            ).fetchone()
+        self.assertEqual("running", status["value"])
 
     def test_requeue_unowned_running_runs_a_lost_outcome_again(self):
         job, _ = self.enqueue()

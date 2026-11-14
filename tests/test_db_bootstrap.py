@@ -14,6 +14,7 @@ from backend.db.repositories import KeyValueRepository
 from backend.db.schema import (
     database_schema_is_current,
 )
+from backend.sync.state import settle_interrupted_sync_state
 
 
 class DatabaseBootstrapTests(unittest.TestCase):
@@ -34,10 +35,7 @@ class DatabaseBootstrapTests(unittest.TestCase):
             now=self.now,
             current_time=self.current_time,
             default_profile_json=json.dumps({"name": "Synthetic athlete"}),
-            provider_resync_keys=(
-                ("intervals_resync_running", "intervals_resync_status"),
-                ("garmin_resync_running", "garmin_resync_status"),
-            ),
+            settle_interrupted=settle_interrupted_sync_state,
             retention_days=retention_days,
         )
 
@@ -46,10 +44,10 @@ class DatabaseBootstrapTests(unittest.TestCase):
         self.addCleanup(db.close)
 
         self.bootstrap(db)
-        self.key_values.set(db, "intervals_resync_running", "1")
-        self.key_values.set(db, "intervals_resync_status", "failed")
-        self.key_values.set(db, "garmin_resync_running", "1")
-        self.key_values.set(db, "garmin_resync_status", "failed")
+        self.key_values.set(db, "wahoo_full_resync_running", "1")
+        self.key_values.set(db, "wahoo_full_resync_status", "failed")
+        self.key_values.set(db, "garmin_full_resync_running", "1")
+        self.key_values.set(db, "garmin_full_resync_status", "failed")
 
         self.bootstrap(db)
 
@@ -57,10 +55,10 @@ class DatabaseBootstrapTests(unittest.TestCase):
         self.assertEqual(
             self.key_values.get(db, "profile"), '{"name": "Synthetic athlete"}'
         )
-        self.assertEqual(self.key_values.get(db, "intervals_resync_running"), "0")
-        self.assertEqual(self.key_values.get(db, "intervals_resync_status"), "")
-        self.assertEqual(self.key_values.get(db, "garmin_resync_running"), "0")
-        self.assertEqual(self.key_values.get(db, "garmin_resync_status"), "")
+        self.assertEqual(self.key_values.get(db, "wahoo_full_resync_running"), "0")
+        self.assertEqual(self.key_values.get(db, "wahoo_full_resync_status"), "")
+        self.assertEqual(self.key_values.get(db, "garmin_full_resync_running"), "0")
+        self.assertEqual(self.key_values.get(db, "garmin_full_resync_status"), "")
         self.assertEqual(
             db.execute(
                 "SELECT revision, updated_at FROM planning_state WHERE id=1"
