@@ -153,3 +153,17 @@ test("a planned unit's fuelling is read once per query and only after the view's
   await tick();
   assert.equal(calls.length, 3, "a read from an ended session is not sent");
 });
+
+test("race plan weather shows the race-day forecast or names what is missing", () => {
+  const ready = rendered.racePlanWeather({
+    status: "ready", name: "Musterstadt", country: "Deutschland",
+    day: { icon: "🌧️", condition: "Leichter Regen", temperature_min: 6.2, temperature_max: 11, wind_speed_max: 14, precipitation_probability_max: 40 },
+  }).map(textOf).join("|");
+  assert.match(ready, /Open-Meteo · Musterstadt, Deutschland/);
+  assert.match(ready, /🌧️ Leichter Regen · 6–11 °C · Wind 14 km\/h · Regen 40 %/);
+  for (const [status, text] of [["pending", "Noch keine Vorhersage"], ["not_in_horizon", "Noch keine Vorhersage"], ["not_found", "Ort nicht gefunden"], ["unavailable", "Vorhersage nicht verfügbar"], ["ready", "Vorhersage nicht verfügbar"]]) {
+    assert.match(rendered.racePlanWeather({ status }).map(textOf).join(""), new RegExp(text));
+  }
+  assert.equal(rendered.racePlanWeather({ status: "no_location" }).length, 0);
+  assert.equal(rendered.racePlanWeather(undefined).length, 0);
+});

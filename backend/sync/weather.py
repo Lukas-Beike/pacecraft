@@ -22,7 +22,9 @@ class WeatherSyncService:
         adaptive_preview_service: Any,
         observer: SyncOperationObserver,
         logger: logging.Logger,
+        competition_weather: Any = None,
     ) -> None:
+        self._competition_weather = competition_weather
         self._profile_service = profile_service
         self._weather_service = weather_service
         self._adaptive_preview_service = adaptive_preview_service
@@ -43,12 +45,23 @@ class WeatherSyncService:
             return result
 
     def refresh_due(self) -> bool:
-        """Return whether an unforced refresh would read the forecast now."""
-        return bool(self._weather_service.refresh_due())
+        """Return whether an unforced refresh would read a forecast now."""
+        return bool(self._weather_service.refresh_due()) or bool(
+            self._competition_weather and self._competition_weather.refresh_due()
+        )
+
+    def competitions_configured(self) -> bool:
+        """Whether a competition location needs a forecast without a profile one."""
+        return bool(self._competition_weather and self._competition_weather.configured())
 
     def _sync_inner(self, reason: str, force: bool) -> dict[str, Any]:
+        # Race-day forecasts run here only, outside the profile forecast's lock
+        # and never from a request; they cannot fail the profile forecast.
+        competitions = (
+            self._competition_weather.refresh() if self._competition_weather else {}
+        )
         if not self._profile_service.get().get("weather_location", "").strip():
-            return {"status": "not_configured"}
+            return {"status": "not_configured", **competitions}
         weather = self._weather_service.state(
             refresh=True,
             force=force,
@@ -66,6 +79,7 @@ class WeatherSyncService:
             "reason": reason,
             "fetched_at": weather.get("fetched_at"),
             **replan,
+            **competitions,
         }
 
     def _refresh_adaptive_preview(self) -> dict[str, Any]:
@@ -100,6 +114,7 @@ def build_weather_sync(
             ctx.planning_workflows.adaptive_replan_preview_service(),
             ctx.provider_sync.operation_observer(),
             ctx.logger,
+            weather.competition_weather(),
         )
 
     return sync_service

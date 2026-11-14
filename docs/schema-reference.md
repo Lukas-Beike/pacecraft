@@ -32,9 +32,9 @@ The keys of the `kv` table are listed in [kv-catalogue.md](kv-catalogue.md).
 ## Current schema
 
 <!-- BEGIN GENERATED SCHEMA -->
-Schema version: `28` (`PRAGMA user_version`).
+Schema version: `29` (`PRAGMA user_version`).
 
-Shape digest: `3c06ad06de8948015a0508c6cae46662971ce58b06e919b3f964b662d62cc0e9`.
+Shape digest: `26e479545cd3331930a836e145facea50f2701c695eb15f6ca2e34a0dfe84628`.
 
 47 tables and 35 named indexes, in signature order.
 
@@ -616,7 +616,7 @@ CREATE TABLE competitions (
     last_synced_at TEXT,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
-);
+, location TEXT NOT NULL DEFAULT '' CHECK (length(location) <= 200));
 ```
 
 ### table `external_calendar_decisions`

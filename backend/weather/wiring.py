@@ -11,12 +11,14 @@ from backend.providers import air_quality, dwd_pollen
 from backend.providers import weather as weather_provider
 from backend.runtime import clock as runtime_clock
 from backend.weather import service as weather
+from backend.weather.competition_forecast import CompetitionWeather
 from backend.weather.projection import WEATHER_FORECAST_DAYS
 
 
 @dataclass(frozen=True)
 class WeatherServices:
     service: Callable[[], weather.WeatherService]
+    competition_weather: Callable[[], CompetitionWeather]
 
 
 def build_weather(ctx: AppContext) -> WeatherServices:
@@ -50,4 +52,23 @@ def build_weather(ctx: AppContext) -> WeatherServices:
             lambda: ctx.clock.now().date(),
         )
 
-    return WeatherServices(service)
+    def race_client() -> weather_provider.WeatherClient:
+        """The forecast without air-quality and pollen overlays."""
+        return weather_provider.WeatherClient(
+            ctx.provider_transport.json_http_client().request,
+            runtime_clock.utc_now,
+            ctx.logger,
+            forecast_days=WEATHER_FORECAST_DAYS,
+        )
+
+    def competition_weather() -> CompetitionWeather:
+        return CompetitionWeather(
+            ctx.database(),
+            ctx.key_values,
+            lambda: ctx.planning.competition().list(),
+            race_client,
+            lambda: datetime.now(UTC),
+            lambda: ctx.clock.now().date(),
+        )
+
+    return WeatherServices(service, competition_weather)

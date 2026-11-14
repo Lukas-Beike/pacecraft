@@ -82,7 +82,8 @@ TimeoutErrorFactory = Callable[[], Exception]
 # details (schema v27).
 # Version 19 adds external_calendar_decisions.jsonl, the athlete's training
 # impact per calendar event (schema v28).
-PRIVACY_EXPORT_FORMAT_VERSION = 19
+# Version 20 adds location to competitions.jsonl (schema v29).
+PRIVACY_EXPORT_FORMAT_VERSION = 20
 
 
 class PrivacyArchiveExportService:
@@ -400,7 +401,7 @@ PRIVACY_EXPORT_JSONL_SOURCES: tuple[tuple[str, RowSource], ...] = (
         "competitions.jsonl",
         _select(
             "SELECT id, name, event_date, starts_at_local, sport, environment, sport_detail, priority, category, distance, target, "
-            "course_profile, notes, description, planned_duration_s, external_id, intervals_event_id, sync_dirty, "
+            "course_profile, location, notes, description, planned_duration_s, external_id, intervals_event_id, sync_dirty, "
             "sync_state, sync_conflict, last_synced_at, created_at, updated_at FROM competitions ORDER BY event_date, priority, name"
         ),
     ),

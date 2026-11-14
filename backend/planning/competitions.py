@@ -30,6 +30,7 @@ COMPETITION_TEXT_LIMITS = {
     "distance": 80,
     "target": 1000,
     "course_profile": 2000,
+    "location": 200,
     "notes": 2000,
     "description": 12000,
     "external_id": 200,

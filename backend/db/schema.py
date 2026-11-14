@@ -19,7 +19,7 @@ from backend.canonical.vocabulary import (
     ProviderRecordState,
 )
 
-CURRENT_SCHEMA_VERSION = 28
+CURRENT_SCHEMA_VERSION = 29
 
 # Provider-neutral canonical tables (schema version 6). Only closed lifecycle
 # enums are CHECKed here; they are generated from backend.canonical.vocabulary so
@@ -626,6 +626,13 @@ CALENDAR_DECISIONS_DDL = """
         PRIMARY KEY (uid, occurrence_start)
     )"""
 
+# Schema version 29: the free-text place of a competition for its race-day
+# weather (#2803); empty means none. Geocoding stays in the weather refresh.
+COMPETITION_LOCATION_DDL = (
+    "ALTER TABLE competitions ADD COLUMN location TEXT NOT NULL DEFAULT '' "
+    "CHECK (length(location) <= 200)"
+)
+
 
 def execute_ddl(db: Any, ddl: str) -> None:
     """Run DDL statement by statement inside the caller's transaction.
@@ -970,6 +977,7 @@ def _create_schema_statements(db: Any) -> None:
     execute_ddl(db, STREAM_DFA_DDL)
     execute_ddl(db, SYNC_JOBS_BACKFILL_INDEX_DDL)
     execute_ddl(db, CALENDAR_DECISIONS_DDL)
+    execute_ddl(db, COMPETITION_LOCATION_DDL)
     db.execute(f"PRAGMA user_version = {CURRENT_SCHEMA_VERSION}")
 
 

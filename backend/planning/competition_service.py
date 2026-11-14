@@ -21,6 +21,7 @@ _OPTIONAL_FIELDS = (
     "notes",
     "description",
     "planned_duration_s",
+    "location",
 )
 # Upcoming races only: past races stay as the archive and never count.
 _MAX_UPCOMING_COMPETITIONS = 20
@@ -56,6 +57,7 @@ def _coach_payload(arguments: Any) -> dict[str, Any]:
         "distance": arguments.get("distance"),
         "target": arguments.get("target"),
         "course_profile": arguments.get("course_profile"),
+        "location": arguments.get("location"),
         "notes": arguments.get("notes"),
         "description": arguments.get("description"),
         "planned_duration_s": planned_duration_s,

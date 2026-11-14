@@ -1156,7 +1156,7 @@ h2 {
 .race-plan-table :is(th, td):not(:first-child) { text-align: right; }
 .race-plan-rows > div { display: flex; justify-content: space-between; gap: 12px; padding: 6px 0; border-top: 1px solid var(--line); }
 .race-plan-rows strong { color: var(--ink); font-weight: 600; text-align: right; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
-.race-plan-gap { margin: 0; }
+.race-plan-gap, .race-plan-weather { margin: 0; }
 .context-empty { margin: 0; padding: 16px; border: 1px dashed var(--line-strong); border-radius: 13px; color: var(--subtle); text-align: center; font-size: .78rem; }
 
 @media (max-width: 479px) {

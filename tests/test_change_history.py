@@ -277,6 +277,14 @@ class ChangeHistoryTests(unittest.TestCase):
             change_history.accepted_audit_hashes("competition", value),
             {change_history.audit_hash(value)},
         )
+        # A competition recorded before schema v29 had no location (#2803).
+        self.assertEqual(
+            change_history.accepted_audit_hashes("competition", {**value, "location": ""}),
+            {
+                change_history.audit_hash({**value, "location": ""}),
+                change_history.audit_hash(value),
+            },
+        )
 
     def test_each_released_profile_generation_stays_matchable(self):
         value = {

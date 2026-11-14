@@ -207,16 +207,19 @@ def _duration(competition: dict[str, Any]) -> dict[str, Any] | None:
 def read_race_plan(
     competition_service: Callable[[], Any],
     body_weight: Callable[[], dict[str, Any] | None],
+    race_weather: Callable[[dict[str, Any]], dict[str, Any]],
     competition_id: str,
 ) -> dict[str, Any] | None:
     """The race plan of a stored competition, or None for an unknown id.
 
-    ``body_weight`` is the nutrition owner's resolved weight with its source.
+    ``body_weight`` is the nutrition owner's resolved weight with its source;
+    ``race_weather`` the weather owner's stored race-day forecast, which a
+    request never fetches.
     """
     competition = competition_service().get(competition_id)
     if competition is None:
         return None
-    return race_plan(competition, body_weight())
+    return {**race_plan(competition, body_weight()), "weather": race_weather(competition)}
 
 
 def race_plan(

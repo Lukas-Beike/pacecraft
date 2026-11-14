@@ -904,7 +904,7 @@ def build_structured_tool_schemas(
         ),
         _canonical_coach_tool(
             "save_competition",
-            "Create or update one local target competition. Creation needs name, event_date and sport; for edits use competition_id from list_competitions and only changed fields. A field left out keeps its value; send an empty string for starts_at_local, distance, target, course_profile, notes or description to clear it. A new starts_at_local alone moves the event_date to its day; an event_date on another day is rejected. Only the 20 upcoming competitions count against the limit. This does not push to Intervals.icu.",
+            "Create or update one local target competition. Creation needs name, event_date and sport; for edits use competition_id from list_competitions and only changed fields. A field left out keeps its value; send an empty string for starts_at_local, distance, target, course_profile, location, notes or description to clear it. location is the city or postal code for the race-day weather. A new starts_at_local alone moves the event_date to its day; an event_date on another day is rejected. Only the 20 upcoming competitions count against the limit. This does not push to Intervals.icu.",
             {
                 "payload": {
                     "type": "object",
@@ -921,6 +921,7 @@ def build_structured_tool_schemas(
                                 "distance",
                                 "target",
                                 "course_profile",
+                                "location",
                                 "notes",
                                 "description",
                             )

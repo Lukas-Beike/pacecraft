@@ -116,6 +116,34 @@ class WeatherSyncServiceTests(unittest.TestCase):
         self.assertEqual(raised.exception.status, 502)
         self.assertEqual(raised.exception.message, "offline")
 
+    def test_competition_forecasts_refresh_with_or_without_a_profile_location(self):
+        # #2803: a competition location is fetched by the job even without a
+        # profile weather location; the profile forecast runs as before.
+        for location, expected_status in (("  ", "not_configured"), ("Berlin", "ok")):
+            with self.subTest(location=location):
+                competitions = Mock()
+                competitions.refresh.return_value = {"competitions": 1}
+                service = self.make_service(location=location)
+                service._competition_weather = competitions
+                result = service.sync()
+                competitions.refresh.assert_called_once_with()
+                self.assertEqual(
+                    (result["status"], result["competitions"]), (expected_status, 1)
+                )
+                self.assertEqual(self.weather.state.called, location == "Berlin")
+
+    def test_refresh_is_due_for_a_stale_competition_forecast(self):
+        service = self.make_service()
+        self.weather.refresh_due.return_value = False
+        self.assertFalse(service.refresh_due())
+        self.assertFalse(service.competitions_configured())
+        competitions = Mock()
+        competitions.refresh_due.return_value = True
+        competitions.configured.return_value = True
+        service._competition_weather = competitions
+        self.assertTrue(service.refresh_due())
+        self.assertTrue(service.competitions_configured())
+
     def test_adaptive_preview_failure_falls_back_to_status(self):
         service = self.make_service(
             weather={"days": [{}], "_refreshed": True},

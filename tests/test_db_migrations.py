@@ -36,6 +36,7 @@ from backend.db.schema_history import (
     SHAPE_CURRENT,
     SHAPE_SCHEMA_V26,
     SHAPE_SCHEMA_V27,
+    SHAPE_SCHEMA_V28,
     released_shape,
     signature_digest,
 )
@@ -244,6 +245,31 @@ def populated_v27_database(db) -> None:
             (event_id, uid, name, start, start, start, all_day, blocked, STAMP)
             for event_id, uid, name, start, all_day, blocked in V27_CALENDAR_EVENTS
         ],
+    )
+    db.commit()
+
+
+# Schema v28, releases 2.1.10 to 2.1.14, has no fixture of its own either: v27
+# after its decision step, here with a decision and a saved competition.
+V28_COMPETITION = (
+    "race-1", "Stadtlauf", "2026-11-28", "run", "A", "21100", "1:45:00",
+    "km 0-8 flach\nkm 8-11 +4 %", "", STAMP, STAMP,
+)
+
+
+def populated_v28_database(db) -> None:
+    populated_v27_database(db)
+    migrations._calendar_decisions(db)
+    db.execute("PRAGMA user_version = 28")
+    db.execute(
+        "INSERT INTO external_calendar_decisions VALUES (?, '', 'block', ?)",
+        ("trip@example.test", STAMP),
+    )
+    db.execute(
+        "INSERT INTO competitions(id, name, event_date, sport, priority, distance, "
+        "target, course_profile, notes, created_at, updated_at) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        V28_COMPETITION,
     )
     db.commit()
 
@@ -609,7 +635,11 @@ class DatabaseSchemaGateTests(unittest.TestCase):
                 )
 
     def test_upgraded_database_restarts_with_the_same_build_unchanged(self):
-        for populate in (populated_baseline_database, populated_v27_database):
+        for populate in (
+            populated_baseline_database,
+            populated_v27_database,
+            populated_v28_database,
+        ):
             with (
                 self.subTest(populate=populate.__name__),
                 tempfile.TemporaryDirectory() as root,
@@ -675,29 +705,74 @@ class DatabaseSchemaGateTests(unittest.TestCase):
             with self.subTest(row=row), self.assertRaises(sqlite3.IntegrityError):
                 db.execute(insert, row)
 
-    def test_failing_v28_step_rolls_back_the_v27_database_and_a_retry_succeeds(self):
-        db = self.connect()
-        populated_v27_database(db)
-        before = list(db.iterdump())
-
-        def failing_step(connection):
-            migrations._calendar_decisions(connection)
-            raise RuntimeError("injected migration failure")
-
-        with (
-            mock.patch.dict(
-                migrations.UPGRADE_STEPS,
-                {SHAPE_SCHEMA_V27: (SHAPE_CURRENT, failing_step)},
-            ),
-            self.assertRaisesRegex(RuntimeError, "injected"),
+    def test_failing_step_rolls_back_the_released_database_and_a_retry_succeeds(self):
+        # Each released schema's own step fails after its DDL ran: the database
+        # keeps its version, shape and rows, and the next start upgrades it.
+        for populate, version, shape, step in (
+            (populated_v27_database, 27, SHAPE_SCHEMA_V27, migrations._calendar_decisions),
+            (populated_v28_database, 28, SHAPE_SCHEMA_V28, migrations._competition_location),
         ):
-            migrate_schema(db)
-        db.rollback()
-        self.assertEqual(list(db.iterdump()), before)
-        self.assertEqual(db.execute("PRAGMA user_version").fetchone()[0], 27)
+            with self.subTest(version=version):
+                db = self.connect()
+                populate(db)
+                before = list(db.iterdump())
+
+                def failing_step(connection, step=step):
+                    step(connection)
+                    raise RuntimeError("injected migration failure")
+
+                next_shape = migrations.UPGRADE_STEPS[shape][0]
+                with (
+                    mock.patch.dict(
+                        migrations.UPGRADE_STEPS, {shape: (next_shape, failing_step)}
+                    ),
+                    self.assertRaisesRegex(RuntimeError, "injected"),
+                ):
+                    migrate_schema(db)
+                db.rollback()
+                self.assertEqual(list(db.iterdump()), before)
+                self.assertEqual(
+                    db.execute("PRAGMA user_version").fetchone()[0], version
+                )
+                migrate_schema(db)
+                db.commit()
+                self.assertTrue(database_schema_is_current(db))
+
+    def test_frozen_v28_shape_is_v27_after_its_decision_step(self):
+        db = self.connect()
+        db.executescript(BASELINE_FIXTURE.read_text(encoding="utf-8"))
+        migrations._canonical_products(db)
+        migrations._calendar_decisions(db)
+        self.assertEqual(
+            released_shape(database_schema_signature(db)), SHAPE_SCHEMA_V28
+        )
+
+    def test_populated_v28_database_gains_an_empty_location_with_every_row(self):
+        db = self.connect()
+        populated_v28_database(db)
+        tables = self.user_tables(db)
+        columns = {
+            table: [row[1] for row in db.execute(f"PRAGMA table_info({table})")]
+            for table in tables
+        }
+        before = self.table_rows(db, tables, columns)
         migrate_schema(db)
         db.commit()
         self.assertTrue(database_schema_is_current(db))
+        self.assertEqual(
+            db.execute("PRAGMA user_version").fetchone()[0], CURRENT_SCHEMA_VERSION
+        )
+        self.assertEqual(self.user_tables(db), tables)
+        self.assertEqual(self.table_rows(db, tables, columns), before)
+        self.assertEqual(
+            [tuple(row) for row in db.execute("SELECT id, location FROM competitions")],
+            [("race-1", "")],
+        )
+        db.execute("UPDATE competitions SET location = 'Berlin' WHERE id = 'race-1'")
+        with self.assertRaises(sqlite3.IntegrityError):
+            db.execute("UPDATE competitions SET location = ? WHERE id = 'race-1'", ("x" * 201,))
+        with self.assertRaises(sqlite3.IntegrityError):
+            db.execute("UPDATE competitions SET location = NULL WHERE id = 'race-1'")
 
     def test_version_and_shape_must_belong_together(self):
         previous = self.connect()
@@ -744,17 +819,26 @@ class DatabaseSchemaGateTests(unittest.TestCase):
     @unittest.skipIf(
         cipher_backend is None, "SQLCipher requires the Docker runtime on Windows"
     )
-    def test_encrypted_v27_database_upgrades_and_restarts_with_its_rows(self):
+    def test_encrypted_released_database_upgrades_and_restarts_with_its_rows(self):
+        for populate in (populated_v27_database, populated_v28_database):
+            with self.subTest(populate=populate.__name__):
+                self.assert_encrypted_upgrade(populate)
+
+    def assert_encrypted_upgrade(self, populate):
         password = "synthetic-migration-test-key"
         with tempfile.TemporaryDirectory() as root:
-            path = Path(root) / "encrypted-v27.db"
+            path = Path(root) / "encrypted-released.db"
             db = cipher_backend.connect(str(path))
             db.row_factory = cipher_backend.Row
             try:
                 configure_cipher(db, password)
-                populated_v27_database(db)
+                populate(db)
                 tables = self.user_tables(db)
-                before = self.table_rows(db, tables)
+                columns = {
+                    table: [row[1] for row in db.execute(f"PRAGMA table_info({table})")]
+                    for table in tables
+                }
+                before = self.table_rows(db, tables, columns)
             finally:
                 db.close()
             options = {
@@ -768,7 +852,7 @@ class DatabaseSchemaGateTests(unittest.TestCase):
                     with manager.unit_of_work() as db:
                         migrate_schema(db)
                         self.assertTrue(database_schema_is_current(db))
-                        self.assertEqual(self.table_rows(db, tables), before)
+                        self.assertEqual(self.table_rows(db, tables, columns), before)
                         self.assertEqual(
                             db.execute("PRAGMA cipher_integrity_check").fetchall(), []
                         )
