@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import unittest
 from datetime import UTC, datetime, timedelta
-from typing import Any, cast
+from typing import Any
 from zoneinfo import ZoneInfo
 
 from backend.activities.activity_summary import activity_summaries, activity_summary
@@ -17,7 +17,6 @@ from backend.canonical.vocabulary import (
     SourceKind,
     Sport,
 )
-from backend.performance.activity_read_service import _training_effect
 
 STARTED = datetime(2026, 10, 19, 7, 0, tzinfo=UTC)
 BERLIN = ZoneInfo("Europe/Berlin")
@@ -237,20 +236,6 @@ class ActivitySummaryTests(unittest.TestCase):
             summary["heart_rate_zone_times"],
         )
         self.assertEqual("Garmin Connect", summary["sources"]["heart_rate_zone_times"])
-        # #2831: the session details show these as the provider's own values,
-        # an effect of 0.0 included, with the provider's label.
-        self.assertEqual(
-            {
-                "aerobic_training_effect": 3.7,
-                "anaerobic_training_effect": 0.0,
-                "training_effect_label": "VO2MAX",
-                "training_effect_load": 120.0,
-                "source": "Garmin Connect",
-            },
-            _training_effect(summary),
-        )
-        self.assertIsNone(_training_effect(None))
-        self.assertIsNone(_training_effect(cast(Any, {"id": "act_1", "sources": {}})))
 
     def test_the_labelled_record_supplies_the_effect_values(self) -> None:
         summary = activity_summary(

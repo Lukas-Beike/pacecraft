@@ -395,11 +395,13 @@
   const EFFECT_BENEFITS = {
     RECOVERY: "Erholung", AEROBIC_BASE: "Basis", LOW_AEROBIC: "Aerob niedrig", TEMPO: "Tempo", THRESHOLD: "Schwelle",
     LACTATE_THRESHOLD: "Laktatschwelle", VO2MAX: "VO2max", VO2_MAX: "VO2max", HIGH_AEROBIC: "Aerob hoch",
-    ANAEROBIC_CAPACITY: "Anaerobe Kapazität", SPEED: "Sprint", ANAEROBIC: "Anaerob",
+    ANAEROBIC_CAPACITY: "Anaerobe Kapazität", SPEED: "Sprint", ANAEROBIC: "Anaerob", NO_BENEFIT: "Kein Nutzen",
   };
   // Training effect runs from 0 to 5 and always shows one decimal, as Garmin shows it.
   const EFFECT_SCALE = 5;
-  const EFFECT_FORMAT = new Intl.NumberFormat("de-DE", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+  const effectText = (value) => AppFormat.number(value, { digits: 1, minDigits: 1 });
+  // An unknown category reads as words, not as an upper-case code.
+  const effectBenefit = (code) => EFFECT_BENEFITS[code] || String(code).toLowerCase().replaceAll("_", " ").replace(/^./, (letter) => letter.toUpperCase());
 
   // `effect` (0 to 5) adds a bar on the training-effect scale.
   function effectTile(label, text, effect = null) {
@@ -415,14 +417,16 @@
   function providerEffect(effect) {
     if (!effect) return null;
     const tiles = [
-      finite(effect.aerobic_training_effect) && effectTile("Trainingseffekt aerob", EFFECT_FORMAT.format(effect.aerobic_training_effect), effect.aerobic_training_effect),
-      finite(effect.anaerobic_training_effect) && effectTile("Trainingseffekt anaerob", EFFECT_FORMAT.format(effect.anaerobic_training_effect), effect.anaerobic_training_effect),
-      effect.training_effect_label && effectTile("Hauptnutzen", EFFECT_BENEFITS[effect.training_effect_label] || effect.training_effect_label),
+      finite(effect.aerobic_training_effect) && effectTile("Trainingseffekt aerob", effectText(effect.aerobic_training_effect), effect.aerobic_training_effect),
+      finite(effect.anaerobic_training_effect) && effectTile("Trainingseffekt anaerob", effectText(effect.anaerobic_training_effect), effect.anaerobic_training_effect),
+      effect.training_effect_label && effectTile("Hauptnutzen", effectBenefit(effect.training_effect_label)),
       finite(effect.training_effect_load) && effectTile("Belastung", numberText(effect.training_effect_load)),
     ].filter(Boolean);
     if (!tiles.length) return null;
     const source = String(effect.source || "");
-    const title = source ? `${source.split(" ")[0]}-Werte` : "Werte des Anbieters";
+    // Titled after the provider, whatever the casing of its label ("garmin" without a label).
+    const provider = source.split(" ")[0];
+    const title = provider ? `${provider[0].toUpperCase()}${provider.slice(1)}-Werte` : "Werte des Anbieters";
     return h("section", "activity-effect", h("div", "activity-effect-header", h("h4", null, title), source && h("span", "activity-effect-source", source)),
       h("dl", "activity-analysis-stats", tiles));
   }

@@ -7,7 +7,10 @@ from typing import Any, Final
 from zoneinfo import ZoneInfo
 
 from backend.activities.activity_reference import ActivityReferenceResolver
-from backend.activities.activity_summary import ActivitySummary
+from backend.activities.activity_summary import (
+    TRAINING_EFFECT_KEYS,
+    ActivitySummary,
+)
 from backend.activities.detail_contract import measured_order
 from backend.activities.matching import match_planned_workouts
 from backend.activities.read_service import ActivityReadService, ActivitySummarySource
@@ -279,7 +282,7 @@ class ActivityAnalysisReadService(ActivityReadService):
             document["route"] = route
         summary = requested_summary()
         _add_purpose(document["session"], summary)
-        effect = _training_effect(summary)
+        effect = _provider_training_effect(summary)
         if effect is not None:
             document["training_effect"] = effect
         return {"ok": True, **document, "data_scope": _data_scope(document, records)}
@@ -314,18 +317,16 @@ def _add_purpose(session: dict[str, Any], summary: ActivitySummary | None) -> No
 
 
 # The provider's own training-effect values of a session (#2831), as reported.
-_TRAINING_EFFECT_KEYS: Final = (
-    "aerobic_training_effect",
-    "anaerobic_training_effect",
-    "training_effect_label",
-    "training_effect_load",
-)
+_TRAINING_EFFECT_KEYS: Final = (*TRAINING_EFFECT_KEYS, "training_effect_load")
 
 
-def _training_effect(summary: ActivitySummary | None) -> dict[str, Any] | None:
+def _provider_training_effect(
+    summary: ActivitySummary | None,
+) -> dict[str, Any] | None:
     """The provider's training-effect values with their source label, or None.
 
-    Shown as the provider's values only; nothing is derived from them.
+    All values come from one record of the summary, so they share its source;
+    they are shown as the provider's values only, nothing is derived from them.
     """
     if summary is None:
         return None

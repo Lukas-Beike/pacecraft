@@ -172,6 +172,8 @@ class CoachActivityReadToolService:
             # Per-second running dynamics are for the calendar's charts; the Coach
             # reads their averages from the metrics.
             detail.pop("running_dynamics_streams", None)
+            # The provider-values section repeats the effect metrics (#2831).
+            detail.pop("training_effect", None)
             result = self._with_session_context(detail)
             session = detail.get("session")
             if self._session_corrections is not None and isinstance(session, dict):

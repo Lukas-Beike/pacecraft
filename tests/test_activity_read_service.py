@@ -4,6 +4,7 @@ import tempfile
 import unittest
 from contextlib import contextmanager
 from datetime import date
+from typing import Any, cast
 
 from activity_row_support import (
     FixedActivityRows,
@@ -19,7 +20,10 @@ from backend.canonical.activity_summary import stored_activity_key
 from backend.canonical.vocabulary import ProviderId
 from backend.db.repositories import KeyValueRepository
 from backend.errors import AppError
-from backend.performance.activity_read_service import ActivityAnalysisReadService
+from backend.performance.activity_read_service import (
+    ActivityAnalysisReadService,
+    _provider_training_effect,
+)
 from backend.performance.canonical_inputs import CanonicalPerformanceSource
 from backend.performance.freshness import NO_GARMIN_SYNC_STATUS
 from backend.sync.activity_routes import ActivityRoutesStage
@@ -231,6 +235,8 @@ class ActivityReadServiceTests(unittest.TestCase):
             result["data_scope"],
         )
         self.assertFalse(LEGACY_KEYS & set(result))
+        # #2831: a session without provider training-effect values has no section.
+        self.assertNotIn("training_effect", result)
         self.assertEqual(
             result,
             self.detail_service(snapshot).detail(
@@ -239,6 +245,31 @@ class ActivityReadServiceTests(unittest.TestCase):
                 profile={},
                 today=date(2026, 9, 20),
             ),
+        )
+
+    def test_detail_carries_the_providers_own_training_effect(self):
+        # #2831: one record's values with its label, an effect of 0.0 included.
+        summary = {
+            "id": "act_1",
+            "aerobic_training_effect": 3.7,
+            "anaerobic_training_effect": 0.0,
+            "training_effect_label": "VO2MAX",
+            "training_effect_load": 120.0,
+            "sources": {"aerobic_training_effect": "Garmin Connect"},
+        }
+        self.assertEqual(
+            {
+                "aerobic_training_effect": 3.7,
+                "anaerobic_training_effect": 0.0,
+                "training_effect_label": "VO2MAX",
+                "training_effect_load": 120.0,
+                "source": "Garmin Connect",
+            },
+            _provider_training_effect(cast(Any, summary)),
+        )
+        self.assertIsNone(_provider_training_effect(None))
+        self.assertIsNone(
+            _provider_training_effect(cast(Any, {"id": "act_1", "sources": {}}))
         )
 
     def test_detail_reads_an_activity_older_than_the_performance_window(self):

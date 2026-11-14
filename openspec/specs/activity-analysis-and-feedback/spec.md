@@ -422,9 +422,9 @@ The system SHALL serve with the detail document the provider's own training-effe
 - **THEN** no section or tile is shown for it.
 
 Evidence:
-- `backend/performance/activity_read_service.py:_training_effect`
+- `backend/performance/activity_read_service.py:_provider_training_effect`
 - `public/activity-analysis.js::providerEffect`
-- `tests/test_activity_summary.py:test_effect_values_and_garmin_extremes_reach_the_summary`
+- `tests/test_activity_read_service.py:test_detail_carries_the_providers_own_training_effect`
 - `e2e/calendar-detail-pane.spec.js`
 
 ### Requirement: Running dynamics against the athlete's own runs at the same pace
