@@ -24,7 +24,19 @@ A configured application database SHALL be opened/created through SQLCipher with
 - **WHEN** a secure database is requested while SQLCipher is unavailable
 - **THEN** startup/database access fails without creating a plaintext replacement
 
-Evidence: `backend/db/schema.py::configure_cipher`; `backend/db/manager.py::DatabaseManager`; `server.py::database_manager`; `backend/config.py::security_configuration_error`. Tests: `tests/test_server_database.py::test_unavailable_sqlcipher_closes_manager_for_changed_secure_configuration`; `tests/test_db_migrations.py::test_encrypted_current_database_reopens_with_same_key`.
+#### Scenario: Connection settings
+- **WHEN** a connection is opened
+- **THEN** these statements run in this order: `PRAGMA key` with the password (single quotes doubled), `cipher_compatibility = 4`, `cipher_memory_security = OFF` (memory locking would split the process into too many mappings; the file stays encrypted), `foreign_keys = ON`, `cache_size = -16384` (16 MiB) and `journal_size_limit = 67108864` (64 MiB); the journal mode is WAL, set when the schema is created (`docs/schema-reference.md`)
+
+#### Scenario: Pool and memory budget
+- **WHEN** the database manager is composed
+- **THEN** it holds one persistent writer and at most four readers, each waiting at most 20 seconds on a database lock, so the page caches take at most 80 MiB in all; connections are kept open only when a password is configured
+
+#### Scenario: File unreadable with the configured key
+- **WHEN** the existing file cannot be read with APP_PASSWORD
+- **THEN** the first read fails with the driver's database error, startup ends there, and no database is created, replaced or modified; no handler or dedicated log event exists for this case
+
+Evidence: `backend/db/schema.py::configure_cipher`; `backend/db/manager.py::DatabaseManager`, `backend/db/manager.py::DatabaseManager._connect`; `backend/db/manager.py::DatabaseHolder`; `server.py::database_manager`; `backend/config.py::security_configuration_error`. Tests: `tests/test_server_database.py::test_unavailable_sqlcipher_closes_manager_for_changed_secure_configuration`; `tests/test_db_migrations.py::test_encrypted_current_database_reopens_with_same_key`; `tests/test_db_manager.py::test_page_cache_budget_applies_to_writer_and_each_reader`; `tests/test_db_manager.py::test_keyed_connections_disable_memory_locking`; `tests/test_database_space_reclaim.py::test_every_connection_limits_the_wal_size`; `tests/test_db_encrypted_upgrade_matrix.py::test_the_baseline_restarts_unchanged_and_needs_its_key` (the wrong-key read fails; the startup abort itself is derived from the code path and not run).
 
 ### Requirement: Baseline schema upgrades
 
@@ -72,7 +84,15 @@ The database SHALL reject unsupported versions, unknown shapes and mismatched ve
 - **WHEN** the exact current schema is initialized repeatedly
 - **THEN** the current version and durable rows remain unchanged by migration
 
-Evidence: `backend/db/migrations.py::migrate_schema`; `backend/db/schema.py::database_schema_is_current`. Tests: `tests/test_db_migrations.py::test_older_or_newer_schema_version_is_rejected_without_modification`; `tests/test_db_migrations.py::test_unknown_schema_shape_is_rejected_without_modification`; `tests/test_db_migrations.py::test_version_and_shape_must_belong_together`; `tests/test_db_migrations.py::test_current_schema_is_accepted_repeatedly_without_changes`.
+#### Scenario: Check order and messages
+- **WHEN** a database is opened
+- **THEN** before any write the stored version is checked against the oldest supported one (the retired-schema message below), then against the accepted version set ("Die Datenbankversion wird von diesem Release nicht unterstützt."; this also rejects version 0 on a database that already holds schema objects), then the shape against the shapes accepted for that version ("Die vorhandene Datenbank entspricht keinem unterstützten Schema. Der Datenbestand bleibt erhalten; bitte ein kompatibles Release verwenden."); each failure leaves the file unchanged
+
+#### Scenario: Upgrade validation
+- **WHEN** a supported older shape is opened
+- **THEN** its steps run in order inside one savepoint of one immediate transaction, the stored version is set to the current one inside it, and a result that is not the exact current schema fails with "Die Datenbankmigration konnte nicht validiert werden." after the savepoint is rolled back
+
+Evidence: `backend/db/migrations.py::migrate_schema`; `backend/db/bootstrap.py::initialize_application_database`; `backend/db/schema.py::database_schema_is_current`. No test pins the two German texts above. Tests: `tests/test_db_bootstrap.py::test_tableless_nonfresh_database_is_rejected_without_mutation`; `tests/test_db_migrations.py::test_older_or_newer_schema_version_is_rejected_without_modification`; `tests/test_db_migrations.py::test_unknown_schema_shape_is_rejected_without_modification`; `tests/test_db_migrations.py::test_version_and_shape_must_belong_together`; `tests/test_db_migrations.py::test_current_schema_is_accepted_repeatedly_without_changes`.
 
 ### Requirement: Rollback on failed upgrades
 
@@ -101,10 +121,48 @@ The database manager SHALL serialize writers, commit/roll back an owned unit of 
 - **THEN** the queries observe one committed state and writes through that snapshot are rejected
 
 #### Scenario: Resource contention
-- **WHEN** a reader/writer lease cannot be acquired within its configured bound
-- **THEN** the manager raises classified contention instead of waiting indefinitely
+- **WHEN** the writer is not free within the wait of the call (20 seconds by default; `0` tries once) or no reader slot is free within 20 seconds
+- **THEN** the manager raises the retryable `DatabaseBusyError` naming `writer` or `reader` instead of waiting indefinitely
 
-Evidence: `backend/db/manager.py::DatabaseManager.unit_of_work`; `backend/db/manager.py::DatabaseManager.read_snapshot`; `backend/db/manager.py::WriterGate`. Tests: `tests/test_db_manager.py::test_unit_of_work_rolls_back_and_reader_pool_reuses_connections`; `tests/test_db_manager.py::test_unit_of_work_rolls_back_on_base_exceptions_before_reuse`; `tests/test_db_manager.py::test_writer_wait_is_bounded`; `tests/test_diagnostic_report.py::test_database_counts_and_kv_reads_share_one_read_snapshot`.
+#### Scenario: Foreground before background
+- **WHEN** a foreground and a background unit of work (marked with `background_writer`) wait for the writer
+- **THEN** the foreground one is served first, and after eight foreground grants the waiting background one is served, so background work is delayed but never starved; the writer is re-entrant per thread and a held writer is never preempted
+
+#### Scenario: Nested access
+- **WHEN** a reader or read snapshot is requested inside a unit of work
+- **THEN** it uses the writer connection and sees uncommitted rows; a unit of work requested inside a read snapshot gets the read-only connection, so a write fails
+
+#### Scenario: Write left open on a reader
+- **WHEN** a pooled reader connection is returned with an open transaction
+- **THEN** the transaction is rolled back before reuse, or the connection is closed
+
+#### Scenario: After-commit callback
+- **WHEN** a callback is registered inside a unit of work
+- **THEN** it runs once after the outermost commit, is dropped on rollback, and runs at once outside a unit of work; a failing callback is logged without undoing the commit
+
+#### Scenario: Changed key or path
+- **WHEN** the database path, APP_PASSWORD or SQLCipher availability changes
+- **THEN** `DatabaseHolder` closes the manager after its leased work ends and opens a new one; a password without SQLCipher fails with "SQLCipher ist für eine verschlüsselte Datenbank erforderlich."
+
+Evidence: `backend/db/manager.py::DatabaseManager.unit_of_work`; `backend/db/manager.py::DatabaseManager.after_commit`; `backend/db/manager.py::DatabaseManager.read_snapshot`; `backend/db/manager.py::WriterGate`; `backend/db/manager.py::DatabaseHolder`. Tests: `tests/test_db_manager.py::test_unit_of_work_rolls_back_and_reader_pool_reuses_connections`; `tests/test_db_manager.py::test_unit_of_work_rolls_back_on_base_exceptions_before_reuse`; `tests/test_db_manager.py::test_writer_wait_is_bounded`; `tests/test_db_manager.py::test_unit_of_work_accepts_a_shorter_writer_wait`; `tests/test_db_manager.py::test_foreground_beats_a_waiting_background_writer`; `tests/test_db_manager.py::test_background_writer_is_not_starved_by_foreground_writers`; `tests/test_db_manager.py::test_reader_nested_in_unit_of_work_reuses_writer_and_sees_uncommitted_row`; `tests/test_db_manager.py::test_read_snapshot_is_read_only_and_restores_the_pooled_connection`; `tests/test_db_manager.py::test_reader_rolls_back_a_write_left_open_on_its_connection`; `tests/test_db_manager.py::test_after_commit_runs_only_after_the_outermost_commit`; `tests/test_db_manager.py::test_holder_replacement_waits_for_leased_unit_of_work`; `tests/test_diagnostic_report.py::test_database_counts_and_kv_reads_share_one_read_snapshot`.
+
+### Requirement: Log truncation and secure space reclaim
+
+The write-ahead log SHALL be truncated periodically without waiting on readers. A deletion that asks for it (the local data purge, the GPS track deletion) SHALL overwrite the deleted content and then remove it from the database file and the log.
+
+#### Scenario: Idle checkpoint
+- **WHEN** the daily sync loop runs its cycle (every 300 seconds)
+- **THEN** a truncating checkpoint runs under the writer with a busy timeout of 0; a failure is logged as `wal_checkpoint_failed` with the error class only and the loop continues, and a refusal by maintenance is not a failure
+
+#### Scenario: Secure deletion
+- **WHEN** such a deletion runs
+- **THEN** `secure_delete` is on for that unit of work only and its previous value is restored afterwards, also after a failure
+
+#### Scenario: Reclaim
+- **WHEN** such a deletion has committed
+- **THEN** a checkpoint, a `VACUUM` and a second checkpoint run under the writer outside any transaction; a failure is logged (`privacy_space_reclaim_failed`, `privacy_space_reclaim_incomplete`) and neither undoes the committed deletion nor fails the request, and a reclaim requested inside a transaction raises
+
+Evidence: `backend/db/manager.py::DatabaseManager.checkpoint_wal`; `backend/db/manager.py::secure_deletion`; `backend/db/manager.py::DatabaseManager.reclaim_space`; `backend/sync/scheduler.py::DailySyncLoop`; `backend/privacy.py::PrivacyDeleteService._reclaim_after_commit`. Tests: `tests/test_database_space_reclaim.py::test_checkpoint_truncates_the_wal`; `tests/test_database_space_reclaim.py::test_checkpoint_does_not_wait_on_an_open_reader`; `tests/test_database_space_reclaim.py::test_secure_delete_is_scoped_to_the_unit_of_work`; `tests/test_database_space_reclaim.py::test_secure_delete_is_restored_after_a_failed_unit_of_work`; `tests/test_database_space_reclaim.py::test_reclaim_inside_a_transaction_is_refused`; `tests/test_database_space_reclaim.py::test_purge_removes_the_content_from_the_file_and_the_wal`; `tests/test_database_space_reclaim.py::test_a_failing_vacuum_leaves_the_data_intact_and_the_purge_succeeds`; `tests/test_database_space_reclaim.py::test_an_incomplete_checkpoint_is_logged_without_failing_the_purge`; `tests/test_database_space_reclaim.py::test_a_failing_checkpoint_is_logged_and_never_stops_the_loop`; `tests/test_database_space_reclaim.py::test_maintenance_is_not_a_checkpoint_failure`.
 
 ### Requirement: Restore drains active connections
 

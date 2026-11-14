@@ -151,7 +151,7 @@ The API SHALL expose bounded redacted error text, a safe reason and request corr
 
 #### Scenario: Busy database
 - **WHEN** a request cannot acquire its bounded database resource
-- **THEN** the response is HTTP 503 with database_busy retry metadata rather than an unclassified internal error
+- **THEN** the response is HTTP 503 with reason `database_busy`, `retry_after_seconds` 5 (also as `Retry-After`) and the text "Die lokale Datenbank war vorübergehend ausgelastet. Ein späterer Versuch sollte gelingen." rather than an unclassified internal error
 
 #### Scenario: Unexpected exception
 - **WHEN** a route raises an unhandled internal exception
@@ -169,11 +169,29 @@ The API SHALL expose bounded redacted error text, a safe reason and request corr
 - **WHEN** the public status is 500 or higher
 - **THEN** one `http_app_error` log entry with method, status and request id is written; an unhandled exception answers HTTP 500 with only `{"error": "Interner Serverfehler."}`, and the query string is redacted in every access log line
 
+#### Scenario: Provider failure without a status
+- **WHEN** a provider call fails without an upstream status
+- **THEN** the answer is HTTP 502 with reason `provider_network_error`, `provider_http_error` or `provider_client_error` (`network_error`, `http_error` or `client_error` for OpenAI) and a German message that names only the service and the failure class
+
 #### Scenario: Other upstream statuses
 - **WHEN** a provider answers 404, 429, 408 or 5xx, or another error status
 - **THEN** the public contract is HTTP 502 `upstream_not_found`, 429 `upstream_rate_limited`, 503 `upstream_unavailable` or 502 `upstream_rejected`
 
-Evidence: `backend/errors.py::public_error_payload`; `backend/errors.py::public_error_contract`; `backend/http_api/handler.py::RequestHandler._send_app_error`. Tests: `tests/test_http_database_busy.py::test_busy_writer_during_login_is_a_retryable_503`; `tests/test_http_database_busy.py::test_other_failures_stay_an_internal_500`; `tests/test_server_http.py::test_app_error_handler_logs_redacted_event_for_each_method`; `tests/test_server_http.py::test_missing_request_id_is_omitted_from_error_response`; `tests/test_http_database_busy.py::test_rate_limit_errors_also_send_retry_after`.
+Evidence: `backend/errors.py::public_error_payload`; `backend/errors.py::public_error_contract`; `backend/http_api/handler.py::RequestHandler._send_app_error`. Tests: `tests/test_http_database_busy.py::test_busy_writer_during_login_is_a_retryable_503`; `tests/test_http_database_busy.py::test_other_failures_stay_an_internal_500`; `tests/test_server_http.py::test_app_error_handler_logs_redacted_event_for_each_method`; `tests/test_server_http.py::test_missing_request_id_is_omitted_from_error_response`; `tests/test_http_database_busy.py::test_rate_limit_errors_also_send_retry_after`; `tests/test_http_database_busy.py::test_busy_reader_on_get_is_a_retryable_503`; `tests/test_errors.py::test_network_category_uses_service_labels_and_reasons`; `tests/test_errors.py::test_upstream_statuses_map_to_public_status_and_reason`.
+
+### Requirement: Bounded paged reads
+
+Paged reads SHALL use the shared page helper: a page size of 100 by default, at least 1 and at most 250, and an opaque cursor that is ignored when empty, longer than 4,096 characters or undecodable. A route with its own default or maximum states it in `docs/api-routes.md`.
+
+#### Scenario: Page limit
+- **WHEN** a request names a page size
+- **THEN** a number is clamped to 1 through 250 and anything else gives 100
+
+#### Scenario: Cursor format
+- **WHEN** a server issues a cursor
+- **THEN** it is the URL-safe base64 of compact JSON without padding; an empty, oversized or undecodable cursor is treated as no cursor, and an oversized one is rejected before decoding
+
+Evidence: `backend/pagination.py::api_page_limit`; `backend/pagination.py::encode_page_cursor`; `backend/pagination.py::decode_page_cursor`. Tests: `tests/test_pagination.py::test_page_limit_uses_default_and_bounds`; `tests/test_pagination.py::test_oversize_cursor_is_rejected_before_decoding`; `tests/test_pagination.py::test_invalid_or_empty_cursor_decodes_to_none`; `tests/test_pagination.py::test_cursor_round_trip_preserves_unicode_and_structure`; `tests/test_pagination.py::test_largest_server_issued_cursors_round_trip`.
 
 ### Requirement: Static and API routing boundaries
 
