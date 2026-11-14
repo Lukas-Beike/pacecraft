@@ -19,10 +19,27 @@ SECRET_SHAPES = re.compile(
     r"|-----BEGIN [A-Z ]*PRIVATE KEY-----|xox[abp]-[A-Za-z0-9-]{10,}"
 )
 MAX_BODY = 60_000
+# The quality ratchet's finding lines; a refused push shows all of them (#2944).
+RATCHET_LINES = ("NEW ", "OBSOLETE ", "Obsolete baseline")
+RATCHET_SHOWN = 50
 
 
 class CliError(RuntimeError):
     """A failed command or a refused input; the message is safe to print."""
+
+
+def _push_refusal(done: subprocess.CompletedProcess, lines: list[str]) -> list[str]:
+    """Every ratchet line from either stream (capped), then the hook's last lines.
+
+    Git may leave a pre-push hook's stdout alone, where the ratchet prints.
+    """
+    both = [*(done.stdout or "").splitlines(), *(done.stderr or "").splitlines()]
+    ratchet = [x for x in both if x.startswith(RATCHET_LINES)]
+    hidden = len(ratchet) - RATCHET_SHOWN
+    more = [f"... and {hidden} more"] if hidden > 0 else []
+    skip = ("error", "To ", " ! ", "hint:", *RATCHET_LINES)
+    hook = [x for x in lines if not x.startswith(skip)]
+    return [*ratchet[:RATCHET_SHOWN], *more, *hook[-5:]]
 
 
 def run(
@@ -52,10 +69,7 @@ def run(
         detail = reason or (lines[0] if lines else "no output")
         if "push" in args:
             # A refusing pre-push hook explains itself before git's generic line.
-            hook = [
-                x for x in lines if not x.startswith(("error", "To ", " ! ", "hint:"))
-            ]
-            detail = "\n".join([detail, *hook[-5:]])
+            detail = "\n".join([detail, *_push_refusal(done, lines)])
         raise CliError(f"{program} {' '.join(args[:2])} failed: {detail}")
     return done.stdout
 

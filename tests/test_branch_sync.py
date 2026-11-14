@@ -12,6 +12,7 @@ from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 import branch_sync
+import gh_cli
 from gh_cli import CliError
 
 SONAR_NAME = "sonar.cmd" if os.name == "nt" else "sonar"
@@ -172,8 +173,14 @@ class BranchSyncTests(unittest.TestCase):
         )
         self.assertTrue((self.work / "hook-ran").exists())
 
+        # #2944: every ratchet line reaches the refusal once, whether git
+        # leaves the hook's stdout alone or sends it to stderr.
+        findings = "".join(
+            f"echo 'NEW mypy a.py:{n} misc: m{n}'{' >&2' * (n % 2)}\n" for n in range(7)
+        )
         (hooks / "pre-push").write_text(
-            "#!/bin/sh\necho 'Push blocked: the quality ratchet could not run' >&2\nexit 1\n",
+            f"#!/bin/sh\n{findings}echo 'OBSOLETE ruff b.py F401'\necho 'progress line'\n"
+            "echo 'Push blocked: the quality ratchet could not run' >&2\nexit 1\n",
             encoding="utf-8",
             newline="\n",
         )
@@ -183,6 +190,17 @@ class BranchSyncTests(unittest.TestCase):
         self.assertEqual(code, 2)
         self.assertIn("failed to push", err)
         self.assertIn("Push blocked: the quality ratchet could not run", err)
+        for line in [f"NEW mypy a.py:{n} misc: m{n}" for n in range(7)] + [
+            "OBSOLETE ruff b.py F401"
+        ]:
+            self.assertEqual(err.count(line), 1, line)
+        self.assertNotIn("progress line", err)
+        # A flood (a tool bump) is capped and says how much it left out.
+        refused = subprocess.CompletedProcess(
+            ["git"], 1, "".join(f"NEW ruff c.py:{n} E1\n" for n in range(60)), "x\n"
+        )
+        shown = gh_cli._push_refusal(refused, ["x"])
+        self.assertEqual((len(shown), shown[50]), (52, "... and 10 more"))
 
     def test_push_keeps_remote_work_the_branch_has_not_seen(self):
         commit(self.work, "c.txt", "1\n", "feat(ui): add c")
