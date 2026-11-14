@@ -39,7 +39,13 @@ class Refused(Exception):
 
 def git(*args: str, cwd: Path = ROOT) -> str:
     return subprocess.run(
-        ["git", *args], cwd=cwd, check=True, capture_output=True, text=True
+        ["git", *args],
+        cwd=cwd,
+        check=True,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",  # commit subjects outside cp1252 on Windows (#2895)
+        errors="replace",
     ).stdout
 
 
