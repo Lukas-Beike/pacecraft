@@ -20,6 +20,7 @@ test modules, for focused runs in the SQLCipher container.
 from __future__ import annotations
 
 import argparse
+import faulthandler
 import fnmatch
 import json
 import os
@@ -196,6 +197,18 @@ def select_suite(tests, suite: str):
     raise ValueError(f"unknown suite: {suite}")
 
 
+def arm_hang_dump(seconds: float) -> bool:
+    """After `seconds`, print every thread's stack (naming the hanging test's
+    frames) and exit 1, instead of a shard holding its runner for hours (#2900).
+
+    The result file then still says "running". Returns whether it armed, so a
+    nested in-process main() never cancels the shard's own timer.
+    """
+    if seconds > 0:
+        faulthandler.dump_traceback_later(seconds, exit=True)
+    return seconds > 0
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--shard", type=int, default=1, help="1-based shard number")
@@ -237,6 +250,13 @@ def parse_args() -> argparse.Namespace:
         help="list selected test IDs without executing them",
     )
     parser.add_argument(
+        "--hang-timeout",
+        type=float,
+        default=0,
+        metavar="SECONDS",
+        help="after this long, dump every thread's stack and exit 1 (CI shards)",
+    )
+    parser.add_argument(
         "--record-durations",
         type=Path,
         metavar="PATH",
@@ -257,11 +277,21 @@ def parse_args() -> argparse.Namespace:
         parser.error("--record-durations needs the full suite in a single shard")
     if args.module and args.changed:
         parser.error("--module and --changed select modules in different ways")
+    if not 0 <= args.hang_timeout < 86400:  # also refuses nan
+        parser.error("--hang-timeout must be 0 (off) or seconds below one day")
     return args
 
 
-def main() -> int:
-    args = parse_args()
+def main(args: argparse.Namespace | None = None) -> int:
+    if args is None:
+        args = parse_args()
+        # Armed before discovery, so a hang while importing a module dumps too.
+        armed = arm_hang_dump(args.hang_timeout)
+        try:
+            return main(args)
+        finally:
+            if armed:
+                faulthandler.cancel_dump_traceback_later()
     evidence = {
         "version": 1,
         "status": "discovering",

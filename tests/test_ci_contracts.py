@@ -1233,6 +1233,16 @@ class ChangedFileClassifierTests(unittest.TestCase):
             ("docs", "node --test tests/*.cjs"),
         ):
             self.assertIn(f"if: env.MODE == '{mode}'\n        run: {command}", shards)
+        # #2900: a hung shard dumps its stacks before the job frees the runner.
+        container = _job(workflow, "container_tests", "test")
+        for job, limit, commands in (
+            (shards, 40, ('--total "$PYTHON_TEST_SHARDS" --hang-timeout 600',
+                          "--with-heavy --hang-timeout 1800")),
+            (container, 20, ("--suite container --hang-timeout 600",)),
+        ):  # fmt: skip
+            self.assertIn(f"\n    timeout-minutes: {limit}\n", job.split("steps:", 1)[0])
+            for command in commands:
+                self.assertIn(f"{command}\n", job)
         # The scripts may use Python 3.14 syntax; the runner's own Python is older.
         self.assertLess(
             source.index("python-version: '3.14'"),
