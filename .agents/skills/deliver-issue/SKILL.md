@@ -61,7 +61,10 @@ only for truly independent work packages.
 
 Chat in German, repository artifacts in English. Every question or decision
 goes through AskUserQuestion in plain language, recommendation first; method
-questions give the derivation first. Design and UI questions come only with
+questions give the derivation first. Each question asks one decision and every
+option answers only that decision; independent choices are separate questions
+in the same call (at most four per call, the rest in a further call; #2958).
+Design and UI questions come only with
 rendered mockups. When a request is unclear or differs from an earlier recorded
 decision (issue comments, epic, docs), ask before acting.
 
