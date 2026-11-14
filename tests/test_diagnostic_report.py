@@ -426,7 +426,9 @@ class DiagnosticReportServiceTests(unittest.TestCase):
                     ("sensor_equipment:heart_rate:1", '{"equipment_id":"x"}'),
                 ],
             )
-            self.assertEqual(self.service._database_counts(db)["sensor_equipment_links"], 1)
+            self.assertEqual(
+                self.service._database_counts(db)["sensor_equipment_links"], 1
+            )
             sizes = self.service._database_counts(db)["stored_payload_bytes"]
             self.assertEqual(
                 sizes,
