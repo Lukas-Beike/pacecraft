@@ -55,22 +55,26 @@ def state(run: dict) -> str:
     return "green" if run["conclusion"] in GREEN else "failed"
 
 
-def follow(run: dict, history: list[dict]) -> dict:
-    """A run cancelled by a newer develop push resolves to the newest push run
-    of its workflow (#2956): develop only moves forward, so that run's head
-    contains this commit. Without a newer run the cancelled run stands."""
-    if run["conclusion"] != "cancelled":
-        return run
-    same = [r for r in history if r["workflowName"] == run["workflowName"]]
-    return max(same, key=lambda r: r["createdAt"], default=run)
-
-
-def hints(run: dict, history: list[dict]) -> list[str]:
+def same_workflow(run: dict, history: list[dict]) -> tuple[list[dict], list[dict]]:
+    """(older, newer) push runs of the run's workflow, each oldest first."""
     same = sorted(
         (r for r in history if r["workflowName"] == run["workflowName"]),
         key=lambda r: r["createdAt"],
     )
-    newer = [r for r in same if r["createdAt"] > run["createdAt"]]
+    older = [r for r in same if r["createdAt"] < run["createdAt"]]
+    return older, [r for r in same if r["createdAt"] > run["createdAt"]]
+
+
+def follow(run: dict, history: list[dict]) -> dict:
+    """A run cancelled by a newer develop push resolves to the newest push run
+    of its workflow (#2956): develop only moves forward, so that run's head
+    contains this commit. Without a newer run the cancelled run stands."""
+    newer = same_workflow(run, history)[1]
+    return newer[-1] if run["conclusion"] == "cancelled" and newer else run
+
+
+def hints(run: dict, history: list[dict]) -> list[str]:
+    older, newer = same_workflow(run, history)
     if newer:
         last = newer[-1]
         return [
@@ -78,7 +82,6 @@ def hints(run: dict, history: list[dict]) -> list[str]:
             + f"{last['databaseId']} ({last['conclusion'] or last['status']}); "
             + "do not rerun this one"
         ]
-    older = [r for r in same if r["createdAt"] < run["createdAt"]]
     jobs = gh_json("run", "view", str(run["databaseId"]), "--json", "jobs")["jobs"]
     failed = ", ".join(j["name"] for j in jobs if j["conclusion"] == "failure")
     if older:
@@ -98,9 +101,10 @@ def report(runs: dict[str, dict], history: list[dict]) -> list[str]:
         run = follow(original, history)
         states.append(state(run))
         result = run["conclusion"] or run["status"]
-        via = original["databaseId"]
+        via, head = original["databaseId"], run["headSha"][:8]
         newer = run["databaseId"] != via
-        note = f" (newer push run; {via} was cancelled)" if newer else ""
+        # The newer run also carries later commits: a red may be theirs.
+        note = f" (newer push run at {head}; {via} was cancelled)" if newer else ""
         print(f"{name}: {states[-1]} ({result}) {run['url']}{note}")
         if states[-1] == "failed":
             for line in hints(run, history):

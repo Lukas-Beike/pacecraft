@@ -154,11 +154,17 @@ class DevelopRunCheckTests(unittest.TestCase):
                     "--sha", SHA, runs=[cancelled, newer], jobs=FAILED_JOBS
                 )
                 self.assertEqual(code, expect)
-                self.assertIn("runs/3 (newer push run; 1 was cancelled)", out)
-        # Cancelled with nothing newer (a manual or release cancel) stays red.
-        code, out, _, _ = check("--sha", SHA, runs=[cancelled], jobs=FAILED_JOBS)
-        self.assertEqual(code, 1)
-        self.assertIn("CI: failed (cancelled)", out)
+                self.assertIn("runs/3 (newer push run at newer; 1 was cancelled)", out)
+        # Cancelled with no newer run of its own workflow stays red: nothing
+        # at all, an older run, or a newer run of another workflow.
+        older = run_record(0, "CI", "older", "2026-11-10T10:00:00Z")
+        other = run_record(4, "Docs", "newer", "2026-11-11T11:00:00Z")
+        for history in ([cancelled], [older, cancelled], [cancelled, other]):
+            with self.subTest(history=[r["databaseId"] for r in history]):
+                code, out, _, _ = check("--sha", SHA, runs=history, jobs=FAILED_JOBS)
+                self.assertEqual(code, 1)
+                self.assertIn("CI: failed (cancelled)", out)
+                self.assertNotIn("newer push run at", out)
 
     def test_bad_input_and_failed_gh_exit_two(self):
         for args in (["--pr", "0"], ["--pr", "x"], [], ["--pr", "1", "--sha", "a"]):
