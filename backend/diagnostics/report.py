@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import functools
 import logging
 import platform
 import shutil
@@ -10,8 +11,9 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Any
+from zoneinfo import ZoneInfo
 
-from backend.athlete.profile import ProfileService
+from backend.athlete.profile import ProfileService, timezone_name
 from backend.backup.recovery_copies import RecoveryCopies
 from backend.calendar.external import ExternalCalendarReader
 from backend.canonical.garmin_payload import RETIRED_SNAPSHOT_KEY, STATE_KEY
@@ -183,6 +185,16 @@ class DiagnosticReportService:
         stored = {row["key"]: row["bytes"] for row in rows}
         return {key: stored.get(key, 0) for key in _PAYLOAD_KEYS}
 
+    def _local_today(self, profile: dict[str, Any]) -> str:
+        """The athlete's local day, as the Garmin past-workout removal uses it."""
+        zone = ZoneInfo(timezone_name(profile.get("timezone")))
+        return (
+            datetime.fromisoformat(self._deps.utc_now())
+            .astimezone(zone)
+            .date()
+            .isoformat()
+        )
+
     def _recovery_copies(self) -> dict[str, Any]:
         if self._deps.database_path is None:
             return {"available": False}
@@ -215,6 +227,8 @@ class DiagnosticReportService:
     def report(self) -> dict[str, Any]:
         deps = self._deps
         section = self._section
+        # Read once per report, by the sections that need it.
+        athlete_profile = functools.cache(deps.profile.get)
         diagnostic_capture_entries = deps.diagnostic_capture.entries()
         diagnostic_capture_status = deps.diagnostic_capture.status()
         # Reading the rotated log files must not hold the WAL snapshot open.
@@ -268,7 +282,7 @@ class DiagnosticReportService:
 
             def provider_freshness() -> Any:
                 return deps.provider_freshness.current(
-                    profile=deps.profile.get(),
+                    profile=athlete_profile(),
                     garmin_has_core_error=bool(
                         deps.garmin_sync_state.core_error_entries()
                     ),
@@ -340,7 +354,9 @@ class DiagnosticReportService:
                 ),
                 "garmin_strength_push": section(
                     "garmin_strength_push",
-                    lambda: summarize_garmin_strength_push(db, deps.utc_now()[:10]),
+                    lambda: summarize_garmin_strength_push(
+                        db, self._local_today(athlete_profile())
+                    ),
                 ),
                 "canonical_coverage": summarize_canonical_coverage(
                     deps.canonical_coverage, db

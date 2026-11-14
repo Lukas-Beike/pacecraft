@@ -376,6 +376,14 @@ class DiagnosticReportServiceTests(unittest.TestCase):
         )
         self.assertEqual(self.service._recovery_copies(), {"available": False})
 
+    def test_strength_push_counts_start_on_the_athletes_local_day(self):
+        # 10:00 UTC is already the next day at UTC+14 (#2850).
+        self.assertEqual(self.service._local_today({}), "2026-09-23")
+        self.assertEqual(
+            self.service._local_today({"timezone": "Pacific/Kiritimati"}),
+            "2026-09-24",
+        )
+
     def test_payload_sizes_count_utf8_bytes_without_fetching_the_payload(self):
         with closing(sqlite3.connect(":memory:")) as db:
             db.row_factory = sqlite3.Row
