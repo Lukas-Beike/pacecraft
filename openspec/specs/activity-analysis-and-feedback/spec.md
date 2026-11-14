@@ -120,7 +120,7 @@ The system SHALL read local details without implicit provider refresh, serve onl
 
 #### Scenario: One stored analysis for every consumer
 - **WHEN** a session's records, stream or lap sets, staleness, frozen targets or locally resolved thresholds change, or the method version changes
-- **THEN** the canonical backfill stage `session_analysis` recomputes its `activity_detail_analysis` version 3 row (analysis, recorded workout profile, carried-over target snapshot, input fingerprint) in bounded batches, an unchanged input writes nothing, and the detail view, Coach detail tool, calendar profiles and recurring comparisons show the same values for Garmin- and Wahoo-only sessions too.
+- **THEN** the canonical backfill stage `session_analysis` recomputes its `activity_detail_analysis` version 3 row (analysis, recorded workout profile, carried-over target snapshot, input fingerprint) in bounded, paced batches (#2818), an unchanged input writes nothing, and the detail view, Coach detail tool, calendar profiles and recurring comparisons show the same values for Garmin- and Wahoo-only sessions too.
 
 #### Scenario: Intervals.icu copy not served
 - **WHEN** a session holds a stored Intervals.icu record with detail sets, zone times or a failure note
