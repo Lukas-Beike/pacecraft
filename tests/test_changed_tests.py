@@ -50,6 +50,9 @@ FILES = {
     "tests/fixture_walker.py": "import os\ndef names(root):\n    return os.listdir(root)\n",
     "tests/test_fixture_helper_scan.py": "import fixture_walker\nROOT = 'tests/fixtures'\n",
     "tests/test_prose.py": "NOTE = 'Shared fixtures for this test.'\n",
+    # Names its roots only through globs, like test_source_encoding (#2887).
+    "tests/test_glob_scan.py": "from pathlib import Path\n"
+    "FILES = [Path('.').glob(g) for g in ('backend/**/*.py', 'public/**/*.js')]\n",
     "tests/test_line_endings.py": "",
     "tests/test_ai_docs_contract.py": "",
 }
@@ -91,7 +94,8 @@ class SelectModulesTests(unittest.TestCase):
     def test_transitive_imports_and_support_modules_select_importers(self):
         self.assertEqual(
             set(self.select("backend/app/engine.py")),
-            {"test_engine", "test_via_support", "test_scan"} | REPOSITORY_WIDE,
+            {"test_engine", "test_via_support", "test_scan", "test_glob_scan"}
+            | REPOSITORY_WIDE,
         )
 
     def test_app_wide_tests_need_a_composition_root_change(self):
@@ -108,7 +112,7 @@ class SelectModulesTests(unittest.TestCase):
     def test_deleted_module_selects_its_lazy_importers(self):
         self.assertEqual(
             set(self.select("backend/app/old.py")),
-            {"test_lazy", "test_scan"} | REPOSITORY_WIDE,
+            {"test_lazy", "test_scan", "test_glob_scan"} | REPOSITORY_WIDE,
         )
 
     def test_root_documents_and_tool_modules_select_their_tests(self):
@@ -120,10 +124,12 @@ class SelectModulesTests(unittest.TestCase):
     def test_literals_select_patch_targets_and_named_paths(self):
         self.assertEqual(
             set(self.select("backend/other.py")),
-            {"test_other", "test_patch", "test_scan"} | REPOSITORY_WIDE,
+            {"test_other", "test_patch", "test_scan", "test_glob_scan"}
+            | REPOSITORY_WIDE,
         )
         self.assertEqual(
-            set(self.select("public/app.js")), {"test_frontend_text"} | REPOSITORY_WIDE
+            set(self.select("public/app.js")),
+            {"test_frontend_text", "test_glob_scan"} | REPOSITORY_WIDE,
         )
 
     def test_bare_directory_name_counts_only_in_a_scanning_module(self):
@@ -221,6 +227,8 @@ class SelectModulesTests(unittest.TestCase):
         )
         self.assertIn("test_nutrition_macro_ranges", modules)
         self.assertNotIn("test_fixture_standard_data", modules)
+        # #2887: the encoding scan globs backend/, so a backend edit selects it.
+        self.assertIn("test_source_encoding", modules)
         # A frontend-only change with Node tests and their golden fixtures (#2516)
         # keeps the Python readers of the changed files and the repository checks.
         modules, _reason = changed_tests.select_modules(
