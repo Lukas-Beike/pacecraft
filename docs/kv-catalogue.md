@@ -16,47 +16,40 @@ read. A new key needs no entry: it appears here when its write is added.
   `profile` is only set when absent.
 
 <!-- BEGIN GENERATED KEYS -->
-87 keys and 26 key patterns; `<name>` stands for a value the code computes.
+87 keys and 19 key patterns; `<value>` stands for a value the code computes.
 
 | Key | Written by | Deleted by | Export | Reset at start | Purge |
 | --- | --- | --- | --- | --- | --- |
-| `<provider>_full_resync_at` | backend/sync/full_resync.py:FullResyncStateStore.complete | - | yes | - | - |
-| `<provider>_full_resync_error` | backend/sync/full_resync.py:FullResyncStateStore.complete<br>backend/sync/full_resync.py:FullResyncStateStore.record_failure<br>backend/sync/full_resync.py:FullResyncStateStore.start | - | yes | - | - |
-| `<provider>_full_resync_running` | backend/sync/full_resync.py:FullResyncStateStore.finish<br>backend/sync/full_resync.py:FullResyncStateStore.start | - | no | - | - |
-| `<provider>_full_resync_status` | backend/sync/full_resync.py:FullResyncStateStore.finish<br>backend/sync/full_resync.py:FullResyncStateStore.start | - | no | - | - |
-| `<source>_sync_days` | backend/sync/state.py:SyncStateRepository.set_sync_period | - | yes | - | - |
+| `<value>_full_resync_at` | backend/sync/full_resync.py:FullResyncStateStore.complete | - | yes | - | - |
+| `<value>_full_resync_error` | backend/sync/full_resync.py:FullResyncStateStore.complete<br>backend/sync/full_resync.py:FullResyncStateStore.record_failure<br>backend/sync/full_resync.py:FullResyncStateStore.start | - | yes | - | - |
+| `<value>_full_resync_running` | backend/sync/full_resync.py:FullResyncStateStore.finish<br>backend/sync/full_resync.py:FullResyncStateStore.start | - | no | - | - |
+| `<value>_full_resync_status` | backend/sync/full_resync.py:FullResyncStateStore.finish<br>backend/sync/full_resync.py:FullResyncStateStore.start | - | no | - | - |
+| `<value>_sync_days` | backend/sync/state.py:SyncStateRepository.set_sync_period | - | yes | - | - |
 | `activity_routes` | backend/activities/route_store.py:save_index | backend/activities/route_store.py:clear_routes | yes | - | - |
 | `activity_routes_state` | backend/sync/activity_routes.py:ActivityRoutesStage._save | backend/activities/route_store.py:clear_routes | yes | - | - |
 | `activity_weather_state` | backend/sync/activity_weather.py:ActivityWeatherStage._save | - | yes | - | - |
 | `anthropic_status` | backend/providers/state.py:ProviderStateService._record_status_unlocked | - | no | - | - |
 | `anthropic_usage` | backend/providers/state.py:ProviderStateService.record_usage | - | yes | - | - |
-| `calendar_display_<key>` | backend/settings.py:SettingsService.save_calendar_display_settings | - | yes | - | - |
+| `calendar_display_<value>` | backend/settings.py:SettingsService.save_calendar_display_settings | - | yes | - | - |
 | `calendar_weather_history` | backend/weather/service.py:WeatherCacheStore.store_refresh | - | yes | - | - |
 | `canonical_backfill_state` | backend/sync/canonical_backfill.py:CanonicalBackfill._save | - | yes | - | - |
-| `canonical_coverage:<provider.value>` | backend/sync/canonical_coverage_store.py:CanonicalCoverageStore.persist | - | yes | - | - |
+| `canonical_coverage:<value>` | backend/sync/canonical_coverage_store.py:CanonicalCoverageStore.persist | - | yes | - | - |
 | `chat_generation` | backend/coach/conversation.py:CoachConversationResetService._reset_local | - | yes | - | - |
-| `checkin_day_status:<day>` | backend/athlete/checkins.py:CheckinService._write | backend/athlete/checkins.py:CheckinService._write | yes | - | - |
-| `checkin_day_status:<entity_id>` | backend/athlete/checkins.py:CheckinService.restore_in_transaction | backend/athlete/checkins.py:CheckinService.restore_in_transaction | yes | - | - |
-| `checkin_tags:<day>` | backend/athlete/checkins.py:CheckinService._write | backend/athlete/checkins.py:CheckinService._write | yes | - | - |
-| `checkin_tags:<entity_id>` | backend/athlete/checkins.py:CheckinService.restore_in_transaction | backend/athlete/checkins.py:CheckinService.restore_in_transaction | yes | - | - |
+| `checkin_day_status:<value>` | backend/athlete/checkins.py:CheckinService._write<br>backend/athlete/checkins.py:CheckinService.restore_in_transaction | backend/athlete/checkins.py:CheckinService._write<br>backend/athlete/checkins.py:CheckinService.restore_in_transaction | yes | - | - |
+| `checkin_tags:<value>` | backend/athlete/checkins.py:CheckinService._write<br>backend/athlete/checkins.py:CheckinService.restore_in_transaction | backend/athlete/checkins.py:CheckinService._write<br>backend/athlete/checkins.py:CheckinService.restore_in_transaction | yes | - | - |
 | `claude_models` | backend/providers/model_wiring.py:build_model_transport | - | yes | - | - |
 | `coach_pending_request` | backend/coach/clarification.py:CoachClarificationService.save_question<br>backend/coach/conversation.py:CoachConversationResetService._reset_local<br>backend/coach/tool_execution_service.py:CoachStructuredToolExecutionService._execute_tool<br>backend/coach/turn_failures.py:CoachTurnFailureService._pending_request<br>backend/coach/turn_outcome.py:CoachStructuredOutcomeService._persist_pending | - | yes | - | - |
-| `coach_plan_constraints:<plan_id>` | backend/coach/training_patch.py:CoachTrainingPatchService._store_constraints<br>backend/planning/replacement_service.py:StructuredTrainingPlanReplacementService._copy_constraints | - | yes | - | - |
-| `competition_tombstone:<tombstone_id>` | backend/db/repositories.py:CompetitionRepository.add_tombstone | backend/db/repositories.py:CompetitionRepository.clear_tombstone_label | yes | - | - |
+| `coach_plan_constraints:<value>` | backend/coach/training_patch.py:CoachTrainingPatchService._store_constraints<br>backend/planning/replacement_service.py:StructuredTrainingPlanReplacementService._copy_constraints | - | yes | - | - |
+| `competition_tombstone:<value>` | backend/db/repositories.py:CompetitionRepository.add_tombstone | backend/db/repositories.py:CompetitionRepository.clear_tombstone_label | yes | - | - |
 | `diagnostic_capture_entries` | backend/observability.py:DiagnosticCapture.__init__ | - | yes | - | - |
-| `equipment:<entity_id>` | backend/athlete/equipment_history.py:_EquipmentRecordHistory._write | backend/athlete/equipment_history.py:_EquipmentRecordHistory._delete | yes | - | - |
-| `equipment:<item_id>` | backend/athlete/equipment.py:EquipmentService.save<br>backend/athlete/equipment.py:_insert_initial_garmin_item | - | yes | - | - |
-| `equipment:<linked_id>` | backend/athlete/equipment.py:_refresh_garmin_distances | - | yes | - | - |
-| `equipment_assignment:<entity_id>` | backend/athlete/equipment_history.py:_EquipmentRecordHistory._write | backend/athlete/equipment_history.py:_EquipmentRecordHistory._delete | yes | - | - |
-| `equipment_assignment:<key>` | backend/athlete/equipment.py:EquipmentService.assign | - | yes | - | - |
-| `equipment_assignment:<other>` | - | backend/athlete/equipment.py:EquipmentService.assign | yes | - | - |
-| `equipment_maintenance:<entity_id>` | backend/athlete/equipment_history.py:_EquipmentRecordHistory._write | backend/athlete/equipment_history.py:_EquipmentRecordHistory._delete | yes | - | - |
-| `equipment_maintenance:<saved_id>` | backend/athlete/equipment.py:EquipmentService.maintain | - | yes | - | - |
+| `equipment:<value>` | backend/athlete/equipment.py:EquipmentService.save<br>backend/athlete/equipment.py:_insert_initial_garmin_item<br>backend/athlete/equipment.py:_refresh_garmin_distances<br>backend/athlete/equipment_history.py:_EquipmentRecordHistory._write | backend/athlete/equipment_history.py:_EquipmentRecordHistory._delete | yes | - | - |
+| `equipment_assignment:<value>` | backend/athlete/equipment.py:EquipmentService.assign<br>backend/athlete/equipment_history.py:_EquipmentRecordHistory._write | backend/athlete/equipment.py:EquipmentService.assign<br>backend/athlete/equipment_history.py:_EquipmentRecordHistory._delete | yes | - | - |
+| `equipment_maintenance:<value>` | backend/athlete/equipment.py:EquipmentService.maintain<br>backend/athlete/equipment_history.py:_EquipmentRecordHistory._write | backend/athlete/equipment_history.py:_EquipmentRecordHistory._delete | yes | - | - |
 | `fit_inventory` | backend/sync/stream_backfill.py:count_fit_file | - | yes | - | - |
 | `garmin_activity_detail_backfill` | backend/sync/garmin_activity_details.py:GarminActivityDetailService._save_backfill_state<br>backend/sync/garmin_activity_details.py:GarminActivityDetailService._store_records | - | yes | - | - |
 | `garmin_app_workout_cleanup` | backend/sync/garmin_strength_push.py:GarminStrengthPushService._save_cleanup | - | yes | - | - |
-| `garmin_capability_<source>` | backend/sync/garmin.py:GarminSyncStateService.record_capability_failure | backend/providers/garmin_capability.py:clear_capability_state | yes | - | - |
-| `garmin_capability_wellness_backfill_<source>` | backend/sync/garmin.py:GarminSyncStateService.record_capability_success | backend/providers/garmin_capability.py:clear_capability_state | yes | - | - |
+| `garmin_capability_<value>` | backend/sync/garmin.py:GarminSyncStateService.record_capability_failure | backend/providers/garmin_capability.py:clear_capability_state | yes | - | - |
+| `garmin_capability_wellness_backfill_<value>` | backend/sync/garmin.py:GarminSyncStateService.record_capability_success | backend/providers/garmin_capability.py:clear_capability_state | yes | - | - |
 | `garmin_equipment_initialized` | backend/athlete/equipment.py:EquipmentService.sync_garmin_snapshot | - | yes | - | - |
 | `garmin_full_resync_running` | backend/db/bootstrap.py:apply_startup_invariants | - | no | yes | - |
 | `garmin_full_resync_status` | backend/db/bootstrap.py:apply_startup_invariants | - | no | yes | - |
@@ -65,7 +58,7 @@ read. A new key needs no entry: it appears here when its write is added.
 | `garmin_oauth_tokens` | backend/sync/garmin_login.py:GarminTokenStore.store<br>backend/sync/garmin_login.py:GarminTokenStore.write_back | backend/sync/garmin_login.py:GarminTokenStore.clear | no | - | - |
 | `garmin_personal_key_rejected` | backend/sync/garmin.py:GarminSyncStateService.record_personal_key_result | backend/provider_credentials.py:ProviderCredentialService._reset_replaced_personal_key | yes | - | - |
 | `garmin_rating_backfill_state` | - | backend/sync/rating_backfill_removal.py:RatingBackfillRemoval.run_batch | yes | - | - |
-| `garmin_run_sent:<local_id>` | backend/sync/garmin_strength_push.py:GarminStrengthPushService._save_link | - | yes | - | - |
+| `garmin_run_sent:<value>` | backend/sync/garmin_strength_push.py:GarminStrengthPushService._save_link | - | yes | - | - |
 | `garmin_sdk_skipped` | backend/sync/garmin.py:GarminSyncStateService.clear_sdk_skipped<br>backend/sync/garmin.py:GarminSyncStateService.record_sdk_skipped | backend/sync/garmin_login.py:GarminTokenStore.store | yes | - | - |
 | `garmin_sdk_threshold_failures` | backend/sync/garmin.py:GarminSyncStateService._track_threshold_reads | - | yes | - | - |
 | `garmin_state` | backend/db/garmin_store.py:write_state | - | no | - | - |
@@ -90,7 +83,7 @@ read. A new key needs no entry: it appears here when its write is added.
 | `last_wahoo_sync_at` | backend/sync/wahoo_sync.py:WahooSyncService._sync_locked | - | yes | - | - |
 | `last_wahoo_sync_error` | backend/sync/wahoo_sync.py:WahooSyncService._record_error<br>backend/sync/wahoo_sync.py:WahooSyncService._sync_locked | - | yes | - | - |
 | `local_load_state` | backend/sync/local_load.py:LocalLoadStage._save | - | yes | - | - |
-| `metric_export_baseline:intervals:<candidate.remote_id>` | backend/sync/metric_export.py:MetricExportService._record | - | yes | - | - |
+| `metric_export_baseline:intervals:<value>` | backend/sync/metric_export.py:MetricExportService._record | - | yes | - | - |
 | `morning_body_battery_history` | backend/performance/morning_battery_service.py:MorningBatteryStore.persist | - | yes | - | - |
 | `morning_checkin_date` | backend/coach/morning_completion.py:MorningCoachJobCompletionService.complete | - | yes | - | - |
 | `morning_checkin_status` | backend/coach/morning_completion.py:MorningCoachJobCompletionService.complete | - | no | - | - |
@@ -115,7 +108,7 @@ read. A new key needs no entry: it appears here when its write is added.
 | `session_rebundle_state` | backend/sync/session_rebundle.py:SessionRebundle._save | - | yes | - | - |
 | `stream_backfill_state:garmin` | backend/sync/stream_backfill.py:StreamBackfillService._write<br>backend/sync/stream_backfill.py:StreamBackfillService.rearm | - | yes | - | - |
 | `stream_backfill_state:wahoo` | backend/sync/stream_backfill.py:StreamBackfillService._write<br>backend/sync/stream_backfill.py:StreamBackfillService.rearm | - | yes | - | - |
-| `sync_<source>_last_attempt_at` | backend/sync/daily.py:mark_daily_sync_attempt | - | yes | - | - |
+| `sync_<value>_last_attempt_at` | backend/sync/daily.py:mark_daily_sync_attempt | - | yes | - | - |
 | `sync_calendar_last_success_at` | backend/sync/daily.py:mark_daily_sync | - | yes | - | - |
 | `sync_garmin_last_success_at` | backend/sync/daily.py:mark_daily_sync | - | yes | - | - |
 | `sync_operation_finished_at` | backend/sync/garmin_service.py:GarminSyncLifecycleState.record_sync_finished | - | yes | - | - |

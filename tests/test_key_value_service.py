@@ -845,11 +845,16 @@ def rules(scanner: Scanner | None) -> dict:
     }
 
 
+def _shape(key: str) -> str:
+    """One row per key shape: placeholder names differ between call sites."""
+    return re.sub(r"<[^>]*>", "<value>", key)
+
+
 def catalogue(scanner: Scanner, rule: dict) -> str:
     by_key: dict[str, dict[str, set[str]]] = defaultdict(lambda: defaultdict(set))
     for site in scanner.sites:
         if site.kind in ("set", "delete"):
-            by_key[site.key][site.kind].add(site.writer)
+            by_key[_shape(site.key)][site.kind].add(site.writer)
     prefixes = {s.key: s.writer for s in scanner.sites if s.kind == "delete_prefix"}
     rows = []
     for key in sorted(by_key):
@@ -878,7 +883,7 @@ def catalogue(scanner: Scanner, rule: dict) -> str:
     ]
     lines = [
         f"{len(by_key) - patterns} keys and {patterns} key patterns; "
-        + "`<name>` stands for a value the code computes.",
+        + "`<value>` stands for a value the code computes.",
         "",
         "| Key | Written by | Deleted by | Export | Reset at start | Purge |",
         "| --- | --- | --- | --- | --- | --- |",
@@ -981,7 +986,7 @@ class KeyValueCatalogueTests(unittest.TestCase):
         document = catalogue(scanner, rules(None))
         for key, writer in (
             ("typed_any_key", "backend/synthetic.py:Store.save"),
-            ("day:<day>", "backend/synthetic.py:Store.save"),
+            ("day:<value>", "backend/synthetic.py:Store.save"),
             ("brand_new_key", "backend/synthetic.py:save"),
         ):
             self.assertIn(f"| `{key}` | {writer} |", document)
