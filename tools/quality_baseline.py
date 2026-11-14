@@ -92,8 +92,15 @@ def tool_name(command: list[str]) -> str:
 
 
 def run(command: list[str], root: Path, allowed: tuple[int, ...] = (0, 1)) -> str:
+    # Tool output is UTF-8; the Windows code page would leave stdout None (#2889).
     result = subprocess.run(
-        command, cwd=root, text=True, capture_output=True, check=False
+        command,
+        cwd=root,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        capture_output=True,
+        check=False,
     )
     if result.returncode not in allowed:
         detail = (result.stderr or result.stdout).strip().splitlines()

@@ -4,6 +4,7 @@ import ast
 import contextlib
 import io
 import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -339,6 +340,27 @@ class QualityBaselineTests(unittest.TestCase):
         mocked_run.return_value.returncode = 2
         with self.assertRaisesRegex(RuntimeError, "exit 2"):
             quality_baseline.run(["mypy"], Path.cwd())
+
+    def test_findings_text_outside_the_windows_code_page_is_returned(self):
+        # #2889: "Ё" encodes to D0 81, undefined in cp1252 and ASCII, so a
+        # locale decoder left stdout None. The check runs without UTF-8 mode
+        # (the Windows default before Python 3.15) and with an ASCII locale.
+        text = "Ё − ±"
+        tool = f"import sys; sys.stdout.buffer.write({text.encode()!r}); sys.exit(1)"
+        check = (
+            "import sys; from pathlib import Path; from tools import quality_baseline;"
+            f"out = quality_baseline.run([sys.executable, '-c', {tool!r}], Path.cwd());"
+            "sys.stdout.buffer.write(out.encode())"
+        )
+        env = {k: v for k, v in os.environ.items() if not k.startswith("PYTHONUTF8")}
+        result = subprocess.run(
+            [sys.executable, "-X", "utf8=0", "-c", check],
+            cwd=Path(__file__).resolve().parents[1],
+            env={**env, "LC_ALL": "C"},
+            capture_output=True,
+            check=False,
+        )
+        self.assertEqual(result.stdout.decode(), text, result.stderr.decode()[-300:])
 
     @patch("tools.quality_baseline.subprocess.run")
     def test_failure_without_diagnostics_is_fatal(self, mocked_run):
