@@ -5,7 +5,7 @@ All persistent application state is stored in `/data/intervals-coach.db` encrypt
 
 If `APP_PASSWORD` does not open the existing database, each start attempt stops with one critical log entry (`secure_startup_refused`, reason `database_unreadable`) and the message "Die Datenbank lässt sich mit diesem App-Passwort nicht öffnen: Das Passwort passt nicht, oder die Datei ist beschädigt. Die Datenbank wurde nicht verändert." and exits non-zero; with `--restart unless-stopped` Docker repeats the attempt. Set `APP_PASSWORD` back to the value the database was created with; the database is not modified. SQLCipher reports a damaged first page the same way, so if the password is certainly right, restore from a backup (#2912).
 
-Each pooled database connection uses a 16 MiB page-cache budget to reduce repeated encrypted reads of large histories. The default pool has two readers and one writer (up to 48 MiB of page caches, allocated as needed); more readers made parallel view requests slower, because Python's sqlite3 hands the interpreter lock back and forth on every row (#2788).
+Each pooled database connection uses a 16 MiB page-cache budget to reduce repeated encrypted reads of large histories. The default pool has four readers and one writer (up to 80 MiB of page caches, allocated as needed). Two readers were faster on a synthetic history (#2788) but starved views on a long production history, where requests hold a read for seconds (#2965). `runtime.reader_slots` in the diagnostics counts the waits for a reader.
 
 ## Maintenance Mode & Database Restoration
 When a database restore is initiated:
