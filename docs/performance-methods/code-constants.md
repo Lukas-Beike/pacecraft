@@ -185,9 +185,6 @@ every named number the code fixes. A test fails when it is out of date.
 | `MIN_BAND_S` | `120.0` | `backend/performance/running_dynamics.py` | A run counts in a band with at least this much time in it. |
 | `MIN_PEERS` | `5` | `backend/performance/running_dynamics.py` | A band is rated against at least this many earlier runs of the window. |
 | `WINDOW_DAYS` | `84` | `backend/performance/running_dynamics.py` |  |
-| `MIN_MONTH_BAND_S` | `600.0` | `backend/performance/running_dynamics.py` | A month's trend point needs this much time of the band across its runs. |
-| `TREND_MONTHS` | `12` | `backend/performance/running_dynamics.py` |  |
-| `TREND_BANDS` | `4` | `backend/performance/running_dynamics.py` |  |
 | `AVERAGE_KEYS` | `{'ground_contact_time_ms': 'ground_contact_time_ms', 'vertical_oscillation_cm': 'vertical_oscilla... (sha256 73afc366)` | `backend/performance/running_dynamics.py` | The run averages a provider reports, by metric (cadence per leg). |
 | `METRICS` | `(('ground_contact_time_ms', 'ground_contact_time', -1), ('vertical_oscillation_cm', 'vertical_osc... (sha256 d5f91a56)` | `backend/performance/running_dynamics.py` | (metric, stream key of the analysis input, direction): -1 lower is better, 1 higher is better, 0 no verdict; "balance" is better closer to 50 %. |
 | `SCOPE` | `"Per 15 s/km pace band, the run's time-weighted mean against the same band of the athlete's runs ... (sha256 ce4f1e9b)` | `backend/performance/running_dynamics.py` |  |

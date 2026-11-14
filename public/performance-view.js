@@ -215,7 +215,6 @@ function renderPerformance(performance, { refreshCharts = true } = {}) {
     renderPersonalRecovery(performance?.personal_recovery);
     renderAnalysisHistory(performance?.history);
     void renderCyclingPowerProfile();
-    void renderRunningDynamicsTrend();
     renderTrainingFocus(performance?.training_focus_periods?.[analysisHistoryPeriod] || performance?.training_focus);
   }
   const root = $("#performancePredictions");

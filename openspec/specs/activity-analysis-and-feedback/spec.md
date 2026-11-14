@@ -428,21 +428,25 @@ Evidence:
 - `e2e/calendar-detail-pane.spec.js`
 
 ### Requirement: Running dynamics against the athlete's own runs at the same pace
-The system SHALL keep per non-trail run with running dynamics streams the time and time-weighted mean of each running-dynamics value per 15 s/km pace band (method `running-dynamics-pace-bands-v1`), rate a run per band against the athlete's runs of the 84 days before it, show Garmin's published colour band as a labelled second reference and draw monthly medians per pace band in Analyse; it SHALL name no universal good value.
+The system SHALL keep per non-trail run with running dynamics streams the time and time-weighted mean of each running-dynamics value per 15 s/km pace band (method `running-dynamics-pace-bands-v1`), rate a run per band against the athlete's runs of the 84 days before it, and show Garmin's published colour band as a labelled second reference; it SHALL name no universal good value.
 
 #### Scenario: Rating a run
 - **WHEN** a run's band has at least 5 earlier runs of the window with at least 2 minutes in it (samples at 2.0 m/s or faster, moving, steps of at most 5 s)
 - **THEN** the best third of those runs is "besser als sonst", the middle third "üblich", the weakest third "schlechter als sonst" (shorter contact time, lower vertical oscillation and ratio, higher cadence and a balance nearer 50 % are better; step length is only "länger" or "kürzer"), each value of the run takes the verdict holding most of its rated time, and fewer runs give "zu wenig Vergleich".
 
-#### Scenario: Garmin reference and trend
-- **WHEN** the session details or Analyse → Laufen are opened
-- **THEN** each value carries Garmin's chest-strap colour band of its running mean ("Garmin-Einordnung (Brustgurt)", EPIX manual), a table lists the run's pace bands, and "Lauftechnik je Monat" draws for the 4 bands with most time the monthly medians of the last 12 months, a month only with 10 minutes in the band; both read every stored session in the background build and show nothing while it is pending.
+#### Scenario: Garmin reference
+- **WHEN** the session details are opened
+- **THEN** each value carries Garmin's chest-strap colour band of its running mean ("Garmin-Einordnung (Brustgurt)", EPIX manual) and a table lists the run's pace bands; the rating reads every stored session in the background build and shows nothing while it is pending.
+
+#### Scenario: No monthly trend in Analyse
+- **WHEN** Analyse → Laufen is opened
+- **THEN** it shows no running-dynamics card; the athlete reads running dynamics per session in the calendar details (#2961).
 
 Evidence:
 - `backend/performance/running_dynamics.py`
 - `backend/performance/report_service.py:TrainingProfileSelectionService.running_dynamics`
 - `backend/http_api/analysis.py`
-- `public/activity-analysis.js`, `public/analysis.js::renderRunningDynamicsTrend`
+- `public/activity-analysis.js`
 - `tests/test_running_dynamics.py:test_a_slow_run_is_not_worse_for_being_slow`
 - `e2e/calendar-detail-pane.spec.js`, `e2e/analysis-on-demand.spec.js`
 

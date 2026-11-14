@@ -117,7 +117,6 @@ function ensureRouteData(route = state.route) {
   refreshOpenProviderChecks();
   if (ANALYSIS_PERFORMANCE_ROUTES.has(route)) {
     void renderCyclingPowerProfile();
-    void renderRunningDynamicsTrend();
   }
 }
 

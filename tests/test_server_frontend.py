@@ -617,22 +617,14 @@ class ServerFrontendTests(ServerTestCase):
         self.assertNotIn("Endurance Score", analysis)
         self.assertNotIn("Running Tolerance", analysis)
         self.assertIn("unit: providerMetricUnit(key)", analysis)
-        # Coverage counts weeks for weekly series, else the chart's date unit:
-        # days, or months for a monthly chart (#2922).
-        self.assertIn('item.cadenceDays === 7 ? "Wochen" : dates.units', analysis)
-        self.assertIn('heading: "Tag", units: "Tagen"', analysis)
-        self.assertIn('heading: "Monat", units: "Monaten"', analysis)
+        self.assertIn('item.cadenceDays === 7 ? "Wochen" : "Tagen"', analysis)
         self.assertNotIn("Tage mit Messung", analysis)
         self.assertNotIn("${readings.length}/${item.points.length}", analysis)
         self.assertNotIn("function analysisIsoWeek(dateKey)", analysis)
         self.assertNotIn("renderExistingPerformanceReports", analysis)
         self.assertNotIn("renderRacePredictionCharts", analysis)
-        # Weekly series keep week ticks; the tick mode picks their label (#2922).
-        self.assertIn('let tickMode = weekTicks ? "week" : "day";', analysis)
         self.assertIn(
-            "day: analysisDayTickLabel, week: analysisWeekTickLabel, "
-            "month: analysisMonthTickLabel",
-            analysis,
+            "weekTicks ? analysisWeekTickLabel : analysisDayTickLabel", analysis
         )
         self.assertIn("calendarWeeks: true", analysis)
         self.assertIn("calendarWeeks = false", analysis)

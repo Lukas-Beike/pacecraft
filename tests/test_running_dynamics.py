@@ -38,7 +38,6 @@ from backend.performance.form_drift import FLAG_LABEL, form_drift
 from backend.performance.report_service import TrainingProfileSelectionService
 from backend.performance.running_dynamics import (
     garmin_band,
-    monthly_trend,
     pace_bands,
     session_rating,
 )
@@ -700,43 +699,6 @@ class GarminBandTests(unittest.TestCase):
                 self.assertEqual(garmin_band(metric, value), colour)
 
 
-class MonthlyTrendTests(unittest.TestCase):
-    def test_monthly_medians_per_band_need_enough_time(self) -> None:
-        records = [
-            {
-                "date": "2026-10-03",
-                "running_dynamics": {
-                    "bands": {"360": {"seconds": 400, "ground_contact_time_ms": 280}}
-                },
-            },
-            {
-                "date": "2026-10-20",
-                "running_dynamics": {
-                    "bands": {"360": {"seconds": 400, "ground_contact_time_ms": 270}}
-                },
-            },
-            {
-                "date": "2026-11-02",
-                "running_dynamics": {
-                    "bands": {"360": {"seconds": 300, "ground_contact_time_ms": 260}}
-                },
-            },
-            {
-                "date": "2025-01-02",
-                "running_dynamics": {
-                    "bands": {"360": {"seconds": 900, "ground_contact_time_ms": 300}}
-                },
-            },
-        ]
-        trend = monthly_trend(records, DAY)
-        self.assertEqual(
-            (trend["months"][0], trend["months"][-1]), ("2025-12", "2026-11")
-        )
-        series = trend["bands"][0]["series"]["ground_contact_time_ms"]
-        # October: median of 280 and 270 over 800 s; November: 300 s is too little.
-        self.assertEqual((series[-2], series[-1]), (275, None))
-
-
 class RunningDynamicsReadTests(unittest.TestCase):
     def _service(self, every: Any) -> TrainingProfileSelectionService:
         service = TrainingProfileSelectionService(lambda: DAY)
@@ -745,20 +707,18 @@ class RunningDynamicsReadTests(unittest.TestCase):
 
     def test_the_read_waits_for_the_background_records(self) -> None:
         self.assertEqual(
-            self._service(lambda: None).running_dynamics(), {"status": "pending"}
+            self._service(lambda: None).running_dynamics("act_own"),
+            {"status": "pending"},
         )
         self.assertEqual(
-            self._service(Mock(side_effect=RuntimeError)).running_dynamics(),
+            self._service(Mock(side_effect=RuntimeError)).running_dynamics("act_own"),
             {"status": "failed"},
         )
         own = _record(0, pace_bands(_run([(600, SLOW)])), "act_own")
         result = self._service(lambda: ((own,), False)).running_dynamics("act_own")
         self.assertEqual((result["status"], result["stale"]), ("ok", True))
         self.assertEqual(result["session"]["status"], "ok")
-        self.assertNotIn("trend", result)
-        # Without an activity only the trend is read.
-        trend = self._service(lambda: ((own,), True)).running_dynamics()
-        self.assertEqual(set(trend), {"status", "stale", "trend"})
+        self.assertEqual(set(result), {"status", "stale", "session"})
         # A run missing from a current build is left out (a commute); from an
         # older build it may still come, so the answer stays open.
         current = self._service(lambda: ((own,), True)).running_dynamics("act_other")
@@ -779,12 +739,13 @@ class RunningDynamicsReadTests(unittest.TestCase):
         )
         reports.profiles.running_dynamics.assert_called_once_with("act_1")
         handler.send_json.assert_called_once_with(200, {"status": "pending"})
-        with self.assertRaises(AppError):
-            dispatch_route(
-                routes,
-                Mock(),
-                f"/api/analysis/running-dynamics?activity_id={'a' * 201}",
-            )
+        # The monthly trend without an activity is gone (#2961): the id is required.
+        for query in (f"?activity_id={'a' * 201}", "", "?activity_id="):
+            with self.assertRaises(AppError):
+                dispatch_route(
+                    routes, Mock(), f"/api/analysis/running-dynamics{query}"
+                )
+        reports.profiles.running_dynamics.assert_called_once()
 
 
 if __name__ == "__main__":

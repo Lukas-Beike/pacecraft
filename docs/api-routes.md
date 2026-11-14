@@ -267,18 +267,16 @@ verfügbar.".
 
 ### `GET /api/analysis/running-dynamics`
 
-Request: optional query `activity_id` (the local session id, at most
-200 characters); no body.
+Request: query `activity_id` (the local session id, at most 200
+characters); no body.
 
 Response: 200 with `status` (`pending` before the first background read
 of every stored session finished, `failed` after a failed one, else
-`ok`), and with `ok` `stale`, `trend` (`months` and per pace band
-`band_s_per_km` and `series` of monthly medians per value) and
-`session` (the run's rating per pace band and per value; null without
-`activity_id` or a stored run).
+`ok`), and with `ok` `stale` and `session` (the run's rating per pace
+band and per value; null without a stored run).
 
-Errors: 400 "Ungültige Aktivitäts-ID." for an id longer than 200
-characters.
+Errors: 400 "Ungültige Aktivitäts-ID." for a missing id or one longer
+than 200 characters.
 
 ### `GET /api/auth/status`
 
