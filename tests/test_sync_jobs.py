@@ -1144,6 +1144,23 @@ class SyncJobStoreTests(unittest.TestCase):
             db.execute("DELETE FROM sync_job_items")
             db.execute("DELETE FROM sync_jobs")
 
+    def test_job_settles_leave_a_live_garmin_operation_alone(self):
+        # Only the start-up settle ends a running operation (#2706, #2888); the
+        # worker's recovery between claims runs while the operation may be live.
+        with self.manager.unit_of_work() as db:
+            db.execute(
+                "INSERT INTO kv(key, value, updated_at) "
+                "VALUES ('sync_operation_status', 'running', ?)",
+                (self.now,),
+            )
+        self.store.requeue_unowned_running()
+        self.store.resume_interrupted()
+        with self.manager.reader() as db:
+            status = db.execute(
+                "SELECT value FROM kv WHERE key='sync_operation_status'"
+            ).fetchone()
+        self.assertEqual("running", status["value"])
+
     def test_requeue_unowned_running_runs_a_lost_outcome_again(self):
         job, _ = self.enqueue()
         self.assertEqual(self.store.claim()["id"], job["id"])

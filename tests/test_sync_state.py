@@ -217,6 +217,29 @@ class SyncStateRepositoryTests(unittest.TestCase):
             rows,
         )
 
+    def test_a_restart_ends_the_full_resyncs_left_running(self):
+        # Moved from the start-up invariants into the one settle (#2888).
+        stale = {
+            "garmin_full_resync_running": "1",
+            "garmin_full_resync_status": "Garmin: vollständiger Resync läuft…",
+            "wahoo_full_resync_running": "1",
+            "wahoo_full_resync_status": "Wahoo: vollständiger Resync läuft…",
+        }
+        with self.database_manager.unit_of_work() as db:
+            for key, value in stale.items():
+                self.key_values.set(db, key, value)
+            settle_interrupted_sync_state(db, NOW)
+            settled = {key: self.key_values.get(db, key) for key in stale}
+        self.assertEqual(
+            {
+                "garmin_full_resync_running": "0",
+                "garmin_full_resync_status": "",
+                "wahoo_full_resync_running": "0",
+                "wahoo_full_resync_status": "",
+            },
+            settled,
+        )
+
     def test_a_restart_ends_a_garmin_operation_left_running(self):
         # A stale "running" would show as live while a later Garmin push holds
         # the same lock (#2706); the start-up settle ends it (#2888).

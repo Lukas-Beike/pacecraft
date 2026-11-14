@@ -31,7 +31,7 @@ from backend.db.bootstrap import apply_startup_invariants
 from backend.db.schema import configure_cipher, database_schema_is_current
 from backend.runtime import clock as runtime_clock
 from backend.runtime import maintenance as runtime_maintenance
-from backend.sync.state import resync_reset_keys, settle_interrupted_sync_state
+from backend.sync.state import settle_interrupted_sync_state
 from backend.sync.worker import shared_sync_job_wake_event
 
 
@@ -64,7 +64,6 @@ def build_backup(ctx: AppContext) -> BackupServices:
             key_values=ctx.key_values,
             now=runtime_clock.utc_now(),
             default_profile_json=json.dumps(DEFAULT_PROFILE),
-            provider_resync_keys=resync_reset_keys(),
             settle_interrupted=settle_interrupted_sync_state,
         )
 

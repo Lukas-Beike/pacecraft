@@ -250,14 +250,8 @@ class BackupBuilderTests(unittest.TestCase):
         self.assertEqual("db", invariants.call_args.args[0])
         self.assertIs(ctx.key_values, kwargs["key_values"])
         self.assertEqual(json.dumps(DEFAULT_PROFILE), kwargs["default_profile_json"])
-        self.assertEqual(
-            [
-                ("garmin_full_resync_running", "garmin_full_resync_status"),
-                ("wahoo_full_resync_running", "wahoo_full_resync_status"),
-            ],
-            list(kwargs["provider_resync_keys"]),
-        )
-        # A restored database settles what was left running, as at start (#2888).
+        # A restored database settles what was left running, as at start (#2888),
+        # the full-resync flags included (tests/test_sync_state.py).
         self.assertIs(settle_interrupted_sync_state, kwargs["settle_interrupted"])
 
 

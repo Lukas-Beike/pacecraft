@@ -83,7 +83,6 @@ class LinkedSessionPersistenceTests(LinkingCase):
                 now=STAMP,
                 current_time=datetime(2026, 9, 20, 12, tzinfo=UTC),
                 default_profile_json="{}",
-                provider_resync_keys=(),
                 settle_interrupted=settle_interrupted_sync_state,
                 retention_days=-1,
             )

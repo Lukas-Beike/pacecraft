@@ -199,7 +199,6 @@ from backend.sync.session_focus_backfill import SessionFocusBackfill
 from backend.sync.session_rebundle import SessionRebundle
 from backend.sync.state import (
     SyncStateRepository,
-    resync_reset_keys,
     settle_interrupted_sync_state,
 )
 from backend.sync.wahoo_connection import WahooSecretRegistry
@@ -491,7 +490,6 @@ def initialise_database() -> None:
             now=runtime_clock.utc_now(),
             current_time=datetime.now(UTC),
             default_profile_json=json.dumps(DEFAULT_PROFILE),
-            provider_resync_keys=resync_reset_keys(),
             settle_interrupted=settle_interrupted_sync_state,
             retention_days=int(getattr(CONFIG_HOLDER.value, "data_retention_days", -1)),
         )

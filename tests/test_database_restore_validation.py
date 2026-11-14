@@ -171,9 +171,6 @@ class DatabaseRestoreValidationTests(unittest.TestCase):
                     key_values=key_values,
                     now="2026-11-09T08:00:00+00:00",
                     default_profile_json='{"name": "Synthetic"}',
-                    provider_resync_keys=(
-                        ("garmin_full_resync_running", "garmin_full_resync_status"),
-                    ),
                     settle_interrupted=settle_interrupted_sync_state,
                 ),
                 row_factory=row_factory,

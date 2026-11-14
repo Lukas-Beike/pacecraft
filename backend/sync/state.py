@@ -15,6 +15,7 @@ from backend.canonical.vocabulary import (
 )
 from backend.db import planning_store
 from backend.db.remote_links import RemoteLinkRepository
+from backend.db.repositories import KeyValueRepository
 from backend.sync.cursors import read_cursor, write_cursor
 from backend.sync.intervals_state import INTERVALS_OUTPUT_OK_KEY, latest_stamp
 from backend.sync.provider_registry import DEFAULT_PROVIDER_REGISTRY
@@ -88,10 +89,15 @@ def settle_interrupted_sync_state(db: Any, now: str) -> None:
     """Close the sync state a stopped process left running (#2888).
 
     Runs with the start-up invariants, at start and on a restored database:
-    provider refreshes left running (#2707), a Garmin operation left running,
+    full resyncs left running, provider refreshes left running (#2707), a
+    Garmin operation left running,
     which a later Garmin push holding its lock would show live (#2706), and
     library units a push left "syncing", offered again as push errors.
     """
+    key_values = KeyValueRepository(lambda: now)
+    for running_key, status_key in resync_reset_keys():
+        key_values.set(db, running_key, "0")
+        key_values.set(db, status_key, "")
     settle_interrupted_refreshes(db, now=now)
     if db.execute(
         "SELECT 1 FROM kv WHERE key='sync_operation_status' AND value='running'"

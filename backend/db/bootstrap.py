@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import Callable, Iterable
+from collections.abc import Callable
 from datetime import datetime, timedelta
 from typing import Any
 
@@ -32,7 +32,6 @@ def apply_startup_invariants(
     key_values: KeyValueRepository,
     now: str,
     default_profile_json: str,
-    provider_resync_keys: Iterable[tuple[str, str]],
     settle_interrupted: Callable[[Any, str], None],
 ) -> None:
     """Idempotent state every running database needs; shared with restore.
@@ -46,9 +45,6 @@ def apply_startup_invariants(
     )
     if key_values.get(db, "profile") is None:
         key_values.set(db, "profile", default_profile_json)
-    for running_key, status_key in provider_resync_keys:
-        key_values.set(db, running_key, "0")
-        key_values.set(db, status_key, "")
     settle_interrupted(db, now)
 
 
@@ -59,7 +55,6 @@ def initialize_application_database(
     now: str,
     current_time: datetime,
     default_profile_json: str,
-    provider_resync_keys: Iterable[tuple[str, str]],
     settle_interrupted: Callable[[Any, str], None],
     retention_days: int,
 ) -> None:
@@ -80,7 +75,6 @@ def initialize_application_database(
         key_values=key_values,
         now=now,
         default_profile_json=default_profile_json,
-        provider_resync_keys=provider_resync_keys,
         settle_interrupted=settle_interrupted,
     )
 
