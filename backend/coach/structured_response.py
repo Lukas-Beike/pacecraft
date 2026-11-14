@@ -69,6 +69,7 @@ class CoachStructuredResponseService:
         on_text_delta: Callable[[str], None] | None,
         cancel_event: threading.Event | None,
         recovery_state: dict[str, bool],
+        refreshed_context: str = "",
     ) -> ModelTurn:
         state = _ResponseState()
 
@@ -108,6 +109,7 @@ class CoachStructuredResponseService:
                     recovery_state=recovery_state,
                     request_delta_emitted=state.request_delta_emitted,
                     attempt=attempt,
+                    refreshed_context=refreshed_context,
                 ):
                     self._wait_before_retry(
                         exc,

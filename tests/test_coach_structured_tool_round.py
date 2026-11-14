@@ -69,6 +69,15 @@ def refresh_then_budget_turn(case: StructuredToolRoundTests) -> list[ModelReques
     # The receipt keeps the tool result without the refreshed context.
     case.assertNotIn("refreshed_athlete_context", state.command_receipts[0]["result"])
     case.assertEqual(state.model_instructions, "synthetic-instructions")
+    # Every later request hands the turn's latest refreshed context to the
+    # conversation recovery, whichever round's steps it still holds.
+    case.assertEqual(
+        [
+            call.kwargs["refreshed_context"].startswith("<athlete_context>")
+            for call in case.response.respond.call_args_list
+        ],
+        [True, True, True],
+    )
     return [
         state.request,
         *(call.args[0] for call in case.response.respond.call_args_list),

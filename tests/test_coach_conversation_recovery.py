@@ -45,6 +45,7 @@ class CoachConversationRecoveryTests(unittest.TestCase):
         recovery_state=None,
         attachments=None,
         steps=None,
+        refreshed_context="",
     ):
         conversation_id = "remote-id" if remote else None
         request = ModelRequest(
@@ -74,6 +75,7 @@ class CoachConversationRecoveryTests(unittest.TestCase):
             recovery_state=recovery_state,
             request_delta_emitted=request_delta_emitted,
             attempt=attempt,
+            refreshed_context=refreshed_context,
         )
         return result, request, turn_request, recovery_state
 
@@ -100,14 +102,11 @@ class CoachConversationRecoveryTests(unittest.TestCase):
         self.logger.warning.assert_called_once()
 
     def test_recovery_keeps_refreshed_context_and_turn_notice(self) -> None:
-        refreshed = json.dumps(
-            {"ok": True, "refreshed_athlete_context": "<athlete_context>fresh"}
-        )
+        # A stored conversation keeps only the latest round in request.steps;
+        # the refreshed context of an earlier round comes from the turn state.
         _, request, _, _ = self.recover(
-            steps=[
-                ModelStep([], [{"call_id": "a", "output": refreshed}]),
-                ModelStep([], [{"call_id": "b", "output": "{}"}], "budget notice"),
-            ]
+            steps=[ModelStep([], [{"call_id": "b", "output": "{}"}], "budget notice")],
+            refreshed_context="<athlete_context>fresh",
         )
         self.assertEqual(request.steps, [])
         self.assertTrue(

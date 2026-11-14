@@ -11,26 +11,7 @@ from backend.coach.request_payload import model_confirmed_steps
 from backend.db.manager import DatabaseManager
 from backend.db.repositories import KeyValueRepository
 from backend.errors import AppError
-from backend.providers.model_seam import ModelRequest, ModelStep
-
-
-def _carried_turn_text(steps: list[ModelStep]) -> str:
-    """Turn text that lived only in the dropped tool rounds: the latest
-    refreshed athlete context and the last round's notice. The rebuilt request
-    starts a new conversation, so it may carry them in its instructions."""
-    refreshed = ""
-    for step in steps:
-        for result in step.tool_results:
-            try:
-                output = json.loads(result["output"])
-            except TypeError, ValueError:
-                continue
-            if isinstance(output, dict) and isinstance(
-                output.get("refreshed_athlete_context"), str
-            ):
-                refreshed = output["refreshed_athlete_context"]
-    notice = steps[-1].notice if steps else ""
-    return "".join("\n\n" + text for text in (refreshed, notice) if text)
+from backend.providers.model_seam import ModelRequest
 
 
 class CoachConversationRecoveryService:
@@ -59,7 +40,14 @@ class CoachConversationRecoveryService:
         recovery_state: dict[str, bool],
         request_delta_emitted: bool,
         attempt: int,
+        refreshed_context: str = "",
     ) -> bool:
+        """Rebuild a turn whose remote conversation is gone.
+
+        The rebuilt request starts a new conversation, so it may carry in its
+        instructions what lived only in the dropped tool rounds: the turn's
+        latest refreshed athlete context and the last round's notice.
+        """
         if (
             exc.reason != "conversation_state_invalid"
             or recovery_state["conversation_recovered"]
@@ -75,7 +63,8 @@ class CoachConversationRecoveryService:
         for candidate in (turn_request, request):
             candidate.conversation_id = None
         # The rebuilt dialogue carries the confirmed steps: no tool results to resend.
-        carried = _carried_turn_text(request.steps)
+        notice = request.steps[-1].notice if request.steps else ""
+        carried = "".join("\n\n" + text for text in (refreshed_context, notice) if text)
         request.steps = []
         request.input = json.dumps(
             {

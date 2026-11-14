@@ -99,7 +99,9 @@ class StructuredCoachRoundState:
     budget_exhausted: bool = False
     # Stateless chaining: the tool rounds so far in this turn, resent each round.
     steps: list[ModelStep] = field(default_factory=list)
-    # SHA-256 of the last refreshed athlete context sent in this turn.
+    # The last refreshed athlete context sent in this turn and its SHA-256;
+    # conversation recovery carries it into the rebuilt request.
+    refreshed_context: str = ""
     refreshed_context_digest: str = ""
 
 
@@ -390,6 +392,7 @@ class CoachStructuredToolRoundService:
         if digest == state.refreshed_context_digest:
             return {**result, "refreshed_athlete_context_unchanged": True}
         state.refreshed_context_digest = digest
+        state.refreshed_context = context
         return {**result, "refreshed_athlete_context": context}
 
     def _refreshed_context(self, state: StructuredCoachRoundState) -> str:
@@ -495,6 +498,7 @@ class CoachStructuredToolRoundService:
             on_text_delta=state.on_text_delta,
             cancel_event=state.cancel_event,
             recovery_state=state.recovery_state,
+            refreshed_context=state.refreshed_context,
         )
 
     def run(
