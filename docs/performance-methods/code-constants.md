@@ -160,6 +160,7 @@ every named number the code fixes. A test fails when it is out of date.
 | `METHOD_ID` | `'mean-max-curve'` | `backend/performance/power_profile.py` |  |
 | `METHOD_VERSION` | `2` | `backend/performance/power_profile.py` | Version 1: time-weighted windows that must be fully covered by valid samples. Version 2 (card M4 v4, #1773): an outdoor running window counts only when its net altitude change is at most 1 % of its distance; without altitude it does not count. |
 | `MAX_RUNNING_NET_GRADE` | `0.01` | `backend/performance/power_profile.py` |  |
+| `MAX_DISTANCE_GAP_S` | `600` | `backend/performance/power_profile.py` | A distance best is timed like a race clock (athlete decision, #2818): a stop inside the window counts as elapsed time, and so does a recording gap (auto-pause, signal loss) of at most this many seconds; a longer gap breaks the window. |
 | `METHOD` | `'weekly-progress-v1'` | `backend/performance/progress_report.py` |  |
 | `SPORT_BUCKETS` | `('run', 'ride', 'strength')` | `backend/performance/progress_report.py` |  |
 | `ZONE_BANDS` | `{'many': (3, 5), 'five': (3, 4)}` | `backend/performance/progress_report.py` | First zone number of the moderate and of the high band, by the number of zones of the session's zone set: 6 or more (default 7-zone power and heart rate) or up to 5 (5-zone heart rate). |

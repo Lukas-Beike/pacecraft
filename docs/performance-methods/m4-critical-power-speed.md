@@ -90,7 +90,11 @@ recreational marathon runners, no lab reference.
   when its net altitude change is at most 1 % of its distance; an outdoor
   window without altitude at both ends does not count. Treadmill and virtual
   runs are not checked. The same rule applies to the displayed running bests,
-  so a downhill stretch is never a best effort.
+  so a downhill stretch is never a best effort. A displayed distance best is
+  timed like a race clock (#2818): a stop and a recording gap of up to ten
+  minutes inside the window count as elapsed time, a longer gap breaks it. The
+  per-duration speed points that feed Critical Speed keep the strict rule
+  (steps of at most 5 s while moving).
 - Power source (card 3, #1770): neither Garmin nor Wahoo delivers a signal
   that tells measured from estimated cycling power, so estimated power cannot
   be excluded automatically. Each cycling fit reports its power source as not

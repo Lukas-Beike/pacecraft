@@ -23,6 +23,10 @@ METHOD_ID: Final = "mean-max-curve"
 # not count.
 METHOD_VERSION: Final = 2
 MAX_RUNNING_NET_GRADE: Final = 0.01
+# A distance best is timed like a race clock (athlete decision, #2818): a stop
+# inside the window counts as elapsed time, and so does a recording gap (auto-pause,
+# signal loss) of at most this many seconds; a longer gap breaks the window.
+MAX_DISTANCE_GAP_S: Final = 600
 
 # Whether the window from sample ``start`` to sample ``stop`` over ``metres`` counts.
 type WindowCheck = Callable[[int, int, float], bool]
@@ -123,7 +127,7 @@ def running_profile(
     ]
     distances = [_number(value) for value in distance]
     distance_points = [
-        _best_running_distance(times, rates, distances, target, flat)
+        _best_running_distance(times, distances, target, flat)
         for target in RUNNING_DISTANCES
     ]
     ok = any(point["speed_mps"] is not None for point in speed_points) or any(
@@ -237,7 +241,7 @@ def _best_running_speed(
 
 
 def _best_running_distance(
-    times: list, rates: list, distances: list, target: float, flat: WindowCheck
+    times: list, distances: list, target: float, flat: WindowCheck
 ) -> dict[str, Any]:
     if len(distances) != len(times):
         return {
@@ -247,13 +251,10 @@ def _best_running_distance(
             "coverage": None,
             "status": "unknown",
         }
-    run_end = _valid_run_ends(
-        [
-            valid and distances[index + 1] is not None
-            for index, (_, _, valid) in enumerate(rates)
-        ]
-    )
-    best = _fastest_distance_window(times, rates, distances, run_end, target, flat)
+    valid = [
+        _race_clock_segment(times, distances, index) for index in range(len(times) - 1)
+    ]
+    best = _fastest_distance_window(times, valid, distances, target, flat)
     return {
         "distance_meters": target,
         "seconds": round(best[0], 2) if best else None,
@@ -263,23 +264,40 @@ def _best_running_distance(
     }
 
 
+def _race_clock_segment(times: list, distances: list, index: int) -> bool:
+    """Whether the step after sample ``index`` belongs to a race-clock window.
+
+    Speed and the moving flag do not matter: a stop is elapsed time. The step needs
+    both distances, no backwards distance and a time step of at most
+    ``MAX_DISTANCE_GAP_S``.
+    """
+    left, right = _number(times[index]), _number(times[index + 1])
+    before, after = distances[index], distances[index + 1]
+    return (
+        left is not None
+        and right is not None
+        and 0 < right - left <= MAX_DISTANCE_GAP_S
+        and before is not None
+        and after is not None
+        and after >= before
+    )
+
+
 def _fastest_distance_window(
     times: list,
-    rates: list,
+    valid: list[bool],
     distances: list,
-    run_end: list[int],
     target: float,
     flat: WindowCheck,
 ) -> tuple[float, Any] | None:
     """The shortest time over ``target`` metres and its start, among flat windows."""
+    run_end = _valid_run_ends(valid)
     best = None
     # No window of ``target`` metres starts beyond this; skipping those starts
     # keeps the half marathon and marathon cheap on shorter runs (#2786).
     last_start = max((d for d in distances if d is not None), default=0.0) - target
     for start in range(len(times) - 1):
-        if not rates[start][2] or distances[start] is None:
-            continue
-        if distances[start] > last_start:
+        if not valid[start] or distances[start] > last_start:
             continue
         candidate = _running_distance_candidate(
             times, distances, start, run_end[start], target
