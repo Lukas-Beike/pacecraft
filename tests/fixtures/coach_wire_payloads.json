@@ -534,7 +534,7 @@
     },
     {
      "call_id": "c-1",
-     "output": "{\"ok\": true, \"planning_revision\": 0, \"artifact_refs\": [], \"competitions\": [{\"id\": \"synthetic-competition\", \"name\": \"Synthetic Giro\", \"event_date\": \"2026-10-03\", \"starts_at_local\": \"2026-10-03T00:00:00\", \"sport\": \"ride\", \"environment\": \"unknown\", \"sport_detail\": null, \"priority\": \"A\", \"category\": \"RACE_A\", \"distance\": \"\", \"target\": \"\", \"course_profile\": \"\", \"notes\": \"\", \"description\": \"\", \"planned_duration_s\": null, \"external_id\": null, \"intervals_event_id\": null, \"sync_dirty\": 1, \"sync_state\": \"local\", \"sync_conflict\": \"\", \"last_synced_at\": null}], \"training_plans\": [], \"planned_units\": [], \"planned_units_page\": {\"has_more\": false, \"next_cursor\": null, \"limit\": 366}, \"training_templates\": [], \"jobs\": []}",
+     "output": "{\"ok\": true, \"planning_revision\": 0, \"artifact_refs\": [], \"competitions\": [{\"id\": \"synthetic-competition\", \"name\": \"Synthetic Giro\", \"event_date\": \"2026-10-03\", \"starts_at_local\": \"2026-10-03T00:00:00\", \"sport\": \"ride\", \"environment\": \"unknown\", \"sport_detail\": null, \"priority\": \"A\", \"category\": \"RACE_A\", \"distance\": \"\", \"target\": \"\", \"course_profile\": \"\", \"notes\": \"\", \"description\": \"\", \"planned_duration_s\": null, \"external_id\": null, \"intervals_event_id\": null, \"sync_dirty\": 1, \"sync_state\": \"local\", \"sync_conflict\": \"\", \"last_synced_at\": null, \"location\": \"\"}], \"training_plans\": [], \"planned_units\": [], \"planned_units_page\": {\"has_more\": false, \"next_cursor\": null, \"limit\": 366}, \"training_templates\": [], \"jobs\": []}",
      "type": "function_call_output"
     }
    ],
@@ -572,7 +572,7 @@
     },
     {
      "call_id": "c-1",
-     "output": "{\"ok\": true, \"planning_revision\": 0, \"artifact_refs\": [], \"competitions\": [{\"id\": \"synthetic-competition\", \"name\": \"Synthetic Giro\", \"event_date\": \"2026-10-03\", \"starts_at_local\": \"2026-10-03T00:00:00\", \"sport\": \"ride\", \"environment\": \"unknown\", \"sport_detail\": null, \"priority\": \"A\", \"category\": \"RACE_A\", \"distance\": \"\", \"target\": \"\", \"course_profile\": \"\", \"notes\": \"\", \"description\": \"\", \"planned_duration_s\": null, \"external_id\": null, \"intervals_event_id\": null, \"sync_dirty\": 1, \"sync_state\": \"local\", \"sync_conflict\": \"\", \"last_synced_at\": null}], \"training_plans\": [], \"planned_units\": [], \"planned_units_page\": {\"has_more\": false, \"next_cursor\": null, \"limit\": 366}, \"training_templates\": [], \"jobs\": []}",
+     "output": "{\"ok\": true, \"planning_revision\": 0, \"artifact_refs\": [], \"competitions\": [{\"id\": \"synthetic-competition\", \"name\": \"Synthetic Giro\", \"event_date\": \"2026-10-03\", \"starts_at_local\": \"2026-10-03T00:00:00\", \"sport\": \"ride\", \"environment\": \"unknown\", \"sport_detail\": null, \"priority\": \"A\", \"category\": \"RACE_A\", \"distance\": \"\", \"target\": \"\", \"course_profile\": \"\", \"notes\": \"\", \"description\": \"\", \"planned_duration_s\": null, \"external_id\": null, \"intervals_event_id\": null, \"sync_dirty\": 1, \"sync_state\": \"local\", \"sync_conflict\": \"\", \"last_synced_at\": null, \"location\": \"\"}], \"training_plans\": [], \"planned_units\": [], \"planned_units_page\": {\"has_more\": false, \"next_cursor\": null, \"limit\": 366}, \"training_templates\": [], \"jobs\": []}",
      "type": "function_call_output"
     },
     {
@@ -588,7 +588,7 @@
     },
     {
      "call_id": "c-2",
-     "output": "{\"ok\": true, \"planning_revision\": 0, \"artifact_refs\": [], \"competitions\": [{\"id\": \"synthetic-competition\", \"name\": \"Synthetic Giro\", \"event_date\": \"2026-10-03\", \"starts_at_local\": \"2026-10-03T00:00:00\", \"sport\": \"ride\", \"environment\": \"unknown\", \"sport_detail\": null, \"priority\": \"A\", \"category\": \"RACE_A\", \"distance\": \"\", \"target\": \"\", \"course_profile\": \"\", \"notes\": \"\", \"description\": \"\", \"planned_duration_s\": null, \"external_id\": null, \"intervals_event_id\": null, \"sync_dirty\": 1, \"sync_state\": \"local\", \"sync_conflict\": \"\", \"last_synced_at\": null}], \"training_plans\": [], \"planned_units\": [], \"planned_units_page\": {\"has_more\": false, \"next_cursor\": null, \"limit\": 366}, \"training_templates\": [], \"jobs\": []}",
+     "output": "{\"ok\": true, \"planning_revision\": 0, \"artifact_refs\": [], \"competitions\": [{\"id\": \"synthetic-competition\", \"name\": \"Synthetic Giro\", \"event_date\": \"2026-10-03\", \"starts_at_local\": \"2026-10-03T00:00:00\", \"sport\": \"ride\", \"environment\": \"unknown\", \"sport_detail\": null, \"priority\": \"A\", \"category\": \"RACE_A\", \"distance\": \"\", \"target\": \"\", \"course_profile\": \"\", \"notes\": \"\", \"description\": \"\", \"planned_duration_s\": null, \"external_id\": null, \"intervals_event_id\": null, \"sync_dirty\": 1, \"sync_state\": \"local\", \"sync_conflict\": \"\", \"last_synced_at\": null, \"location\": \"\"}], \"training_plans\": [], \"planned_units\": [], \"planned_units_page\": {\"has_more\": false, \"next_cursor\": null, \"limit\": 366}, \"training_templates\": [], \"jobs\": []}",
      "type": "function_call_output"
     }
    ],
