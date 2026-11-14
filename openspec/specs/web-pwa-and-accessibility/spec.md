@@ -378,7 +378,7 @@ The client SHALL present domain-provided planning, performance, activity, and eq
 
 #### Scenario: Equipment in a calendar card
 - **WHEN** a completed session's card opens and its detail read lists items it can take or an own choice
-- **THEN** one select ("Schuh" for runs, "Rad" for rides, else "Ausrüstung") lists them and "Keiner"; an own choice is selected, else the suggestion is preselected and marked "Vorschlag", else "–"; nothing is saved until "Übernehmen", which posts to `POST /api/equipment/assignment` and shows "Gespeichert." with "Rückgängig", and the session is read again on its next opening
+- **THEN** one select ("Schuh" for runs, "Rad" for rides, else "Ausrüstung") lists them and "Keiner"; an own choice is selected, else a Garmin gear link of the session is preselected with the provider's label, else the suggestion is preselected and marked "Vorschlag", else "–"; nothing is saved until "Übernehmen", which posts to `POST /api/equipment/assignment` and shows "Gespeichert." with "Rückgängig", and the session is read again on its next opening
 
 #### Scenario: Equipment editor
 - **WHEN** the athlete opens "+ Hinzufügen" in a tab of Mehr › Ausrüstung, or "Bearbeiten" or "Ausmustern" in an active local item's card

@@ -515,4 +515,18 @@ test("@responsive a completed session's card assigns its equipment only by Über
   await again.evaluate((element) => { element.open = true; });
   await expect(again.locator(".planned-equipment").getByRole("combobox", { name: "Schuh" })).toHaveValue("shoe-retired");
   await expect(again.locator(".planned-equipment").getByRole("button", { name: "Übernehmen" })).toBeHidden();
+  // Without an own choice, Garmin's gear link is the labelled default, ahead of the suggestion.
+  await page.route(/\/api\/activities\/act_eq3$/, (route) => route.fulfill({ json: {
+    session: { activity_id: "act_eq3", sport: "run" }, metrics: {}, detail_data: { providers: [] },
+    equipment: [{ id: "shoe-b", name: "Vaporfly 3", parent_id: null }],
+    equipment_choice: { options: [{ id: "shoe-a", name: "Pegasus 40" }, { id: "shoe-b", name: "Vaporfly 3" }], assigned: null, explicit: false, suggested: "shoe-a" },
+  } }));
+  await renderCalendarSessions(page, [{ id: "act_eq3", name: "Synthetic linked shoe run", sport: "run", started_at_local: "2026-10-17T11:00:00", moving_duration_s: 1800, distance_m: 6000 }]);
+  const linked = page.locator(".planned-entry.is-completed").filter({ hasText: "Synthetic linked shoe run" }).first();
+  await linked.evaluate((element) => { element.open = true; });
+  const linkedRow = linked.locator(".planned-equipment");
+  await expect(linkedRow.getByRole("combobox", { name: "Schuh" })).toHaveValue("shoe-b");
+  await expect(linkedRow.locator(".planned-equipment-source")).toHaveText("Garmin");
+  await expect(linkedRow.locator(".planned-equipment-suggestion")).toBeHidden();
+  await expect(linkedRow.getByRole("button", { name: "Übernehmen" })).toBeHidden();
 });

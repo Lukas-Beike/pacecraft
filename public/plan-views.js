@@ -1510,12 +1510,13 @@ async function appendPlannedEquipment(details, activityId, actual) {
   const row = h("div", "planned-equipment");
   details.querySelector(":scope > .planned-activity-more")?.before(row);
   if (!row.isConnected) details.append(row);
-  let choice;
+  let read;
   try {
-    choice = (await plannedSessionRead(activityId))?.equipment_choice;
+    read = await plannedSessionRead(activityId);
   } catch {
-    choice = null;
+    read = null;
   }
+  const choice = read?.equipment_choice;
   if (!choice || (!choice.options?.length && !choice.explicit)) {
     row.remove();
     return;
@@ -1523,18 +1524,26 @@ async function appendPlannedEquipment(details, activityId, actual) {
   const sport = activitySportLabel(calendarSportType(actual));
   const label = { Laufen: "Schuh", Radfahren: "Rad", "Rad indoor": "Rad" }[sport] || "Ausrüstung";
   const saved = choice.explicit ? choice.assigned || "" : null;
-  const preset = saved ?? choice.suggested ?? null;
+  // Without an own choice, Garmin's gear link is the source-labelled default; an own choice wins (#2879).
+  const linked = saved === null ? (read.equipment || []).find((item) => !item.parent_id && choice.options.some((option) => option.id === item.id))?.id ?? null : null;
+  const current = saved ?? linked;
+  const preset = current ?? choice.suggested ?? null;
   const select = h("select", { "aria-label": label },
-    saved === null && !choice.suggested ? h("option", { value: "-", selected: true }, "–") : null,
+    preset === null ? h("option", { value: "-", selected: true }, "–") : null,
     // An own choice that can no longer be assigned (retired, another sport) stays shown as it is.
     saved && !choice.options.some((item) => item.id === saved) ? h("option", { value: saved, selected: true, disabled: true }, "Nicht mehr verfügbar") : null,
     choice.options.map((item) => h("option", { value: item.id, selected: item.id === preset }, item.name)),
     h("option", { value: "", selected: preset === "" }, "Keiner"));
-  const hint = h("span", { className: "status-chip planned-equipment-suggestion", hidden: !(saved === null && choice.suggested) }, "Vorschlag");
+  const hint = h("span", { className: "status-chip planned-equipment-suggestion" }, "Vorschlag");
+  const source = h("span", { className: "status-chip planned-equipment-source" }, state.data?.provider_labels?.[providerIds().garmin] || "");
   const apply = h("button", { type: "button", className: "secondary-button", hidden: true }, "Übernehmen");
   const status = h("p", { className: "planned-equipment-status", role: "status" });
-  const pending = () => select.value !== "-" && (saved === null || select.value !== saved);
-  const sync = () => { apply.hidden = !pending(); hint.hidden = select.value !== choice.suggested || saved !== null; };
+  const pending = () => select.value !== "-" && select.value !== current;
+  const sync = () => {
+    apply.hidden = !pending();
+    hint.hidden = current !== null || select.value !== choice.suggested;
+    source.hidden = linked === null || select.value !== linked;
+  };
   select.addEventListener("change", sync);
   apply.addEventListener("click", async () => {
     apply.disabled = true;
@@ -1547,7 +1556,7 @@ async function appendPlannedEquipment(details, activityId, actual) {
       if (!isSessionEndedError(error)) status.textContent = error.message;
     }
   });
-  row.replaceChildren(h("label", "planned-equipment-field", h("span", null, label), select), hint, apply, status);
+  row.replaceChildren(h("label", "planned-equipment-field", h("span", null, label), select), hint, source, apply, status);
   sync();
 }
 
