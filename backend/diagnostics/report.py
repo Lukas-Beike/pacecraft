@@ -78,6 +78,8 @@ from backend.sync.stream_backfill import fit_inventory_counts
 LOGGER = logging.getLogger("intervals_coach")
 # Plan push counts per provider cover this many days (#2878).
 PUSH_WINDOW_DAYS = 7
+# An open plan push job older than this counts as stuck (#2953).
+STUCK_AFTER_HOURS = 2
 
 
 @dataclass(frozen=True)
@@ -196,10 +198,13 @@ class DiagnosticReportService:
             .isoformat()
         )
 
-    def _push_window_start(self) -> str:
-        """The start of the plan push count window (#2878)."""
+    def _push_window(self) -> tuple[str, str]:
+        """The start of the plan push count window (#2878) and the stuck limit (#2953)."""
         now = datetime.fromisoformat(self._deps.utc_now())
-        return utc_timestamp(now - timedelta(days=PUSH_WINDOW_DAYS))
+        return (
+            utc_timestamp(now - timedelta(days=PUSH_WINDOW_DAYS)),
+            utc_timestamp(now - timedelta(hours=STUCK_AFTER_HOURS)),
+        )
 
     def _recovery_copies(self) -> dict[str, Any]:
         if self._deps.database_path is None:
@@ -356,7 +361,7 @@ class DiagnosticReportService:
                 ),
                 "plan_sync": section(
                     "plan_sync",
-                    lambda: summarize_plan_sync(db, self._push_window_start()),
+                    lambda: summarize_plan_sync(db, *self._push_window()),
                 ),
                 "garmin_past_workout_removal": section(
                     "garmin_past_workout_removal",
