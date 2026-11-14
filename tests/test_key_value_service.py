@@ -1,8 +1,8 @@
 """Key/value service tests and the generated catalogue of the ``kv`` keys.
 
 ``docs/kv-catalogue.md`` lists every key or key pattern the backend writes or
-deletes. The scan reads ``backend/**/*.py`` (and ``server.py``, which hands
-callbacks to the backend): every SQL string that names kv is a root, and a key
+deletes. The scan reads ``backend/**/*.py`` and ``server.py`` (which hands
+callbacks to the backend): every SQL string that writes kv is a root, and a key
 that is a parameter is followed to the call sites of its function. Backend
 functions are read, never run. Regenerate the document with
 ``python tests/test_key_value_service.py --write``.
@@ -18,7 +18,6 @@ import sys
 import tempfile
 import unittest
 from collections import defaultdict
-from collections.abc import Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass, replace
 from functools import cache
@@ -36,51 +35,35 @@ DOC = ROOT / "docs" / "kv-catalogue.md"
 BEGIN = "<!-- BEGIN GENERATED KEYS -->\n"
 END = "<!-- END GENERATED KEYS -->\n"
 
-# Writes whose key the scan cannot read from the source: (file, function) to the
-# reason. An entry needs a reason; an entry that no longer matches a write fails.
-DYNAMIC_WRITES: dict[tuple[str, str], str] = {}
-
-# `set`, `delete` and `get` name many unrelated methods, so the callers of the
-# generic kv API are found by the receiver's name and the call's arity.
-KV_CLASSES = ("KeyValue",)
-KV_RECEIVER = re.compile(r"(key_?values?(_?repository|_service)?|kv)$", re.IGNORECASE)
-BARE_RECEIVER = ("repository", "_repository")
 DB_NAMES = ("db", "connection", "conn")
 FUNCTIONS = (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)
+LOOPS = (ast.For, ast.AsyncFor, ast.comprehension)
 COMPREHENSIONS = (ast.ListComp, ast.SetComp, ast.GeneratorExp, ast.DictComp)
-MAX_DEPTH = 60
 # The only calls the scan evaluates itself; backend functions are read, not run.
 SAFE_CALLS = (tuple, list, set, frozenset, sorted, str, int)
-KV_WRITE = re.compile(
-    r"\b(?:INSERT(?:\s+OR\s+\w+)?|REPLACE)\s+INTO\s+kv\b|\bUPDATE\s+kv\b", re.IGNORECASE
-)
-KV_DELETE = re.compile(r"\bDELETE\s+FROM\s+kv\b", re.IGNORECASE)
-KV_READ = re.compile(r"\bFROM\s+kv\b", re.IGNORECASE)
-KEY_PARAMETER = re.compile(
-    r"substr\(\s*key\s*,\s*1\s*,\s*\?\s*\)\s*=\s*\?|\bkey\s*(?:=|LIKE)\s*\?",
-    re.IGNORECASE,
-)
+WRITE = r"\b(?:INSERT(?:\s+OR\s+\w+)?|REPLACE)\s+INTO\s+kv\b|\bUPDATE\s+kv\b"
+KEY_PARAMETER = r"substr\(\s*key\s*,\s*1\s*,\s*\?\s*\)\s*=\s*\?|\bkey\s*=\s*\?"
 
-# AST nodes carry `_parent` and `_mod`, set by `Mod`, so they are typed loosely.
+# AST nodes carry `_parent`, set by `Mod`, so they are typed loosely.
 Node = Any
 
 
 @dataclass(frozen=True)
 class V:
-    """One possible value of an expression, and the function a key came from."""
+    """One possible value of an expression; origin is the (function, line) of
+    the call that supplied a key."""
 
     value: object
-    origin: str | None = None
+    origin: tuple[str, int] | None = None
 
 
 @dataclass(frozen=True)
 class Site:
-    """One resolved kv operation: set, delete, delete_prefix, read or bulk."""
+    """One resolved kv operation: set, delete, delete_prefix or bulk."""
 
     kind: str
     key: str
     writer: str
-    path: str
     line: int
 
 
@@ -90,17 +73,18 @@ class Unresolved(Exception):
         self.node, self.reason = node, reason
 
     def location(self) -> tuple[str, str, int, str, str]:
+        node = self.node
         return (
-            _module(self.node).path,
-            _qualname(self.node),
-            getattr(self.node, "lineno", 0),
-            ast.unparse(self.node)[:70],
+            _module(node).path,
+            _qualname(node),
+            getattr(node, "lineno", 0),
+            ast.unparse(node)[:70],
             self.reason,
         )
 
 
 class Mod:
-    """One parsed module; its namespace is imported only when a constant needs it."""
+    """A parsed module; its namespace is imported only when a constant needs it."""
 
     def __init__(self, name: str, path: str, source: str, ns: dict | None = None):
         self.name, self.path, self.source, self._ns = name, path, source, ns
@@ -118,13 +102,17 @@ class Mod:
 
 
 def backend_modules() -> list[Mod]:
-    modules = []
-    for file in sorted((ROOT / "backend").rglob("*.py")):
-        relative = file.relative_to(ROOT)
-        name = ".".join(relative.with_suffix("").parts).removesuffix(".__init__")
-        modules.append(Mod(name, relative.as_posix(), file.read_text(encoding="utf-8")))
-    server = (ROOT / "server.py").read_text(encoding="utf-8")
-    return [*modules, Mod("server", "server.py", server)]
+    files = [*sorted((ROOT / "backend").rglob("*.py")), ROOT / "server.py"]
+    return [
+        Mod(
+            ".".join(f.relative_to(ROOT).with_suffix("").parts).removesuffix(
+                ".__init__"
+            ),
+            f.relative_to(ROOT).as_posix(),
+            f.read_text(encoding="utf-8"),
+        )
+        for f in files
+    ]
 
 
 def synthetic_module(source: str) -> Mod:
@@ -146,11 +134,8 @@ def _module(node: Node) -> Mod:
 
 
 def _qualname(node: Node) -> str:
-    names = [
-        a.name
-        for a in (node, *_ancestors(node))
-        if isinstance(a, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
-    ]
+    kinds = (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)
+    names = [a.name for a in (node, *_ancestors(node)) if isinstance(a, kinds)]
     return ".".join(reversed(names)) or "<module>"
 
 
@@ -177,7 +162,7 @@ def _bind(target: Node, value: object, name: str) -> object:
         for sub, item in zip(target.elts, value, strict=True):  # type: ignore[call-overload]
             if name in _target_names(sub):
                 return _bind(sub, item, name)
-    except (TypeError, ValueError, AttributeError) as error:
+    except (TypeError, ValueError) as error:
         raise Unresolved(target, "the value cannot be unpacked") from error
     raise Unresolved(target, "the name is not in the target")
 
@@ -187,37 +172,12 @@ def _callee_name(call: Node) -> str | None:
     return func.id if isinstance(func, ast.Name) else getattr(func, "attr", None)
 
 
-def _receiver_tail(call: Node) -> str:
-    node = getattr(call.func, "value", None)
-    while isinstance(node, ast.Call):
-        node = node.func
-    return str(getattr(node, "id", None) or getattr(node, "attr", ""))
-
-
-def _kv_receiver(call: Node) -> bool:
-    """Whether a method call is on a kv repository or service."""
-    tail = _receiver_tail(call)
-    return bool(KV_RECEIVER.search(tail)) or (
-        tail in BARE_RECEIVER and "KeyValueRepository" in _module(call).source
-    )
-
-
 def _placeholder(expr: Node) -> str:
-    """The name a computed part of a key shows as: `<day>`, `<coverage.provider>`."""
-    if (
-        isinstance(expr, ast.Call)
-        and _callee_name(expr) in ("str", "int")
-        and expr.args
-    ):
+    """How a computed part of a key shows: `<day>`, `<coverage.provider>`."""
+    if isinstance(expr, ast.Call) and _callee_name(expr) in ("str", "int"):
         return _placeholder(expr.args[0])
-    if isinstance(expr, (ast.Name, ast.Attribute, ast.Subscript, ast.Call)):
-        text = ast.unparse(expr.func if isinstance(expr, ast.Call) else expr)
-        return re.sub(r"[^\w.]+", "_", text).strip("_")
-    return "x"
-
-
-def _texts(values: list[V] | None) -> bool:
-    return values is not None and all(isinstance(v.value, str) for v in values)
+    text = ast.unparse(expr.func if isinstance(expr, ast.Call) else expr)
+    return re.sub(r"[^\w.]+", "_", text).strip("_")
 
 
 def _sql_text(node: Node) -> str | None:
@@ -234,37 +194,31 @@ def _sql_text(node: Node) -> str | None:
 
 
 def _plan(text: str):
-    """What one SQL string does to kv: (kind, where the key comes from, detail)."""
+    """What one SQL string does to kv: (kind, literal keys, key parameter index)."""
     flat = " ".join(text.split())
-    if KV_DELETE.search(flat):
+    if re.search(r"\bDELETE\s+FROM\s+kv\b", flat, re.IGNORECASE):
         kind = "delete"
-    elif KV_WRITE.search(flat):
+    elif re.search(WRITE, flat, re.IGNORECASE):
         kind = "set"
-    elif KV_READ.search(flat):
-        kind = "read"
     else:
         return None
     if kind == "delete" and not re.search(r"\bWHERE\b", flat, re.IGNORECASE):
-        return "bulk", "bulk", None
-    literals = re.findall(r"\bkey\s*=\s*'([^']+)'", flat, re.IGNORECASE)
+        return "bulk", ["*"], None
+    keys = re.findall(r"\bkey\s*=\s*'([^']+)'", flat, re.IGNORECASE)
     for group in re.findall(r"\bkey\s+IN\s*\(([^)]*)\)", flat, re.IGNORECASE):
-        literals += re.findall(r"'([^']+)'", group)
-    if literals:
-        return kind, "literal", literals
+        keys += re.findall(r"'([^']+)'", group)
     if re.search(r"\bkv\s*\(\s*key\b", flat, re.IGNORECASE):
-        return kind, "parameter", (0, flat.count("?") - 1)
-    found = KEY_PARAMETER.search(flat)
-    if found is None:
-        return kind, "none", None
-    substr = "substr" in found.group(0)
-    if kind == "delete" and substr:
-        kind = "delete_prefix"
-    index = flat[: found.start()].count("?") + substr
-    return kind, "parameter", (index, flat[found.end() :].count("?"))
+        return kind, keys, (0, flat.count("?") - 1)
+    found = re.search(KEY_PARAMETER, flat, re.IGNORECASE)
+    if keys or found is None:
+        return kind, keys, None
+    prefix = "substr" in found.group(0)
+    index = (flat[: found.start()].count("?") + prefix, flat[found.end() :].count("?"))
+    return ("delete_prefix" if prefix else kind), keys, index
 
 
 class Scanner:
-    """Every kv write, delete and read of the given modules, with its key."""
+    """Every kv write and delete of the given modules, with its key."""
 
     def __init__(self, modules: list[Mod]):
         self.modules = modules
@@ -274,7 +228,7 @@ class Scanner:
         self.sites: dict[Site, None] = {}
         self.failures: dict[tuple, None] = {}
         self.statements = 0
-        self._depth, self._soft, self._attr = 0, 0, True
+        self._depth, self._soft, self._shallow, self._attr = 0, 0, 0, True
         self._active: set[int] = set()
         self._memo: dict[tuple, tuple] = {}
         self._frames: list[tuple[Node, dict[str, list[V]]]] = []
@@ -295,84 +249,59 @@ class Scanner:
             inits = [n for n in node.body if getattr(n, "name", "") == "__init__"]
             self.defs[node.name] += inits
         elif isinstance(node, (ast.Name, ast.Attribute)):
-            parent = getattr(node, "_parent", None)
+            parent: Node = getattr(node, "_parent", None)
             if isinstance(parent, ast.keyword) or (
                 isinstance(parent, ast.Call) and node in parent.args
             ):
-                handed = str(getattr(node, "id", None) or getattr(node, "attr", ""))
-                self.passed[handed].append(node)
+                handed = getattr(node, "id", None) or getattr(node, "attr", "")
+                self.passed[str(handed)].append(node)
 
-    # -- roots: the SQL strings that name kv -------------------------------------
+    # -- roots: the SQL strings that write kv --------------------------------------
 
     def _statement(self, node: Node) -> None:
-        text = _sql_text(node)
-        parent = getattr(node, "_parent", None)
-        if text is None or (parent is not None and _sql_text(parent) is not None):
+        text, parent = _sql_text(node), getattr(node, "_parent", None)
+        if text is None or isinstance(parent, ast.Expr):
             return
-        if isinstance(parent, ast.Expr) or (plan := _plan(text)) is None:
+        if parent is not None and _sql_text(parent) is not None:
+            return
+        if (plan := _plan(text)) is None:
             return
         self.statements += 1
-        kind, source, detail = plan
-        where, path = _label(node), _module(node).path
-        line = getattr(node, "lineno", 0)
-        if source == "bulk":
-            self._add(Site("bulk", "*", where, path, line))
-        elif source == "literal":
-            self._add_all(kind, [V(key) for key in detail], where, path, line)
-        elif source == "parameter":
-            values = self._parameter(node, kind, detail)
-            self._add_all(kind, values, where, path, line)
-        elif kind != "read":
+        kind, keys, index = plan
+        if keys:
+            values = [V(k) for k in keys]
+        elif index is not None:
+            values = self._key_values(node, index)
+        else:
+            values = []
             self._fail(node, "the statement names no key")
+        for v in values:
+            writer, line = v.origin or (_label(node), node.lineno)
+            self.sites[Site(kind, str(v.value), writer, line)] = None
 
-    def _add_all(self, kind: str, values: list[V], where: str, path: str, line: int):
-        for value in values:
-            self._add(Site(kind, str(value.value), value.origin or where, path, line))
-
-    def _parameter(self, node: Node, kind: str, detail: tuple[int, int]) -> list[V]:
-        call: Node = getattr(node, "_parent", None)
-        parameters = (
-            call.args[1] if isinstance(call, ast.Call) and len(call.args) > 1 else None
-        )
-        if (
-            not isinstance(parameters, (ast.Tuple, ast.List))
-            or call.args[0] is not node
-        ):
+    def _key_values(self, node: Node, index: tuple[int, int]) -> list[V]:
+        call: Node = node._parent
+        params = call.args[1] if isinstance(call, ast.Call) and call.args[1:] else None
+        if not isinstance(params, (ast.Tuple, ast.List)) or call.args[0] is not node:
             self._fail(node, "the parameters are not a literal tuple")
             return []
-        elements = parameters.elts
-        starred = any(isinstance(e, ast.Starred) for e in elements)
-        expression = elements[-1 - detail[1]] if starred else elements[detail[0]]
-        return self._resolve(expression, record=kind != "read")
-
-    def _add(self, site: Site) -> None:
-        self.sites[site] = None
-
-    def _fail(self, node: Node, reason: str) -> None:
-        self.failures[Unresolved(node, reason).location()] = None
-
-    def _resolve(self, expression: Node, record: bool) -> list[V]:
-        saved = self.failures
-        if not record:
-            self.failures = {}
+        starred = any(isinstance(e, ast.Starred) for e in params.elts)
+        expression = params.elts[-1 - index[1] if starred else index[0]]
         try:
             values = self.ev(expression)
         except Unresolved as error:
             self.failures[error.location()] = None
             return []
-        finally:
-            self.failures = saved
         keys = []
-        for value in values:
-            text = value.value
-            if text is None:
-                continue
-            if isinstance(text, str) and not re.fullmatch(r"(<[^>]*>)*", text):
-                keys.append(value)
-            else:
-                reason = f"the key {text!r} has no literal part"
-                saved[Unresolved(expression, reason).location()] = None
+        for v in values:
+            if isinstance(v.value, str) and not re.fullmatch(r"(<[^>]*>)*", v.value):
+                keys.append(v)
+            elif v.value is not None:
+                self._fail(expression, f"the key {v.value!r} has no literal part")
         return keys
+
+    def _fail(self, node: Node, reason: str) -> None:
+        self.failures[Unresolved(node, reason).location()] = None
 
     # -- expression evaluation ---------------------------------------------------
 
@@ -381,7 +310,7 @@ class Scanner:
         self._depth += 1
         try:
             method = getattr(self, f"_ev_{type(node).__name__}", None)
-            if method is None or self._depth > MAX_DEPTH:
+            if method is None or self._depth > 60:
                 raise Unresolved(node, "not a literal, constant or f-string key")
             return method(node)
         finally:
@@ -410,57 +339,49 @@ class Scanner:
             if isinstance(part, ast.Constant):
                 parts.append([V(part.value)])
                 continue
-            values = self._try(part.value)
-            if values is None or not all(
-                isinstance(v.value, (str, int)) for v in values
-            ):
-                values = [V(f"<{_placeholder(part.value)}>")]
-            parts.append(values)
+            found = self._try(part.value)
+            text = bool(found) and all(
+                isinstance(v.value, (str, int)) for v in found or ()
+            )
+            parts.append(
+                found if text and found else [V(f"<{_placeholder(part.value)}>")]
+            )
         return [V("".join(str(v.value) for v in c)) for c in itertools.product(*parts)]
 
     def _ev_BinOp(self, node: Node) -> list[V]:
-        if not isinstance(node.op, ast.Add):
-            raise Unresolved(node, "not a literal, constant or f-string key")
-        left, right = self._try(node.left), self._try(node.right)
-        if left is None and right is None:
+        sides = [self._try(node.left), self._try(node.right)]
+        if not isinstance(node.op, ast.Add) or sides == [None, None]:
             raise Unresolved(node, "neither side of the key is known")
-        # A part that is not text (an unknown value is None) is computed too.
-        left = left if _texts(left) else [V(f"<{_placeholder(node.left)}>")]
-        right = right if _texts(right) else [V(f"<{_placeholder(node.right)}>")]
-        try:
-            return [
-                V(a.value + b.value)  # type: ignore[operator]
-                for a, b in itertools.product(left or (), right or ())
-            ]
-        except TypeError as error:
-            raise Unresolved(node, "the operands cannot be added") from error
+        # A side that is not text (an unknown value is None) is computed too.
+        left, right = (
+            side
+            if side and all(isinstance(v.value, str) for v in side)
+            else [V(f"<{_placeholder(part)}>")]
+            for side, part in zip(sides, (node.left, node.right), strict=True)
+        )
+        return [V(a.value + b.value) for a, b in itertools.product(left, right)]  # type: ignore[operator]
 
-    def _container(self, node: Node, elements: list[Node], build) -> list[V]:
-        if any(isinstance(e, ast.Starred) for e in elements):
+    def _container(self, node: Node, build) -> list[V]:
+        if any(isinstance(e, ast.Starred) for e in node.elts):
             raise Unresolved(node, "a starred element")
-        options = [self._nested(e) for e in elements]
+        options = [self._nested(e) for e in node.elts]
         return [V(build([v.value for v in c])) for c in itertools.product(*options)]
 
     def _ev_Tuple(self, node: Node) -> list[V]:
-        return self._container(node, node.elts, tuple)
+        return self._container(node, tuple)
 
     def _ev_List(self, node: Node) -> list[V]:
-        return self._container(node, node.elts, list)
+        return self._container(node, list)
 
     def _ev_Set(self, node: Node) -> list[V]:
-        return self._container(node, node.elts, set)
+        return self._container(node, set)
 
     def _ev_Dict(self, node: Node) -> list[V]:
+        """A dict literal: only its keys matter, an unreadable value is None."""
         if None in node.keys:
             raise Unresolved(node, "a dict unpacking")
         keys = [self._nested(k) for k in node.keys]
-        # A value the scan cannot read is kept as None: only the keys are kv keys.
-        values = [self._try(v) or [V(None)] for v in node.values]
-        width = len(keys)
-        return [
-            V({k.value: v.value for k, v in zip(c[:width], c[width:], strict=True)})  # type: ignore[misc]
-            for c in itertools.product(*keys, *values)
-        ]
+        return [V(dict.fromkeys(v.value for v in c)) for c in itertools.product(*keys)]  # type: ignore[arg-type]
 
     def _ev_IfExp(self, node: Node) -> list[V]:
         return [*self.ev(node.body), *self.ev(node.orelse)]
@@ -481,48 +402,40 @@ class Scanner:
             raise Unresolved(node, "the attribute does not exist") from error
 
     def _self_attribute(self, node: Node) -> list[V]:
+        """`self.x`: what any class of the module sets `x` to, an empty default aside."""
+        out = []
+        nodes: list[Node] = list(ast.walk(_module(node).tree))
+        for n in nodes:
+            targets = getattr(n, "targets", None) or [getattr(n, "target", None)]
+            is_class_body = isinstance(getattr(n, "_parent", None), ast.ClassDef)
+            if getattr(n, "value", None) is not None and any(
+                (isinstance(t, ast.Name) and is_class_body and t.id == node.attr)
+                or (isinstance(t, ast.Attribute) and t.attr == node.attr)
+                for t in targets
+            ):
+                out += [v for v in self.ev(n.value) if v.value]
         owner = next((a for a in _ancestors(node) if isinstance(a, ast.ClassDef)), None)
-        namespace = _module(node).ns
-        # A subclass that sets the attribute decides it; the base holds a default.
-        overrides = [
-            vars(namespace[c.name])[node.attr]
-            for c in ast.walk(_module(node).tree)
-            if isinstance(c, ast.ClassDef)
-            and owner is not None
-            and any(isinstance(b, ast.Name) and b.id == owner.name for b in c.bases)
-            and node.attr in vars(namespace.get(c.name, type))
-        ]
-        if overrides:
-            return [V(value) for value in overrides]
-        cls = None if owner is None else namespace.get(owner.name)
-        if cls is not None and hasattr(cls, node.attr):
-            return [V(getattr(cls, node.attr))]
-        assigned = [
-            n.value
-            for n in ast.walk(owner or node)
-            if isinstance(n, ast.Assign)
-            and any(
-                isinstance(t, ast.Attribute) and t.attr == node.attr for t in n.targets
-            )
-        ]
-        if not assigned:
+        method = getattr(
+            _module(node).ns.get(owner.name if owner else ""), node.attr, None
+        )
+        if not out and method is None:
             raise Unresolved(node, "the attribute is not set in its class")
-        return [v for value in assigned for v in self.ev(value)]
+        return out or [V(method)]
 
     def _ev_Subscript(self, node: Node) -> list[V]:
-        objects = self._nested(node.value)
-        index = self._try(node.slice)
+        index = [i.value for i in self._try(node.slice) or []]
         out = []
-        for obj in objects:
-            if index is None and isinstance(obj.value, Mapping):
-                out += [V(v) for v in obj.value.values()]
-            elif index is None:
-                raise Unresolved(node, "the index is not known")
-            else:
-                try:
-                    out += [V(obj.value[i.value]) for i in index]  # type: ignore[index]
-                except (KeyError, IndexError, TypeError) as error:
-                    raise Unresolved(node, "the index is not in the value") from error
+        for owner in self._nested(node.value):
+            table: Any = owner.value
+            if isinstance(table, dict):
+                # An index that is unknown or not in a dict stands for all its values.
+                found = [table[i] for i in index if isinstance(i, str) and i in table]
+                out += [V(v) for v in found or table.values()]
+                continue
+            try:
+                out += [V(table[i]) for i in index]
+            except (IndexError, KeyError, TypeError) as error:
+                raise Unresolved(node, "the index is not in the value") from error
         if any(v.value is None for v in out):
             raise Unresolved(node, "the stored value is not known")
         return out
@@ -541,10 +454,13 @@ class Scanner:
                 and isinstance(getattr(f, "__self__", None), dict)
             ):
                 positional = [self._nested(a) for a in node.args]
-                out += [
-                    V(f(*[a.value for a in args]))
-                    for args in itertools.product(*positional)
-                ]
+                try:
+                    out += [
+                        V(f(*[a.value for a in c]))
+                        for c in itertools.product(*positional)
+                    ]
+                except (TypeError, ValueError) as error:
+                    raise Unresolved(node, "the argument is not known") from error
             elif str(getattr(f, "__module__", "")).startswith("backend"):
                 out += self._returned(node, f)
             else:
@@ -557,19 +473,20 @@ class Scanner:
         for definition in self.defs.get(getattr(function, "__name__", ""), ()):
             if _module(definition).name != getattr(function, "__module__", None):
                 continue
-            bound = {}
-            if isinstance(definition._parent, ast.Module):
-                names = [a.arg for a in definition.args.args]
-                arguments = [
-                    *zip(names, node.args, strict=False),
-                    *((k.arg, k.value) for k in node.keywords),
-                ]
-                for name, argument in arguments:
-                    if (values := self._try(argument)) is not None:
-                        bound[name] = values
+            names = [a.arg for a in definition.args.args]
+            given = [*zip(names, node.args, strict=False)]
+            given += [(k.arg, k.value) for k in node.keywords]
+            bound = {n: v for n, a in given if (v := self._try(a)) is not None}
             self._frames.append((definition, bound))
             try:
-                out += [v for r in _returns(definition) for v in self._nested(r)]
+                pending = list(ast.iter_child_nodes(definition))
+                while pending:
+                    inner = pending.pop()
+                    if isinstance(inner, (*FUNCTIONS, ast.ClassDef)):
+                        continue
+                    pending.extend(ast.iter_child_nodes(inner))
+                    if isinstance(inner, ast.Return) and inner.value is not None:
+                        out += self._nested(inner.value)
             finally:
                 self._frames.pop()
         if not out:
@@ -579,45 +496,43 @@ class Scanner:
     def _ev_Name(self, node: Node) -> list[V]:
         name, child = node.id, node
         for parent in _ancestors(node):
-            if (found := self._bound_by(parent, child, node, name)) is not None:
+            found = self._bound_by(parent, child, node, name)
+            if found is not None:
                 return found
             child = parent
-        namespace = _module(node).ns
+        namespace = {**vars(builtins), **_module(node).ns}
         if name in namespace:
             return [V(namespace[name])]
-        if hasattr(builtins, name):
-            return [V(getattr(builtins, name))]
         raise Unresolved(node, "the name is not a module constant")
 
-    def _bound_by(
-        self, parent: Node, child: Node, node: Node, name: str
-    ) -> list[V] | None:
+    def _bound_by(self, parent: Node, child: Node, node: Node, name: str):
         """What `name` is where a loop, comprehension or function binds it."""
-        loop = isinstance(parent, (ast.For, ast.AsyncFor, ast.comprehension))
-        if loop and child is not parent.iter and name in _target_names(parent.target):
-            return self._loop(parent.target, name, parent.iter)
-        if isinstance(parent, COMPREHENSIONS) and not isinstance(
-            child, ast.comprehension
-        ):
-            for gen in parent.generators:
-                if name in _target_names(gen.target):
-                    return self._loop(gen.target, name, gen.iter)
+        loops: list[Node] = [parent] if isinstance(parent, LOOPS) else []
+        if isinstance(parent, COMPREHENSIONS) and child not in parent.generators:
+            loops = parent.generators
+        for loop in loops:
+            if child is not loop.iter and name in _target_names(loop.target):
+                return self._loop(loop.target, name, loop.iter)
         if isinstance(parent, FUNCTIONS):
             return self._in_function(node, parent, name)
         return None
 
     def _in_function(self, node: Node, function: Node, name: str) -> list[V] | None:
-        """What a name is inside a function: a local, a bound or a traced parameter."""
-        local = not isinstance(function, ast.Lambda) and not _in_assignment_to(
-            node, function, name
+        """A name inside a function: a local, a bound or a traced parameter."""
+        inside = any(
+            isinstance(a, ast.Assign) and name in _target_names(a.targets[0])
+            for a in _ancestors(node)
+            if a is not function
         )
+        local = not isinstance(function, ast.Lambda) and not inside
         if local and (assigned := self._assigned(function, name)):
             return assigned
         for frame, bound in reversed(self._frames):
             if frame is function and name in bound:
                 return bound[name]
-        parameters = {a.arg for a in ast.walk(function.args) if isinstance(a, ast.arg)}
-        if name in parameters:
+        if name in {a.arg for a in ast.walk(function.args) if isinstance(a, ast.arg)}:
+            if self._shallow:
+                raise Unresolved(node, "a parameter is not followed here")
             return self._parameter_values(function, name, node)
         return None
 
@@ -636,44 +551,26 @@ class Scanner:
         return out
 
     def _assigned(self, function: Node, name: str) -> list[V]:
+        """What assignments inside a function (not its inner functions) give a name."""
         out: list[V] = []
-        pending = list(ast.iter_child_nodes(function))
+        stored: list[Node] = []
+        pending: list[Node] = list(ast.iter_child_nodes(function))
         while pending:
             node = pending.pop()
             if isinstance(node, (*FUNCTIONS, ast.ClassDef)):
                 continue
             pending.extend(ast.iter_child_nodes(node))
-            out += self._binding(node, name)
-        return self._with_stored_keys(function, name, out)
-
-    def _binding(self, node: Node, name: str) -> list[V]:
-        """The values one statement or walrus binds to `name`."""
-        if isinstance(node, ast.AugAssign) and name in _target_names(node.target):
-            raise Unresolved(node, "the name is changed by an augmented assignment")
-        if isinstance(node, ast.NamedExpr) and node.target.id == name:
-            return self.ev(node.value)
-        targets = [t for t in getattr(node, "targets", ()) if name in _target_names(t)]
-        if isinstance(node, ast.Assign) and targets:
-            return [V(_bind(targets[0], v.value, name)) for v in self.ev(node.value)]
-        return []
-
-    def _with_stored_keys(self, function: Node, name: str, out: list[V]) -> list[V]:
-        """Add the keys stored into a dict after its literal: `values["key"] = x`."""
-        stored = [
-            n.slice
-            for n in ast.walk(function)
-            if isinstance(n, ast.Subscript)
-            and isinstance(n.ctx, ast.Store)
-            and isinstance(n.value, ast.Name)
-            and n.value.id == name
-        ]
-        if not stored:
-            return out
+            targets = getattr(node, "targets", None) or [getattr(node, "target", None)]
+            bound = [t for t in targets if t is not None and name in _target_names(t)]
+            if isinstance(node, ast.AugAssign) and bound:
+                raise Unresolved(node, "the name is changed by an augmented assignment")
+            if isinstance(node, (ast.NamedExpr, ast.Assign)) and bound:
+                out += [V(_bind(bound[0], v.value, name)) for v in self.ev(node.value)]
+            if _stores_into(node, name):
+                stored.append(node.slice)  # a key added to a dict: `values["key"] = x`
         extra = [v.value for s in stored for v in self._nested(s)]
         return [
-            V({**v.value, **dict.fromkeys(extra)})  # type: ignore[dict-item]
-            if isinstance(v.value, dict)
-            else v
+            V({**v.value, **dict.fromkeys(extra)}) if isinstance(v.value, dict) else v  # type: ignore[dict-item]
             for v in out
         ]
 
@@ -696,9 +593,7 @@ class Scanner:
         return values
 
     def _follow(self, function: Node, name: str, node: Node) -> list[V]:
-        arguments = (
-            [] if isinstance(function, ast.Lambda) else self._arguments(function, name)
-        ) or self._callback_arguments(function, name)
+        arguments = self._arguments(function, name) or self._callbacks(function, name)
         if not arguments:
             raise Unresolved(node, "no call site in backend passes the key")
         out = []
@@ -715,27 +610,24 @@ class Scanner:
                 continue
             finally:
                 self._active.discard(id(argument))
-            label = _label(origin)
+            where = (_label(origin), origin.lineno)
             out += [
-                replace(v, origin=v.origin or label) if self._attr else v
+                replace(v, origin=v.origin or where) if self._attr else v
                 for v in values
             ]
         return out
 
     def _arguments(self, function: Node, name: str) -> list[tuple[Node, Node]]:
-        """The (origin, argument) pairs every accepted call passes for a parameter."""
-        args = function.args
+        """The (call, argument) pairs of the calls that pass a parameter."""
+        if isinstance(function, ast.Lambda):
+            return []
+        args, owner = function.args, function._parent
         parameters = [a.arg for a in (*args.posonlyargs, *args.args)]
-        owner = function._parent
-        in_class = isinstance(owner, ast.ClassDef)
-        static = any(
-            isinstance(d, ast.Name) and d.id == "staticmethod"
-            for d in function.decorator_list
+        method = isinstance(owner, ast.ClassDef) and "staticmethod" not in ast.unparse(
+            function.decorator_list
         )
-        offset = 1 if in_class and parameters and not static else 0
-        called = (
-            owner.name if function.name == "__init__" and in_class else function.name
-        )
+        offset = int(method and bool(parameters))
+        called = owner.name if function.name == "__init__" else function.name
         total = (
             1 << 30 if args.vararg else len(parameters) - offset + len(args.kwonlyargs)
         )
@@ -744,14 +636,54 @@ class Scanner:
         out = []
         for call in self.calls.get(called, ()):
             count = len(call.args) + len(call.keywords)
-            accepted = required <= count <= total and self._calls(call, function, owner)
-            if accepted and (pair := _bound_argument(call, function, name, offset)):
+            fits = required <= count <= total
+            match = self._calls(call, function, parameters) if fits else False
+            pair = None
+            if match is not False:
+                pair = _bound_argument(call, function, name, offset)
+            # A call that only has the shape of the method is taken when its
+            # argument is a readable key.
+            if pair and (match is True or self._readable(pair[1])):
                 out.append(pair)
         return out
 
-    def _callback_arguments(self, function: Node, name: str) -> list[tuple[Node, Node]]:
-        """The arguments a function handed on as a callback is called with."""
-        offset = 1 if isinstance(function._parent, ast.ClassDef) else 0
+    def _readable(self, argument: Node) -> bool:
+        """Whether an argument is a key without following any parameter."""
+        self._shallow += 1
+        try:
+            return self._try(argument) is not None
+        finally:
+            self._shallow -= 1
+
+    def _calls(self, call: Node, function: Node, parameters: list[str]) -> bool | None:
+        """Whether a call of the function's name is a call of this function: True,
+        False, or None when only the shape of the call fits."""
+        owner, receiver = function._parent, getattr(call.func, "value", None)
+        if isinstance(owner, ast.Module):
+            return _names_function(call, function)
+        selfcall = isinstance(receiver, ast.Name) and receiver.id in ("self", "cls")
+        if selfcall or not isinstance(owner, ast.ClassDef):
+            return owner in _ancestors(call)
+        if len(self.defs[function.name]) == 1 or function.name == "__init__":
+            return True
+        # Several classes define the name (`set`, `delete`): the call must hand
+        # the database over exactly when the method takes it first. A receiver
+        # named for key/value state settles it, otherwise only the shape fits.
+        first = parameters[1] if len(parameters) > 1 else ""
+        handed = bool(call.args) and getattr(call.args[0], "id", "") in DB_NAMES
+        if (first in DB_NAMES) != handed:
+            return False
+        tail = ast.unparse(receiver).rsplit(".", 1)[-1] if receiver else ""
+        named = re.search(r"key_?value|kv", tail, re.IGNORECASE) or (
+            tail.strip("_") == "repository"
+            and "KeyValueRepository" in _module(call).source
+        )
+        return True if named else None
+
+    def _callbacks(self, function: Node, name: str) -> list[tuple[Node, Node]]:
+        """The calls of a function that is handed on as a callback, by its parameter."""
+        owner = function._parent
+        offset = int(isinstance(owner, ast.ClassDef))
         positional = [a.arg for a in function.args.args]
         if name not in positional:
             return []
@@ -761,108 +693,75 @@ class Scanner:
             if isinstance(function, ast.Lambda)
             else self.passed.get(function.name, [])
         )
-        return [pair for ref in references for pair in self._callbacks(ref, wanted)]
+        return [p for ref in references for p in self._calls_of_callback(ref, wanted)]
 
-    def _callbacks(self, reference: Node, wanted: int) -> list[tuple[Node, Node]]:
-        holder = reference._parent
+    def _calls_of_callback(self, ref: Node, wanted: int) -> list[tuple[Node, Node]]:
+        holder = ref._parent
         keyword = holder.arg if isinstance(holder, ast.keyword) else None
         call = holder._parent if keyword else holder
-        if not isinstance(call, ast.Call) or (callee := _callee_name(call)) is None:
+        if not isinstance(call, ast.Call):
             return []
-        position = call.args.index(reference) if keyword is None else -1
         out = []
-        for function in self.defs.get(callee, ()):
+        for function in self.defs.get(_callee_name(call) or "", ()):
             owner = function._parent
-            offset = 1 if isinstance(owner, ast.ClassDef) else 0
-            positional = [a.arg for a in function.args.args]
-            named = [*positional, *(a.arg for a in function.args.kwonlyargs)]
-            if keyword is None and position + offset < len(positional):
-                parameter = positional[position + offset]
-            elif keyword in named:
-                parameter = keyword
-            else:
+            at = call.args.index(ref) if keyword is None else -1
+            parameter = _parameter_at(function, at, keyword)
+            if parameter is None:
                 continue
+            # The parameter is called directly or through the attribute it is stored in.
+            stored = {
+                t.attr
+                for n in ast.walk(function)
+                if isinstance(n, ast.Assign) and getattr(n.value, "id", "") == parameter
+                for t in n.targets
+                if isinstance(t, ast.Attribute)
+            }
             scope = owner if isinstance(owner, ast.ClassDef) else function
-            out += _calls_of(scope, function, parameter, wanted)
-        return out
-
-    def _calls(self, call: Node, function: Node, owner: Node) -> bool:
-        """Whether a call to the function's name is a call of this function."""
-        if isinstance(owner, ast.ClassDef) and owner.name.startswith(KV_CLASSES):
-            return _calls_kv_method(call, function)
-        if isinstance(owner, ast.ClassDef):
-            return self._calls_method(call, function, owner)
-        if isinstance(owner, ast.Module):
-            target: Any = _module(call).ns
-            for part in ast.unparse(call.func).split("."):
-                target = (
-                    target.get(part)
-                    if isinstance(target, dict)
-                    else getattr(target, part, None)
+            out += [
+                (n, n.args[wanted])
+                for n in ast.walk(scope)
+                if isinstance(n, ast.Call)
+                and wanted < len(n.args)
+                and (
+                    getattr(n.func, "id", None) == parameter
+                    or getattr(n.func, "attr", None) in stored
                 )
-            return (
-                getattr(target, "__name__", None) == function.name
-                and getattr(target, "__module__", None) == _module(function).name
-            )
-        return owner in _ancestors(call)
-
-    def _calls_method(self, call: Node, function: Node, owner: Node) -> bool:
-        receiver = getattr(call.func, "value", None)
-        if isinstance(receiver, ast.Name) and receiver.id in ("self", "cls"):
-            return owner in _ancestors(call)
-        if function.name == "__init__" or len(self.defs[function.name]) == 1:
-            return True
-        # A name several classes define: the receiver must resemble the class.
-        tokens = [t.rstrip("s") for t in _receiver_tail(call).split("_") if len(t) > 2]
-        return any(t.lower() in owner.name.lower() for t in tokens)
-
-    # -- queries ----------------------------------------------------------------
-
-    def module(self, name: str) -> Mod:
-        return next(m for m in self.modules if m.name == name)
-
-    def kv_set_keys(self, path: str, function: str, after: int = 0) -> list[str]:
-        """The keys the kv `set` calls of one function write after a line."""
-        out = []
-        for call in self.calls["set"]:
-            if (
-                _module(call).path == path
-                and _qualname(call) == function
-                and call.lineno > after
-                and len(call.args) == 3
-                and _kv_receiver(call)
-            ):
-                out += [str(v.value) for v in self.ev(call.args[1])]
+            ]
         return out
 
-    def unexplained(self) -> list[tuple]:
-        """Failures no DYNAMIC_WRITES entry names."""
-        return [f for f in self.failures if (f[0], f[1]) not in DYNAMIC_WRITES]
+
+def _parameter_at(function: Node, position: int, keyword: str | None) -> str | None:
+    """The parameter a callback reference lands on, by position or keyword."""
+    offset = int(isinstance(function._parent, ast.ClassDef))
+    positional = [a.arg for a in function.args.args]
+    named = [*positional, *(a.arg for a in function.args.kwonlyargs)]
+    if keyword is None and position + offset < len(positional):
+        return positional[position + offset]
+    return keyword if keyword in named else None
 
 
-def _returns(definition: Node) -> list[Node]:
-    """The values a function returns, not those of the functions inside it."""
-    out, pending = [], list(ast.iter_child_nodes(definition))
-    while pending:
-        node = pending.pop()
-        if isinstance(node, (*FUNCTIONS, ast.ClassDef)):
-            continue
-        pending.extend(ast.iter_child_nodes(node))
-        if isinstance(node, ast.Return) and node.value is not None:
-            out.append(node.value)
-    return out
+def _stores_into(node: Node, name: str) -> bool:
+    """Whether a node is the target `name[key] = value`."""
+    return (
+        isinstance(node, ast.Subscript)
+        and isinstance(node.ctx, ast.Store)
+        and getattr(node.value, "id", None) == name
+    )
 
 
-def _in_assignment_to(node: Node, function: Node, name: str) -> bool:
-    """Whether the node is part of the value of an assignment that binds `name`."""
-    for ancestor in _ancestors(node):
-        if ancestor is function:
-            return False
-        if isinstance(ancestor, ast.Assign) and any(
-            name in _target_names(t) for t in ancestor.targets
-        ):
-            return True
-    return False
+def _names_function(call: Node, function: Node) -> bool:
+    """Whether the callee of a call is the module-level function (by import)."""
+    target: Any = _module(call).ns
+    for part in ast.unparse(call.func).split("."):
+        target = (
+            target.get(part)
+            if isinstance(target, dict)
+            else getattr(target, part, None)
+        )
+    return (
+        getattr(target, "__name__", None) == function.name
+        and getattr(target, "__module__", None) == _module(function).name
+    )
 
 
 def _bound_argument(call: Node, function: Node, name: str, offset: int):
@@ -880,56 +779,13 @@ def _bound_argument(call: Node, function: Node, name: str, offset: int):
         return call, call.args[index]
     if keyword := next((k for k in call.keywords if k.arg == name), None):
         return call, keyword.value
-    default = _default(function, name)
+    # An omitted argument keeps the parameter's default.
+    if name in parameters:
+        at = index - (len(parameters) - offset - len(args.defaults))
+        return (function, args.defaults[at]) if at >= 0 else None
+    kwonly = [a.arg for a in args.kwonlyargs]
+    default = args.kw_defaults[kwonly.index(name)] if name in kwonly else None
     return None if default is None else (function, default)
-
-
-def _default(function: Node, name: str) -> Node | None:
-    args = function.args
-    positional = [a.arg for a in (*args.posonlyargs, *args.args)]
-    if name in positional:
-        index = positional.index(name) - (len(positional) - len(args.defaults))
-        return args.defaults[index] if index >= 0 else None
-    names = [a.arg for a in args.kwonlyargs]
-    return args.kw_defaults[names.index(name)] if name in names else None
-
-
-def _calls_kv_method(call: Node, function: Node) -> bool:
-    """A call of a KeyValueRepository or KeyValueService method."""
-    first = [a.arg for a in function.args.args][1]
-    handed_db = (
-        bool(call.args)
-        and isinstance(call.args[0], ast.Name)
-        and call.args[0].id in DB_NAMES
-    )
-    return (
-        isinstance(call.func, ast.Attribute)
-        and _kv_receiver(call)
-        and not (first not in DB_NAMES and handed_db)
-    )
-
-
-def _calls_of(scope: Node, function: Node, parameter: str, wanted: int):
-    """The calls of a callback parameter (or of the attribute it is stored in)."""
-    attributes = {
-        t.attr
-        for n in ast.walk(function)
-        if isinstance(n, ast.Assign)
-        and isinstance(n.value, ast.Name)
-        and n.value.id == parameter
-        for t in n.targets
-        if isinstance(t, ast.Attribute)
-    }
-    out = []
-    for node in ast.walk(scope):
-        if not isinstance(node, ast.Call) or wanted >= len(node.args):
-            continue
-        func = node.func
-        if (isinstance(func, ast.Name) and func.id == parameter) or (
-            isinstance(func, ast.Attribute) and func.attr in attributes
-        ):
-            out.append((node, node.args[wanted]))
-    return out
 
 
 @cache
@@ -940,135 +796,95 @@ def real_scanner() -> Scanner:
 # -- the catalogue ------------------------------------------------------------
 
 
-def export_rules(scanner: Scanner) -> tuple[set[str], tuple[str, ...]]:
+def _export_rules(scanner: Scanner) -> tuple[set[str], tuple[str, ...]]:
     """The keys and key suffixes the privacy export leaves out."""
+    export = next(m for m in scanner.modules if m.name == "backend.backup.export")
+    nodes: list[Node] = list(ast.walk(export.tree))
+    function = next(
+        n
+        for n in nodes
+        if isinstance(n, ast.FunctionDef) and n.name == "application_state"
+    )
+    names = [a.arg for a in function.args.kwonlyargs]
+    default = function.args.kw_defaults[names.index("excluded_suffixes")]
+    keyword: Node = next(
+        n for n in nodes if isinstance(n, ast.keyword) and n.arg == "excluded_keys"
+    )
     excluded: set[str] = set()
-    suffixes: tuple[str, ...] = ()
-    for node in ast.walk(scanner.module("backend.backup.export").tree):
-        if isinstance(node, ast.FunctionDef) and node.name == "application_state":
-            names = [a.arg for a in node.args.kwonlyargs]
-            default = node.args.kw_defaults[names.index("excluded_suffixes")]
-            suffixes = tuple(ast.literal_eval(default))  # type: ignore[arg-type]
-        if isinstance(node, ast.keyword) and node.arg == "excluded_keys":
-            excluded |= _evaluated_set(scanner, node.value)
-    return excluded, suffixes
-
-
-def _evaluated_set(scanner: Scanner, literal: Node) -> set[str]:
-    """The strings of a set literal whose elements may be constants or `*sets`."""
-    out: set[str] = set()
-    for element in literal.elts:
+    for element in keyword.value.elts:
         starred = isinstance(element, ast.Starred)
         for v in scanner.ev(element.value if starred else element):
-            out |= set(v.value) if starred else {str(v.value)}  # type: ignore[call-overload]
-    return out
+            items: Any = v.value
+            excluded |= set(items) if starred else {str(items)}
+    suffixes: Any = ast.literal_eval(default)  # type: ignore[arg-type]
+    return excluded, tuple(suffixes)
 
 
 def rules(scanner: Scanner | None) -> dict:
     """What the export, startup and the purge do to keys, read from their code."""
     if scanner is None:
         return {"excluded": set(), "suffixes": (), "startup": set(), "purge": set()}
-    privacy = "backend/privacy.py"
-    bulk = [s for s in scanner.sites if s.kind == "bulk" and s.path == privacy]
-    excluded, suffixes = export_rules(scanner)
-    startup = scanner.kv_set_keys("backend/db/bootstrap.py", "apply_startup_invariants")
-    purge = {
-        key
-        for s in bulk
-        for key in scanner.kv_set_keys(privacy, s.writer.split(":", 1)[1], s.line)
-    }
+    excluded, suffixes = _export_rules(scanner)
+    sets = [s for s in scanner.sites if s.kind == "set"]
+    bulk = [s for s in scanner.sites if s.kind == "bulk"]
     return {
         "excluded": excluded,
         "suffixes": suffixes,
-        "startup": set(startup),
-        "purge": purge,
+        "startup": {
+            s.key
+            for s in sets
+            if s.writer == "backend/db/bootstrap.py:apply_startup_invariants"
+        },
+        # The keys the purge function writes after it deleted every row.
+        "purge": {
+            s.key
+            for b in bulk
+            for s in sets
+            if s.writer == b.writer and s.line > b.line
+        },
     }
 
 
-def _key_pattern(key: str) -> re.Pattern[str]:
-    parts = re.split(r"(<[^>]*>)", key)
-    return re.compile(
-        "".join(".+" if i % 2 else re.escape(p) for i, p in enumerate(parts)),
-        re.DOTALL,
-    )
-
-
-def read_never_written(scanner: Scanner, known: list[str]) -> list[str]:
-    patterns = [_key_pattern(k) for k in known]
-    missing = set()
-    for site in scanner.sites:
-        if site.kind != "read" or "<" in site.key:
-            continue
-        key = site.key.removesuffix("%")
-        if site.key.endswith("%") and any(k.startswith(key) for k in known):
-            continue
-        if not any(p.fullmatch(key) for p in patterns):
-            missing.add(site.key)
-    return sorted(missing)
-
-
-def _row(key: str, writers: set[str], removed: set[str], rule: dict) -> str:
-    out = key in rule["excluded"] or key.endswith(rule["suffixes"])
-    return (
-        f"| `{key}` | {'<br>'.join(sorted(writers)) or '-'} "
-        f"| {'<br>'.join(sorted(removed)) or '-'} | {'no' if out else 'yes'} "
-        f"| {'yes' if key in rule['startup'] else '-'} "
-        f"| {'rewritten' if key in rule['purge'] else '-'} |"
-    )
-
-
-def _rows(scanner: Scanner, rule: dict) -> tuple[list[str], list[str], dict]:
-    written: dict[str, set[str]] = defaultdict(set)
-    deleted: dict[str, set[str]] = defaultdict(set)
-    prefixes: dict[str, set[str]] = defaultdict(set)
-    kinds = {"set": written, "delete": deleted, "delete_prefix": prefixes}
-    for site in scanner.sites:
-        if site.kind in kinds:
-            kinds[site.kind][site.key].add(site.writer)
-    keys = sorted({*written, *deleted})
-    rows = []
-    for key in keys:
-        removed = deleted[key].union(
-            *(w for prefix, w in prefixes.items() if key.startswith(prefix))
-        )
-        rows.append(_row(key, written[key], removed, rule))
-    return keys, rows, prefixes
-
-
-def _notes(scanner: Scanner, rule: dict, keys: list[str], prefixes: dict) -> list[str]:
-    lines: list[str] = []
-    unmatched = sorted(p for p in prefixes if not any(k.startswith(p) for k in keys))
-    for prefix in unmatched:
-        lines += [
-            f"- `{prefix}...` is deleted by {', '.join(sorted(prefixes[prefix]))}"
-        ]
-    lines += [
-        f"- `{path}:{function}` writes keys the scan cannot read: {reason}"
-        for (path, function), reason in sorted(DYNAMIC_WRITES.items())
-    ]
-    wiped = sorted({s.writer for s in scanner.sites if s.kind == "bulk"})
-    lines += [f"- every key is deleted by `{writer}`" for writer in wiped]
-    silent = sorted(rule["excluded"] - set(keys))
-    lines += [
-        f"- `{key}` is left out of the export; nothing writes it" for key in silent
-    ]
-    never = read_never_written(scanner, keys)
-    lines += [f"- `{key}` is read but never written" for key in never]
-    return lines
-
-
 def catalogue(scanner: Scanner, rule: dict) -> str:
-    keys, rows, prefixes = _rows(scanner, rule)
-    patterns = sum("<" in k for k in keys)
+    by_key: dict[str, dict[str, set[str]]] = defaultdict(lambda: defaultdict(set))
+    for site in scanner.sites:
+        if site.kind in ("set", "delete"):
+            by_key[site.key][site.kind].add(site.writer)
+    prefixes = {s.key: s.writer for s in scanner.sites if s.kind == "delete_prefix"}
+    rows = []
+    for key in sorted(by_key):
+        removed = by_key[key]["delete"] | {
+            w for p, w in prefixes.items() if key.startswith(p)
+        }
+        out = key in rule["excluded"] or key.endswith(rule["suffixes"])
+        cells = [
+            "<br>".join(sorted(by_key[key]["set"])) or "-",
+            "<br>".join(sorted(removed)) or "-",
+            "no" if out else "yes",
+            "yes" if key in rule["startup"] else "-",
+            "rewritten" if key in rule["purge"] else "-",
+        ]
+        rows.append(f"| `{key}` | " + " | ".join(cells) + " |")
+    patterns = sum("<" in k for k in by_key)
+    notes = [
+        f"- every key is deleted by `{s.writer}`"
+        for s in scanner.sites
+        if s.kind == "bulk"
+    ]
+    notes += [f"- `{p}` is deleted by prefix by `{w}`" for p, w in prefixes.items()]
+    notes += [
+        f"- `{k}` is left out of the export; nothing writes it"
+        for k in sorted(rule["excluded"] - set(by_key))
+    ]
     lines = [
-        f"{len(keys) - patterns} keys and {patterns} key patterns; "
+        f"{len(by_key) - patterns} keys and {patterns} key patterns; "
         + "`<name>` stands for a value the code computes.",
         "",
         "| Key | Written by | Deleted by | Export | Reset at start | Purge |",
         "| --- | --- | --- | --- | --- | --- |",
         *rows,
         "",
-        *(_notes(scanner, rule, keys, prefixes) or ["Nothing else to note."]),
+        *notes,
     ]
     return "\n".join(lines) + "\n"
 
@@ -1108,25 +924,35 @@ class KeyValueServiceTests(unittest.TestCase):
         self.repository.set.assert_called_once_with(self.db, "setting", "value")
 
 
-SYNTHETIC_SAVE = (
-    "PREFIX = 'day:'\n"
-    "def write(db, key):\n"
-    '    db.execute("DELETE FROM kv WHERE key = ?", (key,))\n'
-    "def save(db, day):\n"
-    "    db.execute(\n"
-    '        "INSERT OR REPLACE INTO kv(key,value,updated_at) VALUES(?,?,?)",\n'
-    '        ("brand_new_key", "v", "t"),\n'
-    "    )\n"
-    '    db.execute("UPDATE kv SET value=? WHERE key=?", ("v", PREFIX + day))\n'
-    '    write(db, "removed_key")\n'
-)
-SYNTHETIC_UNREADABLE = (
-    "def save(db):\n"
-    "    db.execute(\n"
-    '        "INSERT INTO kv(key,value,updated_at) VALUES(?,?,?)",\n'
-    '        (compute_key(), "v", "t"),\n'
-    "    )\n"
-)
+INSERT = '"INSERT INTO kv(key,value,updated_at) VALUES(?,?,?)"'
+SYNTHETIC_SAVE = f"""
+KEY = "typed_any_key"
+class Store:
+    def __init__(self, repository):
+        self._repository = repository
+    def save(self, db, day):
+        self._repository.set(db, KEY, "v")
+        self._repository.set(db, "day:" + day, "v")
+        self._repository.delete(db, "removed_key")
+def write(db, key):
+    db.execute({INSERT}, (key, "v", "t"))
+def save(db):
+    write(db, "brand_new_key")
+"""
+SYNTHETIC_UNREADABLE = f"""
+def save(db):
+    db.execute({INSERT}, (compute_key(), "v", "t"))
+"""
+SYNTHETIC_REPOSITORY = f"""
+class Profile:
+    def set(self, db, payload):
+        pass
+class KeyValueRepository:
+    def set(self, db, key, value):
+        db.execute({INSERT}, (key, value, "t"))
+    def delete(self, db, key):
+        db.execute("DELETE FROM kv WHERE key = ?", (key,))
+"""
 
 
 class KeyValueCatalogueTests(unittest.TestCase):
@@ -1141,23 +967,27 @@ class KeyValueCatalogueTests(unittest.TestCase):
     def test_every_kv_write_has_a_resolved_key(self):
         scanner = real_scanner()
         self.assertGreater(scanner.statements, 10)
-        self.assertEqual(scanner.unexplained(), [])
-        stale = set(DYNAMIC_WRITES) - {(f[0], f[1]) for f in scanner.failures}
-        self.assertEqual(sorted(stale), [])
+        self.assertEqual(list(scanner.failures), [])
 
     def test_scanner_rejects_a_key_it_cannot_resolve(self):
         scanner = Scanner([synthetic_module(SYNTHETIC_UNREADABLE)])
 
-        self.assertEqual([f[1] for f in scanner.unexplained()], ["save"])
+        self.assertEqual([f[1] for f in scanner.failures], ["save"])
 
-    def test_scanner_lists_a_new_key_in_the_catalogue(self):
-        scanner = Scanner([synthetic_module(SYNTHETIC_SAVE)])
+    def test_scanner_lists_keys_of_a_repository_of_any_name(self):
+        scanner = Scanner([synthetic_module(SYNTHETIC_REPOSITORY + SYNTHETIC_SAVE)])
 
-        self.assertEqual(scanner.unexplained(), [])
+        self.assertEqual(list(scanner.failures), [])
         document = catalogue(scanner, rules(None))
-        self.assertIn("| `brand_new_key` | backend/synthetic.py:save |", document)
-        self.assertIn("`day:<day>`", document)
-        self.assertIn("| `removed_key` | - | backend/synthetic.py:save |", document)
+        for key, writer in (
+            ("typed_any_key", "backend/synthetic.py:Store.save"),
+            ("day:<day>", "backend/synthetic.py:Store.save"),
+            ("brand_new_key", "backend/synthetic.py:save"),
+        ):
+            self.assertIn(f"| `{key}` | {writer} |", document)
+        self.assertIn(
+            "| `removed_key` | - | backend/synthetic.py:Store.save |", document
+        )
 
 
 if __name__ == "__main__":

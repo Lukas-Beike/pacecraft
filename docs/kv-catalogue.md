@@ -16,7 +16,7 @@ read. A new key needs no entry: it appears here when its write is added.
   `profile` is only set when absent.
 
 <!-- BEGIN GENERATED KEYS -->
-82 keys and 26 key patterns; `<name>` stands for a value the code computes.
+87 keys and 26 key patterns; `<name>` stands for a value the code computes.
 
 | Key | Written by | Deleted by | Export | Reset at start | Purge |
 | --- | --- | --- | --- | --- | --- |
@@ -28,6 +28,8 @@ read. A new key needs no entry: it appears here when its write is added.
 | `activity_routes` | backend/activities/route_store.py:save_index | backend/activities/route_store.py:clear_routes | yes | - | - |
 | `activity_routes_state` | backend/sync/activity_routes.py:ActivityRoutesStage._save | backend/activities/route_store.py:clear_routes | yes | - | - |
 | `activity_weather_state` | backend/sync/activity_weather.py:ActivityWeatherStage._save | - | yes | - | - |
+| `anthropic_status` | backend/providers/state.py:ProviderStateService._record_status_unlocked | - | no | - | - |
+| `anthropic_usage` | backend/providers/state.py:ProviderStateService.record_usage | - | yes | - | - |
 | `calendar_display_<key>` | backend/settings.py:SettingsService.save_calendar_display_settings | - | yes | - | - |
 | `calendar_weather_history` | backend/weather/service.py:WeatherCacheStore.store_refresh | - | yes | - | - |
 | `canonical_backfill_state` | backend/sync/canonical_backfill.py:CanonicalBackfill._save | - | yes | - | - |
@@ -93,6 +95,9 @@ read. A new key needs no entry: it appears here when its write is added.
 | `morning_checkin_date` | backend/coach/morning_completion.py:MorningCoachJobCompletionService.complete | - | yes | - | - |
 | `morning_checkin_status` | backend/coach/morning_completion.py:MorningCoachJobCompletionService.complete | - | no | - | - |
 | `openai_conversation_id` | backend/coach/conversation.py:CoachConversationProvisionService.ensure<br>backend/coach/conversation.py:CoachConversationProvisionService.rotate<br>backend/coach/conversation.py:CoachConversationResetService._reset_local<br>backend/coach/conversation_recovery.py:CoachConversationRecoveryService.recover_if_invalid | - | yes | - | - |
+| `openai_rate_limits` | backend/providers/state.py:ProviderStateService.record_rate_limits | - | yes | - | - |
+| `openai_status` | backend/providers/state.py:ProviderStateService._record_status_unlocked | - | no | - | - |
+| `openai_usage` | backend/providers/state.py:ProviderStateService.record_usage | - | yes | - | - |
 | `profile` | backend/db/bootstrap.py:apply_startup_invariants<br>backend/db/repositories.py:ProfileRepository.set<br>backend/privacy.py:PrivacyDeleteService.delete | - | no | yes | rewritten |
 | `profile_weekly_plan_removal_state` | backend/sync/profile_weekly_plan_removal.py:ProfileWeeklyPlanRemoval._save | - | yes | - | - |
 | `provider_credentials` | backend/provider_credentials.py:ProviderCredentialService.update | backend/provider_credentials.py:ProviderCredentialService.update | no | - | - |
@@ -126,11 +131,11 @@ read. A new key needs no entry: it appears here when its write is added.
 | `wahoo_full_resync_status` | backend/db/bootstrap.py:apply_startup_invariants | - | no | yes | - |
 | `wahoo_oauth_state` | backend/sync/wahoo_connection.py:WahooConnectionService.start_authorization | backend/sync/wahoo_connection.py:WahooConnectionService._consume_state<br>backend/sync/wahoo_connection.py:WahooConnectionService._delete | no | - | - |
 | `wahoo_oauth_tokens` | backend/sync/wahoo_connection.py:WahooConnectionService._store_grant | backend/sync/wahoo_connection.py:WahooConnectionService._delete | no | - | - |
-| `weather_cache` | backend/weather/service.py:WeatherCacheStore.store_refresh | - | no | - | - |
-| `weather_failure` | backend/weather/service.py:WeatherCacheStore.store_failure<br>backend/weather/service.py:WeatherCacheStore.store_refresh | - | yes | - | - |
+| `weather_cache` | backend/weather/cache.py:invalidate_for_location_change<br>backend/weather/service.py:WeatherCacheStore.store_refresh | - | no | - | - |
+| `weather_failure` | backend/weather/cache.py:invalidate_for_location_change<br>backend/weather/service.py:WeatherCacheStore.store_failure<br>backend/weather/service.py:WeatherCacheStore.store_refresh | - | yes | - | - |
 
 - every key is deleted by `backend/privacy.py:PrivacyDeleteService.delete`
+- `garmin_capability_` is deleted by prefix by `backend/providers/garmin_capability.py:clear_capability_state`
 - `garmin_snapshot` is left out of the export; nothing writes it
 - `garmin_snapshot_legacy` is left out of the export; nothing writes it
-- `sensor_equipment:%` is read but never written
 <!-- END GENERATED KEYS -->
