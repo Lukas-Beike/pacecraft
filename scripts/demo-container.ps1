@@ -8,6 +8,7 @@ Only fake data is used; providers stay blocked. Password: e2e-fixture-password-1
   .\scripts\demo-container.ps1 -SkipBuild -Port 8091
   .\scripts\demo-container.ps1 -Stop            # remove it again (never its volume)
   .\scripts\demo-container.ps1 -HeavyHistory 900  # plus 900 synthetic long sessions (performance checks)
+  .\scripts\demo-container.ps1 -Image pacecraft:x -Persist  # run that tag as is: no build, no retag
 #>
 param(
     [string]$Name = "pacecraft-demo",
@@ -15,7 +16,9 @@ param(
     [switch]$Persist,
     [switch]$SkipBuild,
     [switch]$Stop,
-    [ValidateRange(0, 1000)][int]$HeavyHistory = 0
+    [ValidateRange(0, 1000)][int]$HeavyHistory = 0,
+    # Another lane's demo may run the shared pacecraft:local tag (#2957).
+    [string]$Image = "pacecraft:local"
 )
 $ErrorActionPreference = "Stop"
 Set-Location (Split-Path -Parent $PSScriptRoot)
@@ -28,7 +31,7 @@ if ($Name -in @("pacecraft", "ai-coach") -or $Name -notmatch '^(pacecraft-|ai-co
 
 # $ErrorActionPreference does not stop on native exit codes in Windows PowerShell 5.1,
 # so every native call is followed by an explicit $LASTEXITCODE check.
-if (-not $SkipBuild -and -not $Stop) {
+if (-not $SkipBuild -and -not $Stop -and -not $PSBoundParameters.ContainsKey("Image")) {
     docker build -q -t pacecraft:local . | Out-Null
     if ($LASTEXITCODE -ne 0) { throw "Image build failed (exit $LASTEXITCODE)." }
 }
@@ -48,7 +51,7 @@ $dockerArguments = @("run", "-d", "--name", $Name, "-p", "127.0.0.1:${Port}:8090
     "-e", "FIXTURE_AUTO_SEED=1", "-e", "AI_COACH_DISPOSABLE_FIXTURE=1", "-v", "${PWD}\e2e:/app/e2e:ro")
 if ($Persist) { $dockerArguments += @("-v", "${Name}-data:/data") }
 if ($HeavyHistory -gt 0) { $dockerArguments += @("-e", "FIXTURE_HEAVY_HISTORY=$HeavyHistory") }
-$dockerArguments += @("pacecraft:local", "python", "/app/e2e/fixture_runtime.py")
+$dockerArguments += @($Image, "python", "/app/e2e/fixture_runtime.py")
 docker @dockerArguments | Out-Null
 if ($LASTEXITCODE -ne 0) { throw "Starting container '$Name' failed (exit $LASTEXITCODE)." }
 

@@ -275,6 +275,17 @@ class DemoContainerScriptTests(unittest.TestCase):
             heavy[seed - 1 : seed + 1], ["-e", "FIXTURE_HEAVY_HISTORY=900"]
         )
         self.assertEqual(len(heavy), len(run) + 2)
+        self.assertEqual(run[run.index("python") - 1], "pacecraft:local")
+        # #2957: -Image runs that tag as is, without building or retagging the
+        # shared pacecraft:local another lane's demo may be using.
+        _, calls = self.run_script(
+            "-Name", DEMO_NAME, "-Image", "pacecraft:x", "-Persist",
+            "-HeavyHistory", "900", fail=("run",),
+        )  # fmt: skip
+        own = next(call for call in calls if call[0] == "run")
+        self.assertEqual(own[own.index("python") - 1], "pacecraft:x")
+        self.assertNotIn("pacecraft:local", own)
+        self.assertFalse([c for c in calls if c[0] in {"build", "tag"}])
 
     def test_persist_uses_a_named_volume_and_never_removes_volumes(self):
         _, calls = self.run_script(
