@@ -125,6 +125,8 @@ def repo_root(start: Path | None = None) -> Path:
         check=False,
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
     )
     if result.returncode:
         raise Unavailable("not inside a Git worktree")
@@ -542,6 +544,8 @@ def _installed_version(root: Path, timeout: float = 10) -> bool:
             capture_output=True,
             check=False,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=timeout,
             env=local_env(root),
         )

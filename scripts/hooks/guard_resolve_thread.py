@@ -28,6 +28,8 @@ def unchanged() -> bool:
         ["git", "status", "--porcelain", "--", "scripts"],
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
         check=False,
     )
     return diff.returncode == 0 and status.returncode == 0 and not status.stdout.strip()

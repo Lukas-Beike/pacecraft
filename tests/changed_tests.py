@@ -104,7 +104,13 @@ COMPOSITION_ROOT = "server"
 
 def _git(*args: str, root: Path) -> list[str]:
     output = subprocess.run(
-        ["git", *args], cwd=root, check=True, capture_output=True, text=True
+        ["git", *args],
+        cwd=root,
+        check=True,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",  # a non-ASCII path left stdout None on Windows (#2895)
+        errors="replace",
     ).stdout
     return [line.strip() for line in output.splitlines() if line.strip()]
 
