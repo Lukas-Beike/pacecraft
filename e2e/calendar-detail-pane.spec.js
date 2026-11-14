@@ -110,8 +110,8 @@ test("@responsive an opened completed run rates its running dynamics against the
     return route.fulfill({ json: { status: "ok", stale: false, trend: { months: [], bands: [] }, session: {
       status: "ok", garmin_source: "Garmin-Einordnung (Brustgurt), Garmin EPIX Handbuch",
       metrics: {
-        ground_contact_time_ms: { verdict: "better", garmin: "blue" }, cadence_spm: { verdict: "usual", garmin: "blue" }, vertical_oscillation_cm: { verdict: "worse", garmin: "green" },
-        vertical_ratio_pct: { verdict: "usual", garmin: "green" }, ground_contact_balance_pct: { verdict: "too_few", garmin: "green" }, step_length_m: { verdict: "higher", garmin: null },
+        ground_contact_time_ms: { verdict: "better", reference_band: "blue" }, cadence_spm: { verdict: "usual", reference_band: "blue" }, vertical_oscillation_cm: { verdict: "worse", reference_band: "green" },
+        vertical_ratio_pct: { verdict: "usual", reference_band: "green" }, ground_contact_balance_pct: { verdict: "too_few", reference_band: "green" }, step_length_m: { verdict: "higher", reference_band: null },
       },
       bands: [240, 330, 375].map((band, index) => ({ band_s_per_km: band, seconds: [1200, 600, 1500][index], metrics: {
         ground_contact_time_ms: { value: [232, 262, 281][index], verdict: ["better", "usual", "usual"][index] },
@@ -129,10 +129,10 @@ test("@responsive an opened completed run rates its running dynamics against the
   const values = section.locator(".activity-dynamics-value");
   await expect(values.locator("dt")).toHaveText(["Bodenkontaktzeit", "Schrittfrequenz", "Bodenkontakt links", "Vertikale Oszillation", "Vertikales Verhältnis", "Schrittlänge"]);
   await expect(values.first().locator(".activity-dynamics-chip")).toHaveText("besser als sonst");
-  await expect(values.first().locator(".activity-dynamics-garmin")).toHaveAttribute("data-garmin", "blue");
+  await expect(values.first().locator(".activity-dynamics-reference")).toHaveAttribute("data-band", "blue");
   await expect(values.nth(2).locator(".activity-dynamics-chip")).toHaveText("zu wenig Vergleich");
   await expect(values.nth(5).locator(".activity-dynamics-chip")).toHaveText("länger als sonst");
-  await expect(values.nth(5).locator(".activity-dynamics-garmin")).toHaveCount(0);
+  await expect(values.nth(5).locator(".activity-dynamics-reference")).toHaveCount(0);
   await expect(section.locator(".activity-dynamics-bands tbody tr")).toHaveCount(3);
   await expect(section.locator(".activity-dynamics-bands tbody tr").first().locator("th")).toHaveText("4:00–4:15");
   // The values sit in their own section, not again among the session's values.

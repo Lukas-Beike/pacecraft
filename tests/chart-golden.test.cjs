@@ -111,7 +111,7 @@ test("the activity analysis panel keeps its rendered tree: channel charts with p
   const rating = {
     status: "ok", session: {
       status: "ok", garmin_source: "Garmin-Einordnung (Brustgurt), Garmin EPIX Handbuch",
-      metrics: { ground_contact_time_ms: { verdict: "better", garmin: "blue" }, cadence_spm: { verdict: "usual", garmin: "blue" }, vertical_oscillation_cm: { verdict: "worse", garmin: "green" }, step_length_m: { verdict: "higher", garmin: null } },
+      metrics: { ground_contact_time_ms: { verdict: "better", reference_band: "blue" }, cadence_spm: { verdict: "usual", reference_band: "blue" }, vertical_oscillation_cm: { verdict: "worse", reference_band: "green" }, step_length_m: { verdict: "higher", reference_band: null } },
       bands: [{ band_s_per_km: 300, seconds: 1200, metrics: { ground_contact_time_ms: { value: 243, verdict: "better" }, cadence_spm: { value: 172, verdict: "too_few" } } }],
     },
   };

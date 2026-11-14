@@ -395,7 +395,7 @@
   // verdict and Garmin's colour band, then a table per pace band of the run.
   const DYNAMICS_VERDICTS = { better: "besser als sonst", usual: "üblich", worse: "schlechter als sonst", higher: "länger als sonst", lower: "kürzer als sonst", too_few: "zu wenig Vergleich" };
   const DYNAMICS_SHORT = { better: "besser", usual: "üblich", worse: "schlechter", higher: "länger", lower: "kürzer" };
-  const GARMIN_COLOURS = { purple: "lila", blue: "blau", green: "grün", orange: "orange", red: "rot" };
+  const REFERENCE_COLOURS = { purple: "lila", blue: "blau", green: "grün", orange: "orange", red: "rot" };
   const DYNAMICS_TABLE = [["ground_contact_time_ms", "Kontakt", 0], ["cadence_spm", "Frequenz", 0], ["vertical_oscillation_cm", "Vertikal", 1]];
   const DYNAMICS_RETRY_MS = 10_000;
   const DYNAMICS_RETRIES = 6;
@@ -444,7 +444,7 @@
       const slot = tile.querySelector(".activity-dynamics-rating");
       slot.replaceChildren(...[
         item && dynamicsChip(item.verdict),
-        item?.garmin && h("span", { className: "activity-dynamics-garmin", dataset: { garmin: item.garmin }, title: `${rating.garmin_source}: ${GARMIN_COLOURS[item.garmin]}` }, "Garmin"),
+        item?.reference_band && h("span", { className: "activity-dynamics-reference", dataset: { band: item.reference_band }, title: `${rating.garmin_source}: ${REFERENCE_COLOURS[item.reference_band]}` }, "Garmin-Einordnung"),
       ].filter(Boolean));
     }
     section.querySelector(".activity-dynamics-bands")?.remove();

@@ -636,7 +636,7 @@ class SessionRatingTests(unittest.TestCase):
         # average from the provider, so its mean of 7.0 cm is blue.
         self.assertEqual(
             [
-                result[key]["garmin"]
+                result[key]["reference_band"]
                 for key in (
                     "ground_contact_time_ms",
                     "cadence_spm",

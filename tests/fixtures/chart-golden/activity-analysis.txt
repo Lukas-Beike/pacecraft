@@ -102,8 +102,8 @@
         <span class="activity-dynamics-rating">
           <span class="activity-dynamics-chip" data-verdict="better">
             "besser als sonst"
-          <span class="activity-dynamics-garmin" data-garmin="blue" title="Garmin-Einordnung (Brustgurt), Garmin EPIX Handbuch: blau">
-            "Garmin"
+          <span class="activity-dynamics-reference" data-band="blue" title="Garmin-Einordnung (Brustgurt), Garmin EPIX Handbuch: blau">
+            "Garmin-Einordnung"
       <div class="activity-dynamics-value" data-metric="cadence_spm">
         <dt>
           "Schrittfrequenz"
@@ -112,8 +112,8 @@
         <span class="activity-dynamics-rating">
           <span class="activity-dynamics-chip" data-verdict="usual">
             "üblich"
-          <span class="activity-dynamics-garmin" data-garmin="blue" title="Garmin-Einordnung (Brustgurt), Garmin EPIX Handbuch: blau">
-            "Garmin"
+          <span class="activity-dynamics-reference" data-band="blue" title="Garmin-Einordnung (Brustgurt), Garmin EPIX Handbuch: blau">
+            "Garmin-Einordnung"
       <div class="activity-dynamics-value" data-metric="vertical_oscillation_cm">
         <dt>
           "Vertikale Oszillation"
@@ -122,8 +122,8 @@
         <span class="activity-dynamics-rating">
           <span class="activity-dynamics-chip" data-verdict="worse">
             "schlechter als sonst"
-          <span class="activity-dynamics-garmin" data-garmin="green" title="Garmin-Einordnung (Brustgurt), Garmin EPIX Handbuch: grün">
-            "Garmin"
+          <span class="activity-dynamics-reference" data-band="green" title="Garmin-Einordnung (Brustgurt), Garmin EPIX Handbuch: grün">
+            "Garmin-Einordnung"
       <div class="activity-dynamics-value" data-metric="step_length_m">
         <dt>
           "Schrittlänge"

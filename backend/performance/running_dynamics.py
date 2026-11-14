@@ -267,7 +267,7 @@ def _run_verdicts(
     """Per metric, the verdict holding the most rated time of the run.
 
     ``value`` is the run's mean over its bands, weighted by their time;
-    ``garmin`` is Garmin's colour of the provider's run average (the value the
+    ``reference_band`` is Garmin's colour of the provider's run average (the value the
     session shows), else of that mean.
     """
     result: dict[str, Any] = {}
@@ -294,7 +294,7 @@ def _run_verdicts(
         result[metric] = {
             "verdict": max(time, key=lambda key: time[key]) if time else "too_few",
             "value": value,
-            "garmin": garmin_band(metric, reported or value),
+            "reference_band": garmin_band(metric, reported or value),
         }
     return result
 
