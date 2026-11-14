@@ -12,8 +12,11 @@ polls every 20 s in the same turn until the PR is merged or closed, a check
 fails or new feedback (comment or review) arrives, at most MINUTES (#2795): the
 host's PR watcher does not reliably wake on the merge itself. The develop check
 runs at arming, as the lane rule asks; develop moving during CI is accepted.
-Exit 0: merged (or armed, without --wait); 1: refused (base is not develop, or
-develop changed this PR's files), closed unmerged, a failing check or new feedback; 2:
+Before arming it also refuses while a review thread is unresolved, disarming
+too (#2947), with or without --allow-behind.
+Exit 0: merged (or armed, without --wait); 1: refused (base is not develop, an
+unresolved review thread, or develop changed this PR's files), closed unmerged,
+a failing check or new feedback; 2:
 bad input or a failed gh call; 3: still open when the wait ended.
 """
 
@@ -25,7 +28,7 @@ import time
 from typing import Any
 
 from gh_cli import CliError, gh, gh_json, positive_int
-from pr_state import check_outcome
+from pr_state import check_outcome, unresolved_threads
 
 FIELDS = "state,baseRefName,headRefOid,autoMergeRequest,mergeCommit,statusCheckRollup,comments,reviews"
 POLLS_PER_MINUTE = 3
@@ -83,6 +86,23 @@ def behind_develop(number: int, pr: dict[str, Any]) -> bool:
     return bool(shared)
 
 
+def open_threads(number: int, pr: dict[str, Any]) -> bool:
+    """Whether a review thread is unresolved; disarms auto-merge then (#2947).
+
+    An armed auto-merge does not wait for review comments (#2520). More
+    threads than one page shows count as open: fail closed.
+    """
+    threads, more = unresolved_threads(number)
+    if not threads and not more:
+        return False
+    if pr.get("autoMergeRequest"):
+        gh("pr", "merge", str(number), "--disable-auto")
+    extra = " (and more than one page holds)" if more else ""
+    print(f"refused: {len(threads)} unresolved review thread(s){extra}:")
+    print("\n".join(threads) or "  (none on the first page)")
+    return True
+
+
 def wait(number: int, minutes: int, seen: int) -> int:
     polls = minutes * POLLS_PER_MINUTE + 1
     for poll in range(polls):
@@ -119,6 +139,8 @@ def main(argv: list[str] | None = None) -> int:
             print(f"refused: base is {pr.get('baseRefName')}, not develop")
             return 1
         if pr.get("state") == "OPEN":
+            if open_threads(args.number, pr):
+                return 1
             if current and behind_develop(args.number, pr):
                 return 1
             print(f"PR #{args.number}: {arm(args.number, pr)}")

@@ -14,6 +14,10 @@ python scripts/pr_merge.py <pr> [--wait <minutes>] [--allow-behind]
 - Arms `--auto --squash` pinned to the current head (skipped when already
   armed). When GitHub refuses because the PR is already in clean status, it
   merges that head directly (#2776).
+- Before arming it refuses (exit 1, naming the thread ids) while a review
+  thread is unresolved, and disarms an earlier auto-merge (#2947): an armed
+  auto-merge does not wait for review comments (#2520). Fix, reply, resolve
+  ([resolve-thread](../pacecraft-resolve-thread/SKILL.md)), then rerun.
 - Before arming it asks GitHub which files develop changed since the head
   branched off and refuses (exit 1, naming them) when this PR changes any of
   them, disarming an earlier auto-merge (#2901: "up to date before merge" is off
@@ -25,8 +29,8 @@ python scripts/pr_merge.py <pr> [--wait <minutes>] [--allow-behind]
   or closed, a check fails, or a new comment or review arrives (#2795). When
   the shell limits a foreground command, run it in the background and wait for
   it in the same turn.
-- Exit 0: merged (or armed, without `--wait`). Exit 1: refused base, develop
-  changed this PR's files, closed unmerged, a failing check or new feedback; read
+- Exit 0: merged (or armed, without `--wait`). Exit 1: refused base, an
+  unresolved review thread, develop changed this PR's files, closed unmerged, a failing check or new feedback; read
   [pr-state](../pacecraft-pr-state/SKILL.md). Exit 2: bad input, a failed `gh`
   call (also another auto-merge refusal) or no develop comparison. Exit 3:
   still open when the wait ended; run it again.
