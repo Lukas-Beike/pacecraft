@@ -22,6 +22,13 @@ def value(db: Any, key: str) -> str | None:
     return None if row is None else row["value"]
 
 
+def count(db: Any, prefix: str) -> int:
+    """The number of records under ``prefix``."""
+    return db.execute(
+        "SELECT COUNT(*) AS count FROM kv WHERE key LIKE ?", (prefix + "%",)
+    ).fetchone()["count"]
+
+
 def values(db: Any, prefix: str, limit: int | None = None) -> list[str]:
     """Values under ``prefix``, newest first; a limit of None reads them all."""
     return [
