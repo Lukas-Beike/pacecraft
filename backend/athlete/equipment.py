@@ -36,7 +36,6 @@ from backend.db.equipment_store import (
     EQUIPMENT_PREFIX,
     GARMIN_INITIALIZED_KEY,
     MAINTENANCE_PREFIX,
-    SENSOR_EQUIPMENT_PREFIX,
 )
 from backend.errors import AppError
 
@@ -87,19 +86,6 @@ def canonical_garmin_gear(
         if item.activity_list_partial is not None
     }
     return items, listed
-
-
-def _sensor_assignments(db: Any) -> dict[str, str]:
-    """Full sensor key -> equipment id of every athlete link."""
-    assignments: dict[str, str] = {}
-    for sensor, text in equipment_store.entries(db, SENSOR_EQUIPMENT_PREFIX):
-        try:
-            equipment_id = json.loads(text).get("equipment_id")
-        except TypeError, ValueError, AttributeError:
-            continue
-        if isinstance(equipment_id, str):
-            assignments[sensor] = equipment_id
-    return assignments
 
 
 class EquipmentService:
@@ -153,15 +139,7 @@ class EquipmentService:
                 items = [json.loads(selected)]
             assignments = _effective_assignments(rows, explicit, links)
             maintenance = self._records(db, MAINTENANCE_PREFIX, 1000)
-            known = {item["id"] for item in self._records(db, EQUIPMENT_PREFIX, None)}
-            sensors = sensor_registry.registry(
-                activity_detail_store.sensor_uses(db),
-                {
-                    key: equipment_id
-                    for key, equipment_id in _sensor_assignments(db).items()
-                    if equipment_id in known
-                },
-            )
+            sensors = sensor_registry.registry(activity_detail_store.sensor_uses(db))
         for item in items:
             _update_usage(
                 item,

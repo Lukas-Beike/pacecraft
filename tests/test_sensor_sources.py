@@ -222,7 +222,7 @@ class StoreTests(StoreCase):
             self.add(session, activity, f"{day}T07:00:00+00:00")
             self.store(stream_set(activity, sensors=[meter, strap]))
         uses = activity_detail_store.sensor_uses(self.db)
-        rows = sensor_registry.registry(uses, {meter.key: "bike-1"})
+        rows = sensor_registry.registry(uses)
         self.assertEqual(len(rows), 2)
         by_role = {row["role"]: row for row in rows}
         power = by_role["power_meter"]
@@ -230,8 +230,7 @@ class StoreTests(StoreCase):
             (power["first_seen"], power["last_seen"], power["sessions"]),
             ("2026-10-01", "2026-11-05", 2),
         )
-        self.assertEqual(power["equipment_id"], "bike-1")
-        self.assertIsNone(by_role["heart_rate"]["equipment_id"])
+        self.assertNotIn("equipment_id", power)
         self.assertEqual(power["id"], meter.key[:16])
 
     def test_a_merged_session_counts_once_for_a_shared_sensor(self):

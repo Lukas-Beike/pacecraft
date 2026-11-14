@@ -41,13 +41,8 @@ def sensor_id(key: str) -> str:
     return key[:SENSOR_ID_LENGTH]
 
 
-def registry(
-    uses: Iterable[SensorUse], assignments: Mapping[str, str] | None = None
-) -> list[dict[str, Any]]:
-    """Distinct sensors with their first and last day, newest first.
-
-    ``assignments`` maps a full sensor key to an equipment id the athlete chose.
-    """
+def registry(uses: Iterable[SensorUse]) -> list[dict[str, Any]]:
+    """Distinct sensors with their first and last day, newest first."""
     found: dict[tuple[str, str], dict[str, Any]] = {}
     for use in uses:
         for sensor in use.sensors:
@@ -63,7 +58,6 @@ def registry(
                     "last_seen": use.started_at.date().isoformat(),
                     "sessions": set(),
                     "sports": set(),
-                    "equipment_id": (assignments or {}).get(sensor.key),
                 },
             )
             day = use.started_at.date().isoformat()
