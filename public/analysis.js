@@ -1845,10 +1845,17 @@ function equipmentForm(tab, item) {
   const pair = item ? `${item.sport}/${item.environment}` : choices.sports[0][0];
   const sports = choices.sports.some(([key]) => key === pair) ? choices.sports : [...choices.sports, [pair, activitySportLabel(item)]];
   const kinds = !item || choices.kinds.some(([key]) => key === item.kind) ? choices.kinds : [...choices.kinds, [item.kind, item.kind]];
-  const parent = h("label", { hidden: (item?.kind || kinds[0][0]) !== "component" }, "Gehört zu",
-    select("parent_id", equipmentFormBikes.filter((bike) => bike.id !== item?.id).map((bike) => [bike.id, bike.name]), item?.parent_id));
+  // The current parent stays selectable even when it is no longer an active bike.
+  const bikes = equipmentFormBikes.filter((bike) => bike.id !== item?.id).map((bike) => [bike.id, bike.name]);
+  const parents = item?.parent_id && !bikes.some(([id]) => id === item.parent_id) ? [[item.parent_id, "Bisheriges Rad"], ...bikes] : bikes;
+  const parentSelect = select("parent_id", parents, item?.parent_id);
+  parentSelect.required = false;
+  const parent = h("label", null, "Gehört zu", parentSelect);
   const kind = select("kind", kinds, item?.kind || kinds[0][0]);
-  kind.addEventListener("change", () => { parent.hidden = kind.value !== "component"; });
+  // A hidden or empty parent field never blocks the form: it is disabled, so validation skips it.
+  const showParent = () => { parent.hidden = kind.value !== "component"; parentSelect.disabled = parent.hidden; };
+  kind.addEventListener("change", showParent);
+  showParent();
   const error = h("p", { className: "error", role: "alert" });
   const form = h("form", { className: "equipment-form", hidden: true },
     h("label", null, "Name", h("input", { name: "name", required: true, maxLength: 200, value: item?.name || "" })),
@@ -1863,12 +1870,20 @@ function equipmentForm(tab, item) {
     error, h("button", { className: "secondary-button", type: "submit" }, "Speichern"));
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
+    const submit = form.querySelector("button[type='submit']");
+    if (submit.disabled) return;
+    if (kind.value === "component" && !parents.length) {
+      error.textContent = "Zuerst ein Fahrrad anlegen.";
+      return;
+    }
     const data = new FormData(form);
     const optional = (name) => (data.get(name) === "" ? null : Number(data.get(name)));
     const [sport, environment] = String(data.get("sport")).split("/");
     const component = data.get("kind") === "component";
     error.textContent = "";
-    await saveEquipment({
+    // One tap, one save: a second tap while the first runs would create the item twice.
+    submit.disabled = true;
+    const saved = await saveEquipment({
       ...(item ? { id: item.id, expected_revision: item.revision } : {}),
       name: String(data.get("name")).trim(), sport, environment, kind: data.get("kind"),
       // Always explicit: an omitted status would save as active.
@@ -1878,6 +1893,7 @@ function equipmentForm(tab, item) {
       initial_distance_km: Number(data.get("initial_distance_km") || 0), initial_hours: Number(data.get("initial_hours") || 0),
       lifetime_target_km: optional("lifetime_target_km"), maintenance_km: optional("maintenance_km"), maintenance_hours: optional("maintenance_hours"),
     }, "Ausrüstung gespeichert. ", error);
+    if (!saved) submit.disabled = false;
   });
   return form;
 }
