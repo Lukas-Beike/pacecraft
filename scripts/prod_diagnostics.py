@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import re
 import sys
 from datetime import UTC, datetime
@@ -146,24 +147,45 @@ def word(value: Any) -> str:
     return text if WORD.fullmatch(text) else "?"
 
 
-def plan_pushes(jobs: list[dict[str, Any]]) -> dict[str, dict[str, int]]:
-    """Per provider: job and item status counts and error kinds (#2849).
+def plan_pushes(push_counts: Any) -> dict[str, dict[str, int]]:
+    """Per provider: job and item statuses and error kinds (#2849, #2878).
 
-    The report keeps the 10 most recent push jobs of all providers and leaves
-    settled (completed, skipped) items out, so item counts are the open and
-    failed items only.
+    Read from the report's ``plan_sync.push_counts``: every push of the count
+    window, settled items included. Providers and statuses print as short
+    words, error kinds as identifiers, anything else as ``?``.
     """
+
+    def kind_name(kind: Any) -> str:
+        return error_kind({"error_class": kind})
+
     result: dict[str, dict[str, int]] = {}
-    for job in jobs:
-        counts = result.setdefault(word(job.get("provider")), {})
-        rows = [("job", job)] + [("item", item) for item in job.get("items") or []]
-        for level, row in rows:
-            keys = [f"{level} {word(row.get('status'))}"]
-            if kind := error_kind(row):
-                keys.append(f"{level} error {kind}")
-            for key in keys:
-                counts[key] = counts.get(key, 0) + 1
+    for provider, groups in (
+        push_counts if isinstance(push_counts, dict) else {}
+    ).items():
+        counts = result.setdefault(word(provider), {})
+        for group, label, name in (
+            ("jobs", "job", word),
+            ("items", "item", word),
+            ("job_errors", "job error", kind_name),
+            ("item_errors", "item error", kind_name),
+        ):
+            values = groups.get(group) if isinstance(groups, dict) else None
+            for value, count in numbers(values).items():
+                if math.isfinite(count):
+                    key = f"{label} {name(value)}"
+                    counts[key] = counts.get(key, 0) + int(count)
     return result
+
+
+def push_error_kinds(pushes: dict[str, dict[str, int]]) -> dict[str, int]:
+    """Error kinds of every push of the window, all providers and levels."""
+    kinds: dict[str, int] = {}
+    for counts in pushes.values():
+        for key, count in counts.items():
+            if " error " in key:
+                kind = key.split(" error ", 1)[1]
+                kinds[kind] = kinds.get(kind, 0) + count
+    return kinds
 
 
 def stuck_jobs(jobs: list[dict[str, Any]], now: datetime) -> int:
@@ -181,6 +203,7 @@ def extract(report: dict[str, Any], now: datetime) -> dict[str, Any]:
     plan = report.get("plan_sync") or {}
     jobs = plan.get("recent_jobs") or []
     calendar = report.get("external_calendar") or {}
+    pushes = plan_pushes(plan.get("push_counts"))
     runtime = report.get("runtime") or {}
     memory = numbers(runtime.get("process_memory"))
     copies = report.get("recovery_copies") or {}
@@ -207,8 +230,12 @@ def extract(report: dict[str, Any], now: datetime) -> dict[str, Any]:
         "units_with_error": sum(
             1 for unit in plan.get("unsynced_units") or [] if unit.get("has_error")
         ),
-        "plan_error_classes": plan_errors(jobs),
-        "plan_pushes": plan_pushes(jobs),
+        # Error kinds of the count window when the report has it (#2878).
+        "plan_error_classes": push_error_kinds(pushes)
+        if "push_counts" in plan
+        else plan_errors(jobs),
+        "plan_pushes": pushes,
+        "push_counts_reported": "push_counts" in plan,
         "stuck_jobs": stuck_jobs(jobs, now),
         "memory": {key: memory[key] for key in MEMORY if key in memory},
         "storage": numbers(storage),
@@ -297,7 +324,9 @@ def plan_line(result: dict[str, Any]) -> tuple[str, str]:
 
 
 def push_lines(result: dict[str, Any]) -> list[tuple[str, str]]:
-    """One line per provider of the recent plan pushes, sorted."""
+    """One line per provider of the plan pushes of the count window, sorted."""
+    if not result.get("push_counts_reported"):
+        return [("info", "plan push counts: not in this report")]
     lines = []
     for provider, counts in sorted((result.get("plan_pushes") or {}).items()):
         text = ", ".join(f"{key} {count}" for key, count in sorted(counts.items()))

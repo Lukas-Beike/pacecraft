@@ -235,6 +235,50 @@ def list_jobs(
     return [job_dto(job, read_job(db, job["id"])[1]) for job in jobs]
 
 
+def status_counts(
+    db: Any, job_type: str, since: str
+) -> dict[str, dict[str, dict[str, int]]]:
+    """Per provider: job and item statuses and error classes of jobs since ``since``.
+
+    Counts only, settled items included; ``since`` is a ``utc_timestamp``. A
+    job still queued or running counts whatever its age, so a stuck one stays
+    visible.
+    """
+    result: dict[str, dict[str, dict[str, int]]] = {}
+    queries = (
+        (
+            "job",
+            (
+                "SELECT provider, status, error_class, count(*) AS n FROM sync_jobs "
+                "WHERE type=? AND (created_at >= ? OR status IN ('queued', 'running')) "
+                "GROUP BY provider, status, error_class"
+            ),
+        ),
+        (
+            "item",
+            (
+                "SELECT j.provider, i.status, i.error_class, count(*) AS n "
+                "FROM sync_job_items i JOIN sync_jobs j ON j.id = i.job_id "
+                "WHERE j.type=? AND (j.created_at >= ? OR j.status IN ('queued', 'running')) "
+                "GROUP BY j.provider, i.status, i.error_class"
+            ),
+        ),
+    )
+    for level, query in queries:
+        for row in db.execute(query, (job_type, since)).fetchall():
+            provider = result.setdefault(
+                str(row["provider"]),
+                {"jobs": {}, "items": {}, "job_errors": {}, "item_errors": {}},
+            )
+            counts = provider[f"{level}s"]
+            counts[row["status"]] = counts.get(row["status"], 0) + row["n"]
+            if row["error_class"]:
+                errors = provider[f"{level}_errors"]
+                kind = row["error_class"]
+                errors[kind] = errors.get(kind, 0) + row["n"]
+    return result
+
+
 def has_active_job(db: Any, provider: str, job_type: str) -> bool:
     row = db.execute(
         "SELECT 1 FROM sync_jobs WHERE provider=? AND type=? "

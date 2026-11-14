@@ -78,6 +78,45 @@ class PlanSyncDiagnosticsTests(unittest.TestCase):
                 }
             ],
         )
+        self.assertNotIn("push_counts", report)
+
+        # #2878: every push of the window per provider, settled items included,
+        # however many newer jobs of other providers exist; older finished ones
+        # are out, an old job still running stays in.
+        db.execute("UPDATE sync_jobs SET created_at='2026-11-01T08:00:00+00:00'")
+        for job_id, status, error, created in (
+            ("g1", "partial", "plan_push_error", "2026-11-10T08:00:00+00:00"),
+            ("g0", "failed", "HTTPError", "2026-11-01T08:00:00+00:00"),
+            ("g2", "running", None, "2026-10-20T08:00:00+00:00"),
+        ):
+            db.execute(
+                "INSERT INTO sync_jobs VALUES (?,'garmin','plan_push',?,'{}','coach',"
+                "1,NULL,NULL,NULL,?,?,?)",
+                (job_id, status, error, created, created),
+            )
+        for item_id, status, error in (
+            ("g1-0", "completed", None),
+            ("g1-1", "failed", "HTTPError"),
+            ("g0-0", "failed", "HTTPError"),
+        ):
+            db.execute(
+                "INSERT INTO sync_job_items VALUES (?,?,'a','plan_push',NULL,?,1,"
+                "?,NULL,'t','t')",
+                (item_id, item_id[:2], status, error),
+            )
+        windowed = summarize_plan_sync(db, "2026-11-07T00:00:00+00:00")
+        self.assertEqual(
+            windowed["push_counts"],
+            {
+                "garmin": {
+                    "jobs": {"partial": 1, "running": 1},
+                    "items": {"completed": 1, "failed": 1},
+                    "job_errors": {"plan_push_error": 1},
+                    "item_errors": {"HTTPError": 1},
+                }
+            },
+        )
+        self.assertNotIn("secret-token", json.dumps(windowed["push_counts"]))
 
     def test_a_unit_with_an_invalid_payload_has_no_date_and_does_not_fail(self):
         db = sqlite3.connect(":memory:")

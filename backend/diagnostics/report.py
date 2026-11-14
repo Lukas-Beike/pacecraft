@@ -8,7 +8,7 @@ import platform
 import shutil
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -61,6 +61,7 @@ from backend.sync.external_calendar import ExternalCalendarSyncService
 from backend.sync.freshness import ProviderFreshnessService
 from backend.sync.garmin import GarminFixtureLoader, GarminSyncStateService
 from backend.sync.garmin_projection_service import GarminProjectionService
+from backend.sync.jobs import utc_timestamp
 from backend.sync.library import WorkoutLibrarySyncStateService
 from backend.sync.local_load import summarize_local_load
 from backend.sync.profile_weekly_plan_removal import (
@@ -75,6 +76,8 @@ from backend.sync.state import last_error_key, last_sync_key
 from backend.sync.stream_backfill import fit_inventory_counts
 
 LOGGER = logging.getLogger("intervals_coach")
+# Plan push counts per provider cover this many days (#2878).
+PUSH_WINDOW_DAYS = 7
 
 
 @dataclass(frozen=True)
@@ -196,6 +199,11 @@ class DiagnosticReportService:
             .date()
             .isoformat()
         )
+
+    def _push_window_start(self) -> str:
+        """The start of the plan push count window (#2878)."""
+        now = datetime.fromisoformat(self._deps.utc_now())
+        return utc_timestamp(now - timedelta(days=PUSH_WINDOW_DAYS))
 
     def _recovery_copies(self) -> dict[str, Any]:
         if self._deps.database_path is None:
@@ -350,7 +358,10 @@ class DiagnosticReportService:
                         datetime.fromisoformat(deps.utc_now()),
                     ),
                 ),
-                "plan_sync": section("plan_sync", lambda: summarize_plan_sync(db)),
+                "plan_sync": section(
+                    "plan_sync",
+                    lambda: summarize_plan_sync(db, self._push_window_start()),
+                ),
                 "garmin_past_workout_removal": section(
                     "garmin_past_workout_removal",
                     lambda: summarize_garmin_removal(db),
