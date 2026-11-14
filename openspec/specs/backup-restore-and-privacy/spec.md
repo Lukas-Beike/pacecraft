@@ -330,7 +330,7 @@ Local privacy deletion SHALL require the exact backend confirmation text before 
 
 #### Scenario: Order of the steps
 - **WHEN** the exact confirmation is supplied and the maintenance gate is taken, which cancels a running Coach turn first
-- **THEN** the steps run in this order: ask OpenAI to delete the stored conversation, cancel a pending Garmin login, disconnect Wahoo and revoke its grant, one transaction with secure deletion that deletes every row of every table of the scope and the whole key/value store and then writes `garmin_tokenstore_state`, the default profile, a switched-off GPS setting and the planning reset mark, then after the commit the space reclaim, the recovery copies and markers, the credential refresh and last the log files
+- **THEN** the steps run in this order: ask OpenAI to delete the stored conversation, cancel a pending Garmin login, disconnect Wahoo and revoke its grant, one transaction with secure deletion that deletes every row of every table of the scope and the whole key/value store and then writes `garmin_tokenstore_state`, the default profile, the GPS setting `0` only when it was already switched off (absent otherwise, which means on) and the planning reset mark, then after the commit the space reclaim, the recovery copies and markers, the credential refresh and last the log files
 
 #### Scenario: Local transaction fails after the remote steps
 - **WHEN** the local transaction fails after the OpenAI deletion and the Wahoo revoke ran
