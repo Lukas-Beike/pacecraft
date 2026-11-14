@@ -1333,6 +1333,7 @@ async function renderTrainingRecords() { // NOSONAR
     };
     const isArchivedEquipment = (item) => item.status === "archived";
     const activeLocalItems = localItems.filter((item) => !isArchivedEquipment(item));
+    equipmentFormBikes = activeLocalItems.filter((item) => item.kind === "bike" && !item.parent_id);
     const archivedLocalItems = localItems.filter(isArchivedEquipment);
     const activeGarminItems = items.filter((item) => item.status !== "archived");
     const archivedGarminItems = items.filter((item) => item.status === "archived");
@@ -1365,6 +1366,7 @@ async function renderTrainingRecords() { // NOSONAR
       tab.setAttribute("role", "tab"); tabs.append(tab);
       const panel = h("div", { className: "equipment-tab-panel", id: `equipmentPanel-${key}`, "aria-labelledby": tab.id, tabIndex: 0, hidden: equipmentTab !== key });
       panel.setAttribute("role", "tabpanel");
+      panel.append(equipmentAddRow(key));
       for (const item of groups[key].items) panel.append(card(key)({ item, source: "local" }));
       for (const item of garminGroups[key]) panel.append(card(key)({ item, source: "provider" }));
       if (archivedGroups[key].length) panel.append(archive(key, archivedGroups[key]));
@@ -1687,8 +1689,16 @@ function equipmentCard(item, source, parents, place) {
   if (provider) body.append(provider);
   if (local && item.status !== "archived") {
     const actions = h("div", "connection-actions");
-    actions.append(maintenanceButton(item));
-    body.append(actions);
+    const form = equipmentForm(place, item);
+    const edit = h("button", { className: "secondary-button", type: "button", "aria-expanded": "false" }, "Bearbeiten");
+    edit.addEventListener("click", () => {
+      form.hidden = !form.hidden;
+      edit.setAttribute("aria-expanded", String(!form.hidden));
+    });
+    const retire = h("button", { className: "secondary-button", type: "button" }, "Ausmustern");
+    retire.addEventListener("click", () => void retireEquipment(item, retire));
+    actions.append(maintenanceButton(item), edit, retire);
+    body.append(actions, form);
   }
   card.append(summary, body);
   return card;
@@ -1807,6 +1817,93 @@ function refreshEquipmentNotice() {
 function invalidateEquipmentNotice() {
   equipmentNoticeKey = null;
   invalidateAnalysisReport("/api/analysis/training-records");
+}
+
+// The athlete's own equipment editor (#2879): create in a tab, edit or retire a local item. Every save
+// shows its receipt with undo; retiring is confirmed here and again by the server ("confirmed").
+let equipmentFormBikes = [];
+const EQUIPMENT_FORM_CHOICES = {
+  bike: { sports: [["ride/outdoor", "Radfahren"], ["ride/indoor", "Rad indoor"]], kinds: [["bike", "Fahrrad"], ["component", "Komponente"], ["other", "Sonstiges"]] },
+  run: { sports: [["run/outdoor", "Laufen"]], kinds: [["shoes", "Schuh"], ["other", "Sonstiges"]] },
+};
+const EQUIPMENT_SAVED_FIELDS = ["name", "sport", "environment", "kind", "status", "parent_id", "start_date", "initial_distance_km", "initial_hours", "maintenance_km", "maintenance_hours", "lifetime_target_km"];
+
+function equipmentAddRow(tab) {
+  const form = equipmentForm(tab, null);
+  const add = h("button", { className: "secondary-button equipment-add", type: "button", "aria-expanded": "false" }, "+ Hinzufügen");
+  add.addEventListener("click", () => {
+    form.hidden = !form.hidden;
+    add.setAttribute("aria-expanded", String(!form.hidden));
+  });
+  return h("div", "equipment-add-row", add, form);
+}
+
+function equipmentForm(tab, item) {
+  const choices = EQUIPMENT_FORM_CHOICES[tab] || EQUIPMENT_FORM_CHOICES.bike;
+  const select = (name, options, value) => h("select", { name, required: true }, options.map(([key, label]) => h("option", { value: key, selected: key === value }, label)));
+  const number = (name, value, required = false) => h("input", { type: "number", name, min: "0", step: "any", inputMode: "decimal", required, value: value ?? (required ? "0" : "") });
+  const pair = item ? `${item.sport}/${item.environment}` : choices.sports[0][0];
+  const sports = choices.sports.some(([key]) => key === pair) ? choices.sports : [...choices.sports, [pair, activitySportLabel(item)]];
+  const kinds = !item || choices.kinds.some(([key]) => key === item.kind) ? choices.kinds : [...choices.kinds, [item.kind, item.kind]];
+  const parent = h("label", { hidden: (item?.kind || kinds[0][0]) !== "component" }, "Gehört zu",
+    select("parent_id", equipmentFormBikes.filter((bike) => bike.id !== item?.id).map((bike) => [bike.id, bike.name]), item?.parent_id));
+  const kind = select("kind", kinds, item?.kind || kinds[0][0]);
+  kind.addEventListener("change", () => { parent.hidden = kind.value !== "component"; });
+  const error = h("p", { className: "error", role: "alert" });
+  const form = h("form", { className: "equipment-form", hidden: true },
+    h("label", null, "Name", h("input", { name: "name", required: true, maxLength: 200, value: item?.name || "" })),
+    h("label", null, "Sportart", select("sport", sports, pair)),
+    h("label", null, "Art", kind), parent,
+    h("label", null, "Im Einsatz seit", h("input", { type: "date", name: "start_date", required: true, value: item?.start_date || timezoneDateKey(state.data?.profile?.timezone, new Date()) })),
+    h("label", null, "Kilometer vorher", number("initial_distance_km", item?.initial_distance_km, true)),
+    h("label", null, "Stunden vorher", number("initial_hours", item?.initial_hours, true)),
+    h("label", null, "Lebensdauer-Ziel km", number("lifetime_target_km", item?.lifetime_target_km)),
+    h("label", null, "Wartung alle km", number("maintenance_km", item?.maintenance_km)),
+    h("label", null, "Wartung alle Stunden", number("maintenance_hours", item?.maintenance_hours)),
+    error, h("button", { className: "secondary-button", type: "submit" }, "Speichern"));
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const data = new FormData(form);
+    const optional = (name) => (data.get(name) === "" ? null : Number(data.get(name)));
+    const [sport, environment] = String(data.get("sport")).split("/");
+    const component = data.get("kind") === "component";
+    error.textContent = "";
+    await saveEquipment({
+      ...(item ? { id: item.id, expected_revision: item.revision } : {}),
+      name: String(data.get("name")).trim(), sport, environment, kind: data.get("kind"),
+      // Always explicit: an omitted status would save as active.
+      status: item?.status || "active",
+      parent_id: component ? data.get("parent_id") || null : null,
+      start_date: data.get("start_date"),
+      initial_distance_km: Number(data.get("initial_distance_km") || 0), initial_hours: Number(data.get("initial_hours") || 0),
+      lifetime_target_km: optional("lifetime_target_km"), maintenance_km: optional("maintenance_km"), maintenance_hours: optional("maintenance_hours"),
+    }, "Ausrüstung gespeichert. ", error);
+  });
+  return form;
+}
+
+async function retireEquipment(item, button) {
+  const confirmed = await requestConfirmation(`${item.name} ausmustern?`, { title: "Ausrüstung ausmustern?", confirmLabel: "Ausmustern" });
+  if (!confirmed) return;
+  button.disabled = true;
+  const saved = Object.fromEntries(EQUIPMENT_SAVED_FIELDS.filter((key) => key in item).map((key) => [key, item[key]]));
+  const ok = await saveEquipment({ ...saved, initial_distance_km: item.initial_distance_km ?? 0, initial_hours: item.initial_hours ?? 0, id: item.id, expected_revision: item.revision, status: "archived", confirmed: true }, "Ausgemustert. ");
+  if (!ok) button.disabled = false;
+}
+
+async function saveEquipment(payload, message, errorNode = null) {
+  try {
+    const result = await api("/api/equipment", { method: "POST", body: JSON.stringify(payload) });
+    invalidateAnalysisReport("/api/analysis/training-records");
+    await renderTrainingRecords();
+    showMaintenanceReceipt(result?.change, message);
+    return true;
+  } catch (error) {
+    if (isSessionEndedError(error)) return false;
+    if (errorNode) errorNode.textContent = error.message;
+    else showMaintenanceReceipt(null, `${error.message} `);
+    return false;
+  }
 }
 
 function maintenanceButton(item) {

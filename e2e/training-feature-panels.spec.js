@@ -386,3 +386,36 @@ test("@responsive active local gear offers a maintenance button with receipt and
   await page.getByRole("tab", { name: "Fahrrad" }).click();
   await expect(receipt).toHaveCount(0);
 });
+
+test("@responsive the athlete adds, edits and retires equipment without Garmin, with receipt and undo", async ({ page }, testInfo) => {
+  await page.goto("/#more/equipment");
+  await page.getByRole("tab", { name: "Laufschuhe" }).click();
+  const runPanel = page.locator("#equipmentPanel-run");
+  // #2879: the form saves through the athlete's own route, never through the Coach.
+  await runPanel.getByRole("button", { name: "+ Hinzufügen" }).click();
+  const add = runPanel.locator(".equipment-add-row .equipment-form");
+  await add.getByLabel("Name").fill("Fixture Pegasus");
+  await add.getByLabel("Lebensdauer-Ziel km").fill("800");
+  await add.getByRole("button", { name: "Speichern" }).click();
+  const receipt = page.locator("#equipmentItems [role='status']");
+  await expect(receipt).toContainText("Ausrüstung gespeichert.");
+  const card = runPanel.locator(":scope > .equipment-card").filter({ hasText: "Fixture Pegasus" });
+  await expect(card).toHaveCount(1);
+  await card.locator("summary").click();
+  await card.getByRole("button", { name: "Bearbeiten" }).click();
+  await card.locator(".equipment-form").getByLabel("Name").fill("Fixture Pegasus 41");
+  await card.locator(".equipment-form").getByRole("button", { name: "Speichern" }).click();
+  const renamed = runPanel.locator(":scope > .equipment-card").filter({ hasText: "Fixture Pegasus 41" });
+  await expect(renamed.locator("summary strong")).toHaveText("Fixture Pegasus 41");
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  // Retiring asks first; the server needs the confirmation as well.
+  await renamed.getByRole("button", { name: "Ausmustern" }).click();
+  await expect(page.locator("#confirmationDialog")).toBeVisible();
+  await page.locator("#confirmationDialogAccept").click();
+  await expect(receipt).toContainText("Ausgemustert.");
+  await expect(runPanel.locator(":scope > .equipment-card").filter({ hasText: "Fixture Pegasus 41" })).toHaveCount(0);
+  await expect(runPanel.locator(".equipment-archive")).toContainText("Fixture Pegasus 41");
+  await receipt.getByRole("button", { name: "Rückgängig" }).click();
+  await expect(receipt).toContainText("Zurückgenommen.");
+  await expect(runPanel.locator(":scope > .equipment-card").filter({ hasText: "Fixture Pegasus 41" })).toHaveCount(1);
+});

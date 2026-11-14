@@ -376,6 +376,10 @@ The client SHALL present domain-provided planning, performance, activity, and eq
 - **WHEN** the athlete opens a completed session's "Details" in its calendar card or its "Feedback" dialog
 - **THEN** sport-appropriate pace/speed and cadence/step-frequency channels, units, missing points, and available metadata remain readable; failed detail loading retains the session summary and its explicit refresh path.
 
+#### Scenario: Equipment editor
+- **WHEN** the athlete opens "+ Hinzufügen" in a tab of Mehr › Ausrüstung, or "Bearbeiten" or "Ausmustern" in an active local item's card
+- **THEN** one form holds name, sport (per tab), kind, the parent bike for a component, start date, kilometres and hours before, lifetime target and maintenance intervals and saves through `POST /api/equipment` with the item's revision and an explicit status; "Ausmustern" asks in the confirmation dialog and sends `confirmed`; each save re-reads the list and shows a receipt with "Rückgängig", a refusal stays in the form, and Garmin is never needed
+
 #### Scenario: Equipment and maintenance
 - **WHEN** equipment is displayed or maintenance is requested
 - **THEN** each item is one collapsible card that starts collapsed on every visit and shows its name (with a Garmin source tag for Garmin-only items), one status chip, one short line (parent bike for components, distance, lifetime percent) and a slim lifetime bar; a screen reader hears the name (and the Garmin source tag), the state and the lifetime percent once, with its meaning and an exceeded target the chip does not name, because the bar is decorative and hidden from the accessibility tree; an open card shows usage, maintenance with its history, Garmin state and status conflict, and the maintenance action with its receipt and undo, which only eligible active local gear offers under the equipment domain contract and whose receipt a background refresh of the list keeps during the same visit, tab and session; archived items appear only in a collapsed "Ausgemustert (n)" group.
