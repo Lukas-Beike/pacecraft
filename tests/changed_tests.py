@@ -79,10 +79,11 @@ HEAVY_MODULES = {
 # subdirectory also needs that subdirectory named the same way by the module or
 # a module it imports, unless one of them scans directories (#2516).
 FIXTURES = "tests/fixtures/"
-# Tests that check tracked files across the repository (line endings, guidance
-# links to files such as tests/fixtures/providers/README.md), so any changed
-# path can break them: every change selects them (#2502).
-REPOSITORY_WIDE = ("test_line_endings", "test_ai_docs_contract")
+# Tests that check tracked files across the repository (line endings, source
+# encoding, guidance links to files such as tests/fixtures/providers/README.md)
+# through glob patterns no literal names, so any changed path can break them:
+# every change selects them (#2502, #2887).
+REPOSITORY_WIDE = ("test_line_endings", "test_source_encoding", "test_ai_docs_contract")
 # A selection this large saves little time; run everything and say why.
 FULL_SUITE_SHARE = 0.8
 # Too generic to identify one file by name alone.

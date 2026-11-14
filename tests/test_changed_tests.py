@@ -51,10 +51,12 @@ FILES = {
     "tests/test_fixture_helper_scan.py": "import fixture_walker\nROOT = 'tests/fixtures'\n",
     "tests/test_prose.py": "NOTE = 'Shared fixtures for this test.'\n",
     "tests/test_line_endings.py": "",
+    "tests/test_source_encoding.py": "",
     "tests/test_ai_docs_contract.py": "",
 }
-# Repository-wide checks every changed path selects (#2502).
-REPOSITORY_WIDE = {"test_line_endings", "test_ai_docs_contract"}
+# Repository-wide checks every changed path selects (#2502); #2887 adds the
+# source encoding scan, which a backend/ or public/ change otherwise missed.
+REPOSITORY_WIDE = {"test_line_endings", "test_source_encoding", "test_ai_docs_contract"}
 
 
 def _write_tree(root: Path) -> None:
