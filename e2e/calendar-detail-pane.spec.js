@@ -21,7 +21,7 @@ test("@responsive a long planned unit shows drinking and carbohydrates with thei
   const days = await renderSyntheticCalendar(page);
   await page.evaluate(() => {
     const unit = state.data.training_calendar.find((item) => item.id === "next-plan");
-    Object.assign(unit, { sport: "ride", environment: "outdoor", planned_duration_s: 9900 });
+    Object.assign(unit, { sport: "ride", environment: "outdoor", duration_minutes: 165, planned_duration_s: 9900 });
     renderPlanned(state.data.training_calendar);
   });
   await showCalendarDay(page, days.next);
