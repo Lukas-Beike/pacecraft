@@ -53,9 +53,9 @@ def balance(
     except CliError:
         if not commit:
             raise
-        # Right after a merge the squash commit (or its parent) is often not
-        # local yet: fetch it once, then diff again (#2920).
-        git("fetch", "--quiet", "origin", commit, cwd=cwd)
+        # Right after a merge the squash commit is often not local yet: fetch
+        # develop once (a short SHA cannot be fetched), then diff again (#2920).
+        git("fetch", "--quiet", "origin", "develop", cwd=cwd)
         numstat = git("diff", "--numstat", "-M", span, cwd=cwd)
     for line in numstat.splitlines():
         added, removed, path = line.split("\t", 2)

@@ -68,7 +68,7 @@ class LineBalanceTests(unittest.TestCase):
         result, fake = self.balance(missing=1, commit="abc123")
         self.assertEqual(result["production"], (20, 3))
         self.assertEqual([call[1] for call in fake.calls], ["diff", "fetch", "diff"])
-        self.assertEqual(fake.calls[1][1:], ["fetch", "--quiet", "origin", "abc123"])
+        self.assertEqual(fake.calls[1][1:], ["fetch", "--quiet", "origin", "develop"])
         for kwargs in ({"missing": 2, "commit": "abc123"}, {"missing": 1}):
             with self.subTest(**kwargs), self.assertRaises(gh_cli.CliError):
                 self.balance(**kwargs)  # still missing, or a range: no fetch

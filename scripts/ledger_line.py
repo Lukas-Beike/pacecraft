@@ -5,7 +5,7 @@
 Prints: <YYYY-MM-DD> #N closed|part via PR #M <sha> prod +a/-b tests +c/-d other
 +e/-f: <first line of the note, else the PR title>; "part" while the issue
 stays open (the PR delivered one part of it). A merge commit that is not local
-yet is fetched once by line_balance (#2920). Exit 0 ok; 1 refused, the PR is not merged; 2 bad
+yet is fetched once with develop by line_balance (#2920). Exit 0 ok; 1 refused, the PR is not merged; 2 bad
 input or a failed gh/git call.
 """
 
