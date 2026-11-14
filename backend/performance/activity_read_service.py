@@ -3,7 +3,7 @@
 import functools
 from collections.abc import Callable, Mapping, Sequence
 from datetime import date
-from typing import Any
+from typing import Any, Final
 from zoneinfo import ZoneInfo
 
 from backend.activities.activity_reference import ActivityReferenceResolver
@@ -277,7 +277,11 @@ class ActivityAnalysisReadService(ActivityReadService):
             document["weather"] = weather
         if route is not None:
             document["route"] = route
-        _add_purpose(document["session"], requested_summary())
+        summary = requested_summary()
+        _add_purpose(document["session"], summary)
+        effect = _training_effect(summary)
+        if effect is not None:
+            document["training_effect"] = effect
         return {"ok": True, **document, "data_scope": _data_scope(document, records)}
 
 
@@ -307,6 +311,36 @@ def _add_purpose(session: dict[str, Any], summary: ActivitySummary | None) -> No
     source = summary.get("sources", {}).get("purpose")
     if source:
         session["purpose_source"] = source
+
+
+# The provider's own training-effect values of a session (#2831), as reported.
+_TRAINING_EFFECT_KEYS: Final = (
+    "aerobic_training_effect",
+    "anaerobic_training_effect",
+    "training_effect_label",
+    "training_effect_load",
+)
+
+
+def _training_effect(summary: ActivitySummary | None) -> dict[str, Any] | None:
+    """The provider's training-effect values with their source label, or None.
+
+    Shown as the provider's values only; nothing is derived from them.
+    """
+    if summary is None:
+        return None
+    values = {
+        key: summary[key]
+        for key in _TRAINING_EFFECT_KEYS
+        if summary.get(key) is not None
+    }  # type: ignore[literal-required]
+    if not values:
+        return None
+    sources = summary.get("sources", {})
+    source = next(
+        (sources[key] for key in _TRAINING_EFFECT_KEYS if sources.get(key)), None
+    )
+    return {**values, "source": source}
 
 
 def _session_zone_settings(

@@ -236,6 +236,28 @@ test("@responsive an opened completed session shows its time in zones as one bar
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBeTruthy();
 });
 
+test("@responsive an opened completed session shows the provider's own training effect apart and labelled", async ({ page, request }, testInfo) => {
+  await openCalendar(page, request);
+  // Garmin's own values of the session (#2831), shown as reported; a missing value leaves its tile out.
+  await page.route("**/api/activities/*", (route) => route.fulfill({ json: {
+    session: { sport: "run", environment: "outdoor", activity_id: "past-run" },
+    metrics: { avg_hr: { value: 148 } },
+    training_effect: { aerobic_training_effect: 3.4, anaerobic_training_effect: 0, training_effect_label: "TEMPO", source: "Garmin Connect" },
+  } }));
+  const days = await renderSyntheticCalendar(page);
+  await showCalendarDay(page, days.past);
+  const run = page.locator(`.planned-day[data-date="${days.past}"] .planned-entry`).filter({ hasText: "Vergangener Lauf" });
+  await run.evaluate((element) => { for (let node = element; node; node = node.parentElement) if (node.tagName === "DETAILS") node.open = true; });
+  await run.locator(".planned-activity-more > summary").click();
+  const section = run.locator(".activity-effect");
+  await expect(section.locator("h4")).toHaveText("Garmin-Werte");
+  await expect(section.locator(".activity-effect-source")).toHaveText("Garmin Connect");
+  await expect(section.locator("dt")).toHaveText(["Trainingseffekt aerob", "Trainingseffekt anaerob", "Hauptnutzen"]);
+  await expect(section.locator("dd")).toHaveText(["3,4", "0,0", "Tempo"]);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBeTruthy();
+  await section.screenshot({ path: testInfo.outputPath("provider-training-effect.png"), animations: "disabled" });
+});
+
 test("@responsive Mit dem Coach besprechen puts the planned unit into the Coach field without sending", async ({ page, request }) => {
   await openCalendar(page, request);
   const days = await renderSyntheticCalendar(page);

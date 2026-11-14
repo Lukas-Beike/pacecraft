@@ -92,6 +92,8 @@ const ANALYSIS_PAYLOAD = {
   zones: { heart_rate: { source: { label: "Garmin" }, buckets: [{ label: "Z1", seconds: 600 }, { label: "Z2", seconds: 900 }] } },
   laps: { laps: [{ moving_duration_s: 300, distance_m: 1000, avg_speed_mps: 3.3, avg_hr: 140 }, { moving_duration_s: 280, distance_m: 1000, avg_speed_mps: 3.5, avg_hr: 150 }] },
   analysis: { form_drift: { status: "ok", flagged: true, label: "Form ließ nach", metrics: { contact_time: { first: 240, last: 252, change_percent: 5, unit: "ms" } } } },
+  // The provider's own session values (#2831): shown labelled, an anaerobic effect of 0 included.
+  training_effect: { aerobic_training_effect: 3.4, anaerobic_training_effect: 0, training_effect_label: "TEMPO", training_effect_load: 142, source: "Garmin Connect" },
   // Planned steps against the session (#2830): a heart-rate warm-up, a pace rep and an unscored cool-down.
   planned_adherence: {
     status: "ok", score_pct: 88, score_band: "good",

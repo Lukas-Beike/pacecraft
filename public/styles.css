@@ -1894,6 +1894,11 @@ button:focus-visible, a:focus-visible, summary:focus-visible {
 .activity-dynamics-reference[data-band="orange"] { --band: var(--orange); }
 .activity-dynamics-reference[data-band="red"] { --band: var(--danger); }
 .activity-dynamics-bands { display: grid; gap: 8px; }
+/* The provider's own session values, kept apart from the app's analyses (#2831). */
+.activity-effect { display: grid; gap: 8px; }
+.activity-effect-header { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 10px; }
+.activity-effect-source { color: var(--garmin-ink); font-size: .72rem; font-weight: 600; }
+.activity-effect-bar { display: block; height: 6px; border-radius: 3px; background: linear-gradient(90deg, var(--garmin-ink) var(--effect-share), var(--surface-raised) var(--effect-share)); }
 .activity-dynamics-bands td .activity-dynamics-chip { margin-left: 2px; }
 .activity-dynamics-bands :is(th, td) { white-space: nowrap; }
 .activity-analysis-laps { display: grid; gap: 8px; }
