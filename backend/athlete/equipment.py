@@ -189,7 +189,12 @@ class EquipmentService:
             "assignments": list(assignments.get(activity_id, ()))
             if activity_id
             else _assignment_list(assignments),
-            "scope": "Known canonical activities with explicit assignments, or that Garmin lists for the gear of a Garmin-linked main item (an explicit assignment, including unassigned, always wins; an activity Garmin lists for several main items links to each of them, like Garmin's own totals; an item without a Garmin activity list links nothing), plus confirmed initial usage. Missing provider history or measurements makes counters incomplete; no inferred favorite gear. A truncated or outdated Garmin activity list makes the maintenance of intervals counted from sessions partial. Maintenance includes only later calendar days, same-day order is unknown. Limits: 100 items, 1000 maintenance events; usage counts every assignment, but the list shows only the first 2000 without splitting an activity's gear, explicit ones newest first, then Garmin links; an activity's own read lists all of its assignments.",
+            **(
+                {"choice": _assignment_choice(activity_id, rows, items, explicit)}
+                if activity_id
+                else {}
+            ),
+            "scope": "Known canonical activities with explicit assignments, or that Garmin lists for the gear of a Garmin-linked main item (an explicit assignment, including unassigned, always wins; an activity Garmin lists for several main items links to each of them, like Garmin's own totals; an item without a Garmin activity list links nothing), plus confirmed initial usage. Missing provider history or measurements makes counters incomplete; no inferred favorite gear is ever assigned, an activity's own read only suggests the item last assigned to its sport. A truncated or outdated Garmin activity list makes the maintenance of intervals counted from sessions partial. Maintenance includes only later calendar days, same-day order is unknown. Limits: 100 items, 1000 maintenance events; usage counts every assignment, but the list shows only the first 2000 without splitting an activity's gear, explicit ones newest first, then Garmin links; an activity's own read lists all of its assignments.",
         }
 
     def sync_garmin_snapshot(self, snapshot: dict[str, Any]) -> None:
@@ -1172,6 +1177,44 @@ def _session_assignments(
             )
             result[key] = {**newest, "activity_id": key}
     return result
+
+
+def _assignment_choice(
+    activity_id: str,
+    rows: list[dict[str, Any]],
+    items: list[dict[str, Any]],
+    explicit: dict[str, dict[str, Any]],
+) -> dict[str, Any] | None:
+    """The items one session can be assigned, its own choice and a suggestion (#2879).
+
+    The suggestion is the item last explicitly assigned to a session of the same
+    sport pair (indoor and outdoor apart) that the session can still take; it is
+    derived on every read, never stored and never assigned without the athlete.
+    """
+    row = next((row for row in rows if row["id"] == activity_id), None)
+    if row is None:
+        return None
+    options = [item for item in items if assignable_equipment(item, row)]
+    usable = {item["id"] for item in options}
+    pair = _stored_pair(_row_sport(row))
+    pairs = {str(other["id"]): _stored_pair(_row_sport(other)) for other in rows}
+    recent = [
+        record
+        for record in explicit.values()
+        if record.get("equipment_id") in usable
+        and pairs.get(str(record["activity_id"])) == pair
+    ]
+    own = explicit.get(activity_id)
+    return {
+        "options": [{"id": item["id"], "name": item["name"]} for item in options],
+        "assigned": own.get("equipment_id") if own else None,
+        "explicit": own is not None,
+        "suggested": max(
+            recent, key=lambda record: str(record.get("observed_at") or "")
+        )["equipment_id"]
+        if recent
+        else None,
+    }
 
 
 def _effective_assignments(

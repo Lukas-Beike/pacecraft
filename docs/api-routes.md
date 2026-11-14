@@ -57,6 +57,8 @@ handler's docstring. Regenerate it with
 | GET | `/api/context-preview` | Session | no | Preview of the context the Coach receives. |
 | GET | `/api/diagnostics` | Session | no | Diagnostic report. |
 | POST | `/api/diagnostics/delete` | Session + CSRF | after access | Clear the stored diagnostics. |
+| POST | `/api/equipment` | Session + CSRF | after access | Create, edit or retire one piece of equipment, stored locally (#2879). |
+| POST | `/api/equipment/assignment` | Session + CSRF | after access | Assign one session its equipment, or none, stored locally (#2879). |
 | POST | `/api/equipment/maintenance` | Session + CSRF | after access | Record one maintenance entry for a piece of equipment, stored locally. |
 | POST | `/api/external-calendar/decisions` | Session + CSRF | after access | Set or remove how one calendar event affects training; nothing remote. |
 | POST | `/api/external-calendar/sync` | Session + CSRF | after access | Queue a provider synchronization, or a targeted refresh of the external calendars or the weather. |
@@ -556,6 +558,44 @@ Response: 200 with `ok` (`true`) and `entries` (`0`): the captured
 technical diagnostic entries are emptied.
 
 Errors: 500 "Diagnose konnte nicht gelöscht werden." when clearing fails.
+
+### `POST /api/equipment`
+
+Request: JSON body of at most 16 KiB with the item fields `id` (omit to
+create), `expected_revision` (required with `id`), `name`, `sport`,
+`environment`, `kind` (`shoes`, `bike`, `component`, `other`), `status`
+(`active` or `archived`), `parent_id`, `start_date` (YYYY-MM-DD),
+`initial_distance_km`, `initial_hours`, `maintenance_km`,
+`maintenance_hours`, `lifetime_target_km`, plus `confirmed`; no other
+key. Retiring (`status` `archived`) needs `"confirmed": true`.
+
+Response: 200 `{"ok": true, "stored_locally": true, "equipment": {...},
+"change"}`; `change` is the undo reference.
+
+Errors: 400 "Ungültige Ausrüstung." for an unknown key or a body that is
+not an object; 400 "Name, Sport, Art oder Status der Ausrüstung
+ungültig."; 400 "Startdatum oder Ausrüstungs-ID ungültig."; 400
+"Ausrüstungsbeginn liegt außerhalb des gültigen Zeitraums."; 400
+"Ausrüstungszähler oder Wartungsintervall ungültig."; 404 "Ausrüstung
+nicht gefunden." for an unknown `id`; 409 "Ausrüstung geändert; neu
+lesen." for a stale `expected_revision`; 409 "Das Ausmustern muss
+bestätigt werden." for an unconfirmed retirement.
+
+### `POST /api/equipment/assignment`
+
+Request: JSON body of at most 16 KiB, exactly `{"activity_id": string,
+"equipment_id": string | null}`; `null` records that the session used
+no equipment ("Keiner"), which also overrides Garmin's gear links.
+
+Response: 200 `{"ok": true, "stored_locally": true, "assignment":
+{"activity_id", "equipment_id", "observed_at"}, "change"}`; `change` is
+the undo reference.
+
+Errors: 400 "Aktivität und Ausrüstung sind erforderlich." for another
+body shape; 404 "Kanonische Aktivität nicht gefunden." for an unknown
+session; 400 "Aktive passende Hauptausrüstung erforderlich." for an
+unknown item or one that is archived, a component, unresolved or of
+another sport.
 
 ### `POST /api/equipment/maintenance`
 

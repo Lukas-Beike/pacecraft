@@ -55,9 +55,12 @@ class DetailEnvelopeReader:
                 performance.get("metrics", {}),
                 performance.get("comparisons", {}),
             )
+        equipment = self._read_equipment(live)
         return {
             "activity_feedback": feedback,
-            "equipment": activity_equipment(self._read_equipment(live), live),
+            "equipment": activity_equipment(equipment, live),
+            # The items this session can take, its own choice and a suggestion (#2879).
+            "equipment_choice": equipment.get("choice"),
             "activity_validation": validation,
             "session_rpe_load": load,
         }

@@ -267,6 +267,33 @@ class EquipmentHistoryTests(unittest.TestCase):
             ["create", "update", "undo", "update", "undo"],
         )
 
+    def test_a_session_read_offers_its_items_and_suggests_the_last_assigned(
+        self,
+    ) -> None:
+        first, second = self.bike(), self.bike(name="Second")
+        choice = self.service.read(activity_id="act_w2")["choice"]
+        self.assertEqual(
+            (sorted(o["name"] for o in choice["options"]), choice["suggested"]),
+            (["Road bike", "Second"], None),
+        )
+        self.service.assign({"activity_id": "act_w1", "equipment_id": second["id"]})
+        # The suggestion is derived and never stored or assigned (#2879).
+        choice = self.service.read(activity_id="act_w2")["choice"]
+        self.assertEqual(
+            (choice["assigned"], choice["explicit"], choice["suggested"]),
+            (None, False, second["id"]),
+        )
+        self.assertIsNone(self.stored("equipment_assignment:act_w2"))
+        self.edit(self.record(f"equipment:{second['id']}"), status="archived")
+        choice = self.service.read(activity_id="act_w2")["choice"]
+        self.assertEqual(
+            ([o["id"] for o in choice["options"]], choice["suggested"]),
+            ([first["id"]], None),
+        )
+        self.service.assign({"activity_id": "act_w2", "equipment_id": None})
+        own = self.service.read(activity_id="act_w2")["choice"]
+        self.assertEqual((own["assigned"], own["explicit"]), (None, True))
+
     def test_undo_of_a_first_unassignment_removes_the_override(self) -> None:
         _, changes = self.collected(
             lambda: self.service.assign({"activity_id": "act_w1", "equipment_id": None})
