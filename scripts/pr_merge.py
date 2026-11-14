@@ -1,16 +1,20 @@
 """Squash-merge one develop pull request through auto-merge and optionally wait.
 
-    python scripts/pr_merge.py <pr> [--wait MINUTES]
+    python scripts/pr_merge.py <pr> [--wait MINUTES] [--allow-behind]
 
-Arms `gh pr merge --auto --squash` pinned to the current head, unless it is
-armed already; when GitHub refuses because the PR is already in clean status,
-merges that head at once with `--squash` (#2776). `--wait` then polls every 20 s
-in the same turn until the PR is merged or closed, a check fails or new
-feedback (comment or review) arrives, at most MINUTES (#2795): the host's PR
-watcher does not reliably wake on the merge itself.
-Exit 0: merged (or armed, without --wait); 1: refused (base is not develop),
-closed unmerged, a failing check or new feedback; 2: bad input or a failed gh
-call; 3: still open when the wait ended.
+Refuses a head when develop changed files this PR changes since it branched
+off, and disarms an armed auto-merge then (#2901: "up to date before merge" is
+off while lanes run, and the lane rule asks for a rebase when develop moved in
+your files); --allow-behind skips that. Arms `gh pr merge --auto --squash` pinned to the current head,
+unless it is armed already; when GitHub refuses because the PR is already in
+clean status, merges that head at once with `--squash` (#2776). `--wait` then
+polls every 20 s in the same turn until the PR is merged or closed, a check
+fails or new feedback (comment or review) arrives, at most MINUTES (#2795): the
+host's PR watcher does not reliably wake on the merge itself. The develop check
+runs at arming, as the lane rule asks; develop moving during CI is accepted.
+Exit 0: merged (or armed, without --wait); 1: refused (base is not develop, or
+develop changed this PR's files), closed unmerged, a failing check or new feedback; 2:
+bad input or a failed gh call; 3: still open when the wait ended.
 """
 
 from __future__ import annotations
@@ -49,6 +53,36 @@ def arm(number: int, pr: dict[str, Any]) -> str:
     return f"already clean, merged {pr['headRefOid'][:10]} directly"
 
 
+COMPARE_FILE_CAP = 300  # the compare API lists at most this many files
+
+
+def behind_develop(number: int, pr: dict[str, Any]) -> bool:
+    """Whether develop changed files this PR changes since the head branched off.
+
+    The lane rule (rebase if develop moved in files you touch) without a rebase
+    loop: develop moves during every CI run. Disarms auto-merge on a refusal.
+    """
+    path = f"repos/{{owner}}/{{repo}}/compare/{pr['headRefOid']}...develop"
+    query = "{behind: .ahead_by, files: [.files[]?.filename]}"
+    develop = gh_json("api", path, "--jq", query)
+    behind, moved = develop["behind"], set(develop["files"] or [])
+    if not isinstance(behind, int):
+        raise CliError("the develop comparison returned no commit count")
+    # `pr view --json files` stops at 100 files; the diff lists them all.
+    mine = set(gh("pr", "diff", str(number), "--name-only").split())
+    shared = sorted(mine & moved)
+    if len(moved) >= COMPARE_FILE_CAP:
+        shared = shared or ["(develop changed too many files to compare)"]
+    if behind and not shared:
+        print(f"head is {behind} commit(s) behind develop, none in this PR's files")
+        return False
+    if shared and pr.get("autoMergeRequest"):
+        gh("pr", "merge", str(number), "--disable-auto")
+    if shared:
+        print(f"refused: develop changed {', '.join(shared)}; rebase first")
+    return bool(shared)
+
+
 def wait(number: int, minutes: int, seen: int) -> int:
     polls = minutes * POLLS_PER_MINUTE + 1
     for poll in range(polls):
@@ -72,13 +106,21 @@ def main(argv: list[str] | None = None) -> int:
     top = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     top.add_argument("number", type=positive_int)
     top.add_argument("--wait", type=int, default=0, metavar="MINUTES")
+    top.add_argument(
+        "--allow-behind",
+        action="store_true",
+        help="arm even when develop has commits the head lacks (#2901)",
+    )
     args = top.parse_args(argv)
+    current = not args.allow_behind
     try:
         pr = view(args.number)
         if pr.get("baseRefName") != "develop":
             print(f"refused: base is {pr.get('baseRefName')}, not develop")
             return 1
         if pr.get("state") == "OPEN":
+            if current and behind_develop(args.number, pr):
+                return 1
             print(f"PR #{args.number}: {arm(args.number, pr)}")
             if args.wait <= 0:
                 return 0

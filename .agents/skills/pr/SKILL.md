@@ -121,7 +121,8 @@ confirmation. List every unfixed finding with its reason in the PR body.
   `--wait 30` only when the base is `develop`, Gitar has reviewed the current
   head, and no feedback is open: review comments do not block an armed
   auto-merge (#2520 merged past one). It merges a PR GitHub already calls clean
-  directly (#2776).
+  directly (#2776), and refuses when develop changed this PR's files since it
+  branched off (#2901): rebase, let CI and Gitar see the new head, rerun.
 
 ## 4. Monitor to merge
 
