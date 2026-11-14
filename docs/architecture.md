@@ -1,6 +1,24 @@
 # Architecture
 
-`server.py` is the composition root: it reads the configuration, builds the one application context (`backend/app/context.py`, typed, with live `config` and `database` holders that a credential save or a restore replaces) and runs the lifecycle (startup, workers, shutdown). Each domain's builder (`backend/<domain>/wiring.py`) constructs that domain's services from the context; the HTTP server class is `backend/http_api/server.py`. Business logic lives in `backend/`; the import contract is layered. `canonical` imports only the standard library and itself, `athlete` imports no other domain package, `providers` may import only `canonical`, configuration, errors, observability and the runtime clock, ports and socket deadline, and package import cycles are not allowed. `http_api` owns HTTP transport and route assembly, `coach` owns Coach workflows, `sync` owns synchronization and scheduling, `providers` owns external adapters, and `db` owns persistence; only the domain packages (activities, athlete, backup, calendar, coach, diagnostics, history, nutrition, performance, planning, sync, weather) may import `backend.app` to read the context; `http_api` receives it as an untyped parameter, and `providers`, `db`, `runtime`, `canonical` and the shared modules never import it. AST layer tests enforce a permitted-import map per layer, the empty cycle baseline and these rules.
+`server.py` is the composition root: it reads the configuration, builds the one application context (`backend/app/context.py`, typed, with live `config` and `database` holders that a credential save or a restore replaces) and runs the lifecycle (startup, workers, shutdown). Each domain's builder (`backend/<domain>/wiring.py`) constructs that domain's services from the context; the HTTP server class is `backend/http_api/server.py`. Business logic lives in `backend/`. `http_api` owns HTTP transport and route assembly, `coach` owns Coach workflows, `sync` owns synchronization and scheduling, `providers` owns external adapters, and `db` owns persistence; `http_api` receives the application context as an untyped parameter.
+
+## Import rules
+
+The AST layer tests in `tests/test_backend_layer_contracts.py` enforce the permitted imports of each layer below (generated from their layer map by `python tests/test_backend_layer_contracts.py --write`), an empty package-cycle baseline, and one rule on top: `athlete` imports no other domain package. No backend module imports or reaches `server`.
+
+<!-- BEGIN GENERATED LAYER RULES -->
+| Layer | Packages | May import |
+| --- | --- | --- |
+| providers | `backend.providers` | `backend.canonical`, `backend.config`, `backend.errors`, `backend.observability`, `backend.providers`, `backend.runtime.clock`, `backend.runtime.ports`, `backend.runtime.socket_deadline` |
+| canonical | `backend.canonical` | `backend.canonical` |
+| http_api | `backend.http_api` | domain packages, shared modules, `backend.http_api`, `backend.runtime` |
+| domain | `backend.activities`, `backend.athlete`, `backend.backup`, `backend.calendar`, `backend.coach`, `backend.diagnostics`, `backend.history`, `backend.nutrition`, `backend.performance`, `backend.planning`, `backend.sync`, `backend.weather` | domain packages, shared modules, `backend.app`, `backend.db`, `backend.providers`, `backend.runtime` |
+| db | `backend.db` | shared modules, `backend.db`, `backend.runtime` |
+| runtime | `backend.runtime` | shared modules, `backend.runtime` |
+| shared | every other `backend` package or module, among them `backend.app`, `backend.change_history`, `backend.config`, `backend.errors`, `backend.observability`, `backend.pagination`, `backend.privacy`, `backend.provider_credentials`, `backend.settings` | domain packages, shared modules, `backend.db`, `backend.providers`, `backend.runtime` |
+
+Shared modules: `backend.canonical`, `backend.change_history`, `backend.config`, `backend.errors`, `backend.observability`, `backend.pagination`, `backend.privacy`, `backend.provider_credentials`, `backend.settings`. Domain packages: the packages of the domain layer.
+<!-- END GENERATED LAYER RULES -->
 
 ```text
                +-------------------------------------------------------------+
