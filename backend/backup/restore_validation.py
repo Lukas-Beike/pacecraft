@@ -88,7 +88,7 @@ class DatabaseRestoreValidationService:
                 return False
             # The schema check reads no data page; a damaged copy must not count.
             rows = connection.execute("PRAGMA quick_check").fetchall()
-            return len(rows) == 1 and str(rows[0][0]).casefold() == "ok"
+            return len(rows) == 1 and str(rows[0]["quick_check"]).casefold() == "ok"
         except Exception:  # noqa: BLE001 - a copy that does not open is not verified
             return False
         finally:

@@ -88,13 +88,17 @@ class DatabaseRestoreValidationTests(unittest.TestCase):
                 index_page = connection.execute(
                     "SELECT rootpage FROM sqlite_master WHERE name = 'kv_key'"
                 ).fetchone()[0]
-            data = bytearray(copy.read_bytes())
+            intact = copy.read_bytes()
+            data = bytearray(intact)
             start = (index_page - 1) * page_size
             data[start : start + page_size] = b"\xff" * page_size
             copy.write_bytes(bytes(data))
-            current = service(root, schema_is_current=lambda _connection: True)
+            current = service(root, row_factory=row_factory)
 
             self.assertFalse(current.verify_copy(copy, len(data)))
+            copy.write_bytes(intact)
+            # The production row factory returns dicts; a clean copy still verifies.
+            self.assertTrue(current.verify_copy(copy, len(data)))
 
     def test_stage_enforces_payload_boundary_and_uses_uuid_filename(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
