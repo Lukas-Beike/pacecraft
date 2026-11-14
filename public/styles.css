@@ -1886,6 +1886,7 @@ button:focus-visible, a:focus-visible, summary:focus-visible {
 .activity-dynamics-reference[data-band="red"] { --band: var(--danger); }
 .activity-dynamics-bands { display: grid; gap: 8px; }
 .activity-dynamics-bands td .activity-dynamics-chip { margin-left: 2px; }
+.activity-dynamics-bands :is(th, td) { white-space: nowrap; }
 .activity-analysis-laps { display: grid; gap: 8px; }
 .activity-analysis-laps td, .activity-analysis-laps th { font-variant-numeric: tabular-nums; }
 
