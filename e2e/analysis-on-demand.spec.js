@@ -90,35 +90,21 @@ test("@responsive cycling power profile stays cached across navigation and chart
   expect(reportCounts()).toEqual(afterFirstVisit);
 });
 
-// Monthly medians per pace band of the running dynamics (#2829); the first answer is still being built.
-test("@responsive running technique draws monthly medians per pace band and switches the value", async ({ page }, testInfo) => {
+// Running dynamics are read per session in the calendar details only; Analyse shows no monthly card (#2961).
+test("@responsive running analysis shows no running technique card", async ({ page }) => {
   await mockReports(page);
-  const months = ["2026-06", "2026-07", "2026-08", "2026-09", "2026-10", "2026-11"];
-  let pending = 1;
-  await page.route("**/api/analysis/running-dynamics", (route) => (pending-- > 0 ? route.fulfill({ json: { status: "pending" } }) : route.fulfill({ json: {
-    status: "ok", stale: false, session: null,
-    trend: { months, bands: [
-      { band_s_per_km: 240, series: { ground_contact_time_ms: [238, 236, null, 234, 233, 231], cadence_spm: [180, 181, null, 182, 182, 183] } },
-      { band_s_per_km: 360, series: { ground_contact_time_ms: [282, 281, 279, 279, 278, 277], cadence_spm: [164, 165, 165, 166, 166, 167] } },
-    ] },
-  } })));
+  const reads = [];
+  page.on("request", (request) => { if (request.url().includes("/api/analysis/running-dynamics")) reads.push(request.url()); });
   await waitForInitialState(page);
+  const profiles = page.waitForResponse(`**${POWER_PROFILES}`);
   await routeTo(page, "#analysis/running");
-  const card = page.locator("#runningDynamicsTrend");
-  await expect(card.getByRole("heading", { name: "Lauftechnik je Monat" })).toBeVisible();
-  const select = card.getByRole("combobox", { name: "Laufdynamik-Wert" });
-  await expect(select.locator("option")).toHaveText(["Bodenkontaktzeit", "Schrittfrequenz"]);
-  await expect(card.locator(".analysis-chart-legend li button")).toHaveText(["4:00–4:15/km", "6:00–6:15/km"]);
-  await expect(card.locator("h3")).toHaveText("Bodenkontaktzeit");
-  // Monthly points name their months on the axis (#2922).
-  await expect(card.locator(".analysis-date-tick").last()).toHaveText("Nov");
-  await card.getByText("Werte ansehen").click();
-  await expect(card.locator(".analysis-chart-table thead th").first()).toHaveText("Monat");
-  await expect(card.locator(".analysis-chart-table tbody th").first()).toHaveText("Juni 2026");
-  await select.selectOption("cadence_spm");
-  await expect(card.locator("h3")).toHaveText("Schrittfrequenz");
-  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBeTruthy();
-  await card.screenshot({ path: testInfo.outputPath("running-technique-trend.png"), animations: "disabled" });
+  await expect(page.locator("#dataPanel")).toHaveClass(/active/);
+  // The view's report reads start together, so once the best efforts are drawn any card read was sent.
+  await profiles;
+  await expect(page.locator("#runningBestEfforts")).toHaveAttribute("data-analysis-empty", /.+/);
+  await expect(page.getByText("Lauftechnik je Monat")).toHaveCount(0);
+  await expect(page.locator("#runningDynamicsTrend")).toHaveCount(0);
+  expect(reads).toEqual([]);
 });
 
 test("@responsive equipment records load only on the equipment route and stay cached", async ({ page }) => {

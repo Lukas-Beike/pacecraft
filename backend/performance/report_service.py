@@ -45,11 +45,7 @@ from backend.performance.power_profile import (
     RUNNING_DURATIONS,
 )
 from backend.performance.progress_report import weekly_progress
-from backend.performance.running_dynamics import (
-    AVERAGE_KEYS,
-    monthly_trend,
-    session_rating,
-)
+from backend.performance.running_dynamics import AVERAGE_KEYS, session_rating
 from backend.performance.season_inputs import (
     SeasonSource,
     read_activity_summaries,
@@ -246,7 +242,10 @@ class TrainingProfileSelectionService:
 
             def build() -> list[dict[str, Any]]:
                 curves: dict[str, SessionCurve] = {}
-                for session_id in session_ids:
+                # Oldest first, so the recent windows' curves are the most recently
+                # used: a session added before the next build evicts an old curve,
+                # never a recent one (#2822). The records keep the sessions' order.
+                for session_id in reversed(session_ids):
                     started = self._clock()
                     with manager.read_snapshot() as one:
                         curves.update(curve_reader.curves(one, [session_id]))
@@ -256,6 +255,10 @@ class TrainingProfileSelectionService:
                     for summary in sessions
                 ]
 
+            # Room for every session's curve: a smaller memo would make the build
+            # evict the recent windows' curves and recompute the whole history on
+            # every rebuild (#2822).
+            curve_reader.reserve(len(session_ids))
             shown = [_curve_record(summary, None) for summary in sessions]
             # The session list decides the records; a new day alone builds nothing.
             return curve_reader.background_records(
@@ -286,10 +289,10 @@ class TrainingProfileSelectionService:
         window["stale"] = not every[1]
         return window
 
-    def running_dynamics(self, activity_id: str | None = None) -> dict[str, Any]:
-        """The monthly running-dynamics trend and, with ``activity_id``, its run's rating (#2829).
+    def running_dynamics(self, activity_id: str) -> dict[str, Any]:
+        """The running-dynamics rating of the run ``activity_id`` (#2829).
 
-        Both read ``all_time_records``, built off the request path: ``status``
+        It reads ``all_time_records``, built off the request path: ``status``
         is ``pending`` before its first build, ``failed`` after a failed one,
         else ``ok`` with ``stale`` while a newer build runs. ``session`` is
         None for a session without a stored record.
@@ -302,8 +305,6 @@ class TrainingProfileSelectionService:
             return {"status": "pending"}
         records = [row for row in every[0] if row.get("sport") == "run"]
         result: dict[str, Any] = {"status": "ok", "stale": not every[1]}
-        if activity_id is None:
-            return {**result, "trend": monthly_trend(records, self._today())}
         own = next(
             (row for row in records if row.get("activity_id") == activity_id), None
         )

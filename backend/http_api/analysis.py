@@ -66,22 +66,20 @@ class AnalysisRoutes:
     def _running_dynamics(self, handler: Any, request: RouteRequest) -> None:
         """Running dynamics against the athlete's own runs at the same pace (#2829).
 
-        Request: optional query `activity_id` (the local session id, at most
-        200 characters); no body.
+        Request: query `activity_id` (the local session id, at most 200
+        characters); no body.
 
         Response: 200 with `status` (`pending` before the first background read
         of every stored session finished, `failed` after a failed one, else
-        `ok`), and with `ok` `stale`, `trend` (`months` and per pace band
-        `band_s_per_km` and `series` of monthly medians per value) and
-        `session` (the run's rating per pace band and per value; null without
-        `activity_id` or a stored run).
+        `ok`), and with `ok` `stale` and `session` (the run's rating per pace
+        band and per value; null without a stored run).
 
-        Errors: 400 "Ungültige Aktivitäts-ID." for an id longer than 200
-        characters.
+        Errors: 400 "Ungültige Aktivitäts-ID." for a missing id or one longer
+        than 200 characters.
         """
         given = request.query.get("activity_id")
-        activity_id = given[0] if given else None
-        if activity_id is not None and len(activity_id) > 200:
+        activity_id = given[0] if given else ""
+        if not activity_id or len(activity_id) > 200:
             raise AppError(400, "Ungültige Aktivitäts-ID.")
         handler.send_json(200, self._reports().profiles.running_dynamics(activity_id))
 

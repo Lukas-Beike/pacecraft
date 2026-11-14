@@ -279,6 +279,23 @@ def status_counts(
     return result
 
 
+def stuck_counts(db: Any, job_type: str, before: str) -> dict[str, int]:
+    """Per provider: open jobs that should have finished by ``before`` (#2953).
+
+    A queued job counts once its planned start (``available_at``, else
+    ``created_at``) is before ``before``, so a retry backoff or a requeue is not
+    stuck; a running job counts once it started before ``before``.
+    """
+    rows = db.execute(
+        "SELECT provider, count(*) AS n FROM sync_jobs WHERE type=? AND ("
+        "(status='queued' AND COALESCE(available_at, created_at) < ?) OR "
+        "(status='running' AND COALESCE(started_at, created_at) < ?)) "
+        "GROUP BY provider",
+        (job_type, before, before),
+    ).fetchall()
+    return {str(row["provider"]): row["n"] for row in rows}
+
+
 def has_active_job(db: Any, provider: str, job_type: str) -> bool:
     row = db.execute(
         "SELECT 1 FROM sync_jobs WHERE provider=? AND type=? "

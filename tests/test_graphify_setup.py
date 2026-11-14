@@ -225,7 +225,19 @@ class GraphifySetupTests(unittest.TestCase):
         unrelated = current.parent / "unrelated"
         for directory in (old, locked, unrelated):
             directory.mkdir()
-        with graph.process_lock(locked.with_name(locked.name + ".lock")):
+        real_open = Path.open
+
+        def slow_open(path, *args, **kwargs):
+            # #2937: a loaded machine opens the lock file after prune's 10 ms
+            # budget; a free lock must still be taken.
+            if path.suffix == ".lock":
+                time.sleep(0.02)
+            return real_open(path, *args, **kwargs)
+
+        with (
+            graph.process_lock(locked.with_name(locked.name + ".lock")),
+            patch.object(Path, "open", slow_open),
+        ):
             self.assertIsNone(graph._prune())
         self.assertFalse(old.exists())
         self.assertTrue(current.is_dir())

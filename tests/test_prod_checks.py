@@ -57,6 +57,8 @@ def report(messages=40):
                     "items": [{"status": "failed", "error_class": "HTTPError"}],
                 }
             ],
+            # Open jobs past the stuck limit, every provider (#2953).
+            "stuck_jobs": {"garmin": 1},
             # Every push of the count window per provider, settled items too.
             "push_counts": {
                 "garmin": {
@@ -192,6 +194,16 @@ class ProdChecksTests(unittest.TestCase):
             "info plan push intervals: item completed 6, job completed 2", text
         )
         self.assertIn("info plan push ?: job ? 1", text)
+        # A stuck job of any provider fails the check, not only among the newest
+        # ten jobs (#2953).
+        self.assertIn("FAIL stuck plan-sync jobs: 1", text)
+        # Without the field the recent jobs decide; an unavailable section is
+        # unknown, which fails.
+        old = (datetime.now(UTC) - timedelta(hours=3)).isoformat()
+        recent = {"recent_jobs": [{"status": "running", "created_at": old}]}
+        now = datetime.now(UTC)
+        self.assertEqual(prod_diagnostics.stuck_count(recent, now), 1)
+        self.assertIsNone(prod_diagnostics.stuck_count({"status": "unavailable"}, now))
         self.assertEqual(
             prod_diagnostics.error_kind({"error_class": "boom: remote said no"}), "?"
         )

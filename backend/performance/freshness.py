@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass, field
-from datetime import date
+from datetime import date, datetime, timedelta
 from typing import Any, Final
 
 from backend.athlete.local_date import iso_date_prefix
@@ -58,6 +58,23 @@ class GarminSyncStatus:
     chart_status: Mapping[str, str] = field(default_factory=dict)
     stored_sections: frozenset[str] = frozenset()
     errors: tuple[Any, ...] = ()
+    # When the watch last uploaded to Garmin Connect, UTC, and when that was read (#2807).
+    device_synced_at: str | None = None
+    device_sync_read_at: str | None = None
+
+    def current_device_synced_at(self, now: datetime) -> str | None:
+        """The watch's last upload, only while it was read in the last 24 hours.
+
+        An older read (a stopped or failing sync, a dropped SDK login) says nothing
+        about the watch, so it is not shown as the watch's silence.
+        """
+        try:
+            read = datetime.fromisoformat(str(self.device_sync_read_at))
+        except ValueError:
+            return None
+        if read.tzinfo is None or now - read > timedelta(hours=24):
+            return None
+        return self.device_synced_at
 
     @classmethod
     def from_state(
@@ -93,6 +110,8 @@ class GarminSyncStatus:
                 if isinstance(window := provider_sync.get(key), Mapping)
             },
             pagination=dict(pagination),
+            device_synced_at=_text(provider_sync.get("device_synced_at")),
+            device_sync_read_at=_text(provider_sync.get("device_sync_read_at")),
             chart_status={
                 str(key): status
                 for key, chart in charts.items()

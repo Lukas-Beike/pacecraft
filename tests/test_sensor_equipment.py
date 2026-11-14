@@ -1,4 +1,4 @@
-"""Reading the equipment link of a recorded sensor (#1869)."""
+"""The recorded sensors of the equipment read (#1869, #2903)."""
 
 import json
 import sqlite3
@@ -97,47 +97,6 @@ class SensorEquipmentTests(unittest.TestCase):
             lambda: datetime(2026, 11, 9, tzinfo=UTC).date(),
             lambda: STAMP,
         )
-        made = {}
-        for name in ("bike", "old"):
-            made[name] = self.service.save(
-                {
-                    "name": name,
-                    "sport": "Ride",
-                    "kind": "bike",
-                    "start_date": "2026-01-01",
-                    "initial_distance_km": 0,
-                    "initial_hours": 0,
-                }
-            )["equipment"]
-        self.service.save(
-            {
-                "id": made["old"]["id"],
-                "expected_revision": made["old"]["revision"],
-                "name": "old",
-                "sport": "Ride",
-                "kind": "bike",
-                "status": "archived",
-                "start_date": "2026-01-01",
-                "initial_distance_km": 0,
-                "initial_hours": 0,
-            }
-        )
-        wheel = self.service.save(
-            {
-                "name": "wheel",
-                "sport": "Ride",
-                "kind": "component",
-                "parent_id": made["bike"]["id"],
-                "start_date": "2026-01-01",
-                "initial_distance_km": 0,
-                "initial_hours": 0,
-            }
-        )["equipment"]
-        self.bike, self.old, self.wheel = (
-            made["bike"]["id"],
-            made["old"]["id"],
-            wheel["id"],
-        )
 
     def sensors(self):
         return self.service.read()["sensors"]
@@ -146,31 +105,10 @@ class SensorEquipmentTests(unittest.TestCase):
         (sensor,) = self.sensors()
         self.assertEqual(sensor["id"], KEY[:16])
         self.assertEqual(sensor["role"], "power_meter")
-        self.assertIsNone(sensor["equipment_id"])
+        self.assertNotIn("equipment_id", sensor)
         self.assertEqual(sensor["sessions"], 1)
 
-    def link_sensor(self, equipment_id):
-        """Store a link as an earlier release wrote it."""
-        with self.manager.unit_of_work() as db:
-            db.execute(
-                "INSERT INTO kv(key, value, updated_at) VALUES (?, ?, ?)",
-                (
-                    f"sensor_equipment:{KEY}",
-                    json.dumps({"equipment_id": equipment_id, "observed_at": STAMP}),
-                    STAMP,
-                ),
-            )
-
-    def test_a_stored_link_to_active_main_equipment_is_reported(self):
-        self.link_sensor(self.bike)
-        self.assertEqual(self.sensors()[0]["equipment_id"], self.bike)
-
-    def test_a_link_to_unknown_equipment_is_not_reported(self):
-        self.link_sensor("gone")
-        self.assertIsNone(self.sensors()[0]["equipment_id"])
-
     def test_the_read_never_carries_a_serial_number(self):
-        self.link_sensor(self.bike)
         self.assertNotIn(SERIAL, json.dumps(self.service.read()))
 
 

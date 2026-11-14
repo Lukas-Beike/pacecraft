@@ -146,11 +146,15 @@ The system SHALL use the Garmin token-store owner for encrypted-database token p
 - **WHEN** a sync logged in from the legacy file or received refreshed login data
 - **THEN** the data is written to the database only while the stored login is still the one the sync started with, so a disconnect, purge or new login during the sync is never undone; the file stays in place.
 
+#### Scenario: Watch upload age
+- **WHEN** a current Garmin sync runs through the SDK login
+- **THEN** it reads `get_sync_timestamp()` once and stores the time as UTC in the Garmin state (`provider_sync.device_synced_at`, no new key and no schema change); a missing method, a failed call or an answer that is no time keeps the previous time and never makes the run partial; the run's time is kept beside it as `device_sync_read_at`; the Garmin projection exposes `device_synced_at` only while that read is at most 24 hours old (a stopped sync or a dropped SDK login says nothing about the watch), and from 24 hours on the Garmin card and, while Garmin is set up, the Erholung tab say "Die Uhr hat seit einem Tag/N Tagen nichts übertragen.", while a fresh upload shows nothing
+
 #### Scenario: After disconnect
 - **WHEN** the athlete disconnected Garmin
 - **THEN** the stored login is deleted and neither the legacy file nor the environment e-mail and password are used until a new login in the app, so Garmin counts as configured only through a Personal API key.
 
-Evidence: `backend/sync/garmin_login.py:GarminTokenStore`, `backend/sync/garmin_login.py:GarminTokenStore.write_back`, `backend/sync/garmin_service.py:_garmin_sync_configured`, `backend/sync/garmin_login.py:GarminLoginService.status`, `backend/sync/garmin_service.py:GarminRemoteReader`; `tests/test_sync_garmin_service.py:test_fetch_persists_tokens_even_when_the_read_fails`, `tests/test_garmin_login.py:test_login_success_stores_tokens_without_password`, `tests/test_garmin_login.py:test_disconnect_clears_tokens_and_blocks_legacy_file`.
+Evidence: `backend/providers/garmin.py:_record_device_sync`, `tests/test_garmin_device_sync.py`, `e2e/diagnostic-followups.spec.js::@responsive a watch that has not uploaded for a day is named in the Garmin card and at recovery`, `backend/sync/garmin_login.py:GarminTokenStore`, `backend/sync/garmin_login.py:GarminTokenStore.write_back`, `backend/sync/garmin_service.py:_garmin_sync_configured`, `backend/sync/garmin_login.py:GarminLoginService.status`, `backend/sync/garmin_service.py:GarminRemoteReader`; `tests/test_sync_garmin_service.py:test_fetch_persists_tokens_even_when_the_read_fails`, `tests/test_garmin_login.py:test_login_success_stores_tokens_without_password`, `tests/test_garmin_login.py:test_disconnect_clears_tokens_and_blocks_legacy_file`.
 
 ### Requirement: Garmin Personal API key and SDK fallback
 The system SHALL read the Garmin families the official Personal API serves through it whenever a key is configured, and every other family only through the unofficial SDK login. The key is a server-side credential that the provider settings may also store. Public status SHALL expose only whether a key is set, its entered expiry date and a state, never the key.

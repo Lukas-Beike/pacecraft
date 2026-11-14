@@ -32,18 +32,30 @@ TEST_EVALUATION = (
 
 
 def matched_focus(
-    session: Mapping[str, Any], units: Sequence[Mapping[str, Any]] | None
+    session: Mapping[str, Any],
+    units: Sequence[Mapping[str, Any]] | None,
+    *,
+    paired: bool = False,
 ) -> dict[str, Any]:
-    """Focus of the one planned unit of the session's day and sport, else unknown."""
+    """Focus of the session's planned unit, else unknown.
+
+    ``paired`` units are the one the calendar pairs with the session (#2863),
+    taken as given, also across a provider link to another day or sport;
+    otherwise the one unit of the session's day and sport.
+    """
     if units is None:
         return _unknown("Geplante Einheiten nicht verfügbar.")
     day, sport = iso_date_prefix(session.get("started_at_local")), session.get("sport")
-    same = [
-        unit
-        for unit in units
-        if iso_date_prefix(unit.get("date")) == day
-        and planned_sport_environment(unit)[0].value == sport
-    ]
+    same = (
+        list(units)
+        if paired
+        else [
+            unit
+            for unit in units
+            if iso_date_prefix(unit.get("date")) == day
+            and planned_sport_environment(unit)[0].value == sport
+        ]
+    )
     if len(same) != 1:
         return _unknown(
             "Keine geplante Einheit dieses Tages und Sports."
@@ -52,7 +64,9 @@ def matched_focus(
         )
     focus = session_focus(same[0])
     if focus.value is None:
-        return _unknown("Die geplante Einheit hat kein Ziel.")
+        # The paired unit still has steps and a cap to compare against.
+        unknown = _unknown("Die geplante Einheit hat kein Ziel.")
+        return {**unknown, "planned_unit_id": same[0].get("id")} if paired else unknown
     matched = {
         "status": "matched",
         "session_focus": focus.value,

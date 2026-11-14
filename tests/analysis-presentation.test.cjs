@@ -384,7 +384,7 @@ test("the coverage line counts the days or weeks that have a value", () => {
 test("the table behind a chart scrolls in a named region that the keyboard can reach", () => {
   const { makeScrollRegionFocusable } = extractFunctions("shared.js", ["makeScrollRegionFocusable"]);
   const document = fakeDocument();
-  const { appendAnalysisTable } = extractFunctions("analysis.js", ["appendAnalysisTable", "analysisValidPoint", "analysisAxisCaption", "ANALYSIS_DAY_DATES"], {
+  const { appendAnalysisTable } = extractFunctions("analysis.js", ["appendAnalysisTable", "analysisValidPoint", "analysisAxisCaption"], {
     document,
     makeScrollRegionFocusable,
     dateLabel: (date) => date,
@@ -498,4 +498,15 @@ test("the equipment notice names exceeded targets first and never archived items
   // Exceeded targets lead; maintenance of a local item follows as "+1" (#2809).
   assert.deepEqual(JSON.parse(JSON.stringify(equipmentStatusItem(due))), { level: "warning", title: "Pegasus 40: Ziel überschritten", detail: "+1", action: { href: "#more/equipment", label: "Ansehen" } });
   assert.equal(equipmentStatusItem({ items: due.items }).title, "Kette: Wartung fällig");
+});
+
+test("the watch-upload sentence appears from 24 hours on and never without a known time", () => {
+  const { deviceSyncSentence } = extractFunctions("performance-view.js", ["deviceSyncSentence"]);
+  const now = Date.parse("2026-11-14T08:00:00Z");
+  // #2807: the athlete chose 24 hours; a fresh upload needs no sentence.
+  assert.equal(deviceSyncSentence("2026-11-13T08:00:01Z", now), "");
+  assert.equal(deviceSyncSentence("2026-11-13T08:00:00Z", now), "Die Uhr hat seit einem Tag nichts übertragen.");
+  assert.equal(deviceSyncSentence("2026-11-12T07:00:00Z", now), "Die Uhr hat seit 2 Tagen nichts übertragen.");
+  assert.equal(deviceSyncSentence(null, now), "");
+  assert.equal(deviceSyncSentence("kein Datum", now), "");
 });

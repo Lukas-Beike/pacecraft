@@ -158,8 +158,10 @@ every named number the code fixes. A test fails when it is out of date.
 | `RUNNING_DURATIONS` | `(60, 180, 300, 420, 720, 1200)` | `backend/performance/power_profile.py` |  |
 | `RUNNING_DISTANCES` | `(1000, 5000, 10000, 21097.5, 42195)` | `backend/performance/power_profile.py` | 1 km, 5 km, 10 km, half marathon and marathon (#2786). |
 | `METHOD_ID` | `'mean-max-curve'` | `backend/performance/power_profile.py` |  |
-| `METHOD_VERSION` | `2` | `backend/performance/power_profile.py` | Version 1: time-weighted windows that must be fully covered by valid samples. Version 2 (card M4 v4, #1773): an outdoor running window counts only when its net altitude change is at most 1 % of its distance; without altitude it does not count. |
+| `METHOD_VERSION` | `3` | `backend/performance/power_profile.py` | Version 1: time-weighted windows that must be fully covered by valid samples. Version 2 (card M4 v4, #1773): an outdoor running window counts only when its net altitude change is at most 1 % of its distance; without altitude it does not count. Version 3 (#2818): a running distance window is timed like a race clock; a stop and a recording gap of at most MAX_DISTANCE_GAP_S count as elapsed time. Every stored session analysis is recomputed once, in paced batches. |
 | `MAX_RUNNING_NET_GRADE` | `0.01` | `backend/performance/power_profile.py` |  |
+| `MAX_DISTANCE_GAP_S` | `600` | `backend/performance/power_profile.py` | A distance best is timed like a race clock (athlete decision, #2818): a stop inside the window counts as elapsed time, and so does a recording gap (auto-pause, signal loss) of at most this many seconds; a longer gap breaks the window. |
+| `MAX_GAP_SPEED_MPS` | `1000 / 150` | `backend/performance/power_profile.py` | A recording gap (a step above 5 s) across which the distance implies a pace faster than 2:30 min/km is a measurement error and breaks the window (#2818). |
 | `METHOD` | `'weekly-progress-v1'` | `backend/performance/progress_report.py` |  |
 | `SPORT_BUCKETS` | `('run', 'ride', 'strength')` | `backend/performance/progress_report.py` |  |
 | `ZONE_BANDS` | `{'many': (3, 5), 'five': (3, 4)}` | `backend/performance/progress_report.py` | First zone number of the moderate and of the high band, by the number of zones of the session's zone set: 6 or more (default 7-zone power and heart rate) or up to 5 (5-zone heart rate). |
@@ -183,9 +185,6 @@ every named number the code fixes. A test fails when it is out of date.
 | `MIN_BAND_S` | `120.0` | `backend/performance/running_dynamics.py` | A run counts in a band with at least this much time in it. |
 | `MIN_PEERS` | `5` | `backend/performance/running_dynamics.py` | A band is rated against at least this many earlier runs of the window. |
 | `WINDOW_DAYS` | `84` | `backend/performance/running_dynamics.py` |  |
-| `MIN_MONTH_BAND_S` | `600.0` | `backend/performance/running_dynamics.py` | A month's trend point needs this much time of the band across its runs. |
-| `TREND_MONTHS` | `12` | `backend/performance/running_dynamics.py` |  |
-| `TREND_BANDS` | `4` | `backend/performance/running_dynamics.py` |  |
 | `AVERAGE_KEYS` | `{'ground_contact_time_ms': 'ground_contact_time_ms', 'vertical_oscillation_cm': 'vertical_oscilla... (sha256 73afc366)` | `backend/performance/running_dynamics.py` | The run averages a provider reports, by metric (cadence per leg). |
 | `METRICS` | `(('ground_contact_time_ms', 'ground_contact_time', -1), ('vertical_oscillation_cm', 'vertical_osc... (sha256 d5f91a56)` | `backend/performance/running_dynamics.py` | (metric, stream key of the analysis input, direction): -1 lower is better, 1 higher is better, 0 no verdict; "balance" is better closer to 50 %. |
 | `SCOPE` | `"Per 15 s/km pace band, the run's time-weighted mean against the same band of the athlete's runs ... (sha256 ce4f1e9b)` | `backend/performance/running_dynamics.py` |  |

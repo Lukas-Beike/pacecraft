@@ -438,7 +438,7 @@ class ProfileSelectionTests(unittest.TestCase):
         self.day = date(2026, 10, 18)
         self.snapshots_open = 0
 
-    def service(self, summaries, spawn=None, **pacing):
+    def service(self, summaries, spawn=None, capacity=2048, **pacing):
         @contextmanager
         def read_snapshot():
             self.snapshots_open += 1
@@ -456,7 +456,9 @@ class ProfileSelectionTests(unittest.TestCase):
         return TrainingProfileSelectionService(
             lambda: self.day,
             canonical=canonical,
-            curves=SessionCurveReader(self.session_records, spawn=spawn),
+            curves=SessionCurveReader(
+                self.session_records, spawn=spawn, capacity=capacity
+            ),
             **pacing,
         )
 
@@ -524,7 +526,7 @@ class ProfileSelectionTests(unittest.TestCase):
             (best["watts"], best["activity_id"], best["start_seconds"]),
         )
         self.assertEqual(
-            ("mean-max-curve", 2), (result["method"], result["method_version"])
+            ("mean-max-curve", 3), (result["method"], result["method_version"])
         )
         self.assertRegex(window["input_fingerprint"], r"^[0-9a-f]{64}$")
 
@@ -710,6 +712,37 @@ class ProfileSelectionTests(unittest.TestCase):
         (kept,) = reader.shared_records(self.db, ["act_1"], "newer", lambda: build("x"))
         self.assertEqual("newer", kept["build"])
         self.assertEqual(["newer", "older"], builds)
+
+    def test_the_all_time_build_keeps_every_curve_cached(self):
+        # #2822: with more sessions than the memo held, the build evicted the
+        # recent windows' curves and every rebuild recomputed the whole history.
+        # It now reserves room for every session.
+        summaries = []
+        for index, day in enumerate(("2026-10-10", "2026-09-01")):
+            self.add_ride(summaries, f"act_recent{index}", day=day)
+        for index in range(4):
+            self.add_ride(summaries, f"act_old{index}", day=f"2025-0{index + 1}-14")
+        builds = []
+        service = self.service(
+            summaries, spawn=builds.append, capacity=4, pause=lambda _seconds: None
+        )
+        service.power_profiles(all_time=True)
+        builds.pop()()
+        self.add_ride(summaries, "act_new", day="2026-10-17")
+
+        with patch.object(
+            mean_max_curve, "_session_curve", wraps=mean_max_curve._session_curve
+        ) as computed:
+            recent = service.curve_records(90)
+            service.power_profiles(all_time=True)
+            builds.pop()()
+
+        self.assertEqual(3, len(recent))
+        # The new session is computed by the 90-day read and evicts the oldest
+        # curve, which the rebuild computes again; no recent curve is recomputed.
+        self.assertEqual(
+            ["act_new", "act_old3"], [call.args[1] for call in computed.call_args_list]
+        )
 
     def test_all_time_bests_keep_old_efforts_while_the_90_days_and_coach_do_not(self):
         summaries = []

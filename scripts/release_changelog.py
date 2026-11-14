@@ -4,12 +4,15 @@
 
 Runs before the shared CI image is built; the image carries the file and the
 app reads it from its own server, never from GitHub. Each release tag (x.y.z)
-is mapped to the HEAD-history commit with the same tree, as the release step
-does, and lists the commit subjects since the previous release, without merges
-and release-version chores. A tag whose tree is not in HEAD's history is
-skipped with a build warning; its commits count to the next release. When HEAD
-is not itself a release tree, a first section holds the commits since the last
-release under APP_VERSION (null while that version is already released). If
+is mapped to the develop commit with the same tree, as the release step does,
+and lists the commit subjects since the previous release, without merges and
+both release chores. Releases are squashed onto main, so the history read is
+develop's (origin/develop, else develop, else HEAD's) and a build of a main
+commit stands for the develop commit with its tree (#2960). A tag whose tree is
+not in that history is skipped with a build warning; its commits count to the
+next release. When the build is not itself a release tree, a first section
+holds the commits since the last release under APP_VERSION (null while that
+version is already released). If
 that section's range cannot be computed, the script fails: the running build's
 own changes are never left out. Exit 0 written; 1 refused; 2 bad input or a
 failed git call.
@@ -28,8 +31,10 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[1]
 RELEASE_TAG = re.compile(r"^(\d+)\.(\d+)\.(\d+)$")
 RELEASE_CHORE = re.compile(
-    r"^chore\(release\): set application version to \d+\.\d+\.\d+( \(#\d+\))?$"
+    r"^chore\(release\): (set application version to \d+\.\d+\.\d+|"
+    r"promote \d+\.\d+\.\d+ to main)( \(#\d+\))?$"
 )
+DEVELOP_REFS = ("refs/remotes/origin/develop", "refs/heads/develop")
 APP_VERSION = re.compile(r'^APP_VERSION = "(\d+\.\d+\.\d+)"$', re.MULTILINE)
 
 
@@ -56,6 +61,22 @@ def subjects(commit_range: str, cwd: Path) -> list[str]:
     ]
 
 
+def develop_line(cwd: Path, warn) -> str:
+    """The ref whose history holds the releases' own commits."""
+    for ref in DEVELOP_REFS:
+        found = subprocess.run(
+            ["git", "rev-parse", "--verify", "--quiet", ref],
+            cwd=cwd,
+            capture_output=True,
+            check=False,
+        )
+        if found.returncode == 0:
+            return ref
+    # Without develop a main build lists only its promotions (#2960); say so.
+    warn("::warning::No develop ref; the changelog follows HEAD's history.")
+    return "HEAD"
+
+
 def changelog(app_version: str, cwd: Path = ROOT, warn=print) -> dict[str, Any]:
     """Releases newest first, each with its commit subjects."""
     tags = sorted(
@@ -66,12 +87,14 @@ def changelog(app_version: str, cwd: Path = ROOT, warn=print) -> dict[str, Any]:
         ),
         key=lambda tag: tuple(int(part) for part in tag.split(".")),
     )
-    # A tag's base is the newest HEAD-history commit with its tree that is not newer
+    # A tag's base is the newest develop commit with its tree that is not newer
     # than the tag, as release_contains.release_base: a later revert to that tree came
     # after the promotion.
     history = [
         line.split()
-        for line in git("log", "HEAD", "--format=%H %T %ct", cwd=cwd).splitlines()
+        for line in git(
+            "log", develop_line(cwd, warn), "--format=%H %T %ct", cwd=cwd
+        ).splitlines()
     ]
     by_tree: dict[str, list[tuple[str, int]]] = {}
     for commit, tree, stamp in history:
@@ -101,13 +124,16 @@ def changelog(app_version: str, cwd: Path = ROOT, warn=print) -> dict[str, Any]:
         raise Refused(
             "No release tag maps to this history; the build's own changes cannot be listed."
         )
-    if previous != history[0][0]:
+    # A build whose tree a develop commit carries (a main promotion) is that commit.
+    tree, when = git("show", "-s", "--format=%T %ct", "HEAD", cwd=cwd).split()
+    head = next((c for c, s in by_tree.get(tree, ()) if s <= int(when)), "HEAD")
+    if previous != head:
         last = releases[-1]["version"] if releases else None
         releases.append(
             {
                 "version": None if app_version in tags else app_version,
                 "after": last,
-                "commits": subjects(f"{previous}..HEAD".lstrip("."), cwd),
+                "commits": subjects(f"{previous}..{head}".lstrip("."), cwd),
             }
         )
     return {"releases": releases[::-1]}

@@ -309,6 +309,7 @@ h2 {
 .icon-button:active { transform: scale(.94); }
 .icon-button.busy { animation: spin 1s linear infinite; }
 .settings-app-version { margin: 0; color: var(--subtle); font-size: .72rem; }
+.device-sync-stale { color: var(--ink); font-weight: 650; }
 .release-changelog { display: grid; gap: 6px; color: var(--muted); font-size: .78rem; }
 .release-changelog summary { color: var(--subtle); cursor: pointer; }
 .release-changelog h4 { margin: 6px 0 0; color: var(--ink); font-size: .78rem; }
@@ -770,6 +771,11 @@ h2 {
 .planned-steps [data-zone="7"] .planned-step-mark { background: var(--training-zone-7); }
 .planned-step-range { color: var(--muted); font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
 .planned-zone-time { display: grid; gap: 4px; }
+.planned-equipment { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.planned-equipment-field { display: flex; flex: 1 1 14rem; align-items: center; gap: 8px; color: var(--muted); font-size: .8rem; }
+.planned-equipment-field select { flex: 1; min-height: 44px; }
+.planned-equipment-status { flex-basis: 100%; margin: 0; font-size: .8rem; }
+.planned-equipment-status:empty, .planned-equipment [hidden] { display: none; }
 .planned-zone-time-bar { display: flex; height: 10px; overflow: hidden; border-radius: 5px; background: var(--surface-input); }
 .planned-zone-time-bar i { display: block; min-width: 2px; background: var(--muted); }
 .planned-zone-time-bar [data-zone="1"] { background: var(--training-zone-1); }

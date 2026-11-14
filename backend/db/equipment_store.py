@@ -1,7 +1,7 @@
 """Every SQL statement on the equipment keys of the ``kv`` table (#2120).
 
-Items, activity assignments, maintenance entries and sensor links are JSON
-records under four key prefixes. Functions take the caller's connection;
+Items, activity assignments and maintenance entries are JSON records under
+three key prefixes. Functions take the caller's connection;
 transactions stay with the use case. Values are stored as the caller encoded
 them.
 """
@@ -13,20 +13,12 @@ from typing import Any
 EQUIPMENT_PREFIX = "equipment:"
 ASSIGNMENT_PREFIX = "equipment_assignment:"
 MAINTENANCE_PREFIX = "equipment_maintenance:"
-SENSOR_EQUIPMENT_PREFIX = "sensor_equipment:"
 GARMIN_INITIALIZED_KEY = "garmin_equipment_initialized"
 
 
 def value(db: Any, key: str) -> str | None:
     row = db.execute("SELECT value FROM kv WHERE key=?", (key,)).fetchone()
     return None if row is None else row["value"]
-
-
-def count(db: Any, prefix: str) -> int:
-    """The number of records under ``prefix``."""
-    return db.execute(
-        "SELECT COUNT(*) AS count FROM kv WHERE key LIKE ?", (prefix + "%",)
-    ).fetchone()["count"]
 
 
 def values(db: Any, prefix: str, limit: int | None = None) -> list[str]:
@@ -50,16 +42,6 @@ def unordered_values(db: Any, prefix: str) -> list[str]:
     ]
 
 
-def entries(db: Any, prefix: str) -> list[tuple[str, str]]:
-    """(key without prefix, value) of every record under ``prefix``."""
-    return [
-        (row["key"][len(prefix) :], row["value"])
-        for row in db.execute(
-            "SELECT key, value FROM kv WHERE key LIKE ?", (prefix + "%",)
-        ).fetchall()
-    ]
-
-
 def child_values(db: Any, parent_id: str) -> list[str]:
     return [
         row["value"]
@@ -72,17 +54,12 @@ def child_values(db: Any, parent_id: str) -> list[str]:
 
 
 def is_referenced(db: Any, equipment_id: str) -> bool:
-    """Whether an assignment, maintenance entry or sensor link names the item."""
+    """Whether an assignment or maintenance entry names the item."""
     return (
         db.execute(
-            "SELECT 1 FROM kv WHERE (key LIKE ? OR key LIKE ? OR key LIKE ?) "
+            "SELECT 1 FROM kv WHERE (key LIKE ? OR key LIKE ?) "
             "AND json_extract(value, '$.equipment_id')=? LIMIT 1",
-            (
-                ASSIGNMENT_PREFIX + "%",
-                MAINTENANCE_PREFIX + "%",
-                SENSOR_EQUIPMENT_PREFIX + "%",
-                equipment_id,
-            ),
+            (ASSIGNMENT_PREFIX + "%", MAINTENANCE_PREFIX + "%", equipment_id),
         ).fetchone()
         is not None
     )

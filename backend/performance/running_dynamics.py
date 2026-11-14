@@ -45,10 +45,6 @@ MIN_BAND_S: Final = 120.0
 # A band is rated against at least this many earlier runs of the window.
 MIN_PEERS: Final = 5
 WINDOW_DAYS: Final = 84
-# A month's trend point needs this much time of the band across its runs.
-MIN_MONTH_BAND_S: Final = 600.0
-TREND_MONTHS: Final = 12
-TREND_BANDS: Final = 4
 # The run averages a provider reports, by metric (cadence per leg).
 AVERAGE_KEYS: Final = {
     "ground_contact_time_ms": "ground_contact_time_ms",
@@ -299,71 +295,6 @@ def _run_verdicts(
             "reference_band": garmin_band(metric, reported or value),
         }
     return result
-
-
-def monthly_trend(records: Sequence[Mapping[str, Any]], today: date) -> dict[str, Any]:
-    """Monthly medians per pace band of the last ``TREND_MONTHS`` months.
-
-    A month's point is the median of its runs' band means, shown only when the
-    band holds ``MIN_MONTH_BAND_S`` across them; the ``TREND_BANDS`` bands with
-    the most time over all months are kept.
-    """
-    months = _months(today)
-    # (band, month) -> the band's time and its runs' means per metric.
-    seconds: dict[tuple[int, str], float] = {}
-    means: dict[tuple[int, str, str], list[float]] = {}
-    for band, month, values in _band_months(records, months):
-        seconds[band, month] = seconds.get((band, month), 0.0) + float(
-            values.get("seconds") or 0
-        )
-        for metric, _key, _direction in METRICS:
-            if isinstance(values.get(metric), (int, float)):
-                means.setdefault((band, month, metric), []).append(
-                    float(values[metric])
-                )
-    totals: dict[int, float] = {}
-    for (band, _month), value in seconds.items():
-        totals[band] = totals.get(band, 0.0) + value
-    kept = sorted(totals, key=lambda band: totals[band], reverse=True)[:TREND_BANDS]
-    bands = []
-    for band in sorted(kept):
-        shown = [
-            seconds.get((band, month), 0.0) >= MIN_MONTH_BAND_S for month in months
-        ]
-        series = {
-            metric: [
-                round(statistics.median(means[band, month, metric]), _DIGITS[metric])
-                if show and (band, month, metric) in means
-                else None
-                for month, show in zip(months, shown, strict=True)
-            ]
-            for metric, _key, _direction in METRICS
-        }
-        series = {key: values for key, values in series.items() if any(values)}
-        if series:
-            bands.append({"band_s_per_km": band, "series": series})
-    return {"method": METHOD, "months": months, "bands": bands}
-
-
-def _band_months(
-    records: Sequence[Mapping[str, Any]], months: Sequence[str]
-) -> Iterator[tuple[int, str, Mapping[str, Any]]]:
-    """Each run's band values with its pace band and month, within ``months``."""
-    for record in records:
-        month = str(record.get("date") or "")[:7]
-        bands = (record.get("running_dynamics") or {}).get("bands") or {}
-        if month in months:
-            for band, values in bands.items():
-                yield int(band), month, values
-
-
-def _months(today: date) -> list[str]:
-    year, month = today.year, today.month
-    result = []
-    for _ in range(TREND_MONTHS):
-        result.append(f"{year:04d}-{month:02d}")
-        year, month = (year - 1, 12) if month == 1 else (year, month - 1)
-    return result[::-1]
 
 
 # Garmin's colour bands from the EPIX (Gen 2) owner's manual, the newest

@@ -15,6 +15,7 @@ import sys
 import time
 import uuid
 from pathlib import Path
+from typing import BinaryIO
 
 LOCK_FILE = Path(__file__).resolve().parents[1] / "requirements-graphify.txt"
 
@@ -307,31 +308,40 @@ def corpus_paths(root: Path) -> list[tuple[str, Path]]:
     return sorted(found.items())
 
 
+def _try_lock(handle: BinaryIO) -> None:
+    """One non-blocking exclusive lock attempt; OSError when it is held."""
+    if os.name == "nt":
+        msvcrt = __import__("msvcrt")
+
+        handle.seek(0)
+        if os.fstat(handle.fileno()).st_size == 0:
+            handle.write(b"0")
+            handle.flush()
+        handle.seek(0)
+        msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
+    else:
+        import fcntl
+
+        fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+
+
 @contextlib.contextmanager
 def process_lock(path: Path, deadline: float | None = None):
     deadline = deadline or time.monotonic() + TIMEOUT
+    if time.monotonic() >= deadline:
+        raise Unavailable("graph update lock timed out")
     path.parent.mkdir(parents=True, exist_ok=True)
     handle = path.open("a+b")
     try:
+        # After the open, try before checking the deadline again: a slow open
+        # on a loaded machine must not turn a free lock into a timeout (#2937).
         while True:
-            if time.monotonic() >= deadline:
-                raise Unavailable("graph update lock timed out")
             try:
-                if os.name == "nt":
-                    msvcrt = __import__("msvcrt")
-
-                    handle.seek(0)
-                    if os.fstat(handle.fileno()).st_size == 0:
-                        handle.write(b"0")
-                        handle.flush()
-                    handle.seek(0)
-                    msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
-                else:
-                    import fcntl
-
-                    fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                _try_lock(handle)
                 break
             except OSError:
+                if time.monotonic() >= deadline:
+                    raise Unavailable("graph update lock timed out") from None
                 time.sleep(0.05)
         try:
             yield
@@ -960,6 +970,7 @@ def _prune() -> None:
         ):
             continue
         try:
+            # 10 ms is shorter than a retry pause: exactly one attempt.
             with process_lock(_environment_lock(candidate), time.monotonic() + 0.01):
                 _discard(candidate)
                 print(f"Graphify removed: {candidate.name}")

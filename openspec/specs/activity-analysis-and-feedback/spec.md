@@ -219,7 +219,7 @@ The system SHALL pair the executed work laps of a run or ride in order with the 
 
 #### Scenario: Choosing the work steps
 - **WHEN** a plan mixes warm-up, work and recovery steps or rises in a progression
-- **THEN** the hardest steps form the work steps when their count fits the executed laps, else the steps within 10 % of the hardest target, each as a fraction of its threshold; the unit is the focus unit, else the one unit of that day and sport; single values count as plus or minus 2.5 %, the top zone is open upwards, and heart-rate targets of laps under 120 s stay unscored.
+- **THEN** the hardest steps form the work steps when their count fits the executed laps, else the steps within 10 % of the hardest target, each as a fraction of its threshold; the unit is the one the calendar pairs with the session (else, when the day's sessions cannot be read, the one unit of that day and sport); single values count as plus or minus 2.5 %, the top zone is open upwards, and heart-rate targets of laps under 120 s stay unscored.
 
 #### Scenario: Rep slower than its target
 - **WHEN** a planned 4:20-4:30/km rep is run at 4:38/km
@@ -428,21 +428,25 @@ Evidence:
 - `e2e/calendar-detail-pane.spec.js`
 
 ### Requirement: Running dynamics against the athlete's own runs at the same pace
-The system SHALL keep per non-trail run with running dynamics streams the time and time-weighted mean of each running-dynamics value per 15 s/km pace band (method `running-dynamics-pace-bands-v1`), rate a run per band against the athlete's runs of the 84 days before it, show Garmin's published colour band as a labelled second reference and draw monthly medians per pace band in Analyse; it SHALL name no universal good value.
+The system SHALL keep per non-trail run with running dynamics streams the time and time-weighted mean of each running-dynamics value per 15 s/km pace band (method `running-dynamics-pace-bands-v1`), rate a run per band against the athlete's runs of the 84 days before it, and show Garmin's published colour band as a labelled second reference; it SHALL name no universal good value.
 
 #### Scenario: Rating a run
 - **WHEN** a run's band has at least 5 earlier runs of the window with at least 2 minutes in it (samples at 2.0 m/s or faster, moving, steps of at most 5 s)
 - **THEN** the best third of those runs is "besser als sonst", the middle third "üblich", the weakest third "schlechter als sonst" (shorter contact time, lower vertical oscillation and ratio, higher cadence and a balance nearer 50 % are better; step length is only "länger" or "kürzer"), each value of the run takes the verdict holding most of its rated time, and fewer runs give "zu wenig Vergleich".
 
-#### Scenario: Garmin reference and trend
-- **WHEN** the session details or Analyse → Laufen are opened
-- **THEN** each value carries Garmin's chest-strap colour band of its running mean ("Garmin-Einordnung (Brustgurt)", EPIX manual), a table lists the run's pace bands, and "Lauftechnik je Monat" draws for the 4 bands with most time the monthly medians of the last 12 months, a month only with 10 minutes in the band; both read every stored session in the background build and show nothing while it is pending.
+#### Scenario: Garmin reference
+- **WHEN** the session details are opened
+- **THEN** each value carries Garmin's chest-strap colour band of its running mean ("Garmin-Einordnung (Brustgurt)", EPIX manual) and a table lists the run's pace bands; the rating reads every stored session in the background build and shows nothing while it is pending.
+
+#### Scenario: No monthly trend in Analyse
+- **WHEN** Analyse → Laufen is opened
+- **THEN** it shows no running-dynamics card; the athlete reads running dynamics per session in the calendar details (#2961).
 
 Evidence:
 - `backend/performance/running_dynamics.py`
 - `backend/performance/report_service.py:TrainingProfileSelectionService.running_dynamics`
 - `backend/http_api/analysis.py`
-- `public/activity-analysis.js`, `public/analysis.js::renderRunningDynamicsTrend`
+- `public/activity-analysis.js`
 - `tests/test_running_dynamics.py:test_a_slow_run_is_not_worse_for_being_slow`
 - `e2e/calendar-detail-pane.spec.js`, `e2e/analysis-on-demand.spec.js`
 
@@ -488,7 +492,7 @@ The system SHALL compute observed power-duration and running speed/distance effo
 Evidence: `backend/performance/power_profile.py:power_profile`, `backend/performance/power_profile.py:running_profile`, `backend/performance/activity_validation.py:activity_performance_validation`; `tests/test_power_profile.py:test_sprint_is_not_lost_to_display_downsampling`, `tests/test_power_profile.py:test_missing_or_stopped_recording_never_yields_peak`, `tests/test_activity_performance_validation.py:test_unknown_sport_and_no_activity_are_explicit`. Added evidence: `tests/test_activity_performance_validation.py`, `tests/test_activity_performance_validation.py:test_implausible_measured_evidence_is_omitted`.
 
 ### Requirement: Canonical mean-maximal curve
-The analysis power and running best-effort curve (`mean-max-curve` version 2, windows including 180, 420, 720 and 1200 s) SHALL be computed at read time only from full-resolution canonical stream sets, count each canonical session once, give overlapping bests of one session the same effort group, and carry the method, version and an input fingerprint. The stored Intervals.icu power curve is not read by any view.
+The analysis power and running best-effort curve (`mean-max-curve` version 3, windows including 180, 420, 720 and 1200 s) SHALL be computed at read time only from full-resolution canonical stream sets, count each canonical session once, give overlapping bests of one session the same effort group, and carry the method, version and an input fingerprint. The stored Intervals.icu power curve is not read by any view.
 
 #### Scenario: Protocol windows
 - **WHEN** a full-resolution stream holds 3, 7, 12 and 20 minute efforts between gaps and pauses
@@ -504,11 +508,11 @@ The analysis power and running best-effort curve (`mean-max-curve` version 2, wi
 
 #### Scenario: Valid samples
 - **WHEN** samples are read
-- **THEN** a sample counts with a step above 0 and at most 5 s, the moving flag when a moving stream exists, and a power of 0 W or more, or a running speed above 0 (from the `velocity`, `speed` or `velocity_smooth` stream, else from the distance difference) with a non-decreasing distance; a window counts only when valid samples cover it completely; power is rounded to 0.01 W, speed to 0.001 m/s and time to 0.01 s.
+- **THEN** a sample counts with a step above 0 and at most 5 s, the moving flag when a moving stream exists, and a power of 0 W or more, or a running speed above 0 (from the `velocity`, `speed` or `velocity_smooth` stream, else from the distance difference) with a non-decreasing distance; a window counts only when valid samples cover it completely; power is rounded to 0.01 W, speed to 0.001 m/s and time to 0.01 s. A running distance window is timed like a race clock (#2818): a step counts when both distances are present, the distance does not decrease and the time step is above 0 and at most 600 s, whatever the speed or moving flag, so a stop and a recording gap of up to ten minutes count as elapsed time; a longer gap, or a gap above 5 s across which the distance implies a pace faster than 2:30 min/km (a measurement jump), breaks the window.
 
 #### Scenario: Selection
 - **WHEN** the best values are selected
-- **THEN** windows of 28 and 90 days ending today are served from ride and run sessions without e-bike assistance, commutes, warm-ups and cool-downs; cycling bests are chosen per outdoor and indoor environment, running bests over all runs (fastest speed per duration, shortest time over 1, 5 and 10 km, half marathon and marathon); `best` lists the 5, 60, 300 and 1200 s cycling bests of the 90 days per environment; each window reports `cache_coverage` with `records`, `usable_records`, `unknown_records`, `power_records` and `power_unknown_records`. The analysis route alone adds `all_time`, the same selection over every stored session up to today with each best's date; it is read in the background through the session-curve cache, one session at a time with a pause as long as that session took, so no request waits for a cold read of the history or for the interpreter while it runs: `{"status": "pending"}` before the first read finished (the cards keep their loading state and ask again), the last finished values marked `stale` while a newer read runs (the cards show them and ask again), and `{"status": "failed"}` for a minute after a failed read (the cards show their error with retry). The Coach's copy and the CP/CS input keep the 90 days.
+- **THEN** windows of 28 and 90 days ending today are served from ride and run sessions without e-bike assistance, commutes, warm-ups and cool-downs; cycling bests are chosen per outdoor and indoor environment, running bests over all runs (fastest speed per duration, shortest time over 1, 5 and 10 km, half marathon and marathon); `best` lists the 5, 60, 300 and 1200 s cycling bests of the 90 days per environment; each window reports `cache_coverage` with `records`, `usable_records`, `unknown_records`, `power_records` and `power_unknown_records`. The analysis route alone adds `all_time`, the same selection over every stored session up to today with each best's date; it is read in the background through the session-curve cache, one session at a time and oldest first, in a cache that grows to hold every session's curve, so a rebuild never recomputes the whole history and a new session never evicts the recent windows' curves (#2822), with a pause as long as that session took, so no request waits for a cold read of the history or for the interpreter while it runs: `{"status": "pending"}` before the first read finished (the cards keep their loading state and ask again), the last finished values marked `stale` while a newer read runs (the cards show them and ask again), and `{"status": "failed"}` for a minute after a failed read (the cards show their error with retry). The Coach's copy and the CP/CS input keep the 90 days.
 
 Evidence: `backend/performance/mean_max_curve.py:SessionCurveReader`, `backend/performance/report_service.py:TrainingProfileSelectionService`, `backend/performance/canonical_session_analysis.py:stream_resolution`; `tests/test_power_profile.py:test_protocol_windows_reproduce_known_maxima_around_gaps_and_pauses`, `tests/test_mean_max_curve.py`, `tests/test_performance_method_inputs.py:M4BestEffortInputs`. Added evidence: `backend/performance/power_profile.py:power_profile`, `backend/performance/report_service.py:TrainingProfileSelectionService.curve_records`, `tests/test_mean_max_curve.py:test_window_reads_canonical_sessions_and_counts_missing_streams`, `tests/test_mean_max_curve.py:test_all_time_bests_keep_old_efforts_while_the_90_days_and_coach_do_not`.
 

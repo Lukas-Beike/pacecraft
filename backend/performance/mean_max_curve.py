@@ -58,7 +58,8 @@ from backend.performance.session_execution import (
 from backend.providers.canonical_plans import ACTIVITY_RECORD_KIND
 
 _LOGGER = logging.getLogger("intervals_coach")
-# About 9 KB per session; room for a long all-time history (#2694).
+# About 9 KB per session; room for a long all-time history (#2694). The
+# all-time build grows it to the stored history (``reserve``, #2822).
 _DEFAULT_CAPACITY: Final = 2048
 # A failed background build is tried again after this pause.
 _RETRY_AFTER_S: Final = 60.0
@@ -107,6 +108,11 @@ class SessionCurveReader:
         self._build_started: float | None = None
         self._spawn = spawn or _daemon_thread
         self._lock = threading.Lock()
+
+    def reserve(self, sessions: int) -> None:
+        """Grow the memo to hold ``sessions`` curves; it never shrinks (#2822)."""
+        with self._lock:
+            self._capacity = max(self._capacity, sessions)
 
     def curves(self, db: Any, activity_ids: Iterable[str]) -> dict[str, SessionCurve]:
         """Return the curve of each session that has current full-resolution streams."""

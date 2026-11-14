@@ -91,5 +91,5 @@ context). Each effect must stay local and be undone at once:
 **Never:** any control that synchronizes or sends to Garmin, Intervals.icu or
 Wahoo (including "Woche synchronisieren"), deletes, data export, privacy
 actions, settings, check-in or nutrition entries. Never call the athlete's
-Garmin, Wahoo, Intervals.icu or OpenAI accounts directly, and never read
+Garmin, Wahoo, Intervals.icu, OpenAI or Anthropic accounts directly, and never read
 `.env`, tokens, database keys, `/data`, or backup contents.

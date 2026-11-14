@@ -219,7 +219,7 @@ The system SHALL save explicitly entered main equipment/components with validate
 - **WHEN** a main item that is still as imported from Garmin has an open sport and neither a parent nor components
 - **THEN** it takes the sport that at least 3 of its linked activities and at least 75 % of all of them share (unknown and other types count in the total); an item the athlete saved keeps its sport.
 
-Detailed contract: the records are JSON values under the keys `equipment:<uuid>`, `equipment_assignment:<session id>`, `equipment_maintenance:<uuid>` and `sensor_equipment:<sensor key>`, and `garmin_equipment_initialized` marks the one-time import; a read returns `items` (at most 100), `garmin_items`, `sensors`, `garmin_synced_at`, `garmin_freshness`, `assignments` (at most 2000, maintenance events at most 1000) and `scope`.
+Detailed contract: the records are JSON values under the keys `equipment:<uuid>`, `equipment_assignment:<session id>`, and `equipment_maintenance:<uuid>`, and `garmin_equipment_initialized` marks the one-time import; a read returns `items` (at most 100), `garmin_items`, `sensors`, `garmin_synced_at`, `garmin_freshness`, `assignments` (at most 2000, maintenance events at most 1000) and `scope`.
 
 Evidence: `backend/athlete/equipment.py:_equipment_amounts`, `backend/athlete/equipment.py:_equipment_identity`, `backend/athlete/equipment.py:_equipment_parent`, `backend/athlete/equipment.py:EquipmentService.read`, `backend/athlete/equipment.py:EquipmentService.save`, `backend/athlete/equipment.py:EquipmentService.sync_garmin_snapshot`; `backend/coach/tool_schemas.py:build_structured_tool_schemas` (equipment fields); `tests/test_coach_tool_coverage.py:test_training_records_and_equipment_tools_use_confirmed_local_state`; `tests/test_training_record_features.py:test_empty_initial_gear_snapshot_does_not_finalize_import`, `tests/test_training_record_features.py:test_equipment_requires_initial_values_and_prevents_component_cycles`, `tests/test_training_record_features.py:test_open_sport_is_derived_at_three_quarters_with_three_activities`, `tests/test_training_record_features.py:test_legacy_empty_import_recovers_once_and_preserves_local_equipment`; `tests/test_coach_write_gate.py:test_archiving_equipment_is_a_delete`.
 
@@ -244,16 +244,12 @@ The system SHALL show an estimated first threshold heart rate, derived from stor
 
 Evidence: `backend/performance/first_threshold_estimate.py:first_threshold_estimate`, `backend/performance/first_threshold_service.py:FirstThresholdService`; `tests/test_first_threshold_estimate.py`. Added evidence: `tests/first-threshold-estimate.test.cjs`, `tests/test_first_threshold_estimate.py:test_a_stale_or_missing_shown_value_is_refused`, `tests/test_first_threshold_estimate.py:test_adopting_the_value_already_stored_writes_nothing`.
 
-### Requirement: Recorded sensors linked to equipment
-The system SHALL list the distinct heart rate, power meter and trainer sensors named by recordings, each with its hashed short id, role, manufacturer, product, first and last day and session count, and SHALL show the active main equipment item that an earlier release's stored link names for a sensor; no route or Coach tool sets or removes a link. A serial number SHALL never be stored or shown.
-
-#### Scenario: Stored sensor link
-- **WHEN** a listed sensor has a stored link
-- **THEN** the registry shows that equipment id for the sensor, and a link to equipment that no longer exists is not reported.
+### Requirement: Recorded sensors
+The system SHALL list the distinct heart rate, power meter and trainer sensors named by recordings, each with its hashed short id, role, manufacturer, product, first and last day and session count; a sensor is not linked to equipment. A serial number SHALL never be stored or shown.
 
 #### Scenario: Registry entries and order
 - **WHEN** the athlete's sensors are listed
-- **THEN** each distinct role and sensor key is one entry with `id` (the first 16 characters of the key), `role`, `connection`, `manufacturer`, `product`, `first_seen`, `last_seen`, the number of sessions, the sports and the assigned `equipment_id`, newest `last_seen` first; a bundled activity counts once and deleted sessions leave the registry.
+- **THEN** each distinct role and sensor key is one entry with `id` (the first 16 characters of the key), `role`, `connection`, `manufacturer`, `product`, `first_seen`, `last_seen`, the number of sessions and the sports, newest `last_seen` first; a bundled activity counts once and deleted sessions leave the registry.
 
 Evidence: `backend/athlete/equipment.py:EquipmentService.read`, `backend/canonical/sensor_registry.py:registry`; `tests/test_sensor_equipment.py`.
 

@@ -104,7 +104,7 @@ Consumer trace:
 | Resolution | Garmin Connect `details` charts `downsampled`; FIT files (Wahoo, and Garmin's original file) `full` | `backend/providers/garmin_activity_detail_mapping.py`, `backend/providers/fit_activity_detail_mapping.py` (`StreamResolution`) |
 | Effort windows | 5–3600 s for cycling including 180, 420 and 720 s; running 60–1200 s including 180, 420 and 720 s | `backend/performance/power_profile.py:POWER_DURATIONS`, `RUNNING_DURATIONS` |
 
-Consumer trace (method `mean-max-curve` version 2, fit `critical-power-speed` version 2):
+Consumer trace (method `mean-max-curve` version 3, fit `critical-power-speed` version 2):
 
 - Per activity: `CanonicalDetailReader.read`
   (`backend/performance/canonical_detail.py`) follows a merged session

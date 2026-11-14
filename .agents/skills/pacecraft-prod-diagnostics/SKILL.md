@@ -20,7 +20,7 @@ It checks health, logs in with the password read from the file, reads
 `/api/diagnostics`, and logs out with the CSRF token. One line per check:
 version and schema against the expected values, whether `sync.last_error` is
 set (never its text), provider and calendar refresh ages, stuck plan-sync
-jobs, unsynced plan units with error kinds (never error text), the plan
+jobs of every provider (`plan_sync.stuck_jobs`; unknown fails), unsynced plan units with error kinds (never error text), the plan
 pushes per provider of the last 7 days (job and item statuses, settled items
 included, and error kinds; #2878), record counts, process memory and storage. With
 `--compare`, a lower record count is a `FAIL`: an unexplained drop stops the

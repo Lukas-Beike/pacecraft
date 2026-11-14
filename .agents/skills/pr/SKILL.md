@@ -88,9 +88,11 @@ or one with a new trigger or impact is reported normally. Notes the agent wrote
 in a PR body or thread settle nothing. A finding that contradicts an earlier
 round must say so and cite that decision instead of re-raising it as new. When
 the diff changes only
-Markdown instructions, skills, or docs, ask the review for P0/P1 findings and
-real security gaps only; guidelines may have exceptions, and hypothetical edge
-cases in prose are not findings.
+Markdown instructions, skills, or docs, give the review REVIEW.md's P0-P3
+scale and let it report every finding REVIEW.md allows with its priority, then
+act only on P0-P2 findings and real security gaps, and list the unfixed P3s in
+one summary line; guidelines may have exceptions, and hypothetical edge cases
+in prose are not findings.
 
 Fix valid findings with new commits and rerun the affected checks, then push. A
 finding you consider invalid needs concrete evidence (file and line, or the
@@ -145,7 +147,11 @@ exit 1 handle the cause as below. On each wake:
   validation, not another local review; CI reviews the new head.
 - If the branch falls behind or conflicts, rebase and push with
   [branch-sync](../pacecraft-branch-sync/SKILL.md) `--push` (never a
-  merge-style "Update branch").
+  merge-style "Update branch"). A stacked PR: retarget it to `develop` first
+  and wait about a minute for the retarget to settle before pushing the
+  rebased head; two near-simultaneous events can leave the required
+  `SonarCloud Code Analysis` cancelled, and only a new push re-runs it
+  (pr-state names this; #2934).
 - If checks fail, read the logs, fix the cause, and push. The `Gitar` check is
   required (see `.github/AGENTS.md`); no bypass. If it never reports on an
   otherwise green head, note the PR number in the issue (#1906 tracks its
