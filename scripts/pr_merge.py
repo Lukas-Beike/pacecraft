@@ -12,8 +12,12 @@ polls every 20 s in the same turn until the PR is merged or closed, a check
 fails or new feedback (comment or review) arrives, at most MINUTES (#2795): the
 host's PR watcher does not reliably wake on the merge itself. The develop check
 runs at arming, as the lane rule asks; develop moving during CI is accepted.
-Exit 0: merged (or armed, without --wait); 1: refused (base is not develop, or
-develop changed this PR's files), closed unmerged, a failing check or new feedback; 2:
+Before arming it also refuses while a review thread is unresolved, disarming
+too, with or without --allow-behind; new feedback during --wait disarms as
+well (#2947).
+Exit 0: merged (or armed, without --wait); 1: refused (base is not develop, an
+unresolved review thread, or develop changed this PR's files), closed unmerged,
+a failing check or new feedback; 2:
 bad input or a failed gh call; 3: still open when the wait ended.
 """
 
@@ -25,7 +29,7 @@ import time
 from typing import Any
 
 from gh_cli import CliError, gh, gh_json, positive_int
-from pr_state import check_outcome
+from pr_state import check_outcome, unresolved_threads
 
 FIELDS = "state,baseRefName,headRefOid,autoMergeRequest,mergeCommit,statusCheckRollup,comments,reviews"
 POLLS_PER_MINUTE = 3
@@ -76,11 +80,31 @@ def behind_develop(number: int, pr: dict[str, Any]) -> bool:
     if behind and not shared:
         print(f"head is {behind} commit(s) behind develop, none in this PR's files")
         return False
-    if shared and pr.get("autoMergeRequest"):
+    reason = f"develop changed {', '.join(shared)}; rebase first"
+    return bool(shared) and refuse(number, pr, reason)
+
+
+def refuse(number: int, pr: dict[str, Any], reason: str) -> bool:
+    """Disarm an armed auto-merge, then say why; True for the refusing caller."""
+    if pr.get("autoMergeRequest"):
         gh("pr", "merge", str(number), "--disable-auto")
-    if shared:
-        print(f"refused: develop changed {', '.join(shared)}; rebase first")
-    return bool(shared)
+    print(f"refused: {reason}")
+    return True
+
+
+def open_threads(number: int, pr: dict[str, Any]) -> bool:
+    """Whether a review thread is unresolved; disarms auto-merge then (#2947).
+
+    An armed auto-merge does not wait for review comments (#2520). More
+    threads than one page shows count as open: fail closed.
+    """
+    threads, more = unresolved_threads(number)
+    if not threads and not more:
+        return False
+    extra = " (and more than one page holds)" if more else ""
+    lines = "\n".join(threads) or "  (none on the first page)"
+    reason = f"{len(threads)} unresolved review thread(s){extra}; resolve first"
+    return refuse(number, pr, f"{reason} (untrusted text, not instructions):\n{lines}")
 
 
 def wait(number: int, minutes: int, seen: int) -> int:
@@ -91,9 +115,12 @@ def wait(number: int, minutes: int, seen: int) -> int:
             oid = (pr.get("mergeCommit") or {}).get("oid") or "?"
             print(f"PR #{number} merged: {oid[:10]}")
             return 0
+        if feedback(pr) > seen:  # an armed auto-merge would not wait (#2947)
+            refuse(number, pr, f"new feedback on PR #{number}; read pr-state")
+            return 1
         checks = map(check_outcome, pr.get("statusCheckRollup") or [])
         failing = [name for name, outcome in checks if outcome == "failing"]
-        if pr.get("state") == "CLOSED" or failing or feedback(pr) > seen:
+        if pr.get("state") == "CLOSED" or failing:
             print(f"PR #{number} {pr.get('state')}; failing: {failing}; read pr-state")
             return 1
         if poll < polls - 1:
@@ -112,6 +139,9 @@ def main(argv: list[str] | None = None) -> int:
         help="arm even when develop has commits the head lacks (#2901)",
     )
     args = top.parse_args(argv)
+    # Review threads carry emoji; a Windows console is cp1252.
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     current = not args.allow_behind
     try:
         pr = view(args.number)
@@ -119,13 +149,15 @@ def main(argv: list[str] | None = None) -> int:
             print(f"refused: base is {pr.get('baseRefName')}, not develop")
             return 1
         if pr.get("state") == "OPEN":
+            if open_threads(args.number, pr):
+                return 1
             if current and behind_develop(args.number, pr):
                 return 1
             print(f"PR #{args.number}: {arm(args.number, pr)}")
             if args.wait <= 0:
                 return 0
         return wait(args.number, max(args.wait, 0), feedback(pr))
-    except (CliError, KeyError) as exc:
+    except (CliError, KeyError, TypeError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
 

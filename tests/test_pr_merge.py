@@ -36,7 +36,19 @@ def view(state="OPEN", checks=(GREEN,), **extra):
     }  # fmt: skip
 
 
-def run(case, *args, auto_error="", views=None, behind=0, moved=()):
+def thread_page(threads, more):
+    nodes = [
+        {"id": f"PRRT_{n}", "isResolved": False, "path": "a.py", "line": n,
+         "comments": {"nodes": [{"author": {"login": "gitar"}, "body": "fix"}]}}
+        for n in range(threads)
+    ]  # fmt: skip
+    page = {"pageInfo": {"hasNextPage": more}, "nodes": nodes}
+    return {"data": {"repository": {"pullRequest": {"reviewThreads": page}}}}
+
+
+def run(
+    case, *args, auto_error="", views=None, behind=0, moved=(), threads=0, more=False
+):
     """Run main against a stub that answers `pr view` from `views` in order."""
     calls, views = [], list(views or [view()])
 
@@ -44,6 +56,12 @@ def run(case, *args, auto_error="", views=None, behind=0, moved=()):
         calls.append(argv[1:])
         if argv[1:3] == ["pr", "view"]:
             return subprocess.CompletedProcess(argv, 0, json.dumps(views.pop(0)), "")
+        if argv[1:3] == ["repo", "view"]:
+            repo = {"owner": {"login": "o"}, "name": "r"}
+            return subprocess.CompletedProcess(argv, 0, json.dumps(repo), "")
+        if argv[1:3] == ["api", "graphql"]:
+            page = json.dumps(thread_page(threads, more))
+            return subprocess.CompletedProcess(argv, 0, page, "")
         if argv[1:3] == ["pr", "diff"]:  # the full file list, past 100 files
             files = "\n".join([*(f"f{n}" for n in range(150)), "scripts/pr_merge.py"])
             return subprocess.CompletedProcess(argv, 0, files, "")
@@ -109,6 +127,22 @@ class PrMergeTests(unittest.TestCase):
                 if expect == 1:
                     self.assertIn("develop changed scripts/pr_merge.py", out)
 
+    def test_unresolved_review_threads_refuse_and_disarm(self):
+        # #2947: an armed auto-merge does not wait for a review thread (#2520).
+        armed = view(autoMergeRequest={"mergeMethod": "SQUASH"})
+        disarm = [["pr", "merge", "7", "--disable-auto"]]
+        for args, kwargs, merge_calls in (
+            ((), {"threads": 1}, []),
+            ((), {"threads": 2, "views": [armed]}, disarm),
+            (("--allow-behind",), {"threads": 1}, []),
+            ((), {"more": True}, []),  # beyond the first page: fail closed
+        ):
+            with self.subTest(args=args, **kwargs):
+                code, out, writes, _ = run(self, 7, *args, **kwargs)
+                self.assertEqual((code, writes), (1, merge_calls))
+                self.assertIn("unresolved review thread(s)", out)
+        self.assertIn("PRRT_1 a.py:1 @gitar: fix", run(self, 7, threads=2)[1])
+
     def test_wait_polls_in_turn_until_merged(self):
         # #2795: no yield on a watcher that may never wake on the merge
         views = [view(), view(), view(), view("MERGED")]
@@ -129,6 +163,10 @@ class PrMergeTests(unittest.TestCase):
                     self, 7, "--wait", minutes, views=[view(), *polls]
                 )
                 self.assertEqual((code, sleeps), (expect, len(polls) - 1))
+        # #2947: feedback on an armed PR disarms it; auto-merge would not wait.
+        armed_late = {**late, "autoMergeRequest": {"mergeMethod": "SQUASH"}}
+        _, _, writes, _ = run(self, 7, "--wait", 5, views=[view(), armed_late])
+        self.assertEqual(writes[-1], ["pr", "merge", "7", "--disable-auto"])
 
 
 if __name__ == "__main__":
