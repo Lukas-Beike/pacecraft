@@ -49,11 +49,6 @@ ERROR_KIND = re.compile(r"[A-Za-z_][A-Za-z0-9_.]{0,63}")
 # What `--section` prints of a section: dotted paths of numbers and flags, and
 # state words from STATES; nothing else of the section is printed (#2779, #2781).
 SECTION_FIELDS = {
-    "decoupling_eligibility": re.compile(
-        r"status|available|current|days|groups\.(ride|run)/(outdoor|indoor)\."
-        r"(sessions|without_streams|evaluation_error|counts\.[a-z0-9_]+"
-        r"|max_half_distribution\.[a-z0-9_]+\.(n|p[0-9]+))"
-    ),
     # Storage and runtime health for the post-release check (#2848).
     "database": re.compile(
         "|".join(("schema_version", *COUNTS, *STORAGE))

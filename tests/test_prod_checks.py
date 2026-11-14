@@ -68,21 +68,17 @@ def report(messages=40):
             ],
         },
         "runtime": {"process_memory": {"rss_bytes": 1000}},
-        "decoupling_eligibility": {
+        "fit_inventory": {
             "status": "ready",
-            "current": True,
-            "days": 365,
             "note": "text never printed",
-            "groups": {
-                "ride/outdoor": {
-                    "sessions": 6,
-                    "without_streams": 1,
-                    "act_secret": 1,
-                    "counts": {"pass_cv_1s_15": 1, "label": "text never printed"},
-                    "max_half_distribution": {"cv_1s": {"n": 4, "p90": None}},
+            "garmin": {
+                "ride": {
+                    "files": 5,
+                    "messages": {"216": 5},
+                    "label": "text never printed",
                 },
-                "act_secret/outdoor": {"sessions": 2},
             },
+            "act_secret": {"ride": {"files": 1}},
         },
     }
 
@@ -233,38 +229,33 @@ class ProdChecksTests(unittest.TestCase):
     def test_section_prints_only_allow_listed_fields_in_path_order(self):
         code, text = self.run_main(
             prod_diagnostics, "--url", self.url, "--password-file", str(self.secret),
-            "--section", "decoupling_eligibility",
+            "--section", "fit_inventory",
         )  # fmt: skip
         self.assertEqual(code, 0)  # the checks (sync.last_error) are not run
-        prefix = "info decoupling_eligibility."
+        prefix = "info fit_inventory."
         self.assertEqual(
             text.splitlines(),
             [
                 "ok health",
                 "ok logout 200",
-                f"{prefix}current true",
-                f"{prefix}days 365",
-                f"{prefix}groups.ride/outdoor.counts.pass_cv_1s_15 1",
-                f"{prefix}groups.ride/outdoor.max_half_distribution.cv_1s.n 4",
-                f"{prefix}groups.ride/outdoor.max_half_distribution.cv_1s.p90 null",
-                f"{prefix}groups.ride/outdoor.sessions 6",
-                f"{prefix}groups.ride/outdoor.without_streams 1",
+                f"{prefix}garmin.ride.files 5",
+                f"{prefix}garmin.ride.messages.216 5",
                 f'{prefix}status "ready"',
             ],
         )
         self.assertEqual(
-            prod_diagnostics.section_lines({}, "decoupling_eligibility"),
-            [("FAIL", "section decoupling_eligibility missing")],
+            prod_diagnostics.section_lines({}, "fit_inventory"),
+            [("FAIL", "section fit_inventory missing")],
         )
-        failed = {"decoupling_eligibility": {"status": "failed"}}
+        failed = {"fit_inventory": {"status": "failed"}}
         self.assertEqual(
-            prod_diagnostics.section_lines(failed, "decoupling_eligibility"),
-            [("FAIL", 'decoupling_eligibility.status "failed"')],
+            prod_diagnostics.section_lines(failed, "fit_inventory"),
+            [("FAIL", 'fit_inventory.status "failed"')],
         )
         with mock.patch("sys.stderr"), self.assertRaises(SystemExit):
             prod_diagnostics.main(
                 ["--url", self.url, "--password-file", str(self.secret),
-                 "--section", "decoupling_eligibility", "--expect-version", "2.1.2"]
+                 "--section", "fit_inventory", "--expect-version", "2.1.2"]
             )  # fmt: skip
 
     def test_post_release_sections_print_counts_and_state_words_only(self):
@@ -380,11 +371,11 @@ class ProdChecksTests(unittest.TestCase):
         # One login reads several sections; a missing one fails the run.
         code, text = self.run_main(
             prod_diagnostics, "--url", self.url, "--password-file", str(self.secret),
-            "--section", "decoupling_eligibility",
+            "--section", "fit_inventory",
             "--section", "garmin_past_workout_removal",
         )  # fmt: skip
         self.assertEqual(code, 1)
-        self.assertIn("info decoupling_eligibility.days 365", text)
+        self.assertIn("info fit_inventory.garmin.ride.files 5", text)
         self.assertIn("FAIL section garmin_past_workout_removal missing", text)
         # A stopped or failed state is a FAIL line; an empty section is no failure.
         stopped = {

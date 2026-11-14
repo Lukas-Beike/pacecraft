@@ -114,8 +114,6 @@ class DiagnosticReportDependencies:
     curve_build: Callable[[], dict[str, Any]] | None = None
     # The database file: its sizes, free space and recovery copies (#2848).
     database_path: Callable[[], Path] | None = None
-    # Decoupling eligibility counts for the M8 rule decision, until #2780 (#2779).
-    decoupling_eligibility: Callable[[], dict[str, Any]] | None = None
 
 
 # Large kv values whose stored size the report shows: the Garmin state, the
@@ -391,10 +389,6 @@ class DiagnosticReportService:
                 ),
                 "curve_build": section(
                     "curve_build", deps.curve_build or (lambda: {"available": False})
-                ),
-                "decoupling_eligibility": section(
-                    "decoupling_eligibility",
-                    deps.decoupling_eligibility or (lambda: {"available": False}),
                 ),
                 "stream_backfill": section(
                     "stream_backfill",
