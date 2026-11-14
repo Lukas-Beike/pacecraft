@@ -299,10 +299,26 @@ def passed(selection):
     }
 
 
+def remove_when_released(temporary, seconds=10.0):
+    """Remove the directory once Windows has closed the log handles of the
+    processes a job just ended: the job reports them gone slightly before, and
+    under load that window failed the teardown (#2964). A process that still
+    holds a file after the bound fails the test as before."""
+    deadline = time.monotonic() + seconds
+    while True:
+        try:
+            temporary.cleanup()
+            return
+        except PermissionError:
+            if time.monotonic() >= deadline:
+                raise
+            time.sleep(0.05)
+
+
 class SupervisorTests(unittest.TestCase):
     def setUp(self):
         temporary = tempfile.TemporaryDirectory()
-        self.addCleanup(temporary.cleanup)
+        self.addCleanup(remove_when_released, temporary)
         self.root = Path(temporary.name)
         self.args = local.parse_args(
             ["--results-dir", str(self.root), "--workers", "2"]
