@@ -14,6 +14,11 @@ python scripts/develop_run_check.py --sha <sha>
 - Exit 0: every run completed green. Exit 1: a run failed, or the PR is not
   merged. Exit 2: bad input or a failed `gh` call. Exit 3: a run is pending or
   none has started yet; check again later.
+- A run cancelled by a newer develop push is followed: the line shows the
+  newest push run of that workflow, whose head contains the commit, with
+  `(newer push run; <id> was cancelled)`, and the exit code is that run's
+  (#2956). A cancelled run with nothing newer (a manual or release cancel)
+  stays `failed (cancelled)`.
 - A failed run gets a hint. `superseded` means a newer develop push run of the
   same workflow exists: never rerun it, check the newer run. Otherwise the hint
   gives the previous push run's conclusion (`possible flake` when it was
