@@ -91,7 +91,12 @@ also checks `public/*.js` for Sonar's cognitive complexity above 15
 clone's `node_modules` (`npm ci`). In the pre-push hook a clone without
 ESLint blocks the push (run `npm ci`); elsewhere, as in CI's `quality` job, it
 prints that it skipped the check. A `NOSONAR` comment on the reported line
-suppresses a finding as it does in Sonar. Do not use `--no-verify`.
+suppresses a finding as it does in Sonar. Beside the ratchet, in the same
+export, `python scripts/regenerate_docs.py --check` reruns the generators of
+`docs/performance-methods/`, `docs/api-routes.md` and `docs/view-catalogue.md`
+and blocks a push whose committed copies are stale (#2949; it needs the
+clone's `node_modules` and adds no wall time). Run
+`python scripts/regenerate_docs.py` to rewrite them. Do not use `--no-verify`.
 
 Enable the hook in each clone (the relative path also works in its worktrees):
 
