@@ -83,8 +83,11 @@ const STREAMS = {
   },
 };
 const ANALYSIS_PAYLOAD = {
-  session: { sport: "run", environment: "outdoor" },
-  metrics: { avg_hr: { value: 140 }, max_hr: { value: 152 }, avg_speed_mps: { value: 3.2 }, distance_m: { value: 5000 }, moving_duration_s: { value: 1500 } },
+  session: { sport: "run", environment: "outdoor", activity_id: "a1" },
+  metrics: {
+    avg_hr: { value: 140 }, max_hr: { value: 152 }, avg_speed_mps: { value: 3.2 }, distance_m: { value: 5000 }, moving_duration_s: { value: 1500 },
+    avg_cadence: { value: 86 }, ground_contact_time_ms: { value: 243 }, vertical_oscillation_cm: { value: 8.9 }, step_length_m: { value: 1.18 },
+  },
   streams: STREAMS,
   zones: { heart_rate: { source: { label: "Garmin" }, buckets: [{ label: "Z1", seconds: 600 }, { label: "Z2", seconds: 900 }] } },
   laps: { laps: [{ moving_duration_s: 300, distance_m: 1000, avg_speed_mps: 3.3, avg_hr: 140 }, { moving_duration_s: 280, distance_m: 1000, avg_speed_mps: 3.5, avg_hr: 150 }] },
@@ -104,9 +107,20 @@ const ANALYSIS_PAYLOAD = {
 test("the activity analysis panel keeps its rendered tree: channel charts with pace, gaps and elevation", async () => {
   const context = chartContext(390);
   loadPublicScript(["activity-details.js", "activity-analysis.js"], context);
-  context.api = async () => ANALYSIS_PAYLOAD;
+  // The running dynamics rating (#2829) is read after the document: verdicts, Garmin's band and one pace band.
+  const rating = {
+    status: "ok", session: {
+      status: "ok", garmin_source: "Garmin-Einordnung (Brustgurt), Garmin EPIX Handbuch",
+      metrics: { ground_contact_time_ms: { verdict: "better", reference_band: "blue" }, cadence_spm: { verdict: "usual", reference_band: "blue" }, vertical_oscillation_cm: { verdict: "worse", reference_band: "green" }, step_length_m: { verdict: "higher", reference_band: null } },
+      bands: [{ band_s_per_km: 300, seconds: 1200, metrics: { ground_contact_time_ms: { value: 243, verdict: "better" }, cadence_spm: { value: 172, verdict: "too_few" } } }],
+    },
+  };
+  const reads = [];
+  context.api = async (path) => { reads.push(path); return path.startsWith("/api/analysis/running-dynamics") ? rating : ANALYSIS_PAYLOAD; };
   const panel = new FakeElement("div");
   await context.ActivityAnalysis.loadPanel(panel, { activity_id: "a1", sport: "run" });
+  await new Promise(setImmediate);
+  assert.deepEqual(reads, ["/api/activities/a1", "/api/analysis/running-dynamics?activity_id=a1"]);
   expectGolden("activity-analysis", panel);
 });
 

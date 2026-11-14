@@ -48,6 +48,8 @@ from backend.performance.power_profile import (
     power_profile,
     running_profile,
 )
+from backend.performance.running_dynamics import METHOD as DYNAMICS_METHOD
+from backend.performance.running_dynamics import pace_bands
 from backend.performance.session_execution import METHOD as EXECUTION_METHOD
 from backend.performance.session_execution import (
     comparison_metrics,
@@ -64,7 +66,7 @@ _RETRY_AFTER_S: Final = 60.0
 
 @dataclass(frozen=True, slots=True)
 class SessionCurve:
-    """The power and running curves, the pace- and power-at-heart-rate bins of one session and the fingerprint of their input."""
+    """The power and running curves, the pace- and power-at-heart-rate bins, the running-dynamics pace bands of one session and the fingerprint of their input."""
 
     power: dict[str, Any]
     running: dict[str, Any]
@@ -74,6 +76,8 @@ class SessionCurve:
     # The comparison numbers of the session's execution (streams and current
     # laps); only these are kept, not the full per-rep execution.
     execution_summary: dict[str, Any] | None = None
+    # A run's running dynamics per pace band (#2829), None without them.
+    running_dynamics: dict[str, Any] | None = None
 
 
 class SessionCurveReader:
@@ -383,6 +387,18 @@ def _session_curve(
                 ),
             )
         ),
+        running_dynamics=pace_bands(
+            adapted.activity,
+            source_label=adapted.label_for(
+                "ground_contact_time",
+                "ground_contact_balance",
+                "vertical_oscillation",
+                "vertical_ratio",
+                "step_length",
+                "cadence",
+                "velocity_smooth",
+            ),
+        ),
     )
 
 
@@ -399,6 +415,7 @@ def _fingerprint(
             PACE_METHOD,
             POWER_METHOD,
             EXECUTION_METHOD,
+            DYNAMICS_METHOD,
             sorted([key.content_sha256, key.fetched_at] for key in laps),
             analysis_sport(primary_analysis_record(records), measured_order(records)),
             sorted(

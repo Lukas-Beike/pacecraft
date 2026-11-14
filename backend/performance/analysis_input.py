@@ -38,9 +38,12 @@ _STREAM_KEYS: tuple[tuple[StreamChannel, str], ...] = (
     (StreamChannel.GRADE_PCT, "grade_smooth"),
     (StreamChannel.MOVING, "moving"),
     (StreamChannel.CADENCE_RPM, "cadence"),
-    # Running dynamics, read by the form drift analysis only (#1870).
+    # Running dynamics, read by the form drift analysis (#1870) and the pace
+    # bands of the running-dynamics norm (#2829).
     (StreamChannel.GROUND_CONTACT_TIME_MS, "ground_contact_time"),
+    (StreamChannel.GROUND_CONTACT_BALANCE_PCT, "ground_contact_balance"),
     (StreamChannel.VERTICAL_OSCILLATION_CM, "vertical_oscillation"),
+    (StreamChannel.VERTICAL_RATIO_PCT, "vertical_ratio"),
     (StreamChannel.STEP_LENGTH_M, "step_length"),
 )
 

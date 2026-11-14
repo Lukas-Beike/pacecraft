@@ -38,6 +38,7 @@ handler's docstring. Regenerate it with
 | POST | `/api/activities/{id}/session` | Session + CSRF | after access | Confirm, split, merge or delete one session bundle, with a change receipt. |
 | GET | `/api/analysis/power-profiles` | Session | no | Analysis projection: power profiles or training records. |
 | POST | `/api/analysis/refresh` | Session + CSRF | after access | Run a targeted refresh of one analysis area. |
+| GET | `/api/analysis/running-dynamics` | Session | no | Running dynamics against the athlete's own runs at the same pace (#2829). |
 | GET | `/api/analysis/training-records` | Session | no | Analysis projection: power profiles or training records. |
 | GET | `/api/auth/status` | Public | no | Current login status. |
 | GET | `/api/bootstrap` | Session | no | Initial authenticated client state. |
@@ -260,6 +261,21 @@ its status string). Garmin is read for every area, Wahoo also for
 Errors: 400 "Ungültiger Analysebereich."; 400 "Ungültiger Analysezeitraum.";
 503 `analysis_refresh_unavailable` "Die gezielte Aktualisierung ist nicht
 verfügbar.".
+
+### `GET /api/analysis/running-dynamics`
+
+Request: optional query `activity_id` (the local session id, at most
+200 characters); no body.
+
+Response: 200 with `status` (`pending` before the first background read
+of every stored session finished, `failed` after a failed one, else
+`ok`), and with `ok` `stale`, `trend` (`months` and per pace band
+`band_s_per_km` and `series` of monthly medians per value) and
+`session` (the run's rating per pace band and per value; null without
+`activity_id` or a stored run).
+
+Errors: 400 "Ungültige Aktivitäts-ID." for an id longer than 200
+characters.
 
 ### `GET /api/auth/status`
 

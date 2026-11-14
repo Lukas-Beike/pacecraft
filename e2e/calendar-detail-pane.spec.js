@@ -97,6 +97,54 @@ test("@responsive an opened completed session rates each planned step against it
   await run.locator(".activity-analysis-panel").screenshot({ path: testInfo.outputPath("planned-step-adherence.png"), animations: "disabled" });
 });
 
+test("@responsive an opened completed run rates its running dynamics against the same pace", async ({ page, request }, testInfo) => {
+  await openCalendar(page, request);
+  // The document carries the averages; the rating against the athlete's own runs is read after it (#2829).
+  await page.route("**/api/activities/*", (route) => route.fulfill({ json: {
+    session: { sport: "run", environment: "outdoor", activity_id: "past-run" },
+    metrics: { avg_hr: { value: 148 }, avg_cadence: { value: 87 }, ground_contact_time_ms: { value: 243 }, vertical_oscillation_cm: { value: 8.9 }, vertical_ratio_pct: { value: 7.6 }, ground_contact_balance_pct: { value: 50.4 }, step_length_m: { value: 1.18 } },
+  } }));
+  const reads = [];
+  await page.route("**/api/analysis/running-dynamics?*", (route) => {
+    reads.push(new URL(route.request().url()).searchParams.get("activity_id"));
+    return route.fulfill({ json: { status: "ok", stale: false, trend: { months: [], bands: [] }, session: {
+      status: "ok", garmin_source: "Garmin-Einordnung (Brustgurt), Garmin EPIX Handbuch",
+      metrics: {
+        ground_contact_time_ms: { verdict: "better", reference_band: "blue" }, cadence_spm: { verdict: "usual", reference_band: "blue" }, vertical_oscillation_cm: { verdict: "worse", reference_band: "green" },
+        vertical_ratio_pct: { verdict: "usual", reference_band: "green" }, ground_contact_balance_pct: { verdict: "too_few", reference_band: "green" }, step_length_m: { verdict: "higher", reference_band: null },
+      },
+      bands: [240, 330, 375].map((band, index) => ({ band_s_per_km: band, seconds: [1200, 600, 1500][index], metrics: {
+        ground_contact_time_ms: { value: [232, 262, 281][index], verdict: ["better", "usual", "usual"][index] },
+        cadence_spm: { value: [180, 168, 164][index], verdict: ["usual", "usual", "worse"][index] },
+        vertical_oscillation_cm: { value: [8.4, 9.4, 9.1][index], verdict: ["usual", "worse", "usual"][index] },
+      } })),
+    } } });
+  });
+  const days = await renderSyntheticCalendar(page);
+  await showCalendarDay(page, days.past);
+  const run = page.locator(`.planned-day[data-date="${days.past}"] .planned-entry`).filter({ hasText: "Vergangener Lauf" });
+  await run.evaluate((element) => { for (let node = element; node; node = node.parentElement) if (node.tagName === "DETAILS") node.open = true; });
+  await run.locator(".planned-activity-more > summary").click();
+  const section = run.locator(".activity-dynamics");
+  const values = section.locator(".activity-dynamics-value");
+  await expect(values.locator("dt")).toHaveText(["Bodenkontaktzeit", "Schrittfrequenz", "Bodenkontakt links", "Vertikale Oszillation", "Vertikales Verhältnis", "Schrittlänge"]);
+  await expect(values.first().locator(".activity-dynamics-chip")).toHaveText("besser als sonst");
+  await expect(values.first().locator(".activity-dynamics-reference")).toHaveAttribute("data-band", "blue");
+  await expect(values.nth(2).locator(".activity-dynamics-chip")).toHaveText("zu wenig Vergleich");
+  await expect(values.nth(5).locator(".activity-dynamics-chip")).toHaveText("länger als sonst");
+  await expect(values.nth(5).locator(".activity-dynamics-reference")).toHaveCount(0);
+  await expect(section.locator(".activity-dynamics-bands tbody tr")).toHaveCount(3);
+  await expect(section.locator(".activity-dynamics-bands tbody tr").first().locator("th")).toHaveText("4:00–4:15");
+  // The values sit in their own section, not again among the session's values.
+  const others = run.locator(".activity-analysis-stats:not(.activity-dynamics-values)");
+  await expect(others).toContainText("Ø Herzfrequenz");
+  await expect(others).not.toContainText("Bodenkontaktzeit");
+  await expect(others).not.toContainText("Schrittfrequenz");
+  expect(reads).toEqual(["past-run"]);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBeTruthy();
+  await section.screenshot({ path: testInfo.outputPath("running-dynamics.png"), animations: "disabled" });
+});
+
 test("@responsive an opened completed session shows its time in zones as one bar with the source", async ({ page, request }) => {
   await openCalendar(page, request);
   // The session read of "Details" carries the zones (#2195); routed before the cards render.
