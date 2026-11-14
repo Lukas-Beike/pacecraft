@@ -50,7 +50,7 @@ test("the equipment notice reads once per activity state when idle and never ret
   const idle = [];
   const state = { data: { state_versions: { training: 1 } }, sessionGeneration: 1, replaceDataOnLoad: true };
   const page = { visibilityState: "hidden" };
-  const context = extractFunctions("analysis.js", ["analysisReportCache", "analysisReportVersionKey", "requestAnalysisReport", "equipmentNoticeKey", "refreshEquipmentNotice"], {
+  const context = extractFunctions("analysis.js", ["analysisReportCache", "analysisReportVersionKey", "requestAnalysisReport", "equipmentNoticeKey", "equipmentNoticeState", "refreshEquipmentNotice"], {
     state,
     DATA_LOAD_TIMEOUT_MS: 15_000,
     requestIdleCallback: (callback) => idle.push(callback),

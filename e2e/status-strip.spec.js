@@ -139,7 +139,8 @@ test("@responsive due equipment is one notice of the strip that opens Mehr › A
     ],
     garmin_items: [], assignments: [], sensors: [],
   };
-  await page.route("**/api/analysis/training-records", (route) => route.fulfill({ json: { equipment } }));
+  let reads = 0;
+  await page.route("**/api/analysis/training-records", (route) => { reads += 1; return route.fulfill({ json: { equipment } }); });
   await openCoach(page);
   const strip = page.locator("#statusStrip");
   await expect(strip).toHaveAttribute("data-level", "warning");
@@ -151,4 +152,7 @@ test("@responsive due equipment is one notice of the strip that opens Mehr › A
   await strip.getByRole("link", { name: "Ansehen" }).filter({ visible: true }).first().click();
   await expect(page).toHaveURL(/#more\/equipment$/);
   await expect(page.locator("#equipmentItems")).toContainText("Pegasus 40");
+  // The notice and the Ausrüstung view share one read of the same state.
+  await page.evaluate(() => renderStatus(state.data));
+  expect(reads).toBe(1);
 });

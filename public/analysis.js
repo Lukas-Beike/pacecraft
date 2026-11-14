@@ -1224,7 +1224,9 @@ async function renderTrainingRecords() { // NOSONAR
     const keep = receipt?.dataset.tab === equipmentTab && receipt.dataset.session === String(session);
     gear.replaceChildren(heading(), ...(keep ? [receipt] : []));
     const equipment = result.equipment || {};
+    // The notice reuses this read, so it does not read the same state a second time (#2809).
     updateStatusSources({ equipment: equipmentStatusItem(equipment) });
+    equipmentNoticeKey = equipmentNoticeState();
     const items = equipment.garmin_items || [];
     const tabs = h("div", { className: "segmented-control equipment-tabs", "aria-label": "Ausrüstung nach Sportart" });
     tabs.setAttribute("role", "tablist");
@@ -1675,6 +1677,12 @@ function equipmentStatusItem(equipment) {
 
 let equipmentNoticeKey = null;
 
+// The state an equipment read belongs to: the session and the activity and Garmin versions.
+function equipmentNoticeState() {
+  const versions = state.data?.state_versions || {};
+  return JSON.stringify([state.sessionGeneration, versions.activities, versions.garmin]);
+}
+
 // The equipment read takes seconds on a long history (#2809), so the notice reads it, through the cache the
 // Ausrüstung view shares, only when the browser is idle on a visible page and only once per session and
 // activity or Garmin state; a chat turn does not read it again. A failed read keeps the last notice and
@@ -1683,8 +1691,7 @@ let equipmentNoticeKey = null;
 function refreshEquipmentNotice() {
   if (!state.data || state.replaceDataOnLoad) return;
   const session = state.sessionGeneration;
-  const versions = state.data.state_versions || {};
-  const key = JSON.stringify([session, versions.activities, versions.garmin]);
+  const key = equipmentNoticeState();
   if (key === equipmentNoticeKey) return;
   equipmentNoticeKey = key;
   const idle = globalThis.requestIdleCallback || ((callback) => setTimeout(callback, 2000));
@@ -1698,6 +1705,12 @@ function refreshEquipmentNotice() {
       if (session === state.sessionGeneration) updateStatusSources({ equipment: equipmentStatusItem(result?.equipment) });
     }).catch(() => {});
   });
+}
+
+// A Coach turn that changed equipment makes the next status render read it again (#2809).
+function invalidateEquipmentNotice() {
+  equipmentNoticeKey = null;
+  invalidateAnalysisReport("/api/analysis/training-records");
 }
 
 function maintenanceButton(item) {
