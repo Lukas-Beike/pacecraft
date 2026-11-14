@@ -183,6 +183,10 @@ class CompetitionService:
             {**(current or {}), **target, "id": entity_id}
         )
         normalized["id"] = entity_id
+        if current and _only_local_fields_changed(current, normalized):
+            # Undoing a location-only edit keeps the sync state, like the edit.
+            self._repository.update_location(db, normalized, self._now())
+            return {**normalized, "sync_state": str(current.get("sync_state") or "local")}
         if current:
             self._repository.update_local(db, normalized, self._now())
         else:

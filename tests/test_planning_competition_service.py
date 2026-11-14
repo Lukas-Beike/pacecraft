@@ -177,6 +177,15 @@ class CompetitionServiceTests(unittest.TestCase):
 
         self.service.save({"competition_id": created["id"], "location": "Berlin"})
         self.assertEqual(("Berlin", 0, "synced"), stored())
+        # Undoing it restores the location only and keeps the sync state too.
+        with self.manager.unit_of_work() as db:
+            current = CompetitionRepository().get(db, created["id"])
+            restored = self.service.restore_in_transaction(
+                db, created["id"], current, {**current, "location": ""}
+            )
+        self.assertEqual("synced", restored["sync_state"])
+        self.assertEqual(("", 0, "synced"), stored())
+        self.service.save({"competition_id": created["id"], "location": "Berlin"})
         self.service.save({"competition_id": created["id"], "target": "Sub 3:20"})
         self.assertEqual(("Berlin", 1, "local"), stored())
 
