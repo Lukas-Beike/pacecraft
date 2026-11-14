@@ -92,10 +92,12 @@ def tool_name(command: list[str]) -> str:
 
 
 def run(command: list[str], root: Path, allowed: tuple[int, ...] = (0, 1)) -> str:
-    # Tool output is UTF-8; the Windows code page would leave stdout None (#2889).
+    # Decode as UTF-8 and make Python tools (mypy) write UTF-8 too; the Windows
+    # code page left stdout None on a finding it cannot decode (#2889).
     result = subprocess.run(
         command,
         cwd=root,
+        env={**os.environ, "PYTHONUTF8": "1", "PYTHONIOENCODING": "utf-8"},
         text=True,
         encoding="utf-8",
         errors="replace",

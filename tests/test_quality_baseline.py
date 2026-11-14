@@ -346,21 +346,38 @@ class QualityBaselineTests(unittest.TestCase):
         # locale decoder left stdout None. The check runs without UTF-8 mode
         # (the Windows default before Python 3.15) and with an ASCII locale.
         text = "Ё − ±"
-        tool = f"import sys; sys.stdout.buffer.write({text.encode()!r}); sys.exit(1)"
-        check = (
-            "import sys; from pathlib import Path; from tools import quality_baseline;"
-            f"out = quality_baseline.run([sys.executable, '-c', {tool!r}], Path.cwd());"
-            "sys.stdout.buffer.write(out.encode())"
-        )
         env = {k: v for k, v in os.environ.items() if not k.startswith("PYTHONUTF8")}
-        result = subprocess.run(
-            [sys.executable, "-X", "utf8=0", "-c", check],
-            cwd=Path(__file__).resolve().parents[1],
-            env={**env, "LC_ALL": "C"},
-            capture_output=True,
-            check=False,
-        )
-        self.assertEqual(result.stdout.decode(), text, result.stderr.decode()[-300:])
+        env = {**env, "LC_ALL": "C", "PYTHONIOENCODING": ""}
+
+        def child(code):
+            return subprocess.run(
+                [sys.executable, "-X", "utf8=0", "-c", code],
+                cwd=Path(__file__).resolve().parents[1],
+                env=env,
+                capture_output=True,
+                check=False,
+            )
+
+        probe = "import locale; print(locale.getencoding())"
+        if "utf" in child(probe).stdout.decode().lower():
+            self.skipTest("the locale decoder is UTF-8 here (macOS)")
+        # A non-Python tool writing UTF-8 bytes, and a Python tool (like mypy)
+        # printing text, which fails on a cp1252 or ASCII stdout unless run()
+        # makes it write UTF-8.
+        for tool in (
+            f"import sys; sys.stdout.buffer.write({text.encode()!r}); sys.exit(1)",
+            f"import sys; print({text!r}, end=''); sys.exit(1)",
+        ):
+            with self.subTest(tool=tool):
+                result = child(
+                    "import sys; from pathlib import Path;"
+                    "from tools import quality_baseline;"
+                    f"out = quality_baseline.run([sys.executable, '-c', {tool!r}],"
+                    " Path.cwd()); sys.stdout.buffer.write(out.encode())"
+                )
+                self.assertEqual(
+                    result.stdout.decode(), text, result.stderr.decode()[-300:]
+                )
 
     @patch("tools.quality_baseline.subprocess.run")
     def test_failure_without_diagnostics_is_fatal(self, mocked_run):
