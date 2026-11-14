@@ -277,7 +277,8 @@ function renderNutritionExpenditure(expenditure, selectedDate) {
   const componentTile = (rawValue, caption) => h("div", "nutrition-total", kcalValue(rawValue), h("span", null, caption));
   const totalTile = componentTile(expenditure?.total_kcal, "Tagesverbrauch");
   totalTile.style.gridColumn = "1 / -1";
-  if (measured) totalTile.lastElementChild.append(" ", recordSourceChip(state.data?.provider_labels?.[providerIds().garmin] || expenditure.source || "Garmin"));
+  const sourceLabel = state.data?.provider_labels?.[providerIds().garmin] || expenditure?.source;
+  if (measured && sourceLabel) totalTile.lastElementChild.append(" ", recordSourceChip(sourceLabel));
   const projected = expenditure?.projected_total_kcal;
   const hasProjection = projected != null && Number.isFinite(Number(projected));
   const projectionTile = hasProjection ? componentTile(projected, "Prognose Tagesverbrauch") : null;
