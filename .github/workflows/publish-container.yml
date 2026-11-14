@@ -107,6 +107,12 @@ jobs:
         with:
           persist-credentials: false
           ref: ${{ github.sha }}
+          # The changelog reads the release tags and their history (#2899).
+          fetch-depth: 0
+          fetch-tags: true
+      - name: Write the release changelog
+        # Local git only; the image carries public/changelog.json, the app never asks GitHub.
+        run: python3 scripts/release_changelog.py
       - name: Build shared CI image
         env:
           SOURCE_URL: https://github.com/${{ github.repository }}

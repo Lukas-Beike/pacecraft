@@ -1,0 +1,131 @@
+"""Write the release changelog the app shows, from local git history (#2899).
+
+    python scripts/release_changelog.py [--output public/changelog.json]
+
+Runs before the shared CI image is built; the image carries the file and the
+app reads it from its own server, never from GitHub. Each release tag (x.y.z)
+is mapped to the HEAD-history commit with the same tree, as the release step
+does, and lists the commit subjects since the previous release, without merges
+and release-version chores. A tag whose tree is not in HEAD's history is
+skipped with a build warning; its commits count to the next release. When HEAD
+is not itself a release tree, a first section holds the commits since the last
+release under APP_VERSION (null while that version is already released). If
+that section's range cannot be computed, the script fails: the running build's
+own changes are never left out. Exit 0 written; 1 refused; 2 bad input or a
+failed git call.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import re
+import subprocess
+import sys
+from pathlib import Path
+from typing import Any
+
+ROOT = Path(__file__).resolve().parents[1]
+RELEASE_TAG = re.compile(r"^(\d+)\.(\d+)\.(\d+)$")
+RELEASE_CHORE = re.compile(
+    r"^chore\(release\): set application version to \d+\.\d+\.\d+( \(#\d+\))?$"
+)
+APP_VERSION = re.compile(r'^APP_VERSION = "(\d+\.\d+\.\d+)"$', re.MULTILINE)
+
+
+class Refused(Exception):
+    """The running build's own section cannot be computed."""
+
+
+def git(*args: str, cwd: Path = ROOT) -> str:
+    return subprocess.run(
+        ["git", *args], cwd=cwd, check=True, capture_output=True, text=True
+    ).stdout
+
+
+def subjects(commit_range: str, cwd: Path) -> list[str]:
+    lines = git("log", "--no-merges", "--format=%s", commit_range, cwd=cwd)
+    return [
+        line for line in lines.splitlines() if line and not RELEASE_CHORE.match(line)
+    ]
+
+
+def changelog(app_version: str, cwd: Path = ROOT, warn=print) -> dict[str, Any]:
+    """Releases newest first, each with its commit subjects."""
+    tags = sorted(
+        (
+            tag
+            for tag in git("tag", "--list", cwd=cwd).split()
+            if RELEASE_TAG.match(tag)
+        ),
+        key=lambda tag: tuple(int(part) for part in tag.split(".")),
+    )
+    # The newest HEAD-history commit of each tree wins, as the release step maps them.
+    history = [
+        line.split()
+        for line in git("log", "HEAD", "--format=%H %T", cwd=cwd).splitlines()
+    ]
+    base_of = {tree: commit for commit, tree in reversed(history)}
+    trees = (
+        git("rev-parse", *(f"{tag}^{{tree}}" for tag in tags), cwd=cwd).split()
+        if tags
+        else []
+    )
+    releases: list[dict[str, Any]] = []
+    previous = ""
+    for tag, tree in zip(tags, trees, strict=True):
+        if tree not in base_of:
+            warn(
+                f"::warning::Release {tag} is not in this history; its commits count to the next release."
+            )
+            continue
+        releases.append(
+            {
+                "version": tag,
+                "commits": subjects(f"{previous}..{base_of[tree]}".lstrip("."), cwd),
+            }
+        )
+        previous = base_of[tree]
+    if tags and not previous:
+        raise Refused(
+            "No release tag maps to this history; the build's own changes cannot be listed."
+        )
+    if previous != history[0][0]:
+        last = releases[-1]["version"] if releases else None
+        releases.append(
+            {
+                "version": None if app_version in tags else app_version,
+                "after": last,
+                "commits": subjects(f"{previous}..HEAD".lstrip("."), cwd),
+            }
+        )
+    return {"releases": releases[::-1]}
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser.add_argument(
+        "--output", type=Path, default=ROOT / "public" / "changelog.json"
+    )
+    args = parser.parse_args(argv)
+    found = APP_VERSION.search((ROOT / "server.py").read_text(encoding="utf-8"))
+    if found is None:
+        print("error: APP_VERSION not found in server.py", file=sys.stderr)
+        return 2
+    try:
+        data = changelog(found[1])
+    except Refused as error:
+        print(f"refused: {error}", file=sys.stderr)
+        return 1
+    except subprocess.CalledProcessError as error:
+        print(f"error: git {' '.join(error.cmd[1:])} failed", file=sys.stderr)
+        return 2
+    args.output.write_text(
+        json.dumps(data, ensure_ascii=False, separators=(",", ":")), encoding="utf-8"
+    )
+    print(f"changelog: {len(data['releases'])} sections -> {args.output}")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

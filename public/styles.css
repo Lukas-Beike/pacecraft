@@ -309,6 +309,10 @@ h2 {
 .icon-button:active { transform: scale(.94); }
 .icon-button.busy { animation: spin 1s linear infinite; }
 .settings-app-version { margin: 0; color: var(--subtle); font-size: .72rem; }
+.release-changelog { display: grid; gap: 6px; color: var(--muted); font-size: .78rem; }
+.release-changelog summary { color: var(--subtle); cursor: pointer; }
+.release-changelog h4 { margin: 6px 0 0; color: var(--ink); font-size: .78rem; }
+.release-changelog ul { margin: 0; padding-left: 18px; overflow-wrap: anywhere; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
 .status-strip { margin: 0 0 12px; color: var(--ink); font-size: .78rem; line-height: 1.4; --strip-ink: var(--ink); }
