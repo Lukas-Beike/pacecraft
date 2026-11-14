@@ -67,22 +67,34 @@ def sweat_rate(
     }
 
 
+def weight_block(weight: dict[str, Any] | None) -> dict[str, Any] | None:
+    """``{kg, source}`` of a resolved ``{value, source}`` weight, else None."""
+    value = (weight or {}).get("value")
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or value <= 0:
+        return None
+    return {"kg": float(value), "source": (weight or {}).get("source")}
+
+
 def drinking(
-    rate_l_per_h: float, duration_s: float, weight_kg: float | None
+    rate_l_per_h: float | None, duration_s: float, weight_kg: float | None
 ) -> dict[str, Any]:
     """Litres per hour and in total: the expected loss minus 2 % of body mass.
 
     Never more than the sweat rate; without a weight the sweat rate is only the
-    upper bound. From 2 h on, the sodium range per litre is added.
+    upper bound, and without a sweat rate the ACSM starting range applies. From
+    2 h on, the sodium range per litre is added while there is something to
+    drink.
     """
-    hours = duration_s / 3600
-    loss = rate_l_per_h * hours
-    result: dict[str, Any] = {"max_l_per_h": round(rate_l_per_h, 2)}
-    if weight_kg is not None and hours > 0:
-        total = max(0.0, loss - weight_kg * MAX_LOSS_SHARE)
-        result["l_per_h"] = round(min(rate_l_per_h, total / hours), 2)
-        result["total_l"] = round(total, 1)
-    if duration_s >= SODIUM_FROM_S:
+    if rate_l_per_h is None:
+        result: dict[str, Any] = {"generic_l_per_h": list(GENERIC_SWEAT_L_PER_H)}
+    else:
+        hours = duration_s / 3600
+        result = {"max_l_per_h": round(rate_l_per_h, 2)}
+        if weight_kg is not None and hours > 0:
+            total = max(0.0, rate_l_per_h * hours - weight_kg * MAX_LOSS_SHARE)
+            result["l_per_h"] = round(min(rate_l_per_h, total / hours), 2)
+            result["total_l"] = round(total, 1)
+    if duration_s >= SODIUM_FROM_S and result.get("total_l", 1) > 0:
         result["sodium_g_per_l"] = list(SODIUM_G_PER_L)
     return result
 

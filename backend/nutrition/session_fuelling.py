@@ -37,7 +37,10 @@ def sweat_samples(
         if summary.get("sport") != sport or summary_is_indoor(summary) != indoor:
             continue
         water = _number(summary.get("water_estimated_ml"))
-        seconds = _number(summary_duration_s(summary))
+        # Garmin's estimate covers the whole activity, stops included.
+        seconds = _number(summary.get("elapsed_duration_s")) or _number(
+            summary_duration_s(summary)
+        )
         if water is not None and seconds is not None:
             samples.append((str(summary.get("id")), water / 1000 / (seconds / 3600)))
     return samples
@@ -54,25 +57,20 @@ def forecast_temperature(days: Iterable[dict[str, Any]], day: str) -> float | No
 
 
 def session_fuelling(
-    sport: str,
     indoor: bool,
     duration_s: float,
     samples: list[tuple[float, float | None]],
     forecast_c: float | None,
     weight: dict[str, Any] | None,
 ) -> dict[str, Any]:
-    """The recommendation, or ``not_long`` below an hour or for other sports."""
-    if sport not in SPORTS or duration_s < LONG_SESSION_S:
-        return {"status": "not_long"}
-    weight_kg = _number((weight or {}).get("value"))
+    """The recommendation for a long run or ride from its local inputs."""
+    resolved = fuelling.weight_block(weight)
     rate = fuelling.sweat_rate(samples, None if indoor else forecast_c)
-    drink = (
-        fuelling.drinking(rate["l_per_h"], duration_s, weight_kg)
-        if rate
-        else {"generic_l_per_h": list(fuelling.GENERIC_SWEAT_L_PER_H)}
+    drink = fuelling.drinking(
+        rate["l_per_h"] if rate else None,
+        duration_s,
+        None if resolved is None else resolved["kg"],
     )
-    if not rate and duration_s >= fuelling.SODIUM_FROM_S:
-        drink["sodium_g_per_l"] = list(fuelling.SODIUM_G_PER_L)
     return {
         "status": "ready",
         "duration_s": int(duration_s),
@@ -82,9 +80,7 @@ def session_fuelling(
         "drinking_source": fuelling.FLUID_POSITION_STAND,
         "carbohydrates": fuelling.carbohydrate_per_hour(duration_s),
         "carbohydrate_source": fuelling.POSITION_STAND,
-        "weight": None
-        if weight_kg is None
-        else {"kg": weight_kg, "source": (weight or {}).get("source")},
+        "weight": resolved,
     }
 
 
@@ -113,6 +109,7 @@ def read_session_fuelling(
 ) -> dict[str, Any]:
     """The recommendation for a planned unit described by ``query``."""
     sport, indoor, day, duration_s = _request(query)
+    # Below an hour or for another sport there is nothing to read.
     if sport not in SPORTS or duration_s < LONG_SESSION_S:
         return {"status": "not_long"}
     end = today()
@@ -122,4 +119,4 @@ def read_session_fuelling(
     temperatures = {} if indoor else session_temperatures([sid for sid, _ in rates])
     samples = [(rate, temperatures.get(sid)) for sid, rate in rates]
     forecast_c = None if indoor else forecast_temperature(forecast_days(), day)
-    return session_fuelling(sport, indoor, duration_s, samples, forecast_c, body_weight())
+    return session_fuelling(indoor, duration_s, samples, forecast_c, body_weight())

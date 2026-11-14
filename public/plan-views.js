@@ -1428,24 +1428,28 @@ function plannedZoneBuckets(zone) {
 // Drinking and carbohydrates of a planned run or ride of at least an hour (#2804).
 function plannedFuellingQuery(entry, dateKey) {
   const sport = String(entry?.sport || "").toLowerCase();
-  const seconds = Number(entry?.planned_duration_s);
+  const seconds = plannedDurationSeconds(entry);
   if (!["run", "ride"].includes(sport) || !(seconds >= 3600)) return null;
   return new URLSearchParams({ sport, environment: String(entry.environment || ""), date: dateKey, duration_s: String(Math.round(seconds)) }).toString();
 }
 
+// Litres keep two decimals, so a small hourly intake is not shown as zero.
+const FUELLING_LITRES = new Intl.NumberFormat("de-DE", { maximumFractionDigits: 2 });
+
 function plannedFuellingRows(drink) {
-  const litres = (value) => `${RACE_PLAN_KM.format(value)} l`;
-  const sodium = Array.isArray(drink.sodium_g_per_l) ? `Natrium ${RACE_PLAN_KM.format(drink.sodium_g_per_l[0])}–${RACE_PLAN_KM.format(drink.sodium_g_per_l[1])} g/l` : null;
-  if (Array.isArray(drink.generic_l_per_h)) return [["Pro Stunde", `${RACE_PLAN_KM.format(drink.generic_l_per_h[0])}–${litres(drink.generic_l_per_h[1])}`], sodium ? ["Gesamt", sodium] : null];
-  if (drink.l_per_h == null) return [["Pro Stunde", `bis ${litres(drink.max_l_per_h)}`], sodium ? ["Gesamt", sodium] : null];
-  return [["Pro Stunde", litres(drink.l_per_h)], ["Gesamt", [litres(drink.total_l), sodium].filter(Boolean).join(" · ")]];
+  const litres = (value) => `${FUELLING_LITRES.format(value)} l`;
+  const sodium = Array.isArray(drink.sodium_g_per_l) ? `${RACE_PLAN_KM.format(drink.sodium_g_per_l[0])}–${RACE_PLAN_KM.format(drink.sodium_g_per_l[1])} g/l` : null;
+  const sodiumRow = sodium ? ["Natrium", sodium] : null;
+  if (Array.isArray(drink.generic_l_per_h)) return [["Pro Stunde", `${FUELLING_LITRES.format(drink.generic_l_per_h[0])}–${litres(drink.generic_l_per_h[1])}`], sodiumRow];
+  if (drink.l_per_h == null) return [["Pro Stunde", `bis ${litres(drink.max_l_per_h)}`], sodiumRow];
+  return [["Pro Stunde", litres(drink.l_per_h)], ["Gesamt", litres(drink.total_l)], sodiumRow];
 }
 
 function plannedFuellingBlock(plan) {
   const rate = plan.sweat_rate;
   const band = rate?.similar && Array.isArray(rate.temperature_c) ? ` bei ${rate.temperature_c[0]}–${rate.temperature_c[1]} °C` : "";
   const sessions = rate?.sessions === 1 ? "1 Einheit" : `${rate?.sessions} Einheiten`;
-  const basis = rate ? `Schweißrate ${RACE_PLAN_KM.format(rate.l_per_h)} l/h · ${sessions}${band}` : "Startwert ohne eigene Daten";
+  const basis = rate ? `Schweißrate ${FUELLING_LITRES.format(rate.l_per_h)} l/h · ${sessions}${band}` : "Startwert ohne eigene Daten";
   const rows = (items) => h("div", "race-plan-rows", items.filter(Boolean).map(([label, value]) => h("div", null, h("span", null, label), h("strong", null, value))));
   return [
     h("h4", null, "Verpflegung"),
@@ -1464,7 +1468,8 @@ function loadPlannedFuelling(section, query) {
   api(`/api/nutrition/session-fuelling?${query}`, { timeoutMs: DATA_LOAD_TIMEOUT_MS }).then((plan) => {
     section.dataset.state = "ready";
     if (plan?.status === "ready") section.replaceChildren(...plannedFuellingBlock(plan));
-    else section.remove();
+    // Keep the empty section marked ready, so reopening does not read again.
+    else section.hidden = true;
   }).catch(() => {
     section.dataset.state = "failed";
     const retry = h("button", { type: "button", className: "secondary-button" }, "Erneut laden");

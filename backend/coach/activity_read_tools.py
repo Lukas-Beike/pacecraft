@@ -45,6 +45,8 @@ _LIST_OMITTED_KEYS: Final = frozenset(
         "heart_rate_zone_times",
         "pace_zone_times",
         "strength_sets",
+        # Garmin's sweat-loss estimate serves the fuelling advice only (#2804).
+        "water_estimated_ml",
     }
 )
 

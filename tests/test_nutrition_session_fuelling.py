@@ -58,6 +58,11 @@ class SessionFuellingTests(unittest.TestCase):
             sweat_samples(SESSIONS, "ride", indoor=False),
         )
         self.assertEqual([("indoor", 1.2)], sweat_samples(SESSIONS, "ride", indoor=True))
+        # The estimate covers stops too, so the elapsed time divides it.
+        stopped = {**session("stop", water=2400, seconds=9000), "elapsed_duration_s": 10800}
+        [(session_id, rate)] = sweat_samples([stopped], "ride", indoor=False)
+        self.assertEqual("stop", session_id)
+        self.assertAlmostEqual(0.8, rate)
         self.assertEqual(12.0, forecast_temperature(
             [{"date": "2026-11-20", "temperature_min": 8.0, "temperature_max": 16.0}],
             "2026-11-20",
