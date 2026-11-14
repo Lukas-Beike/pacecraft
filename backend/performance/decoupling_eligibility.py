@@ -7,8 +7,9 @@ and candidate variability rules, and reports per sport and environment:
 sessions per gate, pass counts per rule and quartile summaries of the
 variability measures. No ids, names, dates or single-session values.
 
-Rules, with every other gate unchanged: the current rule is a coefficient of
-variation (CV) of the output at most 15 % on the ~1 s samples of each half;
+Rules, with every other gate unchanged: the rule the session analysis applies
+since #1832 is a CV of the output's 60 s rolling means at most 15 % per half;
+the former rule is a coefficient of variation (CV) on the ~1 s samples;
 candidates use 30 s or 60 s rolling means; for rides also the variability index
 (VI, normalized power over average power) of each half at most 1.05 or 1.10.
 All of them read the samples the analysis pairs with heart rate (gaps, stops and
@@ -18,7 +19,7 @@ minutes between the trims, like the 30-minute minimum with the warm-up.
 
 ``scripts/decoupling_eligibility_dry_run.py`` runs it on a database copy; the
 diagnostics section ``decoupling_eligibility`` (#2779) builds it in the
-background (``DecouplingEligibility``) until the M8 rule is decided (#2780).
+background (``DecouplingEligibility``) until its removal (#2780).
 """
 
 from __future__ import annotations
@@ -121,7 +122,8 @@ def _clip(
     for stamp, weight, value, _ in paired:
         inside = min(stamp + weight, right) - max(stamp, left)
         if inside > 0:
-            clipped.append((stamp, inside, value))
+            # Stamped as the session analysis clips a half (#1832).
+            clipped.append((max(stamp, left), inside, value))
     return clipped
 
 

@@ -44,8 +44,11 @@ def rolling_means(
 ) -> list[tuple[float, float]]:
     """Time-weighted rolling means of ``(time, weight, value)`` samples.
 
-    Each mean ends at a sample and spans the full ``window``; it is weighted by
-    that sample's weight.
+    Each mean ends at a sample and is weighted by that sample's weight. A mean
+    is kept only when the samples starting within ``window`` before it cover
+    the full window, so the first ``window`` seconds and the window after an
+    excluded gap (a stop, a dropout) yield none: a partial window would bring
+    the second-to-second noise back.
     """
     result: list[tuple[float, float]] = []
     queue: deque[tuple[float, float, float]] = deque()
@@ -59,7 +62,7 @@ def rolling_means(
             _, old_weight, old_value = queue.popleft()
             weights -= old_weight
             products -= old_weight * old_value
-        if stamp + weight - samples[0][0] >= window:
+        if weights >= window - 1e-6:
             result.append((weight, products / weights))
     return result
 
@@ -412,17 +415,19 @@ def _aerobic_halves(
     for left, right in ((start, midpoint), (midpoint, end)):
         # (time, weight inside the half, output, heart rate) of each sample.
         clipped = [
-            (
-                max(timestamp, left),
-                min(timestamp + weight, right) - max(timestamp, left),
-                value,
-                pulse,
+            sample
+            for sample in (
+                (
+                    max(timestamp, left),
+                    min(timestamp + weight, right) - max(timestamp, left),
+                    value,
+                    pulse,
+                )
+                for timestamp, weight, value, pulse in paired
             )
-            for timestamp, weight, value, pulse in paired
+            if sample[1] > 0
         ]
-        samples = [
-            (weight, value, pulse) for _, weight, value, pulse in clipped if weight > 0
-        ]
+        samples = [(weight, value, pulse) for _, weight, value, pulse in clipped]
         duration = sum(weight for weight, _, _ in samples)
         if duration < (right - left) * 0.85:
             return {
@@ -434,11 +439,7 @@ def _aerobic_halves(
         pulse = sum(weight * pulse for weight, _, pulse in samples) / duration
         cv = weighted_cv(
             rolling_means(
-                [
-                    (stamp, weight, value)
-                    for stamp, weight, value, _ in clipped
-                    if weight > 0
-                ],
+                [(stamp, weight, value) for stamp, weight, value, _ in clipped],
                 STEADY_WINDOW_S,
             )
         )

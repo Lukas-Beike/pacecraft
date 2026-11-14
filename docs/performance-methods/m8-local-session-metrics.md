@@ -200,7 +200,8 @@ uncontrolled outdoor sessions.
   - a recording of at least 30 minutes;
   - at least 85 % paired output and HR time in each half;
   - a coefficient of variation of the output's 60 s rolling means of at most
-    15 % in each half (v5, #1832);
+    15 % in each half (v5, #1832); a mean needs a fully covered 60 s window,
+    so the first minute of a half and the minute after a gap give none;
   - the halves' mean outputs within 10 % of each other;
   - HR within 30-240 bpm, output above 0, steps above the adaptive gap rule
     `max(30 s, 3 × median step)` of the zone times, stops excluded (v4).
