@@ -1862,6 +1862,15 @@ def collect_garmin_data(
             capability_success,
         )
     provider_sync: dict[str, Any] = {"pagination": pagination}
+    _record_device_sync(
+        provider_sync,
+        client,
+        collection_options.include_current_metrics,
+        synced_at,
+        external_call,
+        redact,
+        warn,
+    )
     if _reconciles_body_battery(collection_options) and "body_battery" in pagination:
         provider_sync["body_battery_reconciled_on"] = today.isoformat()
     payload["provider_sync"] = provider_sync
@@ -1878,6 +1887,46 @@ def collect_garmin_data(
             ),
         )
     return payload
+
+
+def _record_device_sync(
+    provider_sync: dict[str, Any],
+    client: Any,
+    current: bool,
+    read_at: str,
+    external_call: ExternalCall,
+    redact: Redact,
+    warn: WarningLogger | None,
+) -> None:
+    """Record when the watch last uploaded to Garmin Connect, as UTC (#2807).
+
+    Read-only and only on a ``current`` sync; ``read_at`` is that run's time. The pinned SDK answers a UTC time without an offset. A missing method,
+    a failed call or an answer that is no time records nothing, so the stored
+    state keeps the previous time; the run stays complete, and the answer is
+    never logged here. ``device_sync_read_at`` says how current the time is.
+    """
+    if not current:
+        return
+    fetch = getattr(client, "get_sync_timestamp", None)
+    if not callable(fetch):
+        return
+    try:
+        value = external_call("garmin", "device_sync_timestamp", fetch, None)
+    except Exception as exc:  # noqa: BLE001 - an optional fact; the run goes on.
+        if warn:
+            warn("device_sync_timestamp", redact(str(exc))[:500], exc)
+        return
+    if not isinstance(value, str) or len(value) > 40:
+        return
+    try:
+        parsed = datetime.fromisoformat(value.strip())
+    except ValueError:
+        return
+    parsed = parsed.replace(tzinfo=UTC) if parsed.tzinfo is None else parsed
+    provider_sync["device_synced_at"] = parsed.astimezone(UTC).strftime(
+        "%Y-%m-%dT%H:%M:%SZ"
+    )
+    provider_sync["device_sync_read_at"] = read_at
 
 
 def _record_daily_metrics(

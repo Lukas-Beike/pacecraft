@@ -38,6 +38,17 @@ function garminBodyBatteryDetail(garmin) {
   return bodyBattery.sleep_date ? `Body Battery am ${dateLabel(bodyBattery.sleep_date)}: nicht verfügbar` : "";
 }
 
+// Pure (#2807): the sentence for a watch that has not uploaded to Garmin Connect for 24 hours or
+// more, else "" (also without a known time). Fresh uploads need no sentence (athlete decision).
+function deviceSyncSentence(deviceSyncedAt, now = Date.now()) {
+  const at = Date.parse(deviceSyncedAt || "");
+  if (!Number.isFinite(at)) return "";
+  const days = Math.floor((now - at) / 86_400_000);
+  if (days < 1) return "";
+  const span = days === 1 ? "einem Tag" : `${days} Tagen`;
+  return `Die Uhr hat seit ${span} nichts übertragen.`;
+}
+
 function garminDetailText(garmin) {
   let sourceDetail = "Noch kein Garmin-Abruf durchgeführt.";
   if (garmin.last_sync_at) {
@@ -106,6 +117,8 @@ function renderGarmin(garmin) {
   else if (garmin.last_error) status.textContent = "Mit Fehlern synchronisiert";
   else status.textContent = "Optionaler Direktabruf aktiv";
   detail.textContent = garminDetailText(garmin);
+  const stale = deviceSyncSentence(garmin.device_synced_at);
+  if (stale) detail.append(h("br"), h("span", "device-sync-stale", stale));
 }
 
 

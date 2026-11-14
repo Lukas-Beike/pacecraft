@@ -1637,6 +1637,10 @@ function renderPersonalRecovery(report) {
   const root = document.getElementById("personalRecovery");
   root.replaceChildren();
   renderRecoveryCharts(report, root);
+  // Missing recovery values often mean the watch has not uploaded (#2807).
+  const garmin = state.data?.garmin;
+  const stale = garmin?.configured ? deviceSyncSentence(garmin.device_synced_at) : "";
+  if (stale) root.prepend(h("p", "device-sync-stale", stale));
   renderAnalysisSegments(state.route);
 }
 
