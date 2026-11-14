@@ -9,6 +9,8 @@ let loginDialogRequired = false;
 function showLogin() {
   cancelBootstrapRetry();
   state.sessionGeneration += 1;
+  // Another session reads its own equipment (#2809).
+  updateStatusSources({ equipment: null });
   clearStateSnapshot();
   state.voiceAcquiring = false;
   stopVoiceRecording();

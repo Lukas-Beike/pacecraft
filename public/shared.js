@@ -343,6 +343,8 @@ function renderStatus(data) {
       dismiss: dismissIntervalsHint,
     },
   });
+  // Due equipment joins the strip once the browser is idle (#2809).
+  globalThis.refreshEquipmentNotice?.();
 }
 
 

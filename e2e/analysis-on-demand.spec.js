@@ -16,6 +16,9 @@ function trackReportRequests(page) {
 
 // pending: answers that the all-time bests are still being read before the first real answer.
 async function mockReports(page, { pending = 0 } = {}) {
+  // The status strip's deferred equipment read (#2809) waits for an idle callback that never comes here,
+  // so these counts show only what the views themselves load; status-strip.spec.js covers that read.
+  await page.addInitScript(() => { globalThis.requestIdleCallback = () => 0; });
   await page.route(`**${ENDURANCE}`, (route) => route.fulfill({ json: { activities: [] } }));
   await page.route(`**${POWER_PROFILES}`, (route) => (pending-- > 0 ? route.fulfill({ json: { all_time: { status: "pending" } } }) : route.fulfill({ json: {
     all_time: { power: [

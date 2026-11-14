@@ -1134,8 +1134,11 @@ function commandReceipt(entry) {
   };
 }
 
+const COACH_EQUIPMENT_TOOLS = new Set(["save_equipment", "assign_activity_equipment", "log_equipment_maintenance"]);
+
 function addStructuredCoachReceipts(payload) {
   const commands = Array.isArray(payload?.command_receipts) ? payload.command_receipts : [];
+  if (commands.some((entry) => COACH_EQUIPMENT_TOOLS.has(entry.tool) && entry.result?.ok !== false)) globalThis.invalidateEquipmentNotice?.();
   const planCommitRequested = payload?.intent?.operation === "commit_training_plan"
     || payload?.intent?.follow_up_operations?.includes("commit_training_plan")
     || commands.some((entry) => entry.tool === "commit_training_plan");
