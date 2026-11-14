@@ -11,7 +11,26 @@ from backend.coach.request_payload import model_confirmed_steps
 from backend.db.manager import DatabaseManager
 from backend.db.repositories import KeyValueRepository
 from backend.errors import AppError
-from backend.providers.model_seam import ModelRequest
+from backend.providers.model_seam import ModelRequest, ModelStep
+
+
+def _carried_turn_text(steps: list[ModelStep]) -> str:
+    """Turn text that lived only in the dropped tool rounds: the latest
+    refreshed athlete context and the last round's notice. The rebuilt request
+    starts a new conversation, so it may carry them in its instructions."""
+    refreshed = ""
+    for step in steps:
+        for result in step.tool_results:
+            try:
+                output = json.loads(result["output"])
+            except TypeError, ValueError:
+                continue
+            if isinstance(output, dict) and isinstance(
+                output.get("refreshed_athlete_context"), str
+            ):
+                refreshed = output["refreshed_athlete_context"]
+    notice = steps[-1].notice if steps else ""
+    return "".join("\n\n" + text for text in (refreshed, notice) if text)
 
 
 class CoachConversationRecoveryService:
@@ -56,6 +75,7 @@ class CoachConversationRecoveryService:
         for candidate in (turn_request, request):
             candidate.conversation_id = None
         # The rebuilt dialogue carries the confirmed steps: no tool results to resend.
+        carried = _carried_turn_text(request.steps)
         request.steps = []
         request.input = json.dumps(
             {
@@ -81,7 +101,7 @@ class CoachConversationRecoveryService:
             "using local dialogue and confirmed_steps. Earlier image pixels may be "
             "unavailable; ask for missing evidence only if essential. Never invent "
             "attachment details."
-        )
+        ) + carried
         self._logger.warning(
             "Coach conversation recovered from local context",
             extra={"event": "coach_conversation_recovered"},

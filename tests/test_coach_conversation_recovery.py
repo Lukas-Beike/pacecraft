@@ -44,6 +44,7 @@ class CoachConversationRecoveryTests(unittest.TestCase):
         request_delta_emitted=False,
         recovery_state=None,
         attachments=None,
+        steps=None,
     ):
         conversation_id = "remote-id" if remote else None
         request = ModelRequest(
@@ -52,7 +53,7 @@ class CoachConversationRecoveryTests(unittest.TestCase):
             input="old",
             attachments=model_attachments(attachments or []),
             conversation_id=conversation_id,
-            steps=[ModelStep([], [{"call_id": "c", "output": "{}"}])],
+            steps=steps or [ModelStep([], [{"call_id": "c", "output": "{}"}])],
         )
         turn_request = ModelRequest(
             model="m", instructions="base", conversation_id=conversation_id
@@ -97,6 +98,21 @@ class CoachConversationRecoveryTests(unittest.TestCase):
         # Later stateless tool rounds seed their chain from the request's input.
         self.assertEqual(turn_request.input, request.input)
         self.logger.warning.assert_called_once()
+
+    def test_recovery_keeps_refreshed_context_and_turn_notice(self) -> None:
+        refreshed = json.dumps(
+            {"ok": True, "refreshed_athlete_context": "<athlete_context>fresh"}
+        )
+        _, request, _, _ = self.recover(
+            steps=[
+                ModelStep([], [{"call_id": "a", "output": refreshed}]),
+                ModelStep([], [{"call_id": "b", "output": "{}"}], "budget notice"),
+            ]
+        )
+        self.assertEqual(request.steps, [])
+        self.assertTrue(
+            request.instructions.endswith("\n\n<athlete_context>fresh\n\nbudget notice")
+        )
 
     def test_no_remote_conversation_does_not_clear_stored_conversation(self) -> None:
         recovered, _, _, _ = self.recover(remote=False)

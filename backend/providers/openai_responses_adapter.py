@@ -58,7 +58,7 @@ def model_input(text: str, attachments: list[dict[str, Any]]) -> Any:
     return [{"role": "user", "content": parts}]
 
 
-def _tool_outputs(step: ModelStep) -> list[dict[str, Any]]:
+def _tool_outputs(step: ModelStep, *, stored: bool = False) -> list[dict[str, Any]]:
     outputs: list[dict[str, Any]] = [
         {
             "type": "function_call_output",
@@ -67,10 +67,18 @@ def _tool_outputs(step: ModelStep) -> list[dict[str, Any]]:
         }
         for result in step.tool_results
     ]
-    if step.notice:
+    if step.notice and not stored:
         # App text follows the outputs; the instructions stay fixed for the turn.
         outputs.append({"role": "user", "content": step.notice})
     return outputs
+
+
+def _instructions(request: ModelRequest) -> str:
+    """A stored conversation keeps every input item into later turns, so a turn
+    notice goes to its instructions there, which the conversation never stores."""
+    if request.conversation_id and request.steps and request.steps[-1].notice:
+        return request.instructions + "\n\n" + request.steps[-1].notice
+    return request.instructions
 
 
 def _input(request: ModelRequest) -> Any:
@@ -94,7 +102,7 @@ def _input(request: ModelRequest) -> Any:
         return model_input(request.input, request.attachments)
     if request.conversation_id:
         # The conversation holds the earlier items: send only the new results.
-        return _tool_outputs(request.steps[-1])
+        return _tool_outputs(request.steps[-1], stored=True)
     first = model_input(request.input, request.attachments)
     # Nothing is stored remotely: resend the turn's items so far, the model's
     # calls and (encrypted) reasoning, and the new tool outputs.
@@ -153,7 +161,7 @@ def request_payload(request: ModelRequest) -> dict[str, Any]:
         payload["conversation"] = request.conversation_id
     payload.update(
         {
-            "instructions": request.instructions,
+            "instructions": _instructions(request),
             "input": _input(request),
             "tools": request.tools,
             "tool_choice": request.tool_choice,
