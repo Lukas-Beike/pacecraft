@@ -27,7 +27,7 @@ import remote_reconcilers
 import snapshot_seed
 from garmin_support import save_garmin
 from server_test_support import ServerTestCase, create_test_session, server
-from support import canonical_backfill_stopped
+from support import canonical_backfill_stopped, isolated_server
 
 from backend import privacy as privacy_module
 from backend.coach import limits as coach_limits
@@ -1495,19 +1495,14 @@ class ServerDatabaseTests(ServerTestCase):
         "SQLCipher ist in dieser Testumgebung nicht verfügbar.",
     )
     def test_restore_accepts_only_exact_schema_and_invalidates_sessions(self):
+        password = "test-password-123"
         with tempfile.TemporaryDirectory() as temp_root:
             data_dir = Path(temp_root) / "data"
-            config = replace(
-                server.CONFIG_HOLDER.value, app_password="test-password-123"
-            )
-            db_path = data_dir / "intervals-coach.db"
+            # The restore starts the backfill worker: it stops before the reset.
             with (
-                patch.object(server, "DATA_DIR", data_dir),
-                patch.object(server, "DB_PATH", db_path),
-                patch.object(server.CONFIG_HOLDER, "value", config),
+                isolated_server(server, data_dir, app_password=password),
                 canonical_backfill_stopped(server),
             ):
-                server.initialise_database()
                 server.key_value_service().set("restore-marker", "preserved")
                 with server.database_manager().unit_of_work() as db:
                     db.execute(
@@ -1532,7 +1527,7 @@ class ServerDatabaseTests(ServerTestCase):
                 incomplete_path.write_bytes(valid_backup)
                 connection = server.sqlite_backend.connect(incomplete_path, timeout=20)
                 try:
-                    configure_cipher(connection, config.app_password)
+                    configure_cipher(connection, password)
                     connection.execute("DROP TABLE snapshots")
                     connection.commit()
                 finally:
@@ -1553,7 +1548,7 @@ class ServerDatabaseTests(ServerTestCase):
                 unexpected_path.write_bytes(valid_backup)
                 connection = server.sqlite_backend.connect(unexpected_path, timeout=20)
                 try:
-                    configure_cipher(connection, config.app_password)
+                    configure_cipher(connection, password)
                     connection.execute(
                         "CREATE TABLE unexpected_records (id TEXT PRIMARY KEY)"
                     )
@@ -1577,42 +1572,25 @@ class ServerDatabaseTests(ServerTestCase):
         "SQLCipher ist in dieser Testumgebung nicht verfügbar.",
     )
     def test_restore_makes_interrupted_sync_job_claimable(self):
-        with tempfile.TemporaryDirectory(prefix="audit-encrypted-") as directory:
-            root = Path(directory)
-            config = server.CONFIG_HOLDER.value
-            with (
-                patch.object(
-                    server.CONFIG_HOLDER,
-                    "value",
-                    replace(config, app_password="synthetic-password-123"),
-                ),
-                patch.object(server, "DATA_DIR", root),
-                patch.object(server, "DB_PATH", root / "test.db"),
-                patch.object(server, "LOG_PATH", root / "test.log"),
-                canonical_backfill_stopped(server),
-            ):
-                try:
-                    server.initialise_database()
-                    job = server.SYNC_JOB_QUEUE.service().enqueue(
-                        "garmin", "refresh", {"days": 1}
-                    )
-                    server.SYNC_JOB_QUEUE.store().claim()
-                    backup = server.BACKUP.backup_service().read_bytes()
-                    server.SYNC_JOB_QUEUE.outcome_service().update(
-                        job["id"], "completed"
-                    )
-                    self.assertTrue(
-                        server.BACKUP.restore_service().restore(backup)["restored"]
-                    )
-                    self.assertEqual(
-                        server.SYNC_JOB_QUEUE.service().state(job["id"])["status"],
-                        "queued",
-                    )
-                    self.assertEqual(
-                        server.SYNC_JOB_QUEUE.store().claim()["id"], job["id"]
-                    )
-                finally:
-                    server.database_manager.reset()
+        with (
+            tempfile.TemporaryDirectory(prefix="audit-encrypted-") as directory,
+            isolated_server(
+                server, Path(directory), app_password="synthetic-password-123"
+            ),
+            # The restore starts the backfill worker: it stops before the reset (#2927).
+            canonical_backfill_stopped(server),
+        ):
+            job = server.SYNC_JOB_QUEUE.service().enqueue(
+                "garmin", "refresh", {"days": 1}
+            )
+            server.SYNC_JOB_QUEUE.store().claim()
+            backup = server.BACKUP.backup_service().read_bytes()
+            server.SYNC_JOB_QUEUE.outcome_service().update(job["id"], "completed")
+            self.assertTrue(server.BACKUP.restore_service().restore(backup)["restored"])
+            self.assertEqual(
+                server.SYNC_JOB_QUEUE.service().state(job["id"])["status"], "queued"
+            )
+            self.assertEqual(server.SYNC_JOB_QUEUE.store().claim()["id"], job["id"])
 
     def test_readiness_fails_when_database_is_unavailable(self):
         manager = server.database_manager()
