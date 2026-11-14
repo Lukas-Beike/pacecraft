@@ -37,6 +37,54 @@ class RunnerEvidenceTests(unittest.TestCase):
             code = run_tests.main()
         return code, json.loads(path.read_text())
 
+    def test_hang_timeout_dumps_the_hanging_test_and_exits(self):
+        # #2900: a hung shard names the test in a stack dump and fails fast.
+        child = (
+            "import time\nfrom tests import run_tests\n"
+            "def test_hangs_forever():\n    time.sleep(60)\n"
+            "run_tests.arm_hang_dump(1)\ntest_hangs_forever()\n"
+        )
+        started = time.monotonic()
+        result = subprocess.run(
+            [sys.executable, "-c", child],
+            cwd=Path(__file__).resolve().parents[1],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            timeout=30,
+            check=False,
+        )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertLess(time.monotonic() - started, 20)
+        self.assertIn("Timeout (0:00:01)!", result.stderr)  # faulthandler's dump
+        self.assertIn("line 4 in test_hangs_forever", result.stderr)
+
+        class Quick(unittest.TestCase):
+            def test_case(self):
+                pass
+
+        with (
+            mock.patch.object(run_tests.faulthandler, "dump_traceback_later") as arm,
+            mock.patch.object(
+                run_tests.faulthandler, "cancel_dump_traceback_later"
+            ) as off,
+            mock.patch.object(sys, "argv", ["run_tests.py", "--hang-timeout", "600"]),
+            mock.patch.object(
+                run_tests,
+                "discover_tests",
+                return_value=list(
+                    run_tests.iter_tests(
+                        unittest.defaultTestLoader.loadTestsFromTestCase(Quick)
+                    )
+                ),
+            ),
+            contextlib.redirect_stdout(io.StringIO()),
+            contextlib.redirect_stderr(io.StringIO()),
+        ):
+            self.assertEqual(run_tests.main(), 0)
+        arm.assert_called_once_with(600.0, exit=True)
+        off.assert_called_once_with()  # disarmed once the shard finished
+
     def test_setup_class_error_does_not_claim_selected_tests_ran(self):
         class Broken(unittest.TestCase):
             @classmethod
@@ -491,7 +539,9 @@ class SupervisorTests(unittest.TestCase):
                 except (FileNotFoundError, PermissionError) as error:
                     last_error = error
                     time.sleep(0.02)
-            self.assertIsNotNone(observed, f"owned descendant reached readiness: {last_error!r}")
+            self.assertIsNotNone(
+                observed, f"owned descendant reached readiness: {last_error!r}"
+            )
             if os.name == "nt":
                 kernel = ctypes.WinDLL("kernel32", use_last_error=True)
                 kernel.OpenProcess.argtypes = [

@@ -56,6 +56,10 @@ IDs without running them:
 python tests/run_tests.py --shard 1 --total 4
 python tests/run_tests.py --shard 1 --total 4 --list
 ```
+CI passes `--hang-timeout 600`: a shard still running after 10 minutes (the
+step normally takes under 3) prints every thread's stack, which names the
+hanging test, and fails; the job's `timeout-minutes: 20` frees the runner as a
+last resort (#2900).
 A pull request that changes documentation alone skips the suites (#2747).
 `.github/scripts/ci_changes.py` diffs the merge commit against its base parent;
 documentation is Markdown or text under `docs/`, `.agents/skills/` (outside

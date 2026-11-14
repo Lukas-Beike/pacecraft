@@ -20,6 +20,7 @@ test modules, for focused runs in the SQLCipher container.
 from __future__ import annotations
 
 import argparse
+import faulthandler
 import fnmatch
 import json
 import os
@@ -196,6 +197,13 @@ def select_suite(tests, suite: str):
     raise ValueError(f"unknown suite: {suite}")
 
 
+def arm_hang_dump(seconds: float) -> None:
+    """After `seconds`, print every thread's stack (naming the hanging test's
+    frames) and exit 1, instead of a shard holding its runner for hours (#2900)."""
+    if seconds > 0:
+        faulthandler.dump_traceback_later(seconds, exit=True)
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--shard", type=int, default=1, help="1-based shard number")
@@ -235,6 +243,13 @@ def parse_args() -> argparse.Namespace:
         "--list",
         action="store_true",
         help="list selected test IDs without executing them",
+    )
+    parser.add_argument(
+        "--hang-timeout",
+        type=float,
+        default=0,
+        metavar="SECONDS",
+        help="after this long, dump every thread's stack and exit 1 (CI shards)",
     )
     parser.add_argument(
         "--record-durations",
@@ -341,12 +356,15 @@ def main() -> int:
     evidence["status"] = "running"
     save()
     runner = unittest.TextTestRunner(verbosity=1, resultclass=ClassTimingResult)
+    arm_hang_dump(args.hang_timeout)
     try:
         result = runner.run(unittest.TestSuite(selected))
     except BaseException:
         evidence["status"] = "interrupted"
         save()
         raise
+    finally:
+        faulthandler.cancel_dump_traceback_later()
     assert isinstance(result, ClassTimingResult)
     elapsed = time.perf_counter() - started
     # Environment skips (#2553) stay visible by reason, not only as a count.

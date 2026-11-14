@@ -1233,6 +1233,10 @@ class ChangedFileClassifierTests(unittest.TestCase):
             ("docs", "node --test tests/*.cjs"),
         ):
             self.assertIn(f"if: env.MODE == '{mode}'\n        run: {command}", shards)
+        # #2900: a hung shard dumps its stacks and frees the runner.
+        self.assertIn("\n    timeout-minutes: 20\n", shards.split("steps:", 1)[0])
+        for command in ('--total "$PYTHON_TEST_SHARDS"', "--with-heavy"):
+            self.assertIn(f"{command} --hang-timeout 600\n", shards)
         # The scripts may use Python 3.14 syntax; the runner's own Python is older.
         self.assertLess(
             source.index("python-version: '3.14'"),
