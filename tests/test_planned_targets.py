@@ -440,7 +440,8 @@ class PlannedStepAdherenceTests(unittest.TestCase):
         self.assertEqual(
             (result["planned_unit_id"], result["score_pct"]), ("unit-1", 64)
         )
-        units.list_between.assert_called_once_with(date(2026, 11, 3), date(2026, 11, 3))
+        # One day around the run, so a provider link to a neighbouring day counts (#2863).
+        units.list_between.assert_called_once_with(date(2026, 11, 2), date(2026, 11, 4))
         # The evening run is the day's extra session: the calendar pairs the morning one.
         document["session"]["activity_id"] = "act_2"
         self.assertIsNone(service.planned_adherence(document))

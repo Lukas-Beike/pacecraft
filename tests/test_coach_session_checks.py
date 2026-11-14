@@ -23,7 +23,9 @@ def _service(
     }
     activity_read = Mock()
     activity_read.detail.return_value = {"ok": True, "session": session}
-    activity_read.summaries_between.return_value = list(summaries)
+    activity_read.summaries_between.return_value = (
+        None if summaries is None else list(summaries)
+    )
     planned = None if units is None else Mock(list=Mock(return_value=units))
     reports = (
         None
@@ -101,6 +103,10 @@ class FocusTests(unittest.TestCase):
         commute = {**evening, "purpose": "commute"}
         threshold = _unit("2026-11-03", "run", session_focus="threshold")
         easy = {**_unit("2026-11-03", "run", session_focus="easy"), "id": "u-easy"}
+        yesterday = {
+            **_unit("2026-11-02", "run", session_focus="easy"),
+            "id": "u-yesterday",
+        }
         # The calendar pairs one-to-one (#2863); without durations the earlier
         # run comes first, and a commute never fulfils a unit.
         other = "Die geplante Einheit dieses Tages gehört zu einer anderen Aktivität."
@@ -122,7 +128,28 @@ class FocusTests(unittest.TestCase):
                 "Pendeln, Einfahren und Ausfahren erfüllen keine geplante Einheit.",
             ),
             # Unchanged: without the day's sessions the unique day-and-sport rule.
-            "session summary unreadable": ([threshold], [], "u-2026-11-03-run", None),
+            "session not among the summaries": (
+                [threshold],
+                [],
+                "u-2026-11-03-run",
+                None,
+            ),
+            "summaries unreadable": ([threshold], None, "u-2026-11-03-run", None),
+            # Changed: a paired unit without a target still names itself, so its
+            # steps and cap are compared (also across a provider link).
+            "paired unit without target": (
+                [_unit("2026-11-03", "run")],
+                [evening],
+                "u-2026-11-03-run",
+                "Die geplante Einheit hat kein Ziel.",
+            ),
+            # Changed: a provider link to yesterday's unit wins over today's unit.
+            "linked to yesterday": (
+                [threshold, yesterday],
+                [{**evening, "planned_event_id": "u-yesterday"}],
+                "u-yesterday",
+                None,
+            ),
         }
         for name, (units, summaries, unit_id, reason) in cases.items():
             with self.subTest(name):
