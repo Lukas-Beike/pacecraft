@@ -376,6 +376,10 @@ The client SHALL present domain-provided planning, performance, activity, and eq
 - **WHEN** the athlete opens a completed session's "Details" in its calendar card or its "Feedback" dialog
 - **THEN** sport-appropriate pace/speed and cadence/step-frequency channels, units, missing points, and available metadata remain readable; failed detail loading retains the session summary and its explicit refresh path.
 
+#### Scenario: Equipment in a calendar card
+- **WHEN** a completed session's card opens and its detail read lists items it can take or an own choice
+- **THEN** one select ("Schuh" for runs, "Rad" for rides, else "Ausrüstung") lists them and "Keiner"; an own choice is selected, else a Garmin gear link of the session is preselected with the provider's label, else the suggestion is preselected and marked "Vorschlag", else "–"; nothing is saved until "Übernehmen", which posts to `POST /api/equipment/assignment` and shows "Gespeichert." with "Rückgängig", and the session is read again on its next opening
+
 #### Scenario: Equipment editor
 - **WHEN** the athlete opens "+ Hinzufügen" in a tab of Mehr › Ausrüstung, or "Bearbeiten" or "Ausmustern" in an active local item's card
 - **THEN** one form holds name, sport (per tab), kind, the parent bike for a component, start date, kilometres and hours before, lifetime target and maintenance intervals and saves through `POST /api/equipment` with the item's revision and an explicit status; "Ausmustern" asks in the confirmation dialog and sends `confirmed`; each save re-reads the list and shows a receipt with "Rückgängig", a refusal stays in the form, and Garmin is never needed

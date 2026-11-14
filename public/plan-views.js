@@ -1500,6 +1500,99 @@ function appendOpenedPlannedParts(details, head, entry, actual) {
   if (activityId && !details.querySelector(".planned-zone-time")) {
     void appendPlannedZoneTime(details, activityId, ["Radfahren", "Rad indoor"].includes(activitySportLabel(calendarSportType(actual))));
   }
+  void appendPlannedEquipment(details, activityId, actual);
+}
+
+// The session's equipment (#2879): one select of the items it can take and "Keiner". A suggestion (the item
+// last assigned to its sport) is preselected and marked; only "Übernehmen" saves, with a receipt and undo.
+async function appendPlannedEquipment(details, activityId, actual) {
+  if (!activityId || details.querySelector(".planned-equipment")) return;
+  const row = h("div", "planned-equipment");
+  details.querySelector(":scope > .planned-activity-more")?.before(row);
+  if (!row.isConnected) details.append(row);
+  let read;
+  try {
+    read = await plannedSessionRead(activityId);
+  } catch {
+    read = null;
+  }
+  const choice = read?.equipment_choice;
+  if (!choice || (!choice.options?.length && !choice.explicit)) {
+    row.remove();
+    return;
+  }
+  const sport = activitySportLabel(calendarSportType(actual));
+  const label = { Laufen: "Schuh", Radfahren: "Rad", "Rad indoor": "Rad" }[sport] || "Ausrüstung";
+  const saved = choice.explicit ? choice.assigned || "" : null;
+  // Without an own choice, Garmin's gear link is the source-labelled default; an own choice wins (#2879).
+  const linked = saved === null ? (read.equipment || []).find((item) => !item.parent_id && choice.options.some((option) => option.id === item.id))?.id ?? null : null;
+  const current = saved ?? linked;
+  const preset = current ?? choice.suggested ?? null;
+  const select = h("select", { "aria-label": label },
+    preset === null ? h("option", { value: "-", selected: true }, "–") : null,
+    // An own choice that can no longer be assigned (retired, another sport) stays shown as it is.
+    saved && !choice.options.some((item) => item.id === saved) ? h("option", { value: saved, selected: true, disabled: true }, "Nicht mehr verfügbar") : null,
+    choice.options.map((item) => h("option", { value: item.id, selected: item.id === preset }, item.name)),
+    h("option", { value: "", selected: preset === "" }, "Keiner"));
+  const hint = h("span", { className: "status-chip planned-equipment-suggestion" }, "Vorschlag");
+  const source = h("span", { className: "status-chip planned-equipment-source" }, state.data?.provider_labels?.[providerIds().garmin] || "");
+  const apply = h("button", { type: "button", className: "secondary-button", hidden: true }, "Übernehmen");
+  const status = h("p", { className: "planned-equipment-status", role: "status" });
+  const pending = () => select.value !== "-" && select.value !== current;
+  const sync = () => {
+    apply.hidden = !pending();
+    hint.hidden = current !== null || select.value !== choice.suggested;
+    source.hidden = linked === null || select.value !== linked;
+  };
+  select.addEventListener("change", sync);
+  apply.addEventListener("click", async () => {
+    apply.disabled = true;
+    try {
+      const result = await api("/api/equipment/assignment", { method: "POST", body: JSON.stringify({ activity_id: activityId, equipment_id: select.value || null }) });
+      plannedEquipmentChanged(activityId);
+      plannedEquipmentReceipt(row, details, activityId, actual, result?.change);
+    } catch (error) {
+      apply.disabled = false;
+      if (!isSessionEndedError(error)) status.textContent = error.message;
+    }
+  });
+  row.replaceChildren(h("label", "planned-equipment-field", h("span", null, label), select), hint, source, apply, status);
+  sync();
+}
+
+// An assignment changes usage and the equipment notice; the next opening reads the session again.
+function plannedEquipmentChanged(activityId) {
+  plannedSessionReads.delete(activityId);
+  globalThis.invalidateEquipmentNotice?.();
+}
+
+function plannedEquipmentReceipt(row, details, activityId, actual, change, message = "Gespeichert. ") {
+  row.remove();
+  void appendPlannedEquipment(details, activityId, actual).then(() => {
+    // The receipt stays even when the session cannot be read again.
+    let status = details.querySelector(".planned-equipment-status");
+    if (!status) {
+      status = h("p", { className: "planned-equipment-status", role: "status" });
+      const holder = h("div", "planned-equipment", status);
+      details.querySelector(":scope > .planned-activity-more")?.before(holder);
+      if (!holder.isConnected) details.append(holder);
+    }
+    status.textContent = message;
+    if (!change?.id) return;
+    const undo = h("button", { className: "message-undo", type: "button" }, "Rückgängig");
+    undo.addEventListener("click", async () => {
+      undo.disabled = true;
+      try {
+        await api("/api/change-history/undo", { method: "POST", body: JSON.stringify({ change_id: change.id, expected_current_hash: change.after_hash }) });
+        plannedEquipmentChanged(activityId);
+        plannedEquipmentReceipt(details.querySelector(".planned-equipment") || row, details, activityId, actual, null, "Zurückgenommen.");
+      } catch (error) {
+        undo.disabled = false;
+        if (!isSessionEndedError(error)) status.firstChild.textContent = `${error.message} `;
+      }
+    });
+    status.append(undo);
+  });
 }
 
 // A planned unit's body: its load, its steps (#2447) and its actions; returns the step list, if any.
