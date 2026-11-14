@@ -54,8 +54,9 @@ def balance(
         if not commit:
             raise
         # Right after a merge the squash commit is often not local yet: fetch
-        # develop once (a short SHA cannot be fetched), then diff again (#2920).
-        git("fetch", "--quiet", "origin", "develop", cwd=cwd)
+        # develop and main once (a short SHA cannot be fetched), then diff
+        # again (#2920).
+        git("fetch", "--quiet", "origin", "develop", "main", cwd=cwd)
         numstat = git("diff", "--numstat", "-M", span, cwd=cwd)
     for line in numstat.splitlines():
         added, removed, path = line.split("\t", 2)
