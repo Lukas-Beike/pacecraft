@@ -89,6 +89,52 @@ class ReleaseChangelogTests(unittest.TestCase):
             [r["version"] for r in self.run_changelog("1.0.1")], ["1.0.1", "1.0.0"]
         )
 
+    def test_a_build_of_main_lists_the_promoted_develop_commits(self):
+        """main holds one squashed promotion per release; its changes are on develop (#2960)."""
+        main = None
+        for tag, day in (("1.0.0", 3), ("1.0.1", 8)):
+            tree = git(self.repo, "rev-parse", f"{tag}^{{tree}}")
+            main = git(
+                self.repo,
+                "commit-tree",
+                tree,
+                *(["-p", main] if main else []),
+                "-m",
+                f"chore(release): promote {tag} to main (#9)",
+                day=day,
+            )
+            git(self.repo, "tag", "-f", tag, main)
+        git(self.repo, "switch", "-q", "--detach", main)
+        self.assertEqual(
+            [(r["version"], sorted(r["commits"])) for r in self.run_changelog("1.0.1")],
+            [
+                ("1.0.1", ["feat(c): from a merged branch", "fix(b): second"]),
+                ("1.0.0", ["feat(a): first"]),
+            ],
+        )
+
+    def test_a_missing_develop_ref_is_named(self):
+        self.run_changelog("1.0.1")
+        self.assertNotIn("develop", " ".join(self.warnings))
+        git(self.repo, "branch", "-q", "-m", "develop", "trunk")
+        self.warnings.clear()
+        self.run_changelog("1.0.1")
+        self.assertIn(
+            "::warning::No develop ref; the changelog follows HEAD's history.",
+            self.warnings,
+        )
+
+    def test_both_release_chores_are_left_out(self):
+        for subject in (
+            "chore(release): set application version to 2.1.15 (#2945)",
+            "chore(release): promote 2.1.15 to main (#2951)",
+            "chore(release): promote 2.1.15 to main",
+        ):
+            self.assertTrue(release_changelog.RELEASE_CHORE.match(subject), subject)
+        self.assertFalse(
+            release_changelog.RELEASE_CHORE.match("chore(release): pin the runner")
+        )
+
     def test_the_build_fails_when_no_release_maps_to_its_history(self):
         for tag in ("1.0.0", "1.0.1"):
             git(self.repo, "tag", "-d", tag)
