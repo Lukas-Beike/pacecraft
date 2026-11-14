@@ -465,3 +465,44 @@ test("@responsive a strength session leads with its total time, a run keeps its 
   const runTimes = run.locator(".activity-analysis-stats div").filter({ hasText: /^(Gesamtzeit|Bewegungszeit)/ });
   await expect(runTimes).toHaveText([/^Bewegungszeit\s*45:00$/, /^Gesamtzeit\s*50:00$/]);
 });
+
+test("@responsive a completed session's card assigns its equipment only by Übernehmen, with receipt and undo", async ({ page }) => {
+  // #2879: the server lists the items, the own choice and the suggestion; nothing is assigned by reading.
+  let assigned = null;
+  const posts = [];
+  await page.route(/\/api\/activities\/act_eq$/, (route) => route.fulfill({ json: {
+    session: { activity_id: "act_eq", sport: "run" }, metrics: {}, detail_data: { providers: [] },
+    equipment_choice: { options: [{ id: "shoe-a", name: "Pegasus 40" }, { id: "shoe-b", name: "Vaporfly 3" }], assigned, explicit: assigned !== null, suggested: "shoe-a" },
+  } }));
+  await page.route("**/api/equipment/assignment", (route) => {
+    posts.push(route.request().postDataJSON());
+    assigned = posts.at(-1).equipment_id;
+    return route.fulfill({ json: { ok: true, change: { id: "change-eq", after_hash: "hash-eq" } } });
+  });
+  await page.route("**/api/change-history/undo", (route) => { assigned = null; return route.fulfill({ json: { ok: true } }); });
+  await page.goto("/#plan/overview");
+  await expect(page.locator("#appShell")).toBeVisible();
+  await page.waitForFunction(() => state.initialStateLoaded);
+  await renderCalendarSessions(page, [{ id: "act_eq", name: "Synthetic shoe run", sport: "run", started_at_local: "2026-10-17T07:00:00", moving_duration_s: 2700, distance_m: 9000 }]);
+  const card = page.locator(".planned-entry.is-completed").filter({ hasText: "Synthetic shoe run" }).first();
+  await card.evaluate((element) => { element.open = true; });
+  const row = card.locator(".planned-equipment");
+  const select = row.getByRole("combobox", { name: "Schuh" });
+  await expect(select).toHaveValue("shoe-a");
+  await expect(row.locator(".planned-equipment-suggestion")).toBeVisible();
+  expect(posts).toEqual([]);
+  await row.scrollIntoViewIfNeeded();
+  await row.getByRole("button", { name: "Übernehmen" }).click();
+  await expect.poll(() => posts.at(-1)).toEqual({ activity_id: "act_eq", equipment_id: "shoe-a" });
+  const saved = card.locator(".planned-equipment");
+  await expect(saved.locator(".planned-equipment-status")).toContainText("Gespeichert.");
+  await expect(saved.getByRole("button", { name: "Übernehmen" })).toBeHidden();
+  await expect(saved.locator(".planned-equipment-suggestion")).toBeHidden();
+  // "Keiner" is a normal choice.
+  await saved.getByRole("combobox", { name: "Schuh" }).selectOption("");
+  await saved.getByRole("button", { name: "Übernehmen" }).click();
+  await expect.poll(() => posts.at(-1)).toEqual({ activity_id: "act_eq", equipment_id: null });
+  await card.locator(".planned-equipment").getByRole("button", { name: "Rückgängig" }).click();
+  await expect(card.locator(".planned-equipment-status")).toContainText("Zurückgenommen.");
+  await expect(card.locator(".planned-equipment").getByRole("combobox", { name: "Schuh" })).toHaveValue("shoe-a");
+});

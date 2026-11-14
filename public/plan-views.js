@@ -1500,6 +1500,82 @@ function appendOpenedPlannedParts(details, head, entry, actual) {
   if (activityId && !details.querySelector(".planned-zone-time")) {
     void appendPlannedZoneTime(details, activityId, ["Radfahren", "Rad indoor"].includes(activitySportLabel(calendarSportType(actual))));
   }
+  if (activityId && !details.querySelector(".planned-equipment")) void appendPlannedEquipment(details, activityId, actual);
+}
+
+// The session's equipment (#2879): one select of the items it can take and "Keiner". A suggestion (the item
+// last assigned to its sport) is preselected and marked; only "Übernehmen" saves, with a receipt and undo.
+async function appendPlannedEquipment(details, activityId, actual) {
+  const row = h("div", "planned-equipment");
+  details.querySelector(":scope > .planned-activity-more")?.before(row);
+  if (!row.isConnected) details.append(row);
+  let choice;
+  try {
+    choice = (await plannedSessionRead(activityId))?.equipment_choice;
+  } catch {
+    choice = null;
+  }
+  if (!choice || (!choice.options?.length && !choice.explicit)) {
+    row.remove();
+    return;
+  }
+  const sport = activitySportLabel(calendarSportType(actual));
+  const label = { Laufen: "Schuh", Radfahren: "Rad", "Rad indoor": "Rad" }[sport] || "Ausrüstung";
+  const saved = choice.explicit ? choice.assigned || "" : null;
+  const preset = saved ?? choice.suggested ?? null;
+  const select = h("select", { "aria-label": label },
+    saved === null && !choice.suggested ? h("option", { value: "-", selected: true }, "–") : null,
+    choice.options.map((item) => h("option", { value: item.id, selected: item.id === preset }, item.name)),
+    h("option", { value: "", selected: preset === "" }, "Keiner"));
+  const hint = h("span", { className: "status-chip planned-equipment-suggestion", hidden: !(saved === null && choice.suggested) }, "Vorschlag");
+  const apply = h("button", { type: "button", className: "secondary-button", hidden: true }, "Übernehmen");
+  const status = h("p", { className: "planned-equipment-status", role: "status" });
+  const pending = () => select.value !== "-" && (saved === null || select.value !== saved);
+  const sync = () => { apply.hidden = !pending(); hint.hidden = select.value !== choice.suggested || saved !== null; };
+  select.addEventListener("change", sync);
+  apply.addEventListener("click", async () => {
+    apply.disabled = true;
+    try {
+      const result = await api("/api/equipment/assignment", { method: "POST", body: JSON.stringify({ activity_id: activityId, equipment_id: select.value || null }) });
+      plannedEquipmentChanged(activityId);
+      plannedEquipmentReceipt(row, details, activityId, actual, result?.change);
+    } catch (error) {
+      apply.disabled = false;
+      if (!isSessionEndedError(error)) status.textContent = error.message;
+    }
+  });
+  row.replaceChildren(h("label", "planned-equipment-field", h("span", null, label), select), hint, apply, status);
+  sync();
+}
+
+// An assignment changes usage and the equipment notice; the next opening reads the session again.
+function plannedEquipmentChanged(activityId) {
+  plannedSessionReads.delete(activityId);
+  globalThis.invalidateEquipmentNotice?.();
+  globalThis.invalidateAnalysisReport?.("/api/analysis/training-records");
+}
+
+function plannedEquipmentReceipt(row, details, activityId, actual, change, message = "Gespeichert. ") {
+  row.remove();
+  void appendPlannedEquipment(details, activityId, actual).then(() => {
+    const status = details.querySelector(".planned-equipment-status");
+    if (!status) return;
+    status.textContent = message;
+    if (!change?.id) return;
+    const undo = h("button", { className: "message-undo", type: "button" }, "Rückgängig");
+    undo.addEventListener("click", async () => {
+      undo.disabled = true;
+      try {
+        await api("/api/change-history/undo", { method: "POST", body: JSON.stringify({ change_id: change.id, expected_current_hash: change.after_hash }) });
+        plannedEquipmentChanged(activityId);
+        plannedEquipmentReceipt(details.querySelector(".planned-equipment") || row, details, activityId, actual, null, "Zurückgenommen.");
+      } catch (error) {
+        undo.disabled = false;
+        status.firstChild.textContent = `${error.message} `;
+      }
+    });
+    status.append(undo);
+  });
 }
 
 // A planned unit's body: its load, its steps (#2447) and its actions; returns the step list, if any.
