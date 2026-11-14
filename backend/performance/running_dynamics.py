@@ -240,9 +240,11 @@ def _verdict(
         # The middle third of the distance from 50 %, as offsets either side.
         near, far = _tertiles(sorted(abs(item - 50) for item in earlier))
         distance = abs(value - 50)
-        verdict = (
-            "better" if distance < near else "worse" if distance > far else "usual"
-        )
+        verdict = "usual"
+        if distance < near:
+            verdict = "better"
+        elif distance > far:
+            verdict = "worse"
         return {"verdict": verdict, "usual": [round(near, 2), round(far, 2)]}
     low, high = _tertiles(sorted(earlier))
     usual = [round(low, 2), round(high, 2)]
@@ -292,7 +294,7 @@ def _run_verdicts(
         if metric == "cadence_spm":
             reported *= RUN_CADENCE_FACTOR
         result[metric] = {
-            "verdict": max(time, key=lambda key: time[key]) if time else "too_few",
+            "verdict": max(time, key=time.__getitem__) if time else "too_few",
             "value": value,
             "reference_band": garmin_band(metric, reported or value),
         }
