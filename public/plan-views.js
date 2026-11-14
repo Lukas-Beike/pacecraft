@@ -1500,12 +1500,13 @@ function appendOpenedPlannedParts(details, head, entry, actual) {
   if (activityId && !details.querySelector(".planned-zone-time")) {
     void appendPlannedZoneTime(details, activityId, ["Radfahren", "Rad indoor"].includes(activitySportLabel(calendarSportType(actual))));
   }
-  if (activityId && !details.querySelector(".planned-equipment")) void appendPlannedEquipment(details, activityId, actual);
+  void appendPlannedEquipment(details, activityId, actual);
 }
 
 // The session's equipment (#2879): one select of the items it can take and "Keiner". A suggestion (the item
 // last assigned to its sport) is preselected and marked; only "Übernehmen" saves, with a receipt and undo.
 async function appendPlannedEquipment(details, activityId, actual) {
+  if (!activityId || details.querySelector(".planned-equipment")) return;
   const row = h("div", "planned-equipment");
   details.querySelector(":scope > .planned-activity-more")?.before(row);
   if (!row.isConnected) details.append(row);
