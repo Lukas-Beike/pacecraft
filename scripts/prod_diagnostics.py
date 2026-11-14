@@ -36,6 +36,8 @@ COUNTS = (
     "external_calendar_events",
 )
 MEMORY = ("rss_bytes", "peak_rss_bytes")
+# Providers and calendars refresh daily: a last sync older than one day plus
+# half a day of slack is stale. A job still open after 2 h counts as stuck.
 STALE_HOURS = 36
 STUCK_HOURS = 2
 OPEN_JOB = {"queued", "running", "pending"}
