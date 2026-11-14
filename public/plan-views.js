@@ -1429,7 +1429,7 @@ function plannedZoneBuckets(zone) {
 function plannedFuellingQuery(entry, dateKey) {
   const sport = String(entry?.sport || "").toLowerCase();
   const seconds = plannedDurationSeconds(entry);
-  if (!["run", "ride"].includes(sport) || !(seconds >= 3600)) return null;
+  if (!["run", "ride"].includes(sport) || seconds < 3600) return null;
   return new URLSearchParams({ sport, environment: String(entry.environment || ""), date: dateKey, duration_s: String(Math.round(seconds)) }).toString();
 }
 
