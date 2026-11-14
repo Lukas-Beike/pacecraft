@@ -12,6 +12,7 @@ from backend.activities.strength_sets import plan_comparison
 from backend.athlete.local_date import iso_date_prefix
 from backend.athlete.profile import ProfileService
 from backend.canonical.activity_summary import (
+    legacy_activity_keys,
     stored_activity_key,
     summary_is_electric,
 )
@@ -22,7 +23,10 @@ from backend.coach.context import (
 )
 from backend.coach.session_checks import matched_focus
 from backend.errors import AppError
-from backend.performance.activity_read_service import ActivityAnalysisReadService
+from backend.performance.activity_read_service import (
+    ActivityAnalysisReadService,
+    calendar_pairs,
+)
 from backend.performance.comparable_sessions import comparable_sessions
 from backend.performance.pace_at_hr import COMPARE_DAYS, session_comparison
 from backend.performance.planned_targets import (
@@ -221,6 +225,56 @@ class CoachActivityReadToolService:
             <= last.isoformat()
         ]
 
+    def _paired_units(
+        self,
+        session: Any,
+        day: date | None,
+        around: list[dict[str, Any]] | None,
+        nearby: list[Any] | None,
+    ) -> tuple[list[dict[str, Any]] | None, str | None]:
+        """The units the session may take, and why it takes none.
+
+        The one unit the calendar pairs with the session, none when it pairs
+        another session (or none) with the day's units, with the reason; every
+        unit around the day when the day's sessions cannot be read, so the
+        unique day-and-sport rule stands in.
+        """
+        if around is None or day is None or not isinstance(session, dict):
+            return around, None
+        session_id = str(session.get("activity_id") or "")
+        first, last = (
+            (day - timedelta(days=1)).isoformat(),
+            (day + timedelta(days=1)).isoformat(),
+        )
+        # The units' window: a provider link to a neighbouring day's unit counts.
+        summaries = [
+            row
+            for row in nearby or ()
+            if first <= iso_date_prefix(row.get("started_at_local")) <= last
+        ]
+        own = next(
+            (
+                row
+                for row in summaries
+                if session_id in (stored_activity_key(row), *legacy_activity_keys(row))
+            ),
+            None,
+        )
+        if own is None:
+            return around, None
+        pairs = calendar_pairs(around, summaries)
+        unit = next(
+            (
+                item
+                for item in around
+                if session_id in pairs.get(str(item.get("id")), ())
+            ),
+            None,
+        )
+        if unit is not None:
+            return [unit], None
+        return [], _unpaired_reason(session, own, around, pairs)
+
     def _with_session_context(self, detail: dict[str, Any]) -> dict[str, Any]:
         """The detail with its planned units and the session checks.
 
@@ -230,20 +284,36 @@ class CoachActivityReadToolService:
         day = self._session_day(detail)
         units = self._units_since(day)
         around = self._units_around(units, day)
+        session = detail.get("session")
+        # One read of the sessions around the day for the pairing and the checks.
+        nearby = (
+            None
+            if day is None
+            else self._activity_read.summaries_between(
+                day - timedelta(days=3), day + timedelta(days=1)
+            )
+        )
+        # The checks see only the unit the calendar pairs with the session (#2863).
+        paired, unpaired_reason = self._paired_units(session, day, around, nearby)
+        calendar = paired is not None and paired is not around
         result = {
             **detail,
             "planned_units": None
             if around is None
             else bounded_coach_context_value(around[:10], 4000),
         }
-        session = detail.get("session")
         if isinstance(session, dict) and day is not None:
-            result.update(self._session_checks(session, day, around, units))
+            result.update(
+                self._session_checks(session, day, paired, units, nearby, calendar)
+            )
+            focus = result.get("focus")
+            if unpaired_reason and isinstance(focus, dict) and not paired:
+                result["focus"] = {**focus, "reason": unpaired_reason}
             targets = self._planned_targets(
-                detail, session, result.get("focus"), around
+                detail, session, result.get("focus"), paired
             )
             cap = self._stored_heart_rate_cap(
-                detail, session, result.get("focus"), around
+                detail, session, result.get("focus"), paired
             )
             if cap is not None:
                 targets = {
@@ -252,7 +322,7 @@ class CoachActivityReadToolService:
                 }
             if targets is not None:
                 result["planned_targets"] = targets
-            strength = _strength_plan(detail, session, result.get("focus"), around)
+            strength = _strength_plan(detail, session, result.get("focus"), paired)
             if strength is not None:
                 result["strength_plan"] = strength
         return result
@@ -263,13 +333,14 @@ class CoachActivityReadToolService:
         day: date,
         around: list[dict[str, Any]] | None,
         units: list[dict[str, Any]] | None,
+        nearby: list[Any] | None,
+        paired: bool = False,
     ) -> dict[str, Any]:
-        checks: dict[str, Any] = {"focus": matched_focus(session, around)}
+        checks: dict[str, Any] = {
+            "focus": matched_focus(session, around, paired=paired)
+        }
         if session.get("sport") not in ("run", "ride"):
             return checks
-        nearby = self._activity_read.summaries_between(
-            day - timedelta(days=3), day + timedelta(days=1)
-        )
         checks["strength_before"] = self._strength_before(session, nearby, units)
         own = next(
             (
@@ -463,6 +534,29 @@ def _matched_unit(
         and planned_sport_environment(unit)[0].value == session.get("sport")
     ]
     return same[0] if len(same) == 1 else None
+
+
+def _unpaired_reason(
+    session: Mapping[str, Any],
+    own: Mapping[str, Any],
+    around: list[dict[str, Any]],
+    pairs: Mapping[str, tuple[str, ...]],
+) -> str | None:
+    """Why a session with a planned unit of its day and sport takes none."""
+    day = iso_date_prefix(session.get("started_at_local"))
+    same = [
+        unit
+        for unit in around
+        if iso_date_prefix(unit.get("date")) == day
+        and planned_sport_environment(unit)[0].value == session.get("sport")
+    ]
+    if not same:
+        return None
+    if summary_is_not_training(own):
+        return "Pendeln, Einfahren und Ausfahren erfüllen keine geplante Einheit."
+    if any(str(unit.get("id")) in pairs for unit in same):
+        return "Die geplante Einheit dieses Tages gehört zu einer anderen Aktivität."
+    return None
 
 
 def _strength_plan(

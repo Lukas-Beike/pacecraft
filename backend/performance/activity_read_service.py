@@ -2,7 +2,7 @@
 
 import functools
 from collections.abc import Callable, Mapping, Sequence
-from datetime import date
+from datetime import date, timedelta
 from typing import Any, Final
 from zoneinfo import ZoneInfo
 
@@ -109,9 +109,13 @@ class ActivityAnalysisReadService(ActivityReadService):
             day = date.fromisoformat(iso_date_prefix(session.get("started_at_local")))
         except ValueError:
             return None
-        units = self._planned_units().list_between(day, day)
-        unit = _paired_unit(
-            units, self.summaries_between(day, day) or [], session.get("activity_id")
+        # One day around, so a provider link to a neighbouring day's unit counts.
+        first, last = day - timedelta(days=1), day + timedelta(days=1)
+        units = self._planned_units().list_between(first, last)
+        unit = paired_unit(
+            units,
+            self.summaries_between(first, last) or [],
+            session.get("activity_id"),
         )
         if unit is None:
             return None
@@ -288,19 +292,48 @@ class ActivityAnalysisReadService(ActivityReadService):
         return {"ok": True, **document, "data_scope": _data_scope(document, records)}
 
 
-def _paired_unit(
+def calendar_pairs(
+    units: Sequence[Mapping[str, Any]], activities: Sequence[Mapping[str, Any]]
+) -> dict[str, tuple[str, ...]]:
+    """Each local planned unit the calendar pairs, with its session's keys.
+
+    Archived and locally deleted units take part as little as in the calendar.
+    The keys are the session's stored key and its legacy record ids.
+    """
+    live = [
+        dict(unit)
+        for unit in units
+        if not unit.get("archived") and not unit.get("local_deleted")
+    ]
+    planned = canonical_planned_workouts(live, len(live))
+    return {
+        str(planned[index].get("local_id")): (
+            stored_activity_key(row),
+            *legacy_activity_keys(row),
+        )
+        for index, row in match_planned_workouts(planned, list(activities)).items()
+    }
+
+
+def paired_unit(
     units: Sequence[dict[str, Any]],
-    activities: Sequence[ActivitySummary],
+    activities: Sequence[Mapping[str, Any]],
     session_id: Any,
 ) -> dict[str, Any] | None:
-    """The local planned unit the calendar pairs with the session, if one."""
-    planned = canonical_planned_workouts(list(units), len(units))
-    keys = [
-        planned[index].get("local_id")
-        for index, row in match_planned_workouts(planned, activities).items()
-        if str(session_id) in (stored_activity_key(row), *legacy_activity_keys(row))
-    ]
-    return next((unit for unit in units if keys == [str(unit.get("id"))]), None)
+    """The local planned unit the calendar pairs with the session, if one.
+
+    ``units`` and ``activities`` cover the session's day and the days around
+    it; the session details and the Coach (#2863) both pair this way.
+    """
+    pairs = calendar_pairs(units, activities)
+    return next(
+        (
+            unit
+            for unit in units
+            if str(session_id) in pairs.get(str(unit.get("id")), ())
+        ),
+        None,
+    )
 
 
 def _add_purpose(session: dict[str, Any], summary: ActivitySummary | None) -> None:
