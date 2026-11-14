@@ -182,7 +182,9 @@ class IssueUpdateTests(unittest.TestCase):
             pulls=pulls,
         )
         self.assertEqual(code, 0)
-        self.assertIn("closed #12", out)
+        self.assertIn(
+            "#12: ticked 0, summary posted, 'in progress' label cleared; closed", out
+        )
         self.assertEqual(
             fake.writes(),
             [
@@ -200,7 +202,11 @@ class IssueUpdateTests(unittest.TestCase):
             state="CLOSED",
         )  # fmt: skip
         self.assertEqual(code, 0)
-        self.assertIn("#12 was already closed", out)
+        self.assertIn(
+            "#12: ticked 0, summary posted, 'in progress' label cleared; "
+            "was already closed",
+            out,
+        )
         self.assertEqual(
             fake.writes(), [["issue", "comment", "12"], ["issue", "edit", "12"]]
         )
@@ -208,10 +214,16 @@ class IssueUpdateTests(unittest.TestCase):
         # them and close ticks them, boxes above the criteria stay unchanged;
         # #2799: a plain "Acceptance" heading holds criteria too.
         body = "- [x] done\n## Acceptance\n- [ ] works\r\n* [ ] fast\n"
-        code, _, _, fake = self.run_script(
+        code, out, _, fake = self.run_script(
             "close", "12", "--body-file", str(self.file), body=body, state="CLOSED"
         )
         self.assertEqual(code, 0)
+        # #2931: the output names the work, so it does not read as a refusal.
+        self.assertIn(
+            "#12: ticked 2, summary posted, 'in progress' label cleared; "
+            "was already closed",
+            out,
+        )
         self.assertEqual(  # ticks first: a rerun after a failed edit posts once
             fake.writes(),
             [
