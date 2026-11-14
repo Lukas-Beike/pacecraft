@@ -107,8 +107,8 @@ The test workflow SHALL run on pushes and pull requests to `develop` and `main`,
 - **THEN** shards 1 to 4 run `coverage run tests/run_tests.py --shard N --total 4` on Python 3.14 with hash-locked dependencies, each uploads exactly one coverage file, and the job names are `Test shard N/4`
 
 #### Scenario: Hung shard
-- **WHEN** a native shard's tests still run after 10 minutes (`--hang-timeout 600`)
-- **THEN** it prints every thread's stack, naming the hanging test, and fails; the shard job's `timeout-minutes: 20` frees the runner as a last resort
+- **WHEN** a native shard or the container suite still runs after 10 minutes (`--hang-timeout 600`; 1800 for the docs-only step)
+- **THEN** it prints every thread's stack, naming the hanging test, and fails; the jobs' `timeout-minutes` (40 for the shards, 20 for the container suite) free the runner as a last resort
 
 #### Scenario: Container suite
 - **WHEN** the shared image is available

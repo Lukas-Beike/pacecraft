@@ -63,27 +63,40 @@ class RunnerEvidenceTests(unittest.TestCase):
             def test_case(self):
                 pass
 
-        with (
-            mock.patch.object(run_tests.faulthandler, "dump_traceback_later") as arm,
-            mock.patch.object(
-                run_tests.faulthandler, "cancel_dump_traceback_later"
-            ) as off,
-            mock.patch.object(sys, "argv", ["run_tests.py", "--hang-timeout", "600"]),
-            mock.patch.object(
-                run_tests,
-                "discover_tests",
-                return_value=list(
-                    run_tests.iter_tests(
-                        unittest.defaultTestLoader.loadTestsFromTestCase(Quick)
-                    )
-                ),
-            ),
-            contextlib.redirect_stdout(io.StringIO()),
-            contextlib.redirect_stderr(io.StringIO()),
+        tests = list(
+            run_tests.iter_tests(unittest.defaultTestLoader.loadTestsFromTestCase(Quick))
+        )
+        # 600: armed before discovery, disarmed after. 0 (a nested in-process
+        # main() inside an armed shard): never cancels the shard's timer.
+        calls = []
+        for argv, expected in (
+            (["--hang-timeout", "600"], ["arm", "discover", "cancel"]),
+            ([], ["discover"]),
         ):
-            self.assertEqual(run_tests.main(), 0)
-        arm.assert_called_once_with(600.0, exit=True)
-        off.assert_called_once_with()  # disarmed once the shard finished
+            calls.clear()
+            with (
+                self.subTest(argv=argv),
+                mock.patch.object(
+                    run_tests.faulthandler,
+                    "dump_traceback_later",
+                    side_effect=lambda *a, **k: calls.append("arm"),
+                ),
+                mock.patch.object(
+                    run_tests.faulthandler,
+                    "cancel_dump_traceback_later",
+                    side_effect=lambda: calls.append("cancel"),
+                ),
+                mock.patch.object(sys, "argv", ["run_tests.py", *argv]),
+                mock.patch.object(
+                    run_tests,
+                    "discover_tests",
+                    side_effect=lambda: calls.append("discover") or tests,
+                ),
+                contextlib.redirect_stdout(io.StringIO()),
+                contextlib.redirect_stderr(io.StringIO()),
+            ):
+                self.assertEqual(run_tests.main(), 0)
+                self.assertEqual(calls, expected)
 
     def test_setup_class_error_does_not_claim_selected_tests_ran(self):
         class Broken(unittest.TestCase):
@@ -539,9 +552,7 @@ class SupervisorTests(unittest.TestCase):
                 except (FileNotFoundError, PermissionError) as error:
                     last_error = error
                     time.sleep(0.02)
-            self.assertIsNotNone(
-                observed, f"owned descendant reached readiness: {last_error!r}"
-            )
+            self.assertIsNotNone(observed, f"owned descendant reached readiness: {last_error!r}")
             if os.name == "nt":
                 kernel = ctypes.WinDLL("kernel32", use_last_error=True)
                 kernel.OpenProcess.argtypes = [
