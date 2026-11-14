@@ -22,7 +22,7 @@
      "role": "user"
     }
    ],
-   "instructions": "<instructions#4>",
+   "instructions": "<instructions#3>",
    "max_output_tokens": 16000,
    "model": "gpt-6-luna",
    "parallel_tool_calls": false,
@@ -43,7 +43,7 @@
      "type": "function_call_output"
     }
    ],
-   "instructions": "<instructions#4>",
+   "instructions": "<instructions#3>",
    "max_output_tokens": 16000,
    "model": "gpt-6-luna",
    "parallel_tool_calls": false,
@@ -196,7 +196,7 @@
      "role": "user"
     }
    ],
-   "instructions": "<instructions#5>",
+   "instructions": "<instructions#4>",
    "max_output_tokens": 16000,
    "model": "gpt-6-luna",
    "parallel_tool_calls": false,
@@ -229,7 +229,7 @@
      "role": "user"
     }
    ],
-   "instructions": "<instructions#6>",
+   "instructions": "<instructions#5>",
    "max_output_tokens": 16000,
    "model": "gpt-6-luna",
    "parallel_tool_calls": false,
@@ -278,7 +278,7 @@
      "type": "function_call_output"
     }
    ],
-   "instructions": "<instructions#5>",
+   "instructions": "<instructions#4>",
    "max_output_tokens": 16000,
    "model": "gpt-6-luna",
    "parallel_tool_calls": false,
@@ -475,9 +475,13 @@
      "call_id": "c-6",
      "output": "{\"ok\": false, \"reason\": \"tool_step_limit_reached\", \"executed\": false}",
      "type": "function_call_output"
+    },
+    {
+     "content": "<turn_notices>\nTool step limit reached for this turn: no further tools can run. Nothing beyond the confirmed tool results was saved or sent. Tell the athlete plainly which parts are done and which are not, never claim an unfinished change, and say that replying \"weiter\" continues the request.\n</turn_notices>",
+     "role": "user"
     }
    ],
-   "instructions": "<instructions#3>",
+   "instructions": "<instructions#1>",
    "max_output_tokens": 16000,
    "model": "gpt-6-luna",
    "parallel_tool_calls": false,

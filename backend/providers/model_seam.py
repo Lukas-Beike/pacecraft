@@ -12,6 +12,9 @@ class ModelStep:
 
     opaque_state: list[dict[str, Any]]
     tool_results: list[dict[str, str]]
+    # App text appended to the user turn after the tool results; the
+    # instructions stay identical for the whole turn.
+    notice: str = ""
 
 
 @dataclass

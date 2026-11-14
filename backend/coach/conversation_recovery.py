@@ -40,7 +40,14 @@ class CoachConversationRecoveryService:
         recovery_state: dict[str, bool],
         request_delta_emitted: bool,
         attempt: int,
+        refreshed_context: str = "",
     ) -> bool:
+        """Rebuild a turn whose remote conversation is gone.
+
+        The rebuilt request starts a new conversation, so it may carry in its
+        instructions what lived only in the dropped tool rounds: the turn's
+        latest refreshed athlete context and the last round's notice.
+        """
         if (
             exc.reason != "conversation_state_invalid"
             or recovery_state["conversation_recovered"]
@@ -56,6 +63,8 @@ class CoachConversationRecoveryService:
         for candidate in (turn_request, request):
             candidate.conversation_id = None
         # The rebuilt dialogue carries the confirmed steps: no tool results to resend.
+        notice = request.steps[-1].notice if request.steps else ""
+        carried = "".join("\n\n" + text for text in (refreshed_context, notice) if text)
         request.steps = []
         request.input = json.dumps(
             {
@@ -81,7 +90,7 @@ class CoachConversationRecoveryService:
             "using local dialogue and confirmed_steps. Earlier image pixels may be "
             "unavailable; ask for missing evidence only if essential. Never invent "
             "attachment details."
-        )
+        ) + carried
         self._logger.warning(
             "Coach conversation recovered from local context",
             extra={"event": "coach_conversation_recovered"},
