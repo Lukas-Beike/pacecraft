@@ -178,7 +178,8 @@ class ProdChecksTests(unittest.TestCase):
         self.assertIn("FAIL sync last_error set: True", text)
         self.assertIn("ok provider garmin last sync", text)
         self.assertIn("info provider wahoo last sync never", text)
-        self.assertIn("2 unsynced, 1 with error; error kinds: HTTPError 2", text)
+        # Error kinds of the whole count window (#2878).
+        self.assertIn("2 unsynced, 1 with error; error kinds: ? 1, HTTPError 2", text)
         self.assertIn("info workout library: pending 1", text)
         # Per provider and level (#2849); other text prints as `?`.
         self.assertIn(
@@ -193,6 +194,18 @@ class ProdChecksTests(unittest.TestCase):
         self.assertIn("info plan push ?: job ? 1", text)
         self.assertEqual(
             prod_diagnostics.error_kind({"error_class": "boom: remote said no"}), "?"
+        )
+        # A malformed provider entry or count prints nothing instead of crashing;
+        # a report without the counts says so.
+        self.assertEqual(
+            prod_diagnostics.plan_pushes(
+                {"garmin": ["x"], "wahoo": {"jobs": {"failed": float("nan")}}}
+            ),
+            {"garmin": {}, "wahoo": {}},
+        )
+        self.assertEqual(
+            prod_diagnostics.push_lines({"push_counts_reported": False}),
+            [("info", "plan push counts: not in this report")],
         )
         self.assertIn("ok logout 200", text)
         self.assertEqual(FakeApp.state["logouts"], 1)

@@ -240,7 +240,9 @@ def status_counts(
 ) -> dict[str, dict[str, dict[str, int]]]:
     """Per provider: job and item statuses and error classes of jobs since ``since``.
 
-    Counts only, settled items included; ``since`` is a ``utc_timestamp``.
+    Counts only, settled items included; ``since`` is a ``utc_timestamp``. A
+    job still queued or running counts whatever its age, so a stuck one stays
+    visible.
     """
     result: dict[str, dict[str, dict[str, int]]] = {}
     queries = (
@@ -248,7 +250,8 @@ def status_counts(
             "job",
             (
                 "SELECT provider, status, error_class, count(*) AS n FROM sync_jobs "
-                "WHERE type=? AND created_at >= ? GROUP BY provider, status, error_class"
+                "WHERE type=? AND (created_at >= ? OR status IN ('queued', 'running')) "
+                "GROUP BY provider, status, error_class"
             ),
         ),
         (
@@ -256,7 +259,7 @@ def status_counts(
             (
                 "SELECT j.provider, i.status, i.error_class, count(*) AS n "
                 "FROM sync_job_items i JOIN sync_jobs j ON j.id = i.job_id "
-                "WHERE j.type=? AND j.created_at >= ? "
+                "WHERE j.type=? AND (j.created_at >= ? OR j.status IN ('queued', 'running')) "
                 "GROUP BY j.provider, i.status, i.error_class"
             ),
         ),
