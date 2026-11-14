@@ -6,8 +6,9 @@ batches. A failed batch rolls back, and the failure is recorded as ``failed`` in
 own transaction; a delayed retry resumes from the last committed cursor.
 Batches run as background writers, so a waiting foreground request (a login,
 for example) is served between two batches instead of queuing behind the loop.
-After each batch that leaves its stage unfinished the worker rests as long as that
-batch's own work took (its thread time), a duty cycle of at most 50 %, so a long
+After each batch, outside the writer and the maintenance gate, the worker rests as
+long as that batch's own work took (its thread time), a duty cycle of at most 50 %
+also across stage boundaries, so a long
 pass such as a method-version recompute leaves request threads the interpreter
 (#2818, the pattern of the all-time curve build in #2761).
 
@@ -165,10 +166,10 @@ class CanonicalBackfillWorker:
             except Exception as exc:  # noqa: BLE001 - a failed run is recorded, not raised
                 self._fail(stage, name, exc)
                 return False
+            # Outside the writer and the gate: rest as long as the batch worked.
+            self._pause(max(0.0, self._clock() - started))
             if report.done:
                 return True
-            # Outside the writer transaction: rest as long as the batch worked.
-            self._pause(max(0.0, self._clock() - started))
         return False
 
     def _run_batch(self, stage: BatchStage) -> BatchReport:

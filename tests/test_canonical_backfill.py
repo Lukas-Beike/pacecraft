@@ -2060,9 +2060,10 @@ class WorkerTests(BackfillFixture):
         self.assertLessEqual(batches_before_foreground[0], 5)
         self.assertFalse(manager_module._BACKGROUND_WRITER.get())
 
-    def test_unfinished_batches_rest_as_long_as_their_own_work(self) -> None:
-        # #2818: a long pass (a method-version recompute) rests after each
-        # unfinished batch as long as the batch's thread time, outside the writer.
+    def test_batches_rest_as_long_as_their_own_work(self) -> None:
+        # #2818: a long pass (a method-version recompute) rests after each batch,
+        # the stage's last one included, as long as the batch's thread time,
+        # outside the writer and the maintenance gate.
         in_unit: list[bool] = []
 
         class Database:
@@ -2077,8 +2078,9 @@ class WorkerTests(BackfillFixture):
 
                 return unit()
 
+        gate = MaintenanceGate()
         ticks = itertools.count(0.0, 0.25)
-        pauses: list[tuple[float, bool]] = []
+        pauses: list[tuple[float, bool, int]] = []
         backfill = Mock()
         backfill.run_batch.side_effect = [
             BatchReport(items=1, done=False),
@@ -2088,15 +2090,39 @@ class WorkerTests(BackfillFixture):
         worker = CanonicalBackfillWorker(
             backfill=backfill,
             database=Database,
-            maintenance_gate=MaintenanceGate(),
+            maintenance_gate=gate,
             poll_seconds=0,
             clock=lambda: next(ticks),
-            pause=lambda seconds: pauses.append((seconds, bool(in_unit))),
+            pause=lambda seconds: pauses.append((seconds, bool(in_unit), gate.active)),
         )
         worker.run_loop()
 
         self.assertEqual(backfill.run_batch.call_count, 3)
-        self.assertEqual(pauses, [(0.25, False), (0.25, False)])
+        self.assertEqual(pauses, [(0.25, False, 0)] * 3)
+
+    def test_stop_ends_a_rest_at_once(self) -> None:
+        # The default rest waits on the stop event, so stop() during a long rest
+        # ends the loop without waiting the rest out.
+        ticks = itertools.count(0.0, 60.0)
+        backfill = Mock()
+        backfill.run_batch.return_value = BatchReport(items=1, done=False)
+        worker = CanonicalBackfillWorker(
+            backfill=backfill,
+            database=FakeDatabase,
+            maintenance_gate=MaintenanceGate(),
+            poll_seconds=0,
+            clock=lambda: next(ticks),
+        )
+        thread = threading.Thread(target=worker.run_loop)
+        thread.start()
+        deadline = time.monotonic() + 5
+        while backfill.run_batch.call_count == 0 and time.monotonic() < deadline:
+            time.sleep(0.01)
+        worker.stop()
+        thread.join(5)
+
+        self.assertFalse(thread.is_alive())
+        self.assertEqual(backfill.run_batch.call_count, 1)
 
     def test_loop_ends_when_the_backfill_reports_done(self) -> None:
         backfill = Mock()

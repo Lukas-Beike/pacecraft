@@ -637,6 +637,10 @@ One background worker SHALL re-project stored raw records in batches of at most 
 - **WHEN** the writer is held by another transaction or the maintenance gate refuses the operation
 - **THEN** the worker waits 5 seconds and repeats the same batch; the run is not marked failed.
 
+#### Scenario: Paced batches
+- **WHEN** a batch of any stage ends
+- **THEN** the worker rests, outside the writer transaction and the maintenance gate, as long as that batch's own thread time took before it runs the next batch or stage (at most half the interpreter, #2818); a stop request ends the rest at once.
+
 #### Scenario: Start while a pass runs
 - **WHEN** the worker is started again while its thread runs a pass (for example after a restore)
 - **THEN** no second thread starts; one more pass runs after the current one.
