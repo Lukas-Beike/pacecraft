@@ -627,8 +627,12 @@ class ServerFrontendTests(ServerTestCase):
         self.assertNotIn("function analysisIsoWeek(dateKey)", analysis)
         self.assertNotIn("renderExistingPerformanceReports", analysis)
         self.assertNotIn("renderRacePredictionCharts", analysis)
+        # Weekly series keep week ticks; the tick mode picks their label (#2922).
+        self.assertIn('let tickMode = weekTicks ? "week" : "day";', analysis)
         self.assertIn(
-            "weekTicks ? analysisWeekTickLabel : analysisDayTickLabel", analysis
+            "day: analysisDayTickLabel, week: analysisWeekTickLabel, "
+            "month: analysisMonthTickLabel",
+            analysis,
         )
         self.assertIn("calendarWeeks: true", analysis)
         self.assertIn("calendarWeeks = false", analysis)
