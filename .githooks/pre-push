@@ -18,3 +18,10 @@ elif [ "$status" -ne 0 ]; then
   echo "Push blocked: the quality ratchet found new findings in HEAD (see above). Fix them." >&2
   exit 1
 fi
+# The generated documents, rewritten in the same export and compared with HEAD
+# (#2949); the view catalogue reads the clone's node_modules through a link
+# the script removes before this trap deletes the export.
+PACECRAFT_NODE_MODULES="$root/node_modules" python "$tree/scripts/regenerate_docs.py" --check "$tree" || {
+  echo "Push blocked: the generated-document check failed (see above)." >&2
+  exit 1
+}
