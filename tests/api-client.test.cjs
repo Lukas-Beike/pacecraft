@@ -20,7 +20,25 @@ function client(respond = () => json({ ok: true })) {
 test("the client exposes one frozen surface", () => {
   const { api } = client();
   assert.ok(Object.isFrozen(api));
-  assert.deepEqual(Object.keys(api).sort(), ["audio", "download", "messageForReason", "request", "responseError", "stream"]);
+  assert.deepEqual(Object.keys(api).sort(), ["audio", "download", "messageForReason", "request", "responseError", "settled", "stream"]);
+});
+
+test("settled waits for every request in flight, a failed one too (#2966)", async () => {
+  const pending = [];
+  const { api } = client((path) => new Promise((resolve) => pending.push(() => resolve(path.endsWith("fail") ? json({}, 500) : json({ ok: true })))));
+  let done = false;
+  await api.settled();
+  const first = api.request("/api/bootstrap");
+  const second = api.request("/api/fail").catch(() => null);
+  const waited = api.settled().then(() => { done = true; });
+  await new Promise((resolve) => setImmediate(resolve));
+  pending.shift()();
+  await first;
+  assert.equal(done, false, "one read is still in flight");
+  pending.shift()();
+  await second;
+  await waited;
+  assert.equal(done, true);
 });
 
 test("each call arms its own timeout, and an explicit timeout wins", async () => {
