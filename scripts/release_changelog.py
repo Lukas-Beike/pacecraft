@@ -61,7 +61,7 @@ def subjects(commit_range: str, cwd: Path) -> list[str]:
     ]
 
 
-def develop_line(cwd: Path) -> str:
+def develop_line(cwd: Path, warn) -> str:
     """The ref whose history holds the releases' own commits."""
     for ref in DEVELOP_REFS:
         found = subprocess.run(
@@ -72,6 +72,8 @@ def develop_line(cwd: Path) -> str:
         )
         if found.returncode == 0:
             return ref
+    # Without develop a main build lists only its promotions (#2960); say so.
+    warn("::warning::No develop ref; the changelog follows HEAD's history.")
     return "HEAD"
 
 
@@ -91,7 +93,7 @@ def changelog(app_version: str, cwd: Path = ROOT, warn=print) -> dict[str, Any]:
     history = [
         line.split()
         for line in git(
-            "log", develop_line(cwd), "--format=%H %T %ct", cwd=cwd
+            "log", develop_line(cwd, warn), "--format=%H %T %ct", cwd=cwd
         ).splitlines()
     ]
     by_tree: dict[str, list[tuple[str, int]]] = {}

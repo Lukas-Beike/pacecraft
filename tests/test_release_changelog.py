@@ -113,6 +113,17 @@ class ReleaseChangelogTests(unittest.TestCase):
             ],
         )
 
+    def test_a_missing_develop_ref_is_named(self):
+        self.run_changelog("1.0.1")
+        self.assertNotIn("develop", " ".join(self.warnings))
+        git(self.repo, "branch", "-q", "-m", "develop", "trunk")
+        self.warnings.clear()
+        self.run_changelog("1.0.1")
+        self.assertIn(
+            "::warning::No develop ref; the changelog follows HEAD's history.",
+            self.warnings,
+        )
+
     def test_both_release_chores_are_left_out(self):
         for subject in (
             "chore(release): set application version to 2.1.15 (#2945)",
