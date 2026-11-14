@@ -27,7 +27,9 @@ python scripts/issue_update.py close <n> --body-file <summary-file>
   closes, also an issue a merged `Closes #n` PR already closed; it refuses while
   another open checkbox (a part) or an open PR linking it (issue-status rule) remains.
   Its last line names what it did (`#n: ticked 2, summary posted, 'in progress'
-  removed; already closed by the merge`): do not post the summary again.
+  label cleared; was already closed`): do not post the summary again. After an
+  exit 2 the summary may already be posted: look at the issue and finish the
+  rest with `label`/`finish` instead of rerunning `close`.
 - Exit 0: done. Exit 1: refused (no or several matching boxes; open box, open
   PR); read the printed reasons and fix them first, do not
   work around them. Exit 2: bad input, credential-shaped or empty body, or a

@@ -183,7 +183,7 @@ class IssueUpdateTests(unittest.TestCase):
         )
         self.assertEqual(code, 0)
         self.assertIn(
-            "#12: ticked 0, summary posted, 'in progress' removed; closed", out
+            "#12: ticked 0, summary posted, 'in progress' label cleared; closed", out
         )
         self.assertEqual(
             fake.writes(),
@@ -202,7 +202,11 @@ class IssueUpdateTests(unittest.TestCase):
             state="CLOSED",
         )  # fmt: skip
         self.assertEqual(code, 0)
-        self.assertIn("already closed by the merge", out)
+        self.assertIn(
+            "#12: ticked 0, summary posted, 'in progress' label cleared; "
+            "was already closed",
+            out,
+        )
         self.assertEqual(
             fake.writes(), [["issue", "comment", "12"], ["issue", "edit", "12"]]
         )
@@ -216,8 +220,8 @@ class IssueUpdateTests(unittest.TestCase):
         self.assertEqual(code, 0)
         # #2931: the output names the work, so it does not read as a refusal.
         self.assertIn(
-            "#12: ticked 2, summary posted, 'in progress' removed; "
-            "already closed by the merge",
+            "#12: ticked 2, summary posted, 'in progress' label cleared; "
+            "was already closed",
             out,
         )
         self.assertEqual(  # ticks first: a rerun after a failed edit posts once

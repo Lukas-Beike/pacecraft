@@ -92,10 +92,10 @@ def close(number: int, body_file: str) -> int:
         gh("issue", "close", str(number))
     # Name everything done, so a close after the merge does not read as a
     # refusal and nobody posts the summary twice (#2931).
-    state = "closed" if is_open else "already closed by the merge"
+    state = "closed" if is_open else "was already closed"
     print(
         f"#{number}: ticked {len(criteria)}, summary posted, "
-        f"'{IN_PROGRESS}' removed; {state}"
+        f"'{IN_PROGRESS}' label cleared; {state}"
     )
     return 0
 
