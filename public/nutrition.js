@@ -258,8 +258,10 @@ function renderNutritionExpenditure(expenditure, selectedDate) {
   const freshnessLabels = { current: "Aktuell", stale: "Veraltet", delayed: "Verzögert" };
   const freshness = freshnessLabels[expenditure?.freshness] || "Aktualität unbekannt";
   const provisionalLabel = expenditure?.provisional ? " · Vorläufig, da der Tag noch läuft" : "";
+  // A current measurement needs no sentence; its source is the chip on the total (#2846).
+  const current = measured && expenditure?.freshness === "current";
   status.textContent = "Für diesen Tag liegen keine Garmin-Verbrauchsdaten vor.";
-  if (measured) status.textContent = [expenditure.source || "Garmin Connect", freshness].join(" · ") + provisionalLabel;
+  if (measured) status.textContent = current ? "" : [expenditure.source || "Garmin Connect", freshness].join(" · ") + provisionalLabel;
 
   // Absent values return null and render muted as "nicht erfasst" (#1783).
   const formatKcal = (rawValue) => {
@@ -275,6 +277,7 @@ function renderNutritionExpenditure(expenditure, selectedDate) {
   const componentTile = (rawValue, caption) => h("div", "nutrition-total", kcalValue(rawValue), h("span", null, caption));
   const totalTile = componentTile(expenditure?.total_kcal, "Tagesverbrauch");
   totalTile.style.gridColumn = "1 / -1";
+  if (measured) totalTile.lastElementChild.append(" ", recordSourceChip(state.data?.provider_labels?.[providerIds().garmin] || expenditure.source || "Garmin"));
   const projected = expenditure?.projected_total_kcal;
   const hasProjection = projected != null && Number.isFinite(Number(projected));
   const projectionTile = hasProjection ? componentTile(projected, "Prognose Tagesverbrauch") : null;
