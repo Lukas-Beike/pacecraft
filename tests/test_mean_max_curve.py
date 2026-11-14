@@ -713,9 +713,10 @@ class ProfileSelectionTests(unittest.TestCase):
         self.assertEqual("newer", kept["build"])
         self.assertEqual(["newer", "older"], builds)
 
-    def test_the_all_time_build_leaves_the_recent_curves_in_the_memo(self):
-        # #2822: with more sessions than the memo holds, the build walks oldest
-        # first, so the 90-day window's curves are touched last and stay.
+    def test_the_all_time_build_keeps_every_curve_cached(self):
+        # #2822: with more sessions than the memo held, the build evicted the
+        # recent windows' curves and every rebuild recomputed the whole history.
+        # It now reserves room for every session.
         summaries = []
         for index, day in enumerate(("2026-10-10", "2026-09-01")):
             self.add_ride(summaries, f"act_recent{index}", day=day)
@@ -727,14 +728,21 @@ class ProfileSelectionTests(unittest.TestCase):
         )
         service.power_profiles(all_time=True)
         builds.pop()()
+        self.add_ride(summaries, "act_new", day="2026-10-17")
 
         with patch.object(
             mean_max_curve, "_session_curve", wraps=mean_max_curve._session_curve
         ) as computed:
             recent = service.curve_records(90)
+            service.power_profiles(all_time=True)
+            builds.pop()()
 
-        self.assertEqual(2, len(recent))
-        self.assertEqual(0, computed.call_count)
+        self.assertEqual(3, len(recent))
+        # The new session is computed by the 90-day read and evicts the oldest
+        # curve, which the rebuild computes again; no recent curve is recomputed.
+        self.assertEqual(
+            ["act_new", "act_old3"], [call.args[1] for call in computed.call_args_list]
+        )
 
     def test_all_time_bests_keep_old_efforts_while_the_90_days_and_coach_do_not(self):
         summaries = []
