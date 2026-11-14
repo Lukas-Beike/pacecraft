@@ -25,6 +25,9 @@ push without `--force-with-lease`); normal and lease pushes stay allowed.
 the Windows shell tool collapses: a doubled backslash in a heredoc fed to an
 interpreter or written to a file, or in `python -c`, `sed -i` and similar inline
 edits; write such files and scripts with the Write or Edit tool.
+`scripts/hooks/guard_empty_body.py` blocks a `gh pr` or `gh issue` write whose
+`--body-file` is empty or whose `--body` is empty, which would blank the public
+text (#2954).
 `.claude/agents/` defines the `explorer` (Haiku, low effort, read-only),
 `implementer` (Sonnet, medium), and `reviewer` (Sonnet, medium, read-only)
 subagents. `scripts/hooks/thread_model_rule.py` blocks a T3 thread launch whose

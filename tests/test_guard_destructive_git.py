@@ -123,6 +123,7 @@ class GuardDestructiveGitTests(unittest.TestCase):
         self.assertTrue(any("guard_private_paths.py" in c for c in commands))
         self.assertTrue(any("guard_destructive_git.py" in c for c in commands))
         self.assertTrue(any("guard_resolve_thread.py" in c for c in commands))
+        self.assertTrue(any("guard_empty_body.py" in c for c in commands))  # #2954
         self.assertTrue(all(hook["onFailure"] == "block" for hook in shell["hooks"]))
 
 
