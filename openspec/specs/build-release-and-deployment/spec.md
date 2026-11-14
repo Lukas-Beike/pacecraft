@@ -182,11 +182,15 @@ The workflow SHALL build the application image once per run from the event commi
 - **WHEN** the image artifact cannot be downloaded
 - **THEN** the consuming job fails instead of building its own image
 
+#### Scenario: Release changelog in the image
+- **WHEN** the image job builds the shared image
+- **THEN** it first checks out the full history with tags and writes public/changelog.json from local git only: one section per release tag (x.y.z), newest first, holding the commit subjects since the previous release; each tag is mapped to the newest HEAD-history commit with the same tree that is not newer than the tag; merges and `chore(release): set application version` commits are left out; a tag whose tree is not in that history is skipped with a build warning; a build that is not itself a release tree gets a first section for its own commits (labelled with APP_VERSION while that version is unreleased), and if that range cannot be computed the job fails
+
 #### Scenario: Publication paths
 - **WHEN** a release is published, or a manual dispatch on `main` sets `publish_container`
 - **THEN** the publish job runs after the source, image (with its SBOM), test, browser and quality jobs; a dispatch on another ref or with `publish_container` false never publishes
 
-Evidence: `.github/workflows/publish-container.yml` (`image`, `build-and-push`). Tests: `tests/test_ci_contracts.py::test_ci_image_is_built_once_and_shared_by_consumers`; `tests/test_ci_contracts.py::test_release_pushes_the_tested_image_instead_of_rebuilding`; `tests/test_ci_contracts.py::test_e2e_runs_beside_unit_tests_and_shards_desktop_completely` (publish dependencies).
+Evidence: `.github/workflows/publish-container.yml` (`image`, `build-and-push`), `scripts/release_changelog.py`; `tests/test_release_changelog.py`. Tests: `tests/test_ci_contracts.py::test_ci_image_is_built_once_and_shared_by_consumers`; `tests/test_ci_contracts.py::test_release_pushes_the_tested_image_instead_of_rebuilding`; `tests/test_ci_contracts.py::test_e2e_runs_beside_unit_tests_and_shards_desktop_completely` (publish dependencies).
 
 ### Requirement: Release source reference rules
 
