@@ -12,7 +12,7 @@ from unittest.mock import Mock
 from remote_link_fixtures import create_remote_links_table
 from support import temp_database
 
-from backend.db import row_factory
+from backend.db import planning_store, row_factory
 from backend.db.repositories import KeyValueRepository
 from backend.planning.planned_units import (
     plan_push_hash_matches,
@@ -227,14 +227,21 @@ class PlanningRowsTests(unittest.TestCase):
         )
 
     def test_startup_offers_a_stranded_syncing_unit_again(self) -> None:
-        self.assertEqual(self.state.reset_interrupted(), 1)
+        # The start-up settle (settle_interrupted_sync_state, #2888) runs this.
+        def reset() -> int:
+            with self.manager.unit_of_work() as db:
+                return planning_store.reset_interrupted_syncs(
+                    db, NOW, "Die Übertragung wurde unterbrochen."
+                )
+
+        self.assertEqual(reset(), 1)
         with self.manager.reader() as db:
             row = db.execute(
                 "SELECT sync_state, sync_error FROM planned_units WHERE local_id='stuck'"
             ).fetchone()
         self.assertEqual(row["sync_state"], "sync_error")
         self.assertTrue(row["sync_error"])
-        self.assertEqual(self.state.reset_interrupted(), 0)
+        self.assertEqual(reset(), 0)
 
     def test_units_before_the_export_horizon_are_not_pending(self) -> None:
         authority = PlanningAuthorityService(

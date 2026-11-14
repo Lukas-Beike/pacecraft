@@ -197,7 +197,11 @@ from backend.sync.retry_hold import ProviderRetryHold
 from backend.sync.scheduler_wiring import SyncSchedulerServices, build_sync_schedulers
 from backend.sync.session_focus_backfill import SessionFocusBackfill
 from backend.sync.session_rebundle import SessionRebundle
-from backend.sync.state import SyncStateRepository, resync_reset_keys
+from backend.sync.state import (
+    SyncStateRepository,
+    resync_reset_keys,
+    settle_interrupted_sync_state,
+)
 from backend.sync.wahoo_connection import WahooSecretRegistry
 from backend.sync.wahoo_wiring import (
     WahooConnectionServices,
@@ -488,6 +492,7 @@ def initialise_database() -> None:
             current_time=datetime.now(UTC),
             default_profile_json=json.dumps(DEFAULT_PROFILE),
             provider_resync_keys=resync_reset_keys(),
+            settle_interrupted=settle_interrupted_sync_state,
             retention_days=int(getattr(CONFIG_HOLDER.value, "data_retention_days", -1)),
         )
     PROVIDER_CREDENTIAL_SERVICE.refresh()
@@ -1037,7 +1042,6 @@ def main() -> None:
     if sys.platform != "win32":
         faulthandler.register(signal.SIGUSR1, all_threads=True)
     try:
-        WORKOUT_LIBRARY_SYNC.sync_state_service().reset_interrupted()
         SYNC_JOB_QUEUE.service().resume_interrupted()
         COACH_BACKGROUND_JOBS.job_store().resume_interrupted(
             COACH_BACKGROUND_JOBS.turn_failure_service()

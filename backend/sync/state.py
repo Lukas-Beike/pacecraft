@@ -13,11 +13,13 @@ from backend.canonical.vocabulary import (
     ProviderId,
     RemoteEntityKind,
 )
+from backend.db import planning_store
 from backend.db.remote_links import RemoteLinkRepository
 from backend.sync.cursors import read_cursor, write_cursor
 from backend.sync.intervals_state import INTERVALS_OUTPUT_OK_KEY, latest_stamp
 from backend.sync.provider_registry import DEFAULT_PROVIDER_REGISTRY
 from backend.sync.provider_table import CALENDAR_ID
+from backend.sync.refresh import settle_interrupted_refreshes
 
 # Owner of the stored last-sync, daily-marker and full-resync key names; they
 # are persisted, so a name never changes. Competitions are the Intervals.icu area.
@@ -79,6 +81,30 @@ def resync_reset_keys() -> tuple[tuple[str, str], ...]:
     return tuple(
         (resync_key(provider, "running"), resync_key(provider, "status"))
         for provider in _RESYNC_PROVIDERS
+    )
+
+
+def settle_interrupted_sync_state(db: Any, now: str) -> None:
+    """Close the sync state a stopped process left running (#2888).
+
+    Runs with the start-up invariants, at start and on a restored database:
+    provider refreshes left running (#2707), a Garmin operation left running,
+    which a later Garmin push holding its lock would show live (#2706), and
+    library units a push left "syncing", offered again as push errors.
+    """
+    settle_interrupted_refreshes(db, now=now)
+    if db.execute(
+        "SELECT 1 FROM kv WHERE key='sync_operation_status' AND value='running'"
+    ).fetchone():
+        db.execute(
+            "UPDATE kv SET value=CASE key WHEN 'sync_operation_progress' "
+            "THEN '0' ELSE '' END, updated_at=? WHERE key IN "
+            "('sync_operation_status', 'sync_operation_phase', "
+            "'sync_operation_progress', 'sync_operation_message')",
+            (now,),
+        )
+    planning_store.reset_interrupted_syncs(
+        db, now, "Die Übertragung wurde unterbrochen."
     )
 
 

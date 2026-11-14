@@ -14,6 +14,7 @@ from backend.db.repositories import KeyValueRepository
 from backend.db.schema import (
     database_schema_is_current,
 )
+from backend.sync.state import settle_interrupted_sync_state
 
 
 class DatabaseBootstrapTests(unittest.TestCase):
@@ -38,6 +39,7 @@ class DatabaseBootstrapTests(unittest.TestCase):
                 ("intervals_resync_running", "intervals_resync_status"),
                 ("garmin_resync_running", "garmin_resync_status"),
             ),
+            settle_interrupted=settle_interrupted_sync_state,
             retention_days=retention_days,
         )
 

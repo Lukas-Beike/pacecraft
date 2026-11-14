@@ -15,6 +15,7 @@ from backend.sync.state import (
     last_sync_key,
     resync_key,
     resync_reset_keys,
+    settle_interrupted_sync_state,
 )
 
 NOW = "2026-09-20T12:00:00+00:00"
@@ -190,6 +191,58 @@ class SyncStateRepositoryTests(unittest.TestCase):
             )
             self.repository.cursor("garmin", "data")
             self.assertEqual(self.backend.connect_count, connect_count)
+
+    def test_a_restart_closes_the_refreshes_left_running(self):
+        # A crash left refresh rows running, and freshness showed "syncing"
+        # until the next attempt (#2707); the start-up settle closes them (#2888).
+        with self.database_manager.unit_of_work() as db:
+            for row_id, status in (("r-1", "running"), ("r-2", "success")):
+                db.execute(
+                    "INSERT INTO provider_refresh_history(id, provider, area, "
+                    "operation_id, trigger, started_at, finished_at, phase, status) "
+                    "VALUES (?, 'garmin', 'data', 'op', 'scheduler', ?, NULL, "
+                    "'fetching', ?)",
+                    (row_id, NOW, status),
+                )
+            settle_interrupted_sync_state(db, NOW)
+            rows = {
+                row["id"]: (row["status"], row["error_code"], row["finished_at"])
+                for row in db.execute("SELECT * FROM provider_refresh_history")
+            }
+        self.assertEqual(
+            {
+                "r-1": ("skipped", "process_interrupted", NOW),
+                "r-2": ("success", None, None),
+            },
+            rows,
+        )
+
+    def test_a_restart_ends_a_garmin_operation_left_running(self):
+        # A stale "running" would show as live while a later Garmin push holds
+        # the same lock (#2706); the start-up settle ends it (#2888).
+        running = {
+            "sync_operation_status": "running",
+            "sync_operation_phase": "fetching",
+            "sync_operation_progress": "10",
+            "sync_operation_message": "Garmin-Daten werden gelesen…",
+            "sync_operation_id": "op-1",
+        }
+        with self.database_manager.unit_of_work() as db:
+            for key, value in running.items():
+                self.key_values.set(db, key, value)
+            settle_interrupted_sync_state(db, NOW)
+            operation = {key: self.key_values.get(db, key) for key in running}
+        # The whole running projection ends; the id names the last operation.
+        self.assertEqual(
+            {
+                "sync_operation_status": "",
+                "sync_operation_phase": "",
+                "sync_operation_progress": "0",
+                "sync_operation_message": "",
+                "sync_operation_id": "op-1",
+            },
+            operation,
+        )
 
 
 class StoredKeyNameTests(unittest.TestCase):
