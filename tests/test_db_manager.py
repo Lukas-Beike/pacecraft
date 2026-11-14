@@ -7,10 +7,12 @@ import unittest
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 from pathlib import Path
+from unittest.mock import patch
 
 from support import temp_database
 
 from backend.config import load_config
+from backend.db import manager as manager_module
 from backend.db.manager import (
     DatabaseHolder,
     DatabaseManager,
@@ -117,6 +119,8 @@ class DatabaseManagerTests(unittest.TestCase):
             first = holder()
             self.assertIs(holder(), first)
             self.assertIs(holder.manager, first)
+            # Two readers measured fastest without head-of-line blocking (#2788).
+            self.assertEqual(2, first.reader_count)
 
             state["path"] = Path(root) / "second.db"
             second = holder()
@@ -350,6 +354,42 @@ class DatabaseManagerTests(unittest.TestCase):
                 self.assertFalse(contender.is_alive())
                 self.assertEqual(failures, ["reader"])
             manager.close()
+
+    def test_a_third_snapshot_waits_for_one_of_two_slots_and_is_counted(self):
+        # Two readers (#2788): a third concurrent read waits, then succeeds.
+        manager = self.make_wal_manager(reader_count=2)
+        holding, release, done = threading.Barrier(3), threading.Event(), []
+
+        def hold():
+            with manager.read_snapshot():
+                holding.wait(5)
+                release.wait(5)
+
+        holders = [threading.Thread(target=hold) for _ in range(2)]
+        for thread in holders:
+            thread.start()
+        holding.wait(5)
+
+        def third():
+            with manager.read_snapshot() as db:
+                done.append(self.count(db))
+
+        waiter = threading.Thread(target=third)
+        waiter.start()
+        waiter.join(0.1)
+        self.assertEqual([], done, "the third read waits for a slot")
+        release.set()
+        waiter.join(5)
+        for thread in holders:
+            thread.join(5)
+        self.assertEqual([1], done)
+        with (
+            patch.object(manager_module.time, "monotonic", side_effect=[0.0, 1.5]),
+            manager.reader(),
+        ):
+            pass
+        figures = manager.reader_slot_waits()
+        self.assertEqual((2, 1, 1.5), tuple(figures.values()))
 
     def make_wal_manager(self, **options) -> DatabaseManager:
         manager = temp_database(self, "snapshot.db", **options)
