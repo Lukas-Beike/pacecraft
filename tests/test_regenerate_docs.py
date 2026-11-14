@@ -62,6 +62,7 @@ class RegenerateDocsTests(unittest.TestCase):
         code, out = self.main("new\n", "--check", str(self.tree))
         self.assertEqual(code, 2)
         self.assertIn("failed", out)
+        self.assertNotIn("rewrote", out)  # nothing in the checkout changed
 
     def test_without_check_it_rewrites_the_checkout(self):
         with mock.patch.object(regenerate_docs, "ROOT", self.tree):

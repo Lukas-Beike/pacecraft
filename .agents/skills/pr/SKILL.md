@@ -43,7 +43,8 @@ Copy this checklist into your response and tick it as you go:
   suite (17-21 min) only when the selector falls back to it, to reproduce a CI
   failure, or when asked; browser checks use `--project changed`, CI's project
   choice ([browser-tests](../pacecraft-browser-tests/SKILL.md), #2759).
-  After changing routes, views or `backend/performance` constants, run
+  After changing routes, views or `backend/performance` or
+  `backend/activities` constants, run
   `python scripts/regenerate_docs.py` and commit the rewritten documents; the
   pre-push hook refuses stale ones (#2949).
 - **OpenSpec:** list `git diff --name-only --no-renames origin/develop...HEAD --

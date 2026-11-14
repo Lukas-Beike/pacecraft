@@ -49,7 +49,7 @@ def node_modules(root: Path) -> Iterator[None]:
     never reaches the real folder through the link.
     """
     source, link = os.environ.get("PACECRAFT_NODE_MODULES"), root / "node_modules"
-    if not source or link.exists():
+    if not source or os.path.lexists(link):
         yield
         return
     if os.name == "nt":  # a junction needs no symlink privilege
@@ -71,9 +71,11 @@ def regenerate(root: Path) -> int:
                 errors="replace", check=False,
             )  # fmt: skip
             if done.returncode:
-                tail = (done.stderr or done.stdout).strip().splitlines()[-3:]
+                # node:test ends with counters; its failing tests say "not ok".
+                lines = f"{done.stdout}\n{done.stderr}".strip().splitlines()
+                shown = [x for x in lines if "not ok" in x][:5] or lines[-3:]
                 failed = f"{' '.join(command[1:])} failed:"
-                print(failed, *tail, sep="\n  ", file=sys.stderr)
+                print(failed, *shown, sep="\n  ", file=sys.stderr)
                 return 2
     return 0
 
@@ -91,9 +93,11 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     after = documents(root)
     changed = sorted(path for path in after if after[path] != before.get(path))
-    if status or not args.check:
+    if not args.check:
         rewrote = "\n".join(f"rewrote {path}" for path in changed)
         print(rewrote or "Generated documents: unchanged")
+        return status
+    if status:
         return status
     if changed:
         stale = f"Generated documents are stale: {', '.join(changed)}. Run `{FIX}`."

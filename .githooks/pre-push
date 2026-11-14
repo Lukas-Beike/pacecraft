@@ -7,7 +7,7 @@ python "$root/scripts/check_push_secrets.py" || exit $?
 # HEAD, so uncommitted edits neither hide nor add findings. The export has no
 # node_modules, so the clone's are used for the ESLint part when installed.
 tree="$(mktemp -d)" || exit 1
-docs="$(mktemp)" || exit 1
+docs="$(mktemp)" || { rm -rf "$tree"; exit 1; }
 # Wait for the document check first: it unlinks node_modules from the export.
 trap 'wait; rm -rf "$tree" "$docs"' EXIT
 git -C "$root" archive --format=tar HEAD | tar -xf - -C "$tree" || exit 1
