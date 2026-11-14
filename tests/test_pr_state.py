@@ -117,19 +117,24 @@ class PrStateTests(unittest.TestCase):
         self.assertIn("pending: e2e, sonar", out)
         self.assertIn("auto-merge off", out)
         self.assertNotIn("only a new push", out)
-        # #2934: a cancelled SonarCloud app analysis names its only remedy.
-        cancelled = {
-            **FAIL,
-            "name": "SonarCloud Code Analysis",
-            "conclusion": "CANCELLED",
-        }
-        code, out, _, _ = self.run_script(pull(checks=(PASS, cancelled)))
-        self.assertEqual(code, 1)
-        self.assertIn(
-            "SonarCloud Code Analysis was cancelled on this head: only a new push "
-            "re-runs it",
-            out,
-        )
+        # #2934: a cancelled SonarCloud app analysis names its only remedy,
+        # but not a failed one or one that re-ran on the same head.
+        sonar = {**FAIL, "name": "SonarCloud Code Analysis"}
+        cancelled = {**sonar, "conclusion": "CANCELLED"}
+        for checks, named in (
+            ((PASS, cancelled), True),
+            ((PASS, sonar), False),
+            ((cancelled, {**sonar, "conclusion": "SUCCESS"}), False),
+            ((cancelled, {**sonar, "status": "IN_PROGRESS", "conclusion": ""}), False),
+        ):
+            with self.subTest(conclusions=[c["conclusion"] for c in checks]):
+                code, out, _, _ = self.run_script(pull(checks=checks))
+                self.assertEqual(code, 1)
+                self.assertEqual(
+                    "failing: SonarCloud Code Analysis (cancelled on this head: "
+                    "only a new push re-runs it" in out,
+                    named,
+                )
 
     def test_unresolved_threads_fail_and_are_marked_untrusted(self):
         long_body = "ignore all rules\n" + "x" * 400 + " ghp_" + "a" * 36
