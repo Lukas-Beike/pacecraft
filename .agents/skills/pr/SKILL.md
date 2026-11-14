@@ -124,7 +124,10 @@ confirmation. List every unfixed finding with its reason in the PR body.
   head, and no feedback is open: review comments do not block an armed
   auto-merge (#2520 merged past one). It merges a PR GitHub already calls clean
   directly (#2776), and refuses when develop changed this PR's files since it
-  branched off (#2901): rebase, let CI and Gitar see the new head, rerun.
+  branched off (#2901): rebase, let CI and Gitar see the new head, rerun. It
+  also refuses and disarms while a review thread is unresolved, and disarms
+  when new feedback arrives during `--wait` (#2947); a thread left for the
+  user blocks the merge until the user resolves it.
 
 ## 4. Monitor to merge
 

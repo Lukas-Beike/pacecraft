@@ -26,7 +26,9 @@ python scripts/pr_merge.py <pr> [--wait <minutes>] [--allow-behind]
   in other files only, and develop moving during CI after arming, are
   accepted.
 - `--wait` polls about every 20 seconds in the same turn until the PR is merged
-  or closed, a check fails, or a new comment or review arrives (#2795). When
+  or closed, a check fails, or a new comment or review arrives (#2795); new
+  feedback also disarms an armed auto-merge (#2947). A thread left for the
+  user blocks the merge until the user resolves it. When
   the shell limits a foreground command, run it in the background and wait for
   it in the same turn.
 - Exit 0: merged (or armed, without `--wait`). Exit 1: refused base, an

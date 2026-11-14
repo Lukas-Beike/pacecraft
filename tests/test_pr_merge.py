@@ -163,6 +163,10 @@ class PrMergeTests(unittest.TestCase):
                     self, 7, "--wait", minutes, views=[view(), *polls]
                 )
                 self.assertEqual((code, sleeps), (expect, len(polls) - 1))
+        # #2947: feedback on an armed PR disarms it; auto-merge would not wait.
+        armed_late = {**late, "autoMergeRequest": {"mergeMethod": "SQUASH"}}
+        _, _, writes, _ = run(self, 7, "--wait", 5, views=[view(), armed_late])
+        self.assertEqual(writes[-1], ["pr", "merge", "7", "--disable-auto"])
 
 
 if __name__ == "__main__":
