@@ -82,8 +82,6 @@ expression. Other inline status lines are not listed.
 | `showProfileCardsState` | `createErrorState` | (computed) ` error.message ` |  |
 | `showProfileCardsState` | `createLoadingState` | (computed) `` `${title} wird geladen…` `` |  |
 | `renderRunningBestEfforts` | `markValueMissing` | – |  |
-| `renderRunningDynamicsTrend` | `createLoadingState` | Lauftechnik wird geladen… |  |
-| `renderRunningDynamicsTrend` | `createErrorState` | (computed) ` error?.message \|\| "Konnte nicht geladen werden." ` |  |
 | `renderBodyAnalysis` | `h(.empty)` | Noch keine Körper-Historie verfügbar. |  |
 | `renderTrainingRecords` | `createLoadingState` | Ausrüstung wird geladen… |  |
 | `renderTrainingRecords` | `createErrorState` | (computed) ` error?.message ` |  |

@@ -384,7 +384,7 @@ test("the coverage line counts the days or weeks that have a value", () => {
 test("the table behind a chart scrolls in a named region that the keyboard can reach", () => {
   const { makeScrollRegionFocusable } = extractFunctions("shared.js", ["makeScrollRegionFocusable"]);
   const document = fakeDocument();
-  const { appendAnalysisTable } = extractFunctions("analysis.js", ["appendAnalysisTable", "analysisValidPoint", "analysisAxisCaption", "ANALYSIS_DAY_DATES"], {
+  const { appendAnalysisTable } = extractFunctions("analysis.js", ["appendAnalysisTable", "analysisValidPoint", "analysisAxisCaption"], {
     document,
     makeScrollRegionFocusable,
     dateLabel: (date) => date,
