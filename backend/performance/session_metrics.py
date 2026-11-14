@@ -38,7 +38,8 @@ METHOD_ID: Final = "local-session-metrics"
 # v3: the decoupling's output per heartbeat is named apart from the session EF,
 # and run work names Garmin's running-power model (card M8 v3, #1773).
 # v4: positive duration fallback; stream work counts moving samples only (#1950).
-METHOD_VERSION: Final = 4
+# v5: decoupling's steady-output rule reads 60 s rolling means (#1832).
+METHOD_VERSION: Final = 5
 CARD: Final = "M8"
 
 METRIC_SPORTS: Final = frozenset({Sport.RIDE.value, Sport.RUN.value})

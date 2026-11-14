@@ -3,6 +3,7 @@
 import unittest
 
 from backend.performance.session_analysis import (
+    METHOD,
     aerobic_analysis,
     heart_rate_histogram,
     interval_quality,
@@ -139,8 +140,10 @@ class SessionAnalysisTests(unittest.TestCase):
             elif variant == "stops":
                 activity["streams"]["moving"] = [False] * 3601
             elif variant == "variable":
+                # 5-minute blocks at 100 W and 300 W: the 60 s means vary by
+                # 50 % (#1832).
                 activity["streams"]["watts"] = [
-                    100 if i % 2 else 300 for i in range(3601)
+                    100 if i // 300 % 2 else 300 for i in range(3601)
                 ]
             else:
                 activity = ride(list(range(601)) + list(range(2100, 3601)))
@@ -148,6 +151,16 @@ class SessionAnalysisTests(unittest.TestCase):
                 self.assertEqual(
                     "insufficient_data", aerobic_analysis(activity)["status"]
                 )
+
+    def test_second_to_second_output_noise_is_steady_on_60_second_means(self):
+        # #1832: 1 s alternation of 100 W and 300 W had a 1 s CV of 50 % and was
+        # excluded; its 60 s means are a constant 200 W, so it counts as steady.
+        activity = ride()
+        activity["streams"]["watts"] = [100 if i % 2 else 300 for i in range(3601)]
+        result = aerobic_analysis(activity)
+        self.assertEqual("ok", result["status"])
+        self.assertEqual(METHOD, result["method"])
+        self.assertTrue(all(half["variation"] < 0.01 for half in result["halves"]))
 
     def test_target_uses_frozen_ftp_and_partial_completion_is_partial(self):
         activity = ride(list(range(121)))

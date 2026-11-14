@@ -26,7 +26,7 @@ from __future__ import annotations
 import json
 import math
 import time
-from collections import Counter, deque
+from collections import Counter
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date, timedelta
@@ -44,6 +44,8 @@ from backend.performance.session_analysis import (
     _aerobic_sensor,
     _samples,
     aerobic_analysis,
+    rolling_means,
+    weighted_cv,
 )
 from backend.performance.session_metrics import wants_metrics
 
@@ -93,36 +95,6 @@ class Evaluation:
     production_ok: bool = False
 
 
-def _weighted_cv(series: Series) -> float | None:
-    total = sum(weight for weight, _ in series)
-    if total <= 0:
-        return None
-    mean = sum(weight * value for weight, value in series) / total
-    if mean <= 0:
-        return None
-    variance = sum(weight * (value - mean) ** 2 for weight, value in series) / total
-    return math.sqrt(variance) / mean
-
-
-def _rolling(samples: Sequence[Sample], window: float) -> list[tuple[float, float]]:
-    """Time-weighted rolling means that end at a sample and span the full window."""
-    result: list[tuple[float, float]] = []
-    queue: deque[Sample] = deque()
-    weights = products = 0.0
-    for sample in samples:
-        stamp, weight, value = sample
-        queue.append(sample)
-        weights += weight
-        products += weight * value
-        while queue[0][0] <= stamp - window:
-            _, old_weight, old_value = queue.popleft()
-            weights -= old_weight
-            products -= old_weight * old_value
-        if stamp + weight - samples[0][0] >= window:
-            result.append((weight, products / weights))
-    return result
-
-
 def _normalized_ratio(rolling: Series, mean_output: float) -> float | None:
     """NP (fourth-power mean of the 30 s rolling means) over the mean output."""
     total = sum(weight for weight, _ in rolling)
@@ -136,8 +108,8 @@ def _half(samples: Sequence[Sample], *, power: bool) -> Half:
     series = [(weight, value) for _, weight, value in samples]
     duration = sum(weight for weight, _ in series)
     mean = sum(weight * value for weight, value in series) / duration
-    rolled = {window: _rolling(samples, window) for window in WINDOWS_S[1:]}
-    cv = {1: _weighted_cv(series)} | {w: _weighted_cv(r) for w, r in rolled.items()}
+    rolled = {window: rolling_means(samples, window) for window in WINDOWS_S[1:]}
+    cv = {1: weighted_cv(series)} | {w: weighted_cv(r) for w, r in rolled.items()}
     vi = _normalized_ratio(rolled[30], mean) if power else None
     return Half(mean, cv, vi)
 
@@ -227,9 +199,10 @@ def _vi_rule(limit: float) -> Callable[[Half], bool]:
     return lambda half: half.vi is not None and half.vi <= limit
 
 
-CURRENT = "cv_1s_15"
+# The rule the session analysis applies (60 s means since #1832).
+CURRENT = "cv_60s_15"
 RULES: dict[str, Callable[[Half], bool]] = {
-    CURRENT: _cv_rule(1),
+    "cv_1s_15": _cv_rule(1),
     "cv_30s_15": _cv_rule(30),
     "cv_60s_15": _cv_rule(60),
     "vi_30s_105": _vi_rule(1.05),

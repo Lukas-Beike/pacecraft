@@ -159,11 +159,12 @@ class DryRunTests(unittest.TestCase):
         counts = ride["counts"]
         # Independent expectations: steady 200 W passes everything; the 10 s
         # alternation fails the 1 s CV (100/200 = 0.5) but not rolling means or VI;
-        # the cool-down fails halves; the step halves differ by 25 %.
+        # the cool-down fails halves; the step halves differ by 25 %. The current
+        # rule is the 60 s one since #1832, so only the cool-down fails it.
         self.assertEqual(counts["evaluated"], 5)
         self.assertEqual(counts["fail_short"], 1)
         self.assertEqual(counts["past_coverage"], 4)
-        self.assertEqual(counts["fail_variable_output_current_rule"], 2)
+        self.assertEqual(counts["fail_variable_output_current_rule"], 1)
         self.assertEqual(counts["fail_halves_differ"], 1)
         self.assertEqual(counts["pass_cv_1s_15"], 1)
         self.assertEqual(counts["pass_cv_30s_15"], 2)

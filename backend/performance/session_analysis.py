@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import math
 import re
+from collections import deque
+from collections.abc import Sequence
 from typing import Any
 
 from backend.activities.stream_zones import max_step_s
@@ -15,8 +17,51 @@ from backend.providers.source_labels import SESSION_SOURCES_LABEL
 TARGET_BASIS_FTP_KEY = "ftp"
 
 # v2: Pa:HR of outdoor runs uses grade-adjusted speed (card M8 v2, #1770).
-METHOD = "time-weighted-session-analysis-v2"
+# v3: the steady-output rule reads the CV of 60 s rolling means (#1832).
+METHOD = "time-weighted-session-analysis-v3"
 GRADE_ADJUSTED_SPEED = "grade_adjusted_speed"
+# Steady output (athlete decision 2026-11-14, #1832): the coefficient of
+# variation of the output's 60 s rolling means is at most 15 % in each half,
+# one rule for runs and rides; 1 s samples excluded almost every outdoor ride.
+STEADY_WINDOW_S = 60.0
+MAX_STEADY_CV = 0.15
+
+
+def weighted_cv(series: Sequence[tuple[float, float]]) -> float | None:
+    """Coefficient of variation of time-weighted ``(weight, value)`` pairs."""
+    total = sum(weight for weight, _ in series)
+    if total <= 0:
+        return None
+    mean = sum(weight * value for weight, value in series) / total
+    if mean <= 0:
+        return None
+    variance = sum(weight * (value - mean) ** 2 for weight, value in series) / total
+    return math.sqrt(variance) / mean
+
+
+def rolling_means(
+    samples: Sequence[tuple[float, float, float]], window: float
+) -> list[tuple[float, float]]:
+    """Time-weighted rolling means of ``(time, weight, value)`` samples.
+
+    Each mean ends at a sample and spans the full ``window``; it is weighted by
+    that sample's weight.
+    """
+    result: list[tuple[float, float]] = []
+    queue: deque[tuple[float, float, float]] = deque()
+    weights = products = 0.0
+    for sample in samples:
+        stamp, weight, value = sample
+        queue.append(sample)
+        weights += weight
+        products += weight * value
+        while queue[0][0] <= stamp - window:
+            _, old_weight, old_value = queue.popleft()
+            weights -= old_weight
+            products -= old_weight * old_value
+        if stamp + weight - samples[0][0] >= window:
+            result.append((weight, products / weights))
+    return result
 
 
 def _samples(
@@ -180,7 +225,7 @@ def aerobic_analysis(
         "method": METHOD,
         "source": f"derived from {source_label} original streams",
         "warmup_excluded_seconds": 600,
-        "eligibility": "At least 20 minutes after a 10-minute warm-up; >=85% paired data coverage; output variation <=15%; gaps above max(30 s, 3 x the median step), stops and non-positive output excluded. No universal fitness cutoff.",
+        "eligibility": "At least 20 minutes after a 10-minute warm-up; >=85% paired data coverage; variation of the 60 s rolling output means <=15% in each half; gaps above max(30 s, 3 x the median step), stops and non-positive output excluded. No universal fitness cutoff.",
     }
     sensor = _aerobic_sensor(activity)
     times = (activity.get("streams") or {}).get("time") or []
@@ -365,13 +410,18 @@ def _aerobic_halves(
     midpoint = (start + end) / 2
     halves = []
     for left, right in ((start, midpoint), (midpoint, end)):
-        samples = [
+        # (time, weight inside the half, output, heart rate) of each sample.
+        clipped = [
             (
-                max(0, min(timestamp + weight, right) - max(timestamp, left)),
+                max(timestamp, left),
+                min(timestamp + weight, right) - max(timestamp, left),
                 value,
                 pulse,
             )
             for timestamp, weight, value, pulse in paired
+        ]
+        samples = [
+            (weight, value, pulse) for _, weight, value, pulse in clipped if weight > 0
         ]
         duration = sum(weight for weight, _, _ in samples)
         if duration < (right - left) * 0.85:
@@ -382,11 +432,17 @@ def _aerobic_halves(
             }
         mean = sum(weight * value for weight, value, _ in samples) / duration
         pulse = sum(weight * pulse for weight, _, pulse in samples) / duration
-        variance = (
-            sum(weight * (value - mean) ** 2 for weight, value, _ in samples) / duration
+        cv = weighted_cv(
+            rolling_means(
+                [
+                    (stamp, weight, value)
+                    for stamp, weight, value, _ in clipped
+                    if weight > 0
+                ],
+                STEADY_WINDOW_S,
+            )
         )
-        cv = math.sqrt(variance) / mean
-        if cv > 0.15:
+        if cv is None or cv > MAX_STEADY_CV:
             return {
                 **base,
                 "status": "insufficient_data",
