@@ -421,4 +421,8 @@ test("@responsive the athlete adds, edits and retires equipment without Garmin, 
   await receipt.getByRole("button", { name: "Rückgängig" }).click();
   await expect(receipt).toContainText("Zurückgenommen.");
   await expect(runPanel.locator(":scope > .equipment-card").filter({ hasText: "Fixture Pegasus 41" })).toHaveCount(1);
+  // A form left open belongs to its visit: leaving the area closes it, so later refreshes run again.
+  await runPanel.getByRole("button", { name: "+ Hinzufügen" }).click();
+  await page.evaluate(async () => { await AppRouter.navigate("more/profile"); await AppRouter.navigate("more/equipment"); });
+  await expect(page.locator("#equipmentItems .equipment-form:not([hidden])")).toHaveCount(0);
 });

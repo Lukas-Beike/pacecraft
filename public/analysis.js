@@ -1305,7 +1305,8 @@ let equipmentTab = "bike";
 // has an equipment form open, so typed values are not lost (#2879).
 async function renderTrainingRecords({ background = false } = {}) { // NOSONAR
   if (!state.data || !equipmentRouteActive()) return;
-  if (background && document.querySelector("#equipmentItems .equipment-form:not([hidden])")) return;
+  const editing = [...document.querySelectorAll("#equipmentItems .equipment-form:not([hidden])")].some((form) => form.checkVisibility?.() ?? form.offsetParent !== null);
+  if (background && editing) return;
   const generation = ++trainingRecordsGeneration;
   const session = state.sessionGeneration;
   const gear = document.getElementById("equipmentItems");
@@ -1880,20 +1881,21 @@ function equipmentForm(tab, item) {
       return;
     }
     const data = new FormData(form);
-    const optional = (name) => (data.get(name) === "" ? null : Number(data.get(name)));
-    const [sport, environment] = String(data.get("sport")).split("/");
-    const component = data.get("kind") === "component";
+    const text = (name) => { const value = data.get(name); return typeof value === "string" ? value : ""; };
+    const optional = (name) => (text(name) === "" ? null : Number(text(name)));
+    const [sport, environment] = text("sport").split("/");
+    const component = text("kind") === "component";
     error.textContent = "";
     // One tap, one save: a second tap while the first runs would create the item twice.
     submit.disabled = true;
     const saved = await saveEquipment({
       ...(item ? { id: item.id, expected_revision: item.revision } : {}),
-      name: String(data.get("name")).trim(), sport, environment, kind: data.get("kind"),
+      name: text("name").trim(), sport, environment, kind: text("kind"),
       // Always explicit: an omitted status would save as active.
       status: item?.status || "active",
-      parent_id: component ? data.get("parent_id") || null : null,
-      start_date: data.get("start_date"),
-      initial_distance_km: Number(data.get("initial_distance_km") || 0), initial_hours: Number(data.get("initial_hours") || 0),
+      parent_id: component ? text("parent_id") || null : null,
+      start_date: text("start_date"),
+      initial_distance_km: Number(text("initial_distance_km") || 0), initial_hours: Number(text("initial_hours") || 0),
       lifetime_target_km: optional("lifetime_target_km"), maintenance_km: optional("maintenance_km"), maintenance_hours: optional("maintenance_hours"),
     }, "Ausrüstung gespeichert. ", error);
     if (!saved) submit.disabled = false;
