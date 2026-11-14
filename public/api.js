@@ -103,7 +103,25 @@
     return payload;
   }
 
+  // Requests still in flight; `settled` resolves once none is left, so a deferred read
+  // can wait out a view's own reads instead of joining their burst (#2966).
+  let inFlight = 0;
+  const waiting = [];
+  function settled() {
+    return inFlight ? new Promise((resolve) => waiting.push(resolve)) : Promise.resolve();
+  }
+
   async function request(path, options, onUnauthorized) {
+    inFlight += 1;
+    try {
+      return await requestOnce(path, options, onUnauthorized);
+    } finally {
+      inFlight -= 1;
+      if (!inFlight) for (const resolve of waiting.splice(0)) resolve();
+    }
+  }
+
+  async function requestOnce(path, options, onUnauthorized) {
     const { timeoutMs = path === "/api/coach/actions/execute" ? REMOTE_ACTION_TIMEOUT_MS : REQUEST_TIMEOUT_MS, ...fetchOptions } = options || {};
     const method = fetchOptions.method;
     const controller = new AbortController();
@@ -188,5 +206,5 @@
     return response;
   }
 
-  globalThis.AppApi = Object.freeze({ audio, download, messageForReason, request, responseError, stream });
+  globalThis.AppApi = Object.freeze({ audio, download, messageForReason, request, responseError, settled, stream });
 })();

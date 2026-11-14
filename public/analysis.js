@@ -1713,7 +1713,8 @@ function refreshEquipmentNotice() {
   if (key === equipmentNoticeKey) return;
   equipmentNoticeKey = key;
   const idle = globalThis.requestIdleCallback || ((callback) => setTimeout(callback, 2000));
-  idle(() => {
+  // An idle callback can fire while the view's own reads are still running; the read waits them out (#2966).
+  idle(() => globalThis.AppApi.settled().then(() => {
     if (session !== state.sessionGeneration || !state.data) return;
     if (document.visibilityState === "hidden") {
       equipmentNoticeKey = null;
@@ -1722,7 +1723,7 @@ function refreshEquipmentNotice() {
     requestAnalysisReport("/api/analysis/training-records").then((result) => {
       if (session === state.sessionGeneration) updateStatusSources({ equipment: equipmentStatusItem(result?.equipment) });
     }).catch(() => {});
-  });
+  }));
 }
 
 // A Coach turn that changed equipment makes the next status render read it again (#2809).
