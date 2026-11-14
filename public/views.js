@@ -585,12 +585,13 @@ function loadReleaseChangelog() {
   releaseChangelogRequest ||= fetch("/changelog.json", { cache: "no-cache", credentials: "same-origin" })
     .then((response) => (response.ok && /json/.test(response.headers.get("content-type") || "") ? response.json() : null))
     .catch(() => null)
-    .then((data) => renderReleaseChangelog(data?.releases));
+    // A failed or missing read is tried again the next time the area opens.
+    .then((data) => { if (!renderReleaseChangelog(data?.releases)) releaseChangelogRequest = null; });
 }
 
 function renderReleaseChangelog(releases) {
   const line = $("#settingsAppVersion")?.closest(".settings-app-version");
-  if (!line || !Array.isArray(releases) || !releases.length) return;
+  if (!line || !Array.isArray(releases) || !releases.length) return false;
   const [current, ...older] = releases;
   const label = (release) => (release.version ? `Version ${release.version}` : `Seit ${release.after}`);
   const changelog = h("details", { className: "release-changelog", open: true },
@@ -600,6 +601,7 @@ function renderReleaseChangelog(releases) {
     older.length ? h("details", null, h("summary", null, `Frühere Versionen (${older.length})`),
       older.map((release) => h("details", null, h("summary", null, label(release)), releaseChangeList(release)))) : null);
   line.replaceWith(changelog);
+  return true;
 }
 
 function aiConnectionConfigurationDetail() { return "OPENAI_API_KEY nicht konfiguriert"; }

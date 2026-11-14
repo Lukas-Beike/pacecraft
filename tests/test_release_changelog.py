@@ -7,14 +7,11 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 import release_changelog
-from test_release_contains import git
+from test_release_contains import commit, git
 
 
 def change(repo, day, subject):
-    (Path(repo) / f"f{day}.txt").write_text(subject, encoding="utf-8")
-    git(repo, "add", ".")
-    git(repo, "commit", "-q", "-m", subject, day=day)
-    return git(repo, "rev-parse", "HEAD")
+    return commit(repo, day, f"f{day}.txt", subject, subject=subject)
 
 
 def promote(repo, tag, day):
@@ -73,6 +70,15 @@ class ReleaseChangelogTests(unittest.TestCase):
         self.assertEqual(len(self.warnings), 1)
         self.assertIn("0.9.9", self.warnings[0])
         self.assertTrue(self.warnings[0].startswith("::warning::"))
+
+    def test_a_later_revert_to_a_release_tree_stays_in_the_build_section(self):
+        git(self.repo, "revert", "--no-edit", "HEAD", day=10)
+        releases = self.run_changelog("1.0.1")
+        self.assertEqual(len(releases[0]["commits"]), 2)
+        self.assertEqual(
+            sorted(releases[1]["commits"]),
+            ["feat(c): from a merged branch", "fix(b): second"],
+        )
 
     def test_a_release_build_names_its_new_version_and_a_release_tree_adds_nothing(
         self,

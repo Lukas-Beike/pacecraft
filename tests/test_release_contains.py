@@ -35,14 +35,14 @@ def git(repo, *args, day=1):
     return done.stdout.strip()
 
 
-def commit(repo, day, name, text=None):
+def commit(repo, day, name, text=None, subject=None):
     """Commit a write (or, without text, the removal) of one file on `day`."""
     if text is None:
         git(repo, "rm", "-q", name)
     else:
         (Path(repo) / name).write_text(text, encoding="utf-8")
         git(repo, "add", name)
-    git(repo, "commit", "-q", "-m", f"change {name}", day=day)
+    git(repo, "commit", "-q", "-m", subject or f"change {name}", day=day)
     return git(repo, "rev-parse", "HEAD")
 
 

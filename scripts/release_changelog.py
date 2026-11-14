@@ -60,32 +60,37 @@ def changelog(app_version: str, cwd: Path = ROOT, warn=print) -> dict[str, Any]:
         ),
         key=lambda tag: tuple(int(part) for part in tag.split(".")),
     )
-    # The newest HEAD-history commit of each tree wins, as the release step maps them.
+    # A tag's base is the newest HEAD-history commit with its tree that is not newer
+    # than the tag, as release_contains.release_base: a later revert to that tree came
+    # after the promotion.
     history = [
         line.split()
-        for line in git("log", "HEAD", "--format=%H %T", cwd=cwd).splitlines()
+        for line in git("log", "HEAD", "--format=%H %T %ct", cwd=cwd).splitlines()
     ]
-    base_of = {tree: commit for commit, tree in reversed(history)}
-    trees = (
-        git("rev-parse", *(f"{tag}^{{tree}}" for tag in tags), cwd=cwd).split()
-        if tags
-        else []
+    by_tree: dict[str, list[tuple[str, int]]] = {}
+    for commit, tree, stamp in history:
+        by_tree.setdefault(tree, []).append((commit, int(stamp)))
+    # Tree and commit time of each tag; the starred fields serve annotated tags.
+    refs = git(
+        "for-each-ref",
+        "--format=%(refname:short) %(tree)%(*tree) %(committerdate:unix)%(*committerdate:unix)",
+        "refs/tags",
+        cwd=cwd,
     )
+    stamped = {name: rest for name, *rest in map(str.split, refs.splitlines())}
     releases: list[dict[str, Any]] = []
     previous = ""
-    for tag, tree in zip(tags, trees, strict=True):
-        if tree not in base_of:
+    for tag in tags:
+        tree, when = stamped[tag]
+        base = next((c for c, s in by_tree.get(tree, ()) if s <= int(when)), None)
+        if base is None:
             warn(
                 f"::warning::Release {tag} is not in this history; its commits count to the next release."
             )
             continue
-        releases.append(
-            {
-                "version": tag,
-                "commits": subjects(f"{previous}..{base_of[tree]}".lstrip("."), cwd),
-            }
-        )
-        previous = base_of[tree]
+        commits = subjects(f"{previous}..{base}".lstrip("."), cwd)
+        releases.append({"version": tag, "commits": commits})
+        previous = base
     if tags and not previous:
         raise Refused(
             "No release tag maps to this history; the build's own changes cannot be listed."
