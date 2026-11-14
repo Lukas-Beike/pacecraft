@@ -617,7 +617,11 @@ class ServerFrontendTests(ServerTestCase):
         self.assertNotIn("Endurance Score", analysis)
         self.assertNotIn("Running Tolerance", analysis)
         self.assertIn("unit: providerMetricUnit(key)", analysis)
-        self.assertIn('item.cadenceDays === 7 ? "Wochen" : "Tagen"', analysis)
+        # Coverage counts weeks for weekly series, else the chart's date unit:
+        # days, or months for a monthly chart (#2922).
+        self.assertIn('item.cadenceDays === 7 ? "Wochen" : dates.units', analysis)
+        self.assertIn('heading: "Tag", units: "Tagen"', analysis)
+        self.assertIn('heading: "Monat", units: "Monaten"', analysis)
         self.assertNotIn("Tage mit Messung", analysis)
         self.assertNotIn("${readings.length}/${item.points.length}", analysis)
         self.assertNotIn("function analysisIsoWeek(dateKey)", analysis)
