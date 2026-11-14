@@ -138,7 +138,7 @@ The client SHALL use the active analysis/nutrition refresh endpoint and selected
 Evidence: `public/nutrition.js::nutritionRefresh`, `public/nutrition.js::loadNutritionProducts`, `public/analysis.js::analysisRefreshDays`; `tests/view-refresh.test.cjs::nutrition product refresh reload preserves the selected search query`, `tests/view-refresh.test.cjs::nutrition body refresh lets the server choose the athlete-local date`, `tests/nutrition-lookup-status.test.cjs::a product reload started before the lookup cannot overwrite its result`, `e2e/view-refresh.spec.js::@responsive view refresh targets its active area and ignores stale views`.
 
 ### Requirement: Lazy reports and details retain cache and request ownership
-The client SHALL load expensive report/detail views when needed, cache appropriate read responses by path and state version, and reject obsolete route/detail results. Opening local activity details SHALL not itself initiate an implicit provider refresh.
+The client SHALL load expensive report/detail views when needed, cache appropriate read responses by path and state version, and reject obsolete route/detail results. The one read outside a view is the status strip's idle equipment read (see "Due equipment" in web-pwa-and-accessibility), shared with the Ausrüstung view. Opening local activity details SHALL not itself initiate an implicit provider refresh.
 
 #### Scenario: Revisit a cached report
 - **WHEN** an unchanged report path/state-version is requested again
