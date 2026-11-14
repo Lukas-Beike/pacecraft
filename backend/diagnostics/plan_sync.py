@@ -5,9 +5,13 @@ from __future__ import annotations
 import json
 from typing import Any
 
+from backend.canonical.vocabulary import ProviderId, RemoteEntityKind, Sport
 from backend.db import planning_store
 from backend.db.repositories import KeyValueRepository
+from backend.errors import AppError
 from backend.planning.push_state import skips_intervals
+from backend.planning.sport import planned_sport_environment
+from backend.planning.strength_structure import normalize_structure
 from backend.sync.garmin_strength_push import APP_WORKOUT_CLEANUP_KEY
 from backend.sync.jobs import list_jobs
 
@@ -100,6 +104,54 @@ def summarize_garmin_removal(db: Any) -> dict[str, Any]:
         "last_outcome": outcome if outcome in _OUTCOMES else None,
         "past_links_pending": _count(state.get("pending")),
     }
+
+
+def summarize_garmin_strength_push(db: Any) -> dict[str, int]:
+    """Counts only: how the active strength units with a remote copy were sent (#2850).
+
+    The app sends a strength unit to Garmin as one step per exercise with its
+    sets, reps and load; a unit that went only to Intervals.icu reaches the
+    watch through Intervals.icu as a single step without exercises (#1802).
+    """
+    garmin, intervals = ProviderId.GARMIN.value, ProviderId.INTERVALS.value
+    shapes = ("without_structure", "one_exercise", "several_exercises", "with_kg")
+    counts = dict.fromkeys(
+        (
+            garmin,
+            *(f"{garmin}_{shape}" for shape in shapes),
+            f"{intervals}_only",
+            f"{intervals}_only_without_structure",
+        ),
+        0,
+    )
+    for row in planning_store.linked_unit_rows(db, RemoteEntityKind.PLANNED_UNIT.value):
+        unit = json.loads(row["payload"])
+        if not isinstance(unit, dict) or planned_sport_environment(unit)[0] is not (
+            Sport.STRENGTH
+        ):
+            continue
+        try:
+            exercises = normalize_structure(unit.get("strength_structure"), stored=True)
+        except AppError:
+            exercises = None
+        exercises = exercises or []
+        providers = set(str(row["providers"] or "").split(","))
+        if garmin in providers:
+            counts[garmin] += 1
+            counts[f"{garmin}_{_shape(exercises)}"] += 1
+            counts[f"{garmin}_with_kg"] += any(
+                (item.get("kg") or 0) > 0 for item in exercises
+            )
+        elif intervals in providers:
+            counts[f"{intervals}_only"] += 1
+            counts[f"{intervals}_only_without_structure"] += not exercises
+    return counts
+
+
+def _shape(exercises: list[dict[str, Any]]) -> str:
+    if not exercises:
+        return "without_structure"
+    return "one_exercise" if len(exercises) == 1 else "several_exercises"
 
 
 def _count(value: Any) -> int:

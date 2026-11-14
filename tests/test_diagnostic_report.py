@@ -198,6 +198,7 @@ class DiagnosticReportServiceTests(unittest.TestCase):
                 "garmin_change_check",
                 "lt1_ride_coverage",
                 "curve_build",
+                "garmin_strength_push",
                 "decoupling_eligibility",
                 "recovery_copies",
                 "stream_backfill",
@@ -318,8 +319,9 @@ class DiagnosticReportServiceTests(unittest.TestCase):
         # three domain tables) to the same snapshot; the stream backfill counts
         # add two (Garmin records, the stream cursor); the provider sync times add
         # two (refresh history, push jobs); the schema version adds one; the
-        # Garmin past-workout removal adds its stored state.
-        self.assertEqual(len(self.db.queries), 23)
+        # Garmin past-workout removal adds its stored state; the strength push
+        # counts add one read of the linked units (#2850).
+        self.assertEqual(len(self.db.queries), 24)
         self.assertEqual(
             [query.rsplit("FROM ", 1)[1] for query in count_queries],
             [

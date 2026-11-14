@@ -99,6 +99,10 @@ The diagnostic report SHALL include the state of the local method passes as coun
 - **WHEN** the report is generated
 - **THEN** `runtime` carries the uptime in seconds and the allocator arena limit, `database` carries the database and write-ahead log sizes and the free space of the data directory, and `recovery_copies` carries the count, newest age in hours and total size of the recovery copies beside the database, measured by stat only, never a name, path or content (#2848)
 
+#### Scenario: Garmin strength push counts
+- **WHEN** the report is generated
+- **THEN** `garmin_strength_push` counts the active strength units with a Garmin copy by their exercise structure (none, one, several) and with a load in kilograms, and the units that went only to Intervals.icu with and without a structure; counts only, never names, ids or dates (#2850)
+
 #### Scenario: All-time curve build
 - **WHEN** the report is generated
 - **THEN** `curve_build` carries the state word of the background all-time session-curve build (`pending`, `building`, `ready`, `failed`), the finished builds and failures, and in seconds the last build's duration, the running build's time so far and the age of a failure (#2852)

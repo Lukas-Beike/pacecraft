@@ -6,7 +6,11 @@ import json
 import sqlite3
 import unittest
 
-from backend.diagnostics.plan_sync import summarize_garmin_removal, summarize_plan_sync
+from backend.diagnostics.plan_sync import (
+    summarize_garmin_removal,
+    summarize_garmin_strength_push,
+    summarize_plan_sync,
+)
 
 
 class PlanSyncDiagnosticsTests(unittest.TestCase):
@@ -156,6 +160,69 @@ class GarminRemovalDiagnosticsTests(unittest.TestCase):
                 },
                 summarize_garmin_removal(db),
             )
+
+    def test_strength_push_counts_garmin_steps_and_intervals_only_units(self):
+        # #2850: units the app sent to Garmin by their exercise steps and loads,
+        # and units that reach the watch only through Intervals.icu (#1802).
+        db = sqlite3.connect(":memory:")
+        db.row_factory = sqlite3.Row
+        db.executescript(
+            "CREATE TABLE planned_units (local_id, payload, tombstone);"
+            "CREATE TABLE remote_links (entity_kind, local_id, provider, remote_id);"
+        )
+        row = {"name": "Rudern", "sets": 3, "reps": 10}
+        loaded = {"name": "Bankdrücken", "sets": 3, "reps": 8, "kg": 60}
+        units = (
+            ("g1", "WeightTraining", [row, loaded], {}, ("garmin", "intervals")),
+            ("g2", "WeightTraining", [row], {}, ("garmin",)),
+            ("i1", "WeightTraining", None, {}, ("intervals",)),
+            ("i2", "WeightTraining", [row], {}, ("intervals",)),
+            ("r1", "Run", None, {}, ("garmin",)),  # not strength
+            ("d1", "WeightTraining", [row], {"local_deleted": True}, ("garmin",)),
+            ("n1", "WeightTraining", [row], {}, ()),  # never sent
+        )
+        for local_id, sport, structure, extra, providers in units:
+            unit = {"date": "2026-11-20", "sport": sport, **extra}
+            if structure:
+                unit["strength_structure"] = structure
+            db.execute(
+                "INSERT INTO planned_units VALUES (?,?,0)",
+                (local_id, json.dumps(unit)),
+            )
+            for provider in providers:
+                db.execute(
+                    "INSERT INTO remote_links VALUES ('planned_unit',?,?,?)",
+                    (local_id, provider, f"remote-{local_id}"),
+                )
+        # A link without a remote copy and a deleted row count as not sent.
+        db.execute(
+            "INSERT INTO planned_units VALUES ('u1',?,0)",
+            ('{"sport":"WeightTraining"}',),
+        )
+        db.execute(
+            "INSERT INTO remote_links VALUES ('planned_unit','u1','garmin',NULL)"
+        )
+        db.execute(
+            "INSERT INTO planned_units VALUES ('t1',?,1)",
+            ('{"sport":"WeightTraining"}',),
+        )
+        db.execute("INSERT INTO remote_links VALUES ('planned_unit','t1','garmin','x')")
+
+        report = summarize_garmin_strength_push(db)
+
+        self.assertEqual(
+            report,
+            {
+                "garmin": 2,
+                "garmin_without_structure": 0,
+                "garmin_one_exercise": 1,
+                "garmin_several_exercises": 1,
+                "garmin_with_kg": 1,
+                "intervals_only": 2,
+                "intervals_only_without_structure": 1,
+            },
+        )
+        self.assertNotIn("Rudern", json.dumps(report))
 
 
 if __name__ == "__main__":

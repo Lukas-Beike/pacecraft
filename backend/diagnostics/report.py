@@ -32,7 +32,11 @@ from backend.diagnostics.canonical_read import (
 )
 from backend.diagnostics.history import CoachDiagnosticHistoryService
 from backend.diagnostics.logs import RecentLogEntriesService
-from backend.diagnostics.plan_sync import summarize_garmin_removal, summarize_plan_sync
+from backend.diagnostics.plan_sync import (
+    summarize_garmin_removal,
+    summarize_garmin_strength_push,
+    summarize_plan_sync,
+)
 from backend.diagnostics.provider_composition import summarize_provider_composition
 from backend.diagnostics.provider_sync import summarize_provider_sync
 from backend.diagnostics.session_conflicts import summarize_session_conflicts
@@ -333,6 +337,10 @@ class DiagnosticReportService:
                 "garmin_past_workout_removal": section(
                     "garmin_past_workout_removal",
                     lambda: summarize_garmin_removal(db),
+                ),
+                "garmin_strength_push": section(
+                    "garmin_strength_push",
+                    lambda: summarize_garmin_strength_push(db),
                 ),
                 "canonical_coverage": summarize_canonical_coverage(
                     deps.canonical_coverage, db
