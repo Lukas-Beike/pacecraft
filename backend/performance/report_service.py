@@ -246,7 +246,10 @@ class TrainingProfileSelectionService:
 
             def build() -> list[dict[str, Any]]:
                 curves: dict[str, SessionCurve] = {}
-                for session_id in session_ids:
+                # Oldest first: the newest sessions, which the 60- and 90-day
+                # windows read, are touched last and stay in a memo smaller than
+                # the history (#2822). The records keep the sessions' order.
+                for session_id in reversed(session_ids):
                     started = self._clock()
                     with manager.read_snapshot() as one:
                         curves.update(curve_reader.curves(one, [session_id]))
