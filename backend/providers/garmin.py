@@ -1866,6 +1866,7 @@ def collect_garmin_data(
         provider_sync,
         client,
         collection_options.include_current_metrics,
+        synced_at,
         external_call,
         redact,
         warn,
@@ -1892,16 +1893,17 @@ def _record_device_sync(
     provider_sync: dict[str, Any],
     client: Any,
     current: bool,
+    read_at: str,
     external_call: ExternalCall,
     redact: Redact,
     warn: WarningLogger | None,
 ) -> None:
     """Record when the watch last uploaded to Garmin Connect, as UTC (#2807).
 
-    Read-only and only on a current sync. The pinned SDK answers a UTC time
-    without an offset. A missing method, a failed call or an answer that is no
-    time records nothing, so the stored state keeps the previous time; the run
-    stays complete, and the answer is never logged here.
+    Read-only and only on a ``current`` sync; ``read_at`` is that run's time. The pinned SDK answers a UTC time without an offset. A missing method,
+    a failed call or an answer that is no time records nothing, so the stored
+    state keeps the previous time; the run stays complete, and the answer is
+    never logged here. ``device_sync_read_at`` says how current the time is.
     """
     fetch = getattr(client, "get_sync_timestamp", None)
     if not current or not callable(fetch):
@@ -1922,6 +1924,7 @@ def _record_device_sync(
     provider_sync["device_synced_at"] = parsed.astimezone(UTC).strftime(
         "%Y-%m-%dT%H:%M:%SZ"
     )
+    provider_sync["device_sync_read_at"] = read_at
 
 
 def _record_daily_metrics(

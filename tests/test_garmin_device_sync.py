@@ -7,7 +7,8 @@ from __future__ import annotations
 
 import sqlite3
 import unittest
-from datetime import UTC
+from dataclasses import replace
+from datetime import UTC, datetime
 from typing import Any
 
 from support import temp_database
@@ -16,6 +17,7 @@ from test_garmin_body_battery_reconciliation import NOW, TODAY, _collect, _Range
 from backend.db.repositories import KeyValueRepository
 from backend.db.schema import initialize_schema
 from backend.performance.freshness import GarminSyncStatus
+from backend.providers.garmin import GarminCollectionOptions
 from backend.sync.garmin import GarminPayloadService
 from backend.sync.garmin_snapshot_writer import GarminSnapshotWriter
 from backend.sync.state import SyncStateRepository
@@ -51,18 +53,31 @@ class DeviceSyncTests(unittest.TestCase):
                 self.assertEqual(
                     payload["provider_sync"].get("device_synced_at"), expected
                 )
+                self.assertEqual(
+                    payload["provider_sync"].get("device_sync_read_at"),
+                    NOW if expected else None,
+                )
                 # An optional fact never makes the run partial.
                 self.assertEqual(payload["errors"], [])
                 self.assertEqual(
                     warnings,
-                    ["device_sync_timestamp"]
-                    if isinstance(answer, Exception)
-                    else [],
+                    ["device_sync_timestamp"] if isinstance(answer, Exception) else [],
                 )
 
     def test_a_client_without_the_method_reads_nothing(self) -> None:
         payload = _collect(_RangeClient(), days=0)
 
+        self.assertNotIn("device_synced_at", payload["provider_sync"])
+
+    def test_only_a_current_sync_reads_the_time(self) -> None:
+        client = _Client("2026-09-18T21:05:42.0")
+        payload = _collect(
+            client,
+            days=0,
+            options=replace(GarminCollectionOptions(), include_current_metrics=False),
+        )
+
+        self.assertEqual(client.calls, 0)
         self.assertNotIn("device_synced_at", payload["provider_sync"])
 
 
@@ -87,21 +102,39 @@ class StoredDeviceSyncTests(unittest.TestCase):
         self.sync(_Client(RuntimeError("rate limited")))
         self.sync(_RangeClient())
 
+        status = self.service.sync_status()
         self.assertEqual(
-            self.service.sync_status().device_synced_at, "2026-09-18T21:05:42Z"
+            (status.device_synced_at, status.device_sync_read_at),
+            ("2026-09-18T21:05:42Z", NOW),
         )
         self.sync(_Client("2026-09-20T06:10:00.0"))
         self.assertEqual(
             self.service.sync_status().device_synced_at, "2026-09-20T06:10:00Z"
         )
 
-    def test_the_status_reads_the_time_from_the_state_only(self) -> None:
+    def test_the_time_is_shown_only_while_its_read_is_recent(self) -> None:
+        # A stopped sync or a dropped SDK login must not read as the watch's silence.
         status = GarminSyncStatus.from_state(
+            {
+                "provider_sync": {
+                    "device_synced_at": "2026-09-18T21:05:42Z",
+                    "device_sync_read_at": "2026-09-20T12:00:00+00:00",
+                }
+            }
+        )
+        for now, expected in (
+            ("2026-09-21T11:59:00+00:00", "2026-09-18T21:05:42Z"),
+            ("2026-09-21T12:01:00+00:00", None),
+        ):
+            with self.subTest(now=now):
+                self.assertEqual(
+                    status.current_device_synced_at(datetime.fromisoformat(now)),
+                    expected,
+                )
+        unread = GarminSyncStatus.from_state(
             {"provider_sync": {"device_synced_at": "2026-09-18T21:05:42Z"}}
         )
-
-        self.assertEqual(status.device_synced_at, "2026-09-18T21:05:42Z")
-        self.assertIsNone(GarminSyncStatus.from_state({}).device_synced_at)
+        self.assertIsNone(unread.current_device_synced_at(datetime.fromisoformat(NOW)))
 
 
 if __name__ == "__main__":

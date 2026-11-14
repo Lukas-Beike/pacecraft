@@ -148,7 +148,7 @@ The system SHALL use the Garmin token-store owner for encrypted-database token p
 
 #### Scenario: Watch upload age
 - **WHEN** a current Garmin sync runs through the SDK login
-- **THEN** it reads `get_sync_timestamp()` once and stores the time as UTC in the Garmin state (`provider_sync.device_synced_at`, no new key and no schema change); a missing method, a failed call or an answer that is no time keeps the previous time and never makes the run partial; the Garmin projection exposes `device_synced_at`, and from 24 hours on the Garmin card and the Erholung tab say "Die Uhr hat seit einem Tag/N Tagen nichts übertragen.", while a fresh upload shows nothing
+- **THEN** it reads `get_sync_timestamp()` once and stores the time as UTC in the Garmin state (`provider_sync.device_synced_at`, no new key and no schema change); a missing method, a failed call or an answer that is no time keeps the previous time and never makes the run partial; the run's time is kept beside it as `device_sync_read_at`; the Garmin projection exposes `device_synced_at` only while that read is at most 24 hours old (a stopped sync or a dropped SDK login says nothing about the watch), and from 24 hours on the Garmin card and, while Garmin is set up, the Erholung tab say "Die Uhr hat seit einem Tag/N Tagen nichts übertragen.", while a fresh upload shows nothing
 
 #### Scenario: After disconnect
 - **WHEN** the athlete disconnected Garmin
