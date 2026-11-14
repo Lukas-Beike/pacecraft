@@ -356,7 +356,7 @@ def collect(root: Path, notes: dict[str, str]) -> tuple[dict[str, str], list[dic
         if item["severity"] == "error":
             record = diagnostic("mypy", item, root)
             diagnostics.append(record)
-            notes[finding(record)] = f": {item['message']}"
+            notes[note_key(record)] = f": {item['message']}"
     diagnostics.extend(cognitive_diagnostics(root, files))
     diagnostics.extend(javascript_diagnostics(root) or [])
 
@@ -421,6 +421,11 @@ def finding(item: dict) -> str:
     return f"{item['tool']} {location} {item['code']}"
 
 
+def note_key(item: dict) -> str:
+    """One finding's message key: two errors of a code can share a line."""
+    return f"{finding(item)} {item.get('column')}"
+
+
 def check(
     baseline: dict,
     versions: dict[str, str],
@@ -448,7 +453,7 @@ def check(
     added, obsolete = compare(expected, diagnostics)
     for label, items in (("NEW", added), ("OBSOLETE", obsolete)):
         for item in items:
-            print(f"{label} {finding(item)}{notes.get(finding(item), '')}")
+            print(f"{label} {finding(item)}{notes.get(note_key(item), '')}")
     print(
         f"Quality ratchet: {len(diagnostics)} existing, {len(added)} new, {len(obsolete)} obsolete"
     )

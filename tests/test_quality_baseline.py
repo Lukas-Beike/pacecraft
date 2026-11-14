@@ -139,7 +139,7 @@ class QualityBaselineTests(unittest.TestCase):
             commands = [call.args[0] for call in mocked_run.call_args_list]
         # #2944: the record stays hashed; the message prints beside NEW only.
         self.assertNotIn("Synthetic", str(diagnostics))
-        self.assertEqual(notes, {"mypy sample.py:1 misc": ": Synthetic mypy text"})
+        self.assertEqual(notes, {"mypy sample.py:1 misc 0": ": Synthetic mypy text"})
         output = io.StringIO()
         with contextlib.redirect_stdout(output):
             quality_baseline.check(self.baseline, self.versions, diagnostics, (), notes)
