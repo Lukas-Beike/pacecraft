@@ -1107,6 +1107,8 @@ h2 {
 .chip span { display: inline-flex; align-items: center; min-height: 44px; padding: 0 16px; border: 1px solid var(--line-strong); border-radius: 999px; color: var(--ink); background: var(--surface-input); font-size: .85rem; font-weight: 650; }
 .chip input:checked + span { border-color: var(--accent); color: var(--on-accent); background: var(--accent); }
 .chip input:checked + span::before { content: "✓"; margin-right: 6px; }
+/* The mark shows the state the radio or checkbox already announces, so where the browser can, its alternative text is empty (#2859). */
+@supports (content: "a" / "") { .chip input:checked + span::before { content: "✓" / ""; } }
 .chip input:focus-visible + span { outline: 2px solid var(--accent-bright); outline-offset: 2px; }
 .chip input:disabled { cursor: wait; }
 .chip input:disabled + span { opacity: .55; }
