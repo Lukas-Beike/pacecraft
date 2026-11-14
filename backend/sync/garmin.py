@@ -470,6 +470,13 @@ class GarminPayloadService:
             for key in ("daily_metrics_on", "daily_metrics_retry"):
                 if previous_sync.get(key):
                     provider_sync[key] = previous_sync[key]
+        # A run that did not read the watch's last upload keeps the stored time (#2807).
+        if (
+            "device_synced_at" not in provider_sync
+            and isinstance(previous_sync, dict)
+            and previous_sync.get("device_synced_at")
+        ):
+            provider_sync["device_synced_at"] = previous_sync["device_synced_at"]
         # A run without the Body Battery reconciliation keeps the day it last ran.
         if (
             "body_battery_reconciled_on" not in provider_sync

@@ -156,6 +156,7 @@
 ## Garmin Connect Integration & Health Metrics
 - **Direct Read-Only Health Sync**: Independent synchronization of Garmin Connect wellness metrics, activity recordings, and physiological measurements.
 - **Official Personal API transport**: With a Garmin Personal API key, activities, activity details, sleep, HRV, daily summaries, resting heart rate, Body Battery, weight and heart-rate zones are read through Garmin's official read-only Personal API; every family it serves with the same content uses it.
+- **Watch Upload Age**: A current Garmin sync reads when the watch last uploaded to Garmin Connect (SDK login only). From 24 hours on, the Garmin card and the Erholung tab say "Die Uhr hat seit N Tagen nichts übertragen."; a fresh upload shows nothing.
   The unofficial login stays an optional supplement for what the Personal API does not serve: training readiness, training status, training load, load balance, VO2 max, FTP, lactate threshold, race predictions, personal records, endurance score, running tolerance, gear, activity splits and per-activity zone times.
   Activity details also download the original FIT file through the Personal API; its full-resolution record streams and device laps replace the downsampled charts and splits.
   Garmin's own zone times, training effect, altitude and temperature range come from the activity list; the RPE, feel and minimum heart rate rated on the watch come from one single-activity read per new activity and per activity of the last three days (at most 30 per sync).

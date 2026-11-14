@@ -58,6 +58,8 @@ class GarminSyncStatus:
     chart_status: Mapping[str, str] = field(default_factory=dict)
     stored_sections: frozenset[str] = frozenset()
     errors: tuple[Any, ...] = ()
+    # When the watch last uploaded to Garmin Connect, UTC (#2807).
+    device_synced_at: str | None = None
 
     @classmethod
     def from_state(
@@ -93,6 +95,7 @@ class GarminSyncStatus:
                 if isinstance(window := provider_sync.get(key), Mapping)
             },
             pagination=dict(pagination),
+            device_synced_at=_text(provider_sync.get("device_synced_at")),
             chart_status={
                 str(key): status
                 for key, chart in charts.items()

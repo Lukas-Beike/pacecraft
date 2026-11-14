@@ -169,6 +169,8 @@ class GarminProjectionService:
             "source": status.source
             or ("library" if self._garmin_client_factory.available() else None),
             "last_sync_at": last_sync_at,
+            # The watch's last upload to Garmin Connect, a time only (#2807).
+            "device_synced_at": status.device_synced_at,
             **(
                 {"metric_export_status": metric_export_status}
                 if metric_export_status
