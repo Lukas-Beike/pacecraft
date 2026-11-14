@@ -198,6 +198,7 @@ class DiagnosticReportServiceTests(unittest.TestCase):
                 "garmin_change_check",
                 "lt1_ride_coverage",
                 "curve_build",
+                "garmin_strength_push",
                 "decoupling_eligibility",
                 "recovery_copies",
                 "stream_backfill",
@@ -318,8 +319,10 @@ class DiagnosticReportServiceTests(unittest.TestCase):
         # three domain tables) to the same snapshot; the stream backfill counts
         # add two (Garmin records, the stream cursor); the provider sync times add
         # two (refresh history, push jobs); the schema version adds one; the
-        # Garmin past-workout removal adds its stored state.
-        self.assertEqual(len(self.db.queries), 23)
+        # Garmin past-workout removal adds its stored state; the strength push
+        # counts add two reads: the remembered Garmin exercises and the linked
+        # units (#2850).
+        self.assertEqual(len(self.db.queries), 25)
         self.assertEqual(
             [query.rsplit("FROM ", 1)[1] for query in count_queries],
             [
@@ -372,6 +375,14 @@ class DiagnosticReportServiceTests(unittest.TestCase):
             {"file_bytes": None, "wal_bytes": None, "data_dir_free_bytes": None},
         )
         self.assertEqual(self.service._recovery_copies(), {"available": False})
+
+    def test_strength_push_counts_start_on_the_athletes_local_day(self):
+        # 10:00 UTC is already the next day at UTC+14 (#2850).
+        self.assertEqual(self.service._local_today({}), "2026-09-23")
+        self.assertEqual(
+            self.service._local_today({"timezone": "Pacific/Kiritimati"}),
+            "2026-09-24",
+        )
 
     def test_payload_sizes_count_utf8_bytes_without_fetching_the_payload(self):
         with closing(sqlite3.connect(":memory:")) as db:
