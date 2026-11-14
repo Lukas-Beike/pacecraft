@@ -1,8 +1,8 @@
 # M8 — Local efficiency factor, variability index, work and decoupling
 
 - **Card:** M8
-- **Card version:** 4
-- **Method ID:** local-session-metrics v4 (#1680, #1770, #1773, #1950)
+- **Card version:** 5
+- **Method ID:** local-session-metrics v5 (#1680, #1770, #1773, #1950, #1832)
 - **Status:** implemented (`backend/performance/session_metrics.py`, `backend/sync/session_metrics.py`)
 - **Classification:** descriptive statistic
 - **Literature checked:** 2026-11-07
@@ -63,7 +63,7 @@ Athlete decisions (2026-11-07, #1680):
    output of the device's running-power model (R40), not a measured force.
 5. **Aerobic decoupling:** the drift of `aerobic_analysis`
    (`backend/performance/session_analysis.py`, method
-   `time-weighted-session-analysis-v2`):
+   `time-weighted-session-analysis-v3`):
    `decoupling = (EF₁ − EF₂) / EF₁ × 100` in %, with `EF_h` the time-weighted
    mean non-zero output over the mean HR of half `h`, stored as
    `output_per_hr` per half and `steady_output_per_hr` for both halves. It is
@@ -199,7 +199,9 @@ uncontrolled outdoor sessions.
     outdoor run also needs a grade, or altitude and distance;
   - a recording of at least 30 minutes;
   - at least 85 % paired output and HR time in each half;
-  - an output coefficient of variation of at most 15 % in each half;
+  - a coefficient of variation of the output's 60 s rolling means of at most
+    15 % in each half (v5, #1832); a mean needs a fully covered 60 s window,
+    so the first minute of a half and the minute after a gap give none;
   - the halves' mean outputs within 10 % of each other;
   - HR within 30-240 bpm, output above 0, steps above the adaptive gap rule
     `max(30 s, 3 × median step)` of the zone times, stops excluded (v4).
@@ -220,7 +222,7 @@ uncontrolled outdoor sessions.
 | Warm-up exclusion | 10 minutes | product assumption | `aerobic_analysis`; drift starts after about 10-20 minutes (R32, R34), which motivates an exclusion but validates no cut-off. |
 | Minimum recording | 30 minutes | product assumption | `aerobic_analysis` requires 30 minutes (20 after the warm-up); V5 (unverified snippet) names 20 minutes. |
 | Paired coverage | at least 85 % per half | product assumption | `aerobic_analysis`; not a published value. |
-| Output variation | CV at most 15 % per half | product assumption | `aerobic_analysis`; keeps the comparison steady; not a published value. |
+| Output variation | CV of the 60 s rolling output means at most 15 % per half | product assumption | `aerobic_analysis` (`STEADY_WINDOW_S`, `MAX_STEADY_CV`); keeps the comparison steady; not a published value. Athlete decision 2026-11-14 (#1832): one rule for runs and rides, no cool-down trim. |
 | Half match | mean outputs within 10 % | product assumption | `aerobic_analysis`; not a published value. |
 | HR range | 30-240 bpm | product assumption | `aerobic_analysis`; sensor plausibility. |
 | Run decoupling output | Minetti 2002 grade-adjusted speed per sample | source | R44 cost model; athlete decision 2026-11-07 (#1770): same basis as run EF; Minetti 2002 is a laboratory cost model, not Garmin's GAP, so EF and Pa:HR adjust grade with different models. |
@@ -258,14 +260,12 @@ uncontrolled outdoor sessions.
   51 trained cyclists, HR decoupling over about 2.5 h of moderate cycling
   tracked the fall of power at the first ventilatory threshold (r = −0.76);
   controlled laboratory sessions, not everyday outdoor files.
-- **Steady-output rule:** the output CV ≤ 15 % on ~1 s samples probably
-  excludes most outdoor rides (science review 2026-11-07). A counts-only
-  measurement (`scripts/decoupling_eligibility_dry_run.py`) on the athlete's
-  data on 2026-11-08 found no session of the last 365 days with Garmin or
-  Wahoo full-resolution streams, so it could not be evaluated; it runs again
-  after the stream history re-fetch (#1763), and the rule is decided then.
-  The app reports the same counts in the diagnostics section
-  `decoupling_eligibility` until that decision (#2779).
+- **Steady-output rule (v5, #1832):** the output CV ≤ 15 % on ~1 s samples
+  excluded almost every outdoor ride. Measured on the athlete's last 365 days
+  (diagnostics `decoupling_eligibility`, 2026-11-14, counts only): of the 20
+  outdoor rides past the coverage gate the 1 s rule passed 0 and the CV of
+  60 s rolling means 17; of 81 outdoor runs 55 and 60. The athlete chose the
+  60 s rule for runs and rides alike, without a cool-down trim (2026-11-14).
 - **History:** sessions without stored full-resolution streams have no stream
   work and no decoupling until the follow-up stream re-fetch.
 - **EF trend:** an EF or decoupling trend over comparable sessions is not
@@ -279,7 +279,7 @@ uncontrolled outdoor sessions.
 | Constant | Value | Module | Code comment |
 | --- | --- | --- | --- |
 | `METHOD_ID` | `'local-session-metrics'` | `backend/performance/session_metrics.py` |  |
-| `METHOD_VERSION` | `4` | `backend/performance/session_metrics.py` | v2: grade-adjusted Pa:HR of outdoor runs (#1770). v3: the decoupling's output per heartbeat is named apart from the session EF, and run work names Garmin's running-power model (card M8 v3, #1773). v4: positive duration fallback; stream work counts moving samples only (#1950). |
+| `METHOD_VERSION` | `5` | `backend/performance/session_metrics.py` | v2: grade-adjusted Pa:HR of outdoor runs (#1770). v3: the decoupling's output per heartbeat is named apart from the session EF, and run work names Garmin's running-power model (card M8 v3, #1773). v4: positive duration fallback; stream work counts moving samples only (#1950). v5: decoupling's steady-output rule reads 60 s rolling means (#1832). |
 | `CARD` | `'M8'` | `backend/performance/session_metrics.py` |  |
 | `MAX_SAMPLE_GAP_S` | `5.0` | `backend/performance/session_metrics.py` | A stream sample longer than this is a gap, as in the session analysis. |
 | `MIN_WORK_COVERAGE` | `0.85` | `backend/performance/session_metrics.py` | Share of the moving duration the power stream must cover for a work value. |

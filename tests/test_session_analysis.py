@@ -3,9 +3,12 @@
 import unittest
 
 from backend.performance.session_analysis import (
+    METHOD,
+    STEADY_WINDOW_S,
     aerobic_analysis,
     heart_rate_histogram,
     interval_quality,
+    rolling_means,
 )
 from backend.planning.target_snapshot import freeze_targets
 
@@ -139,8 +142,10 @@ class SessionAnalysisTests(unittest.TestCase):
             elif variant == "stops":
                 activity["streams"]["moving"] = [False] * 3601
             elif variant == "variable":
+                # 2-minute blocks at 100 W and 300 W: both halves average 196 W,
+                # but the 60 s means swing from 100 to 300 W (#1832).
                 activity["streams"]["watts"] = [
-                    100 if i % 2 else 300 for i in range(3601)
+                    100 if i // 120 % 2 else 300 for i in range(3601)
                 ]
             else:
                 activity = ride(list(range(601)) + list(range(2100, 3601)))
@@ -148,6 +153,29 @@ class SessionAnalysisTests(unittest.TestCase):
                 self.assertEqual(
                     "insufficient_data", aerobic_analysis(activity)["status"]
                 )
+
+    def test_second_to_second_output_noise_is_steady_on_60_second_means(self):
+        # #1832: 1 s alternation of 100 W and 300 W had a 1 s CV of 50 % and was
+        # excluded; its 60 s means are a constant 200 W, so it counts as steady.
+        activity = ride()
+        activity["streams"]["watts"] = [100 if i % 2 else 300 for i in range(3601)]
+        result = aerobic_analysis(activity)
+        self.assertEqual("ok", result["status"])
+        self.assertEqual(METHOD, result["method"])
+        self.assertTrue(all(half["variation"] < 0.01 for half in result["halves"]))
+        # Minute-scale swings with equal half means fail the steady rule itself.
+        activity["streams"]["watts"] = [
+            100 if i // 120 % 2 else 300 for i in range(3601)
+        ]
+        self.assertIn("zu variabel", aerobic_analysis(activity)["reason"])
+
+    def test_rolling_means_need_a_full_window_also_after_a_gap(self):
+        # 1 s samples 0-119, a gap, then 200-299: means end at 59-119 (61) and,
+        # after the gap, only once the window is full again at 259-299 (41).
+        samples = [(float(t), 1.0, 200.0) for t in [*range(120), *range(200, 300)]]
+        means = rolling_means(samples, STEADY_WINDOW_S)
+        self.assertEqual(len(means), 61 + 41)
+        self.assertEqual({value for _, value in means}, {200.0})
 
     def test_target_uses_frozen_ftp_and_partial_completion_is_partial(self):
         activity = ride(list(range(121)))

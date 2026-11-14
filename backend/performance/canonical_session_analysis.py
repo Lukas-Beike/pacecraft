@@ -51,8 +51,9 @@ ANALYSIS_VERSION: Final = 3
 # v6: the calendar profile uses the thresholds of the zone times (#1892).
 # v7: samples use the adaptive gap rule of the zone times (#1950).
 # v8: the calendar profile uses the session's configured zone limits (#2136).
+# v9: the aerobic decoupling's steady-output rule reads 60 s rolling means (#1832).
 # The stored heart-rate histogram has its own version in the fingerprint.
-METHOD_VERSION: Final = 8
+METHOD_VERSION: Final = 9
 
 
 def stream_resolution(
