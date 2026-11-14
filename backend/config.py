@@ -236,7 +236,8 @@ class ConfigHolder:
 
 
 DATABASE_KEY_MISMATCH_MESSAGE = (
-    "Das App-Passwort passt nicht zur vorhandenen Datenbank. "
+    "Die Datenbank lässt sich mit diesem App-Passwort nicht öffnen: "
+    "Das Passwort passt nicht, oder die Datei ist beschädigt. "
     "Die Datenbank wurde nicht verändert."
 )
 
@@ -259,7 +260,7 @@ def refuse_wrong_database_key(error: BaseException, logger: logging.Logger) -> N
         extra={
             "event": "secure_startup_refused",
             "context": {
-                "reason": "database_key_mismatch",
+                "reason": "database_unreadable",
                 "error_class": type(error).__name__,
             },
         },

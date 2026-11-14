@@ -98,7 +98,7 @@ The loader SHALL read `KEY=VALUE` lines from `<application directory>/.env` and 
 
 #### Scenario: Password that does not open the database
 - **WHEN** `APP_PASSWORD` does not open the existing encrypted database
-- **THEN** one CRITICAL log with event `secure_startup_refused` and reason `database_key_mismatch` is written without the driver's text, key or path, the process exits non-zero with "Das App-Passwort passt nicht zur vorhandenen Datenbank. Die Datenbank wurde nicht verändert.", and the database file is unchanged
+- **THEN** one CRITICAL log with event `secure_startup_refused` and reason `database_unreadable` is written without the driver's text, key or path, the process exits non-zero with "Die Datenbank lässt sich mit diesem App-Passwort nicht öffnen: Das Passwort passt nicht, oder die Datei ist beschädigt. Die Datenbank wurde nicht verändert.", and the database file is unchanged
 
 #### Scenario: Password in the data directory
 - **WHEN** `<DATA_DIR>/.env` assigns a non-empty `APP_PASSWORD`

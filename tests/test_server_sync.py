@@ -125,11 +125,12 @@ class ServerSyncTests(ServerTestCase):
             self.assertEqual(1, len(critical))
             self.assertEqual("secure_startup_refused", critical[0].event)
             self.assertEqual(
-                {"reason": "database_key_mismatch", "error_class": "DatabaseError"},
+                {"reason": "database_unreadable", "error_class": "DatabaseError"},
                 critical[0].context,
             )
             self.assertEqual(
-                "Das App-Passwort passt nicht zur vorhandenen Datenbank. "
+                "Die Datenbank lässt sich mit diesem App-Passwort nicht öffnen: "
+                "Das Passwort passt nicht, oder die Datei ist beschädigt. "
                 "Die Datenbank wurde nicht verändert.",
                 raised.exception.code,
             )
