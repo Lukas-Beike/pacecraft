@@ -481,3 +481,21 @@ test("weekly body points keep the last reading with its fields, the reading coun
     { date: "2026-10-21", value: 69.1, observed_at: "2026-10-20T07:00:00Z", weekReadings: 1, observedDate: "2026-10-20T07:00:00Z" },
   ]);
 });
+
+test("the equipment notice names exceeded targets first and never archived items or items without a target", () => {
+  const { equipmentStatusItem } = extractFunctions("analysis.js", ["analysisNumber", "analysisPercent", "analysisRatioUnit", "analysisCountUnit", "analysisValue", "equipmentLifetime", "equipmentState", "equipmentStatusItem"], { AppFormat: require("../public/format.js") });
+  const local = (name, distance, target, extra = {}) => ({ name, usage: { distance_km: distance, maintenance_due: false }, lifetime_target_km: target, ...extra });
+  const quiet = {
+    items: [local("Alt", 900, 800, { status: "archived" }), local("Ohne Ziel", 900, null), local("Neu", 100, 800)],
+    garmin_items: [{ name: "Garmin ohne Ziel", distance_km: 5000 }, { name: "Garmin alt", distance_km: 900, goal_km: 800, status: "archived" }],
+  };
+  assert.equal(equipmentStatusItem(quiet), null);
+  assert.equal(equipmentStatusItem({}), null);
+  const due = {
+    items: [local("Kette", 100, 800, { usage: { distance_km: 100, maintenance_due: true } }), ...quiet.items],
+    garmin_items: [{ name: "Pegasus 40", distance_km: 900, goal_km: 800 }],
+  };
+  // Exceeded targets lead; maintenance of a local item follows as "+1" (#2809).
+  assert.deepEqual(JSON.parse(JSON.stringify(equipmentStatusItem(due))), { level: "warning", title: "Pegasus 40: Ziel überschritten", detail: "+1", action: { href: "#more/equipment", label: "Ansehen" } });
+  assert.equal(equipmentStatusItem({ items: due.items }).title, "Kette: Wartung fällig");
+});

@@ -128,3 +128,27 @@ test("@responsive a low screen keeps the strip to one line and the composer to o
   const messages = await page.locator("#messages").boundingBox();
   expect(messages.height).toBeGreaterThanOrEqual(100);
 });
+
+test("@responsive due equipment is one notice of the strip that opens Mehr › Ausrüstung", async ({ page }) => {
+  // The athlete's items, as the Ausrüstung view reads them; the archived one stays quiet (#2809).
+  const equipment = {
+    items: [
+      { id: "shoe", name: "Pegasus 40", kind: "shoes", sport: "run", status: "active", lifetime_target_km: 800, usage: { distance_km: 912, maintenance_due: false } },
+      { id: "chain", name: "Kette", kind: "component", sport: "ride", status: "active", lifetime_target_km: 3000, usage: { distance_km: 400, maintenance_due: true } },
+      { id: "old", name: "Alter Schuh", kind: "shoes", sport: "run", status: "archived", lifetime_target_km: 500, usage: { distance_km: 900 } },
+    ],
+    garmin_items: [], assignments: [], sensors: [],
+  };
+  await page.route("**/api/analysis/training-records", (route) => route.fulfill({ json: { equipment } }));
+  await openCoach(page);
+  const strip = page.locator("#statusStrip");
+  await expect(strip).toHaveAttribute("data-level", "warning");
+  await expect(strip).toContainText("Pegasus 40: Ziel überschritten +1");
+  await expect(strip).not.toContainText("Alter Schuh");
+  // A narrow screen folds a warning into its "1 Hinweis" button.
+  const more = strip.locator(".status-strip-more");
+  if (await more.isVisible()) await more.click();
+  await strip.getByRole("link", { name: "Ansehen" }).filter({ visible: true }).first().click();
+  await expect(page).toHaveURL(/#more\/equipment$/);
+  await expect(page.locator("#equipmentItems")).toContainText("Pegasus 40");
+});

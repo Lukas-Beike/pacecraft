@@ -1224,6 +1224,7 @@ async function renderTrainingRecords() { // NOSONAR
     const keep = receipt?.dataset.tab === equipmentTab && receipt.dataset.session === String(session);
     gear.replaceChildren(heading(), ...(keep ? [receipt] : []));
     const equipment = result.equipment || {};
+    updateStatusSources({ equipment: equipmentStatusItem(equipment) });
     const items = equipment.garmin_items || [];
     const tabs = h("div", { className: "segmented-control equipment-tabs", "aria-label": "Ausrüstung nach Sportart" });
     tabs.setAttribute("role", "tablist");
@@ -1656,6 +1657,45 @@ function equipmentState(item, local, life) {
   if (local && item.usage?.maintenance_due === true) return ["unchecked", "Wartung f\u00e4llig"];
   if (local && item.usage?.maintenance_due === false) return ["ok", "Wartung ok"];
   return life.percent == null ? ["off", "Ziel unbekannt"] : ["ok", "Ziel ok"];
+}
+
+// Pure (#2809): one status-strip notice naming the active items whose lifetime target is exceeded
+// or whose maintenance is due, by the rules of the equipment cards; exceeded targets come first.
+function equipmentStatusItem(equipment) {
+  const due = [
+    ...(equipment?.items || []).map((item) => [item, true, item.usage?.distance_km, item.lifetime_target_km]),
+    ...(equipment?.garmin_items || []).map((item) => [item, false, item.distance_km, item.goal_km]),
+  ].map(([item, local, distance, target]) => [item.name, ...equipmentState(item, local, equipmentLifetime(item.lifetime, distance, target))])
+    .filter(([, kind]) => kind === "error" || kind === "unchecked")
+    .sort(([, left], [, right]) => (left === "error" ? 0 : 1) - (right === "error" ? 0 : 1));
+  if (!due.length) return null;
+  const [[name, , label]] = due;
+  return { level: "warning", title: `${name}: ${label}`, detail: due.length > 1 ? `+${due.length - 1}` : "", action: { href: "#more/equipment", label: "Ansehen" } };
+}
+
+let equipmentNoticeKey = null;
+
+// The equipment read takes seconds on a long history (#2809), so the notice reads it, through the cache the
+// Ausrüstung view shares, only when the browser is idle on a visible page and only once per session and
+// activity or Garmin state; a chat turn does not read it again. A failed read keeps the last notice and
+// waits for the next state; a hidden page leaves the read to the next status render.
+function refreshEquipmentNotice() {
+  if (!state.data) return;
+  const session = state.sessionGeneration;
+  const versions = state.data.state_versions || {};
+  const key = JSON.stringify([session, versions.activities, versions.garmin]);
+  if (key === equipmentNoticeKey) return;
+  equipmentNoticeKey = key;
+  const idle = globalThis.requestIdleCallback || ((callback) => setTimeout(callback, 0));
+  idle(() => {
+    if (document.visibilityState === "hidden") {
+      equipmentNoticeKey = null;
+      return;
+    }
+    requestAnalysisReport("/api/analysis/training-records").then((result) => {
+      if (session === state.sessionGeneration) updateStatusSources({ equipment: equipmentStatusItem(result?.equipment) });
+    }).catch(() => {});
+  });
 }
 
 function maintenanceButton(item) {
