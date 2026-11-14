@@ -373,6 +373,6 @@ The composition root SHALL wire these fixed limits and locations; the capabiliti
 
 #### Scenario: Storage
 - **WHEN** the application opens its storage
-- **THEN** the database is `<DATA_DIR>/intervals-coach.db`, the log is `<DATA_DIR>/intervals-coach.log`, and the pool has four readers with a 20-second database timeout
+- **THEN** the database is `<DATA_DIR>/intervals-coach.db`, the log is `<DATA_DIR>/intervals-coach.log`, and the pool has two readers with a 20-second database timeout
 
 Evidence: `server.py` (constants above `ENV_CONFIG`, `database_manager`, `CHAT_PAGE_MAX`); `backend/http_api/server.py::CoachHTTPServer`. Tests: `tests/test_server_coach.py::test_coach_http_server_retains_threading_contract`; `tests/test_server_providers.py::test_openai_client_composition_keeps_runtime_hooks`. Not verified: how each consuming module applies its value; only the wiring was read, and the limits other than the two tests above have no test that pins them.

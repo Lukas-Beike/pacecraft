@@ -58,7 +58,9 @@ SECTION_FIELDS = {
         "|".join(("schema_version", *COUNTS, *STORAGE))
         + r"|(workout_library_state|stored_payload_bytes)\.[a-z_]+"
     ),
-    "runtime": re.compile(r"uptime_s|malloc_arena_max|process_memory\.[a-z_]+"),
+    "runtime": re.compile(
+        r"uptime_s|malloc_arena_max|process_memory\.[a-z_]+|reader_slots\.[a-z_0-9]+"
+    ),
     "recovery_copies": re.compile(
         r"status|available|count|newest_age_hours|total_bytes"
     ),

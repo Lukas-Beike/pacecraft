@@ -322,6 +322,7 @@ class DiagnosticReportService:
                     "platform": platform.platform(),
                     "process_memory": process_memory(),
                     **process_settings(),
+                    "reader_slots": deps.database_manager.reader_slot_waits(),
                 },
                 "recovery_copies": section("recovery_copies", self._recovery_copies),
                 "configuration": section("configuration", configuration),

@@ -285,6 +285,12 @@ class ProdChecksTests(unittest.TestCase):
                 "process_memory": {"rss_bytes": 1000},
                 "uptime_s": 3600,
                 "malloc_arena_max": 2,
+                "reader_slots": {
+                    "slots": 2,
+                    "waits_over_1s": 3,
+                    "timeouts": 0,
+                    "longest_wait_s": 1.25,
+                },
             },
             "recovery_copies": {
                 "count": 1,
@@ -348,6 +354,8 @@ class ProdChecksTests(unittest.TestCase):
             ],
             "runtime": [
                 "malloc_arena_max 2", "process_memory.rss_bytes 1000",
+                "reader_slots.longest_wait_s 1.25", "reader_slots.slots 2",
+                "reader_slots.timeouts 0", "reader_slots.waits_over_1s 3",
                 "uptime_s 3600",
             ],
             "recovery_copies": [

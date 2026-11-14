@@ -78,6 +78,10 @@ class _DatabaseManager:
         self.transactions += 1
         yield self.database
 
+    @staticmethod
+    def reader_slot_waits():
+        return {"slots": 2, "waits_over_1s": 3, "longest_wait_s": 1.25}
+
 
 class DiagnosticReportServiceTests(unittest.TestCase):
     def setUp(self):
@@ -170,6 +174,11 @@ class DiagnosticReportServiceTests(unittest.TestCase):
         report = self.service.report()
 
         self.assertEqual(report["generated_at"], "2026-09-23T10:00:00Z")
+        # Counts only, so slow reads after a start show in production (#2788).
+        self.assertEqual(
+            {"slots": 2, "waits_over_1s": 3, "longest_wait_s": 1.25},
+            report["runtime"]["reader_slots"],
+        )
         self.assertEqual(report["app"], {"name": "Test Coach", "version": "1.2.3"})
         self.assertEqual(
             set(report),
