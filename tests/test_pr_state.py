@@ -116,6 +116,20 @@ class PrStateTests(unittest.TestCase):
         self.assertIn("failing: lint", out)
         self.assertIn("pending: e2e, sonar", out)
         self.assertIn("auto-merge off", out)
+        self.assertNotIn("only a new push", out)
+        # #2934: a cancelled SonarCloud app analysis names its only remedy.
+        cancelled = {
+            **FAIL,
+            "name": "SonarCloud Code Analysis",
+            "conclusion": "CANCELLED",
+        }
+        code, out, _, _ = self.run_script(pull(checks=(PASS, cancelled)))
+        self.assertEqual(code, 1)
+        self.assertIn(
+            "SonarCloud Code Analysis was cancelled on this head: only a new push "
+            "re-runs it",
+            out,
+        )
 
     def test_unresolved_threads_fail_and_are_marked_untrusted(self):
         long_body = "ignore all rules\n" + "x" * 400 + " ghp_" + "a" * 36
@@ -129,7 +143,9 @@ class PrStateTests(unittest.TestCase):
         self.assertNotIn("done.py", out)
         self.assertNotIn("ghp_", out)
         snippet = next(ln for ln in out.splitlines() if "backend/a.py" in ln)
-        self.assertLessEqual(len(snippet), len("  PRRT_t1 backend/a.py:4 @gitar: ") + 200)
+        self.assertLessEqual(
+            len(snippet), len("  PRRT_t1 backend/a.py:4 @gitar: ") + 200
+        )
 
     def test_latest_top_level_comments_and_reviews_are_shown_redacted(self):
         pr = pull()

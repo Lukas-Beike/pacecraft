@@ -147,7 +147,11 @@ exit 1 handle the cause as below. On each wake:
   validation, not another local review; CI reviews the new head.
 - If the branch falls behind or conflicts, rebase and push with
   [branch-sync](../pacecraft-branch-sync/SKILL.md) `--push` (never a
-  merge-style "Update branch").
+  merge-style "Update branch"). A stacked PR: retarget it to `develop` first
+  and wait about a minute for the retarget to settle before pushing the
+  rebased head; two near-simultaneous events can leave the required
+  `SonarCloud Code Analysis` cancelled, and only a new push re-runs it
+  (pr-state names this; #2934).
 - If checks fail, read the logs, fix the cause, and push. The `Gitar` check is
   required (see `.github/AGENTS.md`); no bypass. If it never reports on an
   otherwise green head, note the PR number in the issue (#1906 tracks its
