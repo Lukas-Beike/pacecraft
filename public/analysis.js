@@ -506,11 +506,11 @@ function appendAnalysisDateTicks(svg, start, end, { chartWidth, x }, mode = "day
 // The first day of every month from start to end; a start after the 1st begins with the next month.
 function analysisMonthDates(start, end) {
   const dates = [];
-  let [year, month, day] = start.split("-").map(Number);
-  if (day > 1) month += 1;
-  for (; dates.length < 120; month += 1) {
-    if (month > 12) { year += 1; month = 1; }
-    const date = `${year}-${String(month).padStart(2, "0")}-01`;
+  const [year, month, day] = start.split("-").map(Number);
+  // Months counted from year 0, so the year follows from the index.
+  const first = year * 12 + month - 1 + (day > 1 ? 1 : 0);
+  for (let index = first; index < first + 120; index += 1) {
+    const date = `${Math.floor(index / 12)}-${String(index % 12 + 1).padStart(2, "0")}-01`;
     if (date > end) break;
     dates.push(date);
   }
