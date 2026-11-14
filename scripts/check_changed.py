@@ -12,6 +12,7 @@ base touches a .js, .cjs or .mjs file. Exit 0: all passed; 1: a step failed;
 from __future__ import annotations
 
 import argparse
+import os
 import re
 import subprocess
 import sys
@@ -32,13 +33,25 @@ class MissingTool(Exception):
     """A step's program is not installed."""
 
 
-def run_step(argv: list[str]) -> tuple[bool, float, str]:
+def step_env(name: str) -> dict[str, str] | None:
+    """The quality step reads this checkout's node_modules, as the pre-push hook
+    does, so a missing ESLint fails here with the npm ci hint instead of at the
+    push (#2832). CI runs the ratchet without it and still skips ESLint."""
+    if name != "quality":
+        return None
+    return {**os.environ, "PACECRAFT_NODE_MODULES": str(ROOT / "node_modules")}
+
+
+def run_step(
+    argv: list[str], env: dict[str, str] | None = None
+) -> tuple[bool, float, str]:
     """Run one step; return (passed, seconds, its combined output)."""
     started = time.monotonic()
     try:
         done = subprocess.run(
             argv,
             cwd=ROOT,
+            env=env,
             check=False,
             stdin=subprocess.DEVNULL,
             stdout=subprocess.PIPE,
@@ -78,7 +91,7 @@ def run_steps(steps: list[tuple[str, list[str]]]) -> int:
     failed = missing = False
     for name, argv in steps:
         try:
-            passed, seconds, output = run_step(argv)
+            passed, seconds, output = run_step(argv, step_env(name))
         except MissingTool as exc:
             print(f"FAILED {name} (0.0s)\n  {exc}")
             missing = True

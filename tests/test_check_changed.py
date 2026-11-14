@@ -21,10 +21,11 @@ class FakeRun:
         self.failing = failing
         self.missing = missing
         self.extra = extra
-        self.calls = []
+        self.calls, self.envs = [], []
 
-    def __call__(self, argv, **_kwargs):
+    def __call__(self, argv, **kwargs):
         self.calls.append(argv)
+        self.envs.append(kwargs.get("env"))
         if any(word in argv[0] for word in self.missing):
             raise FileNotFoundError(argv[0])
         failed = any(word in argv for word in self.failing)
@@ -73,6 +74,11 @@ class CheckChangedTests(unittest.TestCase):
         self.assertEqual(first[0], sys.executable)
         self.assertEqual(first[-3:], ["--changed", "--base", "origin/main"])
         self.assertEqual(runner.calls[1][1:3], ["-m", "compileall"])
+        # #2832: only the ratchet reads this checkout's node_modules, as the
+        # pre-push hook does, so a missing ESLint fails here, not at the push.
+        modules = str(check_changed.ROOT / "node_modules")
+        self.assertEqual(runner.envs[2]["PACECRAFT_NODE_MODULES"], modules)
+        self.assertEqual(runner.envs[:2], [None, None])
 
     def test_a_failure_does_not_stop_later_steps_and_shows_a_tail(self):
         runner = FakeRun(failing=("compileall",))
