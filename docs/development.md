@@ -101,6 +101,9 @@ no scan. After a clean scan the hook runs CI's repository quality ratchet
 on Windows) on a clean export of HEAD; new findings block the push. The same
 ratchet reports a function above Sonar's cognitive complexity 15 (rule
 `python:S3776`) as a `cognitive` finding named by function, not score. It
+reports a selector list repeated in the same at-rule context of `public/*.css`
+(Sonar's `css:S4666`, Stylelint `no-duplicate-selectors`) as a `css` finding,
+since CI's Sonar gate otherwise is the first to see it (#3077). It
 also checks the JavaScript Sonar analyzes (`public/*.js`, the `scripts/` and
 `tools/` modules, the `e2e/` specs, `tests/*.cjs` and the root `*.cjs`, #3058)
 for Sonar's cognitive complexity above 15 (S3776) and nested ternaries (S3358)
