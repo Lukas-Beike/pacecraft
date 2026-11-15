@@ -1061,6 +1061,8 @@ class Execution:
             if prepared
             else str(output / "report"),
         }
+        if getattr(self.args, "screenshots", False):
+            settings["E2E_SCREENSHOTS"] = "1"  # playwright.config.cjs reads it
         # Playwright's file filter is a regex; escape/anchor the selected whole file.
         arguments = [
             "test",
@@ -1315,6 +1317,12 @@ def parser():
         action="store_true",
         help="run every child after a test failure and report all failures "
         "(exit stays non-zero); infrastructure errors still stop the run",
+    )
+    result.add_argument(
+        "--screenshots",
+        action="store_true",
+        help="save a full-page screenshot of every selected test's end state and "
+        "print the paths (UI PR images; #2843)",
     )
     result.add_argument(
         "--image",
@@ -1640,6 +1648,9 @@ def main(argv=None):
                 child.get("elapsed_seconds", 0) for child in evidence.data["children"]
             ),
         )
+    if args.screenshots:
+        for shot in sorted(directory.rglob("*.png")):
+            print("Screenshot: " + str(shot), file=sys.stderr)
     return code
 
 

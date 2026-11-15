@@ -747,6 +747,21 @@ class BrowserRunnerTests(unittest.TestCase):
                 Path(env_a["E2E_AUTH_STATE_PATH"]).is_relative_to(root / "out-a")
             )
             self.assertIn("--trace=off", command_a)
+            # #2843: end-state screenshots only with --screenshots; an inherited
+            # value never switches them on.
+            self.assertNotIn("E2E_SCREENSHOTS", env_a)
+            with mock.patch.dict(os.environ, {"E2E_SCREENSHOTS": "1"}):
+                _, inherited, _ = execute.browser_command(
+                    {"project": "desktop", "file": "e2e/a.spec.js"},
+                    9102, root / "out-c", root / "private-c",
+                )  # fmt: skip
+            self.assertNotIn("E2E_SCREENSHOTS", inherited)
+            args.screenshots = True
+            _, shots, _ = execute.browser_command(
+                {"project": "desktop", "file": "e2e/a.spec.js"},
+                9103, root / "out-d", root / "private-d",
+            )  # fmt: skip
+            self.assertEqual(shots["E2E_SCREENSHOTS"], "1")
 
     def test_synthetic_identity_parity_across_all_projects_and_shards(self):
         listing_report = report()

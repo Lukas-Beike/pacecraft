@@ -22,7 +22,8 @@ module.exports = defineConfig({
     storageState: authStatePath,
     // CI failure artifacts are public and traces embed the fixture session, so traces stay local.
     trace: process.env.CI ? "off" : "retain-on-failure",
-    screenshot: "only-on-failure",
+    // run_browser_tests.py --screenshots: every test's end state, for UI PRs (#2843).
+    screenshot: process.env.E2E_SCREENSHOTS === "1" ? { mode: "on", fullPage: true } : "only-on-failure",
     video: "retain-on-failure",
   },
   // Functional contracts run once; responsive journeys retain every viewport.
