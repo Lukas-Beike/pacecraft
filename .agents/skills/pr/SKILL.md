@@ -177,7 +177,9 @@ exit 1 handle the cause as below. On each wake:
   so two green PRs can still break develop together. If the develop-run check
   of your merge commit exits 1 and your change is part of the cause, fix
   forward within 30 minutes or open a revert PR of your merge commit (a PR,
-  never a push to develop), and report it at once. Until develop is green,
+  never a push to develop; title and commit subject `revert(<scope>): <original
+  description>`, not git's default `Revert "..."`, which the commit-convention
+  check rejects), and report it at once. Until develop is green,
   every lane merges only PRs outside the failing area.
 - Stop and report if GitHub requires something you cannot satisfy, or if the PR
   is closed without merging.
