@@ -69,6 +69,9 @@ class Route:
     # POST only: run inside the maintenance operation gate after re-checking the
     # session. Login, logout, restore and chat cancellation run outside it.
     gated: bool = True
+    # GET only: a view read over the history that runs one at a time
+    # (``HeavyReadGate``, #3029).
+    heavy: bool = False
 
     def __post_init__(self) -> None:
         if not isinstance(self.access, Access):
@@ -79,6 +82,8 @@ class Route:
             (self.method, self.path) in PUBLIC_API_ROUTES
         ):
             raise ValueError(f"{self.method} {self.path} public status is not reviewed")
+        if self.heavy and self.method != "GET":
+            raise ValueError(f"{self.method} {self.path} cannot be heavy")
 
 
 def _compile(path: str) -> re.Pattern[str]:

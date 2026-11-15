@@ -45,7 +45,13 @@ class SyncGetRoutes:
         routes = [
             Route("GET", "/api/sync/jobs/{id:[0-9a-f-]+}", Access.SESSION, self._job),
             Route("GET", "/api/sync/status", Access.SESSION, self._status),
-            Route("GET", "/api/activities", Access.SESSION, self._activities),
+            Route(
+                "GET",
+                "/api/activities",
+                Access.SESSION,
+                self._activities,
+                heavy=True,
+            ),
             Route("GET", "/api/activities/{id}", Access.SESSION, self._activity),
         ]
         if (full_resync := self._full_resync) is not None:

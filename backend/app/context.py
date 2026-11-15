@@ -41,6 +41,7 @@ from backend.providers.model_wiring import ModelTransportServices
 from backend.providers.observed_opener import Opener
 from backend.providers.state import ProviderStateService
 from backend.providers.transport_wiring import ProviderTransportServices
+from backend.runtime.heavy_reads import HeavyReadGate
 from backend.runtime.maintenance import MaintenanceGate
 from backend.settings import SettingsService
 
@@ -85,6 +86,8 @@ class AppContext:
     diagnostic_capture: DiagnosticCapture = field(init=False, repr=False)
     # API response times per route pattern since start, for the diagnostics (#3017).
     route_timings: RouteTimings = field(default_factory=RouteTimings, repr=False)
+    # Heavy view reads run one at a time (#3029).
+    heavy_read_gate: HeavyReadGate = field(default_factory=HeavyReadGate, repr=False)
     canonical_read: Any = None
     planning: Any = None
     planning_workflows: Any = None

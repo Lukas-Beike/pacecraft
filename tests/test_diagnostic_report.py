@@ -166,6 +166,7 @@ class DiagnosticReportServiceTests(unittest.TestCase):
                 canonical_coverage=self.coverage,
                 recent_logs=SimpleNamespace(report_entries=lambda: [{"event": "safe"}]),
                 diagnostic_capture=self.capture,
+                heavy_read_gate=lambda: {"waits_over_1s": 1, "timeouts": 0},
             )
         )
 
@@ -177,6 +178,10 @@ class DiagnosticReportServiceTests(unittest.TestCase):
         self.assertEqual(
             {"slots": 2, "waits_over_1s": 3, "longest_wait_s": 1.25},
             report["runtime"]["reader_slots"],
+        )
+        # The heavy view reads' gate, counts only (#3029).
+        self.assertEqual(
+            {"waits_over_1s": 1, "timeouts": 0}, report["runtime"]["heavy_read_gate"]
         )
         self.assertEqual(report["app"], {"name": "Test Coach", "version": "1.2.3"})
         self.assertEqual(

@@ -20,9 +20,19 @@ class AnalysisRoutes:
 
     def routes(self) -> list[Route]:
         return [
-            Route("GET", "/api/analysis/power-profiles", Access.SESSION, self._report),
             Route(
-                "GET", "/api/analysis/training-records", Access.SESSION, self._report
+                "GET",
+                "/api/analysis/power-profiles",
+                Access.SESSION,
+                self._report,
+                heavy=True,
+            ),
+            Route(
+                "GET",
+                "/api/analysis/training-records",
+                Access.SESSION,
+                self._report,
+                heavy=True,
             ),
             Route(
                 "GET",
