@@ -434,7 +434,7 @@ jobs:
           set -euo pipefail
           browser_image="$(python -c "import json; print(json.load(open('scripts/browser_environment.json'))['image'])")"
           python scripts/run_browser_tests.py --project "$BROWSER_PROJECT" \
-            --shard "$SPEC_SHARD" --total "$SPEC_SHARDS" --jobs 1 \
+            --shard "$SPEC_SHARD" --total "$SPEC_SHARDS" --jobs 1 --keep-going \
             --image pacecraft:ci --browser-image "$browser_image" \
             --results-dir test-results/browser-runs --cache-state unknown
       - name: Upload browser run summaries
