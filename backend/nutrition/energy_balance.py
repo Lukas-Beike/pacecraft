@@ -83,7 +83,11 @@ class DayInputs:
 class EnergyInputs:
     days: Mapping[date, DayInputs]
     body_fat_pct: Mapping[date, float]  # skinfold measurements by date
-    rmr_kcal: float | None  # resting reference for the completeness rule
+    # Resting reference for the net terms and the completeness rule: own
+    # Katch-McArdle from skinfold lean mass first, Garmin only as the last
+    # fallback (orchestrator, 2026-11-15); the source is shown with it.
+    rmr_kcal: float | None
+    rmr_source: str | None = None  # 'katch_mcardle' | 'garmin' | None
 
 
 @dataclass(frozen=True)
@@ -100,6 +104,7 @@ class EnergyWindow:
     adaptive_tdee_unflagged: Estimate | None
     derived_rmr: Estimate | None
     insufficient: str | None
+    rmr_source: str | None = None
 
 
 def weight_trend(weights_kg: Mapping[date, float]) -> dict[date, float]:
@@ -239,6 +244,7 @@ def _window(
         adaptive_tdee_unflagged=unflagged,
         derived_rmr=derived,
         insufficient=reason,
+        rmr_source=inputs.rmr_source,
     )
 
 

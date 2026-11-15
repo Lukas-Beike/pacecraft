@@ -52,7 +52,7 @@ def series(
             weight_kg=weight if n % weigh_every == 0 else None,
             activity_kcal=600.0,
         )
-    return balance.EnergyInputs(out, {}, rmr_kcal=1700.0)
+    return balance.EnergyInputs(out, {}, rmr_kcal=1700.0, rmr_source="katch_mcardle")
 
 
 class CompositionAndTrendTests(unittest.TestCase):
@@ -111,6 +111,8 @@ class AdaptiveTdeeTests(unittest.TestCase):
         # 0.25 x 600 + 0.10 x 1,200 + 0.015 x 720 = 280.8 kcal TEF per day.
         self.assertAlmostEqual(tef, 280.8)
         self.assertAlmostEqual(rmr.kcal, tdee.kcal - activity - tef)
+        # The resting reference keeps its source label (own formula first).
+        self.assertEqual(window.rmr_source, "katch_mcardle")
 
 
 class FlaggedMealsAndCalibrationTests(unittest.TestCase):
