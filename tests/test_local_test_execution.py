@@ -1,5 +1,6 @@
 """Synthetic local-runner lifecycle and evidence checks; Docker is always mocked."""
 
+import ast
 import contextlib
 import ctypes
 import io
@@ -18,8 +19,73 @@ from unittest import mock
 from scripts import run_sqlcipher_tests as local
 from tests import run_tests
 
+# Methods unittest runs only when they are direct methods of a test class.
+_LIFECYCLE = frozenset(
+    {"setUp", "tearDown", "setUpClass", "tearDownClass", "asyncSetUp", "asyncTearDown"}
+)
+
+
+def lost_test_lines(source: str) -> list[int]:
+    """Lines of ``test_*`` or set-up functions that unittest never runs.
+
+    A ``test_*`` method runs only as a direct method of a class with a base; a
+    set-up method also in a base-less mixin. A helper function or class placed
+    between two methods, or a dedented method, leaves them nested in a function,
+    in a helper class or at module level.
+    """
+    found: list[int] = []
+
+    def visit(node: ast.AST, parent: ast.AST) -> None:
+        for child in ast.iter_child_nodes(node):
+            if isinstance(child, _FUNCTIONS) and _lost(child.name, parent):
+                found.append(child.lineno)
+            visit(child, child if isinstance(child, _DEFINITIONS) else parent)
+
+    tree = ast.parse(source)
+    visit(tree, tree)
+    return found
+
+
+_FUNCTIONS = ast.FunctionDef | ast.AsyncFunctionDef
+_DEFINITIONS = ast.ClassDef | ast.FunctionDef | ast.AsyncFunctionDef
+
+
+def _lost(name: str, parent: ast.AST) -> bool:
+    """Whether a function ``name`` defined directly in ``parent`` never runs as a test."""
+    if not (name.startswith("test_") or name in _LIFECYCLE):
+        return False
+    if not isinstance(parent, ast.ClassDef):
+        return True
+    return not parent.bases and name not in _LIFECYCLE
+
 
 class RunnerEvidenceTests(unittest.TestCase):
+    def test_no_test_method_is_lost_outside_its_test_class(self):
+        # #2835: a module-level helper placed between two test methods turned the
+        # methods after it into nested functions that never ran (PR #2825).
+        method = "class T(unittest.TestCase):\n    def test_a(self): ...\n"
+        for between, lost in (
+            ("def helper():\n    pass\n    def test_b(self): ...", [5]),
+            ("class _Fake:\n    def test_b(self): ...", [4]),
+            ("def test_b(self): ...", [3]),
+            ("def helper():\n    pass\n    def setUp(self): ...", [5]),
+            (
+                "def test_c():\n    class C(unittest.TestCase):\n        def test_d(self): ...",
+                [3],
+            ),
+            ("def helper():\n    def tested_callback(): ...", []),
+            # A base-less mixin may hold set-up methods.
+            ("class Mixin:\n    def setUp(self): ...", []),
+        ):
+            with self.subTest(between=between):
+                self.assertEqual(lost, lost_test_lines(method + between))
+        lost_here = [
+            f"{path.name}:{line}"
+            for path in sorted(Path(__file__).parent.glob("test_*.py"))
+            for line in lost_test_lines(path.read_text(encoding="utf-8"))
+        ]
+        self.assertEqual([], lost_here)
+
     def run_fixture(self, case, stdout=None):
         temporary = tempfile.TemporaryDirectory()
         self.addCleanup(temporary.cleanup)
@@ -64,7 +130,9 @@ class RunnerEvidenceTests(unittest.TestCase):
                 pass
 
         tests = list(
-            run_tests.iter_tests(unittest.defaultTestLoader.loadTestsFromTestCase(Quick))
+            run_tests.iter_tests(
+                unittest.defaultTestLoader.loadTestsFromTestCase(Quick)
+            )
         )
         # 600: armed before discovery, disarmed after. 0 (a nested in-process
         # main() inside an armed shard): never cancels the shard's timer.
@@ -552,7 +620,9 @@ class SupervisorTests(unittest.TestCase):
                 except (FileNotFoundError, PermissionError) as error:
                     last_error = error
                     time.sleep(0.02)
-            self.assertIsNotNone(observed, f"owned descendant reached readiness: {last_error!r}")
+            self.assertIsNotNone(
+                observed, f"owned descendant reached readiness: {last_error!r}"
+            )
             if os.name == "nt":
                 kernel = ctypes.WinDLL("kernel32", use_last_error=True)
                 kernel.OpenProcess.argtypes = [
