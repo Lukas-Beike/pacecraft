@@ -19,7 +19,7 @@ from backend.canonical.vocabulary import (
     ProviderRecordState,
 )
 
-CURRENT_SCHEMA_VERSION = 29
+CURRENT_SCHEMA_VERSION = 30
 
 # Provider-neutral canonical tables (schema version 6). Only closed lifecycle
 # enums are CHECKed here; they are generated from backend.canonical.vocabulary so
@@ -633,6 +633,19 @@ COMPETITION_LOCATION_DDL = (
     "CHECK (length(location) <= 200)"
 )
 
+# Schema version 30: each session's computed curves (#2821), derived data kept
+# across restarts. A row counts only while its fingerprint equals the one of the
+# session's current inputs; otherwise the curves are computed again.
+SESSION_CURVES_DDL = """
+    CREATE TABLE session_curves (
+        activity_id TEXT PRIMARY KEY REFERENCES activity_sessions(activity_id),
+        fingerprint TEXT NOT NULL CHECK (length(fingerprint) = 64),
+        payload TEXT NOT NULL CHECK (json_valid(payload) AND json_type(payload) = 'object'),
+        computed_at TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+    )"""
+
 
 def execute_ddl(db: Any, ddl: str) -> None:
     """Run DDL statement by statement inside the caller's transaction.
@@ -978,6 +991,7 @@ def _create_schema_statements(db: Any) -> None:
     execute_ddl(db, SYNC_JOBS_BACKFILL_INDEX_DDL)
     execute_ddl(db, CALENDAR_DECISIONS_DDL)
     execute_ddl(db, COMPETITION_LOCATION_DDL)
+    execute_ddl(db, SESSION_CURVES_DDL)
     db.execute(f"PRAGMA user_version = {CURRENT_SCHEMA_VERSION}")
 
 

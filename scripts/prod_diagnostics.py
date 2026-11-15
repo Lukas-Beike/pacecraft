@@ -63,9 +63,10 @@ SECTION_FIELDS = {
     ),
     # The newest backup the app made (#2996).
     "backup": re.compile(r"status|known|age_hours|bytes|verified"),
-    # The all-time curve build (#2852).
+    # The all-time curve build (#2852) and its stored curves (#2821).
     "curve_build": re.compile(
         r"status|available|builds|failures|last_build_s|building_s|failed_age_s"
+        r"|curves_(computed|loaded|stored)|curve_store_failures"
     ),
     # Strength units sent to Garmin by shape, and Intervals.icu-only ones (#2850).
     "garmin_strength_push": re.compile(
