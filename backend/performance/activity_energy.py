@@ -203,7 +203,8 @@ def _solve3(matrix: list[list[float]], rhs: list[float]) -> list[float] | None:
     """Gaussian elimination with partial pivoting for a 3x3 system."""
     a = [row[:] + [value] for row, value in zip(matrix, rhs, strict=True)]
     for col in range(3):
-        pivot = max(range(col, 3), key=lambda row: abs(a[row][col]))
+        column = [abs(a[row][col]) for row in range(3)]
+        pivot = max(range(col, 3), key=column.__getitem__)
         if abs(a[pivot][col]) < 1e-9:
             return None
         a[col], a[pivot] = a[pivot], a[col]
