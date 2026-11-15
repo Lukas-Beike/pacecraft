@@ -211,7 +211,7 @@ class CompetitionService:
             normalized = competitions.normalize_competition(value)
             if competition_id:
                 normalized["id"] = competition_id
-            despite = 0 if existing else self._same_day(db, normalized, arguments)
+            despite = self._same_day(db, normalized, arguments, existing)
             today = self._local_today().isoformat()
             previous_day = str((existing or {}).get("event_date") or "")[:10]
             was_upcoming = bool(existing) and previous_day >= today
@@ -258,13 +258,20 @@ class CompetitionService:
         }
 
     def _same_day(
-        self, db: Any, normalized: dict[str, Any], arguments: dict[str, Any]
+        self,
+        db: Any,
+        normalized: dict[str, Any],
+        arguments: dict[str, Any],
+        existing: dict[str, Any] | None,
     ) -> int:
         """Refuse a new competition on a day with one of its sport (#3080).
 
         The Coach updates that one by its competition_id; a second race of the
-        sport that day (``new_because`` says why) is kept and counted.
+        sport that day (``new_because`` says why) is kept and counted. An edit
+        is never refused.
         """
+        if existing:
+            return 0
         day = str(normalized["event_date"])[:10]
         match = next(
             (
