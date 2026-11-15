@@ -17,8 +17,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-// Mehr > Ausrüstung is timed as a view of its own (#3017).
-export const VIEWS = ["coach", "plan", "analysis", "nutrition", "more", "more/equipment"];
+export const VIEWS = ["coach", "plan", "analysis", "nutrition", "more"];
 export const WIDTHS = { phone: { width: 412, height: 915 }, desktop: { width: 1280, height: 900 } };
 
 // The password file is only read: the temp directory or the folder where a T3
@@ -180,18 +179,6 @@ async function walkCalendar(page, shot) {
   if (await clickIfThere(page.locator(".planned-entry > summary"))) {
     await shot("plan-unit");
     done.push("unit opened");
-  }
-  // A completed session's "Details": time from the click until its panel stops loading (#3017).
-  if (await clickIfThere(page.locator(".planned-activity-more > summary"))) {
-    // The panel loads on its toggle event: ready once it shows content and no loading marker.
-    const started = Date.now();
-    const ready = await page.waitForFunction(() => {
-      const panel = document.querySelector(".planned-activity-more[open]");
-      const content = panel && [...panel.children].filter((child) => child.tagName !== "SUMMARY");
-      return Boolean(content?.some((child) => child.textContent.trim()) && !panel.querySelector(".loading-state"));
-    }, null, { timeout: READY_CAP_MS }).then(() => true, () => false);
-    done.push(ready ? `details ${Date.now() - started} ms` : "details not ready within 15 s");
-    await shot("plan-details");
   }
   if (await clickIfThere(page.locator('.planned-view-switch button[data-view="month"]'))) {
     await shot("plan-month");
