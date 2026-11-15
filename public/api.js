@@ -1,7 +1,6 @@
 (() => {
   const REQUEST_TIMEOUT_MS = 25_000;
   const REMOTE_ACTION_TIMEOUT_MS = 55_000;
-  const TRANSCRIPTION_TIMEOUT_MS = 100_000;
   const NETWORK_ERROR_MESSAGE = "Keine Verbindung zum Coach-Server. Prüfe dein Netzwerk und versuche es erneut.";
   const UPSTREAM_MESSAGES = Object.freeze({
     upstream_auth: "Die Anmeldung beim externen Dienst ist fehlgeschlagen. Bitte die Verbindungseinstellungen prüfen.",
@@ -152,29 +151,6 @@
     }
   }
 
-  async function audio(path, blob, onUnauthorized) {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), TRANSCRIPTION_TIMEOUT_MS);
-    try {
-      const response = await send(path, {
-        method: "POST",
-        body: blob,
-        signal: controller.signal,
-        headers: { "Content-Type": blob.type || "application/octet-stream" },
-      }, onUnauthorized);
-      const payload = await readResponse(response, onUnauthorized);
-      if (typeof payload.transcript !== "string") {
-        throw responseError(response, "Die Transkriptionsbestätigung fehlt.", "invalid_transcription");
-      }
-      return payload;
-    } catch (error) {
-      if (error?.name === "AbortError") throw new Error(`Die Transkription antwortet nicht innerhalb von ${Math.ceil(TRANSCRIPTION_TIMEOUT_MS / 1000)} Sekunden.`);
-      throw error;
-    } finally {
-      clearTimeout(timeout);
-    }
-  }
-
   async function download(path, options = {}, onUnauthorized) {
     const { timeoutMs = REQUEST_TIMEOUT_MS, timeoutMessage, fallback, ...fetchOptions } = options;
     const controller = new AbortController();
@@ -206,5 +182,5 @@
     return response;
   }
 
-  globalThis.AppApi = Object.freeze({ audio, download, messageForReason, request, responseError, settled, stream });
+  globalThis.AppApi = Object.freeze({ download, messageForReason, request, responseError, settled, stream });
 })();

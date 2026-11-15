@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Describe the private athlete-facing PWA shell, navigation, accessible controls, safe content, Coach interaction, and operational UIs. This is an inspected brownfield contract, not a claim of full browser execution or universal accessibility compliance. Durable training, planning, performance, activity, profile, history/undo, authentication, credentials, backup/restore, and privacy effects belong to their domain specifications. Nutrition behavior is specified in `nutrition-diary-and-targets` and `food-catalog-and-meal-library`; refresh/cache behavior in `view-refresh-and-client-state`; microphone/notification behavior in `voice-and-notifications`.
+Describe the private athlete-facing PWA shell, navigation, accessible controls, safe content, Coach interaction, and operational UIs. This is an inspected brownfield contract, not a claim of full browser execution or universal accessibility compliance. Durable training, planning, performance, activity, profile, history/undo, authentication, credentials, backup/restore, and privacy effects belong to their domain specifications. Nutrition behavior is specified in `nutrition-diary-and-targets` and `food-catalog-and-meal-library`; refresh/cache behavior in `view-refresh-and-client-state`; notification behavior in `notifications`.
 
 ## Requirements
 
@@ -185,7 +185,7 @@ The client SHALL support editable multiline Coach drafts, sending with the expli
 - **THEN** it inserts a newline; the send button or Ctrl/Cmd+Enter without Shift submits.
 
 #### Scenario: Composer grows or Coach works
-- **WHEN** the draft grows, the Coach becomes busy, or voice status appears
+- **WHEN** the draft grows or the Coach becomes busy
 - **THEN** the composer resizes within its bounds and keeps the existing control layout and bottom-edge behavior without a busy-state height jump.
 
 Evidence: `public/coach.js::chatEnterAction`, `public/styles.css` (`.composer textarea` field-sizing), `public/coach.js::publishComposerHeight`, `public/shared.js::hasTouchFirstInput`; `tests/coach-enter.test.cjs::desktop Enter sends the draft`, `tests/coach-enter.test.cjs::IME composition never triggers an action`, `tests/coach-enter.test.cjs::touch Ctrl/Cmd+Enter sends from a physical keyboard`, `e2e/coach-composer.spec.js::composer height does not change while busy @responsive`.
@@ -710,7 +710,7 @@ Evidence: `public/shared.js::notePwaActivity`; `public/shared.js::updatePwaActiv
 
 ### Requirement: Composer control states
 
-The composer SHALL never disable the draft field. The send control SHALL read "Senden", "Einreihen" while a turn runs, "Coach antwortet…" while a turn is recovered and "Antwort wird geladen…" while a completed answer is taken over, and SHALL be disabled without a draft, while the chat loads, attachments load, a recording or transcription runs, and in the last two states.
+The composer SHALL never disable the draft field. The send control SHALL read "Senden", "Einreihen" while a turn runs, "Coach antwortet…" while a turn is recovered and "Antwort wird geladen…" while a completed answer is taken over, and SHALL be disabled without a draft, while the chat loads, attachments load, and in the last two states.
 
 #### Scenario: Placeholder
 - **WHEN** the chat is ready, busy, loading, or the selected Coach has no API key

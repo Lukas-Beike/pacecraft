@@ -70,8 +70,8 @@ The supported application deployment SHALL remain a standalone single-athlete se
 - **WHEN** the application is deployed using the maintained runtime instructions
 - **THEN** persistent athlete storage is retained and access is restricted by the operator's LAN/VPN/reverse-proxy boundary
 
-#### Scenario: Browser microphone used remotely
-- **WHEN** the athlete uses secure-context browser functionality outside localhost
+#### Scenario: PWA installed remotely
+- **WHEN** the athlete installs the PWA outside localhost
 - **THEN** the deployment supplies trusted HTTPS
 
 #### Scenario: Listener binding inspected

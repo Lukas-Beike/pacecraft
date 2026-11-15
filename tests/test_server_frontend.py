@@ -137,8 +137,6 @@ class ServerFrontendTests(ServerTestCase):
         app = frontend_source()
         coach = (root / "coach.js").read_text(encoding="utf-8")
         for name in (
-            "setVoiceStatus",
-            "toggleVoiceInput",
             "chatControlState",
             "updateChatControls",
             "announceChatStatus",
@@ -169,7 +167,6 @@ class ServerFrontendTests(ServerTestCase):
             "chatForm",
             "steerButton",
             "cancelChatButton",
-            "voiceButton",
             "attachmentInput",
             "messageInput",
             "coachChatResetButton",
@@ -335,7 +332,14 @@ class ServerFrontendTests(ServerTestCase):
         views = (root / "views.js").read_text(encoding="utf-8")
         # Every request goes through api(), which adds the session handling and CSRF token.
         self.assertIn("globalThis.AppApi.request(path, options, () =>", app)
-        self.assertIn("globalThis.AppApi.audio(path, blob, () =>", app)
+        # The in-app voice input is gone (#3045): no microphone, recording or upload.
+        for removed in (
+            "AppApi.audio",
+            "getUserMedia({ audio",
+            "MediaRecorder",
+            "voiceButton",
+        ):
+            self.assertNotIn(removed, index + app)
         self.assertIn("globalThis.AppApi.download(path", app)
         self.assertNotIn("function withRequestTimeout(", app)
         self.assertNotIn("JSON.stringify(report, null, 2)", app)

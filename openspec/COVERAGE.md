@@ -45,7 +45,7 @@ configuration or contacting providers.
 | `backend/runtime/`, `server.py`, `backend/config.py`, `backend/settings.py` | Composition, secure startup, runtime settings, maintenance, events and shutdown |
 | `backend/diagnostics/`, `backend/observability.py` | Redacted technical reports/logs, captures and retention/cache boundaries |
 | `backend/http_api/`, `backend/errors.py`, `backend/pagination.py` | Auth/session/CSRF/rate/body/error contracts; concrete routes map to domain specs |
-| `public/` | Responsive shell, navigation/forms, PWA/offline/update, device state, scoped refresh, domain views, voice/notifications |
+| `public/` | Responsive shell, navigation/forms, PWA/offline/update, device state, scoped refresh, domain views, notifications |
 | `.github/`, `Dockerfile`, dependency manifests, `scripts/`, `tools/`, `site/` | Build/quality/source/release/publication contracts and separate static marketing deployment |
 
 ## Review and validation evidence
@@ -152,7 +152,7 @@ configuration or contacting providers.
   recovery backups or production/browser sessions were inspected.
 - No remote provider mutation, GitHub PR/push, release, image publication or
   deployment is part of this backfill.
-- Live provider parity, all browser/viewport journeys, actual microphone/push
+- Live provider parity, all browser/viewport journeys, actual push
   permissions, all network failure modes, release publication and current hosted
   protection settings are not executed here. Relevant existing tests/source are
   cited; runtime coverage must not be inferred from their citations.
@@ -174,10 +174,10 @@ configuration or contacting providers.
   The implementation does not read/compare independently edited Intervals
   wellness values before its PUT. This baseline does not promise remote
   compare-and-swap protection (`backend/nutrition/sync.py::sync_day`).
-- `voice-and-notifications`: notifications come from eligible state loaded by
+- `notifications`: notifications come from eligible state loaded by
   the current client. There is no server push-subscription route, guaranteed
-  closed-app delivery or cross-tab/restart delivery deduplication. Microphone,
-  permission-denial and notificationclick branches include source-only evidence.
+  closed-app delivery or cross-tab/restart delivery deduplication.
+  Permission-denial and notificationclick branches include source-only evidence.
 - Photo candidates and labels are not saved meals/products until their explicit
   durable action. Some size/signature/permission branches are source-inspected;
   cited adjacent tests do not mean every boundary was executed here.

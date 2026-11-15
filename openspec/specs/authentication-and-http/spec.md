@@ -121,13 +121,13 @@ The HTTP boundary SHALL enforce configured body-size limits and supported conten
 
 #### Scenario: Body limits per route class
 - **WHEN** a request declares its size in `Content-Length`, the only source of the body size
-- **THEN** ordinary JSON routes accept up to 1 000 000 bytes, the Coach chat routes 28 000 000, voice audio 8 000 000 and a backup restore 1 000 000 000 read in 1 MiB chunks; a route with its own limit states it in `docs/api-routes.md`
+- **THEN** ordinary JSON routes accept up to 1 000 000 bytes, the Coach chat routes 28 000 000 and a backup restore 1 000 000 000 read in 1 MiB chunks; a route with its own limit states it in `docs/api-routes.md`
 
 #### Scenario: Missing or out-of-range size
 - **WHEN** `Content-Length` is missing, zero or above the route limit
-- **THEN** a JSON or body route answers "Ungültige Größe des Anfrageinhalts." with HTTP 413 when the size also exceeds 1 000 000 bytes and HTTP 400 otherwise, voice audio answers "Ungültige Größe der Audioaufnahme." with HTTP 413 only above 8 000 000 bytes, and a JSON route without `application/json` in `Content-Type` answers HTTP 415
+- **THEN** a JSON or body route answers "Ungültige Größe des Anfrageinhalts." with HTTP 413 when the size also exceeds 1 000 000 bytes and HTTP 400 otherwise, and a JSON route without `application/json` in `Content-Type` answers HTTP 415
 
-Evidence: `backend/http_api/requests.py::read_json`; `backend/http_api/requests.py::read_body_stream`; `backend/http_api/requests.py::read_audio_body`. Tests: `tests/test_http_input_robustness.py::test_malformed_login_bodies_return_400_without_tracebacks`; `tests/test_http_input_robustness.py::test_oversize_body_limit_is_unchanged`; `tests/test_server_http.py::test_http_request_helpers_are_dependency_light_and_preserve_limits`; `tests/test_server_http.py::test_streamed_body_checks_limits_before_reading_and_bounds_each_chunk`.
+Evidence: `backend/http_api/requests.py::read_json`; `backend/http_api/requests.py::read_body_stream`. Tests: `tests/test_http_input_robustness.py::test_malformed_login_bodies_return_400_without_tracebacks`; `tests/test_http_input_robustness.py::test_oversize_body_limit_is_unchanged`; `tests/test_server_http.py::test_http_request_helpers_are_dependency_light_and_preserve_limits`; `tests/test_server_http.py::test_streamed_body_checks_limits_before_reading_and_bounds_each_chunk`.
 
 ### Requirement: Post-maintenance authorization recheck
 

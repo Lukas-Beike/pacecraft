@@ -336,7 +336,7 @@ The system SHALL read a streamed Responses answer as server-sent events up to th
 
 #### Scenario: Usage operations
 - **WHEN** usage is recorded
-- **THEN** the operation is `responses_stream` for a stream that ended completed or incomplete, `responses_stream_failed` for one that ended with a failed body, `responses_stream_cancelled` for a cancelled or disconnected stream (one request with zero tokens when no body arrived), `responses` for a plain request such as the impact classifier, and `transcription` for a voice note
+- **THEN** the operation is `responses_stream` for a stream that ended completed or incomplete, `responses_stream_failed` for one that ended with a failed body, `responses_stream_cancelled` for a cancelled or disconnected stream (one request with zero tokens when no body arrived), `responses` for a plain request such as the impact classifier
 
 Evidence: `backend/providers/openai_events.py:consume_sse_event`, `backend/providers/openai_events.py:_decode_sse_event`, `backend/providers/openai_stream.py:OpenAIStreamClient`, `backend/providers/openai_stream.py:OpenAIStreamTelemetry`, `backend/providers/openai_requests.py:OpenAIResponsesClient`, `backend/providers/usage.py`; `tests/test_provider_openai.py:test_consume_sse_event_returns_all_final_response_states`, `tests/test_provider_openai.py:test_stream_client_timeout_network_and_client_disconnect_contracts`, `tests/test_provider_openai.py:test_read_stream_response_rejects_oversized_stream`, `tests/test_provider_openai.py:test_stream_client_requires_final_response_and_records_usage_once_on_success`.
 

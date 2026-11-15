@@ -24,10 +24,6 @@ class ProviderStateReader(Protocol):
     def summary(self, provider: str) -> dict[str, Any]: ...
 
 
-class AudioTranscriber(Protocol):
-    def transcribe(self, audio: bytes, content_type: str) -> dict[str, str]: ...
-
-
 class ActivityReader(Protocol):
     """Reads canonical activity records.
 

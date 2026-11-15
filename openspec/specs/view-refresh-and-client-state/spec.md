@@ -21,7 +21,7 @@ The client SHALL send same-origin credentials and the current CSRF token for mut
 - **WHEN** a request exceeds its configured deadline or resolves after session generation changed
 - **THEN** the timeout/cancellation or superseded-session result cannot silently update the current session's UI.
 
-Evidence: `public/api.js::send`, `public/api.js::request`, `public/api.js::readResponse`, `public/shared.js::api`; `e2e/contracts.spec.js::JSON and audio errors retain status, reason and retry delay`, `e2e/contracts.spec.js::a delayed old-session 401 cannot log out the new session`, `e2e/contracts.spec.js::profile invalid JSON and incomplete success preserve the dirty draft`. Token-retry policy is inspected source evidence; these named tests are not a complete CSRF transport matrix.
+Evidence: `public/api.js::send`, `public/api.js::request`, `public/api.js::readResponse`, `public/shared.js::api`; `e2e/contracts.spec.js::JSON errors retain status, reason and retry delay`, `e2e/contracts.spec.js::a delayed old-session 401 cannot log out the new session`, `e2e/contracts.spec.js::profile invalid JSON and incomplete success preserve the dirty draft`. Token-retry policy is inspected source evidence; these named tests are not a complete CSRF transport matrix.
 
 ### Requirement: Device reads are cached with bounded precedence
 The client SHALL retain a last loaded state snapshot, up to twenty latest persisted Coach messages, and up to twenty-four recent view responses. Message cache SHALL take precedence over older snapshot messages; view cache SHALL be tied to the current asset set.
@@ -77,10 +77,10 @@ The client SHALL clear cached state, view reads, and recent messages when login 
 - **THEN** its old sequence/cache epoch cannot render or save deleted records.
 
 #### Scenario: Replaced login session
-- **WHEN** the athlete logs in again before an old session's delayed load, receipt, or transcription returns
+- **WHEN** the athlete logs in again before an old session's delayed load or receipt returns
 - **THEN** generation checks keep that old result from affecting the new session.
 
-Evidence: `public/auth.js::showLogin`, `public/state-loader.js::clearStateSnapshot`, `public/settings.js::deletePrivacyData`, `public/shared.js::apiAudio`; `tests/state-loader-startup.test.cjs::a load that started before a privacy deletion is dropped`, `tests/state-loader-startup.test.cjs::area responses of a replaced session or load are neither rendered nor stored`, `e2e/contracts.spec.js::delayed receipt and transcription cannot alter a new session`.
+Evidence: `public/auth.js::showLogin`, `public/state-loader.js::clearStateSnapshot`, `public/settings.js::deletePrivacyData`; `tests/state-loader-startup.test.cjs::a load that started before a privacy deletion is dropped`, `tests/state-loader-startup.test.cjs::area responses of a replaced session or load are neither rendered nor stored`, `e2e/contracts.spec.js::a delayed receipt cannot alter a new session`.
 
 ### Requirement: Independent area loads render as they arrive
 The client SHALL start independent requested area reads alongside bootstrap, render successful current results without waiting for slower areas, and coalesce overlapping requests into bounded follow-up loads while retaining accurate requested versions.
@@ -194,11 +194,11 @@ Evidence: `public/state-loader.js::requestBackgroundLoad`, `public/state-loader.
 
 ### Requirement: Request deadlines and error reasons
 
-The client SHALL abort a request after 25 seconds unless its call sets another deadline: 10 seconds for the start session check, 15 for a report or activity read, 55 for a Coach action execution or Garmin login, 60 for a connection check, 90 for the start data, 100 for a transcription and 130 for the backup, privacy export, log and diagnostics downloads. An ordinary request's abort SHALL read "Der Server antwortet nicht innerhalb von N Sekunden.".
+The client SHALL abort a request after 25 seconds unless its call sets another deadline: 10 seconds for the start session check, 15 for a report or activity read, 55 for a Coach action execution or Garmin login, 60 for a connection check, 90 for the start data and 130 for the backup, privacy export, log and diagnostics downloads. An ordinary request's abort SHALL read "Der Server antwortet nicht innerhalb von N Sekunden.".
 
-#### Scenario: Abort text of a transcription or download
-- **WHEN** a transcription or a 130-second download exceeds its deadline
-- **THEN** it reads "Die Transkription antwortet nicht innerhalb von 100 Sekunden." or "Der Download konnte nicht innerhalb von zwei Minuten bestätigt werden."
+#### Scenario: Abort text of a download
+- **WHEN** a 130-second download exceeds its deadline
+- **THEN** it reads "Der Download konnte nicht innerhalb von zwei Minuten bestätigt werden."
 
 #### Scenario: No response
 - **WHEN** the request fails without a response
@@ -212,7 +212,7 @@ The client SHALL abort a request after 25 seconds unless its call sets another d
 - **WHEN** the response has `Retry-After` (seconds or a date) or `retry_after_seconds`, or a reason starting with `upstream_`
 - **THEN** the header wins and " Bitte in N Sekunden erneut versuchen." is appended, and a fixed German text replaces the server text of an upstream reason
 
-Evidence: `public/api.js` (`REQUEST_TIMEOUT_MS`, `REMOTE_ACTION_TIMEOUT_MS`, `TRANSCRIPTION_TIMEOUT_MS`, `request`, `responseError`, `safeErrorMessage`); `public/state-loader.js::loadState`; `public/auth.js::bootstrapAuth`; `public/components.js` (`DATA_LOAD_TIMEOUT_MS`); `public/shared.js::downloadRequest`. Tests: `e2e/contracts.spec.js::JSON and audio errors retain status, reason and retry delay`; `e2e/coach.spec.js::provider-backed API calls outlast their server deadlines`; `tests/test_server_frontend.py::test_frontend_api_errors_and_live_status_contracts`.
+Evidence: `public/api.js` (`REQUEST_TIMEOUT_MS`, `REMOTE_ACTION_TIMEOUT_MS`, `request`, `responseError`, `safeErrorMessage`); `public/state-loader.js::loadState`; `public/auth.js::bootstrapAuth`; `public/components.js` (`DATA_LOAD_TIMEOUT_MS`); `public/shared.js::downloadRequest`. Tests: `e2e/contracts.spec.js::JSON errors retain status, reason and retry delay`; `e2e/coach.spec.js::provider-backed API calls outlast their server deadlines`; `tests/test_server_frontend.py::test_frontend_api_errors_and_live_status_contracts`.
 
 ### Requirement: Device storage keys and privacy
 

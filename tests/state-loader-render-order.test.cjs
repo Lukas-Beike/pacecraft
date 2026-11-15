@@ -10,7 +10,7 @@ function loader(route) {
     "renderAppVersion", "renderCoachOverview", "renderQuickMessageTemplates", "notifyState",
     "renderStatus", "renderMessages", "renderPlanned", "renderLibrary", "renderProfile", "renderCompetitions", "renderGarmin",
     "renderAdaptivePlanning", "renderExternalCalendar", "renderPerformance", "renderModel", "renderThinkingLevel",
-    "renderServiceTier", "renderDiagnosticCapture", "renderSettings", "updateVoiceButton",
+    "renderServiceTier", "renderDiagnosticCapture", "renderSettings", "updateChatControls",
   ];
   const context = loadPublicScript("state-loader.js", {
     ...Object.fromEntries(stubs.map((name) => [name, () => {}])),

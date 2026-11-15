@@ -80,7 +80,6 @@ from backend.http_api.static_assets import StaticAssetService
 from backend.http_api.sync_commands import SyncCommandEndpoint
 from backend.http_api.sync_commands_post import SyncCommandPostRoute
 from backend.http_api.sync_get import SyncGetRoutes
-from backend.http_api.transcribe_post import TranscribePostRoutes
 from backend.http_api.wahoo import WahooGetRoutes, WahooPostRoutes
 from backend.nutrition.macro_context import body_weight, macro_context
 from backend.nutrition.session_fuelling import read_session_fuelling
@@ -314,7 +313,6 @@ class HttpApi:
     planning_get_routes: PlanningGetRoutes
     analysis_routes: AnalysisRoutes
     history_undo_post_routes: HistoryUndoPostRoutes
-    transcribe_post_routes: TranscribePostRoutes
     chat_stream_transport: CoachChatStreamTransport
     sync_command_post_route: SyncCommandPostRoute
     readiness_service: Callable[[], ReadinessService]
@@ -394,7 +392,7 @@ def _coach_routes(
     chat_history_page_service: Callable[[], ChatHistoryPageService],
     response_timeout_seconds: int,
 ) -> tuple[Any, ...]:
-    """Coach chat, proposals and voice transcription routes."""
+    """Coach chat and proposal routes."""
     receipts = ctx.coach_turns.command_receipt_service
     submissions = ctx.coach_background_jobs.job_submission_service
     max_request_bytes = coach_attachments.MAX_REQUEST_BYTES
@@ -418,7 +416,6 @@ def _coach_routes(
             ctx.coach_proposals.execution_service,
         ),
         ChatCancelPostRoutes(ctx.coach_background_jobs.cancellation_service),
-        TranscribePostRoutes(ctx.model_transport.audio_transcription_client),
     )
 
 
@@ -476,9 +473,7 @@ def _read_routes(
             race_plan=partial(
                 read_race_plan,
                 ctx.planning.competition,
-                partial(
-                    body_weight, public.performance_state_service, athlete.profile
-                ),
+                partial(body_weight, public.performance_state_service, athlete.profile),
                 lambda competition: ctx.weather.competition_weather().for_competition(
                     competition
                 ),
@@ -566,7 +561,9 @@ def _domain_routes(
                 ),
                 partial(_session_temperatures, ctx),
                 lambda: ctx.weather.service().state(refresh=False).get("days") or [],
-                partial(body_weight, public.performance_state_service, ctx.athlete.profile),
+                partial(
+                    body_weight, public.performance_state_service, ctx.athlete.profile
+                ),
                 lambda: _local_today(ctx),
             ),
         ),
@@ -601,9 +598,7 @@ def build_http_api(
     ctx: Any,
     *,
     session_auth_service: Callable[[], Any],
-    audio: Any,
     max_body_bytes: int,
-    max_audio_body_bytes: int,
     public_dir: Path,
     chat_page_max: int,
     response_timeout_seconds: int,
@@ -635,7 +630,6 @@ def build_http_api(
         chat_stream_transport,
         coach_actions_post,
         chat_cancel_post,
-        transcribe_post,
     ) = _coach_routes(ctx, chat_history_page_service, response_timeout_seconds)
     (
         public_get,
@@ -704,7 +698,6 @@ def build_http_api(
             chat_cancel_post,
             coach_actions_post,
             chat_post,
-            transcribe_post,
             feedback_post,
             chat_stream_transport,
             sync_command_post,
@@ -741,9 +734,6 @@ def build_http_api(
                 redact_text=ctx.redactor.redact_text,
                 internal_server_error=INTERNAL_SERVER_ERROR,
                 max_body_bytes=max_body_bytes,
-                max_audio_body_bytes=max_audio_body_bytes,
-                voice_audio_types=audio.VOICE_AUDIO_TYPES,
-                normalize_audio_type=audio.normalized_audio_type,
                 static_asset_service=StaticAssetService(public_dir),
                 route_timings=ctx.route_timings,
             )
@@ -756,7 +746,6 @@ def build_http_api(
         planning_get_routes=planning_get,
         analysis_routes=analysis,
         history_undo_post_routes=history_undo_post,
-        transcribe_post_routes=transcribe_post,
         chat_stream_transport=chat_stream_transport,
         sync_command_post_route=sync_command_post,
         readiness_service=readiness_service,

@@ -12,7 +12,6 @@ test("composer puts the textarea on a full-width row with controls below, or on 
   const form = await page.locator("#chatForm").boundingBox();
   const textarea = await page.locator("#messageInput").boundingBox();
   const attachment = await page.locator("#attachmentButton").boundingBox();
-  const voice = await page.locator("#voiceButton").boundingBox();
   const send = await page.locator("#sendButton").boundingBox();
   if (page.viewportSize().height < 500) {
     // Phone landscape: input and controls share one row (#1784).
@@ -23,7 +22,6 @@ test("composer puts the textarea on a full-width row with controls below, or on 
     expect(attachment.y).toBeGreaterThanOrEqual(textarea.y + textarea.height - 1);
   }
   expect(attachment.x + attachment.width).toBeLessThanOrEqual(send.x);
-  expect(voice.x + voice.width).toBeLessThanOrEqual(send.x);
 });
 
 test("composer height does not change while busy @responsive", async ({ page }) => {

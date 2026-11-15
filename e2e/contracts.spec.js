@@ -443,42 +443,20 @@ test("progress and cancel remain reachable while the composer is hidden", { tag:
   await expect(page.locator("#cancelChatButton")).toBeEnabled();
 });
 
-test("voice input records a follow-up while the Coach is working", async ({ page }) => {
+test("the chat has no microphone control and no transcription route (#3045)", async ({ page }) => {
   await ready(page);
-  await controlled(page);
-  await page.evaluate(() => {
-    const original = fetch;
-    window.fetch = (path, options) => path === "/api/transcribe"
-      ? Promise.resolve(new Response('{"transcript":"Gesprochene Folgefrage"}', { status: 200, headers: { "Content-Type": "application/json" } }))
-      : original(path, options);
-    Object.defineProperty(navigator, "mediaDevices", { configurable: true, value: { getUserMedia: async () => ({ getTracks: () => [{ stop() {} }] }) } });
-    window.MediaRecorder = class extends EventTarget {
-      state = "inactive";
-      mimeType = "audio/webm";
-      start() { this.state = "recording"; }
-      stop() {
-        this.state = "inactive";
-        const chunk = new Event("dataavailable");
-        chunk.data = new Blob(["synthetic audio"]);
-        this.dispatchEvent(chunk);
-        this.dispatchEvent(new Event("stop"));
-      }
-    };
+  await expect(page.locator("#chatForm")).toBeVisible();
+  await expect(page.locator("#voiceButton, #voiceStatus, #icon-microphone")).toHaveCount(0);
+  await expect(page.locator("#chatForm button").filter({ hasText: /Sprach|Mikrofon/ })).toHaveCount(0);
+  expect(await page.locator("#chatForm [aria-label*='Sprach'], #chatForm [title*='Sprach']").count()).toBe(0);
+  const status = await page.evaluate(async () => {
+    try { await AppApi.request("/api/transcribe", { method: "POST", body: "{}" }); return 200; }
+    catch (error) { return error.status; }
   });
-  await page.locator("#messageInput").fill("Long fixture task");
-  await page.locator("#sendButton").click();
-  await expect(page.locator("#cancelChatButton")).toBeVisible();
-  const voice = page.locator("#voiceButton");
-  await expect(voice).toBeEnabled();
-  await voice.click();
-  await expect(voice).toHaveAttribute("aria-pressed", "true");
-  await voice.click();
-  await expect(page.locator("#messageInput")).toHaveValue("Gesprochene Folgefrage");
-  await expect(page.locator("#sendButton")).toHaveAttribute("aria-label", "Einreihen");
-  await expect(page.locator("#sendButton")).toBeEnabled();
+  expect(status).toBe(404);
 });
 
-test("delayed receipt and transcription cannot alter a new session", async ({ page }) => {
+test("a delayed receipt cannot alter a new session", async ({ page }) => {
   await ready(page);
   await page.evaluate(() => {
     const original = fetch.bind(window);
@@ -486,16 +464,12 @@ test("delayed receipt and transcription cannot alter a new session", async ({ pa
       if (path.startsWith("/api/chat/receipt")) return new Promise((resolve) => {
         window.__oldReceipt = () => resolve(new Response('{"error":"previous session"}', { status: 403 }));
       });
-      if (path === "/api/transcribe") return new Promise((resolve) => {
-        window.__oldAudio = () => resolve(new Response('{"transcript":"Previous session transcript"}', { status: 200 }));
-      });
       return original(path, options);
     };
     rememberChatTurn("previous-turn");
     void pollChatStatus();
-    void transcribeVoice(new Blob(["synthetic audio"]));
   });
-  await expect.poll(() => page.evaluate(() => Boolean(window.__oldReceipt && window.__oldAudio))).toBe(true);
+  await expect.poll(() => page.evaluate(() => Boolean(window.__oldReceipt))).toBe(true);
   await page.evaluate(() => {
     const data = state.data;
     showLogin();
@@ -505,7 +479,6 @@ test("delayed receipt and transcription cannot alter a new session", async ({ pa
     document.querySelector("#messageInput").value = "New session draft";
     rememberChatTurn("new-turn");
     window.__oldReceipt();
-    window.__oldAudio();
   });
   await expect(page.locator("#messageInput")).toHaveValue("New session draft");
   await expect.poll(() => page.evaluate(() => sessionStorage.getItem("coachPendingTurn"))).toBe("new-turn");
@@ -726,18 +699,18 @@ test("planned agenda prioritizes dates and sessions with compact weather and exp
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
 });
 
-test("JSON and audio errors retain status, reason and retry delay", async ({ page }) => {
+test("JSON errors retain status, reason and retry delay", async ({ page }) => {
   await ready(page);
   await page.route("**/api/fixture-error", (route) => route.fulfill({ status: 429, headers: { "Retry-After": "7" }, json: { error: "Synthetic rate limit", reason: "rate_limited" } }));
   const errors = await page.evaluate(async () => {
     const results = [];
-    for (const invoke of [() => AppApi.request("/api/fixture-error", { method: "POST", body: "{}" }), () => AppApi.audio("/api/fixture-error", new Blob(["synthetic"]))]) {
+    for (const invoke of [() => AppApi.request("/api/fixture-error", { method: "POST", body: "{}" })]) {
       try { await invoke(); }
       catch (error) { results.push({ status: error.status, reason: error.reason, retryAfter: error.retryAfter, message: error.message }); }
     }
     return results;
   });
-  expect(errors).toHaveLength(2);
+  expect(errors).toHaveLength(1);
   for (const error of errors) {
     expect(error).toMatchObject({ status: 429, reason: "rate_limited", retryAfter: 7 });
     expect(error.message).toContain("7 Sekunden");

@@ -58,17 +58,6 @@ test("coach composer keeps a stable bottom edge in phone landscape @responsive",
   await expectComposerBottomStable(page);
 });
 
-test("coach composer keeps a stable bottom edge while the voice status is visible @responsive", async ({ page }) => {
-  await openCoachWithScrollableChat(page);
-  await page.evaluate(() => {
-    const status = document.querySelector("#voiceStatus");
-    status.textContent = "Aufnahme läuft";
-    status.hidden = false;
-  });
-
-  await expectComposerBottomStable(page);
-});
-
 test("empty coach chat does not promise quick actions and keeps the composer gap @responsive", async ({ page }) => {
   await page.goto("/#coach");
   await expect(page.locator("#appShell")).toBeVisible();

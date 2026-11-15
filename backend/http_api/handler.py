@@ -22,9 +22,6 @@ from backend.errors import (
     public_error_payload,
 )
 from backend.http_api.requests import (
-    read_audio_body as read_request_audio_body,
-)
-from backend.http_api.requests import (
     read_body as read_request_body,
 )
 from backend.http_api.requests import (
@@ -76,9 +73,6 @@ class HttpRequestHandlerDependencies:
     redact_text: Callable[[str], str]
     internal_server_error: str
     max_body_bytes: int
-    max_audio_body_bytes: int
-    voice_audio_types: tuple[str, ...]
-    normalize_audio_type: Callable[[str], str]
     static_asset_service: StaticAssetService
     route_timings: RouteTimings = field(default_factory=RouteTimings)
 
@@ -365,16 +359,6 @@ class RequestHandler(BaseHTTPRequestHandler):
             max_bytes,
             error=AppError,
             too_large_status_threshold=self.dependencies.max_body_bytes,
-        )
-
-    def read_audio_body(self) -> bytes:
-        return read_request_audio_body(
-            self.headers,
-            self._read_input,
-            allowed_types=self.dependencies.voice_audio_types,
-            normalize_type=self.dependencies.normalize_audio_type,
-            max_bytes=self.dependencies.max_audio_body_bytes,
-            error=AppError,
         )
 
     def read_json(self, max_bytes: int | None = None) -> dict[str, Any]:

@@ -87,9 +87,6 @@ def make_server(*, input_timeout: float, chunk_bytes: int):
         redact_text=lambda text: text,
         internal_server_error="internal",
         max_body_bytes=256 * 1024,
-        max_audio_body_bytes=1024,
-        voice_audio_types=(),
-        normalize_audio_type=lambda value: value,
         static_asset_service=Mock(),
     )
     base = create_request_handler(dependencies)

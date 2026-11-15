@@ -72,7 +72,7 @@ test("a photo that cannot be shrunk or decoded is rejected and its bitmap is sti
 
 // The chat attachment handler of setupCoachEvents: attachments replace the draft only after every file is ready.
 const ATTACHMENT_FUNCTIONS = ["fileBase64", "prepareChatAttachment", "setupCoachEvents"];
-const NOOP_HANDLERS = ["publishComposerHeight", "hasTouchFirstInput", "buildComposerPlusMenu", "setupQuickActionMenu", "handleWindowScroll", "handleChatWheel", "handleChatTouchStart", "handleChatTouchMove", "handleChatScrollKey", "handleChatMessagesScroll", "sendMessage", "steerCurrentChat", "cancelChat", "toggleVoiceInput", "resetCoachChat", "loadContextPreview", "jumpToLatestMessages", "updateChatControls", "renderChatAttachments"];
+const NOOP_HANDLERS = ["publishComposerHeight", "hasTouchFirstInput", "buildComposerPlusMenu", "setupQuickActionMenu", "handleWindowScroll", "handleChatWheel", "handleChatTouchStart", "handleChatTouchMove", "handleChatScrollKey", "handleChatMessagesScroll", "sendMessage", "steerCurrentChat", "cancelChat", "resetCoachChat", "loadContextPreview", "jumpToLatestMessages", "updateChatControls", "renderChatAttachments"];
 
 function attachmentSetup(prepareNutritionImage) {
   const document = fakeDocument();

@@ -12,9 +12,6 @@ function showLogin() {
   // Another session reads its own equipment (#2809).
   updateStatusSources({ equipment: null });
   clearStateSnapshot();
-  state.voiceAcquiring = false;
-  stopVoiceRecording();
-  stopVoiceCapture();
   state.chatGeneration += 1;
   state.loadSequence += 1;
   state.pendingLoads.clear();
@@ -30,7 +27,6 @@ function showLogin() {
   state.chatQueue = [];
   state.rejectedMessages = [];
   state.coachActionProposals = [];
-  state.voiceTranscribing = false;
   rememberChatTurn(null);
   if (state.chatStatusTimer) clearTimeout(state.chatStatusTimer);
   state.chatStatusTimer = null;

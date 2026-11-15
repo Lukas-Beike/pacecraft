@@ -21,7 +21,6 @@ from urllib.parse import urlencode
 import snapshot_seed
 from server_test_support import (
     ServerTestCase,
-    _transcribe_via_http_route,
     create_test_session,
     server,
 )
@@ -1004,17 +1003,6 @@ class ServerHttpTests(ServerTestCase):
             ),
             {"ok": True},
         )
-        self.assertEqual(
-            requests.read_audio_body(
-                {"Content-Type": "audio/webm;codecs=opus", "Content-Length": "5"},
-                BytesIO(b"audio").read,
-                allowed_types={"audio/webm": ".webm"},
-                normalize_type=lambda value: value.split(";", 1)[0],
-                max_bytes=10,
-                error=AppError,
-            ),
-            b"audio",
-        )
         with self.assertRaises(AppError) as oversized:
             requests.read_body(
                 {"Content-Length": "11"},
@@ -1047,16 +1035,6 @@ class ServerHttpTests(ServerTestCase):
                 error=AppError,
             )
         self.assertEqual(non_object.exception.status, 400)
-        with self.assertRaises(AppError) as incomplete:
-            requests.read_audio_body(
-                {"Content-Type": "audio/webm", "Content-Length": "5"},
-                BytesIO(b"aud").read,
-                allowed_types={"audio/webm": ".webm"},
-                normalize_type=lambda value: value.split(";", 1)[0],
-                max_bytes=10,
-                error=AppError,
-            )
-        self.assertEqual(incomplete.exception.status, 400)
 
     def test_streamed_body_checks_limits_before_reading_and_bounds_each_chunk(self):
         from backend.http_api import requests
@@ -1175,78 +1153,12 @@ class ServerHttpTests(ServerTestCase):
             raised.exception.message, "Die Antwort des externen Dienstes ist zu groß."
         )
 
-    def test_transcribe_audio_sends_bounded_multipart_request(self):
-        captured = {}
-
-        def fake_http_json(
-            method,
-            url,
-            payload=None,
-            headers=None,
-            timeout=45,
-            service=None,
-            raw_body=None,
-            content_type=None,
-        ):
-            captured.update(
-                {
-                    "method": method,
-                    "url": url,
-                    "payload": payload,
-                    "headers": headers,
-                    "timeout": timeout,
-                    "service": service,
-                    "raw_body": raw_body,
-                    "content_type": content_type,
-                }
+    def test_the_removed_transcription_route_is_not_found(self):
+        # #3045: no route answers, so the handler returns 404.
+        for method in ("POST", "GET"):
+            self.assertIsNone(
+                server.HTTP_API.route_table.match(method, "/api/transcribe")
             )
-            return {"text": "Wie soll ich morgen trainieren?"}
-
-        audio = b"fake-webm-audio"
-        with (
-            patch.object(
-                server.CONFIG_HOLDER,
-                "value",
-                replace(
-                    server.CONFIG_HOLDER.value,
-                    openai_api_key="test-key",
-                    openai_base_url="https://foundry.example.invalid/openai/v1/",
-                ),
-            ),
-            patch.object(
-                server.PROVIDER_TRANSPORT.json_http_client(),
-                "request",
-                side_effect=fake_http_json,
-            ),
-        ):
-            result = _transcribe_via_http_route(audio, "audio/webm;codecs=opus")
-
-        self.assertEqual(result, {"transcript": "Wie soll ich morgen trainieren?"})
-        self.assertEqual(captured["method"], "POST")
-        self.assertEqual(
-            captured["url"],
-            "https://foundry.example.invalid/openai/v1/audio/transcriptions",
-        )
-        self.assertEqual(captured["service"], "openai")
-        self.assertEqual(captured["timeout"], 90)
-        self.assertIsNone(captured["payload"])
-        self.assertIn("multipart/form-data; boundary=", captured["content_type"])
-        self.assertIn(b'name="model"', captured["raw_body"])
-        self.assertIn(b"gpt-transcribe", captured["raw_body"])
-        self.assertIn(audio, captured["raw_body"])
-        self.assertEqual(captured["headers"]["Authorization"], "Bearer test-key")
-
-    def test_transcribe_audio_rejects_unknown_format_and_oversized_audio(self):
-        config = replace(server.CONFIG_HOLDER.value, openai_api_key="test-key")
-        with patch.object(server.CONFIG_HOLDER, "value", config):
-            with self.assertRaises(AppError) as unsupported:
-                _transcribe_via_http_route(b"audio", "audio/flac")
-            with self.assertRaises(AppError) as oversized:
-                _transcribe_via_http_route(
-                    b"x" * (server.MAX_AUDIO_BODY_BYTES + 1), "audio/webm"
-                )
-        self.assertEqual(unsupported.exception.status, 415)
-        self.assertEqual(oversized.exception.status, 413)
 
     def test_background_coach_job_is_persisted_and_session_scoped(self):
         job = server.COACH_BACKGROUND_JOBS.job_submission_service().enqueue(

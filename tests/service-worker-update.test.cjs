@@ -63,8 +63,6 @@ function page({ controlled = true } = {}) {
     chatRequest: null,
     chatServerOperationId: null,
     chatStream: null,
-    voiceRecorder: null,
-    voiceTranscribing: false,
     loadPromise: null,
   };
   const document = {
@@ -93,7 +91,7 @@ function page({ controlled = true } = {}) {
     },
   });
   extractFunctions("shared.js", ["$", "hasUnsavedChanges"], context);
-  extractFunctions("coach.js", ["chatStatusJobActive", "pendingChatTurn", "voiceIsRecording"], context);
+  extractFunctions("coach.js", ["chatStatusJobActive", "pendingChatTurn"], context);
   extractFunctions("notifications.js", ["registerServiceWorker", "serviceWorkerReplaced", "serviceWorkerReloaded", "pointerHeld", "trackUnsavedForms", "editedFormPending", "UPDATE_RELOAD_INPUT_FIELDS", "pageInputPending", "updateReloadIsSafe", "reloadForUpdateWhenSafe"], context);
   context.registerServiceWorker();
   return {
@@ -158,7 +156,6 @@ const blockers = {
   "a queued message": ({ state }) => { state.chatQueue = [{ id: 1, message: "Danach" }]; return () => { state.chatQueue = []; }; },
   "a rejected message": ({ state }) => { state.rejectedMessages = [{ content: "Abgelehnt" }]; return () => { state.rejectedMessages = []; }; },
   "an unsaved profile": ({ state }) => { state.profileDirty = true; return () => { state.profileDirty = false; }; },
-  "a voice recording": ({ state }) => { state.voiceRecorder = { state: "recording" }; return () => { state.voiceRecorder = null; }; },
   "a state load": ({ state }) => { state.loadPromise = Promise.resolve(); return () => { state.loadPromise = null; }; },
   "a backup restore": ({ nodes }) => { nodes["#backupRestoreButton"].disabled = true; return () => { nodes["#backupRestoreButton"].disabled = false; }; },
   "an open dialog": ({ nodes }) => { nodes["dialog[open]"] = {}; return () => { nodes["dialog[open]"] = null; }; },
