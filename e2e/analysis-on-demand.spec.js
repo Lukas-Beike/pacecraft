@@ -160,6 +160,7 @@ test("@responsive week review shows the cards and switches to last week", async 
   await expect(review.locator(".week-review-card")).toHaveCount(5);
   await expect(page.locator("#analysisEmptyState")).toBeHidden();
   expect(weeks).toEqual(["current", "previous"]);
+});
 
 // Pace at equal heart rate and recurring sessions, as the Coach reads them, follow the profile cards (#2802).
 const TRENDS = "/api/analysis/trends";
