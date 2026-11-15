@@ -62,6 +62,38 @@ class DatabaseRestoreValidationService:
             raise
         return path
 
+    def verify_copy(self, path: Path, expected_bytes: int) -> bool:
+        """True when a recovery copy is whole and opens as the current schema.
+
+        Read-only: the copy is opened immutable, so no journal or sidecar file
+        is written beside it. Any failure means "not verified".
+        """
+        try:
+            if path.stat().st_size != expected_bytes:
+                return False
+            backend = (
+                self._config.sqlite_backend
+                if self._config.sqlcipher_available
+                else sqlite3
+            )
+            uri = f"{path.resolve().as_uri()}?mode=ro&immutable=1"
+            connection = backend.connect(uri, uri=True, timeout=20)
+        except Exception:  # noqa: BLE001 - an unreadable copy is simply not verified
+            return False
+        connection.row_factory = self._config.row_factory
+        try:
+            if self._config.app_password:
+                self._config.configure_cipher(connection, self._config.app_password)
+            if not self._config.schema_is_current(connection):
+                return False
+            # The schema check reads no data page; a damaged copy must not count.
+            rows = connection.execute("PRAGMA quick_check").fetchall()
+            return len(rows) == 1 and str(rows[0]["quick_check"]).casefold() == "ok"
+        except Exception:  # noqa: BLE001 - a copy that does not open is not verified
+            return False
+        finally:
+            connection.close()
+
     def validate(self, temporary_path: Path) -> None:
         if self._config.app_password and not self._config.sqlcipher_available:
             raise AppError(

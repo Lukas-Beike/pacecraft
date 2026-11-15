@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any
 
 from backend.backup.database import DatabaseBackupService
+from backend.backup.recovery_copies import RecoveryCopies
 from backend.backup.restore_validation import DatabaseRestoreValidationService
 from backend.coach.job_store import CoachJobStore
 from backend.coach.turn_failures import CoachTurnFailureService
@@ -59,9 +60,10 @@ class DatabaseRestoreService:
     def __init__(self, dependencies: RestoreDependencies) -> None:
         self._dependencies = dependencies
 
-    def _replace(self, temporary_path: Path) -> str | None:
+    def _replace(self, temporary_path: Path) -> tuple[str, int, bool] | None:
+        """Swap the staged file in; return the recovery copy (see _copy_previous)."""
         database_path = self._dependencies.config.database_path
-        previous_backup_name: str | None = None
+        previous_backup: tuple[str, int, bool] | None = None
         # The caller holds the maintenance gate, which refuses new operations and
         # waits for running ones. restore_drain then waits for every running
         # writer and reader and makes later ones wait until the swap is done, so
@@ -69,15 +71,21 @@ class DatabaseRestoreService:
         self._dependencies.backup.checkpoint()
         with self._dependencies.database_manager().restore_drain():
             if database_path.exists():
-                previous_backup_name = self._copy_previous(database_path)
+                previous_backup = self._copy_previous(database_path)
             self._swap(temporary_path, database_path)
-        return previous_backup_name
+        return previous_backup
 
-    def _copy_previous(self, database_path: Path) -> str:
-        """Copy the checkpointed, drained live file; never leave a partial copy."""
-        if not self._dependencies.backup.has_free_space_for(
-            database_path.stat().st_size
-        ):
+    def _copy_previous(self, database_path: Path) -> tuple[str, int, bool]:
+        """Copy the checkpointed, drained live file; never leave a partial copy.
+
+        Returns the copy's name, the size it must have, and whether the live
+        file held every commit: a non-empty ``-wal`` left by a failed
+        checkpoint means the copy may miss the last transactions.
+        """
+        size = database_path.stat().st_size
+        wal = Path(f"{database_path}-wal")
+        holds_every_commit = not (wal.exists() and wal.stat().st_size > 0)
+        if not self._dependencies.backup.has_free_space_for(size):
             raise self._storage_full()
         backup_path = self._dependencies.config.data_dir / (
             f"{database_path.name}.pre-restore-{datetime.now(UTC).strftime('%Y%m%d%H%M%S')}-"
@@ -88,7 +96,35 @@ class DatabaseRestoreService:
         except BaseException:
             backup_path.unlink(missing_ok=True)
             raise
-        return backup_path.name
+        return backup_path.name, size, holds_every_commit
+
+    def _prune_older_copies(self, copy: tuple[str, int, bool]) -> None:
+        """Keep only the newest recovery copy once it is verified (#2914).
+
+        Runs after a complete restore; a copy that may miss commits or does not
+        verify keeps every older one. A failed deletion is logged and never
+        fails the finished restore.
+        """
+        name, size, holds_every_commit = copy
+        config = self._dependencies.config
+        if not holds_every_commit or not self._dependencies.validation.verify_copy(
+            config.data_dir / name, size
+        ):
+            self._dependencies.logger.warning(
+                "Recovery copy not verified; older copies kept",
+                extra={"event": "database_recovery_copy_unverified"},
+            )
+            return
+        outcome = RecoveryCopies(
+            config.data_dir, config.database_path.name
+        ).prune_restore_copies(name)
+        self._dependencies.logger.info(
+            "Older recovery copies pruned",
+            extra={
+                "event": "database_recovery_copies_pruned",
+                "context": {"removed": outcome.removed, "failed": outcome.failed},
+            },
+        )
 
     @staticmethod
     def _swap(temporary_path: Path, database_path: Path) -> None:
@@ -185,7 +221,7 @@ class DatabaseRestoreService:
         except Exception as exc:
             raise self._invalid_backup(exc) from exc
 
-    def _promote(self, temporary_path: Path) -> str | None:
+    def _promote(self, temporary_path: Path) -> tuple[str, int, bool] | None:
         """Validate the staged file and swap it in; the caller holds the gate."""
         try:
             self._dependencies.validation.validate(temporary_path)
@@ -216,7 +252,7 @@ class DatabaseRestoreService:
                 # Flushes stay blocked from before the swap until the cache is dropped,
                 # so the pre-restore diagnostics cannot overwrite the restored ones.
                 with self._dependencies.diagnostics_suspended():
-                    previous_backup_name = self._promote(temporary_path)
+                    previous_backup = self._promote(temporary_path)
                 # The live database is already replaced here; failures must not be
                 # reported as validation errors.
                 try:
@@ -231,8 +267,10 @@ class DatabaseRestoreService:
                     ) from exc
         finally:
             temporary_path.unlink(missing_ok=True)
+        if previous_backup is not None:
+            self._prune_older_copies(previous_backup)
         return {
             "status": "ok",
             "restored": True,
-            "previous_database_backup": previous_backup_name,
+            "previous_database_backup": previous_backup[0] if previous_backup else None,
         }
