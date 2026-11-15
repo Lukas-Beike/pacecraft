@@ -1558,6 +1558,20 @@ function plannedEquipmentSourceLabel(source) {
   return EQUIPMENT_SOURCE_LABELS[source] || "";
 }
 
+// What a unit's choice shows: the own choice, else the effective item with its source, else the suggestion.
+function plannedEquipmentShown(choice) {
+  const own = choice.explicit ? choice.assigned || "" : null;
+  const named = (id) => (id === "" ? "Keiner" : choice.options.find((item) => item.id === id)?.name);
+  const effective = own === null && named(choice.effective?.equipment_id) ? choice.effective : null;
+  const current = own ?? effective?.equipment_id ?? null;
+  const preset = current ?? choice.suggested ?? null;
+  let tag = "";
+  if (effective) tag = plannedEquipmentSourceLabel(effective.source);
+  else if (own === null && preset !== null) tag = "Vorschlag";
+  const shown = preset === null ? "–" : named(preset) || "Nicht mehr verfügbar";
+  return { own, current, preset, shown, tag };
+}
+
 async function appendPlannedEquipment(details, head, entry, actual, receipt = null) {
   const target = plannedEquipmentTarget(entry, actual);
   const sport = activitySportLabel(calendarSportType(actual || entry));
@@ -1576,22 +1590,15 @@ async function appendPlannedEquipment(details, head, entry, actual, receipt = nu
     else row.remove();
     return;
   }
-  const own = choice.explicit ? choice.assigned || "" : null;
-  const named = (id) => (id === "" ? "Keiner" : choice.options.find((item) => item.id === id)?.name);
-  const effective = own === null && named(choice.effective?.equipment_id) ? choice.effective : null;
-  const current = own ?? effective?.equipment_id ?? null;
-  const preset = current ?? choice.suggested ?? null;
+  const { own, current, preset, shown, tag } = plannedEquipmentShown(choice);
   const select = h("select", { "aria-label": label },
     preset === null ? h("option", { value: "-", selected: true }, "–") : null,
     // An own choice that can no longer be assigned (retired, another sport) stays shown as it is.
-    own && !named(own) ? h("option", { value: own, selected: true, disabled: true }, "Nicht mehr verfügbar") : null,
+    own && shown === "Nicht mehr verfügbar" ? h("option", { value: own, selected: true, disabled: true }, shown) : null,
     choice.options.map((item) => h("option", { value: item.id, selected: item.id === preset }, item.name)),
     h("option", { value: "", selected: preset === "" }, "Keiner"));
-  let tag = "";
-  if (effective) tag = plannedEquipmentSourceLabel(effective.source);
-  else if (own === null && preset !== null) tag = "Vorschlag";
-  const shown = preset === null ? "–" : named(preset) || "Nicht mehr verfügbar";
-  chip.textContent = `${icon} ${shown}${tag ? ` · ${tag}` : ""} ▾`;
+  const suffix = tag ? ` · ${tag}` : "";
+  chip.textContent = `${icon} ${shown}${suffix} ▾`;
   chip.setAttribute("aria-label", `${label}: ${shown}${tag ? `, ${tag}` : ""}`);
   const apply = h("button", { type: "button", className: "secondary-button", hidden: true }, "Übernehmen");
   const status = h("p", { className: "planned-equipment-status", role: "status" });
