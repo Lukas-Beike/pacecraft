@@ -69,6 +69,9 @@ class Route:
     # POST only: run inside the maintenance operation gate after re-checking the
     # session. Login, logout, restore and chat cancellation run outside it.
     gated: bool = True
+    # GET only: a view read over the history that runs one at a time
+    # (``HeavyReadGate``, #3029).
+    heavy: bool = False
 
     def __post_init__(self) -> None:
         if not isinstance(self.access, Access):

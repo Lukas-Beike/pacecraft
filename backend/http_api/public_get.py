@@ -32,7 +32,7 @@ class PublicGetRoutes:
             Route("GET", "/api/health", Access.PUBLIC, self._health),
             Route("GET", "/api/readiness", Access.PUBLIC, self._readiness),
             Route("GET", "/api/auth/status", Access.PUBLIC, self._auth_status),
-            Route("GET", "/api/bootstrap", Access.SESSION, self._bootstrap),
+            Route("GET", "/api/bootstrap", Access.SESSION, self._bootstrap, heavy=True),
         ]
 
     def _health(self, handler: Any, _request: RouteRequest) -> None:

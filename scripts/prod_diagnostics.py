@@ -56,6 +56,7 @@ SECTION_FIELDS = {
     ),
     "runtime": re.compile(
         r"uptime_s|malloc_arena_max|process_memory\.[a-z_]+|reader_slots\.[a-z_0-9]+"
+        r"|heavy_read_gate\.[a-z_0-9]+"
     ),
     "recovery_copies": re.compile(
         r"status|available|count|newest_age_hours|total_bytes"

@@ -736,6 +736,7 @@ def build_http_api(
                 max_body_bytes=max_body_bytes,
                 static_asset_service=StaticAssetService(public_dir),
                 route_timings=ctx.route_timings,
+                heavy_read_gate=ctx.heavy_read_gate,
             )
         )
 

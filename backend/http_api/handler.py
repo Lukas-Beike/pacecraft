@@ -6,6 +6,7 @@ import logging
 import time
 import uuid
 from collections.abc import Callable, Iterator
+from contextlib import nullcontext
 from dataclasses import dataclass, field
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler
@@ -37,6 +38,7 @@ from backend.observability import (
     http_access_log_level,
     redact_request_query,
 )
+from backend.runtime.heavy_reads import HeavyReadGate
 from backend.runtime.socket_deadline import SocketDeadline
 
 # A request body is read in pieces of this size; each piece gets its own
@@ -75,6 +77,7 @@ class HttpRequestHandlerDependencies:
     max_body_bytes: int
     static_asset_service: StaticAssetService
     route_timings: RouteTimings = field(default_factory=RouteTimings)
+    heavy_read_gate: HeavyReadGate = field(default_factory=HeavyReadGate)
 
 
 class RequestHandler(BaseHTTPRequestHandler):
@@ -289,7 +292,9 @@ class RequestHandler(BaseHTTPRequestHandler):
         session: dict[str, Any] = {}
         if route.access is not Access.PUBLIC:
             session = self.auth_service.require_auth(self)
-        route.handle(self, self._request(path, params, session))
+        gate = self.dependencies.heavy_read_gate
+        with gate.held() if route.heavy else nullcontext():
+            route.handle(self, self._request(path, params, session))
 
     def _post(self, path: str) -> None:
         route, params = self.dependencies.route_table.match("POST", path) or (None, {})
