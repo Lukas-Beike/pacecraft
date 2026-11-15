@@ -32,7 +32,10 @@ interpreter or written to a file, or in `python -c`, `sed -i` and similar inline
 edits; write such files and scripts with the Write or Edit tool.
 `scripts/hooks/guard_empty_body.py` blocks a `gh pr` or `gh issue` write whose
 `--body-file` is empty or whose `--body` is empty, which would blank the public
-text (#2954).
+text (#2954). One hook, `scripts/hooks/guard_shell.py`, runs these shell guards
+and `guard_resolve_thread.py` in turn in a single Python process, so a loaded
+machine does not time out five interpreter starts per command (#2982); a guard
+that fails blocks the command, and each guard still runs on its own.
 `.claude/agents/` defines the `explorer` (Haiku, low effort, read-only),
 `implementer` (Sonnet, medium), and `reviewer` (Sonnet, medium, read-only)
 subagents. `scripts/hooks/thread_model_rule.py` blocks a T3 thread launch whose
