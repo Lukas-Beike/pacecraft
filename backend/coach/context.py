@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 import json
 import logging
 import re
@@ -1393,13 +1394,19 @@ class CoachTrainingContextService:
         self._planned_event_limit = planned_event_limit
 
     def build(
-        self, *, selection: CoachContextSelection | None = None, local_date: str = ""
+        self,
+        *,
+        selection: CoachContextSelection | None = None,
+        local_date: str = "",
+        structured_context: dict[str, Any] | None = None,
     ) -> str:
-        structured_context = (
-            self._structured_context_service.build(selection=selection)
-            if selection
-            else self._structured_context_service.build()
-        )
+        """The context text; ``structured_context`` reuses a build of the caller (#2966)."""
+        if structured_context is None:
+            structured_context = (
+                self._structured_context_service.build(selection=selection)
+                if selection
+                else self._structured_context_service.build()
+            )
         prompt_context = dict(structured_context)
         if selection:
             prompt_context = selection.project(prompt_context, local_date)
@@ -1598,8 +1605,12 @@ class CoachContextPreviewService:
             ),
             None,
         )
-        context_text = self._coach_training_context_service.build()
+        # One build serves the text and the sections: building it twice read
+        # every source twice on a long history (#2966).
         preview_structured_context = self._coach_structured_context_service.build()
+        context_text = self._coach_training_context_service.build(
+            structured_context=copy.deepcopy(preview_structured_context)
+        )
         preview_prompt_context = dict(preview_structured_context)
         preview_local_plans = compact_coach_local_planned_workouts(
             preview_prompt_context.get("local_planned_workouts"),

@@ -107,6 +107,10 @@ class CoachContextPreviewServiceTests(unittest.TestCase):
         # compacted flag follows the canonical Intervals.icu sync time.
         self.messages.list.assert_called_once_with()
         self.structured_context.build.assert_called_once_with()
+        # The text reuses that one build as its own copy (#2966).
+        given = self.training_context.build.call_args.kwargs["structured_context"]
+        self.assertEqual(given, self.structured_context.build.return_value)
+        self.assertIsNot(given, self.structured_context.build.return_value)
         self.assertIs(
             preview["latest_activities"],
             preview["structured_athlete_context"]["activities"],
