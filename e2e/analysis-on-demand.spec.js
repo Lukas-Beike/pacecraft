@@ -107,6 +107,60 @@ test("@responsive running analysis shows no running technique card", async ({ pa
   expect(reads).toEqual([]);
 });
 
+// The week review (#2805): five cards in layout A, a switch between this and last week, an empty week shows the empty state.
+const WEEK_REVIEW = {
+  method: "local-week-review-v1", week_start: "2026-11-09", week_end: "2026-11-15", effective_end: "2026-11-14",
+  plan: { planned: 4, completed: 3, missed: 1, open: 0, duration_share: 82, missed_units: [{ date: "2026-11-11", name: "Intervalle 5×4 min" }] },
+  load: { this_week: { duration_s: 25200, sessions: 5, training_load: 412 }, week_before: { duration_s: 21600, sessions: 4, training_load: 380 }, shares: { low: 78, moderate: 14, high: 8 } },
+  recovery: {
+    sleep: { mean: 7.4, nights: 6, unit: "h", source: "Garmin", week_before: 7.1 },
+    hrv: { mean: 58, nights: 6, unit: "ms", source: "Garmin", week_before: 55, position: "within" },
+    resting_hr: { mean: 47, nights: 6, unit: "bpm", source: "Garmin", week_before: 48, position: "below" },
+  },
+  notable: [{ date: "2026-11-11", name: "Intervalle 5×4 min", reason: "missed" }, { date: "2026-11-14", name: "Langer Lauf", reason: "highest_load", training_load: 148 }],
+  checkins: { entered: 5, days: 6, pain_days: 1, illness_days: 0, scores: { motivation: 7.2, stress: 4, soreness: 3.5 } },
+};
+const EMPTY_WEEK = {
+  method: "local-week-review-v1", week_start: "2026-11-02", week_end: "2026-11-08", effective_end: "2026-11-08",
+  plan: { planned: 0, completed: 0, missed: 0, open: 0, duration_share: null, missed_units: [] },
+  load: { this_week: { duration_s: null, sessions: 0, training_load: null }, week_before: { duration_s: null, sessions: 0, training_load: null }, shares: null },
+  recovery: {}, notable: [], checkins: { entered: 0, days: 7, pain_days: 0, illness_days: 0, scores: {} },
+};
+
+test("@responsive week review shows the cards and switches to last week", async ({ page }, testInfo) => {
+  await mockReports(page);
+  const weeks = [];
+  await page.route("**/api/analysis/week-review?*", (route) => {
+    const week = new URL(route.request().url()).searchParams.get("week");
+    weeks.push(week);
+    return route.fulfill({ json: week === "previous" ? EMPTY_WEEK : WEEK_REVIEW });
+  });
+  await waitForInitialState(page);
+  await routeTo(page, "#analysis/week");
+  const review = page.locator("#weekReview");
+  await expect(review.locator("h3")).toHaveText("KW 46 · 9. Nov. – 15. Nov.");
+  await expect(review.locator(".week-review-card h4")).toHaveText(["Plan", "Belastung", "Erholung", "Besondere Einheiten", "Check-ins"]);
+  await expect(review.locator(".week-review-big")).toHaveText("3 von 4 Einheiten");
+  await expect(review.locator(".week-review-row").first()).toHaveText("Zeit7:00 h +17 %");
+  await expect(review.getByText("7:24 h +18 min")).toBeVisible();
+  await expect(review.getByText("58 ms · in deinem Bereich")).toBeVisible();
+  await expect(review.getByText("verpasst: Mi Intervalle 5×4 min")).toBeVisible();
+  await expect(review.locator(".week-review-intensity")).toHaveAttribute("aria-label", "leicht 78 %, mittel 14 %, hart 8 %");
+  await expect(review.getByText("Sa Langer Lauf · höchste Belastung (148)")).toBeVisible();
+  await expect(review.getByText("Motivation 7,2 · Stress 4 · Muskelkater 3,5")).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBeTruthy();
+  await review.screenshot({ path: testInfo.outputPath("week-review.png"), animations: "disabled" });
+
+  await review.getByRole("button", { name: "Letzte" }).click();
+  await expect(page.locator("#analysisEmptyState")).toContainText("Noch keine Wochendaten");
+  await expect(review.locator(".week-review-card")).toHaveCount(0);
+  await expect(review.locator("h3")).toHaveText("KW 45 · 2. Nov. – 8. Nov.");
+  await review.getByRole("button", { name: "Diese" }).click();
+  await expect(review.locator(".week-review-card")).toHaveCount(5);
+  await expect(page.locator("#analysisEmptyState")).toBeHidden();
+  expect(weeks).toEqual(["current", "previous"]);
+});
+
 test("@responsive equipment records load only on the equipment route and stay cached", async ({ page }) => {
   await mockReports(page);
   const reportCounts = trackReportRequests(page);

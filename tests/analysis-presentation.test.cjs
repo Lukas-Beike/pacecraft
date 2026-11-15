@@ -510,3 +510,9 @@ test("the watch-upload sentence appears from 24 hours on and never without a kno
   assert.equal(deviceSyncSentence(null, now), "");
   assert.equal(deviceSyncSentence("kein Datum", now), "");
 });
+
+// The week review writes sleep and training time as h:mm, also under an hour (#2805).
+test("the week review writes durations as hours and minutes", () => {
+  const { weekReviewHours } = extractFunctions("analysis.js", ["weekReviewHours"]);
+  assert.deepEqual([1800, 26640, 25200, 89].map(weekReviewHours), ["0:30", "7:24", "7:00", "0:01"]);
+});
