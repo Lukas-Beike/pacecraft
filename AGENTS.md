@@ -45,6 +45,9 @@ Use [README.md](README.md) for the overview and [docs/setup.md](docs/setup.md) a
 - Preserve the root `.env`, `/data`, the encrypted database, Garmin token store,
   and database recovery backups. Do not delete, reset, truncate, or replace the
   live database except through the implemented, validated restore workflow.
+  Named exception (athlete, 2026-11-14, #2914): after a completed restore whose
+  new recovery copy is verified, the older restore copies are deleted so only
+  the newest remains.
 - A new database is created directly as SQLCipher when `APP_PASSWORD` is
   configured. Existing SQLCipher databases are upgraded in place through
   validated, data-preserving migrations; encryption must remain enabled.
