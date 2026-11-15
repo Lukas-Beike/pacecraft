@@ -120,6 +120,15 @@ class GuardServerImportTests(unittest.TestCase):
             f'DATA_DIR={data} python -m compileall -q x.py && python -c "import server"',
             f"echo DATA_DIR={data}; python server.py",
             f'python -c "import server"; export DATA_DIR={data}',
+            # A shell expansion makes the resolved path not the one the server gets.
+            f'DATA_DIR={data}/${{X:-..}}/other python -c "import server"',
+            f'DATA_DIR={data}/`echo ..` python -c "import server"',
+            # The assignment may never apply, or is undone before the import.
+            f'false && export DATA_DIR={data}; python -c "import server"',
+            f'(export DATA_DIR={data}); python -c "import server"',
+            f'export DATA_DIR={data}; unset DATA_DIR; python -c "import server"',
+            f"DATA_DIR={data} python -c \"import os; os.environ.pop('DATA_DIR'); import server\"",
+            f"$env:DATA_DIR = '{data}'; Remove-Item Env:DATA_DIR; python -c \"import server\"",
         ):
             with self.subTest(command=command):
                 self.assertEqual(2, run_hook(command, cwd=str(self.root)))

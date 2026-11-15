@@ -55,14 +55,20 @@ DATA_DIR_PREFIX = re.compile(
     START_OF_COMMAND + r"(?:[A-Za-z_]\w*=\S*\s+)*DATA_DIR=" + VALUE
     + r"\s+(?:[A-Za-z_]\w*=\S*\s+)*(?:py|python[\d.]*)(?:\.exe)?\s"
 )
+# A session assignment counts only as a plain statement, never after && || | (.
 DATA_DIR_SESSION = re.compile(
-    START_OF_COMMAND + r"(?:export\s+DATA_DIR=|\$env:DATA_DIR\s*=\s*)" + VALUE,
+    r"(?:^|;|\n)\s*(?:export\s+DATA_DIR=|\$env:DATA_DIR\s*=\s*)" + VALUE,
     re.IGNORECASE,
 )
+# A value the shell would expand is not the path the check resolves.
+# A Windows 8.3 short name (RUNNER~1) is a literal path, not a home expansion.
+EXPANDED = re.compile(r"[$`*?\[{]|.~(?!\d)")
 # Anything that could load another checkout's server.py keeps the import blocked.
 ELSEWHERE = re.compile(
     START_OF_COMMAND + r"(?:cd|pushd|set-location|sl|push-location)\b"
-    r"|chdir|\bPYTHONPATH\b|sys\.path|[\\/][^\s\"']*server\.py",
+    r"|chdir|\bPYTHONPATH\b|sys\.path|[\\/][^\s\"']*server\.py"
+    # Anything that could drop DATA_DIR again before the import.
+    r"|\bunset\b|\benv\s+-u|remove-item\s+env:|os\.environ|\(\s*export\b",
     re.IGNORECASE,
 )
 
@@ -91,7 +97,7 @@ def server_import_allowed(command: str, cwd: str) -> bool:
     """A temporary DATA_DIR bound to the one Python process, the server.py of cwd,
     and no .env in the checkout root or that directory."""
     value = bound_data_dir(command)
-    if value is None or not cwd or ELSEWHERE.search(command):
+    if value is None or not cwd or ELSEWHERE.search(command) or EXPANDED.search(value):
         return False
     try:
         data = Path(value).expanduser().resolve()
