@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import unittest
+from collections.abc import Sequence
 from typing import Any
 
 from backend.performance.session_report import session_report
+from backend.planning.race_plan import race_plan
 
 
 def metric(value: float) -> dict[str, Any]:
@@ -482,6 +484,224 @@ class PlanTests(unittest.TestCase):
             {"plan_duration", "plan_load", "plan_structure"}
             & checks(session_report(result(focus="easy"))).keys()
         )
+
+
+def km_streams(
+    seconds_per_km: Sequence[float], watts: Sequence[float] | None = None
+) -> dict[str, Any]:
+    """A recording sampled at every km boundary: cumulative time and distance."""
+    times = [0.0]
+    for seconds in seconds_per_km:
+        times.append(times[-1] + seconds)
+    channels: dict[str, Any] = {
+        "distance_m": {"values": [1000.0 * km for km in range(len(times))]}
+    }
+    if watts is not None:
+        channels["power_w"] = {"values": [*watts, watts[-1]]}
+    return {"time_s": times, "channels": channels}
+
+
+class RacePlanTests(unittest.TestCase):
+    """#3084 Part 1c: the race against its race plan (#2803), athlete's limits."""
+
+    def test_a_run_against_its_plan_sections_start_fade_and_finish(self) -> None:
+        # Plan 50:00 on two flat 5 km sections: 300 s/km. Run: km 1 in 280 s,
+        # km 2-6 in 300 s, km 7-10 in 315 s, 3040 s in all.
+        # Section 1: 280 + 4 * 300 = 1480 against 1500 s, -1.3 %.
+        # Section 2: 300 + 4 * 315 = 1560 against 1500 s, +4.0 % > 3.
+        # Start (first km, 10 % of 10 km): 280 against 300 s, 6.7 % ahead.
+        # Fade: every km from km 6 on (the 7th) is 5 % behind.
+        # Finish: 3040 against 3000 s, +1.3 %, under 2 %.
+        plan = race_plan(
+            {
+                "id": "c1",
+                "sport": "run",
+                "distance": 10000,
+                "target": "0:50:00",
+                "course_profile": "km 0-5 0 %; km 5-10 0 %",
+            },
+            None,
+        )
+        report = session_report(
+            result(
+                focus="race",
+                metrics={"elapsed_duration_s": metric(3040)},
+                execution={"data_quality": {"heart_rate": "ok", "speed": "ok"}},
+                streams=km_streams([280, 300, 300, 300, 300, 300, 315, 315, 315, 315]),
+            ),
+            race=plan,
+        )
+        found = checks(report)
+        sections = found["race_sections"]
+        self.assertEqual(
+            ([-1.3, 4.0], 1, "notable"),
+            (
+                [row["behind_plan_pct"] for row in sections["value"]["sections"]],
+                sections["value"]["off_plan"],
+                sections["verdict"],
+            ),
+        )
+        self.assertEqual(
+            (6.7, "notable"),
+            (
+                found["race_start"]["value"]["ahead_of_plan_pct"],
+                found["race_start"]["verdict"],
+            ),
+        )
+        self.assertEqual(
+            ({"fade_from_km": 6, "mean_behind_plan_pct": 5.0}, "notable"),
+            (found["race_fade"]["value"], found["race_fade"]["verdict"]),
+        )
+        self.assertEqual(
+            (1.3, "ok"),
+            (
+                found["race_finish"]["value"]["behind_target_pct"],
+                found["race_finish"]["verdict"],
+            ),
+        )
+        # 309 s/km reaches the line in 3090 s, 3.0 % over the target: notable;
+        # every km exactly 3 % behind is no fade.
+        slower = checks(
+            session_report(
+                result(
+                    focus="race",
+                    execution={"data_quality": {"speed": "ok"}},
+                    streams=km_streams([309] * 10),
+                ),
+                race=plan,
+            )
+        )
+        self.assertEqual("notable", slower["race_finish"]["verdict"])
+        self.assertEqual("ok", slower["race_fade"]["verdict"])
+
+    def test_a_gps_long_recording_is_scaled_not_cut(self) -> None:
+        # 10 km raced at 309 s/km, recorded 1.5 % long (10.15 km): the line is
+        # the recording's end, 3090 s, 3.0 % over the 50:00 target.
+        plan = race_plan(
+            {"id": "c5", "sport": "run", "distance": 10000, "target": "0:50:00"}, None
+        )
+        streams = km_streams([309] * 10)
+        streams["channels"]["distance_m"]["values"] = [1015.0 * km for km in range(11)]
+        finish = checks(
+            session_report(
+                result(
+                    focus="race",
+                    execution={"data_quality": {"speed": "ok"}},
+                    streams=streams,
+                ),
+                race=plan,
+            )
+        )["race_finish"]
+        self.assertEqual(
+            (3090, 3.0, "notable"),
+            (
+                finish["value"]["finish_s"],
+                finish["value"]["behind_target_pct"],
+                finish["verdict"],
+            ),
+        )
+
+    def test_a_walk_off_after_the_line_and_a_slow_race_are_no_fade(self) -> None:
+        # 10 km at the planned 300 s/km, then 400 m walked at 720 s/km before
+        # the watch stops: the recording is cut at the line, so all is on plan.
+        plan = race_plan(
+            {"id": "c4", "sport": "run", "distance": 10000, "target": "0:50:00"}, None
+        )
+        streams = km_streams([300] * 10)
+        streams["time_s"].append(streams["time_s"][-1] + 288)
+        streams["channels"]["distance_m"]["values"].append(10400.0)
+        walked = checks(
+            session_report(
+                result(
+                    focus="race",
+                    execution={"data_quality": {"speed": "ok"}},
+                    streams=streams,
+                ),
+                race=plan,
+            )
+        )
+        self.assertEqual(
+            ([0.0], 0.0, "ok", None),
+            (
+                [
+                    row["behind_plan_pct"]
+                    for row in walked["race_sections"]["value"]["sections"]
+                ],
+                walked["race_finish"]["value"]["behind_target_pct"],
+                walked["race_finish"]["verdict"],
+                walked["race_fade"]["value"]["fade_from_km"],
+            ),
+        )
+        # 4 % behind plan from the first km on: the section is off plan, but
+        # with no km on plan before it, there is no fade point.
+        slow = checks(
+            session_report(
+                result(
+                    focus="race",
+                    execution={"data_quality": {"speed": "ok"}},
+                    streams=km_streams([312] * 10),
+                ),
+                race=plan,
+            )
+        )
+        self.assertEqual("notable", slow["race_sections"]["verdict"])
+        self.assertEqual("ok", slow["race_fade"]["verdict"])
+
+    def test_a_ride_against_its_planned_power(self) -> None:
+        # 200 W target: 200 W on the flat 20 km, 210 W (+5 %) on the climb.
+        # Ridden: 200 W, then 195 W on the climb: 1 - 195 / 210 = 7.1 % behind.
+        plan = race_plan(
+            {
+                "id": "c2",
+                "sport": "ride",
+                "distance": 30000,
+                "target": "200 W",
+                "course_profile": "km 0-20 0 %; km 20-30 +5 %",
+            },
+            None,
+        )
+        found = checks(
+            session_report(
+                result(
+                    sport="ride",
+                    focus="race",
+                    execution={"output_unit": "W"},
+                    streams=km_streams([120] * 30, [200] * 20 + [195] * 10),
+                ),
+                race=plan,
+            )
+        )
+        self.assertEqual(
+            [0.0, 7.1],
+            [
+                row["behind_plan_pct"]
+                for row in found["race_sections"]["value"]["sections"]
+            ],
+        )
+        self.assertEqual("ok", found["race_start"]["verdict"])
+        self.assertEqual(20, found["race_fade"]["value"]["fade_from_km"])
+        # Without a target time the finish is unknown, not judged.
+        self.assertEqual("unknown", found["race_finish"]["verdict"])
+
+    def test_a_course_that_does_not_fit_the_recording_is_unknown(self) -> None:
+        # A run given up at 8 km is no finish ahead of the 10 km target.
+        plan = race_plan(
+            {"id": "c3", "sport": "run", "distance": 10000, "target": "0:50:00"}, None
+        )
+        found = checks(
+            session_report(
+                result(
+                    focus="race",
+                    execution={"data_quality": {"speed": "ok"}},
+                    # 8 km recorded against a 10 km plan.
+                    streams=km_streams([300] * 8),
+                ),
+                race=plan,
+            )
+        )
+        for key in ("race_sections", "race_start", "race_fade", "race_finish"):
+            self.assertEqual("unknown", found[key]["verdict"], key)
+            self.assertIn("Distanz", found[key]["reason"])
 
 
 class RaceAndRankingTests(unittest.TestCase):
