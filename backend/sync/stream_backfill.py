@@ -38,6 +38,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 from collections.abc import Callable, Mapping, Sequence
 from contextlib import AbstractContextManager, nullcontext
 from dataclasses import dataclass
@@ -45,7 +46,12 @@ from datetime import date, datetime, timedelta
 from typing import Any, Final, Protocol
 
 from backend.athlete.local_date import iso_date_prefix
-from backend.canonical.activity_detail import ActivityStreamSet, ActivityStrengthSetSet
+from backend.canonical.activity_detail import (
+    MAX_SPEED_MPS,
+    RESPIRATION_RATE_BOUNDS_BRPM,
+    ActivityStreamSet,
+    ActivityStrengthSetSet,
+)
 from backend.canonical.mapping import MappingResult
 from backend.canonical.vocabulary import (
     ActivityDetailKind,
@@ -61,6 +67,7 @@ from backend.db.repositories import KeyValueRepository
 from backend.errors import AppError
 from backend.providers.canonical_plans import ACTIVITY_RECORD_KIND
 from backend.providers.fit_activity_detail_mapping import fit_inventory
+from backend.providers.fit_file import fit_messages
 from backend.providers.garmin_fit_history import FitTransportMissing
 from backend.providers.garmin_personal import PERSONAL_KEY_REJECTED_REASON
 from backend.providers.garmin_rating_history import (
@@ -80,6 +87,21 @@ BLOCKED_PERSONAL_API: Final = "personal_api_required"
 # file read again (regular fetch, then replay) is counted once.
 FIT_INVENTORY_KEY: Final = "fit_inventory"
 _MAX_SEEN_FILES: Final = 5000
+# A count key ending in this keeps its largest value instead of adding up.
+_MAX_KEY: Final = "_max"
+_MESSAGE_INDEX_MASK: Final = 0x0FFF
+_LAP_MESSAGE: Final = 19
+_LAP_STEP_FIELD: Final = 71
+_WORKOUT_STEP_MESSAGE: Final = 27
+_ZONES_TARGET_MESSAGE: Final = 7
+# Name, FIT message, field, divisor and canonical bounds of each value counted
+# before its mapper reads it (#2220).
+_DECODE_VALUES: Final[tuple[tuple[str, int, int, int, tuple[float, float]], ...]] = (
+    ("respiration_record", 20, 108, 100, RESPIRATION_RATE_BOUNDS_BRPM),
+    ("respiration_lap_avg", _LAP_MESSAGE, 136, 100, RESPIRATION_RATE_BOUNDS_BRPM),
+    ("respiration_lap_max", _LAP_MESSAGE, 137, 100, RESPIRATION_RATE_BOUNDS_BRPM),
+    ("lap_grade_speed", _LAP_MESSAGE, 161, 1000, (0.0, MAX_SPEED_MPS)),
+)
 
 STORED: Final = "stored"
 NO_STREAMS: Final = "no_streams"
@@ -663,19 +685,92 @@ def count_fit_file(
     origin = _vocabulary(row and row["recorded_by"], RecordingOrigin) or provider
     sport = _vocabulary(row and row["sport"], Sport) or "unknown"
     bucket = state["counts"].setdefault(origin, {}).setdefault(sport, {})
-    for key in ("files", *sorted(keys)):
-        bucket[key] = int(bucket.get(key) or 0) + 1
+    additions = dict.fromkeys(("files", *sorted(keys)), 1) | fit_new_decode_counts(data)
+    for key, value in additions.items():
+        known = int(bucket.get(key) or 0)
+        bucket[key] = max(known, value) if key.endswith(_MAX_KEY) else known + value
     state["seen"] = [*state["seen"], digest][-_MAX_SEEN_FILES:]
     key_values.set(db, FIT_INVENTORY_KEY, json.dumps(state, sort_keys=True))
+
+
+def _scaled(value: object, divisor: int) -> float | None:
+    if isinstance(value, bool) or not isinstance(value, int | float):
+        return None
+    return value / divisor if math.isfinite(value) else None
+
+
+def _message_index(value: object) -> int | None:
+    # The FIT message index keeps its number in the low 12 bits.
+    if isinstance(value, bool) or not isinstance(value, int):
+        return None
+    return value & _MESSAGE_INDEX_MASK
+
+
+def fit_new_decode_counts(data: bytes) -> dict[str, int]:
+    """What reading four more FIT items would find in one file, as count keys (#2220).
+
+    Nothing is stored or mapped. ``n<name>.in_bounds`` and ``.out_of_bounds`` mark a
+    file with a breathing rate (record 20.108, lap 19.136 and 19.137, both /100,
+    1 to 100 per minute) or a lap's grade-adjusted speed (19.161, /1000, 0 to
+    ``MAX_SPEED_MPS``) inside or outside the canonical bounds, zero included.
+    ``nlap_step_index`` marks laps carrying a workout step index (19.71), and
+    ``nlap_step_index_resolved`` or ``nlap_step_index_dangling`` whether all of
+    them, or not all, name a ``workout_step`` (27) of the same file.
+    ``nworkout_steps`` counts files with such steps, ``nworkout_steps_max`` is the
+    most steps of one file and ``nzones_target`` marks a zone basis (7). Numbers
+    only, never a value, id, text or position; unreadable bytes count nothing.
+    """
+    try:
+        messages = fit_messages(data)
+    except ValueError:
+        return {}
+    counts: dict[str, int] = {}
+    for name, message, field, divisor, (lower, upper) in _DECODE_VALUES:
+        checks = [
+            lower <= value <= upper
+            for number, fields in messages
+            if number == message
+            if (value := _scaled(fields.get(field), divisor)) is not None
+        ]
+        if any(checks):
+            counts[f"n{name}.in_bounds"] = 1
+        if not all(checks):
+            counts[f"n{name}.out_of_bounds"] = 1
+    steps = [fields for number, fields in messages if number == _WORKOUT_STEP_MESSAGE]
+    known = {_message_index(fields.get(254)) for fields in steps}
+    linked = [
+        index
+        for number, fields in messages
+        if number == _LAP_MESSAGE
+        if (index := _message_index(fields.get(_LAP_STEP_FIELD))) is not None
+    ]
+    if linked:
+        counts["nlap_step_index"] = 1
+        resolved = all(index in known for index in linked)
+        counts[
+            "nlap_step_index_resolved" if resolved else "nlap_step_index_dangling"
+        ] = 1
+    if steps:
+        counts["nworkout_steps"] = 1
+        counts[f"nworkout_steps{_MAX_KEY}"] = len(steps)
+    if any(number == _ZONES_TARGET_MESSAGE for number, _fields in messages):
+        counts["nzones_target"] = 1
+    return counts
 
 
 def fit_inventory_counts(db: Any, key_values: KeyValueRepository) -> dict[str, Any]:
     """The inventory counts for diagnostics, without the file hashes.
 
-    Per recording origin and sport: ``files`` read, and the files holding each
-    message number, unread field of a mapped message and developer field.
+    Per recording origin and sport: ``files`` read, the files holding each
+    message number, unread field of a mapped message and developer field, and the
+    ``new_decodes`` of ``fit_new_decode_counts``.
     """
-    groups = {"m": "messages", "f": "unmapped_fields", "d": "developer_fields"}
+    groups = {
+        "m": "messages",
+        "f": "unmapped_fields",
+        "d": "developer_fields",
+        "n": "new_decodes",
+    }
     result: dict[str, Any] = {}
     for origin, sports in _inventory_state(key_values, db)["counts"].items():
         for sport, bucket in sports.items():

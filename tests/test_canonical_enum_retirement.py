@@ -172,6 +172,44 @@ SNAPSHOT: Final[Mapping[str, frozenset[str]]] = {
     "DfaQuality": frozenset({"good", "low"}),
     "LapKind": frozenset({"lap", "work", "recovery", "warmup", "cooldown"}),
     "LapSource": frozenset({"provider_intervals", "device_laps", "splits"}),
+    "LapTrigger": frozenset(
+        {
+            "manual",
+            "time",
+            "distance",
+            "position_start",
+            "position_lap",
+            "position_waypoint",
+            "position_marked",
+            "session_end",
+            "fitness_equipment",
+        }
+    ),
+    "WorkoutStepIntensity": frozenset(
+        {"active", "rest", "warmup", "cooldown", "recovery", "interval", "other"}
+    ),
+    "WorkoutDurationType": frozenset(
+        {
+            "time",
+            "distance",
+            "open",
+            "reps",
+            "hr_below",
+            "hr_above",
+            "power_below",
+            "power_above",
+            "repeat",
+            "other",
+        }
+    ),
+    "WorkoutTargetType": frozenset(
+        {"speed", "heart_rate", "power", "cadence", "open", "other"}
+    ),
+    "WorkoutTargetUnit": frozenset({"mps", "bpm", "pct_max_hr", "w", "pct_ftp", "rpm"}),
+    "DeviceHeartRateCalc": frozenset(
+        {"custom", "percent_max_hr", "percent_hrr", "percent_lthr"}
+    ),
+    "DevicePowerCalc": frozenset({"custom", "percent_ftp"}),
     "ZoneMetric": frozenset({"heart_rate", "power"}),
     "ZoneBoundarySource": frozenset({"provider_reported", "profile", "unknown"}),
     "StrengthSetType": frozenset({"active", "rest"}),

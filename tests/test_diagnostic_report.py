@@ -33,6 +33,8 @@ _OTHER_TABLES = (
     "sleep_periods",
     "zone_configurations",
     "power_curve_points",
+    # The archived templates no provider holds (#3141).
+    "remote_links",
 )
 
 
@@ -289,6 +291,7 @@ class DiagnosticReportServiceTests(unittest.TestCase):
                 "wal_bytes": None,
                 "data_dir_free_bytes": None,
                 "workout_library_state": {"local": 2},
+                "workout_library_archive": {"waiting": 0, "last_purged": 0},
                 "external_calendar_events": 400,
             },
         )
@@ -342,8 +345,9 @@ class DiagnosticReportServiceTests(unittest.TestCase):
         # Garmin past-workout removal adds its stored state; the strength push
         # counts add two reads: the remembered Garmin exercises and the linked
         # units (#2850); the plan push counts add three (jobs, items, stuck jobs;
-        # #2878, #2953).
-        self.assertEqual(len(self.db.queries), 28)
+        # #2878, #2953); the library archive counts add two (archived templates
+        # and the last purge, #3141).
+        self.assertEqual(len(self.db.queries), 30)
         self.assertEqual(
             [query.rsplit("FROM ", 1)[1] for query in count_queries],
             [
@@ -354,6 +358,8 @@ class DiagnosticReportServiceTests(unittest.TestCase):
                 "activity_feedback",
                 "change_history",
                 "kv WHERE key IN (?, ?, ?)",
+                # The last archive purge's count (#3141).
+                "kv WHERE key = ?",
                 "kv WHERE key = ?",
                 "provider_sync_cursors WHERE provider=? AND stream=?",
             ],

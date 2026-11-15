@@ -16,8 +16,8 @@ Use [README.md](README.md) for the overview and [docs/setup.md](docs/setup.md) a
 - Upgrades start only at the baseline or a later released schema. Production
   runs v30 since release 2.1.20 (the only production instance; releases per
   schema in [docs/schema-history.md](docs/schema-history.md)); the frozen
-  baseline fixture is v26 (release 2.0.5), v27 to v29 are accepted by their
-  frozen digests, and v30 is the current schema. Older schemas are refused
+  baseline fixture is v26 (release 2.0.5), v27 to v30 are accepted by their
+  frozen digests, and v31 is the current schema. Older schemas are refused
   unchanged, and release 2.0.5 opens a v21 to v25 database or backup first.
   Keep one frozen baseline fixture and one
   versioned, transactional SQLCipher migration chain from it to current; a
@@ -96,6 +96,8 @@ Use [README.md](README.md) for the overview and [docs/setup.md](docs/setup.md) a
   state is dialogue continuity only. Durable profile, competition, check-in, and
   planning mutations come from an explicit API/UI action or from a Coach turn
   started by the athlete's own stored message, never from an unattended turn.
+  Named exception (athlete decision 2026-11-15, #3141): archived never-synced
+  library templates are deleted 30 days after archiving.
   Coach writes need no extra UI confirmation; guard them server-side by impact:
   each change shows a receipt, with whole-turn undo only when every applied
   write is fully tracked; deletes/archives and bulk changes need a confirmed

@@ -20,6 +20,7 @@ from array import array
 from collections.abc import Callable, Collection, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date, datetime
+from enum import StrEnum
 from typing import Any, Final, cast
 
 from backend.canonical.activity_detail import (
@@ -33,6 +34,8 @@ from backend.canonical.activity_detail import (
     ActivityStreamSet,
     ActivityStrengthSet,
     ActivityStrengthSetSet,
+    DeviceZoneBasis,
+    WorkoutStep,
     ZoneBucket,
     ZoneDistribution,
     without_positions,
@@ -45,11 +48,14 @@ from backend.canonical.vocabulary import (
     ActivityDetailOrigin,
     ActivityRecordState,
     ActivitySessionState,
+    DeviceHeartRateCalc,
+    DevicePowerCalc,
     DfaQuality,
     ExerciseCategory,
     HeartRateSource,
     LapKind,
     LapSource,
+    LapTrigger,
     PowerSource,
     ProviderId,
     ProviderRecordState,
@@ -61,6 +67,10 @@ from backend.canonical.vocabulary import (
     StreamResolution,
     StrengthSetSource,
     StrengthSetType,
+    WorkoutDurationType,
+    WorkoutStepIntensity,
+    WorkoutTargetType,
+    WorkoutTargetUnit,
     ZoneBoundarySource,
     ZoneMetric,
 )
@@ -85,6 +95,8 @@ _LAP_COLUMNS: Final = (
     "end_offset_s",
     "name",
     *_LAP_METRIC_COLUMNS,
+    "workout_step_index",
+    "lap_trigger",
 )
 _STRENGTH_COLUMNS: Final = (
     "set_index",
@@ -219,7 +231,7 @@ def _rehash_stream_set(db: Any, provider: str, provider_activity_id: str) -> Non
     key = (provider, provider_activity_id, ActivityDetailKind.STREAMS.value)
     header = db.execute(
         "SELECT mapper_version, origin, source_kind, recorded_by, source_record_id, "
-        "resolution, hr_source, power_source, sensors, dfa_alpha1 "
+        "resolution, hr_source, power_source, sensors, dfa_alpha1, device_zones "
         "FROM activity_detail_sets WHERE provider = ? "
         "AND provider_activity_id = ? AND detail_kind = ?",
         key,
@@ -251,6 +263,7 @@ def _rehash_stream_set(db: Any, provider: str, provider_activity_id: str) -> Non
                 "power_source": header["power_source"],
                 "sensors": header["sensors"],
                 "dfa_alpha1": header["dfa_alpha1"],
+                "device_zones": header["device_zones"],
             },
         ),
         children,
@@ -1207,8 +1220,21 @@ def _header(detail: ActivityDetailSet, mapper_version: int) -> dict[str, Any]:
                 if stream and stream.dfa_alpha1 is not None
                 else None
             ),
+            **_watch_header(detail),
         },
     )
+
+
+def _watch_header(detail: ActivityDetailSet) -> dict[str, str | None]:
+    """The stored text of the watch's zone basis (streams) and workout steps (laps)."""
+    zones = detail.device_zones if isinstance(detail, ActivityStreamSet) else None
+    steps = detail.workout_steps if isinstance(detail, ActivityLapSet) else ()
+    return {
+        "device_zones": None if zones is None else _compact_json(_zones_json(zones)),
+        "workout_steps": (
+            _compact_json([_step_json(step) for step in steps]) if steps else None
+        ),
+    }
 
 
 _OPTIONAL_HEADER_KEYS = (
@@ -1217,6 +1243,8 @@ _OPTIONAL_HEADER_KEYS = (
     "power_source",
     "sensors",
     "dfa_alpha1",
+    "device_zones",
+    "workout_steps",
 )
 
 
@@ -1252,8 +1280,8 @@ def _header_fields(
     }
     # Only a set that carries a value has its key, so sets without them keep
     # their content hash.
-    # ``optional`` carries set_source, hr_source, power_source, sensors and
-    # dfa_alpha1 as stored text.
+    # ``optional`` carries set_source, hr_source, power_source, sensors,
+    # dfa_alpha1, device_zones and workout_steps as stored text.
     for key in _OPTIONAL_HEADER_KEYS:
         value = optional.get(key)
         if value:
@@ -1286,6 +1314,90 @@ def stored_dfa_alpha1(text: object) -> ActivityDfaAlpha1 | None:
         )
     except TypeError, ValueError, KeyError, AttributeError:
         return None
+
+
+def _compact_json(value: object) -> str:
+    return json.dumps(value, sort_keys=True, separators=(",", ":"))
+
+
+def _enum_or_none[E: StrEnum](vocabulary: type[E], value: object) -> E | None:
+    """The vocabulary member a stored value names; an unknown one is None."""
+    try:
+        return vocabulary(value) if isinstance(value, str) else None
+    except ValueError:
+        return None
+
+
+def _zones_json(zones: DeviceZoneBasis) -> dict[str, Any]:
+    """The values the watch's zone basis holds, by fixed key; numbers and names only."""
+    values = {
+        "max_hr": zones.max_hr,
+        "threshold_hr": zones.threshold_hr,
+        "ftp_w": zones.ftp_w,
+        "hr_calc": None if zones.hr_calc is None else zones.hr_calc.value,
+        "power_calc": None if zones.power_calc is None else zones.power_calc.value,
+    }
+    return {key: value for key, value in values.items() if value is not None}
+
+
+def stored_device_zones(text: object) -> DeviceZoneBasis | None:
+    """Decode a stored zone basis, each unusable value as None; none usable is None."""
+    if text is None:
+        return None
+    try:
+        item = json.loads(str(text))
+        zones = DeviceZoneBasis(
+            max_hr=item.get("max_hr"),
+            threshold_hr=item.get("threshold_hr"),
+            ftp_w=item.get("ftp_w"),
+            hr_calc=_enum_or_none(DeviceHeartRateCalc, item.get("hr_calc")),
+            power_calc=_enum_or_none(DevicePowerCalc, item.get("power_calc")),
+        )
+    except TypeError, ValueError, AttributeError:
+        return None
+    return None if zones.is_empty else zones
+
+
+def _step_json(step: WorkoutStep) -> dict[str, Any]:
+    """One executed workout step by fixed key: numbers and vocabulary names only."""
+    return {
+        "index": step.index,
+        "intensity": step.intensity.value,
+        "duration_type": step.duration_type.value,
+        "duration_value": step.duration_value,
+        "repeat_from": step.repeat_from,
+        "repeat_count": step.repeat_count,
+        "target_type": step.target_type.value,
+        "target_low": step.target_low,
+        "target_high": step.target_high,
+        "target_unit": None if step.target_unit is None else step.target_unit.value,
+        "target_zone": step.target_zone,
+    }
+
+
+def stored_workout_steps(text: object) -> tuple[WorkoutStep, ...]:
+    """Decode stored workout steps; an unreadable list yields no steps."""
+    if text is None:
+        return ()
+    try:
+        return tuple(
+            WorkoutStep(
+                index=item["index"],
+                intensity=WorkoutStepIntensity(item["intensity"]),
+                duration_type=WorkoutDurationType(item["duration_type"]),
+                duration_value=item.get("duration_value"),
+                repeat_from=item.get("repeat_from"),
+                repeat_count=item.get("repeat_count"),
+                target_type=WorkoutTargetType(item["target_type"]),
+                target_low=item.get("target_low"),
+                target_high=item.get("target_high"),
+                target_unit=_enum_or_none(WorkoutTargetUnit, item.get("target_unit")),
+                target_zone=item.get("target_zone"),
+            )
+            for item in json.loads(str(text))
+        )
+    except TypeError, ValueError, KeyError, AttributeError:
+        return ()
 
 
 def _sensor_json(sensor: ActivitySensor) -> dict[str, Any]:
@@ -1340,6 +1452,8 @@ def _child_rows(detail: ActivityDetailSet) -> list[tuple[object, ...]]:
                 lap.end_offset_s,
                 lap.name,
                 *(getattr(lap, column) for column in _LAP_METRIC_COLUMNS),
+                lap.workout_step_index,
+                None if lap.lap_trigger is None else lap.lap_trigger.value,
             )
             for lap in detail.laps
         ]
@@ -1443,7 +1557,7 @@ def _read_sets(
         "d.origin, d.source_kind, d.recorded_by, d.source_record_id, d.resolution, "
         "d.lap_source, d.zone_boundary_source, d.set_source, d.summary_sha256, "
         "d.fetched_at, d.hr_source, d.power_source, d.sensors, d.dfa_alpha1, "
-        "r.activity_id FROM activity_detail_sets AS d "
+        "d.device_zones, d.workout_steps, r.activity_id FROM activity_detail_sets AS d "
         "JOIN activity_records AS r ON r.provider = d.provider "
         "AND r.provider_activity_id = d.provider_activity_id "
         "JOIN activity_sessions AS s ON s.activity_id = r.activity_id "
@@ -1528,6 +1642,7 @@ def _rebuild(db: Any, row: Mapping[str, Any]) -> ActivityDetailSet:
             # Optional metadata must never make the stream set unreadable.
             sensors=stored_sensors(row["sensors"]),
             dfa_alpha1=stored_dfa_alpha1(row["dfa_alpha1"]),
+            device_zones=stored_device_zones(row["device_zones"]),
         )
     if kind is ActivityDetailKind.LAPS:
         laps = tuple(
@@ -1538,6 +1653,8 @@ def _rebuild(db: Any, row: Mapping[str, Any]) -> ActivityDetailSet:
                 end_offset_s=lap["end_offset_s"],
                 name=lap["name"],
                 **{column: lap[column] for column in _LAP_METRIC_COLUMNS},
+                workout_step_index=lap["workout_step_index"],
+                lap_trigger=_enum_or_none(LapTrigger, lap["lap_trigger"]),
             )
             for lap in db.execute(
                 f"SELECT {', '.join(_LAP_COLUMNS)} FROM activity_laps "
@@ -1547,7 +1664,10 @@ def _rebuild(db: Any, row: Mapping[str, Any]) -> ActivityDetailSet:
             ).fetchall()
         )
         return ActivityLapSet(
-            **common, lap_source=LapSource(row["lap_source"]), laps=laps
+            **common,
+            lap_source=LapSource(row["lap_source"]),
+            laps=laps,
+            workout_steps=stored_workout_steps(row["workout_steps"]),
         )
     if kind is ActivityDetailKind.STRENGTH_SETS:
         return ActivityStrengthSetSet(

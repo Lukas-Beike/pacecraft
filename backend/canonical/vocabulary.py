@@ -635,6 +635,9 @@ class StreamChannel(StrEnum):
     VERTICAL_OSCILLATION_CM = "vertical_oscillation_cm"
     VERTICAL_RATIO_PCT = "vertical_ratio_pct"
     STEP_LENGTH_M = "step_length_m"
+    # Breaths per minute (schema version 31); stored and served like every
+    # other channel, filled only by a mapper that reads it.
+    RESPIRATION_RATE_BRPM = "respiration_rate_brpm"
 
 
 # Raw GPS positions stay in storage, backup and export only. They are never
@@ -715,6 +718,86 @@ class LapSource(StrEnum):
     DEVICE_LAPS = "device_laps"
     # Fixed-distance splits computed by the provider.
     SPLITS = "splits"
+
+
+class LapTrigger(StrEnum):
+    """What ended a device lap, the FIT ``lap_trigger`` names (schema version 31)."""
+
+    MANUAL = "manual"
+    TIME = "time"
+    DISTANCE = "distance"
+    POSITION_START = "position_start"
+    POSITION_LAP = "position_lap"
+    POSITION_WAYPOINT = "position_waypoint"
+    POSITION_MARKED = "position_marked"
+    SESSION_END = "session_end"
+    FITNESS_EQUIPMENT = "fitness_equipment"
+
+
+class WorkoutStepIntensity(StrEnum):
+    """The intensity a device workout step names (schema version 31)."""
+
+    ACTIVE = "active"
+    REST = "rest"
+    WARMUP = "warmup"
+    COOLDOWN = "cooldown"
+    RECOVERY = "recovery"
+    INTERVAL = "interval"
+    OTHER = "other"
+
+
+class WorkoutDurationType(StrEnum):
+    """What ends a device workout step; any other FIT type is ``OTHER``."""
+
+    TIME = "time"
+    DISTANCE = "distance"
+    OPEN = "open"
+    REPS = "reps"
+    HR_BELOW = "hr_below"
+    HR_ABOVE = "hr_above"
+    POWER_BELOW = "power_below"
+    POWER_ABOVE = "power_above"
+    # The step repeats the steps from ``repeat_from`` ``repeat_count`` times.
+    REPEAT = "repeat"
+    OTHER = "other"
+
+
+class WorkoutTargetType(StrEnum):
+    """What a device workout step aims at; any other FIT target is ``OTHER``."""
+
+    SPEED = "speed"
+    HEART_RATE = "heart_rate"
+    POWER = "power"
+    CADENCE = "cadence"
+    OPEN = "open"
+    OTHER = "other"
+
+
+class WorkoutTargetUnit(StrEnum):
+    """The unit of a device workout step's target range."""
+
+    MPS = "mps"
+    BPM = "bpm"
+    PCT_MAX_HR = "pct_max_hr"
+    W = "w"
+    PCT_FTP = "pct_ftp"
+    RPM = "rpm"
+
+
+class DeviceHeartRateCalc(StrEnum):
+    """How the watch derives its heart rate zones (FIT ``hr_calc_type``)."""
+
+    CUSTOM = "custom"
+    PERCENT_MAX_HR = "percent_max_hr"
+    PERCENT_HRR = "percent_hrr"
+    PERCENT_LTHR = "percent_lthr"
+
+
+class DevicePowerCalc(StrEnum):
+    """How the watch derives its power zones (FIT ``pwr_calc_type``)."""
+
+    CUSTOM = "custom"
+    PERCENT_FTP = "percent_ftp"
 
 
 class ZoneMetric(StrEnum):

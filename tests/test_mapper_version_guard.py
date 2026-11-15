@@ -67,7 +67,7 @@ NOT_REPLAYED: Final[dict[str, str]] = {
 PINNED: Final[dict[str, tuple[tuple[int, ...], str]]] = {
     "canonical.activity_detail": (
         (9, 10),
-        "4bbe2f0504dbb54e038e81fe8f323245fab24f45b6f7d61d55bbdc5bd64bc5e2",
+        "e8821b71a98e513d07757619f177913280cd3cd7b71c315778c9d3caaaa0dad4",
     ),
     "canonical.decimal_text": (
         (9, 10, 21, 25, 8, 2),
@@ -107,7 +107,7 @@ PINNED: Final[dict[str, tuple[tuple[int, ...], str]]] = {
     ),
     "canonical.vocabulary": (
         (9, 10, 21, 25, 8, 2),
-        "ea070712f448f1da1a7fcc2cb0ea1eebae354df3beeda707dd4dea22b483b5c9",
+        "c7dc72f5f2935cc644715e9553c35fc8ffebf4fc4f9b371a7dfc334df12216f5",
     ),
     "fit_activity_detail_mapping": (
         (9, 10),

@@ -52,7 +52,7 @@ SECTION_FIELDS = {
     # Storage and runtime health for the post-release check (#2848).
     "database": re.compile(
         "|".join(("schema_version", *COUNTS, *STORAGE))
-        + r"|(workout_library_state|stored_payload_bytes)\.[a-z_]+"
+        + r"|(workout_library_state|workout_library_archive|stored_payload_bytes)\.[a-z_]+"
     ),
     "runtime": re.compile(
         r"uptime_s|malloc_arena_max|process_memory\.[a-z_]+|reader_slots\.[a-z_0-9]+"
@@ -84,11 +84,13 @@ SECTION_FIELDS = {
         r"|skipped_by_error|blocked|cursor|finished)"
     ),
     # Per recording origin and sport (their vocabularies, in backend/canonical):
-    # files, and files per FIT message or field number.
+    # files, files per FIT message or field number, and the counts of the new
+    # decodes (#2220).
     "fit_inventory": re.compile(
         r"status|(garmin|wahoo|strava|zwift|manual|upload|unknown)\."
         r"(ride|run|swim|walk|hike|strength|row|nordic_ski|alpine_ski|yoga|other"
-        r"|unknown)\.(files|(messages|unmapped_fields|developer_fields)\.[0-9.]+)"
+        r"|unknown)\.(files|(messages|unmapped_fields|developer_fields)\.[0-9.]+"
+        r"|new_decodes\.[a-z_]+(\.(in_bounds|out_of_bounds))?)"
     ),
 }
 STATES = {

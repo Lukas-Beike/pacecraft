@@ -13,8 +13,8 @@ test("@responsive every UI walk step passes on the fixture app", async ({ page, 
   // The app's own today: the profile's zone, else the browser's (the same process as this runner).
   const timeZone = (await (await request.get("/api/bootstrap")).json()).profile?.timezone || undefined;
   const today = new Intl.DateTimeFormat("en-CA", { timeZone }).format(new Date());
-  // Only a release image carries the changelog (#2899).
-  await page.context().route("**/changelog.json", (route) => route.fulfill({ json: { releases: [{ version: "9.9.9", commits: ["feat(calendar): a fixture change (#1)"] }] } }));
+  // Only a release image carries the changelog (#2899); a release of only tooling changes still shows its entry.
+  await page.context().route("**/changelog.json", (route) => route.fulfill({ json: { releases: [{ version: "9.9.9", commits: ["build(quality): a fixture change (#1)"] }] } }));
   // The fixture's current week plans nothing, and only a long upcoming unit gets fuelling (#2921):
   // the first later stored ride or run is shown today instead, long, so the server still knows its equipment (#3011).
   await page.context().route(/\/api\/plan(\?|$)/, async (route) => {

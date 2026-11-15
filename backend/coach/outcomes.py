@@ -200,7 +200,7 @@ def _coach_steps_repaired(previous: dict[str, Any], current: dict[str, Any]) -> 
 
 # A create refused because the record already exists saved nothing and needs
 # no repair: the Coach uses the existing one (#3080).
-_EXISTING_RECORD_REASONS = frozenset({"template_exists"})
+_EXISTING_RECORD_REASONS = frozenset({"template_exists", "competition_exists"})
 
 
 def unresolved_coach_steps(entries: list[dict[str, Any]]) -> list[dict[str, Any]]:

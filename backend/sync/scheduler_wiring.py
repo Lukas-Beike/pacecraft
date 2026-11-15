@@ -132,6 +132,12 @@ def build_sync_schedulers(
         with ctx.maintenance.operation(), background_writer():
             ctx.database().checkpoint_wal()
 
+    def housekeeping() -> None:
+        """Prune finished jobs, then purge archived library templates (#3141)."""
+        ctx.sync_job_queue.service().prune_finished()
+        with ctx.maintenance.operation(), background_writer():
+            ctx.planning.workout_library().purge_archived()
+
     def daily_loop() -> scheduler.DailySyncLoop:
         """The unstarted periodic loop and its stop event."""
         return scheduler.DailySyncLoop(
@@ -140,7 +146,7 @@ def build_sync_schedulers(
             sleep=sleep,
             logger=ctx.logger,
             stop_event=threading.Event(),
-            housekeeping=ctx.sync_job_queue.service().prune_finished,
+            housekeeping=housekeeping,
             wal_checkpoint=checkpoint_wal,
             morning_due=lambda: ctx.garmin.change_check().morning_due(),
         )

@@ -13,7 +13,7 @@ from __future__ import annotations
 import math
 import re
 from collections.abc import Iterable, Mapping
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, fields, replace
 from itertools import pairwise
 from types import MappingProxyType
 from typing import Final, cast
@@ -42,17 +42,24 @@ from backend.canonical.vocabulary import (
     POSITION_CHANNELS,
     ActivityDetailKind,
     ActivityDetailOrigin,
+    DeviceHeartRateCalc,
+    DevicePowerCalc,
     DfaQuality,
     ExerciseCategory,
     HeartRateSource,
     LapKind,
     LapSource,
+    LapTrigger,
     PowerSource,
     SensorRole,
     StreamChannel,
     StreamResolution,
     StrengthSetSource,
     StrengthSetType,
+    WorkoutDurationType,
+    WorkoutStepIntensity,
+    WorkoutTargetType,
+    WorkoutTargetUnit,
     ZoneBoundarySource,
     ZoneMetric,
 )
@@ -70,6 +77,10 @@ _INDEX_TYPE_ERROR: Final = "index must be an integer"
 MAX_STRENGTH_REPS: Final = 1_000
 MAX_STRENGTH_WEIGHT_KG: Final = 1_000.0
 MAX_WORKOUT_STEP_INDEX: Final = 999
+MAX_WORKOUT_STEPS: Final = 200
+MAX_STEP_REPEATS: Final = 1_000
+MAX_STEP_PERCENT: Final = 999.0
+RESPIRATION_RATE_BOUNDS_BRPM: Final = (1.0, 100.0)
 MAX_EXERCISE_NAME_LENGTH: Final = 64
 MAX_SENSORS: Final = 16
 DFA_ESTIMATE_BOUNDS_BPM: Final = (60.0, 220.0)
@@ -98,6 +109,7 @@ CHANNEL_BOUNDS: Final[Mapping[StreamChannel, tuple[float, float]]] = {
     StreamChannel.VERTICAL_OSCILLATION_CM: (0.0, MAX_VERTICAL_OSCILLATION_CM),
     StreamChannel.VERTICAL_RATIO_PCT: (0.0, MAX_VERTICAL_RATIO_PCT),
     StreamChannel.STEP_LENGTH_M: (0.0, MAX_STEP_LENGTH_M),
+    StreamChannel.RESPIRATION_RATE_BRPM: RESPIRATION_RATE_BOUNDS_BRPM,
 }
 
 ZONE_BOUNDARY_BOUNDS: Final[Mapping[ZoneMetric, tuple[float, float]]] = {
@@ -209,6 +221,52 @@ class ActivityDfaAlpha1:
         require_instance(self.quality, DfaQuality, "quality")
 
 
+def _optional_number(value: object, lower: float, upper: float) -> float | None:
+    """A number within its bounds, or None: the fields of schema v31 never raise."""
+    try:
+        return optional_bounded_number(value, "value", lower, upper)
+    except TypeError, ValueError:
+        return None
+
+
+def _optional_whole(value: object, upper: int, lower: int = 0) -> int | None:
+    """An integer within its bounds, or None: the fields of schema v31 never raise."""
+    if isinstance(value, bool) or not isinstance(value, int):
+        return None
+    return value if lower <= value <= upper else None
+
+
+@dataclass(frozen=True, slots=True)
+class DeviceZoneBasis:
+    """The zone basis the watch recorded (FIT ``zones_target``), beside the app's own.
+
+    Shown and told to the Coach only; no threshold or zone calculation reads it.
+    A value that is out of bounds or of another type becomes None.
+    """
+
+    max_hr: float | None = None
+    threshold_hr: float | None = None
+    ftp_w: float | None = None
+    hr_calc: DeviceHeartRateCalc | None = None
+    power_calc: DevicePowerCalc | None = None
+
+    def __post_init__(self) -> None:
+        for name in ("max_hr", "threshold_hr"):
+            value = _optional_number(getattr(self, name), *HEART_RATE_BOUNDS)
+            object.__setattr__(self, name, value)
+        object.__setattr__(
+            self, "ftp_w", _optional_number(self.ftp_w, 1.0, MAX_ACTIVITY_POWER_W)
+        )
+        if not isinstance(self.hr_calc, DeviceHeartRateCalc):
+            object.__setattr__(self, "hr_calc", None)
+        if not isinstance(self.power_calc, DevicePowerCalc):
+            object.__setattr__(self, "power_calc", None)
+
+    @property
+    def is_empty(self) -> bool:
+        return all(getattr(self, field.name) is None for field in fields(self))
+
+
 @dataclass(frozen=True, slots=True)
 class ActivityStreamSet:
     """Equal-length channels on one strictly increasing time axis (``time_s``).
@@ -218,6 +276,8 @@ class ActivityStreamSet:
     predates the field). ``sensors`` lists the sensors the recording named.
     ``dfa_alpha1`` is the first threshold estimate of a chest-strap recording that
     carried RR intervals (the intervals themselves are not part of the set).
+    ``device_zones`` is the zone basis of the watch; one that is not a usable
+    ``DeviceZoneBasis`` is None.
     """
 
     provider_activity_id: str
@@ -229,6 +289,7 @@ class ActivityStreamSet:
     power_source: PowerSource | None = None
     sensors: tuple[ActivitySensor, ...] = ()
     dfa_alpha1: ActivityDfaAlpha1 | None = None
+    device_zones: DeviceZoneBasis | None = None
 
     @property
     def kind(self) -> ActivityDetailKind:
@@ -248,6 +309,9 @@ class ActivityStreamSet:
         object.__setattr__(self, "sensors", sensors)
         if self.dfa_alpha1 is not None:
             require_instance(self.dfa_alpha1, ActivityDfaAlpha1, "dfa_alpha1")
+        zones = self.device_zones
+        if not isinstance(zones, DeviceZoneBasis) or zones.is_empty:
+            object.__setattr__(self, "device_zones", None)
 
     def __post_init__(self) -> None:
         _require_detail_header(self.provider_activity_id, self.provenance, self.origin)
@@ -315,7 +379,12 @@ def _validated_series(
 
 @dataclass(frozen=True, slots=True)
 class ActivityLap:
-    """One lap or interval; offsets are seconds from the activity start."""
+    """One lap or interval; offsets are seconds from the activity start.
+
+    The breathing rates, the device's grade-adjusted speed, ``workout_step_index``
+    (the ``WorkoutStep.index`` the lap belongs to) and ``lap_trigger`` came with
+    schema version 31: a value that is out of bounds or of another type is None.
+    """
 
     index: int
     kind: LapKind
@@ -335,6 +404,11 @@ class ActivityLap:
     load: float | None = None
     intensity_pct: float | None = None
     max_speed_mps: float | None = None
+    avg_respiration_rate_brpm: float | None = None
+    max_respiration_rate_brpm: float | None = None
+    avg_grade_adjusted_speed_mps: float | None = None
+    workout_step_index: int | None = None
+    lap_trigger: LapTrigger | None = None
 
     def __post_init__(self) -> None:
         if isinstance(self.index, bool) or not isinstance(self.index, int):
@@ -354,11 +428,21 @@ class ActivityLap:
         object.__setattr__(self, "end_offset_s", end)
         optional_text(self.name, "name", max_length=MAX_LAP_NAME_LENGTH)
         for name, (lower, upper) in _LAP_METRIC_BOUNDS.items():
+            value = getattr(self, name)
             object.__setattr__(
                 self,
                 name,
-                optional_bounded_number(getattr(self, name), name, lower, upper),
+                _optional_number(value, lower, upper)
+                if name in _LAP_DEVICE_METRICS
+                else optional_bounded_number(value, name, lower, upper),
             )
+        object.__setattr__(
+            self,
+            "workout_step_index",
+            _optional_whole(self.workout_step_index, MAX_WORKOUT_STEP_INDEX),
+        )
+        if not isinstance(self.lap_trigger, LapTrigger):
+            object.__setattr__(self, "lap_trigger", None)
 
 
 _LAP_METRIC_BOUNDS: Final[Mapping[str, tuple[float, float]]] = {
@@ -375,17 +459,161 @@ _LAP_METRIC_BOUNDS: Final[Mapping[str, tuple[float, float]]] = {
     "load": (0.0, MAX_ACTIVITY_LOAD),
     "intensity_pct": (0.0, MAX_INTENSITY_PCT),
     "max_speed_mps": (0.0, MAX_SPEED_MPS),
+    "avg_respiration_rate_brpm": RESPIRATION_RATE_BOUNDS_BRPM,
+    "max_respiration_rate_brpm": RESPIRATION_RATE_BOUNDS_BRPM,
+    "avg_grade_adjusted_speed_mps": (0.0, MAX_SPEED_MPS),
 }
 LAP_METRIC_FIELDS: Final = tuple(_LAP_METRIC_BOUNDS)
+# The metrics of schema version 31, which never raise.
+_LAP_DEVICE_METRICS: Final = frozenset(
+    {
+        "avg_respiration_rate_brpm",
+        "max_respiration_rate_brpm",
+        "avg_grade_adjusted_speed_mps",
+    }
+)
+
+# What each target type may be measured in, and the bounds of each unit.
+_TARGET_UNITS: Final[Mapping[WorkoutTargetType, tuple[WorkoutTargetUnit, ...]]] = {
+    WorkoutTargetType.SPEED: (WorkoutTargetUnit.MPS,),
+    WorkoutTargetType.HEART_RATE: (
+        WorkoutTargetUnit.BPM,
+        WorkoutTargetUnit.PCT_MAX_HR,
+    ),
+    WorkoutTargetType.POWER: (WorkoutTargetUnit.W, WorkoutTargetUnit.PCT_FTP),
+    WorkoutTargetType.CADENCE: (WorkoutTargetUnit.RPM,),
+}
+_TARGET_BOUNDS: Final[Mapping[WorkoutTargetUnit, tuple[float, float]]] = {
+    WorkoutTargetUnit.MPS: (0.0, MAX_SPEED_MPS),
+    WorkoutTargetUnit.BPM: HEART_RATE_BOUNDS,
+    WorkoutTargetUnit.PCT_MAX_HR: (0.0, MAX_PERCENT),
+    WorkoutTargetUnit.W: (0.0, MAX_ACTIVITY_POWER_W),
+    WorkoutTargetUnit.PCT_FTP: (0.0, MAX_STEP_PERCENT),
+    WorkoutTargetUnit.RPM: (0.0, MAX_ACTIVITY_CADENCE_RPM),
+}
+# The unit of ``duration_value`` per duration type; the others carry no value.
+_DURATION_BOUNDS: Final[Mapping[WorkoutDurationType, tuple[float, float]]] = {
+    WorkoutDurationType.TIME: (0.0, MAX_ACTIVITY_DURATION_S),
+    WorkoutDurationType.DISTANCE: (0.0, MAX_ACTIVITY_DISTANCE_M),
+    WorkoutDurationType.REPS: (0.0, float(MAX_STRENGTH_REPS)),
+    WorkoutDurationType.HR_BELOW: HEART_RATE_BOUNDS,
+    WorkoutDurationType.HR_ABOVE: HEART_RATE_BOUNDS,
+    WorkoutDurationType.POWER_BELOW: (0.0, MAX_ACTIVITY_POWER_W),
+    WorkoutDurationType.POWER_ABOVE: (0.0, MAX_ACTIVITY_POWER_W),
+}
+
+
+@dataclass(frozen=True, slots=True)
+class WorkoutStep:
+    """One step of the workout the device ran (FIT ``workout_step``), numbers and names only.
+
+    ``index`` is the step's message index, which a lap's ``workout_step_index``
+    points to. No name or note of the file is kept. Its target is a range in
+    ``target_unit`` or a ``target_zone``; a repeat step names the step it returns
+    to (``repeat_from``) and the ``repeat_count``. The structure (index and enum
+    members) must be valid; a number that is out of bounds or does not fit its
+    type or unit becomes None.
+    """
+
+    index: int
+    intensity: WorkoutStepIntensity
+    duration_type: WorkoutDurationType
+    duration_value: float | None = None
+    repeat_from: int | None = None
+    repeat_count: int | None = None
+    target_type: WorkoutTargetType = WorkoutTargetType.OPEN
+    target_low: float | None = None
+    target_high: float | None = None
+    target_unit: WorkoutTargetUnit | None = None
+    target_zone: int | None = None
+
+    def __post_init__(self) -> None:
+        if isinstance(self.index, bool) or not isinstance(self.index, int):
+            raise TypeError(_INDEX_TYPE_ERROR)
+        if not 0 <= self.index <= MAX_WORKOUT_STEP_INDEX:
+            raise ValueError(f"index must be between 0 and {MAX_WORKOUT_STEP_INDEX}")
+        require_instance(self.intensity, WorkoutStepIntensity, "intensity")
+        require_instance(self.duration_type, WorkoutDurationType, "duration_type")
+        require_instance(self.target_type, WorkoutTargetType, "target_type")
+        if self.target_unit is not None:
+            require_instance(self.target_unit, WorkoutTargetUnit, "target_unit")
+        bounds = _DURATION_BOUNDS.get(self.duration_type)
+        repeats = self.duration_type is WorkoutDurationType.REPEAT
+        for name, value in (
+            (
+                "duration_value",
+                None
+                if bounds is None
+                else _optional_number(self.duration_value, *bounds),
+            ),
+            (
+                "repeat_from",
+                _optional_whole(self.repeat_from, MAX_WORKOUT_STEP_INDEX)
+                if repeats
+                else None,
+            ),
+            (
+                "repeat_count",
+                _optional_whole(self.repeat_count, MAX_STEP_REPEATS, 1)
+                if repeats
+                else None,
+            ),
+        ):
+            object.__setattr__(self, name, value)
+        self._settle_target()
+
+    def _settle_target(self) -> None:
+        """Keep the target range only in a unit its type measures, or the zone alone."""
+        unit = self.target_unit
+        low, high = self.target_low, self.target_high
+        zone = (
+            _optional_whole(self.target_zone, MAX_ZONES, 1)
+            if self.target_type in _TARGET_UNITS
+            else None
+        )
+        if zone is not None or unit not in _TARGET_UNITS.get(self.target_type, ()):
+            unit = low = high = None
+        if unit is not None:
+            low = _optional_number(low, *_TARGET_BOUNDS[unit])
+            high = _optional_number(high, *_TARGET_BOUNDS[unit])
+            if low is not None and high is not None and high < low:
+                low = high = None
+        for name, value in (
+            ("target_unit", unit),
+            ("target_low", low),
+            ("target_high", high),
+            ("target_zone", zone),
+        ):
+            object.__setattr__(self, name, value)
+
+
+def _valid_steps(steps: object) -> tuple[WorkoutStep, ...]:
+    """The steps as one ascending, capped tuple of ``WorkoutStep``; anything else, none."""
+    if (
+        not isinstance(steps, tuple)
+        or len(steps) > MAX_WORKOUT_STEPS
+        or not all(isinstance(step, WorkoutStep) for step in steps)
+        or any(right.index <= left.index for left, right in pairwise(steps))
+    ):
+        return ()
+    return steps
 
 
 @dataclass(frozen=True, slots=True)
 class ActivityLapSet:
+    """The laps of one provider activity.
+
+    ``workout_steps`` are the steps of the workout the device ran, by ascending
+    index; steps that are not a usable tuple (more than ``MAX_WORKOUT_STEPS``,
+    repeated or unordered indexes) are dropped, never the laps.
+    """
+
     provider_activity_id: str
     provenance: Provenance
     origin: ActivityDetailOrigin
     lap_source: LapSource
     laps: tuple[ActivityLap, ...]
+    workout_steps: tuple[WorkoutStep, ...] = ()
 
     @property
     def kind(self) -> ActivityDetailKind:
@@ -394,6 +622,7 @@ class ActivityLapSet:
     def __post_init__(self) -> None:
         _require_detail_header(self.provider_activity_id, self.provenance, self.origin)
         require_instance(self.lap_source, LapSource, "lap_source")
+        object.__setattr__(self, "workout_steps", _valid_steps(self.workout_steps))
         laps = require_instance(self.laps, tuple, "laps")
         if not 1 <= len(laps) <= MAX_LAPS:
             raise ValueError(f"laps must contain between 1 and {MAX_LAPS} laps")

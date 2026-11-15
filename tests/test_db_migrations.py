@@ -38,6 +38,7 @@ from backend.db.schema_history import (
     SHAPE_SCHEMA_V27,
     SHAPE_SCHEMA_V28,
     SHAPE_SCHEMA_V29,
+    SHAPE_SCHEMA_V30,
     released_shape,
     signature_digest,
 )
@@ -215,6 +216,37 @@ def add_baseline_nutrition_rows(db) -> None:
     )
 
 
+def add_baseline_activity_rows(db) -> None:
+    """A session with its record, a stream set and a lap set with one lap."""
+    db.execute(
+        "INSERT INTO activity_sessions(activity_id, primary_provider, "
+        "primary_provider_activity_id, state, started_at, created_at, updated_at) "
+        "VALUES ('act_1', 'garmin', 'g1', 'active', ?, ?, ?)",
+        (STAMP, STAMP, STAMP),
+    )
+    db.execute(
+        "INSERT INTO activity_records(provider, provider_activity_id, activity_id, "
+        "mapper_version, source_kind, recorded_by, sport, environment, started_at, "
+        "load_model, fetched_at, created_at, updated_at) VALUES ('garmin', 'g1', "
+        "'act_1', 9, 'provider_api', 'garmin', 'run', 'outdoor', ?, 'none', ?, ?, ?)",
+        (STAMP, STAMP, STAMP, STAMP),
+    )
+    db.executemany(
+        "INSERT INTO activity_detail_sets(provider, provider_activity_id, "
+        "detail_kind, mapper_version, origin, source_kind, recorded_by, resolution, "
+        "lap_source, content_sha256, fetched_at, created_at, updated_at) VALUES "
+        "('garmin', 'g1', ?, 9, 'fetch', 'provider_api', 'garmin', ?, ?, ?, ?, ?, ?)",
+        [
+            ("streams", "full", None, "a" * 64, STAMP, STAMP, STAMP),
+            ("laps", None, "device_laps", "b" * 64, STAMP, STAMP, STAMP),
+        ],
+    )
+    db.execute(
+        "INSERT INTO activity_laps(provider, provider_activity_id, lap_index, kind, "
+        "start_offset_s, end_offset_s, avg_hr) VALUES ('garmin', 'g1', 0, 'lap', 0, 600, 150)"
+    )
+
+
 def populated_baseline_database(db) -> None:
     db.executescript(BASELINE_FIXTURE.read_text(encoding="utf-8"))
     db.execute(
@@ -222,7 +254,33 @@ def populated_baseline_database(db) -> None:
         (STAMP,),
     )
     add_baseline_nutrition_rows(db)
+    add_baseline_activity_rows(db)
     db.commit()
+
+
+def assert_device_workout_columns_empty(case, db) -> None:
+    """Every lap and detail set that existed before schema v31 holds no watch data."""
+    case.assertEqual(
+        [
+            tuple(row)
+            for row in db.execute(
+                "SELECT avg_hr, workout_step_index, lap_trigger, "
+                "avg_respiration_rate_brpm, max_respiration_rate_brpm, "
+                "avg_grade_adjusted_speed_mps FROM activity_laps"
+            )
+        ],
+        [(150.0, None, None, None, None, None)],
+    )
+    case.assertEqual(
+        [
+            tuple(row)
+            for row in db.execute(
+                "SELECT detail_kind, workout_steps, device_zones "
+                "FROM activity_detail_sets ORDER BY detail_kind"
+            )
+        ],
+        [("laps", None, None), ("streams", None, None)],
+    )
 
 
 # Schema v27 (since 2.1.2) has no fixture of its own: the baseline
@@ -294,6 +352,19 @@ def populated_v29_database(db) -> None:
     db.commit()
 
 
+# Schema v30, from release 2.1.20, has no fixture of its own either: v29 after its
+# curve step, with the stored curve of the session.
+def populated_v30_database(db) -> None:
+    populated_v29_database(db)
+    migrations._session_curves(db)
+    db.execute("PRAGMA user_version = 30")
+    db.execute(
+        "INSERT INTO session_curves VALUES ('act_1', ?, '{}', ?, ?, ?)",
+        ("f" * 64, STAMP, STAMP, STAMP),
+    )
+    db.commit()
+
+
 try:
     from sqlcipher3 import dbapi2 as cipher_backend
 except ImportError:
@@ -351,6 +422,7 @@ class DatabaseSchemaGateTests(unittest.TestCase):
         self.assertEqual(
             db.execute("SELECT content FROM messages").fetchone()[0], "Hallo"
         )
+        assert_device_workout_columns_empty(self, db)
 
     def test_baseline_mirror_rows_become_canonical_products_without_loss(self):
         db = self.connect()
@@ -660,6 +732,7 @@ class DatabaseSchemaGateTests(unittest.TestCase):
             populated_v27_database,
             populated_v28_database,
             populated_v29_database,
+            populated_v30_database,
         ):
             with (
                 self.subTest(populate=populate.__name__),
@@ -699,14 +772,16 @@ class DatabaseSchemaGateTests(unittest.TestCase):
         db = self.connect()
         populated_v27_database(db)
         tables = self.user_tables(db)
-        before = self.table_rows(db, tables)
+        columns = self.table_columns(db, tables)
+        before = self.table_rows(db, tables, columns)
         migrate_schema(db)
         db.commit()
         self.assertTrue(database_schema_is_current(db))
         self.assertEqual(
             db.execute("PRAGMA user_version").fetchone()[0], CURRENT_SCHEMA_VERSION
         )
-        self.assertEqual(self.table_rows(db, tables), before)
+        self.assertEqual(self.table_rows(db, tables, columns), before)
+        assert_device_workout_columns_empty(self, db)
         self.assertEqual(
             self.user_tables(db),
             sorted([*tables, "external_calendar_decisions", "session_curves"]),
@@ -744,6 +819,12 @@ class DatabaseSchemaGateTests(unittest.TestCase):
                 migrations._competition_location,
             ),
             (populated_v29_database, 29, SHAPE_SCHEMA_V29, migrations._session_curves),
+            (
+                populated_v30_database,
+                30,
+                SHAPE_SCHEMA_V30,
+                migrations._device_workout,
+            ),
         ):
             with self.subTest(version=version):
                 db = self.connect()
@@ -825,14 +906,9 @@ class DatabaseSchemaGateTests(unittest.TestCase):
         self.assertEqual(
             db.execute("SELECT COUNT(*) FROM session_curves").fetchone()[0], 0
         )
+        assert_device_workout_columns_empty(self, db)
         # A stored curve belongs to a live session and carries a SHA-256 fingerprint.
         db.execute("PRAGMA foreign_keys = ON")
-        db.execute(
-            "INSERT INTO activity_sessions(activity_id, primary_provider, "
-            "primary_provider_activity_id, state, started_at, created_at, updated_at) "
-            "VALUES ('act_1', 'garmin', 'g1', 'active', ?, ?, ?)",
-            (STAMP, STAMP, STAMP),
-        )
         curve = "INSERT INTO session_curves VALUES (?, ?, '{}', ?, ?, ?)"
         db.execute(curve, ("act_1", "f" * 64, STAMP, STAMP, STAMP))
         for row in (
@@ -841,6 +917,74 @@ class DatabaseSchemaGateTests(unittest.TestCase):
         ):
             with self.subTest(row=row), self.assertRaises(sqlite3.IntegrityError):
                 db.execute(curve.replace("INSERT", "INSERT OR REPLACE"), row)
+
+    def test_frozen_v30_shape_is_v29_after_its_curve_step(self):
+        db = self.connect()
+        db.executescript(BASELINE_FIXTURE.read_text(encoding="utf-8"))
+        migrations._canonical_products(db)
+        migrations._calendar_decisions(db)
+        migrations._competition_location(db)
+        migrations._session_curves(db)
+        self.assertEqual(
+            released_shape(database_schema_signature(db)), SHAPE_SCHEMA_V30
+        )
+
+    def test_populated_v30_database_gains_empty_watch_workout_columns_with_every_row(
+        self,
+    ):
+        db = self.connect()
+        populated_v30_database(db)
+        tables = self.user_tables(db)
+        columns = self.table_columns(db, tables)
+        before = self.table_rows(db, tables, columns)
+        migrate_schema(db)
+        db.commit()
+        self.assertTrue(database_schema_is_current(db))
+        self.assertEqual(
+            db.execute("PRAGMA user_version").fetchone()[0], CURRENT_SCHEMA_VERSION
+        )
+        self.assertEqual(self.user_tables(db), tables)
+        self.assertEqual(self.table_rows(db, tables, columns), before)
+        assert_device_workout_columns_empty(self, db)
+        # Each header column belongs to its own set kind and holds its JSON type.
+        sets = "UPDATE activity_detail_sets SET {} = ? WHERE detail_kind = ?"
+        for column, kind, value in (
+            ("workout_steps", "laps", "[]"),
+            ("device_zones", "streams", '{"max_hr": 190}'),
+        ):
+            db.execute(sets.format(column), (value, kind))
+        for column, kind, value in (
+            ("workout_steps", "streams", "[]"),
+            ("workout_steps", "laps", "{}"),
+            ("workout_steps", "laps", "[1"),
+            ("device_zones", "laps", "{}"),
+            ("device_zones", "streams", "[]"),
+            ("device_zones", "streams", "{"),
+        ):
+            with (
+                self.subTest(column=column, kind=kind, value=value),
+                self.assertRaises(sqlite3.IntegrityError),
+            ):
+                db.execute(sets.format(column), (value, kind))
+        # A lap's step index stays within 0 to 999 and its trigger within 1 to 32 characters.
+        lap = "UPDATE activity_laps SET {} = ?"
+        for column, value in (
+            ("workout_step_index", 999),
+            ("lap_trigger", "x" * 32),
+            ("avg_respiration_rate_brpm", 18.5),
+        ):
+            db.execute(lap.format(column), (value,))
+        for column, value in (
+            ("workout_step_index", -1),
+            ("workout_step_index", 1000),
+            ("lap_trigger", ""),
+            ("lap_trigger", "x" * 33),
+        ):
+            with (
+                self.subTest(column=column, value=value),
+                self.assertRaises(sqlite3.IntegrityError),
+            ):
+                db.execute(lap.format(column), (value,))
 
     def test_populated_v28_database_gains_an_empty_location_with_every_row(self):
         db = self.connect()
@@ -859,6 +1003,7 @@ class DatabaseSchemaGateTests(unittest.TestCase):
         )
         self.assertEqual(self.user_tables(db), sorted([*tables, "session_curves"]))
         self.assertEqual(self.table_rows(db, tables, columns), before)
+        assert_device_workout_columns_empty(self, db)
         self.assertEqual(
             [tuple(row) for row in db.execute("SELECT id, location FROM competitions")],
             [("race-1", "")],
@@ -921,6 +1066,7 @@ class DatabaseSchemaGateTests(unittest.TestCase):
             populated_v27_database,
             populated_v28_database,
             populated_v29_database,
+            populated_v30_database,
         ):
             with self.subTest(populate=populate.__name__):
                 self.assert_encrypted_upgrade(populate)

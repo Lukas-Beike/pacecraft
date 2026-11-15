@@ -81,6 +81,11 @@ def report(messages=40):
                 "ride": {
                     "files": 5,
                     "messages": {"216": 5},
+                    "new_decodes": {
+                        "respiration_record.in_bounds": 3,
+                        "workout_steps_max": 12,
+                        "note text": 1,
+                    },
                     "label": "text never printed",
                 },
             },
@@ -305,6 +310,8 @@ class ProdChecksTests(unittest.TestCase):
                 "ok logout 200",
                 f"{prefix}garmin.ride.files 5",
                 f"{prefix}garmin.ride.messages.216 5",
+                f"{prefix}garmin.ride.new_decodes.respiration_record.in_bounds 3",
+                f"{prefix}garmin.ride.new_decodes.workout_steps_max 12",
                 f'{prefix}status "ready"',
             ],
         )
@@ -334,6 +341,7 @@ class ProdChecksTests(unittest.TestCase):
                 "data_dir_free_bytes": 10**9,
                 "stored_payload_bytes": {"garmin_state": 7},
                 "workout_library_state": {"synced": 3, "note": "text never printed"},
+                "workout_library_archive": {"waiting": 2, "last_purged": 1},
             },
             "runtime": {
                 "python": "3.14.0",
@@ -416,6 +424,8 @@ class ProdChecksTests(unittest.TestCase):
                 "data_dir_free_bytes 1000000000", "file_bytes 4096",
                 "messages 40", "schema_version 29",
                 "stored_payload_bytes.garmin_state 7", "wal_bytes 512",
+                "workout_library_archive.last_purged 1",
+                "workout_library_archive.waiting 2",
                 "workout_library_state.synced 3",
             ],
             "runtime": [

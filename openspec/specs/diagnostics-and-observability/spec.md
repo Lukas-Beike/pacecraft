@@ -129,7 +129,7 @@ The diagnostic report SHALL compose local configuration flags, provider/job stat
 
 #### Scenario: Configuration and database sections
 - **WHEN** the report is generated
-- **THEN** `configuration` holds booleans and names only (`openai_configured`, `openai_base_url_custom` and `anthropic_base_url_custom`, true only when the endpoint differs from the default and never the URL, `anthropic_configured`, `intervals_configured`, `garmin_library_available`, `garmin_configured`, `garmin_fixture_configured`, the selected model, provider and thinking level, the task settings and the available model ids), and `database` holds `schema_version`, the row counts of messages, workout library, competitions, check-ins, activity feedback and change history, `stored_payload_bytes`, `workout_library_state` and `external_calendar_events`
+- **THEN** `configuration` holds booleans and names only (`openai_configured`, `openai_base_url_custom` and `anthropic_base_url_custom`, true only when the endpoint differs from the default and never the URL, `anthropic_configured`, `intervals_configured`, `garmin_library_available`, `garmin_configured`, `garmin_fixture_configured`, the selected model, provider and thinking level, the task settings and the available model ids), and `database` holds `schema_version`, the row counts of messages, workout library, competitions, check-ins, activity feedback and change history, `stored_payload_bytes`, `workout_library_state`, `workout_library_archive` (counts only: `waiting` archived templates no provider holds and `last_purged`, #3141) and `external_calendar_events`
 
 #### Scenario: Provider sync times
 - **WHEN** the report is generated
@@ -177,7 +177,7 @@ The diagnostic report SHALL include the state of the local method passes as coun
 
 #### Scenario: FIT file inventory
 - **WHEN** a Garmin or Wahoo FIT file is read by the detail fetch or the stream backfill
-- **THEN** `fit_inventory` counts it once per recording origin and sport (`files`) with the files holding each unmapped message number, unread field of a mapped message and declared developer field, as numbers only; an unreadable file counts nothing, and no value, name, id, position or file hash is shown
+- **THEN** `fit_inventory` counts it once per recording origin and sport (`files`) with the files holding each unmapped message number, unread field of a mapped message and declared developer field, and under `new_decodes` the files whose breathing rates (record 20.108, lap 19.136 and 19.137) and lap grade-adjusted speed (19.161) lie inside or outside the canonical bounds, with laps naming a workout step (and whether all or not all of them name a workout step of the file), with workout steps (and the most steps of one file) and with a zone basis, as numbers only; an unreadable file counts nothing, and no value, name, id, position or file hash is shown
 
 #### Scenario: Garmin detail fallback
 - **WHEN** a Garmin detail fetch brings no full-resolution streams, because its original-file call failed or hit a rate limit

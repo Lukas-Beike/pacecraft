@@ -19,7 +19,7 @@ from backend.canonical.vocabulary import (
     ProviderRecordState,
 )
 
-CURRENT_SCHEMA_VERSION = 30
+CURRENT_SCHEMA_VERSION = 31
 
 # Provider-neutral canonical tables (schema version 6). Only closed lifecycle
 # enums are CHECKed here; they are generated from backend.canonical.vocabulary so
@@ -646,6 +646,21 @@ SESSION_CURVES_DDL = """
         updated_at TEXT NOT NULL
     )"""
 
+# Schema version 31: what the watch recorded beside the streams (#2220). Each lap
+# gains the workout step it belongs to, why it ended, its breathing rate and the
+# device's grade-adjusted speed; a laps set gains the executed workout steps (a
+# JSON array of numbers and enum names, never text) and a streams set the zone
+# basis of the watch (a JSON object). Each header column belongs to its own set
+# kind. NULL means the recording did not say, or was mapped before this version.
+DEVICE_WORKOUT_DDL = """
+    ALTER TABLE activity_laps ADD COLUMN workout_step_index INTEGER CHECK (workout_step_index IS NULL OR workout_step_index BETWEEN 0 AND 999);
+    ALTER TABLE activity_laps ADD COLUMN lap_trigger TEXT CHECK (lap_trigger IS NULL OR length(lap_trigger) BETWEEN 1 AND 32);
+    ALTER TABLE activity_laps ADD COLUMN avg_respiration_rate_brpm REAL;
+    ALTER TABLE activity_laps ADD COLUMN max_respiration_rate_brpm REAL;
+    ALTER TABLE activity_laps ADD COLUMN avg_grade_adjusted_speed_mps REAL;
+    ALTER TABLE activity_detail_sets ADD COLUMN workout_steps TEXT CHECK (workout_steps IS NULL OR (detail_kind = 'laps' AND json_valid(workout_steps) AND json_type(workout_steps) = 'array'));
+    ALTER TABLE activity_detail_sets ADD COLUMN device_zones TEXT CHECK (device_zones IS NULL OR (detail_kind = 'streams' AND json_valid(device_zones) AND json_type(device_zones) = 'object'))"""
+
 
 def execute_ddl(db: Any, ddl: str) -> None:
     """Run DDL statement by statement inside the caller's transaction.
@@ -992,6 +1007,7 @@ def _create_schema_statements(db: Any) -> None:
     execute_ddl(db, CALENDAR_DECISIONS_DDL)
     execute_ddl(db, COMPETITION_LOCATION_DDL)
     execute_ddl(db, SESSION_CURVES_DDL)
+    execute_ddl(db, DEVICE_WORKOUT_DDL)
     db.execute(f"PRAGMA user_version = {CURRENT_SCHEMA_VERSION}")
 
 
