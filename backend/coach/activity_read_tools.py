@@ -62,12 +62,16 @@ START_TIME_TOLERANCE_MIN: Final = 30
 NEWEST_SESSION_DAYS: Final = 30
 # Sessions offered back when a reference is not unique.
 MAX_CANDIDATES: Final = 10
-# The session the athlete's own request names ("…, ID <id>)", as the analyse
-# button writes it) is read when the model names none, and a call for another
-# ID says so (#3080). The tool execution sets this argument from that request;
-# a model argument of that name is replaced.
+# The session the athlete's own request names with the analyse button's prompt
+# ("Analysiere meine Einheit vom <day> (…, ID <id>)") is read when the model
+# names none, and a call for another ID says so (#3080). The planned-unit
+# discussion button writes a unit's ID in the same bracket, so only the analyse
+# prompt counts. The tool execution sets this argument from that request; a
+# model argument of that name is replaced.
 NAMED_ACTIVITY_ID: Final = "_named_activity_id"
-_NAMED_ID: Final = re.compile(r"\bID ([\w:.-]{1,80})\)")
+_NAMED_ID: Final = re.compile(
+    r"Analysiere meine Einheit vom [^()\n]*\([^()\n]*\bID ([\w:.-]{1,80})\)"
+)
 
 
 def named_activity_id(text: str) -> str | None:
@@ -296,16 +300,10 @@ class CoachActivityReadToolService:
                 ],
             }
         if name == "get_activity_details":
-            referenced = self._referenced_activity(arguments)
-            if isinstance(referenced, dict):
-                return referenced
-            activity_id, outcome = referenced
-            detail = self._activity_read.detail(
-                activity_id,
-                garmin_status=self._garmin_payload.sync_status(),
-                profile=self._profile.get(),
-                today=self._today(),
-            )
+            read = self._referenced_detail(arguments)
+            if "outcome" not in read:
+                return read
+            detail, outcome = read["detail"], read["outcome"]
             self._count_resolution(outcome)
             # Per-second running dynamics are for the calendar's charts; the Coach
             # reads their averages from the metrics.
@@ -324,6 +322,30 @@ class CoachActivityReadToolService:
                 )
             return result
         return None
+
+    def _referenced_detail(self, arguments: dict[str, Any]) -> dict[str, Any]:
+        """The referenced session's detail and how it resolved, or the
+        ask-back result. A named session that is not stored any more (a stale
+        analyse button) falls back to the call's own reference (#3080)."""
+        referenced = self._referenced_activity(arguments)
+        if isinstance(referenced, dict):
+            return referenced
+        activity_id, outcome = referenced
+        try:
+            detail = self._read_detail(activity_id)
+        except AppError as exc:
+            if outcome != "by_named_id" or exc.status != 404:
+                raise
+            return self._referenced_detail({**arguments, NAMED_ACTIVITY_ID: None})
+        return {"detail": detail, "outcome": outcome}
+
+    def _read_detail(self, activity_id: Any) -> dict[str, Any]:
+        return self._activity_read.detail(
+            activity_id,
+            garmin_status=self._garmin_payload.sync_status(),
+            profile=self._profile.get(),
+            today=self._today(),
+        )
 
     def _referenced_activity(
         self, arguments: dict[str, Any]

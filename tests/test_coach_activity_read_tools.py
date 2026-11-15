@@ -631,6 +631,19 @@ class CoachActivityReadToolServiceTests(unittest.TestCase):
             (date(2026, 10, 16), date(2026, 11, 15)),
             activity_read.summaries_between.call_args.args,
         )
+
+        # A named session no longer stored (a stale button) falls back to the
+        # call's own reference: the newest session, counted as such.
+        def detail(activity_id, **_kwargs):
+            if activity_id == "act_stale":
+                raise AppError(404, "missing", reason="missing")
+            return {"ok": True}
+
+        activity_read.detail.side_effect = detail
+        service.execute(
+            "get_activity_details", {**empty, "_named_activity_id": "act_stale"}
+        )
+        self.assertEqual("act_new", activity_read.detail.call_args.args[0])
         # A reference whose detail cannot be read is no resolution.
         activity_read.detail.side_effect = AppError(404, "missing", reason="missing")
         with self.assertRaises(AppError):
@@ -643,7 +656,7 @@ class CoachActivityReadToolServiceTests(unittest.TestCase):
                 "by_id_not_named": 1,
                 "by_named_id": 1,
                 "by_reference": 2,
-                "newest": 1,
+                "newest": 2,
             },
             counts.summary()["resolutions"],
         )

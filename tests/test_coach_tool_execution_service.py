@@ -260,8 +260,10 @@ class StructuredToolExecutionTests(unittest.TestCase):
             ("Wie lief mein Lauf?", None),
             # Free text naming an "ID" is not the button's format.
             ("Welche ID hat mein Lauf von gestern?", None),
+            # The planned-unit button names a unit, not a session.
+            ("Zur geplanten Einheit am 16. Nov. (Laufen, 07:00, ID unit-7): ", None),
             # The last named session, the current message's, wins.
-            (f"{button} Nein, die andere (Laufen, 18:00, ID act_43).", "act_43"),
+            (f"{button} {button.replace('act_42', 'act_43')}", "act_43"),
         ):
             context = {
                 "current_user_message_id": 3,
