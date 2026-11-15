@@ -67,11 +67,10 @@ class PlannedUnitFocusPostRoutes:
         the undo reference.
 
         Errors: 409 `confirmation_required` "Das Löschen muss bestätigt werden."
-        unless `confirmed` is `true`; 400 "Ungültige lokale Planungs-ID." for an id
-        that is no UUID; 409 `planning_revision_conflict` "Die Einheit wurde
-        inzwischen geändert." without `expected_payload_hash`; 409
+        unless `confirmed` is `true`; 409 `planning_revision_conflict` "Die Einheit
+        wurde inzwischen geändert." without `expected_payload_hash`; 409
         `payload_hash_conflict` "Eine Planänderung ist inzwischen veraltet." for an
-        outdated hash or a unit that is no longer there.
+        outdated hash or an id that names no unit (also a malformed one).
         """
         payload = _read_object(handler)
         if payload.get("confirmed") is not True:
