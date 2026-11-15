@@ -12,6 +12,7 @@ A commit-message heredoc, a script run by path and read-only commands pass.
 Like the other guards it is a text safety net, not a parser. Exit 2 blocks.
 """
 
+import bisect
 import json
 import re
 import sys
@@ -41,31 +42,40 @@ def _segments(text: str) -> list[str]:
     return [*parts, text[start:]]
 
 
-def _unquoted(line: str, end: int) -> bool:
-    """Whether position `end` of the line lies outside single and double quotes."""
+def _unquoted_heredocs(line: str):
+    """The heredoc markers of a line that lie outside single and double quotes,
+    with the quote state carried along the line in one pass (#3119)."""
     single = double = False
-    for char in line[:end]:
-        if char == "'" and not double:
-            single = not single
-        elif char == '"' and not single:
-            double = not double
-    return not (single or double)
+    scanned = 0
+    for match in HEREDOC.finditer(line):
+        for char in line[scanned : match.start()]:
+            if char == "'" and not double:
+                single = not single
+            elif char == '"' and not single:
+                double = not double
+        scanned = match.start()
+        if not (single or double):
+            yield match
 
 
 def split_heredocs(command: str) -> tuple[list[tuple[str, str]], str]:
     """(introducing line, body) per terminated heredoc, and the shell text without bodies."""
     lines, found, shell = command.split("\n"), [], []
+    # Line numbers per stripped text: each terminator is found without a rescan (#3119).
+    numbers: dict[str, list[int]] = {}
+    for number, text in enumerate(lines):
+        numbers.setdefault(text.strip(), []).append(number)
     index = 0
     while index < len(lines):
         line = lines[index]
         shell.append(line)
         index += 1
-        for match in HEREDOC.finditer(line):
-            word = match[1] or match[2] or match[3]
-            ends = [n for n in range(index, len(lines)) if lines[n].strip() == word]
-            if ends and _unquoted(line, match.start()):
-                found.append((line, "\n".join(lines[index : ends[0]])))
-                index = ends[0] + 1
+        for match in _unquoted_heredocs(line):
+            ends = numbers.get(match[1] or match[2] or match[3], [])
+            first = bisect.bisect_left(ends, index)
+            if first < len(ends):
+                found.append((line, "\n".join(lines[index : ends[first]])))
+                index = ends[first] + 1
                 break
     return found, "\n".join(shell)
 
