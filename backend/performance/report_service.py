@@ -256,7 +256,8 @@ class TrainingProfileSelectionService:
         with manager.read_snapshot() as db:
             sessions = _curve_sessions(canonical, db, None, self._today())
             session_ids = [str(summary.get("id") or "") for summary in sessions]
-            temperatures = session_temperatures(db, session_ids)
+            # No all-time reader names a temperature; comparisons read curve_records.
+            temperatures: dict[str, float] = {}
 
             def build() -> list[dict[str, Any]]:
                 curves: dict[str, SessionCurve] = {}

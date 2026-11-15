@@ -234,7 +234,6 @@ def heart_rate_values(offset: int = 0) -> tuple[float, ...]:
 
 _EXTRA_UNITS = {
     "avg_speed_mps": "m/s",
-    "min_temp_c": "°C",
     "elevation_loss_m": "m",
 }
 

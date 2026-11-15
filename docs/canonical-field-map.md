@@ -797,7 +797,7 @@ Tie-break note: the summary and the `activity_detail.v1` document's `session` bl
 | name | `name` | first non-`None` in measured order | `name` |
 | qualifiers | `terrain` (left out when `unknown`), `assist` (present only as `electric`) | measured | `session_terrain`, `session_assist` |
 | local time | `started_at_local`, `local_offset_minutes` | measured | offset = first record with `local_offset_minutes`; `started_at_local` = primary `started_at` read on that offset, else on the athlete zone (`session_local_start`, `wall_time`), naive ISO to the second; `local_offset_minutes` present only when some record has one |
-| measured values | `moving_duration_s`, `elapsed_duration_s`, `distance_m`, `elevation_gain_m`, `elevation_loss_m`, `avg_hr`, `max_hr`, `avg_power`, `avg_cadence`, `avg_speed_mps`, `max_speed_mps`, `avg_temp_c`, `min_temp_c`, `max_temp_c`, `device_name`, `energy_kj`, `energy_kcal` | measured (`_MEASURED`) | same name |
+| measured values | `moving_duration_s`, `elapsed_duration_s`, `distance_m`, `elevation_gain_m`, `elevation_loss_m`, `avg_hr`, `max_hr`, `avg_power`, `avg_cadence`, `avg_speed_mps`, `max_speed_mps`, `device_name`, `energy_kj`, `energy_kcal` | measured (`_MEASURED`) | same name |
 | derived values | `normalized_power`, `weighted_avg_speed_mps`, `pace_mps`, `provider_intensity` (from `intensity`), `grade_adjusted_speed_mps`, `ftp_w`, `vo2max`, `planned_event_id`, `water_estimated_ml` | derived (`_DERIVED`) | same name except `provider_intensity` |
 | provider zones | `power_zone_times`, `heart_rate_zone_times`, `pace_zone_times` | derived order over records whose provider is not Intervals.icu (#1743) | `power_zone_times_s`, `hr_zone_times_s`, `pace_zone_times_s`, as `[{"id": "Z1", "secs": ...}]` |
 | ratings | `rpe`, `feel` | rating | `rpe`, `feel` |
@@ -855,9 +855,6 @@ Every key of the `ActivitySummary` TypedDict (`total=False`; only values some re
 | `avg_cadence` | `avg_cadence` | rpm |
 | `avg_speed_mps` | `avg_speed_mps` | m/s |
 | `max_speed_mps` | `max_speed_mps` | m/s |
-| `avg_temp_c` | `avg_temp_c` | deg C |
-| `min_temp_c` | `min_temp_c` | deg C |
-| `max_temp_c` | `max_temp_c` | deg C |
 | `energy_kj` | `energy_kj` | kJ |
 | `energy_kcal` | `energy_kcal` | kcal |
 | `ground_contact_time_ms` | `ground_contact_time_ms` | ms |
@@ -905,7 +902,7 @@ Keys the readers add that are not declared in the TypedDict: `zone_models` (zone
 
 ### `activity_detail.v1` metrics
 
-`activity_detail_contract` (`detail_contract.py`) uses the same orders and reports every candidate: each metric has `value`, `unit`, `source` and the other records' values as `alternatives`. Measured (`_MEASURED_METRICS`, measured order): `duration_s` s, `moving_duration_s` s, `elapsed_duration_s` s, `distance_m` m, `elevation_gain_m` m, `elevation_loss_m` m, `elevation_high_m` m, `elevation_low_m` m, `avg_hr` bpm, `max_hr` bpm, `min_hr` bpm, `avg_power` W, `max_power_w` W, `avg_cadence` rpm, `max_speed_mps` m/s, `min_temp_c` deg C, `max_temp_c` deg C, `steps` count, `lap_count` count, `energy_kj` kJ, `energy_kcal` kcal, `ground_contact_time_ms` ms, `ground_contact_balance_pct` %, `vertical_oscillation_cm` cm, `vertical_ratio_pct` %, `step_length_m` m. Derived (`_DERIVED_METRICS`, derived order): `normalized_power` W, `load` (with `model`), `aerobic_training_effect`, `anaerobic_training_effect`, `water_estimated_ml` ml. Ratings `rpe`, `feel` (rating order, kind `athlete_entered`, with `scale`, `rating_label`, `normalized_0_1` from `ACTIVITY_RATING_SCALES`). `avg_hr` and `avg_power` fall back to the merged stream mean (kind `derived`) when no record has them (`_GAP_FILL`). Summary scalars fill metrics no record provides, and are kept as alternatives for `min_temp_c`, `max_temp_c`, `elevation_loss_m`.
+`activity_detail_contract` (`detail_contract.py`) uses the same orders and reports every candidate: each metric has `value`, `unit`, `source` and the other records' values as `alternatives`. Measured (`_MEASURED_METRICS`, measured order): `duration_s` s, `moving_duration_s` s, `elapsed_duration_s` s, `distance_m` m, `elevation_gain_m` m, `elevation_loss_m` m, `elevation_high_m` m, `elevation_low_m` m, `avg_hr` bpm, `max_hr` bpm, `min_hr` bpm, `avg_power` W, `max_power_w` W, `avg_cadence` rpm, `max_speed_mps` m/s, `steps` count, `lap_count` count, `energy_kj` kJ, `energy_kcal` kcal, `ground_contact_time_ms` ms, `ground_contact_balance_pct` %, `vertical_oscillation_cm` cm, `vertical_ratio_pct` %, `step_length_m` m. Derived (`_DERIVED_METRICS`, derived order): `normalized_power` W, `load` (with `model`), `aerobic_training_effect`, `anaerobic_training_effect`, `water_estimated_ml` ml. Ratings `rpe`, `feel` (rating order, kind `athlete_entered`, with `scale`, `rating_label`, `normalized_0_1` from `ACTIVITY_RATING_SCALES`). `avg_hr` and `avg_power` fall back to the merged stream mean (kind `derived`) when no record has them (`_GAP_FILL`). Summary scalars fill metrics no record provides, and are kept as alternatives for `min_temp_c`, `max_temp_c`, `elevation_loss_m`.
 
 ## Canonical records for activity detail
 
