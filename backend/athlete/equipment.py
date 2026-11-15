@@ -50,22 +50,12 @@ from backend.errors import AppError
 GARMIN_GEAR_SOURCE = "garmin_gear"
 # The kinds of session a default item can be set for (#3014): runs by their
 # focus, rides by where they took place.
-RULE_KINDS = (
-    "run:intervals",
-    "run:long",
-    "run:easy",
-    "run:race",
-    "ride:indoor",
-    "ride:outdoor",
-)
 _RULE_SPORTS = {
-    "run:intervals": ("run", "outdoor"),
-    "run:long": ("run", "outdoor"),
-    "run:easy": ("run", "outdoor"),
-    "run:race": ("run", "outdoor"),
-    "ride:indoor": ("ride", "indoor"),
-    "ride:outdoor": ("ride", "outdoor"),
+    **{f"run:{kind}": ("run", "outdoor") for kind in ("intervals", "long", "easy", "race")},
+    **{f"ride:{place}": ("ride", place) for place in ("indoor", "outdoor")},
 }
+RULE_KINDS = tuple(_RULE_SPORTS)
+_NOT_ASSIGNABLE = "Aktive passende Hauptausrüstung erforderlich."
 _INTERVAL_FOCI = frozenset(
     {"tempo", "threshold", "sweet_spot", "vo2max", "anaerobic", "test"}
 )
@@ -377,7 +367,7 @@ class EquipmentService:
             if payload["equipment_id"] is not None and not assignable_equipment(
                 equipment, row
             ):
-                raise AppError(400, "Aktive passende Hauptausrüstung erforderlich.")
+                raise AppError(400, _NOT_ASSIGNABLE)
             # The assignment belongs to the session it was made for, so it stays
             # with that copy when a bundle is split; it replaces any other
             # assignment of the same session family.
@@ -439,7 +429,7 @@ class EquipmentService:
             if payload["equipment_id"] is not None and not assignable_equipment(
                 equipment, row
             ):
-                raise AppError(400, "Aktive passende Hauptausrüstung erforderlich.")
+                raise AppError(400, _NOT_ASSIGNABLE)
             key = PLANNED_PREFIX + unit_id
             previous = stored_value(db, key)
             saved: dict[str, Any] = {
@@ -484,7 +474,7 @@ class EquipmentService:
                 if not assignable_equipment(
                     item, {"sport": sport, "environment": environment}
                 ):
-                    raise AppError(400, "Aktive passende Hauptausrüstung erforderlich.")
+                    raise AppError(400, _NOT_ASSIGNABLE)
             history = [
                 entry
                 for entry in (previous or {}).get("history") or []
@@ -683,12 +673,12 @@ def session_kind(
         return None
     if stored.sport is Sport.RIDE:
         indoor = stored.environment.value in {"indoor", "virtual"}
-        return "ride:indoor" if indoor else "ride:outdoor"
+        return f"ride:{'indoor' if indoor else 'outdoor'}"
     if purpose == "race" or focus == "race":
         return "run:race"
     if focus in _INTERVAL_FOCI:
         return "run:intervals"
-    return "run:long" if focus == "long" else "run:easy"
+    return f"run:{'long' if focus == 'long' else 'easy'}"
 
 
 def _session_foci(db: Any, session_ids: Sequence[str]) -> dict[str, str | None]:
