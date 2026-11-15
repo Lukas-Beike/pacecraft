@@ -1441,8 +1441,11 @@ function plannedFuellingRows(drink) {
   const sodium = Array.isArray(drink.sodium_g_per_l) ? `${RACE_PLAN_KM.format(drink.sodium_g_per_l[0])}–${RACE_PLAN_KM.format(drink.sodium_g_per_l[1])} g/l` : null;
   const sodiumRow = sodium ? ["Natrium", sodium] : null;
   if (Array.isArray(drink.generic_l_per_h)) return [["Pro Stunde", `${FUELLING_LITRES.format(drink.generic_l_per_h[0])}–${litres(drink.generic_l_per_h[1])}`], sodiumRow];
+  // A loss within 2 % of the weight needs no drink: say so with the loss, never "0 l" (#3012).
+  if (drink.within_loss_share) return [["Pro Stunde", "nicht nötig"], drink.loss_l == null ? null : ["Verlust", `${litres(drink.loss_l)} · unter 2 % des Gewichts`]];
   if (drink.l_per_h == null) return [["Pro Stunde", `bis ${litres(drink.max_l_per_h)}`], sodiumRow];
-  return [["Pro Stunde", litres(drink.l_per_h)], ["Gesamt", litres(drink.total_l)], sodiumRow];
+  // An hourly share that rounds to nothing is left out; the total still shows (#3012).
+  return [drink.l_per_h > 0 ? ["Pro Stunde", litres(drink.l_per_h)] : null, ["Gesamt", litres(drink.total_l)], sodiumRow];
 }
 
 function plannedFuellingBlock(plan) {

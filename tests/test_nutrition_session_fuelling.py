@@ -77,8 +77,8 @@ class SessionFuellingTests(unittest.TestCase):
             {"l_per_h": 0.7, "sessions": 3, "similar": True, "temperature_c": [10, 14]},
             plan["sweat_rate"],
         )
-        # 0.7 L/h for 2:45 h = 1.925 L minus 1.4 L (2 % of 70 kg) = 0.525 L.
-        self.assertEqual((0.19, 0.5), (plan["drinking"]["l_per_h"], plan["drinking"]["total_l"]))
+        # 0.7 L/h for 2:45 h = 1.925 L minus 1.4 L (2 % of 70 kg) = 0.525 L (stored as 0.52499...).
+        self.assertEqual((0.19, 0.52), (plan["drinking"]["l_per_h"], plan["drinking"]["total_l"]))
         self.assertEqual("high", plan["carbohydrates"]["step"])
         self.assertEqual({"kg": 70.0, "source": "Garmin"}, plan["weight"])
 

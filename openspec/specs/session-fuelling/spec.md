@@ -31,11 +31,15 @@ For a planned run or ride of at least 60 minutes the recommendation SHALL be the
 
 #### Scenario: Long ride with weight
 - **WHEN** a 2:45 h ride is planned, the sweat rate is 0.9 L/h and the weight 70 kg
-- **THEN** the card shows 0.39 L per hour, 1.1 L in total with the sodium range, and 60–120 g/h with the 90 g/h flag.
+- **THEN** the card shows 0.39 L per hour, 1.07 L in total with the sodium range, and 60–120 g/h with the 90 g/h flag.
 
 #### Scenario: Missing inputs
 - **WHEN** no weight is resolved, or no session has a sweat loss
 - **THEN** only the upper bound "bis" the sweat rate, or the starting range labelled "Startwert ohne eigene Daten", is shown; another sport or under 60 min shows no block.
+
+#### Scenario: Loss within 2 % of body weight
+- **WHEN** a 80 min run at a sweat rate of 1 L/h loses 1.3 L and 2 % of the weight is more
+- **THEN** the card shows "Pro Stunde: nicht nötig" and "Verlust: 1,33 l · unter 2 % des Gewichts" instead of "0 l"; the rule decides this on the two-decimal total the card shows, so 0.04 L still shows its amounts and 0.004 L reads as "nicht nötig"; an hourly share that rounds to nothing is left out (#3012).
 
 #### Scenario: Card block
 - **WHEN** the athlete opens a planned run or ride of at least an hour, today or later
