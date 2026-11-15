@@ -40,7 +40,7 @@ def _row(day: str, summary: dict[str, Any] | None, **fields: Any) -> dict[str, A
         "sport": fields.get("sport", "run"),
         "environment": fields.get("environment", "outdoor"),
         "name": "Easy",
-        "avg_temp_c": fields.get("temp", 12.0),
+        "weather_temp_c": fields.get("temp", 12.0),
         "execution_summary": summary,
     }
 
@@ -61,7 +61,7 @@ class ComparableSessionsTests(unittest.TestCase):
         self.assertEqual(result["median_of_peers"]["output"], 345)
         self.assertEqual(result["difference"]["output"], -15)
         self.assertEqual(result["difference"]["heart_rate_avg"], -6)
-        self.assertEqual(result["this"]["avg_temp_c"], 8.0)
+        self.assertEqual(result["this"]["weather_temp_c"], 8.0)
         self.assertEqual(result["peers"][0]["date"], "2026-10-27")
 
     def test_other_shapes_places_and_old_sessions_are_not_peers(self) -> None:

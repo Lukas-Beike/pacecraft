@@ -108,8 +108,6 @@ class CoachActivitySummaryParityTests(unittest.TestCase):
                 "distance_m": 42000.0,
                 "elevation_gain_m": 410.0,
                 "elevation_loss_m": 405.0,
-                "min_temp_c": 12.0,
-                "max_temp_c": 21.0,
                 "training_load": 82.0,
                 "load_branch": "power",
                 "load_threshold_after_session": True,
