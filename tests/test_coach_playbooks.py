@@ -341,17 +341,21 @@ class PlaybookInjectionTests(unittest.TestCase):
         for kind in ("plan_week", "plan_block", "adjust_week"):
             self.assertNotIn(playbooks._ANSWER, playbook_for(kind))
 
-    def test_session_analysis_names_what_to_look_at_per_session_type(self) -> None:
+    def test_session_analysis_explains_the_report_and_drops_no_notable_check(
+        self,
+    ) -> None:
+        # The per-type checks are code now (session_report, #3084); the task
+        # explains the report, leads with its lead, mentions every notable and
+        # names every unknown, and never computes numbers itself.
         text = playbook_for("session_analysis")
         for marker in (
             "by default the last one",
-            "warm-up and cool-down",
-            "drift at the same output",
-            "strides or a progression are intended",
-            "holding or fading",
-            "heart-rate drop",
-            "Under about 2 minutes",
-            "load and intensity",
+            "session_report holds every deterministic check",
+            "never compute numbers or verdicts yourself",
+            "session_report.lead",
+            "mention every other notable check",
+            "name each unknown with its reason",
+            "citing a field and its value",
             "sensor errors",
         ):
             with self.subTest(marker=marker):
