@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Measure a parallel view burst on the disposable fixture, with its spread (#3052).
 
 Logs in once with the public fixture password, then runs ``--rounds`` rounds of
