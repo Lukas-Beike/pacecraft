@@ -442,6 +442,8 @@ effect `read`.
 
 - `limit` (integer; ≥1; ≤100)
 - `include_archived` (boolean)
+- `sport` (string; one of `"Ride"`, `"VirtualRide"`, `"Run"`, `"Swim"`, `"WeightTraining"`)
+- `query` (string; ≥2 chars; ≤120 chars)
 
 ### `log_equipment_maintenance`
 
@@ -506,6 +508,7 @@ effect `local_write`; gate domain `planning`; records counted from `templates`; 
 - `templates[].hr_cap.percent_lthr`* (number; ≥20; ≤120)
 - `templates[].hr_cap.low_percent_lthr`* (number; ≥20; ≤120)
 - `templates[].hr_cap.source`* (string; one of `"default"`, `"measured"`, `"estimated"`)
+- `templates[].new_because` (string; ≥3 chars; ≤200 chars)
 - `_request`* (the envelope above)
 
 ### `merge_activity_sessions`

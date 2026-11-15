@@ -95,6 +95,88 @@ class TrainingTemplateToolTests(unittest.TestCase):
         self.assertEqual(missing_scope.exception.status, 403)
         self.assertEqual(manager_calls, [])
 
+    def test_an_existing_template_is_reused_before_a_new_one_is_created(
+        self,
+    ) -> None:
+        # #3080, scripted: the Coach creates a template the library already has.
+        manager = temp_database(self, "library.db", row_factory=None)
+        easy = {
+            "id": "11111111-1111-4111-8111-111111111111",
+            "name": "Lockerer Dauerlauf",
+            "sport": "Run",
+            "duration_minutes": 45,
+            "description": "- 45m Z2 Pace",
+        }
+        created: list[dict] = []
+
+        class Library:
+            def list(self, limit):
+                return [easy]
+
+            def create_template(self, values):
+                created.append(values)
+                return {"local_id": f"new-{len(created)}"}
+
+        service = TrainingTemplateToolService(lambda: manager, Library)
+        intent = {
+            "operation": "manage_training_templates",
+            "authorization_scope": ["local_template"],
+        }
+        again = {
+            "action": "create",
+            "name": "Lockerer Dauerlauf 45",
+            "sport": "Run",
+            "duration_minutes": 50,
+            "description": "- 45m Z2 Pace",
+        }
+        intervals = {
+            "action": "create",
+            "name": "6 x 800 m",
+            "sport": "Run",
+            "duration_minutes": 55,
+            "description": "Warmup\n- 15m Z1\n6x\n- 800mtr Z4 Pace\n- 2m Z1",
+        }
+
+        with self.assertRaises(AppError) as refused:
+            service.execute({"templates": [intervals, again]}, intent)
+        # The whole call is refused before any write; the model gets the
+        # template to reuse.
+        self.assertEqual(
+            (refused.exception.status, refused.exception.reason),
+            (409, "template_exists"),
+        )
+        self.assertEqual(
+            getattr(refused.exception, "findings", None),
+            [
+                {
+                    "code": "template_exists",
+                    "local_id": easy["id"],
+                    "name": "Lockerer Dauerlauf",
+                    "sport": "Run",
+                    "duration_minutes": 45,
+                }
+            ],
+        )
+        self.assertEqual(created, [])
+
+        # Its retry names how the new template differs: it is kept and counted.
+        result = service.execute(
+            {
+                "templates": [
+                    intervals,
+                    {**again, "new_because": "mit 5 Steigerungen am Ende"},
+                ]
+            },
+            intent,
+        )
+        self.assertEqual(
+            [item["name"] for item in created], ["6 x 800 m", "Lockerer Dauerlauf 45"]
+        )
+        self.assertEqual(result["created_despite_candidate"], 1)
+        # A new template without a match counts nothing.
+        result = service.execute({"templates": [intervals]}, intent)
+        self.assertEqual(0, result["created_despite_candidate"])
+
 
 if __name__ == "__main__":
     unittest.main()

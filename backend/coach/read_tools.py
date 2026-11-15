@@ -25,6 +25,7 @@ from backend.nutrition.food_database import names_the_food
 from backend.nutrition.meal_library import NutritionMealLibraryService
 from backend.nutrition.models import validate_iso_date
 from backend.planning.competition_service import CompetitionService
+from backend.planning.library import workout_library_type
 from backend.planning.library_service import WorkoutLibraryService
 from backend.planning.planned_unit_service import PlannedUnitService
 from backend.planning.state_service import StructuredTrainingStateService
@@ -56,6 +57,20 @@ _FOOD_SOURCE_NAMES: Final = (
     ("open_food_facts", re.compile(r"open\s*food\s*facts|\boff\b", re.IGNORECASE)),
     ("bls", re.compile(r"\bbls\b|bundeslebensmittelschl", re.IGNORECASE)),
 )
+
+
+def _library_match(template: Mapping[str, Any], sport: Any, query: Any) -> bool:
+    """A template of the sport type whose name or description holds every
+    query word, also inside a longer word ("tempo" finds "Tempolauf")."""
+    if sport and workout_library_type(dict(template)) != workout_library_type(
+        {"sport": sport}
+    ):
+        return False
+    text = f"{template.get('name') or ''} {template.get('description') or ''}"
+    return all(
+        word in text.casefold()
+        for word in re.findall(r"\w+", str(query or "").casefold())
+    )
 
 
 def named_food_sources(context: Mapping[str, Any]) -> list[str]:
@@ -174,11 +189,18 @@ class CoachReadToolService:
             limit = self._bounded_integer(
                 arguments, "limit", 100, 100, "Bibliothekslimit ist ungültig."
             )
+            sport, query = arguments.get("sport"), arguments.get("query")
+            # A filter reads the whole library, so a template beyond the first
+            # page is found before a duplicate is created (#3080).
+            templates = self._workout_library_service().list(
+                1000 if sport or query else limit,
+                include_archived=bool(arguments.get("include_archived")),
+            )
             return {
                 "ok": True,
-                "templates": self._workout_library_service().list(
-                    limit, include_archived=bool(arguments.get("include_archived"))
-                ),
+                "templates": [
+                    item for item in templates if _library_match(item, sport, query)
+                ][:limit],
             }
         if name == "list_planned_workouts":
             limit = self._bounded_integer(
