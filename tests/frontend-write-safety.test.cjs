@@ -35,6 +35,7 @@ function submitEvent(formEntries) {
 function profileContext({ server, baseline, stateProfile, exportStatus, error }) {
   const calls = [];
   const toasts = [];
+  const skinfoldResets = [];
   const retryButton = { hidden: true, disabled: false };
   const state = { sessionGeneration: 1, data: { profile: stateProfile }, profileBaseline: baseline, profileDirty: false };
   const context = extractFunctions("settings.js", PROFILE_SAVE, {
@@ -52,10 +53,22 @@ function profileContext({ server, baseline, stateProfile, exportStatus, error })
     toast: (message, isError) => toasts.push({ message, isError: Boolean(isError) }),
     setDirtyIndicator() {},
     invalidateContextPreview() {},
+    resetSkinfolds: () => skinfoldResets.push(true),
     load: async () => {},
   });
-  return { context, state, calls, toasts, retryButton };
+  return { context, state, calls, toasts, retryButton, skinfoldResets };
 }
+
+test("a saved birth year makes the skinfold card read again; other fields do not", async () => {
+  // Gitar #3120: the card kept "ohne Geburtsjahr" until the view was reloaded.
+  for (const [entries, expected] of [[[["name", "Anna"], ["birth_year", "1986"]], 1], [[["name", "Anna M."], ["birth_year", ""]], 0]]) {
+    const { context, skinfoldResets } = profileContext({
+      server: { name: "Anna", birth_year: "" }, baseline: { name: "Anna", birth_year: "" }, stateProfile: { name: "Anna", birth_year: "" },
+    });
+    await context.saveProfile(submitEvent(entries).event);
+    assert.equal(skinfoldResets.length, expected);
+  }
+});
 
 test("profile save sends only the fields the athlete edited", async () => {
   const { context, calls, toasts } = profileContext({

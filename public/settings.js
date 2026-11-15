@@ -181,6 +181,8 @@ async function saveProfile(event) {
     if (!state.profileDirty) resetProfileEntryFields(form, savedPercent.first_threshold_pct);
     setDirtyIndicator("profileDirtyIndicator", state.profileDirty);
     invalidateContextPreview();
+    // The birth year and the sex decide the skinfold body fat and sites (#3099).
+    if (Object.hasOwn(changed, "birth_year") || Object.hasOwn(changed, "sex")) resetSkinfolds();
     handleProfileSaveOutcome(saved, bodyChanged, retryControl, retryBeforeSave);
     if (button) {
       button.disabled = false;
