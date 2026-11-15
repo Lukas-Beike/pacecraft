@@ -487,7 +487,15 @@ def initialise_fixture():
         seed_preview_demo()
     heavy = (os.environ.get("FIXTURE_HEAVY_HISTORY") or "0").strip()
     if heavy != "0":  # 0 is off, like demo-container.ps1
-        seed_heavy_history(int(heavy) if heavy.isdigit() else -1)
+        walks, years = (
+            (os.environ.get(name) or "0").strip()
+            for name in ("FIXTURE_HEAVY_WALKS", "FIXTURE_HEAVY_YEARS")
+        )
+        seed_heavy_history(
+            int(heavy) if heavy.isdigit() else -1,
+            walks=int(walks) if walks.isdigit() else -1,
+            years=int(years) if years.isdigit() else -1,
+        )
 
 
 FIXTURE_ACTIVITY_TIME = "T08:00:00"
@@ -545,6 +553,7 @@ _FIXTURE_WAHOO_TYPES = {
     "Ride": 14,
     "VirtualRide": 68,
     "Run": 1,
+    "Walk": 6,
     "Swim": 25,
 }
 _FIXTURE_GARMIN_TYPES = {"WeightTraining": "strength_training"}
@@ -981,14 +990,55 @@ def _run_session_analysis(batches=100):
 
 
 FIXTURE_HEAVY_HISTORY_MAX = 1000
+FIXTURE_HEAVY_WALKS_MAX = 5000
 
 
-def seed_heavy_history(count, seconds=5400):
-    """Opt-in large synthetic history for performance checks (#2801).
+def _heavy_history_rows(today, count, walks, years, seconds):
+    """The streamed rides and runs, and the walks spread evenly among them."""
+    total = count + walks
+    rows, walk_rows = [], []
+    for slot in range(total):
+        days = slot * years * 365 // total + 1 if years else slot * 3 // 2 + 1
+        start = (today - timedelta(days=days)).isoformat() + FIXTURE_ACTIVITY_TIME
+        if slot * count // total == (slot + 1) * count // total:
+            walk_rows.append(
+                {
+                    "id": f"heavy-walk-{len(walk_rows)}",
+                    "name": f"Fixture heavy walk {len(walk_rows)}",
+                    "type": "Walk",
+                    "start_date_local": start,
+                    "moving_time": 2700,
+                    "elapsed_time": 2700,
+                    "distance": 2700 * 1.4,
+                }
+            )
+            continue
+        index = len(rows)
+        ride = index % 2 == 0
+        rows.append(
+            {
+                "id": f"heavy-history-{index}",
+                "name": f"Fixture heavy {'ride' if ride else 'run'} {index}",
+                "type": "Ride" if ride else "Run",
+                "start_date_local": start,
+                "moving_time": seconds,
+                "elapsed_time": seconds,
+                "distance": seconds * (8.5 if ride else 3.1),
+                "icu_training_load": 60 + index % 5 * 15,
+            }
+        )
+    return rows, walk_rows
 
-    ``count`` alternating rides and runs of ``seconds`` each, about every 1.5
-    days back over several years, with full-resolution heart rate plus power or
-    speed streams on their Garmin copies. The rows go straight into the
+
+def seed_heavy_history(count, seconds=5400, walks=0, years=0):
+    """Opt-in large synthetic history for performance checks (#2801, #2974).
+
+    ``count`` alternating rides and runs of ``seconds`` each, with
+    full-resolution heart rate plus power or speed streams on their Garmin
+    copies, and ``walks`` 45-minute walks without streams in between. Without
+    ``years`` a session falls about every 1.5 days back; with it they spread
+    evenly over that many years, so the analysis windows hold as many sessions
+    as a production history of that length. The rows go straight into the
     canonical tables, not into the stored snapshot a real sync keeps small.
     It runs once and computes the session analyses, so a restart measures the
     steady state, not a first sync.
@@ -997,36 +1047,27 @@ def seed_heavy_history(count, seconds=5400):
         raise ValueError(
             f"FIXTURE_HEAVY_HISTORY must be 1 to {FIXTURE_HEAVY_HISTORY_MAX}"
         )
+    if not (0 <= walks <= FIXTURE_HEAVY_WALKS_MAX and 0 <= years <= 20):
+        raise ValueError(
+            f"FIXTURE_HEAVY_WALKS must be 0 to {FIXTURE_HEAVY_WALKS_MAX} "
+            "and FIXTURE_HEAVY_YEARS 0 to 20"
+        )
+    marker = f"{count}/{walks}/{years}" if walks or years else str(count)
     with server.database_manager().unit_of_work() as db:
         seeded = server.KEY_VALUE_REPOSITORY.get(db, "fixture_heavy_history")
-    if seeded == str(count):
+    if seeded == marker:
         return
     if seeded:
         raise ValueError(
             f"FIXTURE_HEAVY_HISTORY was seeded with {seeded}; recreate the demo "
             "without -Persist to use another count"
         )
-    today = server.ATHLETE_CLOCK.now().date()
-    rows = []
-    for index in range(count):
-        ride = index % 2 == 0
-        rows.append(
-            {
-                "id": f"heavy-history-{index}",
-                "name": f"Fixture heavy {'ride' if ride else 'run'} {index}",
-                "type": "Ride" if ride else "Run",
-                "start_date_local": (
-                    today - timedelta(days=index * 3 // 2 + 1)
-                ).isoformat()
-                + FIXTURE_ACTIVITY_TIME,
-                "moving_time": seconds,
-                "elapsed_time": seconds,
-                "distance": seconds * (8.5 if ride else 3.1),
-                "icu_training_load": 60 + index % 5 * 15,
-            }
-        )
+    total = count + walks
+    rows, walk_rows = _heavy_history_rows(
+        server.ATHLETE_CLOCK.now().date(), count, walks, years, seconds
+    )
     now = server.runtime_clock.utc_now()
-    workouts = [_fixture_wahoo_workout(row) for row in rows]
+    workouts = [_fixture_wahoo_workout(row) for row in (*rows, *walk_rows)]
     with server.database_manager().unit_of_work() as db:
         plan = wahoo_ingest_plan({"synced_at": now, "workouts": workouts}, zone=UTC)
         retrieved_at = datetime.fromisoformat(now)
@@ -1049,9 +1090,9 @@ def seed_heavy_history(count, seconds=5400):
     for index, row in enumerate(rows):
         _save_garmin_copy(row["id"], ride if index % 2 == 0 else run)
     # Each batch re-reads every session, so the bound grows with the history.
-    _run_session_analysis(batches=10 * count + 100)
+    _run_session_analysis(batches=10 * total + 100)
     with server.database_manager().unit_of_work() as db:
-        server.KEY_VALUE_REPOSITORY.set(db, "fixture_heavy_history", str(count))
+        server.KEY_VALUE_REPOSITORY.set(db, "fixture_heavy_history", marker)
 
 
 def _fixture_seed_fueling_ride(today):

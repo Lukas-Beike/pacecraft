@@ -278,6 +278,20 @@ class DemoContainerScriptTests(unittest.TestCase):
             heavy[seed - 1 : seed + 1], ["-e", "FIXTURE_HEAVY_HISTORY=900"]
         )
         self.assertEqual(len(heavy), len(run) + 2)
+        # #2974: a production-sized history adds its walks and years.
+        _, calls = self.run_script(
+            "-Name", DEMO_NAME, "-SkipBuild", "-HeavyHistory", "850",
+            "-HeavyWalks", "2950", "-HeavyYears", "6", fail=("run",),
+        )  # fmt: skip
+        sized = next(call for call in calls if call[0] == "run")
+        for variable in ("FIXTURE_HEAVY_WALKS=2950", "FIXTURE_HEAVY_YEARS=6"):
+            self.assertEqual(sized[sized.index(variable) - 1], "-e")
+        self.assertEqual(len(sized), len(run) + 6)
+        result, calls = self.run_script(
+            "-Name", DEMO_NAME, "-SkipBuild", "-HeavyWalks", "10", fail=("run",)
+        )
+        self.assertNotEqual(result.returncode, 0, "walks need a heavy history")
+        self.assertFalse([call for call in calls if call[0] == "run"])
         self.assertEqual(run[run.index("python") - 1], "pacecraft:local")
         # #2957: -Image runs that tag as is, without building or retagging the
         # shared pacecraft:local another lane's demo may be using.
