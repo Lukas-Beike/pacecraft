@@ -45,13 +45,14 @@ def base_overlap(number: int, head: str, base: str) -> tuple[int, list[str]]:
     changed since the head branched off); pr_merge refuses on the same (#2901).
     At the compare API's file cap any file may be shared, so it counts as one."""
     path = f"repos/{{owner}}/{{repo}}/compare/{head}...{base}"
-    query = "{behind: .ahead_by, files: [.files[]?.filename]}"
-    compared = gh_json("api", path, "--jq", query)
+    # A file the base renamed counts under its old name too.
+    names = "[.files[]? | .filename, (.previous_filename // empty)]"
+    compared = gh_json("api", path, "--jq", f"{{behind: .ahead_by, files: {names}}}")
     behind, moved = compared["behind"], set(compared["files"] or [])
     if not isinstance(behind, int):
         raise CliError("the base comparison returned no commit count")
     # `pr view --json files` stops at 100 files; the diff lists them all.
-    mine = set(gh("pr", "diff", str(number), "--name-only").split())
+    mine = set(gh("pr", "diff", str(number), "--name-only").splitlines())
     shared = sorted(mine & moved)
     if len(moved) >= COMPARE_FILE_CAP:
         shared = shared or [f"({base} changed too many files to compare)"]
@@ -130,16 +131,19 @@ def unresolved_threads(number: int) -> tuple[list[str], bool]:
 
 
 def base_moved(number: int, pr: dict) -> tuple[str, list[str]]:
-    """The report line and the shared files; only an open PR is compared."""
-    base = pr["baseRefName"]
+    """The report line and the files that block: an open, unarmed PR whose base
+    changed its files. After arming, the base moving during CI is accepted, as
+    pr_merge does (#2901), and this read-only report never fails on the compare."""
+    base, prefix = pr["baseRefName"], f"{pr['baseRefName']} moved in this PR's files"
     if pr["state"] != "OPEN":
-        return f"{base} moved in this PR's files: not checked ({pr['state']})", []
-    shared = base_overlap(number, pr["headRefOid"], base)[1]
-    names = ", ".join(shared) or "none"
-    return (
-        f"{base} moved in this PR's files since its head branched off: {names}",
-        shared,
-    )
+        return f"{prefix}: not checked ({pr['state']})", []
+    try:
+        behind, shared = base_overlap(number, pr["headRefOid"], base)
+    except CliError as exc:
+        return f"{prefix}: not checked ({exc})", []
+    armed = " (auto-merge armed: accepted)" if pr["autoMergeRequest"] else ""
+    line = f"{prefix} ({behind} commit(s) behind): {', '.join(shared) or 'none'}{armed}"
+    return line, [] if armed else shared
 
 
 def main(argv: list[str] | None = None) -> int:

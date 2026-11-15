@@ -78,6 +78,8 @@ class PrStateTests(unittest.TestCase):
             if argv[1:3] == ["pr", "diff"]:  # this PR's files
                 return subprocess.CompletedProcess(argv, 0, "scripts/a.py\n", "")
             if argv[1] == "api" and "/compare/" in argv[2]:
+                if moved is None:  # the compare API fails
+                    return subprocess.CompletedProcess(argv, 1, "", "HTTP 502")
                 compared = {"behind": len(moved), "files": list(moved)}
                 return subprocess.CompletedProcess(argv, 0, json.dumps(compared), "")
             data = {
@@ -187,19 +189,29 @@ class PrStateTests(unittest.TestCase):
 
     def test_base_changes_in_this_prs_files_are_named_and_block(self):
         # #2866: develop moved in a file of this PR since its head branched off.
-        moved = "develop moved in this PR's files since its head branched off"
+        moved = "develop moved in this PR's files"
         code, out, _, calls = self.run_script(pull(), moved=("scripts/a.py", "x.md"))
         self.assertEqual(code, 1)
-        self.assertIn(f"{moved}: scripts/a.py", out)
+        self.assertIn(f"{moved} (2 commit(s) behind): scripts/a.py", out)
         self.assertNotIn("x.md", out)
         compare = [c for c in calls if c[1] == "api" and "/compare/" in c[2]]
         self.assertEqual(
             compare[0][2], "repos/{owner}/{repo}/compare/abcdef0123456789...develop"
         )
+        self.assertIn("previous_filename", compare[0][-1])  # a rename counts too
         # After a rebase, or when develop moved only elsewhere: none, still open.
         code, out, _, _ = self.run_script(pull(), moved=("x.md",))
         self.assertEqual(code, 3)
-        self.assertIn(f"{moved}: none", out)
+        self.assertIn(f"{moved} (1 commit(s) behind): none", out)
+        # Once armed, develop moving during CI is accepted, as pr_merge does.
+        armed = pull(auto={"enabledBy": "x"})
+        code, out, _, _ = self.run_script(armed, moved=("scripts/a.py",))
+        self.assertEqual(code, 3)
+        self.assertIn("scripts/a.py (auto-merge armed: accepted)", out)
+        # A failed comparison leaves the rest of the read-only report intact.
+        code, out, _, _ = self.run_script(pull(), moved=None)
+        self.assertEqual(code, 3)
+        self.assertIn(f"{moved}: not checked", out)
         # A merged PR is not compared.
         _, out, _, calls = self.run_script(
             pull(state="MERGED"), moved=("scripts/a.py",)
