@@ -10,11 +10,10 @@
 // delete, export, settings, check-in or nutrition control. Output is ok/FAIL/info
 // lines with counts and status words only. Exit 0 all ok, 1 a check failed, 2 bad
 // input or the app is unreachable.
-import fs from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
-import { baseUrl, secretPath } from "./ui_walk.mjs";
+import { baseUrl, readSecret } from "./ui_walk.mjs";
 
 // The exact message; e2e/fixture_runtime.py answers the same text.
 export const MESSAGES = { ask: "Was steht morgen in meinem Plan?" };
@@ -34,10 +33,7 @@ class Stop extends Error {}
 export function parseInput(argv) {
   const { values } = parseArgs({ args: argv, options: { url: { type: "string" }, "password-file": { type: "string" } } });
   if (!values.url || !values["password-file"]) throw new Error("--url and --password-file are required");
-  const url = baseUrl(values.url);
-  const password = fs.readFileSync(secretPath(values["password-file"]), "utf8").trim();
-  if (!password) throw new Error("the secret file is empty");
-  return { url, password };
+  return { url: baseUrl(values.url), password: readSecret(values["password-file"]) };
 }
 
 async function readPlan(page) {
@@ -107,7 +103,8 @@ export async function run({ chromium, url, password }, report = console.log) {
     report("ok no browser errors");
   } catch (error) {
     // Only our own check texts are printed; library errors may quote page content.
-    report(`FAIL ${error instanceof Stop ? error.message : `stopped (${error.name})`}`);
+    const reason = error instanceof Stop ? error.message : `stopped (${error.name})`;
+    report(`FAIL ${reason}`);
     code = 1;
   } finally {
     if (loggedIn) {
