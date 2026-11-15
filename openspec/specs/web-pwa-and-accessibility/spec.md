@@ -377,8 +377,12 @@ The client SHALL present domain-provided planning, performance, activity, and eq
 - **THEN** sport-appropriate pace/speed and cadence/step-frequency channels, units, missing points, and available metadata remain readable; failed detail loading retains the session summary and its explicit refresh path.
 
 #### Scenario: Equipment in a calendar card
-- **WHEN** a completed session's card opens and its detail read lists items it can take or an own choice
-- **THEN** one select ("Schuh" for runs, "Rad" for rides, else "Ausrüstung") lists them and "Keiner"; an own choice is selected, else a Garmin gear link of the session is preselected with the provider's label, else the suggestion is preselected and marked "Vorschlag", else "–"; nothing is saved until "Übernehmen", which posts to `POST /api/equipment/assignment` and shows "Gespeichert." with "Rückgängig", and the session is read again on its next opening
+- **WHEN** a run or ride card opens, completed (with items it can take or an own choice) or planned (a local unit)
+- **THEN** a chip leads the opened card, under the title and date on wide screens and as the first line of the opened body on narrow ones, without "Details": "👟" for a shoe or "🚲" for a bike, the own choice, else the effective item with its source ("Plan", "Regel" or the Garmin label), else the suggestion marked "Vorschlag", else "–"; tapping it opens one select of the items and "Keiner", and nothing is saved until "Übernehmen", which posts the session's `activity_id` or the unit's `planned_unit_id` to `POST /api/equipment/assignment` and shows "Gespeichert." with "Rückgängig".
+
+#### Scenario: Default equipment table
+- **WHEN** Mehr › Ausrüstung shows the Laufschuhe or Fahrrad tab
+- **THEN** a "Standard" table lists one select per kind (Intervalle, Langer Lauf, Locker, Wettkampf; Drinnen, Draußen) of the tab's active main items and "–"; a change saves from today on, and with earlier sessions of the kind without an own choice it offers "Auf N anwenden" and "Nur künftig", where only the confirmed apply changes them and its receipt carries "Rückgängig".
 
 #### Scenario: Equipment editor
 - **WHEN** the athlete opens "+ Hinzufügen" in a tab of Mehr › Ausrüstung, or "Bearbeiten" or "Ausmustern" in an active local item's card
