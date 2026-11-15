@@ -1,19 +1,20 @@
 // The allowed post-release Coach action: one question without a change.
 //
-//   node scripts/post_release_actions.mjs --url <app address> --password-file <secret file>
+//   node scripts/post_release_actions.mjs --url <app address> < <secret file>
 //
-// Logs in with the password read from the file (never printed or passed on a
-// command line), asks the Coach one fixed question in the Coach view and checks
+// Logs in with the password read from stdin, so the shell redirects the secret
+// file and no path reaches the script (never printed or passed on a command line), asks the Coach one fixed question in the Coach view and checks
 // that the turn left no change receipt and GET /api/plan is unchanged. Planning
 // and moving a unit are not run until a Coach plan change is undoable as a whole
 // turn (#2851). It presses nothing but the composer's send button: no sync, push,
 // delete, export, settings, check-in or nutrition control. Output is ok/FAIL/info
 // lines with counts and status words only. Exit 0 all ok, 1 a check failed, 2 bad
 // input or the app is unreachable.
+import fs from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
-import { baseUrl, readSecret } from "./ui_walk.mjs";
+import { baseUrl } from "./ui_walk.mjs";
 
 // The exact message; e2e/fixture_runtime.py answers the same text.
 export const MESSAGES = { ask: "Was steht morgen in meinem Plan?" };
@@ -30,10 +31,15 @@ export function samePlan(before, after) {
 
 class Stop extends Error {}
 
-export function parseInput(argv) {
-  const { values } = parseArgs({ args: argv, options: { url: { type: "string" }, "password-file": { type: "string" } } });
-  if (!values.url || !values["password-file"]) throw new Error("--url and --password-file are required");
-  return { url: baseUrl(values.url), password: readSecret(values["password-file"]) };
+// The secret comes on stdin (fd 0), never from a terminal, so nothing waits for typing.
+export function parseInput(argv, stdin = { isTTY: process.stdin.isTTY, read: () => fs.readFileSync(0, "utf8") }) {
+  const { values } = parseArgs({ args: argv, options: { url: { type: "string" } } });
+  if (!values.url) throw new Error("--url is required");
+  const url = baseUrl(values.url);
+  if (stdin.isTTY) throw new Error("redirect the secret file to stdin");
+  const password = stdin.read().trim();
+  if (!password) throw new Error("the secret on stdin is empty");
+  return { url, password };
 }
 
 async function readPlan(page) {
@@ -122,8 +128,8 @@ async function main() {
   try {
     input = parseInput(process.argv.slice(2));
   } catch (error) {
-    // A file-system error names the secret file's path; never print it.
-    console.log(`FAIL ${error.syscall ? "cannot read the secret file" : error.message}`);
+    // A read error is named by its kind only.
+    console.log(`FAIL ${error.syscall ? "cannot read the secret from stdin" : error.message}`);
     return 2;
   }
   const { chromium } = await import("@playwright/test");

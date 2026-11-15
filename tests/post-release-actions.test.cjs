@@ -1,7 +1,6 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
-const os = require("node:os");
 const path = require("node:path");
 const { spawnSync } = require("node:child_process");
 const { pathToFileURL } = require("node:url");
@@ -11,42 +10,24 @@ const SCRIPT = path.join(ROOT, "scripts", "post_release_actions.mjs");
 const load = () => import(pathToFileURL(SCRIPT).href);
 const PASSWORD = "synthetic-password-for-a-test";
 
-test("input guards refuse other paths, relative paths and a missing address", async () => {
+test("the address is checked and the secret comes from stdin, trimmed, never from a terminal", async () => {
   const { parseInput } = await load();
-  assert.throws(() => parseInput([]), /required/);
-  assert.throws(() => parseInput(["--url", "http://127.0.0.1:8093"]), /required/);
-  assert.throws(() => parseInput(["--url", "file:///etc/passwd", "--password-file", path.join(os.tmpdir(), "x")]), /http\(s\)|ENOENT/);
-  assert.throws(() => parseInput(["--url", "http://127.0.0.1:8093", "--password-file", "relative-secret"]), /must be absolute/);
-  assert.throws(() => parseInput(["--url", "http://127.0.0.1:8093", "--password-file", path.join(ROOT, ".env")]), /T3 secret folder/);
-  assert.throws(() => parseInput(["--url", "http://127.0.0.1:8093", "--password-file", path.join(ROOT, "package.json")]), /T3 secret folder/);
+  const piped = (text) => ({ isTTY: false, read: () => text });
+  assert.throws(() => parseInput([], piped(PASSWORD)), /required/);
+  assert.throws(() => parseInput(["--url", "file:///etc/passwd"], piped(PASSWORD)), /http\(s\)/);
+  assert.throws(() => parseInput(["--url", "http://127.0.0.1:8093", "--password-file", "x"], piped(PASSWORD)), /Unknown option/);
+  assert.throws(() => parseInput(["--url", "http://127.0.0.1:8093"], { isTTY: true, read: () => PASSWORD }), /redirect the secret file/);
+  assert.throws(() => parseInput(["--url", "http://127.0.0.1:8093"], piped("\n")), /empty/);
+  assert.deepEqual(parseInput(["--url", "http://127.0.0.1:8093/some/path"], piped(`${PASSWORD}\n`)), { url: "http://127.0.0.1:8093", password: PASSWORD });
 });
 
-test("a password file in the temp directory is read and trimmed; an empty one is refused", async () => {
-  const { parseInput } = await load();
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "post-release-"));
-  try {
-    const file = path.join(dir, "secret");
-    fs.writeFileSync(file, `${PASSWORD}\n`);
-    assert.deepEqual(parseInput(["--url", "http://127.0.0.1:8093/some/path", "--password-file", file]), { url: "http://127.0.0.1:8093", password: PASSWORD });
-    fs.writeFileSync(file, "\n");
-    assert.throws(() => parseInput(["--url", "http://127.0.0.1:8093", "--password-file", file]), /empty/);
-  } finally {
-    fs.rmSync(dir, { recursive: true, force: true });
-  }
-});
-
-test("a refused input exits 2 and never prints the password or the path", () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "post-release-"));
-  try {
-    for (const file of [path.join(dir, "missing-secret"), path.join(ROOT, "package.json"), "relative"]) {
-      const result = spawnSync(process.execPath, [SCRIPT, "--url", "http://127.0.0.1:1", "--password-file", file], { encoding: "utf8" });
-      assert.equal(result.status, 2);
-      const output = result.stdout + result.stderr;
-      assert.match(output, /^FAIL /);
-      assert.ok(!output.includes(file), "the path is not printed");
-    }
-  } finally {
-    fs.rmSync(dir, { recursive: true, force: true });
+test("a refused input exits 2 and never prints the secret", () => {
+  for (const [args, input] of [[["--url", "http://127.0.0.1:1"], "\n"], [["--url", "not a url"], PASSWORD], [[], PASSWORD]]) {
+    const result = spawnSync(process.execPath, [SCRIPT, ...args], { encoding: "utf8", input });
+    assert.equal(result.status, 2);
+    const output = result.stdout + result.stderr;
+    assert.match(output, /^FAIL /);
+    assert.ok(!output.includes(PASSWORD), "the secret is not printed");
   }
 });
 

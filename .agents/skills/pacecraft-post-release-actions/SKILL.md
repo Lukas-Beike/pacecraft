@@ -7,12 +7,12 @@ description: Base skill. The allowed post-release Coach action in the running ap
 
 Needs the repository's Playwright install (`npm ci` and
 `npx playwright install chromium` once). The app address and the secret file
-come from the session at run time; the secret file must lie in the T3 secret
-folder (`~/.t3/userdata/secrets`) or the system temp directory and is only
-read. The script refuses any other path and never prints the password.
+come from the session at run time. The shell redirects the secret file to the
+script's stdin, so no path reaches the script and the password never appears in
+an argument, the output or the agent's context; a terminal on stdin is refused.
 
-```powershell
-node scripts/post_release_actions.mjs --url <app address> --password-file <secret file>
+```bash
+node scripts/post_release_actions.mjs --url <app address> < "<secret file>"
 ```
 
 It logs in, asks the Coach one fixed German question (what is planned
@@ -33,6 +33,6 @@ here once that tool's turn is undoable.
 To check the script, run it against a disposable demo app: start it with
 `powershell -ExecutionPolicy Bypass -File scripts/demo-container.ps1 -Name fixture-actions -Port 8093`,
 write the fixture password from the script header to a file in the system temp
-directory, run the script against `http://127.0.0.1:8093`, and remove the
+directory, redirect it to the script run against `http://127.0.0.1:8093`, and remove the
 container with the same command plus `-Stop`. The fixture answers exactly the
 script's question.

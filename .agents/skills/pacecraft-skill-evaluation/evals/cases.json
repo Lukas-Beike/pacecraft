@@ -1302,7 +1302,7 @@
       "id": "post-release-actions-positive", "skill": "pacecraft-post-release-actions", "kind": "positive", "activate": true,
       "prompt": "The read-only post-release steps passed; run the allowed Coach action.",
       "setup": "Synthetic app stub and Playwright stub; the secret file is in the temp directory.",
-      "expected": ["Run scripts/post_release_actions.mjs with --password-file and report its ok/FAIL lines"],
+      "expected": ["Run scripts/post_release_actions.mjs with the secret file redirected to stdin and report its ok/FAIL lines"],
       "prohibited": ["Put the password on a command line", "Press any control other than login and send"]
     },
     {

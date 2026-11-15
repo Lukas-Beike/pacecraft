@@ -82,13 +82,6 @@ export function secretPath(target, secrets = T3_SECRETS) {
   return confined(target, [os.tmpdir(), secrets], refused);
 }
 
-// The password from a confined secret file; never echoed (also post_release_actions.mjs).
-export function readSecret(target, secrets = T3_SECRETS) {
-  const password = fs.readFileSync(secretPath(target, secrets), "utf8").trim();
-  if (!password) throw new Error("the secret file is empty");
-  return password;
-}
-
 export function baseUrl(text) {
   const url = new URL(text);
   if (!["http:", "https:"].includes(url.protocol)) throw new Error("the app address must be an http(s) URL");
@@ -438,7 +431,8 @@ async function main() {
     if (!values.url || !values["password-file"] || !values["out-dir"]) throw new Error("--url, --password-file and --out-dir are required");
     url = baseUrl(values.url);
     outDir = scratchPath(values["out-dir"]);
-    password = readSecret(values["password-file"]);
+    password = fs.readFileSync(secretPath(values["password-file"]), "utf8").trim();
+    if (!password) throw new Error("the secret file is empty");
   } catch (error) {
     // A file-system error names the secret file's path; never print it.
     console.log(`FAIL ${error.syscall ? "cannot read the secret file" : error.message}`);
