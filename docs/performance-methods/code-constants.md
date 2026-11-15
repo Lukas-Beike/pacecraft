@@ -9,6 +9,31 @@ every named number the code fixes. A test fails when it is out of date.
 
 | Constant | Value | Module | Code comment |
 | --- | --- | --- | --- |
+| `METHOD_ID` | `'activity-energy'` | `backend/performance/activity_energy.py` |  |
+| `METHOD_VERSION` | `1` | `backend/performance/activity_energy.py` | Bump when a formula or constant below changes the estimate. |
+| `J_PER_KCAL` | `4184.0` | `backend/performance/activity_energy.py` | Joules per kilocalorie (thermochemical calorie). |
+| `GRAVITY` | `9.81` | `backend/performance/activity_energy.py` | Standard gravity, m/s^2, for the vertical work of floors. |
+| `MINETTI_RUNNING` | `(155.4, -30.4, -43.3, 46.3, 19.5, 3.6)` | `backend/performance/activity_energy.py` | Minetti et al. 2002 (J Appl Physiol 93:1039, Fig. 2): net metabolic cost of running per unit distance, J/kg/m, as a 5th-order polynomial of the gradient (rise/run, -0.45 to +0.45); coefficients from i^5 down to the constant. |
+| `MINETTI_WALKING` | `(280.5, -58.7, -76.8, 51.9, 19.6, 2.5)` | `backend/performance/activity_energy.py` | Minetti et al. 2002: the same fit for walking. |
+| `GRADE_LIMIT` | `0.45` | `backend/performance/activity_energy.py` | The gradient range Minetti et al. 2002 measured; steeper segments are clamped. |
+| `GRADE_MIN_RUN_M` | `20.0` | `backend/performance/activity_energy.py` | Segments shorter than this are merged for the grade, so GPS altitude noise on a few metres does not become a steep gradient. |
+| `CYCLING_GROSS_EFFICIENCY` | `0.2` | `backend/performance/activity_energy.py` | Gross efficiency of cycling (mechanical / metabolic energy): 19.8 % measured in 17 trained men by Moseley & Jeukendrup 2001 (R42); it varies with work rate and training (R41, R43), and the one calibration factor absorbs an individual offset (weak evidence). |
+| `STRENGTH_MET_GENERAL` | `3.5` | `backend/performance/activity_energy.py` | 2024 Adult Compendium of Physical Activities (Herrmann et al., J Sport Health Sci 13:6): code 02054, resistance training, multiple exercises, 8-15 reps. |
+| `STRENGTH_MET_VIGOROUS` | `6.0` | `backend/performance/activity_energy.py` | Compendium 2024 code 02050: free weights, power lifting, vigorous effort. |
+| `KEYTEL_MALE` | `(-55.0969, 0.6309, 0.1988, 0.2017)` | `backend/performance/activity_energy.py` | Keytel et al. 2005 (J Sports Sci 23:289), model without VO2max: gross energy expenditure in kJ/min from heart rate (bpm), weight (kg) and age (years): intercept, HR, weight, age. Coefficients as reproduced by several secondary sources; fallback only (about +-20-30 % individually). |
+| `KEYTEL_FEMALE` | `(-20.4022, 0.4472, -0.1263, 0.074)` | `backend/performance/activity_energy.py` |  |
+| `FLEX_HR_SKIP_S` | `180.0` | `backend/performance/activity_energy.py` | Flex-HR: the first minutes of a session are not steady state and are not fitted. |
+| `FLEX_HR_MIN_SEGMENTS` | `20` | `backend/performance/activity_energy.py` | Flex-HR needs at least this many steady segments from power sessions. |
+| `FLOOR_HEIGHT_M` | `3.0` | `backend/performance/activity_energy.py` | Vertical metres per counted floor (Garmin counts about 3 m of ascent). |
+| `UPHILL_WORK_EFFICIENCY` | `0.25` | `backend/performance/activity_energy.py` | Efficiency of vertical work when walking up steep gradients: Minetti et al. 2002 found uphill walking above +0.15 reaches concentric muscle efficiency, taken here as 0.25 (assumption from that statement). |
+| `STEP_LENGTH_PER_HEIGHT` | `0.415` | `backend/performance/activity_energy.py` | Step length from body height when no recorded walk measured it; a common heuristic, weak evidence (+-10-15 %). |
+| `TEF_PROTEIN` | `0.25` | `backend/performance/activity_energy.py` | Thermic effect of food as a share of each macronutrient's energy: midpoints of protein 20-30 %, carbohydrate 5-15 %, fat 0-3 % (Joosen & Westerterp 2006, Nutr Metab 3:25). Alcohol is not stored, so it has no term. |
+| `TEF_CARBOHYDRATE` | `0.1` | `backend/performance/activity_energy.py` |  |
+| `TEF_FAT` | `0.015` | `backend/performance/activity_energy.py` |  |
+| `KCAL_PER_G_PROTEIN` | `4.0` | `backend/performance/activity_energy.py` | Atwater energy per gram: protein, carbohydrate, fat (kcal/g). |
+| `KCAL_PER_G_CARBOHYDRATE` | `4.0` | `backend/performance/activity_energy.py` |  |
+| `KCAL_PER_G_FAT` | `9.0` | `backend/performance/activity_energy.py` |  |
+| `EPOC_SHARE` | `0.06` | `backend/performance/activity_energy.py` | Optional excess post-exercise oxygen consumption for sessions above the threshold: 6 % of the net session cost, the low end of LaForgia et al. 2006 (J Sports Sci 24:1247, 6-15 %). Off unless asked for; weak evidence. |
 | `WINDOW_DAYS` | `84` | `backend/performance/canonical_body.py` |  |
 | `WEIGHT_BOUNDS` | `(30.0, 300.0)` | `backend/performance/canonical_body.py` |  |
 | `BODY_FAT_BOUNDS` | `(2.0, 70.0)` | `backend/performance/canonical_body.py` |  |
