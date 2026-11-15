@@ -578,19 +578,24 @@ class DatabaseManagerTests(unittest.TestCase):
             return len(reads)
 
         kept = kept_until_change(lambda: manager, read, wait_s=5.0)
-        with ThreadPoolExecutor(max_workers=2) as pool:
+        waiting = threading.Event()
+
+        class Watched(threading.Event):
+            def wait(self, timeout=None):
+                # Only the memo waits with its wait_s; thread start-up waits without.
+                if timeout == 5.0:
+                    waiting.set()
+                return super().wait(timeout)
+
+        with (
+            patch.object(manager_module.threading, "Event", Watched),
+            ThreadPoolExecutor(max_workers=2) as pool,
+        ):
             leader = pool.submit(kept)
             self.wait_until(lambda: reads)
-            waiting = threading.Event()
-
-            class Watched(threading.Event):
-                def wait(self, timeout=None):
-                    waiting.set()
-                    return super().wait(timeout)
-
-            with patch.object(manager_module.threading, "Event", Watched):
-                waiter = pool.submit(kept)
-                self.assertTrue(waiting.wait(5))
+            waiter = pool.submit(kept)
+            # The waiter is at the leader's done event before the leader fails.
+            self.assertTrue(waiting.wait(5))
             started = time.monotonic()
             release.set()
             with self.assertRaises(RuntimeError):
