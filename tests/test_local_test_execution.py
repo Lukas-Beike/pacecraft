@@ -1,5 +1,6 @@
 """Synthetic local-runner lifecycle and evidence checks; Docker is always mocked."""
 
+import ast
 import contextlib
 import ctypes
 import io
@@ -19,7 +20,43 @@ from scripts import run_sqlcipher_tests as local
 from tests import run_tests
 
 
+def hidden_test_lines(source: str) -> list[int]:
+    """Lines of ``test*`` functions nested directly in a function: they never run."""
+    found: list[int] = []
+
+    def visit(node: ast.AST, in_function: bool) -> None:
+        for child in ast.iter_child_nodes(node):
+            if isinstance(child, ast.FunctionDef | ast.AsyncFunctionDef):
+                if in_function and child.name.startswith("test"):
+                    found.append(child.lineno)
+                visit(child, True)
+            else:
+                visit(child, in_function and not isinstance(child, ast.ClassDef))
+
+    visit(ast.parse(source), False)
+    return found
+
+
 class RunnerEvidenceTests(unittest.TestCase):
+    def test_no_test_hides_inside_a_function(self):
+        # #2835: a module-level helper placed between two test methods turned the
+        # methods after it into nested functions that never ran (PR #2825).
+        self.assertEqual(
+            [3], hidden_test_lines("def helper():\n    pass\n    def test_x(self): ...")
+        )
+        self.assertEqual(
+            [],
+            hidden_test_lines(
+                "def test_a():\n    class C:\n        def test_b(self): ..."
+            ),
+        )
+        hidden = [
+            f"{path.name}:{line}"
+            for path in sorted(Path(__file__).parent.glob("test_*.py"))
+            for line in hidden_test_lines(path.read_text(encoding="utf-8"))
+        ]
+        self.assertEqual([], hidden)
+
     def run_fixture(self, case, stdout=None):
         temporary = tempfile.TemporaryDirectory()
         self.addCleanup(temporary.cleanup)
@@ -64,7 +101,9 @@ class RunnerEvidenceTests(unittest.TestCase):
                 pass
 
         tests = list(
-            run_tests.iter_tests(unittest.defaultTestLoader.loadTestsFromTestCase(Quick))
+            run_tests.iter_tests(
+                unittest.defaultTestLoader.loadTestsFromTestCase(Quick)
+            )
         )
         # 600: armed before discovery, disarmed after. 0 (a nested in-process
         # main() inside an armed shard): never cancels the shard's timer.
@@ -552,7 +591,9 @@ class SupervisorTests(unittest.TestCase):
                 except (FileNotFoundError, PermissionError) as error:
                     last_error = error
                     time.sleep(0.02)
-            self.assertIsNotNone(observed, f"owned descendant reached readiness: {last_error!r}")
+            self.assertIsNotNone(
+                observed, f"owned descendant reached readiness: {last_error!r}"
+            )
             if os.name == "nt":
                 kernel = ctypes.WinDLL("kernel32", use_last_error=True)
                 kernel.OpenProcess.argtypes = [
