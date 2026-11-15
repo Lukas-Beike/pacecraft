@@ -41,13 +41,19 @@ For a planned run or ride of at least 60 minutes the recommendation SHALL be the
 - **WHEN** the athlete opens a planned run or ride of at least an hour, today or later
 - **THEN** a "Verpflegung" block below the steps shows drinking and carbohydrates with their basis as badges; a failed read offers "Erneut laden".
 
+#### Scenario: One read after the view's own reads
+- **WHEN** the same unit is rendered more than once in a session, such as the wide calendar opening it on the Coach view at start
+- **THEN** its fuelling is read once per calendar data; a read started while the view still loads goes out only after the view's own reads have finished, and one replaced by a newer render or another session is dropped unsent (#2991).
+
 Evidence:
 - `backend/http_api/nutrition.py:NutritionGetRoutes._fuelling`
 - `backend/nutrition/fuelling.py:drinking`
 - `backend/nutrition/session_fuelling.py:read_session_fuelling`
 - `e2e/calendar-detail-pane.spec.js` (long planned unit)
+- `e2e/coach-layout.spec.js` (desktop Coach view reads the fuelling once, after its own reads)
 - `public/plan-views.js:plannedFuellingBlock`
-- `tests/competition-overview.test.cjs` (long planned units)
+- `public/plan-views.js:plannedFuellingRead`
+- `tests/competition-overview.test.cjs` (long planned units; one read per query after the view's reads)
 - `tests/test_activity_detail_contract.py` (summary sweat loss)
 - `tests/test_nutrition_api_and_sync.py` (session fuelling route)
 - `tests/test_nutrition_session_fuelling.py` (read and invalid queries)

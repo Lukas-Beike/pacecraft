@@ -106,3 +106,37 @@ test("empty coach chat does not promise quick actions and keeps the composer gap
   });
   expect(Math.abs(emptyGap - (await composerGap()))).toBeLessThanOrEqual(1);
 });
+
+test("@responsive the desktop Coach view reads the fuelling of the open unit once, after its own reads", async ({ page, request }, testInfo) => {
+  // #2991: on wide screens the week opens its next unit, and the start read the same
+  // fuelling twice while the view's own reads were still running.
+  test.skip(testInfo.project.name !== "desktop", "Only the wide calendar opens a unit by itself.");
+  expect((await request.get("/api/fixture/demo")).ok()).toBeTruthy();
+  let reads = 0;
+  await page.route("**/api/nutrition/session-fuelling*", (route) => {
+    reads += 1;
+    return route.fulfill({ json: { status: "not_long" } });
+  });
+  await page.route("**/api/bootstrap**", async (route) => {
+    const response = await route.fetch();
+    const data = await response.json();
+    const today = new Intl.DateTimeFormat("en-CA", { timeZone: data.profile?.timezone || "Europe/Berlin" }).format(new Date());
+    data.training_calendar = [{ id: "long-ride", local_id: "long-ride", date: today, name: "Lange Ausfahrt", type: "Ride", sport: "ride", environment: "outdoor", duration_minutes: 150, planned_duration_s: 9000 }];
+    return route.fulfill({ json: data });
+  });
+  // The Coach view's chat history answers late, as a slow read on a long history would.
+  let release;
+  const held = new Promise((resolve) => { release = resolve; });
+  await page.route("**/api/chat/history?limit=100", async (route) => { await held; await route.continue(); });
+  await page.goto("/#coach");
+  await page.waitForFunction(() => state.data && !state.replaceDataOnLoad);
+  await expect(page.locator(".planned-entry[open]")).toHaveCount(1);
+  // Justified wait: the read would go out now if it joined the view's burst; nothing shows it.
+  await page.waitForTimeout(1500);
+  expect(reads).toBe(0);
+  release();
+  await expect.poll(() => reads).toBe(1);
+  await expect.poll(() => page.evaluate(() => state.initialStateLoaded && !state.loadPromise)).toBe(true);
+  await page.waitForTimeout(1500);
+  expect(reads).toBe(1);
+});
