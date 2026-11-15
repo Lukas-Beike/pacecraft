@@ -497,13 +497,15 @@ class BrowserRunnerTests(unittest.TestCase):
             base = output.resolve()
             if os.name == "nt":  # only the extended form can create the deep folder
                 base = Path("\\\\?\\" + str(base))
-            deep = base / "artifacts" / ("long-test-title-" * 14)
+            # 240 characters: under every file system's 255 per name, past 260 in total.
+            deep = base / "artifacts" / ("long-test-title-" * 15)
             deep.mkdir()
             (deep / "error-context.md").write_text(
                 "- Location: e2e/long.spec.js:1:1\n\n# Error details\n\nError: deep\n",
                 encoding="utf-8",
             )
-            self.assertGreater(len(str(output.resolve() / deep.name / "x")), 260)
+            report = output.resolve() / "artifacts" / deep.name / "error-context.md"
+            self.assertGreater(len(str(report)), 260)
             found = runner.failed_tests(output)
             # The temporary directory's own cleanup cannot reach past MAX_PATH either.
             (deep / "error-context.md").unlink()
@@ -851,7 +853,7 @@ class BrowserRunnerTests(unittest.TestCase):
             base = root.resolve()
             if os.name == "nt":  # only the extended form can create the deep folder
                 base = Path("\\\\?\\" + str(base))
-            deep = base / "desktop" / "artifacts" / ("long-test-title-" * 14)
+            deep = base / "desktop" / "artifacts" / ("long-test-title-" * 15)
             deep.mkdir(parents=True)
             (deep / "test-finished-1.png").write_bytes(b"png")
             found = [shot.parent.name for shot in runner.screenshots(root)]
