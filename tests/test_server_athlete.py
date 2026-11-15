@@ -20,19 +20,29 @@ class ServerAthleteTests(ServerTestCase):
         detail = server.ACTIVITY_READS.activity_read()
         self.assertIs(detail._session_summaries, summaries)
         read = server.CANONICAL_READ.activity_summaries
-        # A row-changing commit (the profile name; it starts no worker) first, so
-        # what an earlier test kept is not current.
-        server.ATHLETE_DATA.profile().save({"name": "Ada"})
         with patch.object(
             server.CANONICAL_READ, "activity_summaries", side_effect=read
         ) as counted:
-            summaries()
-            summaries()
-            self.assertEqual(counted.call_count, 1)
+            for attempt in range(50):
+                # A row-changing commit (the profile name) first, so nothing kept
+                # is current.
+                server.ATHLETE_DATA.profile().save({"name": f"Ada {attempt}"})
+                revision = server.database_manager().read_revision()
+                before = counted.call_count
+                summaries()
+                summaries()
+                # Background workers of earlier tests may commit between the two
+                # reads (#3088): only a pair that saw one revision counts.
+                if server.database_manager().read_revision() == revision:
+                    break
+            else:
+                self.fail("background commits never paused for two reads")
+            self.assertEqual(counted.call_count - before, 1)
             # The next row-changing commit makes the next call read again.
+            before = counted.call_count
             server.ATHLETE_DATA.profile().save({"name": "Grace"})
             summaries()
-            self.assertEqual(counted.call_count, 2)
+            self.assertEqual(counted.call_count - before, 1)
 
     def test_profile_only_accepts_known_fields_and_trims(self):
         profile = normalize_profile(
