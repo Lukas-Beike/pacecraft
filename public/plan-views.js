@@ -2266,7 +2266,8 @@ function syncPlannedDetailHeight() {
   const calendar = (card.closest(".planned-week, .planned-month") || card).getBoundingClientRect();
   const start = Math.max(0, calendar.top - box.top);
   const height = body.offsetHeight;
-  // An absolute pane cannot use position: sticky: it follows the window down to the calendar card's end.
+  // The pane is the open card's body inside its <details>, placed absolutely beside the week, so it cannot use
+  // position: sticky; a passive scroll listener moves it with the window, down to the calendar card's end.
   const end = Math.max(start, calendar.bottom - box.top - height);
   body.style.top = `${Math.min(Math.max(start, PANE_STICKY_TOP - box.top), end)}px`;
   root.style.minHeight = `${start + height}px`;
