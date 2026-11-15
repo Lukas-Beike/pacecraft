@@ -31,6 +31,8 @@ SETUP_HINT = (
     "put it on PATH, and run `sonar auth login`."
 )
 TIMEOUT = 900  # seconds; bounds any hung sonar CLI call
+# The SonarCloud project of this repository; ``list issues`` requires it (#2834).
+SONAR_PROJECT = "Lukas-Beike_pacecraft"
 SAFE_RULE = re.compile(r"[A-Za-z0-9_.:-]{1,80}")
 SAFE_FILE = re.compile(r"[\w./\\@+ -]{1,200}")
 # Top-level keys that are not issue sections.
@@ -183,7 +185,16 @@ def main(argv: list[str] | None = None) -> int:
         print(f"error: {SETUP_HINT}", file=sys.stderr)
         return 2
     if args.pr:
-        command = ["list", "issues", "--pull-request", str(args.pr), "--format", "json"]
+        command = [
+            "list",
+            "issues",
+            "--project",
+            SONAR_PROJECT,
+            "--pull-request",
+            str(args.pr),
+            "--format",
+            "json",
+        ]
         label = f"sonar PR {args.pr}"
     else:
         command = ["analyze", "--base", args.base, "--format", "json"]
@@ -199,7 +210,12 @@ def main(argv: list[str] | None = None) -> int:
         return 1
     if args.pr and isinstance(data, dict):
         # The issue list also carries `components` and `users`: not issues.
-        data = {"issues": data.get("issues") or []}
+        listed = data.get("issues") or []
+        total = (data.get("paging") or {}).get("total")
+        if isinstance(total, int) and total > len(listed):
+            # The CLI returns one page; never present it as the whole list.
+            print(f"partial: {len(listed)} of {total} issues listed")
+        data = {"issues": listed}
     code = report(label, data)
     if code == 0 and done.returncode != 0 and global_error_kind(data) != "forbidden":
         print(f"FAILED {label}: exit {done.returncode} without a listed issue")

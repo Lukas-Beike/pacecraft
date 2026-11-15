@@ -64,6 +64,9 @@ def build_sync_schedulers(
             garmin_resync_gate=garmin_resync_gate,
             garmin_change_check=ctx.garmin.change_check(),
             weather_refresh_due=lambda: weather_sync().refresh_due(),
+            weather_competitions_configured=lambda: (
+                weather_sync().competitions_configured()
+            ),
             wahoo=WahooSchedulePolicy(
                 configured=lambda: ctx.wahoo.sync_service().configured(),
                 sync_state=ctx.sync_persistence.state_repository(),

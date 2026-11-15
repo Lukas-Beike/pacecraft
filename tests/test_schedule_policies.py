@@ -125,6 +125,17 @@ class WeatherSchedulePolicyTests(unittest.TestCase):
         self.assertFalse(self.make_policy("   ").configured())
         self.assertFalse(self.make_policy("").configured())
 
+    def test_a_competition_location_configures_the_job_without_a_profile_one(
+        self,
+    ) -> None:
+        competitions = [True]
+        policy = WeatherSchedulePolicy(
+            cast(Any, _Profile("")), competitions_configured=lambda: competitions[0]
+        )
+        self.assertTrue(policy.configured())
+        competitions[0] = False
+        self.assertFalse(policy.configured())
+
     def test_never_blocked_without_freshness_check(self) -> None:
         self.assertFalse(self.make_policy().blocked())
 

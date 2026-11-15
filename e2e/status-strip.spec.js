@@ -156,3 +156,24 @@ test("@responsive due equipment is one notice of the strip that opens Mehr › A
   await page.evaluate(() => renderStatus(state.data));
   expect(reads).toBe(1);
 });
+
+test("the equipment notice reads only after the Coach view's own reads finished (#2966)", async ({ page }) => {
+  const equipment = {
+    items: [{ id: "shoe", name: "Pegasus 40", kind: "shoes", sport: "run", status: "active", lifetime_target_km: 800, usage: { distance_km: 912 } }],
+    garmin_items: [], assignments: [], sensors: [],
+  };
+  let reads = 0;
+  await page.route("**/api/analysis/training-records", (route) => { reads += 1; return route.fulfill({ json: { equipment } }); });
+  // The Coach view's chat history answers late, as a slow read on a long history would.
+  let release;
+  const held = new Promise((resolve) => { release = resolve; });
+  await page.route("**/api/chat/history?limit=100", async (route) => { await held; await route.continue(); });
+  await page.goto("/#coach");
+  await page.waitForFunction(() => state.data && !state.replaceDataOnLoad);
+  // Past the idle callback and its 2 s fallback, the read still waits for the view.
+  await page.waitForTimeout(2500);
+  expect(reads).toBe(0);
+  release();
+  await expect(page.locator("#statusStrip")).toContainText("Pegasus 40: Ziel überschritten");
+  expect(reads).toBe(1);
+});

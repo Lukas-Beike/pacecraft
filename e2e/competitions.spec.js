@@ -30,6 +30,7 @@ async function overview(page) {
         { kind: "daily", days_before: 1, g_per_kg: [7, 12], grams: [490, 840] },
         { kind: "meal", hours_before: [4, 1], g_per_kg: [1, 4], grams: [70, 280] },
       ] },
+      weather: { status: "ready", name: "Musterstadt", country: "Deutschland", day: { icon: "⛅", condition: "Teilweise bewölkt", temperature_min: 8, temperature_max: 14, wind_speed_max: 12, precipitation_probability_max: 10 } },
     } } });
   });
   // Use the athlete-local day supplied by the disposable fixture.
@@ -38,7 +39,7 @@ async function overview(page) {
   const today = await page.evaluate(() => todayIso());
   events = [
     { id: "b", name: "Beta", event_date: today, sport: "run", priority: "B", distance: null },
-    { id: "a", name: "Alpha mit einem sehr langen Wettkampfnamen für schmale Bildschirme", event_date: today, sport: "other", sport_detail: "Swimrun", priority: "A", distance: "Sprintdistanz", target: "Ankommen", notes: "<img src=x onerror=alert(1)>", sync_state: "local_override", starts_at_local: `${today}T08:30:00`, planned_duration_s: 3600 },
+    { id: "a", name: "Alpha mit einem sehr langen Wettkampfnamen für schmale Bildschirme", event_date: today, sport: "other", sport_detail: "Swimrun", priority: "A", distance: "Sprintdistanz", target: "Ankommen", notes: "<img src=x onerror=alert(1)>", location: "Musterstadt", sync_state: "local_override", starts_at_local: `${today}T08:30:00`, planned_duration_s: 3600 },
     { id: "old", name: "Alt", event_date: "2020-01-02", sport: "ride", priority: "C", distance: 0 },
     { id: "older", name: "Älter", event_date: "2020-01-01", sport: "run", priority: "B", distance: 5000 },
     { id: "undated", name: "Ohne Datum", event_date: "2026-02-30", sport: "run", priority: "B" },
@@ -71,6 +72,9 @@ test("@responsive competition summaries, saved details and archive stay compact 
   await expect(plan).toContainText("490–840 g/Tag");
   await expect(plan).toContainText("04:30–07:30");
   await expect(plan).toContainText("30–60 g/h");
+  await expect(plan).toContainText("Open-Meteo · Musterstadt, Deutschland");
+  await expect(plan).toContainText("8–14 °C · Wind 12 km/h · Regen 10 %");
+  await expect(alpha.locator(".competition-card-facts")).toContainText("Musterstadt");
   expect(tracked.racePlans).toEqual(["/api/competitions/a/race-plan"]);
   await expect(beta).not.toHaveAttribute("open", "");
   const archive = root.locator(".competition-archive");

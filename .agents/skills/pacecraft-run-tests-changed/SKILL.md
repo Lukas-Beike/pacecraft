@@ -14,6 +14,9 @@ python scripts/check_changed.py [--base origin/develop] [--js]
 - Runs `tests/run_tests.py --changed --base <base>`, `compileall`,
   `tools/quality_baseline.py` and, with `--js` or when the diff against the base
   touches a `.js`, `.cjs` or `.mjs` file, `node --test tests/*.cjs`.
+- The quality step uses this checkout's `node_modules` for ESLint, as the
+  pre-push hook does: a fresh worktree without `npm ci` fails it here with the
+  `npm ci` hint, not later at the push (#2832).
 - Every step runs even after a failure. One line per step
   (`ok|FAILED <step> (<seconds>s)`), then for each failed step its unittest
   `FAIL:`/`ERROR:` lines, its last 20 lines and the path of a temporary file

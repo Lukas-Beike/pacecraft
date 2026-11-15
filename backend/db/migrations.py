@@ -4,8 +4,9 @@ The only supported baseline is the schema production runs: version 26, written
 by release 2.0.5. Older databases and backups are rejected unchanged; upgrade
 them with release 2.0.5 first. The baseline keeps its frozen fixture in
 tests/fixtures and its digest in backend.db.schema_history; each later schema
-adds one upgrade step here, so the baseline reaches the current schema. A
-released later schema (v27) keeps only its digest and enters the chain there.
+adds one upgrade step here, so the baseline reaches the current schema.
+Released later schemas (v27, v28) keep only their digests and enter the chain
+there.
 """
 
 from __future__ import annotations
@@ -28,6 +29,7 @@ from backend.db.schema_history import (
     SHAPE_CURRENT,
     SHAPE_SCHEMA_V26,
     SHAPE_SCHEMA_V27,
+    SHAPE_SCHEMA_V28,
     released_shape,
 )
 
@@ -368,8 +370,21 @@ def _calendar_decisions(db: Any) -> None:
     execute_ddl(db, _V28_CALENDAR_DECISIONS_DDL)
 
 
+# Frozen copy of the v29 location column; the live DDL may change later.
+_V29_COMPETITION_LOCATION_DDL: Final = (
+    "ALTER TABLE competitions ADD COLUMN location TEXT NOT NULL DEFAULT '' "
+    "CHECK (length(location) <= 200)"
+)
+
+
+def _competition_location(db: Any) -> None:
+    """Schema v29: every competition gains an empty location (#2803)."""
+    execute_ddl(db, _V29_COMPETITION_LOCATION_DDL)
+
+
 # Released shape -> (next shape, step).
 UPGRADE_STEPS: Final[Mapping[str, tuple[str, Callable[[Any], None]]]] = {
     SHAPE_SCHEMA_V26: (SHAPE_SCHEMA_V27, _canonical_products),
-    SHAPE_SCHEMA_V27: (SHAPE_CURRENT, _calendar_decisions),
+    SHAPE_SCHEMA_V27: (SHAPE_SCHEMA_V28, _calendar_decisions),
+    SHAPE_SCHEMA_V28: (SHAPE_CURRENT, _competition_location),
 }

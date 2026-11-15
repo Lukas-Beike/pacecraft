@@ -25,12 +25,16 @@ SHAPE_SCHEMA_V26: Final = "schema-v26"
 # Schema version 27, releases 2.1.2 to 2.1.9: the result of the baseline's
 # product step. Its digest lets a v27 database take the later steps.
 SHAPE_SCHEMA_V27: Final = "schema-v27"
+# Schema version 28, releases 2.1.10 to 2.1.14: v27 after its calendar
+# decision step. Its digest lets a v28 database take the later steps.
+SHAPE_SCHEMA_V28: Final = "schema-v28"
 # The live schema of this build, derived from code rather than frozen.
 SHAPE_CURRENT: Final = "current"
 
 RELEASED_SHAPE_DIGESTS: Final[Mapping[str, str]] = {
     SHAPE_SCHEMA_V26: "edbf1d3aa11f13e3bad44e233d9605d173c1370e6fc3ac67ad3abeda9bd0ea03",
     SHAPE_SCHEMA_V27: "203082d2a81ca06ab66307e37edbcbfe83e9a9c4e7b442124e360124175f193c",
+    SHAPE_SCHEMA_V28: "3c06ad06de8948015a0508c6cae46662971ce58b06e919b3f964b662d62cc0e9",
 }
 
 # Releases before 2.0.5 wrote lower versions; they are rejected unchanged.
@@ -43,6 +47,7 @@ OLDEST_SUPPORTED_SCHEMA_VERSION: Final = 26
 ACCEPTED_SHAPES_BY_VERSION: Final[Mapping[int, frozenset[str]]] = {
     26: frozenset({SHAPE_SCHEMA_V26}),
     27: frozenset({SHAPE_SCHEMA_V27}),
+    28: frozenset({SHAPE_SCHEMA_V28}),
     CURRENT_SCHEMA_VERSION: frozenset({SHAPE_CURRENT}),
 }
 

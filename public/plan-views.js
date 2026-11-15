@@ -1460,17 +1460,41 @@ function plannedFuellingBlock(plan) {
   ];
 }
 
+// One fuelling read per query and calendar data, cleared with the session reads in renderPlanned
+// (#2991). A read started while the view still loads waits out its reads instead of joining their
+// burst (as #2979); one a newer render or another session replaced meanwhile is dropped unsent.
+const plannedFuellingReads = new Map();
+const STALE_FUELLING_READ = new Error("replaced fuelling read");
+
+function plannedFuellingRead(query) {
+  let read = plannedFuellingReads.get(query);
+  if (!read) {
+    const session = state.sessionGeneration;
+    const viewLoading = !state.initialStateLoaded || Boolean(state.loadPromise);
+    read = (viewLoading ? globalThis.AppApi.settled() : Promise.resolve()).then(() => {
+      if (session !== state.sessionGeneration || plannedFuellingReads.get(query) !== read) throw STALE_FUELLING_READ;
+      return api(`/api/nutrition/session-fuelling?${query}`, { timeoutMs: DATA_LOAD_TIMEOUT_MS });
+    });
+    read.catch(() => { if (plannedFuellingReads.get(query) === read) plannedFuellingReads.delete(query); });
+    plannedFuellingReads.set(query, read);
+  }
+  return read;
+}
+
 function loadPlannedFuelling(section, query) {
   if (section.dataset.state === "loading" || section.dataset.state === "ready") return;
   section.dataset.state = "loading";
   const status = h("output", null, "Verpflegung wird berechnet …");
   section.replaceChildren(h("h4", null, "Verpflegung"), status);
-  api(`/api/nutrition/session-fuelling?${query}`, { timeoutMs: DATA_LOAD_TIMEOUT_MS }).then((plan) => {
+  const read = plannedFuellingRead(query);
+  read.then((plan) => {
     section.dataset.state = "ready";
     if (plan?.status === "ready") section.replaceChildren(...plannedFuellingBlock(plan));
     // Keep the empty section marked ready, so reopening does not read again.
     else section.hidden = true;
   }).catch(() => {
+    // A plan that could not be shown is not kept either, so "Erneut laden" reads again.
+    if (plannedFuellingReads.get(query) === read) plannedFuellingReads.delete(query);
     section.dataset.state = "failed";
     const retry = h("button", { type: "button", className: "secondary-button" }, "Erneut laden");
     retry.addEventListener("click", () => loadPlannedFuelling(section, query));
@@ -2219,6 +2243,7 @@ function renderPlanned(trainingCalendar) {
   if (trainingCalendar !== renderedCalendar) {
     resetOlderSessions();
     plannedSessionReads.clear();
+    plannedFuellingReads.clear();
   }
   renderedCalendar = trainingCalendar;
   const calendar = withOlderSessions(Array.isArray(trainingCalendar) ? trainingCalendar : []);
@@ -2435,6 +2460,26 @@ function racePlanPacing(pacing) {
   return [racePlanHeading("Tempo", badge), table(columns, rows, { className: "race-plan-table" })];
 }
 
+const RACE_PLAN_WEATHER_STATUS = { pending: "Noch keine Vorhersage", not_found: "Ort nicht gefunden", unavailable: "Vorhersage nicht verfügbar" };
+
+// Race-day forecast at the competition location; nothing without a location or before the forecast reaches race day.
+function racePlanWeather(weather) {
+  const day = weather?.status === "ready" ? weather.day : null;
+  if (!day) {
+    const text = RACE_PLAN_WEATHER_STATUS[weather?.status === "ready" ? "unavailable" : weather?.status];
+    return text ? [racePlanHeading("Wetter"), h("p", "race-plan-gap", text)] : [];
+  }
+  const place = [weather.name, weather.country].filter(Boolean).join(", ");
+  const number = (value) => RACE_PLAN_KM.format(Math.round(value));
+  const facts = [
+    `${day.icon || ""} ${day.condition || ""}`.trim(),
+    day.temperature_min != null && day.temperature_max != null ? `${number(day.temperature_min)}–${number(day.temperature_max)} °C` : null,
+    day.wind_speed_max == null ? null : `Wind ${number(day.wind_speed_max)} km/h`,
+    day.precipitation_probability_max == null ? null : `Regen ${number(day.precipitation_probability_max)} %`,
+  ].filter(Boolean);
+  return [racePlanHeading("Wetter", ["Open-Meteo", place].filter(Boolean).join(" · ")), h("p", "race-plan-weather", facts.join(" · "))];
+}
+
 function racePlanCarbohydrates(carbohydrates, competition) {
   const weight = carbohydrates.weight?.source ? `Gewicht ${carbohydrates.weight.source}` : null;
   const rows = carbohydrates.before.map((entry) => entry.kind === "meal"
@@ -2457,7 +2502,7 @@ function loadRacePlan(section, competition) {
   api(`/api/competitions/${encodeURIComponent(competition.id)}/race-plan`, { timeoutMs: DATA_LOAD_TIMEOUT_MS }).then((payload) => {
     const plan = payload.race_plan;
     section.dataset.state = "ready";
-    section.replaceChildren(h("h4", null, "Rennplan"), ...racePlanPacing(plan.pacing), ...racePlanCarbohydrates(plan.carbohydrates, competition));
+    section.replaceChildren(h("h4", null, "Rennplan"), ...racePlanPacing(plan.pacing), ...racePlanCarbohydrates(plan.carbohydrates, competition), ...racePlanWeather(plan.weather));
   }).catch(() => {
     section.dataset.state = "failed";
     const retry = h("button", { type: "button", className: "secondary-button" }, "Erneut laden");
@@ -2480,6 +2525,7 @@ function competitionCard(competition, todayKey, openIds) {
     ["Startzeit", competition.starts_at_local ? formatLocalCompetitionTime(competition.starts_at_local) : null],
     ["Ziel", competition.target],
     ["Erwartete Dauer", competition.planned_duration_s == null ? null : AppFormat.duration(competition.planned_duration_s)],
+    ["Ort", competition.location],
     ["Streckenprofil", competition.course_profile],
     ["Beschreibung", competition.description],
     ["Notizen", competition.notes],

@@ -77,7 +77,7 @@ test("@responsive Laufen and Radfahren each show only their sport", async ({ pag
   await page.goto("/#analysis/performance");
   await expect(page).toHaveURL(/#analysis\/running$/);
   const segments = page.locator("[data-analysis-segment]");
-  await expect(segments).toHaveText(["Laufen", "Radfahren", "Belastung", "Erholung"]);
+  await expect(segments).toHaveText(["Laufen", "Radfahren", "Belastung", "Erholung", "Woche"]);
   await expect(page.locator('[data-analysis-segment="running"]')).toHaveAttribute("aria-current", "page");
   const best = page.locator("#runningBestEfforts");
   // Running bests are the five race distances only; a missing best keeps its row with a dash (#2786).

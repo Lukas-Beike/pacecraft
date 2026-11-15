@@ -43,6 +43,10 @@ Copy this checklist into your response and tick it as you go:
   suite (17-21 min) only when the selector falls back to it, to reproduce a CI
   failure, or when asked; browser checks use `--project changed`, CI's project
   choice ([browser-tests](../pacecraft-browser-tests/SKILL.md), #2759).
+  After changing routes, views or `backend/performance` or
+  `backend/activities` constants, run
+  `python scripts/regenerate_docs.py` and commit the rewritten documents; the
+  pre-push hook refuses stale ones (#2949).
 - **OpenSpec:** list `git diff --name-only --no-renames origin/develop...HEAD --
   openspec/changes`. Each `openspec/changes/<name>/` path outside `archive/`
   names a change that must be archived on this branch: its active directory is
@@ -124,7 +128,10 @@ confirmation. List every unfixed finding with its reason in the PR body.
   head, and no feedback is open: review comments do not block an armed
   auto-merge (#2520 merged past one). It merges a PR GitHub already calls clean
   directly (#2776), and refuses when develop changed this PR's files since it
-  branched off (#2901): rebase, let CI and Gitar see the new head, rerun.
+  branched off (#2901): rebase, let CI and Gitar see the new head, rerun. It
+  also refuses and disarms while a review thread is unresolved, and disarms
+  when new feedback arrives during `--wait` (#2947); a thread left for the
+  user blocks the merge until the user resolves it.
 
 ## 4. Monitor to merge
 

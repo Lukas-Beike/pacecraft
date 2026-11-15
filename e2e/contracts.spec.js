@@ -680,9 +680,18 @@ test("planned agenda prioritizes dates and sessions with compact weather and exp
   await expect(page.locator(`.planned-day[data-date="${await page.evaluate((date) => addDateKey(date, 1), today)}"] .planned-entry.is-completed`)).toHaveCount(5);
   for (const theme of ["dark", "light"]) {
     await page.evaluate((selectedTheme) => { document.documentElement.dataset.theme = selectedTheme; }, theme);
+    // #2985: measure against the background actually painted behind the text. An open
+    // card's header is transparent on wide screens (the card carries the tint), so its
+    // own backgroundColor reads as black; on Sundays the shown week opens a completed one.
     const computedColors = await completedHeaders.evaluateAll((headers) => headers.map((header) => {
-      const style = getComputedStyle(header);
-      return [style.color, style.backgroundColor];
+      const layers = [];
+      for (let node = header; node; node = node.parentElement) {
+        const [red, green, blue, alpha = 1] = getComputedStyle(node).backgroundColor.match(/[\d.]+/g).map(Number);
+        if (alpha > 0) layers.push([red, green, blue, alpha]);
+        if (alpha >= 1) break;
+      }
+      const painted = layers.reverse().reduce((under, [red, green, blue, alpha]) => [red, green, blue].map((value, index) => value * alpha + under[index] * (1 - alpha)), [255, 255, 255]);
+      return [getComputedStyle(header).color, `rgb(${painted.join(", ")})`];
     }));
     const contrasts = computedColors.map(([foreground, background]) => contrastRatio(foreground, background));
     expect(contrasts.every((ratio) => ratio >= 4.5), `${theme} completed session contrast`).toBe(true);

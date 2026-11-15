@@ -166,6 +166,7 @@ COMPETITION_FIELDS = {
     "notes",
     "description",
     "planned_duration_s",
+    "location",
     "sync_state",
 }
 PLAN_FIELDS = {"id", "name", "goal", "start_date", "end_date", "status"}
@@ -432,6 +433,8 @@ _FIELDS_ADDED_TO_AUDIT: dict[str, tuple[tuple[str, ...], ...]] = {
     ),
     "planned_unit": (("starts_at_local",), FOCUS_KEYS, (TEMPLATE_ID,)),
     "workout_library": (FOCUS_KEYS,),
+    # Competitions gained their location with schema v29 (#2803).
+    "competition": (("location",),),
     # Gap fills of stored foods were recorded before the origin marks were.
     "food_database_entry": (("filled_fields",),),
 }

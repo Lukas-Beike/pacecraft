@@ -50,10 +50,12 @@ test("the equipment notice reads once per activity state when idle and never ret
   const idle = [];
   const state = { data: { state_versions: { training: 1 } }, sessionGeneration: 1, replaceDataOnLoad: true };
   const page = { visibilityState: "hidden" };
+  const views = { settled: Promise.resolve() };
   const context = extractFunctions("analysis.js", ["analysisReportCache", "analysisReportVersionKey", "requestAnalysisReport", "equipmentNoticeKey", "equipmentNoticeState", "refreshEquipmentNotice"], {
     state,
     DATA_LOAD_TIMEOUT_MS: 15_000,
     requestIdleCallback: (callback) => idle.push(callback),
+    AppApi: { settled: () => views.settled },
     document: page,
     equipmentStatusItem: (equipment) => equipment?.notice ?? null,
     updateStatusSources: (changes) => updates.push(changes),
@@ -70,12 +72,20 @@ test("the equipment notice reads once per activity state when idle and never ret
   // A hidden page reads nothing and leaves the read to the next status render.
   context.refreshEquipmentNotice();
   idle.shift()();
+  await new Promise((resolve) => setImmediate(resolve));
   page.visibilityState = "visible";
   context.refreshEquipmentNotice();
   context.refreshEquipmentNotice();
   assert.equal(calls.length, 0, "nothing is read before the browser is idle");
   assert.equal(idle.length, 1);
+  // An idle browser with the view's own reads in flight waits for them (#2966).
+  let viewsDone;
+  views.settled = new Promise((resolve) => { viewsDone = resolve; });
   idle.shift()();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(calls.length, 0, "nothing is read while the view's reads run");
+  views.settled = Promise.resolve();
+  viewsDone();
   await new Promise((resolve) => setImmediate(resolve));
   context.refreshEquipmentNotice();
   assert.deepEqual([calls.length, idle.length, updates.length], [1, 0, 0], "a failed read waits for the next state version");

@@ -13,7 +13,9 @@ import subprocess
 import sys
 import tempfile
 from collections import Counter
+from collections.abc import Mapping
 from pathlib import Path
+from types import MappingProxyType
 
 ROOT = Path(__file__).resolve().parents[1]
 BASELINE = ROOT / "tests/fixtures/quality_baseline.json"
@@ -298,7 +300,12 @@ def javascript_diagnostics(root: Path) -> list[dict] | None:
     return diagnostics
 
 
-def collect(root: Path) -> tuple[dict[str, str], list[dict]]:
+def collect(root: Path, notes: dict[str, str]) -> tuple[dict[str, str], list[dict]]:
+    """Versions and diagnostics; `notes` receives mypy's message per finding.
+
+    The records stay message-free (hashed), so the baseline never holds source
+    text; the notes only print beside a NEW finding (#2944).
+    """
     files = source_files(root)
     if not files:
         raise RuntimeError("No Python source files discovered")
@@ -347,7 +354,9 @@ def collect(root: Path) -> tuple[dict[str, str], list[dict]]:
     for line in mypy_output.splitlines():
         item = json.loads(line)
         if item["severity"] == "error":
-            diagnostics.append(diagnostic("mypy", item, root))
+            record = diagnostic("mypy", item, root)
+            diagnostics.append(record)
+            notes[note_key(record)] = f": {item['message']}"
     diagnostics.extend(cognitive_diagnostics(root, files))
     diagnostics.extend(javascript_diagnostics(root) or [])
 
@@ -407,11 +416,23 @@ def aligned_baseline(baseline_text: str, requirements: str) -> str | None:
     return json.dumps(baseline, indent=2) + "\n"
 
 
+def finding(item: dict) -> str:
+    location = f"{item['path']}:{item['line']}" if "line" in item else item["path"]
+    return f"{item['tool']} {location} {item['code']}"
+
+
+def note_key(item: dict) -> str:
+    """One finding's message key: its message hash, as two errors of a code
+    can share a line and even a column."""
+    return f"{finding(item)} {item['message_sha256']}"
+
+
 def check(
     baseline: dict,
     versions: dict[str, str],
     diagnostics: list[dict],
     skipped: tuple[str, ...] = (),
+    notes: Mapping[str, str] = MappingProxyType({}),
 ) -> int:
     if baseline["schema"] != 1:
         raise RuntimeError("Quality baseline schema does not match")
@@ -433,10 +454,7 @@ def check(
     added, obsolete = compare(expected, diagnostics)
     for label, items in (("NEW", added), ("OBSOLETE", obsolete)):
         for item in items:
-            location = (
-                f"{item['path']}:{item['line']}" if "line" in item else item["path"]
-            )
-            print(f"{label} {item['tool']} {location} {item['code']}")
+            print(f"{label} {finding(item)}{notes.get(note_key(item), '')}")
     print(
         f"Quality ratchet: {len(diagnostics)} existing, {len(added)} new, {len(obsolete)} obsolete"
     )
@@ -468,7 +486,8 @@ def main() -> int:
             BASELINE.write_text(aligned, encoding="utf-8")
         print("aligned" if aligned is not None else "unchanged")
         return 0
-    versions, diagnostics = collect(ROOT)
+    notes: dict[str, str] = {}
+    versions, diagnostics = collect(ROOT, notes)
     if args.snapshot:
         if not args.base or not re.fullmatch(r"[0-9a-f]{40}", args.base):
             parser.error("--snapshot requires an immutable --base SHA")
@@ -497,6 +516,7 @@ def main() -> int:
         versions,
         diagnostics,
         () if eslint_script() else ("eslint",),
+        notes,
     )
 
 

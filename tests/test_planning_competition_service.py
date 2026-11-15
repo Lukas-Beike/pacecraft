@@ -116,7 +116,9 @@ class CompetitionServiceTests(unittest.TestCase):
 
     def test_empty_values_clear_optional_fields_and_absent_ones_keep_them(self):
         created = self.service.save(
-            self.competition(description="Flat", planned_duration_s=10800)
+            self.competition(
+                description="Flat", planned_duration_s=10800, location="Berlin"
+            )
         )
         competition_id = created["competition"]["id"]
 
@@ -131,15 +133,20 @@ class CompetitionServiceTests(unittest.TestCase):
         self.assertEqual(saved["distance"], "42200")
         self.assertEqual(saved["description"], "Flat")
         self.assertEqual(saved["planned_duration_s"], 10800)
+        # Editing other fields keeps the location (schema v29, #2803).
+        self.assertEqual(saved["location"], "Berlin")
+        self.assertEqual(kept["competition"]["location"], "Berlin")
         self.assertEqual(kept["competition"]["target"], "")
         no_description = self.service.save(
             {
                 "competition_id": competition_id,
                 "description": "",
                 "planned_duration_s": None,
+                "location": "",
             }
         )
         self.assertEqual(no_description["competition"]["description"], "")
+        self.assertEqual(no_description["competition"]["location"], "")
         # An explicit null clears the planned duration too (#2135, D-019).
         self.assertIsNone(no_description["competition"]["planned_duration_s"])
         with self.manager.reader() as db:
@@ -148,6 +155,39 @@ class CompetitionServiceTests(unittest.TestCase):
             ).fetchone()["diff"]
         self.assertIn("target", diff)
         self.assertIn("notes", diff)
+
+    def test_a_location_only_edit_keeps_the_sync_state(self):
+        # The location never leaves the app, so a synced race stays synced;
+        # any other edit marks it for the next Intervals.icu sync (#2803).
+        created = self.service.save(self.competition())["competition"]
+        with self.manager.unit_of_work() as db:
+            db.execute(
+                "UPDATE competitions SET sync_dirty=0, sync_state='synced', "
+                "external_id='remote', intervals_event_id='42' WHERE id=?",
+                (created["id"],),
+            )
+
+        def stored():
+            with self.manager.reader() as db:
+                row = db.execute(
+                    "SELECT location, sync_dirty, sync_state FROM competitions WHERE id=?",
+                    (created["id"],),
+                ).fetchone()
+            return (row["location"], row["sync_dirty"], row["sync_state"])
+
+        self.service.save({"competition_id": created["id"], "location": "Berlin"})
+        self.assertEqual(("Berlin", 0, "synced"), stored())
+        # Undoing it restores the location only and keeps the sync state too.
+        with self.manager.unit_of_work() as db:
+            current = CompetitionRepository().get(db, created["id"])
+            restored = self.service.restore_in_transaction(
+                db, created["id"], current, {**current, "location": ""}
+            )
+        self.assertEqual("synced", restored["sync_state"])
+        self.assertEqual(("", 0, "synced"), stored())
+        self.service.save({"competition_id": created["id"], "location": "Berlin"})
+        self.service.save({"competition_id": created["id"], "target": "Sub 3:20"})
+        self.assertEqual(("Berlin", 1, "local"), stored())
 
     def test_clearing_the_start_time_falls_back_to_the_race_day(self):
         created = self.service.save(

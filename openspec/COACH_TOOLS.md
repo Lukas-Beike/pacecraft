@@ -670,6 +670,7 @@ effect `local_write`; gate domain `competition`; receipt „Wettkampf gespeicher
 - `payload.distance` (string)
 - `payload.target` (string)
 - `payload.course_profile` (string)
+- `payload.location` (string)
 - `payload.notes` (string)
 - `payload.description` (string)
 - `payload.priority` (string; one of `"A"`, `"B"`, `"C"`)

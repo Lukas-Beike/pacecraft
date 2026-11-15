@@ -4,7 +4,9 @@
 
 One line per workflow. Exit 0: every run completed green; 1: a run failed, or
 the PR is not merged; 2: bad input or a failed gh call; 3: a run is pending or
-none has started yet. Failed runs get hints: a newer push run of the same
+none has started yet. A run cancelled by a newer develop push follows the
+newest push run of its workflow, which contains the commit, and reports that
+run's state instead (#2956). Failed runs get hints: a newer push run of the same
 workflow supersedes it (never rerun a superseded run), and otherwise the
 previous push run's conclusion and the failed job names are listed so the
 caller can judge a flake.
@@ -53,12 +55,26 @@ def state(run: dict) -> str:
     return "green" if run["conclusion"] in GREEN else "failed"
 
 
-def hints(run: dict, history: list[dict]) -> list[str]:
+def same_workflow(run: dict, history: list[dict]) -> tuple[list[dict], list[dict]]:
+    """(older, newer) push runs of the run's workflow, each oldest first."""
     same = sorted(
         (r for r in history if r["workflowName"] == run["workflowName"]),
         key=lambda r: r["createdAt"],
     )
-    newer = [r for r in same if r["createdAt"] > run["createdAt"]]
+    older = [r for r in same if r["createdAt"] < run["createdAt"]]
+    return older, [r for r in same if r["createdAt"] > run["createdAt"]]
+
+
+def follow(run: dict, history: list[dict]) -> dict:
+    """A run cancelled by a newer develop push resolves to the newest push run
+    of its workflow (#2956): develop only moves forward, so that run's head
+    contains this commit. Without a newer run the cancelled run stands."""
+    newer = same_workflow(run, history)[1]
+    return newer[-1] if run["conclusion"] == "cancelled" and newer else run
+
+
+def hints(run: dict, history: list[dict]) -> list[str]:
+    older, newer = same_workflow(run, history)
     if newer:
         last = newer[-1]
         return [
@@ -66,7 +82,6 @@ def hints(run: dict, history: list[dict]) -> list[str]:
             + f"{last['databaseId']} ({last['conclusion'] or last['status']}); "
             + "do not rerun this one"
         ]
-    older = [r for r in same if r["createdAt"] < run["createdAt"]]
     jobs = gh_json("run", "view", str(run["databaseId"]), "--json", "jobs")["jobs"]
     failed = ", ".join(j["name"] for j in jobs if j["conclusion"] == "failure")
     if older:
@@ -77,6 +92,24 @@ def hints(run: dict, history: list[dict]) -> list[str]:
         outcome, before = "", "no previous push run"
     flake = "possible flake: " if outcome == "success" else ""
     return [f"hint {flake}{before}; failed jobs: {failed or 'none listed'}"]
+
+
+def report(runs: dict[str, dict], history: list[dict]) -> list[str]:
+    """Print one line per workflow, a cancelled run followed; return the states."""
+    states = []
+    for name, original in sorted(runs.items()):
+        run = follow(original, history)
+        states.append(state(run))
+        result = run["conclusion"] or run["status"]
+        via, head = original["databaseId"], run["headSha"][:8]
+        newer = run["databaseId"] != via
+        # The newer run also carries later commits: a red may be theirs.
+        note = f" (newer push run at {head}; {via} was cancelled)" if newer else ""
+        print(f"{name}: {states[-1]} ({result}) {run['url']}{note}")
+        if states[-1] == "failed":
+            for line in hints(run, history):
+                print(f"  {line}")
+    return states
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -91,17 +124,11 @@ def main(argv: list[str] | None = None) -> int:
         if not runs:
             print(f"pending: no develop push runs for {sha[:8]} yet")
             return 3
-        failing = any(state(run) == "failed" for run in runs.values())
-        history = list_runs() if failing else []
-        states = []
-        for name, run in sorted(runs.items()):
-            states.append(state(run))
-            result = run["conclusion"] or run["status"]
-            print(f"{name}: {states[-1]} ({result}) {run['url']}")
-            if states[-1] == "failed":
-                for line in hints(run, history):
-                    print(f"  {line}")
-        if failing:
+        history = (
+            list_runs() if any(state(r) == "failed" for r in runs.values()) else []
+        )
+        states = report(runs, history)
+        if "failed" in states:
             return 1
         return 3 if "pending" in states else 0
     except NotMerged as exc:

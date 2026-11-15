@@ -124,9 +124,12 @@ class RacePlanTests(unittest.TestCase):
         competitions = Mock()
         competitions.get.side_effect = {"race-1": HALF}.get
         weight = Mock(return_value={"value": 70, "source": "Manuell"})
-        plan = read_race_plan(lambda: competitions, weight, "race-1")
+        weather = Mock(return_value={"status": "pending"})
+        plan = read_race_plan(lambda: competitions, weight, weather, "race-1")
         self.assertEqual("Manuell", plan["carbohydrates"]["weight"]["source"])
-        self.assertIsNone(read_race_plan(lambda: competitions, weight, "x"))
+        self.assertEqual({"status": "pending"}, plan["weather"])
+        weather.assert_called_once_with(HALF)
+        self.assertIsNone(read_race_plan(lambda: competitions, weight, weather, "x"))
         self.assertEqual(1, weight.call_count)
 
 
