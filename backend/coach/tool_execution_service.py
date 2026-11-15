@@ -12,6 +12,7 @@ from backend.coach.proposal_creation import (
     CoachProposalCreationService,
     remote_removal_lines,
 )
+from backend.coach.read_tools import NAMED_FOOD_SOURCES, named_food_sources
 from backend.coach.tool_dispatch import CoachToolDispatchService
 from backend.coach.tool_specs import (
     EXTERNAL_FOOD_LOOKUP_TOOLS,
@@ -84,6 +85,9 @@ class CoachStructuredToolExecutionService:
     ) -> dict[str, Any]:
         name = metadata["name"]
         arguments = metadata["arguments"]
+        if name == "lookup_food":
+            # Local first unless the athlete's own message names a provider (#3080).
+            arguments = {**arguments, NAMED_FOOD_SOURCES: named_food_sources(context)}
         local_transaction = name not in {
             "start_provider_refresh",
             "apply_adaptive_replan",

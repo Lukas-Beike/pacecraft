@@ -8,7 +8,11 @@ from unittest.mock import Mock
 from urllib.error import HTTPError
 
 from backend.errors import AppError
-from backend.nutrition.food_database import FoodDatabaseService, _bls_foods
+from backend.nutrition.food_database import (
+    FoodDatabaseService,
+    _bls_foods,
+    names_the_food,
+)
 from backend.providers.open_food_facts import OpenFoodFactsClient, project_product
 
 
@@ -29,6 +33,28 @@ def response(payload):
 
 
 class FoodDatabaseTests(unittest.TestCase):
+    def test_a_saved_product_names_the_food_only_when_its_name_begins_with_it(
+        self,
+    ) -> None:
+        # #3080: such a product answers a lookup without asking a provider.
+        for query, name, brand, expected in (
+            ("Skyr", "Skyr Natur", "Hofmolkerei", True),
+            ("skyr natur", "Skyr Natur", "", True),
+            ("Skyr Hofmolkerei", "Skyr Natur", "Hofmolkerei", True),
+            ("Skyr 500g", "Skyr Natur", "", True),
+            ("Milch", "Milch 1,5 %", "", True),
+            ("Huttenkase", "Hüttenkäse körnig", "", True),
+            ("Pfeffersoße", "Pfeffersauce", "", True),
+            ("Skyr Vanille", "Skyr Natur", "", False),
+            ("Milch", "Hafer Milch", "", False),
+            ("Reis", "Basmati Reis", "", False),
+            ("Banane", "Bananenbrot", "", False),
+            ("500g", "Skyr Natur", "", False),
+            ("Skyr", "", "Skyr", False),
+        ):
+            with self.subTest(query=query, name=name):
+                self.assertIs(expected, names_the_food(query, name, brand))
+
     def test_additional_off_nutrients_preserve_label_values_and_unknowns(self):
         legacy = project_product(
             product(

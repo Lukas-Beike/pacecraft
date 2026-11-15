@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+import re
+from collections.abc import Callable, Mapping
 from datetime import date
-from typing import Any
+from typing import Any, Final
 
 from backend.athlete.profile import ProfileService
 from backend.coach.activity_read_tools import CoachActivityReadToolService
@@ -20,6 +21,7 @@ from backend.errors import AppError
 from backend.history.service import ChangeHistoryService
 from backend.nutrition.catalog import INCOMPLETE_PRODUCTS_NOTICE
 from backend.nutrition.diary import NutritionDiaryService
+from backend.nutrition.food_database import names_the_food
 from backend.nutrition.meal_library import NutritionMealLibraryService
 from backend.nutrition.models import validate_iso_date
 from backend.planning.competition_service import CompetitionService
@@ -33,6 +35,43 @@ MAX_FOOD_LOOKUP_QUERIES = 20
 
 
 FOOD_DATABASE_UNAVAILABLE = "Lebensmitteldatenbank ist nicht verfügbar."
+
+# lookup_food is local first (#3080): a saved product named like the searched
+# food answers, and a provider is asked on a miss or when the athlete's own
+# request names it. The tool execution sets NAMED_FOOD_SOURCES from that
+# request; a model argument of that name is replaced.
+NAMED_FOOD_SOURCES: Final = "_named_food_sources"
+LOCAL_HIT: Final = "local_hit"
+EXTERNAL_AFTER_MISS: Final = "external_after_miss"
+EXTERNAL_REQUESTED: Final = "external_requested"
+# The diagnostics count these per step, in this order.
+LOOKUP_OUTCOMES: Final = (LOCAL_HIT, EXTERNAL_AFTER_MISS, EXTERNAL_REQUESTED)
+SAVED_PRODUCT_NOTICE: Final = (
+    "Gespeicherte Produkte mit diesem Namen gefunden; nimm das, das dasselbe "
+    "Lebensmittel ist, sonst frag nach. Externe Quellen werden nur gefragt, "
+    "wenn der Athlet sie selbst nennt."
+)
+_FOOD_SOURCE_NAMES: Final = (
+    ("yazio", re.compile(r"yazio", re.IGNORECASE)),
+    ("open_food_facts", re.compile(r"open\s*food\s*facts|\boff\b", re.IGNORECASE)),
+    ("bls", re.compile(r"\bbls\b|bundeslebensmittelschl", re.IGNORECASE)),
+)
+
+
+def named_food_sources(context: Mapping[str, Any]) -> list[str]:
+    """The food sources the athlete's own request names: the current message
+    and, while a clarification is open, the messages it answers."""
+    pending = context.get("pending_request")
+    asked = pending.get("source_message_ids") if isinstance(pending, Mapping) else None
+    ids = {context.get("current_user_message_id"), *(asked or ())}
+    text = "\n".join(
+        str(item.get("content") or "")
+        for item in context.get("messages") or ()
+        if isinstance(item, Mapping)
+        and item.get("role") == "user"
+        and item.get("id") in ids
+    )
+    return [source for source, words in _FOOD_SOURCE_NAMES if words.search(text)]
 
 
 class CoachReadToolService:
@@ -201,9 +240,12 @@ class CoachReadToolService:
     def _lookup_food(
         cls, nutrition: NutritionMealLibraryService, arguments: dict[str, Any]
     ) -> dict[str, Any]:
+        # Set by the tool execution from the athlete's own message, never the model.
+        named = frozenset(arguments.get(NAMED_FOOD_SOURCES) or ())
+        arguments = {k: v for k, v in arguments.items() if k != NAMED_FOOD_SOURCES}
         queries = arguments.get("queries")
         if queries is None:
-            return cls._lookup_one_food(nutrition, arguments)
+            return cls._lookup_one_food(nutrition, arguments, named)
         if arguments.get("barcode") or not isinstance(queries, list):
             raise AppError(
                 400, "queries ist eine Liste von Suchbegriffen ohne barcode."
@@ -224,7 +266,9 @@ class CoachReadToolService:
         for term in unique.values():
             try:
                 result = cls._lookup_one_food(
-                    nutrition, {"query": term, **({"source": source} if source else {})}
+                    nutrition,
+                    {"query": term, **({"source": source} if source else {})},
+                    named,
                 )
             except AppError as exc:
                 errors.append(exc)
@@ -234,39 +278,81 @@ class CoachReadToolService:
             raise errors[0]
         return {"ok": True, "results": results}
 
-    @staticmethod
+    @classmethod
     def _lookup_one_food(
-        nutrition: NutritionMealLibraryService, arguments: dict[str, Any]
+        cls,
+        nutrition: NutritionMealLibraryService,
+        arguments: dict[str, Any],
+        named: frozenset[str],
     ) -> dict[str, Any]:
-        source = str(arguments.get("source") or "").strip().lower()
         query = str(arguments.get("query") or arguments.get("q") or "").strip()
+        # A source the athlete named stands when the model omits one.
+        source = (
+            str(arguments.get("source") or next(iter(sorted(named)), ""))
+            .strip()
+            .lower()
+        )
         if (
             query
             and not arguments.get("barcode")
             and source in {"bls", "open_food_facts", "yazio"}
         ):
-            local_products = nutrition.product_catalog.list_products(query=query)
-            try:
-                result = nutrition.food_database.lookup(
-                    {**arguments, "query": query, "source": source}
-                )
-            except AppError as exc:
-                # Saved matches stay usable whenever the external lookup fails.
-                if not local_products:
-                    raise
-                result = {
-                    "ok": True,
-                    "foods": [],
-                    "notice": f"Externe Suche nicht möglich: {exc.message} Nur gespeicherte Produkte verfügbar.",
-                }
-            return (
-                {**result, "local_products": local_products}
-                if local_products
-                else result
+            return cls._lookup_food_source(
+                nutrition, arguments, query, source, requested=source in named
             )
-        if arguments.get("barcode") or arguments.get("query"):
-            return nutrition.product_catalog.lookup_product(arguments)
-        return nutrition.food_database.lookup(arguments)
+        if not (arguments.get("barcode") or arguments.get("query")):
+            return nutrition.food_database.lookup(arguments)
+        result = nutrition.product_catalog.lookup_product(arguments)
+        local = result.get("local") is True
+        return {**result, "lookup_outcome": LOCAL_HIT if local else EXTERNAL_AFTER_MISS}
+
+    @staticmethod
+    def _lookup_food_source(
+        nutrition: NutritionMealLibraryService,
+        arguments: dict[str, Any],
+        query: str,
+        source: str,
+        *,
+        requested: bool,
+    ) -> dict[str, Any]:
+        """One provider's lookup, unless a saved product fits and the athlete's
+        own message does not name that provider (#3080)."""
+        local_products = nutrition.product_catalog.list_products(query=query)
+        fitting = [
+            product
+            for product in local_products
+            if names_the_food(
+                query, str(product.get("name") or ""), str(product.get("brand") or "")
+            )
+        ]
+        if fitting and not requested:
+            return {
+                "ok": True,
+                "foods": [],
+                "local_products": fitting,
+                "lookup_outcome": LOCAL_HIT,
+                "notice": SAVED_PRODUCT_NOTICE,
+            }
+        try:
+            result = nutrition.food_database.lookup(
+                {**arguments, "query": query, "source": source}
+            )
+        except AppError as exc:
+            # Saved matches stay usable whenever the external lookup fails.
+            if not local_products:
+                raise
+            result = {
+                "ok": True,
+                "foods": [],
+                "notice": f"Externe Suche nicht möglich: {exc.message} Nur gespeicherte Produkte verfügbar.",
+            }
+        result = {
+            **result,
+            "lookup_outcome": EXTERNAL_REQUESTED if requested else EXTERNAL_AFTER_MISS,
+        }
+        return (
+            {**result, "local_products": local_products} if local_products else result
+        )
 
     @staticmethod
     def _calculate_food(

@@ -215,6 +215,43 @@ class StructuredToolExecutionTests(unittest.TestCase):
             ),
         )
 
+    def test_only_the_athletes_own_message_names_a_food_provider(self) -> None:
+        # #3080: scripted turns; the model's copy of the argument is replaced.
+        self.tool_dispatch.execute.return_value = {"ok": True}
+        earlier = {"role": "user", "id": 1, "content": "Such das bei Yazio"}
+        for message, pending, expected in (
+            # An earlier, finished request does not carry over.
+            ("Trag 200 g Skyr ein", None, []),
+            ("Such den Skyr bei Yazio", None, ["yazio"]),
+            ("Nimm Open Food Facts oder die BLS", None, ["open_food_facts", "bls"]),
+            ("schau bei off nach", None, ["open_food_facts"]),
+            ("Offline ist ok", None, []),
+            # The answer to a clarification keeps the request it answers.
+            ("200 g", {"source_message_ids": [1]}, ["yazio"]),
+        ):
+            context = {
+                "current_user_message_id": 3,
+                "pending_request": pending,
+                "messages": [
+                    earlier,
+                    {"role": "assistant", "id": 2, "content": "Yazio?"},
+                    {"role": "user", "id": 3, "content": message},
+                ],
+            }
+            with self.subTest(message=message):
+                self.execute(
+                    "lookup_food",
+                    {"query": "Skyr", "_named_food_sources": ["yazio", "bls"]},
+                    context=context,
+                )
+                arguments = self.tool_dispatch.execute.call_args.args[1]
+                self.assertEqual(expected, arguments["_named_food_sources"])
+        # Other tools never get it.
+        self.execute("calculate_food_nutrition", {"items": []})
+        self.assertNotIn(
+            "_named_food_sources", self.tool_dispatch.execute.call_args.args[1]
+        )
+
     def test_food_lookups_do_not_hold_a_local_database_transaction(self) -> None:
         self.tool_dispatch.execute.side_effect = lambda *_args, **_kwargs: (
             self.assertFalse(self.database_manager.held) or {"ok": True}

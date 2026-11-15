@@ -8,12 +8,28 @@ from collections.abc import Callable, Collection
 from typing import Any
 
 from backend import observability
+from backend.coach.read_tools import LOOKUP_OUTCOMES
 from backend.db import coach_store
 
 _STATUSES = frozenset(
     {"queued", "running", "completed", "partial", "failed", "cancelled"}
 )
 _RESPONSE_STATUSES = _STATUSES | {"incomplete"}
+
+
+def _lookup_outcomes(result: dict[str, Any]) -> dict[str, int]:
+    """How each searched term of a food lookup step was answered (#3080): a
+    saved product, a provider after no saved product fitted, or a provider the
+    athlete named; counts only."""
+    groups = result.get("results")
+    found = [
+        group.get("lookup_outcome")
+        for group in (groups if isinstance(groups, list) else [result])
+        if isinstance(group, dict)
+    ]
+    return {
+        outcome: found.count(outcome) for outcome in LOOKUP_OUTCOMES if outcome in found
+    }
 
 
 class CoachDiagnosticHistoryService:
@@ -81,15 +97,15 @@ class CoachDiagnosticHistoryService:
                 result_value if isinstance(result_value, dict) else {}
             )
             tool = step.get("tool")
-            steps.append(
-                {
-                    "tool": tool
-                    if isinstance(tool, str) and tool in self._allowed_tools
-                    else "unknown",
-                    "ok": result.get("ok") is True,
-                    "error": self._error_metadata(step.get("diagnostic_error")),
-                }
-            )
+            entry = {
+                "tool": tool
+                if isinstance(tool, str) and tool in self._allowed_tools
+                else "unknown",
+                "ok": result.get("ok") is True,
+                "error": self._error_metadata(step.get("diagnostic_error")),
+            }
+            outcomes = _lookup_outcomes(result)
+            steps.append({**entry, "lookup_outcomes": outcomes} if outcomes else entry)
         return steps
 
     def _error_metadata(self, value: Any) -> dict[str, Any] | None:
