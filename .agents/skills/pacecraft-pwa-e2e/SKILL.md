@@ -9,9 +9,9 @@ description: Validate browser and PWA behavior with the isolated SQLCipher fixtu
 - Check the stamped asset versions and service-worker cache/assets served by the image (rebuild `$(python scripts/run_browser_tests.py --print-image)`); verify fresh installation and offline assets.
 - Keep screenshots, traces, and videos fixture-only; never expose authenticated storage state.
 - Capture them without editing a spec: `python scripts/run_browser_tests.py
-  --project <project> --spec e2e/<name>.spec.js --screenshots` saves each
-  selected test's full-page end state and prints the paths (#2843); run it once
-  per project (mobile, tablet-landscape, desktop).
+  --project all --spec e2e/<name>.spec.js --screenshots` saves each selected
+  test's full-page end state in every project that runs it (mobile and tablet
+  only `@responsive` tests) and prints the paths (#2843).
 - UI PR screenshots go to a public repository: they come from the browser
   fixture, and you look at each image for fixture-only content before committing.
   After the PR exists, commit them in a temporary worktree outside the checkout on

@@ -763,6 +763,23 @@ class BrowserRunnerTests(unittest.TestCase):
             )  # fmt: skip
             self.assertEqual(shots["E2E_SCREENSHOTS"], "1")
 
+    def test_screenshot_listing_names_only_playwright_end_states(self):
+        # #2843: a spec's own crops and the HTML report's copies are not listed.
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            artifacts = root / "desktop" / "a.spec.js-1" / "artifacts" / "a-test"
+            artifacts.mkdir(parents=True)
+            for name in ("test-finished-1.png", "test-failed-1.png", "crop.png"):
+                (artifacts / name).write_bytes(b"png")
+            (root / "desktop" / "report" / "data").mkdir(parents=True)
+            (root / "desktop" / "report" / "data" / "abc.png").write_bytes(b"png")
+            self.assertEqual(
+                [shot.name for shot in runner.screenshots(root)],
+                ["test-failed-1.png", "test-finished-1.png"],
+            )
+        with redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
+            runner.main(["--project", "desktop", "--list", "--screenshots"])
+
     def test_synthetic_identity_parity_across_all_projects_and_shards(self):
         listing_report = report()
         projects = {"desktop", "mobile", "tablet-landscape"}
