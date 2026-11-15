@@ -190,20 +190,36 @@ class PrMergeTests(unittest.TestCase):
         )
         self.assertEqual(code, 0)
         self.assertNotIn(["pr", "merge", "7", "--disable-auto"], writes)
-        # A person's comment, or a new unresolved thread (Gitar's findings), still disarms.
+        # A person's comment, a bot review requesting changes, or an unresolved
+        # thread (Gitar's findings, also past one page) still disarms.
         person = view(
             comments=[{"author": {"login": "athlete"}, "body": "wait"}], **armed
         )
-        for views, threads in (
-            ([view(), person], 0),
-            ([view(), view(**armed)], [0, 0, 1]),  # arming check, baseline, poll
+        blocking = view(
+            reviews=[{"author": {"login": "gitar-bot"}, "state": "CHANGES_REQUESTED"}],
+            **armed,
+        )
+        for views, threads, more in (
+            ([view(), person], 0, False),
+            ([view(), blocking], 0, False),
+            ([view(), view(**armed)], [0, 1], False),  # arming check, then the poll
         ):
-            with self.subTest(threads=threads):
+            with self.subTest(views=views[1], threads=threads):
                 code, _, writes, _ = run(
-                    self, 7, "--wait", 5, views=views, threads=threads
+                    self, 7, "--wait", 5, views=views, threads=threads, more=more
                 )
                 self.assertEqual(code, 1)
                 self.assertEqual(writes[-1], ["pr", "merge", "7", "--disable-auto"])
+        # A second page of threads during the wait also disarms (fail closed).
+        with mock.patch.object(
+            pr_merge, "unresolved_threads", side_effect=[([], False), ([], True)]
+        ):
+            code, _, writes, _ = run(
+                self, 7, "--wait", 5, views=[view(), view(**armed)]
+            )
+        self.assertEqual(
+            (code, writes[-1]), (1, ["pr", "merge", "7", "--disable-auto"])
+        )
 
 
 if __name__ == "__main__":
