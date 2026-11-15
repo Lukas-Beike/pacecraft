@@ -14,6 +14,24 @@ _STATUSES = frozenset(
     {"queued", "running", "completed", "partial", "failed", "cancelled"}
 )
 _RESPONSE_STATUSES = _STATUSES | {"incomplete"}
+# How each food lookup was answered (#3080): a saved product, a provider after
+# no saved product fitted, or a provider the athlete's message named.
+_LOOKUP_OUTCOMES = ("local_hit", "external_after_miss", "external_requested")
+
+
+def _lookup_outcomes(result: dict[str, Any]) -> dict[str, int]:
+    """Counts per lookup outcome of one step's result, one per searched term."""
+    groups = result.get("results")
+    found = [
+        group.get("lookup_outcome")
+        for group in (groups if isinstance(groups, list) else [result])
+        if isinstance(group, dict)
+    ]
+    return {
+        outcome: found.count(outcome)
+        for outcome in _LOOKUP_OUTCOMES
+        if outcome in found
+    }
 
 
 class CoachDiagnosticHistoryService:
@@ -81,15 +99,15 @@ class CoachDiagnosticHistoryService:
                 result_value if isinstance(result_value, dict) else {}
             )
             tool = step.get("tool")
-            steps.append(
-                {
-                    "tool": tool
-                    if isinstance(tool, str) and tool in self._allowed_tools
-                    else "unknown",
-                    "ok": result.get("ok") is True,
-                    "error": self._error_metadata(step.get("diagnostic_error")),
-                }
-            )
+            entry = {
+                "tool": tool
+                if isinstance(tool, str) and tool in self._allowed_tools
+                else "unknown",
+                "ok": result.get("ok") is True,
+                "error": self._error_metadata(step.get("diagnostic_error")),
+            }
+            outcomes = _lookup_outcomes(result)
+            steps.append({**entry, "lookup_outcomes": outcomes} if outcomes else entry)
         return steps
 
     def _error_metadata(self, value: Any) -> dict[str, Any] | None:

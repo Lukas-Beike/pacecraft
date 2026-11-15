@@ -256,6 +256,85 @@ class CoachReadToolServiceTests(unittest.TestCase):
                 "lookup_food", {"query": "Haferflocken", "source": "bls"}
             )
 
+    def test_a_fitting_saved_product_answers_before_any_provider(self) -> None:
+        # #3080, a scripted meal: the model names Open Food Facts for both terms.
+        meal_library = self.nutrition_meal_library
+        saved = {
+            "Skyr": [{"id": "own-skyr", "name": "Skyr Natur", "brand": "Hofmolkerei"}],
+            "Banane": [{"id": "own-bread", "name": "Bananenbrot"}],
+        }
+        meal_library.product_catalog.list_products.side_effect = lambda query: saved[
+            query
+        ]
+        meal_library.food_database.lookup.side_effect = lambda arguments: {
+            "ok": True,
+            "foods": [{"id": f"off:{arguments['query']}"}],
+        }
+        meal = {"queries": ["Skyr", "Banane"], "source": "open_food_facts"}
+
+        result = self.service.execute("lookup_food", meal)
+
+        skyr, banana = result["results"]
+        # Skyr Natur holds every query word: no provider call.
+        self.assertEqual(
+            (skyr["lookup_outcome"], skyr["foods"], skyr["local_products"]),
+            ("local_hit", [], saved["Skyr"]),
+        )
+        self.assertIn("nur gefragt, wenn der Athlet", skyr["notice"])
+        # Bananenbrot is not a banana: the provider is asked, the saved one stays.
+        self.assertEqual(banana["lookup_outcome"], "external_after_miss")
+        self.assertEqual(banana["foods"], [{"id": "off:Banane"}])
+        meal_library.food_database.lookup.assert_called_once_with(
+            {"query": "Banane", "source": "open_food_facts"}
+        )
+
+        # The athlete's own message named the provider: both terms ask it, and
+        # the server-set argument never reaches the provider.
+        meal_library.food_database.lookup.reset_mock()
+        named = self.service.execute(
+            "lookup_food", {**meal, "_named_food_sources": ["open_food_facts"]}
+        )
+        self.assertEqual(
+            ["external_requested"] * 2,
+            [group["lookup_outcome"] for group in named["results"]],
+        )
+        self.assertEqual(
+            [
+                {"query": "Skyr", "source": "open_food_facts"},
+                {"query": "Banane", "source": "open_food_facts"},
+            ],
+            [call.args[0] for call in meal_library.food_database.lookup.call_args_list],
+        )
+        # Naming another provider does not open this one.
+        meal_library.food_database.lookup.reset_mock()
+        other = self.service.execute(
+            "lookup_food",
+            {
+                "query": "Skyr",
+                "source": "open_food_facts",
+                "_named_food_sources": ["yazio"],
+            },
+        )
+        self.assertEqual("local_hit", other["lookup_outcome"])
+        meal_library.food_database.lookup.assert_not_called()
+
+    def test_lookup_without_source_labels_its_outcome(self) -> None:
+        catalog = self.nutrition_meal_library.product_catalog
+        for local, outcome in ((True, "local_hit"), (False, "external_after_miss")):
+            catalog.lookup_product.return_value = {
+                "ok": True,
+                "foods": [],
+                "local": local,
+            }
+            with self.subTest(local=local):
+                result = self.service.execute("lookup_food", {"query": "Skyr"})
+                self.assertEqual(outcome, result["lookup_outcome"])
+        # The no-source path never receives the server-set argument either.
+        self.service.execute(
+            "lookup_food", {"query": "Skyr", "_named_food_sources": []}
+        )
+        catalog.lookup_product.assert_called_with({"query": "Skyr"})
+
     def test_batched_queries_return_each_term_and_isolate_failures(self) -> None:
         meal_library = self.nutrition_meal_library
 

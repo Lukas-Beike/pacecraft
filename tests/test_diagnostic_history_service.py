@@ -44,7 +44,7 @@ class CoachDiagnosticHistoryServiceTests(unittest.TestCase):
             database=database,
             redact=redact,
             receipt_parser=command_receipt,
-            allowed_tools={"save_checkin", "sync_intervals"},
+            allowed_tools={"save_checkin", "sync_intervals", "lookup_food"},
         )
 
     def tearDown(self):
@@ -97,6 +97,21 @@ class CoachDiagnosticHistoryServiceTests(unittest.TestCase):
                         "tool": "attacker_tool",
                         "result": {"ok": False},
                     },
+                    {
+                        "tool": "lookup_food",
+                        "result": {
+                            "ok": True,
+                            "results": [
+                                {
+                                    "query": "private food",
+                                    "lookup_outcome": "local_hit",
+                                },
+                                {"lookup_outcome": "local_hit"},
+                                {"lookup_outcome": "external_requested"},
+                                {"lookup_outcome": "private_value"},
+                            ],
+                        },
+                    },
                 ],
             },
         )
@@ -128,9 +143,18 @@ class CoachDiagnosticHistoryServiceTests(unittest.TestCase):
             [
                 {"tool": "save_checkin", "ok": True, "error": {"reason": "[REDACTED]"}},
                 {"tool": "unknown", "ok": False, "error": None},
+                # #3080: counts per known lookup outcome only, never the terms.
+                {
+                    "tool": "lookup_food",
+                    "ok": True,
+                    "error": None,
+                    "lookup_outcomes": {"local_hit": 2, "external_requested": 1},
+                },
             ],
         )
         serialized = json.dumps(entry)
+        self.assertNotIn("private food", serialized)
+        self.assertNotIn("private_value", serialized)
         self.assertNotIn("private-token", serialized)
         self.assertNotIn("client_turn_id", entry)
         self.assertNotIn("receipt", entry)

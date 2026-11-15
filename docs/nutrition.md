@@ -108,7 +108,9 @@ is unreachable, or has reached its limit; a match in an earlier
 source prevents all external requests. Barcodes go through the mirror, Yazio
 and Open Food Facts. Without Yazio credentials, it stays with own products and
 BLS, with Open Food Facts only on explicit request; with Yazio, search terms without a source specification are therefore also sent to Yazio and Open Food Facts. The Coach can also name `yazio`
-as an explicit source.
+as an explicit source. When an own product holds every search word in its name
+or brand, the Coach uses it and asks no database, unless your own message
+names that database (for example "such das bei Yazio").
 
 Yazio matches carry the source "Yazio", values per 100 g or 100 ml and, where
 Yazio provides them, portion information. Like Open Food Facts matches, they are stored in the
