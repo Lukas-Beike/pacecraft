@@ -4,8 +4,11 @@ no network (#2629)."""
 import importlib.util
 import io
 import json
+import os
 import re
+import subprocess
 import sys
+import tempfile
 import unittest
 from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
@@ -166,19 +169,154 @@ class GuardHookTests(unittest.TestCase):
             with self.subTest(command):
                 self.assertEqual(self.decide(command), 2)
 
-    def test_the_whole_scripts_tree_is_compared_with_develop(self):
-        # A committed shadowing module (scripts/json.py) must also block.
+    def test_the_run_is_compared_with_develop_by_content(self):
         calls = []
 
         def fake(args, **_kwargs):
             calls.append(args)
-            return mock.Mock(returncode=0, stdout="")
+            return mock.Mock(returncode=0, stdout="blob\n")
 
-        with mock.patch.object(guard.subprocess, "run", side_effect=fake):
+        with (
+            mock.patch.object(guard.subprocess, "run", side_effect=fake),
+            mock.patch.object(guard.os, "listdir", return_value=["gh_cli.py"]),
+        ):
             self.assertTrue(guard.unchanged())
+        script = "scripts/resolve_review_thread.py"
+        self.assertIn(["git", "hash-object", "--no-filters", "--", script], calls)
         self.assertIn(
-            ["git", "diff", "--quiet", "origin/develop", "--", "scripts"], calls
+            [
+                "git",
+                "--no-replace-objects",
+                "rev-parse",
+                "--verify",
+                "--quiet",
+                f"refs/remotes/origin/develop:{script}",
+            ],
+            calls,
         )
+        # The script imports no local module, so cached bytecode cannot stand in.
+        self.assertEqual(guard.run_modules(), {"resolve_review_thread"})
+
+    def test_a_differing_or_missing_run_file_blocks(self):
+        for here, there in (("a\n", "b\n"), ("a\n", None), (None, "a\n")):
+
+            def fake(args, here=here, there=there, **_kwargs):
+                value = here if args[1] == "hash-object" else there
+                return mock.Mock(returncode=0 if value else 1, stdout=value or "")
+
+            with self.subTest(here=here, there=there), mock.patch.object(
+                guard.subprocess, "run", side_effect=fake
+            ):
+                self.assertFalse(guard.unchanged())
+
+    def test_only_entries_that_could_be_imported_by_the_run_block(self):
+        """#3072: shadowing entries of any kind block; other scripts do not."""
+        for entries, allowed in (
+            (["ui_walk.mjs", "hooks", "__pycache__", "gh_cli.py", "new_tool.py"], True),
+            (["json.py"], False),
+            (["re.pyc"], False),
+            (["json"], False),  # a package directory, nested repository or gitlink
+            (["json/"], False),
+            (["sitecustomize.py"], False),
+            (["resolve_review_thread"], False),
+            (["resolve_review_thread.pyc"], False),
+            (["ui_walk.mjs", "argparse"], False),
+            # A case-insensitive file system resolves these to the same module.
+            (["JSON.py"], False),
+            (["SiteCustomize.py"], False),
+            (["Resolve_Review_Thread.pyc"], False),
+        ):
+            with (
+                self.subTest(entries=entries),
+                mock.patch.object(guard, "same_as_develop", return_value=True),
+                mock.patch.object(guard.os, "listdir", return_value=entries),
+            ):
+                self.assertEqual(guard.unchanged(), allowed)
+
+    def test_a_nested_repository_named_like_a_standard_module_blocks(self):
+        with tempfile.TemporaryDirectory() as directory:
+            scripts = Path(directory) / "scripts"
+            (scripts / "json").mkdir(parents=True)
+            (scripts / "json" / ".git").write_text("gitdir: elsewhere\n", encoding="utf-8")
+            (scripts / "ui_walk.mjs").write_text("", encoding="utf-8")
+            with (
+                mock.patch.object(guard, "SCRIPTS", scripts),
+                mock.patch.object(guard, "run_modules", return_value={guard.RUN}),
+                mock.patch.object(guard, "same_as_develop", return_value=True),
+            ):
+                self.assertFalse(guard.unchanged())
+                (scripts / "json" / ".git").unlink()
+                (scripts / "json").rmdir()
+                self.assertTrue(guard.unchanged())
+
+    def test_the_repository_scripts_hold_no_shadowing_entry(self):
+        entries = os.listdir(ROOT / "scripts")
+        self.assertEqual(
+            [entry for entry in entries if guard.shadows(entry, {guard.RUN})], []
+        )
+
+    def test_the_run_file_is_compared_by_its_raw_bytes(self):
+        """An attribute that converts the working copy must not make it match."""
+        git = [
+            "git",
+            "-c",
+            "user.name=t",
+            "-c",
+            "user.email=t@example.invalid",
+            "-c",
+            "core.autocrlf=false",
+        ]
+        run_file = guard.SCRIPTS / f"{guard.RUN}.py"
+        # The developer's global and system git config (signing, hooks) stay out.
+        with (
+            tempfile.TemporaryDirectory() as directory,
+            mock.patch.dict(
+                os.environ, {"GIT_CONFIG_GLOBAL": os.devnull, "GIT_CONFIG_NOSYSTEM": "1"}
+            ),
+        ):
+            repo = Path(directory)
+            script = repo / run_file
+            script.parent.mkdir()
+            script.write_bytes(b"print('ok')\n")
+            for command in (
+                ["init", "-q"],
+                ["add", "."],
+                ["commit", "-qm", "base"],
+                ["update-ref", "refs/remotes/origin/develop", "HEAD"],
+            ):
+                subprocess.run([*git, *command], cwd=repo, check=True)
+            previous = os.getcwd()
+            os.chdir(repo)
+            try:
+                self.assertTrue(guard.same_as_develop(run_file))
+                (repo / ".gitattributes").write_bytes(
+                    b"*.py working-tree-encoding=UTF-16\n"
+                )
+                script.write_bytes("print('ok')\n".encode("utf-16"))
+                self.assertFalse(guard.same_as_develop(run_file))
+            finally:
+                os.chdir(previous)
+
+    def test_cached_bytecode_of_a_local_module_blocks(self):
+        run = {"resolve_review_thread", "helper"}
+        with (
+            mock.patch.object(guard, "run_modules", return_value=run),
+            mock.patch.object(guard, "same_as_develop", return_value=True),
+            mock.patch.object(guard.Path, "is_dir", return_value=True),
+            mock.patch.object(
+                guard.os,
+                "listdir",
+                side_effect=[["helper.py"], ["helper.cpython-314.pyc"]],
+            ),
+        ):
+            self.assertFalse(guard.unchanged())
+
+    def test_a_listing_failure_blocks(self):
+        with (
+            mock.patch.object(guard, "same_as_develop", return_value=True),
+            mock.patch.object(guard.os, "listdir", side_effect=OSError),
+        ):
+            self.assertFalse(guard.unchanged())
 
 
 if __name__ == "__main__":
