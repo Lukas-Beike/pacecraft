@@ -52,6 +52,8 @@ class DatabaseBackupService:
         self._logger = logger
         # Records the newest backup for the diagnostics (#2996); None records none.
         self._key_values = key_values
+        # Time and size of the snapshot the last stream_file created.
+        self._streamed: tuple[str, int] | None = None
 
     def checkpoint(self) -> None:
         """Checkpoint before restore swaps the active database file."""
@@ -207,22 +209,24 @@ class DatabaseBackupService:
         """
         deadline = self._config.monotonic() + self._config.time_limit_seconds
         snapshot = self._snapshot(deadline)
+        self._streamed = (datetime.now(UTC).isoformat(), snapshot.stat().st_size)
         try:
-            size = snapshot.stat().st_size
             yield snapshot
-            # Sent in full: the athlete now holds this backup, which passed the
-            # integrity and foreign key checks (an unchecked one is never sent,
-            # so the record stays the newest good backup).
-            self._record(size)
         finally:
             snapshot.unlink(missing_ok=True)
 
-    def _record(self, size: int) -> None:
-        """Store the newest backup's time, size and check; never fails the backup."""
-        if self._key_values is None:
+    def record_delivered(self) -> None:
+        """Store the streamed backup as the newest one; never fails the backup.
+
+        Called once the athlete received it in full. It passed the integrity
+        and foreign key checks (an unchecked snapshot is never sent), and its
+        time is when the snapshot was taken, not when sending ended.
+        """
+        if self._key_values is None or self._streamed is None:
             return
+        at, size = self._streamed
         value = {
-            "at": datetime.now(UTC).isoformat(),
+            "at": at,
             "bytes": size,
             "verified": True,
         }
@@ -249,13 +253,13 @@ def backup_summary(
     """
     try:
         stored = json.loads(key_values.get(db, LAST_BACKUP_KEY) or "null")
-        at = datetime.fromisoformat(str(stored["at"]))
+        age = (now - datetime.fromisoformat(str(stored["at"]))).total_seconds()
     except TypeError, ValueError, KeyError:
         return {"known": False}
     size = stored.get("bytes")
     return {
         "known": True,
-        "age_hours": round((now - at).total_seconds() / 3600, 1),
+        "age_hours": round(age / 3600, 1),
         "bytes": size if isinstance(size, int) and not isinstance(size, bool) else None,
         "verified": stored.get("verified") is True,
     }

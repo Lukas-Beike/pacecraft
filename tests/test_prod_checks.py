@@ -221,6 +221,14 @@ class ProdChecksTests(unittest.TestCase):
                 "FAIL",
             ),
             "unknown": ({"backup": prod_diagnostics.backup_state(None)}, "FAIL"),
+            "future": (
+                {
+                    "backup": prod_diagnostics.backup_state(
+                        fresh["backup"] | {"age_hours": -2}
+                    )
+                },
+                "FAIL",
+            ),
         }
         for name, (case, state) in checks.items():
             with self.subTest(backup=name):

@@ -387,8 +387,8 @@ class RequestHandler(BaseHTTPRequestHandler):
         filename: str,
         *,
         cleanup: bool = False,
-    ) -> None:
-        self.dependencies.response_transport.send_file_stream(
+    ) -> bool:
+        return self.dependencies.response_transport.send_file_stream(
             self,
             path,
             content_type,

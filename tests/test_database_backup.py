@@ -156,13 +156,14 @@ class DatabaseBackupServiceTests(unittest.TestCase):
         later = datetime.now(UTC) + timedelta(hours=3)
         with self.manager.read_snapshot() as db:
             self.assertEqual(backup_summary(key_values, db, later), {"known": False})
-        # A stream that fails while sending records nothing.
-        with self.assertRaises(OSError), service.stream_file():
-            raise OSError("connection reset")
+        # A stream the athlete did not receive in full records nothing.
+        with service.stream_file():
+            pass
         with self.manager.read_snapshot() as db:
             self.assertEqual(backup_summary(key_values, db, later), {"known": False})
         with service.stream_file() as path:
             size = path.stat().st_size
+            service.record_delivered()
         with self.manager.read_snapshot() as db:
             summary = backup_summary(key_values, db, later)
         self.assertEqual(
@@ -172,6 +173,12 @@ class DatabaseBackupServiceTests(unittest.TestCase):
         self.assertAlmostEqual(summary["age_hours"], 3.0, delta=0.1)
         self.assertNotIn(str(self.root), str(summary))
         self.assertNotIn("backup", " ".join(map(str, summary.values())))
+        # A record time ahead of now gives a negative age, never a fresh one.
+        with self.manager.read_snapshot() as db:
+            earlier = backup_summary(
+                key_values, db, datetime.now(UTC) - timedelta(hours=1)
+            )
+        self.assertLess(earlier["age_hours"], 0)
 
     def test_backup_with_a_foreign_key_orphan_fails_and_is_logged(self) -> None:
         with self.manager.unit_of_work() as db:

@@ -405,14 +405,15 @@ def backup_line(result: dict[str, Any], max_hours: float | None) -> tuple[str, s
     state = result.get("backup") or {"known": False}
     age = state.get("age_hours")
     text = (
-        f"backup {age} h old, {state.get('bytes')} bytes, verified {state['verified']}"
+        f"backup {age} h old, {state.get('bytes')} bytes, verified {state.get('verified') is True}"
         if state.get("known") and age is not None
         else "backup unknown"
     )
     if max_hours is None:
         return ("info", text)
-    ok = bool(state.get("known") and state.get("verified")) and (
-        age is not None and age < max_hours
+    # A future record time (a clock that jumped back) never counts as fresh.
+    ok = bool(state.get("known") and state.get("verified") is True) and (
+        age is not None and 0 <= age < max_hours
     )
     return mark(ok, f"{text} (needs under {max_hours:g} h, verified)")
 
