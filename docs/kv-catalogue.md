@@ -16,7 +16,7 @@ read. A new key needs no entry: it appears here when its write is added.
   `profile` is only set when absent.
 
 <!-- BEGIN GENERATED KEYS -->
-89 keys and 22 key patterns; `<value>` stands for a value the code computes.
+90 keys and 22 key patterns; `<value>` stands for a value the code computes.
 
 | Key | Written by | Deleted by | Export | Reset at start | Purge |
 | --- | --- | --- | --- | --- | --- |
@@ -55,6 +55,7 @@ read. A new key needs no entry: it appears here when its write is added.
 | `garmin_app_workout_cleanup` | backend/sync/garmin_strength_push.py:GarminStrengthPushService._save_cleanup | - | yes | - | - |
 | `garmin_capability_<value>` | backend/sync/garmin.py:GarminSyncStateService.record_capability_failure | backend/providers/garmin_capability.py:clear_capability_state | yes | - | - |
 | `garmin_capability_wellness_backfill_<value>` | backend/sync/garmin.py:GarminSyncStateService.record_capability_success | backend/providers/garmin_capability.py:clear_capability_state | yes | - | - |
+| `garmin_detail_fallback` | backend/sync/garmin_activity_details.py:GarminActivityDetailService._count_fallback | - | yes | - | - |
 | `garmin_equipment_initialized` | backend/athlete/equipment.py:EquipmentService.sync_garmin_snapshot | - | yes | - | - |
 | `garmin_full_resync_running` | backend/sync/state.py:settle_interrupted_sync_state | - | no | - | - |
 | `garmin_full_resync_status` | backend/sync/state.py:settle_interrupted_sync_state | - | no | - | - |
