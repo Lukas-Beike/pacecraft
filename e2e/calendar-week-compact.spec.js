@@ -92,10 +92,11 @@ test("@responsive opening a single calendar entry and a grouped row shows their 
   await setEntryOpen(entry, false);
   await entry.locator(":scope > summary").click();
   await expect(entry).toHaveAttribute("open", "");
-  // The detail pane sits level with its card, not at the top of the calendar.
+  // The detail pane starts level with the week card, not with its own card (#3156).
   if (page.viewportSize().width >= 1100 && await entry.evaluate((element) => element.classList.contains("planned-entry"))) {
-    const [card, pane] = [await entry.boundingBox(), await entry.locator(":scope > .planned-entry-details").boundingBox()];
-    expect(Math.abs(pane.y - card.y)).toBeLessThan(2);
+    await page.evaluate(() => window.scrollTo(0, 0));
+    const pane = entry.locator(":scope > .planned-entry-details");
+    await expect.poll(async () => Math.round((await pane.boundingBox()).y - (await page.locator(".planned-week").boundingBox()).y)).toBe(0);
   }
   const group = page.locator(".planned-group").first();
   if (await group.count()) {
@@ -108,6 +109,54 @@ test("@responsive opening a single calendar entry and a grouped row shows their 
     await items.first().locator(":scope > summary").click();
     await expect(items.first().locator(".planned-entry-details")).toBeVisible();
   }
+});
+
+test("the desktop detail pane starts at the top of the week for its top and bottom unit and stays in view", async ({ page, request }, testInfo) => {
+  // #3156 (athlete, option A): a low unit no longer pulls the pane down below an empty area.
+  test.skip(testInfo.project.name !== "desktop", "the detail pane is the wide layout only");
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await openCalendar(page, request);
+  await page.evaluate(() => {
+    const today = timezoneDateKey(state.data?.profile?.timezone, new Date());
+    const monday = new Date(`${today}T12:00:00`);
+    monday.setDate(monday.getDate() - ((monday.getDay() + 6) % 7));
+    const day = (offset) => {
+      const date = new Date(monday);
+      date.setDate(monday.getDate() + offset);
+      return date.toISOString().slice(0, 10);
+    };
+    state.data.training_calendar = [
+      ["u-top", 0, "Synthetic top unit", "Run"], ["u-2", 1, "Synthetic strength", "WeightTraining"],
+      ["u-3", 2, "Synthetic ride", "Ride"], ["u-4", 3, "Synthetic intervals", "Run"],
+      ["u-5", 5, "Synthetic long ride", "Ride"], ["u-bottom", 6, "Synthetic bottom unit", "Run"],
+    ].map(([id, offset, name, type]) => ({ id, local_id: id, date: day(offset), name, type, duration_minutes: 60 }));
+    renderPlanned(state.data.training_calendar);
+  });
+  const week = page.locator(".planned-week");
+  for (const name of ["Synthetic top unit", "Synthetic bottom unit"]) {
+    const card = page.locator(".planned-entry").filter({ hasText: name }).first();
+    await page.evaluate(() => {
+      document.querySelectorAll(".planned-entry[open]").forEach((element) => { element.open = false; });
+      window.scrollTo(0, 0);
+    });
+    await setEntryOpen(card, true);
+    const pane = card.locator(":scope > .planned-entry-details");
+    await expect(pane).toBeVisible();
+    // Opening by click may scroll the card into view; at the page's top the pane starts with the week.
+    await page.evaluate(() => window.scrollTo(0, 0));
+    // The pane sits beside the week, level with its top; the chosen unit stays highlighted on the left.
+    await expect.poll(async () => Math.round((await pane.boundingBox()).y - (await week.boundingBox()).y)).toBe(0);
+    expect((await pane.boundingBox()).x).toBeGreaterThan((await week.boundingBox()).x + (await week.boundingBox()).width);
+    expect(await card.evaluate((element) => getComputedStyle(element).borderTopStyle)).toBe("solid");
+  }
+  // Scrolled down, the pane stays in view near the window's top, but not below the week's end.
+  await page.setViewportSize({ width: 1280, height: 600 });
+  await page.evaluate(() => window.scrollTo(0, document.querySelector(".planned-week").getBoundingClientRect().top + window.scrollY + 200));
+  const pane = page.locator(".planned-entry[open] > .planned-entry-details");
+  await expect.poll(async () => Math.round((await pane.boundingBox()).y)).toBe(24);
+  await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+  const [paneBox, weekBox] = [await pane.boundingBox(), await week.boundingBox()];
+  expect(paneBox.y + paneBox.height).toBeLessThanOrEqual(weekBox.y + weekBox.height + 1);
 });
 
 test("extra activities show no Zusätzlich badge in a week without a plan", async ({ page, request }) => {
