@@ -190,6 +190,8 @@ class Evidence:
                 else "focused",
                 # How --project changed chose the project (#2759), or None.
                 "chosen_by": getattr(args, "chosen_by", None),
+                # Full-page captures lengthen every test: not comparable timings.
+                "screenshots": getattr(args, "screenshots", False),
             },
             "resources": {"jobs": args.jobs, "playwright_workers": 1, "ports": []},
             "phases": {},
@@ -1061,6 +1063,8 @@ class Execution:
             if prepared
             else str(output / "report"),
         }
+        if self.args.screenshots:
+            settings["E2E_SCREENSHOTS"] = "1"  # playwright.config.cjs reads it
         # Playwright's file filter is a regex; escape/anchor the selected whole file.
         arguments = [
             "test",
@@ -1317,6 +1321,12 @@ def parser():
         "(exit stays non-zero); infrastructure errors still stop the run",
     )
     result.add_argument(
+        "--screenshots",
+        action="store_true",
+        help="save a full-page screenshot of every selected test's end state and "
+        "print the paths (UI PR images; #2843)",
+    )
+    result.add_argument(
         "--image",
         default=worktree_image_tag(ROOT),
         help="already-built current-source app image (default: one tag per checkout)",
@@ -1408,6 +1418,17 @@ def changed_project(base, root=ROOT):
     return "desktop", f"no UI path among {len(paths)} changed paths"
 
 
+def screenshots(directory):
+    """Playwright's own end-state images of a run (#2843), not a spec's crops
+    or the HTML report's copies."""
+    return sorted(
+        shot
+        for pattern in ("test-finished-*.png", "test-failed-*.png")
+        for shot in directory.rglob(pattern)
+        if "artifacts" in shot.parts
+    )
+
+
 def main(argv=None):
     args = parser().parse_args(argv)
     if args.print_image:
@@ -1419,6 +1440,8 @@ def main(argv=None):
         return 0
     if not args.project:
         parser().error("--project is required")
+    if args.screenshots and args.list:
+        parser().error("--screenshots needs a run; --list runs no test")
     if args.base and args.project != "changed":
         parser().error("--base applies only to --project changed")
     args.chosen_by = None
@@ -1640,6 +1663,9 @@ def main(argv=None):
                 child.get("elapsed_seconds", 0) for child in evidence.data["children"]
             ),
         )
+        if args.screenshots:  # also what finished before a failure
+            for shot in screenshots(directory):
+                print("Screenshot: " + str(shot), file=sys.stderr)
     return code
 
 
