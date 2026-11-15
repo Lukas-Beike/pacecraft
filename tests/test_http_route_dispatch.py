@@ -103,7 +103,7 @@ class RequestHandlerRouteOrderTests(unittest.TestCase):
                     make("POST", "/api/ungated", Access.SESSION_CSRF, gated=False),
                     make("POST", "/api/gated", Access.SESSION_CSRF),
                     make("PUT", "/api/put", Access.SESSION_CSRF),
-                    make("GET", "/api/heavy", Access.SESSION, heavy=True),
+                    make("GET", "/api/performance", Access.SESSION, heavy=True),
                     make("GET", "/api/light", Access.SESSION),
                 ]
             ),
@@ -142,8 +142,8 @@ class RequestHandlerRouteOrderTests(unittest.TestCase):
             # A heavy view read runs alone, after authentication (#3029).
             (
                 "GET",
-                "/api/heavy",
-                ["auth", "read gate", "route /api/heavy", "read gate end"],
+                "/api/performance",
+                ["auth", "read gate", "route /api/performance", "read gate end"],
             ),
             ("GET", "/api/light", ["auth", "route /api/light"]),
         ):

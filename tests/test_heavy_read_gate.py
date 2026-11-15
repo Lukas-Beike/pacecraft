@@ -11,17 +11,15 @@ from typing import Any
 from unittest.mock import Mock
 
 from backend.http_api.handler import RequestHandler
-from backend.http_api.route_table import Access, Route, RouteTable
+from backend.http_api.route_table import (
+    HEAVY_READ_ROUTES,
+    Access,
+    Route,
+    RouteTable,
+)
 from backend.runtime.heavy_reads import HeavyReadGate
 
 ROOT = Path(__file__).resolve().parents[1]
-HEAVY_ROUTES = {
-    "/api/activities",
-    "/api/analysis/power-profiles",
-    "/api/analysis/training-records",
-    "/api/context-preview",
-    "/api/performance",
-}
 
 
 class HeavyReadGateTests(unittest.TestCase):
@@ -74,7 +72,10 @@ class HeavyReadGateTests(unittest.TestCase):
         summary = gate.summary()
         self.assertEqual(summary["timeouts"], 1)
         self.assertGreaterEqual(summary["longest_wait_s"], 0.04)
-        self.assertEqual(set(summary), {"waits_over_1s", "timeouts", "longest_wait_s"})
+        self.assertEqual(
+            set(summary), {"waits", "waits_over_1s", "timeouts", "longest_wait_s"}
+        )
+        self.assertEqual(summary["waits"], 1)
 
     def test_a_failing_read_releases_the_gate(self) -> None:
         gate = HeavyReadGate(wait_s=0.05)
@@ -91,7 +92,7 @@ class HeavyReadGateTests(unittest.TestCase):
             with self.subTest(error=error.__name__):
                 gate = HeavyReadGate(wait_s=0.05)
                 handler: Any = RequestHandler.__new__(RequestHandler)
-                handler.path = "/api/heavy"
+                handler.path = "/api/performance"
                 auth = Mock(require_auth=Mock(return_value={}))
 
                 def send(*_: Any, error: type[OSError] = error) -> None:
@@ -100,12 +101,37 @@ class HeavyReadGateTests(unittest.TestCase):
                 handler.dependencies = SimpleNamespace(
                     session_auth_service=lambda auth=auth: auth,
                     route_table=RouteTable(
-                        [Route("GET", "/api/heavy", Access.SESSION, send, heavy=True)]
+                        [
+                            Route(
+                                "GET",
+                                "/api/performance",
+                                Access.SESSION,
+                                send,
+                                heavy=True,
+                            )
+                        ]
                     ),
                     heavy_read_gate=gate,
                 )
+                # A client that hung up while the read waited fails on sending.
+                inside, release = threading.Event(), threading.Event()
+
+                def holder(
+                    gate: HeavyReadGate = gate,
+                    inside: threading.Event = inside,
+                    release: threading.Event = release,
+                ) -> None:
+                    with gate.held():
+                        inside.set()
+                        release.wait(5)
+
+                first = threading.Thread(target=holder)
+                first.start()
+                inside.wait(5)
+                threading.Timer(0.02, release.set).start()
                 with self.assertRaises(error):
-                    handler._get("/api/heavy")
+                    handler._get("/api/performance")
+                first.join(5)
                 with gate.held():
                     pass
                 self.assertEqual(gate.summary()["timeouts"], 0)
@@ -126,10 +152,18 @@ class HeavyReadGateTests(unittest.TestCase):
                     method, route = (ast.literal_eval(arg) for arg in node.args[:2])
                     self.assertEqual(method, "GET", path.name)
                     heavy.add(route)
-        self.assertEqual(heavy, HEAVY_ROUTES)
-        # Only a GET route can be heavy: a POST would silently skip the gate.
-        with self.assertRaises(ValueError):
-            Route("POST", "/api/x", Access.SESSION_CSRF, lambda *_: None, heavy=True)
+        self.assertEqual(heavy, HEAVY_READ_ROUTES)
+        # Joining or leaving the list is a decision: any mismatch is refused.
+        for method, route, flag in (
+            ("POST", "/api/performance", True),
+            ("GET", "/api/unlisted", True),
+            ("GET", "/api/performance", False),
+        ):
+            with (
+                self.subTest(method=method, route=route),
+                self.assertRaises(ValueError),
+            ):
+                Route(method, route, Access.SESSION, lambda *_: None, heavy=flag)
 
 
 if __name__ == "__main__":
