@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+from collections.abc import Callable
 from datetime import date
 from typing import Any
 
@@ -18,6 +19,7 @@ from backend.providers.garmin_fields import (
 from backend.providers.garmin_training_mapping import (
     history_rows,
     morning_readiness_records,
+    readiness_day,
 )
 
 GARMIN_SOURCE = "Garmin Connect"
@@ -97,11 +99,17 @@ def _scalar_fields(record: dict[str, Any]) -> dict[str, float]:
     return fields
 
 
-def metric_points(value: Any, *, start: date, end: date) -> list[dict[str, Any]]:
+def metric_points(
+    value: Any,
+    *,
+    start: date,
+    end: date,
+    day_of: Callable[[dict[str, Any]], date | None] = _observed,
+) -> list[dict[str, Any]]:
     """Return dated numeric fields without assigning unknown Garmin units."""
     points: dict[str, dict[str, Any]] = {}
     for record in _records(value):
-        observed = _observed(record)
+        observed = day_of(record)
         if observed is None or not start <= observed <= end:
             continue
         fields = _scalar_fields(record)
@@ -124,10 +132,13 @@ def projected_metric(
     metric: str,
     synced_at: Any,
 ) -> dict[str, Any]:
+    day_of = _observed
     if metric == "training_readiness_history":
-        # One reading per day, the morning one, as the canonical mapper keeps.
+        # One reading per day, the morning one, on the day the canonical mapper
+        # gives it (#2884).
         value = morning_readiness_records(history_rows(value))
-    points = metric_points(value, start=start, end=end)
+        day_of = readiness_day
+    points = metric_points(value, start=start, end=end, day_of=day_of)
     if metric == "training_readiness_history":
         _readiness_values(points)
     elif metric == "weekly_training_status":

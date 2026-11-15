@@ -208,6 +208,7 @@ from backend.providers.garmin_training_mapping import (
     TrainingValue,
     endurance_group_values,
     morning_readiness,
+    readiness_day,
     training_values,
     unresolved_device_record,
 )
@@ -243,7 +244,10 @@ from backend.providers.garmin_weight_walk import (
 # Version 24: a re-projection keeps the live ingest's value of a natural key two
 # sections share (the later retrieval, then the outranking section), so rows an
 # earlier re-projection flipped to the history section's value are repaired (#2782).
-MAPPER_VERSION: Final = 24
+# Version 25: a day's readiness reading counts as scored only when its score is
+# kept, and every reader dates the chosen reading and its level by the day the
+# choice used, so a valid reading is no longer hidden or dropped (#2884).
+MAPPER_VERSION: Final = 25
 GARMIN_LABEL: Final = "Garmin Connect"
 
 _DATE_FIELD: Final = "calendarDate"
@@ -1300,6 +1304,8 @@ class _HealthMapping:
             self._map_body_battery_levels(payload)
         elif name == _MAX_METRICS:
             self._map_max_metrics(payload)
+        elif name == _READINESS:
+            self._map_readiness(payload)
         else:
             self._map_grouped(name, payload, _GROUPED_SECTIONS[name])
 
@@ -1322,13 +1328,27 @@ class _HealthMapping:
                 else:
                     self._map_group(_MAX_METRICS, record, group, ref, day, index=index)
 
+    def _map_readiness(self, payload: object) -> None:
+        """Map each day's morning reading on the day the choice gave it (#2884).
+
+        The choice dates a reading by ``readiness_day`` (``calendarDate`` first, a
+        timestamp-shaped one by its day), so the reading it keeps is never dropped
+        afterwards; an undated reading is reported as before.
+        """
+        rows = morning_readiness(self._records(_READINESS, payload), itemgetter(1))
+        for ref, record, index in rows:
+            day = readiness_day(record)
+            if day is None:
+                self.issue(ref, _DATE_FIELD, IssueReason.MISSING)
+                continue
+            for group in _GROUPED_SECTIONS[_READINESS]:
+                self._map_group(_READINESS, record, group, ref, day, index=index)
+
     def _map_grouped(
         self, name: str, payload: object, groups: tuple[_Group, ...]
     ) -> None:
         section_date_keys = _SECTION_DATE_KEYS.get(name, (_DATE_FIELD,))
         rows = self._records(name, payload)
-        if name == _READINESS:
-            rows = morning_readiness(rows, itemgetter(1))
         for ref, record, index in rows:
             date_keys, record_groups = section_date_keys, groups
             if name == _DAILY_STATS:
