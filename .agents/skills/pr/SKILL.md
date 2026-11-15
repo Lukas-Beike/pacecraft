@@ -16,7 +16,8 @@ Copy this checklist into your response and tick it as you go:
 ```text
 - [ ] 1 Prepare: committed by path, rebased, run-tests-changed, OpenSpec and spec drift, Sonar
 - [ ] 2 Review: one fresh review of the final head, its SHA in the PR body; findings fixed
-      or listed; Sonar again if the fixes changed the head
+      or listed; Sonar again if the fixes changed the head; a guard or hook change
+      also gets the adversarial bypass review, its cases tested
 - [ ] 3 Publish: pushed with hooks; PR with merge danger, line balance and Part of/Closes;
       open PRs checked against a new guard; auto-merge once Gitar reviewed and no feedback is open
 - [ ] 4 Monitor: merged per pr-state; threads handled; develop runs checked; unwatched
@@ -100,6 +101,17 @@ scale and let it report every finding REVIEW.md allows with its priority, then
 act only on P0-P2 findings and real security gaps, and list the unfixed P3s in
 one summary line; guidelines may have exceptions, and hypothetical edge cases
 in prose are not findings.
+
+A change to a guard, a hook, or the checks they run (`scripts/hooks/`,
+`.githooks/`, `.claude/settings.json` hooks, an architecture or quality guard)
+also gets one adversarial bypass review before the PR (#3102).
+- Run it in a fresh-context subagent. Brief it only with the diff, the guard's
+  purpose, and that nothing it guarded may pass afterwards.
+- Ask for concrete inputs or commands the change wrongly allows or fails open
+  on, each with an expected result, and for the attacks it ruled out.
+- Add every valid case as a test before the PR.
+- Report the result to whoever asked for the change. In the public PR text,
+  describe it neutrally ("tighten detection"), never as a step-by-step bypass.
 
 Fix valid findings with new commits and rerun the affected checks, then push. A
 finding you consider invalid needs concrete evidence (file and line, or the

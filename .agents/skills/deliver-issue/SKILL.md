@@ -156,7 +156,9 @@ implementation, spec updates, and archive together with Conventional Commits.
 ## 4. PR through verified merge
 
 Run [pr](../pr/SKILL.md) from the task worktree. It owns rebase, review, CI repairs,
-auto-merge, and merge verification. If PR
+auto-merge, and merge verification. For a guard or hook change, plan for the
+adversarial bypass review in its step 2: its cases become tests before the PR,
+not Gitar rounds after it (#3102). If PR
 feedback changes behavior, update the affected main specs in the same branch.
 An open PR or enabled auto-merge is not delivery; report success only after a
 verified merge.
