@@ -281,6 +281,7 @@ every named number the code fixes. A test fails when it is out of date.
 | `RACE_START_MIN_KM` | `1.0` | `backend/performance/session_report.py` | The shortest start a race is judged by, in km. |
 | `RACE_FINISH_PCT` | `2.0` | `backend/performance/session_report.py` | Finish slower than the competition's target time by this much. |
 | `RACE_DISTANCE_SHARE` | `0.1` | `backend/performance/session_report.py` | The recorded distance may differ this much from the plan's (GPS, course). |
+| `WALK_OFF_SPEED_SHARE` | `0.6` | `backend/performance/session_report.py` | A final stretch slower than this share of the race's median speed is a walk or roll-out after the line, not the race. |
 | `LEAD_COUNT` | `4` | `backend/performance/session_report.py` | The notable checks the answer leads with. |
 | `EASY_FOCUS` | `frozenset({'recovery', 'easy', 'endurance', 'long'})` | `backend/performance/session_report.py` |  |
 | `INTERVAL_FOCUS` | `frozenset({'tempo', 'threshold', 'vo2max', 'anaerobic', 'sweet_spot', 'test'})` | `backend/performance/session_report.py` |  |

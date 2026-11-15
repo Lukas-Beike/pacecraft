@@ -574,6 +574,33 @@ class RacePlanTests(unittest.TestCase):
         self.assertEqual("notable", slower["race_finish"]["verdict"])
         self.assertEqual("ok", slower["race_fade"]["verdict"])
 
+    def test_a_gps_long_recording_is_scaled_not_cut(self) -> None:
+        # 10 km raced at 309 s/km, recorded 1.5 % long (10.15 km): the line is
+        # the recording's end, 3090 s, 3.0 % over the 50:00 target.
+        plan = race_plan(
+            {"id": "c5", "sport": "run", "distance": 10000, "target": "0:50:00"}, None
+        )
+        streams = km_streams([309] * 10)
+        streams["channels"]["distance_m"]["values"] = [1015.0 * km for km in range(11)]
+        finish = checks(
+            session_report(
+                result(
+                    focus="race",
+                    execution={"data_quality": {"speed": "ok"}},
+                    streams=streams,
+                ),
+                race=plan,
+            )
+        )["race_finish"]
+        self.assertEqual(
+            (3090, 3.0, "notable"),
+            (
+                finish["value"]["finish_s"],
+                finish["value"]["behind_target_pct"],
+                finish["verdict"],
+            ),
+        )
+
     def test_a_walk_off_after_the_line_and_a_slow_race_are_no_fade(self) -> None:
         # 10 km at the planned 300 s/km, then 400 m walked at 720 s/km before
         # the watch stops: the recording is cut at the line, so all is on plan.

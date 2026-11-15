@@ -18,6 +18,7 @@ from __future__ import annotations
 import statistics
 from bisect import bisect_left
 from collections.abc import Mapping, Sequence
+from itertools import pairwise
 from typing import Any, Final
 
 from backend.activities.session_purpose import summary_is_race
@@ -67,6 +68,9 @@ RACE_START_MIN_KM: Final = 1.0
 RACE_FINISH_PCT: Final = 2.0
 # The recorded distance may differ this much from the plan's (GPS, course).
 RACE_DISTANCE_SHARE: Final = 0.10
+# A final stretch slower than this share of the race's median speed is a walk
+# or roll-out after the line, not the race.
+WALK_OFF_SPEED_SHARE: Final = 0.6
 # The notable checks the answer leads with.
 LEAD_COUNT: Final = 4
 EASY_FOCUS: Final = frozenset({"recovery", "easy", "endurance", "long"})
@@ -765,9 +769,9 @@ class _RacePlan:
 
     Runs compare recorded times with the plan's grade-adjusted section times,
     rides the distance-weighted mean power with the planned power. ``behind``
-    is the share off plan: positive is slower or less power. A recording longer
-    than the plan is cut at the plan's distance (a walk-off after the line); a
-    shorter one, as GPS often measures, is scaled onto it.
+    is the share off plan: positive is slower or less power. A slow final
+    stretch (a walk-off after the line) is cut off, then the recorded distance,
+    which GPS measures a little long or short, is scaled onto the plan's.
     """
 
     def __init__(self, facts: _Facts, race: Mapping[str, Any]) -> None:
@@ -793,9 +797,9 @@ class _RacePlan:
             and (distance := _number(raw_distance)) is not None
         ]
         self.distances = [point[0] for point in self.points]
-        recorded = self.distances[-1] if self.points else 0.0
+        self.end = _race_end(self.points)
         planned = self._total() * 1000
-        self.scale = min(1.0, recorded / planned) if planned else 1.0
+        self.scale = self.end / planned if planned else 1.0
 
     def checks(self) -> list[dict[str, Any]]:
         if reason := self._coverage_unknown() or self._power_unknown():
@@ -874,7 +878,7 @@ class _RacePlan:
             return f"Kein Rennplan: {self.pacing.get('reason') or 'unbekannt'}."
         if reason := self.facts.output_unknown():
             return reason
-        recorded = self.distances[-1] / 1000 if self.points else 0.0
+        recorded = self.end / 1000
         if not recorded or abs(recorded / self._total() - 1) > RACE_DISTANCE_SHARE:
             return "Die aufgezeichnete Distanz passt nicht zum Rennplan."
         return None
@@ -1022,6 +1026,28 @@ class _RacePlan:
         before = self.points[index - 1]
         share = (distance - before[0]) / (point[0] - before[0])
         return before[1] + share * (point[1] - before[1])
+
+
+def _race_end(points: Sequence[tuple[float, float, Any]]) -> float:
+    """The distance where the race ended: before a slow final stretch, if any."""
+    speeds = [
+        (after[0] - before[0]) / (after[1] - before[1])
+        for before, after in pairwise(points)
+        if after[1] > before[1]
+    ]
+    if not speeds:
+        return points[-1][0] if points else 0.0
+    slow = statistics.median(speeds) * WALK_OFF_SPEED_SHARE
+    end = len(points) - 1
+    while end > 0:
+        before, after = points[end - 1], points[end]
+        if (
+            after[1] > before[1]
+            and (after[0] - before[0]) / (after[1] - before[1]) >= slow
+        ):
+            break
+        end -= 1
+    return points[end][0]
 
 
 def _aligned(*series: Any) -> list[tuple[Any, ...]]:

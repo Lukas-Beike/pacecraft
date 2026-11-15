@@ -103,7 +103,11 @@ Evidence:
 - `tests/test_coach_live_eval.py`
 
 ### Requirement: Race against its race plan
-The session report SHALL judge a race linked to a stored competition against that competition's race plan (#2803), with the athlete's limits from #3084 (2026-11-15). Runs compare recorded times with the plan's grade-adjusted section times, rides the distance-weighted mean power with the planned power. A recording longer than the plan is cut at the plan's distance (a walk-off after the line); a shorter one is scaled onto it.
+The session report SHALL judge a race linked to a stored competition against that competition's race plan (#2803), with the athlete's limits from #3084 (2026-11-15). Runs compare recorded times with the plan's grade-adjusted section times, rides the distance-weighted mean power with the planned power.
+
+#### Scenario: Recording laid onto the course
+- **WHEN** the recording ends with a stretch slower than 60 % of the race's median speed, or GPS measured the course a little long or short
+- **THEN** that slow stretch (a walk-off after the line) is cut off and the rest is scaled onto the plan's distance.
 
 #### Scenario: Sections and start
 - **WHEN** the race plan is ready and the recording covers the plan's distance within 10 %
