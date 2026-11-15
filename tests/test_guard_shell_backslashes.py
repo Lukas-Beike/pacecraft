@@ -3,6 +3,7 @@
 import json
 import subprocess
 import sys
+import time
 import unittest
 from pathlib import Path
 
@@ -76,6 +77,18 @@ class GuardShellBackslashesTests(unittest.TestCase):
     def test_only_the_bash_tool_is_checked(self) -> None:
         command = "python -c \"print('a\\\\\\\\b')\""
         self.assertEqual(run_hook(command, tool="PowerShell").returncode, 0)
+
+    def test_long_writer_lines_are_decided_well_within_the_hook_budget(self) -> None:
+        # #3124: every `cat` once scanned to the next `>`, quadratically.
+        body = "\nx = '\\\\'\nEOF"
+        for command, code in (
+            ("cat " * 100_000 + "<<EOF" + body, 0),
+            ("cat " * 100_000 + "> /dev/null; cat > f.py <<EOF" + body, 2),
+        ):
+            with self.subTest(code=code):
+                started = time.monotonic()
+                self.assertEqual(run_hook(command).returncode, code)
+                self.assertLess(time.monotonic() - started, 5)
 
     def test_unreadable_input_is_blocked(self) -> None:
         for body in (b"not json", b"[]", b'{"tool_input": "x"}'):

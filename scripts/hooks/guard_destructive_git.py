@@ -31,67 +31,75 @@ GLOBAL_WITH_VALUE = {
 WHOLE_TREE = {".", "./", ".\\", ":/", ":/*", "*"}
 
 
-def _long(names: set[str], option: str) -> bool:
-    """The option or an abbreviation git accepts for it (`--ha` for `--hard`)."""
-    return any(len(name) > 2 and option.startswith(name) for name in names)
+LONG_OPTIONS = (
+    "--hard",
+    "--force",
+    "--delete",
+    "--worktree",
+    "--staged",
+    "--discard-changes",
+)
+SHORT_LETTERS = frozenset("fdDWS")
+WHOLE, PLUS = "whole-tree", "+refspec"  # markers no option or letter can equal
 
 
-# Per subcommand: does it discard work, given the argument set and the letters
-# of all short-option groups (-fdx gives "fdx")?
+def _features(word: str) -> frozenset[str]:
+    """What the rules ask of one argument: the long options it spells or
+    abbreviates as git accepts (`--ha` for `--hard`), the letters of a
+    short-option group (-fdx), a whole-tree path, a forced `+` refspec."""
+    found = {
+        option for option in LONG_OPTIONS if len(word) > 2 and option.startswith(word)
+    }
+    if word.startswith("-") and not word.startswith("--"):
+        found |= SHORT_LETTERS & set(word[1:])
+    if word in WHOLE_TREE:
+        found.add(WHOLE)
+    if word.startswith("+"):
+        found.add(PLUS)
+    return frozenset(found)
+
+
+# Per subcommand: does it discard work, given what its arguments carry?
 RULES = {
-    "reset": lambda names, short: _long(names, "--hard"),
-    "clean": lambda names, short: _long(names, "--force") or "f" in short,
-    "branch": lambda names, short: (
-        "D" in short
-        or (
-            (_long(names, "--delete") or "d" in short)
-            and (_long(names, "--force") or "f" in short)
-        )
+    "reset": lambda f: "--hard" in f,
+    "clean": lambda f: "--force" in f or "f" in f,
+    "branch": lambda f: (
+        "D" in f or (("--delete" in f or "d" in f) and ("--force" in f or "f" in f))
     ),
-    "checkout": lambda names, short: (
-        _long(names, "--force") or "f" in short or bool(WHOLE_TREE & names)
-    ),
+    "checkout": lambda f: "--force" in f or "f" in f or WHOLE in f,
     # Only `--staged` (without `--worktree`) unstages and keeps the files.
-    "restore": lambda names, short: (
-        bool(WHOLE_TREE & names)
-        and (
-            _long(names, "--worktree")
-            or "W" in short
-            or not (_long(names, "--staged") or "S" in short)
-        )
+    "restore": lambda f: (
+        WHOLE in f
+        and ("--worktree" in f or "W" in f or not ("--staged" in f or "S" in f))
     ),
-    "switch": lambda names, short: (
-        _long(names, "--discard-changes") or _long(names, "--force") or "f" in short
-    ),
-    "push": lambda names, short: (
-        _long(names, "--force") or "f" in short or any(a.startswith("+") for a in names)
-    ),
+    "switch": lambda f: "--discard-changes" in f or "--force" in f or "f" in f,
+    "push": lambda f: "--force" in f or "f" in f or PLUS in f,
 }
 
 
-def _discards(subcommand: str, args: list[str]) -> bool:
-    rule = RULES.get(subcommand)
-    short = "".join(a[1:] for a in args if a.startswith("-") and not a.startswith("--"))
-    return bool(rule and rule(set(args), short))
-
-
-def _git_call(words: list[str], start: int) -> bool:
-    """Whether the git call starting after words[start] discards work."""
-    index = start + 1
-    while index < len(words) and words[index].startswith("-"):
-        index += 2 if words[index] in GLOBAL_WITH_VALUE else 1
-    return index < len(words) and _discards(words[index], words[index + 1 :])
+def _discards(words: list[str]) -> bool:
+    """Whether a git call in one segment's words discards work."""
+    # From each position, one pass back to front (#3124): what the words up to
+    # the segment's end carry, and the first word that is no global option.
+    carried: list[frozenset[str]] = [frozenset()] * (len(words) + 1)
+    command_at = list(range(len(words) + 1))
+    for index in range(len(words) - 1, -1, -1):
+        carried[index] = carried[index + 1] | _features(words[index])
+        if words[index].startswith("-"):
+            step = 2 if words[index] in GLOBAL_WITH_VALUE else 1
+            command_at[index] = command_at[min(index + step, len(words))]
+    for index, word in enumerate(words):
+        name = word.replace("\\", "/").rsplit("/", 1)[-1].lower()
+        sub = command_at[index + 1] if name in GIT_NAMES else len(words)
+        rule = RULES.get(words[sub]) if sub < len(words) else None
+        if rule and rule(carried[sub + 1]):
+            return True
+    return False
 
 
 def blocked(command: str) -> bool:
     text = QUOTES.sub("", CONTINUATION.sub(" ", command))
-    for segment in SEGMENT.split(text):
-        words = segment.split()
-        for index, word in enumerate(words):
-            name = word.replace("\\", "/").rsplit("/", 1)[-1].lower()
-            if name in GIT_NAMES and _git_call(words, index):
-                return True
-    return False
+    return any(_discards(segment.split()) for segment in SEGMENT.split(text))
 
 
 def main() -> int:
