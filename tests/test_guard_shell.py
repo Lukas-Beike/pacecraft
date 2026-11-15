@@ -88,7 +88,10 @@ class GuardShellTests(unittest.TestCase):
         self.assertIn("guard_missing failed (ModuleNotFoundError)", stderr.getvalue())
 
     def test_a_powershell_call_runs_through_the_guards(self) -> None:
-        payload = {"tool_name": "PowerShell", "tool_input": {"command": "Get-Content .env"}}
+        payload = {
+            "tool_name": "PowerShell",
+            "tool_input": {"command": "Get-Content .env"},
+        }
         result = subprocess.run(
             [sys.executable, str(HOOK)],
             input=json.dumps(payload).encode(),
