@@ -53,6 +53,7 @@ from backend.http_api.nutrition import (
     NutritionPostRoutes,
     NutritionPutRoutes,
 )
+from backend.http_api.library_post import LibraryPostRoutes
 from backend.http_api.planned_unit_focus_post import PlannedUnitFocusPostRoutes
 from backend.http_api.planning_get import PlanningGetRoutes
 from backend.http_api.privacy_delete_post import PrivacyDeletePostRoutes
@@ -524,6 +525,10 @@ def _athlete_write_routes(
             ctx.planning.planned_unit,
             ctx.database,
             ctx.planning_workflows.structured_training_change_service,
+        ),
+        LibraryPostRoutes(
+            ctx.planning.workout_library,
+            ctx.planning_workflows.workout_library_plan_service,
         ),
         CredentialsPutRoutes(ctx.provider_credential_service, session_auth_service),
         EquipmentPostRoutes(athlete.equipment),
