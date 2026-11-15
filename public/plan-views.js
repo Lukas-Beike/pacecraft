@@ -2246,23 +2246,31 @@ function renderPlannedWeek(view) {
   return week;
 }
 
-// Wide screens show the open card's body as the detail pane beside the week, level with its card
-// (styles.css); the calendar keeps room for it, and a week opens with today's or the next unit.
+// Wide screens show the open card's body as the detail pane beside the week (styles.css). It starts level
+// with the top of the week card, whichever unit is open, and stays in view while a long week scrolls
+// (#3156); the calendar keeps room for it, and a week opens with today's or the next unit.
 const wideCalendar = globalThis.matchMedia?.("(min-width: 1100px)");
 const detailObserver = globalThis.ResizeObserver ? new ResizeObserver(() => syncPlannedDetailHeight()) : null;
+const PANE_STICKY_TOP = 24;
 
 function syncPlannedDetailHeight() {
   const root = $("#plannedCalendar");
-  if (!root) return;
+  if (!root?.getClientRects().length) return;
   const card = wideCalendar?.matches ? shownPlannedEntry(root) : null;
   const body = card?.querySelector(":scope > .planned-entry-details");
   if (!body) {
     root.style.minHeight = "";
     return;
   }
-  const top = Math.max(0, card.getBoundingClientRect().top - root.getBoundingClientRect().top);
-  body.style.top = `${top}px`;
-  root.style.minHeight = `${top + body.offsetHeight}px`;
+  const box = root.getBoundingClientRect();
+  const calendar = (card.closest(".planned-week, .planned-month") || card).getBoundingClientRect();
+  const start = Math.max(0, calendar.top - box.top);
+  const height = body.offsetHeight;
+  // The pane is the open card's body inside its <details>, placed absolutely beside the week, so it cannot use
+  // position: sticky; a passive scroll listener moves it with the window, down to the calendar card's end.
+  const end = Math.max(start, calendar.bottom - box.top - height);
+  body.style.top = `${Math.min(Math.max(start, PANE_STICKY_TOP - box.top), end)}px`;
+  root.style.minHeight = `${start + height}px`;
 }
 
 // A closed card leaves the pane empty; a collapsed group or a switch to a wide screen opens the default.
@@ -2379,6 +2387,7 @@ function renderPlanned(trainingCalendar) {
     root.dataset.detailWatch = "true";
     root.addEventListener("toggle", watchPlannedDetail, true);
     wideCalendar?.addEventListener?.("change", watchPlannedDetail);
+    globalThis.addEventListener?.("scroll", syncPlannedDetailHeight, { passive: true });
   }
   const focusedEntry = rememberPlannedEntryState(root);
   root.replaceChildren();
