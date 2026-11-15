@@ -63,6 +63,8 @@ class BranchSyncTests(unittest.TestCase):
 
     def advance_develop(self, name="b.txt", text="two\n"):
         git(self.work, "checkout", "-q", "develop")
+        git(self.work, "fetch", "-q", "origin")  # a second advance builds on the first
+        git(self.work, "reset", "-q", "--hard", "origin/develop")
         commit(self.work, name, text, "chore: advance develop")
         git(self.work, "push", "-q", "origin", "develop")
         git(self.work, "reset", "-q", "--hard", "HEAD~1")
@@ -95,6 +97,47 @@ class BranchSyncTests(unittest.TestCase):
         self.assertRegex(out, r"head [0-9a-f]+ on feat/x: ahead 1, behind 0")
         self.assertTrue((self.work / "b.txt").exists())
         self.assertEqual(git(self.work, "log", "-1", "--format=%s"), "feat(ui): add c")
+
+    def test_a_rebase_that_changes_the_lock_file_refreshes_node_modules(self):
+        # #3133: a stale node_modules only failed later, in the pre-push hook.
+        commit(self.work, "c.txt", "mine\n", "feat(ui): add c")
+        npm = mock.patch.object(branch_sync.shutil, "which", return_value="npm")
+        real_run = subprocess.run
+        for develop_file, result, expected, called in (
+            ("b.txt", 0, 0, False),
+            ("package-lock.json", 0, 0, True),
+            ("package-lock.json", 3, 1, True),
+        ):
+            with self.subTest(develop_file=develop_file, result=result):
+                self.advance_develop(develop_file, f"{develop_file} {result}\n")
+
+                def run(command, *args, result=result, **kwargs):
+                    if command[0] == "npm":  # git keeps running for real
+                        return subprocess.CompletedProcess(command, result)
+                    return real_run(command, *args, **kwargs)
+
+                with (
+                    npm,
+                    mock.patch.object(
+                        branch_sync.subprocess, "run", side_effect=run
+                    ) as spy,
+                ):
+                    code, out, _ = self.sync()
+                self.assertEqual(code, expected, out)
+                calls = [c for c in spy.call_args_list if c.args[0][0] == "npm"]
+                self.assertEqual(bool(calls), called)
+                if called:
+                    self.assertEqual(
+                        calls[0].args[0], ["npm", "ci", "--ignore-scripts"]
+                    )
+                    self.assertIn("package-lock.json changed in the rebase", out)
+                if result:
+                    self.assertIn("refused: npm ci failed (exit 3)", out)
+        with mock.patch.object(branch_sync.shutil, "which", return_value=None):
+            self.advance_develop("package-lock.json", "newer\n")
+            code, out, _ = self.sync()
+        self.assertEqual(code, 1)
+        self.assertIn("refused: npm not found", out)
 
     def test_fetch_retries_a_ref_lock_and_fails_loudly_when_it_stays(self):
         # #2828: a parallel worktree's fetch holds a lock in the shared .git.

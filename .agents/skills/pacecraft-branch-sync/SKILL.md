@@ -19,6 +19,9 @@ python scripts/branch_sync.py [--onto origin/develop] [--push] [--allow-root <fi
   and the rebase continues ("regenerated after a conflict"); any other conflict
   stops as below. Changed `e2e/` and `public/` scripts that fail `node --check`
   are listed and stop the sync, so a broken hand merge is not pushed (#3031).
+  A rebase that changes `package-lock.json` runs `npm ci --ignore-scripts`
+  before the checks and the push; a missing or failing npm stops with exit 1
+  (#3133).
 - Exit 0: in sync (and pushed with `--push`); prints the new HEAD and the
   ahead/behind counts. Exit 1: refused, a rebase conflict (left in progress:
   resolve it and `git rebase --continue`, or `git rebase --abort`) or invalid

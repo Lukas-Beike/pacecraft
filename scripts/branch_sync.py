@@ -10,6 +10,8 @@ that adds a file at the repository root is refused unless --allow-root names it.
 A rebase conflict only in generated text (scripts/regenerate_docs.py) takes the
 upstream side, regenerates and continues; any other conflict stops. Changed
 e2e/ and public/ scripts must pass `node --check` before the push (#3031).
+A rebase that changes package-lock.json runs `npm ci --ignore-scripts` before
+anything else, so the push hooks see a current node_modules (#3133).
 
 Exit 0: in sync (and pushed); 1: refused, rebase conflict (left in progress:
 resolve it or run `git rebase --abort`) or invalid subjects; 2: bad input,
@@ -36,6 +38,7 @@ PROTECTED = {"develop", "main"}
 TYPES = "build|chore|ci|docs|feat|fix|perf|refactor|revert|style|test"
 SUBJECT = re.compile(rf"^(?:{TYPES})(?:\([a-z0-9][a-z0-9-]*\))?!?: \S")
 FETCH_ATTEMPTS = 3
+LOCK = "package-lock.json"
 SCRIPT = re.compile(r"^(?:e2e|public)/.+\.(?:js|cjs|mjs)$")
 TRANSIENT_FETCH = re.compile(
     r"cannot lock ref '[^']+': is at \w+ but expected|\.lock': File exists"
@@ -189,6 +192,29 @@ def unparsable(onto: str) -> list[str]:
     ]
 
 
+def lock_blob() -> str:
+    """HEAD's committed package-lock.json blob, or "" without one."""
+    try:
+        return git("rev-parse", "--verify", "--quiet", f"HEAD:{LOCK}").strip()
+    except CliError:
+        return ""
+
+
+def refreshed_node_modules() -> bool:
+    """`npm ci --ignore-scripts` after a rebase changed the lock file: a stale
+    node_modules would only fail later, in the pre-push hook (#3133)."""
+    print(f"{LOCK} changed in the rebase: npm ci --ignore-scripts")
+    npm = shutil.which("npm")
+    if npm is None:
+        print("refused: npm not found; run npm ci --ignore-scripts")
+        return False
+    root = Path(git("rev-parse", "--show-toplevel").strip())
+    code = subprocess.run([npm, "ci", "--ignore-scripts"], cwd=root, check=False)
+    if code.returncode:
+        print(f"refused: npm ci failed (exit {code.returncode}); run it again")
+    return code.returncode == 0
+
+
 def outgoing_problems(onto: str, push: bool, allowed: frozenset[str]) -> bool:
     """Print invalid subjects and, for a push, new root files; True if any."""
     problems = [
@@ -235,8 +261,11 @@ def sync(onto: str, push: bool, allowed: frozenset[str] = frozenset()) -> int:
         leased = git("rev-parse", "--verify", "--quiet", f"origin/{branch}").strip()
     except CliError:
         leased = ""  # never pushed: the push only succeeds while it stays absent
+    lock = lock_blob()
     fetch()
     if not rebased(onto):
+        return 1
+    if lock_blob() != lock and not refreshed_node_modules():
         return 1
     if outgoing_problems(onto, push, allowed):
         return 1
