@@ -8,6 +8,7 @@ and ``Errors:`` paragraphs.
 import inspect
 import re
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -42,6 +43,16 @@ class ApiRoutesDocTests(unittest.TestCase):
             "Regenerate with: python tests/test_api_routes_doc.py --write",
         )
 
+    def test_writer_keeps_lf_so_a_current_document_shows_no_change(self):
+        # #3008: Windows wrote CRLF, and git listed an unchanged document as modified.
+        with tempfile.TemporaryDirectory() as directory:
+            copy = Path(directory) / "api-routes.md"
+            original = DOC.read_bytes().replace(b"\r\n", b"\n")
+            copy.write_bytes(original)
+            write_document(copy)
+            self.assertNotIn(b"\r\n", copy.read_bytes())
+            self.assertEqual(copy.read_bytes(), original)
+
     def test_every_route_handler_states_its_purpose_and_contract(self):
         def contract(route):
             paragraphs = (inspect.getdoc(route.handle) or "").split("\n\n")
@@ -74,11 +85,18 @@ class ApiRoutesDocTests(unittest.TestCase):
             self.assertNotIn(alias, {path for _, path in registered})
 
 
+def write_document(path: Path = DOC) -> None:
+    """Regenerate the routes section; LF on every platform, as git stores it (#3008)."""
+    document = path.read_text(encoding="utf-8")
+    before, rest = document.split(BEGIN, 1)
+    after = rest.split(END, 1)[1]
+    path.write_text(
+        before + BEGIN + _rendered() + END + after, encoding="utf-8", newline="\n"
+    )
+
+
 if __name__ == "__main__":
     if "--write" in sys.argv:
-        document = DOC.read_text(encoding="utf-8")
-        before, rest = document.split(BEGIN, 1)
-        after = rest.split(END, 1)[1]
-        DOC.write_text(before + BEGIN + _rendered() + END + after, encoding="utf-8")
+        write_document()
     else:
         unittest.main()
