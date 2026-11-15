@@ -166,9 +166,14 @@ class SkinfoldService:
         )
         if until is not None:
             sql, params = f"{sql} AND observed_on <= ?", [*params, until.isoformat()]
+        cursor = db.execute(sql, tuple(params))
+        names = [column[0] for column in cursor.description]
         rows = [
-            (row[0], row[1], row[2])
-            for row in db.execute(sql, tuple(params)).fetchall()
+            (record["metric"], record["value"], record["observed_on"])
+            for record in (
+                row if isinstance(row, Mapping) else dict(zip(names, row, strict=True))
+                for row in cursor.fetchall()
+            )
         ]
         return measurements_from_rows(rows, birth_year_of(self._profile_json(db)))
 

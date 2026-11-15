@@ -16,7 +16,14 @@ MEN = {"chest": 16, "abdomen": 20, "thigh": 17}
 
 class SkinfoldServiceTests(unittest.TestCase):
     def setUp(self):
-        self.manager = temp_database(self, schema=True)
+        # The app's connections return rows as dicts, not sqlite3.Row.
+        self.manager = temp_database(
+            self,
+            schema=True,
+            row_factory=lambda cursor, row: dict(
+                zip([column[0] for column in cursor.description], row, strict=True)
+            ),
+        )
         self.profile = {"birth_year": "1986"}
         self.service = SkinfoldService(
             self.manager,

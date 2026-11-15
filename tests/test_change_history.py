@@ -279,7 +279,9 @@ class ChangeHistoryTests(unittest.TestCase):
         )
         # A competition recorded before schema v29 had no location (#2803).
         self.assertEqual(
-            change_history.accepted_audit_hashes("competition", {**value, "location": ""}),
+            change_history.accepted_audit_hashes(
+                "competition", {**value, "location": ""}
+            ),
             {
                 change_history.audit_hash({**value, "location": ""}),
                 change_history.audit_hash(value),
@@ -325,6 +327,17 @@ class ChangeHistoryTests(unittest.TestCase):
         )
         self.assertNotIn(
             "weekly_plan", change_history.audit_projection_fields("profile")
+        )
+
+    def test_a_profile_row_hashed_before_the_birth_year_stays_undoable(self):
+        # #3099: rows of 2.1.10-2.1.14 carry every field up to the first threshold
+        # origin but no birth year; the current projection adds it, empty.
+        before = {"name": "Ada", "sex": "male", "first_threshold_origin": ""}
+        value = change_history.audit_projection("profile", {**before, "birth_year": ""})
+        self.assertIn("birth_year", change_history.audit_projection_fields("profile"))
+        self.assertIn(
+            change_history.audit_hash(before),
+            change_history.accepted_audit_hashes("profile", value),
         )
 
     def test_preferred_sources_are_audited_and_older_rows_stay_matchable(self):
