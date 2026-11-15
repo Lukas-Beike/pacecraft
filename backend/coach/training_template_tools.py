@@ -8,7 +8,12 @@ from typing import Any
 from backend.coach.authorization import authorized_operations, require_coach_scope
 from backend.db.manager import DatabaseManager
 from backend.errors import STRUCTURED_AUTHORIZATION_ERROR, AppError
-from backend.planning.library import find_similar_library_workout
+from backend.planning.library import (
+    find_similar_library_workout,
+    normalized_workout_text,
+    workout_library_type,
+)
+from backend.providers.intervals_workouts import INTERVALS_DEFAULT_WORKOUT_TYPE
 
 
 class TrainingTemplateToolService:
@@ -91,23 +96,38 @@ def _existing_templates(
 ) -> int:
     """Refuse a new template an existing one already covers (#3080).
 
-    The same conservative match as the plan creation's reuse: sport type,
+    The same conservative match as the plan creation's reuse (sport type,
     duration within max(10 min, 20 %) and a nearly equal description, or a
-    nearly equal name with a similar description. A create with
-    ``new_because`` (why it differs) is kept and counted. The library is read
-    only for a create, before the unit of work.
+    nearly equal name with a similar description), or the same name in the
+    same sport type, which also covers strength templates without a
+    description. Templates this call changes are not compared, earlier
+    creates of the call are. A create with ``new_because`` (why it differs) is
+    kept and counted. The library is read only for a create, before the unit
+    of work.
     """
     creates = [
-        template
+        # Compared as create_template stores it: the sport, not the type.
+        {
+            "duration_minutes": 30,
+            **template,
+            "sport": template.get("sport") or INTERVALS_DEFAULT_WORKOUT_TYPE,
+            "type": None,
+        }
         for template, (action, _local_id) in zip(templates, actions, strict=True)
         if action == "create"
     ]
-    existing = library().list(1000) if creates else []
+    changed = {local_id for action, local_id in actions if action != "create"}
+    existing = (
+        [item for item in library().list(1000) if item.get("id") not in changed]
+        if creates
+        else []
+    )
     despite = 0
     for template in creates:
-        match = find_similar_library_workout(
-            {"duration_minutes": 30, **template}, existing
+        match = find_similar_library_workout(template, existing) or next(
+            (item for item in existing if _same_name(item, template)), None
         )
+        existing.append(template)
         if match is None:
             continue
         if str(template.get("new_because") or "").strip():
@@ -126,7 +146,8 @@ def _existing_templates(
             [
                 {
                     "code": "template_exists",
-                    "local_id": str(match.get("id")),
+                    # None: an earlier create of this call.
+                    "local_id": match.get("id"),
                     "name": str(match.get("name") or "")[:200],
                     "sport": match.get("sport") or match.get("type"),
                     "duration_minutes": match.get("duration_minutes"),
@@ -135,3 +156,12 @@ def _existing_templates(
         )
         raise error
     return despite
+
+
+def _same_name(existing: dict[str, Any], template: dict[str, Any]) -> bool:
+    name = normalized_workout_text(template.get("name"))
+    return (
+        bool(name)
+        and name == normalized_workout_text(existing.get("name"))
+        and workout_library_type(existing) == workout_library_type(template)
+    )

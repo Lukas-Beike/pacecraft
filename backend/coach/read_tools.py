@@ -59,18 +59,22 @@ _FOOD_SOURCE_NAMES: Final = (
 )
 
 
-def _library_match(template: Mapping[str, Any], sport: Any, query: Any) -> bool:
-    """A template of the sport type whose name or description holds every
-    query word, also inside a longer word ("tempo" finds "Tempolauf")."""
-    if sport and workout_library_type(dict(template)) != workout_library_type(
-        {"sport": sport}
-    ):
-        return False
-    text = f"{template.get('name') or ''} {template.get('description') or ''}"
-    return all(
-        word in text.casefold()
-        for word in re.findall(r"\w+", str(query or "").casefold())
-    )
+def _library_filter(sport: Any, query: Any) -> Callable[[Mapping[str, Any]], bool]:
+    """Templates of the sport type whose name or description holds every query
+    word, also inside a longer word ("tempo" finds "Tempolauf"); a query
+    without a word matches nothing."""
+    wanted = workout_library_type({"sport": sport}) if sport else None
+    words = re.findall(r"\w+", str(query or "").casefold())
+
+    def matches(template: Mapping[str, Any]) -> bool:
+        if wanted and workout_library_type(dict(template)) != wanted:
+            return False
+        if query is not None and not words:
+            return False
+        text = f"{template.get('name') or ''} {template.get('description') or ''}"
+        return all(word in text.casefold() for word in words)
+
+    return matches
 
 
 def named_food_sources(context: Mapping[str, Any]) -> list[str]:
@@ -190,17 +194,17 @@ class CoachReadToolService:
                 arguments, "limit", 100, 100, "Bibliothekslimit ist ungültig."
             )
             sport, query = arguments.get("sport"), arguments.get("query")
-            # A filter reads the whole library, so a template beyond the first
-            # page is found before a duplicate is created (#3080).
+            # A filter reads up to 1000 templates, so one beyond the first page
+            # is found before a duplicate is created (#3080).
             templates = self._workout_library_service().list(
-                1000 if sport or query else limit,
+                1000 if sport or query is not None else limit,
                 include_archived=bool(arguments.get("include_archived")),
             )
             return {
                 "ok": True,
-                "templates": [
-                    item for item in templates if _library_match(item, sport, query)
-                ][:limit],
+                "templates": list(filter(_library_filter(sport, query), templates))[
+                    :limit
+                ],
             }
         if name == "list_planned_workouts":
             limit = self._bounded_integer(

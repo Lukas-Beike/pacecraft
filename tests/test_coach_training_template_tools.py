@@ -177,6 +177,63 @@ class TrainingTemplateToolTests(unittest.TestCase):
         result = service.execute({"templates": [intervals]}, intent)
         self.assertEqual(0, result["created_despite_candidate"])
 
+        # Two near-identical creates in one call: the second is refused against
+        # the first, which has no local_id yet.
+        with self.assertRaises(AppError) as twice:
+            service.execute(
+                {"templates": [intervals, {**intervals, "duration_minutes": 60}]},
+                intent,
+            )
+        [finding] = getattr(twice.exception, "findings", None) or [None]
+        self.assertEqual((None, "6 x 800 m"), (finding["local_id"], finding["name"]))
+
+        # A strength template has no description: the same name in the same
+        # sport is the match.
+        strength = {
+            "id": "22222222-2222-4222-8222-222222222222",
+            "name": "Kraft A",
+            "sport": "WeightTraining",
+            "duration_minutes": 40,
+            "description": "",
+        }
+        Library.list = lambda _self, _limit: [easy, strength]  # type: ignore[method-assign]
+        with self.assertRaises(AppError) as same_name:
+            service.execute(
+                {
+                    "templates": [
+                        {
+                            "action": "create",
+                            "name": "Kraft A",
+                            "sport": "WeightTraining",
+                        }
+                    ]
+                },
+                intent,
+            )
+        self.assertEqual(
+            strength["id"],
+            (getattr(same_name.exception, "findings", None) or [{}])[0]["local_id"],
+        )
+
+        # A template this call archives is not compared: its replacement passes.
+        Library.update = lambda _self, local_id, _values: {"local_id": local_id}  # type: ignore[attr-defined]
+        replaced = service.execute(
+            {
+                "templates": [
+                    {"action": "archive", "local_id": easy["id"]},
+                    {**again, "name": "Lockerer Dauerlauf"},
+                ]
+            },
+            {
+                **intent,
+                "authorization_scope": [
+                    "local_template",
+                    f"library_workout:{easy['id']}",
+                ],
+            },
+        )
+        self.assertEqual(0, replaced["created_despite_candidate"])
+
 
 if __name__ == "__main__":
     unittest.main()

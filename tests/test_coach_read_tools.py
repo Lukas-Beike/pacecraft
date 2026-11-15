@@ -170,6 +170,8 @@ class CoachReadToolServiceTests(unittest.TestCase):
             ({"sport": "Run", "query": "tempo 10"}, ["a", "d"]),
             ({"sport": "Ride"}, ["b"]),
             ({"sport": "Run", "limit": 1}, ["a"]),
+            # A query without a word finds nothing instead of everything.
+            ({"query": "--"}, []),
         ):
             with self.subTest(arguments=arguments):
                 found = self.service.execute("list_workout_library", arguments)
