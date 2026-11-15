@@ -781,6 +781,9 @@ h2 {
 .planned-equipment-field select { flex: 1; min-height: 44px; }
 .planned-equipment-status { flex-basis: 100%; margin: 0; font-size: .8rem; }
 .planned-equipment-status:empty, .planned-equipment [hidden] { display: none; }
+.planned-equipment[hidden] { display: none; }
+.planned-equipment-line { display: flex; }
+.planned-equipment-chip { min-height: 32px; border: 1px solid var(--line-strong); background: var(--surface-raised); color: var(--ink); font: inherit; font-size: .8rem; cursor: pointer; }
 .planned-zone-time-bar { display: flex; height: 10px; overflow: hidden; border-radius: 5px; background: var(--surface-input); }
 .planned-zone-time-bar i { display: block; min-width: 2px; background: var(--muted); }
 .planned-zone-time-bar [data-zone="1"] { background: var(--training-zone-1); }
