@@ -8,18 +8,29 @@ python "$root/scripts/check_push_secrets.py" || exit $?
 # node_modules, so the clone's are used for the ESLint part when installed.
 tree="$(mktemp -d)" || exit 1
 docs="$(mktemp)" || { rm -rf "$tree"; exit 1; }
+guards="$(mktemp)" || { rm -rf "$tree" "$docs"; exit 1; }
 # Wait for the document check first: it unlinks node_modules from the export.
-trap 'wait; rm -rf "$tree" "$docs"' EXIT
+trap 'wait; rm -rf "$tree" "$docs" "$guards"' EXIT
 git -C "$root" archive --format=tar HEAD | tar -xf - -C "$tree" || exit 1
 # The generated documents (#2949), rewritten in the same export and compared
 # with HEAD, run beside the ratchet so the push takes no longer; the view
 # catalogue reads the clone's node_modules through a link the script removes.
 PACECRAFT_NODE_MODULES="$root/node_modules" python "$tree/scripts/regenerate_docs.py" --check "$tree" >"$docs" 2>&1 &
 docs_pid=$!
+# The fast architecture guards (#3071) run beside them on the same export:
+# provider coupling, package layering and server ownership need no database
+# and finish in about half a minute, well within the ratchet's time.
+(cd "$tree" && python tests/run_tests.py \
+  --module test_provider_coupling_guard --module test_backend_layer_contracts \
+  --module test_layering_contracts --module test_server_composition_architecture \
+  --module test_server_module_architecture --module test_server_ownership_architecture) >"$guards" 2>&1 &
+guards_pid=$!
 (cd "$tree" && PACECRAFT_NODE_MODULES="$root/node_modules" python tools/quality_baseline.py)
 status=$?
 wait "$docs_pid"
 docs_status=$?
+wait "$guards_pid"
+guards_status=$?
 cat "$docs" >&2
 if [ "$status" -eq 2 ]; then
   echo "Push blocked: the quality ratchet could not run (see above). Install the missing tool: npm ci for ESLint, requirements-dev.txt for Ruff and mypy." >&2
@@ -30,5 +41,10 @@ elif [ "$status" -ne 0 ]; then
 fi
 if [ "$docs_status" -ne 0 ]; then
   echo "Push blocked: the generated-document check failed (see above)." >&2
+  exit 1
+fi
+if [ "$guards_status" -ne 0 ]; then
+  cat "$guards" >&2
+  echo "Push blocked: an architecture guard failed (see above)." >&2
   exit 1
 fi

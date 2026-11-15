@@ -1,5 +1,5 @@
-"""The pre-push hook runs the secret scan first, then the quality ratchet and
-the generated-document check side by side (#2949)."""
+"""The pre-push hook runs the secret scan first, then the quality ratchet, the
+generated-document check (#2949) and the architecture guards (#3071) side by side."""
 
 import os
 import shutil
@@ -24,7 +24,13 @@ sys.exit(int(os.environ.get({name!r}, "0")))
 @unittest.skipUnless(shutil.which("sh") and shutil.which("git"), "needs sh and git")
 class PrePushHookTests(unittest.TestCase):
     def run_hook(
-        self, secrets="0", quality="0", dirty_quality=None, docs="0", docs_sleep="0"
+        self,
+        secrets="0",
+        quality="0",
+        dirty_quality=None,
+        docs="0",
+        docs_sleep="0",
+        guards="0",
     ):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
@@ -34,6 +40,7 @@ class PrePushHookTests(unittest.TestCase):
                 ("scripts/check_push_secrets.py", "SECRETS_EXIT"),
                 ("tools/quality_baseline.py", "QUALITY_EXIT"),
                 ("scripts/regenerate_docs.py", "DOCS_EXIT"),
+                ("tests/run_tests.py", "GUARDS_EXIT"),
             ):
                 (root / path).parent.mkdir(exist_ok=True)
                 (root / path).write_text(STUB.format(name=name), encoding="utf-8")
@@ -68,6 +75,7 @@ class PrePushHookTests(unittest.TestCase):
                     "QUALITY_EXIT": quality,
                     "DOCS_EXIT": docs,
                     "DOCS_EXIT_SLEEP": docs_sleep,
+                    "GUARDS_EXIT": guards,
                 },
             )
             text = log.read_text(encoding="utf-8") if log.exists() else ""
@@ -81,7 +89,8 @@ class PrePushHookTests(unittest.TestCase):
             lines[0], "check_push_secrets.py refs/heads/x 1 refs/heads/x 0"
         )
         self.assertEqual(
-            sorted(lines[1:]), ["quality_baseline.py", "regenerate_docs.py"]
+            sorted(lines[1:]),
+            ["quality_baseline.py", "regenerate_docs.py", "run_tests.py"],
         )
 
     def test_secret_scan_failure_stops_before_quality(self):
@@ -102,6 +111,14 @@ class PrePushHookTests(unittest.TestCase):
                 self.assertEqual(result.returncode, 1)
                 self.assertIn(reason, result.stderr)
                 self.assertNotIn(other, result.stderr)
+
+    def test_a_failed_architecture_guard_blocks_the_push(self):
+        result, lines = self.run_hook(guards="1")
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("an architecture guard failed", result.stderr)
+        self.assertIn("run_tests.py", lines)
+        # A passing ratchet and document check do not hide the guard failure.
+        self.assertNotIn("found new findings", result.stderr)
 
     def test_a_failed_ratchet_waits_for_the_document_check(self):
         # The check links node_modules into the export: the hook must not

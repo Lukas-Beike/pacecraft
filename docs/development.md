@@ -113,7 +113,11 @@ export, `python scripts/regenerate_docs.py --check` reruns the generators of
 `docs/view-catalogue.md`
 and blocks a push whose committed copies are stale (#2949; it needs the
 clone's `node_modules` and adds no wall time). Run
-`python scripts/regenerate_docs.py` to rewrite them. Do not use `--no-verify`.
+`python scripts/regenerate_docs.py` to rewrite them. Also beside the ratchet,
+the fast architecture guards run on the same export (#3071): provider coupling,
+package layering and the server composition, module and ownership tests, about
+half a minute without a database. A failure blocks the push with the guard's
+finding. Do not use `--no-verify`.
 
 Enable the hook in each clone (the relative path also works in its worktrees):
 
