@@ -16,13 +16,19 @@ from unittest.mock import Mock, patch
 
 from canonical_recovery_support import recovery_only_inputs
 from support import dispatch_route
+from test_pace_at_hr import _record, _run
 from test_session_rpe_load import provider_rpe, summary
 
 from backend.coach.activity_read_tools import CoachActivityReadToolService
 from backend.coach.context import CoachPerformanceContextReader
 from backend.http_api.analysis import AnalysisRoutes
 from backend.http_api.public_performance import PublicPerformanceStateService
+from backend.performance.comparisons import (
+    recurring_training_comparisons,
+    recurring_view,
+)
 from backend.performance.freshness import GarminSyncStatus
+from backend.performance.pace_at_hr import pace_at_heart_rate
 from backend.performance.report_service import (
     TrainingDerivedReadService,
     TrainingProfileSelectionService,
@@ -345,6 +351,58 @@ class CoachUiParityTests(unittest.TestCase):
         self.assertEqual(
             ("critical-power-speed", "experimental"),
             (coach["critical_power"]["method"], coach["critical_power"]["status"]),
+        )
+
+    def test_pace_at_heart_rate_and_recurring_sessions_are_the_coach_sections(self):
+        """Analyse › Laufen and Radfahren read what the Coach reads (#2802)."""
+        runs = [
+            _record(
+                (TODAY - timedelta(days=offset)).isoformat(),
+                pace_at_heart_rate(_run(speed=speed, grade=0.0)),
+            )
+            for offset, speed in ((70, 3.0), (60, 3.05), (20, 3.2), (10, 3.25))
+        ]
+        self.reports.report._curve_records = lambda: runs
+        self.reports.records.comparisons.return_value = recurring_training_comparisons(
+            [
+                {
+                    "date": day,
+                    "sport": "run",
+                    "device": "Forerunner",
+                    "activity_id": f"act_{day}",
+                    "name": "Intervalle",
+                    "source": "derived from Garmin original streams",
+                    "aerobic": {"status": "ok", "efficiency": 1.2},
+                    "target_snapshot": {"steps": [{"target": "4:10 /km"}] * 5},
+                    "interval_quality": {
+                        "status": "ok",
+                        "steps": [
+                            {"target": "4:10 /km", "unit": "m/s", "mean": 4.0,
+                             "status": "ok", "start": 0, "end": 240}
+                        ] * 5,
+                        "repeat_groups": [
+                            {"target": "4:10 /km", "repetitions": 5, "fade_percent": 1.5}
+                        ],
+                    },
+                }
+                for day in ("2026-10-01", "2026-10-15")
+            ]
+        )
+        handler = _Handler()
+        handler.path = "/api/analysis/trends"
+        dispatch_route(AnalysisRoutes(lambda: self.reports), handler, handler.path)
+        status, ui = handler.sent
+        self.assertEqual(200, status)
+        progress = self.coach_report("progress", days=84, sport="run")["progress"]
+        self.assertEqual(progress["pace_at_heart_rate"], ui["pace_at_heart_rate"])
+        outdoor = ui["pace_at_heart_rate"]["run"]["outdoor"]
+        self.assertEqual(("ok", 4), (outdoor["status"], len(outdoor["sessions"])))
+        comparisons = self.coach_report("comparisons")["comparisons"]
+        self.assertEqual(recurring_view(comparisons), ui["recurring"])
+        (group,) = ui["recurring"]["groups"]
+        self.assertEqual(
+            {"date", "activity_id", "name", "source", "steps", "repeat_groups"},
+            set(group["observations"][0]),
         )
 
 

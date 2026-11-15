@@ -600,7 +600,7 @@ The system SHALL store one observation row per natural key `provider|metric|spor
 
 #### Scenario: A day of Garmin readiness snapshots
 - **WHEN** the `readiness` or `training_readiness_history` section holds several readings of one day, each stored as its own element
-- **THEN** only the element of the day's morning reading (the wake-up reading, else the earliest) emits that day's readiness, in the live ingest and the re-projection alike.
+- **THEN** only the element of the day's morning reading (among the readings with a score the mapper keeps, the wake-up reading, else the earliest) emits that day's readiness and level, dated by the day the choice used, in the live ingest and the re-projection alike.
 
 #### Scenario: Local per-session value
 - **WHEN** a locally derived per-session kind (session load, intensity factor, efficiency factor, variability index, mechanical work, aerobic decoupling, the five activity weather kinds) is stored without a provider
@@ -667,7 +667,7 @@ One background worker SHALL re-project stored raw records in batches of at most 
 - **WHEN** a follow-up stage fails
 - **THEN** only that stage is marked failed, later stages of the pass do not run, and the canonical backfill stays complete.
 
-Detailed contract: the state is the key-value record `canonical_backfill_state` with the status `pending`, `running`, `complete` or `failed`, the cursor, the mapper versions and zone of the run, `batches`, `completed_once` and per-provider counters `skipped_invalid`, `duplicates`, `reprojected` and `retired`. Record-level counters are added when the record completes, so an interrupted run reports the same totals. Raw records are visited in row-id order; deleted records, records without a mapper and records already at the current version are passed over, except in a zone-change pass. The follow-up order is local session load, session metrics, activity routes, session analysis, activity weather (when configured), then the one-time stages that `server.py` composes (session rebundle among them). The thread is the daemon thread `canonical-backfill`.
+Detailed contract: the state is the key-value record `canonical_backfill_state` with the status `pending`, `running`, `complete` or `failed`, the cursor, the mapper versions and zone of the run, `batches`, `completed_once` and per-provider counters `skipped_invalid`, `duplicates`, `reprojected`, `retired` and `added` (re-projected observations whose natural key had no stored row). Record-level counters are added when the record completes and `added` with the committed write of each observation, so an interrupted run reports the same totals. Raw records are visited in row-id order; deleted records, records without a mapper and records already at the current version are passed over, except in a zone-change pass. The follow-up order is local session load, session metrics, activity routes, session analysis, activity weather (when configured), then the one-time stages that `server.py` composes (session rebundle among them). The thread is the daemon thread `canonical-backfill`.
 
 Evidence:
 - `backend/sync/canonical_backfill.py:CanonicalBackfill.run_batch`

@@ -5,7 +5,14 @@
   ```powershell
   python tests/run_tests.py --changed
   python -m compileall -q server.py backend tests
+  node --test tests/*.cjs
   ```
+
+- The one tracked live model run is `tests/coach_live_eval.py` (#2221): started
+  by hand with a dedicated evaluation key, the dialogue catalogue once per run,
+  at most 300 model calls and 5 USD, tool calls only on temporary storage with
+  unconfigured providers; never part of the suite, CI or pre-push. Normal tests
+  stay mocked.
 
 - `tests/changed_tests.py` selects modules by imports and by string literals
   naming changed paths or modules. A test that depends on a file another way
@@ -22,7 +29,7 @@
 - Every test must use temporary `DATA_DIR`/database state or isolated patches.
   Never read or modify the real `.env`, `/data`, production database, Garmin
   token store, or runtime logs.
-- Mock all OpenAI, Garmin, Wahoo, Intervals.icu (output only), iCalendar, and
+- Mock all OpenAI, Anthropic, Garmin, Wahoo, Intervals.icu (output only), iCalendar, and
   other network calls.
   Do not use real credentials, external accounts, or live network access.
 - Do not print secrets or full athlete payloads in failures, fixtures, or test

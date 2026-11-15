@@ -8,12 +8,20 @@ description: Validate browser and PWA behavior with the isolated SQLCipher fixtu
 - Check login, Enter versus Shift+Enter, voice transcript editing, streaming/cancel/error/reload, accessibility, reduced motion, and the affected journey.
 - Check the stamped asset versions and service-worker cache/assets served by the image (rebuild `$(python scripts/run_browser_tests.py --print-image)`); verify fresh installation and offline assets.
 - Keep screenshots, traces, and videos fixture-only; never expose authenticated storage state.
+- Capture them without editing a spec: `python scripts/run_browser_tests.py
+  --project all --spec e2e/<name>.spec.js --screenshots` saves each selected
+  test's full-page end state in every project that runs it (mobile and tablet
+  only `@responsive` tests) and prints the paths (#2843).
 - UI PR screenshots go to a public repository: they come from the browser
   fixture, and you look at each image for fixture-only content before committing.
-  After the PR exists, commit them in a temporary worktree outside the checkout on
-  an orphan `assets/pr-<n>-<topic>` branch, remove that worktree, and push the
-  branch from the task worktree (`git push origin assets/pr-<n>-<topic>`): the hooks
-  need its scripts and must run, never bypassed. The PR body shows each image
+  After the PR exists, build a parentless commit with no local branch (#2865): in
+  a temporary detached worktree outside the checkout (`git worktree add --detach
+  <dir>`), run `git rm -rq .`, copy the images in, `git add` them and take
+  `<sha>` from `git commit-tree $(git write-tree) -m "PR #<n> screenshots"`; remove
+  that worktree (`git worktree remove --force <dir>`) and push from the task
+  worktree with `git push origin <sha>:refs/heads/assets/pr-<n>-<topic>`: the
+  hooks need its scripts and must run, never bypassed. `git branch --list
+  "assets/*"` stays empty. The PR body shows each image
   through its `blob/assets/pr-<n>-<topic>/<file>?raw=true` URL. Never merge an
   assets branch; deleting it later is optional, but delete it at once if an image
   shows anything but fixture data.

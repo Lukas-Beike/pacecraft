@@ -944,6 +944,43 @@ class StandardFixtureSeedLifecycleTests(StandardFixtureTestCase):
                 with self.assertRaises(ValueError):
                     fixture_runtime.seed_heavy_history(count)
 
+    def test_heavy_history_spreads_walks_over_the_given_years(self):
+        # #2974: a production-sized history: streamed sessions among walks over years.
+        with self._temporary_fixture_database("fixture-heavy-years-") as server:
+            env = {
+                "FIXTURE_HEAVY_HISTORY": "2",
+                "FIXTURE_HEAVY_WALKS": "4",
+                "FIXTURE_HEAVY_YEARS": "2",
+            }
+            with patch.dict("os.environ", env):
+                fixture_runtime.initialise_fixture()
+                fixture_runtime.initialise_fixture()  # a restart seeds nothing
+            today = server.ATHLETE_CLOCK.now().date()
+            with server.database_manager().reader() as db:
+                summaries = [
+                    summary
+                    for summary in server.CANONICAL_READ.activity_summaries(db)
+                    if "heavy" in str(summary.get("name"))
+                ]
+                marker = server.KEY_VALUE_REPOSITORY.get(db, "fixture_heavy_history")
+            self.assertEqual(marker, "2/4/2")
+            self.assertEqual(
+                sorted(summary["sport"] for summary in summaries),
+                ["ride", "run", "walk", "walk", "walk", "walk"],
+            )
+            days = sorted(
+                (today - date.fromisoformat(summary["started_at_local"][:10])).days
+                for summary in summaries
+            )
+            # Six sessions over two years: one about every 121 days from yesterday.
+            self.assertEqual(days, [1, 122, 244, 366, 487, 609])
+            with server.database_manager().reader() as db:
+                walk = fixture_runtime.fixture_wahoo_id("heavy-walk-0")
+                self.assertFalse(detail_sets_for(db, "garmin", f"garmin-{walk}"))
+            for walks, years in ((5001, 0), (0, 21)):
+                with self.assertRaises(ValueError):
+                    fixture_runtime.seed_heavy_history(2, walks=walks, years=years)
+
     def test_v6_fresh_seed_contains_each_scenario(self):
         with self._temporary_fixture_database("fixture-v6-fresh-") as server:
             fixture_runtime.initialise_fixture()

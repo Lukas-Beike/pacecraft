@@ -287,14 +287,50 @@ class QualityBaselineTests(unittest.TestCase):
             self.assertEqual(result["path"], "server.py")
             self.assertEqual(len(result["message_sha256"]), 64)
 
-    def javascript_findings(self, *source):
+    def javascript_findings(self, *source, helpers="function work() {}", worker=None):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             (root / "public").mkdir()
             (root / "public/sample.js").write_text(
                 chr(10).join(source), encoding="utf-8"
             )
+            # Another page script: its top-level names are globals of sample.js (#3016).
+            (root / "public/helpers.js").write_text(helpers, encoding="utf-8")
+            if worker is not None:
+                (root / "public/service-worker.js").write_text(worker, encoding="utf-8")
             return quality_baseline.javascript_diagnostics(root)
+
+    @unittest.skipUnless(quality_baseline.eslint_script(), "needs npm ci for ESLint")
+    def test_a_call_to_a_helper_declared_nowhere_is_found(self):
+        # #3016: numberText() existed in no public/ file and only Playwright caught it.
+        call = "function card(value) { return numberText(value) + format(value); }"
+        found = self.javascript_findings(call, helpers="const format = String;")
+        self.assertEqual(
+            [(item["path"], item["line"], item["code"]) for item in found],
+            [("public/sample.js", 1, "no-undef")],
+        )
+        # Declared by another page script, at its top level, in a top-level block
+        # (var) or on globalThis: fine.
+        for helpers in (
+            "const format = String; function numberText(v) { return v; }",
+            "const format = String; if (true) { var numberText = String; }",
+            "const format = String; (() => { globalThis.numberText = String; })();",
+        ):
+            with self.subTest(helpers=helpers):
+                self.assertEqual(self.javascript_findings(call, helpers=helpers), [])
+        # The service worker has its own globals, and its names are not the page's;
+        # an unguarded module.exports is a ReferenceError in the browser.
+        found = self.javascript_findings(
+            "swOnly(); module.exports = {};",
+            worker="self.addEventListener('activate', () => clients.claim()); function swOnly() {}",
+        )
+        self.assertEqual(
+            [(item["path"], item["code"]) for item in found],
+            [("public/sample.js", "no-undef")] * 2,
+        )
+        # The Node tests' guarded export is fine; it never runs in the browser.
+        guarded = 'if (typeof module !== "undefined") module.exports = { work };'
+        self.assertEqual(self.javascript_findings(guarded), [])
 
     @staticmethod
     def tangled_function(depth, marker=""):

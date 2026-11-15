@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import errno
+import itertools
 import os
 import sqlite3
 import tempfile
@@ -11,6 +12,7 @@ import unittest
 from collections.abc import Iterable, Iterator
 from contextlib import closing, contextmanager
 from dataclasses import replace
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -49,6 +51,14 @@ class DatabaseRestoreServiceTests(unittest.TestCase):
         self.canonical_backfill_start = Mock()
         self.logger = Mock()
         self.calls: list[str] = []
+        # Each recovery copy is named one second after the last, as real
+        # restores are; same-second copies are both kept (see the copy tests).
+        ticks = itertools.count()
+        clock = patch("backend.backup.restore.datetime")
+        self.addCleanup(clock.stop)
+        clock.start().now.side_effect = lambda _zone: (
+            datetime(2026, 11, 14, 12, 0, tzinfo=UTC) + timedelta(seconds=next(ticks))
+        )
 
         def stage(payload: bytes | Iterable[bytes]) -> Path:
             # Staging runs before the maintenance gate is taken.
@@ -339,21 +349,55 @@ class DatabaseRestoreServiceTests(unittest.TestCase):
         self.sync_jobs.resume_interrupted.assert_not_called()
         self.assertFalse(self.gate.state()["active"])
 
-    def test_two_restores_keep_distinct_recovery_copies(self) -> None:
+    def test_two_restores_keep_only_the_newest_recovery_copy(self) -> None:
+        # Athlete decision 2026-11-14 (#2914): the newest verified copy stays.
+        self.validation.verify_copy.return_value = True
         first = self.service.restore(b"replacement database")
         second = self.service.restore(b"replacement database")
 
-        self.assertNotEqual(
-            first["previous_database_backup"], second["previous_database_backup"]
+        newest = self.data_dir / second["previous_database_backup"]
+        self.assertFalse((self.data_dir / first["previous_database_backup"]).exists())
+        self.assertEqual(newest.read_bytes(), b"replacement database")
+        self.validation.verify_copy.assert_called_with(
+            newest, len(b"replacement database")
         )
         self.assertEqual(
-            (self.data_dir / first["previous_database_backup"]).read_bytes(),
-            b"previous database",
+            sorted(path.name for path in self.data_dir.iterdir()),
+            sorted(["coach.db", newest.name]),
         )
-        self.assertEqual(
-            (self.data_dir / second["previous_database_backup"]).read_bytes(),
-            b"replacement database",
+
+    def test_an_unverified_or_failed_restore_keeps_every_recovery_copy(self) -> None:
+        self.validation.verify_copy.return_value = True
+        first = self.service.restore(b"replacement database")[
+            "previous_database_backup"
+        ]
+        self.validation.verify_copy.return_value = False
+        second = self.service.restore(b"replacement database")[
+            "previous_database_backup"
+        ]
+        self.validation.verify_copy.return_value = True
+        self.sync_jobs.resume_interrupted.side_effect = RuntimeError("resume failed")
+        with self.assertRaises(AppError):
+            self.service.restore(b"replacement database")
+
+        copies = sorted(
+            path.name for path in self.data_dir.glob("coach.db.pre-restore-*")
         )
+        self.assertEqual(len(copies), 3)
+        self.assertIn(first, copies)
+        self.assertIn(second, copies)
+
+    def test_a_copy_taken_beside_an_unflushed_wal_keeps_the_older_copies(self) -> None:
+        # A failed checkpoint can leave commits in the WAL that the copy misses.
+        self.validation.verify_copy.return_value = True
+        first = self.service.restore(b"replacement database")
+        Path(f"{self.database_path}-wal").write_bytes(b"unflushed frames")
+        second = self.service.restore(b"replacement database")
+
+        for result in (first, second):
+            self.assertTrue(
+                (self.data_dir / result["previous_database_backup"]).exists()
+            )
 
     def test_restore_continues_when_damaged_database_checkpoint_fails(self) -> None:
         manager = Mock()

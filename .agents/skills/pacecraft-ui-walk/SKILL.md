@@ -1,6 +1,6 @@
 ---
 name: pacecraft-ui-walk
-description: Base skill. Headless read-only walk through the running app at phone and desktop width with the secret-file login, screenshots, load times, calendar week/month/paging and the served service-worker cache name. Use in the post-release check or after a restart.
+description: Base skill. Headless read-only walk through the running app at phone and desktop width with the secret-file login, screenshots, load times, calendar week/month/paging, per-step checks of each sub-function (charts, panels, selects) and the served service-worker cache name. Use in the post-release check or after a restart.
 ---
 
 # UI walk
@@ -32,6 +32,28 @@ numbers and the measuring method for `--compare`, which skips load times of a
 walk measured another way; keep the load times in the session notes, not in
 the repository.
 
+Each view also runs its sub-function steps (`STEPS` in `scripts/ui_walk.mjs`,
+#3009): a calendar unit (week and month, completed and planned), "Details",
+chart, zone bar, running dynamics, the equipment select and fuelling, the
+Analyse tabs, Ernährung Verlauf and Körper, Mehr Ausrüstung and the changelog,
+and the Coach history. A step opens its controls, then waits for its element and
+checks it is not empty (chart: drawn marks; numbers: a digit; options: a select
+with two or more; text: any), and times interaction to ready. One line per step
+at both widths: `ok|FAIL <width> <step> <ms> ms`; `info ... skipped` when the
+data does not exist (no planned unit, no recorded running dynamics); a missing
+or empty element where data exists is `FAIL` and names the feature it covers.
+`--compare` prints each step's time against the previous walk and a `FAIL` for a
+step that passed before and is skipped now. Optional steps are skipped without
+data, so a skipped step in the notes is read, not ignored.
+
+To add a step, append one object to `STEPS`: `view`, `name`, `covers` (feature or
+issue), optional `pre` (open once), `each` (candidates tried in turn) and `then`
+(open inside the candidate), `ready` (selector), `kind`, `optional`, `absent`.
+Controls are limited to opening, expanding, paging and tab controls
+(`isOpener`), and a label that names save, sync, send, delete, export, undo or
+settings is refused; choosing a select value is never part of a step. The
+e2e spec `e2e/ui-walk-steps.spec.js` pins that an empty chart or panel fails.
+
 Look at every screenshot yourself; a view can render an error state without a
 console error. Screenshots stay in the scratchpad and are never committed.
 
@@ -45,7 +67,9 @@ store.
 
 For a start-up or curve performance measurement (#2801), add
 `-HeavyHistory 900` (900 synthetic 1.5 h rides and runs with full streams and
-analyses over several years; the first start seeds for about 5 minutes).
+analyses over several years; the first start seeds for about 5 minutes). For
+numbers that stand for production, use the production profile
+`-HeavyHistory 850 -HeavyWalks 2950 -HeavyYears 6` (#2974).
 Measure "right after a restart" with `docker restart fixture-walk`, then the
 walk with `--compare` against the previous walk; note other running containers,
 they share the CPU. To see which thread holds the interpreter once the app is
@@ -53,5 +77,5 @@ ready, run `docker kill -s USR1 fixture-walk` and read the stacks with
 `docker logs`; before readiness the signal stops the container.
 
 It presses no control that saves, synchronizes, deletes or sends. Exit 0 no
-error, 1 a view logged errors or logout failed, 2 bad input or the walk
+error, 1 a view logged errors, a step failed or logout failed, 2 bad input or the walk
 stopped.

@@ -98,6 +98,7 @@ class SyncGetRoutes:
             garmin_status=NO_GARMIN_SYNC_STATUS,
             profile={},
             today=self._local_today(),
+            validation=False,
         )
         try:
             adherence = service.planned_adherence(payload)

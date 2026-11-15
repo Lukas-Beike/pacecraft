@@ -226,12 +226,16 @@ The daily-release workflow SHALL prepare version changes through release-version
 - **WHEN** the relevant source has an existing release-test run
 - **THEN** the workflow does not dispatch a duplicate test solely because a check context is absent
 
+#### Scenario: Release PR's own test run
+- **WHEN** a release PR was just created, or an open release PR already has its own `pull_request` test run of the head
+- **THEN** that run is the PR's test and checks APP_VERSION against the version in the `chore/release-version-<v>` or `chore/release-promotion-<v>` branch name, and no explicit test run is dispatched; a later pass dispatches one only for an open PR with neither a test check nor its own run, and the workflow never sleeps to wait for it
+
 #### Scenario: Version choice
 - **WHEN** the process computes the next version
 - **THEN** it increments the patch of APP_VERSION unless a manual dispatch names a MAJOR.MINOR.PATCH version, which must be greater than the latest release and cannot be chosen while a different APP_VERSION still awaits promotion
 - **AND** a merged version branch must match the merged APP_VERSION, and commits that only set the application version do not count as releasable changes
 
-Evidence: `.github/workflows/daily-release.yml` (`prepare-version`: `version_is_greater`, `count_releaseable_commits`). Tests: `tests/test_release_events.py::test_open_pr_dispatches_release_test`; `tests/test_release_events.py::test_existing_tests_do_not_dispatch_again`; `tests/test_release_events.py::test_unmerged_version_test_defers_without_waiting_or_mutating`; `tests/test_release_events.py::test_pending_promotion_has_a_same_tree_duplicate_guard`.
+Evidence: `.github/workflows/daily-release.yml` (`prepare-version`: `version_is_greater`, `count_releaseable_commits`). Tests: `tests/test_release_events.py::test_open_pr_dispatches_release_test`; `tests/test_release_events.py::test_existing_tests_do_not_dispatch_again`; `tests/test_release_events.py::test_own_pull_request_run_replaces_the_dispatch`; `tests/test_ci_contracts.py::test_read_only_release_pr_version_must_match_application`; `tests/test_release_events.py::test_unmerged_version_test_defers_without_waiting_or_mutating`; `tests/test_release_events.py::test_pending_promotion_has_a_same_tree_duplicate_guard`.
 
 ### Requirement: Scheduled release start and release blockers
 
@@ -419,11 +423,15 @@ The fixture runtime SHALL start only when `AI_COACH_DISPOSABLE_FIXTURE` is exact
 - **WHEN** the demo starts with `-HeavyHistory <n>` (1 to 1000)
 - **THEN** the fixture also seeds `n` synthetic long rides and runs with full streams and their session analyses once per count (`FIXTURE_HEAVY_HISTORY`), and readiness waits at most 600 health probes; without it nothing else changes
 
+#### Scenario: Production-sized heavy history
+- **WHEN** the demo starts with `-HeavyHistory <n>` plus `-HeavyWalks <w>` (0 to 5000) and/or `-HeavyYears <y>` (0 to 20)
+- **THEN** the fixture also seeds `w` walks without streams among the long sessions (`FIXTURE_HEAVY_WALKS`), spreads all of them evenly over `y` years instead of 1.5-day steps (`FIXTURE_HEAVY_YEARS`), seeds once per count, walks and years, and waits at most 600 plus `w` health probes; `-HeavyWalks` or `-HeavyYears` without `-HeavyHistory` is refused before anything starts
+
 #### Scenario: A lane's own image
 - **WHEN** the demo starts with `-Image <tag>` other than `pacecraft:local`
 - **THEN** it neither builds nor retags `pacecraft:local`, refuses a tag that is not present locally before it stops or removes anything, never pulls (`--pull never`), refuses a value that is not a plain image reference, and runs that tag with the same loopback port, disposable marker and this checkout's `e2e/` fixture code
 
-Evidence: `scripts/demo-container.ps1`; `e2e/fixture_runtime.py::require_disposable_fixture_marker`; `e2e/fixture_runtime.py::seed_heavy_history`; `tests/test_fixture_standard_data.py::StandardFixtureSeedLifecycleTests::test_heavy_history_seeds_count_and_full_streams_once`. Tests: `tests/test_container_delivery.py::test_fixture_refuses_any_marker_value_other_than_exact_one`; `tests/test_container_delivery.py::test_refused_names_stop_before_any_docker_call`; `tests/test_container_delivery.py::test_existing_container_is_stopped_then_removed_without_volumes`; `tests/test_container_delivery.py::test_run_arguments_keep_the_demo_on_loopback_and_disposable`.
+Evidence: `scripts/demo-container.ps1`; `e2e/fixture_runtime.py::require_disposable_fixture_marker`; `e2e/fixture_runtime.py::seed_heavy_history`; `tests/test_fixture_standard_data.py::StandardFixtureSeedLifecycleTests::test_heavy_history_seeds_count_and_full_streams_once`; `tests/test_fixture_standard_data.py::StandardFixtureSeedLifecycleTests::test_heavy_history_spreads_walks_over_the_given_years`. Tests: `tests/test_container_delivery.py::test_fixture_refuses_any_marker_value_other_than_exact_one`; `tests/test_container_delivery.py::test_refused_names_stop_before_any_docker_call`; `tests/test_container_delivery.py::test_existing_container_is_stopped_then_removed_without_volumes`; `tests/test_container_delivery.py::test_run_arguments_keep_the_demo_on_loopback_and_disposable`.
 
 ### Requirement: Public marketing deployment is separated from athlete runtime
 

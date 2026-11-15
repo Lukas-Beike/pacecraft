@@ -747,6 +747,38 @@ class BrowserRunnerTests(unittest.TestCase):
                 Path(env_a["E2E_AUTH_STATE_PATH"]).is_relative_to(root / "out-a")
             )
             self.assertIn("--trace=off", command_a)
+            # #2843: end-state screenshots only with --screenshots; an inherited
+            # value never switches them on.
+            self.assertNotIn("E2E_SCREENSHOTS", env_a)
+            with mock.patch.dict(os.environ, {"E2E_SCREENSHOTS": "1"}):
+                _, inherited, _ = execute.browser_command(
+                    {"project": "desktop", "file": "e2e/a.spec.js"},
+                    9102, root / "out-c", root / "private-c",
+                )  # fmt: skip
+            self.assertNotIn("E2E_SCREENSHOTS", inherited)
+            args.screenshots = True
+            _, shots, _ = execute.browser_command(
+                {"project": "desktop", "file": "e2e/a.spec.js"},
+                9103, root / "out-d", root / "private-d",
+            )  # fmt: skip
+            self.assertEqual(shots["E2E_SCREENSHOTS"], "1")
+
+    def test_screenshot_listing_names_only_playwright_end_states(self):
+        # #2843: a spec's own crops and the HTML report's copies are not listed.
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            artifacts = root / "desktop" / "a.spec.js-1" / "artifacts" / "a-test"
+            artifacts.mkdir(parents=True)
+            for name in ("test-finished-1.png", "test-failed-1.png", "crop.png"):
+                (artifacts / name).write_bytes(b"png")
+            (root / "desktop" / "report" / "data").mkdir(parents=True)
+            (root / "desktop" / "report" / "data" / "abc.png").write_bytes(b"png")
+            self.assertEqual(
+                [shot.name for shot in runner.screenshots(root)],
+                ["test-failed-1.png", "test-finished-1.png"],
+            )
+        with redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
+            runner.main(["--project", "desktop", "--list", "--screenshots"])
 
     def test_synthetic_identity_parity_across_all_projects_and_shards(self):
         listing_report = report()
@@ -1200,9 +1232,10 @@ class BrowserRunnerTests(unittest.TestCase):
                 str(ROOT / "public/index.html") + ":/work/public/index.html:ro",
                 str(ROOT / "public/service-worker.js")
                 + ":/work/public/service-worker.js:ro",
+                str(ROOT / "scripts/ui_walk.mjs") + ":/work/scripts/ui_walk.mjs:ro",
             },
         )
-        self.assertEqual(len(mounted), 5)
+        self.assertEqual(len(mounted), 6)
         for source in mounted:
             self.assertTrue(source.endswith(":ro"))
             self.assertNotIn(".env", source)

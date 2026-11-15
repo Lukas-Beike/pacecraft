@@ -47,6 +47,9 @@ Copy this checklist into your response and tick it as you go:
   `backend/activities` constants, run
   `python scripts/regenerate_docs.py` and commit the rewritten documents; the
   pre-push hook refuses stale ones (#2949).
+- A PR that adds or alters a user-visible function adds or updates its step in
+  `STEPS` of `scripts/ui_walk.mjs`, or names in the description why it cannot
+  be walked read-only (#3009).
 - **OpenSpec:** list `git diff --name-only --no-renames origin/develop...HEAD --
   openspec/changes`. Each `openspec/changes/<name>/` path outside `archive/`
   names a change that must be archived on this branch: its active directory is
@@ -152,6 +155,9 @@ exit 1 handle the cause as below. On each wake:
   Gitar has reviewed the repaired head and no feedback is open.
 - Later changes (feedback fixes, CI fixes, conflict resolutions, rebases) need
   validation, not another local review; CI reviews the new head.
+- pr-state names this PR's files that develop changed since the head branched
+  off (#2866): before arming, rebase when it names any; once auto-merge is
+  armed it reports them as accepted, so do not rebase for that alone.
 - If the branch falls behind or conflicts, rebase and push with
   [branch-sync](../pacecraft-branch-sync/SKILL.md) `--push` (never a
   merge-style "Update branch"). A stacked PR: retarget it to `develop` first

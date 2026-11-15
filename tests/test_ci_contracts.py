@@ -335,6 +335,8 @@ class WorkflowSourceTests(unittest.TestCase):
         self.assertIn("python scripts/run_browser_tests.py --project", e2e)
         self.assertIn('--shard "$SPEC_SHARD" --total "$SPEC_SHARDS"', e2e)
         self.assertNotIn("mapfile -t specs", e2e)
+        # #3001: a red shard names every failed spec, not only its first one.
+        self.assertIn("--keep-going", e2e)
 
     def test_e2e_runs_beside_unit_tests_and_shards_desktop_completely(self):
         root = Path(__file__).resolve().parents[1]
@@ -465,6 +467,21 @@ class WorkflowSourceTests(unittest.TestCase):
         self.assertIn("docker tag pacecraft:ci", publish)
         self.assertIn("cosign attest --type spdxjson", publish)
         self.assertIn("org.opencontainers.image.source=", workflow)
+
+    def test_jobs_set_up_python_314_before_running_repository_python(self):
+        # #2796: ruff targets py314 syntax; the runner's system Python is older.
+        # Repository code in the CI image runs from /review or /app on 3.14.
+        root = Path(__file__).resolve().parents[1]
+        script = re.compile(r"\bpython3? (?:\.github/scripts|scripts|tools|tests)/")
+        setup = re.compile(r"\n +python-version: (['\"]?)3\.14\1\n")
+        for path in sorted((root / ".github/workflows").glob("*.yml")):
+            jobs = path.read_text(encoding="utf-8").split("\njobs:\n", 1)[-1]
+            for job in re.split(r"\n(?=  [\w-]+:[ \t]*(?:#.*)?\n)", jobs):
+                if not (first := script.search(job)):
+                    continue
+                with self.subTest(workflow=path.name, job=job.split(":", 1)[0]):
+                    found = setup.search(job)
+                    self.assertTrue(found and found.start() < first.start(), first[0])
 
     def test_pull_request_runs_cancel_only_their_own_older_run(self):
         workflow = (
@@ -987,42 +1004,28 @@ class ReleaseSourceTests(unittest.TestCase):
 
     def test_read_only_release_pr_version_must_match_application(self):
         self.commit("1.7.3")
-        result = subprocess.run(
-            [
-                sys.executable,
-                str(
-                    Path(__file__).resolve().parents[1]
-                    / ".github/scripts/release_source.py"
-                ),
-                "--source",
-                "develop",
-                "--expected-version",
-                "1.7.3",
-            ],
-            cwd=self.root,
-            capture_output=True,
-            text=True,
-            check=False,
+        script = (
+            Path(__file__).resolve().parents[1] / ".github/scripts/release_source.py"
         )
-        self.assertEqual(result.returncode, 0, result.stderr)
-        mismatch = subprocess.run(
-            [
-                sys.executable,
-                str(
-                    Path(__file__).resolve().parents[1]
-                    / ".github/scripts/release_source.py"
-                ),
-                "--source",
-                "develop",
-                "--expected-version",
-                "1.7.4",
-            ],
-            cwd=self.root,
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-        self.assertNotEqual(mismatch.returncode, 0)
+        # #2814: a release PR's own run takes the version from its head branch.
+        for extra, head_ref, passes in (
+            (["--expected-version", "1.7.3"], "", True),
+            (["--expected-version", "1.7.4"], "", False),
+            ([], "chore/release-version-1.7.3", True),
+            ([], "chore/release-version-1.7.4", False),
+            ([], "chore/release-promotion-1.7.4", False),
+            ([], "feat/release-version-1.7.4", True),  # not a release branch
+        ):
+            with self.subTest(extra=extra, head_ref=head_ref):
+                result = subprocess.run(
+                    [sys.executable, str(script), "--source", "develop", *extra],
+                    cwd=self.root,
+                    env={**os.environ, "GITHUB_HEAD_REF": head_ref},
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                )
+                self.assertEqual(result.returncode == 0, passes, result.stderr)
 
     def test_release_rejects_commit_outside_main(self):
         self.commit("1.7.3")
@@ -1252,11 +1255,6 @@ class ChangedFileClassifierTests(unittest.TestCase):
             self.assertIn(f"\n    timeout-minutes: {limit}\n", job.split("steps:", 1)[0])
             for command in commands:
                 self.assertIn(f"{command}\n", job)
-        # The scripts may use Python 3.14 syntax; the runner's own Python is older.
-        self.assertLess(
-            source.index("python-version: '3.14'"),
-            source.index("run: python .github/scripts/release_source.py"),
-        )
         # Aggregators accept a skip only when the run is docs-only.
         test = _job(workflow, "test", "quality")
         self.assertIn(

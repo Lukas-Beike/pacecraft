@@ -42,6 +42,64 @@ def service(data_dir: Path, **overrides: object) -> DatabaseRestoreValidationSer
 
 
 class DatabaseRestoreValidationTests(unittest.TestCase):
+    def test_verify_copy_needs_the_whole_file_and_the_current_schema(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            copy = root / "athlete.db.pre-restore-copy"
+            with closing(sqlite3.connect(copy)) as connection:
+                connection.execute("PRAGMA journal_mode=WAL")
+                connection.execute("CREATE TABLE kv (key TEXT)")
+                connection.commit()
+            size = copy.stat().st_size
+            current = service(root, schema_is_current=lambda _connection: True)
+            outdated = service(root, schema_is_current=lambda _connection: False)
+
+            self.assertTrue(current.verify_copy(copy, size))
+            self.assertFalse(current.verify_copy(copy, size + 1))
+            self.assertFalse(outdated.verify_copy(copy, size))
+            self.assertFalse(current.verify_copy(root / "missing.db", size))
+            garbage = root / "garbage.db"
+            garbage.write_bytes(b"x" * size)
+            self.assertFalse(
+                service(root, schema_is_current=database_schema_is_current).verify_copy(
+                    garbage, size
+                )
+            )
+            # Read-only and immutable: no journal or sidecar beside the copy.
+            self.assertEqual(
+                sorted(path.name for path in root.iterdir()),
+                ["athlete.db.pre-restore-copy", "garbage.db"],
+            )
+
+    def test_verify_copy_rejects_a_damaged_data_page_behind_an_intact_schema(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            copy = root / "athlete.db.pre-restore-damaged"
+            with closing(sqlite3.connect(copy)) as connection:
+                connection.execute("CREATE TABLE kv (key TEXT)")
+                connection.execute("CREATE INDEX kv_key ON kv(key)")
+                connection.executemany(
+                    "INSERT INTO kv VALUES (?)", [(f"k{i:04}",) for i in range(500)]
+                )
+                connection.commit()
+                page_size = connection.execute("PRAGMA page_size").fetchone()[0]
+                index_page = connection.execute(
+                    "SELECT rootpage FROM sqlite_master WHERE name = 'kv_key'"
+                ).fetchone()[0]
+            intact = copy.read_bytes()
+            data = bytearray(intact)
+            start = (index_page - 1) * page_size
+            data[start : start + page_size] = b"\xff" * page_size
+            copy.write_bytes(bytes(data))
+            current = service(root, row_factory=row_factory)
+
+            self.assertFalse(current.verify_copy(copy, len(data)))
+            copy.write_bytes(intact)
+            # The production row factory returns dicts; a clean copy still verifies.
+            self.assertTrue(current.verify_copy(copy, len(data)))
+
     def test_stage_enforces_payload_boundary_and_uses_uuid_filename(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             validator = service(Path(directory), maximum_bytes=4)

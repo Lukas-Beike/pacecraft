@@ -31,12 +31,11 @@ GENERATORS = (
 )
 
 
-def documents(root: Path) -> dict[str, str]:
-    """Every Markdown file under docs/, line endings normalized."""
+def documents(root: Path) -> dict[str, bytes]:
+    """Every Markdown file under docs/, as stored: a generator that writes CRLF
+    on Windows shows up as a change instead of a quiet git diff (#3008)."""
     return {
-        path.relative_to(root).as_posix(): path.read_text(encoding="utf-8").replace(
-            "\r\n", "\n"
-        )
+        path.relative_to(root).as_posix(): path.read_bytes()
         for path in sorted((root / "docs").rglob("*.md"))
     }
 

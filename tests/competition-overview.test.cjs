@@ -97,6 +97,25 @@ test("long planned units ask for fuelling and show drinking and carbohydrates wi
   const generic = rendered.plannedFuellingBlock({ sweat_rate: null, drinking: { generic_l_per_h: [0.4, 0.8] }, carbohydrates: { step: "moderate", low_g: 30, high_g: 60 } }).map(textOf).join("|");
   assert.match(generic, /Startwert ohne eigene Daten.*Pro Stunde0,4–0,8 l/);
   assert.equal(rendered.plannedFuellingRows({ max_l_per_h: 1.2 }).filter(Boolean).map((row) => row.join(":")).join("|"), "Pro Stunde:bis 1,2 l");
+  // #3012: a loss within 2 % of the weight needs no drink; the card says so instead of "0 l".
+  assert.equal(
+    rendered.plannedFuellingRows({ max_l_per_h: 1, l_per_h: 0, total_l: 0, within_loss_share: true, loss_l: 1.33 }).filter(Boolean).map((row) => row.join(":")).join("|"),
+    "Pro Stunde:nicht nötig|Verlust:1,33 l · unter 2 % des Gewichts",
+  );
+  // A small remaining need still shows its amounts; a missing loss leaves only "nicht nötig".
+  assert.equal(
+    rendered.plannedFuellingRows({ max_l_per_h: 1.08, l_per_h: 0.03, total_l: 0.04 }).filter(Boolean).map((row) => row.join(":")).join("|"),
+    "Pro Stunde:0,03 l|Gesamt:0,04 l",
+  );
+  assert.equal(
+    rendered.plannedFuellingRows({ within_loss_share: true }).filter(Boolean).map((row) => row.join(":")).join("|"),
+    "Pro Stunde:nicht nötig",
+  );
+  // An hourly share that rounds to nothing is left out, the total stays.
+  assert.equal(
+    rendered.plannedFuellingRows({ max_l_per_h: 0.5, l_per_h: 0, total_l: 0.01 }).filter(Boolean).map((row) => row.join(":")).join("|"),
+    "Gesamt:0,01 l",
+  );
 });
 
 test("a planned unit's fuelling is read once per query and only after the view's own reads", async () => {

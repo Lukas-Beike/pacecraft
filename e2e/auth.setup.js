@@ -5,6 +5,13 @@ const { chromium } = require("@playwright/test");
 const AUTH_STATE_PATH = process.env.E2E_AUTH_STATE_PATH || path.join(__dirname, "..", "playwright", ".auth", "user.json");
 
 async function authenticate(config) {
+  // #3026: an explicit server-free run (E2E_NO_LOGIN=1, never in CI) logs in nowhere; the
+  // config then gives every test an empty session. Without the switch nothing changes.
+  if (process.env.E2E_NO_LOGIN === "1") {
+    if (process.env.CI) throw new Error("E2E_NO_LOGIN is for local server-free specs; CI always logs in.");
+    console.warn("E2E_NO_LOGIN=1: no login; only server-free specs (page.setContent) can pass.");
+    return;
+  }
   const started = performance.now();
   const password = process.env.E2E_APP_PASSWORD;
   if (!password || password.length < 12) {

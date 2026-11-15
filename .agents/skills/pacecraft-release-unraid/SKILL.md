@@ -30,6 +30,12 @@ Use this skill only when the user explicitly asks to start or carry out a Pacecr
    (`gh run rerun <run id> --failed`); a second failure stops the release.
 5. Immediately before updating Unraid, run [image-verify](../pacecraft-image-verify/SKILL.md)
    for the tag. Stop unless it exits 0 (`latest` equals the release digest).
+6. A release that changes the database schema is a one-way door: before
+   updating Unraid, run [prod-diagnostics](../pacecraft-prod-diagnostics/SKILL.md)
+   with `--expect-backup-hours 24`. Stop unless its backup line is `ok` (a
+   backup the app made, younger than 24 h, whose check passed, #2996); on
+   `backup unknown` or an older backup, ask the athlete for a backup through
+   the app first.
 
 ## Update Unraid
 

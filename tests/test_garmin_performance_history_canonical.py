@@ -500,7 +500,15 @@ class HistoryReprojectionGoldenTests(unittest.TestCase):
     record of earlier days. The golden file pins the stored history rows, the
     provider charts, every canonical Garmin observation and the Coach's Garmin
     context after the live ingest; a forced re-projection of the stored raw
-    records must reproduce them exactly (#2782).
+    records must reproduce them exactly (#2782). A mismatch names the differing
+    paths, for example ``/ingested/coach_context/current_performance``.
+
+    The context entries are digests, so a base change to the Coach context alone
+    changes them. When a rebase conflicts in the golden file, take either side,
+    regenerate it with ``PACECRAFT_WRITE_GOLDEN=1`` on each replayed commit, and
+    check two things: the replayed commit changes the same paths as the original
+    commit did, and it differs from the original commit's golden only at paths the
+    new base changed (#2897).
     """
 
     def setUp(self) -> None:
@@ -636,7 +644,27 @@ class HistoryReprojectionGoldenTests(unittest.TestCase):
             GOLDEN.write_text(
                 json.dumps(actual, indent=1, sort_keys=True) + "\n", encoding="utf-8"
             )
-        self.assertEqual(actual, json.loads(GOLDEN.read_text(encoding="utf-8")))
+        expected = json.loads(GOLDEN.read_text(encoding="utf-8"))
+        self.assertEqual(
+            _changed_paths(expected, actual),
+            [],
+            "the golden history differs at these paths (#2897)",
+        )
+
+
+def _changed_paths(expected: Any, actual: Any, path: str = "") -> list[str]:
+    """The paths where two JSON values differ: a missing, added or changed value."""
+    if isinstance(expected, dict) and isinstance(actual, dict):
+        return [
+            changed
+            for key in sorted(expected.keys() | actual.keys())
+            for changed in (
+                _changed_paths(expected[key], actual[key], f"{path}/{key}")
+                if key in expected and key in actual
+                else [f"{path}/{key}"]
+            )
+        ]
+    return [] if expected == actual else [path or "/"]
 
 
 def _digest(value: Any) -> str:

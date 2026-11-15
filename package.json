@@ -13,5 +13,8 @@
     "eslint": "10.14.0",
     "eslint-plugin-sonarjs": "4.2.2",
     "modern-web-guidance": "1.0.0"
+  },
+  "overrides": {
+    "minimatch": "11.0.1"
   }
 }

@@ -56,6 +56,7 @@ def build_backup(ctx: AppContext) -> BackupServices:
                 time_limit_seconds=EXPORT_TIME_LIMIT_SECONDS,
             ),
             ctx.logger,
+            ctx.key_values,
         )
 
     def startup_invariants(db: Any) -> None:

@@ -23,6 +23,7 @@ from backend.canonical.stored_sports import (
     StoredSport,
     activity_type_environment,
     resolve_equipment_sport,
+    workout_sport_from_record,
 )
 from backend.canonical.vocabulary import ProviderId, Sport
 from backend.db import (
@@ -30,12 +31,14 @@ from backend.db import (
     canonical_store,
     equipment_store,
     garmin_store,
+    planning_store,
 )
 from backend.db.equipment_store import (
     ASSIGNMENT_PREFIX,
     EQUIPMENT_PREFIX,
     GARMIN_INITIALIZED_KEY,
     MAINTENANCE_PREFIX,
+    PLANNED_PREFIX,
 )
 from backend.errors import AppError
 
@@ -304,6 +307,11 @@ class EquipmentService:
         }
 
     def assign(self, payload: dict[str, Any]) -> dict[str, Any]:
+        if isinstance(payload, dict) and set(payload) == {
+            "planned_unit_id",
+            "equipment_id",
+        }:
+            return self._assign_planned(payload)
         if not isinstance(payload, dict) or set(payload) != {
             "activity_id",
             "equipment_id",
@@ -377,6 +385,44 @@ class EquipmentService:
             "assignment": saved,
             "change": change,
         }
+
+    def _assign_planned(self, payload: dict[str, Any]) -> dict[str, Any]:
+        """Store the athlete's choice for a planned unit (#3011); "Keiner" is null.
+
+        The planned unit itself is not changed, so nothing reaches a provider.
+        """
+        unit_id = payload["planned_unit_id"]
+        if not isinstance(unit_id, str) or not 0 < len(unit_id) <= 200:
+            raise AppError(400, "Aktivität und Ausrüstung sind erforderlich.")
+        with self._manager.unit_of_work() as db:
+            row = planned_unit_sport(db, unit_id)
+            if row is None:
+                raise AppError(404, "Geplante Einheit nicht gefunden.")
+            item = equipment_store.value(
+                db, EQUIPMENT_PREFIX + str(payload["equipment_id"])
+            )
+            equipment = json.loads(item) if item is not None else None
+            if payload["equipment_id"] is not None and not assignable_equipment(
+                equipment, row
+            ):
+                raise AppError(400, "Aktive passende Hauptausrüstung erforderlich.")
+            key = PLANNED_PREFIX + unit_id
+            previous = stored_value(db, key)
+            saved: dict[str, Any] = {
+                "planned_unit_id": unit_id,
+                "equipment_id": equipment["id"] if equipment else None,
+                "observed_at": self._utc_now(),
+            }
+            equipment_store.put(db, key, json.dumps(saved), saved["observed_at"])
+            change = _record_change(
+                db,
+                "equipment_planned",
+                unit_id,
+                "update" if previous else "create",
+                previous,
+                saved,
+            )
+        return {"ok": True, "stored_locally": True, "assignment": saved, "change": change}
 
     def maintain(self, payload: dict[str, Any]) -> dict[str, Any]:
         if not isinstance(payload, dict) or set(payload) - {
@@ -459,6 +505,15 @@ def _record_change(
     if record is None:
         return None
     return {field: record[field] for field in change_history.UNDO_REFERENCE_FIELDS}
+
+
+def planned_unit_sport(db: Any, unit_id: str) -> dict[str, Any] | None:
+    """The sport and environment of a live planned unit, as an assignment row has them."""
+    unit = planning_store.planned_unit_row(db, unit_id)
+    if unit is None or unit["tombstone"]:
+        return None
+    sport = workout_sport_from_record(json.loads(unit["payload"]))
+    return {"sport": sport.sport.value, "environment": sport.environment.value}
 
 
 def assignable_equipment(
@@ -1146,8 +1201,12 @@ def _session_assignments(
     ``observed_at``. A record of no known session keeps its stored key.
     """
     stored = {str(record["activity_id"]): record for record in records}
+    sessions = [str(row["id"]) for row in rows if row["id"]]
+    # Only a family that names a stored key not under its session id can move
+    # an assignment; reading every family took seconds on a long history (#3017).
+    named = canonical_store.legacy_key_sessions(db, sorted(set(stored) - {*sessions}))
     legacy = canonical_store.session_legacy_keys(
-        db, [str(row["id"]) for row in rows if row["id"]]
+        db, [key for key in sessions if key in named]
     )
     result = dict(stored)
     for row in rows:

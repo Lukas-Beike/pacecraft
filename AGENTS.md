@@ -45,6 +45,9 @@ Use [README.md](README.md) for the overview and [docs/setup.md](docs/setup.md) a
 - Preserve the root `.env`, `/data`, the encrypted database, Garmin token store,
   and database recovery backups. Do not delete, reset, truncate, or replace the
   live database except through the implemented, validated restore workflow.
+  Named exception (athlete, 2026-11-14, #2914): after a completed restore whose
+  new recovery copy is verified, the older restore copies are deleted so only
+  the newest remains.
 - A new database is created directly as SQLCipher when `APP_PASSWORD` is
   configured. Existing SQLCipher databases are upgraded in place through
   validated, data-preserving migrations; encryption must remain enabled.
@@ -70,17 +73,8 @@ Use [README.md](README.md) for the overview and [docs/setup.md](docs/setup.md) a
   Pass dependencies explicitly; keep transactions with the owning use case.
   Moving helpers alone is not extraction. Preserve behavior and verify focused
   tests; reduce legacy code through ownership, not formatting or line limits.
-- Domain owners: `coach/` (Coach), `planning/` (plans/seasons), `sync/` (sync/jobs),
-  `providers/` (transport), `db/` (persistence), `http_api/` (HTTP/route assembly),
-  `backup/` (backup/export), `athlete/` (profile/check-ins/local time),
-  `activities/` (feedback/reads/workout text), `calendar/` (external calendars),
-  `diagnostics/` (safe diagnostics), `history/` (changes/undo), `nutrition/`,
-  `performance/` (derived/readiness), `runtime/` (lifecycle/maintenance),
-  `weather/` (weather/cache), `app/` (application context and composition),
-  and `canonical/` (stdlib-only vocabulary/records).
-  Cross-cutting owners: `config.py`, `privacy.py`, `settings.py`,
-  `change_history.py`, `observability.py`, `errors.py`, `pagination.py`,
-  `provider_credentials.py`. Extend a cohesive owner first.
+- The domain and cross-cutting owners are listed in
+  [backend/AGENTS.md](backend/AGENTS.md); extend a cohesive owner first.
 - Apply scoped [backend](backend/AGENTS.md), [frontend](public/AGENTS.md), and
   [test](tests/AGENTS.md) instructions, plus [browser fixtures](e2e/AGENTS.md)
   and [CI/release](.github/AGENTS.md), when working in those directories.
@@ -121,11 +115,8 @@ Use [README.md](README.md) for the overview and [docs/setup.md](docs/setup.md) a
   version mismatches.
 - Keep credentials and external request payloads out of logs; redact structured
   logs. Diagnostics may keep sanitized Coach request/response bodies but never
-  credentials, keys, tokens, session data, or raw OpenAI error text. Voice is
+  credentials, keys, tokens, session data, or raw provider error text. Voice is
   short-lived transcription; never persist audio.
-- Never hand-write asset `?v=` versions or the service-worker cache name; the
-  server stamps them from content hashes. A new public file is served from the
-  `public/` listing; add it to the service-worker `ASSETS` list if cached.
 - Cut taglines, helper texts and secondary labels. If the screen needs them to
   make sense, fix the layout.
 
@@ -173,29 +164,17 @@ outgoing commits for secrets and runs the quality ratchet; never bypass either.
   with the Codex Security plugin or `--auth chatgpt`; no API key or GitHub
   Actions workflow for it.
 
-Run from the repository root. Locally, run the Python tests the change affects;
-CI runs the full suite on every PR. Run the full suite locally only when the
-selector falls back to it, to reproduce a CI failure, or when asked:
-
-```powershell
-python tests/run_tests.py --changed
-python -m compileall -q server.py backend tests
-node --test tests/*.cjs
-```
-
-Tests use temporary data and mocked services, never real `.env`, `/data`, or
-OpenAI/Intervals.icu/Garmin accounts. For Dockerfile, dependency, startup, or
-deployment changes also run `docker build -t pacecraft:local .`. Browser changes
-run the affected Playwright project (`npm run test:e2e`; projects mobile,
-tablet-landscape, desktop) and, when a browser is available,
-check login, fresh PWA install/offline assets, safe Markdown, Enter versus
-Shift+Enter, microphone, notifications, and the changed flow.
-
-The one tracked live model run is `tests/coach_live_eval.py`
-(#2221): started by hand with a dedicated evaluation key, the dialogue catalogue
-once per run, at most 300 model calls and 5 USD, tool calls only on temporary
-storage with unconfigured providers; never part of the suite, CI or pre-push.
-Normal tests stay mocked.
+Run from the repository root the tests the change affects (commands and the one
+live model run are in [tests](tests/AGENTS.md)); CI runs the full suite on every
+PR, so run it locally only when the selector falls back to it, to reproduce a CI
+failure, or when asked. Tests use temporary data and mocked services, never real
+`.env`, `/data`, or OpenAI/Anthropic/Intervals.icu/Garmin/Wahoo accounts. For
+Dockerfile, dependency, startup, or deployment changes also run
+`docker build -t pacecraft:local .`. Browser changes run the affected browser
+selection through the isolated runner `scripts/run_browser_tests.py` (selection
+per [browser-tests](.agents/skills/pacecraft-browser-tests/SKILL.md)) and, when a
+browser is available, check login, fresh PWA install/offline assets, safe
+Markdown, Enter versus Shift+Enter, microphone, notifications, and the changed flow.
 
 CI and Docker use Python 3.14; change toolchain and CI together. Direct pins live
 in `requirements.in`/`requirements-dev.in`; regenerate the hash-locked `.txt`
@@ -203,14 +182,13 @@ files with the [dependency recipe](docs/dependencies.md).
 
 ### Local runtime (Windows)
 
-Use Docker for application and UI integration: the pinned SQLCipher dependency
-has no Windows wheel. Never bypass encrypted startup. [docs/setup.md](docs/setup.md) is the single
-runbook for setup and Garmin login. Browser checks prefer the disposable fixture
-in `.agents/skills/pacecraft-pwa-e2e/references/browser-validation.md`. Rebuild
-the image after application, dependency, or startup changes; keep the data mount,
-token store, and recovery backups when recreating the container, and never use
-`docker rm -v`. The non-root container uses port 8090 and a writable `/data`;
-runtime data never enters the image. Voice needs a secure context.
+Use Docker for application and UI integration (the pinned SQLCipher dependency
+has no Windows wheel) and never bypass encrypted startup. Rebuild the image after
+application, dependency, or startup changes; keep the data mount, token store,
+and recovery backups when recreating the container, and never use
+`docker rm -v`. [docs/setup.md](docs/setup.md) is the single runbook for setup
+and Garmin login; development details are in
+[docs/development.md](docs/development.md).
 
 ## Git conventions
 

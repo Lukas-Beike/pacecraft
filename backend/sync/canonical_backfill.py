@@ -101,7 +101,15 @@ STATE_KEY: Final = "canonical_backfill_state"
 DEFAULT_BATCH_SIZE: Final = 200
 MIN_BATCH_SIZE: Final = 100
 MAX_BATCH_SIZE: Final = 250
-COUNTER_NAMES: Final = ("skipped_invalid", "duplicates", "reprojected", "retired")
+# ``added``: observations a re-projection writes for a natural key without a stored
+# row, the days a mapper change newly fills (counts only, #2884).
+COUNTER_NAMES: Final = (
+    "skipped_invalid",
+    "duplicates",
+    "reprojected",
+    "retired",
+    "added",
+)
 # A backfill batch starts no new raw record or session after this long: the
 # re-projection and the follow-up stages that decode streams (in their prefetch,
 # #2311), so a waiting login, Coach turn or provider sync gets the writer within
@@ -407,7 +415,14 @@ class CanonicalBackfill:
                 work,
                 current,
                 budget - written,
-                partial(_write_reprojection, db, now=now),
+                partial(
+                    _write_reprojection,
+                    db,
+                    now=now,
+                    counters=state["counters"].setdefault(
+                        row["provider"], dict.fromkeys(COUNTER_NAMES, 0)
+                    ),
+                ),
             )
             written += count
             if not finished:
@@ -755,7 +770,9 @@ def _distinct[T](values: Sequence[T], key: Callable[[T], str]) -> tuple[list[T],
     return kept, len(values) - len(kept)
 
 
-def _write_reprojection(db: Any, item: _Item, now: str) -> None:
+def _write_reprojection(
+    db: Any, item: _Item, now: str, counters: dict[str, int]
+) -> None:
     """Bring one existing canonical row up to the current projection."""
     value = item.value
     if isinstance(value, ActivityItem):
@@ -768,7 +785,7 @@ def _write_reprojection(db: Any, item: _Item, now: str) -> None:
             now=now,
         )
     elif isinstance(value, ObservationItem):
-        canonical_store.upsert_observation(
+        outcome = canonical_store.upsert_observation(
             db,
             value.observation,
             mapper_version=value.mapper_version,
@@ -777,6 +794,9 @@ def _write_reprojection(db: Any, item: _Item, now: str) -> None:
             owner=value.owner,
             ranks=value.ranks,
         )
+        if outcome is canonical_store.WriteOutcome.WRITTEN:
+            # A state stored before this counter existed has no ``added`` yet.
+            counters["added"] = counters.get("added", 0) + 1
     else:
         # Re-projection plans carry activities and observations as items; domain
         # batches are written on completion.

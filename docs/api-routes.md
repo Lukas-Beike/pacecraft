@@ -40,6 +40,7 @@ handler's docstring. Regenerate it with
 | POST | `/api/analysis/refresh` | Session + CSRF | after access | Run a targeted refresh of one analysis area. |
 | GET | `/api/analysis/running-dynamics` | Session | no | Running dynamics against the athlete's own runs at the same pace (#2829). |
 | GET | `/api/analysis/training-records` | Session | no | Analysis projection: power profiles or training records. |
+| GET | `/api/analysis/trends` | Session | no | Pace at equal heart rate and recurring sessions, as the Coach reads them (#2802). |
 | GET | `/api/analysis/week-review` | Session | no | The local review of one ISO week against the week before (#2805). |
 | GET | `/api/auth/status` | Public | no | Current login status. |
 | GET | `/api/bootstrap` | Session | no | Initial authenticated client state. |
@@ -59,7 +60,7 @@ handler's docstring. Regenerate it with
 | GET | `/api/diagnostics` | Session | no | Diagnostic report. |
 | POST | `/api/diagnostics/delete` | Session + CSRF | after access | Clear the stored diagnostics. |
 | POST | `/api/equipment` | Session + CSRF | after access | Create, edit or retire one piece of equipment, stored locally (#2879). |
-| POST | `/api/equipment/assignment` | Session + CSRF | after access | Assign one session its equipment, or none, stored locally (#2879). |
+| POST | `/api/equipment/assignment` | Session + CSRF | after access | Assign one session or planned unit its equipment, or none, stored locally. |
 | POST | `/api/equipment/maintenance` | Session + CSRF | after access | Record one maintenance entry for a piece of equipment, stored locally. |
 | POST | `/api/external-calendar/decisions` | Session + CSRF | after access | Set or remove how one calendar event affects training; nothing remote. |
 | POST | `/api/external-calendar/sync` | Session + CSRF | after access | Queue a provider synchronization, or a targeted refresh of the external calendars or the weather. |
@@ -278,6 +279,22 @@ band and per value; null without a stored run).
 
 Errors: 400 "Ungültige Aktivitäts-ID." for a missing id or one longer
 than 200 characters.
+
+### `GET /api/analysis/trends`
+
+Request: no query, no body.
+
+Response: 200 with `pace_at_heart_rate`, the run trend of the Coach's
+12-week progress review (`method`, `unit`, `scope` and `run` per
+environment `outdoor` and `indoor`: `status`, `heart_rate_band_bpm`,
+`sources`, `sessions` with `date`, `activity_id`, `pace_s_per_km`,
+`earlier`, `later` and `change_s_per_km`; or only `status`
+`insufficient_data` or `outside_curve_window`), and `recurring`, the
+Coach's comparisons section with each observation cut to `date`,
+`activity_id`, `name`, `source`, `steps` (`target`, `unit`, `mean`,
+`status`) and `repeat_groups`. It changes no state and calls no provider.
+
+Errors: none beyond the common ones.
 
 ### `GET /api/analysis/week-review`
 
@@ -603,16 +620,20 @@ Ausrüstungsgegenstände." for a new item beyond the 100th.
 ### `POST /api/equipment/assignment`
 
 Request: JSON body of at most 16 KiB, exactly `{"activity_id": string,
-"equipment_id": string | null}`; `null` records that the session used
-no equipment ("Keiner"), which also overrides Garmin's gear links.
+"equipment_id": string | null}` for a session (#2879) or
+`{"planned_unit_id": string, "equipment_id": string | null}` for a
+planned unit (#3011); `null` records "Keiner", which also overrides
+Garmin's gear links. A planned unit's choice changes nothing of the unit
+itself and reaches no provider.
 
 Response: 200 `{"ok": true, "stored_locally": true, "assignment":
-{"activity_id", "equipment_id", "observed_at"}, "change"}`; `change` is
-the undo reference.
+{"activity_id" or "planned_unit_id", "equipment_id", "observed_at"},
+"change"}`; `change` is the undo reference.
 
 Errors: 400 "Aktivität und Ausrüstung sind erforderlich." for another
 body shape; 404 "Kanonische Aktivität nicht gefunden." for an unknown
-session; 400 "Aktive passende Hauptausrüstung erforderlich." for an
+session; 404 "Geplante Einheit nicht gefunden." for an unknown or deleted
+planned unit; 400 "Aktive passende Hauptausrüstung erforderlich." for an
 unknown item or one that is archived, a component, unresolved or of
 another sport.
 
@@ -1100,7 +1121,8 @@ Response: 200 with `status` `not_long` (another sport or under 60 min)
 or `ready` with `duration_s`, `forecast_c` (cached forecast, outdoors),
 `sweat_rate` (`l_per_h`, `sessions`, `similar`, `temperature_c`; null
 without own data), `drinking` (`l_per_h`, `total_l`, `max_l_per_h`,
-`sodium_g_per_l`, or `generic_l_per_h` without own data),
+`within_loss_share` with the expected `loss_l` when the loss stays
+within 2 % of body weight, `sodium_g_per_l`, or `generic_l_per_h` without own data),
 `drinking_source`, `carbohydrates`, `carbohydrate_source` and
 `weight`. It reads stored data only and fetches nothing.
 

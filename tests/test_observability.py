@@ -6,6 +6,7 @@ import subprocess
 import sys
 import tempfile
 import threading
+import time
 import unittest
 from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
@@ -24,6 +25,7 @@ from backend.observability import (
     DiagnosticCapture,
     JsonLogFormatter,
     Redactor,
+    RouteTimings,
     configure_logging,
     diagnostic_capture_response,
     diagnostic_response_shape,
@@ -900,6 +902,63 @@ class _RecordingLogger:
     def log(self, level, message, *, extra):
         self.records.append((level, message, extra))
 
+    def info(self, message, *, extra):
+        self.log(logging.INFO, message, extra=extra)
+
+
+_NO_ROUTES = SimpleNamespace(match=lambda _method, _path: None)
+
+
+class RouteTimingTests(unittest.TestCase):
+    def test_access_log_carries_status_and_duration_and_times_the_route_pattern(self):
+        logger = _RecordingLogger()
+        timings = RouteTimings()
+        handler = RequestHandler.__new__(RequestHandler)
+        handler.command = "GET"
+        handler.path = "/api/activities/act_private_marker?probe=1"
+        handler.requestline = f"GET {handler.path} HTTP/1.1"
+        detail = SimpleNamespace(path="/api/activities/{id}")
+        handler.dependencies = SimpleNamespace(
+            logger=logger,
+            route_timings=timings,
+            route_table=SimpleNamespace(
+                match=lambda _method, path: (detail, {"id": path.rsplit("/", 1)[1]})
+            ),
+        )
+        handler._dispatch_started_at = time.perf_counter() - 0.25
+        handler.log_request(200)
+        handler.log_client_disconnect()
+        # A later request on the same connection that skips the dispatch (a 501)
+        # carries no duration of the earlier one.
+        handler.log_request(501)
+        self.assertNotIn("duration_ms", logger.records[-1][2]["context"])
+        context = logger.records[0][2]["context"]
+        self.assertEqual(context["status"], 200)
+        self.assertGreaterEqual(context["duration_ms"], 250)
+        (row,) = timings.summary()
+        self.assertEqual(
+            (row["route"], row["count"], row["disconnects"]),
+            ("GET /api/activities/{id}", 1, 1),
+        )
+        self.assertGreaterEqual(row["p95_ms"], 250)
+        # Diagnostics name the route pattern only: no id, no query.
+        self.assertNotIn("act_private_marker", json.dumps(timings.summary()))
+        self.assertNotIn("probe", json.dumps(timings.summary()))
+
+    def test_summary_lists_the_slowest_routes_and_every_route_a_client_left(self):
+        timings = RouteTimings()
+        for index in range(RouteTimings.SHOWN + 3):
+            for value in range(1, 21):
+                timings.record(f"GET /api/r{index}", float(value * (index + 1)))
+        timings.disconnect("GET /api/left")
+        rows = timings.summary()
+        self.assertEqual(rows[0]["route"], f"GET /api/r{RouteTimings.SHOWN + 2}")
+        # p95 of 1..20 times 18 is the 19th value: 19 * 18.
+        self.assertEqual((rows[0]["p95_ms"], rows[0]["max_ms"]), (342, 360))
+        self.assertEqual(len(rows), RouteTimings.SHOWN + 1)
+        self.assertEqual(rows[-1]["route"], "GET /api/left")
+        self.assertIsNone(rows[-1]["p95_ms"])
+
 
 class HttpAccessLogLevelTests(unittest.TestCase):
     def test_successful_routine_get_polls_log_at_debug(self):
@@ -931,7 +990,9 @@ class HttpAccessLogLevelTests(unittest.TestCase):
         handler.command = "GET"
         handler.path = "/api/chat/status?probe=1"
         handler.requestline = "GET /api/chat/status?probe=1 HTTP/1.1"
-        handler.dependencies = SimpleNamespace(logger=logger)
+        handler.dependencies = SimpleNamespace(
+            logger=logger, route_table=_NO_ROUTES, route_timings=RouteTimings()
+        )
 
         handler.log_request(200)
         handler.log_request(401)
@@ -940,9 +1001,15 @@ class HttpAccessLogLevelTests(unittest.TestCase):
         self.assertEqual(ok_level, logging.DEBUG)
         self.assertEqual(error_level, logging.INFO)
         self.assertEqual(ok_extra["event"], "http_access")
+        # The status joins the context (#3017); a request never dispatched has no duration.
         self.assertEqual(
             ok_extra["context"],
-            {"method": "GET", "path": "/api/chat/status", "request_id": None},
+            {
+                "method": "GET",
+                "path": "/api/chat/status",
+                "request_id": None,
+                "status": 200,
+            },
         )
         self.assertNotIn("cookie", ok_message.lower())
         self.assertNotIn("authorization", ok_message.lower())
@@ -953,7 +1020,9 @@ class HttpAccessLogLevelTests(unittest.TestCase):
         handler.command = "GET"
         handler.path = "/api/state/events"
         handler.requestline = "GET /api/state/events HTTP/1.1"
-        handler.dependencies = SimpleNamespace(logger=logger)
+        handler.dependencies = SimpleNamespace(
+            logger=logger, route_table=_NO_ROUTES, route_timings=RouteTimings()
+        )
 
         handler.log_request(200)
         handler.log_error("Streaming response failed: %s", "synthetic timeout")
@@ -975,7 +1044,9 @@ class HttpAccessLogLevelTests(unittest.TestCase):
         )
         handler.path = target
         handler.requestline = f"GET {target} HTTP/1.1"
-        handler.dependencies = SimpleNamespace(logger=logger)
+        handler.dependencies = SimpleNamespace(
+            logger=logger, route_table=_NO_ROUTES, route_timings=RouteTimings()
+        )
 
         handler.log_request(200)
         handler.log_request(404)

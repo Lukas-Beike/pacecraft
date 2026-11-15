@@ -148,6 +148,7 @@ class SyncGetRoutesTests(unittest.TestCase):
             garmin_status=NO_GARMIN_SYNC_STATUS,
             profile={},
             today=date(2026, 9, 24),
+            validation=False,
         )
         self.queue_factory.assert_not_called()
         self.assertEqual(
@@ -265,6 +266,7 @@ class ActivityDetailRouteTests(unittest.TestCase):
             athlete=SimpleNamespace(
                 activity_feedback=_Feedback,
                 profile=lambda: SimpleNamespace(get_from_db=lambda _db: {}),
+                session_summaries=None,
                 equipment=lambda: SimpleNamespace(
                     read=lambda *, activity_id: {"items": [], "assignments": []}
                 ),

@@ -39,7 +39,13 @@ class AiDocsContractTests(unittest.TestCase):
         self.assertIn("](REVIEW.md)", instructions)
 
     def test_expected_backend_domains_are_documented(self) -> None:
-        instructions = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
+        # The domain map lives in the backend's scoped instructions; the root
+        # AGENTS.md says where (#2858).
+        instructions = (ROOT / "backend" / "AGENTS.md").read_text(encoding="utf-8")
+        self.assertIn(
+            "cross-cutting owners are listed in\n  [backend/AGENTS.md]",
+            (ROOT / "AGENTS.md").read_text(encoding="utf-8"),
+        )
         domains = [
             path.name
             for path in (ROOT / "backend").iterdir()
@@ -140,6 +146,18 @@ class AiDocsContractTests(unittest.TestCase):
         ).read_text(encoding="utf-8")
         self.assertNotIn("tests/test_server.py", validation)
         self.assertTrue((ROOT / "tests" / "run_tests.py").is_file())
+
+    def test_delivery_skills_require_a_ui_walk_step_for_a_visible_function(
+        self,
+    ) -> None:
+        # #3009: the post-release walk covers every user-visible function.
+        for name in ("deliver-issue", "pr"):
+            with self.subTest(skill=name):
+                text = (SKILL_ROOT / name / "SKILL.md").read_text(encoding="utf-8")
+                self.assertIn("`STEPS` of `scripts/ui_walk.mjs`", text)
+        self.assertIn(
+            "STEPS", (ROOT / "scripts" / "ui_walk.mjs").read_text(encoding="utf-8")
+        )
 
     def test_claude_skill_stubs_point_to_canonical_skills(self) -> None:
         stubs = sorted((ROOT / ".claude" / "skills").glob("*/SKILL.md"))

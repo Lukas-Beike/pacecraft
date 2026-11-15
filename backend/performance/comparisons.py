@@ -51,6 +51,35 @@ def recurring_training_comparisons(
     }
 
 
+def recurring_view(comparisons: Mapping[str, Any]) -> dict[str, Any]:
+    """The recurring groups as Analyse shows them: per recording its work steps (#2802)."""
+
+    def observation(row: Mapping[str, Any]) -> dict[str, Any]:
+        quality = row.get("interval_quality") or {}
+        return {
+            "date": row.get("date"),
+            "activity_id": row.get("activity_id"),
+            "name": row.get("name"),
+            "source": row.get("source"),
+            "steps": [
+                {key: step.get(key) for key in ("target", "unit", "mean", "status")}
+                for step in quality.get("steps") or ()
+            ],
+            "repeat_groups": quality.get("repeat_groups") or [],
+        }
+
+    return {
+        **{key: value for key, value in comparisons.items() if key != "groups"},
+        "groups": [
+            {
+                **{key: group.get(key) for key in ("target_sha256", "sport", "device")},
+                "observations": [observation(row) for row in group["observations"]],
+            }
+            for group in comparisons.get("groups") or ()
+        ],
+    }
+
+
 def performance_trend_average(
     metrics: dict[str, dict[str, Any]],
     key: str,

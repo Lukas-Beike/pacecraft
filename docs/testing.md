@@ -209,7 +209,11 @@ and runs (#2644). A new `public/` file is served from the
 directory listing (`backend/http_api/static_assets.py`); add it to the
 service-worker `ASSETS` list only if it is cached. A failed child prints a failing test's location and first error
 line; its manifest entry lists all of them under `failures`. The run stops at the first failed child;
-`--keep-going` runs every child and reports all failures (exit stays non-zero).
+`--keep-going` runs every child and reports all failures (exit stays non-zero);
+CI's browser shards use it, so a red shard names every failed spec (#3001).
+`--screenshots` keeps a full-page screenshot of every selected test's end state
+and prints their paths, for UI PR images without a spec edit (#2843); the
+manifest records it because the captures lengthen the timings.
 
 CI builds and shares the current application image once, then starts browser
 jobs beside the native suite. Its prepared browser image is pinned by exact
@@ -422,6 +426,9 @@ it. Run it with
 `-Persist` to keep the data in a named volume, `-Port`/`-Name` to adjust the
 container, `-HeavyHistory <n>` (1 to 1000) for a large synthetic history with
 full streams for performance checks (seeded once, about 5 minutes for 900),
+`-HeavyWalks <w>` (0 to 5000) and `-HeavyYears <y>` (0 to 20) to add walks
+without streams and spread the history over that many years (the production
+profile: `-HeavyHistory 850 -HeavyWalks 2950 -HeavyYears 6`, #2974),
 `-Image <tag>` to run your own local image instead of building and running the
 shared `pacecraft:local` (#2957; never pulled, and the fixture code still comes
 from this checkout's `e2e/`), and `-Stop` to remove it again (never its
