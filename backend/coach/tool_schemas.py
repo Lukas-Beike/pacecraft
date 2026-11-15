@@ -715,7 +715,7 @@ def build_structured_tool_schemas(
         ),
         _canonical_coach_tool(
             "manage_training_templates",
-            "Create, update, archive, restore, or delete undated local templates. Resolve local_id with list_workout_library for edits; creation requires name and workout description. A create that an existing template already covers (same sport, similar duration and description or name) is refused with reason template_exists and that template in findings: reuse it, or set new_because to say how the new one differs. Scheduling is a separate local action.",
+            "Create, update, archive, restore, or delete undated local templates. Resolve local_id with list_workout_library for edits; creation requires name and workout description. A create that an existing template already covers (same sport, similar duration and description or name) refuses the whole call with reason template_exists (template_exists_in_call when the call held more) and that template in findings: reuse it, or set new_because to say how the new one differs, and send the other changes again. Scheduling is a separate local action.",
             {
                 "templates": {
                     "type": "array",

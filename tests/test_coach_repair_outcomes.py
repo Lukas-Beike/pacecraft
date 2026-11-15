@@ -165,9 +165,14 @@ class UnresolvedCoachStepsTests(unittest.TestCase):
                 ),
                 "completed",
             )
-        # Any other refusal of the same create stays a failure.
-        other = {**refused, "result": {"ok": False, "reason": "template_limit"}}
-        self.assertEqual(unresolved_coach_steps([other, planned]), [other])
+        # Any other refusal stays a failure: a refused batch also dropped its
+        # other changes, until the call is retried without the duplicate.
+        for reason in ("template_limit", "template_exists_in_call"):
+            other = {**refused, "result": {"ok": False, "reason": reason}}
+            with self.subTest(reason=reason):
+                self.assertEqual(unresolved_coach_steps([other, planned]), [other])
+        retried = {**refused, "result": {"ok": True}}
+        self.assertEqual(unresolved_coach_steps([other, planned, retried]), [])
 
     def test_profile_conflict_requires_exact_profile_fields(self):
         failed = {

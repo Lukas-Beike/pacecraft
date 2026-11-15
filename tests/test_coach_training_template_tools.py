@@ -140,10 +140,11 @@ class TrainingTemplateToolTests(unittest.TestCase):
         with self.assertRaises(AppError) as refused:
             service.execute({"templates": [intervals, again]}, intent)
         # The whole call is refused before any write; the model gets the
-        # template to reuse.
+        # template to reuse. The intervals were dropped too, so the refusal
+        # names the call and stays a turn failure until it is retried.
         self.assertEqual(
             (refused.exception.status, refused.exception.reason),
-            (409, "template_exists"),
+            (409, "template_exists_in_call"),
         )
         self.assertEqual(
             getattr(refused.exception, "findings", None),
@@ -158,6 +159,10 @@ class TrainingTemplateToolTests(unittest.TestCase):
             ],
         )
         self.assertEqual(created, [])
+        # The lone duplicate lost nothing else: the existing template answers.
+        with self.assertRaises(AppError) as alone:
+            service.execute({"templates": [again]}, intent)
+        self.assertEqual("template_exists", alone.exception.reason)
 
         # Its retry names how the new template differs: it is kept and counted.
         result = service.execute(
@@ -186,6 +191,7 @@ class TrainingTemplateToolTests(unittest.TestCase):
             )
         [finding] = getattr(twice.exception, "findings", None) or [None]
         self.assertEqual((None, "6 x 800 m"), (finding["local_id"], finding["name"]))
+        self.assertEqual("template_exists_in_call", twice.exception.reason)
 
         # A strength template has no description: the same name in the same
         # sport is the match.

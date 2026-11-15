@@ -136,8 +136,13 @@ def _existing_templates(
         error = AppError(
             409,
             "Eine passende Vorlage existiert schon: nutze sie mit ihrer local_id "
-            "oder nenne in new_because, worin die neue sich unterscheidet.",
-            reason="template_exists",
+            "oder nenne in new_because, worin die neue sich unterscheidet. "
+            "Nichts aus diesem Aufruf wurde gespeichert.",
+            # A lone create of a stored template lost nothing else; any other
+            # refused call dropped more and stays a failure until retried.
+            reason="template_exists"
+            if len(templates) == 1 and match.get("id")
+            else "template_exists_in_call",
         )
         # For the model only: the existing template to reuse.
         setattr(  # noqa: B010
