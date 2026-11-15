@@ -19,6 +19,7 @@ from backend.db.manager import (
     DatabaseManager,
     WriterGate,
     background_writer,
+    kept_until_change,
 )
 from backend.db.schema import (
     configure_cipher,
@@ -226,6 +227,41 @@ class DatabaseManagerTests(unittest.TestCase):
             with opened.unit_of_work() as db:
                 db.execute("SELECT 1")
             holder.reset()
+
+    def test_kept_value_is_read_again_only_after_a_change_or_restore(self):
+        # The job workers' idle claims commit about once a second without a
+        # change; they must not drop the kept session summaries (#3017).
+        with tempfile.TemporaryDirectory() as root:
+            manager = self.make_manager(root)
+            self.addCleanup(manager.close)
+            with manager.unit_of_work() as db:
+                db.execute("CREATE TABLE records (value TEXT NOT NULL)")
+            reads = []
+
+            def read():
+                with manager.reader() as db:
+                    reads.append(
+                        db.execute("SELECT COUNT(*) FROM records").fetchone()[0]
+                    )
+                return reads[-1]
+
+            kept = kept_until_change(lambda: manager, read)
+            self.assertEqual((kept(), kept(), len(reads)), (0, 0, 1))
+            # An idle claim: a commit that changes no row.
+            with manager.unit_of_work() as db:
+                db.execute("UPDATE records SET value = 'claimed' WHERE 0")
+            with self.assertRaises(RuntimeError), manager.unit_of_work() as db:
+                db.execute("INSERT INTO records(value) VALUES ('discarded')")
+                raise RuntimeError("rollback")
+            self.assertEqual((kept(), len(reads)), (0, 1))
+            with manager.unit_of_work() as db:
+                db.execute("INSERT INTO records(value) VALUES ('kept')")
+            self.assertEqual((kept(), kept(), len(reads)), (1, 1, 2))
+            # A restored file replaces every value read before it.
+            with manager.restore_drain():
+                pass
+            self.assertEqual((kept(), len(reads)), (1, 3))
+            manager.close()
 
     def test_unit_of_work_rolls_back_and_reader_pool_reuses_connections(self):
         with tempfile.TemporaryDirectory() as root:

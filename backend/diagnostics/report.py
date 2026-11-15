@@ -47,6 +47,7 @@ from backend.diagnostics.stream_backfill import summarize_stream_backfill
 from backend.diagnostics.wahoo_state import summarize_wahoo
 from backend.observability import (
     DIAGNOSTIC_CAPTURE_ENTRIES_KEY,
+    ROUTE_TIMINGS,
     DiagnosticCapture,
     Redactor,
 )
@@ -335,6 +336,8 @@ class DiagnosticReportService:
                     "process_memory": process_memory(),
                     **process_settings(),
                     "reader_slots": deps.database_manager.reader_slot_waits(),
+                    # Route patterns only: no ids, no query (#3017).
+                    "slowest_routes": ROUTE_TIMINGS.summary(),
                 },
                 "recovery_copies": section("recovery_copies", self._recovery_copies),
                 # The newest backup the app made, before a schema release (#2996).

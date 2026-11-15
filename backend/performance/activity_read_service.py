@@ -67,6 +67,7 @@ class ActivityAnalysisReadService(ActivityReadService):
         references: ActivityReferenceResolver | None = None,
         canonical: CanonicalPerformanceSource,
         session_records: SessionRecordReader | None = None,
+        session_summaries: Callable[[], Sequence[ActivitySummary]] | None = None,
         refreshable: RefreshableProviders = frozenset,
         planned_units: Callable[[], Any] | None = None,
         unit_thresholds: Callable[[], Any] | None = None,
@@ -81,6 +82,7 @@ class ActivityAnalysisReadService(ActivityReadService):
         )
         self._canonical = canonical
         self._session_records = session_records
+        self._session_summaries = session_summaries
         self._refreshable = refreshable
         self._planned_units = planned_units
         self._unit_thresholds = unit_thresholds
@@ -217,7 +219,14 @@ class ActivityAnalysisReadService(ActivityReadService):
         garmin_status: GarminSyncStatus,
         profile: dict[str, Any],
         today: date,
+        validation: bool = True,
     ) -> dict[str, Any]:
+        """The detail document of one session.
+
+        ``validation`` adds ``activity_validation`` against the current
+        performance; the calendar's "Details" does not show it, and reading the
+        performance inputs for it took most of a detail read (#3017).
+        """
         normalized_id = str(activity_id or "").strip()
         if not normalized_id or len(normalized_id) > 200:
             raise AppError(
@@ -239,6 +248,8 @@ class ActivityAnalysisReadService(ActivityReadService):
 
         @functools.cache
         def requested_summary() -> ActivitySummary | None:
+            if self._session_summaries is not None:
+                return _find_summary(self._session_summaries(), normalized_id)
             return _find_summary(load_inputs(normalized_id), normalized_id)
 
         def performance() -> Mapping[str, Any]:
@@ -260,7 +271,7 @@ class ActivityAnalysisReadService(ActivityReadService):
                 feedback_service=self._feedback_service,
                 read_equipment=self._read_equipment,
                 references=self._references,
-                performance=performance,
+                performance=performance if validation else None,
                 summary=requested_summary,
             ),
             zone=ZoneInfo(timezone_name(profile.get("timezone"))),

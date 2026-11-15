@@ -1607,7 +1607,7 @@ def activity_summary_values(details: object) -> dict[str, Any]:
     Keys are ``ActivityRecord`` field names. A missing or malformed value is left
     out, so the record keeps its default; it never raises.
     """
-    loaded = _activity_details_object(details)
+    loaded = activity_details_object(details)
     values: dict[str, Any] = {}
     for field in ACTIVITY_SUMMARY_DETAIL_FIELDS:
         number = loaded.get(field)
@@ -1662,7 +1662,7 @@ def activity_qualifiers(details: object) -> dict[str, Any]:
 
     Keys are ``ActivityRecord`` field names; a missing or invalid value is left out.
     """
-    return _activity_qualifiers(_activity_details_object(details))
+    return _activity_qualifiers(activity_details_object(details))
 
 
 def row_qualifiers(row: Mapping[str, Any]) -> dict[str, Any]:
@@ -1694,7 +1694,7 @@ def _stored_zones(value: object) -> tuple[tuple[str, float], ...] | None:
 
 def activity_external_ref(details: object) -> ExternalRef | None:
     """Return the upstream activity stored in an activity's details, if valid."""
-    value = _activity_details_object(details).get(_EXTERNAL_REF_KEY)
+    value = activity_details_object(details).get(_EXTERNAL_REF_KEY)
     if not (isinstance(value, list) and len(value) == 2):
         return None
     try:
@@ -1814,10 +1814,17 @@ def _activity_detail_number(details: object, key: str) -> float | None:
 
 
 def _activity_detail_value(details: object, key: str) -> object:
-    return _activity_details_object(details).get(key)
+    return activity_details_object(details).get(key)
 
 
-def _activity_details_object(details: object) -> dict[str, Any]:
+def activity_details_object(details: object) -> dict[str, Any]:
+    """The stored details as an object; an already parsed object is returned as is.
+
+    A reader that needs several values of one row parses its details once and
+    passes the object to the helpers above (#3017).
+    """
+    if isinstance(details, dict):
+        return details
     if not isinstance(details, str):
         return {}
     try:

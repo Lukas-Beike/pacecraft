@@ -19,8 +19,9 @@ node scripts/ui_walk.mjs --url <app address> --password-file <secret file> --out
 ```
 
 At 412 px and 1280 px it logs in through the login dialog with the password
-read from the file, opens Coach, Kalender, Analyse, Ernährung and Mehr, opens
-one calendar unit (the detail pane at desktop width), switches to the month and
+read from the file, opens Coach, Kalender, Analyse, Ernährung, Mehr and Mehr ›
+Ausrüstung, opens one calendar unit (the detail pane at desktop width), times a
+completed session's "Details" until loaded, switches to the month and
 pages it, pages the week, and logs out with the CSRF token. One line per view
 with its time until ready and error count (console errors, page errors,
 5xx responses), the calendar steps done, and the service-worker cache name and

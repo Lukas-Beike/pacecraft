@@ -18,6 +18,7 @@ class DetailEnvelopeReader:
     that feedback writes and gear assignments use. Validation compares the
     session's activity summary with the performance context; a session without
     one gets the validation's explicit no-data result and no session-RPE load.
+    Without ``performance`` the envelope carries no validation (#3017).
     """
 
     def __init__(
@@ -26,7 +27,7 @@ class DetailEnvelopeReader:
         feedback_service: Any,
         read_equipment: Callable[[str], dict[str, Any]],
         references: ActivityReferenceResolver,
-        performance: Callable[[], Mapping[str, Any]],
+        performance: Callable[[], Mapping[str, Any]] | None,
         summary: Callable[[], Mapping[str, Any] | None],
     ) -> None:
         self._feedback_service = feedback_service
@@ -46,7 +47,9 @@ class DetailEnvelopeReader:
         feedback = next(iter(self._feedback_service.for_activity_ids(ids)), None)
         summary = self._summary()
         load = feedback_session_load(self._feedback_service, ids, summary)
-        if summary is None:
+        if self._performance is None:
+            validation = None
+        elif summary is None:
             validation = activity_performance_validation([], {}, {})
         else:
             performance = self._performance()

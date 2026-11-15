@@ -172,6 +172,41 @@ class WriterGate:
                 self._condition.notify_all()
 
 
+def kept_until_change[T](
+    database_manager: Callable[[], DatabaseManager], read: Callable[[], T]
+) -> Callable[[], T]:
+    """``read``'s value, kept until a commit changes rows or a restore (#3017).
+
+    The value is shared by every caller, which must not change it. Concurrent
+    calls wait for one read instead of each reading the same.
+    """
+    lock = threading.Lock()
+    kept: list[Any] = [None, -1, None]
+
+    def fill(manager: DatabaseManager, generation: int) -> T:
+        # Keyed by the generation before the read: a change during it makes
+        # the next call read again.
+        value = read()
+        kept[:] = [manager, generation, value]
+        return value
+
+    def current() -> T:
+        manager = database_manager()
+        with lock:
+            generation = manager.write_generation
+            if kept[0] is manager and kept[1] == generation:
+                return kept[2]
+            return fill(manager, generation)
+
+    return current
+
+
+def _total_changes(connection: Any) -> int | None:
+    """Rows the connection changed since it opened; None when it cannot say."""
+    value = getattr(connection, "total_changes", None)
+    return value if isinstance(value, int) else None
+
+
 class DatabaseManager:
     """One serialized writer plus a bounded pool of read connections."""
 
@@ -221,6 +256,21 @@ class DatabaseManager:
         self._slow_reader_waits = 0
         self._reader_timeouts = 0
         self._longest_reader_wait_s = 0.0
+        self._write_generation = 0
+
+    @property
+    def write_generation(self) -> int:
+        """Moves after every committed outer unit of work that changed rows, and every restore.
+
+        A value read from the database stays current while this is unchanged;
+        read caches key on it (#3017). The job workers' idle claims change
+        nothing, so they leave it as it is.
+        """
+        return self._write_generation
+
+    def _next_generation(self) -> None:
+        with self._state:
+            self._write_generation += 1
 
     def _acquire_reader_slot(self) -> None:
         """Take a reader slot, timing only a wait; time out as busy."""
@@ -312,12 +362,17 @@ class DatabaseManager:
             return
         callbacks: list[Callable[[], None]] = []
         callbacks_token = self._commit_callbacks.set(callbacks)
+        changed = True
         try:
             with self._outer_unit_of_work(timeout) as connection:
+                before = _total_changes(connection)
                 yield connection
+                changed = before is None or _total_changes(connection) != before
         finally:
             self._commit_callbacks.reset(callbacks_token)
         # Reached only after the commit; a rollback raised above.
+        if changed:
+            self._next_generation()
         for callback in callbacks:
             try:
                 callback()
@@ -515,6 +570,8 @@ class DatabaseManager:
         try:
             yield
         finally:
+            # A restored file replaces every value read before it.
+            self._next_generation()
             with self._state:
                 self._draining = False
                 self._state.notify_all()
