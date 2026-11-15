@@ -381,7 +381,10 @@ effect `local_write`; gate domain `nutrition`; bulk from 2 records; records coun
 
 effect `read`.
 
-- `activity_id`* (string; ≥1 chars; ≤200 chars)
+- `activity_id`* (string/null; ≥1 chars; ≤200 chars)
+- `date`* (string/null; pattern `^\d{4}-\d{2}-\d{2}$`)
+- `sport`* (string/null; one of `"ride"`, `"run"`, `"swim"`, `"walk"`, `"hike"`, `"strength"`, `"row"`, `"nordic_ski"`, `"alpine_ski"`, `"yoga"`, `"other"`, `null`)
+- `start_time`* (string/null; pattern `^\d{2}:\d{2}$`)
 
 ### `get_sync_job`
 
