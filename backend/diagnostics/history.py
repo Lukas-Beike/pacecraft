@@ -105,7 +105,13 @@ class CoachDiagnosticHistoryService:
                 "error": self._error_metadata(step.get("diagnostic_error")),
             }
             outcomes = _lookup_outcomes(result)
-            steps.append({**entry, "lookup_outcomes": outcomes} if outcomes else entry)
+            if outcomes:
+                entry["lookup_outcomes"] = outcomes
+            # Records created beside an existing one, with a reason (#3080).
+            despite = result.get("created_despite_candidate")
+            if type(despite) is int and 0 < despite <= 28:
+                entry["created_despite_candidate"] = despite
+            steps.append(entry)
         return steps
 
     def _error_metadata(self, value: Any) -> dict[str, Any] | None:

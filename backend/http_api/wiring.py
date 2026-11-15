@@ -47,6 +47,7 @@ from backend.http_api.handler import (
 )
 from backend.http_api.history_undo_post import HistoryUndoPostRoutes
 from backend.http_api.library_page import LibraryPageService
+from backend.http_api.library_post import LibraryPostRoutes
 from backend.http_api.metric_export_post import MetricExportPostRoutes
 from backend.http_api.nutrition import (
     NutritionGetRoutes,
@@ -470,6 +471,7 @@ def _read_routes(
                 activity_read().summaries_on_days,
             ),
             first_threshold_service=athlete.first_threshold,
+            skinfold_service=athlete.skinfolds,
             race_plan=partial(
                 read_race_plan,
                 ctx.planning.competition,
@@ -510,6 +512,7 @@ def _athlete_write_routes(
             lambda profile, revision, deadline: ctx.garmin.body_export(
                 athlete.profile()
             ).export(profile, revision, deadline),
+            skinfold_service=athlete.skinfolds,
         ),
         AuthPostRoutes(session_auth_service, ctx.maintenance),
         FeedbackPostRoutes(
@@ -520,7 +523,15 @@ def _athlete_write_routes(
             CoachTurnUndoService(ctx.database, history_undo),
             rpe_load,
         ),
-        PlannedUnitFocusPostRoutes(ctx.planning.planned_unit, ctx.database),
+        PlannedUnitFocusPostRoutes(
+            ctx.planning.planned_unit,
+            ctx.database,
+            ctx.planning_workflows.structured_training_change_service,
+        ),
+        LibraryPostRoutes(
+            ctx.planning.workout_library,
+            ctx.planning_workflows.workout_library_plan_service,
+        ),
         CredentialsPutRoutes(ctx.provider_credential_service, session_auth_service),
         EquipmentPostRoutes(athlete.equipment),
         FirstThresholdPostRoutes(
@@ -653,6 +664,7 @@ def build_http_api(
         feedback_post,
         history_undo_post,
         planned_unit_focus_post,
+        library_post,
         credentials_put,
         equipment_post,
         first_threshold_post,
@@ -706,6 +718,7 @@ def build_http_api(
             diagnostics_delete_post,
             nutrition_post,
             planned_unit_focus_post,
+            library_post,
             credentials_put,
             wahoo_get,
             wahoo_post,

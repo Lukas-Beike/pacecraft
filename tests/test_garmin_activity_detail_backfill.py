@@ -13,7 +13,7 @@ from unittest.mock import Mock, patch
 
 from canonical_detail_support import NOW, ZONE, open_manager, seed_intervals_activity
 from support import garmin_services, make_config
-from test_garmin_activity_detail_job import _collected
+from test_garmin_activity_detail_job import _collected, _grades, _with_fit
 
 from backend.canonical.vocabulary import GARMIN_ID, ActivityRecordState, RecordingOrigin
 from backend.db.activity_detail_store import (
@@ -33,6 +33,7 @@ from backend.sync.garmin_activity_details import (
     BACKFILL_RETRY_ATTEMPTS,
     BACKFILL_STATE_KEY,
     BACKFILL_WINDOW,
+    DETAIL_FALLBACK_KEY,
     GarminActivityDetailService,
 )
 from backend.sync.garmin_service import GarminRemoteReader
@@ -506,6 +507,56 @@ class BackfillBatchTests(_Base):
         self.assertEqual(_stored_kinds(self.manager, "1002"), [])
         paused = datetime.fromisoformat(_stored_state(self.key_values)["paused_until"])
         self.assertEqual(paused, NOW_AT + BACKFILL_RATE_LIMIT_PAUSE)
+
+    def test_a_rate_limit_before_the_file_keeps_the_stored_full_sets(self) -> None:
+        # #3122: a 429 mid-activity leaves only chart streams and splits; they
+        # must not replace the full streams and device laps of an earlier fetch.
+        _seed(self.manager, [("1001", "2026-10-01 07:00:00")])
+        full = _with_fit()
+        full["activity_id"] = "1001"
+        self.service(_Details({"1001": full})).backfill()
+        before = _grades(self.manager, "1001")
+        self.assertEqual(before["streams"][0], "full")
+        _set_summary_hash(self.manager, "1001")
+        summary = _summary_hash(self.manager, "1001")
+
+        result = self.service(
+            _Details({"1001": _payload("1001", rate_limited=True)})
+        ).backfill()
+
+        self.assertEqual(result["status"], "rate_limited")
+        after = _grades(self.manager, "1001")
+        self.assertEqual(
+            (after["streams"], after["laps"]), (before["streams"], before["laps"])
+        )
+        # The attempt counts as incomplete, so a later sync fetches it again.
+        self.assertEqual(
+            _stored_state(self.key_values)["retry"], {"1001": [summary, 1]}
+        )
+        self.assertEqual(
+            json.loads(self.key_values.values[DETAIL_FALLBACK_KEY]),
+            {"kept": 2, "stored": 0},
+        )
+
+    def test_a_paused_file_keeps_the_full_sets_without_spending_retries(self) -> None:
+        # The original file is a Personal API part: while it is paused the fetch
+        # falls back too, but a pause is no attempt (#3122).
+        _seed(self.manager, [("1001", "2026-10-01 07:00:00")])
+        full = _with_fit()
+        full["activity_id"] = "1001"
+        self.service(_Details({"1001": full})).backfill()
+        before = _grades(self.manager, "1001")
+        _set_summary_hash(self.manager, "1001")
+        summary = _summary_hash(self.manager, "1001")
+        paused = _payload("1001", skipped=["activity_fit"])
+
+        for _ in range(BACKFILL_RETRY_ATTEMPTS + 1):
+            self.service(_Details({"1001": paused})).backfill()
+
+        self.assertEqual(_grades(self.manager, "1001")["streams"], before["streams"])
+        self.assertEqual(
+            _stored_state(self.key_values)["retry"], {"1001": [summary, 0]}
+        )
 
     def test_partial_fetch_is_retried_until_it_completes(self) -> None:
         _seed(self.manager, [("1001", "2026-10-01 07:00:00")])

@@ -9,7 +9,11 @@ fetch failed or stored only some parts is fetched again on later syncs, at most
 ``BACKFILL_RETRY_ATTEMPTS`` times per activity summary; after that it is passed
 over, so it cannot hold back older activities. A rate limit that stored nothing
 does not count as an attempt. Kinds a payload does not return keep their stored
-sets. Nothing is written back to Garmin.
+sets. A fetch without the original file falls back to chart streams and splits;
+those never replace the full streams and laps an earlier file gave (#3122): the
+stored sets stay and diagnostics count it. A failed file call or a rate limit
+already makes the attempt incomplete; a transport without the file does not.
+Nothing is written back to Garmin.
 """
 
 from __future__ import annotations
@@ -24,12 +28,17 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import Any, Final
 
-from backend.canonical.activity_detail import ActivityStrengthSetSet
+from backend.canonical.activity_detail import (
+    ActivityLapSet,
+    ActivityStreamSet,
+    ActivityStrengthSetSet,
+)
 from backend.canonical.mapping import MappingResult
 from backend.canonical.vocabulary import (
     GARMIN_ID,
     ActivityRecordState,
     RecordingOrigin,
+    StreamResolution,
     StrengthSetSource,
 )
 from backend.db.activity_detail_store import (
@@ -38,6 +47,7 @@ from backend.db.activity_detail_store import (
     detail_sets_for,
     replace_detail_set,
     restamp_detail_set,
+    stored_stream_resolution,
     stored_strength_source,
     strength_record_ids,
 )
@@ -66,6 +76,8 @@ BACKFILL_WINDOW: Final = timedelta(days=90)
 BACKFILL_RATE_LIMIT_PAUSE: Final = timedelta(seconds=GARMIN_CAPABILITY_PAUSE_SECONDS)
 BACKFILL_STATE_KEY: Final = "garmin_activity_detail_backfill"
 BACKFILL_RETRY_ATTEMPTS: Final = 3
+# Counts of fallback sets (chart streams, splits) kept out or stored (#3122).
+DETAIL_FALLBACK_KEY: Final = "garmin_detail_fallback"
 # The backfill needs only ``activity_details``, the part both transports serve.
 # The SDK-only parts (splits, HR and power zones, exercise sets) and the Personal
 # API-only FIT file pause only themselves; the collector skips a paused part
@@ -158,6 +170,7 @@ class GarminActivityDetailService:
             now = self._utc_now()
             mapped = _map_collected(collected, recorded_by=recorded_by, now=now)
         self._count_fit(provider_activity_id, collected)
+        keep_file_sets = self._keeps_file_sets(provider_activity_id, mapped)
         # Malformed parts are dropped by the mapper, so they count like failures.
         incomplete = _incomplete(collected) or bool(mapped.issues)
         if not mapped.records:
@@ -173,7 +186,9 @@ class GarminActivityDetailService:
                 "activity_id": provider_activity_id,
                 "kinds": [],
             }
-        if not self._store_records(provider_activity_id, mapped, now=now):
+        if not self._store_records(
+            provider_activity_id, mapped, now=now, keep_file_sets=keep_file_sets
+        ):
             raise _not_found()
         return {
             "status": "partial" if incomplete else "completed",
@@ -341,6 +356,7 @@ class GarminActivityDetailService:
             now=observed,
         )
         self._count_fit(provider_activity_id, collected)
+        keep_file_sets = self._keeps_file_sets(provider_activity_id, mapped)
         # Malformed parts are dropped by the mapper, so they count like failures.
         failed = _failed(collected) or bool(mapped.issues)
         retry = dict(outcome.retry)
@@ -362,6 +378,7 @@ class GarminActivityDetailService:
             mapped,
             now=observed,
             backfill_state=(outcome.empty, retry),
+            keep_file_sets=keep_file_sets,
         )
         if stored:
             outcome.fetched += 1
@@ -392,10 +409,13 @@ class GarminActivityDetailService:
         *,
         now: str,
         backfill_state: tuple[dict[str, str], dict[str, tuple[str, int]]] | None = None,
+        keep_file_sets: bool = False,
     ) -> bool:
         """Replace the mapped sets of one active record; False when it is no longer active.
 
         ``backfill_state`` (empty marks, retries) is written in the same transaction.
+        ``keep_file_sets`` keeps the stored stream and lap sets of an earlier file
+        instead of this fetch's fallback sets (#3122).
         """
         with self._database_manager.unit_of_work() as db:
             # Re-check inside the write transaction: the record may have been
@@ -407,8 +427,10 @@ class GarminActivityDetailService:
             summary_sha256 = active_provider_record_hash(
                 db, GARMIN_ID, ACTIVITY_RECORD_KIND, provider_activity_id
             )
+            fallback = _fallback_sets(mapped)
             for item in mapped.records:
-                if _keeps_corrected_sets(db, provider_activity_id, item):
+                kept = keep_file_sets and item in fallback
+                if kept or _keeps_corrected_sets(db, provider_activity_id, item):
                     restamp_detail_set(
                         db,
                         GARMIN_ID,
@@ -425,6 +447,7 @@ class GarminActivityDetailService:
                     summary_sha256=summary_sha256,
                     now=now,
                 )
+            self._count_fallback(db, len(fallback), kept=keep_file_sets)
             if backfill_state is not None:
                 empty, retry = backfill_state
                 self._backfill_key_values().set(
@@ -433,6 +456,26 @@ class GarminActivityDetailService:
                     _encode_backfill_state(paused_until=None, empty=empty, retry=retry),
                 )
         return True
+
+    def _keeps_file_sets(
+        self, provider_activity_id: str, mapped: MappingResult[Any]
+    ) -> bool:
+        """Whether this fetch fell back below the full streams stored now (#3122)."""
+        if not _fallback_sets(mapped):
+            return False
+        with self._database_manager.reader() as db:
+            resolution = stored_stream_resolution(db, GARMIN_ID, provider_activity_id)
+        return resolution == StreamResolution.FULL.value
+
+    def _count_fallback(self, db: Any, sets: int, *, kept: bool) -> None:
+        """Count fallback sets kept out or stored, counts only (#3122)."""
+        if not sets or self._key_values is None:
+            return
+        counts = detail_fallback_counts(db, self._key_values)
+        counts["kept" if kept else "stored"] += sets
+        self._key_values.set(
+            db, DETAIL_FALLBACK_KEY, json.dumps(counts, sort_keys=True)
+        )
 
     def _detail_capabilities_allowed(self) -> bool:
         allowed = self._capability_allowed
@@ -503,6 +546,38 @@ def _map_collected(
             },
         )
     return mapped
+
+
+def _fallback_sets(mapped: MappingResult[Any]) -> tuple[Any, ...]:
+    """The stream and lap sets of a fetch that brought no full-resolution streams.
+
+    Without the original file the mapper falls back to Garmin's chart streams and
+    splits: coarser points, laps without kinds and with summed offsets.
+    """
+    if any(
+        isinstance(item, ActivityStreamSet) and item.resolution is StreamResolution.FULL
+        for item in mapped.records
+    ):
+        return ()
+    return tuple(
+        item
+        for item in mapped.records
+        if isinstance(item, (ActivityStreamSet, ActivityLapSet))
+    )
+
+
+def detail_fallback_counts(db: Any, key_values: Any) -> dict[str, int]:
+    """Fallback sets kept out (a full set was stored) or stored, for diagnostics."""
+    try:
+        stored = json.loads(key_values.get(db, DETAIL_FALLBACK_KEY) or "{}")
+    except ValueError:
+        stored = {}
+    if not isinstance(stored, dict):
+        stored = {}
+    return {
+        name: value if isinstance(value := stored.get(name), int) and value >= 0 else 0
+        for name in ("kept", "stored")
+    }
 
 
 def _keeps_corrected_sets(db: Any, provider_activity_id: str, item: Any) -> bool:

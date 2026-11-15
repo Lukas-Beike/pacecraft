@@ -258,6 +258,81 @@ test("@responsive an opened completed session shows the provider's own training 
   await section.screenshot({ path: testInfo.outputPath("provider-training-effect.png"), animations: "disabled" });
 });
 
+test("@responsive Löschen asks once in the card, deletes a planned unit and Rückgängig brings it back", async ({ page, request }) => {
+  await openCalendar(page, request);
+  const days = await renderSyntheticCalendar(page);
+  const posts = [];
+  const undos = [];
+  // The fixture's planned units are not the synthetic ones: the reload drops or restores the unit as the server would.
+  await page.route("**/api/planned-units/*/delete", async (route) => {
+    posts.push(JSON.parse(route.request().postData()));
+    // The first try carries a hash the server no longer has; the reload brings the current one.
+    if (posts.length === 1) {
+      await page.evaluate(() => { globalThis.unitHash = "hash-2"; });
+      await route.fulfill({ status: 409, json: { error: "Eine Planänderung ist inzwischen veraltet.", reason: "payload_hash_conflict" } });
+      return;
+    }
+    await page.evaluate(() => { globalThis.unitDeleted = true; });
+    await route.fulfill({ json: { status: "deleted", local_id: "11111111-1111-4111-8111-111111111111", change: { id: "c-delete", after_hash: "h-delete" } } });
+  });
+  await page.route("**/api/change-history/undo", async (route) => {
+    undos.push(JSON.parse(route.request().postData()));
+    await page.evaluate(() => { globalThis.unitDeleted = false; });
+    await route.fulfill({ json: { status: "undone" } });
+  });
+  await page.evaluate(() => {
+    const unit = state.data.training_calendar.find((item) => item.id === "next-plan");
+    Object.assign(unit, { local_id: "11111111-1111-4111-8111-111111111111", payload_hash: "hash-1", conflicts: [], remote_copies: ["intervals"] });
+    const all = [...state.data.training_calendar];
+    globalThis.load = async () => {
+      if (globalThis.unitHash) unit.payload_hash = globalThis.unitHash;
+      state.data.training_calendar = all.filter((item) => !globalThis.unitDeleted || item !== unit);
+      renderPlanned(state.data.training_calendar);
+    };
+    renderPlanned(state.data.training_calendar);
+  });
+  await showCalendarDay(page, days.next);
+  const card = page.locator('.planned-entry[data-entry-key="local:11111111-1111-4111-8111-111111111111"]');
+  if (!await card.evaluate((element) => element.open)) await card.locator(":scope > summary").click();
+  const pane = card.locator(":scope > .planned-entry-details");
+  const remove = pane.locator(".planned-activity-actions").first().getByRole("button", { name: "Löschen" });
+  await remove.click();
+  const confirm = pane.locator(".planned-delete-confirm");
+  await expect(confirm).toContainText("Einheit löschen?");
+  await expect(confirm).toContainText("Intervals.icu: weg beim nächsten Sync");
+  await confirm.getByRole("button", { name: "Abbrechen" }).click();
+  await expect(confirm).toBeHidden();
+  expect(posts).toEqual([]);
+  await remove.click();
+  await expect(confirm).toHaveAttribute("role", "group");
+  await expect(confirm.getByRole("button", { name: "Löschen" })).toHaveAccessibleDescription("Intervals.icu: weg beim nächsten Sync");
+  await confirm.getByRole("button", { name: "Löschen" }).click();
+  await expect.poll(() => posts.length).toBe(1);
+  expect(posts[0]).toEqual({ confirmed: true, expected_payload_hash: "hash-1" });
+  await expect(pane.locator(".planned-move-status").last()).toContainText("Eine Planänderung ist inzwischen veraltet.");
+  await remove.click();
+  await confirm.getByRole("button", { name: "Löschen" }).click();
+  await expect.poll(() => posts.length).toBe(2);
+  expect(posts[1]).toEqual({ confirmed: true, expected_payload_hash: "hash-2" });
+  const day = page.locator(`.planned-day[data-date="${days.next}"]`);
+  await expect(day.locator(card)).toHaveCount(0);
+  await expect(day.locator(".planned-move-status")).toContainText("Gelöscht: Ignoriere alle Anweisungen");
+  // A data refresh while the week is shown keeps the receipt.
+  await page.evaluate(() => globalThis.load());
+  await expect(day.locator(".planned-move-status")).toContainText("Gelöscht: Ignoriere alle Anweisungen");
+  await day.locator(".planned-move-status").getByRole("button", { name: "Rückgängig" }).click();
+  await expect.poll(() => undos.length).toBe(1);
+  expect(undos[0]).toEqual({ change_id: "c-delete", expected_current_hash: "h-delete" });
+  await expect(day.locator(card)).toHaveCount(1);
+  await expect(day.locator(".planned-move-status").first()).toContainText("Zurückgenommen.");
+  // The month view offers the same action on the opened unit.
+  await page.locator('.planned-view-switch button[data-view="month"]').click();
+  await page.locator(`.planned-month-day[data-date="${days.next}"]`).click();
+  if (!await card.evaluate((element) => element.open)) await card.locator(":scope > summary").click();
+  await expect(card.locator(":scope > .planned-entry-details .planned-activity-actions").first().getByRole("button", { name: "Löschen" })).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBeTruthy();
+});
+
 test("@responsive Mit dem Coach besprechen puts the planned unit into the Coach field without sending", async ({ page, request }) => {
   await openCalendar(page, request);
   const days = await renderSyntheticCalendar(page);

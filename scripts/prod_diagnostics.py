@@ -57,6 +57,8 @@ SECTION_FIELDS = {
     "runtime": re.compile(
         r"uptime_s|malloc_arena_max|process_memory\.[a-z_]+|reader_slots\.[a-z_0-9]+"
         r"|heavy_read_gate\.[a-z_0-9]+"
+        # Session reports, checks by verdict and resolutions: counts only (#3084).
+        r"|session_reports\.(reports|(checks_by_verdict|resolutions)\.[a-z_]+)"
     ),
     "recovery_copies": re.compile(
         r"status|available|count|newest_age_hours|total_bytes"
@@ -276,11 +278,11 @@ def printable(value: Any) -> bool:
 
 
 def aged(leaf: tuple[str, Any], now: datetime) -> tuple[str, Any]:
-    """A `*_at` time as its age `*_hours`; every other leaf unchanged."""
+    """A `*_at` time as its age `*_hours` (none yet: null); every other leaf unchanged."""
     path, value = leaf
-    if not (path.endswith("_at") and isinstance(value, str)):
+    if not path.endswith("_at"):
         return leaf
-    age = hours_since(value, now)
+    age = hours_since(value if isinstance(value, str) else None, now)
     return path[:-3] + "_hours", None if age is None else round(age, 1)
 
 

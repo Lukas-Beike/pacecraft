@@ -43,6 +43,9 @@ handler's docstring. Regenerate it with
 | GET | `/api/analysis/trends` | Session | no | Pace at equal heart rate and recurring sessions, as the Coach reads them (#2802). |
 | GET | `/api/analysis/week-review` | Session | no | The local review of one ISO week against the week before (#2805). |
 | GET | `/api/auth/status` | Public | no | Current login status. |
+| GET | `/api/body/skinfolds` | Session | no | The athlete's 3-site skinfold measurements, newest first. |
+| PUT | `/api/body/skinfolds` | Session + CSRF | before access | Save one 3-site skinfold measurement; one of the same day is replaced. |
+| PUT | `/api/body/skinfolds/remove` | Session + CSRF | before access | Remove the skinfold measurement of one day. |
 | GET | `/api/bootstrap` | Session | no | Initial authenticated client state. |
 | POST | `/api/change-history/undo` | Session + CSRF | after access | Apply an undo from the change history. |
 | POST | `/api/change-history/undo-turn` | Session + CSRF | after access | Undo every tracked write of one Coach turn. |
@@ -77,6 +80,8 @@ handler's docstring. Regenerate it with
 | POST | `/api/garmin/sync` | Session + CSRF | after access | Queue a provider synchronization, or a targeted refresh of the external calendars or the weather. |
 | GET | `/api/health` | Public | no | Liveness and maintenance state. |
 | GET | `/api/library` | Session | no | Workout library page. |
+| POST | `/api/library/{id}/archive` | Session + CSRF | after access | Take a library entry out of the library after the athlete confirmed it. |
+| POST | `/api/library/{id}/schedule` | Session + CSRF | after access | Plan a library entry on one day as a local unit, without a remote write. |
 | POST | `/api/login` | Public | no | Create a session. |
 | POST | `/api/logout` | Session + CSRF | no | End the current session. |
 | GET | `/api/logs` | Session | no | Recent redacted log entries. |
@@ -104,6 +109,7 @@ handler's docstring. Regenerate it with
 | GET | `/api/performance` | Session | no | Performance projection. |
 | GET | `/api/plan` | Session | no | Planning projection. |
 | POST | `/api/planned-units/{id}/date` | Session + CSRF | after access | Move a planned unit to another day without a remote write. |
+| POST | `/api/planned-units/{id}/delete` | Session + CSRF | after access | Delete a planned unit from the calendar without a remote write (#3027). |
 | POST | `/api/planned-units/{id}/focus` | Session + CSRF | after access | Set or clear the focus of a planned unit without a remote write. |
 | POST | `/api/planned-units/{id}/garmin-exercise` | Session + CSRF | after access | Assign the Garmin catalogue exercise of one strength exercise of a unit. |
 | GET | `/api/privacy/backup` | Session | no | Download the encrypted database backup. |
@@ -321,6 +327,43 @@ Response: 200 with `authenticated` (boolean) and `maintenance` (`active`,
 `running_operations`).
 
 Errors: none beyond the common ones.
+
+### `GET /api/body/skinfolds`
+
+Request: no query, no body.
+
+Response: 200 with `measurements` (at most 20, each with `date`, `sex`
+`male` or `female` as the sites tell, `folds_mm` as `{site, label, mm}` in
+protocol order and `body_fat_pct` by Jackson-Pollock and Siri, null without
+a birth year in the profile), `birth_year_known` and `sites` (the sites per
+sex).
+
+Errors: none beyond the common ones.
+
+### `PUT /api/body/skinfolds`
+
+Request: JSON body `{"date": "YYYY-MM-DD", "folds_mm": {site: number}}`
+with exactly the sites `chest`, `abdomen`, `thigh` (men) or `triceps`,
+`suprailiac`, `thigh` (women), each 2 to 80 mm (comma decimals allowed).
+The date must not be in the future.
+
+Response: 200 as `GET /api/body/skinfolds`.
+
+Errors: 400 "Das Messdatum fehlt oder ist ungültig."; 400 "Das Messdatum
+darf nicht in der Zukunft liegen."; 400 "Bitte genau drei Stellen messen:
+Brust, Bauch, Oberschenkel oder Trizeps, Hüfte, Oberschenkel."; 400 "Jede
+Hautfalte braucht einen Wert in mm."; 400 "Eine Hautfalte muss zwischen 2
+und 80 mm liegen.".
+
+### `PUT /api/body/skinfolds/remove`
+
+Request: JSON body `{"date": "YYYY-MM-DD", "confirmed": true}`.
+
+Response: 200 as `GET /api/body/skinfolds`.
+
+Errors: 400 "Das Löschen einer Messung muss bestätigt werden." unless
+`confirmed` is `true`; 400 "Das Messdatum fehlt oder ist ungültig."; 404
+"Für diesen Tag gibt es keine Hautfaltenmessung.".
 
 ### `GET /api/bootstrap`
 
@@ -850,6 +893,39 @@ exists, `wahoo_state`), `next_cursor` (null on the last page) and
 
 Errors: none beyond the common ones.
 
+### `POST /api/library/{id}/archive`
+
+Request: path `{id}`, the library entry's local id; JSON body
+`{"confirmed": true}` and no other field. It runs the template `archive`
+behind the Coach's `manage_training_templates`: the entry stays stored,
+hidden from the library, and units planned from it stay unchanged.
+
+Response: 200 `{"status": "local", "local_id", "change"}`; `change` is the
+undo reference.
+
+Errors: 409 `confirmation_required` "Das Löschen muss bestätigt werden."
+without `confirmed: true`; 400 "Die Anfrage muss ein Objekt sein." or
+"Unbekannte Felder: …" for another body; 400 for an id that is no UUID;
+404 "Bibliothekseinheit nicht gefunden."; 409 "Geplante lokale Einheiten
+werden im Kalender bearbeitet." for a planned unit.
+
+### `POST /api/library/{id}/schedule`
+
+Request: path `{id}`, the library entry's local id; JSON body
+`{"date": "YYYY-MM-DD"}` and no other field. It runs the batch behind the
+Coach's `apply_workout_library_plan`; the next explicit sync exports the
+new unit.
+
+Response: 200 `{"status", "planned", "change"}`: `status` is `local`, or
+`already_planned` when the entry already sits on that day (then without
+`change`); `planned` is the planned unit; `change` is the undo reference.
+
+Errors: 400 "Die Anfrage muss ein Objekt sein." or "Unbekannte Felder: …"
+for another body; 400 for an id that is no UUID or a date that is no
+JJJJ-MM-TT date; 404 "Bibliothekseinheit nicht gefunden."; 409 "Planung
+wegen bestehender Kalendereinheiten nicht möglich: …" for a day the
+calendar rules out.
+
 ### `POST /api/login`
 
 Request: JSON body `{"password": string}`; no session or CSRF token. A
@@ -1275,6 +1351,25 @@ calendar marker rules out the day; 409 "Die lokale Einheit kann wegen einer
 bestehenden Kalendereinheit nicht verschoben werden." for an overlapping
 calendar entry.
 
+### `POST /api/planned-units/{id}/delete`
+
+Request: path `{id}`, the local unit id; JSON body `{"confirmed": true,
+"expected_payload_hash": string}`. The hash is the unit's content hash
+from the read the athlete confirmed on. The delete is the Coach's local
+delete: the unit stays as a tracked tombstone, and copies at
+Intervals.icu or Garmin are removed only by the athlete's next explicit
+sync. It runs as one Coach change batch, so the plan bounds and the
+planning revision follow as for a Coach delete.
+
+Response: 200 `{"status": "deleted", "local_id", "change"}`; `change` is
+the undo reference.
+
+Errors: 409 `confirmation_required` "Das Löschen muss bestätigt werden."
+unless `confirmed` is `true`; 409 `planning_revision_conflict` "Die Einheit
+wurde inzwischen geändert." without `expected_payload_hash`; 409
+`payload_hash_conflict` "Eine Planänderung ist inzwischen veraltet." for an
+outdated hash or an id that names no unit (also a malformed one).
+
 ### `POST /api/planned-units/{id}/focus`
 
 Request: path `{id}`, the local unit UUID; JSON body `{"session_focus":
@@ -1456,8 +1551,9 @@ characters. Fields: `name`, `goals`, `sports`, `training_background`,
 `_strength`, `_mobility` variants, `training_model` (`pyramidal`,
 `polarized`, `threshold`, `sweet_spot`), `performance_notes`, `weight_kg`
 (20 to 300), `body_fat_pct` (1 to 70), `height_cm` (50 to 250), `sex`
-(`male`, `female` or empty), `coaching_style`, `timezone` (IANA name),
-`weather_location`, `sleep_target_hours` (4 to 12), `fueling_tolerance`,
+(`male`, `female` or empty), `birth_year` (a whole year, 1920 to 2010),
+`coaching_style`, `timezone` (IANA name), `weather_location`,
+`sleep_target_hours` (4 to 12), `fueling_tolerance`,
 `first_threshold_pct` (40 to 100, percent of the run threshold HR),
 `first_threshold_origin` (`measured`, `estimated` or empty) and
 `preferred_source_thresholds`, `_body`, `_hrv`, `_resting_hr`, `_sleep`
@@ -1477,6 +1573,7 @@ Errors: 400 "Die Zeitzone muss eine gültige IANA-Zeitzone sein."; 400
 "Unbekanntes Trainingsmodell; erlaubt: pyramidal, polarized, threshold,
 sweet_spot"; 400 "Unbekannte bevorzugte Quelle; erlaubt: garmin oder leer.";
 400 "Unbekanntes Geschlecht; erlaubt: male, female oder leer."; 400 "Das
+Geburtsjahr muss zwischen 1920 und 2010 liegen."; 400 "Das
 Gewicht muss zwischen 20 und 300 kg liegen.", "Die Größe muss zwischen 50
 und 250 cm liegen.", "Der Körperfettanteil muss zwischen 1 und 70 %
 liegen.", "Das Schlafziel muss zwischen 4 und 12 Stunden liegen."; 400

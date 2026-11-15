@@ -39,7 +39,7 @@ Default route: `#coach`. Navigation items: `#coach`, `#plan`, `#nutrition`, `#an
 | `#more/operations` | `settingsPanel` | `more` | `/api/context-preview`, `/api/logs?limit=250`, `/api/privacy/gps` | Logs herunterladen, Benachrichtigungen aktivieren, Daten exportieren, Lokale Daten löschen, Backup herunterladen, Backup wiederherstellen, Diagnose herunterladen, Diagnose löschen, Abmelden | loading, empty, error, offline |
 | `#more/profile` | `profilePanel` | `more` | `/api/context-preview`, `/api/logs?limit=250`, `/api/profile`, `/api/zones` | Athletenkontext speichern, Lokal speichern, Übernehmen | empty, offline |
 | `#nutrition` | `nutritionPanel` | `nutrition` | `/api/nutrition/day` | Ernährung aktualisieren, Vorheriger Tag, Nächster Tag, Heute, Löschen, Rückgängig, Erneut laden | loading, empty, error, offline |
-| `#nutrition/body` | `nutritionPanel` | `nutrition` | `/api/performance` | Ernährung aktualisieren, Letzte 14 Tage, 12 Wochen | loading, empty, error, offline |
+| `#nutrition/body` | `nutritionPanel` | `nutrition` | `/api/performance`, `/api/body/skinfolds` | Ernährung aktualisieren, Letzte 14 Tage, 12 Wochen, Hautfalten eintragen, Speichern, Löschen, Abbrechen | loading, empty, error, offline |
 | `#nutrition/diary` | `nutritionPanel` | `nutrition` | `/api/nutrition/day` | Ernährung aktualisieren, Vorheriger Tag, Nächster Tag, Heute, Löschen, Rückgängig, Erneut laden | loading, empty, error, offline |
 | `#nutrition/products` | `nutritionPanel` | `nutrition` | `/api/nutrition/products?scope=all` | Barcode scannen, Nährwerttabelle fotografieren, Produkt manuell erfassen, Suchen | loading, empty, error, offline |
 | `#nutrition/week` | `nutritionPanel` | `nutrition` | `/api/nutrition/week` | Ernährung aktualisieren, Letzte 14 Tage, 12 Wochen, Tageswerte anzeigen | loading, empty, error, offline |
@@ -86,6 +86,8 @@ expression. Other inline status lines are not listed.
 | `renderRunningBestEfforts` | `markValueMissing` | – |  |
 | `renderWeekReview` | `createLoadingState` | Wochenrückblick wird geladen… |  |
 | `renderWeekReview` | `createErrorState` | (computed) ` error?.message \|\| "Konnte nicht geladen werden." ` |  |
+| `skinfoldCard` | `createLoadingState` | Hautfalten werden geladen… |  |
+| `skinfoldCard` | `h(.empty)` | Hautfalten konnten nicht geladen werden. |  |
 | `renderBodyAnalysis` | `h(.empty)` | Noch keine Körper-Historie verfügbar. |  |
 | `renderTrainingRecords` | `createLoadingState` | Ausrüstung wird geladen… |  |
 | `renderTrainingRecords` | `createErrorState` | (computed) ` error?.message ` |  |
@@ -131,6 +133,7 @@ texts.
 | Where | Title | Message | Button |
 | --- | --- | --- | --- |
 | `public/activity-details.js` `renderBundle` | Aktivität löschen? | Diese Aktivität mit allen Aufzeichnungen lokal löschen? Bei den Anbietern bleibt sie erhalten. | Löschen |
+| `public/analysis.js` `bindSkinfoldDialog` | Messung löschen? | (computed) `` `Messung vom ${dateLabel(day)} löschen?` `` | Löschen |
 | `public/analysis.js` `retireEquipment` | Ausrüstung ausmustern? | (computed) `` `${item.name} ausmustern?` `` | Ausmustern |
 | `public/auth.js` `logout` | Abmelden? | Du wirst auf diesem Gerät abgemeldet. Deine Daten bleiben verschlüsselt gespeichert. | Bestätigen |
 | `public/coach.js` `resetCoachChat` | Coach-Chat zurücksetzen? | Coach-Chat wirklich zurücksetzen und eine neue Unterhaltung beginnen? | Bestätigen |

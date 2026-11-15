@@ -703,6 +703,8 @@ function completedSessionIds(calendar) {
 const plannedFocusStatuses = new Map();
 // The receipt of a moved unit by card key ({ text, change, from }); the open card shows it after the re-render.
 const plannedMoveReceipts = new Map();
+// The receipt of a deleted unit by its day (#3027): the day shows it once the card is gone.
+const plannedDeleteReceipts = new Map();
 const MOVE_DAY_FORMAT = new Intl.DateTimeFormat("de-DE", { weekday: "short", day: "2-digit", month: "2-digit" });
 const MOVE_WEEKDAY_FORMAT = new Intl.DateTimeFormat("de-DE", { weekday: "short" });
 
@@ -1297,7 +1299,7 @@ function plannedUnitActions(entry, dateKey, todayKey) {
   if (!entry.payload_hash) return [h("div", "planned-activity-actions", coach)];
   const key = plannedEntryKey(entry, dateKey);
   const toggle = h("button", { type: "button", className: "secondary-button", "aria-expanded": "false" }, "Verschieben");
-  const days = h("div", { className: "planned-move-days", role: "group", "aria-label": "Neuer Tag", hidden: true });
+  const days = plannedDayStrip(todayKey, dateKey, "Neuer Tag", (day) => void move(day));
   const status = h("p", { className: "planned-move-status", role: "status" });
   toggle.addEventListener("click", () => {
     days.hidden = !days.hidden;
@@ -1319,26 +1321,83 @@ function plannedUnitActions(entry, dateKey, todayKey) {
       status.textContent = error.message;
     }
   };
+  const receipt = plannedMoveReceipts.get(key);
+  if (receipt) status.append(receipt.text, ...(receipt.change?.id ? plannedMoveUndo(key, receipt, status) : []));
+  const [remove, confirm] = plannedDeleteControls(entry, dateKey, key);
+  return [h("div", "planned-activity-actions", toggle, coach, remove), confirm, days, status];
+}
+
+// The next seven days from today and "…" for a later date, inside the shown calendar (#2194, #3028).
+// `skip` is dimmed; `pick` gets the chosen day.
+function plannedDayStrip(todayKey, skip, label, pick) {
+  const days = h("div", { className: "planned-move-days", role: "group", "aria-label": label, hidden: true });
   for (let offset = 0; offset < 7; offset += 1) {
     const day = addDateKey(todayKey, offset);
     if (plannedLastDateKey && day > plannedLastDateKey) break;
     const date = dateFromKey(day);
-    const button = h("button", { type: "button", className: "planned-move-day", disabled: day === dateKey, dataset: { day }, "aria-label": DETAIL_DATE_FORMAT.format(date) },
+    const button = h("button", { type: "button", className: "planned-move-day", disabled: day === skip, dataset: { day }, "aria-label": DETAIL_DATE_FORMAT.format(date) },
       h("span", null, MOVE_WEEKDAY_FORMAT.format(date)), h("b", null, String(date.getDate())));
-    button.addEventListener("click", () => void move(day));
+    button.addEventListener("click", () => pick(day));
     days.append(button);
   }
   // The system date picker opens from "…"; without showPicker the field itself is shown.
   const picker = h("input", { type: "date", className: "planned-move-picker", min: todayKey, max: plannedLastDateKey || null, tabIndex: -1, "aria-label": "Anderes Datum" });
-  picker.addEventListener("change", () => void move(picker.value));
+  picker.addEventListener("change", () => pick(picker.value));
   const later = h("button", { type: "button", className: "planned-move-day", "aria-label": "Anderes Datum" }, "…");
   later.addEventListener("click", () => {
     try { picker.showPicker(); } catch { picker.classList.add("is-shown"); picker.tabIndex = 0; picker.focus(); }
   });
   days.append(later, picker);
-  const receipt = plannedMoveReceipts.get(key);
-  if (receipt) status.append(receipt.text, ...(receipt.change?.id ? plannedMoveUndo(key, receipt, status) : []));
-  return [h("div", "planned-activity-actions", toggle, coach), days, status];
+  return days;
+}
+
+// "Löschen" asks once inside the card (#3027, #3028); `remove` runs on the confirmation and its error shows here.
+function inCardDelete(idBase, note, remove) {
+  const id = `delete-${String(idBase).replace(/[^\w-]/g, "")}`;
+  const open = h("button", { type: "button", className: "secondary-button danger-button" }, "Löschen");
+  const confirmDelete = h("button", { type: "button", className: "secondary-button danger-button", "aria-describedby": note ? `${id}-note` : null }, "Löschen");
+  const cancel = h("button", { type: "button", className: "secondary-button" }, "Abbrechen");
+  const failure = h("p", { className: "planned-delete-note", role: "status" });
+  const confirm = h("div", { className: "planned-delete-confirm", role: "group", "aria-labelledby": `${id}-question`, hidden: true },
+    h("p", { id: `${id}-question` }, "Einheit löschen?"),
+    h("div", "planned-activity-actions", confirmDelete, cancel),
+    note ? h("p", { className: "planned-delete-note", id: `${id}-note` }, note) : null,
+    failure);
+  open.addEventListener("click", () => { confirm.hidden = false; open.hidden = true; confirmDelete.focus(); });
+  cancel.addEventListener("click", () => { confirm.hidden = true; open.hidden = false; open.focus(); });
+  confirmDelete.addEventListener("click", async () => {
+    confirmDelete.disabled = true;
+    cancel.disabled = true;
+    try {
+      await remove();
+    } catch (error) {
+      confirmDelete.disabled = false;
+      cancel.disabled = false;
+      failure.textContent = error.message;
+    }
+  });
+  return [open, confirm];
+}
+
+// A planned unit goes through the Coach's delete path; a copy at a provider goes with the next explicit sync.
+function plannedDeleteControls(entry, dateKey, key) {
+  const copies = (Array.isArray(entry.remote_copies) ? entry.remote_copies : []).map((provider) => state.data?.provider_labels?.[provider]).filter(Boolean);
+  const name = entry.name || "Trainingseinheit";
+  return inCardDelete(entry.local_id, copies.length ? `${copies.join(", ")}: weg beim nächsten Sync` : "", async () => {
+    try {
+      const result = await api(`/api/planned-units/${encodeURIComponent(entry.local_id)}/delete`, { method: "POST", body: JSON.stringify({ confirmed: true, expected_payload_hash: entry.payload_hash }) });
+      plannedDeleteReceipts.set(String(entry.local_id), { day: dateKey, text: `Gelöscht: ${name}`, change: result.change, from: dateKey });
+    } catch (error) {
+      // A changed unit reloads, so the card names the reason and the next try sends the current hash.
+      if (error.status === 409) {
+        plannedMoveReceipts.set(key, { text: error.message });
+        await globalThis.load?.();
+      }
+      throw error;
+    }
+    await globalThis.load?.();
+    announcePlanChange(`Gelöscht: ${name}`);
+  });
 }
 
 // "Mit dem Coach besprechen" (#2193) opens the Coach with the unit named by date, sport, start, duration and
@@ -1356,15 +1415,15 @@ function plannedDiscussButton(entry, dateKey) {
   return button;
 }
 
-// "Rückgängig" puts the unit back on its earlier day and shows that week again.
-function plannedMoveUndo(key, receipt, status) {
+// "Rückgängig" puts the unit back on its earlier day, or back at all, and shows that week again.
+function plannedMoveUndo(key, receipt, status, receipts = plannedMoveReceipts) {
   const undo = h("button", { type: "button", className: "message-undo" }, "Rückgängig");
   undo.addEventListener("click", async () => {
     undo.disabled = true;
     try {
       await api("/api/change-history/undo", { method: "POST", body: JSON.stringify({ change_id: receipt.change.id, expected_current_hash: receipt.change.after_hash }) });
-      plannedMoveReceipts.set(key, { text: "Zurückgenommen." });
-      showPlannedDay(receipt.from);
+      receipts.set(key, { day: receipt.day, text: "Zurückgenommen." });
+      if (receipt.from) showPlannedDay(receipt.from);
       await globalThis.load?.();
     } catch (error) {
       undo.disabled = false;
@@ -1964,7 +2023,12 @@ function renderPlannedDay(view, dateKey, weekHasPlan) {
   const noteContext = plannedNoteContext(dayContext, dayEvents);
   const notes = plannedDayNotes(noteContext, state.data?.competitions, dateKey);
   const emptyText = dateKey < todayKey ? "Keine Aktivität" : "Keine Einheit geplant";
-  const content = h("div", "planned-day-content", heading, notes.childElementCount ? notes : null,
+  const deleted = [...plannedDeleteReceipts].filter(([, receipt]) => receipt.day === dateKey).map(([id, receipt]) => {
+    const status = h("p", { className: "planned-move-status", role: "status" }, receipt.text);
+    if (receipt.change?.id) status.append(...plannedMoveUndo(id, receipt, status, plannedDeleteReceipts));
+    return status;
+  });
+  const content = h("div", "planned-day-content", heading, ...deleted, notes.childElementCount ? notes : null,
     dayEvents.length ? plannedEventBand(dayEvents) : null,
     dayEntries.length ? null : h("p", "planned-day-empty", emptyText));
   for (const group of plannedEntryGroups(dayEntries)) {
@@ -2282,6 +2346,11 @@ function loadOlderSessions(calendar, shownStartKey, configuredStartKey) {
   }, () => { if (generation === olderSessions.generation) olderSessions.loading = false; });
 }
 
+// A delete receipt stays while its week is shown.
+function dropDeleteReceiptsOutsideWeek() {
+  for (const [id, receipt] of plannedDeleteReceipts) if (planWeekStart(receipt.day) !== selectedWeekKey) plannedDeleteReceipts.delete(id);
+}
+
 function renderPlanned(trainingCalendar) {
   const root = $("#plannedCalendar");
   if (!root) return;
@@ -2302,6 +2371,7 @@ function renderPlanned(trainingCalendar) {
   const lastDateKey = addDateKey(lastWeekKey, 6);
   plannedLastDateKey = lastDateKey;
   keepPlannedSelection(todayKey, lastDateKey);
+  dropDeleteReceiptsOutsideWeek();
   const snapshot = JSON.stringify([calendar, todayKey, selectedWeekKey, calendarView, calendarSport, selectedDayKey, display, state.data?.daily_planning_context, state.data?.planning_compliance, state.data?.competitions, state.data?.weather, (state.data?.external_calendar?.events || []).map((event) => [event?.uid, event?.start_local, event?.impact, event?.name]), state.data?.external_calendar?.undecided_upcoming]);
   if (snapshot === plannedRenderSnapshot && root.childElementCount) {
     if (state.plannedTodayFocusPending) requestAnimationFrame(() => focusPlannedToday());
@@ -2400,13 +2470,68 @@ function libraryWahooRow(workout) {
   return row;
 }
 
+// "Einplanen" and "Löschen" without the Coach (#3028): the calendar's day strip plans a local unit from the
+// entry; "Löschen" archives the entry and units planned from it stay. Each receipt offers "Rückgängig".
+const libraryReceipts = new Map();
+
+function libraryActions(workout) {
+  if (!workout.id) return [];
+  const id = String(workout.id);
+  const name = workout.name || "Bibliotheks-Einheit";
+  const toggle = h("button", { type: "button", className: "secondary-button", "aria-expanded": "false" }, "Einplanen");
+  const status = h("p", { className: "planned-move-status", role: "status" });
+  const schedule = async (day) => {
+    if (!day) return;
+    const buttons = [...days.querySelectorAll("button, input")];
+    buttons.forEach((item) => { item.disabled = true; });
+    status.replaceChildren();
+    try {
+      const result = await api(`/api/library/${encodeURIComponent(id)}/schedule`, { method: "POST", body: JSON.stringify({ date: day }) });
+      const text = `Eingeplant: ${MOVE_DAY_FORMAT.format(dateFromKey(day))}`;
+      libraryReceipts.clear();
+      libraryReceipts.set(id, { text, change: result.change });
+      await globalThis.load?.();
+      announcePlanChange(text);
+    } catch (error) {
+      buttons.forEach((item) => { item.disabled = false; });
+      status.textContent = error.message;
+    }
+  };
+  const days = plannedDayStrip(timezoneDateKey(state.data?.profile?.timezone, new Date()), null, "Tag", (day) => void schedule(day));
+  toggle.addEventListener("click", () => {
+    days.hidden = !days.hidden;
+    toggle.setAttribute("aria-expanded", String(!days.hidden));
+  });
+  const [remove, confirm] = inCardDelete(id, "", async () => {
+    const result = await api(`/api/library/${encodeURIComponent(id)}/archive`, { method: "POST", body: JSON.stringify({ confirmed: true }) });
+    libraryReceipts.clear();
+    libraryReceipts.set(id, { text: `Gelöscht: ${name}`, change: result.change });
+    await globalThis.load?.();
+    announcePlanChange(`Gelöscht: ${name}`);
+  });
+  const receipt = libraryReceipts.get(id);
+  if (receipt) libraryReceiptLine(status, id, receipt);
+  return [h("div", "planned-activity-actions", toggle, remove), confirm, days, status];
+}
+
+function libraryReceiptLine(status, id, receipt) {
+  status.append(receipt.text, ...(receipt.change?.id ? plannedMoveUndo(id, receipt, status, libraryReceipts) : []));
+  return status;
+}
+
 function renderLibrary(workouts) {
   const root = $("#library");
   if (!root) return;
+  const openSports = new Set([...root.querySelectorAll("details.library-sport[open]")].map((section) => section.dataset.sport));
   root.replaceChildren();
   appendHistoryPageButton(root, "library");
   const allWorkouts = Array.isArray(workouts) ? workouts : [];
   const visible = allWorkouts.filter((workout) => !workout.archived && !workout.date);
+  // A deleted entry's card is gone, so its receipt leads the library.
+  const shown = new Set(visible.map((workout) => String(workout.id)));
+  for (const [id, receipt] of libraryReceipts) {
+    if (!shown.has(id)) root.append(libraryReceiptLine(h("p", { className: "planned-move-status", role: "status" }), id, receipt));
+  }
   const librarySummary = $("#librarySummary");
   if (librarySummary) librarySummary.textContent = `${visible.length} Einheit${visible.length === 1 ? "" : "en"}`;
   if (!visible.length) {
@@ -2422,15 +2547,16 @@ function renderLibrary(workouts) {
   [...groups.entries()]
     .sort(([a], [b]) => a.localeCompare(b, "de"))
     .forEach(([sport, sportWorkouts]) => {
-      const section = h("details", "library-sport",
+      const section = h("details", { className: "library-sport", dataset: { sport } },
         h("summary", null, h("strong", null, sport), h("span", null, `${sportWorkouts.length} Einheit${sportWorkouts.length === 1 ? "" : "en"}`)),
         h("div", "library-sport-cards", sportWorkouts.map((workout) => h("article", "library-card",
           h("div", null,
             h("h4", null, workout.name || "Bibliotheks-Einheit"),
             h("span", null, [workout.type, workout.planned_duration_s ? formatDuration(workout.planned_duration_s) : null].filter(Boolean).join(" · "))),
           h("p", null, workout.description || "Kein Workout-Text hinterlegt."),
-          libraryWahooRow(workout)))));
-      section.open = false;
+          libraryWahooRow(workout),
+          ...libraryActions(workout)))));
+      section.open = openSports.has(sport);
       root.append(section);
     });
 }

@@ -10,6 +10,8 @@ from backend.athlete.profile import ProfileService
 from backend.errors import NOT_FOUND_ERROR, AppError
 from backend.http_api.route_table import Access, Route, RouteRequest
 
+SKINFOLDS_PATH = "/api/body/skinfolds"
+
 
 class AthletePutRoutes:
     """Dispatch athlete writes through their existing domain services."""
@@ -20,11 +22,13 @@ class AthletePutRoutes:
         database_manager: Callable[[], Any],
         zone_service: Callable[[], Any] | None = None,
         body_export: Callable[[dict[str, str], str | None, float], str] | None = None,
+        skinfold_service: Callable[[], Any] | None = None,
     ) -> None:
         self._profile_service = profile_service
         self._database_manager = database_manager
         self._zone_service = zone_service
         self._body_export = body_export
+        self._skinfold_service = skinfold_service
 
     def routes(self) -> list[Route]:
         routes = [
@@ -37,7 +41,55 @@ class AthletePutRoutes:
                     "PUT", "/api/zones/remove", Access.SESSION_CSRF, self._remove_zones
                 ),
             ]
+        if self._skinfold_service is not None:
+            routes += [
+                Route("PUT", SKINFOLDS_PATH, Access.SESSION_CSRF, self._save_skinfolds),
+                Route(
+                    "PUT",
+                    f"{SKINFOLDS_PATH}/remove",
+                    Access.SESSION_CSRF,
+                    self._remove_skinfolds,
+                ),
+            ]
         return routes
+
+    def _save_skinfolds(self, handler: Any, _request: RouteRequest) -> None:
+        """Save one 3-site skinfold measurement; one of the same day is replaced.
+
+        Request: JSON body `{"date": "YYYY-MM-DD", "folds_mm": {site: number}}`
+        with exactly the sites `chest`, `abdomen`, `thigh` (men) or `triceps`,
+        `suprailiac`, `thigh` (women), each 2 to 80 mm (comma decimals allowed).
+        The date must not be in the future.
+
+        Response: 200 as `GET /api/body/skinfolds`.
+
+        Errors: 400 "Das Messdatum fehlt oder ist ungültig."; 400 "Das Messdatum
+        darf nicht in der Zukunft liegen."; 400 "Bitte genau drei Stellen messen:
+        Brust, Bauch, Oberschenkel oder Trizeps, Hüfte, Oberschenkel."; 400 "Jede
+        Hautfalte braucht einen Wert in mm."; 400 "Eine Hautfalte muss zwischen 2
+        und 80 mm liegen.".
+        """
+        self._send_skinfolds(handler, "save")
+
+    def _remove_skinfolds(self, handler: Any, _request: RouteRequest) -> None:
+        """Remove the skinfold measurement of one day.
+
+        Request: JSON body `{"date": "YYYY-MM-DD", "confirmed": true}`.
+
+        Response: 200 as `GET /api/body/skinfolds`.
+
+        Errors: 400 "Das Löschen einer Messung muss bestätigt werden." unless
+        `confirmed` is `true`; 400 "Das Messdatum fehlt oder ist ungültig."; 404
+        "Für diesen Tag gibt es keine Hautfaltenmessung.".
+        """
+        self._send_skinfolds(handler, "remove")
+
+    def _send_skinfolds(self, handler: Any, action: str) -> None:
+        if self._skinfold_service is None:
+            raise AppError(404, NOT_FOUND_ERROR)
+        payload = handler.read_json()
+        service = self._skinfold_service()
+        handler.send_json(200, getattr(service, action)(payload))
 
     def _handle_profile(self, handler: Any, _request: RouteRequest) -> None:
         """Patch only the submitted profile fields.
@@ -50,8 +102,9 @@ class AthletePutRoutes:
         `_strength`, `_mobility` variants, `training_model` (`pyramidal`,
         `polarized`, `threshold`, `sweet_spot`), `performance_notes`, `weight_kg`
         (20 to 300), `body_fat_pct` (1 to 70), `height_cm` (50 to 250), `sex`
-        (`male`, `female` or empty), `coaching_style`, `timezone` (IANA name),
-        `weather_location`, `sleep_target_hours` (4 to 12), `fueling_tolerance`,
+        (`male`, `female` or empty), `birth_year` (a whole year, 1920 to 2010),
+        `coaching_style`, `timezone` (IANA name), `weather_location`,
+        `sleep_target_hours` (4 to 12), `fueling_tolerance`,
         `first_threshold_pct` (40 to 100, percent of the run threshold HR),
         `first_threshold_origin` (`measured`, `estimated` or empty) and
         `preferred_source_thresholds`, `_body`, `_hrv`, `_resting_hr`, `_sleep`
@@ -71,6 +124,7 @@ class AthletePutRoutes:
         "Unbekanntes Trainingsmodell; erlaubt: pyramidal, polarized, threshold,
         sweet_spot"; 400 "Unbekannte bevorzugte Quelle; erlaubt: garmin oder leer.";
         400 "Unbekanntes Geschlecht; erlaubt: male, female oder leer."; 400 "Das
+        Geburtsjahr muss zwischen 1920 und 2010 liegen."; 400 "Das
         Gewicht muss zwischen 20 und 300 kg liegen.", "Die Größe muss zwischen 50
         und 250 cm liegen.", "Der Körperfettanteil muss zwischen 1 und 70 %
         liegen.", "Das Schlafziel muss zwischen 4 und 12 Stunden liegen."; 400

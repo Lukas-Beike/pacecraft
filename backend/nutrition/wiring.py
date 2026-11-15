@@ -4,8 +4,11 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass, replace
+from datetime import date, timedelta
+from typing import Any
 
 from backend.app.context import AppContext
+from backend.canonical.vocabulary import MetricKind
 from backend.db.repositories import (
     NutritionProductRepository,
     NutritionRepository,
@@ -13,12 +16,23 @@ from backend.db.repositories import (
 )
 from backend.nutrition.catalog import ProductCatalogService
 from backend.nutrition.diary import NutritionDiaryService
+from backend.nutrition.energy_inputs import (
+    RESTING_LOOKBACK_DAYS,
+    EnergySources,
+    energy_basis,
+    latest_value,
+    own_resting,
+    recent_fat_pct,
+    session_streams,
+    weighins,
+)
 from backend.nutrition.food_database import FoodDatabaseService
 from backend.nutrition.food_mirror import FoodDatabaseMirror
 from backend.nutrition.meal_library import NutritionMealLibraryService
 from backend.nutrition.photo import NutritionPhotoExtractionService
 from backend.nutrition.sync import IntervalsNutritionSyncService
 from backend.nutrition.web_search import NutritionWebSearchService
+from backend.performance.daily_health import read_daily_health_by_date
 from backend.providers.intervals import IntervalsApiClient
 from backend.providers.model_seam import ModelRequest, ModelTurn
 from backend.providers.open_food_facts import OpenFoodFactsClient
@@ -34,6 +48,8 @@ class NutritionServices:
     product_catalog_service: Callable[[], ProductCatalogService]
     diary_service: Callable[[], NutritionDiaryService]
     intervals_sync_service: Callable[[], IntervalsNutritionSyncService]
+    # Counts of the adaptive expenditure basis for the diagnostics (#3100).
+    energy_basis: Callable[[Any], dict[str, Any]]
 
 
 def build_nutrition(ctx: AppContext) -> NutritionServices:
@@ -89,6 +105,59 @@ def build_nutrition(ctx: AppContext) -> NutritionServices:
             observation_reader=lambda: ctx.canonical_read,
         )
 
+    def energy_sources() -> EnergySources:
+        """The stores the adaptive expenditure reads (#3100).
+
+        The resting reference is Katch-McArdle from the skinfold lean mass
+        (#3099), else from the latest measured body fat; only without either
+        does the reader fall back to Garmin's resting value, labelled.
+        """
+        read = ctx.canonical_read
+        diary = NutritionRepository(utc_now)
+        skinfolds = ctx.athlete.skinfolds()
+
+        def sessions(db: Any, start: date, end: date) -> list[Any]:
+            # Bounded by the athlete-local start date in the reader itself.
+            return list(read.activity_summaries(db, start=start, end=end))
+
+        def latest(db: Any, kind: MetricKind, day: date) -> float | None:
+            since = day - timedelta(days=RESTING_LOOKBACK_DAYS)
+            return latest_value(read.observations(db, kind, start=since, end=day))
+
+        def resting(db: Any, day: date) -> tuple[float, str] | None:
+            skinfold = skinfolds.skinfold_on(db, day)
+            return own_resting(
+                latest(db, MetricKind.WEIGHT, day),
+                recent_fat_pct(skinfold, day),
+                latest(db, MetricKind.BODY_FAT, day),
+            )
+
+        def body_fat(db: Any, start: date, end: date) -> dict[date, float]:
+            """Skinfold body fat in effect at each weekly window end."""
+            found = {}
+            for weeks in range((end - start).days // 7 + 1):
+                skinfold = skinfolds.skinfold_on(db, end - timedelta(days=7 * weeks))
+                if skinfold is not None and skinfold.body_fat_pct is not None:
+                    found[skinfold.measured_on] = skinfold.body_fat_pct
+            return found
+
+        return EnergySources(
+            diary=lambda db, s, e: diary.list_by_range(
+                db, s.isoformat(), e.isoformat()
+            ),
+            daily_health=lambda db, s, e: read_daily_health_by_date(
+                read, db, start=s, end=e
+            ),
+            weights=lambda db, s, e: weighins(
+                read.observations(db, MetricKind.WEIGHT, start=s, end=e)
+            ),
+            sessions=sessions,
+            streams=session_streams,
+            resting=resting,
+            body_fat=body_fat,
+            profile=ctx.athlete_profile.get,
+        )
+
     def intervals_sync_service() -> IntervalsNutritionSyncService:
         config = ctx.config()
         return IntervalsNutritionSyncService(
@@ -108,4 +177,7 @@ def build_nutrition(ctx: AppContext) -> NutritionServices:
         product_catalog_service=lambda: meal_library_service().product_catalog,
         diary_service=diary_service,
         intervals_sync_service=intervals_sync_service,
+        energy_basis=lambda db: energy_basis(
+            db, energy_sources(), ctx.clock.now().date()
+        ),
     )

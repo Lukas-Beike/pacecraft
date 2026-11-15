@@ -80,7 +80,8 @@ def _segments(text: str) -> list[list[str]]:
         elif char in "\"'":
             quote = char
         elif char in SEPARATORS:
-            parts, current = [*parts, current], ""
+            parts.append(current)  # in place: linear in the command (#3119)
+            current = ""
             continue
         current += char
     segments = []
@@ -92,10 +93,11 @@ def _segments(text: str) -> list[list[str]]:
     return segments
 
 
-def _gh_writes(words: list[str]) -> list[tuple[str, list[str]]]:
-    """(verb, arguments) of each gh PR or issue write in one shell segment."""
+def _gh_writes(words: list[str]) -> list[tuple[str, int]]:
+    """(verb, index of its first argument) of each gh PR or issue write in one
+    shell segment; a write's arguments run to the end of the segment."""
     return [
-        (words[start + 2], words[start + 3 :])
+        (words[start + 2], start + 3)
         for start, word in enumerate(words[:-2])
         if Path(word).stem.lower() == "gh"
         and words[start + 2] in WRITES.get(words[start + 1], ())
@@ -106,13 +108,20 @@ def blocked(command: str, cwd: Path) -> bool:
     text = CONTINUATION.sub(" ", command)
     written = {m.group(1) for m in WRITTEN.finditer(text.replace("\\", "/"))}
     for words in _segments(text):
-        for verb, args in _gh_writes(words):
-            texts = _values(args, TEXT_FLAGS) if verb == "edit" else []
-            files = [v for v in _values(args, FILE_FLAGS) if v not in written]
-            if any(not t.strip() for t in texts) or any(
-                _empty_file(v, cwd) for v in files if v != "-"
-            ):
-                return True
+        writes = _gh_writes(words)
+        if not writes:
+            continue
+        # A later write's arguments are a suffix of an earlier one's, so the first
+        # write (and the first edit, for --body) covers every value once (#3119).
+        edits = [first for verb, first in writes if verb == "edit"]
+        texts = _values(words[edits[0] :], TEXT_FLAGS) if edits else []
+        files = [
+            v for v in _values(words[writes[0][1] :], FILE_FLAGS) if v not in written
+        ]
+        if any(not t.strip() for t in texts) or any(
+            _empty_file(v, cwd) for v in files if v != "-"
+        ):
+            return True
     return False
 
 

@@ -1407,6 +1407,124 @@ function renderBodyOverviewRow(metric, title, unit, body, preferred) {
   return h("tr", { dataset: { metric } }, h("th", { scope: "row" }, title, note && h("small", null, note)), h("td", null, bodyOverviewDisplayValue(profileFat, latest, unit)));
 }
 
+// 3-site skinfolds (#3099): the latest measurements with their Jackson-Pollock body fat, and
+// a form that stores one measurement per day. The read is kept until a save or a removal.
+const SKINFOLD_SITES = { male: ["chest", "abdomen", "thigh"], female: ["triceps", "suprailiac", "thigh"] };
+const SKINFOLD_LABELS = { chest: "Brust", abdomen: "Bauch", thigh: "Oberschenkel", triceps: "Trizeps", suprailiac: "Hüfte" };
+const SKINFOLDS_SHOWN = 3;
+let skinfoldRead = null;
+let skinfoldRequest = null;
+
+// Forgets the read, so the next body render reads the measurements again.
+function resetSkinfolds() {
+  skinfoldRead = null;
+}
+
+// A failed read also re-renders, so the card shows the failure instead of loading forever.
+function loadSkinfolds() {
+  skinfoldRequest ||= api("/api/body/skinfolds")
+    .then((read) => { skinfoldRead = read; })
+    .catch(() => { skinfoldRead = { failed: true }; })
+    .finally(() => {
+      skinfoldRequest = null;
+      renderBodyAnalysis(state.data?.performance?.history?.body);
+    });
+}
+
+function skinfoldRow(measurement, edit) {
+  const folds = measurement.folds_mm.map((fold) => `${fold.label} ${analysisValue(fold.mm, "")}`).join(" · ");
+  const fat = measurement.body_fat_pct == null
+    ? h("span", null, "unbekannt", h("small", null, "ohne Geburtsjahr"))
+    : analysisValue(measurement.body_fat_pct, "%");
+  return h("tr", { dataset: { skinfold: measurement.date } },
+    h("th", { scope: "row" }, dateLabel(measurement.date), h("small", null, `${folds} mm`)), h("td", null, fat), h("td", null, edit));
+}
+
+function skinfoldDialogSites() {
+  return SKINFOLD_SITES[state.data?.profile?.sex === "female" ? "female" : "male"];
+}
+
+// Picking a day that has a measurement fills the dialog with it and offers its removal.
+function fillSkinfoldDialog() {
+  const form = document.querySelector("#skinfoldDialogForm");
+  const measured = skinfoldRead?.measurements.find((item) => item.date === form.elements.date.value);
+  const values = Object.fromEntries((measured?.folds_mm || []).map((fold) => [fold.site, fold.mm]));
+  for (const site of skinfoldDialogSites()) form.elements[site].value = values[site] ?? "";
+  document.querySelector("#skinfoldDialogRemove").hidden = !measured;
+}
+
+function openSkinfoldDialog() {
+  bindSkinfoldDialog();
+  const form = document.querySelector("#skinfoldDialogForm");
+  // The fold fields sit in the dialog's own form grid, after the date, for the profile's sex.
+  form.querySelectorAll("[data-skinfold-site]").forEach((label) => label.remove());
+  form.elements.date.closest("label").after(...skinfoldDialogSites().map((site) => h("label", { dataset: { skinfoldSite: site } }, `${SKINFOLD_LABELS[site]} (mm)`,
+    h("input", { name: site, type: "number", min: "2", max: "80", step: "0.5", inputMode: "decimal", required: true }))));
+  form.elements.date.value = timezoneDateKey(state.data?.profile?.timezone, new Date());
+  document.querySelector("#skinfoldDialogStatus").textContent = "";
+  for (const button of form.querySelectorAll("button")) button.disabled = false;
+  fillSkinfoldDialog();
+  document.querySelector("#skinfoldDialog").showModal();
+}
+
+async function sendSkinfolds(path, payload, button) {
+  const status = document.querySelector("#skinfoldDialogStatus");
+  button.disabled = true;
+  try {
+    skinfoldRead = await api(path, { method: "PUT", body: JSON.stringify(payload) });
+    document.querySelector("#skinfoldDialog").close();
+    renderBodyAnalysis(state.data?.performance?.history?.body);
+    return true;
+  } catch (error) {
+    status.textContent = error.message;
+    button.disabled = false;
+    return false;
+  }
+}
+
+let skinfoldDialogBound = false;
+
+// Bound on the first open, so loading the script touches no dialog.
+function bindSkinfoldDialog() {
+  const form = document.querySelector("#skinfoldDialogForm");
+  if (skinfoldDialogBound || !form) return;
+  skinfoldDialogBound = true;
+  form.elements.date.addEventListener("change", fillSkinfoldDialog);
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const folds = Object.fromEntries(skinfoldDialogSites().map((site) => [site, form.elements[site].value]));
+    if (await sendSkinfolds("/api/body/skinfolds", { date: form.elements.date.value, folds_mm: folds }, document.querySelector("#skinfoldDialogSave"))) toast("Messung gespeichert.");
+  });
+  const remove = document.querySelector("#skinfoldDialogRemove");
+  remove.addEventListener("click", async () => {
+    const day = form.elements.date.value;
+    if (!await requestConfirmation(`Messung vom ${dateLabel(day)} löschen?`, { title: "Messung löschen?", confirmLabel: "Löschen" })) return;
+    await sendSkinfolds("/api/body/skinfolds/remove", { date: day, confirmed: true }, remove);
+  });
+  document.querySelector("#skinfoldDialogCancel").addEventListener("click", () => document.querySelector("#skinfoldDialog").close());
+}
+
+function skinfoldEditButton() {
+  const button = messageActionButton("edit", "Hautfalten eintragen");
+  button.addEventListener("click", openSkinfoldDialog);
+  return button;
+}
+
+function skinfoldCard() {
+  if (!skinfoldRead) {
+    loadSkinfolds();
+    return h("section", "analysis-chart-card", createLoadingState("Hautfalten werden geladen…"));
+  }
+  if (skinfoldRead.failed) return h("section", "analysis-chart-card", h("p", "empty", "Hautfalten konnten nicht geladen werden."));
+  const shown = skinfoldRead.measurements.slice(0, SKINFOLDS_SHOWN);
+  // The button sits on the current (newest) measurement, or on the empty row.
+  const rows = shown.length
+    ? shown.map((measurement, index) => skinfoldRow(measurement, index === 0 ? skinfoldEditButton() : null))
+    : h("tr", null, h("th", { scope: "row" }, "Noch keine Messung"), h("td"), h("td", null, skinfoldEditButton()));
+  return h("section", { className: "analysis-chart-card", dataset: { skinfolds: "" } },
+    h("table", { className: "current-performance-table" }, h("caption", null, "Hautfalten"), h("tbody", null, rows)));
+}
+
 function renderBodyAnalysis(body) {
   const root = document.getElementById("bodyAnalysisCharts");
   if (!root) return;
@@ -1419,6 +1537,7 @@ function renderBodyAnalysis(body) {
   const preferred = body?.preferred_providers || {};
   const rows = h("tbody", null, metrics.map(([metric, title, unit]) => renderBodyOverviewRow(metric, title, unit, body, preferred)));
   root.append(h("section", "analysis-chart-card", h("table", { className: "current-performance-table", dataset: { bodyOverview: "" } }, h("caption", null, "Körperwerte"), rows)));
+  root.append(skinfoldCard());
   const key = bodyHistoryPeriod === "fortnight" ? "14d" : "12w";
   const window = body?.windows?.[key];
   root.append(analysisPeriodControls("Zeitraum für Körper", bodyHistoryPeriod, (period) => {

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping, Sequence
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, time, timedelta
 from typing import Any, Final
 
 from backend.activities.hr_cap import stored_cap
@@ -55,6 +55,77 @@ _LIST_OMITTED_KEYS: Final = frozenset(
         "water_estimated_ml",
     }
 )
+# A reference's start time matches a session starting this close to it (#3084).
+START_TIME_TOLERANCE_MIN: Final = 30
+# Without a date the newest session of this many days is analysed.
+NEWEST_SESSION_DAYS: Final = 30
+# Sessions offered back when a reference is not unique.
+MAX_CANDIDATES: Final = 10
+# Candidates never carry the stored name: it is provider or athlete text.
+_CANDIDATE_KEYS: Final = (
+    "id",
+    "started_at_local",
+    "sport",
+    "moving_duration_s",
+    "distance_m",
+)
+
+
+def resolve_session(
+    summaries: Sequence[Mapping[str, Any]],
+    *,
+    sport: str | None,
+    start_time: str | None,
+    newest: bool,
+) -> tuple[str, list[Mapping[str, Any]]]:
+    """The session a reference points to, or why not, with the matches.
+
+    Sessions match by sport and by a start within ``START_TIME_TOLERANCE_MIN``
+    of ``start_time`` (HH:MM). ``newest`` takes the latest match. Otherwise one
+    match is ``resolved``, several are ``ambiguous``, and none is
+    ``not_found`` with the sessions of the named sport, else every given
+    session, as candidates. The newest skips commutes, warm-ups and cool-downs
+    unless only those match. Pure, for reuse by #3080.
+    """
+    of_sport = [row for row in summaries if not sport or row.get("sport") == sport]
+    matches = of_sport
+    wanted = _clock_minutes(start_time)
+    if wanted is not None:
+        matches = [
+            row
+            for row in matches
+            if (start := _clock_minutes(str(row.get("started_at_local") or "")[11:16]))
+            is not None
+            and abs(start - wanted) <= START_TIME_TOLERANCE_MIN
+        ]
+    if newest and matches:
+        training = [row for row in matches if not summary_is_not_training(row)]
+        latest = max(
+            training or matches, key=lambda row: str(row.get("started_at_local") or "")
+        )
+        return "resolved", [latest]
+    if len(matches) == 1:
+        return "resolved", matches
+    if matches:
+        return "ambiguous", matches
+    return "not_found", of_sport or list(summaries)
+
+
+def _session_date(session: Mapping[str, Any]) -> date | None:
+    """The local day a session started, None when unknown."""
+    try:
+        return date.fromisoformat(iso_date_prefix(session.get("started_at_local")))
+    except ValueError:
+        return None
+
+
+def _clock_minutes(value: Any) -> int | None:
+    """Minutes after midnight of an HH:MM time, None when it is none."""
+    try:
+        clock = time.fromisoformat(str(value))
+    except ValueError:
+        return None
+    return clock.hour * 60 + clock.minute
 
 
 def _analysis_additions(detail: Mapping[str, Any], effect: Any) -> dict[str, Any]:
@@ -108,6 +179,7 @@ class CoachActivityReadToolService:
         planned_units: Any = None,
         unit_thresholds: Any = None,
         session_corrections: Any = None,
+        report_counts: Any = None,
     ) -> None:
         self._activity_read = activity_read
         self._garmin_payload = garmin_payload
@@ -117,6 +189,7 @@ class CoachActivityReadToolService:
         self._planned_units = planned_units
         self._unit_thresholds = unit_thresholds
         self._session_corrections = session_corrections
+        self._report_counts = report_counts
 
     def execute(self, name: str, arguments: dict[str, Any]) -> dict[str, Any] | None:
         if name == "read_training_records":
@@ -199,12 +272,17 @@ class CoachActivityReadToolService:
                 ],
             }
         if name == "get_activity_details":
+            referenced = self._referenced_activity(arguments)
+            if isinstance(referenced, dict):
+                return referenced
+            activity_id, outcome = referenced
             detail = self._activity_read.detail(
-                arguments.get("activity_id"),
+                activity_id,
                 garmin_status=self._garmin_payload.sync_status(),
                 profile=self._profile.get(),
                 today=self._today(),
             )
+            self._count_resolution(outcome)
             # Per-second running dynamics are for the calendar's charts; the Coach
             # reads their averages from the metrics.
             detail.pop("running_dynamics_streams", None)
@@ -221,14 +299,86 @@ class CoachActivityReadToolService:
             return result
         return None
 
+    def _referenced_activity(
+        self, arguments: dict[str, Any]
+    ) -> tuple[Any, str] | dict[str, Any]:
+        """The activity ID to read and how it resolved, or the ask-back result.
+
+        An ID (the analyse button names it) is read as given. Otherwise the
+        date, sport and start time resolve the session deterministically;
+        without a date the newest session is meant (#3084).
+        """
+        if arguments.get("activity_id") is not None:
+            return arguments["activity_id"], "by_id"
+        start_time = arguments.get("start_time")
+        if start_time is not None and _clock_minutes(start_time) is None:
+            raise AppError(
+                400, "Die Startzeit muss HH:MM sein.", reason="invalid_activity_request"
+            )
+        newest = not arguments.get("date")
+        try:
+            last = self._today() if newest else date.fromisoformat(arguments["date"])
+        except TypeError, ValueError:
+            raise AppError(
+                400,
+                "Das Datum muss JJJJ-MM-TT sein.",
+                reason="invalid_activity_request",
+            ) from None
+        first = last - timedelta(days=NEWEST_SESSION_DAYS) if newest else last
+        summaries = self._activity_read.summaries_between(first, last)
+        if summaries is None:
+            raise AppError(503, "Aktivitäten sind nicht lesbar.")
+        status, sessions = resolve_session(
+            summaries,
+            sport=arguments.get("sport") or None,
+            start_time=start_time,
+            newest=newest,
+        )
+        if status == "resolved":
+            return sessions[0].get("id"), "newest" if newest else "by_reference"
+        self._count_resolution(status)
+        return {
+            "ok": True,
+            "status": status,
+            "candidates": self._candidates(sessions),
+            "next": "Ask the athlete which session they mean, then call get_activity_details with its activity_id.",
+        }
+
+    def _candidates(
+        self, sessions: Sequence[Mapping[str, Any]]
+    ) -> list[dict[str, Any]]:
+        """The newest sessions to choose from, with the focus of their planned unit."""
+        shown = sorted(
+            sessions,
+            key=lambda row: str(row.get("started_at_local") or ""),
+            reverse=True,
+        )[:MAX_CANDIDATES]
+        days = [_session_date(row) for row in shown]
+        known = [day for day in days if day is not None]
+        units = (
+            self._planned_units.list_between(
+                min(known) - timedelta(days=1), max(known) + timedelta(days=1)
+            )
+            if known and self._planned_units is not None
+            else None
+        )
+        return [
+            {
+                **{key: row.get(key) for key in _CANDIDATE_KEYS},
+                "session_focus": matched_focus(row, self._units_around(units, day)).get(
+                    "session_focus"
+                ),
+            }
+            for row, day in zip(shown, days, strict=True)
+        ]
+
+    def _count_resolution(self, outcome: str) -> None:
+        if self._report_counts is not None:
+            self._report_counts.resolution(outcome)
+
     def _session_day(self, detail: dict[str, Any]) -> date | None:
         session = detail.get("session")
-        if not isinstance(session, dict):
-            return None
-        try:
-            return date.fromisoformat(iso_date_prefix(session.get("started_at_local")))
-        except ValueError:
-            return None
+        return _session_date(session) if isinstance(session, dict) else None
 
     def _units_since(self, day: date | None) -> list[dict[str, Any]] | None:
         """Local planned units from two days before the session's date on."""
@@ -390,7 +540,10 @@ class CoachActivityReadToolService:
                 "above_easy_s": bands.get("moderate", 0.0) + bands.get("high", 0.0),
             }
         own = _own_summary(session, nearby) or {}
-        return session_report(result, planned, own.get("training_load"))
+        report = session_report(result, planned, own.get("training_load"))
+        if self._report_counts is not None:
+            self._report_counts.report(report)
+        return report
 
     def _session_checks(
         self,

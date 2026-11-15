@@ -15,6 +15,7 @@ from backend.athlete.checkins import CheckinService
 from backend.athlete.equipment import EquipmentService
 from backend.athlete.equipment_history import equipment_history_records
 from backend.athlete.profile import ProfileService
+from backend.athlete.skinfolds import SkinfoldService
 from backend.athlete.zones import ZoneConfigurationService
 from backend.canonical.activity_summary import ActivitySummary
 from backend.canonical.vocabulary import ProviderId
@@ -182,6 +183,8 @@ class AthleteDataServices:
     checkin: Callable[[], CheckinService]
     first_threshold: Callable[[], FirstThresholdService]
     profile: Callable[[], ProfileService]
+    # The athlete's 3-site skinfolds and the body fat they give (#3099).
+    skinfolds: Callable[[], SkinfoldService]
     # Binds the athlete clock to the existing shared manager cache owner.
     profile_for: Callable[[Any], ProfileService]
 
@@ -294,6 +297,9 @@ def build_athlete_data(
         ),
         profile=profile,
         profile_for=profile_for,
+        skinfolds=lambda: SkinfoldService(
+            database_manager(), profiles.get, utc_now, local_date
+        ),
     )
 
 

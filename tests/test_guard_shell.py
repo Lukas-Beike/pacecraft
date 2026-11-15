@@ -4,6 +4,7 @@ import io
 import json
 import subprocess
 import sys
+import time
 import unittest
 from contextlib import redirect_stderr
 from pathlib import Path
@@ -48,6 +49,26 @@ class GuardShellTests(unittest.TestCase):
                 result = run_hook(command)
                 self.assertEqual(result.returncode, 2, result.stderr)
                 self.assertIn(b"Blocked", result.stderr)
+
+    def test_long_commands_get_every_guard_within_the_budget(self) -> None:
+        # #3119: 20k unterminated heredoc openers or 100k separators once took
+        # longer than the 10 s hook budget, so later guards never ran.
+        openers = "\n".join(f"cat <<E{n}" for n in range(20_000))
+        heredoc = "python - <<'EOF'\nprint('a\\\\b')\nEOF"
+        for command, code in (
+            (openers + "\ngit status", 0),
+            (openers + '\ngh pr edit 1 --body ""', 2),  # the last guard
+            (openers + "\n" + heredoc, 2),
+            ("echo" + ";" * 100_000 + 'gh pr edit 1 --body ""', 2),
+            ("echo" + ";" * 100_000, 0),
+            ("gh pr edit x " * 6_000 + '--body ""', 2),
+            ("gh pr edit x --body y " * 6_000, 0),
+        ):
+            with self.subTest(command=command[-30:], code=code):
+                started = time.monotonic()
+                result = run_hook(command)
+                self.assertLess(time.monotonic() - started, 5)  # budget: 10 s
+                self.assertEqual(result.returncode, code, result.stderr)
 
     def test_a_harmless_command_passes_every_guard(self) -> None:
         for command in ("git status --short", "python -m unittest discover -s tests"):

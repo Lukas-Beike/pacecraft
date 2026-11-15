@@ -19,16 +19,16 @@ from backend.db.schema import CURRENT_SCHEMA_VERSION
 
 type SchemaSignature = tuple[tuple[str, str, str, str], ...]
 
-# Schema version 26, release 2.0.5: the schema production runs and the only
-# supported baseline; the digest freezes it for its upgrade step.
+# Schema version 26, release 2.0.5: the only supported baseline; the digest
+# freezes it for its upgrade step.
 SHAPE_SCHEMA_V26: Final = "schema-v26"
-# Schema version 27, releases 2.1.2 to 2.1.9: the result of the baseline's
+# Schema version 27, since release 2.1.2: the result of the baseline's
 # product step. Its digest lets a v27 database take the later steps.
 SHAPE_SCHEMA_V27: Final = "schema-v27"
-# Schema version 28, releases 2.1.10 to 2.1.14: v27 after its calendar
+# Schema version 28, since release 2.1.10: v27 after its calendar
 # decision step. Its digest lets a v28 database take the later steps.
 SHAPE_SCHEMA_V28: Final = "schema-v28"
-# Schema version 29, releases 2.1.17 to 2.1.19: v28 after its competition location step.
+# Schema version 29, since release 2.1.17: v28 after its competition location step.
 # Its digest lets a v29 database take the later steps.
 SHAPE_SCHEMA_V29: Final = "schema-v29"
 # The live schema of this build, derived from code rather than frozen.

@@ -202,7 +202,7 @@ async function walkCalendar(page, shot) {
 export const STEP_KINDS = ["chart", "numbers", "options", "text"];
 const OPENERS = [
   /(^|\s)summary$/,
-  /^a\[data-(analysis|more|nutrition)-segment="[a-z]+"\]$/,
+  /^a\[data-(analysis|more|nutrition|plan)-segment="[a-z]+"\]$/,
   /^\.planned-view-switch button\[data-view="(week|month)"\]$/,
   /^\.planned-month-day:not\(\[disabled\]\)(:has\(\.planned-month-mark\.is-[a-z]+\))?$/,
   /^button\[aria-label="(Nächste|Vorherige) Woche"\]$/,
@@ -236,17 +236,23 @@ export const STEPS = [
   { view: "plan", name: "Kalender: Schuh/Rad", covers: "#3011 equipment chip", each: DONE, ready: '.planned-entry[open] .planned-equipment-chip[aria-label*=": "]', kind: "text", optional: true },
   { view: "plan", name: "Kalender: Schuh/Rad geplant", covers: "#3011 planned equipment chip", each: PLANNED, ready: '.planned-entry[open] .planned-equipment-chip[aria-label*=": "]', kind: "text", optional: true },
   { view: "plan", name: "Kalender: geplante Einheit", covers: "#2189 planned session", pre: ['button[aria-label="Nächste Woche"]'], each: PLANNED, ready: ".planned-entry[open] .planned-entry-details", kind: "text", optional: true, post: ['button[aria-label="Vorherige Woche"]'] },
+  // Read-only: the walk checks that "Löschen" is there, it never presses it (#3027).
+  { view: "plan", name: "Kalender: Löschen", covers: "#3027 calendar delete", each: PLANNED, ready: ".planned-entry[open] .planned-activity-actions .danger-button", kind: "text", optional: true },
   { view: "plan", name: "Kalender: Verpflegung", covers: "#2921 fuelling", each: PLANNED, ready: ".planned-entry[open] .planned-fuelling", kind: "numbers", optional: true },
   // Choosing a past day narrows the month's range, so the planned day comes first.
   { view: "plan", name: "Monat: geplante Einheit", covers: "#2189 month", pre: [MONTH], each: ".planned-month-day:not([disabled]):has(.planned-month-mark.is-planned)", opens: [PLANNED], ready: ".planned-entry[open] .planned-entry-details", kind: "text", optional: true },
   { view: "plan", name: "Monat: absolvierte Einheit", covers: "#2189 month", pre: [MONTH], each: ".planned-month-day:not([disabled]):has(.planned-month-mark.is-completed)", opens: [DONE], ready: ".planned-entry[open] .planned-entry-details", kind: "text" },
   { view: "plan", name: "Kalender: Wochenansicht", covers: "#2189 week and month switch", pre: ['.planned-view-switch button[data-view="week"]'], ready: ".planned-week .planned-day", kind: "text" },
+  // Read-only as well: the library card offers "Einplanen" and "Löschen"; the walk presses neither (#3028).
+  { view: "plan", name: "Bibliothek: Einplanen, Löschen", covers: "#3028 library actions", pre: [tab("plan", "library")], opens: ["#library details.library-sport > summary"], ready: "#library .library-card .planned-activity-actions .danger-button", kind: "text", optional: true, post: [tab("plan", "overview")] },
   // The sport cards are tables: a measured value is a cell with a digit; a missing one is marked and has none.
   ...[["running", "Laufen", "#runningBestEfforts td:not(.value-missing)", "numbers"], ["cycling", "Radfahren", "#cyclingPowerProfile td:not(.value-missing)", "numbers"], ["load", "Belastung", "#analysisLoadCharts svg", "chart"], ["recovery", "Erholung", "#personalRecovery svg", "chart"]]
     .map(([segment, label, ready, kind]) => ({ view: "analysis", name: `Analyse: ${label}`, covers: "Analyse tabs", pre: [tab("analysis", segment)], ready, kind })),
   { view: "analysis", name: "Analyse: Woche", covers: "#3000 week review", pre: [tab("analysis", "week")], ready: "#weekReview .week-review-card", kind: "numbers" },
   { view: "nutrition", name: "Ernährung: Verlauf", covers: "Nutrition week", pre: [tab("nutrition", "week")], ready: "#nutritionWeek", kind: "numbers" },
-  { view: "nutrition", name: "Ernährung: Körper", covers: "Body analysis", pre: [tab("nutrition", "body")], ready: "#bodyAnalysisCharts svg", kind: "chart" },
+  // The skinfold card's edit icon is an svg too, so the chart step skips that card (#3099).
+  { view: "nutrition", name: "Ernährung: Körper", covers: "Body analysis", pre: [tab("nutrition", "body")], ready: "#bodyAnalysisCharts .analysis-chart-card:not([data-skinfolds]) svg", kind: "chart" },
+  { view: "nutrition", name: "Ernährung: Hautfalten", covers: "#3099 skinfold card", pre: [tab("nutrition", "body")], ready: "#bodyAnalysisCharts [data-skinfolds] tbody tr", kind: "text" },
   { view: "more", name: "Mehr: Ausrüstung", covers: "#2935 equipment", pre: [tab("more", "equipment")], ready: "#equipmentItems .equipment-card", kind: "text" },
   { view: "more", name: "Mehr: Ausrüstung Standard", covers: "#3014 default equipment", pre: [tab("more", "equipment")], ready: "#equipmentItems .equipment-rules select", kind: "options" },
   { view: "more", name: "Mehr: Betrieb, Änderungen", covers: "#2908 changelog", pre: [tab("more", "operations")], ready: ".release-changelog li", kind: "text", optional: true },

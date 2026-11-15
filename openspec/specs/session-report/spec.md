@@ -60,3 +60,35 @@ Evidence:
 - `backend/performance/session_report.py:session_report`
 - `backend/coach/activity_read_tools.py:CoachActivityReadToolService._with_session_context`
 - `tests/test_session_report.py`
+
+### Requirement: Deterministic session resolution
+The system SHALL resolve which session `get_activity_details` reads in the server, never by the model's choice, and SHALL return the candidates instead of a detail when the reference is not unique (#3084, #3080).
+
+#### Scenario: An ID is read as given
+- **WHEN** the call carries `activity_id`, as the analyse button writes it
+- **THEN** that session is read.
+
+#### Scenario: A date, sport and start time resolve one session
+- **WHEN** the call carries a date, optionally with a sport and a start time
+- **THEN** the sessions of that local day of that sport starting within 30 minutes of the start time match; exactly one match is read.
+
+#### Scenario: No reference means the newest session
+- **WHEN** the call carries neither an ID nor a date
+- **THEN** the newest session of the last 30 days, of the given sport if any, is read; a commute, warm-up or cool-down is skipped when a training session matches.
+
+#### Scenario: An unclear reference asks back
+- **WHEN** several sessions match, or none
+- **THEN** the result has status `ambiguous` or `not_found` and lists the newest ten candidates (on `not_found` those of the named sport, else every session searched) with their ID, start, sport, moving time, distance and session focus, never their stored name, and no detail; the playbook asks the athlete which session they mean. A resolution counts in the diagnostics only once its detail was read.
+
+### Requirement: Session report diagnostics
+The runtime diagnostics SHALL count the session reports built since start, their checks by verdict and the session resolutions by outcome, with no ID, date or value.
+
+#### Scenario: Counts after analyses
+- **WHEN** the Coach read two session details and one reference was ambiguous
+- **THEN** `runtime.session_reports` shows the reports, their checks by verdict and the resolutions by outcome.
+
+Evidence:
+- `backend/coach/activity_read_tools.py:resolve_session`
+- `backend/observability.py:SessionReportCounts`
+- `tests/test_coach_activity_read_tools.py`
+- `tests/test_coach_live_eval.py`

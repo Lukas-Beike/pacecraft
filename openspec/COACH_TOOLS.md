@@ -381,7 +381,10 @@ effect `local_write`; gate domain `nutrition`; bulk from 2 records; records coun
 
 effect `read`.
 
-- `activity_id`* (string; ≥1 chars; ≤200 chars)
+- `activity_id`* (string/null; ≥1 chars; ≤200 chars)
+- `date`* (string/null; pattern `^\d{4}-\d{2}-\d{2}$`)
+- `sport`* (string/null; one of `"ride"`, `"run"`, `"swim"`, `"walk"`, `"hike"`, `"strength"`, `"row"`, `"nordic_ski"`, `"alpine_ski"`, `"yoga"`, `"other"`, `null`)
+- `start_time`* (string/null; pattern `^\d{2}:\d{2}$`)
 
 ### `get_sync_job`
 
@@ -442,6 +445,8 @@ effect `read`.
 
 - `limit` (integer; ≥1; ≤100)
 - `include_archived` (boolean)
+- `sport` (string; one of `"Ride"`, `"VirtualRide"`, `"Run"`, `"Swim"`, `"WeightTraining"`)
+- `query` (string; ≥2 chars; ≤120 chars)
 
 ### `log_equipment_maintenance`
 
@@ -506,6 +511,7 @@ effect `local_write`; gate domain `planning`; records counted from `templates`; 
 - `templates[].hr_cap.percent_lthr`* (number; ≥20; ≤120)
 - `templates[].hr_cap.low_percent_lthr`* (number; ≥20; ≤120)
 - `templates[].hr_cap.source`* (string; one of `"default"`, `"measured"`, `"estimated"`)
+- `templates[].new_because` (string; ≥3 chars; ≤200 chars)
 - `_request`* (the envelope above)
 
 ### `merge_activity_sessions`
@@ -945,8 +951,8 @@ effect `local_write`; gate domain `nutrition`; receipt „Ernährungseintrag kor
 
 effect `local_write`; gate domain `profile`; receipt „Profil aktualisiert“; proposal card „Profil aktualisieren“; fully tracked by change history.
 
-- `changes`* (array; ≥1 items; ≤30 items)
-- `changes[].field`* (string; one of `"name"`, `"goals"`, `"sports"`, `"training_background"`, `"typical_weekly_volume"`, `"availability"`, `"constraints"`, `"equipment"`, `"training_preferences"`, `"training_preferences_running"`, `"training_preferences_cycling"`, `"training_preferences_swimming"`, `"training_preferences_strength"`, `"training_preferences_mobility"`, `"training_model"`, `"performance_notes"`, `"weight_kg"`, `"body_fat_pct"`, `"height_cm"`, `"sex"`, `"coaching_style"`, `"timezone"`, `"weather_location"`, `"sleep_target_hours"`, `"fueling_tolerance"`, `"preferred_source_thresholds"`, `"preferred_source_body"`, `"preferred_source_hrv"`, `"preferred_source_resting_hr"`, `"preferred_source_sleep"`)
+- `changes`* (array; ≥1 items; ≤31 items)
+- `changes[].field`* (string; one of `"name"`, `"goals"`, `"sports"`, `"training_background"`, `"typical_weekly_volume"`, `"availability"`, `"constraints"`, `"equipment"`, `"training_preferences"`, `"training_preferences_running"`, `"training_preferences_cycling"`, `"training_preferences_swimming"`, `"training_preferences_strength"`, `"training_preferences_mobility"`, `"training_model"`, `"performance_notes"`, `"weight_kg"`, `"body_fat_pct"`, `"height_cm"`, `"sex"`, `"birth_year"`, `"coaching_style"`, `"timezone"`, `"weather_location"`, `"sleep_target_hours"`, `"fueling_tolerance"`, `"preferred_source_thresholds"`, `"preferred_source_body"`, `"preferred_source_hrv"`, `"preferred_source_resting_hr"`, `"preferred_source_sleep"`)
 - `changes[].expected_value`* (string; ≤4000 chars)
 - `changes[].value`* (string; ≤4000 chars)
 - `_request`* (the envelope above)

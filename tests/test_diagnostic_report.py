@@ -167,6 +167,7 @@ class DiagnosticReportServiceTests(unittest.TestCase):
                 recent_logs=SimpleNamespace(report_entries=lambda: [{"event": "safe"}]),
                 diagnostic_capture=self.capture,
                 heavy_read_gate=lambda: {"waits_over_1s": 1, "timeouts": 0},
+                energy_balance=lambda _db: {"windows_with_estimate": 3},
             )
         )
 
@@ -184,6 +185,8 @@ class DiagnosticReportServiceTests(unittest.TestCase):
             {"waits_over_1s": 1, "timeouts": 0}, report["runtime"]["heavy_read_gate"]
         )
         self.assertEqual(report["app"], {"name": "Test Coach", "version": "1.2.3"})
+        # The adaptive expenditure basis, counts only (#3100).
+        self.assertEqual(report["energy_balance"], {"windows_with_estimate": 3})
         self.assertEqual(
             set(report),
             {
@@ -199,6 +202,7 @@ class DiagnosticReportServiceTests(unittest.TestCase):
                 "external_calendar",
                 "morning_checkin",
                 "database",
+                "energy_balance",
                 "wahoo",
                 "plan_sync",
                 "garmin_past_workout_removal",
@@ -216,6 +220,7 @@ class DiagnosticReportServiceTests(unittest.TestCase):
                 "backup",
                 "stream_backfill",
                 "fit_inventory",
+                "garmin_detail_fallback",
                 "session_metrics",
                 "activity_weather",
                 "activity_routes",
@@ -245,6 +250,8 @@ class DiagnosticReportServiceTests(unittest.TestCase):
         self.assertEqual(report["canonical_backfill"], {"status": "unavailable"})
         # Counts only, per recording origin and sport; empty before any file (#2220).
         self.assertEqual(report["fit_inventory"], {})
+        # Fallback detail sets kept out or stored, counts only (#3122).
+        self.assertEqual(report["garmin_detail_fallback"], {"kept": 0, "stored": 0})
         self.assertEqual(report["canonical_read"], {"status": "unavailable"})
         self.assertEqual(
             report["canonical_session_conflicts"],
@@ -358,8 +365,9 @@ class DiagnosticReportServiceTests(unittest.TestCase):
         # The session focus backfill state and the weekly plan removal state are one more read each.
         # The Wahoo block reads the token record and the last sync time and error.
         # The session rebundle state is one more read, the FIT inventory one more (#2220).
-        # The newest app backup is one more (#2996).
-        self.assertEqual(self.key_values.get.call_count, 19)
+        # The newest app backup is one more (#2996), the Garmin detail fallback
+        # counts one more (#3122).
+        self.assertEqual(self.key_values.get.call_count, 20)
 
     def test_storage_and_recovery_copies_are_sizes_and_ages_only(self):
         # Stat only: sizes, free space and the newest copy's age; no name or path.

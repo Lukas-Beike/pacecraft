@@ -21,6 +21,8 @@ of its own modules.
 | [M8](m8-local-session-metrics.md) | Local efficiency factor, variability index, work and decoupling | descriptive statistic |
 | [M9](m9-lt1-output-own-sessions.md) | LT1 pace and power from own steady sessions | model estimate |
 | [M10](m10-dfa-alpha1-first-threshold.md) | First threshold heart rate from chest-strap RR intervals (DFA-α1) | model estimate |
+| [M11](m11-activity-energy.md) | Own activity energy, net of resting metabolism | model estimate |
+| [M12](m12-adaptive-expenditure.md) | Adaptive daily expenditure from intake and the weight trend | model estimate |
 
 M5 covers the smoothed load curves (#1432). M6 (#1725) replaces provider TSS
 with a local load; Banister TRIMP appears only as its heart-rate branch. M7
@@ -227,6 +229,12 @@ accessible text, not a declared absence.
 | R60 | Peng, Havlin, Stanley & Goldberger 1995, "Quantification of scaling exponents and crossover phenomena in nonstationary heartbeat time series", Chaos 5(1):82-87, PMID 11538314, DOI `10.1063/1.166141` | abstract | Introduces DFA for nonstationary heartbeat series with short- and long-range scaling exponents. Method origin; not an exercise study. |
 | R61 | Tarvainen, Ranta-aho & Karjalainen 2002, "An advanced detrending method with application to HRV analysis", IEEE Trans Biomed Eng 49(2):172-175, PMID 12066885, DOI `10.1109/10.979357` | abstract | Smoothness-priors detrending acting as a time-varying high-pass filter before HRV analysis. Method origin; λ is a free parameter. |
 | R62 | Schaffarczyk, Rogers, Reer & Gronwald 2022, "Validity of the Polar H10 Sensor for Heart Rate Variability Analysis during Resting State and Incremental Exercise in Recreational Men and Women", Sensors 22(17):6536, PMID 36081005, DOI `10.3390/s22176536` | abstract | 25 participants, cycling ramp. RR and heart rate: minimal bias against ECG; DFA-α1 shows significant bias and wider limits of agreement during exercise, up to -41 to +58 % at high intensity. One chest-strap model. |
+| R63 | Keytel et al. 2005, "Prediction of energy expenditure from heart rate monitoring during submaximal exercise", J Sports Sci 23(3):289-297, PMID 15966347 | abstract | 115 regularly exercising adults aged 18-45, gas exchange; a model without VO2max explains 73 % of the variance (r = 0.857). Coefficients taken from secondary sources; fallback only. |
+| R64 | Herrmann et al. 2024, "2024 Adult Compendium of Physical Activities: A third update of the energy costs of human activities", J Sport Health Sci 13(1):6-12, PMID 38242596 | abstract | Adult MET values; codes 02054 (resistance training, multiple exercises, 3.5 METs) and 02050 (vigorous, 6.0 METs). Population averages. |
+| R65 | Joosen & Westerterp 2006, "Energy expenditure during overfeeding", Nutr Metab 3:25 | abstract | Thermic effect per macronutrient: protein 20-30 %, carbohydrate 5-15 %, fat 0-3 %. Checked against the abstract (L21 citation check). |
+| R66 | LaForgia, Withers & Gore 2006, "Effects of exercise intensity and duration on the excess post-exercise oxygen consumption", J Sports Sci 24(12):1247-1264 | abstract | EPOC is about 6-15 % of the net exercise oxygen cost after continuous or intermittent exercise; weak evidence for a fixed share. |
+| R67 | Byrne et al. 2005, "Metabolic equivalent: one size does not fit all", J Appl Physiol 99(3):1112-1119 | abstract | 1 MET (3.5 ml/kg/min) overestimates measured resting VO2 by about 35 %; supports correcting MET values to the measured resting rate. |
+| R68 | Hall 2008, "What is the required energy deficit per unit weight loss?", Int J Obes 32(3):573-576 | abstract | Energy content of tissue change: 39.5 MJ/kg fat, 7.6 MJ/kg lean; the energy density of a weight change depends on body composition via Forbes' curve, so a fixed 7,700 kcal/kg misleads. Checked against the abstract (L21 citation check). |
 | L1 | Phillips & Steven 2026, "Perspective: sleep regularity—where do we go from here?", Sleep 49(8), PMID 42023690, DOI `10.1093/sleep/zsag114` | full text | Perspective without new data, formula, threshold or wearable/athlete content. Background only; not decision evidence. |
 
 ### Vendor documentation (not peer-reviewed)

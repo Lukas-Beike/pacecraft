@@ -61,6 +61,7 @@ from backend.sync.activity_weather import summarize_activity_weather
 from backend.sync.external_calendar import ExternalCalendarSyncService
 from backend.sync.freshness import ProviderFreshnessService
 from backend.sync.garmin import GarminFixtureLoader, GarminSyncStateService
+from backend.sync.garmin_activity_details import detail_fallback_counts
 from backend.sync.garmin_projection_service import GarminProjectionService
 from backend.sync.jobs import utc_timestamp
 from backend.sync.library import WorkoutLibrarySyncStateService
@@ -118,8 +119,11 @@ class DiagnosticReportDependencies:
     lt1_ride_coverage: Callable[[], dict[str, Any]] | None = None
     # The slowest API routes by pattern since start (#3017).
     slowest_routes: Callable[[], list[dict[str, Any]]] | None = None
+    session_reports: Callable[[], dict[str, Any]] | None = None
     # Waits of the heavy view reads for their gate, counts only (#3029).
     heavy_read_gate: Callable[[], dict[str, Any]] | None = None
+    # The adaptive expenditure's basis in the read snapshot, counts only (#3100).
+    energy_balance: Callable[[Any], dict[str, Any]] | None = None
     # The all-time curve build: state word, count and last duration (#2852).
     curve_build: Callable[[], dict[str, Any]] | None = None
     # The database file: its sizes, free space and recovery copies (#2848).
@@ -343,6 +347,10 @@ class DiagnosticReportService:
                     "slowest_routes": deps.slowest_routes()
                     if deps.slowest_routes
                     else [],
+                    # Session reports and reference resolutions, counts only (#3084).
+                    "session_reports": deps.session_reports()
+                    if deps.session_reports
+                    else {},
                 },
                 "recovery_copies": section("recovery_copies", self._recovery_copies),
                 # The newest backup the app made, before a schema release (#2996).
@@ -365,6 +373,10 @@ class DiagnosticReportService:
                     "morning_checkin", deps.morning_checkin.state
                 ),
                 "database": section("database", database),
+                "energy_balance": section(
+                    "energy_balance",
+                    lambda: deps.energy_balance(db) if deps.energy_balance else {},
+                ),
                 ProviderId.WAHOO.value: section(
                     ProviderId.WAHOO.value,
                     lambda: summarize_wahoo(
@@ -426,6 +438,10 @@ class DiagnosticReportService:
                 ),
                 "fit_inventory": section(
                     "fit_inventory", lambda: fit_inventory_counts(db, key_values)
+                ),
+                "garmin_detail_fallback": section(
+                    "garmin_detail_fallback",
+                    lambda: detail_fallback_counts(db, key_values),
                 ),
                 "session_metrics": section(
                     "session_metrics",

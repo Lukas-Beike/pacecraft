@@ -348,6 +348,7 @@ class CoachReadToolBuilderTests(unittest.TestCase):
                 ctx.planning.planned_unit.return_value,
                 self.guard.planned_unit_estimator.return_value,
                 ctx.athlete.session_corrections.return_value,
+                ctx.session_report_counts,
             ),
         )
 

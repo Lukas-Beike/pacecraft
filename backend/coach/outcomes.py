@@ -198,6 +198,11 @@ def _coach_steps_repaired(previous: dict[str, Any], current: dict[str, Any]) -> 
     return _matching_coach_steps_repaired(previous, current)
 
 
+# A create refused because the record already exists saved nothing and needs
+# no repair: the Coach uses the existing one (#3080).
+_EXISTING_RECORD_REASONS = frozenset({"template_exists"})
+
+
 def unresolved_coach_steps(entries: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Return failed steps not repaired by a later equivalent successful receipt.
 
@@ -223,4 +228,9 @@ def unresolved_coach_steps(entries: list[dict[str, Any]]) -> list[dict[str, Any]
             latest[step_key] = entry
         except TypeError:
             latest[tool] = entry
-    return [entry for entry in latest.values() if not _result(entry).get("ok")]
+    return [
+        entry
+        for entry in latest.values()
+        if not _result(entry).get("ok")
+        and _result(entry).get("reason") not in _EXISTING_RECORD_REASONS
+    ]
