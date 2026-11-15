@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ast
+import functools
 import re
 import unittest
 from datetime import date
@@ -26,8 +27,6 @@ from backend.coach.request_payload import (
 )
 from backend.errors import AppError
 from backend.performance.current_metrics import coach_thresholds
-from backend.weather.activity_weather_store import VALUES as WEATHER_VALUES
-from backend.weather.activity_weather_store import weather_block
 
 NEW_KINDS = (
     "session_analysis",
@@ -74,30 +73,55 @@ _DOTTED_PATH = re.compile(r"\b[a-z][a-z0-9_]+(?:\.[a-z][a-z0-9_]+)+\b")
 
 
 def _playbook_text() -> str:
-    blocks = [
-        value
-        for name, value in vars(playbooks).items()
-        if isinstance(value, str) and re.fullmatch(r"_[A-Z_]+", name)
-    ]
-    return "\n".join([*blocks, *playbooks._TASKS.values()])
+    # The budget table lists every block (test_every_block_is_budgeted_...).
+    blocks = [getattr(playbooks, name) for name in BLOCK_WORD_BUDGETS]
+    return "\n".join([playbooks._HEADER, *blocks, *playbooks._TASKS.values()])
 
 
-def _backend_names() -> set[str]:
-    """Every string literal and TypedDict field of the backend, playbooks aside."""
+_ROOT = Path(__file__).resolve().parents[1]
+
+
+def _parsed(path: Path) -> list[ast.AST]:
+    return list(ast.walk(ast.parse(path.read_text(encoding="utf-8"))))
+
+
+@functools.cache
+def _backend_names() -> frozenset[str]:
+    """Every string literal, TypedDict field and keyword argument of server.py
+    and the backend, the playbooks aside."""
     names: set[str] = set()
-    for path in (Path(__file__).resolve().parents[1] / "backend").rglob("*.py"):
-        if path.name == "playbooks.py":
+    for path in [_ROOT / "server.py", *(_ROOT / "backend").rglob("*.py")]:
+        if path == _ROOT / "backend" / "coach" / "playbooks.py":
             continue
-        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+        for node in _parsed(path):
             if isinstance(node, ast.Constant) and isinstance(node.value, str):
                 names.add(node.value)
             elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
                 names.add(node.target.id)
-    return names
+            elif isinstance(node, ast.keyword) and node.arg:
+                names.add(node.arg)
+    return frozenset(names)
+
+
+def _context_threshold_keys() -> set[str]:
+    """The literal keys current_performance_context puts beside coach_thresholds."""
+    return {
+        str(child.value)
+        for node in _parsed(_ROOT / "backend" / "performance" / "context.py")
+        if isinstance(node, ast.Dict)
+        for key, value in zip(node.keys, node.values)
+        if isinstance(key, ast.Constant)
+        and key.value == "thresholds"
+        and isinstance(value, ast.Dict)
+        for child in value.keys
+        if isinstance(child, ast.Constant)
+    }
 
 
 def _built_keys() -> dict[str, set[str]]:
-    """The keys of context blocks built by their own code from complete inputs."""
+    """Blocks whose children are checked: what their code builds from complete
+    inputs. ``weather`` names both the session's weather and the forecast, so
+    its children are only checked by name."""
     value = {"value": 250, "source": "Garmin Connect"}
     metrics = {
         key: value
@@ -108,14 +132,7 @@ def _built_keys() -> dict[str, set[str]]:
         "alternatives": [{"source": "Wahoo", "value": 270}],
         "conflict": True,
     }
-    rows = {
-        kind.value: {"value": 30.0, "derivation": {"location_kind": "start"}}
-        for _key, kind, _unit in WEATHER_VALUES
-    }
-    return {
-        "thresholds": set(coach_thresholds(metrics)),
-        "weather": set(weather_block(rows) or {}),
-    }
+    return {"thresholds": set(coach_thresholds(metrics)) | _context_threshold_keys()}
 
 
 def _misplaced(paths: set[str], built: dict[str, set[str]]) -> list[str]:
@@ -139,14 +156,14 @@ class PlaybookFieldNameTests(unittest.TestCase):
             for path in _DOTTED_PATH.findall(text)
             for segment in path.split(".")
         }
-        known = _backend_names()
         self.assertGreater(len(names), 100)
-        self.assertEqual([], sorted(names - known))
-        # #3049 removed the device temperatures from the context.
-        self.assertNotIn("weather_temp_c", known)
+        self.assertEqual([], sorted(names - _backend_names()))
 
     def test_dotted_paths_match_the_blocks_their_code_builds(self) -> None:
         built = _built_keys()
+        self.assertLessEqual(
+            {"ftp_w", "weight", "first_thresholds"}, built["thresholds"]
+        )
         paths = set(_DOTTED_PATH.findall(_playbook_text()))
         self.assertIn("current_performance.thresholds.ftp_w", paths)
         self.assertEqual([], _misplaced(paths, built))
