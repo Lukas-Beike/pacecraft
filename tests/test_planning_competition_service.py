@@ -63,6 +63,47 @@ class CompetitionServiceTests(unittest.TestCase):
             ).fetchall()
         self.assertEqual([row["action"] for row in history], ["create", "update"])
 
+    def test_a_second_race_of_the_sport_that_day_needs_a_reason(self):
+        # #3080: the Coach creates the marathon again instead of updating it.
+        first = self.service.save(self.competition())["competition"]
+        self.assertEqual(
+            0,
+            self.service.save(self.competition(name="Berlin Inline", sport="Ride"))[
+                "created_despite_candidate"
+            ],
+        )
+
+        with self.assertRaises(AppError) as refused:
+            self.service.save(self.competition(name="Marathon Berlin", target="3:25"))
+
+        self.assertEqual(
+            (refused.exception.status, refused.exception.reason),
+            (409, "competition_exists"),
+        )
+        self.assertEqual(
+            getattr(refused.exception, "findings", None),
+            [
+                {
+                    "code": "competition_exists",
+                    "competition_id": first["id"],
+                    "name": "Berlin Marathon",
+                    "event_date": "2027-09-26",
+                    "sport": first["sport"],
+                }
+            ],
+        )
+        self.assertEqual(2, len(self.service.list()))
+        # A second race that day with its reason is kept and counted; an
+        # update of the first never counts.
+        kept = self.service.save(
+            self.competition(name="Staffel", new_because="Staffel am Nachmittag")
+        )
+        self.assertEqual(
+            ("created", 1), (kept["status"], kept["created_despite_candidate"])
+        )
+        updated = self.service.save({"competition_id": first["id"], "target": "3:25"})
+        self.assertEqual(0, updated["created_despite_candidate"])
+
     def _save_many(self, count, first_day):
         for index in range(count):
             self.service.save(

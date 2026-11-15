@@ -186,7 +186,10 @@ class CompetitionService:
         if current and _only_local_fields_changed(current, normalized):
             # Undoing a location-only edit keeps the sync state, like the edit.
             self._repository.update_location(db, normalized, self._now())
-            return {**normalized, "sync_state": str(current.get("sync_state") or "local")}
+            return {
+                **normalized,
+                "sync_state": str(current.get("sync_state") or "local"),
+            }
         if current:
             self._repository.update_local(db, normalized, self._now())
         else:
@@ -208,6 +211,7 @@ class CompetitionService:
             normalized = competitions.normalize_competition(value)
             if competition_id:
                 normalized["id"] = competition_id
+            despite = 0 if existing else self._same_day(db, normalized, arguments)
             today = self._local_today().isoformat()
             previous_day = str((existing or {}).get("event_date") or "")[:10]
             was_upcoming = bool(existing) and previous_day >= today
@@ -249,7 +253,55 @@ class CompetitionService:
             "status": status,
             "competition": saved,
             "competitions": all_competitions,
+            # Counted by the Coach diagnostics (#3080).
+            "created_despite_candidate": despite,
         }
+
+    def _same_day(
+        self, db: Any, normalized: dict[str, Any], arguments: dict[str, Any]
+    ) -> int:
+        """Refuse a new competition on a day with one of its sport (#3080).
+
+        The Coach updates that one by its competition_id; a second race of the
+        sport that day (``new_because`` says why) is kept and counted.
+        """
+        day = str(normalized["event_date"])[:10]
+        match = next(
+            (
+                item
+                for item in self._repository.between(db, day, day)
+                if item.get("sport") == normalized.get("sport")
+            ),
+            None,
+        )
+        if match is None:
+            return 0
+        if str(arguments.get("new_because") or "").strip():
+            return 1
+        error = AppError(
+            409,
+            "An diesem Tag ist schon ein Wettkampf dieser Sportart gespeichert: "
+            "ändere ihn mit seiner competition_id oder nenne in new_because, "
+            "warum es ein zweiter ist.",
+            reason="competition_exists",
+        )
+        # For the model only: the competition to update instead.
+        setattr(  # noqa: B010
+            error,
+            "findings",
+            [
+                {
+                    "code": "competition_exists",
+                    "competition_id": match["id"],
+                    "name": str(
+                        (self._repository.get(db, match["id"]) or {}).get("name") or ""
+                    )[:200],
+                    "event_date": day,
+                    "sport": match.get("sport"),
+                }
+            ],
+        )
+        raise error
 
     def delete(self, competition_id: Any) -> dict[str, Any]:
         now = self._now()
