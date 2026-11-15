@@ -255,7 +255,14 @@ class StructuredToolExecutionTests(unittest.TestCase):
         button = (
             "Analysiere meine Einheit vom 14. Nov. (Laufen, 07:10, 45 min, ID act_42)."
         )
-        for message, session in ((button, "act_42"), ("Wie lief mein Lauf?", None)):
+        for message, session in (
+            (button, "act_42"),
+            ("Wie lief mein Lauf?", None),
+            # Free text naming an "ID" is not the button's format.
+            ("Welche ID hat mein Lauf von gestern?", None),
+            # The last named session, the current message's, wins.
+            (f"{button} Nein, die andere (Laufen, 18:00, ID act_43).", "act_43"),
+        ):
             context = {
                 "current_user_message_id": 3,
                 "messages": [{"role": "user", "id": 3, "content": message}],

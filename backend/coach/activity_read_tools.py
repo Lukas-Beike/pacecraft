@@ -62,21 +62,27 @@ START_TIME_TOLERANCE_MIN: Final = 30
 NEWEST_SESSION_DAYS: Final = 30
 # Sessions offered back when a reference is not unique.
 MAX_CANDIDATES: Final = 10
-# The session the athlete's own message names ("ID …", as the analyse button
-# writes it) is the one read (#3080). The tool execution sets this argument
-# from that message; a model argument of that name is replaced.
+# The session the athlete's own request names ("…, ID <id>)", as the analyse
+# button writes it) is read when the model names none, and a call for another
+# ID says so (#3080). The tool execution sets this argument from that request;
+# a model argument of that name is replaced.
 NAMED_ACTIVITY_ID: Final = "_named_activity_id"
-_NAMED_ID: Final = re.compile(r"\bID ([\w:.-]{1,80})")
-NAMED_SESSION_NOTICE: Final = (
-    "The athlete's message names this session by its ID, so it was read instead "
-    "of the one requested. Comparisons come from comparable_sessions."
-)
+_NAMED_ID: Final = re.compile(r"\bID ([\w:.-]{1,80})\)")
 
 
 def named_activity_id(text: str) -> str | None:
-    """The session ID a message names, as the analyse button writes it."""
-    match = _NAMED_ID.search(text)
-    return match.group(1).rstrip(".:") if match else None
+    """The session ID the analyse button wrote into the request; the last one,
+    so the current message wins over the messages a clarification answers."""
+    found = _NAMED_ID.findall(text)
+    return found[-1] if found else None
+
+
+def _not_named_notice(named: str) -> str:
+    return (
+        f"The athlete's message names session ID {named}, and this call read "
+        "another ID. Analyse the named session unless session_bundle shows both "
+        "IDs are the same session."
+    )
 
 
 # Candidates never carry the stored name: it is provider or athlete text.
@@ -308,8 +314,8 @@ class CoachActivityReadToolService:
             effect = detail.pop("training_effect", None)
             result = self._with_session_context(detail)
             result.update(_analysis_additions(detail, effect))
-            if outcome == "named_override":
-                result["notice"] = NAMED_SESSION_NOTICE
+            if outcome == "by_id_not_named":
+                result["notice"] = _not_named_notice(arguments[NAMED_ACTIVITY_ID])
             session = detail.get("session")
             if self._session_corrections is not None and isinstance(session, dict):
                 # Local session IDs and merge candidates for the session tools.
@@ -326,15 +332,17 @@ class CoachActivityReadToolService:
 
         An ID (the analyse button names it) is read as given. Otherwise the
         date, sport and start time resolve the session deterministically;
-        without a date the newest session is meant (#3084). The session the
-        athlete's message names is read whenever no other day is asked (#3080).
+        without a date the newest session is meant (#3084). Without an ID or a
+        day, the session the athlete's request names is read instead of the
+        newest; another ID is read with a notice, since it may be a record ID
+        of the same session (#3080).
         """
         named = arguments.get(NAMED_ACTIVITY_ID)
-        if named and not arguments.get("date"):
-            given = arguments.get("activity_id")
-            return named, "by_named_id" if given in (None, named) else "named_override"
-        if arguments.get("activity_id") is not None:
-            return arguments["activity_id"], "by_id"
+        given = arguments.get("activity_id")
+        if named and given is None and not arguments.get("date"):
+            return named, "by_named_id"
+        if given is not None:
+            return given, "by_id" if named in (None, given) else "by_id_not_named"
         start_time = arguments.get("start_time")
         if start_time is not None and _clock_minutes(start_time) is None:
             raise AppError(

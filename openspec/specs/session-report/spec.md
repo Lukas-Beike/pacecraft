@@ -69,8 +69,8 @@ The system SHALL resolve which session `get_activity_details` reads in the serve
 - **THEN** that session is read.
 
 #### Scenario: The session the athlete names is read
-- **WHEN** the athlete's own request (the current message, plus the messages an open clarification answers) names a session by "ID <id>", as the analyse button writes it, and the call names no day
-- **THEN** that session is read, whatever `activity_id` the model passed; the server takes the ID from the stored message, never from a model argument. When the model asked for another ID, the result carries a notice, and the diagnostics count `named_override`, else `by_named_id`. The sport block of the session-analysis playbook is chosen from the same session, or, without one, from the newest session as this resolution picks it.
+- **WHEN** the athlete's own request (the current message, plus the messages an open clarification answers) names a session as the analyse button writes it ("…, ID <id>)"; the last one when several), read by the server from the stored messages, never from a model argument
+- **THEN** a call with neither an ID nor a day reads that session instead of the newest (`by_named_id`); a call with another ID reads it with a notice naming the athlete's session, since it may be a record ID of the same session (`by_id_not_named`); free text naming an "ID" outside that format names nothing. The sport block of the session-analysis playbook is chosen from the same request text, or, without a named session, from the newest session as this resolution picks it.
 
 #### Scenario: A date, sport and start time resolve one session
 - **WHEN** the call carries a date, optionally with a sport and a start time

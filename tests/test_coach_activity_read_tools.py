@@ -609,22 +609,23 @@ class CoachActivityReadToolServiceTests(unittest.TestCase):
         empty = {"activity_id": None, "date": None, "sport": None, "start_time": None}
         named = {**empty, "_named_activity_id": "act_button"}
         cases = [
-            ({**empty, "activity_id": "act_button"}, "act_button"),
-            # #3080: the session the athlete's message names is read, also when
-            # the model leaves the ID out or asks for another one.
-            (named, "act_button"),
-            ({**named, "activity_id": "act_new"}, "act_button"),
+            ({**empty, "activity_id": "act_button"}, "act_button", False),
+            # #3080: the session the athlete's request names is read when the
+            # model names none, instead of the newest.
+            (named, "act_button", False),
+            # Another ID (it may be a record ID of the same session) is read
+            # with a notice naming the athlete's session.
+            ({**named, "activity_id": "act_new"}, "act_new", True),
             # A day the model names is a reference of its own.
-            ({**named, "date": "2026-11-13", "start_time": "07:20"}, "act_old"),
-            ({**empty, "date": "2026-11-13", "start_time": "07:20"}, "act_old"),
-            (empty, "act_new"),
+            ({**named, "date": "2026-11-13", "start_time": "07:20"}, "act_old", False),
+            ({**empty, "date": "2026-11-13", "start_time": "07:20"}, "act_old", False),
+            (empty, "act_new", False),
         ]
-        for arguments, expected in cases:
+        for arguments, expected, noticed in cases:
             with self.subTest(arguments=arguments):
                 result = service.execute("get_activity_details", arguments)
                 self.assertEqual(expected, activity_read.detail.call_args.args[0])
-                overridden = arguments.get("activity_id") not in (None, expected)
-                self.assertEqual(overridden, "notice" in result)
+                self.assertEqual(noticed, "act_button" in str(result.get("notice")))
         # Without a date the newest session of the last 30 days is meant.
         self.assertEqual(
             (date(2026, 10, 16), date(2026, 11, 15)),
@@ -639,9 +640,9 @@ class CoachActivityReadToolServiceTests(unittest.TestCase):
         self.assertEqual(
             {
                 "by_id": 1,
+                "by_id_not_named": 1,
                 "by_named_id": 1,
                 "by_reference": 2,
-                "named_override": 1,
                 "newest": 1,
             },
             counts.summary()["resolutions"],

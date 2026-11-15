@@ -18,6 +18,7 @@ from backend.coach.context_selection import (
     select_coach_context,
 )
 from backend.coach.playbooks import nutrition_playbook, playbook_for
+from backend.coach.read_tools import athlete_request_text
 from backend.providers.claude_models import setting_family
 from backend.providers.model_seam import ModelRequest
 from backend.settings import SettingsService
@@ -202,7 +203,10 @@ class CoachRequestPayloadService:
             selection=selection, local_date=context.get("local_date", "")
         )
         sport = (
-            analysed_sport(message, self._recent_sessions)
+            # The request text get_activity_details reads its named session from.
+            analysed_sport(
+                athlete_request_text(context) or message, self._recent_sessions
+            )
             if selection.kind == "session_analysis"
             else None
         )
