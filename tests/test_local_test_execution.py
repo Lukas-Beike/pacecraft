@@ -19,43 +19,65 @@ from unittest import mock
 from scripts import run_sqlcipher_tests as local
 from tests import run_tests
 
+# Methods unittest runs only when they are direct methods of a test class.
+_LIFECYCLE = frozenset(
+    {"setUp", "tearDown", "setUpClass", "tearDownClass", "asyncSetUp", "asyncTearDown"}
+)
 
-def hidden_test_lines(source: str) -> list[int]:
-    """Lines of ``test*`` functions nested directly in a function: they never run."""
+
+def lost_test_lines(source: str) -> list[int]:
+    """Lines of ``test_*`` or set-up functions that unittest never runs.
+
+    A ``test_*`` method runs only as a direct method of a class with a base; a
+    set-up method also in a base-less mixin. A helper function or class placed
+    between two methods, or a dedented method, leaves them nested in a function,
+    in a helper class or at module level.
+    """
     found: list[int] = []
 
-    def visit(node: ast.AST, in_function: bool) -> None:
+    def visit(node: ast.AST, parent: ast.AST) -> None:
         for child in ast.iter_child_nodes(node):
-            if isinstance(child, ast.FunctionDef | ast.AsyncFunctionDef):
-                if in_function and child.name.startswith("test"):
+            if isinstance(child, ast.FunctionDef | ast.AsyncFunctionDef) and (
+                child.name.startswith("test_") or child.name in _LIFECYCLE
+            ):
+                in_class = isinstance(parent, ast.ClassDef)
+                runs = in_class and (bool(parent.bases) or child.name in _LIFECYCLE)
+                if not runs:
                     found.append(child.lineno)
-                visit(child, True)
-            else:
-                visit(child, in_function and not isinstance(child, ast.ClassDef))
+            defines = ast.ClassDef | ast.FunctionDef | ast.AsyncFunctionDef
+            visit(child, child if isinstance(child, defines) else parent)
 
-    visit(ast.parse(source), False)
+    tree = ast.parse(source)
+    visit(tree, tree)
     return found
 
 
 class RunnerEvidenceTests(unittest.TestCase):
-    def test_no_test_hides_inside_a_function(self):
+    def test_no_test_method_is_lost_outside_its_test_class(self):
         # #2835: a module-level helper placed between two test methods turned the
         # methods after it into nested functions that never ran (PR #2825).
-        self.assertEqual(
-            [3], hidden_test_lines("def helper():\n    pass\n    def test_x(self): ...")
-        )
-        self.assertEqual(
-            [],
-            hidden_test_lines(
-                "def test_a():\n    class C:\n        def test_b(self): ..."
+        method = "class T(unittest.TestCase):\n    def test_a(self): ...\n"
+        for between, lost in (
+            ("def helper():\n    pass\n    def test_b(self): ...", [5]),
+            ("class _Fake:\n    def test_b(self): ...", [4]),
+            ("def test_b(self): ...", [3]),
+            ("def helper():\n    pass\n    def setUp(self): ...", [5]),
+            (
+                "def test_c():\n    class C(unittest.TestCase):\n        def test_d(self): ...",
+                [3],
             ),
-        )
-        hidden = [
+            ("def helper():\n    def tested_callback(): ...", []),
+            # A base-less mixin may hold set-up methods.
+            ("class Mixin:\n    def setUp(self): ...", []),
+        ):
+            with self.subTest(between=between):
+                self.assertEqual(lost, lost_test_lines(method + between))
+        lost_here = [
             f"{path.name}:{line}"
             for path in sorted(Path(__file__).parent.glob("test_*.py"))
-            for line in hidden_test_lines(path.read_text(encoding="utf-8"))
+            for line in lost_test_lines(path.read_text(encoding="utf-8"))
         ]
-        self.assertEqual([], hidden)
+        self.assertEqual([], lost_here)
 
     def run_fixture(self, case, stdout=None):
         temporary = tempfile.TemporaryDirectory()
