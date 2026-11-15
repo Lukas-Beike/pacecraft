@@ -66,6 +66,44 @@ class RegenerateDocsTests(unittest.TestCase):
         self.assertIn("failed", out)
         self.assertNotIn("rewrote", out)  # nothing in the checkout changed
 
+    def test_a_failed_generator_shows_why_not_its_stack_tail(self):
+        # #3039: the stale-install hint sat above the stack's last lines and was cut off.
+        hint = "Error: node_modules does not match package-lock.json: run npm ci"
+        frames = "".join(f"    at f{n} (node:internal/x:{n}:1)\n" for n in range(9))
+        thrown = (
+            f"x.cjs:24\n  throw new Error(hint);\n  ^\n\n{hint}\n{frames}\nNode.js v26"
+        )
+        self.assertEqual(
+            regenerate_docs.failure_lines(thrown),
+            ["x.cjs:24", "throw new Error(hint);", hint],
+        )
+        chained = (
+            'Traceback (most recent call last):\n  File "a.py", line 1, in <module>\n'
+            "    open(p)\n    ~~~~^^^\nKeyError: 'p'\n\nDuring handling of the above"
+            ' exception, another exception occurred:\n\n  File "a.py", line 3\n'
+            "RuntimeError: kv catalogue unreadable"
+        )
+        self.assertEqual(
+            regenerate_docs.failure_lines(chained)[-1],
+            "RuntimeError: kv catalogue unreadable",  # Python's real cause comes last
+        )
+        spec = (
+            "✔ a (1ms)\n✖ writes the catalogue (3ms)\n  AssertionError: 2 == 3\n"
+            f"{frames}ℹ tests 2\nℹ fail 1\n\n✖ failing tests:\n\n"
+            "✖ writes the catalogue (3ms)\n  AssertionError: 2 == 3\n"
+        )
+        self.assertEqual(
+            regenerate_docs.failure_lines(spec),
+            [
+                "✖ writes the catalogue (3ms)",
+                "✖ failing tests:",
+                "AssertionError: 2 == 3",
+            ],
+        )
+        tap = "ok 1 - a\nnot ok 2 - b\n# fail 1"
+        self.assertEqual(regenerate_docs.failure_lines(tap)[0], "not ok 2 - b")
+        self.assertEqual(regenerate_docs.failure_lines("a\nb\nc\nd\ne"), list("bcde"))
+
     def test_without_check_it_rewrites_the_checkout(self):
         with mock.patch.object(regenerate_docs, "ROOT", self.tree):
             code, out = self.main("new\n")

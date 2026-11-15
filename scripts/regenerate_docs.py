@@ -16,6 +16,7 @@ from __future__ import annotations
 import argparse
 import contextlib
 import os
+import re
 import subprocess
 import sys
 from collections.abc import Iterator
@@ -118,6 +119,21 @@ def node_modules(root: Path) -> Iterator[None]:
         (os.rmdir if os.name == "nt" else os.unlink)(link)
 
 
+# Lines that never say why: stack frames, source pointers, node's version banner and
+# node:test's closing counters.
+NOISE = re.compile(r'^\s*(?:at |File "|[~^]+\s*$|Node\.js v\d|ℹ )')
+FAILED_TEST = ("✖", "not ok")  # node:test's spec and TAP reporters
+
+
+def failure_lines(output: str) -> list[str]:
+    """What a failed generator printed that says why (#3039: the last stack frames
+    hid the error line with the npm ci hint): its failing test names, then the last
+    lines left once frames and counters are dropped, where the real cause ends."""
+    lines = [x.strip() for x in output.splitlines() if x.strip() and not NOISE.match(x)]
+    failed = [x for x in lines if x.startswith(FAILED_TEST)][:5]
+    return list(dict.fromkeys(failed + lines[-4:]))
+
+
 def regenerate(root: Path, only: tuple[str, ...] = ()) -> int:
     """Run the generators, or with `only` just those writing one of those documents."""
     commands = [
@@ -132,10 +148,8 @@ def regenerate(root: Path, only: tuple[str, ...] = ()) -> int:
                 errors="replace", check=False,
             )  # fmt: skip
             if done.returncode:
-                # node:test ends with counters; its failing tests say "not ok".
-                lines = f"{done.stdout}\n{done.stderr}".strip().splitlines()
-                shown = [x for x in lines if "not ok" in x][:5] or lines[-3:]
                 failed = f"{' '.join(command[1:])} failed:"
+                shown = failure_lines(f"{done.stdout}\n{done.stderr}")
                 print(failed, *shown, sep="\n  ", file=sys.stderr)
                 return 2
     return 0
