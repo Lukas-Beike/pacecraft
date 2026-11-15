@@ -87,6 +87,8 @@ class RequestHandler(BaseHTTPRequestHandler):
     input_timeout_seconds = 20
     body_chunk_bytes = BODY_CHUNK_BYTES
     dependencies: HttpRequestHandlerDependencies
+    # When the current request reached the dispatch; read once by log_request.
+    _dispatch_started_at: float | None = None
     server_version: str
     client_disconnect_errors = (
         BrokenPipeError,
@@ -107,6 +109,9 @@ class RequestHandler(BaseHTTPRequestHandler):
             code = code.value
         level = http_access_log_level(self.command, urlparse(self.path).path, code)
         started = getattr(self, "_dispatch_started_at", None)
+        # Read once: a later request on this keep-alive connection that never
+        # reaches the dispatch (a 501, a malformed request) must not reuse it.
+        self._dispatch_started_at = None
         # Time from the request's dispatch to its response status (#3017).
         duration_ms = (
             None

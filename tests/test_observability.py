@@ -928,6 +928,10 @@ class RouteTimingTests(unittest.TestCase):
         handler._dispatch_started_at = time.perf_counter() - 0.25
         handler.log_request(200)
         handler.log_client_disconnect()
+        # A later request on the same connection that skips the dispatch (a 501)
+        # carries no duration of the earlier one.
+        handler.log_request(501)
+        self.assertNotIn("duration_ms", logger.records[-1][2]["context"])
         context = logger.records[0][2]["context"]
         self.assertEqual(context["status"], 200)
         self.assertGreaterEqual(context["duration_ms"], 250)
