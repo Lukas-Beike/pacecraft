@@ -13,12 +13,15 @@ from __future__ import annotations
 
 import math
 import statistics
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import date, timedelta
 from typing import Any
 
+from backend.canonical.activity_detail import ActivityStreamSet
+from backend.canonical.records import Observation
 from backend.canonical.vocabulary import StreamChannel
+from backend.db.activity_detail_store import detail_sets_for_session
 from backend.nutrition.energy_balance import (
     DayInputs,
     EnergyInputs,
@@ -56,6 +59,25 @@ class SessionCost:
     kcal: float | None
     method: str
     steps: float
+
+
+def session_streams(
+    db: Any, activity_id: str
+) -> Mapping[StreamChannel, Sequence[float | None]]:
+    """The channels of the session's first stored stream set, else none."""
+    for stored in detail_sets_for_session(db, activity_id):
+        if isinstance(stored.detail, ActivityStreamSet):
+            return stored.detail.channels
+    return {}
+
+
+def weighins(observations: Iterable[Observation]) -> dict[date, float]:
+    """One canonical weigh-in per day: the last one read for that day."""
+    return {
+        o.observed_on: value
+        for o in observations
+        if (value := _number(o.value.value)) is not None and value > 0
+    }
 
 
 def _number(value: Any) -> float | None:

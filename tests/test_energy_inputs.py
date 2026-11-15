@@ -4,9 +4,13 @@ from __future__ import annotations
 
 import unittest
 from datetime import date
+from types import SimpleNamespace
 from typing import Any
+from unittest.mock import Mock, patch
 
+from backend.canonical.activity_detail import ActivityStreamSet
 from backend.canonical.vocabulary import StreamChannel
+from backend.nutrition import energy_inputs
 from backend.nutrition.energy_inputs import (
     EnergySources,
     diagnostics,
@@ -110,6 +114,35 @@ class EnergyInputsReaderTests(unittest.TestCase):
         _, costs = read_energy_inputs(None, sources(streams=streams), DAY1, DAY1)
         # 100 m at +10 %: 70 x 100 x 5.968214 / 4,184 = 9.985 kcal.
         self.assertAlmostEqual(costs[0].kcal or 0.0, 9.985, places=3)
+
+
+class StoreAdapterTests(unittest.TestCase):
+    def test_weighins_keep_the_last_positive_value_per_day(self) -> None:
+        def weigh(day: date, kg: Any) -> Any:
+            return SimpleNamespace(observed_on=day, value=SimpleNamespace(value=kg))
+
+        observations = [
+            weigh(DAY1, 70.4),
+            weigh(DAY1, 70.1),
+            weigh(DAY2, 0),
+            weigh(DAY3, None),
+        ]
+        self.assertEqual(energy_inputs.weighins(observations), {DAY1: 70.1})
+
+    def test_session_streams_take_the_first_stream_set(self) -> None:
+        laps = SimpleNamespace(detail=object())
+        streams = SimpleNamespace(
+            detail=Mock(spec=ActivityStreamSet, channels={"d": (1.0,)})
+        )
+        with patch.object(
+            energy_inputs, "detail_sets_for_session", return_value=[laps, streams]
+        ) as read:
+            self.assertEqual(energy_inputs.session_streams("db", "a1"), {"d": (1.0,)})
+        read.assert_called_once_with("db", "a1")
+        with patch.object(
+            energy_inputs, "detail_sets_for_session", return_value=[laps]
+        ):
+            self.assertEqual(energy_inputs.session_streams("db", "a1"), {})
 
 
 if __name__ == "__main__":
