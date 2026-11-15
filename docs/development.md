@@ -96,8 +96,10 @@ no scan. After a clean scan the hook runs CI's repository quality ratchet
 on Windows) on a clean export of HEAD; new findings block the push. The same
 ratchet reports a function above Sonar's cognitive complexity 15 (rule
 `python:S3776`) as a `cognitive` finding named by function, not score. It
-also checks `public/*.js` for Sonar's cognitive complexity above 15
-(S3776) and nested ternaries (S3358) through `eslint-plugin-sonarjs`, and for
+also checks the JavaScript Sonar analyzes (`public/*.js`, the `scripts/` and
+`tools/` modules, the `e2e/` specs, `tests/*.cjs` and the root `*.cjs`, #3058)
+for Sonar's cognitive complexity above 15 (S3776) and nested ternaries (S3358)
+through `eslint-plugin-sonarjs`, and the page scripts for
 identifiers declared nowhere (ESLint `no-undef`, #3016): page scripts may use
 the browser globals and the names any page script declares in the shared
 global scope or on `globalThis`, derived from `public/`; the service worker

@@ -1,4 +1,5 @@
-// Sonar's own JavaScript rules for `tools/quality_baseline.py`; lints nothing else.
+// Sonar's own JavaScript rules for `tools/quality_baseline.py`: the page scripts, and
+// Sonar's complexity and nested-ternary rules for the rest it analyzes (#3058).
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { join } from "node:path";
@@ -60,16 +61,16 @@ function nodeExportFiles() {
     .map((name) => `public/${name}`);
 }
 
-const shared = {
+const sonarOnly = {
   plugins: { sonarjs },
   linterOptions: { noInlineConfig: true, reportUnusedDisableDirectives: "off" },
   rules: {
     "sonarjs/cognitive-complexity": ["error", 15],
     "sonarjs/no-nested-conditional": "error",
-    // A call to a helper declared nowhere is a runtime ReferenceError (#3016).
-    "no-undef": "error",
   },
 };
+// A call to a helper declared nowhere is a runtime ReferenceError (#3016).
+const shared = { ...sonarOnly, rules: { ...sonarOnly.rules, "no-undef": "error" } };
 
 export default [
   {
@@ -84,4 +85,7 @@ export default [
     languageOptions: { ecmaVersion: "latest", sourceType: "script", globals: globals.serviceworker },
   },
   ...nodeExportFiles().map((file) => ({ files: [file], languageOptions: { globals: { module: "readonly" } } })),
+  // The Node scripts, browser specs and unit tests Sonar also analyzes (#3058).
+  { files: ["scripts/**/*.mjs", "tools/**/*.mjs"], ...sonarOnly, languageOptions: { ecmaVersion: "latest", sourceType: "module" } },
+  { files: ["e2e/**/*.js", "tests/**/*.cjs", "*.cjs"], ...sonarOnly, languageOptions: { ecmaVersion: "latest", sourceType: "commonjs" } },
 ];

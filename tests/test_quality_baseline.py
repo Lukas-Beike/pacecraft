@@ -301,6 +301,38 @@ class QualityBaselineTests(unittest.TestCase):
             return quality_baseline.javascript_diagnostics(root)
 
     @unittest.skipUnless(quality_baseline.eslint_script(), "needs npm ci for ESLint")
+    def test_the_other_javascript_sonar_analyzes_is_checked_too(self):
+        # #3058: Sonar flagged scripts/ui_walk.mjs, which the ratchet did not lint.
+        nested = "(a, b) => (a ? (b ? 1 : 2) : 3)"
+        files = {
+            "public/page.js": "const page = 1;",
+            "scripts/walk.mjs": f"export const pick = {nested}; process.exit(0);",
+            "tools/tool.mjs": "export const ok = 1;",
+            "e2e/flow.spec.js": f"const {{ test }} = require('t'); test('x', {nested});",
+            "tests/unit.test.cjs": f"module.exports = {nested};",
+            "playwright.config.cjs": f"module.exports = {{ pick: {nested} }};",
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            for name, text in files.items():
+                (root / name).parent.mkdir(parents=True, exist_ok=True)
+                (root / name).write_text(text, encoding="utf-8")
+            found = quality_baseline.javascript_diagnostics(root)
+        # Sonar's rules apply; Node's globals (process, require, module) are no finding.
+        self.assertEqual(
+            sorted((item["path"], item["code"]) for item in found or []),
+            [
+                (name, "sonarjs/no-nested-conditional")
+                for name in (
+                    "e2e/flow.spec.js",
+                    "playwright.config.cjs",
+                    "scripts/walk.mjs",
+                    "tests/unit.test.cjs",
+                )
+            ],
+        )
+
+    @unittest.skipUnless(quality_baseline.eslint_script(), "needs npm ci for ESLint")
     def test_a_call_to_a_helper_declared_nowhere_is_found(self):
         # #3016: numberText() existed in no public/ file and only Playwright caught it.
         call = "function card(value) { return numberText(value) + format(value); }"
@@ -379,7 +411,7 @@ class QualityBaselineTests(unittest.TestCase):
             contextlib.redirect_stdout(io.StringIO()) as output,
         ):
             self.assertIsNone(quality_baseline.javascript_diagnostics(Path.cwd()))
-        self.assertIn("skipped public/*.js", output.getvalue())
+        self.assertIn("skipped JavaScript", output.getvalue())
         # The pre-push hook names the clone's node_modules: a clone installed
         # before the ESLint pin must block the push, not skip the check.
         with (

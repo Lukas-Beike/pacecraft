@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "base": "04c554a5682552a6045a99f545f0783f92db2098",
+  "base": "36d80461b1cb6f0dc80c53cf9a7dab65787ec75a",
   "versions": {
     "ruff": "0.17.4",
     "mypy": "2.4.1"
@@ -1211,6 +1211,60 @@
       "path": "tests/test_coach_training_template_tools.py",
       "code": "return-value",
       "message_sha256": "d1ce6aba4a78ac24ec4292ff115dbf948e7d3afecfc3329d4da4786a97836773"
+    },
+    {
+      "tool": "eslint",
+      "path": "e2e/text-reflow.spec.js",
+      "code": "sonarjs/cognitive-complexity",
+      "message_sha256": "e64739a9e44eeaaa20da50c51ecddc85811fac1a5b4bf782763f810417393414"
+    },
+    {
+      "tool": "eslint",
+      "path": "tests/navigation-state.test.cjs",
+      "code": "sonarjs/cognitive-complexity",
+      "message_sha256": "e64739a9e44eeaaa20da50c51ecddc85811fac1a5b4bf782763f810417393414"
+    },
+    {
+      "tool": "eslint",
+      "path": "tests/provider-checks.test.cjs",
+      "code": "sonarjs/cognitive-complexity",
+      "message_sha256": "e64739a9e44eeaaa20da50c51ecddc85811fac1a5b4bf782763f810417393414"
+    },
+    {
+      "tool": "eslint",
+      "path": "e2e/body-analysis.spec.js",
+      "code": "sonarjs/no-nested-conditional",
+      "message_sha256": "b3a19eafd7b066e5bfab7ae8edf10a154fd6667bc3d403636346ae546c44244a"
+    },
+    {
+      "tool": "eslint",
+      "path": "e2e/calendar-detail-pane.spec.js",
+      "code": "sonarjs/no-nested-conditional",
+      "message_sha256": "b3a19eafd7b066e5bfab7ae8edf10a154fd6667bc3d403636346ae546c44244a"
+    },
+    {
+      "tool": "eslint",
+      "path": "e2e/coach.spec.js",
+      "code": "sonarjs/no-nested-conditional",
+      "message_sha256": "b3a19eafd7b066e5bfab7ae8edf10a154fd6667bc3d403636346ae546c44244a"
+    },
+    {
+      "tool": "eslint",
+      "path": "e2e/coach.spec.js",
+      "code": "sonarjs/no-nested-conditional",
+      "message_sha256": "b3a19eafd7b066e5bfab7ae8edf10a154fd6667bc3d403636346ae546c44244a"
+    },
+    {
+      "tool": "eslint",
+      "path": "tests/service-worker-update.test.cjs",
+      "code": "sonarjs/no-nested-conditional",
+      "message_sha256": "b3a19eafd7b066e5bfab7ae8edf10a154fd6667bc3d403636346ae546c44244a"
+    },
+    {
+      "tool": "eslint",
+      "path": "tests/service-worker-update.test.cjs",
+      "code": "sonarjs/no-nested-conditional",
+      "message_sha256": "b3a19eafd7b066e5bfab7ae8edf10a154fd6667bc3d403636346ae546c44244a"
     },
     {
       "tool": "mypy",
