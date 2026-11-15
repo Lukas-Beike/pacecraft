@@ -1505,16 +1505,23 @@ const ENERGY_SOURCES = [["katch_mcardle", "Katch-McArdle", 1], ["cunningham", "C
 const ENERGY_INSUFFICIENT = { intake_days: "unter 14 vollständige Ernährungstage", weighins: "unter 8 Wiegungen", weight_span: "Wiegungen über weniger als 21 Tage" };
 let energyRead = null;
 let energyRequest = null;
+let energyGeneration = 0;
 
+// A reset also drops the read in flight, so its answer from before a skinfold save is not shown (Gitar, #3180).
 function resetEnergy() {
   energyRead = null;
+  energyRequest = null;
+  energyGeneration += 1;
 }
 
 function loadEnergy() {
-  energyRequest ||= api("/api/body/energy")
-    .then((read) => { energyRead = read; })
-    .catch(() => { energyRead = { failed: true }; })
+  if (energyRequest) return;
+  const generation = energyGeneration;
+  energyRequest = api("/api/body/energy")
+    .then((read) => { if (generation === energyGeneration) energyRead = read; })
+    .catch(() => { if (generation === energyGeneration) energyRead = { failed: true }; })
     .finally(() => {
+      if (generation !== energyGeneration) return;
       energyRequest = null;
       renderBodyAnalysis(state.data?.performance?.history?.body);
     });

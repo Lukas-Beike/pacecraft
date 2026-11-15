@@ -243,6 +243,28 @@ test("the energy table marks the best source and the chart and bars show each so
   assert.equal(energyFitCharts({ ...read, rows: read.rows.slice(2) }).length, 0, "no fit, no chart");
 });
 
+test("a reset drops the energy read in flight, so a pre-save answer is never shown", async () => {
+  // Gitar #3180: a reused in-flight read used to write the view from before the skinfold save.
+  const answers = [];
+  let renders = 0;
+  const fns = extractFunctions("analysis.js", ["energyRead", "energyRequest", "energyGeneration", "resetEnergy", "loadEnergy", "energyCards"], {
+    api: () => new Promise((resolve) => answers.push(resolve)),
+    renderBodyAnalysis: () => { renders += 1; },
+    state: { data: {} },
+    createLoadingState: () => ({}), h: () => ({}),
+  });
+  fns.loadEnergy();
+  fns.resetEnergy(); // a skinfold save while the first read waits on the gate
+  fns.loadEnergy();
+  assert.equal(answers.length, 2, "the reset starts a new read instead of reusing the old one");
+  answers[0]({ rows: [], stale: true });
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.equal(renders, 0, "the stale answer neither renders nor is kept");
+  answers[1]({ rows: [], stale: false });
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.equal(renders, 1);
+});
+
 test("a failed skinfold read re-renders the card instead of loading forever", async () => {
   // Gitar #3120: only a successful read used to re-render the body view.
   let renders = 0;
