@@ -407,6 +407,50 @@ class CoachActivityReadToolServiceTests(unittest.TestCase):
             (load["value"], load["verdict"]),
         )
 
+    def test_session_report_judges_rpe_against_the_own_rated_sessions(self):
+        # #3084 Part 3: the rated sessions of the 84 days before the session,
+        # without the session itself, and its local IF feed the RPE check.
+        activity_read = Mock()
+        own_rating = {"id": "act_1", "sport": "run", "intensity": 0.8, "rpe": 9}
+        activity_read.rated_sessions.return_value = [
+            *(
+                {"id": f"r{n}", "sport": "run", "intensity": 0.8, "rpe": 5}
+                | {"rpe_scale": "cr10"}
+                for n in range(5)
+            ),
+            own_rating | {"rpe_scale": "cr10"},
+        ]
+        service = CoachActivityReadToolService(activity_read, Mock(), Mock(), Mock())
+        session = {
+            "activity_id": "act_1",
+            "sport": "run",
+            "started_at_local": "2026-09-22T07:00:00",
+        }
+        result = {
+            "session": session,
+            "session_rpe_load": {"rpe": 7, "rpe_scale": "cr10"},
+        }
+        report = service._session_report(
+            result,
+            session,
+            None,
+            [{"id": "act_1", "intensity": 0.8}],
+        )
+        activity_read.rated_sessions.assert_called_once_with(
+            date(2026, 6, 30), date(2026, 9, 22)
+        )
+        check = next(c for c in report["checks"] if c["id"] == "rpe_intensity")
+        self.assertEqual(
+            (5.0, 5, "notable"),
+            (
+                check["value"]["expected_rpe"],
+                check["value"]["rated_sessions"],
+                check["verdict"],
+            ),
+        )
+        # The inputs go to the report only; the tool result stays as it was.
+        self.assertEqual({"session", "session_rpe_load"}, set(result))
+
     def test_detail_result_size_does_not_grow_with_the_recording(self):
         raw_activity = {
             "id": "synthetic-1",

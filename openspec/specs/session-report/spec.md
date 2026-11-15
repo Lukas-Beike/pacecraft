@@ -52,6 +52,14 @@ The system SHALL add to every `get_activity_details` result a `session_report` (
 - **WHEN** the session focus or purpose is race
 - **THEN** the report judges the second half of the main part against the first, notable at 2 % slower. The halves leave out a warm-up lap or else the first 10 min of a session of 30 min or more, so the rule names that a fast start is not part of it.
 
+#### Scenario: Grade-adjusted pace
+- **WHEN** the session is an outdoor run with speed and a grade or altitude stream
+- **THEN** the report carries its grade-adjusted pace after Minetti 2002 over the moving time, overall and per lap, with the pace, the difference in percent, the grade coverage and the device's own value as a comparison; the check is an estimate and stays `ok`, never notable alone, and is unknown without the streams or when the speed fails its data-quality rule (#3084 Part 3).
+
+#### Scenario: RPE against intensity
+- **WHEN** a run or ride carries a session RPE and a local IF
+- **THEN** the report compares the RPE with the median RPE of the athlete's own rated sessions of the same sport and RPE scale within ±0.05 IF over the 84 days before, read once for that window; notable from a 2-point gap; unknown with fewer than 5 such sessions or without a rating or IF (#3084 Part 3).
+
 #### Scenario: Data quality gates verdicts
 - **WHEN** the heart-rate data shows spikes or a cadence lock or was not checked, or the speed of a speed-based output (a run, a ride without power) jumps
 - **THEN** every check that reads those data is unknown with the data-quality reason instead of notable. Other unknown reasons pass on the owner's reason (comparable sessions, halves).
@@ -59,7 +67,11 @@ The system SHALL add to every `get_activity_details` result a `session_report` (
 Evidence:
 - `backend/performance/session_report.py:session_report`
 - `backend/coach/activity_read_tools.py:CoachActivityReadToolService._with_session_context`
+- `backend/performance/session_conditions.py:grade_adjusted_pace`
+- `backend/performance/session_conditions.py:expected_rpe`
+- `backend/performance/activity_read_service.py:ActivityAnalysisReadService.rated_sessions`
 - `tests/test_session_report.py`
+- `tests/test_session_conditions.py`
 
 ### Requirement: Deterministic session resolution
 The system SHALL resolve which session `get_activity_details` reads in the server, never by the model's choice, and SHALL return the candidates instead of a detail when the reference is not unique (#3084, #3080).

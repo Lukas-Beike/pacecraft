@@ -37,6 +37,8 @@ from backend.performance.planned_targets import (
     unit_steps,
 )
 from backend.performance.report_service import PROFILE_WINDOW_DAYS
+from backend.performance.session_conditions import INPUTS as CONDITION_INPUTS
+from backend.performance.session_conditions import RATED_WINDOW_DAYS
 from backend.performance.session_report import session_report
 from backend.planning import leg_strength
 from backend.planning.race_plan import race_plan
@@ -607,8 +609,30 @@ class CoachActivityReadToolService:
                 "above_easy_s": bands.get("moderate", 0.0) + bands.get("high", 0.0),
             }
         own = _own_summary(session, nearby) or {}
+        day = _session_date(session)
+        # The checks of #3084 Part 3 read the session's IF and device GAP, and
+        # the athlete's rated sessions of the comparable window before the day.
+        rated = (
+            []
+            if day is None
+            else [
+                item
+                for item in self._activity_read.rated_sessions(
+                    day - timedelta(days=RATED_WINDOW_DAYS), day
+                )
+                if item["id"] != own.get("id")
+            ]
+        )
+        inputs = {
+            "intensity": own.get("intensity"),
+            "grade_adjusted_speed_mps": own.get("grade_adjusted_speed_mps"),
+            "rated_sessions": rated,
+        }
         report = session_report(
-            result, planned, own.get("training_load"), self._race(session)
+            {**result, CONDITION_INPUTS: inputs},
+            planned,
+            own.get("training_load"),
+            self._race(session),
         )
         if self._report_counts is not None:
             self._report_counts.report(report)

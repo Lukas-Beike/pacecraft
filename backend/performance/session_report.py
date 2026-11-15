@@ -23,6 +23,8 @@ from typing import Any, Final
 
 from backend.activities.session_purpose import summary_is_race
 from backend.athlete.measurements import finite_float as _number
+from backend.canonical.activity_summary import summary_is_indoor
+from backend.performance import session_conditions
 from backend.performance.comparable_sessions import DURATION_SHARE
 from backend.performance.planned_targets import (
     CAP_ABOVE_SHARE_PCT,
@@ -99,6 +101,9 @@ _WEIGHT: Final = {
     "steadiness": 2,
     "recovery_duration": 2,
     "recovery_heart_rate_drop": 2,
+    "rpe_intensity": 2,
+    # An estimate: shown with every run, never a finding alone.
+    "grade_adjusted_pace": 0,
 }
 
 
@@ -126,6 +131,7 @@ def session_report(
         *(_continuous_checks(facts) if facts.kind == "continuous" else ()),
         *(_interval_checks(facts) if facts.kind == "interval" else ()),
         *(_race_checks(facts, race) if facts.kind == "race" else ()),
+        *_condition_checks(facts),
     ]
     notable = sorted(
         (check for check in checks if check["verdict"] == "notable"),
@@ -1207,3 +1213,94 @@ def _mapping_reason(targets: Mapping[str, Any]) -> str:
 
 def _mapping(value: Any) -> Mapping[str, Any]:
     return value if isinstance(value, Mapping) else {}
+
+
+def _condition_checks(facts: _Facts) -> list[dict[str, Any]]:
+    """Grade-adjusted pace of an outdoor run and RPE against intensity (#3084 Part 3).
+
+    GAP is an estimate after Minetti 2002 and stays ``ok``: it only explains,
+    never decides. RPE is judged against the athlete's own rated sessions only;
+    without five of them at the same intensity it is unknown.
+    """
+    checks: list[dict[str, Any]] = []
+    if facts.sport == "run" and not summary_is_indoor(facts.session):
+        title = "Steigungsbereinigte Pace (GAP)"
+        gap = session_conditions.grade_adjusted_pace(facts.result)
+        if gap is None:
+            checks.append(
+                _unknown(
+                    "grade_adjusted_pace",
+                    title,
+                    "Keine Tempo-, Steigungs- oder Höhendaten.",
+                )
+            )
+        elif reason := facts.output_unknown():
+            checks.append(_unknown("grade_adjusted_pace", title, reason, value=gap))
+        else:
+            checks.append(
+                _judged(
+                    "grade_adjusted_pace",
+                    title,
+                    value=gap,
+                    unit="s/km",
+                    rule=f"{session_conditions.GAP_METHOD}; nie allein ein Befund",
+                    threshold=0,
+                    measure=0,
+                    basis="fixed",
+                    notable=False,
+                )
+            )
+    if facts.sport not in ("run", "ride"):
+        return checks
+    title = "RPE gegen Intensität"
+    inputs = _mapping(facts.result.get(session_conditions.INPUTS))
+    load = _mapping(facts.result.get("session_rpe_load"))
+    rpe = _number(load.get("rpe"))
+    intensity = _number(inputs.get("intensity"))
+    if rpe is None or intensity is None:
+        reason = (
+            "Keine RPE-Bewertung der Einheit."
+            if rpe is None
+            else "Keine Intensität (IF) der Einheit."
+        )
+        checks.append(_unknown("rpe_intensity", title, reason, basis="personal"))
+        return checks
+    scale = load.get("rpe_scale")
+    expected, count = session_conditions.expected_rpe(
+        intensity, facts.sport, scale, inputs.get("rated_sessions") or ()
+    )
+    value = {
+        "rpe": rpe,
+        "expected_rpe": expected,
+        "intensity": round(intensity, 2),
+        "rated_sessions": count,
+        "rpe_scale": scale,
+    }
+    if expected is None:
+        checks.append(
+            _unknown(
+                "rpe_intensity",
+                title,
+                f"Zu wenige eigene bewertete Einheiten bei dieser Intensität "
+                f"({count} von {session_conditions.MIN_RATED}).",
+                basis="personal",
+                value=value,
+            )
+        )
+        return checks
+    difference = rpe - expected
+    checks.append(
+        _judged(
+            "rpe_intensity",
+            title,
+            value={**value, "difference": round(difference, 1)},
+            unit="RPE",
+            rule="Session-RPE gegen den Median der eigenen bewerteten Einheiten "
+            "gleicher Sportart und Skala bei IF ± 0,05 (Foster)",
+            threshold=session_conditions.RPE_GAP_POINTS,
+            measure=abs(difference),
+            basis="personal",
+            notable=abs(difference) >= session_conditions.RPE_GAP_POINTS,
+        )
+    )
+    return checks
