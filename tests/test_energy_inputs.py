@@ -8,6 +8,8 @@ from types import SimpleNamespace
 from typing import Any
 from unittest.mock import Mock, patch
 
+from backend.athlete.body_composition import Sex
+from backend.athlete.skinfolds import SkinfoldMeasurement
 from backend.canonical.activity_detail import ActivityStreamSet
 from backend.canonical.vocabulary import StreamChannel
 from backend.nutrition import energy_inputs
@@ -44,6 +46,7 @@ SESSIONS = [
 def sources(
     resting: tuple[float, str] | None = (1680.0, "katch_mcardle"),
     streams: dict[str, Any] | None = None,
+    profile: dict[str, str] | None = None,
 ) -> EnergySources:
     return EnergySources(
         diary=lambda _db, _s, _e: DIARY,
@@ -53,7 +56,7 @@ def sources(
         streams=lambda _db, key: (streams or {}).get(key, {}),
         resting=lambda _db, _day: resting,
         body_fat=lambda _db, _s, _e: {DAY1: 12.0},
-        profile=lambda: {"height_cm": "180"},
+        profile=lambda: profile or {"height_cm": "180"},
     )
 
 
@@ -124,6 +127,48 @@ class EnergyInputsReaderTests(unittest.TestCase):
         _, costs = read_energy_inputs(None, sources(streams=streams), DAY1, DAY1)
         # 100 m at +10 %: 70 x 100 x 5.968214 / 4,184 = 9.985 kcal.
         self.assertAlmostEqual(costs[0].kcal or 0.0, 9.985, places=3)
+
+    def test_keytel_prices_hr_sessions_with_age_and_sex(self) -> None:
+        profile = {"height_cm": "180", "birth_year": "1996", "sex": "male"}
+        _, costs = read_energy_inputs(None, sources(profile=profile), DAY1, DAY3)
+        swim = costs[-1]
+        # 30 years, 70 kg, 130 bpm: -55.0969 + 82.017 + 13.916 + 6.051 =
+        # 46.8871 kJ/min x 30 min / 4.184 = 336.189 kcal, minus 1,680 / 48 =
+        # 35 kcal resting: 301.189 kcal net.
+        self.assertEqual(swim.method, "keytel")
+        self.assertAlmostEqual(swim.kcal or 0.0, 301.189, places=2)
+
+
+class OwnRestingTests(unittest.TestCase):
+    def test_skinfolds_first_then_measured_body_fat_then_none(self) -> None:
+        # 70 kg at 12 %: lean 61.6 kg, 370 + 21.6 x 61.6 = 1,700.56 kcal.
+        own = energy_inputs.own_resting(70.0, 12.0, 20.0)
+        assert own is not None
+        self.assertAlmostEqual(own[0], 1700.56)
+        self.assertEqual(own[1], "katch_mcardle_skinfold")
+        # Without skinfolds, 20 % measured: lean 56 kg, 370 + 1,209.6.
+        measured = energy_inputs.own_resting(70.0, None, 20.0)
+        assert measured is not None
+        self.assertAlmostEqual(measured[0], 1579.6)
+        self.assertEqual(measured[1], "katch_mcardle_body_fat")
+        # No weight, or no usable body fat: the reader falls back to Garmin.
+        self.assertIsNone(energy_inputs.own_resting(None, 12.0, 20.0))
+        self.assertIsNone(energy_inputs.own_resting(70.0, None, 80.0))
+
+    def test_a_skinfold_counts_only_within_ninety_days(self) -> None:
+        folds = {"chest": 10.0, "abdomen": 15.0, "thigh": 12.0}
+
+        def measured(day: date) -> SkinfoldMeasurement:
+            return SkinfoldMeasurement(day, Sex.MALE, folds, 12.0)
+
+        # 90 days before DAY3 still counts; 91 days before yields to the rest.
+        self.assertEqual(
+            energy_inputs.recent_fat_pct(measured(date(2026, 7, 5)), DAY3), 12.0
+        )
+        self.assertIsNone(
+            energy_inputs.recent_fat_pct(measured(date(2026, 7, 4)), DAY3)
+        )
+        self.assertIsNone(energy_inputs.recent_fat_pct(None, DAY3))
 
 
 class StoreAdapterTests(unittest.TestCase):

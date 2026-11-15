@@ -135,9 +135,16 @@ bias that is the same on every day is not visible in the band.
 - The reader (`backend/nutrition/energy_inputs.py`) reads the diary, the
   canonical weigh-ins, daily steps and floors, the sessions and their streams
   (`backend/nutrition/wiring.py`); the diagnostics show its counts under
-  `energy_balance`. Its resting reference is own Katch-McArdle first, Garmin
-  last, with the source; the own rate and the skinfolds follow with #3099.
-- The meal flag column (#3100, schema go pending) and skinfold storage (#3099).
+  `energy_balance`.
+- The resting reference for the net terms and the completeness rule is
+  Katch-McArdle from lean mass: first the skinfold body fat (#3099,
+  `katch_mcardle_skinfold`), then the latest measured body fat
+  (`katch_mcardle_body_fat`). Each needs a weigh-in or body fat within 90
+  days. Garmin's resting value is only the last fallback (`garmin`). The
+  skinfold body fat also sets the fat share of the energy density.
+- Sessions without power or a fitted HR line use Keytel, with the age from
+  the profile's birth year and the profile's sex.
+- The meal flag column (#3100, schema go pending).
 - Wishnofsky 1958 is not cited.
 
 <!-- BEGIN GENERATED CONSTANTS -->

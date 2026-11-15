@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass, replace
-from datetime import date
+from datetime import date, timedelta
 from typing import Any
 
 from backend.app.context import AppContext
@@ -17,8 +17,12 @@ from backend.db.repositories import (
 from backend.nutrition.catalog import ProductCatalogService
 from backend.nutrition.diary import NutritionDiaryService
 from backend.nutrition.energy_inputs import (
+    RESTING_LOOKBACK_DAYS,
     EnergySources,
     energy_basis,
+    latest_value,
+    own_resting,
+    recent_fat_pct,
     session_streams,
     weighins,
 )
@@ -104,15 +108,38 @@ def build_nutrition(ctx: AppContext) -> NutritionServices:
     def energy_sources() -> EnergySources:
         """The stores the adaptive expenditure reads (#3100).
 
-        The own resting rate and skinfold body fat follow with #3099; until
-        then the reader falls back to Garmin's resting value, labelled.
+        The resting reference is Katch-McArdle from the skinfold lean mass
+        (#3099), else from the latest measured body fat; only without either
+        does the reader fall back to Garmin's resting value, labelled.
         """
         read = ctx.canonical_read
         diary = NutritionRepository(utc_now)
+        skinfolds = ctx.athlete.skinfolds()
 
         def sessions(db: Any, start: date, end: date) -> list[Any]:
             # Bounded by the athlete-local start date in the reader itself.
             return list(read.activity_summaries(db, start=start, end=end))
+
+        def latest(db: Any, kind: MetricKind, day: date) -> float | None:
+            since = day - timedelta(days=RESTING_LOOKBACK_DAYS)
+            return latest_value(read.observations(db, kind, start=since, end=day))
+
+        def resting(db: Any, day: date) -> tuple[float, str] | None:
+            skinfold = skinfolds.skinfold_on(db, day)
+            return own_resting(
+                latest(db, MetricKind.WEIGHT, day),
+                recent_fat_pct(skinfold, day),
+                latest(db, MetricKind.BODY_FAT, day),
+            )
+
+        def body_fat(db: Any, start: date, end: date) -> dict[date, float]:
+            """Skinfold body fat in effect at each weekly window end."""
+            found = {}
+            for weeks in range((end - start).days // 7 + 1):
+                skinfold = skinfolds.skinfold_on(db, end - timedelta(days=7 * weeks))
+                if skinfold is not None and skinfold.body_fat_pct is not None:
+                    found[skinfold.measured_on] = skinfold.body_fat_pct
+            return found
 
         return EnergySources(
             diary=lambda db, s, e: diary.list_by_range(
@@ -126,8 +153,8 @@ def build_nutrition(ctx: AppContext) -> NutritionServices:
             ),
             sessions=sessions,
             streams=session_streams,
-            resting=lambda _db, _day: None,
-            body_fat=lambda _db, _s, _e: {},
+            resting=resting,
+            body_fat=body_fat,
             profile=ctx.athlete_profile.get,
         )
 
