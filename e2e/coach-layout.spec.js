@@ -112,9 +112,9 @@ test("@responsive the desktop Coach view reads the fuelling of the open unit onc
   // fuelling twice while the view's own reads were still running.
   test.skip(testInfo.project.name !== "desktop", "Only the wide calendar opens a unit by itself.");
   expect((await request.get("/api/fixture/demo")).ok()).toBeTruthy();
-  const events = [];
+  let reads = 0;
   await page.route("**/api/nutrition/session-fuelling*", (route) => {
-    events.push("fuelling");
+    reads += 1;
     return route.fulfill({ json: { status: "not_long" } });
   });
   await page.route("**/api/bootstrap**", async (route) => {
@@ -122,14 +122,21 @@ test("@responsive the desktop Coach view reads the fuelling of the open unit onc
     const data = await response.json();
     const today = new Intl.DateTimeFormat("en-CA", { timeZone: data.profile?.timezone || "Europe/Berlin" }).format(new Date());
     data.training_calendar = [{ id: "long-ride", local_id: "long-ride", date: today, name: "Lange Ausfahrt", type: "Ride", sport: "ride", environment: "outdoor", duration_minutes: 150, planned_duration_s: 9000 }];
-    events.push("bootstrap");
     return route.fulfill({ json: data });
   });
+  // The Coach view's chat history answers late, as a slow read on a long history would.
+  let release;
+  const held = new Promise((resolve) => { release = resolve; });
+  await page.route("**/api/chat/history?limit=100", async (route) => { await held; await route.continue(); });
   await page.goto("/#coach");
-  await expect.poll(() => page.evaluate(() => state.initialStateLoaded && !state.loadPromise)).toBe(true);
-  await expect.poll(() => events.filter((item) => item === "fuelling").length).toBeGreaterThan(0);
-  // Justified wait: a second read would follow a later render; nothing in the DOM shows it.
+  await page.waitForFunction(() => state.data && !state.replaceDataOnLoad);
+  await expect(page.locator(".planned-entry[open]")).toHaveCount(1);
+  // Justified wait: the read would go out now if it joined the view's burst; nothing shows it.
   await page.waitForTimeout(1500);
-  expect(events.filter((item) => item === "fuelling")).toHaveLength(1);
-  expect(events.indexOf("fuelling")).toBeGreaterThan(events.lastIndexOf("bootstrap"));
+  expect(reads).toBe(0);
+  release();
+  await expect.poll(() => reads).toBe(1);
+  await expect.poll(() => page.evaluate(() => state.initialStateLoaded && !state.loadPromise)).toBe(true);
+  await page.waitForTimeout(1500);
+  expect(reads).toBe(1);
 });

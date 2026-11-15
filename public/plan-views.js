@@ -1460,17 +1460,23 @@ function plannedFuellingBlock(plan) {
   ];
 }
 
-// One fuelling read per unit and session: renders of the same unit share it, and it waits out
-// the view's own reads instead of joining their burst (#2991, as #2979). A failed read is not kept.
+// One fuelling read per query and calendar data, cleared with the session reads in renderPlanned
+// (#2991). A read started while the view still loads waits out its reads instead of joining their
+// burst (as #2979); one a newer render or another session replaced meanwhile is dropped unsent.
 const plannedFuellingReads = new Map();
+const STALE_FUELLING_READ = new Error("replaced fuelling read");
 
 function plannedFuellingRead(query) {
-  const key = `${state.sessionGeneration}|${query}`;
-  let read = plannedFuellingReads.get(key);
+  let read = plannedFuellingReads.get(query);
   if (!read) {
-    read = globalThis.AppApi.settled().then(() => api(`/api/nutrition/session-fuelling?${query}`, { timeoutMs: DATA_LOAD_TIMEOUT_MS }));
-    read.catch(() => { if (plannedFuellingReads.get(key) === read) plannedFuellingReads.delete(key); });
-    plannedFuellingReads.set(key, read);
+    const session = state.sessionGeneration;
+    const viewLoading = !state.initialStateLoaded || Boolean(state.loadPromise);
+    read = (viewLoading ? globalThis.AppApi.settled() : Promise.resolve()).then(() => {
+      if (session !== state.sessionGeneration || plannedFuellingReads.get(query) !== read) throw STALE_FUELLING_READ;
+      return api(`/api/nutrition/session-fuelling?${query}`, { timeoutMs: DATA_LOAD_TIMEOUT_MS });
+    });
+    read.catch(() => { if (plannedFuellingReads.get(query) === read) plannedFuellingReads.delete(query); });
+    plannedFuellingReads.set(query, read);
   }
   return read;
 }
@@ -1480,12 +1486,15 @@ function loadPlannedFuelling(section, query) {
   section.dataset.state = "loading";
   const status = h("output", null, "Verpflegung wird berechnet …");
   section.replaceChildren(h("h4", null, "Verpflegung"), status);
-  plannedFuellingRead(query).then((plan) => {
+  const read = plannedFuellingRead(query);
+  read.then((plan) => {
     section.dataset.state = "ready";
     if (plan?.status === "ready") section.replaceChildren(...plannedFuellingBlock(plan));
     // Keep the empty section marked ready, so reopening does not read again.
     else section.hidden = true;
   }).catch(() => {
+    // A plan that could not be shown is not kept either, so "Erneut laden" reads again.
+    if (plannedFuellingReads.get(query) === read) plannedFuellingReads.delete(query);
     section.dataset.state = "failed";
     const retry = h("button", { type: "button", className: "secondary-button" }, "Erneut laden");
     retry.addEventListener("click", () => loadPlannedFuelling(section, query));
@@ -2234,6 +2243,7 @@ function renderPlanned(trainingCalendar) {
   if (trainingCalendar !== renderedCalendar) {
     resetOlderSessions();
     plannedSessionReads.clear();
+    plannedFuellingReads.clear();
   }
   renderedCalendar = trainingCalendar;
   const calendar = withOlderSessions(Array.isArray(trainingCalendar) ? trainingCalendar : []);

@@ -43,7 +43,7 @@ For a planned run or ride of at least 60 minutes the recommendation SHALL be the
 
 #### Scenario: One read after the view's own reads
 - **WHEN** the same unit is rendered more than once in a session, such as the wide calendar opening it on the Coach view at start
-- **THEN** its fuelling is read once, and only after the view's own reads have finished (#2991).
+- **THEN** its fuelling is read once per calendar data; a read started while the view still loads goes out only after the view's own reads have finished, and one replaced by a newer render or another session is dropped unsent (#2991).
 
 Evidence:
 - `backend/http_api/nutrition.py:NutritionGetRoutes._fuelling`

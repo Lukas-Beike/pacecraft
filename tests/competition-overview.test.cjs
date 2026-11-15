@@ -103,23 +103,53 @@ test("a planned unit's fuelling is read once per query and only after the view's
   // #2991: two renders of the same unit (stored then fresh start, the wide detail pane)
   // asked twice with identical parameters while the view's reads were still running.
   const calls = [];
+  const replies = [];
   let settle;
   const settled = new Promise((resolve) => { settle = resolve; });
+  const state = { sessionGeneration: 1, initialStateLoaded: false, loadPromise: null };
   const views = loadPublicScript("plan-views.js", {
     AppFormat: require("../public/format.js"),
     document: fakeDocument(),
     URLSearchParams,
-    state: { sessionGeneration: 1 },
+    state,
     DATA_LOAD_TIMEOUT_MS: 15_000,
     AppApi: { settled: () => settled },
-    api: (path) => { calls.push(path); return Promise.resolve({ status: "not_long" }); },
+    api: (path) => { calls.push(path); return replies.shift() || Promise.resolve({ status: "not_long" }); },
   });
+  const tick = () => new Promise((resolve) => setImmediate(resolve));
   const query = "sport=ride&environment=outdoor&date=2026-11-20&duration_s=9000";
-  for (const section of [views.h("section"), views.h("section")]) views.loadPlannedFuelling(section, query);
-  await new Promise((resolve) => setImmediate(resolve));
-  assert.equal(calls.length, 0);
+  const [first, second] = [views.h("section"), views.h("section")];
+  views.loadPlannedFuelling(first, query);
+  views.loadPlannedFuelling(second, query);
+  await tick();
+  assert.equal(calls.length, 0, "the read waits while the view still loads");
   settle();
-  await new Promise((resolve) => setImmediate(resolve));
-  assert.equal(calls.length, 1);
+  await tick();
+  assert.equal(calls.length, 1, "both renders share one read");
   assert.equal(calls[0], `/api/nutrition/session-fuelling?${query}`);
+
+  // After the start a read goes out at once; a failed one is not kept, so the retry reads again.
+  state.initialStateLoaded = true;
+  const other = "sport=run&environment=outdoor&date=2026-11-21&duration_s=7200";
+  replies.push(Promise.reject(new Error("offline")));
+  const failing = views.h("section");
+  views.loadPlannedFuelling(failing, other);
+  await tick();
+  assert.equal(calls.length, 2);
+  assert.equal(failing.dataset.state, "failed");
+  views.loadPlannedFuelling(failing, other);
+  await tick();
+  assert.equal(calls.length, 3, "the retry reads again");
+
+  // A read that waited across a logout is dropped unsent.
+  state.loadPromise = Promise.resolve();
+  let release;
+  const pending = new Promise((resolve) => { release = resolve; });
+  views.AppApi = { settled: () => pending };
+  const late = views.h("section");
+  views.loadPlannedFuelling(late, "sport=ride&environment=indoor&date=2026-11-22&duration_s=3600");
+  state.sessionGeneration = 2;
+  release();
+  await tick();
+  assert.equal(calls.length, 3, "a read from an ended session is not sent");
 });
