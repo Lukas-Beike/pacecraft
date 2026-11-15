@@ -37,7 +37,9 @@ class RegenerateDocsTests(unittest.TestCase):
         out, err = io.StringIO(), io.StringIO()
         env = {**os.environ, "PACECRAFT_NODE_MODULES": str(self.modules)}
         with (
-            mock.patch.object(regenerate_docs, "GENERATORS", (writer(text),)),
+            mock.patch.object(
+                regenerate_docs, "GENERATORS", ((writer(text), ("docs/x.md",)),)
+            ),
             mock.patch.dict(os.environ, env, clear=True),
             redirect_stdout(out),
             redirect_stderr(err),

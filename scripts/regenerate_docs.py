@@ -23,20 +23,27 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 FIX = "python scripts/regenerate_docs.py"
-# Each writes its document(s) under docs/ from the code, run from the root.
+# Each command writes the documents it names (a file, or a folder prefix) from the
+# code, run from the root: whole files, or sections between the markers below.
 GENERATORS = (
-    [sys.executable, "tests/test_performance_method_cards.py", "--write"],
-    [sys.executable, "tests/test_api_routes_doc.py", "--write"],
-    [sys.executable, "tests/test_key_value_service.py", "--write"],
-    ["node", "tests/navigation-state.test.cjs", "--write"],
+    (
+        [sys.executable, "tests/test_performance_method_cards.py", "--write"],
+        ("docs/performance-methods/",),
+    ),
+    (
+        [sys.executable, "tests/test_api_routes_doc.py", "--write"],
+        ("docs/api-routes.md",),
+    ),
+    (
+        [sys.executable, "tests/test_key_value_service.py", "--write"],
+        ("docs/kv-catalogue.md",),
+    ),
+    (
+        ["node", "tests/navigation-state.test.cjs", "--write"],
+        ("docs/view-catalogue.md",),
+    ),
 )
-# What those generators write: whole files, or sections between the markers below.
-GENERATED = (
-    "docs/api-routes.md",
-    "docs/kv-catalogue.md",
-    "docs/view-catalogue.md",
-    "docs/performance-methods/",
-)
+GENERATED = tuple(path for _, writes in GENERATORS for path in writes)
 WHOLLY_GENERATED = {"docs/performance-methods/code-constants.md"}
 SECTION = ("<!-- BEGIN GENERATED", "<!-- END GENERATED")
 
@@ -111,9 +118,15 @@ def node_modules(root: Path) -> Iterator[None]:
         (os.rmdir if os.name == "nt" else os.unlink)(link)
 
 
-def regenerate(root: Path) -> int:
+def regenerate(root: Path, only: tuple[str, ...] = ()) -> int:
+    """Run the generators, or with `only` just those writing one of those documents."""
+    commands = [
+        command
+        for command, writes in GENERATORS
+        if not only or any(path.startswith(writes) for path in only)
+    ]
     with node_modules(root):
-        for command in GENERATORS:
+        for command in commands:
             done = subprocess.run(
                 command, cwd=root, capture_output=True, text=True, encoding="utf-8",
                 errors="replace", check=False,

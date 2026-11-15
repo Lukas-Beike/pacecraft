@@ -28,6 +28,7 @@ import time
 from collections.abc import Mapping
 from pathlib import Path
 
+import regenerate_docs
 from gh_cli import CliError, git
 from regenerate_docs import conflict_resolvable, upstream_side
 
@@ -35,7 +36,6 @@ PROTECTED = {"develop", "main"}
 TYPES = "build|chore|ci|docs|feat|fix|perf|refactor|revert|style|test"
 SUBJECT = re.compile(rf"^(?:{TYPES})(?:\([a-z0-9][a-z0-9-]*\))?!?: \S")
 FETCH_ATTEMPTS = 3
-REBASE_STEPS = 50  # replayed commits a rebase may resolve generated conflicts in
 SCRIPT = re.compile(r"^(?:e2e|public)/.+\.(?:js|cjs|mjs)$")
 TRANSIENT_FETCH = re.compile(
     r"cannot lock ref '[^']+': is at \w+ but expected|\.lock': File exists"
@@ -97,25 +97,37 @@ def invalid_subjects(onto: str) -> list[str]:
     return [s for s in subjects if not SUBJECT.match(s)]
 
 
-def regenerate(root: Path) -> None:
-    """Rewrite the generated documents in the checkout (the tests replace this)."""
-    done = subprocess.run(
-        [sys.executable, "scripts/regenerate_docs.py"], cwd=root, capture_output=True,
-        text=True, encoding="utf-8", errors="replace", check=False,
-    )  # fmt: skip
-    if done.returncode:
-        raise CliError(f"regenerate_docs.py failed: {done.stderr.strip()[-300:]}")
+def regenerate(root: Path, documents: tuple[str, ...]) -> None:
+    """Rerun only the generators of these documents (the tests replace this)."""
+    if regenerate_docs.regenerate(root, documents):
+        raise CliError("a generator failed (see above)")
+
+
+def conflicted_texts(root: Path, conflicts: list[str]) -> dict[str, str] | None:
+    """The conflicted files' text when every one is a generated document."""
+    if not all(name.startswith(regenerate_docs.GENERATED) for name in conflicts):
+        return None
+    try:
+        return {name: (root / name).read_text(encoding="utf-8") for name in conflicts}
+    except OSError, UnicodeDecodeError:
+        return None  # deleted on one side, or not text: a person decides
 
 
 def resolve_generated(root: Path, conflicts: list[str]) -> bool:
     """Take upstream's side of conflicts that lie only in generated text, regenerate
-    and stage those documents (#3031); False when a conflict needs a person."""
-    texts = {name: (root / name).read_text(encoding="utf-8") for name in conflicts}
-    if not all(conflict_resolvable(name, text) for name, text in texts.items()):
+    and stage those documents (#3031); False when a conflict needs a person. A
+    failed generator puts the conflicts back as they were."""
+    texts = conflicted_texts(root, conflicts)
+    if texts is None or not all(conflict_resolvable(n, t) for n, t in texts.items()):
         return False
     for name, text in texts.items():
         (root / name).write_text(upstream_side(text), encoding="utf-8", newline="\n")
-    regenerate(root)
+    try:
+        regenerate(root, tuple(conflicts))
+    except CliError as exc:
+        git("checkout", "--merge", "--", *conflicts)
+        print(f"regenerating failed, conflicts restored: {exc}")
+        return False
     git("add", *conflicts)
     # Only the conflicted documents change in this commit; the rest stays as replayed.
     others = [n for n in git("diff", "--name-only").split() if n not in conflicts]
@@ -143,8 +155,9 @@ def rebased(onto: str) -> bool:
     except CliError as exc:
         error = exc
     root = Path(git("rev-parse", "--show-toplevel").strip())
-    for _ in range(REBASE_STEPS):
-        conflicts = git("diff", "--name-only", "--diff-filter=U").split()
+    # Each continue replays at least one more commit, so this ends.
+    while True:
+        conflicts = git("diff", "--name-only", "--diff-filter=U").splitlines()
         if not conflicts:
             raise error
         if not resolve_generated(root, conflicts):
@@ -154,16 +167,17 @@ def rebased(onto: str) -> bool:
             return True
         except CliError as exc:
             error = exc  # the next replayed commit conflicts too
-    return stopped(onto, git("diff", "--name-only", "--diff-filter=U").split(), error)
 
 
 def unparsable(onto: str) -> list[str]:
     """Changed page and e2e scripts `node --check` rejects: a broken hand merge (#3031)."""
     if not shutil.which("node"):
+        print("node not found: the script parse check did not run")
         return []
     root = Path(git("rev-parse", "--show-toplevel").strip())
     changed = git(
-        "diff", "--name-only", "--diff-filter=AM", f"{onto}...HEAD"
+        *("-c", "core.quotePath=false", "diff", "--name-only", "--no-renames"),
+        *("--diff-filter=AM", f"{onto}...HEAD"),
     ).splitlines()
     return [
         name
