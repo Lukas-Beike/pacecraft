@@ -185,9 +185,9 @@ def kept_until_change[T](
     one inside a unit of work is neither kept nor served, since it may see
     uncommitted rows. Concurrent callers of one revision wait for the first
     one's read, at most ``wait_s``. A caller holding a lease (a snapshot and
-    its reader slot) never waits for a first reader without one: that read
-    may need the very slot the caller holds, so it reads on its own
-    connection instead (#3043). No lock is held while reading.
+    its reader slot) does not wait for a first reader without one while no
+    reader slot is free: that read needs a slot the waiters may hold, so it
+    reads on its own connection instead (#3043). No lock is held while reading.
     """
     lock = threading.Lock()
     kept: list[Any] = [None, -1, None]
@@ -217,7 +217,12 @@ def kept_until_change[T](
                 return kept[2]
             leading = key not in running
             done, leader_leased = running.setdefault(key, (threading.Event(), leased))
-        if not leading and leased and not leader_leased:
+        if (
+            not leading
+            and leased
+            and not leader_leased
+            and not manager.reader_slot_free()
+        ):
             return fill(manager, revision)
         if not leading:
             done.wait(wait_s)
@@ -305,6 +310,13 @@ class DatabaseManager:
         nothing, so they leave it as it is.
         """
         return self._write_revision
+
+    def reader_slot_free(self) -> bool:
+        """Whether a reader slot is free right now (a hint; it may be taken next)."""
+        if not self._reader_slots.acquire(blocking=False):
+            return False
+        self._reader_slots.release()
+        return True
 
     def holds_lease(self) -> bool:
         """Whether this context holds a lease (a reader, snapshot or unit of work)."""

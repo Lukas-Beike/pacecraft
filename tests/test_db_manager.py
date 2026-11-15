@@ -508,9 +508,42 @@ class DatabaseManagerTests(unittest.TestCase):
                     call.result(5)
             self.assertEqual(len(reads), expected)
 
-    def test_a_snapshot_never_waits_for_a_first_read_without_a_lease(self):
-        # The first read may need the reader slot the snapshot holds (#3043).
+    def wait_until(self, condition, seconds=5.0):
+        deadline = time.monotonic() + seconds
+        while not condition():
+            if time.monotonic() > deadline:
+                self.fail("condition not reached in time")
+            time.sleep(0.01)
+
+    def test_a_snapshot_shares_the_read_of_a_first_reader_with_a_lease(self):
+        # A first reader holding its own lease needs no further slot (#3043).
         manager = self.make_wal_manager()
+        reads = []
+        release = threading.Event()
+
+        def read():
+            reads.append(1)
+            release.wait(5)
+            return len(reads)
+
+        kept = kept_until_change(lambda: manager, read, wait_s=5.0)
+
+        def leased():
+            with manager.reader():
+                return kept()
+
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            leader = pool.submit(leased)
+            self.wait_until(lambda: reads)
+            follower = pool.submit(leased)
+            release.set()
+            self.assertEqual((leader.result(5), follower.result(5)), (1, 1))
+        self.assertEqual(len(reads), 1)
+
+    def test_a_snapshot_without_a_free_slot_never_waits_for_a_leaseless_read(self):
+        # The first read may need the reader slot the snapshot holds (#3043):
+        # with the only slot taken, the snapshot reads on its own connection.
+        manager = self.make_wal_manager(reader_count=1)
         reads = []
         release = threading.Event()
 
@@ -524,8 +557,7 @@ class DatabaseManagerTests(unittest.TestCase):
         kept = kept_until_change(lambda: manager, read, wait_s=5.0)
         with ThreadPoolExecutor(max_workers=1) as pool:
             leader = pool.submit(kept)
-            while not reads:
-                time.sleep(0.01)
+            self.wait_until(lambda: reads)
             with manager.read_snapshot():
                 started = time.monotonic()
                 self.assertEqual(kept(), 2)
@@ -548,10 +580,17 @@ class DatabaseManagerTests(unittest.TestCase):
         kept = kept_until_change(lambda: manager, read, wait_s=5.0)
         with ThreadPoolExecutor(max_workers=2) as pool:
             leader = pool.submit(kept)
-            while not reads:
-                time.sleep(0.01)
-            waiter = pool.submit(kept)
-            time.sleep(0.05)
+            self.wait_until(lambda: reads)
+            waiting = threading.Event()
+
+            class Watched(threading.Event):
+                def wait(self, timeout=None):
+                    waiting.set()
+                    return super().wait(timeout)
+
+            with patch.object(manager_module.threading, "Event", Watched):
+                waiter = pool.submit(kept)
+                self.assertTrue(waiting.wait(5))
             started = time.monotonic()
             release.set()
             with self.assertRaises(RuntimeError):
@@ -565,24 +604,15 @@ class DatabaseManagerTests(unittest.TestCase):
         # A BEGIN that fails must not leave this thread on an old revision (#3043).
         failing = {"begin": False}
 
-        class Connection:
-            def __init__(self, connection):
-                object.__setattr__(self, "_connection", connection)
-
+        class Connection(sqlite3.Connection):
             def execute(self, sql, *args):
                 if failing["begin"] and sql == "BEGIN":
                     raise sqlite3.OperationalError("synthetic BEGIN failure")
-                return self._connection.execute(sql, *args)
-
-            def __getattr__(self, name):
-                return getattr(self._connection, name)
-
-            def __setattr__(self, name, value):
-                setattr(self._connection, name, value)
+                return super().execute(sql, *args)
 
         backend = SimpleNamespace(
-            connect=lambda *args, **kwargs: Connection(
-                sqlite3.connect(*args, **kwargs)
+            connect=lambda *args, **kwargs: sqlite3.connect(
+                *args, factory=Connection, **kwargs
             ),
             Row=sqlite3.Row,
         )

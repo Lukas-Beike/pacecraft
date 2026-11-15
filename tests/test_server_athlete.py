@@ -26,8 +26,9 @@ class ServerAthleteTests(ServerTestCase):
             summaries()
             summaries()
             self.assertEqual(counted.call_count, 1)
-            # A row-changing commit (here the profile) makes the next call read again.
-            server.ATHLETE_DATA.profile().save({"timezone": "UTC"})
+            # A row-changing commit (here the profile name; it starts no worker)
+            # makes the next call read again.
+            server.ATHLETE_DATA.profile().save({"name": "Ada"})
             summaries()
             self.assertEqual(counted.call_count, 2)
 
