@@ -80,18 +80,18 @@ stop, report it, and do not try to repair production.
 
 ## Allowed actions
 
-Only after steps 1-6 passed, and only through a local headless Playwright
-script in the scratchpad that logs in from the secret file the way `ui-walk`
-does (the password never passes through a tool argument or the agent's
-context). Each effect must stay local and be undone at once:
+Only after steps 1-6 passed, and only through the tracked scripts, which log
+in from the secret file (the password never passes through a tool argument or
+the agent's context):
 
-- operate views: switch week and month, page weeks, open units and analyses;
-- plan one local test unit about three weeks ahead, check it in the calendar,
-  then undo it at once;
-- ask the Coach one question without a change (for example what is planned
-  tomorrow); it stays in the conversation history and uses a little model usage;
-- let the Coach move one future local unit, then undo the whole turn; check
-  the receipt and the undo.
+- operate views: switch week and month, page weeks, open units and analyses
+  (the `ui-walk` steps do this);
+- ask the Coach one question without a change:
+  [post-release-actions](../pacecraft-post-release-actions/SKILL.md).
+
+Planning or moving a unit through the Coach is not part of the check until a
+Coach plan change is undoable as a whole turn (#2851): its receipt has no
+"Rückgängig", so the change would stay in production.
 
 **Never:** any control that synchronizes or sends to Garmin, Intervals.icu or
 Wahoo (including "Woche synchronisieren"), deletes, data export, privacy
