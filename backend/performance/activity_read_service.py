@@ -248,7 +248,8 @@ class ActivityAnalysisReadService(ActivityReadService):
 
         @functools.cache
         def requested_summary() -> ActivitySummary | None:
-            if self._session_summaries is not None:
+            # The validation reads the performance inputs anyway; they carry it.
+            if self._session_summaries is not None and not validation:
                 return _find_summary(self._session_summaries(), normalized_id)
             return _find_summary(load_inputs(normalized_id), normalized_id)
 

@@ -66,6 +66,7 @@ def build_diagnostics(ctx: AppContext) -> DiagnosticsServices:
                 canonical_coverage=ctx.canonical_read,
                 recent_logs=recent_log_entries_service(),
                 diagnostic_capture=ctx.diagnostic_capture,
+                slowest_routes=ctx.route_timings.summary,
                 canonical_backfill=ctx.canonical_backfill.status_reader,
                 canonical_read=ctx.canonical_read,
                 # The Garmin change check's status: counts and times only (#2372).

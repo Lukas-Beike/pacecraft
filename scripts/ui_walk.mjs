@@ -182,10 +182,14 @@ async function walkCalendar(page, shot) {
     done.push("unit opened");
   }
   // A completed session's "Details": time from the click until its panel stops loading (#3017).
-  const started = Date.now();
   if (await clickIfThere(page.locator(".planned-activity-more > summary"))) {
-    const panel = page.locator(".planned-activity-more[open]").first();
-    const ready = await panel.locator(".loading-state").first().waitFor({ state: "detached", timeout: READY_CAP_MS }).then(() => true, () => false);
+    // The panel loads on its toggle event: ready once it shows content and no loading marker.
+    const started = Date.now();
+    const ready = await page.waitForFunction(() => {
+      const panel = document.querySelector(".planned-activity-more[open]");
+      const content = panel && [...panel.children].filter((child) => child.tagName !== "SUMMARY");
+      return Boolean(content?.some((child) => child.textContent.trim()) && !panel.querySelector(".loading-state"));
+    }, null, { timeout: READY_CAP_MS }).then(() => true, () => false);
     done.push(ready ? `details ${Date.now() - started} ms` : "details not ready within 15 s");
     await shot("plan-details");
   }

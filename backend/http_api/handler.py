@@ -6,7 +6,7 @@ import logging
 import time
 import uuid
 from collections.abc import Callable, Iterator
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler
 from pathlib import Path
@@ -36,7 +36,7 @@ from backend.http_api.requests import (
 from backend.http_api.route_table import Access, RouteRequest, RouteTable
 from backend.http_api.static_assets import StaticAssetService
 from backend.observability import (
-    ROUTE_TIMINGS,
+    RouteTimings,
     http_access_log_level,
     redact_request_query,
 )
@@ -80,6 +80,7 @@ class HttpRequestHandlerDependencies:
     voice_audio_types: tuple[str, ...]
     normalize_audio_type: Callable[[str], str]
     static_asset_service: StaticAssetService
+    route_timings: RouteTimings = field(default_factory=RouteTimings)
 
 
 class RequestHandler(BaseHTTPRequestHandler):
@@ -114,7 +115,7 @@ class RequestHandler(BaseHTTPRequestHandler):
         )
         key = self._route_key()
         if key is not None and duration_ms is not None:
-            ROUTE_TIMINGS.record(key, duration_ms)
+            self.dependencies.route_timings.record(key, duration_ms)
         self._write_access_log(
             level,
             '"%s" %s %s',
@@ -230,7 +231,7 @@ class RequestHandler(BaseHTTPRequestHandler):
             )
         key = self._route_key()
         if key is not None:
-            ROUTE_TIMINGS.disconnect(key)
+            self.dependencies.route_timings.disconnect(key)
         self.dependencies.logger.info(
             "HTTP client disconnected before response completed",
             extra={

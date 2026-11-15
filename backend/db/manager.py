@@ -177,26 +177,32 @@ def kept_until_change[T](
 ) -> Callable[[], T]:
     """``read``'s value, kept until a commit changes rows or a restore (#3017).
 
-    The value is shared by every caller, which must not change it. Concurrent
-    calls wait for one read instead of each reading the same.
+    The value is shared by every caller, which must not change it. A read is
+    keyed by the generation it sees at least (``DatabaseManager.read_generation``);
+    one inside a unit of work is neither kept nor served, since it may see
+    uncommitted rows. No lock is held while reading: a caller holding a
+    snapshot must never wait for another thread's read.
     """
     lock = threading.Lock()
     kept: list[Any] = [None, -1, None]
 
-    def fill(manager: DatabaseManager, generation: int) -> T:
-        # Keyed by the generation before the read: a change during it makes
-        # the next call read again.
+    def fill(manager: DatabaseManager, generation: int | None) -> T:
         value = read()
-        kept[:] = [manager, generation, value]
+        with lock:
+            # A slower read of an older state never replaces a newer one.
+            if generation is not None and (
+                kept[0] is not manager or generation >= kept[1]
+            ):
+                kept[:] = [manager, generation, value]
         return value
 
     def current() -> T:
         manager = database_manager()
+        generation = manager.read_generation()
         with lock:
-            generation = manager.write_generation
-            if kept[0] is manager and kept[1] == generation:
+            if generation is not None and kept[0] is manager and kept[1] == generation:
                 return kept[2]
-            return fill(manager, generation)
+        return fill(manager, generation)
 
     return current
 
@@ -246,6 +252,10 @@ class DatabaseManager:
         self._snapshot_context: ContextVar[Any | None] = ContextVar(
             f"database_manager_snapshot_{id(self)}", default=None
         )
+        # The write generation read just before the snapshot began (#3017).
+        self._snapshot_generation: ContextVar[int | None] = ContextVar(
+            f"database_manager_snapshot_generation_{id(self)}", default=None
+        )
         self._commit_callbacks: ContextVar[list[Callable[[], None]] | None] = (
             ContextVar(f"database_manager_commit_{id(self)}", default=None)
         )
@@ -267,6 +277,18 @@ class DatabaseManager:
         nothing, so they leave it as it is.
         """
         return self._write_generation
+
+    def read_generation(self) -> int | None:
+        """The generation a read here sees at least; None inside a unit of work.
+
+        Inside ``read_snapshot`` it is the generation read just before the
+        snapshot began, so a value read from an older snapshot is never taken
+        for the current state. A unit of work sees its own uncommitted rows.
+        """
+        if self._unit_of_work.get() is not None:
+            return None
+        snapshot = self._snapshot_generation.get()
+        return self._write_generation if snapshot is None else snapshot
 
     def _next_generation(self) -> None:
         with self._state:
@@ -494,6 +516,10 @@ class DatabaseManager:
                 reusable = False
                 try:
                     connection.execute("PRAGMA query_only = ON")
+                    # Read before the snapshot's first query fixes its state.
+                    generation_token = self._snapshot_generation.set(
+                        self._write_generation
+                    )
                     connection.execute("BEGIN")
                     snapshot_token = self._snapshot_context.set(connection)
                     reader_token = self._reader_context.set(connection)
@@ -502,6 +528,7 @@ class DatabaseManager:
                     finally:
                         self._reader_context.reset(reader_token)
                         self._snapshot_context.reset(snapshot_token)
+                        self._snapshot_generation.reset(generation_token)
                         connection.rollback()
                         connection.execute("PRAGMA query_only = OFF")
                         reusable = True

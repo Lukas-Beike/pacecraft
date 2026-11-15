@@ -13,6 +13,7 @@ import logging
 import re
 import sys
 import threading
+from collections import deque
 from collections.abc import Callable, Iterable, Iterator
 from contextlib import AbstractContextManager, contextmanager, nullcontext
 from datetime import UTC, datetime, timedelta
@@ -716,7 +717,13 @@ class RouteTimings:
 
     def _route(self, key: str) -> dict[str, Any]:
         return self._routes.setdefault(
-            key, {"count": 0, "max_ms": 0.0, "disconnects": 0, "samples": []}
+            key,
+            {
+                "count": 0,
+                "max_ms": 0.0,
+                "disconnects": 0,
+                "samples": deque(maxlen=self.SAMPLES),
+            },
         )
 
     def record(self, key: str, duration_ms: float) -> None:
@@ -724,7 +731,7 @@ class RouteTimings:
             route = self._route(key)
             route["count"] += 1
             route["max_ms"] = max(route["max_ms"], duration_ms)
-            route["samples"] = [*route["samples"][-(self.SAMPLES - 1) :], duration_ms]
+            route["samples"].append(duration_ms)
 
     def disconnect(self, key: str) -> None:
         with self._lock:
@@ -751,14 +758,11 @@ class RouteTimings:
         ]
 
 
-def _p95(samples: list[float]) -> int | None:
-    if not samples:
-        return None
+def _p95(samples: Iterable[float]) -> int | None:
     ordered = sorted(samples)
+    if not ordered:
+        return None
     return round(ordered[max(0, round(0.95 * len(ordered)) - 1)])
-
-
-ROUTE_TIMINGS = RouteTimings()
 
 
 def http_access_log_level(method: str | None, path: str, status: object) -> int:

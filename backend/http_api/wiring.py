@@ -745,6 +745,7 @@ def build_http_api(
                 voice_audio_types=audio.VOICE_AUDIO_TYPES,
                 normalize_audio_type=audio.normalized_audio_type,
                 static_asset_service=StaticAssetService(public_dir),
+                route_timings=ctx.route_timings,
             )
         )
 

@@ -920,14 +920,14 @@ class RouteTimingTests(unittest.TestCase):
         detail = SimpleNamespace(path="/api/activities/{id}")
         handler.dependencies = SimpleNamespace(
             logger=logger,
+            route_timings=timings,
             route_table=SimpleNamespace(
                 match=lambda _method, path: (detail, {"id": path.rsplit("/", 1)[1]})
             ),
         )
         handler._dispatch_started_at = time.perf_counter() - 0.25
-        with patch("backend.http_api.handler.ROUTE_TIMINGS", timings):
-            handler.log_request(200)
-            handler.log_client_disconnect()
+        handler.log_request(200)
+        handler.log_client_disconnect()
         context = logger.records[0][2]["context"]
         self.assertEqual(context["status"], 200)
         self.assertGreaterEqual(context["duration_ms"], 250)
@@ -986,7 +986,9 @@ class HttpAccessLogLevelTests(unittest.TestCase):
         handler.command = "GET"
         handler.path = "/api/chat/status?probe=1"
         handler.requestline = "GET /api/chat/status?probe=1 HTTP/1.1"
-        handler.dependencies = SimpleNamespace(logger=logger, route_table=_NO_ROUTES)
+        handler.dependencies = SimpleNamespace(
+            logger=logger, route_table=_NO_ROUTES, route_timings=RouteTimings()
+        )
 
         handler.log_request(200)
         handler.log_request(401)
@@ -1014,7 +1016,9 @@ class HttpAccessLogLevelTests(unittest.TestCase):
         handler.command = "GET"
         handler.path = "/api/state/events"
         handler.requestline = "GET /api/state/events HTTP/1.1"
-        handler.dependencies = SimpleNamespace(logger=logger, route_table=_NO_ROUTES)
+        handler.dependencies = SimpleNamespace(
+            logger=logger, route_table=_NO_ROUTES, route_timings=RouteTimings()
+        )
 
         handler.log_request(200)
         handler.log_error("Streaming response failed: %s", "synthetic timeout")
@@ -1036,7 +1040,9 @@ class HttpAccessLogLevelTests(unittest.TestCase):
         )
         handler.path = target
         handler.requestline = f"GET {target} HTTP/1.1"
-        handler.dependencies = SimpleNamespace(logger=logger, route_table=_NO_ROUTES)
+        handler.dependencies = SimpleNamespace(
+            logger=logger, route_table=_NO_ROUTES, route_timings=RouteTimings()
+        )
 
         handler.log_request(200)
         handler.log_request(404)
