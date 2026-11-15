@@ -1415,11 +1415,15 @@ const SKINFOLDS_SHOWN = 3;
 let skinfoldRead = null;
 let skinfoldRequest = null;
 
+// A failed read also re-renders, so the card shows the failure instead of loading forever.
 function loadSkinfolds() {
-  skinfoldRequest ||= api("/api/body/skinfolds").then((read) => {
-    skinfoldRead = read;
-    renderBodyAnalysis(state.data?.performance?.history?.body);
-  }).catch(() => { skinfoldRead = { failed: true }; }).finally(() => { skinfoldRequest = null; });
+  skinfoldRequest ||= api("/api/body/skinfolds")
+    .then((read) => { skinfoldRead = read; })
+    .catch(() => { skinfoldRead = { failed: true }; })
+    .finally(() => {
+      skinfoldRequest = null;
+      renderBodyAnalysis(state.data?.performance?.history?.body);
+    });
 }
 
 function skinfoldRow(measurement, edit) {

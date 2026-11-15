@@ -209,6 +209,26 @@ test("body overview uses profile body fat without creating a dated measurement",
 });
 
 
+test("a failed skinfold read re-renders the card instead of loading forever", async () => {
+  // Gitar #3120: only a successful read used to re-render the body view.
+  let renders = 0;
+  let reads = 0;
+  const { loadSkinfolds } = extractFunctions("analysis.js", ["skinfoldRead", "skinfoldRequest", "loadSkinfolds"], {
+    api: () => { reads += 1; return Promise.reject(new Error("offline")); },
+    renderBodyAnalysis: () => { renders += 1; },
+    state: { data: {} },
+  });
+  loadSkinfolds();
+  loadSkinfolds(); // one read at a time
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.equal(reads, 1);
+  assert.equal(renders, 1);
+  loadSkinfolds(); // the finished request no longer blocks a new read
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.equal(reads, 2);
+});
+
+
 test("body overview falls back to Garmin when the profile fat is absent", () => {
   const root = Object.assign(new FakeElement("div"), { querySelectorAll: () => [] });
   const state = { data: { profile: { body_fat_pct: "" } } };
