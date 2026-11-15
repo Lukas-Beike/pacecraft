@@ -7,13 +7,14 @@ module's code, and of every backend/providers or backend/canonical module a
 replayed mapper imports (directly or through another such module, #2501),
 together with the versions that replay it. Changing the code without bumping
 one of those versions fails here. Widely shared canonical modules such as
-vocabulary are pinned too: a change that maps nothing differently (a new enum
-member) only updates the fingerprint.
+vocabulary are pinned too.
 
 The fingerprint ignores comments, docstrings and layout, so documentation edits
-pass. When a code change does not alter any mapped output (a pure refactor),
-update the fingerprint and say so in the PR; otherwise bump the version first.
-Run this module to print the current table.
+pass. A code change updates only the fingerprint when replaying the stored
+records gives the same output, for example a refactor, a new enum member, or a
+mapping of a section or field that no stored record carries yet (#2880); say so
+in the PR. Otherwise bump the version first. Run this module to print the
+current table.
 """
 
 from __future__ import annotations
