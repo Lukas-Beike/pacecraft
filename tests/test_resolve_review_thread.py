@@ -267,7 +267,13 @@ class GuardHookTests(unittest.TestCase):
             "core.autocrlf=false",
         ]
         run_file = guard.SCRIPTS / f"{guard.RUN}.py"
-        with tempfile.TemporaryDirectory() as directory:
+        # The developer's global and system git config (signing, hooks) stay out.
+        with (
+            tempfile.TemporaryDirectory() as directory,
+            mock.patch.dict(
+                os.environ, {"GIT_CONFIG_GLOBAL": os.devnull, "GIT_CONFIG_NOSYSTEM": "1"}
+            ),
+        ):
             repo = Path(directory)
             script = repo / run_file
             script.parent.mkdir()
