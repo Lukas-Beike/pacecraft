@@ -1565,6 +1565,7 @@ function energyFitCharts(read) {
     points: read.windows.map((date, index) => ({ date, value: row.errors_kcal[index] })),
   }));
   const chart = analysisChart("Welche Quelle trifft dein Gewicht?", series, "kcal", read.windows[0], read.end, "", { calendarWeeks: true });
+  if (chart) chart.dataset.energyFit = "";
   const bars = h("section", { className: "analysis-chart-card training-focus-distribution", dataset: { energyFit: "" } }, h("h4", null, "Trefferquote der letzten 12 Wochen"),
     ...fitted.map(([row, label, color]) => h("div", { className: "training-focus-row", dataset: { color: String(color) } },
       h("span", null, label.replace(" (Schätzung)", "")), h("progress", { max: 100, value: row.hit_rate_pct, "aria-label": `${label}: ${row.hit_rate_pct} Prozent` }), h("span", null, `${row.hit_rate_pct} %`))),
