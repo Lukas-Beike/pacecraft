@@ -107,10 +107,10 @@ class CoachDiagnosticHistoryService:
             outcomes = _lookup_outcomes(result)
             if outcomes:
                 entry["lookup_outcomes"] = outcomes
-            # New templates kept beside an existing one, with a reason (#3080).
+            # Records created beside an existing one, with a reason (#3080).
             despite = result.get("created_despite_candidate")
             if type(despite) is int and 0 < despite <= 28:
-                entry["templates_created_despite_candidate"] = despite
+                entry["created_despite_candidate"] = despite
             steps.append(entry)
         return steps
 

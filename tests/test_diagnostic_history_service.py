@@ -168,7 +168,7 @@ class CoachDiagnosticHistoryServiceTests(unittest.TestCase):
                     "tool": "manage_training_templates",
                     "ok": True,
                     "error": None,
-                    "templates_created_despite_candidate": 2,
+                    "created_despite_candidate": 2,
                 },
                 {"tool": "manage_training_templates", "ok": True, "error": None},
             ],
