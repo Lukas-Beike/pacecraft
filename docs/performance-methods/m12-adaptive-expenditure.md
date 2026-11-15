@@ -126,8 +126,10 @@ bias that is the same on every day is not visible in the band.
 
 ## Open points
 
-- The reader that fills `EnergyInputs` from the diary, weigh-ins, skinfolds and
-  M11 sessions, plus the diagnostics counts (#3100).
+- The reader (`backend/nutrition/energy_inputs.py`) takes its stores as
+  injected sources; wiring them to the diary, weigh-ins, skinfolds and streams,
+  and the diagnostics counts in the diagnostics export, follow (#3100). Its
+  resting reference is own Katch-McArdle first, Garmin last, with the source.
 - The meal flag column (#3100, schema go pending) and skinfold storage (#3099).
 - Wishnofsky 1958 is not cited.
 
