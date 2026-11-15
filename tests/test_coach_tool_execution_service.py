@@ -215,7 +215,7 @@ class StructuredToolExecutionTests(unittest.TestCase):
             ),
         )
 
-    def test_only_the_athletes_own_message_names_a_food_provider(self) -> None:
+    def test_only_the_athletes_own_request_names_a_provider_or_session(self) -> None:
         # #3080: scripted turns; the model's copy of the argument is replaced.
         self.tool_dispatch.execute.return_value = {"ok": True}
         earlier = {"role": "user", "id": 1, "content": "Such das bei Yazio"}
@@ -251,6 +251,32 @@ class StructuredToolExecutionTests(unittest.TestCase):
         self.assertNotIn(
             "_named_food_sources", self.tool_dispatch.execute.call_args.args[1]
         )
+        # The session the analyse button names is read from the same request.
+        button = (
+            "Analysiere meine Einheit vom 14. Nov. (Laufen, 07:10, 45 min, ID act_42)."
+        )
+        for message, session in (
+            (button, "act_42"),
+            ("Wie lief mein Lauf?", None),
+            # Free text naming an "ID" is not the button's format.
+            ("Welche ID hat mein Lauf von gestern?", None),
+            # The planned-unit button names a unit, not a session.
+            ("Zur geplanten Einheit am 16. Nov. (Laufen, 07:00, ID unit-7): ", None),
+            # The last named session, the current message's, wins.
+            (f"{button} {button.replace('act_42', 'act_43')}", "act_43"),
+        ):
+            context = {
+                "current_user_message_id": 3,
+                "messages": [{"role": "user", "id": 3, "content": message}],
+            }
+            with self.subTest(message=message):
+                self.execute(
+                    "get_activity_details",
+                    {"activity_id": "act_1", "_named_activity_id": "act_9"},
+                    context=context,
+                )
+                arguments = self.tool_dispatch.execute.call_args.args[1]
+                self.assertEqual(session, arguments["_named_activity_id"])
 
     def test_food_lookups_do_not_hold_a_local_database_transaction(self) -> None:
         self.tool_dispatch.execute.side_effect = lambda *_args, **_kwargs: (
