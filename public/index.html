@@ -726,6 +726,14 @@
       <div class="dialog-actions"><button type="button" id="nutritionProductUseCancel" class="secondary-button">Abbrechen</button><button type="button" id="nutritionProductUseCoach" class="secondary-button">Zur Coach-Nachricht</button><button type="submit" id="nutritionProductUseAdd" class="adaptive-planning-button">Erfassen</button></div>
     </form>
   </dialog>
+  <dialog id="skinfoldDialog" aria-labelledby="skinfoldDialogTitle">
+    <form id="skinfoldDialogForm" class="confirmation-dialog">
+      <h2 id="skinfoldDialogTitle">Hautfalten</h2>
+      <label for="skinfoldDialogDate">Datum<input id="skinfoldDialogDate" name="date" type="date" required></label>
+      <output id="skinfoldDialogStatus" class="tab-sync-detail" aria-live="polite"></output>
+      <div class="dialog-actions"><button type="button" id="skinfoldDialogCancel" class="secondary-button">Abbrechen</button><button type="button" id="skinfoldDialogRemove" class="secondary-button" hidden>Löschen</button><button type="submit" id="skinfoldDialogSave" class="adaptive-planning-button">Speichern</button></div>
+    </form>
+  </dialog>
   <dialog id="confirmationDialog" aria-labelledby="confirmationDialogTitle" aria-describedby="confirmationDialogMessage">
     <form id="confirmationDialogForm" method="dialog" class="confirmation-dialog">
       <h2 id="confirmationDialogTitle">Aktion bestätigen</h2>

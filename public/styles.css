@@ -1801,6 +1801,7 @@ button:focus-visible, a:focus-visible, summary:focus-visible {
 .current-performance-table th, .current-performance-table td { padding: 12px 0; border-bottom: 1px solid var(--line); hyphens: auto; }
 .current-performance-table th { text-align: left; font-size: .85rem; font-weight: 500; }
 .current-performance-table th small { display: block; margin-top: 4px; color: var(--muted); font-size: .72rem; font-weight: 400; overflow-wrap: anywhere; }
+[data-skinfolds] .current-performance-table td { white-space: nowrap; padding-left: 8px; }
 .current-performance-table td { text-align: right; padding-left: 12px; font-size: .95rem; font-weight: 600; font-variant-numeric: tabular-nums; }
 .current-performance-table tbody tr:last-child > * { border-bottom: 0; }
 

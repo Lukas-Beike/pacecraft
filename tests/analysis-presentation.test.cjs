@@ -196,6 +196,7 @@ test("body overview uses profile body fat without creating a dated measurement",
     isPreferredSource: () => true, analysisValidPoint: (p) => p.value != null,
     dateLabel: (v) => v, analysisValue: (v, unit) => `${v} ${unit}`,
     analysisPeriodControls: () => new FakeElement("nav"), bodyHistoryPeriod: "twelveWeeks",
+    skinfoldCard: () => new FakeElement("section"),
   });
   const body = { windows: {} };
   renderBodyAnalysis(body);
@@ -217,6 +218,7 @@ test("body overview falls back to Garmin when the profile fat is absent", () => 
     analysisValidPoint: (point) => point.value != null, dateLabel: (v) => v,
     analysisValue: (v, unit) => `${v} ${unit}`, analysisPeriodControls: () => new FakeElement("nav"),
     bodyHistoryPeriod: "twelveWeeks", bodyMetricChart: () => null,
+    skinfoldCard: () => new FakeElement("section"),
   });
   const point = { date: "2026-10-10", value: 16 };
   const body = { preferred_providers: { body_fat_pct: "garmin" }, windows: { "12w": { start: "2026-10-01", end: "2026-10-15", metrics: { body_fat_pct: [{ source_provider: "garmin", points: [point] }] } } } };
