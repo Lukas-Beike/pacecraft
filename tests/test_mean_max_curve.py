@@ -741,6 +741,24 @@ class ProfileSelectionTests(unittest.TestCase):
         self.assertEqual("newer", kept["build"])
         self.assertEqual(["newer", "older"], builds)
 
+    def test_a_new_weather_row_starts_no_all_time_rebuild(self):
+        # No all-time reader names a temperature, so the activity weather is
+        # not read for them and a new weather row builds nothing (#3036).
+        summaries = []
+        self.add_ride(summaries, "act_1", day="2026-10-10")
+        builds = []
+        service = self.service(
+            summaries, spawn=builds.append, pause=lambda _seconds: None
+        )
+        service.power_profiles(all_time=True)
+        builds.pop()()
+        # The 90-day comparisons still read it; the all-time records do not.
+        with patch.object(
+            report_service, "session_temperatures", return_value={"act_1": 21.0}
+        ):
+            service.power_profiles(all_time=True)
+        self.assertEqual([], builds)
+
     def test_the_all_time_build_keeps_every_curve_cached(self):
         # #2822: with more sessions than the memo held, the build evicted the
         # recent windows' curves and every rebuild recomputed the whole history.
