@@ -173,18 +173,24 @@ class WriterGate:
 
 
 def kept_until_change[T](
-    database_manager: Callable[[], DatabaseManager], read: Callable[[], T]
+    database_manager: Callable[[], DatabaseManager],
+    read: Callable[[], T],
+    *,
+    wait_s: float = 5.0,
 ) -> Callable[[], T]:
     """``read``'s value, kept until a commit changes rows or a restore (#3017).
 
     The value is shared by every caller, which must not change it. A read is
     keyed by the revision it sees at least (``DatabaseManager.read_revision``);
     one inside a unit of work is neither kept nor served, since it may see
-    uncommitted rows. No lock is held while reading: a caller holding a
-    snapshot must never wait for another thread's read.
+    uncommitted rows. Concurrent callers of one revision wait for the first
+    one's read, at most ``wait_s``: a waiter may hold a snapshot the read
+    needs (a reader slot, a restore drain), so it then reads itself. No lock
+    is held while reading.
     """
     lock = threading.Lock()
     kept: list[Any] = [None, -1, None]
+    running: dict[tuple[int, int], threading.Event] = {}
 
     def fill(manager: DatabaseManager, revision: int | None) -> T:
         value = read()
@@ -194,13 +200,32 @@ def kept_until_change[T](
                 kept[:] = [manager, revision, value]
         return value
 
+    def served(manager: DatabaseManager, revision: int) -> bool:
+        return kept[0] is manager and kept[1] == revision
+
     def current() -> T:
         manager = database_manager()
         revision = manager.read_revision()
+        if revision is None:
+            return read()
+        key = (id(manager), revision)
         with lock:
-            if revision is not None and kept[0] is manager and kept[1] == revision:
+            if served(manager, revision):
                 return kept[2]
-        return fill(manager, revision)
+            leading = key not in running
+            done = running.setdefault(key, threading.Event())
+        if not leading:
+            done.wait(wait_s)
+            with lock:
+                if served(manager, revision):
+                    return kept[2]
+            return fill(manager, revision)
+        try:
+            return fill(manager, revision)
+        finally:
+            with lock:
+                running.pop(key, None)
+            done.set()
 
     return current
 

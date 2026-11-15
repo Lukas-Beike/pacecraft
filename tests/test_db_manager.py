@@ -477,6 +477,31 @@ class DatabaseManagerTests(unittest.TestCase):
             raise RuntimeError("rollback")
         self.assertEqual((kept(), len(reads)), (4, 6))
 
+    def test_concurrent_callers_share_one_read_but_wait_only_so_long(self):
+        # A start burst asks every view at once; one read serves them (#3017).
+        manager = self.make_wal_manager()
+        reads = []
+        release = threading.Event()
+
+        def read():
+            reads.append(1)
+            release.wait(5)
+            return len(reads)
+
+        for wait_s, expected in ((5.0, 1), (0.05, 3)):
+            reads.clear()
+            release.clear()
+            kept = kept_until_change(lambda: manager, read, wait_s=wait_s)
+            with ThreadPoolExecutor(max_workers=3) as pool:
+                calls = [pool.submit(kept) for _ in range(3)]
+                if wait_s < 1:
+                    # Waiters that hold what the read needs give up and read alone.
+                    time.sleep(0.3)
+                release.set()
+                for call in calls:
+                    call.result(5)
+            self.assertEqual(len(reads), expected)
+
     def test_read_snapshot_is_consistent_across_concurrent_commits(self):
         manager = self.make_wal_manager()
         with manager.read_snapshot() as snapshot:
