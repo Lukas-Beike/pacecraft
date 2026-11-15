@@ -284,7 +284,7 @@ class CompetitionService:
                 if item.get("sport") == normalized.get("sport")
                 and (
                     (
-                        str(item.get("event_date") or "")[:10] == day
+                        str(item.get("event_date") or "").startswith(day)
                         and item.get("environment") == normalized.get("environment")
                     )
                     or (
