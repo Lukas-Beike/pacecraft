@@ -164,3 +164,37 @@ print(json.dumps({"baseline": baseline, "partitions": partitions, "commands": co
     fs.rmSync(directory, { recursive: true, force: true });
   }
 });
+
+// #3026: only the explicit E2E_NO_LOGIN=1, outside CI, skips the login for server-free specs;
+// a missing or short password still stops the run at once.
+test("the login setup skips only on the explicit local switch", () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "auth-setup-"));
+  const state = path.join(directory, "state.json");
+  const run = (extra) => {
+    const env = { ...process.env, E2E_AUTH_STATE_PATH: state };
+    for (const key of ["E2E_APP_PASSWORD", "E2E_NO_LOGIN", "CI"]) delete env[key];
+    Object.assign(env, extra);
+    const script = `require(${JSON.stringify(path.join(root, "e2e", "auth.setup.js"))})({ projects: [{ use: {} }] })`
+      + ".then(() => process.exit(0), (error) => { console.error(error.message); process.exit(3); })";
+    try {
+      execFileSync(process.execPath, ["-e", script], { env, encoding: "utf8", stdio: "pipe" });
+      return 0;
+    } catch (error) {
+      return [error.status, error.stderr];
+    }
+  };
+  try {
+    assert.equal(run({ E2E_NO_LOGIN: "1" }), 0);
+    assert.equal(fs.existsSync(state), false); // the real session file stays untouched
+    for (const extra of [{}, { E2E_APP_PASSWORD: "short" }, { CI: "true" }]) {
+      const [status, message] = run(extra);
+      assert.equal(status, 3, JSON.stringify(extra));
+      assert.match(message, /E2E_APP_PASSWORD must be set/);
+    }
+    const [status, message] = run({ E2E_NO_LOGIN: "1", CI: "true" });
+    assert.equal(status, 3);
+    assert.match(message, /CI always logs in/);
+  } finally {
+    fs.rmSync(directory, { recursive: true, force: true });
+  }
+});
