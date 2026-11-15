@@ -479,10 +479,15 @@ def wahoo_links_without_template(db: Any, provider: str, entity_kind: str) -> li
 
 
 def archived_local_templates(db: Any, entity_kind: str) -> list[Any]:
-    """Archived templates without an external id or any provider link (#3141)."""
+    """Archived templates without an external id or any provider link (#3141).
+
+    A payload that is not valid JSON is skipped, not raised: the JSON functions
+    run only behind `json_valid`, so one corrupt row stops neither the purge nor
+    the diagnostics.
+    """
     return db.execute(
-        f"SELECT * FROM workout_library w WHERE {_TEMPLATES} "
-        "AND json_extract(payload, '$.archived') = 1 "
+        "SELECT * FROM workout_library w WHERE CASE WHEN json_valid(payload) THEN "
+        f"({_TEMPLATES} AND json_extract(payload, '$.archived') = 1) ELSE 0 END "
         "AND COALESCE(external_id, '') = '' AND NOT EXISTS (SELECT 1 FROM "
         "remote_links l WHERE l.local_id = w.local_id AND l.entity_kind = ?) "
         "ORDER BY local_id",

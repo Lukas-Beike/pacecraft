@@ -740,6 +740,9 @@ class WorkoutLibraryServiceTests(unittest.TestCase):
         self._insert_payload(
             legacy, json.dumps({"id": legacy, "type": "Ride", "archived": True})
         )
+        # A corrupt payload is skipped and stays; it stops neither purge nor counts.
+        corrupt = str(uuid.UUID(int=901))
+        self._insert_payload(corrupt, "{")
         clock[0] = self._day(2)
         service.update(ids["recent"], {"action": "archive"})
         clock[0] = self._day(10)
@@ -763,6 +766,7 @@ class WorkoutLibraryServiceTests(unittest.TestCase):
         ):
             self.assertEqual(kept, self._library_row(ids[name]) is not None, name)
         self.assertIsNone(self._library_row(legacy))
+        self.assertIsNotNone(self._library_row(corrupt))
         with self.database_manager.reader() as db:
             deleted = sorted(
                 row["entity_id"]
