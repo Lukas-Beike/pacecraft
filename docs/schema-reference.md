@@ -32,9 +32,9 @@ The keys of the `kv` table are listed in [kv-catalogue.md](kv-catalogue.md).
 ## Current schema
 
 <!-- BEGIN GENERATED SCHEMA -->
-Schema version: `30` (`PRAGMA user_version`).
+Schema version: `31` (`PRAGMA user_version`).
 
-Shape digest: `e680b95e585bb238ddbf783aef80a6be890fe63295d07eeea1e17df6b86379ad`.
+Shape digest: `8de2c800f630dd9819070e46ae4ccde22342cdb64a24b35c151bd7efe9007c11`.
 
 48 tables and 35 named indexes, in signature order.
 
@@ -287,7 +287,7 @@ CREATE TABLE activity_detail_sets (
     content_sha256 TEXT NOT NULL CHECK (length(content_sha256) = 64),
     fetched_at TEXT NOT NULL,
     created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL, hr_source TEXT CHECK (hr_source IS NULL OR hr_source IN ('chest_strap', 'optical', 'unknown')), power_source TEXT CHECK (power_source IS NULL OR power_source IN ('power_meter', 'trainer', 'estimated', 'unknown')), sensors TEXT CHECK (sensors IS NULL OR (json_valid(sensors) AND json_type(sensors) = 'array')), dfa_alpha1 TEXT CHECK (dfa_alpha1 IS NULL OR (json_valid(dfa_alpha1) AND json_type(dfa_alpha1) = 'object')),
+    updated_at TEXT NOT NULL, hr_source TEXT CHECK (hr_source IS NULL OR hr_source IN ('chest_strap', 'optical', 'unknown')), power_source TEXT CHECK (power_source IS NULL OR power_source IN ('power_meter', 'trainer', 'estimated', 'unknown')), sensors TEXT CHECK (sensors IS NULL OR (json_valid(sensors) AND json_type(sensors) = 'array')), dfa_alpha1 TEXT CHECK (dfa_alpha1 IS NULL OR (json_valid(dfa_alpha1) AND json_type(dfa_alpha1) = 'object')), workout_steps TEXT CHECK (workout_steps IS NULL OR (detail_kind = 'laps' AND json_valid(workout_steps) AND json_type(workout_steps) = 'array')), device_zones TEXT CHECK (device_zones IS NULL OR (detail_kind = 'streams' AND json_valid(device_zones) AND json_type(device_zones) = 'object')),
     PRIMARY KEY (provider, provider_activity_id, detail_kind),
     FOREIGN KEY (provider, provider_activity_id)
         REFERENCES activity_records(provider, provider_activity_id),
@@ -338,7 +338,7 @@ CREATE TABLE activity_laps (
     elevation_gain_m REAL,
     load REAL,
     intensity_pct REAL,
-    max_speed_mps REAL,
+    max_speed_mps REAL, workout_step_index INTEGER CHECK (workout_step_index IS NULL OR workout_step_index BETWEEN 0 AND 999), lap_trigger TEXT CHECK (lap_trigger IS NULL OR length(lap_trigger) BETWEEN 1 AND 32), avg_respiration_rate_brpm REAL, max_respiration_rate_brpm REAL, avg_grade_adjusted_speed_mps REAL,
     PRIMARY KEY (provider, provider_activity_id, lap_index),
     FOREIGN KEY (provider, provider_activity_id, detail_kind)
         REFERENCES activity_detail_sets(provider, provider_activity_id, detail_kind)

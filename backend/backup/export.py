@@ -83,7 +83,12 @@ TimeoutErrorFactory = Callable[[], Exception]
 # Version 19 adds external_calendar_decisions.jsonl, the athlete's training
 # impact per calendar event (schema v28).
 # Version 20 adds location to competitions.jsonl (schema v29).
-PRIVACY_EXPORT_FORMAT_VERSION = 20
+# Version 21 adds the lap columns workout_step_index, lap_trigger,
+# avg_respiration_rate_brpm, max_respiration_rate_brpm and
+# avg_grade_adjusted_speed_mps to activity_laps.jsonl, and workout_steps and
+# device_zones (JSON text) to activity_detail_sets.jsonl (schema v31). Schema v30
+# changed no exported row, so it kept version 20.
+PRIVACY_EXPORT_FORMAT_VERSION = 21
 
 
 class PrivacyArchiveExportService:

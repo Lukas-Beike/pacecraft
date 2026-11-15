@@ -11,6 +11,7 @@ from backend.canonical.activity_detail import (
     ActivityDfaAlpha1,
     ActivitySensor,
     ActivityStreamSet,
+    DeviceZoneBasis,
     without_positions,
 )
 from backend.canonical.vocabulary import (
@@ -94,6 +95,7 @@ def sensor_track_set(activity_id="g1", provider=GARMIN):
             quality=DfaQuality.GOOD,
             method=1,
         ),
+        device_zones=DeviceZoneBasis(max_hr=190.0, ftp_w=250.0),
     )
 
 

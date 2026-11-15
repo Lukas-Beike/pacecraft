@@ -5,7 +5,7 @@ by release 2.0.5. Older databases and backups are rejected unchanged; upgrade
 them with release 2.0.5 first. The baseline keeps its frozen fixture in
 tests/fixtures and its digest in backend.db.schema_history; each later schema
 adds one upgrade step here, so the baseline reaches the current schema.
-Released later schemas (v27 to v29) keep only their digests and enter the
+Released later schemas (v27 to v30) keep only their digests and enter the
 chain there.
 """
 
@@ -31,6 +31,7 @@ from backend.db.schema_history import (
     SHAPE_SCHEMA_V27,
     SHAPE_SCHEMA_V28,
     SHAPE_SCHEMA_V29,
+    SHAPE_SCHEMA_V30,
     released_shape,
 )
 
@@ -400,10 +401,27 @@ def _session_curves(db: Any) -> None:
     execute_ddl(db, _V30_SESSION_CURVES_DDL)
 
 
+# Frozen copy of the v31 columns; the live DDL may change later.
+_V31_DEVICE_WORKOUT_DDL: Final = """
+    ALTER TABLE activity_laps ADD COLUMN workout_step_index INTEGER CHECK (workout_step_index IS NULL OR workout_step_index BETWEEN 0 AND 999);
+    ALTER TABLE activity_laps ADD COLUMN lap_trigger TEXT CHECK (lap_trigger IS NULL OR length(lap_trigger) BETWEEN 1 AND 32);
+    ALTER TABLE activity_laps ADD COLUMN avg_respiration_rate_brpm REAL;
+    ALTER TABLE activity_laps ADD COLUMN max_respiration_rate_brpm REAL;
+    ALTER TABLE activity_laps ADD COLUMN avg_grade_adjusted_speed_mps REAL;
+    ALTER TABLE activity_detail_sets ADD COLUMN workout_steps TEXT CHECK (workout_steps IS NULL OR (detail_kind = 'laps' AND json_valid(workout_steps) AND json_type(workout_steps) = 'array'));
+    ALTER TABLE activity_detail_sets ADD COLUMN device_zones TEXT CHECK (device_zones IS NULL OR (detail_kind = 'streams' AND json_valid(device_zones) AND json_type(device_zones) = 'object'))"""
+
+
+def _device_workout(db: Any) -> None:
+    """Schema v31: every lap and detail set gains empty watch workout columns (#2220)."""
+    execute_ddl(db, _V31_DEVICE_WORKOUT_DDL)
+
+
 # Released shape -> (next shape, step).
 UPGRADE_STEPS: Final[Mapping[str, tuple[str, Callable[[Any], None]]]] = {
     SHAPE_SCHEMA_V26: (SHAPE_SCHEMA_V27, _canonical_products),
     SHAPE_SCHEMA_V27: (SHAPE_SCHEMA_V28, _calendar_decisions),
     SHAPE_SCHEMA_V28: (SHAPE_SCHEMA_V29, _competition_location),
-    SHAPE_SCHEMA_V29: (SHAPE_CURRENT, _session_curves),
+    SHAPE_SCHEMA_V29: (SHAPE_SCHEMA_V30, _session_curves),
+    SHAPE_SCHEMA_V30: (SHAPE_CURRENT, _device_workout),
 }

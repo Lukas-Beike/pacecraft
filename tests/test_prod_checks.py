@@ -81,6 +81,11 @@ def report(messages=40):
                 "ride": {
                     "files": 5,
                     "messages": {"216": 5},
+                    "new_decodes": {
+                        "respiration_record.in_bounds": 3,
+                        "workout_steps_max": 12,
+                        "note text": 1,
+                    },
                     "label": "text never printed",
                 },
             },
@@ -305,6 +310,8 @@ class ProdChecksTests(unittest.TestCase):
                 "ok logout 200",
                 f"{prefix}garmin.ride.files 5",
                 f"{prefix}garmin.ride.messages.216 5",
+                f"{prefix}garmin.ride.new_decodes.respiration_record.in_bounds 3",
+                f"{prefix}garmin.ride.new_decodes.workout_steps_max 12",
                 f'{prefix}status "ready"',
             ],
         )

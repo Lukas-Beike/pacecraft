@@ -16,7 +16,7 @@ required when the athlete explicitly chooses to start over. Future schema
 changes add explicit, versioned and transactional migrations from the baseline
 with upgrade regression tests; the baseline moves only when production runs a
 newer schema.
-The current schema is version 30. This table is the only place that lists
+The current schema is version 31. This table is the only place that lists
 which releases wrote each schema; other documents name a schema by the release
 that introduced it ("v29, since 2.1.17"), so a release with an unchanged schema
 needs no documentation edit (#3130).
@@ -34,8 +34,9 @@ needs no documentation edit (#3130).
 | 28 | 2.1.10 to 2.1.16 |
 | 29 | 2.1.17 to 2.1.19 |
 | 30 | since 2.1.20 |
+| 31 | not released yet |
 
-Versions 27, 28 and 29 keep only their shape digests and enter the chain after the baseline's
+Versions 27 to 30 keep only their shape digests and enter the chain after the baseline's
 product step and the calendar decision step. Version 10 adds canonical activity detail
 (streams, laps and zone times), version 11 the food-database mirror, version 12
 stores the Garmin collection as one keyed row per element instead of one large
@@ -74,7 +75,15 @@ Version 30 adds `session_curves`, each session's computed best-effort curves
 with the fingerprint of the inputs they came from, so a restart loads them
 instead of recomputing; a row counts only while its fingerprint matches, the
 all-time build writes and prunes it, the local data purge deletes it and the
-privacy export leaves it out. The upgrade only creates the empty table. Release
+privacy export leaves it out. The upgrade only creates the empty table.
+Version 31 adds what the watch recorded beside the streams (#2220): on each lap
+the workout step it belonged to, why it ended, its breathing rate (average and
+maximum) and Garmin's grade-adjusted speed; on a laps set the executed workout
+steps and on a streams set the zone basis of the watch, each a JSON text of
+numbers and vocabulary names that its set kind alone may hold. The upgrade adds
+only empty columns and changes no row; the columns stay empty until a later
+release maps the values. The privacy export gains the same columns (export
+format 21). Release
 2.0.5 upgrades a version 21 to 25 database or backup to it in place within one
 transaction, and a failed upgrade leaves it unchanged. Change-history entries
 written before version 16 still name the former fields and can no longer be
