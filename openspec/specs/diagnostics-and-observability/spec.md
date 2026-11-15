@@ -159,6 +159,10 @@ The diagnostic report SHALL include the state of the local method passes as coun
 - **WHEN** the report is generated
 - **THEN** `lt1_ride_coverage` counts the rides of the last 60 days with a power profile, outdoor and indoor, and per power variation limit 0.15, 0.20 and 0.25 how many have a 10 bpm band with at least 10 steady minutes within it; counts only, never dates, values or names (#2535)
 
+#### Scenario: Newest app backup
+- **WHEN** the report is generated
+- **THEN** `backup` reports `known` false until a backup download through the app has finished, and afterwards the newest such backup's age in hours, size in bytes and `verified` (its integrity and foreign key checks passed); never a name, path or content (#2996)
+
 #### Scenario: Storage and runtime health
 - **WHEN** the report is generated
 - **THEN** `runtime` carries the uptime in seconds and the allocator arena limit, `database` carries the database and write-ahead log sizes and the free space of the data directory, and `recovery_copies` carries the count, newest age in hours and total size of the recovery copies beside the database, measured by stat only, never a name, path or content (#2848)

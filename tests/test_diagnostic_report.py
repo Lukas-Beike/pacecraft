@@ -209,6 +209,7 @@ class DiagnosticReportServiceTests(unittest.TestCase):
                 "curve_build",
                 "garmin_strength_push",
                 "recovery_copies",
+                "backup",
                 "stream_backfill",
                 "fit_inventory",
                 "session_metrics",
@@ -353,7 +354,8 @@ class DiagnosticReportServiceTests(unittest.TestCase):
         # The session focus backfill state and the weekly plan removal state are one more read each.
         # The Wahoo block reads the token record and the last sync time and error.
         # The session rebundle state is one more read, the FIT inventory one more (#2220).
-        self.assertEqual(self.key_values.get.call_count, 18)
+        # The newest app backup is one more (#2996).
+        self.assertEqual(self.key_values.get.call_count, 19)
 
     def test_storage_and_recovery_copies_are_sizes_and_ages_only(self):
         # Stat only: sizes, free space and the newest copy's age; no name or path.

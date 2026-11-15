@@ -197,6 +197,34 @@ class ProdChecksTests(unittest.TestCase):
         # A stuck job of any provider fails the check, not only among the newest
         # ten jobs (#2953).
         self.assertIn("FAIL stuck plan-sync jobs: 1", text)
+        # The newest app backup is shown; a schema release requires it (#2996).
+        self.assertIn("info backup unknown", text)
+        fresh = {
+            "backup": {"known": True, "age_hours": 3.5, "bytes": 9, "verified": True}
+        }
+        checks = {
+            "fresh": ({"backup": prod_diagnostics.backup_state(fresh["backup"])}, "ok"),
+            "old": (
+                {
+                    "backup": prod_diagnostics.backup_state(
+                        fresh["backup"] | {"age_hours": 30}
+                    )
+                },
+                "FAIL",
+            ),
+            "unchecked": (
+                {
+                    "backup": prod_diagnostics.backup_state(
+                        fresh["backup"] | {"verified": False}
+                    )
+                },
+                "FAIL",
+            ),
+            "unknown": ({"backup": prod_diagnostics.backup_state(None)}, "FAIL"),
+        }
+        for name, (case, state) in checks.items():
+            with self.subTest(backup=name):
+                self.assertEqual(prod_diagnostics.backup_line(case, 24)[0], state)
         # Without the field the recent jobs decide; an unavailable section is
         # unknown, which fails.
         old = (datetime.now(UTC) - timedelta(hours=3)).isoformat()
@@ -320,6 +348,13 @@ class ProdChecksTests(unittest.TestCase):
                 "intervals": {"units": 2, "without_structure": 1},
                 "unit_name": "text never printed",
             },
+            "backup": {
+                "known": True,
+                "age_hours": 3.5,
+                "bytes": 4096,
+                "verified": True,
+                "name": "text never printed",
+            },
             "curve_build": {
                 "status": "building",
                 "builds": 3,
@@ -382,6 +417,9 @@ class ProdChecksTests(unittest.TestCase):
             "garmin_strength_push": [
                 "garmin.several_exercises 1", "garmin.units 2", "garmin.with_kg 1",
                 "intervals.units 2", "intervals.without_structure 1",
+            ],
+            "backup": [
+                "age_hours 3.5", "bytes 4096", "known true", "verified true",
             ],
             "curve_build": [
                 "building_s 12.0", "builds 3", "failed_age_s null", "failures 0",

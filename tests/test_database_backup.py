@@ -9,6 +9,7 @@ import time
 import unittest
 from contextlib import nullcontext
 from dataclasses import replace
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
@@ -18,9 +19,14 @@ try:
 except ImportError:
     sqlcipher3 = None
 
-from backend.backup.database import DatabaseBackupConfig, DatabaseBackupService
+from backend.backup.database import (
+    DatabaseBackupConfig,
+    DatabaseBackupService,
+    backup_summary,
+)
 from backend.db import row_factory
 from backend.db.manager import DatabaseManager
+from backend.db.repositories import KeyValueRepository
 from backend.db.schema import configure_cipher
 from backend.errors import AppError
 
@@ -135,6 +141,37 @@ class DatabaseBackupServiceTests(unittest.TestCase):
         finally:
             stop.set()
             thread.join()
+
+    def test_a_sent_backup_is_recorded_as_counts_and_reported(self) -> None:
+        # #2996: the diagnostics know the newest backup the app sent: its age,
+        # size and that it passed its checks; never a name or path.
+        with self.manager.unit_of_work() as db:
+            db.execute(
+                "CREATE TABLE kv (key TEXT PRIMARY KEY, value TEXT, updated_at TEXT)"
+            )
+        key_values = KeyValueRepository(lambda: "2026-11-15T08:00:00+00:00")
+        service = DatabaseBackupService(
+            self.manager, self.config, self.logger, key_values
+        )
+        later = datetime.now(UTC) + timedelta(hours=3)
+        with self.manager.read_snapshot() as db:
+            self.assertEqual(backup_summary(key_values, db, later), {"known": False})
+        # A stream that fails while sending records nothing.
+        with self.assertRaises(OSError), service.stream_file():
+            raise OSError("connection reset")
+        with self.manager.read_snapshot() as db:
+            self.assertEqual(backup_summary(key_values, db, later), {"known": False})
+        with service.stream_file() as path:
+            size = path.stat().st_size
+        with self.manager.read_snapshot() as db:
+            summary = backup_summary(key_values, db, later)
+        self.assertEqual(
+            (summary["known"], summary["bytes"], summary["verified"]),
+            (True, size, True),
+        )
+        self.assertAlmostEqual(summary["age_hours"], 3.0, delta=0.1)
+        self.assertNotIn(str(self.root), str(summary))
+        self.assertNotIn("backup", " ".join(map(str, summary.values())))
 
     def test_backup_with_a_foreign_key_orphan_fails_and_is_logged(self) -> None:
         with self.manager.unit_of_work() as db:
