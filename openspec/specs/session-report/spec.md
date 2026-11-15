@@ -68,6 +68,10 @@ The system SHALL resolve which session `get_activity_details` reads in the serve
 - **WHEN** the call carries `activity_id`, as the analyse button writes it
 - **THEN** that session is read.
 
+#### Scenario: The session the athlete names is read
+- **WHEN** the athlete's own request (the current message, plus the messages an open clarification answers) names a session by "ID <id>", as the analyse button writes it, and the call names no day
+- **THEN** that session is read, whatever `activity_id` the model passed; the server takes the ID from the stored message, never from a model argument. When the model asked for another ID, the result carries a notice, and the diagnostics count `named_override`, else `by_named_id`. The sport block of the session-analysis playbook is chosen from the same session, or, without one, from the newest session as this resolution picks it.
+
 #### Scenario: A date, sport and start time resolve one session
 - **WHEN** the call carries a date, optionally with a sport and a start time
 - **THEN** the sessions of that local day of that sport starting within 30 minutes of the start time match; exactly one match is read.
@@ -89,6 +93,11 @@ The runtime diagnostics SHALL count the session reports built since start, their
 
 Evidence:
 - `backend/coach/activity_read_tools.py:resolve_session`
+- `backend/coach/activity_read_tools.py:named_activity_id`
+- `backend/coach/tool_execution_service.py:CoachStructuredToolExecutionService`
+- `backend/coach/request_payload.py:analysed_sport`
 - `backend/observability.py:SessionReportCounts`
 - `tests/test_coach_activity_read_tools.py`
+- `tests/test_coach_tool_execution_service.py:StructuredToolExecutionTests.test_only_the_athletes_own_request_names_a_provider_or_session`
+- `tests/test_coach_playbooks.py`
 - `tests/test_coach_live_eval.py`

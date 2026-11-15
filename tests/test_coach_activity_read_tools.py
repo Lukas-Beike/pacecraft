@@ -607,15 +607,24 @@ class CoachActivityReadToolServiceTests(unittest.TestCase):
             report_counts=counts,
         )
         empty = {"activity_id": None, "date": None, "sport": None, "start_time": None}
+        named = {**empty, "_named_activity_id": "act_button"}
         cases = [
             ({**empty, "activity_id": "act_button"}, "act_button"),
+            # #3080: the session the athlete's message names is read, also when
+            # the model leaves the ID out or asks for another one.
+            (named, "act_button"),
+            ({**named, "activity_id": "act_new"}, "act_button"),
+            # A day the model names is a reference of its own.
+            ({**named, "date": "2026-11-13", "start_time": "07:20"}, "act_old"),
             ({**empty, "date": "2026-11-13", "start_time": "07:20"}, "act_old"),
             (empty, "act_new"),
         ]
         for arguments, expected in cases:
-            with self.subTest(expected=expected):
-                service.execute("get_activity_details", arguments)
+            with self.subTest(arguments=arguments):
+                result = service.execute("get_activity_details", arguments)
                 self.assertEqual(expected, activity_read.detail.call_args.args[0])
+                overridden = arguments.get("activity_id") not in (None, expected)
+                self.assertEqual(overridden, "notice" in result)
         # Without a date the newest session of the last 30 days is meant.
         self.assertEqual(
             (date(2026, 10, 16), date(2026, 11, 15)),
@@ -628,7 +637,13 @@ class CoachActivityReadToolServiceTests(unittest.TestCase):
                 "get_activity_details", {**empty, "activity_id": "act_gone"}
             )
         self.assertEqual(
-            {"by_id": 1, "by_reference": 1, "newest": 1},
+            {
+                "by_id": 1,
+                "by_named_id": 1,
+                "by_reference": 2,
+                "named_override": 1,
+                "newest": 1,
+            },
             counts.summary()["resolutions"],
         )
 

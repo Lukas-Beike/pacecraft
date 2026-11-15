@@ -77,19 +77,23 @@ def _library_filter(sport: Any, query: Any) -> Callable[[Mapping[str, Any]], boo
     return matches
 
 
-def named_food_sources(context: Mapping[str, Any]) -> list[str]:
-    """The food sources the athlete's own request names: the current message
-    and, while a clarification is open, the messages it answers."""
+def athlete_request_text(context: Mapping[str, Any]) -> str:
+    """The athlete's own request of the turn: the current message and, while a
+    clarification is open, the messages it answers (#3080)."""
     pending = context.get("pending_request")
     asked = pending.get("source_message_ids") if isinstance(pending, Mapping) else None
     ids = {context.get("current_user_message_id"), *(asked or ())}
-    text = "\n".join(
+    return "\n".join(
         str(item.get("content") or "")
         for item in context.get("messages") or ()
         if isinstance(item, Mapping)
         and item.get("role") == "user"
         and item.get("id") in ids
     )
+
+
+def named_food_sources(text: str) -> list[str]:
+    """The food sources the athlete's request names."""
     return [source for source, words in _FOOD_SOURCE_NAMES if words.search(text)]
 
 

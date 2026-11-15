@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from collections.abc import Callable, Mapping, Sequence
 from datetime import date, datetime, time, timedelta
 from typing import Any, Final
@@ -61,6 +62,23 @@ START_TIME_TOLERANCE_MIN: Final = 30
 NEWEST_SESSION_DAYS: Final = 30
 # Sessions offered back when a reference is not unique.
 MAX_CANDIDATES: Final = 10
+# The session the athlete's own message names ("ID …", as the analyse button
+# writes it) is the one read (#3080). The tool execution sets this argument
+# from that message; a model argument of that name is replaced.
+NAMED_ACTIVITY_ID: Final = "_named_activity_id"
+_NAMED_ID: Final = re.compile(r"\bID ([\w:.-]{1,80})")
+NAMED_SESSION_NOTICE: Final = (
+    "The athlete's message names this session by its ID, so it was read instead "
+    "of the one requested. Comparisons come from comparable_sessions."
+)
+
+
+def named_activity_id(text: str) -> str | None:
+    """The session ID a message names, as the analyse button writes it."""
+    match = _NAMED_ID.search(text)
+    return match.group(1).rstrip(".:") if match else None
+
+
 # Candidates never carry the stored name: it is provider or athlete text.
 _CANDIDATE_KEYS: Final = (
     "id",
@@ -290,6 +308,8 @@ class CoachActivityReadToolService:
             effect = detail.pop("training_effect", None)
             result = self._with_session_context(detail)
             result.update(_analysis_additions(detail, effect))
+            if outcome == "named_override":
+                result["notice"] = NAMED_SESSION_NOTICE
             session = detail.get("session")
             if self._session_corrections is not None and isinstance(session, dict):
                 # Local session IDs and merge candidates for the session tools.
@@ -306,8 +326,13 @@ class CoachActivityReadToolService:
 
         An ID (the analyse button names it) is read as given. Otherwise the
         date, sport and start time resolve the session deterministically;
-        without a date the newest session is meant (#3084).
+        without a date the newest session is meant (#3084). The session the
+        athlete's message names is read whenever no other day is asked (#3080).
         """
+        named = arguments.get(NAMED_ACTIVITY_ID)
+        if named and not arguments.get("date"):
+            given = arguments.get("activity_id")
+            return named, "by_named_id" if given in (None, named) else "named_override"
         if arguments.get("activity_id") is not None:
             return arguments["activity_id"], "by_id"
         start_time = arguments.get("start_time")
