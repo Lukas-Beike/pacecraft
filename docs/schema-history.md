@@ -18,7 +18,7 @@ with upgrade regression tests; the baseline moves only when production runs a
 newer schema.
 The current schema is version 30. Releases wrote version 21 (1.13.41 to
 1.13.44), 22 (2.0.0), 23 (2.0.1), 24 (2.0.2), 25 (2.0.3 and 2.0.4), 26
-(2.0.5), 27 (2.1.2 to 2.1.9), 28 (2.1.10 to 2.1.16) and 29 (2.1.17); versions 27, 28 and 29
+(2.0.5), 27 (2.1.2 to 2.1.9), 28 (2.1.10 to 2.1.16) and 29 (2.1.17 and 2.1.18); versions 27, 28 and 29
 keep only their shape digests and enter the chain after the baseline's
 product step and the calendar decision step. Version 10 adds canonical activity detail
 (streams, laps and zone times), version 11 the food-database mirror, version 12
