@@ -2012,6 +2012,7 @@ async function saveEquipmentRule(status, kind, select, rule) {
   try {
     const result = await api("/api/equipment/rules", { method: "POST", body: JSON.stringify({ kind, equipment_id: select.value || null, expected_revision: rule.revision }) });
     rule.revision = result.rule.revision;
+    rule.equipment_id = select.value || null;
     equipmentRuleChanged();
     const preview = select.value ? await api(`/api/equipment/rules/preview?kind=${encodeURIComponent(kind)}`) : null;
     status.replaceChildren(...equipmentRulePreview(status, kind, preview?.count || 0));
