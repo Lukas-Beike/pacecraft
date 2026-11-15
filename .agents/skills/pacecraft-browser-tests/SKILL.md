@@ -27,6 +27,14 @@ python scripts/run_browser_tests.py --project all --keep-going
   project, then the other viewports for layout changes. `--list` resolves the
   selection without Docker or a browser. A spec a selected project does not
   list (a desktop-only spec on mobile) is skipped there with a note.
+- Flaky test: `--repeat-each N --grep "<title regex>"` repeats one test in its
+  spec's child without editing `playwright.config.cjs` (no `repeatEach` or
+  `test.only` edits, #3094). Repeats share the child's fixture, so a test that
+  needs fresh state (an empty chat) fails from the second repeat; narrow with
+  `--grep`. The runner never reads a child's console output. To read a value,
+  write it to `testInfo.outputPath("<name>")` in the spec; the file lands under
+  the run's `artifacts/` in `test-results/browser-runs/`. A flake seen only in
+  CI needs a draft PR: the CI browser (`--browser-image`) needs a Linux host.
 - A server-free spec (one that only uses `page.setContent`, such as
   `e2e/ui-walk-steps.spec.js`) runs without Docker: set `E2E_NO_LOGIN=1` and
   run `npx playwright test e2e/<name>.spec.js --project=desktop`. The login
