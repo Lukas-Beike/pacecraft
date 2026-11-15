@@ -30,6 +30,7 @@ from datetime import date
 from typing import Any, Final
 
 from backend.canonical.mapping import coerce_number
+from backend.canonical.validation import METRIC_BOUNDS
 from backend.canonical.vocabulary import MetricKind, Sport
 from backend.providers.garmin_device_records import primary_device_record
 from backend.providers.garmin_fields import (
@@ -37,10 +38,7 @@ from backend.providers.garmin_fields import (
     GARMIN_READINESS_ALIASES,
     group_map_entries,
 )
-from backend.providers.garmin_performance_fields import (
-    METRIC_DATE_KEYS,
-    PLANNING_READINESS_ALIASES,
-)
+from backend.providers.garmin_performance_fields import METRIC_DATE_KEYS
 
 DAILY_TRAINING_STATUS: Final = "daily_training_status"
 TRAINING_LOAD_BALANCE: Final = "training_load_balance"
@@ -171,13 +169,37 @@ def _text(record: Mapping[str, Any], key: str) -> str | None:
     return value if isinstance(value, str) and value else None
 
 
+def readiness_score(record: Mapping[str, Any]) -> tuple[str, object] | None:
+    """The first non-empty readiness score alias and its raw value, or None.
+
+    The one score reader of every readiness reader: the morning choice, the
+    history value and, by the same rule, the ``readiness`` section (#2884).
+    """
+    return next(
+        (
+            (key, record[key])
+            for key in _READINESS_SCORE_KEYS
+            if record.get(key) not in (None, "")
+        ),
+        None,
+    )
+
+
+def _usable_score(record: Mapping[str, Any]) -> bool:
+    """Whether the reading's score is one the mappers keep (0 rejected, #2884)."""
+    found = readiness_score(record)
+    number = None if found is None else coerce_number(found[1])
+    lower, upper = METRIC_BOUNDS[MetricKind.READINESS]
+    return number is not None and 0 < number and lower <= number <= upper
+
+
 def _morning_rank(record: Mapping[str, Any]) -> _MorningRank:
-    """Scored readings first, then wake-up ones, then the earliest reading.
+    """Readings with a usable score first, then wake-up ones, then the earliest.
 
     Local reading times are compared with local ones and UTC times with UTC ones;
     a reading with a local time ranks before one with only a UTC time.
     """
-    scored = any(record.get(key) is not None for key in _READINESS_SCORE_KEYS)
+    scored = _usable_score(record)
     local, utc = _text(record, _LOCAL_TIME), _text(record, _UTC_TIME)
     return (
         not scored,
@@ -337,9 +359,11 @@ def training_values(section: str, payload: object) -> list[TrainingValue]:
     rows = history_rows(payload)
     if section == TRAINING_READINESS_HISTORY:
         rows = morning_readiness_records(rows)
+    # A readiness row keeps the day its morning choice gave it (#2884).
+    day_of = readiness_day if section == TRAINING_READINESS_HISTORY else _row_day
     values: list[TrainingValue] = []
     for row in rows:
-        day = _row_day(row)
+        day = day_of(row)
         if day is None:
             continue
         value = _history_value(section, row, day)
@@ -370,13 +394,11 @@ def _history_value(
             Sport.RUN,
         )
     if section == TRAINING_READINESS_HISTORY:
-        alias = next(
-            (key for key in PLANNING_READINESS_ALIASES if row.get(key) is not None),
-            None,
-        )
-        if alias is None:
+        score = readiness_score(row)
+        if score is None:
             return None
-        return TrainingValue(day, MetricKind.READINESS, row[alias], alias, "readiness")
+        alias, raw = score
+        return TrainingValue(day, MetricKind.READINESS, raw, alias, "readiness")
     return None
 
 

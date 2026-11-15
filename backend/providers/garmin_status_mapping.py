@@ -35,6 +35,7 @@ from backend.providers.garmin_training_mapping import (
     TRAINING_READINESS_HISTORY,
     history_rows,
     morning_readiness_records,
+    readiness_day,
 )
 
 GARMIN_LABEL: Final = "Garmin Connect"
@@ -114,7 +115,12 @@ def map_garmin_status_codes(
     codes: dict[date, CategoricalObservation] = {}
     for row in rows:
         code = next((row[f] for f in fields if row.get(f) is not None), None)
-        day = _day(row.get("calendarDate"))
+        # A readiness level keeps the day its morning choice gave it (#2884).
+        day = (
+            readiness_day(row)
+            if domain is CategoricalDomain.READINESS_LEVEL
+            else _day(row.get("calendarDate"))
+        )
         if day is None or not isinstance(code, str) or not _CODE.fullmatch(code):
             continue
         codes.setdefault(

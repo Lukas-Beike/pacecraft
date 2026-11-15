@@ -2061,6 +2061,129 @@ class MorningReadinessTests(unittest.TestCase):
         later = {"calendarDate": DAY, "score": 52, "timestampLocal": "2026-10-10T09:00"}
         result = _map({"readiness": [unscored, later]})
         self.assertEqual(_find(result, MetricKind.READINESS).value.value, 52.0)
+        # #2884 (a): a score the mapper rejects counts as no score.
+        later = {**later, "score": 55, "level": "MODERATE"}
+        for score in (0, "bad", 101):
+            wake_up = {**_MORNING, "score": score}
+            for section in ("readiness", "training_readiness_history"):
+                with self.subTest(score=score, section=section):
+                    result = _map({section: [wake_up, later]})
+                    self.assertEqual(
+                        _find(result, MetricKind.READINESS).value.value, 55.0
+                    )
+                    codes = map_garmin_status_codes(
+                        section,
+                        [wake_up, later],
+                        source_record_id=section,
+                        retrieved_at=RETRIEVED_AT,
+                    )
+                    self.assertEqual([code.code for code in codes], ["MODERATE"])
+            with self.subTest(score=score, section="re-score"):
+                # A re-score taken later in the day is still never promoted.
+                re_score = {**_AFTERNOON, "score": 55}
+                for section in ("readiness", "training_readiness_history"):
+                    result = _map({section: [wake_up, re_score]})
+                    self.assertEqual(
+                        [o for o in result.records if o.kind is MetricKind.READINESS],
+                        [],
+                    )
+            with self.subTest(score=score, section="chart"):
+                points = projected_metric(
+                    [wake_up, later],
+                    start=date(2026, 10, 1),
+                    end=date(2026, 10, 31),
+                    aggregation="daily",
+                    metric="training_readiness_history",
+                    synced_at=None,
+                )["points"]
+                self.assertEqual([point.get("value") for point in points], [55])
+
+    def test_the_choice_counts_a_score_exactly_when_the_mapper_keeps_it(self) -> None:
+        # #2884 review: one score reader for the choice and both sections. A wake-up
+        # reading wins over a later 50 exactly when its own score is mapped.
+        later = {"calendarDate": DAY, "score": 50, "timestampLocal": "2026-10-10T09:00"}
+        scores = (
+            {"score": 0},
+            {"score": 100},
+            {"score": 100.1},
+            {"score": "55"},
+            {"score": ""},
+            {"score": True},
+            {"score": "", "trainingReadinessScore": 55},
+        )
+        for score in scores:
+            wake_up = {**_MORNING, **score}
+            for section in ("readiness", "training_readiness_history"):
+                with self.subTest(score=score, section=section):
+                    alone = [
+                        o.value.value
+                        for o in _map({section: [wake_up]}).records
+                        if o.kind is MetricKind.READINESS
+                    ]
+                    chosen = _find(
+                        _map({section: [wake_up, later]}), MetricKind.READINESS
+                    )
+                    self.assertEqual(chosen.value.value, alone[0] if alone else 50.0)
+        # An empty first alias falls through to the next one in both sections, and
+        # an undated reading is still reported.
+        fallthrough = {**_MORNING, "score": "", "trainingReadinessScore": 55}
+        for section in ("readiness", "training_readiness_history"):
+            with self.subTest(section=section, case="empty alias"):
+                result = _map({section: [fallthrough]})
+                self.assertEqual(_find(result, MetricKind.READINESS).value.value, 55.0)
+                self.assertEqual(_issues(result), [])
+        for calendar_date, reason in (
+            (None, IssueReason.MISSING),
+            ("", IssueReason.MISSING),
+            ("garbage", IssueReason.INVALID_TYPE),
+            (20261010, IssueReason.INVALID_TYPE),
+        ):
+            with self.subTest(calendar_date=calendar_date):
+                undated = _map(
+                    {"readiness": [{"calendarDate": calendar_date, "score": 64}]}
+                )
+                self.assertEqual(
+                    [(field, found) for _, field, found in _issues(undated)],
+                    [("calendarDate", reason)],
+                )
+
+    def test_a_chosen_reading_keeps_its_day_whatever_its_other_date_keys(self) -> None:
+        # #2884 (b, c): the readers date a chosen reading by the day the choice
+        # used (``calendarDate`` first), so it is never dropped afterwards.
+        disagreeing = {"calendarDate": DAY, "date": "2026-10-09", "score": 64}
+        date_only = {"date": DAY, "score": 64}
+        timestamp_shaped = {"calendarDate": f"{DAY}T06:45:00", "score": 64}
+        for record in (disagreeing, date_only, timestamp_shaped):
+            for section in ("readiness", "training_readiness_history"):
+                with self.subTest(keys=sorted(record), section=section):
+                    reading = {**record, "level": "MODERATE"}
+                    readiness = _find(_map({section: [reading]}), MetricKind.READINESS)
+                    self.assertEqual(
+                        (readiness.observed_on, readiness.value.value),
+                        (date(2026, 10, 10), 64.0),
+                    )
+                    (code,) = map_garmin_status_codes(
+                        section,
+                        [reading],
+                        source_record_id=section,
+                        retrieved_at=RETRIEVED_AT,
+                    )
+                    self.assertEqual(
+                        (code.observed_on, code.code), (date(2026, 10, 10), "MODERATE")
+                    )
+            with self.subTest(keys=sorted(record), section="chart"):
+                points = projected_metric(
+                    [record],
+                    start=date(2026, 10, 1),
+                    end=date(2026, 10, 31),
+                    aggregation="daily",
+                    metric="training_readiness_history",
+                    synced_at=None,
+                )["points"]
+                self.assertEqual(
+                    [(point["date"], point.get("value")) for point in points],
+                    [(DAY, 64)],
+                )
 
     def test_local_times_are_not_compared_with_utc_times(self) -> None:
         local = {"calendarDate": DAY, "score": 70, "timestampLocal": "2026-10-10T06:45"}
@@ -2196,7 +2319,7 @@ class PersonalApiShapeTests(unittest.TestCase):
 
 class ContractTests(unittest.TestCase):
     def test_mapper_version_is_pinned(self) -> None:
-        self.assertEqual(MAPPER_VERSION, 24)
+        self.assertEqual(MAPPER_VERSION, 25)
 
     def test_non_mapping_sections_yield_one_issue(self) -> None:
         for sections in (["sleep"], "sleep", None, 5):

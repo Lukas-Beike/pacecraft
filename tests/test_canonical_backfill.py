@@ -40,8 +40,9 @@ from backend.db.repositories import KeyValueRepository
 from backend.db.schema import initialize_schema
 from backend.diagnostics.canonical_backfill import summarize_canonical_backfill
 from backend.errors import AppError, DatabaseBusyError
-from backend.providers import canonical_plans
+from backend.providers import canonical_plans, garmin_training_mapping
 from backend.providers.canonical_plans import wahoo_ingest_plan
+from backend.providers.garmin_fields import GARMIN_READINESS_ALIASES
 from backend.runtime.maintenance import MaintenanceGate
 from backend.sync import canonical_backfill as backfill_module
 from backend.sync.canonical_backfill import (
@@ -77,16 +78,16 @@ GENERATED_IDS = frozenset({"activity_id", "merged_into", "merged_into_retained"}
 # bumped mapper versions, taken on the code before the helpers were shared.
 PINNED_ROW_DIGESTS = [
     {
-        "provider_records": "9b60e7aee962974d98600159e027ea73f793ae243a3297ad38e302affb3c92be",
+        "provider_records": "93ccd5de06c27b96bdfbd3d45f7e76859981cc9cf3998fe201a7feaa086565a5",
         "activity_records": "b3490140813867886fe9a5c127151fd651b6c1c6186e86504ec4e99eae056a0c",
         "activity_sessions": "95a5fcc0408cfc6f43b3f624f801dfc383ff14196b98eac887eb3f00743c06c3",
-        "observations": "0966507eb4a99f456a7fb17f7a937c326afa4f4567441daa693b0a299d23fc6b",
+        "observations": "32163b97854c74c72a3d8994570c0c8cdcb9d2aac26848c682b62d88f2b384b9",
     },
     {
-        "provider_records": "3278e0102b460563ca647869a5b950c139edca6b9b13c97197c71c22a8483819",
+        "provider_records": "eca9944431bd410c8a1b8ad14b6b5df3ee4a30d69bbaa35e24f2523eb9e0ec88",
         "activity_records": "b3490140813867886fe9a5c127151fd651b6c1c6186e86504ec4e99eae056a0c",
         "activity_sessions": "95a5fcc0408cfc6f43b3f624f801dfc383ff14196b98eac887eb3f00743c06c3",
-        "observations": "0966507eb4a99f456a7fb17f7a937c326afa4f4567441daa693b0a299d23fc6b",
+        "observations": "32163b97854c74c72a3d8994570c0c8cdcb9d2aac26848c682b62d88f2b384b9",
     },
 ]
 FIXTURES = Path(__file__).resolve().parent / "fixtures" / "providers"
@@ -552,27 +553,66 @@ class ReprojectionTests(BackfillFixture):
             "score": 64,
             "level": "MODERATE",
         }
+        # #2884: (a) a wake-up score the mapper rejects hides no valid reading,
+        # (b) disagreeing date keys and (c) a ``date``-only reading keep the day
+        # the choice gave them, with their level.
+        unusable = [
+            {**wake_up, "calendarDate": "2026-10-04", "score": 0, "level": "LOW"},
+            {
+                "calendarDate": "2026-10-04",
+                "timestamp": "2026-10-04T09:00:00",
+                "score": 55,
+                "level": "MODERATE",
+            },
+        ]
+        disagreeing = {
+            "calendarDate": "2026-10-05",
+            "date": "2026-10-02",
+            "score": 61,
+            "level": "HIGH",
+        }
+        date_only = {"date": "2026-10-06", "score": 62, "level": "MODERATE"}
+        readings = [afternoon, wake_up, *unusable, disagreeing, date_only]
         self.set_garmin(
             self.manager,
-            garmin_payload(
-                readiness=[afternoon, wake_up],
-                training_readiness_history=[afternoon, wake_up],
-            ),
+            garmin_payload(readiness=readings, training_readiness_history=readings),
         )
         query = (
-            "SELECT value, owner_record_id FROM observations "
-            "WHERE metric = 'readiness' AND state = 'active'"
+            "SELECT observed_on, value FROM observations "
+            "WHERE metric = 'readiness' AND state = 'active' ORDER BY observed_on"
         )
         levels = (
-            "SELECT code, source_record_id FROM categorical_observations "
-            "WHERE domain = 'readiness_level' AND state = 'active' ORDER BY code"
+            "SELECT observed_on, code, source_record_id FROM categorical_observations "
+            "WHERE domain = 'readiness_level' AND state = 'active' "
+            "ORDER BY observed_on, source_record_id"
         )
         self.assertEqual(
-            self.rows(query),
-            [{"value": 64.0, "owner_record_id": f"readiness/{day}#1"}],
+            [(row["observed_on"], row["value"]) for row in self.rows(query)],
+            [
+                (day, 64.0),
+                ("2026-10-04", 55.0),
+                ("2026-10-05", 61.0),
+                ("2026-10-06", 62.0),
+            ],
+        )
+        self.assertEqual(
+            self.rows(
+                "SELECT owner_record_id FROM observations "
+                "WHERE metric = 'readiness' AND observed_on = ?",
+                (day,),
+            ),
+            [{"owner_record_id": f"readiness/{day}#1"}],
         )
         live, live_levels = self.canonical_snapshot(), self.rows(levels)
-        self.assertEqual({row["code"] for row in live_levels}, {"MODERATE"})
+        self.assertEqual(
+            {(row["observed_on"], row["code"]) for row in live_levels},
+            {
+                (day, "MODERATE"),
+                ("2026-10-04", "MODERATE"),
+                ("2026-10-05", "HIGH"),
+                ("2026-10-06", "MODERATE"),
+            },
+        )
 
         # Whatever reading the re-projection takes first, it projects the day's
         # wake-up reading owned by that reading, so the day never loses its value.
@@ -600,6 +640,103 @@ class ReprojectionTests(BackfillFixture):
 
         self.assertEqual(self.canonical_snapshot(), live)
         self.assertEqual(self.rows(levels), live_levels)
+
+    def test_a_readiness_day_whose_choice_changes_reprojects_the_live_rows(
+        self,
+    ) -> None:
+        # #2884 review: rows stored under the old rule (any score counted) chose a
+        # wake-up reading with a rejected score. The re-projection takes the later
+        # valid reading, in either element order, retires the old reading's level
+        # and leaves the rows a fresh live ingest writes.
+        def day_readings(day: str) -> tuple[dict[str, Any], dict[str, Any]]:
+            wake_up = {
+                "calendarDate": day,
+                "timestamp": f"{day}T06:10:00",
+                "inputContext": "AFTER_WAKEUP_RESET",
+                "score": 0,
+                "level": "LOW",
+            }
+            later = {
+                "calendarDate": day,
+                "timestamp": f"{day}T09:00:00",
+                "score": 55,
+                "level": "MODERATE",
+            }
+            return wake_up, later
+
+        first_wake_up, first_later = day_readings("2026-10-03")
+        second_wake_up, second_later = day_readings("2026-10-04")
+        readings = [first_wake_up, first_later, second_later, second_wake_up]
+        payload = garmin_payload(
+            readiness=readings, training_readiness_history=readings
+        )
+        readiness = (
+            "SELECT observed_on, value FROM observations "
+            "WHERE metric = 'readiness' AND state = 'active' ORDER BY observed_on"
+        )
+        levels = (
+            "SELECT observed_on, code, state, source_record_id AS source "
+            "FROM categorical_observations WHERE domain = 'readiness_level'"
+        )
+
+        def old_rule(record: Mapping[str, Any]) -> bool:
+            return any(record.get(key) is not None for key in GARMIN_READINESS_ALIASES)
+
+        with patch.object(garmin_training_mapping, "_usable_score", old_rule):
+            self.set_garmin(self.manager, payload)
+        self.assertEqual(self.rows(readiness), [])
+        self.assertEqual(
+            {
+                (row["observed_on"], row["code"], row["state"])
+                for row in self.rows(levels)
+            },
+            {("2026-10-03", "LOW", "active"), ("2026-10-04", "LOW", "active")},
+        )
+
+        bumped = {
+            key: value + 1 for key, value in canonical_plans._MAPPER_VERSIONS.items()
+        }
+        with patch.dict(canonical_plans._MAPPER_VERSIONS, bumped):
+            backfill = self.make_backfill()
+            self.run_to_completion(backfill)
+
+        self.assertEqual(
+            [(row["observed_on"], row["value"]) for row in self.rows(readiness)],
+            [("2026-10-03", 55.0), ("2026-10-04", 55.0)],
+        )
+        # Counts only: the two days the re-projection newly filled.
+        self.assertEqual(self.summary(backfill)["providers"][GARMIN]["added"], 2)
+        # The store keeps one level per day: the old reading's LOW is replaced, in
+        # place, by the chosen reading's level, owned by that reading's element.
+        self.assertEqual(
+            {
+                (row["observed_on"], row["code"], row["state"], row["source"])
+                for row in self.rows(levels)
+            },
+            {
+                (
+                    "2026-10-03",
+                    "MODERATE",
+                    "active",
+                    "training_readiness_history/2026-10-03#1",
+                ),
+                (
+                    "2026-10-04",
+                    "MODERATE",
+                    "active",
+                    "training_readiness_history/2026-10-04",
+                ),
+            },
+        )
+        live = self.open_manager("live.db")
+        self.set_garmin(live, payload)
+        self.assertEqual(
+            self.rows(readiness, (), live), self.rows(readiness, (), self.manager)
+        )
+        active = levels + " AND state = 'active' ORDER BY observed_on"
+        self.assertEqual(
+            self.rows(active, (), live), self.rows(active, (), self.manager)
+        )
 
     def garmin_activity_rows(self) -> list[dict[str, Any]]:
         return self.rows(
@@ -1309,7 +1446,7 @@ class ReprojectionTests(BackfillFixture):
             mapper_version=1,
         )
         with self.assertRaises(TypeError):
-            _write_reprojection(Mock(), _Item(raw, NOW), NOW)
+            _write_reprojection(Mock(), _Item(raw, NOW), NOW, {})
 
     def test_raw_row_without_a_mapper_projects_nothing(self) -> None:
         row = {
