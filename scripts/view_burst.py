@@ -132,6 +132,8 @@ def read_routes(path: str | None, client: Client) -> tuple[str, ...]:
     ]
     if not routes or not all(route.startswith("/api/") for route in routes):
         raise SystemExit("the routes file needs one /api/ path per line")
+    if len(set(routes)) != len(routes):
+        raise SystemExit("the routes file lists a path twice")
     if any("{activity_id}" in route for route in routes):
         newest = client.get("/api/activities?limit=1").get("activities") or []
         if not newest:
