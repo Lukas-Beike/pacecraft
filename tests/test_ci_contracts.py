@@ -133,7 +133,9 @@ class WorkflowSourceTests(unittest.TestCase):
         diagnostics = evidence["diagnostics"]
         self.assertTrue(diagnostics)
         self.assertLessEqual(
-            {item["tool"] for item in diagnostics}, {"ruff", "mypy", "cognitive"}
+            {item["tool"] for item in diagnostics},
+            # ESLint: Sonar's JavaScript rules beyond public/ (#3058).
+            {"ruff", "mypy", "cognitive", "eslint"},
         )
         evidence = evidence["coverage_evidence"]
         totals = evidence["totals"]
@@ -289,7 +291,9 @@ class WorkflowSourceTests(unittest.TestCase):
         self.assertIn("fetch-depth: 0\n", image)
         self.assertIn("fetch-tags: true\n", image)
         self.assertIn("filter: blob:none\n", image)  # metadata only
-        self.assertLess(image.index("python-version: '3.14'"), image.index("release_changelog"))
+        self.assertLess(
+            image.index("python-version: '3.14'"), image.index("release_changelog")
+        )
         self.assertLess(
             image.index("run: python3 scripts/release_changelog.py\n"),
             image.index("docker build --tag pacecraft:ci\n"),
@@ -1252,7 +1256,9 @@ class ChangedFileClassifierTests(unittest.TestCase):
                           "--with-heavy --hang-timeout 1800")),
             (container, 20, ("--suite container --hang-timeout 600",)),
         ):  # fmt: skip
-            self.assertIn(f"\n    timeout-minutes: {limit}\n", job.split("steps:", 1)[0])
+            self.assertIn(
+                f"\n    timeout-minutes: {limit}\n", job.split("steps:", 1)[0]
+            )
             for command in commands:
                 self.assertIn(f"{command}\n", job)
         # Aggregators accept a skip only when the run is docs-only.

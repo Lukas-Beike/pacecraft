@@ -51,6 +51,16 @@ COMMAND_LINE_PATH_BUDGET = 30000
 # points PACECRAFT_NODE_MODULES at the clone because its HEAD export has none,
 # and there a missing ESLint (node_modules older than the pin) is fatal.
 ESLINT_CONFIG = ROOT / "tools/eslint.sonar.config.mjs"
+# Every JavaScript file SonarCloud analyzes (#3058): the page scripts, and the
+# Node scripts, browser specs and unit tests.
+JAVASCRIPT_GLOBS = (
+    "public/*.js",
+    "scripts/**/*.mjs",
+    "tools/**/*.mjs",
+    "e2e/**/*.js",
+    "tests/**/*.cjs",
+    "*.cjs",
+)
 
 
 def tool_command(tool: str) -> list[str]:
@@ -248,17 +258,22 @@ def eslint_script() -> Path | None:
 
 
 def javascript_diagnostics(root: Path) -> list[dict] | None:
-    """Sonar's complexity and nested-ternary rules for public/*.js; None if skipped."""
+    """Sonar's complexity and nested-ternary rules for JavaScript; None if skipped."""
     script = eslint_script()
     if script is None:
         if os.environ.get("PACECRAFT_NODE_MODULES"):
             raise RuntimeError(
                 "ESLint is not installed in PACECRAFT_NODE_MODULES; run `npm ci`"
             )
-        print("Quality ratchet: ESLint not installed (npm ci); skipped public/*.js")
+        print("Quality ratchet: ESLint not installed (npm ci); skipped JavaScript")
         return None
     files = sorted(
-        path.relative_to(root).as_posix() for path in (root / "public").glob("*.js")
+        {
+            path.relative_to(root).as_posix()
+            for pattern in JAVASCRIPT_GLOBS
+            for path in root.glob(pattern)
+            if "node_modules" not in path.parts
+        }
     )
     if not files:
         return []
