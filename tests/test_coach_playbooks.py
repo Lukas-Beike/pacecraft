@@ -19,6 +19,7 @@ from backend.coach.playbooks import REQUEST_KINDS, nutrition_playbook, playbook_
 from backend.coach.prompt import COACH_PROMPT
 from backend.coach.request_payload import (
     CoachRequestPayloadService,
+    analysed_sport,
     compose_model_instructions,
 )
 from backend.errors import AppError
@@ -51,6 +52,9 @@ BLOCK_WORD_BUDGETS = {
     "_SESSION_CHECKS": 135,
     # The execution and planned-target fields the session analysis reads.
     "_SESSION_NUMBERS": 110,
+    # One block per sport of the analysed session (#3038).
+    "_RUN_SESSION": 75,
+    "_RIDE_SESSION": 75,
     # Test planning from planning_brief.last_tests (plan kinds only).
     "_TESTS": 125,
     "_ANSWER": 55,
@@ -178,8 +182,30 @@ class PlaybookInjectionTests(unittest.TestCase):
                 self.assertIn("pyramidal when it is absent", text)
                 self.assertIn("training_model", text)
 
+    def test_session_analysis_adds_only_the_analysed_sports_block(self) -> None:
+        core = playbook_for("session_analysis")
+        for sport, block, other in (
+            ("run", playbooks._RUN_SESSION, playbooks._RIDE_SESSION),
+            ("ride", playbooks._RIDE_SESSION, playbooks._RUN_SESSION),
+        ):
+            text = playbook_for("session_analysis", sport)
+            with self.subTest(sport=sport):
+                self.assertLessEqual(len(text.split()), KIND_WORD_BUDGET)
+                self.assertIn(block, text)
+                self.assertNotIn(other, text)
+                # The answer format stays last.
+                self.assertLess(text.index(block), text.index(playbooks._ANSWER))
+                self.assertNotIn(block, core)
+        for sport in (None, "swim", "strength"):
+            self.assertEqual(core, playbook_for("session_analysis", sport))
+        self.assertEqual(
+            playbook_for("progress_review"), playbook_for("progress_review", "run")
+        )
+        # Temperature comes from the weather, never a device sensor (#3036).
+        self.assertIn("weather.temperature_c", core)
+
     def test_session_analysis_carries_the_session_checks_only(self) -> None:
-        text = playbook_for("session_analysis")
+        text = playbook_for("session_analysis", "run")
         for needle in ("session_focus", "pace_at_heart_rate", "never a proven cause"):
             self.assertIn(needle, text)
         self.assertIn("not_covered", text)
@@ -210,9 +236,9 @@ class PlaybookInjectionTests(unittest.TestCase):
         for marker in (
             "by default the last one",
             "warm-up and cool-down",
-            "decoupling at the same pace",
+            "drift at the same output",
             "strides or a progression are intended",
-            "reps holding or fading",
+            "holding or fading",
             "heart-rate drop",
             "Under about 2 minutes",
             "load and intensity",
@@ -223,14 +249,17 @@ class PlaybookInjectionTests(unittest.TestCase):
 
     def test_session_analysis_reads_execution_and_planned_targets(self) -> None:
         text = playbook_for("session_analysis")
-        for marker in (
-            "analysis.execution",
-            "planned_targets",
-            "erg_like",
-            "lap_pace",
-            "comparable_sessions",
-        ):
+        for marker in ("analysis.execution", "planned_targets", "comparable_sessions"):
             self.assertIn(marker, text)
+        self.assertIn("lap_pace", playbook_for("session_analysis", "run"))
+        ride = playbook_for("session_analysis", "ride")
+        for marker in (
+            "erg_like",
+            "normalized_power",
+            "decoupling_pct",
+            "cycling_ftp_watts",
+        ):
+            self.assertIn(marker, ride)
         self.assertNotIn(playbooks._SESSION_NUMBERS, playbook_for("progress_review"))
 
     def test_progress_and_block_review_are_one_fitness_review(self) -> None:
@@ -269,7 +298,7 @@ class PlaybookInjectionTests(unittest.TestCase):
         # A ramp test reads power even when erg_like; its evaluation decides.
         self.assertIn(
             "unless focus.test_evaluation says otherwise",
-            playbook_for("session_analysis"),
+            playbook_for("session_analysis", "ride"),
         )
 
     def test_adjust_week_playbook_guards_hard_days_and_writes(self) -> None:
@@ -384,6 +413,66 @@ class PlaybookInjectionTests(unittest.TestCase):
         self.assertIn("Task: plan the requested next week", typed)
         selection = training_context.build.call_args_list[0].kwargs["selection"]
         self.assertEqual(selection.name, "plan_week")
+
+    def test_analysed_sport_prefers_the_id_then_one_named_sport_then_the_newest(
+        self,
+    ) -> None:
+        sessions = [{"id": "s-ride", "sport": "ride"}, {"id": "s-run", "sport": "run"}]
+        button = (
+            "Analysiere meine Einheit vom 2. Nov. (Laufen, 07:10, 45 min, ID s-run)."
+        )
+        for message, expected in (
+            (button, "run"),
+            # An ID the recent sessions lack falls back to the named sport.
+            (button.replace("s-run", "s-old"), "run"),
+            ("Analysiere meine letzte Radausfahrt auf dem Rad", "ride"),
+            ("Wie lief mein Lauf gestern?", "run"),
+            ("Analysiere meine letzte Einheit", "ride"),
+            # Two sports or a word inside another word decide nothing.
+            ("Erst Rad, dann Lauf: analysiere die Einheit", None),
+            ("Analysiere die Einheit vom 2.11. (ID s-old)", None),
+        ):
+            with self.subTest(message=message):
+                self.assertEqual(analysed_sport(message, lambda: sessions), expected)
+        # "Rad" inside a word names no sport: the newest session (a run) decides.
+        self.assertEqual(
+            "run",
+            analysed_sport("Analysiere die Radaufzeichnung", lambda: sessions[::-1]),
+        )
+        self.assertIsNone(analysed_sport("Analysiere meine Einheit", tuple))
+
+    def test_session_analysis_turn_carries_the_sport_block_of_its_session(self) -> None:
+        training_context = Mock()
+        training_context.build.return_value = "training context"
+        recent = Mock(return_value=[{"id": "s-1", "sport": "ride"}])
+        service = CoachRequestPayloadService(
+            training_context, Mock(), 1000, recent_sessions=recent
+        )
+        arguments: dict[str, Any] = {
+            "message": "Analysiere meine letzte Einheit",
+            "context": {"current_user_message_id": 1, "local_date": "2026-09-23"},
+            "command_receipts": [],
+            "tools": [],
+            "allow_mutations": True,
+            "model": None,
+            "thinking_level": None,
+            "conversation_id": "c",
+            "attachments": [],
+            "retain_openai_attachment_context": False,
+            "has_prior_openai_attachments": False,
+        }
+        with self.assertLogs("intervals_coach", "INFO") as logs:
+            analysis, _ = service.build(**arguments, request_kind="session_analysis")
+            planned, _ = service.build(**arguments, request_kind="plan_week")
+        sizes = [r.context for r in logs.records if hasattr(r, "context")]
+        self.assertIn(playbooks._RIDE_SESSION, analysis)
+        self.assertEqual(
+            len(playbook_for("session_analysis", "ride")),
+            sizes[0]["playbook_characters"],
+        )
+        self.assertNotIn(playbooks._RIDE_SESSION, planned)
+        # Only a session analysis reads the recent sessions.
+        recent.assert_called_once_with()
 
 
 class FreeTextReviewKindTests(unittest.TestCase):

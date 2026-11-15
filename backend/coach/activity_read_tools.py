@@ -23,6 +23,7 @@ from backend.coach.context import (
 )
 from backend.coach.session_checks import matched_focus
 from backend.errors import AppError
+from backend.nutrition import fuelling, session_fuelling
 from backend.performance.activity_read_service import (
     ActivityAnalysisReadService,
     calendar_pairs,
@@ -53,6 +54,28 @@ _LIST_OMITTED_KEYS: Final = frozenset(
         "water_estimated_ml",
     }
 )
+
+
+def _fuelling_advice(detail: Mapping[str, Any]) -> dict[str, Any] | None:
+    """The carbohydrate advice for a long run or ride's duration (#3038).
+
+    The session analysis compares the intake logged that day against it; the
+    same rule as the advice before a long session (``session_fuelling``).
+    """
+    session = detail.get("session")
+    duration = (detail.get("metrics") or {}).get("duration_s")
+    seconds = duration.get("value") if isinstance(duration, Mapping) else None
+    if (
+        not isinstance(session, Mapping)
+        or session.get("sport") not in session_fuelling.SPORTS
+        or not isinstance(seconds, int | float)
+        or seconds < session_fuelling.LONG_SESSION_S
+    ):
+        return None
+    return {
+        "carbohydrates_per_hour": fuelling.carbohydrate_per_hour(seconds),
+        "source": fuelling.POSITION_STAND,
+    }
 
 
 def _not_compared() -> dict[str, Any]:
@@ -176,9 +199,18 @@ class CoachActivityReadToolService:
             # Per-second running dynamics are for the calendar's charts; the Coach
             # reads their averages from the metrics.
             detail.pop("running_dynamics_streams", None)
-            # The provider-values section repeats the effect metrics (#2831).
-            detail.pop("training_effect", None)
+            # The provider-values section repeats the effect metrics (#2831); its
+            # label is the one value the metrics lack (#3038).
+            effect = detail.pop("training_effect", None)
+            if isinstance(effect, dict) and effect.get("training_effect_label"):
+                detail["training_effect_label"] = {
+                    "value": effect["training_effect_label"],
+                    "source": effect.get("source"),
+                }
             result = self._with_session_context(detail)
+            advice = _fuelling_advice(detail)
+            if advice is not None:
+                result["fuelling_advice"] = advice
             session = detail.get("session")
             if self._session_corrections is not None and isinstance(session, dict):
                 # Local session IDs and merge candidates for the session tools.

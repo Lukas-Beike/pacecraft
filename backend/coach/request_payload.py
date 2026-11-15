@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import json
 import logging
+import re
+from collections.abc import Callable, Mapping, Sequence
 from typing import Any
 
 from backend.coach import dialogue
@@ -52,6 +54,36 @@ _ADVISORY_RUN_NOTICE = (
 )
 
 
+_ACTIVITY_ID = re.compile(r"\bID ([\w:.-]{1,80})")
+_SPORT_WORDS = (
+    ("run", re.compile(r"\b(lauf|laufen|läufe?|run|joggen)\b", re.IGNORECASE)),
+    ("ride", re.compile(r"\b(rad|radfahren|radfahrt|ride|zwift)\b", re.IGNORECASE)),
+)
+
+
+def analysed_sport(
+    message: str, recent_sessions: Callable[[], Sequence[Mapping[str, Any]]]
+) -> str | None:
+    """The sport of the session a session analysis looks at, or None if unclear.
+
+    An activity id in the message wins (the calendar's analyse button names
+    it), then a sport word, then the newest session. The instructions stay
+    fixed for the turn, so the sport is chosen before the first request.
+    """
+    sessions = list(recent_sessions())
+    match = _ACTIVITY_ID.search(message)
+    if match:
+        for session in sessions:
+            if session.get("id") == match.group(1):
+                return session.get("sport") or None
+    named = {sport for sport, words in _SPORT_WORDS if words.search(message)}
+    if len(named) == 1:
+        return named.pop()
+    if match or named or not sessions:
+        return None
+    return sessions[0].get("sport") or None
+
+
 def compose_model_instructions(
     training_context: str,
     *,
@@ -60,6 +92,7 @@ def compose_model_instructions(
     request_kind: str | None = None,
     nutrition: bool = False,
     resumed_steps: bool = False,
+    sport: str | None = None,
 ) -> str:
     """Order instructions for provider prompt caching.
 
@@ -75,7 +108,7 @@ def compose_model_instructions(
         + "\n</dialogue_rules>\n\n"
         + training_context
     )
-    instructions += playbook_for(request_kind) + nutrition_playbook(nutrition)
+    instructions += playbook_for(request_kind, sport) + nutrition_playbook(nutrition)
     notices = (
         (LOCAL_ATTACHMENT_SUMMARY_NOTICE if attachment_summary else "")
         + (RESUMED_STEPS_NOTICE if resumed_steps else "")
@@ -114,10 +147,13 @@ class CoachRequestPayloadService:
         training_context: CoachTrainingContextService,
         settings: SettingsService,
         max_output_tokens: int,
+        recent_sessions: Callable[[], Sequence[Mapping[str, Any]]] = tuple,
     ) -> None:
         self._training_context = training_context
         self._settings = settings
         self._max_output_tokens = max_output_tokens
+        # Newest session summaries first; a session analysis picks its sport block.
+        self._recent_sessions = recent_sessions
 
     def keeps_remote_conversation(self, model: str | None) -> bool:
         """Only OpenAI keeps a conversation; Claude gets the local dialogue."""
@@ -149,10 +185,16 @@ class CoachRequestPayloadService:
         training_context = self._training_context.build(
             selection=selection, local_date=context.get("local_date", "")
         )
+        sport = (
+            analysed_sport(message, self._recent_sessions)
+            if selection.kind == "session_analysis"
+            else None
+        )
         model_instructions = compose_model_instructions(
             training_context,
             allow_mutations=allow_mutations,
             request_kind=selection.kind,
+            sport=sport,
             nutrition="nutrition_products" in selection.sections,
             # Earlier pixels are gone once the conversation rotates or leaves the
             # window, so the summary notice applies to every turn after an upload.
@@ -210,7 +252,7 @@ class CoachRequestPayloadService:
                     if retain_openai_attachment_context
                     else "local",
                     "instruction_characters": len(request.instructions),
-                    "playbook_characters": len(playbook_for(selection.kind))
+                    "playbook_characters": len(playbook_for(selection.kind, sport))
                     + len(
                         nutrition_playbook("nutrition_products" in selection.sections)
                     ),
