@@ -9,7 +9,9 @@ your files); --allow-behind skips that. Arms `gh pr merge --auto --squash` pinne
 unless it is armed already; when GitHub refuses because the PR is already in
 clean status, merges that head at once with `--squash` (#2776). `--wait` then
 polls every 20 s in the same turn until the PR is merged or closed, a check
-fails or new feedback (comment or review) arrives, at most MINUTES (#2795): the
+fails or new feedback arrives (a person's comment or review, or an unresolved
+review thread; Gitar's and SonarCloud's status comments do not count, #3034),
+at most MINUTES (#2795): the
 host's PR watcher does not reliably wake on the merge itself. The develop check
 runs at arming, as the lane rule asks; develop moving during CI is accepted.
 Before arming it also refuses while a review thread is unresolved, disarming
@@ -39,8 +41,20 @@ def view(number: int) -> dict[str, Any]:
     return gh_json("pr", "view", str(number), "--json", FIELDS) or {}
 
 
-def feedback(pr: dict[str, Any]) -> int:
-    return len(pr.get("comments") or []) + len(pr.get("reviews") or [])
+# Status bots: their top-level comment is posted (and edited) on every head. Gitar's
+# verdict gates the merge through its required check and its review threads (#3034).
+STATUS_BOTS = {"gitar-bot", "sonarqubecloud"}
+
+
+def feedback(number: int, pr: dict[str, Any]) -> int:
+    """Human comments and reviews, plus every unresolved review thread (bots included)."""
+    people = [
+        item
+        for item in [*(pr.get("comments") or []), *(pr.get("reviews") or [])]
+        if (item.get("author") or {}).get("login") not in STATUS_BOTS
+    ]
+    threads, more = unresolved_threads(number)
+    return len(people) + len(threads) + int(more)
 
 
 def arm(number: int, pr: dict[str, Any]) -> str:
@@ -102,7 +116,7 @@ def wait(number: int, minutes: int, seen: int) -> int:
             oid = (pr.get("mergeCommit") or {}).get("oid") or "?"
             print(f"PR #{number} merged: {oid[:10]}")
             return 0
-        if feedback(pr) > seen:  # an armed auto-merge would not wait (#2947)
+        if feedback(number, pr) > seen:  # an armed auto-merge would not wait (#2947)
             refuse(number, pr, f"new feedback on PR #{number}; read pr-state")
             return 1
         checks = map(check_outcome, pr.get("statusCheckRollup") or [])
@@ -143,7 +157,7 @@ def main(argv: list[str] | None = None) -> int:
             print(f"PR #{args.number}: {arm(args.number, pr)}")
             if args.wait <= 0:
                 return 0
-        return wait(args.number, max(args.wait, 0), feedback(pr))
+        return wait(args.number, max(args.wait, 0), feedback(args.number, pr))
     except (CliError, KeyError, TypeError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2

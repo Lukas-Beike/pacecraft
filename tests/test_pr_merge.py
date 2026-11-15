@@ -46,6 +46,13 @@ def thread_page(threads, more):
     return {"data": {"repository": {"pullRequest": {"reviewThreads": page}}}}
 
 
+def next_count(threads):
+    """A fixed thread count, or one per query from a list (the last one repeats)."""
+    if isinstance(threads, int):
+        return threads
+    return threads.pop(0) if len(threads) > 1 else threads[0]
+
+
 def run(
     case, *args, auto_error="", views=None, behind=0, moved=(), threads=0, more=False
 ):
@@ -60,7 +67,7 @@ def run(
             repo = {"owner": {"login": "o"}, "name": "r"}
             return subprocess.CompletedProcess(argv, 0, json.dumps(repo), "")
         if argv[1:3] == ["api", "graphql"]:
-            page = json.dumps(thread_page(threads, more))
+            page = json.dumps(thread_page(next_count(threads), more))
             return subprocess.CompletedProcess(argv, 0, page, "")
         if argv[1:3] == ["pr", "diff"]:  # the full file list, past 100 files
             files = "\n".join([*(f"f{n}" for n in range(150)), "scripts/pr_merge.py"])
@@ -167,6 +174,36 @@ class PrMergeTests(unittest.TestCase):
         armed_late = {**late, "autoMergeRequest": {"mergeMethod": "SQUASH"}}
         _, _, writes, _ = run(self, 7, "--wait", 5, views=[view(), armed_late])
         self.assertEqual(writes[-1], ["pr", "merge", "7", "--disable-auto"])
+
+    def test_status_bot_comments_are_not_feedback_but_threads_are(self):
+        # #3034: Gitar's "Reviewing" comment and Sonar's gate comment disarmed every PR.
+        armed = {"autoMergeRequest": {"mergeMethod": "SQUASH"}}
+        status = [
+            {"author": {"login": "gitar-bot"}, "body": "Reviewing your code"},
+            {"author": {"login": "sonarqubecloud"}, "body": "Quality Gate passed"},
+        ]
+        bots = view(
+            comments=status, reviews=[{"author": {"login": "gitar-bot"}}], **armed
+        )
+        code, _, writes, _ = run(
+            self, 7, "--wait", 5, views=[view(), bots, view("MERGED")]
+        )
+        self.assertEqual(code, 0)
+        self.assertNotIn(["pr", "merge", "7", "--disable-auto"], writes)
+        # A person's comment, or a new unresolved thread (Gitar's findings), still disarms.
+        person = view(
+            comments=[{"author": {"login": "athlete"}, "body": "wait"}], **armed
+        )
+        for views, threads in (
+            ([view(), person], 0),
+            ([view(), view(**armed)], [0, 0, 1]),  # arming check, baseline, poll
+        ):
+            with self.subTest(threads=threads):
+                code, _, writes, _ = run(
+                    self, 7, "--wait", 5, views=views, threads=threads
+                )
+                self.assertEqual(code, 1)
+                self.assertEqual(writes[-1], ["pr", "merge", "7", "--disable-auto"])
 
 
 if __name__ == "__main__":
