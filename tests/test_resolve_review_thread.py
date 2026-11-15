@@ -6,6 +6,7 @@ import io
 import json
 import os
 import re
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -181,9 +182,16 @@ class GuardHookTests(unittest.TestCase):
         ):
             self.assertTrue(guard.unchanged())
         script = "scripts/resolve_review_thread.py"
-        self.assertIn(["git", "hash-object", "--", script], calls)
+        self.assertIn(["git", "hash-object", "--no-filters", "--", script], calls)
         self.assertIn(
-            ["git", "rev-parse", "--verify", "--quiet", f"origin/develop:{script}"],
+            [
+                "git",
+                "--no-replace-objects",
+                "rev-parse",
+                "--verify",
+                "--quiet",
+                f"refs/remotes/origin/develop:{script}",
+            ],
             calls,
         )
         # The script imports no local module, so cached bytecode cannot stand in.
@@ -213,6 +221,10 @@ class GuardHookTests(unittest.TestCase):
             (["resolve_review_thread"], False),
             (["resolve_review_thread.pyc"], False),
             (["ui_walk.mjs", "argparse"], False),
+            # A case-insensitive file system resolves these to the same module.
+            (["JSON.py"], False),
+            (["SiteCustomize.py"], False),
+            (["Resolve_Review_Thread.pyc"], False),
         ):
             with (
                 self.subTest(entries=entries),
@@ -242,6 +254,42 @@ class GuardHookTests(unittest.TestCase):
         self.assertEqual(
             [entry for entry in entries if guard.shadows(entry, {guard.RUN})], []
         )
+
+    def test_the_run_file_is_compared_by_its_raw_bytes(self):
+        """An attribute that converts the working copy must not make it match."""
+        git = [
+            "git",
+            "-c",
+            "user.name=t",
+            "-c",
+            "user.email=t@example.invalid",
+            "-c",
+            "core.autocrlf=false",
+        ]
+        run_file = guard.SCRIPTS / f"{guard.RUN}.py"
+        with tempfile.TemporaryDirectory() as directory:
+            repo = Path(directory)
+            script = repo / run_file
+            script.parent.mkdir()
+            script.write_bytes(b"print('ok')\n")
+            for command in (
+                ["init", "-q"],
+                ["add", "."],
+                ["commit", "-qm", "base"],
+                ["update-ref", "refs/remotes/origin/develop", "HEAD"],
+            ):
+                subprocess.run([*git, *command], cwd=repo, check=True)
+            previous = os.getcwd()
+            os.chdir(repo)
+            try:
+                self.assertTrue(guard.same_as_develop(run_file))
+                (repo / ".gitattributes").write_bytes(
+                    b"*.py working-tree-encoding=UTF-16\n"
+                )
+                script.write_bytes("print('ok')\n".encode("utf-16"))
+                self.assertFalse(guard.same_as_develop(run_file))
+            finally:
+                os.chdir(previous)
 
     def test_cached_bytecode_of_a_local_module_blocks(self):
         run = {"resolve_review_thread", "helper"}

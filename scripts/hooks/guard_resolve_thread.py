@@ -39,9 +39,19 @@ def _git(*args: str) -> subprocess.CompletedProcess[str]:
 
 
 def same_as_develop(path: Path) -> bool:
-    """The file's bytes in the working tree equal its blob on origin/develop."""
-    here = _git("hash-object", "--", path.as_posix())
-    there = _git("rev-parse", "--verify", "--quiet", f"origin/develop:{path.as_posix()}")
+    """The file's raw bytes in the working tree equal its blob on origin/develop.
+
+    No attribute or filter applies to the working copy, and the base is the
+    remote-tracking ref itself, read without replace objects.
+    """
+    here = _git("hash-object", "--no-filters", "--", path.as_posix())
+    there = _git(
+        "--no-replace-objects",
+        "rev-parse",
+        "--verify",
+        "--quiet",
+        f"refs/remotes/origin/develop:{path.as_posix()}",
+    )
     return (
         not here.returncode
         and not there.returncode
@@ -81,10 +91,11 @@ def run_modules() -> set[str]:
 def shadows(entry: str, run: set[str]) -> bool:
     """Whether a scripts/ entry (file, directory, nested repository or gitlink)
     could be imported in place of a module the run uses."""
-    name = entry.rstrip("/\\").split(".")[0]
-    if name in run:
-        return entry != f"{name}.py"
-    return name in STARTUP or name in sys.stdlib_module_names
+    name = entry.rstrip("/\\").split(".")[0].casefold()
+    # Names compare case-folded, as a case-insensitive file system resolves them.
+    if name in {module.casefold() for module in run}:
+        return entry not in {f"{module}.py" for module in run}
+    return name in {module.casefold() for module in (*STARTUP, *sys.stdlib_module_names)}
 
 
 def unchanged() -> bool:
