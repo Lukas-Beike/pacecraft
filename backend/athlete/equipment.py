@@ -51,7 +51,10 @@ GARMIN_GEAR_SOURCE = "garmin_gear"
 # The kinds of session a default item can be set for (#3014): runs by their
 # focus, rides by where they took place.
 _RULE_SPORTS = {
-    **{f"run:{kind}": ("run", "outdoor") for kind in ("intervals", "long", "easy", "race")},
+    "run:intervals": ("run", "outdoor"),
+    "run:long": ("run", "outdoor"),
+    "run:easy": ("run", "outdoor"),
+    "run:race": ("run", "outdoor"),
     **{f"ride:{place}": ("ride", place) for place in ("indoor", "outdoor")},
 }
 RULE_KINDS = tuple(_RULE_SPORTS)
