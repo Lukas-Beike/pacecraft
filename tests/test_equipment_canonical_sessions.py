@@ -12,7 +12,7 @@ import json
 import unittest
 from datetime import date
 from typing import Any
-from unittest.mock import Mock, patch
+from unittest.mock import ANY, Mock, patch
 from zoneinfo import ZoneInfo
 
 from support import temp_database
@@ -565,7 +565,14 @@ class SessionOnlyEquipmentTests(unittest.TestCase):
             {"activity_id": bundled["id"], "equipment_id": bike["id"]}
         )
         self.assertEqual(saved["assignment"]["activity_id"], bundled["id"])
-        usage = self.usage("Local bike")
+        with patch.object(
+            canonical_store,
+            "session_legacy_keys",
+            wraps=canonical_store.session_legacy_keys,
+        ) as families:
+            usage = self.usage("Local bike")
+        # No stored key outside its session id: no family is read (#3017).
+        families.assert_called_once_with(ANY, [])
         self.assertEqual(usage["assigned_sessions"], 1)
         self.assertEqual(usage["hours"], 1)
         self.assertEqual(usage["distance_km"], 20)
@@ -641,6 +648,27 @@ class SessionOnlyEquipmentTests(unittest.TestCase):
         self.assertEqual(listed["equipment_id"], new["id"])
         self.assertEqual(self.usage("New bike")["assigned_sessions"], 1)
         self.assertEqual(self.usage("Old bike")["assigned_sessions"], 0)
+
+    def test_the_families_a_legacy_key_names_are_all_found(self) -> None:
+        """Asking only these families gives what asking every family gave (#3017)."""
+        with self.manager.reader() as db:
+            sessions = [
+                str(row["activity_id"])
+                for row in db.execute(
+                    "SELECT activity_id FROM activity_sessions"
+                ).fetchall()
+            ]
+            every = canonical_store.session_legacy_keys(db, sessions)
+            keys = {key for others in every.values() for key in others}
+            self.assertTrue(keys)
+            for key in sorted(keys):
+                expected = {root for root, others in every.items() if key in others}
+                found = canonical_store.legacy_key_sessions(db, [key])
+                self.assertLessEqual(expected, found, key)
+            self.assertEqual(canonical_store.legacy_key_sessions(db, []), set())
+            self.assertEqual(
+                canonical_store.legacy_key_sessions(db, ["unknown"]), set()
+            )
 
     def test_an_older_alias_row_loses_to_a_newer_record_id_row(self) -> None:
         old, new = self.local_bike(name="Old bike"), self.local_bike(name="New bike")

@@ -2489,6 +2489,34 @@ def session_legacy_keys(db: Any, session_ids: Sequence[str]) -> dict[str, list[s
     return {root: sorted(ids) for root, ids in found.items()}
 
 
+def legacy_key_sessions(db: Any, keys: Sequence[str]) -> set[str]:
+    """The sessions whose ``session_legacy_keys`` can name one of ``keys`` (#3017).
+
+    A key is a session id or a provider activity id of a record in any state;
+    the merge chain is followed up as far as ``session_legacy_keys`` follows
+    it down, so a caller can ask for just these families instead of all.
+    """
+    found: set[str] = set()
+    for chunk in _chunked(keys):
+        for row in _fetch_all(
+            db,
+            "WITH RECURSIVE up(activity_id, depth) AS ("
+            "SELECT activity_id, 0 FROM ("
+            f"SELECT activity_id FROM activity_sessions WHERE activity_id IN ({_placeholders(chunk)}) "
+            "UNION SELECT activity_id FROM activity_records "
+            f"WHERE provider_activity_id IN ({_placeholders(chunk)}) AND activity_id IS NOT NULL) "
+            "UNION ALL "
+            "SELECT COALESCE(alias.merged_into, alias.merged_into_retained), up.depth + 1 "
+            "FROM activity_sessions AS alias JOIN up ON alias.activity_id = up.activity_id "
+            "WHERE up.depth < ? "
+            "AND COALESCE(alias.merged_into, alias.merged_into_retained) IS NOT NULL) "
+            "SELECT DISTINCT activity_id FROM up",
+            (*chunk, *chunk, _MAX_MERGE_HOPS),
+        ):
+            found.add(str(row["activity_id"]))
+    return found
+
+
 def feedback_origin_sessions(
     db: Any, references: Sequence[tuple[str, str | None]]
 ) -> dict[str, str]:
