@@ -576,3 +576,62 @@ class CognitiveComplexityTests(unittest.TestCase):
     def test_unparsable_source_is_fatal(self):
         with self.assertRaisesRegex(RuntimeError, "Cannot parse"):
             self.findings("def broken(:\n")
+
+
+class CssDuplicateSelectorTests(unittest.TestCase):
+    """Sonar's css:S4666 checked locally, as CI's gate failed on it (#3077)."""
+
+    def findings(self, css):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "public").mkdir()
+            (root / "public/styles.css").write_text(css, encoding="utf-8")
+            return quality_baseline.css_duplicate_diagnostics(root)
+
+    def test_a_selector_repeated_in_the_same_context_is_found_at_its_second_rule(self):
+        css = (
+            ".composer .attachment-button { color: red; }\n"
+            "/* a comment { with braces } */\n"
+            ".other { margin: 0; }\n"
+            "\n"
+            ".composer  >  .x, .composer .attachment-button { padding: 0; }\n"
+            ".composer .attachment-button { border: 0; }\n"
+        )
+        [finding] = self.findings(css)
+        self.assertEqual(
+            (finding["tool"], finding["code"], finding["path"], finding["line"]),
+            ("css", "S4666", "public/styles.css", 6),
+        )
+
+    def test_selector_lists_compare_as_sets_with_whitespace_ignored(self):
+        self.assertEqual(
+            len(self.findings(".a > .b, .c { x: 1; }\n.c,.a>.b { y: 2; }\n")), 1
+        )
+
+    def test_other_contexts_and_keyframe_steps_are_not_duplicates(self):
+        css = (
+            ".a { x: 1; }\n"
+            "@media (max-width: 600px) { .a { x: 2; } }\n"
+            "@media (min-width: 900px) { .a { x: 3; } }\n"
+            "@supports (content: \"a\" / \"\") { .a { x: 4; } }\n"
+            "@keyframes pulse { 0% { opacity: 0; } 0% { opacity: 1; } }\n"
+            ".b .a { x: 5; }\n"
+        )
+        self.assertEqual(self.findings(css), [])
+
+    def test_separate_blocks_with_the_same_query_are_different_contexts(self):
+        css = (
+            "@media (max-width: 600px) { .a { x: 1; } }\n"
+            ".b { y: 1; }\n"
+            "@media (max-width: 600px) { .a { x: 2; } }\n"
+        )
+        self.assertEqual(self.findings(css), [])
+
+    def test_a_repeat_inside_one_media_query_is_found(self):
+        css = "@media print { .a { x: 1; }\n .a { x: 2; } }\n"
+        [finding] = self.findings(css)
+        self.assertEqual(finding["line"], 2)
+
+    def test_the_repository_stylesheets_carry_no_duplicate(self):
+        root = Path(__file__).resolve().parents[1]
+        self.assertEqual(quality_baseline.css_duplicate_diagnostics(root), [])

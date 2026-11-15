@@ -26,6 +26,13 @@ TOOLS = ("ruff", "mypy")
 COGNITIVE = "cognitive"
 COGNITIVE_CODE = "S3776"
 COGNITIVE_LIMIT = 15
+# Sonar's css:S4666 (Stylelint no-duplicate-selectors): the same selector list in
+# the same at-rule context twice. Like the cognitive counter it is this module's
+# own code; CI's Sonar gate failed on it while every local check passed (#3077).
+CSS_DUPLICATE = "css"
+CSS_DUPLICATE_CODE = "S4666"
+# Inside these at-rules a "selector" is a keyframe step or a descriptor block.
+CSS_NO_SELECTORS = ("@keyframes", "@-webkit-keyframes", "@font-face", "@page")
 # Line and column are reported for humans but are not debt identity, so an
 # unrelated edit that moves a known diagnostic does not fail the ratchet.
 IDENTITY_FIELDS = ("tool", "path", "code", "message_sha256")
@@ -251,6 +258,81 @@ def cognitive_diagnostics(root: Path, files: list[str]) -> list[dict]:
     return diagnostics
 
 
+def _css_selector_key(prelude: str) -> str:
+    """A selector list as Stylelint compares it: whitespace and order ignored."""
+    for combinator in ">+~":
+        prelude = prelude.replace(combinator, f" {combinator} ")
+    selectors = (" ".join(part.split()) for part in prelude.split(","))
+    return ", ".join(sorted(selector for selector in selectors if selector))
+
+
+def _css_rule_key(
+    scope: list[tuple[int, str]], prelude: str
+) -> tuple[tuple[int, ...], str] | None:
+    """The comparison key of a rule's selector list; None for an at-rule or a
+    block inside @keyframes and similar, which hold no selectors.
+
+    The context is the enclosing blocks themselves, not their text: two
+    separate @media blocks with the same query are different parents, as in
+    Stylelint.
+    """
+    prelude = " ".join(prelude.split())
+    if prelude.startswith("@") or any(
+        outer.startswith(CSS_NO_SELECTORS) for _, outer in scope
+    ):
+        return None
+    return tuple(block for block, _ in scope), _css_selector_key(prelude)
+
+
+def css_duplicate_selectors(text: str) -> list[tuple[str, int]]:
+    """Each repeated selector list in the same at-rule or rule context, with the
+    line of its later rule; comments are blanked so lines stay true."""
+    text = re.sub(
+        r"/\*.*?\*/",
+        lambda match: re.sub(r"[^\n]", " ", match.group()),
+        text,
+        flags=re.DOTALL,
+    )
+    seen: set[tuple[tuple[int, ...], str]] = set()
+    found: list[tuple[str, int]] = []
+    scope: list[tuple[int, str]] = []
+    start = 0
+    for block, match in enumerate(re.finditer(r"[{};]", text)):
+        if match.group() == "{":
+            prelude = text[start : match.start()]
+            key = _css_rule_key(scope, prelude)
+            if key in seen and key is not None:
+                first = start + len(prelude) - len(prelude.lstrip())
+                found.append((key[1], text.count("\n", 0, first) + 1))
+            if key is not None:
+                seen.add(key)
+            scope.append((block, " ".join(prelude.split())))
+        elif match.group() == "}" and scope:
+            scope.pop()
+        start = match.end()
+    return found
+
+
+def css_duplicate_diagnostics(root: Path) -> list[dict]:
+    """Sonar's css:S4666 for public/*.css, one finding per repeated rule."""
+    diagnostics = []
+    for css in sorted((root / "public").glob("*.css")):
+        path = css.relative_to(root).as_posix()
+        for selector, line in css_duplicate_selectors(css.read_text(encoding="utf-8")):
+            message = f"Duplicate selector {selector}"
+            diagnostics.append(
+                {
+                    "tool": CSS_DUPLICATE,
+                    "path": path,
+                    "line": line,
+                    "column": 1,
+                    "code": CSS_DUPLICATE_CODE,
+                    "message_sha256": hashlib.sha256(message.encode()).hexdigest(),
+                }
+            )
+    return diagnostics
+
+
 def eslint_script() -> Path | None:
     modules = os.environ.get("PACECRAFT_NODE_MODULES")
     script = Path(modules or ROOT / "node_modules") / "eslint/bin/eslint.js"
@@ -373,6 +455,7 @@ def collect(root: Path, notes: dict[str, str]) -> tuple[dict[str, str], list[dic
             diagnostics.append(record)
             notes[note_key(record)] = f": {item['message']}"
     diagnostics.extend(cognitive_diagnostics(root, files))
+    diagnostics.extend(css_duplicate_diagnostics(root))
     diagnostics.extend(javascript_diagnostics(root) or [])
 
     return versions, sorted(
