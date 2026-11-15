@@ -993,6 +993,43 @@ FIXTURE_HEAVY_HISTORY_MAX = 1000
 FIXTURE_HEAVY_WALKS_MAX = 5000
 
 
+def _heavy_history_rows(today, count, walks, years, seconds):
+    """The streamed rides and runs, and the walks spread evenly among them."""
+    total = count + walks
+    rows, walk_rows = [], []
+    for slot in range(total):
+        days = slot * years * 365 // total + 1 if years else slot * 3 // 2 + 1
+        start = (today - timedelta(days=days)).isoformat() + FIXTURE_ACTIVITY_TIME
+        if slot * count // total == (slot + 1) * count // total:
+            walk_rows.append(
+                {
+                    "id": f"heavy-walk-{len(walk_rows)}",
+                    "name": f"Fixture heavy walk {len(walk_rows)}",
+                    "type": "Walk",
+                    "start_date_local": start,
+                    "moving_time": 2700,
+                    "elapsed_time": 2700,
+                    "distance": 2700 * 1.4,
+                }
+            )
+            continue
+        index = len(rows)
+        ride = index % 2 == 0
+        rows.append(
+            {
+                "id": f"heavy-history-{index}",
+                "name": f"Fixture heavy {'ride' if ride else 'run'} {index}",
+                "type": "Ride" if ride else "Run",
+                "start_date_local": start,
+                "moving_time": seconds,
+                "elapsed_time": seconds,
+                "distance": seconds * (8.5 if ride else 3.1),
+                "icu_training_load": 60 + index % 5 * 15,
+            }
+        )
+    return rows, walk_rows
+
+
 def seed_heavy_history(count, seconds=5400, walks=0, years=0):
     """Opt-in large synthetic history for performance checks (#2801, #2974).
 
@@ -1025,41 +1062,10 @@ def seed_heavy_history(count, seconds=5400, walks=0, years=0):
             f"FIXTURE_HEAVY_HISTORY was seeded with {seeded}; recreate the demo "
             "without -Persist to use another count"
         )
-    today = server.ATHLETE_CLOCK.now().date()
     total = count + walks
-    rows, walk_rows = [], []
-    for slot in range(total):
-        # Streamed sessions spread evenly among the walks.
-        streamed = slot * count // total != (slot + 1) * count // total
-        days = slot * years * 365 // total + 1 if years else slot * 3 // 2 + 1
-        start = (today - timedelta(days=days)).isoformat() + FIXTURE_ACTIVITY_TIME
-        if not streamed:
-            walk_rows.append(
-                {
-                    "id": f"heavy-walk-{len(walk_rows)}",
-                    "name": f"Fixture heavy walk {len(walk_rows)}",
-                    "type": "Walk",
-                    "start_date_local": start,
-                    "moving_time": 2700,
-                    "elapsed_time": 2700,
-                    "distance": 2700 * 1.4,
-                }
-            )
-            continue
-        index = len(rows)
-        ride = index % 2 == 0
-        rows.append(
-            {
-                "id": f"heavy-history-{index}",
-                "name": f"Fixture heavy {'ride' if ride else 'run'} {index}",
-                "type": "Ride" if ride else "Run",
-                "start_date_local": start,
-                "moving_time": seconds,
-                "elapsed_time": seconds,
-                "distance": seconds * (8.5 if ride else 3.1),
-                "icu_training_load": 60 + index % 5 * 15,
-            }
-        )
+    rows, walk_rows = _heavy_history_rows(
+        server.ATHLETE_CLOCK.now().date(), count, walks, years, seconds
+    )
     now = server.runtime_clock.utc_now()
     workouts = [_fixture_wahoo_workout(row) for row in (*rows, *walk_rows)]
     with server.database_manager().unit_of_work() as db:
