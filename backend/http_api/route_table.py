@@ -31,12 +31,15 @@ class Access(StrEnum):
 # The view reads over the history that run one at a time before they take a
 # reader (#3029). A route joins only by a decision here: ``Route(heavy=True)``
 # outside this list, or a listed route without it, is refused. Writes,
-# auth, sync status, health and static files never take the gate.
+# auth, sync status, health and static files never take the gate. The trends
+# and the week review scan the history too; the activity list is a bounded
+# page (at most 250 sessions) and does not wait behind them (#3125).
 HEAVY_READ_ROUTES = frozenset(
     {
-        "/api/activities",
         "/api/analysis/power-profiles",
         "/api/analysis/training-records",
+        "/api/analysis/trends",
+        "/api/analysis/week-review",
         "/api/context-preview",
         "/api/performance",
     }
