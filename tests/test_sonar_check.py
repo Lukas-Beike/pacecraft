@@ -157,6 +157,12 @@ class SonarCheckTests(unittest.TestCase):
         self.assertEqual(out.count("issue "), 1)
         self.assertNotIn("someone", out)
 
+    def test_a_cut_off_issue_list_says_it_is_partial(self):
+        payload = {**LIST_ISSUES, "paging": {"total": 501}}
+        code, out, _ = run_main(["--pr", "7"], FakeSonar(payload))
+        self.assertEqual(code, 1)
+        self.assertIn("partial: 1 of 501 issues listed", out)
+
     def test_list_form_and_unsafe_fields_are_handled(self):
         payload = [{"rule": "bad rule\nwith newline", "file": "a\nb", "line": "x"}]
         code, out, _ = run_main(["--pr", "1"], FakeSonar(payload))
