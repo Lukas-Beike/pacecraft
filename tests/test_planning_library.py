@@ -36,6 +36,8 @@ EXPECTED_LIBRARY_FIELDS = {
     "source",
     "private_calendar_adjustment",
     "archived",
+    # The archive time of the 30-day purge (#3141).
+    "archived_at",
     "local_marked",
     "local_deleted",
     "remote_event_id",

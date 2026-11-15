@@ -53,6 +53,7 @@ LIBRARY_WORKOUT_FIELDS = {
     "source",
     "private_calendar_adjustment",
     "archived",
+    "archived_at",
     "local_marked",
     "local_deleted",
     "remote_event_id",
@@ -174,6 +175,8 @@ def normalize_library_workout(
     _normalize_library_workout_duration(result)
     normalize_session_focus(result)
     result["archived"] = bool(result.get("archived"))
+    if not result["archived"]:
+        result.pop("archived_at", None)
     result["local_marked"] = bool(result.get("local_marked"))
     result["local_deleted"] = bool(result.get("local_deleted"))
     return result

@@ -52,7 +52,7 @@ SECTION_FIELDS = {
     # Storage and runtime health for the post-release check (#2848).
     "database": re.compile(
         "|".join(("schema_version", *COUNTS, *STORAGE))
-        + r"|(workout_library_state|stored_payload_bytes)\.[a-z_]+"
+        + r"|(workout_library_state|workout_library_archive|stored_payload_bytes)\.[a-z_]+"
     ),
     "runtime": re.compile(
         r"uptime_s|malloc_arena_max|process_memory\.[a-z_]+|reader_slots\.[a-z_0-9]+"
