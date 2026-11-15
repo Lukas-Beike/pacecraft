@@ -130,7 +130,6 @@ handler's docstring. Regenerate it with
 | POST | `/api/sync/jobs` | Session + CSRF | after access | Queue a sync job. |
 | GET | `/api/sync/jobs/{id}` | Session | no | Result of one sync job. |
 | GET | `/api/sync/status` | Session | no | Synchronization status. |
-| POST | `/api/transcribe` | Session + CSRF | after access | Transcribe short-lived voice input. |
 | GET | `/api/wahoo/callback` | Public | no | Wahoo OAuth redirect target; answers 302 to the app. |
 | POST | `/api/wahoo/connect` | Session + CSRF | after access | Start the Wahoo OAuth connection or disconnect Wahoo. |
 | POST | `/api/wahoo/disconnect` | Session + CSRF | after access | Start the Wahoo OAuth connection or disconnect Wahoo. |
@@ -1712,31 +1711,6 @@ Response: 200 with `status`, `phase`, `progress` (0 to 100),
 (`active`, `running_operations`) and `jobs` (the recent sync jobs).
 
 Errors: none beyond the common ones.
-
-### `POST /api/transcribe`
-
-Request: the raw audio bytes as body, not JSON. `Content-Type` is one of
-`audio/webm`, `audio/mp4`, `audio/ogg`, `audio/mpeg`, `audio/wav`,
-`audio/x-wav`, `audio/mpga`, `audio/m4a` (parameters after `;` are ignored);
-`Content-Length` 1 to 8 000 000 bytes. The audio is never stored.
-
-Response: 200 `{"transcript": string}`.
-
-Errors: 415 "Nicht unterstütztes Audioformat. Erlaubt sind WebM, MP4, OGG,
-MP3 und WAV."; 400 "Ungültige Content-Length."; 400 "Ungültige Größe der
-Audioaufnahme." for an empty body, 413 with the same message above 8 000 000
-bytes; 400 "Die Audioaufnahme wurde unvollständig übertragen."; 503
-`not_configured` "OpenAI ist nicht eingerichtet. Zugangsdaten unter Mehr →
-Anbindungen hinterlegen."; 502 "OpenAI hat kein Transkript
-zurückgegeben." when the provider returns no text; 502 `network_error`,
-`http_error` or `client_error` when the OpenAI request fails ("OpenAI ist
-nicht erreichbar." and similar). With `TRANSCRIPTION_BASE_URL` set, no key
-is required; 503 `not_configured` "Für den Transkriptionsserver fehlt
-TRANSCRIPTION_MODEL in der Konfiguration." without a model; 502 "Der
-Transkriptionsserver hat kein Transkript zurückgegeben." or "Der
-Transkriptionsserver ist nicht erreichbar." with the `provider_*` reasons;
-an HTTP error status gives "Anfrage an externen Dienst fehlgeschlagen
-(status).".
 
 ### `GET /api/wahoo/callback`
 

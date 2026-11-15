@@ -15,7 +15,6 @@
 - Preserve chat keyboard behavior: on desktop, Enter sends and Shift+Enter
   inserts a newline. On touch-first devices, Enter inserts a newline; the send
   button or Ctrl/Cmd+Enter sends.
-  Keep voice transcripts editable before they are sent.
 - Workouts are stored directly in the local training library; the athlete can
   explicitly synchronize them to Intervals.icu later. Adaptive replan previews
   still require a separate explicit apply action; the one exception is the
@@ -38,7 +37,7 @@
   server cannot be reached or the fresh start data fails to load. Logout, a 401, an
   unauthenticated start and a privacy deletion clear this device data. Never
   store credentials, session data or CSRF tokens in it.
-- Keep microphone and notification features opt-in, bounded, and functional in
-  browsers that do not support them. Audio must not be persisted by the client.
+- Keep notifications opt-in, bounded, and functional in browsers that do not
+  support them.
 - Keep UI text and the `README.md` and `docs/` files it links accurate when
   adding or changing user-visible behavior.

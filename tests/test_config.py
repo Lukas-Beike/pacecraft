@@ -115,7 +115,6 @@ class ConfigTests(unittest.TestCase):
                     "OPENAI_MODEL": "",
                     "INTERVALS_ATHLETE_ID": " ",
                     "GARMINTOKENS": "",
-                    "TRANSCRIPTION_BASE_URL": " ",
                 },
             )
 
@@ -126,15 +125,6 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(config.openai_model, "gpt-6-luna")
         self.assertEqual(config.intervals_athlete_id, "0")
         self.assertEqual(config.garmin_tokenstore, str(root / "garmin_tokens"))
-        # Unset: voice stays on OpenAI with the Coach's endpoint and key.
-        self.assertEqual(
-            (
-                config.transcription_base_url,
-                config.transcription_api_key,
-                config.transcription_model,
-            ),
-            ("", "", ""),
-        )
 
     def test_sync_history_floor_defaults_parses_and_rejects_invalid_values(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -278,26 +268,24 @@ class ConfigTests(unittest.TestCase):
             with self.assertRaises(AppError) as raised:
                 load_config(root, root, {"ANTHROPIC_BASE_URL": "http://example.test"})
         self.assertIn("ANTHROPIC_BASE_URL", raised.exception.message)
-        # The LAN transcription server follows the same HTTPS rule (athlete, #2596).
+
+    def test_obsolete_voice_variables_are_ignored(self):
+        # #3045: the voice input is gone; an old .env keeps its lines, even a
+        # base URL the removed HTTPS rule would have refused.
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
-            with self.assertRaises(AppError) as raised:
-                load_config(
-                    root, root, {"TRANSCRIPTION_BASE_URL": "http://192.168.1.5:8000/v1"}
-                )
-            self.assertIn("TRANSCRIPTION_BASE_URL", raised.exception.message)
-            config = load_config(
-                root,
-                root,
-                {
-                    "TRANSCRIPTION_BASE_URL": "https://stt.lan.example/v1/",
-                    "TRANSCRIPTION_API_KEY": " stt-key ",
-                    "TRANSCRIPTION_MODEL": "Systran/faster-whisper-small",
-                },
+            (root / ".env").write_text(
+                "TRANSCRIPTION_BASE_URL=http://192.168.1.5:8000/v1\n"
+                "TRANSCRIPTION_API_KEY=fake-stt-key\n"
+                "TRANSCRIPTION_MODEL=fake-whisper\n",
+                encoding="utf-8",
             )
-        self.assertEqual(config.transcription_base_url, "https://stt.lan.example/v1")
-        self.assertEqual(config.transcription_api_key, "stt-key")
-        self.assertEqual(config.transcription_model, "Systran/faster-whisper-small")
+            environ: dict[str, str] = {}
+            config = load_config(root, root, environ)
+        self.assertEqual(config.openai_base_url, "https://api.openai.com/v1")
+        self.assertFalse(
+            [name for name in vars(config) if "transcription" in name.casefold()]
+        )
 
     def test_import_has_no_filesystem_side_effect(self):
         with tempfile.TemporaryDirectory() as temporary:

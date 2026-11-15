@@ -81,8 +81,7 @@ precedence over remembered paths or stale operating assumptions.
 The pinned SQLCipher dependency has no Windows wheel, so application and UI
 integration run in Docker ([setup](setup.md)); runtime data never enters the
 image. Browser checks prefer the disposable fixture in
-`.agents/skills/pacecraft-pwa-e2e/references/browser-validation.md`. Voice input
-needs a secure context.
+`.agents/skills/pacecraft-pwa-e2e/references/browser-validation.md`.
 
 ## Secret checks before Git pushes
 

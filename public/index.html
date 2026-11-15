@@ -24,7 +24,6 @@
       <symbol id="icon-analysis" viewBox="0 0 24 24"><path d="M5 19V5M5 19h15"/><path d="m8 15 3-4 3 2 4-6"/></symbol>
       <symbol id="icon-nutrition" viewBox="0 0 24 24"><path d="M5 3v6m3-6v6M5 6h3M6.5 9v12M17 3v18M17 3c-4 3-4 8 0 8"/></symbol>
       <symbol id="icon-more" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="19" cy="12" r="1.5"/></symbol>
-      <symbol id="icon-microphone" viewBox="0 0 24 24"><rect x="8" y="3" width="8" height="12" rx="4"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3M8 21h8"/></symbol>
       <symbol id="icon-stop" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2"/></symbol>
       <symbol id="icon-refresh" viewBox="0 0 24 24"><path d="M20 11a8 8 0 0 0-14.5-4L4 9M4 5v4h4M4 13a8 8 0 0 0 14.5 4L20 15m0 4v-4h-4"/></symbol>
       <symbol id="icon-copy" viewBox="0 0 24 24"><rect x="8.5" y="8.5" width="12" height="12" rx="2.5"/><path d="M15.5 8.5V6a2.5 2.5 0 0 0-2.5-2.5H6A2.5 2.5 0 0 0 3.5 6v7A2.5 2.5 0 0 0 6 15.5h2.5"/></symbol>
@@ -59,7 +58,6 @@
           </div>
           <div id="coachActionReviewContent"></div>
         </section>
-        <p id="voiceStatus" class="voice-status" aria-live="polite" hidden></p>
         <form id="chatForm" class="composer">
           <section id="quickMessageTemplates" class="quick-message-templates" hidden aria-label="Schnelle Nachrichten">
             <button id="quickMorningCheckinButton" type="button" data-request-kind="morning_checkin" data-message="Gib mir den heutigen Morgen-Check-in. Lade dafür die aktuellen Garmin- und Wahoo-Daten, bewerte Erholung, Trainingsbelastung und die geplante Einheit und sag mir, was heute sinnvoll ist.">Morgen-Check-in</button>
@@ -80,7 +78,6 @@
           <textarea id="messageInput" rows="1" maxlength="12000" placeholder="Frage deinen Coach…" aria-label="Nachricht an deinen Coach"></textarea>
           <div class="composer-actions">
             <button type="button" id="attachmentButton" class="secondary-button attachment-button" aria-label="Aktionen und Anhänge" title="Aktionen" aria-haspopup="menu" aria-expanded="false" aria-controls="composerPlusMenu" popovertarget="composerPlusMenu"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg></button>
-            <button type="button" id="voiceButton" class="voice-button" aria-label="Spracheingabe starten" title="Spracheingabe starten"><svg class="nav-icon" aria-hidden="true"><use href="#icon-microphone"></use></svg></button>
             <button type="button" id="steerButton" class="secondary-button steer-button" aria-label="Als Nächstes senden" aria-describedby="steerButtonHint" title="Als Nächstes senden" hidden>Als Nächstes</button>
             <span id="steerButtonHint" class="sr-only"></span>
             <button type="button" id="cancelChatButton" class="composer-stop-button" hidden aria-label="Antwort stoppen" title="Antwort stoppen"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="7" width="10" height="10" rx="1"></rect></svg></button>

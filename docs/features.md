@@ -2,7 +2,7 @@
 
 ## AI Coach & Conversational Intelligence
 - **Natural Language Coaching**: Conversational coaching without rigid trigger words, supporting natural phrasing, corrections, follow-up questions, and pronoun resolution across turns.
-- **Selectable model provider**: OpenAI Responses (or a compatible endpoint) or Claude through the Anthropic Messages API, chosen under Coach & Modell, both with real-time SSE token streaming. Chat Completions and fallback between providers are unsupported; voice transcription uses OpenAI or an explicitly configured OpenAI-compatible server such as local Whisper.
+- **Selectable model provider**: OpenAI Responses (or a compatible endpoint) or Claude through the Anthropic Messages API, chosen under Coach & Modell, both with real-time SSE token streaming. Chat Completions and fallback between providers are unsupported.
 - **Durable Turn Queueing**: Every chat request is persisted in a durable SQLite background queue before processing, enabling seamless answer recovery across network drops or browser reloads.
 - **Permanent Fact Memorization**: Conversational profile updates save athlete preferences, equipment notes, and constraints to the durable profile when the athlete explicitly asks in Coach Chat; no separate UI confirmation is needed.
 - **Sport-Specific Training Preferences**: The profile keeps general training preferences plus separate preferences for running, cycling, swimming, strength training, and mobility; the Coach saves sport-specific wishes in the matching field.
@@ -258,7 +258,6 @@
 - **Explicit Metric Freshness**: Clear differentiation between observation timestamps and synchronization retrieval times to prevent outdated metrics appearing fresh.
 
 ## Multimodal Inputs & File Attachments
-- **Push-to-Talk Voice Input**: Low-latency voice recording in chat with real-time server-side transcription and zero persistence of raw audio recordings.
 - **Multi-File Attachment Support**: Seamless file upload supporting up to 4 concurrent GPX tracks, FIT files, or image files (PNG, JPEG, WebP): GPX and FIT up to 5 MB each, images up to 15 MB before the browser downsizes them (the server accepts 5 MB per decoded file).
 - **Server-Side GPX Processing**: In-memory parsing of GPX tracks calculating total distance, un-smoothed elevation gain, and sampled geographic coordinates for the Coach. The Coach receives the parsed points, not the file: no author or device metadata, and no positions within 500 m of the start and end.
 - **Binary FIT Activity Summaries**: Local extraction of binary FIT files summarizing elapsed time, distance, normalized power, average heart rate, and cadence. The Coach receives the parsed records, laps and sessions, not the original file, without device serial numbers, the FIT user profile or positions within 500 m of the start and end.

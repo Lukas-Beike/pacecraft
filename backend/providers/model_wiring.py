@@ -1,9 +1,8 @@
-"""Build the model transports and transient audio transcription.
+"""Build the model transports.
 
 The selected model names its provider: a Claude family goes to the Anthropic
 Messages API, anything else to OpenAI Responses. There is no fallback from one
-provider to the other. Voice transcription uses OpenAI unless a separate
-OpenAI-compatible transcription endpoint is configured.
+provider to the other.
 """
 
 from __future__ import annotations
@@ -17,7 +16,6 @@ from typing import Any
 
 from backend.config import DEFAULT_ANTHROPIC_BASE_URL, DEFAULT_OPENAI_BASE_URL, Config
 from backend.observability import DiagnosticCapture
-from backend.providers import audio as audio_provider
 from backend.providers import http as provider_http
 from backend.providers import openai_requests, openai_responses_adapter, openai_stream
 from backend.providers.claude_models import ClaudeModelResolver, setting_family
@@ -33,10 +31,6 @@ from backend.runtime import clock as runtime_clock
 
 # Where the newest, working and rejected Claude model per family are kept.
 CLAUDE_MODELS_KEY = "claude_models"
-
-# Voice transcription: the model and how long one request may take.
-TRANSCRIPTION_MODEL = "gpt-transcribe"
-TRANSCRIPTION_TIMEOUT_SECONDS = 90
 
 
 JSON_MEDIA_TYPE = "application/json"
@@ -57,7 +51,6 @@ class ModelTransportServices:
     # on_response_id=None) route by the provider the model names.
     complete: Callable[[ModelRequest], ModelTurn]
     stream: Callable[..., ModelTurn]
-    audio_transcription_client: Callable[[], audio_provider.AudioTranscriptionClient]
     openai_responses_client: Callable[[], openai_requests.OpenAIResponsesClient]
     openai_stream_client: Callable[[], openai_stream.OpenAIStreamClient]
 
@@ -74,7 +67,6 @@ def build_model_transport(
     logger: Any,
     diagnostic_capture: DiagnosticCapture,
     app_version: str,
-    max_audio_bytes: int,
 ) -> ModelTransportServices:
     """Fresh model adapters per call over the shared provider transport owners."""
     monotonic = time.perf_counter
@@ -160,22 +152,6 @@ def build_model_transport(
             service_tier=service_tier,
         )
 
-    def audio_transcription_client() -> audio_provider.AudioTranscriptionClient:
-        active = config()
-        local = bool(active.transcription_base_url)
-        return audio_provider.AudioTranscriptionClient(
-            max_audio_bytes=max_audio_bytes,
-            # A local server never receives the OpenAI key.
-            api_key=active.transcription_api_key if local else active.openai_api_key,
-            base_url=active.transcription_base_url or active.openai_base_url,
-            default_base_url=DEFAULT_OPENAI_BASE_URL,
-            model=active.transcription_model if local else TRANSCRIPTION_MODEL,
-            response_timeout_seconds=TRANSCRIPTION_TIMEOUT_SECONDS,
-            http_client=http_client(),
-            provider_state=provider_state(),
-            local_endpoint=local,
-        )
-
     def complete(request: ModelRequest) -> ModelTurn:
         """A one-shot answer from the provider the model names."""
         family = setting_family(request.model)
@@ -219,7 +195,6 @@ def build_model_transport(
         claude_client,
         complete,
         stream,
-        audio_transcription_client,
         openai_responses_client,
         openai_stream_client,
     )

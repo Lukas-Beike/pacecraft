@@ -399,7 +399,7 @@ The fixed Coach instructions SHALL be the normative text of these modules, not r
 Evidence: `backend/coach/request_payload.py:compose_model_instructions`; `backend/coach/context.py` (training context prefix); `backend/coach/dialogue.py:INSTRUCTIONS`; `backend/coach/prompt.py:COACH_PROMPT`; `backend/coach/playbooks.py:playbook_for`, `backend/coach/playbooks.py:nutrition_playbook`; `tests/test_coach_playbooks.py:PlaybookInjectionTests.test_other_turns_carry_no_playbook`, `tests/test_coach_playbooks.py:PlaybookInjectionTests.test_nutrition_rules_only_on_nutrition_turns`; `backend/coach/structured_tool_round.py:CoachStructuredToolRoundService._refreshed_context`; `tests/test_coach_structured_tool_round.py:StructuredToolRoundTests.test_claude_system_is_identical_through_refresh_and_budget`, `tests/test_coach_structured_tool_round.py:StructuredToolRoundTests.test_openai_instructions_are_identical_through_refresh_and_budget`.
 
 ### Requirement: CC10 Composer continuity and user-controlled input
-The system SHALL keep drafts editable while the Coach runs, serialize queued follow-ups, preserve rejected input on session expiry and require the athlete to send editable voice transcripts as chat messages.
+The system SHALL keep drafts editable while the Coach runs, serialize queued follow-ups, preserve rejected input on session expiry and require the athlete to send drafts explicitly as chat messages.
 
 #### Scenario: Queue or steer while busy
 - **WHEN** the athlete submits another message while a response runs
@@ -413,11 +413,7 @@ The system SHALL keep drafts editable while the Coach runs, serialize queued fol
 - **WHEN** a current chat submission receives HTTP 401
 - **THEN** the client shows login once and restores its draft/attachments without overwriting newer typed text or replaying a superseded draft.
 
-#### Scenario: Opt-in voice transcript
-- **WHEN** the athlete starts supported secure-context microphone input
-- **THEN** recording is bounded to sixty seconds, recording resources are stopped after capture, and a successful transcript is appended to the editable draft rather than sent automatically; denied/unsupported recording or empty transcription produces an explicit error.
-
-Evidence: `public/coach.js:queueChatMessage`, `public/coach.js:editQueuedChatMessage`, `public/coach.js:chatEnterAction`, `public/coach.js:rejectChatStreamResponse`, `public/coach.js:toggleVoiceInput`, `public/coach.js:transcribeVoice`; `backend/providers/audio.py:AudioTranscriptionClient.transcribe`; `tests/coach-enter.test.cjs:desktop Enter sends the draft`, `tests/coach-enter.test.cjs:IME composition never triggers an action`; `tests/coach-queue-edit.test.cjs:editing a queued message is refused and leaves the queue untouched when the combined count exceeds the limit`; `tests/coach-session-expiry.test.cjs:a chat 401 keeps newer typed text and parks the rejected message once when the input was edited`; `tests/test_provider_audio.py:test_validation_precedes_provider_io_and_keeps_order`, `tests/test_provider_audio.py:test_empty_or_invalid_provider_responses_are_rejected`. Microphone permissions/recording cleanup are source-inspected; no browser/microphone runtime was exercised.
+Evidence: `public/coach.js:queueChatMessage`, `public/coach.js:editQueuedChatMessage`, `public/coach.js:chatEnterAction`, `public/coach.js:rejectChatStreamResponse`; `tests/coach-enter.test.cjs:desktop Enter sends the draft`, `tests/coach-enter.test.cjs:IME composition never triggers an action`; `tests/coach-queue-edit.test.cjs:editing a queued message is refused and leaves the queue untouched when the combined count exceeds the limit`; `tests/coach-session-expiry.test.cjs:a chat 401 keeps newer typed text and parks the rejected message once when the input was edited`.
 
 ### Requirement: Clarify uncertain calendar impact
 The planning playbook SHALL direct the Coach to ask whether to train and whether to reduce intensity when an event creates material uncertainty, and to use the athlete's answer. An ordinary event alone SHALL not imply a cancellation or reduction.

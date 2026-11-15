@@ -20,7 +20,7 @@ function client(respond = () => json({ ok: true })) {
 test("the client exposes one frozen surface", () => {
   const { api } = client();
   assert.ok(Object.isFrozen(api));
-  assert.deepEqual(Object.keys(api).sort(), ["audio", "download", "messageForReason", "request", "responseError", "settled", "stream"]);
+  assert.deepEqual(Object.keys(api).sort(), ["download", "messageForReason", "request", "responseError", "settled", "stream"]);
 });
 
 test("settled waits for every request in flight, a failed one too (#2966)", async () => {
@@ -42,12 +42,11 @@ test("settled waits for every request in flight, a failed one too (#2966)", asyn
 });
 
 test("each call arms its own timeout, and an explicit timeout wins", async () => {
-  const { api, delays } = client(() => json({ ok: true, transcript: "Hallo" }));
+  const { api, delays } = client(() => json({ ok: true }));
   await api.request("/api/profile");
   await api.request("/api/coach/actions/execute", { method: "POST" });
   await api.request("/api/bootstrap", { timeoutMs: 90_000 });
-  await api.audio("/api/chat/transcribe", new Blob(["x"]));
-  assert.deepEqual(delays, [25_000, 55_000, 90_000, 100_000]);
+  assert.deepEqual(delays, [25_000, 55_000, 90_000]);
   const downloads = client(() => new Response("file"));
   await downloads.api.download("/api/logs/download");
   assert.deepEqual(downloads.delays, [25_000]);

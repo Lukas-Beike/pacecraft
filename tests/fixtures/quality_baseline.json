@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "base": "6050c3368661fd2a1d296b34bb6db4ac1a4a876c",
+  "base": "04c554a5682552a6045a99f545f0783f92db2098",
   "versions": {
     "ruff": "0.17.4",
     "mypy": "2.4.1"
@@ -344,12 +344,6 @@
     },
     {
       "tool": "mypy",
-      "path": "backend/http_api/handler.py",
-      "code": "arg-type",
-      "message_sha256": "202e95d88c01d1a85fa2f434c5a0096706c95cfdc41dcab4a22472c904bb44b0"
-    },
-    {
-      "tool": "mypy",
       "path": "tests/test_coach_job_status.py",
       "code": "arg-type",
       "message_sha256": "23f433f0cfc60937be01eb657709ca365aeef5e05722c2fdbbff67272522c00e"
@@ -473,12 +467,6 @@
       "path": "tools/extract_bls.py",
       "code": "arg-type",
       "message_sha256": "5f98b44ccead6c444920709d58717d3d30817c9730bd4172d31a000187375f7f"
-    },
-    {
-      "tool": "mypy",
-      "path": "backend/http_api/handler.py",
-      "code": "arg-type",
-      "message_sha256": "6195198e495bd02c70500de218de463b7423c94c7b7371b88aae6a19d1792592"
     },
     {
       "tool": "mypy",

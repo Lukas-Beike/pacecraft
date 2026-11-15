@@ -21,7 +21,6 @@ function coach({ busy = false, chatRequest = null, chatServerOperationId = null 
     chatDraftDirty: true,
     chatStreamText: "",
     chatResponseStarted: false,
-    voiceTranscribing: false,
     quickTemplatesVisible: true,
     data: { messages: [], configured: { openai: true } },
   };
@@ -35,10 +34,8 @@ function coach({ busy = false, chatRequest = null, chatServerOperationId = null 
     renderMessages() {},
     renderQuickMessageTemplates() {},
     updateChatControls() {},
-    updateVoiceButton() {},
     scrollChatToResponseStart() {},
     shouldRestoreChatInputFocus: () => false,
-    voiceIsRecording: () => false,
     loadChatHistoryFresh: async () => {},
     drainChatQueue: async (...args) => { drained.push(JSON.parse(JSON.stringify(args))); },
   });

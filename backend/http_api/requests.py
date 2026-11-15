@@ -21,7 +21,6 @@ class HeaderLookup(Protocol):
 HeaderSource = Mapping[str, Any] | HeaderLookup
 ReadBytes = Callable[[int], bytes]
 ErrorFactory = Callable[[int, str], Exception]
-AudioTypeNormalizer = Callable[[str], str]
 
 # Large bodies (database restore uploads) are read in pieces of this size, so a
 # whole upload never has to be held in memory at once.
@@ -108,33 +107,6 @@ def _body_chunks(
             raise error(400, "Der Anfrageinhalt wurde unvollständig übertragen.")
         remaining -= len(chunk)
         yield chunk
-
-
-def read_audio_body(
-    headers: Mapping[str, Any],
-    read_bytes: ReadBytes,
-    *,
-    allowed_types: Mapping[str, str],
-    normalize_type: AudioTypeNormalizer,
-    max_bytes: int,
-    error: ErrorFactory,
-) -> bytes:
-    """Validate and read a bounded audio body for short-lived transcription."""
-    content_type = normalize_type(str(headers.get("Content-Type", "")))
-    if content_type not in allowed_types:
-        raise error(
-            415,
-            "Nicht unterstütztes Audioformat. Erlaubt sind WebM, MP4, OGG, MP3 und WAV.",
-        )
-    size = _content_length(headers, error)
-    if size <= 0 or size > max_bytes:
-        raise error(
-            413 if size > max_bytes else 400, "Ungültige Größe der Audioaufnahme."
-        )
-    audio = read_bytes(size)
-    if len(audio) != size:
-        raise error(400, "Die Audioaufnahme wurde unvollständig übertragen.")
-    return audio
 
 
 def read_json(

@@ -361,7 +361,7 @@ The composition root SHALL wire these fixed limits and locations; the capabiliti
 
 #### Scenario: Request and transfer limits
 - **WHEN** the application is assembled
-- **THEN** JSON request bodies are limited to 1,000,000 bytes, audio uploads to 8,000,000 bytes, database backups and restore uploads to 1,000,000,000 bytes, the privacy export to 100,000,000 bytes, and exports and backups need 10,000,000 free bytes and may take 120 seconds
+- **THEN** JSON request bodies are limited to 1,000,000 bytes, database backups and restore uploads to 1,000,000,000 bytes, the privacy export to 100,000,000 bytes, and exports and backups need 10,000,000 free bytes and may take 120 seconds
 
 #### Scenario: Model call limits
 - **WHEN** the application is assembled

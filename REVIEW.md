@@ -109,7 +109,6 @@ flow rather than demanding unrelated changes or a repository-wide redesign.
 - Reject leaks through logs, diagnostics, exports, browser storage, notifications,
   error responses, or Coach context. Provider credentials and raw external
   request payloads stay out of logs; athlete context must retain sanitization.
-  Voice audio remains short-lived and is not persisted.
 
 ### Provider data and asynchronous work
 
@@ -149,9 +148,9 @@ flow rather than demanding unrelated changes or a repository-wide redesign.
   and receipts that refresh the affected view. For changed controls, check small
   screens, keyboard/focus access, readable states, and touch usability; report
   concrete inaccessible or broken interactions rather than aesthetic preferences.
-- Preserve safe Markdown, editable voice transcripts, opt-in microphone and
-  notifications, desktop Enter-to-send/Shift+Enter-newline, and touch-first
-  Enter-newline with send-button or Ctrl/Cmd+Enter submission.
+- Preserve safe Markdown, opt-in notifications, desktop
+  Enter-to-send/Shift+Enter-newline, and touch-first Enter-newline with
+  send-button or Ctrl/Cmd+Enter submission.
 - Frontend sources must carry no hand-written `?v=` versions or cache name
   (`StaticAssetService` stamps them); new cached files belong in the
   service-worker `ASSETS` list (static serving lists `public/` itself). Inspect fresh installation and offline asset

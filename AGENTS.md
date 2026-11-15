@@ -107,16 +107,14 @@ Use [README.md](README.md) for the overview and [docs/setup.md](docs/setup.md) a
 - Preserve explicit model selection; verify options/defaults against provider code
   and configuration. Only OpenAI Responses (including compatible
   `OPENAI_BASE_URL` endpoints) or the Anthropic Messages API, explicitly
-  selected; no Chat Completions and no cross-provider fallback; voice
-  transcription uses an explicitly configured OpenAI-compatible endpoint,
-  OpenAI by default or a LAN-local server over HTTPS (#2596).
+  selected; no Chat Completions and no cross-provider fallback. There is no
+  in-app voice input: the athlete dictates with the phone keyboard (#3045).
 - `APP_VERSION` in `server.py` must match the release tag. Daily release version
   changes require a PR, never a direct protected-`main` push; publishing rejects
   version mismatches.
 - Keep credentials and external request payloads out of logs; redact structured
   logs. Diagnostics may keep sanitized Coach request/response bodies but never
-  credentials, keys, tokens, session data, or raw provider error text. Voice is
-  short-lived transcription; never persist audio.
+  credentials, keys, tokens, session data, or raw provider error text.
 - Cut taglines, helper texts and secondary labels. If the screen needs them to
   make sense, fix the layout.
 
@@ -174,7 +172,7 @@ Dockerfile, dependency, startup, or deployment changes also run
 selection through the isolated runner `scripts/run_browser_tests.py` (selection
 per [browser-tests](.agents/skills/pacecraft-browser-tests/SKILL.md)) and, when a
 browser is available, check login, fresh PWA install/offline assets, safe
-Markdown, Enter versus Shift+Enter, microphone, notifications, and the changed flow.
+Markdown, Enter versus Shift+Enter, notifications, and the changed flow.
 
 CI and Docker use Python 3.14; change toolchain and CI together. Direct pins live
 in `requirements.in`/`requirements-dev.in`; regenerate the hash-locked `.txt`

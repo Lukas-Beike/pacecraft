@@ -43,7 +43,7 @@ are in the docs.
 | [nutrition-photo-analysis](specs/nutrition-photo-analysis/spec.md) | Transient label candidates, bounded images and barcode capture |
 | [web-pwa-and-accessibility](specs/web-pwa-and-accessibility/spec.md) | Mobile shell, safe content, offline assets and accessible interactions |
 | [view-refresh-and-client-state](specs/view-refresh-and-client-state/spec.md) | Device reads, session epochs, scoped refresh and background updates |
-| [voice-and-notifications](specs/voice-and-notifications/spec.md) | Optional transient audio and privacy-conscious client notifications |
+| [notifications](specs/notifications/spec.md) | Privacy-conscious client notifications |
 | [authentication-and-http](specs/authentication-and-http/spec.md) | Sessions, CSRF, rate/body limits and safe HTTP contracts |
 | [encrypted-storage-and-migrations](specs/encrypted-storage-and-migrations/spec.md) | SQLCipher, atomic transactions and the upgrade contract from the v26 baseline |
 | [backup-restore-and-privacy](specs/backup-restore-and-privacy/spec.md) | Consistent exports, validated restore, recovery and explicit erasure |

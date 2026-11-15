@@ -29,7 +29,6 @@ test("visibility, chart variants and reduced motion override component styles", 
         <path class="analysis-range-whisker" data-series="1" data-color="1" d="M0 0L10 10" />
       </svg></div>
       <div class="skeleton"></div><button class="icon-button busy"></button>
-      <div class="composer"><button class="voice-button recording"></button></div>
       <div class="message assistant streaming"></div>
       <div class="working-dots"><i></i><i></i><i></i></div>
     </body></html>`,
@@ -56,7 +55,7 @@ test("visibility, chart variants and reduced motion override component styles", 
     await page.locator(".nutrition-low-confidence").blur();
   }
   await page.emulateMedia({ reducedMotion: "reduce" });
-  for (const selector of [".skeleton", ".icon-button.busy", ".voice-button.recording"]) {
+  for (const selector of [".skeleton", ".icon-button.busy"]) {
     await expect(page.locator(selector)).toHaveCSS("animation-duration", "1e-05s");
     await expect(page.locator(selector)).toHaveCSS("animation-iteration-count", "1");
   }
