@@ -226,6 +226,14 @@ every named number the code fixes. A test fails when it is out of date.
 | `HEART_RATE_HISTOGRAM_VERSION` | `2` | `backend/performance/session_analysis.py` | Bump when heart_rate_histogram counts differently, so stored rows recompute. v2: steps up to the adaptive gap rule of the zone times count (#1950). |
 | `HISTOGRAM_MIN_BPM` | `30` | `backend/performance/session_analysis.py` |  |
 | `HISTOGRAM_MAX_BPM` | `240` | `backend/performance/session_analysis.py` |  |
+| `GAP_METHOD` | `'Minetti et al. 2002: Energiekosten des Laufens je Steigung (Schätzung aus den Streams der Einheit)'` | `backend/performance/session_conditions.py` | Grade-adjusted pace: Minetti et al. 2002 (R44), the adjustment of M8 and pace at HR. |
+| `MOVING_MPS` | `1.0` | `backend/performance/session_conditions.py` | Samples below this speed are standing, not running (3.6 km/h). |
+| `STOP_S` | `30.0` | `backend/performance/session_conditions.py` | A gap longer than max(30 s, 3 x the median step) is a stop, as in the halves. |
+| `RPE_GAP_POINTS` | `2.0` | `backend/performance/session_conditions.py` | RPE against intensity (athlete decision on #3084, 2026-11-15; Foster session-RPE, R1): notable from this gap in points to the expected RPE. |
+| `RPE_IF_WINDOW` | `0.05` | `backend/performance/session_conditions.py` | The expected RPE is the median of own rated sessions of the same sport and RPE scale within this IF of the session (orchestrator decision on #3084). |
+| `MIN_RATED` | `5` | `backend/performance/session_conditions.py` | Own rated sessions needed for an expected RPE; fewer leave the check unknown. |
+| `RATED_WINDOW_DAYS` | `84` | `backend/performance/session_conditions.py` | The rated sessions read for the expected RPE: the comparable-session window. |
+| `INPUTS` | `'condition_inputs'` | `backend/performance/session_conditions.py` | What the session report adds to the detail for these checks: the session's local IF, the device's grade-adjusted speed and the athlete's rated sessions. |
 | `METHOD` | `'session-execution-v1'` | `backend/performance/session_execution.py` |  |
 | `SCOPE` | `"Descriptive execution of this one session from its own streams and laps. Output is pace in s/km ... (sha256 3cc2c071)` | `backend/performance/session_execution.py` |  |
 | `SHORT_REP_S` | `120.0` | `backend/performance/session_execution.py` |  |

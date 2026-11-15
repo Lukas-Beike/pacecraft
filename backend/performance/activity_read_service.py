@@ -45,6 +45,7 @@ from backend.performance.detail_envelope import (
 from backend.performance.freshness import GarminSyncStatus
 from backend.performance.local_tss import THRESHOLD_KINDS
 from backend.performance.planned_targets import planned_step_adherence, unit_steps
+from backend.performance.session_rpe_load import feedback_by_session, session_load
 from backend.performance.session_zones import (
     dated_thresholds,
     own_configurations,
@@ -185,6 +186,39 @@ class ActivityAnalysisReadService(ActivityReadService):
             return None
         with source.database_manager().read_snapshot() as db:
             return list(reader.activity_summaries(db, start=start, end=end))
+
+    def rated_sessions(self, start: date, end: date) -> list[dict[str, Any]]:
+        """Each session from ``start`` to ``end`` with its local IF and effective RPE.
+
+        For the expected RPE of the session report (#3084): one summary snapshot
+        and one feedback read for the bounded window; sessions without a rating
+        or an IF are left out.
+        """
+        summaries = self.summaries_between(start, end) or []
+        feedback = feedback_by_session(
+            summaries,
+            functools.partial(
+                self._feedback_service.for_activity_ids, sessions_only=True
+            ),
+        )
+        rated = []
+        for summary in summaries:
+            entry, _value = session_load(
+                summary, feedback.get(stored_activity_key(summary))
+            )
+            intensity = summary.get("intensity")
+            if entry["rpe"] is None or not isinstance(intensity, (int, float)):
+                continue
+            rated.append(
+                {
+                    "id": summary.get("id"),
+                    "sport": summary.get("sport"),
+                    "intensity": intensity,
+                    "rpe": entry["rpe"],
+                    "rpe_scale": entry["rpe_scale"],
+                }
+            )
+        return rated
 
     def summaries_on_days(
         self, days: Sequence[date]

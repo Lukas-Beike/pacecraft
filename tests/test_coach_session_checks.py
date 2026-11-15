@@ -26,6 +26,8 @@ def _service(
     activity_read.summaries_between.return_value = (
         None if summaries is None else list(summaries)
     )
+    # No rated sessions: the session report's RPE check stays unknown (#3084).
+    activity_read.rated_sessions.return_value = []
     planned = None if units is None else Mock(list=Mock(return_value=units))
     reports = (
         None
