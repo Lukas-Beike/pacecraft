@@ -98,3 +98,28 @@ test("long planned units ask for fuelling and show drinking and carbohydrates wi
   assert.match(generic, /Startwert ohne eigene Daten.*Pro Stunde0,4–0,8 l/);
   assert.equal(rendered.plannedFuellingRows({ max_l_per_h: 1.2 }).filter(Boolean).map((row) => row.join(":")).join("|"), "Pro Stunde:bis 1,2 l");
 });
+
+test("a planned unit's fuelling is read once per query and only after the view's own reads", async () => {
+  // #2991: two renders of the same unit (stored then fresh start, the wide detail pane)
+  // asked twice with identical parameters while the view's reads were still running.
+  const calls = [];
+  let settle;
+  const settled = new Promise((resolve) => { settle = resolve; });
+  const views = loadPublicScript("plan-views.js", {
+    AppFormat: require("../public/format.js"),
+    document: fakeDocument(),
+    URLSearchParams,
+    state: { sessionGeneration: 1 },
+    DATA_LOAD_TIMEOUT_MS: 15_000,
+    AppApi: { settled: () => settled },
+    api: (path) => { calls.push(path); return Promise.resolve({ status: "not_long" }); },
+  });
+  const query = "sport=ride&environment=outdoor&date=2026-11-20&duration_s=9000";
+  for (const section of [views.h("section"), views.h("section")]) views.loadPlannedFuelling(section, query);
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(calls.length, 0);
+  settle();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0], `/api/nutrition/session-fuelling?${query}`);
+});

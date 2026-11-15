@@ -106,3 +106,30 @@ test("empty coach chat does not promise quick actions and keeps the composer gap
   });
   expect(Math.abs(emptyGap - (await composerGap()))).toBeLessThanOrEqual(1);
 });
+
+test("@responsive the desktop Coach view reads the fuelling of the open unit once, after its own reads", async ({ page, request }, testInfo) => {
+  // #2991: on wide screens the week opens its next unit, and the start read the same
+  // fuelling twice while the view's own reads were still running.
+  test.skip(testInfo.project.name !== "desktop", "Only the wide calendar opens a unit by itself.");
+  expect((await request.get("/api/fixture/demo")).ok()).toBeTruthy();
+  const events = [];
+  await page.route("**/api/nutrition/session-fuelling*", (route) => {
+    events.push("fuelling");
+    return route.fulfill({ json: { status: "not_long" } });
+  });
+  await page.route("**/api/bootstrap**", async (route) => {
+    const response = await route.fetch();
+    const data = await response.json();
+    const today = new Intl.DateTimeFormat("en-CA", { timeZone: data.profile?.timezone || "Europe/Berlin" }).format(new Date());
+    data.training_calendar = [{ id: "long-ride", local_id: "long-ride", date: today, name: "Lange Ausfahrt", type: "Ride", sport: "ride", environment: "outdoor", duration_minutes: 150, planned_duration_s: 9000 }];
+    events.push("bootstrap");
+    return route.fulfill({ json: data });
+  });
+  await page.goto("/#coach");
+  await expect.poll(() => page.evaluate(() => state.initialStateLoaded && !state.loadPromise)).toBe(true);
+  await expect.poll(() => events.filter((item) => item === "fuelling").length).toBeGreaterThan(0);
+  // Justified wait: a second read would follow a later render; nothing in the DOM shows it.
+  await page.waitForTimeout(1500);
+  expect(events.filter((item) => item === "fuelling")).toHaveLength(1);
+  expect(events.indexOf("fuelling")).toBeGreaterThan(events.lastIndexOf("bootstrap"));
+});

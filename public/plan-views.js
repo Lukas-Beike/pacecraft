@@ -1460,12 +1460,27 @@ function plannedFuellingBlock(plan) {
   ];
 }
 
+// One fuelling read per unit and session: renders of the same unit share it, and it waits out
+// the view's own reads instead of joining their burst (#2991, as #2979). A failed read is not kept.
+const plannedFuellingReads = new Map();
+
+function plannedFuellingRead(query) {
+  const key = `${state.sessionGeneration}|${query}`;
+  let read = plannedFuellingReads.get(key);
+  if (!read) {
+    read = globalThis.AppApi.settled().then(() => api(`/api/nutrition/session-fuelling?${query}`, { timeoutMs: DATA_LOAD_TIMEOUT_MS }));
+    read.catch(() => { if (plannedFuellingReads.get(key) === read) plannedFuellingReads.delete(key); });
+    plannedFuellingReads.set(key, read);
+  }
+  return read;
+}
+
 function loadPlannedFuelling(section, query) {
   if (section.dataset.state === "loading" || section.dataset.state === "ready") return;
   section.dataset.state = "loading";
   const status = h("output", null, "Verpflegung wird berechnet …");
   section.replaceChildren(h("h4", null, "Verpflegung"), status);
-  api(`/api/nutrition/session-fuelling?${query}`, { timeoutMs: DATA_LOAD_TIMEOUT_MS }).then((plan) => {
+  plannedFuellingRead(query).then((plan) => {
     section.dataset.state = "ready";
     if (plan?.status === "ready") section.replaceChildren(...plannedFuellingBlock(plan));
     // Keep the empty section marked ready, so reopening does not read again.
