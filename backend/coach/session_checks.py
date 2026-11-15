@@ -25,8 +25,8 @@ TEST_EVALUATION = (
     "power in analysis.power_profile, even when erg_like; Zwift's FTP is about "
     "75 % of it, a self-comparison. 30-min time trial: pace and average heart "
     "rate of the last 20 min as a threshold estimate (McGehee 2005). Control "
-    "run: pace at the fixed heart rate against earlier control runs, with "
-    "temperature. Recommend updating FTP, threshold pace or zones in "
+    "run: pace at the fixed heart rate against earlier control runs, with the "
+    "weather temperature. Recommend updating FTP, threshold pace or zones in "
     "Intervals.icu or Garmin only from a sound test; never write them."
 )
 

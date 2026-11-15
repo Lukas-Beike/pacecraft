@@ -34,7 +34,7 @@ from backend.db.activity_detail_store import (
     replace_detail_set,
 )
 from backend.db.schema import initialize_schema
-from backend.performance import mean_max_curve
+from backend.performance import mean_max_curve, report_service
 from backend.performance.canonical_detail import CanonicalDetailReader
 from backend.performance.mean_max_curve import SessionCurveReader
 from backend.performance.power_profile import running_profile
@@ -479,6 +479,32 @@ class ProfileSelectionTests(unittest.TestCase):
                 "source": "Garmin",
             }
         )
+
+    def test_a_record_names_the_activity_weather_temperature_never_the_watch(self):
+        # #3036: the watch's temperature sensor reads body-warmed values.
+        summaries = []
+        for activity_id in ("act_1", "act_2"):
+            self.add_ride(summaries, activity_id)
+            summaries[-1].update(avg_temp_c=31.0, min_temp_c=29.0, max_temp_c=33.0)
+        weather = {"act_1": 12.5}
+        service = self.service(summaries)
+
+        def temperatures():
+            with patch.object(
+                report_service,
+                "session_temperatures",
+                side_effect=lambda _db, ids: {k: weather[k] for k in ids if k in weather},
+            ):
+                rows = service.curve_records(60, shared=True)
+            return {row["activity_id"]: row["weather_temp_c"] for row in rows}
+
+        # Without stored weather the temperature is unknown.
+        self.assertEqual({"act_1": 12.5, "act_2": None}, temperatures())
+        # Weather stored later reaches the shared records.
+        weather["act_2"] = 20.0
+        self.assertEqual({"act_1": 12.5, "act_2": 20.0}, temperatures())
+        for row in service.curve_records(60):
+            self.assertFalse({"avg_temp_c", "min_temp_c", "max_temp_c"} & set(row))
 
     def test_window_reads_canonical_sessions_and_counts_missing_streams(self):
         summaries = []

@@ -163,8 +163,6 @@ COACH_ACTIVITY_FIELDS = (
     "distance_m",
     "elevation_gain_m",
     "elevation_loss_m",
-    "min_temp_c",
-    "max_temp_c",
     "training_load",
     "load_branch",
     "load_threshold_after_session",

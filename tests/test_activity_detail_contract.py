@@ -234,7 +234,6 @@ def heart_rate_values(offset: int = 0) -> tuple[float, ...]:
 
 _EXTRA_UNITS = {
     "avg_speed_mps": "m/s",
-    "min_temp_c": "°C",
     "elevation_loss_m": "m",
 }
 
@@ -576,12 +575,12 @@ class MetricTests(unittest.TestCase):
         )
         for key, unit in (
             ("elevation_loss_m", "m"),
-            ("min_temp_c", "°C"),
-            ("max_temp_c", "°C"),
             ("lap_count", "count"),
         ):
             self.assertEqual(unit, metrics[key]["unit"], key)
             self.assertEqual("measured", metrics[key]["source"]["kind"], key)
+        # The watch's temperatures stay stored but are never shown (#3036).
+        self.assertFalse({"min_temp_c", "max_temp_c"} & set(metrics))
 
     def test_load_is_omitted_without_a_value(self) -> None:
         self.assertNotIn("load", build([record(INTERVALS, "i-ride-99")])["metrics"])
@@ -968,7 +967,7 @@ class SummaryMetricTests(unittest.TestCase):
 
     def test_covered_intervals_extremes_stay_as_alternatives(self) -> None:
         extra = extra_metrics(
-            {"min_temp_c": 8.0, "elevation_loss_m": 400.0}, RecordingOrigin.GARMIN
+            {"elevation_loss_m": 400.0}, RecordingOrigin.GARMIN
         )
 
         doc = build(
@@ -978,17 +977,13 @@ class SummaryMetricTests(unittest.TestCase):
                     "g-run-1",
                     recorded_by=RecordingOrigin.GARMIN,
                     label="Garmin Connect",
-                    min_temp_c=9.0,
                     elevation_loss_m=390.0,
                 )
             ],
             summary_metrics=extra,
         )
 
-        for key, own, other in (
-            ("min_temp_c", 9.0, 8.0),
-            ("elevation_loss_m", 390.0, 400.0),
-        ):
+        for key, own, other in (("elevation_loss_m", 390.0, 400.0),):
             metric = doc["metrics"][key]
             self.assertEqual(own, metric["value"], key)
             self.assertEqual(

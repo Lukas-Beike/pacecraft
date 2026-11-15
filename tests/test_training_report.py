@@ -2,7 +2,7 @@
 
 import unittest
 from datetime import UTC, date, datetime, timedelta
-from unittest.mock import Mock, patch
+from unittest.mock import MagicMock, Mock, patch
 
 from support import GOLDEN_FIRST, dispatch_route, golden_history, payload_digest
 
@@ -580,14 +580,20 @@ class TrainingReportTests(unittest.TestCase):
             activity_summaries=lambda: _Rows([current, garmin_only]),
         )
         service = TrainingRecordsService(
-            database_manager=Mock(),
+            database_manager=MagicMock(),
             read_equipment=dict,
             read_record=None,
             canonical=canonical,
         )
-        with patch(
-            "backend.performance.report_service.analysis_summaries",
-            return_value=stored,
+        with (
+            patch(
+                "backend.performance.report_service.analysis_summaries",
+                return_value=stored,
+            ),
+            patch(
+                "backend.performance.report_service.session_temperatures",
+                return_value={"act_1": 18.5},
+            ) as temperatures,
         ):
             records = service.observations()
 
@@ -596,17 +602,21 @@ class TrainingReportTests(unittest.TestCase):
         record = records[0]
         self.assertEqual("Wahoo", record["source"])
         self.assertNotIn("session_id", record)
+        # The temperature is the activity weather's, never the watch's 12.5 (#3036).
         self.assertEqual(
-            ("2026-09-30", "ride", "indoor", 3600.0, 12.5, "wahoo"),
+            ("2026-09-30", "ride", "indoor", 3600.0, 18.5, "wahoo"),
             (
                 record["date"],
                 record["sport"],
                 record["environment"],
                 record["duration"],
-                record["average_temp"],
+                record["weather_temp_c"],
                 record["device"],
             ),
         )
+        self.assertEqual(["act_1", "act_gone", "act_3"], temperatures.call_args[0][1])
+        # Without stored weather the temperature is unknown.
+        self.assertIsNone(records[1]["weather_temp_c"])
 
     def test_tag_impact_sums_day_loads_of_every_session_and_keeps_unknown(self):
         checkins = [

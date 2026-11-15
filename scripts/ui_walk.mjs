@@ -195,8 +195,9 @@ async function walkCalendar(page, shot) {
 // tried in turn (up to MAX_CANDIDATES), `then` opens inside the candidate; the step is ok once `ready`
 // shows a visible element that is not empty by `kind` (chart: drawn marks, numbers: a digit,
 // options: a select with two or more options, text: any). `absent` = [scope, text] marks a candidate
-// whose data does not exist. `optional` steps depend on recorded data: with none they are skipped, and
-// a later walk compares ok before / skipped now as a FAIL. A new user-visible function adds its step here.
+// whose data does not exist; a visible `never` element fails the step once it is ready. `optional`
+// steps depend on recorded data: with none they are skipped, and a later walk compares ok before /
+// skipped now as a FAIL. A new user-visible function adds its step here.
 // Controls are limited to opening, expanding and paging ones (isOpener); the label guard stops the rest.
 export const STEP_KINDS = ["chart", "numbers", "options", "text"];
 const OPENERS = [
@@ -226,7 +227,8 @@ export const STEPS = [
   { view: "coach", name: "Coach: Verlauf", covers: "Coach history", ready: "#messages [data-message-id]", kind: "text" },
   { view: "plan", name: "Kalender: Einheit öffnen", covers: "#2189 calendar agenda and detail", each: DONE, ready: ".planned-entry[open] .planned-entry-details", kind: "text" },
   detail("Kalender: Details", "#2258 session details", ".planned-entry[open] .activity-analysis-stats", "numbers"),
-  detail("Kalender: Diagramm", "#2258 session charts", '.planned-entry[open] .activity-analysis-panel svg[role="img"]', "chart"),
+  // The watch's temperature sensor reads body-warmed values, so no session charts it (#3036).
+  detail("Kalender: Diagramm", "#2258 session charts", '.planned-entry[open] .activity-analysis-panel svg[role="img"]', "chart", { never: '.planned-entry[open] .activity-analysis-panel svg[aria-label^="Temperatur"]' }),
   detail("Kalender: Zonenbalken", "#2258 time in zones", ".planned-entry[open] .activity-analysis-zones", "numbers", { optional: true }),
   detail("Kalender: Laufdynamik", "#2910 running dynamics", ".planned-entry[open] .activity-dynamics-value", "numbers", { optional: true, each: ".planned-entry.is-completed[data-sport='Laufen'] > summary" }),
   { view: "plan", name: "Kalender: Schuh/Rad", covers: "#2946 equipment select", each: DONE, ready: ".planned-entry[open] .planned-equipment select", kind: "options", optional: true },
@@ -245,8 +247,8 @@ export const STEPS = [
   { view: "more", name: "Mehr: Betrieb, Änderungen", covers: "#2908 changelog", pre: [tab("more", "operations")], ready: ".release-changelog li", kind: "text", optional: true },
 ];
 
-// Runs in the page; "ready", "absent" or "" (not yet).
-function probe([selector, kind, absent]) {
+// Runs in the page; "ready", "shown" (a `never` element), "absent" or "" (not yet).
+function probe([selector, kind, absent, never]) {
   const blank = (paint) => !paint || paint === "none" || paint === "transparent" || paint === "rgba(0, 0, 0, 0)";
   const drawn = (svg) => [...svg.querySelectorAll("path[d], rect, circle, polyline")].some((mark) => {
     const style = getComputedStyle(mark);
@@ -262,7 +264,7 @@ function probe([selector, kind, absent]) {
     text: (el) => el.textContent.trim().length > 0,
   }[kind];
   const shown = (query) => [...document.querySelectorAll(query)].filter((el) => el.checkVisibility());
-  if (shown(selector).some((el) => filled(el))) return "ready";
+  if (shown(selector).some((el) => filled(el))) return never && shown(never).length ? "shown" : "ready";
   return absent && shown(absent[0]).some((el) => el.textContent.includes(absent[1])) ? "absent" : "";
 }
 
@@ -286,7 +288,7 @@ async function candidateCount(page, each) {
 }
 
 // Opens candidate `index` with the other candidates closed, so the controls pressed and the element checked
-// are its own. "ready", "absent", "empty", or "passed over" (an optional step's candidate without the control).
+// are its own. "ready", "shown", "absent", "empty", or "passed over" (an optional step's candidate without the control).
 async function tryCandidate(page, step, index, capMs) {
   try {
     if (step.each) {
@@ -300,7 +302,7 @@ async function tryCandidate(page, step, index, capMs) {
     return "passed over";
   }
   const timeout = step.each ? Math.min(CANDIDATE_CAP_MS, capMs) : capMs;
-  return page.waitForFunction(probe, [step.ready, step.kind, step.absent || null], { timeout, polling: 50 }).then((handle) => handle.jsonValue()).catch(() => "empty");
+  return page.waitForFunction(probe, [step.ready, step.kind, step.absent || null, step.never || null], { timeout, polling: 50 }).then((handle) => handle.jsonValue()).catch(() => "empty");
 }
 
 // One step: { status: ok|fail|skip, ms (interaction to ready, of the candidate that passed), why }.
@@ -314,6 +316,7 @@ export async function runStep(page, { pre = [], post = [], ...step }, capMs = ST
       const started = Date.now();
       const outcome = await tryCandidate(page, step, index, capMs);
       if (outcome === "ready") return { status: "ok", ms: Date.now() - started };
+      if (outcome === "shown") return { status: "fail", ms: Date.now() - started, why: `shows ${step.never}` };
       if (outcome === "empty") empty += 1;
     }
     // Nothing loaded and nothing empty: the data this step needs does not exist (info, not a failure).

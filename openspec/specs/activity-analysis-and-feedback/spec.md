@@ -265,7 +265,7 @@ The system SHALL set a run's or ride's execution against comparable earlier sess
 
 #### Scenario: Comparable peers
 - **WHEN** at least three earlier sessions with sound heart rate and speed share sport, indoor or outdoor, trail or road (runs) and structure, with a continuous main part within 35 % of this one's duration and 8 bpm of its average heart rate, or intervals within 2 reps and 35 % of the median rep duration
-- **THEN** `comparable_sessions` lists the median and difference of output, heart rate, drift and cadence (continuous) or rep output, closing heart rate, recovery drop, fade and cadence (intervals), and up to six peers with their temperatures.
+- **THEN** `comparable_sessions` lists the median and difference of output, heart rate, drift and cadence (continuous) or rep output, closing heart rate, recovery drop, fade and cadence (intervals), and up to six peers with their activity weather temperatures (`weather_temp_c`, null without weather).
 
 #### Scenario: Too few peers
 - **WHEN** fewer than three sessions compare, or the session lies outside the curve window

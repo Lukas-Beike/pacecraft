@@ -13,7 +13,13 @@ from activity_row_support import (
     canonical_source,
     summaries_of_rows,
 )
-from canonical_detail_support import NOW, ZONE, add_session_record, open_manager
+from canonical_detail_support import (
+    NOW,
+    ZONE,
+    add_session_record,
+    open_manager,
+    store_garmin_streams,
+)
 from test_activity_routes import loop, store_track
 
 from backend.activities.activity_reference import ActivityReferences
@@ -441,6 +447,65 @@ class ActivityReadServiceTests(unittest.TestCase):
         self.assertEqual("home", weather["location_kind"])
         self.assertIn("Hitze", weather["heat_note"])
         self.assertNotIn("52.5", json.dumps(weather))
+
+    def test_a_session_shows_only_its_weather_temperature_never_the_watch(self):
+        # #3036: the watch's temperature sensor reads body-warmed values.
+        snapshot = {"synced_at": "2026-09-20T08:00:00+00:00", "athlete": {}}
+        store_garmin_streams(
+            self.manager,
+            "new",
+            {
+                "time": [0, 1, 2, 3],
+                "heartrate": [120, 121, 122, 123],
+                "temperature": [31.0, 32.0, 33.0, 34.0],
+            },
+        )
+        with self.manager.unit_of_work() as db:
+            db.execute(
+                "UPDATE activity_records SET details = ? WHERE provider_activity_id = 'new'",
+                (json.dumps({"avg_temp_c": 32.0, "min_temp_c": 31.0, "max_temp_c": 34.0}),),
+            )
+        service = self.detail_service(snapshot)
+
+        def detail():
+            result = service.detail(
+                "new",
+                garmin_status=NO_GARMIN_SYNC_STATUS,
+                profile={},
+                today=date(2026, 9, 20),
+            )
+            self.assertIn("heart_rate_bpm", result["streams"]["channels"])
+            self.assertNotIn("temperature_c", result["streams"]["channels"])
+            self.assertFalse(
+                {"avg_temp_c", "min_temp_c", "max_temp_c"} & set(result["metrics"])
+            )
+            for provider in result["detail_data"]["providers"]:
+                self.assertNotIn("temperature_c", provider.get("coverage") or {})
+            return result
+
+        # Without weather the temperature is unknown.
+        self.assertIsNone(detail().get("weather"))
+        stage = ActivityWeatherStage(
+            key_values=KeyValueRepository(lambda: NOW),
+            zone_provider=lambda: ZONE,
+            clock=lambda: NOW,
+            fetch=lambda *_args: {
+                "hourly": {
+                    "time": ["2026-09-10T05:00", "2026-09-10T06:00"],
+                    "temperature_2m": [14.0, 14.0],
+                    "apparent_temperature": [13.0, 13.0],
+                }
+            },
+            home_location=lambda _db: (52.52, 13.41),
+        )
+        stage.prefetch(lambda: self.manager)
+        with self.manager.unit_of_work() as db:
+            stage.run_batch(db)
+        weather = detail()["weather"]
+        self.assertEqual(
+            (14.0, "Open-Meteo Modell, Wohnort"),
+            (weather["temperature_c"], weather["source"]),
+        )
 
     def test_detail_carries_only_the_route_label_and_repeat_count(self):
         snapshot = {"synced_at": "2026-09-20T08:00:00+00:00", "athlete": {}}

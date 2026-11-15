@@ -128,7 +128,9 @@ test("the activity analysis panel keeps its rendered tree: channel charts with p
 
 const DETAIL_PAYLOAD = {
   session: { name: "Testlauf", activity_id: "a1" },
-  streams: { time_s: [0, 60, 120, 180, 240], channels: { power_w: { values: [200, 210, null, 230, 225] }, temperature_c: { values: [20, 20, 20, 20, 20] } } },
+  // A session's temperature is its activity weather; a watch temperature series is never charted (#3036).
+  weather: { temperature_c: 14.2, source: "Open-Meteo Modell, Wohnort" },
+  streams: { time_s: [0, 60, 120, 180, 240], channels: { power_w: { values: [200, 210, null, 230, 225] }, heart_rate_bpm: { values: [140, 140, 140, 140, 140] }, temperature_c: { values: [20, 20, 20, 20, 20] } } },
   laps: { laps: [{ name: "Runde 1", moving_duration_s: 120, avg_power: 205, avg_hr: 140 }, { moving_duration_s: 60 }] },
   strength_sets: {
     source: "garmin_exercise_sets", active_sets: 3, total_reps: 13, volume_kg: 1060,
