@@ -594,6 +594,32 @@ class EquipmentHistoryTests(unittest.TestCase):
             self.assertEqual(raised.exception.status, status)
         self.assertEqual(self.record("equipment_rule:ride:outdoor")["revision"], 1)
 
+    def test_a_rule_counts_only_for_sessions_of_its_items_sport_pair(self) -> None:
+        runs = cast(
+            list[ActivitySummary],
+            [
+                {**ride(name), "sport": "run", "environment": environment}
+                for name, environment in (("road", "outdoor"), ("mill", "virtual"))
+            ],
+        )
+        self.summaries = lambda: runs
+        self.service = EquipmentService(
+            self.manager, self.summaries, lambda: date(2026, 10, 2), lambda: NOW
+        )
+        shoe = self.service.save(
+            {**BIKE, "name": "Road shoe", "sport": "run", "kind": "shoes"}
+        )["equipment"]
+        with self.manager.unit_of_work() as db:
+            db.execute(
+                "INSERT INTO kv(key, value, updated_at) VALUES (?, ?, ?)",
+                ("equipment_rule:run:easy", json.dumps({"kind": "run:easy", "revision": 1, "history": [
+                    {"from": "2026-09-01", "equipment_id": shoe["id"]}
+                ]}), NOW),
+            )
+        effective = {row["activity_id"]: row.get("source") for row in self.service.read()["assignments"]}
+        # The treadmill run never takes the road shoe; the road run does.
+        self.assertEqual(effective, {"act_road": "rule"})
+
     def test_a_rule_without_an_item_is_no_default_and_cannot_be_applied(self) -> None:
         self.many_rides(2)
         bike = self.bike()

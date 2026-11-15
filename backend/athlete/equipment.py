@@ -146,10 +146,21 @@ class EquipmentService:
 
         Usage follows the effective assignment, so a rule can move a session's
         count away from the item Garmin links (#3011, #3014). Only sessions
-        on or after the first rule's day are classified.
+        on or after the first rule's day are classified, and an item applies
+        only to a session of its sport pair (an outdoor shoe never counts for a
+        treadmill run); a later retirement keeps the item's past sessions.
         """
         open_rows = {str(row["id"]): row for row in rows if str(row["id"]) not in explicit}
         implied: dict[str, dict[str, Any]] = {}
+        pairs = {
+            str(item.get("id")): _item_pair(item)
+            for item in self._records(db, EQUIPMENT_PREFIX, None)
+        }
+
+        def fits(item_id: Any, row: dict[str, Any]) -> bool:
+            pair = pairs.get(str(item_id))
+            return pair is not None and pair == _stored_pair(_row_sport(row))
+
         planned = {
             str(record.get("planned_unit_id")): record
             for record in self._records(db, PLANNED_PREFIX, None)
@@ -157,7 +168,8 @@ class EquipmentService:
         for unit, session in activity_detail_store.planned_unit_sessions(
             db, list(planned)
         ).items():
-            if session in open_rows:
+            item_id = planned[unit].get("equipment_id")
+            if session in open_rows and (item_id is None or fits(item_id, open_rows[session])):
                 implied[session] = {
                     "activity_id": session,
                     "equipment_id": planned[unit].get("equipment_id"),
@@ -186,7 +198,7 @@ class EquipmentService:
             )
             covered, item = rule_choice(rules.get(str(kind)), summary_local_date(row))
             # A rule without an item means "no default", never "Keiner".
-            if covered and item is not None:
+            if covered and item is not None and fits(item, row):
                 implied[str(row["id"])] = {
                     "activity_id": str(row["id"]),
                     "equipment_id": item,
