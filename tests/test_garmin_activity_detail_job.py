@@ -14,6 +14,7 @@ from unittest.mock import Mock, patch
 
 from canonical_detail_support import NOW, ZONE, open_manager
 from support import garmin_services, make_config
+from test_stream_backfill import fit_bytes
 
 from backend.canonical.vocabulary import (
     GARMIN_ID,
@@ -95,6 +96,26 @@ def _stored(manager: Any, activity_id: str = ACTIVITY) -> dict[str, str]:
     with manager.reader() as db:
         items = detail_sets_for(db, GARMIN_ID, activity_id)
     return {item.detail.kind.value: item.fetched_at for item in items}
+
+
+def _grades(manager: Any, activity_id: str = ACTIVITY) -> dict[str, tuple[Any, str]]:
+    """Each stored set's resolution (streams) and content hash."""
+    with manager.reader() as db:
+        rows = db.execute(
+            "SELECT detail_kind, resolution, content_sha256 FROM activity_detail_sets "
+            "WHERE provider = ? AND provider_activity_id = ?",
+            (GARMIN_ID, activity_id),
+        ).fetchall()
+    return {
+        row["detail_kind"]: (row["resolution"], row["content_sha256"]) for row in rows
+    }
+
+
+def _with_fit(records: int = 5) -> dict[str, Any]:
+    """The detail parts plus an original file with full streams and two device laps."""
+    collected = _collected()
+    collected["fit"] = fit_bytes(records=records, laps=2)
+    return collected
 
 
 def _service(manager: Any, reader: Any, *, now: str = NOW, configured: bool = True):
@@ -189,6 +210,52 @@ class GarminActivityDetailJobTests(unittest.TestCase):
         self.assertEqual(sorted(stored), KINDS)
         self.assertEqual(stored["laps"], stored_laps)
         self.assertEqual(datetime.fromisoformat(stored["streams"]), later)
+
+    def test_a_failed_fit_call_keeps_the_stored_full_streams_and_laps(self) -> None:
+        # #3122: without the original file the mapping falls back to chart
+        # streams and splits, which must not replace what the file gave.
+        self.reader.fetch_activity_detail.return_value = _with_fit()
+        self.service().refresh(ACTIVITY)
+        before = _grades(self.manager)
+        self.assertEqual(before["streams"][0], "full")
+        failed = _collected()
+        failed["errors"] = [{"source": "fit", "message": "synthetic"}]
+        self.reader.fetch_activity_detail.return_value = failed
+        later = NOW_AT + timedelta(hours=1)
+
+        result = self.service(now=later.isoformat()).refresh(ACTIVITY)
+
+        self.assertEqual(result["status"], "partial")
+        after = _grades(self.manager)
+        self.assertEqual(
+            (after["streams"], after["laps"]), (before["streams"], before["laps"])
+        )
+        stamped = _stored(self.manager)
+        self.assertEqual(datetime.fromisoformat(stamped["streams"]), later)
+        # A later fetch that brings the file again still replaces them.
+        self.reader.fetch_activity_detail.return_value = _with_fit(records=7)
+        self.service(now=(later + timedelta(days=1)).isoformat()).refresh(ACTIVITY)
+        self.assertNotEqual(_grades(self.manager)["streams"], before["streams"])
+
+    def test_a_transport_without_the_file_keeps_the_sets_and_completes(self) -> None:
+        # Without a Personal API key the file is never served: no error, no pause.
+        # The full sets stay, and the refresh is complete, not partial (Gitar P2).
+        self.reader.fetch_activity_detail.return_value = _with_fit()
+        self.service().refresh(ACTIVITY)
+        before = _grades(self.manager)
+        self.reader.fetch_activity_detail.return_value = _collected()
+        later = NOW_AT + timedelta(hours=1)
+
+        result = self.service(now=later.isoformat()).refresh(ACTIVITY)
+
+        self.assertEqual(result["status"], "completed")
+        self.assertEqual(_grades(self.manager)["streams"], before["streams"])
+
+    def test_a_fetch_without_a_stored_full_set_stores_the_fallback(self) -> None:
+        # Nothing better is stored, so the chart streams are the best there is.
+        self.service().refresh(ACTIVITY)
+
+        self.assertEqual(_grades(self.manager)["streams"][0], "downsampled")
 
     def test_paused_part_makes_the_refresh_partial(self) -> None:
         paused = _collected()

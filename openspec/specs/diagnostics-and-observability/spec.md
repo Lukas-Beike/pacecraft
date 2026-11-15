@@ -179,6 +179,10 @@ The diagnostic report SHALL include the state of the local method passes as coun
 - **WHEN** a Garmin or Wahoo FIT file is read by the detail fetch or the stream backfill
 - **THEN** `fit_inventory` counts it once per recording origin and sport (`files`) with the files holding each unmapped message number, unread field of a mapped message and declared developer field, as numbers only; an unreadable file counts nothing, and no value, name, id, position or file hash is shown
 
+#### Scenario: Garmin detail fallback
+- **WHEN** a Garmin detail fetch brings no full-resolution streams, because its original-file call failed or hit a rate limit
+- **THEN** a stored full stream set and its laps stay instead of the chart streams and splits, the fetch counts as incomplete, and `garmin_detail_fallback` counts the sets `kept` out and those `stored` where nothing better was stored, as numbers only (#3122)
+
 #### Scenario: Failing section
 - **WHEN** reading the local load state fails
 - **THEN** that section reports `{"status": "unavailable"}` and the rest of the report is still returned

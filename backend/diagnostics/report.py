@@ -61,6 +61,7 @@ from backend.sync.activity_weather import summarize_activity_weather
 from backend.sync.external_calendar import ExternalCalendarSyncService
 from backend.sync.freshness import ProviderFreshnessService
 from backend.sync.garmin import GarminFixtureLoader, GarminSyncStateService
+from backend.sync.garmin_activity_details import detail_fallback_counts
 from backend.sync.garmin_projection_service import GarminProjectionService
 from backend.sync.jobs import utc_timestamp
 from backend.sync.library import WorkoutLibrarySyncStateService
@@ -426,6 +427,10 @@ class DiagnosticReportService:
                 ),
                 "fit_inventory": section(
                     "fit_inventory", lambda: fit_inventory_counts(db, key_values)
+                ),
+                "garmin_detail_fallback": section(
+                    "garmin_detail_fallback",
+                    lambda: detail_fallback_counts(db, key_values),
                 ),
                 "session_metrics": section(
                     "session_metrics",

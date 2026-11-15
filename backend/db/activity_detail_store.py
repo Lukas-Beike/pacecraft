@@ -884,6 +884,18 @@ def stored_strength_source(
     return None if row is None else row["set_source"]
 
 
+def stored_stream_resolution(
+    db: Any, provider: str, provider_activity_id: str
+) -> str | None:
+    """Return the resolution of the stored stream set of one provider activity."""
+    row = db.execute(
+        "SELECT resolution FROM activity_detail_sets WHERE provider = ? "
+        "AND provider_activity_id = ? AND detail_kind = ?",
+        (provider, provider_activity_id, ActivityDetailKind.STREAMS.value),
+    ).fetchone()
+    return None if row is None else row["resolution"]
+
+
 def restamp_detail_set(
     db: Any,
     provider: str,
