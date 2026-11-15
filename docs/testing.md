@@ -428,7 +428,9 @@ container, `-HeavyHistory <n>` (1 to 1000) for a large synthetic history with
 full streams for performance checks (seeded once, about 5 minutes for 900),
 `-HeavyWalks <w>` (0 to 5000) and `-HeavyYears <y>` (0 to 20) to add walks
 without streams and spread the history over that many years (the production
-profile: `-HeavyHistory 850 -HeavyWalks 2950 -HeavyYears 6`, #2974),
+profile: `-HeavyHistory 850 -HeavyWalks 2950 -HeavyYears 6`, #2974; measure
+its view bursts with `python scripts/view_burst.py`, which prints medians with
+min and max and measures only a loopback fixture, #3052),
 `-Image <tag>` to run your own local image instead of building and running the
 shared `pacecraft:local` (#2957; never pulled, and the fixture code still comes
 from this checkout's `e2e/`), and `-Stop` to remove it again (never its
