@@ -2025,11 +2025,12 @@ class CoachDialogueTests(DialogueHarness, unittest.TestCase):
         self.assertEqual(server.PLANNING_DATA.competition().list(), [competition])
 
     def test_different_target_id_cannot_escape_action_scope(self):
-        for name in ("First", "Second"):
+        # Two days: a second race of the sport on one day needs a reason (#3080).
+        for name, day in (("First", "2026-10-03"), ("Second", "2026-10-04")):
             server.PLANNING_DATA.competition().save(
                 {
                     "name": name,
-                    "event_date": "2026-10-03",
+                    "event_date": day,
                     "sport": "Ride",
                     "priority": "A",
                 }

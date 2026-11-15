@@ -681,6 +681,7 @@ effect `local_write`; gate domain `competition`; receipt „Wettkampf gespeicher
 - `payload.description` (string)
 - `payload.priority` (string; one of `"A"`, `"B"`, `"C"`)
 - `payload.planned_duration_s` (integer/null; ≥0)
+- `payload.new_because` (string; ≥3 chars; ≤200 chars)
 - `_request`* (the envelope above)
 
 ### `save_equipment`

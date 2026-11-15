@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "base": "f5988bc67b5b66d90a6779f65a28ac9fc4c88de5",
+  "base": "b8fbe1073ebde09610e52fefdcdfdc61753c9fce",
   "versions": {
     "ruff": "0.17.4",
     "mypy": "2.4.1"
@@ -855,12 +855,6 @@
     {
       "tool": "format",
       "path": "backend/nutrition/fuelling.py",
-      "code": "format",
-      "message_sha256": "f87c4a0ecaf8e40a8d167170353b2aeb564e58f72247b4568c3db29c296f105f"
-    },
-    {
-      "tool": "format",
-      "path": "backend/planning/competition_service.py",
       "code": "format",
       "message_sha256": "f87c4a0ecaf8e40a8d167170353b2aeb564e58f72247b4568c3db29c296f105f"
     },
