@@ -45,7 +45,8 @@ class QualityBaselineTests(unittest.TestCase):
         # #3091: Ruff cannot read the bit on Windows, and Linux CI failed a
         # shebang file whose mode was 100644 after every local check passed.
         files = {"shebang.py": "#!/usr/bin/env python3\n", "plain.py": "x = 1\n",
-                 "script.py": "#!/usr/bin/env python3\n", "bare.py": "y = 2\n"}  # fmt: skip
+                 "script.py": "#!/usr/bin/env python3\n", "bare.py": "y = 2\n",
+                 "skript ä.py": "#!/usr/bin/env python3\n"}  # fmt: skip
         env = {**os.environ, "GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@t.invalid",
                "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@t.invalid"}  # fmt: skip
         with tempfile.TemporaryDirectory() as directory:
@@ -59,7 +60,8 @@ class QualityBaselineTests(unittest.TestCase):
 
             git("init", "-q")
             git("add", ".")
-            git("update-index", "--chmod=+x", "script.py", "bare.py")
+            # A path git quotes (space, non-ASCII) keeps its mode too (Gitar P3).
+            git("update-index", "--chmod=+x", "script.py", "bare.py", "skript ä.py")
 
             def found(**kwargs):
                 return sorted(

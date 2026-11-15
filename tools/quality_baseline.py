@@ -255,17 +255,18 @@ def git_modes(root: Path) -> dict[str, str] | None:
     """
     clone = os.environ.get("PACECRAFT_GIT_ROOT")
     command = (
-        ["git", "-C", clone, "ls-tree", "-r", "HEAD"]
+        ["git", "-C", clone, "ls-tree", "-r", "-z", "HEAD"]
         if clone
-        else ["git", "-C", str(root), "ls-files", "-s"]
+        else ["git", "-C", str(root), "ls-files", "-s", "-z"]
     )
     try:
         output = run(command, root, (0,))
     except RuntimeError:
         return None
     modes = {}
-    for line in output.splitlines():
-        head, _, path = line.partition("\t")
+    # NUL-separated records keep a path unquoted, special characters included.
+    for record in filter(None, output.split("\0")):
+        head, _, path = record.partition("\t")
         modes[path] = head.split(" ", 1)[0]
     return modes
 
