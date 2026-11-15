@@ -1,4 +1,6 @@
 const { test, expect } = require("@playwright/test");
+const path = require("node:path");
+const { pathToFileURL } = require("node:url");
 
 const ENDURANCE = "/api/analysis/endurance";
 const POWER_PROFILES = "/api/analysis/power-profiles";
@@ -24,7 +26,7 @@ async function mockReports(page, { pending = 0 } = {}) {
     all_time: { power: [
       ...[5, 60, 300, 1200].map((duration_seconds) => ({ sport: "Ride", duration_seconds, watts: 250, status: "ok", date: "2026-10-01", source: "Intervals.icu" })),
       { sport: "VirtualRide", duration_seconds: 3600, watts: 210, status: "ok", date: "2026-10-02", source: "Intervals.icu" },
-    ] },
+    ], running: { distance: [{ distance_meters: 5000, seconds: 1250, date: "2026-10-03", source: "Garmin" }] } },
   } })));
   await page.route(`**${TRAINING_RECORDS}`, (route) => route.fulfill({ json: {
     equipment: { items: [], garmin_items: [] },
@@ -57,6 +59,18 @@ test("@responsive cycling power profile loads only on performance and keeps unkn
   expect(await page.locator("#cyclingPowerProfile").evaluate((element) => element.closest("[data-analysis-section]").dataset.analysisSection)).toBe("development-Rad");
   // The first answer said the all-time bests were still being read, so the card asked again.
   expect(reportCounts()).toEqual({ [ENDURANCE]: 0, [POWER_PROFILES]: 2, [TRAINING_RECORDS]: 0 });
+});
+
+// The post-release walk's sport steps match what the cards render: tables, not charts (#3009).
+test("@responsive the walk's Laufen and Radfahren steps pass on the rendered cards", async ({ page }) => {
+  const { STEPS, runStep } = await import(pathToFileURL(path.join(__dirname, "..", "scripts", "ui_walk.mjs")).href);
+  await mockReports(page);
+  await waitForInitialState(page);
+  await routeTo(page, "#analysis/running");
+  for (const name of ["Analyse: Laufen", "Analyse: Radfahren"]) {
+    const outcome = await runStep(page, STEPS.find((step) => step.name === name));
+    expect(outcome.status, `${name}: ${outcome.why}`).toBe("ok");
+  }
 });
 
 test("@responsive cold start on performance fetches only the power profile", async ({ page }) => {
