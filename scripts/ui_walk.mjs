@@ -250,7 +250,9 @@ export const STEPS = [
     .map(([segment, label, ready, kind]) => ({ view: "analysis", name: `Analyse: ${label}`, covers: "Analyse tabs", pre: [tab("analysis", segment)], ready, kind })),
   { view: "analysis", name: "Analyse: Woche", covers: "#3000 week review", pre: [tab("analysis", "week")], ready: "#weekReview .week-review-card", kind: "numbers" },
   { view: "nutrition", name: "Ernährung: Verlauf", covers: "Nutrition week", pre: [tab("nutrition", "week")], ready: "#nutritionWeek", kind: "numbers" },
-  { view: "nutrition", name: "Ernährung: Körper", covers: "Body analysis", pre: [tab("nutrition", "body")], ready: "#bodyAnalysisCharts svg", kind: "chart" },
+  // The skinfold card's edit icon is an svg too, so the chart step skips that card (#3099).
+  { view: "nutrition", name: "Ernährung: Körper", covers: "Body analysis", pre: [tab("nutrition", "body")], ready: "#bodyAnalysisCharts .analysis-chart-card:not([data-skinfolds]) svg", kind: "chart" },
+  { view: "nutrition", name: "Ernährung: Hautfalten", covers: "#3099 skinfold card", pre: [tab("nutrition", "body")], ready: "#bodyAnalysisCharts [data-skinfolds] tbody tr", kind: "text" },
   { view: "more", name: "Mehr: Ausrüstung", covers: "#2935 equipment", pre: [tab("more", "equipment")], ready: "#equipmentItems .equipment-card", kind: "text" },
   { view: "more", name: "Mehr: Ausrüstung Standard", covers: "#3014 default equipment", pre: [tab("more", "equipment")], ready: "#equipmentItems .equipment-rules select", kind: "options" },
   { view: "more", name: "Mehr: Betrieb, Änderungen", covers: "#2908 changelog", pre: [tab("more", "operations")], ready: ".release-changelog li", kind: "text", optional: true },
