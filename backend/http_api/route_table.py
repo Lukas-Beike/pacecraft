@@ -28,6 +28,19 @@ class Access(StrEnum):
 # readiness, login state, login and the Wahoo OAuth redirect, whose single-use
 # server-stored state is its credential. Static assets, the manifest and the
 # service worker are the non-API GET fallback.
+# The view reads over the history that run one at a time before they take a
+# reader (#3029). A route joins only by a decision here: ``Route(heavy=True)``
+# outside this list, or a listed route without it, is refused. Writes,
+# auth, sync status, health and static files never take the gate.
+HEAVY_READ_ROUTES = frozenset(
+    {
+        "/api/activities",
+        "/api/analysis/power-profiles",
+        "/api/analysis/training-records",
+        "/api/context-preview",
+        "/api/performance",
+    }
+)
 PUBLIC_API_ROUTES = frozenset(
     {
         ("GET", "/api/health"),
@@ -82,8 +95,8 @@ class Route:
             (self.method, self.path) in PUBLIC_API_ROUTES
         ):
             raise ValueError(f"{self.method} {self.path} public status is not reviewed")
-        if self.heavy and self.method != "GET":
-            raise ValueError(f"{self.method} {self.path} cannot be heavy")
+        if self.heavy != (self.method == "GET" and self.path in HEAVY_READ_ROUTES):
+            raise ValueError(f"{self.method} {self.path} heavy status is not decided")
 
 
 def _compile(path: str) -> re.Pattern[str]:
