@@ -229,9 +229,9 @@ class RequestHandler(BaseHTTPRequestHandler):
             context["response_duration_ms"] = round(
                 (time.perf_counter() - started) * 1000, 1
             )
-        key = self._route_key()
-        if key is not None:
-            self.dependencies.route_timings.disconnect(key)
+        route_key = self._route_key()
+        if route_key is not None:
+            self.dependencies.route_timings.disconnect(route_key)
         self.dependencies.logger.info(
             "HTTP client disconnected before response completed",
             extra={
