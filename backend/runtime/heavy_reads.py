@@ -20,7 +20,8 @@ class HeavyReadGate:
     waiting request holds no reader slot and no writer. A read waits at most
     ``wait_s`` and then runs anyway, so a stuck read never blocks the views.
     Counts only: waits, waits over 1 s, reads that ran after the wait, the
-    longest wait.
+    longest wait. ``held`` yields a release for the end of the read, so sending
+    the response to a slow client never holds the gate (#3125).
     """
 
     def __init__(
@@ -35,7 +36,7 @@ class HeavyReadGate:
         self._longest_wait_s = 0.0
 
     @contextmanager
-    def held(self) -> Iterator[None]:
+    def held(self) -> Iterator[Callable[[], None]]:
         acquired = self._slot.acquire(blocking=False)
         if not acquired:  # only a real wait is timed
             started = self._clock()
@@ -46,11 +47,17 @@ class HeavyReadGate:
                 self._longest_wait_s = max(self._longest_wait_s, waited)
                 self._slow_waits += waited > 1.0
                 self._timeouts += not acquired
-        try:
-            yield
-        finally:
+
+        def release() -> None:
+            nonlocal acquired
             if acquired:
+                acquired = False
                 self._slot.release()
+
+        try:
+            yield release
+        finally:
+            release()
 
     def summary(self) -> dict[str, Any]:
         with self._state:

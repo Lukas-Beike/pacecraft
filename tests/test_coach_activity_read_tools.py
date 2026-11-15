@@ -607,20 +607,43 @@ class CoachActivityReadToolServiceTests(unittest.TestCase):
             report_counts=counts,
         )
         empty = {"activity_id": None, "date": None, "sport": None, "start_time": None}
+        named = {**empty, "_named_activity_id": "act_button"}
         cases = [
-            ({**empty, "activity_id": "act_button"}, "act_button"),
-            ({**empty, "date": "2026-11-13", "start_time": "07:20"}, "act_old"),
-            (empty, "act_new"),
+            ({**empty, "activity_id": "act_button"}, "act_button", False),
+            # #3080: the session the athlete's request names is read when the
+            # model names none, instead of the newest.
+            (named, "act_button", False),
+            # Another ID (it may be a record ID of the same session) is read
+            # with a notice naming the athlete's session.
+            ({**named, "activity_id": "act_new"}, "act_new", True),
+            # A day the model names is a reference of its own.
+            ({**named, "date": "2026-11-13", "start_time": "07:20"}, "act_old", False),
+            ({**empty, "date": "2026-11-13", "start_time": "07:20"}, "act_old", False),
+            (empty, "act_new", False),
         ]
-        for arguments, expected in cases:
-            with self.subTest(expected=expected):
-                service.execute("get_activity_details", arguments)
+        for arguments, expected, noticed in cases:
+            with self.subTest(arguments=arguments):
+                result = service.execute("get_activity_details", arguments)
                 self.assertEqual(expected, activity_read.detail.call_args.args[0])
+                self.assertEqual(noticed, "act_button" in str(result.get("notice")))
         # Without a date the newest session of the last 30 days is meant.
         self.assertEqual(
             (date(2026, 10, 16), date(2026, 11, 15)),
             activity_read.summaries_between.call_args.args,
         )
+
+        # A named session no longer stored (a stale button) falls back to the
+        # call's own reference: the newest session, counted as such.
+        def detail(activity_id, **_kwargs):
+            if activity_id == "act_stale":
+                raise AppError(404, "missing", reason="missing")
+            return {"ok": True}
+
+        activity_read.detail.side_effect = detail
+        service.execute(
+            "get_activity_details", {**empty, "_named_activity_id": "act_stale"}
+        )
+        self.assertEqual("act_new", activity_read.detail.call_args.args[0])
         # A reference whose detail cannot be read is no resolution.
         activity_read.detail.side_effect = AppError(404, "missing", reason="missing")
         with self.assertRaises(AppError):
@@ -628,7 +651,13 @@ class CoachActivityReadToolServiceTests(unittest.TestCase):
                 "get_activity_details", {**empty, "activity_id": "act_gone"}
             )
         self.assertEqual(
-            {"by_id": 1, "by_reference": 1, "newest": 1},
+            {
+                "by_id": 1,
+                "by_id_not_named": 1,
+                "by_named_id": 1,
+                "by_reference": 2,
+                "newest": 2,
+            },
             counts.summary()["resolutions"],
         )
 

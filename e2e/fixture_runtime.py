@@ -194,6 +194,9 @@ def fixture_coach_response(payload, **kwargs):
     )
     if scripted is not None:
         return scripted
+    # The question of scripts/post_release_actions.mjs (a test keeps them equal).
+    if current_message == "Was steht morgen in meinem Plan?":
+        return {"output_text": "Morgen steht keine Änderung an."}
     context = decoded["dialogue"]
     current_id = context["current_user_message_id"]
     if current_message in {

@@ -9,6 +9,7 @@ from collections.abc import Callable, Mapping, Sequence
 from typing import Any
 
 from backend.coach import dialogue
+from backend.coach.activity_read_tools import named_activity_id, resolve_session
 from backend.coach.attachments import model_attachments
 from backend.coach.context import CoachTrainingContextService
 from backend.coach.context_selection import (
@@ -17,6 +18,7 @@ from backend.coach.context_selection import (
     select_coach_context,
 )
 from backend.coach.playbooks import nutrition_playbook, playbook_for
+from backend.coach.read_tools import athlete_request_text
 from backend.providers.claude_models import setting_family
 from backend.providers.model_seam import ModelRequest
 from backend.settings import SettingsService
@@ -54,7 +56,6 @@ _ADVISORY_RUN_NOTICE = (
 )
 
 
-_ACTIVITY_ID = re.compile(r"\bID ([\w:.-]{1,80})")
 _SPORT_WORDS = (
     (
         "run",
@@ -78,20 +79,25 @@ def analysed_sport(
     """The sport of the session a session analysis looks at; None without sessions.
 
     One named sport decides (the calendar's analyse button names it), else the
-    session of the activity ID in the message, else the newest session. The
-    instructions stay fixed for the turn, so the sport is chosen before the
-    first request; the sessions are read only when no single sport is named.
+    session of the activity ID in the message, else the newest training
+    session, chosen as get_activity_details chooses it (``resolve_session``,
+    #3084). The instructions stay fixed for the turn, so the sport is chosen
+    before the first request; the sessions are read only when no single sport
+    is named.
     """
     named = {sport for sport, words in _SPORT_WORDS if words.search(message)}
     if len(named) == 1:
         return named.pop()
     sessions = list(recent_sessions())
-    match = _ACTIVITY_ID.search(message)
-    wanted = match.group(1).rstrip(".:") if match else None
+    wanted = named_activity_id(message)
     chosen = next(
-        (session for session in sessions if session.get("id") == wanted),
-        sessions[0] if sessions else {},
+        (session for session in sessions if session.get("id") == wanted), None
     )
+    if chosen is None:
+        _status, newest = resolve_session(
+            sessions, sport=None, start_time=None, newest=True
+        )
+        chosen = newest[0] if newest else {}
     return chosen.get("sport") or None
 
 
@@ -197,7 +203,10 @@ class CoachRequestPayloadService:
             selection=selection, local_date=context.get("local_date", "")
         )
         sport = (
-            analysed_sport(message, self._recent_sessions)
+            # The request text get_activity_details reads its named session from.
+            analysed_sport(
+                athlete_request_text(context) or message, self._recent_sessions
+            )
             if selection.kind == "session_analysis"
             else None
         )

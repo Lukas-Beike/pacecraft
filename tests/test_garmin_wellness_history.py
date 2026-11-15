@@ -29,7 +29,10 @@ from backend.providers.garmin_wellness_history import (
 )
 from backend.sync.executor import GarminSyncJobOwner, HistoricalSyncJobOwner
 from backend.sync.garmin_snapshot_writer import GarminSnapshotWriter
-from backend.sync.garmin_wellness_history import GarminWellnessHistoryService
+from backend.sync.garmin_wellness_history import (
+    GarminWellnessHistoryService,
+    summarize_daily_calories,
+)
 
 ZONE = ZoneInfo("Europe/Berlin")
 NOW = "2026-11-06T20:00:00+00:00"
@@ -474,6 +477,35 @@ class ServiceTests(unittest.TestCase):
                 (day,),
             )
         }
+
+    def test_diagnostics_count_ended_days_by_their_stored_calories(self) -> None:
+        self.store(
+            {
+                "daily_stats": [
+                    # Stored before Garmin had the calories: the resting part only.
+                    {"calendarDate": "2026-11-07", "bmrKilocalories": 1700},
+                    {"calendarDate": "2026-11-08", "totalKilocalories": 2500},
+                    {"calendarDate": "2026-11-09", "totalKilocalories": 2600,
+                     "activeKilocalories": 800},
+                    # The range endpoint's nested form counts the same way.
+                    {"calendarDate": "2026-11-14",
+                     "calories": {"burnedTotal": 2400, "burnedActive": 600}},
+                    # Today has not ended, and August lies outside the 90 days.
+                    {"calendarDate": "2026-11-15"},
+                    {"calendarDate": "2026-08-01"},
+                ]
+            }
+        )  # fmt: skip
+        self.assertEqual(
+            summarize_daily_calories(self.db, date(2026, 11, 15)),
+            {
+                "days": 90,
+                "complete": 2,
+                "partial": 1,
+                "without_calories": 1,
+                "without_summary": 86,
+            },
+        )
 
     def test_backfill_adds_night_values_resting_hr_hrv_and_weight(self) -> None:
         result = self.service(SdkClient()).backfill(2, END)

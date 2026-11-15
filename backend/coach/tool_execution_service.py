@@ -7,12 +7,17 @@ from collections.abc import Callable
 from contextlib import nullcontext
 from typing import Any
 
+from backend.coach.activity_read_tools import NAMED_ACTIVITY_ID, named_activity_id
 from backend.coach.clarification import CoachClarificationService
 from backend.coach.proposal_creation import (
     CoachProposalCreationService,
     remote_removal_lines,
 )
-from backend.coach.read_tools import NAMED_FOOD_SOURCES, named_food_sources
+from backend.coach.read_tools import (
+    NAMED_FOOD_SOURCES,
+    athlete_request_text,
+    named_food_sources,
+)
 from backend.coach.tool_dispatch import CoachToolDispatchService
 from backend.coach.tool_specs import (
     EXTERNAL_FOOD_LOOKUP_TOOLS,
@@ -85,9 +90,14 @@ class CoachStructuredToolExecutionService:
     ) -> dict[str, Any]:
         name = metadata["name"]
         arguments = metadata["arguments"]
+        # What the athlete's own request names decides, never a model argument
+        # (#3080): a food provider asked for, the session to analyse.
         if name == "lookup_food":
-            # Local first unless the athlete's own message names a provider (#3080).
-            arguments = {**arguments, NAMED_FOOD_SOURCES: named_food_sources(context)}
+            named = named_food_sources(athlete_request_text(context))
+            arguments = {**arguments, NAMED_FOOD_SOURCES: named}
+        if name == "get_activity_details":
+            session = named_activity_id(athlete_request_text(context))
+            arguments = {**arguments, NAMED_ACTIVITY_ID: session}
         local_transaction = name not in {
             "start_provider_refresh",
             "apply_adaptive_replan",

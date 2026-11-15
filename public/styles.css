@@ -348,10 +348,6 @@ h2 {
 @media (max-width: 360px) { .plan-segment-nav:has(> a:nth-child(5)) { flex-wrap: wrap; } .plan-segment-nav:has(> a:nth-child(5)) a { flex-basis: 30%; } }
 .analysis-history-charts { display: grid; gap: 16px; margin-bottom: 24px; }
 .analysis-chart-card { min-width: 0; padding: 16px; }
-.analysis-trend-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin: 6px 0 0; color: var(--muted); font-size: .8rem; }
-.analysis-trend-summary { margin: 8px 0 0; color: var(--muted); }
-.analysis-trend-summary strong { color: var(--ink); font-size: 1.4rem; }
-.analysis-trend-summary [data-direction="faster"] { color: var(--accent); }
 .recurring-group h4 { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin: 14px 0 4px; }
 .analysis-chart-card h3 { margin: 0; color: var(--ink); font-size: 1rem; }
 .analysis-chart-stack { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; }

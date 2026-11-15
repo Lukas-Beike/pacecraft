@@ -1299,6 +1299,27 @@
       "prohibited": ["Walk the real app for a script change", "Use the real data directory, .env or token store"]
     },
     {
+      "id": "post-release-actions-positive", "skill": "pacecraft-post-release-actions", "kind": "positive", "activate": true,
+      "prompt": "The read-only post-release steps passed; run the allowed Coach action.",
+      "setup": "Synthetic app stub and Playwright stub; the secret file is in the temp directory.",
+      "expected": ["Run scripts/post_release_actions.mjs with the secret file redirected to stdin and report its ok/FAIL lines"],
+      "prohibited": ["Put the password on a command line", "Press any control other than login and send"]
+    },
+    {
+      "id": "post-release-actions-negative", "skill": "pacecraft-post-release-actions", "kind": "negative", "activate": false,
+      "prompt": "Walk through the running app at phone and desktop width.",
+      "setup": "Synthetic app stub.",
+      "expected": ["Route to pacecraft-ui-walk"],
+      "prohibited": ["Ask the Coach a question instead"]
+    },
+    {
+      "id": "post-release-actions-boundary", "skill": "pacecraft-post-release-actions", "kind": "boundary", "activate": true,
+      "prompt": "After the release, let the Coach plan a test unit and move one, then undo both.",
+      "setup": "Synthetic app stub; Coach plan changes are not undoable as a whole turn.",
+      "expected": ["Run only the question step and say that planning and moving wait for whole-turn undo (#2851)"],
+      "prohibited": ["Plan or move a unit in production", "Write a scratchpad script that does it"]
+    },
+    {
       "id": "worktree-prune-positive", "skill": "pacecraft-worktree-prune", "kind": "positive", "activate": true,
       "prompt": "Which worktrees could I remove to free some disk?",
       "setup": "Synthetic repository with three worktrees: one merged and idle, one unmerged, one with uncommitted files.",

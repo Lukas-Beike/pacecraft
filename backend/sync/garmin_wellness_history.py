@@ -31,6 +31,13 @@ from backend.canonical.vocabulary import GARMIN_ID
 from backend.db import garmin_store
 from backend.errors import AppError
 from backend.providers.garmin import merge_weight_snapshots
+from backend.providers.garmin_fields import (
+    GARMIN_ACTIVE_KCAL_ALIASES,
+    GARMIN_DATE_ALIASES,
+    GARMIN_TOTAL_KCAL_ALIASES,
+    first_present,
+    flatten_daily_summary,
+)
 from backend.providers.garmin_wellness_history import (
     WellnessSourcePaused,
     has_night_values,
@@ -40,6 +47,8 @@ from backend.sync.jobs import WELLNESS_HISTORY_CURSOR
 from backend.sync.provider_table import GARMIN_NOT_CONFIGURED_MESSAGE
 
 ITEM_SOURCES: Final = ("sleep", "hrv", "daily_stats", "resting_hr", "body_battery")
+# Ended days whose stored daily calories the diagnostics count (#3157).
+CALORIE_DAYS: Final = 90
 WELLNESS_SOURCES: Final = frozenset((*ITEM_SOURCES, "weight"))
 # A backfill chunk waits this long for a running Garmin sync before it fails.
 LOCK_WAIT_SECONDS: Final = 120.0
@@ -187,6 +196,50 @@ class GarminWellnessHistoryService:
             source: len(value) if source != "weight" else 1
             for source, value in sections.items()
         }
+
+
+def _calorie_fields(row: Mapping[str, Any]) -> int:
+    """How many of total and active kcal a daily summary holds as a positive number."""
+    flat = flatten_daily_summary(row)
+    return sum(
+        isinstance(value := first_present(flat, aliases), int | float) and value > 0
+        for aliases in (GARMIN_TOTAL_KCAL_ALIASES, GARMIN_ACTIVE_KCAL_ALIASES)
+    )
+
+
+def daily_calorie_fields(db: Any, today: date) -> dict[str, int]:
+    """Per ended day of the last ``CALORIE_DAYS``: total and active kcal stored (0-2).
+
+    A day without a stored daily summary is absent (#3157).
+    """
+    first = (today - timedelta(days=CALORIE_DAYS)).isoformat()
+    last = (today - timedelta(days=1)).isoformat()
+    rows = garmin_store.read_sections(db, ["daily_stats"], start=first, end=last)
+    fields: dict[str, int] = {}
+    for row in rows.get("daily_stats") or []:
+        if not isinstance(row, Mapping):
+            continue
+        day = str(first_present(row, GARMIN_DATE_ALIASES) or "")[:10]
+        if first <= day <= last:
+            fields[day] = max(fields.get(day, 0), _calorie_fields(row))
+    return fields
+
+
+def summarize_daily_calories(db: Any, today: date) -> dict[str, int]:
+    """Counts only, no dates or values, for the diagnostics (#3157).
+
+    A day is ``complete`` with total and active kcal, ``partial`` with one,
+    ``without_calories`` with a stored summary holding neither, and
+    ``without_summary`` when none is stored.
+    """
+    counts = list(daily_calorie_fields(db, today).values())
+    return {
+        "days": CALORIE_DAYS,
+        "complete": counts.count(2),
+        "partial": counts.count(1),
+        "without_calories": counts.count(0),
+        "without_summary": CALORIE_DAYS - len(counts),
+    }
 
 
 def _merged_weight(db: Any, weigh_ins: Any) -> list[Any] | None:
