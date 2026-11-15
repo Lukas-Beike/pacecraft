@@ -108,7 +108,7 @@ test("ui walk steps press only opening controls and name the feature they cover 
   assert.equal(new Set(names).size, names.length);
   for (const step of walk.STEPS) {
     assert.ok(step.covers && step.ready && walk.STEP_KINDS.includes(step.kind), step.name);
-    for (const selector of [...(step.pre || []), ...(step.then || []), ...(step.post || []), ...(step.each ? [step.each] : [])]) {
+    for (const selector of [...(step.pre || []), ...(step.opens || []), ...(step.post || []), ...(step.each ? [step.each] : [])]) {
       assert.ok(walk.isOpener(selector), `${step.name}: ${selector}`);
       assert.ok(!walk.refusedLabel(selector), `${step.name}: ${selector}`);
     }

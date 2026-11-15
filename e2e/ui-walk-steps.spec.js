@@ -12,6 +12,8 @@ const PAGE = `<main>
   <select id="gear"><option>Rad</option><option>Keiner</option></select>
   <select id="lonely"><option>-</option></select>
   <details id="more"><summary>Details</summary><p id="inner">42 W</p></details>
+  <details class="c"><summary>Mo</summary><details class="m"><summary>Details</summary><p class="v"></p></details></details>
+  <details class="c"><summary>Di</summary><details class="m"><summary>Details</summary><p class="v">7 km</p></details></details>
   <button id="delete" type="button">Löschen</button>
 </main>`;
 
@@ -28,6 +30,9 @@ test("a step fails on an empty chart or panel and passes on a drawn one", async 
   for (const step of off) expect((await run(step)).status, step.ready).toBe("fail");
   // An optional step without its data is skipped, not failed.
   expect((await run({ ready: "#missing", kind: "text", optional: true })).status).toBe("skip");
+  // Each candidate is checked with its own controls: the second session passes although the first is empty.
+  const own = { each: "details.c > summary", opens: ["details.c[open] details.m > summary"], ready: "details.c[open] details.m[open] .v", kind: "numbers" };
+  expect((await run(own)).status).toBe("ok");
   // A control that is not an opening one is refused, even if the step names it.
   const refused = await run({ pre: ["#delete"], ready: "#good svg", kind: "chart" });
   expect(refused.status).toBe("fail");

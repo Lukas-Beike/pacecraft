@@ -221,7 +221,7 @@ const DONE = ".planned-entry.is-completed > summary";
 const PLANNED = ".planned-entry.is-planned > summary";
 const MONTH = '.planned-view-switch button[data-view="month"]';
 const tab = (area, segment) => `a[data-${area}-segment="${segment}"]`;
-const detail = (name, covers, ready, kind, extra) => ({ view: "plan", name, covers, each: DONE, then: [DETAILS_OPEN], ready, kind, absent: NO_DETAILS, ...extra });
+const detail = (name, covers, ready, kind, extra) => ({ view: "plan", name, covers, each: DONE, opens: [DETAILS_OPEN], ready, kind, absent: NO_DETAILS, ...extra });
 export const STEPS = [
   { view: "coach", name: "Coach: Verlauf", covers: "Coach history", ready: "#messages [data-message-id]", kind: "text" },
   { view: "plan", name: "Kalender: Einheit öffnen", covers: "#2189 calendar agenda and detail", each: DONE, ready: ".planned-entry[open] .planned-entry-details", kind: "text" },
@@ -233,8 +233,8 @@ export const STEPS = [
   { view: "plan", name: "Kalender: geplante Einheit", covers: "#2189 planned session", pre: ['button[aria-label="Nächste Woche"]'], each: PLANNED, ready: ".planned-entry[open] .planned-entry-details", kind: "text", optional: true, post: ['button[aria-label="Vorherige Woche"]'] },
   { view: "plan", name: "Kalender: Verpflegung", covers: "#2921 fuelling", each: PLANNED, ready: ".planned-entry[open] .planned-fuelling", kind: "numbers", optional: true },
   // Choosing a past day narrows the month's range, so the planned day comes first.
-  { view: "plan", name: "Monat: geplante Einheit", covers: "#2189 month", pre: [MONTH], each: ".planned-month-day:not([disabled]):has(.planned-month-mark.is-planned)", then: [PLANNED], ready: ".planned-entry[open] .planned-entry-details", kind: "text", optional: true },
-  { view: "plan", name: "Monat: absolvierte Einheit", covers: "#2189 month", pre: [MONTH], each: ".planned-month-day:not([disabled]):has(.planned-month-mark.is-completed)", then: [DONE], ready: ".planned-entry[open] .planned-entry-details", kind: "text" },
+  { view: "plan", name: "Monat: geplante Einheit", covers: "#2189 month", pre: [MONTH], each: ".planned-month-day:not([disabled]):has(.planned-month-mark.is-planned)", opens: [PLANNED], ready: ".planned-entry[open] .planned-entry-details", kind: "text", optional: true },
+  { view: "plan", name: "Monat: absolvierte Einheit", covers: "#2189 month", pre: [MONTH], each: ".planned-month-day:not([disabled]):has(.planned-month-mark.is-completed)", opens: [DONE], ready: ".planned-entry[open] .planned-entry-details", kind: "text" },
   { view: "plan", name: "Kalender: Wochenansicht", covers: "#2189 week and month switch", pre: ['.planned-view-switch button[data-view="week"]'], ready: ".planned-week .planned-day", kind: "text" },
   ...[["running", "Laufen", "#runningBestEfforts svg"], ["cycling", "Radfahren", "#cyclingPowerProfile svg"], ["load", "Belastung", "#analysisLoadCharts svg"], ["recovery", "Erholung", "#personalRecovery svg"]]
     .map(([segment, label, ready]) => ({ view: "analysis", name: `Analyse: ${label}`, covers: "Analyse tabs", pre: [tab("analysis", segment)], ready, kind: "chart" })),
@@ -245,7 +245,7 @@ export const STEPS = [
   { view: "more", name: "Mehr: Betrieb, Änderungen", covers: "#2908 changelog", pre: [tab("more", "operations")], ready: ".release-changelog li", kind: "text", optional: true },
 ];
 
-// Runs in the page; "ready", "absent" or false.
+// Runs in the page; "ready", "absent" or "" (not yet).
 function probe([selector, kind, absent]) {
   const blank = (paint) => !paint || paint === "none" || paint === "transparent" || paint === "rgba(0, 0, 0, 0)";
   const drawn = (svg) => [...svg.querySelectorAll("path[d], rect, circle, polyline")].some((mark) => {
@@ -262,8 +262,8 @@ function probe([selector, kind, absent]) {
     text: (el) => el.textContent.trim().length > 0,
   }[kind];
   const shown = (query) => [...document.querySelectorAll(query)].filter((el) => el.checkVisibility());
-  if (shown(selector).some(filled)) return "ready";
-  return absent && shown(absent[0]).some((el) => el.textContent.includes(absent[1])) ? "absent" : false;
+  if (shown(selector).some((el) => filled(el))) return "ready";
+  return absent && shown(absent[0]).some((el) => el.textContent.includes(absent[1])) ? "absent" : "";
 }
 
 async function press(page, selector, nth = 0) {
@@ -273,34 +273,48 @@ async function press(page, selector, nth = 0) {
   const { label, open } = await target.evaluate((el) => ({ label: el.tagName === "SUMMARY" ? "" : el.getAttribute("aria-label") ?? el.textContent, open: el.tagName === "SUMMARY" && el.parentElement.open }));
   if (refusedLabel(label)) throw new RangeError("refused control");
   if (!open) await target.click();
+  // A tab counts as open once it is the current one, so the previous tab's content never satisfies the step.
+  if (selector.startsWith("a[")) await page.locator(`${selector}[aria-current="page"]`).filter({ visible: true }).first().waitFor({ timeout: 3000 });
+}
+
+// Views render asynchronously: give the first candidate a moment to appear.
+async function candidateCount(page, each) {
+  if (!each) return 1;
+  const candidates = page.locator(each).filter({ visible: true });
+  await candidates.first().waitFor({ timeout: 3000 }).catch(() => null);
+  return Math.min(await candidates.count(), MAX_CANDIDATES);
+}
+
+// Opens candidate `index` with the other candidates closed, so the controls pressed and the element checked
+// are its own. "ready", "absent", "empty", or "passed over" (an optional step's candidate without the control).
+async function tryCandidate(page, step, index, capMs) {
+  try {
+    if (step.each) {
+      await page.locator(step.each).evaluateAll((items) => items.forEach((item) => item.closest("details")?.removeAttribute("open")));
+      await press(page, step.each, index);
+    }
+    for (const selector of step.opens || []) await press(page, selector);
+  } catch (error) {
+    // Any other step fails.
+    if (error.name !== "TimeoutError" || !step.optional) throw error;
+    return "passed over";
+  }
+  const timeout = step.each ? Math.min(CANDIDATE_CAP_MS, capMs) : capMs;
+  return page.waitForFunction(probe, [step.ready, step.kind, step.absent || null], { timeout, polling: 50 }).then((handle) => handle.jsonValue()).catch(() => "empty");
 }
 
 // One step: { status: ok|fail|skip, ms (interaction to ready, of the candidate that passed), why }.
-export async function runStep(page, step, capMs = STEP_CAP_MS) {
+export async function runStep(page, { pre = [], post = [], ...step }, capMs = STEP_CAP_MS) {
   const began = Date.now();
   try {
-    for (const selector of step.pre || []) {
-      await press(page, selector);
-      // A tab counts as open once it is the current one, so the previous tab's content never satisfies the step.
-      if (selector.startsWith("a[")) await page.locator(`${selector}[aria-current="page"]`).filter({ visible: true }).first().waitFor({ timeout: 3000 });
-    }
-    // Views render asynchronously: give the first candidate a moment to appear.
-    if (step.each) await page.locator(step.each).filter({ visible: true }).first().waitFor({ timeout: 3000 }).catch(() => null);
-    const count = step.each ? Math.min(await page.locator(step.each).filter({ visible: true }).count(), MAX_CANDIDATES) : 1;
+    for (const selector of pre) await press(page, selector);
+    const count = await candidateCount(page, step.each);
     let empty = 0;
     for (let index = 0; index < count && Date.now() - began < STEP_TOTAL_MS; index += 1) {
       const started = Date.now();
-      try {
-        if (step.each) await press(page, step.each, index);
-        for (const selector of step.then || []) await press(page, selector);
-      } catch (error) {
-        // A candidate without the control is passed over by an optional step; any other step fails.
-        if (error.name !== "TimeoutError" || !step.optional) throw error;
-        continue;
-      }
-      const outcome = await page.waitForFunction(probe, [step.ready, step.kind, step.absent || null], { timeout: step.each ? Math.min(CANDIDATE_CAP_MS, capMs) : capMs, polling: 50 }).then((handle) => handle.jsonValue()).catch(() => "empty");
+      const outcome = await tryCandidate(page, step, index, capMs);
       if (outcome === "ready") return { status: "ok", ms: Date.now() - started };
-      if (outcome !== "absent") empty += 1;
+      if (outcome === "empty") empty += 1;
     }
     // Nothing loaded and nothing empty: the data this step needs does not exist (info, not a failure).
     if (!empty) return { status: "skip", ms: 0, why: count ? "no stored data" : NO_SESSION };
@@ -309,7 +323,7 @@ export async function runStep(page, step, capMs = STEP_CAP_MS) {
     return { status: "fail", ms: Date.now() - began, why: error.name === "TimeoutError" ? "control missing" : error.message.split("\n")[0] };
   } finally {
     // Undo the step's navigation (such as paging to next week), so later steps start where they expect.
-    for (const selector of step.post || []) await press(page, selector).catch(() => null);
+    for (const selector of post) await press(page, selector).catch(() => null);
   }
 }
 
@@ -350,11 +364,7 @@ async function walk({ chromium, url, password, outDir }) {
         result.errors[`${name} ${route}`] = errors.length - counted;
         counted = errors.length;
       }
-      if (!result.marks) {
-        const serviceWorker = await (await page.request.get("/service-worker.js")).text();
-        const indexHtml = await (await page.request.get("/")).text();
-        result.marks = releaseMarks(serviceWorker, indexHtml);
-      }
+      result.marks ??= releaseMarks(await (await page.request.get("/service-worker.js")).text(), await (await page.request.get("/")).text());
       const logout = await page.evaluate(async () => {
         const token = document.cookie.split("; ").find((item) => item.startsWith("ic_csrf="))?.slice(8) || "";
         const response = await fetch("/api/logout", { method: "POST", headers: { "X-CSRF-Token": decodeURIComponent(token), "Content-Type": "application/json" }, body: "{}" });
@@ -370,12 +380,17 @@ async function walk({ chromium, url, password, outDir }) {
   return result;
 }
 
+const STEP_LINE = {
+  ok: (key, step) => `ok ${key} ${step.ms} ms`,
+  skip: (key, step) => `info ${key} skipped: ${step.why}`,
+  fail: (key, step) => `FAIL ${key} ${step.ms} ms, ${step.why} (covers ${step.covers})`,
+};
+
 export function reportLines(result) {
   const lines = [];
   for (const [key, ms] of Object.entries(result.loadMs)) {
     const errors = result.errors[key];
-    const suffix = errors ? ", " + errors + " error(s)" : "";
-    lines.push(`${errors ? "FAIL" : "ok"} ${key} ${ms} ms${suffix}`);
+    lines.push(errors ? `FAIL ${key} ${ms} ms, ${errors} error(s)` : `ok ${key} ${ms} ms`);
   }
   for (const [key, errors] of Object.entries(result.errors)) {
     if (errors && !(key in result.loadMs)) lines.push(`FAIL ${key} ${errors} error(s)`);
@@ -383,10 +398,7 @@ export function reportLines(result) {
   for (const [key, requests] of Object.entries(result.notReady || {})) {
     lines.push(`info ${key} not ready within 15 s; still loading: ${requests.join(", ") || "only a loading marker"}`);
   }
-  for (const [key, step] of Object.entries(result.steps || {})) {
-    if (step.status === "skip") lines.push(`info ${key} skipped: ${step.why}`);
-    else lines.push(step.status === "ok" ? `ok ${key} ${step.ms} ms` : `FAIL ${key} ${step.ms} ms, ${step.why} (covers ${step.covers})`);
-  }
+  for (const [key, step] of Object.entries(result.steps || {})) lines.push(STEP_LINE[step.status](key, step));
   for (const [name, steps] of Object.entries(result.calendar)) lines.push(`info calendar ${name}: ${steps.join(", ") || "no controls found"}`);
   lines.push(`info service-worker cache ${result.marks?.cache || "missing"}, ${result.marks?.assetVersions.length || 0} asset versions`);
   for (const [name, status] of Object.entries(result.logout || {})) lines.push(`${status === 200 ? "ok" : "FAIL"} logout ${name} ${status}`);
