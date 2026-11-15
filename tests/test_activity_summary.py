@@ -227,10 +227,9 @@ class ActivitySummaryTests(unittest.TestCase):
             "Garmin Connect", summary["sources"]["aerobic_training_effect"]
         )
         self.assertEqual(120.0, summary["training_effect_load"])
-        self.assertEqual(
-            (28.0, 15.0, 24.0),
-            (summary["elevation_loss_m"], summary["min_temp_c"], summary["max_temp_c"]),
-        )
+        self.assertEqual(28.0, summary["elevation_loss_m"])
+        # The watch's temperature stays stored but never reaches a summary (#3036).
+        self.assertFalse({"avg_temp_c", "min_temp_c", "max_temp_c"} & summary.keys())
         self.assertEqual(
             [{"id": "Z1", "secs": 42.0}, {"id": "Z2", "secs": 600.0}],
             summary["heart_rate_zone_times"],

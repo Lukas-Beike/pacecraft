@@ -28,6 +28,9 @@ test("a step fails on an empty chart or panel and passes on a drawn one", async 
   // The feature switched off: an svg without drawn marks, a panel without text, a select without a choice.
   const off = [{ ready: "#bare svg", kind: "chart" }, { ready: "#hollow", kind: "text" }, { ready: "#lonely", kind: "options" }, { ready: "#figures", kind: "chart" }];
   for (const step of off) expect((await run(step)).status, step.ready).toBe("fail");
+  // A step whose forbidden element shows fails though its own element is drawn (#3036).
+  expect((await run({ ready: "#good svg", kind: "chart", forbidden: "#figures" })).status).toBe("fail");
+  expect((await run({ ready: "#good svg", kind: "chart", forbidden: "#missing" })).status).toBe("ok");
   // An optional step without its data is skipped, not failed.
   expect((await run({ ready: "#missing", kind: "text", optional: true })).status).toBe("skip");
   // Each candidate is checked with its own controls: the second session passes although the first is empty.

@@ -1847,7 +1847,6 @@ button:focus-visible, a:focus-visible, summary:focus-visible {
 .activity-analysis-chart.is-power { --series: var(--chart-series-2); }
 .activity-analysis-chart.is-cadence { --series: var(--orange); }
 .activity-analysis-chart.is-elevation { --series: var(--subtle); }
-.activity-analysis-chart.is-temperature { --series: var(--yellow); }
 .activity-analysis-chart.is-dynamics { --series: var(--accent-bright); }
 .activity-analysis-chart-header { display: grid; gap: 2px; }
 .activity-analysis-chart-stats { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 12px; margin: 0; color: var(--muted); font-size: .72rem; font-variant-numeric: tabular-nums; }

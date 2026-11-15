@@ -2693,7 +2693,7 @@ class FixtureHandler(server.HTTP_API.request_handler_class()):
                     "time": list(range(3601)),
                     "watts": [200] * 3601,
                     "heartrate": [140] * 3601,
-                    # Sub-zero readings guard against clamping temperature at 0 °C.
+                    # The watch's temperature stays stored but is never shown (#3036).
                     "temperature": [-5 + index % 4 for index in range(3601)],
                 },
             }

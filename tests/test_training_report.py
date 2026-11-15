@@ -2,7 +2,7 @@
 
 import unittest
 from datetime import UTC, date, datetime, timedelta
-from unittest.mock import Mock, patch
+from unittest.mock import MagicMock, Mock, patch
 
 from support import GOLDEN_FIRST, dispatch_route, golden_history, payload_digest
 
@@ -580,14 +580,21 @@ class TrainingReportTests(unittest.TestCase):
             activity_summaries=lambda: _Rows([current, garmin_only]),
         )
         service = TrainingRecordsService(
-            database_manager=Mock(),
+            database_manager=MagicMock(),
             read_equipment=dict,
             read_record=None,
             canonical=canonical,
         )
-        with patch(
-            "backend.performance.report_service.analysis_summaries",
-            return_value=stored,
+        # The watch's 12.5 °C stays out; the activity weather's 14 °C is used (#3036).
+        with (
+            patch(
+                "backend.performance.report_service.analysis_summaries",
+                return_value=stored,
+            ),
+            patch(
+                "backend.performance.report_service.session_temperatures",
+                return_value={"act_1": 14.0},
+            ),
         ):
             records = service.observations()
 
@@ -597,7 +604,7 @@ class TrainingReportTests(unittest.TestCase):
         self.assertEqual("Wahoo", record["source"])
         self.assertNotIn("session_id", record)
         self.assertEqual(
-            ("2026-09-30", "ride", "indoor", 3600.0, 12.5, "wahoo"),
+            ("2026-09-30", "ride", "indoor", 3600.0, 14.0, "wahoo"),
             (
                 record["date"],
                 record["sport"],

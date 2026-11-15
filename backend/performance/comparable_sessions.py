@@ -8,7 +8,8 @@ average heart rate within ``HEART_RATE_BAND`` bpm, or interval sessions within
 this one's. Sessions with doubtful heart rate or speed stay out. Fewer than
 ``MIN_PEERS`` of them is ``not_covered``. Values come from each session's own
 execution, the median of the peers is the reference; nothing is scored, and
-temperatures are named so heat is not read as fitness. Pure: no I/O.
+temperatures are named so heat is not read as fitness: the activity weather's
+air temperature (``weather_temp_c``), never the watch's (#3036). Pure: no I/O.
 """
 
 from __future__ import annotations
@@ -37,8 +38,9 @@ SCOPE: Final = (
     "intervals within 2 reps and 35 % of the median rep duration; sessions with "
     "doubtful heart rate or speed stay out. difference is this session minus the "
     "peers' median in the metric's unit (pace s/km: negative is faster). Terrain "
-    "is not matched. Temperatures are listed so heat is not read as a fitness "
-    "change. Descriptive; at least 3 peers."
+    "is not matched. Temperatures are the activity weather's air temperature "
+    "(none without weather), listed so heat is not read as a fitness change. "
+    "Descriptive; at least 3 peers."
 )
 _METRICS: Final = {
     "continuous": ("output", "heart_rate_avg", "heart_rate_change_bpm", "cadence"),
@@ -105,14 +107,18 @@ def comparable_sessions(
         "status": "ok",
         "count": len(peers),
         **window,
-        "this": {**mine, "date": own.get("date"), "avg_temp_c": own.get("avg_temp_c")},
+        "this": {
+            **mine,
+            "date": own.get("date"),
+            "weather_temp_c": own.get("weather_temp_c"),
+        },
         "median_of_peers": median,
         "difference": difference,
         "peers": [
             {
                 "date": row.get("date"),
                 "name": row.get("name"),
-                "avg_temp_c": row.get("avg_temp_c"),
+                "weather_temp_c": row.get("weather_temp_c"),
                 "source": row["execution_summary"].get("source"),
                 **{
                     key: row["execution_summary"][key]
@@ -215,8 +221,9 @@ EFFORT_METHOD: Final = "equal-effort-trend-v1"
 EFFORT_SCOPE: Final = (
     "Steady sessions of the earlier and the later half of the period: median "
     "output per heart beat (rides with power W/bpm, runs m/s per bpm x 100) per "
-    "sport and indoor or outdoor, with the median heart rate and temperature of "
-    "each half. A higher later value means more output at the same heart rate. "
+    "sport and indoor or outdoor, with the median heart rate and activity-weather "
+    "temperature of each half. A higher later value means more output at the "
+    "same heart rate. "
     f"Needs at least {MIN_PEERS} steady sessions per half; halves whose median "
     f"heart rate differs by more than {HEART_RATE_BAND} bpm are named, as effort "
     "then differs; sources_differ names a change of stream providers between "
@@ -310,10 +317,11 @@ def _steady_sessions(
 
 
 def _effort_half(values: Sequence[tuple[float, Mapping[str, Any]]]) -> dict[str, Any]:
+    # The activity weather's temperatures; a session without weather has none.
     temperatures = [
-        float(row["avg_temp_c"])
+        float(row["weather_temp_c"])
         for _, row in values
-        if isinstance(row.get("avg_temp_c"), (int, float))
+        if isinstance(row.get("weather_temp_c"), (int, float))
     ]
     return {
         "sessions": len(values),

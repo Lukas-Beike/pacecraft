@@ -59,6 +59,7 @@ from backend.performance.smoothed_load import history_start
 from backend.performance.tag_impact import tag_impact
 from backend.performance.training_report import training_report
 from backend.performance.week_review import week_review
+from backend.weather.activity_weather_store import session_temperatures
 
 # Analysis windows of the power and running profiles, shortest first.
 PROFILE_WINDOW_DAYS = (28, 90)
@@ -124,6 +125,11 @@ class TrainingRecordsService:
             str(summary.get("id")): summary
             for summary in activity_summaries_for(self._canonical)
         }
+        # The activity weather's temperature, never the watch's (#3036).
+        with self._database_manager.read_snapshot() as db:
+            temperatures = session_temperatures(
+                db, [stored["session_id"] for stored in stored_analyses]
+            )
         records = []
         for stored in stored_analyses:
             summary = known.get(stored["session_id"])
@@ -138,7 +144,7 @@ class TrainingRecordsService:
                     **summary_fields(summary),
                     "activity_id": stored_activity_key(summary),
                     "source": stored.get("source") or summary.get("source"),
-                    "average_temp": summary.get("avg_temp_c"),
+                    "average_temp": temperatures.get(stored["session_id"]),
                     "duration": summary_duration_s(summary),
                 }
             )
@@ -206,11 +212,16 @@ class TrainingProfileSelectionService:
         with canonical.database_manager().read_snapshot() as db:
             sessions = _curve_sessions(canonical, db, start, today)
             session_ids = [str(summary.get("id") or "") for summary in sessions]
+            temperatures = session_temperatures(db, session_ids)
 
             def build() -> list[dict[str, Any]]:
                 curves = curve_reader.curves(db, session_ids)
                 records = [
-                    _curve_record(summary, curves.get(str(summary.get("id") or "")))
+                    _curve_record(
+                        summary,
+                        curves.get(str(summary.get("id") or "")),
+                        temperatures,
+                    )
                     for summary in sessions
                 ]
                 records.sort(key=lambda row: row["date"], reverse=True)
@@ -219,7 +230,7 @@ class TrainingProfileSelectionService:
             if not shared:
                 return build()
             # What the records show of a session is its curve-less record.
-            shown = [_curve_record(summary, None) for summary in sessions]
+            shown = [_curve_record(summary, None, temperatures) for summary in sessions]
             return curve_reader.shared_records(
                 db, session_ids, (today.isoformat(), days, shown), build
             )
@@ -245,6 +256,7 @@ class TrainingProfileSelectionService:
         with manager.read_snapshot() as db:
             sessions = _curve_sessions(canonical, db, None, self._today())
             session_ids = [str(summary.get("id") or "") for summary in sessions]
+            temperatures = session_temperatures(db, session_ids)
 
             def build() -> list[dict[str, Any]]:
                 curves: dict[str, SessionCurve] = {}
@@ -257,7 +269,11 @@ class TrainingProfileSelectionService:
                         curves.update(curve_reader.curves(one, [session_id]))
                     self._pause(self._clock() - started)
                 return [
-                    _curve_record(summary, curves.get(str(summary.get("id") or "")))
+                    _curve_record(
+                        summary,
+                        curves.get(str(summary.get("id") or "")),
+                        temperatures,
+                    )
                     for summary in sessions
                 ]
 
@@ -265,7 +281,7 @@ class TrainingProfileSelectionService:
             # evict the recent windows' curves and recompute the whole history on
             # every rebuild (#2822).
             curve_reader.reserve(len(session_ids))
-            shown = [_curve_record(summary, None) for summary in sessions]
+            shown = [_curve_record(summary, None, temperatures) for summary in sessions]
             # The session list decides the records; a new day alone builds nothing.
             return curve_reader.background_records(
                 db, session_ids, (None, shown), build
@@ -941,7 +957,9 @@ def _curve_sessions(
 
 
 def _curve_record(
-    summary: Mapping[str, Any], curve: SessionCurve | None
+    summary: Mapping[str, Any],
+    curve: SessionCurve | None,
+    temperatures: Mapping[str, float],
 ) -> dict[str, Any]:
     fields = summary_fields(summary)
     profile = None
@@ -968,7 +986,8 @@ def _curve_record(
         }
         if curve is not None and curve.running_dynamics
         else {},
-        "avg_temp_c": summary.get("avg_temp_c"),
+        # The activity weather's air temperature, never the watch's (#3036).
+        "weather_temp_c": temperatures.get(str(summary.get("id") or "")),
         "fingerprint": None if curve is None else curve.fingerprint,
     }
     if summary_is_race(summary):

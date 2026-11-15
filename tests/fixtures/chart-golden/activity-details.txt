@@ -66,67 +66,6 @@
                   "4:00"
                 <td>
                   "225 W"
-    <section class="activity-series">
-      <h3>
-        "Temperatur (°C)"
-      <svg:svg aria-label="Temperatur, Zeitachse in Minuten; Messwerte und Lücken sind in der Tabelle aufgeführt" role="img" viewBox="0 0 680 220">
-        <svg:line class="activity-gridline" x1="64" x2="668" y1="16" y2="16">
-        <svg:text text-anchor="end" x="56" y="20">
-          "20,5"
-        <svg:line class="activity-gridline" x1="64" x2="668" y1="101" y2="101">
-        <svg:text text-anchor="end" x="56" y="105">
-          "20"
-        <svg:line class="activity-gridline" x1="64" x2="668" y1="186" y2="186">
-        <svg:text text-anchor="end" x="56" y="190">
-          "19,5"
-        <svg:text text-anchor="middle" x="64" y="212">
-          "0 min"
-        <svg:text text-anchor="middle" x="366" y="212">
-          "2 min"
-        <svg:text text-anchor="middle" x="668" y="212">
-          "4 min"
-        <svg:path d="M64.0,101.0 L215.0,101.0 L366.0,101.0 L517.0,101.0 L668.0,101.0">
-      <p class="muted">
-        "20–20 °C · 0–4 min · 0 fehlende Messpunkte"
-      <details class="activity-values">
-        <summary>
-          "Alle 5 Messwerte ansehen"
-        <div aria-label="Temperatur in °C: Messwerte" class="analysis-chart-table" role="region" tabIndex="0">
-          <table>
-            <caption>
-              "Temperatur in °C; fehlende Werte sind als Lücke markiert."
-            <thead>
-              <tr>
-                <th scope="col">
-                  "Zeit"
-                <th scope="col">
-                  "Temperatur"
-            <tbody>
-              <tr>
-                <th scope="row">
-                  "0:00"
-                <td>
-                  "20 °C"
-              <tr>
-                <th scope="row">
-                  "1:00"
-                <td>
-                  "20 °C"
-              <tr>
-                <th scope="row">
-                  "2:00"
-                <td>
-                  "20 °C"
-              <tr>
-                <th scope="row">
-                  "3:00"
-                <td>
-                  "20 °C"
-              <tr>
-                <th scope="row">
-                  "4:00"
-                <td>
-                  "20 °C"
     <h3>
       "Intervalle / Runden"
     <ol class="activity-laps">

@@ -576,12 +576,12 @@ class MetricTests(unittest.TestCase):
         )
         for key, unit in (
             ("elevation_loss_m", "m"),
-            ("min_temp_c", "°C"),
-            ("max_temp_c", "°C"),
             ("lap_count", "count"),
         ):
             self.assertEqual(unit, metrics[key]["unit"], key)
             self.assertEqual("measured", metrics[key]["source"]["kind"], key)
+        # The watch's temperature is never a detail value; the weather gives it (#3036).
+        self.assertFalse({"min_temp_c", "max_temp_c"} & metrics.keys())
 
     def test_load_is_omitted_without_a_value(self) -> None:
         self.assertNotIn("load", build([record(INTERVALS, "i-ride-99")])["metrics"])
@@ -626,6 +626,29 @@ class StreamTests(unittest.TestCase):
             self.assertFalse(channel["aligned"])
             self.assertEqual("measured", channel["source"]["kind"])
             self.assertEqual("intervals", channel["source"]["provider"])
+
+    def test_the_watch_temperature_stream_is_stored_but_never_served(self) -> None:
+        # The watch's sensor reads body-warmed values; temperature comes from the
+        # activity weather only (#3036). The stored stream stays as recorded.
+        doc = build(
+            [record(GARMIN, "g-run-1", label="Garmin Connect", max_temp_c=31.0)],
+            [
+                candidate(
+                    stream_set(
+                        GARMIN,
+                        "g-run-1",
+                        {
+                            HR: heart_rate_values(),
+                            StreamChannel.TEMPERATURE_C: (31.0,) * len(TIME),
+                        },
+                        label="Garmin Connect",
+                    )
+                )
+            ],
+        )
+        self.assertEqual({HR.value}, set(doc["streams"]["channels"]))
+        self.assertNotIn("temperature_c", json.dumps(doc))
+        self.assertFalse({"min_temp_c", "max_temp_c"} & doc["metrics"].keys())
 
     def test_streams_are_absent_without_stream_sets(self) -> None:
         self.assertIsNone(build([record(INTERVALS, "i-ride-99")])["streams"])
@@ -967,9 +990,7 @@ class SummaryMetricTests(unittest.TestCase):
         json.dumps(doc, allow_nan=False)
 
     def test_covered_intervals_extremes_stay_as_alternatives(self) -> None:
-        extra = extra_metrics(
-            {"min_temp_c": 8.0, "elevation_loss_m": 400.0}, RecordingOrigin.GARMIN
-        )
+        extra = extra_metrics({"elevation_loss_m": 400.0}, RecordingOrigin.GARMIN)
 
         doc = build(
             [
@@ -978,17 +999,13 @@ class SummaryMetricTests(unittest.TestCase):
                     "g-run-1",
                     recorded_by=RecordingOrigin.GARMIN,
                     label="Garmin Connect",
-                    min_temp_c=9.0,
                     elevation_loss_m=390.0,
                 )
             ],
             summary_metrics=extra,
         )
 
-        for key, own, other in (
-            ("min_temp_c", 9.0, 8.0),
-            ("elevation_loss_m", 390.0, 400.0),
-        ):
+        for key, own, other in (("elevation_loss_m", 390.0, 400.0),):
             metric = doc["metrics"][key]
             self.assertEqual(own, metric["value"], key)
             self.assertEqual(

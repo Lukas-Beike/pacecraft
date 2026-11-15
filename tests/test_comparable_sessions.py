@@ -12,6 +12,7 @@ from backend.performance.comparable_sessions import (
     comparable_sessions,
     equal_effort_trend,
 )
+from backend.performance.report_service import _curve_record
 from backend.performance.session_execution import (
     comparison_metrics,
     session_execution,
@@ -40,7 +41,7 @@ def _row(day: str, summary: dict[str, Any] | None, **fields: Any) -> dict[str, A
         "sport": fields.get("sport", "run"),
         "environment": fields.get("environment", "outdoor"),
         "name": "Easy",
-        "avg_temp_c": fields.get("temp", 12.0),
+        "weather_temp_c": fields.get("temp", 12.0),
         "execution_summary": summary,
     }
 
@@ -61,7 +62,8 @@ class ComparableSessionsTests(unittest.TestCase):
         self.assertEqual(result["median_of_peers"]["output"], 345)
         self.assertEqual(result["difference"]["output"], -15)
         self.assertEqual(result["difference"]["heart_rate_avg"], -6)
-        self.assertEqual(result["this"]["avg_temp_c"], 8.0)
+        # The activity weather's temperature, never the watch's (#3036).
+        self.assertEqual(result["this"]["weather_temp_c"], 8.0)
         self.assertEqual(result["peers"][0]["date"], "2026-10-27")
 
     def test_other_shapes_places_and_old_sessions_are_not_peers(self) -> None:
@@ -242,6 +244,26 @@ class ComparisonMetricsTests(unittest.TestCase):
         self.assertEqual(intervals["rep_output_mean"], 222)
         self.assertEqual(intervals["heart_rate_end_mean"], 169)
         self.assertIsNone(comparison_metrics({"status": "insufficient_data"}))
+
+
+class WeatherTemperatureTests(unittest.TestCase):
+    def test_sessions_carry_the_weather_temperature_never_the_watch(self) -> None:
+        # The watch's 31 °C stays out; the activity weather's 14 °C is used, and a
+        # session without weather has no temperature at all (#3036).
+        summary = {
+            "id": "act_1",
+            "sport": "run",
+            "started_at_local": "2026-11-10T07:00:00",
+            "avg_temp_c": 31.0,
+            "max_temp_c": 33.0,
+        }
+        with_weather = _curve_record(summary, None, {"act_1": 14.0})
+        without = _curve_record(summary, None, {})
+        self.assertEqual(
+            (with_weather["weather_temp_c"], without["weather_temp_c"]), (14.0, None)
+        )
+        for record in (with_weather, without):
+            self.assertFalse({"avg_temp_c", "min_temp_c", "max_temp_c"} & record.keys())
 
 
 if __name__ == "__main__":

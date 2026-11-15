@@ -312,8 +312,9 @@ test("@responsive calendar details expand Garmin-style charts", async ({ page, r
   expect(Number(zoneRows.detail[0].zone.slice(1))).toBeGreaterThan(Number(zoneRows.detail.at(-1).zone.slice(1)));
   expect(new Set(zoneRows.detail.map(({ track }) => Math.round(track))).size).toBe(1);
   expect(new Set(zoneRows.overview.map(({ track }) => Math.round(track))).size).toBe(1);
-  const temperatureTicks = await item.locator(".is-temperature svg text").allTextContents();
-  expect(temperatureTicks.some((text) => /^[-\u2212]\d/.test(text))).toBeTruthy();
+  // The fixture session has the watch's temperature stream; Details show none of it (#3036).
+  await expect(item.locator(".is-temperature")).toHaveCount(0);
+  await expect(item.getByRole("img", { name: /^Temperatur/ })).toHaveCount(0);
   await expect(item).toContainText("Datenabdeckung");
   expect(await item.locator("img").count()).toBe(0);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBeTruthy();

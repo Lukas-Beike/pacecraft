@@ -73,7 +73,7 @@ _SESSION_NUMBERS = """Session numbers (get_activity_details):
 - Laps from analysis.execution, targets from planned_targets, not raw streams. Per rep: deviation_pct and time_in_target_pct against the plan, start_change_pct (started too fast), within_rep_change_pct, variability_pct, heart_rate_end and peak, elevation_change_m (hills). Recoveries: heart_rate_drop_60s, heart_rate_end, recovery_s against planned_recovery_s.
 - Continuous sessions: halves (heart_rate_change_bpm, change_pct, cadence_change).
 - Doubt the reading when data_quality is not ok.
-- comparable_sessions: only when ok, against the peers' median, naming their count; not_covered means none. A shared route_id also means comparable."""
+- comparable_sessions: only when ok, against peers' median, naming count, weather temperature only; not_covered: none. A shared route_id also means comparable."""
 
 # One block per sport, chosen from the analysed session's sport (#3038).
 _RUN_SESSION = """Run block (session.sport run):
