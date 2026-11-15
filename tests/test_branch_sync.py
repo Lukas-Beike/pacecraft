@@ -155,6 +155,59 @@ class BranchSyncTests(unittest.TestCase):
         self.assertIn("feat(UI): bad scope", out)
         self.assertNotIn("fix(sync)!", out)
 
+    def routes(self, intro, section):
+        begin, end = "<!-- BEGIN GENERATED ROUTES -->", "<!-- END GENERATED ROUTES -->"
+        return f"{intro}\n{begin}\n{section}\n{end}\nTail\n"
+
+    def conflicting_docs(self, develop_intro, branch_intro, name="docs/api-routes.md"):
+        """develop and the branch both change a generated document's section."""
+        (self.work / "docs").mkdir(exist_ok=True)
+        git(self.work, "checkout", "-q", "develop")
+        git(self.work, "reset", "-q", "--hard", "origin/develop")
+        commit(self.work, name, self.routes("# Routes", "base"), "docs: add")
+        git(self.work, "push", "-q", "origin", "develop")
+        git(self.work, "checkout", "-q", "-B", "feat/x")
+        commit(self.work, name, self.routes(branch_intro, "mine"), "docs: mine")
+        git(self.work, "checkout", "-q", "develop")
+        commit(self.work, name, self.routes(develop_intro, "up"), "docs: up")
+        git(self.work, "push", "-q", "origin", "develop")
+        git(self.work, "reset", "-q", "--hard", "HEAD~1")
+        git(self.work, "checkout", "-q", "feat/x")
+
+    def test_conflicts_only_in_generated_text_are_regenerated(self):
+        # #3031: three manual rebase stops in one lane day for generated documents.
+        self.conflicting_docs("# Routes", "# Routes")
+
+        def regenerate(root):
+            path = root / "docs/api-routes.md"
+            text = path.read_text(encoding="utf-8")
+            path.write_text(text.replace("\nup\n", "\nregenerated\n"), encoding="utf-8")
+
+        with mock.patch.object(branch_sync, "regenerate", regenerate):
+            code, out, _ = self.sync()
+        self.assertEqual(code, 0, out)
+        self.assertIn("regenerated after a conflict: docs/api-routes.md", out)
+        self.assertEqual(
+            (self.work / "docs/api-routes.md").read_text(encoding="utf-8"),
+            self.routes("# Routes", "regenerated"),
+        )
+        # A conflict in the hand-written text still stops for a person.
+        git(self.work, "reset", "-q", "--hard", "origin/develop")
+        self.conflicting_docs("# Keys v2", "# My keys", "docs/kv-catalogue.md")
+        with mock.patch.object(branch_sync, "regenerate", regenerate):
+            code, out, _ = self.sync()
+        self.assertEqual(code, 1)
+        self.assertIn("conflict: rebase onto origin/develop stopped in 1 file(s)", out)
+        git(self.work, "rebase", "--abort")
+
+    def test_a_script_that_does_not_parse_stops_the_sync(self):
+        # #3031: a broken hand merge of an e2e spec rode along into a push.
+        (self.work / "e2e").mkdir()
+        commit(self.work, "e2e/x.spec.js", "test('x', () => {\n", "test: broken")
+        code, out, _ = self.sync()
+        self.assertEqual(code, 1)
+        self.assertIn("scripts that do not parse (node --check):\n  e2e/x.spec.js", out)
+
     def test_push_uses_hooks_and_force_with_lease(self):
         hooks = self.work / ".githooks"
         hooks.mkdir()

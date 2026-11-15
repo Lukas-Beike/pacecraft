@@ -7,6 +7,9 @@ origin (retrying a lock held by a parallel worktree), rebases, checks every
 commit subject against the Conventional Commit types, and with --push pushes with --force-with-lease through the repository
 hooks (never --no-verify). The hooks need the SonarQube CLI on PATH. A push
 that adds a file at the repository root is refused unless --allow-root names it.
+A rebase conflict only in generated text (scripts/regenerate_docs.py) takes the
+upstream side, regenerates and continues; any other conflict stops. Changed
+e2e/ and public/ scripts must pass `node --check` before the push (#3031).
 
 Exit 0: in sync (and pushed); 1: refused, rebase conflict (left in progress:
 resolve it or run `git rebase --abort`) or invalid subjects; 2: bad input,
@@ -19,17 +22,21 @@ import argparse
 import os
 import re
 import shutil
+import subprocess
 import sys
 import time
 from collections.abc import Mapping
 from pathlib import Path
 
 from gh_cli import CliError, git
+from regenerate_docs import conflict_resolvable, upstream_side
 
 PROTECTED = {"develop", "main"}
 TYPES = "build|chore|ci|docs|feat|fix|perf|refactor|revert|style|test"
 SUBJECT = re.compile(rf"^(?:{TYPES})(?:\([a-z0-9][a-z0-9-]*\))?!?: \S")
 FETCH_ATTEMPTS = 3
+REBASE_STEPS = 50  # replayed commits a rebase may resolve generated conflicts in
+SCRIPT = re.compile(r"^(?:e2e|public)/.+\.(?:js|cjs|mjs)$")
 TRANSIENT_FETCH = re.compile(
     r"cannot lock ref '[^']+': is at \w+ but expected|\.lock': File exists"
     r"|Operation too slow|timed out"
@@ -90,21 +97,82 @@ def invalid_subjects(onto: str) -> list[str]:
     return [s for s in subjects if not SUBJECT.match(s)]
 
 
+def regenerate(root: Path) -> None:
+    """Rewrite the generated documents in the checkout (the tests replace this)."""
+    done = subprocess.run(
+        [sys.executable, "scripts/regenerate_docs.py"], cwd=root, capture_output=True,
+        text=True, encoding="utf-8", errors="replace", check=False,
+    )  # fmt: skip
+    if done.returncode:
+        raise CliError(f"regenerate_docs.py failed: {done.stderr.strip()[-300:]}")
+
+
+def resolve_generated(root: Path, conflicts: list[str]) -> bool:
+    """Take upstream's side of conflicts that lie only in generated text, regenerate
+    and stage those documents (#3031); False when a conflict needs a person."""
+    texts = {name: (root / name).read_text(encoding="utf-8") for name in conflicts}
+    if not all(conflict_resolvable(name, text) for name, text in texts.items()):
+        return False
+    for name, text in texts.items():
+        (root / name).write_text(upstream_side(text), encoding="utf-8", newline="\n")
+    regenerate(root)
+    git("add", *conflicts)
+    # Only the conflicted documents change in this commit; the rest stays as replayed.
+    others = [n for n in git("diff", "--name-only").split() if n not in conflicts]
+    if others:
+        git("checkout", "--", *others)
+    print(f"regenerated after a conflict: {', '.join(conflicts)}")
+    return True
+
+
+def stopped(onto: str, conflicts: list[str], error: CliError) -> bool:
+    print(f"conflict: rebase onto {onto} stopped in {len(conflicts)} file(s)")
+    for name in conflicts:
+        print(f"  {name}")
+    print("hint: resolve and `git rebase --continue`, or `git rebase --abort`")
+    print(f"detail: {error}", file=sys.stderr)
+    return False
+
+
 def rebased(onto: str) -> bool:
-    """Rebase onto the target; on a conflict, leave it in progress and list it."""
+    """Rebase onto the target. A conflict only in generated documents is resolved by
+    regenerating them; any other leaves the rebase in progress and is listed."""
     try:
         git("rebase", onto)
+        return True
     except CliError as exc:
+        error = exc
+    root = Path(git("rev-parse", "--show-toplevel").strip())
+    for _ in range(REBASE_STEPS):
         conflicts = git("diff", "--name-only", "--diff-filter=U").split()
         if not conflicts:
-            raise
-        print(f"conflict: rebase onto {onto} stopped in {len(conflicts)} file(s)")
-        for name in conflicts:
-            print(f"  {name}")
-        print("hint: resolve and `git rebase --continue`, or `git rebase --abort`")
-        print(f"detail: {exc}", file=sys.stderr)
-        return False
-    return True
+            raise error
+        if not resolve_generated(root, conflicts):
+            return stopped(onto, conflicts, error)
+        try:
+            git("rebase", "--continue", env={**os.environ, "GIT_EDITOR": "true"})
+            return True
+        except CliError as exc:
+            error = exc  # the next replayed commit conflicts too
+    return stopped(onto, git("diff", "--name-only", "--diff-filter=U").split(), error)
+
+
+def unparsable(onto: str) -> list[str]:
+    """Changed page and e2e scripts `node --check` rejects: a broken hand merge (#3031)."""
+    if not shutil.which("node"):
+        return []
+    root = Path(git("rev-parse", "--show-toplevel").strip())
+    changed = git(
+        "diff", "--name-only", "--diff-filter=AM", f"{onto}...HEAD"
+    ).splitlines()
+    return [
+        name
+        for name in changed
+        if SCRIPT.match(name)
+        and subprocess.run(
+            ["node", "--check", str(root / name)], capture_output=True, check=False
+        ).returncode
+    ]
 
 
 def outgoing_problems(onto: str, push: bool, allowed: frozenset[str]) -> bool:
@@ -112,6 +180,9 @@ def outgoing_problems(onto: str, push: bool, allowed: frozenset[str]) -> bool:
     problems = [
         ("invalid commit subjects (need <type>(<scope>): <description>):", s)
         for s in invalid_subjects(onto)
+    ]
+    problems += [
+        ("scripts that do not parse (node --check):", n) for n in unparsable(onto)
     ]
     if push:
         added = git(

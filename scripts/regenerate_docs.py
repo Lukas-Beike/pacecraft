@@ -3,7 +3,7 @@
     python scripts/regenerate_docs.py              # rewrite them in this checkout
     python scripts/regenerate_docs.py --check DIR  # DIR: a clean export of HEAD
 
-Three generated documents went stale five times and only the long test
+Generated documents went stale five times and only the long test
 selection or CI caught it (#2949). The pre-push hook runs --check in its HEAD
 export: the generators rewrite the documents there, and any that differ from
 HEAD are named with this script as the fix. The view catalogue needs
@@ -27,8 +27,57 @@ FIX = "python scripts/regenerate_docs.py"
 GENERATORS = (
     [sys.executable, "tests/test_performance_method_cards.py", "--write"],
     [sys.executable, "tests/test_api_routes_doc.py", "--write"],
+    [sys.executable, "tests/test_key_value_service.py", "--write"],
     ["node", "tests/navigation-state.test.cjs", "--write"],
 )
+# What those generators write: whole files, or sections between the markers below.
+GENERATED = (
+    "docs/api-routes.md",
+    "docs/kv-catalogue.md",
+    "docs/view-catalogue.md",
+    "docs/performance-methods/",
+)
+WHOLLY_GENERATED = {"docs/performance-methods/code-constants.md"}
+SECTION = ("<!-- BEGIN GENERATED", "<!-- END GENERATED")
+
+
+def conflict_resolvable(path: str, text: str) -> bool:
+    """Whether every rebase conflict block of a document lies in generated text, so
+    taking one side and regenerating loses nothing (#3031). A marker inside a block
+    means the hand-written text around a section moved: not resolvable."""
+    if not path.startswith(GENERATED):
+        return False
+    if path in WHOLLY_GENERATED:
+        return True
+    inside = in_block = found = False
+    for line in text.splitlines():
+        if line.startswith(SECTION):
+            if in_block:
+                return False
+            inside = line.startswith(SECTION[0])
+        elif line.startswith("<<<<<<<"):
+            if not inside:
+                return False
+            in_block = found = True
+        elif line.startswith(">>>>>>>"):
+            in_block = False
+    return found
+
+
+def upstream_side(text: str) -> str:
+    """The text with each conflict block replaced by its first (upstream) side."""
+    kept, side = [], "both"
+    for line in text.splitlines(keepends=True):
+        bare = line.rstrip("\r\n")
+        if line.startswith("<<<<<<< "):
+            side = "upstream"
+        elif side == "upstream" and (bare == "=======" or line.startswith("||||||| ")):
+            side = "other"
+        elif side == "other" and line.startswith(">>>>>>> "):
+            side = "both"
+        elif side != "other":
+            kept.append(line)
+    return "".join(kept)
 
 
 def documents(root: Path) -> dict[str, bytes]:
