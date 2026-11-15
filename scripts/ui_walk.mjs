@@ -238,8 +238,9 @@ export const STEPS = [
   { view: "plan", name: "Monat: geplante Einheit", covers: "#2189 month", pre: [MONTH], each: ".planned-month-day:not([disabled]):has(.planned-month-mark.is-planned)", opens: [PLANNED], ready: ".planned-entry[open] .planned-entry-details", kind: "text", optional: true },
   { view: "plan", name: "Monat: absolvierte Einheit", covers: "#2189 month", pre: [MONTH], each: ".planned-month-day:not([disabled]):has(.planned-month-mark.is-completed)", opens: [DONE], ready: ".planned-entry[open] .planned-entry-details", kind: "text" },
   { view: "plan", name: "Kalender: Wochenansicht", covers: "#2189 week and month switch", pre: ['.planned-view-switch button[data-view="week"]'], ready: ".planned-week .planned-day", kind: "text" },
-  ...[["running", "Laufen", "#runningBestEfforts svg"], ["cycling", "Radfahren", "#cyclingPowerProfile svg"], ["load", "Belastung", "#analysisLoadCharts svg"], ["recovery", "Erholung", "#personalRecovery svg"]]
-    .map(([segment, label, ready]) => ({ view: "analysis", name: `Analyse: ${label}`, covers: "Analyse tabs", pre: [tab("analysis", segment)], ready, kind: "chart" })),
+  // The sport cards are tables: a measured value is a cell with a digit; a missing one is marked and has none.
+  ...[["running", "Laufen", "#runningBestEfforts td:not(.value-missing)", "numbers"], ["cycling", "Radfahren", "#cyclingPowerProfile td:not(.value-missing)", "numbers"], ["load", "Belastung", "#analysisLoadCharts svg", "chart"], ["recovery", "Erholung", "#personalRecovery svg", "chart"]]
+    .map(([segment, label, ready, kind]) => ({ view: "analysis", name: `Analyse: ${label}`, covers: "Analyse tabs", pre: [tab("analysis", segment)], ready, kind })),
   { view: "analysis", name: "Analyse: Woche", covers: "#3000 week review", pre: [tab("analysis", "week")], ready: "#weekReview .week-review-card", kind: "numbers" },
   { view: "nutrition", name: "Ernährung: Verlauf", covers: "Nutrition week", pre: [tab("nutrition", "week")], ready: "#nutritionWeek", kind: "numbers" },
   { view: "nutrition", name: "Ernährung: Körper", covers: "Body analysis", pre: [tab("nutrition", "body")], ready: "#bodyAnalysisCharts svg", kind: "chart" },
