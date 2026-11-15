@@ -666,11 +666,12 @@ class StructuredToolRoundTests(unittest.TestCase):
             "ok": True,
             "synchronous_refresh": True,
         }
-        self.service._training_context.build.return_value = "fresh synthetic context"
+        build = cast(Mock, self.service._training_context.build)
+        build.return_value = "fresh synthetic context"
         self.service._execute_tool_call(
             self.call(), state=state, question="", cancelled=False
         )
-        selection = self.service._training_context.build.call_args.kwargs["selection"]
+        selection = build.call_args.kwargs["selection"]
         self.assertEqual(selection.name, "attachment_analysis")
 
     @staticmethod
