@@ -135,17 +135,21 @@ class ViewBurstTests(unittest.TestCase):
             set(result["reads"]), {"/api/activities/act_1%202", "/api/performance"}
         )
         bad = routes.with_name("bad.txt")
-        bad.write_text("C:/Program Files/Git/api/performance\n", encoding="utf-8")
-        with self.assertRaises(SystemExit):
-            view_burst.main(
-                [
-                    "--base-url",
-                    self.base,
-                    "--routes-file",
-                    str(bad),
-                    "--right-after-start",
-                ]
-            )
+        for content in (
+            "C:/Program Files/Git/api/performance\n",  # a rewritten path
+            "/api/performance\n/api/performance\n",  # a duplicate doubles one load
+        ):
+            bad.write_text(content, encoding="utf-8")
+            with self.subTest(content=content), self.assertRaises(SystemExit):
+                view_burst.main(
+                    [
+                        "--base-url",
+                        self.base,
+                        "--routes-file",
+                        str(bad),
+                        "--right-after-start",
+                    ]
+                )
 
 
 if __name__ == "__main__":
