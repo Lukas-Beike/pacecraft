@@ -1599,7 +1599,7 @@ async function appendPlannedEquipment(details, head, entry, actual, receipt = nu
     h("option", { value: "", selected: preset === "" }, "Keiner"));
   const suffix = tag ? ` · ${tag}` : "";
   chip.textContent = `${icon} ${shown}${suffix} ▾`;
-  chip.setAttribute("aria-label", `${label}: ${shown}${tag ? `, ${tag}` : ""}`);
+  chip.setAttribute("aria-label", [`${label}: ${shown}`, tag].filter(Boolean).join(", "));
   const apply = h("button", { type: "button", className: "secondary-button", hidden: true }, "Übernehmen");
   const status = h("p", { className: "planned-equipment-status", role: "status" });
   const sync = () => { apply.hidden = select.value === "-" || select.value === current; };
