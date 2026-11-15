@@ -493,6 +493,26 @@ class BrowserRunnerTests(unittest.TestCase):
                 ],
                 runner.failed_tests(output),
             )
+            # #3161: a long worktree put the report past Windows' 260-character MAX_PATH.
+            base = output.resolve()
+            if os.name == "nt":  # only the extended form can create the deep folder
+                base = Path("\\\\?\\" + str(base))
+            # 240 characters: under every file system's 255 per name, past 260 in total.
+            deep = base / "artifacts" / ("long-test-title-" * 15)
+            deep.mkdir()
+            (deep / "error-context.md").write_text(
+                "- Location: e2e/long.spec.js:1:1\n\n# Error details\n\nError: deep\n",
+                encoding="utf-8",
+            )
+            report = output.resolve() / "artifacts" / deep.name / "error-context.md"
+            self.assertGreater(len(str(report)), 260)
+            found = runner.failed_tests(output)
+            # The temporary directory's own cleanup cannot reach past MAX_PATH either.
+            (deep / "error-context.md").unlink()
+            deep.rmdir()
+            self.assertIn(
+                {"location": "e2e/long.spec.js:1:1", "error": "Error: deep"}, found
+            )
 
     def test_failed_child_surfaces_first_error_in_output_and_manifest(self):
         failure = {"location": "e2e/a.spec.js:3:1", "error": "Error: expected 1"}
@@ -829,6 +849,18 @@ class BrowserRunnerTests(unittest.TestCase):
                 [shot.name for shot in runner.screenshots(root)],
                 ["test-failed-1.png", "test-finished-1.png"],
             )
+            # #3161: an end state past Windows' MAX_PATH is listed too.
+            base = root.resolve()
+            if os.name == "nt":  # only the extended form can create the deep folder
+                base = Path("\\\\?\\" + str(base))
+            deep = base / "desktop" / "artifacts" / ("long-test-title-" * 15)
+            deep.mkdir(parents=True)
+            (deep / "test-finished-1.png").write_bytes(b"png")
+            found = [shot.parent.name for shot in runner.screenshots(root)]
+            # The temporary directory's own cleanup cannot reach past MAX_PATH either.
+            (deep / "test-finished-1.png").unlink()
+            deep.rmdir()
+            self.assertIn(deep.name, found)
         with redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
             runner.main(["--project", "desktop", "--list", "--screenshots"])
 
