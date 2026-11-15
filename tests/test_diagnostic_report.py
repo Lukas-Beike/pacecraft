@@ -208,6 +208,7 @@ class DiagnosticReportServiceTests(unittest.TestCase):
                 "wahoo",
                 "plan_sync",
                 "garmin_past_workout_removal",
+                "garmin_daily_calories",
                 "canonical_coverage",
                 "canonical_backfill",
                 "canonical_read",
@@ -346,8 +347,9 @@ class DiagnosticReportServiceTests(unittest.TestCase):
         # counts add two reads: the remembered Garmin exercises and the linked
         # units (#2850); the plan push counts add three (jobs, items, stuck jobs;
         # #2878, #2953); the library archive counts add two (archived templates
-        # and the last purge, #3141).
-        self.assertEqual(len(self.db.queries), 30)
+        # and the last purge, #3141); the Garmin daily calorie counts add one read
+        # of the stored daily summaries (#3157).
+        self.assertEqual(len(self.db.queries), 31)
         self.assertEqual(
             [query.rsplit("FROM ", 1)[1] for query in count_queries],
             [

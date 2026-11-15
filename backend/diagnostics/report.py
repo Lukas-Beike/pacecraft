@@ -8,7 +8,7 @@ import platform
 import shutil
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -64,6 +64,7 @@ from backend.sync.freshness import ProviderFreshnessService
 from backend.sync.garmin import GarminFixtureLoader, GarminSyncStateService
 from backend.sync.garmin_activity_details import detail_fallback_counts
 from backend.sync.garmin_projection_service import GarminProjectionService
+from backend.sync.garmin_wellness_history import summarize_daily_calories
 from backend.sync.jobs import utc_timestamp
 from backend.sync.library import WorkoutLibrarySyncStateService
 from backend.sync.local_load import summarize_local_load
@@ -398,6 +399,13 @@ class DiagnosticReportService:
                 "garmin_past_workout_removal": section(
                     "garmin_past_workout_removal",
                     lambda: summarize_garmin_removal(db),
+                ),
+                # Past Garmin days without daily calories, counts only (#3157).
+                "garmin_daily_calories": section(
+                    "garmin_daily_calories",
+                    lambda: summarize_daily_calories(
+                        db, date.fromisoformat(self._local_today(athlete_profile()))
+                    ),
                 ),
                 "garmin_strength_push": section(
                     "garmin_strength_push",

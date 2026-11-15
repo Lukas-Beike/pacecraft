@@ -75,6 +75,10 @@ SECTION_FIELDS = {
         r"status|garmin\.(units|changed_since_push|without_structure|one_exercise"
         r"|several_exercises|with_kg)|intervals\.(units|without_structure)"
     ),
+    # Past Garmin days without daily calories (#3157).
+    "garmin_daily_calories": re.compile(
+        r"status|days|complete|partial|without_calories|without_summary"
+    ),
     "garmin_past_workout_removal": re.compile(
         r"status|one_time_done|checked|removed|last_run_hours|last_outcome"
         r"|past_links_pending"
