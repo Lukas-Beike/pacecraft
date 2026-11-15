@@ -281,6 +281,7 @@ every named number the code fixes. A test fails when it is out of date.
 | `INDOOR_LABEL` | `'Indoor-FTP'` | `backend/performance/threshold_staleness.py` |  |
 | `INDOOR_METRIC` | `'indoor_ftp'` | `backend/performance/threshold_staleness.py` | The item key of the local indoor FTP; no provider indoor FTP is read here. |
 | `METHOD` | `'local-training-report-v1'` | `backend/performance/training_report.py` |  |
+| `METHOD` | `'local-week-review-v1'` | `backend/performance/week_review.py` |  |
 | `LOCAL_MODEL` | `'local'` | `backend/performance/zone_time_reads.py` |  |
 | `PROVIDER_MODEL` | `'provider'` | `backend/performance/zone_time_reads.py` |  |
 | `ZONE_KEYS` | `(('power', 'power_zone_times'), ('heart_rate', 'heart_rate_zone_times'), ('pace', 'pace_zone_time... (sha256 9ca35d98)` | `backend/performance/zone_time_reads.py` | Stored sensor -> summary zone key. |

@@ -118,6 +118,7 @@ function ensureRouteData(route = state.route) {
   if (ANALYSIS_PERFORMANCE_ROUTES.has(route)) {
     void renderCyclingPowerProfile();
   }
+  if (route === "analysis/week") void renderWeekReview();
 }
 
 // Connection and equipment cards and the profile sections start collapsed on every visit to their

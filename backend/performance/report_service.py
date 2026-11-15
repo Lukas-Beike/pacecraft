@@ -27,7 +27,9 @@ from backend.performance.canonical_inputs import (
     activity_summaries_for,
     activity_summaries_with_load_days,
     activity_summaries_with_sync_time,
+    resolve_reader,
 )
+from backend.performance.canonical_recovery import read_recovery_inputs
 from backend.performance.comparisons import recurring_training_comparisons
 from backend.performance.critical_power import WINDOW_DAYS as CP_WINDOW_DAYS
 from backend.performance.critical_power import critical_power_speed
@@ -36,6 +38,7 @@ from backend.performance.mean_max_curve import (
     SessionCurveReader,
     input_fingerprint,
 )
+from backend.performance.personal_recovery import personal_recovery
 from backend.performance.power_profile import (
     LEGACY_POWER_DURATIONS,
     METHOD_ID,
@@ -55,6 +58,7 @@ from backend.performance.session_rpe_load import FeedbackLookup, feedback_by_ses
 from backend.performance.smoothed_load import history_start
 from backend.performance.tag_impact import tag_impact
 from backend.performance.training_report import training_report
+from backend.performance.week_review import week_review
 
 # Analysis windows of the power and running profiles, shortest first.
 PROFILE_WINDOW_DAYS = (28, 90)
@@ -690,6 +694,45 @@ class TrainingReportReadService:
             activity_feedback=self._feedback_of(summaries),
             timezone=timezone,
             training_model=self._training_model(),
+        )
+
+    def week_review(self, week: str, timezone: str = "UTC") -> dict[str, Any]:
+        """The local review of the current or previous ISO week (#2805).
+
+        Reads the existing summaries only: the weekly progress of the week and
+        the week before (no session curves), the plan with its compliance, the
+        session summaries, the recovery baselines and the check-ins. No model
+        is asked.
+        """
+        if week not in ("current", "previous"):
+            raise AppError(400, "Ungültige Woche.")
+        today = self._today()
+        monday = today - timedelta(days=today.weekday())
+        if week == "previous":
+            monday -= timedelta(days=7)
+        before = monday - timedelta(days=7)
+        # One read from the week before; its first two weeks are compared.
+        progress = self.progress(
+            {"days": 28, "start": before.isoformat()}, timezone, with_curves=False
+        )
+        summaries, _ = activity_summaries_with_sync_time(self._canonical)
+        canonical = self._canonical
+        with canonical.database_manager().read_snapshot() as db:
+            recovery_inputs = read_recovery_inputs(
+                resolve_reader(canonical.observation_reader(), db),
+                db,
+                as_of=today,
+                preferences=canonical.preferences_in(db),
+            )
+        return week_review(
+            monday=monday,
+            today=today,
+            progress=progress,
+            calendar=(self._read_plan() or {}).get("training_calendar") or [],
+            summaries=summaries,
+            recovery=personal_recovery({}, today, canonical=recovery_inputs),
+            checkins=self._read_checkins(),
+            timezone=timezone,
         )
 
     def read(self, values: dict[str, Any], timezone: str = "UTC") -> dict[str, Any]:

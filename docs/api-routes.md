@@ -40,6 +40,7 @@ handler's docstring. Regenerate it with
 | POST | `/api/analysis/refresh` | Session + CSRF | after access | Run a targeted refresh of one analysis area. |
 | GET | `/api/analysis/running-dynamics` | Session | no | Running dynamics against the athlete's own runs at the same pace (#2829). |
 | GET | `/api/analysis/training-records` | Session | no | Analysis projection: power profiles or training records. |
+| GET | `/api/analysis/week-review` | Session | no | The local review of one ISO week against the week before (#2805). |
 | GET | `/api/auth/status` | Public | no | Current login status. |
 | GET | `/api/bootstrap` | Session | no | Initial authenticated client state. |
 | POST | `/api/change-history/undo` | Session + CSRF | after access | Apply an undo from the change history. |
@@ -277,6 +278,20 @@ band and per value; null without a stored run).
 
 Errors: 400 "Ungültige Aktivitäts-ID." for a missing id or one longer
 than 200 characters.
+
+### `GET /api/analysis/week-review`
+
+Request: optional query `week`, `current` (default) or `previous`; no
+body.
+
+Response: 200 with `method`, `week_start`, `week_end`, `effective_end`,
+`plan` (`planned`, `completed`, `missed`, `open`, `duration_share`,
+`missed_units`), `load` (`this_week`, `week_before`, `shares`),
+`recovery` (per metric `mean`, `nights`, `unit`, `source`, `week_before`,
+`position`), `notable` and `checkins`. Computed from local summaries;
+no model is asked.
+
+Errors: 400 "Ungültige Woche." for another `week`.
 
 ### `GET /api/auth/status`
 

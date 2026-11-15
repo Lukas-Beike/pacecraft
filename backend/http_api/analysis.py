@@ -30,6 +30,9 @@ class AnalysisRoutes:
                 self._running_dynamics,
             ),
             Route(
+                "GET", "/api/analysis/week-review", Access.SESSION, self._week_review
+            ),
+            Route(
                 "POST", "/api/analysis/refresh", Access.SESSION_CSRF, self._refresh_area
             ),
         ]
@@ -62,6 +65,26 @@ class AnalysisRoutes:
         else:
             payload = reports.profiles.power_profiles(all_time=True)
         handler.send_json(200, payload)
+
+    def _week_review(self, handler: Any, request: RouteRequest) -> None:
+        """The local review of one ISO week against the week before (#2805).
+
+        Request: optional query `week`, `current` (default) or `previous`; no
+        body.
+
+        Response: 200 with `method`, `week_start`, `week_end`, `effective_end`,
+        `plan` (`planned`, `completed`, `missed`, `open`, `duration_share`,
+        `missed_units`), `load` (`this_week`, `week_before`, `shares`),
+        `recovery` (per metric `mean`, `nights`, `unit`, `source`, `week_before`,
+        `position`), `notable` and `checkins`. Computed from local summaries;
+        no model is asked.
+
+        Errors: 400 "Ungültige Woche." for another `week`.
+        """
+        given = request.query.get("week")
+        week = given[0] if given else "current"
+        reports = self._reports()
+        handler.send_json(200, reports.report.week_review(week, reports.timezone()))
 
     def _running_dynamics(self, handler: Any, request: RouteRequest) -> None:
         """Running dynamics against the athlete's own runs at the same pace (#2829).
