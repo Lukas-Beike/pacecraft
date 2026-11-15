@@ -1415,6 +1415,11 @@ const SKINFOLDS_SHOWN = 3;
 let skinfoldRead = null;
 let skinfoldRequest = null;
 
+// Forgets the read, so the next body render reads the measurements again.
+function resetSkinfolds() {
+  skinfoldRead = null;
+}
+
 // A failed read also re-renders, so the card shows the failure instead of loading forever.
 function loadSkinfolds() {
   skinfoldRequest ||= api("/api/body/skinfolds")
@@ -1470,8 +1475,8 @@ async function sendSkinfolds(path, payload, button) {
     document.querySelector("#skinfoldDialog").close();
     renderBodyAnalysis(state.data?.performance?.history?.body);
     return true;
-  } catch (failure) {
-    status.textContent = failure.message;
+  } catch (error) {
+    status.textContent = error.message;
     button.disabled = false;
     return false;
   }

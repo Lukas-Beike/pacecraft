@@ -118,7 +118,8 @@ test("charts name weeks and space their ticks evenly; a single series does not r
   for (const gap of gaps) expect(Math.abs(gap - gaps[0])).toBeLessThan(1.5);
 
   await page.goto("/#nutrition/body");
-  const weight = page.locator("#bodyAnalysisCharts .analysis-chart-card:has(svg)").first();
+  // The skinfold card's edit icon is an svg too; the first chart is the weight chart.
+  const weight = page.locator("#bodyAnalysisCharts .analysis-chart-card:not([data-skinfolds]):has(svg)").first();
   await expect(weight.locator(".analysis-chart-legend")).toHaveCount(0);
   await expect(weight.getByRole("button", { name: "Gewicht: Informationen" })).toBeVisible();
 });

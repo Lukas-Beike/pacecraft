@@ -594,7 +594,7 @@ const nutritionRefresh = AppViewRefresh.create({
       const query = document.querySelector("#nutritionProductQuery").value.trim();
       return loadNutritionProducts(query, { background: true, throwOnError: true, refresh: true, expectedQuery: query });
     }
-    if (route === "nutrition/body") skinfoldRead = null;
+    if (route === "nutrition/body") resetSkinfolds();
     if (route === "nutrition/body") return api("/api/performance").then((result) => {
       if (state.route !== route) return;
       state.data.performance = result.performance || result;
@@ -609,7 +609,7 @@ const nutritionRefresh = AppViewRefresh.create({
 document.querySelector("#nutritionRefreshButton").addEventListener("click", () => void nutritionRefresh());
 
 function resetNutritionView() {
-  skinfoldRead = null;
+  resetSkinfolds();
   ++nutritionLoadSequence;
   ++nutritionProductLoadSequence;
   nutritionLookupResultShown = false;
