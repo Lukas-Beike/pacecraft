@@ -544,6 +544,8 @@ class EquipmentService:
         written = 0
         for start in range(0, len(sessions), RULE_APPLY_CHUNK):
             with self._manager.unit_of_work() as db:
+                # The item is checked again in every chunk's transaction.
+                item_record = self._rule_item(db, item)
                 if change is None:
                     equipment_store.put(
                         db,
@@ -559,9 +561,12 @@ class EquipmentService:
                         None,
                         operation,
                     )
-                for session in sessions[start : start + RULE_APPLY_CHUNK]:
+                for row in sessions[start : start + RULE_APPLY_CHUNK]:
+                    session = str(row["id"])
                     # A choice made since the preview stays the athlete's.
-                    if equipment_store.value(db, ASSIGNMENT_PREFIX + session) is not None:
+                    if equipment_store.value(
+                        db, ASSIGNMENT_PREFIX + session
+                    ) is not None or not assignable_equipment(item_record, row):
                         continue
                     saved = {
                         "activity_id": session,
@@ -576,8 +581,12 @@ class EquipmentService:
                     written += 1
         return {"ok": True, "stored_locally": True, "count": written, "change": change}
 
-    def _rule_candidates(self, kind: Any) -> tuple[str | None, list[str]]:
-        """A rule's current item and the earlier sessions of its kind without an own choice."""
+    def _rule_candidates(self, kind: Any) -> tuple[str | None, list[dict[str, Any]]]:
+        """A rule's current item and the earlier sessions of its kind it can be given.
+
+        Only sessions without an own choice that could take the item by hand count,
+        so an outdoor shoe never reaches a treadmill run.
+        """
         if kind not in RULE_KINDS:
             raise AppError(400, "Art der Regel ist erforderlich.")
         rows = _session_rows(self._read_summaries())
@@ -587,6 +596,7 @@ class EquipmentService:
             current = max(entries, key=lambda entry: str(entry["from"]), default=None)
             if current is None or current.get("equipment_id") is None:
                 raise AppError(409, "Für diese Art ist keine Regel gesetzt.")
+            item = self._rule_item(db, current["equipment_id"])
             explicit = _session_assignments(
                 db, rows, self._records(db, ASSIGNMENT_PREFIX, None)
             )
@@ -598,14 +608,23 @@ class EquipmentService:
             ]
             foci = _session_foci(db, [row["id"] for row in earlier])
         sessions = [
-            str(row["id"])
+            row
             for row in earlier
             if session_kind(
                 row.get("sport"), row.get("environment"), foci.get(row["id"]), row.get("purpose")
             )
             == kind
+            and assignable_equipment(item, row)
         ]
         return current["equipment_id"], sessions
+
+    @staticmethod
+    def _rule_item(db: Any, item_id: str | None) -> dict[str, Any]:
+        """The rule's item as stored now; one that can no longer be assigned stops the apply."""
+        item = stored_value(db, EQUIPMENT_PREFIX + str(item_id))
+        if item is None or not assignable_equipment(item, None):
+            raise AppError(409, "Die Ausrüstung der Regel ist nicht mehr aktiv.")
+        return item
 
     def maintain(self, payload: dict[str, Any]) -> dict[str, Any]:
         if not isinstance(payload, dict) or set(payload) - {

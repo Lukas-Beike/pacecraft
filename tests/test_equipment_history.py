@@ -629,6 +629,36 @@ class EquipmentHistoryTests(unittest.TestCase):
         self.assertEqual(again.exception.status, 409)
         self.assertEqual(self.record("equipment_assignment:" + sessions[2])["equipment_id"], other["id"])
 
+    def test_an_apply_gives_only_sessions_that_could_take_the_item_and_stops_on_a_retired_one(
+        self,
+    ) -> None:
+        rides = cast(
+            list[ActivitySummary],
+            [
+                {**ride("out"), "environment": "outdoor"},
+                {**ride("virt"), "environment": "virtual"},
+            ],
+        )
+        self.summaries = lambda: rides
+        self.service = EquipmentService(
+            self.manager, self.summaries, lambda: date(2026, 10, 2), lambda: NOW
+        )
+        road = self.bike(environment="outdoor")
+        self.service.save_rule(
+            {"kind": "ride:outdoor", "equipment_id": road["id"], "expected_revision": 0}
+        )
+        # The virtual ride is indoor: the outdoor bike is neither counted nor written there.
+        self.assertEqual(self.service.rule_apply_preview("ride:outdoor")["count"], 1)
+        self.edit(road, status="archived")
+        for call in (
+            lambda: self.service.rule_apply_preview("ride:outdoor"),
+            lambda: self.service.apply_rule({"kind": "ride:outdoor", "confirmed": True}),
+        ):
+            with self.subTest(call=call), self.assertRaises(AppError) as retired:
+                call()
+            self.assertEqual(retired.exception.status, 409)
+        self.assertIsNone(self.stored("equipment_assignment:act_out"))
+
     def test_an_apply_needs_confirmation_a_rule_and_no_running_apply_of_its_kind(self) -> None:
         self.many_rides(3)
         bike = self.bike()
