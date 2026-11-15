@@ -4,8 +4,11 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass, replace
+from datetime import date
+from typing import Any
 
 from backend.app.context import AppContext
+from backend.canonical.vocabulary import MetricKind
 from backend.db.repositories import (
     NutritionProductRepository,
     NutritionRepository,
@@ -13,12 +16,19 @@ from backend.db.repositories import (
 )
 from backend.nutrition.catalog import ProductCatalogService
 from backend.nutrition.diary import NutritionDiaryService
+from backend.nutrition.energy_inputs import (
+    EnergySources,
+    energy_basis,
+    session_streams,
+    weighins,
+)
 from backend.nutrition.food_database import FoodDatabaseService
 from backend.nutrition.food_mirror import FoodDatabaseMirror
 from backend.nutrition.meal_library import NutritionMealLibraryService
 from backend.nutrition.photo import NutritionPhotoExtractionService
 from backend.nutrition.sync import IntervalsNutritionSyncService
 from backend.nutrition.web_search import NutritionWebSearchService
+from backend.performance.daily_health import read_daily_health_by_date
 from backend.providers.intervals import IntervalsApiClient
 from backend.providers.model_seam import ModelRequest, ModelTurn
 from backend.providers.open_food_facts import OpenFoodFactsClient
@@ -34,6 +44,8 @@ class NutritionServices:
     product_catalog_service: Callable[[], ProductCatalogService]
     diary_service: Callable[[], NutritionDiaryService]
     intervals_sync_service: Callable[[], IntervalsNutritionSyncService]
+    # Counts of the adaptive expenditure basis for the diagnostics (#3100).
+    energy_basis: Callable[[Any], dict[str, Any]]
 
 
 def build_nutrition(ctx: AppContext) -> NutritionServices:
@@ -89,6 +101,36 @@ def build_nutrition(ctx: AppContext) -> NutritionServices:
             observation_reader=lambda: ctx.canonical_read,
         )
 
+    def energy_sources() -> EnergySources:
+        """The stores the adaptive expenditure reads (#3100).
+
+        The own resting rate and skinfold body fat follow with #3099; until
+        then the reader falls back to Garmin's resting value, labelled.
+        """
+        read = ctx.canonical_read
+        diary = NutritionRepository(utc_now)
+
+        def sessions(db: Any, start: date, end: date) -> list[Any]:
+            # Bounded by the athlete-local start date in the reader itself.
+            return list(read.activity_summaries(db, start=start, end=end))
+
+        return EnergySources(
+            diary=lambda db, s, e: diary.list_by_range(
+                db, s.isoformat(), e.isoformat()
+            ),
+            daily_health=lambda db, s, e: read_daily_health_by_date(
+                read, db, start=s, end=e
+            ),
+            weights=lambda db, s, e: weighins(
+                read.observations(db, MetricKind.WEIGHT, start=s, end=e)
+            ),
+            sessions=sessions,
+            streams=session_streams,
+            resting=lambda _db, _day: None,
+            body_fat=lambda _db, _s, _e: {},
+            profile=ctx.athlete_profile.get,
+        )
+
     def intervals_sync_service() -> IntervalsNutritionSyncService:
         config = ctx.config()
         return IntervalsNutritionSyncService(
@@ -108,4 +150,7 @@ def build_nutrition(ctx: AppContext) -> NutritionServices:
         product_catalog_service=lambda: meal_library_service().product_catalog,
         diary_service=diary_service,
         intervals_sync_service=intervals_sync_service,
+        energy_basis=lambda db: energy_basis(
+            db, energy_sources(), ctx.clock.now().date()
+        ),
     )
