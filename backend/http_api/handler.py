@@ -6,7 +6,7 @@ import logging
 import time
 import uuid
 from collections.abc import Callable, Iterator
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler
 from pathlib import Path
@@ -35,7 +35,11 @@ from backend.http_api.requests import (
 )
 from backend.http_api.route_table import Access, RouteRequest, RouteTable
 from backend.http_api.static_assets import StaticAssetService
-from backend.observability import http_access_log_level, redact_request_query
+from backend.observability import (
+    RouteTimings,
+    http_access_log_level,
+    redact_request_query,
+)
 from backend.runtime.socket_deadline import SocketDeadline
 
 # A request body is read in pieces of this size; each piece gets its own
@@ -76,12 +80,15 @@ class HttpRequestHandlerDependencies:
     voice_audio_types: tuple[str, ...]
     normalize_audio_type: Callable[[str], str]
     static_asset_service: StaticAssetService
+    route_timings: RouteTimings = field(default_factory=RouteTimings)
 
 
 class RequestHandler(BaseHTTPRequestHandler):
     input_timeout_seconds = 20
     body_chunk_bytes = BODY_CHUNK_BYTES
     dependencies: HttpRequestHandlerDependencies
+    # When the current request reached the dispatch; read once by log_request.
+    _dispatch_started_at: float | None = None
     server_version: str
     client_disconnect_errors = (
         BrokenPipeError,
@@ -101,15 +108,44 @@ class RequestHandler(BaseHTTPRequestHandler):
         if isinstance(code, HTTPStatus):
             code = code.value
         level = http_access_log_level(self.command, urlparse(self.path).path, code)
-        self._write_access_log(
-            level, '"%s" %s %s', self.requestline, str(code), str(size)
+        started = getattr(self, "_dispatch_started_at", None)
+        # Read once: a later request on this keep-alive connection that never
+        # reaches the dispatch (a 501, a malformed request) must not reuse it.
+        self._dispatch_started_at = None
+        # Time from the request's dispatch to its response status (#3017).
+        duration_ms = (
+            None
+            if started is None
+            else round((time.perf_counter() - started) * 1000, 1)
         )
+        key = self._route_key()
+        if key is not None and duration_ms is not None:
+            self.dependencies.route_timings.record(key, duration_ms)
+        self._write_access_log(
+            level,
+            '"%s" %s %s',
+            self.requestline,
+            str(code),
+            str(size),
+            status=code,
+            duration_ms=duration_ms,
+        )
+
+    def _route_key(self) -> str | None:
+        """The route pattern of an API request, without ids or query; None otherwise."""
+        path = urlparse(self.path).path
+        if not path.startswith("/api/") or not self.command:
+            return None
+        found = self.dependencies.route_table.match(self.command, path)
+        return f"{self.command} {found[0].path if found else '/api/(unknown)'}"
 
     def log_message(self, fmt: str, *args: Any) -> None:
         # log_error() and other inherited message paths always stay at INFO.
         self._write_access_log(logging.INFO, fmt, *args)
 
-    def _write_access_log(self, level: int, fmt: str, *args: Any) -> None:
+    def _write_access_log(
+        self, level: int, fmt: str, *args: Any, **response: Any
+    ) -> None:
         path = urlparse(self.path).path
         self.dependencies.logger.log(
             level,
@@ -120,6 +156,11 @@ class RequestHandler(BaseHTTPRequestHandler):
                     "method": self.command,
                     "path": path,
                     "request_id": getattr(self, "request_id", None),
+                    **{
+                        key: value
+                        for key, value in response.items()
+                        if value is not None
+                    },
                 },
             },
         )
@@ -193,6 +234,9 @@ class RequestHandler(BaseHTTPRequestHandler):
             context["response_duration_ms"] = round(
                 (time.perf_counter() - started) * 1000, 1
             )
+        route_key = self._route_key()
+        if route_key is not None:
+            self.dependencies.route_timings.disconnect(route_key)
         self.dependencies.logger.info(
             "HTTP client disconnected before response completed",
             extra={
@@ -212,6 +256,7 @@ class RequestHandler(BaseHTTPRequestHandler):
 
     def _dispatch(self, method: str, route: Callable[[str], None]) -> None:
         self.request_id = uuid.uuid4().hex[:12]
+        self._dispatch_started_at = time.perf_counter()
         try:
             route(urlparse(self.path).path)
         except AppError as exc:

@@ -116,6 +116,8 @@ class DiagnosticReportDependencies:
     garmin_change_check: Callable[[], dict[str, Any]] | None = None
     # Rides with a steady power band per variation limit, counts only (#2535).
     lt1_ride_coverage: Callable[[], dict[str, Any]] | None = None
+    # The slowest API routes by pattern since start (#3017).
+    slowest_routes: Callable[[], list[dict[str, Any]]] | None = None
     # The all-time curve build: state word, count and last duration (#2852).
     curve_build: Callable[[], dict[str, Any]] | None = None
     # The database file: its sizes, free space and recovery copies (#2848).
@@ -335,6 +337,10 @@ class DiagnosticReportService:
                     "process_memory": process_memory(),
                     **process_settings(),
                     "reader_slots": deps.database_manager.reader_slot_waits(),
+                    # Route patterns only: no ids, no query (#3017).
+                    "slowest_routes": deps.slowest_routes()
+                    if deps.slowest_routes
+                    else [],
                 },
                 "recovery_copies": section("recovery_copies", self._recovery_copies),
                 # The newest backup the app made, before a schema release (#2996).

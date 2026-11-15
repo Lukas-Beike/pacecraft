@@ -18,6 +18,7 @@ from backend.athlete.profile import ProfileService
 from backend.athlete.zones import ZoneConfigurationService
 from backend.canonical.activity_summary import ActivitySummary
 from backend.canonical.vocabulary import ProviderId
+from backend.db.manager import kept_until_change
 from backend.db.repositories import CheckinRepository, ProfileRepository
 from backend.performance.activity_read_service import ActivityAnalysisReadService
 from backend.performance.canonical_inputs import CanonicalPerformanceSource
@@ -171,6 +172,8 @@ def build_performance(
 @dataclass(frozen=True)
 class AthleteDataServices:
     activity_summaries: Callable[[], tuple[ActivitySummary, ...]]
+    # The same, kept until a commit changes rows; shared, never changed (#3017).
+    session_summaries: Callable[[], tuple[ActivitySummary, ...]]
     equipment: Callable[[], EquipmentService]
     equipment_history: Callable[[], dict[str, Any]]
     zones: Callable[[], ZoneConfigurationService]
@@ -215,6 +218,10 @@ def build_athlete_data(
         with database_manager().reader() as db:
             return activity_rows().activity_summaries(db)
 
+    # Equipment usage and each activity detail need every session's summary;
+    # they are kept until a commit changes rows (#3017).
+    session_summaries = kept_until_change(database_manager, activity_summaries)
+
     def zones_changed() -> None:
         load_inputs_changed()
         thresholds_changed()
@@ -249,9 +256,10 @@ def build_athlete_data(
 
     return AthleteDataServices(
         activity_summaries=activity_summaries,
+        session_summaries=session_summaries,
         equipment=lambda: EquipmentService(
             database_manager(),
-            activity_summaries,
+            session_summaries,
             local_date,
             utc_now,
             gear_reader=table_reader(),
@@ -340,6 +348,7 @@ def build_activity_reads(
                 ),
             ),
             session_records=session_activities,
+            session_summaries=athlete.session_summaries,
             refreshable=refreshable,
             planned_units=planned_units,
             unit_thresholds=unit_thresholds,

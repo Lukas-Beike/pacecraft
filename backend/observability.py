@@ -13,6 +13,7 @@ import logging
 import re
 import sys
 import threading
+from collections import deque
 from collections.abc import Callable, Iterable, Iterator
 from contextlib import AbstractContextManager, contextmanager, nullcontext
 from datetime import UTC, datetime, timedelta
@@ -697,6 +698,71 @@ _ROUTINE_POLL_GET_PATHS = frozenset(
     }
 )
 _SYNC_JOB_POLL_RE = re.compile(r"/api/sync/jobs/[0-9a-f-]+")
+
+
+class RouteTimings:
+    """Response times and client disconnects per API route since start (#3017).
+
+    Keyed by the route pattern (``GET /api/activities/{id}``), never the
+    requested path, so no id or query reaches the diagnostics. Each route
+    keeps its last ``SAMPLES`` times for the 95th percentile.
+    """
+
+    SAMPLES = 512
+    SHOWN = 15
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._routes: dict[str, dict[str, Any]] = {}
+
+    def _route(self, key: str) -> dict[str, Any]:
+        return self._routes.setdefault(
+            key,
+            {
+                "count": 0,
+                "max_ms": 0.0,
+                "disconnects": 0,
+                "samples": deque(maxlen=self.SAMPLES),
+            },
+        )
+
+    def record(self, key: str, duration_ms: float) -> None:
+        with self._lock:
+            route = self._route(key)
+            route["count"] += 1
+            route["max_ms"] = max(route["max_ms"], duration_ms)
+            route["samples"].append(duration_ms)
+
+    def disconnect(self, key: str) -> None:
+        with self._lock:
+            self._route(key)["disconnects"] += 1
+
+    def summary(self) -> list[dict[str, Any]]:
+        """The slowest routes by p95, and every route a client left, slowest first."""
+        with self._lock:
+            rows = [
+                {
+                    "route": key,
+                    "count": route["count"],
+                    "p95_ms": _p95(route["samples"]),
+                    "max_ms": round(route["max_ms"]),
+                    "disconnects": route["disconnects"],
+                }
+                for key, route in self._routes.items()
+            ]
+        rows.sort(key=lambda row: (row["p95_ms"] or 0, row["max_ms"]), reverse=True)
+        return [
+            row
+            for index, row in enumerate(rows)
+            if index < self.SHOWN or row["disconnects"]
+        ]
+
+
+def _p95(samples: Iterable[float]) -> int | None:
+    ordered = sorted(samples)
+    if not ordered:
+        return None
+    return round(ordered[max(0, round(0.95 * len(ordered)) - 1)])
 
 
 def http_access_log_level(method: str | None, path: str, status: object) -> int:

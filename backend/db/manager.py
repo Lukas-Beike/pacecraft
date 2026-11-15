@@ -172,6 +172,70 @@ class WriterGate:
                 self._condition.notify_all()
 
 
+def kept_until_change[T](
+    database_manager: Callable[[], DatabaseManager],
+    read: Callable[[], T],
+    *,
+    wait_s: float = 5.0,
+) -> Callable[[], T]:
+    """``read``'s value, kept until a commit changes rows or a restore (#3017).
+
+    The value is shared by every caller, which must not change it. A read is
+    keyed by the revision it sees at least (``DatabaseManager.read_revision``);
+    one inside a unit of work is neither kept nor served, since it may see
+    uncommitted rows. Concurrent callers of one revision wait for the first
+    one's read, at most ``wait_s``: a waiter may hold a snapshot the read
+    needs (a reader slot, a restore drain), so it then reads itself. No lock
+    is held while reading.
+    """
+    lock = threading.Lock()
+    kept: list[Any] = [None, -1, None]
+    running: dict[tuple[int, int], threading.Event] = {}
+
+    def fill(manager: DatabaseManager, revision: int | None) -> T:
+        value = read()
+        with lock:
+            # A slower read of an older state never replaces a newer one.
+            if revision is not None and (kept[0] is not manager or revision >= kept[1]):
+                kept[:] = [manager, revision, value]
+        return value
+
+    def served(manager: DatabaseManager, revision: int) -> bool:
+        return kept[0] is manager and kept[1] == revision
+
+    def current() -> T:
+        manager = database_manager()
+        revision = manager.read_revision()
+        if revision is None:
+            return read()
+        key = (id(manager), revision)
+        with lock:
+            if served(manager, revision):
+                return kept[2]
+            leading = key not in running
+            done = running.setdefault(key, threading.Event())
+        if not leading:
+            done.wait(wait_s)
+            with lock:
+                if served(manager, revision):
+                    return kept[2]
+            return fill(manager, revision)
+        try:
+            return fill(manager, revision)
+        finally:
+            with lock:
+                running.pop(key, None)
+            done.set()
+
+    return current
+
+
+def _total_changes(connection: Any) -> int | None:
+    """Rows the connection changed since it opened; None when it cannot say."""
+    value = getattr(connection, "total_changes", None)
+    return value if isinstance(value, int) else None
+
+
 class DatabaseManager:
     """One serialized writer plus a bounded pool of read connections."""
 
@@ -211,6 +275,10 @@ class DatabaseManager:
         self._snapshot_context: ContextVar[Any | None] = ContextVar(
             f"database_manager_snapshot_{id(self)}", default=None
         )
+        # The write revision read just before the snapshot began (#3017).
+        self._snapshot_revision: ContextVar[int | None] = ContextVar(
+            f"database_manager_snapshot_revision_{id(self)}", default=None
+        )
         self._commit_callbacks: ContextVar[list[Callable[[], None]] | None] = (
             ContextVar(f"database_manager_commit_{id(self)}", default=None)
         )
@@ -221,6 +289,33 @@ class DatabaseManager:
         self._slow_reader_waits = 0
         self._reader_timeouts = 0
         self._longest_reader_wait_s = 0.0
+        self._write_revision = 0
+
+    @property
+    def write_revision(self) -> int:
+        """Moves after every committed outer unit of work that changed rows, and every restore.
+
+        A value read from the database stays current while this is unchanged;
+        read caches key on it (#3017). The job workers' idle claims change
+        nothing, so they leave it as it is.
+        """
+        return self._write_revision
+
+    def read_revision(self) -> int | None:
+        """The revision a read here sees at least; None inside a unit of work.
+
+        Inside ``read_snapshot`` it is the revision read just before the
+        snapshot began, so a value read from an older snapshot is never taken
+        for the current state. A unit of work sees its own uncommitted rows.
+        """
+        if self._unit_of_work.get() is not None:
+            return None
+        snapshot = self._snapshot_revision.get()
+        return self._write_revision if snapshot is None else snapshot
+
+    def _next_revision(self) -> None:
+        with self._state:
+            self._write_revision += 1
 
     def _acquire_reader_slot(self) -> None:
         """Take a reader slot, timing only a wait; time out as busy."""
@@ -312,12 +407,17 @@ class DatabaseManager:
             return
         callbacks: list[Callable[[], None]] = []
         callbacks_token = self._commit_callbacks.set(callbacks)
+        changed = True
         try:
             with self._outer_unit_of_work(timeout) as connection:
+                before = _total_changes(connection)
                 yield connection
+                changed = before is None or _total_changes(connection) != before
         finally:
             self._commit_callbacks.reset(callbacks_token)
         # Reached only after the commit; a rollback raised above.
+        if changed:
+            self._next_revision()
         for callback in callbacks:
             try:
                 callback()
@@ -439,6 +539,8 @@ class DatabaseManager:
                 reusable = False
                 try:
                     connection.execute("PRAGMA query_only = ON")
+                    # Read before the snapshot's first query fixes its state.
+                    revision_token = self._snapshot_revision.set(self._write_revision)
                     connection.execute("BEGIN")
                     snapshot_token = self._snapshot_context.set(connection)
                     reader_token = self._reader_context.set(connection)
@@ -447,6 +549,7 @@ class DatabaseManager:
                     finally:
                         self._reader_context.reset(reader_token)
                         self._snapshot_context.reset(snapshot_token)
+                        self._snapshot_revision.reset(revision_token)
                         connection.rollback()
                         connection.execute("PRAGMA query_only = OFF")
                         reusable = True
@@ -515,6 +618,8 @@ class DatabaseManager:
         try:
             yield
         finally:
+            # A restored file replaces every value read before it.
+            self._next_revision()
             with self._state:
                 self._draining = False
                 self._state.notify_all()

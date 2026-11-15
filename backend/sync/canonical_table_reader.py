@@ -315,6 +315,8 @@ def _optional_datetime(text: object) -> datetime | None:
 
 def _activity(row: Mapping[str, Any]) -> ActivityRecord:
     provider = ProviderId(row["provider"])
+    # Parsed once: every summary read maps each stored record (#3017).
+    details = canonical_store.activity_details_object(row["details"])
     return ActivityRecord(
         activity_id=str(row["provider_activity_id"]),
         provenance=Provenance(
@@ -325,7 +327,7 @@ def _activity(row: Mapping[str, Any]) -> ActivityRecord:
             # The row's own fetch time. Garmin sections keep their own fetch time.
             retrieved_at=datetime.fromisoformat(str(row["fetched_at"])),
             label=_ACTIVITY_LABELS[provider],
-            context=canonical_store.measurement_context(row["details"]),
+            context=canonical_store.measurement_context(details),
         ),
         sport=Sport(row["sport"]),
         environment=Environment(row["environment"]),
@@ -342,17 +344,17 @@ def _activity(row: Mapping[str, Any]) -> ActivityRecord:
         normalized_power=row["normalized_power"],
         avg_cadence=row["avg_cadence"],
         energy_kj=row["energy_kj"],
-        elapsed_duration_s=canonical_store.activity_elapsed_duration(row["details"]),
-        max_hr=canonical_store.activity_max_hr(row["details"]),
-        max_speed_mps=canonical_store.activity_max_speed(row["details"]),
-        max_power_w=canonical_store.activity_max_power(row["details"]),
-        min_hr=canonical_store.activity_min_hr(row["details"]),
-        elevation_high_m=canonical_store.activity_elevation_high(row["details"]),
-        elevation_low_m=canonical_store.activity_elevation_low(row["details"]),
-        steps=canonical_store.activity_steps(row["details"]),
-        device_type=canonical_store.activity_device_type(row["details"]),
-        external_ref=canonical_store.activity_external_ref(row["details"]),
-        **canonical_store.activity_summary_values(row["details"]),
+        elapsed_duration_s=canonical_store.activity_elapsed_duration(details),
+        max_hr=canonical_store.activity_max_hr(details),
+        max_speed_mps=canonical_store.activity_max_speed(details),
+        max_power_w=canonical_store.activity_max_power(details),
+        min_hr=canonical_store.activity_min_hr(details),
+        elevation_high_m=canonical_store.activity_elevation_high(details),
+        elevation_low_m=canonical_store.activity_elevation_low(details),
+        steps=canonical_store.activity_steps(details),
+        device_type=canonical_store.activity_device_type(details),
+        external_ref=canonical_store.activity_external_ref(details),
+        **canonical_store.activity_summary_values(details),
     )
 
 

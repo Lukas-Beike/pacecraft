@@ -81,6 +81,8 @@ class DetailEnvelopeTests(unittest.TestCase):
         athlete = SimpleNamespace(
             activity_feedback=lambda: feedback,
             profile=lambda: SimpleNamespace(get_from_db=lambda _db: {}),
+            # The summaries come from the performance inputs, as without the memo.
+            session_summaries=None,
             equipment=lambda: SimpleNamespace(
                 read=lambda *, activity_id: self.read_equipment(activity_id)
             ),
