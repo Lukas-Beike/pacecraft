@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "base": "65a3b1703e48e939b9e7793fc1dd16a5ddf44b44",
+  "base": "ea4aafb631e3fc64f98c5b15083e94603de035e8",
   "versions": {
     "ruff": "0.17.4",
     "mypy": "2.4.1"
@@ -902,6 +902,18 @@
     },
     {
       "tool": "format",
+      "path": "scripts/hooks/guard_resolve_thread.py",
+      "code": "format",
+      "message_sha256": "f87c4a0ecaf8e40a8d167170353b2aeb564e58f72247b4568c3db29c296f105f"
+    },
+    {
+      "tool": "format",
+      "path": "scripts/resolve_review_thread.py",
+      "code": "format",
+      "message_sha256": "f87c4a0ecaf8e40a8d167170353b2aeb564e58f72247b4568c3db29c296f105f"
+    },
+    {
+      "tool": "format",
       "path": "tests/test_browser_aggregation.py",
       "code": "format",
       "message_sha256": "f87c4a0ecaf8e40a8d167170353b2aeb564e58f72247b4568c3db29c296f105f"
@@ -1011,6 +1023,12 @@
     {
       "tool": "format",
       "path": "tests/test_planning_race_plan.py",
+      "code": "format",
+      "message_sha256": "f87c4a0ecaf8e40a8d167170353b2aeb564e58f72247b4568c3db29c296f105f"
+    },
+    {
+      "tool": "format",
+      "path": "tests/test_resolve_review_thread.py",
       "code": "format",
       "message_sha256": "f87c4a0ecaf8e40a8d167170353b2aeb564e58f72247b4568c3db29c296f105f"
     },
