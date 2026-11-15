@@ -235,7 +235,8 @@ class TrainingProfileSelectionService:
     ) -> tuple[tuple[Mapping[str, Any], ...], bool] | None:
         """Every stored ride and run session with its curve, built off the request path.
 
-        The sessions of ``curve_records`` without a start day (#2694). Their
+        The sessions of ``curve_records`` without a start day (#2694), with no
+        temperature (``weather_temp_c`` None: no all-time reader uses it, #3036). Their
         curves are read in a background build of its own, one session per read
         snapshot (``SessionCurveReader.background_records``), so no request
         waits for a cold read of the whole history: the records with whether
@@ -953,7 +954,10 @@ def _curve_record(
     curves: Mapping[str, SessionCurve],
     temperatures: Mapping[str, float],
 ) -> dict[str, Any]:
-    """One session's comparison record; its temperature is its activity weather (#3036)."""
+    """One session's comparison record; its temperature is its activity weather (#3036).
+
+    ``temperatures`` is empty for the all-time records, which name none.
+    """
     session_id = str(summary.get("id") or "")
     curve = curves.get(session_id)
     fields = summary_fields(summary)
