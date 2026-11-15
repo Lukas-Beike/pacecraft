@@ -21,6 +21,7 @@ from backend.canonical.activity_summary import (
     summary_local_date,
 )
 from backend.canonical.domain_records import GearActivityLink, GearItem
+from backend.canonical.planning_fields import SESSION_FOCUS
 from backend.canonical.stored_sports import (
     StoredSport,
     activity_type_environment,
@@ -45,7 +46,6 @@ from backend.db.equipment_store import (
     RULE_PREFIX,
 )
 from backend.errors import AppError
-from backend.planning.session_focus import session_focus
 
 GARMIN_GEAR_SOURCE = "garmin_gear"
 # The kinds of session a default item can be set for (#3014): runs by their
@@ -594,9 +594,9 @@ class EquipmentService:
         with self._manager.reader() as db:
             rule = stored_value(db, RULE_PREFIX + kind)
             entries = (rule or {}).get("history") or []
-            if not entries:
+            current = max(entries, key=lambda entry: str(entry["from"]), default=None)
+            if current is None or current.get("equipment_id") is None:
                 raise AppError(409, "Für diese Art ist keine Regel gesetzt.")
-            current = max(entries, key=lambda entry: str(entry["from"]))
             explicit = _session_assignments(
                 db, rows, self._records(db, ASSIGNMENT_PREFIX, None)
             )
@@ -692,14 +692,18 @@ def session_kind(
 
 
 def _session_foci(db: Any, session_ids: Sequence[str]) -> dict[str, str | None]:
-    """The focus of each session's matched planned unit, set or derived."""
+    """The stored focus of each session's matched planned unit.
+
+    The athlete, the Coach or the one-time backfill (#1849) stores it; a unit
+    without one counts as unknown, which makes a run easy.
+    """
     links = activity_detail_store.planned_unit_links(db, session_ids)
     units = {
         row["local_id"]: json.loads(row["payload"])
         for row in planning_store.planned_unit_rows_by_ids(db, list(set(links.values())))
     }
     return {
-        session: session_focus(units[unit]).value
+        session: focus if isinstance(focus := units[unit].get(SESSION_FOCUS), str) else None
         for session, unit in links.items()
         if unit in units
     }

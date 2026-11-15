@@ -662,7 +662,7 @@ gefunden." for a non-empty unknown `equipment_id`.
 Request: JSON body of at most 16 KiB, exactly `{"kind": string,
 "equipment_id": string | null, "expected_revision": integer}`. `kind` is
 `run:intervals`, `run:long`, `run:easy`, `run:race`, `ride:indoor` or
-`ride:outdoor`; `null` sets no default ("Keiner"); `expected_revision`
+`ride:outdoor`; `null` sets no default from today on; `expected_revision`
 is the rule's current revision, 0 before its first save.
 
 Response: 200 `{"ok": true, "stored_locally": true, "rule": {"kind",

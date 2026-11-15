@@ -564,6 +564,15 @@ class EquipmentHistoryTests(unittest.TestCase):
             self.assertEqual(raised.exception.status, status)
         self.assertEqual(self.record("equipment_rule:ride:outdoor")["revision"], 1)
 
+    def test_a_rule_without_an_item_is_no_default_and_cannot_be_applied(self) -> None:
+        self.many_rides(2)
+        self.service.save_rule(
+            {"kind": "ride:outdoor", "equipment_id": None, "expected_revision": 0}
+        )
+        with self.assertRaises(AppError) as refused:
+            self.service.rule_apply_preview("ride:outdoor")
+        self.assertEqual(refused.exception.status, 409)
+
     def test_rule_history_is_bounded_and_the_latest_choice_up_to_a_day_wins(self) -> None:
         rule = {
             "history": [
