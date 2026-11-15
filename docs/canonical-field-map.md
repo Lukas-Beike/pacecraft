@@ -229,6 +229,11 @@ Each kind has exactly one canonical unit (`MetricKind.unit`) and a plausibility 
 | `activity_weather_humidity` | `%` | 0 to 100 | Relative humidity during one outdoor ride or run. | `activity_weather.py` | unproduced by providers |
 | `activity_weather_wind_speed` | `m/s` | 0 to 120 | Wind speed at 10 m during one outdoor ride or run. | `activity_weather.py` | unproduced by providers |
 | `activity_weather_precipitation` | `mm` | 0 to 1,000 | Precipitation that fell during one outdoor ride or run. | `activity_weather.py` | unproduced by providers |
+| `skinfold_chest` | `mm` | 2 to 80 | Chest skinfold of a 3-site Jackson-Pollock measurement (men), entered by the athlete. | `skinfolds.py` | unproduced by providers |
+| `skinfold_abdomen` | `mm` | 2 to 80 | Abdomen skinfold of a 3-site Jackson-Pollock measurement (men), entered by the athlete. | `skinfolds.py` | unproduced by providers |
+| `skinfold_thigh` | `mm` | 2 to 80 | Thigh skinfold of a 3-site Jackson-Pollock measurement (men and women), entered by the athlete. | `skinfolds.py` | unproduced by providers |
+| `skinfold_triceps` | `mm` | 2 to 80 | Triceps skinfold of a 3-site Jackson-Pollock measurement (women), entered by the athlete. | `skinfolds.py` | unproduced by providers |
+| `skinfold_suprailiac` | `mm` | 2 to 80 | Suprailiac skinfold of a 3-site Jackson-Pollock measurement (women), entered by the athlete. | `skinfolds.py` | unproduced by providers |
 
 ## Canonical vocabulary
 
@@ -2476,6 +2481,21 @@ Inputs: the athlete's save request (API/UI) or a restored change-history value; 
 - Consumers: `effective_zone_configuration` / `ZoneSettings.from_configurations` (below) and `local_thresholds` (`current_thresholds.py`), which turns the effective local configuration into an in-memory (not stored) threshold `Observation` per key: `ftp` from `power` `threshold` (`ride`, `run`), `threshold_pace` from `pace` `threshold` (`run`), `threshold_hr` from `heart_rate` `threshold` and `max_hr` from `heart_rate` `maximum` (`ride`, `run`), with the configuration's own `provenance` (`athlete_entered`).
 
 Not mapped: `ZoneBoundarySource` is not set here (it belongs to zone distributions, set to `profile` by `stream_zones.py`); `swim` configurations are stored but feed no threshold.
+
+### `skinfolds.py`
+
+Status: Live. `backend/athlete/skinfolds.py` is the only producer of skinfold observations (#3099). `SkinfoldService.save` writes one measurement as three observations through `canonical_store.upsert_observation`; a save on the same day first retires that day's active rows, and `SkinfoldService.remove` (confirmed) retires them. Body fat is not stored: `skinfold_on` and the read recompute it with Jackson-Pollock and Siri (`backend/athlete/body_composition.py`) from the folds and the profile's birth year.
+Inputs: the athlete's save request (API/UI); no provider payload.
+
+| `Observation` field | Local value | Notes |
+|---|---|---|
+| `kind` | `skinfold_chest`, `skinfold_abdomen`, `skinfold_thigh` (men) or `skinfold_triceps`, `skinfold_suprailiac`, `skinfold_thigh` (women) | Exactly one protocol per day; any other set of sites: HTTP 400. The sites tell the sex of the protocol. |
+| `value` | request `folds_mm[site]` in `mm`, rounded to 0.1 | 2..80 mm (`SKINFOLD_BOUNDS_MM`); comma decimals allowed. |
+| `observed_on` | request `date` (ISO day, not in the future) | Part of the natural key `|skinfold_<site>|||<day>`. |
+| `observed_at`, `sport`, `method`, `aggregation`, `period` | none | |
+| `provenance` | `provider` none; `source_kind` = `athlete_entered`; `source_record_id` none; `recorded_by` = `manual`; `retrieved_at` none; `label` = "Lokal" (`LOCAL_LABEL`) | Provider re-projection never retires these rows (it is scoped by provider). |
+
+Stored with `mapper_version` 1 (`MAPPER_VERSION`). The canonical readers skip rows without a provider, so `skinfolds.py` reads its own rows (`provider IS NULL`, `source_kind = 'athlete_entered'`, active).
 
 ### `zone_settings.py`
 

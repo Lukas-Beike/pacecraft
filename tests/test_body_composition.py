@@ -1,24 +1,15 @@
-"""Skinfold body fat, Katch-McArdle resting energy and adaptive expenditure (#3097)."""
+"""Skinfold body fat and resting energy from lean mass (#3099)."""
 
 import unittest
-from datetime import date, timedelta
 
-from backend.nutrition.energy_expenditure import (
-    ENERGY_PER_KG,
-    Insufficient,
+from backend.athlete.body_composition import (
+    RestingFormula,
     Sex,
-    adaptive_expenditure,
     body_density,
-    katch_mcardle_rmr,
+    lean_mass_kg,
+    resting_energy,
     siri_body_fat_pct,
 )
-
-END = date(2026, 11, 15)
-
-
-def days(count, value):
-    """``count`` days ending on END, each with ``value(i)`` (i = 0 is the first)."""
-    return {END - timedelta(days=count - 1 - i): value(i) for i in range(count)}
 
 
 class SkinfoldBodyFatTests(unittest.TestCase):
@@ -52,77 +43,27 @@ class SkinfoldBodyFatTests(unittest.TestCase):
                 body_density(sex, folds, age)
 
 
-class KatchMcArdleTests(unittest.TestCase):
-    def test_resting_energy_from_lean_mass(self):
+class RestingEnergyTests(unittest.TestCase):
+    def test_lean_mass_is_the_fat_free_share(self):
+        self.assertAlmostEqual(lean_mass_kg(80, 15), 68.0, places=9)
+        for fat in (0, 70):
+            with self.subTest(fat=fat), self.assertRaises(ValueError):
+                lean_mass_kg(80, fat)
+
+    def test_katch_mcardle_matches_the_published_examples(self):
         # 80 kg at 15 % -> 68 kg lean -> 370 + 21.6*68 = 1838.8 kcal; at 20 % -> 1752.4.
-        self.assertAlmostEqual(katch_mcardle_rmr(80, 15), 1838.8, places=6)
-        self.assertAlmostEqual(katch_mcardle_rmr(80, 20), 1752.4, places=6)
-        with self.assertRaises(ValueError):
-            katch_mcardle_rmr(80, 0)
+        for fat, expected in ((15, 1838.8), (20, 1752.4)):
+            with self.subTest(fat=fat):
+                lean = lean_mass_kg(80, fat)
+                self.assertAlmostEqual(
+                    resting_energy(RestingFormula.KATCH_MCARDLE, lean),
+                    expected,
+                    places=6,
+                )
 
-
-class AdaptiveExpenditureTests(unittest.TestCase):
-    def estimate(self, intake, weights):
-        return adaptive_expenditure(intake, weights, END)
-
-    def test_a_stable_weight_gives_the_mean_intake(self):
-        intake = days(28, lambda i: 2500 + (100 if i % 2 else -100))
-        weights = days(28, lambda i: 75.0 + (0.3 if i % 3 == 0 else -0.15))
-        result = self.estimate(intake, weights)
-        self.assertAlmostEqual(result.mean_intake_kcal, 2500, places=6)
-        self.assertLess(abs(result.kcal - 2500), 60)
-        self.assertGreater(result.band_kcal, 0)
-        self.assertEqual(
-            (result.intake_days, result.weighins, result.insufficient), (28, 28, None)
-        )
-
-    def test_losing_weight_adds_the_released_energy(self):
-        # 0.5 kg a week down on 2000 kcal: 0.5/7 kg/day * 7700 = 550 kcal from stores.
-        intake = days(28, lambda i: 2000)
-        weights = days(28, lambda i: 80.0 - 0.5 / 7 * i)
-        result = self.estimate(intake, weights)
-        self.assertAlmostEqual(result.kcal, 2000 + 0.5 / 7 * ENERGY_PER_KG, places=6)
-        self.assertAlmostEqual(result.weight_change_kg_per_week, -0.5, places=9)
-
-    def test_gaining_weight_subtracts_the_stored_energy(self):
-        intake = days(28, lambda i: 3000)
-        weights = days(28, lambda i: 70.0 + 0.25 / 7 * i)
-        self.assertAlmostEqual(self.estimate(intake, weights).kcal, 2725, places=6)
-
-    def test_gaps_lower_the_basis_and_too_few_days_give_no_estimate(self):
-        logged = days(28, lambda i: 2400 if i % 2 else 3000)
-        weights = days(28, lambda i: 72.0)
-        every_other = {day: kcal for day, kcal in logged.items() if kcal == 2400}
-        result = self.estimate(every_other, weights)
-        self.assertEqual((result.kcal, result.intake_days), (2400, 14))
-        every_third = {
-            day: kcal for n, (day, kcal) in enumerate(logged.items()) if n % 3 == 0
-        }
-        result = self.estimate(every_third, weights)
-        self.assertEqual(
-            (result.kcal, result.insufficient), (None, Insufficient.INTAKE_DAYS)
-        )
-        self.assertEqual(result.intake_days, len(every_third))
-
-    def test_missing_weigh_ins_or_a_short_span_give_no_estimate(self):
-        intake = days(28, lambda i: 2400)
-        few = {day: 72.0 for n, day in enumerate(days(28, lambda i: 0)) if n % 4 == 0}
-        self.assertEqual(self.estimate(intake, few).insufficient, Insufficient.WEIGHINS)
-        recent = days(10, lambda i: 72.0)
-        self.assertEqual(
-            self.estimate(intake, recent).insufficient, Insufficient.WEIGHT_SPAN
-        )
-
-    def test_days_outside_the_window_are_ignored(self):
-        intake = {
-            **days(28, lambda i: 2400),
-            END - timedelta(days=40): 9000,
-            END + timedelta(days=1): 9000,
-        }
-        weights = {**days(28, lambda i: 72.0), END - timedelta(days=40): 90.0}
-        result = self.estimate(intake, weights)
-        self.assertAlmostEqual(result.kcal, 2400, places=6)
-        self.assertEqual((result.intake_days, result.weighins), (28, 28))
+    def test_cunningham_uses_its_own_coefficients(self):
+        # Cunningham 1980: 500 + 22 x LBM; 68 kg -> 1996 kcal.
+        self.assertAlmostEqual(resting_energy(RestingFormula.CUNNINGHAM, 68), 1996.0)
 
 
 if __name__ == "__main__":

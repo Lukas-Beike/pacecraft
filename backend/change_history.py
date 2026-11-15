@@ -93,6 +93,7 @@ PROFILE_FIELDS = {
     "body_fat_pct",
     "height_cm",
     "sex",
+    "birth_year",
     "performance_notes",
     "sleep_target_hours",
     "fueling_tolerance",

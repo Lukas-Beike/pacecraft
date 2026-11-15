@@ -77,6 +77,17 @@ METRIC_BOUNDS: Final[Mapping[MetricKind, tuple[float, float]]] = {
     MetricKind.ACTIVITY_WEATHER_HUMIDITY: (0.0, 100.0),
     MetricKind.ACTIVITY_WEATHER_WIND_SPEED: (0.0, 120.0),
     MetricKind.ACTIVITY_WEATHER_PRECIPITATION: (0.0, 1_000.0),
+    # A caliper reads 2-80 mm; outside that a value is a typing error.
+    **{
+        kind: (2.0, 80.0)
+        for kind in (
+            MetricKind.SKINFOLD_CHEST,
+            MetricKind.SKINFOLD_ABDOMEN,
+            MetricKind.SKINFOLD_THIGH,
+            MetricKind.SKINFOLD_TRICEPS,
+            MetricKind.SKINFOLD_SUPRAILIAC,
+        )
+    },
     # Form (CTL minus ATL) is negative while fatigue outweighs fitness.
     MetricKind.FORM: (-10_000.0, 10_000.0),
     MetricKind.EFTP: (0.0, 2_500.0),

@@ -43,6 +43,9 @@ handler's docstring. Regenerate it with
 | GET | `/api/analysis/trends` | Session | no | Pace at equal heart rate and recurring sessions, as the Coach reads them (#2802). |
 | GET | `/api/analysis/week-review` | Session | no | The local review of one ISO week against the week before (#2805). |
 | GET | `/api/auth/status` | Public | no | Current login status. |
+| GET | `/api/body/skinfolds` | Session | no | The athlete's 3-site skinfold measurements, newest first. |
+| PUT | `/api/body/skinfolds` | Session + CSRF | before access | Save one 3-site skinfold measurement; one of the same day is replaced. |
+| PUT | `/api/body/skinfolds/remove` | Session + CSRF | before access | Remove the skinfold measurement of one day. |
 | GET | `/api/bootstrap` | Session | no | Initial authenticated client state. |
 | POST | `/api/change-history/undo` | Session + CSRF | after access | Apply an undo from the change history. |
 | POST | `/api/change-history/undo-turn` | Session + CSRF | after access | Undo every tracked write of one Coach turn. |
@@ -324,6 +327,43 @@ Response: 200 with `authenticated` (boolean) and `maintenance` (`active`,
 `running_operations`).
 
 Errors: none beyond the common ones.
+
+### `GET /api/body/skinfolds`
+
+Request: no query, no body.
+
+Response: 200 with `measurements` (at most 20, each with `date`, `sex`
+`male` or `female` as the sites tell, `folds_mm` as `{site, label, mm}` in
+protocol order and `body_fat_pct` by Jackson-Pollock and Siri, null without
+a birth year in the profile), `birth_year_known` and `sites` (the sites per
+sex).
+
+Errors: none beyond the common ones.
+
+### `PUT /api/body/skinfolds`
+
+Request: JSON body `{"date": "YYYY-MM-DD", "folds_mm": {site: number}}`
+with exactly the sites `chest`, `abdomen`, `thigh` (men) or `triceps`,
+`suprailiac`, `thigh` (women), each 2 to 80 mm (comma decimals allowed).
+The date must not be in the future.
+
+Response: 200 as `GET /api/body/skinfolds`.
+
+Errors: 400 "Das Messdatum fehlt oder ist ungültig."; 400 "Das Messdatum
+darf nicht in der Zukunft liegen."; 400 "Bitte genau drei Stellen messen:
+Brust, Bauch, Oberschenkel oder Trizeps, Hüfte, Oberschenkel."; 400 "Jede
+Hautfalte braucht einen Wert in mm."; 400 "Eine Hautfalte muss zwischen 2
+und 80 mm liegen.".
+
+### `PUT /api/body/skinfolds/remove`
+
+Request: JSON body `{"date": "YYYY-MM-DD", "confirmed": true}`.
+
+Response: 200 as `GET /api/body/skinfolds`.
+
+Errors: 400 "Das Löschen einer Messung muss bestätigt werden." unless
+`confirmed` is `true`; 400 "Das Messdatum fehlt oder ist ungültig."; 404
+"Für diesen Tag gibt es keine Hautfaltenmessung.".
 
 ### `GET /api/bootstrap`
 
@@ -1511,8 +1551,9 @@ characters. Fields: `name`, `goals`, `sports`, `training_background`,
 `_strength`, `_mobility` variants, `training_model` (`pyramidal`,
 `polarized`, `threshold`, `sweet_spot`), `performance_notes`, `weight_kg`
 (20 to 300), `body_fat_pct` (1 to 70), `height_cm` (50 to 250), `sex`
-(`male`, `female` or empty), `coaching_style`, `timezone` (IANA name),
-`weather_location`, `sleep_target_hours` (4 to 12), `fueling_tolerance`,
+(`male`, `female` or empty), `birth_year` (a whole year, 1920 to 2010),
+`coaching_style`, `timezone` (IANA name), `weather_location`,
+`sleep_target_hours` (4 to 12), `fueling_tolerance`,
 `first_threshold_pct` (40 to 100, percent of the run threshold HR),
 `first_threshold_origin` (`measured`, `estimated` or empty) and
 `preferred_source_thresholds`, `_body`, `_hrv`, `_resting_hr`, `_sleep`
@@ -1532,6 +1573,7 @@ Errors: 400 "Die Zeitzone muss eine gültige IANA-Zeitzone sein."; 400
 "Unbekanntes Trainingsmodell; erlaubt: pyramidal, polarized, threshold,
 sweet_spot"; 400 "Unbekannte bevorzugte Quelle; erlaubt: garmin oder leer.";
 400 "Unbekanntes Geschlecht; erlaubt: male, female oder leer."; 400 "Das
+Geburtsjahr muss zwischen 1920 und 2010 liegen."; 400 "Das
 Gewicht muss zwischen 20 und 300 kg liegen.", "Die Größe muss zwischen 50
 und 250 cm liegen.", "Der Körperfettanteil muss zwischen 1 und 70 %
 liegen.", "Das Schlafziel muss zwischen 4 und 12 Stunden liegen."; 400
