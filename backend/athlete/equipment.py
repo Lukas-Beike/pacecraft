@@ -543,42 +543,34 @@ class EquipmentService:
         change = None
         written = 0
         for start in range(0, len(sessions), RULE_APPLY_CHUNK):
-            with self._manager.unit_of_work() as db:
-                # The item is checked again in every chunk's transaction.
-                item_record = self._rule_item(db, item)
+            try:
+                with self._manager.unit_of_work() as db:
+                    # The item is checked again inside every chunk's transaction.
+                    item_record = self._rule_item(db, item)
+                    if change is None:
+                        equipment_store.put(
+                            db,
+                            RULE_APPLY_PREFIX + operation_id,
+                            json.dumps(operation),
+                            applied_at,
+                        )
+                        change = _record_change(
+                            db, "equipment_rule_apply", operation_id, "create", None, operation
+                        )
+                    written += _write_rule_chunk(
+                        db, sessions[start : start + RULE_APPLY_CHUNK], item_record, operation
+                    )
+            except AppError:
                 if change is None:
-                    equipment_store.put(
-                        db,
-                        RULE_APPLY_PREFIX + operation_id,
-                        json.dumps(operation),
-                        applied_at,
-                    )
-                    change = _record_change(
-                        db,
-                        "equipment_rule_apply",
-                        operation_id,
-                        "create",
-                        None,
-                        operation,
-                    )
-                for row in sessions[start : start + RULE_APPLY_CHUNK]:
-                    session = str(row["id"])
-                    # A choice made since the preview stays the athlete's.
-                    if equipment_store.value(
-                        db, ASSIGNMENT_PREFIX + session
-                    ) is not None or not assignable_equipment(item_record, row):
-                        continue
-                    saved = {
-                        "activity_id": session,
-                        "equipment_id": item,
-                        "observed_at": applied_at,
-                        "source": "rule",
-                        "operation_id": operation_id,
-                    }
-                    equipment_store.put(
-                        db, ASSIGNMENT_PREFIX + session, json.dumps(saved), applied_at
-                    )
-                    written += 1
+                    raise
+                # Earlier chunks stay written; their receipt and undo come back.
+                return {
+                    "ok": True,
+                    "stored_locally": True,
+                    "count": written,
+                    "change": change,
+                    "stopped": "equipment_not_active",
+                }
         return {"ok": True, "stored_locally": True, "count": written, "change": change}
 
     def _rule_candidates(self, kind: Any) -> tuple[str | None, list[dict[str, Any]]]:
@@ -698,6 +690,32 @@ def session_kind(
     if focus in _INTERVAL_FOCI:
         return "run:intervals"
     return f"run:{'long' if focus == 'long' else 'easy'}"
+
+
+def _write_rule_chunk(
+    db: Any, rows: list[dict[str, Any]], item: dict[str, Any], operation: dict[str, Any]
+) -> int:
+    """Give one chunk of sessions the rule's item, tagged with the apply's operation id."""
+    written = 0
+    for row in rows:
+        session = str(row["id"])
+        # A choice made since the preview stays the athlete's.
+        if equipment_store.value(
+            db, ASSIGNMENT_PREFIX + session
+        ) is not None or not assignable_equipment(item, row):
+            continue
+        saved = {
+            "activity_id": session,
+            "equipment_id": item["id"],
+            "observed_at": operation["applied_at"],
+            "source": "rule",
+            "operation_id": operation["operation_id"],
+        }
+        equipment_store.put(
+            db, ASSIGNMENT_PREFIX + session, json.dumps(saved), operation["applied_at"]
+        )
+        written += 1
+    return written
 
 
 def _session_foci(db: Any, session_ids: Sequence[str]) -> dict[str, str | None]:

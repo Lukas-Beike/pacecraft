@@ -682,7 +682,10 @@ Request: JSON body of at most 16 KiB, exactly `{"kind": string,
 Response: 200 `{"ok": true, "stored_locally": true, "count", "change"}`;
 `count` sessions got the item, written in chunks of at most 200 per
 transaction; `change` undoes the whole apply (null when nothing was
-written). A session chosen since the preview keeps its choice.
+written). A session chosen since the preview keeps its choice. When the
+item stops being active during the apply, the chunks written so far stay
+and the answer adds `"stopped": "equipment_not_active"` with their count
+and `change`.
 
 Errors: 400 "Art der Regel ist erforderlich." for another body shape or
 kind; 409 `confirmation_required` without `confirmed: true`; 409 "Für

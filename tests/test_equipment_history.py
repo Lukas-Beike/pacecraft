@@ -13,6 +13,7 @@ import unittest
 from datetime import date
 from pathlib import Path
 from typing import Any, cast
+from unittest.mock import patch
 
 from backend import change_history
 from backend.athlete import equipment as equipment_module
@@ -658,6 +659,31 @@ class EquipmentHistoryTests(unittest.TestCase):
                 call()
             self.assertEqual(retired.exception.status, 409)
         self.assertIsNone(self.stored("equipment_assignment:act_out"))
+
+    def test_an_apply_stopped_by_a_retired_item_returns_what_it_wrote_and_its_undo(self) -> None:
+        sessions = self.many_rides(RULE_APPLY_CHUNK + 10)
+        bike = self.bike()
+        self.service.save_rule(
+            {"kind": "ride:outdoor", "equipment_id": bike["id"], "expected_revision": 0}
+        )
+        checks = []
+        original = EquipmentService._rule_item
+
+        def retired_after_first_chunk(db: Any, item_id: Any) -> dict[str, Any]:
+            checks.append(item_id)
+            if len(checks) > 2:  # once for the preview, once for the first chunk
+                raise AppError(409, "Die Ausrüstung der Regel ist nicht mehr aktiv.")
+            return original(db, item_id)
+
+        with patch.object(EquipmentService, "_rule_item", staticmethod(retired_after_first_chunk)):
+            result = self.service.apply_rule({"kind": "ride:outdoor", "confirmed": True})
+        self.assertEqual(
+            (result["count"], result["stopped"], result["change"]["entity_type"]),
+            (RULE_APPLY_CHUNK, "equipment_not_active", "equipment_rule_apply"),
+        )
+        self.assertIsNone(self.stored("equipment_assignment:" + sessions[-1]))
+        self.undo([result["change"]])
+        self.assertIsNone(self.stored("equipment_assignment:" + sessions[0]))
 
     def test_an_apply_needs_confirmation_a_rule_and_no_running_apply_of_its_kind(self) -> None:
         self.many_rides(3)
