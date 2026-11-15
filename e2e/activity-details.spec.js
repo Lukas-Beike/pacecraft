@@ -500,17 +500,25 @@ test("@responsive a completed session's card shows its equipment as a chip and a
   await expect(row.getByRole("combobox", { name: "Schuh" })).toHaveValue("shoe-a");
   await row.getByRole("button", { name: "Übernehmen" }).click();
   await expect.poll(() => posts.at(-1)).toEqual({ activity_id: "act_eq", equipment_id: "shoe-a" });
-  await expect(card.locator(".planned-equipment-status")).toContainText("Gespeichert.");
+  // #3151: after saving, the chip names the shoe once and the editor closes; only the receipt stays.
+  const receipt = card.locator(".planned-equipment-receipt");
+  await expect(receipt).toContainText("Gespeichert.");
   await expect(chip).toHaveText("\u{1F45F} Pegasus 40 ▾");
-  await expect(card.locator(".planned-equipment").getByRole("button", { name: "Übernehmen" })).toBeHidden();
-  // "Keiner" is a normal choice.
-  await card.locator(".planned-equipment").getByRole("combobox", { name: "Schuh" }).selectOption("");
-  await card.locator(".planned-equipment").getByRole("button", { name: "Übernehmen" }).click();
+  await expect(row.getByRole("combobox", { name: "Schuh" })).toBeHidden();
+  await expect(chip).toHaveAttribute("aria-expanded", "false");
+  // "Keiner" is a normal choice; the chip opens the editor again.
+  await chip.click();
+  await row.getByRole("combobox", { name: "Schuh" }).selectOption("");
+  await row.getByRole("button", { name: "Übernehmen" }).click();
   await expect.poll(() => posts.at(-1)).toEqual({ activity_id: "act_eq", equipment_id: null });
   await expect(chip).toHaveText("\u{1F45F} Keiner ▾");
-  await card.locator(".planned-equipment").getByRole("button", { name: "Rückgängig" }).click();
-  await expect(card.locator(".planned-equipment-status")).toContainText("Zurückgenommen.");
-  await expect(card.locator(".planned-equipment").getByRole("combobox", { name: "Schuh" })).toHaveValue("shoe-a");
+  await expect(row.getByRole("combobox", { name: "Schuh" })).toBeHidden();
+  await receipt.getByRole("button", { name: "Rückgängig" }).click();
+  await expect(receipt).toContainText("Zurückgenommen.");
+  await expect(chip).toHaveText("\u{1F45F} Pegasus 40 · Vorschlag ▾");
+  await expect(row.getByRole("combobox", { name: "Schuh" })).toBeHidden();
+  await chip.click();
+  await expect(row.getByRole("combobox", { name: "Schuh" })).toHaveValue("shoe-a");
   // An own choice that can no longer be assigned stays shown and offers no replacement by itself.
   await page.route(/\/api\/activities\/act_eq2$/, (route) => route.fulfill({ json: {
     session: { activity_id: "act_eq2", sport: "run" }, metrics: {}, detail_data: { providers: [] },
@@ -581,6 +589,10 @@ test("@responsive a planned run's card shows its shoe chip right after opening a
   await row.getByRole("combobox", { name: "Schuh" }).selectOption("shoe-a");
   await row.getByRole("button", { name: "Übernehmen" }).click();
   await expect.poll(() => posts.at(-1)).toEqual({ planned_unit_id: "unit-run", equipment_id: "shoe-a" });
-  await expect(card.locator(".planned-equipment-status")).toContainText("Gespeichert.");
+  // #3151: one shoe, a closed editor and the receipt.
+  await expect(card.locator(".planned-equipment-receipt")).toContainText("Gespeichert.");
   await expect(chip).toHaveText("\u{1F45F} Pegasus 40 ▾");
+  await expect(row.getByRole("combobox", { name: "Schuh" })).toBeHidden();
+  await chip.click();
+  await expect(row.getByRole("combobox", { name: "Schuh" })).toHaveValue("shoe-a");
 });

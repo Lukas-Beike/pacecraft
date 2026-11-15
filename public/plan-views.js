@@ -1641,14 +1641,15 @@ async function appendPlannedEquipment(details, head, entry, actual, receipt = nu
   const chip = h("button", { type: "button", className: "status-chip planned-equipment-chip", "aria-expanded": "false", "aria-label": label }, `${icon} …`);
   // Narrow screens hide the head (the summary is the card's head), so the chip leads the opened body there.
   const line = h("div", "planned-equipment-line", chip);
-  const row = h("div", { className: "planned-equipment", hidden: !receipt });
+  // After a save or undo the editor stays closed: the chip names the choice, the receipt follows it (#3151).
+  const row = h("div", { className: "planned-equipment", hidden: true });
   head.after(line, row);
   const choice = await plannedEquipmentChoice(target);
   if (!choice || (!choice.options?.length && !choice.explicit)) {
     line.remove();
+    row.remove();
     // The receipt stays even when the unit cannot be read again.
-    if (receipt) plannedEquipmentReceipt(row, details, head, entry, actual, receipt);
-    else row.remove();
+    if (receipt) plannedEquipmentReceipt(details, head, entry, actual, receipt);
     return;
   }
   const { own, current, preset, shown, tag } = plannedEquipmentShown(choice);
@@ -1683,7 +1684,7 @@ async function appendPlannedEquipment(details, head, entry, actual, receipt = nu
   });
   row.replaceChildren(h("label", "planned-equipment-field", h("span", null, label), select), apply, status);
   sync();
-  if (receipt) plannedEquipmentReceipt(row, details, head, entry, actual, receipt);
+  if (receipt) plannedEquipmentReceipt(details, head, entry, actual, receipt);
 }
 
 // An assignment changes usage and the equipment notice; the next opening reads the unit again.
@@ -1695,18 +1696,14 @@ function plannedEquipmentChanged(target) {
 function plannedEquipmentRedraw(details, head, entry, actual, receipt) {
   details.querySelector(".planned-equipment-line")?.remove();
   details.querySelector(".planned-equipment")?.remove();
+  details.querySelector(".planned-equipment-receipt")?.remove();
   void appendPlannedEquipment(details, head, entry, actual, receipt);
 }
 
-function plannedEquipmentReceipt(row, details, head, entry, actual, { change, message }) {
-  row.hidden = false;
-  if (!row.isConnected) (details.querySelector(".planned-equipment-line") || head).after(row);
-  let status = row.querySelector(".planned-equipment-status");
-  if (!status) {
-    status = h("p", { className: "planned-equipment-status", role: "status" });
-    row.append(status);
-  }
-  status.textContent = message;
+// The receipt line sits under the chip and the closed editor, outside the editor.
+function plannedEquipmentReceipt(details, head, entry, actual, { change, message }) {
+  const status = h("p", { className: "planned-equipment-status planned-equipment-receipt", role: "status" }, message);
+  (details.querySelector(".planned-equipment") || details.querySelector(".planned-equipment-line") || head).after(status);
   if (!change?.id) return;
   const undo = h("button", { className: "message-undo", type: "button" }, "Rückgängig");
   undo.addEventListener("click", async () => {
