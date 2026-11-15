@@ -39,6 +39,11 @@ class RunningAndWalkingCostTests(unittest.TestCase):
         self.assertEqual(segments, [(25.0, 0.0)] * 4)
         # 70 kg x 100 m x 3.6 J/kg/m = 25,200 J = 6.023 kcal.
         self.assertAlmostEqual(energy.running_net_kcal(70.0, segments), 6.023, places=3)
+        # A late fix at 500 m: the leading gap is flat at 500 m, not a climb from 0.
+        self.assertEqual(
+            energy.graded_segments(distance, [None, None, 500.0, 500.0, 500.0]),
+            [(25.0, 0.0)] * 4,
+        )
         # Missing samples repeat the last altitude instead of dropping distance.
         self.assertEqual(
             energy.graded_segments(distance, [10.0, None, None, 12.0, 12.0]),

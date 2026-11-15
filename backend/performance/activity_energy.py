@@ -99,13 +99,14 @@ def graded_segments(
 
     Consecutive samples are merged until the run reaches ``GRADE_MIN_RUN_M``,
     so altitude noise over a few metres does not become a steep gradient.
-    A missing altitude repeats the last known one (0 before any), so a run
-    without altitude counts as flat instead of dropping out. Samples without
+    A missing altitude repeats the last known one (the first known one before
+    it, 0 without any), so a run without altitude counts as flat instead of
+    dropping out, and a late GPS fix invents no climb. Samples without
     distance, or where distance goes back, start a new segment.
     """
     segments: list[tuple[float, float]] = []
     start: tuple[float, float] | None = None
-    last_altitude = 0.0
+    last_altitude = next((a for a in altitude_m if a is not None), 0.0)
     for index, distance in enumerate(distance_m):
         given = altitude_m[index] if index < len(altitude_m) else None
         altitude = last_altitude if given is None else given
