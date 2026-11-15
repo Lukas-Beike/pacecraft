@@ -315,8 +315,8 @@ export async function runStep(page, { pre = [], post = [], ...step }, capMs = ST
     for (let index = 0; index < count && Date.now() - began < STEP_TOTAL_MS; index += 1) {
       const started = Date.now();
       const outcome = await tryCandidate(page, step, index, capMs);
-      if (outcome === "ready") return { status: "ok", ms: Date.now() - started };
-      if (outcome === "shown") return { status: "fail", ms: Date.now() - started, why: `shows ${step.never}` };
+      const settled = { ready: { status: "ok" }, shown: { status: "fail", why: `shows ${step.never}` } }[outcome];
+      if (settled) return { ...settled, ms: Date.now() - started };
       if (outcome === "empty") empty += 1;
     }
     // Nothing loaded and nothing empty: the data this step needs does not exist (info, not a failure).
