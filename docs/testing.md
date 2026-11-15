@@ -214,6 +214,9 @@ CI's browser shards use it, so a red shard names every failed spec (#3001).
 `--screenshots` keeps a full-page screenshot of every selected test's end state
 and prints their paths, for UI PR images without a spec edit (#2843); the
 manifest records it because the captures lengthen the timings.
+`--repeat-each N` and `--grep PATTERN` pass to each Playwright child, so a flaky
+test repeats without editing tracked files; the manifest records both and marks
+the run focused (#3094).
 
 CI builds and shares the current application image once, then starts browser
 jobs beside the native suite. Its prepared browser image is pinned by exact

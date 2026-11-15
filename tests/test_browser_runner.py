@@ -762,6 +762,23 @@ class BrowserRunnerTests(unittest.TestCase):
                 9103, root / "out-d", root / "private-d",
             )  # fmt: skip
             self.assertEqual(shots["E2E_SCREENSHOTS"], "1")
+            # #3094: one test repeats without editing playwright.config.cjs.
+            self.assertIn("--repeat-each=1", command_a)
+            self.assertNotIn("--grep", command_a)
+            args.repeat_each, args.grep = 30, "queued message"
+            repeated, _, _ = execute.browser_command(
+                {"project": "desktop", "file": "e2e/a.spec.js"},
+                9104, root / "out-e", root / "private-e",
+            )  # fmt: skip
+            self.assertIn("--repeat-each=30", repeated)
+            self.assertEqual(repeated[-2:], ["--grep", "queued message"])
+            selection = runner.Evidence(root, "run", args).data["selection"]
+            self.assertEqual(
+                (selection["mode"], selection["repeat_each"], selection["grep"]),
+                ("focused", 30, "queued message"),
+            )
+            with self.assertRaises(SystemExit), redirect_stderr(io.StringIO()):
+                runner.main(["--project", "desktop", "--repeat-each", "0"])
 
     def test_screenshot_listing_names_only_playwright_end_states(self):
         # #2843: a spec's own crops and the HTML report's copies are not listed.
