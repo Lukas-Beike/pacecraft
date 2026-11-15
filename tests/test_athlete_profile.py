@@ -58,6 +58,7 @@ class AthleteProfileTests(unittest.TestCase):
                 "body_fat_pct": "",
                 "height_cm": "",
                 "sex": "",
+                "birth_year": "",
                 "coaching_style": "Supportive, direct, and evidence-aware",
                 "timezone": os.environ.get("TZ", DEFAULT_TIMEZONE),
                 "weather_location": "",
@@ -212,6 +213,23 @@ class AthleteProfileTests(unittest.TestCase):
         self.assertEqual(normalize_profile({"sex": "other"})["sex"], "")
         with self.assertRaises(AppError):
             normalize_profile({"sex": "other"}, validate_timezone=True)
+
+    def test_birth_year_is_a_whole_year_in_range(self):
+        # #3099: Jackson-Pollock needs the age at each skinfold measurement.
+        self.assertEqual(normalize_profile({})["birth_year"], "")
+        self.assertEqual(
+            normalize_profile({"birth_year": 1986}, validate_timezone=True)[
+                "birth_year"
+            ],
+            "1986",
+        )
+        for value in ("1919", "2011", "1986.5", "neunzehn"):
+            with self.subTest(value=value):
+                self.assertEqual(
+                    normalize_profile({"birth_year": value})["birth_year"], ""
+                )
+                with self.assertRaises(AppError):
+                    normalize_profile({"birth_year": value}, validate_timezone=True)
 
     def test_normalize_profile_does_not_mutate_input(self):
         value = {"name": "  Ada  ", "timezone": "UTC", "unknown": ["keep"]}

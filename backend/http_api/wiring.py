@@ -471,6 +471,7 @@ def _read_routes(
                 activity_read().summaries_on_days,
             ),
             first_threshold_service=athlete.first_threshold,
+            skinfold_service=athlete.skinfolds,
             race_plan=partial(
                 read_race_plan,
                 ctx.planning.competition,
@@ -511,6 +512,7 @@ def _athlete_write_routes(
             lambda profile, revision, deadline: ctx.garmin.body_export(
                 athlete.profile()
             ).export(profile, revision, deadline),
+            skinfold_service=athlete.skinfolds,
         ),
         AuthPostRoutes(session_auth_service, ctx.maintenance),
         FeedbackPostRoutes(

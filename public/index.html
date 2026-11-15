@@ -220,6 +220,7 @@
             <label>Gewicht (kg)<input name="weight_kg" type="number" min="20" max="300" step="0.1"></label>
             <label>Körperfettanteil (%)<input name="body_fat_pct" type="number" min="1" max="70" step="0.1"></label>
             <label>Geschlecht<select name="sex"><option value="">Nicht gesetzt (männlich angenommen)</option><option value="male">Männlich</option><option value="female">Weiblich</option></select></label>
+            <label>Geburtsjahr<input name="birth_year" type="number" min="1920" max="2010" step="1" inputmode="numeric"></label>
             </div>
           </details>
           <details class="profile-section collapsible-section">
@@ -723,6 +724,14 @@
       <label for="nutritionProductUseMeal">Mahlzeit<select id="nutritionProductUseMeal"></select></label>
       <output id="nutritionProductUseStatus" class="tab-sync-detail" aria-live="polite"></output>
       <div class="dialog-actions"><button type="button" id="nutritionProductUseCancel" class="secondary-button">Abbrechen</button><button type="button" id="nutritionProductUseCoach" class="secondary-button">Zur Coach-Nachricht</button><button type="submit" id="nutritionProductUseAdd" class="adaptive-planning-button">Erfassen</button></div>
+    </form>
+  </dialog>
+  <dialog id="skinfoldDialog" aria-labelledby="skinfoldDialogTitle">
+    <form id="skinfoldDialogForm" class="confirmation-dialog">
+      <h2 id="skinfoldDialogTitle">Hautfalten</h2>
+      <label for="skinfoldDialogDate">Datum<input id="skinfoldDialogDate" name="date" type="date" required></label>
+      <output id="skinfoldDialogStatus" class="tab-sync-detail" aria-live="polite"></output>
+      <div class="dialog-actions"><button type="button" id="skinfoldDialogCancel" class="secondary-button">Abbrechen</button><button type="button" id="skinfoldDialogRemove" class="secondary-button" hidden>Löschen</button><button type="submit" id="skinfoldDialogSave" class="adaptive-planning-button">Speichern</button></div>
     </form>
   </dialog>
   <dialog id="confirmationDialog" aria-labelledby="confirmationDialogTitle" aria-describedby="confirmationDialogMessage">

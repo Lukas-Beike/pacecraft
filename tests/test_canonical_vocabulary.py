@@ -155,6 +155,11 @@ class CanonicalVocabularyTests(unittest.TestCase):
                 "activity_weather_humidity": "%",
                 "activity_weather_wind_speed": "m/s",
                 "activity_weather_precipitation": "mm",
+                "skinfold_chest": "mm",
+                "skinfold_abdomen": "mm",
+                "skinfold_thigh": "mm",
+                "skinfold_triceps": "mm",
+                "skinfold_suprailiac": "mm",
             },
             {kind.value: kind.unit for kind in MetricKind},
         )

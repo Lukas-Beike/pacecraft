@@ -73,6 +73,8 @@ DEFAULT_PROFILE = {
     "body_fat_pct": "",
     "height_cm": "",
     "sex": "",
+    # Jackson-Pollock needs the age at each skinfold measurement (#3099).
+    "birth_year": "",
     "coaching_style": "Supportive, direct, and evidence-aware",
     "timezone": os.environ.get("TZ", DEFAULT_TIMEZONE),
     "weather_location": "",
@@ -118,6 +120,20 @@ def _normalize_sex(result: dict[str, str], *, strict: bool) -> None:
     if strict:
         raise AppError(400, "Unbekanntes Geschlecht; erlaubt: male, female oder leer.")
     result["sex"] = ""
+
+
+BIRTH_YEARS = (1920, 2010)
+
+
+def _normalize_birth_year(result: dict[str, str], *, strict: bool) -> None:
+    """Keep a whole birth year in range; reject (strict) or clear another."""
+    text = result["birth_year"]
+    low, high = BIRTH_YEARS
+    if not text or (text.isdigit() and low <= int(text) <= high):
+        return
+    if strict:
+        raise AppError(400, f"Das Geburtsjahr muss zwischen {low} und {high} liegen.")
+    result["birth_year"] = ""
 
 
 def _normalize_first_threshold(result: dict[str, str], *, strict: bool) -> None:
@@ -217,6 +233,7 @@ def normalize_profile(
         result["training_model"] = TRAINING_MODELS[0]
     _normalize_preferred_sources(result, strict=validate_timezone)
     _normalize_sex(result, strict=validate_timezone)
+    _normalize_birth_year(result, strict=validate_timezone)
     _normalize_first_threshold(result, strict=validate_timezone)
     _normalize_numbers(result, previous, strict=validate_timezone)
     return result

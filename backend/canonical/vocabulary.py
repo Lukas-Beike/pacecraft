@@ -242,6 +242,13 @@ class MetricKind(StrEnum):
     ACTIVITY_WEATHER_HUMIDITY = "activity_weather_humidity"
     ACTIVITY_WEATHER_WIND_SPEED = "activity_weather_wind_speed"
     ACTIVITY_WEATHER_PRECIPITATION = "activity_weather_precipitation"
+    # One 3-site skinfold, entered by the athlete (#3099): men chest, abdomen and
+    # thigh; women triceps, suprailiac and thigh (Jackson-Pollock).
+    SKINFOLD_CHEST = "skinfold_chest"
+    SKINFOLD_ABDOMEN = "skinfold_abdomen"
+    SKINFOLD_THIGH = "skinfold_thigh"
+    SKINFOLD_TRICEPS = "skinfold_triceps"
+    SKINFOLD_SUPRAILIAC = "skinfold_suprailiac"
 
     @property
     def unit(self) -> str:
@@ -329,6 +336,11 @@ _METRIC_UNITS: Final[Mapping[MetricKind, str]] = {
     MetricKind.ACTIVITY_WEATHER_HUMIDITY: "%",
     MetricKind.ACTIVITY_WEATHER_WIND_SPEED: "m/s",
     MetricKind.ACTIVITY_WEATHER_PRECIPITATION: "mm",
+    MetricKind.SKINFOLD_CHEST: "mm",
+    MetricKind.SKINFOLD_ABDOMEN: "mm",
+    MetricKind.SKINFOLD_THIGH: "mm",
+    MetricKind.SKINFOLD_TRICEPS: "mm",
+    MetricKind.SKINFOLD_SUPRAILIAC: "mm",
 }
 
 
@@ -412,6 +424,19 @@ UNPRODUCED_METRIC_KINDS: Final[Mapping[MetricKind, str]] = {
             MetricKind.ACTIVITY_WEATHER_HUMIDITY,
             MetricKind.ACTIVITY_WEATHER_WIND_SPEED,
             MetricKind.ACTIVITY_WEATHER_PRECIPITATION,
+        )
+    },
+    **{
+        kind: (
+            "entered by the athlete through backend.athlete.skinfolds (#3099), "
+            "never by a provider mapper"
+        )
+        for kind in (
+            MetricKind.SKINFOLD_CHEST,
+            MetricKind.SKINFOLD_ABDOMEN,
+            MetricKind.SKINFOLD_THIGH,
+            MetricKind.SKINFOLD_TRICEPS,
+            MetricKind.SKINFOLD_SUPRAILIAC,
         )
     },
 }

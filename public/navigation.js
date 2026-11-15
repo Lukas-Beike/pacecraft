@@ -53,7 +53,7 @@ const NAV_VIEWS = (() => {
     "analysis/running": sport,
     "analysis/cycling": sport,
     "analysis/load": period,
-    "nutrition/body": view(["/api/performance"], ["Ernährung aktualisieren", ...PERIODS], ENTRIES),
+    "nutrition/body": view(["/api/performance", "/api/body/skinfolds"], ["Ernährung aktualisieren", ...PERIODS, "Hautfalten eintragen", "Speichern", "Löschen", "Abbrechen"], ENTRIES),
     "analysis/recovery": period,
     "analysis/week": view(["/api/analysis/week-review"], [...ANALYSIS_ACTIONS, "Diese", "Letzte"], ALL_STATES),
     more: connections,

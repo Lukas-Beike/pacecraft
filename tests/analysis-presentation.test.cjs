@@ -196,6 +196,7 @@ test("body overview uses profile body fat without creating a dated measurement",
     isPreferredSource: () => true, analysisValidPoint: (p) => p.value != null,
     dateLabel: (v) => v, analysisValue: (v, unit) => `${v} ${unit}`,
     analysisPeriodControls: () => new FakeElement("nav"), bodyHistoryPeriod: "twelveWeeks",
+    skinfoldCard: () => new FakeElement("section"),
   });
   const body = { windows: {} };
   renderBodyAnalysis(body);
@@ -208,6 +209,26 @@ test("body overview uses profile body fat without creating a dated measurement",
 });
 
 
+test("a failed skinfold read re-renders the card instead of loading forever", async () => {
+  // Gitar #3120: only a successful read used to re-render the body view.
+  let renders = 0;
+  let reads = 0;
+  const { loadSkinfolds } = extractFunctions("analysis.js", ["skinfoldRead", "skinfoldRequest", "loadSkinfolds"], {
+    api: () => { reads += 1; return Promise.reject(new Error("offline")); },
+    renderBodyAnalysis: () => { renders += 1; },
+    state: { data: {} },
+  });
+  loadSkinfolds();
+  loadSkinfolds(); // one read at a time
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.equal(reads, 1);
+  assert.equal(renders, 1);
+  loadSkinfolds(); // the finished request no longer blocks a new read
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.equal(reads, 2);
+});
+
+
 test("body overview falls back to Garmin when the profile fat is absent", () => {
   const root = Object.assign(new FakeElement("div"), { querySelectorAll: () => [] });
   const state = { data: { profile: { body_fat_pct: "" } } };
@@ -217,6 +238,7 @@ test("body overview falls back to Garmin when the profile fat is absent", () => 
     analysisValidPoint: (point) => point.value != null, dateLabel: (v) => v,
     analysisValue: (v, unit) => `${v} ${unit}`, analysisPeriodControls: () => new FakeElement("nav"),
     bodyHistoryPeriod: "twelveWeeks", bodyMetricChart: () => null,
+    skinfoldCard: () => new FakeElement("section"),
   });
   const point = { date: "2026-10-10", value: 16 };
   const body = { preferred_providers: { body_fat_pct: "garmin" }, windows: { "12w": { start: "2026-10-01", end: "2026-10-15", metrics: { body_fat_pct: [{ source_provider: "garmin", points: [point] }] } } } };

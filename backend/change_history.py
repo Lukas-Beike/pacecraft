@@ -93,6 +93,7 @@ PROFILE_FIELDS = {
     "body_fat_pct",
     "height_cm",
     "sex",
+    "birth_year",
     "performance_notes",
     "sleep_target_hours",
     "fueling_tolerance",
@@ -444,6 +445,8 @@ _FIELDS_ADDED_TO_AUDIT: dict[str, tuple[tuple[str, ...], ...]] = {
         ("sex",),
         ("first_threshold_pct",),
         ("first_threshold_origin",),
+        # #3099: the birth year for the skinfold equations.
+        ("birth_year",),
     ),
     "planned_unit": (("starts_at_local",), FOCUS_KEYS, (TEMPLATE_ID,)),
     "workout_library": (FOCUS_KEYS,),
