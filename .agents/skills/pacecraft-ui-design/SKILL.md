@@ -27,8 +27,9 @@ plain JavaScript, athlete data, and local-action contracts; see
 
 - Put a design or UI question to the athlete only with rendered mockups of the
   options (an HTML page rendered in the session), never as a text description;
-  ask through AskUserQuestion with the recommendation first, one decision per
-  question (layout and density, for example, are separate questions).
+  ask through AskUserQuestion with the recommendation first. Each question asks
+  one decision with its own mockup set, and every option answers only that
+  decision (layout and density are separate questions, at most four per call).
 - Give the primary decision visual priority. Group content by meaning, preserve
   reading order, and use spacing and typography before adding more cards, borders,
   decoration, or animation. Keep dense metrics readable on a narrow screen.
