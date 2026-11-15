@@ -535,6 +535,15 @@ test("@responsive a completed session's card shows its equipment as a chip and a
   await linked.locator(".planned-equipment-chip").click();
   await expect(linked.locator(".planned-equipment").getByRole("combobox", { name: "Schuh" })).toHaveValue("shoe-b");
   await expect(linked.locator(".planned-equipment").getByRole("button", { name: "Übernehmen" })).toBeHidden();
+  // A planned "Keiner" carried to the session shows as "Keiner" from the plan, not as the suggestion.
+  await page.route(/\/api\/activities\/act_eq4$/, (route) => route.fulfill({ json: {
+    session: { activity_id: "act_eq4", sport: "run" }, metrics: {}, detail_data: { providers: [] },
+    equipment_choice: { options: [{ id: "shoe-a", name: "Pegasus 40" }], assigned: null, explicit: false, suggested: "shoe-a", effective: { equipment_id: null, source: "planned" } },
+  } }));
+  await renderCalendarSessions(page, [{ id: "act_eq4", name: "Synthetic no shoe run", sport: "run", started_at_local: "2026-10-17T13:00:00", moving_duration_s: 1800, distance_m: 6000 }]);
+  const none = page.locator(".planned-entry.is-completed").filter({ hasText: "Synthetic no shoe run" }).first();
+  await none.evaluate((element) => { element.open = true; });
+  await expect(none.locator(".planned-equipment-chip")).toHaveText("\u{1F45F} Keiner · Plan ▾");
 });
 
 test("@responsive a planned run's card shows its shoe chip right after opening and saves the choice for the unit", async ({ page }) => {

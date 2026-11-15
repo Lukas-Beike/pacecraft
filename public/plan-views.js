@@ -1562,7 +1562,9 @@ function plannedEquipmentSourceLabel(source) {
 function plannedEquipmentShown(choice) {
   const own = choice.explicit ? choice.assigned || "" : null;
   const named = (id) => (id === "" ? "Keiner" : choice.options.find((item) => item.id === id)?.name);
-  const effective = own === null && named(choice.effective?.equipment_id) ? choice.effective : null;
+  // A planned "Keiner" carried to the session is "Keiner" with its source.
+  const carried = choice.effective?.equipment_id === null ? { ...choice.effective, equipment_id: "" } : choice.effective;
+  const effective = own === null && named(carried?.equipment_id) ? carried : null;
   const current = own ?? effective?.equipment_id ?? null;
   const preset = current ?? choice.suggested ?? null;
   let tag = "";

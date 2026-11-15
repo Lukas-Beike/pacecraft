@@ -391,7 +391,8 @@ test("@responsive default equipment per kind saves from today and applies to ear
   // #3014: one select per kind; earlier sessions change only by the confirmed apply, with undo.
   const shoe = (id, name) => ({ id, name, sport: "Run", kind: "shoes", status: "active", revision: 1, usage: { distance_km: 10, hours: 1, assigned_sessions: 1 } });
   const rules = { "run:easy": { equipment_id: null, from: null, revision: 0 }, "run:long": { equipment_id: "a", from: "2026-11-01", revision: 2 } };
-  await page.route("**/api/analysis/training-records", (route) => route.fulfill({ json: { equipment: { items: [shoe("a", "Vaporfly 3"), shoe("b", "Pegasus 40")], garmin_items: [], rules } } }));
+  const bike = (id, name, environment) => ({ id, name, sport: "Ride", kind: "bike", environment, status: "active", revision: 1, usage: { distance_km: 10, hours: 1, assigned_sessions: 1 } });
+  await page.route("**/api/analysis/training-records", (route) => route.fulfill({ json: { equipment: { items: [shoe("a", "Vaporfly 3"), shoe("b", "Pegasus 40"), bike("c", "Tacx Neo", "indoor"), bike("d", "Rennrad", "outdoor")], garmin_items: [], rules } } }));
   const posts = [];
   await page.route("**/api/equipment/rules", (route) => {
     posts.push(route.request().postDataJSON());
@@ -422,7 +423,11 @@ test("@responsive default equipment per kind saves from today and applies to ear
   await expect.poll(() => undone).toEqual({ change_id: "change-apply", expected_current_hash: "hash-apply" });
   await expect(status).toHaveText("Zurückgenommen.");
   await page.getByRole("tab", { name: "Fahrrad" }).click();
-  await expect(page.locator("#equipmentPanel-bike .equipment-rules th")).toHaveText(["Drinnen", "Draußen"]);
+  const bikeRules = page.locator("#equipmentPanel-bike .equipment-rules");
+  await expect(bikeRules.locator("th")).toHaveText(["Drinnen", "Draußen"]);
+  // Each place offers only its bikes, as the server pairs them.
+  await expect(bikeRules.getByRole("combobox", { name: "Standard Drinnen" }).locator("option")).toHaveText(["–", "Tacx Neo"]);
+  await expect(bikeRules.getByRole("combobox", { name: "Standard Draußen" }).locator("option")).toHaveText(["–", "Rennrad"]);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBeTruthy();
 });
 

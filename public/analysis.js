@@ -1985,15 +1985,21 @@ const EQUIPMENT_RULE_ROWS = {
   bike: [["ride:indoor", "Drinnen"], ["ride:outdoor", "Draußen"]],
 };
 
+// A kind's items as the server pairs them: indoor rides take indoor or virtual bikes, the rest the others.
+function equipmentRuleItems(kind, items) {
+  const indoor = (item) => ["indoor", "virtual"].includes(item.environment);
+  return items.filter((item) => !item.parent_id && item.kind !== "component" && !item.sport_pending && !item.parent_pending
+    && (!kind.startsWith("ride:") || indoor(item) === (kind === "ride:indoor")));
+}
+
 function equipmentRuleTable(key, rules, items) {
-  const main = items.filter((item) => !item.parent_id && item.kind !== "component");
   const status = h("div", { className: "equipment-rule-status", "aria-live": "polite" });
   const body = h("tbody");
   for (const [kind, label] of EQUIPMENT_RULE_ROWS[key]) {
     const rule = { revision: 0, ...rules?.[kind] };
     const select = h("select", { "aria-label": `Standard ${label}` },
       h("option", { value: "", selected: !rule.equipment_id }, "–"),
-      main.map((item) => h("option", { value: item.id, selected: item.id === rule.equipment_id }, item.name)));
+      equipmentRuleItems(kind, items).map((item) => h("option", { value: item.id, selected: item.id === rule.equipment_id }, item.name)));
     select.addEventListener("change", () => void saveEquipmentRule(status, kind, select, rule));
     body.append(h("tr", { dataset: { ruleKind: kind } }, h("th", { scope: "row" }, label), h("td", null, select)));
   }
@@ -2010,6 +2016,8 @@ async function saveEquipmentRule(status, kind, select, rule) {
     const preview = select.value ? await api(`/api/equipment/rules/preview?kind=${encodeURIComponent(kind)}`) : null;
     status.replaceChildren(...equipmentRulePreview(status, kind, preview?.count || 0));
   } catch (error) {
+    // A refused save leaves the stored default shown.
+    select.value = rule.equipment_id || "";
     if (!isSessionEndedError(error)) status.replaceChildren(error.message);
   } finally {
     select.disabled = false;
