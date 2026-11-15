@@ -77,8 +77,11 @@ class CyclingStrengthAndHeartRateTests(unittest.TestCase):
 class DailyTermsTests(unittest.TestCase):
     def test_step_length_from_walks_else_height(self) -> None:
         # 1.4 m/s at 112 steps/min is 0.75 m per step.
-        self.assertAlmostEqual(energy.step_length_m([1.4], [112.0], 1.80), 0.75)
-        self.assertAlmostEqual(energy.step_length_m([], [], 1.80), 0.747)
+        measured = energy.step_length_m([1.4], [112.0], 1.80)
+        from_height = energy.step_length_m([], [], 1.80)
+        assert measured is not None and from_height is not None
+        self.assertAlmostEqual(measured, 0.75)
+        self.assertAlmostEqual(from_height, 0.747)
         self.assertIsNone(energy.step_length_m([], [], None))
 
     def test_neat_counts_steps_outside_sessions_and_floors(self) -> None:
