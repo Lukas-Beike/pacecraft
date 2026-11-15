@@ -47,7 +47,7 @@ from backend.performance.power_profile import (
     RUNNING_DISTANCES,
     RUNNING_DURATIONS,
 )
-from backend.performance.progress_report import weekly_progress
+from backend.performance.progress_report import run_pace_trend, weekly_progress
 from backend.performance.running_dynamics import AVERAGE_KEYS, session_rating
 from backend.performance.season_inputs import (
     SeasonSource,
@@ -62,6 +62,8 @@ from backend.performance.week_review import week_review
 
 # Analysis windows of the power and running profiles, shortest first.
 PROFILE_WINDOW_DAYS = (28, 90)
+# Analyse shows the trends of the 12-week progress review (#2802).
+ANALYSIS_TREND_DAYS = 84
 PROGRESS_DAYS = frozenset({7, 28, 42, 56, 84})
 
 
@@ -597,15 +599,14 @@ class TrainingReportReadService:
         today = self._today()
         try:
             days = int(values.get("days", 42))
-            first = (
-                date.fromisoformat(str(values["start"]))
+            start = (
+                _monday(date.fromisoformat(str(values["start"])))
                 if values.get("start")
-                else today - timedelta(weeks=max(days // 7 - 1, 0))
+                else _window_start(today, days)
             )
         except (TypeError, ValueError) as exc:
             raise AppError(400, "Ungültiger Berichtszeitraum.") from exc
         sport = report_sport(values.get("sport"))
-        start = first - timedelta(days=first.weekday())
         if (
             days not in PROGRESS_DAYS
             or not date(2010, 1, 1) <= start <= today
@@ -645,6 +646,16 @@ class TrainingReportReadService:
             and start >= today - timedelta(days=PROFILE_WINDOW_DAYS[-1] - 1 + 6)
             else None,
             observed_at=observed_at,
+        )
+
+    def run_pace_trend(self) -> dict[str, Any]:
+        """Pace at heart rate of the 12-week progress review, for Analyse (#2802)."""
+        today = self._today()
+        return run_pace_trend(
+            None if self._curve_records is None else self._curve_records(),
+            _window_start(today, ANALYSIS_TREND_DAYS),
+            ANALYSIS_TREND_DAYS // 7,
+            today,
         )
 
     def _feedback_of(
@@ -862,6 +873,15 @@ class TrainingReportServices:
     derived: TrainingDerivedReadService
     season: TrainingSeasonReadService
     timezone: Callable[[], str]
+
+
+def _monday(day: date) -> date:
+    return day - timedelta(days=day.weekday())
+
+
+def _window_start(today: date, days: int) -> date:
+    """The Monday a progress window of ``days`` up to today starts on."""
+    return _monday(today - timedelta(weeks=max(days // 7 - 1, 0)))
 
 
 def _since_last_test(last_test: str | None, today: date) -> dict[str, Any]:

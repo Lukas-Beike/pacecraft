@@ -743,6 +743,105 @@ async function renderCyclingPowerProfile() {
       renderAnalysisSegmentsIfActive();
     }
   }
+  // The trends read is slower; it follows the profile cards so it never holds them up (#2802).
+  if (generation === cyclingPowerProfileGeneration && session === state.sessionGeneration) void renderAnalysisTrends();
+}
+
+// Pace at equal heart rate and recurring sessions, the values the Coach reads (#2802).
+const ANALYSIS_TRENDS_PATH = "/api/analysis/trends";
+const RECURRING_CARDS = [["runningRecurringSessions", "run"], ["cyclingRecurringSessions", "ride"]];
+let analysisTrendsGeneration = 0;
+let renderedAnalysisTrends = null;
+
+async function renderAnalysisTrends() {
+  const generation = ++analysisTrendsGeneration;
+  const session = state.sessionGeneration;
+  const pace = document.getElementById("runningPaceAtHeartRate");
+  let result;
+  try {
+    result = await requestAnalysisReport(ANALYSIS_TRENDS_PATH);
+  } catch (error) {
+    if (generation !== analysisTrendsGeneration || session !== state.sessionGeneration) return;
+    // Each sport page shows one error with a retry; no earlier groups stay beside it.
+    renderedAnalysisTrends = null;
+    for (const [id, failed] of [["runningPaceAtHeartRate", true], ["runningRecurringSessions", false], ["cyclingRecurringSessions", true]]) {
+      const root = document.getElementById(id);
+      root.replaceChildren(...(failed ? [createErrorState(error.message, () => void renderAnalysisTrends())] : []));
+      root.dataset.analysisEmpty = failed ? "failed" : "true";
+    }
+    renderAnalysisSegmentsIfActive();
+    return;
+  }
+  // A cached answer that is already drawn is not drawn again on each profile retry.
+  if (generation !== analysisTrendsGeneration || session !== state.sessionGeneration || result === renderedAnalysisTrends) return;
+  renderedAnalysisTrends = result;
+  pace.replaceChildren(...paceAtHeartRateCharts(result?.pace_at_heart_rate));
+  pace.dataset.analysisEmpty = String(!pace.childElementCount);
+  for (const [id, sport] of RECURRING_CARDS) renderRecurringSessions(document.getElementById(id), result?.recurring, sport);
+  renderAnalysisSegmentsIfActive();
+}
+
+// "Garmin original speed/heart-rate streams" names its providers before "original".
+function analysisSourceLabels(texts) {
+  const labels = texts.flatMap((text) => String(text || "").replace(/^derived from /, "").replace(/ original .*$/, "").split(/ \/ |, /));
+  return [...new Set(labels.filter(Boolean))];
+}
+
+function paceAtHeartRateCharts(trend) {
+  const today = timezoneDateKey(state.data?.profile?.timezone, new Date());
+  return Object.entries(trend?.run || {}).filter(([, part]) => part.status === "ok").map(([environment, part]) => paceAtHeartRateChart(part, environment, today)).filter(Boolean);
+}
+
+function paceAtHeartRateChart(part, environment, today) {
+  const [low, high] = part.heart_rate_band_bpm;
+  const sessions = part.sessions || [];
+  const earlier = sessions.slice(0, part.earlier.sessions);
+  const later = sessions.slice(part.earlier.sessions);
+  const level = (rows, value) => rows.length ? [rows[0], rows.at(-1)].map((row) => ({ date: row.date, value })) : [];
+  const series = [
+    { label: "Läufe", unit: "s/km", color: 2, cadenceDays: 1, points: sessions.map((row) => ({ date: row.date, value: row.pace_s_per_km })) },
+    { label: "vorher", unit: "s/km", color: 4, line: "dashed", points: level(earlier, part.earlier.pace_s_per_km) },
+    { label: "jetzt", unit: "s/km", color: 0, line: "dashed", points: level(later, part.later.pace_s_per_km) },
+  ];
+  const title = `${environment === "indoor" ? "Laufband · " : ""}Pace bei ${low}–${high} bpm`;
+  const chart = analysisChart(title, series, "s/km", addDateKey(today, -83), today, "", { estimate: true, sparse: true });
+  if (!chart) return null;
+  const change = part.change_s_per_km;
+  const summary = h("p", "analysis-trend-summary", h("strong", null, analysisValue(part.later.pace_s_per_km, "s/km")), " jetzt · ",
+    h("span", { dataset: { direction: change < 0 ? "faster" : "slower" } }, analysisChange(change, "s/km")), ` gegenüber ${analysisValue(part.earlier.pace_s_per_km, "s/km")} vorher`);
+  const chips = analysisSourceLabels(part.sources || []).map(recordSourceChip);
+  chart.querySelector("h3").after(h("p", "analysis-trend-meta", ...chips, ` ${sessions.length} Läufe · Stand ${dateLabel(sessions.at(-1)?.date)}`), summary);
+  return chart;
+}
+
+function renderRecurringSessions(root, recurring, sport) {
+  const groups = (recurring?.groups || []).filter((group) => group.sport === sport);
+  root.dataset.analysisEmpty = String(!groups.length);
+  root.replaceChildren(...(groups.length ? [h("h3", null, "Wiederkehrende Einheiten"), ...groups.map(recurringGroup)] : []));
+}
+
+function recurringGroup(group) {
+  const observations = [...group.observations].reverse().slice(0, 6);
+  const latest = observations[0];
+  const repeat = latest.repeat_groups?.[0];
+  const title = repeat ? `${repeat.repetitions} × ${repeat.target}` : (latest.name || `${latest.steps.length} Schritte`);
+  const rows = observations.map((row) => h("tr", null, h("th", { scope: "row" }, dateLabel(row.date)), h("td", null, recurringValue(row))));
+  const chips = analysisSourceLabels(observations.map((row) => row.source)).map(recordSourceChip);
+  return h("section", { className: "recurring-group", dataset: { recurringGroup: group.target_sha256 } },
+    h("h4", null, title, " ", ...chips), h("table", "race-predictions-table", h("tbody", null, ...rows)));
+}
+
+// The mean of the repeated work steps (or of every measured step), with the fade of the repeats.
+function recurringValue(row) {
+  const repeat = row.repeat_groups?.[0];
+  const measured = row.steps.filter((step) => step.status === "ok" && step.mean != null && (!repeat || step.target === repeat.target));
+  // Steps targeted by heart rate, power or pace are never averaged together.
+  const steps = measured.filter((step) => step.unit === measured[0]?.unit);
+  if (!steps.length) return "–";
+  const mean = steps.reduce((sum, step) => sum + Number(step.mean), 0) / steps.length;
+  const unit = steps[0].unit;
+  const value = unit === "m/s" ? analysisValue(1000 / mean, "s/km") : analysisValue(mean, unit);
+  return repeat ? `${value} · Abfall ${AppFormat.number(repeat.fade_percent, { digits: 1 })} %` : value;
 }
 
 function renderPowerProfile(result) {
@@ -1454,8 +1553,8 @@ async function renderTrainingRecords({ background = false } = {}) { // NOSONAR
 // without a marker, still loading or failed counts as not empty; period controls stay visible.
 // A container shared by both sports names the marker of the sport's part (#2265).
 const ANALYSIS_SEGMENT_CONTENT = {
-  running: [["currentPerformance", "analysisEmptyRunning"], ["analysisHistoryCharts", "analysisEmptyRunning"], ["performancePredictions"], ["runningBestEfforts"]],
-  cycling: [["currentPerformance", "analysisEmptyCycling"], ["analysisHistoryCharts", "analysisEmptyCycling"], ["cyclingPowerProfile"]],
+  running: [["currentPerformance", "analysisEmptyRunning"], ["analysisHistoryCharts", "analysisEmptyRunning"], ["performancePredictions"], ["runningBestEfforts"], ["runningPaceAtHeartRate"], ["runningRecurringSessions"]],
+  cycling: [["currentPerformance", "analysisEmptyCycling"], ["analysisHistoryCharts", "analysisEmptyCycling"], ["cyclingPowerProfile"], ["cyclingRecurringSessions"]],
   load: [["sessionPerformance"], ["analysisLoadCharts"], ["trainingZoneCharts"], ["performanceEnduranceCharts"]],
   recovery: [["personalRecovery"]],
   week: [["weekReview"]],

@@ -330,6 +330,27 @@ def _effort_sports(sport: str) -> tuple[str, ...]:
     return (sport,)
 
 
+def _halves(start: date, weeks: int, effective_end: date) -> tuple[date, int]:
+    """The later half's first day and the started weeks of a window.
+
+    Split on the weeks that have started, so a window reaching past today keeps
+    a non-empty later half.
+    """
+    started_weeks = min(weeks, (effective_end - start).days // 7 + 1)
+    return start + timedelta(weeks=started_weeks // 2), started_weeks
+
+
+def run_pace_trend(
+    records: Sequence[Mapping[str, Any]] | None, start: date, weeks: int, today: date
+) -> dict[str, Any]:
+    """Pace at heart rate over a window's halves, as the progress review reads it."""
+    effective_end = min(start + timedelta(days=7 * weeks - 1), today)
+    middle, started_weeks = _halves(start, weeks, effective_end)
+    return _curve_trend_window(
+        pace_at_heart_rate_trend, records, start, middle, effective_end, started_weeks
+    )
+
+
 def _curve_trend_window(
     trend: Callable[..., dict[str, Any]],
     records: Sequence[Mapping[str, Any]] | None,
@@ -435,10 +456,7 @@ def weekly_progress(
         <= summary_local_date(row, timezone)
         <= effective_end.isoformat()
     ]
-    # Split on the weeks that have started, so a window reaching past today keeps
-    # a non-empty later half.
-    started_weeks = min(weeks, (effective_end - start).days // 7 + 1)
-    middle = start + timedelta(weeks=started_weeks // 2)
+    middle, started_weeks = _halves(start, weeks, effective_end)
     fitness = local_fitness_window(
         local_load_days,
         in_window,
@@ -483,16 +501,7 @@ def weekly_progress(
             else {}
         ),
         **(
-            {
-                "pace_at_heart_rate": _curve_trend_window(
-                    pace_at_heart_rate_trend,
-                    curve_records,
-                    start,
-                    middle,
-                    effective_end,
-                    started_weeks,
-                )
-            }
+            {"pace_at_heart_rate": run_pace_trend(curve_records, start, weeks, today)}
             if sport in {"all", "run"}
             else {}
         ),

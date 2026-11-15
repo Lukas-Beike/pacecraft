@@ -461,6 +461,14 @@ The system SHALL derive per run with full-resolution streams the time and distan
 - **WHEN** a block trend or a session comparison is built
 - **THEN** a band needs at least 600 s at a speed variation of at most 15 %; the block trend chooses per environment the 10 bpm band with the most qualifying sessions in the weaker half, then the most sessions, then the most time, then the lower heart rate, and is `ok` only when the earlier and the later half each hold a session and at least 2 sessions have a value; a session comparison uses the runs of the 42 days before it with the same environment and grade handling and the band that qualifies the most of them and holds this run, needs at least 3 and is otherwise `not_covered` ("Nur n vergleichbare Läufe, mindestens 3 nötig.").
 
+#### Scenario: Shown in Analyse
+- **WHEN** Analyse › Laufen has loaded its profile cards
+- **THEN** `GET /api/analysis/trends` serves the run trend of the Coach's 12-week progress review unchanged. For each environment with status `ok`, Analyse › Laufen draws a card with:
+  - the band in its title;
+  - the later and earlier pace with their change;
+  - each run as a point and the two halves as dashed lines;
+  - the provider labels of its sources, the estimate chip, the number of runs and the date of the last run.
+
 Evidence:
 - `backend/performance/pace_at_hr.py:_best_band`
 - `backend/performance/pace_at_hr.py:pace_at_heart_rate`
@@ -469,6 +477,8 @@ Evidence:
 - `tests/test_pace_at_hr.py:test_band_is_chosen_so_both_halves_have_sessions`
 - `tests/test_pace_at_hr.py:test_compares_with_the_median_of_comparable_runs`
 - `tests/test_pace_at_hr.py:test_runs_older_than_42_days_and_other_environments_do_not_count`
+- `tests/test_performance_coach_ui_parity.py:test_pace_at_heart_rate_and_recurring_sessions_are_the_coach_sections`
+- `e2e/analysis-on-demand.spec.js` "Analyse shows pace at equal heart rate and recurring sessions after the profile cards"
 
 ### Requirement: Original-stream best efforts and validation evidence
 The system SHALL compute observed power-duration and running speed/distance efforts from original time-weighted streams, preserve unknown windows across gaps, keep measured zeros, and keep display downsampling separate from calculations. Latest-activity validation SHALL expose bounded sport-specific direct evidence alongside provider references without claiming a laboratory threshold, VO2max, Zone-2, or race-prediction validation from one activity.
@@ -548,8 +558,14 @@ Recurring comparisons (method `identical-observed-targets-v1`, served through th
 - **WHEN** at least one group exists
 - **THEN** the status is `observations` and each group has `target_sha256`, `sport`, `device` and `observations`; otherwise the status is `insufficient_data`; at most the 100 newest stored analyses are read.
 
+#### Scenario: Shown in Analyse
+- **WHEN** Analyse › Laufen or Radfahren has loaded its profile cards
+- **THEN** `GET /api/analysis/trends` serves the same groups, each recording cut to its date, session, name, source, work steps and repeat groups.
+- **THEN** the sport's card "Wiederkehrende Einheiten" lists each group under its repeated target with the provider labels of its sources, and its six newest recordings with the date, the mean of the repeated steps (runs as pace) and their fade.
+
 Evidence:
 - `backend/performance/comparisons.py:recurring_training_comparisons`
+- `backend/performance/comparisons.py:recurring_view`
 - `backend/performance/session_analysis_reads.py:analysis_summaries`
 - `tests/test_training_record_features.py:test_recurring_comparison_keeps_historical_targets_and_device_provenance_separate`
 
