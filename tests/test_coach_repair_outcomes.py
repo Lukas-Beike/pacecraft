@@ -173,6 +173,21 @@ class UnresolvedCoachStepsTests(unittest.TestCase):
                 self.assertEqual(unresolved_coach_steps([other, planned]), [other])
         retried = {**refused, "result": {"ok": True}}
         self.assertEqual(unresolved_coach_steps([other, planned, retried]), [])
+        # The marathon created again: the Coach updates it by its ID instead,
+        # under another scope, and the turn still completes.
+        race = {
+            "tool": "save_competition",
+            "step_key": "local_competitions",
+            "request": {"target": "local", "scope": ["local_competitions"]},
+            "result": {"ok": False, "reason": "competition_exists"},
+        }
+        update = {
+            **race,
+            "step_key": "competition:c1",
+            "request": {"target": "local", "scope": ["competition:c1"]},
+            "result": {"ok": True},
+        }
+        self.assertEqual(unresolved_coach_steps([race, update]), [])
 
     def test_profile_conflict_requires_exact_profile_fields(self):
         failed = {

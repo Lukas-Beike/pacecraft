@@ -89,10 +89,32 @@ class CompetitionServiceTests(unittest.TestCase):
                     "name": "Berlin Marathon",
                     "event_date": "2027-09-26",
                     "sport": first["sport"],
+                    "environment": first["environment"],
                 }
             ],
         )
+        # The race moved a day: the same upcoming name is the same race.
+        with self.assertRaises(AppError) as moved:
+            self.service.save(self.competition(event_date="2027-09-27"))
+        self.assertEqual(
+            first["id"],
+            (getattr(moved.exception, "findings", None) or [{}])[0]["competition_id"],
+        )
         self.assertEqual(2, len(self.service.list()))
+        # A Zwift race the same evening is another race than the outdoor one.
+        outdoor = self.service.save(
+            self.competition(name="Kriterium", sport="Ride", event_date="2027-05-01")
+        )["competition"]
+        zwift = self.service.save(
+            self.competition(
+                name="Zwift Rennen",
+                sport="Ride",
+                environment="virtual",
+                event_date="2027-05-01",
+            )
+        )
+        self.assertNotEqual(outdoor["environment"], zwift["competition"]["environment"])
+        self.assertEqual(0, zwift["created_despite_candidate"])
         # A second race that day with its reason is kept and counted; an
         # update of the first never counts.
         kept = self.service.save(

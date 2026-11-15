@@ -264,20 +264,34 @@ class CompetitionService:
         arguments: dict[str, Any],
         existing: dict[str, Any] | None,
     ) -> int:
-        """Refuse a new competition on a day with one of its sport (#3080).
+        """Refuse a new competition the stored ones already hold (#3080).
 
-        The Coach updates that one by its competition_id; a second race of the
-        sport that day (``new_because`` says why) is kept and counted. An edit
-        is never refused.
+        One of its sport and environment on its day, or an upcoming one of its
+        sport with the same name (a race moved to another day is updated, not
+        created again). The Coach updates that one by its competition_id; a
+        second race (``new_because`` says why) is kept and counted. An edit is
+        never refused.
         """
         if existing:
             return 0
         day = str(normalized["event_date"])[:10]
+        today = self._local_today().isoformat()
+        name = str(normalized.get("name") or "").casefold()
         match = next(
             (
                 item
-                for item in self._repository.between(db, day, day)
+                for item in self._repository.list(db)
                 if item.get("sport") == normalized.get("sport")
+                and (
+                    (
+                        str(item.get("event_date") or "")[:10] == day
+                        and item.get("environment") == normalized.get("environment")
+                    )
+                    or (
+                        str(item.get("name") or "").casefold() == name
+                        and str(item.get("event_date") or "")[:10] >= today
+                    )
+                )
             ),
             None,
         )
@@ -287,9 +301,8 @@ class CompetitionService:
             return 1
         error = AppError(
             409,
-            "An diesem Tag ist schon ein Wettkampf dieser Sportart gespeichert: "
-            "ändere ihn mit seiner competition_id oder nenne in new_because, "
-            "warum es ein zweiter ist.",
+            "Dieser Wettkampf ist schon gespeichert: ändere ihn mit seiner "
+            "competition_id oder nenne in new_because, warum es ein zweiter ist.",
             reason="competition_exists",
         )
         # For the model only: the competition to update instead.
@@ -300,11 +313,10 @@ class CompetitionService:
                 {
                     "code": "competition_exists",
                     "competition_id": match["id"],
-                    "name": str(
-                        (self._repository.get(db, match["id"]) or {}).get("name") or ""
-                    )[:200],
-                    "event_date": day,
+                    "name": match.get("name"),
+                    "event_date": str(match.get("event_date") or "")[:10],
                     "sport": match.get("sport"),
+                    "environment": match.get("environment"),
                 }
             ],
         )
