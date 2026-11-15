@@ -225,7 +225,7 @@ def populated_baseline_database(db) -> None:
     db.commit()
 
 
-# Schema v27, releases 2.1.2 to 2.1.9, has no fixture of its own: the baseline
+# Schema v27 (since 2.1.2) has no fixture of its own: the baseline
 # after its product step is that shape, here with calendar events of a feed.
 V27_CALENDAR_EVENTS = (
     ("event-1", "team@example.test", "Teammeeting", "2026-10-19T09:00:00", 0, 0),
@@ -250,7 +250,7 @@ def populated_v27_database(db) -> None:
     db.commit()
 
 
-# Schema v28, releases 2.1.10 to 2.1.14, has no fixture of its own either: v27
+# Schema v28 (since 2.1.10) has no fixture of its own either: v27
 # after its decision step, here with a decision and a saved competition.
 V28_COMPETITION = (
     "race-1",
@@ -778,6 +778,21 @@ class DatabaseSchemaGateTests(unittest.TestCase):
         migrations._calendar_decisions(db)
         self.assertEqual(
             released_shape(database_schema_signature(db)), SHAPE_SCHEMA_V28
+        )
+
+    def test_schema_history_lists_the_releases_of_every_opened_schema(self):
+        # The one release-to-schema table (#3130): a new schema adds its row there.
+        history = SCHEMA_REFERENCE.with_name("schema-history.md").read_text("utf-8")
+        table = history.split("<!-- schema-releases -->", 1)[1].split("\n\n", 1)[0]
+        listed = {int(row.split("|")[1]) for row in table.splitlines()[3:]}
+        self.assertLessEqual(
+            set(
+                range(
+                    migrations.OLDEST_SUPPORTED_SCHEMA_VERSION,
+                    CURRENT_SCHEMA_VERSION + 1,
+                )
+            ),
+            listed,
         )
 
     def test_frozen_v29_shape_is_v28_after_its_location_step(self):
