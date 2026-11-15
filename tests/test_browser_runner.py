@@ -309,7 +309,12 @@ class BrowserRunnerTests(unittest.TestCase):
             mock.patch.object(
                 runner, "image_identity", return_value="sha256:" + "a" * 64
             ),
-            mock.patch.object(runner, "image_matches_source", return_value=current),
+            mock.patch.object(
+                runner,
+                "image_matches_source",
+                return_value=current,
+                side_effect=current if isinstance(current, list) else None,
+            ),
             mock.patch.object(
                 runner, "verify_browser", return_value={"mode": "native"}
             ),
@@ -563,6 +568,29 @@ class BrowserRunnerTests(unittest.TestCase):
         self.assertIn("could not compare", self.stderr)
         self.run_main(FakeProcesses(), current=True)
         self.assertNotIn("Warning", self.stderr)
+        build = ["docker", "build", "-t", runner.worktree_image_tag(runner.ROOT), "."]
+        self.assertNotIn(build, fake.commands)
+        # #3106: --build rebuilds a stale image, checks it again and runs.
+        fake = FakeProcesses()
+        code, value, _path = self.run_main(
+            fake, current=[False, True], extra_args=("--build",)
+        )
+        self.assertEqual(code, 0, self.stderr)
+        self.assertIn(build, fake.commands)
+        self.assertIs(True, value["images"]["application_matches_source"])
+        # A build that still does not match stops before any fixture.
+        fake = FakeProcesses()
+        code, value, _path = self.run_main(
+            fake, current=[False, False], extra_args=("--build",)
+        )
+        self.assertNotEqual(code, 0)
+        self.assertIn(build, fake.commands)
+        self.assertIn("does not match", value["error"])
+        self.assertFalse(fake.ids)
+        # A current image is never rebuilt.
+        fake = FakeProcesses()
+        self.run_main(fake, current=True, extra_args=("--build",))
+        self.assertNotIn(build, fake.commands)
 
     def test_each_checkout_gets_its_own_application_image_tag(self):
         with tempfile.TemporaryDirectory() as directory:
