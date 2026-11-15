@@ -6,8 +6,12 @@ import ast
 import threading
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
+from typing import Any
+from unittest.mock import Mock
 
-from backend.http_api.route_table import Access, Route
+from backend.http_api.handler import RequestHandler
+from backend.http_api.route_table import Access, Route, RouteTable
 from backend.runtime.heavy_reads import HeavyReadGate
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -79,6 +83,32 @@ class HeavyReadGateTests(unittest.TestCase):
         with gate.held():
             pass
         self.assertEqual(gate.summary()["timeouts"], 0)
+
+    def test_a_client_disconnect_while_sending_releases_the_gate(self) -> None:
+        # The gate stays held while the response is sent; a client that hangs
+        # up there must not keep it from the next read.
+        for error in (BrokenPipeError, ConnectionResetError):
+            with self.subTest(error=error.__name__):
+                gate = HeavyReadGate(wait_s=0.05)
+                handler: Any = RequestHandler.__new__(RequestHandler)
+                handler.path = "/api/heavy"
+                auth = Mock(require_auth=Mock(return_value={}))
+
+                def send(*_: Any, error: type[OSError] = error) -> None:
+                    raise error("client gone")
+
+                handler.dependencies = SimpleNamespace(
+                    session_auth_service=lambda auth=auth: auth,
+                    route_table=RouteTable(
+                        [Route("GET", "/api/heavy", Access.SESSION, send, heavy=True)]
+                    ),
+                    heavy_read_gate=gate,
+                )
+                with self.assertRaises(error):
+                    handler._get("/api/heavy")
+                with gate.held():
+                    pass
+                self.assertEqual(gate.summary()["timeouts"], 0)
 
     def test_the_heavy_routes_are_the_history_view_reads(self) -> None:
         heavy = set()
