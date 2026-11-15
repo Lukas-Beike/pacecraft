@@ -95,6 +95,10 @@ bias that is the same on every day is not visible in the band.
   and last weigh-in. Otherwise it reports `intake_days`, `weighins` or
   `weight_span` and shows "Datenbasis zu gering".
 - The bias needs 4 windows with flagged days and spread in their share.
+- The first read uses the existing diary and weigh-in history
+  (`history_start`), not only days logged afterwards. With fewer than 4
+  windows the calibration stays at 1 and each window carries how many windows
+  the fit used (`calibration_windows`), so the display can say so.
 
 ## Numeric rules
 

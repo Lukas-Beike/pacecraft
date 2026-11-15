@@ -95,6 +95,22 @@ class AdaptiveTdeeTests(unittest.TestCase):
             balance.energy_windows(weekly, END, weeks=1)[-1].insufficient, "weighins"
         )
 
+    def test_existing_history_counts_on_the_first_read(self) -> None:
+        # 41 logged and weighed days before the first read: windows ending on
+        # END and END-7 are full, END-14 holds 27 days (span 26), END-21 holds
+        # 20 days but only a 19-day weight span, END-28 only 13 days.
+        windows = balance.energy_windows(series(constant(2600.0), days=41), END)
+        reasons = [w.insufficient for w in windows[-5:]]
+        self.assertEqual(reasons, ["intake_days", "weight_span", None, None, None])
+        self.assertEqual(sum(1 for w in windows if w.adaptive_tdee), 3)
+        # Three windows are below the four the fit needs: still the prior 1.
+        self.assertEqual(windows[-1].calibration_windows, 3)
+        self.assertEqual(windows[-1].activity_kcal, windows[-1].activity_kcal_raw)
+        tdee = windows[-1].adaptive_tdee
+        assert tdee is not None
+        self.assertAlmostEqual(tdee.kcal, TRUE_TDEE, delta=60)
+        self.assertEqual(balance.history_start(END), END - timedelta(days=104))
+
     def test_incomplete_days_are_dropped(self) -> None:
         day = balance.DayInputs(intake_kcal=800, entries=3, activity_kcal=600)
         self.assertFalse(balance.is_complete(day, 1700.0))

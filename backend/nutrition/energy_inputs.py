@@ -19,7 +19,12 @@ from datetime import date, timedelta
 from typing import Any
 
 from backend.canonical.vocabulary import StreamChannel
-from backend.nutrition.energy_balance import DayInputs, EnergyInputs, weight_trend
+from backend.nutrition.energy_balance import (
+    DayInputs,
+    EnergyInputs,
+    EnergyWindow,
+    weight_trend,
+)
 from backend.performance import activity_energy as energy
 
 # Session sports by how M11 prices them.
@@ -248,11 +253,21 @@ def read_energy_inputs(
 
 
 def diagnostics(
-    inputs: EnergyInputs, costs: Sequence[SessionCost]
+    inputs: EnergyInputs,
+    costs: Sequence[SessionCost],
+    windows: Sequence[EnergyWindow] = (),
 ) -> dict[str, int | str | None]:
-    """Counts only, no values: days, logged/flagged/weighed days, priced sessions."""
+    """Counts only, no values: the read history, the latest window's basis and
+    how many windows carry an estimate and the calibration."""
     days = inputs.days.values()
+    latest = windows[-1] if windows else None
     return {
+        "latest_window_complete_days": latest.complete_days if latest else None,
+        "latest_window_weighins": latest.weighins if latest else None,
+        "latest_window_insufficient": latest.insufficient if latest else None,
+        "windows": len(windows),
+        "windows_with_estimate": sum(1 for w in windows if w.adaptive_tdee),
+        "calibration_windows": latest.calibration_windows if latest else 0,
         "days": len(inputs.days),
         "logged_days": sum(1 for d in days if d.entries),
         "flagged_days": sum(1 for d in days if d.flagged),

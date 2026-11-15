@@ -105,6 +105,9 @@ class EnergyWindow:
     derived_rmr: Estimate | None
     insufficient: str | None
     rmr_source: str | None = None
+    # Windows the calibration fit used; below MIN_CALIBRATION_WINDOWS the
+    # factor is still the prior 1 and the display says so.
+    calibration_windows: int = 0
 
 
 def weight_trend(weights_kg: Mapping[date, float]) -> dict[date, float]:
@@ -207,7 +210,11 @@ def _stored_energy(
 
 
 def _window(
-    inputs: EnergyInputs, trend: Mapping[date, float], end: date, factor: float
+    inputs: EnergyInputs,
+    trend: Mapping[date, float],
+    end: date,
+    factor: float,
+    calibration_windows: int = 0,
 ) -> EnergyWindow:
     start = end - timedelta(days=WINDOW_DAYS - 1)
     span = [start + timedelta(days=n) for n in range(WINDOW_DAYS)]
@@ -245,7 +252,19 @@ def _window(
         derived_rmr=derived,
         insufficient=reason,
         rmr_source=inputs.rmr_source,
+        calibration_windows=calibration_windows,
     )
+
+
+def _calibration_points(windows: Sequence[EnergyWindow]) -> list[tuple[float, float]]:
+    """(raw activity, TDEE - TEF) of every window with an estimate."""
+    return [
+        (w.activity_kcal_raw, w.adaptive_tdee.kcal - w.tef_kcal)
+        for w in windows
+        if w.adaptive_tdee is not None
+        and w.activity_kcal_raw is not None
+        and w.tef_kcal is not None
+    ]
 
 
 def calibration_factor(windows: Sequence[EnergyWindow]) -> float:
@@ -255,13 +274,7 @@ def calibration_factor(windows: Sequence[EnergyWindow]) -> float:
     its variance; the posterior mean with the prior 1 +- 0.10 is clamped to
     0.85-1.15. Without enough windows, or without spread in activity, it is 1.
     """
-    points = [
-        (w.activity_kcal_raw, w.adaptive_tdee.kcal - w.tef_kcal)
-        for w in windows
-        if w.adaptive_tdee is not None
-        and w.activity_kcal_raw is not None
-        and w.tef_kcal is not None
-    ]
+    points = _calibration_points(windows)
     if len(points) < MIN_CALIBRATION_WINDOWS:
         return 1.0
     xs = [x for x, _ in points]
@@ -289,7 +302,11 @@ def calibration_factor(windows: Sequence[EnergyWindow]) -> float:
 def energy_windows(
     inputs: EnergyInputs, end: date, weeks: int = 12
 ) -> tuple[EnergyWindow, ...]:
-    """One window per week ending on ``end``, ``end`` - 7, ...; oldest first."""
+    """One window per week ending on ``end``, ``end`` - 7, ...; oldest first.
+
+    It works on whatever history ``inputs`` holds, so logged days from before
+    the first read count at once; older windows without a basis give reasons.
+    """
     weights = {
         d: v.weight_kg for d, v in inputs.days.items() if v.weight_kg is not None
     }
@@ -297,7 +314,13 @@ def energy_windows(
     ends = [end - timedelta(days=7 * n) for n in range(weeks)][::-1]
     uncalibrated = [_window(inputs, trend, e, 1.0) for e in ends]
     factor = calibration_factor(uncalibrated)
-    return tuple(_window(inputs, trend, e, factor) for e in ends)
+    used = len(_calibration_points(uncalibrated))
+    return tuple(_window(inputs, trend, e, factor, used) for e in ends)
+
+
+def history_start(end: date, weeks: int = 12) -> date:
+    """The first day the oldest of ``weeks`` windows ending on ``end`` reads."""
+    return end - timedelta(days=7 * (weeks - 1) + WINDOW_DAYS - 1)
 
 
 def flagged_meal_bias(inputs: EnergyInputs, end: date) -> tuple[float, float] | None:

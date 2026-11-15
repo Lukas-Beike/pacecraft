@@ -93,7 +93,10 @@ class EnergyInputsReaderTests(unittest.TestCase):
         _, costs = read_energy_inputs(None, sources(), DAY1, DAY3)
         self.assertEqual(
             diagnostics(garmin, costs),
-            {"days": 3, "logged_days": 2, "flagged_days": 1, "weighins": 1,
+            {"latest_window_complete_days": None, "latest_window_weighins": None,
+             "latest_window_insufficient": None, "windows": 0,
+             "windows_with_estimate": 0, "calibration_windows": 0,
+             "days": 3, "logged_days": 2, "flagged_days": 1, "weighins": 1,
              "sessions": 4, "unpriced_sessions": 1, "rmr_source": "garmin"},
         )  # fmt: skip
 
