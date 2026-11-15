@@ -35,6 +35,7 @@ class EquipmentPostRoutes:
                 self._maintain,
             ),
             Route("POST", "/api/equipment/rules", Access.SESSION_CSRF, self._rule),
+            Route("GET", "/api/equipment/planned", Access.SESSION, self._planned),
             Route(
                 "GET",
                 "/api/equipment/rules/preview",
@@ -134,6 +135,26 @@ class EquipmentPostRoutes:
                 handler.read_json(EQUIPMENT_BODY_MAX_BYTES)
             ),
         )
+
+    def _planned(self, handler: Any, request: RouteRequest) -> None:
+        """The equipment choice of one planned unit, as its calendar card shows it (#3011).
+
+        Request: query `unit_id` (the planned unit's local id, at most 200
+        characters); no body.
+
+        Response: 200 `{"options": [{"id", "name"}], "assigned", "explicit",
+        "effective", "suggested"}`: the active main items of the unit's sport,
+        its own choice (`explicit` true even for "Keiner"), the rule's item for
+        its kind and day as `effective` `{"equipment_id", "source": "rule"}`
+        when it has no own choice, else null, and the item the athlete last chose
+        for a session of the same sport pair. It changes no state.
+
+        Errors: 400 "Geplante Einheit ist erforderlich." for a missing or too
+        long id; 404 "Geplante Einheit nicht gefunden." for an unknown or deleted
+        unit.
+        """
+        unit_id = (request.query.get("unit_id") or [""])[0]
+        handler.send_json(200, self._equipment_service().planned_choice(unit_id))
 
     def _rule_preview(self, handler: Any, request: RouteRequest) -> None:
         """Count the earlier sessions a rule apply would give its item (#3014).

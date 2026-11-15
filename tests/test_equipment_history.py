@@ -488,6 +488,29 @@ class EquipmentHistoryTests(unittest.TestCase):
         self.assertEqual(gone.exception.status, 409)
         self.assertIsNone(self.record("equipment_planned:unit-1")["equipment_id"])
 
+    def test_a_planned_unit_reads_its_options_own_choice_rule_and_suggestion(self) -> None:
+        self.planned_unit(date="2026-10-05")
+        road, rain = self.bike(), self.bike(name="Rain bike")
+        self.service.save_rule(
+            {"kind": "ride:outdoor", "equipment_id": road["id"], "expected_revision": 0}
+        )
+        self.service.assign({"activity_id": "act_w1", "equipment_id": rain["id"]})
+        choice = self.service.planned_choice("unit-1")
+        self.assertEqual({item["id"] for item in choice["options"]}, {road["id"], rain["id"]})
+        self.assertEqual(
+            (choice["assigned"], choice["explicit"], choice["suggested"]),
+            (None, False, rain["id"]),
+        )
+        self.assertEqual(choice["effective"], {"equipment_id": road["id"], "source": "rule"})
+        # The own choice, even "Keiner", replaces the rule.
+        self.service.assign({"planned_unit_id": "unit-1", "equipment_id": None})
+        choice = self.service.planned_choice("unit-1")
+        self.assertEqual((choice["explicit"], choice["effective"]), (True, None))
+        for unit_id, status in (("unknown", 404), ("", 400), (None, 400)):
+            with self.subTest(unit_id=unit_id), self.assertRaises(AppError) as raised:
+                self.service.planned_choice(unit_id)
+            self.assertEqual(raised.exception.status, status)
+
     def test_none_is_a_tracked_planned_choice_and_undo_removes_a_first_choice(self) -> None:
         self.planned_unit()
         _, changes = self.collected(

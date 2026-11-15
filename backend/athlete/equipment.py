@@ -560,6 +560,55 @@ class EquipmentService:
             )
         return {"ok": True, "stored_locally": True, "rule": saved, "change": change}
 
+    def planned_choice(self, unit_id: Any) -> dict[str, Any]:
+        """The items a planned unit can take, its own choice, its rule and a suggestion (#3011).
+
+        The suggestion is the item last chosen by the athlete for a session of the
+        same sport pair, as for a completed session; nothing is stored by reading.
+        """
+        if not isinstance(unit_id, str) or not 0 < len(unit_id) <= 200:
+            raise AppError(400, "Geplante Einheit ist erforderlich.")
+        rows = _session_rows(self._read_summaries())
+        with self._manager.reader() as db:
+            row = planned_unit_sport(db, unit_id)
+            if row is None:
+                raise AppError(404, "Geplante Einheit nicht gefunden.")
+            unit = json.loads(planning_store.planned_unit_row(db, unit_id)["payload"])
+            items = self._records(db, EQUIPMENT_PREFIX, 100)
+            own = stored_value(db, PLANNED_PREFIX + unit_id)
+            kind = session_kind(
+                row["sport"], row["environment"], unit.get(SESSION_FOCUS), None
+            )
+            covered, rule_item = rule_choice(
+                stored_value(db, RULE_PREFIX + str(kind)), str(unit.get("date") or "")
+            )
+            explicit = _session_assignments(
+                db, rows, self._records(db, ASSIGNMENT_PREFIX, None)
+            )
+        options = [item for item in items if assignable_equipment(item, row)]
+        usable = {item["id"] for item in options}
+        pairs = {str(other["id"]): _stored_pair(_row_sport(other)) for other in rows}
+        recent = [
+            record
+            for record in explicit.values()
+            if record.get("source") in (None, "manual")
+            and record.get("equipment_id") in usable
+            and pairs.get(str(record["activity_id"])) == _stored_pair(_row_sport(row))
+        ]
+        return {
+            "options": [{"id": item["id"], "name": item["name"]} for item in options],
+            "assigned": own.get("equipment_id") if own else None,
+            "explicit": own is not None,
+            "effective": {"equipment_id": rule_item, "source": "rule"}
+            if covered and own is None
+            else None,
+            "suggested": max(
+                recent, key=lambda record: str(record.get("observed_at") or "")
+            )["equipment_id"]
+            if recent
+            else None,
+        }
+
     def rule_apply_preview(self, kind: Any) -> dict[str, Any]:
         """How many earlier sessions without an own choice a rule would cover (#3014)."""
         item, sessions = self._rule_candidates(kind)
