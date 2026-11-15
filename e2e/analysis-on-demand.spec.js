@@ -176,7 +176,8 @@ test("@responsive week review shows the cards and switches to last week", async 
   expect(weeks).toEqual(["current", "previous"]);
 });
 
-// Pace at equal heart rate and recurring sessions, as the Coach reads them, follow the profile cards (#2802).
+// Recurring sessions, as the Coach reads them, follow the profile cards (#2802); the pace at
+// equal heart rate in the same answer is the Coach's only (#3153).
 const TRENDS = "/api/analysis/trends";
 const RUN_DAYS = ["2026-08-24", "2026-09-07", "2026-09-21", "2026-10-12", "2026-10-26", "2026-11-09"];
 const TRENDS_PAYLOAD = {
@@ -200,7 +201,7 @@ const TRENDS_PAYLOAD = {
   ] },
 };
 
-test("@responsive Analyse shows pace at equal heart rate and recurring sessions after the profile cards", async ({ page }) => {
+test("@responsive Analyse shows recurring sessions after the profile cards and no pace-at-heart-rate card", async ({ page }) => {
   await mockReports(page);
   const order = [];
   page.on("request", (request) => { const path = new URL(request.url()).pathname; if (path === POWER_PROFILES || path === TRENDS) order.push(`request ${path}`); });
@@ -208,14 +209,10 @@ test("@responsive Analyse shows pace at equal heart rate and recurring sessions 
   await page.route(`**${TRENDS}`, (route) => route.fulfill({ json: TRENDS_PAYLOAD }));
   await waitForInitialState(page);
   await routeTo(page, "#analysis/running");
-  const pace = page.locator("#runningPaceAtHeartRate");
-  await expect(pace.getByRole("heading", { name: /Pace bei 140–149 bpm/ })).toBeVisible();
-  await expect(pace.locator(".analysis-trend-summary")).toHaveText("5:38 min/km jetzt · −0:09 min/km gegenüber 5:47 min/km vorher");
-  await expect(pace.locator(".analysis-trend-meta")).toContainText("Garmin");
-  await expect(pace.locator(".analysis-trend-meta")).toContainText("6 Läufe · Stand 09.11.2026");
-  await expect(pace.locator('circle[data-series="0"]')).toHaveCount(6);
   const running = page.locator("#runningRecurringSessions");
   await expect(running.getByRole("heading", { name: "Wiederkehrende Einheiten" })).toBeVisible();
+  // The answer still carries the run trend, but no card draws it (#3153).
+  await expect(page.getByText(/Pace bei \d/)).toHaveCount(0);
   await expect(running.getByRole("heading", { name: /5 × 1000 m @ 4:10 \/km/ })).toContainText("Garmin");
   await expect(running.locator("tbody tr").first()).toHaveText(/14\.11\.2026\s*4:06 min\/km · Abfall 1,1 %/);
   await expect(page.locator("#cyclingRecurringSessions")).toBeHidden();
@@ -226,7 +223,6 @@ test("@responsive Analyse shows pace at equal heart rate and recurring sessions 
   const cycling = page.locator("#cyclingRecurringSessions");
   await expect(cycling.getByRole("heading", { name: /3 × 10 min @ 250 W/ })).toContainText("Wahoo");
   await expect(cycling.locator("tbody tr").first()).toHaveText(/12\.11\.2026\s*252 W · Abfall 0,9 %/);
-  await expect(page.locator("#runningPaceAtHeartRate")).toBeHidden();
   await expect(page.locator("#runningRecurringSessions")).toBeHidden();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBeTruthy();
 });
@@ -240,12 +236,11 @@ test("@responsive a failed trends read shows a retry on Laufen and on Radfahren"
   const cycling = page.locator("#cyclingRecurringSessions");
   await expect(cycling.getByRole("button", { name: /Erneut/ })).toBeVisible();
   await routeTo(page, "#analysis/running");
-  await expect(page.locator("#runningPaceAtHeartRate").getByRole("button", { name: /Erneut/ })).toBeVisible();
-  await expect(page.locator("#runningRecurringSessions")).toBeHidden();
+  const running = page.locator("#runningRecurringSessions");
+  await expect(running.getByRole("button", { name: /Erneut/ })).toBeVisible();
   fail = false;
-  await page.locator("#runningPaceAtHeartRate").getByRole("button", { name: /Erneut/ }).click();
-  await expect(page.locator("#runningPaceAtHeartRate").getByRole("heading", { name: /Pace bei 140–149 bpm/ })).toBeVisible();
-  await expect(page.locator("#runningRecurringSessions").getByRole("heading", { name: "Wiederkehrende Einheiten" })).toBeVisible();
+  await running.getByRole("button", { name: /Erneut/ }).click();
+  await expect(running.getByRole("heading", { name: "Wiederkehrende Einheiten" })).toBeVisible();
 });
 
 test("@responsive equipment records load only on the equipment route and stay cached", async ({ page }) => {

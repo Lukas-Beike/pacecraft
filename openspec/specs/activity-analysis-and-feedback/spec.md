@@ -461,13 +461,9 @@ The system SHALL derive per run with full-resolution streams the time and distan
 - **WHEN** a block trend or a session comparison is built
 - **THEN** a band needs at least 600 s at a speed variation of at most 15 %; the block trend chooses per environment the 10 bpm band with the most qualifying sessions in the weaker half, then the most sessions, then the most time, then the lower heart rate, and is `ok` only when the earlier and the later half each hold a session and at least 2 sessions have a value; a session comparison uses the runs of the 42 days before it with the same environment and grade handling and the band that qualifies the most of them and holds this run, needs at least 3 and is otherwise `not_covered` ("Nur n vergleichbare Läufe, mindestens 3 nötig.").
 
-#### Scenario: Shown in Analyse
+#### Scenario: The Coach's read only
 - **WHEN** Analyse › Laufen has loaded its profile cards
-- **THEN** `GET /api/analysis/trends` serves the run trend of the Coach's 12-week progress review unchanged. For each environment with status `ok`, Analyse › Laufen draws a card with:
-  - the band in its title;
-  - the later and earlier pace with their change;
-  - each run as a point and the two halves as dashed lines;
-  - the provider labels of its sources, the estimate chip, the number of runs and the date of the last run.
+- **THEN** `GET /api/analysis/trends` serves the run trend of the Coach's 12-week progress review unchanged, and Analyse › Laufen draws no card for it: its history is the LT1 line of "Entwicklung", computed from the same bins (#3153).
 
 Evidence:
 - `backend/performance/pace_at_hr.py:_best_band`
@@ -478,7 +474,7 @@ Evidence:
 - `tests/test_pace_at_hr.py:test_compares_with_the_median_of_comparable_runs`
 - `tests/test_pace_at_hr.py:test_runs_older_than_42_days_and_other_environments_do_not_count`
 - `tests/test_performance_coach_ui_parity.py:test_pace_at_heart_rate_and_recurring_sessions_are_the_coach_sections`
-- `e2e/analysis-on-demand.spec.js` "Analyse shows pace at equal heart rate and recurring sessions after the profile cards"
+- `e2e/analysis-on-demand.spec.js` "Analyse shows recurring sessions after the profile cards and no pace-at-heart-rate card"
 
 ### Requirement: Original-stream best efforts and validation evidence
 The system SHALL compute observed power-duration and running speed/distance efforts from original time-weighted streams, preserve unknown windows across gaps, keep measured zeros, and keep display downsampling separate from calculations. Latest-activity validation SHALL expose bounded sport-specific direct evidence alongside provider references without claiming a laboratory threshold, VO2max, Zone-2, or race-prediction validation from one activity.
