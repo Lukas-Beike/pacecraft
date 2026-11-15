@@ -260,20 +260,28 @@ def cognitive_diagnostics(root: Path, files: list[str]) -> list[dict]:
 
 def _css_selector_key(prelude: str) -> str:
     """A selector list as Stylelint compares it: whitespace and order ignored."""
-    selectors = (
-        " ".join(re.sub(r"\s*([>+~])\s*", r" \1 ", part).split())
-        for part in prelude.split(",")
-    )
+    for combinator in ">+~":
+        prelude = prelude.replace(combinator, f" {combinator} ")
+    selectors = (" ".join(part.split()) for part in prelude.split(","))
     return ", ".join(sorted(selector for selector in selectors if selector))
 
 
-def _css_rule_key(scope: list[str], prelude: str) -> tuple[tuple[str, ...], str] | None:
+def _css_rule_key(
+    scope: list[tuple[int, str]], prelude: str
+) -> tuple[tuple[int, ...], str] | None:
     """The comparison key of a rule's selector list; None for an at-rule or a
-    block inside @keyframes and similar, which hold no selectors."""
+    block inside @keyframes and similar, which hold no selectors.
+
+    The context is the enclosing blocks themselves, not their text: two
+    separate @media blocks with the same query are different parents, as in
+    Stylelint.
+    """
     prelude = " ".join(prelude.split())
-    if prelude.startswith("@") or any(outer.startswith(CSS_NO_SELECTORS) for outer in scope):
+    if prelude.startswith("@") or any(
+        outer.startswith(CSS_NO_SELECTORS) for _, outer in scope
+    ):
         return None
-    return tuple(scope), _css_selector_key(prelude)
+    return tuple(block for block, _ in scope), _css_selector_key(prelude)
 
 
 def css_duplicate_selectors(text: str) -> list[tuple[str, int]]:
@@ -285,11 +293,11 @@ def css_duplicate_selectors(text: str) -> list[tuple[str, int]]:
         text,
         flags=re.DOTALL,
     )
-    seen: set[tuple[tuple[str, ...], str]] = set()
+    seen: set[tuple[tuple[int, ...], str]] = set()
     found: list[tuple[str, int]] = []
-    scope: list[str] = []
+    scope: list[tuple[int, str]] = []
     start = 0
-    for match in re.finditer(r"[{};]", text):
+    for block, match in enumerate(re.finditer(r"[{};]", text)):
         if match.group() == "{":
             prelude = text[start : match.start()]
             key = _css_rule_key(scope, prelude)
@@ -298,7 +306,7 @@ def css_duplicate_selectors(text: str) -> list[tuple[str, int]]:
                 found.append((key[1], text.count("\n", 0, first) + 1))
             if key is not None:
                 seen.add(key)
-            scope.append(" ".join(prelude.split()))
+            scope.append((block, " ".join(prelude.split())))
         elif match.group() == "}" and scope:
             scope.pop()
         start = match.end()

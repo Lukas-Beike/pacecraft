@@ -619,6 +619,14 @@ class CssDuplicateSelectorTests(unittest.TestCase):
         )
         self.assertEqual(self.findings(css), [])
 
+    def test_separate_blocks_with_the_same_query_are_different_contexts(self):
+        css = (
+            "@media (max-width: 600px) { .a { x: 1; } }\n"
+            ".b { y: 1; }\n"
+            "@media (max-width: 600px) { .a { x: 2; } }\n"
+        )
+        self.assertEqual(self.findings(css), [])
+
     def test_a_repeat_inside_one_media_query_is_found(self):
         css = "@media print { .a { x: 1; }\n .a { x: 2; } }\n"
         [finding] = self.findings(css)
