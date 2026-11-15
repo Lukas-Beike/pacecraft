@@ -77,6 +77,10 @@ Evidence: `scripts/check_push_secrets.py`; `docs/development.md` (secret checks 
 - **WHEN** a `public/*.js` function exceeds cognitive complexity 15 or contains a nested ternary
 - **THEN** the ratchet reports it as NEW with file, line and rule and exits 1; the score is not part of the finding identity and a `NOSONAR` comment on the reported line suppresses it, as in Sonar
 
+#### Scenario: JavaScript call to an identifier declared nowhere
+- **WHEN** a `public/*.js` page script uses a name that is neither a browser global nor declared in the shared global scope or on `globalThis` by a page script in `public/` (the service worker only has its own globals)
+- **THEN** the ratchet reports `no-undef` as NEW; the declared names are derived from the checked tree's `public/` files, so a new helper needs no configuration; only a file with the Node-test export guard (`typeof module !== "undefined"`) may use `module`, and the baseline holds no ESLint entry
+
 #### Scenario: ESLint not installed
 - **WHEN** `node_modules` has no ESLint, as in CI's `quality` job
 - **THEN** the JavaScript step prints that it was skipped and baseline entries of the ESLint tool are ignored, except under the pre-push hook and `scripts/check_changed.py` (`PACECRAFT_NODE_MODULES` set), where it fails and asks for `npm ci`
@@ -90,6 +94,7 @@ Evidence:
 - `tests/test_quality_baseline.py::CognitiveComplexityTests.test_limit_is_exclusive_at_fifteen`
 - `tests/test_quality_baseline.py::QualityBaselineTests.test_alignment_records_only_the_pinned_tool_versions`
 - `tests/test_quality_baseline.py::QualityBaselineTests.test_all_source_boundaries_and_new_files_are_discovered`
+- `tests/test_quality_baseline.py::QualityBaselineTests.test_a_call_to_a_helper_declared_nowhere_is_found`
 - `tests/test_quality_baseline.py::QualityBaselineTests.test_complex_function_and_nested_ternary_in_public_js_are_found`
 - `tests/test_quality_baseline.py::QualityBaselineTests.test_complexity_score_is_not_part_of_the_identity_and_nosonar_suppresses`
 - `tests/test_quality_baseline.py::QualityBaselineTests.test_duplicate_diagnostics_are_not_collapsed`

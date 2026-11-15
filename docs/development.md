@@ -98,7 +98,12 @@ on Windows) on a clean export of HEAD; new findings block the push. The same
 ratchet reports a function above Sonar's cognitive complexity 15 (rule
 `python:S3776`) as a `cognitive` finding named by function, not score. It
 also checks `public/*.js` for Sonar's cognitive complexity above 15
-(S3776) and nested ternaries (S3358) through `eslint-plugin-sonarjs`, using the
+(S3776) and nested ternaries (S3358) through `eslint-plugin-sonarjs`, and for
+identifiers declared nowhere (ESLint `no-undef`, #3016): page scripts may use
+the browser globals and the names any page script declares in the shared
+global scope or on `globalThis`, derived from `public/`; the service worker
+only its own globals; only a file with the Node-test export guard
+(`typeof module !== "undefined"`) may use `module`. It uses the
 clone's `node_modules` (`npm ci`). In the pre-push hook and in
 `scripts/check_changed.py` a clone without ESLint fails the ratchet (run
 `npm ci`, #2832); elsewhere, as in CI's `quality` job, it prints that it
