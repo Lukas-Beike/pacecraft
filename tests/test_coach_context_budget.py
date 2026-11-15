@@ -7,6 +7,7 @@ Set BUDGET_TABLE=1 to print the table.
 
 from __future__ import annotations
 
+import copy
 import json
 import os
 import unittest
@@ -339,6 +340,15 @@ class CoachContextBudgetTests(unittest.TestCase):
                 row = self.measured[label]
                 self.assertEqual(sections, present(row))
                 self.assertLessEqual(row["total"], ceiling)
+
+    def test_a_given_structured_build_gives_the_identical_text(self) -> None:
+        """The preview's one build yields the same text as the text's own build (#2966)."""
+        service = _build_service()
+        own = service.build()
+        structured = service._structured_context_service.build()
+        reused = service.build(structured_context=copy.deepcopy(structured))
+        self.assertEqual(own, reused)
+        self.assertIn(MARKER, own)
 
     def test_free_text_planning_gets_the_brief_and_playbook(self) -> None:
         selection = select_coach_context("Plane meine nächste Woche", {})

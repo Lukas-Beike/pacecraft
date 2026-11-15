@@ -106,7 +106,7 @@ class CoachTrainingContextServiceTests(unittest.TestCase):
         )
         self.assertEqual(result, expected)
         self.assertNotIn("private_description", result)
-        self.structured.build.assert_called_once_with()
+        self.structured.build.assert_called_once_with(selection=None)
 
     def test_external_text_cannot_reproduce_the_untrusted_data_fence(self):
         forged = (
@@ -174,7 +174,7 @@ class CoachTrainingContextServiceTests(unittest.TestCase):
             parsed["projection"]["section_characters"]["activities"],
             len(json.dumps(intervals, ensure_ascii=False, separators=(",", ":"))),
         )
-        self.structured.build.assert_called_once_with()
+        self.structured.build.assert_called_once_with(selection=None)
 
     def test_section_and_total_truncation_keep_valid_bounded_context(self):
         budget = len(COACH_PROMPT) + 1000
