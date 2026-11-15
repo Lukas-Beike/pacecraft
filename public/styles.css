@@ -1942,7 +1942,7 @@ button:focus-visible, a:focus-visible, summary:focus-visible {
   :is(div, section).analysis-history-charts > * { flex: 1 1 calc(50% - 8px); min-width: 0; }
   :is(div, section).analysis-history-charts > :not(.analysis-chart-card), :is(div, section).analysis-history-charts > .analysis-chart-stack { flex-basis: 100%; }
   .analysis-chart-card.analysis-chart-stack { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .analysis-chart-card.analysis-chart-stack > :not(.analysis-subchart) { grid-column: 1 / -1; }
+  .analysis-chart-card.analysis-chart-stack > :not(.analysis-subchart), .analysis-chart-card.analysis-chart-stack > .analysis-subchart:nth-child(odd of .analysis-subchart):nth-last-child(1 of .analysis-subchart) { grid-column: 1 / -1; }
   .profile-form .profile-section > :not(summary) { max-width: 40rem; }
 }
 }

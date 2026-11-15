@@ -150,4 +150,17 @@ test("@responsive desktop Analyse rows: two cards at equal height, a lone card a
   // The fixture's Belastung holds both cases, so neither rule passes vacuously.
   expect(seen.pairs).toBeGreaterThan(0);
   expect(seen.lone).toBeGreaterThan(0);
+  // Inside a combined card the same rule holds: an odd last chart spans the card. The fixture's
+  // combined cards hold even counts, so one more chart is added for the measurement.
+  await open(page, "analysis/recovery", "#personalRecovery .analysis-chart-stack .analysis-subchart");
+  const widths = await page.evaluate(() => {
+    const stack = document.querySelector("#personalRecovery .analysis-chart-stack");
+    const charts = stack.querySelectorAll(":scope > .analysis-subchart");
+    stack.append(charts[0].cloneNode(true));
+    const all = [...stack.querySelectorAll(":scope > .analysis-subchart")];
+    return { first: all[0].getBoundingClientRect().width, last: all.at(-1).getBoundingClientRect().width, count: all.length };
+  });
+  expect(widths.count % 2).toBe(1);
+  // A paired chart takes half the row less the gap; the lone last one the whole row.
+  expect(widths.last).toBeGreaterThan(widths.first * 1.9);
 });
