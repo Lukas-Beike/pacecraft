@@ -4,7 +4,7 @@ description: Locate the smallest relevant ai-coach files and request flows befor
 ---
 
 - Start with `AGENTS.md` in scope, then search named symbols with `rg`.
-- Use the root AGENTS domain map to find the cohesive `backend/` owner. Inspect `server.py` for wiring and affected legacy callers without treating legacy ownership as a precedent for new logic.
+- Use the domain map in `backend/AGENTS.md` to find the cohesive `backend/` owner. Inspect `server.py` for wiring and affected legacy callers without treating legacy ownership as a precedent for new logic.
 - Include `backend/config.py`, `backend/privacy.py`, `backend/settings.py`, `backend/change_history.py`, `backend/observability.py`, `public/`, `tests/`, `e2e/`, `.github/`, and `Dockerfile` when tracing cross-cutting flows.
 - Trace callers and the immediate data flow before reading whole files.
 - Verify the actual code and tests before trusting documentation, remembered paths, defaults, or tool capabilities. If the first path is stale, search the symbol rather than widening to a whole-repository read.

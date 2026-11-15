@@ -1,6 +1,18 @@
 # Backend ownership
 
-Use the root domain map. Domain services own use-case orchestration and
+Domain owners: `coach/` (Coach), `planning/` (plans/seasons), `sync/` (sync/jobs),
+`providers/` (transport), `db/` (persistence), `http_api/` (HTTP/route assembly),
+`backup/` (backup/export), `athlete/` (profile/check-ins/local time),
+`activities/` (feedback/reads/workout text), `calendar/` (external calendars),
+`diagnostics/` (safe diagnostics), `history/` (changes/undo), `nutrition/`,
+`performance/` (derived/readiness), `runtime/` (lifecycle/maintenance),
+`weather/` (weather/cache), `app/` (application context and composition),
+and `canonical/` (stdlib-only vocabulary/records).
+Cross-cutting owners: `config.py`, `privacy.py`, `settings.py`,
+`change_history.py`, `observability.py`, `errors.py`, `pagination.py`,
+`provider_credentials.py`. Extend a cohesive owner first.
+
+Domain services own use-case orchestration and
 transaction boundaries; provider adapters own external transport, not local
 authorization or persistence policy. Assembly modules wire explicit dependencies.
 Never import or indirectly reach `server.py` globals.

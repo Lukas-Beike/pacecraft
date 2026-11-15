@@ -5,7 +5,21 @@
   ```powershell
   python tests/run_tests.py --changed
   python -m compileall -q server.py backend tests
+  node --test tests/*.cjs
   ```
+
+- For Dockerfile, dependency, startup, or deployment changes also run
+  `docker build -t pacecraft:local .`. Browser changes run the affected
+  Playwright project through the isolated runner
+  (`python scripts/run_browser_tests.py --project changed`; projects mobile,
+  tablet-landscape, desktop) and, when a browser is available, check login,
+  fresh PWA install/offline assets, safe Markdown, Enter versus Shift+Enter,
+  microphone, notifications, and the changed flow.
+- The one tracked live model run is `tests/coach_live_eval.py` (#2221): started
+  by hand with a dedicated evaluation key, the dialogue catalogue once per run,
+  at most 300 model calls and 5 USD, tool calls only on temporary storage with
+  unconfigured providers; never part of the suite, CI or pre-push. Normal tests
+  stay mocked.
 
 - `tests/changed_tests.py` selects modules by imports and by string literals
   naming changed paths or modules. A test that depends on a file another way
