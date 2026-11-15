@@ -21,12 +21,16 @@ class ExportStreamTransport:
         self._privacy_export_factory = privacy_export_factory
 
     def stream_database_backup(self, handler: Any) -> None:
-        with self._database_backup_factory().stream_file() as path:
-            handler.send_file_stream(
+        backup = self._database_backup_factory()
+        with backup.stream_file() as path:
+            sent = handler.send_file_stream(
                 path,
                 "application/octet-stream",
                 "pacecraft-database.backup",
             )
+            # Only a backup the athlete received in full counts (#2996).
+            if sent is True:
+                backup.record_delivered()
 
     def stream_privacy_export(self, handler: Any) -> None:
         temporary = self._privacy_export_factory().create_file()

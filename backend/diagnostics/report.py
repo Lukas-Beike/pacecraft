@@ -14,6 +14,7 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 from backend.athlete.profile import ProfileService, timezone_name
+from backend.backup.database import backup_summary
 from backend.backup.recovery_copies import RecoveryCopies
 from backend.calendar.external import ExternalCalendarReader
 from backend.canonical.garmin_payload import RETIRED_SNAPSHOT_KEY, STATE_KEY
@@ -336,6 +337,13 @@ class DiagnosticReportService:
                     "reader_slots": deps.database_manager.reader_slot_waits(),
                 },
                 "recovery_copies": section("recovery_copies", self._recovery_copies),
+                # The newest backup the app made, before a schema release (#2996).
+                "backup": section(
+                    "backup",
+                    lambda: backup_summary(
+                        deps.key_values, db, datetime.fromisoformat(deps.utc_now())
+                    ),
+                ),
                 "configuration": section("configuration", configuration),
                 "openai": section(
                     "openai", lambda: deps.provider_state.summary("openai")

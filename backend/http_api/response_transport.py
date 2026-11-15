@@ -93,9 +93,11 @@ class HttpResponseTransport:
         filename: str,
         *,
         cleanup: bool = False,
-    ) -> None:
+    ) -> bool:
+        """Send ``path``; True only when every byte was written (#2996)."""
         connection = getattr(handler, "connection", None)
         previous_timeout = None if connection is None else connection.gettimeout()
+        complete = False
         try:
             size = path.stat().st_size
             handler.send_response(200)
@@ -117,6 +119,7 @@ class HttpResponseTransport:
                     if not chunk:
                         break
                     handler.wfile.write(chunk)
+            complete = True
         except handler.client_disconnect_errors:
             # A stalled client raises TimeoutError here; the body is truncated.
             handler.close_connection = True
@@ -141,6 +144,7 @@ class HttpResponseTransport:
                         "Temporary export cleanup failed",
                         extra={"event": "export_cleanup_failed"},
                     )
+        return complete
 
     def send_bytes(
         self,

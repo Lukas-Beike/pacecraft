@@ -37,7 +37,10 @@ stop, report it, and do not try to repair production.
    with `--expect-version <tag> --expect-schema <current schema> --compare <previous result>`.
    Any unexplained drop in a record count stops the check. Judge the plan-sync
    error kinds against the previous result: whether they persist after the
-   athlete's week sync; never press a sync control to find out.
+   athlete's week sync; never press a sync control to find out. The `backup`
+   line shows the newest backup the app made; a schema release requires one
+   younger than 24 h with a passed check before the deploy
+   ([release-unraid](../pacecraft-release-unraid/SKILL.md) step 6, #2996).
 3. **Protection:** [prod-guards](../pacecraft-prod-guards/SKILL.md): 401 without
    a session, 403 without the CSRF token, TLS days to expiry. A failed guard
    stops the check.

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 import shutil
@@ -10,15 +11,19 @@ import time
 from collections.abc import Callable, Iterator, Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 from backend.db.manager import DatabaseManager
+from backend.db.repositories import KeyValueRepository
 from backend.errors import AppError
 
 MAX_BACKUP_BYTES = 1_000_000_000
 MIN_EXPORT_FREE_BYTES = 10_000_000
 EXPORT_TIME_LIMIT_SECONDS = 120
+# The newest backup the app made: when, its size, and whether its check passed.
+LAST_BACKUP_KEY = "database_backup_last"
 
 
 @dataclass(frozen=True)
@@ -40,10 +45,15 @@ class DatabaseBackupService:
         manager: DatabaseManager,
         config: DatabaseBackupConfig,
         logger: logging.Logger,
+        key_values: KeyValueRepository | None = None,
     ) -> None:
         self._manager = manager
         self._config = config
         self._logger = logger
+        # Records the newest backup for the diagnostics (#2996); None records none.
+        self._key_values = key_values
+        # Time and size of the snapshot the last stream_file created.
+        self._streamed: tuple[str, int] | None = None
 
     def checkpoint(self) -> None:
         """Checkpoint before restore swaps the active database file."""
@@ -199,7 +209,57 @@ class DatabaseBackupService:
         """
         deadline = self._config.monotonic() + self._config.time_limit_seconds
         snapshot = self._snapshot(deadline)
+        self._streamed = (datetime.now(UTC).isoformat(), snapshot.stat().st_size)
         try:
             yield snapshot
         finally:
             snapshot.unlink(missing_ok=True)
+
+    def record_delivered(self) -> None:
+        """Store the streamed backup as the newest one; never fails the backup.
+
+        Called once the athlete received it in full. It passed the integrity
+        and foreign key checks (an unchecked snapshot is never sent), and its
+        time is when the snapshot was taken, not when sending ended.
+        """
+        if self._key_values is None or self._streamed is None:
+            return
+        at, size = self._streamed
+        value = {
+            "at": at,
+            "bytes": size,
+            "verified": True,
+        }
+        try:
+            with self._manager.unit_of_work() as db:
+                self._key_values.set(db, LAST_BACKUP_KEY, json.dumps(value))
+        except Exception as exc:  # noqa: BLE001 - the backup itself succeeded.
+            self._logger.warning(
+                "Database backup record could not be stored",
+                extra={
+                    "event": "database_backup_record_failed",
+                    "context": {"error_class": type(exc).__name__},
+                },
+            )
+
+
+def backup_summary(
+    key_values: KeyValueRepository, db: Any, now: datetime
+) -> dict[str, Any]:
+    """The newest app backup as counts only (#2996): ``known`` false without one.
+
+    Age in hours, size in bytes and whether its check passed; never a name,
+    path or content. Backups the app did not make (host copies) are unknown.
+    """
+    try:
+        stored = json.loads(key_values.get(db, LAST_BACKUP_KEY) or "null")
+        age = (now - datetime.fromisoformat(str(stored["at"]))).total_seconds()
+    except TypeError, ValueError, KeyError:
+        return {"known": False}
+    size = stored.get("bytes")
+    return {
+        "known": True,
+        "age_hours": round(age / 3600, 1),
+        "bytes": size if isinstance(size, int) and not isinstance(size, bool) else None,
+        "verified": stored.get("verified") is True,
+    }

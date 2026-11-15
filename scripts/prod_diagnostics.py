@@ -60,6 +60,8 @@ SECTION_FIELDS = {
     "recovery_copies": re.compile(
         r"status|available|count|newest_age_hours|total_bytes"
     ),
+    # The newest backup the app made (#2996).
+    "backup": re.compile(r"status|known|age_hours|bytes|verified"),
     # The all-time curve build (#2852).
     "curve_build": re.compile(
         r"status|available|builds|failures|last_build_s|building_s|failed_age_s"
@@ -250,6 +252,7 @@ def extract(report: dict[str, Any], now: datetime) -> dict[str, Any]:
         "stuck_jobs": stuck_count(plan, now),
         "memory": {key: memory[key] for key in MEMORY if key in memory},
         "storage": numbers(storage),
+        "backup": backup_state(report.get("backup")),
     }
 
 
@@ -383,15 +386,49 @@ def shown_lines(
     return lines
 
 
+def backup_state(section: Any) -> dict[str, Any]:
+    """Known, verified, age and size of the newest app backup; nothing else."""
+    if not isinstance(section, dict):
+        return {"known": False}
+    state: dict[str, Any] = {"known": section.get("known") is True}
+    state["verified"] = section.get("verified") is True
+    state |= numbers({key: section.get(key) for key in ("age_hours", "bytes")})
+    return state
+
+
+def backup_line(result: dict[str, Any], max_hours: float | None) -> tuple[str, str]:
+    """The newest app backup; with ``max_hours`` it must be younger and checked.
+
+    A schema release needs a backup younger than 24 h whose check passed
+    (#2996); an unknown backup fails then, so the check never passes blind.
+    """
+    state = result.get("backup") or {"known": False}
+    age = state.get("age_hours")
+    text = (
+        f"backup {age} h old, {state.get('bytes')} bytes, verified {state.get('verified') is True}"
+        if state.get("known") and age is not None
+        else "backup unknown"
+    )
+    if max_hours is None:
+        return ("info", text)
+    # A future record time (a clock that jumped back) never counts as fresh.
+    ok = bool(state.get("known") and state.get("verified") is True) and (
+        age is not None and 0 <= age < max_hours
+    )
+    return mark(ok, f"{text} (needs under {max_hours:g} h, verified)")
+
+
 def checks(
     result: dict[str, Any],
     previous: dict[str, Any] | None,
     expect_version: str | None,
     expect_schema: int | None,
+    expect_backup_hours: float | None = None,
 ) -> list[tuple[str, str]]:
     return [
         expected("version", result["version"], expect_version),
         expected("schema", result["schema"], expect_schema),
+        backup_line(result, expect_backup_hours),
         mark(
             not result["sync_error_set"],
             f"sync last_error set: {result['sync_error_set']}",
@@ -423,12 +460,19 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--password-file", required=True)
     parser.add_argument("--expect-version")
     parser.add_argument("--expect-schema", type=int)
+    parser.add_argument("--expect-backup-hours", type=float)
     parser.add_argument("--out")
     parser.add_argument("--compare")
     parser.add_argument("--ca-file")
     parser.add_argument("--section", action="append", choices=sorted(SECTION_FIELDS))
     args = parser.parse_args(argv)
-    checks_asked = (args.out, args.compare, args.expect_version, args.expect_schema)
+    checks_asked = (
+        args.out,
+        args.compare,
+        args.expect_version,
+        args.expect_schema,
+        args.expect_backup_hours,
+    )
     if args.section and any(value is not None for value in checks_asked):
         parser.error("--section prints sections; it runs no checks or results")
     try:
@@ -452,7 +496,13 @@ def main(argv: list[str] | None = None) -> int:
     lines = (
         [line for name in args.section for line in section_lines(report, name)]
         if args.section
-        else checks(result, previous, args.expect_version, args.expect_schema)
+        else checks(
+            result,
+            previous,
+            args.expect_version,
+            args.expect_schema,
+            args.expect_backup_hours,
+        )
     )
     for state, text in lines:
         print(f"{state} {text}")

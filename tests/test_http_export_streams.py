@@ -5,7 +5,7 @@ import tempfile
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 from support import temp_database
 
@@ -63,7 +63,14 @@ class ExportStreamTransportTests(unittest.TestCase):
                 self.assertTrue(Path(args[0]).exists())
 
             handler.send_file_stream.side_effect = send_file_stream
-            transport.stream_database_backup(handler)
+            with patch.object(backup, "record_delivered") as record:
+                transport.stream_database_backup(handler)
+            # A send that did not report a complete transfer records nothing.
+            record.assert_not_called()
+            handler.send_file_stream.side_effect = lambda *_a, **_k: True
+            with patch.object(backup, "record_delivered") as record:
+                transport.stream_database_backup(handler)
+            record.assert_called_once_with()
 
             with self.manager.unit_of_work(timeout=0):
                 pass

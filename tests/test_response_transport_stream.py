@@ -71,10 +71,16 @@ class FileStreamIdleTimeoutTests(unittest.TestCase):
         self.addCleanup(patcher.stop)
 
     def stream(self) -> threading.Thread:
-        thread = threading.Thread(
-            target=HttpResponseTransport().send_file_stream,
-            args=(self.handler, self.path, "application/octet-stream", "backup.bin"),
-        )
+        self.sent: list[bool] = []
+
+        def send() -> None:
+            self.sent.append(
+                HttpResponseTransport().send_file_stream(
+                    self.handler, self.path, "application/octet-stream", "backup.bin"
+                )
+            )
+
+        thread = threading.Thread(target=send)
         thread.start()
         self.addCleanup(thread.join)
         return thread
@@ -92,6 +98,7 @@ class FileStreamIdleTimeoutTests(unittest.TestCase):
 
         self.assertGreater(time.monotonic() - started, IDLE_TIMEOUT_SECONDS * 2)
         self.assertEqual(received, PAYLOAD_BYTES)
+        self.assertEqual(self.sent, [True])  # a complete send (#2996)
         self.handler.log_client_disconnect.assert_not_called()
         self.assertEqual(self.handler.connection.gettimeout(), 20)
 
@@ -103,6 +110,7 @@ class FileStreamIdleTimeoutTests(unittest.TestCase):
         self.assertFalse(thread.is_alive())
         self.assertLess(time.monotonic() - started, 5)
         self.handler.log_client_disconnect.assert_called_once()
+        self.assertEqual(self.sent, [False])  # a truncated backup never counts
         self.assertTrue(self.handler.close_connection)
         self.assertEqual(self.handler.connection.gettimeout(), 20)
 
