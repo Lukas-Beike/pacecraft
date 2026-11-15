@@ -65,15 +65,37 @@ class GuardShellTests(unittest.TestCase):
 
     def test_a_failing_guard_blocks_the_call(self) -> None:
         # A guard that crashes blocks, as a crashed hook process did (fail-closed).
-        broken = SimpleNamespace(__name__="broken", main=lambda: 1 / 0)
+        broken = SimpleNamespace(main=lambda: 1 / 0)
         stderr = io.StringIO()
         with (
-            mock.patch.object(guard_shell, "GUARDS", (broken,)),
+            mock.patch.dict(sys.modules, {"broken": broken}),
+            mock.patch.object(guard_shell, "GUARDS", ("broken",)),
             mock.patch.object(sys, "stdin", SimpleNamespace(buffer=io.BytesIO(b"{}"))),
             redirect_stderr(stderr),
         ):
             self.assertEqual(guard_shell.main(), 2)
         self.assertIn("broken failed (ZeroDivisionError)", stderr.getvalue())
+
+    def test_a_guard_that_cannot_be_imported_blocks_the_call(self) -> None:
+        # An import error blocks explicitly instead of exiting 1 for all guards.
+        stderr = io.StringIO()
+        with (
+            mock.patch.object(guard_shell, "GUARDS", ("guard_missing",)),
+            mock.patch.object(sys, "stdin", SimpleNamespace(buffer=io.BytesIO(b"{}"))),
+            redirect_stderr(stderr),
+        ):
+            self.assertEqual(guard_shell.main(), 2)
+        self.assertIn("guard_missing failed (ModuleNotFoundError)", stderr.getvalue())
+
+    def test_a_powershell_call_runs_through_the_guards(self) -> None:
+        payload = {"tool_name": "PowerShell", "tool_input": {"command": "Get-Content .env"}}
+        result = subprocess.run(
+            [sys.executable, str(HOOK)],
+            input=json.dumps(payload).encode(),
+            capture_output=True,
+            check=False,
+        )
+        self.assertEqual(result.returncode, 2, result.stderr)
 
     def test_settings_run_every_guard_in_one_blocking_hook(self) -> None:
         # The five guards are all still run, now from one fail-closed hook (#2982).
@@ -89,7 +111,7 @@ class GuardShellTests(unittest.TestCase):
         self.assertIn("scripts/hooks/guard_shell.py", hook["command"])
         self.assertEqual(hook["onFailure"], "block")
         self.assertEqual(
-            {guard.__name__ for guard in guard_shell.GUARDS},
+            set(guard_shell.GUARDS),
             {
                 "guard_private_paths",
                 "guard_destructive_git",

@@ -129,7 +129,7 @@ class GuardDestructiveGitTests(unittest.TestCase):
             "guard_resolve_thread",
             "guard_empty_body",  # #2954
         ):
-            self.assertIn(f"    {name},\n", guards, name)
+            self.assertIn(f'    "{name}",\n', guards, name)
         self.assertTrue(all(hook["onFailure"] == "block" for hook in shell["hooks"]))
 
 
