@@ -33,7 +33,7 @@ def _unit(
     return row
 
 
-def _progress(
+def _week(
     sessions: int, seconds: float, load: float, zones: dict[str, float] | None = None
 ) -> dict[str, Any]:
     bucket: dict[str, Any] = {
@@ -43,7 +43,7 @@ def _progress(
     }
     if zones is not None:
         bucket["intensity_3zone"] = {"seconds": zones}
-    return {"week_list": [{"sports": {"all": bucket}}]}
+    return {"sports": {"all": bucket}}
 
 
 def _session(day: str, name: str, load: float, **extra: Any) -> dict[str, Any]:
@@ -73,13 +73,21 @@ def _review() -> dict[str, Any]:
     return week_review(
         monday=MONDAY,
         today=THURSDAY,
-        this_week=_progress(3, 5400, 150, {"low": 3600, "moderate": 900, "high": 500}),
-        week_before=_progress(2, 4000, 120),
+        # The progress read starts with the week before; later weeks are not read.
+        progress={
+            "week_list": [
+                _week(2, 4000, 120),
+                _week(3, 5400, 150, {"low": 3600, "moderate": 900, "high": 500}),
+                _week(9, 1, 1),
+            ]
+        },
         calendar=[
             _unit("2026-11-09", "Locker", "completed", 2700, 2800),
             _unit("2026-11-10", "Intervalle", "missed", 3600),
             _unit("2026-11-11", "Kraft", "completed", 1800, 1500),
-            _unit("2026-11-14", "Langer Lauf", None, 0),
+            _unit("2026-11-14", "Langer Lauf", "planned", 0),
+            # A race or note of the calendar carries no compliance: no unit.
+            _unit("2026-11-13", "Notiz", None, 0),
             {
                 **_unit("2026-11-09", "Lauf", "completed", 0),
                 "is_completed_activity": True,
@@ -175,6 +183,51 @@ class WeekReviewProjectionTests(unittest.TestCase):
         self.assertEqual(recovery["hrv"]["position"], "below")
         # No resting heart rate this week: left out.
         self.assertNotIn("resting_hr", recovery)
+
+    def test_recovery_reads_the_preferred_source(self) -> None:
+        week = {"2026-11-09": 50.0, "2026-11-10": 52.0}
+        garmin = {
+            **_baseline("hrv", "ms", {**week, "2026-11-11": 54.0}),
+            "source_provider": "garmin",
+        }
+        wahoo = {
+            **_baseline("hrv", "ms", {day: value + 10 for day, value in week.items()}),
+            "source_provider": "wahoo",
+        }
+        recovery = {
+            "baselines": [garmin, wahoo],
+            "preferred_providers": {"hrv": "wahoo"},
+        }
+        review = week_review(
+            monday=MONDAY,
+            today=THURSDAY,
+            progress={},
+            calendar=[],
+            summaries=[],
+            recovery=recovery,
+            checkins=[],
+            timezone="",
+        )
+        # Wahoo is preferred although Garmin has one night more.
+        self.assertEqual(review["recovery"]["hrv"]["mean"], 61.0)
+        self.assertEqual(review["load"]["this_week"]["sessions"], 0)
+
+    def test_an_unknown_actual_duration_leaves_the_share_out(self) -> None:
+        unit = _unit("2026-11-09", "Kraft", "completed", 3600)
+        unit["compliance"]["actual_duration"] = None
+        review = week_review(
+            monday=MONDAY,
+            today=THURSDAY,
+            progress={},
+            calendar=[unit],
+            summaries=[],
+            recovery={},
+            checkins=[],
+            timezone="",
+        )
+        self.assertEqual(
+            (review["plan"]["completed"], review["plan"]["duration_share"]), (1, None)
+        )
 
     def test_notable_sessions_and_check_ins(self) -> None:
         review = _review()

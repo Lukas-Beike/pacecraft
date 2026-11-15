@@ -31,8 +31,7 @@ def week_review(
     *,
     monday: date,
     today: date,
-    this_week: Mapping[str, Any],
-    week_before: Mapping[str, Any],
+    progress: Mapping[str, Any],
     calendar: Sequence[Mapping[str, Any]],
     summaries: Sequence[Mapping[str, Any]],
     recovery: Mapping[str, Any],
@@ -41,10 +40,12 @@ def week_review(
 ) -> dict[str, Any]:
     """The review of the week from ``monday`` with the week before alongside.
 
-    ``this_week`` and ``week_before`` are one-week ``weekly_progress`` results;
+    ``progress`` is the ``weekly_progress`` result from the week before (its
+    first two weeks are read);
     ``calendar`` the plan's ``training_calendar`` rows; ``recovery`` the
     ``personal_recovery`` result.
     """
+    weeks = [*(progress.get("week_list") or []), {}, {}]
     sunday = monday + timedelta(days=6)
     effective_end = min(sunday, today)
     days = (monday.isoformat(), sunday.isoformat())
@@ -61,9 +62,9 @@ def week_review(
         "effective_end": effective_end.isoformat(),
         "plan": _plan(rows),
         "load": {
-            "this_week": _load(this_week),
-            "week_before": _load(week_before),
-            "shares": _shares(this_week),
+            "this_week": _load(weeks[1]),
+            "week_before": _load(weeks[0]),
+            "shares": _shares(weeks[1]),
         },
         "recovery": _recovery(recovery, monday),
         "notable": _notable(week_sessions, rows, timezone),
@@ -74,11 +75,13 @@ def week_review(
 def _planned_rows(
     calendar: Sequence[Mapping[str, Any]], first: str, last: str
 ) -> list[Mapping[str, Any]]:
-    """The week's planned units (not the completed activities of the calendar)."""
+    """The week's planned workouts: the rows the plan rated (no races or notes)."""
     return [
         row
         for row in calendar
-        if not row.get("is_completed_activity") and first <= _day(row) <= last
+        if isinstance(row.get("compliance"), Mapping)
+        and not row.get("is_completed_activity")
+        and first <= _day(row) <= last
     ]
 
 
@@ -106,16 +109,15 @@ def _plan(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
         for row in passed
         if (value := number((row.get("compliance") or {}).get("planned_duration")))
     ]
+    completed = [row for row in passed if _status(row) == "completed"]
     done = [
-        number((row.get("compliance") or {}).get("actual_duration")) or 0.0
-        for row in passed
-        if _status(row) == "completed"
+        value
+        for row in completed
+        if (value := number((row.get("compliance") or {}).get("actual_duration")))
+        is not None
     ]
-    share = (
-        round(sum(done) / sum(planned) * 100)
-        if planned and len(planned) == len(passed)
-        else None
-    )
+    known = len(planned) == len(passed) and len(done) == len(completed)
+    share = round(sum(done) / sum(planned) * 100) if planned and known else None
     return {
         "planned": len(rows),
         "completed": statuses.count("completed"),
@@ -130,9 +132,8 @@ def _plan(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
     }
 
 
-def _load(progress: Mapping[str, Any]) -> dict[str, Any]:
-    """Time, sessions and training load of the one week of ``progress``."""
-    week = (progress.get("week_list") or [{}])[0]
+def _load(week: Mapping[str, Any]) -> dict[str, Any]:
+    """Time, sessions and training load of one ``week_list`` week."""
     bucket = ((week.get("sports") or {}).get("all")) or {}
     return {
         "duration_s": (bucket.get("duration_s") or {}).get("value"),
@@ -141,9 +142,8 @@ def _load(progress: Mapping[str, Any]) -> dict[str, Any]:
     }
 
 
-def _shares(progress: Mapping[str, Any]) -> dict[str, int] | None:
+def _shares(week: Mapping[str, Any]) -> dict[str, int] | None:
     """Low, moderate and high shares of the week's zone time, in percent."""
-    week = (progress.get("week_list") or [{}])[0]
     zones = (((week.get("sports") or {}).get("all")) or {}).get("intensity_3zone") or {}
     seconds = {
         band: number(value) or 0.0
@@ -197,13 +197,21 @@ def _position(mean: float, baseline: Mapping[str, Any]) -> str | None:
 def _best_baseline(
     recovery: Mapping[str, Any], metric: str, span: tuple[str, str]
 ) -> Mapping[str, Any] | None:
-    """The metric's baseline with the most nights in ``span`` (one source)."""
+    """The metric's baseline of the preferred source, else the one with most nights in ``span``."""
+    preferred = (recovery.get("preferred_providers") or {}).get(metric)
     candidates = [
         baseline
         for baseline in recovery.get("baselines") or []
         if baseline.get("metric") == metric
     ]
-    return max(candidates, key=lambda item: len(_values(item, span)), default=None)
+    return max(
+        candidates,
+        key=lambda item: (
+            bool(_values(item, span)) and item.get("source_provider") == preferred,
+            len(_values(item, span)),
+        ),
+        default=None,
+    )
 
 
 def _values(baseline: Mapping[str, Any], span: tuple[str, str]) -> list[float]:

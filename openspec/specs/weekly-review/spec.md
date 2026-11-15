@@ -45,6 +45,10 @@ Evidence:
 ### Requirement: Analyse segment "Woche"
 The Analyse view SHALL offer the segment "Woche" with a switch "Diese / Letzte" and one card each for Plan, Belastung, Erholung, Besondere Einheiten and Check-ins, as chosen by the athlete on 2026-11-14 (layout A).
 
+#### Scenario: A running week
+- **WHEN** the current week has not ended
+- **THEN** its time and training load show no change against the full week before, and each recovery row names its source.
+
 #### Scenario: Switching weeks
 - **WHEN** the athlete opens Analyse → Woche and taps "Letzte"
 - **THEN** the previous week's review is read and shown, and "Diese" returns to the current week.

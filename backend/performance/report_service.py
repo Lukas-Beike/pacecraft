@@ -711,11 +711,9 @@ class TrainingReportReadService:
         if week == "previous":
             monday -= timedelta(days=7)
         before = monday - timedelta(days=7)
-        this_week = self.progress(
-            {"days": 7, "start": monday.isoformat()}, timezone, with_curves=False
-        )
-        week_before = self.progress(
-            {"days": 7, "start": before.isoformat()}, timezone, with_curves=False
+        # One read from the week before; its first two weeks are compared.
+        progress = self.progress(
+            {"days": 28, "start": before.isoformat()}, timezone, with_curves=False
         )
         summaries, _ = activity_summaries_with_sync_time(self._canonical)
         canonical = self._canonical
@@ -729,8 +727,7 @@ class TrainingReportReadService:
         return week_review(
             monday=monday,
             today=today,
-            this_week=this_week,
-            week_before=week_before,
+            progress=progress,
             calendar=(self._read_plan() or {}).get("training_calendar") or [],
             summaries=summaries,
             recovery=personal_recovery({}, today, canonical=recovery_inputs),

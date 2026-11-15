@@ -846,7 +846,8 @@ function weekReviewPlan(plan) {
   return weekReviewCard("Plan", h("p", "week-review-big", `${plan.completed} von ${plan.planned} Einheiten${open}`), detail && h("p", "week-review-detail", detail));
 }
 
-function weekReviewLoad(load) {
+// A running week has no full total yet, so it shows no change against the week before.
+function weekReviewLoad(load, running) {
   const now = load?.this_week || {};
   const before = load?.week_before || {};
   if (!now.sessions) return null;
@@ -854,9 +855,9 @@ function weekReviewLoad(load) {
   const bar = shares && h("div", { className: "week-review-intensity", role: "img", "aria-label": `leicht ${shares.low} %, mittel ${shares.moderate} %, hart ${shares.high} %` },
     ...[["low", shares.low], ["moderate", shares.moderate], ["high", shares.high]].map(([band, share]) => { const part = h("i", { dataset: { band } }); part.style.flexGrow = String(share); return part; }));
   return weekReviewCard("Belastung",
-    weekReviewRow("Zeit", weekReviewHours(now.duration_s || 0), " h ", weekReviewChange(now.duration_s, before.duration_s)),
+    weekReviewRow("Zeit", weekReviewHours(now.duration_s || 0), " h ", !running && weekReviewChange(now.duration_s, before.duration_s)),
     weekReviewRow("Einheiten", String(now.sessions)),
-    Number.isFinite(now.training_load) && weekReviewRow("Belastung", AppFormat.number(now.training_load, { digits: 0 }), " ", weekReviewChange(now.training_load, before.training_load)),
+    Number.isFinite(now.training_load) && weekReviewRow("Belastung", AppFormat.number(now.training_load, { digits: 0 }), " ", !running && weekReviewChange(now.training_load, before.training_load)),
     bar, shares && h("p", "week-review-detail", `leicht ${shares.low} % · mittel ${shares.moderate} % · hart ${shares.high} %`));
 }
 
@@ -866,14 +867,14 @@ function weekReviewSleep(sleep) {
   const direction = minutes > 0 ? "up" : "down";
   const sign = minutes > 0 ? "+" : "−";
   const change = minutes && h("span", { className: "week-review-change", dataset: { direction } }, `${sign}${Math.abs(minutes)} min`);
-  return weekReviewRow("Schlaf Ø", weekReviewHours(sleep.mean * 3600), " h ", change || null);
+  return weekReviewRow("Schlaf Ø", weekReviewHours(sleep.mean * 3600), " h ", change || null, ` · ${sleep.source}`);
 }
 
 function weekReviewRecovery(recovery) {
   const rows = recovery?.sleep ? [weekReviewSleep(recovery.sleep)] : [];
   for (const [key, label] of [["hrv", "HRV Ø"], ["resting_hr", "Ruhepuls Ø"]]) {
     const item = recovery?.[key];
-    if (item) rows.push(weekReviewRow(label, `${AppFormat.number(item.mean, { digits: 0 })} ${item.unit}${item.position ? ` · ${WEEK_REVIEW_POSITIONS[item.position]}` : ""}`));
+    if (item) rows.push(weekReviewRow(label, `${AppFormat.number(item.mean, { digits: 0 })} ${item.unit}${item.position ? ` · ${WEEK_REVIEW_POSITIONS[item.position]}` : ""} · ${item.source}`));
   }
   return rows.length ? weekReviewCard("Erholung", ...rows) : null;
 }
@@ -894,19 +895,22 @@ function weekReviewCheckins(checkins) {
   return weekReviewCard("Check-ins",
     weekReviewRow("Tage eingetragen", `${checkins.entered} von ${checkins.days}`),
     weekReviewRow("Schmerz / Krankheit", complaints.join(", ") || "keine"),
-    scores.length && weekReviewRow("Ø von 10", scores.join(" · ")));
+    scores.length > 0 && weekReviewRow("Ø von 10", scores.join(" · ")));
 }
 
-function renderWeekReviewContent(root, review) {
-  const switcher = h("div", { className: "week-review-switch", role: "group", "aria-label": "Woche wählen" }, [["current", "Diese"], ["previous", "Letzte"]].map(([week, label]) => {
+function weekReviewSwitch() {
+  return h("div", { className: "week-review-switch", role: "group", "aria-label": "Woche wählen" }, [["current", "Diese"], ["previous", "Letzte"]].map(([week, label]) => {
     const button = h("button", { type: "button", "aria-pressed": String(week === weekReviewWeek) }, label);
     button.addEventListener("click", () => { if (week !== weekReviewWeek) { weekReviewWeek = week; void renderWeekReview(); } });
     return button;
   }));
+}
+
+function renderWeekReviewContent(root, review) {
   const title = `KW ${weekReviewNumber(review.week_start)} · ${WEEK_REVIEW_DAY_MONTH.format(weekReviewDate(review.week_start))} – ${WEEK_REVIEW_DAY_MONTH.format(weekReviewDate(review.week_end))}`;
-  const cards = [weekReviewPlan(review.plan), weekReviewLoad(review.load), weekReviewRecovery(review.recovery), weekReviewNotable(review.notable), weekReviewCheckins(review.checkins)].filter(Boolean);
+  const cards = [weekReviewPlan(review.plan), weekReviewLoad(review.load, review.effective_end < review.week_end), weekReviewRecovery(review.recovery), weekReviewNotable(review.notable), weekReviewCheckins(review.checkins)].filter(Boolean);
   root.dataset.analysisEmpty = String(!cards.length);
-  root.replaceChildren(h("div", "week-review-header", h("h3", null, title), switcher), ...cards);
+  root.replaceChildren(h("div", "week-review-header", h("h3", null, title), weekReviewSwitch()), ...cards);
 }
 
 async function renderWeekReview() {
@@ -922,7 +926,8 @@ async function renderWeekReview() {
   } catch (error) {
     if (!current()) return;
     root.dataset.analysisEmpty = "failed";
-    root.replaceChildren(createErrorState(error?.message || "Konnte nicht geladen werden.", () => void renderWeekReview()));
+    // The switch stays, so a failed week does not hold the segment.
+    root.replaceChildren(h("div", "week-review-header", weekReviewSwitch()), createErrorState(error?.message || "Konnte nicht geladen werden.", () => void renderWeekReview()));
   }
   renderAnalysisSegmentsIfActive();
 }

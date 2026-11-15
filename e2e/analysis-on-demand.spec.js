@@ -141,9 +141,10 @@ test("@responsive week review shows the cards and switches to last week", async 
   await expect(review.locator("h3")).toHaveText("KW 46 · 9. Nov. – 15. Nov.");
   await expect(review.locator(".week-review-card h4")).toHaveText(["Plan", "Belastung", "Erholung", "Besondere Einheiten", "Check-ins"]);
   await expect(review.locator(".week-review-big")).toHaveText("3 von 4 Einheiten");
-  await expect(review.locator(".week-review-row").first()).toHaveText("Zeit7:00 h +17 %");
-  await expect(review.getByText("7:24 h +18 min")).toBeVisible();
-  await expect(review.getByText("58 ms · in deinem Bereich")).toBeVisible();
+  // The week still runs (until the 14th), so its totals show no change against the full week before.
+  await expect(review.locator(".week-review-row").first()).toHaveText("Zeit7:00 h");
+  await expect(review.getByText("7:24 h +18 min · Garmin")).toBeVisible();
+  await expect(review.getByText("58 ms · in deinem Bereich · Garmin")).toBeVisible();
   await expect(review.getByText("verpasst: Mi Intervalle 5×4 min")).toBeVisible();
   await expect(review.locator(".week-review-intensity")).toHaveAttribute("aria-label", "leicht 78 %, mittel 14 %, hart 8 %");
   await expect(review.getByText("Sa Langer Lauf · höchste Belastung (148)")).toBeVisible();
