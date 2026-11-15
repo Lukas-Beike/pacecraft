@@ -21,6 +21,10 @@ test("@responsive compact calendar week shows one week, groups repeats and keeps
   await showCalendarDay(page, days.next);
   const planned = page.locator(`.planned-day[data-date="${days.next}"] .planned-entry`);
   await planned.scrollIntoViewIfNeeded();
+  // #2985: wide screens open the shown week's first unit as the detail pane; on a Sunday
+  // that is this planned card, and an open card carries the solid accent border.
+  if (await planned.evaluate((element) => element.open)) await planned.locator(":scope > summary").click();
+  await expect(planned).not.toHaveAttribute("open", "");
   expect([await planned.evaluate((element) => getComputedStyle(element).borderTopStyle), completedBorder]).toEqual(["dashed", "solid"]);
   await expect(planned.locator(".planned-entry-status")).toHaveCount(0);
   for (const row of await page.locator(".planned-entry > summary").all()) {
@@ -57,6 +61,8 @@ test("@responsive compact calendar week shows one week, groups repeats and keeps
   expect(await profileWeeks.count()).toBeGreaterThan(0);
   for (const profileWeek of await profileWeeks.all()) await expect(profileWeek.locator(".planned-zone-legend")).toHaveText("Z1Z4");
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  // #2985: on a Sunday the next day is in the next week; step back to today's week.
+  await showCalendarDay(page, days.today);
   await page.locator(".planned-day.is-today").screenshot({ path: testInfo.outputPath("calendar-week-compact.png") });
   // #2258: an opened session shows each value once, per sport; a value without data is left out.
   const facts = await page.evaluate(() => {
