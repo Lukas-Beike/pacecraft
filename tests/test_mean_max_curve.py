@@ -1,6 +1,9 @@
 """Local mean-maximal curve from canonical full-resolution streams (#1430)."""
 
+import dataclasses
+import hashlib
 import itertools
+import json
 import sqlite3
 import threading
 import unittest
@@ -25,7 +28,7 @@ from backend.canonical.vocabulary import (
     StreamChannel,
     StreamResolution,
 )
-from backend.db import row_factory
+from backend.db import activity_detail_store, row_factory
 from backend.db.activity_detail_store import (
     detail_sets_for,
     full_stream_keys,
@@ -33,6 +36,7 @@ from backend.db.activity_detail_store import (
     lap_sets_for_session,
     replace_detail_set,
 )
+from backend.db.canonical_store import canonical_json
 from backend.db.schema import initialize_schema
 from backend.performance import mean_max_curve, report_service
 from backend.performance.canonical_detail import CanonicalDetailReader
@@ -114,7 +118,11 @@ def store_streams(
     resolution,
     summary_sha256=None,
     retrieved_at=RETRIEVED,
+    heart_rate=None,
 ):
+    channels = {StreamChannel.TIME_S: TIME, StreamChannel.POWER_W: watts}
+    if heart_rate:
+        channels[StreamChannel.HEART_RATE_BPM] = heart_rate
     detail = ActivityStreamSet(
         provider_activity_id=provider_activity_id,
         provenance=Provenance(
@@ -127,7 +135,7 @@ def store_streams(
         ),
         origin=ActivityDetailOrigin.FETCH,
         resolution=resolution,
-        channels={StreamChannel.TIME_S: TIME, StreamChannel.POWER_W: watts},
+        channels=channels,
     )
     replace_detail_set(
         db, detail, mapper_version=1, summary_sha256=summary_sha256, now=STAMP
@@ -177,6 +185,46 @@ def interval_power() -> tuple[float, ...]:
         300.0 if 300 <= second < 480 or 600 <= second < 780 else 150.0
         for second in range(len(TIME))
     )
+
+
+def store_run(db, provider_activity_id):
+    """A 15-min run with speed, distance, heart rate and running dynamics."""
+    speeds = tuple(3.0 + (second % 60) / 60 for second in range(len(TIME)))
+    distance = [0.0]
+    for speed in speeds[:-1]:
+        distance.append(distance[-1] + speed)
+    detail = ActivityStreamSet(
+        provider_activity_id=provider_activity_id,
+        provenance=Provenance(
+            provider=GARMIN,
+            source_kind=SourceKind.PROVIDER_REPORTED,
+            source_record_id=None,
+            recorded_by=RecordingOrigin.GARMIN,
+            retrieved_at=RETRIEVED,
+            label="Garmin",
+        ),
+        origin=ActivityDetailOrigin.FETCH,
+        resolution=StreamResolution.FULL,
+        channels={
+            StreamChannel.TIME_S: TIME,
+            StreamChannel.SPEED_MPS: speeds,
+            StreamChannel.DISTANCE_M: tuple(distance),
+            StreamChannel.ALTITUDE_M: tuple(100.0 for _ in TIME),
+            StreamChannel.HEART_RATE_BPM: tuple(
+                140.0 + s % 20 for s in range(len(TIME))
+            ),
+            StreamChannel.CADENCE_RPM: tuple(85.0 for _ in TIME),
+            StreamChannel.GROUND_CONTACT_TIME_MS: tuple(240.0 for _ in TIME),
+            StreamChannel.VERTICAL_OSCILLATION_CM: tuple(8.5 for _ in TIME),
+            StreamChannel.STEP_LENGTH_M: tuple(1.1 for _ in TIME),
+        },
+    )
+    replace_detail_set(db, detail, mapper_version=1, summary_sha256=None, now=STAMP)
+
+
+# Digest of the golden sessions' stored curves with the format version it was pinned
+# under (#2821): an output change needs a CURVE_FORMAT_VERSION bump, then a new pin.
+GOLDEN_CURVE = (1, "84d062efe64e55e39f3583763cf0fe7b4e59e25c20153642d74744cd70beb812")
 
 
 def watts_at(curve, duration):
@@ -324,6 +372,68 @@ class SessionCurveReaderTests(unittest.TestCase):
         self.assertEqual(350.0, watts_at(current["act_1"], 180))
         self.assertEqual({}, changed)
 
+    def golden_run(self):
+        add_session(self.db, "act_run")
+        add_record(self.db, GARMIN, "g-run", "act_run", sport="run")
+        store_run(self.db, "g-run")
+        return self.reader.curves(self.db, ["act_run"])["act_run"]
+
+    def golden_ride(self):
+        # Wahoo and Garmin power merged, Garmin heart rate and interval laps.
+        add_session(self.db, "act_ride")
+        add_record(self.db, GARMIN, "g-ride", "act_ride")
+        add_record(self.db, WAHOO, "w-ride", "act_ride")
+        heart_rate = tuple(130.0 + second % 30 for second in range(len(TIME)))
+        store_streams(
+            self.db,
+            GARMIN,
+            "g-ride",
+            interval_power(),
+            StreamResolution.FULL,
+            heart_rate=heart_rate,
+        )
+        store_streams(
+            self.db, WAHOO, "w-ride", ride_power(320.0), StreamResolution.FULL
+        )
+        store_laps(self.db, GARMIN, "g-ride", INTERVAL_LAPS)
+        return self.reader.curves(self.db, ["act_ride"])["act_ride"]
+
+    def test_a_golden_curve_pins_its_format_version(self):
+        payload = {
+            "run": mean_max_curve.curve_payload(self.golden_run()),
+            "ride": mean_max_curve.curve_payload(self.golden_ride()),
+        }
+        digest = hashlib.sha256(canonical_json(payload).encode("utf-8")).hexdigest()
+
+        self.assertEqual(
+            GOLDEN_CURVE,
+            (mean_max_curve.CURVE_FORMAT_VERSION, digest),
+            "the stored curves changed: bump mean_max_curve.CURVE_FORMAT_VERSION, "
+            "then pin the new digest",
+        )
+
+    def test_every_curve_field_survives_the_stored_round_trip(self):
+        run, ride = self.golden_run(), self.golden_ride()
+        self.assertIsNotNone(run.running_dynamics)
+        self.assertTrue(ride.power and ride.power_at_hr and ride.execution_summary)
+        for name, curve in (("run", run), ("ride", ride)):
+            stored = json.loads(canonical_json(mean_max_curve.curve_payload(curve)))
+            loaded = mean_max_curve.curve_from_payload(curve.fingerprint, stored)
+            for field in dataclasses.fields(curve):
+                with self.subTest(curve=name, field=field.name):
+                    self.assertEqual(
+                        getattr(curve, field.name), getattr(loaded, field.name)
+                    )
+            self.assertEqual(curve, loaded)
+
+    def test_the_recording_origin_is_part_of_the_fingerprint(self):
+        before = self.golden_run().fingerprint
+        self.db.execute("UPDATE activity_records SET recorded_by = 'wahoo'")
+        after = SessionCurveReader(CanonicalTableReader().session_activities).curves(
+            self.db, ["act_run"]
+        )["act_run"]
+        self.assertNotEqual(before, after.fingerprint)
+
     def test_detail_view_labels_a_profile_from_downsampled_streams(self):
         add_session(self.db, "act_1")
         add_record(self.db, GARMIN, "g-1", "act_1")
@@ -437,6 +547,7 @@ class ProfileSelectionTests(unittest.TestCase):
         self.session_records = Mock(wraps=CanonicalTableReader().session_activities)
         self.day = date(2026, 10, 18)
         self.snapshots_open = 0
+        self.writes = []
 
     def service(self, summaries, spawn=None, capacity=2048, **pacing):
         @contextmanager
@@ -451,7 +562,9 @@ class ProfileSelectionTests(unittest.TestCase):
             activity_summary_reader=lambda: SimpleNamespace(
                 activity_summaries=lambda _db, **_bounds: summaries,
             ),
-            database_manager=lambda: SimpleNamespace(read_snapshot=read_snapshot),
+            database_manager=lambda: SimpleNamespace(
+                read_snapshot=read_snapshot, unit_of_work=self.unit_of_work
+            ),
         )
         return TrainingProfileSelectionService(
             lambda: self.day,
@@ -461,6 +574,116 @@ class ProfileSelectionTests(unittest.TestCase):
             ),
             **pacing,
         )
+
+    @contextmanager
+    def unit_of_work(self):
+        # A write outside any read snapshot (#2821).
+        self.writes.append(self.snapshots_open)
+        yield self.db
+
+    def stored(self):
+        return {
+            row["activity_id"]: row["fingerprint"]
+            for row in self.db.execute(
+                "SELECT activity_id, fingerprint FROM session_curves"
+            )
+        }
+
+    def built(self, summaries, **options):
+        builds = []
+        service = self.service(
+            summaries, spawn=builds.append, pause=lambda _seconds: None, **options
+        )
+        service.power_profiles(all_time=True)
+        builds.pop()()
+        return service
+
+    def test_a_restart_loads_the_stored_curves_without_computing(self):
+        summaries = []
+        self.add_ride(summaries, "act_recent", day="2026-10-10")
+        self.add_ride(summaries, "act_old", day="2025-03-14")
+        first = self.built(summaries)
+        stored = self.stored()
+        self.assertEqual({"act_recent", "act_old"}, set(stored))
+        # Every write, the two curves and the cleanup, ran outside any snapshot.
+        self.assertEqual([0, 0, 0], self.writes)
+
+        with patch.object(
+            mean_max_curve, "_session_curve", wraps=mean_max_curve._session_curve
+        ) as computed:
+            restarted = self.built(summaries)
+
+        self.assertEqual(0, computed.call_count)
+        state = restarted._curves.background_state()
+        self.assertEqual(
+            (2, 0, 0),
+            (state["curves_loaded"], state["curves_computed"], state["curves_stored"]),
+        )
+        self.assertEqual(
+            first.power_profiles(all_time=True)["all_time"]["power"],
+            restarted.power_profiles(all_time=True)["all_time"]["power"],
+        )
+
+    def test_a_changed_or_request_computed_curve_is_stored_by_the_build(self):
+        summaries = []
+        self.add_ride(summaries, "act_recent", day="2026-10-10")
+        self.add_ride(summaries, "act_old", day="2025-03-14")
+        service = self.service(summaries, pause=lambda _seconds: None)
+        # A request computes the recent curve but never writes it.
+        service.curve_records(90)
+        self.assertEqual({}, self.stored())
+        current = self.built(summaries).curve_records(90)[0]["fingerprint"]
+        self.db.execute(
+            "UPDATE session_curves SET fingerprint = ? WHERE activity_id = 'act_recent'",
+            ("0" * 64,),
+        )
+
+        with patch.object(
+            mean_max_curve, "_session_curve", wraps=mean_max_curve._session_curve
+        ) as computed:
+            self.built(summaries)
+
+        # The outdated row is computed once more and written back.
+        self.assertEqual(1, computed.call_count)
+        self.assertEqual(current, self.stored()["act_recent"])
+
+    def test_a_failed_curve_write_leaves_the_others_and_the_build(self):
+        summaries = []
+        self.add_ride(summaries, "act_recent", day="2026-10-10")
+        self.add_ride(summaries, "act_old", day="2025-03-14")
+        save = activity_detail_store.save_session_curve
+        calls = []
+
+        def flaky(db, activity_id, **values):
+            calls.append(activity_id)
+            if len(calls) == 1:
+                raise RuntimeError("synthetic write failure")
+            return save(db, activity_id, **values)
+
+        with patch.object(activity_detail_store, "save_session_curve", flaky):
+            service = self.built(summaries)
+
+        state = service._curves.background_state()
+        self.assertEqual(
+            (1, 1, 1),
+            (len(self.stored()), state["curves_stored"], state["curve_store_failures"]),
+        )
+        self.assertTrue(service.power_profiles(all_time=True)["all_time"]["power"])
+
+    def test_the_build_drops_the_curves_of_sessions_no_longer_live(self):
+        summaries = []
+        self.add_ride(summaries, "act_recent", day="2026-10-10")
+        self.add_ride(summaries, "act_old", day="2025-03-14")
+        self.built(summaries)
+        self.db.execute(
+            "UPDATE activity_sessions SET state = 'duplicate', merged_into = 'act_recent' "
+            "WHERE activity_id = 'act_old'"
+        )
+        summaries.pop()
+
+        self.built(summaries)
+
+        self.assertEqual({"act_recent"}, set(self.stored()))
 
     def add_ride(self, summaries, activity_id, day="2026-10-10", peak=350.0):
         add_session(self.db, activity_id)
@@ -785,9 +1008,10 @@ class ProfileSelectionTests(unittest.TestCase):
 
         self.assertEqual(3, len(recent))
         # The new session is computed by the 90-day read and evicts the oldest
-        # curve, which the rebuild computes again; no recent curve is recomputed.
+        # curve, which the rebuild loads from the store (#2821); no recent curve
+        # is recomputed.
         self.assertEqual(
-            ["act_new", "act_old3"], [call.args[1] for call in computed.call_args_list]
+            ["act_new"], [call.args[1] for call in computed.call_args_list]
         )
 
     def test_all_time_bests_keep_old_efforts_while_the_90_days_and_coach_do_not(self):

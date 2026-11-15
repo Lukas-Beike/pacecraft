@@ -951,7 +951,9 @@ def save_analysis(
 
 def planned_unit_links(db: Any, activity_ids: Iterable[str]) -> dict[str, str]:
     """The planned unit each session's frozen target snapshot names, by session id."""
-    ids = list(dict.fromkeys(activity_id for activity_id in activity_ids if activity_id))
+    ids = list(
+        dict.fromkeys(activity_id for activity_id in activity_ids if activity_id)
+    )
     links: dict[str, str] = {}
     for start in range(0, len(ids), 500):
         chunk = ids[start : start + 500]
@@ -980,6 +982,89 @@ def planned_unit_sessions(db: Any, unit_ids: Iterable[str]) -> dict[str, str]:
         ).fetchall():
             sessions[row["unit"]] = row["activity_id"]
     return sessions
+
+
+# Sessions whose stored curves are kept (#2821); merged and deleted ones are not.
+_LIVE_SESSION_STATES: Final = (
+    ActivitySessionState.ACTIVE.value,
+    ActivitySessionState.HIDDEN.value,
+)
+
+
+def session_curves(
+    db: Any, activity_ids: Iterable[str]
+) -> dict[str, tuple[str, dict[str, Any]]]:
+    """Return each session's stored curve payload with its fingerprint (#2821)."""
+    rows: dict[str, tuple[str, dict[str, Any]]] = {}
+    for chunk in _id_chunks(activity_ids):
+        for row in db.execute(
+            "SELECT activity_id, fingerprint, payload FROM session_curves "
+            f"WHERE activity_id IN ({', '.join('?' * len(chunk))})",
+            chunk,
+        ).fetchall():
+            rows[row["activity_id"]] = (row["fingerprint"], json.loads(row["payload"]))
+    return rows
+
+
+def session_curve_fingerprints(db: Any, activity_ids: Iterable[str]) -> dict[str, str]:
+    """Return each session's stored curve fingerprint without its payload."""
+    fingerprints: dict[str, str] = {}
+    for chunk in _id_chunks(activity_ids):
+        for row in db.execute(
+            "SELECT activity_id, fingerprint FROM session_curves "
+            f"WHERE activity_id IN ({', '.join('?' * len(chunk))})",
+            chunk,
+        ).fetchall():
+            fingerprints[row["activity_id"]] = row["fingerprint"]
+    return fingerprints
+
+
+def save_session_curve(
+    db: Any,
+    activity_id: str,
+    *,
+    fingerprint: str,
+    payload: Mapping[str, Any],
+    now: str,
+) -> bool:
+    """Store one live session's curve under its fingerprint; False for a session
+    that is no longer live (merged or deleted), which keeps no curve."""
+    if not _SHA256_PATTERN.fullmatch(fingerprint):
+        raise ValueError("fingerprint must be a lowercase SHA-256 hex digest")
+    live = db.execute(
+        "SELECT 1 FROM activity_sessions WHERE activity_id = ? "
+        f"AND state IN ({', '.join('?' * len(_LIVE_SESSION_STATES))})",
+        (activity_id, *_LIVE_SESSION_STATES),
+    ).fetchone()
+    if live is None:
+        return False
+    db.execute(
+        "INSERT INTO session_curves(activity_id, fingerprint, payload, computed_at, "
+        "created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?) "
+        "ON CONFLICT(activity_id) DO UPDATE SET fingerprint = excluded.fingerprint, "
+        "payload = excluded.payload, computed_at = excluded.computed_at, "
+        "updated_at = excluded.updated_at",
+        (activity_id, fingerprint, canonical_json(payload), now, now, now),
+    )
+    return True
+
+
+def delete_unlive_session_curves(db: Any) -> int:
+    """Delete the stored curves of sessions that are no longer live; returns the count."""
+    return db.execute(
+        "DELETE FROM session_curves WHERE activity_id IN (SELECT activity_id FROM "
+        "activity_sessions WHERE state NOT IN "
+        f"({', '.join('?' * len(_LIVE_SESSION_STATES))}))",
+        _LIVE_SESSION_STATES,
+    ).rowcount
+
+
+def _id_chunks(activity_ids: Iterable[str]) -> Iterable[list[str]]:
+    ids = list(
+        dict.fromkeys(activity_id for activity_id in activity_ids if activity_id)
+    )
+    for start in range(0, len(ids), 500):
+        yield ids[start : start + 500]
 
 
 def analysis_rows_for(

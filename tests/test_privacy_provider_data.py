@@ -850,6 +850,7 @@ class PrivacyDeleteProviderTests(ProviderDataFixture):
                 "observations",
                 *DOMAIN_TABLES,
                 *DETAIL_TABLES,
+                "session_curves",
                 "activity_records",
                 "activity_sessions",
                 "provider_records",
@@ -864,6 +865,7 @@ class PrivacyDeleteProviderTests(ProviderDataFixture):
             ("activity_strength_sets", "activity_detail_sets"),
             ("activity_detail_sets", "activity_records"),
             ("activity_detail_analysis", "activity_sessions"),
+            ("session_curves", "activity_sessions"),
             ("activity_records", "activity_sessions"),
         ):
             with self.subTest(child=child):

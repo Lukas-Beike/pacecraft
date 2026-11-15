@@ -4,7 +4,7 @@
 
 Preserve durable athlete state through encrypted creation, bounded transactions, supported schema upgrades and restarts.
 
-Owns database lifecycle and upgrade contracts. The only supported baseline is v26 (release 2.0.5, frozen fixture); the released v27 and v28 (production) are accepted by their digests; the current schema is v29; canonical/domain records are described in their capability specs. SQLCipher conformance requires encrypted fixtures, separate from SQLite test doubles.
+Owns database lifecycle and upgrade contracts. The only supported baseline is v26 (release 2.0.5, frozen fixture); the released v27, v28 and v29 (production) are accepted by their digests; the current schema is v30; canonical/domain records are described in their capability specs. SQLCipher conformance requires encrypted fixtures, separate from SQLite test doubles.
 
 ## Requirements
 
@@ -224,7 +224,7 @@ The current schema SHALL check each closed value column to its vocabulary or JSO
 Evidence: `backend/db/schema.py`; `tests/test_db_provider_schema.py::test_closed_value_columns_accept_only_their_values`, `tests/test_strength_sets.py::test_the_schema_requires_the_set_source_and_a_parent_set`, `tests/test_sync_jobs.py::test_backfill_continuation_lookup_reads_its_index_on_the_live_schema`.
 
 ### Requirement: Released schemas enter the chain by their digests
-A database of a released later schema, v27 (releases 2.1.2 to 2.1.9) or v28 (releases 2.1.10 to 2.1.14), SHALL be recognized by its frozen shape digest and upgraded through the remaining steps to the current schema inside the one migration transaction. The v29 step SHALL add `competitions.location` (empty for every stored competition, at most 200 characters, never NULL) from a frozen copy of its DDL.
+A database of a released later schema, v27 (releases 2.1.2 to 2.1.9), v28 (releases 2.1.10 to 2.1.16) or v29 (releases 2.1.17 to 2.1.19), SHALL be recognized by its frozen shape digest and upgraded through the remaining steps to the current schema inside the one migration transaction. The v29 step SHALL add `competitions.location` (empty for every stored competition, at most 200 characters, never NULL) from a frozen copy of its DDL; the v30 step creates the empty `session_curves` table.
 
 #### Scenario: Populated v28 database
 - **WHEN** a v28 database with competitions and calendar decisions is opened by this build
@@ -238,12 +238,23 @@ A database of a released later schema, v27 (releases 2.1.2 to 2.1.9) or v28 (rel
 - **WHEN** an upgraded database restarts with the same build, or a v28 backup is restored
 - **THEN** the restart changes nothing, and the restored backup is upgraded to the current schema with its competitions and an empty location.
 
+#### Scenario: Populated v29 database
+- **WHEN** a v29 database with sessions and located competitions is opened by this build
+- **THEN** it reaches the exact current schema, every original row is unchanged, and `session_curves` is empty and accepts only a 64-character fingerprint, a JSON object payload and a stored session.
+
+#### Scenario: Failing v30 step
+- **WHEN** the v30 step fails after its DDL ran
+- **THEN** the database keeps version 29, its shape and every row, and a later start upgrades it.
+
 Evidence:
 - `backend/db/migrations.py:_competition_location`
+- `backend/db/migrations.py:_session_curves`
 - `backend/db/schema_history.py`
 - `tests/test_database_restore_validation.py::test_validate_accepts_a_populated_baseline_backup`
 - `tests/test_db_migrations.py::test_encrypted_released_database_upgrades_and_restarts_with_its_rows`
 - `tests/test_db_migrations.py::test_failing_step_rolls_back_the_released_database_and_a_retry_succeeds`
 - `tests/test_db_migrations.py::test_frozen_v28_shape_is_v27_after_its_decision_step`
 - `tests/test_db_migrations.py::test_populated_v28_database_gains_an_empty_location_with_every_row`
+- `tests/test_db_migrations.py::test_frozen_v29_shape_is_v28_after_its_location_step`
+- `tests/test_db_migrations.py::test_populated_v29_database_gains_an_empty_curve_table_with_every_row`
 - `tests/test_db_migrations.py::test_upgraded_database_restarts_with_the_same_build_unchanged`

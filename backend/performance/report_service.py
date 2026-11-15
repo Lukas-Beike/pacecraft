@@ -245,7 +245,10 @@ class TrainingProfileSelectionService:
         pauses as long as that session's own work took (its thread time, so a
         wait for the interpreter or a reader does not lengthen it): its
         pure-Python work would otherwise hold the interpreter and stall every
-        request thread (#2757).
+        request thread (#2757). Before that pause a curve whose stored copy is
+        missing or older is stored, and at the end the stored curves of merged
+        and deleted sessions are dropped, so a restart loads instead of
+        recomputing (#2821).
         """
         canonical, curve_reader = self._sources()
         manager = canonical.database_manager()
@@ -264,8 +267,15 @@ class TrainingProfileSelectionService:
                 for session_id in reversed(session_ids):
                     started = self._clock()
                     with manager.read_snapshot() as one:
-                        curves.update(curve_reader.curves(one, [session_id]))
+                        found = curve_reader.curves(one, [session_id])
+                        stored = activity_detail_store.session_curve_fingerprints(
+                            one, list(found)
+                        )
+                    curves.update(found)
+                    # Outside the snapshot: keep the curve across restarts (#2821).
+                    curve_reader.store_changed(manager, found, stored)
                     self._pause(self._clock() - started)
+                curve_reader.drop_unlive(manager)
                 return [
                     _curve_record(summary, curves, temperatures) for summary in sessions
                 ]

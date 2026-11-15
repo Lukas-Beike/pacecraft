@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "base": "ea4aafb631e3fc64f98c5b15083e94603de035e8",
+  "base": "f5988bc67b5b66d90a6779f65a28ac9fc4c88de5",
   "versions": {
     "ruff": "0.17.4",
     "mypy": "2.4.1"
@@ -854,12 +854,6 @@
     },
     {
       "tool": "format",
-      "path": "backend/db/activity_detail_store.py",
-      "code": "format",
-      "message_sha256": "f87c4a0ecaf8e40a8d167170353b2aeb564e58f72247b4568c3db29c296f105f"
-    },
-    {
-      "tool": "format",
       "path": "backend/nutrition/fuelling.py",
       "code": "format",
       "message_sha256": "f87c4a0ecaf8e40a8d167170353b2aeb564e58f72247b4568c3db29c296f105f"
@@ -938,19 +932,7 @@
     },
     {
       "tool": "format",
-      "path": "tests/test_data_safety_coverage.py",
-      "code": "format",
-      "message_sha256": "f87c4a0ecaf8e40a8d167170353b2aeb564e58f72247b4568c3db29c296f105f"
-    },
-    {
-      "tool": "format",
       "path": "tests/test_database_restore_validation.py",
-      "code": "format",
-      "message_sha256": "f87c4a0ecaf8e40a8d167170353b2aeb564e58f72247b4568c3db29c296f105f"
-    },
-    {
-      "tool": "format",
-      "path": "tests/test_db_migrations.py",
       "code": "format",
       "message_sha256": "f87c4a0ecaf8e40a8d167170353b2aeb564e58f72247b4568c3db29c296f105f"
     },

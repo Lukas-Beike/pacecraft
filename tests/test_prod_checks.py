@@ -371,6 +371,8 @@ class ProdChecksTests(unittest.TestCase):
                 "last_build_s": 41.5,
                 "building_s": 12.0,
                 "failed_age_s": None,
+                "curves_loaded": 900,
+                "curve_store_failures": 0,
             },
             "garmin_past_workout_removal": {
                 "one_time_done": True,
@@ -432,7 +434,8 @@ class ProdChecksTests(unittest.TestCase):
                 "age_hours 3.5", "bytes 4096", "known true", "verified true",
             ],
             "curve_build": [
-                "building_s 12.0", "builds 3", "failed_age_s null", "failures 0",
+                "building_s 12.0", "builds 3", "curve_store_failures 0",
+                "curves_loaded 900", "failed_age_s null", "failures 0",
                 "last_build_s 41.5", 'status "building"',
             ],
         }  # fmt: skip

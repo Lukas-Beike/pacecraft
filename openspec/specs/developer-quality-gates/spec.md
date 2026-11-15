@@ -73,6 +73,10 @@ Evidence: `scripts/check_push_secrets.py`; `docs/development.md` (secret checks 
 - **WHEN** the ratchet collects findings
 - **THEN** only Ruff, Ruff format, mypy, cognitive complexity, CSS duplicate selector and ESLint diagnostics are accepted, any other tool is rejected, and new files outside the excluded runtime directories are discovered
 
+#### Scenario: Executable bit on Windows
+- **WHEN** the ratchet runs on Windows, where Ruff cannot read a file's executable bit
+- **THEN** it reports Ruff's `EXE001` (a shebang, git mode not 100755) and `EXE002` (git mode 100755, no shebang) itself from the git modes, with Ruff's messages, so the findings match Linux CI's (#3091)
+
 #### Scenario: Formatting
 - **WHEN** a push leaves a Python file unformatted that `ruff format --check` accepted before
 - **THEN** the ratchet reports a NEW `format` finding for that file; the files unformatted when the check arrived are baseline debt, and the check never rewrites a file (#3061)
@@ -104,6 +108,7 @@ Evidence:
 - `tests/test_quality_baseline.py::QualityBaselineTests.test_duplicate_diagnostics_are_not_collapsed`
 - `tests/test_quality_baseline.py::QualityBaselineTests.test_the_gate_runs_ruff_check_mypy_and_a_read_only_format_check`
 - `tests/test_quality_baseline.py::QualityBaselineTests.test_a_push_that_unformats_a_formatted_file_is_new_debt`
+- `tests/test_quality_baseline.py::QualityBaselineTests.test_the_executable_bit_rules_follow_the_git_modes_on_windows`
 - `tests/test_quality_baseline.py::QualityBaselineTests.test_a_new_css_duplicate_is_new_debt_not_an_unknown_tool`
 - `tests/test_quality_baseline.py::QualityBaselineTests.test_line_and_column_shifts_do_not_change_debt`
 - `tests/test_quality_baseline.py::QualityBaselineTests.test_new_violation_cannot_replace_one_fixed_violation`

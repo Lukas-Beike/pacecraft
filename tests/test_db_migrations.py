@@ -37,6 +37,7 @@ from backend.db.schema_history import (
     SHAPE_SCHEMA_V26,
     SHAPE_SCHEMA_V27,
     SHAPE_SCHEMA_V28,
+    SHAPE_SCHEMA_V29,
     released_shape,
     signature_digest,
 )
@@ -252,8 +253,17 @@ def populated_v27_database(db) -> None:
 # Schema v28, releases 2.1.10 to 2.1.14, has no fixture of its own either: v27
 # after its decision step, here with a decision and a saved competition.
 V28_COMPETITION = (
-    "race-1", "Stadtlauf", "2026-11-28", "run", "A", "21100", "1:45:00",
-    "km 0-8 flach\nkm 8-11 +4 %", "", STAMP, STAMP,
+    "race-1",
+    "Stadtlauf",
+    "2026-11-28",
+    "run",
+    "A",
+    "21100",
+    "1:45:00",
+    "km 0-8 flach\nkm 8-11 +4 %",
+    "",
+    STAMP,
+    STAMP,
 )
 
 
@@ -271,6 +281,16 @@ def populated_v28_database(db) -> None:
         "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         V28_COMPETITION,
     )
+    db.commit()
+
+
+# Schema v29, release 2.1.17, has no fixture of its own either: v28 after its
+# location step, with the competition's place filled in.
+def populated_v29_database(db) -> None:
+    populated_v28_database(db)
+    migrations._competition_location(db)
+    db.execute("PRAGMA user_version = 29")
+    db.execute("UPDATE competitions SET location = 'Berlin' WHERE id = 'race-1'")
     db.commit()
 
 
@@ -639,6 +659,7 @@ class DatabaseSchemaGateTests(unittest.TestCase):
             populated_baseline_database,
             populated_v27_database,
             populated_v28_database,
+            populated_v29_database,
         ):
             with (
                 self.subTest(populate=populate.__name__),
@@ -687,7 +708,8 @@ class DatabaseSchemaGateTests(unittest.TestCase):
         )
         self.assertEqual(self.table_rows(db, tables), before)
         self.assertEqual(
-            self.user_tables(db), sorted([*tables, "external_calendar_decisions"])
+            self.user_tables(db),
+            sorted([*tables, "external_calendar_decisions", "session_curves"]),
         )
         self.assertEqual(
             db.execute("SELECT COUNT(*) FROM external_calendar_decisions").fetchone()[
@@ -709,8 +731,19 @@ class DatabaseSchemaGateTests(unittest.TestCase):
         # Each released schema's own step fails after its DDL ran: the database
         # keeps its version, shape and rows, and the next start upgrades it.
         for populate, version, shape, step in (
-            (populated_v27_database, 27, SHAPE_SCHEMA_V27, migrations._calendar_decisions),
-            (populated_v28_database, 28, SHAPE_SCHEMA_V28, migrations._competition_location),
+            (
+                populated_v27_database,
+                27,
+                SHAPE_SCHEMA_V27,
+                migrations._calendar_decisions,
+            ),
+            (
+                populated_v28_database,
+                28,
+                SHAPE_SCHEMA_V28,
+                migrations._competition_location,
+            ),
+            (populated_v29_database, 29, SHAPE_SCHEMA_V29, migrations._session_curves),
         ):
             with self.subTest(version=version):
                 db = self.connect()
@@ -747,6 +780,53 @@ class DatabaseSchemaGateTests(unittest.TestCase):
             released_shape(database_schema_signature(db)), SHAPE_SCHEMA_V28
         )
 
+    def test_frozen_v29_shape_is_v28_after_its_location_step(self):
+        db = self.connect()
+        db.executescript(BASELINE_FIXTURE.read_text(encoding="utf-8"))
+        migrations._canonical_products(db)
+        migrations._calendar_decisions(db)
+        migrations._competition_location(db)
+        self.assertEqual(
+            released_shape(database_schema_signature(db)), SHAPE_SCHEMA_V29
+        )
+
+    def test_populated_v29_database_gains_an_empty_curve_table_with_every_row(self):
+        db = self.connect()
+        populated_v29_database(db)
+        tables = self.user_tables(db)
+        columns = {
+            table: [row[1] for row in db.execute(f"PRAGMA table_info({table})")]
+            for table in tables
+        }
+        before = self.table_rows(db, tables, columns)
+        migrate_schema(db)
+        db.commit()
+        self.assertTrue(database_schema_is_current(db))
+        self.assertEqual(
+            db.execute("PRAGMA user_version").fetchone()[0], CURRENT_SCHEMA_VERSION
+        )
+        self.assertEqual(self.user_tables(db), sorted([*tables, "session_curves"]))
+        self.assertEqual(self.table_rows(db, tables, columns), before)
+        self.assertEqual(
+            db.execute("SELECT COUNT(*) FROM session_curves").fetchone()[0], 0
+        )
+        # A stored curve belongs to a live session and carries a SHA-256 fingerprint.
+        db.execute("PRAGMA foreign_keys = ON")
+        db.execute(
+            "INSERT INTO activity_sessions(activity_id, primary_provider, "
+            "primary_provider_activity_id, state, started_at, created_at, updated_at) "
+            "VALUES ('act_1', 'garmin', 'g1', 'active', ?, ?, ?)",
+            (STAMP, STAMP, STAMP),
+        )
+        curve = "INSERT INTO session_curves VALUES (?, ?, '{}', ?, ?, ?)"
+        db.execute(curve, ("act_1", "f" * 64, STAMP, STAMP, STAMP))
+        for row in (
+            ("act_1", "short", STAMP, STAMP, STAMP),
+            ("act_2", "f" * 64, STAMP, STAMP, STAMP),
+        ):
+            with self.subTest(row=row), self.assertRaises(sqlite3.IntegrityError):
+                db.execute(curve.replace("INSERT", "INSERT OR REPLACE"), row)
+
     def test_populated_v28_database_gains_an_empty_location_with_every_row(self):
         db = self.connect()
         populated_v28_database(db)
@@ -762,7 +842,7 @@ class DatabaseSchemaGateTests(unittest.TestCase):
         self.assertEqual(
             db.execute("PRAGMA user_version").fetchone()[0], CURRENT_SCHEMA_VERSION
         )
-        self.assertEqual(self.user_tables(db), tables)
+        self.assertEqual(self.user_tables(db), sorted([*tables, "session_curves"]))
         self.assertEqual(self.table_rows(db, tables, columns), before)
         self.assertEqual(
             [tuple(row) for row in db.execute("SELECT id, location FROM competitions")],
@@ -770,7 +850,9 @@ class DatabaseSchemaGateTests(unittest.TestCase):
         )
         db.execute("UPDATE competitions SET location = 'Berlin' WHERE id = 'race-1'")
         with self.assertRaises(sqlite3.IntegrityError):
-            db.execute("UPDATE competitions SET location = ? WHERE id = 'race-1'", ("x" * 201,))
+            db.execute(
+                "UPDATE competitions SET location = ? WHERE id = 'race-1'", ("x" * 201,)
+            )
         with self.assertRaises(sqlite3.IntegrityError):
             db.execute("UPDATE competitions SET location = NULL WHERE id = 'race-1'")
 
@@ -820,7 +902,11 @@ class DatabaseSchemaGateTests(unittest.TestCase):
         cipher_backend is None, "SQLCipher requires the Docker runtime on Windows"
     )
     def test_encrypted_released_database_upgrades_and_restarts_with_its_rows(self):
-        for populate in (populated_v27_database, populated_v28_database):
+        for populate in (
+            populated_v27_database,
+            populated_v28_database,
+            populated_v29_database,
+        ):
             with self.subTest(populate=populate.__name__):
                 self.assert_encrypted_upgrade(populate)
 
