@@ -95,8 +95,8 @@ def drinking(
             total = max(0.0, loss - weight_kg * MAX_LOSS_SHARE)
             result["l_per_h"] = round(min(rate_l_per_h, total / hours), 2)
             result["total_l"] = round(total, 2)
-            if total <= 0:
-                # Decided before rounding: the card says so with the loss, never "0 l" (#3012).
+            if result["total_l"] <= 0:
+                # Nothing shown is left to drink: the card says so with the loss, never "0 l" (#3012).
                 result["within_loss_share"] = True
                 result["loss_l"] = round(loss, 2)
     if duration_s >= SODIUM_FROM_S and not result.get("within_loss_share"):

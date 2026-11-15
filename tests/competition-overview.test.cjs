@@ -111,6 +111,11 @@ test("long planned units ask for fuelling and show drinking and carbohydrates wi
     rendered.plannedFuellingRows({ within_loss_share: true }).filter(Boolean).map((row) => row.join(":")).join("|"),
     "Pro Stunde:nicht nötig",
   );
+  // An hourly share that rounds to nothing is left out, the total stays.
+  assert.equal(
+    rendered.plannedFuellingRows({ max_l_per_h: 0.5, l_per_h: 0, total_l: 0.01 }).filter(Boolean).map((row) => row.join(":")).join("|"),
+    "Gesamt:0,01 l",
+  );
 });
 
 test("a planned unit's fuelling is read once per query and only after the view's own reads", async () => {

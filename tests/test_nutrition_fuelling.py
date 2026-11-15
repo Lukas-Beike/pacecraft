@@ -101,6 +101,11 @@ class FuellingRuleTests(unittest.TestCase):
         self.assertEqual(
             {"max_l_per_h": 1.08, "l_per_h": 0.03, "total_l": 0.04}, drinking(1.08, 4800, 70)
         )
+        # 1.053 L/h leaves 0.004 L, which shows as nothing: no drink, no sodium.
+        self.assertEqual(
+            {"max_l_per_h": 1.05, "l_per_h": 0.0, "total_l": 0.0, "within_loss_share": True, "loss_l": 1.4},
+            drinking(1.053, 4800, 70),
+        )
         # Nothing to drink means no sodium advice; without a rate the ACSM range.
         self.assertEqual(
             {"max_l_per_h": 0.4, "l_per_h": 0.0, "total_l": 0.0, "within_loss_share": True, "loss_l": 0.8},
