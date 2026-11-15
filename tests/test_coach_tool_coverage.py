@@ -2032,6 +2032,13 @@ class CoachToolCoverageTests(DialogueHarness, unittest.TestCase):
         template = template["template"]
         read = self.run_tool("read_nutrition", {})
         self.assertEqual(read["templates"][0]["id"], template["id"])
+        # #3099: the energy view names every source; without a basis nothing fits.
+        energy = self.run_tool("read_nutrition", {"energy": True})["energy"]
+        self.assertEqual(
+            [row["source"] for row in energy["rows"]],
+            ["katch_mcardle", "cunningham", "device", "own"],
+        )
+        self.assertIsNone(energy["best"])
         self.assertEqual(read["entry_count"], 0)
         entry = self.run_tool(
             "log_nutrition_template",

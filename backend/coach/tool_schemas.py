@@ -1274,8 +1274,12 @@ def build_structured_tool_schemas(
         ),
         _canonical_coach_tool(
             "read_nutrition",
-            "Read nutrition entries and day summaries for a date or a range of at most 31 days.",
+            "Read nutrition entries and day summaries for a date or a range of at most 31 days, or with energy true the athlete's daily energy expenditure.",
             {
+                "energy": {
+                    "type": "boolean",
+                    "description": "True reads only the energy expenditure up to yesterday: resting_kcal and total_kcal per source (katch_mcardle and cunningham from skinfold lean mass, device = the wearable's own estimate, own = intake versus weight trend with *_band_kcal), each source's mean_error_kcal and hit_rate_pct (share of 4-week windows within 100 kcal/day of own), best, the data basis and the skinfold. Name the source with every value; null means no basis, never estimate it.",
+                },
                 "date": {
                     "type": "string",
                     "description": "Optional specific date YYYY-MM-DD",
