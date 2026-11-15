@@ -27,6 +27,11 @@ python scripts/run_browser_tests.py --project all --keep-going
   project, then the other viewports for layout changes. `--list` resolves the
   selection without Docker or a browser. A spec a selected project does not
   list (a desktop-only spec on mobile) is skipped there with a note.
+- A server-free spec (one that only uses `page.setContent`, such as
+  `e2e/ui-walk-steps.spec.js`) runs without Docker:
+  `npx playwright test e2e/<name>.spec.js --project=desktop` with
+  `E2E_APP_PASSWORD` unset skips the login setup outside CI; specs that need
+  the app then end at its login dialog (#3026).
 - Rebuild the image (`docker build -t "$(python scripts/run_browser_tests.py --print-image)" .`)
   after application changes; it is not rebuilt for you, and a run against an
   image that differs from the source stops before any fixture starts.
