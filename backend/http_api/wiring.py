@@ -479,6 +479,9 @@ def _read_routes(
                 partial(
                     body_weight, public.performance_state_service, athlete.profile
                 ),
+                lambda competition: ctx.weather.competition_weather().for_competition(
+                    competition
+                ),
             ),
         ),
         DiagnosticsGetRoutes(

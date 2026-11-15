@@ -126,7 +126,7 @@ Shared JSON client, timeout 10 s, no retry inside the call. The forecast cache i
 
 | # | Method and path | Kind | Purpose | Caller | Error mapping |
 | --- | --- | --- | --- | --- | --- |
-| M1 | `GET https://geocoding-api.open-meteo.com/v1/search?name&count=1&language=de&format=json` | read | Weather location to coordinates | `providers/weather.py:WeatherClient._geocoded_location` <- `weather/service.py:WeatherService._refresh` | 400 `Der Wetterort wurde nicht gefunden.`; else shared |
+| M1 | `GET https://geocoding-api.open-meteo.com/v1/search?name&count=1&language=de&format=json` | read | Weather location to coordinates | `providers/weather.py:WeatherClient._geocoded_location` <- `weather/service.py:WeatherService._refresh`; for competition locations (M1 to M3 only, at most 5 places within 60 s per weather job, never from a request) `weather/competition_forecast.py:CompetitionWeather.refresh` <- `sync/weather.py:WeatherSyncService` | 400 `Der Wetterort wurde nicht gefunden.`; else shared |
 | M2 | `GET https://api.open-meteo.com/v1/forecast?...&models=ecmwf_ifs` | read | Forecast, hourly and daily | `WeatherClient.fetch` | 502 `Open-Meteo hat keine vollständige Wettervorhersage geliefert.`; else shared |
 | M3 | `GET https://api.open-meteo.com/v1/forecast?...&models=icon_d2&forecast_days=2` (country DE only) | read | Higher-resolution first two days | `WeatherClient._fetch_icon_d2` | best-effort; falls back to ECMWF |
 | M4 | `GET https://air-quality-api.open-meteo.com/v1/air-quality?...&forecast_days=5` | read | Air quality and pollen series | `providers/air_quality.py:AirQualityClient.fetch` | best-effort |

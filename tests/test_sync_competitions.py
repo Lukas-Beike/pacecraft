@@ -13,6 +13,7 @@ from support import temp_database
 
 from backend.db import row_factory
 from backend.db.repositories import CompetitionRepository, KeyValueRepository
+from backend.db.schema import COMPETITION_LOCATION_DDL, COMPETITIONS_TABLE_SQL
 from backend.errors import INTERVALS_API_KEY_ERROR, AppError
 from backend.planning import competitions as planning_competitions
 from backend.planning.competition_service import CompetitionService
@@ -115,18 +116,8 @@ class CompetitionSyncReconcilerTests(unittest.TestCase):
             self.database_manager, lambda: IMPORT_ID
         )
         with self.database_manager.unit_of_work() as db:
-            db.execute(
-                "CREATE TABLE competitions ("
-                "id TEXT PRIMARY KEY, name TEXT NOT NULL, event_date TEXT NOT NULL, "
-                "sport TEXT NOT NULL, environment TEXT, sport_detail TEXT, "
-                "priority TEXT NOT NULL, distance TEXT NOT NULL, "
-                "target TEXT NOT NULL, course_profile TEXT NOT NULL, notes TEXT NOT NULL, "
-                "category TEXT NOT NULL DEFAULT 'RACE_B', starts_at_local TEXT, "
-                "description TEXT NOT NULL DEFAULT '', planned_duration_s INTEGER, intervals_event_id TEXT, "
-                "external_id TEXT, sync_dirty INTEGER NOT NULL DEFAULT 1, "
-                "sync_state TEXT NOT NULL DEFAULT 'local', sync_conflict TEXT NOT NULL DEFAULT '', "
-                "last_synced_at TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)"
-            )
+            db.execute(COMPETITIONS_TABLE_SQL)
+            db.execute(COMPETITION_LOCATION_DDL)
             db.execute(
                 "CREATE TABLE competition_sync_tombstones ("
                 "id TEXT PRIMARY KEY, intervals_event_id TEXT, external_id TEXT, "
@@ -175,6 +166,7 @@ class CompetitionSyncReconcilerTests(unittest.TestCase):
             "last_synced_at": None,
             "created_at": "created",
             "updated_at": "updated",
+            "location": "",
         }
 
     @staticmethod
@@ -217,8 +209,8 @@ class CompetitionSyncReconcilerTests(unittest.TestCase):
                 "priority, distance, target, "
                 "course_profile, notes, category, starts_at_local, description, planned_duration_s, "
                 "intervals_event_id, external_id, sync_dirty, sync_state, sync_conflict, "
-                "last_synced_at, created_at, updated_at) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "last_synced_at, created_at, updated_at, location) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 tuple(row[key] for key in self.local_competition()),
             )
 

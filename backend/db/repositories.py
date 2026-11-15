@@ -921,7 +921,7 @@ class CompetitionRepository:
     _LIST_FIELDS = (
         "id, name, event_date, starts_at_local, sport, environment, sport_detail, priority, category, distance, target, "
         "course_profile, notes, description, planned_duration_s, external_id, intervals_event_id, sync_dirty, "
-        "sync_state, sync_conflict, last_synced_at"
+        "sync_state, sync_conflict, last_synced_at, location"
     )
 
     def list(self, db: Any, limit: int | None = None) -> list[dict[str, Any]]:
@@ -968,8 +968,8 @@ class CompetitionRepository:
 
     def create_local(self, db: Any, competition: dict[str, Any], now: str) -> None:
         db.execute(
-            "INSERT INTO competitions(id, name, event_date, sport, environment, sport_detail, priority, distance, target, course_profile, notes, category, starts_at_local, description, planned_duration_s, external_id, sync_dirty, sync_state, sync_conflict, created_at, updated_at) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, 1, 'local', '', ?, ?)",
+            "INSERT INTO competitions(id, name, event_date, sport, environment, sport_detail, priority, distance, target, course_profile, notes, category, starts_at_local, description, planned_duration_s, location, external_id, sync_dirty, sync_state, sync_conflict, created_at, updated_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, 1, 'local', '', ?, ?)",
             (
                 competition["id"],
                 competition["name"],
@@ -986,14 +986,22 @@ class CompetitionRepository:
                 competition["starts_at_local"],
                 competition["description"],
                 competition["planned_duration_s"],
+                competition.get("location") or "",
                 now,
                 now,
             ),
         )
 
+    def update_location(self, db: Any, competition: dict[str, Any], now: str) -> None:
+        """Change only the local location, keeping the sync state (#2803)."""
+        db.execute(
+            "UPDATE competitions SET location=?, updated_at=? WHERE id=?",
+            (competition.get("location") or "", now, competition["id"]),
+        )
+
     def update_local(self, db: Any, competition: dict[str, Any], now: str) -> None:
         db.execute(
-            "UPDATE competitions SET name=?, event_date=?, sport=?, environment=?, sport_detail=?, priority=?, distance=?, target=?, course_profile=?, notes=?, category=?, starts_at_local=?, description=?, planned_duration_s=?, sync_dirty=1, sync_state='local', sync_conflict='', updated_at=? WHERE id=?",
+            "UPDATE competitions SET name=?, event_date=?, sport=?, environment=?, sport_detail=?, priority=?, distance=?, target=?, course_profile=?, notes=?, category=?, starts_at_local=?, description=?, planned_duration_s=?, location=?, sync_dirty=1, sync_state='local', sync_conflict='', updated_at=? WHERE id=?",
             (
                 competition["name"],
                 competition["event_date"],
@@ -1009,6 +1017,7 @@ class CompetitionRepository:
                 competition["starts_at_local"],
                 competition["description"],
                 competition["planned_duration_s"],
+                competition.get("location") or "",
                 now,
                 competition["id"],
             ),

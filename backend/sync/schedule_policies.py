@@ -55,12 +55,17 @@ class WeatherSchedulePolicy:
         self,
         profile: ProfileService,
         refresh_due: Callable[[], bool] | None = None,
+        competitions_configured: Callable[[], bool] | None = None,
     ) -> None:
         self._profile = profile
         self._refresh_due = refresh_due
+        self._competitions_configured = competitions_configured
 
     def configured(self) -> bool:
-        return bool(self._profile.get().get("weather_location", "").strip())
+        """A profile location, or a competition location within the horizon (#2803)."""
+        return bool(self._profile.get().get("weather_location", "").strip()) or bool(
+            self._competitions_configured and self._competitions_configured()
+        )
 
     def blocked(self) -> bool:
         return self._refresh_due is not None and not self._refresh_due()
@@ -170,11 +175,14 @@ def build_schedule_policies(
     garmin_resync_gate: ProviderResyncGate | None = None,
     garmin_change_check: GarminChangeCheck | None = None,
     weather_refresh_due: Callable[[], bool] | None = None,
+    weather_competitions_configured: Callable[[], bool] | None = None,
     wahoo: WahooSchedulePolicy | None = None,
 ) -> dict[str, ProviderSchedulePolicy]:
     """Return the provider policies keyed by provider id; Wahoo only when given."""
     policies: dict[str, ProviderSchedulePolicy] = {
-        WEATHER_ID: WeatherSchedulePolicy(profile, weather_refresh_due),
+        WEATHER_ID: WeatherSchedulePolicy(
+            profile, weather_refresh_due, weather_competitions_configured
+        ),
         CALENDAR_ID: CalendarSchedulePolicy(enabled=calendar_enabled),
         GARMIN_ID: GarminSchedulePolicy(
             garmin, garmin_automatic_sync_days, garmin_resync_gate, garmin_change_check

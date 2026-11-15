@@ -168,7 +168,7 @@ EXPORT_COLUMNS_NOT_EXPORTED: dict[str, dict[str, str]] = {
 # Schema version -> export format version that documents it. Bump both together.
 # Format 14 adds provider_settings.json without a schema change; format 17
 # adds table bookkeeping and coach_action_proposals.jsonl, also without one.
-EXPORT_FORMAT_FOR_SCHEMA = {22: 12, 23: 14, 24: 15, 25: 17, 26: 17, 27: 18, 28: 19}
+EXPORT_FORMAT_FOR_SCHEMA = {22: 12, 23: 14, 24: 15, 25: 17, 26: 17, 27: 18, 28: 19, 29: 20}
 
 # Key/value families (exact key or prefix ending in ":") and what the privacy
 # export does with them. "exported": application_state.json; "excluded": never
@@ -184,6 +184,8 @@ KV_EXPORT_DISPOSITION: dict[str, str] = {
     "garmin_state": "excluded: rebuilt as garmin_snapshot.json",
     "garmin_snapshot_legacy": "excluded: retired copy of garmin_snapshot.json",
     "weather_cache": "excluded: exported as weather_cache.json",
+    # Race-day forecasts per competition id, location and event date (#2803).
+    "competition_weather": "exported",
     "garmin_personal_key_rejected": "exported",
     "garmin_sdk_threshold_failures": "exported",
     "garmin_sdk_skipped": "exported",

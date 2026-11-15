@@ -11,7 +11,7 @@ from backend.backup.restore_validation import (
     DatabaseRestoreValidationConfig,
     DatabaseRestoreValidationService,
 )
-from backend.db import row_factory
+from backend.db import migrations, row_factory
 from backend.db.bootstrap import apply_startup_invariants
 from backend.db.migrations import migrate_schema
 from backend.db.repositories import KeyValueRepository, PlanningStateRepository
@@ -106,14 +106,32 @@ class DatabaseRestoreValidationTests(unittest.TestCase):
                 )
 
     def test_validate_accepts_a_populated_baseline_backup(self) -> None:
+        # The baseline (v26) and the last released schema (v28, #2803) both
+        # restore into the current schema with their rows.
+        for version in (26, 28):
+            with self.subTest(version=version):
+                self.assert_backup_upgrades(version)
+
+    def assert_backup_upgrades(self, version: int) -> None:
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "backup.db"
             with closing(sqlite3.connect(path)) as connection:
+                connection.row_factory = sqlite3.Row
                 connection.executescript(BASELINE_FIXTURE.read_text(encoding="utf-8"))
                 connection.execute(
                     "INSERT INTO messages(role, content, created_at) "
                     "VALUES ('user', 'Hallo', '2026-10-16T08:00:00Z')"
                 )
+                if version == 28:
+                    migrations._canonical_products(connection)
+                    migrations._calendar_decisions(connection)
+                    connection.execute("PRAGMA user_version = 28")
+                    connection.execute(
+                        "INSERT INTO competitions(id, name, event_date, sport, priority, "
+                        "distance, target, course_profile, notes, created_at, updated_at) "
+                        "VALUES ('race', 'Stadtlauf', '2026-11-28', 'run', 'A', '21100', "
+                        "'1:45:00', '', '', 'now', 'now')"
+                    )
                 connection.commit()
             service(
                 Path(directory),
@@ -131,6 +149,12 @@ class DatabaseRestoreValidationTests(unittest.TestCase):
                 self.assertEqual(
                     connection.execute("SELECT content FROM messages").fetchone()[0],
                     "Hallo",
+                )
+                self.assertEqual(
+                    [tuple(row) for row in connection.execute(
+                        "SELECT id, target, location FROM competitions"
+                    )],
+                    [("race", "1:45:00", "")] if version == 28 else [],
                 )
 
     def test_validate_applies_startup_invariants_to_the_restored_database(self) -> None:

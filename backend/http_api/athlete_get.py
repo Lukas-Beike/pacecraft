@@ -190,8 +190,11 @@ class AthleteGetRoutes:
         `method` `equal_effort` or `power_variation`, `sections_from`,
         `profile_rejected`, `sections` and for cycling `target_w`, or
         `unavailable` with `reason` `sport`, `distance` or `duration`) and
-        `carbohydrates` (`source`, `during`, `before`, `weight`). It changes no
-        state and calls no provider.
+        `carbohydrates` (`source`, `during`, `before`, `weight`) and `weather`
+        (`status` `ready` with the stored race-day `day`, `name`, `country` and
+        `fetched_at`, or `no_location`, `not_in_horizon`, `pending`,
+        `not_found` or `unavailable`). It changes no state and calls no
+        provider: only the weather sync job fetches race-day forecasts.
 
         Errors: 404 `competition_not_found` "Dieser Wettkampf ist lokal nicht
         vorhanden." when the id is unknown.

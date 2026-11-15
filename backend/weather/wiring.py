@@ -11,26 +11,29 @@ from backend.providers import air_quality, dwd_pollen
 from backend.providers import weather as weather_provider
 from backend.runtime import clock as runtime_clock
 from backend.weather import service as weather
+from backend.weather.competition_forecast import CompetitionWeather
 from backend.weather.projection import WEATHER_FORECAST_DAYS
 
 
 @dataclass(frozen=True)
 class WeatherServices:
     service: Callable[[], weather.WeatherService]
+    competition_weather: Callable[[], CompetitionWeather]
 
 
 def build_weather(ctx: AppContext) -> WeatherServices:
     """The weather service, cached per database manager."""
 
-    def client() -> weather_provider.WeatherClient:
+    def client(overlays: bool = True) -> weather_provider.WeatherClient:
+        """The forecast client; race-day forecasts skip air quality and pollen."""
         request = ctx.provider_transport.json_http_client().request
         return weather_provider.WeatherClient(
             request,
             runtime_clock.utc_now,
             ctx.logger,
             forecast_days=WEATHER_FORECAST_DAYS,
-            air_quality_client=air_quality.AirQualityClient(request),
-            pollen_client=dwd_pollen.DwdPollenClient(request),
+            air_quality_client=air_quality.AirQualityClient(request) if overlays else None,
+            pollen_client=dwd_pollen.DwdPollenClient(request) if overlays else None,
         )
 
     def service() -> weather.WeatherService:
@@ -50,4 +53,14 @@ def build_weather(ctx: AppContext) -> WeatherServices:
             lambda: ctx.clock.now().date(),
         )
 
-    return WeatherServices(service)
+    def competition_weather() -> CompetitionWeather:
+        return CompetitionWeather(
+            ctx.database(),
+            ctx.key_values,
+            lambda: ctx.planning.competition().list(),
+            lambda: client(overlays=False),
+            lambda: datetime.now(UTC),
+            lambda: ctx.clock.now().date(),
+        )
+
+    return WeatherServices(service, competition_weather)

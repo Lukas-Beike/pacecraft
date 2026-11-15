@@ -238,3 +238,26 @@ The system SHALL link each stored competition to the completed sessions of its l
 Detailed contract: a session links to at most one competition (competitions in date then id order). A limited read links over every session of its oldest day, so the hint never depends on the page size. The athlete unlinks a session by marking another purpose, training included, in its "Feedback" dialog (local, with receipt and undo, #1759); a marked training also takes the hint away from the other sessions of that day and sport.
 
 Evidence: `backend/activities/session_purpose.py:with_competitions`, `backend/sync/canonical_read_selector.py:activity_summaries`, `backend/db/repositories.py:CompetitionRepository.between`, `backend/planning/race_results.py:with_race_results`, `backend/performance/activity_read_service.py:summaries_on_days`, `backend/http_api/athlete_get.py`, `public/plan-views.js:competitionResult`; `tests/test_session_purpose.py` (including `test_training_removes_the_race_hint`, `test_training_on_a_provider_race_drops_its_link`), `tests/test_race_results.py`, `tests/competition-overview.test.cjs`, `e2e/activity-details.spec.js::@responsive marking the session purpose sends it with a receipt whose undo restores the previous one`.
+
+### Requirement: CS14 Competition location
+A competition SHALL keep an optional free-text location (city or postal code, at most 200 characters) for its race-day weather. The Coach's `save_competition` SHALL keep it when an edit leaves it out and clear it on an empty string; change history and undo SHALL carry it, and changes recorded before the location existed SHALL stay undoable. The location stays local, never enters an Intervals.icu payload, and a location-only edit keeps the sync state.
+
+#### Scenario: Edit without the location
+- **WHEN** a competition with location "Berlin" gets only a new target
+- **THEN** the location stays "Berlin"; an explicit empty location clears it.
+
+#### Scenario: Earlier change after the upgrade
+- **WHEN** a competition change recorded before schema v29 is undone after the upgrade
+- **THEN** the undo is accepted, and a later edit of the competition still blocks it as stale.
+
+#### Scenario: Card fact
+- **WHEN** the athlete expands a competition with a location
+- **THEN** the card shows it as "Ort" with the other saved details.
+
+Evidence:
+- `backend/change_history.py:_FIELDS_ADDED_TO_AUDIT`
+- `backend/planning/competition_service.py:_coach_payload`
+- `public/plan-views.js:competitionCard`
+- `tests/test_history_undo_service.py::test_legacy_profile_row_stays_undoable_and_later_edits_still_conflict`
+- `tests/test_planning_competition_service.py::test_a_location_only_edit_keeps_the_sync_state`
+- `tests/test_planning_competition_service.py::test_empty_values_clear_optional_fields_and_absent_ones_keep_them`

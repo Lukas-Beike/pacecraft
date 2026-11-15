@@ -243,6 +243,7 @@ class SyncSchedulerBuilderTests(unittest.TestCase):
             garmin_resync_gate=self.gates[0],
             garmin_change_check=ctx.garmin.change_check.return_value,
             weather_refresh_due=ANY,
+            weather_competitions_configured=ANY,
             wahoo=wahoo.return_value,
         )
         wahoo.assert_called_with(
