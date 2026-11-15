@@ -15,6 +15,7 @@ from backend.athlete.equipment import (
     activity_row,
     assignable_equipment,
     equipment_in_use,
+    planned_unit_sport,
     stored_value,
     validate_restored_equipment,
 )
@@ -167,8 +168,11 @@ class EquipmentPlannedHistory(_EquipmentRecordHistory):
             "planned_unit_id": entity_id,
         }
         equipment_id = restored["equipment_id"]
+        unit = planned_unit_sport(db, entity_id)
+        if unit is None:
+            raise AppError(409, "Diese geplante Einheit ist nicht mehr vorhanden.")
         if equipment_id is not None and not assignable_equipment(
-            stored_value(db, EQUIPMENT_PREFIX + str(equipment_id)), None
+            stored_value(db, EQUIPMENT_PREFIX + str(equipment_id)), unit
         ):
             raise AppError(
                 409,

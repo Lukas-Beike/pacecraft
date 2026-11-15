@@ -395,15 +395,13 @@ class EquipmentService:
         if not isinstance(unit_id, str) or not 0 < len(unit_id) <= 200:
             raise AppError(400, "Aktivität und Ausrüstung sind erforderlich.")
         with self._manager.unit_of_work() as db:
-            unit = planning_store.planned_unit_row(db, unit_id)
-            if unit is None or unit["tombstone"]:
+            row = planned_unit_sport(db, unit_id)
+            if row is None:
                 raise AppError(404, "Geplante Einheit nicht gefunden.")
-            sport = workout_sport_from_record(json.loads(unit["payload"]))
             item = equipment_store.value(
                 db, EQUIPMENT_PREFIX + str(payload["equipment_id"])
             )
             equipment = json.loads(item) if item is not None else None
-            row = {"sport": sport.sport.value, "environment": sport.environment.value}
             if payload["equipment_id"] is not None and not assignable_equipment(
                 equipment, row
             ):
@@ -507,6 +505,15 @@ def _record_change(
     if record is None:
         return None
     return {field: record[field] for field in change_history.UNDO_REFERENCE_FIELDS}
+
+
+def planned_unit_sport(db: Any, unit_id: str) -> dict[str, Any] | None:
+    """The sport and environment of a live planned unit, as an assignment row has them."""
+    unit = planning_store.planned_unit_row(db, unit_id)
+    if unit is None or unit["tombstone"]:
+        return None
+    sport = workout_sport_from_record(json.loads(unit["payload"]))
+    return {"sport": sport.sport.value, "environment": sport.environment.value}
 
 
 def assignable_equipment(

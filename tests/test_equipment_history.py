@@ -441,6 +441,29 @@ class EquipmentHistoryTests(unittest.TestCase):
         with self.manager.reader() as db:
             self.assertEqual(dict(planning_store.planned_unit_row(db, "unit-1")), before)
 
+    def test_undo_of_a_planned_choice_checks_the_unit_and_its_sport_again(self) -> None:
+        self.planned_unit()
+        first = self.bike()
+        self.service.assign({"planned_unit_id": "unit-1", "equipment_id": first["id"]})
+        _, changes = self.collected(
+            lambda: self.service.assign({"planned_unit_id": "unit-1", "equipment_id": None})
+        )
+        # The unit became a run since: the bike no longer fits, so undo is refused.
+        with self.manager.unit_of_work() as db:
+            db.execute(
+                "UPDATE planned_units SET payload=json_set(payload, '$.sport', 'run') "
+                "WHERE local_id='unit-1'"
+            )
+        with self.assertRaises(AppError) as sport:
+            self.undo(changes)
+        self.assertEqual(sport.exception.status, 409)
+        with self.manager.unit_of_work() as db:
+            db.execute("UPDATE planned_units SET tombstone=1 WHERE local_id='unit-1'")
+        with self.assertRaises(AppError) as gone:
+            self.undo(changes)
+        self.assertEqual(gone.exception.status, 409)
+        self.assertIsNone(self.record("equipment_planned:unit-1")["equipment_id"])
+
     def test_none_is_a_tracked_planned_choice_and_undo_removes_a_first_choice(self) -> None:
         self.planned_unit()
         _, changes = self.collected(
