@@ -323,6 +323,52 @@ class CoachActivityReadToolServiceTests(unittest.TestCase):
         result = self._detail_with_plan("2026-09-22T07:00:00", None)
         self.assertIsNone(result["planned_units"])
 
+    def test_detail_carries_the_deterministic_session_report(self):
+        # #3084: code judges the checks; the Coach explains session_report.
+        result = self._detail_with_plan("2026-09-22T07:00:00", None)
+        report = result["session_report"]
+        self.assertEqual("session-report-v1", report["method"])
+        self.assertEqual(
+            {"method", "scope", "session_type", "checks", "notable", "lead", "unknown"},
+            set(report),
+        )
+        notable = [c["id"] for c in report["checks"] if c["verdict"] == "notable"]
+        self.assertEqual(sorted(notable), sorted(report["notable"]))
+
+    def test_session_report_sets_the_plan_estimate_against_the_local_load(self):
+        # The estimate is TSS-scale (M6); the provider's own load (300 on
+        # Garmin's scale) never enters the plan comparison.
+        estimator = Mock(
+            return_value=SimpleNamespace(
+                duration_s=3600,
+                load=80,
+                band_seconds={"low": 3000, "moderate": 480, "high": 120},
+            )
+        )
+        service = CoachActivityReadToolService(
+            Mock(), Mock(), Mock(), Mock(), unit_thresholds=estimator
+        )
+        unit = {"id": "unit-1"}
+        report = service._session_report(
+            {
+                "focus": {"status": "matched", "planned_unit_id": "unit-1"},
+                "metrics": {
+                    "moving_duration_s": {"value": 3700},
+                    "load": {"value": 300, "model": "garmin_training_load"},
+                },
+                "analysis": {"execution": {"data_quality": {"heart_rate": "ok"}}},
+            },
+            {"activity_id": "act_1", "sport": "run"},
+            [unit],
+            [{"id": "act_1", "training_load": 84}],
+        )
+        estimator.assert_called_once_with(unit)
+        load = next(c for c in report["checks"] if c["id"] == "plan_load")
+        self.assertEqual(
+            ({"actual": 84, "planned": 80, "difference_pct": 5.0}, "ok"),
+            (load["value"], load["verdict"]),
+        )
+
     def test_detail_result_size_does_not_grow_with_the_recording(self):
         raw_activity = {
             "id": "synthetic-1",

@@ -94,12 +94,12 @@ _SPORT_BLOCKS = {"run": _RUN_SESSION, "ride": _RIDE_SESSION}
 _TASKS = {
     "session_analysis": """\
 Task: analyze the requested completed session, by default the last one.
-- Load it with get_activity_details; planned_units hold the local plan one day around it, for plan versus actual. Rules 6d and 8c-8e stay; read_coach_context loads planned units beyond two days.
-- Judge it against its plan first: duration, structure, load and intensity; warm-up and cool-down long and easy enough.
-- Easy, recovery or long: steady output and heart rate, drift at the same output, really easy; planned strides or a progression are intended. Judge a stored planned_targets.heart_rate_cap by verdict, naming percent and bpm.
-- Intervals, threshold or tests: work laps on target and even, holding or fading; heart rate across reps; recoveries as long and easy as planned, and their heart-rate drop. Under about 2 minutes judge pace or power, not heart rate.
-- Race (purpose race): pacing, fade, finish against target; no interval verdicts.
-- Before calling a change fitness or fatigue, check heat, hills, wind, sleep, the days before and sensor errors. Temperature only from weather.temperature_c and heat_note, never a device; else unknown.
+- Load it with get_activity_details; planned_units hold the local plan one day around it. Rules 6d and 8c-8e stay; read_coach_context loads planned units beyond two days.
+- session_report holds every deterministic check computed by code: value, rule, threshold, basis (personal, plan or fixed), verdict and severity. Explain it; never compute numbers or verdicts yourself.
+- Lead with the checks in session_report.lead, then mention every other notable check briefly and name each unknown with its reason. An ok check only when it matters for the focus.
+- Beyond the report, raise an observation only by citing a field and its value from the details (warm-up, cool-down or recovery pace, a strap swap, an unplanned stop), never by your own arithmetic.
+- Interpret: likely causes (heat, hills, wind, sleep, the days before, sensor errors) and fitness versus fatigue. Temperature only from weather.temperature_c and heat_note, never a device; else unknown.
+- Race (purpose race): pacing and finish against target; no interval verdicts.
 - A sport block applies only when session.sport matches it.
 - End with the consequence for the next session.""",
     # Progress and block review are one review: is the athlete getting fitter,

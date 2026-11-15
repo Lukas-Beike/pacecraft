@@ -100,7 +100,7 @@ def comparable_sessions(
             **window,
         )
     metrics = _METRICS.get(str(mine.get("structure")), ())
-    median, difference = _medians(mine, peers, metrics)
+    median, difference, median_peers = _medians(mine, peers, metrics)
     peers.sort(key=lambda row: str(row.get("date")), reverse=True)
     return {
         **base,
@@ -113,6 +113,7 @@ def comparable_sessions(
             "weather_temp_c": own.get("weather_temp_c"),
         },
         "median_of_peers": median,
+        "median_peers": median_peers,
         "difference": difference,
         "peers": [
             {
@@ -164,10 +165,11 @@ def _medians(
     mine: Mapping[str, Any],
     peers: Sequence[Mapping[str, Any]],
     metrics: Sequence[str],
-) -> tuple[dict[str, float], dict[str, float]]:
-    """The peers' median of each metric and this session's difference to it."""
+) -> tuple[dict[str, float], dict[str, float], dict[str, int]]:
+    """The peers' median of each metric, this session's difference and the peers it rests on."""
     median: dict[str, float] = {}
     difference: dict[str, float] = {}
+    counts: dict[str, int] = {}
     for metric in metrics:
         values = [
             float(row["execution_summary"][metric])
@@ -177,9 +179,10 @@ def _medians(
         if len(values) < MIN_PEERS:
             continue
         median[metric] = rounded_metric(statistics.median(values))
+        counts[metric] = len(values)
         if isinstance(mine.get(metric), (int, float)):
             difference[metric] = rounded_metric(float(mine[metric]) - median[metric])
-    return median, difference
+    return median, difference, counts
 
 
 def _similar(mine: Mapping[str, Any], other: Mapping[str, Any]) -> bool:

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from datetime import date, datetime, timedelta
 from typing import Any, Final
 
@@ -36,6 +36,7 @@ from backend.performance.planned_targets import (
     unit_steps,
 )
 from backend.performance.report_service import PROFILE_WINDOW_DAYS
+from backend.performance.session_report import session_report
 from backend.planning import leg_strength
 from backend.planning.sport import planned_sport_environment
 from backend.sync.garmin import GarminPayloadService
@@ -357,7 +358,39 @@ class CoachActivityReadToolService:
             strength = _strength_plan(detail, session, result.get("focus"), paired)
             if strength is not None:
                 result["strength_plan"] = strength
+            # Code judges every deterministic check; the Coach explains (#3084).
+            result["session_report"] = self._session_report(
+                result, session, paired, nearby
+            )
         return result
+
+    def _session_report(
+        self,
+        result: dict[str, Any],
+        session: dict[str, Any],
+        around: list[dict[str, Any]] | None,
+        nearby: list[Any] | None,
+    ) -> dict[str, Any]:
+        """The report: the paired unit's estimate against the local load (M6).
+
+        Runs and rides only, like the other planned checks.
+        """
+        unit = _matched_unit(session, result.get("focus"), around)
+        planned = None
+        if (
+            unit is not None
+            and self._unit_thresholds is not None
+            and session.get("sport") in ("run", "ride")
+        ):
+            estimate = self._unit_thresholds(unit)
+            bands = estimate.band_seconds or {}
+            planned = {
+                "duration_s": estimate.duration_s,
+                "load": estimate.load,
+                "above_easy_s": bands.get("moderate", 0.0) + bands.get("high", 0.0),
+            }
+        own = _own_summary(session, nearby) or {}
+        return session_report(result, planned, own.get("training_load"))
 
     def _session_checks(
         self,
@@ -374,14 +407,7 @@ class CoachActivityReadToolService:
         if session.get("sport") not in ("run", "ride"):
             return checks
         checks["strength_before"] = self._strength_before(session, nearby, units)
-        own = next(
-            (
-                row
-                for row in nearby or ()
-                if row.get("id") == session.get("activity_id")
-            ),
-            None,
-        )
+        own = _own_summary(session, nearby)
         covered_from = self._covered_from()
         # A session before the curve window has no curve; nothing is read for it.
         inside = own is not None and day >= covered_from
@@ -589,6 +615,14 @@ def _unpaired_reason(
     if any(str(unit.get("id")) in pairs for unit in same):
         return "Die geplante Einheit dieses Tages gehört zu einer anderen Aktivität."
     return None
+
+
+def _own_summary(
+    session: Mapping[str, Any] | None, nearby: Sequence[Any] | None
+) -> Any:
+    """The session's own summary among the sessions read around its day."""
+    activity_id = None if session is None else session.get("activity_id")
+    return next((row for row in nearby or () if row.get("id") == activity_id), None)
 
 
 def _strength_plan(

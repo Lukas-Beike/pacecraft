@@ -117,6 +117,8 @@ class ComparableSessionsTests(unittest.TestCase):
         result = comparable_sessions(records, "act_2026-11-03")
         self.assertEqual(result["count"], 3)
         self.assertEqual(result["difference"]["rep_output_mean"], -8)
+        # The session report gates its personal verdicts on how many peers a median rests on.
+        self.assertEqual(result["median_peers"]["recovery_drop_mean"], 3)
 
     def test_doubtful_own_data_and_missing_streams_say_why(self) -> None:
         doubtful = _easy(330, 140)
