@@ -91,9 +91,10 @@ ratchet reports a function above Sonar's cognitive complexity 15 (rule
 `python:S3776`) as a `cognitive` finding named by function, not score. It
 also checks `public/*.js` for Sonar's cognitive complexity above 15
 (S3776) and nested ternaries (S3358) through `eslint-plugin-sonarjs`, using the
-clone's `node_modules` (`npm ci`). In the pre-push hook a clone without
-ESLint blocks the push (run `npm ci`); elsewhere, as in CI's `quality` job, it
-prints that it skipped the check. A `NOSONAR` comment on the reported line
+clone's `node_modules` (`npm ci`). In the pre-push hook and in
+`scripts/check_changed.py` a clone without ESLint fails the ratchet (run
+`npm ci`, #2832); elsewhere, as in CI's `quality` job, it prints that it
+skipped the check. A `NOSONAR` comment on the reported line
 suppresses a finding as it does in Sonar. Beside the ratchet, in the same
 export, `python scripts/regenerate_docs.py --check` reruns the generators of
 `docs/performance-methods/`, `docs/api-routes.md` and `docs/view-catalogue.md`
