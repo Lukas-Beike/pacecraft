@@ -1356,6 +1356,12 @@ def parser():
         "--print-image", action="store_true", help="print the image tag and exit"
     )
     result.add_argument(
+        "--build",
+        action="store_true",
+        help="build --image from this checkout when it is missing or stale, then "
+        "check it again (default: refuse a stale image)",
+    )
+    result.add_argument(
         "--browser-image",
         help="prepared Linux image matching scripts/browser_environment.json",
     )
@@ -1578,10 +1584,31 @@ def main(argv=None):
                 else:
                     with evidence.phase("prerequisites"):
                         evidence.update(stale_containers_removed=sweep_stale(processes))
-                        image = image_identity(processes, args.image)
-                        current = image_matches_source(
-                            processes, containers, image, ROOT
-                        )
+                        try:
+                            image = image_identity(processes, args.image)
+                            current = image_matches_source(
+                                processes, containers, image, ROOT
+                            )
+                        except RunnerError:
+                            if not args.build:
+                                raise
+                            current = False  # missing: --build builds it (#3106)
+                        if current is False and args.build:
+                            print(
+                                f"Building {args.image} from this checkout",
+                                file=sys.stderr,
+                                flush=True,
+                            )
+                            checked(
+                                processes,
+                                ["docker", "build", "-t", args.image, "."],
+                                timeout=None,
+                            )
+                            # The rebuilt image must match, or the run stops below.
+                            image = image_identity(processes, args.image)
+                            current = image_matches_source(
+                                processes, containers, image, ROOT
+                            )
                         evidence.update(
                             images={
                                 "application": image,

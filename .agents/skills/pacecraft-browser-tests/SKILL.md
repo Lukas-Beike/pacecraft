@@ -42,8 +42,9 @@ python scripts/run_browser_tests.py --project all --keep-going
   app fails without a server. CI refuses the switch, and without it a missing
   `E2E_APP_PASSWORD` still stops the run at once (#3026).
 - Rebuild the image (`docker build -t "$(python scripts/run_browser_tests.py --print-image)" .`)
-  after application changes; it is not rebuilt for you, and a run against an
-  image that differs from the source stops before any fixture starts.
+  after application changes, or pass `--build` for local runs: it builds a
+  missing or stale image, then checks it again (#3106). Without it, a run
+  against an image that differs from the source stops before any fixture starts.
 - Exit 0: passed. Non-zero: a test failed (reports under
   `test-results/browser-runs/`), the host ran out of resources, or the image is
   stale (no reports; rebuild as the message says); the output says which and how
