@@ -30,14 +30,16 @@ estimate. It never rewrites logged values and never falls back to a formula.
    R68). The fat share `p = FM / (FM + 10.4 kg)` follows Forbes' curve as used by
    R68, with FM from the latest skinfold body fat. Without skinfolds,
    `p = 0.75` (about 7,535 kcal/kg).
-3. **Stored energy per day:** `ρ × (trend_last − trend_first) / days` between the
-   window's first and last weigh-in.
+3. **Stored energy per day:** `ρ × slope`, the least-squares slope of the
+   window's own weigh-ins in kg/day. Unlike the trend's change, it has no
+   warm-up lag after the first weigh-in. The trend only supplies the mass for
+   `ρ`.
 4. **Adaptive TDEE:** mean intake of the window's complete days minus the stored
    energy per day. It is shown twice: with all complete days, and without
    flagged days.
 5. **Band (95 %):**
    `1.96 × √(SD²_intake / n + Σ(0.25 × flagged intake)² / n² + SE²_store)`.
-   `SE_store` comes from the weigh-ins' scatter around the trend.
+   `SE_store` is `ρ` times the slope's standard error.
 6. **Calibration factor `k`:** the least-squares slope of `TDEE − TEF` on the
    uncalibrated M11 activity over the windows, combined with the prior 1 ± 0.10
    as a precision-weighted mean, then clamped to 0.85–1.15. It stays 1 with

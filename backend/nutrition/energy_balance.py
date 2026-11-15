@@ -195,18 +195,24 @@ def _stored_energy(
 ) -> tuple[float, float]:
     """Stored energy per day over the weigh-ins, and its standard error.
 
-    The trend change between the first and last weigh-in at the energy density
-    of the body composition then; the error from the weigh-ins' scatter around
-    the trend.
+    The least-squares slope of the window's own weigh-ins, at the energy
+    density of the body composition at the last one; the error is the slope's
+    standard error. Unlike the trend's change it has no warm-up lag after the
+    first weigh-in (Gitar on #3123).
     """
     weighins = sorted(weights)
-    first, last = weighins[0], weighins[-1]
+    last = weighins[-1]
     density = energy_density(trend[last], _latest_body_fat(inputs, last))
-    span_days = (last - first).days
-    stored = density * (trend[last] - trend[first]) / span_days
-    residuals = [weights[d] - trend[d] for d in weighins]
-    noise = statistics.stdev(residuals) if len(residuals) > 1 else 0.0
-    return stored, density * noise * math.sqrt(2.0 / len(weighins)) / span_days
+    xs = [float((d - weighins[0]).days) for d in weighins]
+    ys = [weights[d] for d in weighins]
+    mean_x, mean_y = statistics.fmean(xs), statistics.fmean(ys)
+    sxx = sum((x - mean_x) ** 2 for x in xs)
+    slope = sum((x - mean_x) * (y - mean_y) for x, y in zip(xs, ys, strict=True)) / sxx
+    residuals = [
+        y - (mean_y + slope * (x - mean_x)) for x, y in zip(xs, ys, strict=True)
+    ]
+    slope_se = math.sqrt(sum(r * r for r in residuals) / max(1, len(xs) - 2) / sxx)
+    return density * slope, density * slope_se
 
 
 def _window(

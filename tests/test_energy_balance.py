@@ -110,6 +110,13 @@ class AdaptiveTdeeTests(unittest.TestCase):
         assert tdee is not None
         self.assertAlmostEqual(tdee.kcal, TRUE_TDEE, delta=60)
         self.assertEqual(balance.history_start(END), END - timedelta(days=104))
+        # Losing 500 kcal/day from the first weigh-in: the weight falls by
+        # 500 / 7,534.75 kg a day, which the weigh-ins' slope sees from day one,
+        # so even the window starting at the first weigh-in shows 2,600.
+        losing = balance.energy_windows(series(constant(2100.0), days=41), END)
+        for window in losing[-3:]:
+            assert window.adaptive_tdee is not None
+            self.assertAlmostEqual(window.adaptive_tdee.kcal, TRUE_TDEE, delta=1.0)
 
     def test_incomplete_days_are_dropped(self) -> None:
         day = balance.DayInputs(intake_kcal=800, entries=3, activity_kcal=600)

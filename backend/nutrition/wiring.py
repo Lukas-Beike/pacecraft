@@ -111,13 +111,8 @@ def build_nutrition(ctx: AppContext) -> NutritionServices:
         diary = NutritionRepository(utc_now)
 
         def sessions(db: Any, start: date, end: date) -> list[Any]:
-            return [
-                s
-                for s in read.activity_summaries(db)
-                if start.isoformat()
-                <= s.get("started_at_local", "")[:10]
-                <= end.isoformat()
-            ]
+            # Bounded by the athlete-local start date in the reader itself.
+            return list(read.activity_summaries(db, start=start, end=end))
 
         return EnergySources(
             diary=lambda db, s, e: diary.list_by_range(
