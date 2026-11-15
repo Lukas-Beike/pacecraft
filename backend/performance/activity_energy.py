@@ -93,18 +93,24 @@ def walking_cost_j_per_kg_m(grade: float) -> float:
 
 
 def graded_segments(
-    distance_m: Sequence[float], altitude_m: Sequence[float]
+    distance_m: Sequence[float | None], altitude_m: Sequence[float | None]
 ) -> list[tuple[float, float]]:
     """(run, grade) per segment of cumulative distance and altitude streams.
 
     Consecutive samples are merged until the run reaches ``GRADE_MIN_RUN_M``,
     so altitude noise over a few metres does not become a steep gradient.
-    Samples where either stream is missing or distance goes back are skipped.
+    A missing altitude repeats the last known one (0 before any), so a run
+    without altitude counts as flat instead of dropping out. Samples without
+    distance, or where distance goes back, start a new segment.
     """
     segments: list[tuple[float, float]] = []
     start: tuple[float, float] | None = None
-    for distance, altitude in zip(distance_m, altitude_m, strict=False):
-        if distance is None or altitude is None:
+    last_altitude = 0.0
+    for index, distance in enumerate(distance_m):
+        given = altitude_m[index] if index < len(altitude_m) else None
+        altitude = last_altitude if given is None else given
+        last_altitude = altitude
+        if distance is None:
             continue
         if start is None or distance < start[0]:
             start = (distance, altitude)

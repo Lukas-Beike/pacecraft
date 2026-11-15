@@ -29,8 +29,20 @@ class RunningAndWalkingCostTests(unittest.TestCase):
         distance = [0.0, 10.0, 20.0, None, 30.0, 40.0]
         altitude = [0.0, 1.0, 2.0, 5.0, 3.0, 4.0]
         self.assertEqual(
-            energy.graded_segments(distance, altitude),  # type: ignore[arg-type]
-            [(20.0, 0.1), (20.0, 0.1)],
+            energy.graded_segments(distance, altitude), [(20.0, 0.1), (20.0, 0.1)]
+        )
+
+    def test_a_run_without_altitude_counts_as_flat(self) -> None:
+        # A treadmill run: no altitude stream, so every segment is grade 0.
+        distance = [0.0, 25.0, 50.0, 75.0, 100.0]
+        segments = energy.graded_segments(distance, [])
+        self.assertEqual(segments, [(25.0, 0.0)] * 4)
+        # 70 kg x 100 m x 3.6 J/kg/m = 25,200 J = 6.023 kcal.
+        self.assertAlmostEqual(energy.running_net_kcal(70.0, segments), 6.023, places=3)
+        # Missing samples repeat the last altitude instead of dropping distance.
+        self.assertEqual(
+            energy.graded_segments(distance, [10.0, None, None, 12.0, 12.0]),
+            [(25.0, 0.0), (25.0, 0.0), (25.0, 0.08), (25.0, 0.0)],
         )
 
 
