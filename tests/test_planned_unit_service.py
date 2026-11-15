@@ -582,6 +582,78 @@ class PlannedUnitServiceTests(unittest.TestCase):
             self.service.move(str(self.id), "2026-09-22", archived["payload_hash"])
         self.assertEqual(404, caught.exception.status)
 
+    def test_a_deleted_sent_unit_leaves_its_copies_to_the_next_sync(self):
+        # #3027: the calendar names the copies before the Coach's delete path
+        # runs; the copies at Intervals.icu and Garmin go only with the next sync.
+        entity_id = str(self.service.create(self.workout())["id"])
+        repository = RemoteLinkRepository()
+        with self.manager.unit_of_work() as db:
+            repository.upsert(
+                db,
+                RemoteLink(
+                    RemoteEntityKind.PLANNED_UNIT,
+                    entity_id,
+                    "garmin",
+                    RemoteLinkState.SYNCED,
+                    remote_id="garmin-1",
+                ),
+            )
+            db.execute(
+                "UPDATE planned_units SET sync_state='synced', sync_dirty=0, "
+                "payload=json_set(payload, '$.remote_event_id', 'event-1') WHERE local_id=?",
+                (entity_id,),
+            )
+        listed = self.service.list(push_state=True)[0]
+        self.assertEqual(["garmin", "intervals"], listed["remote_copies"])
+
+        result = self.service.update(entity_id, {"action": "delete"})
+
+        planned, history, _revision = self.state()
+        self.assertEqual({"status": "deleted", "local_id": entity_id}, result)
+        self.assertTrue(json.loads(planned[0]["payload"])["local_deleted"])
+        self.assertEqual("delete", history[-1]["action"])
+        with self.manager.reader() as db:
+            orphans, _count = find_intervals_orphans(db, date(2026, 9, 20))
+            kept = sorted(
+                link.provider
+                for link in repository.list_for_entity(
+                    db, RemoteEntityKind.PLANNED_UNIT, entity_id
+                )
+            )
+        self.assertEqual([entity_id], [orphan.local_id for orphan in orphans])
+        self.assertEqual(["garmin"], kept)
+        undo = HistoryUndoService(
+            self.manager,
+            ChangeHistoryService(self.manager, None),
+            None,
+            None,
+            None,
+            self.service,
+            None,
+            PlanningRevisionService(PlanningStateRepository(), lambda: NOW),
+            profile_mutation_coordinator=threading.RLock(),
+        )
+        with self.manager.reader() as db:
+            delete_id = db.execute(
+                "SELECT id FROM change_history WHERE action='delete'"
+            ).fetchone()["id"]
+        undo.apply(undo.preview(delete_id)["proposal"]["payload"])
+        restored = self.service.list(push_state=True)[0]
+        # Undo brings the content back unchanged; like any local edit it waits for a sync.
+        self.assertEqual(
+            {key: listed[key] for key in ("name", "date", "remote_event_id")},
+            {key: restored[key] for key in ("name", "date", "remote_event_id")},
+        )
+        self.assertEqual(["garmin", "intervals"], restored["remote_copies"])
+        # A past unit names no copy: the sync leaves past events alone.
+        with self.manager.unit_of_work() as db:
+            db.execute(
+                "UPDATE planned_units SET payload=json_set(payload, '$.date', '2026-09-19') "
+                "WHERE local_id=?",
+                (entity_id,),
+            )
+        self.assertEqual([], self.service.list(push_state=True)[0]["remote_copies"])
+
     def test_unknown_start_stays_unknown_across_date_move_and_undo(self):
         self.service.create(self.workout())
         self.service.update(str(self.id), {"date": "2026-09-23"})

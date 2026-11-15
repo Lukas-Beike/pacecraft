@@ -12,15 +12,17 @@ from backend.http_api.route_table import Access, Route, RouteRequest
 
 
 class PlannedUnitFocusPostRoutes:
-    """Set the focus fields or the day of one unit, or the Garmin exercise of one exercise."""
+    """Set the focus fields or the day of one unit, delete it, or pick a Garmin exercise."""
 
     def __init__(
         self,
         planned_unit_service: Callable[[], Any],
         database_manager: Callable[[], Any],
+        training_changes: Callable[[], Any] | None = None,
     ):
         self._planned_unit_service = planned_unit_service
         self._database_manager = database_manager
+        self._training_changes = training_changes
 
     def routes(self) -> list[Route]:
         return [
@@ -42,7 +44,66 @@ class PlannedUnitFocusPostRoutes:
                 Access.SESSION_CSRF,
                 self._exercise,
             ),
+            Route(
+                "POST",
+                "/api/planned-units/{id}/delete",
+                Access.SESSION_CSRF,
+                self._delete,
+            ),
         ]
+
+    def _delete(self, handler: Any, request: RouteRequest) -> None:
+        """Delete a planned unit from the calendar without a remote write (#3027).
+
+        Request: path `{id}`, the local unit id; JSON body `{"confirmed": true,
+        "expected_payload_hash": string}`. The hash is the unit's content hash
+        from the read the athlete confirmed on. The delete is the Coach's local
+        delete: the unit stays as a tracked tombstone, and copies at
+        Intervals.icu or Garmin are removed only by the athlete's next explicit
+        sync. It runs as one Coach change batch, so the plan bounds and the
+        planning revision follow as for a Coach delete.
+
+        Response: 200 `{"status": "deleted", "local_id", "change"}`; `change` is
+        the undo reference.
+
+        Errors: 409 `confirmation_required` "Das Löschen muss bestätigt werden."
+        unless `confirmed` is `true`; 409 `planning_revision_conflict` "Die Einheit
+        wurde inzwischen geändert." without `expected_payload_hash`; 409
+        `payload_hash_conflict` "Eine Planänderung ist inzwischen veraltet." for an
+        outdated hash or an id that names no unit (also a malformed one).
+        """
+        payload = _read_object(handler)
+        if payload.get("confirmed") is not True:
+            raise AppError(
+                409,
+                "Das Löschen muss bestätigt werden.",
+                reason="confirmation_required",
+            )
+        expected_hash = payload.get("expected_payload_hash")
+        if not isinstance(expected_hash, str) or not expected_hash.strip():
+            raise AppError(
+                409,
+                "Die Einheit wurde inzwischen geändert.",
+                reason="planning_revision_conflict",
+            )
+        assert self._training_changes is not None
+        change = {
+            "action": "delete",
+            "local_id": request.params["id"],
+            "expected_payload_hash": expected_hash,
+        }
+        with change_history.collect_changes() as changes:
+            applied = self._training_changes().apply({"changes": [change]})
+        result = applied["changes"][0]
+        deleted = [item for item in changes if item["entity_type"] == "planned_unit"]
+        handler.send_json(
+            200,
+            {
+                "status": result.get("status"),
+                "local_id": result.get("local_id"),
+                **({"change": deleted[-1]} if deleted else {}),
+            },
+        )
 
     def _date(self, handler: Any, request: RouteRequest) -> None:
         """Move a planned unit to another day without a remote write.

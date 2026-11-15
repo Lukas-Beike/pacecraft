@@ -703,6 +703,8 @@ function completedSessionIds(calendar) {
 const plannedFocusStatuses = new Map();
 // The receipt of a moved unit by card key ({ text, change, from }); the open card shows it after the re-render.
 const plannedMoveReceipts = new Map();
+// The receipt of a deleted unit by its day (#3027): the day shows it once the card is gone.
+const plannedDeleteReceipts = new Map();
 const MOVE_DAY_FORMAT = new Intl.DateTimeFormat("de-DE", { weekday: "short", day: "2-digit", month: "2-digit" });
 const MOVE_WEEKDAY_FORMAT = new Intl.DateTimeFormat("de-DE", { weekday: "short" });
 
@@ -1338,7 +1340,46 @@ function plannedUnitActions(entry, dateKey, todayKey) {
   days.append(later, picker);
   const receipt = plannedMoveReceipts.get(key);
   if (receipt) status.append(receipt.text, ...(receipt.change?.id ? plannedMoveUndo(key, receipt, status) : []));
-  return [h("div", "planned-activity-actions", toggle, coach), days, status];
+  const [remove, confirm] = plannedDeleteControls(entry, dateKey, key);
+  return [h("div", "planned-activity-actions", toggle, coach, remove), confirm, days, status];
+}
+
+// "Löschen" asks once inside the card (#3027); a copy at a provider goes with the next explicit sync.
+function plannedDeleteControls(entry, dateKey, key) {
+  const id = `planned-delete-${String(entry.local_id).replace(/[^\w-]/g, "")}`;
+  const copies = (Array.isArray(entry.remote_copies) ? entry.remote_copies : []).map((provider) => state.data?.provider_labels?.[provider]).filter(Boolean);
+  const remove = h("button", { type: "button", className: "secondary-button danger-button" }, "Löschen");
+  const confirmDelete = h("button", { type: "button", className: "secondary-button danger-button", "aria-describedby": copies.length ? `${id}-note` : null }, "Löschen");
+  const cancel = h("button", { type: "button", className: "secondary-button" }, "Abbrechen");
+  const failure = h("p", { className: "planned-delete-note", role: "status" });
+  const confirm = h("div", { className: "planned-delete-confirm", role: "group", "aria-labelledby": `${id}-question`, hidden: true },
+    h("p", { id: `${id}-question` }, "Einheit löschen?"),
+    h("div", "planned-activity-actions", confirmDelete, cancel),
+    copies.length ? h("p", { className: "planned-delete-note", id: `${id}-note` }, `${copies.join(", ")}: weg beim nächsten Sync`) : null,
+    failure);
+  const name = entry.name || "Trainingseinheit";
+  remove.addEventListener("click", () => { confirm.hidden = false; remove.hidden = true; confirmDelete.focus(); });
+  cancel.addEventListener("click", () => { confirm.hidden = true; remove.hidden = false; remove.focus(); });
+  confirmDelete.addEventListener("click", async () => {
+    confirmDelete.disabled = true;
+    cancel.disabled = true;
+    try {
+      const result = await api(`/api/planned-units/${encodeURIComponent(entry.local_id)}/delete`, { method: "POST", body: JSON.stringify({ confirmed: true, expected_payload_hash: entry.payload_hash }) });
+      plannedDeleteReceipts.set(String(entry.local_id), { day: dateKey, text: `Gelöscht: ${name}`, change: result.change, from: dateKey });
+      await globalThis.load?.();
+      announcePlanChange(`Gelöscht: ${name}`);
+    } catch (error) {
+      confirmDelete.disabled = false;
+      cancel.disabled = false;
+      failure.textContent = error.message;
+      // A changed unit reloads, so the card names the reason and the next try sends the current hash.
+      if (error.status === 409) {
+        plannedMoveReceipts.set(key, { text: error.message });
+        await globalThis.load?.();
+      }
+    }
+  });
+  return [remove, confirm];
 }
 
 // "Mit dem Coach besprechen" (#2193) opens the Coach with the unit named by date, sport, start, duration and
@@ -1356,14 +1397,14 @@ function plannedDiscussButton(entry, dateKey) {
   return button;
 }
 
-// "Rückgängig" puts the unit back on its earlier day and shows that week again.
-function plannedMoveUndo(key, receipt, status) {
+// "Rückgängig" puts the unit back on its earlier day, or back at all, and shows that week again.
+function plannedMoveUndo(key, receipt, status, receipts = plannedMoveReceipts) {
   const undo = h("button", { type: "button", className: "message-undo" }, "Rückgängig");
   undo.addEventListener("click", async () => {
     undo.disabled = true;
     try {
       await api("/api/change-history/undo", { method: "POST", body: JSON.stringify({ change_id: receipt.change.id, expected_current_hash: receipt.change.after_hash }) });
-      plannedMoveReceipts.set(key, { text: "Zurückgenommen." });
+      receipts.set(key, { day: receipt.day, text: "Zurückgenommen." });
       showPlannedDay(receipt.from);
       await globalThis.load?.();
     } catch (error) {
@@ -1964,7 +2005,12 @@ function renderPlannedDay(view, dateKey, weekHasPlan) {
   const noteContext = plannedNoteContext(dayContext, dayEvents);
   const notes = plannedDayNotes(noteContext, state.data?.competitions, dateKey);
   const emptyText = dateKey < todayKey ? "Keine Aktivität" : "Keine Einheit geplant";
-  const content = h("div", "planned-day-content", heading, notes.childElementCount ? notes : null,
+  const deleted = [...plannedDeleteReceipts].filter(([, receipt]) => receipt.day === dateKey).map(([id, receipt]) => {
+    const status = h("p", { className: "planned-move-status", role: "status" }, receipt.text);
+    if (receipt.change?.id) status.append(...plannedMoveUndo(id, receipt, status, plannedDeleteReceipts));
+    return status;
+  });
+  const content = h("div", "planned-day-content", heading, ...deleted, notes.childElementCount ? notes : null,
     dayEvents.length ? plannedEventBand(dayEvents) : null,
     dayEntries.length ? null : h("p", "planned-day-empty", emptyText));
   for (const group of plannedEntryGroups(dayEntries)) {
@@ -2282,6 +2328,11 @@ function loadOlderSessions(calendar, shownStartKey, configuredStartKey) {
   }, () => { if (generation === olderSessions.generation) olderSessions.loading = false; });
 }
 
+// A delete receipt stays while its week is shown.
+function dropDeleteReceiptsOutsideWeek() {
+  for (const [id, receipt] of plannedDeleteReceipts) if (planWeekStart(receipt.day) !== selectedWeekKey) plannedDeleteReceipts.delete(id);
+}
+
 function renderPlanned(trainingCalendar) {
   const root = $("#plannedCalendar");
   if (!root) return;
@@ -2302,6 +2353,7 @@ function renderPlanned(trainingCalendar) {
   const lastDateKey = addDateKey(lastWeekKey, 6);
   plannedLastDateKey = lastDateKey;
   keepPlannedSelection(todayKey, lastDateKey);
+  dropDeleteReceiptsOutsideWeek();
   const snapshot = JSON.stringify([calendar, todayKey, selectedWeekKey, calendarView, calendarSport, selectedDayKey, display, state.data?.daily_planning_context, state.data?.planning_compliance, state.data?.competitions, state.data?.weather, (state.data?.external_calendar?.events || []).map((event) => [event?.uid, event?.start_local, event?.impact, event?.name]), state.data?.external_calendar?.undecided_upcoming]);
   if (snapshot === plannedRenderSnapshot && root.childElementCount) {
     if (state.plannedTodayFocusPending) requestAnimationFrame(() => focusPlannedToday());

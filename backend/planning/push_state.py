@@ -369,6 +369,20 @@ def attach_push_state(
             )
         payload["payload_hash"] = digest
         payload["push_pending"] = pending
+        # Providers holding a copy the next sync removes after a calendar delete
+        # (#3027); like the leftover rules, only for a unit from today on.
+        upcoming = str(payload.get("date") or "")[:10] >= today.isoformat()
+        payload["remote_copies"] = sorted(
+            provider
+            for provider, present in (
+                (ProviderId.GARMIN.value, str(row["local_id"]) in baselines),
+                (
+                    ProviderId.INTERVALS.value,
+                    bool(str(payload.get("remote_event_id") or "").strip()),
+                ),
+            )
+            if present and upcoming
+        )
         cleanup = _unit_cleanup(lists, pending, payload, today)
         if cleanup:
             payload["push_cleanup"] = cleanup

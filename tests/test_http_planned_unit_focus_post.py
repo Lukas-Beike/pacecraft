@@ -99,6 +99,56 @@ class PlannedUnitFocusPostRoutesTests(unittest.TestCase):
                 method="POST",
             )
 
+    def test_delete_route_needs_the_confirmation_and_returns_the_undo_reference(
+        self,
+    ) -> None:
+        # #3027: a calendar delete is destructive, so the server refuses it unconfirmed.
+        path = f"/api/planned-units/{LOCAL_ID}/delete"
+        for body in (
+            {"expected_payload_hash": "abc"},
+            {"confirmed": "true", "expected_payload_hash": "abc"},
+        ):
+            with self.subTest(body=body), self.assertRaises(AppError) as raised:
+                dispatch_route(self.routes, self.handler(body), path, method="POST")
+            self.assertEqual(
+                (409, "confirmation_required"),
+                (raised.exception.status, raised.exception.reason),
+            )
+        changes = Mock()
+        routes = PlannedUnitFocusPostRoutes(
+            lambda: self.service, lambda: MagicMock(), lambda: changes
+        )
+        with self.assertRaises(AppError) as raised:
+            dispatch_route(
+                routes, self.handler({"confirmed": True}), path, method="POST"
+            )
+        self.assertEqual("planning_revision_conflict", raised.exception.reason)
+        changes.apply.assert_not_called()
+        change = {"id": "c2", "entity_type": "planned_unit", "after_hash": "h"}
+
+        def apply(_batch):
+            change_history._collected_changes.get().append(change)
+            return {"changes": [{"local_id": LOCAL_ID, "status": "deleted"}]}
+
+        changes.apply.side_effect = apply
+        handler = self.handler({"confirmed": True, "expected_payload_hash": "abc"})
+        self.assertTrue(dispatch_route(routes, handler, path, method="POST"))
+        # The Coach's change batch runs the delete, so plan bounds and revision follow.
+        changes.apply.assert_called_once_with(
+            {
+                "changes": [
+                    {
+                        "action": "delete",
+                        "local_id": LOCAL_ID,
+                        "expected_payload_hash": "abc",
+                    }
+                ]
+            }
+        )
+        handler.send_json.assert_called_once_with(
+            200, {"status": "deleted", "local_id": LOCAL_ID, "change": change}
+        )
+
     def test_garmin_exercise_route_passes_the_pick_to_the_service(self) -> None:
         self.service.assign_garmin_exercise.return_value = {"status": "local"}
         handler = self.handler(
