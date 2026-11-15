@@ -10,8 +10,9 @@ that adds a file at the repository root is refused unless --allow-root names it.
 A rebase conflict only in generated text (scripts/regenerate_docs.py) takes the
 upstream side, regenerates and continues; any other conflict stops. Changed
 e2e/ and public/ scripts must pass `node --check` before the push (#3031).
-A rebase that changes package-lock.json runs `npm ci --ignore-scripts` before
-anything else, so the push hooks see a current node_modules (#3133).
+After the rebase, a node_modules that does not match package-lock.json (as
+tests/frontend-harness.cjs checks it) gets `npm ci --ignore-scripts` before
+anything else, so the push hooks see a current install (#3133).
 
 Exit 0: in sync (and pushed); 1: refused, rebase conflict (left in progress:
 resolve it or run `git rebase --abort`) or invalid subjects; 2: bad input,
@@ -21,6 +22,7 @@ missing SonarQube CLI or a failed git call.
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import re
 import shutil
@@ -192,23 +194,42 @@ def unparsable(onto: str) -> list[str]:
     ]
 
 
-def lock_blob() -> str:
-    """HEAD's committed package-lock.json blob, or "" without one."""
-    try:
-        return git("rev-parse", "--verify", "--quiet", f"HEAD:{LOCK}").strip()
-    except CliError:
-        return ""
+def stale_install(root: Path) -> list[str]:
+    """Locked packages node_modules lacks or holds at another version, judged
+    as tests/frontend-harness.cjs judges them (#2690); an optional package for
+    another platform may be absent."""
+
+    def packages(name: str) -> dict:
+        try:
+            data = json.loads((root / name).read_text(encoding="utf-8"))
+        except OSError, ValueError:
+            return {}
+        found = data.get("packages") if isinstance(data, dict) else None
+        return found if isinstance(found, dict) else {}
+
+    locked, installed = packages(LOCK), packages("node_modules/.package-lock.json")
+    return [
+        key
+        for key, entry in locked.items()
+        if key.startswith("node_modules/")
+        and isinstance(entry, dict)
+        and (installed.get(key) or {}).get("version") != entry.get("version")
+        and (installed.get(key) or not entry.get("optional"))
+    ]
 
 
 def refreshed_node_modules() -> bool:
-    """`npm ci --ignore-scripts` after a rebase changed the lock file: a stale
-    node_modules would only fail later, in the pre-push hook (#3133)."""
-    print(f"{LOCK} changed in the rebase: npm ci --ignore-scripts")
+    """`npm ci --ignore-scripts` when node_modules does not match the lock file,
+    as after a rebase onto a new dependency, also when that rebase finished in
+    an earlier run: the pre-push hook would only fail later (#3133)."""
+    root = Path(git("rev-parse", "--show-toplevel").strip())
+    if not stale_install(root):
+        return True
+    print(f"node_modules does not match {LOCK}: npm ci --ignore-scripts")
     npm = shutil.which("npm")
     if npm is None:
         print("refused: npm not found; run npm ci --ignore-scripts")
         return False
-    root = Path(git("rev-parse", "--show-toplevel").strip())
     code = subprocess.run([npm, "ci", "--ignore-scripts"], cwd=root, check=False)
     if code.returncode:
         print(f"refused: npm ci failed (exit {code.returncode}); run it again")
@@ -261,11 +282,10 @@ def sync(onto: str, push: bool, allowed: frozenset[str] = frozenset()) -> int:
         leased = git("rev-parse", "--verify", "--quiet", f"origin/{branch}").strip()
     except CliError:
         leased = ""  # never pushed: the push only succeeds while it stays absent
-    lock = lock_blob()
     fetch()
     if not rebased(onto):
         return 1
-    if lock_blob() != lock and not refreshed_node_modules():
+    if not refreshed_node_modules():
         return 1
     if outgoing_problems(onto, push, allowed):
         return 1
