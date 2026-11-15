@@ -25,7 +25,9 @@ docs_pid=$!
   --module test_layering_contracts --module test_server_composition_architecture \
   --module test_server_module_architecture --module test_server_ownership_architecture) >"$guards" 2>&1 &
 guards_pid=$!
-(cd "$tree" && PACECRAFT_NODE_MODULES="$root/node_modules" python tools/quality_baseline.py)
+# The export has no .git either: the clone gives the file modes for the
+# executable-bit rules that Ruff cannot read on Windows (#3091).
+(cd "$tree" && PACECRAFT_NODE_MODULES="$root/node_modules" PACECRAFT_GIT_ROOT="$root" python tools/quality_baseline.py)
 status=$?
 wait "$docs_pid"
 docs_status=$?

@@ -105,7 +105,12 @@ on Windows) on a clean export of HEAD; new findings block the push. A Python
 file `ruff format --check` would rewrite is a `format` finding (#3061): the
 files unformatted when the check arrived are baseline debt, and a push that
 leaves a formatted file unformatted is new. The check never rewrites a file;
-format the files you change with `ruff format <files>`. The same
+format the files you change with `ruff format <files>`. Ruff's
+executable-bit rules (`EXE001` shebang on a non-executable file, `EXE002`
+executable file without a shebang) need a file mode Windows lacks, so there
+the ratchet reports them itself from the git modes: the index in a working
+tree, the clone's HEAD (`PACECRAFT_GIT_ROOT`) in the pre-push export (#3091).
+Make a script executable with `git update-index --chmod=+x <file>`. The same
 ratchet reports a function above Sonar's cognitive complexity 15 (rule
 `python:S3776`) as a `cognitive` finding named by function, not score. It
 reports a selector list repeated in the same at-rule context of `public/*.css`
