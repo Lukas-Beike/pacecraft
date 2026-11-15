@@ -74,22 +74,19 @@ CANONICAL_TABLES = (
 )
 # Columns holding generated session ids, which differ on every run.
 GENERATED_IDS = frozenset({"activity_id", "merged_into", "merged_into_retained"})
-# Row digests per table after the fixture ingest and after a re-projection at
-# bumped mapper versions, taken on the code before the helpers were shared.
+# The mapper version columns, pinned by their own assertion so that a version bump
+# alone leaves the row digests unchanged (#3037).
+VERSION_COLUMNS = frozenset({"mapped_version", "mapper_version"})
+# Row digests per table, without the version columns, after the fixture ingest and
+# after a re-projection at bumped mapper versions, which rewrites the same rows.
 PINNED_ROW_DIGESTS = [
     {
-        "provider_records": "93ccd5de06c27b96bdfbd3d45f7e76859981cc9cf3998fe201a7feaa086565a5",
-        "activity_records": "b3490140813867886fe9a5c127151fd651b6c1c6186e86504ec4e99eae056a0c",
+        "provider_records": "1d119af9e8fd1ace46466dbd05a4171200d280be37cc7f58a37f07f854de1a4a",
+        "activity_records": "b258dc0c5a085d37f63d6b9c9935f7deec2ed7b0f81b2d46d8faa5578400e158",
         "activity_sessions": "95a5fcc0408cfc6f43b3f624f801dfc383ff14196b98eac887eb3f00743c06c3",
-        "observations": "32163b97854c74c72a3d8994570c0c8cdcb9d2aac26848c682b62d88f2b384b9",
+        "observations": "ff30293104412bd781cc927af4e27b4f28b65083841e46096a24b27e9d56fb4c",
     },
-    {
-        "provider_records": "eca9944431bd410c8a1b8ad14b6b5df3ee4a30d69bbaa35e24f2523eb9e0ec88",
-        "activity_records": "b3490140813867886fe9a5c127151fd651b6c1c6186e86504ec4e99eae056a0c",
-        "activity_sessions": "95a5fcc0408cfc6f43b3f624f801dfc383ff14196b98eac887eb3f00743c06c3",
-        "observations": "32163b97854c74c72a3d8994570c0c8cdcb9d2aac26848c682b62d88f2b384b9",
-    },
-]
+] * 2
 FIXTURES = Path(__file__).resolve().parent / "fixtures" / "providers"
 SECRET_ID = "secret-activity-42"
 INTERVALS = ProviderId.INTERVALS.value
@@ -1389,22 +1386,62 @@ class ReprojectionTests(BackfillFixture):
         # #2121: the shared store row helpers write exactly these rows.
         backfill = self.ingest_fixture_records()
         digests = [self.table_digest()]
-        bumped = {
-            key: value + 1 for key, value in canonical_plans._MAPPER_VERSIONS.items()
-        }
+        current = dict(canonical_plans._MAPPER_VERSIONS)
+        ingested = self.stored_versions()
+        # The ingest writes every row at the current version of its record kind.
+        self.assertEqual(ingested, {key: {current[key[1:]]} for key in ingested})
+        bumped = {key: value + 1 for key, value in current.items()}
         with patch.dict(canonical_plans._MAPPER_VERSIONS, bumped):
             self.run_to_completion(backfill)
         digests.append(self.table_digest())
+        # The re-projection marks each raw record with the bumped version; the
+        # canonical rows it leaves unchanged keep theirs.
+        self.assertEqual(
+            self.stored_versions(),
+            {
+                key: {(bumped if key[0] == "provider_records" else current)[key[1:]]}
+                for key in ingested
+            },
+        )
         self.assertEqual(digests, PINNED_ROW_DIGESTS)
 
+    def stored_versions(self) -> dict[tuple[str, str, str], set[int]]:
+        """(table, provider, record kind) -> the versions its rows carry.
+
+        Observations name no record kind: Garmin's come from health records and
+        Intervals.icu's from wellness records, whose version the athlete shares.
+        """
+        kinds = {GARMIN: HEALTH_KIND, INTERVALS: "wellness"}
+        found: dict[tuple[str, str, str], set[int]] = {}
+        for row in self.rows(
+            "SELECT provider, record_kind, mapped_version FROM provider_records"
+        ):
+            key = ("provider_records", row["provider"], row["record_kind"])
+            found.setdefault(key, set()).add(row["mapped_version"])
+        for table in ("activity_records", "observations"):
+            for row in self.rows(f"SELECT provider, mapper_version FROM {table}"):
+                kind = (
+                    ACTIVITY_KIND
+                    if table == "activity_records"
+                    else kinds[row["provider"]]
+                )
+                found.setdefault((table, row["provider"], kind), set()).add(
+                    row["mapper_version"]
+                )
+        return found
+
     def table_digest(self) -> dict[str, str]:
-        """SHA-256 per table of its rows without generated session ids."""
+        """SHA-256 per table of its rows without generated ids and versions."""
         return {
             table: hashlib.sha256(
                 json.dumps(
                     sorted(
                         json.dumps(
-                            {k: v for k, v in row.items() if k not in GENERATED_IDS},
+                            {
+                                k: v
+                                for k, v in row.items()
+                                if k not in GENERATED_IDS | VERSION_COLUMNS
+                            },
                             sort_keys=True,
                         )
                         for row in self.rows(f"SELECT * FROM {table}")
