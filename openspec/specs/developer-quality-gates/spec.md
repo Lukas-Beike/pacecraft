@@ -79,11 +79,13 @@ Evidence: `scripts/check_push_secrets.py`; `docs/development.md` (secret checks 
 
 #### Scenario: ESLint not installed
 - **WHEN** `node_modules` has no ESLint, as in CI's `quality` job
-- **THEN** the JavaScript step prints that it was skipped and baseline entries of the ESLint tool are ignored, except under the pre-push hook (`PACECRAFT_NODE_MODULES` set), where it fails and asks for `npm ci`
+- **THEN** the JavaScript step prints that it was skipped and baseline entries of the ESLint tool are ignored, except under the pre-push hook and `scripts/check_changed.py` (`PACECRAFT_NODE_MODULES` set), where it fails and asks for `npm ci`
 
 Evidence:
 - `pyproject.toml`
+- `scripts/check_changed.py` (`quality_env`)
 - `tests/fixtures/quality_baseline.json`
+- `tests/test_check_changed.py::CheckChangedTests.test_runs_the_steps_in_order_with_the_base`
 - `tests/test_quality_baseline.py::CognitiveComplexityTests.test_existing_over_limit_function_is_baseline_debt_and_new_ones_fail`
 - `tests/test_quality_baseline.py::CognitiveComplexityTests.test_limit_is_exclusive_at_fifteen`
 - `tests/test_quality_baseline.py::QualityBaselineTests.test_alignment_records_only_the_pinned_tool_versions`

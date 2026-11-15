@@ -76,9 +76,19 @@ class CheckChangedTests(unittest.TestCase):
         self.assertEqual(runner.calls[1][1:3], ["-m", "compileall"])
         # #2832: only the ratchet reads this checkout's node_modules, as the
         # pre-push hook does, so a missing ESLint fails here, not at the push.
+        envs = dict(zip(steps, runner.envs, strict=True))
         modules = str(check_changed.ROOT / "node_modules")
-        self.assertEqual(runner.envs[2]["PACECRAFT_NODE_MODULES"], modules)
-        self.assertEqual(runner.envs[:2], [None, None])
+        with mock.patch.dict("os.environ", {"PACECRAFT_NODE_MODULES": ""}):
+            quality = check_changed.quality_env()
+        self.assertEqual(quality["PACECRAFT_NODE_MODULES"], modules)
+        self.assertEqual(quality.get("PATH"), check_changed.os.environ.get("PATH"))
+        self.assertIsNotNone(envs["quality"])
+        self.assertEqual((envs["tests"], envs["compile"]), (None, None))
+        # A shared install someone already points at is kept.
+        with mock.patch.dict("os.environ", {"PACECRAFT_NODE_MODULES": "shared"}):
+            self.assertEqual(
+                check_changed.quality_env()["PACECRAFT_NODE_MODULES"], "shared"
+            )
 
     def test_a_failure_does_not_stop_later_steps_and_shows_a_tail(self):
         runner = FakeRun(failing=("compileall",))

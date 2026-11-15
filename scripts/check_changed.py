@@ -33,13 +33,13 @@ class MissingTool(Exception):
     """A step's program is not installed."""
 
 
-def step_env(name: str) -> dict[str, str] | None:
-    """The quality step reads this checkout's node_modules, as the pre-push hook
-    does, so a missing ESLint fails here with the npm ci hint instead of at the
-    push (#2832). CI runs the ratchet without it and still skips ESLint."""
-    if name != "quality":
-        return None
-    return {**os.environ, "PACECRAFT_NODE_MODULES": str(ROOT / "node_modules")}
+def quality_env() -> dict[str, str]:
+    """The ratchet reads node_modules from PACECRAFT_NODE_MODULES, as in the
+    pre-push hook, so a missing ESLint fails here with the npm ci hint instead
+    of at the push (#2832); a value already set is kept. CI runs the ratchet
+    without it and still skips ESLint."""
+    modules = os.environ.get("PACECRAFT_NODE_MODULES") or str(ROOT / "node_modules")
+    return {**os.environ, "PACECRAFT_NODE_MODULES": modules}
 
 
 def run_step(
@@ -86,12 +86,17 @@ def failure_report(name: str, output: str) -> list[str]:
     return [*report, f"full output: {log.name}"]
 
 
-def run_steps(steps: list[tuple[str, list[str]]]) -> int:
-    """Run all steps and print the report; 0 passed, 1 failed, 2 tool missing."""
+def run_steps(
+    steps: list[tuple[str, list[str]]], envs: dict[str, dict[str, str]] | None = None
+) -> int:
+    """Run all steps and print the report; 0 passed, 1 failed, 2 tool missing.
+
+    `envs` gives a step by name its own environment; the others inherit ours.
+    """
     failed = missing = False
     for name, argv in steps:
         try:
-            passed, seconds, output = run_step(argv, step_env(name))
+            passed, seconds, output = run_step(argv, (envs or {}).get(name))
         except MissingTool as exc:
             print(f"FAILED {name} (0.0s)\n  {exc}")
             missing = True
@@ -147,7 +152,7 @@ def main(argv: list[str] | None = None) -> int:
     except CliError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
-    return run_steps(build_steps(args.base, js))
+    return run_steps(build_steps(args.base, js), {"quality": quality_env()})
 
 
 if __name__ == "__main__":
