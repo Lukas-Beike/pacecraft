@@ -58,7 +58,7 @@ def thread(resolved, path="backend/a.py", line=4, body="Please fix", author="git
 
 
 class PrStateTests(unittest.TestCase):
-    def run_script(self, pr, threads=(), out=None):
+    def run_script(self, pr, threads=(), out=None, moved=()):
         graphql = {
             "data": {
                 "repository": {
@@ -75,6 +75,11 @@ class PrStateTests(unittest.TestCase):
 
         def fake(argv, **_kwargs):
             calls.append(argv)
+            if argv[1:3] == ["pr", "diff"]:  # this PR's files
+                return subprocess.CompletedProcess(argv, 0, "scripts/a.py\n", "")
+            if argv[1] == "api" and "/compare/" in argv[2]:
+                compared = {"behind": len(moved), "files": list(moved)}
+                return subprocess.CompletedProcess(argv, 0, json.dumps(compared), "")
             data = {
                 "pr": pr,
                 "repo": {"owner": {"login": "o"}, "name": "r"},
@@ -179,6 +184,28 @@ class PrStateTests(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertIn("MERGED", out)
         self.assertEqual(self.run_script(pull(state="CLOSED"))[0], 1)
+
+    def test_base_changes_in_this_prs_files_are_named_and_block(self):
+        # #2866: develop moved in a file of this PR since its head branched off.
+        moved = "develop moved in this PR's files since its head branched off"
+        code, out, _, calls = self.run_script(pull(), moved=("scripts/a.py", "x.md"))
+        self.assertEqual(code, 1)
+        self.assertIn(f"{moved}: scripts/a.py", out)
+        self.assertNotIn("x.md", out)
+        compare = [c for c in calls if c[1] == "api" and "/compare/" in c[2]]
+        self.assertEqual(
+            compare[0][2], "repos/{owner}/{repo}/compare/abcdef0123456789...develop"
+        )
+        # After a rebase, or when develop moved only elsewhere: none, still open.
+        code, out, _, _ = self.run_script(pull(), moved=("x.md",))
+        self.assertEqual(code, 3)
+        self.assertIn(f"{moved}: none", out)
+        # A merged PR is not compared.
+        _, out, _, calls = self.run_script(
+            pull(state="MERGED"), moved=("scripts/a.py",)
+        )
+        self.assertIn("not checked (MERGED)", out)
+        self.assertFalse([c for c in calls if c[1:3] == ["pr", "diff"]])
 
     def test_failed_gh_call_exits_2(self):
         def failing(argv, **_kwargs):
