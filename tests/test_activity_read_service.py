@@ -463,7 +463,11 @@ class ActivityReadServiceTests(unittest.TestCase):
         with self.manager.unit_of_work() as db:
             db.execute(
                 "UPDATE activity_records SET details = ? WHERE provider_activity_id = 'new'",
-                (json.dumps({"avg_temp_c": 32.0, "min_temp_c": 31.0, "max_temp_c": 34.0}),),
+                (
+                    json.dumps(
+                        {"avg_temp_c": 32.0, "min_temp_c": 31.0, "max_temp_c": 34.0}
+                    ),
+                ),
             )
         service = self.detail_service(snapshot)
 

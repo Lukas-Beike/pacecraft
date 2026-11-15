@@ -217,8 +217,7 @@ class TrainingProfileSelectionService:
             def build() -> list[dict[str, Any]]:
                 curves = curve_reader.curves(db, session_ids)
                 records = [
-                    _curve_record(summary, curves, temperatures)
-                    for summary in sessions
+                    _curve_record(summary, curves, temperatures) for summary in sessions
                 ]
                 records.sort(key=lambda row: row["date"], reverse=True)
                 return records

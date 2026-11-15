@@ -966,9 +966,7 @@ class SummaryMetricTests(unittest.TestCase):
         json.dumps(doc, allow_nan=False)
 
     def test_covered_intervals_extremes_stay_as_alternatives(self) -> None:
-        extra = extra_metrics(
-            {"elevation_loss_m": 400.0}, RecordingOrigin.GARMIN
-        )
+        extra = extra_metrics({"elevation_loss_m": 400.0}, RecordingOrigin.GARMIN)
 
         doc = build(
             [

@@ -493,7 +493,9 @@ class ProfileSelectionTests(unittest.TestCase):
             with patch.object(
                 report_service,
                 "session_temperatures",
-                side_effect=lambda _db, ids: {k: weather[k] for k in ids if k in weather},
+                side_effect=lambda _db, ids: {
+                    k: weather[k] for k in ids if k in weather
+                },
             ):
                 rows = service.curve_records(60, shared=True)
             return {row["activity_id"]: row["weather_temp_c"] for row in rows}
