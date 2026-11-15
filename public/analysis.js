@@ -762,8 +762,13 @@ async function renderAnalysisTrends() {
     result = await requestAnalysisReport(ANALYSIS_TRENDS_PATH);
   } catch (error) {
     if (generation !== analysisTrendsGeneration || session !== state.sessionGeneration) return;
-    pace.replaceChildren(createErrorState(error.message, () => void renderAnalysisTrends()));
-    pace.dataset.analysisEmpty = "failed";
+    // Each sport page shows one error with a retry; no earlier groups stay beside it.
+    renderedAnalysisTrends = null;
+    for (const [id, failed] of [["runningPaceAtHeartRate", true], ["runningRecurringSessions", false], ["cyclingRecurringSessions", true]]) {
+      const root = document.getElementById(id);
+      root.replaceChildren(...(failed ? [createErrorState(error.message, () => void renderAnalysisTrends())] : []));
+      root.dataset.analysisEmpty = failed ? "failed" : "true";
+    }
     renderAnalysisSegmentsIfActive();
     return;
   }

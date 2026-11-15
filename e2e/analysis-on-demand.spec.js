@@ -216,6 +216,23 @@ test("@responsive Analyse shows pace at equal heart rate and recurring sessions 
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBeTruthy();
 });
 
+test("@responsive a failed trends read shows a retry on Laufen and on Radfahren", async ({ page }) => {
+  await mockReports(page);
+  let fail = true;
+  await page.route(`**${TRENDS}`, (route) => (fail ? route.fulfill({ status: 500, json: { error: "Interner Fehler." } }) : route.fulfill({ json: TRENDS_PAYLOAD })));
+  await waitForInitialState(page);
+  await routeTo(page, "#analysis/cycling");
+  const cycling = page.locator("#cyclingRecurringSessions");
+  await expect(cycling.getByRole("button", { name: /Erneut/ })).toBeVisible();
+  await routeTo(page, "#analysis/running");
+  await expect(page.locator("#runningPaceAtHeartRate").getByRole("button", { name: /Erneut/ })).toBeVisible();
+  await expect(page.locator("#runningRecurringSessions")).toBeHidden();
+  fail = false;
+  await page.locator("#runningPaceAtHeartRate").getByRole("button", { name: /Erneut/ }).click();
+  await expect(page.locator("#runningPaceAtHeartRate").getByRole("heading", { name: /Pace bei 140–149 bpm/ })).toBeVisible();
+  await expect(page.locator("#runningRecurringSessions").getByRole("heading", { name: "Wiederkehrende Einheiten" })).toBeVisible();
+});
+
 test("@responsive equipment records load only on the equipment route and stay cached", async ({ page }) => {
   await mockReports(page);
   const reportCounts = trackReportRequests(page);
