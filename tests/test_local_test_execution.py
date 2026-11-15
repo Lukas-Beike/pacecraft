@@ -37,19 +37,26 @@ def lost_test_lines(source: str) -> list[int]:
 
     def visit(node: ast.AST, parent: ast.AST) -> None:
         for child in ast.iter_child_nodes(node):
-            if isinstance(child, ast.FunctionDef | ast.AsyncFunctionDef) and (
-                child.name.startswith("test_") or child.name in _LIFECYCLE
-            ):
-                in_class = isinstance(parent, ast.ClassDef)
-                runs = in_class and (bool(parent.bases) or child.name in _LIFECYCLE)
-                if not runs:
-                    found.append(child.lineno)
-            defines = ast.ClassDef | ast.FunctionDef | ast.AsyncFunctionDef
-            visit(child, child if isinstance(child, defines) else parent)
+            if isinstance(child, _FUNCTIONS) and _lost(child.name, parent):
+                found.append(child.lineno)
+            visit(child, child if isinstance(child, _DEFINITIONS) else parent)
 
     tree = ast.parse(source)
     visit(tree, tree)
     return found
+
+
+_FUNCTIONS = ast.FunctionDef | ast.AsyncFunctionDef
+_DEFINITIONS = ast.ClassDef | ast.FunctionDef | ast.AsyncFunctionDef
+
+
+def _lost(name: str, parent: ast.AST) -> bool:
+    """Whether a function ``name`` defined directly in ``parent`` never runs as a test."""
+    if not (name.startswith("test_") or name in _LIFECYCLE):
+        return False
+    if not isinstance(parent, ast.ClassDef):
+        return True
+    return not parent.bases and name not in _LIFECYCLE
 
 
 class RunnerEvidenceTests(unittest.TestCase):
