@@ -33,8 +33,8 @@ needs no documentation edit (#3130).
 | 27 | 2.1.2 to 2.1.9 |
 | 28 | 2.1.10 to 2.1.16 |
 | 29 | 2.1.17 to 2.1.19 |
-| 30 | since 2.1.20 |
-| 31 | not released yet |
+| 30 | 2.1.20 to 2.1.21 |
+| 31 | since 2.1.22 |
 
 Versions 27 to 30 keep only their shape digests and enter the chain after the baseline's
 product step and the calendar decision step. Version 10 adds canonical activity detail
