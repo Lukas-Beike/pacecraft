@@ -480,6 +480,10 @@ The client SHALL mark every derived or estimated value with one "Schätzung" chi
 - **WHEN** the diary, the history or the product tab renders
 - **THEN** calories form one hero tile above one macro row, runs of days without data collapse to one row, and the product tab has one primary action.
 
+#### Scenario: Desktop card rows
+- **WHEN** an Analyse tab or another view with the two-column chart grid renders on a desktop
+- **THEN** two cards in a row have the same height, and a card alone in its row spans the full row width; the phone layout keeps one column (#3154).
+
 Evidence: `public/components.js::createEstimateChip`, `public/performance-view.js::predictionTime`, `public/analysis.js::appendAnalysisLineKey`, `public/nutrition.js::nutritionChartRows`, `tests/test_css_design_tokens.py::test_training_focus_percentages_use_neutral_text_in_both_themes`, `tests/analysis-presentation.test.cjs::race prediction rows exclude body weight and empty states give a reason`, `backend/providers/garmin_health_mapping.py:_map_max_metrics`, `tests/test_performance_garmin_metrics.py:test_precise_vo2max_wins_over_its_rounded_twin`, `e2e/estimates-targets.spec.js`.
 
 ### Requirement: Selection, sources and axes read consistently
