@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from typing import Any
 
 from backend.coach.service import command_receipt
@@ -47,33 +47,22 @@ class CoachJobStore:
             return bool(coach_store.command_rows(db, "1", limit=1))
 
     def claim(self) -> dict[str, Any] | None:
-        with (
-            self._maintenance_gate.operation(),
-            self._database_manager().unit_of_work() as db,
-        ):
-            rows = coach_store.command_rows(
-                db, "*", ("queued",), order="oldest", limit=20
-            )
-            for row in rows:
-                receipt = command_receipt(row.get("receipt"))
-                if receipt.get("mode") != "background":
-                    continue
-                try:
-                    retry_after = float(receipt.get("retry_after") or 0)
-                except TypeError, ValueError:
-                    retry_after = 0
-                # A cancelled job is due at once, so it ends instead of waiting.
-                if retry_after > time.time() and not receipt.get("cancel_requested"):
-                    continue
-                if coach_store.claim_command(
-                    db, row["client_turn_id"], self._utc_now()
-                ):
-                    return {
-                        **dict(row),
-                        "status": "running",
-                        "receipt": receipt,
-                        "_maintenance_generation": self._maintenance_gate.current_generation(),
-                    }
+        with self._maintenance_gate.operation():
+            # An idle poll only reads: the writer is taken for a candidate (#3047).
+            with self._database_manager().read_snapshot() as db:
+                if not any(_due_jobs(db)):
+                    return None
+            with self._database_manager().unit_of_work() as db:
+                for row, receipt in _due_jobs(db):
+                    if coach_store.claim_command(
+                        db, row["client_turn_id"], self._utc_now()
+                    ):
+                        return {
+                            **dict(row),
+                            "status": "running",
+                            "receipt": receipt,
+                            "_maintenance_generation": self._maintenance_gate.current_generation(),
+                        }
         return None
 
     def requeue(
@@ -226,3 +215,18 @@ class CoachJobStore:
         if resumed:
             self._wake_event.set()
         return resumed
+
+
+def _due_jobs(db: Any) -> Iterator[tuple[dict[str, Any], dict[str, Any]]]:
+    """The queued background jobs that are due, oldest first, with their receipts."""
+    for row in coach_store.command_rows(db, "*", ("queued",), order="oldest", limit=20):
+        receipt = command_receipt(row.get("receipt"))
+        if receipt.get("mode") != "background":
+            continue
+        try:
+            retry_after = float(receipt.get("retry_after") or 0)
+        except TypeError, ValueError:
+            retry_after = 0
+        # A cancelled job is due at once, so it ends instead of waiting.
+        if retry_after <= time.time() or receipt.get("cancel_requested"):
+            yield row, receipt

@@ -973,20 +973,20 @@ class SyncJobStore:
         now = self._now()
         hold_backfill = self._foreground_busy is not None and self._foreground_busy()
         held = tuple(self._held_providers()) if self._held_providers else ()
+        due = (
+            "SELECT id FROM sync_jobs WHERE status='queued' "
+            "AND (available_at IS NULL OR available_at<=?) "
+            + (f"AND type NOT IN {_BACKFILL_TYPES_SQL} " if hold_backfill else "")
+            # Placeholders only; the provider names are bound parameters.
+            + (f"AND provider NOT IN ({', '.join('?' * len(held))}) " if held else "")
+            + f"ORDER BY type IN {_BACKFILL_TYPES_SQL}, created_at, id LIMIT 1"
+        )
+        # An idle poll only reads: the writer is taken for a candidate (#3047).
+        with self._database_manager.read_snapshot() as db:
+            if db.execute(due, (now, *held)).fetchone() is None:
+                return None
         with self._database_manager.unit_of_work() as db:
-            candidate = db.execute(
-                "SELECT id FROM sync_jobs WHERE status='queued' "
-                "AND (available_at IS NULL OR available_at<=?) "
-                + (f"AND type NOT IN {_BACKFILL_TYPES_SQL} " if hold_backfill else "")
-                # Placeholders only; the provider names are bound parameters.
-                + (
-                    f"AND provider NOT IN ({', '.join('?' * len(held))}) "
-                    if held
-                    else ""
-                )
-                + f"ORDER BY type IN {_BACKFILL_TYPES_SQL}, created_at, id LIMIT 1",
-                (now, *held),
-            ).fetchone()
+            candidate = db.execute(due, (now, *held)).fetchone()
             if not candidate:
                 return None
             job_id = candidate["id"]

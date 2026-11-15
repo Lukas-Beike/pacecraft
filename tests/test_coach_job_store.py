@@ -4,7 +4,7 @@ import threading
 import time
 import unittest
 from pathlib import Path
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 from support import temp_database
 
@@ -67,6 +67,13 @@ class CoachJobStoreTests(unittest.TestCase):
             {"mode": "background", "retry_after": time.time() + 60},
             created_at="2",
         )
+        # Polls with nothing due only read; the writer is not taken (#3047).
+        with patch.object(
+            self.manager, "unit_of_work", wraps=self.manager.unit_of_work
+        ) as writer:
+            for _ in range(3):
+                self.assertIsNone(self.store.claim())
+        writer.assert_not_called()
         self._insert("ready", {"mode": "background"}, created_at="3")
 
         job = self.store.claim()
