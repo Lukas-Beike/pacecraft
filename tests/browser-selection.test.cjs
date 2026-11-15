@@ -165,15 +165,15 @@ print(json.dumps({"baseline": baseline, "partitions": partitions, "commands": co
   }
 });
 
-// #3026: a local run without a password logs in nowhere, so server-free specs run; CI still
-// requires the password and the login.
-test("the login setup skips only outside CI and only without a password", () => {
+// #3026: only the explicit E2E_NO_LOGIN=1, outside CI, skips the login for server-free specs;
+// a missing or short password still stops the run at once.
+test("the login setup skips only on the explicit local switch", () => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), "auth-setup-"));
   const state = path.join(directory, "state.json");
   const run = (extra) => {
-    const env = { ...process.env, E2E_AUTH_STATE_PATH: state, ...extra };
-    delete env.E2E_APP_PASSWORD;
-    if (!("CI" in extra)) delete env.CI;
+    const env = { ...process.env, E2E_AUTH_STATE_PATH: state };
+    for (const key of ["E2E_APP_PASSWORD", "E2E_NO_LOGIN", "CI"]) delete env[key];
+    Object.assign(env, extra);
     const script = `require(${JSON.stringify(path.join(root, "e2e", "auth.setup.js"))})({ projects: [{ use: {} }] })`
       + ".then(() => process.exit(0), (error) => { console.error(error.message); process.exit(3); })";
     try {
@@ -184,11 +184,16 @@ test("the login setup skips only outside CI and only without a password", () => 
     }
   };
   try {
-    assert.equal(run({}), 0);
-    assert.deepEqual(JSON.parse(fs.readFileSync(state, "utf8")), { cookies: [], origins: [] });
-    const [status, message] = run({ CI: "true" });
+    assert.equal(run({ E2E_NO_LOGIN: "1" }), 0);
+    assert.equal(fs.existsSync(state), false); // the real session file stays untouched
+    for (const extra of [{}, { E2E_APP_PASSWORD: "short" }, { CI: "true" }]) {
+      const [status, message] = run(extra);
+      assert.equal(status, 3, JSON.stringify(extra));
+      assert.match(message, /E2E_APP_PASSWORD must be set/);
+    }
+    const [status, message] = run({ E2E_NO_LOGIN: "1", CI: "true" });
     assert.equal(status, 3);
-    assert.match(message, /E2E_APP_PASSWORD must be set/);
+    assert.match(message, /CI always logs in/);
   } finally {
     fs.rmSync(directory, { recursive: true, force: true });
   }
