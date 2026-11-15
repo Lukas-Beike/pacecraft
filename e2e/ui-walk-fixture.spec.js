@@ -10,16 +10,18 @@ const FIXTURE_SKIPS = { "Kalender: Laufdynamik": "none of 5 has it" };
 test("@responsive every UI walk step passes on the fixture app", async ({ page, request }) => {
   const { VIEWS, STEPS, runStep } = await import(pathToFileURL(path.join(__dirname, "..", "scripts", "ui_walk.mjs")).href);
   expect((await request.get("/api/fixture/demo")).ok()).toBeTruthy();
+  // The app's own today: the profile's zone, else the browser's (the same process as this runner).
+  const timeZone = (await (await request.get("/api/bootstrap")).json()).profile?.timezone || undefined;
+  const today = new Intl.DateTimeFormat("en-CA", { timeZone }).format(new Date());
   // Only a release image carries the changelog (#2899).
   await page.context().route("**/changelog.json", (route) => route.fulfill({ json: { releases: [{ version: "9.9.9", commits: ["feat(calendar): a fixture change (#1)"] }] } }));
   // The fixture's current week plans nothing, and only a long upcoming unit gets fuelling (#2921).
   await page.context().route(/\/api\/plan(\?|$)/, async (route) => {
     const data = await (await route.fetch()).json();
-    const today = new Intl.DateTimeFormat("en-CA", { timeZone: data.profile?.timezone || "Europe/Berlin" }).format(new Date());
     data.training_calendar = [...(data.training_calendar || []), { id: "walk-long-ride", local_id: "walk-long-ride", date: today, name: "Lange Ausfahrt", type: "Ride", sport: "ride", environment: "outdoor", duration_minutes: 150, planned_duration_s: 9000 }];
     return route.fulfill({ json: data });
   });
-  await page.goto("/#coach");
+  await page.goto("/");
   await expect(page.locator("#appShell")).toBeVisible();
   await page.waitForFunction(() => AppState.state.initialStateLoaded);
   const outcomes = [];
@@ -27,6 +29,7 @@ test("@responsive every UI walk step passes on the fixture app", async ({ page, 
     await page.evaluate((next) => new Promise((resolve) => {
       document.addEventListener("app:route-rendered", resolve, { once: true });
       setTimeout(resolve, 15000);
+      if (globalThis.location.hash === `#${next}`) globalThis.location.hash = "";
       globalThis.location.hash = next;
     }), route);
     for (const step of STEPS.filter((item) => item.view === route)) {
@@ -35,5 +38,6 @@ test("@responsive every UI walk step passes on the fixture app", async ({ page, 
     }
   }
   const expected = STEPS.map((step) => `${step.name}: ${step.name in FIXTURE_SKIPS ? `skip (${FIXTURE_SKIPS[step.name]})` : "ok"}`);
-  expect(outcomes).toEqual(expected);
+  // One line, so a CI summary that keeps only the first line still names the steps.
+  expect(outcomes, `differing steps: ${outcomes.filter((line) => !expected.includes(line)).join(" | ")}`).toEqual(expected);
 });
