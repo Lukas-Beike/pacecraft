@@ -34,6 +34,7 @@ ENTITY_TYPES = {
     "checkin",
     "equipment",
     "equipment_assignment",
+    "equipment_planned",
     "equipment_maintenance",
     "metric_export",
 }
@@ -289,6 +290,8 @@ EQUIPMENT_FIELDS = (
 # The explicit gear of one activity; its entity id is the assignment key, and
 # an unassignment keeps the row with ``equipment_id`` None.
 EQUIPMENT_ASSIGNMENT_FIELDS = ("activity_id", "equipment_id")
+# The athlete's equipment choice for a planned unit (#3011).
+EQUIPMENT_PLANNED_FIELDS = ("planned_unit_id", "equipment_id")
 # One maintenance entry; the observation time is left out.
 EQUIPMENT_MAINTENANCE_FIELDS = ("id", "equipment_id", "date", "notes", "distance_km")
 # A composite meal keeps its ingredient snapshots in nutrition_basis.
@@ -344,6 +347,7 @@ def audit_projection_fields(entity_type: str) -> set[str]:
         "checkin": set(CHECKIN_FIELDS),
         "equipment": set(EQUIPMENT_FIELDS),
         "equipment_assignment": set(EQUIPMENT_ASSIGNMENT_FIELDS),
+        "equipment_planned": set(EQUIPMENT_PLANNED_FIELDS),
         "equipment_maintenance": set(EQUIPMENT_MAINTENANCE_FIELDS),
         METRIC_EXPORT_ENTITY: set(METRIC_EXPORT_FIELDS),
     }

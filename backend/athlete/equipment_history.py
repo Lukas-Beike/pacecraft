@@ -1,7 +1,7 @@
 """Change-history reads and undo restores for equipment records.
 
-Items, activity assignments and maintenance entries live as JSON records in the
-key-value table; each kind is one history entity type with its own restore.
+Items, activity assignments, planned-unit choices and maintenance entries live
+as JSON records in the key-value table; each kind is one history entity type with its own restore.
 """
 
 from __future__ import annotations
@@ -24,6 +24,7 @@ from backend.db.equipment_store import (
     ASSIGNMENT_PREFIX,
     EQUIPMENT_PREFIX,
     MAINTENANCE_PREFIX,
+    PLANNED_PREFIX,
 )
 from backend.errors import AppError
 
@@ -144,6 +145,41 @@ class EquipmentAssignmentHistory(_EquipmentRecordHistory):
         return restored
 
 
+class EquipmentPlannedHistory(_EquipmentRecordHistory):
+    entity_type = "equipment_planned"
+    prefix = PLANNED_PREFIX
+
+    def restore_in_transaction(
+        self,
+        db: Any,
+        entity_id: str,
+        current: dict[str, Any] | None,
+        target: dict[str, Any] | None,
+    ) -> dict[str, Any] | None:
+        """Put one planned unit's equipment choice back, including "Keiner"."""
+        if target is None:
+            self._delete(db, entity_id)
+            return None
+        restored = {
+            **dict.fromkeys(self._fields()),
+            **(current or {}),
+            **target,
+            "planned_unit_id": entity_id,
+        }
+        equipment_id = restored["equipment_id"]
+        if equipment_id is not None and not assignable_equipment(
+            stored_value(db, EQUIPMENT_PREFIX + str(equipment_id)), None
+        ):
+            raise AppError(
+                409,
+                "Die frühere Ausrüstung passt nicht mehr zu dieser Einheit "
+                "(archiviert, unvollständig oder andere Sportart).",
+            )
+        restored["observed_at"] = self._utc_now()
+        self._write(db, entity_id, restored)
+        return restored
+
+
 class EquipmentMaintenanceHistory(_EquipmentRecordHistory):
     entity_type = "equipment_maintenance"
     prefix = MAINTENANCE_PREFIX
@@ -178,12 +214,13 @@ def equipment_history_records(
     utc_now: Callable[[], str],
     read_summaries: Callable[[], Sequence[ActivitySummary]],
 ) -> dict[str, Any]:
-    """The change-history record services of the three equipment entity types."""
+    """The change-history record services of the four equipment entity types."""
     return {
         history.entity_type: history
         for history in (
             EquipmentItemHistory(utc_now),
             EquipmentAssignmentHistory(utc_now, read_summaries),
+            EquipmentPlannedHistory(utc_now),
             EquipmentMaintenanceHistory(utc_now),
         )
     }
