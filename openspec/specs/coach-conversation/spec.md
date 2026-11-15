@@ -280,7 +280,7 @@ The system SHALL accept only the quick-action kinds `morning_checkin`, `session_
 
 #### Scenario: Playbook blocks
 - **WHEN** a playbook is composed
-- **THEN** it consists of small topic blocks, each with its own word budget: evidence and labels and the intensity model for every kind; plan kinds add plan structure, strength and legs, tests, season phase, thresholds, precedence, calendar and plan checks; `adjust_week` season phase, precedence, calendar, plan checks and adaptive changes; `session_analysis` session checks, session numbers, the run or ride block of the analysed session's sport (from the activity ID in the message, else one named sport, else the newest session; none when unclear) and the answer block; the review kinds the answer block. A kind carries at most 600 words in total, and the Coach request size diagnostics report `playbook_characters`.
+- **THEN** it consists of small topic blocks, each with its own word budget: evidence and labels and the intensity model for every kind; plan kinds add plan structure, strength and legs, tests, season phase, thresholds, precedence, calendar and plan checks; `adjust_week` season phase, precedence, calendar, plan checks and adaptive changes; `session_analysis` session checks, session numbers, the run or ride block of the analysed session's sport (one named sport, else the session of the activity ID in the message, else the newest session) and the answer block; the review kinds the answer block. A kind carries at most 600 words in total, and the Coach request size diagnostics report `playbook_characters`.
 
 #### Scenario: Kind-specific context
 - **WHEN** a turn carries one of the analysis or planning kinds

@@ -84,7 +84,7 @@ _RUN_SESSION = """Run block (session.sport run):
 - equipment: shoe and usage.distance_km."""
 
 _RIDE_SESSION = """Ride block (session.sport ride):
-- metrics normalized_power, variability_index, intensity factor (normalized power / current_performance.thresholds cycling_ftp_watts), decoupling_pct (aerobic durability).
+- metrics normalized_power, variability_index, intensity factor (normalized power / current_performance.thresholds.ftp_w), decoupling_pct (aerobic durability).
 - zones.power against the focus; work reps (output) relative to that FTP.
 - Cadence: halves cadence_change; per rep cadence with elevation_change_m (very low on climbs).
 - Indoor or virtual session.environment with erg_like: judge heart rate and cadence, not power, unless focus.test_evaluation says otherwise. Outdoor: elevation_gain_m, stops (elapsed_duration_s minus moving_duration_s)."""

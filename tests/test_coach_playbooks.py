@@ -257,7 +257,7 @@ class PlaybookInjectionTests(unittest.TestCase):
             "erg_like",
             "normalized_power",
             "decoupling_pct",
-            "cycling_ftp_watts",
+            "current_performance.thresholds.ftp_w",
         ):
             self.assertIn(marker, ride)
         self.assertNotIn(playbooks._SESSION_NUMBERS, playbook_for("progress_review"))
@@ -414,30 +414,44 @@ class PlaybookInjectionTests(unittest.TestCase):
         selection = training_context.build.call_args_list[0].kwargs["selection"]
         self.assertEqual(selection.name, "plan_week")
 
-    def test_analysed_sport_prefers_the_id_then_one_named_sport_then_the_newest(
+    def test_analysed_sport_prefers_one_named_sport_then_the_id_then_the_newest(
         self,
     ) -> None:
-        sessions = [{"id": "s-ride", "sport": "ride"}, {"id": "s-run", "sport": "run"}]
+        sessions = [
+            {"id": "s-ride", "sport": "ride"},
+            {"id": "s-run", "sport": "run"},
+            {"id": "s-swim", "sport": "swim"},
+        ]
+        recent = Mock(return_value=sessions)
+        # The calendar button names the sport: no session read.
         button = (
             "Analysiere meine Einheit vom 2. Nov. (Laufen, 07:10, 45 min, ID s-run)."
         )
         for message, expected in (
             (button, "run"),
-            # An ID the recent sessions lack falls back to the named sport.
-            (button.replace("s-run", "s-old"), "run"),
-            ("Analysiere meine letzte Radausfahrt auf dem Rad", "ride"),
-            ("Wie lief mein Lauf gestern?", "run"),
-            ("Analysiere meine letzte Einheit", "ride"),
-            # Two sports or a word inside another word decide nothing.
-            ("Erst Rad, dann Lauf: analysiere die Einheit", None),
-            ("Analysiere die Einheit vom 2.11. (ID s-old)", None),
+            ("Analysiere meine Einheit vom 2. Nov. (Rad indoor, ID s-ride).", "ride"),
+            ("Analysiere meine letzte Radtour", "ride"),
+            ("Ich bin gestern gelaufen, wie war das?", "run"),
         ):
             with self.subTest(message=message):
-                self.assertEqual(analysed_sport(message, lambda: sessions), expected)
-        # "Rad" inside a word names no sport: the newest session (a run) decides.
+                self.assertEqual(expected, analysed_sport(message, recent))
+        recent.assert_not_called()
+        for message, expected in (
+            # A sport without a block is read from the session of its ID.
+            ("Analysiere meine Einheit vom 2. Nov. (Schwimmen, ID s-swim).", "swim"),
+            ("Analysiere die Einheit mit ID s-run.", "run"),
+            # Otherwise the newest session decides: no ID, an unknown one, two
+            # sports, or "Rad" inside another word.
+            ("Analysiere meine letzte Einheit", "ride"),
+            ("Analysiere die Einheit (ID s-old)", "ride"),
+            ("Erst Lauf, dann Rad: analysiere die Einheit", "ride"),
+            ("Analysiere die Radaufzeichnung", "ride"),
+        ):
+            with self.subTest(message=message):
+                self.assertEqual(expected, analysed_sport(message, recent))
         self.assertEqual(
             "run",
-            analysed_sport("Analysiere die Radaufzeichnung", lambda: sessions[::-1]),
+            analysed_sport("Analysiere die Radaufzeichnung", lambda: sessions[1:]),
         )
         self.assertIsNone(analysed_sport("Analysiere meine Einheit", tuple))
 

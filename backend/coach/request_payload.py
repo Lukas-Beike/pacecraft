@@ -56,32 +56,43 @@ _ADVISORY_RUN_NOTICE = (
 
 _ACTIVITY_ID = re.compile(r"\bID ([\w:.-]{1,80})")
 _SPORT_WORDS = (
-    ("run", re.compile(r"\b(lauf|laufen|läufe?|run|joggen)\b", re.IGNORECASE)),
-    ("ride", re.compile(r"\b(rad|radfahren|radfahrt|ride|zwift)\b", re.IGNORECASE)),
+    (
+        "run",
+        re.compile(
+            r"\b(lauf|laufen|läufe?|gelaufen|laufeinheit|run|joggen)\b", re.IGNORECASE
+        ),
+    ),
+    (
+        "ride",
+        re.compile(
+            r"\b(rad|radfahren|radfahrt|radtour|radeinheit|ausfahrt|ride|zwift)\b",
+            re.IGNORECASE,
+        ),
+    ),
 )
 
 
 def analysed_sport(
     message: str, recent_sessions: Callable[[], Sequence[Mapping[str, Any]]]
 ) -> str | None:
-    """The sport of the session a session analysis looks at, or None if unclear.
+    """The sport of the session a session analysis looks at; None without sessions.
 
-    An activity id in the message wins (the calendar's analyse button names
-    it), then a sport word, then the newest session. The instructions stay
-    fixed for the turn, so the sport is chosen before the first request.
+    One named sport decides (the calendar's analyse button names it), else the
+    session of the activity ID in the message, else the newest session. The
+    instructions stay fixed for the turn, so the sport is chosen before the
+    first request; the sessions are read only when no single sport is named.
     """
-    sessions = list(recent_sessions())
-    match = _ACTIVITY_ID.search(message)
-    if match:
-        for session in sessions:
-            if session.get("id") == match.group(1):
-                return session.get("sport") or None
     named = {sport for sport, words in _SPORT_WORDS if words.search(message)}
     if len(named) == 1:
         return named.pop()
-    if match or named or not sessions:
-        return None
-    return sessions[0].get("sport") or None
+    sessions = list(recent_sessions())
+    match = _ACTIVITY_ID.search(message)
+    wanted = match.group(1).rstrip(".:") if match else None
+    chosen = next(
+        (session for session in sessions if session.get("id") == wanted),
+        sessions[0] if sessions else {},
+    )
+    return chosen.get("sport") or None
 
 
 def compose_model_instructions(
