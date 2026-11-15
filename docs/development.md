@@ -76,6 +76,14 @@ the final diff, and run affected validation. Include final-state evidence and
 unverified checks in the handoff. Source code and current workflow behavior take
 precedence over remembered paths or stale operating assumptions.
 
+## Local runtime on Windows
+
+The pinned SQLCipher dependency has no Windows wheel, so application and UI
+integration run in Docker ([setup](setup.md)); runtime data never enters the
+image. Browser checks prefer the disposable fixture in
+`.agents/skills/pacecraft-pwa-e2e/references/browser-validation.md`. Voice input
+needs a secure context.
+
 ## Secret checks before Git pushes
 
 Source reads, incoming prompts/provider data, and Graphify do not require a secret

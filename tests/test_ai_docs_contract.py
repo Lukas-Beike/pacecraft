@@ -39,11 +39,12 @@ class AiDocsContractTests(unittest.TestCase):
         self.assertIn("](REVIEW.md)", instructions)
 
     def test_expected_backend_domains_are_documented(self) -> None:
-        # The domain map lives in the backend's scoped instructions, which the
-        # root AGENTS.md links (#2858).
+        # The domain map lives in the backend's scoped instructions; the root
+        # AGENTS.md says where (#2858).
         instructions = (ROOT / "backend" / "AGENTS.md").read_text(encoding="utf-8")
         self.assertIn(
-            "](backend/AGENTS.md)", (ROOT / "AGENTS.md").read_text(encoding="utf-8")
+            "cross-cutting owners are listed in\n  [backend/AGENTS.md]",
+            (ROOT / "AGENTS.md").read_text(encoding="utf-8"),
         )
         domains = [
             path.name

@@ -38,8 +38,6 @@
   server cannot be reached or the fresh start data fails to load. Logout, a 401, an
   unauthenticated start and a privacy deletion clear this device data. Never
   store credentials, session data or CSRF tokens in it.
-- Cut taglines, helper texts and secondary labels. If the screen needs them to
-  make sense, fix the layout.
 - Keep microphone and notification features opt-in, bounded, and functional in
   browsers that do not support them. Audio must not be persisted by the client.
 - Keep UI text and the `README.md` and `docs/` files it links accurate when

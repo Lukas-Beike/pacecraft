@@ -117,6 +117,8 @@ Use [README.md](README.md) for the overview and [docs/setup.md](docs/setup.md) a
   logs. Diagnostics may keep sanitized Coach request/response bodies but never
   credentials, keys, tokens, session data, or raw provider error text. Voice is
   short-lived transcription; never persist audio.
+- Cut taglines, helper texts and secondary labels. If the screen needs them to
+  make sense, fix the layout.
 
 ## Development and validation
 
@@ -162,12 +164,17 @@ outgoing commits for secrets and runs the quality ratchet; never bypass either.
   with the Codex Security plugin or `--auth chatgpt`; no API key or GitHub
   Actions workflow for it.
 
-Run from the repository root the tests the change affects (commands, browser
-and Docker checks, and the one live model run are in [tests](tests/AGENTS.md));
-CI runs the full suite on every PR, so run it locally only when the selector
-falls back to it, to reproduce a CI failure, or when asked. Tests use temporary
-data and mocked services, never real `.env`, `/data`, or
-OpenAI/Anthropic/Intervals.icu/Garmin/Wahoo accounts.
+Run from the repository root the tests the change affects (commands and the one
+live model run are in [tests](tests/AGENTS.md)); CI runs the full suite on every
+PR, so run it locally only when the selector falls back to it, to reproduce a CI
+failure, or when asked. Tests use temporary data and mocked services, never real
+`.env`, `/data`, or OpenAI/Anthropic/Intervals.icu/Garmin/Wahoo accounts. For
+Dockerfile, dependency, startup, or deployment changes also run
+`docker build -t pacecraft:local .`. Browser changes run the affected browser
+selection through the isolated runner `scripts/run_browser_tests.py` (selection
+per [browser-tests](.agents/skills/pacecraft-browser-tests/SKILL.md)) and, when a
+browser is available, check login, fresh PWA install/offline assets, safe
+Markdown, Enter versus Shift+Enter, microphone, notifications, and the changed flow.
 
 CI and Docker use Python 3.14; change toolchain and CI together. Direct pins live
 in `requirements.in`/`requirements-dev.in`; regenerate the hash-locked `.txt`
@@ -176,9 +183,12 @@ files with the [dependency recipe](docs/dependencies.md).
 ### Local runtime (Windows)
 
 Use Docker for application and UI integration (the pinned SQLCipher dependency
-has no Windows wheel) and never bypass encrypted startup. Keep the data mount,
-token store, and recovery backups when recreating the container; never use
-`docker rm -v`. [docs/setup.md](docs/setup.md) is the single runbook.
+has no Windows wheel) and never bypass encrypted startup. Rebuild the image after
+application, dependency, or startup changes; keep the data mount, token store,
+and recovery backups when recreating the container, and never use
+`docker rm -v`. [docs/setup.md](docs/setup.md) is the single runbook for setup
+and Garmin login; development details are in
+[docs/development.md](docs/development.md).
 
 ## Git conventions
 

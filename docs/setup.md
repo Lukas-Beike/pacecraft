@@ -29,10 +29,6 @@ docker run -d \
 
 The image runs as the non-root `app` user. Application code under `/app` is owned by root and is not writable by that user; only `/data` is writable.
 
-### Local development on Windows
-
-The pinned SQLCipher dependency has no Windows wheel, so application and UI integration run in Docker. Rebuild the image after application, dependency, or startup changes. When recreating the container, keep the data mount, token store, and recovery backups. Runtime data never enters the image. Browser checks prefer the disposable fixture in `.agents/skills/pacecraft-pwa-e2e/references/browser-validation.md`. Voice input needs a secure context (HTTPS or localhost).
-
 ## Docker Compose
 
 Create a `docker-compose.yml` file:

@@ -8,13 +8,6 @@
   node --test tests/*.cjs
   ```
 
-- For Dockerfile, dependency, startup, or deployment changes also run
-  `docker build -t pacecraft:local .`. Browser changes run the affected
-  Playwright project through the isolated runner
-  (`python scripts/run_browser_tests.py --project changed`; projects mobile,
-  tablet-landscape, desktop) and, when a browser is available, check login,
-  fresh PWA install/offline assets, safe Markdown, Enter versus Shift+Enter,
-  microphone, notifications, and the changed flow.
 - The one tracked live model run is `tests/coach_live_eval.py` (#2221): started
   by hand with a dedicated evaluation key, the dialogue catalogue once per run,
   at most 300 model calls and 5 USD, tool calls only on temporary storage with
@@ -36,7 +29,7 @@
 - Every test must use temporary `DATA_DIR`/database state or isolated patches.
   Never read or modify the real `.env`, `/data`, production database, Garmin
   token store, or runtime logs.
-- Mock all OpenAI, Garmin, Wahoo, Intervals.icu (output only), iCalendar, and
+- Mock all OpenAI, Anthropic, Garmin, Wahoo, Intervals.icu (output only), iCalendar, and
   other network calls.
   Do not use real credentials, external accounts, or live network access.
 - Do not print secrets or full athlete payloads in failures, fixtures, or test
