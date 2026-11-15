@@ -3,15 +3,16 @@
 `.claude/settings.json` allows `python scripts/resolve_review_thread.py` without
 a prompt (athlete decision #2629). That rule matches command text, so this hook
 blocks any shell command that names the script unless the whole command is
-exactly `python scripts/resolve_review_thread.py <pr> <PRRT_id>` and no change
-in `scripts/` against origin/develop, committed or not, can reach that run: the
-script and the `scripts/` modules it imports are untouched, and no changed file
-can shadow a module the run imports (#3072). Other scripts, the hooks and
-non-Python files may differ. Exit code 2 blocks the call.
+exactly `python scripts/resolve_review_thread.py <pr> <PRRT_id>`, the script and
+any `scripts/` module it imports match origin/develop byte for byte, and no
+entry in `scripts/` (tracked, ignored or untracked) can shadow a module the run
+imports (#3072). Other scripts, the hooks and non-Python files may differ.
+Exit code 2 blocks the call.
 """
 
 import ast
 import json
+import os
 import re
 import subprocess
 import sys
@@ -24,7 +25,6 @@ SCRIPTS = Path("scripts")
 RUN = "resolve_review_thread"
 # Python imports these at start from the script's directory as well.
 STARTUP = frozenset({"sitecustomize", "usercustomize"})
-IMPORTABLE = (".py", ".pyc", ".pyw", ".pyd", ".so")
 
 
 def _git(*args: str) -> subprocess.CompletedProcess[str]:
@@ -38,13 +38,15 @@ def _git(*args: str) -> subprocess.CompletedProcess[str]:
     )
 
 
-def changed_paths() -> list[str] | None:
-    """scripts/ paths that differ from origin/develop, committed, edited or new."""
-    diff = _git("diff", "--name-only", "origin/develop", "--", "scripts")
-    new = _git("ls-files", "--others", "--exclude-standard", "--", "scripts")
-    if diff.returncode or new.returncode:
-        return None
-    return [*diff.stdout.splitlines(), *new.stdout.splitlines()]
+def same_as_develop(path: Path) -> bool:
+    """The file's bytes in the working tree equal its blob on origin/develop."""
+    here = _git("hash-object", "--", path.as_posix())
+    there = _git("rev-parse", "--verify", "--quiet", f"origin/develop:{path.as_posix()}")
+    return (
+        not here.returncode
+        and not there.returncode
+        and here.stdout.strip() == there.stdout.strip() != ""
+    )
 
 
 def local_imports(name: str) -> list[str]:
@@ -61,7 +63,7 @@ def local_imports(name: str) -> list[str]:
         if isinstance(node, ast.ImportFrom) and not node.level and node.module
     ]
     tops = {full.split(".")[0] for full in names}
-    return [top for top in tops if (SCRIPTS / f"{top}.py").exists() or (SCRIPTS / top).is_dir()]
+    return [top for top in tops if (SCRIPTS / f"{top}.py").exists() or (SCRIPTS / top).exists()]
 
 
 def run_modules() -> set[str]:
@@ -76,26 +78,31 @@ def run_modules() -> set[str]:
     return found
 
 
-def reaches_the_run(path: str, run: set[str]) -> bool:
-    """Whether a changed scripts/ path can change what the resolve run executes."""
-    parts = Path(path).parts
-    if len(parts) < 2 or parts[0] != SCRIPTS.name:
-        return True
-    top = parts[1]
-    if len(parts) == 2:
-        if not top.endswith(IMPORTABLE):
-            return False
-        top = top.split(".")[0]
-    return top in run or top in STARTUP or top in sys.stdlib_module_names
+def shadows(entry: str, run: set[str]) -> bool:
+    """Whether a scripts/ entry (file, directory, nested repository or gitlink)
+    could be imported in place of a module the run uses."""
+    name = entry.rstrip("/\\").split(".")[0]
+    if name in run:
+        return entry != f"{name}.py"
+    return name in STARTUP or name in sys.stdlib_module_names
 
 
 def unchanged() -> bool:
-    """No change in scripts/ against origin/develop can reach the resolve run."""
-    paths = changed_paths()
-    if paths is None:
-        return False
+    """The run's own files match origin/develop and nothing in scripts/ can
+    shadow a module it imports, tracked, ignored or untracked (#2629, #3072)."""
     run = run_modules()
-    return not any(reaches_the_run(path, run) for path in paths)
+    if not all(same_as_develop(SCRIPTS / f"{name}.py") for name in run):
+        return False
+    cache = SCRIPTS / "__pycache__"
+    try:
+        entries = os.listdir(SCRIPTS)
+        cached = os.listdir(cache) if cache.is_dir() else []
+    except OSError:
+        return False
+    # Cached bytecode of a local module could be loaded instead of its source.
+    return not any(shadows(entry, run) for entry in entries) and not any(
+        entry.split(".")[0] in run - {RUN} for entry in cached
+    )
 
 
 def main() -> int:
