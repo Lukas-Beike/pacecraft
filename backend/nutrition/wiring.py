@@ -22,6 +22,7 @@ from backend.nutrition.energy_inputs import (
     energy_basis,
     latest_value,
     own_resting,
+    recent_fat_pct,
     session_streams,
     weighins,
 )
@@ -127,7 +128,7 @@ def build_nutrition(ctx: AppContext) -> NutritionServices:
             skinfold = skinfolds.skinfold_on(db, day)
             return own_resting(
                 latest(db, MetricKind.WEIGHT, day),
-                skinfold.body_fat_pct if skinfold else None,
+                recent_fat_pct(skinfold, day),
                 latest(db, MetricKind.BODY_FAT, day),
             )
 

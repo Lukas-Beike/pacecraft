@@ -23,6 +23,7 @@ from backend.athlete.body_composition import (
     lean_mass_kg,
     resting_energy,
 )
+from backend.athlete.skinfolds import SkinfoldMeasurement
 from backend.canonical.activity_detail import ActivityStreamSet
 from backend.canonical.records import Observation
 from backend.canonical.vocabulary import ProviderId, StreamChannel
@@ -104,6 +105,17 @@ def own_resting(
             continue
         return resting_energy(RestingFormula.KATCH_MCARDLE, lean), source
     return None
+
+
+def recent_fat_pct(measurement: SkinfoldMeasurement | None, day: date) -> float | None:
+    """A skinfold measurement's body fat if it lies within the lookback of ``day``.
+
+    An older one yields to a newer measured body fat or to Garmin (Gitar, #3142).
+    """
+    if measurement is None:
+        return None
+    since = day - timedelta(days=RESTING_LOOKBACK_DAYS)
+    return measurement.body_fat_pct if measurement.measured_on >= since else None
 
 
 def latest_value(observations: Iterable[Observation]) -> float | None:

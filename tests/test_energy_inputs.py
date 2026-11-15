@@ -8,6 +8,8 @@ from types import SimpleNamespace
 from typing import Any
 from unittest.mock import Mock, patch
 
+from backend.athlete.body_composition import Sex
+from backend.athlete.skinfolds import SkinfoldMeasurement
 from backend.canonical.activity_detail import ActivityStreamSet
 from backend.canonical.vocabulary import StreamChannel
 from backend.nutrition import energy_inputs
@@ -152,6 +154,21 @@ class OwnRestingTests(unittest.TestCase):
         # No weight, or no usable body fat: the reader falls back to Garmin.
         self.assertIsNone(energy_inputs.own_resting(None, 12.0, 20.0))
         self.assertIsNone(energy_inputs.own_resting(70.0, None, 80.0))
+
+    def test_a_skinfold_counts_only_within_ninety_days(self) -> None:
+        folds = {"chest": 10.0, "abdomen": 15.0, "thigh": 12.0}
+
+        def measured(day: date) -> SkinfoldMeasurement:
+            return SkinfoldMeasurement(day, Sex.MALE, folds, 12.0)
+
+        # 90 days before DAY3 still counts; 91 days before yields to the rest.
+        self.assertEqual(
+            energy_inputs.recent_fat_pct(measured(date(2026, 7, 5)), DAY3), 12.0
+        )
+        self.assertIsNone(
+            energy_inputs.recent_fat_pct(measured(date(2026, 7, 4)), DAY3)
+        )
+        self.assertIsNone(energy_inputs.recent_fat_pct(None, DAY3))
 
 
 class StoreAdapterTests(unittest.TestCase):
