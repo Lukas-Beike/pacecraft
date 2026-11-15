@@ -14,6 +14,12 @@ production profile ``-HeavyHistory 850 -HeavyWalks 2950 -HeavyYears 6``.
 
     python scripts/view_burst.py --rounds 5
     python scripts/view_burst.py --right-after-start --rounds 2
+    python scripts/view_burst.py --routes-file routes.txt --clients 4
+
+A routes file names one API path per line (``#`` starts a comment), so no
+bare ``/api/...`` argument meets Git Bash's path conversion;
+``{activity_id}`` is filled with the newest fixture session. Every client
+logs in before the measurement starts, never during it (#3078).
 """
 
 from __future__ import annotations
@@ -21,6 +27,7 @@ from __future__ import annotations
 import argparse
 import http.cookiejar
 import json
+import math
 import statistics
 import sys
 import time
@@ -28,6 +35,7 @@ import urllib.parse
 import urllib.request
 from collections.abc import Callable, Sequence
 from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
 from typing import Any
 
 FIXTURE_PASSWORD = (
@@ -59,9 +67,13 @@ def loopback_url(value: str) -> str:
 
 
 def spread(values: Sequence[float]) -> dict[str, float]:
-    """Median, minimum and maximum, rounded to milliseconds."""
+    """Count, mean, median, nearest-rank p95, minimum and maximum (ms rounding)."""
+    ordered = sorted(values)
     return {
-        "median": round(statistics.median(values), 3),
+        "count": len(ordered),
+        "mean": round(statistics.fmean(ordered), 3),
+        "median": round(statistics.median(ordered), 3),
+        "p95": round(ordered[math.ceil(0.95 * len(ordered)) - 1], 3),
         "min": round(min(values), 3),
         "max": round(max(values), 3),
     }
@@ -110,21 +122,45 @@ def wait_until_ready(
         time.sleep(5)
 
 
-def measure(client: Client, rounds: int) -> dict[str, Any]:
-    sequential: dict[str, list[float]] = {path: [] for path in READS}
-    parallel: dict[str, list[float]] = {path: [] for path in READS}
+def read_routes(path: str | None, client: Client) -> tuple[str, ...]:
+    """The default ten view reads, or the routes file with ``{activity_id}`` filled."""
+    if path is None:
+        return READS
+    lines = Path(path).read_text(encoding="utf-8").splitlines()
+    routes = [
+        line.strip() for line in lines if line.strip() and not line.startswith("#")
+    ]
+    if not routes or not all(route.startswith("/api/") for route in routes):
+        raise SystemExit("the routes file needs one /api/ path per line")
+    if any("{activity_id}" in route for route in routes):
+        newest = client.get("/api/activities?limit=1").get("activities") or []
+        if not newest:
+            raise SystemExit("{activity_id} needs a session in the fixture")
+        session = urllib.parse.quote(str(newest[0]["id"]), safe="")
+        routes = [route.replace("{activity_id}", session) for route in routes]
+    return tuple(routes)
+
+
+def measure(
+    clients: Sequence[Client], rounds: int, reads: Sequence[str] = READS
+) -> dict[str, Any]:
+    """Each round: the reads one by one, then all at once spread over the clients."""
+    sequential: dict[str, list[float]] = {path: [] for path in reads}
+    parallel: dict[str, list[float]] = {path: [] for path in reads}
     sums, bursts = [], []
-    with ThreadPoolExecutor(len(READS)) as pool:
+    pairs = [(clients[index % len(clients)], path) for index, path in enumerate(reads)]
+    with ThreadPoolExecutor(len(reads)) as pool:
         for _ in range(rounds):
-            one_by_one = [client.timed(path) for path in READS]
-            all_at_once = list(pool.map(client.timed, READS))
-            for path, alone, together in zip(READS, one_by_one, all_at_once):
+            one_by_one = [clients[0].timed(path) for path in reads]
+            all_at_once = list(pool.map(lambda pair: pair[0].timed(pair[1]), pairs))
+            for path, alone, together in zip(reads, one_by_one, all_at_once):
                 sequential[path].append(alone)
                 parallel[path].append(together)
             sums.append(sum(one_by_one))
             bursts.append(max(all_at_once))
     return {
         "rounds": rounds,
+        "clients": len(clients),
         "sequential_sum_s": spread(sums),
         "burst_max_s": spread(bursts),
         "burst_to_sum": spread([b / s for b, s in zip(bursts, sums)]),
@@ -133,7 +169,7 @@ def measure(client: Client, rounds: int) -> dict[str, Any]:
                 "sequential_s": spread(sequential[path]),
                 "parallel_s": spread(parallel[path]),
             }
-            for path in READS
+            for path in reads
         },
     }
 
@@ -150,18 +186,23 @@ def main(argv: Sequence[str] | None = None) -> int:
         help="measure at once instead of waiting for the curve build",
     )
     parser.add_argument("--ready-timeout", type=float, default=900.0)
+    parser.add_argument("--routes-file", help="one /api/ path per line")
+    parser.add_argument("--clients", type=int, default=1)
     parser.add_argument("--timeout", type=float, default=120.0)
     args = parser.parse_args(argv)
-    if args.rounds < 1:
-        parser.error("--rounds must be at least 1")
-    client = Client(args.base_url, args.timeout)
-    client.login(FIXTURE_PASSWORD)
+    if args.rounds < 1 or args.clients < 1:
+        parser.error("--rounds and --clients must be at least 1")
+    clients = [Client(args.base_url, args.timeout) for _ in range(args.clients)]
+    for client in clients:  # every login, a write, before any measurement
+        client.login(FIXTURE_PASSWORD)
+    client = clients[0]
+    reads = read_routes(args.routes_file, client)
     waited = (
         None
         if args.right_after_start
         else wait_until_ready(client, args.ready_timeout, time.monotonic)
     )
-    result = measure(client, args.rounds)
+    result = measure(clients, args.rounds, reads)
     result["waited_for_ready_s"] = None if waited is None else round(waited, 1)
     json.dump(result, sys.stdout, indent=2)
     sys.stdout.write("\n")
