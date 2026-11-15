@@ -217,25 +217,19 @@ def kept_until_change[T](
                 return kept[2]
             leading = key not in running
             done, leader_leased = running.setdefault(key, (threading.Event(), leased))
-        if (
-            not leading
-            and leased
-            and not leader_leased
-            and not manager.reader_slot_free()
-        ):
-            return fill(manager, revision)
-        if not leading:
+        if leading:
+            try:
+                return fill(manager, revision)
+            finally:
+                with lock:
+                    running.pop(key, None)
+                done.set()
+        if manager.may_wait_for_read(leader_leased):
             done.wait(wait_s)
-            with lock:
-                if served(manager, revision):
-                    return kept[2]
-            return fill(manager, revision)
-        try:
-            return fill(manager, revision)
-        finally:
-            with lock:
-                running.pop(key, None)
-            done.set()
+        with lock:
+            if served(manager, revision):
+                return kept[2]
+        return fill(manager, revision)
 
     return current
 
@@ -311,8 +305,15 @@ class DatabaseManager:
         """
         return self._write_revision
 
-    def reader_slot_free(self) -> bool:
-        """Whether a reader slot is free right now (a hint; it may be taken next)."""
+    def may_wait_for_read(self, reader_leased: bool) -> bool:
+        """Whether this context may wait for another thread's read (#3043).
+
+        A reader without a lease needs a reader slot; a context holding one
+        waits for it only while another slot is free (a hint; it may be
+        taken next), else it would hold the very slot that read needs.
+        """
+        if reader_leased or not self.holds_lease():
+            return True
         if not self._reader_slots.acquire(blocking=False):
             return False
         self._reader_slots.release()
