@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from datetime import date, datetime, timedelta
 from typing import Any, Final
 
@@ -23,6 +23,7 @@ from backend.coach.context import (
 )
 from backend.coach.session_checks import matched_focus
 from backend.errors import AppError
+from backend.nutrition import fuelling, session_fuelling
 from backend.performance.activity_read_service import (
     ActivityAnalysisReadService,
     calendar_pairs,
@@ -35,6 +36,7 @@ from backend.performance.planned_targets import (
     unit_steps,
 )
 from backend.performance.report_service import PROFILE_WINDOW_DAYS
+from backend.performance.session_report import session_report
 from backend.planning import leg_strength
 from backend.planning.sport import planned_sport_environment
 from backend.sync.garmin import GarminPayloadService
@@ -53,6 +55,36 @@ _LIST_OMITTED_KEYS: Final = frozenset(
         "water_estimated_ml",
     }
 )
+
+
+def _analysis_additions(detail: Mapping[str, Any], effect: Any) -> dict[str, Any]:
+    """What the session analysis reads beside the recording (#3038).
+
+    The provider's training-effect label, the one effect value the metrics
+    lack, and for a long run or ride the carbohydrate advice for its duration
+    (the rule of the advice before a long session, ``session_fuelling``), which
+    the analysis compares with the intake logged that day.
+    """
+    additions: dict[str, Any] = {}
+    if isinstance(effect, dict) and effect.get("training_effect_label"):
+        additions["training_effect_label"] = {
+            "value": effect["training_effect_label"],
+            "source": effect.get("source"),
+        }
+    session = detail.get("session")
+    duration = (detail.get("metrics") or {}).get("duration_s")
+    seconds = duration.get("value") if isinstance(duration, Mapping) else None
+    if (
+        isinstance(session, Mapping)
+        and session.get("sport") in session_fuelling.SPORTS
+        and isinstance(seconds, int | float)
+        and seconds >= session_fuelling.LONG_SESSION_S
+    ):
+        additions["fuelling_advice"] = {
+            "carbohydrates_per_hour": fuelling.carbohydrate_per_hour(seconds),
+            "source": fuelling.POSITION_STAND,
+        }
+    return additions
 
 
 def _not_compared() -> dict[str, Any]:
@@ -177,8 +209,9 @@ class CoachActivityReadToolService:
             # reads their averages from the metrics.
             detail.pop("running_dynamics_streams", None)
             # The provider-values section repeats the effect metrics (#2831).
-            detail.pop("training_effect", None)
+            effect = detail.pop("training_effect", None)
             result = self._with_session_context(detail)
+            result.update(_analysis_additions(detail, effect))
             session = detail.get("session")
             if self._session_corrections is not None and isinstance(session, dict):
                 # Local session IDs and merge candidates for the session tools.
@@ -325,7 +358,39 @@ class CoachActivityReadToolService:
             strength = _strength_plan(detail, session, result.get("focus"), paired)
             if strength is not None:
                 result["strength_plan"] = strength
+            # Code judges every deterministic check; the Coach explains (#3084).
+            result["session_report"] = self._session_report(
+                result, session, paired, nearby
+            )
         return result
+
+    def _session_report(
+        self,
+        result: dict[str, Any],
+        session: dict[str, Any],
+        around: list[dict[str, Any]] | None,
+        nearby: list[Any] | None,
+    ) -> dict[str, Any]:
+        """The report: the paired unit's estimate against the local load (M6).
+
+        Runs and rides only, like the other planned checks.
+        """
+        unit = _matched_unit(session, result.get("focus"), around)
+        planned = None
+        if (
+            unit is not None
+            and self._unit_thresholds is not None
+            and session.get("sport") in ("run", "ride")
+        ):
+            estimate = self._unit_thresholds(unit)
+            bands = estimate.band_seconds or {}
+            planned = {
+                "duration_s": estimate.duration_s,
+                "load": estimate.load,
+                "above_easy_s": bands.get("moderate", 0.0) + bands.get("high", 0.0),
+            }
+        own = _own_summary(session, nearby) or {}
+        return session_report(result, planned, own.get("training_load"))
 
     def _session_checks(
         self,
@@ -342,14 +407,7 @@ class CoachActivityReadToolService:
         if session.get("sport") not in ("run", "ride"):
             return checks
         checks["strength_before"] = self._strength_before(session, nearby, units)
-        own = next(
-            (
-                row
-                for row in nearby or ()
-                if row.get("id") == session.get("activity_id")
-            ),
-            None,
-        )
+        own = _own_summary(session, nearby)
         covered_from = self._covered_from()
         # A session before the curve window has no curve; nothing is read for it.
         inside = own is not None and day >= covered_from
@@ -557,6 +615,14 @@ def _unpaired_reason(
     if any(str(unit.get("id")) in pairs for unit in same):
         return "Die geplante Einheit dieses Tages gehört zu einer anderen Aktivität."
     return None
+
+
+def _own_summary(
+    session: Mapping[str, Any] | None, nearby: Sequence[Any] | None
+) -> Any:
+    """The session's own summary among the sessions read around its day."""
+    activity_id = None if session is None else session.get("activity_id")
+    return next((row for row in nearby or () if row.get("id") == activity_id), None)
 
 
 def _strength_plan(

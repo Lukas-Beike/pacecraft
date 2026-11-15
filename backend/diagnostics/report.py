@@ -118,6 +118,8 @@ class DiagnosticReportDependencies:
     lt1_ride_coverage: Callable[[], dict[str, Any]] | None = None
     # The slowest API routes by pattern since start (#3017).
     slowest_routes: Callable[[], list[dict[str, Any]]] | None = None
+    # Waits of the heavy view reads for their gate, counts only (#3029).
+    heavy_read_gate: Callable[[], dict[str, Any]] | None = None
     # The all-time curve build: state word, count and last duration (#2852).
     curve_build: Callable[[], dict[str, Any]] | None = None
     # The database file: its sizes, free space and recovery copies (#2848).
@@ -264,9 +266,6 @@ class DiagnosticReportService:
                     # Only whether the endpoint differs from the default, never the URL.
                     "openai_base_url_custom": deps.config.openai_base_url
                     != DEFAULT_OPENAI_BASE_URL,
-                    "transcription_endpoint_custom": bool(
-                        deps.config.transcription_base_url
-                    ),
                     "anthropic_configured": bool(deps.config.anthropic_api_key),
                     "anthropic_base_url_custom": deps.config.anthropic_base_url
                     != DEFAULT_ANTHROPIC_BASE_URL,
@@ -337,6 +336,9 @@ class DiagnosticReportService:
                     "process_memory": process_memory(),
                     **process_settings(),
                     "reader_slots": deps.database_manager.reader_slot_waits(),
+                    "heavy_read_gate": deps.heavy_read_gate()
+                    if deps.heavy_read_gate
+                    else {},
                     # Route patterns only: no ids, no query (#3017).
                     "slowest_routes": deps.slowest_routes()
                     if deps.slowest_routes

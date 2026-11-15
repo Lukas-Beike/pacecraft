@@ -219,15 +219,6 @@ function isSessionEndedError(error) {
   return error?.sessionEnded === true;
 }
 
-async function apiAudio(path, blob) {
-  const generation = state.sessionGeneration;
-  const result = await globalThis.AppApi.audio(path, blob, () => {
-    if (generation === state.sessionGeneration) showLogin();
-  });
-  if (generation !== state.sessionGeneration) throw sessionEndedError();
-  return result;
-}
-
 
 function hideToast() {
   const node = $("#toast");

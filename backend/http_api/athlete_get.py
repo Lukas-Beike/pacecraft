@@ -77,10 +77,22 @@ class AthleteGetRoutes:
 
     def routes(self) -> list[Route]:
         routes = [
-            Route("GET", "/api/performance", Access.SESSION, self._performance),
+            Route(
+                "GET",
+                "/api/performance",
+                Access.SESSION,
+                self._performance,
+                heavy=True,
+            ),
             Route("GET", "/api/profile", Access.SESSION, self._profile),
             Route("GET", "/api/feedback", Access.SESSION, self._feedback),
-            Route("GET", "/api/context-preview", Access.SESSION, self._preview),
+            Route(
+                "GET",
+                "/api/context-preview",
+                Access.SESSION,
+                self._preview,
+                heavy=True,
+            ),
         ]
         if self._zone_service is not None:
             routes.append(Route("GET", ZONES_PATH, Access.SESSION, self._zones))

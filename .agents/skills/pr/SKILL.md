@@ -16,7 +16,8 @@ Copy this checklist into your response and tick it as you go:
 ```text
 - [ ] 1 Prepare: committed by path, rebased, run-tests-changed, OpenSpec and spec drift, Sonar
 - [ ] 2 Review: one fresh review of the final head, its SHA in the PR body; findings fixed
-      or listed; Sonar again if the fixes changed the head
+      or listed; Sonar again if the fixes changed the head; a guard or hook change
+      also gets the adversarial bypass review, its cases tested
 - [ ] 3 Publish: pushed with hooks; PR with merge danger, line balance and Part of/Closes;
       open PRs checked against a new guard; auto-merge once Gitar reviewed and no feedback is open
 - [ ] 4 Monitor: merged per pr-state; threads handled; develop runs checked; unwatched
@@ -101,6 +102,17 @@ act only on P0-P2 findings and real security gaps, and list the unfixed P3s in
 one summary line; guidelines may have exceptions, and hypothetical edge cases
 in prose are not findings.
 
+A change to a guard, a hook, or the checks they run (`scripts/hooks/`,
+`.githooks/`, `.claude/settings.json` hooks, an architecture or quality guard)
+also gets one adversarial bypass review before the PR (#3102).
+- Run it in a fresh-context subagent. Brief it only with the diff, the guard's
+  purpose, and that nothing it guarded may pass afterwards.
+- Ask for concrete inputs or commands the change wrongly allows or fails open
+  on, each with an expected result, and for the attacks it ruled out.
+- Add every valid case as a test before the PR.
+- Report the result to whoever asked for the change. In the public PR text,
+  describe it neutrally ("tighten detection"), never as a step-by-step bypass.
+
 Fix valid findings with new commits and rerun the affected checks, then push. A
 finding you consider invalid needs concrete evidence (file and line, or the
 same code on `develop`); not fixing a P0-P2 finding requires the user's
@@ -173,6 +185,14 @@ exit 1 handle the cause as below. On each wake:
   [sonar-check](../pacecraft-sonar-check/SKILL.md) `--pr <number>`, fix the findings on changed lines,
   and push. Do not accept issues to clear the gate without an evidence line in
   the PR body.
+- Revert or fix after the merge (#2636): a PR's checks ran on an older develop,
+  so two green PRs can still break develop together. If the develop-run check
+  of your merge commit exits 1 and your change is part of the cause, fix
+  forward within 30 minutes or open a revert PR of your merge commit (a PR,
+  never a push to develop; title and commit subject `revert(<scope>): <original
+  description>`, not git's default `Revert "..."`, which the commit-convention
+  check rejects), and report it at once. Until develop is green,
+  every lane merges only PRs outside the failing area.
 - Stop and report if GitHub requires something you cannot satisfy, or if the PR
   is closed without merging.
 

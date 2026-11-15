@@ -63,7 +63,7 @@ plain JavaScript, athlete data, and local-action contracts; see
 - Check small mobile layouts, keyboard-open input, long German labels, 200% text
   without horizontal overflow, scroll containers, and sticky controls in the dark
   and light themes; inspect the affected wider layout too. Keep destructive
-  actions distinguishable and microphone/notifications opt-in.
+  actions distinguishable and notifications opt-in.
 - Preserve safe Markdown, login/CSRF, streaming, and the chat keyboard and asset
   version contracts in `public/AGENTS.md`.
 - Use the product-native preview when available and follow

@@ -48,6 +48,7 @@ class CompactToolResultTests(unittest.TestCase):
                 {
                     "ok": True,
                     "query": "haferflocken",
+                    "lookup_outcome": "external_after_miss",
                     "local_products": [{"id": "lp1", "name": "Hafer", "x": BULK}],
                     "foods": [{"id": "f1", "name": "Flocken", "nutrients": [BULK]}],
                 }
@@ -69,6 +70,8 @@ class CompactToolResultTests(unittest.TestCase):
             [match["id"] for match in projected["steps"][0]["found"]], ["lp1", "f1"]
         )
         self.assertNotIn(BULK, json.dumps(compact))
+        # The diagnostics count each term's outcome from the kept receipt (#3080).
+        self.assertEqual("external_after_miss", compact["results"][0]["lookup_outcome"])
 
     def test_receipt_copy_keeps_undo_references_and_leaves_the_input_alone(
         self,

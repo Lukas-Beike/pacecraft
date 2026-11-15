@@ -17,7 +17,7 @@ results. Prepared-image execution is Linux-only; Windows uses native Chromium.
 Use the product-native preview for manual inspection when available. Inspect
 DOM, console/network failures, screenshot-level alignment, reduced motion,
 login, fresh PWA/offline assets, safe Markdown, keyboard behavior, opt-in
-microphone/notifications, and the affected flow. Fixtures do not prove live
+notifications, and the affected flow. Fixtures do not prove live
 provider behavior or permissions on a real mobile device. Reproduce failed
 and stale-data states by routing `/api/**` to an error response in
 Playwright. Shrinking the viewport does not trigger the chat keyboard

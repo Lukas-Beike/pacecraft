@@ -40,7 +40,7 @@ const NAV_VIEWS = (() => {
   const diary = view(["/api/nutrition/day"], ["Ernährung aktualisieren", "Vorheriger Tag", "Nächster Tag", "Heute", "Löschen", "Rückgängig", "Erneut laden"], ENTRIES);
   const connections = view([...MORE_READS, "/api/providers/connections", "/api/nutrition/yazio/status"], ["Verbindung prüfen", "Mit Garmin anmelden", "Garmin trennen", "Wahoo verbinden", "Synchronisieren", "Speichern", "Entfernen"], ["loading", "error", "notConfigured", "offline"]);
   return Object.freeze({
-    coach: view(["/api/chat/history?limit=100"], ["Senden", "Morgen-Check-in", "Analyse & Plan", "Spracheingabe starten", "Antwort stoppen", "Weitere Nachrichten laden", "Coach fragen"], ALL_STATES),
+    coach: view(["/api/chat/history?limit=100"], ["Senden", "Morgen-Check-in", "Analyse & Plan", "Antwort stoppen", "Weitere Nachrichten laden", "Coach fragen"], ALL_STATES),
     plan: overview,
     "plan/overview": overview,
     "plan/library": view(PLAN_READS, [...PLAN_ACTIONS, "Weitere Bibliothekseinheiten laden", "Erneut senden"], ENTRIES),

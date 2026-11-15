@@ -214,7 +214,7 @@ The overview SHALL preserve canonical local records, existing Coach editing and 
 
 Evidence: `public/state-loader.js` (canonical competition state), `public/app.js` (local retry), `public/plan-views.js:renderCompetitionReadStatus`, `backend/http_api/bootstrap_state.py` and `backend/http_api/athlete_get.py` (reads), `backend/planning/competition_service.py:CompetitionService.save` (local mutation authority); `e2e/competitions.spec.js` (no writes while reading, failed reads with retry, saved Coach edit shown).
 
-Evidence limits for CS9–CS12: Coach-edit refresh is exercised using simulated canonical saved state rather than an end-to-end real-model mutation. Real-device microphone/notification permissions and keyboard-open behavior were not verified.
+Evidence limits for CS9–CS12: Coach-edit refresh is exercised using simulated canonical saved state rather than an end-to-end real-model mutation. Real-device notification permissions and keyboard-open behavior were not verified.
 
 ### Requirement: CS13 Completed races link to stored competitions
 The system SHALL link each stored competition to the completed sessions of its local date and sport when it reads activity summaries, without storing the link, so consumers see which session was the race.

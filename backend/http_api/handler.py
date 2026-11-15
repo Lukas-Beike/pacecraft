@@ -6,6 +6,7 @@ import logging
 import time
 import uuid
 from collections.abc import Callable, Iterator
+from contextlib import nullcontext
 from dataclasses import dataclass, field
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler
@@ -20,9 +21,6 @@ from backend.errors import (
     DatabaseBusyError,
     public_error_contract,
     public_error_payload,
-)
-from backend.http_api.requests import (
-    read_audio_body as read_request_audio_body,
 )
 from backend.http_api.requests import (
     read_body as read_request_body,
@@ -40,6 +38,7 @@ from backend.observability import (
     http_access_log_level,
     redact_request_query,
 )
+from backend.runtime.heavy_reads import HeavyReadGate
 from backend.runtime.socket_deadline import SocketDeadline
 
 # A request body is read in pieces of this size; each piece gets its own
@@ -76,11 +75,9 @@ class HttpRequestHandlerDependencies:
     redact_text: Callable[[str], str]
     internal_server_error: str
     max_body_bytes: int
-    max_audio_body_bytes: int
-    voice_audio_types: tuple[str, ...]
-    normalize_audio_type: Callable[[str], str]
     static_asset_service: StaticAssetService
     route_timings: RouteTimings = field(default_factory=RouteTimings)
+    heavy_read_gate: HeavyReadGate = field(default_factory=HeavyReadGate)
 
 
 class RequestHandler(BaseHTTPRequestHandler):
@@ -295,7 +292,8 @@ class RequestHandler(BaseHTTPRequestHandler):
         session: dict[str, Any] = {}
         if route.access is not Access.PUBLIC:
             session = self.auth_service.require_auth(self)
-        route.handle(self, self._request(path, params, session))
+        with self.dependencies.heavy_read_gate.held() if route.heavy else nullcontext():
+            route.handle(self, self._request(path, params, session))
 
     def _post(self, path: str) -> None:
         route, params = self.dependencies.route_table.match("POST", path) or (None, {})
@@ -365,16 +363,6 @@ class RequestHandler(BaseHTTPRequestHandler):
             max_bytes,
             error=AppError,
             too_large_status_threshold=self.dependencies.max_body_bytes,
-        )
-
-    def read_audio_body(self) -> bytes:
-        return read_request_audio_body(
-            self.headers,
-            self._read_input,
-            allowed_types=self.dependencies.voice_audio_types,
-            normalize_type=self.dependencies.normalize_audio_type,
-            max_bytes=self.dependencies.max_audio_body_bytes,
-            error=AppError,
         )
 
     def read_json(self, max_bytes: int | None = None) -> dict[str, Any]:

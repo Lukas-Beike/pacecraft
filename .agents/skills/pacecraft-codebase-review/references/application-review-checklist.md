@@ -31,10 +31,10 @@ Use this as a coverage map, not as a request to manufacture one finding per sect
 ## 3. Secrets, privacy, and untrusted content
 
 - Trace credentials and sensitive URLs from environment loading through clients and errors. They must not reach logs, diagnostics, coach context, frontend state, exports not intended to include them, notifications, test artifacts, or source control.
-- Review structured logging and exception paths for raw upstream bodies, request headers, tokens, athlete content, SQL parameters, voice data, and calendar feed URLs.
+- Review structured logging and exception paths for raw upstream bodies, request headers, tokens, athlete content, SQL parameters, and calendar feed URLs.
 - Verify diagnostics are useful but minimized/redacted and capture paths cannot leak or overwrite arbitrary files.
 - Review privacy export/delete scope against every durable table and remote conversation state; make partial remote deletion failures visible without lying about local completion.
-- Check retention, cleanup, temporary files, browser storage, caches, screenshots/traces, and backup handling. Voice audio must remain short-lived and unpersisted.
+- Check retention, cleanup, temporary files, browser storage, caches, screenshots/traces, and backup handling.
 - Inspect all HTML/Markdown/URL rendering sinks for XSS, unsafe schemes, attribute injection, reverse tabnabbing, and untrusted CSS/markup.
 
 ## 4. SQLCipher persistence and durable athlete data
@@ -108,8 +108,8 @@ Use this as a coverage map, not as a request to manufacture one finding per sect
 - Map every UI action to its API method, authentication/CSRF handling, loading/error/success state, retry behavior, and durable result. Compare request/response shapes with backend validators.
 - Review overlapping bootstrap, polling, navigation, streaming, sync, cancel, edit, and save operations for stale response overwrite, duplicate handlers, lost edits, and misleading optimistic state.
 - Verify safe Markdown/text rendering and all DOM sinks. No secrets or durable authority may live in browser storage or URLs.
-- Check mobile-first layouts at supported viewports, focus/keyboard order, dialogs, reduced motion, touch targets, contrast, semantic names, live regions, and axe findings. Preserve Enter-to-send, Shift+Enter newline, and editable voice transcripts.
-- Review unsupported microphone/notification/browser paths, permission denial, secure-context requirements, cancellation, and cleanup.
+- Check mobile-first layouts at supported viewports, focus/keyboard order, dialogs, reduced motion, touch targets, contrast, semantic names, live regions, and axe findings. Preserve Enter-to-send and Shift+Enter newline.
+- Review unsupported notification/browser paths, permission denial, secure-context requirements, cancellation, and cleanup.
 - Ensure user-visible status distinguishes local vs remote, fresh vs stale/partial/error, and pending vs completed mutations.
 
 ## 13. PWA, service worker, and offline behavior
@@ -133,7 +133,7 @@ Use this as a coverage map, not as a request to manufacture one finding per sect
 - Ensure all tests use temporary databases/data directories and fake provider/OpenAI inputs and cannot load the root `.env` or real tokens.
 - Review security regression coverage for password/session/CSRF, SQLCipher fail-closed, body/path bounds, calendar SSRF, log redaction, backup/restore, prompt injection/tool authorization, and explicit remote writes.
 - Review state-machine and concurrency tests for sync, background Coach jobs, streaming/cancel, retries, partial failures, idempotency, adaptive apply, and restore maintenance.
-- Compare backend API and frontend behavior coverage. Inspect Playwright login, fresh PWA installation, viewports, accessibility, input behavior, notifications/microphone fallbacks, and meaningful failure artifacts.
+- Compare backend API and frontend behavior coverage. Inspect Playwright login, fresh PWA installation, viewports, accessibility, input behavior, notification fallbacks, and meaningful failure artifacts.
 - Run syntax/unit checks and, where feasible, isolated Docker and Playwright suites. Record unexecuted suites; do not infer they pass.
 
 ## 16. Dependencies, container, and runtime hardening
@@ -141,7 +141,7 @@ Use this as a coverage map, not as a request to manufacture one finding per sect
 - Review pinned Python/npm dependencies and lock consistency, necessity, supported Python 3.13/3.14 behavior, vulnerability exposure, license compatibility, and update automation.
 - Inspect Docker build context, `.dockerignore`, base-image digest, non-root user, writable paths, read-only compatibility, capabilities, resource bounds, healthcheck, `/data` ownership, and absence of runtime data/secrets in layers.
 - Confirm Garmin login uses the persistent token mount safely and documentation never encourages embedding credentials or tokens in images/commands that leak them.
-- Review local/Unraid examples for persistent bind mounts, safe container recreation, trusted network exposure, reverse-proxy HTTPS, and voice secure-context behavior.
+- Review local/Unraid examples for persistent bind mounts, safe container recreation, trusted network exposure, and reverse-proxy HTTPS.
 
 ## 17. CI/CD, GitHub Actions, and releases
 

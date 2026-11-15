@@ -124,7 +124,6 @@ from backend.provider_credentials import (
     ProviderCredentialService,
 )
 from backend.providers import activity_weather as activity_weather_provider
-from backend.providers import audio as audio_provider
 from backend.providers import calendar as calendar_provider
 from backend.providers import state as provider_state
 from backend.providers.connection_check_probes import (
@@ -235,9 +234,8 @@ DATA_DIR = Path(os.environ.get("DATA_DIR", ROOT / "data"))
 DB_PATH = DATA_DIR / "intervals-coach.db"
 LOG_PATH = DATA_DIR / "intervals-coach.log"
 APP_NAME = "Pacecraft · AI Coach"
-APP_VERSION = "2.1.18"
+APP_VERSION = "2.1.19"
 MAX_BODY_BYTES = 1_000_000
-MAX_AUDIO_BODY_BYTES = 8_000_000
 COACH_CONVERSATION_GATE = CoachConversationGate()
 
 
@@ -650,7 +648,6 @@ MODEL_TRANSPORT: ModelTransportServices = build_model_transport(
     logger=LOGGER,
     diagnostic_capture=DIAGNOSTIC_CAPTURE,
     app_version=APP_VERSION,
-    max_audio_bytes=MAX_AUDIO_BODY_BYTES,
 )
 APP.model_transport = MODEL_TRANSPORT
 COACH_CONVERSATION = build_coach_conversation(
@@ -971,9 +968,7 @@ APP.garmin_login = GARMIN_LOGIN
 HTTP_API = build_http_api(
     APP,
     session_auth_service=session_auth_service,
-    audio=audio_provider,
     max_body_bytes=MAX_BODY_BYTES,
-    max_audio_body_bytes=MAX_AUDIO_BODY_BYTES,
     public_dir=PUBLIC_DIR,
     chat_page_max=CHAT_PAGE_MAX,
     response_timeout_seconds=OPENAI_RESPONSE_TIMEOUT_SECONDS,

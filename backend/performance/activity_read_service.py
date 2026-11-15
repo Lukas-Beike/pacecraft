@@ -298,9 +298,7 @@ class ActivityAnalysisReadService(ActivityReadService):
             document["route"] = route
         summary = requested_summary()
         _add_purpose(document["session"], summary)
-        effect = _provider_training_effect(summary)
-        if effect is not None:
-            document["training_effect"] = effect
+        document.update(_summary_blocks(summary))
         return {"ok": True, **document, "data_scope": _data_scope(document, records)}
 
 
@@ -359,6 +357,25 @@ def _add_purpose(session: dict[str, Any], summary: ActivitySummary | None) -> No
     source = summary.get("sources", {}).get("purpose")
     if source:
         session["purpose_source"] = source
+
+
+def _summary_blocks(summary: ActivitySummary | None) -> dict[str, Any]:
+    """The detail blocks read from the session's summary, where present.
+
+    The provider's training effect (#2831) and the pace zone times (#3038),
+    whose ids name the athlete's pace zones; the zones carry no limits.
+    """
+    blocks: dict[str, Any] = {}
+    effect = _provider_training_effect(summary)
+    if effect is not None:
+        blocks["training_effect"] = effect
+    if summary is not None and summary.get("pace_zone_times"):
+        blocks["pace_zone_times"] = {
+            # A copy: the summary may be one of the kept, shared ones (#3043).
+            "zones": [dict(zone) for zone in summary["pace_zone_times"]],
+            "source": summary.get("sources", {}).get("pace_zone_times"),
+        }
+    return blocks
 
 
 # The provider's own training-effect values of a session (#2831), as reported.

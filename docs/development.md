@@ -17,7 +17,12 @@ primary `ai-coach` checkout. Before every shell command it runs
 a sandbox) that blocks clear `.env`, `data`, and Garmin token path forms with no
 exceptions, so you run the Docker runbook commands that pass `.env` or mount
 `data` yourself. It also blocks commands that merely mention such a path, such
-as a commit message; pass that text through a file. Beside it,
+as a commit message; pass that text through a file.
+Importing or running `server.py` reads the checkout's and the data directory's
+`.env` at import, so the hook also blocks a Python command that imports or runs
+`server`, unless it sets `DATA_DIR` to a temporary directory and neither the
+checkout root nor that directory holds a `.env` (#3076); tests set it through
+their support module. Beside it,
 `scripts/hooks/guard_destructive_git.py` blocks git commands that discard work
 (`reset --hard`, `clean -f`, `branch -D`, `checkout .`, `restore .` and a force
 push without `--force-with-lease`); normal and lease pushes stay allowed.
@@ -27,7 +32,10 @@ interpreter or written to a file, or in `python -c`, `sed -i` and similar inline
 edits; write such files and scripts with the Write or Edit tool.
 `scripts/hooks/guard_empty_body.py` blocks a `gh pr` or `gh issue` write whose
 `--body-file` is empty or whose `--body` is empty, which would blank the public
-text (#2954).
+text (#2954). One hook, `scripts/hooks/guard_shell.py`, runs these shell guards
+and `guard_resolve_thread.py` in turn in a single Python process, so a loaded
+machine does not time out five interpreter starts per command (#2982); a guard
+that fails blocks the command, and each guard still runs on its own.
 `.claude/agents/` defines the `explorer` (Haiku, low effort, read-only),
 `implementer` (Sonnet, medium), and `reviewer` (Sonnet, medium, read-only)
 subagents. `scripts/hooks/thread_model_rule.py` blocks a T3 thread launch whose
@@ -81,8 +89,7 @@ precedence over remembered paths or stale operating assumptions.
 The pinned SQLCipher dependency has no Windows wheel, so application and UI
 integration run in Docker ([setup](setup.md)); runtime data never enters the
 image. Browser checks prefer the disposable fixture in
-`.agents/skills/pacecraft-pwa-e2e/references/browser-validation.md`. Voice input
-needs a secure context.
+`.agents/skills/pacecraft-pwa-e2e/references/browser-validation.md`.
 
 ## Secret checks before Git pushes
 
@@ -94,11 +101,20 @@ and commit/tag messages, including intermediate commits, in temporary storage an
 A finding, missing Sonar CLI, or scanner error blocks the push. Deleted refs need
 no scan. After a clean scan the hook runs CI's repository quality ratchet
 (`python tools/quality_baseline.py`: mypy and Ruff, about 35 seconds
-on Windows) on a clean export of HEAD; new findings block the push. The same
+on Windows) on a clean export of HEAD; new findings block the push. A Python
+file `ruff format --check` would rewrite is a `format` finding (#3061): the
+files unformatted when the check arrived are baseline debt, and a push that
+leaves a formatted file unformatted is new. The check never rewrites a file;
+format the files you change with `ruff format <files>`. The same
 ratchet reports a function above Sonar's cognitive complexity 15 (rule
 `python:S3776`) as a `cognitive` finding named by function, not score. It
-also checks `public/*.js` for Sonar's cognitive complexity above 15
-(S3776) and nested ternaries (S3358) through `eslint-plugin-sonarjs`, and for
+reports a selector list repeated in the same at-rule context of `public/*.css`
+(Sonar's `css:S4666`, Stylelint `no-duplicate-selectors`) as a `css` finding,
+since CI's Sonar gate otherwise is the first to see it (#3077). It
+also checks the JavaScript Sonar analyzes (`public/*.js`, the `scripts/` and
+`tools/` modules, the `e2e/` specs, `tests/*.cjs` and the root `*.cjs`, #3058)
+for Sonar's cognitive complexity above 15 (S3776) and nested ternaries (S3358)
+through `eslint-plugin-sonarjs`, and the page scripts for
 identifiers declared nowhere (ESLint `no-undef`, #3016): page scripts may use
 the browser globals and the names any page script declares in the shared
 global scope or on `globalThis`, derived from `public/`; the service worker
@@ -110,10 +126,15 @@ clone's `node_modules` (`npm ci`). In the pre-push hook and in
 skipped the check. A `NOSONAR` comment on the reported line
 suppresses a finding as it does in Sonar. Beside the ratchet, in the same
 export, `python scripts/regenerate_docs.py --check` reruns the generators of
-`docs/performance-methods/`, `docs/api-routes.md` and `docs/view-catalogue.md`
+`docs/performance-methods/`, `docs/api-routes.md`, `docs/kv-catalogue.md` and
+`docs/view-catalogue.md`
 and blocks a push whose committed copies are stale (#2949; it needs the
 clone's `node_modules` and adds no wall time). Run
-`python scripts/regenerate_docs.py` to rewrite them. Do not use `--no-verify`.
+`python scripts/regenerate_docs.py` to rewrite them. Also beside the ratchet,
+the fast architecture guards run on the same export (#3071): provider coupling,
+package layering and the server composition, module and ownership tests, about
+half a minute without a database. A failure blocks the push with the guard's
+finding. Do not use `--no-verify`.
 
 Enable the hook in each clone (the relative path also works in its worktrees):
 

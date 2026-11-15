@@ -677,7 +677,7 @@ async function sendMessage(event) {
   const attachments = state.chatAttachments || [];
   const message = input.value.trim() || (attachments.length ? "Bitte analysiere die angehängten Dateien." : "");
   const requestKind = input.dataset.requestKind || null;
-  if (state.chatAttachmentsLoading || !message || voiceIsRecording() || state.voiceTranscribing) return;
+  if (state.chatAttachmentsLoading || !message) return;
   state.chatAttachments = [];
   renderChatAttachments();
   // A recovering answer is not busy yet; its completion sends the queue.
@@ -692,14 +692,12 @@ async function sendMessage(event) {
   delete input.dataset.requestKind;
   state.chatDraftDirty = false;
   updateChatControls();
-  updateVoiceButton();
   try {
     await drainChatQueue(message, requestKind, attachments);
   } finally {
     if (!state.chatRequest && !state.chatServerOperationId) state.busy = false;
     updateChatControls();
     renderMessages(state.data?.messages || [], false, true);
-    updateVoiceButton();
     if ($("#chatPanel")?.classList.contains("active") && document.visibilityState === "visible" && shouldRestoreChatInputFocus()) {
       input.focus({ preventScroll: true });
     }
@@ -711,7 +709,7 @@ function steerCurrentChat(event) {
   const input = $("#messageInput");
   const message = input.value.trim();
   if ((state.chatAttachments || []).length) { toast("Bitte Anhänge mit Senden in die Warteschlange stellen.", true); return; }
-  if (!message || !state.busy || voiceIsRecording() || state.voiceTranscribing) return;
+  if (!message || !state.busy) return;
   queueChatMessage(message, "steer");
 }
 
@@ -752,7 +750,6 @@ async function resetCoachChat() {
     }
     state.busy = false;
     updateChatControls();
-    updateVoiceButton();
     toast("Neuer Coach-Chat gestartet");
   } catch (error) { toast(error.message, true); }
   finally {
@@ -763,61 +760,6 @@ async function resetCoachChat() {
 
 const MAX_QUEUED_ATTACHMENT_BYTES = 16_000_000;
 const MAX_CHAT_ATTACHMENTS = 4;
-
-const VOICE_MIME_TYPES = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4", "audio/ogg;codecs=opus"];
-
-const VOICE_MAX_DURATION_MS = 60_000;
-
-function setVoiceStatus(message = "", error = false) {
-  const node = $("#voiceStatus");
-  if (!node) return;
-  node.textContent = message;
-  node.classList.toggle("error", error);
-  node.hidden = !message;
-}
-
-function voiceIsRecording() {
-  return state.voiceRecorder?.state === "recording";
-}
-
-function formatVoiceDuration() {
-  const elapsed = Math.min(Date.now() - state.voiceStartedAt, VOICE_MAX_DURATION_MS);
-  return `${String(Math.floor(elapsed / 1000)).padStart(2, "0")} s / 60 s`;
-}
-
-function setVoiceButtonIcon(icon) {
-  const button = $("#voiceButton");
-  if (button) button.innerHTML = `<svg class="nav-icon" aria-hidden="true"><use href="#icon-${icon}"></use></svg>`;
-}
-
-function updateVoiceButton() {
-  const button = $("#voiceButton");
-  if (!button) return;
-  const recording = voiceIsRecording();
-  const transcribing = state.voiceTranscribing;
-  const chatReady = Boolean(state.data && Array.isArray(state.data.messages));
-  // Transcription uses its own endpoint (OpenAI by default), whichever model answers.
-  const voiceConfigured = Boolean(state.data?.configured?.transcription ?? true);
-  // Recording stays available while the Coach works; the transcript is queued like a typed follow-up.
-  button.disabled = !chatReady || transcribing || (!voiceConfigured && !recording);
-  button.classList.toggle("recording", recording);
-  button.classList.toggle("transcribing", transcribing);
-  button.setAttribute("aria-pressed", recording ? "true" : "false");
-  if (recording) {
-    setVoiceButtonIcon("stop");
-    button.setAttribute("aria-label", "Spracheingabe beenden");
-    button.title = "Spracheingabe beenden";
-  } else if (transcribing) {
-    button.innerHTML = "<span class=\"button-spinner\" aria-hidden=\"true\"></span>";
-    button.setAttribute("aria-label", "Audio wird transkribiert");
-    button.title = "Audio wird transkribiert";
-  } else {
-    setVoiceButtonIcon("microphone");
-    button.setAttribute("aria-label", "Spracheingabe starten");
-    button.title = "Spracheingabe starten";
-  }
-  updateChatControls();
-}
 
 // The provider of the model that answers has its key (before the first load:
 // assume yes). Every quick-action kind but the morning check-in runs on the
@@ -831,9 +773,8 @@ function chatControlState(input) {
   const aiConfigured = coachConfigured(state.data?.configured, input?.dataset.requestKind);
   const chatReady = Boolean(state.data && Array.isArray(state.data.messages) && aiConfigured);
   const hasDraft = Boolean((state.chatAttachments || []).length || input?.value.trim());
-  const inputAvailable = !voiceIsRecording() && !state.voiceTranscribing;
   const resuming = Boolean(state.chatRequest?.phase === "recovering" || (state.chatServerOperationId && !state.chatStream));
-  return { aiConfigured, chatReady, hasDraft, inputAvailable, resuming, reconciling: state.chatRequest?.phase === "reconciling" };
+  return { aiConfigured, chatReady, hasDraft, resuming, reconciling: state.chatRequest?.phase === "reconciling" };
 }
 
 function chatSendLabel(controls) {
@@ -844,7 +785,7 @@ function chatSendLabel(controls) {
 
 function updateChatSendButton(button, controls) {
   if (!button) return;
-  button.disabled = state.chatAttachmentsLoading || !controls.chatReady || !controls.hasDraft || !controls.inputAvailable || controls.resuming || controls.reconciling;
+  button.disabled = state.chatAttachmentsLoading || !controls.chatReady || !controls.hasDraft || controls.resuming || controls.reconciling;
   const label = chatSendLabel(controls);
   button.setAttribute("aria-label", label);
   button.title = label;
@@ -852,7 +793,6 @@ function updateChatSendButton(button, controls) {
 
 function steerButtonHint(controls) {
   if (controls.resuming || controls.reconciling) return "Der Coach lädt die Antwort noch.";
-  if (!controls.inputAvailable) return "Die Spracheingabe läuft noch.";
   if (!controls.hasDraft) return "Schreibe zuerst eine Nachricht, um sie als Nächstes zu senden.";
   return "Wird nach der aktuellen Antwort vor den übrigen wartenden Nachrichten gesendet.";
 }
@@ -860,7 +800,7 @@ function steerButtonHint(controls) {
 function updateChatSteerButton(button, controls) {
   if (!button) return;
   button.hidden = !state.busy || controls.resuming || controls.reconciling;
-  button.disabled = !controls.hasDraft || !controls.inputAvailable || controls.resuming || controls.reconciling;
+  button.disabled = !controls.hasDraft || controls.resuming || controls.reconciling;
   const hint = steerButtonHint(controls);
   button.title = hint;
   const hintNode = $("#steerButtonHint");
@@ -925,119 +865,6 @@ function announceChatStatus(message) {
   if (!status || status.textContent === message) return;
   status.textContent = message;
 }
-function stopVoiceCapture(recorder = state.voiceRecorder) {
-  if (state.voiceTimer) clearInterval(state.voiceTimer);
-  state.voiceTimer = null;
-  if (state.voiceStream) {
-    state.voiceStream.getTracks().forEach((track) => track.stop());
-    state.voiceStream = null;
-  }
-  if (state.voiceRecorder === recorder) state.voiceRecorder = null;
-  updateVoiceButton();
-}
-
-function stopVoiceRecording() {
-  const recorder = state.voiceRecorder;
-  if (recorder?.state === "recording") recorder.stop();
-}
-
-async function transcribeVoice(blob) {
-  const generation = state.sessionGeneration;
-  state.voiceTranscribing = true;
-  setVoiceStatus("Aufnahme wird transkribiert …");
-  updateVoiceButton();
-  try {
-    const result = await apiAudio("/api/transcribe", blob);
-    if (generation !== state.sessionGeneration) return;
-    const transcript = String(result.transcript || "").trim();
-    if (!transcript) throw new Error("Kein Transkript erhalten.");
-    const input = $("#messageInput");
-    const current = input.value.trim();
-    input.value = current ? `${current}\n${transcript}` : transcript;
-    input.dispatchEvent(new Event("input"));
-    updateVoiceButton();
-    if ($("#chatPanel")?.classList.contains("active") && document.visibilityState === "visible") input.focus({ preventScroll: true });
-    setVoiceStatus("Transkript eingefügt. Bitte prüfen und anschließend senden.");
-    } catch (error) {
-      if (generation !== state.sessionGeneration) return;
-      setVoiceStatus(error.message, true);
-      toast(error.message, true);
-    } finally {
-    if (generation === state.sessionGeneration) {
-      state.voiceTranscribing = false;
-      updateVoiceButton();
-    }
-  }
-}
-
-async function toggleVoiceInput() {
-  if (state.voiceTranscribing || state.voiceAcquiring) return;
-  if (voiceIsRecording()) {
-    stopVoiceRecording();
-    return;
-  }
-  if (!globalThis.isSecureContext || !navigator.mediaDevices?.getUserMedia || !globalThis.MediaRecorder) {
-    const message = "Spracheingabe benötigt eine HTTPS-Verbindung und einen unterstützten Browser.";
-    setVoiceStatus(message, true);
-    toast(message, true);
-    return;
-  }
-  const generation = state.sessionGeneration;
-  state.voiceAcquiring = true;
-  setVoiceStatus("Mikrofon wird aktiviert …");
-  try {
-    const stream = await navigator.mediaDevices.getUserMedia({
-      audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
-    });
-    if (generation !== state.sessionGeneration) {
-      stream.getTracks().forEach((track) => track.stop());
-      return;
-    }
-    state.voiceAcquiring = false;
-    state.voiceStream = stream;
-    const mimeType = typeof MediaRecorder.isTypeSupported === "function"
-      ? VOICE_MIME_TYPES.find((type) => MediaRecorder.isTypeSupported(type)) || ""
-      : "";
-    const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
-    const chunks = [];
-    state.voiceRecorder = recorder;
-    state.voiceStartedAt = Date.now();
-    recorder.addEventListener("dataavailable", (event) => {
-      if (event.data?.size) chunks.push(event.data);
-    });
-    recorder.addEventListener("error", () => {
-      if (generation !== state.sessionGeneration) return;
-      stopVoiceCapture(recorder);
-      setVoiceStatus("Die Audioaufnahme ist fehlgeschlagen.", true);
-    });
-    recorder.addEventListener("stop", () => {
-      if (generation !== state.sessionGeneration) return;
-      const recordedType = recorder.mimeType || mimeType || "audio/webm";
-      const blob = new Blob(chunks, { type: recordedType });
-      stopVoiceCapture(recorder);
-      if (blob.size) void transcribeVoice(blob);
-      else setVoiceStatus("Es wurde keine Sprache aufgenommen.", true);
-    }, { once: true });
-    recorder.start();
-    setVoiceStatus(`Aufnahme läuft · ${formatVoiceDuration()}`);
-    updateVoiceButton();
-    state.voiceTimer = setInterval(() => {
-      if (!voiceIsRecording()) return;
-      setVoiceStatus(`Aufnahme läuft · ${formatVoiceDuration()}`);
-      if (Date.now() - state.voiceStartedAt >= VOICE_MAX_DURATION_MS) stopVoiceRecording();
-    }, 250);
-  } catch (error) {
-    if (generation !== state.sessionGeneration) return;
-    state.voiceAcquiring = false;
-    stopVoiceCapture();
-    const message = error.name === "NotAllowedError"
-      ? "Der Mikrofonzugriff wurde nicht erlaubt."
-      : "Das Mikrofon konnte nicht aktiviert werden.";
-    setVoiceStatus(message, true);
-    toast(message, true);
-  }
-}
-
 
 function renderCoachOverview(data) {
   const actions = data.coach_quick_actions || {};
@@ -2447,7 +2274,6 @@ function setupCoachEvents() {
   $("#composerPlusMenu").addEventListener("click", startQuickAction);
   setupQuickActionMenu();
   setupQuickActionMenu($("#attachmentButton"), $("#composerPlusMenu"));
-  $("#voiceButton").addEventListener("click", toggleVoiceInput);
   $("#chatJumpToComposer").addEventListener("click", () => {
     jumpToLatestMessages();
   });

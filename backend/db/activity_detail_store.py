@@ -949,6 +949,39 @@ def save_analysis(
     return WriteOutcome.UPDATED
 
 
+def planned_unit_links(db: Any, activity_ids: Iterable[str]) -> dict[str, str]:
+    """The planned unit each session's frozen target snapshot names, by session id."""
+    ids = list(dict.fromkeys(activity_id for activity_id in activity_ids if activity_id))
+    links: dict[str, str] = {}
+    for start in range(0, len(ids), 500):
+        chunk = ids[start : start + 500]
+        for row in db.execute(
+            "SELECT activity_id, json_extract(payload, '$.target_snapshot.planned_unit_id') "
+            "AS unit FROM activity_detail_analysis "
+            f"WHERE activity_id IN ({', '.join('?' * len(chunk))})",
+            chunk,
+        ).fetchall():
+            if isinstance(row["unit"], str) and row["unit"]:
+                links[row["activity_id"]] = row["unit"]
+    return links
+
+
+def planned_unit_sessions(db: Any, unit_ids: Iterable[str]) -> dict[str, str]:
+    """The session whose frozen target snapshot names each planned unit, by unit id."""
+    ids = list(dict.fromkeys(unit_id for unit_id in unit_ids if unit_id))
+    sessions: dict[str, str] = {}
+    for start in range(0, len(ids), 500):
+        chunk = ids[start : start + 500]
+        for row in db.execute(
+            "SELECT activity_id, json_extract(payload, '$.target_snapshot.planned_unit_id') "
+            "AS unit FROM activity_detail_analysis WHERE json_extract(payload, "
+            f"'$.target_snapshot.planned_unit_id') IN ({', '.join('?' * len(chunk))})",
+            chunk,
+        ).fetchall():
+            sessions[row["unit"]] = row["activity_id"]
+    return sessions
+
+
 def analysis_rows_for(
     db: Any, activity_ids: Iterable[str]
 ) -> dict[str, dict[str, Any]]:

@@ -118,6 +118,10 @@ The system SHALL store Open-Meteo historical-forecast weather per outdoor ride o
 - **WHEN** a session ended less than 48 hours ago
 - **THEN** nothing is requested for it yet.
 
+#### Scenario: The only session temperature
+- **WHEN** a session has a device temperature stream or record temperatures, with or without stored weather
+- **THEN** the details, the Coach and the comparisons show and use only the weather temperature, labelled with its source; without weather the temperature is unknown, and the device values stay stored.
+
 #### Scenario: Pass size and backoff
 - **WHEN** more than 20 sessions need a look-up, or a request fails
 - **THEN** at most 20 are looked up per pass, newest first; a failure ends the pass and delays that session by 30 minutes, doubling per failure up to 24 hours, and the delay is lost on restart.
@@ -144,6 +148,8 @@ Evidence:
 - `tests/test_activity_weather.py:test_a_stored_result_is_never_fetched_again`
 - `tests/test_activity_weather.py:test_an_unknown_environment_needs_a_stored_start_position`
 - `tests/test_activity_weather.py:test_gone_sessions_retire_their_rows`
+- `tests/test_activity_read_service.py:test_a_session_shows_only_its_weather_temperature_never_the_watch`
+- `tests/test_mean_max_curve.py:test_a_record_names_the_activity_weather_temperature_never_the_watch`
 - `tests/test_activity_weather.py:test_hours_around_a_full_hour_are_averaged_by_overlap`
 - `tests/test_activity_weather.py:test_no_raw_coordinate_leaves_the_stored_streams`
 - `tests/test_activity_weather.py:test_start_position_is_fetched_rounded_and_stored`

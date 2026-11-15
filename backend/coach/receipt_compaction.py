@@ -39,7 +39,7 @@ def _lookup_group(group: Any) -> dict[str, Any]:
         return {}
     compact: dict[str, Any] = {
         key: _clip(group[key])
-        for key in ("ok", "query", "local")
+        for key in ("ok", "query", "local", "lookup_outcome")
         if key in group and _scalar(group[key])
     }
     for key in ("local_products", "foods"):

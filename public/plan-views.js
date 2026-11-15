@@ -1527,99 +1527,141 @@ function appendOpenedPlannedParts(details, head, entry, actual) {
   if (activityId && !details.querySelector(".planned-zone-time")) {
     void appendPlannedZoneTime(details, activityId, ["Radfahren", "Rad indoor"].includes(activitySportLabel(calendarSportType(actual))));
   }
-  void appendPlannedEquipment(details, activityId, actual);
+  void appendPlannedEquipment(details, head, entry, actual);
 }
 
-// The session's equipment (#2879): one select of the items it can take and "Keiner". A suggestion (the item
-// last assigned to its sport) is preselected and marked; only "Übernehmen" saves, with a receipt and undo.
-async function appendPlannedEquipment(details, activityId, actual) {
-  if (!activityId || details.querySelector(".planned-equipment")) return;
-  const row = h("div", "planned-equipment");
-  details.querySelector(":scope > .planned-activity-more")?.before(row);
-  if (!row.isConnected) details.append(row);
-  let read;
+// The equipment of a unit (#2879, #3011): a chip in the head line, there as soon as the card opens, names the
+// item that counts (the own choice, else the planned choice, a rule or Garmin's link with its source) or the
+// suggestion. Tapping it opens one select of the items the unit can take and "Keiner"; only "Übernehmen"
+// saves, with a receipt and undo. Planned runs and rides take a choice too; nothing reaches a provider.
+const EQUIPMENT_LABELS = { Laufen: ["Schuh", "\u{1F45F}"], Radfahren: ["Rad", "\u{1F6B2}"], "Rad indoor": ["Rad", "\u{1F6B2}"] };
+const EQUIPMENT_SOURCE_LABELS = { planned: "Plan", rule: "Regel" };
+
+function plannedEquipmentTarget(entry, actual) {
+  const activityId = actual ? String(actual.activity_id || actual.id || "") : "";
+  if (activityId) return { activityId, body: { activity_id: activityId } };
+  if (actual || !entry?.local_id || entry.is_completed_activity) return null;
+  return { unitId: String(entry.local_id), body: { planned_unit_id: String(entry.local_id) } };
+}
+
+async function plannedEquipmentChoice(target) {
   try {
-    read = await plannedSessionRead(activityId);
+    if (target.activityId) return (await plannedSessionRead(target.activityId))?.equipment_choice || null;
+    return await api(`/api/equipment/planned?unit_id=${encodeURIComponent(target.unitId)}`);
   } catch {
-    read = null;
+    return null;
   }
-  const choice = read?.equipment_choice;
+}
+
+function plannedEquipmentSourceLabel(source) {
+  if (source === "garmin_gear") return state.data?.provider_labels?.[providerIds().garmin] || "";
+  return EQUIPMENT_SOURCE_LABELS[source] || "";
+}
+
+// What a unit's choice shows: the own choice, else the effective item with its source, else the suggestion.
+function plannedEquipmentShown(choice) {
+  const own = choice.explicit ? choice.assigned || "" : null;
+  const named = (id) => (id === "" ? "Keiner" : choice.options.find((item) => item.id === id)?.name);
+  // A planned "Keiner" carried to the session is "Keiner" with its source.
+  const carried = choice.effective?.equipment_id === null ? { ...choice.effective, equipment_id: "" } : choice.effective;
+  const effective = own === null && named(carried?.equipment_id) ? carried : null;
+  const current = own ?? effective?.equipment_id ?? null;
+  const preset = current ?? choice.suggested ?? null;
+  let tag = "";
+  if (effective) tag = plannedEquipmentSourceLabel(effective.source);
+  else if (own === null && preset !== null) tag = "Vorschlag";
+  const shown = preset === null ? "–" : named(preset) || "Nicht mehr verfügbar";
+  return { own, current, preset, shown, tag };
+}
+
+async function appendPlannedEquipment(details, head, entry, actual, receipt = null) {
+  const target = plannedEquipmentTarget(entry, actual);
+  const sport = activitySportLabel(calendarSportType(actual || entry));
+  if (!target || (target.unitId && !EQUIPMENT_LABELS[sport]) || details.querySelector(".planned-equipment-chip")) return;
+  const [label, icon] = EQUIPMENT_LABELS[sport] || ["Ausrüstung", "\u2699"];
+  const chip = h("button", { type: "button", className: "status-chip planned-equipment-chip", "aria-expanded": "false", "aria-label": label }, `${icon} …`);
+  // Narrow screens hide the head (the summary is the card's head), so the chip leads the opened body there.
+  const line = h("div", "planned-equipment-line", chip);
+  const row = h("div", { className: "planned-equipment", hidden: !receipt });
+  head.after(line, row);
+  const choice = await plannedEquipmentChoice(target);
   if (!choice || (!choice.options?.length && !choice.explicit)) {
-    row.remove();
+    line.remove();
+    // The receipt stays even when the unit cannot be read again.
+    if (receipt) plannedEquipmentReceipt(row, details, head, entry, actual, receipt);
+    else row.remove();
     return;
   }
-  const sport = activitySportLabel(calendarSportType(actual));
-  const label = { Laufen: "Schuh", Radfahren: "Rad", "Rad indoor": "Rad" }[sport] || "Ausrüstung";
-  const saved = choice.explicit ? choice.assigned || "" : null;
-  // Without an own choice, Garmin's gear link is the source-labelled default; an own choice wins (#2879).
-  const linked = saved === null ? (read.equipment || []).find((item) => !item.parent_id && choice.options.some((option) => option.id === item.id))?.id ?? null : null;
-  const current = saved ?? linked;
-  const preset = current ?? choice.suggested ?? null;
+  const { own, current, preset, shown, tag } = plannedEquipmentShown(choice);
   const select = h("select", { "aria-label": label },
     preset === null ? h("option", { value: "-", selected: true }, "–") : null,
     // An own choice that can no longer be assigned (retired, another sport) stays shown as it is.
-    saved && !choice.options.some((item) => item.id === saved) ? h("option", { value: saved, selected: true, disabled: true }, "Nicht mehr verfügbar") : null,
+    own && shown === "Nicht mehr verfügbar" ? h("option", { value: own, selected: true, disabled: true }, shown) : null,
     choice.options.map((item) => h("option", { value: item.id, selected: item.id === preset }, item.name)),
     h("option", { value: "", selected: preset === "" }, "Keiner"));
-  const hint = h("span", { className: "status-chip planned-equipment-suggestion" }, "Vorschlag");
-  const source = h("span", { className: "status-chip planned-equipment-source" }, state.data?.provider_labels?.[providerIds().garmin] || "");
+  const suffix = tag ? ` · ${tag}` : "";
+  chip.textContent = `${icon} ${shown}${suffix} ▾`;
+  chip.setAttribute("aria-label", [`${label}: ${shown}`, tag].filter(Boolean).join(", "));
   const apply = h("button", { type: "button", className: "secondary-button", hidden: true }, "Übernehmen");
   const status = h("p", { className: "planned-equipment-status", role: "status" });
-  const pending = () => select.value !== "-" && select.value !== current;
-  const sync = () => {
-    apply.hidden = !pending();
-    hint.hidden = current !== null || select.value !== choice.suggested;
-    source.hidden = linked === null || select.value !== linked;
-  };
+  const sync = () => { apply.hidden = select.value === "-" || select.value === current; };
   select.addEventListener("change", sync);
+  chip.addEventListener("click", () => {
+    row.hidden = !row.hidden;
+    chip.setAttribute("aria-expanded", String(!row.hidden));
+    if (!row.hidden) select.focus();
+  });
   apply.addEventListener("click", async () => {
     apply.disabled = true;
     try {
-      const result = await api("/api/equipment/assignment", { method: "POST", body: JSON.stringify({ activity_id: activityId, equipment_id: select.value || null }) });
-      plannedEquipmentChanged(activityId);
-      plannedEquipmentReceipt(row, details, activityId, actual, result?.change);
+      const result = await api("/api/equipment/assignment", { method: "POST", body: JSON.stringify({ ...target.body, equipment_id: select.value || null }) });
+      plannedEquipmentChanged(target);
+      plannedEquipmentRedraw(details, head, entry, actual, { change: result?.change, message: "Gespeichert. " });
     } catch (error) {
       apply.disabled = false;
       if (!isSessionEndedError(error)) status.textContent = error.message;
     }
   });
-  row.replaceChildren(h("label", "planned-equipment-field", h("span", null, label), select), hint, source, apply, status);
+  row.replaceChildren(h("label", "planned-equipment-field", h("span", null, label), select), apply, status);
   sync();
+  if (receipt) plannedEquipmentReceipt(row, details, head, entry, actual, receipt);
 }
 
-// An assignment changes usage and the equipment notice; the next opening reads the session again.
-function plannedEquipmentChanged(activityId) {
-  plannedSessionReads.delete(activityId);
+// An assignment changes usage and the equipment notice; the next opening reads the unit again.
+function plannedEquipmentChanged(target) {
+  if (target.activityId) plannedSessionReads.delete(target.activityId);
   globalThis.invalidateEquipmentNotice?.();
 }
 
-function plannedEquipmentReceipt(row, details, activityId, actual, change, message = "Gespeichert. ") {
-  row.remove();
-  void appendPlannedEquipment(details, activityId, actual).then(() => {
-    // The receipt stays even when the session cannot be read again.
-    let status = details.querySelector(".planned-equipment-status");
-    if (!status) {
-      status = h("p", { className: "planned-equipment-status", role: "status" });
-      const holder = h("div", "planned-equipment", status);
-      details.querySelector(":scope > .planned-activity-more")?.before(holder);
-      if (!holder.isConnected) details.append(holder);
+function plannedEquipmentRedraw(details, head, entry, actual, receipt) {
+  details.querySelector(".planned-equipment-line")?.remove();
+  details.querySelector(".planned-equipment")?.remove();
+  void appendPlannedEquipment(details, head, entry, actual, receipt);
+}
+
+function plannedEquipmentReceipt(row, details, head, entry, actual, { change, message }) {
+  row.hidden = false;
+  if (!row.isConnected) (details.querySelector(".planned-equipment-line") || head).after(row);
+  let status = row.querySelector(".planned-equipment-status");
+  if (!status) {
+    status = h("p", { className: "planned-equipment-status", role: "status" });
+    row.append(status);
+  }
+  status.textContent = message;
+  if (!change?.id) return;
+  const undo = h("button", { className: "message-undo", type: "button" }, "Rückgängig");
+  undo.addEventListener("click", async () => {
+    undo.disabled = true;
+    try {
+      await api("/api/change-history/undo", { method: "POST", body: JSON.stringify({ change_id: change.id, expected_current_hash: change.after_hash }) });
+      plannedEquipmentChanged(plannedEquipmentTarget(entry, actual));
+      plannedEquipmentRedraw(details, head, entry, actual, { change: null, message: "Zurückgenommen." });
+    } catch (error) {
+      undo.disabled = false;
+      if (!isSessionEndedError(error)) status.firstChild.textContent = `${error.message} `;
     }
-    status.textContent = message;
-    if (!change?.id) return;
-    const undo = h("button", { className: "message-undo", type: "button" }, "Rückgängig");
-    undo.addEventListener("click", async () => {
-      undo.disabled = true;
-      try {
-        await api("/api/change-history/undo", { method: "POST", body: JSON.stringify({ change_id: change.id, expected_current_hash: change.after_hash }) });
-        plannedEquipmentChanged(activityId);
-        plannedEquipmentReceipt(details.querySelector(".planned-equipment") || row, details, activityId, actual, null, "Zurückgenommen.");
-      } catch (error) {
-        undo.disabled = false;
-        if (!isSessionEndedError(error)) status.firstChild.textContent = `${error.message} `;
-      }
-    });
-    status.append(undo);
   });
+  status.append(undo);
 }
 
 // A planned unit's body: its load, its steps (#2447) and its actions; returns the step list, if any.

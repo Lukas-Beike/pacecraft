@@ -6,7 +6,7 @@ It is standalone software for a trusted LAN or private VPN (WireGuard, Tailscale
 
 ## Top 10 features
 
-1. Conversational Coach with durable turns, voice, photos and files, change receipts and undo.
+1. Conversational Coach with durable turns, photos and files, change receipts and undo.
 2. Local training calendar and workout library for running, cycling and strength; adaptive replanning only after you approve a preview.
 3. Garmin (official Personal API key plus optional unofficial login) and Wahoo as data sources, bundled into one session per workout.
 4. Intervals.icu as an explicit, output-only target for workouts, competitions, nutrition and thresholds.
@@ -31,7 +31,7 @@ docker run -d --name pacecraft --restart unless-stopped \
   ghcr.io/lukas-beike/pacecraft:latest
 ```
 
-Open `http://localhost:8090`, log in with `APP_PASSWORD`, and add the OpenAI key and providers in their cards under **Mehr > Anbindungen**. Browsers need HTTPS for installation and voice input. Compose, Unraid and reverse-proxy examples: [docs/setup.md](docs/setup.md). Never run `docker rm -v`: `/data` holds the encrypted database.
+Open `http://localhost:8090`, log in with `APP_PASSWORD`, and add the OpenAI key and providers in their cards under **Mehr > Anbindungen**. Browsers need HTTPS for installation. Compose, Unraid and reverse-proxy examples: [docs/setup.md](docs/setup.md). Never run `docker rm -v`: `/data` holds the encrypted database.
 
 ## Configuration
 
@@ -45,7 +45,6 @@ Set variables in the container environment or a root `.env`; `DATA_DIR` and `TZ`
 | `OPENAI_BASE_URL` | `https://api.openai.com/v1` | Responses-compatible endpoint (HTTPS, or loopback HTTP). |
 | `ANTHROPIC_API_KEY` | none | Claude API access; also settable in the app. |
 | `ANTHROPIC_BASE_URL` | `https://api.anthropic.com` | Messages-compatible endpoint (HTTPS, or loopback HTTP). |
-| `TRANSCRIPTION_BASE_URL`, `TRANSCRIPTION_MODEL`, `TRANSCRIPTION_API_KEY` | none | Optional OpenAI-compatible voice transcription server, e.g. local Whisper ([setup](docs/setup.md#local-voice-transcription)). |
 | `INTERVALS_API_KEY`, `INTERVALS_ATHLETE_ID` | none, `0` | Intervals.icu output target. |
 | `GARMIN_PERSONAL_API_KEY` | none | Official read-only Garmin Personal API key. |
 | `GARMIN_PERSONAL_API_KEY_EXPIRES` | none | Key expiry date (`YYYY-MM-DD`) for the renewal warning. |
@@ -72,7 +71,7 @@ Set variables in the container environment or a root `.env`; `DATA_DIR` and `TZ`
 | Garmin | Input: activities, details, sleep, HRV, daily health, thresholds. Personal API key plus optional login for the rest; planned strength and run workouts can be sent to the watch. | [Garmin](docs/setup.md#garmin-authentication--mfa-setup) |
 | Wahoo | Input: activities and FIT files, cycling FTP, weight; plan export on request. | [Wahoo](docs/setup.md#wahoo-connection) |
 | Intervals.icu | Output target only, on explicit synchronization. | [Credentials](docs/setup.md#provider-credentials-in-the-app) |
-| OpenAI | Coach (Responses API) and voice transcription unless a local server is configured. | [Configuration](docs/configuration.md) |
+| OpenAI | Coach (Responses API). | [Configuration](docs/configuration.md) |
 | Claude (Anthropic) | Coach as the selected alternative (Messages API). | [Configuration](docs/configuration.md) |
 | Open-Meteo, DWD, ICS feeds | Weather, air quality, pollen, calendar constraints. | [Synchronization](docs/synchronization.md) |
 

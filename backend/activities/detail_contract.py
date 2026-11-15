@@ -72,8 +72,6 @@ _MEASURED_METRICS: Final[tuple[tuple[str, str], ...]] = (
     ("max_power_w", "W"),
     ("avg_cadence", "rpm"),
     ("max_speed_mps", "m/s"),
-    ("min_temp_c", "°C"),
-    ("max_temp_c", "°C"),
     ("steps", "count"),
     ("lap_count", "count"),
     ("energy_kj", "kJ"),
@@ -93,9 +91,10 @@ _DERIVED_METRICS: Final[tuple[tuple[str, str | None], ...]] = (
 )
 # Record values the Intervals.icu summary scalars also report (#1724); the
 # scalar is kept as an alternative instead of being dropped.
-_SUMMARY_ALTERNATIVE_KEYS: Final = frozenset(
-    {"min_temp_c", "max_temp_c", "elevation_loss_m"}
-)
+_SUMMARY_ALTERNATIVE_KEYS: Final = frozenset({"elevation_loss_m"})
+# The device's temperature sensor reads body-warmed values (#3036): its stream
+# stays stored, but a session's temperature is only its activity weather.
+_UNSHOWN_CHANNELS: Final = frozenset({StreamChannel.TEMPERATURE_C})
 # Measured averages that fall back to the merged stream mean when no record has them.
 _GAP_FILL: Final[Mapping[str, tuple[StreamChannel, str]]] = {
     "avg_hr": (StreamChannel.HEART_RATE_BPM, "bpm"),
@@ -403,6 +402,7 @@ def _channels(
         }
         for channel, choice in streams.channels.items()
         if (channel in RUNNING_DYNAMICS_CHANNELS) is running_dynamics
+        and channel not in _UNSHOWN_CHANNELS
     }
     return channels or None
 
@@ -513,7 +513,11 @@ def _coverage(sets: Sequence[StoredDetailSet]) -> dict[str, dict[str, int]]:
             continue
         for channel, values in detail.channels.items():
             # Running dynamics are charted too (#2258), so their coverage is named.
-            if channel is StreamChannel.TIME_S or channel in POSITION_CHANNELS:
+            if (
+                channel is StreamChannel.TIME_S
+                or channel in POSITION_CHANNELS
+                or channel in _UNSHOWN_CHANNELS
+            ):
                 continue
             entry = {
                 "points": len(values),

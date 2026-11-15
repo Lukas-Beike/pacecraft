@@ -15,7 +15,6 @@ from unittest.mock import DEFAULT, Mock, patch
 
 from support import (
     create_test_session,  # noqa: F401 - compatibility export for tests
-    dispatch_route,
     reset_application_state,
 )
 
@@ -77,25 +76,6 @@ server.CONFIG_HOLDER.value = replace(
 _BASE_LOGGER_LEVEL = server.LOGGER.level
 _BASE_LOGGER_PROPAGATE = server.LOGGER.propagate
 _BASE_LOGGER_DISABLED = server.LOGGER.disabled
-
-
-def _transcribe_via_http_route(audio: bytes, content_type: str) -> dict[str, str]:
-    from types import SimpleNamespace
-    from unittest.mock import Mock
-
-    handler = SimpleNamespace(
-        headers={"Content-Type": content_type},
-        read_audio_body=Mock(return_value=audio),
-        send_json=Mock(),
-    )
-    if not dispatch_route(
-        server.HTTP_API.transcribe_post_routes,
-        handler,
-        "/api/transcribe",
-        method="POST",
-    ):
-        raise AssertionError("transcription route was not handled")
-    return handler.send_json.call_args.args[1]
 
 
 def _garmin_metrics(snapshot):

@@ -133,18 +133,3 @@ test("a quick action needs the planning model's key, the morning check-in the ch
   assert.equal(coachConfigured({ coach: false }, "session_analysis"), true);
   assert.equal(coachConfigured({ coach: false }), false);
 });
-
-test("the microphone needs a transcription endpoint whichever model answers", () => {
-  const button = { disabled: false, classList: { toggle() {} }, setAttribute() {}, title: "", innerHTML: "" };
-  const state = { data: { messages: [], configured: { openai: true, transcription: false, coach: true } }, voiceTranscribing: false };
-  const { updateVoiceButton } = extractFunctions("coach.js", ["voiceIsRecording", "setVoiceButtonIcon", "updateVoiceButton"], {
-    $: () => button,
-    state,
-    updateChatControls: () => {},
-  });
-  updateVoiceButton();
-  assert.equal(button.disabled, true);
-  state.data.configured.transcription = true;
-  updateVoiceButton();
-  assert.equal(button.disabled, false);
-});

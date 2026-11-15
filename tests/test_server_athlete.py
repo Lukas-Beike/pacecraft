@@ -13,6 +13,37 @@ from backend.errors import AppError
 
 
 class ServerAthleteTests(ServerTestCase):
+    def test_session_summaries_are_kept_until_a_change_in_the_real_wiring(self):
+        # #3017/#3043: equipment and the HTTP detail read the same kept summaries.
+        summaries = server.ATHLETE_DATA.session_summaries
+        self.assertIs(server.ATHLETE_DATA.equipment()._read_summaries, summaries)
+        detail = server.ACTIVITY_READS.activity_read()
+        self.assertIs(detail._session_summaries, summaries)
+        read = server.CANONICAL_READ.activity_summaries
+        with patch.object(
+            server.CANONICAL_READ, "activity_summaries", side_effect=read
+        ) as counted:
+            for attempt in range(50):
+                # A row-changing commit (the profile name) first, so nothing kept
+                # is current.
+                server.ATHLETE_DATA.profile().save({"name": f"Ada {attempt}"})
+                revision = server.database_manager().read_revision()
+                before = counted.call_count
+                summaries()
+                summaries()
+                # Background workers of earlier tests may commit between the two
+                # reads (#3088): only a pair that saw one revision counts.
+                if server.database_manager().read_revision() == revision:
+                    break
+            else:
+                self.fail("background commits never paused for two reads")
+            self.assertEqual(counted.call_count - before, 1)
+            # The next row-changing commit makes the next call read again.
+            before = counted.call_count
+            server.ATHLETE_DATA.profile().save({"name": "Grace"})
+            summaries()
+            self.assertEqual(counted.call_count - before, 1)
+
     def test_profile_only_accepts_known_fields_and_trims(self):
         profile = normalize_profile(
             {"name": "  Ada  ", "goals": "Finish strong", "admin": True}

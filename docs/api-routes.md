@@ -62,6 +62,10 @@ handler's docstring. Regenerate it with
 | POST | `/api/equipment` | Session + CSRF | after access | Create, edit or retire one piece of equipment, stored locally (#2879). |
 | POST | `/api/equipment/assignment` | Session + CSRF | after access | Assign one session or planned unit its equipment, or none, stored locally. |
 | POST | `/api/equipment/maintenance` | Session + CSRF | after access | Record one maintenance entry for a piece of equipment, stored locally. |
+| GET | `/api/equipment/planned` | Session | no | The equipment choice of one planned unit, as its calendar card shows it (#3011). |
+| POST | `/api/equipment/rules` | Session + CSRF | after access | Set one kind of session's default equipment from today on, stored locally (#3014). |
+| POST | `/api/equipment/rules/apply` | Session + CSRF | after access | Give a rule's item to the earlier sessions of its kind without an own choice. |
+| GET | `/api/equipment/rules/preview` | Session | no | Count the earlier sessions a rule apply would give its item (#3014). |
 | POST | `/api/external-calendar/decisions` | Session + CSRF | after access | Set or remove how one calendar event affects training; nothing remote. |
 | POST | `/api/external-calendar/sync` | Session + CSRF | after access | Queue a provider synchronization, or a targeted refresh of the external calendars or the weather. |
 | GET | `/api/feedback` | Session | no | Activity feedback projection. |
@@ -126,7 +130,6 @@ handler's docstring. Regenerate it with
 | POST | `/api/sync/jobs` | Session + CSRF | after access | Queue a sync job. |
 | GET | `/api/sync/jobs/{id}` | Session | no | Result of one sync job. |
 | GET | `/api/sync/status` | Session | no | Synchronization status. |
-| POST | `/api/transcribe` | Session + CSRF | after access | Transcribe short-lived voice input. |
 | GET | `/api/wahoo/callback` | Public | no | Wahoo OAuth redirect target; answers 302 to the app. |
 | POST | `/api/wahoo/connect` | Session + CSRF | after access | Start the Wahoo OAuth connection or disconnect Wahoo. |
 | POST | `/api/wahoo/disconnect` | Session + CSRF | after access | Start the Wahoo OAuth connection or disconnect Wahoo. |
@@ -653,6 +656,68 @@ Errors: 400 "Ungültige Wartung." for an unknown body key; 400
 "Wartungsgegenstand oder Datum ungültig." for an empty or unmatched
 `equipment_id` or a date outside the item's range; 404 "Ausrüstung nicht
 gefunden." for a non-empty unknown `equipment_id`.
+
+### `GET /api/equipment/planned`
+
+Request: query `unit_id` (the planned unit's local id, at most 200
+characters); no body.
+
+Response: 200 `{"options": [{"id", "name"}], "assigned", "explicit",
+"effective", "suggested"}`: the active main items of the unit's sport,
+its own choice (`explicit` true even for "Keiner"), the rule's item for
+its kind and day as `effective` `{"equipment_id", "source": "rule"}`
+when it has no own choice, else null, and the item the athlete last chose
+for a session of the same sport pair. It changes no state.
+
+Errors: 400 "Geplante Einheit ist erforderlich." for a missing or too
+long id; 404 "Geplante Einheit nicht gefunden." for an unknown or deleted
+unit.
+
+### `POST /api/equipment/rules`
+
+Request: JSON body of at most 16 KiB, exactly `{"kind": string,
+"equipment_id": string | null, "expected_revision": integer}`. `kind` is
+`run:intervals`, `run:long`, `run:easy`, `run:race`, `ride:indoor` or
+`ride:outdoor`; `null` sets no default from today on; `expected_revision`
+is the rule's current revision, 0 before its first save.
+
+Response: 200 `{"ok": true, "stored_locally": true, "rule": {"kind",
+"revision", "history": [{"from", "equipment_id"}]}, "change"}`; `change`
+is the undo reference. Sessions before today keep their equipment.
+
+Errors: 400 "Art und Ausrüstung der Regel sind erforderlich." for another
+body shape or kind; 400 "Aktive passende Hauptausrüstung erforderlich."
+for an unknown item or one that is archived, a component, unresolved or
+of another sport; 409 "Regel geändert; neu lesen." for a stale revision.
+
+### `POST /api/equipment/rules/apply`
+
+Request: JSON body of at most 16 KiB, exactly `{"kind": string,
+"confirmed": true}` after the athlete confirmed the preview.
+
+Response: 200 `{"ok": true, "stored_locally": true, "count", "change"}`;
+`count` sessions got the item, written in chunks of at most 200 per
+transaction; `change` undoes the whole apply (null when nothing was
+written). A session chosen since the preview keeps its choice. When the
+item stops being active during the apply, the chunks written so far stay
+and the answer adds `"stopped": "equipment_not_active"` with their count
+and `change`.
+
+Errors: 400 "Art der Regel ist erforderlich." for another body shape or
+kind; 409 `confirmation_required` without `confirmed: true`; 409 "Für
+diese Art ist keine Regel gesetzt."; 409 "Diese Regel wird gerade
+angewendet." while an apply of the same kind runs.
+
+### `GET /api/equipment/rules/preview`
+
+Request: query `kind` (a rule kind); no body.
+
+Response: 200 `{"kind", "equipment_id", "count"}`: the rule's current
+item and the sessions of that kind before the day it took effect that
+have no own choice. It changes no state.
+
+Errors: 400 "Art der Regel ist erforderlich." for an unknown kind; 409
+"Für diese Art ist keine Regel gesetzt." without a rule.
 
 ### `POST /api/external-calendar/decisions`
 
@@ -1646,31 +1711,6 @@ Response: 200 with `status`, `phase`, `progress` (0 to 100),
 (`active`, `running_operations`) and `jobs` (the recent sync jobs).
 
 Errors: none beyond the common ones.
-
-### `POST /api/transcribe`
-
-Request: the raw audio bytes as body, not JSON. `Content-Type` is one of
-`audio/webm`, `audio/mp4`, `audio/ogg`, `audio/mpeg`, `audio/wav`,
-`audio/x-wav`, `audio/mpga`, `audio/m4a` (parameters after `;` are ignored);
-`Content-Length` 1 to 8 000 000 bytes. The audio is never stored.
-
-Response: 200 `{"transcript": string}`.
-
-Errors: 415 "Nicht unterstütztes Audioformat. Erlaubt sind WebM, MP4, OGG,
-MP3 und WAV."; 400 "Ungültige Content-Length."; 400 "Ungültige Größe der
-Audioaufnahme." for an empty body, 413 with the same message above 8 000 000
-bytes; 400 "Die Audioaufnahme wurde unvollständig übertragen."; 503
-`not_configured` "OpenAI ist nicht eingerichtet. Zugangsdaten unter Mehr →
-Anbindungen hinterlegen."; 502 "OpenAI hat kein Transkript
-zurückgegeben." when the provider returns no text; 502 `network_error`,
-`http_error` or `client_error` when the OpenAI request fails ("OpenAI ist
-nicht erreichbar." and similar). With `TRANSCRIPTION_BASE_URL` set, no key
-is required; 503 `not_configured` "Für den Transkriptionsserver fehlt
-TRANSCRIPTION_MODEL in der Konfiguration." without a model; 502 "Der
-Transkriptionsserver hat kein Transkript zurückgegeben." or "Der
-Transkriptionsserver ist nicht erreichbar." with the `provider_*` reasons;
-an HTTP error status gives "Anfrage an externen Dienst fehlgeschlagen
-(status).".
 
 ### `GET /api/wahoo/callback`
 

@@ -33,6 +33,11 @@ SETUP_HINT = (
 TIMEOUT = 900  # seconds; bounds any hung sonar CLI call
 # The SonarCloud project of this repository; ``list issues`` requires it (#2834).
 SONAR_PROJECT = "Lukas-Beike_pacecraft"
+# The CLI does not apply every rule of the SonarCloud gate the same way (#3063).
+GATE_NOTE = (
+    "note: an approximation of the SonarCloud gate; rules known to differ: "
+    "python:S1192. scripts/pr_state.py names the gate's own findings."
+)
 SAFE_RULE = re.compile(r"[A-Za-z0-9_.:-]{1,80}")
 SAFE_FILE = re.compile(r"[\w./\\@+ -]{1,200}")
 # Top-level keys that are not issue sections.
@@ -163,6 +168,7 @@ def report(label: str, data: Any) -> int:
     issues = sum(len(items) for items in sections.values())
     failures = failures_of(data)
     print(f"{label}: issues {issues}, failures {failures}")
+    print(GATE_NOTE)
     for name, items in sections.items():
         print(f"section {name}: {len(items)}")
     if global_error_kind(data) == "forbidden":

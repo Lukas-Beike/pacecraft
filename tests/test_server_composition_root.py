@@ -106,7 +106,6 @@ from backend.planning.state_service import StructuredTrainingStateService
 from backend.planning.training_plan_artifact_service import TrainingPlanArtifactService
 from backend.planning.training_plans import TrainingPlanService
 from backend.privacy import PrivacyDeleteService
-from backend.providers import audio as audio_provider
 from backend.providers.claude_models import ClaudeModelResolver
 from backend.providers.claude_requests import ClaudeMessagesClient
 from backend.providers.garmin import GarminClientFactory
@@ -368,9 +367,6 @@ class CompositionRootTests(ServerTestCase):
         self.assertIsInstance(model.openai_responses_client(), OpenAIResponsesClient)
         self.assertIsInstance(model.openai_stream_client(), OpenAIStreamClient)
         self.assertIsInstance(model.claude_client(), ClaudeMessagesClient)
-        self.assertIsInstance(
-            model.audio_transcription_client(), audio_provider.AudioTranscriptionClient
-        )
         self.assertIsInstance(model.claude_models(), ClaudeModelResolver)
         self.assertEqual(
             model.openai_stream_client().config.timeout,

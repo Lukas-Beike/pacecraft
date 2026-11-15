@@ -195,8 +195,9 @@ async function walkCalendar(page, shot) {
 // tried in turn (up to MAX_CANDIDATES), `then` opens inside the candidate; the step is ok once `ready`
 // shows a visible element that is not empty by `kind` (chart: drawn marks, numbers: a digit,
 // options: a select with two or more options, text: any). `absent` = [scope, text] marks a candidate
-// whose data does not exist. `optional` steps depend on recorded data: with none they are skipped, and
-// a later walk compares ok before / skipped now as a FAIL. A new user-visible function adds its step here.
+// whose data does not exist; a visible `never` element fails the step once it is ready. `optional`
+// steps depend on recorded data: with none they are skipped, and a later walk compares ok before /
+// skipped now as a FAIL. A new user-visible function adds its step here.
 // Controls are limited to opening, expanding and paging ones (isOpener); the label guard stops the rest.
 export const STEP_KINDS = ["chart", "numbers", "options", "text"];
 const OPENERS = [
@@ -218,7 +219,8 @@ const NO_SESSION = "no such session";
 // The longest one step may take over all its candidates.
 const STEP_TOTAL_MS = 30000;
 const DONE = ".planned-entry.is-completed > summary";
-const PLANNED = ".planned-entry.is-planned > summary";
+// Today's unit is marked is-today; on a Sunday it is the week's only upcoming one.
+const PLANNED = ".planned-entry:is(.is-planned, .is-today) > summary";
 const MONTH = '.planned-view-switch button[data-view="month"]';
 const tab = (area, segment) => `a[data-${area}-segment="${segment}"]`;
 const detail = (name, covers, ready, kind, extra) => ({ view: "plan", name, covers, each: DONE, opens: [DETAILS_OPEN], ready, kind, absent: NO_DETAILS, ...extra });
@@ -226,27 +228,32 @@ export const STEPS = [
   { view: "coach", name: "Coach: Verlauf", covers: "Coach history", ready: "#messages [data-message-id]", kind: "text" },
   { view: "plan", name: "Kalender: Einheit öffnen", covers: "#2189 calendar agenda and detail", each: DONE, ready: ".planned-entry[open] .planned-entry-details", kind: "text" },
   detail("Kalender: Details", "#2258 session details", ".planned-entry[open] .activity-analysis-stats", "numbers"),
-  detail("Kalender: Diagramm", "#2258 session charts", '.planned-entry[open] .activity-analysis-panel svg[role="img"]', "chart"),
+  // The watch's temperature sensor reads body-warmed values, so no session charts it (#3036).
+  detail("Kalender: Diagramm", "#2258 session charts", '.planned-entry[open] .activity-analysis-panel svg[role="img"]', "chart", { never: '.planned-entry[open] .activity-analysis-panel svg[aria-label^="Temperatur"]' }),
   detail("Kalender: Zonenbalken", "#2258 time in zones", ".planned-entry[open] .activity-analysis-zones", "numbers", { optional: true }),
   detail("Kalender: Laufdynamik", "#2910 running dynamics", ".planned-entry[open] .activity-dynamics-value", "numbers", { optional: true, each: ".planned-entry.is-completed[data-sport='Laufen'] > summary" }),
-  { view: "plan", name: "Kalender: Schuh/Rad", covers: "#2946 equipment select", each: DONE, ready: ".planned-entry[open] .planned-equipment select", kind: "options", optional: true },
+  // The chip shows "…" until its read; once loaded its label names the choice ("Rad: …").
+  { view: "plan", name: "Kalender: Schuh/Rad", covers: "#3011 equipment chip", each: DONE, ready: '.planned-entry[open] .planned-equipment-chip[aria-label*=": "]', kind: "text", optional: true },
+  { view: "plan", name: "Kalender: Schuh/Rad geplant", covers: "#3011 planned equipment chip", each: PLANNED, ready: '.planned-entry[open] .planned-equipment-chip[aria-label*=": "]', kind: "text", optional: true },
   { view: "plan", name: "Kalender: geplante Einheit", covers: "#2189 planned session", pre: ['button[aria-label="Nächste Woche"]'], each: PLANNED, ready: ".planned-entry[open] .planned-entry-details", kind: "text", optional: true, post: ['button[aria-label="Vorherige Woche"]'] },
   { view: "plan", name: "Kalender: Verpflegung", covers: "#2921 fuelling", each: PLANNED, ready: ".planned-entry[open] .planned-fuelling", kind: "numbers", optional: true },
   // Choosing a past day narrows the month's range, so the planned day comes first.
   { view: "plan", name: "Monat: geplante Einheit", covers: "#2189 month", pre: [MONTH], each: ".planned-month-day:not([disabled]):has(.planned-month-mark.is-planned)", opens: [PLANNED], ready: ".planned-entry[open] .planned-entry-details", kind: "text", optional: true },
   { view: "plan", name: "Monat: absolvierte Einheit", covers: "#2189 month", pre: [MONTH], each: ".planned-month-day:not([disabled]):has(.planned-month-mark.is-completed)", opens: [DONE], ready: ".planned-entry[open] .planned-entry-details", kind: "text" },
   { view: "plan", name: "Kalender: Wochenansicht", covers: "#2189 week and month switch", pre: ['.planned-view-switch button[data-view="week"]'], ready: ".planned-week .planned-day", kind: "text" },
-  ...[["running", "Laufen", "#runningBestEfforts svg"], ["cycling", "Radfahren", "#cyclingPowerProfile svg"], ["load", "Belastung", "#analysisLoadCharts svg"], ["recovery", "Erholung", "#personalRecovery svg"]]
-    .map(([segment, label, ready]) => ({ view: "analysis", name: `Analyse: ${label}`, covers: "Analyse tabs", pre: [tab("analysis", segment)], ready, kind: "chart" })),
+  // The sport cards are tables: a measured value is a cell with a digit; a missing one is marked and has none.
+  ...[["running", "Laufen", "#runningBestEfforts td:not(.value-missing)", "numbers"], ["cycling", "Radfahren", "#cyclingPowerProfile td:not(.value-missing)", "numbers"], ["load", "Belastung", "#analysisLoadCharts svg", "chart"], ["recovery", "Erholung", "#personalRecovery svg", "chart"]]
+    .map(([segment, label, ready, kind]) => ({ view: "analysis", name: `Analyse: ${label}`, covers: "Analyse tabs", pre: [tab("analysis", segment)], ready, kind })),
   { view: "analysis", name: "Analyse: Woche", covers: "#3000 week review", pre: [tab("analysis", "week")], ready: "#weekReview .week-review-card", kind: "numbers" },
   { view: "nutrition", name: "Ernährung: Verlauf", covers: "Nutrition week", pre: [tab("nutrition", "week")], ready: "#nutritionWeek", kind: "numbers" },
   { view: "nutrition", name: "Ernährung: Körper", covers: "Body analysis", pre: [tab("nutrition", "body")], ready: "#bodyAnalysisCharts svg", kind: "chart" },
   { view: "more", name: "Mehr: Ausrüstung", covers: "#2935 equipment", pre: [tab("more", "equipment")], ready: "#equipmentItems .equipment-card", kind: "text" },
+  { view: "more", name: "Mehr: Ausrüstung Standard", covers: "#3014 default equipment", pre: [tab("more", "equipment")], ready: "#equipmentItems .equipment-rules select", kind: "options" },
   { view: "more", name: "Mehr: Betrieb, Änderungen", covers: "#2908 changelog", pre: [tab("more", "operations")], ready: ".release-changelog li", kind: "text", optional: true },
 ];
 
-// Runs in the page; "ready", "absent" or "" (not yet).
-function probe([selector, kind, absent]) {
+// Runs in the page; "ready", "shown" (a `never` element), "absent" or "" (not yet).
+function probe([selector, kind, absent, never]) {
   const blank = (paint) => !paint || paint === "none" || paint === "transparent" || paint === "rgba(0, 0, 0, 0)";
   const drawn = (svg) => [...svg.querySelectorAll("path[d], rect, circle, polyline")].some((mark) => {
     const style = getComputedStyle(mark);
@@ -262,7 +269,7 @@ function probe([selector, kind, absent]) {
     text: (el) => el.textContent.trim().length > 0,
   }[kind];
   const shown = (query) => [...document.querySelectorAll(query)].filter((el) => el.checkVisibility());
-  if (shown(selector).some((el) => filled(el))) return "ready";
+  if (shown(selector).some((el) => filled(el))) return never && shown(never).length ? "shown" : "ready";
   return absent && shown(absent[0]).some((el) => el.textContent.includes(absent[1])) ? "absent" : "";
 }
 
@@ -286,7 +293,7 @@ async function candidateCount(page, each) {
 }
 
 // Opens candidate `index` with the other candidates closed, so the controls pressed and the element checked
-// are its own. "ready", "absent", "empty", or "passed over" (an optional step's candidate without the control).
+// are its own. "ready", "shown", "absent", "empty", or "passed over" (an optional step's candidate without the control).
 async function tryCandidate(page, step, index, capMs) {
   try {
     if (step.each) {
@@ -300,7 +307,7 @@ async function tryCandidate(page, step, index, capMs) {
     return "passed over";
   }
   const timeout = step.each ? Math.min(CANDIDATE_CAP_MS, capMs) : capMs;
-  return page.waitForFunction(probe, [step.ready, step.kind, step.absent || null], { timeout, polling: 50 }).then((handle) => handle.jsonValue()).catch(() => "empty");
+  return page.waitForFunction(probe, [step.ready, step.kind, step.absent || null, step.never || null], { timeout, polling: 50 }).then((handle) => handle.jsonValue()).catch(() => "empty");
 }
 
 // One step: { status: ok|fail|skip, ms (interaction to ready, of the candidate that passed), why }.
@@ -313,7 +320,8 @@ export async function runStep(page, { pre = [], post = [], ...step }, capMs = ST
     for (let index = 0; index < count && Date.now() - began < STEP_TOTAL_MS; index += 1) {
       const started = Date.now();
       const outcome = await tryCandidate(page, step, index, capMs);
-      if (outcome === "ready") return { status: "ok", ms: Date.now() - started };
+      const settled = { ready: { status: "ok" }, shown: { status: "fail", why: `shows ${step.never}` } }[outcome];
+      if (settled) return { ...settled, ms: Date.now() - started };
       if (outcome === "empty") empty += 1;
     }
     // Nothing loaded and nothing empty: the data this step needs does not exist (info, not a failure).

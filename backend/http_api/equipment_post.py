@@ -34,6 +34,20 @@ class EquipmentPostRoutes:
                 Access.SESSION_CSRF,
                 self._maintain,
             ),
+            Route("POST", "/api/equipment/rules", Access.SESSION_CSRF, self._rule),
+            Route("GET", "/api/equipment/planned", Access.SESSION, self._planned),
+            Route(
+                "GET",
+                "/api/equipment/rules/preview",
+                Access.SESSION,
+                self._rule_preview,
+            ),
+            Route(
+                "POST",
+                "/api/equipment/rules/apply",
+                Access.SESSION_CSRF,
+                self._rule_apply,
+            ),
         ]
 
     def _save(self, handler: Any, _request: RouteRequest) -> None:
@@ -93,6 +107,92 @@ class EquipmentPostRoutes:
         handler.send_json(
             200,
             self._equipment_service().assign(
+                handler.read_json(EQUIPMENT_BODY_MAX_BYTES)
+            ),
+        )
+
+    def _rule(self, handler: Any, _request: RouteRequest) -> None:
+        """Set one kind of session's default equipment from today on, stored locally (#3014).
+
+        Request: JSON body of at most 16 KiB, exactly `{"kind": string,
+        "equipment_id": string | null, "expected_revision": integer}`. `kind` is
+        `run:intervals`, `run:long`, `run:easy`, `run:race`, `ride:indoor` or
+        `ride:outdoor`; `null` sets no default from today on; `expected_revision`
+        is the rule's current revision, 0 before its first save.
+
+        Response: 200 `{"ok": true, "stored_locally": true, "rule": {"kind",
+        "revision", "history": [{"from", "equipment_id"}]}, "change"}`; `change`
+        is the undo reference. Sessions before today keep their equipment.
+
+        Errors: 400 "Art und Ausrüstung der Regel sind erforderlich." for another
+        body shape or kind; 400 "Aktive passende Hauptausrüstung erforderlich."
+        for an unknown item or one that is archived, a component, unresolved or
+        of another sport; 409 "Regel geändert; neu lesen." for a stale revision.
+        """
+        handler.send_json(
+            200,
+            self._equipment_service().save_rule(
+                handler.read_json(EQUIPMENT_BODY_MAX_BYTES)
+            ),
+        )
+
+    def _planned(self, handler: Any, request: RouteRequest) -> None:
+        """The equipment choice of one planned unit, as its calendar card shows it (#3011).
+
+        Request: query `unit_id` (the planned unit's local id, at most 200
+        characters); no body.
+
+        Response: 200 `{"options": [{"id", "name"}], "assigned", "explicit",
+        "effective", "suggested"}`: the active main items of the unit's sport,
+        its own choice (`explicit` true even for "Keiner"), the rule's item for
+        its kind and day as `effective` `{"equipment_id", "source": "rule"}`
+        when it has no own choice, else null, and the item the athlete last chose
+        for a session of the same sport pair. It changes no state.
+
+        Errors: 400 "Geplante Einheit ist erforderlich." for a missing or too
+        long id; 404 "Geplante Einheit nicht gefunden." for an unknown or deleted
+        unit.
+        """
+        unit_id = (request.query.get("unit_id") or [""])[0]
+        handler.send_json(200, self._equipment_service().planned_choice(unit_id))
+
+    def _rule_preview(self, handler: Any, request: RouteRequest) -> None:
+        """Count the earlier sessions a rule apply would give its item (#3014).
+
+        Request: query `kind` (a rule kind); no body.
+
+        Response: 200 `{"kind", "equipment_id", "count"}`: the rule's current
+        item and the sessions of that kind before the day it took effect that
+        have no own choice. It changes no state.
+
+        Errors: 400 "Art der Regel ist erforderlich." for an unknown kind; 409
+        "Für diese Art ist keine Regel gesetzt." without a rule.
+        """
+        kind = (request.query.get("kind") or [""])[0]
+        handler.send_json(200, self._equipment_service().rule_apply_preview(kind))
+
+    def _rule_apply(self, handler: Any, _request: RouteRequest) -> None:
+        """Give a rule's item to the earlier sessions of its kind without an own choice.
+
+        Request: JSON body of at most 16 KiB, exactly `{"kind": string,
+        "confirmed": true}` after the athlete confirmed the preview.
+
+        Response: 200 `{"ok": true, "stored_locally": true, "count", "change"}`;
+        `count` sessions got the item, written in chunks of at most 200 per
+        transaction; `change` undoes the whole apply (null when nothing was
+        written). A session chosen since the preview keeps its choice. When the
+        item stops being active during the apply, the chunks written so far stay
+        and the answer adds `"stopped": "equipment_not_active"` with their count
+        and `change`.
+
+        Errors: 400 "Art der Regel ist erforderlich." for another body shape or
+        kind; 409 `confirmation_required` without `confirmed: true`; 409 "Für
+        diese Art ist keine Regel gesetzt."; 409 "Diese Regel wird gerade
+        angewendet." while an apply of the same kind runs.
+        """
+        handler.send_json(
+            200,
+            self._equipment_service().apply_rule(
                 handler.read_json(EQUIPMENT_BODY_MAX_BYTES)
             ),
         )

@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "base": "6050c3368661fd2a1d296b34bb6db4ac1a4a876c",
+  "base": "ea4aafb631e3fc64f98c5b15083e94603de035e8",
   "versions": {
     "ruff": "0.17.4",
     "mypy": "2.4.1"
@@ -344,12 +344,6 @@
     },
     {
       "tool": "mypy",
-      "path": "backend/http_api/handler.py",
-      "code": "arg-type",
-      "message_sha256": "202e95d88c01d1a85fa2f434c5a0096706c95cfdc41dcab4a22472c904bb44b0"
-    },
-    {
-      "tool": "mypy",
       "path": "tests/test_coach_job_status.py",
       "code": "arg-type",
       "message_sha256": "23f433f0cfc60937be01eb657709ca365aeef5e05722c2fdbbff67272522c00e"
@@ -473,12 +467,6 @@
       "path": "tools/extract_bls.py",
       "code": "arg-type",
       "message_sha256": "5f98b44ccead6c444920709d58717d3d30817c9730bd4172d31a000187375f7f"
-    },
-    {
-      "tool": "mypy",
-      "path": "backend/http_api/handler.py",
-      "code": "arg-type",
-      "message_sha256": "6195198e495bd02c70500de218de463b7423c94c7b7371b88aae6a19d1792592"
     },
     {
       "tool": "mypy",
@@ -859,6 +847,234 @@
       "message_sha256": "eb82377dd77074ec135a9350e5dda0b9a5c9f46816d84e117789355db380f38c"
     },
     {
+      "tool": "format",
+      "path": "backend/athlete/equipment.py",
+      "code": "format",
+      "message_sha256": "f87c4a0ecaf8e40a8d167170353b2aeb564e58f72247b4568c3db29c296f105f"
+    },
+    {
+      "tool": "format",
+      "path": "backend/db/activity_detail_store.py",
+      "code": "format",
+      "message_sha256": "f87c4a0ecaf8e40a8d167170353b2aeb564e58f72247b4568c3db29c296f105f"
+    },
+    {
+      "tool": "format",
+      "path": "backend/nutrition/fuelling.py",
+      "code": "format",
+      "message_sha256": "f87c4a0ecaf8e40a8d167170353b2aeb564e58f72247b4568c3db29c296f105f"
+    },
+    {
+      "tool": "format",
+      "path": "backend/planning/competition_service.py",
+      "code": "format",
+      "message_sha256": "f87c4a0ecaf8e40a8d167170353b2aeb564e58f72247b4568c3db29c296f105f"
+    },
+    {
+      "tool": "format",
+      "path": "backend/planning/race_plan.py",
+      "code": "format",
+      "message_sha256": "f87c4a0ecaf8e40a8d167170353b2aeb564e58f72247b4568c3db29c296f105f"
+    },
+    {
+      "tool": "format",
+      "path": "backend/sync/weather.py",
+      "code": "format",
+      "message_sha256": "f87c4a0ecaf8e40a8d167170353b2aeb564e58f72247b4568c3db29c296f105f"
+    },
+    {
+      "tool": "format",
+      "path": "backend/weather/competition_forecast.py",
+      "code": "format",
+      "message_sha256": "f87c4a0ecaf8e40a8d167170353b2aeb564e58f72247b4568c3db29c296f105f"
+    },
+    {
+      "tool": "format",
+      "path": "backend/weather/wiring.py",
+      "code": "format",
+      "message_sha256": "f87c4a0ecaf8e40a8d167170353b2aeb564e58f72247b4568c3db29c296f105f"
+    },
+    {
+      "tool": "format",
+      "path": "scripts/hooks/guard_private_paths.py",
+      "code": "format",
+      "message_sha256": "f87c4a0ecaf8e40a8d167170353b2aeb564e58f72247b4568c3db29c296f105f"
+    },
+    {
+      "tool": "format",
+      "path": "scripts/hooks/guard_resolve_thread.py",
+      "code": "format",
+      "message_sha256": "f87c4a0ecaf8e40a8d167170353b2aeb564e58f72247b4568c3db29c296f105f"
+    },
+    {
+      "tool": "format",
+      "path": "scripts/resolve_review_thread.py",
+      "code": "format",
+      "message_sha256": "f87c4a0ecaf8e40a8d167170353b2aeb564e58f72247b4568c3db29c296f105f"
+    },
+    {
+      "tool": "format",
+      "path": "tests/test_browser_aggregation.py",
+      "code": "format",
+      "message_sha256": "f87c4a0ecaf8e40a8d167170353b2aeb564e58f72247b4568c3db29c296f105f"
+    },
+    {
+      "tool": "format",
+      "path": "tests/test_canonical_ingest.py",
+      "code": "format",
+      "message_sha256": "f87c4a0ecaf8e40a8d167170353b2aeb564e58f72247b4568c3db29c296f105f"
+    },
+    {
+      "tool": "format",
+      "path": "tests/test_change_history.py",
+      "code": "format",
+      "message_sha256": "f87c4a0ecaf8e40a8d167170353b2aeb564e58f72247b4568c3db29c296f105f"
+    },
+    {
+      "tool": "format",
+      "path": "tests/test_css_design_tokens.py",
+      "code": "format",
+      "message_sha256": "f87c4a0ecaf8e40a8d167170353b2aeb564e58f72247b4568c3db29c296f105f"
+    },
+    {
+      "tool": "format",
+      "path": "tests/test_data_safety_coverage.py",
+      "code": "format",
+      "message_sha256": "f87c4a0ecaf8e40a8d167170353b2aeb564e58f72247b4568c3db29c296f105f"
+    },
+    {
+      "tool": "format",
+      "path": "tests/test_database_restore_validation.py",
+      "code": "format",
+      "message_sha256": "f87c4a0ecaf8e40a8d167170353b2aeb564e58f72247b4568c3db29c296f105f"
+    },
+    {
+      "tool": "format",
+      "path": "tests/test_db_migrations.py",
+      "code": "format",
+      "message_sha256": "f87c4a0ecaf8e40a8d167170353b2aeb564e58f72247b4568c3db29c296f105f"
+    },
+    {
+      "tool": "format",
+      "path": "tests/test_equipment_history.py",
+      "code": "format",
+      "message_sha256": "f87c4a0ecaf8e40a8d167170353b2aeb564e58f72247b4568c3db29c296f105f"
+    },
+    {
+      "tool": "format",
+      "path": "tests/test_guard_private_paths.py",
+      "code": "format",
+      "message_sha256": "f87c4a0ecaf8e40a8d167170353b2aeb564e58f72247b4568c3db29c296f105f"
+    },
+    {
+      "tool": "format",
+      "path": "tests/test_http_athlete_get_routes.py",
+      "code": "format",
+      "message_sha256": "f87c4a0ecaf8e40a8d167170353b2aeb564e58f72247b4568c3db29c296f105f"
+    },
+    {
+      "tool": "format",
+      "path": "tests/test_http_coach_get_routes.py",
+      "code": "format",
+      "message_sha256": "f87c4a0ecaf8e40a8d167170353b2aeb564e58f72247b4568c3db29c296f105f"
+    },
+    {
+      "tool": "format",
+      "path": "tests/test_http_diagnostics_get_routes.py",
+      "code": "format",
+      "message_sha256": "f87c4a0ecaf8e40a8d167170353b2aeb564e58f72247b4568c3db29c296f105f"
+    },
+    {
+      "tool": "format",
+      "path": "tests/test_http_privacy_get_routes.py",
+      "code": "format",
+      "message_sha256": "f87c4a0ecaf8e40a8d167170353b2aeb564e58f72247b4568c3db29c296f105f"
+    },
+    {
+      "tool": "format",
+      "path": "tests/test_http_state_events_get_routes.py",
+      "code": "format",
+      "message_sha256": "f87c4a0ecaf8e40a8d167170353b2aeb564e58f72247b4568c3db29c296f105f"
+    },
+    {
+      "tool": "format",
+      "path": "tests/test_local_test_execution.py",
+      "code": "format",
+      "message_sha256": "f87c4a0ecaf8e40a8d167170353b2aeb564e58f72247b4568c3db29c296f105f"
+    },
+    {
+      "tool": "format",
+      "path": "tests/test_nutrition_fuelling.py",
+      "code": "format",
+      "message_sha256": "f87c4a0ecaf8e40a8d167170353b2aeb564e58f72247b4568c3db29c296f105f"
+    },
+    {
+      "tool": "format",
+      "path": "tests/test_nutrition_session_fuelling.py",
+      "code": "format",
+      "message_sha256": "f87c4a0ecaf8e40a8d167170353b2aeb564e58f72247b4568c3db29c296f105f"
+    },
+    {
+      "tool": "format",
+      "path": "tests/test_performance_coach_ui_parity.py",
+      "code": "format",
+      "message_sha256": "f87c4a0ecaf8e40a8d167170353b2aeb564e58f72247b4568c3db29c296f105f"
+    },
+    {
+      "tool": "format",
+      "path": "tests/test_planning_race_plan.py",
+      "code": "format",
+      "message_sha256": "f87c4a0ecaf8e40a8d167170353b2aeb564e58f72247b4568c3db29c296f105f"
+    },
+    {
+      "tool": "format",
+      "path": "tests/test_resolve_review_thread.py",
+      "code": "format",
+      "message_sha256": "f87c4a0ecaf8e40a8d167170353b2aeb564e58f72247b4568c3db29c296f105f"
+    },
+    {
+      "tool": "format",
+      "path": "tests/test_running_dynamics.py",
+      "code": "format",
+      "message_sha256": "f87c4a0ecaf8e40a8d167170353b2aeb564e58f72247b4568c3db29c296f105f"
+    },
+    {
+      "tool": "format",
+      "path": "tests/test_state_versions.py",
+      "code": "format",
+      "message_sha256": "f87c4a0ecaf8e40a8d167170353b2aeb564e58f72247b4568c3db29c296f105f"
+    },
+    {
+      "tool": "format",
+      "path": "tests/test_sync_freshness.py",
+      "code": "format",
+      "message_sha256": "f87c4a0ecaf8e40a8d167170353b2aeb564e58f72247b4568c3db29c296f105f"
+    },
+    {
+      "tool": "format",
+      "path": "tests/test_sync_reconcile.py",
+      "code": "format",
+      "message_sha256": "f87c4a0ecaf8e40a8d167170353b2aeb564e58f72247b4568c3db29c296f105f"
+    },
+    {
+      "tool": "format",
+      "path": "tests/test_training_record_features.py",
+      "code": "format",
+      "message_sha256": "f87c4a0ecaf8e40a8d167170353b2aeb564e58f72247b4568c3db29c296f105f"
+    },
+    {
+      "tool": "format",
+      "path": "tests/test_weather_competition_forecast.py",
+      "code": "format",
+      "message_sha256": "f87c4a0ecaf8e40a8d167170353b2aeb564e58f72247b4568c3db29c296f105f"
+    },
+    {
+      "tool": "format",
+      "path": "tests/test_workout_library_export.py",
+      "code": "format",
+      "message_sha256": "f87c4a0ecaf8e40a8d167170353b2aeb564e58f72247b4568c3db29c296f105f"
+    },
+    {
       "tool": "mypy",
       "path": "tests/test_coach_manual_morning.py",
       "code": "func-returns-value",
@@ -1223,6 +1439,60 @@
       "path": "tests/test_coach_training_template_tools.py",
       "code": "return-value",
       "message_sha256": "d1ce6aba4a78ac24ec4292ff115dbf948e7d3afecfc3329d4da4786a97836773"
+    },
+    {
+      "tool": "eslint",
+      "path": "e2e/text-reflow.spec.js",
+      "code": "sonarjs/cognitive-complexity",
+      "message_sha256": "e64739a9e44eeaaa20da50c51ecddc85811fac1a5b4bf782763f810417393414"
+    },
+    {
+      "tool": "eslint",
+      "path": "tests/navigation-state.test.cjs",
+      "code": "sonarjs/cognitive-complexity",
+      "message_sha256": "e64739a9e44eeaaa20da50c51ecddc85811fac1a5b4bf782763f810417393414"
+    },
+    {
+      "tool": "eslint",
+      "path": "tests/provider-checks.test.cjs",
+      "code": "sonarjs/cognitive-complexity",
+      "message_sha256": "e64739a9e44eeaaa20da50c51ecddc85811fac1a5b4bf782763f810417393414"
+    },
+    {
+      "tool": "eslint",
+      "path": "e2e/body-analysis.spec.js",
+      "code": "sonarjs/no-nested-conditional",
+      "message_sha256": "b3a19eafd7b066e5bfab7ae8edf10a154fd6667bc3d403636346ae546c44244a"
+    },
+    {
+      "tool": "eslint",
+      "path": "e2e/calendar-detail-pane.spec.js",
+      "code": "sonarjs/no-nested-conditional",
+      "message_sha256": "b3a19eafd7b066e5bfab7ae8edf10a154fd6667bc3d403636346ae546c44244a"
+    },
+    {
+      "tool": "eslint",
+      "path": "e2e/coach.spec.js",
+      "code": "sonarjs/no-nested-conditional",
+      "message_sha256": "b3a19eafd7b066e5bfab7ae8edf10a154fd6667bc3d403636346ae546c44244a"
+    },
+    {
+      "tool": "eslint",
+      "path": "e2e/coach.spec.js",
+      "code": "sonarjs/no-nested-conditional",
+      "message_sha256": "b3a19eafd7b066e5bfab7ae8edf10a154fd6667bc3d403636346ae546c44244a"
+    },
+    {
+      "tool": "eslint",
+      "path": "tests/service-worker-update.test.cjs",
+      "code": "sonarjs/no-nested-conditional",
+      "message_sha256": "b3a19eafd7b066e5bfab7ae8edf10a154fd6667bc3d403636346ae546c44244a"
+    },
+    {
+      "tool": "eslint",
+      "path": "tests/service-worker-update.test.cjs",
+      "code": "sonarjs/no-nested-conditional",
+      "message_sha256": "b3a19eafd7b066e5bfab7ae8edf10a154fd6667bc3d403636346ae546c44244a"
     },
     {
       "tool": "mypy",

@@ -128,7 +128,7 @@ function pageInputPending() {
 function updateReloadIsSafe() {
   return !hasUnsavedChanges() && !pageInputPending()
     && !(state.chatAttachments || []).length && !state.chatAttachmentsLoading
-    && !chatStatusJobActive() && !voiceIsRecording() && !state.voiceTranscribing
+    && !chatStatusJobActive()
     && !state.loadPromise && !$("#backupRestoreButton")?.disabled && !$("dialog[open]");
 }
 

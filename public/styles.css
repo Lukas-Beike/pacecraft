@@ -75,11 +75,8 @@
   --streaming-border: rgba(52, 207, 161, .25);
   --composer-shadow: rgba(0, 0, 0, .35);
   --focus-accent-border: rgba(52, 207, 161, .65);
-  --recording-border: rgba(255, 132, 121, .7);
-  --stop-surface: #b83232;
   --stop: #c83232;
   --stop-hover: #a92323;
-  --recording-shadow: rgba(255, 132, 121, .15);
   --disabled-ink: #c9d6d2;
   --disabled-surface: #3b4a46;
   --training-zone-2: #4fc968;
@@ -627,7 +624,7 @@ h2 {
 .composer textarea::placeholder { color: var(--subtle); }
 .composer-actions { display: flex; align-items: flex-end; gap: 6px; flex-wrap: nowrap; }
 .composer-actions button { min-height: 44px; }
-.composer .voice-button, .composer .attachment-button {
+.composer .attachment-button {
   display: grid;
   flex: 0 0 44px;
   place-items: center;
@@ -641,11 +638,12 @@ h2 {
   color: var(--ink);
   background: var(--surface-raised);
   box-shadow: none;
+  justify-content: center;
+  margin-inline-end: auto;
+  font-size: 1.4rem;
+  line-height: 1;
 }
-.composer .voice-button:hover, .composer .attachment-button:hover { border-color: var(--focus-accent-border); background: var(--surface); }
-.composer .voice-button { margin-inline-end: auto; font-size: 1.08rem; }
-.composer .voice-button.recording { border-color: var(--recording-border); color: var(--white); background: var(--stop-surface); animation: voice-recording 1.2s ease-in-out infinite; }
-.composer .voice-button.transcribing { cursor: wait; }
+.composer .attachment-button:hover { border-color: var(--focus-accent-border); background: var(--surface); }
 .composer .steer-button { min-height: 44px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding-right: 12px; padding-left: 12px; color: var(--ink); background: var(--control-bg); box-shadow: none; font-size: .74rem; }
 .composer .steer-button:hover { border-color: var(--focus-accent-border); background: var(--accent-soft); }
 @media (max-width: 360px) {
@@ -659,7 +657,6 @@ h2 {
 .composer .composer-stop-button { border: 0; border-radius: 50%; padding: 0; color: var(--white); background: var(--stop); box-shadow: none; }
 .composer .composer-stop-button:hover { background: var(--stop-hover); }
 .composer .composer-stop-button[hidden] { display: none; }
-@keyframes voice-recording { 50% { box-shadow: 0 0 0 5px var(--recording-shadow); } }
 .composer button, .save-bar button, dialog button, .push-button {
   border: 0;
   border-radius: var(--radius-sm);
@@ -724,7 +721,6 @@ h2 {
 }
 .composer .chat-sync[hidden] { display: none; }
 .chat-sync-spinner { width: 14px; height: 14px; flex: none; border: 2px solid var(--line-strong); border-top-color: var(--accent-bright); border-radius: 50%; animation: spin .8s linear infinite; }
-.composer .attachment-button { justify-content: center; font-size: 1.4rem; line-height: 1; }
 .composer .attachment-button svg { display: block; width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 3; stroke-linecap: round; }
 .training-focus-distribution { margin: 18px 0; }
 #analysisLoadPeriod { margin-bottom: 16px; }
@@ -781,6 +777,15 @@ h2 {
 .planned-equipment-field select { flex: 1; min-height: 44px; }
 .planned-equipment-status { flex-basis: 100%; margin: 0; font-size: .8rem; }
 .planned-equipment-status:empty, .planned-equipment [hidden] { display: none; }
+.planned-equipment[hidden] { display: none; }
+.planned-equipment-line { display: flex; }
+.equipment-rules { display: grid; gap: 6px; margin: 12px 0; }
+.equipment-rules h4 { margin: 0; }
+.equipment-rules select { width: 100%; min-height: 44px; }
+.equipment-rule-status { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: .85rem; }
+.equipment-rule-status:empty { display: none; }
+.equipment-rule-status p { flex-basis: 100%; margin: 0; }
+.planned-equipment-chip { min-height: 32px; border: 1px solid var(--line-strong); background: var(--surface-raised); color: var(--ink); font: inherit; font-size: .8rem; cursor: pointer; }
 .planned-zone-time-bar { display: flex; height: 10px; overflow: hidden; border-radius: 5px; background: var(--surface-input); }
 .planned-zone-time-bar i { display: block; min-width: 2px; background: var(--muted); }
 .planned-zone-time-bar [data-zone="1"] { background: var(--training-zone-1); }
@@ -803,10 +808,6 @@ h2 {
 #appShell.is-loading .composer, #appShell.is-loading .bottom-nav { visibility: hidden; }
 .button-spinner { display: none; width: 15px; height: 15px; border: 2px solid color-mix(in srgb, currentColor 35%, var(--transparent)); border-top-color: currentColor; border-radius: 50%; }
 .login-button.is-loading .button-spinner { display: inline-block; animation: spin .7s linear infinite; }
-.voice-status { margin: 0 4px 9px; color: var(--muted); text-align: center; font-size: .72rem; }
-.voice-button .button-spinner { display: inline-block; animation: spin .7s linear infinite; }
-.voice-status.error { color: var(--danger-ink); }
-.voice-status[hidden] { display: none; }
 .fine-print { margin: 10px 4px 0; color: var(--muted); text-align: left; font-size: .75rem; }
 #chatPanel > .fine-print { margin-top: 4px; text-align: center; }
 #chatPanel .fine-print { scroll-margin-bottom: 96px; }
@@ -1494,8 +1495,7 @@ body:has(#chatPanel.active) .toast { bottom: calc(var(--composer-height, 0px) + 
   #chatPanel .messages,
   #chatPanel .composer,
   #chatPanel .coach-action-review,
-  #chatPanel > .fine-print,
-  #chatPanel > .voice-status { width: min(100%, 760px); margin-right: auto; margin-left: auto; }
+  #chatPanel > .fine-print { width: min(100%, 760px); margin-right: auto; margin-left: auto; }
   #settingsPanel.active { display: grid; grid-template-columns: minmax(190px, 220px) minmax(0, 1fr); align-items: start; gap: 0 24px; }
   #settingsPanel > .section-heading { grid-column: 1 / -1; }
   #settingsPanel > .more-segment-nav { position: sticky; top: 24px; grid-column: 1; grid-row: 2 / span 8; display: grid; align-content: start; gap: 4px; margin: 0; overflow: visible; }
@@ -1847,7 +1847,6 @@ button:focus-visible, a:focus-visible, summary:focus-visible {
 .activity-analysis-chart.is-power { --series: var(--chart-series-2); }
 .activity-analysis-chart.is-cadence { --series: var(--orange); }
 .activity-analysis-chart.is-elevation { --series: var(--subtle); }
-.activity-analysis-chart.is-temperature { --series: var(--yellow); }
 .activity-analysis-chart.is-dynamics { --series: var(--accent-bright); }
 .activity-analysis-chart-header { display: grid; gap: 2px; }
 .activity-analysis-chart-stats { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 12px; margin: 0; color: var(--muted); font-size: .72rem; font-variant-numeric: tabular-nums; }

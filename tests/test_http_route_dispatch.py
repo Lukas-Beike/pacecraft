@@ -74,6 +74,14 @@ class RequestHandlerRouteOrderTests(unittest.TestCase):
             finally:
                 events.append("gate end")
 
+        @contextmanager
+        def read_gate():
+            events.append("read gate")
+            try:
+                yield
+            finally:
+                events.append("read gate end")
+
         def make(method: str, path: str, access: Access, **kw) -> Route:
             return Route(
                 method, path, access, lambda *_: events.append(f"route {path}"), **kw
@@ -95,9 +103,12 @@ class RequestHandlerRouteOrderTests(unittest.TestCase):
                     make("POST", "/api/ungated", Access.SESSION_CSRF, gated=False),
                     make("POST", "/api/gated", Access.SESSION_CSRF),
                     make("PUT", "/api/put", Access.SESSION_CSRF),
+                    make("GET", "/api/performance", Access.SESSION, heavy=True),
+                    make("GET", "/api/light", Access.SESSION),
                 ]
             ),
             maintenance_gate=SimpleNamespace(operation=gate),
+            heavy_read_gate=SimpleNamespace(held=read_gate),
             logger=Mock(),
             internal_server_error="internal",
         )
@@ -128,6 +139,13 @@ class RequestHandlerRouteOrderTests(unittest.TestCase):
             ),
             ("PUT", "/api/put", ["gate", *checked, "route /api/put", "gate end"]),
             ("PUT", "/api/unknown", ["gate", *checked, "gate end"]),
+            # A heavy view read runs alone, after authentication (#3029).
+            (
+                "GET",
+                "/api/performance",
+                ["auth", "read gate", "route /api/performance", "read gate end"],
+            ),
+            ("GET", "/api/light", ["auth", "route /api/light"]),
         ):
             with self.subTest(verb=verb, path=path):
                 events: list[str] = []

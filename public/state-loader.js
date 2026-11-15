@@ -24,7 +24,7 @@ function render(data, { reloadRoute = true } = {}) {
   renderServiceTier(data.service_tier);
   renderDiagnosticCapture(data.diagnostic_capture);
   renderSettings(data);
-  updateVoiceButton();
+  updateChatControls();
 }
 
 // Path key for an area-only refresh: it reads live provider-backed areas such as

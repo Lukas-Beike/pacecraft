@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import ast
+import functools
 import re
 import unittest
 from datetime import date
+from pathlib import Path
 from typing import Any
 from unittest.mock import Mock
 
@@ -19,9 +22,11 @@ from backend.coach.playbooks import REQUEST_KINDS, nutrition_playbook, playbook_
 from backend.coach.prompt import COACH_PROMPT
 from backend.coach.request_payload import (
     CoachRequestPayloadService,
+    analysed_sport,
     compose_model_instructions,
 )
 from backend.errors import AppError
+from backend.performance.current_metrics import coach_thresholds
 
 NEW_KINDS = (
     "session_analysis",
@@ -51,6 +56,9 @@ BLOCK_WORD_BUDGETS = {
     "_SESSION_CHECKS": 135,
     # The execution and planned-target fields the session analysis reads.
     "_SESSION_NUMBERS": 110,
+    # One block per sport of the analysed session (#3038).
+    "_RUN_SESSION": 75,
+    "_RIDE_SESSION": 75,
     # Test planning from planning_brief.last_tests (plan kinds only).
     "_TESTS": 125,
     "_ANSWER": 55,
@@ -58,6 +66,112 @@ BLOCK_WORD_BUDGETS = {
 }
 # 205: the session analysis judges a run against its stored heart-rate cap.
 TASK_WORD_BUDGET = 205
+
+# A field name in a playbook: snake_case, or a dotted path of its segments.
+_SNAKE_NAME = re.compile(r"\b[a-z][a-z0-9]*(?:_[a-z0-9]+)+\b")
+_DOTTED_PATH = re.compile(r"\b[a-z][a-z0-9_]+(?:\.[a-z][a-z0-9_]+)+\b")
+
+
+def _playbook_text() -> str:
+    # The budget table lists every block (test_every_block_is_budgeted_...).
+    blocks = [getattr(playbooks, name) for name in BLOCK_WORD_BUDGETS]
+    return "\n".join([playbooks._HEADER, *blocks, *playbooks._TASKS.values()])
+
+
+_ROOT = Path(__file__).resolve().parents[1]
+
+
+def _parsed(path: Path) -> list[ast.AST]:
+    return list(ast.walk(ast.parse(path.read_text(encoding="utf-8"))))
+
+
+@functools.cache
+def _backend_names() -> frozenset[str]:
+    """Every string literal, TypedDict field and keyword argument of server.py
+    and the backend, the playbooks aside."""
+    names: set[str] = set()
+    for path in [_ROOT / "server.py", *(_ROOT / "backend").rglob("*.py")]:
+        if path == _ROOT / "backend" / "coach" / "playbooks.py":
+            continue
+        for node in _parsed(path):
+            if isinstance(node, ast.Constant) and isinstance(node.value, str):
+                names.add(node.value)
+            elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
+                names.add(node.target.id)
+            elif isinstance(node, ast.keyword) and node.arg:
+                names.add(node.arg)
+    return frozenset(names)
+
+
+def _context_threshold_keys() -> set[str]:
+    """The literal keys current_performance_context puts beside coach_thresholds."""
+    return {
+        str(child.value)
+        for node in _parsed(_ROOT / "backend" / "performance" / "context.py")
+        if isinstance(node, ast.Dict)
+        for key, value in zip(node.keys, node.values)
+        if isinstance(key, ast.Constant)
+        and key.value == "thresholds"
+        and isinstance(value, ast.Dict)
+        for child in value.keys
+        if isinstance(child, ast.Constant)
+    }
+
+
+def _built_keys() -> dict[str, set[str]]:
+    """Blocks whose children are checked: what their code builds from complete
+    inputs. ``weather`` names both the session's weather and the forecast, so
+    its children are only checked by name."""
+    value = {"value": 250, "source": "Garmin Connect"}
+    metrics = {
+        key: value
+        for key in ("max_hr_bpm", "bike_threshold_hr_bpm", "run_threshold_hr_bpm")
+    }
+    metrics["cycling_ftp_watts"] = {
+        **value,
+        "alternatives": [{"source": "Wahoo", "value": 270}],
+        "conflict": True,
+    }
+    return {"thresholds": set(coach_thresholds(metrics)) | _context_threshold_keys()}
+
+
+def _misplaced(paths: set[str], built: dict[str, set[str]]) -> list[str]:
+    """Dotted paths naming a child their built parent block lacks."""
+    return sorted(
+        path
+        for path in paths
+        for parent, child in zip(path.split("."), path.split(".")[1:])
+        if parent in built and child not in built[parent]
+    )
+
+
+class PlaybookFieldNameTests(unittest.TestCase):
+    """A field the playbooks name must still exist (#3055): a rename or removal
+    elsewhere fails here instead of orphaning the instruction."""
+
+    def test_every_named_field_exists_in_the_backend(self) -> None:
+        text = _playbook_text()
+        names = set(_SNAKE_NAME.findall(text)) | {
+            segment
+            for path in _DOTTED_PATH.findall(text)
+            for segment in path.split(".")
+        }
+        self.assertGreater(len(names), 100)
+        self.assertEqual([], sorted(names - _backend_names()))
+
+    def test_dotted_paths_match_the_blocks_their_code_builds(self) -> None:
+        built = _built_keys()
+        self.assertLessEqual(
+            {"ftp_w", "weight", "first_thresholds"}, built["thresholds"]
+        )
+        paths = set(_DOTTED_PATH.findall(_playbook_text()))
+        self.assertIn("current_performance.thresholds.ftp_w", paths)
+        self.assertEqual([], _misplaced(paths, built))
+        # The #3046 slip: an FTP key of the metrics, not of the thresholds.
+        self.assertEqual(
+            ["current_performance.thresholds.cycling_ftp_watts"],
+            _misplaced({"current_performance.thresholds.cycling_ftp_watts"}, built),
+        )
 
 
 class PlaybookBudgetTests(unittest.TestCase):
@@ -178,8 +292,30 @@ class PlaybookInjectionTests(unittest.TestCase):
                 self.assertIn("pyramidal when it is absent", text)
                 self.assertIn("training_model", text)
 
+    def test_session_analysis_adds_only_the_analysed_sports_block(self) -> None:
+        core = playbook_for("session_analysis")
+        for sport, block, other in (
+            ("run", playbooks._RUN_SESSION, playbooks._RIDE_SESSION),
+            ("ride", playbooks._RIDE_SESSION, playbooks._RUN_SESSION),
+        ):
+            text = playbook_for("session_analysis", sport)
+            with self.subTest(sport=sport):
+                self.assertLessEqual(len(text.split()), KIND_WORD_BUDGET)
+                self.assertIn(block, text)
+                self.assertNotIn(other, text)
+                # The answer format stays last.
+                self.assertLess(text.index(block), text.index(playbooks._ANSWER))
+                self.assertNotIn(block, core)
+        for no_block in (None, "swim", "strength"):
+            self.assertEqual(core, playbook_for("session_analysis", no_block))
+        self.assertEqual(
+            playbook_for("progress_review"), playbook_for("progress_review", "run")
+        )
+        # Temperature comes from the weather, never a device sensor (#3036).
+        self.assertIn("weather.temperature_c", core)
+
     def test_session_analysis_carries_the_session_checks_only(self) -> None:
-        text = playbook_for("session_analysis")
+        text = playbook_for("session_analysis", "run")
         for needle in ("session_focus", "pace_at_heart_rate", "never a proven cause"):
             self.assertIn(needle, text)
         self.assertIn("not_covered", text)
@@ -205,17 +341,21 @@ class PlaybookInjectionTests(unittest.TestCase):
         for kind in ("plan_week", "plan_block", "adjust_week"):
             self.assertNotIn(playbooks._ANSWER, playbook_for(kind))
 
-    def test_session_analysis_names_what_to_look_at_per_session_type(self) -> None:
+    def test_session_analysis_explains_the_report_and_drops_no_notable_check(
+        self,
+    ) -> None:
+        # The per-type checks are code now (session_report, #3084); the task
+        # explains the report, leads with its lead, mentions every notable and
+        # names every unknown, and never computes numbers itself.
         text = playbook_for("session_analysis")
         for marker in (
             "by default the last one",
-            "warm-up and cool-down",
-            "decoupling at the same pace",
-            "strides or a progression are intended",
-            "reps holding or fading",
-            "heart-rate drop",
-            "Under about 2 minutes",
-            "load and intensity",
+            "session_report holds every deterministic check",
+            "never compute numbers or verdicts yourself",
+            "session_report.lead",
+            "mention every other notable check",
+            "name each unknown with its reason",
+            "citing a field and its value",
             "sensor errors",
         ):
             with self.subTest(marker=marker):
@@ -223,14 +363,17 @@ class PlaybookInjectionTests(unittest.TestCase):
 
     def test_session_analysis_reads_execution_and_planned_targets(self) -> None:
         text = playbook_for("session_analysis")
-        for marker in (
-            "analysis.execution",
-            "planned_targets",
-            "erg_like",
-            "lap_pace",
-            "comparable_sessions",
-        ):
+        for marker in ("analysis.execution", "planned_targets", "comparable_sessions"):
             self.assertIn(marker, text)
+        self.assertIn("lap_pace", playbook_for("session_analysis", "run"))
+        ride = playbook_for("session_analysis", "ride")
+        for marker in (
+            "erg_like",
+            "normalized_power",
+            "decoupling_pct",
+            "current_performance.thresholds.ftp_w",
+        ):
+            self.assertIn(marker, ride)
         self.assertNotIn(playbooks._SESSION_NUMBERS, playbook_for("progress_review"))
 
     def test_progress_and_block_review_are_one_fitness_review(self) -> None:
@@ -269,7 +412,7 @@ class PlaybookInjectionTests(unittest.TestCase):
         # A ramp test reads power even when erg_like; its evaluation decides.
         self.assertIn(
             "unless focus.test_evaluation says otherwise",
-            playbook_for("session_analysis"),
+            playbook_for("session_analysis", "ride"),
         )
 
     def test_adjust_week_playbook_guards_hard_days_and_writes(self) -> None:
@@ -384,6 +527,80 @@ class PlaybookInjectionTests(unittest.TestCase):
         self.assertIn("Task: plan the requested next week", typed)
         selection = training_context.build.call_args_list[0].kwargs["selection"]
         self.assertEqual(selection.name, "plan_week")
+
+    def test_analysed_sport_prefers_one_named_sport_then_the_id_then_the_newest(
+        self,
+    ) -> None:
+        sessions = [
+            {"id": "s-ride", "sport": "ride"},
+            {"id": "s-run", "sport": "run"},
+            {"id": "s-swim", "sport": "swim"},
+        ]
+        recent = Mock(return_value=sessions)
+        # The calendar button names the sport: no session read.
+        button = (
+            "Analysiere meine Einheit vom 2. Nov. (Laufen, 07:10, 45 min, ID s-run)."
+        )
+        for message, expected in (
+            (button, "run"),
+            ("Analysiere meine Einheit vom 2. Nov. (Rad indoor, ID s-ride).", "ride"),
+            ("Analysiere meine letzte Radtour", "ride"),
+            ("Ich bin gestern gelaufen, wie war das?", "run"),
+        ):
+            with self.subTest(message=message):
+                self.assertEqual(expected, analysed_sport(message, recent))
+        recent.assert_not_called()
+        for message, expected in (
+            # A sport without a block is read from the session of its ID.
+            ("Analysiere meine Einheit vom 2. Nov. (Schwimmen, ID s-swim).", "swim"),
+            ("Analysiere die Einheit mit ID s-run.", "run"),
+            # Otherwise the newest session decides: no ID, an unknown one, two
+            # sports, or "Rad" inside another word.
+            ("Analysiere meine letzte Einheit", "ride"),
+            ("Analysiere die Einheit (ID s-old)", "ride"),
+            ("Erst Lauf, dann Rad: analysiere die Einheit", "ride"),
+            ("Analysiere die Radaufzeichnung", "ride"),
+        ):
+            with self.subTest(message=message):
+                self.assertEqual(expected, analysed_sport(message, recent))
+        self.assertEqual(
+            "run",
+            analysed_sport("Analysiere die Radaufzeichnung", lambda: sessions[1:]),
+        )
+        self.assertIsNone(analysed_sport("Analysiere meine Einheit", tuple))
+
+    def test_session_analysis_turn_carries_the_sport_block_of_its_session(self) -> None:
+        training_context = Mock()
+        training_context.build.return_value = "training context"
+        recent = Mock(return_value=[{"id": "s-1", "sport": "ride"}])
+        service = CoachRequestPayloadService(
+            training_context, Mock(), 1000, recent_sessions=recent
+        )
+        arguments: dict[str, Any] = {
+            "message": "Analysiere meine letzte Einheit",
+            "context": {"current_user_message_id": 1, "local_date": "2026-09-23"},
+            "command_receipts": [],
+            "tools": [],
+            "allow_mutations": True,
+            "model": None,
+            "thinking_level": None,
+            "conversation_id": "c",
+            "attachments": [],
+            "retain_openai_attachment_context": False,
+            "has_prior_openai_attachments": False,
+        }
+        with self.assertLogs("intervals_coach", "INFO") as logs:
+            analysis, _ = service.build(**arguments, request_kind="session_analysis")
+            planned, _ = service.build(**arguments, request_kind="plan_week")
+        sizes = [r.context for r in logs.records if hasattr(r, "context")]
+        self.assertIn(playbooks._RIDE_SESSION, analysis)
+        self.assertEqual(
+            len(playbook_for("session_analysis", "ride")),
+            sizes[0]["playbook_characters"],
+        )
+        self.assertNotIn(playbooks._RIDE_SESSION, planned)
+        # Only a session analysis reads the recent sessions.
+        recent.assert_called_once_with()
 
 
 class FreeTextReviewKindTests(unittest.TestCase):

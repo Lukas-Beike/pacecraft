@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Describe the private athlete-facing PWA shell, navigation, accessible controls, safe content, Coach interaction, and operational UIs. This is an inspected brownfield contract, not a claim of full browser execution or universal accessibility compliance. Durable training, planning, performance, activity, profile, history/undo, authentication, credentials, backup/restore, and privacy effects belong to their domain specifications. Nutrition behavior is specified in `nutrition-diary-and-targets` and `food-catalog-and-meal-library`; refresh/cache behavior in `view-refresh-and-client-state`; microphone/notification behavior in `voice-and-notifications`.
+Describe the private athlete-facing PWA shell, navigation, accessible controls, safe content, Coach interaction, and operational UIs. This is an inspected brownfield contract, not a claim of full browser execution or universal accessibility compliance. Durable training, planning, performance, activity, profile, history/undo, authentication, credentials, backup/restore, and privacy effects belong to their domain specifications. Nutrition behavior is specified in `nutrition-diary-and-targets` and `food-catalog-and-meal-library`; refresh/cache behavior in `view-refresh-and-client-state`; notification behavior in `notifications`.
 
 ## Requirements
 
@@ -185,7 +185,7 @@ The client SHALL support editable multiline Coach drafts, sending with the expli
 - **THEN** it inserts a newline; the send button or Ctrl/Cmd+Enter without Shift submits.
 
 #### Scenario: Composer grows or Coach works
-- **WHEN** the draft grows, the Coach becomes busy, or voice status appears
+- **WHEN** the draft grows or the Coach becomes busy
 - **THEN** the composer resizes within its bounds and keeps the existing control layout and bottom-edge behavior without a busy-state height jump.
 
 Evidence: `public/coach.js::chatEnterAction`, `public/styles.css` (`.composer textarea` field-sizing), `public/coach.js::publishComposerHeight`, `public/shared.js::hasTouchFirstInput`; `tests/coach-enter.test.cjs::desktop Enter sends the draft`, `tests/coach-enter.test.cjs::IME composition never triggers an action`, `tests/coach-enter.test.cjs::touch Ctrl/Cmd+Enter sends from a physical keyboard`, `e2e/coach-composer.spec.js::composer height does not change while busy @responsive`.
@@ -377,8 +377,12 @@ The client SHALL present domain-provided planning, performance, activity, and eq
 - **THEN** sport-appropriate pace/speed and cadence/step-frequency channels, units, missing points, and available metadata remain readable; failed detail loading retains the session summary and its explicit refresh path.
 
 #### Scenario: Equipment in a calendar card
-- **WHEN** a completed session's card opens and its detail read lists items it can take or an own choice
-- **THEN** one select ("Schuh" for runs, "Rad" for rides, else "Ausrüstung") lists them and "Keiner"; an own choice is selected, else a Garmin gear link of the session is preselected with the provider's label, else the suggestion is preselected and marked "Vorschlag", else "–"; nothing is saved until "Übernehmen", which posts to `POST /api/equipment/assignment` and shows "Gespeichert." with "Rückgängig", and the session is read again on its next opening
+- **WHEN** a run or ride card opens, completed (with items it can take or an own choice) or planned (a local unit)
+- **THEN** a chip leads the opened card, under the title and date on wide screens and as the first line of the opened body on narrow ones, without "Details": "👟" for a shoe or "🚲" for a bike, the own choice, else the effective item with its source ("Plan", "Regel" or the Garmin label), else the suggestion marked "Vorschlag", else "–"; tapping it opens one select of the items and "Keiner", and nothing is saved until "Übernehmen", which posts the session's `activity_id` or the unit's `planned_unit_id` to `POST /api/equipment/assignment` and shows "Gespeichert." with "Rückgängig".
+
+#### Scenario: Default equipment table
+- **WHEN** Mehr › Ausrüstung shows the Laufschuhe or Fahrrad tab
+- **THEN** a "Standard" table lists one select per kind (Intervalle, Langer Lauf, Locker, Wettkampf; Drinnen, Draußen) of the tab's active main items and "–"; a change saves from today on, and with earlier sessions of the kind without an own choice it offers "Auf N anwenden" and "Nur künftig", where only the confirmed apply changes them and its receipt carries "Rückgängig".
 
 #### Scenario: Equipment editor
 - **WHEN** the athlete opens "+ Hinzufügen" in a tab of Mehr › Ausrüstung, or "Bearbeiten" or "Ausmustern" in an active local item's card
@@ -706,7 +710,7 @@ Evidence: `public/shared.js::notePwaActivity`; `public/shared.js::updatePwaActiv
 
 ### Requirement: Composer control states
 
-The composer SHALL never disable the draft field. The send control SHALL read "Senden", "Einreihen" while a turn runs, "Coach antwortet…" while a turn is recovered and "Antwort wird geladen…" while a completed answer is taken over, and SHALL be disabled without a draft, while the chat loads, attachments load, a recording or transcription runs, and in the last two states.
+The composer SHALL never disable the draft field. The send control SHALL read "Senden", "Einreihen" while a turn runs, "Coach antwortet…" while a turn is recovered and "Antwort wird geladen…" while a completed answer is taken over, and SHALL be disabled without a draft, while the chat loads, attachments load, and in the last two states.
 
 #### Scenario: Placeholder
 - **WHEN** the chat is ready, busy, loading, or the selected Coach has no API key

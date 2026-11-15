@@ -161,11 +161,7 @@ test("provider-backed API calls outlast their server deadlines", async ({ page }
         delays.push(lastDelay);
         expectedPath = null;
       }
-      return new Response(JSON.stringify(
-        String(url).includes("/api/transcribe")
-          ? { transcript: "fixture transcript" }
-          : { status: "completed" },
-      ), { status: 200, headers: { "Content-Type": "application/json" } });
+      return new Response(JSON.stringify({ status: "completed" }), { status: 200, headers: { "Content-Type": "application/json" } });
     };
     try {
       expectedPath = "/api/health";
@@ -175,11 +171,6 @@ test("provider-backed API calls outlast their server deadlines", async ({ page }
         method: "POST",
         body: "{}",
       });
-      expectedPath = "/api/transcribe";
-      await AppApi.audio(
-        "/api/transcribe",
-        new Blob(["fixture audio"], { type: "audio/webm" }),
-      );
       return delays;
     } finally {
       globalThis.fetch = originalFetch;
@@ -187,7 +178,7 @@ test("provider-backed API calls outlast their server deadlines", async ({ page }
     }
   });
 
-  expect(timeouts).toEqual([25_000, 55_000, 100_000]);
+  expect(timeouts).toEqual([25_000, 55_000]);
 });
 
 test.describe("critical browser states", { tag: "@responsive" }, () => {

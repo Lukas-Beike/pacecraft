@@ -6,7 +6,8 @@ named pull request, the pull request was authored by the authenticated `gh`
 user, the thread is still unresolved, and its last comment is that user's reply
 naming a commit of the pull request made after the finding (the fix SHA).
 The PreToolUse hook `scripts/hooks/guard_resolve_thread.py` lets only the exact
-call run, and only while this script and `gh_cli.py` match origin/develop.
+call run, and only while this script matches origin/develop and nothing in
+`scripts/` can shadow a module it imports. It therefore imports no local module.
 
     python scripts/resolve_review_thread.py <pr> <thread-id>
 
@@ -17,10 +18,11 @@ Exit 0: resolved. 1: refused (the reason is printed). 2: bad input or a failed
 from __future__ import annotations
 
 import argparse
+import json
 import re
+import subprocess
 import sys
-
-from gh_cli import CliError, gh_json, positive_int
+from typing import Any
 
 # The thread is looked up directly, so no thread list needs paging.
 QUERY = (
@@ -35,6 +37,34 @@ MUTATION = (
 )
 THREAD_ID = re.compile(r"PRRT_[A-Za-z0-9_-]+")
 SHA = re.compile(r"\b[0-9a-f]{7,40}\b")
+
+
+class CliError(RuntimeError):
+    """A failed `gh` call; the message is safe to print."""
+
+
+def gh_json(*args: str) -> Any:
+    """Run `gh` with list arguments (no shell) and parse its JSON output."""
+    try:
+        done = subprocess.run(
+            ["gh", *args], check=False, capture_output=True, text=True, encoding="utf-8"
+        )
+    except FileNotFoundError as exc:
+        raise CliError("gh is not installed.") from exc
+    if done.returncode != 0:
+        lines = (done.stderr or done.stdout or "").strip().splitlines()
+        raise CliError(f"gh {' '.join(args[:2])} failed: {lines[0] if lines else 'no output'}")
+    try:
+        return json.loads(done.stdout or "null")
+    except json.JSONDecodeError as exc:
+        raise CliError(f"gh {' '.join(args[:2])} returned invalid JSON.") from exc
+
+
+def positive_int(text: str) -> int:
+    value = int(text.lstrip("#"), 10)
+    if value <= 0:
+        raise ValueError(text)
+    return value
 
 
 def refusal(thread: dict | None, pr: int, viewer: str) -> str | None:

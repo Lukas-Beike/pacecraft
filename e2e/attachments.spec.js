@@ -33,6 +33,11 @@ test("attachments can be removed, rejected and sent with an empty text draft", {
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBeTruthy();
 });
 
+// #3044: the worker's first claim can land while the first message is sent, and page.route
+// does not see a request the worker took (Playwright #1090), so the send went out uncounted.
+test.describe("queued attachments", () => {
+  test.use({ serviceWorkers: "block" });
+
 test("attachments stay with their own queued message", async ({ page }) => {
   await page.goto("/");
   await expect(page.locator("#appShell")).toBeVisible();
@@ -58,4 +63,5 @@ test("attachments stay with their own queued message", async ({ page }) => {
   expect(requests.map(request => [request.message, request.attachments[0].name])).toEqual([
     ["First route", "first.gpx"], ["Second route", "second.gpx"],
   ]);
+});
 });

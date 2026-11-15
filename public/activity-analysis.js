@@ -45,7 +45,6 @@
       { key: "power_w", label: "Leistung", unit: "W", color: "power", format: (v) => numberText(v), floorAtZero: true, average: metrics.avg_power, max: metrics.max_power_w },
       cadenceChannel(activity, metrics),
       { key: "altitude_m", label: "Höhe", unit: "m", color: "elevation", format: (v) => numberText(v), elevation: true },
-      { key: "temperature_c", label: "Temperatur", unit: "°C", color: "temperature", format: (v) => numberText(v, 1), average: metrics.avg_temp_c, max: metrics.max_temp_c },
       // Running dynamics per second, named like their averages in the values (#2258).
       ...ActivityDetails.RUNNING_DYNAMICS.map(([key, label, unit, digits]) => ({ key, label, unit, color: "dynamics", format: (v) => numberText(v, digits), average: metrics[key] })),
     ].filter((channel) => Array.isArray(streams.channels?.[channel.key]?.values));
@@ -69,7 +68,7 @@
     const flat = high - low < minimumSpan;
     if (flat) { const middle = (low + high) / 2; low = middle - minimumSpan / 2; high = middle + minimumSpan / 2; }
     const padding = (high - low) * 0.08;
-    // Only non-negative channels clamp at zero; elevation, pace and temperature may go below it.
+    // Only non-negative channels clamp at zero; elevation and pace may go below it.
     low = channel.floorAtZero ? Math.max(0, low - padding) : low - padding;
     return { low, high: high + padding, flat };
   }
@@ -225,7 +224,7 @@
   }
 
   // Running values move to their own section when it is shown (#2829).
-  function overview(activity, metrics, dynamicsShown = false) {
+  function overview(activity, metrics, dynamicsShown = false, weather = null) {
     const speed = speedChannel(activity);
     const averageSpeed = speedText(speed, metrics.avg_speed_mps);
     const cadence = cadenceChannel(activity, metrics);
@@ -240,6 +239,7 @@
       ["Max. Leistung", measure(metrics.max_power_w, "W")],
       [`Ø ${cadence.label}`, dynamicsShown ? null : measure(cadence.average, cadence.unit)],
       ["Anstieg", measure(metrics.elevation_gain_m, "m")],
+      ["Temperatur", ActivityDetails.weatherTemperature(weather)],
       ["Kalorien", measure(metrics.energy_kcal ?? metrics.calories_kcal, "kcal")],
       // Local session metrics (card M8): descriptive values, no verdict.
       ["Arbeit", measure(metrics.work_kj ?? metrics.energy_kj, "kJ")],
@@ -375,7 +375,7 @@
     if (payload?.metrics?.efficiency_factor?.unit) metrics.efficiency_factor_unit = payload.metrics.efficiency_factor.unit;
     const dynamics = runningDynamicsSection(activity, metrics, payload && { panel, token, activityId: payload.session?.activity_id });
     const planned = payload?.planned_adherence;
-    panel.append(...[overview(activity, metrics, Boolean(dynamics)), adherence(planned), dynamics, providerEffect(payload?.training_effect)].filter(Boolean));
+    panel.append(...[overview(activity, metrics, Boolean(dynamics), payload?.weather), adherence(planned), dynamics, providerEffect(payload?.training_effect)].filter(Boolean));
     const driftLines = ActivityDetails.formDriftLines(payload?.analysis?.form_drift);
     if (driftLines.length) panel.append(h("div", null, driftLines.map((line) => h("p", null, line))));
     // The running dynamics share the time axis of the other channels.

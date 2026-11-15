@@ -111,7 +111,7 @@ A race finding must identify the competing operations, shared state, possible or
 
 ## 5. 400-class and API-contract audit
 
-Inventory every frontend `request`, `fetch`, EventSource, download, and audio caller and match it to the exact backend route. Most unexplained 400 errors arise from schema/version drift, stale IDs/hashes, wrong action boundaries, or lost client state; test those paths end to end.
+Inventory every frontend `request`, `fetch`, EventSource, and download caller and match it to the exact backend route. Most unexplained 400 errors arise from schema/version drift, stale IDs/hashes, wrong action boundaries, or lost client state; test those paths end to end.
 
 For every route, cover:
 
@@ -182,7 +182,6 @@ Do not review screens in isolation. Exercise full journeys on `mobile`, `tablet-
 - view/edit profile, check-in, activities/feedback, performance, plans, library, competitions, connections/operations, privacy, and diagnostics;
 - empty, first-use, long-list, long-text, loading, slow, stale, partial, conflict, validation-error, provider-error, offline, session-expired, and maintenance states;
 - fresh installation, current offline/service-worker flow, and same-build recovery;
-- microphone unsupported/denied/granted/timeout/oversized/aborted transcription and editable result;
 - notifications unsupported/denied/granted/duplicate/click navigation.
 
 For each journey inspect:

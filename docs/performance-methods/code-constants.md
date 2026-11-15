@@ -239,6 +239,20 @@ every named number the code fixes. A test fails when it is out of date.
 | `WORK_STREAM_BASIS` | `'power_stream'` | `backend/performance/session_metrics.py` |  |
 | `RUN_POWER_MODEL` | `'running_power_model'` | `backend/performance/session_metrics.py` | Run power is the output of the device's running-power model, not a measured force. |
 | `DERIVED_LABEL` | `'derived'` | `backend/performance/session_metrics_reads.py` |  |
+| `METHOD` | `'session-report-v1'` | `backend/performance/session_report.py` |  |
+| `SCOPE` | `"Checks computed by code from this session's stored data, each with its value, rule, threshold, b... (sha256 a024a284)` | `backend/performance/session_report.py` |  |
+| `PLAN_TOLERANCE_PCT` | `20.0` | `backend/performance/session_report.py` | Plan against actual: duration, load and recoveries (TrainingPeaks green, ±20 %). |
+| `DECOUPLING_PCT` | `5.0` | `backend/performance/session_report.py` | Aerobic decoupling, the fixed fallback (Friel / TrainingPeaks: < 5 % good). |
+| `FADE_PCT` | `3.0` | `backend/performance/session_report.py` | Interval fade and start change against the median of the reps, and within a rep. |
+| `CARDIAC_DRIFT_PCT` | `5.0` | `backend/performance/session_report.py` | Cardiac drift across reps at equal output, the decoupling rule applied to reps. |
+| `EASY_ABOVE_SHARE_PCT` | `10.0` | `backend/performance/session_report.py` | Easy, recovery and long sessions: share of moving time above zone 2 (Seiler; #2830). |
+| `RIDE_VARIABILITY_INDEX` | `1.05` | `backend/performance/session_report.py` | Ride steadiness: variability index (Coggan / Allen, TrainingPeaks: <= 1.05 steady). |
+| `HEART_RATE_DROP_BELOW_BPM` | `5.0` | `backend/performance/session_report.py` | HR drop 60 s into recoveries: notable this far below the athlete's own median. |
+| `MIN_PERSONAL` | `5` | `backend/performance/session_report.py` | A personal basis needs this many own comparable values. |
+| `RACE_SPLIT_PCT` | `2.0` | `backend/performance/session_report.py` | Race: second half this much slower than the first (positive split). |
+| `LEAD_COUNT` | `4` | `backend/performance/session_report.py` | The notable checks the answer leads with. |
+| `EASY_FOCUS` | `frozenset({'recovery', 'easy', 'endurance', 'long'})` | `backend/performance/session_report.py` |  |
+| `INTERVAL_FOCUS` | `frozenset({'tempo', 'threshold', 'vo2max', 'anaerobic', 'sweet_spot', 'test'})` | `backend/performance/session_report.py` |  |
 | `METRIC_ID` | `'session_rpe_load'` | `backend/performance/session_rpe_load.py` |  |
 | `METHOD_ID` | `'session-rpe-load'` | `backend/performance/session_rpe_load.py` |  |
 | `METHOD_VERSION` | `2` | `backend/performance/session_rpe_load.py` | v2: long interruptions are marked deviating_duration (#1770). |

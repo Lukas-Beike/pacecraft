@@ -3,6 +3,7 @@
 import json
 import subprocess
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -14,8 +15,10 @@ DATA = "da" + "ta/"
 TOKENS = "garmin_" + "tokens"
 
 
-def run_hook(command: str, *, bom: bool = False) -> int:
-    body = json.dumps({"tool_name": "Bash", "tool_input": {"command": command}})
+def run_hook(command: str, *, bom: bool = False, cwd: str = "") -> int:
+    body = json.dumps(
+        {"tool_name": "Bash", "tool_input": {"command": command}, "cwd": cwd}
+    )
     raw = (("\ufeff" if bom else "") + body).encode("utf-8")
     return subprocess.run(
         [sys.executable, str(HOOK)], input=raw, capture_output=True, check=False
@@ -71,6 +74,97 @@ class GuardPrivatePathsTests(unittest.TestCase):
             check=False,
         )
         self.assertEqual(result.returncode, 2)
+
+
+class GuardServerImportTests(unittest.TestCase):
+    """Importing or running server.py loads local settings files (#3076)."""
+
+    def setUp(self) -> None:
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        self.root = Path(temporary.name) / "checkout"
+        self.data = Path(temporary.name) / "fixture-data"
+        self.root.mkdir()
+        self.data.mkdir()
+
+    def test_importing_or_running_the_server_is_blocked_without_a_temporary_data_dir(
+        self,
+    ) -> None:
+        for command in (
+            'python -c "import server"',
+            'python -c "import os, server"',
+            'python3 -c "from server import ROOT"',
+            "python server.py",
+            "python -u ./server.py",
+            "py -m server",
+            "python - <<'EOF'\nimport server\nEOF",
+            'python -c "import runpy; runpy.run_path(\'server.py\')"',
+            'python -c "import importlib; importlib.import_module(\'server\')"',
+            'DATA_DIR=./fixture python -c "import server"',
+        ):
+            with self.subTest(command=command):
+                self.assertEqual(2, run_hook(command, cwd=str(self.root)))
+
+    def test_a_temporary_data_dir_does_not_cover_another_checkout_or_process(
+        self,
+    ) -> None:
+        data = self.data
+        for command in (
+            # Another checkout's server.py loads that checkout's settings file.
+            f"DATA_DIR={data} python ../other/server.py",
+            f'cd ../other && DATA_DIR={data} python -c "import server"',
+            f'PYTHONPATH=../other DATA_DIR={data} python -c "import server"',
+            f"DATA_DIR={data} python -c \"import os; os.chdir('..'); import server\"",
+            f"DATA_DIR={data} python -c \"import sys; sys.path.insert(0, '..'); import server\"",
+            # The assignment binds another process, or is no assignment at all.
+            f'DATA_DIR={data} python -m compileall -q x.py && python -c "import server"',
+            f"echo DATA_DIR={data}; python server.py",
+            f'python -c "import server"; export DATA_DIR={data}',
+            # A shell expansion makes the resolved path not the one the server gets.
+            f'DATA_DIR={data}/${{X:-..}}/other python -c "import server"',
+            f'DATA_DIR={data}/`echo ..` python -c "import server"',
+            # The assignment may never apply, or is undone before the import.
+            f'false && export DATA_DIR={data}; python -c "import server"',
+            f'(export DATA_DIR={data}); python -c "import server"',
+            f'export DATA_DIR={data}; unset DATA_DIR; python -c "import server"',
+            f"DATA_DIR={data} python -c \"import os; os.environ.pop('DATA_DIR'); import server\"",
+            f"$env:DATA_DIR = '{data}'; Remove-Item Env:DATA_DIR; python -c \"import server\"",
+        ):
+            with self.subTest(command=command):
+                self.assertEqual(2, run_hook(command, cwd=str(self.root)))
+
+    def test_a_temporary_data_dir_in_a_checkout_without_local_settings_is_allowed(
+        self,
+    ) -> None:
+        for command in (
+            f'DATA_DIR={self.data} python -c "import server"',
+            f'APP_PASSWORD=x DATA_DIR={self.data} python -c "import server"',
+            f'export DATA_DIR={self.data}; python -c "import server"',
+            f"$env:DATA_DIR = '{self.data}'; python -c \"import server\"",
+            f"DATA_DIR={self.data} python server.py",
+        ):
+            with self.subTest(command=command):
+                self.assertEqual(0, run_hook(command, cwd=str(self.root)))
+
+    def test_a_local_settings_file_blocks_even_with_a_temporary_data_dir(self) -> None:
+        command = f'DATA_DIR={self.data} python -c "import server"'
+        for holder in (self.root, self.data):
+            with self.subTest(holder=holder.name):
+                settings = holder / ENV
+                settings.write_text("", encoding="utf-8")
+                self.assertEqual(2, run_hook(command, cwd=str(self.root)))
+                settings.unlink()
+
+    def test_text_about_the_server_without_running_it_passes(self) -> None:
+        for command in (
+            'grep -n "import server" docs/development.md',
+            "python tests/run_tests.py --module test_server_module_architecture",
+            'python -c "import server_composition_check"',
+            "git log -- server.py",
+            "python -m compileall -q server.py backend tests",
+        ):
+            with self.subTest(command=command):
+                self.assertEqual(0, run_hook(command, cwd=str(self.root)))
 
 
 if __name__ == "__main__":

@@ -804,7 +804,13 @@ class SyncJobStoreTests(unittest.TestCase):
     def test_claim_is_conditional_and_increments_job_and_item_once(self):
         job, _ = self.enqueue(operations=[{"item_key": "one", "operation": "read"}])
         self.current_now = "2026-09-20T11:59:00+00:00"
-        self.assertIsNone(self.store.claim())
+        # Polls with nothing due only read; the writer is not taken (#3047).
+        with patch.object(
+            self.manager, "unit_of_work", wraps=self.manager.unit_of_work
+        ) as writer:
+            for _ in range(3):
+                self.assertIsNone(self.store.claim())
+        writer.assert_not_called()
         self.current_now = self.now
 
         from threading import Barrier

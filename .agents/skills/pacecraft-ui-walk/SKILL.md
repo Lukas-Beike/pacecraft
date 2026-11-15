@@ -47,12 +47,14 @@ step that passed before and is skipped now. Optional steps are skipped without
 data, so a skipped step in the notes is read, not ignored.
 
 To add a step, append one object to `STEPS`: `view`, `name`, `covers` (feature or
-issue), optional `pre` (open once), `each` (candidates tried in turn) and `then`
+issue), optional `pre` (open once), `each` (candidates tried in turn) and `opens`
 (open inside the candidate), `ready` (selector), `kind`, `optional`, `absent`.
 Controls are limited to opening, expanding, paging and tab controls
 (`isOpener`), and a label that names save, sync, send, delete, export, undo or
 settings is refused; choosing a select value is never part of a step. The
-e2e spec `e2e/ui-walk-steps.spec.js` pins that an empty chart or panel fails.
+e2e spec `e2e/ui-walk-steps.spec.js` pins that an empty chart or panel fails;
+`e2e/ui-walk-fixture.spec.js` runs every step against the fixture app, so a new
+step passes there or is named in its `FIXTURE_SKIPS` with the reason (#3067).
 
 Look at every screenshot yourself; a view can render an error state without a
 console error. Screenshots stay in the scratchpad and are never committed.

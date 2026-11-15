@@ -12,10 +12,18 @@ import threading
 import unittest
 from datetime import date
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
+from unittest.mock import patch
 
 from backend import change_history
-from backend.athlete.equipment import EquipmentService
+from backend.athlete import equipment as equipment_module
+from backend.athlete.equipment import (
+    RULE_APPLY_CHUNK,
+    RULE_HISTORY_LIMIT,
+    EquipmentService,
+    rule_choice,
+    session_kind,
+)
 from backend.athlete.equipment_history import equipment_history_records
 from backend.canonical.activity_summary import ActivitySummary
 from backend.coach.change_receipts import change_summary
@@ -163,6 +171,22 @@ class EquipmentHistoryTests(unittest.TestCase):
             self.undo(changes)
         self.assertEqual(raised.exception.status, 409)
         self.assertIsNotNone(self.stored("equipment:" + saved["equipment"]["id"]))
+
+    def test_undo_of_a_created_item_is_refused_while_a_plan_or_rule_names_it(self) -> None:
+        self.planned_unit()
+        for use in (
+            lambda item: self.service.assign({"planned_unit_id": "unit-1", "equipment_id": item}),
+            lambda item: self.service.save_rule(
+                {"kind": "ride:outdoor", "equipment_id": item, "expected_revision": 0}
+            ),
+        ):
+            with self.manager.unit_of_work() as db:
+                db.execute("DELETE FROM kv WHERE key LIKE 'equipment_planned:%' OR key LIKE 'equipment_rule:%'")
+            saved, changes = self.collected(lambda: self.service.save(BIKE))
+            use(saved["equipment"]["id"])
+            with self.subTest(use=use), self.assertRaises(AppError) as raised:
+                self.undo(changes)
+            self.assertEqual(raised.exception.status, 409)
 
     def test_undo_of_an_edit_restores_values_and_advances_the_revision(self) -> None:
         item = self.bike(lifetime_target_km=3000)
@@ -464,6 +488,29 @@ class EquipmentHistoryTests(unittest.TestCase):
         self.assertEqual(gone.exception.status, 409)
         self.assertIsNone(self.record("equipment_planned:unit-1")["equipment_id"])
 
+    def test_a_planned_unit_reads_its_options_own_choice_rule_and_suggestion(self) -> None:
+        self.planned_unit(date="2026-10-05")
+        road, rain = self.bike(), self.bike(name="Rain bike")
+        self.service.save_rule(
+            {"kind": "ride:outdoor", "equipment_id": road["id"], "expected_revision": 0}
+        )
+        self.service.assign({"activity_id": "act_w1", "equipment_id": rain["id"]})
+        choice = self.service.planned_choice("unit-1")
+        self.assertEqual({item["id"] for item in choice["options"]}, {road["id"], rain["id"]})
+        self.assertEqual(
+            (choice["assigned"], choice["explicit"], choice["suggested"]),
+            (None, False, rain["id"]),
+        )
+        self.assertEqual(choice["effective"], {"equipment_id": road["id"], "source": "rule"})
+        # The own choice, even "Keiner", replaces the rule.
+        self.service.assign({"planned_unit_id": "unit-1", "equipment_id": None})
+        choice = self.service.planned_choice("unit-1")
+        self.assertEqual((choice["explicit"], choice["effective"]), (True, None))
+        for unit_id, status in (("unknown", 404), ("", 400), (None, 400)):
+            with self.subTest(unit_id=unit_id), self.assertRaises(AppError) as raised:
+                self.service.planned_choice(unit_id)
+            self.assertEqual(raised.exception.status, status)
+
     def test_none_is_a_tracked_planned_choice_and_undo_removes_a_first_choice(self) -> None:
         self.planned_unit()
         _, changes = self.collected(
@@ -494,6 +541,286 @@ class EquipmentHistoryTests(unittest.TestCase):
             self.assertEqual(raised.exception.status, status)
         self.assertIsNone(self.stored("equipment_planned:unit-1"))
         self.assertEqual(self.actions("equipment_planned"), [])
+
+    # Default rules (#3014)
+
+    def test_a_rule_takes_effect_today_keeps_its_history_and_undoes(self) -> None:
+        road, rain = self.bike(), self.bike(name="Rain bike")
+        first = self.service.save_rule(
+            {"kind": "ride:outdoor", "equipment_id": road["id"], "expected_revision": 0}
+        )
+        self.assertEqual(first["change"]["entity_type"], "equipment_rule")
+        self.assertEqual(
+            first["rule"]["history"], [{"from": "2026-10-02", "equipment_id": road["id"]}]
+        )
+        # A second choice on the same day replaces the first one of that day.
+        _, changes = self.collected(
+            lambda: self.service.save_rule(
+                {"kind": "ride:outdoor", "equipment_id": rain["id"], "expected_revision": 1}
+            )
+        )
+        rule = self.record("equipment_rule:ride:outdoor")
+        self.assertEqual((rule["revision"], len(rule["history"])), (2, 1))
+        self.assertEqual(rule_choice(rule, "2026-10-02"), (True, rain["id"]))
+        self.assertEqual(rule_choice(rule, "2026-10-01"), (False, None))
+        self.undo(changes)
+        restored = self.record("equipment_rule:ride:outdoor")
+        self.assertEqual(rule_choice(restored, "2026-10-02"), (True, road["id"]))
+        # Undo bumps the revision, so a client that read the undone rule must read again.
+        self.assertEqual(restored["revision"], 3)
+        self.assertEqual(self.actions("equipment_rule"), ["create", "update", "undo"])
+        # The equipment read lists every kind with its latest choice and revision.
+        rules = self.service.read()["rules"]
+        self.assertEqual(
+            rules["ride:outdoor"], {"equipment_id": road["id"], "from": "2026-10-02", "revision": 3}
+        )
+        self.assertEqual(rules["run:easy"], {"equipment_id": None, "from": None, "revision": 0})
+
+    def test_a_rule_needs_a_known_kind_a_fresh_revision_and_a_matching_item(self) -> None:
+        bike = self.bike()
+        self.service.save_rule(
+            {"kind": "ride:outdoor", "equipment_id": None, "expected_revision": 0}
+        )
+        for payload, status in (
+            ({"kind": "ride:outdoor", "equipment_id": bike["id"], "expected_revision": 0}, 409),
+            ({"kind": "run:easy", "equipment_id": bike["id"], "expected_revision": 0}, 400),
+            ({"kind": "swim", "equipment_id": None, "expected_revision": 0}, 400),
+            ({"kind": "ride:outdoor", "equipment_id": "missing", "expected_revision": 1}, 400),
+            ({"kind": "ride:outdoor", "equipment_id": None, "expected_revision": True}, 400),
+            ({"kind": "ride:outdoor", "equipment_id": None}, 400),
+        ):
+            with self.subTest(payload=payload), self.assertRaises(AppError) as raised:
+                self.service.save_rule(payload)
+            self.assertEqual(raised.exception.status, status)
+        self.assertEqual(self.record("equipment_rule:ride:outdoor")["revision"], 1)
+
+    def test_a_rule_counts_only_for_sessions_of_its_items_sport_pair(self) -> None:
+        runs = cast(
+            list[ActivitySummary],
+            [
+                {**ride(name), "sport": "run", "environment": environment}
+                for name, environment in (("road", "outdoor"), ("mill", "virtual"))
+            ],
+        )
+        self.summaries = lambda: runs
+        self.service = EquipmentService(
+            self.manager, self.summaries, lambda: date(2026, 10, 2), lambda: NOW
+        )
+        shoe = self.service.save(
+            {**BIKE, "name": "Road shoe", "sport": "run", "kind": "shoes"}
+        )["equipment"]
+        with self.manager.unit_of_work() as db:
+            db.execute(
+                "INSERT INTO kv(key, value, updated_at) VALUES (?, ?, ?)",
+                ("equipment_rule:run:easy", json.dumps({"kind": "run:easy", "revision": 1, "history": [
+                    {"from": "2026-09-01", "equipment_id": shoe["id"]}
+                ]}), NOW),
+            )
+        effective = {row["activity_id"]: row.get("source") for row in self.service.read()["assignments"]}
+        # The treadmill run never takes the road shoe; the road run does.
+        self.assertEqual(effective, {"act_road": "rule"})
+
+    def test_a_rule_without_an_item_is_no_default_and_cannot_be_applied(self) -> None:
+        self.many_rides(2)
+        bike = self.bike()
+        self.service.save_rule(
+            {"kind": "ride:outdoor", "equipment_id": None, "expected_revision": 0}
+        )
+        with self.assertRaises(AppError) as refused:
+            self.service.rule_apply_preview("ride:outdoor")
+        self.assertEqual(refused.exception.status, 409)
+        self.service.assign({"activity_id": "act_m0", "equipment_id": bike["id"]})
+        effective = {row["activity_id"]: row for row in self.service.read()["assignments"]}
+        # The session without an own choice stays unassigned instead of "Keiner".
+        self.assertEqual(set(effective), {"act_m0"})
+
+    def test_rule_history_is_bounded_and_the_latest_choice_up_to_a_day_wins(self) -> None:
+        rule = {
+            "history": [
+                {"from": f"2026-{month:02d}-01", "equipment_id": f"item-{month}"}
+                for month in (1, 3, 5)
+            ]
+        }
+        self.assertEqual(rule_choice(rule, "2026-04-30"), (True, "item-3"))
+        self.assertEqual(rule_choice(rule, "2025-12-31"), (False, None))
+        self.assertEqual(rule_choice(None, "2026-04-30"), (False, None))
+        self.assertGreaterEqual(RULE_HISTORY_LIMIT, 100)
+
+    def many_rides(self, count: int) -> list[str]:
+        rides = cast(
+            list[ActivitySummary],
+            [{**ride(f"m{index}"), "environment": "outdoor"} for index in range(count)],
+        )
+        self.summaries = lambda: rides
+        self.service = EquipmentService(
+            self.manager, self.summaries, lambda: date(2026, 10, 2), lambda: NOW
+        )
+        return [str(item["id"]) for item in rides]
+
+    def test_a_confirmed_apply_spans_chunks_and_one_undo_takes_back_what_is_still_its(
+        self,
+    ) -> None:
+        sessions = self.many_rides(RULE_APPLY_CHUNK * 2 + 50)
+        bike, other = self.bike(), self.bike(name="Rain bike")
+        self.service.save_rule(
+            {"kind": "ride:outdoor", "equipment_id": bike["id"], "expected_revision": 0}
+        )
+        # One session already has the athlete's own choice; the apply leaves it alone.
+        self.service.assign({"activity_id": sessions[0], "equipment_id": other["id"]})
+        preview = self.service.rule_apply_preview("ride:outdoor")
+        self.assertEqual(preview["count"], len(sessions) - 1)
+        applied, changes = self.collected(
+            lambda: self.service.apply_rule({"kind": "ride:outdoor", "confirmed": True})
+        )
+        self.assertEqual(applied["count"], len(sessions) - 1)
+        # One change-history row stands for the whole apply, not one per session.
+        self.assertEqual(self.actions("equipment_rule_apply"), ["create"])
+        self.assertEqual([change["entity_type"] for change in changes], ["equipment_rule_apply"])
+        self.assertEqual(self.record("equipment_assignment:" + sessions[1])["source"], "rule")
+        # The athlete changes one applied session by hand; undo keeps that choice.
+        self.service.assign({"activity_id": sessions[2], "equipment_id": other["id"]})
+        self.undo(changes)
+        self.assertEqual(self.record("equipment_assignment:" + sessions[0])["equipment_id"], other["id"])
+        self.assertEqual(self.record("equipment_assignment:" + sessions[2])["equipment_id"], other["id"])
+        remaining = [key for key in sessions[3:] if self.stored("equipment_assignment:" + key)]
+        self.assertEqual(remaining, [])
+        # A second undo of the same apply is refused, and nothing changes.
+        with self.assertRaises(AppError) as again:
+            self.undo(changes)
+        self.assertEqual(again.exception.status, 409)
+        self.assertEqual(self.record("equipment_assignment:" + sessions[2])["equipment_id"], other["id"])
+
+    def test_an_apply_gives_only_sessions_that_could_take_the_item_and_stops_on_a_retired_one(
+        self,
+    ) -> None:
+        rides = cast(
+            list[ActivitySummary],
+            [
+                {**ride("out"), "environment": "outdoor"},
+                {**ride("virt"), "environment": "virtual"},
+            ],
+        )
+        self.summaries = lambda: rides
+        self.service = EquipmentService(
+            self.manager, self.summaries, lambda: date(2026, 10, 2), lambda: NOW
+        )
+        road = self.bike(environment="outdoor")
+        self.service.save_rule(
+            {"kind": "ride:outdoor", "equipment_id": road["id"], "expected_revision": 0}
+        )
+        # The virtual ride is indoor: the outdoor bike is neither counted nor written there.
+        self.assertEqual(self.service.rule_apply_preview("ride:outdoor")["count"], 1)
+        self.edit(road, status="archived")
+        for call in (
+            lambda: self.service.rule_apply_preview("ride:outdoor"),
+            lambda: self.service.apply_rule({"kind": "ride:outdoor", "confirmed": True}),
+        ):
+            with self.subTest(call=call), self.assertRaises(AppError) as retired:
+                call()
+            self.assertEqual(retired.exception.status, 409)
+        self.assertIsNone(self.stored("equipment_assignment:act_out"))
+
+    def test_an_apply_stopped_by_a_retired_item_returns_what_it_wrote_and_its_undo(self) -> None:
+        sessions = self.many_rides(RULE_APPLY_CHUNK + 10)
+        bike = self.bike()
+        self.service.save_rule(
+            {"kind": "ride:outdoor", "equipment_id": bike["id"], "expected_revision": 0}
+        )
+        checks = []
+        original = EquipmentService._rule_item
+
+        def retired_after_first_chunk(db: Any, item_id: Any) -> dict[str, Any]:
+            checks.append(item_id)
+            if len(checks) > 2:  # once for the preview, once for the first chunk
+                raise AppError(409, "Die Ausrüstung der Regel ist nicht mehr aktiv.")
+            return original(db, item_id)
+
+        with patch.object(EquipmentService, "_rule_item", staticmethod(retired_after_first_chunk)):
+            result = self.service.apply_rule({"kind": "ride:outdoor", "confirmed": True})
+        self.assertEqual(
+            (result["count"], result["stopped"], result["change"]["entity_type"]),
+            (RULE_APPLY_CHUNK, "equipment_not_active", "equipment_rule_apply"),
+        )
+        self.assertIsNone(self.stored("equipment_assignment:" + sessions[-1]))
+        self.undo([result["change"]])
+        self.assertIsNone(self.stored("equipment_assignment:" + sessions[0]))
+
+    def test_an_apply_needs_confirmation_a_rule_and_no_running_apply_of_its_kind(self) -> None:
+        self.many_rides(3)
+        bike = self.bike()
+        with self.assertRaises(AppError) as missing:
+            self.service.rule_apply_preview("ride:outdoor")
+        self.assertEqual(missing.exception.status, 409)
+        self.service.save_rule(
+            {"kind": "ride:outdoor", "equipment_id": bike["id"], "expected_revision": 0}
+        )
+        for payload in (
+            {"kind": "ride:outdoor", "confirmed": False},
+            {"kind": "ride:outdoor", "confirmed": "true"},
+        ):
+            with self.subTest(payload=payload), self.assertRaises(AppError) as refused:
+                self.service.apply_rule(payload)
+            self.assertEqual(refused.exception.status, 409)
+        with self.assertRaises(AppError) as shape:
+            self.service.apply_rule({"kind": "swim", "confirmed": True})
+        self.assertEqual(shape.exception.status, 400)
+        equipment_module._APPLYING.add("ride:outdoor")
+        self.addCleanup(equipment_module._APPLYING.discard, "ride:outdoor")
+        with self.assertRaises(AppError) as running:
+            self.service.apply_rule({"kind": "ride:outdoor", "confirmed": True})
+        self.assertEqual(running.exception.status, 409)
+        self.assertEqual(self.actions("equipment_rule_apply"), [])
+
+    def test_a_run_takes_its_kind_from_the_planned_unit_it_was_matched_to(self) -> None:
+        runs = cast(
+            list[ActivitySummary],
+            [
+                {**ride(name), "id": "act_" + name, "sport": "run", "environment": "outdoor"}
+                for name in ("r1", "r2")
+            ],
+        )
+        self.summaries = lambda: runs
+        self.service = EquipmentService(
+            self.manager, self.summaries, lambda: date(2026, 10, 2), lambda: NOW
+        )
+        self.planned_unit("unit-vo2", sport="run", session_focus="vo2max")
+        with self.manager.unit_of_work() as db:
+            for name in ("r1", "r2"):
+                db.execute(
+                    "INSERT INTO activity_sessions(activity_id, primary_provider, "
+                    "primary_provider_activity_id, started_at, created_at, updated_at) "
+                    "VALUES (?, 'wahoo', ?, ?, ?, ?)",
+                    ("act_" + name, name, NOW, NOW, NOW),
+                )
+            db.execute(
+                "INSERT INTO activity_detail_analysis(activity_id, analysis_version, "
+                "input_sha256, payload, computed_at, created_at, updated_at) "
+                "VALUES ('act_r1', 3, ?, ?, ?, ?, ?)",
+                ("0" * 64, json.dumps({"target_snapshot": {"planned_unit_id": "unit-vo2"}}), NOW, NOW, NOW),
+            )
+        shoe = self.service.save(
+            {**BIKE, "name": "Racer", "sport": "run", "kind": "shoes"}
+        )["equipment"]
+        for kind, count in (("run:intervals", 1), ("run:easy", 1), ("run:long", 0)):
+            self.service.save_rule({"kind": kind, "equipment_id": shoe["id"], "expected_revision": 0})
+            with self.subTest(kind=kind):
+                self.assertEqual(self.service.rule_apply_preview(kind)["count"], count)
+
+    def test_session_kinds_follow_the_focus_for_runs_and_the_place_for_rides(self) -> None:
+        for args, kind in (
+            (("run", "outdoor", "vo2max"), "run:intervals"),
+            (("run", "outdoor", "tempo"), "run:intervals"),
+            (("run", "outdoor", "long"), "run:long"),
+            (("run", "outdoor", "recovery"), "run:easy"),
+            (("run", "outdoor", None), "run:easy"),
+            (("run", "outdoor", "long", "race"), "run:race"),
+            (("ride", "virtual", "threshold"), "ride:indoor"),
+            (("ride", "indoor", None), "ride:indoor"),
+            (("ride", "outdoor", "long"), "ride:outdoor"),
+            (("swim", "indoor", None), None),
+        ):
+            with self.subTest(args=args):
+                self.assertEqual(session_kind(*args), kind)
 
     # Maintenance
 

@@ -62,7 +62,7 @@
   function render(payload, content, api, activityId, reload, notice) {
     content.replaceChildren();
     const session = payload.session || {};
-    renderMetadata(session, metricValues(payload), content);
+    renderMetadata(session, metricValues(payload), content, payload.weather);
     renderRoute(payload.route, api, content);
     content.append(...providerNotes(payload));
     renderSeries(session, payload.streams, content);
@@ -257,7 +257,15 @@
   }
 
 
-  function renderMetadata(session, metrics, content) {
+  // A session's temperature is only its activity weather, named with its source (#3036):
+  // the watch sensor reads body-warmed values.
+  function weatherTemperature(weather) {
+    if (!Number.isFinite(weather?.temperature_c)) return null;
+    const value = `${AppFormat.number(weather.temperature_c, { digits: 1 })} °C`;
+    return weather.source ? `${value} (${weather.source})` : value;
+  }
+
+  function renderMetadata(session, metrics, content, weather) {
     const duration = AppFormat.sessionSeconds(metrics, session.sport);
     const values = [
       session.sport ? activitySportLabel(session) : null,
@@ -265,6 +273,7 @@
       duration != null ? `${Math.round(duration / 60)} min` : null,
       AppFormat.distance(metrics.distance_m),
       metrics.load != null ? `Belastung ${metrics.load}` : null,
+      weatherTemperature(weather),
     ].filter(Boolean);
     content.append(h("p", null, values.join(" · ")));
   }
@@ -297,7 +306,7 @@
     show(); content.append(line);
   }
 
-  const COVERAGE_LABELS = { power_w: "Leistung", heart_rate_bpm: "Herzfrequenz", speed_mps: "Geschwindigkeit", altitude_m: "Höhe", distance_m: "Distanz", grade_pct: "Steigung", cadence_rpm: "Kadenz", temperature_c: "Temperatur" };
+  const COVERAGE_LABELS = { power_w: "Leistung", heart_rate_bpm: "Herzfrequenz", speed_mps: "Geschwindigkeit", altitude_m: "Höhe", distance_m: "Distanz", grade_pct: "Steigung", cadence_rpm: "Kadenz" };
 
   // Per provider: the load state and the data coverage, with readable channel names.
   function providerFacts(entry) {
@@ -416,7 +425,7 @@
   function renderSeries(session, streams, content) {
     let charts = 0;
     const cadence = cadenceDisplay(session);
-    const labels = { power_w: ["Leistung", "W"], heart_rate_bpm: ["Herzfrequenz", "bpm"], speed_mps: ["Geschwindigkeit", "m/s"], altitude_m: ["Höhe", "m"], distance_m: ["Distanz", "m"], grade_pct: ["Steigung", "%"], cadence_rpm: [cadence.label, cadence.unit], temperature_c: ["Temperatur", "°C"] };
+    const labels = { power_w: ["Leistung", "W"], heart_rate_bpm: ["Herzfrequenz", "bpm"], speed_mps: ["Geschwindigkeit", "m/s"], altitude_m: ["Höhe", "m"], distance_m: ["Distanz", "m"], grade_pct: ["Steigung", "%"], cadence_rpm: [cadence.label, cadence.unit] };
     const channels = streams?.channels || {};
     for (const [key, [label, unit]] of Object.entries(labels)) {
       let values = channels[key]?.values;
@@ -625,5 +634,5 @@
 
   globalThis.addEventListener("popstate", () => { if (dialog) close(false); });
 
-  globalThis.ActivityDetails = { open, close, requestDetails, cadenceDisplay, metricValues, runningDynamics, RUNNING_DYNAMICS, formDriftLines, providerNotes, refreshActions };
+  globalThis.ActivityDetails = { open, close, requestDetails, cadenceDisplay, metricValues, runningDynamics, RUNNING_DYNAMICS, formDriftLines, providerNotes, refreshActions, weatherTemperature };
 })();

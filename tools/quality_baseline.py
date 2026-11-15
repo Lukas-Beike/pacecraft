@@ -19,6 +19,8 @@ from types import MappingProxyType
 
 ROOT = Path(__file__).resolve().parents[1]
 BASELINE = ROOT / "tests/fixtures/quality_baseline.json"
+# The tools read their settings from this file in the checked tree.
+PYPROJECT = "pyproject.toml"
 REQUIREMENTS = ROOT / "requirements-dev.txt"
 TOOLS = ("ruff", "mypy")
 # The cognitive counter is this module's own code and has no pinned version, so
@@ -26,6 +28,16 @@ TOOLS = ("ruff", "mypy")
 COGNITIVE = "cognitive"
 COGNITIVE_CODE = "S3776"
 COGNITIVE_LIMIT = 15
+# Sonar's css:S4666 (Stylelint no-duplicate-selectors): the same selector list in
+# the same at-rule context twice. Like the cognitive counter it is this module's
+# own code; CI's Sonar gate failed on it while every local check passed (#3077).
+CSS_DUPLICATE = "css"
+CSS_DUPLICATE_CODE = "S4666"
+# Inside these at-rules a "selector" is a keyframe step or a descriptor block.
+CSS_NO_SELECTORS = ("@keyframes", "@-webkit-keyframes", "@font-face", "@page")
+# A Python file `ruff format` would rewrite (#3061). The files unformatted when
+# the check arrived are baseline debt; one a push leaves unformatted is new.
+FORMAT = "format"
 # Line and column are reported for humans but are not debt identity, so an
 # unrelated edit that moves a known diagnostic does not fail the ratchet.
 IDENTITY_FIELDS = ("tool", "path", "code", "message_sha256")
@@ -51,6 +63,16 @@ COMMAND_LINE_PATH_BUDGET = 30000
 # points PACECRAFT_NODE_MODULES at the clone because its HEAD export has none,
 # and there a missing ESLint (node_modules older than the pin) is fatal.
 ESLINT_CONFIG = ROOT / "tools/eslint.sonar.config.mjs"
+# Every JavaScript file SonarCloud analyzes (#3058): the page scripts, and the
+# Node scripts, browser specs and unit tests.
+JAVASCRIPT_GLOBS = (
+    "public/*.js",
+    "scripts/**/*.mjs",
+    "tools/**/*.mjs",
+    "e2e/**/*.js",
+    "tests/**/*.cjs",
+    "*.cjs",
+)
 
 
 def tool_command(tool: str) -> list[str]:
@@ -216,6 +238,34 @@ def _functions(node: ast.AST, prefix: str = ""):
             yield from _functions(child, prefix)
 
 
+def format_diagnostics(root: Path, files: list[str]) -> list[dict]:
+    """One finding per file `ruff format --check` would rewrite."""
+    paths: set[str] = set()
+    for batch in path_batches(files):
+        output = run(
+            [
+                *tool_command("ruff"),
+                "format",
+                "--check",
+                "--no-cache",
+                "--config",
+                PYPROJECT,
+                "--output-format=json",
+                *batch,
+            ],
+            root,
+        )
+        paths.update(
+            Path(item["filename"]).resolve().relative_to(root.resolve()).as_posix()
+            for item in json.loads(output or "[]")
+        )
+    message = hashlib.sha256(b"would reformat").hexdigest()
+    return [
+        {"tool": FORMAT, "path": path, "code": FORMAT, "message_sha256": message}
+        for path in sorted(paths)
+    ]
+
+
 def cognitive_diagnostics(root: Path, files: list[str]) -> list[dict]:
     """Report each function above the limit by name, never by score, so the
     baseline identity survives the score changing."""
@@ -241,6 +291,81 @@ def cognitive_diagnostics(root: Path, files: list[str]) -> list[dict]:
     return diagnostics
 
 
+def _css_selector_key(prelude: str) -> str:
+    """A selector list as Stylelint compares it: whitespace and order ignored."""
+    for combinator in ">+~":
+        prelude = prelude.replace(combinator, f" {combinator} ")
+    selectors = (" ".join(part.split()) for part in prelude.split(","))
+    return ", ".join(sorted(selector for selector in selectors if selector))
+
+
+def _css_rule_key(
+    scope: list[tuple[int, str]], prelude: str
+) -> tuple[tuple[int, ...], str] | None:
+    """The comparison key of a rule's selector list; None for an at-rule or a
+    block inside @keyframes and similar, which hold no selectors.
+
+    The context is the enclosing blocks themselves, not their text: two
+    separate @media blocks with the same query are different parents, as in
+    Stylelint.
+    """
+    prelude = " ".join(prelude.split())
+    if prelude.startswith("@") or any(
+        outer.startswith(CSS_NO_SELECTORS) for _, outer in scope
+    ):
+        return None
+    return tuple(block for block, _ in scope), _css_selector_key(prelude)
+
+
+def css_duplicate_selectors(text: str) -> list[tuple[str, int]]:
+    """Each repeated selector list in the same at-rule or rule context, with the
+    line of its later rule; comments are blanked so lines stay true."""
+    text = re.sub(
+        r"/\*.*?\*/",
+        lambda match: re.sub(r"[^\n]", " ", match.group()),
+        text,
+        flags=re.DOTALL,
+    )
+    seen: set[tuple[tuple[int, ...], str]] = set()
+    found: list[tuple[str, int]] = []
+    scope: list[tuple[int, str]] = []
+    start = 0
+    for block, match in enumerate(re.finditer(r"[{};]", text)):
+        if match.group() == "{":
+            prelude = text[start : match.start()]
+            key = _css_rule_key(scope, prelude)
+            if key in seen and key is not None:
+                first = start + len(prelude) - len(prelude.lstrip())
+                found.append((key[1], text.count("\n", 0, first) + 1))
+            if key is not None:
+                seen.add(key)
+            scope.append((block, " ".join(prelude.split())))
+        elif match.group() == "}" and scope:
+            scope.pop()
+        start = match.end()
+    return found
+
+
+def css_duplicate_diagnostics(root: Path) -> list[dict]:
+    """Sonar's css:S4666 for public/*.css, one finding per repeated rule."""
+    diagnostics = []
+    for css in sorted((root / "public").glob("*.css")):
+        path = css.relative_to(root).as_posix()
+        for selector, line in css_duplicate_selectors(css.read_text(encoding="utf-8")):
+            message = f"Duplicate selector {selector}"
+            diagnostics.append(
+                {
+                    "tool": CSS_DUPLICATE,
+                    "path": path,
+                    "line": line,
+                    "column": 1,
+                    "code": CSS_DUPLICATE_CODE,
+                    "message_sha256": hashlib.sha256(message.encode()).hexdigest(),
+                }
+            )
+    return diagnostics
+
+
 def eslint_script() -> Path | None:
     modules = os.environ.get("PACECRAFT_NODE_MODULES")
     script = Path(modules or ROOT / "node_modules") / "eslint/bin/eslint.js"
@@ -248,17 +373,22 @@ def eslint_script() -> Path | None:
 
 
 def javascript_diagnostics(root: Path) -> list[dict] | None:
-    """Sonar's complexity and nested-ternary rules for public/*.js; None if skipped."""
+    """Sonar's complexity and nested-ternary rules for JavaScript; None if skipped."""
     script = eslint_script()
     if script is None:
         if os.environ.get("PACECRAFT_NODE_MODULES"):
             raise RuntimeError(
                 "ESLint is not installed in PACECRAFT_NODE_MODULES; run `npm ci`"
             )
-        print("Quality ratchet: ESLint not installed (npm ci); skipped public/*.js")
+        print("Quality ratchet: ESLint not installed (npm ci); skipped JavaScript")
         return None
     files = sorted(
-        path.relative_to(root).as_posix() for path in (root / "public").glob("*.js")
+        {
+            path.relative_to(root).as_posix()
+            for pattern in JAVASCRIPT_GLOBS
+            for path in root.glob(pattern)
+            if "node_modules" not in path.parts
+        }
     )
     if not files:
         return []
@@ -325,7 +455,7 @@ def collect(root: Path, notes: dict[str, str]) -> tuple[dict[str, str], list[dic
                 "check",
                 "--no-cache",
                 "--config",
-                "pyproject.toml",
+                PYPROJECT,
                 "--output-format=json",
                 *batch,
             ],
@@ -341,7 +471,7 @@ def collect(root: Path, notes: dict[str, str]) -> tuple[dict[str, str], list[dic
             [
                 *tool_command("mypy"),
                 "--config-file",
-                "pyproject.toml",
+                PYPROJECT,
                 "--no-incremental",
                 "--cache-dir",
                 cache,
@@ -357,7 +487,9 @@ def collect(root: Path, notes: dict[str, str]) -> tuple[dict[str, str], list[dic
             record = diagnostic("mypy", item, root)
             diagnostics.append(record)
             notes[note_key(record)] = f": {item['message']}"
+    diagnostics.extend(format_diagnostics(root, files))
     diagnostics.extend(cognitive_diagnostics(root, files))
+    diagnostics.extend(css_duplicate_diagnostics(root))
     diagnostics.extend(javascript_diagnostics(root) or [])
 
     return versions, sorted(
@@ -443,12 +575,12 @@ def check(
             "--align-versions` and commit tests/fixtures/quality_baseline.json."
         )
     if any(
-        item.get("tool") not in {*TOOLS, COGNITIVE, "eslint"}
+        item.get("tool") not in {*TOOLS, COGNITIVE, FORMAT, CSS_DUPLICATE, "eslint"}
         for item in [*baseline["diagnostics"], *diagnostics]
     ):
         raise RuntimeError(
-            "Quality baseline supports Ruff, mypy, cognitive complexity and "
-            "ESLint diagnostics only"
+            "Quality baseline supports Ruff, Ruff format, mypy, cognitive "
+            "complexity, CSS duplicate selector and ESLint diagnostics only"
         )
     expected = [item for item in baseline["diagnostics"] if item["tool"] not in skipped]
     added, obsolete = compare(expected, diagnostics)

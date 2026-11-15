@@ -38,19 +38,6 @@ test("profile edits made while saving remain dirty and visible", async ({ page }
     .toEqual({ dirty: true, name: "New unsaved name" });
 });
 
-test("late microphone permission after logout stops and discards capture", async ({ page }) => {
-  const result = await page.evaluate(async () => {
-    window.stoppedTracks = 0;
-    Object.defineProperty(navigator.mediaDevices, "getUserMedia", { configurable: true, value: () => new Promise((resolve) => { window.releaseMicrophone = resolve; }) });
-    const capture = toggleVoiceInput();
-    showLogin();
-    window.releaseMicrophone({ getTracks: () => [{ stop: () => { window.stoppedTracks += 1; } }] });
-    await capture;
-    return { stopped: window.stoppedTracks, recording: voiceIsRecording(), acquiring: state.voiceAcquiring };
-  });
-  expect(result).toEqual({ stopped: 1, recording: false, acquiring: false });
-});
-
 test("cancel before stream identity is retained for the matching operation", async ({ page }) => {
   await page.evaluate(() => {
     window.cancelCalls = [];

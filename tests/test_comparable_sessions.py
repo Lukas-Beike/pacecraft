@@ -40,7 +40,7 @@ def _row(day: str, summary: dict[str, Any] | None, **fields: Any) -> dict[str, A
         "sport": fields.get("sport", "run"),
         "environment": fields.get("environment", "outdoor"),
         "name": "Easy",
-        "avg_temp_c": fields.get("temp", 12.0),
+        "weather_temp_c": fields.get("temp", 12.0),
         "execution_summary": summary,
     }
 
@@ -61,7 +61,7 @@ class ComparableSessionsTests(unittest.TestCase):
         self.assertEqual(result["median_of_peers"]["output"], 345)
         self.assertEqual(result["difference"]["output"], -15)
         self.assertEqual(result["difference"]["heart_rate_avg"], -6)
-        self.assertEqual(result["this"]["avg_temp_c"], 8.0)
+        self.assertEqual(result["this"]["weather_temp_c"], 8.0)
         self.assertEqual(result["peers"][0]["date"], "2026-10-27")
 
     def test_other_shapes_places_and_old_sessions_are_not_peers(self) -> None:
@@ -117,6 +117,8 @@ class ComparableSessionsTests(unittest.TestCase):
         result = comparable_sessions(records, "act_2026-11-03")
         self.assertEqual(result["count"], 3)
         self.assertEqual(result["difference"]["rep_output_mean"], -8)
+        # The session report gates its personal verdicts on how many peers a median rests on.
+        self.assertEqual(result["median_peers"]["recovery_drop_mean"], 3)
 
     def test_doubtful_own_data_and_missing_streams_say_why(self) -> None:
         doubtful = _easy(330, 140)

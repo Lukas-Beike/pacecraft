@@ -168,6 +168,7 @@ class Evidence:
     def __init__(self, directory, run_id, args):
         self.directory = directory
         self.lock = threading.RLock()
+        repeat = getattr(args, "repeat_each", 1) > 1 or getattr(args, "grep", None)
         self.data = {
             "version": 1,
             "run_id": run_id,
@@ -186,8 +187,11 @@ class Evidence:
                 "shard": args.shard,
                 "total": args.total,
                 "mode": "complete"
-                if args.project == "all" and not args.spec
+                if args.project == "all" and not args.spec and not repeat
                 else "focused",
+                # A repeated or filtered run is a diagnosis, not a selection (#3094).
+                "repeat_each": getattr(args, "repeat_each", 1),
+                "grep": getattr(args, "grep", None),
                 # How --project changed chose the project (#2759), or None.
                 "chosen_by": getattr(args, "chosen_by", None),
                 # Full-page captures lengthen every test: not comparable timings.
@@ -1077,7 +1081,10 @@ class Execution:
             "--trace=off",
             "--output",
             "/results/artifacts" if prepared else str(output / "artifacts"),
+            f"--repeat-each={self.args.repeat_each}",  # #3094
         ]
+        if self.args.grep:
+            arguments.extend(["--grep", self.args.grep])
         if not prepared:
             env.update(settings)
             return [self.node, str(self.cli), *arguments], env, None
@@ -1323,6 +1330,18 @@ def parser():
         "(exit stays non-zero); infrastructure errors still stop the run",
     )
     result.add_argument(
+        "--repeat-each",
+        type=int,
+        default=1,
+        help="run each selected test N times in its spec's child, without editing "
+        "playwright.config.cjs; repeats share that child's fixture (#3094)",
+    )
+    result.add_argument(
+        "--grep",
+        help="select and run only tests whose title matches this regex "
+        "(Playwright --grep)",
+    )
+    result.add_argument(
         "--screenshots",
         action="store_true",
         help="save a full-page screenshot of every selected test's end state and "
@@ -1444,6 +1463,8 @@ def main(argv=None):
         parser().error("--project is required")
     if args.screenshots and args.list:
         parser().error("--screenshots needs a run; --list runs no test")
+    if args.repeat_each < 1:
+        parser().error("--repeat-each needs a count of at least 1")
     if args.base and args.project != "changed":
         parser().error("--base applies only to --project changed")
     args.chosen_by = None
@@ -1492,11 +1513,14 @@ def main(argv=None):
                     node, cli, versions = toolchain(ROOT)
                     timing = read_weights(args.durations)
                     node_version = checked(processes, [node, "--version"]).strip()
+                    # --grep filters the listing too: children cover what runs (#3094).
+                    grep = ["--grep", args.grep] if args.grep else []
                     listing = parse_listing(
                         json.loads(
                             checked(
                                 processes,
-                                [node, str(cli), "test", "--list", "--reporter=json"],
+                                [node, str(cli), "test", "--list", "--reporter=json"]
+                                + grep,
                             )
                         )
                     )

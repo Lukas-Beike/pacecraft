@@ -345,6 +345,7 @@ class ProdChecksTests(unittest.TestCase):
                     "timeouts": 0,
                     "longest_wait_s": 1.25,
                 },
+                "heavy_read_gate": {"waits_over_1s": 4, "timeouts": 1},
             },
             "recovery_copies": {
                 "count": 1,
@@ -414,6 +415,7 @@ class ProdChecksTests(unittest.TestCase):
                 "workout_library_state.synced 3",
             ],
             "runtime": [
+                "heavy_read_gate.timeouts 1", "heavy_read_gate.waits_over_1s 4",
                 "malloc_arena_max 2", "process_memory.rss_bytes 1000",
                 "reader_slots.longest_wait_s 1.25", "reader_slots.slots 2",
                 "reader_slots.timeouts 0", "reader_slots.waits_over_1s 3",
