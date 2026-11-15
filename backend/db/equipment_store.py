@@ -1,7 +1,7 @@
 """Every SQL statement on the equipment keys of the ``kv`` table (#2120).
 
-Items, activity assignments and maintenance entries are JSON records under
-three key prefixes. Functions take the caller's connection;
+Items, activity assignments, planned-unit choices and maintenance entries are
+JSON records under four key prefixes. Functions take the caller's connection;
 transactions stay with the use case. Values are stored as the caller encoded
 them.
 """
@@ -13,6 +13,8 @@ from typing import Any
 EQUIPMENT_PREFIX = "equipment:"
 ASSIGNMENT_PREFIX = "equipment_assignment:"
 MAINTENANCE_PREFIX = "equipment_maintenance:"
+# The athlete's choice for a planned unit, keyed by its local id (#3011).
+PLANNED_PREFIX = "equipment_planned:"
 GARMIN_INITIALIZED_KEY = "garmin_equipment_initialized"
 
 
@@ -54,12 +56,17 @@ def child_values(db: Any, parent_id: str) -> list[str]:
 
 
 def is_referenced(db: Any, equipment_id: str) -> bool:
-    """Whether an assignment or maintenance entry names the item."""
+    """Whether an assignment, planned-unit choice or maintenance entry names the item."""
     return (
         db.execute(
-            "SELECT 1 FROM kv WHERE (key LIKE ? OR key LIKE ?) "
+            "SELECT 1 FROM kv WHERE (key LIKE ? OR key LIKE ? OR key LIKE ?) "
             "AND json_extract(value, '$.equipment_id')=? LIMIT 1",
-            (ASSIGNMENT_PREFIX + "%", MAINTENANCE_PREFIX + "%", equipment_id),
+            (
+                ASSIGNMENT_PREFIX + "%",
+                PLANNED_PREFIX + "%",
+                MAINTENANCE_PREFIX + "%",
+                equipment_id,
+            ),
         ).fetchone()
         is not None
     )

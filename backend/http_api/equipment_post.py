@@ -70,19 +70,23 @@ class EquipmentPostRoutes:
         handler.send_json(200, self._equipment_service().save(payload))
 
     def _assign(self, handler: Any, _request: RouteRequest) -> None:
-        """Assign one session its equipment, or none, stored locally (#2879).
+        """Assign one session or planned unit its equipment, or none, stored locally.
 
         Request: JSON body of at most 16 KiB, exactly `{"activity_id": string,
-        "equipment_id": string | null}`; `null` records that the session used
-        no equipment ("Keiner"), which also overrides Garmin's gear links.
+        "equipment_id": string | null}` for a session (#2879) or
+        `{"planned_unit_id": string, "equipment_id": string | null}` for a
+        planned unit (#3011); `null` records "Keiner", which also overrides
+        Garmin's gear links. A planned unit's choice changes nothing of the unit
+        itself and reaches no provider.
 
         Response: 200 `{"ok": true, "stored_locally": true, "assignment":
-        {"activity_id", "equipment_id", "observed_at"}, "change"}`; `change` is
-        the undo reference.
+        {"activity_id" or "planned_unit_id", "equipment_id", "observed_at"},
+        "change"}`; `change` is the undo reference.
 
         Errors: 400 "Aktivität und Ausrüstung sind erforderlich." for another
         body shape; 404 "Kanonische Aktivität nicht gefunden." for an unknown
-        session; 400 "Aktive passende Hauptausrüstung erforderlich." for an
+        session; 404 "Geplante Einheit nicht gefunden." for an unknown or deleted
+        planned unit; 400 "Aktive passende Hauptausrüstung erforderlich." for an
         unknown item or one that is archived, a component, unresolved or of
         another sport.
         """

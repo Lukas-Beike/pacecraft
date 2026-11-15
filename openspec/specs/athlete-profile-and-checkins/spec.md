@@ -219,7 +219,7 @@ The system SHALL save explicitly entered main equipment/components with validate
 - **WHEN** a main item that is still as imported from Garmin has an open sport and neither a parent nor components
 - **THEN** it takes the sport that at least 3 of its linked activities and at least 75 % of all of them share (unknown and other types count in the total); an item the athlete saved keeps its sport.
 
-Detailed contract: the records are JSON values under the keys `equipment:<uuid>`, `equipment_assignment:<session id>`, and `equipment_maintenance:<uuid>`, and `garmin_equipment_initialized` marks the one-time import; a read returns `items` (at most 100), `garmin_items`, `sensors`, `garmin_synced_at`, `garmin_freshness`, `assignments` (at most 2000, maintenance events at most 1000) and `scope`.
+Detailed contract: the records are JSON values under the keys `equipment:<uuid>`, `equipment_assignment:<session id>`, `equipment_planned:<planned unit id>` and `equipment_maintenance:<uuid>`, and `garmin_equipment_initialized` marks the one-time import; a read returns `items` (at most 100), `garmin_items`, `sensors`, `garmin_synced_at`, `garmin_freshness`, `assignments` (at most 2000, maintenance events at most 1000) and `scope`.
 
 Evidence: `backend/athlete/equipment.py:_equipment_amounts`, `backend/athlete/equipment.py:_equipment_identity`, `backend/athlete/equipment.py:_equipment_parent`, `backend/athlete/equipment.py:EquipmentService.read`, `backend/athlete/equipment.py:EquipmentService.save`, `backend/athlete/equipment.py:EquipmentService.sync_garmin_snapshot`; `backend/coach/tool_schemas.py:build_structured_tool_schemas` (equipment fields); `tests/test_coach_tool_coverage.py:test_training_records_and_equipment_tools_use_confirmed_local_state`; `tests/test_training_record_features.py:test_empty_initial_gear_snapshot_does_not_finalize_import`, `tests/test_training_record_features.py:test_equipment_requires_initial_values_and_prevents_component_cycles`, `tests/test_training_record_features.py:test_open_sport_is_derived_at_three_quarters_with_three_activities`, `tests/test_training_record_features.py:test_legacy_empty_import_recovers_once_and_preserves_local_equipment`; `tests/test_coach_write_gate.py:test_archiving_equipment_is_a_delete`.
 
@@ -274,6 +274,10 @@ The system SHALL assign only resolved canonical completed activities to compatib
 - **WHEN** the athlete posts `{"activity_id", "equipment_id"}` to `POST /api/equipment/assignment` (session and CSRF, body at most 16 KiB), `null` meaning no equipment
 - **THEN** the assignment or unassignment is saved and tracked with receipt and undo exactly as the Coach's.
 
+#### Scenario: Choice for a planned unit
+- **WHEN** the athlete posts `{"planned_unit_id", "equipment_id"}` to `POST /api/equipment/assignment` for a live local planned unit, `null` meaning no equipment
+- **THEN** the choice is stored under `equipment_planned:<planned unit id>` with receipt and undo (change-history entity `equipment_planned`); the item must be active main equipment of the unit's sport; an unknown or deleted unit answers 404 "Geplante Einheit nicht gefunden."; the planned unit, its payload and its sync state stay unchanged, so nothing reaches a provider.
+
 #### Scenario: Choice and suggestion for one session
 - **WHEN** one session's details are read
 - **THEN** `equipment_choice` lists the items it can take (`options` with id and name), its own explicit choice (`assigned`, `explicit`) and `suggested`: the item last explicitly assigned to a session of the same sport pair (indoor and outdoor apart) that this session can still take, else null; the suggestion is derived on each read, never stored and never assigned without the athlete.
@@ -296,6 +300,9 @@ The system SHALL assign only resolved canonical completed activities to compatib
 
 Evidence:
 - `backend/athlete/equipment.py:_assignment_list`
+- `backend/athlete/equipment.py:EquipmentService._assign_planned`
+- `tests/test_equipment_history.py:test_a_planned_choice_is_tracked_undoable_and_leaves_the_unit_alone`
+- `tests/test_equipment_history.py:test_a_planned_choice_needs_a_live_unit_and_a_matching_active_item`
 - `backend/athlete/equipment.py:_counts_for`
 - `backend/athlete/equipment.py:_effective_assignments`
 - `backend/athlete/equipment.py:_session_assignments`

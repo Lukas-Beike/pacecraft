@@ -19,7 +19,7 @@ from backend.athlete.equipment import EquipmentService
 from backend.athlete.equipment_history import equipment_history_records
 from backend.canonical.activity_summary import ActivitySummary
 from backend.coach.change_receipts import change_summary
-from backend.db import DatabaseManager, row_factory
+from backend.db import DatabaseManager, planning_store, row_factory
 from backend.db.schema import initialize_schema
 from backend.errors import AppError
 from backend.history.service import ChangeHistoryService
@@ -401,6 +401,99 @@ class EquipmentHistoryTests(unittest.TestCase):
                 (json.dumps(stored), "equipment:" + first["id"]),
             )
         self.assert_undo_refused(moved, first["id"])
+
+    # Planned units (#3011)
+
+    def planned_unit(self, local_id: str = "unit-1", **payload: Any) -> dict[str, Any]:
+        stored = {"sport": "ride", "environment": "outdoor", "date": "2026-10-05", **payload}
+        with self.manager.unit_of_work() as db:
+            planning_store.insert_planned_unit(
+                db,
+                stored,
+                local_id=local_id,
+                external_id=None,
+                sync_dirty=0,
+                sync_state="synced",
+                sync_error=None,
+                sync_conflict="",
+                baseline_hash="hash",
+                last_synced_at=NOW,
+                now=NOW,
+            )
+            row = planning_store.planned_unit_row(db, local_id)
+        return dict(row)
+
+    def test_a_planned_choice_is_tracked_undoable_and_leaves_the_unit_alone(self) -> None:
+        before = self.planned_unit()
+        first, second = self.bike(), self.bike(name="Rain bike")
+        result = self.service.assign({"planned_unit_id": "unit-1", "equipment_id": first["id"]})
+        self.assertEqual(result["change"]["entity_type"], "equipment_planned")
+        _, changes = self.collected(
+            lambda: self.service.assign(
+                {"planned_unit_id": "unit-1", "equipment_id": second["id"]}
+            )
+        )
+        self.assertEqual(self.record("equipment_planned:unit-1")["equipment_id"], second["id"])
+        self.undo(changes)
+        self.assertEqual(self.record("equipment_planned:unit-1")["equipment_id"], first["id"])
+        self.assertEqual(self.actions("equipment_planned"), ["create", "update", "undo"])
+        # The planned unit, its payload and its sync state stay as they were: nothing reaches a provider.
+        with self.manager.reader() as db:
+            self.assertEqual(dict(planning_store.planned_unit_row(db, "unit-1")), before)
+
+    def test_undo_of_a_planned_choice_checks_the_unit_and_its_sport_again(self) -> None:
+        self.planned_unit()
+        first = self.bike()
+        self.service.assign({"planned_unit_id": "unit-1", "equipment_id": first["id"]})
+        _, changes = self.collected(
+            lambda: self.service.assign({"planned_unit_id": "unit-1", "equipment_id": None})
+        )
+        # The unit became a run since: the bike no longer fits, so undo is refused.
+        with self.manager.unit_of_work() as db:
+            db.execute(
+                "UPDATE planned_units SET payload=json_set(payload, '$.sport', 'run') "
+                "WHERE local_id='unit-1'"
+            )
+        with self.assertRaises(AppError) as sport:
+            self.undo(changes)
+        self.assertEqual(sport.exception.status, 409)
+        with self.manager.unit_of_work() as db:
+            db.execute("UPDATE planned_units SET tombstone=1 WHERE local_id='unit-1'")
+        with self.assertRaises(AppError) as gone:
+            self.undo(changes)
+        self.assertEqual(gone.exception.status, 409)
+        self.assertIsNone(self.record("equipment_planned:unit-1")["equipment_id"])
+
+    def test_none_is_a_tracked_planned_choice_and_undo_removes_a_first_choice(self) -> None:
+        self.planned_unit()
+        _, changes = self.collected(
+            lambda: self.service.assign({"planned_unit_id": "unit-1", "equipment_id": None})
+        )
+        self.assertIsNone(self.record("equipment_planned:unit-1")["equipment_id"])
+        self.undo(changes)
+        self.assertIsNone(self.stored("equipment_planned:unit-1"))
+
+    def test_a_planned_choice_needs_a_live_unit_and_a_matching_active_item(self) -> None:
+        self.planned_unit()
+        self.planned_unit("unit-run", sport="run")
+        self.planned_unit("unit-gone")
+        with self.manager.unit_of_work() as db:
+            db.execute("UPDATE planned_units SET tombstone=1 WHERE local_id='unit-gone'")
+        bike = self.bike()
+        for payload, status in (
+            ({"planned_unit_id": "unknown", "equipment_id": bike["id"]}, 404),
+            ({"planned_unit_id": "unit-gone", "equipment_id": bike["id"]}, 404),
+            ({"planned_unit_id": "unit-run", "equipment_id": bike["id"]}, 400),
+            ({"planned_unit_id": "unit-1", "equipment_id": "missing"}, 400),
+            ({"planned_unit_id": "", "equipment_id": None}, 400),
+            ({"planned_unit_id": 7, "equipment_id": None}, 400),
+            ({"planned_unit_id": "unit-1", "activity_id": "act_w1", "equipment_id": None}, 400),
+        ):
+            with self.subTest(payload=payload), self.assertRaises(AppError) as raised:
+                self.service.assign(payload)
+            self.assertEqual(raised.exception.status, status)
+        self.assertIsNone(self.stored("equipment_planned:unit-1"))
+        self.assertEqual(self.actions("equipment_planned"), [])
 
     # Maintenance
 
