@@ -1146,8 +1146,12 @@ def _session_assignments(
     ``observed_at``. A record of no known session keeps its stored key.
     """
     stored = {str(record["activity_id"]): record for record in records}
+    sessions = [str(row["id"]) for row in rows if row["id"]]
+    # Only a family that names a stored key not under its session id can move
+    # an assignment; reading every family took seconds on a long history (#3017).
+    named = canonical_store.legacy_key_sessions(db, sorted(set(stored) - {*sessions}))
     legacy = canonical_store.session_legacy_keys(
-        db, [str(row["id"]) for row in rows if row["id"]]
+        db, [key for key in sessions if key in named]
     )
     result = dict(stored)
     for row in rows:
