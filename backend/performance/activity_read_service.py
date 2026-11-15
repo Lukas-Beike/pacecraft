@@ -301,11 +301,10 @@ class ActivityAnalysisReadService(ActivityReadService):
         effect = _provider_training_effect(summary)
         if effect is not None:
             document["training_effect"] = effect
-        pace_zones = summary.get("pace_zone_times") if summary else None
-        if pace_zones:
+        if summary is not None and summary.get("pace_zone_times"):
             # The zones carry no limits: their ids name the athlete's pace zones (#3038).
             document["pace_zone_times"] = {
-                "zones": pace_zones,
+                "zones": summary["pace_zone_times"],
                 "source": summary.get("sources", {}).get("pace_zone_times"),
             }
         return {"ok": True, **document, "data_scope": _data_scope(document, records)}

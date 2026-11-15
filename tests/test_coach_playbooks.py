@@ -196,8 +196,8 @@ class PlaybookInjectionTests(unittest.TestCase):
                 # The answer format stays last.
                 self.assertLess(text.index(block), text.index(playbooks._ANSWER))
                 self.assertNotIn(block, core)
-        for sport in (None, "swim", "strength"):
-            self.assertEqual(core, playbook_for("session_analysis", sport))
+        for no_block in (None, "swim", "strength"):
+            self.assertEqual(core, playbook_for("session_analysis", no_block))
         self.assertEqual(
             playbook_for("progress_review"), playbook_for("progress_review", "run")
         )

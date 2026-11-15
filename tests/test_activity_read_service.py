@@ -2,10 +2,10 @@ import copy
 import json
 import tempfile
 import unittest
-from unittest.mock import patch
 from contextlib import contextmanager
 from datetime import date
 from typing import Any, cast
+from unittest.mock import patch
 
 from activity_row_support import (
     FixedActivityRows,
