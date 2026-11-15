@@ -259,8 +259,10 @@ class CoachReadToolServiceTests(unittest.TestCase):
     def test_a_fitting_saved_product_answers_before_any_provider(self) -> None:
         # #3080, a scripted meal: the model names Open Food Facts for both terms.
         meal_library = self.nutrition_meal_library
+        skyr_natur = {"id": "own-skyr", "name": "Skyr Natur", "brand": "Hofmolkerei"}
         saved = {
-            "Skyr": [{"id": "own-skyr", "name": "Skyr Natur", "brand": "Hofmolkerei"}],
+            # The search also finds partial matches; only the named food answers.
+            "Skyr": [{"id": "own-bowl", "name": "Beeren Skyr Bowl"}, skyr_natur],
             "Banane": [{"id": "own-bread", "name": "Bananenbrot"}],
         }
         meal_library.product_catalog.list_products.side_effect = lambda query: saved[
@@ -275,10 +277,11 @@ class CoachReadToolServiceTests(unittest.TestCase):
         result = self.service.execute("lookup_food", meal)
 
         skyr, banana = result["results"]
-        # Skyr Natur holds every query word: no provider call.
+        # Skyr Natur is named like the searched food: no provider call, and
+        # only it is offered.
         self.assertEqual(
             (skyr["lookup_outcome"], skyr["foods"], skyr["local_products"]),
-            ("local_hit", [], saved["Skyr"]),
+            ("local_hit", [], [skyr_natur]),
         )
         self.assertIn("nur gefragt, wenn der Athlet", skyr["notice"])
         # Bananenbrot is not a banana: the provider is asked, the saved one stays.
@@ -317,6 +320,14 @@ class CoachReadToolServiceTests(unittest.TestCase):
         )
         self.assertEqual("local_hit", other["lookup_outcome"])
         meal_library.food_database.lookup.assert_not_called()
+        # The athlete named Yazio and the model left the source out: Yazio.
+        asked = self.service.execute(
+            "lookup_food", {"query": "Skyr", "_named_food_sources": ["yazio"]}
+        )
+        self.assertEqual("external_requested", asked["lookup_outcome"])
+        meal_library.food_database.lookup.assert_called_once_with(
+            {"query": "Skyr", "source": "yazio"}
+        )
 
     def test_lookup_without_source_labels_its_outcome(self) -> None:
         catalog = self.nutrition_meal_library.product_catalog
@@ -334,6 +345,12 @@ class CoachReadToolServiceTests(unittest.TestCase):
             "lookup_food", {"query": "Skyr", "_named_food_sources": []}
         )
         catalog.lookup_product.assert_called_with({"query": "Skyr"})
+        # Without query or barcode no saved product was searched: no outcome.
+        database = self.nutrition_meal_library.food_database
+        database.lookup.return_value = {"ok": True, "foods": []}
+        self.assertNotIn(
+            "lookup_outcome", self.service.execute("lookup_food", {"q": "Skyr"})
+        )
 
     def test_batched_queries_return_each_term_and_isolate_failures(self) -> None:
         meal_library = self.nutrition_meal_library

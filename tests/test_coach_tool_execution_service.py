@@ -219,15 +219,19 @@ class StructuredToolExecutionTests(unittest.TestCase):
         # #3080: scripted turns; the model's copy of the argument is replaced.
         self.tool_dispatch.execute.return_value = {"ok": True}
         earlier = {"role": "user", "id": 1, "content": "Such das bei Yazio"}
-        for message, expected in (
-            ("Trag 200 g Skyr ein", []),
-            ("Such den Skyr bei Yazio", ["yazio"]),
-            ("Nimm Open Food Facts oder die BLS", ["open_food_facts", "bls"]),
-            ("Schalt das OFF-Ergebnis ab, nimm OFF", ["open_food_facts"]),
-            ("Lass das off", []),
+        for message, pending, expected in (
+            # An earlier, finished request does not carry over.
+            ("Trag 200 g Skyr ein", None, []),
+            ("Such den Skyr bei Yazio", None, ["yazio"]),
+            ("Nimm Open Food Facts oder die BLS", None, ["open_food_facts", "bls"]),
+            ("schau bei off nach", None, ["open_food_facts"]),
+            ("Offline ist ok", None, []),
+            # The answer to a clarification keeps the request it answers.
+            ("200 g", {"source_message_ids": [1]}, ["yazio"]),
         ):
             context = {
                 "current_user_message_id": 3,
+                "pending_request": pending,
                 "messages": [
                     earlier,
                     {"role": "assistant", "id": 2, "content": "Yazio?"},

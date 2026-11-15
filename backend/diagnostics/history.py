@@ -8,19 +8,19 @@ from collections.abc import Callable, Collection
 from typing import Any
 
 from backend import observability
+from backend.coach.read_tools import LOOKUP_OUTCOMES
 from backend.db import coach_store
 
 _STATUSES = frozenset(
     {"queued", "running", "completed", "partial", "failed", "cancelled"}
 )
 _RESPONSE_STATUSES = _STATUSES | {"incomplete"}
-# How each food lookup was answered (#3080): a saved product, a provider after
-# no saved product fitted, or a provider the athlete's message named.
-_LOOKUP_OUTCOMES = ("local_hit", "external_after_miss", "external_requested")
 
 
 def _lookup_outcomes(result: dict[str, Any]) -> dict[str, int]:
-    """Counts per lookup outcome of one step's result, one per searched term."""
+    """How each searched term of a food lookup step was answered (#3080): a
+    saved product, a provider after no saved product fitted, or a provider the
+    athlete named; counts only."""
     groups = result.get("results")
     found = [
         group.get("lookup_outcome")
@@ -28,9 +28,7 @@ def _lookup_outcomes(result: dict[str, Any]) -> dict[str, int]:
         if isinstance(group, dict)
     ]
     return {
-        outcome: found.count(outcome)
-        for outcome in _LOOKUP_OUTCOMES
-        if outcome in found
+        outcome: found.count(outcome) for outcome in LOOKUP_OUTCOMES if outcome in found
     }
 
 

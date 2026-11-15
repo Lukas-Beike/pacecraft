@@ -19,8 +19,9 @@ from backend.coach.context_selection import (
 )
 from backend.errors import AppError
 from backend.history.service import ChangeHistoryService
-from backend.nutrition.catalog import INCOMPLETE_PRODUCTS_NOTICE, strong_matches
+from backend.nutrition.catalog import INCOMPLETE_PRODUCTS_NOTICE
 from backend.nutrition.diary import NutritionDiaryService
+from backend.nutrition.food_database import names_the_food
 from backend.nutrition.meal_library import NutritionMealLibraryService
 from backend.nutrition.models import validate_iso_date
 from backend.planning.competition_service import CompetitionService
@@ -35,39 +36,40 @@ MAX_FOOD_LOOKUP_QUERIES = 20
 
 FOOD_DATABASE_UNAVAILABLE = "Lebensmitteldatenbank ist nicht verfügbar."
 
-# lookup_food is local first (#3080): a saved product that holds every query
-# word answers, and a provider is asked on a miss or when the athlete's own
-# turn message names it. The tool execution sets NAMED_FOOD_SOURCES from that
-# message; a model argument of that name is replaced.
+# lookup_food is local first (#3080): a saved product named like the searched
+# food answers, and a provider is asked on a miss or when the athlete's own
+# request names it. The tool execution sets NAMED_FOOD_SOURCES from that
+# request; a model argument of that name is replaced.
 NAMED_FOOD_SOURCES: Final = "_named_food_sources"
 LOCAL_HIT: Final = "local_hit"
 EXTERNAL_AFTER_MISS: Final = "external_after_miss"
 EXTERNAL_REQUESTED: Final = "external_requested"
-LOOKUP_OUTCOMES: Final = frozenset({LOCAL_HIT, EXTERNAL_AFTER_MISS, EXTERNAL_REQUESTED})
+# The diagnostics count these per step, in this order.
+LOOKUP_OUTCOMES: Final = (LOCAL_HIT, EXTERNAL_AFTER_MISS, EXTERNAL_REQUESTED)
 SAVED_PRODUCT_NOTICE: Final = (
-    "Gespeicherte Produkte passen; nimm eines davon. Externe Quellen werden nur "
-    "gefragt, wenn der Athlet sie in seiner Nachricht selbst nennt."
+    "Gespeicherte Produkte mit diesem Namen gefunden; nimm das, das dasselbe "
+    "Lebensmittel ist, sonst frag nach. Externe Quellen werden nur gefragt, "
+    "wenn der Athlet sie selbst nennt."
 )
 _FOOD_SOURCE_NAMES: Final = (
     ("yazio", re.compile(r"yazio", re.IGNORECASE)),
-    # "OFF" only in capitals: "off" is an ordinary English word.
-    ("open_food_facts", re.compile(r"(?i:open\s*food\s*facts)|\bOFF\b")),
+    ("open_food_facts", re.compile(r"open\s*food\s*facts|\boff\b", re.IGNORECASE)),
     ("bls", re.compile(r"\bbls\b|bundeslebensmittelschl", re.IGNORECASE)),
 )
 
 
 def named_food_sources(context: Mapping[str, Any]) -> list[str]:
-    """The food sources the athlete's own current message names."""
-    current = context.get("current_user_message_id")
-    text = next(
-        (
-            str(item.get("content") or "")
-            for item in context.get("messages") or ()
-            if isinstance(item, Mapping)
-            and item.get("role") == "user"
-            and item.get("id") == current
-        ),
-        "",
+    """The food sources the athlete's own request names: the current message
+    and, while a clarification is open, the messages it answers."""
+    pending = context.get("pending_request")
+    asked = pending.get("source_message_ids") if isinstance(pending, Mapping) else None
+    ids = {context.get("current_user_message_id"), *(asked or ())}
+    text = "\n".join(
+        str(item.get("content") or "")
+        for item in context.get("messages") or ()
+        if isinstance(item, Mapping)
+        and item.get("role") == "user"
+        and item.get("id") in ids
     )
     return [source for source, words in _FOOD_SOURCE_NAMES if words.search(text)]
 
@@ -283,8 +285,13 @@ class CoachReadToolService:
         arguments: dict[str, Any],
         named: frozenset[str],
     ) -> dict[str, Any]:
-        source = str(arguments.get("source") or "").strip().lower()
         query = str(arguments.get("query") or arguments.get("q") or "").strip()
+        # A source the athlete named stands when the model omits one.
+        source = (
+            str(arguments.get("source") or next(iter(sorted(named)), ""))
+            .strip()
+            .lower()
+        )
         if (
             query
             and not arguments.get("barcode")
@@ -293,10 +300,9 @@ class CoachReadToolService:
             return cls._lookup_food_source(
                 nutrition, arguments, query, source, requested=source in named
             )
-        if arguments.get("barcode") or arguments.get("query"):
-            result = nutrition.product_catalog.lookup_product(arguments)
-        else:
-            result = nutrition.food_database.lookup(arguments)
+        if not (arguments.get("barcode") or arguments.get("query")):
+            return nutrition.food_database.lookup(arguments)
+        result = nutrition.product_catalog.lookup_product(arguments)
         local = result.get("local") is True
         return {**result, "lookup_outcome": LOCAL_HIT if local else EXTERNAL_AFTER_MISS}
 
@@ -312,11 +318,18 @@ class CoachReadToolService:
         """One provider's lookup, unless a saved product fits and the athlete's
         own message does not name that provider (#3080)."""
         local_products = nutrition.product_catalog.list_products(query=query)
-        if not requested and strong_matches(local_products, query):
+        fitting = [
+            product
+            for product in local_products
+            if names_the_food(
+                query, str(product.get("name") or ""), str(product.get("brand") or "")
+            )
+        ]
+        if fitting and not requested:
             return {
                 "ok": True,
                 "foods": [],
-                "local_products": local_products,
+                "local_products": fitting,
                 "lookup_outcome": LOCAL_HIT,
                 "notice": SAVED_PRODUCT_NOTICE,
             }

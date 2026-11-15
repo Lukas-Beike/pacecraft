@@ -10,7 +10,7 @@ from support import temp_database
 
 from backend.db.repositories import NutritionProductRepository, NutritionRepository
 from backend.errors import AppError
-from backend.nutrition.catalog import ProductCatalogService, strong_matches
+from backend.nutrition.catalog import ProductCatalogService
 from backend.nutrition.components import MealComponentCalculator
 from backend.nutrition.food_database import FoodDatabaseService
 from backend.nutrition.sync_status import NutritionSyncStatusService
@@ -41,26 +41,6 @@ class NutritionUseCaseServiceTests(unittest.TestCase):
             lambda: datetime(2026, 9, 24, 12, tzinfo=UTC),
             CanonicalTableReader,
         )
-
-    def test_strong_matches_need_every_query_word_as_a_whole_word(self) -> None:
-        # #3080: a strong match answers a lookup without asking a provider.
-        skyr = {"id": "skyr", "name": "Skyr Natur", "brand": "Hofmolkerei"}
-        bread = {"id": "bread", "name": "Bananenbrot", "brand": None}
-        for query, expected in (
-            ("Skyr", ["skyr"]),
-            ("skyr natur", ["skyr"]),
-            ("Skyr Hofmolkerei", ["skyr"]),
-            ("Skyr 500g", ["skyr"]),
-            ("Skyr Vanille", []),
-            ("Banane", []),
-            ("Bananenbrot", ["bread"]),
-            ("500g", []),
-        ):
-            with self.subTest(query=query):
-                self.assertEqual(
-                    expected,
-                    [item["id"] for item in strong_matches([skyr, bread], query)],
-                )
 
     def test_catalog_persists_and_calculates_confirmed_product(self) -> None:
         product = self.products.save_product(

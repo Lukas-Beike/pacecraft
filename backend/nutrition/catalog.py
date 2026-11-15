@@ -36,35 +36,6 @@ INCOMPLETE_PRODUCTS_NOTICE = (
 # and web origins need a lookup that returned the value; "manual" is the
 # athlete's own statement.
 GAP_ORIGINS = frozenset({"open_food_facts", "yazio", "bls", "web", MANUAL_ORIGIN})
-_WORD = re.compile(r"\w+")
-
-
-def strong_matches(products: list[dict[str, Any]], query: str) -> list[dict[str, Any]]:
-    """Saved products whose name or brand holds every word of ``query`` (#3080).
-
-    A whole word, not a part of one: "Skyr" matches "Skyr Natur", "Banane"
-    does not match "Bananenbrot". Words with digits (amounts such as "500g")
-    and single letters are not compared.
-    """
-    words = {
-        word
-        for word in _WORD.findall(query.casefold())
-        if len(word) > 1 and not any(char.isdigit() for char in word)
-    }
-    if not words:
-        return []
-    return [
-        product
-        for product in products
-        if words
-        <= set(
-            _WORD.findall(
-                f"{product.get('name') or ''} {product.get('brand') or ''}".casefold()
-            )
-        )
-    ]
-
-
 MAX_GAP_PRODUCTS = 25
 MAX_GAP_KCAL = 9000
 MAX_GAP_GRAMS = 1000
