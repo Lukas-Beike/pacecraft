@@ -106,6 +106,13 @@ export function compareLines(current, previous) {
   if (!previous) return lines;
   const same = current.marks.cache === previous.marks?.cache;
   lines.push(`info service-worker cache ${same ? "unchanged" : "changed"} since the previous walk`);
+  // A step that passed before and is skipped now lost its data or its function: a finding.
+  // A week without a matching session depends on the date, not on the app, and stays info.
+  for (const [key, step] of Object.entries(current.steps || {})) {
+    const before = previous.steps?.[key];
+    if (before?.status === "ok" && step.status === "skip" && step.why !== NO_SESSION) lines.push(`FAIL step ${key} passed in the previous walk, skipped now (${step.why})`);
+    else if (before?.status === "ok" && step.status === "ok") lines.push(`info step ${key} ${step.ms} ms (was ${before.ms} ms)`);
+  }
   if (previous.measure !== current.measure) {
     lines.push("info load times not compared: the previous walk measured them differently");
     return lines;
@@ -113,12 +120,6 @@ export function compareLines(current, previous) {
   for (const [key, ms] of Object.entries(current.loadMs)) {
     const before = previous.loadMs?.[key];
     if (typeof before === "number") lines.push(`info load ${key} ${ms} ms (was ${before} ms)`);
-  }
-  // A step that passed before and is skipped now lost its data or its function: a finding.
-  for (const [key, step] of Object.entries(current.steps || {})) {
-    const before = previous.steps?.[key];
-    if (before?.status === "ok" && step.status === "skip") lines.push(`FAIL step ${key} passed in the previous walk, skipped now (${step.why})`);
-    else if (before?.status === "ok" && step.status === "ok") lines.push(`info step ${key} ${step.ms} ms (was ${before.ms} ms)`);
   }
   return lines;
 }
@@ -212,7 +213,10 @@ const STEP_CAP_MS = 8000;
 const CANDIDATE_CAP_MS = 2000;
 const MAX_CANDIDATES = 14;
 const DETAILS_OPEN = ".planned-entry[open] .planned-activity-more > summary";
-const NO_DETAILS = [".planned-entry[open] .activity-analysis-panel", "noch nicht geladen"];
+const NO_DETAILS = [".planned-entry[open] .activity-analysis-panel", "Detaildaten noch nicht geladen"];
+const NO_SESSION = "no such session";
+// The longest one step may take over all its candidates.
+const STEP_TOTAL_MS = 30000;
 const DONE = ".planned-entry.is-completed > summary";
 const PLANNED = ".planned-entry.is-planned > summary";
 const MONTH = '.planned-view-switch button[data-view="month"]';
@@ -226,15 +230,15 @@ export const STEPS = [
   detail("Kalender: Zonenbalken", "#2258 time in zones", ".planned-entry[open] .activity-analysis-zones", "numbers", { optional: true }),
   detail("Kalender: Laufdynamik", "#2910 running dynamics", ".planned-entry[open] .activity-dynamics-value", "numbers", { optional: true, each: ".planned-entry.is-completed[data-sport='Laufen'] > summary" }),
   { view: "plan", name: "Kalender: Schuh/Rad", covers: "#2946 equipment select", each: DONE, ready: ".planned-entry[open] .planned-equipment select", kind: "options", optional: true },
-  { view: "plan", name: "Kalender: geplante Einheit", covers: "#2189 planned session", pre: ['button[aria-label="Nächste Woche"]'], each: PLANNED, ready: ".planned-entry[open] .planned-entry-details", kind: "text", optional: true },
+  { view: "plan", name: "Kalender: geplante Einheit", covers: "#2189 planned session", pre: ['button[aria-label="Nächste Woche"]'], each: PLANNED, ready: ".planned-entry[open] .planned-entry-details", kind: "text", optional: true, post: ['button[aria-label="Vorherige Woche"]'] },
   { view: "plan", name: "Kalender: Verpflegung", covers: "#2921 fuelling", each: PLANNED, ready: ".planned-entry[open] .planned-fuelling", kind: "numbers", optional: true },
   // Choosing a past day narrows the month's range, so the planned day comes first.
   { view: "plan", name: "Monat: geplante Einheit", covers: "#2189 month", pre: [MONTH], each: ".planned-month-day:not([disabled]):has(.planned-month-mark.is-planned)", then: [PLANNED], ready: ".planned-entry[open] .planned-entry-details", kind: "text", optional: true },
   { view: "plan", name: "Monat: absolvierte Einheit", covers: "#2189 month", pre: [MONTH], each: ".planned-month-day:not([disabled]):has(.planned-month-mark.is-completed)", then: [DONE], ready: ".planned-entry[open] .planned-entry-details", kind: "text" },
   { view: "plan", name: "Kalender: Wochenansicht", covers: "#2189 week and month switch", pre: ['.planned-view-switch button[data-view="week"]'], ready: ".planned-week .planned-day", kind: "text" },
-  ...[["running", "Laufen", "#dataPanel svg"], ["cycling", "Radfahren", "#dataPanel svg"], ["load", "Belastung", "#analysisLoadCharts svg"], ["recovery", "Erholung", "#personalRecovery svg"]]
+  ...[["running", "Laufen", "#runningBestEfforts svg"], ["cycling", "Radfahren", "#cyclingPowerProfile svg"], ["load", "Belastung", "#analysisLoadCharts svg"], ["recovery", "Erholung", "#personalRecovery svg"]]
     .map(([segment, label, ready]) => ({ view: "analysis", name: `Analyse: ${label}`, covers: "Analyse tabs", pre: [tab("analysis", segment)], ready, kind: "chart" })),
-  { view: "analysis", name: "Analyse: Woche", covers: "#3000 week review", pre: [tab("analysis", "week")], ready: "#weekReview", kind: "numbers" },
+  { view: "analysis", name: "Analyse: Woche", covers: "#3000 week review", pre: [tab("analysis", "week")], ready: "#weekReview .week-review-card", kind: "numbers" },
   { view: "nutrition", name: "Ernährung: Verlauf", covers: "Nutrition week", pre: [tab("nutrition", "week")], ready: "#nutritionWeek", kind: "numbers" },
   { view: "nutrition", name: "Ernährung: Körper", covers: "Body analysis", pre: [tab("nutrition", "body")], ready: "#bodyAnalysisCharts svg", kind: "chart" },
   { view: "more", name: "Mehr: Ausrüstung", covers: "#2935 equipment", pre: [tab("more", "equipment")], ready: "#equipmentItems .equipment-card", kind: "text" },
@@ -243,7 +247,11 @@ export const STEPS = [
 
 // Runs in the page; "ready", "absent" or false.
 function probe([selector, kind, absent]) {
+  const blank = (paint) => !paint || paint === "none" || paint === "transparent" || paint === "rgba(0, 0, 0, 0)";
   const drawn = (svg) => [...svg.querySelectorAll("path[d], rect, circle, polyline")].some((mark) => {
+    const style = getComputedStyle(mark);
+    if (style.visibility === "hidden" || Number(style.opacity) === 0 || mark.closest('[aria-hidden="true"]')) return false;
+    if (blank(style.fill) && blank(style.stroke)) return false;
     const box = mark.getBBox();
     return box.width > 0 || box.height > 0;
   });
@@ -280,7 +288,7 @@ export async function runStep(page, step, capMs = STEP_CAP_MS) {
     if (step.each) await page.locator(step.each).filter({ visible: true }).first().waitFor({ timeout: 3000 }).catch(() => null);
     const count = step.each ? Math.min(await page.locator(step.each).filter({ visible: true }).count(), MAX_CANDIDATES) : 1;
     let empty = 0;
-    for (let index = 0; index < count; index += 1) {
+    for (let index = 0; index < count && Date.now() - began < STEP_TOTAL_MS; index += 1) {
       const started = Date.now();
       try {
         if (step.each) await press(page, step.each, index);
@@ -295,10 +303,13 @@ export async function runStep(page, step, capMs = STEP_CAP_MS) {
       if (outcome !== "absent") empty += 1;
     }
     // Nothing loaded and nothing empty: the data this step needs does not exist (info, not a failure).
-    if (!empty) return { status: "skip", ms: 0, why: count ? "no stored data" : "no such session" };
+    if (!empty) return { status: "skip", ms: 0, why: count ? "no stored data" : NO_SESSION };
     return step.optional ? { status: "skip", ms: 0, why: `none of ${count} has it` } : { status: "fail", ms: Date.now() - began, why: "missing or empty" };
   } catch (error) {
     return { status: "fail", ms: Date.now() - began, why: error.name === "TimeoutError" ? "control missing" : error.message.split("\n")[0] };
+  } finally {
+    // Undo the step's navigation (such as paging to next week), so later steps start where they expect.
+    for (const selector of step.post || []) await press(page, selector).catch(() => null);
   }
 }
 
