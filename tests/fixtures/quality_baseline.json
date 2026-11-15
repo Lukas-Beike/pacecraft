@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "base": "36d80461b1cb6f0dc80c53cf9a7dab65787ec75a",
+  "base": "65a3b1703e48e939b9e7793fc1dd16a5ddf44b44",
   "versions": {
     "ruff": "0.17.4",
     "mypy": "2.4.1"
@@ -845,6 +845,216 @@
       "path": "tests/test_coach_dialogue_plan_scope.py",
       "code": "call-overload",
       "message_sha256": "eb82377dd77074ec135a9350e5dda0b9a5c9f46816d84e117789355db380f38c"
+    },
+    {
+      "tool": "format",
+      "path": "backend/athlete/equipment.py",
+      "code": "format",
+      "message_sha256": "f87c4a0ecaf8e40a8d167170353b2aeb564e58f72247b4568c3db29c296f105f"
+    },
+    {
+      "tool": "format",
+      "path": "backend/db/activity_detail_store.py",
+      "code": "format",
+      "message_sha256": "f87c4a0ecaf8e40a8d167170353b2aeb564e58f72247b4568c3db29c296f105f"
+    },
+    {
+      "tool": "format",
+      "path": "backend/nutrition/fuelling.py",
+      "code": "format",
+      "message_sha256": "f87c4a0ecaf8e40a8d167170353b2aeb564e58f72247b4568c3db29c296f105f"
+    },
+    {
+      "tool": "format",
+      "path": "backend/planning/competition_service.py",
+      "code": "format",
+      "message_sha256": "f87c4a0ecaf8e40a8d167170353b2aeb564e58f72247b4568c3db29c296f105f"
+    },
+    {
+      "tool": "format",
+      "path": "backend/planning/race_plan.py",
+      "code": "format",
+      "message_sha256": "f87c4a0ecaf8e40a8d167170353b2aeb564e58f72247b4568c3db29c296f105f"
+    },
+    {
+      "tool": "format",
+      "path": "backend/sync/weather.py",
+      "code": "format",
+      "message_sha256": "f87c4a0ecaf8e40a8d167170353b2aeb564e58f72247b4568c3db29c296f105f"
+    },
+    {
+      "tool": "format",
+      "path": "backend/weather/competition_forecast.py",
+      "code": "format",
+      "message_sha256": "f87c4a0ecaf8e40a8d167170353b2aeb564e58f72247b4568c3db29c296f105f"
+    },
+    {
+      "tool": "format",
+      "path": "backend/weather/wiring.py",
+      "code": "format",
+      "message_sha256": "f87c4a0ecaf8e40a8d167170353b2aeb564e58f72247b4568c3db29c296f105f"
+    },
+    {
+      "tool": "format",
+      "path": "scripts/hooks/guard_private_paths.py",
+      "code": "format",
+      "message_sha256": "f87c4a0ecaf8e40a8d167170353b2aeb564e58f72247b4568c3db29c296f105f"
+    },
+    {
+      "tool": "format",
+      "path": "tests/test_browser_aggregation.py",
+      "code": "format",
+      "message_sha256": "f87c4a0ecaf8e40a8d167170353b2aeb564e58f72247b4568c3db29c296f105f"
+    },
+    {
+      "tool": "format",
+      "path": "tests/test_canonical_ingest.py",
+      "code": "format",
+      "message_sha256": "f87c4a0ecaf8e40a8d167170353b2aeb564e58f72247b4568c3db29c296f105f"
+    },
+    {
+      "tool": "format",
+      "path": "tests/test_change_history.py",
+      "code": "format",
+      "message_sha256": "f87c4a0ecaf8e40a8d167170353b2aeb564e58f72247b4568c3db29c296f105f"
+    },
+    {
+      "tool": "format",
+      "path": "tests/test_css_design_tokens.py",
+      "code": "format",
+      "message_sha256": "f87c4a0ecaf8e40a8d167170353b2aeb564e58f72247b4568c3db29c296f105f"
+    },
+    {
+      "tool": "format",
+      "path": "tests/test_data_safety_coverage.py",
+      "code": "format",
+      "message_sha256": "f87c4a0ecaf8e40a8d167170353b2aeb564e58f72247b4568c3db29c296f105f"
+    },
+    {
+      "tool": "format",
+      "path": "tests/test_database_restore_validation.py",
+      "code": "format",
+      "message_sha256": "f87c4a0ecaf8e40a8d167170353b2aeb564e58f72247b4568c3db29c296f105f"
+    },
+    {
+      "tool": "format",
+      "path": "tests/test_db_migrations.py",
+      "code": "format",
+      "message_sha256": "f87c4a0ecaf8e40a8d167170353b2aeb564e58f72247b4568c3db29c296f105f"
+    },
+    {
+      "tool": "format",
+      "path": "tests/test_equipment_history.py",
+      "code": "format",
+      "message_sha256": "f87c4a0ecaf8e40a8d167170353b2aeb564e58f72247b4568c3db29c296f105f"
+    },
+    {
+      "tool": "format",
+      "path": "tests/test_guard_private_paths.py",
+      "code": "format",
+      "message_sha256": "f87c4a0ecaf8e40a8d167170353b2aeb564e58f72247b4568c3db29c296f105f"
+    },
+    {
+      "tool": "format",
+      "path": "tests/test_http_athlete_get_routes.py",
+      "code": "format",
+      "message_sha256": "f87c4a0ecaf8e40a8d167170353b2aeb564e58f72247b4568c3db29c296f105f"
+    },
+    {
+      "tool": "format",
+      "path": "tests/test_http_coach_get_routes.py",
+      "code": "format",
+      "message_sha256": "f87c4a0ecaf8e40a8d167170353b2aeb564e58f72247b4568c3db29c296f105f"
+    },
+    {
+      "tool": "format",
+      "path": "tests/test_http_diagnostics_get_routes.py",
+      "code": "format",
+      "message_sha256": "f87c4a0ecaf8e40a8d167170353b2aeb564e58f72247b4568c3db29c296f105f"
+    },
+    {
+      "tool": "format",
+      "path": "tests/test_http_privacy_get_routes.py",
+      "code": "format",
+      "message_sha256": "f87c4a0ecaf8e40a8d167170353b2aeb564e58f72247b4568c3db29c296f105f"
+    },
+    {
+      "tool": "format",
+      "path": "tests/test_http_state_events_get_routes.py",
+      "code": "format",
+      "message_sha256": "f87c4a0ecaf8e40a8d167170353b2aeb564e58f72247b4568c3db29c296f105f"
+    },
+    {
+      "tool": "format",
+      "path": "tests/test_local_test_execution.py",
+      "code": "format",
+      "message_sha256": "f87c4a0ecaf8e40a8d167170353b2aeb564e58f72247b4568c3db29c296f105f"
+    },
+    {
+      "tool": "format",
+      "path": "tests/test_nutrition_fuelling.py",
+      "code": "format",
+      "message_sha256": "f87c4a0ecaf8e40a8d167170353b2aeb564e58f72247b4568c3db29c296f105f"
+    },
+    {
+      "tool": "format",
+      "path": "tests/test_nutrition_session_fuelling.py",
+      "code": "format",
+      "message_sha256": "f87c4a0ecaf8e40a8d167170353b2aeb564e58f72247b4568c3db29c296f105f"
+    },
+    {
+      "tool": "format",
+      "path": "tests/test_performance_coach_ui_parity.py",
+      "code": "format",
+      "message_sha256": "f87c4a0ecaf8e40a8d167170353b2aeb564e58f72247b4568c3db29c296f105f"
+    },
+    {
+      "tool": "format",
+      "path": "tests/test_planning_race_plan.py",
+      "code": "format",
+      "message_sha256": "f87c4a0ecaf8e40a8d167170353b2aeb564e58f72247b4568c3db29c296f105f"
+    },
+    {
+      "tool": "format",
+      "path": "tests/test_running_dynamics.py",
+      "code": "format",
+      "message_sha256": "f87c4a0ecaf8e40a8d167170353b2aeb564e58f72247b4568c3db29c296f105f"
+    },
+    {
+      "tool": "format",
+      "path": "tests/test_state_versions.py",
+      "code": "format",
+      "message_sha256": "f87c4a0ecaf8e40a8d167170353b2aeb564e58f72247b4568c3db29c296f105f"
+    },
+    {
+      "tool": "format",
+      "path": "tests/test_sync_freshness.py",
+      "code": "format",
+      "message_sha256": "f87c4a0ecaf8e40a8d167170353b2aeb564e58f72247b4568c3db29c296f105f"
+    },
+    {
+      "tool": "format",
+      "path": "tests/test_sync_reconcile.py",
+      "code": "format",
+      "message_sha256": "f87c4a0ecaf8e40a8d167170353b2aeb564e58f72247b4568c3db29c296f105f"
+    },
+    {
+      "tool": "format",
+      "path": "tests/test_training_record_features.py",
+      "code": "format",
+      "message_sha256": "f87c4a0ecaf8e40a8d167170353b2aeb564e58f72247b4568c3db29c296f105f"
+    },
+    {
+      "tool": "format",
+      "path": "tests/test_weather_competition_forecast.py",
+      "code": "format",
+      "message_sha256": "f87c4a0ecaf8e40a8d167170353b2aeb564e58f72247b4568c3db29c296f105f"
+    },
+    {
+      "tool": "format",
+      "path": "tests/test_workout_library_export.py",
+      "code": "format",
+      "message_sha256": "f87c4a0ecaf8e40a8d167170353b2aeb564e58f72247b4568c3db29c296f105f"
     },
     {
       "tool": "mypy",

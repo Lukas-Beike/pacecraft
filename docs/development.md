@@ -98,7 +98,11 @@ and commit/tag messages, including intermediate commits, in temporary storage an
 A finding, missing Sonar CLI, or scanner error blocks the push. Deleted refs need
 no scan. After a clean scan the hook runs CI's repository quality ratchet
 (`python tools/quality_baseline.py`: mypy and Ruff, about 35 seconds
-on Windows) on a clean export of HEAD; new findings block the push. The same
+on Windows) on a clean export of HEAD; new findings block the push. A Python
+file `ruff format --check` would rewrite is a `format` finding (#3061): the
+files unformatted when the check arrived are baseline debt, and a push that
+leaves a formatted file unformatted is new. The check never rewrites a file;
+format the files you change with `ruff format <files>`. The same
 ratchet reports a function above Sonar's cognitive complexity 15 (rule
 `python:S3776`) as a `cognitive` finding named by function, not score. It
 reports a selector list repeated in the same at-rule context of `public/*.css`

@@ -33,6 +33,9 @@ CSS_DUPLICATE = "css"
 CSS_DUPLICATE_CODE = "S4666"
 # Inside these at-rules a "selector" is a keyframe step or a descriptor block.
 CSS_NO_SELECTORS = ("@keyframes", "@-webkit-keyframes", "@font-face", "@page")
+# A Python file `ruff format` would rewrite (#3061). The files unformatted when
+# the check arrived are baseline debt; one a push leaves unformatted is new.
+FORMAT = "format"
 # Line and column are reported for humans but are not debt identity, so an
 # unrelated edit that moves a known diagnostic does not fail the ratchet.
 IDENTITY_FIELDS = ("tool", "path", "code", "message_sha256")
@@ -231,6 +234,34 @@ def _functions(node: ast.AST, prefix: str = ""):
             yield from _functions(child, f"{prefix}{child.name}.")
         else:
             yield from _functions(child, prefix)
+
+
+def format_diagnostics(root: Path, files: list[str]) -> list[dict]:
+    """One finding per file `ruff format --check` would rewrite."""
+    paths: set[str] = set()
+    for batch in path_batches(files):
+        output = run(
+            [
+                *tool_command("ruff"),
+                "format",
+                "--check",
+                "--no-cache",
+                "--config",
+                "pyproject.toml",
+                "--output-format=json",
+                *batch,
+            ],
+            root,
+        )
+        paths.update(
+            Path(item["filename"]).resolve().relative_to(root.resolve()).as_posix()
+            for item in json.loads(output or "[]")
+        )
+    message = hashlib.sha256(b"would reformat").hexdigest()
+    return [
+        {"tool": FORMAT, "path": path, "code": FORMAT, "message_sha256": message}
+        for path in sorted(paths)
+    ]
 
 
 def cognitive_diagnostics(root: Path, files: list[str]) -> list[dict]:
@@ -454,6 +485,7 @@ def collect(root: Path, notes: dict[str, str]) -> tuple[dict[str, str], list[dic
             record = diagnostic("mypy", item, root)
             diagnostics.append(record)
             notes[note_key(record)] = f": {item['message']}"
+    diagnostics.extend(format_diagnostics(root, files))
     diagnostics.extend(cognitive_diagnostics(root, files))
     diagnostics.extend(css_duplicate_diagnostics(root))
     diagnostics.extend(javascript_diagnostics(root) or [])
@@ -541,12 +573,12 @@ def check(
             "--align-versions` and commit tests/fixtures/quality_baseline.json."
         )
     if any(
-        item.get("tool") not in {*TOOLS, COGNITIVE, "eslint"}
+        item.get("tool") not in {*TOOLS, COGNITIVE, FORMAT, CSS_DUPLICATE, "eslint"}
         for item in [*baseline["diagnostics"], *diagnostics]
     ):
         raise RuntimeError(
-            "Quality baseline supports Ruff, mypy, cognitive complexity and "
-            "ESLint diagnostics only"
+            "Quality baseline supports Ruff, Ruff format, mypy, cognitive "
+            "complexity, CSS duplicate selector and ESLint diagnostics only"
         )
     expected = [item for item in baseline["diagnostics"] if item["tool"] not in skipped]
     added, obsolete = compare(expected, diagnostics)

@@ -135,7 +135,7 @@ class WorkflowSourceTests(unittest.TestCase):
         self.assertLessEqual(
             {item["tool"] for item in diagnostics},
             # ESLint: Sonar's JavaScript rules beyond public/ (#3058).
-            {"ruff", "mypy", "cognitive", "eslint"},
+            {"ruff", "mypy", "cognitive", "eslint", "format", "css"},
         )
         evidence = evidence["coverage_evidence"]
         totals = evidence["totals"]

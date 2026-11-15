@@ -41,6 +41,42 @@ class QualityBaselineTests(unittest.TestCase):
     def test_existing_diagnostic_is_accepted(self):
         self.assertEqual(self.check([self.existing])[0], 0)
 
+    def test_a_push_that_unformats_a_formatted_file_is_new_debt(self):
+        # #3061: a change left four formatted files unformatted and nothing noticed.
+        root = Path(__file__).resolve().parents[1]
+        with tempfile.TemporaryDirectory() as directory:
+            tree = Path(directory)
+            (tree / "pyproject.toml").write_text(
+                (root / "pyproject.toml").read_text(encoding="utf-8"), encoding="utf-8"
+            )
+            (tree / "neat.py").write_text("x = [1, 2]\n", encoding="utf-8")
+            (tree / "known.py").write_text("y  =  1\n", encoding="utf-8")
+            (tree / "touched.py").write_text("z = [1,2]\n", encoding="utf-8")
+            found = quality_baseline.format_diagnostics(
+                tree, ["known.py", "neat.py", "touched.py"]
+            )
+        self.assertEqual(
+            [(item["tool"], item["path"], item["code"]) for item in found],
+            [("format", "known.py", "format"), ("format", "touched.py", "format")],
+        )
+        # A file unformatted when the check arrived is baseline debt; touched.py,
+        # formatted before, is new and blocks.
+        self.baseline["diagnostics"] = [self.existing, found[0]]
+        result, output = self.check([self.existing, *found])
+        self.assertEqual(result, 1)
+        self.assertIn("NEW format touched.py format", output)
+        self.assertNotIn("NEW format known.py", output)
+        self.assertEqual(self.check([self.existing, found[0]])[0], 0)
+
+    def test_a_new_css_duplicate_is_new_debt_not_an_unknown_tool(self):
+        # #3077 added the CSS check, but the baseline refused its tool name, so a
+        # real duplicate stopped the ratchet as "could not run" instead of NEW.
+        css = {"tool": "css", "path": "public/styles.css", "line": 6,
+               "code": "S4666", "message_sha256": "c" * 64}  # fmt: skip
+        result, output = self.check([self.existing, css])
+        self.assertEqual(result, 1)
+        self.assertIn("NEW css public/styles.css:6 S4666", output)
+
     def test_line_and_column_shifts_do_not_change_debt(self):
         moved = {**self.existing, "line": 9, "column": 1}
         result, output = self.check([moved])
@@ -113,14 +149,16 @@ class QualityBaselineTests(unittest.TestCase):
     def test_duplicate_diagnostics_are_not_collapsed(self):
         self.assertEqual(self.check([self.existing, self.existing])[0], 1)
 
-    def test_formatter_diagnostics_are_rejected_from_the_quality_baseline(self):
-        self.baseline["diagnostics"] = [{"tool": "format"}]
+    def test_an_unknown_tool_is_rejected_from_the_quality_baseline(self):
+        self.baseline["diagnostics"] = [{"tool": "black"}]
         with self.assertRaisesRegex(
-            RuntimeError, "Ruff, mypy, cognitive complexity and ESLint"
+            RuntimeError,
+            "Ruff, Ruff format, mypy, cognitive complexity, CSS duplicate selector "
+            "and ESLint",
         ):
             self.check([])
 
-    def test_formatter_is_not_collected_by_the_quality_gate(self):
+    def test_the_gate_runs_ruff_check_mypy_and_a_read_only_format_check(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             (root / "sample.py").write_text("value = 1\n", encoding="utf-8")
@@ -137,6 +175,7 @@ class QualityBaselineTests(unittest.TestCase):
                         })
                         for word in ("one", "two")
                     ),
+                    "[]",
                 ]  # fmt: skip
                 notes: dict[str, str] = {}
                 _, diagnostics = quality_baseline.collect(root, notes)
@@ -157,12 +196,16 @@ class QualityBaselineTests(unittest.TestCase):
             any(command[: len(ruff) + 1] == [*ruff, "check"] for command in commands)
         )
         self.assertTrue(any(command[: len(mypy)] == mypy for command in commands))
-        self.assertFalse(any("format" in command for command in commands))
+        # #3061: the format check reports only; the gate never rewrites a file.
+        formats = [command for command in commands if "format" in command]
+        self.assertEqual(len(formats), 1)
+        self.assertIn("--check", formats[0])
 
     def test_commands_stay_under_the_windows_command_line_limit(self):
         # Long synthetic paths force several Ruff batches.
         files = [f"tests/{'nested/' * 20}module_{index}.py" for index in range(450)]
         ruff_commands = []
+        format_commands = []
         mypy_files = []
 
         def fake_run(command, root, allowed=(0, 1)):
@@ -172,6 +215,9 @@ class QualityBaselineTests(unittest.TestCase):
             ruff = quality_baseline.tool_command("ruff")
             if command[: len(ruff) + 1] == [*ruff, "check"]:
                 ruff_commands.append(command)
+                return "[]"
+            if command[: len(ruff) + 1] == [*ruff, "format"]:
+                format_commands.append(command)
                 return "[]"
             mypy = quality_baseline.tool_command("mypy")
             self.assertEqual(command[: len(mypy)], mypy)
@@ -195,6 +241,10 @@ class QualityBaselineTests(unittest.TestCase):
             files,
         )
         self.assertEqual(mypy_files, files)
+        self.assertEqual(
+            [arg for command in format_commands for arg in command if arg in files],
+            files,
+        )
 
     def test_tool_version_drift_is_fatal(self):
         with self.assertRaisesRegex(RuntimeError, "versions.*--align-versions"):
@@ -613,7 +663,7 @@ class CssDuplicateSelectorTests(unittest.TestCase):
             ".a { x: 1; }\n"
             "@media (max-width: 600px) { .a { x: 2; } }\n"
             "@media (min-width: 900px) { .a { x: 3; } }\n"
-            "@supports (content: \"a\" / \"\") { .a { x: 4; } }\n"
+            '@supports (content: "a" / "") { .a { x: 4; } }\n'
             "@keyframes pulse { 0% { opacity: 0; } 0% { opacity: 1; } }\n"
             ".b .a { x: 5; }\n"
         )
