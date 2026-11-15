@@ -426,6 +426,9 @@ it. Run it with
 `-Persist` to keep the data in a named volume, `-Port`/`-Name` to adjust the
 container, `-HeavyHistory <n>` (1 to 1000) for a large synthetic history with
 full streams for performance checks (seeded once, about 5 minutes for 900),
+`-HeavyWalks <w>` (0 to 5000) and `-HeavyYears <y>` (0 to 20) to add walks
+without streams and spread the history over that many years (the production
+profile: `-HeavyHistory 850 -HeavyWalks 2950 -HeavyYears 6`, #2974),
 `-Image <tag>` to run your own local image instead of building and running the
 shared `pacecraft:local` (#2957; never pulled, and the fixture code still comes
 from this checkout's `e2e/`), and `-Stop` to remove it again (never its

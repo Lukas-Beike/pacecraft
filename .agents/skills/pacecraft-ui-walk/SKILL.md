@@ -67,7 +67,9 @@ store.
 
 For a start-up or curve performance measurement (#2801), add
 `-HeavyHistory 900` (900 synthetic 1.5 h rides and runs with full streams and
-analyses over several years; the first start seeds for about 5 minutes).
+analyses over several years; the first start seeds for about 5 minutes). For
+numbers that stand for production, use the production profile
+`-HeavyHistory 850 -HeavyWalks 2950 -HeavyYears 6` (#2974).
 Measure "right after a restart" with `docker restart fixture-walk`, then the
 walk with `--compare` against the previous walk; note other running containers,
 they share the CPU. To see which thread holds the interpreter once the app is

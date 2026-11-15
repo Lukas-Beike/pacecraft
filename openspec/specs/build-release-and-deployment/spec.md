@@ -423,11 +423,15 @@ The fixture runtime SHALL start only when `AI_COACH_DISPOSABLE_FIXTURE` is exact
 - **WHEN** the demo starts with `-HeavyHistory <n>` (1 to 1000)
 - **THEN** the fixture also seeds `n` synthetic long rides and runs with full streams and their session analyses once per count (`FIXTURE_HEAVY_HISTORY`), and readiness waits at most 600 health probes; without it nothing else changes
 
+#### Scenario: Production-sized heavy history
+- **WHEN** the demo starts with `-HeavyHistory <n>` plus `-HeavyWalks <w>` (0 to 5000) and/or `-HeavyYears <y>` (0 to 20)
+- **THEN** the fixture also seeds `w` walks without streams among the long sessions (`FIXTURE_HEAVY_WALKS`), spreads all of them evenly over `y` years instead of 1.5-day steps (`FIXTURE_HEAVY_YEARS`), seeds once per count, walks and years, and waits at most 600 plus `w` health probes; `-HeavyWalks` or `-HeavyYears` without `-HeavyHistory` is refused before anything starts
+
 #### Scenario: A lane's own image
 - **WHEN** the demo starts with `-Image <tag>` other than `pacecraft:local`
 - **THEN** it neither builds nor retags `pacecraft:local`, refuses a tag that is not present locally before it stops or removes anything, never pulls (`--pull never`), refuses a value that is not a plain image reference, and runs that tag with the same loopback port, disposable marker and this checkout's `e2e/` fixture code
 
-Evidence: `scripts/demo-container.ps1`; `e2e/fixture_runtime.py::require_disposable_fixture_marker`; `e2e/fixture_runtime.py::seed_heavy_history`; `tests/test_fixture_standard_data.py::StandardFixtureSeedLifecycleTests::test_heavy_history_seeds_count_and_full_streams_once`. Tests: `tests/test_container_delivery.py::test_fixture_refuses_any_marker_value_other_than_exact_one`; `tests/test_container_delivery.py::test_refused_names_stop_before_any_docker_call`; `tests/test_container_delivery.py::test_existing_container_is_stopped_then_removed_without_volumes`; `tests/test_container_delivery.py::test_run_arguments_keep_the_demo_on_loopback_and_disposable`.
+Evidence: `scripts/demo-container.ps1`; `e2e/fixture_runtime.py::require_disposable_fixture_marker`; `e2e/fixture_runtime.py::seed_heavy_history`; `tests/test_fixture_standard_data.py::StandardFixtureSeedLifecycleTests::test_heavy_history_seeds_count_and_full_streams_once`; `tests/test_fixture_standard_data.py::StandardFixtureSeedLifecycleTests::test_heavy_history_spreads_walks_over_the_given_years`. Tests: `tests/test_container_delivery.py::test_fixture_refuses_any_marker_value_other_than_exact_one`; `tests/test_container_delivery.py::test_refused_names_stop_before_any_docker_call`; `tests/test_container_delivery.py::test_existing_container_is_stopped_then_removed_without_volumes`; `tests/test_container_delivery.py::test_run_arguments_keep_the_demo_on_loopback_and_disposable`.
 
 ### Requirement: Public marketing deployment is separated from athlete runtime
 
