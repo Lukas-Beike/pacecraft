@@ -2132,11 +2132,20 @@ class MorningReadinessTests(unittest.TestCase):
                 result = _map({section: [fallthrough]})
                 self.assertEqual(_find(result, MetricKind.READINESS).value.value, 55.0)
                 self.assertEqual(_issues(result), [])
-        undated = _map({"readiness": [{"score": 64}]})
-        self.assertEqual(
-            [(field, reason) for _, field, reason in _issues(undated)],
-            [("calendarDate", IssueReason.MISSING)],
-        )
+        for calendar_date, reason in (
+            (None, IssueReason.MISSING),
+            ("", IssueReason.MISSING),
+            ("garbage", IssueReason.INVALID_TYPE),
+            (20261010, IssueReason.INVALID_TYPE),
+        ):
+            with self.subTest(calendar_date=calendar_date):
+                undated = _map(
+                    {"readiness": [{"calendarDate": calendar_date, "score": 64}]}
+                )
+                self.assertEqual(
+                    [(field, found) for _, field, found in _issues(undated)],
+                    [("calendarDate", reason)],
+                )
 
     def test_a_chosen_reading_keeps_its_day_whatever_its_other_date_keys(self) -> None:
         # #2884 (b, c): the readers date a chosen reading by the day the choice

@@ -1333,13 +1333,19 @@ class _HealthMapping:
 
         The choice dates a reading by ``readiness_day`` (``calendarDate`` first, a
         timestamp-shaped one by its day), so the reading it keeps is never dropped
-        afterwards; an undated reading is reported as before.
+        afterwards; a reading without a readable day is reported as before.
         """
         rows = morning_readiness(self._records(_READINESS, payload), itemgetter(1))
         for ref, record, index in rows:
             day = readiness_day(record)
             if day is None:
-                self.issue(ref, _DATE_FIELD, IssueReason.MISSING)
+                # An unreadable ``calendarDate`` keeps its own reason.
+                reason = (
+                    IssueReason.MISSING
+                    if record.get(_DATE_FIELD) in (None, "")
+                    else IssueReason.INVALID_TYPE
+                )
+                self.issue(ref, _DATE_FIELD, reason)
                 continue
             for group in _GROUPED_SECTIONS[_READINESS]:
                 self._map_group(_READINESS, record, group, ref, day, index=index)
