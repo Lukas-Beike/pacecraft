@@ -139,6 +139,60 @@ class EquipmentService:
         """Return the newest records of a kind; a limit of None reads them all."""
         return [json.loads(text) for text in equipment_store.values(db, prefix, limit)]
 
+    def _implied_assignments(
+        self, db: Any, rows: list[dict[str, Any]], explicit: dict[str, dict[str, Any]]
+    ) -> dict[str, dict[str, Any]]:
+        """The planned-unit choice, else the rule, of sessions without an own record.
+
+        Usage follows the effective assignment, so a rule can move a session's
+        count away from the item Garmin links (#3011, #3014). Only sessions
+        on or after the first rule's day are classified.
+        """
+        open_rows = {str(row["id"]): row for row in rows if str(row["id"]) not in explicit}
+        implied: dict[str, dict[str, Any]] = {}
+        planned = {
+            str(record.get("planned_unit_id")): record
+            for record in self._records(db, PLANNED_PREFIX, None)
+        }
+        for unit, session in activity_detail_store.planned_unit_sessions(
+            db, list(planned)
+        ).items():
+            if session in open_rows:
+                implied[session] = {
+                    "activity_id": session,
+                    "equipment_id": planned[unit].get("equipment_id"),
+                    "observed_at": planned[unit].get("observed_at"),
+                    "source": "planned",
+                }
+        rules = {
+            str(rule.get("kind")): rule for rule in self._records(db, RULE_PREFIX, None)
+        }
+        starts = [
+            str(entry["from"])
+            for rule in rules.values()
+            for entry in rule.get("history") or []
+        ]
+        if not starts:
+            return implied
+        candidates = [
+            row
+            for key, row in open_rows.items()
+            if key not in implied and summary_local_date(row) >= min(starts)
+        ]
+        foci = _session_foci(db, [str(row["id"]) for row in candidates])
+        for row in candidates:
+            kind = session_kind(
+                row.get("sport"), row.get("environment"), foci.get(row["id"]), row.get("purpose")
+            )
+            covered, item = rule_choice(rules.get(str(kind)), summary_local_date(row))
+            if covered:
+                implied[str(row["id"])] = {
+                    "activity_id": str(row["id"]),
+                    "equipment_id": item,
+                    "source": "rule",
+                }
+        return implied
+
     def read(
         self, item_id: str | None = None, *, activity_id: str | None = None
     ) -> dict[str, Any]:
@@ -157,10 +211,12 @@ class EquipmentService:
             items = self._records(db, EQUIPMENT_PREFIX, 100)
             links = _garmin_links(items, listed, rows, _gear_sessions(db, listed))
             partial = _partial_garmin_history(items, gear)
-            # Every explicit assignment, including an unassignment, overrides the link.
+            # Every explicit assignment, including an unassignment, overrides the
+            # planned choice, which overrides a rule, which overrides the link.
             explicit = _session_assignments(
                 db, rows, self._records(db, ASSIGNMENT_PREFIX, None)
             )
+            explicit = {**self._implied_assignments(db, rows, explicit), **explicit}
             links = {key: value for key, value in links.items() if key not in explicit}
             if item_id:
                 selected = equipment_store.value(db, EQUIPMENT_PREFIX + item_id)
@@ -198,7 +254,11 @@ class EquipmentService:
             if activity_id
             else _assignment_list(assignments),
             **(
-                {"choice": _assignment_choice(activity_id, rows, items, explicit)}
+                {
+                    "choice": _assignment_choice(
+                        activity_id, rows, items, explicit, assignments
+                    )
+                }
                 if activity_id
                 else {}
             ),
@@ -1502,6 +1562,7 @@ def _assignment_choice(
     rows: list[dict[str, Any]],
     items: list[dict[str, Any]],
     explicit: dict[str, dict[str, Any]],
+    assignments: dict[str, list[dict[str, Any]]] | None = None,
 ) -> dict[str, Any] | None:
     """The items one session can be assigned, its own choice and a suggestion (#2879).
 
@@ -1519,11 +1580,21 @@ def _assignment_choice(
     recent = [
         record
         for record in explicit.values()
-        if record.get("equipment_id") in usable
+        if record.get("source") in (None, "manual")
+        and record.get("equipment_id") in usable
         and pairs.get(str(record["activity_id"])) == pair
     ]
-    own = explicit.get(activity_id)
+    record = explicit.get(activity_id)
+    # Only the athlete's own record is a choice; a planned choice or rule is the effective item.
+    own = record if record and record.get("source") in (None, "manual") else None
+    effective = next(iter((assignments or {}).get(activity_id) or ()), None)
     return {
+        "effective": None
+        if effective is None
+        else {
+            "equipment_id": effective.get("equipment_id"),
+            "source": effective.get("source") or "manual",
+        },
         "options": [{"id": item["id"], "name": item["name"]} for item in options],
         "assigned": own.get("equipment_id") if own else None,
         "explicit": own is not None,

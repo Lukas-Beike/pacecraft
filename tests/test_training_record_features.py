@@ -1,5 +1,7 @@
 import json
 import sqlite3
+import statistics
+import time
 import unittest
 from datetime import UTC, date, datetime
 from unittest.mock import patch
@@ -12,7 +14,7 @@ from backend.athlete.equipment import EquipmentService, _garmin_kind, _garmin_sp
 from backend.canonical.garmin_payload import ITEM_SECTIONS
 from backend.canonical.section_items import split_section
 from backend.canonical.vocabulary import ProviderId
-from backend.db import canonical_domain_store, garmin_store
+from backend.db import canonical_domain_store, garmin_store, planning_store
 from backend.db.repositories import CheckinRepository
 from backend.db.schema import initialize_schema
 from backend.errors import AppError
@@ -693,6 +695,123 @@ class TrainingRecordFeatureTests(unittest.TestCase):
                 ("act_i2", ids["g3"]),
             },
         )
+
+    def test_manual_beats_planned_beats_rule_beats_the_garmin_link(self):
+        """Precedence of #3011 and #3014; usage follows the effective assignment."""
+        rows = [
+            self._ride("i1", day="2026-08-20"),
+            self._ride("i2", day="2026-08-28"),
+            self._ride("i3", day="2026-08-29"),
+            self._ride("i4", day="2026-08-30"),
+        ]
+        service = self._gear_service(rows)
+        items = self._garmin_gear(
+            service, [self._gear_row("g1", activity_ids=["ai1", "ai2", "ai3", "ai4"])], self._matches(rows)
+        )
+        self.assertEqual(items["g1"]["usage"]["assigned_sessions"], 4)
+        made = {
+            name: service.save(self._bike(name=name))["equipment"]["id"]
+            for name in ("Rule bike", "Planned bike", "Own bike")
+        }
+        now = "2026-09-01T00:00:00Z"
+        with self.manager.unit_of_work() as db:
+            # A rule set on 2026-08-25 covers the later rides only.
+            db.execute(
+                "INSERT INTO kv(key, value, updated_at) VALUES (?, ?, ?)",
+                (
+                    "equipment_rule:ride:outdoor",
+                    json.dumps({"kind": "ride:outdoor", "revision": 1, "history": [
+                        {"from": "2026-08-25", "equipment_id": made["Rule bike"]}
+                    ]}),
+                    now,
+                ),
+            )
+            planning_store.insert_planned_unit(
+                db, {"sport": "ride", "environment": "outdoor", "date": "2026-08-28"},
+                local_id="unit-i2", external_id=None, sync_dirty=0, sync_state="local",
+                sync_error=None, sync_conflict="", baseline_hash=None, last_synced_at=None, now=now,
+            )
+            db.execute(
+                "INSERT INTO activity_detail_analysis(activity_id, analysis_version, "
+                "input_sha256, payload, computed_at, created_at, updated_at) "
+                "VALUES ('act_i2', 3, ?, ?, ?, ?, ?)",
+                ("0" * 64, json.dumps({"target_snapshot": {"planned_unit_id": "unit-i2"}}), now, now, now),
+            )
+        service.assign({"planned_unit_id": "unit-i2", "equipment_id": made["Planned bike"]})
+        # The planned unit of i3 is unknown, so its own choice is what counts.
+        service.assign({"activity_id": "i3", "equipment_id": made["Own bike"]})
+        read = service.read()
+        effective = {
+            row["activity_id"]: (row["equipment_id"], row.get("source"))
+            for row in read["assignments"]
+        }
+        self.assertEqual(
+            effective,
+            {
+                "act_i1": (items["g1"]["id"], "garmin_gear"),
+                "act_i2": (made["Planned bike"], "planned"),
+                "act_i3": (made["Own bike"], None),
+                "act_i4": (made["Rule bike"], "rule"),
+            },
+        )
+        usage = {item["name"]: item["usage"]["assigned_sessions"] for item in read["items"]}
+        # The rule and the plan move counts away from the Garmin-linked item.
+        self.assertEqual(
+            (usage["Gear g1"], usage["Rule bike"], usage["Planned bike"], usage["Own bike"]),
+            (1, 1, 1, 1),
+        )
+        choice = service.read(activity_id="act_i4")["choice"]
+        self.assertEqual(choice["effective"], {"equipment_id": made["Rule bike"], "source": "rule"})
+        self.assertFalse(choice["explicit"])
+
+    def test_rules_and_planned_carry_over_keep_a_heavy_equipment_read_fast(self):
+        """A 1000-session history with rules and 50 planned choices reads in well under 2 s (#3014)."""
+        rows = [
+            {**self._ride(f"h{n}", day=f"2025-{n % 12 + 1:02d}-{n % 28 + 1:02d}"),
+             "type": "Run" if n % 2 else "Ride"}
+            for n in range(1000)
+        ]
+        service = self._gear_service(rows)
+        bike = service.save(self._bike(name="Rule bike"))["equipment"]["id"]
+        shoe = service.save(self._bike(name="Rule shoe", sport="Run", kind="shoes"))["equipment"]["id"]
+        now = "2026-09-01T00:00:00Z"
+        with self.manager.unit_of_work() as db:
+            for kind in ("run:intervals", "run:long", "run:easy", "run:race", "ride:indoor", "ride:outdoor"):
+                item = shoe if kind.startswith("run") else bike
+                db.execute(
+                    "INSERT INTO kv(key, value, updated_at) VALUES (?, ?, ?)",
+                    (f"equipment_rule:{kind}", json.dumps({"kind": kind, "revision": 1, "history": [
+                        {"from": "2025-01-01", "equipment_id": item}
+                    ]}), now),
+                )
+            for n in range(1, 100, 2):
+                planning_store.insert_planned_unit(
+                    db, {"sport": "run", "environment": "outdoor"},
+                    local_id=f"unit-{n}", external_id=None, sync_dirty=0, sync_state="local",
+                    sync_error=None, sync_conflict="", baseline_hash=None, last_synced_at=None, now=now,
+                )
+                db.execute(
+                    "INSERT INTO kv(key, value, updated_at) VALUES (?, ?, ?)",
+                    (f"equipment_planned:unit-{n}", json.dumps(
+                        {"planned_unit_id": f"unit-{n}", "equipment_id": shoe, "observed_at": now}
+                    ), now),
+                )
+                db.execute(
+                    "INSERT INTO activity_detail_analysis(activity_id, analysis_version, "
+                    "input_sha256, payload, computed_at, created_at, updated_at) "
+                    "VALUES (?, 3, ?, ?, ?, ?, ?)",
+                    (f"act_h{n}", "0" * 64, json.dumps(
+                        {"target_snapshot": {"planned_unit_id": f"unit-{n}"}}
+                    ), now, now, now),
+                )
+        timings = []
+        for _ in range(3):
+            started = time.perf_counter()
+            read = service.read()
+            timings.append(time.perf_counter() - started)
+        sources = [row.get("source") for row in read["assignments"]]
+        self.assertEqual((sources.count("planned"), sources.count("rule")), (50, 950))
+        self.assertLess(statistics.median(timings), 2.0)
 
     def test_explicit_assignment_replaces_every_garmin_link_of_the_activity(self):
         # An explicit assignment counts from the item's start, the import day.
