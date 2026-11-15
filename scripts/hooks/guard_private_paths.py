@@ -5,11 +5,19 @@ Bash/PowerShell, where deny rules cannot see file arguments. It is a simple
 safety net that matches clear path forms in the command text, not a sandbox:
 it cannot tell a path from a search term, so it avoids bare words. Exit code 2
 blocks the call and returns the message to the agent.
+
+Importing or running the composition root reads private paths indirectly:
+``server.py`` loads ``<root>/.env`` and ``<DATA_DIR>/.env`` at import (#3076).
+A Python command that imports or runs ``server`` is therefore blocked unless it
+sets ``DATA_DIR`` to a temporary directory and neither the working directory
+(the checkout root) nor that directory holds a ``.env``.
 """
 
 import json
 import re
 import sys
+import tempfile
+from pathlib import Path
 
 START = r"(?:^|[\s\"'=:])"  # start of a shell word or assignment value
 END = r"(?=$|[\s\"'/\\;|&)])"  # end of a path segment
@@ -25,6 +33,83 @@ PRIVATE = tuple(
     )
 )
 TEMPLATE = re.compile(r"\.env\.example(?![\w.-])", re.IGNORECASE)
+PYTHON_WORD = r"(?:^|[\s\"'&|;(])(?:py|python[\d.]*)(?:\.exe)?"
+PYTHON = re.compile(PYTHON_WORD + r"(?=[\s\"'])", re.IGNORECASE)
+SERVER = tuple(
+    re.compile(pattern)
+    for pattern in (
+        r"\bimport\s+(?:[\w.]+\s*,\s*)*server\b(?!\.)",  # import server, import os, server
+        r"\bfrom\s+server\s+import\b",
+        # server.py as the script run, after options only; compileall only compiles it.
+        PYTHON_WORD + r"(?:\s+-[A-Za-z]+)*\s+[\"']?[^\s\"']*server\.py(?![\w.-])",
+        r"run_path\(\s*[\"'][^\"']*server\.py",
+        r"(?:^|\s)-m\s+server\b(?!\.)",
+        r"(?:run_module|import_module|__import__)\(\s*[\"']server[\"']",
+    )
+)
+# DATA_DIR bound to the one Python process: a prefix of its own simple command,
+# or an earlier `export` (Bash) or `$env:` assignment (PowerShell).
+VALUE = r"[\"']?([^\s\"';&|]+)[\"']?"
+START_OF_COMMAND = r"(?:^|[;&|(\n])\s*"
+DATA_DIR_PREFIX = re.compile(
+    START_OF_COMMAND + r"(?:[A-Za-z_]\w*=\S*\s+)*DATA_DIR=" + VALUE
+    + r"\s+(?:[A-Za-z_]\w*=\S*\s+)*(?:py|python[\d.]*)(?:\.exe)?\s"
+)
+# A session assignment counts only as a plain statement, never after && || | (.
+DATA_DIR_SESSION = re.compile(
+    r"(?:^|;|\n)\s*(?:export\s+DATA_DIR=|\$env:DATA_DIR\s*=\s*)" + VALUE,
+    re.IGNORECASE,
+)
+# A value the shell would expand is not the path the check resolves.
+# A Windows 8.3 short name (RUNNER~1) is a literal path, not a home expansion.
+EXPANDED = re.compile(r"[$`*?\[{]|.~(?!\d)")
+# Anything that could load another checkout's server.py keeps the import blocked.
+ELSEWHERE = re.compile(
+    START_OF_COMMAND + r"(?:cd|pushd|set-location|sl|push-location)\b"
+    r"|chdir|\bPYTHONPATH\b|sys\.path|[\\/][^\s\"']*server\.py"
+    # Anything that could drop DATA_DIR again before the import.
+    r"|\bunset\b|\benv\s+-u|remove-item\s+env:|os\.environ|\(\s*export\b",
+    re.IGNORECASE,
+)
+
+
+def imports_server(command: str) -> bool:
+    return bool(PYTHON.search(command)) and any(
+        pattern.search(command) for pattern in SERVER
+    )
+
+
+def bound_data_dir(command: str) -> str | None:
+    """The DATA_DIR the command's single Python process runs with, else None."""
+    runs = list(PYTHON.finditer(command))
+    if len(runs) != 1:
+        return None
+    prefix = DATA_DIR_PREFIX.search(command)
+    if prefix is not None:
+        return prefix.group(1)
+    session = [
+        match for match in DATA_DIR_SESSION.finditer(command) if match.end() <= runs[0].start()
+    ]
+    return session[-1].group(1) if session else None
+
+
+def server_import_allowed(command: str, cwd: str) -> bool:
+    """A temporary DATA_DIR bound to the one Python process, the server.py of cwd,
+    and no .env in the checkout root or that directory."""
+    value = bound_data_dir(command)
+    if value is None or not cwd or ELSEWHERE.search(command) or EXPANDED.search(value):
+        return False
+    try:
+        data = Path(value).expanduser().resolve()
+        temp = Path(tempfile.gettempdir()).resolve()
+    except OSError:
+        return False
+    secret = "." + "env"
+    return (
+        (data == temp or temp in data.parents)
+        and not (Path(cwd) / secret).exists()
+        and not (data / secret).exists()
+    )
 
 
 def main() -> int:
@@ -35,6 +120,17 @@ def main() -> int:
         return 2
     command = str((payload.get("tool_input") or {}).get("command") or "")
     command = TEMPLATE.sub(" ", command)
+    if imports_server(command) and not server_import_allowed(
+        command, str(payload.get("cwd") or "")
+    ):
+        print(
+            "Blocked: importing or running server.py loads the checkout's and the data "
+            "directory's local settings file, which can hold live secrets (#3076). "
+            "Set DATA_DIR to a temporary directory in the same command, in a checkout "
+            "without such a file, or test through tests/run_tests.py.",
+            file=sys.stderr,
+        )
+        return 2
     if any(pattern.search(command) for pattern in PRIVATE):
         print(
             "Blocked: the command touches .env, the data directory, or Garmin tokens. "
