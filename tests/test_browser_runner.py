@@ -340,6 +340,13 @@ class BrowserRunnerTests(unittest.TestCase):
         self.assertTrue(
             all(child["status"] == "pending" for child in value["children"])
         )
+        # #3094: --grep also filters the listing, so selection matches what runs.
+        listings = [c for c in fake.commands if "--list" in c]
+        self.assertNotIn("--grep", listings[0])
+        fake = FakeProcesses()
+        self.run_main(fake, list_only=True, extra_args=("--grep", "queued"))
+        listing = next(c for c in fake.commands if "--list" in c)
+        self.assertEqual(listing[-2:], ["--grep", "queued"])
 
     def test_serial_and_two_lane_bounded_fresh_fixture_resources(self):
         for jobs in (1, 2):

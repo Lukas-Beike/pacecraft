@@ -1338,8 +1338,8 @@ def parser():
     )
     result.add_argument(
         "--grep",
-        help="run only the selected specs' tests whose title matches this regex "
-        "(Playwright --grep); a spec without a match fails",
+        help="select and run only tests whose title matches this regex "
+        "(Playwright --grep)",
     )
     result.add_argument(
         "--screenshots",
@@ -1513,11 +1513,14 @@ def main(argv=None):
                     node, cli, versions = toolchain(ROOT)
                     timing = read_weights(args.durations)
                     node_version = checked(processes, [node, "--version"]).strip()
+                    # --grep filters the listing too: children cover what runs (#3094).
+                    grep = ["--grep", args.grep] if args.grep else []
                     listing = parse_listing(
                         json.loads(
                             checked(
                                 processes,
-                                [node, str(cli), "test", "--list", "--reporter=json"],
+                                [node, str(cli), "test", "--list", "--reporter=json"]
+                                + grep,
                             )
                         )
                     )
