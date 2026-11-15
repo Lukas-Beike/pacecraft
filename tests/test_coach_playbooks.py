@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import ast
+import functools
 import re
 import unittest
 from datetime import date
+from pathlib import Path
 from typing import Any
 from unittest.mock import Mock
 
@@ -23,6 +26,7 @@ from backend.coach.request_payload import (
     compose_model_instructions,
 )
 from backend.errors import AppError
+from backend.performance.current_metrics import coach_thresholds
 
 NEW_KINDS = (
     "session_analysis",
@@ -62,6 +66,112 @@ BLOCK_WORD_BUDGETS = {
 }
 # 205: the session analysis judges a run against its stored heart-rate cap.
 TASK_WORD_BUDGET = 205
+
+# A field name in a playbook: snake_case, or a dotted path of its segments.
+_SNAKE_NAME = re.compile(r"\b[a-z][a-z0-9]*(?:_[a-z0-9]+)+\b")
+_DOTTED_PATH = re.compile(r"\b[a-z][a-z0-9_]+(?:\.[a-z][a-z0-9_]+)+\b")
+
+
+def _playbook_text() -> str:
+    # The budget table lists every block (test_every_block_is_budgeted_...).
+    blocks = [getattr(playbooks, name) for name in BLOCK_WORD_BUDGETS]
+    return "\n".join([playbooks._HEADER, *blocks, *playbooks._TASKS.values()])
+
+
+_ROOT = Path(__file__).resolve().parents[1]
+
+
+def _parsed(path: Path) -> list[ast.AST]:
+    return list(ast.walk(ast.parse(path.read_text(encoding="utf-8"))))
+
+
+@functools.cache
+def _backend_names() -> frozenset[str]:
+    """Every string literal, TypedDict field and keyword argument of server.py
+    and the backend, the playbooks aside."""
+    names: set[str] = set()
+    for path in [_ROOT / "server.py", *(_ROOT / "backend").rglob("*.py")]:
+        if path == _ROOT / "backend" / "coach" / "playbooks.py":
+            continue
+        for node in _parsed(path):
+            if isinstance(node, ast.Constant) and isinstance(node.value, str):
+                names.add(node.value)
+            elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
+                names.add(node.target.id)
+            elif isinstance(node, ast.keyword) and node.arg:
+                names.add(node.arg)
+    return frozenset(names)
+
+
+def _context_threshold_keys() -> set[str]:
+    """The literal keys current_performance_context puts beside coach_thresholds."""
+    return {
+        str(child.value)
+        for node in _parsed(_ROOT / "backend" / "performance" / "context.py")
+        if isinstance(node, ast.Dict)
+        for key, value in zip(node.keys, node.values)
+        if isinstance(key, ast.Constant)
+        and key.value == "thresholds"
+        and isinstance(value, ast.Dict)
+        for child in value.keys
+        if isinstance(child, ast.Constant)
+    }
+
+
+def _built_keys() -> dict[str, set[str]]:
+    """Blocks whose children are checked: what their code builds from complete
+    inputs. ``weather`` names both the session's weather and the forecast, so
+    its children are only checked by name."""
+    value = {"value": 250, "source": "Garmin Connect"}
+    metrics = {
+        key: value
+        for key in ("max_hr_bpm", "bike_threshold_hr_bpm", "run_threshold_hr_bpm")
+    }
+    metrics["cycling_ftp_watts"] = {
+        **value,
+        "alternatives": [{"source": "Wahoo", "value": 270}],
+        "conflict": True,
+    }
+    return {"thresholds": set(coach_thresholds(metrics)) | _context_threshold_keys()}
+
+
+def _misplaced(paths: set[str], built: dict[str, set[str]]) -> list[str]:
+    """Dotted paths naming a child their built parent block lacks."""
+    return sorted(
+        path
+        for path in paths
+        for parent, child in zip(path.split("."), path.split(".")[1:])
+        if parent in built and child not in built[parent]
+    )
+
+
+class PlaybookFieldNameTests(unittest.TestCase):
+    """A field the playbooks name must still exist (#3055): a rename or removal
+    elsewhere fails here instead of orphaning the instruction."""
+
+    def test_every_named_field_exists_in_the_backend(self) -> None:
+        text = _playbook_text()
+        names = set(_SNAKE_NAME.findall(text)) | {
+            segment
+            for path in _DOTTED_PATH.findall(text)
+            for segment in path.split(".")
+        }
+        self.assertGreater(len(names), 100)
+        self.assertEqual([], sorted(names - _backend_names()))
+
+    def test_dotted_paths_match_the_blocks_their_code_builds(self) -> None:
+        built = _built_keys()
+        self.assertLessEqual(
+            {"ftp_w", "weight", "first_thresholds"}, built["thresholds"]
+        )
+        paths = set(_DOTTED_PATH.findall(_playbook_text()))
+        self.assertIn("current_performance.thresholds.ftp_w", paths)
+        self.assertEqual([], _misplaced(paths, built))
+        # The #3046 slip: an FTP key of the metrics, not of the thresholds.
+        self.assertEqual(
+            ["current_performance.thresholds.cycling_ftp_watts"],
+            _misplaced({"current_performance.thresholds.cycling_ftp_watts"}, built),
+        )
 
 
 class PlaybookBudgetTests(unittest.TestCase):
