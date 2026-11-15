@@ -83,17 +83,24 @@ class FuellingRuleTests(unittest.TestCase):
         # 0.9 L/h for 2:45 h is a loss of 2.475 L; 2 % of 70 kg is 1.4 L, so
         # 1.075 L remain to drink: 0.39 L/h, 1.1 L in total (worked by hand).
         self.assertEqual(
-            {"max_l_per_h": 0.9, "l_per_h": 0.39, "total_l": 1.1, "sodium_g_per_l": [0.5, 0.7]},
+            {"max_l_per_h": 0.9, "loss_l": 2.5, "l_per_h": 0.39, "total_l": 1.1, "sodium_g_per_l": [0.5, 0.7]},
             drinking(0.9, 9900, 70),
         )
         # A short session within the 2 % needs nothing; without weight only the bound.
         self.assertEqual(
-            {"max_l_per_h": 0.5, "l_per_h": 0.0, "total_l": 0.0}, drinking(0.5, 3600, 70)
+            {"max_l_per_h": 0.5, "loss_l": 0.5, "l_per_h": 0.0, "total_l": 0.0},
+            drinking(0.5, 3600, 70),
         )
-        self.assertEqual({"max_l_per_h": 0.9}, drinking(0.9, 3600, None))
+        self.assertEqual({"max_l_per_h": 0.9, "loss_l": 0.9}, drinking(0.9, 3600, None))
+        # #3012: 1 L/h over 80 min loses 1.3 L, within 2 % of 70 kg (1.4 L).
+        self.assertEqual(
+            {"max_l_per_h": 1.0, "loss_l": 1.3, "l_per_h": 0.0, "total_l": 0.0},
+            drinking(1.0, 4800, 70),
+        )
         # Nothing to drink means no sodium advice; without a rate the ACSM range.
         self.assertEqual(
-            {"max_l_per_h": 0.4, "l_per_h": 0.0, "total_l": 0.0}, drinking(0.4, 7200, 80)
+            {"max_l_per_h": 0.4, "loss_l": 0.8, "l_per_h": 0.0, "total_l": 0.0},
+            drinking(0.4, 7200, 80),
         )
         self.assertEqual(
             {"generic_l_per_h": [0.4, 0.8], "sodium_g_per_l": [0.5, 0.7]},

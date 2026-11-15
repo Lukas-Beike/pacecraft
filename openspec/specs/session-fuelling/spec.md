@@ -37,6 +37,10 @@ For a planned run or ride of at least 60 minutes the recommendation SHALL be the
 - **WHEN** no weight is resolved, or no session has a sweat loss
 - **THEN** only the upper bound "bis" the sweat rate, or the starting range labelled "Startwert ohne eigene Daten", is shown; another sport or under 60 min shows no block.
 
+#### Scenario: Loss within 2 % of body weight
+- **WHEN** a 80 min run at a sweat rate of 1 L/h loses 1.3 L and 2 % of the weight is more
+- **THEN** the card shows "Pro Stunde: nicht nötig" and "Verlust: 1,3 l · unter 2 % des Gewichts" instead of "0 l" (#3012).
+
 #### Scenario: Card block
 - **WHEN** the athlete opens a planned run or ride of at least an hour, today or later
 - **THEN** a "Verpflegung" block below the steps shows drinking and carbohydrates with their basis as badges; a failed read offers "Erneut laden".

@@ -89,7 +89,11 @@ def drinking(
         result: dict[str, Any] = {"generic_l_per_h": list(GENERIC_SWEAT_L_PER_H)}
     else:
         hours = duration_s / 3600
-        result = {"max_l_per_h": round(rate_l_per_h, 2)}
+        # The expected loss, so a loss within 2 % reads as such, not as "0 l" (#3012).
+        result = {
+            "max_l_per_h": round(rate_l_per_h, 2),
+            "loss_l": round(rate_l_per_h * hours, 1),
+        }
         if weight_kg is not None and hours > 0:
             total = max(0.0, rate_l_per_h * hours - weight_kg * MAX_LOSS_SHARE)
             result["l_per_h"] = round(min(rate_l_per_h, total / hours), 2)

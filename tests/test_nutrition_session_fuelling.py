@@ -88,7 +88,9 @@ class SessionFuellingTests(unittest.TestCase):
         self.assertEqual((None, 1.2, 1), (
             indoor["forecast_c"], indoor["sweat_rate"]["l_per_h"], indoor["sweat_rate"]["sessions"]
         ))
-        self.assertEqual({"max_l_per_h": 1.2, "sodium_g_per_l": [0.5, 0.7]}, indoor["drinking"])
+        self.assertEqual(
+            {"max_l_per_h": 1.2, "loss_l": 3.3, "sodium_g_per_l": [0.5, 0.7]}, indoor["drinking"]
+        )
         swim = self.read(query(sport="swim"))
         self.assertEqual({"status": "not_long"}, swim)
         self.summaries.assert_not_called()

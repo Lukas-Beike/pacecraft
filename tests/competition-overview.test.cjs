@@ -97,6 +97,11 @@ test("long planned units ask for fuelling and show drinking and carbohydrates wi
   const generic = rendered.plannedFuellingBlock({ sweat_rate: null, drinking: { generic_l_per_h: [0.4, 0.8] }, carbohydrates: { step: "moderate", low_g: 30, high_g: 60 } }).map(textOf).join("|");
   assert.match(generic, /Startwert ohne eigene Daten.*Pro Stunde0,4–0,8 l/);
   assert.equal(rendered.plannedFuellingRows({ max_l_per_h: 1.2 }).filter(Boolean).map((row) => row.join(":")).join("|"), "Pro Stunde:bis 1,2 l");
+  // #3012: a loss within 2 % of the weight needs no drink; the card says so instead of "0 l".
+  assert.equal(
+    rendered.plannedFuellingRows({ max_l_per_h: 1, loss_l: 1.3, l_per_h: 0, total_l: 0 }).filter(Boolean).map((row) => row.join(":")).join("|"),
+    "Pro Stunde:nicht nötig|Verlust:1,3 l · unter 2 % des Gewichts",
+  );
 });
 
 test("a planned unit's fuelling is read once per query and only after the view's own reads", async () => {
