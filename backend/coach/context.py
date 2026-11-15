@@ -1400,7 +1400,9 @@ class CoachTrainingContextService:
         local_date: str = "",
         structured_context: dict[str, Any] | None = None,
     ) -> str:
-        """The context text; ``structured_context`` reuses a build of the caller (#2966)."""
+        """The context text; ``structured_context`` reuses an unselected build (#2966)."""
+        if structured_context is not None and selection is not None:
+            raise ValueError("a reused structured context has no selection")
         if structured_context is None:
             structured_context = (
                 self._structured_context_service.build(selection=selection)

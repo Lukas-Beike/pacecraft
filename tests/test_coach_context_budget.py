@@ -349,6 +349,12 @@ class CoachContextBudgetTests(unittest.TestCase):
         reused = service.build(structured_context=copy.deepcopy(structured))
         self.assertEqual(own, reused)
         self.assertIn(MARKER, own)
+        # A selected build reads its own window; a reused one cannot stand in.
+        with self.assertRaises(ValueError):
+            service.build(
+                selection=select_coach_context("Plane meine nächste Woche", {}),
+                structured_context=structured,
+            )
 
     def test_free_text_planning_gets_the_brief_and_playbook(self) -> None:
         selection = select_coach_context("Plane meine nächste Woche", {})
