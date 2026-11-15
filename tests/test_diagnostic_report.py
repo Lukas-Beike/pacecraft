@@ -167,6 +167,7 @@ class DiagnosticReportServiceTests(unittest.TestCase):
                 recent_logs=SimpleNamespace(report_entries=lambda: [{"event": "safe"}]),
                 diagnostic_capture=self.capture,
                 heavy_read_gate=lambda: {"waits_over_1s": 1, "timeouts": 0},
+                energy_balance=lambda _db: {"windows_with_estimate": 3},
             )
         )
 
@@ -184,6 +185,8 @@ class DiagnosticReportServiceTests(unittest.TestCase):
             {"waits_over_1s": 1, "timeouts": 0}, report["runtime"]["heavy_read_gate"]
         )
         self.assertEqual(report["app"], {"name": "Test Coach", "version": "1.2.3"})
+        # The adaptive expenditure basis, counts only (#3100).
+        self.assertEqual(report["energy_balance"], {"windows_with_estimate": 3})
         self.assertEqual(
             set(report),
             {
@@ -199,6 +202,7 @@ class DiagnosticReportServiceTests(unittest.TestCase):
                 "external_calendar",
                 "morning_checkin",
                 "database",
+                "energy_balance",
                 "wahoo",
                 "plan_sync",
                 "garmin_past_workout_removal",

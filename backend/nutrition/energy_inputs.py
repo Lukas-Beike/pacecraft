@@ -20,12 +20,14 @@ from typing import Any
 
 from backend.canonical.activity_detail import ActivityStreamSet
 from backend.canonical.records import Observation
-from backend.canonical.vocabulary import StreamChannel
+from backend.canonical.vocabulary import ProviderId, StreamChannel
 from backend.db.activity_detail_store import detail_sets_for_session
 from backend.nutrition.energy_balance import (
     DayInputs,
     EnergyInputs,
     EnergyWindow,
+    energy_windows,
+    history_start,
     weight_trend,
 )
 from backend.performance import activity_energy as energy
@@ -216,12 +218,14 @@ def _resting(
     own = sources.resting(db, end)
     if own is not None:
         return own
-    garmin = [
+    device = [
         value
         for day in health.values()
         if (value := _number(day.get("resting_kcal"))) is not None and value > 0
     ]
-    return (statistics.fmean(garmin), "garmin") if garmin else (None, None)
+    if not device:
+        return None, None
+    return statistics.fmean(device), ProviderId.GARMIN.value
 
 
 def read_energy_inputs(
@@ -272,6 +276,12 @@ def read_energy_inputs(
         day += timedelta(days=1)
     body_fat = dict(sources.body_fat(db, start, end))
     return EnergyInputs(days, body_fat, rmr, rmr_source), costs
+
+
+def energy_basis(db: Any, sources: EnergySources, end: date) -> dict[str, Any]:
+    """The diagnostics counts of the 12-week view ending on ``end`` (#3100)."""
+    inputs, costs = read_energy_inputs(db, sources, history_start(end), end)
+    return diagnostics(inputs, costs, energy_windows(inputs, end))
 
 
 def diagnostics(

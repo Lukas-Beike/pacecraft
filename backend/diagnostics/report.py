@@ -121,6 +121,8 @@ class DiagnosticReportDependencies:
     slowest_routes: Callable[[], list[dict[str, Any]]] | None = None
     # Waits of the heavy view reads for their gate, counts only (#3029).
     heavy_read_gate: Callable[[], dict[str, Any]] | None = None
+    # The adaptive expenditure's basis in the read snapshot, counts only (#3100).
+    energy_balance: Callable[[Any], dict[str, Any]] | None = None
     # The all-time curve build: state word, count and last duration (#2852).
     curve_build: Callable[[], dict[str, Any]] | None = None
     # The database file: its sizes, free space and recovery copies (#2848).
@@ -366,6 +368,10 @@ class DiagnosticReportService:
                     "morning_checkin", deps.morning_checkin.state
                 ),
                 "database": section("database", database),
+                "energy_balance": section(
+                    "energy_balance",
+                    lambda: deps.energy_balance(db) if deps.energy_balance else {},
+                ),
                 ProviderId.WAHOO.value: section(
                     ProviderId.WAHOO.value,
                     lambda: summarize_wahoo(

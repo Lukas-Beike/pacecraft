@@ -14,6 +14,7 @@ from backend.nutrition import energy_inputs
 from backend.nutrition.energy_inputs import (
     EnergySources,
     diagnostics,
+    energy_basis,
     read_energy_inputs,
 )
 
@@ -103,6 +104,15 @@ class EnergyInputsReaderTests(unittest.TestCase):
              "days": 3, "logged_days": 2, "flagged_days": 1, "weighins": 1,
              "sessions": 4, "unpriced_sessions": 1, "rmr_source": "garmin"},
         )  # fmt: skip
+
+    def test_energy_basis_counts_the_twelve_week_view(self) -> None:
+        basis = energy_basis(None, sources(), DAY3)
+        # 12 weekly windows; two logged days are far below 14 complete days.
+        self.assertEqual(basis["windows"], 12)
+        self.assertEqual(basis["windows_with_estimate"], 0)
+        self.assertEqual(basis["latest_window_insufficient"], "intake_days")
+        # 84 + 27 days are read: the whole history before the first window.
+        self.assertEqual(basis["days"], 7 * 11 + 28)
 
     def test_run_grade_comes_from_the_streams(self) -> None:
         streams = {
