@@ -92,6 +92,8 @@ KNOWN_EXPECT_KEYS = frozenset(
         "tool_max",
         "competition_new",
         "min_new_units",
+        "numbers_from_tools",
+        "no_session_guess",
     }
 )
 # Tables compared before and after a case; a change in a table the case does not
@@ -527,6 +529,15 @@ def score_case(
         misses += _nutrition_misses(e, before, after, turns)
     if "tool_max" in e:
         misses += _tool_max_misses(e, turns)
+    if e.get("numbers_from_tools"):
+        misses += invented_numbers(case, turns)
+    if e.get("no_session_guess") and any(
+        '"session_report"' in output
+        for turn in turns
+        for output in turn["tool_outputs"]
+    ):
+        # The reference named two sessions: a detail means the model chose one.
+        misses.append("session_guessed")
     pending = e.get("pending")
     if (pending == "kept" and after["pending"] != before["pending"]) or (
         pending == "cleared" and after["pending"] is not None
@@ -552,6 +563,59 @@ def score_case(
         "unnecessary_clarifications": unnecessary,
         "passed": not safety and not misses and not unnecessary,
     }
+
+
+# A number the answer writes: a clock time m:ss or h:mm, or a decimal.
+_NUMBER = re.compile(r"(?<![\w.,:])(\d+:\d{2}|\d+(?:[.,]\d+)?)(?![\w:])")
+# Small counts (reps, halves, the top checks) need no tool source.
+_FREE_COUNT = 10
+
+
+# A date the answer writes (6.9. or 06.09.2026) is no measured number.
+_DATE = re.compile(r"\b\d{1,2}\.\d{1,2}\.(?:\d{2,4})?")
+# Any digit run of a tool output, also inside a timestamp (T10:00:00).
+_SOURCE_NUMBER = re.compile(r"\d+:\d{2}|\d+(?:[.,]\d+)?")
+
+
+def _numbers(text: str) -> list[str]:
+    return _NUMBER.findall(_DATE.sub(" ", text))
+
+
+def _value(token: str) -> float:
+    """A token's value; a clock time counts in seconds (4:30 is 270)."""
+    if ":" in token:
+        left, right = token.split(":")
+        return int(left) * 60 + int(right)
+    return float(token.replace(",", "."))
+
+
+def invented_numbers(case: dict[str, Any], turns: list[dict[str, Any]]) -> list[str]:
+    """Numbers of the final answer that no tool output and no message holds (#3084).
+
+    A number passes when a source value, or its minutes, hours or kilometres,
+    rounds to it at the answer's precision, so 6.2 % may be written as 6 % and
+    1800 s as 30 min; clock times compare in seconds; dates are skipped.
+    """
+    sources = " ".join(
+        [*case["turns"], *(o for turn in turns for o in turn["tool_outputs"])]
+    )
+    values = {_value(token) for token in _SOURCE_NUMBER.findall(sources)}
+    # Seconds to minutes or hours and metres to kilometres are formatting.
+    known = (
+        values
+        | {v / 60 for v in values}
+        | {v / 3600 for v in values}
+        | {v / 1000 for v in values}
+    )
+    invented = []
+    for token in _numbers(turns[-1]["text"] if turns else ""):
+        value = _value(token)
+        places = len(token.replace(",", ".").partition(".")[2])
+        if ":" not in token and places == 0 and value <= _FREE_COUNT:
+            continue
+        if not any(round(source, places) == value for source in known):
+            invented.append(f"invented_number:{token}")
+    return invented[:3]
 
 
 # --- isolated server, synthetic state and the turn runner ---------------------
@@ -580,6 +644,17 @@ class CallCounter:
         self.blocked = False
         self.tool_names: list[str] = []
         self.texts: list[str] = []
+        # Every tool output the model received, once each, in order.
+        self.tool_outputs: list[str] = []
+        self._seen_calls: set[str] = set()
+
+    def observe(self, request: Any) -> None:
+        steps = getattr(request, "steps", None)
+        for step in steps if isinstance(steps, list) else ():
+            for result in step.tool_results:
+                if result.get("call_id") not in self._seen_calls:
+                    self._seen_calls.add(result.get("call_id"))
+                    self.tool_outputs.append(str(result.get("output", "")))
 
     @property
     def exhausted(self) -> bool:
@@ -636,9 +711,11 @@ class CountingTransport:
         return self._after(self._counter.record(turn))
 
     def request(self, request: Any) -> Any:
+        self._counter.observe(request)
         return self._send(lambda: self._inner.request(request))
 
     def stream_request(self, request: Any, *args: Any, **kwargs: Any) -> Any:
+        self._counter.observe(request)
         return self._send(lambda: self._inner.stream_request(request, *args, **kwargs))
 
 
@@ -747,7 +824,7 @@ def _seed(server: Any, case: dict[str, Any]) -> dict[str, str]:
         _seed_blocker(server)
     _seed_nutrition(server, setup)
     if setup.get("activity"):
-        _seed_activity(server, setup["activity"]["name"])
+        _seed_activity(server, setup["activity"])
     if setup.get("draft"):
         tags["draft"] = _seed_draft(server, setup["draft"])
     if setup.get("pending"):
@@ -788,9 +865,17 @@ def _seed_blocker(server: Any) -> None:
         )
 
 
-def _seed_activity(server: Any, name: str) -> None:
+def _seed_activity(server: Any, setup: dict[str, Any]) -> None:
+    """One synthetic run yesterday; ``second_start`` adds a second one that day.
+
+    ``readable`` adds a Garmin copy, since the activity detail reads Garmin,
+    Wahoo and local records only (#1685).
+    """
     import snapshot_seed
-    from canonical_detail_support import seed_intervals_activity
+    from canonical_detail_support import add_garmin_copy, seed_intervals_activity
+
+    name = setup["name"]
+    second_start = setup.get("second_start")
     from support import mark_tables_serving
 
     activity: dict[str, Any] = {
@@ -820,6 +905,26 @@ def _seed_activity(server: Any, name: str) -> None:
         moving_time=1800,
         distance=5000,
     )
+    if second_start:
+        # A second run that day, so "my run yesterday" names two sessions.
+        seed_intervals_activity(
+            server.database_manager(),
+            "synthetic-run-2",
+            name=name,
+            type="Run",
+            start_date_local=second_start,
+            moving_time=2400,
+            distance=6000,
+        )
+    if setup.get("readable"):
+        streams = {
+            "time": [0, 900, 1800],
+            "heartrate": [130, 140, 150],
+            "velocity_smooth": [2.8, 2.8, 2.8],
+            "distance": [0, 2500, 5000],
+        }
+        for seeded in ("synthetic-run", "synthetic-run-2")[: 1 + bool(second_start)]:
+            add_garmin_copy(server.database_manager(), seeded, streams)
 
 
 def _seed_draft(server: Any, kind: str) -> str:
@@ -1192,6 +1297,7 @@ def run_case(
         ):
             for index, message in enumerate(case["turns"]):
                 mark = len(counter.tool_names)
+                outputs = len(counter.tool_outputs)
                 receipt = server.COACH_TURNS.chat_turn_service().run(
                     message,
                     client_turn_id=f"{case['id']}-{index}",
@@ -1202,6 +1308,7 @@ def run_case(
                 turns.append(
                     {
                         "tools": counter.tool_names[mark:],
+                        "tool_outputs": counter.tool_outputs[outputs:],
                         "status": receipt.get("status", ""),
                         "text": str((receipt.get("message") or {}).get("content", "")),
                         "failed_tools": _failed_tools(receipt),

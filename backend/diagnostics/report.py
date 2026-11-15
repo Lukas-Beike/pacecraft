@@ -119,6 +119,7 @@ class DiagnosticReportDependencies:
     lt1_ride_coverage: Callable[[], dict[str, Any]] | None = None
     # The slowest API routes by pattern since start (#3017).
     slowest_routes: Callable[[], list[dict[str, Any]]] | None = None
+    session_reports: Callable[[], dict[str, Any]] | None = None
     # Waits of the heavy view reads for their gate, counts only (#3029).
     heavy_read_gate: Callable[[], dict[str, Any]] | None = None
     # The adaptive expenditure's basis in the read snapshot, counts only (#3100).
@@ -346,6 +347,10 @@ class DiagnosticReportService:
                     "slowest_routes": deps.slowest_routes()
                     if deps.slowest_routes
                     else [],
+                    # Session reports and reference resolutions, counts only (#3084).
+                    "session_reports": deps.session_reports()
+                    if deps.session_reports
+                    else {},
                 },
                 "recovery_copies": section("recovery_copies", self._recovery_copies),
                 # The newest backup the app made, before a schema release (#2996).

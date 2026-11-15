@@ -110,7 +110,7 @@ class CaseDefinitionTests(unittest.TestCase):
 
     def test_catalogue_and_incident_cases_are_covered(self):
         kinds = [c["kind"] for c in live.load_cases()]
-        self.assertEqual(kinds.count("catalogue"), 36)
+        self.assertEqual(kinds.count("catalogue"), 38)
         incident = {
             c["id"]: c["expect"]["workout"]
             for c in CASES.values()
@@ -136,6 +136,25 @@ class CaseDefinitionTests(unittest.TestCase):
 
 
 class ScorerTests(unittest.TestCase):
+    def test_every_number_of_the_answer_needs_a_tool_or_message_source(self):
+        # #3084: 6,2 rounds from 6.24, 4:30 is 270 s/km, 30 min is 1800 s,
+        # 10:00 stands in the timestamp, 6.9. is a date and 3 a free count; 91
+        # stands nowhere and is the model's own number.
+        case = {"turns": ["Analysiere meinen Lauf vom 6.9."]}
+        turns = [
+            {
+                "tool_outputs": [
+                    (
+                        '{"decoupling_pct": 6.24, "pace_s_per_km": 270, "load": 84, '
+                        '"moving_duration_s": 1800, "started_at_local": "2026-09-06T10:00:00"}'
+                    )
+                ],
+                "text": "Am 6.9. um 10:00, 30 min: Entkopplung 6,2 %, Tempo 4:30 min/km, "
+                "Last 84 in 3 Abschnitten. Last 91.",
+            }
+        ]
+        self.assertEqual(["invented_number:91"], live.invented_numbers(case, turns))
+
     def test_atomic_patch_complete_is_clean_and_partial_is_a_safety_failure(self):
         done = scored("c02-move-and-add", move_and_add)
         self.assertEqual((done["safety"], done["misses"]), ([], []))
@@ -985,6 +1004,75 @@ class ScriptedLoopTests(unittest.TestCase):
         self.assertEqual(result["turns"][0]["tools"], ["apply_training_patch"])
         self.assertEqual(result["turns"][0]["text"], "Erledigt.")
         self.assertEqual(counter.calls, 2)
+
+    def test_an_unclear_session_reference_is_asked_back_and_a_guess_is_a_miss(self):
+        # #3084: two runs yesterday; the tool returns candidates, not a detail.
+        def read(**arguments):
+            reference = {
+                "activity_id": None,
+                "date": None,
+                "sport": None,
+                "start_time": None,
+            }
+            return lambda: ModelTurn(
+                tool_calls=[
+                    {
+                        "call_id": f"call-{next(CALL_IDS)}",
+                        "name": "get_activity_details",
+                        "arguments": json.dumps({**reference, **arguments}),
+                    }
+                ]
+            )
+
+        asked, _counter = self.run_scripted(
+            "a01-ambiguous-session",
+            [
+                read(date="2026-09-06", sport="run"),
+                "Meinst du den Lauf um 10:00 oder um 17:00?",
+            ],
+        )
+        self.assertTrue(asked["passed"], asked)
+        self.assertIn('"ambiguous"', asked["turns"][0]["tool_outputs"][0])
+        guessed, _counter = self.run_scripted(
+            "a01-ambiguous-session",
+            [
+                read(date="2026-09-06", sport="run"),
+                read(activity_id="synthetic-run"),
+                "Der Lauf war locker.",
+            ],
+        )
+        self.assertIn("session_guessed", guessed["misses"])
+
+    def test_an_analysis_may_cite_only_numbers_the_tools_returned(self):
+        def detail():
+            return ModelTurn(
+                tool_calls=[
+                    {
+                        "call_id": f"call-{next(CALL_IDS)}",
+                        "name": "get_activity_details",
+                        "arguments": json.dumps(
+                            {
+                                "activity_id": "synthetic-run",
+                                "date": None,
+                                "sport": None,
+                                "start_time": None,
+                            }
+                        ),
+                    }
+                ]
+            )
+
+        clean, _counter = self.run_scripted(
+            "a02-session-numbers-from-report",
+            [detail, "1800 s Bewegungszeit auf 5000 m."],
+        )
+        self.assertTrue(clean["passed"], clean)
+        self.assertIn('"session_report"', clean["turns"][0]["tool_outputs"][0])
+        invented, _counter = self.run_scripted(
+            "a02-session-numbers-from-report",
+            [detail, "1800 s Bewegungszeit, also 17,3 km/h."],
+        )
+        self.assertEqual(["invented_number:17,3"], invented["misses"])
 
     def test_a_write_in_a_read_only_case_is_caught_by_the_snapshot(self):
         def write():

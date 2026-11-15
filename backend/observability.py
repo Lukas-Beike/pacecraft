@@ -13,8 +13,8 @@ import logging
 import re
 import sys
 import threading
-from collections import deque
-from collections.abc import Callable, Iterable, Iterator
+from collections import Counter, deque
+from collections.abc import Callable, Iterable, Iterator, Mapping
 from contextlib import AbstractContextManager, contextmanager, nullcontext
 from datetime import UTC, datetime, timedelta
 from functools import lru_cache
@@ -756,6 +756,38 @@ class RouteTimings:
             for index, row in enumerate(rows)
             if index < self.SHOWN or row["disconnects"]
         ]
+
+
+class SessionReportCounts:
+    """Session reports built since start, their checks by verdict, and how the
+    Coach's session references resolved (#3084). Counts only: no id, date or value.
+    """
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._reports = 0
+        self._verdicts: Counter[str] = Counter()
+        self._resolutions: Counter[str] = Counter()
+
+    def report(self, report: Mapping[str, Any]) -> None:
+        verdicts = Counter(
+            str(check.get("verdict")) for check in report.get("checks") or ()
+        )
+        with self._lock:
+            self._reports += 1
+            self._verdicts.update(verdicts)
+
+    def resolution(self, outcome: str) -> None:
+        with self._lock:
+            self._resolutions[outcome] += 1
+
+    def summary(self) -> dict[str, Any]:
+        with self._lock:
+            return {
+                "reports": self._reports,
+                "checks_by_verdict": dict(sorted(self._verdicts.items())),
+                "resolutions": dict(sorted(self._resolutions.items())),
+            }
 
 
 def _p95(samples: Iterable[float]) -> int | None:

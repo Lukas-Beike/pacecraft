@@ -288,22 +288,24 @@ def add_garmin_copy(
     garmin_id = f"garmin-{intervals_id}"
     with manager.unit_of_work() as db:
         row = db.execute(
-            "SELECT activity_id, sport, environment, started_at, name "
+            "SELECT activity_id, sport, environment, started_at, local_date, name "
             "FROM activity_records WHERE provider = ? AND provider_activity_id = ?",
             (INTERVALS, intervals_id),
         ).fetchone()
         db.execute(
             "INSERT INTO activity_records(provider, provider_activity_id, "
             "activity_id, state, mapper_version, source_kind, recorded_by, sport, "
-            "environment, started_at, load_model, name, fetched_at, created_at, "
-            "updated_at) VALUES ('garmin', ?, ?, 'active', 1, 'provider_reported', "
-            "'garmin', ?, ?, ?, 'unknown', ?, ?, ?, ?)",
+            "environment, started_at, local_date, load_model, name, fetched_at, "
+            "created_at, updated_at) VALUES ('garmin', ?, ?, 'active', 1, "
+            "'provider_reported', 'garmin', ?, ?, ?, ?, 'unknown', ?, ?, ?, ?)",
             (
                 garmin_id,
                 row["activity_id"],
                 row["sport"],
                 row["environment"],
                 row["started_at"],
+                # The copy keeps the session's day, so day-bounded reads find it.
+                row["local_date"],
                 row["name"],
                 NOW,
                 NOW,

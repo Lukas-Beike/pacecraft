@@ -36,7 +36,12 @@ from backend.athlete.profile import ProfileService
 from backend.config import Config
 from backend.db.manager import DatabaseManager
 from backend.db.repositories import KeyValueRepository
-from backend.observability import DiagnosticCapture, Redactor, RouteTimings
+from backend.observability import (
+    DiagnosticCapture,
+    Redactor,
+    RouteTimings,
+    SessionReportCounts,
+)
 from backend.providers.model_wiring import ModelTransportServices
 from backend.providers.observed_opener import Opener
 from backend.providers.state import ProviderStateService
@@ -86,6 +91,9 @@ class AppContext:
     diagnostic_capture: DiagnosticCapture = field(init=False, repr=False)
     # API response times per route pattern since start, for the diagnostics (#3017).
     route_timings: RouteTimings = field(default_factory=RouteTimings, repr=False)
+    session_report_counts: SessionReportCounts = field(
+        default_factory=SessionReportCounts, repr=False
+    )
     # Heavy view reads run one at a time (#3029).
     heavy_read_gate: HeavyReadGate = field(default_factory=HeavyReadGate, repr=False)
     canonical_read: Any = None

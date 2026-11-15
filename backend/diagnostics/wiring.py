@@ -67,6 +67,7 @@ def build_diagnostics(ctx: AppContext) -> DiagnosticsServices:
                 recent_logs=recent_log_entries_service(),
                 diagnostic_capture=ctx.diagnostic_capture,
                 slowest_routes=ctx.route_timings.summary,
+                session_reports=ctx.session_report_counts.summary,
                 heavy_read_gate=ctx.heavy_read_gate.summary,
                 energy_balance=lambda db: ctx.nutrition.energy_basis(db),
                 canonical_backfill=ctx.canonical_backfill.status_reader,

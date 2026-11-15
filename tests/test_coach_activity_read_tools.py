@@ -20,9 +20,13 @@ from intervals_wellness_stub import map_intervals_wellness
 from backend.activities.activity_reference import ActivityReferences
 from backend.activities.detail_contract import COACH_ACTIVITY_DETAIL_MAX_SERIES_POINTS
 from backend.canonical.vocabulary import MetricKind, ProviderId
-from backend.coach.activity_read_tools import CoachActivityReadToolService
+from backend.coach.activity_read_tools import (
+    CoachActivityReadToolService,
+    resolve_session,
+)
 from backend.coach.context import coach_context_json_size
 from backend.errors import AppError
+from backend.observability import SessionReportCounts
 from backend.performance.activity_read_service import ActivityAnalysisReadService
 from backend.performance.canonical_inputs import CanonicalPerformanceSource
 from backend.performance.freshness import NO_GARMIN_SYNC_STATUS
@@ -438,6 +442,221 @@ class CoachActivityReadToolServiceTests(unittest.TestCase):
             service.execute("get_activity_details", {"activity_id": " "})
         self.assertEqual(caught.exception.status, 400)
         self.assertEqual(caught.exception.reason, "invalid_activity_request")
+
+    def test_a_session_reference_resolves_by_sport_and_start_time(self):
+        # #3084: date, sport and a start within 30 min; never a guess.
+        run = {
+            "id": "act_run",
+            "sport": "run",
+            "started_at_local": "2026-11-14T07:05:00",
+        }
+        ride = {
+            "id": "act_ride",
+            "sport": "ride",
+            "started_at_local": "2026-11-14T17:30:00",
+        }
+        late = {
+            "id": "act_late",
+            "sport": "ride",
+            "started_at_local": "2026-11-14T19:00:00",
+        }
+        commute = {
+            "id": "act_commute",
+            "sport": "walk",
+            "purpose": "commute",
+            "started_at_local": "2026-11-14T20:00:00",
+        }
+        day = [run, ride, late, commute]
+        cases = [
+            (
+                {"sport": "run", "start_time": None, "newest": False},
+                "resolved",
+                ["act_run"],
+            ),
+            (
+                {"sport": None, "start_time": None, "newest": False},
+                "ambiguous",
+                ["act_run", "act_ride", "act_late", "act_commute"],
+            ),
+            (
+                {"sport": None, "start_time": "17:05", "newest": False},
+                "resolved",
+                ["act_ride"],
+            ),
+            (
+                {"sport": "ride", "start_time": None, "newest": False},
+                "ambiguous",
+                ["act_ride", "act_late"],
+            ),
+            # 12:00 is more than 30 min from every start: the whole day is offered.
+            (
+                {"sport": None, "start_time": "12:00", "newest": False},
+                "not_found",
+                ["act_run", "act_ride", "act_late", "act_commute"],
+            ),
+            (
+                {"sport": "ride", "start_time": None, "newest": True},
+                "resolved",
+                ["act_late"],
+            ),
+            # A named sport keeps its sessions on not_found, not the whole day.
+            (
+                {"sport": "ride", "start_time": "12:00", "newest": False},
+                "not_found",
+                ["act_ride", "act_late"],
+            ),
+            # The newest skips a commute when a training session matches.
+            (
+                {"sport": None, "start_time": None, "newest": True},
+                "resolved",
+                ["act_late"],
+            ),
+        ]
+        for arguments, status, ids in cases:
+            with self.subTest(**arguments):
+                found, sessions = resolve_session(day, **arguments)
+                self.assertEqual(
+                    (status, ids), (found, [row["id"] for row in sessions])
+                )
+
+    def test_an_unclear_reference_asks_back_with_candidates_and_no_detail(self):
+        activity_read = Mock()
+        activity_read.summaries_between.return_value = [
+            {
+                "id": "act_ride",
+                "sport": "ride",
+                "name": "Provider text never reaches the Coach",
+                "started_at_local": "2026-11-14T17:30:00",
+                "moving_duration_s": 3600,
+                "distance_m": 30000,
+            },
+            {
+                "id": "act_run",
+                "sport": "run",
+                "started_at_local": "2026-11-14T07:05:00",
+            },
+        ]
+        counts = SessionReportCounts()
+        service = CoachActivityReadToolService(
+            activity_read,
+            Mock(),
+            Mock(),
+            lambda: date(2026, 11, 15),
+            report_counts=counts,
+        )
+        result = service.execute(
+            "get_activity_details",
+            {
+                "activity_id": None,
+                "date": "2026-11-14",
+                "sport": None,
+                "start_time": None,
+            },
+        )
+        activity_read.summaries_between.assert_called_once_with(
+            date(2026, 11, 14), date(2026, 11, 14)
+        )
+        activity_read.detail.assert_not_called()
+        self.assertEqual("ambiguous", result["status"])
+        self.assertEqual(
+            [
+                {
+                    "id": "act_ride",
+                    "started_at_local": "2026-11-14T17:30:00",
+                    "sport": "ride",
+                    "moving_duration_s": 3600,
+                    "distance_m": 30000,
+                    "session_focus": None,
+                },
+                {
+                    "id": "act_run",
+                    "started_at_local": "2026-11-14T07:05:00",
+                    "sport": "run",
+                    "moving_duration_s": None,
+                    "distance_m": None,
+                    "session_focus": None,
+                },
+            ],
+            result["candidates"],
+        )
+        # Newest first; the stored name stays out.
+        self.assertNotIn("Provider text", json.dumps(result))
+        self.assertEqual({"ambiguous": 1}, counts.summary()["resolutions"])
+
+    def test_an_id_a_unique_reference_and_no_reference_read_one_detail(self):
+        activity_read = Mock()
+        activity_read.summaries_between.return_value = [
+            {
+                "id": "act_old",
+                "sport": "run",
+                "started_at_local": "2026-11-13T07:00:00",
+            },
+            {
+                "id": "act_new",
+                "sport": "run",
+                "started_at_local": "2026-11-15T06:30:00",
+            },
+        ]
+        activity_read.detail.return_value = {"ok": True}
+        counts = SessionReportCounts()
+        service = CoachActivityReadToolService(
+            activity_read,
+            Mock(),
+            Mock(),
+            lambda: date(2026, 11, 15),
+            report_counts=counts,
+        )
+        empty = {"activity_id": None, "date": None, "sport": None, "start_time": None}
+        cases = [
+            ({**empty, "activity_id": "act_button"}, "act_button"),
+            ({**empty, "date": "2026-11-13", "start_time": "07:20"}, "act_old"),
+            (empty, "act_new"),
+        ]
+        for arguments, expected in cases:
+            with self.subTest(expected=expected):
+                service.execute("get_activity_details", arguments)
+                self.assertEqual(expected, activity_read.detail.call_args.args[0])
+        # Without a date the newest session of the last 30 days is meant.
+        self.assertEqual(
+            (date(2026, 10, 16), date(2026, 11, 15)),
+            activity_read.summaries_between.call_args.args,
+        )
+        # A reference whose detail cannot be read is no resolution.
+        activity_read.detail.side_effect = AppError(404, "missing", reason="missing")
+        with self.assertRaises(AppError):
+            service.execute(
+                "get_activity_details", {**empty, "activity_id": "act_gone"}
+            )
+        self.assertEqual(
+            {"by_id": 1, "by_reference": 1, "newest": 1},
+            counts.summary()["resolutions"],
+        )
+
+    def test_a_malformed_reference_is_rejected(self):
+        service = CoachActivityReadToolService(Mock(), Mock(), Mock(), date.today)
+        for arguments in (
+            {
+                "activity_id": None,
+                "date": "14.11.2026",
+                "sport": None,
+                "start_time": None,
+            },
+            {
+                "activity_id": None,
+                "date": "2026-11-14",
+                "sport": None,
+                "start_time": "7 Uhr",
+            },
+        ):
+            with (
+                self.subTest(arguments=arguments),
+                self.assertRaises(AppError) as caught,
+            ):
+                service.execute("get_activity_details", arguments)
+            self.assertEqual(
+                (400, "invalid_activity_request"),
+                (caught.exception.status, caught.exception.reason),
+            )
 
     def test_detail_passes_canonical_inputs_resolved_once_per_call(self):
         selector, service = _canonical_activity_tool(

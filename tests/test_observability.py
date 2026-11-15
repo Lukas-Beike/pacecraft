@@ -26,6 +26,7 @@ from backend.observability import (
     JsonLogFormatter,
     Redactor,
     RouteTimings,
+    SessionReportCounts,
     configure_logging,
     diagnostic_capture_response,
     diagnostic_response_shape,
@@ -958,6 +959,31 @@ class RouteTimingTests(unittest.TestCase):
         self.assertEqual(len(rows), RouteTimings.SHOWN + 1)
         self.assertEqual(rows[-1]["route"], "GET /api/left")
         self.assertIsNone(rows[-1]["p95_ms"])
+
+    def test_session_report_counts_hold_counts_only(self):
+        # #3084: reports built, checks by verdict and resolutions; no id or value.
+        counts = SessionReportCounts()
+        counts.report(
+            {
+                "checks": [
+                    {"id": "decoupling", "verdict": "notable", "value": 6.2},
+                    {"id": "steadiness", "verdict": "ok", "value": 1.02},
+                    {"id": "rep_fade", "verdict": "ok", "value": -1.0},
+                ]
+            }
+        )
+        counts.report({"checks": [{"id": "decoupling", "verdict": "unknown"}]})
+        counts.resolution("by_id")
+        counts.resolution("ambiguous")
+        counts.resolution("by_id")
+        self.assertEqual(
+            {
+                "reports": 2,
+                "checks_by_verdict": {"notable": 1, "ok": 2, "unknown": 1},
+                "resolutions": {"ambiguous": 1, "by_id": 2},
+            },
+            counts.summary(),
+        )
 
 
 class HttpAccessLogLevelTests(unittest.TestCase):

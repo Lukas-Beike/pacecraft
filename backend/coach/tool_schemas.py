@@ -12,6 +12,7 @@ from backend.activities.hr_cap import (
     cap_table_text,
 )
 from backend.athlete.profile import COACH_READ_ONLY_FIELDS
+from backend.canonical.vocabulary import Sport
 from backend.db.repositories import NUTRIENT_COLUMNS
 from backend.nutrition.catalog import (
     GAP_ORIGINS,
@@ -433,8 +434,28 @@ def build_structured_tool_schemas(
         ),
         _canonical_coach_tool(
             "get_activity_details",
-            "Read the bounded, sanitized activity_detail.v1 document of exactly one completed local session from any connected provider, with per-value source labels. Use only after an explicit request to analyse or deeply review that one activity; resolve its exact activity ID with list_recent_activities first when needed; activity_id accepts the local ID (act_...) or the provider activity ID. Never use this for generic activity summaries or all past activities. A strength session's duration is its total time (elapsed_duration_s); its moving time is additional information.",
-            {"activity_id": {"type": "string", "minLength": 1, "maxLength": 200}},
+            "Read the bounded, sanitized activity_detail.v1 document of exactly one completed local session from any connected provider, with per-value source labels. Only after an explicit request to analyse that one activity; never for generic summaries. activity_id (act_... or a provider ID) when the message names one, else date, sport and start_time as named; all null reads the newest session. Status ambiguous or not_found returns candidates, no detail: ask which one, then call with its activity_id. A strength session's duration is its total time (elapsed_duration_s).",
+            {
+                "activity_id": {
+                    "type": ["string", "null"],
+                    "minLength": 1,
+                    "maxLength": 200,
+                },
+                "date": {
+                    "type": ["string", "null"],
+                    "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+                    "description": "Local day, YYYY-MM-DD.",
+                },
+                "sport": {
+                    "type": ["string", "null"],
+                    "enum": [*(sport.value for sport in Sport), None],
+                },
+                "start_time": {
+                    "type": ["string", "null"],
+                    "pattern": "^\\d{2}:\\d{2}$",
+                    "description": "Local start HH:MM, matched within 30 min.",
+                },
+            },
             strict=True,
         ),
         _canonical_coach_tool(

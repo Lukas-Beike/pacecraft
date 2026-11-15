@@ -94,9 +94,9 @@ _SPORT_BLOCKS = {"run": _RUN_SESSION, "ride": _RIDE_SESSION}
 _TASKS = {
     "session_analysis": """\
 Task: analyze the requested completed session, by default the last one.
-- Load it with get_activity_details; planned_units hold the local plan one day around it. Rules 6d and 8c-8e stay; read_coach_context loads planned units beyond two days.
-- session_report holds every deterministic check computed by code: value, rule, threshold, basis (personal, plan or fixed), verdict and severity. Explain it; never compute numbers or verdicts yourself.
-- Lead with the checks in session_report.lead, then mention every other notable check briefly and name each unknown with its reason. An ok check only when it matters for the focus.
+- Load it with get_activity_details (activity_id, else date, sport, start_time); on ambiguous or not_found ask, never guess. planned_units hold the local plan one day around it. Rules 6d and 8c-8e stay; read_coach_context loads planned units beyond two days.
+- session_report holds every deterministic check: value, rule, threshold, basis (personal, plan or fixed), verdict and severity. Explain it; never compute numbers or verdicts yourself.
+- Lead with the checks in session_report.lead, then mention every other notable check and name each unknown with its reason. An ok check only when the focus needs it.
 - Beyond the report, raise an observation only by citing a field and its value from the details (warm-up, cool-down or recovery pace, a strap swap, an unplanned stop), never by your own arithmetic.
 - Interpret: likely causes (heat, hills, wind, sleep, the days before, sensor errors) and fitness versus fatigue. Temperature only from weather.temperature_c and heat_note, never a device; else unknown.
 - Race (purpose race): pacing and finish against target; no interval verdicts.
