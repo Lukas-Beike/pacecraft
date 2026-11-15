@@ -8,10 +8,12 @@ import unittest
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from support import temp_database
 
+from backend.coach.job_store import CoachJobStore
 from backend.config import load_config
 from backend.db import manager as manager_module
 from backend.db.manager import (
@@ -27,6 +29,8 @@ from backend.db.schema import (
     initialize_schema,
 )
 from backend.errors import DATABASE_BUSY_MESSAGE, DatabaseBusyError
+from backend.runtime.maintenance import MaintenanceGate
+from backend.sync.jobs import SyncJobStore
 
 
 def _capture(errors: list[BaseException], read) -> None:
@@ -495,12 +499,122 @@ class DatabaseManagerTests(unittest.TestCase):
             with ThreadPoolExecutor(max_workers=3) as pool:
                 calls = [pool.submit(kept) for _ in range(3)]
                 if wait_s < 1:
-                    # Waiters that hold what the read needs give up and read alone.
-                    time.sleep(0.3)
+                    # Waiters past wait_s give up and read alone: all three read.
+                    deadline = time.monotonic() + 5
+                    while len(reads) < 3 and time.monotonic() < deadline:
+                        time.sleep(0.01)
                 release.set()
                 for call in calls:
                     call.result(5)
             self.assertEqual(len(reads), expected)
+
+    def test_a_snapshot_never_waits_for_a_first_read_without_a_lease(self):
+        # The first read may need the reader slot the snapshot holds (#3043).
+        manager = self.make_wal_manager()
+        reads = []
+        release = threading.Event()
+
+        def read():
+            reads.append(1)
+            count = len(reads)
+            if count == 1:
+                release.wait(5)
+            return count
+
+        kept = kept_until_change(lambda: manager, read, wait_s=5.0)
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            leader = pool.submit(kept)
+            while not reads:
+                time.sleep(0.01)
+            with manager.read_snapshot():
+                started = time.monotonic()
+                self.assertEqual(kept(), 2)
+                self.assertLess(time.monotonic() - started, 1.0)
+            release.set()
+            self.assertEqual(leader.result(5), 1)
+
+    def test_a_failed_first_read_lets_its_waiters_read_alone(self):
+        manager = self.make_wal_manager()
+        reads = []
+        release = threading.Event()
+
+        def read():
+            reads.append(1)
+            if len(reads) == 1:
+                release.wait(5)
+                raise RuntimeError("first read failed")
+            return len(reads)
+
+        kept = kept_until_change(lambda: manager, read, wait_s=5.0)
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            leader = pool.submit(kept)
+            while not reads:
+                time.sleep(0.01)
+            waiter = pool.submit(kept)
+            time.sleep(0.05)
+            started = time.monotonic()
+            release.set()
+            with self.assertRaises(RuntimeError):
+                leader.result(5)
+            # The waiter wakes at once and reads itself; the value is kept.
+            self.assertEqual(waiter.result(5), 2)
+            self.assertLess(time.monotonic() - started, 2.0)
+        self.assertEqual((kept(), len(reads)), (2, 2))
+
+    def test_a_failed_snapshot_start_leaves_no_revision_pinned(self):
+        # A BEGIN that fails must not leave this thread on an old revision (#3043).
+        failing = {"begin": False}
+
+        class Connection:
+            def __init__(self, connection):
+                object.__setattr__(self, "_connection", connection)
+
+            def execute(self, sql, *args):
+                if failing["begin"] and sql == "BEGIN":
+                    raise sqlite3.OperationalError("synthetic BEGIN failure")
+                return self._connection.execute(sql, *args)
+
+            def __getattr__(self, name):
+                return getattr(self._connection, name)
+
+            def __setattr__(self, name, value):
+                setattr(self._connection, name, value)
+
+        backend = SimpleNamespace(
+            connect=lambda *args, **kwargs: Connection(
+                sqlite3.connect(*args, **kwargs)
+            ),
+            Row=sqlite3.Row,
+        )
+        manager = temp_database(self, "pin.db", backend=backend)
+        with manager.unit_of_work() as db:
+            db.execute("CREATE TABLE records (value INTEGER NOT NULL)")
+        failing["begin"] = True
+        with self.assertRaises(sqlite3.OperationalError), manager.read_snapshot():
+            pass
+        failing["begin"] = False
+        with manager.unit_of_work() as db:
+            db.execute("INSERT INTO records(value) VALUES (1)")
+        self.assertEqual(manager.read_revision(), manager.write_revision)
+
+    def test_idle_job_claims_leave_the_revision_alone(self):
+        # The sync and Coach workers claim about once a second; with nothing
+        # due they change no row, so the kept summaries stay (#3043).
+        manager = temp_database(self, "claims.db", schema=True)
+        sync_jobs = SyncJobStore(
+            manager, lambda: "2026-11-15T08:00:00+00:00", lambda: "job-1"
+        )
+        coach_jobs = CoachJobStore(
+            lambda: manager,
+            threading.Event(),
+            MaintenanceGate(),
+            lambda: "2026-11-15T08:00:00+00:00",
+        )
+        before = manager.write_revision
+        for _ in range(3):
+            self.assertIsNone(sync_jobs.claim())
+            self.assertIsNone(coach_jobs.claim())
+        self.assertEqual(manager.write_revision, before)
 
     def test_read_snapshot_is_consistent_across_concurrent_commits(self):
         manager = self.make_wal_manager()

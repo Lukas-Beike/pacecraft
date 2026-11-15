@@ -184,13 +184,15 @@ def kept_until_change[T](
     keyed by the revision it sees at least (``DatabaseManager.read_revision``);
     one inside a unit of work is neither kept nor served, since it may see
     uncommitted rows. Concurrent callers of one revision wait for the first
-    one's read, at most ``wait_s``: a waiter may hold a snapshot the read
-    needs (a reader slot, a restore drain), so it then reads itself. No lock
-    is held while reading.
+    one's read, at most ``wait_s``. A caller holding a lease (a snapshot and
+    its reader slot) never waits for a first reader without one: that read
+    may need the very slot the caller holds, so it reads on its own
+    connection instead (#3043). No lock is held while reading.
     """
     lock = threading.Lock()
     kept: list[Any] = [None, -1, None]
-    running: dict[tuple[int, int], threading.Event] = {}
+    # Per revision: the first reader's done event and whether it holds a lease.
+    running: dict[tuple[int, int], tuple[threading.Event, bool]] = {}
 
     def fill(manager: DatabaseManager, revision: int | None) -> T:
         value = read()
@@ -209,11 +211,14 @@ def kept_until_change[T](
         if revision is None:
             return read()
         key = (id(manager), revision)
+        leased = manager.holds_lease()
         with lock:
             if served(manager, revision):
                 return kept[2]
             leading = key not in running
-            done = running.setdefault(key, threading.Event())
+            done, leader_leased = running.setdefault(key, (threading.Event(), leased))
+        if not leading and leased and not leader_leased:
+            return fill(manager, revision)
         if not leading:
             done.wait(wait_s)
             with lock:
@@ -300,6 +305,10 @@ class DatabaseManager:
         nothing, so they leave it as it is.
         """
         return self._write_revision
+
+    def holds_lease(self) -> bool:
+        """Whether this context holds a lease (a reader, snapshot or unit of work)."""
+        return self._lease_held.get()
 
     def read_revision(self) -> int | None:
         """The revision a read here sees at least; None inside a unit of work.
@@ -539,9 +548,11 @@ class DatabaseManager:
                 reusable = False
                 try:
                     connection.execute("PRAGMA query_only = ON")
-                    # Read before the snapshot's first query fixes its state.
-                    revision_token = self._snapshot_revision.set(self._write_revision)
                     connection.execute("BEGIN")
+                    # BEGIN is deferred: the first query fixes the snapshot, so
+                    # the revision read here is never newer than its state. Set
+                    # after BEGIN, a failed BEGIN leaves no stale pin (#3043).
+                    revision_token = self._snapshot_revision.set(self._write_revision)
                     snapshot_token = self._snapshot_context.set(connection)
                     reader_token = self._reader_context.set(connection)
                     try:

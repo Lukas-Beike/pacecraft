@@ -275,6 +275,37 @@ class ActivityReadServiceTests(unittest.TestCase):
             ),
         )
 
+    def test_the_detail_never_changes_the_kept_summaries(self):
+        # The kept summaries are shared by every reader (#3043): a detail that
+        # takes its summary from them leaves them as they were.
+        self.service()
+        shared = (
+            {
+                "id": "act_new",
+                "record_ids": {"garmin": "new"},
+                "purpose": "race",
+                "aerobic_training_effect": 3.7,
+                "training_effect_label": "VO2MAX",
+                "pace_zone_times": [{"id": "Z2", "secs": 1200}],
+                "sources": {
+                    "aerobic_training_effect": "Garmin Connect",
+                    "pace_zone_times": "Lokale Zonen",
+                },
+            },
+        )
+        before = copy.deepcopy(shared)
+        result = self.detail_service(
+            self.snapshot, session_summaries=lambda: shared
+        ).detail(
+            "new",
+            garmin_status=NO_GARMIN_SYNC_STATUS,
+            profile={},
+            today=date(2026, 9, 20),
+            validation=False,
+        )
+        self.assertEqual(3.7, result["training_effect"]["aerobic_training_effect"])
+        self.assertEqual(before, shared)
+
     def test_detail_carries_the_providers_own_training_effect(self):
         # #2831: one record's values with its label, an effect of 0.0 included.
         summary = {
