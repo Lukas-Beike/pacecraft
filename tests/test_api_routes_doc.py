@@ -8,8 +8,10 @@ and ``Errors:`` paragraphs.
 import inspect
 import re
 import sys
+import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 # The repository root, for running this file as a script with --write.
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -26,8 +28,15 @@ PROSE_ROUTE = re.compile(r"`(GET|POST|PUT) (/api/[^`\s]+)`")
 RETIRED_ALIASES = {"/api/logs/clear", "/api/diagnostics/clear"}
 
 
+def _parts(document: str) -> tuple[str, str, str]:
+    """The text before the generated section, the section and the text after it."""
+    before, rest = document.split(BEGIN, 1)
+    generated, after = rest.split(END, 1)
+    return before, generated, after
+
+
 def _generated(document: str) -> str:
-    return document.split(BEGIN, 1)[1].split(END, 1)[0]
+    return _parts(document)[1]
 
 
 def _rendered() -> str:
@@ -41,6 +50,24 @@ class ApiRoutesDocTests(unittest.TestCase):
             _rendered(),
             "Regenerate with: python tests/test_api_routes_doc.py --write",
         )
+
+    def test_writer_keeps_lf_so_a_current_document_shows_no_change(self):
+        # #3008: Windows wrote CRLF, and git listed an unchanged document as modified.
+        with tempfile.TemporaryDirectory() as directory:
+            doc = Path(directory) / "api-routes.md"
+            doc.write_bytes(f"# Intro\n\n{BEGIN}stale\n{END}\nTail\n".encode())
+            write_document(doc)
+            written = doc.read_bytes()
+            self.assertNotIn(b"\r", written)
+            text = written.decode("utf-8")
+            self.assertEqual(
+                (_parts(text)[0], _parts(text)[2]), ("# Intro\n\n", "\nTail\n")
+            )
+            self.assertEqual(_generated(text), _rendered())
+            # Linux CI writes LF anyway: pin the argument that keeps Windows on LF.
+            with mock.patch.object(Path, "write_text", autospec=True) as write:
+                write_document(doc)
+            self.assertEqual(write.call_args.kwargs["newline"], "\n")
 
     def test_every_route_handler_states_its_purpose_and_contract(self):
         def contract(route):
@@ -74,11 +101,16 @@ class ApiRoutesDocTests(unittest.TestCase):
             self.assertNotIn(alias, {path for _, path in registered})
 
 
+def write_document(path: Path = DOC) -> None:
+    """Regenerate the routes section; LF on every platform, as git stores it (#3008)."""
+    before, _, after = _parts(path.read_text(encoding="utf-8"))
+    path.write_text(
+        before + BEGIN + _rendered() + END + after, encoding="utf-8", newline="\n"
+    )
+
+
 if __name__ == "__main__":
     if "--write" in sys.argv:
-        document = DOC.read_text(encoding="utf-8")
-        before, rest = document.split(BEGIN, 1)
-        after = rest.split(END, 1)[1]
-        DOC.write_text(before + BEGIN + _rendered() + END + after, encoding="utf-8")
+        write_document()
     else:
         unittest.main()
