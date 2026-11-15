@@ -47,13 +47,13 @@ from backend.http_api.handler import (
 )
 from backend.http_api.history_undo_post import HistoryUndoPostRoutes
 from backend.http_api.library_page import LibraryPageService
+from backend.http_api.library_post import LibraryPostRoutes
 from backend.http_api.metric_export_post import MetricExportPostRoutes
 from backend.http_api.nutrition import (
     NutritionGetRoutes,
     NutritionPostRoutes,
     NutritionPutRoutes,
 )
-from backend.http_api.library_post import LibraryPostRoutes
 from backend.http_api.planned_unit_focus_post import PlannedUnitFocusPostRoutes
 from backend.http_api.planning_get import PlanningGetRoutes
 from backend.http_api.privacy_delete_post import PrivacyDeletePostRoutes
@@ -662,6 +662,7 @@ def build_http_api(
         feedback_post,
         history_undo_post,
         planned_unit_focus_post,
+        library_post,
         credentials_put,
         equipment_post,
         first_threshold_post,
@@ -715,6 +716,7 @@ def build_http_api(
             diagnostics_delete_post,
             nutrition_post,
             planned_unit_focus_post,
+            library_post,
             credentials_put,
             wahoo_get,
             wahoo_post,

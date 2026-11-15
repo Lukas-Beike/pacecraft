@@ -77,6 +77,8 @@ handler's docstring. Regenerate it with
 | POST | `/api/garmin/sync` | Session + CSRF | after access | Queue a provider synchronization, or a targeted refresh of the external calendars or the weather. |
 | GET | `/api/health` | Public | no | Liveness and maintenance state. |
 | GET | `/api/library` | Session | no | Workout library page. |
+| POST | `/api/library/{id}/archive` | Session + CSRF | after access | Take a library entry out of the library after the athlete confirmed it. |
+| POST | `/api/library/{id}/schedule` | Session + CSRF | after access | Plan a library entry on one day as a local unit, without a remote write. |
 | POST | `/api/login` | Public | no | Create a session. |
 | POST | `/api/logout` | Session + CSRF | no | End the current session. |
 | GET | `/api/logs` | Session | no | Recent redacted log entries. |
@@ -850,6 +852,39 @@ exists, `wahoo_state`), `next_cursor` (null on the last page) and
 `limit` (the applied page size).
 
 Errors: none beyond the common ones.
+
+### `POST /api/library/{id}/archive`
+
+Request: path `{id}`, the library entry's local id; JSON body
+`{"confirmed": true}` and no other field. It runs the template `archive`
+behind the Coach's `manage_training_templates`: the entry stays stored,
+hidden from the library, and units planned from it stay unchanged.
+
+Response: 200 `{"status": "local", "local_id", "change"}`; `change` is the
+undo reference.
+
+Errors: 409 `confirmation_required` "Das Löschen muss bestätigt werden."
+without `confirmed: true`; 400 "Die Anfrage muss ein Objekt sein." or
+"Unbekannte Felder: …" for another body; 400 for an id that is no UUID;
+404 "Bibliothekseinheit nicht gefunden."; 409 "Geplante lokale Einheiten
+werden im Kalender bearbeitet." for a planned unit.
+
+### `POST /api/library/{id}/schedule`
+
+Request: path `{id}`, the library entry's local id; JSON body
+`{"date": "YYYY-MM-DD"}` and no other field. It runs the batch behind the
+Coach's `apply_workout_library_plan`; the next explicit sync exports the
+new unit.
+
+Response: 200 `{"status", "planned", "change"}`: `status` is `local`, or
+`already_planned` when the entry already sits on that day (then without
+`change`); `planned` is the planned unit; `change` is the undo reference.
+
+Errors: 400 "Die Anfrage muss ein Objekt sein." or "Unbekannte Felder: …"
+for another body; 400 for an id that is no UUID or a date that is no
+JJJJ-MM-TT date; 404 "Bibliothekseinheit nicht gefunden."; 409 "Planung
+wegen bestehender Kalendereinheiten nicht möglich: …" for a day the
+calendar rules out.
 
 ### `POST /api/login`
 
