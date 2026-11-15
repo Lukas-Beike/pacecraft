@@ -569,6 +569,12 @@ class EquipmentHistoryTests(unittest.TestCase):
         # Undo bumps the revision, so a client that read the undone rule must read again.
         self.assertEqual(restored["revision"], 3)
         self.assertEqual(self.actions("equipment_rule"), ["create", "update", "undo"])
+        # The equipment read lists every kind with its latest choice and revision.
+        rules = self.service.read()["rules"]
+        self.assertEqual(
+            rules["ride:outdoor"], {"equipment_id": road["id"], "from": "2026-10-02", "revision": 3}
+        )
+        self.assertEqual(rules["run:easy"], {"equipment_id": None, "from": None, "revision": 0})
 
     def test_a_rule_needs_a_known_kind_a_fresh_revision_and_a_matching_item(self) -> None:
         bike = self.bike()
@@ -590,12 +596,17 @@ class EquipmentHistoryTests(unittest.TestCase):
 
     def test_a_rule_without_an_item_is_no_default_and_cannot_be_applied(self) -> None:
         self.many_rides(2)
+        bike = self.bike()
         self.service.save_rule(
             {"kind": "ride:outdoor", "equipment_id": None, "expected_revision": 0}
         )
         with self.assertRaises(AppError) as refused:
             self.service.rule_apply_preview("ride:outdoor")
         self.assertEqual(refused.exception.status, 409)
+        self.service.assign({"activity_id": "act_m0", "equipment_id": bike["id"]})
+        effective = {row["activity_id"]: row for row in self.service.read()["assignments"]}
+        # The session without an own choice stays unassigned instead of "Keiner".
+        self.assertEqual(set(effective), {"act_m0"})
 
     def test_rule_history_is_bounded_and_the_latest_choice_up_to_a_day_wins(self) -> None:
         rule = {

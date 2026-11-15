@@ -1508,7 +1508,7 @@ async function renderTrainingRecords({ background = false } = {}) { // NOSONAR
       tab.setAttribute("role", "tab"); tabs.append(tab);
       const panel = h("div", { className: "equipment-tab-panel", id: `equipmentPanel-${key}`, "aria-labelledby": tab.id, tabIndex: 0, hidden: equipmentTab !== key });
       panel.setAttribute("role", "tabpanel");
-      panel.append(equipmentAddRow(key));
+      panel.append(equipmentAddRow(key), equipmentRuleTable(key, equipment.rules, groups[key].items));
       for (const item of groups[key].items) panel.append(card(key)({ item, source: "local" }));
       for (const item of garminGroups[key]) panel.append(card(key)({ item, source: "provider" }));
       if (archivedGroups[key].length) panel.append(archive(key, archivedGroups[key]));
@@ -1977,6 +1977,88 @@ const EQUIPMENT_FORM_CHOICES = {
   run: { sports: [["run/outdoor", "Laufen"]], kinds: [["shoes", "Schuh"], ["other", "Sonstiges"]] },
 };
 const EQUIPMENT_SAVED_FIELDS = ["name", "sport", "environment", "kind", "status", "parent_id", "start_date", "initial_distance_km", "initial_hours", "maintenance_km", "maintenance_hours", "lifetime_target_km"];
+
+// Default equipment per kind of session (#3014): one select per kind, counting from today on. Earlier
+// sessions without an own choice change only after the preview is confirmed, with a receipt and undo.
+const EQUIPMENT_RULE_ROWS = {
+  run: [["run:intervals", "Intervalle"], ["run:long", "Langer Lauf"], ["run:easy", "Locker"], ["run:race", "Wettkampf"]],
+  bike: [["ride:indoor", "Drinnen"], ["ride:outdoor", "Draußen"]],
+};
+
+function equipmentRuleTable(key, rules, items) {
+  const main = items.filter((item) => !item.parent_id && item.kind !== "component");
+  const status = h("div", { className: "equipment-rule-status", "aria-live": "polite" });
+  const body = h("tbody");
+  for (const [kind, label] of EQUIPMENT_RULE_ROWS[key]) {
+    const rule = { revision: 0, ...rules?.[kind] };
+    const select = h("select", { "aria-label": `Standard ${label}` },
+      h("option", { value: "", selected: !rule.equipment_id }, "–"),
+      main.map((item) => h("option", { value: item.id, selected: item.id === rule.equipment_id }, item.name)));
+    select.addEventListener("change", () => void saveEquipmentRule(status, kind, select, rule));
+    body.append(h("tr", { dataset: { ruleKind: kind } }, h("th", { scope: "row" }, label), h("td", null, select)));
+  }
+  return h("section", { className: "equipment-rules", "aria-label": "Standard-Ausrüstung" },
+    h("h4", null, "Standard"), h("table", "race-predictions-table", body), status);
+}
+
+async function saveEquipmentRule(status, kind, select, rule) {
+  select.disabled = true;
+  try {
+    const result = await api("/api/equipment/rules", { method: "POST", body: JSON.stringify({ kind, equipment_id: select.value || null, expected_revision: rule.revision }) });
+    rule.revision = result.rule.revision;
+    equipmentRuleChanged();
+    const preview = select.value ? await api(`/api/equipment/rules/preview?kind=${encodeURIComponent(kind)}`) : null;
+    status.replaceChildren(...equipmentRulePreview(status, kind, preview?.count || 0));
+  } catch (error) {
+    if (!isSessionEndedError(error)) status.replaceChildren(error.message);
+  } finally {
+    select.disabled = false;
+  }
+}
+
+// A rule changes what sessions count; the calendar reads its units again and the notice follows.
+function equipmentRuleChanged() {
+  invalidateAnalysisReport("/api/analysis/training-records");
+  if (typeof plannedSessionReads !== "undefined") plannedSessionReads.clear();
+  globalThis.invalidateEquipmentNotice?.();
+}
+
+function equipmentRulePreview(status, kind, count) {
+  if (!count) return ["Gespeichert."];
+  const apply = h("button", { type: "button", className: "secondary-button" }, `Auf ${count} anwenden`);
+  const skip = h("button", { type: "button", className: "secondary-button" }, "Nur künftig");
+  skip.addEventListener("click", () => status.replaceChildren("Gespeichert."));
+  apply.addEventListener("click", async () => {
+    apply.disabled = true;
+    try {
+      const result = await api("/api/equipment/rules/apply", { method: "POST", body: JSON.stringify({ kind, confirmed: true }) });
+      equipmentRuleChanged();
+      status.replaceChildren(...equipmentRuleReceipt(status, result));
+    } catch (error) {
+      apply.disabled = false;
+      if (!isSessionEndedError(error)) status.replaceChildren(error.message);
+    }
+  });
+  return [h("p", null, `Gespeichert. Auch ${countLabel(count, "frühere Einheit", "frühere Einheiten")} ohne eigene Wahl?`), apply, skip];
+}
+
+function equipmentRuleReceipt(status, result) {
+  const text = `Auf ${countLabel(result.count, "Einheit", "Einheiten")} angewendet. `;
+  if (!result.change?.id) return [text];
+  const undo = h("button", { className: "message-undo", type: "button" }, "Rückgängig");
+  undo.addEventListener("click", async () => {
+    undo.disabled = true;
+    try {
+      await api("/api/change-history/undo", { method: "POST", body: JSON.stringify({ change_id: result.change.id, expected_current_hash: result.change.after_hash }) });
+      equipmentRuleChanged();
+      status.replaceChildren("Zurückgenommen.");
+    } catch (error) {
+      undo.disabled = false;
+      if (!isSessionEndedError(error)) status.replaceChildren(error.message);
+    }
+  });
+  return [text, undo];
+}
 
 function equipmentAddRow(tab) {
   const form = equipmentForm(tab, null);

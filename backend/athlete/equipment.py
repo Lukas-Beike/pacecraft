@@ -185,7 +185,8 @@ class EquipmentService:
                 row.get("sport"), row.get("environment"), foci.get(row["id"]), row.get("purpose")
             )
             covered, item = rule_choice(rules.get(str(kind)), summary_local_date(row))
-            if covered:
+            # A rule without an item means "no default", never "Keiner".
+            if covered and item is not None:
                 implied[str(row["id"])] = {
                     "activity_id": str(row["id"]),
                     "equipment_id": item,
@@ -226,6 +227,7 @@ class EquipmentService:
             assignments = _effective_assignments(rows, explicit, links)
             maintenance = self._records(db, MAINTENANCE_PREFIX, 1000)
             sensors = sensor_registry.registry(activity_detail_store.sensor_uses(db))
+            rules = _current_rules(self._records(db, RULE_PREFIX, None))
         for item in items:
             _update_usage(
                 item,
@@ -246,6 +248,7 @@ class EquipmentService:
                 if item["id"] not in {str(local.get("garmin_uuid")) for local in items}
             ],
             "sensors": sensors,
+            "rules": rules,
             "garmin_synced_at": status.get("synced_at"),
             "garmin_freshness": (status.get("source_freshness") or {})
             .get("gear", {})
@@ -600,7 +603,7 @@ class EquipmentService:
             "assigned": own.get("equipment_id") if own else None,
             "explicit": own is not None,
             "effective": {"equipment_id": rule_item, "source": "rule"}
-            if covered and own is None
+            if covered and rule_item is not None and own is None
             else None,
             "suggested": max(
                 recent, key=lambda record: str(record.get("observed_at") or "")
@@ -846,6 +849,21 @@ def _session_foci(db: Any, session_ids: Sequence[str]) -> dict[str, str | None]:
         for session, unit in links.items()
         if unit in units
     }
+
+
+def _current_rules(records: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    """Each kind's revision and its latest choice, as the rules table shows it (#3014)."""
+    rules = {kind: {"equipment_id": None, "from": None, "revision": 0} for kind in RULE_KINDS}
+    for record in records:
+        history = record.get("history") or []
+        if record.get("kind") in rules and history:
+            latest = max(history, key=lambda entry: str(entry.get("from") or ""))
+            rules[record["kind"]] = {
+                "equipment_id": latest.get("equipment_id"),
+                "from": latest.get("from"),
+                "revision": int(record.get("revision") or 0),
+            }
+    return rules
 
 
 def rule_choice(rule: dict[str, Any] | None, day: str) -> tuple[bool, str | None]:

@@ -783,6 +783,12 @@ h2 {
 .planned-equipment-status:empty, .planned-equipment [hidden] { display: none; }
 .planned-equipment[hidden] { display: none; }
 .planned-equipment-line { display: flex; }
+.equipment-rules { display: grid; gap: 6px; margin: 12px 0; }
+.equipment-rules h4 { margin: 0; }
+.equipment-rules select { width: 100%; min-height: 44px; }
+.equipment-rule-status { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: .85rem; }
+.equipment-rule-status:empty { display: none; }
+.equipment-rule-status p { flex-basis: 100%; margin: 0; }
 .planned-equipment-chip { min-height: 32px; border: 1px solid var(--line-strong); background: var(--surface-raised); color: var(--ink); font: inherit; font-size: .8rem; cursor: pointer; }
 .planned-zone-time-bar { display: flex; height: 10px; overflow: hidden; border-radius: 5px; background: var(--surface-input); }
 .planned-zone-time-bar i { display: block; min-width: 2px; background: var(--muted); }
