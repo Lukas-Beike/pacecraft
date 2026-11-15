@@ -119,11 +119,17 @@ class GuardDestructiveGitTests(unittest.TestCase):
             for entry in settings["hooks"]["PreToolUse"]
             if entry["matcher"] == "Bash|PowerShell"
         )
+        # One hook process runs every shell guard in turn (#2982).
         commands = [hook["command"] for hook in shell["hooks"]]
-        self.assertTrue(any("guard_private_paths.py" in c for c in commands))
-        self.assertTrue(any("guard_destructive_git.py" in c for c in commands))
-        self.assertTrue(any("guard_resolve_thread.py" in c for c in commands))
-        self.assertTrue(any("guard_empty_body.py" in c for c in commands))  # #2954
+        self.assertTrue(any("guard_shell.py" in c for c in commands))
+        guards = (ROOT / "scripts/hooks/guard_shell.py").read_text(encoding="utf-8")
+        for name in (
+            "guard_private_paths",
+            "guard_destructive_git",
+            "guard_resolve_thread",
+            "guard_empty_body",  # #2954
+        ):
+            self.assertIn(f"    {name},\n", guards, name)
         self.assertTrue(all(hook["onFailure"] == "block" for hook in shell["hooks"]))
 
 
