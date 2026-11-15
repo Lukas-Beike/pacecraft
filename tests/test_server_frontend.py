@@ -451,7 +451,8 @@ class ServerFrontendTests(ServerTestCase):
         self.assertNotIn('"Trainingsload"', plan_views)
         self.assertNotIn("Plan/Ist:", plan_views)
         self.assertIn("card.open = openPlannedEntries.has(entryKey)", plan_views)
-        self.assertIn("section.open = false", plan_views)
+        # Library sections start closed; one the athlete opened stays open across a reload (#3028).
+        self.assertIn("section.open = openSports.has(sport)", plan_views)
         self.assertNotIn("function renderPlanned(", app)
         plan_markup = index[
             index.index('id="workoutsPanel"') : index.index('id="dataPanel"')
