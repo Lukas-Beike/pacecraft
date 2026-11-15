@@ -178,7 +178,7 @@ def kept_until_change[T](
     """``read``'s value, kept until a commit changes rows or a restore (#3017).
 
     The value is shared by every caller, which must not change it. A read is
-    keyed by the generation it sees at least (``DatabaseManager.read_generation``);
+    keyed by the revision it sees at least (``DatabaseManager.read_revision``);
     one inside a unit of work is neither kept nor served, since it may see
     uncommitted rows. No lock is held while reading: a caller holding a
     snapshot must never wait for another thread's read.
@@ -186,23 +186,21 @@ def kept_until_change[T](
     lock = threading.Lock()
     kept: list[Any] = [None, -1, None]
 
-    def fill(manager: DatabaseManager, generation: int | None) -> T:
+    def fill(manager: DatabaseManager, revision: int | None) -> T:
         value = read()
         with lock:
             # A slower read of an older state never replaces a newer one.
-            if generation is not None and (
-                kept[0] is not manager or generation >= kept[1]
-            ):
-                kept[:] = [manager, generation, value]
+            if revision is not None and (kept[0] is not manager or revision >= kept[1]):
+                kept[:] = [manager, revision, value]
         return value
 
     def current() -> T:
         manager = database_manager()
-        generation = manager.read_generation()
+        revision = manager.read_revision()
         with lock:
-            if generation is not None and kept[0] is manager and kept[1] == generation:
+            if revision is not None and kept[0] is manager and kept[1] == revision:
                 return kept[2]
-        return fill(manager, generation)
+        return fill(manager, revision)
 
     return current
 
@@ -252,9 +250,9 @@ class DatabaseManager:
         self._snapshot_context: ContextVar[Any | None] = ContextVar(
             f"database_manager_snapshot_{id(self)}", default=None
         )
-        # The write generation read just before the snapshot began (#3017).
-        self._snapshot_generation: ContextVar[int | None] = ContextVar(
-            f"database_manager_snapshot_generation_{id(self)}", default=None
+        # The write revision read just before the snapshot began (#3017).
+        self._snapshot_revision: ContextVar[int | None] = ContextVar(
+            f"database_manager_snapshot_revision_{id(self)}", default=None
         )
         self._commit_callbacks: ContextVar[list[Callable[[], None]] | None] = (
             ContextVar(f"database_manager_commit_{id(self)}", default=None)
@@ -266,33 +264,33 @@ class DatabaseManager:
         self._slow_reader_waits = 0
         self._reader_timeouts = 0
         self._longest_reader_wait_s = 0.0
-        self._write_generation = 0
+        self._write_revision = 0
 
     @property
-    def write_generation(self) -> int:
+    def write_revision(self) -> int:
         """Moves after every committed outer unit of work that changed rows, and every restore.
 
         A value read from the database stays current while this is unchanged;
         read caches key on it (#3017). The job workers' idle claims change
         nothing, so they leave it as it is.
         """
-        return self._write_generation
+        return self._write_revision
 
-    def read_generation(self) -> int | None:
-        """The generation a read here sees at least; None inside a unit of work.
+    def read_revision(self) -> int | None:
+        """The revision a read here sees at least; None inside a unit of work.
 
-        Inside ``read_snapshot`` it is the generation read just before the
+        Inside ``read_snapshot`` it is the revision read just before the
         snapshot began, so a value read from an older snapshot is never taken
         for the current state. A unit of work sees its own uncommitted rows.
         """
         if self._unit_of_work.get() is not None:
             return None
-        snapshot = self._snapshot_generation.get()
-        return self._write_generation if snapshot is None else snapshot
+        snapshot = self._snapshot_revision.get()
+        return self._write_revision if snapshot is None else snapshot
 
-    def _next_generation(self) -> None:
+    def _next_revision(self) -> None:
         with self._state:
-            self._write_generation += 1
+            self._write_revision += 1
 
     def _acquire_reader_slot(self) -> None:
         """Take a reader slot, timing only a wait; time out as busy."""
@@ -394,7 +392,7 @@ class DatabaseManager:
             self._commit_callbacks.reset(callbacks_token)
         # Reached only after the commit; a rollback raised above.
         if changed:
-            self._next_generation()
+            self._next_revision()
         for callback in callbacks:
             try:
                 callback()
@@ -517,9 +515,7 @@ class DatabaseManager:
                 try:
                     connection.execute("PRAGMA query_only = ON")
                     # Read before the snapshot's first query fixes its state.
-                    generation_token = self._snapshot_generation.set(
-                        self._write_generation
-                    )
+                    revision_token = self._snapshot_revision.set(self._write_revision)
                     connection.execute("BEGIN")
                     snapshot_token = self._snapshot_context.set(connection)
                     reader_token = self._reader_context.set(connection)
@@ -528,7 +524,7 @@ class DatabaseManager:
                     finally:
                         self._reader_context.reset(reader_token)
                         self._snapshot_context.reset(snapshot_token)
-                        self._snapshot_generation.reset(generation_token)
+                        self._snapshot_revision.reset(revision_token)
                         connection.rollback()
                         connection.execute("PRAGMA query_only = OFF")
                         reusable = True
@@ -598,7 +594,7 @@ class DatabaseManager:
             yield
         finally:
             # A restored file replaces every value read before it.
-            self._next_generation()
+            self._next_revision()
             with self._state:
                 self._draining = False
                 self._state.notify_all()
