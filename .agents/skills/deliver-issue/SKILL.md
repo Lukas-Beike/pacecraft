@@ -164,7 +164,9 @@ verified merge.
 After the merge, check the `develop` push runs of the merge commit with
 [develop-run-check](../pacecraft-develop-run-check/SKILL.md). Report a
 red run at once (to the coordinating orchestrator thread if one exists,
-otherwise to the user) and merge nothing further until `develop` is green.
+otherwise to the user). If your merge is part of the cause, fix forward
+within 30 minutes or open a revert PR, as the pr workflow's revert-or-fix
+rule says; until `develop` is green, merge only PRs outside the failing area.
 Never rerun a superseded run.
 
 ## 5. Report

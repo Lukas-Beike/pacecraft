@@ -173,6 +173,14 @@ exit 1 handle the cause as below. On each wake:
   [sonar-check](../pacecraft-sonar-check/SKILL.md) `--pr <number>`, fix the findings on changed lines,
   and push. Do not accept issues to clear the gate without an evidence line in
   the PR body.
+- Revert or fix after the merge (#2636): a PR's checks ran on an older develop,
+  so two green PRs can still break develop together. If the develop-run check
+  of your merge commit exits 1 and your change is part of the cause, fix
+  forward within 30 minutes or open a revert PR of your merge commit (a PR,
+  never a push to develop; title and commit subject `revert(<scope>): <original
+  description>`, not git's default `Revert "..."`, which the commit-convention
+  check rejects), and report it at once. Until develop is green,
+  every lane merges only PRs outside the failing area.
 - Stop and report if GitHub requires something you cannot satisfy, or if the PR
   is closed without merging.
 
