@@ -255,7 +255,8 @@ export const STEPS = [
   { view: "nutrition", name: "Ernährung: Hautfalten", covers: "#3099 skinfold card", pre: [tab("nutrition", "body")], ready: "#bodyAnalysisCharts [data-skinfolds] tbody tr", kind: "text" },
   { view: "more", name: "Mehr: Ausrüstung", covers: "#2935 equipment", pre: [tab("more", "equipment")], ready: "#equipmentItems .equipment-card", kind: "text" },
   { view: "more", name: "Mehr: Ausrüstung Standard", covers: "#3014 default equipment", pre: [tab("more", "equipment")], ready: "#equipmentItems .equipment-rules select", kind: "options" },
-  { view: "more", name: "Mehr: Betrieb, Änderungen", covers: "#2908 changelog", pre: [tab("more", "operations")], ready: ".release-changelog li", kind: "text", optional: true },
+  // The current release's entry: a listed change, or only its collapsed "Technik (n)" (2.1.20).
+  { view: "more", name: "Mehr: Betrieb, Änderungen", covers: "#2908 changelog", pre: [tab("more", "operations")], ready: ".release-changelog > ul > li, .release-changelog > .release-technical > summary", kind: "text", optional: true },
 ];
 
 // Runs in the page; "ready", "shown" (a `never` element), "absent" or "" (not yet).

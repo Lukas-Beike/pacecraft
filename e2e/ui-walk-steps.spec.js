@@ -42,3 +42,14 @@ test("a step fails on an empty chart or panel and passes on a drawn one", async 
   expect(refused.status).toBe("fail");
   expect(refused.why).toMatch(/opening control/);
 });
+
+test("the changelog step passes on an entry of only Technik changes and not on an entry without changes", async ({ page }) => {
+  const { STEPS, runStep } = await import(pathToFileURL(path.join(__dirname, "..", "scripts", "ui_walk.mjs")).href);
+  const step = { ...STEPS.find((item) => item.name === "Mehr: Betrieb, Änderungen"), pre: [] };
+  const entry = (body) => `<details class="release-changelog" open><summary>Version 2.1.20 · Änderungen</summary>${body}<details><summary>Frühere Versionen (1)</summary><ul><li>older</li></ul></details></details>`;
+  // 2.1.20: only a perf and a build commit, both under the collapsed "Technik (2)".
+  await page.setContent(entry('<details class="release-technical"><summary>Technik (2)</summary><ul><li>quality: ratchet</li></ul></details>'));
+  expect((await runStep(page, step, 300)).status).toBe("ok");
+  await page.setContent(entry(""));
+  expect((await runStep(page, step, 300)).status).not.toBe("ok");
+});

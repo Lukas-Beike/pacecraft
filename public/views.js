@@ -559,12 +559,14 @@ function renderAppVersion(app = {}) {
 
 // Pure (#2899): one release's commit subjects as "Neu" (feat), "Behoben" (fix) and the rest, each
 // as "scope: subject" without its type and pull request number.
+// A performance change to the app is noticeable ("Verbessert"); one to the tooling is not.
 function releaseChangeGroups(commits) {
-  const groups = { feat: [], fix: [], other: [] };
+  const groups = { feat: [], perf: [], fix: [], other: [] };
   for (const subject of commits || []) {
     const match = /^([a-z]+)(?:\(([^)]*)\))?!?: (.+?)(?: \(#\d+\))?$/.exec(String(subject));
     const text = match ? [match[2], match[3]].filter(Boolean).join(": ") : String(subject);
-    (match?.[1] === "feat" || match?.[1] === "fix" ? groups[match[1]] : groups.other).push(text);
+    const kind = match?.[1] === "perf" && /^(hooks|tooling|ci|e2e|build|scripts)$/.test(match[2] || "") ? "other" : match?.[1];
+    (["feat", "perf", "fix"].includes(kind) ? groups[kind] : groups.other).push(text);
   }
   return groups;
 }
@@ -573,8 +575,8 @@ function releaseChangeList(release) {
   const groups = releaseChangeGroups(release.commits);
   const list = (items) => h("ul", null, items.map((text) => h("li", null, text)));
   return [
-    ...[["feat", "Neu"], ["fix", "Behoben"]].filter(([key]) => groups[key].length).flatMap(([key, label]) => [h("h4", null, label), list(groups[key])]),
-    groups.other.length ? h("details", null, h("summary", null, `Technik (${groups.other.length})`), list(groups.other)) : null,
+    ...[["feat", "Neu"], ["perf", "Verbessert"], ["fix", "Behoben"]].filter(([key]) => groups[key].length).flatMap(([key, label]) => [h("h4", null, label), list(groups[key])]),
+    groups.other.length ? h("details", "release-technical", h("summary", null, `Technik (${groups.other.length})`), list(groups.other)) : null,
   ];
 }
 
