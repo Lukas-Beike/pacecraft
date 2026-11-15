@@ -315,9 +315,6 @@ class SyncSchedulerBuilderTests(unittest.TestCase):
         self.assertIs(loop.call_args.args[1], ctx.morning_body_battery_service())
         self.assertIs(kwargs["sleep"], self.sleep)
         self.assertIs(kwargs["logger"], ctx.logger)
-        self.assertIs(
-            kwargs["housekeeping"], ctx.sync_job_queue.service().prune_finished
-        )
         ctx.garmin.change_check.return_value.morning_due.return_value = True
         self.assertTrue(kwargs["morning_due"]())
 
@@ -335,6 +332,31 @@ class SyncSchedulerBuilderTests(unittest.TestCase):
         ctx.maintenance.operation.assert_called_once_with()
         writer.assert_called_once_with()
         ctx.database.return_value.checkpoint_wal.assert_called_once_with()
+
+    def test_housekeeping_prunes_jobs_then_purges_the_archive_under_the_gate(
+        self,
+    ) -> None:
+        ctx = self.ctx
+        ctx.maintenance = MagicMock(name="maintenance gate")
+        calls = []
+        ctx.sync_job_queue.service.return_value.prune_finished.side_effect = lambda: (
+            calls.append("prune")
+        )
+        ctx.planning.workout_library.return_value.purge_archived.side_effect = lambda: (
+            calls.append("purge")
+        )
+        with (
+            patch.object(scheduler_wiring.scheduler, "DailySyncLoop") as loop,
+            patch.object(scheduler_wiring.scheduler, "DailySyncScheduler"),
+            patch.object(scheduler_wiring, "background_writer") as writer,
+        ):
+            self.services.daily_loop()
+            loop.call_args.kwargs["housekeeping"]()
+
+        # #3141: the archive purge is background work behind the maintenance gate.
+        self.assertEqual(["prune", "purge"], calls)
+        ctx.maintenance.operation.assert_called_once_with()
+        writer.assert_called_once_with()
 
 
 if __name__ == "__main__":

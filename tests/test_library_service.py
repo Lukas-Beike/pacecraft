@@ -8,6 +8,7 @@ import tempfile
 import unittest
 import uuid
 from copy import deepcopy
+from datetime import datetime, timedelta
 from itertools import count
 from pathlib import Path
 from typing import Any
@@ -18,7 +19,10 @@ from backend.db import DatabaseManager, row_factory
 from backend.db.remote_links import RemoteLink, RemoteLinkRepository
 from backend.db.schema import initialize_schema
 from backend.errors import AppError
-from backend.planning.library_service import WorkoutLibraryService
+from backend.planning.library_service import (
+    WorkoutLibraryService,
+    archive_purge_counts,
+)
 from backend.planning.sport import with_activity_type
 from backend.planning.wahoo_orphans import find_wahoo_orphans
 
@@ -692,6 +696,117 @@ class WorkoutLibraryServiceTests(unittest.TestCase):
         with self.database_manager.reader() as db:
             self.assertEqual([], find_wahoo_orphans(db)[0])
         self.assertEqual("501", self._wahoo_link(entry["id"]).remote_id)
+
+    def _clocked(self, clock: list[str]) -> WorkoutLibraryService:
+        return WorkoutLibraryService(
+            self.database_manager,
+            lambda: clock[0],
+            lambda: str(uuid.UUID(int=next(self._ids))),
+            self.publish_change,
+        )
+
+    @staticmethod
+    def _day(days: int) -> str:
+        return (datetime.fromisoformat(NOW) + timedelta(days=days)).isoformat()
+
+    def test_archived_never_synced_templates_go_after_30_days(self) -> None:
+        # #3141 (athlete, 2026-11-15): archived templates no provider holds are
+        # deleted for good 30 days after archiving; the rest stays.
+        clock = [self._day(0)]
+        service = self._clocked(clock)
+        ids = {
+            name: service.create_local_entry(self._workout(name=name))["id"]
+            for name in ("old", "recent", "synced", "linked", "restored")
+        }
+        for name in ("old", "synced", "linked", "restored"):
+            service.update(ids[name], {"action": "archive"})
+        with self.database_manager.unit_of_work() as db:
+            db.execute(
+                "UPDATE workout_library SET external_id='remote-1' WHERE local_id=?",
+                (ids["synced"],),
+            )
+            RemoteLinkRepository().upsert(
+                db,
+                RemoteLink(
+                    RemoteEntityKind.LIBRARY_WORKOUT,
+                    ids["linked"],
+                    "wahoo",
+                    RemoteLinkState.SYNCED,
+                    remote_id="wahoo-1",
+                ),
+            )
+        # Archived before the archive time was stored: its last change counts.
+        legacy = str(uuid.UUID(int=900))
+        self._insert_payload(
+            legacy, json.dumps({"id": legacy, "type": "Ride", "archived": True})
+        )
+        clock[0] = self._day(2)
+        service.update(ids["recent"], {"action": "archive"})
+        clock[0] = self._day(10)
+        restored = service.update(ids["restored"], {"action": "restore"})
+        # Restore clears the archive time, so the next archive starts afresh.
+        self.assertNotIn("archived_at", restored["library_entry"])
+        clock[0] = self._day(20)
+        rearchived = service.update(ids["restored"], {"action": "archive"})
+        self.assertEqual(self._day(20), rearchived["library_entry"]["archived_at"])
+        self.publish_change.reset_mock()
+
+        clock[0] = self._day(31)
+        self.assertEqual(2, service.purge_archived())
+
+        for name, kept in (
+            ("old", False),
+            ("recent", True),
+            ("synced", True),
+            ("linked", True),
+            ("restored", True),
+        ):
+            self.assertEqual(kept, self._library_row(ids[name]) is not None, name)
+        self.assertIsNone(self._library_row(legacy))
+        with self.database_manager.reader() as db:
+            deleted = sorted(
+                row["entity_id"]
+                for row in db.execute(
+                    "SELECT entity_id FROM change_history WHERE action='delete'"
+                ).fetchall()
+            )
+            counts = archive_purge_counts(db, datetime.fromisoformat(clock[0]))
+        self.assertEqual(sorted([ids["old"], legacy]), deleted)
+        self.publish_change.assert_called_once_with()
+        # Counts only: the two waiting never-synced templates and the last purge.
+        self.assertEqual({"waiting": 2, "last_purged": 2}, counts)
+        # Day 29 of "recent": still restorable.
+        back = service.update(ids["recent"], {"action": "restore"})
+        self.assertFalse(back["library_entry"]["archived"])
+        # Nothing due: the purge reads and never takes the writer.
+        with patch.object(
+            self.database_manager, "unit_of_work", side_effect=AssertionError
+        ):
+            self.assertEqual(0, service.purge_archived())
+
+    def test_undoing_an_archive_clears_the_archive_time(self) -> None:
+        entry = self.service.create_local_entry(self._workout())
+        before = self.service.update(entry["id"], {"action": "archive"})
+        self.assertEqual(NOW, before["library_entry"]["archived_at"])
+        # Archiving again keeps the first archive time.
+        again = self.service.update(entry["id"], {"action": "archive"})
+        self.assertEqual(NOW, again["library_entry"]["archived_at"])
+
+        with self.database_manager.unit_of_work() as db:
+            current = dict(
+                db.execute(
+                    "SELECT * FROM workout_library WHERE local_id=?", (entry["id"],)
+                ).fetchone()
+            )
+            restored = self.service.restore_in_transaction(
+                db, entry["id"], current, {**entry, "archived": False}
+            )
+
+        stored = self._library_row(entry["id"])
+        assert restored is not None and stored is not None
+        self.assertFalse(restored["archived"])
+        self.assertNotIn("archived_at", restored)
+        self.assertNotIn("archived_at", json.loads(stored["payload"]))
 
     def test_synchronized_entry_cannot_be_deleted_but_can_be_archived(self) -> None:
         local_id = str(uuid.UUID(int=80))

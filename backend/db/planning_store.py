@@ -478,6 +478,18 @@ def wahoo_links_without_template(db: Any, provider: str, entity_kind: str) -> li
     ).fetchall()
 
 
+def archived_local_templates(db: Any, entity_kind: str) -> list[Any]:
+    """Archived templates without an external id or any provider link (#3141)."""
+    return db.execute(
+        f"SELECT * FROM workout_library w WHERE {_TEMPLATES} "
+        "AND json_extract(payload, '$.archived') = 1 "
+        "AND COALESCE(external_id, '') = '' AND NOT EXISTS (SELECT 1 FROM "
+        "remote_links l WHERE l.local_id = w.local_id AND l.entity_kind = ?) "
+        "ORDER BY local_id",
+        (entity_kind,),
+    ).fetchall()
+
+
 def library_count(db: Any) -> int:
     return db.execute("SELECT COUNT(*) AS count FROM workout_library").fetchone()[
         "count"

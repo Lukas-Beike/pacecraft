@@ -50,6 +50,7 @@ from backend.observability import (
     DiagnosticCapture,
     Redactor,
 )
+from backend.planning.library_service import archive_purge_counts
 from backend.provider_credentials import garmin_tokens_connected
 from backend.providers.garmin import GarminClientFactory
 from backend.providers.state import ProviderStateService
@@ -327,6 +328,9 @@ class DiagnosticReportService:
                     "schema_version": self._schema_version(db),
                     **self._database_counts(db),
                     "workout_library_state": deps.workout_library_sync_state.summary(),
+                    "workout_library_archive": archive_purge_counts(
+                        db, datetime.fromisoformat(deps.utc_now())
+                    ),
                     "external_calendar_events": calendar_events.get("total"),
                 }
 

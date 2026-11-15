@@ -129,7 +129,7 @@ The diagnostic report SHALL compose local configuration flags, provider/job stat
 
 #### Scenario: Configuration and database sections
 - **WHEN** the report is generated
-- **THEN** `configuration` holds booleans and names only (`openai_configured`, `openai_base_url_custom` and `anthropic_base_url_custom`, true only when the endpoint differs from the default and never the URL, `anthropic_configured`, `intervals_configured`, `garmin_library_available`, `garmin_configured`, `garmin_fixture_configured`, the selected model, provider and thinking level, the task settings and the available model ids), and `database` holds `schema_version`, the row counts of messages, workout library, competitions, check-ins, activity feedback and change history, `stored_payload_bytes`, `workout_library_state` and `external_calendar_events`
+- **THEN** `configuration` holds booleans and names only (`openai_configured`, `openai_base_url_custom` and `anthropic_base_url_custom`, true only when the endpoint differs from the default and never the URL, `anthropic_configured`, `intervals_configured`, `garmin_library_available`, `garmin_configured`, `garmin_fixture_configured`, the selected model, provider and thinking level, the task settings and the available model ids), and `database` holds `schema_version`, the row counts of messages, workout library, competitions, check-ins, activity feedback and change history, `stored_payload_bytes`, `workout_library_state`, `workout_library_archive` (counts only: `waiting` archived templates no provider holds and `last_purged`, #3141) and `external_calendar_events`
 
 #### Scenario: Provider sync times
 - **WHEN** the report is generated

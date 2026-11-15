@@ -16,7 +16,7 @@ read. A new key needs no entry: it appears here when its write is added.
   `profile` is only set when absent.
 
 <!-- BEGIN GENERATED KEYS -->
-90 keys and 22 key patterns; `<value>` stands for a value the code computes.
+91 keys and 22 key patterns; `<value>` stands for a value the code computes.
 
 | Key | Written by | Deleted by | Export | Reset at start | Purge |
 | --- | --- | --- | --- | --- | --- |
@@ -132,6 +132,7 @@ read. A new key needs no entry: it appears here when its write is added.
 | `wahoo_oauth_tokens` | backend/sync/wahoo_connection.py:WahooConnectionService._store_grant | backend/sync/wahoo_connection.py:WahooConnectionService._delete | no | - | - |
 | `weather_cache` | backend/weather/cache.py:invalidate_for_location_change<br>backend/weather/service.py:WeatherCacheStore.store_refresh | - | no | - | - |
 | `weather_failure` | backend/weather/cache.py:invalidate_for_location_change<br>backend/weather/service.py:WeatherCacheStore.store_failure<br>backend/weather/service.py:WeatherCacheStore.store_refresh | - | yes | - | - |
+| `workout_library_archive_purged` | backend/planning/library_service.py:WorkoutLibraryService.purge_archived | - | yes | - | - |
 
 - every key is deleted by `backend/privacy.py:PrivacyDeleteService.delete`
 - `garmin_capability_` is deleted by prefix by `backend/providers/garmin_capability.py:clear_capability_state`

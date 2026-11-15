@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import builtins
 from collections.abc import Callable
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from backend import change_history
@@ -11,6 +12,7 @@ from backend.canonical.planning_fields import SESSION_FOCUS_KEYS as FOCUS_KEYS
 from backend.canonical.vocabulary import WAHOO_ID, RemoteEntityKind, Sport
 from backend.db import planning_store
 from backend.db.remote_links import RemoteLinkRepository
+from backend.db.repositories import KeyValueRepository
 from backend.errors import CORRUPT_LIBRARY_ERROR, AppError
 from backend.planning import library, workouts
 from backend.planning.repository import parse_payload
@@ -22,6 +24,45 @@ from backend.providers.intervals_workouts import (
 )
 
 _REMOTE_LINKS = RemoteLinkRepository()
+# Athlete decision 2026-11-15 (#3141): an archived template no provider holds is
+# deleted for good this long after archiving; before, restore and undo still work.
+ARCHIVE_PURGE_DAYS = 30
+# The count of the last purge that deleted anything, for diagnostics.
+ARCHIVE_PURGED_KEY = "workout_library_archive_purged"
+
+
+def archive_purge_due(row: Any, now: datetime) -> bool:
+    """Whether an archived template's 30 days are over.
+
+    The archive time is the payload's `archived_at`; a template archived before
+    it was stored counts from its row's last change (athlete decision, #3141).
+    """
+    payload = parse_payload(row["payload"])
+    if payload is None or not payload.get("archived"):
+        return False
+    try:
+        archived = datetime.fromisoformat(
+            str(payload.get("archived_at") or row["updated_at"])
+        )
+    except ValueError:
+        return False
+    if archived.tzinfo is None:
+        archived = archived.replace(tzinfo=UTC)
+    return now - archived >= timedelta(days=ARCHIVE_PURGE_DAYS)
+
+
+def archive_purge_counts(db: Any, now: datetime) -> dict[str, int]:
+    """Counts only: archived templates still waiting, and the last purge's count."""
+    rows = planning_store.archived_local_templates(
+        db, RemoteEntityKind.LIBRARY_WORKOUT.value
+    )
+    last = KeyValueRepository(lambda: "").get(db, ARCHIVE_PURGED_KEY)
+    return {
+        "waiting": sum(not archive_purge_due(row, now) for row in rows),
+        "last_purged": int(last) if last and last.isdigit() else 0,
+    }
+
+
 _CANONICAL_SPORT_VALUES = frozenset(item.value for item in Sport)
 
 
@@ -111,6 +152,11 @@ class WorkoutLibraryService:
                 normalized = library.updated_workout_library_entry(
                     current, row, normalized_id, action, values
                 )
+                if action == "archive":
+                    # The 30 days of #3141 run from the first archive, never from caller values.
+                    normalized["archived_at"] = (
+                        current.get("archived") and current.get("archived_at")
+                    ) or self._now()
                 planning_store.set_library_sync_state(
                     db, normalized_id, normalized, self._now(), state="local", dirty=1
                 )
@@ -132,6 +178,41 @@ class WorkoutLibraryService:
                 }
         self._publish_change()
         return result
+
+    def purge_archived(self) -> int:
+        """Delete the archived templates no provider holds once their 30 days are over.
+
+        A read finds due templates first, so an idle run takes no writer; the
+        writer reads them again and deletes each through the local delete, which
+        records it in the change history. Synced, linked or dated templates and
+        ones restored meanwhile are never touched.
+        """
+        now = datetime.fromisoformat(self._now())
+        kind = RemoteEntityKind.LIBRARY_WORKOUT.value
+        with self._database_manager.reader() as db:
+            if not any(
+                archive_purge_due(row, now)
+                for row in planning_store.archived_local_templates(db, kind)
+            ):
+                return 0
+        purged = 0
+        with self._database_manager.unit_of_work() as db:
+            for row in planning_store.archived_local_templates(db, kind):
+                if not archive_purge_due(row, now):
+                    continue
+                before = {
+                    **(parse_payload(row["payload"]) or {}),
+                    "sync_status": row["sync_state"] or "local",
+                }
+                self._delete_local_workout_library_entry(
+                    db, row["local_id"], dict(row), before
+                )
+                purged += 1
+            if purged:
+                KeyValueRepository(self._now).set(db, ARCHIVE_PURGED_KEY, str(purged))
+        if purged:
+            self._publish_change()
+        return purged
 
     @staticmethod
     def _stored_workout_library_entry(
