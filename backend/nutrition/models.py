@@ -106,6 +106,8 @@ class NutritionEntry:
     updated_at: str = ""
     nutrition_basis: dict[str, Any] = field(default_factory=dict)
     logged_time_known: bool = True
+    # The athlete estimated the amounts (restaurant, eating with friends) (#3100).
+    estimate_uncertain: bool = False
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -130,6 +132,7 @@ class NutritionEntry:
             updated_at=str(data.get("updated_at") or ""),
             nutrition_basis=data.get("nutrition_basis") or {},
             logged_time_known=_logged_time_known_flag(data.get("logged_time_known")),
+            estimate_uncertain=_estimate_uncertain_flag(data.get("estimate_uncertain")),
         )
 
 
@@ -196,6 +199,7 @@ def normalize_nutrition_entry(
         "sync_state": "local",
         "nutrition_basis": raw.get("nutrition_basis") or {"kind": "manual"},
         "logged_time_known": logged_time_known,
+        "estimate_uncertain": _estimate_uncertain_flag(raw.get("estimate_uncertain")),
         **({"id": str(raw["id"])} if raw.get("id") else {}),
     }
 
@@ -206,6 +210,14 @@ def _logged_time_known_flag(value: Any) -> bool:
     if isinstance(value, bool):
         return value
     raise AppError(400, "logged_time_known muss true oder false sein.")
+
+
+def _estimate_uncertain_flag(value: Any) -> bool:
+    if value is None:
+        return False
+    if isinstance(value, bool):
+        return value
+    raise AppError(400, "estimate_uncertain muss true oder false sein.")
 
 
 def _normalize_logged_time(

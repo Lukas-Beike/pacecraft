@@ -196,6 +196,7 @@ NUTRITION_ENTRY_FIELDS = (
     "source",
     "nutrition_basis",
     "logged_time_known",
+    "estimate_uncertain",
 )
 # A saved meal; the update time is not tracked, so a save without a change
 # records nothing and a restore stamps the time again.
@@ -454,6 +455,8 @@ _FIELDS_ADDED_TO_AUDIT: dict[str, tuple[tuple[str, ...], ...]] = {
     "competition": (("location",),),
     # Gap fills of stored foods were recorded before the origin marks were.
     "food_database_entry": (("filled_fields",),),
+    # #3100: the uncertain-meal flag.
+    "nutrition_entry": (("estimate_uncertain",),),
 }
 
 
