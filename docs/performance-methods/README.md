@@ -22,6 +22,7 @@ of its own modules.
 | [M9](m9-lt1-output-own-sessions.md) | LT1 pace and power from own steady sessions | model estimate |
 | [M10](m10-dfa-alpha1-first-threshold.md) | First threshold heart rate from chest-strap RR intervals (DFA-α1) | model estimate |
 | [M11](m11-activity-energy.md) | Own activity energy, net of resting metabolism | model estimate |
+| [M12](m12-adaptive-expenditure.md) | Adaptive daily expenditure from intake and the weight trend | model estimate |
 
 M5 covers the smoothed load curves (#1432). M6 (#1725) replaces provider TSS
 with a local load; Banister TRIMP appears only as its heart-rate branch. M7
@@ -233,6 +234,7 @@ accessible text, not a declared absence.
 | R65 | Joosen & Westerterp 2006, "Energy expenditure during overfeeding", Nutr Metab 3:25 | abstract | Thermic effect per macronutrient: protein 20-30 %, carbohydrate 5-15 %, fat 0-3 %. Checked against the abstract (L21 citation check). |
 | R66 | LaForgia, Withers & Gore 2006, "Effects of exercise intensity and duration on the excess post-exercise oxygen consumption", J Sports Sci 24(12):1247-1264 | abstract | EPOC is about 6-15 % of the net exercise oxygen cost after continuous or intermittent exercise; weak evidence for a fixed share. |
 | R67 | Byrne et al. 2005, "Metabolic equivalent: one size does not fit all", J Appl Physiol 99(3):1112-1119 | abstract | 1 MET (3.5 ml/kg/min) overestimates measured resting VO2 by about 35 %; supports correcting MET values to the measured resting rate. |
+| R68 | Hall 2008, "What is the required energy deficit per unit weight loss?", Int J Obes 32(3):573-576 | abstract | Energy content of tissue change: 39.5 MJ/kg fat, 7.6 MJ/kg lean; the energy density of a weight change depends on body composition via Forbes' curve, so a fixed 7,700 kcal/kg misleads. Checked against the abstract (L21 citation check). |
 | L1 | Phillips & Steven 2026, "Perspective: sleep regularity—where do we go from here?", Sleep 49(8), PMID 42023690, DOI `10.1093/sleep/zsag114` | full text | Perspective without new data, formula, threshold or wearable/athlete content. Background only; not decision evidence. |
 
 ### Vendor documentation (not peer-reviewed)
