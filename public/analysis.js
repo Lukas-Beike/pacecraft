@@ -874,7 +874,7 @@ function weekReviewRecovery(recovery) {
   const rows = recovery?.sleep ? [weekReviewSleep(recovery.sleep)] : [];
   for (const [key, label] of [["hrv", "HRV Ø"], ["resting_hr", "Ruhepuls Ø"]]) {
     const item = recovery?.[key];
-    if (item) rows.push(weekReviewRow(label, `${AppFormat.number(item.mean, { digits: 0 })} ${item.unit}${item.position ? ` · ${WEEK_REVIEW_POSITIONS[item.position]}` : ""} · ${item.source}`));
+    if (item) rows.push(weekReviewRow(label, [`${AppFormat.number(item.mean, { digits: 0 })} ${item.unit}`, WEEK_REVIEW_POSITIONS[item.position], item.source].filter(Boolean).join(" · ")));
   }
   return rows.length ? weekReviewCard("Erholung", ...rows) : null;
 }
