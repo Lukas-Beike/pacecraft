@@ -751,6 +751,7 @@ async function renderCyclingPowerProfile() {
 const ANALYSIS_TRENDS_PATH = "/api/analysis/trends";
 const RECURRING_CARDS = [["runningRecurringSessions", "run"], ["cyclingRecurringSessions", "ride"]];
 let analysisTrendsGeneration = 0;
+let renderedAnalysisTrends = null;
 
 async function renderAnalysisTrends() {
   const generation = ++analysisTrendsGeneration;
@@ -766,7 +767,9 @@ async function renderAnalysisTrends() {
     renderAnalysisSegmentsIfActive();
     return;
   }
-  if (generation !== analysisTrendsGeneration || session !== state.sessionGeneration) return;
+  // A cached answer that is already drawn is not drawn again on each profile retry.
+  if (generation !== analysisTrendsGeneration || session !== state.sessionGeneration || result === renderedAnalysisTrends) return;
+  renderedAnalysisTrends = result;
   pace.replaceChildren(...paceAtHeartRateCharts(result?.pace_at_heart_rate));
   pace.dataset.analysisEmpty = String(!pace.childElementCount);
   for (const [id, sport] of RECURRING_CARDS) renderRecurringSessions(document.getElementById(id), result?.recurring, sport);
@@ -826,7 +829,9 @@ function recurringGroup(group) {
 // The mean of the repeated work steps (or of every measured step), with the fade of the repeats.
 function recurringValue(row) {
   const repeat = row.repeat_groups?.[0];
-  const steps = row.steps.filter((step) => step.status === "ok" && step.mean != null && (!repeat || step.target === repeat.target));
+  const measured = row.steps.filter((step) => step.status === "ok" && step.mean != null && (!repeat || step.target === repeat.target));
+  // Steps targeted by heart rate, power or pace are never averaged together.
+  const steps = measured.filter((step) => step.unit === measured[0]?.unit);
   if (!steps.length) return "–";
   const mean = steps.reduce((sum, step) => sum + Number(step.mean), 0) / steps.length;
   const unit = steps[0].unit;
