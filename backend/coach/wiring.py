@@ -334,6 +334,7 @@ def build_coach_context(
             training_context_service(),
             ctx.settings,
             coach_limits.COACH_DEFAULT_MAX_OUTPUT_TOKENS,
+            recent_sessions=activity_rows.compact,
         )
 
     def preview_service() -> CoachContextPreviewService:

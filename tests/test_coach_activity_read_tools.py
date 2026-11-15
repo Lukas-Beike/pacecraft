@@ -93,9 +93,14 @@ class CoachActivityReadToolServiceTests(unittest.TestCase):
     def test_activity_detail_exposes_the_session_bundle_for_corrections(self):
         read = Mock()
         read.detail.return_value = {
-            "session": {"activity_id": "act_1"},
+            "session": {"activity_id": "act_1", "sport": "ride"},
+            "metrics": {"duration_s": {"value": 6300}},
             "running_dynamics_streams": {"ground_contact_time_ms": {"values": [250]}},
-            "training_effect": {"aerobic_training_effect": 3.4, "source": "Garmin Connect"},
+            "training_effect": {
+                "aerobic_training_effect": 3.4,
+                "training_effect_label": "TEMPO",
+                "source": "Garmin Connect",
+            },
         }
         corrections = Mock()
         corrections.bundle.return_value = {"activity_id": "act_1", "members": []}
@@ -113,6 +118,32 @@ class CoachActivityReadToolServiceTests(unittest.TestCase):
         self.assertNotIn("running_dynamics_streams", result)
         # #2831: the calendar's provider-values block repeats the effect metrics.
         self.assertNotIn("training_effect", result)
+        # #3038: only its label, which the metrics lack, stays with its source.
+        self.assertEqual(
+            {"value": "TEMPO", "source": "Garmin Connect"},
+            result["training_effect_label"],
+        )
+        # 105 min falls in the 75-150 min step: 30 to 60 g per hour.
+        advice = result["fuelling_advice"]
+        self.assertEqual(
+            (30, 60),
+            (
+                advice["carbohydrates_per_hour"]["low_g"],
+                advice["carbohydrates_per_hour"]["high_g"],
+            ),
+        )
+        self.assertEqual("Thomas, Erdman und Burke 2016", advice["source"])
+        for sport, seconds in (("ride", 3599), ("swim", 7200), ("strength", 7200)):
+            read.detail.return_value = {
+                "session": {"activity_id": "act_1", "sport": sport},
+                "metrics": {"duration_s": {"value": seconds}},
+            }
+            with self.subTest(sport=sport, seconds=seconds):
+                result = service.execute(
+                    "get_activity_details", {"activity_id": "act_1"}
+                )
+                self.assertNotIn("fuelling_advice", result)
+                self.assertNotIn("training_effect_label", result)
 
     def test_report_can_select_body_history_and_sleep_timing_variability(self):
         report = Mock()

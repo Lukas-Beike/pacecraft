@@ -23,6 +23,7 @@ from backend.coach.context import (
 )
 from backend.coach.session_checks import matched_focus
 from backend.errors import AppError
+from backend.nutrition import fuelling, session_fuelling
 from backend.performance.activity_read_service import (
     ActivityAnalysisReadService,
     calendar_pairs,
@@ -53,6 +54,36 @@ _LIST_OMITTED_KEYS: Final = frozenset(
         "water_estimated_ml",
     }
 )
+
+
+def _analysis_additions(detail: Mapping[str, Any], effect: Any) -> dict[str, Any]:
+    """What the session analysis reads beside the recording (#3038).
+
+    The provider's training-effect label, the one effect value the metrics
+    lack, and for a long run or ride the carbohydrate advice for its duration
+    (the rule of the advice before a long session, ``session_fuelling``), which
+    the analysis compares with the intake logged that day.
+    """
+    additions: dict[str, Any] = {}
+    if isinstance(effect, dict) and effect.get("training_effect_label"):
+        additions["training_effect_label"] = {
+            "value": effect["training_effect_label"],
+            "source": effect.get("source"),
+        }
+    session = detail.get("session")
+    duration = (detail.get("metrics") or {}).get("duration_s")
+    seconds = duration.get("value") if isinstance(duration, Mapping) else None
+    if (
+        isinstance(session, Mapping)
+        and session.get("sport") in session_fuelling.SPORTS
+        and isinstance(seconds, int | float)
+        and seconds >= session_fuelling.LONG_SESSION_S
+    ):
+        additions["fuelling_advice"] = {
+            "carbohydrates_per_hour": fuelling.carbohydrate_per_hour(seconds),
+            "source": fuelling.POSITION_STAND,
+        }
+    return additions
 
 
 def _not_compared() -> dict[str, Any]:
@@ -177,8 +208,9 @@ class CoachActivityReadToolService:
             # reads their averages from the metrics.
             detail.pop("running_dynamics_streams", None)
             # The provider-values section repeats the effect metrics (#2831).
-            detail.pop("training_effect", None)
+            effect = detail.pop("training_effect", None)
             result = self._with_session_context(detail)
+            result.update(_analysis_additions(detail, effect))
             session = detail.get("session")
             if self._session_corrections is not None and isinstance(session, dict):
                 # Local session IDs and merge candidates for the session tools.

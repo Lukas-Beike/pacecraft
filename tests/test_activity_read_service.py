@@ -5,6 +5,7 @@ import unittest
 from contextlib import contextmanager
 from datetime import date
 from typing import Any, cast
+from unittest.mock import patch
 
 from activity_row_support import (
     FixedActivityRows,
@@ -237,6 +238,27 @@ class ActivityReadServiceTests(unittest.TestCase):
         self.assertFalse(LEGACY_KEYS & set(result))
         # #2831: a session without provider training-effect values has no section.
         self.assertNotIn("training_effect", result)
+        # #3038: pace zone times come only from a summary that has them.
+        self.assertNotIn("pace_zone_times", result)
+        summary = {
+            "id": "act_new",
+            "pace_zone_times": [{"id": "Z2", "secs": 1200}],
+            "sources": {"pace_zone_times": "Lokale Zonen"},
+        }
+        with patch(
+            "backend.performance.activity_read_service._find_summary",
+            return_value=summary,
+        ):
+            paced = self.detail_service(snapshot).detail(
+                "new",
+                garmin_status=NO_GARMIN_SYNC_STATUS,
+                profile={},
+                today=date(2026, 9, 20),
+            )
+        self.assertEqual(
+            {"zones": [{"id": "Z2", "secs": 1200}], "source": "Lokale Zonen"},
+            paced["pace_zone_times"],
+        )
         self.assertEqual(
             result,
             self.detail_service(snapshot).detail(
