@@ -85,9 +85,48 @@ class HeavyReadGateTests(unittest.TestCase):
             pass
         self.assertEqual(gate.summary()["timeouts"], 0)
 
+    def test_the_response_is_sent_after_the_gate_is_released(self) -> None:
+        # A slow client must not hold the gate while its response is written
+        # (#3125): the read ends at send_json, and the release happens once.
+        gate = HeavyReadGate(wait_s=5.0)
+        handler: Any = RequestHandler.__new__(RequestHandler)
+        handler.path = "/api/performance"
+        free_while_sending: list[bool] = []
+
+        def sending(*_: Any) -> None:
+            free_while_sending.append(gate._slot.acquire(blocking=False))
+            gate._slot.release()
+
+        handler.dependencies = SimpleNamespace(
+            session_auth_service=lambda: Mock(require_auth=Mock(return_value={})),
+            route_table=RouteTable(
+                [
+                    Route(
+                        "GET",
+                        "/api/performance",
+                        Access.SESSION,
+                        lambda request_handler, _request: request_handler.send_json(
+                            200, {}
+                        ),
+                        heavy=True,
+                    )
+                ]
+            ),
+            heavy_read_gate=gate,
+            response_transport=SimpleNamespace(send_json=sending),
+        )
+        handler._get("/api/performance")
+        self.assertEqual(free_while_sending, [True])
+        self.assertIsNone(handler._release_heavy_read)
+        with gate.held() as release:  # a release inside the read frees it at once
+            release()
+            self.assertTrue(gate._slot.acquire(blocking=False))
+            gate._slot.release()
+        self.assertEqual(gate.summary()["waits"], 0)
+
     def test_a_client_disconnect_while_sending_releases_the_gate(self) -> None:
-        # The gate stays held while the response is sent; a client that hangs
-        # up there must not keep it from the next read.
+        # A client that hangs up while its response is sent must not keep the
+        # gate from the next read.
         for error in (BrokenPipeError, ConnectionResetError):
             with self.subTest(error=error.__name__):
                 gate = HeavyReadGate(wait_s=5.0)

@@ -40,9 +40,15 @@ class AnalysisRoutes:
                 Access.SESSION,
                 self._running_dynamics,
             ),
-            Route("GET", "/api/analysis/trends", Access.SESSION, self._trends),
             Route(
-                "GET", "/api/analysis/week-review", Access.SESSION, self._week_review
+                "GET", "/api/analysis/trends", Access.SESSION, self._trends, heavy=True
+            ),
+            Route(
+                "GET",
+                "/api/analysis/week-review",
+                Access.SESSION,
+                self._week_review,
+                heavy=True,
             ),
             Route(
                 "POST", "/api/analysis/refresh", Access.SESSION_CSRF, self._refresh_area

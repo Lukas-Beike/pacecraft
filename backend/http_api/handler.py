@@ -86,6 +86,8 @@ class RequestHandler(BaseHTTPRequestHandler):
     dependencies: HttpRequestHandlerDependencies
     # When the current request reached the dispatch; read once by log_request.
     _dispatch_started_at: float | None = None
+    # Ends the current heavy read before its response is sent (#3125).
+    _release_heavy_read: Callable[[], None] | None = None
     server_version: str
     client_disconnect_errors = (
         BrokenPipeError,
@@ -292,8 +294,13 @@ class RequestHandler(BaseHTTPRequestHandler):
         session: dict[str, Any] = {}
         if route.access is not Access.PUBLIC:
             session = self.auth_service.require_auth(self)
-        with self.dependencies.heavy_read_gate.held() if route.heavy else nullcontext():
-            route.handle(self, self._request(path, params, session))
+        gate = self.dependencies.heavy_read_gate.held() if route.heavy else None
+        with gate or nullcontext() as release:
+            self._release_heavy_read = release
+            try:
+                route.handle(self, self._request(path, params, session))
+            finally:
+                self._release_heavy_read = None
 
     def _post(self, path: str) -> None:
         route, params = self.dependencies.route_table.match("POST", path) or (None, {})
@@ -382,6 +389,8 @@ class RequestHandler(BaseHTTPRequestHandler):
         payload: Any,
         headers: dict[str, str | list[str]] | None = None,
     ) -> None:
+        if self._release_heavy_read:  # the read is done; the send runs outside
+            self._release_heavy_read()
         self.dependencies.response_transport.send_json(self, status, payload, headers)
 
     def _send_app_error(self, error: AppError, method: str) -> None:
