@@ -71,7 +71,11 @@ Evidence: `scripts/check_push_secrets.py`; `docs/development.md` (secret checks 
 
 #### Scenario: Scope
 - **WHEN** the ratchet collects findings
-- **THEN** only Ruff, mypy, cognitive complexity and ESLint diagnostics are accepted, formatter diagnostics are rejected, and new files outside the excluded runtime directories are discovered
+- **THEN** only Ruff, Ruff format, mypy, cognitive complexity, CSS duplicate selector and ESLint diagnostics are accepted, any other tool is rejected, and new files outside the excluded runtime directories are discovered
+
+#### Scenario: Formatting
+- **WHEN** a push leaves a Python file unformatted that `ruff format --check` accepted before
+- **THEN** the ratchet reports a NEW `format` finding for that file; the files unformatted when the check arrived are baseline debt, and the check never rewrites a file (#3061)
 
 #### Scenario: JavaScript complexity or nested ternary
 - **WHEN** a `public/*.js` function exceeds cognitive complexity 15 or contains a nested ternary
@@ -98,7 +102,9 @@ Evidence:
 - `tests/test_quality_baseline.py::QualityBaselineTests.test_complex_function_and_nested_ternary_in_public_js_are_found`
 - `tests/test_quality_baseline.py::QualityBaselineTests.test_complexity_score_is_not_part_of_the_identity_and_nosonar_suppresses`
 - `tests/test_quality_baseline.py::QualityBaselineTests.test_duplicate_diagnostics_are_not_collapsed`
-- `tests/test_quality_baseline.py::QualityBaselineTests.test_formatter_is_not_collected_by_the_quality_gate`
+- `tests/test_quality_baseline.py::QualityBaselineTests.test_the_gate_runs_ruff_check_mypy_and_a_read_only_format_check`
+- `tests/test_quality_baseline.py::QualityBaselineTests.test_a_push_that_unformats_a_formatted_file_is_new_debt`
+- `tests/test_quality_baseline.py::QualityBaselineTests.test_a_new_css_duplicate_is_new_debt_not_an_unknown_tool`
 - `tests/test_quality_baseline.py::QualityBaselineTests.test_line_and_column_shifts_do_not_change_debt`
 - `tests/test_quality_baseline.py::QualityBaselineTests.test_new_violation_cannot_replace_one_fixed_violation`
 - `tests/test_quality_baseline.py::QualityBaselineTests.test_obsolete_diagnostic_requires_baseline_cleanup`

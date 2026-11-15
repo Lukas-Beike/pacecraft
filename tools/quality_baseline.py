@@ -19,6 +19,8 @@ from types import MappingProxyType
 
 ROOT = Path(__file__).resolve().parents[1]
 BASELINE = ROOT / "tests/fixtures/quality_baseline.json"
+# The tools read their settings from this file in the checked tree.
+PYPROJECT = "pyproject.toml"
 REQUIREMENTS = ROOT / "requirements-dev.txt"
 TOOLS = ("ruff", "mypy")
 # The cognitive counter is this module's own code and has no pinned version, so
@@ -247,7 +249,7 @@ def format_diagnostics(root: Path, files: list[str]) -> list[dict]:
                 "--check",
                 "--no-cache",
                 "--config",
-                "pyproject.toml",
+                PYPROJECT,
                 "--output-format=json",
                 *batch,
             ],
@@ -453,7 +455,7 @@ def collect(root: Path, notes: dict[str, str]) -> tuple[dict[str, str], list[dic
                 "check",
                 "--no-cache",
                 "--config",
-                "pyproject.toml",
+                PYPROJECT,
                 "--output-format=json",
                 *batch,
             ],
@@ -469,7 +471,7 @@ def collect(root: Path, notes: dict[str, str]) -> tuple[dict[str, str], list[dic
             [
                 *tool_command("mypy"),
                 "--config-file",
-                "pyproject.toml",
+                PYPROJECT,
                 "--no-incremental",
                 "--cache-dir",
                 cache,
