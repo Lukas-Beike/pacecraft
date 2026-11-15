@@ -3,6 +3,7 @@
 import json
 import subprocess
 import sys
+import time
 import unittest
 from pathlib import Path
 
@@ -100,6 +101,19 @@ class GuardDestructiveGitTests(unittest.TestCase):
         ):
             with self.subTest(command=command):
                 self.assertEqual(run_hook(command), 0)
+
+    def test_long_commands_are_decided_well_within_the_hook_budget(self) -> None:
+        # #3124: these took 40 s and more, past the shared 10 s hook budget.
+        for command, code in (
+            ("git " * 50_000 + "push --force", 2),
+            ("git -C x " * 30_000 + "reset --hard", 2),
+            ("git push " * 30_000, 0),
+            ("git push a" + " b" * 60_000, 0),
+        ):
+            with self.subTest(command=command[-20:]):
+                started = time.monotonic()
+                self.assertEqual(run_hook(command), code)
+                self.assertLess(time.monotonic() - started, 5)
 
     def test_unreadable_input_is_blocked(self) -> None:
         result = subprocess.run(

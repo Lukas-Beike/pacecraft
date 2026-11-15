@@ -22,7 +22,8 @@ INTERPRETER = re.compile(
     r"(?:^|[\s;&|(/\\])(?i:python(?:3(?:\.\d+)?)?|py|node|bash|sh|perl|ruby"
     r"|pwsh|powershell)(?:\.exe)?(?=[\s<|;)]|$)"
 )
-WRITER = re.compile(r"\btee\b|\bcat\b[^>]*>(?![>&]?\s*/dev/null)(?!&)")
+TEE, CAT = re.compile(r"\btee\b"), re.compile(r"\bcat\b")
+TO_FILE = re.compile(r">(?![>&]?\s*/dev/null)(?!&)")
 HEREDOC = re.compile(r"<<-?[ \t]*(?:'([^'\n]+)'|\"([^\"\n]+)\"|\\?([A-Za-z_][\w-]*))")
 INLINE = {"-c", "-e", "--eval", "--command", "-Command", "-command"}
 PERL_IN_PLACE = re.compile(r"-p?i(?![A-Za-z])")
@@ -80,6 +81,20 @@ def split_heredocs(command: str) -> tuple[list[tuple[str, str]], str]:
     return found, "\n".join(shell)
 
 
+def _writes(line: str) -> bool:
+    """`tee`, or `cat` whose first following `>` writes a file (not /dev/null or
+    a descriptor). Each stretch between two `>` is read once (#3124)."""
+    if TEE.search(line):
+        return True
+    start = 0
+    for index, char in enumerate(line):
+        if char == ">":
+            if TO_FILE.match(line, index) and CAT.search(line, start, index):
+                return True
+            start = index + 1
+    return False
+
+
 def _inline_edit(segment: str) -> bool:
     words = segment.split()
     runs = any(INTERPRETER.search(f" {word}") for word in words)
@@ -93,7 +108,7 @@ def _inline_edit(segment: str) -> bool:
 def blocked(command: str) -> bool:
     heredocs, shell = split_heredocs(command)
     for line, body in heredocs:
-        if DOUBLED in body and (INTERPRETER.search(line) or WRITER.search(line)):
+        if DOUBLED in body and (INTERPRETER.search(line) or _writes(line)):
             return True
     return any(
         DOUBLED in segment and _inline_edit(segment) for segment in _segments(shell)
