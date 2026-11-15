@@ -141,7 +141,17 @@ class SonarCheckTests(unittest.TestCase):
         self.assertEqual(code, 1)
         self.assertEqual(
             fake.calls[0][1:],
-            ["list", "issues", "--pull-request", "42", "--format", "json"],
+            # The CLI refuses ``list issues`` without the project key (#2834).
+            [
+                "list",
+                "issues",
+                "--project",
+                "Lukas-Beike_pacecraft",
+                "--pull-request",
+                "42",
+                "--format",
+                "json",
+            ],
         )
         self.assertIn("issue python:S3776 backend/e.py:40", out)
         self.assertEqual(out.count("issue "), 1)

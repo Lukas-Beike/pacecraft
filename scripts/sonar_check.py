@@ -173,6 +173,10 @@ def report(label: str, data: Any) -> int:
     return 3 if global_error_kind(data) == "forbidden" else 0
 
 
+# The SonarCloud project of this repository; ``list issues`` requires it (#2834).
+SONAR_PROJECT = "Lukas-Beike_pacecraft"
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--base", default="origin/develop")
@@ -183,7 +187,10 @@ def main(argv: list[str] | None = None) -> int:
         print(f"error: {SETUP_HINT}", file=sys.stderr)
         return 2
     if args.pr:
-        command = ["list", "issues", "--pull-request", str(args.pr), "--format", "json"]
+        command = [
+            *("list", "issues", "--project", SONAR_PROJECT),
+            *("--pull-request", str(args.pr), "--format", "json"),
+        ]
         label = f"sonar PR {args.pr}"
     else:
         command = ["analyze", "--base", args.base, "--format", "json"]
