@@ -15,8 +15,9 @@ from pathlib import Path
 time.sleep(float(os.environ.get({name!r} + "_SLEEP", "0")))
 # A stub whose export the hook deleted under it logs that instead.
 name = Path(__file__).name if Path(__file__).exists() else "deleted"
-with open(os.environ["HOOK_LOG"], "a", encoding="utf-8") as log:
-    print(name, sys.stdin.read().strip(), file=log)
+# One file per call: parallel appends to one file can lose a line on Windows (#3111).
+entry = Path(os.environ["HOOK_LOG"], f"{{time.time_ns():020d}}-{{os.getpid()}}")
+entry.write_text(name + " " + sys.stdin.read().strip(), encoding="utf-8")
 sys.exit(int(os.environ.get({name!r}, "0")))
 """
 
@@ -59,6 +60,7 @@ class PrePushHookTests(unittest.TestCase):
             )
             shim.chmod(0o755)
             log = root / "log"
+            log.mkdir()
             result = subprocess.run(
                 ["sh", HOOK.as_posix()],
                 cwd=root,
@@ -78,8 +80,11 @@ class PrePushHookTests(unittest.TestCase):
                     "GUARDS_EXIT": guards,
                 },
             )
-            text = log.read_text(encoding="utf-8") if log.exists() else ""
-            lines = [line.rstrip() for line in text.splitlines()]
+            # In start order: the secret scan ends before the other checks start.
+            lines = [
+                entry.read_text(encoding="utf-8").rstrip()
+                for entry in sorted(log.iterdir())
+            ]
             return result, lines
 
     def test_clean_push_runs_both_checks_in_order(self):
