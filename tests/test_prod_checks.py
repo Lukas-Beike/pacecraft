@@ -14,6 +14,8 @@ from pathlib import Path
 from typing import ClassVar
 from unittest import mock
 
+from server_test_support import ServerTestCase, server
+
 from backend.canonical.vocabulary import RecordingOrigin, Sport
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
@@ -573,6 +575,42 @@ class ProdChecksTests(unittest.TestCase):
         )
         self.assertEqual(code, 2)
         self.assertIn("system temp directory", text)
+
+
+# Leaves of an allow-listed section that `--section` never prints, each with its reason (#3131).
+NOT_PRINTED = {
+    "runtime": {
+        "python": "free text: the interpreter version",
+        "platform": "free text: the host platform",
+        "slowest_routes": "a list of route patterns, read in the full export (#3017)",
+    },
+}
+
+
+class SectionFieldsCoverTheProducersTests(ServerTestCase):
+    """A new diagnostics key fails here until prod_diagnostics prints or names it (#3131)."""
+
+    def test_every_key_a_section_emits_is_printed_or_named(self):
+        now = datetime.now(UTC)
+        # A time not set yet still prints, as a null age.
+        self.assertEqual(
+            prod_diagnostics.aged(("last_run_at", None), now), ("last_run_hours", None)
+        )
+        # The real producers, on the empty temporary storage of this app.
+        report = server.DIAGNOSTICS.report_service().report()
+        for name, allowed in prod_diagnostics.SECTION_FIELDS.items():
+            section = report.get(name)
+            with self.subTest(section=name):
+                self.assertIsInstance(section, dict)
+                self.assertNotEqual(section.get("status"), "unavailable")
+                for leaf in prod_diagnostics.leaves(section):
+                    path = prod_diagnostics.aged(leaf, now)[0]
+                    self.assertTrue(
+                        allowed.fullmatch(path) or path in NOT_PRINTED.get(name, {}),
+                        f"diagnostics section {name} emits {path}: add it to "
+                        "SECTION_FIELDS in scripts/prod_diagnostics.py, or to "
+                        "NOT_PRINTED in this test with the reason",
+                    )
 
 
 if __name__ == "__main__":

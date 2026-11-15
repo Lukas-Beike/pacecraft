@@ -276,11 +276,11 @@ def printable(value: Any) -> bool:
 
 
 def aged(leaf: tuple[str, Any], now: datetime) -> tuple[str, Any]:
-    """A `*_at` time as its age `*_hours`; every other leaf unchanged."""
+    """A `*_at` time as its age `*_hours` (none yet: null); every other leaf unchanged."""
     path, value = leaf
-    if not (path.endswith("_at") and isinstance(value, str)):
+    if not path.endswith("_at"):
         return leaf
-    age = hours_since(value, now)
+    age = hours_since(value if isinstance(value, str) else None, now)
     return path[:-3] + "_hours", None if age is None else round(age, 1)
 
 
