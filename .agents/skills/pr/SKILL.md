@@ -152,6 +152,9 @@ exit 1 handle the cause as below. On each wake:
   Gitar has reviewed the repaired head and no feedback is open.
 - Later changes (feedback fixes, CI fixes, conflict resolutions, rebases) need
   validation, not another local review; CI reviews the new head.
+- pr-state names this PR's files that develop changed since the head branched
+  off (#2866): before arming, rebase when it names any; once auto-merge is
+  armed it reports them as accepted, so do not rebase for that alone.
 - If the branch falls behind or conflicts, rebase and push with
   [branch-sync](../pacecraft-branch-sync/SKILL.md) `--push` (never a
   merge-style "Update branch"). A stacked PR: retarget it to `develop` first

@@ -58,7 +58,7 @@ def thread(resolved, path="backend/a.py", line=4, body="Please fix", author="git
 
 
 class PrStateTests(unittest.TestCase):
-    def run_script(self, pr, threads=(), out=None):
+    def run_script(self, pr, threads=(), out=None, moved=(), count=None):
         graphql = {
             "data": {
                 "repository": {
@@ -75,6 +75,14 @@ class PrStateTests(unittest.TestCase):
 
         def fake(argv, **_kwargs):
             calls.append(argv)
+            if argv[1:3] == ["pr", "diff"]:  # this PR's files
+                return subprocess.CompletedProcess(argv, 0, "scripts/a.py\n", "")
+            if argv[1] == "api" and "/compare/" in argv[2]:
+                if moved is None:  # the compare API fails
+                    return subprocess.CompletedProcess(argv, 1, "", "HTTP 502")
+                files = len(moved) if count is None else count
+                compared = {"behind": len(moved), "count": files, "files": list(moved)}
+                return subprocess.CompletedProcess(argv, 0, json.dumps(compared), "")
             data = {
                 "pr": pr,
                 "repo": {"owner": {"login": "o"}, "name": "r"},
@@ -179,6 +187,45 @@ class PrStateTests(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertIn("MERGED", out)
         self.assertEqual(self.run_script(pull(state="CLOSED"))[0], 1)
+
+    def test_base_changes_in_this_prs_files_are_named_and_block(self):
+        # #2866: develop moved in a file of this PR since its head branched off.
+        moved = "develop moved in this PR's files"
+        code, out, _, calls = self.run_script(pull(), moved=("scripts/a.py", "x.md"))
+        self.assertEqual(code, 1)
+        self.assertIn(f"{moved} (2 commit(s) behind): scripts/a.py", out)
+        self.assertNotIn("x.md", out)
+        compare = [c for c in calls if c[1] == "api" and "/compare/" in c[2]]
+        self.assertEqual(
+            compare[0][2], "repos/{owner}/{repo}/compare/abcdef0123456789...develop"
+        )
+        self.assertIn("previous_filename", compare[0][-1])  # a rename counts too
+        # After a rebase, or when develop moved only elsewhere: none, still open.
+        code, out, _, _ = self.run_script(pull(), moved=("x.md",))
+        self.assertEqual(code, 3)
+        self.assertIn(f"{moved} (1 commit(s) behind): none", out)
+        # Once armed, develop moving during CI is accepted, as pr_merge does.
+        armed = pull(auto={"enabledBy": "x"})
+        code, out, _, _ = self.run_script(armed, moved=("scripts/a.py",))
+        self.assertEqual(code, 3)
+        self.assertIn("scripts/a.py (auto-merge armed: accepted)", out)
+        # A failed comparison leaves the rest of the read-only report intact.
+        code, out, _, _ = self.run_script(pull(), moved=None)
+        self.assertEqual(code, 3)
+        self.assertIn(f"{moved}: not checked", out)
+        # A merged PR is not compared.
+        _, out, _, calls = self.run_script(
+            pull(state="MERGED"), moved=("scripts/a.py",)
+        )
+        self.assertIn("not checked (MERGED)", out)
+        self.assertFalse([c for c in calls if c[1:3] == ["pr", "diff"]])
+        # The 300-file cap counts files: 160 renames give 320 names, still comparable.
+        renamed = [f"docs/{side}{n}.md" for n in range(160) for side in "ab"]
+        _, out, _, _ = self.run_script(pull(), moved=renamed, count=160)
+        self.assertIn(": none", out)
+        self.assertNotIn("too many files", out)
+        _, out, _, _ = self.run_script(pull(), moved=renamed[:2], count=300)
+        self.assertIn("(develop changed too many files to compare)", out)
 
     def test_failed_gh_call_exits_2(self):
         def failing(argv, **_kwargs):

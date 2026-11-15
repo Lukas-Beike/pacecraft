@@ -29,7 +29,7 @@ import time
 from typing import Any
 
 from gh_cli import CliError, gh, gh_json, positive_int
-from pr_state import check_outcome, unresolved_threads
+from pr_state import base_overlap, check_outcome, unresolved_threads
 
 FIELDS = "state,baseRefName,headRefOid,autoMergeRequest,mergeCommit,statusCheckRollup,comments,reviews"
 POLLS_PER_MINUTE = 3
@@ -57,26 +57,13 @@ def arm(number: int, pr: dict[str, Any]) -> str:
     return f"already clean, merged {pr['headRefOid'][:10]} directly"
 
 
-COMPARE_FILE_CAP = 300  # the compare API lists at most this many files
-
-
 def behind_develop(number: int, pr: dict[str, Any]) -> bool:
     """Whether develop changed files this PR changes since the head branched off.
 
     The lane rule (rebase if develop moved in files you touch) without a rebase
     loop: develop moves during every CI run. Disarms auto-merge on a refusal.
     """
-    path = f"repos/{{owner}}/{{repo}}/compare/{pr['headRefOid']}...develop"
-    query = "{behind: .ahead_by, files: [.files[]?.filename]}"
-    develop = gh_json("api", path, "--jq", query)
-    behind, moved = develop["behind"], set(develop["files"] or [])
-    if not isinstance(behind, int):
-        raise CliError("the develop comparison returned no commit count")
-    # `pr view --json files` stops at 100 files; the diff lists them all.
-    mine = set(gh("pr", "diff", str(number), "--name-only").split())
-    shared = sorted(mine & moved)
-    if len(moved) >= COMPARE_FILE_CAP:
-        shared = shared or ["(develop changed too many files to compare)"]
+    behind, shared = base_overlap(number, pr["headRefOid"], "develop")
     if behind and not shared:
         print(f"head is {behind} commit(s) behind develop, none in this PR's files")
         return False
