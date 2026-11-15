@@ -11,7 +11,8 @@ over, so it cannot hold back older activities. A rate limit that stored nothing
 does not count as an attempt. Kinds a payload does not return keep their stored
 sets. A fetch without the original file falls back to chart streams and splits;
 those never replace the full streams and laps an earlier file gave (#3122): the
-stored sets stay, the attempt counts as incomplete, and diagnostics count it.
+stored sets stay and diagnostics count it. A failed file call or a rate limit
+already makes the attempt incomplete; a transport without the file does not.
 Nothing is written back to Garmin.
 """
 
@@ -77,8 +78,6 @@ BACKFILL_STATE_KEY: Final = "garmin_activity_detail_backfill"
 BACKFILL_RETRY_ATTEMPTS: Final = 3
 # Counts of fallback sets (chart streams, splits) kept out or stored (#3122).
 DETAIL_FALLBACK_KEY: Final = "garmin_detail_fallback"
-# The collector's capability for the original file; listed in ``skipped`` when paused.
-_FIT_CAPABILITY: Final = "activity_fit"
 # The backfill needs only ``activity_details``, the part both transports serve.
 # The SDK-only parts (splits, HR and power zones, exercise sets) and the Personal
 # API-only FIT file pause only themselves; the collector skips a paused part
@@ -173,7 +172,7 @@ class GarminActivityDetailService:
         self._count_fit(provider_activity_id, collected)
         keep_file_sets = self._keeps_file_sets(provider_activity_id, mapped)
         # Malformed parts are dropped by the mapper, so they count like failures.
-        incomplete = _incomplete(collected) or bool(mapped.issues) or keep_file_sets
+        incomplete = _incomplete(collected) or bool(mapped.issues)
         if not mapped.records:
             if incomplete:
                 # Every requested part failed: report the job as failed.
@@ -358,7 +357,8 @@ class GarminActivityDetailService:
         )
         self._count_fit(provider_activity_id, collected)
         keep_file_sets = self._keeps_file_sets(provider_activity_id, mapped)
-        failed = _attempt_failed(collected, mapped, keep_file_sets=keep_file_sets)
+        # Malformed parts are dropped by the mapper, so they count like failures.
+        failed = _failed(collected) or bool(mapped.issues)
         retry = dict(outcome.retry)
         if collected.get("skipped") and not failed:
             # Paused parts are no attempt: keep the activity a candidate without
@@ -564,19 +564,6 @@ def _fallback_sets(mapped: MappingResult[Any]) -> tuple[Any, ...]:
         for item in mapped.records
         if isinstance(item, (ActivityStreamSet, ActivityLapSet))
     )
-
-
-def _attempt_failed(
-    collected: Mapping[str, Any], mapped: MappingResult[Any], *, keep_file_sets: bool
-) -> bool:
-    """Whether a backfill fetch counts as an incomplete attempt.
-
-    Malformed parts are dropped by the mapper, so they count like failures; so
-    do kept file sets (#3122), unless the file was only paused, which is no attempt.
-    """
-    if _failed(collected) or mapped.issues:
-        return True
-    return keep_file_sets and _FIT_CAPABILITY not in (collected.get("skipped") or ())
 
 
 def detail_fallback_counts(db: Any, key_values: Any) -> dict[str, int]:

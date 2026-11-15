@@ -237,6 +237,20 @@ class GarminActivityDetailJobTests(unittest.TestCase):
         self.service(now=(later + timedelta(days=1)).isoformat()).refresh(ACTIVITY)
         self.assertNotEqual(_grades(self.manager)["streams"], before["streams"])
 
+    def test_a_transport_without_the_file_keeps_the_sets_and_completes(self) -> None:
+        # Without a Personal API key the file is never served: no error, no pause.
+        # The full sets stay, and the refresh is complete, not partial (Gitar P2).
+        self.reader.fetch_activity_detail.return_value = _with_fit()
+        self.service().refresh(ACTIVITY)
+        before = _grades(self.manager)
+        self.reader.fetch_activity_detail.return_value = _collected()
+        later = NOW_AT + timedelta(hours=1)
+
+        result = self.service(now=later.isoformat()).refresh(ACTIVITY)
+
+        self.assertEqual(result["status"], "completed")
+        self.assertEqual(_grades(self.manager)["streams"], before["streams"])
+
     def test_a_fetch_without_a_stored_full_set_stores_the_fallback(self) -> None:
         # Nothing better is stored, so the chart streams are the best there is.
         self.service().refresh(ACTIVITY)
