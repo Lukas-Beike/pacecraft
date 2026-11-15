@@ -109,6 +109,7 @@ every named number the code fixes. A test fails when it is out of date.
 | `CALIBRATION_TABLE_RPES` | `tuple(range(1, 11))` | `backend/performance/local_tss.py` | The RPE values of the detail table (factor per RPE of its +-1 band). |
 | `LOCAL_SOURCE` | `'local'` | `backend/performance/local_tss.py` |  |
 | `LOCAL_INDOOR_SOURCE` | `'local_indoor'` | `backend/performance/local_tss.py` |  |
+| `CURVE_FORMAT_VERSION` | `1` | `backend/performance/mean_max_curve.py` | The curve computation's own version (#2821): it covers the inputs without a method version of their own (merge_details, analysis_input, grade_adjustment) and the stored payload fields. Bump it whenever any of them changes the curves, so stored curves are computed again; the golden-curve test pins it. |
 | `SLEEP_SECTION` | `'sleep'` | `backend/performance/morning_battery.py` |  |
 | `MORNING_RETRY_SECONDS` | `15 * 60` | `backend/performance/morning_battery_service.py` |  |
 | `MORNING_MAX_ATTEMPTS` | `3` | `backend/performance/morning_battery_service.py` |  |

@@ -126,6 +126,8 @@ PRIVACY_DELETE_SCOPE = (
             "activity_strength_sets",
             "activity_detail_sets",
             "activity_detail_analysis",
+            # Derived curves reference their session: deleted before it (#2821).
+            "session_curves",
             "activity_records",
             "activity_sessions",
             "provider_records",

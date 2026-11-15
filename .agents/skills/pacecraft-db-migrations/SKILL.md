@@ -10,9 +10,9 @@ description: Plan, implement, or review SQLCipher schema migrations and released
    readers, writers, restore validation, and startup before choosing a migration.
    Record the current version and the baseline from code: the frozen fixture
    is v26 (release 2.0.5), the oldest schema the code opens. Production runs
-   v28 (releases 2.1.10 to 2.1.14, the only production instance); v27 and v28
+   v29 since release 2.1.17 (the only production instance); v27, v28 and v29
    are accepted by their frozen digests. New changes need evidence from both:
-   populated upgrade, rollback and restart from the v26 fixture and from a v28
+   populated upgrade, rollback and restart from the v26 fixture and from a v29
    database. Move the
    baseline only after the athlete confirms a newer production schema from the
    diagnostics report.

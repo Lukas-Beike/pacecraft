@@ -32,11 +32,11 @@ The keys of the `kv` table are listed in [kv-catalogue.md](kv-catalogue.md).
 ## Current schema
 
 <!-- BEGIN GENERATED SCHEMA -->
-Schema version: `29` (`PRAGMA user_version`).
+Schema version: `30` (`PRAGMA user_version`).
 
-Shape digest: `26e479545cd3331930a836e145facea50f2701c695eb15f6ca2e34a0dfe84628`.
+Shape digest: `e680b95e585bb238ddbf783aef80a6be890fe63295d07eeea1e17df6b86379ad`.
 
-47 tables and 35 named indexes, in signature order.
+48 tables and 35 named indexes, in signature order.
 
 ### index `idx_activity_feedback_session`
 
@@ -1014,6 +1014,19 @@ CREATE TABLE remote_links (
     sync_state TEXT NOT NULL CHECK (length(sync_state) BETWEEN 1 AND 64),
     last_synced_at TEXT,
     PRIMARY KEY (entity_kind, local_id, provider)
+);
+```
+
+### table `session_curves`
+
+```sql
+CREATE TABLE session_curves (
+    activity_id TEXT PRIMARY KEY REFERENCES activity_sessions(activity_id),
+    fingerprint TEXT NOT NULL CHECK (length(fingerprint) = 64),
+    payload TEXT NOT NULL CHECK (json_valid(payload) AND json_type(payload) = 'object'),
+    computed_at TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
 );
 ```
 

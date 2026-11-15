@@ -5,8 +5,8 @@ by release 2.0.5. Older databases and backups are rejected unchanged; upgrade
 them with release 2.0.5 first. The baseline keeps its frozen fixture in
 tests/fixtures and its digest in backend.db.schema_history; each later schema
 adds one upgrade step here, so the baseline reaches the current schema.
-Released later schemas (v27, v28) keep only their digests and enter the chain
-there.
+Released later schemas (v27 to v29) keep only their digests and enter the
+chain there.
 """
 
 from __future__ import annotations
@@ -30,6 +30,7 @@ from backend.db.schema_history import (
     SHAPE_SCHEMA_V26,
     SHAPE_SCHEMA_V27,
     SHAPE_SCHEMA_V28,
+    SHAPE_SCHEMA_V29,
     released_shape,
 )
 
@@ -382,9 +383,27 @@ def _competition_location(db: Any) -> None:
     execute_ddl(db, _V29_COMPETITION_LOCATION_DDL)
 
 
+# Frozen copy of the v30 curve table; the live DDL may change later.
+_V30_SESSION_CURVES_DDL: Final = """
+    CREATE TABLE session_curves (
+        activity_id TEXT PRIMARY KEY REFERENCES activity_sessions(activity_id),
+        fingerprint TEXT NOT NULL CHECK (length(fingerprint) = 64),
+        payload TEXT NOT NULL CHECK (json_valid(payload) AND json_type(payload) = 'object'),
+        computed_at TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+    )"""
+
+
+def _session_curves(db: Any) -> None:
+    """Schema v30: an empty table for each session's stored curves (#2821)."""
+    execute_ddl(db, _V30_SESSION_CURVES_DDL)
+
+
 # Released shape -> (next shape, step).
 UPGRADE_STEPS: Final[Mapping[str, tuple[str, Callable[[Any], None]]]] = {
     SHAPE_SCHEMA_V26: (SHAPE_SCHEMA_V27, _canonical_products),
     SHAPE_SCHEMA_V27: (SHAPE_SCHEMA_V28, _calendar_decisions),
-    SHAPE_SCHEMA_V28: (SHAPE_CURRENT, _competition_location),
+    SHAPE_SCHEMA_V28: (SHAPE_SCHEMA_V29, _competition_location),
+    SHAPE_SCHEMA_V29: (SHAPE_CURRENT, _session_curves),
 }

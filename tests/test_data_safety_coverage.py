@@ -67,7 +67,11 @@ from backend.canonical.vocabulary import (
     ZoneMetric,
 )
 from backend.db import canonical_store, garmin_store
-from backend.db.activity_detail_store import replace_detail_set, save_analysis
+from backend.db.activity_detail_store import (
+    replace_detail_set,
+    save_analysis,
+    save_session_curve,
+)
 from backend.db.manager import DatabaseManager
 from backend.db.migrations import migrate_schema
 from backend.db.repositories import KeyValueRepository, ProfileRepository
@@ -148,6 +152,7 @@ EXPORTED_TABLE_MEMBERS: dict[str, tuple[str, ...]] = {
 EXPORT_EXCLUDED_TABLES: dict[str, str] = {
     "sessions": "login sessions hold credential hashes; restore scrubs them too",
     "planning_state": "a revision counter; planning.json carries the planning data",
+    "session_curves": "derived from the stored streams; the next all-time build recomputes it",
 }
 # Export columns left out of an explicit SELECT, with the reason. A new column of
 # an explicitly selected table fails the guard until it is exported or listed.
@@ -168,7 +173,17 @@ EXPORT_COLUMNS_NOT_EXPORTED: dict[str, dict[str, str]] = {
 # Schema version -> export format version that documents it. Bump both together.
 # Format 14 adds provider_settings.json without a schema change; format 17
 # adds table bookkeeping and coach_action_proposals.jsonl, also without one.
-EXPORT_FORMAT_FOR_SCHEMA = {22: 12, 23: 14, 24: 15, 25: 17, 26: 17, 27: 18, 28: 19, 29: 20}
+EXPORT_FORMAT_FOR_SCHEMA = {
+    22: 12,
+    23: 14,
+    24: 15,
+    25: 17,
+    26: 17,
+    27: 18,
+    28: 19,
+    29: 20,
+    30: 20,
+}
 
 # Key/value families (exact key or prefix ending in ":") and what the privacy
 # export does with them. "exported": application_state.json; "excluded": never
@@ -433,6 +448,9 @@ class DataKindFixture(unittest.TestCase):
                 "zone_times": {"heart_rate": [10, 20, 30, 0, 0]},
             },
             now=STAMP,
+        )
+        save_session_curve(
+            self.db, "act_1", fingerprint="c" * 64, payload={"power": {}}, now=STAMP
         )
 
     def _seed_bookkeeping_rows(self) -> None:
@@ -835,6 +853,7 @@ class DataKindDeleteTests(DataKindFixture):
             "activity_strength_sets",
             "activity_detail_sets",
             "activity_detail_analysis",
+            "session_curves",
             "remote_links",
             "change_history",
             "provider_sync_cursors",
