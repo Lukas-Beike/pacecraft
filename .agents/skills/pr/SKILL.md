@@ -47,6 +47,9 @@ Copy this checklist into your response and tick it as you go:
   `backend/activities` constants, run
   `python scripts/regenerate_docs.py` and commit the rewritten documents; the
   pre-push hook refuses stale ones (#2949).
+- A PR that adds or alters a user-visible function adds or updates its step in
+  `STEPS` of `scripts/ui_walk.mjs`, or names in the description why it cannot
+  be walked read-only (#3009).
 - **OpenSpec:** list `git diff --name-only --no-renames origin/develop...HEAD --
   openspec/changes`. Each `openspec/changes/<name>/` path outside `archive/`
   names a change that must be archived on this branch: its active directory is

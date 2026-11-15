@@ -828,6 +828,8 @@ def browser_mounts(root):
         str(root / "public/index.html") + ":/work/public/index.html:ro",
         "--volume",
         str(root / "public/service-worker.js") + ":/work/public/service-worker.js:ro",
+        "--volume",
+        str(root / "scripts/ui_walk.mjs") + ":/work/scripts/ui_walk.mjs:ro",
     ]
 
 

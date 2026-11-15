@@ -147,6 +147,18 @@ class AiDocsContractTests(unittest.TestCase):
         self.assertNotIn("tests/test_server.py", validation)
         self.assertTrue((ROOT / "tests" / "run_tests.py").is_file())
 
+    def test_delivery_skills_require_a_ui_walk_step_for_a_visible_function(
+        self,
+    ) -> None:
+        # #3009: the post-release walk covers every user-visible function.
+        for name in ("deliver-issue", "pr"):
+            with self.subTest(skill=name):
+                text = (SKILL_ROOT / name / "SKILL.md").read_text(encoding="utf-8")
+                self.assertIn("`STEPS` of `scripts/ui_walk.mjs`", text)
+        self.assertIn(
+            "STEPS", (ROOT / "scripts" / "ui_walk.mjs").read_text(encoding="utf-8")
+        )
+
     def test_claude_skill_stubs_point_to_canonical_skills(self) -> None:
         stubs = sorted((ROOT / ".claude" / "skills").glob("*/SKILL.md"))
         self.assertTrue(stubs)

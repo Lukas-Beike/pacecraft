@@ -71,7 +71,9 @@ stop, report it, and do not try to repair production.
    paging, detail pane at desktop width), Analyse, Ernährung, Mehr. After a
    deploy the service-worker cache name must differ from the previous walk
    (new asset versions served). Keep the load times per view in the session
-   notes for the next comparison.
+   notes for the next comparison. Read the per-step lines too: a `FAIL` step
+   (a chart or panel missing or empty, or a step that passed last time and is
+   skipped now) is a finding; keep each step's time and note every `skipped`.
    When the Analyse all-time cards still load, `--section curve_build` shows
    whether a build runs and for how long (`building_s`, compare with the last
    `last_build_s`) or failed (`failed_age_s`, `failures`).
