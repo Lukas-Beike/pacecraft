@@ -120,3 +120,34 @@ test("@responsive desktop uses a readable text size, two charts per row and a gr
   }));
   expect(widest).toBeLessThanOrEqual(limit + 1);
 });
+
+test("@responsive desktop Analyse rows: two cards at equal height, a lone card across the row", async ({ page }) => {
+  // The athlete's rule (#3154): no half-width card beside an empty half, no ragged pair.
+  test.skip(!(page.viewportSize().width >= 1100), "Desktop layout");
+  const seen = { pairs: 0, lone: 0 };
+  for (const [tab, ready] of [["running", "#runningBestEfforts h4"], ["cycling", "#cyclingPowerProfile h4"], ["load", "#trainingZoneCharts .analysis-chart-card"], ["recovery", "#personalRecovery svg"], ["week", "#weekReview h3"]]) {
+    await open(page, `analysis/${tab}`, ready);
+    const rows = await page.evaluate(() => [...document.querySelectorAll("#dataPanel .analysis-history-charts")].filter((grid) => grid.offsetParent).flatMap((grid) => {
+      const width = grid.getBoundingClientRect().width;
+      const byTop = new Map();
+      for (const kid of [...grid.children].filter((node) => node.offsetParent)) {
+        const box = kid.getBoundingClientRect();
+        byTop.set(Math.round(box.top), [...(byTop.get(Math.round(box.top)) || []), { width: box.width / width, height: box.height }]);
+      }
+      return [...byTop.values()];
+    }));
+    for (const row of rows) {
+      expect(row.length, tab).toBeLessThanOrEqual(2);
+      if (row.length === 2) {
+        seen.pairs += 1;
+        expect(Math.abs(row[0].height - row[1].height), tab).toBeLessThanOrEqual(1);
+      } else {
+        seen.lone += 1;
+        expect(row[0].width, tab).toBeGreaterThan(0.99);
+      }
+    }
+  }
+  // The fixture's Belastung holds both cases, so neither rule passes vacuously.
+  expect(seen.pairs).toBeGreaterThan(0);
+  expect(seen.lone).toBeGreaterThan(0);
+});
