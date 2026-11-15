@@ -82,6 +82,8 @@ class Route:
             (self.method, self.path) in PUBLIC_API_ROUTES
         ):
             raise ValueError(f"{self.method} {self.path} public status is not reviewed")
+        if self.heavy and self.method != "GET":
+            raise ValueError(f"{self.method} {self.path} cannot be heavy")
 
 
 def _compile(path: str) -> re.Pattern[str]:

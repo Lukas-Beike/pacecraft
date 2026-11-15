@@ -26,7 +26,7 @@ class PlanningGetRoutes:
 
     def routes(self) -> list[Route]:
         return [
-            Route("GET", "/api/plan", Access.SESSION, self._plan, heavy=True),
+            Route("GET", "/api/plan", Access.SESSION, self._plan),
             Route("GET", "/api/weather", Access.SESSION, self._weather),
             Route("GET", "/api/library", Access.SESSION, self._library),
         ]

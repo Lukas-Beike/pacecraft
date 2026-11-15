@@ -30,13 +30,15 @@ class HeavyReadGate:
 
     @contextmanager
     def held(self) -> Iterator[None]:
-        started = self._clock()
-        acquired = self._slot.acquire(timeout=self._wait_s)
-        waited = self._clock() - started
-        with self._state:
-            self._longest_wait_s = max(self._longest_wait_s, waited)
-            self._slow_waits += waited > 1.0
-            self._timeouts += not acquired
+        acquired = self._slot.acquire(blocking=False)
+        if not acquired:  # only a real wait is timed
+            started = self._clock()
+            acquired = self._slot.acquire(timeout=self._wait_s)
+            waited = self._clock() - started
+            with self._state:
+                self._longest_wait_s = max(self._longest_wait_s, waited)
+                self._slow_waits += waited > 1.0
+                self._timeouts += not acquired
         try:
             yield
         finally:

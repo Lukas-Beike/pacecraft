@@ -292,8 +292,7 @@ class RequestHandler(BaseHTTPRequestHandler):
         session: dict[str, Any] = {}
         if route.access is not Access.PUBLIC:
             session = self.auth_service.require_auth(self)
-        gate = self.dependencies.heavy_read_gate
-        with gate.held() if route.heavy else nullcontext():
+        with self.dependencies.heavy_read_gate.held() if route.heavy else nullcontext():
             route.handle(self, self._request(path, params, session))
 
     def _post(self, path: str) -> None:

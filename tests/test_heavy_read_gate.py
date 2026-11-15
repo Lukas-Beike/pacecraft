@@ -7,6 +7,7 @@ import threading
 import unittest
 from pathlib import Path
 
+from backend.http_api.route_table import Access, Route
 from backend.runtime.heavy_reads import HeavyReadGate
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -14,10 +15,8 @@ HEAVY_ROUTES = {
     "/api/activities",
     "/api/analysis/power-profiles",
     "/api/analysis/training-records",
-    "/api/bootstrap",
     "/api/context-preview",
     "/api/performance",
-    "/api/plan",
 }
 
 
@@ -98,6 +97,9 @@ class HeavyReadGateTests(unittest.TestCase):
                     self.assertEqual(method, "GET", path.name)
                     heavy.add(route)
         self.assertEqual(heavy, HEAVY_ROUTES)
+        # Only a GET route can be heavy: a POST would silently skip the gate.
+        with self.assertRaises(ValueError):
+            Route("POST", "/api/x", Access.SESSION_CSRF, lambda *_: None, heavy=True)
 
 
 if __name__ == "__main__":
