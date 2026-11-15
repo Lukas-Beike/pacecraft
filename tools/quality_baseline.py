@@ -21,6 +21,14 @@ ROOT = Path(__file__).resolve().parents[1]
 BASELINE = ROOT / "tests/fixtures/quality_baseline.json"
 # The tools read their settings from this file in the checked tree.
 PYPROJECT = "pyproject.toml"
+# Ruff's executable-bit rules read a file mode that Windows lacks, so Ruff skips
+# them there while Linux CI reports them (#3091). On Windows the ratchet reports
+# them from the git modes, with Ruff's messages, so the findings match CI's.
+EXECUTABLE_RULES = {
+    "EXE001": "Shebang is present but file is not executable",
+    "EXE002": "The file is executable but no shebang is present",
+}
+GIT_EXECUTABLE = "100755"
 REQUIREMENTS = ROOT / "requirements-dev.txt"
 TOOLS = ("ruff", "mypy")
 # The cognitive counter is this module's own code and has no pinned version, so
@@ -236,6 +244,57 @@ def _functions(node: ast.AST, prefix: str = ""):
             yield from _functions(child, f"{prefix}{child.name}.")
         else:
             yield from _functions(child, prefix)
+
+
+def git_modes(root: Path) -> dict[str, str] | None:
+    """Each tracked path's git mode; None without a repository.
+
+    The pre-push hook checks an export of HEAD without `.git` and names the
+    clone in PACECRAFT_GIT_ROOT, so HEAD's tree holds the modes; a working tree
+    reads its index, where a staged mode change already shows.
+    """
+    clone = os.environ.get("PACECRAFT_GIT_ROOT")
+    command = (
+        ["git", "-C", clone, "ls-tree", "-r", "-z", "HEAD"]
+        if clone
+        else ["git", "-C", str(root), "ls-files", "-s", "-z"]
+    )
+    try:
+        output = run(command, root, (0,))
+    except RuntimeError:
+        return None
+    modes = {}
+    # NUL-separated records keep a path unquoted, special characters included.
+    for record in filter(None, output.split("\0")):
+        head, _, path = record.partition("\t")
+        modes[path] = head.split(" ", 1)[0]
+    return modes
+
+
+def executable_bit_diagnostics(
+    root: Path, files: list[str], *, windows: bool = os.name == "nt"
+) -> list[dict]:
+    """EXE001/EXE002 as Ruff reports them on Linux; Ruff itself does elsewhere."""
+    modes = git_modes(root) if windows else None
+    if modes is None:
+        return []
+    diagnostics = []
+    for path in files:
+        with (root / path).open("rb") as source:
+            shebang = source.read(2) == b"#!"
+        executable = modes.get(path) == GIT_EXECUTABLE
+        code = {(True, False): "EXE001", (False, True): "EXE002"}.get(
+            (shebang, executable)
+        )
+        if code:
+            item = {
+                "filename": path,
+                "location": {"row": 1, "column": 1},
+                "code": code,
+                "message": EXECUTABLE_RULES[code],
+            }
+            diagnostics.append(diagnostic("ruff", item, root))
+    return diagnostics
 
 
 def format_diagnostics(root: Path, files: list[str]) -> list[dict]:
@@ -487,6 +546,7 @@ def collect(root: Path, notes: dict[str, str]) -> tuple[dict[str, str], list[dic
             record = diagnostic("mypy", item, root)
             diagnostics.append(record)
             notes[note_key(record)] = f": {item['message']}"
+    diagnostics.extend(executable_bit_diagnostics(root, files))
     diagnostics.extend(format_diagnostics(root, files))
     diagnostics.extend(cognitive_diagnostics(root, files))
     diagnostics.extend(css_duplicate_diagnostics(root))

@@ -41,6 +41,64 @@ class QualityBaselineTests(unittest.TestCase):
     def test_existing_diagnostic_is_accepted(self):
         self.assertEqual(self.check([self.existing])[0], 0)
 
+    def test_the_executable_bit_rules_follow_the_git_modes_on_windows(self):
+        # #3091: Ruff cannot read the bit on Windows, and Linux CI failed a
+        # shebang file whose mode was 100644 after every local check passed.
+        files = {"shebang.py": "#!/usr/bin/env python3\n", "plain.py": "x = 1\n",
+                 "script.py": "#!/usr/bin/env python3\n", "bare.py": "y = 2\n",
+                 "skript ä.py": "#!/usr/bin/env python3\n"}  # fmt: skip
+        env = {**os.environ, "GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@t.invalid",
+               "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@t.invalid"}  # fmt: skip
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            for name, text in files.items():
+                (root / name).write_text(text, encoding="utf-8")
+
+            def git(*args):
+                subprocess.run(["git", "-C", directory, *args], check=True,
+                               capture_output=True, env=env)  # fmt: skip
+
+            git("init", "-q")
+            git("add", ".")
+            # A path git quotes (space, non-ASCII) keeps its mode too (Gitar P3).
+            git("update-index", "--chmod=+x", "script.py", "bare.py", "skript ä.py")
+
+            def found(**kwargs):
+                return sorted(
+                    (item["path"], item["code"], item["line"])
+                    for item in quality_baseline.executable_bit_diagnostics(
+                        root, sorted(files), **kwargs
+                    )
+                )
+
+            expected = [("bare.py", "EXE002", 1), ("shebang.py", "EXE001", 1)]
+            # A working tree reads its index.
+            with patch.dict(os.environ, {}, clear=False) as environ:
+                environ.pop("PACECRAFT_GIT_ROOT", None)
+                self.assertEqual(found(windows=True), expected)
+            # Elsewhere Ruff reports them itself, so nothing is added twice.
+            self.assertEqual(found(windows=False), [])
+            # The pre-push export has no .git: the clone's HEAD gives the modes.
+            git("commit", "-q", "-m", "fixture")
+            with tempfile.TemporaryDirectory() as exported:
+                for name, text in files.items():
+                    (Path(exported) / name).write_text(text, encoding="utf-8")
+                with patch.dict(os.environ, {"PACECRAFT_GIT_ROOT": directory}):
+                    diagnostics = quality_baseline.executable_bit_diagnostics(
+                        Path(exported), sorted(files), windows=True
+                    )
+            self.assertEqual(
+                sorted((item["path"], item["code"]) for item in diagnostics),
+                [("bare.py", "EXE002"), ("shebang.py", "EXE001")],
+            )
+        # The identity matches Ruff's own finding on Linux: its message, hashed.
+        self.assertEqual(
+            diagnostics[0]["message_sha256"],
+            quality_baseline.hashlib.sha256(
+                quality_baseline.EXECUTABLE_RULES[diagnostics[0]["code"]].encode()
+            ).hexdigest(),
+        )
+
     def test_a_push_that_unformats_a_formatted_file_is_new_debt(self):
         # #3061: a change left four formatted files unformatted and nothing noticed.
         root = Path(__file__).resolve().parents[1]
@@ -162,7 +220,13 @@ class QualityBaselineTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             (root / "sample.py").write_text("value = 1\n", encoding="utf-8")
-            with patch("tools.quality_baseline.run") as mocked_run:
+            with (
+                patch("tools.quality_baseline.run") as mocked_run,
+                patch(
+                    "tools.quality_baseline.executable_bit_diagnostics",
+                    return_value=[],
+                ),
+            ):
                 mocked_run.side_effect = [
                     "ruff 0.16.10\n",
                     "mypy 2.4.0\n",
@@ -231,6 +295,7 @@ class QualityBaselineTests(unittest.TestCase):
         with (
             patch("tools.quality_baseline.source_files", return_value=files),
             patch("tools.quality_baseline.cognitive_diagnostics", return_value=[]),
+            patch("tools.quality_baseline.executable_bit_diagnostics", return_value=[]),
             patch("tools.quality_baseline.run", side_effect=fake_run),
             patch("tools.quality_baseline.javascript_diagnostics", return_value=[]),
         ):
