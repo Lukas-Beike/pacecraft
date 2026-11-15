@@ -219,7 +219,7 @@ The system SHALL save explicitly entered main equipment/components with validate
 - **WHEN** a main item that is still as imported from Garmin has an open sport and neither a parent nor components
 - **THEN** it takes the sport that at least 3 of its linked activities and at least 75 % of all of them share (unknown and other types count in the total); an item the athlete saved keeps its sport.
 
-Detailed contract: the records are JSON values under the keys `equipment:<uuid>`, `equipment_assignment:<session id>`, `equipment_planned:<planned unit id>` and `equipment_maintenance:<uuid>`, and `garmin_equipment_initialized` marks the one-time import; a read returns `items` (at most 100), `garmin_items`, `sensors`, `garmin_synced_at`, `garmin_freshness`, `assignments` (at most 2000, maintenance events at most 1000) and `scope`.
+Detailed contract: the records are JSON values under the keys `equipment:<uuid>`, `equipment_assignment:<session id>`, `equipment_planned:<planned unit id>`, `equipment_rule:<kind>`, `equipment_rule_apply:<operation id>` and `equipment_maintenance:<uuid>`, and `garmin_equipment_initialized` marks the one-time import; a read returns `items` (at most 100), `garmin_items`, `sensors`, `garmin_synced_at`, `garmin_freshness`, `assignments` (at most 2000, maintenance events at most 1000) and `scope`.
 
 Evidence: `backend/athlete/equipment.py:_equipment_amounts`, `backend/athlete/equipment.py:_equipment_identity`, `backend/athlete/equipment.py:_equipment_parent`, `backend/athlete/equipment.py:EquipmentService.read`, `backend/athlete/equipment.py:EquipmentService.save`, `backend/athlete/equipment.py:EquipmentService.sync_garmin_snapshot`; `backend/coach/tool_schemas.py:build_structured_tool_schemas` (equipment fields); `tests/test_coach_tool_coverage.py:test_training_records_and_equipment_tools_use_confirmed_local_state`; `tests/test_training_record_features.py:test_empty_initial_gear_snapshot_does_not_finalize_import`, `tests/test_training_record_features.py:test_equipment_requires_initial_values_and_prevents_component_cycles`, `tests/test_training_record_features.py:test_open_sport_is_derived_at_three_quarters_with_three_activities`, `tests/test_training_record_features.py:test_legacy_empty_import_recovers_once_and_preserves_local_equipment`; `tests/test_coach_write_gate.py:test_archiving_equipment_is_a_delete`.
 
@@ -278,6 +278,14 @@ The system SHALL assign only resolved canonical completed activities to compatib
 - **WHEN** the athlete posts `{"planned_unit_id", "equipment_id"}` to `POST /api/equipment/assignment` for a live local planned unit, `null` meaning no equipment
 - **THEN** the choice is stored under `equipment_planned:<planned unit id>` with receipt and undo (change-history entity `equipment_planned`); the item must be active main equipment of the unit's sport; an unknown or deleted unit answers 404 "Geplante Einheit nicht gefunden."; the planned unit, its payload and its sync state stay unchanged, so nothing reaches a provider.
 
+#### Scenario: Default equipment per kind of session
+- **WHEN** the athlete posts `{"kind", "equipment_id", "expected_revision"}` to `POST /api/equipment/rules` (session and CSRF, body at most 16 KiB) for one of `run:intervals`, `run:long`, `run:easy`, `run:race`, `ride:indoor` and `ride:outdoor`, `null` meaning no default
+- **THEN** the choice takes effect from today and is appended to the kind's dated history under `equipment_rule:<kind>` (a second choice on the same day replaces that day's), tracked with receipt and undo as entity `equipment_rule`; a stale revision answers 409 "Regel geändert; neu lesen." and an item that is not active main equipment of the kind's sport 400; a run's kind follows its focus (tempo, threshold, VO₂max, anaerobic and test are intervals, long is long, a race focus or purpose is race, anything else easy), a ride's whether it took place indoors (virtual counts as indoors).
+
+#### Scenario: Rule applied to earlier sessions
+- **WHEN** the athlete previews a rule with `GET /api/equipment/rules/preview?kind=` and confirms with `{"kind", "confirmed": true}` at `POST /api/equipment/rules/apply`
+- **THEN** every earlier session of that kind (before the day the rule's current choice took effect) without an own choice that could take the item by hand (an indoor session never takes an outdoor item) gets the rule's item as a record with `source` `rule` and one operation id; the item is checked again in every chunk; one that is no longer active stops the apply with 409 before its first chunk, and after it the chunks written so far stay and the answer carries their count, the undo reference and `stopped` `equipment_not_active`, written in chunks of at most 200 sessions per transaction; one change-history row (`equipment_rule_apply`) stands for the whole apply, so a large apply never evicts the 1000-row history, and its undo removes every record that still carries the operation id while a session the athlete changed since keeps that choice; a second undo, an apply without `confirmed: true`, without a rule or while an apply of the same kind runs answers 409.
+
 #### Scenario: Choice and suggestion for one session
 - **WHEN** one session's details are read
 - **THEN** `equipment_choice` lists the items it can take (`options` with id and name), its own explicit choice (`assigned`, `explicit`) and `suggested`: the item last explicitly assigned to a session of the same sport pair (indoor and outdoor apart) that this session can still take, else null; the suggestion is derived on each read, never stored and never assigned without the athlete.
@@ -301,6 +309,13 @@ The system SHALL assign only resolved canonical completed activities to compatib
 Evidence:
 - `backend/athlete/equipment.py:_assignment_list`
 - `backend/athlete/equipment.py:EquipmentService._assign_planned`
+- `backend/athlete/equipment.py:EquipmentService.save_rule`
+- `backend/athlete/equipment.py:session_kind`
+- `backend/athlete/equipment.py:EquipmentService.apply_rule`
+- `tests/test_equipment_history.py:test_a_confirmed_apply_spans_chunks_and_one_undo_takes_back_what_is_still_its`
+- `tests/test_equipment_history.py:test_an_apply_needs_confirmation_a_rule_and_no_running_apply_of_its_kind`
+- `tests/test_equipment_history.py:test_a_rule_takes_effect_today_keeps_its_history_and_undoes`
+- `tests/test_equipment_history.py:test_session_kinds_follow_the_focus_for_runs_and_the_place_for_rides`
 - `tests/test_equipment_history.py:test_a_planned_choice_is_tracked_undoable_and_leaves_the_unit_alone`
 - `tests/test_equipment_history.py:test_a_planned_choice_needs_a_live_unit_and_a_matching_active_item`
 - `backend/athlete/equipment.py:_counts_for`

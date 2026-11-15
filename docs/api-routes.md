@@ -62,6 +62,9 @@ handler's docstring. Regenerate it with
 | POST | `/api/equipment` | Session + CSRF | after access | Create, edit or retire one piece of equipment, stored locally (#2879). |
 | POST | `/api/equipment/assignment` | Session + CSRF | after access | Assign one session or planned unit its equipment, or none, stored locally. |
 | POST | `/api/equipment/maintenance` | Session + CSRF | after access | Record one maintenance entry for a piece of equipment, stored locally. |
+| POST | `/api/equipment/rules` | Session + CSRF | after access | Set one kind of session's default equipment from today on, stored locally (#3014). |
+| POST | `/api/equipment/rules/apply` | Session + CSRF | after access | Give a rule's item to the earlier sessions of its kind without an own choice. |
+| GET | `/api/equipment/rules/preview` | Session | no | Count the earlier sessions a rule apply would give its item (#3014). |
 | POST | `/api/external-calendar/decisions` | Session + CSRF | after access | Set or remove how one calendar event affects training; nothing remote. |
 | POST | `/api/external-calendar/sync` | Session + CSRF | after access | Queue a provider synchronization, or a targeted refresh of the external calendars or the weather. |
 | GET | `/api/feedback` | Session | no | Activity feedback projection. |
@@ -653,6 +656,52 @@ Errors: 400 "Ungültige Wartung." for an unknown body key; 400
 "Wartungsgegenstand oder Datum ungültig." for an empty or unmatched
 `equipment_id` or a date outside the item's range; 404 "Ausrüstung nicht
 gefunden." for a non-empty unknown `equipment_id`.
+
+### `POST /api/equipment/rules`
+
+Request: JSON body of at most 16 KiB, exactly `{"kind": string,
+"equipment_id": string | null, "expected_revision": integer}`. `kind` is
+`run:intervals`, `run:long`, `run:easy`, `run:race`, `ride:indoor` or
+`ride:outdoor`; `null` sets no default from today on; `expected_revision`
+is the rule's current revision, 0 before its first save.
+
+Response: 200 `{"ok": true, "stored_locally": true, "rule": {"kind",
+"revision", "history": [{"from", "equipment_id"}]}, "change"}`; `change`
+is the undo reference. Sessions before today keep their equipment.
+
+Errors: 400 "Art und Ausrüstung der Regel sind erforderlich." for another
+body shape or kind; 400 "Aktive passende Hauptausrüstung erforderlich."
+for an unknown item or one that is archived, a component, unresolved or
+of another sport; 409 "Regel geändert; neu lesen." for a stale revision.
+
+### `POST /api/equipment/rules/apply`
+
+Request: JSON body of at most 16 KiB, exactly `{"kind": string,
+"confirmed": true}` after the athlete confirmed the preview.
+
+Response: 200 `{"ok": true, "stored_locally": true, "count", "change"}`;
+`count` sessions got the item, written in chunks of at most 200 per
+transaction; `change` undoes the whole apply (null when nothing was
+written). A session chosen since the preview keeps its choice. When the
+item stops being active during the apply, the chunks written so far stay
+and the answer adds `"stopped": "equipment_not_active"` with their count
+and `change`.
+
+Errors: 400 "Art der Regel ist erforderlich." for another body shape or
+kind; 409 `confirmation_required` without `confirmed: true`; 409 "Für
+diese Art ist keine Regel gesetzt."; 409 "Diese Regel wird gerade
+angewendet." while an apply of the same kind runs.
+
+### `GET /api/equipment/rules/preview`
+
+Request: query `kind` (a rule kind); no body.
+
+Response: 200 `{"kind", "equipment_id", "count"}`: the rule's current
+item and the sessions of that kind before the day it took effect that
+have no own choice. It changes no state.
+
+Errors: 400 "Art der Regel ist erforderlich." for an unknown kind; 409
+"Für diese Art ist keine Regel gesetzt." without a rule.
 
 ### `POST /api/external-calendar/decisions`
 

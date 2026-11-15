@@ -2,6 +2,7 @@
 
 import json
 import math
+import threading
 import uuid
 from collections import Counter
 from collections.abc import Callable, Sequence
@@ -17,8 +18,10 @@ from backend.canonical.activity_summary import (
     ActivitySummary,
     stored_activity_key,
     summary_duration_s,
+    summary_local_date,
 )
 from backend.canonical.domain_records import GearActivityLink, GearItem
+from backend.canonical.planning_fields import SESSION_FOCUS
 from backend.canonical.stored_sports import (
     StoredSport,
     activity_type_environment,
@@ -39,10 +42,34 @@ from backend.db.equipment_store import (
     GARMIN_INITIALIZED_KEY,
     MAINTENANCE_PREFIX,
     PLANNED_PREFIX,
+    RULE_APPLY_PREFIX,
+    RULE_PREFIX,
 )
 from backend.errors import AppError
 
 GARMIN_GEAR_SOURCE = "garmin_gear"
+# The kinds of session a default item can be set for (#3014): runs by their
+# focus, rides by where they took place.
+_RULE_SPORTS = {
+    "run:intervals": ("run", "outdoor"),
+    "run:long": ("run", "outdoor"),
+    "run:easy": ("run", "outdoor"),
+    "run:race": ("run", "outdoor"),
+    **{f"ride:{place}": ("ride", place) for place in ("indoor", "outdoor")},
+}
+RULE_KINDS = tuple(_RULE_SPORTS)
+_NOT_ASSIGNABLE = "Aktive passende Hauptausrüstung erforderlich."
+_INTERVAL_FOCI = frozenset(
+    {"tempo", "threshold", "sweet_spot", "vo2max", "anaerobic", "test"}
+)
+# Each kind keeps at most this many dated choices.
+RULE_HISTORY_LIMIT = 100
+# A rule apply writes at most this many sessions per transaction, so one long
+# write never holds the database writer.
+RULE_APPLY_CHUNK = 200
+# Kinds whose apply is running in this process; a second apply is refused.
+_APPLYING: set[str] = set()
+_APPLYING_LOCK = threading.Lock()
 # The read lists at most this many assignments, whole activities only; usage
 # counts all of them.
 ASSIGNMENT_LIST_LIMIT = 2000
@@ -343,7 +370,7 @@ class EquipmentService:
             if payload["equipment_id"] is not None and not assignable_equipment(
                 equipment, row
             ):
-                raise AppError(400, "Aktive passende Hauptausrüstung erforderlich.")
+                raise AppError(400, _NOT_ASSIGNABLE)
             # The assignment belongs to the session it was made for, so it stays
             # with that copy when a bundle is split; it replaces any other
             # assignment of the same session family.
@@ -405,7 +432,7 @@ class EquipmentService:
             if payload["equipment_id"] is not None and not assignable_equipment(
                 equipment, row
             ):
-                raise AppError(400, "Aktive passende Hauptausrüstung erforderlich.")
+                raise AppError(400, _NOT_ASSIGNABLE)
             key = PLANNED_PREFIX + unit_id
             previous = stored_value(db, key)
             saved: dict[str, Any] = {
@@ -423,6 +450,176 @@ class EquipmentService:
                 saved,
             )
         return {"ok": True, "stored_locally": True, "assignment": saved, "change": change}
+
+    def save_rule(self, payload: dict[str, Any]) -> dict[str, Any]:
+        """Set one kind's default item from today on, or none (#3014).
+
+        Earlier sessions keep what they had; only a confirmed apply changes them.
+        """
+        if (
+            not isinstance(payload, dict)
+            or set(payload) != {"kind", "equipment_id", "expected_revision"}
+            or payload["kind"] not in RULE_KINDS
+            or not isinstance(payload["expected_revision"], int)
+            or isinstance(payload["expected_revision"], bool)
+        ):
+            raise AppError(400, "Art und Ausrüstung der Regel sind erforderlich.")
+        kind = payload["kind"]
+        today = self._today().isoformat()
+        with self._manager.unit_of_work() as db:
+            previous = stored_value(db, RULE_PREFIX + kind)
+            revision = int((previous or {}).get("revision") or 0)
+            if payload["expected_revision"] != revision:
+                raise AppError(409, "Regel geändert; neu lesen.")
+            if payload["equipment_id"] is not None:
+                item = stored_value(db, EQUIPMENT_PREFIX + str(payload["equipment_id"]))
+                sport, environment = _RULE_SPORTS[kind]
+                if not assignable_equipment(
+                    item, {"sport": sport, "environment": environment}
+                ):
+                    raise AppError(400, _NOT_ASSIGNABLE)
+            history = [
+                entry
+                for entry in (previous or {}).get("history") or []
+                if entry.get("from") != today
+            ]
+            history.append({"from": today, "equipment_id": payload["equipment_id"]})
+            saved = {
+                "kind": kind,
+                "revision": revision + 1,
+                "history": history[-RULE_HISTORY_LIMIT:],
+            }
+            equipment_store.put(db, RULE_PREFIX + kind, json.dumps(saved), self._utc_now())
+            change = _record_change(
+                db,
+                "equipment_rule",
+                kind,
+                "update" if previous else "create",
+                previous,
+                saved,
+            )
+        return {"ok": True, "stored_locally": True, "rule": saved, "change": change}
+
+    def rule_apply_preview(self, kind: Any) -> dict[str, Any]:
+        """How many earlier sessions without an own choice a rule would cover (#3014)."""
+        item, sessions = self._rule_candidates(kind)
+        return {"kind": kind, "equipment_id": item, "count": len(sessions)}
+
+    def apply_rule(self, payload: dict[str, Any]) -> dict[str, Any]:
+        """Give a rule's current item to earlier sessions without an own choice.
+
+        Needs ``confirmed: true``. The writes go in chunks of RULE_APPLY_CHUNK,
+        each record tagged with one operation id; one change-history row stands
+        for the whole operation, so its undo removes every record still tagged
+        and a large apply never evicts the rest of the 1000-row history.
+        """
+        if not isinstance(payload, dict) or set(payload) != {"kind", "confirmed"}:
+            raise AppError(400, "Art der Regel ist erforderlich.")
+        if payload["confirmed"] is not True:
+            raise AppError(
+                409,
+                "Frühere Einheiten ändern sich nur nach bestätigter Vorschau.",
+                reason="confirmation_required",
+            )
+        kind = payload["kind"]
+        with _APPLYING_LOCK:
+            if kind in _APPLYING:
+                raise AppError(409, "Diese Regel wird gerade angewendet.")
+            _APPLYING.add(kind)
+        try:
+            return self._apply_rule(kind)
+        finally:
+            with _APPLYING_LOCK:
+                _APPLYING.discard(kind)
+
+    def _apply_rule(self, kind: str) -> dict[str, Any]:
+        item, sessions = self._rule_candidates(kind)
+        if not sessions:
+            return {"ok": True, "stored_locally": True, "count": 0, "change": None}
+        operation_id, applied_at = str(uuid.uuid4()), self._utc_now()
+        operation = {
+            "operation_id": operation_id,
+            "kind": kind,
+            "equipment_id": item,
+            "applied_at": applied_at,
+        }
+        change = None
+        written = 0
+        for start in range(0, len(sessions), RULE_APPLY_CHUNK):
+            try:
+                with self._manager.unit_of_work() as db:
+                    # The item is checked again inside every chunk's transaction.
+                    item_record = self._rule_item(db, item)
+                    if change is None:
+                        equipment_store.put(
+                            db,
+                            RULE_APPLY_PREFIX + operation_id,
+                            json.dumps(operation),
+                            applied_at,
+                        )
+                        change = _record_change(
+                            db, "equipment_rule_apply", operation_id, "create", None, operation
+                        )
+                    written += _write_rule_chunk(
+                        db, sessions[start : start + RULE_APPLY_CHUNK], item_record, operation
+                    )
+            except AppError:
+                if change is None:
+                    raise
+                # Earlier chunks stay written; their receipt and undo come back.
+                return {
+                    "ok": True,
+                    "stored_locally": True,
+                    "count": written,
+                    "change": change,
+                    "stopped": "equipment_not_active",
+                }
+        return {"ok": True, "stored_locally": True, "count": written, "change": change}
+
+    def _rule_candidates(self, kind: Any) -> tuple[str | None, list[dict[str, Any]]]:
+        """A rule's current item and the earlier sessions of its kind it can be given.
+
+        Only sessions without an own choice that could take the item by hand count,
+        so an outdoor shoe never reaches a treadmill run.
+        """
+        if kind not in RULE_KINDS:
+            raise AppError(400, "Art der Regel ist erforderlich.")
+        rows = _session_rows(self._read_summaries())
+        with self._manager.reader() as db:
+            rule = stored_value(db, RULE_PREFIX + kind)
+            entries = (rule or {}).get("history") or []
+            current = max(entries, key=lambda entry: str(entry["from"]), default=None)
+            if current is None or current.get("equipment_id") is None:
+                raise AppError(409, "Für diese Art ist keine Regel gesetzt.")
+            item = self._rule_item(db, current["equipment_id"])
+            explicit = _session_assignments(
+                db, rows, self._records(db, ASSIGNMENT_PREFIX, None)
+            )
+            earlier = [
+                row
+                for row in rows
+                if row["id"] not in explicit
+                and summary_local_date(row) < str(current["from"])
+            ]
+            foci = _session_foci(db, [row["id"] for row in earlier])
+        sessions = [
+            row
+            for row in earlier
+            if session_kind(
+                row.get("sport"), row.get("environment"), foci.get(row["id"]), row.get("purpose")
+            )
+            == kind
+            and assignable_equipment(item, row)
+        ]
+        return current["equipment_id"], sessions
+
+    @staticmethod
+    def _rule_item(db: Any, item_id: str | None) -> dict[str, Any]:
+        """The rule's item as stored now; one that can no longer be assigned stops the apply."""
+        item = stored_value(db, EQUIPMENT_PREFIX + str(item_id))
+        if item is None or not assignable_equipment(item, None):
+            raise AppError(409, "Die Ausrüstung der Regel ist nicht mehr aktiv.")
+        return item
 
     def maintain(self, payload: dict[str, Any]) -> dict[str, Any]:
         if not isinstance(payload, dict) or set(payload) - {
@@ -476,6 +673,82 @@ class EquipmentService:
             "maintenance": saved,
             "change": change,
         }
+
+
+def session_kind(
+    sport: Any, environment: Any, focus: str | None, purpose: str | None = None
+) -> str | None:
+    """The rule kind of a run or ride (#3014); None for other sports.
+
+    A run without a known focus counts as easy; a race purpose wins over the focus.
+    """
+    stored = resolve_equipment_sport(sport, environment)
+    if stored is None or stored.sport not in (Sport.RUN, Sport.RIDE):
+        return None
+    if stored.sport is Sport.RIDE:
+        indoor = stored.environment.value in {"indoor", "virtual"}
+        return f"ride:{'indoor' if indoor else 'outdoor'}"
+    if purpose == "race" or focus == "race":
+        return "run:race"
+    if focus in _INTERVAL_FOCI:
+        return "run:intervals"
+    return f"run:{'long' if focus == 'long' else 'easy'}"
+
+
+def _write_rule_chunk(
+    db: Any, rows: list[dict[str, Any]], item: dict[str, Any], operation: dict[str, Any]
+) -> int:
+    """Give one chunk of sessions the rule's item, tagged with the apply's operation id."""
+    written = 0
+    for row in rows:
+        session = str(row["id"])
+        # A choice made since the preview stays the athlete's.
+        if equipment_store.value(
+            db, ASSIGNMENT_PREFIX + session
+        ) is not None or not assignable_equipment(item, row):
+            continue
+        saved = {
+            "activity_id": session,
+            "equipment_id": item["id"],
+            "observed_at": operation["applied_at"],
+            "source": "rule",
+            "operation_id": operation["operation_id"],
+        }
+        equipment_store.put(
+            db, ASSIGNMENT_PREFIX + session, json.dumps(saved), operation["applied_at"]
+        )
+        written += 1
+    return written
+
+
+def _session_foci(db: Any, session_ids: Sequence[str]) -> dict[str, str | None]:
+    """The stored focus of each session's matched planned unit.
+
+    The athlete, the Coach or the one-time backfill (#1849) stores it; a unit
+    without one counts as unknown, which makes a run easy.
+    """
+    links = activity_detail_store.planned_unit_links(db, session_ids)
+    units = {
+        row["local_id"]: json.loads(row["payload"])
+        for row in planning_store.planned_unit_rows_by_ids(db, list(set(links.values())))
+    }
+    return {
+        session: focus if isinstance(focus := units[unit].get(SESSION_FOCUS), str) else None
+        for session, unit in links.items()
+        if unit in units
+    }
+
+
+def rule_choice(rule: dict[str, Any] | None, day: str) -> tuple[bool, str | None]:
+    """Whether a rule covers ``day`` and its item then (None is "Keiner")."""
+    entries = [
+        entry
+        for entry in (rule or {}).get("history") or []
+        if str(entry.get("from") or "") <= day
+    ]
+    if not entries:
+        return False, None
+    return True, max(entries, key=lambda entry: str(entry["from"]))["equipment_id"]
 
 
 def stored_value(db: Any, key: str) -> dict[str, Any] | None:
