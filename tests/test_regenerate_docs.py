@@ -37,7 +37,9 @@ class RegenerateDocsTests(unittest.TestCase):
         out, err = io.StringIO(), io.StringIO()
         env = {**os.environ, "PACECRAFT_NODE_MODULES": str(self.modules)}
         with (
-            mock.patch.object(regenerate_docs, "GENERATORS", (writer(text),)),
+            mock.patch.object(
+                regenerate_docs, "GENERATORS", ((writer(text), ("docs/x.md",)),)
+            ),
             mock.patch.dict(os.environ, env, clear=True),
             redirect_stdout(out),
             redirect_stderr(err),
@@ -69,6 +71,38 @@ class RegenerateDocsTests(unittest.TestCase):
             code, out = self.main("new\n")
         self.assertEqual((code, out.strip()), (0, "rewrote docs/x.md"))
         self.assertEqual((self.tree / "docs/x.md").read_text(), "new\n")
+
+
+BLOCK = "<<<<<<< HEAD\nup\n=======\nmine\n>>>>>>> abc (feat: x)\n"
+BEGIN, END = "<!-- BEGIN GENERATED ROUTES -->\n", "<!-- END GENERATED ROUTES -->\n"
+
+
+class ConflictResolutionTests(unittest.TestCase):
+    def test_only_conflicts_inside_generated_text_are_resolvable(self):
+        # #3031: taking one side and regenerating must not lose hand-written text.
+        inside = f"# Routes\n{BEGIN}{BLOCK}{END}Tail\n"
+        for path, text, expected in (
+            ("docs/api-routes.md", inside, True),
+            ("docs/api-routes.md", f"# Routes\n{BLOCK}{BEGIN}x\n{END}", False),
+            (
+                "docs/api-routes.md",
+                f"{BEGIN}<<<<<<< HEAD\n{END}=======\nx\n>>>>>>> a\n",
+                False,
+            ),
+            ("docs/api-routes.md", f"# Routes\n{BEGIN}x\n{END}", False),  # no conflict
+            ("docs/performance-methods/code-constants.md", BLOCK, True),
+            ("docs/features.md", inside, False),  # not a generated document
+        ):
+            with self.subTest(path=path, text=text):
+                self.assertEqual(
+                    regenerate_docs.conflict_resolvable(path, text), expected
+                )
+
+    def test_upstream_side_keeps_the_first_side_and_markdown_rules(self):
+        text = f"Title\n=======\n{BEGIN}{BLOCK}{END}"
+        self.assertEqual(
+            regenerate_docs.upstream_side(text), f"Title\n=======\n{BEGIN}up\n{END}"
+        )
 
 
 if __name__ == "__main__":
