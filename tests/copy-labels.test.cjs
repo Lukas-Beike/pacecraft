@@ -57,7 +57,7 @@ test("the context preview shows readable values and keeps deeply nested provider
   assert.equal(longList.children[25].textContent, "… 5 weitere Einträge");
 });
 
-test("release changes are grouped as Neu, Behoben and the rest, without type and pull request number", () => {
+test("release changes are grouped as Neu, Verbessert, Behoben and the rest, without type and pull request number", () => {
   const { releaseChangeGroups } = extractFunctions("views.js", ["releaseChangeGroups"]);
   const groups = releaseChangeGroups([
     "feat(calendar): sport filter for the week and month (#2853)",
@@ -65,10 +65,15 @@ test("release changes are grouped as Neu, Behoben and the rest, without type and
     "feat!: breaking change",
     "docs(spec): unlinking a race (#2860)",
     "Revert \"feat(x): something\"",
+    "perf(analysis): keep the session curves across restarts (#2821) (#3035)",
+    "perf: faster start",
+    "perf(hooks): the guard scans long commands in linear time (#3129)",
   ]);
   assert.deepEqual(JSON.parse(JSON.stringify(groups)), {
     feat: ["calendar: sport filter for the week and month", "breaking change"],
+    // A performance change to the app is noticeable; one to the tooling stays Technik.
+    perf: ["analysis: keep the session curves across restarts (#2821)", "faster start"],
     fix: ["a restart closes the refreshes left running"],
-    other: ["spec: unlinking a race", "Revert \"feat(x): something\""],
+    other: ["spec: unlinking a race", "Revert \"feat(x): something\"", "hooks: the guard scans long commands in linear time"],
   });
 });
