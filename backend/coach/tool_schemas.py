@@ -439,10 +439,15 @@ def build_structured_tool_schemas(
         ),
         _canonical_coach_tool(
             "list_workout_library",
-            "Read saved local training templates; local library data is authoritative. Results are limited to 100 entries per request.",
+            "Read saved local training templates; local library data is authoritative. Results are limited to 100 entries per request. Filter by sport (Run, Ride, VirtualRide, Swim, WeightTraining) and by query (every word in the name or description) to find a template beyond the ones in context before creating or scheduling one.",
             {
                 "limit": {"type": "integer", "minimum": 1, "maximum": 100},
                 "include_archived": {"type": "boolean"},
+                "sport": {
+                    "type": "string",
+                    "enum": ["Ride", "VirtualRide", "Run", "Swim", "WeightTraining"],
+                },
+                "query": {"type": "string", "minLength": 2, "maxLength": 120},
             },
         ),
         _canonical_coach_tool(
@@ -710,7 +715,7 @@ def build_structured_tool_schemas(
         ),
         _canonical_coach_tool(
             "manage_training_templates",
-            "Create, update, archive, restore, or delete undated local templates. Resolve local_id with list_workout_library for edits; creation requires name and workout description. Scheduling is a separate local action.",
+            "Create, update, archive, restore, or delete undated local templates. Resolve local_id with list_workout_library for edits; creation requires name and workout description. A create that an existing template already covers (same sport, similar duration and description or name) refuses the whole call with reason template_exists (template_exists_in_call when the call held more) and that template in findings: reuse it, or set new_because to say how the new one differs, and send the other changes again. Scheduling is a separate local action.",
             {
                 "templates": {
                     "type": "array",
@@ -767,6 +772,11 @@ def build_structured_tool_schemas(
                             "strength_intensity": STRENGTH_INTENSITY_SCHEMA,
                             "strength_structure": STRENGTH_STRUCTURE_SCHEMA,
                             "hr_cap": HR_CAP_SCHEMA,
+                            "new_because": {
+                                "type": "string",
+                                "minLength": 3,
+                                "maxLength": 200,
+                            },
                         },
                     },
                 }

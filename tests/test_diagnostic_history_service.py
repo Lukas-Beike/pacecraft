@@ -44,7 +44,12 @@ class CoachDiagnosticHistoryServiceTests(unittest.TestCase):
             database=database,
             redact=redact,
             receipt_parser=command_receipt,
-            allowed_tools={"save_checkin", "sync_intervals", "lookup_food"},
+            allowed_tools={
+                "save_checkin",
+                "sync_intervals",
+                "lookup_food",
+                "manage_training_templates",
+            },
         )
 
     def tearDown(self):
@@ -112,6 +117,14 @@ class CoachDiagnosticHistoryServiceTests(unittest.TestCase):
                             ],
                         },
                     },
+                    {
+                        "tool": "manage_training_templates",
+                        "result": {"ok": True, "created_despite_candidate": 2},
+                    },
+                    {
+                        "tool": "manage_training_templates",
+                        "result": {"ok": True, "created_despite_candidate": "many"},
+                    },
                 ],
             },
         )
@@ -150,6 +163,14 @@ class CoachDiagnosticHistoryServiceTests(unittest.TestCase):
                     "error": None,
                     "lookup_outcomes": {"local_hit": 2, "external_requested": 1},
                 },
+                # New templates kept beside an existing one; a non-count is dropped.
+                {
+                    "tool": "manage_training_templates",
+                    "ok": True,
+                    "error": None,
+                    "created_despite_candidate": 2,
+                },
+                {"tool": "manage_training_templates", "ok": True, "error": None},
             ],
         )
         serialized = json.dumps(entry)

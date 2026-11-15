@@ -156,6 +156,27 @@ class CoachReadToolServiceTests(unittest.TestCase):
             "list_workout_library", {"limit": 900, "include_archived": False}
         )
         self.library.list.assert_called_once_with(100, include_archived=False)
+        # #3080: a filter reads the whole library and keeps the sport's templates
+        # holding every query word, also inside a longer word.
+        self.library.list.return_value = [
+            {"id": "a", "sport": "run", "name": "Tempolauf 3x10", "description": ""},
+            {"id": "b", "sport": "ride", "name": "Tempo Rad", "description": ""},
+            {"id": "c", "sport": "run", "name": "Dauerlauf", "description": "Z2"},
+            {"id": "d", "type": "Run", "name": "Tempo", "description": "10 min"},
+        ]
+        for arguments, expected in (
+            ({"sport": "Run", "query": "tempo"}, ["a", "d"]),
+            ({"query": "Tempo"}, ["a", "b", "d"]),
+            ({"sport": "Run", "query": "tempo 10"}, ["a", "d"]),
+            ({"sport": "Ride"}, ["b"]),
+            ({"sport": "Run", "limit": 1}, ["a"]),
+            # A query without a word finds nothing instead of everything.
+            ({"query": "--"}, []),
+        ):
+            with self.subTest(arguments=arguments):
+                found = self.service.execute("list_workout_library", arguments)
+                self.assertEqual(expected, [item["id"] for item in found["templates"]])
+                self.library.list.assert_called_with(1000, include_archived=False)
         self.service.execute("list_planned_workouts", {"limit": 900})
         self.planned_units.list_for_coach.assert_called_once_with(366)
         self.service.execute("list_change_history", {"limit": 0})

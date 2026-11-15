@@ -136,6 +136,44 @@ class UnresolvedCoachStepsTests(unittest.TestCase):
         other["scope_repair_key"] = "another-change"
         self.assertEqual(unresolved_coach_steps([*reads, denied, other]), [denied])
 
+    def test_a_create_refused_for_an_existing_record_completes_the_turn(self):
+        # #3080: the Coach plans from the existing template instead of creating
+        # it again; the refused create saved nothing and is no failure.
+        refused = {
+            "tool": "manage_training_templates",
+            "step_key": "local_template",
+            "request": {"target": "local_template", "scope": ["local_template"]},
+            "result": {"ok": False, "reason": "template_exists"},
+        }
+        planned = {
+            "tool": "apply_workout_library_plan",
+            "step_key": "library_workout:t1",
+            "request": {"target": "local_plan", "scope": ["library_workout:t1"]},
+            "result": {"ok": True},
+        }
+        for steps in ([refused, planned], [refused]):
+            failures = unresolved_coach_steps(steps)
+            self.assertEqual(failures, [])
+            self.assertEqual(
+                outcome_status(
+                    question="",
+                    incomplete_answer=False,
+                    failures=failures,
+                    missing_answer=False,
+                    effects=steps[1:],
+                    cancelled=False,
+                ),
+                "completed",
+            )
+        # Any other refusal stays a failure: a refused batch also dropped its
+        # other changes, until the call is retried without the duplicate.
+        for reason in ("template_limit", "template_exists_in_call"):
+            other = {**refused, "result": {"ok": False, "reason": reason}}
+            with self.subTest(reason=reason):
+                self.assertEqual(unresolved_coach_steps([other, planned]), [other])
+        retried = {**refused, "result": {"ok": True}}
+        self.assertEqual(unresolved_coach_steps([other, planned, retried]), [])
+
     def test_profile_conflict_requires_exact_profile_fields(self):
         failed = {
             "tool": "update_profile",
