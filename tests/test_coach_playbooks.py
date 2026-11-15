@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import ast
 import re
 import unittest
 from datetime import date
+from pathlib import Path
 from typing import Any
 from unittest.mock import Mock
 
@@ -23,6 +25,9 @@ from backend.coach.request_payload import (
     compose_model_instructions,
 )
 from backend.errors import AppError
+from backend.performance.current_metrics import coach_thresholds
+from backend.weather.activity_weather_store import VALUES as WEATHER_VALUES
+from backend.weather.activity_weather_store import weather_block
 
 NEW_KINDS = (
     "session_analysis",
@@ -62,6 +67,94 @@ BLOCK_WORD_BUDGETS = {
 }
 # 205: the session analysis judges a run against its stored heart-rate cap.
 TASK_WORD_BUDGET = 205
+
+# A field name in a playbook: snake_case, or a dotted path of its segments.
+_SNAKE_NAME = re.compile(r"\b[a-z][a-z0-9]*(?:_[a-z0-9]+)+\b")
+_DOTTED_PATH = re.compile(r"\b[a-z][a-z0-9_]+(?:\.[a-z][a-z0-9_]+)+\b")
+
+
+def _playbook_text() -> str:
+    blocks = [
+        value
+        for name, value in vars(playbooks).items()
+        if isinstance(value, str) and re.fullmatch(r"_[A-Z_]+", name)
+    ]
+    return "\n".join([*blocks, *playbooks._TASKS.values()])
+
+
+def _backend_names() -> set[str]:
+    """Every string literal and TypedDict field of the backend, playbooks aside."""
+    names: set[str] = set()
+    for path in (Path(__file__).resolve().parents[1] / "backend").rglob("*.py"):
+        if path.name == "playbooks.py":
+            continue
+        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+            if isinstance(node, ast.Constant) and isinstance(node.value, str):
+                names.add(node.value)
+            elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
+                names.add(node.target.id)
+    return names
+
+
+def _built_keys() -> dict[str, set[str]]:
+    """The keys of context blocks built by their own code from complete inputs."""
+    value = {"value": 250, "source": "Garmin Connect"}
+    metrics = {
+        key: value
+        for key in ("max_hr_bpm", "bike_threshold_hr_bpm", "run_threshold_hr_bpm")
+    }
+    metrics["cycling_ftp_watts"] = {
+        **value,
+        "alternatives": [{"source": "Wahoo", "value": 270}],
+        "conflict": True,
+    }
+    rows = {
+        kind.value: {"value": 30.0, "derivation": {"location_kind": "start"}}
+        for _key, kind, _unit in WEATHER_VALUES
+    }
+    return {
+        "thresholds": set(coach_thresholds(metrics)),
+        "weather": set(weather_block(rows) or {}),
+    }
+
+
+def _misplaced(paths: set[str], built: dict[str, set[str]]) -> list[str]:
+    """Dotted paths naming a child their built parent block lacks."""
+    return sorted(
+        path
+        for path in paths
+        for parent, child in zip(path.split("."), path.split(".")[1:])
+        if parent in built and child not in built[parent]
+    )
+
+
+class PlaybookFieldNameTests(unittest.TestCase):
+    """A field the playbooks name must still exist (#3055): a rename or removal
+    elsewhere fails here instead of orphaning the instruction."""
+
+    def test_every_named_field_exists_in_the_backend(self) -> None:
+        text = _playbook_text()
+        names = set(_SNAKE_NAME.findall(text)) | {
+            segment
+            for path in _DOTTED_PATH.findall(text)
+            for segment in path.split(".")
+        }
+        known = _backend_names()
+        self.assertGreater(len(names), 100)
+        self.assertEqual([], sorted(names - known))
+        # #3049 removed the device temperatures from the context.
+        self.assertNotIn("weather_temp_c", known)
+
+    def test_dotted_paths_match_the_blocks_their_code_builds(self) -> None:
+        built = _built_keys()
+        paths = set(_DOTTED_PATH.findall(_playbook_text()))
+        self.assertIn("current_performance.thresholds.ftp_w", paths)
+        self.assertEqual([], _misplaced(paths, built))
+        # The #3046 slip: an FTP key of the metrics, not of the thresholds.
+        self.assertEqual(
+            ["current_performance.thresholds.cycling_ftp_watts"],
+            _misplaced({"current_performance.thresholds.cycling_ftp_watts"}, built),
+        )
 
 
 class PlaybookBudgetTests(unittest.TestCase):
