@@ -105,12 +105,34 @@ class GuardServerImportTests(unittest.TestCase):
             with self.subTest(command=command):
                 self.assertEqual(2, run_hook(command, cwd=str(self.root)))
 
+    def test_a_temporary_data_dir_does_not_cover_another_checkout_or_process(
+        self,
+    ) -> None:
+        data = self.data
+        for command in (
+            # Another checkout's server.py loads that checkout's settings file.
+            f"DATA_DIR={data} python ../other/server.py",
+            f'cd ../other && DATA_DIR={data} python -c "import server"',
+            f'PYTHONPATH=../other DATA_DIR={data} python -c "import server"',
+            f"DATA_DIR={data} python -c \"import os; os.chdir('..'); import server\"",
+            f"DATA_DIR={data} python -c \"import sys; sys.path.insert(0, '..'); import server\"",
+            # The assignment binds another process, or is no assignment at all.
+            f'DATA_DIR={data} python -m compileall -q x.py && python -c "import server"',
+            f"echo DATA_DIR={data}; python server.py",
+            f'python -c "import server"; export DATA_DIR={data}',
+        ):
+            with self.subTest(command=command):
+                self.assertEqual(2, run_hook(command, cwd=str(self.root)))
+
     def test_a_temporary_data_dir_in_a_checkout_without_local_settings_is_allowed(
         self,
     ) -> None:
         for command in (
             f'DATA_DIR={self.data} python -c "import server"',
+            f'APP_PASSWORD=x DATA_DIR={self.data} python -c "import server"',
+            f'export DATA_DIR={self.data}; python -c "import server"',
             f"$env:DATA_DIR = '{self.data}'; python -c \"import server\"",
+            f"DATA_DIR={self.data} python server.py",
         ):
             with self.subTest(command=command):
                 self.assertEqual(0, run_hook(command, cwd=str(self.root)))

@@ -47,7 +47,24 @@ SERVER = tuple(
         r"(?:run_module|import_module|__import__)\(\s*[\"']server[\"']",
     )
 )
-DATA_DIR = re.compile(r"(?:\$env:)?\bDATA_DIR\s*=\s*[\"']?([^\s\"';&|]+)")
+# DATA_DIR bound to the one Python process: a prefix of its own simple command,
+# or an earlier `export` (Bash) or `$env:` assignment (PowerShell).
+VALUE = r"[\"']?([^\s\"';&|]+)[\"']?"
+START_OF_COMMAND = r"(?:^|[;&|(\n])\s*"
+DATA_DIR_PREFIX = re.compile(
+    START_OF_COMMAND + r"(?:[A-Za-z_]\w*=\S*\s+)*DATA_DIR=" + VALUE
+    + r"\s+(?:[A-Za-z_]\w*=\S*\s+)*(?:py|python[\d.]*)(?:\.exe)?\s"
+)
+DATA_DIR_SESSION = re.compile(
+    START_OF_COMMAND + r"(?:export\s+DATA_DIR=|\$env:DATA_DIR\s*=\s*)" + VALUE,
+    re.IGNORECASE,
+)
+# Anything that could load another checkout's server.py keeps the import blocked.
+ELSEWHERE = re.compile(
+    START_OF_COMMAND + r"(?:cd|pushd|set-location|sl|push-location)\b"
+    r"|chdir|\bPYTHONPATH\b|sys\.path|[\\/][^\s\"']*server\.py",
+    re.IGNORECASE,
+)
 
 
 def imports_server(command: str) -> bool:
@@ -56,13 +73,28 @@ def imports_server(command: str) -> bool:
     )
 
 
+def bound_data_dir(command: str) -> str | None:
+    """The DATA_DIR the command's single Python process runs with, else None."""
+    runs = list(PYTHON.finditer(command))
+    if len(runs) != 1:
+        return None
+    prefix = DATA_DIR_PREFIX.search(command)
+    if prefix is not None:
+        return prefix.group(1)
+    session = [
+        match for match in DATA_DIR_SESSION.finditer(command) if match.end() <= runs[0].start()
+    ]
+    return session[-1].group(1) if session else None
+
+
 def server_import_allowed(command: str, cwd: str) -> bool:
-    """A temporary DATA_DIR and no .env in the checkout root or that directory."""
-    match = DATA_DIR.search(command)
-    if match is None or not cwd:
+    """A temporary DATA_DIR bound to the one Python process, the server.py of cwd,
+    and no .env in the checkout root or that directory."""
+    value = bound_data_dir(command)
+    if value is None or not cwd or ELSEWHERE.search(command):
         return False
     try:
-        data = Path(match.group(1)).expanduser().resolve()
+        data = Path(value).expanduser().resolve()
         temp = Path(tempfile.gettempdir()).resolve()
     except OSError:
         return False
