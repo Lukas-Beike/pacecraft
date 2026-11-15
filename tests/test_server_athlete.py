@@ -13,6 +13,27 @@ from backend.errors import AppError
 
 
 class ServerAthleteTests(ServerTestCase):
+    def test_session_summaries_are_kept_until_a_change_in_the_real_wiring(self):
+        # #3017/#3043: equipment and the HTTP detail read the same kept summaries.
+        summaries = server.ATHLETE_DATA.session_summaries
+        self.assertIs(server.ATHLETE_DATA.equipment()._read_summaries, summaries)
+        detail = server.ACTIVITY_READS.activity_read()
+        self.assertIs(detail._session_summaries, summaries)
+        read = server.CANONICAL_READ.activity_summaries
+        # A row-changing commit (the profile name; it starts no worker) first, so
+        # what an earlier test kept is not current.
+        server.ATHLETE_DATA.profile().save({"name": "Ada"})
+        with patch.object(
+            server.CANONICAL_READ, "activity_summaries", side_effect=read
+        ) as counted:
+            summaries()
+            summaries()
+            self.assertEqual(counted.call_count, 1)
+            # The next row-changing commit makes the next call read again.
+            server.ATHLETE_DATA.profile().save({"name": "Grace"})
+            summaries()
+            self.assertEqual(counted.call_count, 2)
+
     def test_profile_only_accepts_known_fields_and_trims(self):
         profile = normalize_profile(
             {"name": "  Ada  ", "goals": "Finish strong", "admin": True}

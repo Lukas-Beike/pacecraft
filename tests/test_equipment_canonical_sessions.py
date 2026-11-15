@@ -8,6 +8,7 @@ assignment still wins. Temporary database and synthetic rows only.
 
 from __future__ import annotations
 
+import copy
 import json
 import unittest
 from datetime import date
@@ -105,6 +106,23 @@ class EquipmentSessionTests(unittest.TestCase):
 
             # The sync passes its payload; equipment reads only its gear freshness.
             self.service.sync_garmin_snapshot(garmin_store.read_state(db))
+
+    def test_the_equipment_read_never_changes_the_summaries_it_is_given(self) -> None:
+        # The kept summaries are shared by every reader (#3043): the equipment
+        # read, with and without an activity, leaves them as they were.
+        shared = stored_summaries(self.manager)
+        before = copy.deepcopy(shared)
+        service = EquipmentService(
+            self.manager,
+            lambda: shared,
+            lambda: date(2026, 10, 2),
+            lambda: "2026-10-02T12:00:00Z",
+            gear_reader=CanonicalTableReader(),
+        )
+        service.read()
+        for summary in shared:
+            service.read(activity_id=str(summary["id"]))
+        self.assertEqual(before, shared)
 
     def test_canonical_gear_keeps_the_partial_activity_list(self) -> None:
         (item,) = self.service.read()["items"]

@@ -371,7 +371,8 @@ def _summary_blocks(summary: ActivitySummary | None) -> dict[str, Any]:
         blocks["training_effect"] = effect
     if summary is not None and summary.get("pace_zone_times"):
         blocks["pace_zone_times"] = {
-            "zones": summary["pace_zone_times"],
+            # A copy: the summary may be one of the kept, shared ones (#3043).
+            "zones": [dict(zone) for zone in summary["pace_zone_times"]],
             "source": summary.get("sources", {}).get("pace_zone_times"),
         }
     return blocks
