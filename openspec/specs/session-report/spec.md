@@ -58,7 +58,7 @@ The system SHALL add to every `get_activity_details` result a `session_report` (
 
 #### Scenario: RPE against intensity
 - **WHEN** a run or ride carries a session RPE and a local IF
-- **THEN** the report compares the RPE with the median RPE of the athlete's own rated sessions of the same sport and RPE scale within ±0.05 IF over the 84 days before, read once for that window; notable from a 2-point gap; unknown with fewer than 5 such sessions or without a rating or IF (#3084 Part 3).
+- **THEN** the report compares the RPE with the median RPE of the athlete's own rated sessions of the same sport and RPE scale within ±0.05 IF over the 84 days before the session's day (a session later that day never counts), read once for that window; notable from a 2-point gap; unknown with fewer than 5 such sessions or without a rating or IF (#3084 Part 3).
 
 #### Scenario: Data quality gates verdicts
 - **WHEN** the heart-rate data shows spikes or a cadence lock or was not checked, or the speed of a speed-based output (a run, a ride without power) jumps

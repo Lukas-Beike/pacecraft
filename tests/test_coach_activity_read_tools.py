@@ -408,17 +408,14 @@ class CoachActivityReadToolServiceTests(unittest.TestCase):
         )
 
     def test_session_report_judges_rpe_against_the_own_rated_sessions(self):
-        # #3084 Part 3: the rated sessions of the 84 days before the session,
-        # without the session itself, and its local IF feed the RPE check.
+        # #3084 Part 3: the rated sessions of the 84 days before the session's
+        # day (never the session or a later one that day) and its local IF feed
+        # the RPE check.
         activity_read = Mock()
-        own_rating = {"id": "act_1", "sport": "run", "intensity": 0.8, "rpe": 9}
         activity_read.rated_sessions.return_value = [
-            *(
-                {"id": f"r{n}", "sport": "run", "intensity": 0.8, "rpe": 5}
-                | {"rpe_scale": "cr10"}
-                for n in range(5)
-            ),
-            own_rating | {"rpe_scale": "cr10"},
+            {"id": f"r{n}", "sport": "run", "intensity": 0.8, "rpe": 5}
+            | {"rpe_scale": "cr10"}
+            for n in range(5)
         ]
         service = CoachActivityReadToolService(activity_read, Mock(), Mock(), Mock())
         session = {
@@ -437,7 +434,7 @@ class CoachActivityReadToolServiceTests(unittest.TestCase):
             [{"id": "act_1", "intensity": 0.8}],
         )
         activity_read.rated_sessions.assert_called_once_with(
-            date(2026, 6, 30), date(2026, 9, 22)
+            date(2026, 6, 30), date(2026, 9, 21)
         )
         check = next(c for c in report["checks"] if c["id"] == "rpe_intensity")
         self.assertEqual(

@@ -611,17 +611,14 @@ class CoachActivityReadToolService:
         own = _own_summary(session, nearby) or {}
         day = _session_date(session)
         # The checks of #3084 Part 3 read the session's IF and device GAP, and
-        # the athlete's rated sessions of the comparable window before the day.
+        # the athlete's rated sessions of the 84 days before the session's day,
+        # so a session later that day never enters its expectation.
         rated = (
             []
             if day is None
-            else [
-                item
-                for item in self._activity_read.rated_sessions(
-                    day - timedelta(days=RATED_WINDOW_DAYS), day
-                )
-                if item["id"] != own.get("id")
-            ]
+            else self._activity_read.rated_sessions(
+                day - timedelta(days=RATED_WINDOW_DAYS), day - timedelta(days=1)
+            )
         )
         inputs = {
             "intensity": own.get("intensity"),
