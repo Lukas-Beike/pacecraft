@@ -106,13 +106,17 @@ test("@responsive the desktop Coach view reads the fuelling of the open unit onc
     reads += 1;
     return route.fulfill({ json: { status: "not_long" } });
   });
-  await page.route("**/api/bootstrap**", async (route) => {
-    const response = await route.fetch();
-    const data = await response.json();
-    const today = new Intl.DateTimeFormat("en-CA", { timeZone: data.profile?.timezone || "Europe/Berlin" }).format(new Date());
-    data.training_calendar = [{ id: "long-ride", local_id: "long-ride", date: today, name: "Lange Ausfahrt", type: "Ride", sport: "ride", environment: "outdoor", duration_minutes: 150, planned_duration_s: 9000 }];
-    return route.fulfill({ json: data });
-  });
+  // #3056: the calendar comes with /api/plan and replaces the bootstrap's; patched only in the
+  // bootstrap, a fixture unit opened instead, and a completed one reads no fuelling at all.
+  for (const area of ["/api/bootstrap", "/api/plan"]) {
+    await page.route((url) => url.pathname === area, async (route) => {
+      const response = await route.fetch();
+      const data = await response.json();
+      const today = new Intl.DateTimeFormat("en-CA", { timeZone: data.profile?.timezone || "Europe/Berlin" }).format(new Date());
+      data.training_calendar = [{ id: "long-ride", local_id: "long-ride", date: today, name: "Lange Ausfahrt", type: "Ride", sport: "ride", environment: "outdoor", duration_minutes: 150, planned_duration_s: 9000 }];
+      return route.fulfill({ json: data });
+    });
+  }
   // The Coach view's chat history answers late, as a slow read on a long history would.
   let release;
   const held = new Promise((resolve) => { release = resolve; });
@@ -128,4 +132,5 @@ test("@responsive the desktop Coach view reads the fuelling of the open unit onc
   await expect.poll(() => page.evaluate(() => state.initialStateLoaded && !state.loadPromise)).toBe(true);
   await page.waitForTimeout(1500);
   expect(reads).toBe(1);
+  await expect(page.locator(".planned-entry[open]")).toContainText("Lange Ausfahrt");
 });
