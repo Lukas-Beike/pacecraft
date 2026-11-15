@@ -35,6 +35,18 @@ class EquipmentPostRoutes:
                 self._maintain,
             ),
             Route("POST", "/api/equipment/rules", Access.SESSION_CSRF, self._rule),
+            Route(
+                "GET",
+                "/api/equipment/rules/preview",
+                Access.SESSION,
+                self._rule_preview,
+            ),
+            Route(
+                "POST",
+                "/api/equipment/rules/apply",
+                Access.SESSION_CSRF,
+                self._rule_apply,
+            ),
         ]
 
     def _save(self, handler: Any, _request: RouteRequest) -> None:
@@ -119,6 +131,44 @@ class EquipmentPostRoutes:
         handler.send_json(
             200,
             self._equipment_service().save_rule(
+                handler.read_json(EQUIPMENT_BODY_MAX_BYTES)
+            ),
+        )
+
+    def _rule_preview(self, handler: Any, request: RouteRequest) -> None:
+        """Count the earlier sessions a rule apply would give its item (#3014).
+
+        Request: query `kind` (a rule kind); no body.
+
+        Response: 200 `{"kind", "equipment_id", "count"}`: the rule's current
+        item and the sessions of that kind before the day it took effect that
+        have no own choice. It changes no state.
+
+        Errors: 400 "Art der Regel ist erforderlich." for an unknown kind; 409
+        "Für diese Art ist keine Regel gesetzt." without a rule.
+        """
+        kind = (request.query.get("kind") or [""])[0]
+        handler.send_json(200, self._equipment_service().rule_apply_preview(kind))
+
+    def _rule_apply(self, handler: Any, _request: RouteRequest) -> None:
+        """Give a rule's item to the earlier sessions of its kind without an own choice.
+
+        Request: JSON body of at most 16 KiB, exactly `{"kind": string,
+        "confirmed": true}` after the athlete confirmed the preview.
+
+        Response: 200 `{"ok": true, "stored_locally": true, "count", "change"}`;
+        `count` sessions got the item, written in chunks of at most 200 per
+        transaction; `change` undoes the whole apply (null when nothing was
+        written). A session chosen since the preview keeps its choice.
+
+        Errors: 400 "Art der Regel ist erforderlich." for another body shape or
+        kind; 409 `confirmation_required` without `confirmed: true`; 409 "Für
+        diese Art ist keine Regel gesetzt."; 409 "Diese Regel wird gerade
+        angewendet." while an apply of the same kind runs.
+        """
+        handler.send_json(
+            200,
+            self._equipment_service().apply_rule(
                 handler.read_json(EQUIPMENT_BODY_MAX_BYTES)
             ),
         )

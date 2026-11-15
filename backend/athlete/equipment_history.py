@@ -26,6 +26,7 @@ from backend.db.equipment_store import (
     EQUIPMENT_PREFIX,
     MAINTENANCE_PREFIX,
     PLANNED_PREFIX,
+    RULE_APPLY_PREFIX,
     RULE_PREFIX,
 )
 from backend.errors import AppError
@@ -206,6 +207,29 @@ class EquipmentRuleHistory(_EquipmentRecordHistory):
         return restored
 
 
+class EquipmentRuleApplyHistory(_EquipmentRecordHistory):
+    entity_type = "equipment_rule_apply"
+    prefix = RULE_APPLY_PREFIX
+
+    def restore_in_transaction(
+        self,
+        db: Any,
+        entity_id: str,
+        current: dict[str, Any] | None,
+        target: dict[str, Any] | None,
+    ) -> dict[str, Any] | None:
+        """Take back one rule apply: every write that still carries its tag.
+
+        A session the athlete changed since lost the tag and keeps its choice.
+        """
+        del current  # The writes are found by the operation id, not by a stored copy.
+        if target is not None:
+            raise AppError(409, "Eine zurückgenommene Anwendung wird nicht wiederholt.")
+        equipment_store.delete_tagged_assignments(db, entity_id)
+        self._delete(db, entity_id)
+        return None
+
+
 class EquipmentMaintenanceHistory(_EquipmentRecordHistory):
     entity_type = "equipment_maintenance"
     prefix = MAINTENANCE_PREFIX
@@ -240,7 +264,7 @@ def equipment_history_records(
     utc_now: Callable[[], str],
     read_summaries: Callable[[], Sequence[ActivitySummary]],
 ) -> dict[str, Any]:
-    """The change-history record services of the five equipment entity types."""
+    """The change-history record services of the six equipment entity types."""
     return {
         history.entity_type: history
         for history in (
@@ -248,6 +272,7 @@ def equipment_history_records(
             EquipmentAssignmentHistory(utc_now, read_summaries),
             EquipmentPlannedHistory(utc_now),
             EquipmentRuleHistory(utc_now),
+            EquipmentRuleApplyHistory(utc_now),
             EquipmentMaintenanceHistory(utc_now),
         )
     }

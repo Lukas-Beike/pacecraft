@@ -17,6 +17,8 @@ MAINTENANCE_PREFIX = "equipment_maintenance:"
 PLANNED_PREFIX = "equipment_planned:"
 # The default item of one kind of session, with the day each choice took effect (#3014).
 RULE_PREFIX = "equipment_rule:"
+# One confirmed apply of a rule to earlier sessions, the undo handle of its writes.
+RULE_APPLY_PREFIX = "equipment_rule_apply:"
 GARMIN_INITIALIZED_KEY = "garmin_equipment_initialized"
 
 
@@ -55,6 +57,14 @@ def child_values(db: Any, parent_id: str) -> list[str]:
             (EQUIPMENT_PREFIX + "%", parent_id),
         ).fetchall()
     ]
+
+
+def delete_tagged_assignments(db: Any, operation_id: str) -> int:
+    """Remove the assignments one rule apply wrote that still carry its tag."""
+    return db.execute(
+        "DELETE FROM kv WHERE key LIKE ? AND json_extract(value, '$.operation_id')=?",
+        (ASSIGNMENT_PREFIX + "%", operation_id),
+    ).rowcount
 
 
 def is_referenced(db: Any, equipment_id: str) -> bool:

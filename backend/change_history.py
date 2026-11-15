@@ -36,6 +36,7 @@ ENTITY_TYPES = {
     "equipment_assignment",
     "equipment_planned",
     "equipment_rule",
+    "equipment_rule_apply",
     "equipment_maintenance",
     "metric_export",
 }
@@ -295,6 +296,8 @@ EQUIPMENT_ASSIGNMENT_FIELDS = ("activity_id", "equipment_id")
 EQUIPMENT_PLANNED_FIELDS = ("planned_unit_id", "equipment_id")
 # One kind's default equipment with its dated choices (#3014).
 EQUIPMENT_RULE_FIELDS = ("kind", "revision", "history")
+# One confirmed apply of a rule to earlier sessions; undo removes its tagged writes.
+EQUIPMENT_RULE_APPLY_FIELDS = ("operation_id", "kind", "equipment_id", "applied_at")
 # One maintenance entry; the observation time is left out.
 EQUIPMENT_MAINTENANCE_FIELDS = ("id", "equipment_id", "date", "notes", "distance_km")
 # A composite meal keeps its ingredient snapshots in nutrition_basis.
@@ -354,6 +357,7 @@ def audit_projection_fields(entity_type: str) -> set[str]:
         "equipment_assignment": set(EQUIPMENT_ASSIGNMENT_FIELDS),
         "equipment_planned": set(EQUIPMENT_PLANNED_FIELDS),
         "equipment_rule": set(EQUIPMENT_RULE_FIELDS),
+        "equipment_rule_apply": set(EQUIPMENT_RULE_APPLY_FIELDS),
         "equipment_maintenance": set(EQUIPMENT_MAINTENANCE_FIELDS),
         METRIC_EXPORT_ENTITY: set(METRIC_EXPORT_FIELDS),
     }
