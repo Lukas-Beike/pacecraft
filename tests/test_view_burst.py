@@ -119,13 +119,16 @@ class ViewBurstTests(unittest.TestCase):
     def test_a_routes_file_and_several_clients_log_in_before_measuring(self) -> None:
         # #3078: routes come from a file (no bare /api/ arguments for Git Bash),
         # {activity_id} is the newest fixture session, logins precede every read.
-        routes = Path(self.enterContext(tempfile.TemporaryDirectory())) / "routes.txt"
+        # The routes file lives below the working directory, as the script requires.
+        work = Path(self.enterContext(tempfile.TemporaryDirectory()))
+        self.enterContext(contextlib.chdir(work))
+        routes = work / "routes.txt"
         routes.write_text(
             "# detail and its list\n/api/activities/{activity_id}\n\n/api/performance\n",
             encoding="utf-8",
         )
         result = self.run_script(
-            "--routes-file", str(routes), "--clients", "3", "--rounds", "2",
+            "--routes-file", "routes.txt", "--clients", "3", "--rounds", "2",
             "--right-after-start",
         )  # fmt: skip
         self.assertEqual(_Stub.seen[:3], ["login"] * 3)
@@ -134,19 +137,23 @@ class ViewBurstTests(unittest.TestCase):
         self.assertEqual(
             set(result["reads"]), {"/api/activities/act_1%202", "/api/performance"}
         )
-        bad = routes.with_name("bad.txt")
-        for content in (
-            "C:/Program Files/Git/api/performance\n",  # a rewritten path
-            "/api/performance\n/api/performance\n",  # a duplicate doubles one load
+        outside = work.parent / f"{work.name}-outside.txt"
+        outside.write_text("/api/performance\n", encoding="utf-8")
+        self.addCleanup(outside.unlink)
+        for name, content in (
+            ("bad.txt", "C:/Program Files/Git/api/performance\n"),  # rewritten
+            ("bad.txt", "/api/performance\n/api/performance\n"),  # duplicate
+            (f"../{outside.name}", None),  # a file outside the working directory
         ):
-            bad.write_text(content, encoding="utf-8")
-            with self.subTest(content=content), self.assertRaises(SystemExit):
+            if content is not None:
+                (work / name).write_text(content, encoding="utf-8")
+            with self.subTest(name=name), self.assertRaises(SystemExit):
                 view_burst.main(
                     [
                         "--base-url",
                         self.base,
                         "--routes-file",
-                        str(bad),
+                        name,
                         "--right-after-start",
                     ]
                 )

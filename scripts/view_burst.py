@@ -126,7 +126,12 @@ def read_routes(path: str | None, client: Client) -> tuple[str, ...]:
     """The default ten view reads, or the routes file with ``{activity_id}`` filled."""
     if path is None:
         return READS
-    lines = Path(path).read_text(encoding="utf-8").splitlines()
+    # Only a file below the working directory: the path is a CLI argument.
+    base = Path.cwd().resolve()
+    source = (base / path).resolve()
+    if not source.is_relative_to(base) or not source.is_file():
+        raise SystemExit("the routes file must be a file below the working directory")
+    lines = source.read_text(encoding="utf-8").splitlines()
     routes = [
         line.strip() for line in lines if line.strip() and not line.startswith("#")
     ]
