@@ -84,6 +84,7 @@ from backend.sync.stream_backfill import (
     StreamSelection,
     count_fit_file,
     fit_inventory_counts,
+    fit_new_decode_counts,
     select_stream_candidates,
     state_key,
     stop_error,
@@ -125,6 +126,38 @@ def fit_bytes(records: int = 5, *, laps: int = 1, sets: int = 0) -> bytes:
 def no_sensor_fit() -> bytes:
     """A valid file whose only message is a lap: no record stream."""
     return fit_bytes(records=0, laps=1)
+
+
+def watch_fit(*, breathing=(), laps=(), steps=(), zones=False) -> bytes:
+    """A file with record breathing rates, laps, workout steps and a zone basis.
+
+    Values are raw FIT numbers; a lap is (average and maximum breathing rate,
+    grade-adjusted speed, workout step index) and a ``None`` is left out, which
+    the builder writes as the FIT invalid value.
+    """
+    builder = FitBuilder()
+    if breathing:
+        builder.define(0, 20, [(253, UINT32), (108, UINT16)])
+        for index, rate in enumerate(breathing):
+            builder.data(
+                0, {253: 1000 + index, **({} if rate is None else {108: rate})}
+            )
+    if laps:
+        # A file may declare the speed wider than the 16 bits of the FIT profile.
+        wide = [(136, UINT16), (137, UINT16), (161, UINT32), (71, UINT16)]
+        fields = tuple(field for field, _type in wide)
+        builder.define(1, 19, [(2, UINT32), *wide])
+        for lap in laps:
+            present = {f: v for f, v in zip(fields, lap, strict=True) if v is not None}
+            builder.data(1, {2: 1000, **present})
+    if steps:
+        builder.define(2, 27, [(254, UINT16)])
+        for index in steps:
+            builder.data(2, {254: index})
+    if zones:
+        builder.define(3, 7, [(1, UINT8)])
+        builder.data(3, {1: 190})
+    return builder.build()
 
 
 @dataclass
@@ -488,11 +521,151 @@ class WahooBackfillTests(unittest.TestCase):
             "messages": {},
             "unmapped_fields": {},
             "developer_fields": {},
+            "new_decodes": {},
         }
         self.assertEqual(
             {
                 "wahoo": {"ride": {"files": 2, **empty}},
                 "zwift": {"ride": {"files": 1, **empty}},
+            },
+            fit_inventory_counts(env.db, env.key_values),
+        )
+
+    def test_new_decodes_are_counted_per_file_without_a_value(self) -> None:
+        breathing = "nrespiration_record"
+        for label, data, expected in (
+            (
+                "in bounds",
+                watch_fit(breathing=(1800, 2050)),
+                {f"{breathing}.in_bounds": 1},
+            ),
+            (
+                "one value out",
+                watch_fit(breathing=(1800, 0)),
+                {f"{breathing}.in_bounds": 1, f"{breathing}.out_of_bounds": 1},
+            ),
+            (
+                "the limits",
+                watch_fit(breathing=(100, 10000)),
+                {f"{breathing}.in_bounds": 1},
+            ),
+            (
+                "beyond the limits",
+                watch_fit(breathing=(99, 10001)),
+                {f"{breathing}.out_of_bounds": 1},
+            ),
+            ("invalid values", watch_fit(breathing=(None, None)), {}),
+            (
+                "lap values in bounds",
+                watch_fit(laps=((1450, 2125, 3250, None),)),
+                {
+                    "nrespiration_lap_avg.in_bounds": 1,
+                    "nrespiration_lap_max.in_bounds": 1,
+                    "nlap_grade_speed.in_bounds": 1,
+                },
+            ),
+            (
+                "lap values out of bounds",
+                watch_fit(laps=((50, 10001, 100001, None),)),
+                {
+                    "nrespiration_lap_avg.out_of_bounds": 1,
+                    "nrespiration_lap_max.out_of_bounds": 1,
+                    "nlap_grade_speed.out_of_bounds": 1,
+                },
+            ),
+            (
+                "step indexes that resolve",
+                watch_fit(
+                    laps=((None, None, None, 0), (None, None, None, 1)), steps=(0, 1, 2)
+                ),
+                {
+                    "nlap_step_index": 1,
+                    "nlap_step_index_resolved": 1,
+                    "nworkout_steps": 1,
+                    "nworkout_steps_max": 3,
+                },
+            ),
+            (
+                "the selected bit of an index",
+                watch_fit(laps=((None, None, None, 0x8001),), steps=(1,)),
+                {
+                    "nlap_step_index": 1,
+                    "nlap_step_index_resolved": 1,
+                    "nworkout_steps": 1,
+                    "nworkout_steps_max": 1,
+                },
+            ),
+            (
+                "one step index that dangles",
+                watch_fit(
+                    laps=((None, None, None, 0), (None, None, None, 7)), steps=(0, 1)
+                ),
+                {
+                    "nlap_step_index": 1,
+                    "nlap_step_index_dangling": 1,
+                    "nworkout_steps": 1,
+                    "nworkout_steps_max": 2,
+                },
+            ),
+            (
+                "step indexes without steps",
+                watch_fit(laps=((None, None, None, 4),)),
+                {"nlap_step_index": 1, "nlap_step_index_dangling": 1},
+            ),
+            (
+                "steps without laps",
+                watch_fit(steps=(0, 1)),
+                {"nworkout_steps": 1, "nworkout_steps_max": 2},
+            ),
+            ("a zone basis", watch_fit(zones=True), {"nzones_target": 1}),
+            ("mapped content only", fit_bytes(laps=2, sets=1), {}),
+            ("not a file", b"not a fit file", {}),
+            ("a truncated file", watch_fit(steps=(0, 1))[:-3], {}),
+        ):
+            with self.subTest(label):
+                self.assertEqual(expected, fit_new_decode_counts(data))
+
+    def test_new_decodes_add_up_per_origin_and_sport_and_keep_the_largest_steps(
+        self,
+    ) -> None:
+        env = self.env
+        seed(env, WAHOO, 11, date(2026, 11, 3))
+        seed(env, WAHOO, 12, date(2026, 11, 2))
+        rich = watch_fit(
+            breathing=(1800,),
+            laps=((1450, 2125, 3250, 0),),
+            steps=(0, 1, 2),
+            zones=True,
+        )
+        count_fit_file(env.db, env.key_values, WAHOO, "11", rich)
+        count_fit_file(env.db, env.key_values, WAHOO, "12", watch_fit(steps=(0, 1)))
+        self.assertEqual(
+            {
+                "wahoo": {
+                    "ride": {
+                        "files": 2,
+                        "messages": {"27": 2, "7": 1},
+                        "unmapped_fields": {
+                            "19.136": 1,
+                            "19.137": 1,
+                            "19.161": 1,
+                            "19.71": 1,
+                            "20.108": 1,
+                        },
+                        "developer_fields": {},
+                        "new_decodes": {
+                            "respiration_record.in_bounds": 1,
+                            "respiration_lap_avg.in_bounds": 1,
+                            "respiration_lap_max.in_bounds": 1,
+                            "lap_grade_speed.in_bounds": 1,
+                            "lap_step_index": 1,
+                            "lap_step_index_resolved": 1,
+                            "workout_steps": 2,
+                            "workout_steps_max": 3,
+                            "zones_target": 1,
+                        },
+                    }
+                }
             },
             fit_inventory_counts(env.db, env.key_values),
         )
