@@ -89,16 +89,17 @@ def drinking(
         result: dict[str, Any] = {"generic_l_per_h": list(GENERIC_SWEAT_L_PER_H)}
     else:
         hours = duration_s / 3600
-        # The expected loss, so a loss within 2 % reads as such, not as "0 l" (#3012).
-        result = {
-            "max_l_per_h": round(rate_l_per_h, 2),
-            "loss_l": round(rate_l_per_h * hours, 1),
-        }
+        loss = rate_l_per_h * hours
+        result = {"max_l_per_h": round(rate_l_per_h, 2)}
         if weight_kg is not None and hours > 0:
-            total = max(0.0, rate_l_per_h * hours - weight_kg * MAX_LOSS_SHARE)
+            total = max(0.0, loss - weight_kg * MAX_LOSS_SHARE)
             result["l_per_h"] = round(min(rate_l_per_h, total / hours), 2)
-            result["total_l"] = round(total, 1)
-    if duration_s >= SODIUM_FROM_S and result.get("total_l", 1) > 0:
+            result["total_l"] = round(total, 2)
+            if total <= 0:
+                # Decided before rounding: the card says so with the loss, never "0 l" (#3012).
+                result["within_loss_share"] = True
+                result["loss_l"] = round(loss, 2)
+    if duration_s >= SODIUM_FROM_S and not result.get("within_loss_share"):
         result["sodium_g_per_l"] = list(SODIUM_G_PER_L)
     return result
 

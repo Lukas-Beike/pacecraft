@@ -99,8 +99,17 @@ test("long planned units ask for fuelling and show drinking and carbohydrates wi
   assert.equal(rendered.plannedFuellingRows({ max_l_per_h: 1.2 }).filter(Boolean).map((row) => row.join(":")).join("|"), "Pro Stunde:bis 1,2 l");
   // #3012: a loss within 2 % of the weight needs no drink; the card says so instead of "0 l".
   assert.equal(
-    rendered.plannedFuellingRows({ max_l_per_h: 1, loss_l: 1.3, l_per_h: 0, total_l: 0 }).filter(Boolean).map((row) => row.join(":")).join("|"),
-    "Pro Stunde:nicht nötig|Verlust:1,3 l · unter 2 % des Gewichts",
+    rendered.plannedFuellingRows({ max_l_per_h: 1, l_per_h: 0, total_l: 0, within_loss_share: true, loss_l: 1.33 }).filter(Boolean).map((row) => row.join(":")).join("|"),
+    "Pro Stunde:nicht nötig|Verlust:1,33 l · unter 2 % des Gewichts",
+  );
+  // A small remaining need still shows its amounts; a missing loss leaves only "nicht nötig".
+  assert.equal(
+    rendered.plannedFuellingRows({ max_l_per_h: 1.08, l_per_h: 0.03, total_l: 0.04 }).filter(Boolean).map((row) => row.join(":")).join("|"),
+    "Pro Stunde:0,03 l|Gesamt:0,04 l",
+  );
+  assert.equal(
+    rendered.plannedFuellingRows({ within_loss_share: true }).filter(Boolean).map((row) => row.join(":")).join("|"),
+    "Pro Stunde:nicht nötig",
   );
 });
 

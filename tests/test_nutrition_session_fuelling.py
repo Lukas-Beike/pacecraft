@@ -77,8 +77,8 @@ class SessionFuellingTests(unittest.TestCase):
             {"l_per_h": 0.7, "sessions": 3, "similar": True, "temperature_c": [10, 14]},
             plan["sweat_rate"],
         )
-        # 0.7 L/h for 2:45 h = 1.925 L minus 1.4 L (2 % of 70 kg) = 0.525 L.
-        self.assertEqual((0.19, 0.5), (plan["drinking"]["l_per_h"], plan["drinking"]["total_l"]))
+        # 0.7 L/h for 2:45 h = 1.925 L minus 1.4 L (2 % of 70 kg) = 0.525 L (stored as 0.52499...).
+        self.assertEqual((0.19, 0.52), (plan["drinking"]["l_per_h"], plan["drinking"]["total_l"]))
         self.assertEqual("high", plan["carbohydrates"]["step"])
         self.assertEqual({"kg": 70.0, "source": "Garmin"}, plan["weight"])
 
@@ -88,9 +88,7 @@ class SessionFuellingTests(unittest.TestCase):
         self.assertEqual((None, 1.2, 1), (
             indoor["forecast_c"], indoor["sweat_rate"]["l_per_h"], indoor["sweat_rate"]["sessions"]
         ))
-        self.assertEqual(
-            {"max_l_per_h": 1.2, "loss_l": 3.3, "sodium_g_per_l": [0.5, 0.7]}, indoor["drinking"]
-        )
+        self.assertEqual({"max_l_per_h": 1.2, "sodium_g_per_l": [0.5, 0.7]}, indoor["drinking"])
         swim = self.read(query(sport="swim"))
         self.assertEqual({"status": "not_long"}, swim)
         self.summaries.assert_not_called()

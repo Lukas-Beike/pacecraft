@@ -81,25 +81,29 @@ class FuellingRuleTests(unittest.TestCase):
 
     def test_drinking_keeps_the_loss_at_two_percent_and_never_above_the_sweat_rate(self):
         # 0.9 L/h for 2:45 h is a loss of 2.475 L; 2 % of 70 kg is 1.4 L, so
-        # 1.075 L remain to drink: 0.39 L/h, 1.1 L in total (worked by hand).
+        # 1.075 L remain to drink: 0.39 L/h, 1.07 L in total (worked by hand).
         self.assertEqual(
-            {"max_l_per_h": 0.9, "loss_l": 2.5, "l_per_h": 0.39, "total_l": 1.1, "sodium_g_per_l": [0.5, 0.7]},
+            {"max_l_per_h": 0.9, "l_per_h": 0.39, "total_l": 1.07, "sodium_g_per_l": [0.5, 0.7]},
             drinking(0.9, 9900, 70),
         )
         # A short session within the 2 % needs nothing; without weight only the bound.
         self.assertEqual(
-            {"max_l_per_h": 0.5, "loss_l": 0.5, "l_per_h": 0.0, "total_l": 0.0},
+            {"max_l_per_h": 0.5, "l_per_h": 0.0, "total_l": 0.0, "within_loss_share": True, "loss_l": 0.5},
             drinking(0.5, 3600, 70),
         )
-        self.assertEqual({"max_l_per_h": 0.9, "loss_l": 0.9}, drinking(0.9, 3600, None))
-        # #3012: 1 L/h over 80 min loses 1.3 L, within 2 % of 70 kg (1.4 L).
+        self.assertEqual({"max_l_per_h": 0.9}, drinking(0.9, 3600, None))
+        # #3012: 1 L/h over 80 min loses 1.33 L, within 2 % of 70 kg (1.4 L);
+        # 1.08 L/h loses 1.44 L, so 0.04 L remain although they round small.
         self.assertEqual(
-            {"max_l_per_h": 1.0, "loss_l": 1.3, "l_per_h": 0.0, "total_l": 0.0},
+            {"max_l_per_h": 1.0, "l_per_h": 0.0, "total_l": 0.0, "within_loss_share": True, "loss_l": 1.33},
             drinking(1.0, 4800, 70),
+        )
+        self.assertEqual(
+            {"max_l_per_h": 1.08, "l_per_h": 0.03, "total_l": 0.04}, drinking(1.08, 4800, 70)
         )
         # Nothing to drink means no sodium advice; without a rate the ACSM range.
         self.assertEqual(
-            {"max_l_per_h": 0.4, "loss_l": 0.8, "l_per_h": 0.0, "total_l": 0.0},
+            {"max_l_per_h": 0.4, "l_per_h": 0.0, "total_l": 0.0, "within_loss_share": True, "loss_l": 0.8},
             drinking(0.4, 7200, 80),
         )
         self.assertEqual(

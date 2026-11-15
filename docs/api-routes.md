@@ -1099,8 +1099,9 @@ seconds, up to 24 h); no body.
 Response: 200 with `status` `not_long` (another sport or under 60 min)
 or `ready` with `duration_s`, `forecast_c` (cached forecast, outdoors),
 `sweat_rate` (`l_per_h`, `sessions`, `similar`, `temperature_c`; null
-without own data), `drinking` (`l_per_h`, `total_l`, `max_l_per_h`, `loss_l`,
-`sodium_g_per_l`, or `generic_l_per_h` without own data),
+without own data), `drinking` (`l_per_h`, `total_l`, `max_l_per_h`,
+`within_loss_share` with the expected `loss_l` when the loss stays
+within 2 % of body weight, `sodium_g_per_l`, or `generic_l_per_h` without own data),
 `drinking_source`, `carbohydrates`, `carbohydrate_source` and
 `weight`. It reads stored data only and fetches nothing.
 
