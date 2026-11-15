@@ -232,8 +232,9 @@ export const STEPS = [
   detail("Kalender: Diagramm", "#2258 session charts", '.planned-entry[open] .activity-analysis-panel svg[role="img"]', "chart", { never: '.planned-entry[open] .activity-analysis-panel svg[aria-label^="Temperatur"]' }),
   detail("Kalender: Zonenbalken", "#2258 time in zones", ".planned-entry[open] .activity-analysis-zones", "numbers", { optional: true }),
   detail("Kalender: Laufdynamik", "#2910 running dynamics", ".planned-entry[open] .activity-dynamics-value", "numbers", { optional: true, each: ".planned-entry.is-completed[data-sport='Laufen'] > summary" }),
-  { view: "plan", name: "Kalender: Schuh/Rad", covers: "#3011 equipment chip", each: DONE, ready: ".planned-entry[open] .planned-equipment-chip", kind: "text", optional: true },
-  { view: "plan", name: "Kalender: Schuh/Rad geplant", covers: "#3011 planned equipment chip", each: PLANNED, ready: ".planned-entry[open] .planned-equipment-chip", kind: "text", optional: true },
+  // The chip shows "…" until its read; once loaded its label names the choice ("Rad: …").
+  { view: "plan", name: "Kalender: Schuh/Rad", covers: "#3011 equipment chip", each: DONE, ready: '.planned-entry[open] .planned-equipment-chip[aria-label*=": "]', kind: "text", optional: true },
+  { view: "plan", name: "Kalender: Schuh/Rad geplant", covers: "#3011 planned equipment chip", each: PLANNED, ready: '.planned-entry[open] .planned-equipment-chip[aria-label*=": "]', kind: "text", optional: true },
   { view: "plan", name: "Kalender: geplante Einheit", covers: "#2189 planned session", pre: ['button[aria-label="Nächste Woche"]'], each: PLANNED, ready: ".planned-entry[open] .planned-entry-details", kind: "text", optional: true, post: ['button[aria-label="Vorherige Woche"]'] },
   { view: "plan", name: "Kalender: Verpflegung", covers: "#2921 fuelling", each: PLANNED, ready: ".planned-entry[open] .planned-fuelling", kind: "numbers", optional: true },
   // Choosing a past day narrows the month's range, so the planned day comes first.

@@ -15,10 +15,14 @@ test("@responsive every UI walk step passes on the fixture app", async ({ page, 
   const today = new Intl.DateTimeFormat("en-CA", { timeZone }).format(new Date());
   // Only a release image carries the changelog (#2899).
   await page.context().route("**/changelog.json", (route) => route.fulfill({ json: { releases: [{ version: "9.9.9", commits: ["feat(calendar): a fixture change (#1)"] }] } }));
-  // The fixture's current week plans nothing, and only a long upcoming unit gets fuelling (#2921).
+  // The fixture's current week plans nothing, and only a long upcoming unit gets fuelling (#2921):
+  // the first later stored ride or run is shown today instead, long, so the server still knows its equipment (#3011).
   await page.context().route(/\/api\/plan(\?|$)/, async (route) => {
     const data = await (await route.fetch()).json();
-    data.training_calendar = [...(data.training_calendar || []), { id: "walk-long-ride", local_id: "walk-long-ride", date: today, name: "Lange Ausfahrt", type: "Ride", sport: "ride", environment: "outdoor", duration_minutes: 150, planned_duration_s: 9000 }];
+    const calendar = data.training_calendar || [];
+    const stored = calendar.find((entry) => entry.local_id && !entry.is_completed_activity && entry.date > today && /ride|run/i.test(`${entry.type} ${entry.sport}`));
+    const moved = (entry) => ({ ...entry, date: today, starts_at_local: entry.starts_at_local && `${today}${entry.starts_at_local.slice(10)}`, duration_minutes: 150, planned_duration_s: 9000 });
+    data.training_calendar = calendar.map((entry) => (entry === stored ? moved(entry) : entry));
     return route.fulfill({ json: data });
   });
   await page.goto("/");
