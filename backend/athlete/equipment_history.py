@@ -225,7 +225,8 @@ class EquipmentRuleApplyHistory(_EquipmentRecordHistory):
         del current  # The writes are found by the operation id, not by a stored copy.
         if target is not None:
             raise AppError(409, "Eine zurückgenommene Anwendung wird nicht wiederholt.")
-        equipment_store.delete_tagged_assignments(db, entity_id)
+        for session in equipment_store.tagged_assignment_sessions(db, entity_id):
+            equipment_store.delete(db, ASSIGNMENT_PREFIX + session)
         self._delete(db, entity_id)
         return None
 

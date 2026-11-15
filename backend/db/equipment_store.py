@@ -59,12 +59,16 @@ def child_values(db: Any, parent_id: str) -> list[str]:
     ]
 
 
-def delete_tagged_assignments(db: Any, operation_id: str) -> int:
-    """Remove the assignments one rule apply wrote that still carry its tag."""
-    return db.execute(
-        "DELETE FROM kv WHERE key LIKE ? AND json_extract(value, '$.operation_id')=?",
-        (ASSIGNMENT_PREFIX + "%", operation_id),
-    ).rowcount
+def tagged_assignment_sessions(db: Any, operation_id: str) -> list[str]:
+    """The sessions whose assignment one rule apply wrote and that still carry its tag."""
+    return [
+        row["key"][len(ASSIGNMENT_PREFIX) :]
+        for row in db.execute(
+            "SELECT key FROM kv WHERE key LIKE ? "
+            "AND json_extract(value, '$.operation_id')=?",
+            (ASSIGNMENT_PREFIX + "%", operation_id),
+        ).fetchall()
+    ]
 
 
 def is_referenced(db: Any, equipment_id: str) -> bool:
