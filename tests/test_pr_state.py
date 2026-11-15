@@ -58,7 +58,7 @@ def thread(resolved, path="backend/a.py", line=4, body="Please fix", author="git
 
 
 class PrStateTests(unittest.TestCase):
-    def run_script(self, pr, threads=(), out=None, moved=()):
+    def run_script(self, pr, threads=(), out=None, moved=(), count=None):
         graphql = {
             "data": {
                 "repository": {
@@ -80,7 +80,8 @@ class PrStateTests(unittest.TestCase):
             if argv[1] == "api" and "/compare/" in argv[2]:
                 if moved is None:  # the compare API fails
                     return subprocess.CompletedProcess(argv, 1, "", "HTTP 502")
-                compared = {"behind": len(moved), "files": list(moved)}
+                files = len(moved) if count is None else count
+                compared = {"behind": len(moved), "count": files, "files": list(moved)}
                 return subprocess.CompletedProcess(argv, 0, json.dumps(compared), "")
             data = {
                 "pr": pr,
@@ -218,6 +219,13 @@ class PrStateTests(unittest.TestCase):
         )
         self.assertIn("not checked (MERGED)", out)
         self.assertFalse([c for c in calls if c[1:3] == ["pr", "diff"]])
+        # The 300-file cap counts files: 160 renames give 320 names, still comparable.
+        renamed = [f"docs/{side}{n}.md" for n in range(160) for side in "ab"]
+        _, out, _, _ = self.run_script(pull(), moved=renamed, count=160)
+        self.assertIn(": none", out)
+        self.assertNotIn("too many files", out)
+        _, out, _, _ = self.run_script(pull(), moved=renamed[:2], count=300)
+        self.assertIn("(develop changed too many files to compare)", out)
 
     def test_failed_gh_call_exits_2(self):
         def failing(argv, **_kwargs):

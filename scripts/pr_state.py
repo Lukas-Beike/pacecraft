@@ -46,15 +46,17 @@ def base_overlap(number: int, head: str, base: str) -> tuple[int, list[str]]:
     At the compare API's file cap any file may be shared, so it counts as one."""
     path = f"repos/{{owner}}/{{repo}}/compare/{head}...{base}"
     # A file the base renamed counts under its old name too.
+    # The cap counts files, not names: an old name is no extra file.
     names = "[.files[]? | .filename, (.previous_filename // empty)]"
-    compared = gh_json("api", path, "--jq", f"{{behind: .ahead_by, files: {names}}}")
+    query = f"{{behind: .ahead_by, count: (.files // [] | length), files: {names}}}"
+    compared = gh_json("api", path, "--jq", query)
     behind, moved = compared["behind"], set(compared["files"] or [])
     if not isinstance(behind, int):
         raise CliError("the base comparison returned no commit count")
     # `pr view --json files` stops at 100 files; the diff lists them all.
     mine = set(gh("pr", "diff", str(number), "--name-only").splitlines())
     shared = sorted(mine & moved)
-    if len(moved) >= COMPARE_FILE_CAP:
+    if compared.get("count", len(moved)) >= COMPARE_FILE_CAP:
         shared = shared or [f"({base} changed too many files to compare)"]
     return behind, shared
 
