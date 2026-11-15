@@ -131,6 +131,9 @@ final tree, and check each
 acceptance criterion against real evidence; ticked tasks alone are not evidence.
 The full local suite runs only on a selector fallback, to reproduce CI, or on
 request; browser checks start with `--project changed` (#2759).
+A change that adds or alters a user-visible function adds or updates its step in
+`STEPS` of `scripts/ui_walk.mjs` in the same PR, or the PR names why it cannot
+be walked read-only (#3009).
 Wait for a running suite or review inside the turn (poll its output until the
 verdict); never end a turn with that work in flight (#2735).
 

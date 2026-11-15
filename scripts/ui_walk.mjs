@@ -6,9 +6,10 @@
 // Logs in with the password read from the file (never printed or passed on a
 // command line), opens each main view, switches the calendar between week and
 // month and pages it, takes screenshots, measures time to rendered content,
+// runs the sub-function STEPS of each view (open, assert non-empty, time),
 // records the service-worker cache name and asset versions, and logs out.
 // It presses no control that saves, syncs, deletes or sends. Exit 0 no error,
-// 1 a view failed or logged errors, 2 bad input or login refused.
+// 1 a view or step failed or logged errors, 2 bad input or login refused.
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -113,6 +114,12 @@ export function compareLines(current, previous) {
     const before = previous.loadMs?.[key];
     if (typeof before === "number") lines.push(`info load ${key} ${ms} ms (was ${before} ms)`);
   }
+  // A step that passed before and is skipped now lost its data or its function: a finding.
+  for (const [key, step] of Object.entries(current.steps || {})) {
+    const before = previous.steps?.[key];
+    if (before?.status === "ok" && step.status === "skip") lines.push(`FAIL step ${key} passed in the previous walk, skipped now (${step.why})`);
+    else if (before?.status === "ok" && step.status === "ok") lines.push(`info step ${key} ${step.ms} ms (was ${before.ms} ms)`);
+  }
   return lines;
 }
 
@@ -183,8 +190,120 @@ async function walkCalendar(page, shot) {
   return done;
 }
 
+// One declarative step per sub-function (#3009): optional `pre` opens (once), `each` names candidates
+// tried in turn (up to MAX_CANDIDATES), `then` opens inside the candidate; the step is ok once `ready`
+// shows a visible element that is not empty by `kind` (chart: drawn marks, numbers: a digit,
+// options: a select with two or more options, text: any). `absent` = [scope, text] marks a candidate
+// whose data does not exist. `optional` steps depend on recorded data: with none they are skipped, and
+// a later walk compares ok before / skipped now as a FAIL. A new user-visible function adds its step here.
+// Controls are limited to opening, expanding and paging ones (isOpener); the label guard stops the rest.
+export const STEP_KINDS = ["chart", "numbers", "options", "text"];
+const OPENERS = [
+  /(^|\s)summary$/,
+  /^a\[data-(analysis|more|nutrition)-segment="[a-z]+"\]$/,
+  /^\.planned-view-switch button\[data-view="(week|month)"\]$/,
+  /^\.planned-month-day:not\(\[disabled\]\)(:has\(\.planned-month-mark\.is-[a-z]+\))?$/,
+  /^button\[aria-label="(Nächste|Vorherige) Woche"\]$/,
+];
+const FORBIDDEN = /speicher|synchronis|send|lösch|exportier|rückgängig|einstellung|herunterlad|undo|save|delete|export/i;
+export const isOpener = (selector) => OPENERS.some((pattern) => pattern.test(selector));
+export const refusedLabel = (label) => FORBIDDEN.test(label || "");
+const STEP_CAP_MS = 8000;
+const CANDIDATE_CAP_MS = 2000;
+const MAX_CANDIDATES = 14;
+const DETAILS_OPEN = ".planned-entry[open] .planned-activity-more > summary";
+const NO_DETAILS = [".planned-entry[open] .activity-analysis-panel", "noch nicht geladen"];
+const DONE = ".planned-entry.is-completed > summary";
+const PLANNED = ".planned-entry.is-planned > summary";
+const MONTH = '.planned-view-switch button[data-view="month"]';
+const tab = (area, segment) => `a[data-${area}-segment="${segment}"]`;
+const detail = (name, covers, ready, kind, extra) => ({ view: "plan", name, covers, each: DONE, then: [DETAILS_OPEN], ready, kind, absent: NO_DETAILS, ...extra });
+export const STEPS = [
+  { view: "coach", name: "Coach: Verlauf", covers: "Coach history", ready: "#messages [data-message-id]", kind: "text" },
+  { view: "plan", name: "Kalender: Einheit öffnen", covers: "#2189 calendar agenda and detail", each: DONE, ready: ".planned-entry[open] .planned-entry-details", kind: "text" },
+  detail("Kalender: Details", "#2258 session details", ".planned-entry[open] .activity-analysis-stats", "numbers"),
+  detail("Kalender: Diagramm", "#2258 session charts", '.planned-entry[open] .activity-analysis-panel svg[role="img"]', "chart"),
+  detail("Kalender: Zonenbalken", "#2258 time in zones", ".planned-entry[open] .activity-analysis-zones", "numbers", { optional: true }),
+  detail("Kalender: Laufdynamik", "#2910 running dynamics", ".planned-entry[open] .activity-dynamics-value", "numbers", { optional: true, each: ".planned-entry.is-completed[data-sport='Laufen'] > summary" }),
+  { view: "plan", name: "Kalender: Schuh/Rad", covers: "#2946 equipment select", each: DONE, ready: ".planned-entry[open] .planned-equipment select", kind: "options", optional: true },
+  { view: "plan", name: "Kalender: geplante Einheit", covers: "#2189 planned session", pre: ['button[aria-label="Nächste Woche"]'], each: PLANNED, ready: ".planned-entry[open] .planned-entry-details", kind: "text", optional: true },
+  { view: "plan", name: "Kalender: Verpflegung", covers: "#2921 fuelling", each: PLANNED, ready: ".planned-entry[open] .planned-fuelling", kind: "numbers", optional: true },
+  // Choosing a past day narrows the month's range, so the planned day comes first.
+  { view: "plan", name: "Monat: geplante Einheit", covers: "#2189 month", pre: [MONTH], each: ".planned-month-day:not([disabled]):has(.planned-month-mark.is-planned)", then: [PLANNED], ready: ".planned-entry[open] .planned-entry-details", kind: "text", optional: true },
+  { view: "plan", name: "Monat: absolvierte Einheit", covers: "#2189 month", pre: [MONTH], each: ".planned-month-day:not([disabled]):has(.planned-month-mark.is-completed)", then: [DONE], ready: ".planned-entry[open] .planned-entry-details", kind: "text" },
+  { view: "plan", name: "Kalender: Wochenansicht", covers: "#2189 week and month switch", pre: ['.planned-view-switch button[data-view="week"]'], ready: ".planned-week .planned-day", kind: "text" },
+  ...[["running", "Laufen", "#dataPanel svg"], ["cycling", "Radfahren", "#dataPanel svg"], ["load", "Belastung", "#analysisLoadCharts svg"], ["recovery", "Erholung", "#personalRecovery svg"]]
+    .map(([segment, label, ready]) => ({ view: "analysis", name: `Analyse: ${label}`, covers: "Analyse tabs", pre: [tab("analysis", segment)], ready, kind: "chart" })),
+  { view: "analysis", name: "Analyse: Woche", covers: "#3000 week review", pre: [tab("analysis", "week")], ready: "#weekReview", kind: "numbers" },
+  { view: "nutrition", name: "Ernährung: Verlauf", covers: "Nutrition week", pre: [tab("nutrition", "week")], ready: "#nutritionWeek", kind: "numbers" },
+  { view: "nutrition", name: "Ernährung: Körper", covers: "Body analysis", pre: [tab("nutrition", "body")], ready: "#bodyAnalysisCharts svg", kind: "chart" },
+  { view: "more", name: "Mehr: Ausrüstung", covers: "#2935 equipment", pre: [tab("more", "equipment")], ready: "#equipmentItems .equipment-card", kind: "text" },
+  { view: "more", name: "Mehr: Betrieb, Änderungen", covers: "#2908 changelog", pre: [tab("more", "operations")], ready: ".release-changelog li", kind: "text", optional: true },
+];
+
+// Runs in the page; "ready", "absent" or false.
+function probe([selector, kind, absent]) {
+  const drawn = (svg) => [...svg.querySelectorAll("path[d], rect, circle, polyline")].some((mark) => {
+    const box = mark.getBBox();
+    return box.width > 0 || box.height > 0;
+  });
+  const filled = {
+    chart: (el) => (el.matches("canvas") ? el.width > 0 && el.height > 0 : [...(el.matches("svg") ? [el] : el.querySelectorAll("svg"))].some(drawn)),
+    numbers: (el) => /\d/.test(el.textContent),
+    options: (el) => (el.matches("select") ? el : el.querySelector("select"))?.options.length >= 2,
+    text: (el) => el.textContent.trim().length > 0,
+  }[kind];
+  const shown = (query) => [...document.querySelectorAll(query)].filter((el) => el.checkVisibility());
+  if (shown(selector).some(filled)) return "ready";
+  return absent && shown(absent[0]).some((el) => el.textContent.includes(absent[1])) ? "absent" : false;
+}
+
+async function press(page, selector, nth = 0) {
+  if (!isOpener(selector)) throw new RangeError("not an opening control");
+  const target = page.locator(selector).filter({ visible: true }).nth(nth);
+  await target.waitFor({ state: "visible", timeout: 3000 });
+  const { label, open } = await target.evaluate((el) => ({ label: el.tagName === "SUMMARY" ? "" : el.getAttribute("aria-label") ?? el.textContent, open: el.tagName === "SUMMARY" && el.parentElement.open }));
+  if (refusedLabel(label)) throw new RangeError("refused control");
+  if (!open) await target.click();
+}
+
+// One step: { status: ok|fail|skip, ms (interaction to ready, of the candidate that passed), why }.
+export async function runStep(page, step, capMs = STEP_CAP_MS) {
+  const began = Date.now();
+  try {
+    for (const selector of step.pre || []) {
+      await press(page, selector);
+      // A tab counts as open once it is the current one, so the previous tab's content never satisfies the step.
+      if (selector.startsWith("a[")) await page.locator(`${selector}[aria-current="page"]`).filter({ visible: true }).first().waitFor({ timeout: 3000 });
+    }
+    // Views render asynchronously: give the first candidate a moment to appear.
+    if (step.each) await page.locator(step.each).filter({ visible: true }).first().waitFor({ timeout: 3000 }).catch(() => null);
+    const count = step.each ? Math.min(await page.locator(step.each).filter({ visible: true }).count(), MAX_CANDIDATES) : 1;
+    let empty = 0;
+    for (let index = 0; index < count; index += 1) {
+      const started = Date.now();
+      try {
+        if (step.each) await press(page, step.each, index);
+        for (const selector of step.then || []) await press(page, selector);
+      } catch (error) {
+        // A candidate without the control is passed over by an optional step; any other step fails.
+        if (error.name !== "TimeoutError" || !step.optional) throw error;
+        continue;
+      }
+      const outcome = await page.waitForFunction(probe, [step.ready, step.kind, step.absent || null], { timeout: step.each ? Math.min(CANDIDATE_CAP_MS, capMs) : capMs, polling: 50 }).then((handle) => handle.jsonValue()).catch(() => "empty");
+      if (outcome === "ready") return { status: "ok", ms: Date.now() - started };
+      if (outcome !== "absent") empty += 1;
+    }
+    // Nothing loaded and nothing empty: the data this step needs does not exist (info, not a failure).
+    if (!empty) return { status: "skip", ms: 0, why: count ? "no stored data" : "no such session" };
+    return step.optional ? { status: "skip", ms: 0, why: `none of ${count} has it` } : { status: "fail", ms: Date.now() - began, why: "missing or empty" };
+  } catch (error) {
+    return { status: "fail", ms: Date.now() - began, why: error.name === "TimeoutError" ? "control missing" : error.message.split("\n")[0] };
+  }
+}
+
 async function walk({ chromium, url, password, outDir }) {
-  const result = { measure: LOAD_MEASURE, loadMs: {}, notReady: {}, errors: {}, calendar: {}, marks: null, logout: {} };
+  const result = { measure: LOAD_MEASURE, loadMs: {}, notReady: {}, errors: {}, calendar: {}, steps: {}, marks: null, logout: {} };
   const browser = await chromium.launch();
   try {
     for (const [name, viewport] of Object.entries(WIDTHS)) {
@@ -214,6 +333,8 @@ async function walk({ chromium, url, password, outDir }) {
         result.loadMs[`${name} ${route}`] = view.ms;
         if (view.capped) result.notReady[`${name} ${route}`] = view.open;
         await shot(route);
+        // The steps start in the calendar's initial week; the calendar walk pages away from it.
+        for (const step of STEPS.filter((item) => item.view === route)) result.steps[`${name} ${step.name}`] = { ...(await runStep(page, step)), covers: step.covers };
         if (route === "plan") result.calendar[name] = await walkCalendar(page, shot);
         result.errors[`${name} ${route}`] = errors.length - counted;
         counted = errors.length;
@@ -250,6 +371,10 @@ export function reportLines(result) {
   }
   for (const [key, requests] of Object.entries(result.notReady || {})) {
     lines.push(`info ${key} not ready within 15 s; still loading: ${requests.join(", ") || "only a loading marker"}`);
+  }
+  for (const [key, step] of Object.entries(result.steps || {})) {
+    if (step.status === "skip") lines.push(`info ${key} skipped: ${step.why}`);
+    else lines.push(step.status === "ok" ? `ok ${key} ${step.ms} ms` : `FAIL ${key} ${step.ms} ms, ${step.why} (covers ${step.covers})`);
   }
   for (const [name, steps] of Object.entries(result.calendar)) lines.push(`info calendar ${name}: ${steps.join(", ") || "no controls found"}`);
   lines.push(`info service-worker cache ${result.marks?.cache || "missing"}, ${result.marks?.assetVersions.length || 0} asset versions`);

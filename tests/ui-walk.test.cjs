@@ -102,6 +102,47 @@ test("ui walk reports errors per view and compares load times with the previous 
   assert.deepEqual(walk.compareLines(result, null), []);
 });
 
+test("ui walk steps press only opening controls and name the feature they cover (#3009)", async () => {
+  const walk = await load();
+  const names = walk.STEPS.map((step) => step.name);
+  assert.equal(new Set(names).size, names.length);
+  for (const step of walk.STEPS) {
+    assert.ok(step.covers && step.ready && walk.STEP_KINDS.includes(step.kind), step.name);
+    for (const selector of [...(step.pre || []), ...(step.then || []), ...(step.each ? [step.each] : [])]) {
+      assert.ok(walk.isOpener(selector), `${step.name}: ${selector}`);
+      assert.ok(!walk.refusedLabel(selector), `${step.name}: ${selector}`);
+    }
+  }
+  // Controls that save, sync, send, delete, export, undo or open settings can be neither selected nor pressed.
+  for (const selector of ["button", "#planSyncButton", ".planned-activity-feedback", "button.message-undo", "a[href]", "#privacyExportButton"]) {
+    assert.equal(walk.isOpener(selector), false, selector);
+  }
+  for (const label of ["Speichern", "Woche synchronisieren", "Senden", "Löschen", "Daten exportieren", "Rückgängig", "Einstellungen", "Feedback speichern"]) {
+    assert.equal(walk.refusedLabel(label), true, label);
+  }
+  for (const label of ["Details", "Nächste Woche", "Laufen", ""]) assert.equal(walk.refusedLabel(label), false, label);
+});
+
+test("ui walk reports each step and flags one that passed before and is skipped now (#3009)", async () => {
+  const walk = await load();
+  const result = {
+    loadMs: {}, errors: {}, calendar: {}, marks: null, measure: walk.LOAD_MEASURE,
+    steps: {
+      "phone Kalender: Details": { status: "ok", ms: 200, covers: "#2258" },
+      "phone Kalender: Zonenbalken": { status: "skip", ms: 0, why: "no stored data", covers: "#2258" },
+      "phone Mehr: Ausrüstung": { status: "fail", ms: 8100, why: "missing or empty", covers: "#2935 equipment" },
+    },
+  };
+  const lines = walk.reportLines(result);
+  assert.ok(lines.includes("ok phone Kalender: Details 200 ms"));
+  assert.ok(lines.includes("info phone Kalender: Zonenbalken skipped: no stored data"));
+  assert.ok(lines.includes("FAIL phone Mehr: Ausrüstung 8100 ms, missing or empty (covers #2935 equipment)"));
+  const previous = { measure: walk.LOAD_MEASURE, marks: { cache: "a" }, loadMs: {}, steps: { "phone Kalender: Details": { status: "ok", ms: 150 }, "phone Kalender: Zonenbalken": { status: "ok", ms: 90 } } };
+  const compared = walk.compareLines({ ...result, marks: { cache: "a" } }, previous);
+  assert.ok(compared.includes("info step phone Kalender: Details 200 ms (was 150 ms)"));
+  assert.ok(compared.includes("FAIL step phone Kalender: Zonenbalken passed in the previous walk, skipped now (no stored data)"));
+});
+
 test("ui walk refuses missing arguments and an unreadable secret file without a browser", () => {
   const run = (...args) => spawnSync(process.execPath, [SCRIPT, ...args], { encoding: "utf8" });
   let done = run("--url", "http://127.0.0.1:9");
