@@ -339,6 +339,40 @@ class CoachActivityReadToolServiceTests(unittest.TestCase):
         notable = [c["id"] for c in report["checks"] if c["verdict"] == "notable"]
         self.assertEqual(sorted(notable), sorted(report["notable"]))
 
+    def test_a_race_is_judged_against_its_linked_competitions_race_plan(self):
+        # #3084 Part 1c: the session's competition_id selects the race plan.
+        competitions = Mock()
+        competitions.get.return_value = {
+            "id": "race-1",
+            "sport": "run",
+            "distance": 10000,
+            "target": "0:50:00",
+        }
+        service = CoachActivityReadToolService(
+            Mock(), Mock(), Mock(), date.today, competitions=lambda: competitions
+        )
+        session = {"activity_id": "act_1", "sport": "run", "competition_id": "race-1"}
+        report = service._session_report(
+            {
+                "session": {**session, "purpose": "race"},
+                "focus": {"status": "unknown"},
+                # 10 km reached after 3200 s.
+                "streams": {
+                    "time_s": [0, 3200],
+                    "channels": {"distance_m": {"values": [0, 10000]}},
+                },
+            },
+            session,
+            None,
+            None,
+        )
+        competitions.get.assert_called_once_with("race-1")
+        finish = next(c for c in report["checks"] if c["id"] == "race_finish")
+        # 3200 s against the 50:00 target: 6.7 % over, notable.
+        self.assertEqual(
+            (6.7, "notable"), (finish["value"]["behind_target_pct"], finish["verdict"])
+        )
+
     def test_session_report_sets_the_plan_estimate_against_the_local_load(self):
         # The estimate is TSS-scale (M6); the provider's own load (300 on
         # Garmin's scale) never enters the plan comparison.

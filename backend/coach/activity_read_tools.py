@@ -39,6 +39,7 @@ from backend.performance.planned_targets import (
 from backend.performance.report_service import PROFILE_WINDOW_DAYS
 from backend.performance.session_report import session_report
 from backend.planning import leg_strength
+from backend.planning.race_plan import race_plan
 from backend.planning.sport import planned_sport_environment
 from backend.sync.garmin import GarminPayloadService
 
@@ -208,6 +209,7 @@ class CoachActivityReadToolService:
         unit_thresholds: Any = None,
         session_corrections: Any = None,
         report_counts: Any = None,
+        competitions: Callable[[], Any] | None = None,
     ) -> None:
         self._activity_read = activity_read
         self._garmin_payload = garmin_payload
@@ -218,6 +220,7 @@ class CoachActivityReadToolService:
         self._unit_thresholds = unit_thresholds
         self._session_corrections = session_corrections
         self._report_counts = report_counts
+        self._competitions = competitions
 
     def execute(self, name: str, arguments: dict[str, Any]) -> dict[str, Any] | None:
         if name == "read_training_records":
@@ -427,6 +430,15 @@ class CoachActivityReadToolService:
             for row, day in zip(shown, days, strict=True)
         ]
 
+    def _race(self, session: Mapping[str, Any]) -> dict[str, Any] | None:
+        """The race plan of the competition the session is linked to (#2803)."""
+        competition_id = session.get("competition_id")
+        if not competition_id or self._competitions is None:
+            return None
+        competition = self._competitions().get(str(competition_id))
+        # The plan's sections and target need no body weight.
+        return None if competition is None else race_plan(competition, None)
+
     def _count_resolution(self, outcome: str) -> None:
         if self._report_counts is not None:
             self._report_counts.resolution(outcome)
@@ -595,7 +607,9 @@ class CoachActivityReadToolService:
                 "above_easy_s": bands.get("moderate", 0.0) + bands.get("high", 0.0),
             }
         own = _own_summary(session, nearby) or {}
-        report = session_report(result, planned, own.get("training_load"))
+        report = session_report(
+            result, planned, own.get("training_load"), self._race(session)
+        )
         if self._report_counts is not None:
             self._report_counts.report(report)
         return report
