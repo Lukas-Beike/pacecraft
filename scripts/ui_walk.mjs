@@ -219,7 +219,8 @@ const NO_SESSION = "no such session";
 // The longest one step may take over all its candidates.
 const STEP_TOTAL_MS = 30000;
 const DONE = ".planned-entry.is-completed > summary";
-const PLANNED = ".planned-entry.is-planned > summary";
+// Today's unit is marked is-today; on a Sunday it is the week's only upcoming one.
+const PLANNED = ".planned-entry:is(.is-planned, .is-today) > summary";
 const MONTH = '.planned-view-switch button[data-view="month"]';
 const tab = (area, segment) => `a[data-${area}-segment="${segment}"]`;
 const detail = (name, covers, ready, kind, extra) => ({ view: "plan", name, covers, each: DONE, opens: [DETAILS_OPEN], ready, kind, absent: NO_DETAILS, ...extra });
