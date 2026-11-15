@@ -157,6 +157,10 @@ Every launched invocation SHALL persist its selection, revision, environment ide
 - **WHEN** a child process, fixture preparation, or required test fails
 - **THEN** the summary and aggregate exit status retain the failure and cleanup does not erase the sanitized evidence.
 
+#### Scenario: A CI browser shard has several failing specs
+- **WHEN** more than one spec file of a CI browser shard fails
+- **THEN** the shard runs every child (`--keep-going`), its manifest lists each failure, and the shard still fails
+
 #### Scenario: Browser reports are uploaded
 - **WHEN** CI publishes diagnostic artifacts
 - **THEN** the artifact selection excludes authentication-state files, credentials, and session-bearing traces even for newly added shards.

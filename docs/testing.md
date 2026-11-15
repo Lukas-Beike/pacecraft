@@ -209,7 +209,8 @@ and runs (#2644). A new `public/` file is served from the
 directory listing (`backend/http_api/static_assets.py`); add it to the
 service-worker `ASSETS` list only if it is cached. A failed child prints a failing test's location and first error
 line; its manifest entry lists all of them under `failures`. The run stops at the first failed child;
-`--keep-going` runs every child and reports all failures (exit stays non-zero).
+`--keep-going` runs every child and reports all failures (exit stays non-zero);
+CI's browser shards use it, so a red shard names every failed spec (#3001).
 `--screenshots` keeps a full-page screenshot of every selected test's end state
 and prints their paths, for UI PR images without a spec edit (#2843); the
 manifest records it because the captures lengthen the timings.

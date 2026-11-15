@@ -335,6 +335,8 @@ class WorkflowSourceTests(unittest.TestCase):
         self.assertIn("python scripts/run_browser_tests.py --project", e2e)
         self.assertIn('--shard "$SPEC_SHARD" --total "$SPEC_SHARDS"', e2e)
         self.assertNotIn("mapfile -t specs", e2e)
+        # #3001: a red shard names every failed spec, not only its first one.
+        self.assertIn("--keep-going", e2e)
 
     def test_e2e_runs_beside_unit_tests_and_shards_desktop_completely(self):
         root = Path(__file__).resolve().parents[1]
