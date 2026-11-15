@@ -387,6 +387,50 @@ test("@responsive active local gear offers a maintenance button with receipt and
   await expect(receipt).toHaveCount(0);
 });
 
+test("@responsive default equipment per kind saves from today and applies to earlier sessions only after the preview", async ({ page }, testInfo) => {
+  // #3014: one select per kind; earlier sessions change only by the confirmed apply, with undo.
+  const shoe = (id, name) => ({ id, name, sport: "Run", kind: "shoes", status: "active", revision: 1, usage: { distance_km: 10, hours: 1, assigned_sessions: 1 } });
+  const rules = { "run:easy": { equipment_id: null, from: null, revision: 0 }, "run:long": { equipment_id: "a", from: "2026-11-01", revision: 2 } };
+  const bike = (id, name, environment) => ({ id, name, sport: "Ride", kind: "bike", environment, status: "active", revision: 1, usage: { distance_km: 10, hours: 1, assigned_sessions: 1 } });
+  await page.route("**/api/analysis/training-records", (route) => route.fulfill({ json: { equipment: { items: [shoe("a", "Vaporfly 3"), shoe("b", "Pegasus 40"), bike("c", "Tacx Neo", "indoor"), bike("d", "Rennrad", "outdoor")], garmin_items: [], rules } } }));
+  const posts = [];
+  await page.route("**/api/equipment/rules", (route) => {
+    posts.push(route.request().postDataJSON());
+    return route.fulfill({ json: { ok: true, rule: { kind: "run:easy", revision: 1, history: [] }, change: { id: "change-rule", after_hash: "hash-rule" } } });
+  });
+  await page.route("**/api/equipment/rules/preview?kind=run%3Aeasy", (route) => route.fulfill({ json: { kind: "run:easy", equipment_id: "b", count: 23 } }));
+  await page.route("**/api/equipment/rules/apply", (route) => {
+    posts.push(route.request().postDataJSON());
+    return route.fulfill({ json: { ok: true, count: 23, change: { id: "change-apply", after_hash: "hash-apply" } } });
+  });
+  let undone = null;
+  await page.route("**/api/change-history/undo", (route) => { undone = route.request().postDataJSON(); return route.fulfill({ json: { ok: true } }); });
+  await page.goto("/#more/equipment");
+  await page.getByRole("tab", { name: "Laufschuhe" }).click();
+  const rulesTable = page.locator("#equipmentPanel-run .equipment-rules");
+  await expect(rulesTable.locator("th")).toHaveText(["Intervalle", "Langer Lauf", "Locker", "Wettkampf"]);
+  await expect(rulesTable.getByRole("combobox", { name: "Standard Langer Lauf" })).toHaveValue("a");
+  await rulesTable.getByRole("combobox", { name: "Standard Locker" }).selectOption("b");
+  await expect.poll(() => posts[0]).toEqual({ kind: "run:easy", equipment_id: "b", expected_revision: 0 });
+  const status = rulesTable.locator(".equipment-rule-status");
+  await expect(status).toContainText("Gespeichert. Auch 23 frühere Einheiten ohne eigene Wahl?");
+  // Nothing earlier changes before the athlete confirms.
+  expect(posts).toHaveLength(1);
+  await status.getByRole("button", { name: "Auf 23 anwenden" }).click();
+  await expect.poll(() => posts[1]).toEqual({ kind: "run:easy", confirmed: true });
+  await expect(status).toContainText("Auf 23 Einheiten angewendet.");
+  await status.getByRole("button", { name: "Rückgängig" }).click();
+  await expect.poll(() => undone).toEqual({ change_id: "change-apply", expected_current_hash: "hash-apply" });
+  await expect(status).toHaveText("Zurückgenommen.");
+  await page.getByRole("tab", { name: "Fahrrad" }).click();
+  const bikeRules = page.locator("#equipmentPanel-bike .equipment-rules");
+  await expect(bikeRules.locator("th")).toHaveText(["Drinnen", "Draußen"]);
+  // Each place offers only its bikes, as the server pairs them.
+  await expect(bikeRules.getByRole("combobox", { name: "Standard Drinnen" }).locator("option")).toHaveText(["–", "Tacx Neo"]);
+  await expect(bikeRules.getByRole("combobox", { name: "Standard Draußen" }).locator("option")).toHaveText(["–", "Rennrad"]);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBeTruthy();
+});
+
 test("@responsive the athlete adds, edits and retires equipment without Garmin, with receipt and undo", async ({ page }, testInfo) => {
   await page.goto("/#more/equipment");
   await page.getByRole("tab", { name: "Laufschuhe" }).click();

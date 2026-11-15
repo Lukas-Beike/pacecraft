@@ -62,6 +62,7 @@ handler's docstring. Regenerate it with
 | POST | `/api/equipment` | Session + CSRF | after access | Create, edit or retire one piece of equipment, stored locally (#2879). |
 | POST | `/api/equipment/assignment` | Session + CSRF | after access | Assign one session or planned unit its equipment, or none, stored locally. |
 | POST | `/api/equipment/maintenance` | Session + CSRF | after access | Record one maintenance entry for a piece of equipment, stored locally. |
+| GET | `/api/equipment/planned` | Session | no | The equipment choice of one planned unit, as its calendar card shows it (#3011). |
 | POST | `/api/equipment/rules` | Session + CSRF | after access | Set one kind of session's default equipment from today on, stored locally (#3014). |
 | POST | `/api/equipment/rules/apply` | Session + CSRF | after access | Give a rule's item to the earlier sessions of its kind without an own choice. |
 | GET | `/api/equipment/rules/preview` | Session | no | Count the earlier sessions a rule apply would give its item (#3014). |
@@ -656,6 +657,22 @@ Errors: 400 "Ungültige Wartung." for an unknown body key; 400
 "Wartungsgegenstand oder Datum ungültig." for an empty or unmatched
 `equipment_id` or a date outside the item's range; 404 "Ausrüstung nicht
 gefunden." for a non-empty unknown `equipment_id`.
+
+### `GET /api/equipment/planned`
+
+Request: query `unit_id` (the planned unit's local id, at most 200
+characters); no body.
+
+Response: 200 `{"options": [{"id", "name"}], "assigned", "explicit",
+"effective", "suggested"}`: the active main items of the unit's sport,
+its own choice (`explicit` true even for "Keiner"), the rule's item for
+its kind and day as `effective` `{"equipment_id", "source": "rule"}`
+when it has no own choice, else null, and the item the athlete last chose
+for a session of the same sport pair. It changes no state.
+
+Errors: 400 "Geplante Einheit ist erforderlich." for a missing or too
+long id; 404 "Geplante Einheit nicht gefunden." for an unknown or deleted
+unit.
 
 ### `POST /api/equipment/rules`
 

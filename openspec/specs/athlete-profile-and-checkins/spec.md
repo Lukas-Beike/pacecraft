@@ -270,6 +270,10 @@ The system SHALL assign only resolved canonical completed activities to compatib
 - **WHEN** Garmin links an activity to gear but a local assignment or unassignment exists
 - **THEN** the explicit local decision takes precedence; no favorite bicycle or shoe is ever assigned by inference.
 
+#### Scenario: Planned choice and rule before the provider link
+- **WHEN** a session has no own record
+- **THEN** the choice of the planned unit its frozen target snapshot names applies (`source` `planned`), else the rule of its kind in effect on its day (`source` `rule`; only sessions on or after the first rule's day are classified), else Garmin's link; usage, hours and distance follow this effective assignment, so a planned choice or rule moves a session's count away from the Garmin-linked item; a session's `equipment_choice` names it as `effective` with `equipment_id` and `source`, while `assigned` and `explicit` describe only the athlete's own record.
+
 #### Scenario: Athlete assigns without the Coach
 - **WHEN** the athlete posts `{"activity_id", "equipment_id"}` to `POST /api/equipment/assignment` (session and CSRF, body at most 16 KiB), `null` meaning no equipment
 - **THEN** the assignment or unassignment is saved and tracked with receipt and undo exactly as the Coach's.
@@ -312,6 +316,9 @@ Evidence:
 - `backend/athlete/equipment.py:EquipmentService.save_rule`
 - `backend/athlete/equipment.py:session_kind`
 - `backend/athlete/equipment.py:EquipmentService.apply_rule`
+- `backend/athlete/equipment.py:EquipmentService._implied_assignments`
+- `tests/test_training_record_features.py:test_manual_beats_planned_beats_rule_beats_the_garmin_link`
+- `tests/test_training_record_features.py:test_rules_and_planned_carry_over_keep_a_heavy_equipment_read_fast`
 - `tests/test_equipment_history.py:test_a_confirmed_apply_spans_chunks_and_one_undo_takes_back_what_is_still_its`
 - `tests/test_equipment_history.py:test_an_apply_needs_confirmation_a_rule_and_no_running_apply_of_its_kind`
 - `tests/test_equipment_history.py:test_a_rule_takes_effect_today_keeps_its_history_and_undoes`
