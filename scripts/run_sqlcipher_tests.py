@@ -122,6 +122,16 @@ class WindowsJob:
             ),
             ("TerminateJobObject", [ctypes.c_void_p, ctypes.c_uint32], ctypes.c_int),
             ("CloseHandle", [ctypes.c_void_p], ctypes.c_int),
+            (
+                "OpenProcess",
+                [ctypes.c_uint32, ctypes.c_int, ctypes.c_uint32],
+                ctypes.c_void_p,
+            ),
+            (
+                "WaitForSingleObject",
+                [ctypes.c_void_p, ctypes.c_uint32],
+                ctypes.c_uint32,
+            ),
         ):
             function = getattr(self.api, name)
             function.argtypes, function.restype = arguments, result
@@ -167,11 +177,55 @@ class WindowsJob:
                 raise ctypes.WinError(ctypes.get_last_error())
             self.handle = None
 
+    def _process_handles(self):
+        """SYNCHRONIZE handles to the job's processes, taken before it ends.
+
+        The job's active count drops before an ended process has closed its
+        handles; its process object is signalled only after. Waiting on it
+        means the inherited logs are closed when cleanup returns (#2964).
+        """
+
+        class ProcessIds(ctypes.Structure):  # JOBOBJECT_BASIC_PROCESS_ID_LIST
+            _fields_ = [
+                ("assigned", ctypes.c_uint32),
+                ("listed", ctypes.c_uint32),
+                ("ids", ctypes.c_size_t * 64),
+            ]
+
+        ids = ProcessIds()
+        size = ctypes.sizeof(ids)
+        # ERROR_MORE_DATA (234) still fills the first 64 ids.
+        if (
+            not self.api.QueryInformationJobObject(
+                self.handle, 3, ctypes.byref(ids), size, None
+            )
+            and ctypes.get_last_error() != 234
+        ):
+            raise ctypes.WinError(ctypes.get_last_error())
+        opened = (
+            self.api.OpenProcess(0x100000, False, pid) for pid in ids.ids[: ids.listed]
+        )
+        return [handle for handle in opened if handle]  # one already gone needs no wait
+
     def terminate(self):
         if not self.handle:
             return
-        if not self.api.TerminateJobObject(self.handle, 1):
-            raise ctypes.WinError(ctypes.get_last_error())
+        processes = self._process_handles()
+        try:
+            if not self.api.TerminateJobObject(self.handle, 1):
+                raise ctypes.WinError(ctypes.get_last_error())
+            deadline = self._wait_inactive()
+            for process in processes:
+                remaining = max(0, int((deadline - time.monotonic()) * 1000))
+                if self.api.WaitForSingleObject(process, remaining) != 0:
+                    raise TimeoutError("Owned process did not release its handles")
+            self.close()
+        finally:
+            for process in processes:
+                self.api.CloseHandle(process)
+
+    def _wait_inactive(self):
+        """Wait until the job counts no active process; return the deadline."""
 
         # JOBOBJECT_BASIC_ACCOUNTING_INFORMATION has four int64 and four DWORD fields.
         class Accounting(ctypes.Structure):
@@ -195,8 +249,7 @@ class WindowsJob:
             ):
                 raise ctypes.WinError(ctypes.get_last_error())
             if not accounting.active:
-                self.close()
-                return
+                return deadline
             if time.monotonic() >= deadline:
                 raise TimeoutError("Owned process job did not stop")
             time.sleep(0.02)
