@@ -169,6 +169,7 @@ every named number the code fixes. A test fails when it is out of date.
 | `PROFILE_DURATIONS` | `(60, 300, 1200)` | `backend/performance/progress_report.py` |  |
 | `AVERAGE_DAYS` | `7` | `backend/performance/recovery.py` |  |
 | `PROFILE_WINDOW_DAYS` | `(28, 90)` | `backend/performance/report_service.py` | Analysis windows of the power and running profiles, shortest first. |
+| `ANALYSIS_TREND_DAYS` | `84` | `backend/performance/report_service.py` | Analyse shows the trends of the 12-week progress review (#2802). |
 | `PROGRESS_DAYS` | `frozenset({7, 28, 42, 56, 84})` | `backend/performance/report_service.py` |  |
 | `METHOD` | `'rolling-lnrmssd-v1'` | `backend/performance/rolling_hrv.py` |  |
 | `WINDOW_DAYS` | `7` | `backend/performance/rolling_hrv.py` |  |

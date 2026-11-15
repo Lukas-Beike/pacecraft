@@ -160,6 +160,60 @@ test("@responsive week review shows the cards and switches to last week", async 
   await expect(review.locator(".week-review-card")).toHaveCount(5);
   await expect(page.locator("#analysisEmptyState")).toBeHidden();
   expect(weeks).toEqual(["current", "previous"]);
+
+// Pace at equal heart rate and recurring sessions, as the Coach reads them, follow the profile cards (#2802).
+const TRENDS = "/api/analysis/trends";
+const RUN_DAYS = ["2026-08-24", "2026-09-07", "2026-09-21", "2026-10-12", "2026-10-26", "2026-11-09"];
+const TRENDS_PAYLOAD = {
+  pace_at_heart_rate: { method: "pace-at-heart-rate-v2", unit: "s/km", run: {
+    outdoor: { status: "ok", heart_rate_band_bpm: [140, 149], sources: ["Garmin original speed/heart-rate streams"],
+      sessions: RUN_DAYS.map((date, index) => ({ date, activity_id: `act_${index}`, pace_s_per_km: [349, 345, 347, 340, 337, 336][index] })),
+      earlier: { sessions: 3, pace_s_per_km: 347 }, later: { sessions: 3, pace_s_per_km: 338 }, change_s_per_km: -9 },
+    indoor: { status: "insufficient_data" },
+  } },
+  recurring: { status: "observations", groups: [
+    { target_sha256: "run-intervals", sport: "run", device: "Forerunner", observations: ["2026-10-17", "2026-10-31", "2026-11-14"].map((date, index) => ({
+      date, activity_id: `act_r${index}`, name: "Intervalle", source: "derived from Garmin original streams",
+      steps: [{ target: "1000 m @ 4:10 /km", unit: "m/s", mean: [3.97, 4.01, 4.06][index], status: "ok" }, { target: "Trabpause", unit: "m/s", mean: 2.5, status: "ok" }],
+      repeat_groups: [{ target: "1000 m @ 4:10 /km", repetitions: 5, fade_percent: [2.4, 1.8, 1.1][index] }],
+    })) },
+    { target_sha256: "ride-sweet-spot", sport: "ride", device: "Edge", observations: ["2026-10-29", "2026-11-12"].map((date, index) => ({
+      date, activity_id: `act_s${index}`, name: "Sweet Spot", source: "derived from Wahoo original streams",
+      steps: [{ target: "10 min @ 250 W", unit: "W", mean: [249, 252][index], status: "ok" }],
+      repeat_groups: [{ target: "10 min @ 250 W", repetitions: 3, fade_percent: [1.6, 0.9][index] }],
+    })) },
+  ] },
+};
+
+test("@responsive Analyse shows pace at equal heart rate and recurring sessions after the profile cards", async ({ page }) => {
+  await mockReports(page);
+  const order = [];
+  page.on("request", (request) => { const path = new URL(request.url()).pathname; if (path === POWER_PROFILES || path === TRENDS) order.push(`request ${path}`); });
+  page.on("response", (response) => { if (new URL(response.url()).pathname === POWER_PROFILES) order.push("response power"); });
+  await page.route(`**${TRENDS}`, (route) => route.fulfill({ json: TRENDS_PAYLOAD }));
+  await waitForInitialState(page);
+  await routeTo(page, "#analysis/running");
+  const pace = page.locator("#runningPaceAtHeartRate");
+  await expect(pace.getByRole("heading", { name: /Pace bei 140–149 bpm/ })).toBeVisible();
+  await expect(pace.locator(".analysis-trend-summary")).toHaveText("5:38 min/km jetzt · −0:09 min/km gegenüber 5:47 min/km vorher");
+  await expect(pace.locator(".analysis-trend-meta")).toContainText("Garmin");
+  await expect(pace.locator(".analysis-trend-meta")).toContainText("6 Läufe · Stand 09.11.2026");
+  await expect(pace.locator('circle[data-series="0"]')).toHaveCount(6);
+  const running = page.locator("#runningRecurringSessions");
+  await expect(running.getByRole("heading", { name: "Wiederkehrende Einheiten" })).toBeVisible();
+  await expect(running.getByRole("heading", { name: /5 × 1000 m @ 4:10 \/km/ })).toContainText("Garmin");
+  await expect(running.locator("tbody tr").first()).toHaveText(/14\.11\.2026\s*4:06 min\/km · Abfall 1,1 %/);
+  await expect(page.locator("#cyclingRecurringSessions")).toBeHidden();
+  // The trends read waits for the profile cards' answer, so it never holds them up.
+  expect(order.indexOf(`request ${TRENDS}`)).toBeGreaterThan(order.indexOf("response power"));
+
+  await routeTo(page, "#analysis/cycling");
+  const cycling = page.locator("#cyclingRecurringSessions");
+  await expect(cycling.getByRole("heading", { name: /3 × 10 min @ 250 W/ })).toContainText("Wahoo");
+  await expect(cycling.locator("tbody tr").first()).toHaveText(/12\.11\.2026\s*252 W · Abfall 0,9 %/);
+  await expect(page.locator("#runningPaceAtHeartRate")).toBeHidden();
+  await expect(page.locator("#runningRecurringSessions")).toBeHidden();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBeTruthy();
 });
 
 test("@responsive equipment records load only on the equipment route and stay cached", async ({ page }) => {

@@ -40,6 +40,7 @@ handler's docstring. Regenerate it with
 | POST | `/api/analysis/refresh` | Session + CSRF | after access | Run a targeted refresh of one analysis area. |
 | GET | `/api/analysis/running-dynamics` | Session | no | Running dynamics against the athlete's own runs at the same pace (#2829). |
 | GET | `/api/analysis/training-records` | Session | no | Analysis projection: power profiles or training records. |
+| GET | `/api/analysis/trends` | Session | no | Pace at equal heart rate and recurring sessions, as the Coach reads them (#2802). |
 | GET | `/api/analysis/week-review` | Session | no | The local review of one ISO week against the week before (#2805). |
 | GET | `/api/auth/status` | Public | no | Current login status. |
 | GET | `/api/bootstrap` | Session | no | Initial authenticated client state. |
@@ -278,6 +279,22 @@ band and per value; null without a stored run).
 
 Errors: 400 "Ungültige Aktivitäts-ID." for a missing id or one longer
 than 200 characters.
+
+### `GET /api/analysis/trends`
+
+Request: no query, no body.
+
+Response: 200 with `pace_at_heart_rate`, the run trend of the Coach's
+12-week progress review (`method`, `unit`, `scope` and `run` per
+environment `outdoor` and `indoor`: `status`, `heart_rate_band_bpm`,
+`sources`, `sessions` with `date`, `activity_id`, `pace_s_per_km`,
+`earlier`, `later` and `change_s_per_km`; or only `status`
+`insufficient_data` or `outside_curve_window`), and `recurring`, the
+Coach's comparisons section with each observation cut to `date`,
+`activity_id`, `name`, `source`, `steps` (`target`, `unit`, `mean`,
+`status`) and `repeat_groups`. It changes no state and calls no provider.
+
+Errors: none beyond the common ones.
 
 ### `GET /api/analysis/week-review`
 

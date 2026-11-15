@@ -6,6 +6,7 @@ from typing import Any
 
 from backend.errors import AppError
 from backend.http_api.route_table import Access, Route, RouteRequest
+from backend.performance.comparisons import recurring_view
 
 
 class AnalysisRoutes:
@@ -29,6 +30,7 @@ class AnalysisRoutes:
                 Access.SESSION,
                 self._running_dynamics,
             ),
+            Route("GET", "/api/analysis/trends", Access.SESSION, self._trends),
             Route(
                 "GET", "/api/analysis/week-review", Access.SESSION, self._week_review
             ),
@@ -105,6 +107,32 @@ class AnalysisRoutes:
         if not activity_id or len(activity_id) > 200:
             raise AppError(400, "Ungültige Aktivitäts-ID.")
         handler.send_json(200, self._reports().profiles.running_dynamics(activity_id))
+
+    def _trends(self, handler: Any, _request: RouteRequest) -> None:
+        """Pace at equal heart rate and recurring sessions, as the Coach reads them (#2802).
+
+        Request: no query, no body.
+
+        Response: 200 with `pace_at_heart_rate`, the run trend of the Coach's
+        12-week progress review (`method`, `unit`, `scope` and `run` per
+        environment `outdoor` and `indoor`: `status`, `heart_rate_band_bpm`,
+        `sources`, `sessions` with `date`, `activity_id`, `pace_s_per_km`,
+        `earlier`, `later` and `change_s_per_km`; or only `status`
+        `insufficient_data` or `outside_curve_window`), and `recurring`, the
+        Coach's comparisons section with each observation cut to `date`,
+        `activity_id`, `name`, `source`, `steps` (`target`, `unit`, `mean`,
+        `status`) and `repeat_groups`. It changes no state and calls no provider.
+
+        Errors: none beyond the common ones.
+        """
+        reports = self._reports()
+        handler.send_json(
+            200,
+            {
+                "pace_at_heart_rate": reports.report.run_pace_trend(),
+                "recurring": recurring_view(reports.records.comparisons()),
+            },
+        )
 
     def _refresh_area(self, handler: Any, _request: RouteRequest) -> None:
         """Run a targeted refresh of one analysis area.
