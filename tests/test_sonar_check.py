@@ -111,6 +111,8 @@ class SonarCheckTests(unittest.TestCase):
         code, out, _ = run_main([], FakeSonar(FORBIDDEN, returncode=1))
         self.assertEqual(code, 3)
         self.assertIn("issues 0, failures 0", out)
+        # #3063: a clean local run is not a clean gate.
+        self.assertIn("an approximation of the SonarCloud gate", out)
         self.assertIn("limit:", out)
         self.assertIn("not a pass", out)
 
