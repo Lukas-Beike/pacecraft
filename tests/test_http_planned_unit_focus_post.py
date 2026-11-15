@@ -111,17 +111,27 @@ class PlannedUnitFocusPostRoutesTests(unittest.TestCase):
                 (409, "confirmation_required"),
                 (raised.exception.status, raised.exception.reason),
             )
-        self.service.delete.assert_not_called()
+        changes = Mock()
+        routes = PlannedUnitFocusPostRoutes(
+            lambda: self.service, lambda: MagicMock(), lambda: changes
+        )
+        with self.assertRaises(AppError) as raised:
+            dispatch_route(routes, self.handler({"confirmed": True}), path, method="POST")
+        self.assertEqual("planning_revision_conflict", raised.exception.reason)
+        changes.apply.assert_not_called()
         change = {"id": "c2", "entity_type": "planned_unit", "after_hash": "h"}
 
-        def delete(*_args):
+        def apply(_batch):
             change_history._collected_changes.get().append(change)
-            return {"status": "deleted", "local_id": LOCAL_ID}
+            return {"changes": [{"local_id": LOCAL_ID, "status": "deleted"}]}
 
-        self.service.delete.side_effect = delete
+        changes.apply.side_effect = apply
         handler = self.handler({"confirmed": True, "expected_payload_hash": "abc"})
-        self.assertTrue(dispatch_route(self.routes, handler, path, method="POST"))
-        self.service.delete.assert_called_once_with(LOCAL_ID, "abc")
+        self.assertTrue(dispatch_route(routes, handler, path, method="POST"))
+        # The Coach's change batch runs the delete, so plan bounds and revision follow.
+        changes.apply.assert_called_once_with(
+            {"changes": [{"action": "delete", "local_id": LOCAL_ID, "expected_payload_hash": "abc"}]}
+        )
         handler.send_json.assert_called_once_with(
             200, {"status": "deleted", "local_id": LOCAL_ID, "change": change}
         )

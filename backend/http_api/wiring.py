@@ -520,7 +520,11 @@ def _athlete_write_routes(
             CoachTurnUndoService(ctx.database, history_undo),
             rpe_load,
         ),
-        PlannedUnitFocusPostRoutes(ctx.planning.planned_unit, ctx.database),
+        PlannedUnitFocusPostRoutes(
+            ctx.planning.planned_unit,
+            ctx.database,
+            ctx.planning_workflows.structured_training_change_service,
+        ),
         CredentialsPutRoutes(ctx.provider_credential_service, session_auth_service),
         EquipmentPostRoutes(athlete.equipment),
         FirstThresholdPostRoutes(

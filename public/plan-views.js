@@ -705,7 +705,6 @@ const plannedFocusStatuses = new Map();
 const plannedMoveReceipts = new Map();
 // The receipt of a deleted unit by its day (#3027): the day shows it once the card is gone.
 const plannedDeleteReceipts = new Map();
-const REMOTE_COPY_LABELS = { intervals: "Intervals.icu", garmin: "Garmin" };
 const MOVE_DAY_FORMAT = new Intl.DateTimeFormat("de-DE", { weekday: "short", day: "2-digit", month: "2-digit" });
 const MOVE_WEEKDAY_FORMAT = new Intl.DateTimeFormat("de-DE", { weekday: "short" });
 
@@ -1341,20 +1340,24 @@ function plannedUnitActions(entry, dateKey, todayKey) {
   days.append(later, picker);
   const receipt = plannedMoveReceipts.get(key);
   if (receipt) status.append(receipt.text, ...(receipt.change?.id ? plannedMoveUndo(key, receipt, status) : []));
-  const [remove, confirm] = plannedDeleteControls(entry, dateKey, status);
+  const [remove, confirm] = plannedDeleteControls(entry, dateKey, key);
   return [h("div", "planned-activity-actions", toggle, coach, remove), confirm, days, status];
 }
 
 // "Löschen" asks once inside the card (#3027); a copy at a provider goes with the next explicit sync.
-function plannedDeleteControls(entry, dateKey, status) {
+function plannedDeleteControls(entry, dateKey, key) {
+  const id = `planned-delete-${String(entry.local_id).replace(/[^\w-]/g, "")}`;
+  const copies = (Array.isArray(entry.remote_copies) ? entry.remote_copies : []).map((provider) => state.data?.provider_labels?.[provider]).filter(Boolean);
   const remove = h("button", { type: "button", className: "secondary-button danger-button" }, "Löschen");
-  const confirmDelete = h("button", { type: "button", className: "secondary-button danger-button" }, "Löschen");
+  const confirmDelete = h("button", { type: "button", className: "secondary-button danger-button", "aria-describedby": copies.length ? `${id}-note` : null }, "Löschen");
   const cancel = h("button", { type: "button", className: "secondary-button" }, "Abbrechen");
-  const copies = (Array.isArray(entry.remote_copies) ? entry.remote_copies : []).map((provider) => REMOTE_COPY_LABELS[provider]).filter(Boolean);
-  const confirm = h("div", { className: "planned-delete-confirm", hidden: true },
-    h("p", null, "Einheit löschen?"),
+  const failure = h("p", { className: "planned-delete-note", role: "status" });
+  const confirm = h("div", { className: "planned-delete-confirm", role: "group", "aria-labelledby": `${id}-question`, hidden: true },
+    h("p", { id: `${id}-question` }, "Einheit löschen?"),
     h("div", "planned-activity-actions", confirmDelete, cancel),
-    copies.length ? h("p", "planned-move-status", `${copies.join(", ")}: weg beim nächsten Sync`) : null);
+    copies.length ? h("p", { className: "planned-delete-note", id: `${id}-note` }, `${copies.join(", ")}: weg beim nächsten Sync`) : null,
+    failure);
+  const name = entry.name || "Trainingseinheit";
   remove.addEventListener("click", () => { confirm.hidden = false; remove.hidden = true; confirmDelete.focus(); });
   cancel.addEventListener("click", () => { confirm.hidden = true; remove.hidden = false; remove.focus(); });
   confirmDelete.addEventListener("click", async () => {
@@ -1362,13 +1365,18 @@ function plannedDeleteControls(entry, dateKey, status) {
     cancel.disabled = true;
     try {
       const result = await api(`/api/planned-units/${encodeURIComponent(entry.local_id)}/delete`, { method: "POST", body: JSON.stringify({ confirmed: true, expected_payload_hash: entry.payload_hash }) });
-      plannedDeleteReceipts.set(dateKey, { text: `Gelöscht: ${entry.name || "Einheit"}`, change: result.change, from: dateKey });
+      plannedDeleteReceipts.set(String(entry.local_id), { day: dateKey, text: `Gelöscht: ${name}`, change: result.change, from: dateKey });
       await globalThis.load?.();
-      announcePlanChange(`Gelöscht: ${entry.name || "Einheit"}`);
+      announcePlanChange(`Gelöscht: ${name}`);
     } catch (error) {
       confirmDelete.disabled = false;
       cancel.disabled = false;
-      status.textContent = error.message;
+      failure.textContent = error.message;
+      // A changed unit reloads, so the card names the reason and the next try sends the current hash.
+      if (error.status === 409) {
+        plannedMoveReceipts.set(key, { text: error.message });
+        await globalThis.load?.();
+      }
     }
   });
   return [remove, confirm];
@@ -1396,7 +1404,7 @@ function plannedMoveUndo(key, receipt, status, receipts = plannedMoveReceipts) {
     undo.disabled = true;
     try {
       await api("/api/change-history/undo", { method: "POST", body: JSON.stringify({ change_id: receipt.change.id, expected_current_hash: receipt.change.after_hash }) });
-      receipts.set(key, { text: "Zurückgenommen." });
+      receipts.set(key, { day: receipt.day, text: "Zurückgenommen." });
       showPlannedDay(receipt.from);
       await globalThis.load?.();
     } catch (error) {
@@ -1997,13 +2005,12 @@ function renderPlannedDay(view, dateKey, weekHasPlan) {
   const noteContext = plannedNoteContext(dayContext, dayEvents);
   const notes = plannedDayNotes(noteContext, state.data?.competitions, dateKey);
   const emptyText = dateKey < todayKey ? "Keine Aktivität" : "Keine Einheit geplant";
-  const deleted = plannedDeleteReceipts.get(dateKey);
-  const deletedStatus = deleted ? h("p", { className: "planned-move-status", role: "status" }) : null;
-  if (deleted) {
-    deleted.shown = true;
-    deletedStatus.append(deleted.text, ...(deleted.change?.id ? plannedMoveUndo(dateKey, deleted, deletedStatus, plannedDeleteReceipts) : []));
-  }
-  const content = h("div", "planned-day-content", heading, deletedStatus, notes.childElementCount ? notes : null,
+  const deleted = [...plannedDeleteReceipts].filter(([, receipt]) => receipt.day === dateKey).map(([id, receipt]) => {
+    const status = h("p", { className: "planned-move-status", role: "status" }, receipt.text);
+    if (receipt.change?.id) status.append(...plannedMoveUndo(id, receipt, status, plannedDeleteReceipts));
+    return status;
+  });
+  const content = h("div", "planned-day-content", heading, ...deleted, notes.childElementCount ? notes : null,
     dayEvents.length ? plannedEventBand(dayEvents) : null,
     dayEntries.length ? null : h("p", "planned-day-empty", emptyText));
   for (const group of plannedEntryGroups(dayEntries)) {
@@ -2321,9 +2328,9 @@ function loadOlderSessions(calendar, shownStartKey, configuredStartKey) {
   }, () => { if (generation === olderSessions.generation) olderSessions.loading = false; });
 }
 
-// A delete receipt the day has shown goes with the next calendar data.
-function dropShownDeleteReceipts() {
-  for (const [day, receipt] of plannedDeleteReceipts) if (receipt.shown) plannedDeleteReceipts.delete(day);
+// A delete receipt stays while its week is shown.
+function dropDeleteReceiptsOutsideWeek() {
+  for (const [id, receipt] of plannedDeleteReceipts) if (planWeekStart(receipt.day) !== selectedWeekKey) plannedDeleteReceipts.delete(id);
 }
 
 function renderPlanned(trainingCalendar) {
@@ -2333,7 +2340,6 @@ function renderPlanned(trainingCalendar) {
     resetOlderSessions();
     plannedSessionReads.clear();
     plannedFuellingReads.clear();
-    dropShownDeleteReceipts();
   }
   renderedCalendar = trainingCalendar;
   const calendar = withOlderSessions(Array.isArray(trainingCalendar) ? trainingCalendar : []);
@@ -2347,6 +2353,7 @@ function renderPlanned(trainingCalendar) {
   const lastDateKey = addDateKey(lastWeekKey, 6);
   plannedLastDateKey = lastDateKey;
   keepPlannedSelection(todayKey, lastDateKey);
+  dropDeleteReceiptsOutsideWeek();
   const snapshot = JSON.stringify([calendar, todayKey, selectedWeekKey, calendarView, calendarSport, selectedDayKey, display, state.data?.daily_planning_context, state.data?.planning_compliance, state.data?.competitions, state.data?.weather, (state.data?.external_calendar?.events || []).map((event) => [event?.uid, event?.start_local, event?.impact, event?.name]), state.data?.external_calendar?.undecided_upcoming]);
   if (snapshot === plannedRenderSnapshot && root.childElementCount) {
     if (state.plannedTodayFocusPending) requestAnimationFrame(() => focusPlannedToday());

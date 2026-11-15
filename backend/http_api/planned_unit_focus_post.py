@@ -18,9 +18,11 @@ class PlannedUnitFocusPostRoutes:
         self,
         planned_unit_service: Callable[[], Any],
         database_manager: Callable[[], Any],
+        training_changes: Callable[[], Any] | None = None,
     ):
         self._planned_unit_service = planned_unit_service
         self._database_manager = database_manager
+        self._training_changes = training_changes
 
     def routes(self) -> list[Route]:
         return [
@@ -58,16 +60,18 @@ class PlannedUnitFocusPostRoutes:
         from the read the athlete confirmed on. The delete is the Coach's local
         delete: the unit stays as a tracked tombstone, and copies at
         Intervals.icu or Garmin are removed only by the athlete's next explicit
-        sync.
+        sync. It runs as one Coach change batch, so the plan bounds and the
+        planning revision follow as for a Coach delete.
 
         Response: 200 `{"status": "deleted", "local_id", "change"}`; `change` is
         the undo reference.
 
         Errors: 409 `confirmation_required` "Das Löschen muss bestätigt werden."
         unless `confirmed` is `true`; 400 "Ungültige lokale Planungs-ID." for an id
-        that is no UUID; 404 "Einheit nicht gefunden." for an unknown, archived or
-        deleted unit; 409 `planning_revision_conflict` "Die Einheit wurde
-        inzwischen geändert." for a missing or outdated `expected_payload_hash`.
+        that is no UUID; 409 `planning_revision_conflict` "Die Einheit wurde
+        inzwischen geändert." without `expected_payload_hash`; 409
+        `payload_hash_conflict` "Eine Planänderung ist inzwischen veraltet." for an
+        outdated hash or a unit that is no longer there.
         """
         payload = _read_object(handler)
         if payload.get("confirmed") is not True:
@@ -76,13 +80,30 @@ class PlannedUnitFocusPostRoutes:
                 "Das Löschen muss bestätigt werden.",
                 reason="confirmation_required",
             )
-        with change_history.collect_changes() as changes:
-            result = self._planned_unit_service().delete(
-                request.params["id"], payload.get("expected_payload_hash")
+        expected_hash = payload.get("expected_payload_hash")
+        if not isinstance(expected_hash, str) or not expected_hash.strip():
+            raise AppError(
+                409,
+                "Die Einheit wurde inzwischen geändert.",
+                reason="planning_revision_conflict",
             )
+        assert self._training_changes is not None
+        change = {
+            "action": "delete",
+            "local_id": request.params["id"],
+            "expected_payload_hash": expected_hash,
+        }
+        with change_history.collect_changes() as changes:
+            applied = self._training_changes().apply({"changes": [change]})
+        result = applied["changes"][0]
         deleted = [item for item in changes if item["entity_type"] == "planned_unit"]
         handler.send_json(
-            200, {**result, **({"change": deleted[-1]} if deleted else {})}
+            200,
+            {
+                "status": result.get("status"),
+                "local_id": result.get("local_id"),
+                **({"change": deleted[-1]} if deleted else {}),
+            },
         )
 
     def _date(self, handler: Any, request: RouteRequest) -> None:

@@ -663,30 +663,6 @@ class PlannedUnitService:
         self._database_manager.after_commit(self._publish_change)
         return result
 
-    def delete(self, local_id: str, expected_hash: Any) -> dict[str, Any]:
-        """Delete a unit from the calendar (#3027) through the Coach's delete path.
-
-        A unit changed since the browser read it, or already archived or
-        deleted, is refused. Nothing remote happens now: the athlete's next
-        explicit sync removes copies at Intervals.icu or Garmin (#2342).
-        """
-        normalized_id = planned_units.planned_workout_update_request(local_id, {})[0]
-        with self._database_manager.unit_of_work() as db:
-            current = json.loads(
-                _unchanged_row(db, normalized_id, expected_hash)["payload"] or "{}"
-            )
-            if current.get("archived") or current.get("local_deleted"):
-                raise AppError(404, "Einheit nicht gefunden.")
-            result = self._update_in_db(
-                db,
-                normalized_id,
-                {"action": "delete"},
-                skip_calendar_conflict=True,
-                bump_planning_revision=True,
-            )
-        self._database_manager.after_commit(self._publish_change)
-        return result
-
     def update(
         self,
         local_id: str,

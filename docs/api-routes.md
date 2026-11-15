@@ -1283,16 +1283,18 @@ Request: path `{id}`, the local unit id; JSON body `{"confirmed": true,
 from the read the athlete confirmed on. The delete is the Coach's local
 delete: the unit stays as a tracked tombstone, and copies at
 Intervals.icu or Garmin are removed only by the athlete's next explicit
-sync.
+sync. It runs as one Coach change batch, so the plan bounds and the
+planning revision follow as for a Coach delete.
 
 Response: 200 `{"status": "deleted", "local_id", "change"}`; `change` is
 the undo reference.
 
 Errors: 409 `confirmation_required` "Das Löschen muss bestätigt werden."
 unless `confirmed` is `true`; 400 "Ungültige lokale Planungs-ID." for an id
-that is no UUID; 404 "Einheit nicht gefunden." for an unknown, archived or
-deleted unit; 409 `planning_revision_conflict` "Die Einheit wurde
-inzwischen geändert." for a missing or outdated `expected_payload_hash`.
+that is no UUID; 409 `planning_revision_conflict` "Die Einheit wurde
+inzwischen geändert." without `expected_payload_hash`; 409
+`payload_hash_conflict` "Eine Planänderung ist inzwischen veraltet." for an
+outdated hash or a unit that is no longer there.
 
 ### `POST /api/planned-units/{id}/focus`
 
