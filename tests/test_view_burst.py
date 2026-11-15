@@ -6,6 +6,7 @@ import contextlib
 import io
 import json
 import sys
+import tempfile
 import threading
 import unittest
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -37,12 +38,15 @@ class _Stub(BaseHTTPRequestHandler):
     def do_POST(self) -> None:
         length = int(self.headers.get("Content-Length") or 0)
         type(self).logins.append(json.loads(self.rfile.read(length)))
+        type(self).seen.append("login")
         self._json({"ok": True}, "ic_session=fake; Path=/")
 
     def do_GET(self) -> None:
         type(self).seen.append(self.path)
         if self.path == "/api/diagnostics":
             self._json({"curve_build": {"status": "ready"}})
+        elif self.path == "/api/activities?limit=1":
+            self._json({"activities": [{"id": "act_1 2"}]})
         else:
             self._json({})
 
@@ -70,7 +74,9 @@ class ViewBurstTests(unittest.TestCase):
         self.assertEqual(set(result["reads"]), set(view_burst.READS))
         self.assertEqual(len(view_burst.READS), 10)
         for key in ("sequential_sum_s", "burst_max_s", "burst_to_sum"):
-            self.assertEqual(set(result[key]), {"median", "min", "max"})
+            self.assertEqual(
+                set(result[key]), {"count", "mean", "median", "p95", "min", "max"}
+            )
         # Two rounds, each read once alone and once in the burst, after the wait.
         for path in view_burst.READS:
             self.assertGreaterEqual(_Stub.seen.count(path), 4)
@@ -95,11 +101,62 @@ class ViewBurstTests(unittest.TestCase):
             ):
                 view_burst.main(["--base-url", url])
 
-    def test_spread_is_median_min_and_max(self) -> None:
+    def test_spread_reports_count_mean_median_p95_min_and_max(self) -> None:
+        # Nearest-rank p95 of four values is the fourth (ceil(3.8) = 4).
         self.assertEqual(
             view_burst.spread([3.0, 1.0, 2.0, 10.0]),
-            {"median": 2.5, "min": 1.0, "max": 10.0},
+            {
+                "count": 4,
+                "mean": 4.0,
+                "median": 2.5,
+                "p95": 10.0,
+                "min": 1.0,
+                "max": 10.0,
+            },
         )
+        self.assertEqual(view_burst.spread([0.5])["p95"], 0.5)
+
+    def test_a_routes_file_and_several_clients_log_in_before_measuring(self) -> None:
+        # #3078: routes come from a file (no bare /api/ arguments for Git Bash),
+        # {activity_id} is the newest fixture session, logins precede every read.
+        # The routes file lives below the working directory, as the script requires.
+        work = Path(self.enterContext(tempfile.TemporaryDirectory()))
+        self.enterContext(contextlib.chdir(work))
+        routes = work / "routes.txt"
+        routes.write_text(
+            "# detail and its list\n/api/activities/{activity_id}\n\n/api/performance\n",
+            encoding="utf-8",
+        )
+        result = self.run_script(
+            "--routes-file", "routes.txt", "--clients", "3", "--rounds", "2",
+            "--right-after-start",
+        )  # fmt: skip
+        self.assertEqual(_Stub.seen[:3], ["login"] * 3)
+        self.assertEqual(_Stub.seen.count("login"), 3)
+        self.assertEqual(result["clients"], 3)
+        self.assertEqual(
+            set(result["reads"]), {"/api/activities/act_1%202", "/api/performance"}
+        )
+        outside = work.parent / f"{work.name}-outside.txt"
+        outside.write_text("/api/performance\n", encoding="utf-8")
+        self.addCleanup(outside.unlink)
+        for name, content in (
+            ("bad.txt", "C:/Program Files/Git/api/performance\n"),  # rewritten
+            ("bad.txt", "/api/performance\n/api/performance\n"),  # duplicate
+            (f"../{outside.name}", None),  # a file outside the working directory
+        ):
+            if content is not None:
+                (work / name).write_text(content, encoding="utf-8")
+            with self.subTest(name=name), self.assertRaises(SystemExit):
+                view_burst.main(
+                    [
+                        "--base-url",
+                        self.base,
+                        "--routes-file",
+                        name,
+                        "--right-after-start",
+                    ]
+                )
 
 
 if __name__ == "__main__":
