@@ -34,6 +34,7 @@ class EquipmentPostRoutes:
                 Access.SESSION_CSRF,
                 self._maintain,
             ),
+            Route("POST", "/api/equipment/rules", Access.SESSION_CSRF, self._rule),
         ]
 
     def _save(self, handler: Any, _request: RouteRequest) -> None:
@@ -93,6 +94,31 @@ class EquipmentPostRoutes:
         handler.send_json(
             200,
             self._equipment_service().assign(
+                handler.read_json(EQUIPMENT_BODY_MAX_BYTES)
+            ),
+        )
+
+    def _rule(self, handler: Any, _request: RouteRequest) -> None:
+        """Set one kind of session's default equipment from today on, stored locally (#3014).
+
+        Request: JSON body of at most 16 KiB, exactly `{"kind": string,
+        "equipment_id": string | null, "expected_revision": integer}`. `kind` is
+        `run:intervals`, `run:long`, `run:easy`, `run:race`, `ride:indoor` or
+        `ride:outdoor`; `null` sets no default ("Keiner"); `expected_revision`
+        is the rule's current revision, 0 before its first save.
+
+        Response: 200 `{"ok": true, "stored_locally": true, "rule": {"kind",
+        "revision", "history": [{"from", "equipment_id"}]}, "change"}`; `change`
+        is the undo reference. Sessions before today keep their equipment.
+
+        Errors: 400 "Art und Ausrüstung der Regel sind erforderlich." for another
+        body shape or kind; 400 "Aktive passende Hauptausrüstung erforderlich."
+        for an unknown item or one that is archived, a component, unresolved or
+        of another sport; 409 "Regel geändert; neu lesen." for a stale revision.
+        """
+        handler.send_json(
+            200,
+            self._equipment_service().save_rule(
                 handler.read_json(EQUIPMENT_BODY_MAX_BYTES)
             ),
         )

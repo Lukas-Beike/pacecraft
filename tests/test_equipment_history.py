@@ -15,7 +15,12 @@ from pathlib import Path
 from typing import Any
 
 from backend import change_history
-from backend.athlete.equipment import EquipmentService
+from backend.athlete.equipment import (
+    RULE_HISTORY_LIMIT,
+    EquipmentService,
+    rule_choice,
+    session_kind,
+)
 from backend.athlete.equipment_history import equipment_history_records
 from backend.canonical.activity_summary import ActivitySummary
 from backend.coach.change_receipts import change_summary
@@ -163,6 +168,22 @@ class EquipmentHistoryTests(unittest.TestCase):
             self.undo(changes)
         self.assertEqual(raised.exception.status, 409)
         self.assertIsNotNone(self.stored("equipment:" + saved["equipment"]["id"]))
+
+    def test_undo_of_a_created_item_is_refused_while_a_plan_or_rule_names_it(self) -> None:
+        self.planned_unit()
+        for use in (
+            lambda item: self.service.assign({"planned_unit_id": "unit-1", "equipment_id": item}),
+            lambda item: self.service.save_rule(
+                {"kind": "ride:outdoor", "equipment_id": item, "expected_revision": 0}
+            ),
+        ):
+            with self.manager.unit_of_work() as db:
+                db.execute("DELETE FROM kv WHERE key LIKE 'equipment_planned:%' OR key LIKE 'equipment_rule:%'")
+            saved, changes = self.collected(lambda: self.service.save(BIKE))
+            use(saved["equipment"]["id"])
+            with self.subTest(use=use), self.assertRaises(AppError) as raised:
+                self.undo(changes)
+            self.assertEqual(raised.exception.status, 409)
 
     def test_undo_of_an_edit_restores_values_and_advances_the_revision(self) -> None:
         item = self.bike(lifetime_target_km=3000)
@@ -494,6 +515,80 @@ class EquipmentHistoryTests(unittest.TestCase):
             self.assertEqual(raised.exception.status, status)
         self.assertIsNone(self.stored("equipment_planned:unit-1"))
         self.assertEqual(self.actions("equipment_planned"), [])
+
+    # Default rules (#3014)
+
+    def test_a_rule_takes_effect_today_keeps_its_history_and_undoes(self) -> None:
+        road, rain = self.bike(), self.bike(name="Rain bike")
+        first = self.service.save_rule(
+            {"kind": "ride:outdoor", "equipment_id": road["id"], "expected_revision": 0}
+        )
+        self.assertEqual(first["change"]["entity_type"], "equipment_rule")
+        self.assertEqual(
+            first["rule"]["history"], [{"from": "2026-10-02", "equipment_id": road["id"]}]
+        )
+        # A second choice on the same day replaces the first one of that day.
+        _, changes = self.collected(
+            lambda: self.service.save_rule(
+                {"kind": "ride:outdoor", "equipment_id": rain["id"], "expected_revision": 1}
+            )
+        )
+        rule = self.record("equipment_rule:ride:outdoor")
+        self.assertEqual((rule["revision"], len(rule["history"])), (2, 1))
+        self.assertEqual(rule_choice(rule, "2026-10-02"), (True, rain["id"]))
+        self.assertEqual(rule_choice(rule, "2026-10-01"), (False, None))
+        self.undo(changes)
+        restored = self.record("equipment_rule:ride:outdoor")
+        self.assertEqual(rule_choice(restored, "2026-10-02"), (True, road["id"]))
+        # Undo bumps the revision, so a client that read the undone rule must read again.
+        self.assertEqual(restored["revision"], 3)
+        self.assertEqual(self.actions("equipment_rule"), ["create", "update", "undo"])
+
+    def test_a_rule_needs_a_known_kind_a_fresh_revision_and_a_matching_item(self) -> None:
+        bike = self.bike()
+        self.service.save_rule(
+            {"kind": "ride:outdoor", "equipment_id": None, "expected_revision": 0}
+        )
+        for payload, status in (
+            ({"kind": "ride:outdoor", "equipment_id": bike["id"], "expected_revision": 0}, 409),
+            ({"kind": "run:easy", "equipment_id": bike["id"], "expected_revision": 0}, 400),
+            ({"kind": "swim", "equipment_id": None, "expected_revision": 0}, 400),
+            ({"kind": "ride:outdoor", "equipment_id": "missing", "expected_revision": 1}, 400),
+            ({"kind": "ride:outdoor", "equipment_id": None, "expected_revision": True}, 400),
+            ({"kind": "ride:outdoor", "equipment_id": None}, 400),
+        ):
+            with self.subTest(payload=payload), self.assertRaises(AppError) as raised:
+                self.service.save_rule(payload)
+            self.assertEqual(raised.exception.status, status)
+        self.assertEqual(self.record("equipment_rule:ride:outdoor")["revision"], 1)
+
+    def test_rule_history_is_bounded_and_the_latest_choice_up_to_a_day_wins(self) -> None:
+        rule = {
+            "history": [
+                {"from": f"2026-{month:02d}-01", "equipment_id": f"item-{month}"}
+                for month in (1, 3, 5)
+            ]
+        }
+        self.assertEqual(rule_choice(rule, "2026-04-30"), (True, "item-3"))
+        self.assertEqual(rule_choice(rule, "2025-12-31"), (False, None))
+        self.assertEqual(rule_choice(None, "2026-04-30"), (False, None))
+        self.assertGreaterEqual(RULE_HISTORY_LIMIT, 100)
+
+    def test_session_kinds_follow_the_focus_for_runs_and_the_place_for_rides(self) -> None:
+        for args, kind in (
+            (("run", "outdoor", "vo2max"), "run:intervals"),
+            (("run", "outdoor", "tempo"), "run:intervals"),
+            (("run", "outdoor", "long"), "run:long"),
+            (("run", "outdoor", "recovery"), "run:easy"),
+            (("run", "outdoor", None), "run:easy"),
+            (("run", "outdoor", "long", "race"), "run:race"),
+            (("ride", "virtual", "threshold"), "ride:indoor"),
+            (("ride", "indoor", None), "ride:indoor"),
+            (("ride", "outdoor", "long"), "ride:outdoor"),
+            (("swim", "indoor", None), None),
+        ):
+            with self.subTest(args=args):
+                self.assertEqual(session_kind(*args), kind)
 
     # Maintenance
 

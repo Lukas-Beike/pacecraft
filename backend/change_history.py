@@ -35,6 +35,7 @@ ENTITY_TYPES = {
     "equipment",
     "equipment_assignment",
     "equipment_planned",
+    "equipment_rule",
     "equipment_maintenance",
     "metric_export",
 }
@@ -292,6 +293,8 @@ EQUIPMENT_FIELDS = (
 EQUIPMENT_ASSIGNMENT_FIELDS = ("activity_id", "equipment_id")
 # The athlete's equipment choice for a planned unit (#3011).
 EQUIPMENT_PLANNED_FIELDS = ("planned_unit_id", "equipment_id")
+# One kind's default equipment with its dated choices (#3014).
+EQUIPMENT_RULE_FIELDS = ("kind", "revision", "history")
 # One maintenance entry; the observation time is left out.
 EQUIPMENT_MAINTENANCE_FIELDS = ("id", "equipment_id", "date", "notes", "distance_km")
 # A composite meal keeps its ingredient snapshots in nutrition_basis.
@@ -303,6 +306,8 @@ _FIELD_LIMITS = {
     # Free-text notes reach 4000 characters, more once JSON-escaped.
     "checkin": 20_000,
     "equipment_maintenance": 20_000,
+    # Up to RULE_HISTORY_LIMIT dated choices of one kind.
+    "equipment_rule": 20_000,
 }
 _DEFAULT_FIELD_LIMIT = 4000
 # A local zone configuration; its entity id is the configuration key.
@@ -348,6 +353,7 @@ def audit_projection_fields(entity_type: str) -> set[str]:
         "equipment": set(EQUIPMENT_FIELDS),
         "equipment_assignment": set(EQUIPMENT_ASSIGNMENT_FIELDS),
         "equipment_planned": set(EQUIPMENT_PLANNED_FIELDS),
+        "equipment_rule": set(EQUIPMENT_RULE_FIELDS),
         "equipment_maintenance": set(EQUIPMENT_MAINTENANCE_FIELDS),
         METRIC_EXPORT_ENTITY: set(METRIC_EXPORT_FIELDS),
     }

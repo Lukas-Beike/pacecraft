@@ -1,7 +1,7 @@
 """Change-history reads and undo restores for equipment records.
 
-Items, activity assignments, planned-unit choices and maintenance entries live
-as JSON records in the key-value table; each kind is one history entity type with its own restore.
+Items, activity assignments, planned-unit choices, default rules and
+maintenance entries live as JSON records in the key-value table; each kind is one history entity type with its own restore.
 """
 
 from __future__ import annotations
@@ -26,6 +26,7 @@ from backend.db.equipment_store import (
     EQUIPMENT_PREFIX,
     MAINTENANCE_PREFIX,
     PLANNED_PREFIX,
+    RULE_PREFIX,
 )
 from backend.errors import AppError
 
@@ -184,6 +185,27 @@ class EquipmentPlannedHistory(_EquipmentRecordHistory):
         return restored
 
 
+class EquipmentRuleHistory(_EquipmentRecordHistory):
+    entity_type = "equipment_rule"
+    prefix = RULE_PREFIX
+
+    def restore_in_transaction(
+        self,
+        db: Any,
+        entity_id: str,
+        current: dict[str, Any] | None,
+        target: dict[str, Any] | None,
+    ) -> dict[str, Any] | None:
+        """Put one kind's dated choices back; a new revision keeps stale saves out."""
+        if target is None:
+            self._delete(db, entity_id)
+            return None
+        restored = {**(current or {}), **target, "kind": entity_id}
+        restored["revision"] = int((current or {}).get("revision") or 0) + 1
+        self._write(db, entity_id, restored)
+        return restored
+
+
 class EquipmentMaintenanceHistory(_EquipmentRecordHistory):
     entity_type = "equipment_maintenance"
     prefix = MAINTENANCE_PREFIX
@@ -218,13 +240,14 @@ def equipment_history_records(
     utc_now: Callable[[], str],
     read_summaries: Callable[[], Sequence[ActivitySummary]],
 ) -> dict[str, Any]:
-    """The change-history record services of the four equipment entity types."""
+    """The change-history record services of the five equipment entity types."""
     return {
         history.entity_type: history
         for history in (
             EquipmentItemHistory(utc_now),
             EquipmentAssignmentHistory(utc_now, read_summaries),
             EquipmentPlannedHistory(utc_now),
+            EquipmentRuleHistory(utc_now),
             EquipmentMaintenanceHistory(utc_now),
         )
     }

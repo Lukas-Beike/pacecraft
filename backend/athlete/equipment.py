@@ -39,10 +39,34 @@ from backend.db.equipment_store import (
     GARMIN_INITIALIZED_KEY,
     MAINTENANCE_PREFIX,
     PLANNED_PREFIX,
+    RULE_PREFIX,
 )
 from backend.errors import AppError
 
 GARMIN_GEAR_SOURCE = "garmin_gear"
+# The kinds of session a default item can be set for (#3014): runs by their
+# focus, rides by where they took place.
+RULE_KINDS = (
+    "run:intervals",
+    "run:long",
+    "run:easy",
+    "run:race",
+    "ride:indoor",
+    "ride:outdoor",
+)
+_RULE_SPORTS = {
+    "run:intervals": ("run", "outdoor"),
+    "run:long": ("run", "outdoor"),
+    "run:easy": ("run", "outdoor"),
+    "run:race": ("run", "outdoor"),
+    "ride:indoor": ("ride", "indoor"),
+    "ride:outdoor": ("ride", "outdoor"),
+}
+_INTERVAL_FOCI = frozenset(
+    {"tempo", "threshold", "sweet_spot", "vo2max", "anaerobic", "test"}
+)
+# Each kind keeps at most this many dated choices.
+RULE_HISTORY_LIMIT = 100
 # The read lists at most this many assignments, whole activities only; usage
 # counts all of them.
 ASSIGNMENT_LIST_LIMIT = 2000
@@ -424,6 +448,55 @@ class EquipmentService:
             )
         return {"ok": True, "stored_locally": True, "assignment": saved, "change": change}
 
+    def save_rule(self, payload: dict[str, Any]) -> dict[str, Any]:
+        """Set one kind's default item from today on, or none (#3014).
+
+        Earlier sessions keep what they had; only a confirmed apply changes them.
+        """
+        if (
+            not isinstance(payload, dict)
+            or set(payload) != {"kind", "equipment_id", "expected_revision"}
+            or payload["kind"] not in RULE_KINDS
+            or not isinstance(payload["expected_revision"], int)
+            or isinstance(payload["expected_revision"], bool)
+        ):
+            raise AppError(400, "Art und Ausrüstung der Regel sind erforderlich.")
+        kind = payload["kind"]
+        today = self._today().isoformat()
+        with self._manager.unit_of_work() as db:
+            previous = stored_value(db, RULE_PREFIX + kind)
+            revision = int((previous or {}).get("revision") or 0)
+            if payload["expected_revision"] != revision:
+                raise AppError(409, "Regel geändert; neu lesen.")
+            if payload["equipment_id"] is not None:
+                item = stored_value(db, EQUIPMENT_PREFIX + str(payload["equipment_id"]))
+                sport, environment = _RULE_SPORTS[kind]
+                if not assignable_equipment(
+                    item, {"sport": sport, "environment": environment}
+                ):
+                    raise AppError(400, "Aktive passende Hauptausrüstung erforderlich.")
+            history = [
+                entry
+                for entry in (previous or {}).get("history") or []
+                if entry.get("from") != today
+            ]
+            history.append({"from": today, "equipment_id": payload["equipment_id"]})
+            saved = {
+                "kind": kind,
+                "revision": revision + 1,
+                "history": history[-RULE_HISTORY_LIMIT:],
+            }
+            equipment_store.put(db, RULE_PREFIX + kind, json.dumps(saved), self._utc_now())
+            change = _record_change(
+                db,
+                "equipment_rule",
+                kind,
+                "update" if previous else "create",
+                previous,
+                saved,
+            )
+        return {"ok": True, "stored_locally": True, "rule": saved, "change": change}
+
     def maintain(self, payload: dict[str, Any]) -> dict[str, Any]:
         if not isinstance(payload, dict) or set(payload) - {
             "equipment_id",
@@ -476,6 +549,38 @@ class EquipmentService:
             "maintenance": saved,
             "change": change,
         }
+
+
+def session_kind(
+    sport: Any, environment: Any, focus: str | None, purpose: str | None = None
+) -> str | None:
+    """The rule kind of a run or ride (#3014); None for other sports.
+
+    A run without a known focus counts as easy; a race purpose wins over the focus.
+    """
+    stored = resolve_equipment_sport(sport, environment)
+    if stored is None or stored.sport not in (Sport.RUN, Sport.RIDE):
+        return None
+    if stored.sport is Sport.RIDE:
+        indoor = stored.environment.value in {"indoor", "virtual"}
+        return "ride:indoor" if indoor else "ride:outdoor"
+    if purpose == "race" or focus == "race":
+        return "run:race"
+    if focus in _INTERVAL_FOCI:
+        return "run:intervals"
+    return "run:long" if focus == "long" else "run:easy"
+
+
+def rule_choice(rule: dict[str, Any] | None, day: str) -> tuple[bool, str | None]:
+    """Whether a rule covers ``day`` and its item then (None is "Keiner")."""
+    entries = [
+        entry
+        for entry in (rule or {}).get("history") or []
+        if str(entry.get("from") or "") <= day
+    ]
+    if not entries:
+        return False, None
+    return True, max(entries, key=lambda entry: str(entry["from"]))["equipment_id"]
 
 
 def stored_value(db: Any, key: str) -> dict[str, Any] | None:
