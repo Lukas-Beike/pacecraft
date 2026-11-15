@@ -18,6 +18,11 @@ from dataclasses import dataclass, field
 from datetime import date, timedelta
 from typing import Any
 
+from backend.athlete.body_composition import (
+    RestingFormula,
+    lean_mass_kg,
+    resting_energy,
+)
 from backend.canonical.activity_detail import ActivityStreamSet
 from backend.canonical.records import Observation
 from backend.canonical.vocabulary import ProviderId, StreamChannel
@@ -61,6 +66,50 @@ class SessionCost:
     kcal: float | None
     method: str
     steps: float
+
+
+# Net kcal and method of a session from its mean HR, duration, mass and day.
+type HeartRateCost = Callable[
+    [float, float, float | None, date], tuple[float, str] | None
+]
+
+# Labels of the resting reference, own first (orchestrator, 2026-11-15).
+RESTING_FROM_SKINFOLDS = "katch_mcardle_skinfold"
+RESTING_FROM_BODY_FAT = "katch_mcardle_body_fat"
+# How far back a weigh-in or body fat still counts for the resting reference.
+RESTING_LOOKBACK_DAYS = 90
+
+
+def own_resting(
+    weight_kg: float | None,
+    skinfold_fat_pct: float | None,
+    measured_fat_pct: float | None,
+) -> tuple[float, str] | None:
+    """Katch-McArdle from lean mass: skinfold body fat first, then a measured one.
+
+    None without a weight or a usable body fat, so the reader falls back to
+    Garmin's resting value, labelled as such.
+    """
+    if not weight_kg:
+        return None
+    for fat_pct, source in (
+        (skinfold_fat_pct, RESTING_FROM_SKINFOLDS),
+        (measured_fat_pct, RESTING_FROM_BODY_FAT),
+    ):
+        if fat_pct is None:
+            continue
+        try:
+            lean = lean_mass_kg(weight_kg, fat_pct)
+        except ValueError:
+            continue
+        return resting_energy(RestingFormula.KATCH_MCARDLE, lean), source
+    return None
+
+
+def latest_value(observations: Iterable[Observation]) -> float | None:
+    """The last day's positive value of canonical observations, or None."""
+    values = weighins(observations)
+    return values[max(values)] if values else None
 
 
 def session_streams(
@@ -120,6 +169,28 @@ def _flex_fit(
     return energy.fit_flex_hr(points)
 
 
+def _heart_rate_cost(
+    flex: energy.FlexHrFit | None, profile: Mapping[str, str], rmr: float
+) -> HeartRateCost:
+    """The own HR line when fitted, else Keytel with the profile's age and sex."""
+    birth_year = _number(profile.get("birth_year"))
+    sex = str(profile.get("sex") or "")
+
+    def cost(
+        hr: float, duration: float, mass: float | None, day: date
+    ) -> tuple[float, str] | None:
+        if flex is not None:
+            return energy.flex_hr_net_kcal(flex, hr, duration), "flex_hr"
+        if birth_year and mass and sex in ("male", "female"):
+            age = day.year - birth_year
+            male = sex == "male"
+            kcal = energy.keytel_net_kcal(hr, duration, mass, age, male, rmr)
+            return kcal, "keytel"
+        return None
+
+    return cost
+
+
 def _work_kj(summary: Mapping[str, Any], duration: float | None) -> float | None:
     work = _number(summary.get("work_kj"))
     power = _number(summary.get("avg_power"))
@@ -147,7 +218,7 @@ def session_cost(
     summary: Mapping[str, Any],
     mass: float | None,
     rmr: float,
-    flex: energy.FlexHrFit | None,
+    hr_cost: HeartRateCost,
     step_m: float | None,
 ) -> SessionCost:
     """Net cost of one session by its sport, with the M11 method name."""
@@ -168,7 +239,7 @@ def session_cost(
         if not steps and step_m:
             steps = sum(run for run, _ in segments) / step_m
         return SessionCost(day, mass * joules / energy.J_PER_KCAL, "minetti", steps)
-    kcal, method = _timed_cost(summary, sport, duration, rmr, flex)
+    kcal, method = _timed_cost(summary, sport, duration, rmr, hr_cost, mass, day)
     return SessionCost(day, kcal, method, 0.0 if method in ("power", "met") else steps)
 
 
@@ -177,9 +248,11 @@ def _timed_cost(
     sport: str,
     duration: float | None,
     rmr: float,
-    flex: energy.FlexHrFit | None,
+    hr_cost: HeartRateCost,
+    mass: float | None,
+    day: date,
 ) -> tuple[float | None, str]:
-    """Rides from work, strength from METs, the rest from the own HR line."""
+    """Rides from work, strength from METs, the rest from heart rate."""
     if not duration:
         return None, "unknown"
     work = _work_kj(summary, duration)
@@ -188,9 +261,8 @@ def _timed_cost(
     if sport in STRENGTH_SPORTS:
         return energy.strength_net_kcal(duration, rmr), "met"
     hr = _number(summary.get("avg_hr"))
-    if hr and flex is not None:
-        return energy.flex_hr_net_kcal(flex, hr, duration), "flex_hr"
-    return None, "unknown"
+    priced = hr_cost(hr, duration, mass, day) if hr else None
+    return priced if priced is not None else (None, "unknown")
 
 
 def _step_length(
@@ -244,6 +316,7 @@ def read_energy_inputs(
     flex = _flex_fit(
         [s for s in sessions if str(s.get("sport") or "") in RIDE_SPORTS], rmr or 0.0
     )
+    hr_cost = _heart_rate_cost(flex, profile, rmr or 0.0)
     costs = tuple(
         session_cost(
             sources,
@@ -255,7 +328,7 @@ def read_energy_inputs(
                 profile_weight,
             ),
             rmr or 0.0,
-            flex,
+            hr_cost,
             step_m,
         )
         for summary in sessions
