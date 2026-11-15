@@ -99,6 +99,33 @@ class PlannedUnitFocusPostRoutesTests(unittest.TestCase):
                 method="POST",
             )
 
+    def test_delete_route_needs_the_confirmation_and_returns_the_undo_reference(
+        self,
+    ) -> None:
+        # #3027: a calendar delete is destructive, so the server refuses it unconfirmed.
+        path = f"/api/planned-units/{LOCAL_ID}/delete"
+        for body in ({"expected_payload_hash": "abc"}, {"confirmed": "true", "expected_payload_hash": "abc"}):
+            with self.subTest(body=body), self.assertRaises(AppError) as raised:
+                dispatch_route(self.routes, self.handler(body), path, method="POST")
+            self.assertEqual(
+                (409, "confirmation_required"),
+                (raised.exception.status, raised.exception.reason),
+            )
+        self.service.delete.assert_not_called()
+        change = {"id": "c2", "entity_type": "planned_unit", "after_hash": "h"}
+
+        def delete(*_args):
+            change_history._collected_changes.get().append(change)
+            return {"status": "deleted", "local_id": LOCAL_ID}
+
+        self.service.delete.side_effect = delete
+        handler = self.handler({"confirmed": True, "expected_payload_hash": "abc"})
+        self.assertTrue(dispatch_route(self.routes, handler, path, method="POST"))
+        self.service.delete.assert_called_once_with(LOCAL_ID, "abc")
+        handler.send_json.assert_called_once_with(
+            200, {"status": "deleted", "local_id": LOCAL_ID, "change": change}
+        )
+
     def test_garmin_exercise_route_passes_the_pick_to_the_service(self) -> None:
         self.service.assign_garmin_exercise.return_value = {"status": "local"}
         handler = self.handler(

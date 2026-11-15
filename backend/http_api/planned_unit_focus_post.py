@@ -12,7 +12,7 @@ from backend.http_api.route_table import Access, Route, RouteRequest
 
 
 class PlannedUnitFocusPostRoutes:
-    """Set the focus fields or the day of one unit, or the Garmin exercise of one exercise."""
+    """Set the focus fields or the day of one unit, delete it, or pick a Garmin exercise."""
 
     def __init__(
         self,
@@ -42,7 +42,48 @@ class PlannedUnitFocusPostRoutes:
                 Access.SESSION_CSRF,
                 self._exercise,
             ),
+            Route(
+                "POST",
+                "/api/planned-units/{id}/delete",
+                Access.SESSION_CSRF,
+                self._delete,
+            ),
         ]
+
+    def _delete(self, handler: Any, request: RouteRequest) -> None:
+        """Delete a planned unit from the calendar without a remote write (#3027).
+
+        Request: path `{id}`, the local unit id; JSON body `{"confirmed": true,
+        "expected_payload_hash": string}`. The hash is the unit's content hash
+        from the read the athlete confirmed on. The delete is the Coach's local
+        delete: the unit stays as a tracked tombstone, and copies at
+        Intervals.icu or Garmin are removed only by the athlete's next explicit
+        sync.
+
+        Response: 200 `{"status": "deleted", "local_id", "change"}`; `change` is
+        the undo reference.
+
+        Errors: 409 `confirmation_required` "Das Löschen muss bestätigt werden."
+        unless `confirmed` is `true`; 400 "Ungültige lokale Planungs-ID." for an id
+        that is no UUID; 404 "Einheit nicht gefunden." for an unknown, archived or
+        deleted unit; 409 `planning_revision_conflict` "Die Einheit wurde
+        inzwischen geändert." for a missing or outdated `expected_payload_hash`.
+        """
+        payload = _read_object(handler)
+        if payload.get("confirmed") is not True:
+            raise AppError(
+                409,
+                "Das Löschen muss bestätigt werden.",
+                reason="confirmation_required",
+            )
+        with change_history.collect_changes() as changes:
+            result = self._planned_unit_service().delete(
+                request.params["id"], payload.get("expected_payload_hash")
+            )
+        deleted = [item for item in changes if item["entity_type"] == "planned_unit"]
+        handler.send_json(
+            200, {**result, **({"change": deleted[-1]} if deleted else {})}
+        )
 
     def _date(self, handler: Any, request: RouteRequest) -> None:
         """Move a planned unit to another day without a remote write.

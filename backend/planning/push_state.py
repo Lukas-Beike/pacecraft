@@ -369,6 +369,18 @@ def attach_push_state(
             )
         payload["payload_hash"] = digest
         payload["push_pending"] = pending
+        # Providers holding a copy, so a calendar delete can say the sync removes it (#3027).
+        payload["remote_copies"] = sorted(
+            provider
+            for provider, present in (
+                (ProviderId.GARMIN.value, str(row["local_id"]) in baselines),
+                (
+                    ProviderId.INTERVALS.value,
+                    bool(str(payload.get("remote_event_id") or "").strip()),
+                ),
+            )
+            if present
+        )
         cleanup = _unit_cleanup(lists, pending, payload, today)
         if cleanup:
             payload["push_cleanup"] = cleanup

@@ -703,6 +703,9 @@ function completedSessionIds(calendar) {
 const plannedFocusStatuses = new Map();
 // The receipt of a moved unit by card key ({ text, change, from }); the open card shows it after the re-render.
 const plannedMoveReceipts = new Map();
+// The receipt of a deleted unit by its day (#3027): the day shows it once the card is gone.
+const plannedDeleteReceipts = new Map();
+const REMOTE_COPY_LABELS = { intervals: "Intervals.icu", garmin: "Garmin" };
 const MOVE_DAY_FORMAT = new Intl.DateTimeFormat("de-DE", { weekday: "short", day: "2-digit", month: "2-digit" });
 const MOVE_WEEKDAY_FORMAT = new Intl.DateTimeFormat("de-DE", { weekday: "short" });
 
@@ -1338,7 +1341,37 @@ function plannedUnitActions(entry, dateKey, todayKey) {
   days.append(later, picker);
   const receipt = plannedMoveReceipts.get(key);
   if (receipt) status.append(receipt.text, ...(receipt.change?.id ? plannedMoveUndo(key, receipt, status) : []));
-  return [h("div", "planned-activity-actions", toggle, coach), days, status];
+  const [remove, confirm] = plannedDeleteControls(entry, dateKey, status);
+  return [h("div", "planned-activity-actions", toggle, coach, remove), confirm, days, status];
+}
+
+// "Löschen" asks once inside the card (#3027); a copy at a provider goes with the next explicit sync.
+function plannedDeleteControls(entry, dateKey, status) {
+  const remove = h("button", { type: "button", className: "secondary-button danger-button" }, "Löschen");
+  const confirmDelete = h("button", { type: "button", className: "secondary-button danger-button" }, "Löschen");
+  const cancel = h("button", { type: "button", className: "secondary-button" }, "Abbrechen");
+  const copies = (Array.isArray(entry.remote_copies) ? entry.remote_copies : []).map((provider) => REMOTE_COPY_LABELS[provider]).filter(Boolean);
+  const confirm = h("div", { className: "planned-delete-confirm", hidden: true },
+    h("p", null, "Einheit löschen?"),
+    h("div", "planned-activity-actions", confirmDelete, cancel),
+    copies.length ? h("p", "planned-move-status", `${copies.join(", ")}: weg beim nächsten Sync`) : null);
+  remove.addEventListener("click", () => { confirm.hidden = false; remove.hidden = true; confirmDelete.focus(); });
+  cancel.addEventListener("click", () => { confirm.hidden = true; remove.hidden = false; remove.focus(); });
+  confirmDelete.addEventListener("click", async () => {
+    confirmDelete.disabled = true;
+    cancel.disabled = true;
+    try {
+      const result = await api(`/api/planned-units/${encodeURIComponent(entry.local_id)}/delete`, { method: "POST", body: JSON.stringify({ confirmed: true, expected_payload_hash: entry.payload_hash }) });
+      plannedDeleteReceipts.set(dateKey, { text: `Gelöscht: ${entry.name || "Einheit"}`, change: result.change, from: dateKey });
+      await globalThis.load?.();
+      announcePlanChange(`Gelöscht: ${entry.name || "Einheit"}`);
+    } catch (error) {
+      confirmDelete.disabled = false;
+      cancel.disabled = false;
+      status.textContent = error.message;
+    }
+  });
+  return [remove, confirm];
 }
 
 // "Mit dem Coach besprechen" (#2193) opens the Coach with the unit named by date, sport, start, duration and
@@ -1356,14 +1389,14 @@ function plannedDiscussButton(entry, dateKey) {
   return button;
 }
 
-// "Rückgängig" puts the unit back on its earlier day and shows that week again.
-function plannedMoveUndo(key, receipt, status) {
+// "Rückgängig" puts the unit back on its earlier day, or back at all, and shows that week again.
+function plannedMoveUndo(key, receipt, status, receipts = plannedMoveReceipts) {
   const undo = h("button", { type: "button", className: "message-undo" }, "Rückgängig");
   undo.addEventListener("click", async () => {
     undo.disabled = true;
     try {
       await api("/api/change-history/undo", { method: "POST", body: JSON.stringify({ change_id: receipt.change.id, expected_current_hash: receipt.change.after_hash }) });
-      plannedMoveReceipts.set(key, { text: "Zurückgenommen." });
+      receipts.set(key, { text: "Zurückgenommen." });
       showPlannedDay(receipt.from);
       await globalThis.load?.();
     } catch (error) {
@@ -1964,7 +1997,13 @@ function renderPlannedDay(view, dateKey, weekHasPlan) {
   const noteContext = plannedNoteContext(dayContext, dayEvents);
   const notes = plannedDayNotes(noteContext, state.data?.competitions, dateKey);
   const emptyText = dateKey < todayKey ? "Keine Aktivität" : "Keine Einheit geplant";
-  const content = h("div", "planned-day-content", heading, notes.childElementCount ? notes : null,
+  const deleted = plannedDeleteReceipts.get(dateKey);
+  const deletedStatus = deleted ? h("p", { className: "planned-move-status", role: "status" }) : null;
+  if (deleted) {
+    deleted.shown = true;
+    deletedStatus.append(deleted.text, ...(deleted.change?.id ? plannedMoveUndo(dateKey, deleted, deletedStatus, plannedDeleteReceipts) : []));
+  }
+  const content = h("div", "planned-day-content", heading, deletedStatus, notes.childElementCount ? notes : null,
     dayEvents.length ? plannedEventBand(dayEvents) : null,
     dayEntries.length ? null : h("p", "planned-day-empty", emptyText));
   for (const group of plannedEntryGroups(dayEntries)) {
@@ -2282,6 +2321,11 @@ function loadOlderSessions(calendar, shownStartKey, configuredStartKey) {
   }, () => { if (generation === olderSessions.generation) olderSessions.loading = false; });
 }
 
+// A delete receipt the day has shown goes with the next calendar data.
+function dropShownDeleteReceipts() {
+  for (const [day, receipt] of plannedDeleteReceipts) if (receipt.shown) plannedDeleteReceipts.delete(day);
+}
+
 function renderPlanned(trainingCalendar) {
   const root = $("#plannedCalendar");
   if (!root) return;
@@ -2289,6 +2333,7 @@ function renderPlanned(trainingCalendar) {
     resetOlderSessions();
     plannedSessionReads.clear();
     plannedFuellingReads.clear();
+    dropShownDeleteReceipts();
   }
   renderedCalendar = trainingCalendar;
   const calendar = withOlderSessions(Array.isArray(trainingCalendar) ? trainingCalendar : []);

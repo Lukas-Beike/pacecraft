@@ -104,6 +104,7 @@ handler's docstring. Regenerate it with
 | GET | `/api/performance` | Session | no | Performance projection. |
 | GET | `/api/plan` | Session | no | Planning projection. |
 | POST | `/api/planned-units/{id}/date` | Session + CSRF | after access | Move a planned unit to another day without a remote write. |
+| POST | `/api/planned-units/{id}/delete` | Session + CSRF | after access | Delete a planned unit from the calendar without a remote write (#3027). |
 | POST | `/api/planned-units/{id}/focus` | Session + CSRF | after access | Set or clear the focus of a planned unit without a remote write. |
 | POST | `/api/planned-units/{id}/garmin-exercise` | Session + CSRF | after access | Assign the Garmin catalogue exercise of one strength exercise of a unit. |
 | GET | `/api/privacy/backup` | Session | no | Download the encrypted database backup. |
@@ -1274,6 +1275,24 @@ geplant." for a day before today; 409 `plan_date_conflict` when an external
 calendar marker rules out the day; 409 "Die lokale Einheit kann wegen einer
 bestehenden Kalendereinheit nicht verschoben werden." for an overlapping
 calendar entry.
+
+### `POST /api/planned-units/{id}/delete`
+
+Request: path `{id}`, the local unit id; JSON body `{"confirmed": true,
+"expected_payload_hash": string}`. The hash is the unit's content hash
+from the read the athlete confirmed on. The delete is the Coach's local
+delete: the unit stays as a tracked tombstone, and copies at
+Intervals.icu or Garmin are removed only by the athlete's next explicit
+sync.
+
+Response: 200 `{"status": "deleted", "local_id", "change"}`; `change` is
+the undo reference.
+
+Errors: 409 `confirmation_required` "Das Löschen muss bestätigt werden."
+unless `confirmed` is `true`; 400 "Ungültige lokale Planungs-ID." for an id
+that is no UUID; 404 "Einheit nicht gefunden." for an unknown, archived or
+deleted unit; 409 `planning_revision_conflict` "Die Einheit wurde
+inzwischen geändert." for a missing or outdated `expected_payload_hash`.
 
 ### `POST /api/planned-units/{id}/focus`
 

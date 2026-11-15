@@ -582,6 +582,55 @@ class PlannedUnitServiceTests(unittest.TestCase):
             self.service.move(str(self.id), "2026-09-22", archived["payload_hash"])
         self.assertEqual(404, caught.exception.status)
 
+    def test_athlete_deletes_a_sent_unit_and_only_the_next_sync_removes_its_copies(self):
+        # #3027: the calendar deletes through the Coach's local delete path; the
+        # copies at Intervals.icu and Garmin go only with the next explicit sync.
+        entity_id = str(self.service.create(self.workout())["id"])
+        repository = RemoteLinkRepository()
+        with self.manager.unit_of_work() as db:
+            repository.upsert(
+                db,
+                RemoteLink(
+                    RemoteEntityKind.PLANNED_UNIT,
+                    entity_id,
+                    "garmin",
+                    RemoteLinkState.SYNCED,
+                    remote_id="garmin-1",
+                ),
+            )
+            db.execute(
+                "UPDATE planned_units SET sync_state='synced', sync_dirty=0, "
+                "payload=json_set(payload, '$.remote_event_id', 'event-1') WHERE local_id=?",
+                (entity_id,),
+            )
+        listed = self.service.list(push_state=True)[0]
+        self.assertEqual(["garmin", "intervals"], listed["remote_copies"])
+        before = self.state()
+        with self.assertRaises(AppError) as caught:
+            self.service.delete(entity_id, "stale")
+        self.assertEqual(409, caught.exception.status)
+        self.assertEqual(before, self.state())
+
+        result = self.service.delete(entity_id, listed["payload_hash"])
+
+        planned, history, _revision = self.state()
+        self.assertEqual({"status": "deleted", "local_id": entity_id}, result)
+        self.assertTrue(json.loads(planned[0]["payload"])["local_deleted"])
+        self.assertEqual("delete", history[-1]["action"])
+        with self.manager.reader() as db:
+            orphans, _count = find_intervals_orphans(db, date(2026, 9, 20))
+            kept = sorted(
+                link.provider
+                for link in repository.list_for_entity(
+                    db, RemoteEntityKind.PLANNED_UNIT, entity_id
+                )
+            )
+        self.assertEqual([entity_id], [orphan.local_id for orphan in orphans])
+        self.assertEqual(["garmin"], kept)
+        with self.assertRaises(AppError) as caught:
+            self.service.delete(entity_id, listed["payload_hash"])
+        self.assertEqual(409, caught.exception.status)
+
     def test_unknown_start_stays_unknown_across_date_move_and_undo(self):
         self.service.create(self.workout())
         self.service.update(str(self.id), {"date": "2026-09-23"})

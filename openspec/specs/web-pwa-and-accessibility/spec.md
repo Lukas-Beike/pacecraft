@@ -340,6 +340,10 @@ The client SHALL present domain-provided planning, performance, activity, and eq
 #### Scenario: Move a planned unit
 - **WHEN** the athlete opens a planned unit that is not a completed session and taps "Verschieben"
 - **THEN** a strip of the next seven days from today (the unit's own day disabled) and "…" for the system date picker appear, both ending with the last day the calendar shows; one tap moves the local unit, the opened card follows it to its new week with "Verschoben auf <Tag, Datum>" and "Rückgängig", and undo puts it back with "Zurückgenommen."; a unit already sent shows its pending sync and nothing is written remotely.
+#### Scenario: Delete a planned unit
+- **WHEN** the athlete taps the red "Löschen" at the end of an opened planned unit's actions
+- **THEN** the card asks once ("Einheit löschen?" with "Löschen" and "Abbrechen", plus "<Intervals.icu, Garmin>: weg beim nächsten Sync" when a provider holds a copy); confirming posts `confirmed` with the unit's content hash to `POST /api/planned-units/{id}/delete`, which refuses an unconfirmed delete with 409, deletes the local unit through the Coach's delete path and writes nothing remotely; the day then shows "Gelöscht: <Name>" with "Rückgängig", and undo restores the unit unchanged (#3027).
+
 #### Scenario: Planned steps as a list
 - **WHEN** the athlete opens a planned unit whose workout has structured steps
 - **THEN** the pane lists one row per step with its zone colour mark, duration or distance, zone, and the target range right-aligned ("110–128 bpm", "≤ 109 bpm", pace in min/km) from the zones in effect on the unit's day; a step without a range shows none; the description keeps only its free text, and the stored workout text and its export stay unchanged.
@@ -401,6 +405,7 @@ Evidence:
 - `e2e/analysis-info.spec.js::@responsive recovery uses independent scales, honest coverage over exactly fourteen days`
 - `e2e/analysis-info.spec.js::@responsive steps and floors show per-day units, whole numbers and the plotted basis`
 - `e2e/calendar-detail-pane.spec.js::@responsive a planned unit lists its steps with zone and target range instead of the workout notation`
+- `e2e/calendar-detail-pane.spec.js::@responsive Löschen asks once in the card, deletes a planned unit and Rückgängig brings it back`
 - `e2e/calendar-detail-pane.spec.js::@responsive Mit dem Coach besprechen puts the planned unit into the Coach field without sending`
 - `e2e/calendar-detail-pane.spec.js::@responsive Verschieben moves a planned unit to a tapped day and Rückgängig puts it back`
 - `e2e/calendar-week-compact.spec.js::@responsive compact calendar week shows one week, groups repeats and keeps one conflict style`
