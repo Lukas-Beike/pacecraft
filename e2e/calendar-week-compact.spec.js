@@ -1,12 +1,15 @@
 const { test, expect } = require("@playwright/test");
-const { showCalendarDay } = require("./helpers/ui");
+const { setEntryOpen, showCalendarDay } = require("./helpers/ui");
 const { openCalendar, renderSyntheticCalendar, waitForOlderSessions } = require("./helpers/calendar");
 
 test("@responsive compact calendar week shows one week, groups repeats and keeps one conflict style", async ({ page, request }, testInfo) => {
   await openCalendar(page, request);
   const days = await renderSyntheticCalendar(page);
   // The week view shows one week: a past day keeps its units as cards; a missed unit shows its execution.
-  const completedBorder = await page.locator(".planned-day.is-today .planned-entry.is-completed").first().evaluate((element) => getComputedStyle(element).borderTopStyle);
+  // Both outlines are read on closed cards: an open card carries the accent border (#2994).
+  const completed = page.locator(".planned-day.is-today .planned-entry.is-completed").first();
+  await setEntryOpen(completed, false);
+  const completedBorder = await completed.evaluate((element) => getComputedStyle(element).borderTopStyle);
   // Repeated extras share one row; the week summary is a fixed grid without dash-only load rows.
   await expect(page.locator(".planned-day.is-today .planned-group > summary .planned-session-title")).toHaveText("2× Trainingseinheit");
   for (const metrics of await page.locator(".planned-week-metrics").all()) {
@@ -21,10 +24,8 @@ test("@responsive compact calendar week shows one week, groups repeats and keeps
   await showCalendarDay(page, days.next);
   const planned = page.locator(`.planned-day[data-date="${days.next}"] .planned-entry`);
   await planned.scrollIntoViewIfNeeded();
-  // #2985: wide screens open the shown week's first unit as the detail pane; on a Sunday
-  // that is this planned card, and an open card carries the solid accent border.
-  if (await planned.evaluate((element) => element.open)) await planned.locator(":scope > summary").click();
-  await expect(planned).not.toHaveAttribute("open", "");
+  // #2985: on a Sunday this card is the default detail pane of the shown week.
+  await setEntryOpen(planned, false);
   expect([await planned.evaluate((element) => getComputedStyle(element).borderTopStyle), completedBorder]).toEqual(["dashed", "solid"]);
   await expect(planned.locator(".planned-entry-status")).toHaveCount(0);
   for (const row of await page.locator(".planned-entry > summary").all()) {
@@ -65,15 +66,18 @@ test("@responsive compact calendar week shows one week, groups repeats and keeps
   await showCalendarDay(page, days.today);
   await page.locator(".planned-day.is-today").screenshot({ path: testInfo.outputPath("calendar-week-compact.png") });
   // #2258: an opened session shows each value once, per sport; a value without data is left out.
-  const facts = await page.evaluate(() => {
+  const yesterday = await page.evaluate(() => {
     const day = addDateKey(timezoneDateKey(state.data?.profile?.timezone, new Date()), -1);
     state.data.training_calendar = [
       { id: "act_run", date: day, name: "Lauf", sport: "run", is_completed_activity: true, started_at_local: `${day}T07:00:00`, moving_duration_s: 3600, distance_m: 12000, training_load: 80, avg_hr: 150, avg_power: 270, avg_cadence: 86, ground_contact_time_ms: 248.6, elevation_gain_m: 40 },
       { id: "act_ride", date: day, name: "Rad", sport: "ride", environment: "indoor", is_completed_activity: true, started_at_local: `${day}T18:00:00`, moving_duration_s: 3600, distance_m: 30000, training_load: 70, rpe: 6, avg_hr: 140, avg_power: 210, normalized_power: 225, intensity: 0.86, avg_cadence: 90, elevation_gain_m: 0 },
     ];
     renderPlanned(state.data.training_calendar);
-    return [...document.querySelectorAll(".planned-actual-facts")].map((node) => [...node.children].map((item) => item.textContent));
+    return day;
   });
+  // #2994: on a Monday yesterday is in the previous week.
+  await showCalendarDay(page, yesterday);
+  const facts = await page.evaluate(() => [...document.querySelectorAll(".planned-actual-facts")].map((node) => [...node.children].map((item) => item.textContent)));
   expect(facts).toEqual([
     ["Pace 5:00 min/km", "Ø Puls 150 bpm", "Schrittfrequenz 172 spm", "Ø Leistung 270 W", "Belastung 80", "Bodenkontaktzeit 249 ms", "Höhenmeter 40 m"],
     ["Normalized Power 225 W", "Ø Leistung 210 W", "Intensitätsfaktor 0,86", "Ø Puls 140 bpm", "Trittfrequenz 90 rpm", "Belastung 70", "RPE 6/10", "Ø Tempo 30 km/h", "Höhenmeter 0 m"],
@@ -85,8 +89,7 @@ test("@responsive opening a single calendar entry and a grouped row shows their 
   const entry = page.locator(".planned-day.is-today .planned-entry, .planned-day.is-today .planned-group").first();
   await entry.scrollIntoViewIfNeeded();
   // On wide screens a unit of the week is already open as the detail pane.
-  if (await entry.evaluate((element) => element.open)) await entry.locator(":scope > summary").click();
-  await expect(entry).not.toHaveAttribute("open", "");
+  await setEntryOpen(entry, false);
   await entry.locator(":scope > summary").click();
   await expect(entry).toHaveAttribute("open", "");
   // The detail pane sits level with its card, not at the top of the calendar.

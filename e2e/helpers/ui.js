@@ -1,5 +1,7 @@
 "use strict";
 
+const { expect } = require("@playwright/test");
+
 // Shared browser-test helpers. Pure Node functions: they read computed styles
 // and geometry that the spec collected through page.evaluate / Playwright APIs.
 
@@ -109,7 +111,15 @@ async function openSessionDetails(page, name) {
   return more;
 }
 
+// Opens or closes a calendar card through its summary, as a person would. Wide screens
+// open the first unit from today on (else the last) as the detail pane by default (#2994).
+async function setEntryOpen(entry, open) {
+  if (await entry.evaluate((element) => element.open) !== open) await entry.locator(":scope > summary").click();
+  await (open ? expect(entry).toHaveAttribute("open", "") : expect(entry).not.toHaveAttribute("open", ""));
+}
+
 module.exports = {
+  setEntryOpen,
   renderCalendarSessions,
   openSessionDetails,
   showCalendarDay,
