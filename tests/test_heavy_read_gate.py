@@ -90,7 +90,7 @@ class HeavyReadGateTests(unittest.TestCase):
         # up there must not keep it from the next read.
         for error in (BrokenPipeError, ConnectionResetError):
             with self.subTest(error=error.__name__):
-                gate = HeavyReadGate(wait_s=0.05)
+                gate = HeavyReadGate(wait_s=5.0)
                 handler: Any = RequestHandler.__new__(RequestHandler)
                 handler.path = "/api/performance"
                 auth = Mock(require_auth=Mock(return_value={}))
@@ -128,13 +128,14 @@ class HeavyReadGateTests(unittest.TestCase):
                 first = threading.Thread(target=holder)
                 first.start()
                 inside.wait(5)
-                threading.Timer(0.02, release.set).start()
+                threading.Timer(0.2, release.set).start()
                 with self.assertRaises(error):
                     handler._get("/api/performance")
                 first.join(5)
                 with gate.held():
                     pass
-                self.assertEqual(gate.summary()["timeouts"], 0)
+                summary = gate.summary()
+                self.assertEqual((summary["waits"], summary["timeouts"]), (1, 0))
 
     def test_the_heavy_routes_are_the_history_view_reads(self) -> None:
         heavy = set()
