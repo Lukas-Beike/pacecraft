@@ -28,7 +28,7 @@ SHAPE_SCHEMA_V27: Final = "schema-v27"
 # Schema version 28, releases 2.1.10 to 2.1.14: v27 after its calendar
 # decision step. Its digest lets a v28 database take the later steps.
 SHAPE_SCHEMA_V28: Final = "schema-v28"
-# Schema version 29, releases 2.1.17 and 2.1.18: v28 after its competition location step.
+# Schema version 29, releases 2.1.17 to 2.1.19: v28 after its competition location step.
 # Its digest lets a v29 database take the later steps.
 SHAPE_SCHEMA_V29: Final = "schema-v29"
 # The live schema of this build, derived from code rather than frozen.
