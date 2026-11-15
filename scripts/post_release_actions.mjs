@@ -1,6 +1,6 @@
 // The allowed post-release Coach action: one question without a change.
 //
-//   node scripts/post_release_actions.mjs --url <app address> < <secret file>
+//   Get-Content -Raw <secret file> | node scripts/post_release_actions.mjs --url <app address>
 //
 // Logs in with the password read from stdin, so the shell redirects the secret
 // file and no path reaches the script (never printed or passed on a command line), asks the Coach one fixed question in the Coach view and checks
@@ -32,7 +32,9 @@ export function samePlan(before, after) {
 class Stop extends Error {}
 
 // The secret comes on stdin (fd 0), never from a terminal, so nothing waits for typing.
-export function parseInput(argv, stdin = { isTTY: process.stdin.isTTY, read: () => fs.readFileSync(0, "utf8") }) {
+const PROCESS_STDIN = { isTTY: process.stdin.isTTY, read: () => fs.readFileSync(0, "utf8") };
+
+export function parseInput(argv, stdin = PROCESS_STDIN) {
   const { values } = parseArgs({ args: argv, options: { url: { type: "string" } } });
   if (!values.url) throw new Error("--url is required");
   const url = baseUrl(values.url);

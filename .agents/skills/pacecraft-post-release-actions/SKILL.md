@@ -7,13 +7,17 @@ description: Base skill. The allowed post-release Coach action in the running ap
 
 Needs the repository's Playwright install (`npm ci` and
 `npx playwright install chromium` once). The app address and the secret file
-come from the session at run time. The shell redirects the secret file to the
+come from the session at run time. The shell pipes the secret file to the
 script's stdin, so no path reaches the script and the password never appears in
 an argument, the output or the agent's context; a terminal on stdin is refused.
 
-```bash
-node scripts/post_release_actions.mjs --url <app address> < "<secret file>"
+```powershell
+# Windows PowerShell pipes text in $OutputEncoding (ASCII by default); UTF-8 keeps every character.
+$OutputEncoding = [Text.UTF8Encoding]::new($false)
+Get-Content -Raw -Encoding utf8 "<secret file>" | node scripts/post_release_actions.mjs --url <app address>
 ```
+
+In Bash, redirect instead: `node scripts/post_release_actions.mjs --url <app address> < "<secret file>"`.
 
 It logs in, asks the Coach one fixed German question (what is planned
 tomorrow, a constant in the script) in the Coach view, and checks that the
@@ -33,6 +37,6 @@ here once that tool's turn is undoable.
 To check the script, run it against a disposable demo app: start it with
 `powershell -ExecutionPolicy Bypass -File scripts/demo-container.ps1 -Name fixture-actions -Port 8093`,
 write the fixture password from the script header to a file in the system temp
-directory, redirect it to the script run against `http://127.0.0.1:8093`, and remove the
+directory, pipe it to the script run against `http://127.0.0.1:8093`, and remove the
 container with the same command plus `-Stop`. The fixture answers exactly the
 script's question.
