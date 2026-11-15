@@ -166,8 +166,7 @@ class GuardHookTests(unittest.TestCase):
             with self.subTest(command):
                 self.assertEqual(self.decide(command), 2)
 
-    def test_the_whole_scripts_tree_is_compared_with_develop(self):
-        # A committed shadowing module (scripts/json.py) must also block.
+    def test_scripts_is_compared_with_develop_including_new_files(self):
         calls = []
 
         def fake(args, **_kwargs):
@@ -177,8 +176,35 @@ class GuardHookTests(unittest.TestCase):
         with mock.patch.object(guard.subprocess, "run", side_effect=fake):
             self.assertTrue(guard.unchanged())
         self.assertIn(
-            ["git", "diff", "--quiet", "origin/develop", "--", "scripts"], calls
+            ["git", "diff", "--name-only", "origin/develop", "--", "scripts"], calls
         )
+        self.assertIn(
+            ["git", "ls-files", "--others", "--exclude-standard", "--", "scripts"],
+            calls,
+        )
+
+    def test_only_changes_that_can_reach_the_run_block(self):
+        """#3072: the script, its imports and shadowing modules block; the rest does not."""
+        self.assertIn("gh_cli", guard.run_modules())
+        for paths, allowed in (
+            ([], True),
+            (["scripts/ui_walk.mjs"], True),
+            (["scripts/hooks/guard_private_paths.py"], True),
+            (["scripts/release_changelog.py", "scripts/new_tool.py"], True),
+            (["scripts/resolve_review_thread.py"], False),
+            (["scripts/gh_cli.py"], False),
+            # A committed or new module named like one the run imports shadows it.
+            (["scripts/json.py"], False),
+            (["scripts/re.pyc"], False),
+            (["scripts/json/__init__.py"], False),
+            (["scripts/sitecustomize.py"], False),
+            (["scripts/ui_walk.mjs", "scripts/argparse.py"], False),
+            (None, False),
+        ):
+            with self.subTest(paths=paths), mock.patch.object(
+                guard, "changed_paths", return_value=paths
+            ):
+                self.assertEqual(guard.unchanged(), allowed)
 
 
 if __name__ == "__main__":

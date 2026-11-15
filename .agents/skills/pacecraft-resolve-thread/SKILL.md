@@ -11,8 +11,9 @@ python scripts/resolve_review_thread.py <pr> <thread-id>
 
 - The thread id (`PRRT_...`) comes from
   [pr-state](../pacecraft-pr-state/SKILL.md).
-- Run it alone through the Bash tool, from a checkout whose `scripts/` matches
-  origin/develop; the `guard_resolve_thread.py` hook blocks anything else.
+- Run it alone through the Bash tool; the `guard_resolve_thread.py` hook blocks
+  anything else, and any branch change to this script, the `scripts/` modules
+  it imports, or a `scripts/` module named like one the run imports (#3072).
 - It sends only the `resolveReviewThread` mutation, and only when you authored
   the PR, the thread is open, and its last comment is your reply naming a
   commit of the PR made after the finding.
