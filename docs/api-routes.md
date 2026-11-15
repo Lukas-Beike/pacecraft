@@ -43,6 +43,7 @@ handler's docstring. Regenerate it with
 | GET | `/api/analysis/trends` | Session | no | Pace at equal heart rate and recurring sessions, as the Coach reads them (#2802). |
 | GET | `/api/analysis/week-review` | Session | no | The local review of one ISO week against the week before (#2805). |
 | GET | `/api/auth/status` | Public | no | Current login status. |
+| GET | `/api/body/energy` | Session | no | Resting and daily expenditure per source, up to yesterday. |
 | GET | `/api/body/skinfolds` | Session | no | The athlete's 3-site skinfold measurements, newest first. |
 | PUT | `/api/body/skinfolds` | Session + CSRF | before access | Save one 3-site skinfold measurement; one of the same day is replaced. |
 | PUT | `/api/body/skinfolds/remove` | Session + CSRF | before access | Remove the skinfold measurement of one day. |
@@ -325,6 +326,21 @@ Request: no body; the session cookie is read if present.
 
 Response: 200 with `authenticated` (boolean) and `maintenance` (`active`,
 `running_operations`).
+
+Errors: none beyond the common ones.
+
+### `GET /api/body/energy`
+
+Request: no query, no body.
+
+Response: 200 with `end`, `windows` (the 12 weekly 4-week window ends,
+oldest first), `rows` (`katch_mcardle`, `cunningham`, `device` (the wearable's estimate) with
+`resting_kcal`, `total_kcal`, `errors_kcal` per window, `mean_error_kcal`
+and `hit_rate_pct`; `own` with `resting_kcal`, `total_kcal` and their
+`*_band_kcal`; null without a basis), `best` (the source with the lowest
+mean error, or null), `basis` (`days`, `complete_days`, `flagged_days`,
+`weighins`, `insufficient`, `windows_with_estimate`, `rmr_source`) and
+`skinfold` (`date`, `body_fat_pct`, `lean_mass_kg`, or null).
 
 Errors: none beyond the common ones.
 

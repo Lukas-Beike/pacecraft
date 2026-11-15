@@ -1386,9 +1386,10 @@ const SKINFOLDS_SHOWN = 3;
 let skinfoldRead = null;
 let skinfoldRequest = null;
 
-// Forgets the read, so the next body render reads the measurements again.
+// Forgets the read and the energy view built on it, so the next body render reads both again.
 function resetSkinfolds() {
   skinfoldRead = null;
+  resetEnergy();
 }
 
 // A failed read also re-renders, so the card shows the failure instead of loading forever.
@@ -1445,6 +1446,7 @@ async function sendSkinfolds(path, payload, button) {
   button.disabled = true;
   try {
     skinfoldRead = await api(path, { method: "PUT", body: JSON.stringify(payload) });
+    resetEnergy();
     document.querySelector("#skinfoldDialog").close();
     renderBodyAnalysis(state.data?.performance?.history?.body);
     return true;
@@ -1498,6 +1500,80 @@ function skinfoldCard() {
     h("table", { className: "current-performance-table" }, h("caption", null, "Hautfalten"), h("tbody", null, rows)));
 }
 
+// Each source keeps its chart colour in the table, the error chart and the hit-rate bars.
+const ENERGY_SOURCES = [["katch_mcardle", "Katch-McArdle", 1], ["cunningham", "Cunningham", 2], ["device", "Garmin (Schätzung)", 3], ["own", "Aus deinen Daten", 4]];
+const ENERGY_INSUFFICIENT = { intake_days: "unter 14 vollständige Ernährungstage", weighins: "unter 8 Wiegungen", weight_span: "Wiegungen über weniger als 21 Tage" };
+let energyRead = null;
+let energyRequest = null;
+
+function resetEnergy() {
+  energyRead = null;
+}
+
+function loadEnergy() {
+  energyRequest ||= api("/api/body/energy")
+    .then((read) => { energyRead = read; })
+    .catch(() => { energyRead = { failed: true }; })
+    .finally(() => {
+      energyRequest = null;
+      renderBodyAnalysis(state.data?.performance?.history?.body);
+    });
+}
+
+function energyKcal(value, band) {
+  if (value == null) return "–";
+  return band == null ? formatWhole(value) : h("span", null, formatWhole(value), h("small", null, ` ± ${formatWhole(band)}`));
+}
+
+function energyBasisNote(read) {
+  const { basis, skinfold } = read;
+  const own = basis.insufficient
+    ? `Aus deinen Daten: Datenbasis zu gering (${ENERGY_INSUFFICIENT[basis.insufficient] || basis.insufficient})`
+    : `Aus deinen Daten: ${basis.complete_days} von ${basis.days} Tagen vollständig`;
+  const folds = skinfold
+    ? `Falten vom ${dateLabel(skinfold.date)}, KFA ${analysisValue(skinfold.body_fat_pct, "%")}, fettfreie Masse ${analysisValue(skinfold.lean_mass_kg, "kg")}`
+    : "Ohne Hautfaltenmessung der letzten 90 Tage keine Formelwerte";
+  return h("p", "analysis-reference-note", `kcal/Tag · ${own} · Formeln: Ruhe + eigene Aktivität + Verdauung · ${folds}`);
+}
+
+function energyTable(read) {
+  const rows = ENERGY_SOURCES.map(([source, label, color]) => {
+    const row = read.rows.find((item) => item.source === source) || {};
+    const best = read.best === source ? [" ", createStatusChip("passt am besten", "ready")] : [];
+    return h("tr", { dataset: { energySource: source } },
+      h("th", { scope: "row", dataset: { color: String(color) } }, label, ...best),
+      h("td", null, energyKcal(row.resting_kcal, row.resting_band_kcal)),
+      h("td", null, energyKcal(row.total_kcal, row.total_band_kcal)));
+  });
+  return h("table", { className: "current-performance-table" }, h("caption", null, "Energieverbrauch"),
+    h("thead", null, h("tr", null, h("th", { scope: "col" }, "Quelle"), h("th", { scope: "col" }, "Ruhe"), h("th", { scope: "col" }, "Tag gesamt"))),
+    h("tbody", null, rows));
+}
+
+function energyFitCharts(read) {
+  const fitted = ENERGY_SOURCES.slice(0, 3).map(([source, label, color]) => [read.rows.find((item) => item.source === source), label, color]).filter(([row]) => row?.hit_rate_pct != null);
+  if (!fitted.length) return [];
+  const series = fitted.map(([row, label, color]) => ({
+    label, color, line: "solid", cadenceDays: 7, explanation: "Abstand zum Verbrauch aus deinen Daten je 4-Wochen-Fenster; niedriger passt besser.",
+    points: read.windows.map((date, index) => ({ date, value: row.errors_kcal[index] })),
+  }));
+  const chart = analysisChart("Welche Quelle trifft dein Gewicht?", series, "kcal", read.windows[0], read.end, "", { calendarWeeks: true });
+  const bars = h("section", { className: "analysis-chart-card training-focus-distribution", dataset: { energyFit: "" } }, h("h4", null, "Trefferquote der letzten 12 Wochen"),
+    ...fitted.map(([row, label, color]) => h("div", { className: "training-focus-row", dataset: { color: String(color) } },
+      h("span", null, label.replace(" (Schätzung)", "")), h("progress", { max: 100, value: row.hit_rate_pct, "aria-label": `${label}: ${row.hit_rate_pct} Prozent` }), h("span", null, `${row.hit_rate_pct} %`))),
+    h("p", "analysis-reference-note", "Anteil der 4-Wochen-Fenster innerhalb ±100 kcal/Tag"));
+  return [chart, bars].filter(Boolean);
+}
+
+function energyCards() {
+  if (!energyRead) {
+    loadEnergy();
+    return [h("section", "analysis-chart-card", createLoadingState("Energieverbrauch wird geladen…"))];
+  }
+  if (energyRead.failed) return [h("section", "analysis-chart-card", h("p", "empty", "Energieverbrauch konnte nicht geladen werden."))];
+  return [h("section", { className: "analysis-chart-card", dataset: { energy: "" } }, energyTable(energyRead), energyBasisNote(energyRead)), ...energyFitCharts(energyRead)];
+}
+
 function renderBodyAnalysis(body) {
   const root = document.getElementById("bodyAnalysisCharts");
   if (!root) return;
@@ -1510,7 +1586,7 @@ function renderBodyAnalysis(body) {
   const preferred = body?.preferred_providers || {};
   const rows = h("tbody", null, metrics.map(([metric, title, unit]) => renderBodyOverviewRow(metric, title, unit, body, preferred)));
   root.append(h("section", "analysis-chart-card", h("table", { className: "current-performance-table", dataset: { bodyOverview: "" } }, h("caption", null, "Körperwerte"), rows)));
-  root.append(skinfoldCard());
+  root.append(skinfoldCard(), ...energyCards());
   const key = bodyHistoryPeriod === "fortnight" ? "14d" : "12w";
   const window = body?.windows?.[key];
   root.append(analysisPeriodControls("Zeitraum für Körper", bodyHistoryPeriod, (period) => {

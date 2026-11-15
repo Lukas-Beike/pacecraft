@@ -1798,6 +1798,14 @@ button:focus-visible, a:focus-visible, summary:focus-visible {
 .current-performance-table th { text-align: left; font-size: .85rem; font-weight: 500; }
 .current-performance-table th small { display: block; margin-top: 4px; color: var(--muted); font-size: .72rem; font-weight: 400; overflow-wrap: anywhere; }
 [data-skinfolds] .current-performance-table td { white-space: nowrap; padding-left: 8px; }
+[data-energy] .current-performance-table td { white-space: nowrap; }
+[data-energy] thead th + th { text-align: right; padding-left: 12px; }
+:is([data-energy], [data-energy-fit]) [data-color="1"] { --zone-color: var(--chart-series-1); }
+:is([data-energy], [data-energy-fit]) [data-color="2"] { --zone-color: var(--chart-series-2); }
+:is([data-energy], [data-energy-fit]) [data-color="3"] { --zone-color: var(--chart-series-3); }
+:is([data-energy], [data-energy-fit]) [data-color="4"] { --zone-color: var(--chart-series-4); }
+[data-energy] th[data-color]::before { content: ""; display: inline-block; width: 10px; height: 10px; margin-right: 8px; border-radius: 50%; background: var(--zone-color); vertical-align: middle; }
+[data-energy-fit] .training-focus-row { grid-template-columns: 7.5rem minmax(0, 1fr) 3rem; }
 .current-performance-table td { text-align: right; padding-left: 12px; font-size: .95rem; font-weight: 600; font-variant-numeric: tabular-nums; }
 .current-performance-table tbody tr:last-child > * { border-bottom: 0; }
 

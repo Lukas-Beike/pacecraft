@@ -33,13 +33,15 @@ class Access(StrEnum):
 # outside this list, or a listed route without it, is refused. Writes,
 # auth, sync status, health and static files never take the gate. The trends
 # and the week review scan the history too; the activity list is a bounded
-# page (at most 250 sessions) and does not wait behind them (#3125).
+# page (at most 250 sessions) and does not wait behind them (#3125). The energy
+# view prices 13 weeks of sessions from their streams (#3099).
 HEAVY_READ_ROUTES = frozenset(
     {
         "/api/analysis/power-profiles",
         "/api/analysis/training-records",
         "/api/analysis/trends",
         "/api/analysis/week-review",
+        "/api/body/energy",
         "/api/context-preview",
         "/api/performance",
     }

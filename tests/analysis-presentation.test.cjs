@@ -196,7 +196,7 @@ test("body overview uses profile body fat without creating a dated measurement",
     isPreferredSource: () => true, analysisValidPoint: (p) => p.value != null,
     dateLabel: (v) => v, analysisValue: (v, unit) => `${v} ${unit}`,
     analysisPeriodControls: () => new FakeElement("nav"), bodyHistoryPeriod: "twelveWeeks",
-    skinfoldCard: () => new FakeElement("section"),
+    skinfoldCard: () => new FakeElement("section"), energyCards: () => [],
   });
   const body = { windows: {} };
   renderBodyAnalysis(body);
@@ -208,6 +208,40 @@ test("body overview uses profile body fat without creating a dated measurement",
   assert.equal(bodyProfileFat({ body_fat_pct: 71 }), null);
 });
 
+
+test("the energy table marks the best source and the chart and bars show each source's fit", () => {
+  const charts = [];
+  const { h } = extractFunctions("components.js", ["h", "SVG_NS", "svgNode"], { document: fakeDocument() });
+  const { energyTable, energyBasisNote, energyFitCharts } = extractFunctions("analysis.js", ["ENERGY_SOURCES", "ENERGY_INSUFFICIENT", "energyKcal", "energyBasisNote", "energyTable", "energyFitCharts"], {
+    h, formatWhole: (v) => String(v), dateLabel: (v) => v, analysisValue: (v, unit) => `${v} ${unit}`,
+    createStatusChip: (label) => h("span", null, label),
+    analysisChart: (title, series) => { charts.push({ title, series }); return new FakeElement("section"); },
+  });
+  const fit = (errors, rate) => ({ errors_kcal: errors, mean_error_kcal: 1, hit_rate_pct: rate });
+  const read = {
+    end: "2026-11-14", windows: ["2026-11-07", "2026-11-14"], best: "katch_mcardle",
+    rows: [
+      { source: "katch_mcardle", resting_kcal: 1839, total_kcal: 2689, ...fit([null, 11], 100) },
+      { source: "cunningham", resting_kcal: 1996, total_kcal: 2846, ...fit([null, 146], 0) },
+      { source: "device", resting_kcal: null, total_kcal: null, errors_kcal: [null, null], mean_error_kcal: null, hit_rate_pct: null },
+      { source: "own", resting_kcal: 1850, resting_band_kcal: 150, total_kcal: 2700, total_band_kcal: 120 },
+    ],
+    basis: { days: 28, complete_days: 24, insufficient: null },
+    skinfold: { date: "2026-11-04", body_fat_pct: 15, lean_mass_kg: 68 },
+  };
+  const rows = energyTable(read).children[2].children;
+  assert.equal(textOf(rows[0].children[0]), "Katch-McArdle passt am besten");
+  assert.equal(textOf(rows[1].children[0]), "Cunningham", "only the best source carries the badge");
+  assert.equal(textOf(rows[2].children[1]), "–", "a source without a value stays unknown");
+  assert.equal(textOf(rows[3].children[2]), "2700 ± 120");
+  assert.match(textOf(energyBasisNote(read)), /24 von 28 Tagen vollständig .* Falten vom 2026-11-04, KFA 15 %, fettfreie Masse 68 kg/);
+  assert.match(textOf(energyBasisNote({ ...read, basis: { insufficient: "weighins" }, skinfold: null })), /Datenbasis zu gering \(unter 8 Wiegungen\).*Ohne Hautfaltenmessung/);
+  const [, bars] = energyFitCharts(read);
+  assert.deepEqual([...charts[0].series].map((item) => item.label), ["Katch-McArdle", "Cunningham"], "Garmin without a fit is left out");
+  assert.deepEqual(JSON.parse(JSON.stringify(charts[0].series[0].points)), [{ date: "2026-11-07", value: null }, { date: "2026-11-14", value: 11 }]);
+  assert.equal(textOf(bars.children[1]), "Katch-McArdle100 %");
+  assert.equal(energyFitCharts({ ...read, rows: read.rows.slice(2) }).length, 0, "no fit, no chart");
+});
 
 test("a failed skinfold read re-renders the card instead of loading forever", async () => {
   // Gitar #3120: only a successful read used to re-render the body view.
@@ -238,7 +272,7 @@ test("body overview falls back to Garmin when the profile fat is absent", () => 
     analysisValidPoint: (point) => point.value != null, dateLabel: (v) => v,
     analysisValue: (v, unit) => `${v} ${unit}`, analysisPeriodControls: () => new FakeElement("nav"),
     bodyHistoryPeriod: "twelveWeeks", bodyMetricChart: () => null,
-    skinfoldCard: () => new FakeElement("section"),
+    skinfoldCard: () => new FakeElement("section"), energyCards: () => [],
   });
   const point = { date: "2026-10-10", value: 16 };
   const body = { preferred_providers: { body_fat_pct: "garmin" }, windows: { "12w": { start: "2026-10-01", end: "2026-10-15", metrics: { body_fat_pct: [{ source_provider: "garmin", points: [point] }] } } } };
