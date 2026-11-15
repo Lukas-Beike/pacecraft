@@ -9,9 +9,11 @@ your files); --allow-behind skips that. Arms `gh pr merge --auto --squash` pinne
 unless it is armed already; when GitHub refuses because the PR is already in
 clean status, merges that head at once with `--squash` (#2776). `--wait` then
 polls every 20 s in the same turn until the PR is merged or closed, a check
-fails or new feedback (comment or review) arrives, at most MINUTES (#2795): the
-host's PR watcher does not reliably wake on the merge itself. The develop check
-runs at arming, as the lane rule asks; develop moving during CI is accepted.
+fails or new feedback arrives, at most MINUTES (#2795): the host's PR watcher
+does not reliably wake on the merge itself. Feedback is a person's comment or
+review, a status bot's review that requests changes, or any unresolved review
+thread; Gitar's and SonarCloud's status comments are not (#3034). The develop
+check runs at arming, as the lane rule asks; develop moving during CI is accepted.
 Before arming it also refuses while a review thread is unresolved, disarming
 too, with or without --allow-behind; new feedback during --wait disarms as
 well (#2947).
@@ -39,8 +41,30 @@ def view(number: int) -> dict[str, Any]:
     return gh_json("pr", "view", str(number), "--json", FIELDS) or {}
 
 
+# Status bots: their top-level comment is posted (and edited) on every head. Gitar's
+# verdict gates the merge through its required check and its review threads (#3034).
+STATUS_BOTS = {"gitar-bot", "sonarqubecloud"}
+
+
 def feedback(pr: dict[str, Any]) -> int:
-    return len(pr.get("comments") or []) + len(pr.get("reviews") or [])
+    """Comments and reviews that ask for something: every person's, and a status
+    bot's review only when it requests changes. Threads are checked on their own."""
+    return sum(
+        1
+        for item in [*(pr.get("comments") or []), *(pr.get("reviews") or [])]
+        if (item.get("author") or {}).get("login") not in STATUS_BOTS
+        or item.get("state") == "CHANGES_REQUESTED"
+    )
+
+
+def thread_open(number: int) -> bool:
+    """Whether a review thread is unresolved (fail closed past one page). A failed
+    query counts as no change: the next poll asks again instead of ending the wait."""
+    try:
+        threads, more = unresolved_threads(number)
+    except CliError, KeyError, TypeError:
+        return False
+    return bool(threads) or more
 
 
 def arm(number: int, pr: dict[str, Any]) -> str:
@@ -102,13 +126,14 @@ def wait(number: int, minutes: int, seen: int) -> int:
             oid = (pr.get("mergeCommit") or {}).get("oid") or "?"
             print(f"PR #{number} merged: {oid[:10]}")
             return 0
-        if feedback(pr) > seen:  # an armed auto-merge would not wait (#2947)
-            refuse(number, pr, f"new feedback on PR #{number}; read pr-state")
-            return 1
         checks = map(check_outcome, pr.get("statusCheckRollup") or [])
         failing = [name for name, outcome in checks if outcome == "failing"]
         if pr.get("state") == "CLOSED" or failing:
             print(f"PR #{number} {pr.get('state')}; failing: {failing}; read pr-state")
+            return 1
+        # An armed auto-merge would not wait for either (#2947); arming needed no thread.
+        if feedback(pr) > seen or thread_open(number):
+            refuse(number, pr, f"new feedback on PR #{number}; read pr-state")
             return 1
         if poll < polls - 1:
             time.sleep(60 / POLLS_PER_MINUTE)
