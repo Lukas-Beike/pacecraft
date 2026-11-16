@@ -1356,8 +1356,18 @@ def _wind_check(facts: _Facts) -> dict[str, Any]:
 
 
 def _wind_halves(facts: _Facts, wind: Mapping[str, Any]) -> list[dict[str, Any]]:
-    """The second half, when the halves check finds it slower and wind explains it."""
-    if _halves_change(facts, "main_fade", "", FADE_PCT)["verdict"] != "notable":
+    """The second half, when the report's halves check finds it slower and wind explains it.
+
+    Only where the report judges halves, with that check's own key and rule: the
+    split of a race (2 %), the main-part fade of a continuous tempo effort (3 %).
+    """
+    if facts.kind == "race":
+        key, threshold = "race_split", RACE_SPLIT_PCT
+    elif facts.kind == "continuous" and facts.focus in INTERVAL_FOCUS:
+        key, threshold = "main_fade", FADE_PCT
+    else:
+        return []
+    if _halves_change(facts, key, "", threshold)["verdict"] != "notable":
         return []
     halves = _mapping(facts.execution.get("halves"))
     start, length = _number(halves.get("start_s")), _number(halves.get("main_part_s"))
@@ -1368,7 +1378,7 @@ def _wind_halves(facts: _Facts, wind: Mapping[str, Any]) -> list[dict[str, Any]]
     second = session_conditions.body_headwind(wind, (middle, start + length))
     if not _wind_explains(second, first):
         return []
-    return [{"check": "halves", "part_mps": second, "compared_mps": first}]
+    return [{"check": key, "part_mps": second, "compared_mps": first}]
 
 
 def _wind_reps(facts: _Facts, wind: Mapping[str, Any]) -> list[dict[str, Any]]:

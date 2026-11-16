@@ -215,18 +215,28 @@ class ConditionChecksInTheReportTests(unittest.TestCase):
         self.assertIsNotNone(check["value"])
 
 
-def _windy(first_mps: float, second_mps: float, coverage: float = 90.0) -> dict:
+def _windy(
+    first_mps: float,
+    second_mps: float,
+    coverage: float = 90.0,
+    focus: str | None = "tempo",
+) -> dict:
     """A 50 min run whose main part (600 s to 3000 s) slows by 5 % in the second half.
+
+    ``focus`` is the matched session focus: a tempo effort's halves are judged.
 
     The stored 10 m component is ``first_mps`` up to 1800 s, then ``second_mps``.
     """
     result = _run(seconds=3000)
+    result["analysis"]["execution"]["structure"] = "continuous"
     result["analysis"]["execution"]["halves"] = {
         "status": "ok",
         "start_s": 600,
         "main_part_s": 2400,
         "change_pct": -5.0,
     }
+    if focus is not None:
+        result["focus"] = {"status": "matched", "session_focus": focus}
     result[INPUTS] = {
         "headwind": {
             "mean_mps": (first_mps + second_mps) / 2,
@@ -261,11 +271,21 @@ class WindTests(unittest.TestCase):
         assert wind is not None
         self.assertEqual(("ok", 0), (wind["verdict"], wind["severity"]))
         self.assertEqual(
-            [{"check": "halves", "part_mps": 5.78, "compared_mps": 1.45}],
+            [{"check": "main_fade", "part_mps": 5.78, "compared_mps": 1.45}],
             wind["value"]["explains"],
         )
         self.assertNotIn("wind", report["notable"])
         self.assertNotIn("wind", report["lead"])
+
+    def test_only_halves_the_report_judges_are_explained(self) -> None:
+        # An easy run's halves are no check of the report: wind names nothing.
+        easy = _check(session_report(_windy(2.0, 8.0, focus="easy")), "wind")
+        assert easy is not None
+        self.assertEqual([], easy["value"]["explains"])
+        # A race judges its split with its own key and rule.
+        race = _check(session_report(_windy(2.0, 8.0, focus="race")), "wind")
+        assert race is not None
+        self.assertEqual("race_split", race["value"]["explains"][0]["check"])
 
     def test_too_little_extra_headwind_explains_nothing(self) -> None:
         # Second half 4.5 m/s (body 3.25) is 3 m/s or more, but only 1.8 m/s more.
