@@ -45,13 +45,12 @@ def install_quality_tools(root: Path) -> int:
     """Ruff and mypy go into this worktree's own `.quality-tools`, which the quality
     ratchet runs: worktrees on different pins no longer reset one shared version
     (#3217). tzdata stays with the interpreter, which runs the tests."""
-    target = root / QUALITY_TOOLS_DIR
-    shutil.rmtree(target, ignore_errors=True)
+    target = ["--target", str(root / QUALITY_TOOLS_DIR), "--upgrade"]
     lock_text = (root / "requirements-dev.txt").read_text(encoding="utf-8")
     code = 0
     with tempfile.TemporaryDirectory(prefix="quality-tools-") as directory:
         for tools, place in (
-            (("ruff", "mypy"), ["--target", str(target)]),
+            (("ruff", "mypy"), target),
             (("tzdata",), []),
         ):
             lock = Path(directory) / "requirements.txt"

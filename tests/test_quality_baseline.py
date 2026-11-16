@@ -259,6 +259,24 @@ class QualityBaselineTests(unittest.TestCase):
         self.assertTrue(
             any(command[: len(ruff) + 1] == [*ruff, "check"] for command in commands)
         )
+        # #3217: a prepared worktree runs its own tools, else this interpreter's.
+        with tempfile.TemporaryDirectory() as directory:
+            tools = Path(directory)
+            (tools / "ruff").mkdir()
+            (tools / "mypy").mkdir()
+            with patch.object(quality_baseline, "TOOLS_DIR", tools):
+                own_ruff = quality_baseline.tool_command("ruff")
+                own_mypy = quality_baseline.tool_command("mypy")
+            with patch.object(quality_baseline, "TOOLS_DIR", tools / "absent"):
+                self.assertEqual(
+                    quality_baseline.tool_command("ruff"),
+                    [sys.executable, "-m", "ruff"],
+                )
+        self.assertEqual(Path(own_ruff[0]).parent, tools / "bin")
+        self.assertEqual(quality_baseline.tool_name(own_ruff), "ruff")
+        self.assertEqual(own_mypy[:2], [sys.executable, "-c"])
+        self.assertIn(repr(str(tools)), own_mypy[2])
+        self.assertEqual(quality_baseline.tool_name(own_mypy), "mypy")
         self.assertTrue(any(command[: len(mypy)] == mypy for command in commands))
         # #3061: the format check reports only; the gate never rewrites a file.
         formats = [command for command in commands if "format" in command]

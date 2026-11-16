@@ -484,10 +484,10 @@ class WorktreePreparationTests(unittest.TestCase):
 
     def test_all_steps_and_failure_propagation(self):
         for results, image in (
-            ([0, 0, 0, 0, 0], 0),
-            ([1, 0, 0, 0, 0], 0),
-            ([0, 1, 2, 3, 4], 0),
-            ([0, 0, 0, 0, 0], 5),
+            ([0, 0, 0, 0, 0, 0], 0),
+            ([1, 0, 0, 0, 0, 0], 0),
+            ([0, 1, 2, 3, 4, 5], 0),
+            ([0, 0, 0, 0, 0, 0], 5),
         ):
             with (
                 self.subTest(results=results, image=image),
@@ -518,8 +518,11 @@ class WorktreePreparationTests(unittest.TestCase):
                     [command[2:] for command in calls[2:4]],
                     [["setup"], ["update", "--preparation"]],
                 )
-                self.assertEqual(calls[4][1:3], ["-m", "pip"])
-                self.assertIn("--require-hashes", calls[4])
+                # #3217: Ruff and mypy into the worktree, then tzdata.
+                for pip in calls[4:6]:
+                    self.assertEqual(pip[1:3], ["-m", "pip"])
+                    self.assertIn("--require-hashes", pip)
+                self.assertIn("--target", calls[4])
                 self.assertTrue(
                     all(
                         call.kwargs["cwd"]
@@ -539,6 +542,27 @@ class WorktreePreparationTests(unittest.TestCase):
         self.assertTrue(all("--hash=sha256:" in block for block in blocks))
         with self.assertRaises(OSError):
             prepare.quality_requirements("requests==2.0.0\n")
+        # #3217: Ruff and mypy go into the worktree's own directory, tzdata to the
+        # interpreter that runs the tests; neither set holds the other's tools.
+        tools = prepare.quality_requirements(lock, ("ruff", "mypy"))
+        self.assertNotIn("tzdata==", tools)
+        self.assertNotIn("ruff==", prepare.quality_requirements(lock, ("tzdata",)))
+        with (
+            tempfile.TemporaryDirectory() as directory,
+            patch.object(prepare.subprocess, "run") as run,
+        ):
+            run.return_value.returncode = 0
+            work = Path(directory)
+            (work / "requirements-dev.txt").write_text(lock, encoding="utf-8")
+            self.assertEqual(prepare.install_quality_tools(work), 0)
+        first, second = (call.args[0] for call in run.call_args_list)
+        self.assertEqual(
+            first[first.index("--target") + 1 :][:2],
+            [str(work / ".quality-tools"), "--upgrade"],
+        )
+        self.assertNotIn("--target", second)
+        for command in (first, second):
+            self.assertIn("--require-hashes", command)
 
     def test_missing_npm_and_launch_errors_still_attempt_remaining_steps(self):
         with (
@@ -552,11 +576,12 @@ class WorktreePreparationTests(unittest.TestCase):
                     OSError("synthetic launch failure"),
                     subprocess.CompletedProcess([], 0),
                     subprocess.CompletedProcess([], 0),
+                    subprocess.CompletedProcess([], 0),
                 ],
             ) as run,
         ):
             self.assertEqual(prepare.main(), 1)
-            self.assertEqual(run.call_count, 3)
+            self.assertEqual(run.call_count, 4)
 
     def test_app_image_is_built_with_the_checkout_tag_or_skipped_without_docker(
         self,
@@ -682,7 +707,7 @@ class WorktreePreparationTests(unittest.TestCase):
                 prepare.subprocess,
                 "run",
                 side_effect=[
-                    subprocess.CompletedProcess([], code) for code in (1, 0, 0, 0, 0)
+                    subprocess.CompletedProcess([], code) for code in (1, 0, 0, 0, 0, 0)
                 ],
             ),
         ):
