@@ -55,19 +55,27 @@ def next_count(threads):
 
 def run(
     case, *args, auto_error="", views=None, behind=0, moved=(), threads=0, more=False,
-    pushed=("", set()),
+    pushed=("", set()), freeze=None,
 ):  # fmt: skip
     """Run main against a stub that answers `pr view` from `views` in order; this
     checkout's origin/<branch> is `pushed`: its head and the heads it held before."""
     calls, views = [], list(views or [view()])
+    # Fixed answers: the repository, and `gh variable get MERGE_FREEZE` unset, set or failing.
+    variable = {
+        None: (1, "", "variable MERGE_FREEZE was not found"),
+        "ERROR": (1, "ERROR\n", ""),
+    }
+    fixed = {
+        ("repo", "view"): (0, json.dumps({"owner": {"login": "o"}, "name": "r"}), ""),
+        ("variable", "get"): variable.get(freeze, (0, f"{freeze}\n", "")),
+    }
 
     def fake(argv, **_kwargs):
         calls.append(argv[1:])
         if argv[1:3] == ["pr", "view"]:
             return subprocess.CompletedProcess(argv, 0, json.dumps(views.pop(0)), "")
-        if argv[1:3] == ["repo", "view"]:
-            repo = {"owner": {"login": "o"}, "name": "r"}
-            return subprocess.CompletedProcess(argv, 0, json.dumps(repo), "")
+        if tuple(argv[1:3]) in fixed:
+            return subprocess.CompletedProcess(argv, *fixed[tuple(argv[1:3])])
         if argv[1:3] == ["api", "graphql"]:
             page = json.dumps(thread_page(next_count(threads), more))
             return subprocess.CompletedProcess(argv, 0, page, "")
@@ -96,6 +104,23 @@ def run(
 
 
 class PrMergeTests(unittest.TestCase):
+    def test_a_merge_freeze_refuses_and_disarms_unless_it_names_the_pr(self):
+        # #3203: the orchestrator's MERGE_FREEZE variable, not a chat message, stops arming.
+        code, out, writes, _ = run(self, 7, freeze="v31 ships alone")
+        self.assertEqual((code, writes), (1, []))
+        self.assertIn("merge freeze (untrusted text): v31 ships alone", out)
+        armed = view(autoMergeRequest={"mergeMethod": "SQUASH"})
+        code, _, writes, _ = run(self, 7, views=[armed], freeze="v31")
+        self.assertEqual((code, writes), (1, [["pr", "merge", "7", "--disable-auto"]]))
+        # The release PR the freeze names is armed; #70 does not count as #7.
+        code, _, writes, _ = run(self, 7, freeze="v31 ships alone, only #7")
+        self.assertEqual((code, writes), (0, [["pr", "merge", "7", "--auto", *PIN]]))
+        code, _, writes, _ = run(self, 7, freeze="only #70")
+        self.assertEqual((code, writes), (1, []))
+        # A freeze that cannot be read stops arming too.
+        code, out, writes, _ = run(self, 7, freeze="ERROR")
+        self.assertEqual((code, writes), (2, []))
+
     def test_arms_squash_auto_merge_on_the_read_head(self):
         code, out, writes, _ = run(self, 7)
         self.assertEqual((code, writes), (0, [["pr", "merge", "7", "--auto", *PIN]]))
