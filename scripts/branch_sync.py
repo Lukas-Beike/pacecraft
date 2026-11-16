@@ -20,9 +20,11 @@ was built on is squash-merged (#3243). After the fetch it refuses unless that
 pull request is merged, the target holds its merge commit (a stale or failed
 fetch does not) and this branch is built on its last head; it then rebases only
 the commits after that head onto the target. Only with --push and once the
-rebase and every check above passed, it retargets this branch's pull request to
-the merged one's base, prints its base and head, waits for the retarget to
-settle (#2934) and pushes. Every refusal comes before the rebase, the retarget
+rebase, every check above and a dry-run push through the same hooks and lease
+passed, it retargets this branch's pull request to the merged one's base,
+prints its base and head, waits for the retarget to settle (#2934) and pushes.
+A rerun accepts a layer that already holds the merge, so a push the hooks
+refused can be finished after the fix. Every refusal comes before the rebase, the retarget
 and the push, so a layer is never retargeted or armed on a stale head.
 
 Exit 0: in sync (and pushed); 1: refused, rebase conflict (left in progress:
@@ -40,7 +42,7 @@ import shutil
 import subprocess
 import sys
 import time
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from pathlib import Path
 
 import regenerate_docs
@@ -189,6 +191,9 @@ def merged_parent(number: int, onto: str, branch: str) -> tuple[str, str] | None
             f"refused: {onto} does not contain the merge of #{number}; "
             "the fetch is stale or failed, fetch again"
         )
+    elif contains(merge, "HEAD"):
+        # Restacked already (a rerun after a failed push): nothing to drop.
+        return "", str(pr.get("baseRefName") or "develop")
     elif not head or not contains(head, "HEAD"):
         print(f"refused: {branch} is not built on #{number}'s last head")
     else:
@@ -196,16 +201,25 @@ def merged_parent(number: int, onto: str, branch: str) -> tuple[str, str] | None
     return None
 
 
-def retarget(branch: str, parent: tuple[str, str] | None, *, push: bool) -> None:
+def retarget(
+    branch: str,
+    parent: tuple[str, str] | None,
+    *,
+    push: bool,
+    rehearse: Callable[[], object],
+) -> None:
     """After a verified restack, point this branch's pull request at the merged
     parent's base and print its base and the head to be pushed; then wait for
     the retarget to settle, because a push right after it can leave the required
-    SonarCloud check cancelled (#2934). Only a layer that is pushed is retargeted."""
+    SonarCloud check cancelled (#2934). Only a layer that is pushed is retargeted,
+    and only after ``rehearse`` (a dry-run push through the same hooks and lease)
+    passed, so a push that would fail leaves the pull request as it was."""
     if parent is None:
         return
     if not push:
         print("not retargeted: push the restacked layer with --push")
         return
+    rehearse()
     base = parent[1]
     pr = gh_json("pr", "view", branch, "--json", "number,baseRefName") or {}
     number = pr["number"]
@@ -363,12 +377,18 @@ def sync(
         return 1
     if outgoing_problems(onto, push, allowed):
         return 1
-    retarget(branch, parent, push=push)
+    hooks, lease = ("-c", "core.hooksPath=.githooks", "push"), (
+        f"--force-with-lease={branch}:{leased}", "-u", "origin", branch
+    )  # fmt: skip
+    # A push its hooks or lease would refuse fails before the retarget (#3243 review).
+    retarget(
+        branch,
+        parent,
+        push=push,
+        rehearse=lambda: git(*hooks, "--dry-run", *lease, env=env),
+    )
     if push:
-        git(
-            "-c", "core.hooksPath=.githooks", "push",
-            f"--force-with-lease={branch}:{leased}", "-u", "origin", branch, env=env,
-        )  # fmt: skip
+        git(*hooks, *lease, env=env)
         print(f"pushed: {branch}")
     behind, ahead = git("rev-list", "--left-right", "--count", f"{onto}...HEAD").split()
     print(

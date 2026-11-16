@@ -456,6 +456,42 @@ class BranchSyncTests(unittest.TestCase):
         self.assertEqual(git(self.origin, "rev-parse", "feat/x"), head)
         self.assertIn(f"PR #42: base develop, head {head[:10]}", out)
 
+    def test_a_push_its_hook_refuses_fails_before_the_retarget_and_can_rerun(self):
+        # #3247 review: a refused push must not leave the PR retargeted on the
+        # old head, and a second run must finish the already restacked layer.
+        parent = self.stack()
+        hooks = self.work / ".githooks"
+        hooks.mkdir()
+        (hooks / "pre-push").write_text(
+            "#!/bin/sh\n[ -f block ] && exit 1\nexit 0\n",
+            encoding="utf-8",
+            newline="\n",
+        )
+        (hooks / "pre-push").chmod(0o755)
+        (self.work / "block").write_text("", encoding="utf-8")
+
+        code, _out, _err, calls = self.stacked_sync(
+            parent, "--push", "--allow-root", "c.txt"
+        )
+        self.assertEqual((code, calls), (2, []))
+        self.assertEqual(git(self.origin, "branch", "--list", "feat/x"), "")
+
+        (self.work / "block").unlink()
+        code, _out, err, calls = self.stacked_sync(
+            parent, "--push", "--allow-root", "c.txt"
+        )
+        self.assertEqual((code, err), (0, ""))
+        self.assertEqual(
+            calls, [("pr", "edit", "42", "--base", "develop", "not pushed")]
+        )
+        self.assertEqual(
+            git(self.origin, "rev-parse", "feat/x"), git(self.work, "rev-parse", "HEAD")
+        )
+        self.assertEqual(
+            git(self.work, "log", "--format=%s", "origin/develop..HEAD"),
+            "feat(ui): child layer",
+        )
+
     def test_a_base_without_the_parents_merge_is_refused_before_anything(self):
         # A failed or stale fetch: origin/develop does not hold #41's merge yet.
         parent = self.stack(merged=False)
