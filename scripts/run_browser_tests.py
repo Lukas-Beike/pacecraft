@@ -790,10 +790,15 @@ def image_matches_source(processes, containers, image_id, root):
                 script,
             ],
         )
-        code, output = processes.run(["docker", "start", "--attach", cid])
-        containers.remove(cid)
     except RunnerError:
         return None
+    try:
+        code, output = processes.run(["docker", "start", "--attach", cid])
+    except RunnerError:
+        return None
+    finally:
+        # Removed also after a timeout, so a second compare (--build) can use the name (#3243).
+        containers.remove(cid)
     if code or not re.fullmatch(r"[a-f0-9]{64}", output.strip()):
         return None
     return output.strip() == source_digest(root, APPLICATION_SOURCES)

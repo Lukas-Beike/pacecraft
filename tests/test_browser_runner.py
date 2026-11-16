@@ -693,6 +693,14 @@ class BrowserRunnerTests(unittest.TestCase):
             self.assertIsNone(
                 runner.image_matches_source(processes, containers, "image", root)
             )
+            # A compare that times out still removes its container, so a second
+            # compare after --build can create one with the same name (#3243).
+            containers.remove.reset_mock()
+            processes.run.side_effect = runner.RunnerError("timed out")
+            self.assertIsNone(
+                runner.image_matches_source(processes, containers, "image", root)
+            )
+            containers.remove.assert_called_once_with(containers.create.return_value)
             containers.create.side_effect = runner.RunnerError("unavailable")
             self.assertIsNone(
                 runner.image_matches_source(processes, containers, "image", root)
