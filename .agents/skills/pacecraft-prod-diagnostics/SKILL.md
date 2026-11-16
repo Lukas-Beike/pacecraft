@@ -47,6 +47,9 @@ field not on the allow-list are never printed. Sections with an allow-list:
 `garmin_past_workout_removal`, `garmin_strength_push`, `stream_backfill` and
 `fit_inventory`. A section without an allow-list entry is refused; add the
 entry and its test in `tests/test_prod_checks.py` together with the section.
+`DERIVED_SECTIONS` prints sums instead of leaves: `coach_local_first` counts
+the #3080 local-first outcomes over the Coach history (`coach_commands`);
+the session resolutions are in `--section runtime`.
 
 ## Temporary production probe
 

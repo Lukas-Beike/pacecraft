@@ -74,6 +74,52 @@ def report(messages=40):
             },
         },
         "runtime": {"process_memory": {"rss_bytes": 1000}},
+        # The Coach history as the diagnostics project it, with planted text.
+        "coach_commands": [
+            {
+                "id": "act_secret",
+                "created_at": RECENT,
+                "steps": [
+                    {
+                        "tool": "lookup_food",
+                        "ok": True,
+                        "error": None,
+                        "lookup_outcomes": {"local_hit": 2, "external_requested": 1},
+                    },
+                    {
+                        "tool": "manage_training_templates",
+                        "ok": False,
+                        "error": {"reason": "template_exists_in_call"},
+                    },
+                ],
+            },
+            {
+                "id": "turn-2",
+                "steps": [
+                    {
+                        "tool": "lookup_food",
+                        "ok": True,
+                        "error": None,
+                        "lookup_outcomes": {
+                            "external_after_miss": 1,
+                            "text never printed": 7,
+                        },
+                    },
+                    {
+                        "tool": "save_competition",
+                        "ok": True,
+                        "error": None,
+                        "created_despite_candidate": 1,
+                    },
+                    {
+                        "tool": "save_competition",
+                        "ok": False,
+                        "error": {"reason": "competition_exists"},
+                    },
+                    "text never printed",
+                ],
+            },
+        ],
         "fit_inventory": {
             "status": "ready",
             "note": "text never printed",
@@ -329,6 +375,39 @@ class ProdChecksTests(unittest.TestCase):
                 ["--url", self.url, "--password-file", str(self.secret),
                  "--section", "fit_inventory", "--expect-version", "2.1.2"]
             )  # fmt: skip
+
+    def test_coach_local_first_prints_the_3080_sums_only(self):
+        code, text = self.run_main(
+            prod_diagnostics, "--url", self.url, "--password-file", str(self.secret),
+            "--section", "coach_local_first",
+        )  # fmt: skip
+        self.assertEqual(code, 0)
+        prefix = "info coach_local_first."
+        self.assertEqual(
+            text.splitlines(),
+            [
+                "ok health",
+                "ok logout 200",
+                f"{prefix}commands 2",
+                f"{prefix}created_despite_candidate.manage_training_templates 0",
+                f"{prefix}created_despite_candidate.save_competition 1",
+                f"{prefix}lookup_outcomes.external_after_miss 1",
+                f"{prefix}lookup_outcomes.external_requested 1",
+                f"{prefix}lookup_outcomes.local_hit 2",
+                f"{prefix}refusals.competition_exists 1",
+                f"{prefix}refusals.template_exists 0",
+                f"{prefix}refusals.template_exists_in_call 1",
+            ],
+        )
+        self.assertNotIn("secret", text)
+        self.assertNotIn("never printed", text)
+        # A history the report could not build fails, as a missing section does.
+        for broken in ({}, {"coach_commands": {"status": "unavailable"}}):
+            with self.subTest(report=broken):
+                self.assertEqual(
+                    prod_diagnostics.named_section_lines(broken, "coach_local_first"),
+                    [("FAIL", "section coach_commands missing")],
+                )
 
     def test_post_release_sections_print_counts_and_state_words_only(self):
         # Shapes as the report builds them, with planted text, ids and times.
