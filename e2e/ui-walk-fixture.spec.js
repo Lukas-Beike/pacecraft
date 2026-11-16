@@ -4,8 +4,9 @@ const { pathToFileURL } = require("node:url");
 
 // #3067: every step of the post-release walk runs against the fixture app, so a step whose selector
 // or kind does not match the app's markup fails here and not first in production (#3065).
-// A step the fixture cannot satisfy is named with its reason; it must keep skipping.
-const FIXTURE_SKIPS = { "Kalender: Laufdynamik": "none of 5 has it" };
+// A step the fixture cannot satisfy is named with its reason; it must keep skipping. The reason
+// depends on the weekday: on a Monday the opened week holds no completed run yet (#3194).
+const FIXTURE_SKIPS = { "Kalender: Laufdynamik": /^skip \((none of \d+ has it|no such session)\)$/ };
 
 test("@responsive every UI walk step passes on the fixture app", async ({ page, request }) => {
   const { VIEWS, STEPS, runStep } = await import(pathToFileURL(path.join(__dirname, "..", "scripts", "ui_walk.mjs")).href);
@@ -38,10 +39,11 @@ test("@responsive every UI walk step passes on the fixture app", async ({ page, 
     }), route);
     for (const step of STEPS.filter((item) => item.view === route)) {
       const outcome = await runStep(page, step);
-      outcomes.push(`${step.name}: ${outcome.status}${outcome.why ? ` (${outcome.why})` : ""}`);
+      const line = `${outcome.status}${outcome.why ? ` (${outcome.why})` : ""}`;
+      outcomes.push(`${step.name}: ${FIXTURE_SKIPS[step.name]?.test(line) ? "skip" : line}`);
     }
   }
-  const expected = STEPS.map((step) => `${step.name}: ${step.name in FIXTURE_SKIPS ? `skip (${FIXTURE_SKIPS[step.name]})` : "ok"}`);
+  const expected = STEPS.map((step) => `${step.name}: ${step.name in FIXTURE_SKIPS ? "skip" : "ok"}`);
   // One line, so a CI summary that keeps only the first line still names the steps.
   expect(outcomes, `differing steps: ${outcomes.filter((line) => !expected.includes(line)).join(" | ")}`).toEqual(expected);
 });
