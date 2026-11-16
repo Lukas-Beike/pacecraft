@@ -388,6 +388,17 @@ class WorkflowSourceTests(unittest.TestCase):
             "browser-test-artifacts-${{ matrix.project }}-${{ matrix.shard }}", e2e
         )
         self.assertIn("format(' {0}/{1}', matrix.shard, matrix.shards)", e2e)
+        # #3200: one desktop shard reruns the week-reading specs on a pinned Monday and
+        # Sunday, outside the aggregated evidence, without an extra job.
+        pinned = e2e.split(
+            "Run the week-reading specs on a pinned Monday and Sunday", 1
+        )[1]
+        pinned = pinned.split("      - name: ", 1)[0]
+        self.assertIn("matrix.project == 'desktop' && matrix.shard == 1", pinned)
+        self.assertIn('--today "$day"', pinned)
+        self.assertIn("--results-dir test-results/pinned-day-runs", pinned)
+        self.assertIn("e2e/calendar-week-compact.spec.js", pinned)
+        self.assertIn("e2e/ui-walk-fixture.spec.js", pinned)
 
     def test_e2e_fixtures_reuse_slot_networks_created_before_the_browser(self):
         root = Path(__file__).resolve().parents[1]

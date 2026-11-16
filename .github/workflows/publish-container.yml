@@ -437,6 +437,23 @@ jobs:
             --shard "$SPEC_SHARD" --total "$SPEC_SHARDS" --jobs 1 --keep-going \
             --image pacecraft:ci --browser-image "$browser_image" \
             --results-dir test-results/browser-runs --cache-state unknown
+      # #3200: the specs whose expectations read the week also run on its edges, so a
+      # weekday-dependent expectation fails in its own PR, not on every PR from Monday on.
+      # One desktop shard, after its own run: no extra job or container slot. Its
+      # manifests stay out of the aggregated browser evidence.
+      - name: Run the week-reading specs on a pinned Monday and Sunday
+        if: matrix.project == 'desktop' && matrix.shard == 1 && needs.source.outputs.ui != 'false'
+        shell: bash
+        run: |
+          set -euo pipefail
+          browser_image="$(python -c "import json; print(json.load(open('scripts/browser_environment.json'))['image'])")"
+          monday="$(date -u -d 'last monday' +%F)"
+          for day in "$monday" "$(date -u -d "$monday + 6 days" +%F)"; do
+            python scripts/run_browser_tests.py --project desktop --today "$day" \
+              --spec e2e/calendar-week-compact.spec.js --spec e2e/ui-walk-fixture.spec.js \
+              --jobs 1 --keep-going --image pacecraft:ci --browser-image "$browser_image" \
+              --results-dir test-results/pinned-day-runs --cache-state unknown
+          done
       - name: Upload browser run summaries
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
