@@ -131,7 +131,6 @@ class _BatchOutcome:
     empty: dict[str, str]
     retry: dict[str, tuple[str, int]]
     replay: _ReplayBudget
-    has_replay: bool = False
     status: str = "completed"
     fetched: int = 0
     marked: int = 0
@@ -280,12 +279,7 @@ class GarminActivityDetailService:
             )
             return _backfill_result("completed", replay_remaining=len(replays))
 
-        outcome = _BatchOutcome(
-            empty=empty,
-            retry=retry,
-            replay=replay,
-            has_replay=any(item["replay"] for item in batch),
-        )
+        outcome = _BatchOutcome(empty=empty, retry=retry, replay=replay)
         self._fetch_batch(batch, outcome, cancel_event)
         if outcome.status == "completed" and _is_set(cancel_event):
             outcome.status = "cancelled"
@@ -961,14 +955,12 @@ def _note_replay(
         outcome.replay = replace(outcome.replay, count=outcome.replay.count + 1)
     if collected.get("rate_limited"):
         _note_replay_error(outcome, rate_limited=True)
-    elif candidate["replay"] and collected.get("errors"):
+    elif collected.get("errors"):
         _note_replay_error(outcome, rate_limited=False)
 
 
 def _note_replay_error(outcome: _BatchOutcome, *, rate_limited: bool) -> None:
-    """A 429 in a batch with replays resets the budget; another error ends the clean day."""
-    if not outcome.has_replay:
-        return
+    """Any 429 resets the budget; any other Garmin error ends the clean day."""
     budget = REPLAY_START_DAILY if rate_limited else outcome.replay.budget
     outcome.replay = replace(outcome.replay, budget=budget, clean=False)
 

@@ -1123,14 +1123,27 @@ class BackfillReplayTests(_Base):
         replay = _stored_state(self.key_values)["replay"]
         self.assertEqual((replay["budget"], replay["clean"]), (20, False))
 
-    def test_a_429_without_replays_in_the_batch_leaves_the_budget(self) -> None:
+    def test_any_429_resets_the_budget_even_without_replays_in_the_batch(self) -> None:
+        # Any 429 drops the budget back to the start (orchestrator, 2026-11-16).
         _seed(self.manager, [("3001", "2026-10-10 07:00:00")])
         self._budget_state(day=NOW[:10], count=0, budget=40)
 
         self.service(_Details({"3001": _payload("3001", rate_limited=True)})).backfill()
 
         replay = _stored_state(self.key_values)["replay"]
-        self.assertEqual((replay["budget"], replay["clean"]), (40, True))
+        self.assertEqual((replay["budget"], replay["clean"]), (20, False))
+
+    def test_a_garmin_error_on_a_new_activity_also_ends_the_clean_day(self) -> None:
+        _seed(self.manager, [("3001", "2026-10-10 07:00:00")])
+        self._budget_state(day=NOW[:10], count=3, budget=40)
+        failed = _payload(
+            "3001", errors=[{"source": "activity_splits", "message": "synthetic"}]
+        )
+
+        self.service(_Details({"3001": failed})).backfill()
+
+        replay = _stored_state(self.key_values)["replay"]
+        self.assertEqual((replay["budget"], replay["clean"]), (40, False))
 
     def test_new_activities_come_first_and_replays_fill_the_rest(self) -> None:
         rows = _days(12)
