@@ -1137,6 +1137,10 @@ def build_structured_tool_schemas(
                             "type": "boolean",
                             "description": "False only when the athlete did not say when they ate; then omit the time and set meal_type. Defaults to true.",
                         },
+                        "estimate_uncertain": {
+                            "type": "boolean",
+                            "description": "True when the athlete says the amounts are only estimated, e.g. eaten at a restaurant or with friends; the adaptive expenditure then also shows the result without such days. Defaults to false; never set it on your own guess.",
+                        },
                         "meal_type": {
                             "type": "string",
                             "enum": ["breakfast", "lunch", "dinner", "snack"],
@@ -1218,6 +1222,10 @@ def build_structured_tool_schemas(
                         "logged_time_known": {
                             "type": "boolean",
                             "description": "False only when the athlete did not say when they ate; then omit the time and set meal_type. Defaults to true.",
+                        },
+                        "estimate_uncertain": {
+                            "type": "boolean",
+                            "description": "True when the athlete says the amounts are only estimated, e.g. eaten at a restaurant or with friends; the adaptive expenditure then also shows the result without such days. Defaults to false; never set it on your own guess.",
                         },
                         "meal_type": {
                             "type": "string",

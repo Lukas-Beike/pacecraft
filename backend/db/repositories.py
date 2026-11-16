@@ -1601,9 +1601,23 @@ class NutritionRepository:
     @staticmethod
     def _entry(row: Any) -> dict[str, Any]:
         entry = dict(row)
-        entry["nutrition_basis"] = json.loads(entry["nutrition_basis"])
+        basis = json.loads(entry["nutrition_basis"])
+        # The uncertain-meal flag rides in the basis JSON, no schema change (#3100).
+        entry["estimate_uncertain"] = basis.pop("uncertain", False) is True
+        entry["nutrition_basis"] = basis
         entry["logged_time_known"] = bool(entry["logged_time_known"])
         return entry
+
+    @staticmethod
+    def _basis_json(entry: dict[str, Any]) -> str:
+        basis = {
+            key: value
+            for key, value in (entry.get("nutrition_basis") or {}).items()
+            if key != "uncertain"
+        }
+        if entry.get("estimate_uncertain") is True:
+            basis["uncertain"] = True
+        return json.dumps(basis, ensure_ascii=False)
 
     def create(self, db: Any, entry: dict[str, Any]) -> dict[str, Any]:
         now = self._now()
@@ -1622,7 +1636,7 @@ class NutritionRepository:
                 entry.get("protein_g"),
                 entry.get("fat_g"),
                 entry.get("source", "manual"),
-                json.dumps(entry.get("nutrition_basis") or {}, ensure_ascii=False),
+                self._basis_json(entry),
                 entry.get("sync_state", "local"),
                 now,
                 now,
@@ -1659,7 +1673,7 @@ class NutritionRepository:
                 entry.get("protein_g"),
                 entry.get("fat_g"),
                 entry.get("source", "manual"),
-                json.dumps(entry.get("nutrition_basis") or {}, ensure_ascii=False),
+                self._basis_json(entry),
                 entry.get("sync_state", "local"),
                 1 if entry.get("logged_time_known", True) else 0,
                 now,

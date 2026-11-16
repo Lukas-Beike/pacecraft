@@ -1028,6 +1028,7 @@ Request: JSON body, either `components` alone or one meal. Meal fields:
 `fat_g` (0 to 1000, or `carbs`, `carbohydrates`, `protein`, `fat`), `meal_date`
 (or `date`, default today), `meal_time` (or `logged_at`; a time or an ISO
 timestamp), `logged_time_known` (boolean; `false` needs `meal_type`),
+`estimate_uncertain` (boolean, default false: the amounts were estimated),
 `meal_type` (`breakfast`, `lunch`, `dinner`, `snack`; default derived from the
 time), `source` (`manual`, `voice`, `photo`, `coach`; anything else is
 `manual`), `packaging_label` (`true` marks label values), `food_ingredients`
@@ -1040,7 +1041,8 @@ items `{kind, amount, unit}` plus `product_id` (`local_product`), `food_id`
 
 Response: 200 `{"ok": true, "entry", "change"}`; `entry` is the stored entry
 (`id`, `meal_date`, `logged_at`, `meal_type`, `description`, `kcal`, the macros,
-`source`, `nutrition_basis`, `sync_state`, `logged_time_known`), `change` the
+`source`, `nutrition_basis`, `sync_state`, `logged_time_known`,
+`estimate_uncertain`), `change` the
 undo reference.
 
 Errors: 400 "Beschreibung der Mahlzeit ist erforderlich."; 400 "Kalorienangabe

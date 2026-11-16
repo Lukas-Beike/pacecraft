@@ -46,9 +46,11 @@ estimate. It never rewrites logged values and never falls back to a formula.
    fewer than 4 windows or no spread in activity.
 7. **Derived resting rate:** `TDEE − k × activity − TEF`. Its band adds 10 % of
    the activity term.
-8. **Flagged-meal bias `b`:** across the windows, `TDEE = T − b × x` by least
-   squares, with `x` the flagged days' logged kcal per day. `b` is reported in %
-   with its band: positive means flagged meals were larger than logged.
+8. **Bias of days with flagged meals `b`:** across the windows, `TDEE = T − b × x`
+   by least squares, with `x` the logged kcal of flagged days (the whole day,
+   not only its flagged meals) per complete day. `b` is reported in % with its
+   band: positive means those days were larger than logged. It is a per-day
+   figure, not a per-meal one (#3187 item 13).
 
 ## Sources
 
@@ -121,7 +123,7 @@ bias that is the same on every day is not visible in the band.
 
 - "Verbrauch aus deinen Daten: X ± Y kcal/Tag (Z vollständige Tage)".
 - "Ohne geschätzte Mahlzeiten: X ± Y".
-- "Geschätzte Mahlzeiten wirken im Mittel X % niedriger/höher als erfasst (± Y)".
+- "Tage mit geschätzten Mahlzeiten im Mittel X % zu niedrig/zu hoch erfasst (± Y)".
 - "Datenbasis zu gering", with the reason.
 
 ## Forbidden statements
@@ -144,7 +146,9 @@ bias that is the same on every day is not visible in the band.
   skinfold body fat also sets the fat share of the energy density.
 - Sessions without power or a fitted HR line use Keytel, with the age from
   the profile's birth year and the profile's sex.
-- The meal flag column (#3100, schema go pending).
+- The meal flag is stored as `"uncertain": true` in the diary entry's existing
+  `nutrition_basis` JSON and read as `estimate_uncertain` (#3100, #3182); no
+  schema change.
 - Wishnofsky 1958 is not cited.
 
 <!-- BEGIN GENERATED CONSTANTS -->
