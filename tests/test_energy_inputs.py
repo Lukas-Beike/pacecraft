@@ -81,13 +81,13 @@ class EnergyInputsReaderTests(unittest.TestCase):
         self.assertEqual((first.weight_kg, second.weight_kg), (70.0, None))
         # Run: 70 kg x 10,000 m x 3.6 J/kg/m / 4,184 = 602.294 kcal. NEAT: step
         # 0.415 x 1.80 = 0.747 m; 10,000 - 2 x 85 x 50 = 1,500 steps; 70 x 1,500 x
-        # 0.747 x 2.5 = 196,087.5 J plus floors 82,404 J = 66.561 kcal.
+        # 0.747 x 2.01 = 157,654.35 J plus floors 82,404 J = 57.375 kcal.
         assert first.activity_kcal is not None
-        self.assertAlmostEqual(first.activity_kcal, 602.294 + 66.561, places=2)
-        # Ride: 790.421 kcal net (M11 example); NEAT 70 x 5,000 x 0.747 x 2.5 =
-        # 653,625 J = 156.220 kcal; the ride adds no steps.
+        self.assertAlmostEqual(first.activity_kcal, 602.294 + 57.375, places=2)
+        # Ride: 790.421 kcal net (M11 example); NEAT 70 x 5,000 x 0.747 x 2.01 =
+        # 525,514.5 J = 125.601 kcal; the ride adds no steps.
         assert second.activity_kcal is not None
-        self.assertAlmostEqual(second.activity_kcal, 790.421 + 156.220, places=2)
+        self.assertAlmostEqual(second.activity_kcal, 790.421 + 125.601, places=2)
         # Day 3 has no steps (NEAT unknown) and an unpriced swim (no HR fit from
         # one ride): its activity stays unknown, not the strength alone (#3187).
         self.assertIsNone(third.activity_kcal)
@@ -139,14 +139,14 @@ class EnergyInputsReaderTests(unittest.TestCase):
         self.assertAlmostEqual(costs[0].steps, 1866.667, places=2)
         self.assertEqual(costs[1].steps, 0.0)
         # Step length 1.4 m/s x 60 / 112 = 0.75 m (not 1.5 m from one leg).
-        # Walk: 70 x 1,400 x 2.5 = 245,000 J = 58.556 kcal; NEAT: (10,000 -
-        # 1,866.67) x 0.75 x 2.5 x 70 = 1,067,500 J plus floors 82,404 J =
-        # 274.834 kcal; the HR ride without a fit stays unpriced, so unknown.
+        # Walk: 70 x 1,400 x 2.01 = 196,980 J = 47.079 kcal; NEAT: (10,000 -
+        # 1,866.67) x 0.75 x 2.01 x 70 = 858,270 J plus floors 82,404 J =
+        # 224.826 kcal; the HR ride without a fit stays unpriced, so unknown.
         self.assertIsNone(inputs.days[DAY1].activity_kcal)
         alone, _ = read_energy_inputs(None, sources(sessions=[walk]), DAY1, DAY1)
         activity = alone.days[DAY1].activity_kcal
         assert activity is not None
-        self.assertAlmostEqual(activity, 58.556 + 274.834, places=2)
+        self.assertAlmostEqual(activity, 47.079 + 224.826, places=2)
 
     def test_without_a_resting_rate_net_costs_stay_unknown(self) -> None:
         no_resting = {"2026-10-02": {"steps": 5_000}}
@@ -176,13 +176,13 @@ class EnergyInputsReaderTests(unittest.TestCase):
     def test_run_grade_comes_from_the_streams(self) -> None:
         streams = {
             "run": {
-                StreamChannel.DISTANCE_M: [0.0, 100.0],
-                StreamChannel.ALTITUDE_M: [0.0, 10.0],
+                StreamChannel.DISTANCE_M: [0.0, 200.0],
+                StreamChannel.ALTITUDE_M: [0.0, 20.0],
             }
         }
         _, costs = read_energy_inputs(None, sources(streams=streams), DAY1, DAY1)
-        # 100 m at +10 %: 70 x 100 x 5.968214 / 4,184 = 9.985 kcal.
-        self.assertAlmostEqual(costs[0].kcal or 0.0, 9.985, places=3)
+        # 200 m at +10 %: 70 x 200 x 5.968214 / 4,184 = 19.970 kcal.
+        self.assertAlmostEqual(costs[0].kcal or 0.0, 19.970, places=3)
 
     def test_keytel_prices_hr_sessions_with_age_and_sex(self) -> None:
         profile = {"height_cm": "180", "birth_year": "1996", "sex": "male"}

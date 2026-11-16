@@ -17,7 +17,12 @@ class RunningAndWalkingCostTests(unittest.TestCase):
         self.assertEqual(
             energy.running_cost_j_per_kg_m(0.6), energy.running_cost_j_per_kg_m(0.45)
         )
-        self.assertAlmostEqual(energy.walking_cost_j_per_kg_m(0.0), 2.5)
+        # Level walking: ACSM 0.1 mL O2/kg/m x 20.1 J/mL = 2.01 J/kg/m (#3187).
+        self.assertAlmostEqual(energy.walking_cost_j_per_kg_m(0.0), 2.01)
+        # Minetti's walking shape, scaled by 2.01 / 2.5 = 0.804: at +10 %,
+        # 280.5e-5 - 58.7e-4 - 76.8e-3 + 51.9e-2 + 1.96 + 2.5 = 4.899135 J/kg/m,
+        # x 0.804 = 3.9389045.
+        self.assertAlmostEqual(energy.walking_cost_j_per_kg_m(0.10), 3.9389045)
 
     def test_flat_10_km_run_for_70_kg(self) -> None:
         # 70 kg x 10,000 m x 3.6 J/kg/m = 2,520,000 J = 602.29 kcal net.
@@ -25,30 +30,39 @@ class RunningAndWalkingCostTests(unittest.TestCase):
             energy.running_net_kcal(70.0, [(10_000.0, 0.0)]), 602.294, places=2
         )
 
-    def test_segments_merge_short_runs_and_skip_gaps(self) -> None:
-        distance = [0.0, 10.0, 20.0, None, 30.0, 40.0]
-        altitude = [0.0, 1.0, 2.0, 5.0, 3.0, 4.0]
+    def test_segments_merge_to_the_200_m_span_and_keep_the_tail(self) -> None:
+        # The grade is taken over 200 m, as in grade-adjusted pace (#3187 item 12):
+        # 0-200 m climbs 20 m (+10 %), 200-400 m climbs 20 m (+10 %), the last
+        # 50 m are kept as flat instead of dropped.
+        distance = [0.0, 100.0, 200.0, None, 300.0, 400.0, 450.0]
+        altitude = [0.0, 10.0, 20.0, 50.0, 30.0, 40.0, 45.0]
         self.assertEqual(
-            energy.graded_segments(distance, altitude), [(20.0, 0.1), (20.0, 0.1)]
+            energy.graded_segments(distance, altitude),
+            [(200.0, 0.1), (200.0, 0.1), (50.0, 0.0)],
         )
 
     def test_a_run_without_altitude_counts_as_flat(self) -> None:
         # A treadmill run: no altitude stream, so every segment is grade 0.
-        distance = [0.0, 25.0, 50.0, 75.0, 100.0]
+        distance = [0.0, 100.0, 200.0, 300.0, 400.0]
         segments = energy.graded_segments(distance, [])
-        self.assertEqual(segments, [(25.0, 0.0)] * 4)
-        # 70 kg x 100 m x 3.6 J/kg/m = 25,200 J = 6.023 kcal.
-        self.assertAlmostEqual(energy.running_net_kcal(70.0, segments), 6.023, places=3)
+        self.assertEqual(segments, [(200.0, 0.0)] * 2)
+        # 70 kg x 400 m x 3.6 J/kg/m = 100,800 J = 24.092 kcal.
+        self.assertAlmostEqual(
+            energy.running_net_kcal(70.0, segments), 24.092, places=3
+        )
         # A late fix at 500 m: the leading gap is flat at 500 m, not a climb from 0.
         self.assertEqual(
             energy.graded_segments(distance, [None, None, 500.0, 500.0, 500.0]),
-            [(25.0, 0.0)] * 4,
+            [(200.0, 0.0)] * 2,
         )
-        # Missing samples repeat the last altitude instead of dropping distance.
+        # Missing samples repeat the last altitude instead of dropping distance:
+        # 0-200 m stays at 10 m, 200-400 m rises 2 m (+1 %).
         self.assertEqual(
             energy.graded_segments(distance, [10.0, None, None, 12.0, 12.0]),
-            [(25.0, 0.0), (25.0, 0.0), (25.0, 0.08), (25.0, 0.0)],
+            [(200.0, 0.0), (200.0, 0.01)],
         )
+        # A run shorter than the span keeps its distance, as flat.
+        self.assertEqual(energy.graded_segments([0.0, 150.0], []), [(150.0, 0.0)])
 
 
 class CyclingStrengthAndHeartRateTests(unittest.TestCase):
@@ -102,10 +116,10 @@ class DailyTermsTests(unittest.TestCase):
         self.assertIsNone(energy.step_length_m([], [], None))
 
     def test_neat_counts_steps_outside_sessions_and_floors(self) -> None:
-        # 70 x 8,000 x 0.75 x 2.5 = 1,050,000 J walking; floors 70 x 9.81 x 3 x
-        # 10 = 20,601 J / 0.25 = 82,404 J; total 1,132,404 J = 270.65 kcal.
+        # 70 x 8,000 x 0.75 x 2.01 = 844,200 J walking; floors 70 x 9.81 x 3 x
+        # 10 = 20,601 J / 0.25 = 82,404 J; total 926,604 J = 221.46 kcal.
         self.assertAlmostEqual(
-            energy.neat_net_kcal(70.0, 10_000, 2_000, 0.75, floors=10), 270.65, places=2
+            energy.neat_net_kcal(70.0, 10_000, 2_000, 0.75, floors=10), 221.46, places=2
         )
         self.assertEqual(energy.neat_net_kcal(70.0, 1_000, 2_000, 0.75), 0.0)
 

@@ -1,8 +1,8 @@
 # M12 — Adaptive daily expenditure from intake and the weight trend
 
 - **Card:** M12
-- **Card version:** 1
-- **Method ID:** adaptive-expenditure v1 (#3100)
+- **Card version:** 2
+- **Method ID:** adaptive-expenditure v2 (#3100, #3187)
 - **Status:** method implemented (`backend/nutrition/energy_balance.py`); the reader, diagnostics and display follow (#3100, #3099)
 - **Classification:** model estimate
 - **Literature checked:** 2026-11-15
@@ -40,9 +40,13 @@ estimate. It never rewrites logged values and never falls back to a formula.
    only from a window without any flagged day; dropping a flagged day's
    intake while keeping the window's stored energy would bias it.
 5. **Band (95 %):**
-   `1.96 × √(SD²_intake / n + Σ(0.25 × flagged kcal)² / n² + SE²_store)`, with
-   the flagged kcal the logged kcal of each day's flagged entries.
-   `SE_store` is `ρ` times the slope's standard error.
+   `t × √(SD²_intake / n + Σ(0.25 × flagged kcal)² / n² + SE²_store)`, with
+   the flagged kcal the logged kcal of each day's flagged entries and `t`
+   the two-sided 95 % Student quantile for the smaller of `n − 1` and
+   `weigh-ins − 2` degrees of freedom (1.96 beyond 120). `SE_store` combines
+   `ρ` times the slope's standard error with the slope times the density's
+   SD, `0.144 × (9,441 − 1,816)` kcal/kg (fat share between 0.5 and 1.0 as
+   uniform).
 6. **Calibration factor `k`:** the least-squares slope of `TDEE − TEF` on the
    uncalibrated M11 activity over the windows, combined with the prior 1 ± 0.10
    as a precision-weighted mean, then clamped to 0.85–1.15. It stays 1 with
@@ -122,7 +126,8 @@ bias that is the same on every day is not visible in the band.
 | Minimum basis | 14 complete days, 8 weigh-ins, 21-day span | product assumption | stop rule, no formula fallback |
 | Flagged-entry uncertainty | 25 % of the flagged entries' kcal | product assumption | #3100 athlete decision, #3187 |
 | Calibration prior / bounds | 1 ± 0.10 / 0.85–1.15 | product assumption | method comment, #3100 |
-| Band | 1.96 | product assumption | two-sided 95 % |
+| Band | t quantile, 1.96 beyond 120 dof | product assumption | two-sided 95 %, standard t table (#3187 item 10) |
+| Fat share SD for the density | 0.144 | product assumption | share 0.5-1.0 uniform; the density's uncertainty in the band |
 
 ## Allowed statements
 
@@ -163,7 +168,7 @@ bias that is the same on every day is not visible in the band.
 | Constant | Value | Module | Code comment |
 | --- | --- | --- | --- |
 | `METHOD_ID` | `'adaptive-expenditure'` | `backend/nutrition/energy_balance.py` |  |
-| `METHOD_VERSION` | `1` | `backend/nutrition/energy_balance.py` | Bump when a formula or constant below changes the estimate. |
+| `METHOD_VERSION` | `2` | `backend/nutrition/energy_balance.py` | Bump when a formula or constant below changes the estimate. |
 | `WINDOW_DAYS` | `28` | `backend/nutrition/energy_balance.py` | Days per window and windows per week of the rolling view (#3099, #3100). |
 | `TREND_HALF_LIFE_DAYS` | `10.0` | `backend/nutrition/energy_balance.py` | Half-life in days of the exponentially weighted weight trend. |
 | `MIN_COMPLETE_DAYS` | `14` | `backend/nutrition/energy_balance.py` | A window needs this many complete logging days, weigh-ins and days between its first and last weigh-in; otherwise it gives its reason, never a formula. |
@@ -177,6 +182,8 @@ bias that is the same on every day is not visible in the band.
 | `DEFAULT_FAT_SHARE` | `0.75` | `backend/nutrition/energy_balance.py` | Fat share of a weight change without a body-fat measurement: 0.75 gives about 7,500 kcal/kg, near the common 7,700 (product assumption). |
 | `FLAGGED_DAY_UNCERTAINTY` | `0.25` | `backend/nutrition/energy_balance.py` | Extra uncertainty of a flagged (estimated) meal: a share of its logged kcal. |
 | `BAND_Z` | `1.96` | `backend/nutrition/energy_balance.py` | Two-sided 95 % band multiplier. |
+| `T_QUANTILE_95` | `{1: 12.706, 2: 4.303, 3: 3.182, 4: 2.776, 5: 2.571, 6: 2.447, 7: 2.365, 8: 2.306, 9: 2.262, 10: 2... (sha256 e00a81c5)` | `backend/nutrition/energy_balance.py` | Two-sided 95 % Student t quantiles by degrees of freedom (standard table); a window's band uses the smaller of its intake (days - 1) and weight-slope (weigh-ins - 2) degrees of freedom, BAND_Z beyond the table (#3187 item 10). |
+| `FAT_SHARE_SD` | `0.144` | `backend/nutrition/energy_balance.py` | Uncertainty of the fat share of a weight change (SD), so the energy density enters the band: a share between 0.5 and 1.0 taken as uniform, 0.5 / sqrt(12) (product assumption, #3187 item 10). |
 | `CALIBRATION_PRIOR_SD` | `0.1` | `backend/nutrition/energy_balance.py` | The one activity calibration factor: prior 1 +- 0.10, clamped to 0.85-1.15, fitted on complete windows of the last 12 weeks (method comment, #3100). |
 | `CALIBRATION_BOUNDS` | `(0.85, 1.15)` | `backend/nutrition/energy_balance.py` |  |
 | `MIN_CALIBRATION_WINDOWS` | `4` | `backend/nutrition/energy_balance.py` | Windows needed before the factor moves from 1, and before a flagged-meal bias is estimated. |
