@@ -118,7 +118,9 @@ tree, the clone's HEAD (`PACECRAFT_GIT_ROOT`) in the pre-push export (#3091).
 Make a script executable with `git update-index --chmod=+x <file>`. The same
 ratchet reports a function above Sonar's cognitive complexity 15 (rule
 `python:S3776`) as a `cognitive` finding named by function, not score, and a
-conditional expression nested in another (`python:S3358`, #3271). It
+conditional expression nested in another (`python:S3358`, #3271). Ruff's
+`PLR0913` reports a function with more than 13 parameters, `self` not
+counted, as Sonar's `python:S107` does (#3316). It
 reports a selector list repeated in the same at-rule context of `public/*.css`
 (Sonar's `css:S4666`, Stylelint `no-duplicate-selectors`) as a `css` finding,
 since CI's Sonar gate otherwise is the first to see it (#3077). It
