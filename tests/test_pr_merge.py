@@ -53,13 +53,40 @@ def next_count(threads):
     return threads.pop(0) if len(threads) > 1 else threads[0]
 
 
+def gitar_runs(state):
+    """Gitar's check runs as the commit's check-runs API lists them (#3308)."""
+    if state == "missing":
+        return []
+    if state == "older":  # only a run for the head before the push
+        return [{"id": 1, "name": "Gitar", "head_sha": "0ldhead",
+                 "status": "completed", "conclusion": "success"}]  # fmt: skip
+    done = state in ("success", "failure")
+    return [{"id": 2, "name": "Gitar", "head_sha": "feedc0de",
+             "status": "completed" if done else "in_progress",
+             "conclusion": state if done else None}]  # fmt: skip
+
+
+def rest_answer(argv, gitar, compare):
+    """The REST answers: Gitar's check runs (one state, or one per query from a
+    list) and the head's compare with develop; None for any other call."""
+    if argv[1:2] != ["api"]:
+        return None
+    if "/check-runs" in argv[2]:
+        state = next_count(gitar) if isinstance(gitar, list) else gitar
+        return json.dumps({"check_runs": gitar_runs(state)})
+    if "/compare/feedc0de...develop" in argv[2]:
+        return json.dumps(compare)
+    return None
+
+
 def run(
     case, *args, auto_error="", views=None, behind=0, moved=(), threads=0, more=False,
-    pushed=("", set()), freeze=None,
+    pushed=("", set()), freeze=None, gitar="success", calls=None,
 ):  # fmt: skip
     """Run main against a stub that answers `pr view` from `views` in order; this
     checkout's origin/<branch> is `pushed`: its head and the heads it held before."""
-    calls, views = [], list(views or [view()])
+    calls = [] if calls is None else calls
+    views = list(views or [view()])
     # Fixed answers: the repository, and `gh variable get MERGE_FREEZE` unset, set or failing.
     variable = {
         None: (1, "", "variable MERGE_FREEZE was not found"),
@@ -82,10 +109,9 @@ def run(
         if argv[1:3] == ["pr", "diff"]:  # the full file list, past 100 files
             files = "\n".join([*(f"f{n}" for n in range(150)), "scripts/pr_merge.py"])
             return subprocess.CompletedProcess(argv, 0, files, "")
-        if argv[1:2] == ["api"] and "/compare/feedc0de...develop" in argv[2]:
-            return subprocess.CompletedProcess(
-                argv, 0, json.dumps({"behind": behind, "files": list(moved)}), ""
-            )
+        rest = rest_answer(argv, gitar, {"behind": behind, "files": list(moved)})
+        if rest is not None:
+            return subprocess.CompletedProcess(argv, 0, rest, "")
         failed = auto_error and "--auto" in argv
         return subprocess.CompletedProcess(argv, int(bool(failed)), "", auto_error)
 
@@ -120,6 +146,64 @@ class PrMergeTests(unittest.TestCase):
         # A freeze that cannot be read stops arming too.
         code, out, writes, _ = run(self, 7, freeze="ERROR")
         self.assertEqual((code, writes), (2, []))
+
+    def test_arms_only_after_gitar_completed_on_the_current_head(self):
+        # #3308: right after a push Gitar's check for the new head is pending or
+        # missing, and a run for the head before the push does not count.
+        for state, reason in (
+            ("in_progress", "Gitar has not reviewed feedc0de yet"),
+            ("missing", "Gitar has not reviewed feedc0de yet"),
+            ("older", "Gitar has not reviewed feedc0de yet"),
+            ("failure", "Gitar's check on feedc0de ended failure"),
+        ):
+            with self.subTest(gitar=state):
+                code, out, writes, _ = run(self, 7, gitar=state)
+                self.assertEqual((code, writes), (1, []))
+                self.assertIn(reason, out)
+        code, _, writes, _ = run(self, 7, gitar="success")
+        self.assertEqual((code, writes), (0, [["pr", "merge", "7", "--auto", *PIN]]))
+        # An auto-merge armed by hand on an unreviewed head is disarmed.
+        armed = view(autoMergeRequest={"mergeMethod": "SQUASH"})
+        code, _, writes, _ = run(self, 7, views=[armed], gitar="in_progress")
+        self.assertEqual((code, writes), (1, [["pr", "merge", "7", "--disable-auto"]]))
+
+    def test_wait_waits_for_gitar_before_arming(self):
+        merged = view(state="MERGED")
+        code, _, writes, sleeps = run(
+            self, 7, "--wait", "5", views=[view(), merged],
+            gitar=["in_progress", "in_progress", "success"],
+        )  # fmt: skip
+        self.assertEqual((code, writes), (0, [["pr", "merge", "7", "--auto", *PIN]]))
+        self.assertGreaterEqual(sleeps, 2)
+        # A wait that ends before Gitar finished arms nothing.
+        code, out, writes, _ = run(self, 7, "--wait", "1", gitar="in_progress")
+        self.assertEqual((code, writes), (3, []))
+        self.assertIn("Gitar has not reviewed feedc0de yet", out)
+
+    def test_the_other_gates_run_after_the_gitar_wait(self):
+        # #3310 review: Gitar posts its threads when it finishes, and a freeze or
+        # develop can move during the wait; those gates must see that state.
+        calls = []
+        merged = view(state="MERGED")
+        run(
+            self, 7, "--wait", "5", views=[view(), merged],
+            gitar=["in_progress", "success"], calls=calls,
+        )  # fmt: skip
+        checks = [n for n, call in enumerate(calls) if "/check-runs" in str(call)]
+        gates = [
+            n
+            for n, call in enumerate(calls)
+            if call[:2] in (["api", "graphql"], ["variable", "get"])
+            or "/compare/" in str(call)
+        ]
+        self.assertTrue(checks and gates)
+        self.assertLess(max(checks), min(gates))
+        # A thread Gitar posts as it finishes refuses, though none was open before.
+        code, out, writes, _ = run(
+            self, 7, "--wait", "5", gitar=["in_progress", "success"], threads=1
+        )
+        self.assertEqual((code, writes), (1, []))
+        self.assertIn("unresolved review thread", out)
 
     def test_arms_squash_auto_merge_on_the_read_head(self):
         code, out, writes, _ = run(self, 7)
