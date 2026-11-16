@@ -8,6 +8,7 @@ check-ins. Nothing is estimated or written; no model is asked. Pure: no I/O.
 
 from __future__ import annotations
 
+import re
 import statistics
 from collections.abc import Mapping, Sequence
 from datetime import date, timedelta
@@ -18,6 +19,8 @@ from backend.activities.session_purpose import summary_is_race
 from backend.athlete.checkins import CHECKIN_SCORE_FIELDS, reports_complaint
 from backend.athlete.local_date import iso_date_prefix
 from backend.athlete.measurements import finite_float as number
+from backend.errors import AppError
+from backend.settings import CALENDAR_DISPLAY_MAX_WEEKS
 
 METHOD: Final = "local-week-review-v1"
 # The check-in scores the review averages (0 to 10).
@@ -25,6 +28,27 @@ REVIEW_SCORES: Final = tuple(
     field for field in CHECKIN_SCORE_FIELDS if field != "session_rpe"
 )
 _RECOVERY_METRICS: Final = ("sleep", "hrv", "resting_hr")
+_ISO_DAY: Final = re.compile(r"\d{4}-\d{2}-\d{2}")
+
+
+def review_monday(week: str, today: date) -> date:
+    """The Monday of the reviewed week, else 400 "Ungültige Woche." (#3298).
+
+    ``week`` is ``current``, ``previous`` or the ISO date of a Monday from the
+    weeks the calendar can show: this week back to ``CALENDAR_DISPLAY_MAX_WEEKS``
+    weeks before it. A future week has nothing to review.
+    """
+    current = today - timedelta(days=today.weekday())
+    if week in ("current", "previous"):
+        return current - timedelta(days=7 if week == "previous" else 0)
+    try:
+        monday = date.fromisoformat(week) if _ISO_DAY.fullmatch(week) else None
+    except ValueError:
+        monday = None
+    earliest = current - timedelta(weeks=CALENDAR_DISPLAY_MAX_WEEKS)
+    if monday is None or monday.weekday() or not earliest <= monday <= current:
+        raise AppError(400, "Ung\u00fcltige Woche.")
+    return monday
 
 
 def week_review(

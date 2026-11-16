@@ -2237,13 +2237,136 @@ function renderPlannedWeek(view) {
   week.append(days);
   const legend = plannedZoneLegend(days);
   if (legend) week.append(legend);
-  // The plan compliance counts the whole week, so a sport filter leaves it out.
-  if (weekEntries.length && calendarSport === "all") {
-    const additionalCompleted = weekEntries.filter((entry) => entry.is_completed_activity).length;
-    const summary = plannedWeekSummary(weekKey, weekEndKey, weekEntries, weeklyCompliance.get(weekKey), todayKey);
-    week.append(h("p", "planned-week-totals", additionalCompleted && planned.length ? `${summary} · +${additionalCompleted} zusätzlich` : summary));
+  // A past or running week of the last 52 shows its review (the server reads no older one), whose
+  // Plan tile carries the compliance; any other week keeps the plan line. The compliance counts the
+  // whole week, so a sport filter leaves it out.
+  const currentWeekKey = planWeekStart(todayKey);
+  if (weekKey <= currentWeekKey && weekKey >= addDateKey(currentWeekKey, -7 * CALENDAR_DISPLAY_MAX_WEEKS)) {
+    week.append(plannedWeekReview(weekKey, todayKey, weekHasPlan ? allWeekEntries.filter((entry) => entry.is_completed_activity).length : 0));
+  } else if (weekEntries.length && calendarSport === "all") {
+    week.append(h("p", "planned-week-totals", plannedWeekSummary(weekKey, weekEndKey, weekEntries, weeklyCompliance.get(weekKey), todayKey)));
   }
   return week;
+}
+
+// The week review under the selected past or running week (#3298, layout B): computed on the
+// server from the stored summaries without a model (#2805); a future week has none. A tile
+// without data is left out.
+let weekReviewGeneration = 0;
+const WEEK_REVIEW_SHORT_DAY = new Intl.DateTimeFormat("de-DE", { weekday: "short", timeZone: "UTC" });
+const WEEK_REVIEW_REASONS = { highest_load: "höchste Belastung", race: "Wettkampf", missed: "verpasst" };
+const WEEK_REVIEW_POSITIONS = { below: "unter Normalbereich", within: "im Normalbereich", above: "über Normalbereich" };
+const WEEK_REVIEW_SCORES = [["motivation", "Motivation"], ["stress", "Stress"], ["soreness", "Muskelkater"]];
+
+const weekReviewDay = (key) => WEEK_REVIEW_SHORT_DAY.format(new Date(`${key}T00:00:00Z`)).replace(".", "");
+
+// Hours and minutes of a duration, as h:mm.
+function weekReviewHours(seconds) {
+  const minutes = Math.round(Math.abs(seconds) / 60);
+  return `${Math.floor(minutes / 60)}:${String(minutes % 60).padStart(2, "0")}`;
+}
+
+function weekReviewChange(text, up) {
+  return h("em", { className: "week-review-change", dataset: { direction: up ? "up" : "down" } }, text);
+}
+
+function weekReviewPercent(value, before) {
+  if (!Number.isFinite(value) || !Number.isFinite(before) || before <= 0) return null;
+  const percent = Math.round((value / before - 1) * 100);
+  return weekReviewChange(`${percent >= 0 ? "+" : "−"}${Math.abs(percent)} %`, percent >= 0);
+}
+
+function weekReviewTile(label, value, change = null, note = "") {
+  return h("div", "week-review-tile", h("small", null, label), h("b", null, value), change, note ? h("small", "week-review-note", note) : null);
+}
+
+function weekReviewPlanTile(plan) {
+  if (!plan?.planned) return null;
+  const missed = (plan.missed_units || []).map((unit) => `${weekReviewDay(unit.date)} ${unit.name || "Einheit"}`);
+  const note = [missed.length ? `verpasst: ${missed.join(", ")}` : null, plan.open ? `${plan.open} noch offen` : null].filter(Boolean).join(" · ");
+  return weekReviewTile("Plan", `${plan.completed} von ${plan.planned}`, null, note);
+}
+
+// A running week has no full total yet, so time and load show no change against the week before.
+function weekReviewLoadTiles(load, running, extra) {
+  const now = load?.this_week || {};
+  const before = load?.week_before || {};
+  if (!now.sessions) return [];
+  return [
+    weekReviewTile("Einheiten", String(now.sessions), null, extra > 0 ? `davon ${extra} zusätzlich` : ""),
+    weekReviewTile("Zeit", `${weekReviewHours(now.duration_s || 0)} h`, !running && weekReviewPercent(now.duration_s, before.duration_s)),
+    Number.isFinite(now.training_load) ? weekReviewTile("Belastung", AppFormat.number(now.training_load, { digits: 0 }), !running && weekReviewPercent(now.training_load, before.training_load)) : null,
+  ];
+}
+
+function weekReviewRecoveryTiles(recovery) {
+  const tiles = [];
+  const sleep = recovery?.sleep;
+  if (sleep) {
+    const minutes = Number.isFinite(sleep.week_before) ? Math.round((sleep.mean - sleep.week_before) * 60) : 0;
+    const change = minutes ? weekReviewChange(`${minutes > 0 ? "+" : "−"}${weekReviewHours(minutes * 60)}`, minutes > 0) : null;
+    tiles.push(weekReviewTile("Schlaf Ø", `${weekReviewHours(sleep.mean * 3600)} h`, change, sleep.source));
+  }
+  for (const [key, label] of [["resting_hr", "Ruhepuls Ø"], ["hrv", "HRV Ø"]]) {
+    const item = recovery?.[key];
+    if (item) tiles.push(weekReviewTile(label, `${AppFormat.number(item.mean, { digits: 0 })} ${item.unit}`, null, [WEEK_REVIEW_POSITIONS[item.position], item.source].filter(Boolean).join(" · ")));
+  }
+  return tiles;
+}
+
+function weekReviewCheckinTiles(checkins) {
+  if (!checkins?.entered) return [];
+  const scores = WEEK_REVIEW_SCORES.filter(([key]) => Number.isFinite(checkins.scores?.[key])).map(([key, label]) => `${label} ${AppFormat.number(checkins.scores[key])}`);
+  const complaints = [checkins.pain_days && `${checkins.pain_days} ${checkins.pain_days === 1 ? "Tag" : "Tage"} Schmerz`, checkins.illness_days && `${checkins.illness_days} ${checkins.illness_days === 1 ? "Tag" : "Tage"} krank`].filter(Boolean);
+  return [
+    weekReviewTile("Check-ins", `${checkins.entered} von ${checkins.days}`, null, scores.length ? `Ø ${scores.join(" · ")}` : ""),
+    weekReviewTile("Beschwerden", complaints.join(", ") || "keine"),
+  ];
+}
+
+function weekReviewNotableTile(notable) {
+  if (!notable?.length) return null;
+  return h("div", "week-review-tile week-review-wide", h("small", null, "Besondere Einheiten"), h("ul", null, notable.map((item) => {
+    const load = item.reason === "highest_load" && Number.isFinite(item.training_load) ? ` (${AppFormat.number(item.training_load, { digits: 0 })})` : "";
+    const race = item.race && item.reason !== "race" ? " · Wettkampf" : "";
+    return h("li", null, `${weekReviewDay(item.date)} ${item.name || "Einheit"} · ${WEEK_REVIEW_REASONS[item.reason]}${load}${race}`);
+  })));
+}
+
+// The tiles in the approved order; `extra` counts the week's completed sessions outside the plan.
+function weekReviewTiles(review, extra) {
+  const running = review.effective_end < review.week_end;
+  const [sessions, time, load] = weekReviewLoadTiles(review.load, running, extra);
+  const [checkins, complaints] = weekReviewCheckinTiles(review.checkins);
+  return [weekReviewPlanTile(review.plan), sessions, time, load, ...weekReviewRecoveryTiles(review.recovery), checkins, weekReviewNotableTile(review.notable), complaints].filter(Boolean);
+}
+
+function plannedWeekReview(weekKey, todayKey, extra) {
+  const running = addDateKey(weekKey, 6) >= todayKey;
+  const card = h("section", { className: "week-review", dataset: { weekReview: weekKey }, "aria-labelledby": "weekReviewTitle" },
+    h("header", "week-review-head", h("h5", { id: "weekReviewTitle" }, "Wochenrückblick"), h("span", null, [`KW ${isoWeekNumber(weekKey)}`, running ? "bis heute" : null].filter(Boolean).join(" · "))),
+    createLoadingState("Wochenrückblick wird geladen…"));
+  void fillWeekReview(card, weekKey, extra);
+  return card;
+}
+
+// A step to another week or a new calendar render replaces the card; a late answer for it is dropped.
+async function fillWeekReview(card, weekKey, extra) {
+  const generation = ++weekReviewGeneration;
+  const session = state.sessionGeneration;
+  const current = () => generation === weekReviewGeneration && session === state.sessionGeneration && card.isConnected;
+  const head = card.firstElementChild;
+  try {
+    const review = await requestAnalysisReport(`/api/analysis/week-review?week=${weekKey}`);
+    if (!current()) return;
+    const tiles = weekReviewTiles(review, extra);
+    // A week without any data shows no card, as a future week.
+    if (tiles.length) card.replaceChildren(head, h("div", "week-review-tiles", ...tiles));
+    else card.remove();
+  } catch (error) {
+    if (!current()) return;
+    card.replaceChildren(head, createErrorState(error?.message || "Konnte nicht geladen werden.", () => void fillWeekReview(card, weekKey, extra)));
+  }
 }
 
 // Wide screens show the open card's body as the detail pane beside the week (styles.css). It starts level

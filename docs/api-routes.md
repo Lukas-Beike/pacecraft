@@ -317,8 +317,9 @@ Errors: none beyond the common ones.
 
 ### `GET /api/analysis/week-review`
 
-Request: optional query `week`, `current` (default) or `previous`; no
-body.
+Request: optional query `week`: `current` (default), `previous` or the
+ISO date of a Monday from this week back to 52 weeks before it, the
+weeks the calendar can show (#3298); no body.
 
 Response: 200 with `method`, `week_start`, `week_end`, `effective_end`,
 `plan` (`planned`, `completed`, `missed`, `open`, `duration_share`,
@@ -327,7 +328,8 @@ Response: 200 with `method`, `week_start`, `week_end`, `effective_end`,
 `position`), `notable` and `checkins`. Computed from local summaries;
 no model is asked.
 
-Errors: 400 "Ungültige Woche." for another `week`.
+Errors: 400 "Ungültige Woche." for another `week`, a day that is no
+Monday, a future week or one more than 52 weeks back.
 
 ### `GET /api/auth/status`
 

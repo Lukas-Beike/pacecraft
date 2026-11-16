@@ -1941,27 +1941,22 @@ button:focus-visible, a:focus-visible, summary:focus-visible {
 .activity-dynamics-reference[data-band="red"] { --band: var(--danger); }
 .activity-dynamics-bands { display: grid; gap: 8px; }
 /* The week review (#2805): one card per topic, the week against the week before. */
-.week-review { display: grid; gap: 12px; }
-.week-review-header { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
-.week-review-header h3 { margin: 0; font-size: 1rem; }
-.week-review-switch { display: flex; gap: 6px; }
-.week-review-switch button { min-height: 32px; padding: 4px 12px; border: 1px solid var(--line-strong); border-radius: 999px; background: var(--surface); color: var(--muted); font-size: .78rem; }
-.week-review-switch button[aria-pressed="true"] { border-color: var(--accent-border-strong); background: var(--accent-soft); color: var(--accent); font-weight: 700; }
-.week-review-card { display: grid; gap: 6px; padding: 12px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--surface); }
-.week-review-card h4 { margin: 0; font-size: .85rem; }
-.week-review-big { margin: 0; font-size: 1.05rem; font-weight: 700; }
-.week-review-detail { margin: 0; color: var(--muted); font-size: .76rem; }
-.week-review-row { display: flex; justify-content: space-between; gap: 10px; font-size: .82rem; font-variant-numeric: tabular-nums; }
-.week-review-row > span:last-child { text-align: right; }
-.week-review-change { font-size: .76rem; font-weight: 600; }
+/* The week review under the calendar week (#3298, layout B). */
+.week-review { margin: 4px 12px 12px; border: 1px solid var(--line-strong); border-radius: var(--radius-sm); background: var(--surface-raised); }
+.week-review-head { display: flex; align-items: baseline; gap: 8px; padding: 10px 12px; }
+.week-review-head h5 { margin: 0; font-size: .85rem; font-weight: 750; }
+.week-review-head span { margin-left: auto; color: var(--muted); font-size: .76rem; font-variant-numeric: tabular-nums; }
+.week-review > .loading-state, .week-review > .error-state { margin: 0 12px 12px; }
+.week-review-tiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; padding: 0 12px 12px; }
+.week-review-tile { min-width: 0; padding: 8px 10px; border-radius: var(--radius-sm); background: var(--surface); }
+.week-review-tile small { display: block; color: var(--muted); font-size: .72rem; }
+.week-review-tile b { font-size: 1rem; font-variant-numeric: tabular-nums; }
+.week-review-note { margin-top: 2px; overflow-wrap: anywhere; }
+.week-review-change { margin-left: 4px; font-size: .72rem; font-style: normal; font-weight: 600; font-variant-numeric: tabular-nums; }
 .week-review-change[data-direction="up"] { color: var(--accent); }
 .week-review-change[data-direction="down"] { color: var(--danger); }
-.week-review-intensity { display: flex; height: 8px; overflow: hidden; border-radius: 4px; background: var(--surface-raised); }
-.week-review-intensity i { display: block; min-width: 2px; }
-.week-review-intensity [data-band="low"] { background: var(--training-zone-1); }
-.week-review-intensity [data-band="moderate"] { background: var(--training-zone-3); }
-.week-review-intensity [data-band="high"] { background: var(--training-zone-5); }
-.week-review-list { display: grid; gap: 4px; margin: 0; padding-left: 18px; font-size: .82rem; }
+.week-review-wide { grid-column: 1 / -1; }
+.week-review-wide ul { margin: 4px 0 0; padding-left: 18px; font-size: .8rem; line-height: 1.45; }
 /* The provider's own session values, kept apart from the app's analyses (#2831). */
 .activity-effect { display: grid; gap: 8px; }
 .activity-effect-header { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 10px; }
