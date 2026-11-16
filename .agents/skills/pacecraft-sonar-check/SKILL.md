@@ -35,3 +35,7 @@ python scripts/sonar_check.py --pr <number>
   the issue false positive with that reason and add an evidence line (rule, file,
   line) to the PR body; do not restructure the guard. A new kind of read or write,
   or any other rule, needs its own decision.
+- A new script that needs a secret reads it from stdin, not from a path argument,
+  so it adds no S8707 call site (#3249), as `scripts/post_release_actions.mjs`:
+  `Get-Content -Raw -Encoding utf8 "<file>" | node <script>` in PowerShell, with
+  `$OutputEncoding = [Text.UTF8Encoding]::new($false)` first.
