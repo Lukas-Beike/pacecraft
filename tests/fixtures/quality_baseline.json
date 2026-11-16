@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "base": "8aa4f200ff08c025866bc233b6da6284e987e348",
+  "base": "f9bb36b2a01bd4f26c12db8a1c3050d86f02c207",
   "versions": {
     "ruff": "0.17.5",
     "mypy": "2.4.1"
@@ -992,12 +992,6 @@
     },
     {
       "tool": "format",
-      "path": "scripts/resolve_review_thread.py",
-      "code": "format",
-      "message_sha256": "f87c4a0ecaf8e40a8d167170353b2aeb564e58f72247b4568c3db29c296f105f"
-    },
-    {
-      "tool": "format",
       "path": "tests/test_browser_aggregation.py",
       "code": "format",
       "message_sha256": "f87c4a0ecaf8e40a8d167170353b2aeb564e58f72247b4568c3db29c296f105f"
@@ -1071,12 +1065,6 @@
     {
       "tool": "format",
       "path": "tests/test_planning_race_plan.py",
-      "code": "format",
-      "message_sha256": "f87c4a0ecaf8e40a8d167170353b2aeb564e58f72247b4568c3db29c296f105f"
-    },
-    {
-      "tool": "format",
-      "path": "tests/test_resolve_review_thread.py",
       "code": "format",
       "message_sha256": "f87c4a0ecaf8e40a8d167170353b2aeb564e58f72247b4568c3db29c296f105f"
     },
