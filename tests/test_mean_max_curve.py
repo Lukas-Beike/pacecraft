@@ -224,7 +224,7 @@ def store_run(db, provider_activity_id):
 
 # Digest of the golden sessions' stored curves with the format version it was pinned
 # under (#2821): an output change needs a CURVE_FORMAT_VERSION bump, then a new pin.
-GOLDEN_CURVE = (1, "84d062efe64e55e39f3583763cf0fe7b4e59e25c20153642d74744cd70beb812")
+GOLDEN_CURVE = (2, "c5d3cd88465278c800eb7107e8b6095b0f8e8efc931a1b67fe66a9e184901ad6")
 
 
 def watts_at(curve, duration):

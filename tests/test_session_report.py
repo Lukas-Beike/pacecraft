@@ -144,6 +144,48 @@ class EasySessionTests(unittest.TestCase):
             (decoupling(6.2, 4)["verdict"], decoupling(6.2, 4)["basis"]),
         )
 
+    def test_run_steadiness_against_the_own_upper_quartile(self) -> None:
+        # Own upper quartile 7 % of 6 runs: 8 % is notable, 6 % ok. With 3
+        # runs there is no limit: the value is a fact only.
+        def report(own: float, peers: int) -> dict[str, Any]:
+            return session_report(
+                result(
+                    focus="easy",
+                    execution={"data_quality": {"heart_rate": "ok", "speed": "ok"}},
+                    comparable_sessions={
+                        "status": "ok",
+                        "this": {"gap_cv_pct": own},
+                        "median_peers": {"gap_cv_pct": peers},
+                        "upper_quartile_of_peers": {"gap_cv_pct": 7.0},
+                    },
+                )
+            )
+
+        self.assertEqual("notable", checks(report(8.0, 6))["steadiness"]["verdict"])
+        self.assertEqual("ok", checks(report(6.0, 6))["steadiness"]["verdict"])
+        few = report(8.0, 3)
+        self.assertNotIn("steadiness", checks(few))
+        # Too few peers to compare at all: still the run's own value.
+        none = session_report(
+            result(
+                focus="easy",
+                comparable_sessions={
+                    "status": "not_covered",
+                    "this": {"gap_cv_pct": 5.5},
+                },
+            )
+        )
+        self.assertEqual(
+            5.5,
+            {f["id"]: f["value"] for f in none["facts"]}["run_steadiness"][
+                "gap_cv_pct"
+            ],
+        )
+        self.assertEqual(
+            {"gap_cv_pct": 8.0, "peers": 3},
+            {fact["id"]: fact["value"] for fact in few["facts"]}["run_steadiness"],
+        )
+
     def test_heart_rate_spikes_make_heart_rate_checks_unknown(self) -> None:
         report = session_report(
             result(
