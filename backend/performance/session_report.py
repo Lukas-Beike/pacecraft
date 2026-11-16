@@ -1480,9 +1480,15 @@ def _training_effect(facts: _Facts) -> dict[str, Any]:
         title,
         {
             "aerobic": aerobic,
+            "aerobic_source": _mapping(
+                facts.metrics.get("aerobic_training_effect")
+            ).get("source"),
             "anaerobic": anaerobic,
+            "anaerobic_source": _mapping(
+                facts.metrics.get("anaerobic_training_effect")
+            ).get("source"),
             "label": label.get("value"),
-            "source": label.get("source"),
+            "label_source": label.get("source"),
         },
         "Einschätzung des Anbieters, unverändert weitergegeben; kein eigenes Urteil",
         "provider",
@@ -1524,6 +1530,9 @@ def _strength_before(before: Mapping[str, Any]) -> dict[str, Any]:
     sessions = [
         item for item in before.get("sessions") or () if isinstance(item, Mapping)
     ]
+    if not sessions and before.get("planned_checked") is False:
+        # No completed session and the plan could not be read: not a known zero.
+        return _unknown("strength_before", title, "Geplante Einheiten nicht lesbar.")
     hours = [_number(item.get("hours_before")) for item in sessions]
     known = [value for value in hours if value is not None]
     return _fact(

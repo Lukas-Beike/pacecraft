@@ -58,7 +58,7 @@ The system SHALL add to every `get_activity_details` result a `session_report` (
 
 #### Scenario: Facts passed on without a verdict
 - **WHEN** the session has a provider training effect, an execution data-quality result, or (for a run or ride) strength sessions in the 48 h before it
-- **THEN** the report carries the facts checks `training_effect` (aerobic, anaerobic, label and source, basis `provider`, unchanged), `data_quality` (the heart-rate and speed states and which data the rules doubt; the checks on doubted data are unknown) and `strength_before` (count, leg sessions, intensities, the closest hours before and whether they were confirmed). Each is `ok` with weight 0, never in `notable` or `lead`, and unknown only when its data is missing or unreadable (#3084 Part 3c).
+- **THEN** the report carries the facts checks `training_effect` (aerobic, anaerobic and label, each with its own source, basis `provider`, unchanged), `data_quality` (the heart-rate and speed states and which data the rules doubt; the checks on doubted data are unknown) and `strength_before` (count, leg sessions, intensities, the closest hours before and whether they were confirmed). Each is `ok` with weight 0, never in `notable` or `lead`, and unknown only when its data is missing or unreadable; no strength session found while the planned units could not be read is unknown, not zero (#3084 Part 3c).
 
 #### Scenario: Wind at body height
 - **WHEN** an outdoor run or ride has a stored headwind on its own track (#3084 Part 3b)

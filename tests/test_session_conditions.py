@@ -310,8 +310,8 @@ class FactChecksTests(unittest.TestCase):
     def test_training_effect_is_passed_on_with_its_source(self) -> None:
         result = _run(
             metrics={
-                "aerobic_training_effect": {"value": 3.4},
-                "anaerobic_training_effect": {"value": 1.2},
+                "aerobic_training_effect": {"value": 3.4, "source": "Garmin Connect"},
+                "anaerobic_training_effect": {"value": 1.2, "source": "Wahoo"},
             },
             training_effect_label={"value": "TEMPO", "source": "Garmin Connect"},
         )
@@ -325,9 +325,11 @@ class FactChecksTests(unittest.TestCase):
         self.assertEqual(
             {
                 "aerobic": 3.4,
+                "aerobic_source": "Garmin Connect",
                 "anaerobic": 1.2,
+                "anaerobic_source": "Wahoo",
                 "label": "TEMPO",
-                "source": "Garmin Connect",
+                "label_source": "Garmin Connect",
             },
             check["value"],
         )
@@ -388,6 +390,18 @@ class FactChecksTests(unittest.TestCase):
         missing = _check(session_report(unread), "strength_before")
         assert missing is not None
         self.assertEqual("unknown", missing["verdict"])
+        # Nothing done and the plan unread is no known zero.
+        unchecked = _run(
+            strength_before={
+                "status": "ok",
+                "origin": "none_found",
+                "planned_checked": False,
+                "sessions": [],
+            }
+        )
+        unplanned = _check(session_report(unchecked), "strength_before")
+        assert unplanned is not None
+        self.assertEqual("unknown", unplanned["verdict"])
 
 
 class RatedSessionsReadTests(unittest.TestCase):
