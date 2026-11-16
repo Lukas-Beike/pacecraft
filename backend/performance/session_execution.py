@@ -48,6 +48,11 @@ MIN_LAP_S: Final = 5.0
 MIN_SESSION_S: Final = 600.0
 WARMUP_EXCLUDED_S: Final = 600.0
 MAX_GAP_S: Final = 5.0
+# A channel is uncertain once more than this share of the recorded time sits in
+# runs of missing values longer than MAX_GAP_S (athlete, #3084 3c D); longer
+# jumps of the clock itself are pauses, not missing data.
+GAP_SHARE: Final = 0.05
+PAUSE_S: Final = 30.0
 MAX_REPS: Final = 40
 # Lap outputs split into work and recovery when the largest gap between sorted
 # lap outputs is at least this share of the faster side.
@@ -598,6 +603,8 @@ def _data_quality(sport: str, streams: Mapping[str, Any]) -> dict[str, str]:
     times = [_number(value) for value in streams.get("time") or []]
     heart = _paired(times, streams.get("heartrate"))
     quality = {"heart_rate": "missing" if not heart else "ok"}
+    if heart and _gap_share(times, streams.get("heartrate")) > GAP_SHARE:
+        quality["heart_rate"] = "gaps"
     if heart and _jump_share(heart, HR_SPIKE_BPM) > HR_SPIKE_SHARE:
         quality["heart_rate"] = "spikes"
     cadence = _paired(times, streams.get("cadence"))
@@ -605,9 +612,38 @@ def _data_quality(sport: str, streams: Mapping[str, Any]) -> dict[str, str]:
         quality["heart_rate"] = "possible_cadence_lock"
     speed = _paired(times, streams.get("velocity_smooth"))
     quality["speed"] = "missing" if not speed else "ok"
+    if speed and _gap_share(times, streams.get("velocity_smooth")) > GAP_SHARE:
+        quality["speed"] = "gaps"
     if speed and _jump_share(speed, SPEED_JUMP_MPS) > SPEED_JUMP_SHARE:
         quality["speed"] = "jumps"
     return quality
+
+
+def _gap_share(times: Sequence[float | None], values: object) -> float:
+    """Share of the recorded time in runs of missing values longer than MAX_GAP_S.
+
+    The recorded time leaves out clock jumps over PAUSE_S (an auto-pause); a run
+    of missing values spans from the last value before it to the first after it.
+    """
+    if not isinstance(values, list) or len(values) != len(times):
+        return 0.0
+    recorded = missing = run = 0.0
+    for index in range(len(times) - 1):
+        start, end = times[index], times[index + 1]
+        if start is None or end is None or not 0 < end - start <= PAUSE_S:
+            run = 0.0
+            continue
+        step = end - start
+        recorded += step
+        if _number(values[index]) is None or _number(values[index + 1]) is None:
+            run += step
+            continue
+        if run > MAX_GAP_S:
+            missing += run
+        run = 0.0
+    if run > MAX_GAP_S:
+        missing += run
+    return missing / recorded if recorded > 0 else 0.0
 
 
 def _paired(times: Sequence[float | None], values: object) -> list[tuple[float, float]]:

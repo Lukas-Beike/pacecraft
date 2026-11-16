@@ -252,6 +252,8 @@ every named number the code fixes. A test fails when it is out of date.
 | `MIN_SESSION_S` | `600.0` | `backend/performance/session_execution.py` |  |
 | `WARMUP_EXCLUDED_S` | `600.0` | `backend/performance/session_execution.py` |  |
 | `MAX_GAP_S` | `5.0` | `backend/performance/session_execution.py` |  |
+| `GAP_SHARE` | `0.05` | `backend/performance/session_execution.py` | A channel is uncertain once more than this share of the recorded time sits in runs of missing values longer than MAX_GAP_S (athlete, #3084 3c D); longer jumps of the clock itself are pauses, not missing data. |
+| `PAUSE_S` | `30.0` | `backend/performance/session_execution.py` |  |
 | `MAX_REPS` | `40` | `backend/performance/session_execution.py` |  |
 | `WORK_GAP_SHARE` | `0.15` | `backend/performance/session_execution.py` | Lap outputs split into work and recovery when the largest gap between sorted lap outputs is at least this share of the faster side. |
 | `RUN_CADENCE_FACTOR` | `2.0` | `backend/performance/session_execution.py` |  |

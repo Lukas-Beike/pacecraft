@@ -37,12 +37,16 @@ from backend.performance.planned_targets import (
 )
 from backend.performance.session_conditions import STOP_S
 from backend.performance.session_execution import (
+    GAP_SHARE,
     HR_SPIKE_BPM,
     HR_SPIKE_SHARE,
+    MAX_GAP_S,
+    PAUSE_S,
     SPEED_JUMP_MPS,
     SPEED_JUMP_SHARE,
     comparison_metrics,
 )
+from backend.weather.activity_weather import HEAT_APPARENT_C
 
 METHOD: Final = "session-report-v1"
 SCOPE: Final = (
@@ -133,6 +137,10 @@ _WEIGHT: Final = {
     "training_effect": 0,
     "data_quality": 0,
     "strength_before": 0,
+    "heat": 0,
+    "hills": 0,
+    # Strength plan against sets (athlete, #3084 3c B): a plan check.
+    "strength_sets": 3,
 }
 
 
@@ -1816,6 +1824,26 @@ def _fact_checks(facts: _Facts) -> list[dict[str, Any]]:
     before = _mapping(facts.result.get("strength_before"))
     if before and facts.sport in ("run", "ride"):
         checks.append(_strength_before(before))
+    plan = _mapping(facts.result.get("strength_plan"))
+    if plan:
+        # Sets only, no load (athlete, #3084 3c B); a set is done at reps >= planned.
+        checks.append(
+            _against_plan(
+                "strength_sets",
+                "Sätze gegen Plan",
+                _number(plan.get("completed_sets")),
+                plan.get("planned_sets"),
+                "count",
+            )
+        )
+    weather = _mapping(facts.result.get("weather"))
+    if weather and facts.sport in ("run", "ride"):
+        checks.append(_heat(facts, weather))
+    reps = [
+        rep for rep in facts.execution.get("reps") or () if isinstance(rep, Mapping)
+    ]
+    if facts.sport == "ride" and reps:
+        checks.append(_hills(reps))
     return checks
 
 
@@ -1883,8 +1911,10 @@ def _data_quality(quality: Mapping[str, Any]) -> dict[str, Any]:
         f"Herzfrequenz: Spitzen über {HR_SPIKE_BPM:.0f} bpm in mehr als "
         f"{HR_SPIKE_SHARE * 100:.0f} % der Paare oder Kadenz-Kopplung; Tempo: "
         f"Sprünge über {SPEED_JUMP_MPS:g} m/s in mehr als "
-        f"{SPEED_JUMP_SHARE * 100:.0f} % der Paare. Prüfungen auf bezweifelten "
-        "Daten sind unbekannt",
+        f"{SPEED_JUMP_SHARE * 100:.0f} % der Paare; beide: Lücken über "
+        f"{MAX_GAP_S:g} s in mehr als {GAP_SHARE * 100:.0f} % der aufgezeichneten "
+        f"Zeit (Uhrsprünge über {PAUSE_S:g} s sind Pausen). Prüfungen auf "
+        "bezweifelten Daten sind unbekannt",
         "fixed",
     )
 
@@ -1917,5 +1947,74 @@ def _strength_before(before: Mapping[str, Any]) -> dict[str, Any]:
         },
         "Krafteinheiten in den 48 h vor dem Start: erledigt, sonst geplant und "
         "nicht bestätigt; nur Fakten, keine Ursache",
+        "fixed",
+    )
+
+
+def _heat(facts: _Facts, weather: Mapping[str, Any]) -> dict[str, Any]:
+    """Heat from the activity weather only (#3036), only ever an explanation.
+
+    From 25 C apparent temperature it names in ``explains`` the heart-rate
+    checks the report finds notable (decoupling, time above zone 2, cardiac
+    drift), each judged by its own function (athlete, #3084 3c C).
+    """
+    title = "Hitze (Wetter der Einheit)"
+    apparent = _number(weather.get("apparent_temperature_c"))
+    if apparent is None:
+        return _unknown("heat", title, "Keine gefühlte Temperatur gespeichert.")
+    explains = []
+    if apparent >= HEAT_APPARENT_C:
+        heart_checks = []
+        if facts.kind == "easy":
+            heart_checks = [_decoupling(facts), _easy_time_above(facts)]
+        elif facts.kind == "interval":
+            reps = [
+                rep
+                for rep in facts.execution.get("reps") or ()
+                if isinstance(rep, Mapping)
+            ]
+            heart_checks = [_cardiac_drift(facts, reps)] if reps else []
+        explains = [
+            check["id"] for check in heart_checks if check["verdict"] == "notable"
+        ]
+    return _judged(
+        "heat",
+        title,
+        value={
+            "apparent_temperature_c": apparent,
+            "temperature_c": _number(weather.get("temperature_c")),
+            "source": weather.get("source"),
+            "explains": explains,
+        },
+        unit="C",
+        rule=f"Gefühlte Temperatur ab {HEAT_APPARENT_C:.0f} °C erklärt auffällige "
+        "Herzfrequenz-Prüfungen; nie ein eigener Befund",
+        threshold=HEAT_APPARENT_C,
+        measure=0,
+        basis="fixed",
+        notable=False,
+    )
+
+
+def _hills(reps: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+    """Each rep's net elevation change and mean grade, facts only (athlete, #3084 3c E)."""
+    rows = []
+    for rep in reps:
+        change = _number(rep.get("elevation_change_m"))
+        distance = _number(rep.get("distance_m"))
+        rows.append(
+            {
+                "rep": rep.get("rep"),
+                "elevation_change_m": None if change is None else round(change, 1),
+                "grade_pct": round(100 * change / distance, 1)
+                if change is not None and distance
+                else None,
+            }
+        )
+    return _fact(
+        "hills",
+        "Steigung je Wiederholung",
+        rows,
+        "Netto-Höhenänderung und mittlere Steigung je Wiederholung; nur Fakten",
         "fixed",
     )
