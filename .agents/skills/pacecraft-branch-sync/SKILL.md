@@ -41,12 +41,16 @@ python scripts/branch_sync.py [--onto origin/develop] [--push] [--allow-root <fi
   repository root (listed): remove it, or pass `--allow-root <file>` for each
   one the PR names. Exit 2: bad input, a failed git call, or
   no SonarQube CLI for `--push`.
-- `--push` pushes to the tracked upstream on origin, so a local name that
-  differs from the PR's head branch updates that PR instead of creating a
-  second remote branch (#3270). Without an upstream, or when it is `develop` or
-  `main` (a branch started from `origin/develop` tracks it), it pushes to the
-  branch's own name. The lease guards that target, and the success line names
-  it (`pushed: <local> -> origin/<target>`).
+- `--push` updates `origin/<local name>`. When the local name differs from
+  the PR's head branch (a worktree already holds that name), pass
+  `--to <head branch>` so the PR gets the push instead of a second remote
+  branch (#3270). A branch that tracks another origin branch is refused without
+  `--to`, naming both choices, because that upstream may also be a stacked
+  parent's branch, which a push would overwrite. A stacked child started from
+  `origin/<parent>` therefore pushes with `--to <its own name>`. An upstream of
+  `develop` or `main`, or none, keeps the own name; `--to develop` or
+  `--to main` is refused. The lease guards the target, and the success line
+  names it (`pushed: <local> -> origin/<target>`).
 - `--push` runs `git push --force-with-lease -u origin <branch>:<target>` with
   `core.hooksPath=.githooks`; never bypass the hooks. The pre-push hook needs
   the SonarQube CLI: the script finds it in the usual install directories and

@@ -1,7 +1,13 @@
 """Rebase the current feature branch onto the target and optionally push it.
 
     python scripts/branch_sync.py [--onto origin/develop] [--push] [--allow-root <file>]
-                                  [--after-pr <number>]
+                                  [--after-pr <number>] [--to <branch>]
+
+--push updates origin/<local name>, or with --to the named origin branch, for a
+local name that differs from the pull request's head branch (#3270). A branch
+that tracks another origin branch (not develop or main) is refused without --to:
+that upstream may be the head under another name or a stacked parent's branch,
+which a push would overwrite. The lease guards the target.
 
 Refuses on develop, main, a detached HEAD and a dirty working tree. Fetches
 origin (retrying a lock held by a parallel worktree), rebases, checks every
@@ -166,20 +172,43 @@ def stopped(onto: str, conflicts: list[str], error: CliError) -> bool:
     return False
 
 
-def push_target(branch: str) -> str:
-    """The origin branch a push updates: the tracked upstream on origin (#3270),
-    so a local name that differs from the pull request's head branch does not
-    create a second remote branch; the branch's own name without one, or when
-    it tracks develop or main (a branch started from origin/develop does)."""
+def remote_tip(name: str) -> str:
+    """This checkout's origin/<name> commit, or "" for a branch never pushed: a
+    lease on "" only lets the push create it while it stays absent."""
+    try:
+        return git("rev-parse", "--verify", "--quiet", f"origin/{name}").strip()
+    except CliError:
+        return ""
+
+
+def push_target(branch: str, to: str | None, *, push: bool = True) -> str | None:
+    """The origin branch a push updates (#3270): ``to`` when given, else the
+    branch's own name. None, with the reason, when ``to`` names develop or main,
+    or when the branch tracks another origin branch and ``to`` does not name it:
+    that upstream may be the pull request's head under another local name, or a
+    stacked parent's branch a push would overwrite, and only the caller knows.
+    An upstream of develop or main (a branch started from origin/develop) or
+    none at all keeps the branch's own name. Without a push it is the own name."""
+    if not push:
+        return branch
+    if to is not None:
+        if to in PROTECTED:
+            print(f"refused: --to {to}; push a feature branch")
+            return None
+        return to
     try:
         remote = git("config", f"branch.{branch}.remote").strip()
         merge = git("config", f"branch.{branch}.merge").strip()
     except CliError:
         return branch  # no upstream yet: the first push sets it
     name = merge.removeprefix("refs/heads/")
-    if remote != "origin" or name == merge or name in PROTECTED:
-        return branch
-    return name
+    if remote == "origin" and name != merge and name not in {branch, *PROTECTED}:
+        print(
+            f"refused: {branch} tracks origin/{name}; pass --to {name} to update "
+            f"that branch, or --to {branch} to push under this name"
+        )
+        return None
+    return branch
 
 
 def contains(ancestor: str, ref: str) -> bool:
@@ -366,6 +395,7 @@ def sync(
     push: bool,
     allowed: frozenset[str] = frozenset(),
     after_pr: int | None = None,
+    to: str | None = None,
 ) -> int:
     branch = git("rev-parse", "--abbrev-ref", "HEAD").strip()
     if branch == "HEAD" or branch in PROTECTED:
@@ -376,14 +406,13 @@ def sync(
     if git("status", "--porcelain", "--untracked-files=no").strip():
         print("refused: uncommitted changes; commit or stash them first")
         return 1
+    target = push_target(branch, to, push=push)
+    if target is None:
+        return 1
     env = push_env(os.environ, Path.home()) if push else None
-    target = push_target(branch)
     # The lease must name the remote tip seen before this run's fetch, or the
     # fetch moves origin/<target> and the lease can no longer protect remote work.
-    try:
-        leased = git("rev-parse", "--verify", "--quiet", f"origin/{target}").strip()
-    except CliError:
-        leased = ""  # never pushed: the push only succeeds while it stays absent
+    leased = remote_tip(target)
     fetch()
     parent = None if after_pr is None else merged_parent(after_pr, onto, branch)
     if after_pr is not None and parent is None:
@@ -425,9 +454,16 @@ def main(argv: list[str] | None = None) -> int:
         metavar="NUMBER",
         help="restack onto the target after this merged pull request (#3243)",
     )
+    parser.add_argument(
+        "--to",
+        metavar="BRANCH",
+        help="the origin branch --push updates, when it differs from the local name (#3270)",
+    )
     args = parser.parse_args(argv)
     try:
-        return sync(args.onto, args.push, frozenset(args.allow_root), args.after_pr)
+        return sync(
+            args.onto, args.push, frozenset(args.allow_root), args.after_pr, args.to
+        )
     except CliError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
