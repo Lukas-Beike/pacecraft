@@ -1278,7 +1278,7 @@ def build_structured_tool_schemas(
             {
                 "energy": {
                     "type": "boolean",
-                    "description": "True reads only the energy expenditure up to yesterday: resting_kcal and total_kcal per source (katch_mcardle and cunningham from skinfold lean mass, device = Garmin's own estimate, name it Garmin, own = intake versus weight trend with *_band_kcal), each source's mean_error_kcal and hit_rate_pct (share of 4-week windows within 100 kcal/day of own), best, the data basis and the skinfold. Name the source with every value; null means no basis, never estimate it.",
+                    "description": "True reads only the energy expenditure up to yesterday: resting_kcal and total_kcal per source (katch_mcardle and cunningham from skinfold lean mass, device = Garmin's own estimate, name it Garmin, own = intake versus weight trend), each with its nominal 95 % *_band_kcal (excluding logging bias; own resting is a residual), each source's mean_error_kcal against own over the shared windows, fit (shared_windows of windows, reference_band_kcal) and best. best is set only with at least 4 shared windows and a lead beyond the band; when it is null, say the sources are not yet distinguishable. Name the source with every value; null means no basis, never estimate it.",
                 },
                 "date": {
                     "type": "string",
