@@ -25,6 +25,7 @@ from backend.coach.context import (
 from backend.coach.session_checks import matched_focus
 from backend.errors import AppError
 from backend.nutrition import fuelling, session_fuelling
+from backend.performance import session_conditions
 from backend.performance.activity_read_service import (
     ActivityAnalysisReadService,
     calendar_pairs,
@@ -676,6 +677,10 @@ class CoachActivityReadToolService:
             )
         )
         inputs = {
+            # The load of the days before (#3084 3c H).
+            "daily_loads": None
+            if day is None
+            else _daily_loads(self._activity_read, day),
             # The stored headwind with its bins: for the report only (#3084).
             "headwind": self._activity_read.session_headwind(
                 str(session.get("activity_id") or "")
@@ -964,6 +969,25 @@ def _unpaired_reason(
     if any(str(unit.get("id")) in pairs for unit in same):
         return "Die geplante Einheit dieses Tages gehört zu einer anderen Aktivität."
     return None
+
+
+def _daily_loads(activity_read: Any, day: date) -> dict[str, float]:
+    """The local load per day of the days before ``day``, for the 3-day prior load."""
+    days = (
+        session_conditions.PRIOR_LOAD_WINDOW_DAYS + session_conditions.PRIOR_LOAD_DAYS
+    )
+    loads: dict[str, float] = {}
+    for summary in (
+        activity_read.summaries_between(
+            day - timedelta(days=days), day - timedelta(days=1)
+        )
+        or ()
+    ):
+        load = summary.get("training_load")
+        started = iso_date_prefix(summary.get("started_at_local"))
+        if isinstance(load, (int, float)) and started:
+            loads[started] = loads.get(started, 0.0) + float(load)
+    return loads
 
 
 def _own_summary(

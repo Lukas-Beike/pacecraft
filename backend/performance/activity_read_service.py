@@ -45,6 +45,7 @@ from backend.performance.detail_envelope import (
 )
 from backend.performance.freshness import GarminSyncStatus
 from backend.performance.local_tss import THRESHOLD_KINDS
+from backend.performance.personal_recovery import personal_recovery
 from backend.performance.planned_targets import planned_step_adherence, unit_steps
 from backend.performance.session_rpe_load import feedback_by_session, session_load
 from backend.performance.session_zones import (
@@ -348,10 +349,34 @@ class ActivityAnalysisReadService(ActivityReadService):
             document["weather"] = weather
         if route is not None:
             document["route"] = route
+        recovery = _recovery_before(inputs.get("canonical"), document["session"])
+        if recovery is not None:
+            document["recovery_before"] = recovery
         summary = requested_summary()
         _add_purpose(document["session"], summary)
         document.update(_summary_blocks(summary))
         return {"ok": True, **document, "data_scope": _data_scope(document, records)}
+
+
+def _recovery_before(
+    canonical: CanonicalPerformanceInputs | None, session: Mapping[str, Any]
+) -> list[dict[str, Any]] | None:
+    """Sleep, HRV and resting HR of the session's day against the own quartiles.
+
+    The personal-recovery rule anchored at the session's day (#3084 3c G), from
+    the recovery inputs this detail read already holds, so no second read; each
+    value is the latest up to that day, so ``observed_at`` tells whether it is
+    that night's. Without the history series. None when nothing was read.
+    """
+    recovery = None if canonical is None else canonical.recovery
+    day = iso_date_prefix(session.get("started_at_local"))
+    if recovery is None or not day:
+        return None
+    report = personal_recovery({}, date.fromisoformat(day), canonical=recovery)
+    return [
+        {key: value for key, value in baseline.items() if key != "history"}
+        for baseline in report["baselines"]
+    ]
 
 
 def calendar_pairs(

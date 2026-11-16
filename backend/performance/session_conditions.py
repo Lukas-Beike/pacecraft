@@ -13,6 +13,7 @@ import itertools
 import math
 import statistics
 from collections.abc import Mapping, Sequence
+from datetime import date, timedelta
 from typing import Any, Final
 
 from backend.athlete.measurements import finite_float as _number
@@ -58,6 +59,10 @@ WIND_EXPLAINS_MPS: Final = 3.0
 WIND_SECOND_SIGNAL_MPS: Final = 2.0
 # A headwind needs a direction and a wind value for this share of the moving time.
 WIND_MIN_COVERAGE_PCT: Final = 50.0
+# The 3-day prior load (athlete, #3084 3c H): the local load of the 3 days before
+# the session against the median of every 3-day sum in the 42 days before; facts.
+PRIOR_LOAD_DAYS: Final = 3
+PRIOR_LOAD_WINDOW_DAYS: Final = 42
 # What the session report adds to the detail for these checks: the session's
 # local IF, the device's grade-adjusted speed and the athlete's rated sessions.
 INPUTS: Final = "condition_inputs"
@@ -154,6 +159,33 @@ def body_headwind(
     if weight <= 0:
         return None
     return round(total / weight * WIND_BODY_FACTOR, 2)
+
+
+def prior_load(loads: Mapping[str, float], day: date) -> dict[str, Any] | None:
+    """The 3-day load before ``day`` and the median 3-day sum of the 42 days before.
+
+    ``loads`` maps ISO days to their local load; a day without one counts 0.
+    None without any load in the window.
+    """
+    if not loads:
+        return None
+
+    def three_days(end: date) -> float:
+        return sum(
+            loads.get((end - timedelta(days=back)).isoformat(), 0.0)
+            for back in range(PRIOR_LOAD_DAYS)
+        )
+
+    yesterday = day - timedelta(days=1)
+    sums = [
+        three_days(yesterday - timedelta(days=offset))
+        for offset in range(PRIOR_LOAD_WINDOW_DAYS)
+    ]
+    return {
+        "sum_3_days": round(three_days(yesterday), 1),
+        "median_3_days_42": round(statistics.median(sums), 1),
+        "window_days": PRIOR_LOAD_WINDOW_DAYS,
+    }
 
 
 def _steps(

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import unittest
-from datetime import date
+from datetime import date, timedelta
 from typing import Any
 from unittest.mock import Mock, patch
 
@@ -16,6 +16,7 @@ from backend.performance.session_conditions import (
     body_headwind,
     expected_rpe,
     grade_adjusted_pace,
+    prior_load,
 )
 from backend.performance.session_report import session_report
 from backend.sync.local_load import with_local_loads
@@ -465,6 +466,97 @@ class PlanHeatHillsTests(unittest.TestCase):
             ],
             check["value"],
         )
+
+
+def _dated(result: dict, day: str = "2026-09-22") -> dict:
+    result["session"]["started_at_local"] = f"{day}T07:00:00"
+    return result
+
+
+def _night(metric: str, position: str, observed_at: str = "2026-09-22") -> dict:
+    return {
+        "metric": metric,
+        "measurement": "x",
+        "value": 1.0,
+        "unit": "h",
+        "observed_at": observed_at,
+        "median": 1.0,
+        "lower": 0.9,
+        "upper": 1.1,
+        "position": position,
+        "status": "ok",
+        "source": "Garmin Connect",
+        "history": [{"date": "2026-09-21", "value": 1.0}],
+    }
+
+
+class RecoveryAndLoadTests(unittest.TestCase):
+    """The night before and the load of the 3 days before (#3084 Part 3c G, H)."""
+
+    def test_prior_load_known_answer(self) -> None:
+        day = date(2026, 9, 22)
+        loads = {
+            (day - timedelta(days=back)).isoformat(): 30.0 for back in range(1, 46)
+        }
+        # Every 3-day sum is 90; one heavy day before the session lifts only the
+        # latest window: 60 + 30 + 30 + 60 = 180, the median stays 90.
+        loads[(day - timedelta(days=1)).isoformat()] = 120.0
+        self.assertEqual(
+            {"sum_3_days": 180.0, "median_3_days_42": 90.0, "window_days": 42},
+            prior_load(loads, day),
+        )
+        self.assertIsNone(prior_load({}, day))
+
+    def test_prior_load_check_is_facts(self) -> None:
+        result = _dated(_run())
+        result[INPUTS] = {"daily_loads": {"2026-09-21": 60.0, "2026-09-19": 30.0}}
+
+        check = _check(session_report(result), "prior_load")
+
+        assert check is not None
+        self.assertEqual(
+            ("ok", 0, "personal"), (check["verdict"], check["severity"], check["basis"])
+        )
+        self.assertEqual(90.0, check["value"]["sum_3_days"])
+
+    def test_the_night_before_explains_only_a_notable_heart_rate_check(self) -> None:
+        def recovery(nights: list, decoupling: float) -> dict:
+            result = _dated(
+                _run(
+                    focus={"status": "matched", "session_focus": "easy"},
+                    metrics={"decoupling_pct": {"value": decoupling}},
+                )
+            )
+            result["recovery_before"] = nights
+            check = _check(session_report(result), "recovery_before")
+            assert check is not None
+            return check
+
+        short = recovery([_night("sleep", "below")], 8.0)
+        self.assertEqual(
+            ("ok", ["decoupling"]), (short["verdict"], short["value"]["explains"])
+        )
+        night = short["value"]["nights"][0]
+        self.assertTrue(night["that_night"])
+        self.assertNotIn("history", night)
+        # The favourable side, an older value or an ok heart rate explain nothing.
+        self.assertEqual(
+            [], recovery([_night("sleep", "above")], 8.0)["value"]["explains"]
+        )
+        self.assertEqual(
+            [],
+            recovery([_night("sleep", "below", "2026-09-20")], 8.0)["value"][
+                "explains"
+            ],
+        )
+        self.assertEqual(
+            [], recovery([_night("resting_hr", "above")], 3.0)["value"]["explains"]
+        )
+        self.assertEqual(
+            ["decoupling"],
+            recovery([_night("resting_hr", "above")], 8.0)["value"]["explains"],
+        )
+        self.assertEqual("unknown", recovery([], 8.0)["verdict"])
 
 
 class RatedSessionsReadTests(unittest.TestCase):
