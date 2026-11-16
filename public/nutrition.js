@@ -549,6 +549,8 @@ const nutritionRefresh = AppViewRefresh.create({
       renderBodyAnalysis(state.data.performance?.history?.body);
     });
     if (route === "nutrition/week") return loadNutrition({ preserve: true, expectedRoute: route, expectedDate: nutritionHistoryPeriod, throwOnError: true });
+    // The diary holds the energy table since #3252, so its refresh reads it again too.
+    resetEnergy();
     return loadNutrition({ preserve: true, expectedRoute: route, expectedDate: document.querySelector("#nutritionDate").value, throwOnError: true });
   },
   button: document.querySelector("#nutritionRefreshButton"),
@@ -569,7 +571,7 @@ function resetNutritionView() {
   document.querySelector("#nutritionProductUseDialog")?.close();
   nutritionProductForUse = null;
   document.querySelector("#nutritionDate").value = "";
-  for (const id of ["nutritionWeekPeriod", "nutritionWeekStatus", "nutritionWeekTotals", "nutritionWeekDays", "nutritionWeekChart", "nutritionEntries", "nutritionTotals", "nutritionStatus", "nutritionProducts", "nutritionLookupResult", "nutritionProductStatus"]) document.getElementById(id)?.replaceChildren();
+  for (const id of ["nutritionWeekPeriod", "nutritionWeekStatus", "nutritionWeekTotals", "nutritionWeekDays", "nutritionWeekChart", "nutritionEntries", "nutritionTotals", "nutritionEnergy", "nutritionStatus", "nutritionProducts", "nutritionLookupResult", "nutritionProductStatus"]) document.getElementById(id)?.replaceChildren();
   document.querySelector("#nutritionLookupResult").hidden = true;
   document.querySelector("#nutritionWeekChartSection").hidden = true;
   const editor = document.querySelector("#nutritionExtraction"); if (editor) { editor.replaceChildren(); editor.hidden = true; }
