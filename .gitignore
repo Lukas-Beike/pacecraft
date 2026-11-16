@@ -16,3 +16,6 @@ playwright/.auth/
 # Local coverage data (pyproject sets parallel = true)
 .coverage
 .coverage.*
+
+# Per-worktree Ruff and mypy from scripts/prepare_worktree.py (#3217)
+.quality-tools/

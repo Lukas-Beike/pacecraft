@@ -21,8 +21,11 @@ empty. Rows of sessions that are gone are retired.
 
 from __future__ import annotations
 
+import itertools
 import json
 import logging
+import math
+import statistics
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime, timedelta, tzinfo
@@ -42,6 +45,7 @@ from backend.canonical.sports import is_outdoor_endurance
 from backend.canonical.vocabulary import (
     PROVIDER_PRECEDENCE,
     Environment,
+    MetricKind,
     RecordingOrigin,
     SourceKind,
     Sport,
@@ -49,14 +53,18 @@ from backend.canonical.vocabulary import (
 )
 from backend.db import activity_detail_store, canonical_store
 from backend.db.repositories import KeyValueRepository
+from backend.performance.session_conditions import MOVING_MPS, STOP_S
 from backend.providers.activity_weather import rounded_coordinates
 from backend.sync.canonical_backfill import BatchReport
 from backend.sync.canonical_table_reader import CanonicalTableReader
 from backend.weather.activity_weather import (
     FIRST_DAY,
     SETTLE,
+    WIND_BIN_S,
     ActivityWeather,
+    Headwind,
     activity_window,
+    headwind,
     reduce_hourly,
     utc_days,
 )
@@ -67,6 +75,7 @@ from backend.weather.activity_weather_store import (
     METHOD_ID,
     METHOD_VERSION,
     VALUES,
+    WIND_VALUES,
     stored_activity_weather,
 )
 
@@ -77,6 +86,15 @@ STATE_KEY: Final = "activity_weather_state"
 DEFAULT_BATCH_SIZE: Final = 20
 RETRY_BASE: Final = timedelta(minutes=30)
 RETRY_MAX: Final = timedelta(hours=24)
+# Looking up a session that already has stored weather again (a method version
+# change) is paced to this many per hour: even passes running all day stay at
+# 7,200, under Open-Meteo's free 10,000 per day and 5,000 per hour, with room
+# for the forecast. A session never looked up is never held back (#3084).
+REFETCH_PER_HOUR: Final = 300
+# A travel bearing needs this much distance to the next position; closer ones
+# are GPS noise.
+BEARING_MIN_M: Final = 10.0
+_EARTH_RADIUS_M: Final = 6_371_000.0
 # A session with neither a stored position nor a home location.
 _NO_LOCATION: Final = "none"
 _RANK: Final = {
@@ -131,6 +149,92 @@ def _start_position(db: Any, session_id: str) -> Coordinates | None:
     return None
 
 
+def _travel_steps(db: Any, session_id: str) -> list[tuple[float, float, float | None]]:
+    """(stream offset s, seconds, travel bearing) of each moving step.
+
+    From the positions of the best-ranked stream set that has them; they stay in
+    this function, only bearings leave it. A step is moving at ``MOVING_MPS`` or
+    faster and not longer than the stop rule of the session report; its bearing
+    points to the first later position at least ``BEARING_MIN_M`` away within
+    that rule, else it is None.
+    """
+    sets = sorted(
+        activity_detail_store.full_stream_sets_for_session(db, session_id),
+        key=lambda item: _RANK.get(item.provider, len(_RANK)),
+    )
+    for item in sets:
+        detail = item.detail
+        if not isinstance(detail, ActivityStreamSet):
+            continue
+        channels = detail.channels
+        latitudes = channels.get(StreamChannel.LATITUDE_DEG, ())
+        if not any(value is not None for value in latitudes):
+            continue
+        return _steps(
+            channels.get(StreamChannel.TIME_S, ()),
+            latitudes,
+            channels.get(StreamChannel.LONGITUDE_DEG, ()),
+            channels.get(StreamChannel.SPEED_MPS, ()),
+        )
+    return []
+
+
+def _steps(
+    times: Sequence[float | None],
+    latitudes: Sequence[float | None],
+    longitudes: Sequence[float | None],
+    speeds: Sequence[float | None],
+) -> list[tuple[float, float, float | None]]:
+    count = min(len(times), len(latitudes), len(longitudes), len(speeds))
+    deltas = [
+        later - earlier
+        for earlier, later in itertools.pairwise(times[:count])
+        if earlier is not None and later is not None and later > earlier
+    ]
+    if not deltas:
+        return []
+    stop = max(STOP_S, 3 * statistics.median(deltas))
+    positions = [
+        valid_position(latitude, longitude)
+        for latitude, longitude in zip(
+            latitudes[:count], longitudes[:count], strict=False
+        )
+    ]
+    steps: list[tuple[float, float, float | None]] = []
+    for index in range(count - 1):
+        start, end, speed = times[index], times[index + 1], speeds[index]
+        if start is None or end is None or not 0 < end - start <= stop:
+            continue
+        if speed is None or speed < MOVING_MPS:
+            continue
+        steps.append((start, end - start, _bearing(times, positions, index, stop)))
+    return steps
+
+
+def _bearing(
+    times: Sequence[float | None],
+    positions: Sequence[Coordinates | None],
+    index: int,
+    stop: float,
+) -> float | None:
+    """Degrees from north to the first later position at least ``BEARING_MIN_M`` away."""
+    here, start = positions[index], times[index]
+    if here is None or start is None:
+        return None
+    for ahead in range(index + 1, len(positions)):
+        moment, there = times[ahead], positions[ahead]
+        if moment is None or moment - start > stop:
+            return None
+        if there is None:
+            continue
+        # Local plane: exact enough over the metres between two samples.
+        east = math.radians(there[1] - here[1]) * math.cos(math.radians(here[0]))
+        north = math.radians(there[0] - here[0])
+        if _EARTH_RADIUS_M * math.hypot(east, north) >= BEARING_MIN_M:
+            return math.degrees(math.atan2(east, north)) % 360
+    return None
+
+
 @dataclass(frozen=True, slots=True)
 class _Fetched:
     """One looked-up session; the kind of location, never the coordinates."""
@@ -139,6 +243,7 @@ class _Fetched:
     kind: str
     home_key: str
     weather: ActivityWeather | None
+    headwind: Headwind | None = None
 
 
 @dataclass(slots=True)
@@ -149,6 +254,8 @@ class _Plan:
     stored: dict[str, dict[str, dict[str, Any]]] = field(default_factory=dict)
     empty: dict[str, Any] = field(default_factory=dict)
     changed: list[tuple[Mapping[str, Any], str]] = field(default_factory=list)
+    # Sessions remembered as empty under an older fingerprint: looked up before.
+    empty_before: set[str] = field(default_factory=set)
     wanted: int = 0
     waiting: int = 0
 
@@ -199,6 +306,9 @@ class ActivityWeatherStage:
         self._batch_size = batch_size
         self._fetched: dict[str, _Fetched] = {}
         self._halted = False
+        # Times of the re-fetches in the last hour; in memory, so a restart
+        # allows at most one more batch.
+        self._refetched: list[datetime] = []
         # Session id -> (failures, earliest next attempt); in memory on purpose.
         self._retry: dict[str, tuple[int, datetime]] = {}
 
@@ -217,22 +327,30 @@ class ActivityWeatherStage:
         with database().reader() as db:
             plan = self._plan(db, now)
             home = self._home_location(db)
-            batch = [
-                (summary, cheap, self._locate(db, summary, home))
-                for summary, cheap in self._eligible(plan, now)[: self._batch_size]
-            ]
+            batch = []
+            for summary, cheap in self._paced(plan, now)[: self._batch_size]:
+                kind, position = self._locate(db, summary, home)
+                # Bearings only for a session on its own track, and only here.
+                steps = (
+                    _travel_steps(db, str(summary["id"]))
+                    if kind == LOCATION_START
+                    else []
+                )
+                batch.append((summary, cheap, kind, position, steps))
         home_key = self._home_key(home)
-        for summary, cheap, (kind, position) in batch:
+        for summary, cheap, kind, position, steps in batch:
             session_id = str(summary["id"])
-            weather = None
+            weather = wind = None
             if position is not None:
                 try:
-                    weather = self._look_up(summary, position)
+                    weather, wind = self._look_up(summary, position, steps)
                 except Exception as exc:  # noqa: BLE001 - logged by type only
                     self._failed(session_id, now, exc)
                     return
                 self._retry.pop(session_id, None)
-            self._fetched[session_id] = _Fetched(cheap, kind, home_key, weather)
+                if session_id in plan.stored or session_id in plan.empty_before:
+                    self._refetched.append(now)
+            self._fetched[session_id] = _Fetched(cheap, kind, home_key, weather, wind)
 
     def run_batch(self, db: Any) -> BatchReport:
         """Write the values fetched by ``prefetch`` in the caller's transaction."""
@@ -249,7 +367,7 @@ class ActivityWeatherStage:
             if str(summary["id"]) in remembered
         } | plan.empty
         keep = plan.keep
-        written = values = pending = 0
+        written = values = pending = headwinds = 0
         retried = sum(1 for summary, _ in plan.changed if self._waiting(summary, now))
         for summary, cheap in plan.changed:
             session_id = str(summary["id"])
@@ -267,6 +385,7 @@ class ActivityWeatherStage:
             written += 1
             if keys:
                 values += 1
+                headwinds += item.headwind is not None
                 keep.update(keys)
                 next_empty.pop(session_id, None)
             else:
@@ -274,25 +393,33 @@ class ActivityWeatherStage:
         retired = canonical_store.retire_derived_observations(
             db, METHOD_ID, keep=keep, now=stamp
         )
+        # A retired row keeps its details: the bins go with the session (#3084).
+        canonical_store.drop_retired_derivation_key(
+            db, METHOD_ID, MetricKind.ACTIVITY_WEATHER_HEADWIND.value, "bins"
+        )
         done = self._halted or written == 0 or pending == 0
         counts = {
             "sessions": plan.wanted,
             "looked_up": written,
             "with_values": values,
+            "with_headwind": headwinds,
             "remaining": pending,
             "retrying": retried,
             "retired": retired,
         }
         if self._halted:
             status = "retry"
+        elif pending == 0:
+            status = "complete"
         else:
-            status = "complete" if done else "running"
+            # Sessions remain: paused at the re-fetch pace, or still running.
+            status = "paused" if done else "running"
         self._save(
             db,
             {
                 "status": status,
                 "method_version": METHOD_VERSION,
-                "completed_at": stamp if done else state.get("completed_at"),
+                "completed_at": stamp if pending == 0 else state.get("completed_at"),
                 "counts": counts,
                 "empty": next_empty,
             },
@@ -357,6 +484,8 @@ class ActivityWeatherStage:
             ):
                 plan.empty[session_id] = entry
                 continue
+            if session_id in empty:
+                plan.empty_before.add(session_id)
             plan.changed.append((summary, cheap))
         return plan
 
@@ -364,6 +493,22 @@ class ActivityWeatherStage:
         self, plan: _Plan, now: datetime
     ) -> list[tuple[Mapping[str, Any], str]]:
         return [item for item in plan.changed if not self._waiting(item[0], now)]
+
+    def _paced(self, plan: _Plan, now: datetime) -> list[tuple[Mapping[str, Any], str]]:
+        """The eligible sessions; one looked up before only within the hourly pace."""
+        self._refetched = [
+            moment for moment in self._refetched if now - moment < timedelta(hours=1)
+        ]
+        allowed = REFETCH_PER_HOUR - len(self._refetched)
+        paced = []
+        for summary, cheap in self._eligible(plan, now):
+            session_id = str(summary["id"])
+            if session_id in plan.stored or session_id in plan.empty_before:
+                if allowed <= 0:
+                    continue
+                allowed -= 1
+            paced.append((summary, cheap))
+        return paced
 
     def _waiting(self, summary: Mapping[str, Any], now: datetime) -> bool:
         retry = self._retry.get(str(summary["id"]))
@@ -388,12 +533,17 @@ class ActivityWeatherStage:
         return _NO_LOCATION, None
 
     def _look_up(
-        self, summary: Mapping[str, Any], position: Coordinates
-    ) -> ActivityWeather | None:
+        self,
+        summary: Mapping[str, Any],
+        position: Coordinates,
+        steps: Sequence[tuple[float, float, float | None]],
+    ) -> tuple[ActivityWeather | None, Headwind | None]:
         start, end = _window(summary)
         first, last = utc_days(start, end)
-        return reduce_hourly(
-            self._fetch(*rounded_coordinates(*position), first, last), start, end
+        payload = self._fetch(*rounded_coordinates(*position), first, last)
+        return (
+            reduce_hourly(payload, start, end),
+            headwind(payload, start, steps) if steps else None,
         )
 
     def _failed(self, session_id: str, now: datetime, error: Exception) -> None:
@@ -421,35 +571,42 @@ class ActivityWeatherStage:
         fingerprint: str,
         stamp: str,
     ) -> set[str]:
-        """Upsert the session's values; return their natural keys (empty: none)."""
+        """Upsert the session's values; return their natural keys (empty: none).
+
+        The wind values are built apart, so one outside its bounds never drops
+        the weather values, nor the other way round (#3084).
+        """
         if item.weather is None or item.kind not in LOCATION_LABELS:
             return set()
-        try:
-            observations = [
-                _observation(
-                    summary,
-                    kind,
-                    getattr(item.weather, attribute),
-                    item.kind,
-                    fingerprint,
-                )
+        base = {"location_kind": item.kind}
+        groups: list[list[tuple[Any, float, Mapping[str, Any]]]] = [
+            [
+                (kind, getattr(item.weather, attribute), base)
                 for _key, kind, attribute in VALUES
                 if getattr(item.weather, attribute) is not None
-            ]
-        except TypeError, ValueError:
-            # Outside the canonical bounds: this session keeps no value.
-            return set()
+            ],
+            _wind_values(item, base),
+        ]
         keys = set()
-        for observation in observations:
-            keys.add(canonical_store.observation_natural_key(observation))
-            canonical_store.upsert_observation(
-                db,
-                observation,
-                mapper_version=METHOD_VERSION,
-                now=stamp,
-                owner=str(summary["id"]),
-                derivation={"location_kind": item.kind},
-            )
+        for group in groups:
+            try:
+                observations = [
+                    (_observation(summary, kind, value, item.kind, fingerprint), extra)
+                    for kind, value, extra in group
+                ]
+            except TypeError, ValueError:
+                # Outside the canonical bounds: this group keeps no value.
+                continue
+            for observation, extra in observations:
+                keys.add(canonical_store.observation_natural_key(observation))
+                canonical_store.upsert_observation(
+                    db,
+                    observation,
+                    mapper_version=METHOD_VERSION,
+                    now=stamp,
+                    owner=str(summary["id"]),
+                    derivation=extra,
+                )
         return keys
 
     def _state(self, db: Any) -> dict[str, Any]:
@@ -459,6 +616,33 @@ class ActivityWeatherStage:
         self._key_values.set(
             db, STATE_KEY, json.dumps(state, sort_keys=True, separators=(",", ":"))
         )
+
+
+def _wind_values(
+    item: _Fetched, base: Mapping[str, Any]
+) -> list[tuple[Any, float, Mapping[str, Any]]]:
+    """The wind direction and the headwind component with its coverage and bins."""
+    kinds = dict(WIND_VALUES)
+    values: list[tuple[Any, float, Mapping[str, Any]]] = []
+    direction = None if item.weather is None else item.weather.wind_direction_deg
+    if direction is not None:
+        values.append((kinds["wind_direction_deg"], direction, base))
+    if item.headwind is not None:
+        values.append(
+            (
+                kinds["headwind_mps"],
+                item.headwind.mean_mps,
+                {
+                    **base,
+                    "coverage_pct": item.headwind.coverage_pct,
+                    "head_share_pct": item.headwind.head_share_pct,
+                    "tail_share_pct": item.headwind.tail_share_pct,
+                    "bin_s": WIND_BIN_S,
+                    "bins": list(item.headwind.bins),
+                },
+            )
+        )
+    return values
 
 
 def _observation(

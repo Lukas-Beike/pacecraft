@@ -13,6 +13,7 @@ from backend.performance.grade_adjustment import grade_adjusted
 from backend.performance.session_conditions import (
     INPUTS,
     MIN_RATED,
+    body_headwind,
     expected_rpe,
     grade_adjusted_pace,
 )
@@ -212,6 +213,195 @@ class ConditionChecksInTheReportTests(unittest.TestCase):
         assert check is not None
         self.assertEqual("unknown", check["verdict"])
         self.assertIsNotNone(check["value"])
+
+
+def _windy(
+    first_mps: float,
+    second_mps: float,
+    coverage: float = 90.0,
+    focus: str | None = "tempo",
+) -> dict:
+    """A 50 min run whose main part (600 s to 3000 s) slows by 5 % in the second half.
+
+    ``focus`` is the matched session focus: a tempo effort's halves are judged.
+
+    The stored 10 m component is ``first_mps`` up to 1800 s, then ``second_mps``.
+    """
+    result = _run(seconds=3000)
+    result["analysis"]["execution"]["structure"] = "continuous"
+    result["analysis"]["execution"]["halves"] = {
+        "status": "ok",
+        "start_s": 600,
+        "main_part_s": 2400,
+        "change_pct": -5.0,
+    }
+    if focus is not None:
+        result["focus"] = {"status": "matched", "session_focus": focus}
+    result[INPUTS] = {
+        "headwind": {
+            "mean_mps": (first_mps + second_mps) / 2,
+            "coverage_pct": coverage,
+            "bin_s": 60,
+            "bins": [first_mps] * 30 + [second_mps] * 20,
+            "head_share_pct": 60.0,
+            "tail_share_pct": 10.0,
+        }
+    }
+    return result
+
+
+class WindTests(unittest.TestCase):
+    """Wind at body height explains a slower part, never decides (#3084 Part 3b)."""
+
+    def test_body_height_known_answer_over_windows(self) -> None:
+        # ln(2 / 0.03) / ln(10 / 0.03) = 4.1997 / 5.8091 = 0.7229.
+        wind = {"mean_mps": 3.0, "bin_s": 60, "bins": [2.0] * 30 + [-4.0] * 30}
+        self.assertEqual(2.17, body_headwind(wind))
+        self.assertEqual(1.45, body_headwind(wind, (0, 1800)))
+        self.assertEqual(-2.89, body_headwind(wind, (1800, 3600)))
+        # Half a minute each side of the change: (2 x 30 - 4 x 30) / 60 = -1.
+        self.assertEqual(-0.72, body_headwind(wind, (1770, 1830)))
+
+    def test_wind_explains_a_slower_second_half_with_a_second_signal(self) -> None:
+        # First half 600-1800 s at 2 m/s (body 1.45), second 1800-3000 s at
+        # 8 m/s (body 5.78): 3 m/s or more, and 4.3 m/s more than before.
+        report = session_report(_windy(2.0, 8.0))
+
+        wind = _check(report, "wind")
+        assert wind is not None
+        self.assertEqual(("ok", 0), (wind["verdict"], wind["severity"]))
+        self.assertEqual(
+            [{"check": "main_fade", "part_mps": 5.78, "compared_mps": 1.45}],
+            wind["value"]["explains"],
+        )
+        self.assertNotIn("wind", report["notable"])
+        self.assertNotIn("wind", report["lead"])
+
+    def test_only_halves_the_report_judges_are_explained(self) -> None:
+        # An easy run's halves are no check of the report: wind names nothing.
+        easy = _check(session_report(_windy(2.0, 8.0, focus="easy")), "wind")
+        assert easy is not None
+        self.assertEqual([], easy["value"]["explains"])
+        # A race judges its split with its own key and rule.
+        race = _check(session_report(_windy(2.0, 8.0, focus="race")), "wind")
+        assert race is not None
+        self.assertEqual("race_split", race["value"]["explains"][0]["check"])
+
+    def test_too_little_extra_headwind_explains_nothing(self) -> None:
+        # Second half 4.5 m/s (body 3.25) is 3 m/s or more, but only 1.8 m/s more.
+        wind = _check(session_report(_windy(2.0, 4.5)), "wind")
+        assert wind is not None
+        self.assertEqual([], wind["value"]["explains"])
+
+    def test_low_coverage_or_no_track_leaves_the_wind_unknown(self) -> None:
+        low = _check(session_report(_windy(2.0, 8.0, coverage=40.0)), "wind")
+        assert low is not None
+        self.assertEqual("unknown", low["verdict"])
+        self.assertIn("40 %", low["reason"])
+        none = _check(session_report(_run()), "wind")
+        assert none is not None
+        self.assertEqual("unknown", none["verdict"])
+        self.assertIsNone(_check(session_report(_run(environment="indoor")), "wind"))
+
+
+class FactChecksTests(unittest.TestCase):
+    """Facts the report passes on and never judges (#3084 Part 3c)."""
+
+    def test_training_effect_is_passed_on_with_its_source(self) -> None:
+        result = _run(
+            metrics={
+                "aerobic_training_effect": {"value": 3.4, "source": "Garmin Connect"},
+                "anaerobic_training_effect": {"value": 1.2, "source": "Wahoo"},
+            },
+            training_effect_label={"value": "TEMPO", "source": "Garmin Connect"},
+        )
+
+        check = _check(session_report(result), "training_effect")
+
+        assert check is not None
+        self.assertEqual(
+            ("ok", 0, "provider"), (check["verdict"], check["severity"], check["basis"])
+        )
+        self.assertEqual(
+            {
+                "aerobic": 3.4,
+                "aerobic_source": "Garmin Connect",
+                "anaerobic": 1.2,
+                "anaerobic_source": "Wahoo",
+                "label": "TEMPO",
+                "label_source": "Garmin Connect",
+            },
+            check["value"],
+        )
+        self.assertEqual(
+            "unknown",
+            _check(session_report(_run()), "training_effect")["verdict"],  # type: ignore[index]
+        )
+
+    def test_data_quality_names_the_doubted_data_and_never_decides(self) -> None:
+        result = _run()
+        result["analysis"]["execution"]["data_quality"] = {
+            "heart_rate": "spikes",
+            "speed": "ok",
+        }
+
+        report = session_report(result)
+
+        check = _check(report, "data_quality")
+        assert check is not None
+        self.assertEqual(
+            ("ok", ["heart_rate"]), (check["verdict"], check["value"]["doubted"])
+        )
+        self.assertIn("20 bpm", check["rule"])
+        self.assertNotIn("data_quality", report["notable"])
+
+    def test_strength_before_gives_facts_only(self) -> None:
+        result = _run(
+            strength_before={
+                "status": "ok",
+                "origin": "completed",
+                "sessions": [
+                    {"hours_before": 20.5, "legs": True, "intensity": "heavy"},
+                    {"hours_before": 40.0, "legs": False, "intensity": None},
+                ],
+            }
+        )
+
+        check = _check(session_report(result), "strength_before")
+
+        assert check is not None
+        self.assertEqual("ok", check["verdict"])
+        self.assertEqual(
+            {
+                "sessions": 2,
+                "legs": 1,
+                "intensities": ["heavy", None],
+                "closest_hours_before": 20.5,
+                "confirmed": True,
+            },
+            check["value"],
+        )
+        unread = _run(
+            strength_before={
+                "status": "not_covered",
+                "reason": "Aktivitäten nicht lesbar.",
+            }
+        )
+        missing = _check(session_report(unread), "strength_before")
+        assert missing is not None
+        self.assertEqual("unknown", missing["verdict"])
+        # Nothing done and the plan unread is no known zero.
+        unchecked = _run(
+            strength_before={
+                "status": "ok",
+                "origin": "none_found",
+                "planned_checked": False,
+                "sessions": [],
+            }
+        )
+        unplanned = _check(session_report(unchecked), "strength_before")
+        assert unplanned is not None
+        self.assertEqual("unknown", unplanned["verdict"])
 
 
 class RatedSessionsReadTests(unittest.TestCase):

@@ -31,7 +31,13 @@ from backend.performance.planned_targets import (
     FAIR_SHARE_PCT,
     adherence_band,
 )
-from backend.performance.session_execution import comparison_metrics
+from backend.performance.session_execution import (
+    HR_SPIKE_BPM,
+    HR_SPIKE_SHARE,
+    SPEED_JUMP_MPS,
+    SPEED_JUMP_SHARE,
+    comparison_metrics,
+)
 
 METHOD: Final = "session-report-v1"
 SCOPE: Final = (
@@ -102,8 +108,13 @@ _WEIGHT: Final = {
     "recovery_duration": 2,
     "recovery_heart_rate_drop": 2,
     "rpe_intensity": 2,
-    # An estimate: shown with every run, never a finding alone.
+    # Estimates: shown, never a finding alone.
     "grade_adjusted_pace": 0,
+    "wind": 0,
+    # Facts the report passes on; they never decide (#3084 Part 3c).
+    "training_effect": 0,
+    "data_quality": 0,
+    "strength_before": 0,
 }
 
 
@@ -1222,7 +1233,7 @@ def _condition_checks(facts: _Facts) -> list[dict[str, Any]]:
     never decides. RPE is judged against the athlete's own rated sessions only;
     without five of them at the same intensity it is unknown.
     """
-    checks: list[dict[str, Any]] = []
+    checks: list[dict[str, Any]] = _fact_checks(facts)
     if facts.sport == "run" and not summary_is_indoor(facts.session):
         title = "Steigungsbereinigte Pace (GAP)"
         gap = session_conditions.grade_adjusted_pace(facts.result)
@@ -1252,6 +1263,8 @@ def _condition_checks(facts: _Facts) -> list[dict[str, Any]]:
             )
     if facts.sport not in ("run", "ride"):
         return checks
+    if not summary_is_indoor(facts.session):
+        checks.append(_wind_check(facts))
     title = "RPE gegen Intensität"
     inputs = _mapping(facts.result.get(session_conditions.INPUTS))
     load = _mapping(facts.result.get("session_rpe_load"))
@@ -1304,3 +1317,235 @@ def _condition_checks(facts: _Facts) -> list[dict[str, Any]]:
         )
     )
     return checks
+
+
+def _wind_check(facts: _Facts) -> dict[str, Any]:
+    """Wind at body height, only ever an explanation (#3084 Part 3b).
+
+    It stays ``ok`` with weight 0 and names in ``explains`` a slower part it
+    explains: the second half slower than the first (the halves check) or a
+    fading rep (the rep fade check), each judged by its own function, with at
+    least 3 m/s headwind at body height in that part and 2 m/s more than in the
+    part it is compared with.
+    """
+    title = "Wind auf Körperhöhe (geschätzt)"
+    wind = _mapping(
+        _mapping(facts.result.get(session_conditions.INPUTS)).get("headwind")
+    )
+    coverage = _number(wind.get("coverage_pct"))
+    if not wind or coverage is None:
+        return _unknown("wind", title, "Kein Gegenwindwert (kein eigener Track).")
+    if coverage < session_conditions.WIND_MIN_COVERAGE_PCT:
+        return _unknown(
+            "wind",
+            title,
+            f"Laufrichtung nur für {coverage:.0f} % der Bewegungszeit bekannt.",
+        )
+    explains = [*_wind_halves(facts, wind), *_wind_reps(facts, wind)]
+    return _judged(
+        "wind",
+        title,
+        value={
+            "headwind_mps": session_conditions.body_headwind(wind),
+            "head_share_pct": wind.get("head_share_pct"),
+            "tail_share_pct": wind.get("tail_share_pct"),
+            "coverage_pct": coverage,
+            "explains": explains,
+        },
+        unit="m/s",
+        rule=(
+            "Mittlere Windkomponente in Bewegungsrichtung (+ Gegenwind), Wind am "
+            "Start (Open-Meteo, 10 m) auf 2 m reduziert (log. Windprofil, z0 0,03 m); "
+            "nur Erklärung, mit zweitem Signal"
+        ),
+        threshold=session_conditions.WIND_EXPLAINS_MPS,
+        measure=0,
+        basis="fixed",
+        notable=False,
+    )
+
+
+def _wind_halves(facts: _Facts, wind: Mapping[str, Any]) -> list[dict[str, Any]]:
+    """The second half, when the report's halves check finds it slower and wind explains it.
+
+    Only where the report judges halves, with that check's own key and rule: the
+    split of a race (2 %), the main-part fade of a continuous tempo effort (3 %).
+    """
+    if facts.kind == "race":
+        key, threshold = "race_split", RACE_SPLIT_PCT
+    elif facts.kind == "continuous" and facts.focus in INTERVAL_FOCUS:
+        key, threshold = "main_fade", FADE_PCT
+    else:
+        return []
+    if _halves_change(facts, key, "", threshold)["verdict"] != "notable":
+        return []
+    halves = _mapping(facts.execution.get("halves"))
+    start, length = _number(halves.get("start_s")), _number(halves.get("main_part_s"))
+    if start is None or not length:
+        return []
+    middle = start + length / 2
+    first = session_conditions.body_headwind(wind, (start, middle))
+    second = session_conditions.body_headwind(wind, (middle, start + length))
+    if not _wind_explains(second, first):
+        return []
+    return [{"check": key, "part_mps": second, "compared_mps": first}]
+
+
+def _wind_reps(facts: _Facts, wind: Mapping[str, Any]) -> list[dict[str, Any]]:
+    """The weakest rep, when the rep fade check finds it and wind explains it."""
+    reps = [
+        rep for rep in facts.execution.get("reps") or () if isinstance(rep, Mapping)
+    ]
+    if facts.kind != "interval" or not reps:
+        return []
+    fade = _rep_fade(facts, reps)
+    if fade["verdict"] != "notable":
+        return []
+    winds = {}
+    for rep in _similar_reps(reps):
+        start, length = _number(rep.get("start_s")), _number(rep.get("duration_s"))
+        if start is not None and length:
+            value = session_conditions.body_headwind(wind, (start, start + length))
+            if value is not None:
+                winds[rep.get("rep")] = value
+    worst = _mapping(fade.get("value")).get("worst_rep")
+    if worst not in winds or len(winds) < 3:
+        return []
+    median = statistics.median(winds.values())
+    if not _wind_explains(winds[worst], median):
+        return []
+    return [
+        {
+            "check": "rep_fade",
+            "rep": worst,
+            "part_mps": winds[worst],
+            "compared_mps": median,
+        }
+    ]
+
+
+def _wind_explains(part: float | None, compared: float | None) -> bool:
+    return (
+        part is not None
+        and compared is not None
+        and part >= session_conditions.WIND_EXPLAINS_MPS
+        and part - compared >= session_conditions.WIND_SECOND_SIGNAL_MPS
+    )
+
+
+def _fact_checks(facts: _Facts) -> list[dict[str, Any]]:
+    """Facts passed on with their source, never a finding (#3084 Part 3c).
+
+    The provider's training effect, the data-quality rules the other checks
+    apply, and the strength sessions in the 48 h before a run or ride.
+    """
+    checks = [_training_effect(facts)]
+    quality = _mapping(facts.execution.get("data_quality"))
+    if quality:
+        checks.append(_data_quality(quality))
+    before = _mapping(facts.result.get("strength_before"))
+    if before and facts.sport in ("run", "ride"):
+        checks.append(_strength_before(before))
+    return checks
+
+
+def _fact(key: str, title: str, value: Any, rule: str, basis: str) -> dict[str, Any]:
+    return _judged(
+        key,
+        title,
+        value=value,
+        unit=None,
+        rule=rule,
+        threshold=0,
+        measure=0,
+        basis=basis,
+        notable=False,
+    )
+
+
+def _training_effect(facts: _Facts) -> dict[str, Any]:
+    title = "Trainingseffekt (Anbieter)"
+    label = _mapping(facts.result.get("training_effect_label"))
+    aerobic = facts.metric("aerobic_training_effect")
+    anaerobic = facts.metric("anaerobic_training_effect")
+    if aerobic is None and anaerobic is None and not label.get("value"):
+        return _unknown(
+            "training_effect",
+            title,
+            "Kein Trainingseffekt vom Anbieter.",
+            basis="provider",
+        )
+    return _fact(
+        "training_effect",
+        title,
+        {
+            "aerobic": aerobic,
+            "aerobic_source": _mapping(
+                facts.metrics.get("aerobic_training_effect")
+            ).get("source"),
+            "anaerobic": anaerobic,
+            "anaerobic_source": _mapping(
+                facts.metrics.get("anaerobic_training_effect")
+            ).get("source"),
+            "label": label.get("value"),
+            "label_source": label.get("source"),
+        },
+        "Einschätzung des Anbieters, unverändert weitergegeben; kein eigenes Urteil",
+        "provider",
+    )
+
+
+def _data_quality(quality: Mapping[str, Any]) -> dict[str, Any]:
+    """Which data the quality rules doubt; the checks that read them are unknown."""
+    doubted = {
+        name: state
+        for name, state in quality.items()
+        if isinstance(state, str) and state != "ok"
+    }
+    return _fact(
+        "data_quality",
+        "Datenqualität",
+        {
+            "heart_rate": quality.get("heart_rate"),
+            "speed": quality.get("speed"),
+            "doubted": sorted(doubted),
+        },
+        f"Herzfrequenz: Spitzen über {HR_SPIKE_BPM:.0f} bpm in mehr als "
+        f"{HR_SPIKE_SHARE * 100:.0f} % der Paare oder Kadenz-Kopplung; Tempo: "
+        f"Sprünge über {SPEED_JUMP_MPS:g} m/s in mehr als "
+        f"{SPEED_JUMP_SHARE * 100:.0f} % der Paare. Prüfungen auf bezweifelten "
+        "Daten sind unbekannt",
+        "fixed",
+    )
+
+
+def _strength_before(before: Mapping[str, Any]) -> dict[str, Any]:
+    title = "Kraft in den 48 h davor"
+    if before.get("status") != "ok":
+        return _unknown(
+            "strength_before",
+            title,
+            str(before.get("reason") or "Krafteinheiten nicht lesbar."),
+        )
+    sessions = [
+        item for item in before.get("sessions") or () if isinstance(item, Mapping)
+    ]
+    if not sessions and before.get("planned_checked") is False:
+        # No completed session and the plan could not be read: not a known zero.
+        return _unknown("strength_before", title, "Geplante Einheiten nicht lesbar.")
+    hours = [_number(item.get("hours_before")) for item in sessions]
+    known = [value for value in hours if value is not None]
+    return _fact(
+        "strength_before",
+        title,
+        {
+            "sessions": len(sessions),
+            "legs": sum(1 for item in sessions if item.get("legs")),
+            "intensities": [item.get("intensity") for item in sessions],
+            "closest_hours_before": round(min(known), 1) if known else None,
+            "confirmed": before.get("origin") == "completed",
+        },
+        "Krafteinheiten in den 48 h vor dem Start: erledigt, sonst geplant und "
+        "nicht bestätigt; nur Fakten, keine Ursache",
+        "fixed",
+    )

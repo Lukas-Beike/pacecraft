@@ -103,11 +103,11 @@ PINNED: Final[dict[str, tuple[tuple[int, ...], str]]] = {
     ),
     "canonical.validation": (
         (10, 11, 21, 25, 8, 2),
-        "a5ce8a94cf2c32db0ca842086bda7d9dda830b74c9b760cc144a6479950685d8",
+        "4e818d9b52b34c6c25d10c6ade3fbc83cd7c51e251b41328912801699faca6a9",
     ),
     "canonical.vocabulary": (
         (10, 11, 21, 25, 8, 2),
-        "c7dc72f5f2935cc644715e9553c35fc8ffebf4fc4f9b371a7dfc334df12216f5",
+        "3b1e38a09bdad915f1b62ad61413e387b3cddeddc79d7d73aa0ed0cae5b356c8",
     ),
     "fit_activity_detail_mapping": (
         (10, 11),

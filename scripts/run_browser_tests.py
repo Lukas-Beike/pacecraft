@@ -29,7 +29,7 @@ import urllib.request
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager, suppress
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -179,7 +179,11 @@ class Evidence:
     def __init__(self, directory, run_id, args):
         self.directory = directory
         self.lock = threading.RLock()
-        repeat = getattr(args, "repeat_each", 1) > 1 or getattr(args, "grep", None)
+        repeat = (
+            getattr(args, "repeat_each", 1) > 1
+            or getattr(args, "grep", None)
+            or getattr(args, "today", None)
+        )
         self.data = {
             "version": 1,
             "run_id": run_id,
@@ -203,6 +207,8 @@ class Evidence:
                 # A repeated or filtered run is a diagnosis, not a selection (#3094).
                 "repeat_each": getattr(args, "repeat_each", 1),
                 "grep": getattr(args, "grep", None),
+                # A pinned day is a different run, not today's evidence (#3200).
+                "today": str(args.today) if getattr(args, "today", None) else None,
                 # How --project changed chose the project (#2759), or None.
                 "chosen_by": getattr(args, "chosen_by", None),
                 # Full-page captures lengthen every test: not comparable timings.
@@ -1043,6 +1049,11 @@ class Execution:
                 "COOKIE_SECURE=false",
                 "--env",
                 "AI_COACH_DISPOSABLE_FIXTURE=1",
+                *(
+                    ["--env", "FIXTURE_TODAY=" + self.args.today.isoformat()]
+                    if self.args.today
+                    else []
+                ),
                 "--volume",
                 str(self.root / "e2e") + ":/app/e2e:ro",
                 self.image,
@@ -1082,6 +1093,8 @@ class Execution:
         }
         if self.args.screenshots:
             settings["E2E_SCREENSHOTS"] = "1"  # playwright.config.cjs reads it
+        if self.args.today:  # e2e/helpers/today.js pins the browser clock (#3200)
+            settings["E2E_TODAY"] = self.args.today.isoformat()
         # Playwright's file filter is a regex; escape/anchor the selected whole file.
         arguments = [
             "test",
@@ -1351,6 +1364,12 @@ def parser():
         "--grep",
         help="select and run only tests whose title matches this regex "
         "(Playwright --grep)",
+    )
+    result.add_argument(
+        "--today",
+        type=date.fromisoformat,
+        help="YYYY-MM-DD the fixture's athlete clock and the browser clock of the "
+        "pinned specs show, so a weekday-dependent spec fails on that day (#3200)",
     )
     result.add_argument(
         "--screenshots",

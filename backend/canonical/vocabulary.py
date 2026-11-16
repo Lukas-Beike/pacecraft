@@ -242,6 +242,10 @@ class MetricKind(StrEnum):
     ACTIVITY_WEATHER_HUMIDITY = "activity_weather_humidity"
     ACTIVITY_WEATHER_WIND_SPEED = "activity_weather_wind_speed"
     ACTIVITY_WEATHER_PRECIPITATION = "activity_weather_precipitation"
+    # The direction the wind came from (meteorological, 10 m), and its mean
+    # component along the direction of travel: + into the wind (#3084).
+    ACTIVITY_WEATHER_WIND_DIRECTION = "activity_weather_wind_direction"
+    ACTIVITY_WEATHER_HEADWIND = "activity_weather_headwind"
     # One 3-site skinfold, entered by the athlete (#3099): men chest, abdomen and
     # thigh; women triceps, suprailiac and thigh (Jackson-Pollock).
     SKINFOLD_CHEST = "skinfold_chest"
@@ -336,6 +340,8 @@ _METRIC_UNITS: Final[Mapping[MetricKind, str]] = {
     MetricKind.ACTIVITY_WEATHER_HUMIDITY: "%",
     MetricKind.ACTIVITY_WEATHER_WIND_SPEED: "m/s",
     MetricKind.ACTIVITY_WEATHER_PRECIPITATION: "mm",
+    MetricKind.ACTIVITY_WEATHER_WIND_DIRECTION: "deg",
+    MetricKind.ACTIVITY_WEATHER_HEADWIND: "m/s",
     MetricKind.SKINFOLD_CHEST: "mm",
     MetricKind.SKINFOLD_ABDOMEN: "mm",
     MetricKind.SKINFOLD_THIGH: "mm",
@@ -424,6 +430,8 @@ UNPRODUCED_METRIC_KINDS: Final[Mapping[MetricKind, str]] = {
             MetricKind.ACTIVITY_WEATHER_HUMIDITY,
             MetricKind.ACTIVITY_WEATHER_WIND_SPEED,
             MetricKind.ACTIVITY_WEATHER_PRECIPITATION,
+            MetricKind.ACTIVITY_WEATHER_WIND_DIRECTION,
+            MetricKind.ACTIVITY_WEATHER_HEADWIND,
         )
     },
     **{

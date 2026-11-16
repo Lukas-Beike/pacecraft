@@ -217,6 +217,10 @@ const NO_DETAILS = [".planned-entry[open] .activity-analysis-panel", "Detaildate
 const NO_SESSION = "no such session";
 // The longest one step may take over all its candidates.
 const STEP_TOTAL_MS = 30000;
+// The longest a step waits for the app's data loads to end before it starts.
+const SETTLE_MS = 15000;
+// Runs in the page: no data load of the app runs (a page without the app is always settled).
+const settled = () => !globalThis.AppState || (!globalThis.AppState.state.loadPromise && !globalThis.AppState.state.loadingAreas?.size);
 const DONE = ".planned-entry.is-completed > summary";
 // Today's unit is marked is-today; on a Sunday it is the week's only upcoming one.
 const PLANNED = ".planned-entry:is(.is-planned, .is-today) > summary";
@@ -329,6 +333,9 @@ async function tryCandidate(page, step, index, capMs) {
 
 // One step: { status: ok|fail|skip, ms (interaction to ready, of the candidate that passed), why }.
 export async function runStep(page, { pre = [], post = [], ...step }, capMs = STEP_CAP_MS) {
+  // After a restart the app reloads its data as each start sync ends, and a reload re-renders the view:
+  // a step starts once no load runs, so it checks the cards it opens, not ones a reload replaces (2.1.25).
+  await page.waitForFunction(settled, null, { timeout: SETTLE_MS, polling: 100 }).catch(() => null);
   const began = Date.now();
   try {
     for (const selector of pre) await press(page, selector);

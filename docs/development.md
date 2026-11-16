@@ -101,7 +101,12 @@ and commit/tag messages, including intermediate commits, in temporary storage an
 A finding, missing Sonar CLI, or scanner error blocks the push. Deleted refs need
 no scan. After a clean scan the hook runs CI's repository quality ratchet
 (`python tools/quality_baseline.py`: mypy and Ruff, about 35 seconds
-on Windows) on a clean export of HEAD; new findings block the push. A Python
+on Windows) on a clean export of HEAD; new findings block the push. It runs the
+worktree's own Ruff and mypy, which `python scripts/prepare_worktree.py` installs
+hash-locked into the git-ignored `.quality-tools/` (format with
+`.quality-tools/bin/ruff`), so worktrees on different tool pins no longer reset one
+shared version (#3217); without that directory, as in CI, it uses the
+interpreter's tools and says so. A Python
 file `ruff format --check` would rewrite is a `format` finding (#3061): the
 files unformatted when the check arrived are baseline debt, and a push that
 leaves a formatted file unformatted is new. The check never rewrites a file;

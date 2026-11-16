@@ -1,4 +1,5 @@
-const { test, expect } = require("@playwright/test");
+// --today pins this calendar's day (#3200): its week reads yesterday and today.
+const { test, expect } = require("./helpers/today");
 const { setEntryOpen, showCalendarDay } = require("./helpers/ui");
 const { openCalendar, renderSyntheticCalendar, waitForOlderSessions } = require("./helpers/calendar");
 

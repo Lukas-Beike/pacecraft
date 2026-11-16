@@ -6,11 +6,12 @@
     python scripts/issue_update.py label <n> [--add X] [--remove Y]
     python scripts/issue_update.py assign <n> [--add X] [--remove Y]
     python scripts/issue_update.py finish <n>
-    python scripts/issue_update.py close <n> --body-file F
+    python scripts/issue_update.py close <n> --body-file F [--pending "<start>"]
 
 Exit 0: done; 1: refused (ambiguous or missing checkbox, open checkboxes or an
 open PR on close); 2: bad input or a failed gh call. Close ticks the open boxes
-under an `Acceptance criteria` or `Acceptance` heading and accepts an issue a merge already closed.
+under an `Acceptance criteria` or `Acceptance` heading, except each --pending
+one (its evidence comes later, #3222), and accepts an issue a merge already closed.
 """
 
 from __future__ import annotations
@@ -32,20 +33,27 @@ def edit(number: int, *args: str) -> str:
     return gh("issue", "edit", str(number), *args)
 
 
-def tick(number: int, part: str) -> int:
+def unique_box(boxes: list[re.Match[str]], part: str) -> re.Match[str] | None:
+    """The one open box whose text starts with `part`; else prints why and None."""
     wanted = part.strip().lower()
     if not wanted:
-        raise CliError("--part must not be empty.")
+        raise CliError("a checkbox start must not be empty.")
+    hits = [m for m in boxes if m[1].strip().lower().startswith(wanted)]
+    if len(hits) == 1:
+        return hits[0]
+    found = "no open checkbox" if not hits else f"{len(hits)} open checkboxes"
+    print(f"refused: {found} starts with {part!r}; give a longer, unique start")
+    for hit in hits:
+        print(f"  open checkbox: {hit[1].strip()}")
+    return None
+
+
+def tick(number: int, part: str) -> int:
     body = gh_json("issue", "view", str(number), "--json", "body")["body"] or ""
-    hits = [
-        m for m in CHECKBOX.finditer(body) if m[1].strip().lower().startswith(wanted)
-    ]
-    if len(hits) != 1:
-        found = "no open checkbox" if not hits else f"{len(hits)} open checkboxes"
-        print(f"refused: {found} starts with {part!r}; give a longer, unique start")
-        for hit in hits:
-            print(f"  open checkbox: {hit[1].strip()}")
+    hit = unique_box(list(CHECKBOX.finditer(body)), part)
+    if hit is None:
         return 1
+    hits = [hit]
     write_ticked(number, body, hits)
     print(f"ticked #{number}: {hits[0][1].strip()}")
     return 0
@@ -71,7 +79,7 @@ def blockers(number: int) -> tuple[dict[str, Any], list[str]]:
     return issue, found
 
 
-def close(number: int, body_file: str) -> int:
+def close(number: int, body_file: str, pending: tuple[str, ...] = ()) -> int:
     read_body(body_file)
     issue, found = blockers(number)
     if found:
@@ -80,9 +88,16 @@ def close(number: int, body_file: str) -> int:
             print(f"  {item}")
         return 1
     # The summary carries the evidence for the acceptance criteria still unticked;
-    # ticking first keeps a rerun after a failed edit from posting it twice.
+    # ticking first keeps a rerun after a failed edit from posting it twice. A
+    # --pending criterion stays open: its evidence comes later, as after a release (#3222).
     body = issue["body"] or ""
-    if criteria := open_boxes(body)[1]:
+    criteria = open_boxes(body)[1]
+    found_boxes = [unique_box(criteria, part) for part in pending]
+    kept = [box for box in found_boxes if box is not None]
+    if len(kept) != len(found_boxes):
+        return 1
+    criteria = [box for box in criteria if box not in kept]
+    if criteria:
         write_ticked(number, body, criteria)
     gh("issue", "comment", str(number), "--body-file", body_file)
     edit(number, "--remove-label", IN_PROGRESS)
@@ -97,6 +112,8 @@ def close(number: int, body_file: str) -> int:
         f"#{number}: ticked {len(criteria)}, summary posted, "
         f"'{IN_PROGRESS}' label cleared; {state}"
     )
+    for box in kept:
+        print(f"  left open, evidence pending: {box[1].strip()}")
     return 0
 
 
@@ -119,6 +136,8 @@ def parser() -> argparse.ArgumentParser:
         item.add_argument("number", type=positive_int)
         if name in ("comment", "close"):
             item.add_argument("--body-file", required=True)
+        if name == "close":
+            item.add_argument("--pending", action="append", default=[])
         if name == "tick":
             item.add_argument("--part", required=True)
         if name in ("label", "assign"):
@@ -146,7 +165,7 @@ def main(argv: list[str] | None = None) -> int:
             case "finish":
                 edit(n, "--remove-label", IN_PROGRESS)
             case "close":
-                return close(n, args.body_file)
+                return close(n, args.body_file, tuple(args.pending))
     except (CliError, ValueError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2

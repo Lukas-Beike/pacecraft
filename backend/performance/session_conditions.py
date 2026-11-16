@@ -10,6 +10,7 @@ intensity. No I/O, inputs unchanged.
 from __future__ import annotations
 
 import itertools
+import math
 import statistics
 from collections.abc import Mapping, Sequence
 from typing import Any, Final
@@ -39,6 +40,24 @@ RPE_INTENSITY_WINDOW_PCT: Final = 5.0
 MIN_RATED: Final = 5
 # The rated sessions read for the expected RPE: the comparable-session window.
 RATED_WINDOW_DAYS: Final = 84
+# Wind (athlete decisions on #3084, 2026-11-16). The 10 m model wind is reduced
+# to body height with the logarithmic wind profile u(z) ~ ln(z / z0) (Stull 1988,
+# An Introduction to Boundary Layer Meteorology, ch. 9) for open flat land,
+# z0 = 0.03 m (Davenport-Wieringa roughness class "open", WMO-No. 8, 2018,
+# Vol. I, ch. 5, annex): factor about 0.72. In towns or forest the real wind is
+# lower still.
+WIND_BODY_HEIGHT_M: Final = 2.0
+WIND_MODEL_HEIGHT_M: Final = 10.0
+WIND_ROUGHNESS_M: Final = 0.03
+WIND_BODY_FACTOR: Final = math.log(WIND_BODY_HEIGHT_M / WIND_ROUGHNESS_M) / math.log(
+    WIND_MODEL_HEIGHT_M / WIND_ROUGHNESS_M
+)
+# Wind explains a slower part from this headwind at body height in that part...
+WIND_EXPLAINS_MPS: Final = 3.0
+# ...when that part had this much more headwind than the part it is compared with.
+WIND_SECOND_SIGNAL_MPS: Final = 2.0
+# A headwind needs a direction and a wind value for this share of the moving time.
+WIND_MIN_COVERAGE_PCT: Final = 50.0
 # What the session report adds to the detail for these checks: the session's
 # local IF, the device's grade-adjusted speed and the athlete's rated sessions.
 INPUTS: Final = "condition_inputs"
@@ -106,6 +125,35 @@ def expected_rpe(
     if len(near) < MIN_RATED:
         return None, len(near)
     return float(statistics.median(near)), len(near)
+
+
+def body_headwind(
+    wind: Mapping[str, Any], window: tuple[float, float] | None = None
+) -> float | None:
+    """The signed headwind at body height over ``window`` (stream s; None: all).
+
+    A time-weighted mean of the stored bins, so tailwind offsets headwind; the
+    whole session without a window reads the stored mean.
+    """
+    if window is None:
+        mean = _number(wind.get("mean_mps"))
+        return None if mean is None else round(mean * WIND_BODY_FACTOR, 2)
+    width = _number(wind.get("bin_s")) or 0.0
+    bins = wind.get("bins")
+    if width <= 0 or not isinstance(bins, list):
+        return None
+    total = weight = 0.0
+    for index, value in enumerate(bins):
+        component = _number(value)
+        start = index * width
+        overlap = min(start + width, window[1]) - max(start, window[0])
+        if component is None or overlap <= 0:
+            continue
+        total += component * overlap
+        weight += overlap
+    if weight <= 0:
+        return None
+    return round(total / weight * WIND_BODY_FACTOR, 2)
 
 
 def _steps(

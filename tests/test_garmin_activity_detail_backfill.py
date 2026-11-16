@@ -255,6 +255,8 @@ class BackfillCandidateTests(_Base):
                 "window_days": 90,
                 "pending": 1,
                 "passed_over": 0,
+                "passed_over_empty": 0,
+                "passed_over_retries": 0,
                 "records": 2,
                 "strength": 0,
                 "daily_budget": 20,
@@ -1277,6 +1279,94 @@ class BackfillReplayTests(_Base):
             self.assertEqual((parsed.count, parsed.budget, parsed.clean), (0, 20, True))
         start = _parse_backfill_state(json.dumps(older)).replay
         self.assertEqual((start.count, start.budget, start.clean), (0, 20, True))
+
+    def test_an_empty_mark_of_an_older_mapper_does_not_block_the_replay(self) -> None:
+        # An October mark (no detail part then) on an activity whose streams and
+        # laps the stream backfill stored later: the bump fetches it once (#2220).
+        _seed_outdated(self, _days(1))
+        summary = _summary_hash(self.manager, "2000")
+        self.key_values.values[BACKFILL_STATE_KEY] = json.dumps(
+            {"empty": {"2000": summary}}
+        )
+        reader = _Details({"2000": _full("2000")})
+
+        result = self.service(reader).backfill()
+
+        self.assertEqual((reader.fetched, result["replayed"]), (["2000"], 1))
+        self.assertEqual(
+            _stored_state(self.key_values)["mapper_version"], MAPPER_VERSION
+        )
+
+    def test_retries_used_up_under_an_older_mapper_do_not_block_the_replay(
+        self,
+    ) -> None:
+        _seed_outdated(self, _days(1))
+        summary = _summary_hash(self.manager, "2000")
+        stored = {"empty": {}, "retry": {"2000": [summary, BACKFILL_RETRY_ATTEMPTS]}}
+        self.key_values.values[BACKFILL_STATE_KEY] = json.dumps(
+            stored | {"mapper_version": MAPPER_VERSION - 1}
+        )
+        reader = _Details({"2000": _full("2000")})
+
+        result = self.service(reader).backfill()
+
+        self.assertEqual((reader.fetched, result["replayed"]), (["2000"], 1))
+
+    def test_a_retry_of_an_unrecorded_mapper_keeps_its_candidate_with_new_attempts(
+        self,
+    ) -> None:
+        # The details already reached this mapper and only the streams are older:
+        # the retry entry alone keeps the record a candidate (#3227 review).
+        _seed_outdated(self, [("1001", "2026-10-01 07:00:00")])
+        summary = _summary_hash(self.manager, "1001")
+        failed = _payload(
+            "1001", errors=[{"source": "activity_fit", "message": "synthetic"}]
+        )
+        for _attempt in range(BACKFILL_RETRY_ATTEMPTS):
+            self.service(_Details({"1001": failed})).backfill()
+        state = _stored_state(self.key_values)
+        self.assertEqual(state["retry"], {"1001": [summary, BACKFILL_RETRY_ATTEMPTS]})
+        # A state as a release before the mapper scoping stored it.
+        del state["mapper_version"]
+        self.key_values.values[BACKFILL_STATE_KEY] = json.dumps(state)
+
+        reader = _Details({"1001": _full("1001")})
+        self.service(reader).backfill()
+
+        self.assertEqual(reader.fetched, ["1001"])
+        self.assertNotIn("retry", _stored_state(self.key_values))
+        with self.manager.reader() as db:
+            size = detail_replay_size(db, self.key_values, NOW_AT)
+        self.assertEqual((size["pending"], size["passed_over"]), (0, 0))
+
+    def test_marks_and_retries_of_this_mapper_pass_over_with_their_reason(
+        self,
+    ) -> None:
+        _seed_outdated(self, _days(3))
+        summaries = {aid: _summary_hash(self.manager, aid) for aid, _s in _days(3)}
+        self.key_values.values[BACKFILL_STATE_KEY] = json.dumps(
+            {
+                "empty": {"2000": summaries["2000"]},
+                "retry": {"2001": [summaries["2001"], BACKFILL_RETRY_ATTEMPTS]},
+                "mapper_version": MAPPER_VERSION,
+            }
+        )
+        reader = _Details({"2002": _full("2002")})
+
+        self.service(reader).backfill()
+
+        self.assertEqual(reader.fetched, ["2002"])
+        with self.manager.reader() as db:
+            size = detail_replay_size(db, self.key_values, NOW_AT)
+        self.assertEqual(
+            (
+                size["pending"],
+                size["passed_over"],
+                size["passed_over_empty"],
+                size["passed_over_retries"],
+            ),
+            (0, 2, 1, 1),
+        )
 
     def test_a_replay_with_the_file_replaces_the_sets_and_ends_the_candidacy(
         self,
