@@ -48,6 +48,7 @@ from backend.performance.planned_targets import (
 from backend.performance.report_service import PROFILE_WINDOW_DAYS
 from backend.performance.session_conditions import INPUTS as CONDITION_INPUTS
 from backend.performance.session_conditions import RATED_WINDOW_DAYS
+from backend.performance.session_execution import INDOOR_ENVIRONMENTS
 from backend.performance.session_report import CLIMB_CADENCE_RPM, session_report
 from backend.planning import leg_strength
 from backend.planning.race_plan import race_plan
@@ -226,6 +227,52 @@ def _clock_minutes(value: Any) -> int | None:
     return clock.hour * 60 + clock.minute
 
 
+VIRTUAL_SPEED_NOTE = "Geschwindigkeit virtuell, kein Leistungsmaß; weggelassen."
+POWER_SPEED_NOTE = "Fahrt mit Leistung: es zählen Leistung und Puls; die Geschwindigkeit ist weggelassen."
+RAW_SPEED_NOTE = (
+    "Fahrt ohne Leistung: zuerst zählt der Puls; die Geschwindigkeit ist ohne "
+    "Steigung und Wind kein Leistungsmaß."
+)
+
+
+def _without_virtual_speed(detail: dict[str, Any]) -> None:
+    """The athlete's signal order for a ride in the Coach's copy (#3288).
+
+    Indoor or virtual: speed follows Zwift's terrain or the trainer, never an
+    effort, so every speed goes. With power: power and heart rate count, every
+    speed goes; distance and duration stay. Outdoor without power: the speed
+    stays as data, its note says it is no effort measure unadjusted. The
+    calendar keeps its own copy.
+    """
+    session = detail.get("session")
+    if not (isinstance(session, Mapping) and session.get("sport") == "ride"):
+        return
+    if session.get("environment") in INDOOR_ENVIRONMENTS:
+        note = VIRTUAL_SPEED_NOTE
+    elif _has_power(detail):
+        note = POWER_SPEED_NOTE
+    else:
+        detail["speed_note"] = RAW_SPEED_NOTE
+        return
+    channels = (detail.get("streams") or {}).get("channels")
+    # The v1 document nests its laps: {"lap_source", "source", "laps": [...]}.
+    laps = (detail.get("laps") or {}).get("laps") or ()
+    for part in (detail.get("metrics"), channels, *laps):
+        if isinstance(part, dict):
+            for key in [key for key in part if "speed" in key]:
+                del part[key]
+    detail["speed_note"] = note
+
+
+def _has_power(detail: Mapping[str, Any]) -> bool:
+    """Whether the ride recorded power: a power stream or an average power."""
+    channels = (detail.get("streams") or {}).get("channels") or {}
+    metric = (detail.get("metrics") or {}).get("avg_power")
+    return any("power" in key for key in channels) or (
+        isinstance(metric, Mapping) and metric.get("value") is not None
+    )
+
+
 def _analysis_additions(detail: Mapping[str, Any], effect: Any) -> dict[str, Any]:
     """What the session analysis reads beside the recording (#3038).
 
@@ -382,6 +429,7 @@ class CoachActivityReadToolService:
             detail.pop("running_dynamics_streams", None)
             # The provider-values section repeats the effect metrics (#2831).
             effect = detail.pop("training_effect", None)
+            _without_virtual_speed(detail)
             result = self._with_session_context(detail)
             result.update(_analysis_additions(detail, effect))
             if outcome == "by_id_not_named":

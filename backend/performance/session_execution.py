@@ -25,7 +25,8 @@ METHOD: Final = "session-execution-v1"
 SCOPE: Final = (
     "Descriptive execution of this one session from its own streams and laps. "
     "Output is pace in s/km for runs and power in W for rides (speed in km/h "
-    "for rides without power). Every change_pct is computed on speed or power, "
+    "never: a ride without power has no output, its raw speed is no effort "
+    "signal, #3288). Every change_pct is computed on pace or power, "
     "later minus earlier in percent: negative means slower or less power. "
     "Heart rate is not judged for work laps under 120 s (short). "
     "start_change_pct is the first 30 s against the rest of a rep (positive: "
@@ -44,6 +45,8 @@ START_REP_S: Final = 90.0
 # Variability leaves out the first 10 s of acceleration.
 SETTLE_S: Final = 10.0
 ERG_VARIABILITY_PCT: Final = 3.0
+# A ride's speed in these is virtual (game terrain or trainer), never an effort (#3288).
+INDOOR_ENVIRONMENTS: Final = frozenset({"indoor", "virtual"})
 # Shorter laps are lap-button slips; short work or rest laps of 15 s stay.
 MIN_LAP_S: Final = 5.0
 MIN_SESSION_S: Final = 600.0
@@ -90,7 +93,7 @@ def session_execution(
     streams = activity.get("streams") or {}
     times = streams.get("time") or []
     channel = _output_channel(sport, streams, len(times))
-    reason = _missing_input(times, channel)
+    reason = _missing_input(times, channel, ride=sport == "ride")
     if reason is not None or channel is None:
         return {**base, "status": "insufficient_data", "reason": reason}
     reader = _Reader(sport, streams, channel)
@@ -122,7 +125,9 @@ def session_execution(
     return result
 
 
-def _missing_input(times: Sequence[Any], channel: str | None) -> str | None:
+def _missing_input(
+    times: Sequence[Any], channel: str | None, *, ride: bool = False
+) -> str | None:
     """Why the streams cannot describe the session, or None when they can."""
     if (
         len(times) < 2
@@ -132,6 +137,8 @@ def _missing_input(times: Sequence[Any], channel: str | None) -> str | None:
     ):
         return "Zu kurze oder fehlende Messreihe."
     if channel is None:
+        if ride:
+            return "Leistung fehlt; die Geschwindigkeit ist bei Radfahrten kein Leistungsmaß."
         return "Tempo oder Leistung fehlt."
     return None
 
@@ -143,7 +150,7 @@ def _erg_like(
     variabilities = [rep.get("variability_pct") for rep in reps]
     return (
         reader.output_name == "power"
-        and activity.get("environment") in {"indoor", "virtual"}
+        and activity.get("environment") in INDOOR_ENVIRONMENTS
         and bool(variabilities)
         and all(v is not None and v < ERG_VARIABILITY_PCT for v in variabilities)
     )
@@ -727,7 +734,8 @@ def _cadence_locked(
 
 
 def _output_channel(sport: str, streams: Mapping[str, Any], length: int) -> str | None:
-    keys = ("watts", "velocity_smooth") if sport == "ride" else ("velocity_smooth",)
+    """Power for rides, never speed (#3288); pace for runs."""
+    keys = ("watts",) if sport == "ride" else ("velocity_smooth",)
     for key in keys:
         values = streams.get(key)
         if (
