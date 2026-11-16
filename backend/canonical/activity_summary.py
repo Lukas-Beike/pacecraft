@@ -63,6 +63,8 @@ class ActivitySummary(TypedDict, total=False):
     avg_cadence: float
     avg_speed_mps: float
     max_speed_mps: float
+    # The device's step count of the session, read by the everyday energy (#3255).
+    steps: float
     energy_kj: float
     energy_kcal: float
     # The provider's estimated sweat loss of the session (#2804).

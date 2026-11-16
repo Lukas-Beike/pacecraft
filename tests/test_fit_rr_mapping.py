@@ -151,7 +151,7 @@ class FirstThresholdFromFitTests(unittest.TestCase):
         self.assertIs(stream_set.hr_source, HeartRateSource.CHEST_STRAP)
         result = stream_set.dfa_alpha1
         assert result is not None
-        self.assertAlmostEqual(result.estimate_bpm, 153.0, delta=7.0)
+        self.assertAlmostEqual(result.estimate_bpm or 0.0, 153.0, delta=7.0)
         self.assertIs(result.quality, DfaQuality.GOOD)
         # The set holds the derived result and the record channels only.
         self.assertEqual(

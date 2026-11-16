@@ -1,7 +1,9 @@
 name: Validate Conventional Commits
 
+# Runs on pull_request (#3277): the check needs no secrets and only read access,
+# and GitHub blocks the base-branch trigger on public repositories.
 on:
-  pull_request_target:
+  pull_request:
     types: [opened, synchronize, reopened, edited]
 
 permissions:

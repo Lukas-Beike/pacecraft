@@ -640,6 +640,9 @@ class CodexReviewWorkflowTests(unittest.TestCase):
             encoding="utf-8"
         )
         self.assertIn("permissions: {}", workflow)
+        # Stays on pull_request_target (#3277): under pull_request a Dependabot run
+        # gets no Actions secrets, so the release app token could not be created;
+        # the job checks out nothing and runs no pull-request code.
         self.assertIn("pull_request_target:", workflow)
         self.assertIn("--auto --squash", workflow)
         self.assertNotIn("actions/checkout", workflow)

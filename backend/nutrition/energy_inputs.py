@@ -65,12 +65,14 @@ class EnergySources:
 
 @dataclass(frozen=True)
 class SessionCost:
-    """One session's own net cost, the M11 method used, and its steps."""
+    """One session's own net cost, the M11 method used, its steps and foot ascent."""
 
     day: date
     kcal: float | None
     method: str
     steps: float
+    # A foot session's ascent leaves the day's floors (#3255); 0 otherwise.
+    climb_m: float = 0.0
 
 
 # Net kcal and method of a session from its mean HR, duration, mass and day.
@@ -239,29 +241,48 @@ def session_cost(
 ) -> SessionCost:
     """Net cost of one session by its sport, with the M11 method name.
 
-    Only foot sports take steps out of the day's NEAT; a bike cadence is no step.
+    Every session takes its steps out of the day's NEAT (#3255): the device's
+    recorded count first, since the watch also counts steps in a strength
+    session or on a ride. A foot session without one estimates them from its
+    cadence, else its distance; a bike cadence is no step.
     """
     day = date.fromisoformat(str(summary.get("started_at_local") or "")[:10])
     sport = str(summary.get("sport") or "")
     duration = _duration_s(summary)
-    strides = _number(summary.get("avg_cadence")) if sport in FOOT_SPORTS else None
-    steps = (
-        STEPS_PER_STRIDE * strides * duration / 60.0 if strides and duration else 0.0
+    steps = _session_steps(summary, sport, duration, step_m)
+    climb = (
+        max(0.0, _number(summary.get("elevation_gain_m")) or 0.0)
+        if sport in FOOT_SPORTS
+        else 0.0
     )
-    if sport in RUN_SPORTS and mass:
-        joules = sum(
-            run * energy.running_cost_j_per_kg_m(grade)
-            for run, grade in _graded(sources, db, summary)
+    if sport in FOOT_SPORTS and mass:
+        cost = (
+            energy.running_cost_j_per_kg_m
+            if sport in RUN_SPORTS
+            else energy.walking_cost_j_per_kg_m
         )
-        return SessionCost(day, mass * joules / energy.J_PER_KCAL, "minetti", steps)
-    if sport in WALK_SPORTS and mass:
-        segments = _graded(sources, db, summary)
-        joules = sum(run * energy.walking_cost_j_per_kg_m(g) for run, g in segments)
-        if not steps and step_m:
-            steps = sum(run for run, _ in segments) / step_m
-        return SessionCost(day, mass * joules / energy.J_PER_KCAL, "minetti", steps)
+        joules = sum(run * cost(grade) for run, grade in _graded(sources, db, summary))
+        return SessionCost(
+            day, mass * joules / energy.J_PER_KCAL, "minetti", steps, climb
+        )
     kcal, method = _timed_cost(summary, sport, duration, rmr, hr_cost, mass, day)
-    return SessionCost(day, kcal, method, 0.0)
+    return SessionCost(day, kcal, method, steps, climb)
+
+
+def _session_steps(
+    summary: Mapping[str, Any], sport: str, duration: float | None, step_m: float | None
+) -> float:
+    """Recorded steps, else a foot session's cadence or distance / step length."""
+    recorded = _number(summary.get("steps"))
+    if recorded and recorded > 0:
+        return recorded
+    if sport not in FOOT_SPORTS:
+        return 0.0
+    strides = _number(summary.get("avg_cadence"))
+    if strides and duration:
+        return STEPS_PER_STRIDE * strides * duration / 60.0
+    distance = _number(summary.get("distance_m"))
+    return distance / step_m if distance and step_m else 0.0
 
 
 def _timed_cost(
@@ -291,7 +312,8 @@ def _timed_cost(
 
 def _step_length(
     sessions: Sequence[Mapping[str, Any]], height_m: float | None
-) -> float | None:
+) -> tuple[float | None, str | None]:
+    """NEAT's step length and its source: recorded walks, else body height."""
     speeds, cadences = [], []
     for summary in sessions:
         if str(summary.get("sport") or "") not in WALK_SPORTS:
@@ -301,7 +323,10 @@ def _step_length(
         if duration and distance and cadence:
             speeds.append(distance / duration)
             cadences.append(STEPS_PER_STRIDE * cadence)
-    return energy.step_length_m(speeds, cadences, height_m)
+    step = energy.step_length_m(speeds, cadences, height_m)
+    if step is None:
+        return None, None
+    return step, "walks" if speeds else "height"
 
 
 def _resting(
@@ -336,7 +361,9 @@ def read_energy_inputs(
     weights = dict(sources.weights(db, start, end))
     trend = weight_trend(weights)
     sessions = list(sources.sessions(db, start, end))
-    step_m = _step_length(sessions, height_cm / 100.0 if height_cm else None)
+    step_m, step_source = _step_length(
+        sessions, height_cm / 100.0 if height_cm else None
+    )
     rides = [s for s in sessions if str(s.get("sport") or "") in RIDE_SPORTS]
     flex = _flex_fit(rides, rmr) if rmr is not None else None
     hr_cost = _heart_rate_cost(flex, profile, rmr or 0.0)
@@ -371,7 +398,7 @@ def read_energy_inputs(
         )  # fmt: skip
         day += timedelta(days=1)
     body_fat = dict(sources.body_fat(db, start, end))
-    return EnergyInputs(days, body_fat, rmr, rmr_source), costs
+    return EnergyInputs(days, body_fat, rmr, rmr_source, step_m, step_source), costs
 
 
 def energy_basis(db: Any, sources: EnergySources, end: date) -> dict[str, Any]:
@@ -420,10 +447,10 @@ def _day_inputs(
     today = [c for c in costs if c.day == day]
     steps, floors = _number(health.get("steps")), _number(health.get("floors"))
     mass = _mass(trend, day, profile_weight)
+    session_steps = sum(c.steps for c in today)
+    climb = sum(c.climb_m for c in today)
     neat = (
-        energy.neat_net_kcal(
-            mass, steps, sum(c.steps for c in today), step_m, floors or 0.0
-        )
+        energy.neat_net_kcal(mass, steps, session_steps, step_m, floors or 0.0, climb)
         if steps is not None and step_m and mass
         else None
     )
@@ -449,4 +476,9 @@ def _day_inputs(
         activity_kcal=activity,
         neat_kcal=neat,
         sport_kcal=sport,
+        steps=steps,
+        session_steps=session_steps,
+        floors=None
+        if floors is None
+        else energy.floors_outside_sessions(floors, climb),
     )

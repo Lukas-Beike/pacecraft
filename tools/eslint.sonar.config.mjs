@@ -67,6 +67,9 @@ const sonarOnly = {
   rules: {
     "sonarjs/cognitive-complexity": ["error", 15],
     "sonarjs/no-nested-conditional": "error",
+    // S4624 failed #3254 only in CI (#3271). S7776 (Set membership) maps to
+    // unicorn/prefer-set-has, a plugin this repository does not install.
+    "sonarjs/no-nested-template-literals": "error",
   },
 };
 // A call to a helper declared nowhere is a runtime ReferenceError (#3016).

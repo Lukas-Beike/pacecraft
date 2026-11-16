@@ -85,6 +85,8 @@ MAX_EXERCISE_NAME_LENGTH: Final = 64
 MAX_SENSORS: Final = 16
 DFA_ESTIMATE_BOUNDS_BPM: Final = (60.0, 220.0)
 MAX_DFA_WINDOWS: Final = 100_000
+# The first DFA-a1 method that keeps the window series (#3273).
+DFA_SERIES_METHOD: Final = 3
 SENSOR_KEY_PATTERN: Final = re.compile(r"[0-9a-f]{64}")
 SENSOR_ORIGIN_PATTERN: Final = re.compile(r"[a-z_]{1,24}")
 # Provider exercise codes such as ``BARBELL_BACK_SQUAT``: untrusted text, so only
@@ -194,31 +196,74 @@ class ActivitySensor:
 
 
 @dataclass(frozen=True, slots=True)
-class ActivityDfaAlpha1:
-    """The first threshold heart rate one activity's chest-strap RR intervals give.
+class DfaWindow:
+    """One analysed 2-minute window of a chest-strap recording (#3273).
 
-    Only this derived result is kept; the RR series itself never is. ``estimate_bpm``
-    is the heart rate at which the detrended fluctuation exponent alpha1 crosses
-    0.75, ``windows`` the number of 2-minute windows the regression used,
-    ``artifact_share`` the share of beats that artifact correction dropped (0 to
-    1) and ``method`` the version of the calculation. Research-grade, never a lab value.
+    ``start_s`` is the window's start on the recording's beat clock (dropouts left
+    out), ``heart_rate_bpm`` its mean heart rate, ``alpha1`` its exponent and
+    ``artifact_share`` the share of its beats that artifact correction dropped.
     """
 
-    estimate_bpm: float
-    windows: int
+    start_s: float
+    heart_rate_bpm: float
+    alpha1: float
     artifact_share: float
-    quality: DfaQuality
-    method: int
 
     def __post_init__(self) -> None:
-        bounded_number(self.estimate_bpm, "estimate_bpm", *DFA_ESTIMATE_BOUNDS_BPM)
+        bounded_number(self.start_s, "start_s", 0.0, 1_000_000.0)
+        bounded_number(self.heart_rate_bpm, "heart_rate_bpm", 20.0, 300.0)
+        bounded_number(self.alpha1, "alpha1", -5.0, 5.0)
+        bounded_number(self.artifact_share, "artifact_share", 0.0, 1.0)
+
+
+@dataclass(frozen=True, slots=True)
+class ActivityDfaAlpha1:
+    """The DFA-a1 result of one activity's chest-strap RR intervals.
+
+    Only these derived values are kept; the RR series itself never is.
+    ``estimate_bpm`` is the heart rate at which the detrended fluctuation exponent
+    alpha1 crosses 0.75 and ``quality`` its grade; both are None when the recording
+    gives no such crossing. ``windows`` is the number of 2-minute windows the
+    regression used, ``artifact_share`` the share of beats that artifact correction
+    dropped (0 to 1) and ``method`` the version of the calculation. From method 3
+    on, ``series`` holds the analysed windows (#3273); a row of an older method
+    was never evaluated for them. Research-grade, never a lab value.
+    """
+
+    estimate_bpm: float | None
+    windows: int
+    artifact_share: float
+    quality: DfaQuality | None
+    method: int
+    series: tuple[DfaWindow, ...] = ()
+
+    def __post_init__(self) -> None:
+        if (self.estimate_bpm is None) != (self.quality is None):
+            raise ValueError("estimate_bpm and quality are given together")
+        if self.estimate_bpm is not None:
+            bounded_number(self.estimate_bpm, "estimate_bpm", *DFA_ESTIMATE_BOUNDS_BPM)
+            require_instance(self.quality, DfaQuality, "quality")
         for name, upper in (("windows", MAX_DFA_WINDOWS), ("method", 999)):
             value = getattr(self, name)
             if isinstance(value, bool) or not isinstance(value, int):
                 raise TypeError(f"{name} must be an integer")
             bounded_number(value, name, 1, upper)
         bounded_number(self.artifact_share, "artifact_share", 0.0, 1.0)
-        require_instance(self.quality, DfaQuality, "quality")
+        series = tuple(self.series)
+        if len(series) > MAX_DFA_WINDOWS:
+            raise ValueError(f"series must hold at most {MAX_DFA_WINDOWS} windows")
+        for window in series:
+            require_instance(window, DfaWindow, "series")
+        object.__setattr__(self, "series", series)
+
+    @property
+    def series_evaluated(self) -> bool:
+        """Whether the window series was evaluated and is readable.
+
+        A row of an earlier method was never evaluated for it: it means "not yet
+        evaluated", never "no crossing".
+        """
+        return self.method >= DFA_SERIES_METHOD and bool(self.series)
 
 
 def _optional_number(value: object, lower: float, upper: float) -> float | None:

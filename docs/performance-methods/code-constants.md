@@ -10,7 +10,7 @@ every named number the code fixes. A test fails when it is out of date.
 | Constant | Value | Module | Code comment |
 | --- | --- | --- | --- |
 | `METHOD_ID` | `'activity-energy'` | `backend/performance/activity_energy.py` |  |
-| `METHOD_VERSION` | `2` | `backend/performance/activity_energy.py` | Bump when a formula or constant below changes the estimate. |
+| `METHOD_VERSION` | `3` | `backend/performance/activity_energy.py` | Bump when a formula or constant below changes the estimate. |
 | `J_PER_KCAL` | `4184.0` | `backend/performance/activity_energy.py` | Joules per kilocalorie (thermochemical calorie). |
 | `GRAVITY` | `9.81` | `backend/performance/activity_energy.py` | Standard gravity, m/s^2, for the vertical work of floors. |
 | `MINETTI_WALKING` | `(280.5, -58.7, -76.8, 51.9, 19.6, 2.5)` | `backend/performance/activity_energy.py` | Minetti et al. 2002: the running fit (MINETTI_RUNNING, its gradient range and the 200 m grade span come from grade_adjustment, #3187), and the same fit for walking. |
@@ -175,6 +175,7 @@ every named number the code fixes. A test fails when it is out of date.
 | `CAP_EDGE_SHARE` | `0.05` | `backend/performance/planned_targets.py` | A mean this close below the cap (share of the cap) sits at the upper edge. |
 | `HARD_ZONE` | `3` | `backend/performance/planned_targets.py` | A planned step in this zone or above is hard work (#3084). |
 | `MIN_SKIPPED_BLOCK_S` | `600.0` | `backend/performance/planned_targets.py` | Unmatched hard planned time from this many seconds on is a skipped block; less is a warm-up build or a fast finish (athlete, #3084, 2026-11-16). |
+| `MIN_BLOCK_STEP_S` | `30.0` | `backend/performance/planned_targets.py` | Two or more unmatched hard steps of at least this long, separated only by recovery steps, are a skipped block whatever their total (athlete, #3084 A', 2026-11-16); shorter ones are strides. |
 | `ADHERENCE_METHOD` | `'planned-step-adherence-v1'` | `backend/performance/planned_targets.py` |  |
 | `ADHERENCE_SCOPE` | `"Every planned step against its window of the session: work steps on their paired laps, the steps... (sha256 edc71536)` | `backend/performance/planned_targets.py` |  |
 | `GOOD_SHARE_PCT` | `80` | `backend/performance/planned_targets.py` | Time in target from which a step is good, else fair; below fair it is poor (athlete 2026-11-14, #2830, after TrainingPeaks' compliance colours). |
