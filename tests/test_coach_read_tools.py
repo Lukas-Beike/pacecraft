@@ -283,7 +283,7 @@ class CoachReadToolServiceTests(unittest.TestCase):
         skyr_natur = {"id": "own-skyr", "name": "Skyr Natur", "brand": "Hofmolkerei"}
         saved = {
             # The search also finds partial matches; only the named food answers.
-            "Skyr": [{"id": "own-bowl", "name": "Beeren Skyr Bowl"}, skyr_natur],
+            "Skyr": [{"id": "own-cake", "name": "Skyrkuchen"}, skyr_natur],
             "Banane": [{"id": "own-bread", "name": "Bananenbrot"}],
         }
         meal_library.product_catalog.list_products.side_effect = lambda query: saved[
