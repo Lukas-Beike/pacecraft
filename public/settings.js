@@ -751,7 +751,7 @@ function lt2EstimateRow(source, estimate, origins) {
   };
 }
 
-// The quality of a local estimate; the method name says what it is (#3297: no "Schätzung").
+// The quality of a local estimate; the method name says what it is (#3297: no qualifier word).
 const LT2_QUALITY_CHIPS = { good: ["Qualität gut", "status-chip success"], low: ["Qualität mittel", "status-chip warning"] };
 
 function lt2SourceItem(sport, row) {
