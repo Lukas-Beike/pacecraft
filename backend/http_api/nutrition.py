@@ -245,6 +245,7 @@ class NutritionPostRoutes:
                 (f"{NUTRITION_ENTRY_PATH}/delete", self._delete),
                 (f"{NUTRITION_ENTRY_PATH}/add-product", self._add_product),
                 (f"{NUTRITION_ENTRY_PATH}/session", self._set_session),
+                (f"{NUTRITION_ENTRY_PATH}/estimate", self._set_estimate),
                 ("/api/nutrition/refresh", self._refresh),
                 (NUTRITION_PRODUCTS_PATH, self._save_product),
                 (f"{NUTRITION_PRODUCTS_PATH}/lookup", self._lookup_product),
@@ -358,6 +359,27 @@ class NutritionPostRoutes:
                 str(payload.get("product_id") or ""),
                 payload.get("amount"),
                 str(payload.get("unit") or ""),
+            )
+        handler.send_json(200, {"ok": True, "entry": entry, **_change(changes)})
+
+    def _set_estimate(self, handler: Any, _request: RouteRequest) -> None:
+        """Mark a meal's amounts as estimated (restaurant, friends), or clear the mark.
+
+        Request: JSON body `{"id": string, "estimate_uncertain": boolean}`.
+
+        Response: 200 `{"ok": true, "entry", "change"}` with the updated entry and the
+        undo reference. The logged values are never changed (#3100).
+
+        Errors: 400 "Ungültige Eintrags-ID."; 404 "Ernährungseintrag nicht gefunden.";
+        400 "estimate_uncertain muss true oder false sein."
+        """
+        payload = _read_object(handler)
+        flag = payload.get("estimate_uncertain")
+        if not isinstance(flag, bool):
+            raise AppError(400, "estimate_uncertain muss true oder false sein.")
+        with change_history.collect_changes() as changes:
+            entry = self._diary_service().correct_meal(
+                str(payload.get("id") or ""), {"estimate_uncertain": flag}
             )
         handler.send_json(200, {"ok": True, "entry": entry, **_change(changes)})
 

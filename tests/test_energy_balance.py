@@ -195,6 +195,10 @@ class FlaggedMealsAndCalibrationTests(unittest.TestCase):
 
         inputs = series(constant(2600.0), flagged_of=flagged, logged_factor=1.25)
         bias = balance.flagged_meal_bias(inputs, END)
+        # The view reads the bias from windows it already built (Gitar on #3284).
+        self.assertEqual(
+            bias, balance.windows_bias(balance.energy_windows(inputs, END))
+        )
         assert bias is not None
         self.assertAlmostEqual(bias[0], -20.0, delta=5.0)
         window = balance.energy_windows(inputs, END)[-1]
