@@ -645,14 +645,9 @@ class WahooBackfillTests(unittest.TestCase):
                 "wahoo": {
                     "ride": {
                         "files": 2,
-                        "messages": {"27": 2, "7": 1},
-                        "unmapped_fields": {
-                            "19.136": 1,
-                            "19.137": 1,
-                            "19.161": 1,
-                            "19.71": 1,
-                            "20.108": 1,
-                        },
+                        # The mapper reads them now (#2220): none counts as unmapped.
+                        "messages": {},
+                        "unmapped_fields": {},
                         "developer_fields": {},
                         "new_decodes": {
                             "respiration_record.in_bounds": 1,

@@ -105,7 +105,10 @@ from backend.providers.garmin_activity_mapping import GARMIN_LABEL
 # Version 9: running dynamics channels of FIT stream sets (#1870).
 # Version 10: FIT ``active`` laps are work laps beside rest or recovery laps, and
 # records with a compressed timestamp header keep their timestamp (#1936).
-MAPPER_VERSION: Final = 10
+# Version 11: breathing rate, the device's lap grade-adjusted speed, the lap's
+# workout step and trigger, the executed workout steps and the watch's zone
+# basis of FIT sets (#2220).
+MAPPER_VERSION: Final = 11
 
 # Same limit as the Intervals mapper; kept local so providers do not import each other.
 MAX_GARMIN_ACTIVITY_ID_LENGTH: Final = 200
