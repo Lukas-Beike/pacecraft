@@ -1192,6 +1192,18 @@ class RideBlockTests(unittest.TestCase):
             self.assertEqual("unknown", found[key]["verdict"], key)
             self.assertEqual("Leistung fehlt.", found[key]["reason"], key)
 
+    def test_a_ride_without_power_has_its_recovery_heart_rate_judged(self) -> None:
+        # Gitar on #3300: the recovery drop is read without output-bearing reps,
+        # so a 65 s+ rest of a ride without power reaches the peer comparison.
+        base = _no_power_ride()
+        base["analysis"]["execution"]["recoveries"] = [
+            {"after_rep": 1, "duration_s": 120, "heart_rate_drop_60s": 30},
+            {"after_rep": 2, "duration_s": 120, "heart_rate_drop_60s": 26},
+        ]
+        drop = checks(session_report(base))["recovery_heart_rate_drop"]
+        self.assertNotIn("65 s", drop.get("reason", ""))
+        self.assertEqual({"mean_drop_bpm": 28.0}, drop["value"])
+
     def test_short_or_unequal_laps_and_unlabelled_rides_are_not_judged(self) -> None:
         def rise(reps=None, structure="interval"):
             base = _no_power_ride()

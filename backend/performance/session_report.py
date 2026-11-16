@@ -49,7 +49,7 @@ from backend.performance.session_execution import (
     PAUSE_S,
     SPEED_JUMP_MPS,
     SPEED_JUMP_SHARE,
-    comparison_metrics,
+    rounded_mean,
 )
 from backend.weather.activity_weather import HEAT_APPARENT_C
 
@@ -1156,7 +1156,15 @@ def _recovery_heart_rate_drop(facts: _Facts) -> dict[str, Any]:
     title = "Puls-Erholung nach 60 s"
     if reason := facts.heart_rate_unknown():
         return _unknown("recovery_heart_rate_drop", title, reason, basis="personal")
-    own = _number((comparison_metrics(facts.execution) or {}).get("recovery_drop_mean"))
+    # Read from the recoveries themselves, so a ride without output (no power,
+    # #3293) is judged too (Gitar on #3300).
+    drops = [
+        drop
+        for item in facts.execution.get("recoveries") or ()
+        if isinstance(item, Mapping)
+        and (drop := _number(item.get("heart_rate_drop_60s"))) is not None
+    ]
+    own = rounded_mean(drops) if drops else None
     if own is None:
         return _unknown(
             "recovery_heart_rate_drop",
