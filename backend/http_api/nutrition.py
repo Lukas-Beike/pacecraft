@@ -42,7 +42,9 @@ class NutritionGetRoutes:
         self._macro_context = macro_context
 
     def _day_summary(self, date_param: str) -> dict[str, Any]:
-        summary = self._diary_service().sync_status.get_day_summary(date_param)
+        diary = self._diary_service()
+        summary = diary.sync_status.get_day_summary(date_param)
+        diary.with_sessions(summary)
         if self._macro_context is None:
             return summary
         try:
@@ -109,13 +111,31 @@ class NutritionGetRoutes:
         `within_loss_share` with the expected `loss_l` when the loss stays
         within 2 % of body weight, `sodium_g_per_l`, or `generic_l_per_h` without own data),
         `drinking_source`, `carbohydrates`, `carbohydrate_source` and
-        `weight`. It reads stored data only and fetches nothing.
+        `weight`. It reads stored data only and fetches nothing. With `session_id`
+        (and `date`, the day the session started) in the query instead: the
+        intake logged for that performed session, facts only: `session_id`,
+        `duration_s`, `during` (`entries`, `carbs_g`, `carbs_g_per_h`, `advised`
+        step, `notable` true only when the rate is more than 20 % below the
+        advised lower bound, `volume_ml`, `ml_per_h`, `entries_without_volume`;
+        unknown values are `null`, never 0) and `before` (list of `carbs_g`,
+        `minutes_before`).
 
         Errors: 400 `invalid_session_fuelling` "Ungültige Angaben für die
-        Verpflegungsempfehlung." for a missing or invalid query value.
+        Verpflegungsempfehlung." for a missing or invalid query value; 404
+        `session_not_found` "Einheit nicht gefunden." for an unknown, hidden or
+        deleted `session_id`.
         """
         assert self._session_fuelling is not None
-        handler.send_json(200, self._session_fuelling(request.query))
+        query = request.query
+        if query.get("session_id"):
+            handler.send_json(
+                200,
+                self._diary_service().session_intake(
+                    query["session_id"][0], (query.get("date") or [""])[0]
+                ),
+            )
+            return
+        handler.send_json(200, self._session_fuelling(query))
 
     def _yazio(self, handler: Any, _request: RouteRequest) -> None:
         """Last local Yazio authentication check, without contacting Yazio.
@@ -184,7 +204,10 @@ class NutritionGetRoutes:
         `total_kcal`, `total_carbs_g`, `total_protein_g`, `total_fat_g`,
         `total_sugar_g`, `total_salt_g`, `known_macro_totals`, `known_intake_totals`,
         `entries_without_macros`, `entry_count`, `entries` and `energy_expenditure`; a
-        macro total is `null` unless every entry reports it. `macro_ranges` maps
+        macro total is `null` unless every entry reports it. `sessions` lists the
+        day's sessions (`id`, `sport`, `started_at_local`, `elapsed_duration_s`); each
+        `pre_session`/`during_session` entry carries `session`, its attached
+        session or `null`. `macro_ranges` maps
         `protein_g`, `carbs_g` and `fat_g` to `[low, high]` where weight and training
         calendar allow it.
 
@@ -220,6 +243,7 @@ class NutritionPostRoutes:
                 (NUTRITION_ENTRY_PATH, self._create),
                 (f"{NUTRITION_ENTRY_PATH}/delete", self._delete),
                 (f"{NUTRITION_ENTRY_PATH}/add-product", self._add_product),
+                (f"{NUTRITION_ENTRY_PATH}/session", self._set_session),
                 ("/api/nutrition/refresh", self._refresh),
                 (NUTRITION_PRODUCTS_PATH, self._save_product),
                 (f"{NUTRITION_PRODUCTS_PATH}/lookup", self._lookup_product),
@@ -264,8 +288,12 @@ class NutritionPostRoutes:
         (or `date`, default today), `meal_time` (or `logged_at`; a time or an ISO
         timestamp), `logged_time_known` (boolean; `false` needs `meal_type`),
         `estimate_uncertain` (boolean, default false: the amounts were estimated),
-        `meal_type` (`breakfast`, `lunch`, `dinner`, `snack`; default derived from the
-        time), `source` (`manual`, `voice`, `photo`, `coach`; anything else is
+        `meal_type` (`breakfast`, `lunch`, `dinner`, `snack`, `pre_session`,
+        `during_session`; default derived from the time, never a session slot),
+        `volume_ml` (drink volume above 0 up to 10000, absent when not stated),
+        `session_id` (only for a session slot: a session of that day, else the
+        server attaches the one session or the unique match by time and leaves
+        the entry unattached when it is ambiguous),`source` (`manual`, `voice`, `photo`, `coach`; anything else is
         `manual`), `packaging_label` (`true` marks label values), `food_ingredients`
         (list of `{food_id, amount, unit}`) or `product_id` with `amount` and `unit`
         (nutrients calculated from the saved product). `components` is a list of 1 to 20
@@ -285,7 +313,8 @@ class NutritionPostRoutes:
         400 "Ungültiges Datumsformat '{value}'. Erwartet wird YYYY-MM-DD."; 400
         "Ungültige Uhrzeit '{value}'."; 400 "Bei unbekannter Uhrzeit ist der Mahlzeittyp
         erforderlich."; 400 "Ungültiger Mahlzeittyp '{value}'. Erlaubt sind: breakfast,
-        lunch, dinner, snack."; 400 "Komponenten dürfen nicht mit Einzelzutaten,
+        lunch, dinner, snack, pre_session, during_session."; 400 "Volumen muss größer als 0
+        sein."; 400 `session_not_found` "Einheit nicht gefunden."; 400 "Komponenten dürfen nicht mit Einzelzutaten,
         Summenwerten oder clientseitiger Herkunft kombiniert werden."; 400 "1 bis 20
         Mahlzeitenkomponenten sind erforderlich."; 400 "Ungültige Mahlzeitenkomponente."
         and 400 "Einheit muss g, ml oder portion sein." for a malformed component; 404
@@ -328,6 +357,30 @@ class NutritionPostRoutes:
                 str(payload.get("product_id") or ""),
                 payload.get("amount"),
                 str(payload.get("unit") or ""),
+            )
+        handler.send_json(200, {"ok": True, "entry": entry, **_change(changes)})
+
+    def _set_session(self, handler: Any, _request: RouteRequest) -> None:
+        """Attach a "Vor/Während der Einheit" entry to the session the athlete chose.
+
+        Request: JSON body `{"id": string, "session_id": string}`; `id` is the entry id,
+        `session_id` an active session of the entry's day, the day before or after.
+
+        Response: 200 `{"ok": true, "entry", "change"}` with the updated entry and the
+        undo reference. The choice is kept: a later refresh never changes it.
+
+        Errors: 400 "Ungültige Eintrags-ID."; 404 "Ernährungseintrag nicht gefunden.";
+        400 `session_not_found` "Einheit nicht gefunden."; 400 "Eine Einheit kann nur bei
+        „Vor/Während der Einheit“ gesetzt werden." for another meal type; 400
+        "session_id ist erforderlich." for an empty `session_id`.
+        """
+        payload = _read_object(handler)
+        session_id = str(payload.get("session_id") or "").strip()
+        if not session_id:
+            raise AppError(400, "session_id ist erforderlich.")
+        with change_history.collect_changes() as changes:
+            entry = self._diary_service().correct_meal(
+                str(payload.get("id") or ""), {"session_id": session_id}
             )
         handler.send_json(200, {"ok": True, "entry": entry, **_change(changes)})
 

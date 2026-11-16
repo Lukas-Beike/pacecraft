@@ -123,6 +123,41 @@ def _gap_fill_lines(tool: Any, entry: dict[str, Any]) -> list[str]:
     ]
 
 
+_SLOT_NAMES = {
+    "pre_session": "Vor der Einheit",
+    "during_session": "Während der Einheit",
+}
+_SPORT_NAMES = {"ride": "Rad", "run": "Lauf", "swim": "Schwimmen", "strength": "Kraft"}
+
+
+def _slot_detail(result: dict[str, Any]) -> str:
+    """ "Während der Einheit · Rad 09:15 · 1.500 ml", or the open question, for a slot entry."""
+    info = result.get("session")
+    if not isinstance(info, dict) or info.get("slot") not in _SLOT_NAMES:
+        return ""
+    parts = [_SLOT_NAMES[info["slot"]]]
+    session = info.get("session")
+    if isinstance(session, dict):
+        sport = str(session.get("sport") or "")
+        start = str(session.get("started_at_local") or "")[11:16]
+        parts.append(f"{_SPORT_NAMES.get(sport, sport.capitalize())} {start}".strip())
+    elif info.get("question"):
+        parts.append(
+            f"{info['question']} "
+            + " oder ".join(
+                f"{_SPORT_NAMES.get(str(c.get('sport')), c.get('sport'))} "
+                f"{str(c.get('started_at_local') or '')[11:16]}"
+                for c in info.get("candidates", [])
+            )
+        )
+    else:
+        parts.append("Einheit noch nicht zugeordnet")
+    volume = (result.get("entry") or {}).get("volume_ml")
+    if isinstance(volume, (int, float)):
+        parts.append(f"{volume:,.0f} ml".replace(",", "."))
+    return " · ".join(parts)
+
+
 def _append_new(target: list[Any], items: list[Any]) -> None:
     """Add each item once, keeping the order of first appearance."""
     for item in items:
@@ -146,7 +181,10 @@ def change_summary(command_receipts: list[dict[str, Any]]) -> dict[str, Any] | N
         undoable = (
             undoable and tool in _FULLY_TRACKED_TOOLS and bool(entry.get("changes"))
         )
-        _append_new(labels, [coach_effect_label(entry), *_gap_fill_lines(tool, entry)])
+        label = coach_effect_label(entry)
+        if detail := _slot_detail(entry["result"]):
+            label = f"{label} · {detail}"
+        _append_new(labels, [label, *_gap_fill_lines(tool, entry)])
         # A card-free sync names each deletion at the provider, alike or not (#2342).
         labels.extend(entry["result"].get("remote_removals", []))
         _append_new(notes, _plan_notes(entry["result"]))

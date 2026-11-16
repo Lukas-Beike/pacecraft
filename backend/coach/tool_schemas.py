@@ -30,6 +30,19 @@ from backend.planning.session_focus import (
     STRENGTH_INTENSITIES,
 )
 
+# Intake before or during a session (#3234).
+SESSION_SLOT_HINT = (
+    "pre_session: intake before a session, during_session: intake while training. "
+    "The server attaches the session by time; when it returns session candidates, ask the athlete which one."
+)
+SESSION_ID_HINT = "Local session id, only for pre_session or during_session; omit to let the server attach it."
+VOLUME_ML: dict[str, Any] = {
+    "type": "number",
+    "exclusiveMinimum": 0,
+    "maximum": 10000,
+    "description": "Drink volume in ml when the athlete states it; omit otherwise.",
+}
+
 # Unit, template and library names (#2258): the Coach writes them short.
 UNIT_NAME: dict[str, Any] = {
     "type": "string",
@@ -1143,7 +1156,20 @@ def build_structured_tool_schemas(
                         },
                         "meal_type": {
                             "type": "string",
-                            "enum": ["breakfast", "lunch", "dinner", "snack"],
+                            "enum": [
+                                "breakfast",
+                                "lunch",
+                                "dinner",
+                                "snack",
+                                "pre_session",
+                                "during_session",
+                            ],
+                            "description": SESSION_SLOT_HINT,
+                        },
+                        "volume_ml": VOLUME_ML,
+                        "session_id": {
+                            "type": "string",
+                            "description": SESSION_ID_HINT,
                         },
                         "description": {
                             "type": "string",
@@ -1229,7 +1255,20 @@ def build_structured_tool_schemas(
                         },
                         "meal_type": {
                             "type": "string",
-                            "enum": ["breakfast", "lunch", "dinner", "snack"],
+                            "enum": [
+                                "breakfast",
+                                "lunch",
+                                "dinner",
+                                "snack",
+                                "pre_session",
+                                "during_session",
+                            ],
+                            "description": SESSION_SLOT_HINT,
+                        },
+                        "volume_ml": {**VOLUME_ML, "type": ["number", "null"]},
+                        "session_id": {
+                            "type": ["string", "null"],
+                            "description": SESSION_ID_HINT,
                         },
                         "description": {"type": "string"},
                         "kcal": {"type": "integer", "minimum": 0, "maximum": 10000},
@@ -1486,6 +1525,13 @@ def build_structured_tool_schemas(
                     },
                     "meal_date": {"type": "string"},
                     "meal_time": {"type": "string"},
+                    "meal_type": {
+                        "type": "string",
+                        "enum": ["pre_session", "during_session"],
+                        "description": SESSION_SLOT_HINT,
+                    },
+                    "volume_ml": VOLUME_ML,
+                    "session_id": {"type": "string", "description": SESSION_ID_HINT},
                 },
             ),
         ]

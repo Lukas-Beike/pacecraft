@@ -1604,6 +1604,8 @@ class NutritionRepository:
         basis = json.loads(entry["nutrition_basis"])
         # The uncertain-meal flag rides in the basis JSON, no schema change (#3100).
         entry["estimate_uncertain"] = basis.pop("uncertain", False) is True
+        # So is the mark that the athlete or Coach set or cleared the session (#3234).
+        entry["session_chosen"] = basis.pop("session_chosen", False) is True
         entry["nutrition_basis"] = basis
         entry["logged_time_known"] = bool(entry["logged_time_known"])
         return entry
@@ -1613,10 +1615,12 @@ class NutritionRepository:
         basis = {
             key: value
             for key, value in (entry.get("nutrition_basis") or {}).items()
-            if key != "uncertain"
+            if key not in {"uncertain", "session_chosen"}
         }
         if entry.get("estimate_uncertain") is True:
             basis["uncertain"] = True
+        if entry.get("session_chosen") is True:
+            basis["session_chosen"] = True
         return json.dumps(basis, ensure_ascii=False)
 
     def create(self, db: Any, entry: dict[str, Any]) -> dict[str, Any]:

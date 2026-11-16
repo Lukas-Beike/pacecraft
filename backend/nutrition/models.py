@@ -12,7 +12,10 @@ from typing import Any
 from backend.canonical.decimal_text import comma_decimal_float, is_grouped_thousands
 from backend.errors import AppError
 
-VALID_MEAL_TYPES = ("breakfast", "lunch", "dinner", "snack")
+# The two session slots (#3234) are only ever set explicitly, never from the hour.
+SESSION_MEAL_TYPES = ("pre_session", "during_session")
+VALID_MEAL_TYPES = ("breakfast", "lunch", "dinner", "snack", *SESSION_MEAL_TYPES)
+MAX_VOLUME_ML = 10000.0
 VALID_SOURCES = ("manual", "voice", "photo", "coach")
 
 MAX_KCAL = 10000
@@ -188,6 +191,7 @@ def normalize_nutrition_entry(
     meal_type = _normalize_meal_type(
         raw.get("meal_type"), logged_at, time_known=logged_time_known
     )
+    volume_ml, session_id = _normalize_session_fields(raw, meal_type)
     raw_desc = str(raw.get("description") or "").strip()
     if not raw_desc:
         raise AppError(400, "Beschreibung der Mahlzeit ist erforderlich.")
@@ -207,8 +211,25 @@ def normalize_nutrition_entry(
         "nutrition_basis": raw.get("nutrition_basis") or {"kind": "manual"},
         "logged_time_known": logged_time_known,
         "estimate_uncertain": _estimate_uncertain_flag(raw.get("estimate_uncertain")),
+        "volume_ml": volume_ml,
+        "session_id": session_id,
         **({"id": str(raw["id"])} if raw.get("id") else {}),
     }
+
+
+def _normalize_session_fields(
+    raw: dict[str, Any], meal_type: str
+) -> tuple[float | None, str | None]:
+    """``(volume_ml, session_id)``: a drink volume above 0 or None, a session only in a slot."""
+    volume = _as_nonnegative_number(raw.get("volume_ml"), "Volumen", MAX_VOLUME_ML)
+    if volume is not None and volume <= 0:
+        raise AppError(400, "Volumen muss größer als 0 sein.")
+    session_id = str(raw.get("session_id") or "").strip() or None
+    if session_id and meal_type not in SESSION_MEAL_TYPES:
+        raise AppError(
+            400, "Eine Einheit kann nur bei „Vor/Während der Einheit“ gesetzt werden."
+        )
+    return volume, session_id
 
 
 def _logged_time_known_flag(value: Any) -> bool:

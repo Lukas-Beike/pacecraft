@@ -181,14 +181,49 @@ function nutritionComponentDetails(item) {
       h("small", null, nutritionComponentSource(component.nutrition_basis))))));
 }
 
+const NUTRITION_SESSION_SLOTS = ["pre_session", "during_session"];
+const NUTRITION_SPORTS = { ride: "Rad", run: "Lauf", swim: "Schwimmen", strength: "Kraft", walk: "Gehen", hike: "Wandern" };
+
+// "Rad · 09:15 · 3:10 h"
+function nutritionSessionLabel(session) {
+  const time = String(session.started_at_local || "").slice(11, 16);
+  const minutes = Math.round((Number(session.elapsed_duration_s) || 0) / 60);
+  const duration = minutes ? `${Math.floor(minutes / 60)}:${String(minutes % 60).padStart(2, "0")} h` : "";
+  return [NUTRITION_SPORTS[session.sport] || "Einheit", time, duration].filter(Boolean).join(" · ");
+}
+
+async function chooseNutritionSession(item, session) {
+  const status = document.querySelector("#nutritionStatus");
+  try {
+    const result = await api("/api/nutrition/entry/session", { method: "POST", body: JSON.stringify({ id: item.id, session_id: session.id }) });
+    await loadNutrition({ preserve: true });
+    showNutritionReceipt(status, "Einheit zugeordnet.", result.change, () => loadNutrition({ preserve: true }));
+  } catch (error) { status.textContent = `Einheit konnte nicht zugeordnet werden: ${error.message}`; }
+}
+
+// The session chip of a "Vor/Während der Einheit" entry; an open one offers the day's sessions to choose from.
+function nutritionSessionBlock(item, sessions) {
+  if (!NUTRITION_SESSION_SLOTS.includes(item.meal_type)) return null;
+  if (item.session) return h("p", "nutrition-session", nutritionSessionLabel(item.session));
+  const block = h("div", "nutrition-session-open", h("p", "nutrition-session nutrition-session-pending", "Einheit noch nicht zugeordnet"));
+  if (sessions.length) {
+    block.append(h("p", null, "Zu welcher Einheit gehört das?"), h("div", "nutrition-session-choices", sessions.map((session) => {
+      const choice = h("button", { type: "button", className: "secondary-button" }, nutritionSessionLabel(session));
+      choice.addEventListener("click", () => void chooseNutritionSession(item, session));
+      return choice;
+    })));
+  }
+  return block;
+}
+
 function nutritionMealTitle(item) {
-  const mealLabels = { breakfast: "Frühstück", lunch: "Mittagessen", dinner: "Abendessen", snack: "Snack" };
+  const mealLabels = { breakfast: "Frühstück", lunch: "Mittagessen", dinner: "Abendessen", snack: "Snack", pre_session: "Vor der Einheit", during_session: "Während der Einheit" };
   const mealLabel = mealLabels[item.meal_type] || "Mahlzeit";
   const mealTime = item.logged_time_known === false ? "" : String(item.logged_at).split("T")[1]?.slice(0, 5) || "";
   return mealTime ? `${mealTime} · ${mealLabel}` : mealLabel;
 }
 
-function nutritionCard(item, template) {
+function nutritionCard(item, template, sessions = []) {
   const sourceLabels = { coach: "Coach-Schätzung", photo: "Foto-Schätzung", voice: "Sprach-Schätzung", manual: "Manuelle Angabe" };
   const sourceLabel = sourceLabels[item.source] || "Erfasst";
   const syncLabel = item.sync_state === "synced" ? " · Synchronisiert" : " · Lokal";
@@ -199,8 +234,9 @@ function nutritionCard(item, template) {
   const sourceText = basisLabel && !isDefaultSource ? basisLabel + sourceSuffix : "";
   const card = h("article", "nutrition-card",
     h("h3", null, template ? item.name : nutritionMealTitle(item)),
+    template ? null : nutritionSessionBlock(item, sessions),
     h("p", null, item.description),
-    h("p", null, `${nutritionNumber(item.kcal)} kcal · KH ${nutritionNumber(item.carbs_g)} g · Protein ${nutritionNumber(item.protein_g)} g · Fett ${nutritionNumber(item.fat_g)} g${template ? " / Portion" : ""}`),
+    h("p", null, `${nutritionNumber(item.kcal)} kcal · KH ${nutritionNumber(item.carbs_g)} g · Protein ${nutritionNumber(item.protein_g)} g · Fett ${nutritionNumber(item.fat_g)} g${template ? " / Portion" : ""}${item.volume_ml > 0 ? ` · ${AppFormat.number(item.volume_ml, { digits: 0 })} ml` : ""}`),
     sourceText ? h("small", null, sourceText) : null);
   if (!template) {
     const details = nutritionComponentDetails(item);
@@ -508,7 +544,7 @@ function renderNutritionDay(day) {
   totals.replaceChildren();
   appendNutritionTotals(totals, day);
   appendNutritionMacroNote(totals, Number(day.entries_without_macros) || 0);
-  document.querySelector("#nutritionEntries").replaceChildren(...day.entries.map((item) => nutritionCard(item, false)));
+  document.querySelector("#nutritionEntries").replaceChildren(...day.entries.map((item) => nutritionCard(item, false, day.sessions || [])));
 }
 
 function showNutritionDayLoadError(status, cached, error, dateInput, requestedDate) {
