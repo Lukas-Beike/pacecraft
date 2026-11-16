@@ -186,11 +186,15 @@ The system SHALL keep measured total, active, and resting energy distinct and re
 - **WHEN** a day has active/resting energy without a measured total, or provider data is malformed or absent
 - **THEN** the measured total remains unavailable and the athlete's local diary is still readable.
 
-#### Scenario: Complete empty targeted read
-- **WHEN** a successful targeted daily-energy refresh returns no record for its requested day
-- **THEN** older canonical energy for that day is not reused as a current measurement; other days retain their own freshness.
+#### Scenario: Targeted read that leaves a day out
+- **WHEN** a targeted daily-energy refresh returns no record for a day of its range
+- **THEN** the range counts as incomplete, so that day is neither marked read nor its stored summary pruned (#3157); other days retain their own freshness.
 
-Evidence: `backend/performance/daily_health.py::daily_energy_expenditure`, `backend/nutrition/sync_status.py::_filter_targeted_missing_energy`; `tests/test_nutrition_garmin_expenditure.py::NutritionGarminExpenditureTests.test_day_and_week_read_measured_energy_from_observations`, `tests/test_nutrition_garmin_expenditure.py::NutritionGarminExpenditureTests.test_malformed_garmin_snapshot_leaves_local_day_summary_available`, `tests/test_nutrition_garmin_expenditure.py::NutritionGarminExpenditureTests.test_targeted_nutrition_refresh_freshness_is_scoped_to_requested_day`, `tests/test_performance_daily_health.py::CanonicalDailyHealthParityTests.test_expenditure_reads_every_component_from_the_observations`, `tests/test_performance_daily_health.py::CanonicalDailyHealthParityTests.test_snapshot_energy_without_observations_is_unavailable`.
+#### Scenario: A refresh mark never hides a stored total
+- **WHEN** a day is marked read by a targeted refresh and a Garmin daily total is stored for it, whenever fetched
+- **THEN** that total is shown; only a marked day without any stored Garmin total drops other sources' values (#3157).
+
+Evidence: `backend/performance/daily_health.py::daily_energy_expenditure`, `backend/nutrition/sync_status.py::_filter_targeted_missing_energy`; `tests/test_nutrition_garmin_expenditure.py::NutritionGarminExpenditureTests.test_day_and_week_read_measured_energy_from_observations`, `tests/test_nutrition_garmin_expenditure.py::NutritionGarminExpenditureTests.test_malformed_garmin_snapshot_leaves_local_day_summary_available`, `tests/test_nutrition_garmin_expenditure.py::NutritionGarminExpenditureTests.test_targeted_nutrition_refresh_freshness_is_scoped_to_requested_day`, `tests/test_nutrition_garmin_expenditure.py::NutritionGarminExpenditureTests.test_a_later_refresh_mark_never_hides_a_stored_total`, `tests/test_nutrition_garmin_refresh.py::GarminNutritionRefreshTests.test_a_range_answer_without_a_day_is_incomplete`, `tests/test_performance_daily_health.py::CanonicalDailyHealthParityTests.test_expenditure_reads_every_component_from_the_observations`, `tests/test_performance_daily_health.py::CanonicalDailyHealthParityTests.test_snapshot_energy_without_observations_is_unavailable`.
 
 ### Requirement: Running-day projection is explicitly derived
 The system SHALL expose a separate running-day full-day expenditure projection only when today's active energy and a valid completed resting-energy reference are available. It SHALL retain the reference date and keep this projection distinct from Garmin's measured total.

@@ -90,8 +90,8 @@ class NutritionSyncStatusService:
         """Counts only, no dates or values: why closed days lack a Verlauf total.
 
         Of the last ``EXPENDITURE_GAP_DAYS`` closed days, ``with_total`` show a
-        Garmin daily total; ``emptied_by_refresh_mark`` have one stored, but a
-        targeted refresh marked the day read after its latest Garmin retrieval
+        Garmin daily total; ``emptied_by_refresh_mark`` have a non-Garmin total
+        stored that a refresh mark hides because no Garmin total exists
         (``_filter_targeted_missing_energy``); ``without_total`` have no
         canonical total, of which ``with_active_only`` still have active kcal
         (#3157).
@@ -266,12 +266,14 @@ def _filter_targeted_missing_energy(
     dates: list[str],
     retrievals: dict[str, datetime | None],
 ) -> dict[str, dict[str, Any]]:
-    """Do not reuse older canonical observations after a complete empty day read.
+    """Do not reuse other sources' values for a day read without a Garmin total.
 
-    ``snapshot`` is the Garmin sync state. ``retrievals`` holds the latest fetch
-    time of each day's Garmin daily totals (``read_daily_health_with_retrievals``).
-    A day counts as read only with a total fetched at or after the refresh; a
-    refresh time that is not an ISO instant accepts any stored total of the day.
+    ``snapshot`` is the Garmin sync state. ``retrievals`` holds, per day with a
+    stored Garmin daily total, its latest fetch time
+    (``read_daily_health_with_retrievals``). A day a complete targeted refresh
+    read is emptied only when no Garmin total is stored for it at all; a stored
+    total counts whenever it was fetched, so a refresh mark never hides it
+    (#3157).
     """
     nutrition_refresh = snapshot.get("nutrition_refresh")
     targeted = (
@@ -287,23 +289,7 @@ def _filter_targeted_missing_energy(
         if (
             isinstance(refresh, dict)
             and refresh.get("freshness") == "current"
-            and not _read_by_refresh(retrievals, day, refresh.get("fetched_at"))
+            and day not in retrievals
         ):
             result[day] = {}
     return result
-
-
-def _read_by_refresh(
-    retrievals: dict[str, datetime | None], day: str, fetched_at: Any
-) -> bool:
-    """Return whether the day has a Garmin daily total from this refresh or later."""
-    if day not in retrievals:
-        return False
-    try:
-        refreshed = datetime.fromisoformat(str(fetched_at))
-    except ValueError:
-        return True
-    retrieved = retrievals[day]
-    if refreshed.tzinfo is None or retrieved is None:
-        return True
-    return retrieved >= refreshed

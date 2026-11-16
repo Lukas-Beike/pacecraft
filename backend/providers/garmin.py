@@ -605,6 +605,10 @@ def fetch_targeted_nutrition(
             continue
         if start <= observed <= end:
             bounded.append(row)
+    # A day the answer leaves out is not read: the range is incomplete, so the
+    # refresh neither marks it read nor prunes its stored summary (#3157).
+    days = {str(first_present(row, GARMIN_DATE_ALIASES))[:10] for row in bounded}
+    complete = complete and len(days) == (end - start).days + 1
     return _with_resting_energy(client, bounded, external_call), complete
 
 

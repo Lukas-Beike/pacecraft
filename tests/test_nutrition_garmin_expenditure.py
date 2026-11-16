@@ -343,7 +343,7 @@ class NutritionGarminExpenditureTests(unittest.TestCase):
                 "daily_stats": [
                     {"date": "2026-09-20", "totalKilocalories": 2000},
                     {"date": "2026-09-21", "activeKilocalories": 500},
-                    # Stored at 08:00; a refresh mark from 10:00 hides its total.
+                    # Stored at 08:00; a refresh mark from 10:00 no longer hides it.
                     {"date": "2026-09-22", "totalKilocalories": 2100},
                     # Today is not closed yet.
                     {"date": "2026-09-24", "totalKilocalories": 900},
@@ -357,12 +357,26 @@ class NutritionGarminExpenditureTests(unittest.TestCase):
             gaps,
             {
                 "days": 90,
-                "with_total": 1,
-                "emptied_by_refresh_mark": 1,
+                "with_total": 2,
+                "emptied_by_refresh_mark": 0,
                 "without_total": 88,
                 "with_active_only": 1,
             },
         )
+
+    def test_a_later_refresh_mark_never_hides_a_stored_total(self) -> None:
+        # Stored at 08:00; a refresh mark from 10:00 without a newer retrieval
+        # (the 2026-11-07 case of #3157): the stored total still shows.
+        later = {"freshness": "current", "fetched_at": "2026-09-24T10:00:00+00:00"}
+        self.store_garmin(
+            {
+                "daily_stats": [{"date": "2026-09-22", "totalKilocalories": 2100}],
+                "nutrition_refresh": {"daily_stats": {"2026-09-22": later}},
+            }
+        )
+        week = self.service.sync_status.get_week_summary(7)
+        (day,) = [item for item in week["days"] if item["date"] == "2026-09-22"]
+        self.assertEqual(day["expenditure_kcal"], 2100)
 
     def test_a_targeted_read_with_the_day_keeps_its_energy(self) -> None:
         self.store_garmin(
