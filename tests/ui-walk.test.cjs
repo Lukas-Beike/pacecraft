@@ -205,3 +205,19 @@ test("ui walk refuses a file, link or hard link at a fixed name instead of follo
     fs.rmSync(victimDir, { recursive: true, force: true });
   }
 });
+
+test("the walk waits while the curve build runs and prints only its state word (2.1.28)", async () => {
+  const walk = await load();
+  const page = (states) => ({
+    request: { get: async () => { const status = states.shift(); return { ok: () => true, json: async () => ({ curve_build: { status }, secret: "never printed" }) }; } },
+    waitForTimeout: async () => {},
+  });
+  const ready = await walk.waitForCurves(page(["building", "building", "ready"]), 60000, 1);
+  assert.equal(ready.status, "ready");
+  // Bounded: a build that never ends stops the wait at the cap.
+  assert.equal((await walk.waitForCurves(page(Array(50).fill("building")), 0, 1)).status, "building");
+  // Anything but a state word is reported as unknown.
+  assert.equal((await walk.waitForCurves(page(["<b>x</b>"]), 60000, 1)).status, "unknown");
+  const lines = walk.reportLines({ loadMs: {}, errors: {}, calendar: {}, marks: null, curves: ready });
+  assert.ok(lines.includes(`info curve build ready, waited ${ready.waited} s before the walk`));
+});

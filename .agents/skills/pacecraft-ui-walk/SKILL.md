@@ -49,7 +49,10 @@ A step that needs a kind of unit looks for one that has its element: completed-
 unit steps page back, planned-unit steps (Schuh/Rad geplant, Löschen,
 Verpflegung) page forward, week by week, and each returns to the current week.
 While the view shows it is loading (a loading marker, `aria-busy`, or an app
-data load), a step waits for its element up to 60 s instead of its cap.
+data load), a step waits for its element up to 60 s instead of its cap. Before
+walking, it waits while the diagnostics' `curve_build.status` is `building` (a
+release's one-off rebuild slows every read), at most 10 min, and prints
+`info curve build <state>, waited <s> s`.
 
 To add a step, append one object to `STEPS`: `view`, `name`, `covers` (feature or
 issue), optional `pre` (open once), `each` (candidates tried in turn) and `opens`
