@@ -18,7 +18,9 @@ Before arming it also refuses while a review thread is unresolved, disarming
 too, with or without --allow-behind; new feedback during --wait disarms as
 well (#2947). Right after a push it first waits up to 30 s for GitHub to report
 the head this checkout pushed (#3174), so a force-push is not checked as the old head.
-Exit 0: merged (or armed, without --wait); 1: refused (base is not develop, an
+While the repository variable MERGE_FREEZE is set it arms nothing and disarms an
+armed PR, unless the variable's text names that PR as #<number> (#3203).
+Exit 0: merged (or armed, without --wait); 1: refused (a merge freeze, base is not develop, an
 unresolved review thread, develop changed this PR's files, or GitHub kept
 reporting another head than the pushed one), closed unmerged,
 a failing check or new feedback; 2:
@@ -28,6 +30,7 @@ bad input or a failed gh call; 3: still open when the wait ended.
 from __future__ import annotations
 
 import argparse
+import re
 import sys
 import time
 from typing import Any
@@ -39,6 +42,23 @@ FIELDS = "state,baseRefName,headRefName,headRefOid,autoMergeRequest,mergeCommit,
 POLLS_PER_MINUTE = 3
 # Just after a push GitHub can still report the old head (#3174); it catches up in seconds.
 HEAD_POLLS, HEAD_POLL_SECONDS = 10, 3
+
+
+# The orchestrator's merge freeze (#3203): `gh variable set MERGE_FREEZE --body
+# "<reason>"` starts it, `gh variable delete MERGE_FREEZE` lifts it.
+FREEZE = "MERGE_FREEZE"
+
+
+def frozen(number: int) -> str | None:
+    """The freeze reason while one is set and does not name this PR as #<number>;
+    None without a freeze. Any other failure to read it raises: arming stops."""
+    try:
+        reason = gh("variable", "get", FREEZE).strip()
+    except CliError as exc:
+        if f"variable {FREEZE} was not found" in str(exc):
+            return None
+        raise
+    return None if re.search(rf"#{number}\b", reason) else reason or "set"
 
 
 def view(number: int) -> dict[str, Any]:
@@ -198,6 +218,9 @@ def main(argv: list[str] | None = None) -> int:
             print(f"refused: base is {pr.get('baseRefName')}, not develop")
             return 1
         if pr.get("state") == "OPEN":
+            if (reason := frozen(args.number)) is not None:
+                refuse(args.number, pr, f"merge freeze (untrusted text): {reason}")
+                return 1
             seen = seen_push(args.number, pr)
             if seen is None:
                 return 1
