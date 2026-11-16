@@ -20,11 +20,17 @@ well (#2947). Right after a push it first waits up to 30 s for GitHub to report
 the head this checkout pushed (#3174), so a force-push is not checked as the old head.
 While the repository variable MERGE_FREEZE is set it arms nothing and disarms an
 armed PR, unless the variable's text names that PR as #<number> (#3203).
+It arms only a head whose Gitar check completed successfully on that very head
+(#3308): right after a push the check is pending or missing, and one for an
+older head does not count. Without --wait it refuses then; --wait polls until the
+check completes, and refuses a failed one.
 Exit 0: merged (or armed, without --wait); 1: refused (a merge freeze, base is not develop, an
 unresolved review thread, develop changed this PR's files, or GitHub kept
-reporting another head than the pushed one), closed unmerged,
+reporting another head than the pushed one, or Gitar has not reviewed the head
+or failed it), closed unmerged,
 a failing check or new feedback; 2:
-bad input or a failed gh call; 3: still open when the wait ended.
+bad input or a failed gh call; 3: still open when the wait ended (also before
+Gitar finished, when nothing was armed).
 """
 
 from __future__ import annotations
@@ -89,6 +95,46 @@ def thread_open(number: int) -> bool:
     except CliError, KeyError, TypeError:
         return False
     return bool(threads) or more
+
+
+GITAR = "Gitar"
+
+
+def gitar_verdict(sha: str) -> tuple[str, str]:
+    """('passed' | 'pending' | 'failing', conclusion) of Gitar's check on exactly
+    this head; 'pending' while it has none yet, as right after a push (#3308)."""
+    path = f"repos/{{owner}}/{{repo}}/commits/{sha}/check-runs?check_name={GITAR}"
+    found = gh_json("api", path) or {}
+    runs = [
+        item
+        for item in found.get("check_runs") or []
+        if item.get("name") == GITAR and item.get("head_sha") == sha
+    ]
+    if not runs:
+        return "pending", ""
+    newest = max(runs, key=lambda item: item.get("id") or 0)
+    if newest.get("status") != "completed":
+        return "pending", ""
+    conclusion = str(newest.get("conclusion") or "")
+    return ("passed" if conclusion == "success" else "failing"), conclusion
+
+
+def gitar_gate(sha: str, minutes: int) -> int | None:
+    """None once Gitar's check passed on this head, else the exit code after
+    saying why: 1 for a failed check or no wait, 3 when the wait ended first.
+    The lane rule arms only a head Gitar reviewed (#3308)."""
+    polls = max(minutes, 0) * POLLS_PER_MINUTE + 1
+    for poll in range(polls):
+        verdict, conclusion = gitar_verdict(sha)
+        if verdict == "passed":
+            return None
+        if verdict == "failing":
+            print(f"refused: Gitar's check on {sha[:10]} ended {conclusion}")
+            return 1
+        if poll < polls - 1:
+            time.sleep(60 / POLLS_PER_MINUTE)
+    print(f"refused: Gitar has not reviewed {sha[:10]} yet; run again once it has")
+    return 3 if minutes > 0 else 1
 
 
 def arm(number: int, pr: dict[str, Any]) -> str:
@@ -198,6 +244,24 @@ def wait(number: int, minutes: int, seen: int) -> int:
     return 3
 
 
+def arming_gates(
+    number: int, pr: dict[str, Any], *, current: bool, minutes: int
+) -> dict[str, Any] | int:
+    """The open PR to arm once every gate passed, else the exit code of the gate
+    that refused: the merge freeze, the pushed head, review threads, develop's
+    overlap and Gitar's check on that head (#3308)."""
+    if (reason := frozen(number)) is not None:
+        refuse(number, pr, f"merge freeze (untrusted text): {reason}")
+        return 1
+    seen = seen_push(number, pr)
+    if seen is None or open_threads(number, seen):
+        return 1
+    if current and behind_develop(number, seen):
+        return 1
+    gated = gitar_gate(seen["headRefOid"], minutes)
+    return seen if gated is None else gated
+
+
 def main(argv: list[str] | None = None) -> int:
     top = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     top.add_argument("number", type=positive_int)
@@ -218,17 +282,10 @@ def main(argv: list[str] | None = None) -> int:
             print(f"refused: base is {pr.get('baseRefName')}, not develop")
             return 1
         if pr.get("state") == "OPEN":
-            if (reason := frozen(args.number)) is not None:
-                refuse(args.number, pr, f"merge freeze (untrusted text): {reason}")
-                return 1
-            seen = seen_push(args.number, pr)
-            if seen is None:
-                return 1
-            pr = seen
-            if open_threads(args.number, pr):
-                return 1
-            if current and behind_develop(args.number, pr):
-                return 1
+            gated = arming_gates(args.number, pr, current=current, minutes=args.wait)
+            if isinstance(gated, int):
+                return gated
+            pr = gated
             print(f"PR #{args.number}: {arm(args.number, pr)}")
             if args.wait <= 0:
                 return 0
