@@ -45,8 +45,9 @@ or empty element where data exists is `FAIL` and names the feature it covers.
 `--compare` prints each step's time against the previous walk and a `FAIL` for a
 step that passed before and is skipped now, whatever the reason. Optional steps
 are skipped without data, so a skipped step in the notes is read, not ignored.
-The completed-unit steps come last in the calendar and page back to the latest
-week with a completed unit (on a Monday the current week has none yet).
+The completed-unit steps come last in the calendar: the first pages back to the
+latest week with a completed unit (on a Monday the current week has none yet),
+the others use that week, and Laufdynamik may page on to a week with a run.
 
 To add a step, append one object to `STEPS`: `view`, `name`, `covers` (feature or
 issue), optional `pre` (open once), `each` (candidates tried in turn) and `opens`

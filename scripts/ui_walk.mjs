@@ -225,7 +225,7 @@ const BACK = 'button[aria-label="Vorherige Woche"]';
 // How many weeks a `seek` step pages back at most.
 const SEEK_WEEKS = 6;
 const tab = (area, segment) => `a[data-${area}-segment="${segment}"]`;
-const detail = (name, covers, ready, kind, extra) => ({ view: "plan", name, covers, each: DONE, seek: BACK, opens: [DETAILS_OPEN], ready, kind, absent: NO_DETAILS, ...extra });
+const detail = (name, covers, ready, kind, extra) => ({ view: "plan", name, covers, each: DONE, opens: [DETAILS_OPEN], ready, kind, absent: NO_DETAILS, ...extra });
 export const STEPS = [
   { view: "coach", name: "Coach: Verlauf", covers: "Coach history", ready: "#messages [data-message-id]", kind: "text" },
   { view: "plan", name: "Kalender: Schuh/Rad geplant", covers: "#3011 planned equipment chip", each: PLANNED, ready: '.planned-entry[open] .planned-equipment-chip[aria-label*=": "]', kind: "text", optional: true },
@@ -239,17 +239,18 @@ export const STEPS = [
   { view: "plan", name: "Kalender: Wochenansicht", covers: "#2189 week and month switch", pre: ['.planned-view-switch button[data-view="week"]'], ready: ".planned-week .planned-day", kind: "text" },
   // Read-only as well: the library card offers "Einplanen" and "Löschen"; the walk presses neither (#3028).
   { view: "plan", name: "Bibliothek: Einplanen, Löschen", covers: "#3028 library actions", pre: [tab("plan", "library")], opens: ["#library details.library-sport > summary"], ready: "#library .library-card .planned-activity-actions .danger-button", kind: "text", optional: true, post: [tab("plan", "overview")] },
-  // Completed units come last in the calendar: on a Monday the current week has none yet, so these steps
-  // page back to the latest week that has one (`seek`), and the steps above keep the current week.
+  // Completed units come last in the calendar: on a Monday the current week has none yet, so the first
+  // step pages back to the latest week that has one (`seek`); the paging stays, so the steps after it
+  // use that week, and the steps above keep the current week.
   { view: "plan", name: "Kalender: Einheit öffnen", covers: "#2189 calendar agenda and detail", each: DONE, seek: BACK, ready: ".planned-entry[open] .planned-entry-details", kind: "text" },
   detail("Kalender: Details", "#2258 session details", ".planned-entry[open] .activity-analysis-stats", "numbers"),
   // The watch's temperature sensor reads body-warmed values, so no session charts it (#3036).
   detail("Kalender: Diagramm", "#2258 session charts", '.planned-entry[open] .activity-analysis-panel svg[role="img"]', "chart", { never: '.planned-entry[open] .activity-analysis-panel svg[aria-label^="Temperatur"]' }),
   detail("Kalender: Zonenbalken", "#2258 time in zones", ".planned-entry[open] .activity-analysis-zones", "numbers", { optional: true }),
   // The chip shows "…" until its read; once loaded its label names the choice ("Rad: …").
-  { view: "plan", name: "Kalender: Schuh/Rad", covers: "#3011 equipment chip", each: DONE, seek: BACK, ready: '.planned-entry[open] .planned-equipment-chip[aria-label*=": "]', kind: "text", optional: true },
-  // Last: it may page back further, to a week with a run.
-  detail("Kalender: Laufdynamik", "#2910 running dynamics", ".planned-entry[open] .activity-dynamics-value", "numbers", { optional: true, each: ".planned-entry.is-completed[data-sport='Laufen'] > summary" }),
+  { view: "plan", name: "Kalender: Schuh/Rad", covers: "#3011 equipment chip", each: DONE, ready: '.planned-entry[open] .planned-equipment-chip[aria-label*=": "]', kind: "text", optional: true },
+  // Last: from that week it may page back further, to a week with a run.
+  detail("Kalender: Laufdynamik", "#2910 running dynamics", ".planned-entry[open] .activity-dynamics-value", "numbers", { optional: true, seek: BACK, each: ".planned-entry.is-completed[data-sport='Laufen'] > summary" }),
   // The sport cards are tables: a measured value is a cell with a digit; a missing one is marked and has none.
   ...[["running", "Laufen", "#runningBestEfforts td:not(.value-missing)", "numbers"], ["cycling", "Radfahren", "#cyclingPowerProfile td:not(.value-missing)", "numbers"], ["load", "Belastung", "#analysisLoadCharts svg", "chart"], ["recovery", "Erholung", "#personalRecovery svg", "chart"]]
     .map(([segment, label, ready, kind]) => ({ view: "analysis", name: `Analyse: ${label}`, covers: "Analyse tabs", pre: [tab("analysis", segment)], ready, kind })),
