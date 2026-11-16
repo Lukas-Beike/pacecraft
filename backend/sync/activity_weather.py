@@ -87,9 +87,10 @@ DEFAULT_BATCH_SIZE: Final = 20
 RETRY_BASE: Final = timedelta(minutes=30)
 RETRY_MAX: Final = timedelta(hours=24)
 # Looking up a session that already has stored weather again (a method version
-# change) is paced to this many per hour, under Open-Meteo's free 5,000 per hour
-# and 10,000 per day; a session never looked up is never held back (#3084).
-REFETCH_PER_HOUR: Final = 600
+# change) is paced to this many per hour: even passes running all day stay at
+# 7,200, under Open-Meteo's free 10,000 per day and 5,000 per hour, with room
+# for the forecast. A session never looked up is never held back (#3084).
+REFETCH_PER_HOUR: Final = 300
 # A travel bearing needs this much distance to the next position; closer ones
 # are GPS noise.
 BEARING_MIN_M: Final = 10.0
