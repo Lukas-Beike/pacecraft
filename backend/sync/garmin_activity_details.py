@@ -724,7 +724,10 @@ def detail_replay_size(db: Any, key_values: Any, now: datetime) -> dict[str, Any
         - pending
     )
     # Without the empty marks, the marked ones count as pending again.
-    marked = below(MAPPER_VERSION, replace(state, empty={})) - pending
+    unmarked = _BackfillState(
+        paused_until=state.paused_until, retry=state.retry, replay=state.replay
+    )
+    marked = below(MAPPER_VERSION, unmarked) - pending
     return {
         "window_days": BACKFILL_WINDOW.days,
         "pending": len(pending),
@@ -817,9 +820,11 @@ def _stored_fetch_time(item: Any) -> datetime | None:
 def _parse_backfill_state(raw: object) -> _BackfillState:
     """Read the stored backfill state; unreadable content resets to an empty state.
 
-    Empty marks and retries made by an older (or unrecorded) detail mapper no
+    Empty marks and retry counts made by an older (or unrecorded) detail mapper no
     longer count: a mapper bump gives every window activity one fresh fetch,
-    whatever an older mapper's fetch got (#2220).
+    whatever an older mapper's fetch got (#2220). Their retry entries stay with no
+    attempts, because an entry alone keeps a record whose details already reached
+    this mapper (only its streams are older) a candidate.
     """
     if not isinstance(raw, str) or not raw:
         return _BackfillState()
@@ -836,10 +841,13 @@ def _parse_backfill_state(raw: object) -> _BackfillState:
         if current and isinstance(marks, dict)
         else {}
     )
+    retry = _parse_retry(parsed.get("retry"))
+    if not current:
+        retry = {key: (summary, 0) for key, (summary, _attempts) in retry.items()}
     return _BackfillState(
         paused_until=_parse_time(parsed.get("paused_until")),
         empty=empty,
-        retry=_parse_retry(parsed.get("retry")) if current else {},
+        retry=retry,
         replay=_parse_replay(parsed.get("replay")),
     )
 

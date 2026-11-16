@@ -1312,6 +1312,33 @@ class BackfillReplayTests(_Base):
 
         self.assertEqual((reader.fetched, result["replayed"]), (["2000"], 1))
 
+    def test_a_retry_of_an_unrecorded_mapper_keeps_its_candidate_with_new_attempts(
+        self,
+    ) -> None:
+        # The details already reached this mapper and only the streams are older:
+        # the retry entry alone keeps the record a candidate (#3227 review).
+        _seed_outdated(self, [("1001", "2026-10-01 07:00:00")])
+        summary = _summary_hash(self.manager, "1001")
+        failed = _payload(
+            "1001", errors=[{"source": "activity_fit", "message": "synthetic"}]
+        )
+        for _attempt in range(BACKFILL_RETRY_ATTEMPTS):
+            self.service(_Details({"1001": failed})).backfill()
+        state = _stored_state(self.key_values)
+        self.assertEqual(state["retry"], {"1001": [summary, BACKFILL_RETRY_ATTEMPTS]})
+        # A state as a release before the mapper scoping stored it.
+        del state["mapper_version"]
+        self.key_values.values[BACKFILL_STATE_KEY] = json.dumps(state)
+
+        reader = _Details({"1001": _full("1001")})
+        self.service(reader).backfill()
+
+        self.assertEqual(reader.fetched, ["1001"])
+        self.assertNotIn("retry", _stored_state(self.key_values))
+        with self.manager.reader() as db:
+            size = detail_replay_size(db, self.key_values, NOW_AT)
+        self.assertEqual((size["pending"], size["passed_over"]), (0, 0))
+
     def test_marks_and_retries_of_this_mapper_pass_over_with_their_reason(
         self,
     ) -> None:
