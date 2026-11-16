@@ -1,5 +1,8 @@
 """Canonical Garmin body weight and body-fat inputs read through the observation port.
 
+The weights the athlete entered by hand (no provider, #3252) are read beside
+Garmin's.
+
 The reader serves whichever source the unit of work chose; ``body_history``
 shows only the days this module returns.
 
@@ -30,10 +33,14 @@ BODY_FAT_BOUNDS = (2.0, 70.0)
 
 @dataclass(frozen=True, slots=True)
 class CanonicalBodyInputs:
-    """Per-day Garmin weight and body-fat values, bounded and rounded."""
+    """Per-day Garmin weight and body-fat values, bounded and rounded.
+
+    ``entered_weight_kg`` holds the athlete's own weigh-ins (#3252).
+    """
 
     garmin_weight_kg: Mapping[date, float]
     garmin_body_fat_pct: Mapping[date, float]
+    entered_weight_kg: Mapping[date, float] = MappingProxyType({})
 
 
 EMPTY_BODY_INPUTS = CanonicalBodyInputs(
@@ -60,12 +67,13 @@ def read_body_inputs(
     return CanonicalBodyInputs(
         garmin_weight_kg=_daily(weights, ProviderId.GARMIN, today, WEIGHT_BOUNDS),
         garmin_body_fat_pct=_daily(body_fat, ProviderId.GARMIN, today, BODY_FAT_BOUNDS),
+        entered_weight_kg=_daily(weights, None, today, WEIGHT_BOUNDS),
     )
 
 
 def _daily(
     observations: Sequence[Observation],
-    provider: ProviderId,
+    provider: ProviderId | None,
     today: date,
     bounds: tuple[float, float],
 ) -> dict[date, float]:

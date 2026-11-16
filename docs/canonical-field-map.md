@@ -30,7 +30,7 @@ Implemented in `backend/performance/source_policy.py` (`CURRENT_RULES`, `DAILY_R
 
 | Kind | Order (best first) | Bounds | Age limit |
 |---|---|---|---|
-| `weight` | Garmin, Wahoo; undated local profile weight between them (`RECENCY_ORDERS`: newest dated value wins, within `RECENCY_TIE_DAYS` = 1 day a device measurement beats a provider report beats an athlete entry) | none (validation range 20 to 400 kg) | Wahoo 90 days |
+| `weight` | Garmin, Wahoo; the athlete's newest entered weight (dated) or else the undated local profile weight between them (`RECENCY_ORDERS`: newest dated value wins, within `RECENCY_TIE_DAYS` = 1 day a device measurement beats a provider report beats an athlete entry, except that an entry on the newest day wins) | none (validation range 20 to 400 kg) | Wahoo 90 days |
 | `body_fat` | Garmin, local profile (same recency rule) | | |
 | `resting_hr` | Garmin | 30 to 230 bpm | |
 | `hrv_rmssd` | Garmin | 1 to 300 ms | |
@@ -150,7 +150,7 @@ Each kind has exactly one canonical unit (`MetricKind.unit`) and a plausibility 
 
 | Kind | Unit | Range | Meaning | Emitted by | Status |
 |---|---|---|---|---|---|
-| `weight` | `kg` | 20 to 400 | Body weight. | `garmin_health_mapping.py`, `wahoo_threshold_mapping.py` | read |
+| `weight` | `kg` | 20 to 400 | Body weight. | `garmin_health_mapping.py`, `wahoo_threshold_mapping.py`, `weight_entry.py` | read |
 | `body_fat` | `%` | 1 to 80 | Body-fat share of body weight. | `garmin_health_mapping.py` | read |
 | `ftp` | `W` | 0 to 2,500 | Functional threshold power; the sport field says ride or run (run FTP = running threshold power). | `garmin_health_mapping.py`, `wahoo_threshold_mapping.py` | read |
 | `threshold_hr` | `bpm` | 20 to 250 | Lactate-threshold heart rate (per sport). | `garmin_health_mapping.py` | read |
@@ -2663,7 +2663,22 @@ Inputs: the athlete's save request (API/UI); no provider payload.
 | `observed_at`, `sport`, `method`, `aggregation`, `period` | none | |
 | `provenance` | `provider` none; `source_kind` = `athlete_entered`; `source_record_id` none; `recorded_by` = `manual`; `retrieved_at` none; `label` = "Lokal" (`LOCAL_LABEL`) | Provider re-projection never retires these rows (it is scoped by provider). |
 
-Stored with `mapper_version` 1 (`MAPPER_VERSION`). The canonical readers skip rows without a provider, so `skinfolds.py` reads its own rows (`provider IS NULL`, `source_kind = 'athlete_entered'`, active).
+Stored with `mapper_version` 1 (`MAPPER_VERSION`). The canonical readers skip rows without a provider (except the weights of `weight_entry.py`), so `skinfolds.py` reads its own rows (`provider IS NULL`, `source_kind = 'athlete_entered'`, active).
+
+### `weight_entry.py`
+
+Status: Live. `backend/athlete/weight_entry.py` is the only producer of weights the athlete enters by hand (#3252). `WeightEntryService.save` writes one observation through `canonical_store.upsert_observation`; a save on the same day first retires that day's active entered row, and `WeightEntryService.remove` (confirmed) retires it.
+Inputs: the athlete's save request (API/UI); no provider payload.
+
+| `Observation` field | Local value | Notes |
+|---|---|---|
+| `kind` | `weight` | |
+| `value` | request `kg` in `kg`, rounded to 0.1 | 20..400 kg (`METRIC_BOUNDS`); comma decimals allowed. |
+| `observed_on` | request `date` (ISO day, not in the future) | Part of the natural key `|weight|||<day>`. |
+| `observed_at`, `sport`, `method`, `aggregation`, `period` | none | |
+| `provenance` | `provider` none; `source_kind` = `athlete_entered`; `source_record_id` none; `recorded_by` = `manual`; `retrieved_at` none; `label` = "Lokal" (`local_provenance`) | Provider re-projection never retires these rows (it is scoped by provider). |
+
+Stored with `mapper_version` 1. `canonical_store.current_observation_rows` serves these rows for the metrics in `ENTERED_METRICS` (weight only), so the canonical weight readers see them: the current weight takes the newest one under `RECENCY_ORDERS`, where an entry on the newest day wins over a measurement of that or the previous day (athlete decision 2026-11-16), the body history charts them as a "Lokal" series, and the energy weigh-ins take them over a provider weigh-in of the same day.
 
 ### `zone_settings.py`
 

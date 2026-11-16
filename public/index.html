@@ -733,6 +733,15 @@
       <div class="dialog-actions"><button type="button" id="skinfoldDialogCancel" class="secondary-button">Abbrechen</button><button type="button" id="skinfoldDialogRemove" class="secondary-button" hidden>Löschen</button><button type="submit" id="skinfoldDialogSave" class="adaptive-planning-button">Speichern</button></div>
     </form>
   </dialog>
+  <dialog id="weightDialog" aria-labelledby="weightDialogTitle">
+    <form id="weightDialogForm" class="confirmation-dialog">
+      <h2 id="weightDialogTitle">Gewicht</h2>
+      <label for="weightDialogDate">Datum<input id="weightDialogDate" name="date" type="date" required></label>
+      <label for="weightDialogKg">Gewicht (kg)<input id="weightDialogKg" name="kg" type="number" min="20" max="400" step="0.1" inputmode="decimal" required></label>
+      <output id="weightDialogStatus" class="tab-sync-detail" aria-live="polite"></output>
+      <div class="dialog-actions"><button type="button" id="weightDialogCancel" class="secondary-button">Abbrechen</button><button type="button" id="weightDialogRemove" class="secondary-button" hidden>Löschen</button><button type="submit" id="weightDialogSave" class="adaptive-planning-button">Speichern</button></div>
+    </form>
+  </dialog>
   <dialog id="confirmationDialog" aria-labelledby="confirmationDialogTitle" aria-describedby="confirmationDialogMessage">
     <form id="confirmationDialogForm" method="dialog" class="confirmation-dialog">
       <h2 id="confirmationDialogTitle">Aktion bestätigen</h2>

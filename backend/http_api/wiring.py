@@ -518,6 +518,7 @@ def _athlete_write_routes(
                 athlete.profile()
             ).export(profile, revision, deadline),
             skinfold_service=athlete.skinfolds,
+            weight_service=athlete.weight_entries,
         ),
         AuthPostRoutes(session_auth_service, ctx.maintenance),
         FeedbackPostRoutes(

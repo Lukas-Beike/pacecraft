@@ -141,12 +141,23 @@ def session_streams(
 
 
 def weighins(observations: Iterable[Observation]) -> dict[date, float]:
-    """One canonical weigh-in per day: the last one read for that day."""
-    return {
-        o.observed_on: value
-        for o in observations
-        if (value := _number(o.value.value)) is not None and value > 0
-    }
+    """One canonical weigh-in per day: the last one read for that day.
+
+    A weight the athlete entered (no provider) wins its day (#3252).
+    """
+    days: dict[date, float] = {}
+    entered: set[date] = set()
+    for o in observations:
+        value = _number(o.value.value)
+        if value is None or value <= 0:
+            continue
+        provenance = getattr(o, "provenance", None)
+        own = provenance is not None and provenance.provider is None
+        if own or o.observed_on not in entered:
+            days[o.observed_on] = value
+        if own:
+            entered.add(o.observed_on)
+    return days
 
 
 def _number(value: Any) -> float | None:

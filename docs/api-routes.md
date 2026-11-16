@@ -47,6 +47,9 @@ handler's docstring. Regenerate it with
 | GET | `/api/body/skinfolds` | Session | no | The athlete's 3-site skinfold measurements, newest first. |
 | PUT | `/api/body/skinfolds` | Session + CSRF | before access | Save one 3-site skinfold measurement; one of the same day is replaced. |
 | PUT | `/api/body/skinfolds/remove` | Session + CSRF | before access | Remove the skinfold measurement of one day. |
+| GET | `/api/body/weight` | Session | no | The weights the athlete entered by hand, newest first. |
+| PUT | `/api/body/weight` | Session + CSRF | before access | Save one weight the athlete entered; one of the same day is replaced. |
+| PUT | `/api/body/weight/remove` | Session + CSRF | before access | Remove the entered weight of one day. |
 | GET | `/api/bootstrap` | Session | no | Initial authenticated client state. |
 | POST | `/api/change-history/undo` | Session + CSRF | after access | Apply an undo from the change history. |
 | POST | `/api/change-history/undo-turn` | Session + CSRF | after access | Undo every tracked write of one Coach turn. |
@@ -399,6 +402,35 @@ Response: 200 as `GET /api/body/skinfolds`.
 Errors: 400 "Das Löschen einer Messung muss bestätigt werden." unless
 `confirmed` is `true`; 400 "Das Messdatum fehlt oder ist ungültig."; 404
 "Für diesen Tag gibt es keine Hautfaltenmessung.".
+
+### `GET /api/body/weight`
+
+Request: no query, no body.
+
+Response: 200 with `entries` (every active one, each `date` and `kg`).
+
+Errors: none beyond the common ones.
+
+### `PUT /api/body/weight`
+
+Request: JSON body `{"date": "YYYY-MM-DD", "kg": number}`, 20 to 400 kg
+(comma decimals allowed). The date must not be in the future.
+
+Response: 200 as `GET /api/body/weight`.
+
+Errors: 400 "Das Datum fehlt oder ist ungültig."; 400 "Das Datum darf
+nicht in der Zukunft liegen."; 400 "Das Gewicht braucht einen Wert in
+kg."; 400 "Das Gewicht muss zwischen 20 und 400 kg liegen.".
+
+### `PUT /api/body/weight/remove`
+
+Request: JSON body `{"date": "YYYY-MM-DD", "confirmed": true}`.
+
+Response: 200 as `GET /api/body/weight`.
+
+Errors: 400 "Das Löschen eines Gewichts muss bestätigt werden." unless
+`confirmed` is `true`; 400 "Das Datum fehlt oder ist ungültig."; 404
+"Für diesen Tag gibt es kein eingetragenes Gewicht.".
 
 ### `GET /api/bootstrap`
 

@@ -439,7 +439,8 @@ SPORT_ORDERS: Final[Mapping[tuple[MetricKind, Sport], tuple[ProviderId, ...]]] =
 )
 # Weight and body fat (athlete decision 2026-11-04): the most recent measurement
 # across sources wins; within ``RECENCY_TIE_DAYS`` of the newest one, a device
-# measurement precedes a provider report, which precedes an athlete entry. Undated
+# measurement precedes a provider report, which precedes an athlete entry; a weight
+# the athlete entered on the newest day wins it (athlete decision 2026-11-16). Undated
 # values (the local profile, Wahoo's profile weight) are only fallbacks, in this
 # order. None stands for the local profile value.
 RECENCY_ORDERS: Final[Mapping[MetricKind, tuple[ProviderId | None, ...]]] = (
@@ -600,6 +601,16 @@ def _measurement_rank(candidate: Candidate) -> int:
     return _MEASUREMENT_RANK.get(candidate.observation.provenance.source_kind, 2)
 
 
+def _entered(candidate: Candidate) -> bool:
+    """A dated value the athlete entered by hand (no provider, an observation)."""
+    observation = candidate.observation
+    return (
+        candidate.source is None
+        and observation is not None
+        and observation.provenance.source_kind is SourceKind.ATHLETE_ENTERED
+    )
+
+
 def _by_recency(ranked: list[Candidate]) -> list[Candidate]:
     """Order dated candidates by recency and measurement kind, undated ones last.
 
@@ -616,6 +627,10 @@ def _by_recency(ranked: list[Candidate]) -> list[Candidate]:
             return (2, 0, 0, position)
         recent = (newest - item.observed_on).days <= RECENCY_TIE_DAYS
         rank = _measurement_rank(item) if recent else 0
+        if _entered(item) and item.observed_on == newest:
+            # The athlete set this day's value: it wins over a measurement of the
+            # same or the day before (athlete decision 2026-11-16, #3252).
+            rank = -1
         return (0 if recent else 1, rank, -item.observed_on.toordinal(), position)
 
     return [ranked[position] for position in sorted(range(len(ranked)), key=key)]

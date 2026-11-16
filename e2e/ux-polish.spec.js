@@ -118,10 +118,14 @@ test("charts name weeks and space their ticks evenly; a single series does not r
   for (const gap of gaps) expect(Math.abs(gap - gaps[0])).toBeLessThan(1.5);
 
   await page.goto("/#nutrition/body");
-  // Edit icons are svgs too (skinfolds, body fat #3252); the weight chart is named by its metric.
-  const weight = page.locator("#bodyAnalysisCharts [data-body-metric='weight_kg']");
-  await expect(weight.locator(".analysis-chart-legend")).toHaveCount(0);
-  await expect(weight.getByRole("button", { name: "Gewicht: Informationen" })).toBeVisible();
+  // Edit icons are svgs too (skinfolds, body fat #3252); charts are named by their metric. Body
+  // fat has one series; weight has two, as the fixture holds an entered weigh-in ("Lokal").
+  const bodyFat = page.locator("#bodyAnalysisCharts [data-body-metric='body_fat_pct']");
+  await expect(bodyFat.locator(".analysis-chart-legend")).toHaveCount(0);
+  await expect(bodyFat.getByRole("button", { name: "Körperfett: Informationen" })).toBeVisible();
+  const weight = page.locator("#bodyAnalysisCharts [data-body-metric='weight_kg'] .analysis-chart-legend");
+  await expect(weight).toContainText("Garmin Connect");
+  await expect(weight).toContainText("Lokal");
 });
 
 test("a meal shows its source only when it differs from the default @responsive", async ({ page }) => {

@@ -36,6 +36,7 @@ LOCAL_PRODUCERS: Final = (
     "backend/performance/morning_battery_service.py",
     "backend/athlete/zones.py",
     "backend/athlete/skinfolds.py",
+    "backend/athlete/weight_entry.py",
     "backend/activities/stream_zones.py",
 )
 # Other backend files that build canonical records without producing new data.

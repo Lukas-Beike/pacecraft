@@ -342,6 +342,23 @@ def _undated(observation: Observation | None) -> tuple[Candidate, ...]:
     return (Candidate(observation.provenance.provider, value, None, observation),)
 
 
+def _entered(observations: Iterable[Observation]) -> tuple[Candidate, ...]:
+    """The newest weight the athlete entered by hand (#3252): dated, no provider.
+
+    It takes the local slot before the undated profile value, so the recency
+    rule ranks it as an athlete entry.
+    """
+    newest = max(
+        (item for item in observations if item.provenance.provider is None),
+        key=lambda item: item.observed_on,
+        default=None,
+    )
+    if newest is None:
+        return ()
+    value = float(newest.value.value)
+    return (Candidate(None, value, newest.observed_on, newest),)
+
+
 def _profile_candidate(value: Any) -> tuple[Candidate, ...]:
     number = as_number(value)
     return () if number is None else (Candidate(None, float(number)),)
@@ -352,15 +369,17 @@ def _body_candidates(
     garmin_body: Iterable[Observation],
     profile_value: Any,
     wahoo: Observation | None = None,
+    entered: Iterable[Observation] = (),
 ) -> tuple[Candidate, ...]:
     """Weight or body fat of each source, in source order.
 
-    Garmin's latest measurement is dated; the profile and Wahoo's profile weight
-    are not.
+    Garmin's latest measurement and the athlete's newest entered weight are
+    dated; the profile and Wahoo's profile weight are not.
     """
     garmin = next((item for item in garmin_body if item.kind is kind), None)
     return (
         *_dated(garmin),
+        *_entered(entered),
         *_profile_candidate(profile_value),
         *_undated(wahoo),
     )
@@ -381,6 +400,7 @@ def _performance_body_metrics(
             garmin_body,
             profile.get("weight_kg"),
             canonical.wahoo_weight,
+            canonical.entered_weights,
         ),
         as_of=as_of,
         preferences=canonical.preferences,
@@ -449,7 +469,8 @@ def _candidate_label(
     candidate: Candidate, local_label: str = LOCAL_SOURCE_LABEL
 ) -> str:
     if candidate.source is None:
-        return local_label
+        # An entered weight is "Lokal"; the profile value keeps its label.
+        return local_label if candidate.observation is None else LOCAL_SOURCE_LABEL
     if candidate.observation is not None:
         label = observation_source_label(
             candidate.observation, SourceView.CURRENT_METRIC

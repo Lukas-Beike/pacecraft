@@ -372,6 +372,47 @@ class CanonicalBodyInputTests(unittest.TestCase):
         inputs = read_body_inputs(BodyReader(observations), "db", TODAY)
         self.assertEqual({DAY: 80.0}, inputs.garmin_weight_kg)
 
+    def test_an_entered_weight_is_a_local_series_beside_garmin(self) -> None:
+        # #3252: the athlete's own weigh-in has no provider; it is read apart from
+        # Garmin's and charted as its own "Lokal" series.
+        entered = Observation(
+            kind=MetricKind.WEIGHT,
+            value=MetricValue(value=72.46, unit="kg"),
+            observed_on=DAY,
+            observed_at=None,
+            provenance=Provenance(
+                provider=None,
+                source_kind=SourceKind.ATHLETE_ENTERED,
+                source_record_id=None,
+                recorded_by=RecordingOrigin.MANUAL,
+                retrieved_at=None,
+                label="Lokal",
+            ),
+        )
+        garmin = _measure(MetricKind.WEIGHT, 71.0, DAY, provider=ProviderId.GARMIN)
+        inputs = read_body_inputs(BodyReader((garmin, entered)), "db", TODAY)
+        self.assertEqual({DAY: 71.0}, inputs.garmin_weight_kg)
+        self.assertEqual({DAY: 72.46}, inputs.entered_weight_kg)
+
+        series = _body({}, None, inputs)["windows"]["14d"]["metrics"]["weight_kg"]
+        self.assertEqual(
+            [("Garmin Connect", "garmin"), ("Lokal", None)],
+            [(item["source"], item["source_provider"]) for item in series],
+        )
+        local = {point["date"]: point["value"] for point in series[1]["points"]}
+        self.assertEqual(72.46, local[DAY.isoformat()])
+        # Without an entry there is no local series.
+        alone = read_body_inputs(BodyReader((garmin,)), "db", TODAY)
+        self.assertEqual(
+            ["garmin"],
+            [
+                item["source_provider"]
+                for item in _body({}, None, alone)["windows"]["14d"]["metrics"][
+                    "weight_kg"
+                ]
+            ],
+        )
+
     def test_intervals_values_are_not_body_inputs(self) -> None:
         # Intervals.icu body values reach body history through the wellness days.
         observations = (

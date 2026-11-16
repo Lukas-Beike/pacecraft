@@ -11,10 +11,14 @@ from backend.errors import NOT_FOUND_ERROR, AppError
 from backend.http_api.route_table import Access, Route, RouteRequest
 
 SKINFOLDS_PATH = "/api/body/skinfolds"
+WEIGHT_PATH = "/api/body/weight"
 
 
 class AthletePutRoutes:
-    """Dispatch athlete writes through their existing domain services."""
+    """Dispatch athlete writes through their existing domain services.
+
+    The entered weights are read here too, beside their writes (#3252).
+    """
 
     def __init__(
         self,
@@ -23,7 +27,9 @@ class AthletePutRoutes:
         zone_service: Callable[[], Any] | None = None,
         body_export: Callable[[dict[str, str], str | None, float], str] | None = None,
         skinfold_service: Callable[[], Any] | None = None,
+        weight_service: Callable[[], Any] | None = None,
     ) -> None:
+        self._weight_service = weight_service
         self._profile_service = profile_service
         self._database_manager = database_manager
         self._zone_service = zone_service
@@ -51,7 +57,63 @@ class AthletePutRoutes:
                     self._remove_skinfolds,
                 ),
             ]
+        if self._weight_service is not None:
+            routes += [
+                Route("GET", WEIGHT_PATH, Access.SESSION, self._weights),
+                Route("PUT", WEIGHT_PATH, Access.SESSION_CSRF, self._save_weight),
+                Route(
+                    "PUT",
+                    f"{WEIGHT_PATH}/remove",
+                    Access.SESSION_CSRF,
+                    self._remove_weight,
+                ),
+            ]
         return routes
+
+    def _weights(self, handler: Any, _request: RouteRequest) -> None:
+        """The weights the athlete entered by hand, newest first.
+
+        Request: no query, no body.
+
+        Response: 200 with `entries` (every active one, each `date` and `kg`).
+
+        Errors: none beyond the common ones.
+        """
+        if self._weight_service is not None:
+            handler.send_json(200, self._weight_service().read())
+
+    def _save_weight(self, handler: Any, _request: RouteRequest) -> None:
+        """Save one weight the athlete entered; one of the same day is replaced.
+
+        Request: JSON body `{"date": "YYYY-MM-DD", "kg": number}`, 20 to 400 kg
+        (comma decimals allowed). The date must not be in the future.
+
+        Response: 200 as `GET /api/body/weight`.
+
+        Errors: 400 "Das Datum fehlt oder ist ungültig."; 400 "Das Datum darf
+        nicht in der Zukunft liegen."; 400 "Das Gewicht braucht einen Wert in
+        kg."; 400 "Das Gewicht muss zwischen 20 und 400 kg liegen.".
+        """
+        self._send_weight(handler, "save")
+
+    def _remove_weight(self, handler: Any, _request: RouteRequest) -> None:
+        """Remove the entered weight of one day.
+
+        Request: JSON body `{"date": "YYYY-MM-DD", "confirmed": true}`.
+
+        Response: 200 as `GET /api/body/weight`.
+
+        Errors: 400 "Das Löschen eines Gewichts muss bestätigt werden." unless
+        `confirmed` is `true`; 400 "Das Datum fehlt oder ist ungültig."; 404
+        "Für diesen Tag gibt es kein eingetragenes Gewicht.".
+        """
+        self._send_weight(handler, "remove")
+
+    def _send_weight(self, handler: Any, action: str) -> None:
+        if self._weight_service is None:
+            raise AppError(404, NOT_FOUND_ERROR)
+        payload = handler.read_json()
+        handler.send_json(200, getattr(self._weight_service(), action)(payload))
 
     def _save_skinfolds(self, handler: Any, _request: RouteRequest) -> None:
         """Save one 3-site skinfold measurement; one of the same day is replaced.

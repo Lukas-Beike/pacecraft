@@ -36,3 +36,31 @@ test("@responsive skinfolds are entered, edited and removed through the dialog",
   await expect(card).toContainText("Noch keine Messung");
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBeTruthy();
 });
+
+// #3252: the pencil in the weight row enters a weight with its date; it becomes the latest
+// weight ("Lokal") and can be removed again.
+test("@responsive a weight is entered and removed through the weight dialog", async ({ page }) => {
+  await page.goto("/#nutrition/body");
+  const row = page.locator("tr[data-metric='weight_kg']");
+  const dialog = page.locator("#weightDialog");
+  await expect(row).toBeVisible();
+  await expect(dialog).toBeHidden();
+
+  await row.getByRole("button", { name: "Gewicht eintragen" }).click();
+  await expect(dialog).toBeVisible();
+  await expect(page.locator("#weightDialogRemove")).toBeHidden();
+  const today = await page.locator("#weightDialogDate").inputValue();
+  await page.locator("#weightDialogKg").fill("123.4");
+  await dialog.getByRole("button", { name: "Speichern" }).click();
+  await expect(dialog).toBeHidden();
+  await expect(row.locator("td").first()).toContainText("123,4");
+
+  await row.getByRole("button", { name: "Gewicht eintragen" }).click();
+  await expect(page.locator("#weightDialogDate")).toHaveValue(today);
+  await expect(page.locator("#weightDialogKg")).toHaveValue("123.4");
+  await page.locator("#weightDialogRemove").click();
+  await page.locator("#confirmationDialog").getByRole("button", { name: "Löschen" }).click();
+  await expect(dialog).toBeHidden();
+  await expect(row.locator("td").first()).not.toContainText("123,4");
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBeTruthy();
+});
