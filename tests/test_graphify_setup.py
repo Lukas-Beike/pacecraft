@@ -563,6 +563,20 @@ class WorktreePreparationTests(unittest.TestCase):
         self.assertNotIn("--target", second)
         for command in (first, second):
             self.assertIn("--require-hashes", command)
+        # A failed Ruff/mypy install still installs tzdata and reports the failure (Gitar).
+        with (
+            tempfile.TemporaryDirectory() as directory,
+            patch.object(
+                prepare.subprocess,
+                "run",
+                side_effect=[subprocess.CompletedProcess([], code) for code in (1, 0)],
+            ) as run,
+        ):
+            (Path(directory) / "requirements-dev.txt").write_text(
+                lock, encoding="utf-8"
+            )
+            self.assertEqual(prepare.install_quality_tools(Path(directory)), 1)
+        self.assertEqual(run.call_count, 2)
 
     def test_missing_npm_and_launch_errors_still_attempt_remaining_steps(self):
         with (

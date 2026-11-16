@@ -68,7 +68,9 @@ def install_quality_tools(root: Path) -> int:
                 "-r",
                 str(lock),
             ]
-            code = code or subprocess.run(command, cwd=root, check=False).returncode
+            # Both installs run: a failed Ruff/mypy install still gets the tests tzdata.
+            result = subprocess.run(command, cwd=root, check=False).returncode
+            code = code or result
     return code
 
 
