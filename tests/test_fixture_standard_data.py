@@ -108,6 +108,23 @@ class FixtureImportIsolationTests(unittest.TestCase):
         # The fixture always allows logins; other modules need the real rate limiter.
         self.assertNotIn("allow", vars(http_auth.RATE_LIMITER))
 
+    def test_runner_today_pins_the_athlete_day_and_keeps_the_time(self):
+        # #3200: run_browser_tests.py --today sets FIXTURE_TODAY; without it nothing changes.
+        clock = fixture_runtime.server.ATHLETE_CLOCK
+        zone, real_now = ZoneInfo("Europe/Berlin"), datetime.now
+        with patch.object(clock, "_now", real_now):
+            with patch.dict(os.environ, {"FIXTURE_TODAY": ""}):
+                fixture_runtime.pin_athlete_day()
+                self.assertIs(clock._now, real_now)
+            with patch.dict(os.environ, {"FIXTURE_TODAY": "2026-11-16"}):
+                fixture_runtime.pin_athlete_day()
+            pinned, real = clock._now(zone), datetime.now(zone)
+        self.assertEqual(pinned.date(), date(2026, 11, 16))
+        self.assertLess(
+            abs(pinned.hour * 60 + pinned.minute - real.hour * 60 - real.minute), 2
+        )
+        self.assertEqual(pinned.tzinfo, zone)
+
 
 class StandardFixtureTestCase(unittest.TestCase):
     """Applies the fixture replacements per test. Full demo seeds take seconds each, so

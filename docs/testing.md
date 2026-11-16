@@ -218,7 +218,11 @@ and prints their paths, for UI PR images without a spec edit (#2843); the
 manifest records it because the captures lengthen the timings.
 `--repeat-each N` and `--grep PATTERN` pass to each Playwright child, so a flaky
 test repeats without editing tracked files; the manifest records both and marks
-the run focused (#3094).
+the run focused (#3094). `--today YYYY-MM-DD` gives the fixture's athlete clock
+that date at the real time of day and, for specs built on `e2e/helpers/today.js`
+(the compact calendar week and the fixture UI walk), the browser clock, so a
+weekday-dependent expectation fails on a pinned Monday or Sunday; the manifest
+records the day (#3200).
 
 CI builds and shares the current application image once, then starts browser
 jobs beside the native suite. Its prepared browser image is pinned by exact

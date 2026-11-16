@@ -35,6 +35,11 @@ python scripts/run_browser_tests.py --project all --keep-going
   write it to `testInfo.outputPath("<name>")` in the spec; the file lands under
   the run's `artifacts/` in `test-results/browser-runs/`. A flake seen only in
   CI needs a draft PR: the CI browser (`--browser-image`) needs a Linux host.
+- Weekday: `--today YYYY-MM-DD` pins the fixture's athlete day and, in specs
+  that import `test` from `e2e/helpers/today.js`, the browser clock (#3200).
+  A spec whose expectation depends on the weekday (the week's completed units,
+  yesterday) imports it and computes dates outside the page with its
+  `todayIn(zone)`; run it on a Monday and a Sunday before the PR.
 - A server-free spec (one that only uses `page.setContent`, such as
   `e2e/ui-walk-steps.spec.js`) runs without Docker: set `E2E_NO_LOGIN=1` and
   run `npx playwright test e2e/<name>.spec.js --project=desktop`. The login

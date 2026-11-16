@@ -383,6 +383,7 @@ class BrowserRunnerTests(unittest.TestCase):
                     self.assertIn("100:101", item)
                     self.assertIn("--read-only", item)
                     self.assertIn("AI_COACH_DISPOSABLE_FIXTURE=1", item)
+                    self.assertFalse(any("FIXTURE_TODAY" in str(word) for word in item))
                     self.assertIn("/data:uid=100,gid=101,mode=0700", item)
                     self.assertTrue(
                         item[item.index("--network") + 1].startswith("container:")
@@ -399,6 +400,16 @@ class BrowserRunnerTests(unittest.TestCase):
                 ]
                 self.assertLess(max(network_creates), min(browsers))
                 self.assertEqual(len(value["resources"]["ports"]), jobs * 2)
+        # #3200: --today pins every fixture's athlete day.
+        fake = FakeProcesses()
+        code, _, _ = self.run_main(fake, extra_args=("--today", "2026-11-15"))
+        self.assertEqual(code, 0)
+        fixtures = [
+            c for c in fake.commands if c[:2] == ["docker", "create"] and "python" in c
+        ]
+        self.assertTrue(fixtures)
+        for item in fixtures:
+            self.assertEqual(item[item.index("FIXTURE_TODAY=2026-11-15") - 1], "--env")
 
     def test_failed_child_survives_cleanup_failure_and_does_not_save_raw_output(self):
         fake = FakeProcesses(fail_browser=True, cleanup_error=True)
@@ -834,6 +845,26 @@ class BrowserRunnerTests(unittest.TestCase):
             )
             with self.assertRaises(SystemExit), redirect_stderr(io.StringIO()):
                 runner.main(["--project", "desktop", "--repeat-each", "0"])
+            # #3200: --today pins the browser clock of the pinned specs.
+            self.assertNotIn("E2E_TODAY", env_a)
+            args.today = (
+                runner.parser()
+                .parse_args(["--project", "desktop", "--today", "2026-11-16"])
+                .today
+            )
+            _, pinned, _ = execute.browser_command(
+                {"project": "desktop", "file": "e2e/a.spec.js"},
+                9105, root / "out-f", root / "private-f",
+            )  # fmt: skip
+            self.assertEqual(pinned["E2E_TODAY"], "2026-11-16")
+            selection = runner.Evidence(root, "run", args).data["selection"]
+            self.assertEqual(
+                (selection["mode"], selection["today"]), ("focused", "2026-11-16")
+            )
+            with self.assertRaises(SystemExit), redirect_stderr(io.StringIO()):
+                runner.parser().parse_args(
+                    ["--project", "desktop", "--today", "16.11.2026"]
+                )
 
     def test_screenshot_listing_names_only_playwright_end_states(self):
         # #2843: a spec's own crops and the HTML report's copies are not listed.

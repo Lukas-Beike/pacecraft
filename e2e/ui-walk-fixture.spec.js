@@ -1,4 +1,5 @@
-const { test, expect } = require("@playwright/test");
+// --today pins this walk's day (#3200): its expectations depend on the week's completed runs.
+const { test, expect, todayIn } = require("./helpers/today");
 const path = require("node:path");
 const { pathToFileURL } = require("node:url");
 
@@ -13,7 +14,7 @@ test("@responsive every UI walk step passes on the fixture app", async ({ page, 
   expect((await request.get("/api/fixture/demo")).ok()).toBeTruthy();
   // The app's own today: the profile's zone, else the browser's (the same process as this runner).
   const timeZone = (await (await request.get("/api/bootstrap")).json()).profile?.timezone || undefined;
-  const today = new Intl.DateTimeFormat("en-CA", { timeZone }).format(new Date());
+  const today = todayIn(timeZone);
   // Only a release image carries the changelog (#2899); a release of only tooling changes still shows its entry.
   await page.context().route("**/changelog.json", (route) => route.fulfill({ json: { releases: [{ version: "9.9.9", commits: ["build(quality): a fixture change (#1)"] }] } }));
   // The fixture's current week plans nothing, and only a long upcoming unit gets fuelling (#2921):
