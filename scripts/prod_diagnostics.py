@@ -37,6 +37,8 @@ COUNTS = (
     "activity_feedback",
     "change_history",
     "external_calendar_events",
+    # Diary entries (#3234).
+    "nutrition_logs",
 )
 MEMORY = ("rss_bytes", "peak_rss_bytes")
 # Storage and runtime health compared between releases (#2848).

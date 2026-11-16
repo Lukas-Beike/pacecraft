@@ -48,6 +48,7 @@ class _Database:
             "athlete_checkins": 6,
             "activity_feedback": 7,
             "change_history": 8,
+            "nutrition_logs": 9,
         }
 
     def execute(self, query, parameters=()):
@@ -304,6 +305,7 @@ class DiagnosticReportServiceTests(unittest.TestCase):
                 "athlete_checkins": 6,
                 "activity_feedback": 7,
                 "change_history": 8,
+                "nutrition_logs": 9,
                 "stored_payload_bytes": {
                     "garmin_state": 4096,
                     "garmin_snapshot_legacy": 0,
@@ -373,8 +375,8 @@ class DiagnosticReportServiceTests(unittest.TestCase):
         # of the stored daily summaries (#3157); the mapper replay size adds nine
         # (the Garmin window and its candidates, each for this and the next
         # mapper and once without empty marks, the records with outdated file
-        # sets, and two Wahoo selections; #2220).
-        self.assertEqual(len(self.db.queries), 40)
+        # sets, and two Wahoo selections; #2220); the diary count adds one (#3234).
+        self.assertEqual(len(self.db.queries), 41)
         self.assertEqual(
             [query.rsplit("FROM ", 1)[1] for query in count_queries],
             [
@@ -384,6 +386,7 @@ class DiagnosticReportServiceTests(unittest.TestCase):
                 "athlete_checkins",
                 "activity_feedback",
                 "change_history",
+                "nutrition_logs",
                 "kv WHERE key IN (?, ?, ?)",
                 # The last archive purge's count (#3141).
                 "kv WHERE key = ?",

@@ -165,6 +165,8 @@ class DiagnosticReportService:
             "athlete_checkins": count("athlete_checkins"),
             "activity_feedback": count("activity_feedback"),
             "change_history": count("change_history"),
+            # Diary entries, so a release shows the diary kept its rows (#3234).
+            "nutrition_logs": count("nutrition_logs"),
         }
         counts["stored_payload_bytes"] = self._stored_payload_bytes(db)
         return counts | self._storage()
