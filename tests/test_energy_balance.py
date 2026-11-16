@@ -194,6 +194,12 @@ class FlaggedMealsAndCalibrationTests(unittest.TestCase):
         whole = balance.energy_windows(days(2600.0), END, weeks=1)[-1].adaptive_tdee
         assert meal and whole
         self.assertLess(meal.band_kcal, whole.band_kcal)
+        # A flagged entry of 0 kcal (a flagged drink) widens nothing: the day is
+        # not counted whole (Gitar on #3195).
+        drink = balance.energy_windows(days(0.0), END, weeks=1)[-1].adaptive_tdee
+        plain = balance.energy_windows(series(constant(2600.0)), END, weeks=1)[-1]
+        assert drink and plain.adaptive_tdee
+        self.assertEqual(drink.band_kcal, plain.adaptive_tdee.band_kcal)
 
     def test_calibration_factor_is_shrunk_and_clamped(self) -> None:
         def window(raw: float, tdee: float) -> balance.EnergyWindow:

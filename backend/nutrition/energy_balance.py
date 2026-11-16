@@ -251,9 +251,7 @@ def _window(
     tdee = unflagged = derived = None
     if reason is None:
         stored, store_sd = _stored_energy(inputs, trend, weights)
-        everything = [
-            (v.intake_kcal or 0.0, _flagged_kcal(v)) for v in complete.values()
-        ]
+        everything = [(v.intake_kcal or 0.0, v.flagged_kcal) for v in complete.values()]
         tdee = _tdee(everything, stored, store_sd)
         unflagged = tdee if flagged == 0 else None
         if tdee is not None and raw is not None and tef is not None:
@@ -275,18 +273,11 @@ def _window(
         rmr_source=inputs.rmr_source,
         calibration_windows=calibration_windows,
         flagged_kcal_per_day=statistics.fmean(
-            [_flagged_kcal(v) for v in complete.values()]
+            [v.flagged_kcal for v in complete.values()]
         )
         if complete
         else 0.0,
     )
-
-
-def _flagged_kcal(day: DayInputs) -> float:
-    """The flagged entries' logged kcal; a flagged day without them counts whole."""
-    if day.flagged_kcal > 0 or not day.flagged:
-        return day.flagged_kcal
-    return day.intake_kcal or 0.0
 
 
 def _calibration_points(windows: Sequence[EnergyWindow]) -> list[tuple[float, float]]:
