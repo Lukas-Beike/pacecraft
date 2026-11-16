@@ -174,7 +174,7 @@ every named number the code fixes. A test fails when it is out of date.
 | `CAP_ABOVE_SHARE_PCT` | `10` | `backend/performance/planned_targets.py` | More than this share of the time above the cap, or a mean above it, is above the cap. |
 | `CAP_EDGE_SHARE` | `0.05` | `backend/performance/planned_targets.py` | A mean this close below the cap (share of the cap) sits at the upper edge. |
 | `HARD_ZONE` | `3` | `backend/performance/planned_targets.py` | A planned step in this zone or above is hard work (#3084). |
-| `MIN_SKIPPED_BLOCK` | `2` | `backend/performance/planned_targets.py` | Unmatched hard steps make a skipped block from this many on; one is a warm-up build or a finish (#3084). |
+| `MIN_SKIPPED_BLOCK_S` | `600.0` | `backend/performance/planned_targets.py` | Unmatched hard planned time from this many seconds on is a skipped block; less is a warm-up build or a fast finish (athlete, #3084, 2026-11-16). |
 | `ADHERENCE_METHOD` | `'planned-step-adherence-v1'` | `backend/performance/planned_targets.py` |  |
 | `ADHERENCE_SCOPE` | `"Every planned step against its window of the session: work steps on their paired laps, the steps... (sha256 edc71536)` | `backend/performance/planned_targets.py` |  |
 | `GOOD_SHARE_PCT` | `80` | `backend/performance/planned_targets.py` | Time in target from which a step is good, else fair; below fair it is poor (athlete 2026-11-14, #2830, after TrainingPeaks' compliance colours). |

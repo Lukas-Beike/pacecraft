@@ -98,7 +98,7 @@ def planned_target_execution(
         "executed_work_laps": executed,
         # Planned hard steps the lap fitting left without a lap: a skipped
         # lower-level block makes the pairing uncertain (#3084).
-        "unmatched_hard_steps": _unmatched_hard_steps(ranges, work, thresholds),
+        "unmatched_hard_steps": _unmatched_hard_steps(steps, ranges, work, thresholds),
         "compared": len(compared),
         "in_target": sum(value == 0 for value in deviations),
         "above_target": sum(value > 0 for value in deviations),
@@ -233,22 +233,25 @@ def _levels(
 
 # A planned step in this zone or above is hard work (#3084).
 HARD_ZONE: Final = 3
-# Unmatched hard steps make a skipped block from this many on; one is a warm-up
-# build or a finish (#3084).
-MIN_SKIPPED_BLOCK: Final = 2
+# Unmatched hard planned time from this many seconds on is a skipped block; less
+# is a warm-up build or a fast finish (athlete, #3084, 2026-11-16).
+MIN_SKIPPED_BLOCK_S: Final = 600.0
 
 
 def _unmatched_hard_steps(
-    ranges: Sequence[TargetRange], work: Sequence[int], thresholds: ZoneSettings
+    steps: Sequence[Mapping[str, Any]],
+    ranges: Sequence[TargetRange],
+    work: Sequence[int],
+    thresholds: ZoneSettings,
 ) -> int:
     """Planned steps at ``HARD_ZONE`` or above that no executed lap pairs with.
 
     The lap fitting keeps the hardest steps when the plan has more levels than
     laps; a hard step it drops is planned work the session may have skipped.
     Steps within the paired reps' span, and the one right before and after it,
-    are their own recoveries or floats (an over-under's unders), never a block;
-    a lone hard step outside them is a warm-up build or a finish: only two or
-    more make a skipped block.
+    are their own recoveries or floats (an over-under's unders), never a block.
+    The rest make a skipped block only from ``MIN_SKIPPED_BLOCK_S`` of planned
+    time together; less is a warm-up build or a fast finish.
     """
     zones = {
         "speed": (thresholds.threshold_pace, thresholds.pace_zone),
@@ -258,7 +261,7 @@ def _unmatched_hard_steps(
     paired = set(work)
     if paired:
         paired |= set(range(min(work) - 1, max(work) + 2))
-    count = 0
+    count, seconds = 0, 0.0
     for index, target in enumerate(ranges):
         reference, zone_of = zones.get(target.metric or "", (None, None))
         middle = _middle(target)
@@ -270,7 +273,9 @@ def _unmatched_hard_steps(
             and zone_of(middle / reference * 100) >= HARD_ZONE
         ):
             count += 1
-    return count if count >= MIN_SKIPPED_BLOCK else 0
+            duration = steps[index].get("duration")
+            seconds += float(duration) if isinstance(duration, (int, float)) else 0.0
+    return count if seconds >= MIN_SKIPPED_BLOCK_S else 0
 
 
 def _work_steps(levels: Sequence[tuple[int, float]], executed: int) -> list[int]:

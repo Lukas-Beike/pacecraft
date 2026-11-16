@@ -200,12 +200,13 @@ class PlannedTargetExecutionTests(unittest.TestCase):
         )
 
     def test_a_skipped_lower_hard_block_leaves_unmatched_hard_steps(self) -> None:
-        # #3084: 5 fast reps (about 108 % of threshold pace) and a block of 3
-        # reps in pace zone 3 (88-94 %). Five laps were run; the fitting pairs
-        # them with the 5 hardest steps, so the 3 zone-3 steps have no lap.
+        # #3084: 5 fast reps (about 108 % of threshold pace) and a block of 3 x
+        # 4 min in pace zone 3 (88-94 %), 12 min of hard time. Five laps were
+        # run; the fitting pairs them with the 5 hardest steps, so the 3 zone-3
+        # steps have no lap.
         plan = (
             "- 10m Z2 Pace\n\n5x\n- 3m 3:45-3:55/km Pace\n- 90s Z1 Pace\n\n"
-            "3x\n- 3m Z3 Pace\n- 90s Z1 Pace\n\n- 5m Z1 Pace"
+            "3x\n- 4m Z3 Pace\n- 90s Z1 Pace\n\n- 5m Z1 Pace"
         )
         session = _run()
         result = planned_target_execution(
@@ -224,6 +225,26 @@ class PlannedTargetExecutionTests(unittest.TestCase):
                 summary["unmatched_hard_steps"],
             ),
         )
+
+    def test_ten_minutes_of_unmatched_hard_time_make_a_skipped_block(self) -> None:
+        # #3084 (athlete): a warm-up build of 5 min and a fast finish of 4 min 59 s,
+        # 599 s together, stay a build; a single skipped 10 min tempo is a block.
+        def unmatched(extra: str) -> int:
+            plan = (
+                "- 10m Z2 Pace\n" + extra + "- 3m Z1 Pace\n\n5x\n"
+                "- 3m 3:45-3:55/km Pace\n- 90s Z1 Pace\n\n- 5m Z1 Pace"
+            )
+            session = _run()
+            return planned_target_execution(
+                session_execution(session),
+                structured_steps(plan),
+                THRESHOLDS,
+                "run",
+                streams=_display_streams(session),
+            )["summary"]["unmatched_hard_steps"]
+
+        self.assertEqual(0, unmatched("- 5m Z3 Pace\n- 2m Z1 Pace\n- 299s Z3 Pace\n"))
+        self.assertEqual(1, unmatched("- 10m Z3 Pace\n"))
 
     def test_a_lone_hard_warm_up_build_is_no_skipped_block(self) -> None:
         # #3084: a 5 min build to pace zone 3 in the warm-up, then the 5 fast
