@@ -20,6 +20,8 @@ def build_nutrition_services(
     photo_extractor: Any = None,
     web_search: Any = None,
     observation_reader: Any = None,
+    activity_summaries: Any = None,
+    references: Any = None,
 ) -> tuple[NutritionDiaryService, NutritionMealLibraryService]:
     food_database = food_database or FoodDatabaseService()
     product_repository = NutritionProductRepository()
@@ -43,5 +45,7 @@ def build_nutrition_services(
         # The energy views read canonical observations only (#1415); the table
         # reader serves what the Garmin snapshot writer stored.
         observation_reader=observation_reader or CanonicalTableReader,
+        activity_summaries=activity_summaries,
+        references=references,
     )
     return diary, meal_library

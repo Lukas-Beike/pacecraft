@@ -12,11 +12,13 @@ failed, paused or truncated fetches never delete.
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta, tzinfo
 from typing import Any
 
+from backend.activities.activity_summary import activity_summaries
 from backend.activities.session_linking import (
     link_activity_sessions,
     split_unmatched_sessions,
@@ -26,6 +28,7 @@ from backend.canonical.vocabulary import ProviderId
 from backend.db import canonical_domain_store, canonical_store, garmin_store
 from backend.db.canonical_domain_store import ReplaceResult
 from backend.db.canonical_store import ObservationScope, WriteOutcome
+from backend.nutrition.session_fuelling import reattach_entries
 from backend.observability import sanitized_provider_payload
 from backend.providers.canonical_plans import (
     ACTIVITY_RECORD_KIND,
@@ -33,6 +36,7 @@ from backend.providers.canonical_plans import (
     garmin_ingest_plan,
     garmin_payload_retrieved_at,
 )
+from backend.sync.canonical_table_reader import CanonicalTableReader
 
 
 @dataclass(slots=True)
@@ -76,6 +80,7 @@ class CanonicalIngestCounters:
 
 
 DELETION_EDGE_MARGIN = timedelta(days=1)
+_LOGGER = logging.getLogger("intervals_coach")
 
 
 @dataclass(frozen=True, slots=True)
@@ -275,6 +280,28 @@ def ingest_plan(
         counters.linked = link_activity_sessions(
             db, touched_dates=touched, zone=zone, now=stamp
         )
+        # Diary entries that waited for a session attach in this same transaction
+        # (#3234), inside a savepoint: an odd diary row never fails the ingest.
+        db.execute("SAVEPOINT diary_reattach")
+        try:
+            reattach_entries(
+                db,
+                touched,
+                lambda start, end: [
+                    dict(summary)
+                    for summary in activity_summaries(
+                        CanonicalTableReader().activity_sessions(
+                            db, start=start, end=end
+                        ),
+                        zone,
+                    )
+                ],
+                stamp,
+            )
+        except Exception:
+            db.execute("ROLLBACK TO diary_reattach")
+            _LOGGER.warning("Diary session attach skipped", exc_info=True)
+        db.execute("RELEASE diary_reattach")
     return counters
 
 

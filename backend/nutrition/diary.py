@@ -4,11 +4,16 @@ from __future__ import annotations
 
 import math
 import uuid
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from datetime import date, datetime, timedelta
 from typing import Any
 
 from backend import change_history
+from backend.activities.activity_reference import (
+    ActivityReferenceResolver,
+    NoActivityReferences,
+)
+from backend.db import canonical_store
 from backend.db.manager import DatabaseManager
 from backend.db.repositories import NutritionRepository, nutrition_macro_totals
 from backend.errors import AppError
@@ -20,12 +25,22 @@ from backend.nutrition.meal_library import (
 )
 from backend.nutrition.models import (
     MAX_DESCRIPTION_LEN,
+    SESSION_MEAL_TYPES,
     NutritionDaySummary,
     NutritionEntry,
     normalize_nutrition_entry,
     nutrition_number,
     validate_iso_date,
 )
+from backend.nutrition.session_fuelling import (
+    SESSION_QUESTION,
+    active_sessions,
+    attach,
+    day_candidates,
+    session_brief,
+    session_window,
+)
+from backend.nutrition.session_fuelling import session_intake as build_session_intake
 from backend.nutrition.sync_status import NutritionSyncStatusService
 from backend.runtime.ports import ObservationReader
 
@@ -55,6 +70,16 @@ def _canonical_meal_changes(changes: dict[str, Any]) -> dict[str, Any]:
     return canonical
 
 
+def _merged_entry(existing: dict[str, Any], changes: dict[str, Any]) -> dict[str, Any]:
+    """The stored entry with ``changes``; leaving a session slot clears its session."""
+    merged = {**existing, **changes}
+    if "session_id" not in changes and (
+        str(merged.get("meal_type") or "").strip().lower() not in SESSION_MEAL_TYPES
+    ):
+        merged["session_id"] = None
+    return merged
+
+
 def _names_time_without_flag(changes: dict[str, Any]) -> bool:
     """A newly named meal time is known even when the stored entry had none."""
     return bool({"logged_at", "meal_time"} & set(changes)) and (
@@ -77,7 +102,12 @@ class NutritionDiaryService:
         local_now: Callable[[], datetime],
         meal_library: NutritionMealLibraryService,
         observation_reader: Callable[[], ObservationReader],
+        activity_summaries: Callable[[Any, date, date], Iterable[Any]] | None = None,
+        references: ActivityReferenceResolver | None = None,
     ) -> None:
+        # Without a session source every session slot entry stays unattached.
+        self._activity_summaries = activity_summaries
+        self._references = references or NoActivityReferences()
         self._database_manager = database_manager
         self._nutrition_repository = nutrition_repository
         self._utc_now = utc_now
@@ -137,6 +167,9 @@ class NutritionDiaryService:
         *,
         meal_date: str | None = None,
         meal_time: str | None = None,
+        meal_type: str | None = None,
+        volume_ml: Any = None,
+        session_id: str | None = None,
     ) -> dict[str, Any]:
         try:
             amount = nutrition_number(portions)
@@ -163,6 +196,10 @@ class NutritionDiaryService:
             # An unknown time keeps the template's own meal type instead of inferring one.
             if template.get("meal_type_explicit") or not meal_time:
                 payload["meal_type"] = template["meal_type"]
+            # The entry may sit in a session slot a template never has (#3234).
+            if meal_type:
+                payload["meal_type"] = meal_type
+            payload.update(volume_ml=volume_ml, session_id=session_id)
             payload["source"] = (
                 "coach" if template.get("source") == "coach" else template["source"]
             )
@@ -295,7 +332,7 @@ class NutritionDiaryService:
             existing = self._nutrition_repository.get(db, clean_id)
             if not existing:
                 raise AppError(404, ENTRY_NOT_FOUND)
-            merged_payload = {**existing, **payload}
+            merged_payload = _merged_entry(existing, payload)
             if _names_time_without_flag(payload):
                 merged_payload["logged_time_known"] = True
             if "components" in payload:
@@ -323,7 +360,9 @@ class NutritionDiaryService:
                     "nutrition_basis", {"kind": "manual"}
                 )
             entry["id"] = clean_id
-            updated = self._update(db, existing, entry)
+            updated = self._update(
+                db, existing, entry, explicit_session="session_id" in payload
+            )
         if not updated:
             raise AppError(404, ENTRY_NOT_FOUND)
         return updated
@@ -443,7 +482,9 @@ class NutritionDiaryService:
             entry = self._apply_meal_correction(
                 db, existing, changes, calculation, resolved_database
             )
-            updated = self._update(db, existing, entry)
+            updated = self._update(
+                db, existing, entry, explicit_session="session_id" in changes
+            )
         if not updated:
             raise AppError(404, ENTRY_NOT_FOUND)
         return updated
@@ -456,6 +497,8 @@ class NutritionDiaryService:
             "logged_at",
             "meal_time",
             "meal_type",
+            "volume_ml",
+            "session_id",
             "logged_time_known",
             "estimate_uncertain",
             "description",
@@ -486,7 +529,7 @@ class NutritionDiaryService:
         calculation: dict[str, Any] | None,
         resolved_database: dict[int, dict[str, Any]] | None = None,
     ) -> dict[str, Any]:
-        merged = {**existing, **changes}
+        merged = _merged_entry(existing, changes)
         if _names_time_without_flag(changes):
             merged["logged_time_known"] = True
         if "components" in changes:
@@ -527,7 +570,142 @@ class NutritionDiaryService:
             raise AppError(404, ENTRY_NOT_FOUND)
         return {"status": "ok", "deleted_id": clean_id}
 
+    def _sessions_near(self, db: Any, day: str) -> list[dict[str, Any]]:
+        """Active sessions of the day before to the day after ``day``."""
+        if self._activity_summaries is None:
+            return []
+        local = date.fromisoformat(day)
+        found = self._activity_summaries(
+            db, local - timedelta(days=1), local + timedelta(days=1)
+        )
+        return active_sessions(db, found)
+
+    def _with_session(
+        self,
+        db: Any,
+        existing: dict[str, Any] | None,
+        entry: dict[str, Any],
+        explicit: bool,
+    ) -> dict[str, Any]:
+        """Set ``session_id`` and its ``session_chosen`` mark by the attach rules (#3234).
+
+        A session named or cleared by the athlete or Coach is kept as chosen. Else a
+        new entry, a moved day or a changed slot runs the rule; an attached or
+        deliberately cleared entry stays as it is.
+        """
+        chosen_before = bool(existing and existing.get("session_chosen"))
+        if entry["meal_type"] not in SESSION_MEAL_TYPES:
+            return {**entry, "session_id": None, "session_chosen": False}
+        near = self._sessions_near(db, entry["meal_date"])
+        if explicit:
+            return {
+                **entry,
+                "session_id": self._validated_session(
+                    db, near, entry.get("session_id")
+                ),
+                "session_chosen": True,
+            }
+        # A switch between the two session slots keeps the chosen session; a new
+        # day or a move into a slot attaches again.
+        moved = (
+            existing is None
+            or existing["meal_date"] != entry["meal_date"]
+            or existing["meal_type"] not in SESSION_MEAL_TYPES
+        )
+        if not moved and (entry.get("session_id") or chosen_before):
+            return {**entry, "session_chosen": chosen_before}
+        found, _ask = attach(
+            entry["meal_type"],
+            entry["logged_at"],
+            bool(entry.get("logged_time_known", True)),
+            day_candidates(near, entry["meal_date"]),
+        )
+        return {**entry, "session_id": found, "session_chosen": False}
+
+    def _validated_session(
+        self, db: Any, near: list[dict[str, Any]], reference: Any
+    ) -> str | None:
+        """The session to store for a named one; an unknown or inactive one is refused."""
+        if not reference:
+            return None
+        stored = str(self._references.resolve_reference(reference).activity_id)
+        effective = canonical_store.effective_session_ids(db, [stored]).get(stored)
+        if effective not in {session["id"] for session in near}:
+            raise AppError(400, "Einheit nicht gefunden.", reason="session_not_found")
+        return stored
+
+    def session_info(self, entry: dict[str, Any]) -> dict[str, Any] | None:
+        """Where a slot entry belongs now: its session, or the candidates to ask about."""
+        if entry["meal_type"] not in SESSION_MEAL_TYPES:
+            return None
+        with self._database_manager.reader() as db:
+            return self._slot_info(
+                db, entry, self._sessions_near(db, entry["meal_date"])
+            )
+
+    @staticmethod
+    def _slot_info(
+        db: Any, entry: dict[str, Any], near: list[dict[str, Any]]
+    ) -> dict[str, Any]:
+        stored = entry.get("session_id")
+        effective = (
+            canonical_store.effective_session_ids(db, [stored]).get(stored)
+            if stored
+            else None
+        )
+        attached = next((s for s in near if s["id"] == effective), None)
+        candidates = (
+            []
+            if attached
+            else [session_brief(s) for s in day_candidates(near, entry["meal_date"])]
+        )
+        info: dict[str, Any] = {
+            "slot": entry["meal_type"],
+            "session": attached and session_brief(attached),
+            "candidates": candidates,
+        }
+        if candidates:
+            info["question"] = SESSION_QUESTION
+        return info
+
+    def with_sessions(self, summary: dict[str, Any]) -> dict[str, Any]:
+        """Add the day's sessions and each slot entry's session to a day summary."""
+        day = summary["date"]
+        with self._database_manager.reader() as db:
+            near = self._sessions_near(db, day)
+            summary["sessions"] = [session_brief(s) for s in day_candidates(near, day)]
+            for entry in summary["entries"]:
+                if entry["meal_type"] in SESSION_MEAL_TYPES:
+                    entry["session"] = self._slot_info(db, entry, near)["session"]
+        return summary
+
+    def session_intake(self, session_id: str, day: str) -> dict[str, Any]:
+        """The intake attached to one session starting on ``day`` (facts only)."""
+        clean = str(session_id or "").strip()
+        local = validate_iso_date(day)
+        with self._database_manager.reader() as db:
+            effective = canonical_store.effective_session_ids(db, [clean]).get(clean)
+            session = next(
+                (s for s in self._sessions_near(db, local) if s["id"] == effective),
+                None,
+            )
+            window = None if session is None else session_window(session)
+            if session is None or window is None:
+                raise AppError(
+                    404, "Einheit nicht gefunden.", reason="session_not_found"
+                )
+            entries = self._nutrition_repository.list_by_range(
+                db,
+                (window[0].date() - timedelta(days=1)).isoformat(),
+                (window[1].date() + timedelta(days=1)).isoformat(),
+            )
+            stored = [e["session_id"] for e in entries if e["session_id"]]
+            mapped = canonical_store.effective_session_ids(db, stored)
+            attached = [e for e in entries if mapped.get(e["session_id"]) == effective]
+        return build_session_intake(session, attached)
+
     def _create(self, db: Any, entry: dict[str, Any]) -> dict[str, Any]:
+        entry = self._with_session(db, None, entry, bool(entry.get("session_id")))
         created = self._nutrition_repository.create(db, entry)
         change_history.record_change(
             db, ENTITY_TYPE, str(created["id"]), "create", None, created
@@ -535,8 +713,14 @@ class NutritionDiaryService:
         return created
 
     def _update(
-        self, db: Any, existing: dict[str, Any], entry: dict[str, Any]
+        self,
+        db: Any,
+        existing: dict[str, Any],
+        entry: dict[str, Any],
+        *,
+        explicit_session: bool = False,
     ) -> dict[str, Any] | None:
+        entry = self._with_session(db, existing, entry, explicit_session)
         updated = self._nutrition_repository.update(db, str(existing["id"]), entry)
         if updated:
             change_history.record_change(
@@ -562,7 +746,24 @@ class NutritionDiaryService:
         if target is None:
             self._nutrition_repository.delete(db, entity_id)
             return None
-        entry = {**(current or {}), **target, "id": entity_id, "sync_state": "local"}
+        # A change recorded before schema v32 has neither field: it restores them as empty.
+        entry = {
+            **(current or {}),
+            "volume_ml": None,
+            "session_id": None,
+            **target,
+            "id": entity_id,
+            "sync_state": "local",
+        }
+        # An undo that changes the session is the athlete's choice: the restored
+        # session (also an empty one) stands, so a refresh never fills it again
+        # (#3234). Any other undo keeps the entry's mark, so an open entry
+        # still attaches on the next refresh (Gitar on #3254).
+        before = current or {}
+        entry["session_chosen"] = entry.get("meal_type") in SESSION_MEAL_TYPES and (
+            before.get("session_id") != entry.get("session_id")
+            or bool(before.get("session_chosen"))
+        )
         if current:
             return self._nutrition_repository.update(db, entity_id, entry)
         return self._nutrition_repository.create(db, entry)

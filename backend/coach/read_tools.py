@@ -428,12 +428,16 @@ class CoachReadToolService:
             {"products": products} if isinstance(products, list) else {}
         )
         if arguments.get("date"):
-            return {
-                "ok": True,
-                "templates": templates,
-                **product_projection,
-                **service.sync_status.get_day_summary(str(arguments["date"])),
-            }
+            day = service.with_sessions(
+                service.sync_status.get_day_summary(str(arguments["date"]))
+            )
+            # The app checks, the model explains: each session's intake report
+            # (#3234), facts with the one notable flag.
+            day["session_intake"] = [
+                service.session_intake(s["id"], str(s["started_at_local"])[:10])
+                for s in day["sessions"]
+            ]
+            return {"ok": True, "templates": templates, **product_projection, **day}
         if arguments.get("start") and arguments.get("end"):
             start = validate_iso_date(arguments["start"])
             end = validate_iso_date(arguments["end"])

@@ -17,7 +17,7 @@ from backend.errors import AppError
 from backend.nutrition.catalog import ProductCatalogService
 from backend.nutrition.components import MealComponentCalculator
 from backend.nutrition.food_database import NUTRIENTS, FoodDatabaseService
-from backend.nutrition.models import normalize_nutrition_entry
+from backend.nutrition.models import SESSION_MEAL_TYPES, normalize_nutrition_entry
 from backend.nutrition.photo import (
     NutritionPhotoExtractionService,
     validate_packaging_extraction,
@@ -237,6 +237,11 @@ class NutritionMealLibraryService:
         normalized = normalize_nutrition_entry(
             values, local_now_factory=self._local_now
         )
+        if normalized["meal_type"] in SESSION_MEAL_TYPES:
+            raise AppError(
+                400,
+                "Eine Vorlage gehört zu keiner Einheit; die Einheit wird beim Erfassen gewählt.",
+            )
         nutrients_unchanged = not any(
             key in payload and payload[key] != (existing or {}).get(key)
             for key in NUTRIENTS

@@ -13,6 +13,7 @@ import unittest
 from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Any
+from unittest.mock import patch
 from zoneinfo import ZoneInfo
 
 import intervals_compaction as intervals_fixture
@@ -197,7 +198,6 @@ class IntervalsIngestTests(IngestFixture):
             earliest_date=EARLIEST,
         )
 
-
     def test_valid_activity_is_written_and_its_raw_record_stored(self) -> None:
         counters = self.ingest(intervals_snapshot([intervals_row("i-1")]), 3)
         self.assertEqual(counters.written, 1)
@@ -233,7 +233,6 @@ class IntervalsIngestTests(IngestFixture):
                 ("vo2max", 54.0),
             ],
         )
-
 
     def test_historical_fetch_never_deletes(self) -> None:
         self.ingest(intervals_snapshot([intervals_row("i-1"), intervals_row("i-2")]), 3)
@@ -320,6 +319,21 @@ class GarminIngestTests(IngestFixture):
         )
         self.assertEqual(counters.deleted, 0)
         self.assertEqual(activity_states(self.db), {"1": "active", "2": "active"})
+
+    def test_a_failing_diary_attach_never_fails_the_ingest(self) -> None:
+        # #3234: the attach runs in its own savepoint after the activity writes.
+        with (
+            patch.object(
+                ingest, "reattach_entries", side_effect=RuntimeError("odd row")
+            ) as attach,
+            self.assertLogs("intervals_coach", "WARNING") as logged,
+        ):
+            ingest.ingest_garmin_payload(
+                self.db, {"synced_at": NOW, "activities": [garmin_row(1)]}, zone=ZONE
+            )
+        attach.assert_called_once()
+        self.assertIn("Diary session attach skipped", logged.output[0])
+        self.assertEqual(activity_states(self.db), {"1": "active"})
 
     def garmin_sync(
         self, rows: list[dict[str, Any]], **stats: Any

@@ -93,6 +93,21 @@ class CoachToolSchemaTests(unittest.TestCase):
         self.assertLessEqual({"save_checkin", "save_activity_feedback"}, set(tools))
         self.assertTrue(tools["stage_training_plan"]["strict"])
 
+    def test_nutrition_tools_accept_the_session_slots_volume_and_session(self):
+        slots = ["pre_session", "during_session"]
+        save = _tools()["save_nutrition_entry"]["parameters"]["properties"]["payload"]
+        update = _tools()["update_nutrition_entry"]["parameters"]["properties"][
+            "changes"
+        ]
+        template = _tools()["log_nutrition_template"]["parameters"]["properties"]
+        for properties in (save["properties"], update["properties"], template):
+            with self.subTest(properties=sorted(properties)[:3]):
+                self.assertLessEqual(set(slots), set(properties["meal_type"]["enum"]))
+                self.assertIn("volume_ml", properties)
+                self.assertIn("session_id", properties)
+        self.assertEqual(slots, template["meal_type"]["enum"])
+        self.assertEqual(10000, save["properties"]["volume_ml"]["maximum"])
+
     def test_strict_replace_plan_findings_use_supported_array_schema(self):
         tool = _tools()["replace_training_plan"]
         findings = tool["parameters"]["properties"]["accept_plan_findings"]
