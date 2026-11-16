@@ -223,6 +223,53 @@ class EnergyViewTests(unittest.TestCase):
         )
         self.assertEqual(20, row(view, "device")["mean_error_kcal"])
 
+    def test_garmin_splits_its_day_into_everyday_and_sessions(self) -> None:
+        # 28 days of 1,745 resting and 1,375 active kcal. One 60-min session of
+        # 800 kcal on END: net of resting 800 - 1,745 / 1,440 x 60 = 727.29.
+        # Sessions 727.29 / 28 = 25.97 per day; everyday 1,375 - 25.97 = 1,349.03.
+        health = {key: {**day, "active_kcal": 1375.0} for key, day in garmin().items()}
+        session = {
+            "started_at_local": f"{END}T07:00:00",
+            "energy_kcal": 800.0,
+            "elapsed_duration_s": 3600,
+        }
+        view = energy_view(inputs(), [window(END, 2700.0)], health, [session])
+        self.assertEqual(
+            {
+                "resting_kcal": 1745,
+                "neat_kcal": 1349,
+                "sessions_kcal": 26,
+                "tef_kcal": None,
+                "shared": False,
+            },
+            row(view, "device")["split"],
+        )
+        # The own and formula rows wait for M11's split terms (L11).
+        self.assertIsNone(row(view, "katch_mcardle")["split"])
+
+    def test_an_unpriced_session_drops_its_day_and_negative_everyday_stays_unknown(
+        self,
+    ) -> None:
+        health = {key: {**day, "active_kcal": 1375.0} for key, day in garmin().items()}
+        unpriced = {"started_at_local": f"{END}T07:00:00", "elapsed_duration_s": 3600}
+        split = row(
+            energy_view(inputs(), [window(END, 2700.0)], health, [unpriced]), "device"
+        )["split"]
+        self.assertEqual((1375, 0), (split["neat_kcal"], split["sessions_kcal"]))
+        low = {key: {**day, "active_kcal": 10.0} for key, day in garmin().items()}
+        big = [
+            {
+                "started_at_local": f"{END - timedelta(days=n)}T07:00:00",
+                "energy_kcal": 900.0,
+                "elapsed_duration_s": 3600,
+            }
+            for n in range(28)
+        ]
+        split = row(energy_view(inputs(), [window(END, 2700.0)], low, big), "device")[
+            "split"
+        ]
+        self.assertIsNone(split["neat_kcal"])
+
     def test_the_reader_builds_twelve_windows_with_garmin_beside_them(self) -> None:
         view = read_energy_view(None, sources(), DAY3)
         self.assertEqual(12, len(view["windows"]))
