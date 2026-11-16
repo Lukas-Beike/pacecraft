@@ -49,6 +49,7 @@ every named number the code fixes. A test fails when it is out of date.
 | `REP_COUNT_SPREAD` | `2` | `backend/performance/comparable_sessions.py` |  |
 | `HEART_RATE_BAND` | `8` | `backend/performance/comparable_sessions.py` | Continuous sessions compare only at a similar effort, so an easy run is never a tempo run's peer; within the band a faster pace still shows as fitter. |
 | `PERSONAL_LIMIT_METRICS` | `frozenset({'decoupling_pct', 'gap_cv_pct'})` | `backend/performance/comparable_sessions.py` | Metrics the session report judges against the peers' upper quartile (#3084). |
+| `SAME_OUTPUT_SHARE` | `0.05` | `backend/performance/comparable_sessions.py` | Interval peers within this share of the session's rep power (#3084, ERG). |
 | `EFFORT_METHOD` | `'equal-effort-trend-v1'` | `backend/performance/comparable_sessions.py` |  |
 | `VO2MAX_UNIT` | `'ml/kg/min'` | `backend/performance/comparisons.py` |  |
 | `REASON_CANONICAL_PENDING` | `'canonical_pending'` | `backend/performance/context.py` | The reason an unavailable context gives while the canonical source serves nothing yet. |
@@ -255,6 +256,7 @@ every named number the code fixes. A test fails when it is out of date.
 | `MIN_LAP_S` | `5.0` | `backend/performance/session_execution.py` | Shorter laps are lap-button slips; short work or rest laps of 15 s stay. |
 | `MIN_SESSION_S` | `600.0` | `backend/performance/session_execution.py` |  |
 | `WARMUP_EXCLUDED_S` | `600.0` | `backend/performance/session_execution.py` |  |
+| `NP_ROLLING_S` | `30.0` | `backend/performance/session_execution.py` | Coggan's NP rolls 30 s means of the power (#3084, the ride's main-part IF). |
 | `MAX_GAP_S` | `5.0` | `backend/performance/session_execution.py` |  |
 | `GAP_SHARE` | `0.05` | `backend/performance/session_execution.py` | A channel is uncertain once more than this share of the recorded time sits in runs of missing values longer than MAX_GAP_S (athlete, #3084 3c D); longer jumps of the clock itself are pauses, not missing data. |
 | `PAUSE_S` | `30.0` | `backend/performance/session_execution.py` |  |
@@ -287,7 +289,7 @@ every named number the code fixes. A test fails when it is out of date.
 | `RUN_POWER_MODEL` | `'running_power_model'` | `backend/performance/session_metrics.py` | Run power is the output of the device's running-power model, not a measured force. |
 | `DERIVED_LABEL` | `'derived'` | `backend/performance/session_metrics_reads.py` |  |
 | `METHOD` | `'session-report-v1'` | `backend/performance/session_report.py` |  |
-| `SCOPE` | `"Checks computed by code from this session's stored data, each with its value, rule, threshold, b... (sha256 a024a284)` | `backend/performance/session_report.py` |  |
+| `SCOPE` | `"Checks computed by code from this session's stored data, each with its value, rule, threshold, b... (sha256 360b7c69)` | `backend/performance/session_report.py` |  |
 | `PLAN_TOLERANCE_PCT` | `20.0` | `backend/performance/session_report.py` | Plan against actual: duration, load and recoveries (TrainingPeaks green, ±20 %). |
 | `DECOUPLING_PCT` | `5.0` | `backend/performance/session_report.py` | Aerobic decoupling, the fixed fallback (Friel / TrainingPeaks: < 5 % good). |
 | `FADE_PCT` | `3.0` | `backend/performance/session_report.py` | Interval fade and start change against the median of the reps, and within a rep. |
@@ -305,6 +307,10 @@ every named number the code fixes. A test fails when it is out of date.
 | `WALK_OFF_SPEED_SHARE` | `0.6` | `backend/performance/session_report.py` | A final stretch slower than this share of the race's median speed is a walk or roll-out after the line, not the race. |
 | `SHOE_DEFAULT_TARGET_KM` | `700.0` | `backend/performance/session_report.py` | A shoe without its own or Garmin's target is due at this many km (athlete, #3084). |
 | `SHOE_DUE_SHARE` | `0.9` | `backend/performance/session_report.py` | The shoe hint is notable from this share of its target distance. |
+| `RIDE_IF_RANGES` | `{'recovery': (0.0, 0.55), 'easy': (0.56, 0.75), 'endurance': (0.56, 0.75), 'long': (0.56, 0.75), ... (sha256 a548ce30)` | `backend/performance/session_report.py` | Ride IF (NP / FTP) per session focus, Coggan's levels (athlete, #3084). |
+| `CLIMB_GRADE_PCT` | `4.0` | `backend/performance/session_report.py` | Low cadence on climbs: a ride rep steeper than this (%) below this cadence (athlete, #3084). |
+| `CLIMB_CADENCE_RPM` | `70.0` | `backend/performance/session_report.py` |  |
+| `ERG_HEART_RATE_PCT` | `3.0` | `backend/performance/session_report.py` | ERG: heart rate this much above them at the same power (athlete, #3084). |
 | `PACE_AT_HR_PCT` | `3.0` | `backend/performance/session_report.py` | Pace at the same heart rate this much slower than own comparable runs (athlete, #3084). |
 | `ZONE_MIN_SHARE` | `0.1` | `backend/performance/session_report.py` | Zone time is judged in the zones holding at least this share of the planned time. |
 | `LEAD_COUNT` | `4` | `backend/performance/session_report.py` | The notable checks the answer leads with. |

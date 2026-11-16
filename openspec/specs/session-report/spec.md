@@ -175,6 +175,14 @@ The session report SHALL add the run's own checks, zone time against the plan, d
 - **WHEN** an easy, recovery, endurance or long run has at least 5 comparable runs with a GAP variation
 - **THEN** the coefficient of variation of its grade-adjusted speed over the moving time is notable above their upper quartile; with fewer runs the value is a fact only, never judged against a fixed bound.
 
+#### Scenario: Ride checks
+- **WHEN** the session is a ride
+- **THEN** the report judges:
+  - a continuous or easy ride's IF (NP over the session day's FTP) against Coggan's range of its focus (recovery under 0.55, endurance 0.56–0.75, tempo 0.76–0.87, sweet spot 0.84–0.97, threshold 0.91–1.05), notable outside it;
+  - reps steeper than 4 % below 70 rpm, not applicable when the plan sets a cadence;
+  - in ERG (the trainer held the power), the rep fade, within-rep fade and start checks as not applicable, never unknown, and the closing heart rate against at least 5 own sessions within 5 % of the rep power, notable from 3 % higher (athlete, confirmed 2026-11-16);
+  - and states the reps in % of the session day's FTP as a fact.
+
 #### Scenario: Zone time against the plan
 - **WHEN** a run or ride has a paired planned unit with zone times
 - **THEN** the seconds of each zone holding at least 10 % of the planned time are judged against the plan, notable beyond ±20 %; when the zone-targeted plan covers less than 80 % of the recorded zone time (free warm-up or cool-down), or the zone metric's data quality failed, the check is unknown.
