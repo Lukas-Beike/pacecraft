@@ -90,16 +90,28 @@ JAVASCRIPT_GLOBS = (
 TOOLS_DIR = Path(os.environ.get("PACECRAFT_GIT_ROOT") or ROOT) / ".quality-tools"
 
 
+def own_tool(tool: str) -> Path | None:
+    """The worktree's prepared tool, or None: never in CI, where a committed
+    `.quality-tools` must not replace the interpreter's tools, and never half
+    installed."""
+    entry = (
+        TOOLS_DIR / "bin" / ("ruff.exe" if os.name == "nt" else "ruff")
+        if tool == "ruff"
+        else TOOLS_DIR / tool / "__main__.py"
+    )
+    return None if os.environ.get("CI") or not entry.is_file() else entry
+
+
 def tool_command(tool: str) -> list[str]:
     """Run the worktree's own tool when prepared, else this interpreter's (CI).
 
     Ruff runs its binary from there directly: `python -m ruff` would start the
     interpreter's own binary first.
     """
-    if not (TOOLS_DIR / tool).is_dir():
+    if not own_tool(tool):
         return [sys.executable, "-m", tool]
     if tool == "ruff":
-        return [str(TOOLS_DIR / "bin" / ("ruff.exe" if os.name == "nt" else "ruff"))]
+        return [str(own_tool(tool))]
     loader = (
         f"import runpy, sys; sys.path.insert(0, {str(TOOLS_DIR)!r}); "
         f"runpy.run_module({tool!r}, run_name='__main__', alter_sys=True)"
@@ -525,7 +537,7 @@ def collect(root: Path, notes: dict[str, str]) -> tuple[dict[str, str], list[dic
     if not files:
         raise RuntimeError("No Python source files discovered")
     versions = {}
-    if not all((TOOLS_DIR / tool).is_dir() for tool in TOOLS):
+    if not all(own_tool(tool) for tool in TOOLS):
         print(
             "Quality tools: this interpreter's; `python scripts/prepare_worktree.py` "
             "installs the worktree's own (#3217)",
