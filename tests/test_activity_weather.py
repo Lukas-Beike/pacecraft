@@ -9,6 +9,7 @@ from contextlib import contextmanager
 from datetime import UTC, date, datetime, timedelta
 from types import SimpleNamespace
 from typing import Any, Self, cast
+from unittest.mock import patch
 from urllib.parse import parse_qs, urlparse
 
 from canonical_detail_support import add_session_record, open_manager
@@ -34,6 +35,7 @@ from backend.providers.activity_weather import (
 )
 from backend.providers.http import JsonHttpClient
 from backend.runtime.maintenance import MaintenanceGate
+from backend.sync import activity_weather as weather_stage
 from backend.sync.activity_weather import (
     ActivityWeatherStage,
     summarize_activity_weather,
@@ -44,6 +46,7 @@ from backend.sync.canonical_table_reader import CanonicalTableReader
 from backend.weather import cache as weather_cache
 from backend.weather.activity_weather import (
     activity_window,
+    headwind,
     heat_note,
     reduce_hourly,
     utc_days,
@@ -90,7 +93,8 @@ class RequestTests(unittest.TestCase):
                 "start_date": "2026-09-10",
                 "end_date": "2026-09-11",
                 "hourly": "temperature_2m,apparent_temperature,"
-                "relative_humidity_2m,wind_speed_10m,precipitation",
+                "relative_humidity_2m,wind_speed_10m,precipitation,"
+                "wind_direction_10m",
                 "timezone": "GMT",
                 "wind_speed_unit": "ms",
             },
@@ -186,6 +190,62 @@ class ReductionTests(unittest.TestCase):
         self.assertIn("Hitze", note)
 
 
+class WindTests(unittest.TestCase):
+    """The wind direction and the headwind component (#3084)."""
+
+    def test_the_direction_is_a_vector_mean_and_none_in_calm_wind(self) -> None:
+        start, end = activity_window(START, 3600)
+        # 350 and 10 degrees at equal speed average to north, never to south.
+        north = reduce_hourly(
+            payload(
+                wind_speed_10m=[3.0, 3.0, 3.0, 3.0],
+                wind_direction_10m=[350.0, 350.0, 10.0, 10.0],
+            ),
+            start,
+            end,
+        )
+        assert north is not None
+        self.assertEqual(0.0, north.wind_direction_deg)
+        calm = reduce_hourly(
+            payload(
+                wind_speed_10m=[0.1, 0.2, 0.3, 0.1],
+                wind_direction_10m=[0.0, 90.0, 180.0, 270.0],
+            ),
+            start,
+            end,
+        )
+        assert calm is not None
+        self.assertIsNone(calm.wind_direction_deg)
+
+    def test_headwind_known_answer_with_bins_and_coverage(self) -> None:
+        # Wind from the north: 2 m/s in the 05:00 box (04:30-05:30), 4 m/s in the
+        # 06:00 box. North for 30 min (2 m/s into the wind), then south for 25 min
+        # (4 m/s from behind), then 5 min without a bearing.
+        response = payload(wind_direction_10m=[0.0, 0.0, 0.0, 0.0])
+        steps = [
+            *((float(t), 1.0, 0.0) for t in range(1800)),
+            *((float(t), 1.0, 180.0) for t in range(1800, 3300)),
+            *((float(t), 1.0, None) for t in range(3300, 3600)),
+        ]
+
+        wind = headwind(response, START, steps)
+
+        assert wind is not None
+        # By hand: (2 x 1800 - 4 x 1500) / 3300 = -0.727 m/s.
+        self.assertEqual(-0.73, wind.mean_mps)
+        self.assertEqual(91.7, wind.coverage_pct)
+        self.assertEqual((2.0,) * 30 + (-4.0,) * 25 + (None,) * 5, wind.bins)
+
+    def test_crosswind_gives_no_component_and_no_bearing_no_value(self) -> None:
+        response = payload(wind_direction_10m=[0.0, 0.0, 0.0, 0.0])
+        east = headwind(response, START, [(float(t), 1.0, 90.0) for t in range(60)])
+        assert east is not None
+        self.assertEqual(0.0, east.mean_mps)
+        self.assertIsNone(
+            headwind(response, START, [(float(t), 1.0, None) for t in range(60)])
+        )
+
+
 class FakeFetch:
     def __init__(self) -> None:
         self.calls: list[tuple[float, float, date, date]] = []
@@ -229,6 +289,39 @@ def store_track(
                     StreamChannel.HEART_RATE_BPM: (120.0, 121.0, 122.0),
                     StreamChannel.LATITUDE_DEG: (None, LATITUDE, 52.5124),
                     StreamChannel.LONGITUDE_DEG: (None, LONGITUDE, 13.4058),
+                },
+            ),
+            mapper_version=1,
+            summary_sha256=None,
+            now=START.isoformat(),
+        )
+
+
+def store_run_north(manager: Any, provider_activity_id: str = "g1") -> None:
+    """A 20 min track northwards at 3 m/s, one sample per second."""
+    seconds = range(1200)
+    with manager.unit_of_work() as db:
+        replace_detail_set(
+            db,
+            ActivityStreamSet(
+                provider_activity_id=provider_activity_id,
+                provenance=Provenance(
+                    provider=ProviderId.GARMIN,
+                    source_kind=SourceKind.PROVIDER_REPORTED,
+                    source_record_id=None,
+                    recorded_by=RecordingOrigin.GARMIN,
+                    retrieved_at=START,
+                    label="Garmin Connect",
+                ),
+                origin=ActivityDetailOrigin.FETCH,
+                resolution=StreamResolution.FULL,
+                channels={
+                    StreamChannel.TIME_S: tuple(float(t) for t in seconds),
+                    StreamChannel.SPEED_MPS: tuple(3.0 for _ in seconds),
+                    StreamChannel.LATITUDE_DEG: tuple(
+                        LATITUDE + 3.0 * t / 111_195 for t in seconds
+                    ),
+                    StreamChannel.LONGITUDE_DEG: tuple(LONGITUDE for _ in seconds),
                 },
             ),
             mapper_version=1,
@@ -528,6 +621,148 @@ class StageTests(StageCase):
             summary = summarize_activity_weather(self.key_values, db)
         self.assertEqual("complete", summary["status"])
         self.assertEqual(1, summary["counts"]["with_values"])
+
+
+class WindStageTests(StageCase):
+    """The stage derives the headwind from the track and keeps it in storage (#3084)."""
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.fetch.response = payload(wind_direction_10m=[0.0, 0.0, 0.0, 0.0])
+
+    def _headwind_row(self, state: str = "active") -> dict[str, Any]:
+        with self.manager.reader() as db:
+            row = db.execute(
+                "SELECT * FROM observations WHERE metric = ? AND state = ?",
+                ("activity_weather_headwind", state),
+            ).fetchone()
+        assert row is not None
+        return dict(row)
+
+    def test_a_run_into_the_wind_stores_its_headwind_with_bins(self) -> None:
+        store_run_north(self.manager)
+
+        self._run_once()
+
+        row = self._headwind_row()
+        # 20 min north into 2 m/s from the north (the 05:00 box).
+        self.assertEqual(2.0, row["value"])
+        derivation = json.loads(row["details"])["derivation"]
+        # The last 3 steps have no position 10 m ahead (9, 6, 3 m): 1196 of 1199 s.
+        self.assertEqual(
+            ("activity_start", 99.7, 60, [2.0] * 20),
+            (
+                derivation["location_kind"],
+                derivation["coverage_pct"],
+                derivation["bin_s"],
+                derivation["bins"],
+            ),
+        )
+        block = self.block()
+        self.assertEqual(
+            (0.0, 2.0), (block["wind_direction_deg"], block["headwind_mps"])
+        )
+        self.assertIn("Schätzung", block["headwind_source"])
+        with self.manager.reader() as db:
+            counts = summarize_activity_weather(self.key_values, db)["counts"]
+        self.assertEqual(1, counts["with_headwind"])
+
+    def test_the_bins_reach_no_block_detail_or_diagnostics(self) -> None:
+        store_run_north(self.manager)
+        self._run_once()
+
+        with self.manager.reader() as db:
+            surfaces = {
+                "block": weather_block(stored_activity_weather(db).get("act_g1", {})),
+                "detail": CanonicalDetailReader(
+                    CanonicalTableReader().session_activities,
+                    refreshable=frozenset,
+                ).read(db, "act_g1"),
+                "diagnostics": summarize_activity_weather(self.key_values, db),
+            }
+        for name, surface in surfaces.items():
+            with self.subTest(surface=name):
+                self.assertNotIn("bins", json.dumps(surface, default=str))
+
+    def test_a_retired_headwind_row_loses_its_bins(self) -> None:
+        store_run_north(self.manager)
+        self._run_once()
+        with self.manager.unit_of_work() as db:
+            db.execute("UPDATE activity_sessions SET state = 'deleted'")
+
+        self._run_once()
+
+        derivation = json.loads(self._headwind_row("retired")["details"])["derivation"]
+        self.assertNotIn("bins", derivation)
+        self.assertEqual("activity_start", derivation["location_kind"])
+
+    def test_a_wind_value_out_of_bounds_keeps_the_weather(self) -> None:
+        store_run_north(self.manager)
+        self.fetch.response = payload(wind_direction_10m=[0.0, 0.0, 0.0, 0.0])
+        broken = weather_stage.Headwind(mean_mps=500.0, coverage_pct=100.0, bins=())
+        with patch.object(weather_stage, "headwind", return_value=broken):
+            self._run_once()
+
+        metrics = {row["metric"] for row in self._rows()}
+        self.assertIn("activity_weather_temperature", metrics)
+        self.assertNotIn("activity_weather_headwind", metrics)
+
+    def test_a_home_session_gets_the_direction_but_no_headwind(self) -> None:
+        self._run_once()
+
+        metrics = {row["metric"] for row in self._rows()}
+        self.assertIn("activity_weather_wind_direction", metrics)
+        self.assertNotIn("activity_weather_headwind", metrics)
+
+
+class RefetchPaceTests(StageCase):
+    """A method version change looks sessions up again at a pace (#3084)."""
+
+    def test_re_fetches_are_paced_and_new_sessions_never_wait(self) -> None:
+        for number in (2, 3):
+            add_session_record(
+                self.manager,
+                ProviderId.GARMIN,
+                f"g{number}",
+                f"act_g{number}",
+                started_at=f"2026-09-1{number}T05:00:00+00:00",
+                moving_duration_s=3600.0,
+            )
+        self._run_once()
+        self.assertEqual(3, len(self.fetch.calls))
+        add_session_record(
+            self.manager,
+            ProviderId.GARMIN,
+            "g4",
+            "act_g4",
+            started_at="2026-09-14T05:00:00+00:00",
+            moving_duration_s=3600.0,
+        )
+        self.fetch.calls.clear()
+
+        with (
+            patch.object(weather_stage, "METHOD_VERSION", 99),
+            patch.object(weather_stage, "REFETCH_PER_HOUR", 1),
+        ):
+            self._run_once()
+            # The new session and one re-fetch; two wait for the next hour.
+            self.assertEqual(2, len(self.fetch.calls))
+            with self.manager.reader() as db:
+                summary = summarize_activity_weather(self.key_values, db)
+            self.assertEqual(
+                ("running", 2), (summary["status"], summary["counts"]["remaining"])
+            )
+            self._run_once()
+            self.assertEqual(2, len(self.fetch.calls))
+            with self.manager.reader() as db:
+                summary = summarize_activity_weather(self.key_values, db)
+            # Nothing looked up: the pass ends paused, not complete.
+            self.assertEqual(
+                ("paused", 2), (summary["status"], summary["counts"]["remaining"])
+            )
+            self.now += timedelta(hours=1)
+            self._run_once()
+            self.assertEqual(3, len(self.fetch.calls))
 
 
 class BoundedBatchTests(StageCase):

@@ -134,7 +134,15 @@ The system SHALL store Open-Meteo historical-forecast weather per outdoor ride o
 - **WHEN** a session's streams or times change, or the home location moves for a session stored at home
 - **THEN** it is looked up again; the rows of sessions that no longer exist are retired.
 
-Detailed contract: a session of unknown environment is included only with a stored GPS position and never uses the home location. Each value is the mean of the hourly values weighted by their overlap with the session, where an hourly value at `h` covers `h - 30 min` to `h + 30 min`; precipitation at `h` is the amount of the preceding hour and its value the amount that fell during the session. A session counts at least one minute, and the requested UTC days run from 30 minutes before the start to one hour after the end. The stored metrics are temperature, apparent temperature, relative humidity, wind speed in m/s and precipitation in mm, reduced to two decimals, with method `open-meteo-activity-weather` version 1 and `location_kind` `activity_start` or `home`. The heat note reads "Hitze: gefühlte Temperatur {x} °C (ab 25 °C). Puls, Entkopplung und Tempo nicht als Fitnessänderung lesen.". The stage status (`pending`, `running`, `complete`, `retry`, `failed`) and its counts carry no position, value or session id.
+#### Scenario: Wind against the direction of travel
+- **WHEN** a session is looked up at its own start position
+- **THEN** besides the wind direction (the vector mean of the hours, none in calm wind) it stores the mean wind component along its direction of travel (+ into the wind), from bearings computed in the stage between moving positions at least 10 m apart and never stored; with the coverage and 60 s bins of that component in the row's derivation. The bins reach no block, detail, log or diagnostic, a retired row loses them, and a value outside its bounds drops only the wind values, never the weather (#3084).
+
+#### Scenario: A method version change looks sessions up again at a pace
+- **WHEN** stored sessions need a new look-up because the method version changed
+- **THEN** at most 600 such look-ups run per hour while a session never looked up is not held back; the state is `paused` while the pace holds every remaining session back, and `complete` only when none remains (#3084).
+
+Detailed contract: a session of unknown environment is included only with a stored GPS position and never uses the home location. Each value is the mean of the hourly values weighted by their overlap with the session, where an hourly value at `h` covers `h - 30 min` to `h + 30 min`; precipitation at `h` is the amount of the preceding hour and its value the amount that fell during the session. A session counts at least one minute, and the requested UTC days run from 30 minutes before the start to one hour after the end. The stored metrics are temperature, apparent temperature, relative humidity, wind speed in m/s and precipitation in mm, reduced to two decimals, with method `open-meteo-activity-weather` version 2 and `location_kind` `activity_start` or `home`; version 2 adds the wind direction in degrees and, at the start position only, the headwind component in m/s. The heat note reads "Hitze: gefühlte Temperatur {x} °C (ab 25 °C). Puls, Entkopplung und Tempo nicht als Fitnessänderung lesen.". The stage status (`pending`, `running`, `paused`, `complete`, `retry`, `failed`) and its counts carry no position, value or session id.
 
 Evidence:
 - `backend/providers/activity_weather.py:activity_weather_params`
@@ -153,6 +161,12 @@ Evidence:
 - `tests/test_activity_weather.py:test_hours_around_a_full_hour_are_averaged_by_overlap`
 - `tests/test_activity_weather.py:test_no_raw_coordinate_leaves_the_stored_streams`
 - `tests/test_activity_weather.py:test_start_position_is_fetched_rounded_and_stored`
+- `backend/weather/activity_weather.py:headwind`
+- `tests/test_activity_weather.py:test_headwind_known_answer_with_bins_and_coverage`
+- `tests/test_activity_weather.py:test_a_run_into_the_wind_stores_its_headwind_with_bins`
+- `tests/test_activity_weather.py:test_the_bins_reach_no_block_detail_or_diagnostics`
+- `tests/test_activity_weather.py:test_a_retired_headwind_row_loses_its_bins`
+- `tests/test_activity_weather.py:test_re_fetches_are_paced_and_new_sessions_never_wait`
 
 ### Requirement: Advisory weather training windows and adaptive reasons
 The system SHALL propose supported near-term outdoor cycling/running windows from contiguous hourly forecast data, required precipitation/temperature inputs, event duration, weekday availability, and optional wind/rain/air-quality penalties. The list function SHALL skip indoor/virtual activities, and inadequate hourly coverage SHALL yield no recommendation.
