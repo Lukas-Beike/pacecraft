@@ -151,6 +151,20 @@ class RefreshAllServiceTests(unittest.TestCase):
         self.assertEqual(["222", "333", "444", "5711953068011"], sorted(self.off.calls))
         self.assertEqual(NOW, state["finished_at"])
 
+    def test_the_run_lists_every_product_beyond_the_list_cap(self) -> None:
+        # Gitar #3307: the list shows at most 1000; the run must see them all.
+        catalog = self.library.product_catalog
+        before = len(catalog.list_all_products())
+        with self.manager.unit_of_work() as db:
+            db.executemany(
+                "INSERT INTO nutrition_products(id, name, basis_amount, basis_unit, "
+                "source, created_at, updated_at) VALUES (?, ?, 100, 'g', 'manual', "
+                "?, ?)",
+                [(f"bulk-{n}", f"Bulk {n:04d}", NOW, NOW) for n in range(1000)],
+            )
+        self.assertEqual(1000, len(catalog.list_all_products()))
+        self.assertEqual(before + 1000, len(catalog.list_all_products(limit=None)))
+
 
 class RefreshAllRunnerTests(unittest.TestCase):
     def test_targets_skip_own_products_without_an_ean_and_covered_foods(self) -> None:

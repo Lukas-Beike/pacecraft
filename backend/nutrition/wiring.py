@@ -199,7 +199,10 @@ def build_nutrition(ctx: AppContext) -> NutritionServices:
         ),
         energy_view=energy_view,
         product_refresh=ProductRefreshRunner(
-            lambda: meal_library_service().product_catalog.list_all_products(),
+            # Every product, not the first 1000 the list shows.
+            lambda: meal_library_service().product_catalog.list_all_products(
+                limit=None
+            ),
             lambda product_id: meal_library_service().refresh_database_food(product_id),
             lambda: ctx.maintenance,
             utc_now,
