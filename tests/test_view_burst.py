@@ -11,7 +11,7 @@ import threading
 import unittest
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from typing import Any, ClassVar
+from typing import Any, ClassVar, cast
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 
@@ -82,6 +82,57 @@ class ViewBurstTests(unittest.TestCase):
             self.assertGreaterEqual(_Stub.seen.count(path), 4)
         self.assertIn("/api/diagnostics", _Stub.seen)
         self.assertIsNotNone(result["waited_for_ready_s"])
+
+    def test_steady_state_waits_until_no_stage_runs(self) -> None:
+        # A backfill stage still running is measured with the change (#3172).
+        answers = iter(
+            [
+                {"curve_build": {"status": "building"}},
+                {
+                    "curve_build": {"status": "ready"},
+                    "activity_weather": {"status": "running"},
+                },
+                {
+                    "curve_build": {"status": "ready"},
+                    "activity_weather": {"status": "running"},
+                },
+                {
+                    "curve_build": {"status": "ready"},
+                    "activity_weather": {"status": "complete"},
+                },
+            ]
+        )
+        polls: list[str] = []
+
+        class Fake:
+            def get(self, path: str) -> Any:
+                polls.append(path)
+                return next(answers) if path == "/api/diagnostics" else {}
+
+        stderr = io.StringIO()
+        with contextlib.redirect_stderr(stderr):
+            view_burst.wait_until_ready(
+                cast(view_burst.Client, Fake()), 60, lambda: 0.0, lambda _s: None
+            )
+        self.assertEqual(polls.count("/api/diagnostics"), 4)
+        self.assertEqual(stderr.getvalue(), "waiting for activity_weather\n")
+        stuck = {
+            "curve_build": {"status": "ready"},
+            "session_analysis": {"status": "running"},
+        }
+        times = iter([0.0, 61.0])
+
+        class Stuck:
+            def get(self, path: str) -> Any:
+                return stuck if path == "/api/diagnostics" else {}
+
+        with self.assertRaisesRegex(SystemExit, "running session_analysis"):
+            view_burst.wait_until_ready(
+                cast(view_burst.Client, Stuck()),
+                60,
+                lambda: next(times),
+                lambda _s: None,
+            )
 
     def test_right_after_start_does_not_wait_for_the_curve_build(self) -> None:
         result = self.run_script("--rounds", "1", "--right-after-start")
