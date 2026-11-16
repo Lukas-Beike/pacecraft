@@ -16,8 +16,8 @@ Use [README.md](README.md) for the overview and [docs/setup.md](docs/setup.md) a
 - Upgrades start only at the baseline or a later released schema. Production
   runs v31 since release 2.1.22 (the only production instance; releases per
   schema in [docs/schema-history.md](docs/schema-history.md)); the frozen
-  baseline fixture is v26 (release 2.0.5), v27 to v30 are accepted by their
-  frozen digests, and v31 is the current schema. Older schemas are refused
+  baseline fixture is v26 (release 2.0.5), v27 to v31 are accepted by their
+  frozen digests, and v32 is the current schema. Older schemas are refused
   unchanged, and release 2.0.5 opens a v21 to v25 database or backup first.
   Keep one frozen baseline fixture and one
   versioned, transactional SQLCipher migration chain from it to current; a

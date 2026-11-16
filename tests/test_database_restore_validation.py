@@ -164,9 +164,10 @@ class DatabaseRestoreValidationTests(unittest.TestCase):
                 )
 
     def test_validate_accepts_a_populated_baseline_backup(self) -> None:
-        # The baseline (v26) and the last released schema (v28, #2803) both
-        # restore into the current schema with their rows.
-        for version in (26, 28):
+        # The baseline (v26), released schemas (v28, #2803; v31, the one before
+        # the diary rebuild of #3234) and a current backup restore into the
+        # current schema with their rows, the diary entry included.
+        for version in (26, 28, 31, CURRENT_SCHEMA_VERSION):
             with self.subTest(version=version):
                 self.assert_backup_upgrades(version)
 
@@ -180,6 +181,24 @@ class DatabaseRestoreValidationTests(unittest.TestCase):
                     "INSERT INTO messages(role, content, created_at) "
                     "VALUES ('user', 'Hallo', '2026-10-16T08:00:00Z')"
                 )
+                connection.execute(
+                    "INSERT INTO nutrition_logs(id, meal_date, logged_at, meal_type, "
+                    "description, kcal, carbs_g, created_at, updated_at) VALUES "
+                    "('log', '2026-10-16', '2026-10-16T10:00:00', 'snack', 'Gel', "
+                    "100, 25, 'now', 'now')"
+                )
+                if version == 31:
+                    for step in (
+                        migrations._canonical_products,
+                        migrations._calendar_decisions,
+                        migrations._competition_location,
+                        migrations._session_curves,
+                        migrations._device_workout,
+                    ):
+                        step(connection)
+                    connection.execute("PRAGMA user_version = 31")
+                if version == CURRENT_SCHEMA_VERSION:
+                    migrate_schema(connection)
                 if version == 28:
                     migrations._canonical_products(connection)
                     migrations._calendar_decisions(connection)
@@ -209,10 +228,23 @@ class DatabaseRestoreValidationTests(unittest.TestCase):
                     "Hallo",
                 )
                 self.assertEqual(
-                    [tuple(row) for row in connection.execute(
-                        "SELECT id, target, location FROM competitions"
-                    )],
+                    [
+                        tuple(row)
+                        for row in connection.execute(
+                            "SELECT id, target, location FROM competitions"
+                        )
+                    ],
                     [("race", "1:45:00", "")] if version == 28 else [],
+                )
+                self.assertEqual(
+                    [
+                        tuple(row)
+                        for row in connection.execute(
+                            "SELECT id, meal_type, kcal, carbs_g, volume_ml, session_id "
+                            "FROM nutrition_logs"
+                        )
+                    ],
+                    [("log", "snack", 100, 25.0, None, None)],
                 )
 
     def test_validate_applies_startup_invariants_to_the_restored_database(self) -> None:

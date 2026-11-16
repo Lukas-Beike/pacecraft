@@ -86,7 +86,9 @@ class UncertainMealFlagTests(unittest.TestCase):
         current = audit_projection("nutrition_entry", entry)
         assert current is not None
         self.assertIs(current["estimate_uncertain"], False)
-        legacy = {k: v for k, v in current.items() if k != "estimate_uncertain"}
+        # A row from before the flag also predates the v32 volume and session.
+        later = {"estimate_uncertain", "volume_ml", "session_id"}
+        legacy = {k: v for k, v in current.items() if k not in later}
         self.assertIn(
             audit_hash(legacy), accepted_audit_hashes("nutrition_entry", current)
         )

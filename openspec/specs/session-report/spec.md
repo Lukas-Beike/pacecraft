@@ -171,6 +171,10 @@ The session report SHALL add the run's own checks, zone time against the plan, d
   - for interval runs, the stride length of each rep's second half, notable from 5 % shorter than the first;
   - each shoe of the run, notable from 90 % of its target distance (its own, Garmin's, else 700 km).
 
+#### Scenario: Run steadiness against own runs
+- **WHEN** an easy, recovery, endurance or long run has at least 5 comparable runs with a GAP variation
+- **THEN** the coefficient of variation of its grade-adjusted speed over the moving time is notable above their upper quartile; with fewer runs the value is a fact only, never judged against a fixed bound.
+
 #### Scenario: Zone time against the plan
 - **WHEN** a run or ride has a paired planned unit with zone times
 - **THEN** the seconds of each zone holding at least 10 % of the planned time are judged against the plan, notable beyond ±20 %; when the zone-targeted plan covers less than 80 % of the recorded zone time (free warm-up or cool-down), or the zone metric's data quality failed, the check is unknown.

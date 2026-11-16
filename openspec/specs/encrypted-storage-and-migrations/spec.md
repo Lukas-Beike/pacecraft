@@ -4,7 +4,7 @@
 
 Preserve durable athlete state through encrypted creation, bounded transactions, supported schema upgrades and restarts.
 
-Owns database lifecycle and upgrade contracts. The only supported baseline is v26 (release 2.0.5, frozen fixture); the released v27 to v30 (production) are accepted by their digests; the current schema is v31; canonical/domain records are described in their capability specs. SQLCipher conformance requires encrypted fixtures, separate from SQLite test doubles.
+Owns database lifecycle and upgrade contracts. The only supported baseline is v26 (release 2.0.5, frozen fixture); the released v27 to v31 (production) are accepted by their digests; the current schema is v32; canonical/domain records are described in their capability specs. SQLCipher conformance requires encrypted fixtures, separate from SQLite test doubles.
 
 ## Requirements
 

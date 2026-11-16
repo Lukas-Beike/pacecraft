@@ -360,12 +360,52 @@ def _easy_checks(facts: _Facts) -> list[dict[str, Any]]:
     checks: list[dict[str, Any]] = []
     if facts.sport == "ride":
         checks.append(_ride_steadiness(facts))
+    elif (steady := _run_steadiness(facts)) is not None:
+        checks.append(steady)
     checks.append(_decoupling(facts))
     checks.append(_easy_time_above(facts))
     cap = _mapping(facts.targets.get("heart_rate_cap"))
     if cap:
         checks.append(_heart_rate_cap(facts, cap))
     return checks
+
+
+_STEADINESS_TITLE: Final = "Gleichmäßigkeit (GAP)"
+
+
+def _run_steadiness_value(facts: _Facts) -> tuple[float | None, float | None, int]:
+    """The run's GAP variation, the own upper quartile and the peers it rests on."""
+    own = _number(_mapping(facts.comparable.get("this")).get("gap_cv_pct"))
+    quartile = _number(
+        _mapping(facts.comparable.get("upper_quartile_of_peers")).get("gap_cv_pct")
+    )
+    peers = int(
+        _number(_mapping(facts.comparable.get("median_peers")).get("gap_cv_pct")) or 0
+    )
+    return own, quartile, peers
+
+
+def _run_steadiness(facts: _Facts) -> dict[str, Any] | None:
+    """An easy or long run's GAP variation against own comparable runs (#3084).
+
+    Only a personal limit exists: with fewer than 5 comparable runs the value
+    is a fact (``_session_facts``), never judged against a fixed bound.
+    """
+    own, quartile, peers = _run_steadiness_value(facts)
+    if own is None or quartile is None or peers < MIN_PERSONAL:
+        return None
+    if reason := facts.output_unknown():
+        return _unknown("steadiness", _STEADINESS_TITLE, reason, basis="personal")
+    return _judged(
+        "steadiness",
+        _STEADINESS_TITLE,
+        value={"gap_cv_pct": own, "own_upper_quartile_pct": quartile, "peers": peers},
+        unit="%",
+        rule="Schwankung der steigungsbereinigten Geschwindigkeit über die Bewegungszeit, über dem oberen Quartil eigener vergleichbarer Läufe",
+        threshold=quartile,
+        measure=own,
+        basis="personal",
+    )
 
 
 def _ride_steadiness(facts: _Facts) -> dict[str, Any]:
@@ -1020,6 +1060,7 @@ def _session_facts(facts: _Facts) -> list[dict[str, Any]]:
     """Values the report states without a verdict (athlete, #3084 Part 2)."""
     found = [
         _work_laps_of_critical_speed(facts),
+        _steadiness_fact(facts),
         _dynamics_bands(facts),
         _elevation(facts),
         _stops(facts),
@@ -1058,6 +1099,22 @@ def _dynamics_bands(facts: _Facts) -> dict[str, Any] | None:
         "title": "Laufdynamik je Tempobereich gegen eigene Läufe",
         "value": {key: rating[key] for key in ("bands", "metrics") if key in rating},
         "unit": None,
+        "basis": "personal",
+    }
+
+
+def _steadiness_fact(facts: _Facts) -> dict[str, Any] | None:
+    """An easy run's GAP variation as a fact while too few own runs judge it."""
+    own, quartile, peers = _run_steadiness_value(facts)
+    if facts.sport != "run" or facts.kind != "easy" or own is None:
+        return None
+    if quartile is not None and peers >= MIN_PERSONAL:
+        return None
+    return {
+        "id": "run_steadiness",
+        "title": _STEADINESS_TITLE,
+        "value": {"gap_cv_pct": own, "peers": peers},
+        "unit": "%",
         "basis": "personal",
     }
 

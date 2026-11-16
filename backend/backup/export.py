@@ -88,7 +88,9 @@ TimeoutErrorFactory = Callable[[], Exception]
 # avg_grade_adjusted_speed_mps to activity_laps.jsonl, and workout_steps and
 # device_zones (JSON text) to activity_detail_sets.jsonl (schema v31). Schema v30
 # changed no exported row, so it kept version 20.
-PRIVACY_EXPORT_FORMAT_VERSION = 21
+# Version 22 adds volume_ml and session_id to nutrition_logs.jsonl, and the
+# meal types pre_session and during_session (schema v32).
+PRIVACY_EXPORT_FORMAT_VERSION = 22
 
 
 class PrivacyArchiveExportService:

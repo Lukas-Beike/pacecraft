@@ -56,6 +56,7 @@ from backend.performance.power_profile import (
 )
 from backend.performance.running_dynamics import METHOD as DYNAMICS_METHOD
 from backend.performance.running_dynamics import pace_bands
+from backend.performance.session_analysis import gap_variation_pct
 from backend.performance.session_execution import METHOD as EXECUTION_METHOD
 from backend.performance.session_execution import (
     comparison_metrics,
@@ -73,7 +74,7 @@ _RETRY_AFTER_S: Final = 60.0
 # method version of their own (merge_details, analysis_input, grade_adjustment)
 # and the stored payload fields. Bump it whenever any of them changes the curves,
 # so stored curves are computed again; the golden-curve test pins it.
-CURVE_FORMAT_VERSION: Final = 1
+CURVE_FORMAT_VERSION: Final = 2
 
 
 @dataclass(frozen=True, slots=True)
@@ -488,13 +489,16 @@ def _session_curve(
             adapted.activity,
             source_label=adapted.label_for("watts", "heartrate", "moving"),
         ),
-        execution_summary=comparison_metrics(
-            session_execution(
-                adapted.activity,
-                source_label=adapted.label_for(
-                    "watts", "heartrate", "velocity_smooth", "cadence", "laps"
-                ),
-            )
+        execution_summary=_with_steadiness(
+            comparison_metrics(
+                session_execution(
+                    adapted.activity,
+                    source_label=adapted.label_for(
+                        "watts", "heartrate", "velocity_smooth", "cadence", "laps"
+                    ),
+                )
+            ),
+            adapted.activity,
         ),
         running_dynamics=pace_bands(
             adapted.activity,
@@ -523,6 +527,24 @@ def curve_from_payload(
     if set(payload) != set(_PAYLOAD_FIELDS):
         return None
     return SessionCurve(fingerprint=fingerprint, **payload)
+
+
+def _with_steadiness(
+    summary: dict[str, Any] | None, activity: Mapping[str, Any]
+) -> dict[str, Any] | None:
+    """A continuous run's comparison numbers with its GAP steadiness (#3084).
+
+    A curve-level addition beside the execution's own numbers, so
+    ``CURVE_FORMAT_VERSION`` (not the execution method) covers it.
+    """
+    if (
+        summary is None
+        or summary.get("structure") != "continuous"
+        or summary.get("output_unit") != "s/km"
+        or (variation := gap_variation_pct(dict(activity))) is None
+    ):
+        return summary
+    return {**summary, "gap_cv_pct": variation}
 
 
 def _fingerprint(
