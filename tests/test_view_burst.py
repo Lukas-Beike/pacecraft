@@ -11,7 +11,7 @@ import threading
 import unittest
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from typing import Any, ClassVar
+from typing import Any, ClassVar, cast
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 
@@ -111,7 +111,9 @@ class ViewBurstTests(unittest.TestCase):
 
         stderr = io.StringIO()
         with contextlib.redirect_stderr(stderr):
-            view_burst.wait_until_ready(Fake(), 60, lambda: 0.0, lambda _s: None)
+            view_burst.wait_until_ready(
+                cast(view_burst.Client, Fake()), 60, lambda: 0.0, lambda _s: None
+            )
         self.assertEqual(polls.count("/api/diagnostics"), 4)
         self.assertEqual(stderr.getvalue(), "waiting for activity_weather\n")
         stuck = {
@@ -126,7 +128,10 @@ class ViewBurstTests(unittest.TestCase):
 
         with self.assertRaisesRegex(SystemExit, "running session_analysis"):
             view_burst.wait_until_ready(
-                Stuck(), 60, lambda: next(times), lambda _s: None
+                cast(view_burst.Client, Stuck()),
+                60,
+                lambda: next(times),
+                lambda _s: None,
             )
 
     def test_right_after_start_does_not_wait_for_the_curve_build(self) -> None:
