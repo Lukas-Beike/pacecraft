@@ -214,7 +214,7 @@ test("body overview uses profile body fat without creating a dated measurement",
 });
 
 
-test("an entered weight shows beside the preferred source; a measurement wins within a day", () => {
+test("an entered weight shows beside the preferred source and wins its own day", () => {
   const { renderBodyOverviewRow } = extractFunctions("analysis.js", ["bodySourceShown", "bodyProfileFat", "bodyOverviewDisplayValue", "renderBodyOverviewRow"], {
     state: { data: { profile: {} } }, document: fakeDocument(),
     isPreferredSource: (item, preferred) => item.source_provider === preferred,
@@ -227,11 +227,12 @@ test("an entered weight shows beside the preferred source; a measurement wins wi
     series("garmin", [["2026-11-12", 71.2]]), series("wahoo", [["2026-11-14", 90]]), series(null, local),
   ] } } } });
   const shown = (local) => textOf(renderBodyOverviewRow("weight_kg", "Gewicht", "kg", body(local), { weight_kg: "garmin" }).children[1]);
-  // Wahoo is not the preferred source; a local entry two days newer is the latest weight.
-  assert.equal(shown([["2026-11-14", 72.5]]), "72.5 kg");
-  // Within a day of it, or on the same day, the scale's measurement stands.
-  assert.equal(shown([["2026-11-13", 72.5]]), "71.2 kg");
-  assert.equal(shown([["2026-11-12", 72.5]]), "71.2 kg");
+  // Wahoo is not the preferred source; a newer local entry is the latest weight.
+  assert.equal(shown([["2026-11-13", 72.5]]), "72.5 kg");
+  // On its own day the entry wins over the scale's measurement.
+  assert.equal(shown([["2026-11-12", 72.5]]), "72.5 kg");
+  // A measurement of a later day is the newest.
+  assert.equal(shown([["2026-11-11", 72.5]]), "71.2 kg");
 });
 
 test("the energy table shows bands, the badge only with a fit, and the fit basis", () => {

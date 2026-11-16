@@ -476,7 +476,6 @@ def _read_routes(
                 ctx.performance.curve_records
             ),
             skinfold_service=athlete.skinfolds,
-            weight_service=athlete.weight_entries,
             energy_view=ctx.nutrition.energy_view,
             race_plan=partial(
                 read_race_plan,

@@ -73,9 +73,9 @@ class WeightEntryServiceTests(unittest.TestCase):
             self.service.remove({"date": "2026-11-15", "confirmed": True})
         self.assertEqual(404, missing.exception.status)
 
-    def test_energy_weigh_ins_take_a_measurement_before_the_entry_of_its_day(self):
-        # The table read orders the provider-less entry first on a day, so a
-        # provider's weigh-in of the same day stands (the recency rule's tie).
+    def test_energy_weigh_ins_take_the_entry_over_a_measurement_of_its_day(self):
+        # The athlete set the day's weight (decision 2026-11-16): a provider
+        # weigh-in of the same day does not replace it.
         self.service.save({"date": "2026-11-14", "kg": 72.5})
         self.service.save({"date": "2026-11-15", "kg": 72.0})
         garmin = Observation(
@@ -101,7 +101,7 @@ class WeightEntryServiceTests(unittest.TestCase):
             )
         with self.manager.reader() as db:
             read = weighins(CanonicalTableReader().observations(db, MetricKind.WEIGHT))
-        self.assertEqual({date(2026, 11, 14): 72.5, date(2026, 11, 15): 71.2}, read)
+        self.assertEqual({date(2026, 11, 14): 72.5, date(2026, 11, 15): 72.0}, read)
 
     def test_bad_input_is_refused(self):
         for payload in (

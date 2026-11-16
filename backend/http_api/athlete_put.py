@@ -15,7 +15,10 @@ WEIGHT_PATH = "/api/body/weight"
 
 
 class AthletePutRoutes:
-    """Dispatch athlete writes through their existing domain services."""
+    """Dispatch athlete writes through their existing domain services.
+
+    The entered weights are read here too, beside their writes (#3252).
+    """
 
     def __init__(
         self,
@@ -56,6 +59,7 @@ class AthletePutRoutes:
             ]
         if self._weight_service is not None:
             routes += [
+                Route("GET", WEIGHT_PATH, Access.SESSION, self._weights),
                 Route("PUT", WEIGHT_PATH, Access.SESSION_CSRF, self._save_weight),
                 Route(
                     "PUT",
@@ -65,6 +69,18 @@ class AthletePutRoutes:
                 ),
             ]
         return routes
+
+    def _weights(self, handler: Any, _request: RouteRequest) -> None:
+        """The weights the athlete entered by hand, newest first.
+
+        Request: no query, no body.
+
+        Response: 200 with `entries` (every active one, each `date` and `kg`).
+
+        Errors: none beyond the common ones.
+        """
+        if self._weight_service is not None:
+            handler.send_json(200, self._weight_service().read())
 
     def _save_weight(self, handler: Any, _request: RouteRequest) -> None:
         """Save one weight the athlete entered; one of the same day is replaced.

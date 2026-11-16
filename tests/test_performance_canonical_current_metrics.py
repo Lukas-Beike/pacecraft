@@ -436,7 +436,7 @@ def _weight(value: float, day: date, provider: ProviderId | None) -> Observation
 
 
 class EnteredWeightTests(unittest.TestCase):
-    """The athlete's own weigh-in (#3252) under the existing recency rule."""
+    """The athlete's own weigh-in (#3252): it wins its day, else the newest wins."""
 
     def current(self, *observations: Observation) -> dict[str, Any]:
         inputs = read_current_inputs(ObservationStub(observations), None, as_of=AS_OF)
@@ -460,10 +460,23 @@ class EnteredWeightTests(unittest.TestCase):
             ["Garmin Connect"], [item["source"] for item in weight["alternatives"]]
         )
 
-    def test_a_scale_reading_of_the_same_day_wins_over_the_entry(self) -> None:
+    def test_the_entry_wins_over_a_scale_reading_of_its_day(self) -> None:
+        # Athlete decision 2026-11-16: the value the athlete set for a day stands.
+        for garmin_day in (AS_OF, AS_OF - timedelta(days=1)):
+            with self.subTest(garmin_day=garmin_day):
+                weight = self.current(
+                    _weight(74.0, garmin_day, ProviderId.GARMIN),
+                    _weight(72.5, AS_OF, None),
+                )
+                self.assertEqual((72.5, "Lokal"), (weight["value"], weight["source"]))
+                self.assertEqual(
+                    [74.0], [item["value"] for item in weight["alternatives"]]
+                )
+
+    def test_a_scale_reading_of_the_next_day_is_the_newest(self) -> None:
         weight = self.current(
+            _weight(72.5, AS_OF - timedelta(days=1), None),
             _weight(74.0, AS_OF, ProviderId.GARMIN),
-            _weight(72.5, AS_OF, None),
         )
         self.assertEqual(74.0, weight["value"])
         self.assertEqual(

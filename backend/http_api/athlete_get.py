@@ -20,7 +20,6 @@ from backend.settings import SettingsService
 
 ZONES_PATH = "/api/zones"
 SKINFOLDS_PATH = "/api/body/skinfolds"
-WEIGHT_PATH = "/api/body/weight"
 RACE_PLAN_PATH = "/api/competitions/{id}/race-plan"
 _LOGGER = logging.getLogger("intervals_coach")
 
@@ -43,11 +42,9 @@ class AthleteGetRoutes:
         second_threshold_service: Callable[[], Any] | None = None,
         race_plan: Callable[[str], dict[str, Any] | None] | None = None,
         skinfold_service: Callable[[], Any] | None = None,
-        weight_service: Callable[[], Any] | None = None,
         energy_view: Callable[[], dict[str, Any]] | None = None,
     ) -> None:
         self._skinfold_service = skinfold_service
-        self._weight_service = weight_service
         self._energy_view = energy_view
         self._first_threshold_service = first_threshold_service
         self._second_threshold_service = second_threshold_service
@@ -108,8 +105,6 @@ class AthleteGetRoutes:
             routes.append(Route("GET", ZONES_PATH, Access.SESSION, self._zones))
         if self._skinfold_service is not None:
             routes.append(Route("GET", SKINFOLDS_PATH, Access.SESSION, self._skinfolds))
-        if self._weight_service is not None:
-            routes.append(Route("GET", WEIGHT_PATH, Access.SESSION, self._weights))
         if self._energy_view is not None:
             routes.append(
                 Route(
@@ -217,18 +212,6 @@ class AthleteGetRoutes:
         """
         if self._zone_service is not None:
             handler.send_json(200, self._zone_service().read())
-
-    def _weights(self, handler: Any, _request: RouteRequest) -> None:
-        """The weights the athlete entered by hand, newest first.
-
-        Request: no query, no body.
-
-        Response: 200 with `entries` (every active one, each `date` and `kg`).
-
-        Errors: none beyond the common ones.
-        """
-        if self._weight_service is not None:
-            handler.send_json(200, self._weight_service().read())
 
     def _skinfolds(self, handler: Any, _request: RouteRequest) -> None:
         """The athlete's 3-site skinfold measurements, newest first.

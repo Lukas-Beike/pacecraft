@@ -1376,12 +1376,11 @@ function renderBodyOverviewRow(metric, title, unit, body, preferred) {
     .filter((item) => bodySourceShown(item, preferred[metric]))
     .flatMap((item) => (item.points || []).filter((point) => point.date >= window.start && point.date <= window.end && analysisValidPoint(point))
       .map((point) => ({ ...point, local: item.source_provider === null }))));
-  readings.sort((a, b) => (a.observed_at || a.date).localeCompare(b.observed_at || b.date) || Number(b.local) - Number(a.local));
-  // As in the current weight: within a day of the newest reading, a measurement wins over
-  // the athlete's own entry (RECENCY_TIE_DAYS).
-  const newest = readings.at(-1);
-  const tieFrom = newest && new Date(Date.parse(newest.date) - 86400000).toISOString().slice(0, 10);
-  const latest = newest?.local ? readings.findLast((item) => !item.local && item.date >= tieFrom) || newest : newest;
+  // As in the current weight: the newest day wins, and on its day the athlete's own entry
+  // wins over a measurement (#3252).
+  readings.sort((a, b) => a.date.localeCompare(b.date) || Number(a.local) - Number(b.local)
+    || (a.observed_at || a.date).localeCompare(b.observed_at || b.date));
+  const latest = readings.at(-1);
   const profileFat = metric === "body_fat_pct" ? bodyProfileFat(state.data?.profile) : null;
   let note = latest && dateLabel(latest.observed_at || latest.date);
   if (profileFat != null) note = "Profil";

@@ -30,7 +30,7 @@ Implemented in `backend/performance/source_policy.py` (`CURRENT_RULES`, `DAILY_R
 
 | Kind | Order (best first) | Bounds | Age limit |
 |---|---|---|---|
-| `weight` | Garmin, Wahoo; the athlete's newest entered weight (dated) or else the undated local profile weight between them (`RECENCY_ORDERS`: newest dated value wins, within `RECENCY_TIE_DAYS` = 1 day a device measurement beats a provider report beats an athlete entry) | none (validation range 20 to 400 kg) | Wahoo 90 days |
+| `weight` | Garmin, Wahoo; the athlete's newest entered weight (dated) or else the undated local profile weight between them (`RECENCY_ORDERS`: newest dated value wins, within `RECENCY_TIE_DAYS` = 1 day a device measurement beats a provider report beats an athlete entry, except that an entry on the newest day wins) | none (validation range 20 to 400 kg) | Wahoo 90 days |
 | `body_fat` | Garmin, local profile (same recency rule) | | |
 | `resting_hr` | Garmin | 30 to 230 bpm | |
 | `hrv_rmssd` | Garmin | 1 to 300 ms | |
@@ -2678,7 +2678,7 @@ Inputs: the athlete's save request (API/UI); no provider payload.
 | `observed_at`, `sport`, `method`, `aggregation`, `period` | none | |
 | `provenance` | `provider` none; `source_kind` = `athlete_entered`; `source_record_id` none; `recorded_by` = `manual`; `retrieved_at` none; `label` = "Lokal" (`local_provenance`) | Provider re-projection never retires these rows (it is scoped by provider). |
 
-Stored with `mapper_version` 1. `canonical_store.current_observation_rows` serves these rows for the metrics in `ENTERED_METRICS` (weight only), so the canonical weight readers see them: the current weight ranks the newest one as an athlete entry under `RECENCY_ORDERS`, the body history charts them as a "Lokal" series, and the energy weigh-ins take them on days without a provider weigh-in.
+Stored with `mapper_version` 1. `canonical_store.current_observation_rows` serves these rows for the metrics in `ENTERED_METRICS` (weight only), so the canonical weight readers see them: the current weight takes the newest one under `RECENCY_ORDERS`, where an entry on the newest day wins over a measurement of that or the previous day (athlete decision 2026-11-16), the body history charts them as a "Lokal" series, and the energy weigh-ins take them over a provider weigh-in of the same day.
 
 ### `zone_settings.py`
 
