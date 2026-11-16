@@ -135,6 +135,32 @@ class SessionExecutionTests(unittest.TestCase):
         tempo = _session([("lap", 1800, 3.5, (170.0, 170.0))], cadence=85.0)
         self.assertEqual(session_execution(tempo)["data_quality"]["heart_rate"], "ok")
 
+    def test_gaps_over_five_percent_make_a_channel_uncertain(self) -> None:
+        # #3084 3c D: over 5 % of the recorded time in missing runs longer than 5 s.
+        def quality(missing: list[tuple[int, int]], pause: bool = False) -> dict:
+            session = _session([("lap", 1800, 3.0, (140.0, 145.0))])
+            streams = session["streams"]
+            for start, length in missing:
+                for index in range(start, start + length):
+                    streams["heartrate"][index] = None
+                    streams["velocity_smooth"][index] = None
+            if pause:
+                # An auto-pause: the clock jumps 10 min, no value is missing.
+                streams["time"] = [
+                    t + (600 if index >= 900 else 0)
+                    for index, t in enumerate(streams["time"])
+                ]
+            return session_execution(session)["data_quality"]
+
+        # 100 s of 1800 s missing (5.6 %): both channels uncertain.
+        self.assertEqual({"heart_rate": "gaps", "speed": "gaps"}, quality([(300, 99)]))
+        # 80 s (4.4 %) stays ok, and so do many 4 s holes (no run over 5 s).
+        self.assertEqual({"heart_rate": "ok", "speed": "ok"}, quality([(300, 79)]))
+        holes = [(start, 4) for start in range(100, 1700, 10)]
+        self.assertEqual({"heart_rate": "ok", "speed": "ok"}, quality(holes))
+        # A pause of the clock is no gap.
+        self.assertEqual({"heart_rate": "ok", "speed": "ok"}, quality([], pause=True))
+
     def test_steady_laps_with_one_slow_lap_stay_continuous(self) -> None:
         segments = [("lap", 300, 3.3, (140.0, 150.0)) for _ in range(9)]
         segments.append(("lap", 300, 2.5, (140.0, 130.0)))

@@ -404,6 +404,67 @@ class FactChecksTests(unittest.TestCase):
         self.assertEqual("unknown", unplanned["verdict"])
 
 
+class PlanHeatHillsTests(unittest.TestCase):
+    """Strength sets, heat and hills (#3084 Part 3c B, C, E)."""
+
+    def test_strength_sets_are_judged_against_plan_by_twenty_percent(self) -> None:
+        def sets(done: int) -> dict:
+            result = _run(
+                strength_plan={"planned_sets": 10, "completed_sets": done},
+            )
+            result["session"]["sport"] = "strength"
+            check = _check(session_report(result), "strength_sets")
+            assert check is not None
+            return check
+
+        self.assertEqual("notable", sets(7)["verdict"])  # -30 %
+        self.assertEqual("ok", sets(8)["verdict"])  # -20 % is inside
+        self.assertEqual("plan", sets(8)["basis"])
+
+    def test_heat_explains_only_notable_heart_rate_checks_from_25_degrees(self) -> None:
+        def heat(apparent: float, decoupling: float) -> dict:
+            result = _run(
+                focus={"status": "matched", "session_focus": "easy"},
+                metrics={"decoupling_pct": {"value": decoupling}},
+                weather={
+                    "apparent_temperature_c": apparent,
+                    "temperature_c": apparent - 2,
+                    "source": "Open-Meteo Modell, Startposition",
+                },
+            )
+            check = _check(session_report(result), "heat")
+            assert check is not None
+            return check
+
+        hot = heat(27.0, 8.0)
+        self.assertEqual(
+            ("ok", ["decoupling"]), (hot["verdict"], hot["value"]["explains"])
+        )
+        self.assertEqual([], heat(24.9, 8.0)["value"]["explains"])
+        self.assertEqual([], heat(27.0, 3.0)["value"]["explains"])
+
+    def test_hills_per_rep_of_a_ride_are_facts(self) -> None:
+        result = _run(sport="ride")
+        result["analysis"]["execution"]["reps"] = [
+            {"rep": 1, "elevation_change_m": 40.0, "distance_m": 1000.0},
+            {"rep": 2, "elevation_change_m": -5.0, "distance_m": 1000.0},
+            {"rep": 3, "elevation_change_m": None, "distance_m": 1000.0},
+        ]
+
+        check = _check(session_report(result), "hills")
+
+        assert check is not None
+        self.assertEqual(("ok", 0), (check["verdict"], check["severity"]))
+        self.assertEqual(
+            [
+                {"rep": 1, "elevation_change_m": 40.0, "grade_pct": 4.0},
+                {"rep": 2, "elevation_change_m": -5.0, "grade_pct": -0.5},
+                {"rep": 3, "elevation_change_m": None, "grade_pct": None},
+            ],
+            check["value"],
+        )
+
+
 class RatedSessionsReadTests(unittest.TestCase):
     def test_the_window_reads_the_stored_intensity_scale(self) -> None:
         # The local IF is stored in % (M6: IF x 100), and with_local_loads puts
