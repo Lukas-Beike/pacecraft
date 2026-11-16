@@ -96,6 +96,9 @@ def planned_target_execution(
     summary = {
         "planned_work_steps": len(work),
         "executed_work_laps": executed,
+        # Planned hard steps the lap fitting left without a lap: a skipped
+        # lower-level block makes the pairing uncertain (#3084).
+        "unmatched_hard_steps": _unmatched_hard_steps(steps, ranges, work, thresholds),
         "compared": len(compared),
         "in_target": sum(value == 0 for value in deviations),
         "above_target": sum(value > 0 for value in deviations),
@@ -226,6 +229,53 @@ def _levels(
             continue
         levels.append((index, middle / reference))
     return levels
+
+
+# A planned step in this zone or above is hard work (#3084).
+HARD_ZONE: Final = 3
+# Unmatched hard planned time from this many seconds on is a skipped block; less
+# is a warm-up build or a fast finish (athlete, #3084, 2026-11-16).
+MIN_SKIPPED_BLOCK_S: Final = 600.0
+
+
+def _unmatched_hard_steps(
+    steps: Sequence[Mapping[str, Any]],
+    ranges: Sequence[TargetRange],
+    work: Sequence[int],
+    thresholds: ZoneSettings,
+) -> int:
+    """Planned steps at ``HARD_ZONE`` or above that no executed lap pairs with.
+
+    The lap fitting keeps the hardest steps when the plan has more levels than
+    laps; a hard step it drops is planned work the session may have skipped.
+    Steps within the paired reps' span, and the one right before and after it,
+    are their own recoveries or floats (an over-under's unders), never a block.
+    The rest make a skipped block only from ``MIN_SKIPPED_BLOCK_S`` of planned
+    time together; less is a warm-up build or a fast finish.
+    """
+    zones = {
+        "speed": (thresholds.threshold_pace, thresholds.pace_zone),
+        "watts": (thresholds.ftp, thresholds.power_zone),
+        "heartrate": (thresholds.hr_zone_reference, thresholds.hr_zone_of_lthr),
+    }
+    paired = set(work)
+    if paired:
+        paired |= set(range(min(work) - 1, max(work) + 2))
+    count, seconds = 0, 0.0
+    for index, target in enumerate(ranges):
+        reference, zone_of = zones.get(target.metric or "", (None, None))
+        middle = _middle(target)
+        if (
+            index not in paired
+            and reference
+            and zone_of is not None
+            and middle is not None
+            and zone_of(middle / reference * 100) >= HARD_ZONE
+        ):
+            count += 1
+            # A distance step counts at its target speed's middle.
+            seconds += _planned_seconds(steps[index], target) or 0.0
+    return count if seconds >= MIN_SKIPPED_BLOCK_S else 0
 
 
 def _work_steps(levels: Sequence[tuple[int, float]], executed: int) -> list[int]:

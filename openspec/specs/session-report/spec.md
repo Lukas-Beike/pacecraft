@@ -21,7 +21,7 @@ The system SHALL add to every `get_activity_details` result a `session_report` (
 
 #### Scenario: Plan against actual
 - **WHEN** the session has a paired planned unit
-- **THEN** the report judges for runs and rides the duration (elapsed for interval sessions, whose planned rests the estimate counts, else moving) and the local TSS-scale load (M6, the scale of the plan estimate; never a provider load) against the unit's estimate, notable beyond ±20 %. For detected intervals it judges the planned work steps against the executed work laps (notable on missing or extra steps, with the mapping confidence); without a plan-to-lap mapping that check is unknown with the mapping's reason.
+- **THEN** the report judges for runs and rides the duration (elapsed for interval sessions, whose planned rests the estimate counts, else moving) and the local TSS-scale load (M6, the scale of the plan estimate; never a provider load) against the unit's estimate, notable beyond ±20 %. For detected intervals it judges the planned work steps against the executed work laps (notable on missing or extra steps, with the mapping confidence); without a plan-to-lap mapping that check is unknown with the mapping's reason. When the lap fitting leaves planned steps in zone 3 or above, outside the paired reps and their floats, without a lap for at least 10 minutes of planned time together (a skipped block; less is a warm-up build or a fast finish), the mapping is uncertain: structure, time in target and recovery length are unknown, and the structure names the planned and unmatched hard steps.
 
 #### Scenario: Easy, recovery and long sessions
 - **WHEN** the session focus is recovery, easy, endurance or long
