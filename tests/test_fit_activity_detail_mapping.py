@@ -838,6 +838,9 @@ class FitWatchFieldsTests(unittest.TestCase):
             _step(index=9, duration=29, value=12, target=3, low=80, high=90) | {7: 9},
             _step(index=10, duration=3, value=250, target=3, low=70, high=70),
             _step(index=11, duration=14, value=1200, target=2),
+            # 100 is still a percent of the maximum HR; only values above it are
+            # bpm + 100 (FIT profile; power likewise above 1000).
+            _step(index=12, duration=0, value=60_000, target=1, low=90, high=100),
         ]
         result = _map(_watch_fit(laps=[{}], steps=rows))
         self.assertEqual(
@@ -947,6 +950,16 @@ class FitWatchFieldsTests(unittest.TestCase):
                     duration_type=WorkoutDurationType.POWER_BELOW,
                     duration_value=200.0,
                     target_type=WorkoutTargetType.OPEN,
+                ),
+                WorkoutStep(
+                    index=12,
+                    intensity=WorkoutStepIntensity.OTHER,
+                    duration_type=WorkoutDurationType.TIME,
+                    duration_value=60.0,
+                    target_type=WorkoutTargetType.HEART_RATE,
+                    target_low=90.0,
+                    target_high=100.0,
+                    target_unit=WorkoutTargetUnit.PCT_MAX_HR,
                 ),
             ),
         )

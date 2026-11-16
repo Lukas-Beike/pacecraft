@@ -1229,9 +1229,9 @@ What ends a device workout step; any other FIT duration type is `other`, without
 | `distance` | A distance in metres | FIT mapper (duration type 1, /100 m) |
 | `open` | No end set | FIT mapper (duration type 5) |
 | `reps` | A number of repetitions | FIT mapper (duration type 29) |
-| `hr_below` | Until the heart rate is below a value (bpm) | FIT mapper (duration type 2; a value of 100 or more is bpm plus 100) |
+| `hr_below` | Until the heart rate is below a value (bpm) | FIT mapper (duration type 2; a value above 100 is bpm plus 100) |
 | `hr_above` | Until the heart rate is above a value (bpm) | FIT mapper (duration type 3; same offset) |
-| `power_below` | Until the power is below a value (W) | FIT mapper (duration type 14; a value of 1000 or more is W plus 1000) |
+| `power_below` | Until the power is below a value (W) | FIT mapper (duration type 14; a value above 1000 is W plus 1000) |
 | `power_above` | Until the power is above a value (W) | FIT mapper (duration type 15; same offset) |
 | `repeat` | Repeat the steps from `repeat_from` `repeat_count` times | FIT mapper (duration type 6, repeat until steps complete: value is the step to return to, target value the count) |
 | `other` | Any other duration type | FIT mapper (any other or missing duration type, without a value) |
@@ -1256,10 +1256,10 @@ The unit of a device workout step's target range (`workout_step` fields 5 and 6;
 | Value | Meaning | Produced by |
 |---|---|---|
 | `mps` | Metres per second | FIT mapper (speed range, /1000) |
-| `bpm` | Beats per minute | FIT mapper (heart rate range of 100 or more, minus 100) |
-| `pct_max_hr` | Percent of the maximum heart rate | FIT mapper (heart rate range below 100) |
-| `w` | Watts | FIT mapper (power range of 1000 or more, minus 1000) |
-| `pct_ftp` | Percent of the functional threshold power | FIT mapper (power range below 1000) |
+| `bpm` | Beats per minute | FIT mapper (heart rate range above 100, minus 100) |
+| `pct_max_hr` | Percent of the maximum heart rate | FIT mapper (heart rate range up to 100) |
+| `w` | Watts | FIT mapper (power range above 1000, minus 1000) |
+| `pct_ftp` | Percent of the functional threshold power | FIT mapper (power range up to 1000) |
 | `rpm` | Revolutions per minute | FIT mapper (cadence range) |
 
 ### `DeviceHeartRateCalc`
@@ -1532,11 +1532,11 @@ Workout steps, `workout_step` message 27 (`_workout_steps`, `_workout_step`; the
 |---|---|---|---|
 | `index` | `message_index` (254) | AND 0x0FFF | |
 | `intensity` | `intensity` (7) | 0 `active`, 1 `rest`, 2 `warmup`, 3 `cooldown`, 4 `recovery`, 5 `interval` | Anything else or missing is `other`. |
-| `duration_type`, `duration_value` | `duration_type` (1), `duration_value` (2) | 0 `time` (/1000 s), 1 `distance` (/100 m), 2 `hr_below` and 3 `hr_above` (100 or more is bpm plus 100), 5 `open`, 6 `repeat`, 14 `power_below` and 15 `power_above` (1000 or more is W plus 1000), 29 `reps` | Any other or missing type is `other` without a value; a value outside the canonical bounds is `None`. |
+| `duration_type`, `duration_value` | `duration_type` (1), `duration_value` (2) | 0 `time` (/1000 s), 1 `distance` (/100 m), 2 `hr_below` and 3 `hr_above` (above 100 is bpm plus 100), 5 `open`, 6 `repeat`, 14 `power_below` and 15 `power_above` (above 1000 is W plus 1000), 29 `reps` | Any other or missing type is `other` without a value; a value outside the canonical bounds is `None`. |
 | `repeat_from`, `repeat_count` | `duration_value` (2), `target_value` (4) | step index (AND 0x0FFF), count | Only for a `repeat` step, whose target is `open`. |
 | `target_type` | `target_type` (3) | 0 `speed`, 1 `heart_rate`, 2 `open`, 3 `cadence`, 4 `power` | Anything else or missing is `other`. |
 | `target_zone` | `target_value` (4) | zone number | Wins over a custom range; only for speed, heart rate, power and cadence targets. |
-| `target_low`, `target_high`, `target_unit` | `custom_target_value_low` (5), `custom_target_value_high` (6) | speed /1000 `mps`; heart rate 100 or more minus 100 `bpm`, below 100 `pct_max_hr`; power 1000 or more minus 1000 `w`, below 1000 `pct_ftp`; cadence `rpm` | Both bounds must be in one unit and not both 0, else no range; a range with `high` below `low` is dropped. |
+| `target_low`, `target_high`, `target_unit` | `custom_target_value_low` (5), `custom_target_value_high` (6) | speed /1000 `mps`; heart rate above 100 minus 100 `bpm`, up to 100 `pct_max_hr`; power above 1000 minus 1000 `w`, up to 1000 `pct_ftp`; cadence `rpm` | Both bounds must be in one unit and not both 0, else no range; a range with `high` below `low` is dropped. |
 
 
 Strength sets, set message 225 (`_strength_set_set`, `_strength_set`), in file order, at most 500:

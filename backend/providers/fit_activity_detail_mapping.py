@@ -51,9 +51,9 @@ index, at most ``MAX_WORKOUT_STEPS``. Only numbers are read: duration type (1:
 6 repeat until steps complete, 14 and 15 power below and above, 29 reps; any
 other type is ``other`` without a value) with its value (2), intensity (7), target
 type (3: 0 speed, 1 heart rate, 2 open, 3 cadence, 4 power) and either a zone
-(4) or a custom range (5, 6: speed /1000 m/s; heart rate, 100 or more is bpm
-plus 100, less is percent of the maximum; power, 1000 or more is watts plus
-1000, less is percent of the FTP). A repeat step carries the step to return to
+(4) or a custom range (5, 6: speed /1000 m/s; heart rate, above 100 is bpm
+plus 100, up to 100 percent of the maximum; power, above 1000 is watts plus
+1000, up to 1000 percent of the FTP). A repeat step carries the step to return to
 (2) and the repeat count (4). Step names (27.0) and notes (27.8) and the workout
 message (26, name and description) are free text of the file and never read; a
 step without a usable index is dropped. The zone basis of the watch comes from
@@ -314,8 +314,8 @@ _STEP_TARGETS: Final[Mapping[int, WorkoutTargetType]] = {
     3: WorkoutTargetType.CADENCE,
     4: WorkoutTargetType.POWER,
 }
-# A heart rate target or duration of this value or more is bpm plus this offset,
-# below it a percent of the maximum; power counts the same way in watts and FTP.
+# A heart rate target or duration above this value is bpm plus this offset, up to
+# it a percent of the maximum; power counts the same way in watts and FTP.
 _HEART_RATE_OFFSET: Final = 100
 _POWER_OFFSET: Final = 1000
 _ZONES_TARGET_MESSAGE: Final = 7
@@ -871,9 +871,9 @@ def _duration_value(kind: WorkoutDurationType, raw: int | None) -> float | None:
     if kind is WorkoutDurationType.REPS:
         return float(raw)
     if kind in (WorkoutDurationType.HR_BELOW, WorkoutDurationType.HR_ABOVE):
-        return raw - _HEART_RATE_OFFSET if raw >= _HEART_RATE_OFFSET else None
+        return raw - _HEART_RATE_OFFSET if raw > _HEART_RATE_OFFSET else None
     if kind in (WorkoutDurationType.POWER_BELOW, WorkoutDurationType.POWER_ABOVE):
-        return raw - _POWER_OFFSET if raw >= _POWER_OFFSET else None
+        return raw - _POWER_OFFSET if raw > _POWER_OFFSET else None
     return None
 
 
@@ -915,11 +915,11 @@ def _target_bound(
     if target_type is WorkoutTargetType.SPEED:
         return WorkoutTargetUnit.MPS, raw / 1000
     if target_type is WorkoutTargetType.HEART_RATE:
-        if raw >= _HEART_RATE_OFFSET:
+        if raw > _HEART_RATE_OFFSET:
             return WorkoutTargetUnit.BPM, float(raw - _HEART_RATE_OFFSET)
         return WorkoutTargetUnit.PCT_MAX_HR, float(raw)
     if target_type is WorkoutTargetType.POWER:
-        if raw >= _POWER_OFFSET:
+        if raw > _POWER_OFFSET:
             return WorkoutTargetUnit.W, float(raw - _POWER_OFFSET)
         return WorkoutTargetUnit.PCT_FTP, float(raw)
     return WorkoutTargetUnit.RPM, float(raw)
