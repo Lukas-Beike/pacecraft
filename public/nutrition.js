@@ -135,7 +135,10 @@ function nutritionDatabaseLabel(product) {
   return { open_food_facts: "Open Food Facts", yazio: "Yazio" }[product.origin] || "Datenbank";
 }
 
-function nutritionComponentSource(basis) {
+// Who logged a meal; an estimated component names the same source (#3297).
+const NUTRITION_SOURCE_LABELS = { coach: "Coach", photo: "Foto", voice: "Sprache", manual: "Manuelle Angabe" };
+
+function nutritionComponentSource(basis, sourceLabel = "Erfasst") {
   const kind = basis?.kind;
   if (kind === "local_product" || kind === "product") {
     const product = basis.product || basis;
@@ -151,7 +154,7 @@ function nutritionComponentSource(basis) {
   }
   if (kind === "packaging_label") return "Verpackungsangabe";
   if (kind === "manual") return "Manuelle Angabe";
-  if (kind === "estimate") return "Schätzung";
+  if (kind === "estimate") return sourceLabel;
   return "Quelle unbekannt";
 }
 
@@ -190,7 +193,7 @@ function nutritionComponentDetails(item) {
       h("strong", null, component.name || "Unbenannte Zutat"),
       h("span", null, ` · ${component.amount ?? "–"} ${component.unit || ""}`.trim()),
       h("span", null, ` · ${nutritionNumber(component.kcal)} kcal · KH ${nutritionNumber(component.carbs_g)} g · Protein ${nutritionNumber(component.protein_g)} g · Fett ${nutritionNumber(component.fat_g)} g`),
-      h("small", null, nutritionComponentSource(component.nutrition_basis))))));
+      h("small", null, nutritionComponentSource(component.nutrition_basis, NUTRITION_SOURCE_LABELS[item.source]))))));
 }
 
 const NUTRITION_SESSION_SLOTS = new Set(["pre_session", "during_session"]);
@@ -236,8 +239,7 @@ function nutritionMealTitle(item) {
 }
 
 function nutritionCard(item, template, sessions = []) {
-  const sourceLabels = { coach: "Coach-Schätzung", photo: "Foto-Schätzung", voice: "Sprach-Schätzung", manual: "Manuelle Angabe" };
-  const sourceLabel = sourceLabels[item.source] || "Erfasst";
+  const sourceLabel = NUTRITION_SOURCE_LABELS[item.source] || "Erfasst";
   const syncLabel = item.sync_state === "synced" ? " · Synchronisiert" : " · Lokal";
   const basisLabel = nutritionBasisLabel(item.nutrition_basis, { template, syncLabel }, sourceLabel);
   // The default (typed in by hand, stored locally) is not repeated under every meal; any other source or state is shown.

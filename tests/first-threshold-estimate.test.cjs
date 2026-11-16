@@ -24,12 +24,12 @@ test("the estimate names bpm, percent of the LTHR, sessions and quality and is l
   const elements = render({ percent_lthr: 90.5, bpm: 153, sessions: 4, quality: "low" }, {});
   assert.equal(elements.firstThresholdEstimate.hidden, false);
   assert.equal(elements.firstThresholdEstimate.dataset.percent, "90.5");
-  assert.equal(elements.firstThresholdEstimateText.textContent, "Schätzung · 153 bpm · 90,5 % LSHF · 4 Einheiten · Qualität niedrig");
+  assert.equal(elements.firstThresholdEstimateText.textContent, "DFA-α1 · 153 bpm · 90,5 % LSHF · 4 Einheiten · Qualität niedrig");
 });
 
 test("without a current threshold the bpm is left out and one session is singular", () => {
   const elements = render({ percent_lthr: 88, bpm: null, sessions: 1, quality: "good" }, {});
-  assert.equal(elements.firstThresholdEstimateText.textContent, "Schätzung · 88 % LSHF · 1 Einheit · Qualität gut");
+  assert.equal(elements.firstThresholdEstimateText.textContent, "DFA-α1 · 88 % LSHF · 1 Einheit · Qualität gut");
 });
 
 test("no estimate hides the block", () => {
@@ -38,14 +38,14 @@ test("no estimate hides the block", () => {
 
 test("a stored adopted estimate is marked on the stored value", () => {
   const adopted = render(null, { first_threshold_pct: "90", first_threshold_origin: "estimated" });
-  assert.equal(adopted.firstThresholdStoredLabel.textContent, "Gespeichert (% LSHF, geschätzt)");
+  assert.equal(adopted.firstThresholdStoredLabel.textContent, "Gespeichert (% LSHF, DFA-α1)");
   const measured = render(null, { first_threshold_pct: "90", first_threshold_origin: "measured" });
   assert.equal(measured.firstThresholdStoredLabel.textContent, "Gespeichert (% LSHF)");
 });
 
-test("the plan card labels the estimated cap source", () => {
+test("the plan card names the method of an estimated cap source", () => {
   const plan = fs.readFileSync(path.join(__dirname, "../public/plan-views.js"), "utf8");
-  assert.match(plan, /estimated: "geschätzt"/);
+  assert.match(plan, /estimated: "DFA-α1"/);
 });
 
 function adoptContext({ dirty, other = "Ada" }) {

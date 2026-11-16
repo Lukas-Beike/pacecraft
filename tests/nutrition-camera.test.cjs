@@ -128,7 +128,7 @@ test("a failed image keeps the draft, shows the error and releases the loading s
 });
 
 // Composite meals, unknown values and the Coach draft of a product.
-const MEAL_FUNCTIONS = ["nutritionNumber", "nutritionDatabaseLabel", "nutritionBasisLabel", "nutritionComponentSource", "nutritionComponentDetails", "addNutritionProductToCoachDraft"];
+const MEAL_FUNCTIONS = ["nutritionNumber", "nutritionDatabaseLabel", "nutritionBasisLabel", "NUTRITION_SOURCE_LABELS", "nutritionComponentSource", "nutritionComponentDetails", "addNutritionProductToCoachDraft"];
 
 
 // An element that refuses HTML, so a name can only reach the page as text.
@@ -177,6 +177,12 @@ test("a diary component from a database product is labelled as such, an own prod
   assert.equal(context.nutritionComponentSource(database), "Datenbankprodukt: Haferdrink · Open Food Facts");
   assert.equal(context.nutritionComponentSource({ ...database, product: { ...database.product, origin: "yazio" } }), "Datenbankprodukt: Haferdrink · Yazio");
   assert.equal(context.nutritionComponentSource(own), "Gespeichertes Produkt: Whey · Verpackungsangabe");
+  // An estimated component names who logged the meal, not "Schätzung" (#3297).
+  const estimate = { kind: "estimate", amount: 1, unit: "Portion" };
+  assert.equal(context.nutritionComponentSource(estimate, "Foto"), "Foto");
+  assert.equal(context.nutritionComponentSource(estimate), "Erfasst");
+  const details = context.nutritionComponentDetails({ source: "coach", nutrition_basis: { kind: "composite", components: [{ name: "Pasta", nutrition_basis: estimate }] } });
+  assert.match(JSON.stringify(details), /"Coach"/);
   assert.equal(context.nutritionBasisLabel(database, {}, "Erfasst"), "Datenbankprodukt · Haferdrink (Open Food Facts) · 50 ml");
   assert.equal(context.nutritionBasisLabel(own, {}, "Erfasst"), "Lokales Produkt · Whey (packaging_label) · 50 ml");
 });

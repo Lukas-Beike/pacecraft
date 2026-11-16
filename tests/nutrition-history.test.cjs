@@ -35,7 +35,7 @@ test("a diary card marks an estimated meal and its button flips the flag", async
   let resets = 0;
   const receipts = [];
   const status = { textContent: "" };
-  const ctx = extractFunctions("nutrition.js", ["nutritionMealTitle", "nutritionCard", "nutritionEstimateChip", "nutritionEntryActions", "markNutritionEstimate"], {
+  const ctx = extractFunctions("nutrition.js", ["nutritionMealTitle", "NUTRITION_SOURCE_LABELS", "nutritionCard", "nutritionEstimateChip", "nutritionEntryActions", "markNutritionEstimate"], {
     h, document: { querySelector: () => status },
     createStatusChip: (label) => h("span", null, label),
     nutritionBasisLabel: () => "", nutritionSessionBlock: () => null, nutritionComponentDetails: () => null,

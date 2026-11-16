@@ -539,7 +539,7 @@
   function renderAerobic(payload, content) {
     const aerobic = payload.analysis?.aerobic;
     if (aerobic) {
-      content.append(h("h3", null, "Herzfrequenzdrift", " ", createEstimateChip()));
+      content.append(h("h3", null, "Herzfrequenzdrift"));
       let description = aerobic.reason;
       if (aerobic.status === "ok") {
         const longSession = aerobic.long_session ? " · lange Einheit" : "";
@@ -560,7 +560,6 @@
         const measurement = point.watts == null ? "keine lückenlose Messung" : `${point.watts} W`;
         content.append(h("p", null, `${duration}: ${measurement}`));
       }
-      content.append(h("p", "muted", "Zeitgewichtete Mittelwerte aus den Originaldaten dieser Aufzeichnung. Keine FTP-, Critical-Power- oder W′-Schätzung; Nullleistung zählt, Sensorausfälle und Stopps unterbrechen das Fenster."));
     }
   }
 

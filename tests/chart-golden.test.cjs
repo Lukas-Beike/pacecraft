@@ -49,7 +49,7 @@ function chartContext(innerWidth) {
   const document = chartDocument();
   const AppFormat = require("../public/format.js");
   const context = vm.createContext({ document, AppFormat, innerWidth, innerHeight: 800, state: { data: { profile: { timezone: "Europe/Berlin" }, configured: {} } }, history: { state: {}, replaceState() {}, pushState() {} }, location: { href: "" }, addEventListener() {}, api: async () => ({}), AppViewRefresh: { create: () => () => {} }, matchMedia: () => ({ matches: false, addEventListener() {} }) });
-  extractFunctions("components.js", ["h", "SVG_NS", "svgNode", "table", "createStatusChip", "createEstimateChip", "createLoadingState", "createErrorState", "DATA_LOAD_TIMEOUT_MS"], context);
+  extractFunctions("components.js", ["h", "SVG_NS", "svgNode", "table", "createStatusChip", "createLoadingState", "createErrorState", "DATA_LOAD_TIMEOUT_MS"], context);
   extractFunctions("shared.js", ["makeScrollRegionFocusable", "dateLabel", "formatDuration", "formatPace"], context);
   extractFunctions("plan-views.js", ["calendarIntensityLabel"], context);
   return context;
@@ -67,7 +67,7 @@ test("an analysis chart keeps its rendered tree: pace axis in s/km, a range band
   ] }];
   assert.equal(typeof addDateKey, "function");
   expectGolden("analysis-pace", context.analysisChart("Laufpace", pace, "s/km", "2026-10-05", "2026-10-08", "Pace aus Garmin."));
-  expectGolden("analysis-target", context.analysisChart("Schlaf", sleep, "h", "2026-10-05", "2026-10-07", "Schlaf aus Garmin.", { estimate: true }));
+  expectGolden("analysis-target", context.analysisChart("Schlaf", sleep, "h", "2026-10-05", "2026-10-07", "Schlaf aus Garmin."));
   const narrow = chartContext(390);
   extractFunctions("views.js", ["dateFromKey", "localDateKey", "addDateKey"], narrow);
   loadPublicScript("analysis.js", narrow);
