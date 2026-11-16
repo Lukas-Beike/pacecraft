@@ -31,7 +31,13 @@ from backend.performance.planned_targets import (
     FAIR_SHARE_PCT,
     adherence_band,
 )
-from backend.performance.session_execution import comparison_metrics
+from backend.performance.session_execution import (
+    HR_SPIKE_BPM,
+    HR_SPIKE_SHARE,
+    SPEED_JUMP_MPS,
+    SPEED_JUMP_SHARE,
+    comparison_metrics,
+)
 
 METHOD: Final = "session-report-v1"
 SCOPE: Final = (
@@ -105,6 +111,10 @@ _WEIGHT: Final = {
     # Estimates: shown, never a finding alone.
     "grade_adjusted_pace": 0,
     "wind": 0,
+    # Facts the report passes on; they never decide (#3084 Part 3c).
+    "training_effect": 0,
+    "data_quality": 0,
+    "strength_before": 0,
 }
 
 
@@ -1223,7 +1233,7 @@ def _condition_checks(facts: _Facts) -> list[dict[str, Any]]:
     never decides. RPE is judged against the athlete's own rated sessions only;
     without five of them at the same intensity it is unknown.
     """
-    checks: list[dict[str, Any]] = []
+    checks: list[dict[str, Any]] = _fact_checks(facts)
     if facts.sport == "run" and not summary_is_indoor(facts.session):
         title = "Steigungsbereinigte Pace (GAP)"
         gap = session_conditions.grade_adjusted_pace(facts.result)
@@ -1420,4 +1430,113 @@ def _wind_explains(part: float | None, compared: float | None) -> bool:
         and compared is not None
         and part >= session_conditions.WIND_EXPLAINS_MPS
         and part - compared >= session_conditions.WIND_SECOND_SIGNAL_MPS
+    )
+
+
+def _fact_checks(facts: _Facts) -> list[dict[str, Any]]:
+    """Facts passed on with their source, never a finding (#3084 Part 3c).
+
+    The provider's training effect, the data-quality rules the other checks
+    apply, and the strength sessions in the 48 h before a run or ride.
+    """
+    checks = [_training_effect(facts)]
+    quality = _mapping(facts.execution.get("data_quality"))
+    if quality:
+        checks.append(_data_quality(quality))
+    before = _mapping(facts.result.get("strength_before"))
+    if before and facts.sport in ("run", "ride"):
+        checks.append(_strength_before(before))
+    return checks
+
+
+def _fact(key: str, title: str, value: Any, rule: str, basis: str) -> dict[str, Any]:
+    return _judged(
+        key,
+        title,
+        value=value,
+        unit=None,
+        rule=rule,
+        threshold=0,
+        measure=0,
+        basis=basis,
+        notable=False,
+    )
+
+
+def _training_effect(facts: _Facts) -> dict[str, Any]:
+    title = "Trainingseffekt (Anbieter)"
+    label = _mapping(facts.result.get("training_effect_label"))
+    aerobic = facts.metric("aerobic_training_effect")
+    anaerobic = facts.metric("anaerobic_training_effect")
+    if aerobic is None and anaerobic is None and not label.get("value"):
+        return _unknown(
+            "training_effect",
+            title,
+            "Kein Trainingseffekt vom Anbieter.",
+            basis="provider",
+        )
+    return _fact(
+        "training_effect",
+        title,
+        {
+            "aerobic": aerobic,
+            "anaerobic": anaerobic,
+            "label": label.get("value"),
+            "source": label.get("source"),
+        },
+        "Einschätzung des Anbieters, unverändert weitergegeben; kein eigenes Urteil",
+        "provider",
+    )
+
+
+def _data_quality(quality: Mapping[str, Any]) -> dict[str, Any]:
+    """Which data the quality rules doubt; the checks that read them are unknown."""
+    doubted = {
+        name: state
+        for name, state in quality.items()
+        if isinstance(state, str) and state != "ok"
+    }
+    return _fact(
+        "data_quality",
+        "Datenqualität",
+        {
+            "heart_rate": quality.get("heart_rate"),
+            "speed": quality.get("speed"),
+            "doubted": sorted(doubted),
+        },
+        f"Herzfrequenz: Spitzen über {HR_SPIKE_BPM:.0f} bpm in mehr als "
+        f"{HR_SPIKE_SHARE * 100:.0f} % der Paare oder Kadenz-Kopplung; Tempo: "
+        f"Sprünge über {SPEED_JUMP_MPS:g} m/s in mehr als "
+        f"{SPEED_JUMP_SHARE * 100:.0f} % der Paare. Prüfungen auf bezweifelten "
+        "Daten sind unbekannt",
+        "fixed",
+    )
+
+
+def _strength_before(before: Mapping[str, Any]) -> dict[str, Any]:
+    title = "Kraft in den 48 h davor"
+    if before.get("status") != "ok":
+        return _unknown(
+            "strength_before",
+            title,
+            str(before.get("reason") or "Krafteinheiten nicht lesbar."),
+        )
+    sessions = [
+        item for item in before.get("sessions") or () if isinstance(item, Mapping)
+    ]
+    hours = [_number(item.get("hours_before")) for item in sessions]
+    known = [value for value in hours if value is not None]
+    return _fact(
+        "strength_before",
+        title,
+        {
+            "sessions": len(sessions),
+            "legs": sum(1 for item in sessions if item.get("legs")),
+            "intensities": [item.get("intensity") for item in sessions],
+            "closest_hours_before": round(min(known), 1) if known else None,
+            "confirmed": before.get("origin") == "completed",
+        },
+        "Krafteinheiten in den 48 h vor dem Start: erledigt, sonst geplant und "
+        "nicht bestätigt; nur Fakten, keine Ursache",
+        "fixed",
     )
