@@ -181,7 +181,7 @@ function nutritionComponentDetails(item) {
       h("small", null, nutritionComponentSource(component.nutrition_basis))))));
 }
 
-const NUTRITION_SESSION_SLOTS = ["pre_session", "during_session"];
+const NUTRITION_SESSION_SLOTS = new Set(["pre_session", "during_session"]);
 const NUTRITION_SPORTS = { ride: "Rad", run: "Lauf", swim: "Schwimmen", strength: "Kraft", walk: "Gehen", hike: "Wandern" };
 
 // "Rad · 09:15 · 3:10 h"
@@ -203,7 +203,7 @@ async function chooseNutritionSession(item, session) {
 
 // The session chip of a "Vor/Während der Einheit" entry; an open one offers the day's sessions to choose from.
 function nutritionSessionBlock(item, sessions) {
-  if (!NUTRITION_SESSION_SLOTS.includes(item.meal_type)) return null;
+  if (!NUTRITION_SESSION_SLOTS.has(item.meal_type)) return null;
   if (item.session) return h("p", "nutrition-session", nutritionSessionLabel(item.session));
   const block = h("div", "nutrition-session-open", h("p", "nutrition-session nutrition-session-pending", "Einheit noch nicht zugeordnet"));
   if (sessions.length) {
@@ -232,11 +232,12 @@ function nutritionCard(item, template, sessions = []) {
   const isDefaultSource = !template && item.source === "manual" && item.sync_state !== "synced" && basisLabel === sourceLabel;
   const sourceSuffix = template ? "" : syncLabel;
   const sourceText = basisLabel && !isDefaultSource ? basisLabel + sourceSuffix : "";
+  const volume = item.volume_ml > 0 ? ` · ${AppFormat.number(item.volume_ml, { digits: 0 })} ml` : "";
   const card = h("article", "nutrition-card",
     h("h3", null, template ? item.name : nutritionMealTitle(item)),
     template ? null : nutritionSessionBlock(item, sessions),
     h("p", null, item.description),
-    h("p", null, `${nutritionNumber(item.kcal)} kcal · KH ${nutritionNumber(item.carbs_g)} g · Protein ${nutritionNumber(item.protein_g)} g · Fett ${nutritionNumber(item.fat_g)} g${template ? " / Portion" : ""}${item.volume_ml > 0 ? ` · ${AppFormat.number(item.volume_ml, { digits: 0 })} ml` : ""}`),
+    h("p", null, `${nutritionNumber(item.kcal)} kcal · KH ${nutritionNumber(item.carbs_g)} g · Protein ${nutritionNumber(item.protein_g)} g · Fett ${nutritionNumber(item.fat_g)} g${template ? " / Portion" : ""}${volume}`),
     sourceText ? h("small", null, sourceText) : null);
   if (!template) {
     const details = nutritionComponentDetails(item);

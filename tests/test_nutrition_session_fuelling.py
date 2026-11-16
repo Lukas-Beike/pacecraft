@@ -416,6 +416,24 @@ class SessionIntakeTests(unittest.TestCase):
             )
         self.assertEqual(0, refilled)
         self.assertIsNone(self.service.get_meal(open_entry["id"])["session_id"])
+        # Undoing any other edit of an open entry is no choice: it still
+        # attaches on the next refresh (Gitar on #3254).
+        late = self.log("during_session", "10:50")
+        with self.manager.unit_of_work() as db:
+            self.service.restore_in_transaction(
+                db,
+                late["id"],
+                {**self.service.get_meal(late["id"]), "session_id": None},
+                {
+                    **self.service.get_meal(late["id"]),
+                    "session_id": None,
+                    "description": "Riegel",
+                },
+            )
+            refilled = reattach_entries(
+                db, [date(2026, 11, 14)], self.summaries_for_hook, STAMP
+            )
+        self.assertEqual("act_a", self.service.get_meal(late["id"])["session_id"])
 
     def summaries_for_hook(self, start, end):
         return self.summaries(None, start, end)

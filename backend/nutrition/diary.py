@@ -755,9 +755,15 @@ class NutritionDiaryService:
             "id": entity_id,
             "sync_state": "local",
         }
-        # The athlete's undo is a choice of its own: the restored session (also
-        # an empty one) stands, so a refresh never fills it again (#3234).
-        entry["session_chosen"] = entry.get("meal_type") in SESSION_MEAL_TYPES
+        # An undo that changes the session is the athlete's choice: the restored
+        # session (also an empty one) stands, so a refresh never fills it again
+        # (#3234). Any other undo keeps the entry's mark, so an open entry
+        # still attaches on the next refresh (Gitar on #3254).
+        before = current or {}
+        entry["session_chosen"] = entry.get("meal_type") in SESSION_MEAL_TYPES and (
+            before.get("session_id") != entry.get("session_id")
+            or bool(before.get("session_chosen"))
+        )
         if current:
             return self._nutrition_repository.update(db, entity_id, entry)
         return self._nutrition_repository.create(db, entry)
