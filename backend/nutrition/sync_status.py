@@ -20,6 +20,9 @@ from backend.performance.daily_health import (
 )
 from backend.runtime.ports import ObservationReader
 
+# Closed days the expenditure gap counts of the diagnostics cover (#3157).
+EXPENDITURE_GAP_DAYS = 90
+
 
 class NutritionSyncStatusService:
     def __init__(
@@ -82,6 +85,45 @@ class NutritionSyncStatusService:
             end=date.fromisoformat(end),
         )
         return _filter_targeted_missing_energy(measured, state, dates, retrievals)
+
+    def expenditure_gaps(self, db: Any) -> dict[str, int]:
+        """Counts only, no dates or values: why closed days lack a Verlauf total.
+
+        Of the last ``EXPENDITURE_GAP_DAYS`` closed days, ``with_total`` show a
+        Garmin daily total; ``emptied_by_refresh_mark`` have one stored, but a
+        targeted refresh marked the day read after its latest Garmin retrieval
+        (``_filter_targeted_missing_energy``); ``without_total`` have no
+        canonical total, of which ``with_active_only`` still have active kcal
+        (#3157).
+        """
+        today = self._local_now().date()
+        dates = [
+            (today - timedelta(days=offset)).isoformat()
+            for offset in range(EXPENDITURE_GAP_DAYS, 0, -1)
+        ]
+        measured, retrievals = read_daily_health_with_retrievals(
+            resolve_reader(self._observation_reader(), db),
+            db,
+            start=date.fromisoformat(dates[0]),
+            end=date.fromisoformat(dates[-1]),
+        )
+        shown = _filter_targeted_missing_energy(
+            measured, garmin_store.read_state(db), dates, retrievals
+        )
+        counts = dict.fromkeys(
+            ("with_total", "emptied_by_refresh_mark", "without_total"), 0
+        )
+        active_only = 0
+        for day in dates:
+            stored = measured.get(day, {})
+            if shown.get(day, {}).get("calories") is not None:
+                counts["with_total"] += 1
+            elif stored.get("calories") is not None:
+                counts["emptied_by_refresh_mark"] += 1
+            else:
+                counts["without_total"] += 1
+                active_only += stored.get("active_kcal") is not None
+        return {"days": EXPENDITURE_GAP_DAYS, **counts, "with_active_only": active_only}
 
     def get_sync_snapshot(self, meal_date: str) -> dict[str, Any]:
         validated_date = validate_iso_date(meal_date)

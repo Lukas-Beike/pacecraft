@@ -209,6 +209,7 @@ class DiagnosticReportServiceTests(unittest.TestCase):
                 "plan_sync",
                 "garmin_past_workout_removal",
                 "garmin_daily_calories",
+                "nutrition_expenditure_gaps",
                 "canonical_coverage",
                 "canonical_backfill",
                 "canonical_read",

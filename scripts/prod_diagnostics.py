@@ -78,6 +78,12 @@ SECTION_FIELDS = {
     # Past Garmin days without daily calories (#3157).
     "garmin_daily_calories": re.compile(
         r"status|days|complete|partial|without_calories|without_summary"
+        r"|several_summaries"
+    ),
+    # Why closed days lack a Verlauf expenditure (#3157).
+    "nutrition_expenditure_gaps": re.compile(
+        r"status|days|with_total|emptied_by_refresh_mark|without_total"
+        r"|with_active_only"
     ),
     "garmin_past_workout_removal": re.compile(
         r"status|one_time_done|checked|removed|last_run_hours|last_outcome"

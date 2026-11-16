@@ -126,6 +126,8 @@ class DiagnosticReportDependencies:
     heavy_read_gate: Callable[[], dict[str, Any]] | None = None
     # The adaptive expenditure's basis in the read snapshot, counts only (#3100).
     energy_balance: Callable[[Any], dict[str, Any]] | None = None
+    # Why closed days lack a Verlauf expenditure, counts only (#3157).
+    expenditure_gaps: Callable[[Any], dict[str, Any]] | None = None
     # The all-time curve build: state word, count and last duration (#2852).
     curve_build: Callable[[], dict[str, Any]] | None = None
     # The database file: its sizes, free space and recovery copies (#2848).
@@ -406,6 +408,10 @@ class DiagnosticReportService:
                     lambda: summarize_daily_calories(
                         db, date.fromisoformat(self._local_today(athlete_profile()))
                     ),
+                ),
+                "nutrition_expenditure_gaps": section(
+                    "nutrition_expenditure_gaps",
+                    lambda: deps.expenditure_gaps(db) if deps.expenditure_gaps else {},
                 ),
                 "garmin_strength_push": section(
                     "garmin_strength_push",

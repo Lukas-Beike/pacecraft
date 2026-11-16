@@ -207,10 +207,13 @@ def _calorie_fields(row: Mapping[str, Any]) -> int:
     )
 
 
-def daily_calorie_fields(db: Any, today: date) -> dict[str, int]:
+def daily_calorie_fields(
+    db: Any, today: date, rows_per_day: dict[str, int] | None = None
+) -> dict[str, int]:
     """Per ended day of the last ``CALORIE_DAYS``: total and active kcal stored (0-2).
 
-    A day without a stored daily summary is absent (#3157).
+    A day without a stored daily summary is absent (#3157). ``rows_per_day``,
+    when given, receives the number of stored summaries of each day.
     """
     first = (today - timedelta(days=CALORIE_DAYS)).isoformat()
     last = (today - timedelta(days=1)).isoformat()
@@ -222,6 +225,8 @@ def daily_calorie_fields(db: Any, today: date) -> dict[str, int]:
         day = str(first_present(row, GARMIN_DATE_ALIASES) or "")[:10]
         if first <= day <= last:
             fields[day] = max(fields.get(day, 0), _calorie_fields(row))
+            if rows_per_day is not None:
+                rows_per_day[day] = rows_per_day.get(day, 0) + 1
     return fields
 
 
@@ -230,15 +235,18 @@ def summarize_daily_calories(db: Any, today: date) -> dict[str, int]:
 
     A day is ``complete`` with total and active kcal, ``partial`` with one,
     ``without_calories`` with a stored summary holding neither, and
-    ``without_summary`` when none is stored.
+    ``without_summary`` when none is stored. ``several_summaries`` counts the
+    days that hold more than one stored summary.
     """
-    counts = list(daily_calorie_fields(db, today).values())
+    rows_per_day: dict[str, int] = {}
+    counts = list(daily_calorie_fields(db, today, rows_per_day).values())
     return {
         "days": CALORIE_DAYS,
         "complete": counts.count(2),
         "partial": counts.count(1),
         "without_calories": counts.count(0),
         "without_summary": CALORIE_DAYS - len(counts),
+        "several_summaries": sum(1 for rows in rows_per_day.values() if rows > 1),
     }
 
 
