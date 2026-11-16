@@ -30,6 +30,10 @@ The method, version ``METHOD_VERSION``:
   recording yields an estimate only with enough windows, a heart rate and alpha1
   range that crosses 0.75, a falling line, and a crossing inside the heart rates
   it observed. The RR series is an input only and is never kept.
+* Window series (version 3, #3273): a recording with enough windows keeps each
+  analysed window (start on the beat clock, mean heart rate, alpha1, artifact
+  share), with or without a 0.75 crossing, so later thresholds are computed
+  from stored data.
 
 Pure; stdlib and canonical records only.
 """
@@ -42,10 +46,14 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Final
 
-from backend.canonical.activity_detail import ActivityDfaAlpha1
+from backend.canonical.activity_detail import (
+    DFA_ESTIMATE_BOUNDS_BPM,
+    ActivityDfaAlpha1,
+    DfaWindow,
+)
 from backend.canonical.vocabulary import DfaQuality
 
-METHOD_VERSION: Final = 2
+METHOD_VERSION: Final = 3
 
 MIN_RR_MS: Final = 300.0
 MAX_RR_MS: Final = 2000.0
@@ -74,10 +82,13 @@ GOOD_MIN_R_SQUARED: Final = 0.5
 
 @dataclass(frozen=True, slots=True)
 class Window:
-    """One analysed window: its mean heart rate and its alpha1."""
+    """One analysed window: its start on the beat clock, mean heart rate, alpha1
+    and the share of its beats that artifact correction dropped."""
 
     heart_rate_bpm: float
     alpha1: float
+    start_s: float = 0.0
+    artifact_share: float = 0.0
 
 
 def artifact_flags(rr_ms: Sequence[float]) -> list[bool]:
@@ -251,8 +262,13 @@ def detrend(series: Sequence[float], smoothing: float = DETREND_LAMBDA) -> list[
     return [series[i] - trend[i] for i in range(count)]
 
 
-def _segment_windows(rr_ms: Sequence[float]) -> tuple[list[Window], int]:
-    """The steady windows of one gap-free segment and its number of artifacts."""
+def _segment_windows(
+    rr_ms: Sequence[float], offset_s: float = 0.0
+) -> tuple[list[Window], int, float]:
+    """The steady windows of one gap-free segment, its artifacts and its length (s).
+
+    ``offset_s`` is where the segment starts on the recording's beat clock.
+    """
     flags = artifact_flags(rr_ms)
     artifacts = sum(flags)
     kept_index = [i for i, flagged in enumerate(flags) if not flagged]
@@ -269,11 +285,13 @@ def _segment_windows(rr_ms: Sequence[float]) -> tuple[list[Window], int]:
     while start + WINDOW_S <= elapsed:
         low = bisect_right(ends, start)
         high = bisect_right(ends, start + WINDOW_S)
+        window_start = start
         start += STRIDE_S
         beats = high - low
         if beats < MIN_WINDOW_BEATS:
             continue
-        if sum(flags[low:high]) / beats > MAX_WINDOW_ARTIFACT_SHARE:
+        dropped = sum(flags[low:high]) / beats
+        if dropped > MAX_WINDOW_ARTIFACT_SHARE:
             continue
         kept = [i for i in range(low, high) if not flags[i]]
         if len(kept) < MIN_WINDOW_BEATS:
@@ -285,8 +303,15 @@ def _segment_windows(rr_ms: Sequence[float]) -> tuple[list[Window], int]:
             continue
         exponent = alpha1([residual_at[i] for i in kept])
         if exponent is not None:
-            windows.append(Window(_mean_heart_rate(rates), exponent))
-    return windows, artifacts
+            windows.append(
+                Window(
+                    _mean_heart_rate(rates),
+                    exponent,
+                    offset_s + window_start,
+                    dropped,
+                )
+            )
+    return windows, artifacts, elapsed
 
 
 def rolling_windows(
@@ -301,21 +326,53 @@ def rolling_windows(
     """
     windows: list[Window] = []
     artifacts = beats = 0
+    offset = 0.0
     for segment in segments:
-        found, flagged = _segment_windows(segment)
+        found, flagged, length = _segment_windows(segment, offset)
         windows.extend(found)
         artifacts += flagged
         beats += len(segment)
+        offset += length
     return windows, (artifacts / beats if beats else 0.0)
 
 
 def first_threshold(
     segments: Sequence[Sequence[float]],
 ) -> ActivityDfaAlpha1 | None:
-    """The first threshold heart rate one recording gives, or None without a crossing."""
+    """The DFA-a1 result of one recording, or None with too few windows.
+
+    The result keeps the window series; its 0.75 estimate and quality are None
+    when the recording does not cross 0.75 (``_crossing``).
+    """
     windows, share = rolling_windows(segments)
     if len(windows) < MIN_WINDOWS:
         return None
+    crossing = _crossing(windows, share)
+    try:
+        return ActivityDfaAlpha1(
+            estimate_bpm=None if crossing is None else crossing[0],
+            windows=len(windows),
+            artifact_share=round(share, 4),
+            quality=None if crossing is None else crossing[1],
+            method=METHOD_VERSION,
+            series=tuple(
+                DfaWindow(
+                    start_s=round(window.start_s, 1),
+                    heart_rate_bpm=round(window.heart_rate_bpm, 1),
+                    alpha1=round(window.alpha1, 3),
+                    artifact_share=round(window.artifact_share, 4),
+                )
+                for window in windows
+            ),
+        )
+    except TypeError, ValueError:
+        return None
+
+
+def _crossing(
+    windows: Sequence[Window], share: float
+) -> tuple[float, DfaQuality] | None:
+    """The heart rate where the windows' line reaches 0.75 and its quality, or None."""
     rates = [window.heart_rate_bpm for window in windows]
     exponents = [window.alpha1 for window in windows]
     if max(rates) - min(rates) < MIN_HR_SPREAD_BPM:
@@ -334,18 +391,11 @@ def first_threshold(
     estimate = (THRESHOLD_ALPHA1 - intercept) / slope
     if not min(rates) <= estimate <= max(rates):
         return None
+    if not DFA_ESTIMATE_BOUNDS_BPM[0] <= estimate <= DFA_ESTIMATE_BOUNDS_BPM[1]:
+        return None
     good = (
         len(windows) >= GOOD_MIN_WINDOWS
         and share <= GOOD_MAX_ARTIFACT_SHARE
         and r_squared >= GOOD_MIN_R_SQUARED
     )
-    try:
-        return ActivityDfaAlpha1(
-            estimate_bpm=round(estimate, 1),
-            windows=len(windows),
-            artifact_share=round(share, 4),
-            quality=DfaQuality.GOOD if good else DfaQuality.LOW,
-            method=METHOD_VERSION,
-        )
-    except TypeError, ValueError:
-        return None
+    return round(estimate, 1), DfaQuality.GOOD if good else DfaQuality.LOW

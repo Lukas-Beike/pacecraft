@@ -22,6 +22,7 @@ from backend.canonical.vocabulary import ProviderId
 from backend.coach.morning import MorningCheckinStateService
 from backend.config import DEFAULT_ANTHROPIC_BASE_URL, DEFAULT_OPENAI_BASE_URL, Config
 from backend.db import planning_store
+from backend.db.activity_detail_store import dfa_series_counts
 from backend.db.manager import DatabaseManager
 from backend.db.repositories import KeyValueRepository
 from backend.diagnostics.canonical_backfill import (
@@ -462,6 +463,15 @@ class DiagnosticReportService:
                 ),
                 "fit_inventory": section(
                     "fit_inventory", lambda: fit_inventory_counts(db, key_values)
+                ),
+                # Chest-strap runs of 60 days by DFA-a1 method, counts only (#3273).
+                "dfa_series": section(
+                    "dfa_series",
+                    lambda: dfa_series_counts(
+                        db,
+                        since=date.fromisoformat(self._local_today(athlete_profile()))
+                        - timedelta(days=59),
+                    ),
                 ),
                 "garmin_detail_fallback": section(
                     "garmin_detail_fallback",

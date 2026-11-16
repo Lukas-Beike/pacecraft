@@ -6,6 +6,7 @@ import sqlite3
 import tempfile
 import threading
 import unittest
+from dataclasses import replace
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -28,7 +29,11 @@ from backend.athlete.profile import (
     DEFAULT_PROFILE,
     ProfileService,
 )
-from backend.canonical.activity_detail import ActivityDfaAlpha1, ActivityStreamSet
+from backend.canonical.activity_detail import (
+    ActivityDfaAlpha1,
+    ActivityStreamSet,
+    DfaWindow,
+)
 from backend.canonical.first_threshold import (
     FIRST_THRESHOLD_FIELD,
     FIRST_THRESHOLD_ORIGIN_FIELD,
@@ -40,6 +45,7 @@ from backend.canonical.records import Provenance
 from backend.canonical.vocabulary import (
     ActivityDetailOrigin,
     DfaQuality,
+    HeartRateSource,
     ProviderId,
     RecordingOrigin,
     SourceKind,
@@ -233,7 +239,9 @@ class CapSourceTests(unittest.TestCase):
         self.assertEqual(thresholds["run_hr_caps"]["easy"]["source"], "estimated")
 
 
-def stream_set(activity_id, estimate=None, *, provider=ProviderId.GARMIN):
+def stream_set(
+    activity_id, estimate=None, *, provider=ProviderId.GARMIN, hr_source=None
+):
     return ActivityStreamSet(
         provider_activity_id=activity_id,
         provenance=Provenance(
@@ -251,6 +259,7 @@ def stream_set(activity_id, estimate=None, *, provider=ProviderId.GARMIN):
             StreamChannel.HEART_RATE_BPM: (120.0, 121.0, 122.0),
         },
         dfa_alpha1=estimate,
+        hr_source=hr_source,
     )
 
 
@@ -317,7 +326,14 @@ def add_record(db, activity_id, provider, record_id, day, sport):
 
 
 def add_run(
-    case: Any, days_ago, estimate, *, sport="run", provider="garmin", session=None
+    case: Any,
+    days_ago,
+    estimate,
+    *,
+    sport="run",
+    provider="garmin",
+    session=None,
+    hr_source=None,
 ):
     """A live session with one record and a stream set holding ``estimate``."""
     case.counter += 1
@@ -330,7 +346,9 @@ def add_run(
         add_record(db, activity_id, provider, record_id, day, sport)
         replace_detail_set(
             db,
-            stream_set(record_id, estimate, provider=ProviderId(provider)),
+            stream_set(
+                record_id, estimate, provider=ProviderId(provider), hr_source=hr_source
+            ),
             mapper_version=6,
             summary_sha256=None,
             now=STAMP,
@@ -375,6 +393,120 @@ class StoredEstimateTests(unittest.TestCase):
         self.assertIsNone(row["dfa_alpha1"])
         for text in ("{}", '{"estimate_bpm": 5000}', '{"quality": "x"}', "[]"):
             self.assertIsNone(stored_dfa_alpha1(text), text)
+
+    def test_the_series_round_trips_and_a_bad_series_keeps_the_estimate(self) -> None:
+        # #3273: a method-3 row keeps its windows; a malformed series reads as an
+        # empty one (not evaluated) and never drops the 0.75 result.
+        window = DfaWindow(
+            start_s=30.0, heart_rate_bpm=150.2, alpha1=0.81, artifact_share=0.0
+        )
+        add_run(self, 3, replace(result(152.5), method=3, series=(window,)))
+        with self.manager.reader() as db:
+            text = db.execute("SELECT dfa_alpha1 FROM activity_detail_sets").fetchone()[
+                "dfa_alpha1"
+            ]
+        read = stored_dfa_alpha1(text)
+        assert read is not None
+        self.assertEqual(read.series, (window,))
+        self.assertTrue(read.series_evaluated)
+        for series in ('"x"', "[[1, 2]]", "[[0, 500, 1, 0]]", "[[0, 150, 1, 2]]"):
+            item = {**json.loads(text), "series": json.loads(series)}
+            broken = stored_dfa_alpha1(json.dumps(item))
+            assert broken is not None, series
+            self.assertEqual(broken.estimate_bpm, 152.5)
+            self.assertEqual(broken.series, ())
+            self.assertFalse(broken.series_evaluated)
+
+    def test_a_series_only_row_reads_without_an_estimate_and_older_builds_skip_it(
+        self,
+    ) -> None:
+        # A recording without a 0.75 crossing stores null estimate and quality:
+        # this build reads its series; a build before method 3 required a number
+        # for estimate_bpm and so reads the row as no result at all (rollback).
+        window = DfaWindow(
+            start_s=0.0, heart_rate_bpm=171.0, alpha1=0.48, artifact_share=0.0
+        )
+        add_run(
+            self,
+            3,
+            ActivityDfaAlpha1(
+                estimate_bpm=None,
+                windows=1,
+                artifact_share=0.0,
+                quality=None,
+                method=3,
+                series=(window,),
+            ),
+        )
+        with self.manager.reader() as db:
+            text = db.execute("SELECT dfa_alpha1 FROM activity_detail_sets").fetchone()[
+                "dfa_alpha1"
+            ]
+            rows = first_threshold_results(
+                db, since=TODAY - timedelta(days=59), until=TODAY, sport=Sport.RUN
+            )
+        item = json.loads(text)
+        self.assertIsNone(item["estimate_bpm"])
+        self.assertIsNone(item["quality"])
+        read = stored_dfa_alpha1(text)
+        assert read is not None
+        self.assertEqual(read.series, (window,))
+        self.assertEqual(rows, [])  # the LT1 reader skips it
+
+    def test_a_method_2_row_is_not_evaluated_and_still_counts_for_lt1(self) -> None:
+        # Rows stored before #3273 have no series: "not evaluated", never "no
+        # crossing"; their 0.75 estimate stays an LT1 input.
+        add_run(self, 3, replace(result(150.0), method=2))
+        with self.manager.reader() as db:
+            rows = first_threshold_results(
+                db, since=TODAY - timedelta(days=59), until=TODAY, sport=Sport.RUN
+            )
+        self.assertEqual([row.result.estimate_bpm for row in rows], [150.0])
+        self.assertFalse(rows[0].result.series_evaluated)
+
+    def test_diagnostics_count_chest_strap_runs_by_dfa_method(self) -> None:
+        # #3273: counts only, chest-strap runs of the window; a ride, an optical
+        # run and an older run stay out.
+        window = DfaWindow(
+            start_s=0.0, heart_rate_bpm=150.0, alpha1=0.8, artifact_share=0.0
+        )
+        strap = HeartRateSource.CHEST_STRAP
+        add_run(
+            self, 2, replace(result(150.0), method=3, series=(window,)), hr_source=strap
+        )
+        add_run(self, 3, replace(result(151.0), method=2), hr_source=strap)
+        add_run(self, 4, None, hr_source=strap)
+        add_run(self, 5, None, sport="ride", hr_source=strap)
+        add_run(
+            self, 6, replace(result(150.0), method=2), hr_source=HeartRateSource.OPTICAL
+        )
+        add_run(self, 70, replace(result(150.0), method=2), hr_source=strap)
+        with self.manager.reader() as db:
+            counts = activity_detail_store.dfa_series_counts(
+                db, since=TODAY - timedelta(days=59)
+            )
+        self.assertEqual(
+            counts,
+            {"runs": 3, "with_series": 1, "before_series": 1, "without_result": 1},
+        )
+
+    def test_a_record_with_the_series_wins_within_its_session(self) -> None:
+        window = DfaWindow(
+            start_s=0.0, heart_rate_bpm=150.0, alpha1=0.8, artifact_share=0.0
+        )
+        shared = add_run(self, 4, replace(result(151.0, GOOD, 60), method=2))
+        add_run(
+            self,
+            4,
+            replace(result(149.0, LOW, 20), method=3, series=(window,)),
+            provider="wahoo",
+            session=shared,
+        )
+        with self.manager.reader() as db:
+            rows = first_threshold_results(
+                db, since=TODAY - timedelta(days=59), until=TODAY, sport=Sport.RUN
+            )
+        self.assertEqual([row.result.estimate_bpm for row in rows], [149.0])
 
     def test_reader_returns_one_estimate_per_live_run_session_in_the_range(
         self,
@@ -742,10 +874,22 @@ class RrNeverLeavesTheMapperTests(unittest.TestCase):
                 for row in db.execute("SELECT channel FROM activity_stream_channels")
             ]
             export = [dict(row) for row in activity_detail_store.stream_export_rows(db)]
+        stored = json.loads(rows[0]["dfa_alpha1"])
+        # Since method 3 (#3273) the window series is kept: per window only its
+        # start, mean heart rate, alpha1 and artifact share, never a beat.
         self.assertEqual(
-            set(json.loads(rows[0]["dfa_alpha1"])),
-            {"estimate_bpm", "windows", "artifact_share", "quality", "method"},
+            set(stored),
+            {
+                "estimate_bpm",
+                "windows",
+                "artifact_share",
+                "quality",
+                "method",
+                "series",
+            },
         )
+        self.assertEqual(len(stored["series"]), stored["windows"])
+        self.assertTrue(all(len(window) == 4 for window in stored["series"]))
         self.assertEqual(sorted(channels), ["heart_rate_bpm", "time_s"])
         view = estimate_view(
             first_threshold_estimate(

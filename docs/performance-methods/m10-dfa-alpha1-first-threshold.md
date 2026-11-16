@@ -1,8 +1,8 @@
 # M10 — First threshold heart rate from chest-strap RR intervals (DFA-α1)
 
 - **Card:** M10
-- **Card version:** 1
-- **Method ID:** dfa-alpha1-first-threshold v2 (`backend/canonical/dfa_alpha1.py:METHOD_VERSION`), athlete-level value in `backend/performance/first_threshold_estimate.py` (#2131, C-008)
+- **Card version:** 2
+- **Method ID:** dfa-alpha1-first-threshold v3 (`backend/canonical/dfa_alpha1.py:METHOD_VERSION`), athlete-level value in `backend/performance/first_threshold_estimate.py` (#2131, C-008)
 - **Status:** implemented (`backend/providers/fit_rr_mapping.py` reads the RR intervals); per-session result stored with the stream set, athlete-level estimate shown in the profile and the Coach context, adopted only by the athlete
 - **Classification:** model estimate
 - **Literature checked:** 2026-11-13
@@ -50,6 +50,11 @@ Per recording (`dfa_alpha1.first_threshold`, unit bpm):
    `(0.75 − intercept) / slope`, rounded to 0.1 bpm.
 8. **Quality:** `good` with at least 20 windows, an artifact share (dropped
    beats of all beats) of at most 0.03 and R² of at least 0.5, else `low`.
+9. **Window series (v3, card 2, #3273):** every analysed window is kept with
+   its start on the recording's beat clock (dropouts left out), its mean heart
+   rate, alpha1 and its own artifact share, also when the recording gives no
+   0.75 crossing (then estimate and quality are empty). Later thresholds are
+   computed from these stored windows; the 0.75 result is unchanged.
 
 Per athlete (`first_threshold_estimate.first_threshold_estimate`, unit percent
 of the run threshold HR, "% LSHF"):
@@ -102,7 +107,12 @@ of the run threshold HR, "% LSHF"):
   a dropout and starts a new segment.
 - The result is computed once when the stream set is mapped and stored with it
   (`activity_detail_sets.dfa_alpha1`: estimate, windows, artifact share,
-  quality, method version).
+  quality, method version and, from method 3, the window series).
+- Method 3 came without a mapper version bump (#3273, the third clause of the
+  mapper version guard): rows of method 2 hold no series and count as "not
+  evaluated" until the next bump of the Garmin and FIT detail mappers replays
+  them. The LT1 estimate reads methods 2 and 3 alike; within a session a record
+  with the series wins.
 - Athlete level: run sessions of the last 60 days up to today. Rides keep a
   stored result but do not enter the athlete-level estimate.
 - The protocol of R56 is a ramp to exhaustion; sessions here are whatever the
@@ -154,11 +164,13 @@ of the run threshold HR, "% LSHF"):
 
 ## Minimum data and stop rules
 
-- Per recording no result unless: at least 10 analysed windows; the highest
+- Per recording nothing is stored with fewer than 10 analysed windows. With
+  10 or more the window series is stored; the 0.75 estimate is kept only
+  when: at least 10 analysed windows; the highest
   window heart rate at least 10 bpm above the lowest; the lowest alpha1 at most
   0.65 and the highest at least 0.85 (0.75 ∓ 0.1); a fitted slope below zero;
   and an estimate inside the range of the observed window heart rates and
-  within 60 to 220 bpm (outside it the record is refused and no result is kept).
+  within 60 to 220 bpm (outside it no estimate is kept).
 - Athlete level: fewer than 3 qualifying `good` sessions in 60 days give no
   estimate, nothing is shown and nothing is sent to the Coach.
 - A stored estimate is replaced only through the athlete's adoption; a changed
@@ -238,7 +250,7 @@ of the run threshold HR, "% LSHF"):
 | `HRV_MESSAGE` | `78` | `backend/providers/fit_rr_mapping.py` |  |
 | `MAX_RR_INTERVALS` | `150000` | `backend/providers/fit_rr_mapping.py` | A day of beats at 100 bpm; longer series belong to no single activity. |
 | `MAX_UNACCOUNTED_S` | `10.0` | `backend/providers/fit_rr_mapping.py` | The file clock may run this far ahead of the intervals before a dropout is assumed. |
-| `METHOD_VERSION` | `2` | `backend/canonical/dfa_alpha1.py` |  |
+| `METHOD_VERSION` | `3` | `backend/canonical/dfa_alpha1.py` |  |
 | `MIN_RR_MS` | `300.0` | `backend/canonical/dfa_alpha1.py` |  |
 | `MAX_RR_MS` | `2000.0` | `backend/canonical/dfa_alpha1.py` |  |
 | `MAX_BEAT_CHANGE` | `0.2` | `backend/canonical/dfa_alpha1.py` |  |

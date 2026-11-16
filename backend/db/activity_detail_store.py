@@ -24,6 +24,7 @@ from enum import StrEnum
 from typing import Any, Final, cast
 
 from backend.canonical.activity_detail import (
+    DFA_SERIES_METHOD,
     LAP_METRIC_FIELDS,
     MAX_STREAM_POINTS,
     ActivityDetailSet,
@@ -35,6 +36,7 @@ from backend.canonical.activity_detail import (
     ActivityStrengthSet,
     ActivityStrengthSetSet,
     DeviceZoneBasis,
+    DfaWindow,
     WorkoutStep,
     ZoneBucket,
     ZoneDistribution,
@@ -884,9 +886,10 @@ def first_threshold_results(
 ) -> list[SessionFirstThreshold]:
     """Return one stored DFA-a1 estimate per live session of ``sport`` in a day range.
 
-    Records of one session that carry an estimate compete: the better quality
-    wins, then the one with more windows. Rows with an unreadable day or estimate
-    are skipped. Oldest session first.
+    Records of one session that carry an estimate compete: one of method 3 or
+    later (with its window series) wins, then the better quality, then the one
+    with more windows. Methods 2 and 3 both count. Rows with an unreadable day or
+    without a 0.75 estimate are skipped. Oldest session first.
     """
     best: dict[str, SessionFirstThreshold] = {}
     for row in db.execute(
@@ -916,7 +919,7 @@ def first_threshold_results(
             day = date.fromisoformat(str(row["day"]))
         except ValueError:
             continue
-        if result is None:
+        if result is None or result.estimate_bpm is None:
             continue
         found = best.get(row["session_id"])
         if found is None or _dfa_rank(result) > _dfa_rank(found.result):
@@ -926,8 +929,50 @@ def first_threshold_results(
     return sorted(best.values(), key=lambda item: (item.day, item.session_id))
 
 
-def _dfa_rank(result: ActivityDfaAlpha1) -> tuple[int, int]:
-    return (1 if result.quality is DfaQuality.GOOD else 0, result.windows)
+def dfa_series_counts(db: Any, *, since: date) -> dict[str, int]:
+    """Chest-strap run stream sets since ``since`` by DFA-a1 method, counts only.
+
+    ``with_series`` rows were evaluated with the window series (method 3 or
+    later, #3273), ``before_series`` rows by an earlier method, and
+    ``without_result`` rows hold no DFA-a1 result (too few windows, or a file
+    without RR intervals).
+    """
+    row = db.execute(
+        "SELECT COUNT(*) AS runs, "
+        "COALESCE(SUM(d.dfa_alpha1 IS NULL), 0) AS without_result, "
+        "COALESCE(SUM(json_extract(d.dfa_alpha1, '$.method') < ?), 0) AS before_series, "
+        "COALESCE(SUM(json_extract(d.dfa_alpha1, '$.method') >= ?), 0) AS with_series "
+        "FROM activity_detail_sets AS d "
+        "JOIN activity_records AS r ON r.provider = d.provider "
+        "AND r.provider_activity_id = d.provider_activity_id "
+        "JOIN activity_sessions AS s ON s.activity_id = r.activity_id "
+        "WHERE d.detail_kind = ? AND d.hr_source = ? AND r.state = ? "
+        "AND s.state <> ? AND r.sport = ? "
+        "AND COALESCE(s.local_date, substr(r.started_at, 1, 10)) >= ?",
+        (
+            DFA_SERIES_METHOD,
+            DFA_SERIES_METHOD,
+            ActivityDetailKind.STREAMS.value,
+            HeartRateSource.CHEST_STRAP.value,
+            ActivityRecordState.ACTIVE.value,
+            ActivitySessionState.DELETED.value,
+            Sport.RUN.value,
+            since.isoformat(),
+        ),
+    ).fetchone()
+    return {
+        key: int(row[key])
+        for key in ("runs", "with_series", "before_series", "without_result")
+    }
+
+
+def _dfa_rank(result: ActivityDfaAlpha1) -> tuple[int, int, int]:
+    """A record evaluated with the window series (method 3, #3273) first."""
+    return (
+        1 if result.method >= DFA_SERIES_METHOD else 0,
+        1 if result.quality is DfaQuality.GOOD else 0,
+        result.windows,
+    )
 
 
 def stored_strength_source(
@@ -1337,27 +1382,57 @@ def _header_fields(
 
 
 def _dfa_json(result: ActivityDfaAlpha1) -> dict[str, Any]:
-    return {
+    """The stored DFA-a1 object; the series is a list of [start_s, bpm, alpha1, share].
+
+    A result without a 0.75 crossing stores null for estimate and quality, which a
+    build before method 3 reads as no result at all (#3273).
+    """
+    value: dict[str, Any] = {
         "estimate_bpm": result.estimate_bpm,
         "windows": result.windows,
         "artifact_share": result.artifact_share,
-        "quality": result.quality.value,
+        "quality": None if result.quality is None else result.quality.value,
         "method": result.method,
     }
+    if result.series:
+        value["series"] = [
+            [w.start_s, w.heart_rate_bpm, w.alpha1, w.artifact_share]
+            for w in result.series
+        ]
+    return value
+
+
+def _dfa_series(value: object) -> tuple[DfaWindow, ...]:
+    """The stored window series; a malformed one is empty, never an error (#3273)."""
+    if not isinstance(value, list):
+        return ()
+    try:
+        return tuple(
+            DfaWindow(start_s=a, heart_rate_bpm=b, alpha1=c, artifact_share=d)
+            for a, b, c, d in value
+        )
+    except TypeError, ValueError:
+        return ()
 
 
 def stored_dfa_alpha1(text: object) -> ActivityDfaAlpha1 | None:
-    """Decode a stored first threshold estimate; an unreadable one yields None."""
+    """Decode a stored DFA-a1 result; an unreadable one yields None.
+
+    The series is decoded on its own, so a malformed series leaves the 0.75
+    result readable with an empty series.
+    """
     if text is None:
         return None
     try:
         item = json.loads(str(text))
+        quality = item["quality"]
         return ActivityDfaAlpha1(
             estimate_bpm=item["estimate_bpm"],
             windows=item["windows"],
             artifact_share=item["artifact_share"],
-            quality=DfaQuality(item["quality"]),
+            quality=None if quality is None else DfaQuality(quality),
             method=item["method"],
+            series=_dfa_series(item.get("series")),
         )
     except TypeError, ValueError, KeyError, AttributeError:
         return None

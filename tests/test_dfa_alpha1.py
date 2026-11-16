@@ -171,7 +171,7 @@ class CrossingTests(unittest.TestCase):
                 result = dfa.first_threshold([ramp(seed)])
                 self.assertIsNotNone(result)
                 assert result is not None
-                self.assertAlmostEqual(result.estimate_bpm, 153.0, delta=6.0)
+                self.assertAlmostEqual(result.estimate_bpm or 0.0, 153.0, delta=6.0)
                 self.assertGreaterEqual(result.windows, 40)
                 self.assertEqual(result.artifact_share, 0.0)
                 self.assertIs(result.quality, DfaQuality.GOOD)
@@ -181,13 +181,18 @@ class CrossingTests(unittest.TestCase):
         # One beat in 30 is 3.3 %: below the window limit, above the good limit.
         result = dfa.first_threshold([ramp(0, artifacts_every=30)])
         assert result is not None
-        self.assertAlmostEqual(result.estimate_bpm, 153.0, delta=8.0)
+        self.assertAlmostEqual(result.estimate_bpm or 0.0, 153.0, delta=8.0)
         self.assertGreater(result.artifact_share, dfa.GOOD_MAX_ARTIFACT_SHARE)
         self.assertIs(result.quality, DfaQuality.LOW)
 
     def test_a_steady_run_never_crosses_and_gives_no_estimate(self) -> None:
-        self.assertIsNone(dfa.first_threshold([steady(5)]))
-        self.assertIsNone(dfa.first_threshold([steady(6, coefficient=0.0)]))
+        # Since method 3 (#3273) the windows are kept, but without a 0.75 estimate.
+        for series in (steady(5), steady(6, coefficient=0.0)):
+            result = dfa.first_threshold([series])
+            assert result is not None
+            self.assertIsNone(result.estimate_bpm)
+            self.assertIsNone(result.quality)
+            self.assertEqual(len(result.series), result.windows)
 
     def test_a_ramp_whose_alpha1_stays_on_one_side_gives_no_estimate(self) -> None:
         def correlated_ramp(coefficient):
@@ -201,8 +206,38 @@ class CrossingTests(unittest.TestCase):
                 elapsed += interval / 1000
             return series
 
-        self.assertIsNone(dfa.first_threshold([correlated_ramp(0.9)]))  # always high
-        self.assertIsNone(dfa.first_threshold([correlated_ramp(0.0)]))  # always low
+        for coefficient in (0.9, 0.0):  # alpha1 always high, always low
+            result = dfa.first_threshold([correlated_ramp(coefficient)])
+            assert result is not None
+            self.assertIsNone(result.estimate_bpm)
+            self.assertTrue(result.series)
+
+    def test_the_series_keeps_each_window_on_the_recording_beat_clock(self) -> None:
+        # #3273: two 6-minute pieces; the second piece's windows start after the
+        # first piece's length (the dropout itself is not on the clock), 30 s apart.
+        first, second = steady(21, minutes=6), steady(22, minutes=6)
+        result = dfa.first_threshold([first, second])
+        assert result is not None
+        self.assertEqual(result.method, 3)
+        starts = [window.start_s for window in result.series]
+        length = sum(first) / 1000
+        self.assertEqual(starts[0], 0.0)
+        self.assertTrue(any(abs(start - length) < 0.1 for start in starts))
+        self.assertTrue(all(start % 30 < 0.1 or start >= length for start in starts))
+        for window in result.series:
+            self.assertGreaterEqual(window.artifact_share, 0.0)
+            self.assertLessEqual(window.artifact_share, dfa.MAX_WINDOW_ARTIFACT_SHARE)
+
+    def test_a_window_reports_its_own_artifact_share(self) -> None:
+        # One beat in 40 (2.5 %) in the second half only: early windows are clean.
+        series = steady(23, minutes=12)
+        half = len(series) // 2
+        for index in range(half + 5, len(series), 40):
+            series[index] = 250.0
+        result = dfa.first_threshold([series])
+        assert result is not None
+        self.assertEqual(result.series[0].artifact_share, 0.0)
+        self.assertAlmostEqual(result.series[-1].artifact_share, 0.025, delta=0.004)
 
     def test_too_few_windows_give_no_estimate(self) -> None:
         self.assertIsNone(dfa.first_threshold([ramp(0)[:700]]))

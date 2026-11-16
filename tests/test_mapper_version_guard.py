@@ -15,6 +15,15 @@ records gives the same output, for example a refactor, a new enum member, or a
 mapping of a section or field that no stored record carries yet (#2880); say so
 in the PR. Otherwise bump the version first. Run this module to print the
 current table.
+
+Third named clause, the self-versioned additive field (#3273, approved by the
+athlete after a Fable review): a code change may also update only the
+fingerprint when it adds a field whose presence the stored row states through
+its own stored version, readers treat a row of a lower version as "not
+evaluated" (never as a negative result), and the next bump of the replaying
+mappers carries the backfill of the older rows. The DFA-a1 window series is
+the one such field: ``ActivityDfaAlpha1.method`` 3 says the row has it. Name
+the clause in the PR; any other output change still needs the bump.
 """
 
 from __future__ import annotations
@@ -67,7 +76,7 @@ NOT_REPLAYED: Final[dict[str, str]] = {
 PINNED: Final[dict[str, tuple[tuple[int, ...], str]]] = {
     "canonical.activity_detail": (
         (10, 11),
-        "e8821b71a98e513d07757619f177913280cd3cd7b71c315778c9d3caaaa0dad4",
+        "e9cb5113898df294fdc8c86691524bd554b140fd8f7b9bff4a1f001813cc0884",
     ),
     "canonical.decimal_text": (
         (10, 11, 21, 25, 8, 2),
@@ -75,7 +84,7 @@ PINNED: Final[dict[str, tuple[tuple[int, ...], str]]] = {
     ),
     "canonical.dfa_alpha1": (
         (10, 11),
-        "3057e5bd8fb86e99bd00be2b17914438dc2c7af18559d983ec1909a753439cdf",
+        "74e049575a622ab88d68bbdc2858a85fae9485351065ff1535cc0e0d90eccf69",
     ),
     "canonical.domain_records": (
         (25,),

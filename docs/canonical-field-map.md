@@ -987,15 +987,27 @@ One external sensor a recording named. The serial number is only an input of the
 
 ### `ActivityDfaAlpha1`
 
-The first threshold heart rate a chest-strap recording gives (DFA-a1, research-grade, never a lab value). Stored as one JSON object in `activity_detail_sets.dfa_alpha1`; the RR series is an input only.
+The DFA-a1 result of a chest-strap recording (research-grade, never a lab value): its first threshold heart rate and, from method 3, its window series (#3273). Stored as one JSON object in `activity_detail_sets.dfa_alpha1`; the RR series is an input only.
 
 | Field | Type & unit | Emitted by | Notes |
 |---|---|---|---|
-| `estimate_bpm` | float, 60 to 220 bpm | `dfa_alpha1.first_threshold` | The heart rate at which the regression of alpha1 on the window heart rate reaches 0.75. |
+| `estimate_bpm` | float, 60 to 220 bpm, or `None` | `dfa_alpha1.first_threshold` | The heart rate at which the regression of alpha1 on the window heart rate reaches 0.75; `None` (with `quality`) when the recording gives no such crossing. |
 | `windows` | int, at least 1 | `dfa_alpha1.first_threshold` | Steady or ramping 2-minute windows the regression used. |
 | `artifact_share` | float, 0 to 1 | `dfa_alpha1.first_threshold` | Share of beats dropped by artifact correction (outside 300 to 2000 ms, or more than 20 % from the last accepted beat). |
-| `quality` | `DfaQuality` | `dfa_alpha1.first_threshold` | `good` with at least 20 windows, at most 3 % artifacts and R squared of at least 0.5; otherwise `low`. |
-| `method` | int | `dfa_alpha1.METHOD_VERSION` | Version of the calculation. |
+| `quality` | `DfaQuality` or `None` | `dfa_alpha1.first_threshold` | `good` with at least 20 windows, at most 3 % artifacts and R squared of at least 0.5; otherwise `low`; `None` without an estimate. |
+| `method` | int | `dfa_alpha1.METHOD_VERSION` | Version of the calculation; 3 or later holds the window series, an earlier one was never evaluated for it (the mapper version guard's third clause). |
+| `series` | tuple of `DfaWindow`, at most `MAX_DFA_WINDOWS` | `dfa_alpha1.first_threshold` | Every analysed window, stored as `[start_s, heart_rate_bpm, alpha1, artifact_share]`; empty before method 3 or when the stored series is unreadable. |
+
+### `DfaWindow`
+
+One analysed 2-minute window of a chest-strap recording (#3273), part of `ActivityDfaAlpha1.series`.
+
+| Field | Type & unit | Emitted by | Notes |
+|---|---|---|---|
+| `start_s` | float, s, 0 to 1,000,000 | `dfa_alpha1.first_threshold` | Start on the recording's beat clock; dropouts between segments are not on the clock. |
+| `heart_rate_bpm` | float, 20 to 300 bpm | `dfa_alpha1.first_threshold` | 60 000 / mean RR of the window's artifact-free beats. |
+| `alpha1` | float, -5 to 5 | `dfa_alpha1.first_threshold` | The window's short-term scaling exponent. |
+| `artifact_share` | float, 0 to 1 | `dfa_alpha1.first_threshold` | Share of the window's beats dropped by artifact correction. |
 
 ### `DeviceZoneBasis`
 
@@ -1590,7 +1602,7 @@ Record keywords set: stream set `dfa_alpha1`.
 | Canonical field | Provider key(s) | Unit / conversion | Notes |
 |---|---|---|---|
 | (RR series, not stored) | hrv message 78 field 0 | seconds, /1000 to milliseconds; at most 150,000 beats | Returned as gap-free segments: an invalid slot between valid ones, or more than 10 s of the file clock that the intervals do not account for, starts a new segment (trailing invalid slots only pad a message). Input of `backend/canonical/dfa_alpha1.py`, which detrends each segment (smoothness priors, lambda 500) and never lets a window span two segments; never stored, logged or returned. |
-| `dfa_alpha1.estimate_bpm`, `windows`, `artifact_share`, `quality`, `method` | computed from the RR series | see `ActivityDfaAlpha1` | `None` unless artifact correction, smoothness-priors detrending (method version 2), enough steady windows and an alpha1 range that crosses 0.75 allow it. |
+| `dfa_alpha1.estimate_bpm`, `windows`, `artifact_share`, `quality`, `method`, `series` | computed from the RR series | see `ActivityDfaAlpha1` | `None` with fewer than 10 steady windows; the estimate and quality stay `None` unless artifact correction, smoothness-priors detrending, enough steady windows and an alpha1 range that crosses 0.75 allow it, while the window series is kept (method 3). |
 
 Not mapped: the hrv timestamps (the message has none), RR values outside 300 to 2000 ms (dropped as artifacts), and every message other than 78.
 
