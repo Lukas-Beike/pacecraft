@@ -249,96 +249,11 @@ function nutritionCard(item, template, sessions = []) {
   return card;
 }
 
-function nutritionExpenditureSection() {
-  let section = document.querySelector("#nutritionExpenditure");
-  if (section) return section;
-  section = h("section", { id: "nutritionExpenditure", className: "nutrition-tools", "aria-label": "Garmin-Energieverbrauch" },
-    h("h3", null, "Energieverbrauch"),
-    h("output", { id: "nutritionExpenditureStatus", className: "tab-sync-detail", "aria-live": "polite" }),
-    h("div", { id: "nutritionExpenditureTotals", className: "nutrition-totals" }),
-    h("p", { id: "nutritionExpenditureDate", className: "fine-print" }));
-  document.querySelector("#nutritionTotals").insertAdjacentElement("afterend", section);
-  return section;
-}
-
 function nutritionExpenditureDate(value) {
   if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return "Datum unbekannt";
   const parsed = new Date(`${value}T00:00:00Z`);
   if (Number.isNaN(parsed.getTime())) return "Datum unbekannt";
   return new Intl.DateTimeFormat("de-DE", { day: "2-digit", month: "2-digit", year: "numeric", timeZone: "UTC" }).format(parsed);
-}
-
-function nutritionExpenditureTimestamp(value) {
-  if (!value) return "";
-  const parsed = new Date(value);
-  return Number.isNaN(parsed.getTime())
-    ? String(value)
-    : new Intl.DateTimeFormat("de-DE", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }).format(parsed);
-}
-
-function clearNutritionExpenditure(message = "Garmin-Tagesverbrauch wird geladen…") {
-  const section = nutritionExpenditureSection();
-  section.hidden = false;
-  section.querySelector("#nutritionExpenditureStatus").textContent = message;
-  section.querySelector("#nutritionExpenditureTotals").replaceChildren();
-  section.querySelector("#nutritionExpenditureDate").textContent = "";
-}
-
-function renderNutritionExpenditure(expenditure, selectedDate) {
-  const section = nutritionExpenditureSection();
-  section.hidden = false;
-  const status = section.querySelector("#nutritionExpenditureStatus");
-  const totals = section.querySelector("#nutritionExpenditureTotals");
-  const date = section.querySelector("#nutritionExpenditureDate");
-  const measured = expenditure?.status === "measured"
-    || [expenditure?.total_kcal, expenditure?.active_kcal, expenditure?.resting_kcal].some((value) => value != null && Number.isFinite(Number(value)));
-  const freshnessLabels = { current: "Aktuell", stale: "Veraltet", delayed: "Verzögert" };
-  const freshness = freshnessLabels[expenditure?.freshness] || "Aktualität unbekannt";
-  const provisionalLabel = expenditure?.provisional ? " · Vorläufig, da der Tag noch läuft" : "";
-  // A current measurement needs no sentence; its source is the chip on the total (#2846).
-  const current = measured && expenditure?.freshness === "current";
-  status.textContent = "Für diesen Tag liegen keine Garmin-Verbrauchsdaten vor.";
-  if (measured) status.textContent = current ? "" : [expenditure.source || "Garmin Connect", freshness].join(" · ") + provisionalLabel;
-
-  // Absent values return null and render muted as "nicht erfasst" (#1783).
-  const formatKcal = (rawValue) => {
-    const value = rawValue == null || rawValue === "" ? null : Number(rawValue);
-    return value != null && Number.isFinite(value) ? `${AppFormat.number(value, { digits: 0 })} kcal` : null;
-  };
-  const kcalValue = (rawValue) => {
-    const value = h("strong");
-    const text = formatKcal(rawValue);
-    if (text == null) markValueMissing(value); else setValueWithUnit(value, text);
-    return value;
-  };
-  const componentTile = (rawValue, caption) => h("div", "nutrition-total", kcalValue(rawValue), h("span", null, caption));
-  const totalTile = componentTile(expenditure?.total_kcal, "Tagesverbrauch");
-  totalTile.style.gridColumn = "1 / -1";
-  // The short provider label ("Garmin"); without it the chip is left out.
-  const sourceLabel = state.data?.provider_labels?.[providerIds().garmin];
-  if (measured && sourceLabel) totalTile.lastElementChild.append(" ", recordSourceChip(sourceLabel));
-  const projected = expenditure?.projected_total_kcal;
-  const hasProjection = projected != null && Number.isFinite(Number(projected));
-  const projectionTile = hasProjection ? componentTile(projected, "Prognose Tagesverbrauch") : null;
-  if (projectionTile) {
-    projectionTile.style.gridColumn = "1 / -1";
-    projectionTile.lastElementChild.append(" ", createEstimateChip());
-  }
-  totals.replaceChildren(
-    totalTile,
-    ...(projectionTile ? [projectionTile] : []),
-    componentTile(expenditure?.active_kcal, "Aktivkalorien"),
-    componentTile(expenditure?.resting_kcal, "Grundumsatz"),
-  );
-
-  const syncedAt = nutritionExpenditureTimestamp(expenditure?.synced_at);
-  const fetchedAt = nutritionExpenditureTimestamp(expenditure?.fetched_at);
-  date.textContent = "";
-  if (syncedAt) date.textContent = `Sync: ${syncedAt}`;
-  else if (fetchedAt) date.textContent = `Abgerufen: ${fetchedAt}`;
-  if (projectionTile) {
-    projectionTile.title = `Grundumsatz vom ${nutritionExpenditureDate(expenditure.projection_reference_date)} (${formatKcal(expenditure.projection_resting_kcal) ?? "nicht erfasst"}) + bisherige Aktivkalorien (${formatKcal(expenditure.active_kcal) ?? "nicht erfasst"}), eigene Schätzung`;
-  }
 }
 
 function appendNutritionTotals(totals, day) {
@@ -539,7 +454,7 @@ function isCurrentNutritionDayLoad(sequence, generation, cacheEpoch, dateInput, 
 
 function renderNutritionDay(day) {
   document.querySelector("#nutritionDate").value = day.date;
-  renderNutritionExpenditure(day.energy_expenditure, day.date);
+  renderDiaryEnergy();
   document.querySelector("#nutritionStatus").textContent = day.entry_count ? "" : "Noch keine Mahlzeiten erfasst. Das bedeutet nicht, dass du nichts gegessen hast.";
   const totals = document.querySelector("#nutritionTotals");
   totals.replaceChildren();
@@ -551,7 +466,6 @@ function renderNutritionDay(day) {
 function showNutritionDayLoadError(status, cached, error, dateInput, requestedDate) {
   if (cached) {
     status.textContent = `Gespeicherter Stand. Aktualisierung fehlgeschlagen: ${error.message}`;
-    nutritionExpenditureSection().querySelector("#nutritionExpenditureStatus").textContent = `Gespeicherter Stand. Tagesverbrauch konnte nicht aktualisiert werden: ${error.message}`;
     return;
   }
   // The requested day stays in the date field so ← and → still have a day to move from.
@@ -560,8 +474,6 @@ function showNutritionDayLoadError(status, cached, error, dateInput, requestedDa
   retry.addEventListener("click", () => void loadNutrition());
   status.textContent = `Ernährung konnte nicht geladen werden: ${error.message}`;
   status.append(h("br"), retry);
-  clearNutritionExpenditure("");
-  nutritionExpenditureSection().hidden = true;
 }
 
 async function loadNutrition({ preserve = false, expectedRoute = null, expectedDate = null, throwOnError = false } = {}) {
@@ -579,7 +491,6 @@ async function loadNutrition({ preserve = false, expectedRoute = null, expectedD
   const cached = showCachedNutritionView(cacheKey, renderNutritionDay);
   if (!cached && !preserve) {
     status.textContent = "Ernährung wird geladen…";
-    clearNutritionExpenditure();
     document.querySelector("#nutritionEntries").replaceChildren();
     document.querySelector("#nutritionTotals").replaceChildren();
   }
@@ -658,7 +569,7 @@ function resetNutritionView() {
   document.querySelector("#nutritionProductUseDialog")?.close();
   nutritionProductForUse = null;
   document.querySelector("#nutritionDate").value = "";
-  for (const id of ["nutritionWeekPeriod", "nutritionWeekStatus", "nutritionWeekTotals", "nutritionWeekDays", "nutritionWeekChart", "nutritionEntries", "nutritionTotals", "nutritionStatus", "nutritionProducts", "nutritionLookupResult", "nutritionProductStatus", "nutritionExpenditureTotals", "nutritionExpenditureStatus", "nutritionExpenditureDate"]) document.getElementById(id)?.replaceChildren();
+  for (const id of ["nutritionWeekPeriod", "nutritionWeekStatus", "nutritionWeekTotals", "nutritionWeekDays", "nutritionWeekChart", "nutritionEntries", "nutritionTotals", "nutritionStatus", "nutritionProducts", "nutritionLookupResult", "nutritionProductStatus"]) document.getElementById(id)?.replaceChildren();
   document.querySelector("#nutritionLookupResult").hidden = true;
   document.querySelector("#nutritionWeekChartSection").hidden = true;
   const editor = document.querySelector("#nutritionExtraction"); if (editor) { editor.replaceChildren(); editor.hidden = true; }

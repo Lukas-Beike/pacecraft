@@ -425,7 +425,6 @@ test("@responsive a failed diary load keeps the requested date, shows one error 
   await page.locator("#nutritionDate").dispatchEvent("change");
   await expect(page.locator("#nutritionStatus")).toContainText("Ernährung konnte nicht geladen werden");
   await expect(page.locator("#nutritionDate")).toHaveValue("2026-10-05");
-  await expect(page.locator("#nutritionExpenditure")).toBeHidden();
   await expect(page.locator("#nutritionPanel").getByText("konnte nicht geladen werden")).toHaveCount(1);
   const dayResponse = (date, status) => page.waitForResponse((response) => response.url().includes(`/api/nutrition/day?date=${date}`) && response.status() === status);
   const failedNext = dayResponse("2026-10-06", 503);
@@ -447,7 +446,8 @@ test("@responsive a failed diary load keeps the requested date, shows one error 
   await expect(page.locator("#nutritionStatus")).not.toContainText("konnte nicht geladen werden");
   await expect(page.locator("#nutritionStatus").getByRole("button")).toHaveCount(0);
   await expect(page.locator("#nutritionDate")).toHaveValue("2026-10-05");
-  await expect(page.locator("#nutritionExpenditure")).toBeVisible();
+  // #3252: the energy table replaced the day expenditure card; it does not depend on the day read.
+  await expect(page.locator("#nutritionEnergy [data-energy]")).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
 });
 });
