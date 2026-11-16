@@ -39,6 +39,7 @@ from backend.db.schema_history import (
     SHAPE_SCHEMA_V28,
     SHAPE_SCHEMA_V29,
     SHAPE_SCHEMA_V30,
+    SHAPE_SCHEMA_V31,
     released_shape,
     signature_digest,
 )
@@ -216,6 +217,36 @@ def add_baseline_nutrition_rows(db) -> None:
     )
 
 
+# Diary rows of the baseline: every meal type, an unknown time, the uncertain
+# flag in the basis, unknown macros and a composite basis (#3234).
+BASELINE_DIARY = (
+    ('log-1', '{}', '2026-10-15', '2026-10-15T07:30:00', 'breakfast',
+     'Haferflocken', 450, 70.0, 15.0, 9.0, 1),
+    ('log-2', '{"uncertain": true}', '2026-10-15', '2026-10-15T12:00:00', 'lunch',
+     'Restaurant', 900, None, None, None, 0),
+    ('log-3', '{"kind": "composite", "components": []}', '2026-10-15',
+     '2026-10-15T19:10:00', 'dinner', 'Nudeln', 700, 110.0, 25.0, 12.0, 1),
+    ('log-4', '{}', '2026-10-16', '2026-10-16T10:00:00', 'snack', 'Gel', 100,
+     25.0, 0.0, 0.0, 1),
+)  # fmt: skip
+
+
+def add_baseline_diary_rows(db) -> None:
+    db.executemany(
+        "INSERT INTO nutrition_logs(id, nutrition_basis, meal_date, logged_at, "
+        "meal_type, description, kcal, carbs_g, protein_g, fat_g, "
+        "logged_time_known, created_at, updated_at) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        [(*row, STAMP, STAMP) for row in BASELINE_DIARY],
+    )
+    # A day already sent to Intervals.icu: the rebuild must not mark it pending.
+    db.execute(
+        "INSERT INTO nutrition_sync_dates(meal_date, revision, sync_state, "
+        "updated_at) VALUES ('2026-10-15', 3, 'synced', ?)",
+        (STAMP,),
+    )
+
+
 def add_baseline_activity_rows(db) -> None:
     """A session with its record, a stream set and a lap set with one lap."""
     db.execute(
@@ -254,6 +285,7 @@ def populated_baseline_database(db) -> None:
         (STAMP,),
     )
     add_baseline_nutrition_rows(db)
+    add_baseline_diary_rows(db)
     add_baseline_activity_rows(db)
     db.commit()
 
@@ -363,6 +395,31 @@ def populated_v30_database(db) -> None:
         ("f" * 64, STAMP, STAMP, STAMP),
     )
     db.commit()
+
+
+# Schema v31, from release 2.1.22, has no fixture of its own either: v30 after
+# its watch workout step, with the diary rows of the baseline.
+def populated_v31_database(db) -> None:
+    populated_v30_database(db)
+    migrations._device_workout(db)
+    db.execute("PRAGMA user_version = 31")
+    db.commit()
+
+
+class FailAfter:
+    """A connection whose statement starting with ``prefix`` fails once it ran."""
+
+    def __init__(self, db, prefix: str) -> None:
+        self._db, self._prefix = db, prefix
+
+    def execute(self, sql, *args):
+        result = self._db.execute(sql, *args)
+        if sql.lstrip().startswith(self._prefix):
+            raise RuntimeError("injected migration failure")
+        return result
+
+    def __getattr__(self, name):
+        return getattr(self._db, name)
 
 
 try:
@@ -733,6 +790,7 @@ class DatabaseSchemaGateTests(unittest.TestCase):
             populated_v28_database,
             populated_v29_database,
             populated_v30_database,
+            populated_v31_database,
         ):
             with (
                 self.subTest(populate=populate.__name__),
@@ -824,6 +882,12 @@ class DatabaseSchemaGateTests(unittest.TestCase):
                 30,
                 SHAPE_SCHEMA_V30,
                 migrations._device_workout,
+            ),
+            (
+                populated_v31_database,
+                31,
+                SHAPE_SCHEMA_V31,
+                migrations._session_fuelling,
             ),
         ):
             with self.subTest(version=version):
@@ -986,6 +1050,112 @@ class DatabaseSchemaGateTests(unittest.TestCase):
             ):
                 db.execute(lap.format(column), (value,))
 
+    def test_frozen_v31_shape_is_v30_after_its_watch_workout_step(self):
+        db = self.connect()
+        db.executescript(BASELINE_FIXTURE.read_text(encoding="utf-8"))
+        migrations._canonical_products(db)
+        migrations._calendar_decisions(db)
+        migrations._competition_location(db)
+        migrations._session_curves(db)
+        migrations._device_workout(db)
+        self.assertEqual(
+            released_shape(database_schema_signature(db)), SHAPE_SCHEMA_V31
+        )
+
+    def test_populated_v31_diary_keeps_every_row_and_gains_session_columns(self):
+        db = self.connect()
+        populated_v31_database(db)
+        tables = self.user_tables(db)
+        columns = self.table_columns(db, tables)
+        before = self.table_rows(db, tables, columns)
+        migrate_schema(db)
+        db.commit()
+        self.assertTrue(database_schema_is_current(db))
+        self.assertEqual(
+            db.execute("PRAGMA user_version").fetchone()[0], CURRENT_SCHEMA_VERSION
+        )
+        self.assertEqual(self.user_tables(db), tables)
+        self.assertEqual(self.table_rows(db, tables, columns), before)
+        self.assertEqual(
+            [tuple(r) for r in db.execute(
+                "SELECT id, volume_ml, session_id FROM nutrition_logs ORDER BY id")],
+            [(row[0], None, None) for row in BASELINE_DIARY],
+        )  # fmt: skip
+        self.assertEqual(
+            [tuple(r) for r in db.execute(
+                "SELECT meal_date, revision, sync_state FROM nutrition_sync_dates")],
+            [("2026-10-15", 3, "synced")],
+        )  # fmt: skip
+        self.assertEqual(db.execute("PRAGMA integrity_check").fetchone()[0], "ok")
+        self.assertEqual(db.execute("PRAGMA foreign_key_check").fetchall(), [])
+        # The indexes are the frozen v32 ones, not leftovers of the v31 table.
+        self.assertEqual(
+            {
+                row[0]: " ".join(row[1].split())
+                for row in db.execute(
+                    "SELECT name, sql FROM sqlite_master WHERE type = 'index' "
+                    "AND tbl_name = 'nutrition_logs' AND sql IS NOT NULL"
+                )
+            },
+            {
+                "idx_nutrition_logs_date": "CREATE INDEX idx_nutrition_logs_date ON "
+                "nutrition_logs(meal_date, logged_at DESC)",
+                "idx_nutrition_logs_session": "CREATE INDEX "
+                "idx_nutrition_logs_session ON nutrition_logs(session_id) WHERE "
+                "session_id IS NOT NULL",
+            },
+        )
+        insert = (
+            "INSERT INTO nutrition_logs(id, meal_date, logged_at, meal_type, "
+            "description, kcal, volume_ml, session_id, created_at, updated_at) "
+            "VALUES (?, '2026-10-17', '2026-10-17T09:00:00', ?, 'x', 0, ?, ?, ?, ?)"
+        )
+        for row in (
+            ("new-1", "pre_session", None, "act_1"),
+            ("new-2", "during_session", 750.0, "act_1"),
+            ("new-3", "during_session", 0.0, None),
+        ):
+            db.execute(insert, (*row, STAMP, STAMP))
+        for row in (
+            ("bad-1", "snack", None, "act_1"),
+            ("bad-2", "during_session", -1.0, None),
+            ("bad-3", "second_breakfast", None, None),
+        ):
+            with self.subTest(row=row), self.assertRaises(sqlite3.IntegrityError):
+                db.execute(insert, (*row, STAMP, STAMP))
+
+    def test_diary_rebuild_failing_at_any_point_leaves_v31_unchanged(self):
+        # After the rename, the copy, the drop, and at the final validation.
+        for prefix in (
+            "ALTER TABLE nutrition_logs RENAME",
+            "INSERT INTO nutrition_logs(",
+            "DROP TABLE nutrition_logs_v31",
+            None,
+        ):
+            with self.subTest(after=prefix or "final validation"):
+                db = self.connect()
+                populated_v31_database(db)
+                before = list(db.iterdump())
+                if prefix is None:
+                    with (
+                        mock.patch.object(
+                            migrations,
+                            "database_schema_is_current",
+                            side_effect=[False, False],
+                        ),
+                        self.assertRaisesRegex(RuntimeError, "validiert"),
+                    ):
+                        migrate_schema(db)
+                else:
+                    with self.assertRaisesRegex(RuntimeError, "injected"):
+                        migrate_schema(FailAfter(db, prefix))
+                db.rollback()
+                self.assertEqual(list(db.iterdump()), before)
+                self.assertEqual(db.execute("PRAGMA user_version").fetchone()[0], 31)
+                migrate_schema(db)
+                db.commit()
+                self.assertTrue(database_schema_is_current(db))
+
     def test_populated_v28_database_gains_an_empty_location_with_every_row(self):
         db = self.connect()
         populated_v28_database(db)
@@ -1067,6 +1237,7 @@ class DatabaseSchemaGateTests(unittest.TestCase):
             populated_v28_database,
             populated_v29_database,
             populated_v30_database,
+            populated_v31_database,
         ):
             with self.subTest(populate=populate.__name__):
                 self.assert_encrypted_upgrade(populate)

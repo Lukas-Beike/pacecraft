@@ -340,6 +340,25 @@ class ChangeHistoryTests(unittest.TestCase):
             change_history.accepted_audit_hashes("profile", value),
         )
 
+    def test_a_diary_row_recorded_before_schema_v32_stays_undoable(self):
+        # #3234: rows before v32 carry no volume and no session; the current
+        # projection adds both, empty.
+        before = {
+            "id": "log",
+            "meal_type": "snack",
+            "kcal": 100,
+            "estimate_uncertain": False,
+        }
+        value = change_history.audit_projection(
+            "nutrition_entry", {**before, "volume_ml": None, "session_id": None}
+        )
+        fields = change_history.audit_projection_fields("nutrition_entry")
+        self.assertTrue({"volume_ml", "session_id"} <= set(fields))
+        self.assertIn(
+            change_history.audit_hash(before),
+            change_history.accepted_audit_hashes("nutrition_entry", value),
+        )
+
     def test_preferred_sources_are_audited_and_older_rows_stay_matchable(self):
         value = {"name": "Ada", "preferred_source_body": "intervals"}
 

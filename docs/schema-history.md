@@ -16,7 +16,7 @@ required when the athlete explicitly chooses to start over. Future schema
 changes add explicit, versioned and transactional migrations from the baseline
 with upgrade regression tests; the baseline moves only when production runs a
 newer schema.
-The current schema is version 31. This table is the only place that lists
+The current schema is version 32. This table is the only place that lists
 which releases wrote each schema; other documents name a schema by the release
 that introduced it ("v29, since 2.1.17"), so a release with an unchanged schema
 needs no documentation edit (#3130).
@@ -35,8 +35,9 @@ needs no documentation edit (#3130).
 | 29 | 2.1.17 to 2.1.19 |
 | 30 | 2.1.20 to 2.1.21 |
 | 31 | since 2.1.22 |
+| 32 | not released yet |
 
-Versions 27 to 30 keep only their shape digests and enter the chain after the baseline's
+Versions 27 to 31 keep only their shape digests and enter the chain after the baseline's
 product step and the calendar decision step. Version 10 adds canonical activity detail
 (streams, laps and zone times), version 11 the food-database mirror, version 12
 stores the Garmin collection as one keyed row per element instead of one large
@@ -83,7 +84,16 @@ steps and on a streams set the zone basis of the watch, each a JSON text of
 numbers and vocabulary names that its set kind alone may hold. The upgrade adds
 only empty columns and changes no row; the columns stay empty until a later
 release maps the values. The privacy export gains the same columns (export
-format 21). Release
+format 21).
+Version 32 adds diary entries that belong to a session (#3234): the meal types
+gain `pre_session` ("Vor der Einheit") and `during_session` ("Während der
+Einheit"), an entry gains its drink volume `volume_ml` (NULL means not
+stated, never 0) and, in a session slot only, the `session_id` of the local
+session it belongs to, read through session merges so a merge, split or
+deletion never rewrites it. SQLite cannot change a CHECK, so the upgrade
+rebuilds `nutrition_logs`: every row is copied with its values and the new
+columns stay empty. The privacy export gains the two columns (export format
+22). Release
 2.0.5 upgrades a version 21 to 25 database or backup to it in place within one
 transaction, and a failed upgrade leaves it unchanged. Change-history entries
 written before version 16 still name the former fields and can no longer be

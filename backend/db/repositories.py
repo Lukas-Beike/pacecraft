@@ -1562,7 +1562,7 @@ NUTRITION_MACRO_FIELDS = ("carbs_g", "protein_g", "fat_g")
 _NUTRITION_ENTRY_COLUMNS = (
     "id, meal_date, logged_at, meal_type, description, kcal, carbs_g, protein_g, "
     "fat_g, source, nutrition_basis, sync_state, created_at, updated_at, "
-    "logged_time_known"
+    "logged_time_known, volume_ml, session_id"
 )
 
 
@@ -1623,8 +1623,8 @@ class NutritionRepository:
         now = self._now()
         entry_id = str(entry["id"])
         db.execute(
-            "INSERT INTO nutrition_logs(id, meal_date, logged_at, meal_type, description, kcal, carbs_g, protein_g, fat_g, source, nutrition_basis, sync_state, created_at, updated_at, logged_time_known) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO nutrition_logs(id, meal_date, logged_at, meal_type, description, kcal, carbs_g, protein_g, fat_g, source, nutrition_basis, sync_state, created_at, updated_at, logged_time_known, volume_ml, session_id) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 entry_id,
                 entry["meal_date"],
@@ -1641,6 +1641,8 @@ class NutritionRepository:
                 now,
                 now,
                 1 if entry.get("logged_time_known", True) else 0,
+                entry.get("volume_ml"),
+                entry.get("session_id"),
             ),
         )
         self._mark_pending(db, entry["meal_date"], now)
@@ -1661,7 +1663,7 @@ class NutritionRepository:
         if not existing:
             return None
         cursor = db.execute(
-            "UPDATE nutrition_logs SET meal_date=?, logged_at=?, meal_type=?, description=?, kcal=?, carbs_g=?, protein_g=?, fat_g=?, source=?, nutrition_basis=?, sync_state=?, logged_time_known=?, updated_at=? "
+            "UPDATE nutrition_logs SET meal_date=?, logged_at=?, meal_type=?, description=?, kcal=?, carbs_g=?, protein_g=?, fat_g=?, source=?, nutrition_basis=?, sync_state=?, logged_time_known=?, volume_ml=?, session_id=?, updated_at=? "
             "WHERE id=?",
             (
                 entry["meal_date"],
@@ -1676,6 +1678,8 @@ class NutritionRepository:
                 self._basis_json(entry),
                 entry.get("sync_state", "local"),
                 1 if entry.get("logged_time_known", True) else 0,
+                entry.get("volume_ml"),
+                entry.get("session_id"),
                 now,
                 entry_id,
             ),

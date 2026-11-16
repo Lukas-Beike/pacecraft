@@ -32,11 +32,11 @@ The keys of the `kv` table are listed in [kv-catalogue.md](kv-catalogue.md).
 ## Current schema
 
 <!-- BEGIN GENERATED SCHEMA -->
-Schema version: `31` (`PRAGMA user_version`).
+Schema version: `32` (`PRAGMA user_version`).
 
-Shape digest: `8de2c800f630dd9819070e46ae4ccde22342cdb64a24b35c151bd7efe9007c11`.
+Shape digest: `c10374bb5cfd2d517e1b588b5c9bcee388edb800c737eb66b325e36a2a8d351e`.
 
-48 tables and 35 named indexes, in signature order.
+48 tables and 36 named indexes, in signature order.
 
 ### index `idx_activity_feedback_session`
 
@@ -121,6 +121,12 @@ CREATE INDEX idx_gear_activity_links_source ON gear_activity_links(provider, sou
 
 ```sql
 CREATE INDEX idx_nutrition_logs_date ON nutrition_logs(meal_date, logged_at DESC);
+```
+
+### index `idx_nutrition_logs_session`
+
+```sql
+CREATE INDEX idx_nutrition_logs_session ON nutrition_logs(session_id) WHERE session_id IS NOT NULL;
 ```
 
 ### index `idx_nutrition_products_database`
@@ -726,20 +732,24 @@ CREATE TABLE messages (
 
 ```sql
 CREATE TABLE nutrition_logs (
-id TEXT PRIMARY KEY,
-nutrition_basis TEXT NOT NULL DEFAULT '{}',
-meal_date TEXT NOT NULL,
-logged_at TEXT NOT NULL,
-meal_type TEXT NOT NULL CHECK(meal_type IN ('breakfast', 'lunch', 'dinner', 'snack')),
-description TEXT NOT NULL,
-kcal INTEGER NOT NULL CHECK(kcal >= 0),
-carbs_g REAL,
-protein_g REAL,
-fat_g REAL,
-source TEXT NOT NULL DEFAULT 'manual',
-sync_state TEXT NOT NULL DEFAULT 'local',
-created_at TEXT NOT NULL,
-updated_at TEXT NOT NULL , logged_time_known INTEGER NOT NULL DEFAULT 1);
+    id TEXT PRIMARY KEY,
+    nutrition_basis TEXT NOT NULL DEFAULT '{}',
+    meal_date TEXT NOT NULL,
+    logged_at TEXT NOT NULL,
+    meal_type TEXT NOT NULL CHECK(meal_type IN ('breakfast', 'lunch', 'dinner', 'snack', 'pre_session', 'during_session')),
+    description TEXT NOT NULL,
+    kcal INTEGER NOT NULL CHECK(kcal >= 0),
+    carbs_g REAL,
+    protein_g REAL,
+    fat_g REAL,
+    source TEXT NOT NULL DEFAULT 'manual',
+    sync_state TEXT NOT NULL DEFAULT 'local',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    logged_time_known INTEGER NOT NULL DEFAULT 1,
+    volume_ml REAL CHECK(volume_ml IS NULL OR volume_ml >= 0),
+    session_id TEXT CHECK(session_id IS NULL OR meal_type IN ('pre_session', 'during_session'))
+);
 ```
 
 ### table `nutrition_products`
