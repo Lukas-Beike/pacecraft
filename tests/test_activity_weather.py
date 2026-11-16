@@ -252,6 +252,20 @@ class WindTests(unittest.TestCase):
             headwind(response, START, [(float(t), 1.0, None) for t in range(60)])
         )
 
+    def test_calm_time_counts_in_no_sector(self) -> None:
+        # Open-Meteo still names a direction (0 degrees) at 0.2 m/s: running
+        # north is then neither head- nor tailwind, but it stays covered.
+        calm = payload(
+            wind_speed_10m=[0.2, 0.2, 0.2, 0.2],
+            wind_direction_10m=[0.0, 0.0, 0.0, 0.0],
+        )
+        wind = headwind(calm, START, [(float(t), 1.0, 0.0) for t in range(60)])
+        assert wind is not None
+        self.assertEqual(
+            (0.0, 0.0, 100.0),
+            (wind.head_share_pct, wind.tail_share_pct, wind.coverage_pct),
+        )
+
 
 class FakeFetch:
     def __init__(self) -> None:

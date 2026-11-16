@@ -204,9 +204,11 @@ def headwind(
         if wind is None or bearing is None:
             continue
         component = wind[0] * math.cos(math.radians(wind[1] - bearing))
-        angle = abs((wind[1] - bearing + 180) % 360 - 180)
-        head += seconds if angle <= HEAD_SECTOR_DEG else 0.0
-        tail += seconds if angle >= TAIL_SECTOR_DEG else 0.0
+        # Calm time stays covered but in no sector: its direction is noise.
+        if wind[0] >= CALM_MPS:
+            angle = abs((wind[1] - bearing + 180) % 360 - 180)
+            head += seconds if angle <= HEAD_SECTOR_DEG else 0.0
+            tail += seconds if angle >= TAIL_SECTOR_DEG else 0.0
         covered += seconds
         total += component * seconds
         cell = sums.setdefault(int(offset // WIND_BIN_S), [0.0, 0.0])
