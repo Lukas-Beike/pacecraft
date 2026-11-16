@@ -428,7 +428,6 @@ test("current performance shows the status lines below its heading", () => {
     makeAnalysisSectionCollapsible() {},
     analysisValidPoint: () => true,
     isPreferredSource: () => false,
-    ESTIMATED_METRICS: new Set(),
     analysisValue: (value, unit) => `${value} ${unit}`,
   });
   renderCurrentPerformance({}, undefined, ["Daten werden vorbereitet"]);
@@ -447,8 +446,8 @@ test("current performance shows the status lines below its heading", () => {
   const rows = [];
   const walk = (node) => { if (node?.dataset?.metric) rows.push(node); (node?.children || []).forEach(walk); };
   root.children.forEach(walk);
-  const chipped = (key) => rows.find((row) => row.dataset.metric === key).children[0].children.some((node) => node.tag === "chip");
-  assert.deepEqual([chipped("run_lt1_pace_seconds_per_km"), chipped("run_lt1_hr_bpm"), chipped("cycling_lt1_hr_bpm"), chipped("cycling_lt1_watts")], [false, false, false, false]);
+  const label = (key) => textOf(rows.find((row) => row.dataset.metric === key).children[0]);
+  assert.deepEqual([label("run_lt1_pace_seconds_per_km"), label("run_lt1_hr_bpm"), label("cycling_lt1_hr_bpm"), label("cycling_lt1_watts")], ["Aerobe Schwelle (LT1) · Pace", "Aerobe Schwelle (LT1) · Puls", "Aerobe Schwelle (LT1) · Puls", "Aerobe Schwelle (LT1) · Leistung"]);
   assert.equal(root.dataset.analysisEmptyRunning, "false");
 });
 

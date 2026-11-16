@@ -740,7 +740,7 @@ A run unit whose focus has a cap in `HR_CAP_PERCENT` (`backend/activities/hr_cap
 
 #### Scenario: Stored cap
 - **WHEN** a cap is validated or resolved
-- **THEN** it holds exactly `percent_lthr`, `low_percent_lthr` and `source` (`default`, `measured` or `estimated`, labelled "Standard", "gemessen" and "DFA-α1"), both percentages within 20 to 120 and the lower one below the cap; the bpm is the percent of the threshold HR rounded half up; a cap stored for another focus does not apply.
+- **THEN** it holds exactly `percent_lthr`, `low_percent_lthr` and `source` (`default`, `measured` or `estimated`, labelled "Standard", "gemessen" and "geschätzt" in the payload, the plan card shows "DFA-α1" for `estimated`), both percentages within 20 to 120 and the lower one below the cap; the bpm is the percent of the threshold HR rounded half up; a cap stored for another focus does not apply.
 
 #### Scenario: Cap verdict
 - **WHEN** a run's heart rate is judged against its unit's cap (method `heart-rate-cap-execution-v1`)

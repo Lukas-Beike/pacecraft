@@ -470,7 +470,7 @@ The client SHALL name each dashed line and show no "Schätzung" qualifier on der
 
 #### Scenario: Estimates and predictions
 - **WHEN** a derived value (VO2max, race predictions, CP/CS, load, fitness/fatigue/form, heart-rate drift, projected daily expenditure) is shown
-- **THEN** it carries the chip, 5 and 10 km predictions show minutes and seconds while half marathon and marathon show hours and minutes, VO2max keeps the precise provider value's one decimal, and a dashed line is named in the legend or a line key.
+- **THEN** it carries no "Schätzung" chip, 5 and 10 km predictions show minutes and seconds while half marathon and marathon show hours and minutes, VO2max keeps the precise provider value's one decimal, and a dashed line is named in the legend or a line key.
 
 #### Scenario: Hit areas and contrast
 - **WHEN** the analysis or nutrition routes render in the light theme
