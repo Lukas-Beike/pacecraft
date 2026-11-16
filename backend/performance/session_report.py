@@ -1079,10 +1079,18 @@ def _stops(facts: _Facts) -> dict[str, Any] | None:
         for time, flag in _aligned(streams.get("time_s") or [], moving)
         if (clock := _number(time)) is not None and flag is not None
     ]
+    # A gap counts as a pause only beyond three sampling steps, so a long
+    # session's coarse, downsampled stream is not all stops.
+    steps = [
+        after - before
+        for (before, _), (after, _) in pairwise(samples)
+        if after > before
+    ]
+    gap = max(STOP_S, 3 * statistics.median(steps)) if steps else STOP_S
     stops: list[float] = []
     started = None
     for (before, was_moving), (after, flag) in pairwise(samples):
-        if started is None and (not was_moving or after - before > STOP_S):
+        if started is None and (not was_moving or after - before > gap):
             started = before
         if started is not None and flag:
             stops.append(after - started)

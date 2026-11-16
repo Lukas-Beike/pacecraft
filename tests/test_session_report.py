@@ -998,6 +998,20 @@ class ZoneTimeAndFactsTests(unittest.TestCase):
             [{"rep": 1, "pct_of_critical_speed": 104.2}],
             facts["work_laps_of_critical_speed"]["laps"],
         )
+        # A 20 h ride downsampled to one point every 36 s is no chain of stops.
+        coarse = session_report(
+            {
+                **result(sport="ride", focus="endurance"),
+                "streams": {
+                    "time_s": [36 * index for index in range(2000)],
+                    "channels": {"moving": {"values": [1] * 2000}},
+                },
+            }
+        )
+        self.assertEqual(
+            {"count": 0, "total_s": 0},
+            {fact["id"]: fact["value"] for fact in coarse["facts"]}["stops"],
+        )
         # Facts carry no verdict and never lead.
         self.assertTrue(all("verdict" not in fact for fact in report["facts"]))
 

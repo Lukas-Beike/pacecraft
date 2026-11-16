@@ -151,14 +151,18 @@ def resolve_session(
 
 
 def _critical_speed(
-    records: Sequence[Mapping[str, Any]] | None, day: date
+    records: Sequence[Mapping[str, Any]] | None, day: date, covered_from: date
 ) -> dict[str, Any] | None:
-    """The outdoor running CS of the 28 days before the session's day (card M4)."""
-    if records is None:
-        return None
+    """The outdoor running CS of the 28 days before the session's day (card M4).
+
+    None when the records do not cover that whole window: a fit on part of it
+    would carry the 28-day label without its data.
+    """
     # The 28 days before the session, so its own or a later effort that day
     # never fits the CS it is compared with.
     last = day - timedelta(days=1)
+    if records is None or last - timedelta(days=CRITICAL_SPEED_DAYS - 1) < covered_from:
+        return None
     first = (last - timedelta(days=CRITICAL_SPEED_DAYS - 1)).isoformat()
     window = [
         dict(row)
@@ -746,7 +750,7 @@ class CoachActivityReadToolService:
         records = self._curve_records() if inside else None
         if session.get("sport") == "run":
             checks["pace_at_heart_rate"] = self._pace_at_heart_rate(own, records, day)
-            checks["critical_speed"] = _critical_speed(records, day)
+            checks["critical_speed"] = _critical_speed(records, day, covered_from)
             checks["running_dynamics_rating"] = self._dynamics_rating(own)
         if own is None or (inside and records is None):
             checks["comparable_sessions"] = _unavailable()

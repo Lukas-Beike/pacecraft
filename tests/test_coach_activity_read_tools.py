@@ -407,6 +407,16 @@ class CoachActivityReadToolServiceTests(unittest.TestCase):
         notable = [c["id"] for c in report["checks"] if c["verdict"] == "notable"]
         self.assertEqual(sorted(notable), sorted(report["notable"]))
 
+    def test_critical_speed_needs_its_whole_window_in_the_records(self):
+        # #3084: the 28 days before 2026-09-30 reach back to 2026-09-02; records
+        # from 2026-09-10 cannot fit that CS, so no fact rests on part of it.
+        from backend.coach.activity_read_tools import _critical_speed
+
+        self.assertIsNone(_critical_speed([], date(2026, 9, 30), date(2026, 9, 10)))
+        whole = _critical_speed([], date(2026, 9, 30), date(2026, 9, 2))
+        assert whole is not None
+        self.assertEqual("insufficient_data", whole["status"])
+
     def test_a_race_is_judged_against_its_linked_competitions_race_plan(self):
         # #3084 Part 1c: the session's competition_id selects the race plan.
         competitions = Mock()
