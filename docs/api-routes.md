@@ -1318,7 +1318,8 @@ within 2 % of body weight, `sodium_g_per_l`, or `generic_l_per_h` without own da
 intake logged for that performed session, facts only: `session_id`,
 `duration_s`, `during` (`entries`, `carbs_g`, `carbs_g_per_h`, `advised`
 step, `notable` true only when the rate is more than 20 % below the
-advised lower bound, `volume_ml`, `ml_per_h`, `entries_without_volume`;
+advised lower bound, `volume_ml` and `ml_per_h` with an entry without ml
+counted as 0 ml, `entries_without_volume` naming how many;
 unknown values are `null`, never 0) and `before` (list of `carbs_g`,
 `minutes_before`).
 

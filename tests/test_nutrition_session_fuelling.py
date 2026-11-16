@@ -8,6 +8,7 @@ from nutrition_service_support import build_nutrition_services
 from support import dispatch_route, temp_database
 
 from backend.coach.change_receipts import change_summary
+from backend.coach.read_tools import CoachReadToolService
 from backend.errors import AppError
 from backend.http_api.nutrition import NutritionPostRoutes
 from backend.http_api.route_table import Access
@@ -496,6 +497,30 @@ class SessionIntakeTests(unittest.TestCase):
             "session", " ".join(meal_type_from_hour(hour) for hour in range(24))
         )
 
+    def test_the_coachs_day_read_carries_each_sessions_intake_report(self):
+        self.store(RIDE)
+        self.log("during_session", "10:30", volume_ml=500)
+        self.log("pre_session", "08:45")
+        tools = CoachReadToolService(
+            *(Mock() for _ in range(8)),
+            training_change_limit=10,
+            nutrition_diary=lambda: self.service,
+            nutrition_meal_library=lambda: self.library,
+        )
+        read = tools.execute("read_nutrition", {"date": DAY})
+        self.assertEqual(["act_a"], [s["id"] for s in read["sessions"]])
+        (report,) = read["session_intake"]
+        # 25 g in the 3:10 h ride; 500 ml; the gel before 09:15 is 30 minutes early.
+        self.assertEqual(
+            ("act_a", 25.0, 500.0, [{"carbs_g": 25, "minutes_before": 30.0}]),
+            (
+                report["session_id"],
+                report["during"]["carbs_g"],
+                report["during"]["volume_ml"],
+                report["before"],
+            ),
+        )
+
     def test_day_summary_lists_the_sessions_and_each_slot_entrys_session(self):
         self.store(RIDE, RUN)
         attached = self.log("during_session", "10:30")
@@ -602,7 +627,8 @@ class SessionIntakeReportTests(unittest.TestCase):
         self.assertEqual(
             (None, None, 0), (none["carbs_g_per_h"], none["ml_per_h"], none["entries"])
         )
-        # 500 ml and 1000 ml in 3 h are 500 ml/h; one unstated volume makes it unknown.
+        # 500 ml and 1000 ml in 3 h are 500 ml/h; an entry without ml (a gel)
+        # counts as 0 ml and is named.
         both = self.report(
             10800,
             [
@@ -615,7 +641,8 @@ class SessionIntakeReportTests(unittest.TestCase):
             10800,
             [self.entry("during_session", 50, 500), self.entry("during_session", 50)],
         )
-        self.assertEqual((None, 1), (gap["ml_per_h"], gap["entries_without_volume"]))
+        self.assertEqual((500.0, 1), (gap["volume_ml"], gap["entries_without_volume"]))
+        self.assertAlmostEqual(166.667, gap["ml_per_h"], places=3)
 
     def test_before_grams_come_with_their_minutes_before_the_start(self):
         ride = brief("act_a", "2026-11-14T09:15:00", 10800)

@@ -1321,7 +1321,7 @@ def build_structured_tool_schemas(
                 },
                 "date": {
                     "type": "string",
-                    "description": "Optional specific date YYYY-MM-DD",
+                    "description": "Optional specific date YYYY-MM-DD. The day also lists its sessions, each session-slot entry's session, and session_intake per session: during (carbs_g, carbs_g_per_h against the advised step, notable only when more than 20 % below its lower bound, volume_ml and ml_per_h with an entry without ml counted as 0 ml, entries_without_volume) and before (carbs_g, minutes_before). Explain these facts; null means unknown, never estimate it.",
                 },
                 "start": {
                     "type": "string",

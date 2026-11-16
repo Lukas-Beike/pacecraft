@@ -122,6 +122,12 @@ class CoachReadToolServiceTests(unittest.TestCase):
         )
 
     def test_read_nutrition_day_and_range(self):
+        # The day adds its sessions and their intake reports (#3234).
+        self.nutrition_diary.with_sessions.side_effect = lambda day: {
+            **day,
+            "sessions": [{"id": "s1", "started_at_local": "2026-03-30T09:00:00"}],
+        }
+        self.nutrition_diary.session_intake.return_value = {"session_id": "s1"}
         day_res = self.service.execute("read_nutrition", {"date": "2026-03-30"})
         self.assertEqual(
             day_res,
@@ -130,8 +136,11 @@ class CoachReadToolServiceTests(unittest.TestCase):
                 "templates": [{"id": "template-1"}],
                 "date": "2026-03-30",
                 "total_kcal": 2100,
+                "sessions": [{"id": "s1", "started_at_local": "2026-03-30T09:00:00"}],
+                "session_intake": [{"session_id": "s1"}],
             },
         )
+        self.nutrition_diary.session_intake.assert_called_once_with("s1", "2026-03-30")
         self.nutrition_diary.sync_status.get_day_summary.assert_called_once_with(
             "2026-03-30"
         )

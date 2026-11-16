@@ -245,7 +245,9 @@ def session_intake(
     hours = seconds / 3600 if seconds else None
     during = [e for e in entries if e["meal_type"] == "during_session"]
     carbs = _sum_known(e.get("carbs_g") for e in during)
-    volume = _sum_known(e.get("volume_ml") for e in during)
+    # An entry without ml counts as 0 ml, e.g. a gel; the report names how many
+    # had none (athlete decision 2026-11-16, #3234).
+    volume = float(sum(e.get("volume_ml") or 0.0 for e in during)) if during else None
     advised = carbohydrate_per_hour(seconds)
     low = (advised or {}).get("low_g")
     notable = bool(
