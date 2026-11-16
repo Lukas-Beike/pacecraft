@@ -265,6 +265,8 @@ class DiagnosticReportServiceTests(unittest.TestCase):
                     "window_days": 90,
                     "pending": 0,
                     "passed_over": 0,
+                    "passed_over_empty": 0,
+                    "passed_over_retries": 0,
                     "records": 0,
                     "strength": 0,
                     "daily_budget": 20,
@@ -368,11 +370,11 @@ class DiagnosticReportServiceTests(unittest.TestCase):
         # units (#2850); the plan push counts add three (jobs, items, stuck jobs;
         # #2878, #2953); the library archive counts add two (archived templates
         # and the last purge, #3141); the Garmin daily calorie counts add one read
-        # of the stored daily summaries (#3157); the mapper replay size adds seven
+        # of the stored daily summaries (#3157); the mapper replay size adds nine
         # (the Garmin window and its candidates, each for this and the next
-        # mapper, the records with outdated file sets, and two Wahoo selections;
-        # #2220).
-        self.assertEqual(len(self.db.queries), 38)
+        # mapper and once without empty marks, the records with outdated file
+        # sets, and two Wahoo selections; #2220).
+        self.assertEqual(len(self.db.queries), 40)
         self.assertEqual(
             [query.rsplit("FROM ", 1)[1] for query in count_queries],
             [
