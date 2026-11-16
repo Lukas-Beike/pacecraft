@@ -67,6 +67,9 @@ class WorkflowSourceTests(unittest.TestCase):
             "tests/test_ai_docs_contract.py",
         ):
             self.assertLess(workflow.index(f"test -f {relative}"), validator)
+        # #3173: every PR runs the strict OpenSpec validation with the pinned CLI.
+        install = workflow.index("run: npm ci --ignore-scripts")
+        self.assertLess(install, workflow.index("run: python scripts/spec_validate.py"))
 
     def test_dependabot_covers_all_manifests_on_develop(self):
         root = Path(__file__).resolve().parents[1]
