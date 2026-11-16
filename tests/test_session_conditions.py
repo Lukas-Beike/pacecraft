@@ -353,6 +353,8 @@ class FactChecksTests(unittest.TestCase):
             ("ok", ["heart_rate"]), (check["verdict"], check["value"]["doubted"])
         )
         self.assertIn("20 bpm", check["rule"])
+        # The gap rule is named too (#3084 3c D).
+        self.assertIn("Lücken über 5 s in mehr als 5 %", check["rule"])
         self.assertNotIn("data_quality", report["notable"])
 
     def test_strength_before_gives_facts_only(self) -> None:

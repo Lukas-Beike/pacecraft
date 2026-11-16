@@ -37,8 +37,11 @@ from backend.performance.planned_targets import (
 )
 from backend.performance.session_conditions import STOP_S
 from backend.performance.session_execution import (
+    GAP_SHARE,
     HR_SPIKE_BPM,
     HR_SPIKE_SHARE,
+    MAX_GAP_S,
+    PAUSE_S,
     SPEED_JUMP_MPS,
     SPEED_JUMP_SHARE,
     comparison_metrics,
@@ -1908,8 +1911,10 @@ def _data_quality(quality: Mapping[str, Any]) -> dict[str, Any]:
         f"Herzfrequenz: Spitzen über {HR_SPIKE_BPM:.0f} bpm in mehr als "
         f"{HR_SPIKE_SHARE * 100:.0f} % der Paare oder Kadenz-Kopplung; Tempo: "
         f"Sprünge über {SPEED_JUMP_MPS:g} m/s in mehr als "
-        f"{SPEED_JUMP_SHARE * 100:.0f} % der Paare. Prüfungen auf bezweifelten "
-        "Daten sind unbekannt",
+        f"{SPEED_JUMP_SHARE * 100:.0f} % der Paare; beide: Lücken über "
+        f"{MAX_GAP_S:g} s in mehr als {GAP_SHARE * 100:.0f} % der aufgezeichneten "
+        f"Zeit (Uhrsprünge über {PAUSE_S:g} s sind Pausen). Prüfungen auf "
+        "bezweifelten Daten sind unbekannt",
         "fixed",
     )
 
