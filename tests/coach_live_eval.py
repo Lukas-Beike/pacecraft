@@ -35,6 +35,7 @@ import sys
 import tempfile
 import urllib.error
 import urllib.request
+from collections.abc import Iterator
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -94,6 +95,7 @@ KNOWN_EXPECT_KEYS = frozenset(
         "min_new_units",
         "numbers_from_tools",
         "no_session_guess",
+        "notables_named",
     }
 )
 # Tables compared before and after a case; a change in a table the case does not
@@ -531,6 +533,8 @@ def score_case(
         misses += _tool_max_misses(e, turns)
     if e.get("numbers_from_tools"):
         misses += invented_numbers(case, turns)
+    if e.get("notables_named"):
+        misses += unnamed_notables(turns)
     if e.get("no_session_guess") and any(
         '"session_report"' in output
         for turn in turns
@@ -587,6 +591,54 @@ def _value(token: str) -> float:
         left, right = token.split(":")
         return int(left) * 60 + int(right)
     return float(token.replace(",", "."))
+
+
+# Words of a check title too generic to show the check was named.
+_TITLE_STOPWORDS = frozenset(
+    {"gegen", "einheit", "eigene", "gleicher", "über", "innerhalb"}
+)
+
+
+def _title_words(title: str) -> set[str]:
+    """The distinctive words of a check title (5 letters or more)."""
+    words = re.findall(r"[a-zäöüß-]{5,}", title.lower())
+    return {word for word in words if word not in _TITLE_STOPWORDS}
+
+
+def _session_reports(turns: list[dict[str, Any]]) -> Iterator[dict[str, Any]]:
+    """The session reports among the turns' tool outputs."""
+    for output in (o for turn in turns for o in turn["tool_outputs"]):
+        try:
+            parsed = json.loads(output)
+        except ValueError:
+            continue
+        report = parsed.get("session_report") if isinstance(parsed, dict) else None
+        if isinstance(report, dict):
+            yield report
+
+
+def unnamed_notables(turns: list[dict[str, Any]]) -> list[str]:
+    """Notable checks of the session report the final answer does not name (#3084).
+
+    The playbook asks for every notable check: a check counts as named when the
+    answer carries one distinctive word of its title ("Entkopplung" for
+    "Aerobe Entkopplung").
+    """
+    answer = (turns[-1]["text"] if turns else "").lower()
+    misses = []
+    for report in _session_reports(turns):
+        titles = {
+            check.get("id"): str(check.get("title") or "")
+            for check in report.get("checks") or ()
+            if isinstance(check, dict)
+        }
+        misses += [
+            f"notable_not_named:{key}"
+            for key in report.get("notable") or ()
+            if (words := _title_words(titles.get(key, "")))
+            and not any(word in answer for word in words)
+        ]
+    return list(dict.fromkeys(misses))
 
 
 def invented_numbers(case: dict[str, Any], turns: list[dict[str, Any]]) -> list[str]:

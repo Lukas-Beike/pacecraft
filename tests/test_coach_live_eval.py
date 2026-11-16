@@ -136,6 +136,29 @@ class CaseDefinitionTests(unittest.TestCase):
 
 
 class ScorerTests(unittest.TestCase):
+    def test_every_notable_check_of_the_report_must_be_named(self) -> None:
+        # #3084: the answer names decoupling ("Entkopplung") but not the heart
+        # rate cap ("HF-Deckel"); an ok check needs no mention.
+        report = {
+            "session_report": {
+                "notable": ["decoupling", "heart_rate_cap"],
+                "checks": [
+                    {"id": "decoupling", "title": "Aerobe Entkopplung"},
+                    {"id": "heart_rate_cap", "title": "HF-Deckel"},
+                    {"id": "steadiness", "title": "Gleichmäßigkeit (VI)"},
+                ],
+            }
+        }
+        turns = [
+            {
+                "tool_outputs": [json.dumps(report)],
+                "text": "Die Entkopplung lag über deinem Rahmen.",
+            }
+        ]
+        self.assertEqual(
+            ["notable_not_named:heart_rate_cap"], live.unnamed_notables(turns)
+        )
+
     def test_every_number_of_the_answer_needs_a_tool_or_message_source(self):
         # #3084: 6,2 rounds from 6.24, 4:30 is 270 s/km, 30 min is 1800 s,
         # 10:00 stands in the timestamp, 6.9. is a date and 3 a free count; 91
@@ -1073,6 +1096,57 @@ class ScriptedLoopTests(unittest.TestCase):
             [detail, "1800 s Bewegungszeit, also 17,3 km/h."],
         )
         self.assertEqual(["invented_number:17,3"], invented["misses"])
+
+    def test_an_analysis_must_name_every_notable_check(self):
+        # #3084: a report with two notable checks passes through the real loop;
+        # an answer naming one of them misses the other.
+        from backend.coach import activity_read_tools
+
+        report = {
+            "method": "session-report-v1",
+            "checks": [
+                {
+                    "id": "decoupling",
+                    "title": "Aerobe Entkopplung",
+                    "verdict": "notable",
+                },
+                {"id": "heart_rate_cap", "title": "HF-Deckel", "verdict": "notable"},
+            ],
+            "notable": ["decoupling", "heart_rate_cap"],
+            "lead": ["decoupling", "heart_rate_cap"],
+            "unknown": [],
+            "facts": [],
+        }
+
+        def detail():
+            return ModelTurn(
+                tool_calls=[
+                    {
+                        "call_id": f"call-{next(CALL_IDS)}",
+                        "name": "get_activity_details",
+                        "arguments": json.dumps(
+                            {
+                                "activity_id": "synthetic-run",
+                                "date": None,
+                                "sport": None,
+                                "start_time": None,
+                            }
+                        ),
+                    }
+                ]
+            )
+
+        with patch.object(activity_read_tools, "session_report", return_value=report):
+            named, _counter = self.run_scripted(
+                "a02-session-numbers-from-report",
+                [detail, "Entkopplung erhöht, und der HF-Deckel wurde überschritten."],
+            )
+            partial, _counter = self.run_scripted(
+                "a02-session-numbers-from-report",
+                [detail, "Die Entkopplung war erhöht."],
+            )
+        self.assertTrue(named["passed"], named)
+        self.assertEqual(["notable_not_named:heart_rate_cap"], partial["misses"])
 
     def test_a_write_in_a_read_only_case_is_caught_by_the_snapshot(self):
         def write():
