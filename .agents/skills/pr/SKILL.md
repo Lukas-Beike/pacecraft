@@ -172,11 +172,12 @@ exit 1 handle the cause as below. On each wake:
   armed it reports them as accepted, so do not rebase for that alone.
 - If the branch falls behind or conflicts, rebase and push with
   [branch-sync](../pacecraft-branch-sync/SKILL.md) `--push` (never a
-  merge-style "Update branch"). A stacked PR: retarget it to `develop` first
-  and wait about a minute for the retarget to settle before pushing the
-  rebased head; two near-simultaneous events can leave the required
-  `SonarCloud Code Analysis` cancelled, and only a new push re-runs it
-  (pr-state names this; #2934).
+  merge-style "Update branch"). A stacked PR whose parent was merged: run
+  branch-sync `--after-pr <parent> --push`, which refuses on a stale base,
+  rebases only this layer, retargets to `develop`, waits a minute for the
+  retarget to settle and then pushes; two near-simultaneous events can leave
+  the required `SonarCloud Code Analysis` cancelled, and only a new push
+  re-runs it (pr-state names this; #2934, #3243).
 - If checks fail, read the logs, fix the cause, and push. The `Gitar` check is
   required (see `.github/AGENTS.md`); no bypass. If it never reports on an
   otherwise green head, note the PR number in the issue (#1906 tracks its
