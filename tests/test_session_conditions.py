@@ -304,6 +304,106 @@ class WindTests(unittest.TestCase):
         self.assertIsNone(_check(session_report(_run(environment="indoor")), "wind"))
 
 
+class FactChecksTests(unittest.TestCase):
+    """Facts the report passes on and never judges (#3084 Part 3c)."""
+
+    def test_training_effect_is_passed_on_with_its_source(self) -> None:
+        result = _run(
+            metrics={
+                "aerobic_training_effect": {"value": 3.4, "source": "Garmin Connect"},
+                "anaerobic_training_effect": {"value": 1.2, "source": "Wahoo"},
+            },
+            training_effect_label={"value": "TEMPO", "source": "Garmin Connect"},
+        )
+
+        check = _check(session_report(result), "training_effect")
+
+        assert check is not None
+        self.assertEqual(
+            ("ok", 0, "provider"), (check["verdict"], check["severity"], check["basis"])
+        )
+        self.assertEqual(
+            {
+                "aerobic": 3.4,
+                "aerobic_source": "Garmin Connect",
+                "anaerobic": 1.2,
+                "anaerobic_source": "Wahoo",
+                "label": "TEMPO",
+                "label_source": "Garmin Connect",
+            },
+            check["value"],
+        )
+        self.assertEqual(
+            "unknown",
+            _check(session_report(_run()), "training_effect")["verdict"],  # type: ignore[index]
+        )
+
+    def test_data_quality_names_the_doubted_data_and_never_decides(self) -> None:
+        result = _run()
+        result["analysis"]["execution"]["data_quality"] = {
+            "heart_rate": "spikes",
+            "speed": "ok",
+        }
+
+        report = session_report(result)
+
+        check = _check(report, "data_quality")
+        assert check is not None
+        self.assertEqual(
+            ("ok", ["heart_rate"]), (check["verdict"], check["value"]["doubted"])
+        )
+        self.assertIn("20 bpm", check["rule"])
+        self.assertNotIn("data_quality", report["notable"])
+
+    def test_strength_before_gives_facts_only(self) -> None:
+        result = _run(
+            strength_before={
+                "status": "ok",
+                "origin": "completed",
+                "sessions": [
+                    {"hours_before": 20.5, "legs": True, "intensity": "heavy"},
+                    {"hours_before": 40.0, "legs": False, "intensity": None},
+                ],
+            }
+        )
+
+        check = _check(session_report(result), "strength_before")
+
+        assert check is not None
+        self.assertEqual("ok", check["verdict"])
+        self.assertEqual(
+            {
+                "sessions": 2,
+                "legs": 1,
+                "intensities": ["heavy", None],
+                "closest_hours_before": 20.5,
+                "confirmed": True,
+            },
+            check["value"],
+        )
+        unread = _run(
+            strength_before={
+                "status": "not_covered",
+                "reason": "Aktivitäten nicht lesbar.",
+            }
+        )
+        missing = _check(session_report(unread), "strength_before")
+        assert missing is not None
+        self.assertEqual("unknown", missing["verdict"])
+        # Nothing done and the plan unread is no known zero.
+        unchecked = _run(
+            strength_before={
+                "status": "ok",
+                "origin": "none_found",
+                "planned_checked": False,
+                "sessions": [],
+            }
+        )
+        unplanned = _check(session_report(unchecked), "strength_before")
+        assert unplanned is not None
+        self.assertEqual("unknown", unplanned["verdict"])
+
+
 class RatedSessionsReadTests(unittest.TestCase):
     def test_the_window_reads_the_stored_intensity_scale(self) -> None:
         # The local IF is stored in % (M6: IF x 100), and with_local_loads puts
