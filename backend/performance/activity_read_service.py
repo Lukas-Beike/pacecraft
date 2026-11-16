@@ -22,6 +22,7 @@ from backend.calendar.canonical import canonical_planned_workouts
 from backend.canonical.activity_summary import legacy_activity_keys, stored_activity_key
 from backend.canonical.local_time import local_date
 from backend.canonical.records import ActivityRecord
+from backend.canonical.vocabulary import MetricKind
 from backend.errors import AppError
 from backend.performance.canonical_detail import (
     CanonicalDetailReader,
@@ -219,6 +220,23 @@ class ActivityAnalysisReadService(ActivityReadService):
                 }
             )
         return rated
+
+    def session_headwind(self, session_id: str) -> dict[str, Any] | None:
+        """The stored headwind of a session with its derivation (#3084).
+
+        For the session report only: the bins describe the course of the
+        session, so no detail document or tool result carries them.
+        """
+        metric = MetricKind.ACTIVITY_WEATHER_HEADWIND.value
+        with self._database_manager.read_snapshot() as db:
+            row = (
+                stored_activity_weather(db, [session_id])
+                .get(session_id, {})
+                .get(metric)
+            )
+        if row is None:
+            return None
+        return {"mean_mps": row["value"], **row["derivation"]}
 
     def summaries_on_days(
         self, days: Sequence[date]

@@ -28,6 +28,7 @@ def _service(
     )
     # No rated sessions: the session report's RPE check stays unknown (#3084).
     activity_read.rated_sessions.return_value = []
+    activity_read.session_headwind.return_value = None
     planned = None if units is None else Mock(list=Mock(return_value=units))
     reports = (
         None
@@ -50,6 +51,34 @@ def _result(service):
 
 def _unit(day, sport, **extra):
     return {"id": f"u-{day}-{sport}", "date": day, "sport": sport, **extra}
+
+
+class WindPrivacyTests(unittest.TestCase):
+    def test_the_headwind_bins_reach_no_tool_output(self):
+        # #3084: the bins describe the course of the session like positions; the
+        # report reduces them and only the reduced values leave it.
+        service = _service("run")
+        service._activity_read.session_headwind.return_value = {
+            "mean_mps": 2.0,
+            "coverage_pct": 90.0,
+            "bin_s": 60,
+            "bins": [2.123456, 1.987654, 2.345678],
+            "head_share_pct": 80.0,
+            "tail_share_pct": 5.0,
+            "location_kind": "activity_start",
+        }
+
+        result = _result(service)
+
+        text = json.dumps(result, default=str)
+        self.assertNotIn("bins", text)
+        self.assertNotIn("2.123456", text)
+        wind = next(
+            check
+            for check in result["session_report"]["checks"]
+            if check["id"] == "wind"
+        )
+        self.assertEqual(("ok", 1.45), (wind["verdict"], wind["value"]["headwind_mps"]))
 
 
 class FocusTests(unittest.TestCase):
