@@ -150,6 +150,15 @@ class AthleteGetRoutes:
             return None
         return result
 
+    @staticmethod
+    def _lt2_baselines(service: Callable[[], Any]) -> dict[str, Any]:
+        try:
+            result: dict[str, Any] = service().notice_baselines()
+        except Exception as exc:  # noqa: BLE001 - the notice baseline is optional
+            _LOGGER.warning("LT2 notice baseline unavailable: %s", type(exc).__name__)
+            return {}
+        return result
+
     def _profile(self, handler: Any, _request: RouteRequest) -> None:
         """Profile, competitions and the threshold estimates.
 
@@ -165,6 +174,8 @@ class AthleteGetRoutes:
         value (`heart_rate_bpm` and `pace_seconds_per_km`, or
         `pace_seconds_per_km`, or `power_w`), `quality`, its basis and `source`, or
         `unknown` with `reason`; null when computing them fails.
+        `lt2_notice_baselines` holds per sport the LT2 values the athlete last saw
+        in the change notice (`{}` when none or when reading fails).
 
         Errors: none beyond the common ones.
         """
@@ -178,6 +189,9 @@ class AthleteGetRoutes:
             )
         if self._second_threshold_service is not None:
             payload["lt2_estimates"] = self._lt2_estimates(
+                self._second_threshold_service
+            )
+            payload["lt2_notice_baselines"] = self._lt2_baselines(
                 self._second_threshold_service
             )
         handler.send_json(200, payload)

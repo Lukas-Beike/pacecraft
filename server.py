@@ -234,7 +234,7 @@ DATA_DIR = Path(os.environ.get("DATA_DIR", ROOT / "data"))
 DB_PATH = DATA_DIR / "intervals-coach.db"
 LOG_PATH = DATA_DIR / "intervals-coach.log"
 APP_NAME = "Pacecraft · AI Coach"
-APP_VERSION = "2.1.33"
+APP_VERSION = "2.1.34"
 MAX_BODY_BYTES = 1_000_000
 COACH_CONVERSATION_GATE = CoachConversationGate()
 
@@ -1091,6 +1091,7 @@ def main() -> None:
         COACH_JOB_WORKER.stop()
         CANONICAL_BACKFILL.worker.stop()
         METRIC_EXPORT_RUNNER.stop()
+        NUTRITION_SERVICES.product_refresh.stop()
         server.server_close()
         DIAGNOSTIC_CAPTURE.close()
         if daily_thread is not None:
@@ -1100,6 +1101,7 @@ def main() -> None:
         COACH_JOB_WORKER.join(timeout=5)
         CANONICAL_BACKFILL.worker.join(timeout=5)
         METRIC_EXPORT_RUNNER.join(timeout=5)
+        NUTRITION_SERVICES.product_refresh.join(timeout=5)
         DIAGNOSTIC_CAPTURE.flush()
 
 

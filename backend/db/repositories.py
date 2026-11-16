@@ -349,12 +349,13 @@ class NutritionProductRepository:
         return [self._row(row) for row in rows]
 
     def list_all(
-        self, db: Any, *, query: str | None = None, limit: int = 1000
+        self, db: Any, *, query: str | None = None, limit: int | None = 1000
     ) -> builtins.list[dict[str, Any]]:
         """Active own products and stored database foods together, by name.
 
         The search covers name, brand and EAN. Each product names its
-        ``origin``, ``fetched_at`` and ``missing_fields``.
+        ``origin``, ``fetched_at`` and ``missing_fields``. ``limit`` None lists
+        every product (the refresh-all run, #3299).
         """
         if (found := _term_clauses(query, barcodes=True)) is None:
             return []
@@ -366,10 +367,11 @@ class NutritionProductRepository:
         ).fetchall()
         # Sorted before the cut: SQLite folds ASCII case only, and "Äpfel"
         # belongs under A, not after Z.
-        return sorted(
+        listed = sorted(
             (self._listed(row) for row in rows),
             key=lambda product: (_name_key(product["name"]), product["id"]),
-        )[: max(1, min(int(limit), 1000))]
+        )
+        return listed if limit is None else listed[: max(1, min(int(limit), 1000))]
 
     def get_database(self, db: Any, product_id: str) -> dict[str, Any] | None:
         """A stored database food as a product, or None for any other id."""

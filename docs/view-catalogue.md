@@ -41,7 +41,7 @@ Default route: `#coach`. Navigation items: `#coach`, `#plan`, `#nutrition`, `#an
 | `#nutrition` | `nutritionPanel` | `nutrition` | `/api/nutrition/day`, `/api/body/energy` | Ernährung aktualisieren, Vorheriger Tag, Nächster Tag, Heute, Als geschätzt markieren, Nicht geschätzt, Löschen, Rückgängig, Erneut laden | loading, empty, error, offline |
 | `#nutrition/body` | `nutritionPanel` | `nutrition` | `/api/performance`, `/api/body/skinfolds`, `/api/body/energy` | Ernährung aktualisieren, Letzte 14 Tage, 12 Wochen, Hautfalten eintragen, Speichern, Löschen, Abbrechen | loading, empty, error, offline |
 | `#nutrition/diary` | `nutritionPanel` | `nutrition` | `/api/nutrition/day`, `/api/body/energy` | Ernährung aktualisieren, Vorheriger Tag, Nächster Tag, Heute, Als geschätzt markieren, Nicht geschätzt, Löschen, Rückgängig, Erneut laden | loading, empty, error, offline |
-| `#nutrition/products` | `nutritionPanel` | `nutrition` | `/api/nutrition/products?scope=all` | Barcode scannen, Nährwerttabelle fotografieren, Produkt manuell erfassen, Suchen | loading, empty, error, offline |
+| `#nutrition/products` | `nutritionPanel` | `nutrition` | `/api/nutrition/products?scope=all`, `/api/nutrition/products/refresh-all` | Barcode scannen, Nährwerttabelle fotografieren, Produkt manuell erfassen, Suchen, Alle aktualisieren | loading, empty, error, offline |
 | `#nutrition/week` | `nutritionPanel` | `nutrition` | `/api/nutrition/week` | Ernährung aktualisieren, Letzte 14 Tage, 12 Wochen, Tageswerte anzeigen | loading, empty, error, offline |
 | `#plan` | `workoutsPanel` | `plan` | `/api/plan`, `/api/library?limit=100`, `/api/activities?limit=100` | Kalender aktualisieren, Woche, Monat, Woche synchronisieren, Verschieben, Feedback, Mit dem Coach analysieren, Mit Coach lösen | loading, empty, error, notConfigured, offline |
 | `#plan/library` | `workoutsPanel` | `plan` | `/api/plan`, `/api/library?limit=100` | Kalender aktualisieren, Weitere Bibliothekseinheiten laden, Erneut senden | loading, empty, error, offline |
@@ -148,10 +148,12 @@ texts.
 | `public/provider-connections.js` `configureAutomaticMetricExport` | (computed) ` enabled ? "Automatischen Abgleich aktivieren?" : "Automatischen Abgleich deaktivieren?" ` | (computed) ` message ` | Bestätigen |
 | `public/provider-connections.js` `clearProviderCredential` | (computed) `` `${label} entfernen?` `` | (computed) `` `${label} aus der App entfernen? Danach gilt wieder der Wert aus der Serverumgebung, falls dort einer gesetzt ist.` `` | Bestätigen |
 | `public/provider-connections.js` `disconnectGarmin` | Garmin trennen? | Garmin trennen? Die in der App gespeicherten Garmin-Tokens werden gelöscht. Bereits geladene Daten bleiben erhalten. | Bestätigen |
-| `public/settings.js` `adoptFirstThreshold` | Gemessenen Wert ersetzen? | Der gemessene Wert wird durch die Schätzung ersetzt. | Ersetzen |
+| `public/settings.js` `adoptFirstThreshold` | Gemessenen Wert ersetzen? | Der gemessene Wert wird durch den Wert aus DFA-α1 ersetzt. | Ersetzen |
 | `public/settings.js` `restoreDatabaseBackup` | Datenbank-Backup wiederherstellen? | Das aktuelle Datenbank-Backup wird vorher gesichert und durch die ausgewählte Datei ersetzt. Fortfahren? | Bestätigen |
 | `public/settings.js` `deleteGpsTracks` | GPS-Spuren löschen? | (computed) `` `Alle gespeicherten GPS-Spuren (${gpsTracksState.stored_tracks}) werden unwiderruflich lokal gelöscht. Streckenerkennung und Wetter am Ort nutzen sie nicht mehr. Die übrigen Aufzeichnungen bleiben.` `` | Löschen |
 | `public/settings.js` `deletePrivacyData` | Lokale Daten endgültig löschen? | (computed) ` scope ` | Endgültig löschen |
+| `public/settings.js` `confirmLt2Step` | Große Abweichung | (computed) `` `${error.message} Zonen in % der Schwelle verschieben sich mit.` `` | Trotzdem übernehmen |
+| `public/settings.js` `confirmLt2Step` | Eigenen Wert ersetzen? | (computed) ` error.message ` | Ersetzen |
 | `public/settings.js` `removeZones` | Lokale Zonen entfernen? | Lokale Zonen entfernen? Danach gelten wieder die Zonen des Anbieters. | Entfernen |
 | `public/shared.js` `confirmDiscardDraft` | Änderungen verwerfen? | Ungespeicherte Änderungen verwerfen? | Bestätigen |
 | `public/sync-actions.js` `fullResync` | (computed) ` confirmation.title ` | (computed) ` confirmation.message ` | Bestätigen |

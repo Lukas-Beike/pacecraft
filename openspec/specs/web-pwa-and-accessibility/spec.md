@@ -466,11 +466,11 @@ The client SHALL offer confirmation only for current confirmable proposals, pres
 Evidence: `public/coach.js::coachActionButtons`, `public/coach.js::executeCoachActionProposal`, `public/coach.js::reconcileCoachActionProposal`, `public/coach.js::toastCoachReceipts`; `e2e/coach-tool-receipts.spec.js::profile writes have a useful receipt and unresolved errors stay visible safely`, `e2e/contracts.spec.js::only current pending proposals expose an explicit confirmation action`, `tests/frontend-write-safety.test.cjs::a 409 rejection after execute was sent is a known failure and unlocks the proposal`, `tests/frontend-write-safety.test.cjs::a lost execute response keeps the action locked and is not reported as a failed confirmation`, `tests/frontend-write-safety.test.cjs::a failed reconcile keeps the unknown-outcome lock`.
 
 ### Requirement: Derived values are marked and controls stay reachable
-The client SHALL mark every derived or estimated value with one "Schätzung" chip and name each dashed line. Interactive controls on the analysis and nutrition routes SHALL keep a 44 px hit area and every text/background pair SHALL meet WCAG AA in both themes. Desktop (>= 1100 px) SHALL use a 15-16 px text size, bounded form fields and two charts per row.
+The client SHALL name each dashed line and show no "Schätzung" qualifier on derived or estimated values; their source or method name stays (#3297). Interactive controls on the analysis and nutrition routes SHALL keep a 44 px hit area and every text/background pair SHALL meet WCAG AA in both themes. Desktop (>= 1100 px) SHALL use a 15-16 px text size, bounded form fields and two charts per row.
 
 #### Scenario: Estimates and predictions
 - **WHEN** a derived value (VO2max, race predictions, CP/CS, load, fitness/fatigue/form, heart-rate drift, projected daily expenditure) is shown
-- **THEN** it carries the chip, 5 and 10 km predictions show minutes and seconds while half marathon and marathon show hours and minutes, VO2max keeps the precise provider value's one decimal, and a dashed line is named in the legend or a line key.
+- **THEN** it carries no "Schätzung" chip, 5 and 10 km predictions show minutes and seconds while half marathon and marathon show hours and minutes, VO2max keeps the precise provider value's one decimal, and a dashed line is named in the legend or a line key.
 
 #### Scenario: Hit areas and contrast
 - **WHEN** the analysis or nutrition routes render in the light theme
@@ -484,7 +484,7 @@ The client SHALL mark every derived or estimated value with one "Schätzung" chi
 - **WHEN** an Analyse tab or another view with the two-column chart grid renders on a desktop
 - **THEN** two cards in a row have the same height, and a card alone in its row spans the full row width; the phone layout keeps one column (#3154).
 
-Evidence: `public/components.js::createEstimateChip`, `public/performance-view.js::predictionTime`, `public/analysis.js::appendAnalysisLineKey`, `public/nutrition.js::nutritionChartRows`, `tests/test_css_design_tokens.py::test_training_focus_percentages_use_neutral_text_in_both_themes`, `tests/analysis-presentation.test.cjs::race prediction rows exclude body weight and empty states give a reason`, `backend/providers/garmin_health_mapping.py:_map_max_metrics`, `tests/test_performance_garmin_metrics.py:test_precise_vo2max_wins_over_its_rounded_twin`, `e2e/estimates-targets.spec.js`.
+Evidence: `public/performance-view.js::currentPerformanceRows`, `public/performance-view.js::predictionTime`, `public/analysis.js::appendAnalysisLineKey`, `public/nutrition.js::nutritionChartRows`, `tests/test_css_design_tokens.py::test_training_focus_percentages_use_neutral_text_in_both_themes`, `tests/analysis-presentation.test.cjs::race prediction rows exclude body weight and empty states give a reason`, `backend/providers/garmin_health_mapping.py:_map_max_metrics`, `tests/test_performance_garmin_metrics.py:test_precise_vo2max_wins_over_its_rounded_twin`, `e2e/estimates-targets.spec.js`.
 
 ### Requirement: Selection, sources and axes read consistently
 The client SHALL fill the selected tab or range with one accent style everywhere, show the app name, a password toggle and an invalid-field border on the login, and show a meal source only when it differs from the manual local default. Charts SHALL keep a minimum axis span, draw a flat series as a line and space tick labels evenly, naming weeks "Woche ab". Session detail SHALL show one muted source line with the provenance folded away.

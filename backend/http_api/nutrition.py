@@ -19,6 +19,7 @@ from backend.nutrition.photo import PHOTO_REQUEST_MAX_BYTES
 
 NUTRITION_ENTRY_PATH = "/api/nutrition/entry"
 NUTRITION_PRODUCTS_PATH = "/api/nutrition/products"
+REFRESH_ALL_PATH = f"{NUTRITION_PRODUCTS_PATH}/refresh-all"
 PRODUCT_ENTITY = "nutrition_product"
 INVALID_BODY = "Ungültiger Anfrageinhalt."
 
@@ -230,7 +231,9 @@ class NutritionPostRoutes:
         meal_library_service: Callable[[], NutritionMealLibraryService],
         nutrition_refresh_service: Callable[[], Any] | None = None,
         local_now: Callable[[], datetime] | None = None,
+        product_refresh: Any = None,
     ) -> None:
+        self._product_refresh = product_refresh
         self._diary_service = diary_service
         self._meal_library_service = meal_library_service
         self._nutrition_refresh_service = nutrition_refresh_service
@@ -261,7 +264,40 @@ class NutritionPostRoutes:
                     self._refresh_database_food,
                 ),
             )
-        ]
+        ] + (
+            [
+                Route("POST", REFRESH_ALL_PATH, Access.SESSION_CSRF, self._refresh_all),
+                Route("GET", REFRESH_ALL_PATH, Access.SESSION, self._refresh_all_state),
+            ]
+            if self._product_refresh is not None
+            else []
+        )
+
+    def _refresh_all(self, handler: Any, _request: RouteRequest) -> None:
+        """Re-check every product in the background; gaps fill, known values stay.
+
+        Request: JSON object; its content is ignored. A run already in progress
+        is not started again.
+
+        Response: 200 as `GET /api/nutrition/products/refresh-all`.
+
+        Errors: none beyond the common ones.
+        """
+        handler.read_json()
+        handler.send_json(200, self._product_refresh.start())
+
+    def _refresh_all_state(self, handler: Any, _request: RouteRequest) -> None:
+        """The progress of the current or last run re-checking every product.
+
+        Request: no query, no body.
+
+        Response: 200 `{"running": bool}`, after a start also `total`, `done`,
+        `filled`, `unchanged`, `skipped` (own products without an EAN),
+        `failed`, `started_at` and, once ended, `finished_at`.
+
+        Errors: none beyond the common ones.
+        """
+        handler.send_json(200, self._product_refresh.state())
 
     def _check_yazio(self, handler: Any, _request: RouteRequest) -> None:
         """Explicitly check Yazio authentication; the result is kept in memory.

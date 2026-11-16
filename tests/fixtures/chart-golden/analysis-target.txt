@@ -1,9 +1,6 @@
 <section class="analysis-chart-card">
   <h3>
     "Schlaf"
-    " "
-    <span class="status-chip estimate-chip" data-status="estimate">
-      "Schätzung"
   <ul class="analysis-chart-legend">
     <li data-color="0" data-line="solid">
       <button aria-describedby="analysis-info-6" aria-expanded="false" aria-label="Erklärung zu Schlafdauer" class="analysis-legend-info" popovertarget="analysis-info-6" type="button">

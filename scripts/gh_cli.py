@@ -9,9 +9,17 @@ from __future__ import annotations
 import json
 import re
 import subprocess
+import sys
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
+
+# Issue, PR and athlete text holds characters a cp1252 Windows console cannot
+# encode; printing them crashed a script after its GitHub write (#3312). Every
+# script that imports this helper prints UTF-8, unencodable output replaced.
+for _stream in (sys.stdout, sys.stderr):
+    if hasattr(_stream, "reconfigure"):
+        _stream.reconfigure(encoding="utf-8", errors="replace")
 
 # Token shapes that must never reach an issue, PR or comment body.
 SECRET_SHAPES = re.compile(

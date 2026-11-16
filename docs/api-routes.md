@@ -107,6 +107,8 @@ handler's docstring. Regenerate it with
 | POST | `/api/nutrition/products/extract` | Session + CSRF | after access | Extract a product from a label photo; the image is not stored. |
 | POST | `/api/nutrition/products/favorite` | Session + CSRF | after access | Mark or unmark a product as favorite. |
 | POST | `/api/nutrition/products/lookup` | Session + CSRF | after access | Look a product up by barcode or name, local products first. |
+| GET | `/api/nutrition/products/refresh-all` | Session | no | The progress of the current or last run re-checking every product. |
+| POST | `/api/nutrition/products/refresh-all` | Session + CSRF | after access | Re-check every product in the background; gaps fill, known values stay. |
 | POST | `/api/nutrition/refresh` | Session + CSRF | after access | Run a targeted nutrition refresh. |
 | GET | `/api/nutrition/session-fuelling` | Session | no | Drinking and carbohydrates for a long planned run or ride (#2804). |
 | GET | `/api/nutrition/week` | Session | no | Nutrition week summary of the closed days before today. |
@@ -153,6 +155,7 @@ handler's docstring. Regenerate it with
 | GET | `/api/zones` | Session | no | Local and provider zone configurations. |
 | PUT | `/api/zones` | Session + CSRF | before access | Save one local zone configuration. |
 | POST | `/api/zones/lt2/adopt` | Session + CSRF | after access | Adopt one value of a local LT2 estimate as the threshold in effect. |
+| PUT | `/api/zones/lt2/notice-baseline` | Session + CSRF | before access | Store the LT2 values of one sport the athlete has now seen (F10, #3273). |
 | PUT | `/api/zones/remove` | Session + CSRF | before access | Remove one local zone configuration. |
 
 ## Route contracts
@@ -1328,6 +1331,25 @@ and a query of fewer than 2 characters; 400 "Suchbegriff muss 2 bis 120 Zeichen
 enthalten." for a longer query; 400 "Ungültige Lebensmitteldatenbank." for
 another `source`.
 
+### `GET /api/nutrition/products/refresh-all`
+
+Request: no query, no body.
+
+Response: 200 `{"running": bool}`, after a start also `total`, `done`,
+`filled`, `unchanged`, `skipped` (own products without an EAN),
+`failed`, `started_at` and, once ended, `finished_at`.
+
+Errors: none beyond the common ones.
+
+### `POST /api/nutrition/products/refresh-all`
+
+Request: JSON object; its content is ignored. A run already in progress
+is not started again.
+
+Response: 200 as `GET /api/nutrition/products/refresh-all`.
+
+Errors: none beyond the common ones.
+
 ### `POST /api/nutrition/refresh`
 
 Request: JSON body `{"area": string, "date": "YYYY-MM-DD", "days": integer}` and
@@ -1653,6 +1675,8 @@ holds per sport (`run`, `ride`) the local LT2 estimates `dfa_alpha1` and
 value (`heart_rate_bpm` and `pace_seconds_per_km`, or
 `pace_seconds_per_km`, or `power_w`), `quality`, its basis and `source`, or
 `unknown` with `reason`; null when computing them fails.
+`lt2_notice_baselines` holds per sport the LT2 values the athlete last saw
+in the change notice (`{}` when none or when reading fails).
 
 Errors: none beyond the common ones.
 
@@ -2037,6 +2061,18 @@ current estimate), `lt2_no_zones` (no zones of that kind), `lt2_replace_local`
 `lt2_deviation` (more than 5 % from the value in effect; send
 `confirm_deviation: true`) or `lt2_zone_limits` (the absolute zone limits
 do not fit the new threshold).
+
+### `PUT /api/zones/lt2/notice-baseline`
+
+Request: JSON body `{"sport": "run" | "ride", "values": object}`. `values`
+holds per known key (run: `provider_hr`, `provider_pace`, `dfa_hr`,
+`dfa_pace`, `cs_pace`; ride: `provider_power`, `provider_hr`, `cp_power`) a positive
+number or null for "unbekannt"; other keys are ignored.
+
+Response: 200 `{"lt2_notice_baselines": object}`, every sport's stored values.
+
+Errors: 400 "Unbekannte Sportart oder Werte."; 400 "Werte müssen Zahlen
+oder null sein.".
 
 ### `PUT /api/zones/remove`
 

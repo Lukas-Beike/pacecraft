@@ -463,7 +463,7 @@ test("@responsive performance keeps dated FTP values and weekly medians independ
   await expect(ftp.locator("tbody")).toContainText("03.09.2026");
   await expect(ftp.locator("tbody")).toContainText("09.09.2026");
   await expect(ftp.locator("tbody td:nth-child(2)")).toHaveText([/200 W/, /220 W/, /210 W/, /220 W/, /210 W/]);
-  const vo2max = root.locator("[data-analysis-section='development-Rad'] .analysis-subchart").filter({ has: page.getByRole("heading", { name: "VO₂max Schätzung", exact: true }) });
+  const vo2max = root.locator("[data-analysis-section='development-Rad'] .analysis-subchart").filter({ has: page.getByRole("heading", { name: "VO₂max", exact: true }) });
   await vo2max.getByText("Werte ansehen", { exact: true }).click();
   await expect(vo2max.locator("tbody td:nth-child(2)")).toHaveText([/50 ml\/kg\/min.*3 Messungen/, /55 ml\/kg\/min.*2 Messungen/]);
   await page.evaluate(async () => { await AppRouter.navigate("analysis/running", { historyMode: "replace" }); });
@@ -530,7 +530,7 @@ test("@responsive dense performance retains every measured week without overlapp
   }));
   expect(geometry.map((chart) => chart.count)).toEqual([12, 12]);
   for (const chart of geometry) expect(chart.overlap).toBe(false);
-  const vo2max = page.locator("#analysisHistoryCharts .analysis-subchart").filter({ has: page.getByRole("heading", { name: "VO₂max Schätzung", exact: true }) }).filter({ has: page.locator("circle[data-series='0']") }).first();
+  const vo2max = page.locator("#analysisHistoryCharts .analysis-subchart").filter({ has: page.getByRole("heading", { name: "VO₂max", exact: true }) }).filter({ has: page.locator("circle[data-series='0']") }).first();
   await vo2max.locator("details summary").click();
   await expect(vo2max.locator("tbody tr")).toHaveCount(12);
 });

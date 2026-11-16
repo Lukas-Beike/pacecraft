@@ -313,6 +313,7 @@ def build_athlete_data(
             curve_records,
             local_date,
             zones=zones,
+            key_values=key_values,
         ),
         profile=profile,
         profile_for=profile_for,

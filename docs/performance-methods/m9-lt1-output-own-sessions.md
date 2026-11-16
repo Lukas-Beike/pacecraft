@@ -20,8 +20,9 @@ output relation. It is not a lactate or ventilatory threshold measurement.
 
 Athlete decisions (2026-11-12, #2427): pace and power at the LT1 heart rate,
 no heart-rate value from decoupling; read in a direct heart-rate band, no
-regression; precedence own sessions > zone 2 top > fixed share; labelled
-"Schätzung" like the other stand-ins.
+regression; precedence own sessions > zone 2 top > fixed share; labelled by origin
+("aus eigenen Einheiten", "aus Zone 2", "aus festem Anteil von LT2") without a
+"Schätzung" qualifier (#3297).
 
 ## Formula and units
 

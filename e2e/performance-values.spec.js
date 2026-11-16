@@ -51,9 +51,9 @@ test("@responsive performance keeps Garmin measurements and one cycling best per
   await expect(page.locator('#cyclingPowerProfile [data-power-duration="60"]')).toContainText("420 W");
   await expect(page.locator("#cyclingPowerProfile thead th")).toHaveText(["Dauer", "Leistung", "Datum"]);
   await expect(page.locator("#cyclingPowerProfile [data-power-profile-gap]")).toHaveText("Für 3 von 14 Radeinheiten fehlen vollständige Messreihen; die Bestwerte können höher liegen.");
-  await expect(page.locator("#cyclingPowerProfile [data-critical-power]")).toHaveText("Schätzung Experimentell · CP (28 Tage): Rad outdoor CP 250 W · W′ 18 kJ (unsicher) · 1× Wettkampf · Rad indoor —");
+  await expect(page.locator("#cyclingPowerProfile [data-critical-power]")).toHaveText("Experimentell · CP (28 Tage): Rad outdoor CP 250 W · W′ 18 kJ (unsicher) · 1× Wettkampf · Rad indoor —");
   // The running critical speed sits under the running best efforts (#2265).
-  await expect(page.locator("#runningBestEfforts [data-critical-power]")).toHaveText("Schätzung Experimentell · CS (28 Tage): Lauf CS 4,12 m/s · D′ 200 m (unsicher)");
+  await expect(page.locator("#runningBestEfforts [data-critical-power]")).toHaveText("Experimentell · CS (28 Tage): Lauf CS 4,12 m/s · D′ 200 m (unsicher)");
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBeTruthy();
 });
 
@@ -134,7 +134,7 @@ test("@responsive the threshold charts show the LT1 progression with gaps, heart
   await marker.focus();
   await page.keyboard.press("Enter");
   const readout = page.locator(`#${await marker.getAttribute("aria-describedby")}`);
-  await expect(readout).toContainText("bei 144 bpm · Schätzung aus eigenen Einheiten");
+  await expect(readout).toContainText("bei 144 bpm · aus eigenen Einheiten");
   const gapMarker = pace.locator(`.analysis-day-marker[data-date="${gap}"]`);
   // The gap week keeps its LT2 reading but has no LT1 in it.
   await expect(gapMarker).toHaveCount(1);

@@ -238,6 +238,8 @@ every named number the code fixes. A test fails when it is out of date.
 | `CRITICAL_LABEL` | `'Modellschätzung aus Bestwerten (Critical Speed/Power, M4)'` | `backend/performance/second_threshold_estimate.py` |  |
 | `RUNS_ONLY` | `{'status': 'unknown', 'reason': 'nur aus Läufen', 'sessions': 0}` | `backend/performance/second_threshold_service.py` |  |
 | `CONFIRM_DEVIATION_SHARE` | `0.05` | `backend/performance/second_threshold_service.py` | Above this share of the value in effect an adoption needs a second confirmation (F9). |
+| `NOTICE_BASELINE_KEY` | `'lt2_notice_baselines'` | `backend/performance/second_threshold_service.py` | The server-side baseline of the LT2 change notice (F10): per sport the values the athlete last saw, null for "unbekannt". |
+| `NOTICE_VALUES` | `{'run': ('provider_hr', 'provider_pace', 'dfa_hr', 'dfa_pace', 'cs_pace'), 'ride': ('provider_pow... (sha256 b92af6f4)` | `backend/performance/second_threshold_service.py` |  |
 | `TARGET_BASIS_FTP_KEY` | `'ftp'` | `backend/performance/session_analysis.py` |  |
 | `METHOD` | `'time-weighted-session-analysis-v3'` | `backend/performance/session_analysis.py` | v2: Pa:HR of outdoor runs uses grade-adjusted speed (card M8 v2, #1770). v3: the steady-output rule reads the CV of 60 s rolling means (#1832). |
 | `GRADE_ADJUSTED_SPEED` | `'grade_adjusted_speed'` | `backend/performance/session_analysis.py` |  |
@@ -271,6 +273,7 @@ every named number the code fixes. A test fails when it is out of date.
 | `START_REP_S` | `90.0` | `backend/performance/session_execution.py` |  |
 | `SETTLE_S` | `10.0` | `backend/performance/session_execution.py` | Variability leaves out the first 10 s of acceleration. |
 | `ERG_VARIABILITY_PCT` | `3.0` | `backend/performance/session_execution.py` |  |
+| `NO_POWER_REASON` | `'Leistung fehlt; die Geschwindigkeit ist bei Radfahrten kein Leistungsmaß.'` | `backend/performance/session_execution.py` | A ride without power has no output: its raw speed is no effort signal (#3288). |
 | `INDOOR_ENVIRONMENTS` | `frozenset({'indoor', 'virtual'})` | `backend/performance/session_execution.py` | A ride's speed in these is virtual (game terrain or trainer), never an effort (#3288). |
 | `MIN_LAP_S` | `5.0` | `backend/performance/session_execution.py` | Shorter laps are lap-button slips; short work or rest laps of 15 s stay. |
 | `MIN_SESSION_S` | `600.0` | `backend/performance/session_execution.py` |  |
@@ -313,6 +316,8 @@ every named number the code fixes. A test fails when it is out of date.
 | `DECOUPLING_PCT` | `5.0` | `backend/performance/session_report.py` | Aerobic decoupling, the fixed fallback (Friel / TrainingPeaks: < 5 % good). |
 | `FADE_PCT` | `3.0` | `backend/performance/session_report.py` | Interval fade and start change against the median of the reps, and within a rep. |
 | `CARDIAC_DRIFT_PCT` | `5.0` | `backend/performance/session_report.py` | Cardiac drift across reps at equal output, the decoupling rule applied to reps. |
+| `HEART_RATE_RISE_MIN_S` | `180.0` | `backend/performance/session_report.py` | A ride without power (athlete, #3293): heart rate only, on labelled work laps this long and within this share of each other's duration. |
+| `HEART_RATE_RISE_DURATION_SHARE` | `0.1` | `backend/performance/session_report.py` |  |
 | `EASY_ABOVE_SHARE_PCT` | `10.0` | `backend/performance/session_report.py` | Easy, recovery and long sessions: share of moving time above zone 2 (Seiler; #2830). |
 | `RIDE_VARIABILITY_INDEX` | `1.05` | `backend/performance/session_report.py` | Ride steadiness: variability index (Coggan / Allen, TrainingPeaks: <= 1.05 steady). |
 | `HEART_RATE_DROP_BELOW_BPM` | `5.0` | `backend/performance/session_report.py` | HR drop 60 s into recoveries: notable this far below the athlete's own median. |
