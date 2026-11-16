@@ -77,7 +77,7 @@ test("LT2 comes from the performance values, LT1 from the thresholds", () => {
   assert.deepEqual([rows.lt2.main, rows.lt2.hr, rows.lt1.hr, rows.lt1.main], [285, 163, 142, 214]);
   assert.equal(rows.validFrom, "2026-11-09T08:00:00Z");
   // The yellow "i" of each row names its origin.
-  assert.deepEqual(plain(rows.origins), { lt1: "Puls aus der Herzfrequenzvariabilität · Leistung Schätzung aus eigenen Einheiten", lt2: "Von Garmin Connect" });
+  assert.deepEqual(plain(rows.origins), { lt1: "Puls aus der Herzfrequenzvariabilität · Leistung aus eigenen Einheiten", lt2: "Von Garmin Connect" });
   // Providers that differ per value are named per value.
   const mixed = thresholdRows("ride", { ...metrics, bike_threshold_hr_bpm: { value: 160, source: "Wahoo" } }, {});
   assert.equal(mixed.origins.lt2, "Leistung von Garmin Connect · Puls von Wahoo");

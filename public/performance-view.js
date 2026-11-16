@@ -135,33 +135,28 @@ function performanceDataStatus(performance) {
   return typeof performance?.status === "string" && performance.status ? [performance.status] : [];
 }
 
-// Device-computed estimates; thresholds are entered or device-reported values and carry no chip.
-const ESTIMATED_METRICS = new Set(["running_vo2max_ml_kg_min", "cycling_vo2max_ml_kg_min"]);
-
 // One row per metric with a value, in the given order.
 function currentPerformanceRows(metrics, items) {
   const body = h("tbody");
   for (const [key, label] of items) {
     const metric = metrics?.[key];
     if (metric?.value == null) continue;
-    const estimated = ESTIMATED_METRICS.has(key) || metric.estimated;
-    body.append(h("tr", { dataset: { metric: key } }, h("th", { scope: "row" }, label, estimated && [" ", createEstimateChip()]), h("td", null, analysisValue(metric.value, metric.unit || ""))));
+    body.append(h("tr", { dataset: { metric: key } }, h("th", { scope: "row" }, label), h("td", null, analysisValue(metric.value, metric.unit || ""))));
   }
   return body;
 }
 
 // LT1 per sport from the performance values (#2427): measured, the adopted HRV estimate,
-// own sessions at the LT1 heart rate, the top of zone 2 or a fixed share of LT2; every
-// stand-in carries the estimate chip.
+// own sessions at the LT1 heart rate, the top of zone 2 or a fixed share of LT2.
 function withFirstThresholds(metrics, thresholds) {
   const lt1 = thresholds?.first_thresholds || {};
-  const value = (number, unit, origin) => (number == null ? undefined : { value: number, unit, estimated: ["own_sessions", "zone_2", "fixed_share"].includes(origin) });
+  const value = (number, unit) => (number == null ? undefined : { value: number, unit });
   return {
     ...metrics,
-    run_lt1_pace_seconds_per_km: value(lt1.run?.pace_seconds_per_km, "s/km", lt1.run?.pace_origin),
-    run_lt1_hr_bpm: value(lt1.run?.hr_bpm, "bpm", lt1.run?.hr_origin),
-    cycling_lt1_watts: value(lt1.ride?.watts, "W", lt1.ride?.power_origin),
-    cycling_lt1_hr_bpm: value(lt1.ride?.hr_bpm, "bpm", lt1.ride?.hr_origin),
+    run_lt1_pace_seconds_per_km: value(lt1.run?.pace_seconds_per_km, "s/km"),
+    run_lt1_hr_bpm: value(lt1.run?.hr_bpm, "bpm"),
+    cycling_lt1_watts: value(lt1.ride?.watts, "W"),
+    cycling_lt1_hr_bpm: value(lt1.ride?.hr_bpm, "bpm"),
   };
 }
 
@@ -242,14 +237,14 @@ function renderPerformance(performance, { refreshCharts = true } = {}) {
   refreshLt2Notice();
   const predictions = racePredictionRows(values);
   root.hidden = false;
-  root.append(h("h4", null, "Laufprognosen", " ", createEstimateChip()));
+  root.append(h("h4", null, "Laufprognosen"));
   root.dataset.analysisEmpty = String(!predictions.length);
   if (!predictions.length) {
     root.append(h("p", "muted", racePredictionEmptyReason(values)));
   } else {
     const rows = predictions.map(({ label, metric, withSeconds }) => [h("th", { scope: "row" }, label), predictionTime(metric.value, withSeconds)]);
-    const scroll = makeScrollRegionFocusable(h("div", "table-scroll"), "Geschätzte Zeiten nach Distanz");
-    scroll.append(table(["Distanz", "Gesch\u00e4tzte Zeit"], rows, { className: "race-predictions-table" })); root.append(scroll);
+    const scroll = makeScrollRegionFocusable(h("div", "table-scroll"), "Zeiten nach Distanz");
+    scroll.append(table(["Distanz", "Zeit"], rows, { className: "race-predictions-table" })); root.append(scroll);
   }
   renderAnalysisSegments(state.route);
 }

@@ -97,13 +97,13 @@ async function adoptFirstThreshold(event) {
   if (!Number.isFinite(percent) || button.disabled) return;
   const profile = state.data?.profile || {};
   const replacesMeasured = Boolean(profile.first_threshold_pct) && profile.first_threshold_origin === "measured";
-  if (replacesMeasured && !(await requestConfirmation("Der gemessene Wert wird durch die Schätzung ersetzt.", { title: "Gemessenen Wert ersetzen?", confirmLabel: "Ersetzen" }))) return;
+  if (replacesMeasured && !(await requestConfirmation("Der gemessene Wert wird durch den Wert aus DFA-α1 ersetzt.", { title: "Gemessenen Wert ersetzen?", confirmLabel: "Ersetzen" }))) return;
   button.disabled = true;
   try {
     const result = await api("/api/profile/first-threshold/adopt", { method: "POST", body: JSON.stringify({ percent_lthr: percent, ...(replacesMeasured ? { replace_measured: true } : {}) }) });
     applyAdoptedFirstThreshold(result);
     invalidateContextPreview();
-    toast(result.adopted === false ? "Schätzung ist bereits übernommen" : "Erste Schwelle übernommen");
+    toast(result.adopted === false ? "Wert aus DFA-α1 ist bereits übernommen" : "Erste Schwelle übernommen");
     await load();
   } catch (error) { toast(error.message, true); }
   finally { button.disabled = false; }
@@ -612,7 +612,7 @@ function zoneSourceText(item) {
   return item.sport == null ? `${provider}, gilt für alle Sportarten` : provider;
 }
 
-const THRESHOLD_ORIGINS = { measured: "gemessen", estimated: "aus der Herzfrequenzvariabilität", own_sessions: "Schätzung aus eigenen Einheiten", zone_2: "Schätzung aus Zone 2", fixed_share: "Schätzung aus festem Anteil von LT2" };
+const THRESHOLD_ORIGINS = { measured: "gemessen", estimated: "aus der Herzfrequenzvariabilität", own_sessions: "aus eigenen Einheiten", zone_2: "aus Zone 2", fixed_share: "aus festem Anteil von LT2" };
 
 // Pure: LT1 and LT2 of a sport (#2262). LT2 comes from the performance values, LT1 from the
 // performance thresholds (#2427); `origins` names where each row's values come from.

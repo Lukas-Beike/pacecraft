@@ -434,7 +434,7 @@ function firstThresholdEstimateText(estimate) {
   const percent = `${String(estimate.percent_lthr).replace(".", ",")} % LSHF`;
   const sessions = `${estimate.sessions} ${estimate.sessions === 1 ? "Einheit" : "Einheiten"}`;
   const quality = `Qualität ${FIRST_THRESHOLD_QUALITY_LABELS[estimate.quality] || estimate.quality}`;
-  return ["Schätzung", Number.isFinite(estimate.bpm) ? `${estimate.bpm} bpm` : null, percent, sessions, quality].filter(Boolean).join(" · ");
+  return ["DFA-α1", Number.isFinite(estimate.bpm) ? `${estimate.bpm} bpm` : null, percent, sessions, quality].filter(Boolean).join(" · ");
 }
 
 function renderFirstThresholdEstimate(estimate, profile = {}) {
@@ -446,7 +446,7 @@ function renderFirstThresholdEstimate(estimate, profile = {}) {
     box.dataset.percent = String(estimate.percent_lthr);
   }
   const stored = document.getElementById("firstThresholdStoredLabel");
-  if (stored) stored.textContent = profile?.first_threshold_pct && profile.first_threshold_origin === "estimated" ? "Gespeichert (% LSHF, geschätzt)" : "Gespeichert (% LSHF)";
+  if (stored) stored.textContent = profile?.first_threshold_pct && profile.first_threshold_origin === "estimated" ? "Gespeichert (% LSHF, DFA-α1)" : "Gespeichert (% LSHF)";
 }
 
 const MODEL_PROVIDER_GROUPS = Object.freeze({ openai: "OpenAI", anthropic: "Claude" });

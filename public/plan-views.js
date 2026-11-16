@@ -649,7 +649,7 @@ function focusChipSpec(entry) {
   return { kind: derived ? "focus-derived" : "focus", text: [derived ? "≈" : null, label, intensity].filter(Boolean).join(" "), derived };
 }
 
-const HR_CAP_SOURCE_LABELS = { default: "Standard", measured: "gemessen", estimated: "geschätzt" };
+const HR_CAP_SOURCE_LABELS = { default: "Standard", measured: "gemessen", estimated: "DFA-α1" };
 
 function hrCapChipSpec(entry) {
   const percent = Number(entry?.hr_cap?.percent_lthr);
@@ -1028,7 +1028,7 @@ function calendarWorkoutProfile(profile) {
   if (!total || !values.length) return null;
   const top = Math.max(...values, 1) * 1.1;
   const baseLabel = profile.source === "recorded" ? "Aufgezeichnetes Belastungsprofil" : "Geplantes Intervallprofil";
-  const label = profile.estimated ? `${baseLabel} (Zonen geschätzt aus FTP oder Schwellenpuls (LSHF))` : baseLabel;
+  const label = profile.estimated ? `${baseLabel} (Zonen aus FTP oder Schwellenpuls)` : baseLabel;
   const svg = svgNode("svg", { viewBox: "0 0 300 56", role: "img", "aria-label": label, class: "calendar-workout-profile", preserveAspectRatio: "none" });
   svg.append(svgNode("title", {}, `${label} · ${axis === "distance" ? "Distanzachse" : "Zeitachse"} · ${profile.unit || ""}`));
   svg.append(svgNode("line", { x1: 0, x2: 300, y1: 54, y2: 54, class: "calendar-profile-baseline" }));

@@ -151,7 +151,7 @@ function nutritionComponentSource(basis) {
   }
   if (kind === "packaging_label") return "Verpackungsangabe";
   if (kind === "manual") return "Manuelle Angabe";
-  if (kind === "estimate") return "Schätzung";
+  if (kind === "estimate") return sourceLabel;
   return "Quelle unbekannt";
 }
 
@@ -236,7 +236,7 @@ function nutritionMealTitle(item) {
 }
 
 function nutritionCard(item, template, sessions = []) {
-  const sourceLabels = { coach: "Coach-Schätzung", photo: "Foto-Schätzung", voice: "Sprach-Schätzung", manual: "Manuelle Angabe" };
+  const sourceLabels = { coach: "Coach", photo: "Foto", voice: "Sprache", manual: "Manuelle Angabe" };
   const sourceLabel = sourceLabels[item.source] || "Erfasst";
   const syncLabel = item.sync_state === "synced" ? " · Synchronisiert" : " · Lokal";
   const basisLabel = nutritionBasisLabel(item.nutrition_basis, { template, syncLabel }, sourceLabel);

@@ -468,7 +468,7 @@ Profil SHALL order its closed sections Person, Ziele & Woche, Zonen & Schwellen,
 
 #### Scenario: LT1 without a measured value or zones
 - **WHEN** no first threshold is stored and the sport has no heart-rate, pace or power zones
-- **THEN** "Aerob (LT1)" shows the fixed shares of LT2, and Analyse lists the same values as "Aerobe Schwelle (LT1)" with the "Schätzung" chip, as it does for a value from zone 2 or from own sessions; saving or removing zones reloads the thresholds.
+- **THEN** "Aerob (LT1)" shows the fixed shares of LT2, and Analyse lists the same values as "Aerobe Schwelle (LT1)", as it does for a value from zone 2 or from own sessions; saving or removing zones reloads the thresholds.
 
 #### Scenario: Zone kinds
 - **WHEN** a sport has power, pace or heart-rate zones in effect, including Garmin's zones for all sports

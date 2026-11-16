@@ -63,7 +63,7 @@ test("@responsive each sport shows LT1 and LT2 and its zone kinds, and Bearbeite
   await expect(thresholds.locator(".zone-thresholds > .zone-muted")).toHaveText(["Leistung", "Puls", /^Aerob \(LT1\)/, /^Anaerob \(LT2\) \/ FTP/]);
   await expect(thresholds.locator(".zone-source")).toHaveText("Bearbeiten");
   await thresholds.getByRole("button", { name: "Herkunft Aerob (LT1)" }).click();
-  await expect(page.locator(".analysis-info-tooltip:popover-open")).toHaveText("Puls aus der Herzfrequenzvariabilität · Leistung Schätzung aus festem Anteil von LT2");
+  await expect(page.locator(".analysis-info-tooltip:popover-open")).toHaveText("Puls aus der Herzfrequenzvariabilität · Leistung aus festem Anteil von LT2");
   await page.keyboard.press("Escape");
   await thresholds.getByRole("button", { name: "Herkunft Anaerob (LT2) / FTP" }).click();
   await expect(page.locator(".analysis-info-tooltip:popover-open")).toHaveText("Von Garmin Connect");
@@ -105,7 +105,7 @@ test("@responsive each sport shows LT1 and LT2 and its zone kinds, and Bearbeite
 
 test("@responsive Analyse shows LT1 like the zones page", async ({ page }) => {
   await openProfile(page);
-  // The current values carry LT1 without any zones; a fixed share wears the estimate chip (#2427).
+  // The current values carry LT1 without any zones; no value wears an estimate chip (#3297).
   await page.evaluate(async () => {
     await AppRouter.navigate("analysis/cycling", { historyMode: "replace" });
     renderPerformance(state.data.performance);
@@ -117,5 +117,5 @@ test("@responsive Analyse shows LT1 like the zones page", async ({ page }) => {
   await expect(cycling.locator('[data-metric="cycling_ftp_watts"] th')).toContainText("Anaerobe Schwelle (LT2) · FTP");
   await expect(cycling.locator('[data-metric="bike_threshold_hr_bpm"] th')).toContainText("Anaerobe Schwelle (LT2) · Puls");
   await expect(cycling.locator('[data-metric="cycling_lt1_watts"] td')).toHaveText("214 W");
-  await expect(cycling.locator('[data-metric="cycling_lt1_watts"] .estimate-chip')).toHaveText("Schätzung");
+  await expect(cycling.locator('[data-metric="cycling_lt1_watts"] .estimate-chip')).toHaveCount(0);
 });

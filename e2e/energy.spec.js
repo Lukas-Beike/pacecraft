@@ -6,7 +6,7 @@ test("@responsive the diary shows the energy table and explains it behind the in
   await page.goto("/#nutrition/diary");
   const card = page.locator("#nutritionEnergy [data-energy]");
   await expect(card.locator("tbody tr[data-energy-source]")).toHaveCount(4);
-  await expect(card.locator("tbody th")).toHaveText(["Katch-McArdle", "Cunningham", "Garmin (Schätzung)", "Aus deinen Daten"]);
+  await expect(card.locator("tbody th")).toHaveText(["Katch-McArdle", "Cunningham", "Garmin-Gerät", "Aus deinen Daten"]);
   await expect(card.locator(".analysis-reference-note")).toHaveCount(0);
   const tooltip = card.locator(".analysis-info-tooltip");
   await expect(tooltip).toBeHidden();
