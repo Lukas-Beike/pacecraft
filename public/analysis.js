@@ -1540,7 +1540,17 @@ function energyBasisNote(read) {
   const folds = skinfold
     ? `Falten vom ${dateLabel(skinfold.date)}, KFA ${analysisValue(skinfold.body_fat_pct, "%")}, fettfreie Masse ${analysisValue(skinfold.lean_mass_kg, "kg")}`
     : "Ohne Hautfaltenmessung der letzten 90 Tage keine Formelwerte";
-  return h("p", "analysis-reference-note", `kcal/Tag · ${own} · Formeln: Ruhe + eigene Aktivität + Verdauung · ${folds}`);
+  return h("p", "analysis-reference-note", `kcal/Tag · ${own} · Formeln: Ruhe + eigene Aktivität + Verdauung · ${folds} · `
+    + "Bänder nominal 95 %, ohne Fehler beim Erfassen des Essens · Ruhe aus deinen Daten ist ein Rest (Gesamt − eigene Aktivität − Verdauung) und trägt deren Fehler mit");
+}
+
+// The badge needs enough shared windows and a lead beyond the own band (athlete decision on #3187).
+function energyFitNote(read) {
+  const { shared_windows: shared, windows, reference_band_kcal: band } = read.fit;
+  const parts = [`${shared} von ${windows} Fenstern`];
+  if (band != null) parts.push(`Band aus deinen Daten ± ${formatWhole(band)} kcal`);
+  const lead = read.best ? "Vergleich" : "Welche Quelle passt: noch nicht unterscheidbar";
+  return h("p", { className: "analysis-reference-note", dataset: { energyFitNote: "" } }, [lead, ...parts].join(" · "));
 }
 
 function energyTable(read) {
@@ -1558,19 +1568,17 @@ function energyTable(read) {
 }
 
 function energyFitCharts(read) {
-  const fitted = ENERGY_SOURCES.slice(0, 3).map(([source, label, color]) => [read.rows.find((item) => item.source === source), label, color]).filter(([row]) => row?.hit_rate_pct != null);
+  const fitted = ENERGY_SOURCES.slice(0, 3).map(([source, label, color]) => [read.rows.find((item) => item.source === source), label, color]).filter(([row]) => row?.mean_error_kcal != null);
   if (!fitted.length) return [];
+  const band = read.fit.reference_band_kcal;
+  const within = band == null ? "" : ` Abstände innerhalb von ± ${formatWhole(band)} kcal sind nicht unterscheidbar.`;
   const series = fitted.map(([row, label, color]) => ({
-    label, color, line: "solid", cadenceDays: 7, explanation: "Abstand zum Verbrauch aus deinen Daten je 4-Wochen-Fenster; niedriger passt besser.",
+    label, color, line: "solid", cadenceDays: 7, explanation: `Abstand zum Verbrauch aus deinen Daten je 4-Wochen-Fenster; niedriger passt besser.${within}`,
     points: read.windows.map((date, index) => ({ date, value: row.errors_kcal[index] })),
   }));
   const chart = analysisChart("Welche Quelle trifft dein Gewicht?", series, "kcal", read.windows[0], read.end, "", { calendarWeeks: true });
   if (chart) chart.dataset.energyFit = "";
-  const bars = h("section", { className: "analysis-chart-card training-focus-distribution", dataset: { energyFit: "" } }, h("h4", null, "Trefferquote der letzten 12 Wochen"),
-    ...fitted.map(([row, label, color]) => h("div", { className: "training-focus-row", dataset: { color: String(color) } },
-      h("span", null, label.replace(" (Schätzung)", "")), h("progress", { max: 100, value: row.hit_rate_pct, "aria-label": `${label}: ${row.hit_rate_pct} Prozent` }), h("span", null, `${row.hit_rate_pct} %`))),
-    h("p", "analysis-reference-note", "Anteil der 4-Wochen-Fenster innerhalb ±100 kcal/Tag"));
-  return [chart, bars].filter(Boolean);
+  return chart ? [chart] : [];
 }
 
 function energyCards() {
@@ -1579,7 +1587,7 @@ function energyCards() {
     return [h("section", "analysis-chart-card", createLoadingState("Energieverbrauch wird geladen…"))];
   }
   if (energyRead.failed) return [h("section", "analysis-chart-card", h("p", "empty", "Energieverbrauch konnte nicht geladen werden."))];
-  return [h("section", { className: "analysis-chart-card", dataset: { energy: "" } }, energyTable(energyRead), energyBasisNote(energyRead)), ...energyFitCharts(energyRead)];
+  return [h("section", { className: "analysis-chart-card", dataset: { energy: "" } }, energyTable(energyRead), energyFitNote(energyRead), energyBasisNote(energyRead)), ...energyFitCharts(energyRead)];
 }
 
 function renderBodyAnalysis(body) {

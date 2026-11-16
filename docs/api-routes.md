@@ -334,13 +334,17 @@ Errors: none beyond the common ones.
 Request: no query, no body.
 
 Response: 200 with `end`, `windows` (the 12 weekly 4-week window ends,
-oldest first), `rows` (`katch_mcardle`, `cunningham`, `device` (the wearable's estimate) with
-`resting_kcal`, `total_kcal`, `errors_kcal` per window, `mean_error_kcal`
-and `hit_rate_pct`; `own` with `resting_kcal`, `total_kcal` and their
-`*_band_kcal`; null without a basis), `best` (the source with the lowest
-mean error, or null), `basis` (`days`, `complete_days`, `flagged_days`,
-`weighins`, `insufficient`, `windows_with_estimate`, `rmr_source`) and
-`skinfold` (`date`, `body_fat_pct`, `lean_mass_kg`, or null).
+oldest first), `rows` (`katch_mcardle`, `cunningham`, `device` (the
+wearable's estimate) and `own`, each with `resting_kcal`, `total_kcal`
+and their nominal 95 % `*_band_kcal`; the first three also with
+`errors_kcal` per window and `mean_error_kcal` over the shared windows;
+null without a basis), `best` (the source whose lead over the next
+exceeds the adaptive TDEE's mean band over at least 4 shared windows,
+else null), `fit` (`shared_windows`, `windows`, `min_windows`,
+`reference_band_kcal`), `basis` (`days`, `complete_days`,
+`flagged_days`, `weighins`, `insufficient`, `windows_with_estimate`,
+`rmr_source`) and `skinfold` (`date`, `body_fat_pct`, `lean_mass_kg`,
+or null).
 
 Errors: none beyond the common ones.
 
