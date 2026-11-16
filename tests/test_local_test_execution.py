@@ -584,13 +584,16 @@ class SupervisorTests(unittest.TestCase):
 
     def test_cleanup_stops_descendants_after_the_parent_exits(self):
         # The first read of the existing ready file meets a Windows sharing violation (#2387).
+        # The read itself decides: an exists() check before it raced the descendant
+        # writing the file, so a loaded runner could read it unrefused (#3264).
         real_read, refused = Path.read_text, []
 
         def read_text(path, *args, **kwargs):
-            if path.name == "descendant.json" and not refused and path.exists():
+            text = real_read(path, *args, **kwargs)  # a missing file raises here
+            if path.name == "descendant.json" and not refused:
                 refused.append(path)
                 raise PermissionError(13, "synthetic sharing violation")
-            return real_read(path, *args, **kwargs)
+            return text
 
         with mock.patch.object(Path, "read_text", autospec=True, side_effect=read_text):
             self.check_real_owned_descendant(parent_exits=True)
