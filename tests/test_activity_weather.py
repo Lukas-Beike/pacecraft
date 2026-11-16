@@ -234,6 +234,8 @@ class WindTests(unittest.TestCase):
         # By hand: (2 x 1800 - 4 x 1500) / 3300 = -0.727 m/s.
         self.assertEqual(-0.73, wind.mean_mps)
         self.assertEqual(91.7, wind.coverage_pct)
+        # 30 of 55 covered minutes into the wind, 25 with it.
+        self.assertEqual((54.5, 45.5), (wind.head_share_pct, wind.tail_share_pct))
         self.assertEqual((2.0,) * 30 + (-4.0,) * 25 + (None,) * 5, wind.bins)
 
     def test_crosswind_gives_no_component_and_no_bearing_no_value(self) -> None:
@@ -241,6 +243,11 @@ class WindTests(unittest.TestCase):
         east = headwind(response, START, [(float(t), 1.0, 90.0) for t in range(60)])
         assert east is not None
         self.assertEqual(0.0, east.mean_mps)
+        # Crosswind is neither head nor tail; 45 degrees still counts as head.
+        self.assertEqual((0.0, 0.0), (east.head_share_pct, east.tail_share_pct))
+        edge = headwind(response, START, [(0.0, 1.0, 45.0)])
+        assert edge is not None
+        self.assertEqual(100.0, edge.head_share_pct)
         self.assertIsNone(
             headwind(response, START, [(float(t), 1.0, None) for t in range(60)])
         )

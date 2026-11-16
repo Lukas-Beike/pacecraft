@@ -34,6 +34,10 @@ CALM_MPS: Final = 0.5
 # The headwind component is kept per this many seconds of the stream clock, for
 # the report's own windows (#3084); the bins never leave storage and the report.
 WIND_BIN_S: Final = 60
+# Sectors of the wind relative to the direction of travel (athlete, #3084,
+# 2026-11-16): headwind within 45 degrees, tailwind beyond 135, else crosswind.
+HEAD_SECTOR_DEG: Final = 45.0
+TAIL_SECTOR_DEG: Final = 135.0
 
 
 @dataclass(frozen=True, slots=True)
@@ -173,6 +177,9 @@ class Headwind:
     mean_mps: float
     coverage_pct: float
     bins: tuple[float | None, ...]
+    # Shares of the covered time with headwind and tailwind (descriptive only).
+    head_share_pct: float = 0.0
+    tail_share_pct: float = 0.0
 
 
 def headwind(
@@ -187,7 +194,7 @@ def headwind(
     that has both.
     """
     hours = _hours(_mapping(payload.get("hourly")))
-    moving = covered = total = 0.0
+    moving = covered = total = head = tail = 0.0
     sums: dict[int, list[float]] = {}
     count = 0
     for offset, seconds, bearing in steps:
@@ -197,6 +204,9 @@ def headwind(
         if wind is None or bearing is None:
             continue
         component = wind[0] * math.cos(math.radians(wind[1] - bearing))
+        angle = abs((wind[1] - bearing + 180) % 360 - 180)
+        head += seconds if angle <= HEAD_SECTOR_DEG else 0.0
+        tail += seconds if angle >= TAIL_SECTOR_DEG else 0.0
         covered += seconds
         total += component * seconds
         cell = sums.setdefault(int(offset // WIND_BIN_S), [0.0, 0.0])
@@ -207,6 +217,8 @@ def headwind(
     return Headwind(
         mean_mps=round(total / covered, 2),
         coverage_pct=round(100 * covered / moving, 1),
+        head_share_pct=round(100 * head / covered, 1),
+        tail_share_pct=round(100 * tail / covered, 1),
         bins=tuple(
             round(sums[index][0] / sums[index][1], 2) if index in sums else None
             for index in range(count)

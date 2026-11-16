@@ -635,6 +635,8 @@ def _wind_values(
                 {
                     **base,
                     "coverage_pct": item.headwind.coverage_pct,
+                    "head_share_pct": item.headwind.head_share_pct,
+                    "tail_share_pct": item.headwind.tail_share_pct,
                     "bin_s": WIND_BIN_S,
                     "bins": list(item.headwind.bins),
                 },
