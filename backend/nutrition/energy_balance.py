@@ -16,6 +16,7 @@ import statistics
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, replace
 from datetime import date, timedelta
+from typing import cast
 
 from backend.performance.activity_energy import tef_kcal
 
@@ -355,7 +356,7 @@ def _corrected(window: EnergyWindow, bias: float, band: float) -> EnergyWindow:
     corrected = Estimate(
         tdee.kcal + bias * extra, math.hypot(tdee.band_kcal, band * extra)
     )
-    return replace(window, adaptive_tdee_corrected=corrected)
+    return cast(EnergyWindow, replace(window, adaptive_tdee_corrected=corrected))
 
 
 def history_start(end: date, weeks: int = 12) -> date:
