@@ -415,6 +415,41 @@ class EnergyViewTests(unittest.TestCase):
         )["split"]
         self.assertEqual((1375, 0), (split["neat_kcal"], split["sport_kcal"]))
 
+    def test_flagged_meals_give_the_latest_clean_window_the_correction_and_bias(
+        self,
+    ) -> None:
+        # #3100: the oldest window had no flagged day, so its TDEE is the value
+        # without estimates; the latest carries the learned correction.
+        clean = replace(
+            window(ENDS[0], 2650.0),
+            flagged_days=0,
+            adaptive_tdee_unflagged=Estimate(2650.0, 130.0),
+        )
+        flagged = replace(
+            window(END, 2700.0), adaptive_tdee_corrected=Estimate(2760.0, 160.0)
+        )
+        view = energy_view(
+            inputs(), [clean, *windows()[1:3], flagged], garmin(), bias=(12.4, 8.6)
+        )
+        self.assertEqual(
+            {
+                "days": 2,
+                "unflagged": {
+                    "total_kcal": 2650,
+                    "total_band_kcal": 130,
+                    "end": ENDS[0].isoformat(),
+                },
+                "corrected": {"total_kcal": 2760, "total_band_kcal": 160},
+                "bias_pct": 12,
+                "bias_band_pct": 9,
+            },
+            view["flagged"],
+        )
+        none = energy_view(inputs(), windows(), garmin())["flagged"]
+        self.assertEqual(
+            (None, None, None), (none["unflagged"], none["corrected"], none["bias_pct"])
+        )
+
     def test_the_reader_builds_twelve_windows_with_garmin_beside_them(self) -> None:
         view = read_energy_view(None, sources(), DAY3)
         self.assertEqual(12, len(view["windows"]))

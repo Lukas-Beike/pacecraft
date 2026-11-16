@@ -15,6 +15,7 @@ from canonical_detail_support import NOW, ZONE, open_manager, seed_intervals_act
 from support import garmin_services, make_config
 from test_garmin_activity_detail_job import _collected, _grades, _with_fit
 
+from backend.canonical.mapping import IssueReason, MappingIssue
 from backend.canonical.vocabulary import GARMIN_ID, ActivityRecordState, RecordingOrigin
 from backend.db.activity_detail_store import (
     activity_detail_backfill_candidates,
@@ -227,6 +228,45 @@ def _stored_state(key_values: Any) -> dict[str, Any]:
 
 
 class BackfillCandidateTests(_Base):
+    def test_mapping_issues_are_logged_and_counted_by_kind_only(self) -> None:
+        # #2220 follow-up: the post-check names the rule that fired, never a value.
+        _seed(self.manager, [("1001", "2026-10-01 07:00:00")])
+        malformed = _payload("1001", details="not an object")
+
+        with self.assertLogs("intervals_coach", level="WARNING") as logged:
+            self.service(_Details({"1001": malformed})).backfill()
+
+        record = next(
+            r
+            for r in logged.records
+            if getattr(r, "event", "") == "garmin_activity_detail_mapping_issues"
+        )
+        self.assertEqual(
+            getattr(record, "context", None),
+            {"issues": 1, "kinds": {"details.invalid_type": 1}},
+        )
+        with self.manager.reader() as db:
+            size = detail_replay_size(db, self.key_values, NOW_AT)
+        self.assertEqual(size["issue_kinds"], {"details": {"invalid_type": 1}})
+        # A second fetch with the same issue adds to the count.
+        _set_summary_hash(self.manager, "1001")
+        self.service(_Details({"1001": malformed})).backfill()
+        with self.manager.reader() as db:
+            size = detail_replay_size(db, self.key_values, NOW_AT)
+        self.assertEqual(size["issue_kinds"], {"details": {"invalid_type": 2}})
+        self.assertNotIn("1001", json.dumps(size))
+
+    def test_issue_kind_labels_take_only_plain_field_names(self) -> None:
+        issues = (
+            MappingIssue("1001", "lap", IssueReason.OUT_OF_RANGE),
+            MappingIssue("1001", "lap", IssueReason.OUT_OF_RANGE),
+            MappingIssue("1001", "heart rate <b>", IssueReason.MISSING),
+        )
+        self.assertEqual(
+            garmin_activity_details.issue_kinds(issues),
+            {"lap.out_of_range": 2, "other.missing": 1},
+        )
+
     def test_replay_size_counts_every_window_record_a_bump_fetches_again(self) -> None:
         # Diagnostics size the next mapper bump before it ships (#2220).
         _seed(
@@ -263,6 +303,7 @@ class BackfillCandidateTests(_Base):
                 "per_refresh": 20,
                 "replayed_today": 0,
                 "clean_today": True,
+                "issue_kinds": {},
             },
         )
 

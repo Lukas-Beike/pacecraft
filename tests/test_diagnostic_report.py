@@ -293,6 +293,7 @@ class DiagnosticReportServiceTests(unittest.TestCase):
                     "per_refresh": 20,
                     "replayed_today": 0,
                     "clean_today": True,
+                    "issue_kinds": {},
                 },
                 "wahoo": {"window_days": 365, "records": 0},
             },
@@ -422,8 +423,9 @@ class DiagnosticReportServiceTests(unittest.TestCase):
         # The Wahoo block reads the token record and the last sync time and error.
         # The session rebundle state is one more read, the FIT inventory one more (#2220).
         # The newest app backup is one more (#2996), the Garmin detail fallback
-        # counts one more (#3122), the mapper replay size the backfill state (#2220).
-        self.assertEqual(self.key_values.get.call_count, 21)
+        # counts one more (#3122), the mapper replay size the backfill state and the
+        # mapping issue kinds (#2220).
+        self.assertEqual(self.key_values.get.call_count, 22)
 
     def test_storage_and_recovery_copies_are_sizes_and_ages_only(self):
         # Stat only: sizes, free space and the newest copy's age; no name or path.

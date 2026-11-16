@@ -93,6 +93,7 @@ handler's docstring. Regenerate it with
 | POST | `/api/nutrition/entry` | Session + CSRF | after access | Log a meal; returns a `change` undo reference. |
 | POST | `/api/nutrition/entry/add-product` | Session + CSRF | after access | Add a saved product to a logged meal as one more component. |
 | POST | `/api/nutrition/entry/delete` | Session + CSRF | after access | Delete a logged meal. |
+| POST | `/api/nutrition/entry/estimate` | Session + CSRF | after access | Mark a meal's amounts as estimated (restaurant, friends), or clear the mark. |
 | POST | `/api/nutrition/entry/session` | Session + CSRF | after access | Attach a "Vor/Während der Einheit" entry to the session the athlete chose. |
 | GET | `/api/nutrition/products` | Session | no | Product search, barcode lookup or food database entries. |
 | POST | `/api/nutrition/products` | Session + CSRF | after access | Save a confirmed product. |
@@ -347,7 +348,10 @@ when its residual band lies entirely below the resting reference band,
 with its resting value and band then null), `best` (the source whose lead over the next
 exceeds the adaptive TDEE's mean band over at least 4 shared windows,
 else null), `fit` (`shared_windows`, `windows`, `min_windows`,
-`reference_band_kcal`), `basis` (`days`, `complete_days`,
+`reference_band_kcal`), `flagged` (meals marked as estimated: `days` in
+the latest window, `unflagged` from the latest window without any
+flagged day or null, `corrected` with the learned per-entry correction
+or null, `bias_pct` and `bias_band_pct` or null), `basis` (`days`, `complete_days`,
 `flagged_days`, `weighins`, `insufficient`, `windows_with_estimate`,
 `rmr_source`, and `neat` with `days`, `steps_per_day`,
 `session_steps_per_day`, `floors_per_day`, `step_length_m` and
@@ -1128,6 +1132,16 @@ is the undo reference.
 
 Errors: 400 "id ist erforderlich zum Löschen." for a missing id; 404
 "Ernährungseintrag nicht gefunden."
+
+### `POST /api/nutrition/entry/estimate`
+
+Request: JSON body `{"id": string, "estimate_uncertain": boolean}`.
+
+Response: 200 `{"ok": true, "entry", "change"}` with the updated entry and the
+undo reference. The logged values are never changed (#3100).
+
+Errors: 400 "Ungültige Eintrags-ID."; 404 "Ernährungseintrag nicht gefunden.";
+400 "estimate_uncertain muss true oder false sein."
 
 ### `POST /api/nutrition/entry/session`
 

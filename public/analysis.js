@@ -1565,8 +1565,15 @@ function energyBasisText(read) {
 // How the values come about sits behind one small "i": the basis, the formulas and NEAT's inputs
 // (athlete decisions 2026-11-16, #3252 and #3255); no helper text stays under the table.
 let energyInfoId = 0;
+// The bias of meals flagged as estimated, per entry (#3195, M12's allowed wording), once it exists.
+function energyBiasText(flagged) {
+  if (flagged?.bias_pct == null) return "";
+  const direction = flagged.bias_pct >= 0 ? "höher" : "niedriger";
+  return `Geschätzte Mahlzeiten wirken im Mittel ${formatWhole(Math.abs(flagged.bias_pct))} % ${direction} als erfasst (± ${formatWhole(flagged.bias_band_pct)} %)`;
+}
+
 function energyInfo(read) {
-  const text = [energyBasisText(read), energyNeatInputs(read.basis?.neat)].filter(Boolean).join(" · ");
+  const text = [energyBasisText(read), energyNeatInputs(read.basis?.neat), energyBiasText(read.flagged)].filter(Boolean).join(" · ");
   const button = h("button", { type: "button", className: "threshold-info", "aria-label": "Berechnung des Energieverbrauchs" }, "i");
   const info = h("div", { className: "analysis-info-tooltip", id: `energy-info-${++energyInfoId}` }, text);
   bindAnalysisPopover(button, info);
@@ -1624,7 +1631,18 @@ function energyTable(read) {
   });
   return h("table", { className: "current-performance-table" }, h("caption", null, "Energieverbrauch ", ...energyInfo(read)),
     h("thead", null, h("tr", null, h("th", { scope: "col" }, "Quelle"), h("th", { scope: "col" }, "Ruhe"), h("th", { scope: "col" }, "Tag gesamt"))),
-    h("tbody", null, rows));
+    h("tbody", null, rows, energyFlaggedRows(read.flagged)));
+}
+
+// With meals flagged as estimated, the own total without them (only clean windows, #3187 item 14)
+// and with the learned correction sit under "Aus deinen Daten" (athlete decision on #3100).
+function energyFlaggedRows(flagged) {
+  if ((flagged?.days ?? 0) <= 0) return [];
+  const row = (kind, label, value) => h("tr", { className: "energy-flag-row", dataset: { energyFlag: kind } }, h("th", { scope: "row" }, label), h("td", null, "–"), h("td", null, value));
+  const unflagged = flagged.unflagged;
+  const rows = [row("unflagged", "ohne geschätzte Tage", unflagged ? energyKcal(unflagged.total_kcal, unflagged.total_band_kcal) : "kein sauberer Zeitraum")];
+  if (flagged.corrected) rows.push(row("corrected", "mit gelernter Korrektur", energyKcal(flagged.corrected.total_kcal, flagged.corrected.total_band_kcal)));
+  return rows;
 }
 
 function energyFitCharts(read) {

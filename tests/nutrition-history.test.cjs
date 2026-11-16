@@ -28,6 +28,37 @@ test("logout clears the diary's energy table and a diary refresh reads it again"
   assert.equal(loads.length, 1);
 });
 
+// #3100 part 2: a meal flagged as estimated says so and its button flips the flag with undo.
+test("a diary card marks an estimated meal and its button flips the flag", async () => {
+  const { h } = extractFunctions("components.js", ["h", "SVG_NS", "svgNode"], { document: fakeDocument() });
+  const calls = [];
+  let resets = 0;
+  const receipts = [];
+  const status = { textContent: "" };
+  const ctx = extractFunctions("nutrition.js", ["nutritionMealTitle", "nutritionCard", "nutritionEstimateChip", "nutritionEntryActions", "markNutritionEstimate"], {
+    h, document: { querySelector: () => status },
+    createStatusChip: (label) => h("span", null, label),
+    nutritionBasisLabel: () => "", nutritionSessionBlock: () => null, nutritionComponentDetails: () => null,
+    nutritionNumber: (value) => String(value), AppFormat: { number: String },
+    deleteNutritionEntry() {}, requestConfirmation: async () => true,
+    api: async (path, options) => { calls.push([path, JSON.parse(options.body)]); return { change: { id: "c1" } }; },
+    resetEnergy: () => { resets += 1; }, loadNutrition: async () => {},
+    showNutritionReceipt: (_status, message, change) => receipts.push([message, change.id]),
+  });
+  const meal = { id: "m1", meal_type: "dinner", logged_at: "2026-11-16T19:30:00", description: "Pizza", kcal: 950, source: "manual", sync_state: "local" };
+  const flagged = ctx.nutritionCard({ ...meal, estimate_uncertain: true }, false);
+  assert.match(textOf(flagged.children[0]), /Menge geschätzt/);
+  const buttons = (card) => card.children.filter((child) => child.tagName === "BUTTON").map(textOf);
+  assert.deepEqual(buttons(flagged), ["Nicht geschätzt", "Löschen"]);
+  const plain = ctx.nutritionCard(meal, false);
+  assert.doesNotMatch(textOf(plain.children[0]), /geschätzt/);
+  assert.deepEqual(buttons(plain), ["Als geschätzt markieren", "Löschen"]);
+  await ctx.markNutritionEstimate(meal);
+  assert.deepEqual(JSON.parse(JSON.stringify(calls)), [["/api/nutrition/entry/estimate", { id: "m1", estimate_uncertain: true }]]);
+  assert.equal(resets, 1, "the energy table reads again");
+  assert.deepEqual(JSON.parse(JSON.stringify(receipts)), [["Als geschätzt markiert.", "c1"]]);
+});
+
 test("weekly chart averages observed days independently and preserves empty weeks", () => {
   const days = Array.from({ length: 84 }, (_, index) => ({ date: new Date(Date.UTC(2026, 0, index + 1)).toISOString().slice(0, 10), intake_kcal: null, expenditure_kcal: null }));
   days[0].intake_kcal = 0;

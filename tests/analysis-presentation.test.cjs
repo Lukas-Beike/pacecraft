@@ -216,7 +216,7 @@ test("body overview uses profile body fat without creating a dated measurement",
 test("the energy table shows bands, the badge only with a fit, and the fit basis", () => {
   const charts = [];
   const { h } = extractFunctions("components.js", ["h", "SVG_NS", "svgNode"], { document: fakeDocument() });
-  const { energyTable, energyBasisText, energyFitNote, energyFitCharts } = extractFunctions("analysis.js", ["ENERGY_SOURCES", "ENERGY_INSUFFICIENT", "ENERGY_STEP_SOURCES", "ENERGY_IMPLAUSIBLE", "ENERGY_IMPLAUSIBLE_REASON", "ENERGY_PARTS", "energyKcal", "energyNeatInputs", "energyBasisText", "energyInfoId", "energyInfo", "energyFitNote", "energySplitRow", "energyTable", "energyFitCharts"], {
+  const { energyTable, energyBasisText, energyFitNote, energyFitCharts } = extractFunctions("analysis.js", ["ENERGY_SOURCES", "ENERGY_INSUFFICIENT", "ENERGY_STEP_SOURCES", "ENERGY_IMPLAUSIBLE", "ENERGY_IMPLAUSIBLE_REASON", "ENERGY_PARTS", "energyKcal", "energyNeatInputs", "energyBasisText", "energyBiasText", "energyInfoId", "energyInfo", "energyFitNote", "energySplitRow", "energyFlaggedRows", "energyTable", "energyFitCharts"], {
     bindAnalysisPopover: (button, info) => { button.dataset.popoverTarget = info.id; },
     h, formatWhole: (v) => String(v), dateLabel: (v) => v, analysisValue: (v, unit) => `${v} ${unit}`,
     createStatusChip: (label) => h("span", null, label),
@@ -268,6 +268,16 @@ test("the energy table shows bands, the badge only with a fit, and the fit basis
   const gated = energyTable(implausible).children[2].children;
   assert.equal(textOf(gated[3].children[1]), "nicht plausibel");
   assert.equal(textOf(gated[3].children[2]), "2832 ± 455", "the day total stays shown");
+  // #3100: with flagged meals, the clean-window total and the learned correction follow the own row;
+  // the per-entry bias joins the popover.
+  const flagged = { days: 2, unflagged: { total_kcal: 2650, total_band_kcal: 130, end: "2026-10-24" }, corrected: { total_kcal: 2760, total_band_kcal: 160 }, bias_pct: 12, bias_band_pct: 9 };
+  const flaggedRows = energyTable({ ...read, flagged }).children[2].children.slice(-2);
+  assert.deepEqual(flaggedRows.map((row) => [textOf(row.children[0]), textOf(row.children[1]), textOf(row.children[2])]), [["ohne geschätzte Tage", "–", "2650 ± 130"], ["mit gelernter Korrektur", "–", "2760 ± 160"]]);
+  const noClean = energyTable({ ...read, flagged: { ...flagged, unflagged: null, corrected: null } }).children[2].children.at(-1);
+  assert.equal(textOf(noClean.children[2]), "kein sauberer Zeitraum");
+  assert.equal(energyTable({ ...read, flagged: { ...flagged, days: 0 } }).children[2].children.length, energyTable(read).children[2].children.length, "no flagged day, no extra row");
+  const [, , flaggedInfo] = energyTable({ ...read, flagged }).children[0].children;
+  assert.match(textOf(flaggedInfo), /Geschätzte Mahlzeiten wirken im Mittel 12 % höher als erfasst \(± 9 %\)$/);
   assert.equal(energyFitCharts(read).length, 1, "the chart alone; the ±100 hit-rate bars are gone");
   assert.deepEqual([...charts[0].series].map((item) => item.label), ["Katch-McArdle", "Cunningham"], "Garmin without a fit is left out");
   assert.deepEqual(JSON.parse(JSON.stringify(charts[0].series[0].points)), [{ date: "2026-11-07", value: null }, { date: "2026-11-14", value: 11 }]);
