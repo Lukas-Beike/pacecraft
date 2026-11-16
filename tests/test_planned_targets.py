@@ -245,6 +245,12 @@ class PlannedTargetExecutionTests(unittest.TestCase):
 
         self.assertEqual(0, unmatched("- 5m Z3 Pace\n- 2m Z1 Pace\n- 299s Z3 Pace\n"))
         self.assertEqual(1, unmatched("- 10m Z3 Pace\n"))
+        # A skipped block of distance steps counts at its target pace: 3 x
+        # 1500 m in zone 3 (about 3.6 m/s) is about 21 min.
+        self.assertEqual(
+            3,
+            unmatched("- 1500m Z3 Pace\n- 1500m Z3 Pace\n- 1500m Z3 Pace\n"),
+        )
 
     def test_a_lone_hard_warm_up_build_is_no_skipped_block(self) -> None:
         # #3084: a 5 min build to pace zone 3 in the warm-up, then the 5 fast

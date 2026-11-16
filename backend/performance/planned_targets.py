@@ -273,8 +273,8 @@ def _unmatched_hard_steps(
             and zone_of(middle / reference * 100) >= HARD_ZONE
         ):
             count += 1
-            duration = steps[index].get("duration")
-            seconds += float(duration) if isinstance(duration, (int, float)) else 0.0
+            # A distance step counts at its target speed's middle.
+            seconds += _planned_seconds(steps[index], target) or 0.0
     return count if seconds >= MIN_SKIPPED_BLOCK_S else 0
 
 
