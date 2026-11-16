@@ -35,9 +35,9 @@ from backend.nutrition.energy_balance import (
     EnergyWindow,
     Estimate,
     energy_windows,
-    flagged_meal_bias,
     history_start,
     weight_trend,
+    windows_bias,
 )
 from backend.nutrition.energy_inputs import (
     RESTING_LOOKBACK_DAYS,
@@ -462,4 +462,5 @@ def read_energy_view(db: Any, sources: EnergySources, end: date) -> dict[str, An
     windows = energy_windows(inputs, end)
     # The split is shown for the latest window only, so only its sessions are read.
     latest = sources.sessions(db, end - timedelta(days=windows[-1].days - 1), end)
-    return energy_view(inputs, windows, health, latest, flagged_meal_bias(inputs, end))
+    # The bias comes from the windows already built, not a second build (Gitar).
+    return energy_view(inputs, windows, health, latest, windows_bias(windows))

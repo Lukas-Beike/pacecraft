@@ -435,7 +435,12 @@ def history_start(end: date, weeks: int = 12) -> date:
 
 def flagged_meal_bias(inputs: EnergyInputs, end: date) -> tuple[float, float] | None:
     """Mean misestimate of flagged entries, in % of their logged kcal, with its band."""
-    bias = _bias(energy_windows(inputs, end))
+    return windows_bias(energy_windows(inputs, end))
+
+
+def windows_bias(windows: Sequence[EnergyWindow]) -> tuple[float, float] | None:
+    """The flagged-entry bias in % with its band, from windows already built."""
+    bias = _bias(windows)
     return None if bias is None else (bias[0] * 100.0, bias[1] * 100.0)
 
 
