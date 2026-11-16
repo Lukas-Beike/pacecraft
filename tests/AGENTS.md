@@ -42,6 +42,8 @@
 - Take expected values from an independent source (a worked example, a known
   literal, the spec), never recomputed the way the code computes them; such a
   tautological test cannot fail. This matters most for training-science formulas.
+  A stored input's fixture takes its scale from the producer, never an assumed
+  one: build it through the producer or assert the `MetricKind` unit (#3230).
 - When changing sync or context behavior, test source precedence and provenance
   for Wahoo, Garmin, local feedback, derived metrics, and AI estimates.
 - When changing the frontend, backend API contracts, PWA cache behavior, or
