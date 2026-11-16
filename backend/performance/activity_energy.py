@@ -20,7 +20,7 @@ from backend.performance.grade_adjustment import (
 
 METHOD_ID = "activity-energy"
 # Bump when a formula or constant below changes the estimate.
-METHOD_VERSION = 2
+METHOD_VERSION = 3
 # Joules per kilocalorie (thermochemical calorie).
 J_PER_KCAL = 4184.0
 # Standard gravity, m/s^2, for the vertical work of floors.
@@ -278,16 +278,25 @@ def neat_net_kcal(
     session_steps: float,
     step_m: float,
     floors: float = 0.0,
+    session_climb_m: float = 0.0,
 ) -> float:
     """Steps outside recorded sessions at Minetti's level walking cost, plus floors.
 
     A floor adds its vertical work at ``UPHILL_WORK_EFFICIENCY`` on top of the
-    level walking those steps already count.
+    level walking those steps already count. The ascent of the day's foot
+    sessions, which their graded cost already prices, leaves the floors first
+    (#3255).
     """
     steps = max(0.0, daily_steps - session_steps)
     walking = mass_kg * steps * step_m * walking_cost_j_per_kg_m(0.0)
-    climbing = mass_kg * GRAVITY * FLOOR_HEIGHT_M * max(0.0, floors)
+    outside = floors_outside_sessions(floors, session_climb_m)
+    climbing = mass_kg * GRAVITY * FLOOR_HEIGHT_M * outside
     return (walking + climbing / UPHILL_WORK_EFFICIENCY) / J_PER_KCAL
+
+
+def floors_outside_sessions(floors: float, session_climb_m: float) -> float:
+    """The day's floors less the foot sessions' ascent in floors, never below 0."""
+    return max(0.0, floors - max(0.0, session_climb_m) / FLOOR_HEIGHT_M)
 
 
 def tef_kcal(protein_g: float, carbohydrate_g: float, fat_g: float) -> float:

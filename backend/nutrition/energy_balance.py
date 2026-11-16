@@ -22,7 +22,7 @@ from backend.performance.activity_energy import tef_kcal
 
 METHOD_ID = "adaptive-expenditure"
 # Bump when a formula or constant below changes the estimate.
-METHOD_VERSION = 2
+METHOD_VERSION = 3
 # Days per window and windows per week of the rolling view (#3099, #3100).
 WINDOW_DAYS = 28
 # Half-life in days of the exponentially weighted weight trend.
@@ -99,6 +99,11 @@ class DayInputs:
     # sessions (0.0 without any); None where unknown, never 0 (#3187).
     neat_kcal: float | None = None
     sport_kcal: float | None = None
+    # NEAT's inputs, shown in the split's basis (#3255): the device's day
+    # steps, the steps its sessions take out, and the floors outside them.
+    steps: float | None = None
+    session_steps: float = 0.0
+    floors: float | None = None
 
 
 @dataclass(frozen=True)
@@ -110,6 +115,9 @@ class EnergyInputs:
     # fallback (orchestrator, 2026-11-15); the source is shown with it.
     rmr_kcal: float | None
     rmr_source: str | None = None  # 'katch_mcardle' | 'garmin' | None
+    # NEAT's step length and where it comes from: 'walks' or 'height' (#3255).
+    step_m: float | None = None
+    step_source: str | None = None
 
 
 @dataclass(frozen=True)

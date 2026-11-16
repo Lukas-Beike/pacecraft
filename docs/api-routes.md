@@ -342,12 +342,17 @@ and their nominal 95 % `*_band_kcal`; the first three also with
 and `split` (`resting_kcal`, `neat_kcal`, `sport_kcal`, `tef_kcal`, and
 `shared` with `neat`, `sport`, `tef` true for each part every row
 computes alike; null until
-known); null without a basis), `best` (the source whose lead over the next
+known); null without a basis; `own` also has `resting_implausible`, true
+when its residual band lies entirely below the resting reference band,
+with its resting value and band then null), `best` (the source whose lead over the next
 exceeds the adaptive TDEE's mean band over at least 4 shared windows,
 else null), `fit` (`shared_windows`, `windows`, `min_windows`,
 `reference_band_kcal`), `basis` (`days`, `complete_days`,
 `flagged_days`, `weighins`, `insufficient`, `windows_with_estimate`,
-`rmr_source`) and `skinfold` (`date`, `body_fat_pct`, `lean_mass_kg`,
+`rmr_source`, and `neat` with `days`, `steps_per_day`,
+`session_steps_per_day`, `floors_per_day`, `step_length_m` and
+`step_length_source` (`walks` or `height`) over the latest window's days
+with steps, or null) and `skinfold` (`date`, `body_fat_pct`, `lean_mass_kg`,
 or null).
 
 Errors: none beyond the common ones.

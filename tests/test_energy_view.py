@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import unittest
+from dataclasses import replace
 from datetime import date, timedelta
 from typing import Any
 
@@ -296,6 +297,76 @@ class EnergyViewTests(unittest.TestCase):
             row(energy_view(inputs({}), [window(END, 2700.0)], garmin()), "own")[
                 "split"
             ]
+        )
+
+    def test_a_resting_residual_below_the_reference_band_is_not_plausible(
+        self,
+    ) -> None:
+        # Today's numbers: TDEE 2,832 +- 455 and the residual 1,105 +- 475,
+        # whose top 1,580 lies below Katch-McArdle's 1,839 - 219 = 1,620.
+        low = replace(
+            window(END, 2832.0, band=455.0), derived_rmr=Estimate(1105.0, 475.0)
+        )
+        own = row(energy_view(inputs(), [low], garmin()), "own")
+        self.assertEqual(
+            (None, None, True, 2832, 455),
+            (
+                own["resting_kcal"],
+                own["resting_band_kcal"],
+                own["resting_implausible"],
+                own["total_kcal"],
+                own["total_band_kcal"],
+            ),
+        )
+        self.assertIsNone(own["split"]["resting_kcal"])
+        # Without a skinfold Garmin's 1,745 (no band) is the reference.
+        no_fold = row(energy_view(inputs({}), [low], garmin()), "own")
+        self.assertTrue(no_fold["resting_implausible"])
+        # Overlapping bands keep the value: 1,500 + 475 = 1,975 reaches 1,620.
+        overlap = replace(low, derived_rmr=Estimate(1500.0, 475.0))
+        kept = row(energy_view(inputs(), [overlap], garmin()), "own")
+        self.assertEqual(
+            (1500, 475, False),
+            (
+                kept["resting_kcal"],
+                kept["resting_band_kcal"],
+                kept["resting_implausible"],
+            ),
+        )
+        # Without any reference the residual stays a value.
+        alone = row(energy_view(inputs({}), [low], {}), "own")
+        self.assertEqual(
+            (1105, False), (alone["resting_kcal"], alone["resting_implausible"])
+        )
+
+    def test_the_basis_names_neats_inputs_over_the_latest_window(self) -> None:
+        # 20 of the window's 28 days have steps; the older days do not count.
+        days = {
+            END - timedelta(days=n): DayInputs(
+                weight_kg=80.0,
+                steps=12_000.0 if n < 20 else None,
+                session_steps=2_000.0 if n < 10 else 0.0,
+                floors=8.0 if n < 20 else None,
+            )
+            for n in range(60)
+        }
+        days[END - timedelta(days=40)] = DayInputs(steps=99_000.0)
+        source = replace(inputs(), days=days, step_m=0.748, step_source="walks")
+        neat = energy_view(source, [window(END, 2700.0)], garmin())["basis"]["neat"]
+        # Session steps: 10 days x 2,000 over 20 days = 1,000 per day.
+        self.assertEqual(
+            {
+                "days": 20,
+                "steps_per_day": 12000,
+                "session_steps_per_day": 1000,
+                "floors_per_day": 8.0,
+                "step_length_m": 0.75,
+                "step_length_source": "walks",
+            },
+            neat,
+        )
+        self.assertIsNone(
+            energy_view(inputs(), [window(END, 2700.0)], garmin())["basis"]["neat"]
         )
 
     def test_an_unpriced_session_drops_its_day_and_negative_everyday_stays_unknown(

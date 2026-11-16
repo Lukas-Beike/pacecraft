@@ -33,6 +33,7 @@ from backend.canonical.vocabulary import ProviderId
 from backend.nutrition.energy_balance import (
     EnergyInputs,
     EnergyWindow,
+    Estimate,
     energy_windows,
     history_start,
     weight_trend,
@@ -249,6 +250,57 @@ def _split(
     }
 
 
+def resting_plausible(
+    derived: Estimate, reference: float | None, reference_band: float | None
+) -> bool:
+    """False only when the derived band lies entirely below the reference band.
+
+    The residual carries every error of the logged intake and the modelled
+    activity, so a value under any physiological resting rate is not shown as
+    one (athlete decision 2026-11-16, #3255). Without a reference it stands.
+    """
+    if reference is None:
+        return True
+    return derived.kcal + derived.band_kcal >= reference - (reference_band or 0.0)
+
+
+def _gated_resting(
+    rmr: Estimate | None, own: Prediction, device: Prediction
+) -> tuple[Estimate | None, bool]:
+    """The residual to show and whether the gate held it back (#3255).
+
+    The reference is the own Katch-McArdle with its band, else Garmin's mean
+    resting value.
+    """
+    reference = own if own[0] is not None else device
+    if rmr is None or resting_plausible(rmr, reference[0], reference[1]):
+        return rmr, False
+    return None, True
+
+
+def _neat_basis(inputs: EnergyInputs, window: EnergyWindow) -> dict[str, Any] | None:
+    """NEAT's inputs per day over the window's days with steps (#3255)."""
+    start = window.end - timedelta(days=window.days - 1)
+    days = [
+        day
+        for when, day in inputs.days.items()
+        if start <= when <= window.end and day.steps is not None
+    ]
+    if not days:
+        return None
+    floors = [day.floors for day in days if day.floors is not None]
+    return {
+        "days": len(days),
+        "steps_per_day": round(statistics.fmean(day.steps or 0.0 for day in days)),
+        "session_steps_per_day": round(
+            statistics.fmean(day.session_steps for day in days)
+        ),
+        "floors_per_day": round(statistics.fmean(floors), 1) if floors else None,
+        "step_length_m": None if inputs.step_m is None else round(inputs.step_m, 2),
+        "step_length_source": inputs.step_source,
+    }
+
+
 def energy_view(
     inputs: EnergyInputs,
     windows: Sequence[EnergyWindow],
@@ -308,26 +360,31 @@ def energy_view(
                 "split": split,
             }
         )
-    tdee, rmr = latest.adaptive_tdee, latest.derived_rmr
+    tdee = latest.adaptive_tdee
+    shown, implausible = _gated_resting(
+        latest.derived_rmr, predictions["katch_mcardle"][-1], predictions[DEVICE][-1]
+    )
     # The own row's resting rate is the residual of the calibrated terms; its
     # everyday and sport equal the formula rows' only while k is 1.
     uncalibrated = math.isclose(latest.calibration_factor, 1.0)
+    own_resting = shown.kcal if shown else None
     own_split = (
         _split(
-            rmr.kcal,
+            own_resting,
             latest.neat_kcal,
             latest.sport_kcal,
             latest.tef_kcal,
             {"neat": uncalibrated, "sport": uncalibrated, "tef": True},
         )
-        if rmr
+        if latest.derived_rmr
         else None
     )
     rows.append(
         {
             "source": OWN,
-            "resting_kcal": _round(rmr.kcal) if rmr else None,
-            "resting_band_kcal": _round(rmr.band_kcal) if rmr else None,
+            "resting_kcal": _round(shown.kcal) if shown else None,
+            "resting_band_kcal": _round(shown.band_kcal) if shown else None,
+            "resting_implausible": implausible,
             "total_kcal": _round(tdee.kcal) if tdee else None,
             "total_band_kcal": _round(tdee.band_kcal) if tdee else None,
             "split": own_split,
@@ -348,6 +405,7 @@ def energy_view(
             "insufficient": latest.insufficient,
             "windows_with_estimate": sum(1 for w in windows if w.adaptive_tdee),
             "rmr_source": latest.rmr_source,
+            "neat": _neat_basis(inputs, latest),
         },
         "skinfold": None
         if body is None
