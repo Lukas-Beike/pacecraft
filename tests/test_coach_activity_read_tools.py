@@ -381,9 +381,17 @@ class CoachActivityReadToolServiceTests(unittest.TestCase):
                 "session": {"sport": sport, "environment": environment},
                 "metrics": metrics,
                 "streams": {"channels": channels},
-                "laps": [
-                    {"avg_speed_mps": 13.9, "max_speed_mps": 15.0, "distance_m": 400}
-                ],
+                # The v1 document's shape (Gitar on #3296: laps are nested).
+                "laps": {
+                    "lap_source": "device",
+                    "laps": [
+                        {
+                            "avg_speed_mps": 13.9,
+                            "max_speed_mps": 15.0,
+                            "distance_m": 400,
+                        }
+                    ],
+                },
             }
 
         cases = (
@@ -397,7 +405,7 @@ class CoachActivityReadToolServiceTests(unittest.TestCase):
             self.assertNotIn("avg_speed_mps", found["metrics"], environment)
             self.assertIn("distance_m", found["metrics"])
             self.assertNotIn("speed_mps", found["streams"]["channels"])
-            self.assertEqual(found["laps"], [{"distance_m": 400}])
+            self.assertEqual(found["laps"]["laps"], [{"distance_m": 400}])
             self.assertEqual(found["speed_note"], note)
         raw = detail("ride", "outdoor", power=False)
         _without_virtual_speed(raw)

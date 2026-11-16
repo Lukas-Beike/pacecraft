@@ -255,7 +255,9 @@ def _without_virtual_speed(detail: dict[str, Any]) -> None:
         detail["speed_note"] = RAW_SPEED_NOTE
         return
     channels = (detail.get("streams") or {}).get("channels")
-    for part in (detail.get("metrics"), channels, *(detail.get("laps") or ())):
+    # The v1 document nests its laps: {"lap_source", "source", "laps": [...]}.
+    laps = (detail.get("laps") or {}).get("laps") or ()
+    for part in (detail.get("metrics"), channels, *laps):
         if isinstance(part, dict):
             for key in [key for key in part if "speed" in key]:
                 del part[key]
