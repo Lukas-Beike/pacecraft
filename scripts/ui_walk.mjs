@@ -412,10 +412,17 @@ export async function runStep(page, { pre = [], post = [], unseek, ...step }, ca
 const CURVES_CAP_MS = 600000;
 export async function waitForCurves(page, capMs = CURVES_CAP_MS, pollMs = 10000) {
   const started = Date.now();
+  let asked = false;
   for (;;) {
     const status = await page.request.get("/api/diagnostics").then((response) => (response.ok() ? response.json() : null)).then((report) => report?.curve_build?.status).catch(() => null);
     const waited = Math.round((Date.now() - started) / 1000);
-    if (status !== "building" || Date.now() - started >= capMs) return { status: typeof status === "string" && /^[a-z_]{1,20}$/.test(status) ? status : "unknown", waited };
+    if (!["building", "pending"].includes(status) || Date.now() - started >= capMs) return { status: typeof status === "string" && /^[a-z_]{1,20}$/.test(status) ? status : "unknown", waited };
+    // "pending" lasts until the first all-time read starts the build: the walk makes that read (the
+    // Analyse view's own GET) once, so the build runs now and not during the walk's Analyse visit.
+    if (status === "pending" && !asked) {
+      asked = true;
+      await page.request.get("/api/analysis/power-profiles").catch(() => null);
+    }
     await page.waitForTimeout(pollMs);
   }
 }
