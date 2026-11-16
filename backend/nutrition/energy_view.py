@@ -367,9 +367,10 @@ def energy_view(
     # The own row's resting rate is the residual of the calibrated terms; its
     # everyday and sport equal the formula rows' only while k is 1.
     uncalibrated = math.isclose(latest.calibration_factor, 1.0)
+    own_resting = shown.kcal if shown else None
     own_split = (
         _split(
-            shown.kcal if shown else None,
+            own_resting,
             latest.neat_kcal,
             latest.sport_kcal,
             latest.tef_kcal,
