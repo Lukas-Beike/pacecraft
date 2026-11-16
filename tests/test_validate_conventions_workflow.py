@@ -307,10 +307,23 @@ class AppVersionStepTests(unittest.TestCase):
         self.assertIn("synthetic gh api failure", result.stderr)
 
     def test_the_step_reads_both_files_through_the_api(self):
-        # pull_request_target must not check out or run pull-request code.
+        # No step checks out or runs pull-request code.
         step = validation_script("Keep APP_VERSION at or above the base branch")
         self.assertIn("contents/server.py?ref=", step)
         self.assertNotIn("checkout", step)
+
+    def test_validate_runs_on_pull_request_read_only_without_secrets(self):
+        # #3277: GitHub blocks pull_request_target on public repositories.
+        workflow = WORKFLOW.read_text(encoding="utf-8")
+        head = workflow.split("jobs:", 1)[0]
+        self.assertIn(
+            "  pull_request:\n    types: [opened, synchronize, reopened, edited]", head
+        )
+        self.assertNotIn("pull_request_target", head)
+        self.assertNotIn("write", head)
+        self.assertNotIn("secrets.", workflow)
+        self.assertNotIn("actions/checkout", workflow)
+        self.assertIn("jobs:\n  validate:\n", workflow)
 
 
 if __name__ == "__main__":
