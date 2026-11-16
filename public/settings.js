@@ -751,12 +751,13 @@ function lt2EstimateRow(source, estimate, origins) {
   };
 }
 
-const LT2_QUALITY_CHIPS = { good: ["Schätzung · gut", "status-chip success"], low: ["Schätzung · mittel", "status-chip warning"] };
+// The quality of a local estimate; the method name says what it is (#3297: no "Schätzung").
+const LT2_QUALITY_CHIPS = { good: ["Qualität gut", "status-chip success"], low: ["Qualität mittel", "status-chip warning"] };
 
 function lt2SourceItem(sport, row) {
   const chips = [];
-  if (row.source !== "provider") {
-    const [text, className] = LT2_QUALITY_CHIPS[row.quality] || ["Schätzung", "status-chip"];
+  if (LT2_QUALITY_CHIPS[row.quality]) {
+    const [text, className] = LT2_QUALITY_CHIPS[row.quality];
     chips.push(h("span", className, text));
   }
   if (row.inEffect) chips.push(h("span", "status-chip success", "gilt"));
@@ -774,7 +775,7 @@ function lt2SourceItem(sport, row) {
 function chooseLt2Values(row) {
   const dialog = $("#lt2AdoptDialog");
   if (!dialog) return Promise.resolve([]);
-  $("#lt2AdoptTitle").textContent = `${row.name}-Schätzung übernehmen`;
+  $("#lt2AdoptTitle").textContent = `${row.name} übernehmen`;
   $("#lt2AdoptMessage").textContent = `Als ${zoneSport === "ride" ? "Anaerob (LT2) / FTP" : "Anaerob (LT2)"} ${zoneSport === "ride" ? "Radfahren" : "Laufen"}, gilt ab heute.`;
   const boxes = row.adopt.map((item) => h("input", { type: "checkbox", checked: true, value: item.value }));
   $("#lt2AdoptValues").replaceChildren(...row.adopt.map((item, index) => h("label", "chip", boxes[index], h("span", null, item.label))));

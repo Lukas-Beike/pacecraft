@@ -48,7 +48,9 @@ test("@responsive Schwellen lists the provider, DFA-α1 and CS with their basis 
   await expect(sources.nth(0)).toContainText("Garmin");
   await expect(sources.nth(0)).toContainText("4:12 /km · 158 bpm");
   await expect(sources.nth(0)).toContainText("gilt");
-  await expect(sources.nth(1)).toContainText("Schätzung · gut");
+  // #3297: the quality without the word "Schätzung"; the method name stays.
+  await expect(sources.nth(1)).toContainText("Qualität gut");
+  await expect(page.locator('[data-zone-box="thresholds"] .lt2-sources')).not.toContainText("Schätzung");
   await expect(sources.nth(1)).toContainText("169 bpm · 4:16 /km");
   await expect(sources.nth(1)).toContainText("aus 6 Läufen der letzten 60 Tage");
   await expect(sources.nth(2)).toContainText("unbekannt");
