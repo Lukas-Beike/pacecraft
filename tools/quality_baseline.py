@@ -36,6 +36,8 @@ TOOLS = ("ruff", "mypy")
 COGNITIVE = "cognitive"
 COGNITIVE_CODE = "S3776"
 COGNITIVE_LIMIT = 15
+# Sonar's python:S3358: a conditional expression nested in another (#3271).
+NESTED_CONDITIONAL_CODE = "S3358"
 # Sonar's css:S4666 (Stylelint no-duplicate-selectors): the same selector list in
 # the same at-rule context twice. Like the cognitive counter it is this module's
 # own code; CI's Sonar gate failed on it while every local check passed (#3077).
@@ -370,6 +372,7 @@ def cognitive_diagnostics(root: Path, files: list[str]) -> list[dict]:
             tree = ast.parse((root / path).read_text(encoding="utf-8"), path)
         except SyntaxError as error:
             raise RuntimeError(f"Cannot parse {path} for complexity") from error
+        diagnostics.extend(nested_conditional_diagnostics(tree, path))
         for name, function in _functions(tree):
             if cognitive_complexity(function) > COGNITIVE_LIMIT:
                 message = f"Cognitive complexity of {name} is above {COGNITIVE_LIMIT}"
@@ -384,6 +387,32 @@ def cognitive_diagnostics(root: Path, files: list[str]) -> list[dict]:
                     }
                 )
     return diagnostics
+
+
+def _inner_conditional(node: ast.AST) -> bool:
+    """A conditional expression below `node`, not counting a lambda's own body."""
+    return any(
+        isinstance(child, ast.IfExp)
+        or (not isinstance(child, ast.Lambda) and _inner_conditional(child))
+        for child in ast.iter_child_nodes(node)
+    )
+
+
+def nested_conditional_diagnostics(tree: ast.AST, path: str) -> list[dict]:
+    """One finding per conditional expression that holds another (Sonar S3358)."""
+    message = "Conditional expression nested in another"
+    return [
+        {
+            "tool": COGNITIVE,
+            "path": path,
+            "line": node.lineno,
+            "column": node.col_offset + 1,
+            "code": NESTED_CONDITIONAL_CODE,
+            "message_sha256": hashlib.sha256(message.encode()).hexdigest(),
+        }
+        for node in ast.walk(tree)
+        if isinstance(node, ast.IfExp) and _inner_conditional(node)
+    ]
 
 
 def _css_selector_key(prelude: str) -> str:

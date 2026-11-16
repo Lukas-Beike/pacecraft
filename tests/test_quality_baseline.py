@@ -521,12 +521,15 @@ class QualityBaselineTests(unittest.TestCase):
         found = self.javascript_findings(
             *self.tangled_function(6),
             "const pick = (a, b) => (a ? 1 : b ? 2 : 3);",
+            # #3271: Sonar S4624 failed #3254 only in CI.
+            "const label = (a, b) => `${a}: ${`${b} km`}`;",
         )
         self.assertEqual(
             [(item["path"], item["line"], item["code"]) for item in found],
             [
                 ("public/sample.js", 1, "sonarjs/cognitive-complexity"),
                 ("public/sample.js", 4, "sonarjs/no-nested-conditional"),
+                ("public/sample.js", 5, "sonarjs/no-nested-template-literals"),
             ],
         )
         self.assertEqual(self.check(found)[0], 1)
@@ -646,6 +649,20 @@ class CognitiveComplexityTests(unittest.TestCase):
 
     def score(self, source):
         return quality_baseline.cognitive_complexity(ast.parse(source).body[0])
+
+    def test_a_conditional_expression_nested_in_another_is_found(self):
+        # #3271: Sonar's python:S3358 failed #3260 only in CI.
+        nested = (
+            "def pick(a, b):\n"
+            "    return 1 if a else (2 if b else 3)\n"
+            "def flat(a, b):\n"
+            "    first = 1 if a else 2\n"
+            "    return first if b else (lambda: 4 if a else 5)\n"
+        )
+        self.assertEqual(
+            [(item["code"], item["line"]) for item in self.findings(nested)],
+            [("S3358", 2)],
+        )
 
     def test_limit_is_exclusive_at_fifteen(self):
         self.assertEqual(self.score(nested_chain()), 15)
