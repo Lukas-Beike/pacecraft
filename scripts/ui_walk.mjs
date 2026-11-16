@@ -406,6 +406,27 @@ export async function runStep(page, { pre = [], post = [], unseek, ...step }, ca
   }
 }
 
+// After a schema release the app rebuilds the all-time curves once, which slows every read for minutes
+// (2.1.28: 265 s). The walk reads only the build's state word from the diagnostics and starts once it is
+// no longer "building", at most CURVES_CAP_MS later.
+const CURVES_CAP_MS = 600000;
+export async function waitForCurves(page, capMs = CURVES_CAP_MS, pollMs = 10000) {
+  const started = Date.now();
+  let asked = false;
+  for (;;) {
+    const status = await page.request.get("/api/diagnostics").then((response) => (response.ok() ? response.json() : null)).then((report) => report?.curve_build?.status).catch(() => null);
+    const waited = Math.round((Date.now() - started) / 1000);
+    if (!["building", "pending"].includes(status) || Date.now() - started >= capMs) return { status: typeof status === "string" && /^[a-z_]{1,20}$/.test(status) ? status : "unknown", waited };
+    // "pending" lasts until the first all-time read starts the build: the walk makes that read (the
+    // Analyse view's own GET) once, so the build runs now and not during the walk's Analyse visit.
+    if (status === "pending" && !asked) {
+      asked = true;
+      await page.request.get("/api/analysis/power-profiles").catch(() => null);
+    }
+    await page.waitForTimeout(pollMs);
+  }
+}
+
 async function walk({ chromium, url, password, outDir }) {
   const result = { measure: LOAD_MEASURE, loadMs: {}, notReady: {}, errors: {}, calendar: {}, steps: {}, marks: null, logout: {} };
   const browser = await chromium.launch();
@@ -430,6 +451,7 @@ async function walk({ chromium, url, password, outDir }) {
       await page.locator("#appShell").waitFor({ state: "visible", timeout: 30000 });
       // Every error counts against a step: login, a view (with its calendar walk), or the rest.
       result.errors[`${name} login`] = errors.length;
+      result.curves ??= await waitForCurves(page);
       let counted = errors.length;
       const shot = async (label) => writeFresh(outDir, `${name}-${label}.png`, await page.screenshot({ fullPage: false }));
       for (const route of VIEWS) {
@@ -478,6 +500,7 @@ export function reportLines(result) {
     lines.push(`info ${key} not ready within 15 s; still loading: ${requests.join(", ") || "only a loading marker"}`);
   }
   for (const [key, step] of Object.entries(result.steps || {})) lines.push(STEP_LINE[step.status](key, step));
+  if (result.curves) lines.push(`info curve build ${result.curves.status}, waited ${result.curves.waited} s before the walk`);
   for (const [name, steps] of Object.entries(result.calendar)) lines.push(`info calendar ${name}: ${steps.join(", ") || "no controls found"}`);
   lines.push(`info service-worker cache ${result.marks?.cache || "missing"}, ${result.marks?.assetVersions.length || 0} asset versions`);
   for (const [name, status] of Object.entries(result.logout || {})) lines.push(`${status === 200 ? "ok" : "FAIL"} logout ${name} ${status}`);

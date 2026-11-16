@@ -205,3 +205,24 @@ test("ui walk refuses a file, link or hard link at a fixed name instead of follo
     fs.rmSync(victimDir, { recursive: true, force: true });
   }
 });
+
+test("the walk waits while the curve build runs and prints only its state word (2.1.28)", async () => {
+  const walk = await load();
+  const reads = [];
+  const page = (states) => ({
+    request: { get: async (url) => { reads.push(url); const status = url === "/api/diagnostics" ? states.shift() : null; return { ok: () => true, json: async () => ({ curve_build: { status }, secret: "never printed" }) }; } },
+    waitForTimeout: async () => {},
+  });
+  const ready = await walk.waitForCurves(page(["building", "building", "ready"]), 60000, 1);
+  assert.equal(ready.status, "ready");
+  // "pending" until the first all-time read: the walk makes that read once and waits for the build.
+  reads.length = 0;
+  assert.equal((await walk.waitForCurves(page(["pending", "pending", "building", "ready"]), 60000, 1)).status, "ready");
+  assert.equal(reads.filter((url) => url === "/api/analysis/power-profiles").length, 1);
+  // Bounded: a build that never ends stops the wait at the cap.
+  assert.equal((await walk.waitForCurves(page(Array(50).fill("building")), 0, 1)).status, "building");
+  // Anything but a state word is reported as unknown.
+  assert.equal((await walk.waitForCurves(page(["<b>x</b>"]), 60000, 1)).status, "unknown");
+  const lines = walk.reportLines({ loadMs: {}, errors: {}, calendar: {}, marks: null, curves: ready });
+  assert.ok(lines.includes(`info curve build ready, waited ${ready.waited} s before the walk`));
+});
