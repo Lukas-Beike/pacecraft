@@ -52,6 +52,7 @@ IDENTITY_FIELDS = ("tool", "path", "code", "message_sha256")
 NON_SOURCE_DIRECTORIES = {
     ".git",
     ".graphify-local",
+    ".quality-tools",
     ".venv",
     "venv",
     "node_modules",
@@ -83,9 +84,27 @@ JAVASCRIPT_GLOBS = (
 )
 
 
+# scripts/prepare_worktree.py installs Ruff and mypy into the worktree's own
+# directory (#3217); the pre-push hook runs this script in an export of HEAD and
+# names the clone in PACECRAFT_GIT_ROOT.
+TOOLS_DIR = Path(os.environ.get("PACECRAFT_GIT_ROOT") or ROOT) / ".quality-tools"
+
+
 def tool_command(tool: str) -> list[str]:
-    """Run the tool from this interpreter, where worktree preparation installs it."""
-    return [sys.executable, "-m", tool]
+    """Run the worktree's own tool when prepared, else this interpreter's (CI).
+
+    Ruff runs its binary from there directly: `python -m ruff` would start the
+    interpreter's own binary first.
+    """
+    if not (TOOLS_DIR / tool).is_dir():
+        return [sys.executable, "-m", tool]
+    if tool == "ruff":
+        return [str(TOOLS_DIR / "bin" / ("ruff.exe" if os.name == "nt" else "ruff"))]
+    loader = (
+        f"import runpy, sys; sys.path.insert(0, {str(TOOLS_DIR)!r}); "
+        f"runpy.run_module({tool!r}, run_name='__main__', alter_sys=True)"
+    )
+    return [sys.executable, "-c", loader]
 
 
 def path_batches(files: list[str]) -> list[list[str]]:
@@ -120,7 +139,14 @@ def source_files(root: Path) -> list[str]:
 
 
 def tool_name(command: list[str]) -> str:
-    return command[2] if command[1:2] == ["-m"] else command[0]
+    if command[1:2] == ["-m"]:
+        return command[2]
+    loaded = (
+        re.search(r"run_module\('(\w+)'", command[2])
+        if command[1:2] == ["-c"]
+        else None
+    )
+    return loaded.group(1) if loaded else Path(command[0]).stem
 
 
 def run(command: list[str], root: Path, allowed: tuple[int, ...] = (0, 1)) -> str:
@@ -499,6 +525,12 @@ def collect(root: Path, notes: dict[str, str]) -> tuple[dict[str, str], list[dic
     if not files:
         raise RuntimeError("No Python source files discovered")
     versions = {}
+    if not all((TOOLS_DIR / tool).is_dir() for tool in TOOLS):
+        print(
+            "Quality tools: this interpreter's; `python scripts/prepare_worktree.py` "
+            "installs the worktree's own (#3217)",
+            file=sys.stderr,
+        )
     for tool in TOOLS:
         output = run([*tool_command(tool), "--version"], root, (0,))
         match = re.search(r"\b\d+\.\d+\.\d+\b", output)

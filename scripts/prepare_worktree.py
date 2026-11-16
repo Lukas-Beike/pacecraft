@@ -13,14 +13,16 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 QUALITY_TOOLS = ("ruff", "mypy", "tzdata")
+QUALITY_TOOLS_DIR = ".quality-tools"  # tools/quality_baseline.py runs them from here
 PIP_INPUTS = ("requirements.in", "requirements-dev.in", "requirements-graphify.in")
 PYPI_URL = "https://pypi.org/pypi/{}/json"
 CHECK_TIMEOUT = 5
 NPM_TIMEOUT = 30
 
 
-def quality_requirements(lock_text: str) -> str:
-    """Return the hash-locked blocks for the quality tools and mypy's dependencies.
+def quality_requirements(lock_text: str, tools: tuple[str, ...] = QUALITY_TOOLS) -> str:
+    """Return the hash-locked blocks for the given quality tools, with mypy's
+    dependencies when mypy is one of them.
 
     tzdata is here because Windows has no system time zone database, and the
     tests import zoneinfo. The full development lock needs SQLCipher, which has
@@ -30,37 +32,45 @@ def quality_requirements(lock_text: str) -> str:
     selected = [
         block
         for block in blocks
-        if block.partition("==")[0] in QUALITY_TOOLS
-        or re.search(r"(?m)^\s*#.*mypy", block)
+        if block.partition("==")[0] in tools
+        or ("mypy" in tools and re.search(r"(?m)^\s*#.*mypy", block))
     ]
     names = {block.partition("==")[0] for block in selected}
-    if not set(QUALITY_TOOLS) <= names:
+    if not set(tools) <= names:
         raise OSError("requirements-dev.txt does not pin the quality tools")
     return "".join(selected)
 
 
 def install_quality_tools(root: Path) -> int:
+    """Ruff and mypy go into this worktree's own `.quality-tools`, which the quality
+    ratchet runs: worktrees on different pins no longer reset one shared version
+    (#3217). tzdata stays with the interpreter, which runs the tests."""
+    target = root / QUALITY_TOOLS_DIR
+    shutil.rmtree(target, ignore_errors=True)
+    lock_text = (root / "requirements-dev.txt").read_text(encoding="utf-8")
+    code = 0
     with tempfile.TemporaryDirectory(prefix="quality-tools-") as directory:
-        lock = Path(directory) / "requirements.txt"
-        lock.write_text(
-            quality_requirements(
-                (root / "requirements-dev.txt").read_text(encoding="utf-8")
-            ),
-            encoding="utf-8",
-        )
-        command = [
-            sys.executable,
-            "-m",
-            "pip",
-            "install",
-            "--require-hashes",
-            "--only-binary=:all:",
-            "--disable-pip-version-check",
-            "--no-input",
-            "-r",
-            str(lock),
-        ]
-        return subprocess.run(command, cwd=root, check=False).returncode
+        for tools, place in (
+            (("ruff", "mypy"), ["--target", str(target)]),
+            (("tzdata",), []),
+        ):
+            lock = Path(directory) / "requirements.txt"
+            lock.write_text(quality_requirements(lock_text, tools), encoding="utf-8")
+            command = [
+                sys.executable,
+                "-m",
+                "pip",
+                "install",
+                "--require-hashes",
+                "--only-binary=:all:",
+                "--disable-pip-version-check",
+                "--no-input",
+                *place,
+                "-r",
+                str(lock),
+            ]
+            code = code or subprocess.run(command, cwd=root, check=False).returncode
+    return code
 
 
 def build_app_image(root: Path) -> int:
