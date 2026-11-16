@@ -6,6 +6,7 @@ import unittest
 from datetime import date, timedelta
 from typing import Any
 
+from backend.canonical.vocabulary import ProviderId
 from backend.nutrition.energy_balance import (
     DayInputs,
     EnergyInputs,
@@ -16,6 +17,7 @@ from backend.nutrition.energy_view import energy_view, read_energy_view
 from tests.test_energy_inputs import DAY1, DAY3, sources
 
 END = date(2026, 11, 14)
+GARMIN_IDS = {ProviderId.GARMIN.value: "g1"}
 # Four weekly windows ending on END, oldest first.
 ENDS = [END - timedelta(days=7 * n) for n in (3, 2, 1, 0)]
 
@@ -231,6 +233,7 @@ class EnergyViewTests(unittest.TestCase):
         session = {
             "started_at_local": f"{END}T07:00:00",
             "energy_kcal": 800.0,
+            "record_ids": GARMIN_IDS,
             "elapsed_duration_s": 3600,
         }
         view = energy_view(inputs(), [window(END, 2700.0)], health, [session])
@@ -238,9 +241,9 @@ class EnergyViewTests(unittest.TestCase):
             {
                 "resting_kcal": 1745,
                 "neat_kcal": 1349,
-                "sessions_kcal": 26,
+                "sport_kcal": 26,
                 "tef_kcal": None,
-                "shared": False,
+                "shared": {"neat": False, "sport": False, "tef": False},
             },
             row(view, "device")["split"],
         )
@@ -251,16 +254,24 @@ class EnergyViewTests(unittest.TestCase):
         self,
     ) -> None:
         health = {key: {**day, "active_kcal": 1375.0} for key, day in garmin().items()}
-        unpriced = {"started_at_local": f"{END}T07:00:00", "elapsed_duration_s": 3600}
+        # END has more active kcal, so counting it would lift everyday to
+        # (27 x 1,375 + 2,000) / 28 = 1,397; dropped, everyday stays 1,375.
+        health[END.isoformat()] = {**health[END.isoformat()], "active_kcal": 2000.0}
+        unpriced = {
+            "started_at_local": f"{END}T07:00:00",
+            "elapsed_duration_s": 3600,
+            "record_ids": GARMIN_IDS,
+        }
         split = row(
             energy_view(inputs(), [window(END, 2700.0)], health, [unpriced]), "device"
         )["split"]
-        self.assertEqual((1375, 0), (split["neat_kcal"], split["sessions_kcal"]))
+        self.assertEqual((1375, 0), (split["neat_kcal"], split["sport_kcal"]))
         low = {key: {**day, "active_kcal": 10.0} for key, day in garmin().items()}
         big = [
             {
                 "started_at_local": f"{END - timedelta(days=n)}T07:00:00",
                 "energy_kcal": 900.0,
+                "record_ids": GARMIN_IDS,
                 "elapsed_duration_s": 3600,
             }
             for n in range(28)
@@ -269,6 +280,21 @@ class EnergyViewTests(unittest.TestCase):
             "split"
         ]
         self.assertIsNone(split["neat_kcal"])
+
+    def test_a_session_garmin_did_not_record_is_not_garmin_sport(self) -> None:
+        # A ride on another head unit while the watch was off is not in Garmin's
+        # active kcal, so it neither counts as sport nor lowers everyday.
+        health = {key: {**day, "active_kcal": 1375.0} for key, day in garmin().items()}
+        other = {
+            "started_at_local": f"{END}T07:00:00",
+            "energy_kcal": 800.0,
+            "elapsed_duration_s": 3600,
+            "record_ids": {ProviderId.WAHOO.value: "w1"},
+        }
+        split = row(
+            energy_view(inputs(), [window(END, 2700.0)], health, [other]), "device"
+        )["split"]
+        self.assertEqual((1375, 0), (split["neat_kcal"], split["sport_kcal"]))
 
     def test_the_reader_builds_twelve_windows_with_garmin_beside_them(self) -> None:
         view = read_energy_view(None, sources(), DAY3)

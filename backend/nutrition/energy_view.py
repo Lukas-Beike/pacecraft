@@ -21,7 +21,7 @@ import math
 import statistics
 from collections.abc import Mapping, Sequence
 from datetime import date, timedelta
-from typing import Any
+from typing import Any, Final
 
 from backend.athlete.body_composition import (
     RestingFormula,
@@ -29,6 +29,7 @@ from backend.athlete.body_composition import (
     resting_band,
     resting_energy,
 )
+from backend.canonical.vocabulary import ProviderId
 from backend.nutrition.energy_balance import (
     EnergyInputs,
     EnergyWindow,
@@ -125,46 +126,58 @@ def _number(value: Any) -> float | None:
     return float(value)
 
 
+def _garmin_sport(
+    sessions: Sequence[Mapping[str, Any]], resting: float
+) -> float | None:
+    """One day's Garmin session kcal net of its resting rate, or None if unpriced.
+
+    Only sessions Garmin recorded count: a ride on another head unit while the
+    watch was off is not in Garmin's active kcal (Gitar on #3216).
+    """
+    net = 0.0
+    for summary in sessions:
+        if ProviderId.GARMIN.value not in (summary.get("record_ids") or {}):
+            continue
+        kcal = _number(summary.get("energy_kcal"))
+        seconds = _number(summary.get("elapsed_duration_s")) or _number(
+            summary.get("moving_duration_s")
+        )
+        if not kcal or not seconds:
+            return None
+        net += max(0.0, kcal - resting / 1440.0 * seconds / 60.0)
+    return net
+
+
 def _device_split(
     health: Mapping[str, Mapping[str, Any]],
     sessions: Sequence[Mapping[str, Any]],
     window: EnergyWindow,
 ) -> tuple[float | None, float | None]:
-    """Garmin's everyday (NEAT) and session kcal per day over the window.
+    """Garmin's everyday (NEAT) and sport kcal per day over the window.
 
-    Sessions are the recorded session kcal net of Garmin's resting rate over
-    their duration; everyday is the active kcal minus them. A day counts only
-    with resting and active kcal and every session priced; everyday below zero
-    is not a valid split and stays None (split A, athlete decision 2026-11-16).
+    Sport is Garmin's recorded session kcal net of its resting rate over their
+    duration; everyday is the active kcal minus it. A day counts only with
+    resting and active kcal and every Garmin session priced; everyday below
+    zero is not a valid split and stays None (split A, athlete decision
+    2026-11-16).
     """
     start = window.end - timedelta(days=window.days - 1)
     by_day: dict[str, list[Mapping[str, Any]]] = {}
     for summary in sessions:
-        by_day.setdefault(str(summary.get("started_at_local") or "")[:10], []).append(
-            summary
-        )
+        day_key = str(summary.get("started_at_local") or "")[:10]
+        by_day.setdefault(day_key, []).append(summary)
     everyday, sport = [], []
     for offset in range(window.days):
         key = (start + timedelta(days=offset)).isoformat()
         day = health.get(key, {})
-        resting, active = (
-            _number(day.get("resting_kcal")),
-            _number(day.get("active_kcal")),
-        )
+        resting = _number(day.get("resting_kcal"))
+        active = _number(day.get("active_kcal"))
         if not resting or resting < 0 or active is None or active < 0:
             continue
-        net = []
-        for summary in by_day.get(key, []):
-            kcal = _number(summary.get("energy_kcal"))
-            seconds = _number(summary.get("elapsed_duration_s")) or _number(
-                summary.get("moving_duration_s")
-            )
-            if not kcal or not seconds:
-                break
-            net.append(max(0.0, kcal - resting / 1440.0 * seconds / 60.0))
-        else:
-            sport.append(sum(net))
-            everyday.append(active - sum(net))
+        day_sport = _garmin_sport(by_day.get(key, []), resting)
+        if day_sport is not None:
+            sport.append(day_sport)
+            everyday.append(active - day_sport)
     if not sport:
         return None, None
     neat = statistics.fmean(everyday)
@@ -211,21 +224,27 @@ def _comparison(
     return means, best, fit
 
 
+# Which parts of a row's split are computed alike for every row ("gleich
+# berechnet", orchestrator rule of 2026-11-16): the formula rows share the own
+# everyday, sport and TEF; the own row shares TEF always and everyday and sport
+# only while the calibration factor is 1; Garmin computes its own.
+NOT_SHARED: Final = {"neat": False, "sport": False, "tef": False}
+
+
 def _split(
     resting: float | None,
     neat: float | None,
-    sessions: float | None,
+    sport: float | None,
     tef: float | None,
-    *,
-    shared: bool,
+    shared: Mapping[str, bool],
 ) -> dict[str, Any]:
-    """One row's day split; ``shared`` marks parts computed alike for every row."""
+    """One row's day split and which of its parts every row computes alike."""
     return {
         "resting_kcal": _round(resting),
         "neat_kcal": _round(neat),
-        "sessions_kcal": _round(sessions),
+        "sport_kcal": _round(sport),
         "tef_kcal": _round(tef),
-        "shared": shared,
+        "shared": dict(shared),
     }
 
 
@@ -258,14 +277,14 @@ def energy_view(
         for name, values in predictions.items()
     }
     means, best, fit = _comparison(errors, windows)
-    device_neat, device_sessions = _device_split(health, sessions, latest)
+    device_neat, device_sport = _device_split(health, sessions, latest)
     rows = []
     for name, values in predictions.items():
         resting, resting_band_kcal, total, total_band = values[-1]
         # The formula rows' split needs the own everyday and session terms per
         # window from M11 (requested from L11); until then it stays None.
         split = (
-            _split(resting, device_neat, device_sessions, None, shared=False)
+            _split(resting, device_neat, device_sport, None, NOT_SHARED)
             if name == DEVICE and resting is not None
             else None
         )

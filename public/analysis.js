@@ -1554,7 +1554,7 @@ function energyFitNote(read) {
 }
 
 // Split A (athlete decision 2026-11-16): one stacked bar per row; parts computed alike for every row are hatched.
-const ENERGY_PARTS = [["resting_kcal", "resting", "Ruhe"], ["neat_kcal", "neat", "Alltag"], ["sessions_kcal", "sessions", "Sport"], ["tef_kcal", "tef", "Verdauung"]];
+const ENERGY_PARTS = [["resting_kcal", "resting", "Ruhe"], ["neat_kcal", "neat", "Alltag"], ["sport_kcal", "sport", "Sport"], ["tef_kcal", "tef", "Verdauung"]];
 
 function energySplitRow(row) {
   const split = row.split;
@@ -1565,10 +1565,10 @@ function energySplitRow(row) {
     const band = index === 0 && row.resting_band_kcal != null ? ` ± ${formatWhole(row.resting_band_kcal)}` : "";
     return `${name} ${split[key] == null ? "–" : formatWhole(split[key])}${band}`;
   }).join(" · ");
-  const bar = h("div", { className: "energy-split", dataset: split.shared ? { shared: "" } : {}, role: "img", "aria-label": text });
+  const bar = h("div", { className: "energy-split", role: "img", "aria-label": text });
   for (const [key, part] of ENERGY_PARTS) {
-    if (!(split[key] > 0)) continue;
-    const segment = h("span", { dataset: { part } });
+    if (split[key] == null || split[key] <= 0) continue;
+    const segment = h("span", { dataset: split.shared?.[part] ? { part, shared: "" } : { part } });
     segment.style.width = `${(split[key] / total) * 100}%`;
     bar.append(segment);
   }
@@ -1579,7 +1579,7 @@ function energySplitLegend(read) {
   const splits = read.rows.map((row) => row.split).filter(Boolean);
   if (!splits.length) return null;
   const items = ENERGY_PARTS.map(([, part, label]) => h("li", { dataset: { part } }, label));
-  if (splits.some((split) => split.shared)) items.push(h("li", { dataset: { part: "shared" } }, "gleich berechnet"));
+  if (splits.some((split) => Object.values(split.shared || {}).some(Boolean))) items.push(h("li", { dataset: { part: "shared" } }, "gleich berechnet"));
   return h("ul", "energy-split-legend", items);
 }
 

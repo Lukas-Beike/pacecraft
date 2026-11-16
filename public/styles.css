@@ -1811,11 +1811,11 @@ button:focus-visible, a:focus-visible, summary:focus-visible {
 .energy-split { display: flex; height: 12px; margin-bottom: 4px; overflow: hidden; border-radius: 6px; background: var(--surface-raised); }
 :is(.energy-split, .energy-split-legend) [data-part="resting"] { --part-color: var(--training-zone-1); }
 :is(.energy-split, .energy-split-legend) [data-part="neat"] { --part-color: var(--training-zone-2); }
-:is(.energy-split, .energy-split-legend) [data-part="sessions"] { --part-color: var(--training-zone-4); }
+:is(.energy-split, .energy-split-legend) [data-part="sport"] { --part-color: var(--training-zone-4); }
 :is(.energy-split, .energy-split-legend) [data-part="tef"] { --part-color: var(--training-zone-6); }
 .energy-split-legend [data-part="shared"] { --part-color: var(--muted); }
 .energy-split > span { display: block; background-color: var(--part-color); }
-.energy-split[data-shared] > span:not([data-part="resting"]), .energy-split-legend [data-part="shared"]::before { background-image: repeating-linear-gradient(135deg, var(--split-hatch) 0 2px, var(--transparent) 2px 6px); }
+.energy-split > [data-shared], .energy-split-legend [data-part="shared"]::before { background-image: repeating-linear-gradient(135deg, var(--split-hatch) 0 2px, var(--transparent) 2px 6px); }
 .energy-split-legend { display: flex; flex-wrap: wrap; gap: 6px 14px; margin: 8px 0 0; padding: 0; list-style: none; font-size: .75rem; }
 .energy-split-legend li::before { content: ""; display: inline-block; width: 12px; height: 12px; margin-right: 4px; border-radius: 3px; background-color: var(--part-color); vertical-align: middle; }
 .current-performance-table td { text-align: right; padding-left: 12px; font-size: .95rem; font-weight: 600; font-variant-numeric: tabular-nums; }
