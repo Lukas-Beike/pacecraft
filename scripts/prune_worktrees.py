@@ -112,13 +112,16 @@ def content_on_base(branch: str, base: str) -> bool:
     fork = git("merge-base", base, branch)
     if fork.returncode != 0 or not fork.stdout.strip():
         return False
-    changed = git("diff", "--name-only", fork.stdout.strip(), branch)
+    # NUL-separated and literal: a name with a space or a glob character stays
+    # one exact path (#3294 review).
+    changed = git("diff", "--name-only", "-z", fork.stdout.strip(), branch)
     if changed.returncode != 0:
         return False
-    files = changed.stdout.split()
+    files = [name for name in changed.stdout.split("\0") if name]
     if not files:
         return True
-    return git("diff", "--quiet", base, branch, "--", *files).returncode == 0
+    same = git("--literal-pathspecs", "diff", "--quiet", base, branch, "--", *files)
+    return same.returncode == 0
 
 
 def has_open_pr(branch: str) -> bool:

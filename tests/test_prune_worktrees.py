@@ -88,7 +88,7 @@ class FakeRepo:
             return done(f"tip-of-{args[1]}\n")
         if args[0] == "status":
             return done(" M file\n" if Path(cwd).name in self.dirty else "")
-        if args[0] in ("merge-base", "diff", "cherry"):
+        if args[0] in ("merge-base", "diff", "cherry", "--literal-pathspecs"):
             return self.content(args)
         if args[:2] == ("worktree", "remove"):
             bad = Path(args[2]).name in self.remove_fails
@@ -103,9 +103,12 @@ class FakeRepo:
             return done(code=0 if args[2] in self.merged else 1)
         if args[0] == "merge-base":
             return done("fork-point\n")
-        if args[1] == "--name-only":
-            return done("backend/a.py\n")
-        return done(code=0 if args[3] in self.on_base else 1)  # diff --quiet
+        if args[0] == "diff" and "--name-only" in args:
+            return done("backend/a.py\0docs/with space*.md\0")
+        # diff --quiet base branch -- <paths>: only the exact, literal paths count.
+        literal = args[-2:] == ("backend/a.py", "docs/with space*.md")
+        on_base = args[args.index("--quiet") + 2] in self.on_base
+        return done(code=0 if on_base and literal else 1)
 
     def run(self, args, cwd=None):
         self.calls.append(tuple(args))
@@ -218,6 +221,11 @@ class PruneWorktreesTests(unittest.TestCase):
         self.assertIn("uncommitted or untracked changes", lines["t3/agent-dirty"])
         # The rule covers subagent worktrees only, not a lane's own worktree.
         self.assertIn("branch not merged", lines["t3/lane-squashed"])
+
+        # #3294 review: the paths reach git whole and literal, even with a space.
+        quiet = [c for c in repo.calls if "--quiet" in c]
+        self.assertTrue(quiet)
+        self.assertTrue(all(c[1] == "--literal-pathspecs" for c in quiet))
 
         # Applied, the squashed branch is not an ancestor, so it goes with -D.
         _code, _out, _ = self.run_main(repo, ["--apply"])
