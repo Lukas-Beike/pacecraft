@@ -390,6 +390,110 @@ class BranchSyncTests(unittest.TestCase):
         self.assertIn("SonarQube CLI", err)
         self.assertEqual(git(self.origin, "branch", "--list", "feat/x"), "")
 
+    # Stacked pull requests (#3243): feat/x was built on PR #41 (feat/parent),
+    # which develop has squash-merged; #42 is feat/x's own pull request.
+
+    def stack(self, *, merged=True):
+        """The parent's last head and its squash merge on origin/develop."""
+        git(self.work, "checkout", "-q", "-b", "feat/parent", "develop")
+        commit(self.work, "p.txt", "parent\n", "feat(ui): parent layer")
+        parent_head = git(self.work, "rev-parse", "HEAD")
+        git(self.work, "checkout", "-q", "-B", "feat/x", "feat/parent")
+        commit(self.work, "c.txt", "child\n", "feat(ui): child layer")
+        merge = "0" * 40
+        if merged:
+            self.advance_develop("p.txt", "parent\n")  # the squash of #41
+            merge = git(self.origin, "rev-parse", "develop")
+        return parent_head, merge
+
+    def stacked_sync(self, parent, *args, state="MERGED"):
+        parent_head, merge = parent
+        calls = []
+
+        def gh_json(*command):
+            if command[:3] == ("pr", "view", "41"):
+                return {
+                    "state": state,
+                    "headRefOid": parent_head,
+                    "mergeCommit": {"oid": merge} if state == "MERGED" else None,
+                    "baseRefName": "develop",
+                }
+            if command[:3] == ("pr", "view", "feat/x"):
+                return {"number": 42, "baseRefName": "feat/parent"}
+            raise AssertionError(command)
+
+        def gh(*command):
+            # The retarget comes before the push (#2934): nothing pushed yet.
+            pushed = git(self.origin, "branch", "--list", "feat/x")
+            calls.append((*command, "pushed" if pushed else "not pushed"))
+            return ""
+
+        with (
+            mock.patch.object(branch_sync, "gh_json", side_effect=gh_json),
+            mock.patch.object(branch_sync, "gh", side_effect=gh),
+            mock.patch.object(branch_sync, "push_env", return_value=dict(os.environ)),
+            mock.patch.object(branch_sync.time, "sleep") as self.settle,
+        ):
+            code, out, err = self.sync("--after-pr", "41", *args)
+        return code, out, err, calls
+
+    def test_a_stacked_layer_drops_its_merged_parent_and_is_retargeted(self):
+        code, out, err, calls = self.stacked_sync(
+            self.stack(), "--push", "--allow-root", "c.txt"
+        )
+
+        self.assertEqual((code, err), (0, ""))
+        # Only the child's own commit stays on top of develop's squash.
+        self.assertEqual(
+            git(self.work, "log", "--format=%s", "origin/develop..HEAD"),
+            "feat(ui): child layer",
+        )
+        self.assertEqual(
+            calls, [("pr", "edit", "42", "--base", "develop", "not pushed")]
+        )
+        self.settle.assert_called_once_with(branch_sync.RETARGET_SETTLE_SECONDS)
+        head = git(self.work, "rev-parse", "HEAD")
+        self.assertEqual(git(self.origin, "rev-parse", "feat/x"), head)
+        self.assertIn(f"PR #42: base develop, head {head[:10]}", out)
+
+    def test_a_base_without_the_parents_merge_is_refused_before_anything(self):
+        # A failed or stale fetch: origin/develop does not hold #41's merge yet.
+        parent = self.stack(merged=False)
+        before = git(self.work, "rev-parse", "HEAD")
+        code, out, _err, calls = self.stacked_sync(parent, "--push")
+
+        self.assertEqual(code, 1)
+        self.assertIn("refused: origin/develop does not contain the merge of #41", out)
+        self.assertEqual((calls, git(self.work, "rev-parse", "HEAD")), ([], before))
+        self.assertEqual(git(self.origin, "branch", "--list", "feat/x"), "")
+
+    def test_an_unmerged_parent_or_a_foreign_head_is_refused(self):
+        parent = self.stack()
+        code, out, _err, calls = self.stacked_sync(parent, "--push", state="OPEN")
+        self.assertEqual((code, calls), (1, []))
+        self.assertIn("refused: #41 is OPEN, not merged", out)
+
+        # A branch that was not built on #41's last head.
+        code, out, _err, calls = self.stacked_sync(("f" * 40, parent[1]), "--push")
+        self.assertEqual((code, calls), (1, []))
+        self.assertIn("refused: feat/x is not built on #41's last head", out)
+
+    def test_a_failed_fetch_stops_before_the_rebase_and_the_retarget(self):
+        parent = self.stack()
+        before = git(self.work, "rev-parse", "HEAD")
+        with mock.patch.object(
+            branch_sync, "fetch", side_effect=CliError("fatal: unable to access")
+        ):
+            code, _out, err, calls = self.stacked_sync(parent, "--push")
+        self.assertEqual((code, calls), (2, []))
+        self.assertIn("unable to access", err)
+        self.assertEqual(git(self.work, "rev-parse", "HEAD"), before)
+
+    def test_without_a_push_the_layer_is_rebased_but_not_retargeted(self):
+        code, out, _err, calls = self.stacked_sync(self.stack())
+        self.assertEqual((code, calls), (0, []))
+        self.assertIn("not retargeted: push the restacked layer with --push", out)
+
 
 class SonarLookupTests(unittest.TestCase):
     def setUp(self):

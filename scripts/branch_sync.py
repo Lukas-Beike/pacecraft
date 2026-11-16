@@ -1,6 +1,7 @@
 """Rebase the current feature branch onto the target and optionally push it.
 
     python scripts/branch_sync.py [--onto origin/develop] [--push] [--allow-root <file>]
+                                  [--after-pr <number>]
 
 Refuses on develop, main, a detached HEAD and a dirty working tree. Fetches
 origin (retrying a lock held by a parallel worktree), rebases, checks every
@@ -13,6 +14,16 @@ e2e/ and public/ scripts must pass `node --check` before the push (#3031).
 After the rebase, a node_modules that does not match package-lock.json (as
 tests/frontend-harness.cjs checks it) gets `npm ci --ignore-scripts` before
 anything else, so the push hooks see a current install (#3133).
+
+--after-pr restacks the next layer of a stacked chain once the pull request it
+was built on is squash-merged (#3243). After the fetch it refuses unless that
+pull request is merged, the target holds its merge commit (a stale or failed
+fetch does not) and this branch is built on its last head; it then rebases only
+the commits after that head onto the target. Only with --push and once the
+rebase and every check above passed, it retargets this branch's pull request to
+the merged one's base, prints its base and head, waits for the retarget to
+settle (#2934) and pushes. Every refusal comes before the rebase, the retarget
+and the push, so a layer is never retargeted or armed on a stale head.
 
 Exit 0: in sync (and pushed); 1: refused, rebase conflict (left in progress:
 resolve it or run `git rebase --abort`) or invalid subjects; 2: bad input,
@@ -33,13 +44,15 @@ from collections.abc import Mapping
 from pathlib import Path
 
 import regenerate_docs
-from gh_cli import CliError, git
+from gh_cli import CliError, gh, gh_json, git
 from regenerate_docs import conflict_resolvable, upstream_side
 
 PROTECTED = {"develop", "main"}
 TYPES = "build|chore|ci|docs|feat|fix|perf|refactor|revert|style|test"
 SUBJECT = re.compile(rf"^(?:{TYPES})(?:\([a-z0-9][a-z0-9-]*\))?!?: \S")
 FETCH_ATTEMPTS = 3
+# Wait between retargeting a stacked layer and pushing it (#2934, pr skill).
+RETARGET_SETTLE_SECONDS = 60
 LOCK = "package-lock.json"
 SCRIPT = re.compile(r"^(?:e2e|public)/.+\.(?:js|cjs|mjs)$")
 TRANSIENT_FETCH = re.compile(
@@ -151,11 +164,64 @@ def stopped(onto: str, conflicts: list[str], error: CliError) -> bool:
     return False
 
 
-def rebased(onto: str) -> bool:
-    """Rebase onto the target. A conflict only in generated documents is resolved by
-    regenerating them; any other leaves the rebase in progress and is listed."""
+def contains(ancestor: str, ref: str) -> bool:
+    """Whether ``ref`` holds commit ``ancestor`` (False also for an unknown commit)."""
     try:
-        git("rebase", onto)
+        git("merge-base", "--is-ancestor", ancestor, ref)
+        return True
+    except CliError:
+        return False
+
+
+def merged_parent(number: int, onto: str, branch: str) -> tuple[str, str] | None:
+    """The last head and the base of merged pull request ``number``, once the
+    fetched target holds its merge and this branch builds on that head (#3243);
+    None, with the reason, otherwise."""
+    pr = gh_json(
+        "pr", "view", str(number), "--json", "state,headRefOid,mergeCommit,baseRefName"
+    ) or {}  # fmt: skip
+    merge = (pr.get("mergeCommit") or {}).get("oid") or ""
+    head = pr.get("headRefOid") or ""
+    if pr.get("state") != "MERGED" or not merge:
+        print(f"refused: #{number} is {pr.get('state')}, not merged")
+    elif not contains(merge, onto):
+        print(
+            f"refused: {onto} does not contain the merge of #{number}; "
+            "the fetch is stale or failed, fetch again"
+        )
+    elif not head or not contains(head, "HEAD"):
+        print(f"refused: {branch} is not built on #{number}'s last head")
+    else:
+        return head, str(pr.get("baseRefName") or "develop")
+    return None
+
+
+def retarget(branch: str, parent: tuple[str, str] | None, *, push: bool) -> None:
+    """After a verified restack, point this branch's pull request at the merged
+    parent's base and print its base and the head to be pushed; then wait for
+    the retarget to settle, because a push right after it can leave the required
+    SonarCloud check cancelled (#2934). Only a layer that is pushed is retargeted."""
+    if parent is None:
+        return
+    if not push:
+        print("not retargeted: push the restacked layer with --push")
+        return
+    base = parent[1]
+    pr = gh_json("pr", "view", branch, "--json", "number,baseRefName") or {}
+    number = pr["number"]
+    if pr.get("baseRefName") != base:
+        gh("pr", "edit", str(number), "--base", base)
+        time.sleep(RETARGET_SETTLE_SECONDS)
+    head = git("rev-parse", "HEAD").strip()
+    print(f"PR #{number}: base {base}, head {head[:10]}")
+
+
+def rebased(onto: str, upstream: str | None = None) -> bool:
+    """Rebase onto the target, with ``upstream`` only the commits after it. A
+    conflict only in generated documents is resolved by regenerating them; any
+    other leaves the rebase in progress and is listed."""
+    try:
+        git("rebase", *(("--onto", onto, upstream) if upstream else (onto,)))
         return True
     except CliError as exc:
         error = exc
@@ -265,7 +331,12 @@ def outgoing_problems(onto: str, push: bool, allowed: frozenset[str]) -> bool:
     return bool(problems)
 
 
-def sync(onto: str, push: bool, allowed: frozenset[str] = frozenset()) -> int:
+def sync(
+    onto: str,
+    push: bool,
+    allowed: frozenset[str] = frozenset(),
+    after_pr: int | None = None,
+) -> int:
     branch = git("rev-parse", "--abbrev-ref", "HEAD").strip()
     if branch == "HEAD" or branch in PROTECTED:
         print(
@@ -283,12 +354,16 @@ def sync(onto: str, push: bool, allowed: frozenset[str] = frozenset()) -> int:
     except CliError:
         leased = ""  # never pushed: the push only succeeds while it stays absent
     fetch()
-    if not rebased(onto):
+    parent = None if after_pr is None else merged_parent(after_pr, onto, branch)
+    if after_pr is not None and parent is None:
+        return 1
+    if not rebased(onto, parent[0] if parent else None):
         return 1
     if not refreshed_node_modules():
         return 1
     if outgoing_problems(onto, push, allowed):
         return 1
+    retarget(branch, parent, push=push)
     if push:
         git(
             "-c", "core.hooksPath=.githooks", "push",
@@ -307,9 +382,15 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--onto", default="origin/develop")
     parser.add_argument("--push", action="store_true")
     parser.add_argument("--allow-root", action="append", default=[])
+    parser.add_argument(
+        "--after-pr",
+        type=int,
+        metavar="NUMBER",
+        help="restack onto the target after this merged pull request (#3243)",
+    )
     args = parser.parse_args(argv)
     try:
-        return sync(args.onto, args.push, frozenset(args.allow_root))
+        return sync(args.onto, args.push, frozenset(args.allow_root), args.after_pr)
     except CliError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
