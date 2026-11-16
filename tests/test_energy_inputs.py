@@ -75,6 +75,8 @@ class EnergyInputsReaderTests(unittest.TestCase):
             (first.protein_g, first.carbohydrate_g, first.fat_g), (100, 200, 60)
         )
         self.assertEqual((second.intake_kcal, second.flagged), (900, True))
+        # Only the flagged entries' kcal widen the band (#3187 item 13).
+        self.assertEqual((first.flagged_kcal, second.flagged_kcal), (0.0, 900.0))
         self.assertIsNone(third.intake_kcal)
         self.assertEqual((first.weight_kg, second.weight_kg), (70.0, None))
         # Run: 70 kg x 10,000 m x 3.6 J/kg/m / 4,184 = 602.294 kcal. NEAT: step
