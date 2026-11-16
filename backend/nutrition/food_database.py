@@ -146,21 +146,29 @@ def _typo_matches(term: str, words: Any) -> list[str]:
 def names_the_food(query: str, name: str, brand: str = "") -> bool:
     """Whether a saved product is the searched food itself (#3080).
 
-    Its name begins with a query word, and its name and brand hold every query
-    word whole, folded like the search: "Skyr" names "Skyr Natur", but neither
-    "Hafer Milch" for "Milch" nor "Bananenbrot" for "Banane". Words with digits
-    (amounts such as "500g") and single letters are not compared.
+    Every query word is a word of its name or brand, folded and stemmed like
+    the search ("Bananen" names "Banane", "Haferflocken kernig" names "Kernige
+    Haferflocken"), or the last part of one, as a German compound ends in what
+    it is ("Milch" names "Vollmilch", "Banane" not "Bananenbrot"). Words with
+    digits (amounts such as "500g") and single letters are not compared.
     """
     terms = {
         word
         for word in _words(query)
         if len(word) > 1 and not any(char.isdigit() for char in word)
     }
-    name_words = _words(name)
-    return (
-        bool(terms and name_words)
-        and name_words[0] in terms
-        and terms <= {*name_words, *_words(brand)}
+    words = [*_words(name), *_words(brand)]
+    return bool(terms and _words(name)) and all(
+        _names_term(term, words) for term in terms
+    )
+
+
+def _names_term(term: str, words: list[str]) -> bool:
+    stems = _stems(term)
+    return any(
+        stems & _stems(word)
+        or (len(term) >= _MIN_STEM and any(word.endswith(stem) for stem in stems))
+        for word in words
     )
 
 

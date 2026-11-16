@@ -33,9 +33,7 @@ def response(payload):
 
 
 class FoodDatabaseTests(unittest.TestCase):
-    def test_a_saved_product_names_the_food_only_when_its_name_begins_with_it(
-        self,
-    ) -> None:
+    def test_a_saved_product_names_the_food_by_every_query_word(self) -> None:
         # #3080: such a product answers a lookup without asking a provider.
         for query, name, brand, expected in (
             ("Skyr", "Skyr Natur", "Hofmolkerei", True),
@@ -45,10 +43,21 @@ class FoodDatabaseTests(unittest.TestCase):
             ("Milch", "Milch 1,5 %", "", True),
             ("Huttenkase", "Hüttenkäse körnig", "", True),
             ("Pfeffersoße", "Pfeffersauce", "", True),
-            ("Skyr Vanille", "Skyr Natur", "", False),
-            ("Milch", "Hafer Milch", "", False),
-            ("Reis", "Basmati Reis", "", False),
+            # Production read local_hit 0 of 5 under the first-word rule: an
+            # adjective or brand first, a plural or an inflection is the food.
+            ("Skyr", "Bio Skyr Natur", "", True),
+            ("Skyr", "Natur", "Ehrmann Skyr", True),
+            ("Bananen", "Banane", "", True),
+            ("Haferflocken kernig", "Kernige Haferflocken", "", True),
+            ("Joghurt", "Griechischer Joghurt", "", True),
+            ("Reis", "Basmati Reis", "", True),
+            # A German compound is what it ends in.
+            ("Milch", "Frische Vollmilch", "", True),
+            ("Milch", "Hafer Milch", "", True),
+            ("Milch", "Milchreis", "", False),
+            ("Reis", "Reiswaffeln", "", False),
             ("Banane", "Bananenbrot", "", False),
+            ("Skyr Vanille", "Skyr Natur", "", False),
             ("500g", "Skyr Natur", "", False),
             ("Skyr", "", "Skyr", False),
         ):
