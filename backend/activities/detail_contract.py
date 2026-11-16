@@ -43,7 +43,7 @@ from backend.canonical.vocabulary import (
     StreamChannel,
     ZoneMetric,
 )
-from backend.db.activity_detail_store import StoredDetailSet
+from backend.db.activity_detail_store import StoredDetailSet, workout_step_json
 
 ACTIVITY_DETAIL_CONTRACT: Final = "activity_detail.v1"
 COACH_ACTIVITY_DETAIL_MAX_SERIES_POINTS: Final = 2000
@@ -95,6 +95,10 @@ _SUMMARY_ALTERNATIVE_KEYS: Final = frozenset({"elevation_loss_m"})
 # The device's temperature sensor reads body-warmed values (#3036): its stream
 # stays stored, but a session's temperature is only its activity weather.
 _UNSHOWN_CHANNELS: Final = frozenset({StreamChannel.TEMPERATURE_C})
+# The watch's own zone basis is labelled by the watch, not by the cloud service.
+_WATCH_LABELS: Final[Mapping[str | None, str | None]] = {
+    ProviderId.GARMIN.value: "Garmin-Uhr"
+}
 # Measured averages that fall back to the merged stream mean when no record has them.
 _GAP_FILL: Final[Mapping[str, tuple[StreamChannel, str]]] = {
     "avg_hr": (StreamChannel.HEART_RATE_BPM, "bpm"),
@@ -231,6 +235,10 @@ def activity_detail_contract(
         # Coach tool leaves them out. They share the time axis of ``streams``.
         "running_dynamics_streams": _channels(merged.streams, running_dynamics=True),
         "laps": _laps(merged.laps, merged.streams),
+        # The steps the device ran, which a lap's workout_step_index points to, and
+        # the zone basis of the watch beside the app's own (#2220).
+        "workout_steps": _workout_steps(merged.laps),
+        "device_zones": _device_zones(merged.streams),
         "zones": _zones(merged.zones),
         "strength_sets": _strength_sets(stored),
         "analysis": analysis,
@@ -441,8 +449,44 @@ def _lap(lap: ActivityLap, shift_s: float) -> dict[str, Any]:
         "start_offset_s": lap.start_offset_s + shift_s,
         "end_offset_s": lap.end_offset_s + shift_s,
         "name": lap.name,
+        "workout_step_index": lap.workout_step_index,
+        "lap_trigger": None if lap.lap_trigger is None else lap.lap_trigger.value,
         **{field: getattr(lap, field) for field in LAP_METRIC_FIELDS},
     }
+
+
+def _workout_steps(choice: SetChoice | None) -> list[dict[str, Any]]:
+    """The executed workout steps of the chosen lap set, by ascending index."""
+    if choice is None:
+        return []
+    return [workout_step_json(step) for step in _lap_set(choice.chosen).workout_steps]
+
+
+def _device_zones(streams: MergedStreams | None) -> dict[str, Any] | None:
+    """The zone basis the watch recorded, from the best-ranked stream set that has one.
+
+    It is shown and told to the Coach only; no zone or threshold calculation reads it.
+    """
+    if streams is None:
+        return None
+    for candidate in (streams.primary, *streams.alternatives):
+        detail = candidate.stored.detail
+        if not isinstance(detail, ActivityStreamSet) or detail.device_zones is None:
+            continue
+        zones = detail.device_zones
+        source = _candidate_source(candidate)
+        return {
+            "max_hr": zones.max_hr,
+            "threshold_hr": zones.threshold_hr,
+            "ftp_w": zones.ftp_w,
+            "hr_calc": None if zones.hr_calc is None else zones.hr_calc.value,
+            "power_calc": None if zones.power_calc is None else zones.power_calc.value,
+            "source": {
+                **source,
+                "label": _WATCH_LABELS.get(source["provider"], source["label"]),
+            },
+        }
+    return None
 
 
 def _zones(zones: Mapping[ZoneMetric, SetChoice]) -> dict[str, Any]:

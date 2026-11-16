@@ -757,6 +757,20 @@ def _text_message(builder, local, number, index, texts):
     )
 
 
+def instruction_fit():
+    """A file whose step name and notes, workout name and description and developer
+    field name all carry instruction-like text, beside two records and a linked lap."""
+    builder = fit_builder.FitBuilder()
+    builder.define(0, 20, [(253, UINT32), (3, UINT8)])
+    builder.data(0, {253: 1000, 3: 100}).data(0, {253: 1001, 3: 101})
+    builder.define(1, 19, WATCH_LAP_FIELDS)
+    builder.data(1, {2: 1000, 7: 60000, 71: 0})
+    _text_message(builder, 2, 27, 0, {0: INSTRUCTION, 8: INSTRUCTION})
+    _text_message(builder, 3, 26, 0, {8: INSTRUCTION, 17: INSTRUCTION})
+    _text_message(builder, 4, 206, 0, {3: INSTRUCTION})
+    return builder.build()
+
+
 class FitWatchFieldsTests(unittest.TestCase):
     """Breathing rate, lap GAP, step link and trigger, workout steps, zone basis (#2220)."""
 
@@ -1027,17 +1041,7 @@ class FitWatchFieldsTests(unittest.TestCase):
         self.assertIsNone(_only(empty, ActivityStreamSet).device_zones)
 
     def test_no_text_of_the_file_reaches_the_mapped_sets(self):
-        builder = fit_builder.FitBuilder()
-        builder.define(0, 20, [(253, UINT32), (3, UINT8)])
-        builder.data(0, {253: 1000, 3: 100}).data(0, {253: 1001, 3: 101})
-        builder.define(1, 19, WATCH_LAP_FIELDS)
-        builder.data(1, {2: 1000, 7: 60000, 71: 0})
-        # workout_step name (0) and notes (8), workout name (8) and description (17),
-        # and a developer field description with a name (3).
-        _text_message(builder, 2, 27, 0, {0: INSTRUCTION, 8: INSTRUCTION})
-        _text_message(builder, 3, 26, 0, {8: INSTRUCTION, 17: INSTRUCTION})
-        _text_message(builder, 4, 206, 0, {3: INSTRUCTION})
-        result = _map(builder.build())
+        result = _map(instruction_fit())
         self.assertEqual(len(_only(result, ActivityLapSet).workout_steps), 1)
         self.assertNotIn(INSTRUCTION, repr(result))
         self.assertIsNone(_only(result, ActivityLapSet).laps[0].name)

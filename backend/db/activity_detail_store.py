@@ -1232,7 +1232,9 @@ def _watch_header(detail: ActivityDetailSet) -> dict[str, str | None]:
     return {
         "device_zones": None if zones is None else _compact_json(_zones_json(zones)),
         "workout_steps": (
-            _compact_json([_step_json(step) for step in steps]) if steps else None
+            _compact_json([workout_step_json(step) for step in steps])
+            if steps
+            else None
         ),
     }
 
@@ -1358,7 +1360,7 @@ def stored_device_zones(text: object) -> DeviceZoneBasis | None:
     return None if zones.is_empty else zones
 
 
-def _step_json(step: WorkoutStep) -> dict[str, Any]:
+def workout_step_json(step: WorkoutStep) -> dict[str, Any]:
     """One executed workout step by fixed key: numbers and vocabulary names only."""
     return {
         "index": step.index,

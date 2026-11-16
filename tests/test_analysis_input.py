@@ -15,6 +15,7 @@ from backend.canonical.activity_detail import (
     ActivityLap,
     ActivityLapSet,
     ActivityStreamSet,
+    WorkoutStep,
 )
 from backend.canonical.records import ActivityRecord, Provenance
 from backend.canonical.vocabulary import (
@@ -22,6 +23,7 @@ from backend.canonical.vocabulary import (
     Environment,
     LapKind,
     LapSource,
+    LapTrigger,
     LoadModel,
     ProviderId,
     RecordingOrigin,
@@ -30,6 +32,10 @@ from backend.canonical.vocabulary import (
     StreamChannel,
     StreamResolution,
     Terrain,
+    WorkoutDurationType,
+    WorkoutStepIntensity,
+    WorkoutTargetType,
+    WorkoutTargetUnit,
 )
 from backend.db.activity_detail_store import StoredDetailSet
 from backend.performance.analysis_input import analysis_input
@@ -46,6 +52,7 @@ SPEED = StreamChannel.SPEED_MPS
 DISTANCE = StreamChannel.DISTANCE_M
 MOVING = StreamChannel.MOVING
 TIME_S = StreamChannel.TIME_S
+NO_STEP = {"workout_step_index": None, "lap_trigger": None}
 
 
 def record(
@@ -299,12 +306,14 @@ class AnalysisInputMappingTests(unittest.TestCase):
                     "end_time": 60.0,
                     "kind": "lap",
                     "distance_m": None,
+                    **NO_STEP,
                 },
                 {
                     "start_time": 60.0,
                     "end_time": 130.0,
                     "kind": "lap",
                     "distance_m": None,
+                    **NO_STEP,
                 },
             ],
             adapted.activity["laps"],
@@ -320,10 +329,96 @@ class AnalysisInputMappingTests(unittest.TestCase):
         later = lap_choice(ProviderId.GARMIN, STARTED + timedelta(seconds=30))
         adapted = analysis_input(record(Sport.RIDE), stream, later)
         self.assertEqual(
-            [{"start_time": 30.0, "end_time": 90.0, "kind": "lap", "distance_m": None}],
+            [
+                {
+                    "start_time": 30.0,
+                    "end_time": 90.0,
+                    "kind": "lap",
+                    "distance_m": None,
+                    **NO_STEP,
+                }
+            ],
             adapted.activity["laps"],
         )
         self.assertEqual("Garmin", adapted.label_for("laps"))
+
+    def test_laps_carry_their_workout_step_and_trigger_beside_the_executed_steps(
+        self,
+    ) -> None:
+        steps = (
+            WorkoutStep(
+                index=3,
+                intensity=WorkoutStepIntensity.INTERVAL,
+                duration_type=WorkoutDurationType.DISTANCE,
+                duration_value=400.0,
+                target_type=WorkoutTargetType.SPEED,
+                target_low=3.3,
+                target_high=3.6,
+                target_unit=WorkoutTargetUnit.MPS,
+            ),
+        )
+        lap_set = ActivityLapSet(
+            provider_activity_id="garmin-1",
+            provenance=provenance(ProviderId.GARMIN, "Garmin"),
+            origin=ActivityDetailOrigin.FETCH,
+            lap_source=LapSource.DEVICE_LAPS,
+            laps=(
+                ActivityLap(
+                    index=0,
+                    kind=LapKind.WORK,
+                    start_offset_s=0.0,
+                    end_offset_s=60.0,
+                    workout_step_index=3,
+                    lap_trigger=LapTrigger.MANUAL,
+                ),
+            ),
+            workout_steps=steps,
+        )
+        laps = lap_choice(ProviderId.GARMIN, None)
+        laps = SetChoice(
+            chosen=dataclasses.replace(
+                laps.chosen,
+                stored=dataclasses.replace(laps.chosen.stored, detail=lap_set),
+            ),
+            alternatives=(),
+        )
+        adapted = analysis_input(record(Sport.RUN), None, laps)
+        self.assertEqual(
+            [
+                {
+                    "start_time": 0.0,
+                    "end_time": 60.0,
+                    "kind": "work",
+                    "distance_m": None,
+                    "workout_step_index": 3,
+                    "lap_trigger": "manual",
+                }
+            ],
+            adapted.activity["laps"],
+        )
+        self.assertEqual(
+            [
+                {
+                    "index": 3,
+                    "intensity": "interval",
+                    "duration_type": "distance",
+                    "duration_value": 400.0,
+                    "repeat_from": None,
+                    "repeat_count": None,
+                    "target_type": "speed",
+                    "target_low": 3.3,
+                    "target_high": 3.6,
+                    "target_unit": "mps",
+                    "target_zone": None,
+                }
+            ],
+            adapted.activity["workout_steps"],
+        )
+        # Without steps the activity carries no such key.
+        plain = analysis_input(
+            record(Sport.RUN), None, lap_choice(ProviderId.GARMIN, None)
+        )
+        self.assertNotIn("workout_steps", plain.activity)
 
     def test_laps_without_a_start_time_are_dropped_when_unalignable(self) -> None:
         primary = candidate(
@@ -343,7 +438,15 @@ class AnalysisInputMappingTests(unittest.TestCase):
             record(Sport.RIDE), stream, lap_choice(ProviderId.GARMIN, None)
         )
         self.assertEqual(
-            [{"start_time": 0.0, "end_time": 60.0, "kind": "lap", "distance_m": None}],
+            [
+                {
+                    "start_time": 0.0,
+                    "end_time": 60.0,
+                    "kind": "lap",
+                    "distance_m": None,
+                    **NO_STEP,
+                }
+            ],
             adapted.activity["laps"],
         )
 

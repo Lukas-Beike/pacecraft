@@ -27,6 +27,7 @@ from backend.canonical.vocabulary import (
     StreamChannel,
     Terrain,
 )
+from backend.db.activity_detail_store import workout_step_json
 
 # Canonical channels and the legacy stream keys the analysis reads them from.
 _STREAM_KEYS: tuple[tuple[StreamChannel, str], ...] = (
@@ -101,6 +102,11 @@ def analysis_input(
         detail = laps.chosen.stored.detail
         if isinstance(detail, ActivityLapSet):
             activity["lap_source"] = detail.lap_source.value
+            # The steps the device ran, which a lap's workout_step_index points to.
+            if detail.workout_steps:
+                activity["workout_steps"] = [
+                    workout_step_json(step) for step in detail.workout_steps
+                ]
     return AnalysisInput(
         activity=activity,
         source_label=" / ".join(labels) if labels else _label(record.provenance),
@@ -172,6 +178,8 @@ def _laps(
             "end_time": lap.end_offset_s + offset,
             "kind": lap.kind.value,
             "distance_m": lap.distance_m,
+            "workout_step_index": lap.workout_step_index,
+            "lap_trigger": None if lap.lap_trigger is None else lap.lap_trigger.value,
         }
         for lap in detail.laps
     ]
