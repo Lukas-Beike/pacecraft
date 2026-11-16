@@ -68,6 +68,24 @@ test("a seek step passes a week whose units lack the element and pages back to w
   await expect(page.locator("#week")).toHaveText("0");
 });
 
+test("a seek step stops at a disabled paging control, and a required step does not page past an empty unit", async ({ page }) => {
+  const { runStep } = await import(pathToFileURL(path.join(__dirname, "..", "scripts", "ui_walk.mjs")).href);
+  // The calendar pages four weeks ahead; here one, then "Nächste Woche" is disabled.
+  await page.setContent(`<p id="week">0</p>
+    <button type="button" aria-label="Nächste Woche" onclick="week.textContent = 1; this.disabled = true; document.querySelector('.f').textContent = '0,5 l'">›</button>
+    <button type="button" aria-label="Vorherige Woche" onclick="week.textContent = 0">‹</button>
+    <details class="planned-entry is-planned"><summary>Di</summary><p class="f"></p></details>`);
+  const step = { name: "x", covers: "test", each: ".planned-entry.is-planned > summary", ready: ".planned-entry[open] .f", kind: "numbers", seek: 'button[aria-label="Nächste Woche"]', unseek: 'button[aria-label="Vorherige Woche"]' };
+  // Required: the shown week's unit is empty, which stays a finding instead of a later unit passing.
+  expect(await runStep(page, step, 300)).toMatchObject({ status: "fail", why: "missing or empty" });
+  await expect(page.locator("#week")).toHaveText("0");
+  // Optional: it pages on, and the disabled control ends the search without a failure.
+  await page.locator('button[aria-label="Nächste Woche"]').evaluate((button) => { button.disabled = false; });
+  await page.locator(".f").evaluate((cell) => { cell.textContent = ""; });
+  await page.locator('button[aria-label="Nächste Woche"]').evaluate((button) => { button.onclick = () => { week.textContent = 1; button.disabled = true; }; });
+  expect(await runStep(page, { ...step, optional: true }, 300)).toMatchObject({ status: "skip", why: "none of 2 has it" });
+});
+
 test("an element is waited for while the view shows it is loading", async ({ page }) => {
   const { runStep } = await import(pathToFileURL(path.join(__dirname, "..", "scripts", "ui_walk.mjs")).href);
   // 2.1.26: right after the restart "Ausrüstung" loaded longer than the step's cap.

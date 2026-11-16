@@ -358,6 +358,15 @@ async function tryCandidate(page, step, index, capMs) {
   return waitReady(page, step, step.each ? Math.min(CANDIDATE_CAP_MS, capMs) : capMs);
 }
 
+// Whether a `seek` step pages on after a week whose `count` candidates all lacked the element.
+async function maySeek(page, step, count, paged, began) {
+  if (!step.seek || paged === SEEK_WEEKS || Date.now() - began >= STEP_TOTAL_MS) return false;
+  // A required step pages only past weeks without a candidate: an empty element of a shown unit is a finding.
+  if (!step.optional && count) return false;
+  // The calendar pages only so far (four weeks ahead): a disabled control ends the search.
+  return page.locator(step.seek).filter({ visible: true }).first().isEnabled().catch(() => false);
+}
+
 // One step: { status: ok|fail|skip, ms (interaction to ready, of the candidate that passed), why }.
 export async function runStep(page, { pre = [], post = [], unseek, ...step }, capMs = STEP_CAP_MS) {
   // After a restart the app reloads its data as each start sync ends, and a reload re-renders the view:
@@ -375,7 +384,7 @@ export async function runStep(page, { pre = [], post = [], unseek, ...step }, ca
       if (week.result) return week.result;
       count += week.count;
       empty += week.empty;
-      if (!step.seek || paged === SEEK_WEEKS || Date.now() - began >= STEP_TOTAL_MS) break;
+      if (!(await maySeek(page, step, week.count, paged, began))) break;
       await press(page, step.seek);
       paged += 1;
     }
