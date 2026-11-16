@@ -17,6 +17,10 @@ from unittest import mock
 from server_test_support import ServerTestCase, server
 
 from backend.canonical.vocabulary import RecordingOrigin, Sport
+from backend.coach.read_tools import LOOKUP_OUTCOMES
+from backend.coach.receipt_compaction import compact_tool_result
+from backend.coach.turn_failures import coach_error_metadata
+from backend.errors import AppError
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 import prod_client
@@ -678,6 +682,60 @@ NOT_PRINTED = {
 
 class SectionFieldsCoverTheProducersTests(ServerTestCase):
     """A new diagnostics key fails here until prod_diagnostics prints or names it (#3131)."""
+
+    def test_coach_local_first_sums_the_real_history_projection(self):
+        # #3080: the backend's names and shapes, so a rename fails here
+        # instead of printing zeros.
+        self.assertEqual(prod_diagnostics.LOOKUP_OUTCOMES, LOOKUP_OUTCOMES)
+
+        def refused(tool: str, reason: str) -> dict:
+            try:
+                raise AppError(409, "Schon gespeichert.", reason=reason)
+            except AppError as exc:
+                metadata = coach_error_metadata(exc, Path(server.__file__).parent)
+            return {
+                "tool": tool,
+                "result": {"ok": False, "reason": reason},
+                "diagnostic_error": metadata,
+            }
+
+        lookup = {
+            "ok": True,
+            "results": [
+                {"query": "Skyr", "lookup_outcome": "local_hit"},
+                {"query": "Banane", "lookup_outcome": "external_requested"},
+            ],
+        }
+        receipt = {
+            "command_receipts": [
+                {
+                    "tool": "lookup_food",
+                    "result": compact_tool_result("lookup_food", lookup),
+                },
+                {
+                    "tool": "save_competition",
+                    "result": {"ok": True, "created_despite_candidate": 1},
+                },
+                refused("manage_training_templates", "template_exists"),
+                refused("manage_training_templates", "template_exists_in_call"),
+                refused("save_competition", "competition_exists"),
+            ]
+        }
+        steps = server.DIAGNOSTICS.coach_history_service()._command_steps(receipt)
+        self.assertEqual(
+            {
+                "commands": 1,
+                "lookup_outcomes.local_hit": 1,
+                "lookup_outcomes.external_after_miss": 0,
+                "lookup_outcomes.external_requested": 1,
+                "created_despite_candidate.manage_training_templates": 0,
+                "created_despite_candidate.save_competition": 1,
+                "refusals.template_exists": 1,
+                "refusals.template_exists_in_call": 1,
+                "refusals.competition_exists": 1,
+            },
+            prod_diagnostics.local_first_counts([{"steps": steps}, "not a command"]),
+        )
 
     def test_every_key_a_section_emits_is_printed_or_named(self):
         now = datetime.now(UTC)

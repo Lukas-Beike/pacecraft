@@ -110,11 +110,13 @@ SECTION_FIELDS = {
         r"|wahoo\.(window_days|records)"
     ),
 }
-# Sums over the Coach history (`coach_commands`, the newest 20 commands) for
-# the local-first checks of #3080: how each food lookup was answered, records
-# created beside an existing one, and creates refused for an existing record.
-# Counts only: no message, id, name, date or single step is printed. The
-# session resolutions are in `--section runtime` (session_reports).
+# Sums over the Coach history (`coach_commands`: the newest 20 commands, at most
+# 40 steps each) for the local-first checks of #3080: how each searched food
+# term was answered, records created beside an existing one, and steps refused
+# for an existing record (a retried refusal counts again). Counts only: no
+# message, id, name, date or single step is printed. The session resolutions
+# are in `--section runtime` (session_reports). The names are the backend's;
+# tests/test_prod_checks.py pins them to it.
 LOOKUP_OUTCOMES = ("local_hit", "external_after_miss", "external_requested")
 DESPITE_TOOLS = ("manage_training_templates", "save_competition")
 EXISTING_RECORD_REASONS = (
@@ -344,11 +346,11 @@ def local_first_counts(commands: list[Any]) -> dict[str, int]:
         ],
         0,
     )
-    counts["commands"] = len(commands)
+    counted = [command for command in commands if isinstance(command, dict)]
+    counts["commands"] = len(counted)
     steps = [
         step
-        for command in commands
-        if isinstance(command, dict)
+        for command in counted
         for step in command.get("steps") or ()
         if isinstance(step, dict)
     ]
