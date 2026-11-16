@@ -34,11 +34,10 @@ from backend.sync.garmin_activity_details import (
     BACKFILL_STATE_KEY,
     BACKFILL_WINDOW,
     DETAIL_FALLBACK_KEY,
-    REPLAY_BATCH_SIZE,
-    REPLAY_DAILY_LIMIT,
     GarminActivityDetailService,
     _parse_backfill_state,
     detail_replay_size,
+    replay_budget_counts,
 )
 from backend.sync.garmin_service import GarminRemoteReader
 
@@ -881,6 +880,10 @@ class BackfillBatchTests(_Base):
         self.assertEqual(reader.calls, [])
 
 
+# A day with a 429 or a Garmin error: the budget is at its start and does not double.
+DIRTY_DAY = {"day": NOW[:10], "budget": 20, "clean": False}
+
+
 def _full(activity_id: str) -> dict[str, Any]:
     payload = _with_fit()
     payload["activity_id"] = activity_id
@@ -946,7 +949,7 @@ class BackfillReplayTests(_Base):
             )
         self.assertEqual([row["replay"] for row in rows], [False])
 
-    def test_replays_run_five_per_refresh_and_twenty_per_day(self) -> None:
+    def test_replays_start_at_five_per_refresh_and_twenty_per_day(self) -> None:
         rows = _days(30)
         _seed_outdated(self, rows)
         counts = []
@@ -955,10 +958,10 @@ class BackfillReplayTests(_Base):
             result = self.service(reader).backfill()
             counts.append((len(reader.fetched), result["replayed"], result["fetched"]))
         # Newest first: the first refresh took the five newest activities.
-        self.assertEqual(counts, [(REPLAY_BATCH_SIZE, 5, 5)] * 4)
+        self.assertEqual(counts, [(5, 5, 5)] * 4)
         self.assertEqual(
             _stored_state(self.key_values)["replay"],
-            {"day": NOW[:10], "count": REPLAY_DAILY_LIMIT},
+            {"day": NOW[:10], "count": 20, "budget": 20, "clean": True},
         )
 
         # The day's budget is spent: nothing runs, and the rest waits.
@@ -977,16 +980,157 @@ class BackfillReplayTests(_Base):
             },
         )
 
-        # The next UTC day starts a new budget.
+        # A clean day doubles the budget: the next UTC day takes ten per refresh.
         self.now = "2026-10-19T00:30:00+00:00"
         reader = _Details({aid: _full(aid) for aid, _start in rows})
         result = self.service(reader).backfill()
+        self.assertEqual((result["replayed"], result["replay_remaining"]), (10, 0))
         self.assertEqual(
-            (result["replayed"], result["replay_remaining"]), (REPLAY_BATCH_SIZE, 5)
+            _stored_state(self.key_values)["replay"],
+            {"day": "2026-10-19", "count": 10, "budget": 40, "clean": True},
+        )
+
+    def test_the_budget_doubles_after_a_clean_day_up_to_eighty(self) -> None:
+        def counts(replay: dict[str, Any] | None, today: str) -> dict[str, Any]:
+            raw = None if replay is None else json.dumps({"replay": replay})
+            return replay_budget_counts(raw, today)
+
+        def day(count: int, budget: int, clean: bool = True) -> dict[str, Any]:
+            return {
+                "day": "2026-10-17",
+                "count": count,
+                "budget": budget,
+                "clean": clean,
+            }
+
+        today = "2026-10-18"
+        start = {
+            "daily_budget": 20,
+            "per_refresh": 5,
+            "replayed_today": 0,
+            "clean_today": True,
+        }
+        self.assertEqual(counts(None, today), start)
+        # An old state without the budget keys is the start state.
+        self.assertEqual(counts({"day": "2026-10-17", "count": 0}, today), start)
+        # A clean day with replay fetches doubles: 20, 40, 80, then the cap.
+        for before, after, per_refresh in ((20, 40, 10), (40, 80, 10), (80, 80, 10)):
+            self.assertEqual(
+                counts(day(5, before), today),
+                {
+                    "daily_budget": after,
+                    "per_refresh": per_refresh,
+                    "replayed_today": 0,
+                    "clean_today": True,
+                },
+            )
+        # A day with an error, or without replay fetches, leaves it unchanged.
+        self.assertEqual(counts(day(5, 40, clean=False), today)["daily_budget"], 40)
+        self.assertEqual(counts(day(0, 40), today)["daily_budget"], 40)
+        # The same day keeps its count and does not double again.
+        same = {"day": today, "count": 7, "budget": 40, "clean": False}
+        self.assertEqual(
+            counts(same, today),
+            {
+                "daily_budget": 40,
+                "per_refresh": 10,
+                "replayed_today": 7,
+                "clean_today": False,
+            },
+        )
+
+    def _budget_state(self, **replay: Any) -> None:
+        stored = {"day": "2026-10-17", "count": 5, "budget": 40, "clean": True}
+        self.key_values.values[BACKFILL_STATE_KEY] = json.dumps(
+            {"empty": {}, "replay": {**stored, **replay}}
+        )
+
+    def test_a_clean_day_doubles_the_budget_on_the_next_refresh(self) -> None:
+        rows = _days(30)
+        _seed_outdated(self, rows)
+        self._budget_state(budget=20)
+
+        result = self.service(_Details({a: _full(a) for a, _s in rows})).backfill()
+
+        self.assertEqual(result["replayed"], 10)
+        self.assertEqual(
+            _stored_state(self.key_values)["replay"],
+            {"day": NOW[:10], "count": 10, "budget": 40, "clean": True},
+        )
+
+    def test_a_day_without_replays_leaves_the_budget_alone(self) -> None:
+        self._budget_state(count=0)
+
+        self.service(_Details({})).backfill()
+
+        self.assertEqual(
+            _stored_state(self.key_values)["replay"],
+            {"day": NOW[:10], "count": 0, "budget": 40, "clean": True},
+        )
+
+    def test_a_garmin_error_keeps_the_day_from_doubling(self) -> None:
+        _seed_outdated(self, _days(2))
+        self._budget_state(day=NOW[:10], count=0, budget=20)
+        failed = _payload(
+            "2001", errors=[{"source": "activity_splits", "message": "synthetic"}]
+        )
+
+        self.service(_Details({"2001": failed, "2000": _full("2000")})).backfill()
+
+        replay = _stored_state(self.key_values)["replay"]
+        self.assertEqual(
+            (replay["count"], replay["budget"], replay["clean"]), (2, 20, False)
+        )
+        self.now = "2026-10-19T08:00:00+00:00"
+        self.assertEqual(
+            replay_budget_counts(
+                self.key_values.values[BACKFILL_STATE_KEY], "2026-10-19"
+            )["daily_budget"],
+            20,
+        )
+
+    def test_a_429_in_a_replay_resets_the_budget_and_keeps_the_pause(self) -> None:
+        _seed_outdated(self, _days(3))
+        self._budget_state(day=NOW[:10], count=0, budget=80)
+        reader = _Details({"2002": _payload("2002", rate_limited=True)})
+
+        result = self.service(reader).backfill()
+
+        self.assertEqual(result["status"], "rate_limited")
+        state = _stored_state(self.key_values)
+        self.assertEqual(
+            state["replay"], {"day": NOW[:10], "count": 1, "budget": 20, "clean": False}
         )
         self.assertEqual(
-            _stored_state(self.key_values)["replay"], {"day": "2026-10-19", "count": 5}
+            datetime.fromisoformat(state["paused_until"]),
+            NOW_AT + BACKFILL_RATE_LIMIT_PAUSE,
         )
+        # The day after the pause the budget starts again at 20, not doubled.
+        self.assertEqual(
+            replay_budget_counts(
+                self.key_values.values[BACKFILL_STATE_KEY], "2026-10-19"
+            )["daily_budget"],
+            20,
+        )
+
+    def test_a_429_exception_with_replays_in_the_batch_resets_the_budget(self) -> None:
+        _seed_outdated(self, _days(2))
+        self._budget_state(day=NOW[:10], count=0, budget=40)
+        reader = _Details({"2001": AppError(429, "synthetic", reason="garmin_429")})
+
+        self.service(reader).backfill()
+
+        replay = _stored_state(self.key_values)["replay"]
+        self.assertEqual((replay["budget"], replay["clean"]), (20, False))
+
+    def test_a_429_without_replays_in_the_batch_leaves_the_budget(self) -> None:
+        _seed(self.manager, [("3001", "2026-10-10 07:00:00")])
+        self._budget_state(day=NOW[:10], count=0, budget=40)
+
+        self.service(_Details({"3001": _payload("3001", rate_limited=True)})).backfill()
+
+        replay = _stored_state(self.key_values)["replay"]
+        self.assertEqual((replay["budget"], replay["clean"]), (40, True))
 
     def test_new_activities_come_first_and_replays_fill_the_rest(self) -> None:
         rows = _days(12)
@@ -1001,7 +1145,7 @@ class BackfillReplayTests(_Base):
 
         ids = reader.calls[0][0]
         self.assertEqual(ids[:2], ("3001", "3002"))
-        self.assertEqual(len(ids), 2 + REPLAY_BATCH_SIZE)
+        self.assertEqual(len(ids), 2 + 5)
         self.assertEqual(
             (result["fetched"], result["replayed"], result["remaining"]), (7, 5, 0)
         )
@@ -1049,18 +1193,22 @@ class BackfillReplayTests(_Base):
         self.service(_Details({aid: _full(aid) for aid, _s in _days(2)})).backfill()
 
         state = _stored_state(self.key_values)
-        self.assertEqual(state["replay"], {"day": NOW[:10], "count": 2})
+        self.assertEqual(
+            state["replay"], {"day": NOW[:10], "count": 2, "budget": 20, "clean": True}
+        )
 
         # Unreadable replay entries count as no attempts.
         for broken in (
             {"day": 20261018, "count": "7"},
             {"day": NOW[:10], "count": -3},
-            {"count": True},
+            {"count": True, "budget": 7, "clean": "yes"},
+            {"budget": 500},
             "x",
         ):
-            state = _parse_backfill_state(json.dumps({"replay": broken}))
-            self.assertEqual(state.replay_count, 0)
-        self.assertEqual((_parse_backfill_state(json.dumps(older)).replay_count), 0)
+            parsed = _parse_backfill_state(json.dumps({"replay": broken})).replay
+            self.assertEqual((parsed.count, parsed.budget, parsed.clean), (0, 20, True))
+        start = _parse_backfill_state(json.dumps(older)).replay
+        self.assertEqual((start.count, start.budget, start.clean), (0, 20, True))
 
     def test_a_replay_with_the_file_replaces_the_sets_and_ends_the_candidacy(
         self,
@@ -1098,7 +1246,7 @@ class BackfillReplayTests(_Base):
             (after["streams"], after["laps"]), (before["streams"], before["laps"])
         )
         state = _stored_state(self.key_values)
-        self.assertEqual(state["replay"], {"day": NOW[:10], "count": 1})
+        self.assertEqual(state["replay"], DIRTY_DAY | {"count": 1})
         self.assertEqual(state["retry"], {"1002": [summary, 1]})
         self.assertEqual(
             datetime.fromisoformat(state["paused_until"]),
@@ -1117,7 +1265,7 @@ class BackfillReplayTests(_Base):
 
         self.assertEqual(result["status"], "rate_limited")
         self.assertEqual(
-            _stored_state(self.key_values)["replay"], {"day": NOW[:10], "count": 1}
+            _stored_state(self.key_values)["replay"], DIRTY_DAY | {"count": 1}
         )
 
     def test_a_replay_whose_file_call_failed_keeps_the_sets_and_is_passed_over(
@@ -1145,7 +1293,7 @@ class BackfillReplayTests(_Base):
         # Every attempt, successful or not, counted against the day.
         self.assertEqual(
             _stored_state(self.key_values)["replay"],
-            {"day": NOW[:10], "count": BACKFILL_RETRY_ATTEMPTS},
+            DIRTY_DAY | {"count": BACKFILL_RETRY_ATTEMPTS},
         )
 
     def test_a_replay_the_file_never_reaches_cannot_block_the_others(self) -> None:
