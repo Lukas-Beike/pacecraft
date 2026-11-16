@@ -868,140 +868,6 @@ function renderRunningBestEfforts(result) {
   root.dataset.analysisEmpty = String(!values && !criticalSpeed);
 }
 
-// The week review (#2805): computed locally on the server from existing summaries, no model call.
-let weekReviewWeek = "current";
-let weekReviewGeneration = 0;
-const WEEK_REVIEW_SHORT_DAY = new Intl.DateTimeFormat("de-DE", { weekday: "short", timeZone: "UTC" });
-const WEEK_REVIEW_DAY_MONTH = new Intl.DateTimeFormat("de-DE", { day: "numeric", month: "short", timeZone: "UTC" });
-const WEEK_REVIEW_REASONS = { highest_load: "höchste Belastung", race: "Wettkampf", missed: "verpasst" };
-const WEEK_REVIEW_POSITIONS = { below: "unter deinem Bereich", within: "in deinem Bereich", above: "über deinem Bereich" };
-const WEEK_REVIEW_SCORES = [["motivation", "Motivation"], ["stress", "Stress"], ["soreness", "Muskelkater"]];
-
-const weekReviewDate = (key) => new Date(`${key}T00:00:00Z`);
-const weekReviewDay = (key) => WEEK_REVIEW_SHORT_DAY.format(weekReviewDate(key)).replace(".", "");
-
-// The ISO week number of a Monday.
-function weekReviewNumber(monday) {
-  const thursday = weekReviewDate(monday);
-  thursday.setUTCDate(thursday.getUTCDate() + 3);
-  const january = new Date(Date.UTC(thursday.getUTCFullYear(), 0, 1));
-  return Math.ceil(((thursday - january) / 86400000 + 1) / 7);
-}
-
-function weekReviewChange(value, before) {
-  if (!Number.isFinite(value) || !Number.isFinite(before) || before <= 0) return null;
-  const percent = Math.round((value / before - 1) * 100);
-  return h("span", { className: "week-review-change", dataset: { direction: percent >= 0 ? "up" : "down" } }, `${percent >= 0 ? "+" : "−"}${Math.abs(percent)} %`);
-}
-
-// Hours and minutes of a duration, as h:mm.
-function weekReviewHours(seconds) {
-  const minutes = Math.round(seconds / 60);
-  return `${Math.floor(minutes / 60)}:${String(minutes % 60).padStart(2, "0")}`;
-}
-
-function weekReviewRow(label, ...value) {
-  return h("div", "week-review-row", h("span", null, label), h("span", null, ...value));
-}
-
-function weekReviewCard(title, ...content) {
-  return h("section", "week-review-card", h("h4", null, title), ...content);
-}
-
-function weekReviewPlan(plan) {
-  if (!plan?.planned) return null;
-  const open = plan.open ? ` · ${plan.open} offen` : "";
-  const missed = plan.missed_units.map((unit) => `${weekReviewDay(unit.date)} ${unit.name || "Einheit"}`);
-  const detail = [Number.isFinite(plan.duration_share) ? `${plan.duration_share} % der geplanten Zeit` : null, missed.length ? `verpasst: ${missed.join(", ")}` : null].filter(Boolean).join(" · ");
-  return weekReviewCard("Plan", h("p", "week-review-big", `${plan.completed} von ${plan.planned} Einheiten${open}`), detail && h("p", "week-review-detail", detail));
-}
-
-// A running week has no full total yet, so it shows no change against the week before.
-function weekReviewLoad(load, running) {
-  const now = load?.this_week || {};
-  const before = load?.week_before || {};
-  if (!now.sessions) return null;
-  const shares = load.shares;
-  const bar = shares && h("div", { className: "week-review-intensity", role: "img", "aria-label": `leicht ${shares.low} %, mittel ${shares.moderate} %, hart ${shares.high} %` },
-    ...[["low", shares.low], ["moderate", shares.moderate], ["high", shares.high]].map(([band, share]) => { const part = h("i", { dataset: { band } }); part.style.flexGrow = String(share); return part; }));
-  return weekReviewCard("Belastung",
-    weekReviewRow("Zeit", weekReviewHours(now.duration_s || 0), " h ", !running && weekReviewChange(now.duration_s, before.duration_s)),
-    weekReviewRow("Einheiten", String(now.sessions)),
-    Number.isFinite(now.training_load) && weekReviewRow("Belastung", AppFormat.number(now.training_load, { digits: 0 }), " ", !running && weekReviewChange(now.training_load, before.training_load)),
-    bar, shares && h("p", "week-review-detail", `leicht ${shares.low} % · mittel ${shares.moderate} % · hart ${shares.high} %`));
-}
-
-// Mean sleep in h:mm with the change to the week before in minutes.
-function weekReviewSleep(sleep) {
-  const minutes = Number.isFinite(sleep.week_before) ? Math.round((sleep.mean - sleep.week_before) * 60) : 0;
-  const direction = minutes > 0 ? "up" : "down";
-  const sign = minutes > 0 ? "+" : "−";
-  const change = minutes && h("span", { className: "week-review-change", dataset: { direction } }, `${sign}${Math.abs(minutes)} min`);
-  return weekReviewRow("Schlaf Ø", weekReviewHours(sleep.mean * 3600), " h ", change || null, ` · ${sleep.source}`);
-}
-
-function weekReviewRecovery(recovery) {
-  const rows = recovery?.sleep ? [weekReviewSleep(recovery.sleep)] : [];
-  for (const [key, label] of [["hrv", "HRV Ø"], ["resting_hr", "Ruhepuls Ø"]]) {
-    const item = recovery?.[key];
-    if (item) rows.push(weekReviewRow(label, [`${AppFormat.number(item.mean, { digits: 0 })} ${item.unit}`, WEEK_REVIEW_POSITIONS[item.position], item.source].filter(Boolean).join(" · ")));
-  }
-  return rows.length ? weekReviewCard("Erholung", ...rows) : null;
-}
-
-function weekReviewNotable(notable) {
-  if (!notable?.length) return null;
-  return weekReviewCard("Besondere Einheiten", h("ul", "week-review-list", notable.map((item) => {
-    const load = item.reason === "highest_load" && Number.isFinite(item.training_load) ? ` (${AppFormat.number(item.training_load, { digits: 0 })})` : "";
-    const race = item.race ? " · Wettkampf" : "";
-    return h("li", null, `${weekReviewDay(item.date)} ${item.name || "Einheit"} · ${WEEK_REVIEW_REASONS[item.reason]}${load}${race}`);
-  })));
-}
-
-function weekReviewCheckins(checkins) {
-  if (!checkins?.entered) return null;
-  const complaints = [checkins.pain_days && `${checkins.pain_days} ${checkins.pain_days === 1 ? "Tag" : "Tage"} Schmerz`, checkins.illness_days && `${checkins.illness_days} ${checkins.illness_days === 1 ? "Tag" : "Tage"} krank`].filter(Boolean);
-  const scores = WEEK_REVIEW_SCORES.filter(([key]) => Number.isFinite(checkins.scores?.[key])).map(([key, label]) => `${label} ${AppFormat.number(checkins.scores[key])}`);
-  return weekReviewCard("Check-ins",
-    weekReviewRow("Tage eingetragen", `${checkins.entered} von ${checkins.days}`),
-    weekReviewRow("Schmerz / Krankheit", complaints.join(", ") || "keine"),
-    scores.length > 0 && weekReviewRow("Ø von 10", scores.join(" · ")));
-}
-
-function weekReviewSwitch() {
-  return h("div", { className: "week-review-switch", role: "group", "aria-label": "Woche wählen" }, [["current", "Diese"], ["previous", "Letzte"]].map(([week, label]) => {
-    const button = h("button", { type: "button", "aria-pressed": String(week === weekReviewWeek) }, label);
-    button.addEventListener("click", () => { if (week !== weekReviewWeek) { weekReviewWeek = week; void renderWeekReview(); } });
-    return button;
-  }));
-}
-
-function renderWeekReviewContent(root, review) {
-  const title = `KW ${weekReviewNumber(review.week_start)} · ${WEEK_REVIEW_DAY_MONTH.format(weekReviewDate(review.week_start))} – ${WEEK_REVIEW_DAY_MONTH.format(weekReviewDate(review.week_end))}`;
-  const cards = [weekReviewPlan(review.plan), weekReviewLoad(review.load, review.effective_end < review.week_end), weekReviewRecovery(review.recovery), weekReviewNotable(review.notable), weekReviewCheckins(review.checkins)].filter(Boolean);
-  root.dataset.analysisEmpty = String(!cards.length);
-  root.replaceChildren(h("div", "week-review-header", h("h3", null, title), weekReviewSwitch()), ...cards);
-}
-
-async function renderWeekReview() {
-  const generation = ++weekReviewGeneration;
-  const session = state.sessionGeneration;
-  const current = () => generation === weekReviewGeneration && session === state.sessionGeneration && state.route === "analysis/week";
-  const root = document.getElementById("weekReview");
-  if (!root.childElementCount) root.replaceChildren(createLoadingState("Wochenrückblick wird geladen…"));
-  try {
-    const review = await requestAnalysisReport(`/api/analysis/week-review?week=${weekReviewWeek}`);
-    if (!current()) return;
-    renderWeekReviewContent(root, review);
-  } catch (error) {
-    if (!current()) return;
-    root.dataset.analysisEmpty = "failed";
-    // The switch stays, so a failed week does not hold the segment.
-    root.replaceChildren(h("div", "week-review-header", weekReviewSwitch()), createErrorState(error?.message || "Konnte nicht geladen werden.", () => void renderWeekReview()));
-  }
-  renderAnalysisSegmentsIfActive();
-}
-
 function equipmentRouteActive() {
   return state.route === "more/equipment";
 }
@@ -1927,10 +1793,9 @@ const ANALYSIS_SEGMENT_CONTENT = {
   cycling: [["currentPerformance", "analysisEmptyCycling"], ["analysisHistoryCharts", "analysisEmptyCycling"], ["cyclingPowerProfile"], ["cyclingRecurringSessions"]],
   load: [["sessionPerformance"], ["analysisLoadCharts"], ["trainingZoneCharts"], ["performanceEnduranceCharts"]],
   recovery: [["personalRecovery"]],
-  week: [["weekReview"]],
 };
-const ANALYSIS_EMPTY_TITLES = { running: "Noch keine Laufdaten", cycling: "Noch keine Raddaten", load: "Noch keine Belastungsdaten", recovery: "Noch keine Erholungsdaten", week: "Noch keine Wochendaten" };
-const ANALYSIS_SEGMENT_LABELS = { running: "Laufen", cycling: "Radfahren", load: "Belastung", recovery: "Erholung", week: "Woche" };
+const ANALYSIS_EMPTY_TITLES = { running: "Noch keine Laufdaten", cycling: "Noch keine Raddaten", load: "Noch keine Belastungsdaten", recovery: "Noch keine Erholungsdaten" };
+const ANALYSIS_SEGMENT_LABELS = { running: "Laufen", cycling: "Radfahren", load: "Belastung", recovery: "Erholung" };
 const ANALYSIS_SEGMENT_SPORTS = { running: "run", cycling: "ride" };
 
 function analysisSegmentEmpty(segment) {
@@ -1986,7 +1851,7 @@ function renderAnalysisSegmentsIfActive() {
 }
 
 function renderAnalysisSegments(route = state.route) {
-  const segment = { "analysis/load": "load", "analysis/recovery": "recovery", "analysis/cycling": "cycling", "analysis/week": "week" }[route] || "running";
+  const segment = { "analysis/load": "load", "analysis/recovery": "recovery", "analysis/cycling": "cycling" }[route] || "running";
   const empty = renderAnalysisEmptyState(segment);
   document.getElementById("analysisRefreshButton").setAttribute("aria-label", `Analyse aktualisieren: ${ANALYSIS_SEGMENT_LABELS[segment]}`);
   const sport = empty ? null : ANALYSIS_SEGMENT_SPORTS[segment];
@@ -2002,8 +1867,6 @@ function renderAnalysisSegments(route = state.route) {
   document.getElementById("trainingZoneCharts").hidden = !load;
   document.getElementById("analysisLoadCharts").hidden = !load;
   document.getElementById("personalRecovery").hidden = segment !== "recovery";
-  // An empty week keeps its header, so the switch leads back to the other week.
-  document.getElementById("weekReview").hidden = segment !== "week";
   document.querySelectorAll("[data-analysis-segment]").forEach((link) => {
     const active = link.dataset.analysisSegment === segment;
     link.classList.toggle("active", active);
@@ -2028,8 +1891,7 @@ const analysisRefresh = AppViewRefresh.create({
     state.data.performance = result.performance || result;
     const performance = state.data.performance;
     clearAnalysisReportCache();
-    if (route === "analysis/week") void renderWeekReview();
-    else if (route === "analysis/recovery") renderPersonalRecovery(performance.personal_recovery);
+    if (route === "analysis/recovery") renderPersonalRecovery(performance.personal_recovery);
     else {
       renderAnalysisHistory(performance.history);
       if (route === "analysis/load") renderTrainingFocus(performance.training_focus_periods?.[analysisHistoryPeriod] || performance.training_focus);

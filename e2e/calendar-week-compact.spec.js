@@ -175,7 +175,8 @@ test("extra activities show no Zusätzlich badge in a week without a plan", asyn
   const day = page.locator(".planned-day.is-today");
   await expect(day).not.toContainText("Zusätzlich");
   await expect(day.locator(".planned-group > summary .planned-session-title")).toHaveText("2× Trainingseinheit");
-  await expect(page.locator(".planned-week-totals").first()).not.toContainText("zusätzlich");
+  // A week without a plan counts no session as extra.
+  await expect(page.locator(".week-review")).not.toContainText("zusätzlich");
 });
 
 test("@responsive a unit missed on a confirmed rest day is dropped, missing weather is one hint and long titles hyphenate", async ({ page, request }) => {
@@ -292,4 +293,103 @@ test("@responsive the sport filter hides other sports and their figures, keeps a
   await page.waitForFunction(() => state.initialStateLoaded);
   await page.evaluate(async () => { await AppRouter.navigate("plan/overview", { historyMode: "replace" }); });
   await expect(page.locator(".planned-week .planned-sport-filter").getByRole("radio", { name: "Rad" })).toBeChecked();
+});
+
+// The week review sits under the selected past or running week, never a future one, and follows the
+// week stepper (#3298, layout B). A late answer for a week stepped away from is dropped.
+const weekAfter = (key, days) => new Date(Date.parse(`${key}T00:00:00Z`) + days * 86400000).toISOString().slice(0, 10);
+function weekReviewFor(week, today) {
+  const end = weekAfter(week, 6);
+  const running = end >= today;
+  return {
+    method: "local-week-review-v1", week_start: week, week_end: end, effective_end: running ? today : end,
+    plan: running ? { planned: 5, completed: 1, missed: 0, open: 4, missed_units: [] } : { planned: 6, completed: 5, missed: 1, open: 0, missed_units: [{ date: weekAfter(week, 2), name: "Kraft" }] },
+    load: { this_week: running ? { duration_s: 2700, sessions: 1, training_load: 38 } : { duration_s: 27600, sessions: 6, training_load: 412 }, week_before: { duration_s: 24600, sessions: 5, training_load: 381 }, shares: null },
+    recovery: running ? {} : { sleep: { mean: 7 + 5 / 60, nights: 7, unit: "h", source: "Garmin", week_before: 7.25 }, hrv: { mean: 62, nights: 7, unit: "ms", source: "Garmin", position: "within" } },
+    notable: running ? [] : [{ date: end, name: "Langer Lauf", reason: "highest_load", training_load: 120 }],
+    checkins: running ? { entered: 0, days: 2, scores: {} } : { entered: 6, days: 7, pain_days: 0, illness_days: 0, scores: { motivation: 7 } },
+  };
+}
+
+test("@responsive the week review sits under a past or running week and follows the week stepper", async ({ page, request }, testInfo) => {
+  const weeks = [];
+  let release = () => {};
+  let hold = null;
+  await page.route("**/api/analysis/week-review?*", async (route) => {
+    const asked = new URL(route.request().url()).searchParams.get("week");
+    weeks.push(asked);
+    const [today, monday] = await page.evaluate(() => {
+      const day = timezoneDateKey(state.data?.profile?.timezone, new Date());
+      return [day, planWeekStart(day)];
+    });
+    // The running week asks for "current", any other week for its Monday.
+    const week = asked === "current" ? monday : asked;
+    if (hold === week) await new Promise((resolve) => { release = resolve; });
+    await route.fulfill({ json: weekReviewFor(week, today) });
+  });
+  await openCalendar(page, request);
+  const current = await page.evaluate(() => planWeekStart(timezoneDateKey(state.data?.profile?.timezone, new Date())));
+  const review = page.locator(".planned-week .week-review");
+  const labels = review.locator(".week-review-tile > small:first-child");
+  // The running week: "bis heute", no change against the week before, and no plan line under the week.
+  await expect(review.locator(".week-review-head")).toHaveText(/^WochenrückblickKW \d+ · bis heute$/);
+  await expect(labels).toHaveText(["Plan", "Einheiten", "Zeit", "Belastung"]);
+  await expect(review.locator(".week-review-tile").first()).toHaveText("Plan1 von 54 noch offen");
+  await expect(review.locator(".week-review-change")).toHaveCount(0);
+  await expect(page.locator(".planned-week-totals")).toHaveCount(0);
+
+  // The previous week answers only after a step back to the running week: its tiles never show.
+  hold = weekAfter(current, -7);
+  await page.getByRole("button", { name: "Vorherige Woche" }).click();
+  await expect.poll(() => weeks.includes(hold)).toBe(true);
+  await page.getByRole("button", { name: "Nächste Woche" }).click();
+  await expect(review.locator(".week-review-head")).toHaveText(/bis heute$/);
+  const late = page.waitForResponse((response) => response.url().includes(`week=${hold}`));
+  release();
+  await late;
+  // One task later the dropped answer would have been drawn; nothing in the DOM marks it.
+  await page.evaluate(() => new Promise((resolve) => setTimeout(resolve, 0)));
+  await expect(review.locator(".week-review-tile").first()).toHaveText("Plan1 von 54 noch offen");
+
+  // The past week: every tile with data, the changes, sources and positions.
+  hold = null;
+  await page.getByRole("button", { name: "Vorherige Woche" }).click();
+  await expect(review.locator(".week-review-head span")).toHaveText(/^KW \d+$/);
+  await expect(labels).toHaveText(["Plan", "Einheiten", "Zeit", "Belastung", "Schlaf Ø", "HRV Ø", "Check-ins", "Besondere Einheiten", "Beschwerden"]);
+  await expect(review.locator(".week-review-tile").first()).toHaveText(/^Plan5 von 6verpasst: Mi Kraft$/);
+  await expect(review.locator(".week-review-change")).toHaveText(["+12 %", "+8 %", "−0:10"]);
+  await expect(review.getByText("im Normalbereich · Garmin")).toBeVisible();
+  await expect(review.locator(".week-review-wide li")).toHaveText(/^So Langer Lauf · höchste Belastung \(120\)$/);
+  await expect(review).not.toContainText("Schätzung");
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBeTruthy();
+  await review.screenshot({ path: testInfo.outputPath("week-review.png"), animations: "disabled" });
+
+  // A future week has no review.
+  await page.getByRole("button", { name: "Nächste Woche" }).click();
+  await page.getByRole("button", { name: "Nächste Woche" }).click();
+  await expect(page.locator(".planned-week-number")).toHaveText(/^KW \d+$/);
+  await expect(review).toHaveCount(0);
+  expect(weeks).toContain("current");
+  expect(weeks).not.toContain(weekAfter(current, 7));
+});
+
+// A review that cannot be read (offline, a server error) leaves the plan line in its place, and a
+// sport filter hides both, as they count the whole week (#3298).
+test("@responsive a failed week review shows the plan line, and a sport filter hides both", async ({ page, request }) => {
+  await page.route("**/api/analysis/week-review?*", (route) => route.fulfill({ status: 500, json: { error: "Serverfehler" } }));
+  await openCalendar(page, request);
+  const week = page.locator(".planned-week");
+  await expect(week.locator(".planned-week-totals")).toHaveCount(1);
+  await expect(week.locator(".week-review, .error-state")).toHaveCount(0);
+  await week.locator(".planned-sport-filter").getByRole("radio", { name: "Lauf" }).check();
+  await expect(page.locator(".planned-week .planned-week-totals, .planned-week .week-review")).toHaveCount(0);
+  await page.locator(".planned-week .planned-sport-filter").getByRole("radio", { name: "Alle", exact: true }).check();
+});
+
+test("@responsive an old link to the Analyse week opens the calendar", async ({ page, request }) => {
+  await openCalendar(page, request);
+  await page.goto("/#analysis/week");
+  await expect(page).toHaveURL(/#plan\/overview$/);
+  await expect(page.locator("#workoutsPanel")).toHaveClass(/active/);
+  await expect(page.locator("[data-analysis-segment='week']")).toHaveCount(0);
 });
