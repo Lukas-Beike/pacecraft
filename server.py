@@ -234,7 +234,7 @@ DATA_DIR = Path(os.environ.get("DATA_DIR", ROOT / "data"))
 DB_PATH = DATA_DIR / "intervals-coach.db"
 LOG_PATH = DATA_DIR / "intervals-coach.log"
 APP_NAME = "Pacecraft · AI Coach"
-APP_VERSION = "2.1.33"
+APP_VERSION = "2.1.34"
 MAX_BODY_BYTES = 1_000_000
 COACH_CONVERSATION_GATE = CoachConversationGate()
 
