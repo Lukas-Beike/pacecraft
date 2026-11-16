@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "base": "6881adaea638b3a2f5f599193a216e1e43d737e6",
+  "base": "8aa4f200ff08c025866bc233b6da6284e987e348",
   "versions": {
     "ruff": "0.17.5",
     "mypy": "2.4.1"
@@ -83,6 +83,102 @@
       "path": "backend/planning/changes.py",
       "code": "ARG004",
       "message_sha256": "65500c398a77984b1b392abcf3776c894b2035811a4d00dfe7b8fe59b4a931e3"
+    },
+    {
+      "tool": "cognitive",
+      "path": "backend/db/repositories.py",
+      "code": "S3358",
+      "message_sha256": "f9be7a60472af142f5fcd8335f70230247e1c94ba26ad5cc20037416f50768db"
+    },
+    {
+      "tool": "cognitive",
+      "path": "backend/nutrition/components.py",
+      "code": "S3358",
+      "message_sha256": "f9be7a60472af142f5fcd8335f70230247e1c94ba26ad5cc20037416f50768db"
+    },
+    {
+      "tool": "cognitive",
+      "path": "backend/nutrition/food_database.py",
+      "code": "S3358",
+      "message_sha256": "f9be7a60472af142f5fcd8335f70230247e1c94ba26ad5cc20037416f50768db"
+    },
+    {
+      "tool": "cognitive",
+      "path": "scripts/run_browser_tests.py",
+      "code": "S3358",
+      "message_sha256": "f9be7a60472af142f5fcd8335f70230247e1c94ba26ad5cc20037416f50768db"
+    },
+    {
+      "tool": "cognitive",
+      "path": "scripts/run_browser_tests.py",
+      "code": "S3358",
+      "message_sha256": "f9be7a60472af142f5fcd8335f70230247e1c94ba26ad5cc20037416f50768db"
+    },
+    {
+      "tool": "cognitive",
+      "path": "scripts/run_sqlcipher_tests.py",
+      "code": "S3358",
+      "message_sha256": "f9be7a60472af142f5fcd8335f70230247e1c94ba26ad5cc20037416f50768db"
+    },
+    {
+      "tool": "cognitive",
+      "path": "tests/canonical_field_map_support.py",
+      "code": "S3358",
+      "message_sha256": "f9be7a60472af142f5fcd8335f70230247e1c94ba26ad5cc20037416f50768db"
+    },
+    {
+      "tool": "cognitive",
+      "path": "tests/canonical_field_map_support.py",
+      "code": "S3358",
+      "message_sha256": "f9be7a60472af142f5fcd8335f70230247e1c94ba26ad5cc20037416f50768db"
+    },
+    {
+      "tool": "cognitive",
+      "path": "tests/canonical_recovery_support.py",
+      "code": "S3358",
+      "message_sha256": "f9be7a60472af142f5fcd8335f70230247e1c94ba26ad5cc20037416f50768db"
+    },
+    {
+      "tool": "cognitive",
+      "path": "tests/coach_live_eval.py",
+      "code": "S3358",
+      "message_sha256": "f9be7a60472af142f5fcd8335f70230247e1c94ba26ad5cc20037416f50768db"
+    },
+    {
+      "tool": "cognitive",
+      "path": "tests/support.py",
+      "code": "S3358",
+      "message_sha256": "f9be7a60472af142f5fcd8335f70230247e1c94ba26ad5cc20037416f50768db"
+    },
+    {
+      "tool": "cognitive",
+      "path": "tests/test_data_safety_coverage.py",
+      "code": "S3358",
+      "message_sha256": "f9be7a60472af142f5fcd8335f70230247e1c94ba26ad5cc20037416f50768db"
+    },
+    {
+      "tool": "cognitive",
+      "path": "tests/test_plan_guard_service.py",
+      "code": "S3358",
+      "message_sha256": "f9be7a60472af142f5fcd8335f70230247e1c94ba26ad5cc20037416f50768db"
+    },
+    {
+      "tool": "cognitive",
+      "path": "tests/test_provider_review.py",
+      "code": "S3358",
+      "message_sha256": "f9be7a60472af142f5fcd8335f70230247e1c94ba26ad5cc20037416f50768db"
+    },
+    {
+      "tool": "cognitive",
+      "path": "tests/test_session_metrics.py",
+      "code": "S3358",
+      "message_sha256": "f9be7a60472af142f5fcd8335f70230247e1c94ba26ad5cc20037416f50768db"
+    },
+    {
+      "tool": "cognitive",
+      "path": "tests/test_sync_planned_calendar.py",
+      "code": "S3358",
+      "message_sha256": "f9be7a60472af142f5fcd8335f70230247e1c94ba26ad5cc20037416f50768db"
     },
     {
       "tool": "cognitive",
@@ -1445,6 +1541,42 @@
       "path": "tests/service-worker-update.test.cjs",
       "code": "sonarjs/no-nested-conditional",
       "message_sha256": "b3a19eafd7b066e5bfab7ae8edf10a154fd6667bc3d403636346ae546c44244a"
+    },
+    {
+      "tool": "eslint",
+      "path": "e2e/training-feature-panels.spec.js",
+      "code": "sonarjs/no-nested-template-literals",
+      "message_sha256": "97c9d913a81eae95a369b395aaae2aff303a4cfa89fdcd11cee7d0ee40a3bcaa"
+    },
+    {
+      "tool": "eslint",
+      "path": "e2e/ui-walk-fixture.spec.js",
+      "code": "sonarjs/no-nested-template-literals",
+      "message_sha256": "97c9d913a81eae95a369b395aaae2aff303a4cfa89fdcd11cee7d0ee40a3bcaa"
+    },
+    {
+      "tool": "eslint",
+      "path": "tests/chart-golden.test.cjs",
+      "code": "sonarjs/no-nested-template-literals",
+      "message_sha256": "97c9d913a81eae95a369b395aaae2aff303a4cfa89fdcd11cee7d0ee40a3bcaa"
+    },
+    {
+      "tool": "eslint",
+      "path": "tests/navigation-state.test.cjs",
+      "code": "sonarjs/no-nested-template-literals",
+      "message_sha256": "97c9d913a81eae95a369b395aaae2aff303a4cfa89fdcd11cee7d0ee40a3bcaa"
+    },
+    {
+      "tool": "eslint",
+      "path": "tests/navigation-state.test.cjs",
+      "code": "sonarjs/no-nested-template-literals",
+      "message_sha256": "97c9d913a81eae95a369b395aaae2aff303a4cfa89fdcd11cee7d0ee40a3bcaa"
+    },
+    {
+      "tool": "eslint",
+      "path": "tests/navigation-state.test.cjs",
+      "code": "sonarjs/no-nested-template-literals",
+      "message_sha256": "97c9d913a81eae95a369b395aaae2aff303a4cfa89fdcd11cee7d0ee40a3bcaa"
     },
     {
       "tool": "mypy",
