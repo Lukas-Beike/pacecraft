@@ -64,9 +64,10 @@ estimate. It never rewrites logged values and never falls back to a formula.
    with its M13 band, else Garmin's mean resting value without a band), it
    is shown as "nicht plausibel" instead of a value; TDEE stays shown.
    Overlapping bands, or no reference, keep the value (athlete decision
-   2026-11-16). The basis shows NEAT's inputs over the window: steps per
-   day, the steps sessions take out, the step length with its source and
-   the floors outside sessions.
+   2026-11-16), with its short reason in the row. The table's small "i"
+   shows NEAT's inputs over the window: steps per day, the steps sessions
+   take out, the step length with its source and the floors outside
+   sessions.
 8. **Flagged-meal bias `b`:** across the windows, `TDEE = T − b × x` by least
    squares, with `x` the flagged entries' logged kcal per complete day. `b` is
    reported in % with its band: positive means flagged meals were larger than

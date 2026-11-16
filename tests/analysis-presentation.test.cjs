@@ -212,7 +212,8 @@ test("body overview uses profile body fat without creating a dated measurement",
 test("the energy table shows bands, the badge only with a fit, and the fit basis", () => {
   const charts = [];
   const { h } = extractFunctions("components.js", ["h", "SVG_NS", "svgNode"], { document: fakeDocument() });
-  const { energyTable, energyBasisNote, energyFitNote, energyFitCharts } = extractFunctions("analysis.js", ["ENERGY_SOURCES", "ENERGY_INSUFFICIENT", "ENERGY_STEP_SOURCES", "ENERGY_IMPLAUSIBLE", "ENERGY_PARTS", "energyKcal", "energyNeatInputs", "energyBasisNote", "energyFitNote", "energySplitRow", "energyTable", "energyFitCharts"], {
+  const { energyTable, energyBasisNote, energyFitNote, energyFitCharts } = extractFunctions("analysis.js", ["ENERGY_SOURCES", "ENERGY_INSUFFICIENT", "ENERGY_STEP_SOURCES", "ENERGY_IMPLAUSIBLE", "ENERGY_IMPLAUSIBLE_REASON", "ENERGY_PARTS", "energyKcal", "energyNeatInputs", "energyInfoId", "energyInfo", "energyBasisNote", "energyFitNote", "energySplitRow", "energyTable", "energyFitCharts"], {
+    bindAnalysisPopover: (button, info) => { button.dataset.popoverTarget = info.id; },
     h, formatWhole: (v) => String(v), dateLabel: (v) => v, analysisValue: (v, unit) => `${v} ${unit}`,
     createStatusChip: (label) => h("span", null, label),
     analysisChart: (title, series) => { charts.push({ title, series }); return new FakeElement("section"); },
@@ -244,10 +245,16 @@ test("the energy table shows bands, the badge only with a fit, and the fit basis
   assert.match(note, /Bänder nominal 95 %, ohne Fehler beim Erfassen des Essens/, "#3187 item 6");
   assert.match(note, /Ruhe aus deinen Daten ist ein Rest/, "#3187 item 8");
   assert.match(textOf(energyBasisNote({ ...read, basis: { insufficient: "weighins" }, skinfold: null })), /Datenbasis zu gering \(unter 8 Wiegungen\).*Ohne Hautfaltenmessung/);
-  // #3255: NEAT's inputs, so an outlier in steps or step length is visible.
+  // #3255: NEAT's inputs sit behind a small "i" in the caption, never in the basis line.
   const neat = { days: 27, steps_per_day: 14200, session_steps_per_day: 3100, floors_per_day: 9.5, step_length_m: 0.78, step_length_source: "height" };
-  assert.match(textOf(energyBasisNote({ ...read, basis: { ...read.basis, neat } })), /24 von 28 Tagen vollständig · Alltag aus 14200 Schritten\/Tag, davon 3100 in Einheiten abgezogen, Schrittlänge 0.78 m \(aus Körpergröße\), 9.5 Etagen ohne Einheiten · Formeln/);
-  assert.doesNotMatch(note, /Schritten/, "without steps no NEAT inputs");
+  const withNeat = { ...read, basis: { ...read.basis, neat } };
+  assert.doesNotMatch(textOf(energyBasisNote(withNeat)), /Schritten/, "the basis line carries no NEAT inputs");
+  const [caption] = energyTable(withNeat).children;
+  const [, button, info] = caption.children;
+  assert.equal(textOf(button), "i");
+  assert.equal(button.dataset.popoverTarget, info.id, "the i opens the popover");
+  assert.equal(textOf(info), "Alltag aus 14200 Schritten/Tag, davon 3100 in Einheiten abgezogen, Schrittlänge 0.78 m (aus Körpergröße), 9.5 Etagen ohne Einheiten");
+  assert.equal(energyTable(read).children[0].children.length, 1, "without NEAT inputs no i");
   // #3255: a residual below the resting reference is not shown as a value.
   const implausible = { ...read, rows: [...read.rows.slice(0, 3), { source: "own", resting_kcal: null, resting_band_kcal: null, resting_implausible: true, total_kcal: 2832, total_band_kcal: 455 }] };
   const gated = energyTable(implausible).children[2].children;
@@ -265,7 +272,7 @@ test("the energy table shows bands, the badge only with a fit, and the fit basis
 
 test("split A draws one stacked bar per row and hatches only the parts the backend marks shared", () => {
   const { h } = extractFunctions("components.js", ["h", "SVG_NS", "svgNode"], { document: fakeDocument() });
-  const { energySplitRow, energySplitLegend } = extractFunctions("analysis.js", ["ENERGY_IMPLAUSIBLE", "ENERGY_PARTS", "energySplitRow", "energySplitLegend"], { h, formatWhole: (v) => String(v) });
+  const { energySplitRow, energySplitLegend } = extractFunctions("analysis.js", ["ENERGY_IMPLAUSIBLE", "ENERGY_IMPLAUSIBLE_REASON", "ENERGY_PARTS", "energySplitRow", "energySplitLegend"], { h, formatWhole: (v) => String(v) });
   const split = (resting, neat, sport, tef, shared) => ({ resting_kcal: resting, neat_kcal: neat, sport_kcal: sport, tef_kcal: tef, shared });
   const device = { source: "device", resting_band_kcal: null, split: split(1745, 610, 765, null, { neat: false, sport: false, tef: false }) };
   // Calibrated (k != 1): only digestion is computed alike for every row.
@@ -281,7 +288,7 @@ test("split A draws one stacked bar per row and hatches only the parts the backe
   assert.deepEqual([...ownRow.children[0].children[0].children].map((part) => part.dataset.shared ?? null), [null, null, null, ""]);
   assert.equal(energySplitRow({ source: "katch_mcardle", split: null }), null, "no split, no bar");
   const gated = energySplitRow({ source: "own", resting_band_kcal: null, resting_implausible: true, split: split(null, 942, 417, 368, { neat: true, sport: true, tef: true }) });
-  assert.equal(textOf(gated.children[0].children[1]), "Ruhe (Rest) nicht plausibel · Alltag 942 · Sport 417 · Verdauung 368");
+  assert.equal(textOf(gated.children[0].children[1]), "Ruhe (Rest) nicht plausibel (unter dem Ruheumsatz: Essen unvollständig erfasst oder Alltag überschätzt) · Alltag 942 · Sport 417 · Verdauung 368");
   assert.deepEqual([...gated.children[0].children[0].children].map((part) => part.dataset.part), ["neat", "sport", "tef"]);
   const legend = energySplitLegend({ rows: [device, own] });
   assert.deepEqual([...legend.children].map((item) => textOf(item)), ["Ruhe", "Alltag", "Sport", "Verdauung", "gleich berechnet"]);

@@ -1506,6 +1506,7 @@ const ENERGY_INSUFFICIENT = { intake_days: "unter 14 vollständige Ernährungsta
 const ENERGY_STEP_SOURCES = { walks: "aus Gehen", height: "aus Körpergröße" };
 // The own resting residual below every physiological reference is not a value (#3255).
 const ENERGY_IMPLAUSIBLE = "nicht plausibel";
+const ENERGY_IMPLAUSIBLE_REASON = "unter dem Ruheumsatz: Essen unvollständig erfasst oder Alltag überschätzt";
 let energyRead = null;
 let energyRequest = null;
 let energyGeneration = 0;
@@ -1535,13 +1536,24 @@ function energyKcal(value, band) {
   return band == null ? formatWhole(value) : h("span", null, formatWhole(value), h("small", null, ` ± ${formatWhole(band)}`));
 }
 
-// NEAT's inputs (#3255), so an outlier in steps or step length is visible.
+// NEAT's inputs (#3255), so an outlier in steps or step length can be checked.
 function energyNeatInputs(neat) {
   if (!neat) return "";
   const parts = [`Alltag aus ${formatWhole(neat.steps_per_day)} Schritten/Tag, davon ${formatWhole(neat.session_steps_per_day)} in Einheiten abgezogen`];
   if (neat.step_length_m != null) parts.push(`Schrittlänge ${analysisValue(neat.step_length_m, "m")} (${ENERGY_STEP_SOURCES[neat.step_length_source] || neat.step_length_source})`);
   if (neat.floors_per_day != null) parts.push(`${analysisValue(neat.floors_per_day, "Etagen")} ohne Einheiten`);
-  return ` · ${parts.join(", ")}`;
+  return parts.join(", ");
+}
+
+// How the values come about sits behind a small "i" (athlete decision 2026-11-16, #3255).
+let energyInfoId = 0;
+function energyInfo(read) {
+  const text = energyNeatInputs(read.basis?.neat);
+  if (!text) return [];
+  const button = h("button", { type: "button", className: "threshold-info", "aria-label": "Berechnung des Energieverbrauchs" }, "i");
+  const info = h("div", { className: "analysis-info-tooltip", id: `energy-info-${++energyInfoId}` }, text);
+  bindAnalysisPopover(button, info);
+  return [button, info];
 }
 
 function energyBasisNote(read) {
@@ -1552,7 +1564,7 @@ function energyBasisNote(read) {
   const folds = skinfold
     ? `Falten vom ${dateLabel(skinfold.date)}, KFA ${analysisValue(skinfold.body_fat_pct, "%")}, fettfreie Masse ${analysisValue(skinfold.lean_mass_kg, "kg")}`
     : "Ohne Hautfaltenmessung der letzten 90 Tage keine Formelwerte";
-  return h("p", "analysis-reference-note", `kcal/Tag · ${own}${energyNeatInputs(basis.neat)} · Formeln: Ruhe + eigene Aktivität + Verdauung · ${folds} · `
+  return h("p", "analysis-reference-note", `kcal/Tag · ${own} · Formeln: Ruhe + eigene Aktivität + Verdauung · ${folds} · `
     + "Bänder nominal 95 %, ohne Fehler beim Erfassen des Essens · Ruhe aus deinen Daten ist ein Rest (Gesamt − eigene Aktivität − Verdauung) und trägt deren Fehler mit");
 }
 
@@ -1574,7 +1586,7 @@ function energySplitRow(row) {
   if (!total) return null;
   const text = ENERGY_PARTS.map(([key, , label], index) => {
     const name = index === 0 && row.source === "own" ? "Ruhe (Rest)" : label;
-    if (index === 0 && row.resting_implausible) return `${name} ${ENERGY_IMPLAUSIBLE}`;
+    if (index === 0 && row.resting_implausible) return `${name} ${ENERGY_IMPLAUSIBLE} (${ENERGY_IMPLAUSIBLE_REASON})`;
     const band = index === 0 && row.resting_band_kcal != null ? ` ± ${formatWhole(row.resting_band_kcal)}` : "";
     return `${name} ${split[key] == null ? "–" : formatWhole(split[key])}${band}`;
   }).join(" · ");
@@ -1605,7 +1617,7 @@ function energyTable(read) {
       h("td", null, row.resting_implausible ? ENERGY_IMPLAUSIBLE : energyKcal(row.resting_kcal, row.resting_band_kcal)),
       h("td", null, energyKcal(row.total_kcal, row.total_band_kcal))), energySplitRow(row)].filter(Boolean);
   });
-  return h("table", { className: "current-performance-table" }, h("caption", null, "Energieverbrauch"),
+  return h("table", { className: "current-performance-table" }, h("caption", null, "Energieverbrauch", ...energyInfo(read)),
     h("thead", null, h("tr", null, h("th", { scope: "col" }, "Quelle"), h("th", { scope: "col" }, "Ruhe"), h("th", { scope: "col" }, "Tag gesamt"))),
     h("tbody", null, rows));
 }
