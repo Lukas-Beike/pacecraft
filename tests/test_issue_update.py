@@ -236,6 +236,26 @@ class IssueUpdateTests(unittest.TestCase):
             fake.edited_body,
             "- [x] done\n## Acceptance\n- [x] works\r\n* [x] fast\n",
         )
+        # #3222: --pending leaves a criterion open whose evidence comes later.
+        code, out, _, fake = self.run_script(
+            "close", "12", "--body-file", str(self.file), "--pending", "Fast",
+            body=body, state="CLOSED",
+        )  # fmt: skip
+        self.assertEqual(code, 0)
+        self.assertIn("ticked 1", out)
+        self.assertIn("left open, evidence pending: fast", out)
+        self.assertEqual(
+            fake.edited_body, "- [x] done\n## Acceptance\n- [x] works\r\n* [ ] fast\n"
+        )
+        # A --pending that matches no criterion, or several, closes nothing.
+        for part in ("slow", "", "done", "fast"):
+            with self.subTest(part=part):
+                code, out, _, fake = self.run_script(
+                    "close", "12", "--body-file", str(self.file), "--pending", part,
+                    body=body + "* [ ] fast enough\n", state="OPEN",
+                )  # fmt: skip
+                self.assertNotEqual(code, 0)
+                self.assertEqual(fake.writes(), [])
 
     def test_failed_gh_call_exits_2(self):
         def failing(argv, **_kwargs):

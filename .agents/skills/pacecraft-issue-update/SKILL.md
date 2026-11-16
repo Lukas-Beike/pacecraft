@@ -16,7 +16,7 @@ python scripts/issue_update.py tick <n> --part "<start of the checkbox text>"
 python scripts/issue_update.py label <n> [--add <name>] [--remove <name>]
 python scripts/issue_update.py assign <n> [--add <login>] [--remove <login>]
 python scripts/issue_update.py finish <n>
-python scripts/issue_update.py close <n> --body-file <summary-file>
+python scripts/issue_update.py close <n> --body-file <summary-file> [--pending "<start>"]
 ```
 
 - `start` assigns `@me` and adds the `in progress` label; `finish` removes it.
@@ -30,6 +30,10 @@ python scripts/issue_update.py close <n> --body-file <summary-file>
   label cleared; was already closed`): do not post the summary again. After an
   exit 2 the summary may already be posted: look at the issue and finish the
   rest with `label`/`finish` instead of rerunning `close`.
+- `close --pending "<start>"` (repeatable) leaves that one criterion open, for
+  evidence only a later release can give; the summary names it, and the output
+  lists it as `left open, evidence pending`. No or several matches refuse before
+  any write (#3222). Tick it with `tick` once the evidence is in.
 - Exit 0: done. Exit 1: refused (no or several matching boxes; open box, open
   PR); read the printed reasons and fix them first, do not
   work around them. Exit 2: bad input, credential-shaped or empty body, or a
