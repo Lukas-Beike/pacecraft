@@ -6,6 +6,28 @@ const { extractFunctions, fakeDocument, textOf } = require("./frontend-harness.c
 const WEEK = ["nutritionChartDays", "nutritionChartRows", "nutritionEmptyRunRow", "nutritionChartDayRow", "nutritionWeekValue", "renderNutritionWeek"];
 const context = extractFunctions("nutrition.js", WEEK);
 
+// Gitar #3269: the energy table lives in the diary since #3252.
+test("logout clears the diary's energy table and a diary refresh reads it again", () => {
+  const cleared = [];
+  const nodes = new Map();
+  const node = (selector) => nodes.get(selector) || nodes.set(selector, { value: "", hidden: false, close() {}, replaceChildren() { cleared.push(selector); } }).get(selector);
+  const document = { getElementById: (id) => node(id), querySelector: (selector) => node(selector) };
+  let resets = 0;
+  const loads = [];
+  const ctx = extractFunctions("nutrition.js", ["resetNutritionView", "nutritionRefresh"], {
+    document, resetSkinfolds() {}, stopNutritionBarcode() {}, resetEnergy: () => { resets += 1; },
+    loadNutrition: (options) => loads.push(options),
+    nutritionLoadSequence: 0, nutritionProductLoadSequence: 0, nutritionLookupResultShown: false,
+    nutritionProductSectionsOpen: {}, nutritionProductSearchShown: "", nutritionProductSectionsBeforeSearch: null, nutritionProductForUse: null,
+    AppViewRefresh: { create: (config) => config }, api() {}, waitForSyncJob() {}, state: {}, todayIso: () => "2026-11-16",
+  });
+  ctx.resetNutritionView();
+  assert.ok(cleared.includes("nutritionEnergy"), "the previous athlete's table does not stay in the diary");
+  ctx.nutritionRefresh.reload("nutrition/diary");
+  assert.equal(resets, 1, "the diary refresh forgets the energy read");
+  assert.equal(loads.length, 1);
+});
+
 test("weekly chart averages observed days independently and preserves empty weeks", () => {
   const days = Array.from({ length: 84 }, (_, index) => ({ date: new Date(Date.UTC(2026, 0, index + 1)).toISOString().slice(0, 10), intake_kcal: null, expenditure_kcal: null }));
   days[0].intake_kcal = 0;

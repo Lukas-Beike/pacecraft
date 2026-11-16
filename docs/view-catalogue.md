@@ -38,9 +38,9 @@ Default route: `#coach`. Navigation items: `#coach`, `#plan`, `#nutrition`, `#an
 | `#more/equipment` | `settingsPanel` | `more` | `/api/context-preview`, `/api/logs?limit=250`, `/api/analysis/training-records` | Fahrrad, Laufschuhe, Wartung erledigt, Rückgängig | loading, empty, error, offline |
 | `#more/operations` | `settingsPanel` | `more` | `/api/context-preview`, `/api/logs?limit=250`, `/api/privacy/gps` | Logs herunterladen, Benachrichtigungen aktivieren, Daten exportieren, Lokale Daten löschen, Backup herunterladen, Backup wiederherstellen, Diagnose herunterladen, Diagnose löschen, Abmelden | loading, empty, error, offline |
 | `#more/profile` | `profilePanel` | `more` | `/api/context-preview`, `/api/logs?limit=250`, `/api/profile`, `/api/zones` | Athletenkontext speichern, Lokal speichern, Übernehmen | empty, offline |
-| `#nutrition` | `nutritionPanel` | `nutrition` | `/api/nutrition/day` | Ernährung aktualisieren, Vorheriger Tag, Nächster Tag, Heute, Löschen, Rückgängig, Erneut laden | loading, empty, error, offline |
+| `#nutrition` | `nutritionPanel` | `nutrition` | `/api/nutrition/day`, `/api/body/energy` | Ernährung aktualisieren, Vorheriger Tag, Nächster Tag, Heute, Löschen, Rückgängig, Erneut laden | loading, empty, error, offline |
 | `#nutrition/body` | `nutritionPanel` | `nutrition` | `/api/performance`, `/api/body/skinfolds`, `/api/body/energy` | Ernährung aktualisieren, Letzte 14 Tage, 12 Wochen, Hautfalten eintragen, Speichern, Löschen, Abbrechen | loading, empty, error, offline |
-| `#nutrition/diary` | `nutritionPanel` | `nutrition` | `/api/nutrition/day` | Ernährung aktualisieren, Vorheriger Tag, Nächster Tag, Heute, Löschen, Rückgängig, Erneut laden | loading, empty, error, offline |
+| `#nutrition/diary` | `nutritionPanel` | `nutrition` | `/api/nutrition/day`, `/api/body/energy` | Ernährung aktualisieren, Vorheriger Tag, Nächster Tag, Heute, Löschen, Rückgängig, Erneut laden | loading, empty, error, offline |
 | `#nutrition/products` | `nutritionPanel` | `nutrition` | `/api/nutrition/products?scope=all` | Barcode scannen, Nährwerttabelle fotografieren, Produkt manuell erfassen, Suchen | loading, empty, error, offline |
 | `#nutrition/week` | `nutritionPanel` | `nutrition` | `/api/nutrition/week` | Ernährung aktualisieren, Letzte 14 Tage, 12 Wochen, Tageswerte anzeigen | loading, empty, error, offline |
 | `#plan` | `workoutsPanel` | `plan` | `/api/plan`, `/api/library?limit=100`, `/api/activities?limit=100` | Kalender aktualisieren, Woche, Monat, Woche synchronisieren, Verschieben, Feedback, Mit dem Coach analysieren, Mit Coach lösen | loading, empty, error, notConfigured, offline |
@@ -88,8 +88,8 @@ expression. Other inline status lines are not listed.
 | `renderWeekReview` | `createErrorState` | (computed) ` error?.message \|\| "Konnte nicht geladen werden." ` |  |
 | `skinfoldCard` | `createLoadingState` | Hautfalten werden geladen… |  |
 | `skinfoldCard` | `h(.empty)` | Hautfalten konnten nicht geladen werden. |  |
-| `energyCards` | `createLoadingState` | Energieverbrauch wird geladen… |  |
-| `energyCards` | `h(.empty)` | Energieverbrauch konnte nicht geladen werden. |  |
+| `energyPending` | `createLoadingState` | Energieverbrauch wird geladen… |  |
+| `energyPending` | `h(.empty)` | Energieverbrauch konnte nicht geladen werden. |  |
 | `renderBodyAnalysis` | `h(.empty)` | Noch keine Körper-Historie verfügbar. |  |
 | `renderTrainingRecords` | `createLoadingState` | Ausrüstung wird geladen… |  |
 | `renderTrainingRecords` | `createErrorState` | (computed) ` error?.message ` |  |
@@ -105,7 +105,6 @@ expression. Other inline status lines are not listed.
 
 | Function | Helper | Text | Detail |
 | --- | --- | --- | --- |
-| `kcalValue` | `markValueMissing` | nicht erfasst |  |
 | `nutritionTotalTile` | `markValueMissing` | nicht erfasst |  |
 | `renderNutritionWeek` | `markValueMissing` | nicht erfasst |  |
 

@@ -344,7 +344,7 @@ test("the scan finds the state helper calls with their text and the confirmation
   assert.deepEqual(states.find((row) => row.fn === "loadPanel" && row.helper === "createLoadingState"), { file: "activity-analysis.js", fn: "loadPanel", helper: "createLoadingState", texts: ["Details werden geladen …"] });
   assert.deepEqual(plain(states.find((row) => row.helper === "createEmptyState" && row.fn === "analysisEmptyCard").texts), ["(computed) ` ANALYSIS_EMPTY_TITLES[segment] `", "(computed) ` cause `"]);
   assert.deepEqual([defaults.title, defaults.confirmLabel, defaults.text], ["Aktion bestätigen", "Bestätigen", "nicht erfasst"]);
-  assert.deepEqual(plain(states.find((row) => row.fn === "kcalValue").texts), ["nicht erfasst"]);
+  assert.deepEqual(plain(states.find((row) => row.fn === "nutritionTotalTile").texts), ["nicht erfasst"]);
   const discard = confirmations.find((row) => row.fn === "confirmDiscardDraft");
   assert.deepEqual([discard.message, discard.options.title], ["Ungespeicherte Änderungen verwerfen?", "Änderungen verwerfen?"]);
   assert.ok(confirmations.some((row) => row.message.startsWith("(computed)")));

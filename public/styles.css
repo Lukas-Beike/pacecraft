@@ -1802,6 +1802,7 @@ button:focus-visible, a:focus-visible, summary:focus-visible {
 .current-performance-table th { text-align: left; font-size: .85rem; font-weight: 500; }
 .current-performance-table th small { display: block; margin-top: 4px; color: var(--muted); font-size: .72rem; font-weight: 400; overflow-wrap: anywhere; }
 [data-skinfolds] .current-performance-table td { white-space: nowrap; padding-left: 8px; }
+[data-body-overview] tr[data-metric="body_fat_pct"] { cursor: pointer; }
 [data-energy] .current-performance-table td { white-space: nowrap; }
 [data-energy] thead th + th { text-align: right; padding-left: 12px; }
 [data-energy] th[data-color="1"] { --zone-color: var(--chart-series-1); }

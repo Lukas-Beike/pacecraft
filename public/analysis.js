@@ -1375,7 +1375,11 @@ function renderBodyOverviewRow(metric, title, unit, body, preferred) {
   const profileFat = metric === "body_fat_pct" ? bodyProfileFat(state.data?.profile) : null;
   let note = latest && dateLabel(latest.observed_at || latest.date);
   if (profileFat != null) note = "Profil";
-  return h("tr", { dataset: { metric } }, h("th", { scope: "row" }, title, note && h("small", null, note)), h("td", null, bodyOverviewDisplayValue(profileFat, latest, unit)));
+  const row = h("tr", { dataset: { metric } }, h("th", { scope: "row" }, title, note && h("small", null, note)), h("td", null, bodyOverviewDisplayValue(profileFat, latest, unit)),
+    h("td", null, metric === "body_fat_pct" ? skinfoldEditButton() : null));
+  // Body fat stays derived from the folds: tapping its row opens the skinfold dialog (#3252).
+  if (metric === "body_fat_pct") row.addEventListener("click", (event) => { if (!event.target.closest("button")) openSkinfoldDialog(); });
+  return row;
 }
 
 // 3-site skinfolds (#3099): the latest measurements with their Jackson-Pollock body fat, and
@@ -1528,6 +1532,7 @@ function loadEnergy() {
       if (generation !== energyGeneration) return;
       energyRequest = null;
       renderBodyAnalysis(state.data?.performance?.history?.body);
+      renderDiaryEnergy();
     });
 }
 
@@ -1545,18 +1550,7 @@ function energyNeatInputs(neat) {
   return parts.join(", ");
 }
 
-// How the values come about sits behind a small "i" (athlete decision 2026-11-16, #3255).
-let energyInfoId = 0;
-function energyInfo(read) {
-  const text = energyNeatInputs(read.basis?.neat);
-  if (!text) return [];
-  const button = h("button", { type: "button", className: "threshold-info", "aria-label": "Berechnung des Energieverbrauchs" }, "i");
-  const info = h("div", { className: "analysis-info-tooltip", id: `energy-info-${++energyInfoId}` }, text);
-  bindAnalysisPopover(button, info);
-  return [button, info];
-}
-
-function energyBasisNote(read) {
+function energyBasisText(read) {
   const { basis, skinfold } = read;
   const own = basis.insufficient
     ? `Aus deinen Daten: Datenbasis zu gering (${ENERGY_INSUFFICIENT[basis.insufficient] || basis.insufficient})`
@@ -1564,8 +1558,19 @@ function energyBasisNote(read) {
   const folds = skinfold
     ? `Falten vom ${dateLabel(skinfold.date)}, KFA ${analysisValue(skinfold.body_fat_pct, "%")}, fettfreie Masse ${analysisValue(skinfold.lean_mass_kg, "kg")}`
     : "Ohne Hautfaltenmessung der letzten 90 Tage keine Formelwerte";
-  return h("p", "analysis-reference-note", `kcal/Tag · ${own} · Formeln: Ruhe + eigene Aktivität + Verdauung · ${folds} · `
-    + "Bänder nominal 95 %, ohne Fehler beim Erfassen des Essens · Ruhe aus deinen Daten ist ein Rest (Gesamt − eigene Aktivität − Verdauung) und trägt deren Fehler mit");
+  return `kcal/Tag · ${own} · Formeln: Ruhe + eigene Aktivität + Verdauung · ${folds} · `
+    + "Bänder nominal 95 %, ohne Fehler beim Erfassen des Essens · Ruhe aus deinen Daten ist ein Rest (Gesamt − eigene Aktivität − Verdauung) und trägt deren Fehler mit";
+}
+
+// How the values come about sits behind one small "i": the basis, the formulas and NEAT's inputs
+// (athlete decisions 2026-11-16, #3252 and #3255); no helper text stays under the table.
+let energyInfoId = 0;
+function energyInfo(read) {
+  const text = [energyBasisText(read), energyNeatInputs(read.basis?.neat)].filter(Boolean).join(" · ");
+  const button = h("button", { type: "button", className: "threshold-info", "aria-label": "Berechnung des Energieverbrauchs" }, "i");
+  const info = h("div", { className: "analysis-info-tooltip", id: `energy-info-${++energyInfoId}` }, text);
+  bindAnalysisPopover(button, info);
+  return [button, info];
 }
 
 // The badge needs enough shared windows and a lead beyond the own band (athlete decision on #3187).
@@ -1617,7 +1622,7 @@ function energyTable(read) {
       h("td", null, row.resting_implausible ? ENERGY_IMPLAUSIBLE : energyKcal(row.resting_kcal, row.resting_band_kcal)),
       h("td", null, energyKcal(row.total_kcal, row.total_band_kcal))), energySplitRow(row)].filter(Boolean);
   });
-  return h("table", { className: "current-performance-table" }, h("caption", null, "Energieverbrauch", ...energyInfo(read)),
+  return h("table", { className: "current-performance-table" }, h("caption", null, "Energieverbrauch ", ...energyInfo(read)),
     h("thead", null, h("tr", null, h("th", { scope: "col" }, "Quelle"), h("th", { scope: "col" }, "Ruhe"), h("th", { scope: "col" }, "Tag gesamt"))),
     h("tbody", null, rows));
 }
@@ -1636,13 +1641,41 @@ function energyFitCharts(read) {
   return chart ? [chart] : [];
 }
 
-function energyCards() {
+// The read's loading or failure card, or null once it is there; the first call starts the read.
+function energyPending() {
   if (!energyRead) {
     loadEnergy();
-    return [h("section", "analysis-chart-card", createLoadingState("Energieverbrauch wird geladen…"))];
+    return h("section", "analysis-chart-card", createLoadingState("Energieverbrauch wird geladen…"));
   }
-  if (energyRead.failed) return [h("section", "analysis-chart-card", h("p", "empty", "Energieverbrauch konnte nicht geladen werden."))];
-  return [h("section", { className: "analysis-chart-card", dataset: { energy: "" } }, energyTable(energyRead), energySplitLegend(energyRead), energyFitNote(energyRead), energyBasisNote(energyRead)), ...energyFitCharts(energyRead)];
+  return energyRead.failed ? h("section", "analysis-chart-card", h("p", "empty", "Energieverbrauch konnte nicht geladen werden.")) : null;
+}
+
+// The table sits in the diary in place of the former Garmin expenditure card (#3252).
+function energyDiaryCards() {
+  const pending = energyPending();
+  if (pending) return [pending];
+  return [h("section", { className: "analysis-chart-card", dataset: { energy: "" } }, energyTable(energyRead), energySplitLegend(energyRead))];
+}
+
+// Which source meets the weight stays under Körper: the fit chart with its comparison note (#3252).
+function energyBodyCards() {
+  const pending = energyPending();
+  if (pending) return [pending];
+  const note = energyFitNote(energyRead);
+  const [chart] = energyFitCharts(energyRead);
+  if (chart) chart.append(note);
+  return [chart || h("section", { className: "analysis-chart-card", dataset: { energyFit: "" } }, h("h3", null, "Welche Quelle trifft dein Gewicht?"), note)];
+}
+
+function renderDiaryEnergy() {
+  const totals = document.querySelector("#nutritionTotals");
+  if (!totals) return;
+  let slot = document.querySelector("#nutritionEnergy");
+  if (!slot) {
+    slot = h("div", { id: "nutritionEnergy" });
+    totals.after(slot);
+  }
+  slot.replaceChildren(...energyDiaryCards());
 }
 
 function renderBodyAnalysis(body) {
@@ -1657,7 +1690,7 @@ function renderBodyAnalysis(body) {
   const preferred = body?.preferred_providers || {};
   const rows = h("tbody", null, metrics.map(([metric, title, unit]) => renderBodyOverviewRow(metric, title, unit, body, preferred)));
   root.append(h("section", "analysis-chart-card", h("table", { className: "current-performance-table", dataset: { bodyOverview: "" } }, h("caption", null, "Körperwerte"), rows)));
-  root.append(skinfoldCard(), ...energyCards());
+  root.append(skinfoldCard(), ...energyBodyCards());
   const key = bodyHistoryPeriod === "fortnight" ? "14d" : "12w";
   const window = body?.windows?.[key];
   root.append(analysisPeriodControls("Zeitraum für Körper", bodyHistoryPeriod, (period) => {
