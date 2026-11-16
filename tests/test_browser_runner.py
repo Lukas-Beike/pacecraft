@@ -593,10 +593,24 @@ class BrowserRunnerTests(unittest.TestCase):
         # The manifest still names the rejected image and never reached the browser.
         self.assertIs(False, value["images"]["application_matches_source"])
         self.assertNotIn("browser", value["images"])
-        # An image that cannot be compared runs with a warning; a current one silently.
-        code, _value, _path = self.run_main(FakeProcesses(), current=None)
-        self.assertEqual(code, 0)
-        self.assertIn("could not compare", self.stderr)
+        # An image that cannot be compared stops before any fixture too (#3243);
+        # its children would otherwise stay "pending" without an error line.
+        fake = FakeProcesses()
+        code, value, _path = self.run_main(fake, current=None)
+        self.assertNotEqual(code, 0)
+        self.assertIn("could not compare", value["error"])
+        self.assertIn("--build", value["error"])
+        self.assertFalse(fake.ids)
+        # A current image runs silently, and --build rebuilds one it cannot compare.
+        unknown = FakeProcesses()
+        code, _value, _path = self.run_main(
+            unknown, current=[None, True], extra_args=("--build",)
+        )
+        self.assertEqual(code, 0, self.stderr)
+        self.assertIn(
+            ["docker", "build", "-t", runner.worktree_image_tag(runner.ROOT), "."],
+            unknown.commands,
+        )
         self.run_main(FakeProcesses(), current=True)
         self.assertNotIn("Warning", self.stderr)
         build = ["docker", "build", "-t", runner.worktree_image_tag(runner.ROOT), "."]

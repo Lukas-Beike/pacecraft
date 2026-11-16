@@ -1623,7 +1623,8 @@ def main(argv=None):
                             if not args.build:
                                 raise
                             current = False  # missing: --build builds it (#3106)
-                        if current is False and args.build:
+                        # An image that cannot be compared is rebuilt as well (#3243).
+                        if current is not True and args.build:
                             print(
                                 f"Building {args.image} from this checkout",
                                 file=sys.stderr,
@@ -1652,13 +1653,13 @@ def main(argv=None):
                                 f"{args.image} does not match the application source of "
                                 f"this checkout; rebuild it with {rebuild}"
                             )
+                        # Children against an image of unknown state stayed "pending"
+                        # without an error line (#3243): unknown stops the run as well.
                         if current is None:
-                            print(
-                                f"Warning: could not compare {args.image} with the "
-                                "application source; if public/, backend/, server.py or "
-                                f"requirements.txt changed, rebuild it with {rebuild}",
-                                file=sys.stderr,
-                                flush=True,
+                            raise RunnerError(
+                                f"could not compare {args.image} with the application "
+                                f"source of this checkout; rebuild it with {rebuild} "
+                                "or pass --build"
                             )
                         browser = verify_browser(
                             ROOT, args, node, versions, processes, containers, private
