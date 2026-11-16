@@ -111,7 +111,7 @@ PINNED: Final[dict[str, tuple[tuple[int, ...], str]]] = {
     ),
     "fit_activity_detail_mapping": (
         (10, 11),
-        "036ab6d64a5efdd6531684e102b76af583728dd868a80359d394ab6f06be7ca9",
+        "267313eeefe05a14077e78388a5e73d6749340b02399205950aa0120a2dce852",
     ),
     "fit_file": (
         (10, 11),
