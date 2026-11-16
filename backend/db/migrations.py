@@ -5,7 +5,7 @@ by release 2.0.5. Older databases and backups are rejected unchanged; upgrade
 them with release 2.0.5 first. The baseline keeps its frozen fixture in
 tests/fixtures and its digest in backend.db.schema_history; each later schema
 adds one upgrade step here, so the baseline reaches the current schema.
-Released later schemas (v27 to v30) keep only their digests and enter the
+Released later schemas (v27 to v31) keep only their digests and enter the
 chain there.
 """
 
@@ -32,6 +32,7 @@ from backend.db.schema_history import (
     SHAPE_SCHEMA_V28,
     SHAPE_SCHEMA_V29,
     SHAPE_SCHEMA_V30,
+    SHAPE_SCHEMA_V31,
     released_shape,
 )
 
@@ -417,11 +418,68 @@ def _device_workout(db: Any) -> None:
     execute_ddl(db, _V31_DEVICE_WORKOUT_DDL)
 
 
+# The v31 diary columns, copied unchanged into the v32 table.
+_V31_NUTRITION_LOG_COLUMNS: Final = (
+    "id, nutrition_basis, meal_date, logged_at, meal_type, description, kcal, "
+    "carbs_g, protein_g, fat_g, source, sync_state, created_at, updated_at, "
+    "logged_time_known"
+)
+# Frozen copy of the v32 diary table (#2364); the live DDL may change later.
+_V32_NUTRITION_LOGS_DDL: Final = """
+    CREATE TABLE nutrition_logs (
+        id TEXT PRIMARY KEY,
+        nutrition_basis TEXT NOT NULL DEFAULT '{}',
+        meal_date TEXT NOT NULL,
+        logged_at TEXT NOT NULL,
+        meal_type TEXT NOT NULL CHECK(meal_type IN ('breakfast', 'lunch', 'dinner', 'snack', 'pre_session', 'during_session')),
+        description TEXT NOT NULL,
+        kcal INTEGER NOT NULL CHECK(kcal >= 0),
+        carbs_g REAL,
+        protein_g REAL,
+        fat_g REAL,
+        source TEXT NOT NULL DEFAULT 'manual',
+        sync_state TEXT NOT NULL DEFAULT 'local',
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        logged_time_known INTEGER NOT NULL DEFAULT 1,
+        volume_ml REAL CHECK(volume_ml IS NULL OR (typeof(volume_ml) IN ('integer', 'real') AND volume_ml >= 0)),
+        session_id TEXT CHECK(session_id IS NULL OR (session_id <> '' AND meal_type IN ('pre_session', 'during_session')))
+    );
+    CREATE INDEX idx_nutrition_logs_date ON nutrition_logs(meal_date, logged_at DESC);
+    CREATE INDEX idx_nutrition_logs_session ON nutrition_logs(session_id) WHERE session_id IS NOT NULL"""
+
+
+def _session_fuelling(db: Any) -> None:
+    """Schema v32: the diary gains session slots, a drink volume and a session.
+
+    SQLite cannot change a CHECK, so the table is rebuilt the v27 way: the old
+    table is renamed, the frozen v32 table created and every row copied with
+    explicit columns; the new columns stay NULL (#3234).
+    """
+    db.execute("DROP INDEX idx_nutrition_logs_date")
+    db.execute("ALTER TABLE nutrition_logs RENAME TO nutrition_logs_v31")
+    execute_ddl(db, _V32_NUTRITION_LOGS_DDL)
+    db.execute(
+        f"INSERT INTO nutrition_logs({_V31_NUTRITION_LOG_COLUMNS}) "
+        f"SELECT {_V31_NUTRITION_LOG_COLUMNS} FROM nutrition_logs_v31"
+    )
+    copied, kept = (
+        db.execute(f"SELECT COUNT(*) AS row_count FROM {table}").fetchone()["row_count"]
+        for table in ("nutrition_logs", "nutrition_logs_v31")
+    )
+    if copied != kept:
+        raise RuntimeError(
+            "Die Ernährungseinträge wurden nicht vollständig übernommen."
+        )
+    db.execute("DROP TABLE nutrition_logs_v31")
+
+
 # Released shape -> (next shape, step).
 UPGRADE_STEPS: Final[Mapping[str, tuple[str, Callable[[Any], None]]]] = {
     SHAPE_SCHEMA_V26: (SHAPE_SCHEMA_V27, _canonical_products),
     SHAPE_SCHEMA_V27: (SHAPE_SCHEMA_V28, _calendar_decisions),
     SHAPE_SCHEMA_V28: (SHAPE_SCHEMA_V29, _competition_location),
     SHAPE_SCHEMA_V29: (SHAPE_SCHEMA_V30, _session_curves),
-    SHAPE_SCHEMA_V30: (SHAPE_CURRENT, _device_workout),
+    SHAPE_SCHEMA_V30: (SHAPE_SCHEMA_V31, _device_workout),
+    SHAPE_SCHEMA_V31: (SHAPE_CURRENT, _session_fuelling),
 }

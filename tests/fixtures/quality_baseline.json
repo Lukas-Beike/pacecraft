@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "base": "b8fbe1073ebde09610e52fefdcdfdc61753c9fce",
+  "base": "8aab509e0b94266ec0db71b4e25066642cf27aa4",
   "versions": {
     "ruff": "0.17.5",
     "mypy": "2.4.1"
@@ -915,12 +915,6 @@
     {
       "tool": "format",
       "path": "tests/test_css_design_tokens.py",
-      "code": "format",
-      "message_sha256": "f87c4a0ecaf8e40a8d167170353b2aeb564e58f72247b4568c3db29c296f105f"
-    },
-    {
-      "tool": "format",
-      "path": "tests/test_database_restore_validation.py",
       "code": "format",
       "message_sha256": "f87c4a0ecaf8e40a8d167170353b2aeb564e58f72247b4568c3db29c296f105f"
     },

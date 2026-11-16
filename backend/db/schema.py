@@ -19,7 +19,7 @@ from backend.canonical.vocabulary import (
     ProviderRecordState,
 )
 
-CURRENT_SCHEMA_VERSION = 31
+CURRENT_SCHEMA_VERSION = 32
 
 # Provider-neutral canonical tables (schema version 6). Only closed lifecycle
 # enums are CHECKed here; they are generated from backend.canonical.vocabulary so
@@ -661,6 +661,33 @@ DEVICE_WORKOUT_DDL = """
     ALTER TABLE activity_detail_sets ADD COLUMN workout_steps TEXT CHECK (workout_steps IS NULL OR (detail_kind = 'laps' AND json_valid(workout_steps) AND json_type(workout_steps) = 'array'));
     ALTER TABLE activity_detail_sets ADD COLUMN device_zones TEXT CHECK (device_zones IS NULL OR (detail_kind = 'streams' AND json_valid(device_zones) AND json_type(device_zones) = 'object'))"""
 
+# Schema version 32: the diary's meal before and during a session (#3234). Two
+# session slots join the meal types; an entry may carry its drink volume in ml
+# (NULL means not stated, never 0) and, in a session slot only, the local
+# session it belongs to (resolved on read through session merges).
+NUTRITION_LOGS_DDL = """
+    CREATE TABLE nutrition_logs (
+        id TEXT PRIMARY KEY,
+        nutrition_basis TEXT NOT NULL DEFAULT '{}',
+        meal_date TEXT NOT NULL,
+        logged_at TEXT NOT NULL,
+        meal_type TEXT NOT NULL CHECK(meal_type IN ('breakfast', 'lunch', 'dinner', 'snack', 'pre_session', 'during_session')),
+        description TEXT NOT NULL,
+        kcal INTEGER NOT NULL CHECK(kcal >= 0),
+        carbs_g REAL,
+        protein_g REAL,
+        fat_g REAL,
+        source TEXT NOT NULL DEFAULT 'manual',
+        sync_state TEXT NOT NULL DEFAULT 'local',
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        logged_time_known INTEGER NOT NULL DEFAULT 1,
+        volume_ml REAL CHECK(volume_ml IS NULL OR (typeof(volume_ml) IN ('integer', 'real') AND volume_ml >= 0)),
+        session_id TEXT CHECK(session_id IS NULL OR (session_id <> '' AND meal_type IN ('pre_session', 'during_session')))
+    );
+    CREATE INDEX idx_nutrition_logs_date ON nutrition_logs(meal_date, logged_at DESC);
+    CREATE INDEX idx_nutrition_logs_session ON nutrition_logs(session_id) WHERE session_id IS NOT NULL"""
+
 
 def execute_ddl(db: Any, ddl: str) -> None:
     """Run DDL statement by statement inside the caller's transaction.
@@ -948,22 +975,6 @@ def _create_schema_statements(db: Any) -> None:
         payload TEXT NOT NULL,
         updated_at TEXT NOT NULL
     );
-    CREATE TABLE nutrition_logs (
-        id TEXT PRIMARY KEY,
-        nutrition_basis TEXT NOT NULL DEFAULT '{}',
-        meal_date TEXT NOT NULL,
-        logged_at TEXT NOT NULL,
-        meal_type TEXT NOT NULL CHECK(meal_type IN ('breakfast', 'lunch', 'dinner', 'snack')),
-        description TEXT NOT NULL,
-        kcal INTEGER NOT NULL CHECK(kcal >= 0),
-        carbs_g REAL,
-        protein_g REAL,
-        fat_g REAL,
-        source TEXT NOT NULL DEFAULT 'manual',
-        sync_state TEXT NOT NULL DEFAULT 'local',
-        created_at TEXT NOT NULL,
-        updated_at TEXT NOT NULL , logged_time_known INTEGER NOT NULL DEFAULT 1);
-    CREATE INDEX idx_nutrition_logs_date ON nutrition_logs(meal_date, logged_at DESC);
     CREATE TABLE nutrition_sync_dates (
         meal_date TEXT PRIMARY KEY,
         revision INTEGER NOT NULL DEFAULT 1,
@@ -1008,6 +1019,7 @@ def _create_schema_statements(db: Any) -> None:
     execute_ddl(db, COMPETITION_LOCATION_DDL)
     execute_ddl(db, SESSION_CURVES_DDL)
     execute_ddl(db, DEVICE_WORKOUT_DDL)
+    execute_ddl(db, NUTRITION_LOGS_DDL)
     db.execute(f"PRAGMA user_version = {CURRENT_SCHEMA_VERSION}")
 
 

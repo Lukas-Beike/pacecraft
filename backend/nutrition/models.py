@@ -108,12 +108,19 @@ class NutritionEntry:
     logged_time_known: bool = True
     # The athlete estimated the amounts (restaurant, eating with friends) (#3100).
     estimate_uncertain: bool = False
+    # Schema v32 (#3234): the drink volume in ml (None: not stated) and, in a
+    # session slot only, the local session the entry belongs to.
+    volume_ml: float | None = None
+    session_id: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> NutritionEntry:
+        def number(key: str) -> float | None:
+            return None if data.get(key) is None else float(data[key])
+
         return cls(
             id=str(data.get("id") or ""),
             meal_date=str(data.get("meal_date") or ""),
@@ -121,11 +128,9 @@ class NutritionEntry:
             meal_type=str(data.get("meal_type") or "snack"),
             description=str(data.get("description") or ""),
             kcal=int(data.get("kcal") or 0),
-            carbs_g=float(data["carbs_g"]) if data.get("carbs_g") is not None else None,
-            protein_g=float(data["protein_g"])
-            if data.get("protein_g") is not None
-            else None,
-            fat_g=float(data["fat_g"]) if data.get("fat_g") is not None else None,
+            carbs_g=number("carbs_g"),
+            protein_g=number("protein_g"),
+            fat_g=number("fat_g"),
             source=str(data.get("source") or "manual"),
             sync_state=str(data.get("sync_state") or "local"),
             created_at=str(data.get("created_at") or ""),
@@ -133,6 +138,8 @@ class NutritionEntry:
             nutrition_basis=data.get("nutrition_basis") or {},
             logged_time_known=_logged_time_known_flag(data.get("logged_time_known")),
             estimate_uncertain=_estimate_uncertain_flag(data.get("estimate_uncertain")),
+            volume_ml=number("volume_ml"),
+            session_id=str(data.get("session_id") or "") or None,
         )
 
 
