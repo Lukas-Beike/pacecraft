@@ -45,6 +45,10 @@ START_REP_S: Final = 90.0
 # Variability leaves out the first 10 s of acceleration.
 SETTLE_S: Final = 10.0
 ERG_VARIABILITY_PCT: Final = 3.0
+# A ride without power has no output: its raw speed is no effort signal (#3288).
+NO_POWER_REASON: Final = (
+    "Leistung fehlt; die Geschwindigkeit ist bei Radfahrten kein Leistungsmaß."
+)
 # A ride's speed in these is virtual (game terrain or trainer), never an effort (#3288).
 INDOOR_ENVIRONMENTS: Final = frozenset({"indoor", "virtual"})
 # Shorter laps are lap-button slips; short work or rest laps of 15 s stay.
@@ -93,9 +97,8 @@ def session_execution(
     streams = activity.get("streams") or {}
     times = streams.get("time") or []
     channel = _output_channel(sport, streams, len(times))
-    reason = _missing_input(times, channel, ride=sport == "ride")
-    if reason is not None or channel is None:
-        return {**base, "status": "insufficient_data", "reason": reason}
+    if channel is None or _missing_input(times, channel) is not None:
+        return _without_output(base, activity, sport, streams, channel)
     reader = _Reader(sport, streams, channel)
     laps, origin = _classified_laps(activity.get("laps") or [], reader)
     structure = "continuous" if origin == "no_work_laps" else "interval"
@@ -125,6 +128,83 @@ def session_execution(
     return result
 
 
+def _without_output(
+    base: Mapping[str, Any],
+    activity: Mapping[str, Any],
+    sport: str,
+    streams: Mapping[str, Any],
+    channel: str | None,
+) -> dict[str, Any]:
+    """A session without a usable output: a ride without power by heart rate
+    (#3293), else why it cannot be described."""
+    times = streams.get("time") or []
+    reason = _missing_input(times, channel, ride=sport == "ride")
+    if reason == NO_POWER_REASON and _has_heart_rate(streams, len(times)):
+        return _heart_rate_only(base, activity, streams)
+    return {**base, "status": "insufficient_data", "reason": reason}
+
+
+def _has_heart_rate(streams: Mapping[str, Any], length: int) -> bool:
+    values = streams.get("heartrate")
+    return (
+        isinstance(values, list)
+        and len(values) == length
+        and any(
+            (number := _number(value)) is not None and number > 0 for value in values
+        )
+    )
+
+
+def _heart_rate_only(
+    base: Mapping[str, Any], activity: Mapping[str, Any], streams: Mapping[str, Any]
+) -> dict[str, Any]:
+    """A ride without power: its labelled work laps by heart rate alone (#3293).
+
+    Work and recovery come only from the device's lap labels, never from speed;
+    without them the ride is continuous. There is no output.
+    """
+    reader = _Reader("ride", streams, "heartrate")
+    laps, origin = _classified_laps(activity.get("laps") or [], None)
+    times = streams["time"]
+    result: dict[str, Any] = {
+        **base,
+        "status": "ok",
+        "output": None,
+        "output_unit": None,
+        "output_reason": NO_POWER_REASON,
+        "structure": "continuous" if origin == "no_work_laps" else "interval",
+        "structure_origin": origin,
+        "data_quality": _data_quality("ride", streams),
+        "duration_s": round(float(times[-1] - times[0])),
+    }
+    if origin == "no_work_laps":
+        return result
+    works = [index for index, lap in enumerate(laps) if lap["kind"] == _WORK]
+    reps, recoveries = [], []
+    for number, index in enumerate(works[:MAX_REPS], start=1):
+        start, end = laps[index]["start"], laps[index]["end"]
+        reps.append(
+            _drop_none(
+                {
+                    "rep": number,
+                    "start_s": round(start),
+                    "duration_s": round(end - start),
+                    "heart_rate_avg": reader.heart_rate(start, end),
+                    "heart_rate_peak": reader.peak("heartrate", start, end),
+                    "heart_rate_end": reader.heart_rate(max(start, end - 10.0), end),
+                    "cadence": reader.cadence(start, end),
+                    "short": end - start < SHORT_REP_S,
+                }
+            )
+        )
+        rest = _rest_after(laps, index)
+        if rest is not None:
+            recoveries.append(
+                {"after_rep": number, **_recovery(rest, reader, output=False)}
+            )
+    return {**result, "reps": reps, "recoveries": recoveries}
+
+
 def _missing_input(
     times: Sequence[Any], channel: str | None, *, ride: bool = False
 ) -> str | None:
@@ -138,7 +218,7 @@ def _missing_input(
         return "Zu kurze oder fehlende Messreihe."
     if channel is None:
         if ride:
-            return "Leistung fehlt; die Geschwindigkeit ist bei Radfahrten kein Leistungsmaß."
+            return NO_POWER_REASON
         return "Tempo oder Leistung fehlt."
     return None
 
@@ -495,12 +575,14 @@ def _rest_after(laps: Sequence[Mapping[str, Any]], index: int) -> dict[str, Any]
     return {"start": following[0]["start"], "end": following[-1]["end"]}
 
 
-def _recovery(lap: Mapping[str, Any], reader: _Reader) -> dict[str, Any]:
+def _recovery(
+    lap: Mapping[str, Any], reader: _Reader, *, output: bool = True
+) -> dict[str, Any]:
     start, end = lap["start"], lap["end"]
     item: dict[str, Any] = {
         "start_s": round(start),
         "duration_s": round(end - start),
-        "output": reader.shown(reader.raw_output(start, end)),
+        "output": reader.shown(reader.raw_output(start, end)) if output else None,
         "heart_rate_avg": reader.heart_rate(start, end),
         "heart_rate_end": reader.heart_rate(max(start, end - 10.0), end),
     }
@@ -558,13 +640,14 @@ def _halves(
 
 
 def _classified_laps(
-    raw: Sequence[Mapping[str, Any]], reader: _Reader
+    raw: Sequence[Mapping[str, Any]], reader: _Reader | None
 ) -> tuple[list[dict[str, Any]], str]:
     """Laps with a work, recovery, warm-up or cool-down role, and their origin.
 
     Intervals need at least two work laps with a non-work lap between each
     pair; otherwise the session is continuous and keeps only the provider's
-    own warm-up and cool-down labels.
+    own warm-up and cool-down labels. Without a ``reader`` only the device's
+    labels count; no roles are inferred from an output (#3293).
     """
     laps: list[dict[str, Any]] = [
         {
@@ -582,7 +665,7 @@ def _classified_laps(
     labelled = [lap["kind"] == _WORK for lap in laps]
     if _alternates(labelled):
         return _with_roles(laps, labelled), "lap_kinds"
-    if not any(labelled):
+    if reader is not None and not any(labelled):
         inferred = _faster_laps(laps, reader)
         if inferred is not None and _alternates(inferred):
             return _with_roles(laps, inferred), "lap_output"

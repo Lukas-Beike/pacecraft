@@ -298,15 +298,36 @@ class SessionExecutionTests(unittest.TestCase):
         )
 
     def test_a_ride_without_power_never_falls_back_to_its_raw_speed(self) -> None:
-        # #3288 (athlete): a ride's raw speed is no effort signal, indoors (virtual)
-        # or outdoors (gradient and wind); without power the ride has no output.
+        # #3288/#3293 (athlete): a ride's raw speed is no effort signal, indoors or
+        # outdoors. Without power there is no output; the device's labelled laps
+        # are read by heart rate only.
         for environment in ("virtual", "indoor", "outdoor"):
             session = erg_ride()
             del session["streams"]["watts"]
             session["environment"] = environment
             found = session_execution(session)
-            self.assertEqual(found["status"], "insufficient_data", environment)
-            self.assertIn("kein Leistungsmaß", found["reason"])
+            self.assertIsNone(found["output_unit"], environment)
+            self.assertIn("kein Leistungsmaß", found["output_reason"])
+            self.assertEqual(found["structure_origin"], "lap_kinds")
+            for rep in found["reps"]:
+                self.assertNotIn("output", rep)
+                self.assertIn("heart_rate_end", rep)
+
+    def test_a_ride_without_power_or_labels_infers_no_laps_from_speed(self) -> None:
+        # #3293: unlabelled laps stay continuous; speed never makes work laps.
+        session = erg_ride()
+        del session["streams"]["watts"]
+        for lap in session["laps"]:
+            lap["kind"] = "lap"
+        found = session_execution(session)
+        self.assertEqual(found["structure"], "continuous")
+        self.assertNotIn("reps", found)
+
+    def test_a_ride_without_power_or_heart_rate_has_no_description(self) -> None:
+        session = erg_ride()
+        del session["streams"]["watts"]
+        del session["streams"]["heartrate"]
+        self.assertEqual(session_execution(session)["status"], "insufficient_data")
 
     def test_short_labelled_rests_keep_the_session_an_interval_one(self) -> None:
         segments: list[tuple[str, int, float, tuple[float, float]]] = [

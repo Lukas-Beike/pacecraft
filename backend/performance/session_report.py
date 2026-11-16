@@ -70,6 +70,10 @@ DECOUPLING_PCT: Final = 5.0
 FADE_PCT: Final = 3.0
 # Cardiac drift across reps at equal output, the decoupling rule applied to reps.
 CARDIAC_DRIFT_PCT: Final = 5.0
+# A ride without power (athlete, #3293): heart rate only, on labelled work laps
+# this long and within this share of each other's duration.
+HEART_RATE_RISE_MIN_S: Final = 180.0
+HEART_RATE_RISE_DURATION_SHARE: Final = 0.10
 # Easy, recovery and long sessions: share of moving time above zone 2 (Seiler; #2830).
 EASY_ABOVE_SHARE_PCT: Final = 10.0
 # Ride steadiness: variability index (Coggan / Allen, TrainingPeaks: <= 1.05 steady).
@@ -146,6 +150,7 @@ GATES: Final[dict[str, frozenset[str]]] = {
     "pace_at_heart_rate": frozenset({"heart_rate"}),
     "erg_heart_rate": frozenset({"heart_rate"}),
     "cardiac_drift": frozenset({"heart_rate", "speed"}),
+    "heart_rate_rise": frozenset({"heart_rate"}),
     "stride_halves": frozenset({"speed"}),
     "main_fade": frozenset({"speed"}),
     "steadiness": frozenset({"speed"}),
@@ -183,6 +188,7 @@ _WEIGHT: Final = {
     "plan_load": 3,
     "decoupling": 3,
     "cardiac_drift": 3,
+    "heart_rate_rise": 3,
     "within_rep_fade": 3,
     "main_fade": 3,
     "start_change": 2,
@@ -310,7 +316,10 @@ class _Facts:
         return f"Datenqualität Herzfrequenz: {self.heart_rate_quality}."
 
     def output_unknown(self) -> str | None:
-        """Why output checks cannot judge a speed-based output whose speed jumps."""
+        """Why output checks cannot judge: no output (a ride without power), or a
+        speed-based output whose speed jumps."""
+        if reason := self.execution.get("output_reason"):
+            return str(reason)
         speed_based = self.execution.get("output_unit") != "W"
         if speed_based and self.speed_quality not in (None, "ok"):
             return f"Datenqualität Tempo: {self.speed_quality}."
@@ -673,6 +682,15 @@ def _heart_rate_cap(facts: _Facts, cap: Mapping[str, Any]) -> dict[str, Any]:
 def _continuous_checks(facts: _Facts) -> list[dict[str, Any]]:
     """A session without intervals: steadiness, and the fade of a tempo effort."""
     checks: list[dict[str, Any]] = []
+    if _without_power(facts):
+        checks.append(
+            _unknown(
+                "heart_rate_rise",
+                _HEART_RATE_RISE_TITLE,
+                "Keine Arbeits- und Erholungsrunden vom Gerät; Abschnitte werden "
+                "nicht aus der Geschwindigkeit abgeleitet.",
+            )
+        )
     if facts.sport == "ride":
         checks.append(_ride_steadiness(facts))
         if (intensity := _ride_intensity(facts)) is not None:
@@ -714,9 +732,69 @@ def _interval_checks(facts: _Facts) -> list[dict[str, Any]]:
         *_rep_targets(facts),
         *pacing,
         _cardiac_drift(facts, reps),
+        *([_heart_rate_rise(facts, reps)] if _without_power(facts) else ()),
         *_recovery_checks(facts),
         *(_climb_cadence(facts, reps) if facts.sport == "ride" else ()),
     ]
+
+
+_HEART_RATE_RISE_TITLE: Final = "Puls-Anstieg über die Wiederholungen"
+
+
+def _without_power(facts: _Facts) -> bool:
+    """A ride the report judges on heart rate alone: it recorded no power (#3293)."""
+    return facts.sport == "ride" and facts.execution.get("output_reason") is not None
+
+
+def _heart_rate_rise(
+    facts: _Facts, reps: Sequence[Mapping[str, Any]]
+) -> dict[str, Any]:
+    """Closing heart rate of the last against the first long work lap (#3293).
+
+    A ride without power: only heart rate judges it, on labelled work laps of at
+    least 3 min (heart rate trails shorter efforts) and of equal length (within
+    10 %). Without power it stays open whether the effort or fatigue rose.
+    """
+    title = _HEART_RATE_RISE_TITLE
+    if reason := facts.heart_rate_unknown():
+        return _unknown("heart_rate_rise", title, reason)
+    long = [
+        rep
+        for rep in reps
+        if (_number(rep.get("duration_s")) or 0) >= HEART_RATE_RISE_MIN_S
+        and _number(rep.get("heart_rate_end")) is not None
+    ]
+    if len(long) < 2:
+        return _unknown(
+            "heart_rate_rise",
+            title,
+            "nicht bewertbar: Puls folgt kurzen Belastungen zu träge (unter 3 min)",
+        )
+    first, last = long[0], long[-1]
+    first_s, last_s = float(first["duration_s"]), float(last["duration_s"])
+    if abs(last_s / first_s - 1) > HEART_RATE_RISE_DURATION_SHARE:
+        return _unknown(
+            "heart_rate_rise",
+            title,
+            "Erste und letzte lange Wiederholung sind nicht gleich lang (über 10 %).",
+        )
+    rise = (float(last["heart_rate_end"]) / float(first["heart_rate_end"]) - 1) * 100
+    return _judged(
+        "heart_rate_rise",
+        title,
+        value={
+            "first_rep": first.get("rep"),
+            "last_rep": last.get("rep"),
+            "first_heart_rate_end": first["heart_rate_end"],
+            "last_heart_rate_end": last["heart_rate_end"],
+            "rise_pct": round(rise, 1),
+        },
+        unit="%",
+        rule="Puls am Ende der letzten gegen die erste gleich lange Arbeitsrunde ab 3 min; ohne Leistung bleibt offen, ob die Belastung oder die Ermüdung stieg",
+        threshold=CARDIAC_DRIFT_PCT,
+        measure=rise,
+        basis="fixed",
+    )
 
 
 def _not_applicable(key: str, title: str) -> dict[str, Any]:
