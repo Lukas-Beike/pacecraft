@@ -490,6 +490,7 @@ class CoachActivityReadToolServiceTests(unittest.TestCase):
         # day (never the session or a later one that day) and its local IF feed
         # the RPE check.
         activity_read = Mock()
+        activity_read.summaries_between.return_value = []
         activity_read.rated_sessions.return_value = [
             {"id": f"r{n}", "sport": "run", "intensity": 80.0, "rpe": 5}
             | {"rpe_scale": "cr10"}
@@ -848,9 +849,13 @@ class CoachActivityReadToolServiceTests(unittest.TestCase):
             "backend.performance.activity_read_service.current_performance_context",
             return_value={},
         ) as project:
-            service.execute("get_activity_details", {"activity_id": "synthetic-1"})
+            result = service.execute(
+                "get_activity_details", {"activity_id": "synthetic-1"}
+            )
         canonical = project.call_args.kwargs["canonical"]
         self.assertIsNotNone(canonical.recovery)
+        self.assertIsInstance(result["recovery_before"], list)
+        # The night before (#3084 3c G) comes from this same read, not a second one.
         selector.reader_for.assert_called_once()
         served_kinds = {
             call.args[1]

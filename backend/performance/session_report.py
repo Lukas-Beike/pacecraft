@@ -18,6 +18,7 @@ from __future__ import annotations
 import statistics
 from bisect import bisect_left
 from collections.abc import Mapping, Sequence
+from datetime import date
 from itertools import pairwise
 from typing import Any, Final
 
@@ -139,6 +140,8 @@ _WEIGHT: Final = {
     "strength_before": 0,
     "heat": 0,
     "hills": 0,
+    "recovery_before": 0,
+    "prior_load": 0,
     # Strength plan against sets (athlete, #3084 3c B): a plan check.
     "strength_sets": 3,
 }
@@ -1839,6 +1842,12 @@ def _fact_checks(facts: _Facts) -> list[dict[str, Any]]:
     weather = _mapping(facts.result.get("weather"))
     if weather and facts.sport in ("run", "ride"):
         checks.append(_heat(facts, weather))
+    inputs = _mapping(facts.result.get(session_conditions.INPUTS))
+    if facts.sport in ("run", "ride"):
+        if isinstance(facts.result.get("recovery_before"), list):
+            checks.append(_recovery_before(facts, facts.result["recovery_before"]))
+        if isinstance(inputs.get("daily_loads"), Mapping):
+            checks.append(_prior_load(facts, inputs["daily_loads"]))
     reps = [
         rep for rep in facts.execution.get("reps") or () if isinstance(rep, Mapping)
     ]
@@ -1962,21 +1971,7 @@ def _heat(facts: _Facts, weather: Mapping[str, Any]) -> dict[str, Any]:
     apparent = _number(weather.get("apparent_temperature_c"))
     if apparent is None:
         return _unknown("heat", title, "Keine gefühlte Temperatur gespeichert.")
-    explains = []
-    if apparent >= HEAT_APPARENT_C:
-        heart_checks = []
-        if facts.kind == "easy":
-            heart_checks = [_decoupling(facts), _easy_time_above(facts)]
-        elif facts.kind == "interval":
-            reps = [
-                rep
-                for rep in facts.execution.get("reps") or ()
-                if isinstance(rep, Mapping)
-            ]
-            heart_checks = [_cardiac_drift(facts, reps)] if reps else []
-        explains = [
-            check["id"] for check in heart_checks if check["verdict"] == "notable"
-        ]
+    explains = _notable_heart_checks(facts) if apparent >= HEAT_APPARENT_C else []
     return _judged(
         "heat",
         title,
@@ -2017,4 +2012,114 @@ def _hills(reps: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
         rows,
         "Netto-Höhenänderung und mittlere Steigung je Wiederholung; nur Fakten",
         "fixed",
+    )
+
+
+def _notable_heart_checks(facts: _Facts) -> list[str]:
+    """The heart-rate checks the report finds notable, each by its own function.
+
+    Decoupling and time above zone 2 for easy sessions, cardiac drift for
+    interval sessions: what heat or the night before may explain (#3084 3c).
+    """
+    heart_checks = []
+    if facts.kind == "easy":
+        heart_checks = [_decoupling(facts), _easy_time_above(facts)]
+    elif facts.kind == "interval":
+        reps = [
+            rep for rep in facts.execution.get("reps") or () if isinstance(rep, Mapping)
+        ]
+        heart_checks = [_cardiac_drift(facts, reps)] if reps else []
+    return [check["id"] for check in heart_checks if check["verdict"] == "notable"]
+
+
+# The side of the athlete's own quartiles that may explain a heart-rate finding.
+_UNFAVOURABLE: Final = {"sleep": "below", "hrv": "below", "resting_hr": "above"}
+
+
+def _recovery_before(
+    facts: _Facts, baselines: Sequence[Mapping[str, Any]]
+) -> dict[str, Any]:
+    """The night before against the athlete's own quartiles, facts only (#3084 3c G).
+
+    ``explains`` names notable heart-rate checks only when a value of that very
+    night lies on its unfavourable side: less sleep, lower HRV, higher resting HR.
+    """
+    title = "Die Nacht davor (Schlaf, HRV, Ruhepuls)"
+    day = str(_mapping(facts.session).get("started_at_local") or "")[:10]
+    nights = []
+    for baseline in baselines:
+        if not isinstance(baseline, Mapping):
+            continue
+        nights.append(
+            {
+                key: baseline.get(key)
+                for key in (
+                    "metric",
+                    "measurement",
+                    "value",
+                    "unit",
+                    "observed_at",
+                    "median",
+                    "lower",
+                    "upper",
+                    "position",
+                    "status",
+                    "source",
+                )
+            }
+            | {"that_night": baseline.get("observed_at") == day}
+        )
+    if not nights:
+        return _unknown(
+            "recovery_before", title, "Keine Werte zu Schlaf, HRV oder Ruhepuls."
+        )
+    unfavourable = any(
+        night["that_night"]
+        and night["position"] is not None
+        and night["position"] == _UNFAVOURABLE.get(str(night["metric"]))
+        for night in nights
+    )
+    return _judged(
+        "recovery_before",
+        title,
+        value={
+            "nights": nights,
+            "explains": _notable_heart_checks(facts) if unfavourable else [],
+        },
+        unit=None,
+        rule="Wert der Nacht vor der Einheit gegen die eigenen mittleren Quartile "
+        "(mindestens 14 Werte in 42 Tagen); nur Fakten, Erklärung nur zu einer "
+        "auffälligen Herzfrequenz-Prüfung",
+        threshold=0,
+        measure=0,
+        basis="personal",
+        notable=False,
+    )
+
+
+def _prior_load(facts: _Facts, loads: Mapping[str, Any]) -> dict[str, Any]:
+    """The local load of the 3 days before against the own 42-day median (#3084 3c H)."""
+    title = "Belastung der 3 Tage davor"
+    day = str(_mapping(facts.session).get("started_at_local") or "")[:10]
+    try:
+        session_day = date.fromisoformat(day)
+    except ValueError:
+        return _unknown("prior_load", title, "Kein Datum der Einheit.")
+    load = session_conditions.prior_load(
+        {
+            key: float(value)
+            for key, value in loads.items()
+            if _number(value) is not None
+        },
+        session_day,
+    )
+    if load is None:
+        return _unknown("prior_load", title, "Keine lokale Belastung in 45 Tagen.")
+    return _fact(
+        "prior_load",
+        title,
+        load,
+        "Lokale Belastung (M6) der 3 Tage vor der Einheit gegen den Median aller "
+        "3-Tages-Summen der 42 Tage davor; nur Fakten",
+        "personal",
     )

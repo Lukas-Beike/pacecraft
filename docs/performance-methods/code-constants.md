@@ -240,6 +240,8 @@ every named number the code fixes. A test fails when it is out of date.
 | `WIND_EXPLAINS_MPS` | `3.0` | `backend/performance/session_conditions.py` | Wind explains a slower part from this headwind at body height in that part... |
 | `WIND_SECOND_SIGNAL_MPS` | `2.0` | `backend/performance/session_conditions.py` | ...when that part had this much more headwind than the part it is compared with. |
 | `WIND_MIN_COVERAGE_PCT` | `50.0` | `backend/performance/session_conditions.py` | A headwind needs a direction and a wind value for this share of the moving time. |
+| `PRIOR_LOAD_DAYS` | `3` | `backend/performance/session_conditions.py` | The 3-day prior load (athlete, #3084 3c H): the local load of the 3 days before the session against the median of every 3-day sum in the 42 days before; facts. |
+| `PRIOR_LOAD_WINDOW_DAYS` | `42` | `backend/performance/session_conditions.py` |  |
 | `INPUTS` | `'condition_inputs'` | `backend/performance/session_conditions.py` | What the session report adds to the detail for these checks: the session's local IF, the device's grade-adjusted speed and the athlete's rated sessions. |
 | `METHOD` | `'session-execution-v1'` | `backend/performance/session_execution.py` |  |
 | `SCOPE` | `"Descriptive execution of this one session from its own streams and laps. Output is pace in s/km ... (sha256 3cc2c071)` | `backend/performance/session_execution.py` |  |
