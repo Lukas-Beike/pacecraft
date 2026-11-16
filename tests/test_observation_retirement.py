@@ -20,6 +20,9 @@ from zoneinfo import ZoneInfo
 import intervals_compaction as intervals_fixture
 from intervals_plan_stub import intervals_test_world
 
+from backend.athlete.skinfolds import local_provenance
+from backend.canonical.records import MetricValue, Observation
+from backend.canonical.vocabulary import MetricKind
 from backend.db import canonical_store, garmin_store
 from backend.db.schema import initialize_schema
 from backend.providers.canonical_plans import (
@@ -208,6 +211,35 @@ class ObservationRetirementTests(unittest.TestCase):
         self.assertEqual(
             self.states("resting_hr"), {OTHER_DAY: "active", DAY: "active"}
         )
+
+    def test_a_provider_refresh_leaves_an_entered_weight_active(self) -> None:
+        # #3252: the athlete's own weigh-in has no provider, so a provider's
+        # retirement never touches it, and the read keeps serving it.
+        self.ingest_intervals(intervals([{"id": DAY, "weight": 71.0}]))
+        canonical_store.upsert_observation(
+            self.db,
+            Observation(
+                kind=MetricKind.WEIGHT,
+                value=MetricValue(72.5, "kg"),
+                observed_on=date.fromisoformat(DAY),
+                observed_at=None,
+                provenance=local_provenance(),
+            ),
+            mapper_version=1,
+            now=NOW,
+        )
+        self.assertEqual(sorted(self.served("weight")), [(DAY, 71.0), (DAY, 72.5)])
+
+        self.ingest_intervals(intervals([{"id": DAY, "weight": None}], synced_at=LATER))
+
+        self.assertEqual(self.served("weight"), [(DAY, 72.5)])
+        states = {
+            row["provider"]: row["state"]
+            for row in self.db.execute(
+                "SELECT provider, state FROM observations WHERE metric = 'weight'"
+            )
+        }
+        self.assertEqual(states, {"intervals": "retired", None: "active"})
 
     def test_a_row_of_another_owner_is_untouched(self) -> None:
         self.ingest_intervals(intervals([{"id": DAY, "restingHR": 50}]))

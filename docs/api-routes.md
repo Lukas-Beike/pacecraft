@@ -47,6 +47,9 @@ handler's docstring. Regenerate it with
 | GET | `/api/body/skinfolds` | Session | no | The athlete's 3-site skinfold measurements, newest first. |
 | PUT | `/api/body/skinfolds` | Session + CSRF | before access | Save one 3-site skinfold measurement; one of the same day is replaced. |
 | PUT | `/api/body/skinfolds/remove` | Session + CSRF | before access | Remove the skinfold measurement of one day. |
+| GET | `/api/body/weight` | Session | no | The weights the athlete entered by hand, newest first. |
+| PUT | `/api/body/weight` | Session + CSRF | before access | Save one weight the athlete entered; one of the same day is replaced. |
+| PUT | `/api/body/weight/remove` | Session + CSRF | before access | Remove the entered weight of one day. |
 | GET | `/api/bootstrap` | Session | no | Initial authenticated client state. |
 | POST | `/api/change-history/undo` | Session + CSRF | after access | Apply an undo from the change history. |
 | POST | `/api/change-history/undo-turn` | Session + CSRF | after access | Undo every tracked write of one Coach turn. |
@@ -149,6 +152,7 @@ handler's docstring. Regenerate it with
 | POST | `/api/weather/sync` | Session + CSRF | after access | Queue a provider synchronization, or a targeted refresh of the external calendars or the weather. |
 | GET | `/api/zones` | Session | no | Local and provider zone configurations. |
 | PUT | `/api/zones` | Session + CSRF | before access | Save one local zone configuration. |
+| POST | `/api/zones/lt2/adopt` | Session + CSRF | after access | Adopt one value of a local LT2 estimate as the threshold in effect. |
 | PUT | `/api/zones/remove` | Session + CSRF | before access | Remove one local zone configuration. |
 
 ## Route contracts
@@ -398,6 +402,35 @@ Response: 200 as `GET /api/body/skinfolds`.
 Errors: 400 "Das Löschen einer Messung muss bestätigt werden." unless
 `confirmed` is `true`; 400 "Das Messdatum fehlt oder ist ungültig."; 404
 "Für diesen Tag gibt es keine Hautfaltenmessung.".
+
+### `GET /api/body/weight`
+
+Request: no query, no body.
+
+Response: 200 with `entries` (every active one, each `date` and `kg`).
+
+Errors: none beyond the common ones.
+
+### `PUT /api/body/weight`
+
+Request: JSON body `{"date": "YYYY-MM-DD", "kg": number}`, 20 to 400 kg
+(comma decimals allowed). The date must not be in the future.
+
+Response: 200 as `GET /api/body/weight`.
+
+Errors: 400 "Das Datum fehlt oder ist ungültig."; 400 "Das Datum darf
+nicht in der Zukunft liegen."; 400 "Das Gewicht braucht einen Wert in
+kg."; 400 "Das Gewicht muss zwischen 20 und 400 kg liegen.".
+
+### `PUT /api/body/weight/remove`
+
+Request: JSON body `{"date": "YYYY-MM-DD", "confirmed": true}`.
+
+Response: 200 as `GET /api/body/weight`.
+
+Errors: 400 "Das Löschen eines Gewichts muss bestätigt werden." unless
+`confirmed` is `true`; 400 "Das Datum fehlt oder ist ungültig."; 404
+"Für diesen Tag gibt es kein eingetragenes Gewicht.".
 
 ### `GET /api/bootstrap`
 
@@ -1984,6 +2017,26 @@ maximalen Herzfrequenz liegen."; 400 "Das Datum „Gilt ab“ darf nicht in der
 Zukunft liegen.".
 
 The route exists only where zone editing is configured.
+
+### `POST /api/zones/lt2/adopt`
+
+Request: JSON body `{"sport": "run" | "ride", "source": "dfa_alpha1" |
+"critical_speed" | "critical_power", "value": "heart_rate" | "pace" |
+"power", "shown": number, "confirm_deviation": boolean, "replace_local":
+boolean}`. `shown` is the number `GET /api/profile` showed in
+`lt2_estimates` (bpm, s/km or W).
+
+Response: 200 `{"configuration": object, "change": object | null}`, the
+receipt of the local zone configuration saved from today with the zone
+limits in effect and its `threshold_origin`; `change` is the undo reference.
+
+Errors: 400 for an unknown sport, source or value; 409 with reason
+`lt2_unknown` (no estimate), `lt2_changed` (`shown` differs from the
+current estimate), `lt2_no_zones` (no zones of that kind), `lt2_replace_local`
+(a value the athlete entered is in effect; send `replace_local: true`),
+`lt2_deviation` (more than 5 % from the value in effect; send
+`confirm_deviation: true`) or `lt2_zone_limits` (the absolute zone limits
+do not fit the new threshold).
 
 ### `PUT /api/zones/remove`
 

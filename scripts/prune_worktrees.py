@@ -89,6 +89,64 @@ def merge_state(branch: str, base: str) -> str | None:
     return None
 
 
+def is_agent_worktree(path: str) -> bool:
+    """A subagent's worktree: ``.claude/worktrees/agent-*``."""
+    parts = Path(path).parts
+    return (
+        len(parts) >= 3
+        and parts[-3:-1] == (".claude", "worktrees")
+        and (parts[-1].startswith("agent-"))
+    )
+
+
+def content_on_base(branch: str, base: str) -> bool:
+    """Whether every file the branch changed since it forked reads the same on the
+    base, as after the main session squashed or reworked it into another PR
+    (#3290); an empty change counts too, and so does a branch whose every commit
+    has a patch-equivalent one on the base (``git cherry``), though the base
+    changed those files since. A change the base lacks keeps it."""
+    cherry = git("cherry", base, branch)
+    marks = [row[:1] for row in cherry.stdout.splitlines() if row.strip()]
+    if cherry.returncode == 0 and marks and set(marks) == {"-"}:
+        return True
+    fork = git("merge-base", base, branch)
+    if fork.returncode != 0 or not fork.stdout.strip():
+        return False
+    # NUL-separated and literal: a name with a space or a glob character stays
+    # one exact path (#3294 review).
+    changed = git("diff", "--name-only", "-z", fork.stdout.strip(), branch)
+    if changed.returncode != 0:
+        return False
+    files = [name for name in changed.stdout.split("\0") if name]
+    if not files:
+        return True
+    same = git("--literal-pathspecs", "diff", "--quiet", base, branch, "--", *files)
+    return same.returncode == 0
+
+
+def has_open_pr(branch: str) -> bool:
+    """Whether an open pull request has this head; a failed query counts as open."""
+    found = run(
+        ["gh", "pr", "list", "--head", branch, "--state", "open", "--json", "number"]
+        + ["--jq", ".[].number"]
+    )
+    return found.returncode != 0 or bool(found.stdout.strip())
+
+
+def merge_kind(entry: dict, base: str) -> str | None:
+    """How the worktree's branch counts as merged, or None. A subagent worktree
+    also counts when its branch has no open PR and its changes are on the base."""
+    kind = merge_state(entry["branch"], base)
+    if (
+        kind is None
+        and is_agent_worktree(entry["path"])
+        and content_on_base(entry["branch"], base)
+        and not has_open_pr(entry["branch"])
+    ):
+        return "content on base"
+    return kind
+
+
 def assess(entry, primary, current, base, idle_days, now) -> tuple[bool, str]:
     path = entry["path"]
     if same_path(path, primary):
@@ -104,7 +162,7 @@ def assess(entry, primary, current, base, idle_days, now) -> tuple[bool, str]:
         return False, "directory missing (use git worktree prune)"
     if not is_clean(path):
         return False, "uncommitted or untracked changes"
-    merged = merge_state(branch, base)
+    merged = merge_kind(entry, base)
     if not merged:
         return False, "branch not merged"
     idle = (now - last_modified(path)) / DAY
@@ -154,9 +212,8 @@ def main(argv: list[str] | None = None, now: float | None = None) -> int:
         elif not args.apply:
             print(f"prune  {entry['path']} [{label}]: {reason} (dry run)")
         else:
-            error = remove(
-                entry, merge_state(entry["branch"], args.base) == "pr-merged"
-            )
+            # A squash-merged or content-on-base branch is no ancestor: -D.
+            error = remove(entry, merge_kind(entry, args.base) != "ancestor")
             failed |= error is not None
             print(
                 f"failed {entry['path']} [{label}]: {error}"

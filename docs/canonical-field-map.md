@@ -30,7 +30,7 @@ Implemented in `backend/performance/source_policy.py` (`CURRENT_RULES`, `DAILY_R
 
 | Kind | Order (best first) | Bounds | Age limit |
 |---|---|---|---|
-| `weight` | Garmin, Wahoo; undated local profile weight between them (`RECENCY_ORDERS`: newest dated value wins, within `RECENCY_TIE_DAYS` = 1 day a device measurement beats a provider report beats an athlete entry) | none (validation range 20 to 400 kg) | Wahoo 90 days |
+| `weight` | Garmin, Wahoo; the athlete's newest entered weight (dated) or else the undated local profile weight between them (`RECENCY_ORDERS`: newest dated value wins, within `RECENCY_TIE_DAYS` = 1 day a device measurement beats a provider report beats an athlete entry, except that an entry on the newest day wins) | none (validation range 20 to 400 kg) | Wahoo 90 days |
 | `body_fat` | Garmin, local profile (same recency rule) | | |
 | `resting_hr` | Garmin | 30 to 230 bpm | |
 | `hrv_rmssd` | Garmin | 1 to 300 ms | |
@@ -150,7 +150,7 @@ Each kind has exactly one canonical unit (`MetricKind.unit`) and a plausibility 
 
 | Kind | Unit | Range | Meaning | Emitted by | Status |
 |---|---|---|---|---|---|
-| `weight` | `kg` | 20 to 400 | Body weight. | `garmin_health_mapping.py`, `wahoo_threshold_mapping.py` | read |
+| `weight` | `kg` | 20 to 400 | Body weight. | `garmin_health_mapping.py`, `wahoo_threshold_mapping.py`, `weight_entry.py` | read |
 | `body_fat` | `%` | 1 to 80 | Body-fat share of body weight. | `garmin_health_mapping.py` | read |
 | `ftp` | `W` | 0 to 2,500 | Functional threshold power; the sport field says ride or run (run FTP = running threshold power). | `garmin_health_mapping.py`, `wahoo_threshold_mapping.py` | read |
 | `threshold_hr` | `bpm` | 20 to 250 | Lactate-threshold heart rate (per sport). | `garmin_health_mapping.py` | read |
@@ -2485,6 +2485,7 @@ Defined in `backend/canonical/domain_records.py`. Zone limits of one metric for 
 | `percent_basis` | `ZonePercentBasis` or `None`; set together with `percent_limits` | L | Produces `threshold` only. `reserve` is valid for heart rate only but never produced. |
 | `provenance` | `Provenance`, not derived | G, L | G: provider `garmin`, `provider_reported`, `recorded_by` `garmin`, label "Garmin Connect", `source_record_id` = the raw `heart_rate_zones/<key>` record. L: provider `None`, `source_kind` `athlete_entered`, `source_record_id` `None`, `recorded_by` `manual`, `retrieved_at` `None`, label "Lokal". |
 | `model` | lowercase identifier or `None` | G | Stored in the row's `details` under `model`; G: the watch's `trainingMethod` lower-cased (for example `lactate_threshold`, `hr_reserve`, `custom`), kept as information, not interpreted. |
+| `threshold_origin` | `dfa_alpha1`, `critical_speed`, `critical_power` or `None`; local rows only | L | Stored in the row's `details` under `threshold_origin`: the local LT2 estimate the athlete adopted the threshold from (#3273); no provider mapper sets it, so a provider replay maps exactly as before. |
 
 Local producer. `local_configuration(payload)` validates one API request or a restored history row: `sport` and `metric` enum values, `environment` null/absent or `indoor` (an empty string is rejected), exactly one of `limits` (3 to 7 numbers, absolute) and `percent_limits` (3 to 7 numbers), `threshold` (required for `heart_rate` and `power`), `maximum` (kept for `heart_rate`; it must not be below `threshold`, and the top limit must not exceed it, for `percent_limits` against `maximum / threshold * 100`), optional `valid_from`. `valid_until` and `resting` are always `None`. `ZoneConfigurationService.save` writes it with `upsert_local_zone_configuration`: the same key replaces the active row, and saving unchanged values still re-dates the row so a re-confirmed threshold counts as current. It records a change-history entry (create or update) with a receipt and undo (`restore_in_transaction`, which keeps the replaced save date). `remove` needs `confirmed: true`, retires the row (`state` retired, the row stays) and records a delete entry. A provider refresh replaces only rows of its own source record and never touches local rows. Only active rows are read back. `read()` also returns `today` and, per editable sport, metric and environment, the key of the configuration `effective_zone_configuration` picks for today (Garmin sport-free sets included); the editor lists and prefills that one.
 
@@ -2639,6 +2640,7 @@ Inputs: the athlete's save request (API/UI) or a restored change-history value; 
 | `percent_basis` | `ZonePercentBasis.THRESHOLD` (`threshold`) when `percent_limits` is given, else none | `maximum` and `reserve` are never set locally. |
 | `provenance` | `Provenance(provider=None, source_kind=SourceKind.ATHLETE_ENTERED, source_record_id=None, recorded_by=RecordingOrigin.MANUAL, retrieved_at=None, label="Lokal")` | `LOCAL_LABEL`. |
 | `model` | not set (none) | |
+| `threshold_origin` | `save_adopted` only: the adopted estimate (`dfa_alpha1`, `critical_speed`, `critical_power`); none for a save by hand, which clears it | In the zone history fields, so an undo restores it (#3273). |
 
 - `Provenance` arguments: `provider` none, `source_kind` `athlete_entered`, `source_record_id` none, `recorded_by` `manual`, `retrieved_at` none, `label` `Lokal`.
 - Key (`zone_configuration_key`): `|<metric>|<sport>|<environment>|<valid_from>`; saving the same key replaces the row. Stored row: `provider` NULL, `mapper_version` NULL, `source_kind` `athlete_entered`, `recorded_by` `manual`, details only `previous_saved_at`.
@@ -2661,7 +2663,22 @@ Inputs: the athlete's save request (API/UI); no provider payload.
 | `observed_at`, `sport`, `method`, `aggregation`, `period` | none | |
 | `provenance` | `provider` none; `source_kind` = `athlete_entered`; `source_record_id` none; `recorded_by` = `manual`; `retrieved_at` none; `label` = "Lokal" (`LOCAL_LABEL`) | Provider re-projection never retires these rows (it is scoped by provider). |
 
-Stored with `mapper_version` 1 (`MAPPER_VERSION`). The canonical readers skip rows without a provider, so `skinfolds.py` reads its own rows (`provider IS NULL`, `source_kind = 'athlete_entered'`, active).
+Stored with `mapper_version` 1 (`MAPPER_VERSION`). The canonical readers skip rows without a provider (except the weights of `weight_entry.py`), so `skinfolds.py` reads its own rows (`provider IS NULL`, `source_kind = 'athlete_entered'`, active).
+
+### `weight_entry.py`
+
+Status: Live. `backend/athlete/weight_entry.py` is the only producer of weights the athlete enters by hand (#3252). `WeightEntryService.save` writes one observation through `canonical_store.upsert_observation`; a save on the same day first retires that day's active entered row, and `WeightEntryService.remove` (confirmed) retires it.
+Inputs: the athlete's save request (API/UI); no provider payload.
+
+| `Observation` field | Local value | Notes |
+|---|---|---|
+| `kind` | `weight` | |
+| `value` | request `kg` in `kg`, rounded to 0.1 | 20..400 kg (`METRIC_BOUNDS`); comma decimals allowed. |
+| `observed_on` | request `date` (ISO day, not in the future) | Part of the natural key `|weight|||<day>`. |
+| `observed_at`, `sport`, `method`, `aggregation`, `period` | none | |
+| `provenance` | `provider` none; `source_kind` = `athlete_entered`; `source_record_id` none; `recorded_by` = `manual`; `retrieved_at` none; `label` = "Lokal" (`local_provenance`) | Provider re-projection never retires these rows (it is scoped by provider). |
+
+Stored with `mapper_version` 1. `canonical_store.current_observation_rows` serves these rows for the metrics in `ENTERED_METRICS` (weight only), so the canonical weight readers see them: the current weight takes the newest one under `RECENCY_ORDERS`, where an entry on the newest day wins over a measurement of that or the previous day (athlete decision 2026-11-16), the body history charts them as a "Lokal" series, and the energy weigh-ins take them over a provider weigh-in of the same day.
 
 ### `zone_settings.py`
 

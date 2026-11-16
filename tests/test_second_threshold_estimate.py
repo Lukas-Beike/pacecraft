@@ -12,9 +12,11 @@ from unittest.mock import Mock
 
 from support import dispatch_route
 
+from backend.athlete.zones import local_configuration
 from backend.canonical.activity_detail import ActivityDfaAlpha1, DfaWindow
 from backend.canonical.vocabulary import DfaQuality
 from backend.coach.context import CoachStructuredContextService
+from backend.errors import AppError
 from backend.http_api.athlete_get import AthleteGetRoutes
 from backend.performance import second_threshold_estimate as lt2
 from backend.performance.second_threshold_service import SecondThresholdService
@@ -293,6 +295,218 @@ class VisibilityTests(unittest.TestCase):
             raise RuntimeError("synthetic failure")
 
         self.assertNotIn("lt2_estimates", current(failing))
+
+
+RUN_ESTIMATES = {
+    "run": {
+        "dfa_alpha1": {
+            "status": "ok",
+            "heart_rate_bpm": 169,
+            "pace_seconds_per_km": 256,
+        },
+        "critical_speed": {"status": "unknown", "reason": "x", "sessions": 0},
+    },
+    "ride": {
+        "dfa_alpha1": {"status": "unknown", "reason": "nur aus Läufen", "sessions": 0},
+        "critical_power": {"status": "ok", "power_w": 271},
+    },
+}
+
+
+class FakeZones:
+    """The zone service's two calls the adoption makes; saves are kept."""
+
+    def __init__(self, *configurations):
+        self.items = configurations
+        self.saved = []
+
+    def configurations(self):
+        return self.items
+
+    def save_adopted(self, payload):
+        self.saved.append(payload)
+        local_configuration({**payload, "valid_from": TODAY.isoformat()})
+        return {"configuration": payload, "change": {"id": 1}}
+
+
+def zone(
+    metric,
+    threshold,
+    *,
+    local=False,
+    origin=None,
+    limits=None,
+    percent=None,
+    maximum=None,
+):
+    payload = {
+        "sport": "run" if metric != "power" else "ride",
+        "metric": metric,
+        "threshold": threshold,
+        "maximum": maximum,
+        "limits": limits,
+        "percent_limits": percent,
+        "threshold_origin": origin,
+    }
+    configuration = local_configuration(payload)
+    if local:
+        return configuration
+    from dataclasses import replace
+
+    from backend.canonical.records import Provenance
+    from backend.canonical.vocabulary import ProviderId, RecordingOrigin, SourceKind
+
+    return replace(
+        configuration,
+        provenance=Provenance(
+            provider=ProviderId.GARMIN,
+            source_kind=SourceKind.PROVIDER_REPORTED,
+            source_record_id="zones",
+            recorded_by=RecordingOrigin.GARMIN,
+            retrieved_at=None,
+            label=None,
+        ),
+    )
+
+
+class AdoptTests(unittest.TestCase):
+    def adopt(self, zones, **payload):
+        service = SecondThresholdService(
+            Mock(), Mock(), Mock(), lambda _days: [], lambda: TODAY, zones=lambda: zones
+        )
+        service.estimates = lambda: RUN_ESTIMATES  # type: ignore[method-assign]
+        return service.adopt(payload)
+
+    def test_one_value_is_adopted_with_its_origin_and_the_limits_in_effect(
+        self,
+    ) -> None:
+        zones = FakeZones(
+            zone("heart_rate", 165, percent=[80, 89, 94, 100, 103, 110], maximum=190)
+        )
+        self.adopt(
+            zones, sport="run", source="dfa_alpha1", value="heart_rate", shown=169
+        )
+        (saved,) = zones.saved
+        self.assertEqual(saved["threshold"], 169)
+        self.assertEqual(saved["threshold_origin"], "dfa_alpha1")
+        self.assertEqual(saved["percent_limits"], [80, 89, 94, 100, 103, 110])
+        self.assertEqual(saved["maximum"], 190)
+
+    def test_pace_is_stored_as_the_threshold_speed(self) -> None:
+        zones = FakeZones(zone("pace", 3.8, percent=[78, 88, 94, 100, 106, 999]))
+        self.adopt(zones, sport="run", source="dfa_alpha1", value="pace", shown=256)
+        # 256 s per km is 1000 / 256 = 3.906 m/s.
+        self.assertAlmostEqual(zones.saved[0]["threshold"], 3.906, places=3)
+
+    def test_refusals_name_their_reason(self) -> None:
+        hr = zone("heart_rate", 165, percent=[80, 89, 94, 100, 103, 110])
+        cases = [
+            ({"shown": 170}, (hr,), "lt2_changed"),
+            ({}, (), "lt2_no_zones"),
+            (
+                {},
+                (
+                    zone(
+                        "heart_rate",
+                        168,
+                        local=True,
+                        percent=[80, 89, 94, 100, 103, 110],
+                    ),
+                ),
+                "lt2_replace_local",
+            ),
+            (
+                {},
+                (zone("heart_rate", 158, percent=[80, 89, 94, 100, 103, 110]),),
+                "lt2_deviation",
+            ),
+        ]
+        for extra, configurations, reason in cases:
+            with self.subTest(reason=reason):
+                payload = {
+                    "sport": "run",
+                    "source": "dfa_alpha1",
+                    "value": "heart_rate",
+                    "shown": 169,
+                    **extra,
+                }
+                with self.assertRaises(AppError) as raised:
+                    self.adopt(FakeZones(*configurations), **payload)
+                self.assertEqual(
+                    (raised.exception.status, raised.exception.reason), (409, reason)
+                )
+
+    def test_confirmations_let_the_same_requests_through(self) -> None:
+        # 169 against 158 bpm is 7 % (F9); an entered value needs replace_local.
+        for configuration, flag in (
+            (
+                zone("heart_rate", 158, percent=[80, 89, 94, 100, 103, 110]),
+                "confirm_deviation",
+            ),
+            (
+                zone(
+                    "heart_rate", 168, local=True, percent=[80, 89, 94, 100, 103, 110]
+                ),
+                "replace_local",
+            ),
+        ):
+            with self.subTest(flag=flag):
+                zones = FakeZones(configuration)
+                self.adopt(
+                    zones,
+                    sport="run",
+                    source="dfa_alpha1",
+                    value="heart_rate",
+                    shown=169,
+                    **{flag: True},
+                )
+                self.assertEqual(len(zones.saved), 1)
+
+    def test_an_adopted_estimate_is_replaced_without_asking(self) -> None:
+        zones = FakeZones(
+            zone(
+                "heart_rate",
+                167,
+                local=True,
+                origin="dfa_alpha1",
+                percent=[80, 89, 94, 100, 103, 110],
+            )
+        )
+        self.adopt(
+            zones, sport="run", source="dfa_alpha1", value="heart_rate", shown=169
+        )
+        self.assertEqual(len(zones.saved), 1)
+
+    def test_absolute_limits_that_no_longer_fit_are_refused_with_the_reason(
+        self,
+    ) -> None:
+        # A maximum of 168 bpm below the new 169 bpm threshold fails the HR rules.
+        zones = FakeZones(
+            zone("heart_rate", 165, limits=[130, 145, 155, 165, 166, 168], maximum=168)
+        )
+        with self.assertRaises(AppError) as raised:
+            self.adopt(
+                zones, sport="run", source="dfa_alpha1", value="heart_rate", shown=169
+            )
+        self.assertEqual(raised.exception.reason, "lt2_zone_limits")
+
+    def test_unknown_sources_values_and_estimates_are_refused(self) -> None:
+        zones = FakeZones(zone("power", 265, percent=[55, 75, 90, 105, 120, 150, 999]))
+        for payload, status in (
+            ({"sport": "ride", "source": "dfa_alpha1", "value": "heart_rate"}, 400),
+            (
+                {
+                    "sport": "run",
+                    "source": "critical_speed",
+                    "value": "pace",
+                    "shown": 250,
+                },
+                409,
+            ),
+        ):
+            with self.subTest(payload=payload), self.assertRaises(AppError) as raised:
+                self.adopt(zones, **payload)
+            self.assertEqual(raised.exception.status, status)
 
 
 if __name__ == "__main__":

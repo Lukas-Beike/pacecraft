@@ -135,6 +135,7 @@ texts.
 | --- | --- | --- | --- |
 | `public/activity-details.js` `renderBundle` | Aktivität löschen? | Diese Aktivität mit allen Aufzeichnungen lokal löschen? Bei den Anbietern bleibt sie erhalten. | Löschen |
 | `public/analysis.js` `bindSkinfoldDialog` | Messung löschen? | (computed) `` `Messung vom ${dateLabel(day)} löschen?` `` | Löschen |
+| `public/analysis.js` `bindWeightDialog` | Gewicht löschen? | (computed) `` `Gewicht vom ${dateLabel(day)} löschen?` `` | Löschen |
 | `public/analysis.js` `retireEquipment` | Ausrüstung ausmustern? | (computed) `` `${item.name} ausmustern?` `` | Ausmustern |
 | `public/auth.js` `logout` | Abmelden? | Du wirst auf diesem Gerät abgemeldet. Deine Daten bleiben verschlüsselt gespeichert. | Bestätigen |
 | `public/coach.js` `resetCoachChat` | Coach-Chat zurücksetzen? | Coach-Chat wirklich zurücksetzen und eine neue Unterhaltung beginnen? | Bestätigen |

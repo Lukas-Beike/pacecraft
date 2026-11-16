@@ -16,6 +16,7 @@ from backend.athlete.equipment import EquipmentService
 from backend.athlete.equipment_history import equipment_history_records
 from backend.athlete.profile import ProfileService
 from backend.athlete.skinfolds import SkinfoldService
+from backend.athlete.weight_entry import WeightEntryService
 from backend.athlete.zones import ZoneConfigurationService
 from backend.canonical.activity_summary import ActivitySummary
 from backend.canonical.vocabulary import ProviderId
@@ -190,6 +191,8 @@ class AthleteDataServices:
     profile: Callable[[], ProfileService]
     # The athlete's 3-site skinfolds and the body fat they give (#3099).
     skinfolds: Callable[[], SkinfoldService]
+    # Weights the athlete enters by hand, one per day (#3252).
+    weight_entries: Callable[[], WeightEntryService]
     # Binds the athlete clock to the existing shared manager cache owner.
     profile_for: Callable[[Any], ProfileService]
 
@@ -262,6 +265,17 @@ def build_athlete_data(
     def profile() -> ProfileService:
         return profile_for(database_manager())
 
+    def zones() -> ZoneConfigurationService:
+        return ZoneConfigurationService(
+            database_manager(),
+            table_reader(),
+            utc_now,
+            today=local_date,
+            effective_zone=effective_zone_configuration,
+            on_change=zones_changed,
+            threshold_warnings=threshold_warnings,
+        )
+
     return AthleteDataServices(
         activity_summaries=activity_summaries,
         session_summaries=session_summaries,
@@ -275,15 +289,7 @@ def build_athlete_data(
         equipment_history=lambda: equipment_history_records(
             utc_now, activity_summaries
         ),
-        zones=lambda: ZoneConfigurationService(
-            database_manager(),
-            table_reader(),
-            utc_now,
-            today=local_date,
-            effective_zone=effective_zone_configuration,
-            on_change=zones_changed,
-            threshold_warnings=threshold_warnings,
-        ),
+        zones=zones,
         activity_feedback=lambda: ActivityFeedbackService(
             database_manager(),
             activity_feedback_repository,
@@ -306,11 +312,15 @@ def build_athlete_data(
             lambda: run_lthr().day_resolver(),
             curve_records,
             local_date,
+            zones=zones,
         ),
         profile=profile,
         profile_for=profile_for,
         skinfolds=lambda: SkinfoldService(
             database_manager(), profiles.get, utc_now, local_date
+        ),
+        weight_entries=lambda: WeightEntryService(
+            database_manager(), utc_now, local_date
         ),
     )
 

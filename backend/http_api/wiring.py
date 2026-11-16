@@ -73,6 +73,7 @@ from backend.http_api.public_weather import PublicWeatherStateService
 from backend.http_api.readiness import ReadinessService
 from backend.http_api.response_transport import HttpResponseTransport
 from backend.http_api.route_table import RouteTable
+from backend.http_api.second_threshold_post import SecondThresholdPostRoutes
 from backend.http_api.settings_put import SettingsPutRoutes
 from backend.http_api.state_events_get import StateEventsGetRoutes
 from backend.http_api.state_events_transport import StateEventTransport
@@ -517,6 +518,7 @@ def _athlete_write_routes(
                 athlete.profile()
             ).export(profile, revision, deadline),
             skinfold_service=athlete.skinfolds,
+            weight_service=athlete.weight_entries,
         ),
         AuthPostRoutes(session_auth_service, ctx.maintenance),
         FeedbackPostRoutes(
@@ -540,6 +542,9 @@ def _athlete_write_routes(
         EquipmentPostRoutes(athlete.equipment),
         FirstThresholdPostRoutes(
             athlete.first_threshold, athlete.profile, ctx.database
+        ),
+        SecondThresholdPostRoutes(
+            lambda: athlete.second_threshold(ctx.performance.curve_records)
         ),
         ActivityRoutePostRoutes(lambda: ctx.activity_routes),
         CalendarDecisionPostRoutes(lambda: ctx.external_calendar.decisions()),
@@ -672,6 +677,7 @@ def build_http_api(
         credentials_put,
         equipment_post,
         first_threshold_post,
+        second_threshold_post,
         activity_route_post,
         calendar_decision_post,
     ) = _athlete_write_routes(ctx, session_auth_service)
@@ -732,6 +738,7 @@ def build_http_api(
             metric_export_post,
             garmin_post,
             first_threshold_post,
+            second_threshold_post,
             activity_route_post,
             calendar_decision_post,
         )

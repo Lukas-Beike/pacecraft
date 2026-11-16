@@ -237,6 +237,7 @@ every named number the code fixes. A test fails when it is out of date.
 | `DFA_LABEL` | `'Schätzung aus Brustgurt-RR-Intervallen (DFA-α1 0,5, Forschungsstand), kein Laborwert'` | `backend/performance/second_threshold_estimate.py` |  |
 | `CRITICAL_LABEL` | `'Modellschätzung aus Bestwerten (Critical Speed/Power, M4)'` | `backend/performance/second_threshold_estimate.py` |  |
 | `RUNS_ONLY` | `{'status': 'unknown', 'reason': 'nur aus Läufen', 'sessions': 0}` | `backend/performance/second_threshold_service.py` |  |
+| `CONFIRM_DEVIATION_SHARE` | `0.05` | `backend/performance/second_threshold_service.py` | Above this share of the value in effect an adoption needs a second confirmation (F9). |
 | `TARGET_BASIS_FTP_KEY` | `'ftp'` | `backend/performance/session_analysis.py` |  |
 | `METHOD` | `'time-weighted-session-analysis-v3'` | `backend/performance/session_analysis.py` | v2: Pa:HR of outdoor runs uses grade-adjusted speed (card M8 v2, #1770). v3: the steady-output rule reads the CV of 60 s rolling means (#1832). |
 | `GRADE_ADJUSTED_SPEED` | `'grade_adjusted_speed'` | `backend/performance/session_analysis.py` |  |
@@ -264,12 +265,13 @@ every named number the code fixes. A test fails when it is out of date.
 | `PRIOR_LOAD_WINDOW_DAYS` | `42` | `backend/performance/session_conditions.py` |  |
 | `INPUTS` | `'condition_inputs'` | `backend/performance/session_conditions.py` | What the session report adds to the detail for these checks: the session's local IF, the device's grade-adjusted speed and the athlete's rated sessions. |
 | `METHOD` | `'session-execution-v1'` | `backend/performance/session_execution.py` |  |
-| `SCOPE` | `"Descriptive execution of this one session from its own streams and laps. Output is pace in s/km ... (sha256 3cc2c071)` | `backend/performance/session_execution.py` |  |
+| `SCOPE` | `"Descriptive execution of this one session from its own streams and laps. Output is pace in s/km ... (sha256 8d84b54a)` | `backend/performance/session_execution.py` |  |
 | `SHORT_REP_S` | `120.0` | `backend/performance/session_execution.py` |  |
 | `START_S` | `30.0` | `backend/performance/session_execution.py` | The opening of a rep: its first 30 s against the rest shows a too-fast start. |
 | `START_REP_S` | `90.0` | `backend/performance/session_execution.py` |  |
 | `SETTLE_S` | `10.0` | `backend/performance/session_execution.py` | Variability leaves out the first 10 s of acceleration. |
 | `ERG_VARIABILITY_PCT` | `3.0` | `backend/performance/session_execution.py` |  |
+| `INDOOR_ENVIRONMENTS` | `frozenset({'indoor', 'virtual'})` | `backend/performance/session_execution.py` | A ride's speed in these is virtual (game terrain or trainer), never an effort (#3288). |
 | `MIN_LAP_S` | `5.0` | `backend/performance/session_execution.py` | Shorter laps are lap-button slips; short work or rest laps of 15 s stay. |
 | `MIN_SESSION_S` | `600.0` | `backend/performance/session_execution.py` |  |
 | `WARMUP_EXCLUDED_S` | `600.0` | `backend/performance/session_execution.py` |  |

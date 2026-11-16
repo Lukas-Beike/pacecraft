@@ -36,6 +36,7 @@ from backend.db.canonical_store import (
 EMPTY_DETAILS: Final = "{}"
 CONTEXT_KEY: Final = "context"
 ZONE_MODEL_KEY: Final = "model"
+ZONE_THRESHOLD_ORIGIN_KEY: Final = "threshold_origin"
 GEAR_LIST_PARTIAL_KEY: Final = "activity_list_partial"
 _ACTIVE: Final = ProjectionState.ACTIVE.value
 _RETIRED: Final = ProjectionState.RETIRED.value
@@ -803,7 +804,9 @@ def _zone_row(
             else configuration.percent_basis.value
         ),
         "details": _details(
-            configuration.provenance, (ZONE_MODEL_KEY, configuration.model)
+            configuration.provenance,
+            (ZONE_MODEL_KEY, configuration.model),
+            (ZONE_THRESHOLD_ORIGIN_KEY, configuration.threshold_origin),
         ),
     }
 

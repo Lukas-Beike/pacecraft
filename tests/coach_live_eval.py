@@ -96,6 +96,7 @@ KNOWN_EXPECT_KEYS = frozenset(
         "numbers_from_tools",
         "no_session_guess",
         "notables_named",
+        "fade_from_report",
     }
 )
 # Tables compared before and after a case; a change in a table the case does not
@@ -535,6 +536,8 @@ def score_case(
         misses += invented_numbers(case, turns)
     if e.get("notables_named"):
         misses += unnamed_notables(turns)
+    if e.get("fade_from_report"):
+        misses += unbacked_fade_claims(turns)
     if e.get("no_session_guess") and any(
         '"session_report"' in output
         for turn in turns
@@ -636,6 +639,41 @@ def _distinctive(titles: dict[Any, str]) -> dict[Any, tuple[set[str], bool]]:
         own = {word for word in found if not any(_same_stem(word, o) for o in others)}
         result[key] = (own, False) if own else (found, True)
     return result
+
+
+# A claim that output or reps faded; a negation in the same sentence before it
+# ("kein Nachlassen", "nicht schwächer") makes it none (#3288).
+_FADE_CLAIM = re.compile(
+    r"\b(nachgelassen|nachlassend\w*|nachlassen|ließ\w*\b.*\bnach|lässt\b.*\bnach"
+    r"|schwächer|abgefallen|eingebrochen|nahm\w*\b.*\bab|abgenommen|sank\w*|gesunken)\b"
+)
+_NEGATION = re.compile(r"\b(kein\w*|nicht|ohne|nie)\b")
+# The report's own fade checks; only their notable verdict backs a fade claim.
+_FADE_CHECKS = frozenset({"rep_fade", "within_rep_fade", "main_fade"})
+
+
+def unbacked_fade_claims(turns: list[dict[str, Any]]) -> list[str]:
+    """A fade the final answer claims that no fade check of the report found (#3288).
+
+    The report judges reps on power for rides and on pace for runs; a slower
+    virtual speed on Zwift or a held ERG power is no fade. Applies once the turns
+    hold a session report: only a notable fade check backs a fade claim.
+    """
+    reports = list(_session_reports(turns))
+    backed = any(
+        check.get("id") in _FADE_CHECKS and check.get("verdict") == "notable"
+        for report in reports
+        for check in report.get("checks") or ()
+        if isinstance(check, dict)
+    )
+    if not reports or backed:
+        return []
+    answer = (turns[-1]["text"] if turns else "").lower()
+    for sentence in re.split(r"[.!?\n]+", answer):
+        claim = _FADE_CLAIM.search(sentence)
+        if claim and not _NEGATION.search(sentence[: claim.start()]):
+            return ["fade_not_in_report"]
+    return []
 
 
 def unnamed_notables(turns: list[dict[str, Any]]) -> list[str]:

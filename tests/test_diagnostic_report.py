@@ -326,6 +326,7 @@ class DiagnosticReportServiceTests(unittest.TestCase):
                 "activity_feedback": 7,
                 "change_history": 8,
                 "nutrition_logs": 9,
+                "entered_weights": 0,
                 "stored_payload_bytes": {
                     "garmin_state": 4096,
                     "garmin_snapshot_legacy": 0,
@@ -396,8 +397,9 @@ class DiagnosticReportServiceTests(unittest.TestCase):
         # (the Garmin window and its candidates, each for this and the next
         # mapper and once without empty marks, the records with outdated file
         # sets, and two Wahoo selections; #2220); the diary count adds one (#3234);
-        # the DFA-a1 method counts of chest-strap runs add one (#3273).
-        self.assertEqual(len(self.db.queries), 42)
+        # the DFA-a1 method counts of chest-strap runs add one (#3273); the
+        # entered weights add one (#3252).
+        self.assertEqual(len(self.db.queries), 43)
         self.assertEqual(
             [query.rsplit("FROM ", 1)[1] for query in count_queries],
             [
@@ -471,6 +473,21 @@ class DiagnosticReportServiceTests(unittest.TestCase):
             for table in self.db.values:
                 db.execute(f"CREATE TABLE {table} (id INTEGER)")
             db.execute("CREATE TABLE kv (key TEXT PRIMARY KEY, value TEXT)")
+            db.execute(
+                "CREATE TABLE observations "
+                "(metric TEXT, provider TEXT, source_kind TEXT, state TEXT)"
+            )
+            # Only the athlete's own active weigh-ins count (#3252).
+            db.executemany(
+                "INSERT INTO observations VALUES (?, ?, ?, ?)",
+                [
+                    ("weight", None, "athlete_entered", "active"),
+                    ("weight", None, "athlete_entered", "retired"),
+                    ("weight", "garmin", "device_measured", "active"),
+                    ("body_fat_pct", None, "athlete_entered", "active"),
+                ],
+            )
+            self.assertEqual(self.service._database_counts(db)["entered_weights"], 1)
             self.assertEqual(
                 self.service._database_counts(db)["stored_payload_bytes"],
                 {

@@ -168,6 +168,11 @@ class DiagnosticReportService:
             "change_history": count("change_history"),
             # Diary entries, so a release shows the diary kept its rows (#3234).
             "nutrition_logs": count("nutrition_logs"),
+            # Weights the athlete entered by hand that reads serve (#3252).
+            "entered_weights": count(
+                "observations WHERE metric = 'weight' AND provider IS NULL "
+                "AND source_kind = 'athlete_entered' AND state = 'active'"
+            ),
         }
         counts["stored_payload_bytes"] = self._stored_payload_bytes(db)
         return counts | self._storage()
