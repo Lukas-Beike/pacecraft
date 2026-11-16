@@ -23,9 +23,19 @@ ENDS = [END - timedelta(days=7 * n) for n in (3, 2, 1, 0)]
 
 
 def window(
-    end: date, tdee: float | None, rmr: float | None = None, band: float = 120.0
+    end: date,
+    tdee: float | None,
+    rmr: float | None = None,
+    band: float = 120.0,
+    factor: float = 1.05,
 ) -> EnergyWindow:
+    # Raw everyday 250 + sport 350 = activity 600; calibrated x k.
     return EnergyWindow(
+        neat_kcal_raw=250.0,
+        sport_kcal_raw=350.0,
+        neat_kcal=250.0 * factor,
+        sport_kcal=350.0 * factor,
+        calibration_factor=factor,
         end=end,
         days=28,
         complete_days=24,
@@ -247,8 +257,46 @@ class EnergyViewTests(unittest.TestCase):
             },
             row(view, "device")["split"],
         )
-        # The own and formula rows wait for M11's split terms (L11).
-        self.assertIsNone(row(view, "katch_mcardle")["split"])
+
+    def test_formula_rows_share_the_own_terms_and_the_own_row_its_digestion(
+        self,
+    ) -> None:
+        # Formula rows: resting by formula, then the raw own everyday 250, sport
+        # 350 and TEF 250, all computed alike. The own row: the residual 1,850
+        # and the calibrated 262.5 / 367.5 (k = 1.05), so only TEF is alike.
+        view = energy_view(inputs(), [window(END, 2700.0, 1850.0)], garmin())
+        self.assertEqual(
+            {
+                "resting_kcal": 1839,
+                "neat_kcal": 250,
+                "sport_kcal": 350,
+                "tef_kcal": 250,
+                "shared": {"neat": True, "sport": True, "tef": True},
+            },
+            row(view, "katch_mcardle")["split"],
+        )
+        self.assertEqual(
+            {
+                "resting_kcal": 1850,
+                "neat_kcal": 262,
+                "sport_kcal": 368,
+                "tef_kcal": 250,
+                "shared": {"neat": False, "sport": False, "tef": True},
+            },
+            row(view, "own")["split"],
+        )
+        plain = energy_view(
+            inputs(), [window(END, 2700.0, 1850.0, factor=1.0)], garmin()
+        )
+        self.assertEqual(
+            {"neat": True, "sport": True, "tef": True},
+            row(plain, "own")["split"]["shared"],
+        )
+        self.assertIsNone(
+            row(energy_view(inputs({}), [window(END, 2700.0)], garmin()), "own")[
+                "split"
+            ]
+        )
 
     def test_an_unpriced_session_drops_its_day_and_negative_everyday_stays_unknown(
         self,

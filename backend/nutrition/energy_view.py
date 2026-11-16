@@ -229,6 +229,7 @@ def _comparison(
 # everyday, sport and TEF; the own row shares TEF always and everyday and sport
 # only while the calibration factor is 1; Garmin computes its own.
 NOT_SHARED: Final = {"neat": False, "sport": False, "tef": False}
+FORMULA_SHARED: Final = {"neat": True, "sport": True, "tef": True}
 
 
 def _split(
@@ -281,13 +282,20 @@ def energy_view(
     rows = []
     for name, values in predictions.items():
         resting, resting_band_kcal, total, total_band = values[-1]
-        # The formula rows' split needs the own everyday and session terms per
-        # window from M11 (requested from L11); until then it stays None.
-        split = (
-            _split(resting, device_neat, device_sport, None, NOT_SHARED)
-            if name == DEVICE and resting is not None
-            else None
-        )
+        # Formula rows add the same uncalibrated own everyday, sport and TEF
+        # (M11, #3220) as their daily total; Garmin splits its own day.
+        if resting is None:
+            split = None
+        elif name == DEVICE:
+            split = _split(resting, device_neat, device_sport, None, NOT_SHARED)
+        else:
+            split = _split(
+                resting,
+                latest.neat_kcal_raw,
+                latest.sport_kcal_raw,
+                latest.tef_kcal,
+                FORMULA_SHARED,
+            )
         rows.append(
             {
                 "source": name,
@@ -301,6 +309,20 @@ def energy_view(
             }
         )
     tdee, rmr = latest.adaptive_tdee, latest.derived_rmr
+    # The own row's resting rate is the residual of the calibrated terms; its
+    # everyday and sport equal the formula rows' only while k is 1.
+    uncalibrated = latest.calibration_factor == 1.0
+    own_split = (
+        _split(
+            rmr.kcal,
+            latest.neat_kcal,
+            latest.sport_kcal,
+            latest.tef_kcal,
+            {"neat": uncalibrated, "sport": uncalibrated, "tef": True},
+        )
+        if rmr
+        else None
+    )
     rows.append(
         {
             "source": OWN,
@@ -308,6 +330,7 @@ def energy_view(
             "resting_band_kcal": _round(rmr.band_kcal) if rmr else None,
             "total_kcal": _round(tdee.kcal) if tdee else None,
             "total_band_kcal": _round(tdee.band_kcal) if tdee else None,
+            "split": own_split,
         }
     )
     body = bodies[-1]
