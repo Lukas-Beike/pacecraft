@@ -281,7 +281,10 @@ class ReviewMondayTests(unittest.TestCase):
         ):
             with self.subTest(week), self.assertRaises(AppError) as raised:
                 review_monday(week, THURSDAY)
-            self.assertEqual((raised.exception.status, raised.exception.message), (400, "Ung\u00fcltige Woche."))
+            self.assertEqual(
+                (raised.exception.status, raised.exception.message),
+                (400, "Ung\u00fcltige Woche."),
+            )
 
 
 class WeekReviewHttpTests(ServerTestCase):
@@ -369,7 +372,12 @@ class WeekReviewHttpTests(ServerTestCase):
     def test_an_unknown_week_is_refused(self) -> None:
         _status, current = self.get("/api/analysis/week-review")
         monday = date.fromisoformat(current["week_start"])
-        for week in ("next", monday + timedelta(days=7), monday + timedelta(days=1), monday - timedelta(weeks=52)):
+        for week in (
+            "next",
+            monday + timedelta(days=7),
+            monday + timedelta(days=1),
+            monday - timedelta(weeks=52),
+        ):
             with self.subTest(str(week)):
                 status, body = self.get(f"/api/analysis/week-review?week={week}")
                 self.assertEqual(status, 400)

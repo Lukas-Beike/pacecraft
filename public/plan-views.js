@@ -2208,8 +2208,7 @@ function plannedWeekStep(step, target) {
 
 
 function renderPlannedWeek(view) {
-  const { allEventsByDate, eventsByDate, firstWeekKey, lastWeekKey, todayKey, weekKey, weeklyCompliance } = view;
-  const weekEndKey = addDateKey(weekKey, 6);
+  const { allEventsByDate, eventsByDate, firstWeekKey, lastWeekKey, todayKey, weekKey } = view;
   const weekOf = (byDate) => Array.from({ length: 7 }, (_, offset) => byDate.get(addDateKey(weekKey, offset)) || []).flat();
   const weekEntries = weekOf(eventsByDate);
   // The week sync builds its jobs, remote removals included, from every unit of the week, whatever the sport filter.
@@ -2238,17 +2237,25 @@ function renderPlannedWeek(view) {
   const legend = plannedZoneLegend(days);
   if (legend) week.append(legend);
   // The plan line and the review count the whole week, so a sport filter leaves both out.
-  if (calendarSport !== "all") return week;
-  const additionalCompleted = weekEntries.filter((entry) => entry.is_completed_activity).length;
-  const summary = weekEntries.length ? plannedWeekSummary(weekKey, weekEndKey, weekEntries, weeklyCompliance.get(weekKey), todayKey) : "";
-  const planLine = summary ? h("p", "planned-week-totals", additionalCompleted && planned.length ? `${summary} · +${additionalCompleted} zusätzlich` : summary) : null;
-  // A past or running week the server reviews shows its review instead, whose Plan tile carries the
-  // compliance (#3298); the plan line stands in when the review fails or has no data.
-  const currentWeekKey = planWeekStart(todayKey);
-  if (weekKey <= currentWeekKey && weekKey >= addDateKey(currentWeekKey, -7 * WEEK_REVIEW_WEEKS_BACK)) {
-    week.append(plannedWeekReview(weekKey, todayKey, weekHasPlan ? additionalCompleted : 0, planLine));
-  } else if (planLine) week.append(planLine);
+  const closing = calendarSport === "all" ? plannedWeekClosing(view, weekEntries, weekHasPlan) : null;
+  if (closing) week.append(closing);
   return week;
+}
+
+// The week's last line: the review of a past or running week the server reviews, whose Plan tile
+// carries the compliance (#3298), else the plan line, which also stands in when the review fails.
+function plannedWeekClosing(view, weekEntries, weekHasPlan) {
+  const { todayKey, weekKey, weeklyCompliance } = view;
+  const extra = weekEntries.filter((entry) => entry.is_completed_activity).length;
+  const planned = weekEntries.length - extra;
+  let planLine = null;
+  if (weekEntries.length) {
+    const summary = plannedWeekSummary(weekKey, addDateKey(weekKey, 6), weekEntries, weeklyCompliance.get(weekKey), todayKey);
+    planLine = h("p", "planned-week-totals", extra && planned ? `${summary} · +${extra} zusätzlich` : summary);
+  }
+  const currentWeekKey = planWeekStart(todayKey);
+  if (weekKey > currentWeekKey || weekKey < addDateKey(currentWeekKey, -7 * WEEK_REVIEW_WEEKS_BACK)) return planLine;
+  return plannedWeekReview(weekKey, todayKey, weekHasPlan ? extra : 0, planLine);
 }
 
 // The week review under the selected past or running week (#3298, layout B): computed on the
@@ -2309,7 +2316,8 @@ function weekReviewRecoveryTiles(recovery) {
   const sleep = recovery?.sleep;
   if (sleep) {
     const minutes = Number.isFinite(sleep.week_before) ? Math.round((sleep.mean - sleep.week_before) * 60) : 0;
-    const change = minutes ? weekReviewChange(`${minutes > 0 ? "+" : "−"}${weekReviewHours(minutes * 60)}`, minutes > 0) : null;
+    const sign = minutes > 0 ? "+" : "−";
+    const change = minutes ? weekReviewChange(`${sign}${weekReviewHours(minutes * 60)}`, minutes > 0) : null;
     tiles.push(weekReviewTile("Schlaf Ø", `${weekReviewHours(sleep.mean * 3600)} h`, change, sleep.source));
   }
   for (const [key, label] of [["resting_hr", "Ruhepuls Ø"], ["hrv", "HRV Ø"]]) {
