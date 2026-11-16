@@ -442,8 +442,8 @@ _V32_NUTRITION_LOGS_DDL: Final = """
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL,
         logged_time_known INTEGER NOT NULL DEFAULT 1,
-        volume_ml REAL CHECK(volume_ml IS NULL OR volume_ml >= 0),
-        session_id TEXT CHECK(session_id IS NULL OR meal_type IN ('pre_session', 'during_session'))
+        volume_ml REAL CHECK(volume_ml IS NULL OR (typeof(volume_ml) IN ('integer', 'real') AND volume_ml >= 0)),
+        session_id TEXT CHECK(session_id IS NULL OR (session_id <> '' AND meal_type IN ('pre_session', 'during_session')))
     );
     CREATE INDEX idx_nutrition_logs_date ON nutrition_logs(meal_date, logged_at DESC);
     CREATE INDEX idx_nutrition_logs_session ON nutrition_logs(session_id) WHERE session_id IS NOT NULL"""

@@ -34,7 +34,7 @@ The keys of the `kv` table are listed in [kv-catalogue.md](kv-catalogue.md).
 <!-- BEGIN GENERATED SCHEMA -->
 Schema version: `32` (`PRAGMA user_version`).
 
-Shape digest: `c10374bb5cfd2d517e1b588b5c9bcee388edb800c737eb66b325e36a2a8d351e`.
+Shape digest: `5c96e07d4ba532222130a559c2ee1f0b53011cfc437d0f703ab00ede7ae35e69`.
 
 48 tables and 36 named indexes, in signature order.
 
@@ -747,8 +747,8 @@ CREATE TABLE nutrition_logs (
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
     logged_time_known INTEGER NOT NULL DEFAULT 1,
-    volume_ml REAL CHECK(volume_ml IS NULL OR volume_ml >= 0),
-    session_id TEXT CHECK(session_id IS NULL OR meal_type IN ('pre_session', 'during_session'))
+    volume_ml REAL CHECK(volume_ml IS NULL OR (typeof(volume_ml) IN ('integer', 'real') AND volume_ml >= 0)),
+    session_id TEXT CHECK(session_id IS NULL OR (session_id <> '' AND meal_type IN ('pre_session', 'during_session')))
 );
 ```
 

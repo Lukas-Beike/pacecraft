@@ -480,6 +480,20 @@ class DatabaseSchemaGateTests(unittest.TestCase):
             db.execute("SELECT content FROM messages").fetchone()[0], "Hallo"
         )
         assert_device_workout_columns_empty(self, db)
+        # Every diary row of the baseline, value for value, without volume or
+        # session (#3234).
+        self.assertEqual(
+            [
+                tuple(row)
+                for row in db.execute(
+                    "SELECT id, nutrition_basis, meal_date, logged_at, meal_type, "
+                    "description, kcal, carbs_g, protein_g, fat_g, "
+                    "logged_time_known, volume_ml, session_id "
+                    "FROM nutrition_logs ORDER BY id"
+                )
+            ],
+            [(*row, None, None) for row in BASELINE_DIARY],
+        )
 
     def test_baseline_mirror_rows_become_canonical_products_without_loss(self):
         db = self.connect()
@@ -1114,12 +1128,17 @@ class DatabaseSchemaGateTests(unittest.TestCase):
             ("new-1", "pre_session", None, "act_1"),
             ("new-2", "during_session", 750.0, "act_1"),
             ("new-3", "during_session", 0.0, None),
+            # Text that is a number takes the column's REAL affinity.
+            ("new-4", "during_session", "500", None),
         ):
             db.execute(insert, (*row, STAMP, STAMP))
         for row in (
             ("bad-1", "snack", None, "act_1"),
             ("bad-2", "during_session", -1.0, None),
             ("bad-3", "second_breakfast", None, None),
+            # A volume must be a number, and a session id never empty.
+            ("bad-4", "during_session", "viel", None),
+            ("bad-5", "during_session", None, ""),
         ):
             with self.subTest(row=row), self.assertRaises(sqlite3.IntegrityError):
                 db.execute(insert, (*row, STAMP, STAMP))
