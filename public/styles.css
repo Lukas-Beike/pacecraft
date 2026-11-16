@@ -865,6 +865,19 @@ h2 {
 .zone-box h3 small, .zone-muted, .zone-source { color: var(--muted); font-size: .78rem; font-weight: 400; }
 .zone-thresholds { display: grid; grid-template-columns: auto 1fr 1fr; gap: 4px 12px; font-size: .88rem; }
 .zone-thresholds b { font-weight: 600; font-variant-numeric: tabular-nums; }
+/* LT2 from Garmin and the local estimates side by side (#3273). */
+.lt2-sources { margin: 12px 0 0; padding: 10px 0 0; border-top: 1px solid var(--line); }
+.lt2-sources h4 { margin: 0 0 4px; font-size: .85rem; }
+.lt2-sources ul { margin: 0; padding: 0; list-style: none; }
+.lt2-source { display: grid; grid-template-columns: 1fr auto; gap: 2px 8px; padding: 8px 0; border-top: 1px solid var(--line); }
+.lt2-source:first-child { border-top: 0; }
+.lt2-source-name, .lt2-source-values, .lt2-source-basis { grid-column: 1; }
+.lt2-source-name { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: .85rem; font-weight: 700; }
+.lt2-source-values { font-size: .88rem; font-weight: 600; font-variant-numeric: tabular-nums; }
+.lt2-source-values[data-unknown] { color: var(--muted); }
+.lt2-source-basis { color: var(--muted); font-size: .78rem; }
+.lt2-source > .secondary-button { grid-column: 2; grid-row: 1 / span 3; align-self: center; min-height: 44px; }
+.lt2-adopt-values { display: flex; flex-wrap: wrap; gap: 8px; }
 .threshold-info { position: relative; display: inline-grid; width: 18px; height: 18px; min-height: 0; margin-left: 6px; padding: 0; place-items: center; border: 0; border-radius: 50%; color: var(--warning-ink); background: var(--yellow); font-size: .72rem; font-weight: 700; line-height: 1; vertical-align: middle; }
 .threshold-info::before { content: ""; position: absolute; inset: -13px; }
 .zone-list { margin: 0; padding: 0; list-style: none; display: grid; gap: 4px; }

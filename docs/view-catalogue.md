@@ -152,6 +152,8 @@ texts.
 | `public/settings.js` `restoreDatabaseBackup` | Datenbank-Backup wiederherstellen? | Das aktuelle Datenbank-Backup wird vorher gesichert und durch die ausgewählte Datei ersetzt. Fortfahren? | Bestätigen |
 | `public/settings.js` `deleteGpsTracks` | GPS-Spuren löschen? | (computed) `` `Alle gespeicherten GPS-Spuren (${gpsTracksState.stored_tracks}) werden unwiderruflich lokal gelöscht. Streckenerkennung und Wetter am Ort nutzen sie nicht mehr. Die übrigen Aufzeichnungen bleiben.` `` | Löschen |
 | `public/settings.js` `deletePrivacyData` | Lokale Daten endgültig löschen? | (computed) ` scope ` | Endgültig löschen |
+| `public/settings.js` `confirmLt2Step` | Große Abweichung | (computed) `` `${error.message} Zonen in % der Schwelle verschieben sich mit.` `` | Trotzdem übernehmen |
+| `public/settings.js` `confirmLt2Step` | Eigenen Wert ersetzen? | (computed) ` error.message ` | Ersetzen |
 | `public/settings.js` `removeZones` | Lokale Zonen entfernen? | Lokale Zonen entfernen? Danach gelten wieder die Zonen des Anbieters. | Entfernen |
 | `public/shared.js` `confirmDiscardDraft` | Änderungen verwerfen? | Ungespeicherte Änderungen verwerfen? | Bestätigen |
 | `public/sync-actions.js` `fullResync` | (computed) ` confirmation.title ` | (computed) ` confirmation.message ` | Bestätigen |

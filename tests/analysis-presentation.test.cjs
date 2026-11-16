@@ -422,7 +422,7 @@ test("session-RPE charts name the provider that rated, never a fixed provider", 
 
 test("current performance shows the status lines below its heading", () => {
   const root = new FakeElement("section");
-  const { renderCurrentPerformance } = extractFunctions("performance-view.js", ["currentPerformanceValues", "currentPerformanceRows", "withFirstThresholds", "renderCurrentPerformance"], {
+  const { renderCurrentPerformance } = extractFunctions("performance-view.js", ["currentPerformanceValues", "currentPerformanceRows", "withFirstThresholds", "withLt2Estimates", "renderCurrentPerformance"], {
     document: { ...fakeDocument(), getElementById: () => root },
     rememberAnalysisSectionState() {},
     makeAnalysisSectionCollapsible() {},

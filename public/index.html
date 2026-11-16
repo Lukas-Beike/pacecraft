@@ -733,6 +733,17 @@
       <div class="dialog-actions"><button type="button" id="skinfoldDialogCancel" class="secondary-button">Abbrechen</button><button type="button" id="skinfoldDialogRemove" class="secondary-button" hidden>Löschen</button><button type="submit" id="skinfoldDialogSave" class="adaptive-planning-button">Speichern</button></div>
     </form>
   </dialog>
+  <dialog id="lt2AdoptDialog" aria-labelledby="lt2AdoptTitle">
+    <form method="dialog" class="confirmation-dialog">
+      <h2 id="lt2AdoptTitle">Schätzung übernehmen</h2>
+      <p id="lt2AdoptMessage"></p>
+      <fieldset class="chip-field"><legend class="sr-only">Werte</legend><div id="lt2AdoptValues" class="lt2-adopt-values"></div></fieldset>
+      <div class="dialog-actions">
+        <button type="button" id="lt2AdoptCancel" class="secondary-button">Abbrechen</button>
+        <button type="submit" id="lt2AdoptAccept" class="adaptive-planning-button">Übernehmen</button>
+      </div>
+    </form>
+  </dialog>
   <dialog id="weightDialog" aria-labelledby="weightDialogTitle">
     <form id="weightDialogForm" class="confirmation-dialog">
       <h2 id="weightDialogTitle">Gewicht</h2>

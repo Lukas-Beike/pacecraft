@@ -165,9 +165,22 @@ function withFirstThresholds(metrics, thresholds) {
   };
 }
 
+// The local LT2 estimates beside Garmin's (#3273), each an estimate; unknown ones are left out.
+function withLt2Estimates(metrics, estimates) {
+  const ok = (estimate) => (estimate?.status === "ok" ? estimate : {});
+  const value = (number, unit) => (number == null ? undefined : { value: number, unit, estimated: true });
+  return {
+    ...metrics,
+    run_lt2_dfa_hr_bpm: value(ok(estimates?.run?.dfa_alpha1).heart_rate_bpm, "bpm"),
+    run_lt2_dfa_pace_seconds_per_km: value(ok(estimates?.run?.dfa_alpha1).pace_seconds_per_km, "s/km"),
+    run_lt2_cs_pace_seconds_per_km: value(ok(estimates?.run?.critical_speed).pace_seconds_per_km, "s/km"),
+    cycling_lt2_cp_watts: value(ok(estimates?.ride?.critical_power).power_w, "W"),
+  };
+}
+
 // LT1 comes from the thresholds of the same performance values as the metrics.
-function renderCurrentPerformance(metrics, history, status = [], thresholds = null) {
-  metrics = withFirstThresholds(currentPerformanceValues(metrics, history), thresholds);
+function renderCurrentPerformance(metrics, history, status = [], thresholds = null, lt2Estimates = null) {
+  metrics = withLt2Estimates(withFirstThresholds(currentPerformanceValues(metrics, history), thresholds), lt2Estimates);
   const root = document.getElementById("currentPerformance");
   rememberAnalysisSectionState(root);
   root.replaceChildren(h("h3", null, "Aktuelle Werte"));
@@ -177,6 +190,9 @@ function renderCurrentPerformance(metrics, history, status = [], thresholds = nu
       ["run_threshold_pace_seconds_per_km", "Anaerobe Schwelle (LT2) · Pace"],
       ["run_threshold_watts", "Anaerobe Schwelle (LT2) · Leistung"],
       ["run_threshold_hr_bpm", "Anaerobe Schwelle (LT2) · Puls"],
+      ["run_lt2_dfa_hr_bpm", "Anaerobe Schwelle (LT2) · DFA-α1 Puls"],
+      ["run_lt2_dfa_pace_seconds_per_km", "Anaerobe Schwelle (LT2) · DFA-α1 Pace"],
+      ["run_lt2_cs_pace_seconds_per_km", "Anaerobe Schwelle (LT2) · CS"],
       ["run_lt1_pace_seconds_per_km", "Aerobe Schwelle (LT1) · Pace"],
       ["run_lt1_hr_bpm", "Aerobe Schwelle (LT1) · Puls"],
       ["running_vo2max_ml_kg_min", "VO\u2082max"],
@@ -184,6 +200,7 @@ function renderCurrentPerformance(metrics, history, status = [], thresholds = nu
     ["Radfahren", "ride", [
       ["cycling_ftp_watts", "Anaerobe Schwelle (LT2) · FTP"],
       ["bike_threshold_hr_bpm", "Anaerobe Schwelle (LT2) · Puls"],
+      ["cycling_lt2_cp_watts", "Anaerobe Schwelle (LT2) · CP"],
       ["cycling_w_per_kg", "Leistung pro Gewicht"],
       ["cycling_lt1_watts", "Aerobe Schwelle (LT1) · Leistung"],
       ["cycling_lt1_hr_bpm", "Aerobe Schwelle (LT1) · Puls"],
@@ -220,8 +237,9 @@ function renderPerformance(performance, { refreshCharts = true } = {}) {
   const root = $("#performancePredictions");
   root.replaceChildren();
   const values = performance?.metrics || {};
-  renderCurrentPerformance(values, performance?.history, performanceDataStatus(performance), performance?.thresholds);
+  renderCurrentPerformance(values, performance?.history, performanceDataStatus(performance), performance?.thresholds, state.data?.lt2_estimates);
   refreshThresholdBox();
+  refreshLt2Notice();
   const predictions = racePredictionRows(values);
   root.hidden = false;
   root.append(h("h4", null, "Laufprognosen", " ", createEstimateChip()));

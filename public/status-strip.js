@@ -13,8 +13,9 @@ const STATUS_SOURCE_RANK = {
   provider: 6,
   provider_key: 7,
   thresholds: 8,
-  intervals_key: 9,
-  equipment: 10,
+  lt2: 9,
+  intervals_key: 10,
+  equipment: 11,
 };
 const STATUS_STAND_REFRESH_MS = 60_000;
 
@@ -65,7 +66,10 @@ function statusStripLine(item) {
 function statusStripAction(item) {
   if (!item.action) return null;
   const dataset = item.action.connection ? { connection: item.action.connection } : null;
-  return h("a", { className: "status-strip-action", href: item.action.href, dataset }, item.action.label);
+  const link = h("a", { className: "status-strip-action", href: item.action.href, dataset }, item.action.label);
+  // Opening a notice can settle it, as the LT2 change notice does (#3273).
+  if (item.action.onOpen) link.addEventListener("click", () => item.action.onOpen());
+  return link;
 }
 
 function statusStripDismiss(item) {

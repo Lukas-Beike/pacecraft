@@ -671,7 +671,234 @@ function thresholdBox(sport) {
       h("b", { dataset: { threshold: names.hr } }, values.hr == null ? "—" : `${Math.round(values.hr)} bpm`));
   }
   const foot = h("p", "zone-source", zoneEditButton("Bearbeiten", { zoneEdit: "lt1" }));
-  return h("section", { className: "zone-box", dataset: { zoneBox: "thresholds" } }, heading, grid, foot);
+  const sources = lt2SourceRows(sport);
+  const list = sources.length ? h("div", "lt2-sources", h("h4", null, lt2Label), h("ul", null, ...sources.map((row) => lt2SourceItem(sport, row)))) : null;
+  return h("section", { className: "zone-box", dataset: { zoneBox: "thresholds" } }, heading, grid, list, foot);
+}
+
+// LT2 from Garmin beside the local estimates (#3273): DFA-α1 at 0.5 and CS/CP. Each local value
+// is adopted on its own (F8); nothing changes without the athlete's tap.
+const LT2_METRICS = { run: { main: "run_threshold_pace_seconds_per_km", hr: "run_threshold_hr_bpm" }, ride: { main: "cycling_ftp_watts", hr: "bike_threshold_hr_bpm" } };
+const LT2_SOURCE_NAMES = { dfa_alpha1: "DFA-α1", critical_speed: "CS", critical_power: "CP" };
+
+// The provider's LT2 value and label: the winner when a provider gives it, else a provider
+// alternative beside a local value.
+function lt2ProviderValue(item) {
+  if (item?.source_provider) return { value: item.value ?? null, label: item.source };
+  const other = item?.alternatives?.find((candidate) => candidate.source_provider);
+  return { value: other?.value ?? null, label: other?.source ?? null };
+}
+
+function lt2Duration(seconds) {
+  const minutes = seconds.map((value) => Math.round(value / 60));
+  return minutes.length > 1 ? `${minutes.slice(0, -1).join(", ")} und ${minutes.at(-1)} min` : `${minutes[0]} min`;
+}
+
+// Pure: the adoptable values of one local estimate, each with its label (F8).
+function lt2AdoptValues(source, estimate) {
+  if (estimate?.status !== "ok") return [];
+  const values = [];
+  if (estimate.heart_rate_bpm != null) values.push({ value: "heart_rate", shown: estimate.heart_rate_bpm, label: `Puls ${estimate.heart_rate_bpm} bpm` });
+  if (estimate.pace_seconds_per_km != null) values.push({ value: "pace", shown: estimate.pace_seconds_per_km, label: `Pace ${thresholdMainText("pace", estimate.pace_seconds_per_km)}` });
+  if (estimate.power_w != null) values.push({ value: "power", shown: estimate.power_w, label: `Leistung ${estimate.power_w} W` });
+  return values;
+}
+
+function lt2EstimateBasis(source, estimate) {
+  if (source === "dfa_alpha1") return `aus ${estimate.sessions} Läufen der letzten ${estimate.window_days} Tage`;
+  return `Bestwerte ${lt2Duration(estimate.durations_s || [])} aus ${estimate.window_days} Tagen`;
+}
+
+// Pure: one row per LT2 source of a sport; `inEffect` marks the source whose value applies.
+function lt2SourceRows(sport, metrics = state.data?.performance?.metrics || {}, estimates = state.data?.lt2_estimates?.[sport] || {}, effective = (metric) => zoneConfigurationFor(sport, metric)) {
+  const keys = LT2_METRICS[sport];
+  if (!keys) return [];
+  const mainMetric = sport === "ride" ? "power" : "pace";
+  const origins = new Set([effective(mainMetric)?.threshold_origin, effective("heart_rate")?.threshold_origin].filter(Boolean));
+  const provider = lt2ProviderRow(metrics[keys.main], metrics[keys.hr], mainMetric, origins);
+  return [...(provider ? [provider] : []), ...Object.entries(estimates).map(([source, estimate]) => lt2EstimateRow(source, estimate, origins))];
+}
+
+function lt2ProviderRow(main, hr, mainMetric, origins) {
+  const [first, second] = [lt2ProviderValue(main), lt2ProviderValue(hr)];
+  if (first.value == null && second.value == null) return null;
+  const texts = [first.value == null ? null : thresholdMainText(mainMetric, first.value), second.value == null ? null : `${Math.round(second.value)} bpm`];
+  const observed = main?.source_provider ? main.observed_at : null;
+  return {
+    source: "provider",
+    name: first.label || second.label,
+    values: texts.filter(Boolean).join(" · "),
+    basis: observed ? `vom ${dateLabel(String(observed).slice(0, 10))}` : "",
+    inEffect: !origins.size && Boolean(main?.source_provider),
+    adopt: [],
+  };
+}
+
+function lt2EstimateRow(source, estimate, origins) {
+  const known = estimate?.status === "ok";
+  const adopt = lt2AdoptValues(source, estimate);
+  return {
+    source,
+    name: LT2_SOURCE_NAMES[source] || source,
+    quality: known ? estimate.quality : null,
+    values: known ? adopt.map((item) => item.label.replace(/^\S+ /, "")).join(" · ") : "unbekannt",
+    unknown: !known,
+    basis: known ? lt2EstimateBasis(source, estimate) : String(estimate?.reason || ""),
+    inEffect: origins.has(source),
+    adopt,
+  };
+}
+
+const LT2_QUALITY_CHIPS = { good: ["Schätzung · gut", "status-chip success"], low: ["Schätzung · mittel", "status-chip warning"] };
+
+function lt2SourceItem(sport, row) {
+  const chips = [];
+  if (row.source !== "provider") {
+    const [text, className] = LT2_QUALITY_CHIPS[row.quality] || ["Schätzung", "status-chip"];
+    chips.push(h("span", className, text));
+  }
+  if (row.inEffect) chips.push(h("span", "status-chip success", "gilt"));
+  const values = h("span", { className: "lt2-source-values", dataset: row.unknown ? { unknown: "" } : {} }, row.values);
+  const item = h("li", { className: "lt2-source", dataset: { lt2Source: row.source } }, h("span", "lt2-source-name", row.name, ...chips), values, h("span", "lt2-source-basis", row.basis));
+  if (row.adopt.length) {
+    const button = h("button", { type: "button", className: "secondary-button" }, "Übernehmen");
+    button.addEventListener("click", () => { void adoptLt2(sport, row, button); });
+    item.append(button);
+  }
+  return item;
+}
+
+// The DFA row offers its values one by one (F8); a single value is adopted at once.
+function chooseLt2Values(row) {
+  const dialog = $("#lt2AdoptDialog");
+  if (!dialog) return Promise.resolve([]);
+  $("#lt2AdoptTitle").textContent = `${row.name}-Schätzung übernehmen`;
+  $("#lt2AdoptMessage").textContent = `Als ${zoneSport === "ride" ? "Anaerob (LT2) / FTP" : "Anaerob (LT2)"} ${zoneSport === "ride" ? "Radfahren" : "Laufen"}, gilt ab heute.`;
+  const boxes = row.adopt.map((item) => h("input", { type: "checkbox", checked: true, value: item.value }));
+  $("#lt2AdoptValues").replaceChildren(...row.adopt.map((item, index) => h("label", "chip", boxes[index], h("span", null, item.label))));
+  return new Promise((resolve) => {
+    const finish = (chosen) => { dialog.onclose = null; resolve(chosen); };
+    $("#lt2AdoptCancel").onclick = () => dialog.close();
+    dialog.onclose = () => finish(dialog.returnValue === "adopt" ? row.adopt.filter((_, index) => boxes[index].checked) : []);
+    $("#lt2AdoptAccept").onclick = () => { dialog.returnValue = "adopt"; };
+    dialog.returnValue = "";
+    dialog.showModal();
+  });
+}
+
+async function adoptLt2(sport, row, button) {
+  const chosen = row.adopt.length > 1 ? await chooseLt2Values(row) : row.adopt;
+  if (!chosen.length) return;
+  button.disabled = true;
+  try {
+    for (const item of chosen) {
+      if (!await adoptLt2Value(sport, row, item, {})) break;
+    }
+  } finally { button.disabled = false; }
+}
+
+// One value; the server asks for the second step above 5 % (F9) or before replacing an entered value.
+async function adoptLt2Value(sport, row, item, flags) {
+  try {
+    const result = await api("/api/zones/lt2/adopt", { method: "POST", body: JSON.stringify({ sport, source: row.source, value: item.value, shown: item.shown, ...flags }) });
+    showZoneReceipt(`${row.name}: ${item.label} übernommen`, result.change);
+    await reloadZonesAndThresholds();
+    return true;
+  } catch (error) {
+    const flag = await confirmLt2Step(error, flags);
+    if (flag) return adoptLt2Value(sport, row, item, { ...flags, [flag]: true });
+    if (flag === null) toast(error.message, true);
+    return false;
+  }
+}
+
+// The confirmation a refused adoption asks for: the flag to resend, false when declined, null otherwise.
+async function confirmLt2Step(error, flags) {
+  if (error.reason === "lt2_deviation" && !flags.confirm_deviation) {
+    const confirmed = await requestConfirmation(`${error.message} Zonen in % der Schwelle verschieben sich mit.`, { title: "Große Abweichung", confirmLabel: "Trotzdem übernehmen" });
+    return confirmed && "confirm_deviation";
+  }
+  if (error.reason === "lt2_replace_local" && !flags.replace_local) {
+    const confirmed = await requestConfirmation(error.message, { title: "Eigenen Wert ersetzen?", confirmLabel: "Ersetzen" });
+    return confirmed && "replace_local";
+  }
+  return null;
+}
+
+// F10: the values of a sport as the change notice compares them; null is "unbekannt".
+function lt2NoticeValues(sport, metrics = state.data?.performance?.metrics || {}, estimates = state.data?.lt2_estimates?.[sport] || {}) {
+  const keys = LT2_METRICS[sport];
+  const ok = (estimate) => (estimate?.status === "ok" ? estimate : {});
+  const provider = (item) => lt2ProviderValue(item).value;
+  if (sport === "run") {
+    return { provider_hr: provider(metrics[keys.hr]), provider_pace: provider(metrics[keys.main]), dfa_hr: ok(estimates.dfa_alpha1).heart_rate_bpm ?? null, dfa_pace: ok(estimates.dfa_alpha1).pace_seconds_per_km ?? null, cs_pace: ok(estimates.critical_speed).pace_seconds_per_km ?? null };
+  }
+  return { provider_power: provider(metrics[keys.main]), provider_hr: provider(metrics[keys.hr]), cp_power: ok(estimates.critical_power).power_w ?? null };
+}
+
+// Minimum change per value before a notice (athlete decision F10): 2 bpm, 3 s/km, 5 W.
+const LT2_NOTICE_MIN = { provider_hr: 2, dfa_hr: 2, provider_pace: 3, dfa_pace: 3, cs_pace: 3, provider_power: 5, cp_power: 5 };
+const LT2_NOTICE_UNITS = { pace: " /km", hr: " bpm", power: " W" };
+const LT2_NOTICE_LABELS = { provider_hr: "Puls", provider_pace: "Pace", provider_power: "FTP", dfa_hr: "DFA-α1 Puls", dfa_pace: "DFA-α1 Pace", cs_pace: "CS", cp_power: "CP" };
+
+// Pure: the changes against the seen values; a switch between a value and "unbekannt" counts too.
+function lt2NoticeChanges(seen, current) {
+  return Object.keys(current).filter((key) => {
+    const before = seen?.[key] ?? null;
+    const now = current[key] ?? null;
+    if ((before == null) !== (now == null)) return true;
+    return before != null && Math.abs(now - before) >= LT2_NOTICE_MIN[key];
+  }).map((key) => ({ key, before: seen?.[key] ?? null, now: current[key] ?? null }));
+}
+
+function lt2NoticeValueText(key, value) {
+  if (value == null) return "unbekannt";
+  if (key.endsWith("_pace")) return thresholdMainText("pace", value).replace(" /km", "");
+  return String(Math.round(value));
+}
+
+// `provider` names the provider the provider_* values come from, such as "Garmin".
+function lt2NoticeDetail(changes, provider = "") {
+  return changes.map(({ key, before, now }) => {
+    const unit = LT2_NOTICE_UNITS[key.split("_").pop()];
+    const label = key.startsWith("provider_") ? `${provider} ${LT2_NOTICE_LABELS[key]}`.trim() : LT2_NOTICE_LABELS[key];
+    return `${label} ${lt2NoticeValueText(key, before)} → ${lt2NoticeValueText(key, now)}${now == null ? "" : unit}`;
+  }).join(", ");
+}
+
+async function seeLt2Values(sport, values) {
+  try {
+    const result = await api("/api/zones/lt2/notice-baseline", { method: "PUT", body: JSON.stringify({ sport, values }) });
+    if (state.data) state.data.lt2_notice_baselines = result.lt2_notice_baselines;
+  } catch (error) { toast(error.message, true); }
+  refreshLt2Notice();
+}
+
+// One notice per sport in the status strip; the first values become the baseline silently.
+function refreshLt2Notice() {
+  const data = state.data;
+  if (!data?.lt2_estimates || !data.performance?.metrics) return;
+  const notices = [];
+  for (const [sport, name] of [["run", "Laufen"], ["ride", "Radfahren"]]) {
+    const current = lt2NoticeValues(sport);
+    const seen = data.lt2_notice_baselines?.[sport];
+    if (!seen) {
+      if (Object.values(current).some((value) => value != null)) void seeLt2Values(sport, current);
+      continue;
+    }
+    const changes = lt2NoticeChanges(seen, current);
+    const keys = LT2_METRICS[sport];
+    const provider = lt2ProviderValue(data.performance.metrics[keys.main]).label || lt2ProviderValue(data.performance.metrics[keys.hr]).label || "";
+    if (changes.length) notices.push({ sport, name, current, detail: lt2NoticeDetail(changes, provider) });
+  }
+  const [first, ...rest] = notices;
+  updateStatusSources({ lt2: first ? {
+    level: "notice",
+    title: rest.length ? "LT2 geändert" : `LT2 ${first.name} geändert`,
+    detail: notices.map((notice) => notice.detail).join("; "),
+    action: { href: "#more/profile", label: "Ansehen", onOpen: () => { for (const notice of notices) void seeLt2Values(notice.sport, notice.current); } },
+    dismiss: () => { for (const notice of notices) void seeLt2Values(notice.sport, notice.current); },
+  } : null });
 }
 
 function zoneKindBox(sport, metric, environment = null) {
