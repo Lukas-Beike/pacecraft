@@ -11,8 +11,10 @@ cookie, password or error text. Exit 0 all ok, 1 a check failed (a count
 dropped against --compare, a version mismatch, a stale or stuck sync), 2 the
 app could not be reached or read. `--section <name>` (repeatable) prints,
 instead of the checks, only the allow-listed counts, flags, state words and
-ages in hours (a `*_at` time as `*_hours`) of the sections in SECTION_FIELDS;
-the state words in FAIL_STATES and a missing section print as FAIL.
+ages in hours (a `*_at` time as `*_hours`) of the sections in SECTION_FIELDS,
+or the sums of a section in DERIVED_SECTIONS (`coach_local_first`: the #3080
+counts over the Coach history); the state words in FAIL_STATES and a missing
+section print as FAIL.
 """
 
 from __future__ import annotations
@@ -108,6 +110,20 @@ SECTION_FIELDS = {
         r"|wahoo\.(window_days|records)"
     ),
 }
+# Sums over the Coach history (`coach_commands`: the newest 20 commands, at most
+# 40 steps each) for the local-first checks of #3080: how each searched food
+# term was answered, records created beside an existing one, and steps refused
+# for an existing record (a retried refusal counts again). Counts only: no
+# message, id, name, date or single step is printed. The session resolutions
+# are in `--section runtime` (session_reports). The names are the backend's;
+# tests/test_prod_checks.py pins them to it.
+LOOKUP_OUTCOMES = ("local_hit", "external_after_miss", "external_requested")
+DESPITE_TOOLS = ("manage_training_templates", "save_competition")
+EXISTING_RECORD_REASONS = (
+    "template_exists",
+    "template_exists_in_call",
+    "competition_exists",
+)
 STATES = {
     "ready",
     "building",
@@ -320,6 +336,67 @@ def section_lines(
     return lines or [("info", f"section {name} empty")]
 
 
+def local_first_counts(commands: list[Any]) -> dict[str, int]:
+    """The #3080 counts over the history's steps; every named count, zeros too."""
+    counts = dict.fromkeys(
+        [
+            *(f"lookup_outcomes.{name}" for name in LOOKUP_OUTCOMES),
+            *(f"created_despite_candidate.{name}" for name in DESPITE_TOOLS),
+            *(f"refusals.{name}" for name in EXISTING_RECORD_REASONS),
+        ],
+        0,
+    )
+    counted = [command for command in commands if isinstance(command, dict)]
+    counts["commands"] = len(counted)
+    steps = [
+        step
+        for command in counted
+        for step in command.get("steps") or ()
+        if isinstance(step, dict)
+    ]
+    for step in steps:
+        for name, value in step_counts(step):
+            counts[name] += value
+    return counts
+
+
+def step_counts(step: dict[str, Any]) -> list[tuple[str, int]]:
+    """The named counts one history step adds; unknown names add nothing."""
+    outcomes = step.get("lookup_outcomes")
+    added = [
+        (f"lookup_outcomes.{name}", value)
+        for name, value in (outcomes if isinstance(outcomes, dict) else {}).items()
+        if name in LOOKUP_OUTCOMES and type(value) is int
+    ]
+    despite = step.get("created_despite_candidate")
+    if step.get("tool") in DESPITE_TOOLS and type(despite) is int:
+        added.append((f"created_despite_candidate.{step['tool']}", despite))
+    error = step.get("error")
+    reason = error.get("reason") if isinstance(error, dict) else None
+    if reason in EXISTING_RECORD_REASONS:
+        added.append((f"refusals.{reason}", 1))
+    return added
+
+
+def local_first_lines(report: dict[str, Any]) -> list[tuple[str, str]]:
+    commands = report.get("coach_commands")
+    if not isinstance(commands, list):
+        return [("FAIL", "section coach_commands missing")]
+    return [
+        ("info", f"coach_local_first.{name} {value}")
+        for name, value in sorted(local_first_counts(commands).items())
+    ]
+
+
+# Sections `--section` derives from the report instead of printing its leaves.
+DERIVED_SECTIONS = {"coach_local_first": local_first_lines}
+
+
+def named_section_lines(report: dict[str, Any], name: str) -> list[tuple[str, str]]:
+    derived = DERIVED_SECTIONS.get(name)
+    return derived(report) if derived else section_lines(report, name)
+
+
 def mark(ok: bool, text: str) -> tuple[str, str]:
     return ("ok" if ok else "FAIL", text)
 
@@ -485,7 +562,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--out")
     parser.add_argument("--compare")
     parser.add_argument("--ca-file")
-    parser.add_argument("--section", action="append", choices=sorted(SECTION_FIELDS))
+    parser.add_argument(
+        "--section",
+        action="append",
+        choices=sorted({*SECTION_FIELDS, *DERIVED_SECTIONS}),
+    )
     args = parser.parse_args(argv)
     checks_asked = (
         args.out,
@@ -515,7 +596,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"FAIL {exc}")
         return 2
     lines = (
-        [line for name in args.section for line in section_lines(report, name)]
+        [line for name in args.section for line in named_section_lines(report, name)]
         if args.section
         else checks(
             result,

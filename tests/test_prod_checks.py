@@ -17,6 +17,10 @@ from unittest import mock
 from server_test_support import ServerTestCase, server
 
 from backend.canonical.vocabulary import RecordingOrigin, Sport
+from backend.coach.read_tools import LOOKUP_OUTCOMES
+from backend.coach.receipt_compaction import compact_tool_result
+from backend.coach.turn_failures import coach_error_metadata
+from backend.errors import AppError
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 import prod_client
@@ -74,6 +78,52 @@ def report(messages=40):
             },
         },
         "runtime": {"process_memory": {"rss_bytes": 1000}},
+        # The Coach history as the diagnostics project it, with planted text.
+        "coach_commands": [
+            {
+                "id": "act_secret",
+                "created_at": RECENT,
+                "steps": [
+                    {
+                        "tool": "lookup_food",
+                        "ok": True,
+                        "error": None,
+                        "lookup_outcomes": {"local_hit": 2, "external_requested": 1},
+                    },
+                    {
+                        "tool": "manage_training_templates",
+                        "ok": False,
+                        "error": {"reason": "template_exists_in_call"},
+                    },
+                ],
+            },
+            {
+                "id": "turn-2",
+                "steps": [
+                    {
+                        "tool": "lookup_food",
+                        "ok": True,
+                        "error": None,
+                        "lookup_outcomes": {
+                            "external_after_miss": 1,
+                            "text never printed": 7,
+                        },
+                    },
+                    {
+                        "tool": "save_competition",
+                        "ok": True,
+                        "error": None,
+                        "created_despite_candidate": 1,
+                    },
+                    {
+                        "tool": "save_competition",
+                        "ok": False,
+                        "error": {"reason": "competition_exists"},
+                    },
+                    "text never printed",
+                ],
+            },
+        ],
         "fit_inventory": {
             "status": "ready",
             "note": "text never printed",
@@ -329,6 +379,39 @@ class ProdChecksTests(unittest.TestCase):
                 ["--url", self.url, "--password-file", str(self.secret),
                  "--section", "fit_inventory", "--expect-version", "2.1.2"]
             )  # fmt: skip
+
+    def test_coach_local_first_prints_the_3080_sums_only(self):
+        code, text = self.run_main(
+            prod_diagnostics, "--url", self.url, "--password-file", str(self.secret),
+            "--section", "coach_local_first",
+        )  # fmt: skip
+        self.assertEqual(code, 0)
+        prefix = "info coach_local_first."
+        self.assertEqual(
+            text.splitlines(),
+            [
+                "ok health",
+                "ok logout 200",
+                f"{prefix}commands 2",
+                f"{prefix}created_despite_candidate.manage_training_templates 0",
+                f"{prefix}created_despite_candidate.save_competition 1",
+                f"{prefix}lookup_outcomes.external_after_miss 1",
+                f"{prefix}lookup_outcomes.external_requested 1",
+                f"{prefix}lookup_outcomes.local_hit 2",
+                f"{prefix}refusals.competition_exists 1",
+                f"{prefix}refusals.template_exists 0",
+                f"{prefix}refusals.template_exists_in_call 1",
+            ],
+        )
+        self.assertNotIn("secret", text)
+        self.assertNotIn("never printed", text)
+        # A history the report could not build fails, as a missing section does.
+        for broken in ({}, {"coach_commands": {"status": "unavailable"}}):
+            with self.subTest(report=broken):
+                self.assertEqual(
+                    prod_diagnostics.named_section_lines(broken, "coach_local_first"),
+                    [("FAIL", "section coach_commands missing")],
+                )
 
     def test_post_release_sections_print_counts_and_state_words_only(self):
         # Shapes as the report builds them, with planted text, ids and times.
@@ -599,6 +682,60 @@ NOT_PRINTED = {
 
 class SectionFieldsCoverTheProducersTests(ServerTestCase):
     """A new diagnostics key fails here until prod_diagnostics prints or names it (#3131)."""
+
+    def test_coach_local_first_sums_the_real_history_projection(self):
+        # #3080: the backend's names and shapes, so a rename fails here
+        # instead of printing zeros.
+        self.assertEqual(prod_diagnostics.LOOKUP_OUTCOMES, LOOKUP_OUTCOMES)
+
+        def refused(tool: str, reason: str) -> dict:
+            try:
+                raise AppError(409, "Schon gespeichert.", reason=reason)
+            except AppError as exc:
+                metadata = coach_error_metadata(exc, Path(server.__file__).parent)
+            return {
+                "tool": tool,
+                "result": {"ok": False, "reason": reason},
+                "diagnostic_error": metadata,
+            }
+
+        lookup = {
+            "ok": True,
+            "results": [
+                {"query": "Skyr", "lookup_outcome": "local_hit"},
+                {"query": "Banane", "lookup_outcome": "external_requested"},
+            ],
+        }
+        receipt = {
+            "command_receipts": [
+                {
+                    "tool": "lookup_food",
+                    "result": compact_tool_result("lookup_food", lookup),
+                },
+                {
+                    "tool": "save_competition",
+                    "result": {"ok": True, "created_despite_candidate": 1},
+                },
+                refused("manage_training_templates", "template_exists"),
+                refused("manage_training_templates", "template_exists_in_call"),
+                refused("save_competition", "competition_exists"),
+            ]
+        }
+        steps = server.DIAGNOSTICS.coach_history_service()._command_steps(receipt)
+        self.assertEqual(
+            {
+                "commands": 1,
+                "lookup_outcomes.local_hit": 1,
+                "lookup_outcomes.external_after_miss": 0,
+                "lookup_outcomes.external_requested": 1,
+                "created_despite_candidate.manage_training_templates": 0,
+                "created_despite_candidate.save_competition": 1,
+                "refusals.template_exists": 1,
+                "refusals.template_exists_in_call": 1,
+                "refusals.competition_exists": 1,
+            },
+            prod_diagnostics.local_first_counts([{"steps": steps}, "not a command"]),
+        )
 
     def test_every_key_a_section_emits_is_printed_or_named(self):
         now = datetime.now(UTC)
