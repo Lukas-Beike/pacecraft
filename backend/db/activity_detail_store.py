@@ -799,6 +799,42 @@ def activity_detail_backfill_candidates(
     ]
 
 
+def outdated_file_set_records(
+    db: Any, provider: str, record_kind: str, *, since: datetime, mapper_version: int
+) -> set[str]:
+    """Ids of window records whose streams or laps are below ``mapper_version``.
+
+    Records as in ``activity_detail_backfill_candidates`` (active, non-manual, of a
+    live session, started since ``since``); only sets of the current summary count,
+    and only the streams and laps kinds, which a file replaces.
+    """
+    rows = db.execute(
+        "SELECT DISTINCT r.provider_activity_id FROM activity_records AS r "
+        "JOIN provider_records AS p ON p.provider = r.provider "
+        "AND p.record_kind = ? AND p.source_record_id = r.provider_activity_id AND p.state = ? "
+        "JOIN activity_sessions AS s ON s.activity_id = r.activity_id AND s.state <> ? "
+        "WHERE r.provider = ? AND r.state = ? AND r.recorded_by <> ? "
+        "AND julianday(r.started_at) >= julianday(?) "
+        "AND EXISTS (SELECT 1 FROM activity_detail_sets AS d "
+        "WHERE d.provider = r.provider AND d.provider_activity_id = r.provider_activity_id "
+        "AND (d.summary_sha256 IS NULL OR d.summary_sha256 = p.payload_hash) "
+        "AND d.detail_kind IN (?, ?) AND d.mapper_version < ?)",
+        (
+            record_kind,
+            ProviderRecordState.ACTIVE.value,
+            ActivitySessionState.DELETED.value,
+            provider,
+            ActivityRecordState.ACTIVE.value,
+            RecordingOrigin.MANUAL.value,
+            since.isoformat(),
+            ActivityDetailKind.STREAMS.value,
+            ActivityDetailKind.LAPS.value,
+            mapper_version,
+        ),
+    ).fetchall()
+    return {row["provider_activity_id"] for row in rows}
+
+
 def sensor_uses(db: Any) -> list[SensorUse]:
     """Return the sensor lists of every live session's stream sets, oldest first.
 

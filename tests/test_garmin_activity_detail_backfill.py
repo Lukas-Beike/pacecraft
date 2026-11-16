@@ -254,6 +254,7 @@ class BackfillCandidateTests(_Base):
             {
                 "window_days": 90,
                 "pending": 1,
+                "passed_over": 0,
                 "records": 2,
                 "strength": 0,
                 "daily_budget": 20,
@@ -1401,6 +1402,11 @@ class BackfillReplayTests(_Base):
             (versions["streams"], versions["laps"]),
             (MAPPER_VERSION - 1, MAPPER_VERSION - 1),
         )
+        # Diagnostics tell it apart from a finished replay: not pending, but passed
+        # over with sets below the current mapper (#3208 review).
+        with self.manager.reader() as db:
+            size = detail_replay_size(db, self.key_values, NOW_AT)
+        self.assertEqual((size["pending"], size["passed_over"]), (0, 1))
 
 
 class BackfillAssemblyTests(unittest.TestCase):

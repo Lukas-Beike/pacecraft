@@ -53,6 +53,7 @@ from backend.db.activity_detail_store import (
     activity_detail_backfill_candidates,
     activity_detail_backfill_universe,
     detail_sets_for,
+    outdated_file_set_records,
     replace_detail_set,
     restamp_detail_set,
     stored_stream_resolution,
@@ -694,8 +695,11 @@ def detail_replay_size(db: Any, key_values: Any, now: datetime) -> dict[str, Any
     ``pending`` records have no set of the current mapper version yet; ``records``
     have none of the next one, so the next mapper bump would fetch them again,
     ``strength`` of them with one call more (their exercise sets). Both leave out
-    what the backfill leaves out: empty marks and used-up retries. The budget
-    fields are ``replay_budget_counts`` of today (UTC).
+    what the backfill leaves out: empty marks and used-up retries. ``passed_over``
+    records are not pending although their full streams or device laps are still
+    below the current mapper version (a file the replay never got), so ``pending``
+    at 0 alone does not mean the window is current. The budget fields are
+    ``replay_budget_counts`` of today (UTC).
     """
     raw = key_values.get(db, BACKFILL_STATE_KEY)
     state = _parse_backfill_state(raw)
@@ -708,9 +712,14 @@ def detail_replay_size(db: Any, key_values: Any, now: datetime) -> dict[str, Any
         return [item["provider_activity_id"] for item in pending]
 
     ids = below(MAPPER_VERSION + 1)
+    pending = below(MAPPER_VERSION)
+    outdated = outdated_file_set_records(
+        db, GARMIN_ID, ACTIVITY_RECORD_KIND, since=since, mapper_version=MAPPER_VERSION
+    )
     return {
         "window_days": BACKFILL_WINDOW.days,
-        "pending": len(below(MAPPER_VERSION)),
+        "pending": len(pending),
+        "passed_over": len(outdated - set(pending)),
         "records": len(ids),
         "strength": len(strength_record_ids(db, GARMIN_ID, ids)),
         **replay_budget_counts(raw, now.astimezone(UTC).date().isoformat()),
