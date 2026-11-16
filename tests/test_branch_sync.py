@@ -343,6 +343,93 @@ class BranchSyncTests(unittest.TestCase):
         shown = gh_cli._push_refusal(refused, ["x"])
         self.assertEqual((len(shown), shown[50]), (52, "... and 10 more"))
 
+    def push(self, *args):
+        with mock.patch.object(branch_sync, "push_env", return_value=dict(os.environ)):
+            return self.sync("--push", "--allow-root", "c.txt", *args)
+
+    def test_a_branch_tracking_another_name_pushes_there_only_when_named(self):
+        # #3270: the local name differs from the pull request's head branch.
+        commit(self.work, "c.txt", "1\n", "feat(ui): add c")
+        git(self.work, "push", "-q", "origin", "feat/x:feat/pr-head")
+        git(self.work, "branch", "-q", "-u", "origin/feat/pr-head")
+        commit(self.work, "d.txt", "2\n", "feat(ui): add d")
+        before = git(self.origin, "rev-parse", "feat/pr-head")
+
+        # Without --to it refuses loudly: the upstream could be a parent's branch.
+        code, out, _err = self.push("--allow-root", "d.txt")
+        self.assertEqual(code, 1)
+        self.assertIn("refused: feat/x tracks origin/feat/pr-head", out)
+        self.assertIn("--to feat/pr-head", out)
+        self.assertEqual(git(self.origin, "rev-parse", "feat/pr-head"), before)
+        self.assertEqual(git(self.origin, "branch", "--list", "feat/x"), "")
+
+        code, out, err = self.push("--allow-root", "d.txt", "--to", "feat/pr-head")
+
+        self.assertEqual((code, err), (0, ""))
+        self.assertIn("pushed: feat/x -> origin/feat/pr-head", out)
+        self.assertEqual(
+            git(self.origin, "rev-parse", "feat/pr-head"),
+            git(self.work, "rev-parse", "HEAD"),
+        )
+        self.assertEqual(git(self.origin, "branch", "--list", "feat/x"), "")
+
+    def test_the_lease_guards_the_upstream_not_the_local_name(self):
+        commit(self.work, "c.txt", "1\n", "feat(ui): add c")
+        git(self.work, "push", "-q", "origin", "feat/x:feat/pr-head")
+        git(self.work, "branch", "-q", "-u", "origin/feat/pr-head")
+        other = self.root / "other"
+        git(
+            self.root, "clone", "-q", "-b", "feat/pr-head", str(self.origin), str(other)
+        )
+        git(other, "config", "user.name", "Other")
+        git(other, "config", "user.email", "other@example.test")
+        commit(other, "e.txt", "3\n", "feat(ui): remote only")
+        git(other, "push", "-q", "origin", "feat/pr-head")
+        remote_tip = git(self.origin, "rev-parse", "feat/pr-head")
+        git(self.work, "commit", "-q", "--amend", "-m", "feat(ui): add c, reworded")
+
+        code, _out, err = self.push("--to", "feat/pr-head")
+
+        self.assertEqual(code, 2)
+        self.assertIn("rejected", err)
+        self.assertEqual(git(self.origin, "rev-parse", "feat/pr-head"), remote_tip)
+
+    def test_a_stacked_child_tracking_its_parent_never_pushes_over_it(self):
+        # #3274 review: started from origin/feat/parent, the child tracks it.
+        git(self.work, "checkout", "-q", "-b", "feat/parent", "develop")
+        commit(self.work, "p.txt", "parent\n", "feat(ui): parent layer")
+        git(self.work, "push", "-q", "-u", "origin", "feat/parent")
+        git(self.work, "checkout", "-q", "-B", "feat/x", "origin/feat/parent")
+        commit(self.work, "c.txt", "child\n", "feat(ui): child layer")
+        parent = git(self.origin, "rev-parse", "feat/parent")
+
+        code, out, _err = self.push("--allow-root", "p.txt")
+
+        self.assertEqual(code, 1)
+        self.assertIn("refused: feat/x tracks origin/feat/parent", out)
+        self.assertEqual(git(self.origin, "rev-parse", "feat/parent"), parent)
+
+    def test_to_never_names_develop_or_main(self):
+        commit(self.work, "c.txt", "1\n", "feat(ui): add c")
+        code, out, _err = self.push("--to", "develop")
+        self.assertEqual(code, 1)
+        self.assertIn("refused: --to develop", out)
+
+    def test_a_branch_tracking_develop_or_nothing_pushes_to_its_own_name(self):
+        # Created from origin/develop, git tracks develop: never push there.
+        git(self.work, "branch", "-q", "-u", "origin/develop")
+        commit(self.work, "c.txt", "1\n", "feat(ui): add c")
+        develop = git(self.origin, "rev-parse", "develop")
+
+        code, out, _err = self.push()
+
+        self.assertEqual(code, 0)
+        self.assertIn("pushed: feat/x -> origin/feat/x", out)
+        self.assertEqual(git(self.origin, "rev-parse", "develop"), develop)
+        self.assertEqual(
+            git(self.origin, "rev-parse", "feat/x"), git(self.work, "rev-parse", "HEAD")
+        )
+
     def test_push_keeps_remote_work_the_branch_has_not_seen(self):
         commit(self.work, "c.txt", "1\n", "feat(ui): add c")
         git(self.work, "push", "-q", "-u", "origin", "feat/x")
