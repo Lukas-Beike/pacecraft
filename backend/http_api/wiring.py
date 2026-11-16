@@ -596,6 +596,7 @@ def _domain_routes(
             nutrition.meal_library_service,
             ctx.garmin.targeted_refresh_service,
             ctx.clock.now,
+            nutrition.product_refresh,
         ),
         SyncCommandPostRoute(sync_command_endpoint),
         PrivacyDeletePostRoutes(privacy_delete),
