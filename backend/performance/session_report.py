@@ -26,6 +26,7 @@ from backend.athlete.measurements import finite_float as _number
 from backend.canonical.activity_summary import summary_is_indoor
 from backend.performance import session_conditions
 from backend.performance.comparable_sessions import DURATION_SHARE
+from backend.performance.form_drift import CONTACT_TIME_RISE_PCT
 from backend.performance.planned_targets import (
     CAP_ABOVE_SHARE_PCT,
     FAIR_SHARE_PCT,
@@ -79,6 +80,10 @@ RACE_DISTANCE_SHARE: Final = 0.10
 # A final stretch slower than this share of the race's median speed is a walk
 # or roll-out after the line, not the race.
 WALK_OFF_SPEED_SHARE: Final = 0.6
+# A shoe without its own or Garmin's target is due at this many km (athlete, #3084).
+SHOE_DEFAULT_TARGET_KM: Final = 700.0
+# The shoe hint is notable from this share of its target distance.
+SHOE_DUE_SHARE: Final = 1.0
 # The notable checks the answer leads with.
 LEAD_COUNT: Final = 4
 EASY_FOCUS: Final = frozenset({"recovery", "easy", "endurance", "long"})
@@ -97,6 +102,8 @@ _WEIGHT: Final = {
     "race_sections": 4,
     "race_start": 3,
     "race_fade": 3,
+    "form_drift": 3,
+    "shoe_mileage": 1,
     "plan_duration": 3,
     "plan_load": 3,
     "decoupling": 3,
@@ -142,6 +149,7 @@ def session_report(
         *(_continuous_checks(facts) if facts.kind == "continuous" else ()),
         *(_interval_checks(facts) if facts.kind == "interval" else ()),
         *(_race_checks(facts, race) if facts.kind == "race" else ()),
+        *(_run_block(facts) if facts.sport == "run" else ()),
         *_condition_checks(facts),
     ]
     notable = sorted(
@@ -760,6 +768,82 @@ def _recovery_heart_rate_drop(facts: _Facts) -> dict[str, Any]:
         threshold=HEART_RATE_DROP_BELOW_BPM,
         measure=below,
         basis="personal",
+    )
+
+
+def _run_block(facts: _Facts) -> list[dict[str, Any]]:
+    """The run's own checks beside its session type (#3084 Part 2)."""
+    checks = [_form_drift(facts)]
+    shoes = [
+        item
+        for item in facts.result.get("equipment") or ()
+        if isinstance(item, Mapping) and item.get("kind") == "shoes"
+    ]
+    checks.extend(_shoe_mileage(item) for item in shoes)
+    return [check for check in checks if check is not None]
+
+
+def _form_drift(facts: _Facts) -> dict[str, Any] | None:
+    """The stored form drift of a run: running dynamics from the first to the last third."""
+    drift = _mapping(_mapping(facts.result.get("analysis")).get("form_drift"))
+    if not drift:
+        return None
+    title = "Laufstil-Drift"
+    if drift.get("status") != "ok":
+        return _unknown(
+            "form_drift", title, str(drift.get("reason") or "Keine Form-Drift.")
+        )
+    metrics = {
+        name: {
+            "change_pct": item.get("change_percent"),
+            "threshold_pct": item.get("threshold_percent"),
+        }
+        for name, item in _mapping(drift.get("metrics")).items()
+        if isinstance(item, Mapping)
+    }
+    rise = _number(metrics.get("contact_time", {}).get("change_pct"))
+    return _judged(
+        "form_drift",
+        title,
+        value={
+            "pace_change_pct": drift.get("pace_change_percent"),
+            "metrics": metrics,
+        },
+        unit="%",
+        rule="Bodenkontaktzeit vom ersten zum letzten Drittel bei gleichem Tempo (Form-Drift)",
+        threshold=CONTACT_TIME_RISE_PCT,
+        measure=rise or 0.0,
+        basis="fixed",
+        notable=drift.get("flagged") is True,
+    )
+
+
+def _shoe_mileage(item: Mapping[str, Any]) -> dict[str, Any] | None:
+    """The run's shoe against its target distance: its own, Garmin's, else 700 km."""
+    usage = _number(_mapping(item.get("usage")).get("distance_km"))
+    if usage is None:
+        return None
+    lifetime = _mapping(item.get("lifetime"))
+    target = _number(lifetime.get("target_km"))
+    source = item.get("lifetime_target_source") if target else "default"
+    target = target or SHOE_DEFAULT_TARGET_KM
+    share = usage / target
+    return _judged(
+        "shoe_mileage",
+        "Schuh-Kilometer",
+        value={
+            "equipment_id": item.get("id"),
+            "usage_km": round(usage, 1),
+            "target_km": round(target, 1),
+            "target_source": source,
+            "share_pct": round(share * 100, 1),
+        },
+        unit="%",
+        rule="Gelaufene Kilometer gegen das Ziel des Schuhs (eigenes, Garmin, sonst 700 km)",
+        threshold=SHOE_DUE_SHARE * 100,
+        measure=share * 100,
+        basis="fixed",
+        notable=share >= SHOE_DUE_SHARE,
     )
 
 

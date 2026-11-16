@@ -704,6 +704,93 @@ class RacePlanTests(unittest.TestCase):
             self.assertIn("Distanz", found[key]["reason"])
 
 
+class RunBlockTests(unittest.TestCase):
+    """#3084 Part 2: the run's own checks beside its session type."""
+
+    def test_form_drift_reads_the_stored_verdict(self) -> None:
+        def drift(contact: float, flagged: bool) -> dict[str, Any]:
+            return {
+                "status": "ok",
+                "pace_change_percent": 0.8,
+                "flagged": flagged,
+                "metrics": {
+                    "contact_time": {
+                        "change_percent": contact,
+                        "threshold_percent": 5.0,
+                    },
+                    "step_length": {"change_percent": -2.0, "threshold_percent": 5.0},
+                },
+            }
+
+        def found(analysis: dict[str, Any]) -> dict[str, Any]:
+            report = session_report({**result(focus="long"), "analysis": analysis})
+            return checks(report)["form_drift"]
+
+        flagged = found({"form_drift": drift(6.1, True)})
+        self.assertEqual(
+            ("notable", 6.1),
+            (
+                flagged["verdict"],
+                flagged["value"]["metrics"]["contact_time"]["change_pct"],
+            ),
+        )
+        self.assertEqual("ok", found({"form_drift": drift(3.0, False)})["verdict"])
+        short = found(
+            {
+                "form_drift": {
+                    "status": "insufficient_data",
+                    "reason": "Die Einheit ist kürzer als 45 Minuten.",
+                }
+            }
+        )
+        self.assertEqual(
+            ("unknown", "Die Einheit ist kürzer als 45 Minuten."),
+            (short["verdict"], short["reason"]),
+        )
+
+    def test_shoe_against_its_own_target_else_700_km(self) -> None:
+        # Own 600 km target, 610 km run: 101.7 %, due. No target: 350 of 700 km.
+        own = {
+            "id": "shoe-1",
+            "kind": "shoes",
+            "usage": {"distance_km": 610},
+            "lifetime": {"target_km": 600},
+            "lifetime_target_source": "local",
+        }
+        fresh = {"id": "shoe-2", "kind": "shoes", "usage": {"distance_km": 350}}
+        bike = {"id": "bike-1", "kind": "bike", "usage": {"distance_km": 9000}}
+        report = session_report(
+            {**result(focus="easy"), "equipment": [own, fresh, bike]}
+        )
+        shoes = [c for c in report["checks"] if c["id"] == "shoe_mileage"]
+        self.assertEqual(
+            [
+                ("shoe-1", 101.7, "local", "notable"),
+                ("shoe-2", 50.0, "default", "ok"),
+            ],
+            [
+                (
+                    c["value"]["equipment_id"],
+                    c["value"]["share_pct"],
+                    c["value"]["target_source"],
+                    c["verdict"],
+                )
+                for c in shoes
+            ],
+        )
+
+    def test_a_ride_gets_no_run_block(self) -> None:
+        report = session_report(
+            {
+                **result(sport="ride", focus="endurance"),
+                "equipment": [
+                    {"id": "s", "kind": "shoes", "usage": {"distance_km": 900}}
+                ],
+            }
+        )
+        self.assertFalse({"form_drift", "shoe_mileage"} & checks(report).keys())
+
+
 class RaceAndRankingTests(unittest.TestCase):
     def test_a_positive_split_is_notable(self) -> None:
         found = checks(
