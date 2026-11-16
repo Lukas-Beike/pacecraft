@@ -63,6 +63,8 @@ SESSION_SERIES_KINDS: Final = frozenset(
         MetricKind.ACTIVITY_WEATHER_HUMIDITY,
         MetricKind.ACTIVITY_WEATHER_WIND_SPEED,
         MetricKind.ACTIVITY_WEATHER_PRECIPITATION,
+        MetricKind.ACTIVITY_WEATHER_WIND_DIRECTION,
+        MetricKind.ACTIVITY_WEATHER_HEADWIND,
     }
 )
 _ATHLETE_SERIES_KINDS: Final = frozenset(
@@ -1137,6 +1139,21 @@ def retire_derived_observations(
             (ProjectionState.RETIRED.value, now, *batch),
         )
     return len(stale)
+
+
+def drop_retired_derivation_key(db: Any, method: str, metric: str, key: str) -> int:
+    """Remove ``key`` from the derivation of retired local rows of ``method`` and ``metric``.
+
+    A retired row keeps its details; a value that describes the course of its
+    session, like the headwind bins (#3084), must not outlive the session.
+    """
+    path = f"$.{_DERIVATION_KEY}.{key}"
+    return db.execute(
+        "UPDATE observations SET details = json_remove(details, ?) "
+        "WHERE provider IS NULL AND method = ? AND metric = ? AND state = ? "
+        "AND json_valid(details) AND json_type(details, ?) IS NOT NULL",
+        (path, method, metric, ProjectionState.RETIRED.value, path),
+    ).rowcount
 
 
 def retire_unemitted_observations(

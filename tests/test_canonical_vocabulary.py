@@ -155,6 +155,8 @@ class CanonicalVocabularyTests(unittest.TestCase):
                 "activity_weather_humidity": "%",
                 "activity_weather_wind_speed": "m/s",
                 "activity_weather_precipitation": "mm",
+                "activity_weather_wind_direction": "deg",
+                "activity_weather_headwind": "m/s",
                 "skinfold_chest": "mm",
                 "skinfold_abdomen": "mm",
                 "skinfold_thigh": "mm",

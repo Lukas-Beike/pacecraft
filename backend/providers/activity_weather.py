@@ -24,6 +24,8 @@ HOURLY_FIELDS: Final = (
     "relative_humidity_2m",
     "wind_speed_10m",
     "precipitation",
+    # The direction the wind comes from, for the headwind component (#3084).
+    "wind_direction_10m",
 )
 
 

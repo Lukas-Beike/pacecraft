@@ -77,6 +77,9 @@ METRIC_BOUNDS: Final[Mapping[MetricKind, tuple[float, float]]] = {
     MetricKind.ACTIVITY_WEATHER_HUMIDITY: (0.0, 100.0),
     MetricKind.ACTIVITY_WEATHER_WIND_SPEED: (0.0, 120.0),
     MetricKind.ACTIVITY_WEATHER_PRECIPITATION: (0.0, 1_000.0),
+    # Normalised to [0, 360) and bounded by the wind speed, so both hold by construction.
+    MetricKind.ACTIVITY_WEATHER_WIND_DIRECTION: (0.0, 360.0),
+    MetricKind.ACTIVITY_WEATHER_HEADWIND: (-120.0, 120.0),
     # A caliper reads 2-80 mm; outside that a value is a typing error.
     **{
         kind: (2.0, 80.0)

@@ -18,7 +18,9 @@ from backend.weather import cache
 from backend.weather.activity_weather import heat_note
 
 METHOD_ID: Final = "open-meteo-activity-weather"
-METHOD_VERSION: Final = 1
+# v2 adds the wind direction and the headwind component (#3084): every stored
+# session is looked up once more, paced by the stage.
+METHOD_VERSION: Final = 2
 LOCATION_START: Final = "activity_start"
 LOCATION_HOME: Final = "home"
 LOCATION_LABELS: Final = {
@@ -41,7 +43,21 @@ VALUES: Final[tuple[tuple[str, MetricKind, str], ...]] = (
     ("wind_speed_mps", MetricKind.ACTIVITY_WEATHER_WIND_SPEED, "wind_speed_mps"),
     ("precipitation_mm", MetricKind.ACTIVITY_WEATHER_PRECIPITATION, "precipitation_mm"),
 )
-_KEY_OF_KIND: Final = {kind.value: key for key, kind, _ in VALUES}
+# The wind relative to the session, written apart from the values above so a
+# failure of one never drops the other (#3084): the direction from the weather,
+# the headwind component (its bins only in the row's derivation, never a block).
+WIND_VALUES: Final[tuple[tuple[str, MetricKind], ...]] = (
+    ("wind_direction_deg", MetricKind.ACTIVITY_WEATHER_WIND_DIRECTION),
+    ("headwind_mps", MetricKind.ACTIVITY_WEATHER_HEADWIND),
+)
+HEADWIND_LABEL: Final = (
+    "Schätzung: Gegenwindanteil aus Wind am Start (Open-Meteo Modell, 10 m, "
+    "stündlich) und Laufrichtung"
+)
+_KEY_OF_KIND: Final = {
+    kind.value: key
+    for key, kind in (*((key, kind) for key, kind, _ in VALUES), *WIND_VALUES)
+}
 
 
 def stored_activity_weather(
@@ -88,10 +104,17 @@ def weather_block(rows: Mapping[str, Mapping[str, Any]]) -> dict[str, Any] | Non
     first = next(row for metric, row in rows.items() if metric in _KEY_OF_KIND)
     kind = first["derivation"].get("location_kind")
     block: dict[str, Any] = {
-        key: values[key] for key, _kind, _ in VALUES if key in values
+        key: values[key]
+        for key in (
+            *(key for key, _kind, _ in VALUES),
+            *(key for key, _ in WIND_VALUES),
+        )
+        if key in values
     }
     block["location_kind"] = kind
     block["source"] = LOCATION_LABELS.get(str(kind), LOCATION_LABELS[LOCATION_START])
+    if "headwind_mps" in block:
+        block["headwind_source"] = HEADWIND_LABEL
     note = heat_note(values.get("apparent_temperature_c"))
     if note is not None:
         block["heat_note"] = note
