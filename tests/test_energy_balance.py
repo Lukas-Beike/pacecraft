@@ -120,6 +120,19 @@ class AdaptiveTdeeTests(unittest.TestCase):
             assert window.adaptive_tdee is not None
             self.assertAlmostEqual(window.adaptive_tdee.kcal, TRUE_TDEE, delta=1.0)
 
+    def test_the_band_uses_t_and_the_density_uncertainty(self) -> None:
+        # Two-sided 95 % t quantiles from the standard table (#3187 item 10).
+        self.assertEqual(balance.t_quantile(6), 2.447)
+        self.assertEqual(balance.t_quantile(35), 2.042)
+        self.assertEqual(balance.t_quantile(500), 1.96)
+        # Losing 500 kcal/day with exact weigh-ins and constant intake: only the
+        # density term is left. Slope 500 / 7,534.75 = 0.066359 kg/day; density
+        # SD 0.144 x (9,441 - 1,816) = 1,098.0 kcal/kg; 72.862 kcal/day. 28 days
+        # and 28 weigh-ins give min(27, 26) dof: t = 2.056, band 149.80 kcal.
+        window = balance.energy_windows(series(constant(2100.0)), END, weeks=1)[-1]
+        assert window.adaptive_tdee is not None
+        self.assertAlmostEqual(window.adaptive_tdee.band_kcal, 149.80, delta=0.05)
+
     def test_incomplete_days_are_dropped(self) -> None:
         day = balance.DayInputs(intake_kcal=800, entries=3, activity_kcal=600)
         self.assertFalse(balance.is_complete(day, 1700.0))

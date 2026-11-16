@@ -22,7 +22,7 @@ from backend.performance.activity_energy import tef_kcal
 
 METHOD_ID = "adaptive-expenditure"
 # Bump when a formula or constant below changes the estimate.
-METHOD_VERSION = 1
+METHOD_VERSION = 2
 # Days per window and windows per week of the rolling view (#3099, #3100).
 WINDOW_DAYS = 28
 # Half-life in days of the exponentially weighted weight trend.
@@ -50,6 +50,21 @@ DEFAULT_FAT_SHARE = 0.75
 FLAGGED_DAY_UNCERTAINTY = 0.25
 # Two-sided 95 % band multiplier.
 BAND_Z = 1.96
+# Two-sided 95 % Student t quantiles by degrees of freedom (standard table);
+# a window's band uses the smaller of its intake (days - 1) and weight-slope
+# (weigh-ins - 2) degrees of freedom, BAND_Z beyond the table (#3187 item 10).
+T_QUANTILE_95 = {
+    1: 12.706, 2: 4.303, 3: 3.182, 4: 2.776, 5: 2.571, 6: 2.447, 7: 2.365,
+    8: 2.306, 9: 2.262, 10: 2.228, 11: 2.201, 12: 2.179, 13: 2.160,
+    14: 2.145, 15: 2.131, 16: 2.120, 17: 2.110, 18: 2.101, 19: 2.093,
+    20: 2.086, 21: 2.080, 22: 2.074, 23: 2.069, 24: 2.064, 25: 2.060,
+    26: 2.056, 27: 2.052, 28: 2.048, 29: 2.045, 30: 2.042, 40: 2.021,
+    60: 2.000, 120: 1.980,
+}  # fmt: skip
+# Uncertainty of the fat share of a weight change (SD), so the energy density
+# enters the band: a share between 0.5 and 1.0 taken as uniform, 0.5 / sqrt(12)
+# (product assumption, #3187 item 10).
+FAT_SHARE_SD = 0.144
 # The one activity calibration factor: prior 1 +- 0.10, clamped to 0.85-1.15,
 # fitted on complete windows of the last 12 weeks (method comment, #3100).
 CALIBRATION_PRIOR_SD = 0.10
@@ -174,8 +189,17 @@ def _latest_body_fat(inputs: EnergyInputs, day: date) -> float | None:
     return inputs.body_fat_pct[max(measured)] if measured else None
 
 
+def t_quantile(dof: int) -> float:
+    """The 95 % two-sided t quantile, from the next smaller tabled dof."""
+    tabled = [d for d in T_QUANTILE_95 if d <= max(1, dof)]
+    return BAND_Z if dof > max(T_QUANTILE_95) else T_QUANTILE_95[max(tabled)]
+
+
 def _tdee(
-    intakes: Sequence[tuple[float, float]], stored_per_day: float, store_sd: float
+    intakes: Sequence[tuple[float, float]],
+    stored_per_day: float,
+    store_sd: float,
+    weighins: int = 3,
 ) -> Estimate | None:
     """Mean intake minus stored energy per day, with its 95 % band.
 
@@ -189,7 +213,8 @@ def _tdee(
     spread = statistics.stdev(values) if len(values) > 1 else 0.0
     flagged_var = sum((FLAGGED_DAY_UNCERTAINTY * k) ** 2 for _, k in intakes)
     intake_var = spread**2 / len(values) + flagged_var / len(values) ** 2
-    band = BAND_Z * math.sqrt(intake_var + store_sd**2)
+    dof = min(len(values) - 1, weighins - 2)
+    band = t_quantile(dof) * math.sqrt(intake_var + store_sd**2)
     return Estimate(mean - stored_per_day, band)
 
 
@@ -210,9 +235,9 @@ def _stored_energy(
     """Stored energy per day over the weigh-ins, and its standard error.
 
     The least-squares slope of the window's own weigh-ins, at the energy
-    density of the body composition at the last one; the error is the slope's
-    standard error. Unlike the trend's change it has no warm-up lag after the
-    first weigh-in (Gitar on #3123).
+    density of the body composition at the last one. The error combines the
+    slope's standard error with the density's (``FAT_SHARE_SD``). Unlike the
+    trend's change the slope has no warm-up lag after the first weigh-in.
     """
     weighins = sorted(weights)
     last = weighins[-1]
@@ -226,7 +251,8 @@ def _stored_energy(
         y - (mean_y + slope * (x - mean_x)) for x, y in zip(xs, ys, strict=True)
     ]
     slope_se = math.sqrt(sum(r * r for r in residuals) / max(1, len(xs) - 2) / sxx)
-    return density * slope, density * slope_se
+    density_sd = FAT_SHARE_SD * (FAT_KCAL_PER_KG - LEAN_KCAL_PER_KG)
+    return density * slope, math.hypot(density * slope_se, slope * density_sd)
 
 
 def _window(
@@ -253,7 +279,7 @@ def _window(
     if reason is None:
         stored, store_sd = _stored_energy(inputs, trend, weights)
         everything = [(v.intake_kcal or 0.0, v.flagged_kcal) for v in complete.values()]
-        tdee = _tdee(everything, stored, store_sd)
+        tdee = _tdee(everything, stored, store_sd, len(weighins))
         unflagged = tdee if flagged == 0 else None
         if tdee is not None and raw is not None and tef is not None:
             rmr = tdee.kcal - raw * factor - tef

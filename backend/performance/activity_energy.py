@@ -12,24 +12,32 @@ from __future__ import annotations
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 
+from backend.performance.grade_adjustment import (
+    GRADE_SPAN_M,
+    MAX_GRADE,
+    MINETTI_RUNNING,
+)
+
 METHOD_ID = "activity-energy"
 # Bump when a formula or constant below changes the estimate.
-METHOD_VERSION = 1
+METHOD_VERSION = 2
 # Joules per kilocalorie (thermochemical calorie).
 J_PER_KCAL = 4184.0
 # Standard gravity, m/s^2, for the vertical work of floors.
 GRAVITY = 9.81
-# Minetti et al. 2002 (J Appl Physiol 93:1039, Fig. 2): net metabolic cost of
-# running per unit distance, J/kg/m, as a 5th-order polynomial of the gradient
-# (rise/run, -0.45 to +0.45); coefficients from i^5 down to the constant.
-MINETTI_RUNNING = (155.4, -30.4, -43.3, 46.3, 19.5, 3.6)
-# Minetti et al. 2002: the same fit for walking.
+# Minetti et al. 2002: the running fit (MINETTI_RUNNING, its gradient range
+# and the 200 m grade span come from grade_adjustment, #3187), and the same
+# fit for walking.
 MINETTI_WALKING = (280.5, -58.7, -76.8, 51.9, 19.6, 2.5)
-# The gradient range Minetti et al. 2002 measured; steeper segments are clamped.
-GRADE_LIMIT = 0.45
-# Segments shorter than this are merged for the grade, so GPS altitude noise on
-# a few metres does not become a steep gradient.
-GRADE_MIN_RUN_M = 20.0
+# Level walking, net of rest, from the ACSM walking equation (ACSM's Guidelines
+# for Exercise Testing and Prescription, metabolic equations; VO2 = 0.1 x S +
+# 1.8 x S x G + 3.5, S in m/min): its horizontal term 0.1 mL O2/kg/m at the
+# conventional 20.1 J per mL O2 (Schmidt-Nielsen 1984). Athlete decision on
+# #3187 item 7: neither Minetti's measured minimum (1.64, at optimal speed)
+# nor the fit's intercept (2.5).
+ACSM_WALKING_O2_ML_PER_KG_M = 0.1
+J_PER_ML_O2 = 20.1
+LEVEL_WALKING_J_PER_KG_M = ACSM_WALKING_O2_ML_PER_KG_M * J_PER_ML_O2
 # Gross efficiency of cycling (mechanical / metabolic energy): 19.8 % measured in
 # 17 trained men by Moseley & Jeukendrup 2001 (R42); it varies with work rate
 # and training (R41, R43), and the one calibration factor absorbs an
@@ -46,9 +54,9 @@ STRENGTH_MET_VIGOROUS = 6.0
 # secondary sources; fallback only (about +-20-30 % individually).
 KEYTEL_MALE = (-55.0969, 0.6309, 0.1988, 0.2017)
 KEYTEL_FEMALE = (-20.4022, 0.4472, -0.1263, 0.074)
-# Flex-HR: the first minutes of a session are not steady state and are not fitted.
+# Flex-HR: a power session this short is not steady state and is not fitted.
 FLEX_HR_SKIP_S = 180.0
-# Flex-HR needs at least this many steady segments from power sessions.
+# Flex-HR needs at least this many power sessions (one point each).
 FLEX_HR_MIN_SEGMENTS = 20
 # Vertical metres per counted floor (Garmin counts about 3 m of ascent).
 FLOOR_HEIGHT_M = 3.0
@@ -84,12 +92,18 @@ def _polynomial(coefficients: Sequence[float], grade: float) -> float:
 
 def running_cost_j_per_kg_m(grade: float) -> float:
     """Minetti's net running cost at a gradient, clamped to the measured range."""
-    return _polynomial(MINETTI_RUNNING, max(-GRADE_LIMIT, min(GRADE_LIMIT, grade)))
+    return _polynomial(MINETTI_RUNNING, max(-MAX_GRADE, min(MAX_GRADE, grade)))
 
 
 def walking_cost_j_per_kg_m(grade: float) -> float:
-    """Minetti's net walking cost at a gradient, clamped to the measured range."""
-    return _polynomial(MINETTI_WALKING, max(-GRADE_LIMIT, min(GRADE_LIMIT, grade)))
+    """Net walking cost at a gradient, clamped to the measured range.
+
+    Minetti's walking curve, scaled so that the level equals the ACSM value;
+    the shape over the gradient stays smooth, without a step at 0.
+    """
+    clamped = max(-MAX_GRADE, min(MAX_GRADE, grade))
+    scale = LEVEL_WALKING_J_PER_KG_M / MINETTI_WALKING[-1]
+    return scale * _polynomial(MINETTI_WALKING, clamped)
 
 
 def graded_segments(
@@ -97,8 +111,10 @@ def graded_segments(
 ) -> list[tuple[float, float]]:
     """(run, grade) per segment of cumulative distance and altitude streams.
 
-    Consecutive samples are merged until the run reaches ``GRADE_MIN_RUN_M``,
-    so altitude noise over a few metres does not become a steep gradient.
+    Consecutive samples are merged until the run reaches ``GRADE_SPAN_M``,
+    so altitude noise over a few metres does not become a steep gradient. A
+    shorter last stretch, before a gap or at the end, counts as flat instead
+    of dropping its distance.
     A missing altitude repeats the last known one (the first known one before
     it, 0 without any), so a run without altitude counts as flat instead of
     dropping out, and a late GPS fix invents no climb. Samples without
@@ -106,6 +122,7 @@ def graded_segments(
     """
     segments: list[tuple[float, float]] = []
     start: tuple[float, float] | None = None
+    last_distance: tuple[float, float] | None = None
     last_altitude = next((a for a in altitude_m if a is not None), 0.0)
     for index, distance in enumerate(distance_m):
         given = altitude_m[index] if index < len(altitude_m) else None
@@ -114,13 +131,26 @@ def graded_segments(
         if distance is None:
             continue
         if start is None or distance < start[0]:
-            start = (distance, altitude)
+            _flat_tail(segments, start, last_distance)
+            start = last_distance = (distance, altitude)
             continue
+        last_distance = (distance, altitude)
         run = distance - start[0]
-        if run >= GRADE_MIN_RUN_M:
+        if run >= GRADE_SPAN_M:
             segments.append((run, (altitude - start[1]) / run))
             start = (distance, altitude)
+    _flat_tail(segments, start, last_distance)
     return segments
+
+
+def _flat_tail(
+    segments: list[tuple[float, float]],
+    start: tuple[float, float] | None,
+    last: tuple[float, float] | None,
+) -> None:
+    """Add the run since ``start`` that did not reach the span, as flat."""
+    if start is not None and last is not None and last[0] > start[0]:
+        segments.append((last[0] - start[0], 0.0))
 
 
 def running_net_kcal(mass_kg: float, segments: Iterable[tuple[float, float]]) -> float:

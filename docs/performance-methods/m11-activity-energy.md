@@ -1,8 +1,8 @@
 # M11 — Own activity energy, net of resting metabolism
 
 - **Card:** M11
-- **Card version:** 1
-- **Method ID:** activity-energy v1 (#3100)
+- **Card version:** 2
+- **Method ID:** activity-energy v2 (#3100, #3187)
 - **Status:** methods implemented (`backend/performance/activity_energy.py`); daily wiring, adaptive TDEE and display follow (#3100, #3099)
 - **Classification:** model estimate
 - **Literature checked:** 2026-11-15
@@ -26,26 +26,35 @@ counting it twice. 1 kcal = 4184 J.
 
 1. **Running:** `net = m × Σ d_s × C_r(i_s)` with mass `m` (kg), segment run
    `d_s` (m) and the Minetti cost `C_r(i)` (J/kg/m) at the segment's gradient
-   `i_s`, clamped to ±0.45. Segments merge samples until the run reaches 20 m,
-   so altitude noise does not become a steep gradient. On the flat
+   `i_s`, clamped to ±0.45. Segments merge samples until the run reaches
+   200 m, the span grade-adjusted pace (M8) uses with the same polynomial,
+   so altitude noise does not become a steep gradient; a shorter last
+   stretch counts as flat. On the flat
    `C_r(0) = 3.6 J/kg/m` (0.86 kcal/kg/km). Running power is never read as
    energy.
 2. **Cycling with power:** `gross = W / 4.184 / GE` (W in kJ, GE = 0.20),
    `net = gross − RMR × duration`.
 3. **Endurance without power:** the athlete's own flex-HR line
-   `net kcal/min = a + b × HR + c × elapsed min`, fitted by least squares on
-   steady segments (first 3 min skipped) of their power sessions whose net
-   cost comes from item 2. With fewer than 20 segments, or all at one heart
-   rate, Keytel's equation without VO2max is the fallback, net of RMR.
+   `net kcal/min = a + b × HR + c × elapsed min`, fitted by least squares
+   with one point per power session longer than 3 min of the read window:
+   its mean HR, its net cost per minute from item 2, and half its duration
+   as the elapsed time. With fewer than 20 such sessions, or all at one
+   heart rate, Keytel's equation without VO2max is the fallback, net of RMR.
 4. **Strength:** `net = (MET − 1) × RMR/min × duration` with the Compendium
    2024 MET 3.5 (general) or 6.0 (vigorous), i.e. the MET corrected to the
    measured resting rate instead of 1 MET = 3.5 ml/kg/min. Heart rate is not
    used for strength.
-5. **NEAT:** steps outside recorded sessions × step length × Minetti's level
-   walking cost `C_w(0) = 2.5 J/kg/m` × mass, plus floors as vertical work
+5. **NEAT:** steps outside recorded sessions × step length × the level
+   walking cost `C_w(0) = 2.01 J/kg/m` × mass, plus floors as vertical work
    `m × g × 3 m / 0.25`. Step length from recorded walks (speed ÷ steps per
    minute), else 0.415 × height. A run, walk or hike takes its steps out of
    NEAT as 2 × its one-leg cadence × duration; other sessions take none.
+   Walking at any gradient uses Minetti's walking curve scaled so that the
+   level equals the ACSM horizontal term (R74) at 20.1 J/mL O2 (R75): the
+   curve stays smooth, without a step at 0. Neither Minetti's measured level
+   minimum, about 1.64 J/kg/m at the optimal speed (too low for everyday
+   walking at other speeds), nor the fit's intercept of 2.5 J/kg/m (which
+   overestimates level walking) is used (athlete decision, #3187 item 7).
 6. **TEF:** `0.25 × 4 × protein_g + 0.10 × 4 × carbohydrate_g + 0.015 × 9 × fat_g`.
 7. **EPOC (optional, off by default):** 6 % of the net cost of a session above
    the threshold.
@@ -104,7 +113,7 @@ line is calibrated on power-derived cost, not calorimetry (weak evidence).
 
 - Running needs distance and altitude streams; without altitude the grade is 0.
 - Cycling needs the session's work (kJ) or a power stream.
-- Flex-HR needs 20 steady segments over at least two heart-rate levels, else
+- Flex-HR needs 20 power sessions over at least two heart-rate levels, else
   Keytel; Keytel needs weight, age and sex, else no value.
 - NEAT needs the day's steps; without a measured or height-based step length
   there is no value.
@@ -117,14 +126,15 @@ line is calibrated on power-derived cost, not calorimetry (weak evidence).
 | Rule | Value | Tag | Rationale |
 | --- | --- | --- | --- |
 | Running cost polynomial | 155.4, −30.4, −43.3, 46.3, 19.5, 3.6 J/kg/m | source | R44, Fig. 2 |
-| Walking cost polynomial | 280.5, −58.7, −76.8, 51.9, 19.6, 2.5 J/kg/m | source | R44, Fig. 2 |
+| Walking cost polynomial | 280.5, −58.7, −76.8, 51.9, 19.6, 2.5 J/kg/m, scaled by 2.01 / 2.5 | source | R44, Fig. 2; scaled to the R74 level |
+| Level walking cost | 0.1 mL O2/kg/m × 20.1 J/mL = 2.01 J/kg/m | source | R74 horizontal term, R75 energy equivalent; athlete decision #3187 item 7 |
 | Gradient clamp | ±0.45 | source | R44 measured range |
-| Grade segment length | 20 m | product assumption | limits GPS altitude noise |
+| Grade segment length | 200 m | product assumption | limits GPS altitude noise; the M8 grade span |
 | Cycling gross efficiency | 0.20 | source | R42 (19.8 % measured), varies per R41, R43 |
 | Strength MET general / vigorous | 3.5 / 6.0 | source | R64 codes 02054 / 02050 |
 | MET correction to own RMR | (MET − 1) × RMR | source | R67 |
 | Keytel coefficients (kJ/min) | men −55.0969, 0.6309, 0.1988, 0.2017; women −20.4022, 0.4472, −0.1263, 0.074 | source | R63, as reproduced by secondary sources |
-| Flex-HR skip / minimum segments | 180 s / 20 | product assumption | steady state; enough spread for three terms |
+| Flex-HR shortest session / minimum sessions | 180 s / 20 | product assumption | steady state; enough spread for three terms |
 | Floor height / uphill efficiency | 3 m / 0.25 | product assumption | Garmin floor; R44 concentric efficiency statement |
 | Step length from height | 0.415 × height | product assumption | common heuristic, weak evidence |
 | TEF protein / carbohydrate / fat | 0.25 / 0.10 / 0.015 | source | R65 midpoints |
@@ -155,20 +165,19 @@ line is calibrated on power-derived cost, not calorimetry (weak evidence).
 | Constant | Value | Module | Code comment |
 | --- | --- | --- | --- |
 | `METHOD_ID` | `'activity-energy'` | `backend/performance/activity_energy.py` |  |
-| `METHOD_VERSION` | `1` | `backend/performance/activity_energy.py` | Bump when a formula or constant below changes the estimate. |
+| `METHOD_VERSION` | `2` | `backend/performance/activity_energy.py` | Bump when a formula or constant below changes the estimate. |
 | `J_PER_KCAL` | `4184.0` | `backend/performance/activity_energy.py` | Joules per kilocalorie (thermochemical calorie). |
 | `GRAVITY` | `9.81` | `backend/performance/activity_energy.py` | Standard gravity, m/s^2, for the vertical work of floors. |
-| `MINETTI_RUNNING` | `(155.4, -30.4, -43.3, 46.3, 19.5, 3.6)` | `backend/performance/activity_energy.py` | Minetti et al. 2002 (J Appl Physiol 93:1039, Fig. 2): net metabolic cost of running per unit distance, J/kg/m, as a 5th-order polynomial of the gradient (rise/run, -0.45 to +0.45); coefficients from i^5 down to the constant. |
-| `MINETTI_WALKING` | `(280.5, -58.7, -76.8, 51.9, 19.6, 2.5)` | `backend/performance/activity_energy.py` | Minetti et al. 2002: the same fit for walking. |
-| `GRADE_LIMIT` | `0.45` | `backend/performance/activity_energy.py` | The gradient range Minetti et al. 2002 measured; steeper segments are clamped. |
-| `GRADE_MIN_RUN_M` | `20.0` | `backend/performance/activity_energy.py` | Segments shorter than this are merged for the grade, so GPS altitude noise on a few metres does not become a steep gradient. |
+| `MINETTI_WALKING` | `(280.5, -58.7, -76.8, 51.9, 19.6, 2.5)` | `backend/performance/activity_energy.py` | Minetti et al. 2002: the running fit (MINETTI_RUNNING, its gradient range and the 200 m grade span come from grade_adjustment, #3187), and the same fit for walking. |
+| `ACSM_WALKING_O2_ML_PER_KG_M` | `0.1` | `backend/performance/activity_energy.py` | Level walking, net of rest, from the ACSM walking equation (ACSM's Guidelines for Exercise Testing and Prescription, metabolic equations; VO2 = 0.1 x S + 1.8 x S x G + 3.5, S in m/min): its horizontal term 0.1 mL O2/kg/m at the conventional 20.1 J per mL O2 (Schmidt-Nielsen 1984). Athlete decision on #3187 item 7: neither Minetti's measured minimum (1.64, at optimal speed) nor the fit's intercept (2.5). |
+| `J_PER_ML_O2` | `20.1` | `backend/performance/activity_energy.py` |  |
 | `CYCLING_GROSS_EFFICIENCY` | `0.2` | `backend/performance/activity_energy.py` | Gross efficiency of cycling (mechanical / metabolic energy): 19.8 % measured in 17 trained men by Moseley & Jeukendrup 2001 (R42); it varies with work rate and training (R41, R43), and the one calibration factor absorbs an individual offset (weak evidence). |
 | `STRENGTH_MET_GENERAL` | `3.5` | `backend/performance/activity_energy.py` | 2024 Adult Compendium of Physical Activities (Herrmann et al., J Sport Health Sci 13:6): code 02054, resistance training, multiple exercises, 8-15 reps. |
 | `STRENGTH_MET_VIGOROUS` | `6.0` | `backend/performance/activity_energy.py` | Compendium 2024 code 02050: free weights, power lifting, vigorous effort. |
 | `KEYTEL_MALE` | `(-55.0969, 0.6309, 0.1988, 0.2017)` | `backend/performance/activity_energy.py` | Keytel et al. 2005 (J Sports Sci 23:289), model without VO2max: gross energy expenditure in kJ/min from heart rate (bpm), weight (kg) and age (years): intercept, HR, weight, age. Coefficients as reproduced by several secondary sources; fallback only (about +-20-30 % individually). |
 | `KEYTEL_FEMALE` | `(-20.4022, 0.4472, -0.1263, 0.074)` | `backend/performance/activity_energy.py` |  |
-| `FLEX_HR_SKIP_S` | `180.0` | `backend/performance/activity_energy.py` | Flex-HR: the first minutes of a session are not steady state and are not fitted. |
-| `FLEX_HR_MIN_SEGMENTS` | `20` | `backend/performance/activity_energy.py` | Flex-HR needs at least this many steady segments from power sessions. |
+| `FLEX_HR_SKIP_S` | `180.0` | `backend/performance/activity_energy.py` | Flex-HR: a power session this short is not steady state and is not fitted. |
+| `FLEX_HR_MIN_SEGMENTS` | `20` | `backend/performance/activity_energy.py` | Flex-HR needs at least this many power sessions (one point each). |
 | `FLOOR_HEIGHT_M` | `3.0` | `backend/performance/activity_energy.py` | Vertical metres per counted floor (Garmin counts about 3 m of ascent). |
 | `UPHILL_WORK_EFFICIENCY` | `0.25` | `backend/performance/activity_energy.py` | Efficiency of vertical work when walking up steep gradients: Minetti et al. 2002 found uphill walking above +0.15 reaches concentric muscle efficiency, taken here as 0.25 (assumption from that statement). |
 | `STEP_LENGTH_PER_HEIGHT` | `0.415` | `backend/performance/activity_energy.py` | Step length from body height when no recorded walk measured it; a common heuristic, weak evidence (+-10-15 %). |
