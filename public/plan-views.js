@@ -2237,15 +2237,17 @@ function renderPlannedWeek(view) {
   week.append(days);
   const legend = plannedZoneLegend(days);
   if (legend) week.append(legend);
-  // A past or running week of the last 52 shows its review (the server reads no older one), whose
-  // Plan tile carries the compliance; any other week keeps the plan line. The compliance counts the
-  // whole week, so a sport filter leaves it out.
+  // The plan line and the review count the whole week, so a sport filter leaves both out.
+  if (calendarSport !== "all") return week;
+  const additionalCompleted = weekEntries.filter((entry) => entry.is_completed_activity).length;
+  const summary = weekEntries.length ? plannedWeekSummary(weekKey, weekEndKey, weekEntries, weeklyCompliance.get(weekKey), todayKey) : "";
+  const planLine = summary ? h("p", "planned-week-totals", additionalCompleted && planned.length ? `${summary} · +${additionalCompleted} zusätzlich` : summary) : null;
+  // A past or running week the server reviews shows its review instead, whose Plan tile carries the
+  // compliance (#3298); the plan line stands in when the review fails or has no data.
   const currentWeekKey = planWeekStart(todayKey);
-  if (weekKey <= currentWeekKey && weekKey >= addDateKey(currentWeekKey, -7 * CALENDAR_DISPLAY_MAX_WEEKS)) {
-    week.append(plannedWeekReview(weekKey, todayKey, weekHasPlan ? allWeekEntries.filter((entry) => entry.is_completed_activity).length : 0));
-  } else if (weekEntries.length && calendarSport === "all") {
-    week.append(h("p", "planned-week-totals", plannedWeekSummary(weekKey, weekEndKey, weekEntries, weeklyCompliance.get(weekKey), todayKey)));
-  }
+  if (weekKey <= currentWeekKey && weekKey >= addDateKey(currentWeekKey, -7 * WEEK_REVIEW_WEEKS_BACK)) {
+    week.append(plannedWeekReview(weekKey, todayKey, weekHasPlan ? additionalCompleted : 0, planLine));
+  } else if (planLine) week.append(planLine);
   return week;
 }
 
@@ -2253,6 +2255,9 @@ function renderPlannedWeek(view) {
 // server from the stored summaries without a model (#2805); a future week has none. A tile
 // without data is left out.
 let weekReviewGeneration = 0;
+// The server reviews this week and the 51 before it (week_review.REVIEW_WEEKS_BACK).
+const WEEK_REVIEW_WEEKS_BACK = 51;
+const weekReviewFallbacks = new WeakMap();
 const WEEK_REVIEW_SHORT_DAY = new Intl.DateTimeFormat("de-DE", { weekday: "short", timeZone: "UTC" });
 const WEEK_REVIEW_REASONS = { highest_load: "höchste Belastung", race: "Wettkampf", missed: "verpasst" };
 const WEEK_REVIEW_POSITIONS = { below: "unter Normalbereich", within: "im Normalbereich", above: "über Normalbereich" };
@@ -2341,32 +2346,48 @@ function weekReviewTiles(review, extra) {
   return [weekReviewPlanTile(review.plan), sessions, time, load, ...weekReviewRecoveryTiles(review.recovery), checkins, weekReviewNotableTile(review.notable), complaints].filter(Boolean);
 }
 
-function plannedWeekReview(weekKey, todayKey, extra) {
-  const running = addDateKey(weekKey, 6) >= todayKey;
-  const card = h("section", { className: "week-review", dataset: { weekReview: weekKey }, "aria-labelledby": "weekReviewTitle" },
-    h("header", "week-review-head", h("h5", { id: "weekReviewTitle" }, "Wochenrückblick"), h("span", null, [`KW ${isoWeekNumber(weekKey)}`, running ? "bis heute" : null].filter(Boolean).join(" · "))),
+function plannedWeekReview(weekKey, todayKey, extra, planLine) {
+  const thisWeek = weekKey === planWeekStart(todayKey);
+  const card = h("section", { className: "week-review", dataset: { weekReview: weekKey, extra: String(extra), thisWeek: String(thisWeek) }, "aria-labelledby": "weekReviewTitle" },
+    h("header", "week-review-head", h("h5", { id: "weekReviewTitle" }, "Wochenrückblick"), h("span", null, [`KW ${isoWeekNumber(weekKey)}`, thisWeek ? "bis heute" : null].filter(Boolean).join(" · "))),
     createLoadingState("Wochenrückblick wird geladen…"));
-  void fillWeekReview(card, weekKey, extra);
+  weekReviewFallbacks.set(card, planLine);
+  void fillWeekReview(card);
   return card;
 }
 
+// A calendar render without changes keeps the card, so a new check-in or sync refills it in place.
+function refreshWeekReview(root) {
+  const card = root.querySelector(".week-review");
+  if (card?.dataset.version && card.dataset.version !== analysisReportVersionKey()) void fillWeekReview(card, true);
+}
+
 // A step to another week or a new calendar render replaces the card; a late answer for it is dropped.
-async function fillWeekReview(card, weekKey, extra) {
+// A failed read (offline too) or a week without data shows the plan line instead, or nothing; a
+// failed refill keeps what the card shows.
+async function fillWeekReview(card, refill = false) {
   const generation = ++weekReviewGeneration;
   const session = state.sessionGeneration;
+  const version = analysisReportVersionKey();
+  const { weekReview: weekKey, extra, thisWeek } = card.dataset;
   const current = () => generation === weekReviewGeneration && session === state.sessionGeneration && card.isConnected;
-  const head = card.firstElementChild;
+  let tiles = [];
   try {
-    const review = await requestAnalysisReport(`/api/analysis/week-review?week=${weekKey}`);
+    // This week asks for "current", so the server's day decides at the turn of the week; an answer
+    // for another week shows nothing.
+    const review = await requestAnalysisReport(`/api/analysis/week-review?week=${thisWeek === "true" ? "current" : weekKey}`);
     if (!current()) return;
-    const tiles = weekReviewTiles(review, extra);
-    // A week without any data shows no card, as a future week.
-    if (tiles.length) card.replaceChildren(head, h("div", "week-review-tiles", ...tiles));
-    else card.remove();
-  } catch (error) {
-    if (!current()) return;
-    card.replaceChildren(head, createErrorState(error?.message || "Konnte nicht geladen werden.", () => void fillWeekReview(card, weekKey, extra)));
+    if (review.week_start === weekKey) tiles = weekReviewTiles(review, Number(extra));
+  } catch {
+    if (!current() || refill) return;
   }
+  if (!tiles.length) {
+    const planLine = weekReviewFallbacks.get(card);
+    if (planLine) card.replaceWith(planLine); else card.remove();
+    return;
+  }
+  card.dataset.version = version;
+  card.replaceChildren(card.firstElementChild, h("div", "week-review-tiles", ...tiles));
 }
 
 // Wide screens show the open card's body as the detail pane beside the week (styles.css). It starts level
@@ -2503,6 +2524,7 @@ function renderPlanned(trainingCalendar) {
   const snapshot = JSON.stringify([calendar, todayKey, selectedWeekKey, calendarView, calendarSport, selectedDayKey, display, state.data?.daily_planning_context, state.data?.planning_compliance, state.data?.competitions, state.data?.weather, (state.data?.external_calendar?.events || []).map((event) => [event?.uid, event?.start_local, event?.impact, event?.name]), state.data?.external_calendar?.undecided_upcoming]);
   if (snapshot === plannedRenderSnapshot && root.childElementCount) {
     if (state.plannedTodayFocusPending) requestAnimationFrame(() => focusPlannedToday());
+    refreshWeekReview(root);
     return;
   }
   plannedRenderSnapshot = snapshot;

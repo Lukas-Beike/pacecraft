@@ -255,14 +255,14 @@ class ReviewMondayTests(unittest.TestCase):
     """The reviewed week: this, the last or a past Monday the calendar can show (#3298)."""
 
     def test_the_week_is_this_the_last_or_a_shown_past_monday(self) -> None:
-        # THURSDAY is 2026-11-12, so this week starts on 2026-11-09; 52 weeks
-        # before it is Monday 2025-11-10.
+        # THURSDAY is 2026-11-12, so this week starts on 2026-11-09; 51 weeks
+        # before it is Monday 2025-11-17, whose Sunday lies 361 days back.
         for week, monday in (
             ("current", date(2026, 11, 9)),
             ("previous", date(2026, 11, 2)),
             ("2026-11-09", date(2026, 11, 9)),
             ("2026-10-19", date(2026, 10, 19)),
-            ("2025-11-10", date(2025, 11, 10)),
+            ("2025-11-17", date(2025, 11, 17)),
         ):
             with self.subTest(week):
                 self.assertEqual(review_monday(week, THURSDAY), monday)
@@ -273,7 +273,7 @@ class ReviewMondayTests(unittest.TestCase):
             "",
             "2026-11-16",  # next week
             "2026-11-11",  # a Wednesday
-            "2025-11-03",  # 53 weeks back
+            "2025-11-10",  # 52 weeks back: its check-ins may lie beyond the 365 read
             "2026-W46-1",  # ISO week form
             "20261109",
             "2026-11-09T00:00",
@@ -369,7 +369,7 @@ class WeekReviewHttpTests(ServerTestCase):
     def test_an_unknown_week_is_refused(self) -> None:
         _status, current = self.get("/api/analysis/week-review")
         monday = date.fromisoformat(current["week_start"])
-        for week in ("next", monday + timedelta(days=7), monday + timedelta(days=1), monday - timedelta(weeks=53)):
+        for week in ("next", monday + timedelta(days=7), monday + timedelta(days=1), monday - timedelta(weeks=52)):
             with self.subTest(str(week)):
                 status, body = self.get(f"/api/analysis/week-review?week={week}")
                 self.assertEqual(status, 400)

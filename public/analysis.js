@@ -1867,7 +1867,6 @@ function renderAnalysisSegments(route = state.route) {
   document.getElementById("trainingZoneCharts").hidden = !load;
   document.getElementById("analysisLoadCharts").hidden = !load;
   document.getElementById("personalRecovery").hidden = segment !== "recovery";
-  // An empty week keeps its header, so the switch leads back to the other week.
   document.querySelectorAll("[data-analysis-segment]").forEach((link) => {
     const active = link.dataset.analysisSegment === segment;
     link.classList.toggle("active", active);

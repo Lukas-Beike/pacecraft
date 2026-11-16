@@ -316,9 +316,14 @@ test("@responsive the week review sits under a past or running week and follows 
   let release = () => {};
   let hold = null;
   await page.route("**/api/analysis/week-review?*", async (route) => {
-    const week = new URL(route.request().url()).searchParams.get("week");
-    weeks.push(week);
-    const today = await page.evaluate(() => timezoneDateKey(state.data?.profile?.timezone, new Date()));
+    const asked = new URL(route.request().url()).searchParams.get("week");
+    weeks.push(asked);
+    const [today, monday] = await page.evaluate(() => {
+      const day = timezoneDateKey(state.data?.profile?.timezone, new Date());
+      return [day, planWeekStart(day)];
+    });
+    // The running week asks for "current", any other week for its Monday.
+    const week = asked === "current" ? monday : asked;
     if (hold === week) await new Promise((resolve) => { release = resolve; });
     await route.fulfill({ json: weekReviewFor(week, today) });
   });
@@ -364,7 +369,21 @@ test("@responsive the week review sits under a past or running week and follows 
   await page.getByRole("button", { name: "Nächste Woche" }).click();
   await expect(page.locator(".planned-week-number")).toHaveText(/^KW \d+$/);
   await expect(review).toHaveCount(0);
+  expect(weeks).toContain("current");
   expect(weeks).not.toContain(weekAfter(current, 7));
+});
+
+// A review that cannot be read (offline, a server error) leaves the plan line in its place, and a
+// sport filter hides both, as they count the whole week (#3298).
+test("@responsive a failed week review shows the plan line, and a sport filter hides both", async ({ page, request }) => {
+  await page.route("**/api/analysis/week-review?*", (route) => route.fulfill({ status: 500, json: { error: "Serverfehler" } }));
+  await openCalendar(page, request);
+  const week = page.locator(".planned-week");
+  await expect(week.locator(".planned-week-totals")).toHaveCount(1);
+  await expect(week.locator(".week-review, .error-state")).toHaveCount(0);
+  await week.locator(".planned-sport-filter").getByRole("radio", { name: "Lauf" }).check();
+  await expect(page.locator(".planned-week .planned-week-totals, .planned-week .week-review")).toHaveCount(0);
+  await page.locator(".planned-week .planned-sport-filter").getByRole("radio", { name: "Alle", exact: true }).check();
 });
 
 test("@responsive an old link to the Analyse week opens the calendar", async ({ page, request }) => {
