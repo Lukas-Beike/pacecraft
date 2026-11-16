@@ -10,6 +10,7 @@ and the coefficient is 0.9 * (170 - HR) / 60, so the designed crossing is 153 bp
 
 import random
 import unittest
+from unittest import mock
 
 from backend.canonical import dfa_alpha1 as dfa
 from backend.canonical.vocabulary import DfaQuality
@@ -227,6 +228,20 @@ class CrossingTests(unittest.TestCase):
         for window in result.series:
             self.assertGreaterEqual(window.artifact_share, 0.0)
             self.assertLessEqual(window.artifact_share, dfa.MAX_WINDOW_ARTIFACT_SHARE)
+
+    def test_an_out_of_bounds_window_empties_the_series_not_the_estimate(
+        self,
+    ) -> None:
+        # Fable review of #3279: one window the canonical record refuses (a start
+        # beyond its bound) must not drop a valid 0.75 result at write time.
+        windows, share = dfa.rolling_windows([ramp(0)])
+        broken = [*windows, dfa.Window(153.0, 0.75, start_s=2_000_000.0)]
+        with mock.patch.object(dfa, "rolling_windows", return_value=(broken, share)):
+            result = dfa.first_threshold([ramp(0)])
+        assert result is not None
+        self.assertAlmostEqual(result.estimate_bpm or 0.0, 153.0, delta=6.0)
+        self.assertEqual(result.series, ())
+        self.assertFalse(result.series_evaluated)
 
     def test_a_window_reports_its_own_artifact_share(self) -> None:
         # One beat in 40 (2.5 %) in the second half only: early windows are clean.

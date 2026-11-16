@@ -111,8 +111,8 @@ of the run threshold HR, "% LSHF"):
 - Method 3 came without a mapper version bump (#3273, the third clause of the
   mapper version guard): rows of method 2 hold no series and count as "not
   evaluated" until the next bump of the Garmin and FIT detail mappers replays
-  them. The LT1 estimate reads methods 2 and 3 alike; within a session a record
-  with the series wins.
+  them. The LT1 estimate reads methods 2 and 3 alike; within a session the
+  better quality wins, and among equals a record with the series.
 - Athlete level: run sessions of the last 60 days up to today. Rides keep a
   stored result but do not enter the athlete-level estimate.
 - The protocol of R56 is a ramp to exhaustion; sessions here are whatever the

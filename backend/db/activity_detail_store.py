@@ -886,8 +886,8 @@ def first_threshold_results(
 ) -> list[SessionFirstThreshold]:
     """Return one stored DFA-a1 estimate per live session of ``sport`` in a day range.
 
-    Records of one session that carry an estimate compete: one of method 3 or
-    later (with its window series) wins, then the better quality, then the one
+    Records of one session that carry an estimate compete: the better quality
+    wins, then one of method 3 or later (with its window series), then the one
     with more windows. Methods 2 and 3 both count. Rows with an unreadable day or
     without a 0.75 estimate are skipped. Oldest session first.
     """
@@ -967,10 +967,10 @@ def dfa_series_counts(db: Any, *, since: date) -> dict[str, int]:
 
 
 def _dfa_rank(result: ActivityDfaAlpha1) -> tuple[int, int, int]:
-    """A record evaluated with the window series (method 3, #3273) first."""
+    """The better quality first; among equals a record with the window series (#3273)."""
     return (
-        1 if result.method >= DFA_SERIES_METHOD else 0,
         1 if result.quality is DfaQuality.GOOD else 0,
+        1 if result.method >= DFA_SERIES_METHOD else 0,
         result.windows,
     )
 

@@ -490,15 +490,50 @@ class StoredEstimateTests(unittest.TestCase):
             {"runs": 3, "with_series": 1, "before_series": 1, "without_result": 1},
         )
 
-    def test_a_record_with_the_series_wins_within_its_session(self) -> None:
+    def test_quality_ranks_before_the_series_within_a_session(self) -> None:
+        # Fable review of #3279: a method-3 `low` record must not beat a method-2
+        # `good` one of the same session; among equal quality the series wins.
         window = DfaWindow(
             start_s=0.0, heart_rate_bpm=150.0, alpha1=0.8, artifact_share=0.0
         )
-        shared = add_run(self, 4, replace(result(151.0, GOOD, 60), method=2))
+        for quality, expected in ((LOW, 151.0), (GOOD, 149.0)):
+            with self.subTest(quality=quality):
+                open_database(self)
+                shared = add_run(self, 4, replace(result(151.0, GOOD, 60), method=2))
+                add_run(
+                    self,
+                    4,
+                    replace(result(149.0, quality, 20), method=3, series=(window,)),
+                    provider="wahoo",
+                    session=shared,
+                )
+                with self.manager.reader() as db:
+                    rows = first_threshold_results(
+                        db,
+                        since=TODAY - timedelta(days=59),
+                        until=TODAY,
+                        sport=Sport.RUN,
+                    )
+                self.assertEqual([row.result.estimate_bpm for row in rows], [expected])
+
+    def test_a_series_only_record_leaves_the_session_its_method_2_estimate(
+        self,
+    ) -> None:
+        window = DfaWindow(
+            start_s=0.0, heart_rate_bpm=171.0, alpha1=0.48, artifact_share=0.0
+        )
+        shared = add_run(self, 4, replace(result(150.0, GOOD, 40), method=2))
         add_run(
             self,
             4,
-            replace(result(149.0, LOW, 20), method=3, series=(window,)),
+            ActivityDfaAlpha1(
+                estimate_bpm=None,
+                windows=1,
+                artifact_share=0.0,
+                quality=None,
+                method=3,
+                series=(window,),
+            ),
             provider="wahoo",
             session=shared,
         )
@@ -506,7 +541,9 @@ class StoredEstimateTests(unittest.TestCase):
             rows = first_threshold_results(
                 db, since=TODAY - timedelta(days=59), until=TODAY, sport=Sport.RUN
             )
-        self.assertEqual([row.result.estimate_bpm for row in rows], [149.0])
+        self.assertEqual(
+            [(row.result.estimate_bpm, row.result.method) for row in rows], [(150.0, 2)]
+        )
 
     def test_reader_returns_one_estimate_per_live_run_session_in_the_range(
         self,

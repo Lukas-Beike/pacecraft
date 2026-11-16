@@ -22,7 +22,10 @@ fingerprint when it adds a field whose presence the stored row states through
 its own stored version, readers treat a row of a lower version as "not
 evaluated" (never as a negative result), and the next bump of the replaying
 mappers carries the backfill of the older rows. The DFA-a1 window series is
-the one such field: ``ActivityDfaAlpha1.method`` 3 says the row has it. Name
+the one such field: ``ActivityDfaAlpha1.method`` 3 says the row has it, and
+method 3 also stores a series-only row (null estimate and quality) for a
+recording without a 0.75 crossing, which a build before it reads as no result.
+Name
 the clause in the PR; any other output change still needs the bump.
 """
 
@@ -84,7 +87,7 @@ PINNED: Final[dict[str, tuple[tuple[int, ...], str]]] = {
     ),
     "canonical.dfa_alpha1": (
         (10, 11),
-        "74e049575a622ab88d68bbdc2858a85fae9485351065ff1535cc0e0d90eccf69",
+        "022a2528063b9d007d02b7ba7f7218af3ed3d6b173308720af055a70158543fa",
     ),
     "canonical.domain_records": (
         (25,),

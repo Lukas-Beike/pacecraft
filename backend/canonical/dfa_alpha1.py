@@ -348,6 +348,9 @@ def first_threshold(
     if len(windows) < MIN_WINDOWS:
         return None
     crossing = _crossing(windows, share)
+    series = _series(windows)
+    if crossing is None and not series:
+        return None
     try:
         return ActivityDfaAlpha1(
             estimate_bpm=None if crossing is None else crossing[0],
@@ -355,18 +358,26 @@ def first_threshold(
             artifact_share=round(share, 4),
             quality=None if crossing is None else crossing[1],
             method=METHOD_VERSION,
-            series=tuple(
-                DfaWindow(
-                    start_s=round(window.start_s, 1),
-                    heart_rate_bpm=round(window.heart_rate_bpm, 1),
-                    alpha1=round(window.alpha1, 3),
-                    artifact_share=round(window.artifact_share, 4),
-                )
-                for window in windows
-            ),
+            series=series,
         )
     except TypeError, ValueError:
         return None
+
+
+def _series(windows: Sequence[Window]) -> tuple[DfaWindow, ...]:
+    """The stored window series; one window out of bounds empties it, never the result."""
+    try:
+        return tuple(
+            DfaWindow(
+                start_s=round(window.start_s, 1),
+                heart_rate_bpm=round(window.heart_rate_bpm, 1),
+                alpha1=round(window.alpha1, 3),
+                artifact_share=round(window.artifact_share, 4),
+            )
+            for window in windows
+        )
+    except TypeError, ValueError:
+        return ()
 
 
 def _crossing(
