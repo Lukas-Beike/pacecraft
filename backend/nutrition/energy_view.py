@@ -311,7 +311,7 @@ def energy_view(
     tdee, rmr = latest.adaptive_tdee, latest.derived_rmr
     # The own row's resting rate is the residual of the calibrated terms; its
     # everyday and sport equal the formula rows' only while k is 1.
-    uncalibrated = latest.calibration_factor == 1.0
+    uncalibrated = math.isclose(latest.calibration_factor, 1.0)
     own_split = (
         _split(
             rmr.kcal,
