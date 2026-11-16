@@ -114,6 +114,15 @@ class ComparableSessionsTests(unittest.TestCase):
         bare = _curve_record({**summary, "decoupling_pct": None}, {"act_1": curve}, {})
         self.assertNotIn("decoupling_pct", bare["execution_summary"])
 
+    def test_too_few_peers_still_name_the_sessions_own_numbers(self) -> None:
+        # #3084: the report states a run's steadiness even without peers.
+        own = {**_easy(330, 140), "gap_cv_pct": 6.1}
+        records = [_row("2026-11-03", own), _row("2026-10-28", _easy(340, 142))]
+        result = comparable_sessions(records, "act_2026-11-03")
+        self.assertEqual(
+            ("not_covered", 6.1), (result["status"], result["this"]["gap_cv_pct"])
+        )
+
     def test_other_shapes_places_and_old_sessions_are_not_peers(self) -> None:
         records = [
             _row("2026-11-03", _easy(330, 140)),

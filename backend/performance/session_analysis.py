@@ -6,12 +6,13 @@ import math
 import re
 from collections import deque
 from collections.abc import Sequence
-from typing import Any
+from typing import Any, Final
 
 from backend.activities.stream_zones import max_step_s
 from backend.athlete.measurements import finite_float as _number
 from backend.canonical.activity_summary import summary_is_indoor
 from backend.performance.grade_adjustment import grade_adjusted_speeds, grade_stream
+from backend.performance.session_execution import rounded_metric
 from backend.providers.source_labels import SESSION_SOURCES_LABEL
 
 TARGET_BASIS_FTP_KEY = "ftp"
@@ -219,6 +220,51 @@ def _aerobic_output(
     adjusted = grade_adjusted_speeds(streams, grades)
     view = {**activity, "streams": {**streams, GRADE_ADJUSTED_SPEED: adjusted}}
     return view, GRADE_ADJUSTED_SPEED
+
+
+# A run's steadiness reads the moving samples at or above this speed (m/s),
+# with steps up to this long; a longer gap is a pause.
+STEADY_MIN_SPEED_MPS: Final = 1.0
+STEADY_MAX_STEP_S: Final = 30.0
+
+
+def gap_variation_pct(activity: dict[str, Any]) -> float | None:
+    """The coefficient of variation of a run's grade-adjusted speed, in % (#3084).
+
+    Time-weighted over the moving samples at or above ``STEADY_MIN_SPEED_MPS``,
+    on the speed ``_aerobic_output`` selects: grade-adjusted outdoors, unknown
+    outdoors without a grade, the belt speed indoors. The session report
+    judges it against the athlete's own comparable runs.
+    """
+    selected = _aerobic_output(activity, "velocity_smooth")
+    if selected is None:
+        return None
+    view, key = selected
+    streams = view.get("streams") or {}
+    speeds, times = streams.get(key), streams.get("time")
+    if not (isinstance(speeds, list) and isinstance(times, list)) or len(speeds) != len(
+        times
+    ):
+        return None
+    moving = streams.get("moving")
+    if not (isinstance(moving, list) and len(moving) == len(times)):
+        moving = [True] * len(times)
+    weighted = [
+        (speed, step)
+        for index in range(len(times) - 1)
+        if moving[index]
+        and (speed := _number(speeds[index])) is not None
+        and speed >= STEADY_MIN_SPEED_MPS
+        and (start := _number(times[index])) is not None
+        and (end := _number(times[index + 1])) is not None
+        and 0 < (step := end - start) <= STEADY_MAX_STEP_S
+    ]
+    total = sum(step for _, step in weighted)
+    if len(weighted) < 2 or total <= 0:
+        return None
+    mean = sum(speed * step for speed, step in weighted) / total
+    variance = sum(step * (speed - mean) ** 2 for speed, step in weighted) / total
+    return rounded_metric(math.sqrt(variance) / mean * 100)
 
 
 def aerobic_analysis(

@@ -48,7 +48,7 @@ every named number the code fixes. A test fails when it is out of date.
 | `DURATION_SHARE` | `0.35` | `backend/performance/comparable_sessions.py` |  |
 | `REP_COUNT_SPREAD` | `2` | `backend/performance/comparable_sessions.py` |  |
 | `HEART_RATE_BAND` | `8` | `backend/performance/comparable_sessions.py` | Continuous sessions compare only at a similar effort, so an easy run is never a tempo run's peer; within the band a faster pace still shows as fitter. |
-| `PERSONAL_LIMIT_METRICS` | `frozenset({'decoupling_pct'})` | `backend/performance/comparable_sessions.py` | Metrics the session report judges against the peers' upper quartile (#3084). |
+| `PERSONAL_LIMIT_METRICS` | `frozenset({'decoupling_pct', 'gap_cv_pct'})` | `backend/performance/comparable_sessions.py` | Metrics the session report judges against the peers' upper quartile (#3084). |
 | `EFFORT_METHOD` | `'equal-effort-trend-v1'` | `backend/performance/comparable_sessions.py` |  |
 | `VO2MAX_UNIT` | `'ml/kg/min'` | `backend/performance/comparisons.py` |  |
 | `REASON_CANONICAL_PENDING` | `'canonical_pending'` | `backend/performance/context.py` | The reason an unavailable context gives while the canonical source serves nothing yet. |
@@ -135,7 +135,7 @@ every named number the code fixes. A test fails when it is out of date.
 | `CALIBRATION_TABLE_RPES` | `tuple(range(1, 11))` | `backend/performance/local_tss.py` | The RPE values of the detail table (factor per RPE of its +-1 band). |
 | `LOCAL_SOURCE` | `'local'` | `backend/performance/local_tss.py` |  |
 | `LOCAL_INDOOR_SOURCE` | `'local_indoor'` | `backend/performance/local_tss.py` |  |
-| `CURVE_FORMAT_VERSION` | `1` | `backend/performance/mean_max_curve.py` | The curve computation's own version (#2821): it covers the inputs without a method version of their own (merge_details, analysis_input, grade_adjustment) and the stored payload fields. Bump it whenever any of them changes the curves, so stored curves are computed again; the golden-curve test pins it. |
+| `CURVE_FORMAT_VERSION` | `2` | `backend/performance/mean_max_curve.py` | The curve computation's own version (#2821): it covers the inputs without a method version of their own (merge_details, analysis_input, grade_adjustment) and the stored payload fields. Bump it whenever any of them changes the curves, so stored curves are computed again; the golden-curve test pins it. |
 | `SLEEP_SECTION` | `'sleep'` | `backend/performance/morning_battery.py` |  |
 | `MORNING_RETRY_SECONDS` | `15 * 60` | `backend/performance/morning_battery_service.py` |  |
 | `MORNING_MAX_ATTEMPTS` | `3` | `backend/performance/morning_battery_service.py` |  |
@@ -227,6 +227,8 @@ every named number the code fixes. A test fails when it is out of date.
 | `HEART_RATE_HISTOGRAM_VERSION` | `2` | `backend/performance/session_analysis.py` | Bump when heart_rate_histogram counts differently, so stored rows recompute. v2: steps up to the adaptive gap rule of the zone times count (#1950). |
 | `HISTOGRAM_MIN_BPM` | `30` | `backend/performance/session_analysis.py` |  |
 | `HISTOGRAM_MAX_BPM` | `240` | `backend/performance/session_analysis.py` |  |
+| `STEADY_MIN_SPEED_MPS` | `1.0` | `backend/performance/session_analysis.py` | A run's steadiness reads the moving samples at or above this speed (m/s), with steps up to this long; a longer gap is a pause. |
+| `STEADY_MAX_STEP_S` | `30.0` | `backend/performance/session_analysis.py` |  |
 | `GAP_METHOD` | `'Minetti et al. 2002: Energiekosten des Laufens je Steigung (Schätzung aus den Streams der Einheit)'` | `backend/performance/session_conditions.py` | Grade-adjusted pace: Minetti et al. 2002 (R44), the adjustment of M8 and pace at HR. |
 | `MOVING_MPS` | `1.0` | `backend/performance/session_conditions.py` | Samples below this speed are standing, not running (3.6 km/h). |
 | `STOP_S` | `30.0` | `backend/performance/session_conditions.py` | A gap longer than max(30 s, 3 x the median step) is a stop, as in the halves. |

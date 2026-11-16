@@ -274,5 +274,34 @@ class SessionAnalysisTests(unittest.TestCase):
         )
 
 
+class GapVariationTests(unittest.TestCase):
+    """#3084: a run's steadiness, the time-weighted CV of its grade-adjusted speed."""
+
+    def test_indoor_speed_time_weighted_over_moving_samples(self) -> None:
+        from backend.performance.session_analysis import gap_variation_pct
+
+        # Steps of 1, 1 and 2 s at 2.5, 3.5 and 2.5 m/s: mean 2.75, variance
+        # (3 x 0.0625 + 1 x 0.5625) / 4 = 0.1875, SD 0.4330, CV 15.7 %. The
+        # last sample has no step; a paused one stays out.
+        indoor = {
+            "environment": "indoor",
+            "streams": {
+                "time": [0, 1, 2, 4, 5],
+                "velocity_smooth": [2.5, 3.5, 2.5, 9.0, 3.0],
+                "moving": [True, True, True, False, True],
+            },
+        }
+        self.assertEqual(15.7, gap_variation_pct(indoor))
+
+    def test_an_outdoor_run_without_a_grade_is_unknown(self) -> None:
+        from backend.performance.session_analysis import gap_variation_pct
+
+        outdoor = {
+            "environment": "outdoor",
+            "streams": {"time": [0, 1, 2], "velocity_smooth": [2.5, 3.5, 3.0]},
+        }
+        self.assertIsNone(gap_variation_pct(outdoor))
+
+
 if __name__ == "__main__":
     unittest.main()

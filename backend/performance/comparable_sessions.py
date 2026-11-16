@@ -43,7 +43,7 @@ SCOPE: Final = (
     "stored, never the device sensor. Descriptive; at least 3 peers."
 )
 # Metrics the session report judges against the peers' upper quartile (#3084).
-PERSONAL_LIMIT_METRICS: Final = frozenset({"decoupling_pct"})
+PERSONAL_LIMIT_METRICS: Final = frozenset({"decoupling_pct", "gap_cv_pct"})
 _METRICS: Final = {
     "continuous": (
         "output",
@@ -51,6 +51,7 @@ _METRICS: Final = {
         "heart_rate_change_bpm",
         "cadence",
         "decoupling_pct",
+        "gap_cv_pct",
     ),
     "interval": (
         "rep_output_mean",
@@ -105,6 +106,8 @@ def comparable_sessions(
             base,
             f"{len(peers)} vergleichbare Einheiten in {window['window_days']} Tagen, mindestens {MIN_PEERS} nötig.",
             count=len(peers),
+            # Its own numbers, so a value judged only against peers is still shown.
+            this=dict(mine),
             **window,
         )
     metrics = _METRICS.get(str(mine.get("structure")), ())
