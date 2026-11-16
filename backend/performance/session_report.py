@@ -370,6 +370,9 @@ def _easy_checks(facts: _Facts) -> list[dict[str, Any]]:
     return checks
 
 
+_STEADINESS_TITLE: Final = "Gleichmäßigkeit (GAP)"
+
+
 def _run_steadiness_value(facts: _Facts) -> tuple[float | None, float | None, int]:
     """The run's GAP variation, the own upper quartile and the peers it rests on."""
     own = _number(_mapping(facts.comparable.get("this")).get("gap_cv_pct"))
@@ -392,10 +395,10 @@ def _run_steadiness(facts: _Facts) -> dict[str, Any] | None:
     if own is None or quartile is None or peers < MIN_PERSONAL:
         return None
     if reason := facts.output_unknown():
-        return _unknown("steadiness", "Gleichmäßigkeit (GAP)", reason, basis="personal")
+        return _unknown("steadiness", _STEADINESS_TITLE, reason, basis="personal")
     return _judged(
         "steadiness",
-        "Gleichmäßigkeit (GAP)",
+        _STEADINESS_TITLE,
         value={"gap_cv_pct": own, "own_upper_quartile_pct": quartile, "peers": peers},
         unit="%",
         rule="Schwankung der steigungsbereinigten Geschwindigkeit über die Bewegungszeit, über dem oberen Quartil eigener vergleichbarer Läufe",
@@ -1109,7 +1112,7 @@ def _steadiness_fact(facts: _Facts) -> dict[str, Any] | None:
         return None
     return {
         "id": "run_steadiness",
-        "title": "Gleichmäßigkeit (GAP)",
+        "title": _STEADINESS_TITLE,
         "value": {"gap_cv_pct": own, "peers": peers},
         "unit": "%",
         "basis": "personal",

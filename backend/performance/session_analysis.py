@@ -236,7 +236,11 @@ def gap_variation_pct(activity: dict[str, Any]) -> float | None:
     outdoors without a grade, the belt speed indoors. The session report
     judges it against the athlete's own comparable runs.
     """
-    selected = _aerobic_output(activity, "velocity_smooth")
+    # The decoupling's sensor gate: a trail run's pace is not comparable.
+    sensor = _aerobic_sensor(activity)
+    selected = (
+        None if sensor != "velocity_smooth" else _aerobic_output(activity, sensor)
+    )
     if selected is None:
         return None
     view, key = selected

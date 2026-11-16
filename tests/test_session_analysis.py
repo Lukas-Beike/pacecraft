@@ -284,6 +284,7 @@ class GapVariationTests(unittest.TestCase):
         # (3 x 0.0625 + 1 x 0.5625) / 4 = 0.1875, SD 0.4330, CV 15.7 %. The
         # last sample has no step; a paused one stays out.
         indoor = {
+            "sport": "run",
             "environment": "indoor",
             "streams": {
                 "time": [0, 1, 2, 4, 5],
@@ -292,11 +293,14 @@ class GapVariationTests(unittest.TestCase):
             },
         }
         self.assertEqual(15.7, gap_variation_pct(indoor))
+        # A trail run's pace is not comparable, as for decoupling.
+        self.assertIsNone(gap_variation_pct({**indoor, "trail": True}))
 
     def test_an_outdoor_run_without_a_grade_is_unknown(self) -> None:
         from backend.performance.session_analysis import gap_variation_pct
 
         outdoor = {
+            "sport": "run",
             "environment": "outdoor",
             "streams": {"time": [0, 1, 2], "velocity_smooth": [2.5, 3.5, 3.0]},
         }
