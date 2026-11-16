@@ -58,10 +58,13 @@ class GarminHistoricMetricCollectorTests(unittest.TestCase):
             str,
             None,
         )
+        # The 10-05 row has no total kcal, so it is completed per day first
+        # (#3157); then the missing 10-06 is read by the day reader.
         self.assertEqual(
-            calls[:2],
+            calls[:3],
             [
                 ("batch", "2026-10-05", "2026-10-06"),
+                ("day", "2026-10-05"),
                 ("day", "2026-10-06"),
             ],
         )
@@ -95,9 +98,15 @@ class GarminHistoricMetricCollectorTests(unittest.TestCase):
             None,
         )
 
+        # 10-05 lacks the total, 10-06 the resting kcal: both are read per day
+        # (#3157; before, a row with resting but no total stayed incomplete).
         self.assertEqual(
             calls,
-            [("batch", "2026-10-05", "2026-10-06"), ("day", "2026-10-06")],
+            [
+                ("batch", "2026-10-05", "2026-10-06"),
+                ("day", "2026-10-05"),
+                ("day", "2026-10-06"),
+            ],
         )
         self.assertEqual(
             result["daily_stats"][1],

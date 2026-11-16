@@ -20,8 +20,10 @@ from backend.canonical.garmin_payload import ACTIVITY_RATINGS_SECTION
 from backend.canonical.section_items import record_day
 from backend.canonical.vocabulary import GARMIN_ID
 from backend.providers.garmin_fields import (
+    GARMIN_ACTIVE_KCAL_ALIASES,
     GARMIN_DATE_ALIASES,
     GARMIN_RESTING_KCAL_ALIASES,
+    GARMIN_TOTAL_KCAL_ALIASES,
     first_present,
     flatten_daily_summary,
 )
@@ -850,11 +852,14 @@ def _daily_stats_records(value: Any, current: date) -> list[dict[str, Any]]:
 def _with_resting_energy(
     client: Any, rows: list[dict[str, Any]], external_call: ExternalCall
 ) -> list[dict[str, Any]]:
-    """Complete range rows that lack resting energy from the per-day summary.
+    """Complete range rows that lack an energy value from the per-day summary.
 
     Garmin's daily-summaries range can omit the running day's resting calories,
-    which the per-day summary reports. A failed or equally empty per-day read
-    keeps the range row, whose other values remain valid.
+    or a day's total calories, which the per-day summary reports (#3157). A
+    row with resting and total kcal is complete (active is their difference)
+    and makes no call. A failed or equally empty per-day read keeps the range
+    row, whose other values remain valid; the summary only fills the values the
+    row lacks.
     """
     fetch = getattr(client, "get_user_summary", None)
     if not callable(fetch):
@@ -862,10 +867,7 @@ def _with_resting_energy(
     completed: list[dict[str, Any]] = []
     for row in rows:
         day = first_present(row, GARMIN_DATE_ALIASES)
-        if not isinstance(day, str) or (
-            first_present(flatten_daily_summary(row), GARMIN_RESTING_KCAL_ALIASES)
-            is not None
-        ):
+        if not isinstance(day, str) or not _missing_energy(row, _NEEDED_ENERGY):
             completed.append(row)
             continue
         try:
@@ -874,13 +876,42 @@ def _with_resting_energy(
             )
         except Exception:  # noqa: BLE001 - the range row stays the result.
             summary = None
-        if (
-            isinstance(summary, dict)
-            and first_present(summary, GARMIN_RESTING_KCAL_ALIASES) is not None
-        ):
-            row = {**row, **summary}
+        if isinstance(summary, dict) and len(
+            _missing_energy(summary, _ENERGY_ALIASES)
+        ) < len(_ENERGY_ALIASES):
+            # The summary only fills what the range row lacks; a range value stays.
+            row = {
+                **{
+                    key: value
+                    for key, value in summary.items()
+                    if value is not None and value not in ("", [], {})
+                },
+                **{key: value for key, value in row.items() if value is not None},
+            }
         completed.append(row)
     return completed
+
+
+# A daily record is complete with resting and total kcal; a per-day summary
+# helps when it has any of resting, total or active kcal (#3157).
+_NEEDED_ENERGY = (GARMIN_RESTING_KCAL_ALIASES, GARMIN_TOTAL_KCAL_ALIASES)
+_ENERGY_ALIASES = (*_NEEDED_ENERGY, GARMIN_ACTIVE_KCAL_ALIASES)
+
+
+def _missing_energy(
+    record: dict[str, Any], wanted: tuple[tuple[str, ...], ...]
+) -> list[tuple[str, ...]]:
+    """The ``wanted`` kcal alias groups a daily record has no value for.
+
+    A nested record under a total alias (an empty ``calories`` object) is no value.
+    """
+    flat = flatten_daily_summary(record)
+    return [
+        aliases
+        for aliases in wanted
+        if first_present(flat, aliases) is None
+        or isinstance(first_present(flat, aliases), Mapping)
+    ]
 
 
 def _collect_daily_stats_day(

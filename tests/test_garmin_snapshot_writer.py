@@ -25,9 +25,11 @@ from backend.sync.canonical_ingest import CanonicalIngestCounters
 from backend.sync.garmin import activity_deletion_window
 from backend.sync.garmin_snapshot_writer import (
     ANALYSIS_SOURCES,
+    DAYTIME_SOURCES,
     NUTRITION_SOURCES,
     GarminSnapshotWriter,
 )
+from backend.sync.garmin_wellness_history import WELLNESS_SOURCES
 
 ZONE = ZoneInfo("Europe/Berlin")
 NOW = "2026-10-10T08:00:00+00:00"
@@ -319,6 +321,114 @@ class BodyBatteryPathTests(WriterFixture):
             self.db.commit()
 
         return unit_of_work()
+
+
+DAY = "2026-11-07"
+FULL_DAY = {
+    "calendarDate": DAY,
+    "totalKilocalories": 2600,
+    "activeKilocalories": 800,
+    "bmrKilocalories": 1800,
+    "totalSteps": 9000,
+}
+# What a read before the watch synced, or a degenerate answer, brings back.
+EMPTY_READS = (
+    {"calendarDate": DAY},
+    {"calendarDate": DAY, "totalKilocalories": None, "activeKilocalories": None},
+    {"calendarDate": DAY, "totalKilocalories": 0, "activeKilocalories": 0},
+    {"calendarDate": DAY, "calories": {}},
+)
+
+
+class DailySummaryMergeTests(WriterFixture):
+    """A read never replaces a stored daily value with an empty one (#3157)."""
+
+    def writers(self) -> dict[str, Any]:
+        """Each daily_stats writer's own call shape, keyed by the writer."""
+        window = {"daily_stats": (date(2026, 11, 7), date(2026, 11, 7))}
+
+        def refresh(allowed: frozenset[str], windows: dict[str, Any]) -> Any:
+            return lambda row: self.writer.write_refresh(
+                self.db,
+                fetched_at=NOW,
+                sections={"daily_stats": [row]},
+                view={},
+                windows=windows,
+                allowed=allowed,
+            )
+
+        return {
+            "main refresh": lambda row: self.writer.write(
+                self.db, {"synced_at": NOW, "daily_stats": [row]}
+            ),
+            "refresh_nutrition": refresh(NUTRITION_SOURCES, window),
+            "recovery refresh": refresh(ANALYSIS_SOURCES, window),
+            "daytime values": refresh(DAYTIME_SOURCES, window),
+            "wellness backfill": refresh(WELLNESS_SOURCES, {}),
+        }
+
+    def stored(self) -> Any:
+        return garmin_store.read_item(self.db, "daily_stats", DAY)
+
+    def calories(self) -> dict[str, float]:
+        return {
+            row["metric"]: row["value"]
+            for row in self.db.execute(
+                "SELECT metric, value FROM observations WHERE provider = 'garmin' "
+                "AND observed_on = ? AND state = 'active'",
+                (DAY,),
+            )
+        }
+
+    def test_an_empty_read_keeps_the_stored_calories_in_every_writer(self) -> None:
+        for name, write in self.writers().items():
+            for empty in EMPTY_READS:
+                with self.subTest(writer=name, read=empty):
+                    self.writer.write(
+                        self.db, {"synced_at": NOW, "daily_stats": [FULL_DAY]}
+                    )
+                    before = self.calories()
+                    write(empty)
+                    self.assertEqual({k: self.stored()[k] for k in FULL_DAY}, FULL_DAY)
+                    self.assertEqual(self.calories(), before)
+
+    def test_a_read_with_values_fills_and_updates_a_stored_day(self) -> None:
+        for name, write in self.writers().items():
+            with self.subTest(writer=name):
+                self.writer.write(
+                    self.db, {"synced_at": NOW, "daily_stats": [{"calendarDate": DAY,
+                                                                 "bmrKilocalories": 1800}]}
+                )  # fmt: skip
+                write({**FULL_DAY, "totalKilocalories": 2700})
+                self.assertEqual(self.stored()["totalKilocalories"], 2700)
+                self.assertEqual(self.stored()["activeKilocalories"], 800)
+
+    def test_a_nested_read_updates_a_stale_flat_value(self) -> None:
+        # A mid-day per-day read stored flat keys; the final range read is nested.
+        self.writer.write(
+            self.db,
+            {"synced_at": NOW, "daily_stats": [{"calendarDate": DAY,
+                                                   "totalKilocalories": 2100}]},
+        )  # fmt: skip
+        self.writer.write(
+            self.db,
+            {"synced_at": NOW, "daily_stats": [{"calendarDate": DAY,
+                "calories": {"burnedTotal": 2600, "burnedActive": 800}}]},
+        )  # fmt: skip
+        self.assertEqual(self.stored()["totalKilocalories"], 2600)
+        self.assertEqual(self.stored()["calories"]["burnedActive"], 800)
+
+    def test_a_complete_window_without_the_day_keeps_its_summary(self) -> None:
+        self.writer.write(self.db, {"synced_at": NOW, "daily_stats": [FULL_DAY]})
+        self.writer.write_refresh(
+            self.db,
+            fetched_at=NOW,
+            sections={"daily_stats": [{**FULL_DAY, "calendarDate": "2026-11-08"}]},
+            view={},
+            windows={"daily_stats": (date(2026, 11, 6), date(2026, 11, 8))},
+            allowed=NUTRITION_SOURCES,
+        )
+        self.assertEqual(self.stored(), FULL_DAY)
 
 
 if __name__ == "__main__":

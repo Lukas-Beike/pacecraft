@@ -314,9 +314,10 @@ class NutritionGarminExpenditureTests(unittest.TestCase):
                 allowed=frozenset({"daily_stats"}),
             )
 
-    def test_an_empty_targeted_read_drops_the_days_older_energy(self) -> None:
-        # Canonical reads (#1416): presence comes from the day's canonical Garmin
-        # totals fetched by the refresh, as the stored raw section's did before.
+    def test_an_empty_targeted_read_keeps_the_days_stored_energy(self) -> None:
+        # An empty read never empties a stored daily value (#3157, as #3128):
+        # the window no longer prunes the stored summary, and a refresh mark
+        # never hides a stored Garmin total. Before #3157 this read dropped it.
         self.store_garmin(
             {"daily_stats": [{"date": "2026-09-23", "totalKilocalories": 2000}]}
         )
@@ -330,11 +331,11 @@ class NutritionGarminExpenditureTests(unittest.TestCase):
         after = self.service.sync_status.get_day_summary("2026-09-23")[
             "energy_expenditure"
         ]
-        self.assertIsNone(after["total_kcal"])
-        self.assertEqual(after["status"], "unavailable")
+        self.assertEqual(after["total_kcal"], 2000)
+        self.assertEqual(after["status"], "measured")
         week = self.service.sync_status.get_week_summary(7)
         (day,) = [item for item in week["days"] if item["date"] == "2026-09-23"]
-        self.assertIsNone(day["expenditure_kcal"])
+        self.assertEqual(day["expenditure_kcal"], 2000)
 
     def test_expenditure_gaps_count_why_closed_days_lack_a_total(self) -> None:
         later = {"freshness": "current", "fetched_at": "2026-09-24T10:00:00+00:00"}
