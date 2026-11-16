@@ -1,0 +1,245 @@
+"""Resting and daily expenditure per source, and which one fits the weight (#3099).
+
+Katch-McArdle and Cunningham price the resting rate from the skinfold lean
+mass, with the nominal 95 % band of card M13; their daily total adds the same
+own activity and TEF (M11) to both, so they differ only in the resting formula.
+The activity is the uncalibrated one: the calibration is fitted against the
+adaptive TDEE, and the comparison would otherwise favour the formula rows over
+the device. Garmin's resting and total values stand beside them as its
+estimate, and "own" is the adaptive TDEE with the derived resting rate (#3100).
+
+The fit compares each source's distance to the adaptive TDEE over the same
+4-week windows. A source is marked best only with enough shared windows and a
+lead over the next source beyond the adaptive TDEE's own mean band (athlete
+decision on #3187); otherwise the sources are not yet distinguishable. A
+missing basis stays None; there is never a fallback formula.
+"""
+
+from __future__ import annotations
+
+import math
+import statistics
+from collections.abc import Mapping, Sequence
+from datetime import date, timedelta
+from typing import Any
+
+from backend.athlete.body_composition import (
+    RestingFormula,
+    lean_mass_kg,
+    resting_band,
+    resting_energy,
+)
+from backend.nutrition.energy_balance import (
+    EnergyInputs,
+    EnergyWindow,
+    energy_windows,
+    history_start,
+    weight_trend,
+)
+from backend.nutrition.energy_inputs import (
+    RESTING_LOOKBACK_DAYS,
+    EnergySources,
+    read_energy_inputs,
+)
+
+# The fit needs this many windows shared by every compared source (#3187).
+MIN_SHARED_WINDOWS = 4
+# The daily band adds this share of the own activity, as M12's derived rate does.
+ACTIVITY_BAND_SHARE = 0.10
+FORMULAS = {
+    "katch_mcardle": RestingFormula.KATCH_MCARDLE,
+    "cunningham": RestingFormula.CUNNINGHAM,
+}
+# The wearable's own resting and total estimate (Garmin today).
+DEVICE = "device"
+OWN = "own"
+
+# Resting value, its band, daily total and its band; None where unknown.
+type Prediction = tuple[float | None, float | None, float | None, float | None]
+
+
+def _round(value: float | None) -> int | None:
+    return None if value is None else round(value)
+
+
+def _body(
+    inputs: EnergyInputs, trend: Mapping[date, float], day: date
+) -> dict[str, Any] | None:
+    """The skinfold in effect on ``day`` with the trend weight's lean mass."""
+    since = day - timedelta(days=RESTING_LOOKBACK_DAYS)
+    measured = [d for d in inputs.body_fat_pct if since <= d <= day]
+    weighed = [d for d in trend if d <= day]
+    if not measured or not weighed:
+        return None
+    fat_pct = inputs.body_fat_pct[max(measured)]
+    weight = trend[max(weighed)]
+    try:
+        lean = lean_mass_kg(weight, fat_pct)
+    except ValueError:
+        return None
+    return {
+        "measured_on": max(measured),
+        "body_fat_pct": fat_pct,
+        "weight_kg": weight,
+        "lean_mass_kg": lean,
+    }
+
+
+def _formula_prediction(
+    formula: RestingFormula, body: Mapping[str, Any] | None, window: EnergyWindow
+) -> Prediction:
+    """Resting from lean mass, and the day with the same own activity and TEF."""
+    if body is None:
+        return None, None, None, None
+    resting = resting_energy(formula, body["lean_mass_kg"])
+    band = resting_band(formula, body["weight_kg"], body["lean_mass_kg"])
+    activity, tef = window.activity_kcal_raw, window.tef_kcal
+    if activity is None or tef is None:
+        return resting, band, None, None
+    total_band = math.hypot(band, ACTIVITY_BAND_SHARE * activity)
+    return resting, band, resting + activity + tef, total_band
+
+
+def _device_prediction(
+    health: Mapping[str, Mapping[str, Any]], window: EnergyWindow
+) -> Prediction:
+    """Garmin's mean resting and total values over the window's days."""
+    start = window.end - timedelta(days=window.days - 1)
+    days = [
+        health.get((start + timedelta(days=n)).isoformat(), {})
+        for n in range(window.days)
+    ]
+
+    def mean(key: str) -> float | None:
+        values = [
+            v for day in days if isinstance(v := day.get(key), int | float) and v > 0
+        ]
+        return statistics.fmean(values) if values else None
+
+    return mean("resting_kcal"), None, mean("calories"), None
+
+
+def _comparison(
+    errors: Mapping[str, Sequence[float | None]], windows: Sequence[EnergyWindow]
+) -> tuple[dict[str, float], str | None, dict[str, Any]]:
+    """Mean errors over the shared windows, the best source and the fit basis.
+
+    Only sources with any error are compared, each over the windows where all
+    of them have one. The best needs MIN_SHARED_WINDOWS such windows and a lead
+    over the next source beyond the mean band of the adaptive TDEE.
+    """
+    compared = [
+        name for name, found in errors.items() if any(e is not None for e in found)
+    ]
+    shared = [
+        index
+        for index in range(len(windows))
+        if compared and all(errors[name][index] is not None for name in compared)
+    ]
+    means = {
+        name: statistics.fmean(errors[name][i] or 0.0 for i in shared)
+        for name in compared
+        if shared
+    }
+    bands = [
+        tdee.band_kcal for i in shared if (tdee := windows[i].adaptive_tdee) is not None
+    ]
+    band = statistics.fmean(bands) if bands else None
+    best = None
+    if band is not None and len(shared) >= MIN_SHARED_WINDOWS and len(means) > 1:
+        first, second = sorted(means, key=means.__getitem__)[:2]
+        if means[second] - means[first] > band:
+            best = first
+    fit = {
+        "shared_windows": len(shared),
+        "windows": len(windows),
+        "min_windows": MIN_SHARED_WINDOWS,
+        "reference_band_kcal": _round(band),
+    }
+    return means, best, fit
+
+
+def energy_view(
+    inputs: EnergyInputs,
+    windows: Sequence[EnergyWindow],
+    health: Mapping[str, Mapping[str, Any]],
+) -> dict[str, Any]:
+    """The table rows of the latest window, each source's fit and the basis."""
+    trend = weight_trend(
+        {d: v.weight_kg for d, v in inputs.days.items() if v.weight_kg is not None}
+    )
+    latest = windows[-1]
+    bodies = [_body(inputs, trend, w.end) for w in windows]
+    predictions: dict[str, list[Prediction]] = {
+        name: [
+            _formula_prediction(f, b, w) for b, w in zip(bodies, windows, strict=True)
+        ]
+        for name, f in FORMULAS.items()
+    }
+    predictions[DEVICE] = [_device_prediction(health, w) for w in windows]
+    errors = {
+        name: [
+            abs(total - w.adaptive_tdee.kcal)
+            if total is not None and w.adaptive_tdee is not None
+            else None
+            for (_, _, total, _), w in zip(values, windows, strict=True)
+        ]
+        for name, values in predictions.items()
+    }
+    means, best, fit = _comparison(errors, windows)
+    rows = []
+    for name, values in predictions.items():
+        resting, resting_band_kcal, total, total_band = values[-1]
+        rows.append(
+            {
+                "source": name,
+                "resting_kcal": _round(resting),
+                "resting_band_kcal": _round(resting_band_kcal),
+                "total_kcal": _round(total),
+                "total_band_kcal": _round(total_band),
+                "errors_kcal": [_round(e) for e in errors[name]],
+                "mean_error_kcal": _round(means.get(name)),
+            }
+        )
+    tdee, rmr = latest.adaptive_tdee, latest.derived_rmr
+    rows.append(
+        {
+            "source": OWN,
+            "resting_kcal": _round(rmr.kcal) if rmr else None,
+            "resting_band_kcal": _round(rmr.band_kcal) if rmr else None,
+            "total_kcal": _round(tdee.kcal) if tdee else None,
+            "total_band_kcal": _round(tdee.band_kcal) if tdee else None,
+        }
+    )
+    body = bodies[-1]
+    return {
+        "end": latest.end.isoformat(),
+        "windows": [w.end.isoformat() for w in windows],
+        "rows": rows,
+        "best": best,
+        "fit": fit,
+        "basis": {
+            "days": latest.days,
+            "complete_days": latest.complete_days,
+            "flagged_days": latest.flagged_days,
+            "weighins": latest.weighins,
+            "insufficient": latest.insufficient,
+            "windows_with_estimate": sum(1 for w in windows if w.adaptive_tdee),
+            "rmr_source": latest.rmr_source,
+        },
+        "skinfold": None
+        if body is None
+        else {
+            "date": body["measured_on"].isoformat(),
+            "body_fat_pct": round(body["body_fat_pct"], 1),
+            "lean_mass_kg": round(body["lean_mass_kg"], 1),
+        },
+    }
+
+
+def read_energy_view(db: Any, sources: EnergySources, end: date) -> dict[str, Any]:
+    """Read the 12-week history ending on ``end`` and build the view."""
+    start = history_start(end)
+    inputs, _ = read_energy_inputs(db, sources, start, end)
+    health = sources.daily_health(db, start, end)
+    return energy_view(inputs, energy_windows(inputs, end), health)

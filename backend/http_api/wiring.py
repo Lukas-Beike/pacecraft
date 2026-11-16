@@ -472,6 +472,7 @@ def _read_routes(
             ),
             first_threshold_service=athlete.first_threshold,
             skinfold_service=athlete.skinfolds,
+            energy_view=ctx.nutrition.energy_view,
             race_plan=partial(
                 read_race_plan,
                 ctx.planning.competition,

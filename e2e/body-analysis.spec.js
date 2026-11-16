@@ -53,8 +53,10 @@ test("@responsive Body plots measurements and W/kg appears only in the cycling t
   await expect(overview.locator("[data-metric='body_fat_pct'] td")).toHaveText("19,8 %");
   await expect(overview.locator("th small")).toHaveText(["06.10.2026", "06.10.2026"]);
   expect(await overview.evaluate((element) => element.closest("section").parentElement.firstElementChild.contains(element))).toBe(true);
-  await expect(root).not.toContainText("Intervals.icu");
-  await expect(root).not.toContainText("Garmin");
+  // The body charts name no provider; only the energy cards label the Garmin estimate (#3099).
+  const bodyCards = root.locator(":scope > :not([data-energy], [data-energy-fit])");
+  await expect(bodyCards.filter({ hasText: "Intervals.icu" })).toHaveCount(0);
+  await expect(bodyCards.filter({ hasText: "Garmin" })).toHaveCount(0);
   const missing = root.locator("[data-body-metric='weight_kg']");
   await expect(missing.locator("circle[data-series='0']")).toHaveCount(11);
   await root.getByRole("button", { name: "Letzte 14 Tage", exact: true }).click();

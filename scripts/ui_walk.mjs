@@ -272,6 +272,7 @@ export const STEPS = [
   // The skinfold card's edit icon is an svg too, so the chart step skips that card (#3099).
   { view: "nutrition", name: "Ernährung: Körper", covers: "Body analysis", pre: [tab("nutrition", "body")], ready: "#bodyAnalysisCharts .analysis-chart-card:not([data-skinfolds]) svg", kind: "chart" },
   { view: "nutrition", name: "Ernährung: Hautfalten", covers: "#3099 skinfold card", pre: [tab("nutrition", "body")], ready: "#bodyAnalysisCharts [data-skinfolds] tbody tr", kind: "text" },
+  { view: "nutrition", name: "Ernährung: Energieverbrauch", covers: "#3099 energy table", pre: [tab("nutrition", "body")], ready: "#bodyAnalysisCharts [data-energy] tbody tr", kind: "text" },
   { view: "more", name: "Mehr: Ausrüstung", covers: "#2935 equipment", pre: [tab("more", "equipment")], ready: "#equipmentItems .equipment-card", kind: "text" },
   { view: "more", name: "Mehr: Ausrüstung Standard", covers: "#3014 default equipment", pre: [tab("more", "equipment")], ready: "#equipmentItems .equipment-rules select", kind: "options" },
   // The current release's entry: a listed change, or only its collapsed "Technik (n)" (2.1.20).
