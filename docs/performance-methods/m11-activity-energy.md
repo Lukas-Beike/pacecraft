@@ -1,8 +1,8 @@
 # M11 — Own activity energy, net of resting metabolism
 
 - **Card:** M11
-- **Card version:** 2
-- **Method ID:** activity-energy v2 (#3100, #3187)
+- **Card version:** 3
+- **Method ID:** activity-energy v3 (#3100, #3187, #3255)
 - **Status:** methods implemented (`backend/performance/activity_energy.py`); daily wiring, adaptive TDEE and display follow (#3100, #3099)
 - **Classification:** model estimate
 - **Literature checked:** 2026-11-15
@@ -47,8 +47,13 @@ counting it twice. 1 kcal = 4184 J.
 5. **NEAT:** steps outside recorded sessions × step length × the level
    walking cost `C_w(0) = 2.01 J/kg/m` × mass, plus floors as vertical work
    `m × g × 3 m / 0.25`. Step length from recorded walks (speed ÷ steps per
-   minute), else 0.415 × height. A run, walk or hike takes its steps out of
-   NEAT as 2 × its one-leg cadence × duration; other sessions take none.
+   minute), else 0.415 × height. Every session takes its steps out of NEAT
+   (#3255): the device's recorded count first, since the watch also counts
+   steps in a strength session or on a ride; a run, walk or hike without
+   one uses 2 × its one-leg cadence × duration, else its distance ÷ step
+   length. The ascent of the day's runs, walks and hikes, which their
+   graded cost already prices, leaves the floors first: `max(0, floors −
+   ascent / 3 m)`.
    Walking at any gradient uses Minetti's walking curve scaled so that the
    level equals the ACSM horizontal term (R74) at 20.1 J/mL O2 (R75): the
    curve stays smooth, without a step at 0. Neither Minetti's measured level
@@ -165,7 +170,7 @@ line is calibrated on power-derived cost, not calorimetry (weak evidence).
 | Constant | Value | Module | Code comment |
 | --- | --- | --- | --- |
 | `METHOD_ID` | `'activity-energy'` | `backend/performance/activity_energy.py` |  |
-| `METHOD_VERSION` | `2` | `backend/performance/activity_energy.py` | Bump when a formula or constant below changes the estimate. |
+| `METHOD_VERSION` | `3` | `backend/performance/activity_energy.py` | Bump when a formula or constant below changes the estimate. |
 | `J_PER_KCAL` | `4184.0` | `backend/performance/activity_energy.py` | Joules per kilocalorie (thermochemical calorie). |
 | `GRAVITY` | `9.81` | `backend/performance/activity_energy.py` | Standard gravity, m/s^2, for the vertical work of floors. |
 | `MINETTI_WALKING` | `(280.5, -58.7, -76.8, 51.9, 19.6, 2.5)` | `backend/performance/activity_energy.py` | Minetti et al. 2002: the running fit (MINETTI_RUNNING, its gradient range and the 200 m grade span come from grade_adjustment, #3187), and the same fit for walking. |

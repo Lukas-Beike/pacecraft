@@ -69,6 +69,7 @@ _MEASURED: Final = (
     ("avg_cadence", "avg_cadence"),
     ("avg_speed_mps", "avg_speed_mps"),
     ("max_speed_mps", "max_speed_mps"),
+    ("steps", "steps"),
     ("device_name", "device_name"),
     ("energy_kj", "energy_kj"),
     ("energy_kcal", "energy_kcal"),

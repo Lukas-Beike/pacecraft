@@ -164,6 +164,44 @@ class EnergyInputsReaderTests(unittest.TestCase):
         assert activity is not None
         self.assertAlmostEqual(activity, 47.079 + 224.826, places=2)
 
+    def test_recorded_session_steps_and_foot_climbing_leave_the_days_neat(
+        self,
+    ) -> None:
+        # Day 1: 10,000 steps and 10 floors; step 0.415 x 1.80 = 0.747 m, 70 kg.
+        # NEAT = (steps x 0.747 x 2.01 x 70 + 70 x 9.81 x 3 x floors / 0.25) / 4,184.
+        day = "2026-10-01T"
+        cases = (
+            # Wrist steps in a strength session: (8,500 steps, 10 floors).
+            ("gym", {"sport": "strength", "steps": 1500}, 1500.0, 233.217),
+            # False wrist steps on a ride; its 300 m climb is no floor.
+            (
+                "ride",
+                {"sport": "ride", "steps": 800, "work_kj": 500,
+                 "elevation_gain_m": 300},
+                800.0,
+                250.801,
+            ),
+            # A run without cadence: its recorded steps (6,000 steps left).
+            ("run", {"sport": "run", "steps": 4000, "distance_m": 5000}, 4000.0, 170.416),
+            # Without recorded steps: 5,000 m / 0.747 m = 6,693.44 steps.
+            ("run", {"sport": "run", "distance_m": 5000}, 6693.44, 102.756),
+            # A hike's 15 m ascent is 5 of the day's floors (10,000 steps, 5 floors).
+            ("hike", {"sport": "hike", "elevation_gain_m": 15}, 0.0, 261.049),
+            # 60 m is more than the day's 10 floors: none left, never negative.
+            ("hike", {"sport": "hike", "elevation_gain_m": 60}, 0.0, 251.202),
+        )  # fmt: skip
+        for name, extra, steps, neat in cases:
+            summary = {"id": name, "started_at_local": f"{day}07:00:00",
+                       "moving_duration_s": 3600, **extra}  # fmt: skip
+            with self.subTest(name=name, extra=extra):
+                inputs, costs = read_energy_inputs(
+                    None, sources(sessions=[summary]), DAY1, DAY1
+                )
+                self.assertAlmostEqual(costs[0].steps, steps, places=2)
+                self.assertAlmostEqual(
+                    inputs.days[DAY1].neat_kcal or 0.0, neat, places=2
+                )
+
     def test_without_a_resting_rate_net_costs_stay_unknown(self) -> None:
         no_resting = {"2026-10-02": {"steps": 5_000}}
         inputs, costs = read_energy_inputs(

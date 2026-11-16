@@ -862,6 +862,7 @@ Every key of the `ActivitySummary` TypedDict (`total=False`; only values some re
 | `avg_cadence` | `avg_cadence` | rpm |
 | `avg_speed_mps` | `avg_speed_mps` | m/s |
 | `max_speed_mps` | `max_speed_mps` | m/s |
+| `steps` | `steps` | count |
 | `energy_kj` | `energy_kj` | kJ |
 | `energy_kcal` | `energy_kcal` | kcal |
 | `ground_contact_time_ms` | `ground_contact_time_ms` | ms |

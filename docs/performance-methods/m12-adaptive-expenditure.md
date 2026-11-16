@@ -1,8 +1,8 @@
 # M12 — Adaptive daily expenditure from intake and the weight trend
 
 - **Card:** M12
-- **Card version:** 2
-- **Method ID:** adaptive-expenditure v2 (#3100, #3187)
+- **Card version:** 3
+- **Method ID:** adaptive-expenditure v3 (#3100, #3187, #3255)
 - **Status:** method implemented (`backend/nutrition/energy_balance.py`); the reader, diagnostics and display follow (#3100, #3099)
 - **Classification:** model estimate
 - **Literature checked:** 2026-11-15
@@ -58,6 +58,15 @@ estimate. It never rewrites logged values and never falls back to a formula.
    same days as the activity, raw and times `k`. They add up to the
    activity; a day missing either part leaves both unknown, never 0, and a
    day without sessions has 0 session kcal.
+   **Plausibility gate (#3255):** the residual carries every error of the
+   logged intake and the modelled activity. When its whole band lies below
+   the resting reference band (own Katch-McArdle from skinfold lean mass
+   with its M13 band, else Garmin's mean resting value without a band), it
+   is shown as "nicht plausibel" instead of a value; TDEE stays shown.
+   Overlapping bands, or no reference, keep the value (athlete decision
+   2026-11-16). The basis shows NEAT's inputs over the window: steps per
+   day, the steps sessions take out, the step length with its source and
+   the floors outside sessions.
 8. **Flagged-meal bias `b`:** across the windows, `TDEE = T − b × x` by least
    squares, with `x` the flagged entries' logged kcal per complete day. `b` is
    reported in % with its band: positive means flagged meals were larger than
@@ -173,7 +182,7 @@ bias that is the same on every day is not visible in the band.
 | Constant | Value | Module | Code comment |
 | --- | --- | --- | --- |
 | `METHOD_ID` | `'adaptive-expenditure'` | `backend/nutrition/energy_balance.py` |  |
-| `METHOD_VERSION` | `2` | `backend/nutrition/energy_balance.py` | Bump when a formula or constant below changes the estimate. |
+| `METHOD_VERSION` | `3` | `backend/nutrition/energy_balance.py` | Bump when a formula or constant below changes the estimate. |
 | `WINDOW_DAYS` | `28` | `backend/nutrition/energy_balance.py` | Days per window and windows per week of the rolling view (#3099, #3100). |
 | `TREND_HALF_LIFE_DAYS` | `10.0` | `backend/nutrition/energy_balance.py` | Half-life in days of the exponentially weighted weight trend. |
 | `MIN_COMPLETE_DAYS` | `14` | `backend/nutrition/energy_balance.py` | A window needs this many complete logging days, weigh-ins and days between its first and last weigh-in; otherwise it gives its reason, never a formula. |
