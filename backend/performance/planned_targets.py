@@ -231,8 +231,11 @@ def _levels(
     return levels
 
 
-# A planned step in this zone or above is hard work, never a warm-up (#3084).
+# A planned step in this zone or above is hard work (#3084).
 HARD_ZONE: Final = 3
+# Unmatched hard steps make a skipped block from this many on; one is a warm-up
+# build or a finish (#3084).
+MIN_SKIPPED_BLOCK: Final = 2
 
 
 def _unmatched_hard_steps(
@@ -243,7 +246,9 @@ def _unmatched_hard_steps(
     The lap fitting keeps the hardest steps when the plan has more levels than
     laps; a hard step it drops is planned work the session may have skipped.
     Steps within the paired reps' span, and the one right before and after it,
-    are their own recoveries or floats (an over-under's unders), never a block.
+    are their own recoveries or floats (an over-under's unders), never a block;
+    a lone hard step outside them is a warm-up build or a finish: only two or
+    more make a skipped block.
     """
     zones = {
         "speed": (thresholds.threshold_pace, thresholds.pace_zone),
@@ -265,7 +270,7 @@ def _unmatched_hard_steps(
             and zone_of(middle / reference * 100) >= HARD_ZONE
         ):
             count += 1
-    return count
+    return count if count >= MIN_SKIPPED_BLOCK else 0
 
 
 def _work_steps(levels: Sequence[tuple[int, float]], executed: int) -> list[int]:

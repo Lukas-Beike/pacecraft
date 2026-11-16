@@ -225,6 +225,23 @@ class PlannedTargetExecutionTests(unittest.TestCase):
             ),
         )
 
+    def test_a_lone_hard_warm_up_build_is_no_skipped_block(self) -> None:
+        # #3084: a 5 min build to pace zone 3 in the warm-up, then the 5 fast
+        # reps run in full; one hard step outside the reps is no block.
+        plan = (
+            "- 10m Z2 Pace\n- 5m Z3 Pace\n- 3m Z1 Pace\n\n5x\n"
+            "- 3m 3:45-3:55/km Pace\n- 90s Z1 Pace\n\n- 5m Z1 Pace"
+        )
+        session = _run()
+        result = planned_target_execution(
+            session_execution(session),
+            structured_steps(plan),
+            THRESHOLDS,
+            "run",
+            streams=_display_streams(session),
+        )
+        self.assertEqual(0, result["summary"]["unmatched_hard_steps"])
+
     def test_floats_between_and_after_the_reps_are_no_skipped_block(self) -> None:
         # #3084: an over-under run in full, 5 fast reps each followed by a 90 s
         # float in pace zone 3; the floats belong to the reps, not a block.
