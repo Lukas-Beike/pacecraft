@@ -1519,17 +1519,22 @@ async function sendWeight(path, payload, button) {
   button.disabled = true;
   try {
     weightRead = await api(path, { method: "PUT", body: JSON.stringify(payload) });
-    resetEnergy();
-    document.querySelector("#weightDialog").close();
-    const result = await api("/api/performance");
-    state.data.performance = result.performance || result;
-    renderBodyAnalysis(state.data.performance?.history?.body);
-    return true;
   } catch (error) {
     status.textContent = error.message;
     button.disabled = false;
     return false;
   }
+  resetEnergy();
+  document.querySelector("#weightDialog").close();
+  // The save stands; a failed re-read is reported outside the closed dialog.
+  try {
+    const result = await api("/api/performance");
+    state.data.performance = result.performance || result;
+    renderBodyAnalysis(state.data.performance?.history?.body);
+  } catch (error) {
+    toast(error.message, true);
+  }
+  return true;
 }
 
 let weightDialogBound = false;
