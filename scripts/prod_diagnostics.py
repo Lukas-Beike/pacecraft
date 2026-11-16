@@ -102,6 +102,11 @@ SECTION_FIELDS = {
         r"|unknown)\.(files|(messages|unmapped_fields|developer_fields)\.[0-9.]+"
         r"|new_decodes\.[a-z_]+(\.(in_bounds|out_of_bounds))?)"
     ),
+    # Window records the next detail mapper bump downloads again (#2220).
+    "mapper_replay": re.compile(
+        r"status|garmin\.(window_days|pending|records|strength)"
+        r"|wahoo\.(window_days|records)"
+    ),
 }
 STATES = {
     "ready",

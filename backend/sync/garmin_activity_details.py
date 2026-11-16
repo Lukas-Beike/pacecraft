@@ -245,42 +245,9 @@ class GarminActivityDetailService:
     ) -> tuple[list[dict[str, Any]], dict[str, str], dict[str, tuple[str, int]]]:
         """Return pending window candidates plus the window's empty marks and retries."""
         with self._database_manager.reader() as db:
-            universe = activity_detail_backfill_universe(db, GARMIN_ID, since=since)
-            window_ids = set(universe)
-            retry = {
-                provider_activity_id: value
-                for provider_activity_id, value in state.retry.items()
-                if provider_activity_id in window_ids
-            }
-            # The limit covers every window record, so marks for empty activities
-            # cannot push pending candidates out of the batch.
-            candidates = activity_detail_backfill_candidates(
-                db,
-                GARMIN_ID,
-                ACTIVITY_RECORD_KIND,
-                since=since,
-                limit=len(universe),
-                mapper_version=MAPPER_VERSION,
-                retry_ids=[
-                    provider_activity_id
-                    for provider_activity_id, (_summary, attempts) in retry.items()
-                    if attempts < BACKFILL_RETRY_ATTEMPTS
-                ],
+            return _window_pending(
+                db, state, since=since, mapper_version=MAPPER_VERSION
             )
-        empty = {
-            provider_activity_id: value
-            for provider_activity_id, value in state.empty.items()
-            if provider_activity_id in window_ids
-        }
-        pending = [
-            item
-            for item in candidates
-            if empty.get(item["provider_activity_id"]) != item["summary_sha256"]
-            and not _retries_exhausted(
-                retry.get(item["provider_activity_id"]), item["summary_sha256"]
-            )
-        ]
-        return pending, empty, retry
 
     def _fetch_batch(
         self,
@@ -577,6 +544,78 @@ def detail_fallback_counts(db: Any, key_values: Any) -> dict[str, int]:
     return {
         name: value if isinstance(value := stored.get(name), int) and value >= 0 else 0
         for name in ("kept", "stored")
+    }
+
+
+def _window_pending(
+    db: Any, state: _BackfillState, *, since: datetime, mapper_version: int
+) -> tuple[list[dict[str, Any]], dict[str, str], dict[str, tuple[str, int]]]:
+    """Window candidates the backfill fetches, with the window's empty marks and retries.
+
+    Activities marked empty for their summary and those whose retries are used up
+    are left out, as the backfill leaves them out.
+    """
+    universe = activity_detail_backfill_universe(db, GARMIN_ID, since=since)
+    window_ids = set(universe)
+    retry = {
+        provider_activity_id: value
+        for provider_activity_id, value in state.retry.items()
+        if provider_activity_id in window_ids
+    }
+    # The limit covers every window record, so marks for empty activities
+    # cannot push pending candidates out of the batch.
+    candidates = activity_detail_backfill_candidates(
+        db,
+        GARMIN_ID,
+        ACTIVITY_RECORD_KIND,
+        since=since,
+        limit=len(universe),
+        mapper_version=mapper_version,
+        retry_ids=[
+            provider_activity_id
+            for provider_activity_id, (_summary, attempts) in retry.items()
+            if attempts < BACKFILL_RETRY_ATTEMPTS
+        ],
+    )
+    empty = {
+        provider_activity_id: value
+        for provider_activity_id, value in state.empty.items()
+        if provider_activity_id in window_ids
+    }
+    pending = [
+        item
+        for item in candidates
+        if empty.get(item["provider_activity_id"]) != item["summary_sha256"]
+        and not _retries_exhausted(
+            retry.get(item["provider_activity_id"]), item["summary_sha256"]
+        )
+    ]
+    return pending, empty, retry
+
+
+def detail_replay_size(db: Any, key_values: Any, now: datetime) -> dict[str, int]:
+    """Window records the backfill fetches, counts only (#2220).
+
+    ``pending`` records have no set of the current mapper version yet; ``records``
+    have none of the next one, so the next mapper bump would fetch them again,
+    ``strength`` of them with one call more (their exercise sets). Both leave out
+    what the backfill leaves out: empty marks and used-up retries.
+    """
+    state = _parse_backfill_state(key_values.get(db, BACKFILL_STATE_KEY))
+    since = now - BACKFILL_WINDOW
+
+    def below(version: int) -> list[str]:
+        pending, _empty, _retry = _window_pending(
+            db, state, since=since, mapper_version=version
+        )
+        return [item["provider_activity_id"] for item in pending]
+
+    ids = below(MAPPER_VERSION + 1)
+    return {
+        "window_days": BACKFILL_WINDOW.days,
+        "pending": len(below(MAPPER_VERSION)),
+        "records": len(ids),
+        "strength": len(strength_record_ids(db, GARMIN_ID, ids)),
     }
 
 
