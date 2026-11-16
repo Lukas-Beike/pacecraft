@@ -242,6 +242,8 @@ def _unmatched_hard_steps(
 
     The lap fitting keeps the hardest steps when the plan has more levels than
     laps; a hard step it drops is planned work the session may have skipped.
+    Steps within the paired reps' span, and the one right before and after it,
+    are their own recoveries or floats (an over-under's unders), never a block.
     """
     zones = {
         "speed": (thresholds.threshold_pace, thresholds.pace_zone),
@@ -249,6 +251,8 @@ def _unmatched_hard_steps(
         "heartrate": (thresholds.hr_zone_reference, thresholds.hr_zone_of_lthr),
     }
     paired = set(work)
+    if paired:
+        paired |= set(range(min(work) - 1, max(work) + 2))
     count = 0
     for index, target in enumerate(ranges):
         reference, zone_of = zones.get(target.metric or "", (None, None))
