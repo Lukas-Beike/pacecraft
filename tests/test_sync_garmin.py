@@ -567,6 +567,19 @@ class GarminSyncStateServiceTests(unittest.TestCase):
         self._record("sleep", limited)
         self.assertFalse(self.service.capability_allowed("sleep"))
 
+    def test_every_rate_limit_is_remembered_for_the_detail_replay(self):
+        # The activity detail backfill pauses after any Garmin 429 (#3208 review).
+        self.assertIsNone(self.service.last_rate_limit())
+        self._record("sleep", AppError(404, "synthetic", reason="not_found"))
+        self._record("sleep", TimeoutError("synthetic"))
+        self.assertIsNone(self.service.last_rate_limit())
+
+        self._record("sleep", AppError(429, "synthetic", reason="rate_limited"))
+        self.assertEqual(self.service.last_rate_limit(), self.now)
+        # A success clears the capability, not the remembered 429.
+        self.service.record_capability_success("sleep")
+        self.assertEqual(self.service.last_rate_limit(), self.now)
+
     def test_one_failure_after_an_expired_pause_does_not_pause_again(self):
         limited = AppError(429, "synthetic", reason="rate_limited")
         self._record("sleep", limited, 3)

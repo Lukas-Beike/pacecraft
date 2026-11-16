@@ -165,6 +165,7 @@ class GarminActivityDetailService:
         utc_now: Callable[[], str],
         key_values: Any | None = None,
         capability_allowed: Callable[[str], bool] | None = None,
+        last_rate_limit: Callable[[], datetime | None] | None = None,
     ) -> None:
         self._database_manager = database_manager
         self._reader = reader
@@ -173,6 +174,8 @@ class GarminActivityDetailService:
         self._utc_now = utc_now
         self._key_values = key_values
         self._capability_allowed = capability_allowed
+        # The last Garmin 429 of any call, also one of a sync that skipped the backfill.
+        self._last_rate_limit = last_rate_limit
 
     def refresh(self, activity_id: str) -> dict[str, Any]:
         requested = normalize_activity_id(activity_id)
@@ -258,6 +261,13 @@ class GarminActivityDetailService:
         today = now.astimezone(UTC).date().isoformat()
         replay = _roll_replay(state.replay, today)
         paused_until = state.paused_until
+        limited_at = self._last_rate_limit() if self._last_rate_limit else None
+        if limited_at is not None and now - limited_at < BACKFILL_RATE_LIMIT_PAUSE:
+            # Any Garmin 429 counts like one of the backfill: the budget starts
+            # again and the backfill pauses for a day from it.
+            replay = replace(replay, budget=REPLAY_START_DAILY, clean=False)
+            held = limited_at + BACKFILL_RATE_LIMIT_PAUSE
+            paused_until = held if paused_until is None else max(paused_until, held)
         if paused_until is not None and paused_until <= now:
             paused_until = None
         if paused_until is not None or not self._detail_capabilities_allowed():

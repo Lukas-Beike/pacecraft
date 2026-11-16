@@ -207,6 +207,7 @@ class _Base(unittest.TestCase):
         *,
         configured: bool = True,
         allowed: Any = None,
+        last_rate_limit: datetime | None = None,
     ) -> GarminActivityDetailService:
         return GarminActivityDetailService(
             database_manager=self.manager,
@@ -216,6 +217,7 @@ class _Base(unittest.TestCase):
             utc_now=lambda: self.now,
             key_values=self.key_values,
             capability_allowed=allowed or (lambda _capability: True),
+            last_rate_limit=lambda: last_rate_limit,
         )
 
 
@@ -1148,6 +1150,34 @@ class BackfillReplayTests(_Base):
 
         replay = _stored_state(self.key_values)["replay"]
         self.assertEqual((replay["budget"], replay["clean"]), (20, False))
+
+    def test_a_429_outside_the_backfill_resets_the_budget_and_pauses_it(self) -> None:
+        # A 429 of the main sync (wellness, summaries) counts like one of the
+        # backfill, although that sync skipped the backfill (#3208 review).
+        rows = _days(2)
+        _seed_outdated(self, rows)
+        self._budget_state(day=NOW[:10], count=0, budget=40)
+        limited_at = NOW_AT - timedelta(hours=1)
+        reader = _Details({aid: _full(aid) for aid, _start in rows})
+
+        result = self.service(reader, last_rate_limit=limited_at).backfill()
+
+        self.assertEqual(result["status"], "paused")
+        self.assertEqual(reader.calls, [])
+        state = _stored_state(self.key_values)
+        self.assertEqual(
+            (state["replay"]["budget"], state["replay"]["clean"]), (20, False)
+        )
+        self.assertEqual(
+            datetime.fromisoformat(state["paused_until"]),
+            limited_at + BACKFILL_RATE_LIMIT_PAUSE,
+        )
+
+        # A day later the pause is over, and the unclean day did not double.
+        self.now = (limited_at + timedelta(hours=25)).isoformat()
+        result = self.service(reader, last_rate_limit=limited_at).backfill()
+        self.assertEqual(result["replayed"], 2)
+        self.assertEqual(_stored_state(self.key_values)["replay"]["budget"], 20)
 
     def test_a_garmin_error_on_a_new_activity_also_ends_the_clean_day(self) -> None:
         _seed(self.manager, [("3001", "2026-10-10 07:00:00")])
