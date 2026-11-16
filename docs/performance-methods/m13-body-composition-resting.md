@@ -67,7 +67,7 @@ None of these is a validation in this athlete or in trained endurance athletes a
 
 ## Measurement error and uncertainty
 
-- **Body fat:** the 3-site equations carry about ±3 to 4 percentage points of standard error for the individual. The caliper reading, the site location and the measurer add to that. One year of age shifts body fat by about 0.11 percentage points.
+- **Body fat:** the 3-site equations carry about ±3 to 4 percentage points of standard error for the individual. The caliper reading, the site location and the measurer add to that. One year of age shifts body fat by about 0.11 percentage points for men (495 / D² × 0.0002574 at D ≈ 1.07) and about 0.06 for women (× 0.0001392 at D ≈ 1.04).
 - **Resting energy:** per R72, about 10 % for an individual. An error of 1 kg in lean mass moves the result by 21.6 to 22 kcal/day.
 - **Display:** the formula rows show the band of formula 6. Their fit against the adaptive expenditure (the M12 windows) is the empirical check. It compares the same windows for every source, needs at least 4 of them, and marks a source "passt am besten" only when its lead over the next exceeds the mean band of "Aus deinen Daten". Otherwise it says "noch nicht unterscheidbar" (athlete decision on #3187).
 - **Nominal bands:** they exclude a logging bias in the intake and the error of the activity method beyond 10 %.
@@ -83,7 +83,7 @@ None of these is a validation in this athlete or in trained endurance athletes a
 
 - **Age range:** ages up to 80 are accepted (`SKINFOLD_AGES`). The equations were fitted on men aged 18–61 and women aged 18–55 (`FITTED_AGES`), so older ages extrapolate. Such a measurement keeps its body fat but carries `age_outside_fit`, and the Hautfalten card shows "Alter außerhalb der Studie" under it (#3187 item 9).
 - **Readings per site:** one value per site, as decided by the athlete, instead of the studies' repeated readings averaged by a trained measurer.
-- **Rounding:** Cunningham uses the abstract's rounded `500 + 22`, not the regression's `501.6 + 21.6`. The difference is under 20 kcal/day for a lean mass between 40 and 80 kg.
+- **Rounding:** Cunningham uses the abstract's rounded `500 + 22`, not the regression's `501.6 + 21.6`. The difference is `0.4 × LBM − 1.6` kcal/day: about 14 to 30 kcal/day for a lean mass between 40 and 80 kg.
 - **Weight:** the lean mass uses the smoothed weight trend instead of a weight taken at the moment of the skinfold measurement.
 
 ## Minimum data and stop rules
