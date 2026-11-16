@@ -355,18 +355,27 @@ def local_first_counts(commands: list[Any]) -> dict[str, int]:
         if isinstance(step, dict)
     ]
     for step in steps:
-        outcomes = step.get("lookup_outcomes")
-        for name, value in (outcomes if isinstance(outcomes, dict) else {}).items():
-            if name in LOOKUP_OUTCOMES and type(value) is int:
-                counts[f"lookup_outcomes.{name}"] += value
-        despite = step.get("created_despite_candidate")
-        if step.get("tool") in DESPITE_TOOLS and type(despite) is int:
-            counts[f"created_despite_candidate.{step['tool']}"] += despite
-        error = step.get("error")
-        reason = error.get("reason") if isinstance(error, dict) else None
-        if reason in EXISTING_RECORD_REASONS:
-            counts[f"refusals.{reason}"] += 1
+        for name, value in step_counts(step):
+            counts[name] += value
     return counts
+
+
+def step_counts(step: dict[str, Any]) -> list[tuple[str, int]]:
+    """The named counts one history step adds; unknown names add nothing."""
+    outcomes = step.get("lookup_outcomes")
+    added = [
+        (f"lookup_outcomes.{name}", value)
+        for name, value in (outcomes if isinstance(outcomes, dict) else {}).items()
+        if name in LOOKUP_OUTCOMES and type(value) is int
+    ]
+    despite = step.get("created_despite_candidate")
+    if step.get("tool") in DESPITE_TOOLS and type(despite) is int:
+        added.append((f"created_despite_candidate.{step['tool']}", despite))
+    error = step.get("error")
+    reason = error.get("reason") if isinstance(error, dict) else None
+    if reason in EXISTING_RECORD_REASONS:
+        added.append((f"refusals.{reason}", 1))
+    return added
 
 
 def local_first_lines(report: dict[str, Any]) -> list[tuple[str, str]]:
