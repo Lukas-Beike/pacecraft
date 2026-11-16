@@ -4,10 +4,15 @@ Synthetic FIT files come from the struct-based builder in ``test_fit_file``;
 no binary fixtures are read.
 """
 
+import json
 import random
 import struct
 import unittest
+from collections.abc import Mapping
+from dataclasses import fields, is_dataclass
 from datetime import UTC, datetime
+from enum import Enum
+from pathlib import Path
 from unittest import mock
 
 from backend.canonical.activity_detail import ActivityLapSet, ActivityStreamSet
@@ -660,6 +665,132 @@ class FitActivityDetailMappingTests(unittest.TestCase):
                 self.assertIsInstance(record, ActivityStreamSet | ActivityLapSet)
             for issue in result.issues:
                 self.assertIsInstance(issue, MappingIssue)
+
+
+GOLDEN = Path(__file__).parent / "fixtures" / "fit_detail_mapper_golden.json"
+_GOLDEN_PLACES = 9
+
+
+def _plain(value):
+    """A canonical value as plain JSON data: types by name, enums by value."""
+    if is_dataclass(value) and not isinstance(value, type):
+        plain = {"type": type(value).__name__}
+        plain.update({f.name: _plain(getattr(value, f.name)) for f in fields(value)})
+        return plain
+    if isinstance(value, Enum):
+        return value.value
+    if isinstance(value, Mapping):
+        return {str(_plain(key)): _plain(item) for key, item in value.items()}
+    if isinstance(value, tuple | list):
+        return [_plain(item) for item in value]
+    if isinstance(value, datetime):
+        return value.isoformat()
+    # Rounded so a last-digit difference of the platform maths cannot fail the golden.
+    return round(value, _GOLDEN_PLACES) if isinstance(value, float) else value
+
+
+def _golden_files():
+    """Every kind of content the mapper read before the watch fields (#2220)."""
+    from tests import test_fit_rr_mapping as rr
+    from tests import test_fit_sensor_mapping as sensors
+    from tests import test_strength_sets as strength
+    from tests.test_dfa_alpha1 import ramp
+
+    semicircles = 2**31 / 180.0
+    dynamics = fit_builder.FitBuilder()
+    dynamics.define(
+        0,
+        20,
+        [(253, UINT32), (3, UINT8), (39, UINT16), (41, UINT16), (83, UINT16)]
+        + [(84, UINT16), (85, UINT16)],
+    )
+    for second in range(3):
+        dynamics.data(
+            0,
+            {253: 1000 + second, 3: 150, 39: 85 + second, 41: 2400, 83: 780}
+            | {84: 5050, 85: 1050},
+        )
+    compressed = fit_builder.FitBuilder()
+    compressed.define(0, 20, RECORD_FIELDS).data(0, _record(1000, hr=120))
+    compressed.define(1, 20, [(3, UINT8)])
+    compressed.data(1, {3: 121}, time_offset=1001 & 0x1F)
+    compressed.data(1, {3: 122}, time_offset=1002 & 0x1F)
+    records = [
+        _record(1000, distance=0, speed=0, altitude=3000, hr=100, cadence=80)
+        | {53: 0, 7: 200, 13: 20},
+        _record(1001, distance=250, enhanced_speed=2500, hr=120, cadence=81, power=250)
+        | {53: 64, 13: 21, 6: 2400, 78: 3010},
+        _record(1002, distance=500, speed=2750, enhanced_altitude=3020, hr=130)
+        | {4: 82, 7: 300, 13: 22},
+    ]
+    laps = [
+        _lap(start=1000, elapsed=60000, timer=58000, distance=1000, speed=3000)
+        | {111: 4500, 110: 3200, 15: 150, 16: 170, 17: 90, 19: 200, 20: 500}
+        | {21: 12, 33: 210, 23: 2, 14: 4000},
+        _lap(start=1060, elapsed=60000, intensity=0, avg_hr=5),
+        _lap(start=1120, elapsed=60000, intensity=4, max_speed=65000),
+        _lap(start=1180, elapsed=60000, intensity=0),
+        _lap(start=1240, intensity=3),
+        _lap(elapsed=60000),
+    ]
+    odd = [
+        _record(1000, hr=100, speed=65000, lat=round(52.5 * semicircles)),
+        _record(1001, hr=101, lon=round(-13.25 * semicircles)),
+        _record(1001, hr=102),
+        _record(1002, hr=103, lat=-(2**31), lon=2**31 - 2),
+        {3: 104},
+    ]
+    watch = sensors.fit_file(
+        [
+            sensors.device(0, 0, 1, 111, 3500, sensors.LOCAL),
+            sensors.device(1, 120, 1, sensors.SERIAL, 2000, sensors.ANTPLUS),
+            sensors.device(2, 11, 32, 77, 5, sensors.BLE),
+        ]
+    )
+    return {
+        "records_and_laps": _fit(records=records, laps=laps),
+        "positions_and_gaps": _fit(records=odd),
+        "laps_only": _fit(laps=laps[:4]),
+        "running_dynamics": dynamics.build(),
+        "compressed_timestamps": compressed.build(),
+        "strength_sets": strength._fit(strength.SQUAT_SETS),
+        "strength_sets_without_records": strength._fit(
+            strength.SQUAT_SETS, records=False
+        ),
+        "sensors": watch,
+        "sensors_without_heart_rate": sensors.fit_file(heart_rate=False),
+        "chest_strap_threshold": rr.fit_with_rr(ramp(0)),
+        "not_a_fit_file": b"not a fit file",
+    }
+
+
+def golden_snapshot():
+    """The pinned mapper output: every file mapped alone and through Garmin."""
+    from tests import test_garmin_activity_detail_mapping as garmin
+
+    snapshot = {name: _plain(_map(data)) for name, data in _golden_files().items()}
+    files = _golden_files()
+    jobs = {
+        "garmin_json_only": garmin._collected(),
+        "garmin_json_and_fit": garmin._collected(fit=garmin._synthetic_fit()),
+        "garmin_json_and_laps_file": garmin._collected(fit=files["records_and_laps"]),
+        "garmin_fit_strength": {"activity_id": ID, "fit": files["strength_sets"]},
+        "garmin_bad_fit": garmin._collected(fit=b"not a fit file"),
+    }
+    snapshot.update({name: _plain(garmin._map(job)) for name, job in jobs.items()})
+    return snapshot
+
+
+class DetailMapperGoldenTests(unittest.TestCase):
+    def test_files_without_the_watch_fields_map_exactly_as_before(self):
+        # Captured from the mapper before it read breathing rate, lap GAP, steps,
+        # lap triggers and the zone basis; new fields stay None or empty.
+        golden = json.loads(GOLDEN.read_text(encoding="utf-8"))
+        current = json.loads(json.dumps(golden_snapshot()))
+        self.assertEqual(sorted(golden), sorted(current))
+        for name in golden:
+            with self.subTest(name):
+                self.assertEqual(golden[name], current[name])
 
 
 if __name__ == "__main__":
