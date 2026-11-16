@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import unittest
 from collections.abc import Callable
+from dataclasses import replace
 from datetime import date, timedelta
 
 from backend.nutrition import energy_balance as balance
@@ -49,6 +50,7 @@ def series(
             fat_g=80,
             entries=3,
             flagged=flagged,
+            flagged_kcal=logged if flagged else 0.0,
             weight_kg=weight if n % weigh_every == 0 else None,
             activity_kcal=600.0,
         )
@@ -149,11 +151,55 @@ class FlaggedMealsAndCalibrationTests(unittest.TestCase):
         bias = balance.flagged_meal_bias(inputs, END)
         assert bias is not None
         self.assertAlmostEqual(bias[0], -20.0, delta=5.0)
-        window = balance.energy_windows(inputs, END, weeks=1)[-1]
-        assert window.adaptive_tdee and window.adaptive_tdee_unflagged
+        window = balance.energy_windows(inputs, END)[-1]
+        # The main value keeps every day, so it carries the logging error...
+        assert window.adaptive_tdee and window.adaptive_tdee_corrected
         self.assertGreater(window.flagged_days, 0)
-        self.assertAlmostEqual(window.adaptive_tdee_unflagged.kcal, TRUE_TDEE, delta=60)
+        self.assertGreater(window.adaptive_tdee.kcal, TRUE_TDEE + 60)
+        # ...which the learned correction (flagged kcal x (1 + b)) removes.
+        self.assertAlmostEqual(window.adaptive_tdee_corrected.kcal, TRUE_TDEE, delta=60)
+        # A window with flagged days has no value without them (#3187 item 14).
+        self.assertIsNone(window.adaptive_tdee_unflagged)
         self.assertIsNone(balance.flagged_meal_bias(series(constant(2600.0)), END))
+        self.assertIsNone(
+            balance.energy_windows(series(constant(2600.0)), END)[
+                -1
+            ].adaptive_tdee_corrected
+        )
+
+    def test_the_unflagged_value_comes_only_from_windows_without_flags(self) -> None:
+        # Flags only in the first 60 days: the last window (days 92-119) has none.
+        inputs = series(
+            constant(2600.0), flagged_of=lambda n: n < 60 and n % 3 == 0,
+            logged_factor=1.25,
+        )  # fmt: skip
+        latest = balance.energy_windows(inputs, END)[-1]
+        self.assertEqual(latest.flagged_days, 0)
+        self.assertEqual(latest.adaptive_tdee_unflagged, latest.adaptive_tdee)
+
+    def test_only_the_flagged_entries_widen_the_band(self) -> None:
+        # 2,600 kcal days, every third with an estimated meal: of 500 kcal, or
+        # the whole day. 0.25 x 500 per flagged day widens the band less.
+        def days(flagged_kcal: float) -> balance.EnergyInputs:
+            base = series(constant(2600.0))
+            out = {
+                d: replace(
+                    v, flagged=i % 3 == 0, flagged_kcal=flagged_kcal * (i % 3 == 0)
+                )
+                for i, (d, v) in enumerate(sorted(base.days.items()))
+            }
+            return replace(base, days=out)
+
+        meal = balance.energy_windows(days(500.0), END, weeks=1)[-1].adaptive_tdee
+        whole = balance.energy_windows(days(2600.0), END, weeks=1)[-1].adaptive_tdee
+        assert meal and whole
+        self.assertLess(meal.band_kcal, whole.band_kcal)
+        # A flagged entry of 0 kcal (a flagged drink) widens nothing: the day is
+        # not counted whole (Gitar on #3195).
+        drink = balance.energy_windows(days(0.0), END, weeks=1)[-1].adaptive_tdee
+        plain = balance.energy_windows(series(constant(2600.0)), END, weeks=1)[-1]
+        assert drink and plain.adaptive_tdee
+        self.assertEqual(drink.band_kcal, plain.adaptive_tdee.band_kcal)
 
     def test_calibration_factor_is_shrunk_and_clamped(self) -> None:
         def window(raw: float, tdee: float) -> balance.EnergyWindow:

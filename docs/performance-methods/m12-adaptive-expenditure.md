@@ -35,10 +35,13 @@ estimate. It never rewrites logged values and never falls back to a formula.
    warm-up lag after the first weigh-in. The trend only supplies the mass for
    `ρ`.
 4. **Adaptive TDEE:** mean intake of the window's complete days minus the stored
-   energy per day. It is shown twice: with all complete days, and without
-   flagged days.
+   energy per day. All complete days count; flagged entries only widen the
+   band (athlete decision, #3187 item 14). The value "ohne Schätzung" comes
+   only from a window without any flagged day; dropping a flagged day's
+   intake while keeping the window's stored energy would bias it.
 5. **Band (95 %):**
-   `1.96 × √(SD²_intake / n + Σ(0.25 × flagged intake)² / n² + SE²_store)`.
+   `1.96 × √(SD²_intake / n + Σ(0.25 × flagged kcal)² / n² + SE²_store)`, with
+   the flagged kcal the logged kcal of each day's flagged entries.
    `SE_store` is `ρ` times the slope's standard error.
 6. **Calibration factor `k`:** the least-squares slope of `TDEE − TEF` on the
    uncalibrated M11 activity over the windows, combined with the prior 1 ± 0.10
@@ -46,11 +49,13 @@ estimate. It never rewrites logged values and never falls back to a formula.
    fewer than 4 windows or no spread in activity.
 7. **Derived resting rate:** `TDEE − k × activity − TEF`. Its band adds 10 % of
    the activity term.
-8. **Bias of days with flagged meals `b`:** across the windows, `TDEE = T − b × x`
-   by least squares, with `x` the logged kcal of flagged days (the whole day,
-   not only its flagged meals) per complete day. `b` is reported in % with its
-   band: positive means those days were larger than logged. It is a per-day
-   figure, not a per-meal one (#3187 item 13).
+8. **Flagged-meal bias `b`:** across the windows, `TDEE = T − b × x` by least
+   squares, with `x` the flagged entries' logged kcal per complete day. `b` is
+   reported in % with its band: positive means flagged meals were larger than
+   logged.
+9. **Learned correction:** once `b` is estimated, each window also shows
+   `TDEE + b × x` (the flagged kcal counted at `1 + b`), labelled, with `x`
+   times b's band added. Logged entries are never rewritten.
 
 ## Sources
 
@@ -74,8 +79,8 @@ measurements (#3099), and the activity and TEF terms from M11.
 
 ## Measurement error and uncertainty
 
-Shown as a 95 % band. The intake scatter, the flagged-day uncertainty
-(25 % of the day's intake) and the weight-trend error are combined. A logging
+Shown as a 95 % band. The intake scatter, the flagged-entry uncertainty
+(25 % of the flagged entries' kcal) and the weight-trend error are combined. A logging
 bias that is the same on every day is not visible in the band.
 
 ## Bias and transferability
@@ -115,15 +120,16 @@ bias that is the same on every day is not visible in the band.
 | Window / step | 28 / 7 days | product assumption | #3099, #3100 |
 | Complete day | ≥ 2 entries, ≥ 60 % of own estimate | product assumption | excludes clearly partial logging |
 | Minimum basis | 14 complete days, 8 weigh-ins, 21-day span | product assumption | stop rule, no formula fallback |
-| Flagged-day uncertainty | 25 % of the day's intake | product assumption | #3100 athlete decision |
+| Flagged-entry uncertainty | 25 % of the flagged entries' kcal | product assumption | #3100 athlete decision, #3187 |
 | Calibration prior / bounds | 1 ± 0.10 / 0.85–1.15 | product assumption | method comment, #3100 |
 | Band | 1.96 | product assumption | two-sided 95 % |
 
 ## Allowed statements
 
 - "Verbrauch aus deinen Daten: X ± Y kcal/Tag (Z vollständige Tage)".
-- "Ohne geschätzte Mahlzeiten: X ± Y".
-- "Tage mit geschätzten Mahlzeiten im Mittel X % zu niedrig/zu hoch erfasst (± Y)".
+- "Ohne geschätzte Mahlzeiten: X ± Y", only from windows without any flagged day.
+- "Mit gelernter Korrektur geschätzter Mahlzeiten: X ± Y", once `b` exists.
+- "Geschätzte Mahlzeiten wirken im Mittel X % niedriger/höher als erfasst (± Y)".
 - "Datenbasis zu gering", with the reason.
 
 ## Forbidden statements
@@ -169,7 +175,7 @@ bias that is the same on every day is not visible in the band.
 | `LEAN_KCAL_PER_KG` | `1816.0` | `backend/nutrition/energy_balance.py` |  |
 | `FORBES_CONSTANT_KG` | `10.4` | `backend/nutrition/energy_balance.py` | Forbes' curve as used by Hall 2008: the fat share of a weight change is FM / (FM + 10.4 kg), FM the fat mass in kg. |
 | `DEFAULT_FAT_SHARE` | `0.75` | `backend/nutrition/energy_balance.py` | Fat share of a weight change without a body-fat measurement: 0.75 gives about 7,500 kcal/kg, near the common 7,700 (product assumption). |
-| `FLAGGED_DAY_UNCERTAINTY` | `0.25` | `backend/nutrition/energy_balance.py` | Extra uncertainty of a flagged (estimated) meal day: a share of its intake. |
+| `FLAGGED_DAY_UNCERTAINTY` | `0.25` | `backend/nutrition/energy_balance.py` | Extra uncertainty of a flagged (estimated) meal: a share of its logged kcal. |
 | `BAND_Z` | `1.96` | `backend/nutrition/energy_balance.py` | Two-sided 95 % band multiplier. |
 | `CALIBRATION_PRIOR_SD` | `0.1` | `backend/nutrition/energy_balance.py` | The one activity calibration factor: prior 1 +- 0.10, clamped to 0.85-1.15, fitted on complete windows of the last 12 weeks (method comment, #3100). |
 | `CALIBRATION_BOUNDS` | `(0.85, 1.15)` | `backend/nutrition/energy_balance.py` |  |

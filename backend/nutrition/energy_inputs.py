@@ -440,6 +440,11 @@ def _day_inputs(
         fat_g=sum(_number(e.get("fat_g")) or 0.0 for e in entries),
         entries=len(entries),
         flagged=any(bool(e.get("estimate_uncertain")) for e in entries),
+        flagged_kcal=sum(
+            _number(e.get("kcal")) or 0.0
+            for e in entries
+            if e.get("estimate_uncertain")
+        ),
         weight_kg=weights.get(day),
         activity_kcal=activity,
     )
