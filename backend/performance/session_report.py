@@ -124,6 +124,42 @@ INTERVAL_FOCUS: Final = frozenset(
     {"tempo", "threshold", "vo2max", "anaerobic", "sweet_spot", "test"}
 )
 # Base severity per check: the plan and its main intent first.
+# The data each check reads that a failed gate makes unjudgeable (#3248): a
+# check never turns notable on spiky heart rate ("heart_rate"), a run's
+# jumping speed ("speed"), a simulated indoor course ("indoor") or a pacing
+# the ERG trainer held ("erg"). tests/test_session_report.py feeds every check
+# each declared gate's bad variant. The checks of session_conditions declare
+# their own gates there.
+GATES: Final[dict[str, frozenset[str]]] = {
+    "plan_structure": frozenset(),
+    "rep_target": frozenset(),
+    "recovery_duration": frozenset(),
+    "plan_duration": frozenset(),
+    "plan_load": frozenset(),
+    "rep_fade": frozenset({"speed", "erg"}),
+    "within_rep_fade": frozenset({"speed", "erg"}),
+    "start_change": frozenset({"speed", "erg"}),
+    "easy_time_above": frozenset({"heart_rate"}),
+    "heart_rate_cap": frozenset({"heart_rate"}),
+    "decoupling": frozenset({"heart_rate"}),
+    "recovery_heart_rate_drop": frozenset({"heart_rate"}),
+    "pace_at_heart_rate": frozenset({"heart_rate"}),
+    "erg_heart_rate": frozenset({"heart_rate"}),
+    "cardiac_drift": frozenset({"heart_rate", "speed"}),
+    "stride_halves": frozenset({"speed"}),
+    "main_fade": frozenset({"speed"}),
+    "steadiness": frozenset({"speed"}),
+    "race_split": frozenset({"speed"}),
+    "race_sections": frozenset({"speed"}),
+    "race_start": frozenset({"speed"}),
+    "race_fade": frozenset({"speed"}),
+    "race_finish": frozenset({"speed"}),
+    "climb_cadence": frozenset({"indoor"}),
+    "zone_time": frozenset({"heart_rate"}),
+    "form_drift": frozenset(),
+    "shoe_mileage": frozenset(),
+    "ride_intensity": frozenset(),
+}
 _WEIGHT: Final = {
     "plan_structure": 5,
     "rep_target": 4,
