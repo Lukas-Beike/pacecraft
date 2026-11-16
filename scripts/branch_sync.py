@@ -166,6 +166,22 @@ def stopped(onto: str, conflicts: list[str], error: CliError) -> bool:
     return False
 
 
+def push_target(branch: str) -> str:
+    """The origin branch a push updates: the tracked upstream on origin (#3270),
+    so a local name that differs from the pull request's head branch does not
+    create a second remote branch; the branch's own name without one, or when
+    it tracks develop or main (a branch started from origin/develop does)."""
+    try:
+        remote = git("config", f"branch.{branch}.remote").strip()
+        merge = git("config", f"branch.{branch}.merge").strip()
+    except CliError:
+        return branch  # no upstream yet: the first push sets it
+    name = merge.removeprefix("refs/heads/")
+    if remote != "origin" or name == merge or name in PROTECTED:
+        return branch
+    return name
+
+
 def contains(ancestor: str, ref: str) -> bool:
     """Whether ``ref`` holds commit ``ancestor`` (False also for an unknown commit)."""
     try:
@@ -361,10 +377,11 @@ def sync(
         print("refused: uncommitted changes; commit or stash them first")
         return 1
     env = push_env(os.environ, Path.home()) if push else None
+    target = push_target(branch)
     # The lease must name the remote tip seen before this run's fetch, or the
-    # fetch moves origin/<branch> and the lease can no longer protect remote work.
+    # fetch moves origin/<target> and the lease can no longer protect remote work.
     try:
-        leased = git("rev-parse", "--verify", "--quiet", f"origin/{branch}").strip()
+        leased = git("rev-parse", "--verify", "--quiet", f"origin/{target}").strip()
     except CliError:
         leased = ""  # never pushed: the push only succeeds while it stays absent
     fetch()
@@ -378,18 +395,18 @@ def sync(
     if outgoing_problems(onto, push, allowed):
         return 1
     hooks, lease = ("-c", "core.hooksPath=.githooks", "push"), (
-        f"--force-with-lease={branch}:{leased}", "-u", "origin", branch
+        f"--force-with-lease={target}:{leased}", "-u", "origin", f"{branch}:{target}"
     )  # fmt: skip
     # A push its hooks or lease would refuse fails before the retarget (#3243 review).
     retarget(
-        branch,
+        target,
         parent,
         push=push,
         rehearse=lambda: git(*hooks, "--dry-run", *lease, env=env),
     )
     if push:
         git(*hooks, *lease, env=env)
-        print(f"pushed: {branch}")
+        print(f"pushed: {branch} -> origin/{target}")
     behind, ahead = git("rev-list", "--left-right", "--count", f"{onto}...HEAD").split()
     print(
         f"head {git('rev-parse', '--short', 'HEAD').strip()} on {branch}: ahead {ahead}, behind {behind}"

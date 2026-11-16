@@ -41,7 +41,13 @@ python scripts/branch_sync.py [--onto origin/develop] [--push] [--allow-root <fi
   repository root (listed): remove it, or pass `--allow-root <file>` for each
   one the PR names. Exit 2: bad input, a failed git call, or
   no SonarQube CLI for `--push`.
-- `--push` runs `git push --force-with-lease -u origin <branch>` with
+- `--push` pushes to the tracked upstream on origin, so a local name that
+  differs from the PR's head branch updates that PR instead of creating a
+  second remote branch (#3270). Without an upstream, or when it is `develop` or
+  `main` (a branch started from `origin/develop` tracks it), it pushes to the
+  branch's own name. The lease guards that target, and the success line names
+  it (`pushed: <local> -> origin/<target>`).
+- `--push` runs `git push --force-with-lease -u origin <branch>:<target>` with
   `core.hooksPath=.githooks`; never bypass the hooks. The pre-push hook needs
   the SonarQube CLI: the script finds it in the usual install directories and
   adds it to `PATH` for the push only; otherwise install it first (setup
