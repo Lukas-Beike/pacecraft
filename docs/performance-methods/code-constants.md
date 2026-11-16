@@ -309,7 +309,7 @@ every named number the code fixes. A test fails when it is out of date.
 | `RIDE_IF_RANGES` | `{'recovery': (0.0, 0.55), 'easy': (0.56, 0.75), 'endurance': (0.56, 0.75), 'long': (0.56, 0.75), ... (sha256 a548ce30)` | `backend/performance/session_report.py` | Ride IF (NP / FTP) per session focus, Coggan's levels (athlete, #3084). |
 | `CLIMB_GRADE_PCT` | `4.0` | `backend/performance/session_report.py` | Low cadence on climbs: a ride rep steeper than this (%) below this cadence (athlete, #3084). |
 | `CLIMB_CADENCE_RPM` | `70.0` | `backend/performance/session_report.py` |  |
-| `ERG_HEART_RATE_PCT` | `3.0` | `backend/performance/session_report.py` | ERG: heart rate this much above them at the same power (mirrors PACE_AT_HR_PCT). |
+| `ERG_HEART_RATE_PCT` | `3.0` | `backend/performance/session_report.py` | ERG: heart rate this much above them at the same power (athlete, #3084). |
 | `PACE_AT_HR_PCT` | `3.0` | `backend/performance/session_report.py` | Pace at the same heart rate this much slower than own comparable runs (athlete, #3084). |
 | `ZONE_MIN_SHARE` | `0.1` | `backend/performance/session_report.py` | Zone time is judged in the zones holding at least this share of the planned time. |
 | `LEAD_COUNT` | `4` | `backend/performance/session_report.py` | The notable checks the answer leads with. |

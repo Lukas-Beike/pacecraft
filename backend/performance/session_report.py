@@ -111,7 +111,7 @@ RIDE_IF_RANGES: Final = {
 # Low cadence on climbs: a ride rep steeper than this (%) below this cadence (athlete, #3084).
 CLIMB_GRADE_PCT: Final = 4.0
 CLIMB_CADENCE_RPM: Final = 70.0
-# ERG: heart rate this much above them at the same power (mirrors PACE_AT_HR_PCT).
+# ERG: heart rate this much above them at the same power (athlete, #3084).
 ERG_HEART_RATE_PCT: Final = 3.0
 # Pace at the same heart rate this much slower than own comparable runs (athlete, #3084).
 PACE_AT_HR_PCT: Final = 3.0
@@ -685,9 +685,9 @@ def _not_applicable(key: str, title: str) -> dict[str, Any]:
 def _erg_heart_rate(facts: _Facts) -> dict[str, Any]:
     """Heart rate at the same ERG power against own comparable sessions.
 
-    An efficiency trend: within ``ERG_POWER_SHARE`` of the rep power, at
-    least 5 own sessions, else a value only (athlete, #3084; the 3 % mirrors
-    the pace-at-heart-rate decision).
+    An efficiency trend: within ``SAME_OUTPUT_SHARE`` of the rep power, at
+    least 5 own sessions, else a value only; notable from 3 % higher (athlete,
+    #3084, confirmed 2026-11-16).
     """
     title = "Puls bei gleicher ERG-Leistung"
     if reason := facts.heart_rate_unknown():

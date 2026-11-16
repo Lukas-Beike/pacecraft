@@ -180,7 +180,7 @@ The session report SHALL add the run's own checks, zone time against the plan, d
 - **THEN** the report judges:
   - a continuous or easy ride's IF (NP over the session day's FTP) against Coggan's range of its focus (recovery under 0.55, endurance 0.56–0.75, tempo 0.76–0.87, sweet spot 0.84–0.97, threshold 0.91–1.05), notable outside it;
   - reps steeper than 4 % below 70 rpm, not applicable when the plan sets a cadence;
-  - in ERG (the trainer held the power), the rep fade, within-rep fade and start checks as not applicable, never unknown, and the closing heart rate against at least 5 own sessions within 5 % of the rep power, notable from 3 % higher (mirrors the pace-at-heart-rate decision);
+  - in ERG (the trainer held the power), the rep fade, within-rep fade and start checks as not applicable, never unknown, and the closing heart rate against at least 5 own sessions within 5 % of the rep power, notable from 3 % higher (athlete, confirmed 2026-11-16);
   - and states the reps in % of the session day's FTP as a fact.
 
 #### Scenario: Zone time against the plan
