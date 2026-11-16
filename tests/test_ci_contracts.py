@@ -394,7 +394,7 @@ class WorkflowSourceTests(unittest.TestCase):
             "Run the week-reading specs on a pinned Monday and Sunday", 1
         )[1]
         pinned = pinned.split("      - name: ", 1)[0]
-        self.assertIn("matrix.project == 'desktop' && matrix.shard == 1", pinned)
+        self.assertIn("if: matrix.project == 'desktop' && matrix.shard == 1\n", pinned)
         self.assertIn('--today "$day"', pinned)
         self.assertIn("--results-dir test-results/pinned-day-runs", pinned)
         self.assertIn("e2e/calendar-week-compact.spec.js", pinned)
@@ -441,6 +441,8 @@ class WorkflowSourceTests(unittest.TestCase):
             [
                 "test-results/browser-runs/*/*/*/artifacts/",
                 "test-results/browser-runs/*/*/*/report/",
+                "test-results/pinned-day-runs/*/*/*/artifacts/",
+                "test-results/pinned-day-runs/*/*/*/report/",
                 "!**/trace.zip",
                 "!**/.auth/**",
             ],
