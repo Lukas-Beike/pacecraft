@@ -1186,7 +1186,10 @@ class RideBlockTests(unittest.TestCase):
                         **result(
                             sport="ride",
                             focus=focus,
-                            metrics={"normalized_power": metric(240)},
+                            metrics={
+                                "normalized_power": metric(240),
+                                "variability_index": metric(1.05),
+                            },
                             execution=execution,
                         ),
                         session_conditions.INPUTS: {"intensity": stored},
@@ -1204,9 +1207,10 @@ class RideBlockTests(unittest.TestCase):
                 outside["verdict"],
             ),
         )
-        # Threshold with a warm-up: the main part's 285 W of 300 W is 0.95,
-        # inside 0.91-1.05, although the whole session's 0.80 is not.
-        main = intensity("threshold", 80, main=285)
+        # Threshold with a warm-up: the main part's mean 272 W times the VI
+        # 1.05 is 285.6 W of 300 W, 0.95, inside 0.91-1.05, although the whole
+        # session's 0.80 is not.
+        main = intensity("threshold", 80, main=272)
         self.assertEqual(
             (0.95, "main_part", "ok"),
             (main["value"]["intensity_factor"], main["value"]["part"], main["verdict"]),

@@ -458,11 +458,14 @@ def _ride_intensity(facts: _Facts) -> dict[str, Any] | None:
         return _unknown(
             "ride_intensity", title, "Keine Intensität (IF) der Einheit, etwa ohne FTP."
         )
+    # The main part's mean power times the session's VI approximates its NP, the
+    # power IF is defined on; without a VI the session's own IF stays.
     halves = _mapping(facts.execution.get("halves"))
     main = _number(_mapping(halves.get("main")).get("output"))
+    variability = facts.metric("variability_index")
     part = "session"
-    if main and facts.execution.get("output_unit") == "W":
-        factor, part = main / (power / factor), "main_part"
+    if main and variability and facts.execution.get("output_unit") == "W":
+        factor, part = main * variability / (power / factor), "main_part"
     shown = round(factor, 2)
     low, high = limits
     return _judged(
@@ -475,7 +478,7 @@ def _ride_intensity(facts: _Facts) -> dict[str, Any] | None:
             "part": part,
         },
         unit=None,
-        rule="IF des Hauptteils (Leistung / FTP des Tages) im Coggan-Bereich des Fokus",
+        rule="IF des Hauptteils (mittlere Leistung × VI / FTP des Tages) im Coggan-Bereich des Fokus",
         threshold=0,
         measure=round(max(0.0, low - shown, shown - high), 2),
         basis="fixed",
@@ -631,16 +634,19 @@ def _continuous_checks(facts: _Facts) -> list[dict[str, Any]]:
     return checks
 
 
+_REP_FADE_TITLE: Final = "Nachlassen über die Wiederholungen"
+
+
 def _interval_checks(facts: _Facts) -> list[dict[str, Any]]:
     reps = [
         rep for rep in facts.execution.get("reps") or () if isinstance(rep, Mapping)
     ]
     if not reps:
         reason = facts.execution.get("reason") or "Keine Wiederholungen erkannt."
-        return [_unknown("rep_fade", "Nachlassen über die Wiederholungen", str(reason))]
+        return [_unknown("rep_fade", _REP_FADE_TITLE, str(reason))]
     pacing = (
         [
-            _not_applicable("rep_fade", "Nachlassen über die Wiederholungen"),
+            _not_applicable("rep_fade", _REP_FADE_TITLE),
             _not_applicable(
                 "within_rep_fade", "Nachlassen innerhalb der Wiederholungen"
             ),
@@ -827,7 +833,7 @@ def _rep_outputs(
 
 
 def _rep_fade(facts: _Facts, reps: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
-    title = "Nachlassen über die Wiederholungen"
+    title = _REP_FADE_TITLE
     if reason := facts.output_unknown():
         return _unknown("rep_fade", title, reason)
     if facts.focus == "test":
