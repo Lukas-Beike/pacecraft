@@ -2347,8 +2347,8 @@ function weekReviewNotableTile(notable) {
 }
 
 // The tiles in the approved order; `extra` counts the week's completed sessions outside the plan.
-function weekReviewTiles(review, extra) {
-  const running = review.effective_end < review.week_end;
+// This week runs until its Sunday ends, also on that Sunday, when the review already reaches it.
+function weekReviewTiles(review, extra, running) {
   const [sessions, time, load] = weekReviewLoadTiles(review.load, running, extra);
   const [checkins, complaints] = weekReviewCheckinTiles(review.checkins);
   return [weekReviewPlanTile(review.plan), sessions, time, load, ...weekReviewRecoveryTiles(review.recovery), checkins, weekReviewNotableTile(review.notable), complaints].filter(Boolean);
@@ -2385,7 +2385,7 @@ async function fillWeekReview(card, refill = false) {
     // for another week shows nothing.
     const review = await requestAnalysisReport(`/api/analysis/week-review?week=${thisWeek === "true" ? "current" : weekKey}`);
     if (!current()) return;
-    if (review.week_start === weekKey) tiles = weekReviewTiles(review, Number(extra));
+    if (review.week_start === weekKey) tiles = weekReviewTiles(review, Number(extra), thisWeek === "true");
   } catch {
     if (!current() || refill) return;
   }
