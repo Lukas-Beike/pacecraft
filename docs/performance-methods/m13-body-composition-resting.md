@@ -1,0 +1,142 @@
+# M13 — Body fat from 3-site skinfolds and resting energy from lean mass
+
+- **Card:** M13
+- **Card version:** 1
+- **Method ID:** body-composition-resting v1 (#3099)
+- **Status:** method implemented (`backend/athlete/body_composition.py`, `backend/athlete/skinfolds.py`); the energy table that shows it is in review (#3180)
+- **Classification:** model estimate
+- **Literature checked:** 2026-11-16
+- **Review:** blocked
+
+## Target construct
+
+- The athlete's body fat (%), from their own 3-site skinfold measurement.
+- Their fat-free (lean) mass.
+- Two formula estimates of resting energy (kcal/day) from that lean mass.
+
+These stand beside Garmin's resting value and the derived resting rate of M12 as separate rows. The display compares them with the adaptive expenditure; it never replaces one with another.
+
+## Formula and units
+
+1. **Body density (g/cm³)** from the sum `S` (mm) of three folds and the age `A` (years) in the measurement's year:
+   - men (chest, abdomen, thigh; R69): `1.10938 − 0.0008267 S + 0.0000016 S² − 0.0002574 A`;
+   - women (triceps, suprailiac, thigh; R70): `1.0994921 − 0.0009929 S + 0.0000023 S² − 0.0001392 A`.
+2. **Body fat (%)** from density `D` (R71, Siri): `495 / D − 450`.
+3. **Lean mass (kg):** `weight × (1 − body fat / 100)`.
+   - In the energy table, the weight is the smoothed M12 weight trend on the window's last day.
+   - The body fat is from the latest skinfold measurement within 90 days before that day.
+4. **Resting energy (kcal/day):**
+   - Katch-McArdle: `370 + 21.6 × LBM`. This is the general equation of Cunningham 1991 (R73).
+   - Cunningham: `500 + 22 × LBM`, as proposed in the abstract of R72. Its regression in the results section is `501.6 + 21.6 × LBM`.
+5. **Daily total of a formula row:** the formula's resting energy plus the same uncalibrated M11 own activity and TEF for both rows. The two rows therefore differ only in the resting formula.
+
+## Sources
+
+- **R69** (Jackson & Pollock 1978): the men's 3-site equation.
+- **R70** (Jackson, Pollock & Ward 1980): the women's 3-site equation.
+- **R71** (Siri 1961): density to body fat.
+- **R72** (Cunningham 1980): BMR from lean mass. Full text read.
+- **R73** (Cunningham 1991): the general REE equation, which is the formula known as Katch-McArdle.
+- Athlete decisions on #3099:
+  - one value per site;
+  - a birth year in the profile;
+  - the rows Katch-McArdle, Cunningham and Garmin side by side.
+- Corrections from the citation check on #3099 (2026-11-15):
+  - Cunningham is cited as 1980, not 1991.
+  - The 1991 paper (R73) is the source of `370 + 21.6`. The name "Katch-McArdle" comes from the McArdle, Katch & Katch textbooks; that attribution was not checked against a textbook.
+  - Byrne 2005 and Hiilloskorpi 2003 are not sources for this card.
+
+## Population and reference measurement
+
+- **R69:** samples of 308 and 95 adult men aged 18 to 61, against hydrostatic density.
+- **R70:** adult women, against hydrostatic density.
+- **R71:** a two-compartment model with fixed densities of fat and fat-free tissue.
+- **R72:** a reanalysis of 223 untrained adults (120 men, 103 women) from Harris and Benedict 1919; 16 trained athletes were excluded. Lean mass there was not measured but estimated from total-body-water equations by sex, age and mass. Lean mass explained 70 % of the BMR variance (adjusted R²). The paper expects a 10 % prediction error for an individual.
+- **R73:** a synthetic review of studies that measured fat-free mass and REE; the abstract states the equation explains 65 to 90 % of the variation.
+
+None of these is a validation in this athlete or in trained endurance athletes as a group.
+
+## Protocol and data window
+
+- **Measurement:** the athlete measures the three sex-specific sites with a caliper and enters one value per site (the middle of repeated readings) in Ernährung › Körper › Hautfalten.
+- **Storage:** athlete-entered canonical observations (`skinfold_<site>`, mm).
+- **Age:** the year of the measurement minus the profile's birth year. Without a birth year, body fat stays unknown.
+- **Use:** a measurement counts for 90 days. After that, the formula rows show "–".
+
+## Measurement error and uncertainty
+
+- **Body fat:** the 3-site equations carry about ±3 to 4 percentage points of standard error for the individual. The caliper reading, the site location and the measurer add to that. One year of age shifts body fat by about 0.11 percentage points.
+- **Resting energy:** per R72, about 10 % for an individual. An error of 1 kg in lean mass moves the result by 21.6 to 22 kcal/day.
+- **Display:** no band is shown on the formula rows. Their fit against the adaptive expenditure (the M12 windows) is the empirical check, shown as the error per window and the hit rate within ±100 kcal/day.
+
+## Bias and transferability
+
+- **Equation populations:** the skinfold equations were fitted on general adult populations. Lean, trained athletes can lie at the edge of their sum range.
+- **Two-compartment model:** Siri assumes a constant density of the fat-free mass. Hydration and bone density in athletes can bias body fat.
+- **R72 lean mass:** it was itself an estimate, and trained athletes were excluded.
+- **Resting rate in athletes:** endurance athletes with a high resting rate per kg of lean mass may lie above both formulas.
+
+## Deviations from the studied procedure
+
+- **Age range:** ages up to 80 are accepted (`SKINFOLD_AGES`). The equations were fitted on men up to 61 and women up to 55, so older ages extrapolate.
+- **Readings per site:** one value per site, as decided by the athlete, instead of the studies' repeated readings averaged by a trained measurer.
+- **Rounding:** Cunningham uses the abstract's rounded `500 + 22`, not the regression's `501.6 + 21.6`. The difference is under 20 kcal/day for a lean mass between 40 and 80 kg.
+- **Weight:** the lean mass uses the smoothed weight trend instead of a weight taken at the moment of the skinfold measurement.
+
+## Minimum data and stop rules
+
+- A measurement needs exactly the three sites of its sex, each between 2 and 80 mm.
+- Without a birth year, or with an age outside 18 to 80, body fat is unknown.
+- The body fat must lie strictly between 0 and 70 %; otherwise there is no lean mass.
+- Without a measurement in the last 90 days, or without a weigh-in, the formula rows show "–", with a note in the footnote. No other body-fat value is substituted in these rows.
+
+## Numeric rules
+
+| Rule | Value | Tag | Rationale |
+| --- | --- | --- | --- |
+| Men's density coefficients | 1.10938, 0.0008267, 0.0000016, 0.0002574 | source | R69, chest, abdomen, thigh |
+| Women's density coefficients | 1.0994921, 0.0009929, 0.0000023, 0.0001392 | source | R70, triceps, suprailiac, thigh |
+| Density to body fat | 495 / D − 450 | source | R71 |
+| Katch-McArdle | 370 + 21.6 × LBM | source | R73 |
+| Cunningham | 500 + 22 × LBM | source | R72, abstract |
+| Fold range | 2–80 mm | product assumption | a value outside is a typing error |
+| Accepted ages | 18–80 years | product assumption | wider than the fitted 18–61 (men) and 18–55 (women); see deviations |
+| Body fat for lean mass | 0–70 % (exclusive) | product assumption | outside, the lean mass is not plausible |
+| Measurement validity | 90 days | product assumption | the resting reference's lookback (M12) |
+
+## Allowed statements
+
+- "KFA 9,6 % (Hautfalten vom 10.11.)", "fettfreie Masse 60,3 kg".
+- "Katch-McArdle: Ruhe 1.672, Tag gesamt 2.810 kcal", with the formula named as the source.
+- "Cunningham: Ruhe 1.827 kcal", with the formula named as the source.
+- "Passt am besten: Katch-McArdle", from the fit against the adaptive expenditure.
+- "Körperfett unbekannt (ohne Geburtsjahr)".
+
+## Forbidden statements
+
+- A formula value presented as measured, or as the athlete's true resting rate.
+- A formula value in place of Garmin's or the adaptive estimate.
+- Body fat without a birth year, or from fewer than the three sites.
+- Precision beyond the method: body fat with more than one decimal, or resting energy without "Schätzung" or the formula name.
+
+## Open points
+
+- The athlete's method review is pending. The orchestrator is running an independent cross-check before the energy table is shown (#3180).
+- The textbook origin of the name "Katch-McArdle" is not verified; the coefficients are verified through R73's abstract.
+- R70's abstract was not read: its coefficients match a secondary reference, and the women's fitted age range of 18–55 is from the code comment, not verified.
+- R71's page range differs between sources (223–234 or 223–244).
+- No validation of either resting formula in this athlete, apart from the fit against the adaptive expenditure.
+
+<!-- BEGIN GENERATED CONSTANTS -->
+## Code constants
+
+| Constant | Value | Module | Code comment |
+| --- | --- | --- | --- |
+| `METHOD_ID` | `'body-composition-resting'` | `backend/athlete/body_composition.py` |  |
+| `METHOD_VERSION` | `1` | `backend/athlete/body_composition.py` | Bump with the M13 card version when a formula or constant below changes. |
+| `SKINFOLD_BOUNDS_MM` | `(2.0, 80.0)` | `backend/athlete/body_composition.py` | A fold outside this range is a typing error, not a measurement (mm). |
+| `SKINFOLD_AGES` | `(18, 80)` | `backend/athlete/body_composition.py` | Accepted ages. The equations were fitted on men aged 18-61 and women aged 18-55; the methods document names that range. |
+| `LOCAL_LABEL` | `'Lokal'` | `backend/athlete/skinfolds.py` |  |
+| `MAPPER_VERSION` | `1` | `backend/athlete/skinfolds.py` |  |
+| `LIST_LIMIT` | `20` | `backend/athlete/skinfolds.py` |  |
+<!-- END GENERATED CONSTANTS -->

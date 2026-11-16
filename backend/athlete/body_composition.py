@@ -3,9 +3,10 @@
 Pure functions, no storage. 3-site skinfolds give body density (Jackson &
 Pollock 1978 for men, Jackson, Pollock & Ward 1980 for women); the Siri (1961)
 equation turns density into body fat; lean mass is weight times the fat-free
-share. Resting energy from lean mass: Katch-McArdle (370 + 21.6 x LBM) and
-Cunningham 1980 (500 + 22 x LBM). Each is a formula estimate, shown beside
-Garmin's, never in its place.
+share. Resting energy from lean mass: Katch-McArdle (370 + 21.6 x LBM, the
+general equation of Cunningham 1991) and Cunningham 1980 (500 + 22 x LBM). Each
+is a formula estimate, shown beside Garmin's, never in its place. Card M13 in
+docs/performance-methods documents the sources and limits.
 """
 
 from __future__ import annotations
@@ -13,6 +14,10 @@ from __future__ import annotations
 from collections.abc import Mapping
 from enum import StrEnum
 from typing import Final
+
+METHOD_ID: Final = "body-composition-resting"
+# Bump with the M13 card version when a formula or constant below changes.
+METHOD_VERSION: Final = 1
 
 
 class Sex(StrEnum):
@@ -40,8 +45,10 @@ SKINFOLD_AGES: Final = (18, 80)
 class RestingFormula(StrEnum):
     """Resting energy (kcal/day) = intercept + per_kg x lean mass (kg)."""
 
-    KATCH_MCARDLE = "katch_mcardle"  # 370 + 21.6 x LBM
-    CUNNINGHAM = "cunningham"  # Cunningham 1980: 500 + 22 x LBM
+    KATCH_MCARDLE = "katch_mcardle"  # 370 + 21.6 x LBM (Cunningham 1991)
+    CUNNINGHAM = (
+        "cunningham"  # Cunningham 1980: 500 + 22 x LBM, the abstract's rounding
+    )
 
 
 RESTING_COEFFICIENTS: Final = {
