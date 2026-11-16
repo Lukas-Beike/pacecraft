@@ -185,6 +185,10 @@ class ScorerTests(unittest.TestCase):
             [],
             misses("Du hast nachgelassen? Nein: Nachlassen und kürzere Schrittlängen."),
         )
+        # A hyphenated compound in the answer names the check its part names.
+        self.assertEqual(
+            [], misses("Klares Nachlassen-Muster und kürzere Schrittlängen.")
+        )
 
     def test_every_number_of_the_answer_needs_a_tool_or_message_source(self):
         # #3084: 6,2 rounds from 6.24, 4:30 is 270 s/km, 30 min is 1800 s,

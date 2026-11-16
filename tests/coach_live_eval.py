@@ -647,7 +647,9 @@ def unnamed_notables(turns: list[dict[str, Any]]) -> list[str]:
     an ending.
     """
     answer = (turns[-1]["text"] if turns else "").lower()
-    tokens = set(re.findall(r"[a-zäöüß-]+", answer))
+    # A hyphenated compound names its parts too ("Puls-Erholung", "Erholung").
+    whole = re.findall(r"[a-zäöüß-]+", answer)
+    tokens = set(whole) | {part for token in whole for part in token.split("-") if part}
     misses = []
     for report in _session_reports(turns):
         titles = {
