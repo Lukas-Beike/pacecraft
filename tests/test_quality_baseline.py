@@ -259,6 +259,34 @@ class QualityBaselineTests(unittest.TestCase):
         self.assertTrue(
             any(command[: len(ruff) + 1] == [*ruff, "check"] for command in commands)
         )
+        # #3217: a prepared worktree runs its own tools, else this interpreter's.
+        interpreter = [sys.executable, "-m", "ruff"]
+        no_ci = {key: value for key, value in os.environ.items() if key != "CI"}
+        with (
+            tempfile.TemporaryDirectory() as directory,
+            patch.dict(os.environ, no_ci, clear=True),
+        ):
+            tools = Path(directory)
+            (tools / "ruff").mkdir()  # a package without its binary is half installed
+            with patch.object(quality_baseline, "TOOLS_DIR", tools):
+                self.assertEqual(quality_baseline.tool_command("ruff"), interpreter)
+            (tools / "bin").mkdir()
+            (tools / "bin" / ("ruff.exe" if os.name == "nt" else "ruff")).touch()
+            (tools / "mypy").mkdir()
+            (tools / "mypy" / "__main__.py").touch()
+            with patch.object(quality_baseline, "TOOLS_DIR", tools):
+                own_ruff = quality_baseline.tool_command("ruff")
+                own_mypy = quality_baseline.tool_command("mypy")
+                # CI never runs tools a checkout carries.
+                with patch.dict(os.environ, {"CI": "true"}):
+                    self.assertEqual(quality_baseline.tool_command("ruff"), interpreter)
+            with patch.object(quality_baseline, "TOOLS_DIR", tools / "absent"):
+                self.assertEqual(quality_baseline.tool_command("ruff"), interpreter)
+        self.assertEqual(Path(own_ruff[0]).parent, tools / "bin")
+        self.assertEqual(quality_baseline.tool_name(own_ruff), "ruff")
+        self.assertEqual(own_mypy[:2], [sys.executable, "-c"])
+        self.assertIn(repr(str(tools)), own_mypy[2])
+        self.assertEqual(quality_baseline.tool_name(own_mypy), "mypy")
         self.assertTrue(any(command[: len(mypy)] == mypy for command in commands))
         # #3061: the format check reports only; the gate never rewrites a file.
         formats = [command for command in commands if "format" in command]
