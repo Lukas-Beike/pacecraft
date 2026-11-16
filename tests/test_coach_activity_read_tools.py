@@ -392,7 +392,16 @@ class CoachActivityReadToolServiceTests(unittest.TestCase):
         report = result["session_report"]
         self.assertEqual("session-report-v1", report["method"])
         self.assertEqual(
-            {"method", "scope", "session_type", "checks", "notable", "lead", "unknown"},
+            {
+                "method",
+                "scope",
+                "session_type",
+                "checks",
+                "notable",
+                "lead",
+                "unknown",
+                "facts",
+            },
             set(report),
         )
         notable = [c["id"] for c in report["checks"] if c["verdict"] == "notable"]

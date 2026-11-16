@@ -30,9 +30,17 @@ from backend.performance.activity_read_service import (
     calendar_pairs,
 )
 from backend.performance.comparable_sessions import comparable_sessions
+from backend.performance.critical_power import (
+    METHOD_ID as CRITICAL_SPEED_METHOD,
+)
+from backend.performance.critical_power import (
+    WINDOW_DAYS as CRITICAL_SPEED_DAYS,
+)
+from backend.performance.critical_power import critical_power_speed
 from backend.performance.pace_at_hr import COMPARE_DAYS, session_comparison
 from backend.performance.planned_targets import (
     heart_rate_cap_execution,
+    planned_step_adherence,
     planned_target_execution,
     unit_steps,
 )
@@ -140,6 +148,49 @@ def resolve_session(
     if matches:
         return "ambiguous", matches
     return "not_found", of_sport or list(summaries)
+
+
+def _critical_speed(
+    records: Sequence[Mapping[str, Any]] | None, day: date
+) -> dict[str, Any] | None:
+    """The outdoor running CS of the 28 days before the session's day (card M4)."""
+    if records is None:
+        return None
+    # The 28 days before the session, so its own or a later effort that day
+    # never fits the CS it is compared with.
+    last = day - timedelta(days=1)
+    first = (last - timedelta(days=CRITICAL_SPEED_DAYS - 1)).isoformat()
+    window = [
+        dict(row)
+        for row in records
+        if first <= str(row.get("date") or "") <= last.isoformat()
+    ]
+    fits = critical_power_speed(window, last, input_fingerprint="")["fits"]
+    fit = next(
+        (item for item in fits if item.get("sport") == "run"),
+        {"status": "insufficient_data"},
+    )
+    return {
+        "method": CRITICAL_SPEED_METHOD,
+        "classification": "model estimate",
+        "status": fit.get("status"),
+        "cs_mps": fit.get("cs_mps"),
+        "window_days": CRITICAL_SPEED_DAYS,
+        "reason": fit.get("reason"),
+    }
+
+
+def _plan_zones(adherence: Any) -> dict[str, Any] | None:
+    """The paired unit's zone times from its step adherence, or why there are none."""
+    if not isinstance(adherence, Mapping):
+        return None
+    zones = adherence.get("zones")
+    if isinstance(zones, Mapping):
+        return dict(zones)
+    return {
+        "status": "not_covered",
+        "reason": adherence.get("reason") or "Keine Zonenzeiten im Plan.",
+    }
 
 
 def _session_date(session: Mapping[str, Any]) -> date | None:
@@ -629,15 +680,49 @@ class CoachActivityReadToolService:
             "grade_adjusted_speed_mps": own.get("grade_adjusted_speed_mps"),
             "rated_sessions": rated,
         }
+        # The report's facts only: they leave the tool result, so the model
+        # reads them once (#3084 Part 2).
+        facts: dict[str, Any] = {
+            key: result.pop(key)
+            for key in ("critical_speed", "running_dynamics_rating")
+            if key in result
+        }
         report = session_report(
-            {**result, CONDITION_INPUTS: inputs},
+            {**result, CONDITION_INPUTS: inputs, **facts},
             planned,
             own.get("training_load"),
             self._race(session),
+            _plan_zones(
+                self._step_adherence(result, session, unit) if planned else None
+            ),
         )
         if self._report_counts is not None:
             self._report_counts.report(report)
         return report
+
+    def _step_adherence(
+        self, result: Mapping[str, Any], session: Mapping[str, Any], unit: Any
+    ) -> Any:
+        """The matched unit's steps and zone times against the execution (#2830)."""
+        analysis = result.get("analysis")
+        execution = analysis.get("execution") if isinstance(analysis, Mapping) else None
+        if (
+            not isinstance(execution, Mapping)
+            or execution.get("status") != "ok"
+            or self._unit_thresholds is None
+        ):
+            return None
+        steps = unit_steps(unit)
+        if not isinstance(steps, list):
+            return steps
+        return planned_step_adherence(
+            execution,
+            steps,
+            self._unit_thresholds.thresholds(unit),
+            str(session.get("sport")),
+            streams=result.get("streams"),
+            planned_unit_id=str(unit.get("id")),
+        )
 
     def _session_checks(
         self,
@@ -661,6 +746,8 @@ class CoachActivityReadToolService:
         records = self._curve_records() if inside else None
         if session.get("sport") == "run":
             checks["pace_at_heart_rate"] = self._pace_at_heart_rate(own, records, day)
+            checks["critical_speed"] = _critical_speed(records, day)
+            checks["running_dynamics_rating"] = self._dynamics_rating(own)
         if own is None or (inside and records is None):
             checks["comparable_sessions"] = _unavailable()
         elif summary_is_electric(own):
@@ -681,6 +768,17 @@ class CoachActivityReadToolService:
                 records, stored_activity_key(own), covered_from=covered_from
             )
         return checks
+
+    def _dynamics_rating(self, own: Mapping[str, Any] | None) -> dict[str, Any] | None:
+        """The run's running dynamics per pace band against own runs (#2829), as
+        the app rates them over its full window; a fact."""
+        if own is None or self._report_services is None:
+            return None
+        rating = self._report_services.profiles.running_dynamics(
+            stored_activity_key(own)
+        )
+        session = rating.get("session") if isinstance(rating, Mapping) else None
+        return dict(session) if isinstance(session, Mapping) else None
 
     def _covered_from(self) -> date:
         """First day of the curve window that the session comparisons read."""
