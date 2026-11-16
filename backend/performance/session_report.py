@@ -458,14 +458,13 @@ def _ride_intensity(facts: _Facts) -> dict[str, Any] | None:
         return _unknown(
             "ride_intensity", title, "Keine Intensität (IF) der Einheit, etwa ohne FTP."
         )
-    # The main part's mean power times the session's VI approximates its NP, the
-    # power IF is defined on; without a VI the session's own IF stays.
+    # The main part's own NP, without the warm-up the halves leave out; an
+    # analysis stored before it carries none and keeps the session's IF.
     halves = _mapping(facts.execution.get("halves"))
-    main = _number(_mapping(halves.get("main")).get("output"))
-    variability = facts.metric("variability_index")
+    main = _number(_mapping(halves.get("main")).get("normalized_power"))
     part = "session"
-    if main and variability and facts.execution.get("output_unit") == "W":
-        factor, part = main * variability / (power / factor), "main_part"
+    if main and facts.execution.get("output_unit") == "W":
+        factor, part = main / (power / factor), "main_part"
     shown = round(factor, 2)
     low, high = limits
     return _judged(
@@ -478,7 +477,7 @@ def _ride_intensity(facts: _Facts) -> dict[str, Any] | None:
             "part": part,
         },
         unit=None,
-        rule="IF des Hauptteils (mittlere Leistung × VI / FTP des Tages) im Coggan-Bereich des Fokus",
+        rule="IF des Hauptteils (NP / FTP des Tages) im Coggan-Bereich des Fokus",
         threshold=0,
         measure=round(max(0.0, low - shown, shown - high), 2),
         basis="fixed",

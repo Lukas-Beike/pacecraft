@@ -316,5 +316,26 @@ class SessionExecutionTests(unittest.TestCase):
         )
 
 
+class NormalizedPowerTests(unittest.TestCase):
+    """#3084: Coggan's NP of a ride's main part, for its IF against the focus."""
+
+    def test_steady_and_alternating_power_and_a_short_window(self) -> None:
+        from backend.performance.session_execution import _Reader
+
+        def reader(watts: list[float]) -> Any:
+            streams = {"time": [float(i) for i in range(len(watts))], "watts": watts}
+            return _Reader("ride", streams, "watts")
+
+        # 250 W throughout: every 30 s mean is 250, so NP is 250.
+        self.assertEqual(250, reader([250.0] * 120).normalized_power(0, 119))
+        # 200 W then 300 W in 60 s blocks: the 4th-power mean weights the hard
+        # block, so NP lies above the 250 W average.
+        alternating = reader([200.0] * 60 + [300.0] * 60).normalized_power(0, 119)
+        assert alternating is not None
+        self.assertGreater(alternating, 250)
+        # A window shorter than one 30 s span has no NP.
+        self.assertIsNone(reader([250.0] * 120).normalized_power(0, 20))
+
+
 if __name__ == "__main__":
     unittest.main()

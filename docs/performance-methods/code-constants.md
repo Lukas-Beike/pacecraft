@@ -256,6 +256,7 @@ every named number the code fixes. A test fails when it is out of date.
 | `MIN_LAP_S` | `5.0` | `backend/performance/session_execution.py` | Shorter laps are lap-button slips; short work or rest laps of 15 s stay. |
 | `MIN_SESSION_S` | `600.0` | `backend/performance/session_execution.py` |  |
 | `WARMUP_EXCLUDED_S` | `600.0` | `backend/performance/session_execution.py` |  |
+| `NP_ROLLING_S` | `30.0` | `backend/performance/session_execution.py` | Coggan's NP rolls 30 s means of the power (#3084, the ride's main-part IF). |
 | `MAX_GAP_S` | `5.0` | `backend/performance/session_execution.py` |  |
 | `GAP_SHARE` | `0.05` | `backend/performance/session_execution.py` | A channel is uncertain once more than this share of the recorded time sits in runs of missing values longer than MAX_GAP_S (athlete, #3084 3c D); longer jumps of the clock itself are pauses, not missing data. |
 | `PAUSE_S` | `30.0` | `backend/performance/session_execution.py` |  |
