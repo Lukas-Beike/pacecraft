@@ -12,10 +12,11 @@ from __future__ import annotations
 
 import time
 from collections.abc import Callable, Mapping, Sequence
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from typing import Any, Final, Protocol
 
 from backend.canonical.mapping import MappingResult
+from backend.canonical.vocabulary import WAHOO_ID
 from backend.providers.fit_activity_detail_mapping import (
     MAPPER_VERSION,
     map_fit_activity_detail,
@@ -32,6 +33,8 @@ from backend.sync.stream_backfill import (
     FileHandler,
     SkipHandler,
     StreamCandidate,
+    StreamReplay,
+    select_stream_candidates,
 )
 from backend.sync.wahoo_activity_details import wahoo_fit_provenance
 
@@ -131,6 +134,17 @@ class WahooStreamMapping:
             provider_activity_id=identifier,
             provenance=wahoo_fit_provenance(identifier, retrieved_at),
         )
+
+
+def wahoo_replay_size(db: Any, today: date, earliest: date | None) -> dict[str, int]:
+    """Window records a FIT mapper bump would download again, counts only (#2220)."""
+    replay = StreamReplay(MAPPER_VERSION + 1, today - timedelta(days=WAHOO_REPLAY_DAYS))
+    # Records without full streams are candidates either way; the rest are replays.
+    replayed = select_stream_candidates(
+        db, WAHOO_ID, earliest=earliest, replay=replay
+    ).candidates
+    missing = select_stream_candidates(db, WAHOO_ID, earliest=earliest).candidates
+    return {"window_days": WAHOO_REPLAY_DAYS, "records": len(replayed) - len(missing)}
 
 
 def _links(workouts: Sequence[Mapping[str, Any]]) -> dict[str, str | None]:

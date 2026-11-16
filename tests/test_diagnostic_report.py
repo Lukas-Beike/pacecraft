@@ -224,6 +224,7 @@ class DiagnosticReportServiceTests(unittest.TestCase):
                 "stream_backfill",
                 "fit_inventory",
                 "garmin_detail_fallback",
+                "mapper_replay",
                 "session_metrics",
                 "activity_weather",
                 "activity_routes",
@@ -255,6 +256,19 @@ class DiagnosticReportServiceTests(unittest.TestCase):
         self.assertEqual(report["fit_inventory"], {})
         # Fallback detail sets kept out or stored, counts only (#3122).
         self.assertEqual(report["garmin_detail_fallback"], {"kept": 0, "stored": 0})
+        # Window records the next mapper bump downloads again, counts only (#2220).
+        self.assertEqual(
+            report["mapper_replay"],
+            {
+                "garmin": {
+                    "window_days": 90,
+                    "pending": 0,
+                    "records": 0,
+                    "strength": 0,
+                },
+                "wahoo": {"window_days": 365, "records": 0},
+            },
+        )
         self.assertEqual(report["canonical_read"], {"status": "unavailable"})
         self.assertEqual(
             report["canonical_session_conflicts"],
@@ -348,8 +362,10 @@ class DiagnosticReportServiceTests(unittest.TestCase):
         # units (#2850); the plan push counts add three (jobs, items, stuck jobs;
         # #2878, #2953); the library archive counts add two (archived templates
         # and the last purge, #3141); the Garmin daily calorie counts add one read
-        # of the stored daily summaries (#3157).
-        self.assertEqual(len(self.db.queries), 31)
+        # of the stored daily summaries (#3157); the mapper replay size adds five
+        # (the Garmin window, its candidates for this and the next mapper, two
+        # Wahoo selections; #2220).
+        self.assertEqual(len(self.db.queries), 36)
         self.assertEqual(
             [query.rsplit("FROM ", 1)[1] for query in count_queries],
             [

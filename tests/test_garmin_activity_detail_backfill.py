@@ -35,6 +35,7 @@ from backend.sync.garmin_activity_details import (
     BACKFILL_WINDOW,
     DETAIL_FALLBACK_KEY,
     GarminActivityDetailService,
+    detail_replay_size,
 )
 from backend.sync.garmin_service import GarminRemoteReader
 
@@ -222,6 +223,28 @@ def _stored_state(key_values: Any) -> dict[str, Any]:
 
 
 class BackfillCandidateTests(_Base):
+    def test_replay_size_counts_every_window_record_a_bump_fetches_again(self) -> None:
+        # Diagnostics size the next mapper bump before it ships (#2220).
+        _seed(
+            self.manager,
+            [
+                ("1001", "2026-07-19 12:00:00"),
+                ("1002", "2026-10-01 07:00:00"),
+                ("1003", "2026-10-02 07:00:00"),
+            ],
+        )
+        self.service(_Details({"1003": _payload("1003")})).backfill()
+        self.assertEqual(_candidate_ids(self.manager), ["1002"])
+
+        with self.manager.reader() as db:
+            size = detail_replay_size(db, NOW_AT)
+
+        # Outside the window: 1001. Current sets: 1003, stored by this mapper, so
+        # only 1002 is pending now, while a bump would fetch both again.
+        self.assertEqual(
+            size, {"window_days": 90, "pending": 1, "records": 2, "strength": 0}
+        )
+
     def test_window_boundary_uses_offset_aware_start_times(self) -> None:
         _seed(
             self.manager,

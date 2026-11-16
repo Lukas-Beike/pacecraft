@@ -62,7 +62,10 @@ from backend.sync.activity_weather import summarize_activity_weather
 from backend.sync.external_calendar import ExternalCalendarSyncService
 from backend.sync.freshness import ProviderFreshnessService
 from backend.sync.garmin import GarminFixtureLoader, GarminSyncStateService
-from backend.sync.garmin_activity_details import detail_fallback_counts
+from backend.sync.garmin_activity_details import (
+    detail_fallback_counts,
+    detail_replay_size,
+)
 from backend.sync.garmin_projection_service import GarminProjectionService
 from backend.sync.garmin_wellness_history import summarize_daily_calories
 from backend.sync.jobs import utc_timestamp
@@ -78,6 +81,7 @@ from backend.sync.session_metrics import summarize_session_metrics
 from backend.sync.session_rebundle import summarize_session_rebundle
 from backend.sync.state import last_error_key, last_sync_key
 from backend.sync.stream_backfill import fit_inventory_counts
+from backend.sync.wahoo_stream_backfill import wahoo_replay_size
 
 LOGGER = logging.getLogger("intervals_coach")
 # Plan push counts per provider cover this many days (#2878).
@@ -454,6 +458,20 @@ class DiagnosticReportService:
                 "garmin_detail_fallback": section(
                     "garmin_detail_fallback",
                     lambda: detail_fallback_counts(db, key_values),
+                ),
+                # What the next detail mapper bump would download again (#2220).
+                "mapper_replay": section(
+                    "mapper_replay",
+                    lambda: {
+                        ProviderId.GARMIN.value: detail_replay_size(
+                            db, datetime.fromisoformat(deps.utc_now())
+                        ),
+                        ProviderId.WAHOO.value: wahoo_replay_size(
+                            db,
+                            date.fromisoformat(deps.utc_now()[:10]),
+                            deps.config.sync_history_earliest_date,
+                        ),
+                    },
                 ),
                 "session_metrics": section(
                     "session_metrics",

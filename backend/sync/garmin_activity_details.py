@@ -580,6 +580,38 @@ def detail_fallback_counts(db: Any, key_values: Any) -> dict[str, int]:
     }
 
 
+def detail_replay_size(db: Any, now: datetime) -> dict[str, int]:
+    """Window records the backfill fetches, counts only (#2220).
+
+    ``pending`` records have no set of the current mapper version yet; ``records``
+    have none of the next one, so the next mapper bump would fetch them again,
+    ``strength`` of them with one call more (their exercise sets).
+    """
+    since = now - BACKFILL_WINDOW
+    limit = len(activity_detail_backfill_universe(db, GARMIN_ID, since=since))
+
+    def below(version: int) -> list[str]:
+        return [
+            item["provider_activity_id"]
+            for item in activity_detail_backfill_candidates(
+                db,
+                GARMIN_ID,
+                ACTIVITY_RECORD_KIND,
+                since=since,
+                limit=limit,
+                mapper_version=version,
+            )
+        ]
+
+    ids = below(MAPPER_VERSION + 1)
+    return {
+        "window_days": BACKFILL_WINDOW.days,
+        "pending": len(below(MAPPER_VERSION)),
+        "records": len(ids),
+        "strength": len(strength_record_ids(db, GARMIN_ID, ids)),
+    }
+
+
 def _keeps_corrected_sets(db: Any, provider_activity_id: str, item: Any) -> bool:
     """Whether stored exercise sets must stay instead of the file's set messages.
 
