@@ -461,6 +461,8 @@ _FIELDS_ADDED_TO_AUDIT: dict[str, tuple[tuple[str, ...], ...]] = {
     "food_database_entry": (("filled_fields",),),
     # #3100: the uncertain-meal flag; schema v32 (#3234): volume and session.
     "nutrition_entry": (("estimate_uncertain",), ("volume_ml", "session_id")),
+    # #3273: the adopted LT2 origin of a local zone threshold.
+    "zone_configuration": (("threshold_origin",),),
 }
 
 
