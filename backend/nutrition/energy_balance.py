@@ -330,12 +330,15 @@ def history_start(end: date, weeks: int = 12) -> date:
 
 
 def flagged_meal_bias(inputs: EnergyInputs, end: date) -> tuple[float, float] | None:
-    """Mean misestimate of flagged days, in % of their logged kcal, with its band.
+    """Mean misestimate of days with flagged meals, in % of their logged kcal.
 
     Across the windows, mean logged intake minus stored energy is regressed on
-    the flagged days' logged kcal per day: y = T - b x. If flagged meals were
-    logged too high by b, more flagged intake shows as a lower expenditure.
-    Positive values mean flagged meals were in fact larger than logged.
+    x, the logged kcal of flagged days (the whole day, not only its flagged
+    meals) per complete day: y = T - b x. If those days were in fact b larger
+    than logged, every logged kcal on them hides b more, so more flagged intake
+    shows as a lower expenditure. Positive values mean the days with flagged
+    meals were larger than logged, negative ones smaller. Returns b and its band
+    in %, or None without enough windows (#3187 item 13).
     """
     windows = energy_windows(inputs, end)
     points = []
