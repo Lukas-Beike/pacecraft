@@ -55,6 +55,10 @@ class FoodDatabaseTests(unittest.TestCase):
             ("Milch", "Frische Vollmilch", "", True),
             ("Milch", "Hafer Milch", "", True),
             ("Milch", "Milchreis", "", False),
+            # A compound's first part has at least four letters.
+            ("Wein", "Schweinefilet Schwein", "", False),
+            ("Reis", "Preis", "", False),
+            ("Fleisch", "Rindfleisch", "", True),
             ("Reis", "Reiswaffeln", "", False),
             ("Banane", "Bananenbrot", "", False),
             ("Skyr Vanille", "Skyr Natur", "", False),

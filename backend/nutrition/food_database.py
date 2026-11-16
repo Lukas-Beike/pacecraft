@@ -164,10 +164,14 @@ def names_the_food(query: str, name: str, brand: str = "") -> bool:
 
 
 def _names_term(term: str, words: list[str]) -> bool:
+    # A compound's first part has at least _MIN_STEM letters: "Voll|milch",
+    # not "Sch|wein" for "Wein" or "P|reis" for "Reis".
     stems = _stems(term)
     return any(
         stems & _stems(word)
-        or (len(term) >= _MIN_STEM and any(word.endswith(stem) for stem in stems))
+        or any(
+            word.endswith(stem) and len(word) - len(stem) >= _MIN_STEM for stem in stems
+        )
         for word in words
     )
 
