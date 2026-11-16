@@ -940,7 +940,7 @@ Equal-length channels on one strictly increasing `time_s` axis. At most 172,800 
 | `power_source` | `PowerSource \| None` | FIT mapper (`fit_sensor_mapping.py`) | What measured the power; `None` without a power channel, for Garmin chart sets and for sets mapped before schema version 24. |
 | `sensors` | tuple of `ActivitySensor`, at most 16 | FIT mapper (`fit_sensor_mapping.py`) | The external heart rate, power meter and trainer sensors the recording named. |
 | `dfa_alpha1` | `ActivityDfaAlpha1 \| None` | FIT mapper (`fit_rr_mapping.py`, `backend/canonical/dfa_alpha1.py`) | The first threshold estimate of a chest-strap recording that carried RR intervals; `None` otherwise, for Garmin chart sets and for sets mapped before schema version 25. The RR intervals themselves are never part of the set. |
-| `device_zones` | `DeviceZoneBasis \| None` | none yet (schema version 31 stores it; no mapper reads it) | The zone basis of the watch; `None` without a usable value, and for every set mapped before it is read. A value that is not a usable `DeviceZoneBasis` is `None`, never an error. |
+| `device_zones` | `DeviceZoneBasis \| None` | FIT mapper (`zones_target` 7) | The zone basis of the watch; `None` without a usable value, and for every set mapped before it is read. A value that is not a usable `DeviceZoneBasis` is `None`, never an error. |
 
 Channel bounds (`CHANNEL_BOUNDS`) and producers:
 
@@ -963,7 +963,7 @@ Channel bounds (`CHANNEL_BOUNDS`) and producers:
 | `vertical_oscillation_cm` | cm | 0 to 30 | no | yes |
 | `vertical_ratio_pct` | percent | 0 to 30 | no | yes |
 | `step_length_m` | m | 0 to 4 | no | yes |
-| `respiration_rate_brpm` | breaths per minute | 1 to 100 | no | no (stored and served like every channel since schema version 31; no mapper fills it yet) |
+| `respiration_rate_brpm` | breaths per minute | 1 to 100 | no | yes |
 
 The five running dynamics channels (`RUNNING_DYNAMICS_CHANNELS`) exist only with a supporting sensor (chest strap, running pod or a watch that measures them); absence is normal. They are stored and merged per channel, but they never decide the primary stream (`_populated_channel_count`), and the `activity_detail.v1` document leaves out both their series and their coverage, so the Coach and the API receive the summary values and the form drift result, never the series. The form drift analysis (`performance/form_drift.py`) reads them.
 
@@ -1000,11 +1000,11 @@ The zone basis the watch recorded (FIT `zones_target`), beside the app's own zon
 
 | Field | Type & unit | Emitted by | Notes |
 |---|---|---|---|
-| `max_hr` | float, 20 to 250 bpm | none yet | The maximum heart rate of the watch. |
-| `threshold_hr` | float, 20 to 250 bpm | none yet | The threshold heart rate of the watch. |
-| `ftp_w` | float, 1 to 5,000 W | none yet | The functional threshold power of the watch. |
-| `hr_calc` | `DeviceHeartRateCalc \| None` | none yet | How the watch derives its heart rate zones. |
-| `power_calc` | `DevicePowerCalc \| None` | none yet | How the watch derives its power zones. |
+| `max_hr` | float, 20 to 250 bpm | FIT mapper (`zones_target` max_heart_rate 1) | The maximum heart rate of the watch. |
+| `threshold_hr` | float, 20 to 250 bpm | FIT mapper (`zones_target` threshold_heart_rate 2) | The threshold heart rate of the watch. |
+| `ftp_w` | float, 1 to 5,000 W | FIT mapper (`zones_target` functional_threshold_power 3) | The functional threshold power of the watch. |
+| `hr_calc` | `DeviceHeartRateCalc \| None` | FIT mapper (`zones_target` 5) | How the watch derives its heart rate zones. |
+| `power_calc` | `DevicePowerCalc \| None` | FIT mapper (`zones_target` 7) | How the watch derives its power zones. |
 
 ### `ActivityLap`
 
@@ -1026,10 +1026,10 @@ One lap or interval; offsets are seconds from the recording start, `end_offset_s
 | `elevation_gain_m` | m | Garmin mapper, FIT mapper | |
 | `load` | 0 to 10,000 | none (only the removed Intervals.icu mapper set it) | `icu_training_load`. |
 | `intensity_pct` | percent, 0 to 1,000 | none (only the removed Intervals.icu mapper set it) | `icu_intensity`. |
-| `avg_respiration_rate_brpm`, `max_respiration_rate_brpm` | breaths per minute, 1 to 100 | none yet (schema version 31 stores them) | Out of bounds or of another type is `None`, never an error. |
-| `avg_grade_adjusted_speed_mps` | m/s, 0 to 100 | none yet (schema version 31 stores it) | The device's own grade-adjusted speed, a comparison and never an input of a calculation. Out of bounds is `None`. |
-| `workout_step_index` | int 0 to 999, or `None` | none yet (schema version 31 stores it) | The `WorkoutStep.index` of the workout step the lap belongs to. Out of bounds is `None`. |
-| `lap_trigger` | `LapTrigger \| None` | none yet (schema version 31 stores it) | Why the lap ended. Any other value is `None`. |
+| `avg_respiration_rate_brpm`, `max_respiration_rate_brpm` | breaths per minute, 1 to 100 | FIT mapper (lap 136 and 137, /100) | Out of bounds or of another type is `None`, never an error. |
+| `avg_grade_adjusted_speed_mps` | m/s, 0 to 100 | FIT mapper (lap `avg_grade_adjusted_speed` 161, /1000) | The device's own grade-adjusted speed, a comparison and never an input of a calculation. Out of bounds is `None`. |
+| `workout_step_index` | int 0 to 999, or `None` | FIT mapper (lap `wkt_step_index` 71, without the flag bits) | The `WorkoutStep.index` of the workout step the lap belongs to. Out of bounds is `None`. |
+| `lap_trigger` | `LapTrigger \| None` | FIT mapper (lap `lap_trigger` 24) | Why the lap ended. Any other value is `None`. |
 
 ### `ActivityLapSet`
 
@@ -1040,7 +1040,7 @@ One lap or interval; offsets are seconds from the recording start, `end_offset_s
 | `origin` | `ActivityDetailOrigin` | `fetch` (Garmin, FIT) | |
 | `lap_source` | `LapSource` | Garmin mapper `device_laps`; FIT mapper `device_laps` | 1 to 200 laps, indexes consecutive from 0, ordered by `start_offset_s`. |
 | `laps` | tuple of `ActivityLap` | Garmin mapper, FIT mapper | |
-| `workout_steps` | tuple of `WorkoutStep`, at most 200 | none yet (schema version 31 stores it) | The steps of the workout the device ran, by ascending index. Steps that are no usable tuple (too many, repeated or unordered indexes) become the empty tuple; the laps stay. |
+| `workout_steps` | tuple of `WorkoutStep`, at most 200 | FIT mapper (`workout_step` 27) | The steps of the workout the device ran, by ascending index. Steps that are no usable tuple (too many, repeated or unordered indexes) become the empty tuple; the laps stay. |
 
 The property `kind` is always `laps`.
 
@@ -1050,16 +1050,16 @@ One step of the workout the device ran (FIT `workout_step`). Numbers and vocabul
 
 | Field | Type & unit | Emitted by | Notes |
 |---|---|---|---|
-| `index` | int 0 to 999 | none yet | The step's message index, which a lap's `workout_step_index` names. |
-| `intensity` | `WorkoutStepIntensity` | none yet | |
-| `duration_type` | `WorkoutDurationType` | none yet | |
-| `duration_value` | float or `None` | none yet | In the unit of the duration type: s, m, repetitions, bpm or W; `None` for `open`, `repeat` and `other`. |
-| `repeat_from` | int 0 to 999 or `None` | none yet | The step a `repeat` step returns to; `None` otherwise. |
-| `repeat_count` | int 1 to 1,000 or `None` | none yet | How often a `repeat` step repeats; `None` otherwise. |
-| `target_type` | `WorkoutTargetType` | none yet | |
-| `target_low`, `target_high` | float or `None` | none yet | The target range in `target_unit`, `target_low` not above `target_high`; `None` when the target is a zone, open or in another unit than its type measures. |
-| `target_unit` | `WorkoutTargetUnit \| None` | none yet | `mps` for speed, `bpm` or `pct_max_hr` for heart rate, `w` or `pct_ftp` for power, `rpm` for cadence. |
-| `target_zone` | int 1 to 20 or `None` | none yet | The zone a speed, heart rate or power target names instead of a range. |
+| `index` | int 0 to 999 | FIT mapper (`workout_step` message index 254, without the flag bits) | The step's message index, which a lap's `workout_step_index` names. |
+| `intensity` | `WorkoutStepIntensity` | FIT mapper (`workout_step` 7) | |
+| `duration_type` | `WorkoutDurationType` | FIT mapper (`workout_step` 1) | |
+| `duration_value` | float or `None` | FIT mapper (`workout_step` 2) | In the unit of the duration type: s, m, repetitions, bpm or W; `None` for `open`, `repeat` and `other`. |
+| `repeat_from` | int 0 to 999 or `None` | FIT mapper (`workout_step` 2 of a repeat step) | The step a `repeat` step returns to; `None` otherwise. |
+| `repeat_count` | int 1 to 1,000 or `None` | FIT mapper (`workout_step` target value 4 of a repeat step) | How often a `repeat` step repeats; `None` otherwise. |
+| `target_type` | `WorkoutTargetType` | FIT mapper (`workout_step` 3) | |
+| `target_low`, `target_high` | float or `None` | FIT mapper (`workout_step` custom target low and high 5, 6) | The target range in `target_unit`, `target_low` not above `target_high`; `None` when the target is a zone, open or in another unit than its type measures. |
+| `target_unit` | `WorkoutTargetUnit \| None` | FIT mapper (derived from the target type and the value range) | `mps` for speed, `bpm` or `pct_max_hr` for heart rate, `w` or `pct_ftp` for power, `rpm` for cadence. |
+| `target_zone` | int 1 to 20 or `None` | FIT mapper (`workout_step` target value 4) | The zone a speed, heart rate or power target names instead of a range. |
 
 ### `ZoneBucket`
 
@@ -1191,96 +1191,96 @@ Members `time_s`, `distance_m`, `altitude_m`, `grade_pct`, `speed_mps`, `power_w
 
 ### `LapTrigger`
 
-What ended a device lap, the FIT `lap_trigger` names (schema version 31). No module produces it yet.
+What ended a device lap, the FIT `lap_trigger` names (schema version 31). A newer FIT number is `None` on the lap.
 
 | Value | Meaning | Produced by |
 |---|---|---|
-| `manual` | The athlete pressed the lap button | none yet |
-| `time` | A time interval ended | none yet |
-| `distance` | A distance interval ended | none yet |
-| `position_start` | The start position was reached | none yet |
-| `position_lap` | The lap position was reached | none yet |
-| `position_waypoint` | A waypoint was reached | none yet |
-| `position_marked` | A marked position was reached | none yet |
-| `session_end` | The session ended | none yet |
-| `fitness_equipment` | The fitness equipment ended the lap | none yet |
+| `manual` | The athlete pressed the lap button | FIT mapper (`lap_trigger` 0) |
+| `time` | A time interval ended | FIT mapper (`lap_trigger` 1) |
+| `distance` | A distance interval ended | FIT mapper (`lap_trigger` 2) |
+| `position_start` | The start position was reached | FIT mapper (`lap_trigger` 3) |
+| `position_lap` | The lap position was reached | FIT mapper (`lap_trigger` 4) |
+| `position_waypoint` | A waypoint was reached | FIT mapper (`lap_trigger` 5) |
+| `position_marked` | A marked position was reached | FIT mapper (`lap_trigger` 6) |
+| `session_end` | The session ended | FIT mapper (`lap_trigger` 7) |
+| `fitness_equipment` | The fitness equipment ended the lap | FIT mapper (`lap_trigger` 8) |
 
 ### `WorkoutStepIntensity`
 
-The intensity a device workout step names; no module produces it yet.
+The intensity a device workout step names (`workout_step` field 7).
 
 | Value | Meaning | Produced by |
 |---|---|---|
-| `active` | Active | none yet |
-| `rest` | Rest | none yet |
-| `warmup` | Warm-up | none yet |
-| `cooldown` | Cool-down | none yet |
-| `recovery` | Recovery | none yet |
-| `interval` | Interval | none yet |
-| `other` | Any other intensity | none yet |
+| `active` | Active | FIT mapper (`workout_step` intensity 0) |
+| `rest` | Rest | FIT mapper (intensity 1) |
+| `warmup` | Warm-up | FIT mapper (intensity 2) |
+| `cooldown` | Cool-down | FIT mapper (intensity 3) |
+| `recovery` | Recovery | FIT mapper (intensity 4) |
+| `interval` | Interval | FIT mapper (intensity 5) |
+| `other` | Any other intensity | FIT mapper (any other or missing) |
 
 ### `WorkoutDurationType`
 
-What ends a device workout step; any other FIT duration type is `other`, without a value. No module produces it yet.
+What ends a device workout step; any other FIT duration type is `other`, without a value (`workout_step` field 1).
 
 | Value | Meaning | Produced by |
 |---|---|---|
-| `time` | A time in seconds | none yet |
-| `distance` | A distance in metres | none yet |
-| `open` | No end set | none yet |
-| `reps` | A number of repetitions | none yet |
-| `hr_below` | Until the heart rate is below a value (bpm) | none yet |
-| `hr_above` | Until the heart rate is above a value (bpm) | none yet |
-| `power_below` | Until the power is below a value (W) | none yet |
-| `power_above` | Until the power is above a value (W) | none yet |
-| `repeat` | Repeat the steps from `repeat_from` `repeat_count` times | none yet |
-| `other` | Any other duration type | none yet |
+| `time` | A time in seconds | FIT mapper (`workout_step` duration type 0, /1000 s) |
+| `distance` | A distance in metres | FIT mapper (duration type 1, /100 m) |
+| `open` | No end set | FIT mapper (duration type 5) |
+| `reps` | A number of repetitions | FIT mapper (duration type 29) |
+| `hr_below` | Until the heart rate is below a value (bpm) | FIT mapper (duration type 2; a value of 100 or more is bpm plus 100) |
+| `hr_above` | Until the heart rate is above a value (bpm) | FIT mapper (duration type 3; same offset) |
+| `power_below` | Until the power is below a value (W) | FIT mapper (duration type 14; a value of 1000 or more is W plus 1000) |
+| `power_above` | Until the power is above a value (W) | FIT mapper (duration type 15; same offset) |
+| `repeat` | Repeat the steps from `repeat_from` `repeat_count` times | FIT mapper (duration type 6, repeat until steps complete: value is the step to return to, target value the count) |
+| `other` | Any other duration type | FIT mapper (any other or missing duration type, without a value) |
 
 ### `WorkoutTargetType`
 
-What a device workout step aims at; any other FIT target is `other`. No module produces it yet.
+What a device workout step aims at; any other FIT target is `other` (`workout_step` field 3).
 
 | Value | Meaning | Produced by |
 |---|---|---|
-| `speed` | A speed | none yet |
-| `heart_rate` | A heart rate | none yet |
-| `power` | A power | none yet |
-| `cadence` | A cadence | none yet |
-| `open` | No target | none yet |
-| `other` | Any other target | none yet |
+| `speed` | A speed | FIT mapper (`workout_step` target type 0) |
+| `heart_rate` | A heart rate | FIT mapper (target type 1) |
+| `power` | A power | FIT mapper (target type 4) |
+| `cadence` | A cadence | FIT mapper (target type 3) |
+| `open` | No target | FIT mapper (target type 2; also every repeat step) |
+| `other` | Any other target | FIT mapper (any other or missing target type) |
 
 ### `WorkoutTargetUnit`
 
-The unit of a device workout step's target range. No module produces it yet.
+The unit of a device workout step's target range (`workout_step` fields 5 and 6; both bounds in one unit, else no range).
 
 | Value | Meaning | Produced by |
 |---|---|---|
-| `mps` | Metres per second | none yet |
-| `bpm` | Beats per minute | none yet |
-| `pct_max_hr` | Percent of the maximum heart rate | none yet |
-| `w` | Watts | none yet |
-| `pct_ftp` | Percent of the functional threshold power | none yet |
-| `rpm` | Revolutions per minute | none yet |
+| `mps` | Metres per second | FIT mapper (speed range, /1000) |
+| `bpm` | Beats per minute | FIT mapper (heart rate range of 100 or more, minus 100) |
+| `pct_max_hr` | Percent of the maximum heart rate | FIT mapper (heart rate range below 100) |
+| `w` | Watts | FIT mapper (power range of 1000 or more, minus 1000) |
+| `pct_ftp` | Percent of the functional threshold power | FIT mapper (power range below 1000) |
+| `rpm` | Revolutions per minute | FIT mapper (cadence range) |
 
 ### `DeviceHeartRateCalc`
 
-How the watch derives its heart rate zones (FIT `hr_calc_type`). No module produces it yet.
+How the watch derives its heart rate zones (FIT `hr_calc_type`, `zones_target` field 5).
 
 | Value | Meaning | Produced by |
 |---|---|---|
-| `custom` | Zones the athlete set | none yet |
-| `percent_max_hr` | Percent of the maximum heart rate | none yet |
-| `percent_hrr` | Percent of the heart rate reserve | none yet |
-| `percent_lthr` | Percent of the lactate threshold heart rate | none yet |
+| `custom` | Zones the athlete set | FIT mapper (`zones_target` hr calc type 0) |
+| `percent_max_hr` | Percent of the maximum heart rate | FIT mapper (hr calc type 1) |
+| `percent_hrr` | Percent of the heart rate reserve | FIT mapper (hr calc type 2) |
+| `percent_lthr` | Percent of the lactate threshold heart rate | FIT mapper (hr calc type 3) |
 
 ### `DevicePowerCalc`
 
-How the watch derives its power zones (FIT `pwr_calc_type`). No module produces it yet.
+How the watch derives its power zones (FIT `pwr_calc_type`, `zones_target` field 7).
 
 | Value | Meaning | Produced by |
 |---|---|---|
-| `custom` | Zones the athlete set | none yet |
-| `percent_ftp` | Percent of the functional threshold power | none yet |
+| `custom` | Zones the athlete set | FIT mapper (`zones_target` power calc type 0) |
+| `percent_ftp` | Percent of the functional threshold power | FIT mapper (power calc type 1) |
 
 ### `ZoneMetric`
 
@@ -1367,7 +1367,7 @@ Payload evidence for this scope: the sanitized payload files contain the Garmin 
 ### `garmin_activity_detail_mapping.py`
 
 Status: Live. Called by `_map_collected` in `backend/sync/garmin_activity_details.py` for every Garmin activity detail fetch and backfill; stored with `replace_detail_set(mapper_version=MAPPER_VERSION)`.
-Mapper version: **10**
+Mapper version: **11**
 Inputs: the dict from `collect_garmin_activity_detail` (`backend/providers/garmin.py`) with the parts `details`, `splits`, `hr_zones`, `power_zones`, `exercise_sets` (strength activities only) and `fit`. Transport: the Personal API serves `details` (with `maxChartSize` 2,000) and the original FIT file (`download_activity_fit`, unzipped by `fit_from_archive`); the unofficial login serves `splits`, the two zone parts and `exercise_sets`. A part that is absent gives no set and no issue; a present but malformed part gives one value-free issue and no set for it.
 Evidence: documented only (fixtures `tests/fixtures/providers/garmin/activity_detail/details.json`, `splits.json`, `hr_zones.json`, `power_zones.json`; strength and FIT cases are built inline in `tests/test_garmin_activity_detail_mapping.py`). The sanitized payload files `garmin_activity_detail_run_2026-11-03` and `garmin_personal_activity_detail_run_2026-11-03` hold the activity summary only.
 
@@ -1461,11 +1461,11 @@ Not mapped: `directDoubleCadence`, every other metric descriptor key (for exampl
 ### `fit_activity_detail_mapping.py`
 
 Status: Live. Called by `_fit_sets` in `garmin_activity_detail_mapping.py` (Garmin FIT from the Personal API) and by `WahooActivityDetailImport._import_one` in `backend/sync/wahoo_activity_details.py` (Wahoo FIT). Both store with `replace_detail_set(mapper_version=MAPPER_VERSION)`, Garmin with the `MAPPER_VERSION` of `garmin_activity_detail_mapping.py`.
-Mapper version: **9**
+Mapper version: **10**
 Inputs: the raw bytes of one FIT activity file (`bytes`); decoding and scaling by `fit_file.py` (`fit_messages`, `fit_field`). Anything else gives one `fit` `invalid_type` issue. The caller passes `provider_activity_id` (Garmin activity id or Wahoo workout id) and the provenance (see the provenance table).
 Evidence: documented only (FIT SDK profile; synthetic FIT bytes built in `tests/test_fit_activity_detail_mapping.py` and `tests/test_fit_file.py`; there is no FIT file or Wahoo payload in the payload files).
 
-Record keywords set per kind: stream set `provider_activity_id`, `provenance`, `origin`, `resolution`, `channels`; lap set `provider_activity_id`, `provenance`, `origin`, `lap_source`, `laps`; strength set list `provider_activity_id`, `provenance`, `origin`, `source`, `sets`.
+Record keywords set per kind: stream set `provider_activity_id`, `provenance`, `origin`, `resolution`, `channels`, `device_zones`; lap set `provider_activity_id`, `provenance`, `origin`, `lap_source`, `laps`, `workout_steps`; strength set list `provider_activity_id`, `provenance`, `origin`, `source`, `sets`.
 
 Output: stream set (`resolution` `full`), lap set (`lap_source` `device_laps`), strength set (`source` `fit_set_messages`), all `origin` `fetch`. No zone distributions, no `grade_pct`, no `moving`. `strength_sets=False` (the Garmin mapper when it has exercise sets) skips the `set` messages and their issues.
 
@@ -1490,6 +1490,7 @@ Streams, record message 20 (`_stream_set`, `_kept_records`, `_RECORD_CHANNEL_FIE
 | `vertical_oscillation_cm` | record `vertical_oscillation` (39) | /10 mm, then /10 to cm; 0 is a gap | |
 | `vertical_ratio_pct` | record `vertical_ratio` (83) | /100 percent; 0 is a gap | |
 | `step_length_m` | record `step_length` (85) | /10 mm, then /1000 to m; 0 is a gap | |
+| `respiration_rate_brpm` | record `enhanced_respiration_rate` (108) | /100 breaths per minute | Version 10. A value outside 1 to 100 (0 included) is a gap without an issue, so it never makes a Garmin fetch partial. |
 | `grade_pct` | none | | Not produced. |
 | `moving` | none | | Not produced. |
 | `resolution` | | `full` | Fixed. |
@@ -1517,9 +1518,26 @@ Laps, lap message 19 (`_lap_set`, `_lap`, `_LAP_METRIC_FIELDS`, `_LAP_KINDS`):
 | `max_power` | lap `max_power` (20) | W | |
 | `elevation_gain_m` | lap `total_ascent` (21) | m | |
 | `normalized_power` | lap `normalized_power` (33) | W | |
-| `name`, `load`, `intensity_pct` | none | | Not produced. |
+| `avg_respiration_rate_brpm`, `max_respiration_rate_brpm` | lap `avg_respiration_rate` (136), `max_respiration_rate` (137) | /100 breaths per minute | Version 10. Outside 1 to 100 is `None`, without an issue. |
+| `avg_grade_adjusted_speed_mps` | lap `avg_grade_adjusted_speed` (161) | /1000 m/s | Version 10. Garmin's own value, a comparison beside the app's grade-adjusted pace; outside 0 to 100 is `None`, without an issue. |
+| `workout_step_index` | lap `wkt_step_index` (71) | value AND 0x0FFF | Version 10. The `workout_step` the lap belongs to; above 999 is `None`. |
+| `lap_trigger` | lap `lap_trigger` (24) | `manual` 0, `time` 1, `distance` 2, `position_start` 3, `position_lap` 4, `position_waypoint` 5, `position_marked` 6, `session_end` 7, `fitness_equipment` 8 | Version 10. A newer number is `None`. |
+| `name`, `load`, `intensity_pct` | none | | Not produced; a lap name is never read from a file. |
 
-A metric the `ActivityLap` bounds reject is dropped with an `out_of_range` issue named by the canonical metric; more than 200 laps are cut with a `lap` issue.
+A metric the `ActivityLap` bounds reject is dropped with an `out_of_range` issue named by the canonical metric (the version 10 fields above are the exception: they become `None` without an issue); more than 200 laps are cut with a `lap` issue.
+
+Workout steps, `workout_step` message 27 (`_workout_steps`, `_workout_step`; the lap set's `workout_steps`), by ascending `message_index` (254, without the flag bits), at most 200; the first of a repeated index wins and a step without an index of 0 to 999 is dropped. Version 10. The step name (0), notes (8), the workout message (26: name, description) and every other text of the file are never read.
+
+| `WorkoutStep` field | Provider key(s) | Conversion | Notes |
+|---|---|---|---|
+| `index` | `message_index` (254) | AND 0x0FFF | |
+| `intensity` | `intensity` (7) | 0 `active`, 1 `rest`, 2 `warmup`, 3 `cooldown`, 4 `recovery`, 5 `interval` | Anything else or missing is `other`. |
+| `duration_type`, `duration_value` | `duration_type` (1), `duration_value` (2) | 0 `time` (/1000 s), 1 `distance` (/100 m), 2 `hr_below` and 3 `hr_above` (100 or more is bpm plus 100), 5 `open`, 6 `repeat`, 14 `power_below` and 15 `power_above` (1000 or more is W plus 1000), 29 `reps` | Any other or missing type is `other` without a value; a value outside the canonical bounds is `None`. |
+| `repeat_from`, `repeat_count` | `duration_value` (2), `target_value` (4) | step index (AND 0x0FFF), count | Only for a `repeat` step, whose target is `open`. |
+| `target_type` | `target_type` (3) | 0 `speed`, 1 `heart_rate`, 2 `open`, 3 `cadence`, 4 `power` | Anything else or missing is `other`. |
+| `target_zone` | `target_value` (4) | zone number | Wins over a custom range; only for speed, heart rate, power and cadence targets. |
+| `target_low`, `target_high`, `target_unit` | `custom_target_value_low` (5), `custom_target_value_high` (6) | speed /1000 `mps`; heart rate 100 or more minus 100 `bpm`, below 100 `pct_max_hr`; power 1000 or more minus 1000 `w`, below 1000 `pct_ftp`; cadence `rpm` | Both bounds must be in one unit and not both 0, else no range; a range with `high` below `low` is dropped. |
+
 
 Strength sets, set message 225 (`_strength_set_set`, `_strength_set`), in file order, at most 500:
 
@@ -1536,7 +1554,9 @@ Strength sets, set message 225 (`_strength_set_set`, `_strength_set`), in file o
 | `index` | position among kept sets | | |
 | `source` | | `fit_set_messages` | Fixed. |
 
-Not mapped: the session (18), activity and file messages, developer fields (skipped by `fit_file`), lap run cadence, set `category_subtype` (8), `weight_display_unit`, `message_index`, set `timestamp`.
+The stream set's `device_zones` come from the first `zones_target` message (7) with a value (version 10): `max_hr` from `max_heart_rate` (1), `threshold_hr` from `threshold_heart_rate` (2) and `ftp_w` from `functional_threshold_power` (3) as read, `hr_calc` from `hr_calc_type` (5: 0 `custom`, 1 `percent_max_hr`, 2 `percent_hrr`, 3 `percent_lthr`) and `power_calc` from `pwr_calc_type` (7: 0 `custom`, 1 `percent_ftp`); a value outside its bounds is `None`.
+
+Not mapped: the session (18), activity and file messages, developer fields (skipped by `fit_file`), lap run cadence, set `category_subtype` (8), `weight_display_unit`, `message_index`, set `timestamp`, the workout message (26) and every text field of a file.
 
 ### `fit_sensor_mapping.py`
 
