@@ -398,6 +398,21 @@ def _structure(facts: _Facts) -> dict[str, Any] | None:
     if not isinstance(planned, int) or not isinstance(executed, int) or not planned:
         # A continuous plan's steps carry no work-step count to judge.
         return None
+    unmatched = summary.get("unmatched_hard_steps")
+    if isinstance(unmatched, int) and unmatched:
+        # The fitting paired laps with the hardest steps only: a planned block
+        # may be missing, so the count cannot be judged.
+        return _unknown(
+            "plan_structure",
+            title,
+            "Harte Plan-Schritte ohne Runde, etwa ein ausgelassener Block; die Zuordnung ist unsicher.",
+            basis="plan",
+            value={
+                "planned_work_steps": planned + unmatched,
+                "executed_work_laps": executed,
+                "unmatched_hard_steps": unmatched,
+            },
+        )
     missing = executed - planned
     return _judged(
         "plan_structure",
@@ -1881,6 +1896,8 @@ def _mapping_unreliable(targets: Mapping[str, Any]) -> str | None:
     summary = _mapping(targets.get("summary"))
     if summary.get("planned_work_steps") != summary.get("executed_work_laps"):
         return "Plan-Schritte und Runden weichen ab; die Zuordnung ist unsicher."
+    if _number(summary.get("unmatched_hard_steps")):
+        return "Harte Plan-Schritte ohne Runde, etwa ein ausgelassener Block; die Zuordnung ist unsicher."
     return None
 
 

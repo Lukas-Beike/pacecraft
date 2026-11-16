@@ -534,6 +534,40 @@ class PlanTests(unittest.TestCase):
             self.assertEqual("unknown", found[key]["verdict"], key)
             self.assertIn("weichen ab", found[key]["reason"])
 
+    def test_unmatched_hard_steps_make_the_mapping_uncertain(self) -> None:
+        # Five laps against five fitted steps, but three planned hard steps of a
+        # lower block have no lap: structure and rep targets are unknown.
+        found = checks(
+            session_report(
+                result(
+                    focus="vo2max",
+                    execution={"output_unit": "W", "reps": [{"rep": 1, "output": 300}]},
+                    planned_targets={
+                        "status": "ok",
+                        "summary": {
+                            "planned_work_steps": 5,
+                            "executed_work_laps": 5,
+                            "unmatched_hard_steps": 3,
+                        },
+                        "reps": [{"rep": 1, "time_in_target_pct": 90}],
+                    },
+                ),
+                {"duration_s": 3600, "load": 80},
+            )
+        )
+        self.assertEqual(
+            (
+                "unknown",
+                {
+                    "planned_work_steps": 8,
+                    "executed_work_laps": 5,
+                    "unmatched_hard_steps": 3,
+                },
+            ),
+            (found["plan_structure"]["verdict"], found["plan_structure"]["value"]),
+        )
+        self.assertEqual("unknown", found["rep_target"]["verdict"])
+
     def test_an_easy_session_gets_no_structure_check(self) -> None:
         # A stored heart-rate cap alone makes planned_targets "not_covered".
         found = checks(

@@ -96,6 +96,9 @@ def planned_target_execution(
     summary = {
         "planned_work_steps": len(work),
         "executed_work_laps": executed,
+        # Planned hard steps the lap fitting left without a lap: a skipped
+        # lower-level block makes the pairing uncertain (#3084).
+        "unmatched_hard_steps": _unmatched_hard_steps(ranges, work, thresholds),
         "compared": len(compared),
         "in_target": sum(value == 0 for value in deviations),
         "above_target": sum(value > 0 for value in deviations),
@@ -226,6 +229,39 @@ def _levels(
             continue
         levels.append((index, middle / reference))
     return levels
+
+
+# A planned step in this zone or above is hard work, never a warm-up (#3084).
+HARD_ZONE: Final = 3
+
+
+def _unmatched_hard_steps(
+    ranges: Sequence[TargetRange], work: Sequence[int], thresholds: ZoneSettings
+) -> int:
+    """Planned steps at ``HARD_ZONE`` or above that no executed lap pairs with.
+
+    The lap fitting keeps the hardest steps when the plan has more levels than
+    laps; a hard step it drops is planned work the session may have skipped.
+    """
+    zones = {
+        "speed": (thresholds.threshold_pace, thresholds.pace_zone),
+        "watts": (thresholds.ftp, thresholds.power_zone),
+        "heartrate": (thresholds.hr_zone_reference, thresholds.hr_zone_of_lthr),
+    }
+    paired = set(work)
+    count = 0
+    for index, target in enumerate(ranges):
+        reference, zone_of = zones.get(target.metric or "", (None, None))
+        middle = _middle(target)
+        if (
+            index not in paired
+            and reference
+            and zone_of is not None
+            and middle is not None
+            and zone_of(middle / reference * 100) >= HARD_ZONE
+        ):
+            count += 1
+    return count
 
 
 def _work_steps(levels: Sequence[tuple[int, float]], executed: int) -> list[int]:

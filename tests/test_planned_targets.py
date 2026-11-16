@@ -191,11 +191,38 @@ class PlannedTargetExecutionTests(unittest.TestCase):
             {
                 "planned_work_steps": 5,
                 "executed_work_laps": 5,
+                "unmatched_hard_steps": 0,
                 "compared": 5,
                 "in_target": 4,
                 "above_target": 0,
                 "below_target": 1,
             },
+        )
+
+    def test_a_skipped_lower_hard_block_leaves_unmatched_hard_steps(self) -> None:
+        # #3084: 5 fast reps (about 108 % of threshold pace) and a block of 3
+        # reps in pace zone 3 (88-94 %). Five laps were run; the fitting pairs
+        # them with the 5 hardest steps, so the 3 zone-3 steps have no lap.
+        plan = (
+            "- 10m Z2 Pace\n\n5x\n- 3m 3:45-3:55/km Pace\n- 90s Z1 Pace\n\n"
+            "3x\n- 3m Z3 Pace\n- 90s Z1 Pace\n\n- 5m Z1 Pace"
+        )
+        session = _run()
+        result = planned_target_execution(
+            session_execution(session),
+            structured_steps(plan),
+            THRESHOLDS,
+            "run",
+            streams=_display_streams(session),
+        )
+        summary = result["summary"]
+        self.assertEqual(
+            (5, 5, 3),
+            (
+                summary["planned_work_steps"],
+                summary["executed_work_laps"],
+                summary["unmatched_hard_steps"],
+            ),
         )
 
     def test_heart_rate_targets_use_the_second_half(self) -> None:
