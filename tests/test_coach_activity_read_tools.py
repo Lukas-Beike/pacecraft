@@ -413,7 +413,7 @@ class CoachActivityReadToolServiceTests(unittest.TestCase):
         # the RPE check.
         activity_read = Mock()
         activity_read.rated_sessions.return_value = [
-            {"id": f"r{n}", "sport": "run", "intensity": 0.8, "rpe": 5}
+            {"id": f"r{n}", "sport": "run", "intensity": 80.0, "rpe": 5}
             | {"rpe_scale": "cr10"}
             for n in range(5)
         ]
@@ -431,7 +431,7 @@ class CoachActivityReadToolServiceTests(unittest.TestCase):
             result,
             session,
             None,
-            [{"id": "act_1", "intensity": 0.8}],
+            [{"id": "act_1", "intensity": 80.0}],
         )
         activity_read.rated_sessions.assert_called_once_with(
             date(2026, 6, 30), date(2026, 9, 21)

@@ -31,8 +31,10 @@ STOP_S: Final = 30.0
 # R1): notable from this gap in points to the expected RPE.
 RPE_GAP_POINTS: Final = 2.0
 # The expected RPE is the median of own rated sessions of the same sport and RPE
-# scale within this IF of the session (orchestrator decision on #3084).
-RPE_IF_WINDOW: Final = 0.05
+# scale within +-0.05 IF of the session (orchestrator decision on #3084), in the
+# stored scale: a summary's ``intensity`` is the local IF in % (M6, IF x 100,
+# MetricKind.INTENSITY_FACTOR), so the window is 5 percentage points.
+RPE_INTENSITY_WINDOW_PCT: Final = 5.0
 # Own rated sessions needed for an expected RPE; fewer leave the check unknown.
 MIN_RATED: Final = 5
 # The rated sessions read for the expected RPE: the comparable-session window.
@@ -86,9 +88,10 @@ def grade_adjusted_pace(result: Mapping[str, Any]) -> dict[str, Any] | None:
 def expected_rpe(
     intensity: float, sport: Any, scale: Any, rated: Sequence[Mapping[str, Any]]
 ) -> tuple[float | None, int]:
-    """The median RPE of own rated sessions near ``intensity``, and their count.
+    """The median RPE of own rated sessions near ``intensity`` (IF in %), and their count.
 
-    Only sessions of the same sport and RPE scale within ``RPE_IF_WINDOW`` count;
+    Only sessions of the same sport and RPE scale within
+    ``RPE_INTENSITY_WINDOW_PCT`` count;
     with fewer than ``MIN_RATED`` the expectation is unknown.
     """
     near = [
@@ -98,7 +101,7 @@ def expected_rpe(
         and item.get("rpe_scale") == scale
         and (rpe := _number(item.get("rpe"))) is not None
         and (level := _number(item.get("intensity"))) is not None
-        and abs(level - intensity) <= RPE_IF_WINDOW
+        and abs(level - intensity) <= RPE_INTENSITY_WINDOW_PCT
     ]
     if len(near) < MIN_RATED:
         return None, len(near)

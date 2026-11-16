@@ -7,6 +7,7 @@ from datetime import date
 from typing import Any
 from unittest.mock import Mock, patch
 
+from backend.canonical.vocabulary import MetricKind
 from backend.performance.activity_read_service import ActivityAnalysisReadService
 from backend.performance.grade_adjustment import grade_adjusted
 from backend.performance.session_conditions import (
@@ -16,6 +17,7 @@ from backend.performance.session_conditions import (
     grade_adjusted_pace,
 )
 from backend.performance.session_report import session_report
+from backend.sync.local_load import with_local_loads
 
 SPEED = 3.0
 UPHILL_PCT = 10.0
@@ -140,24 +142,24 @@ class GradeAdjustedPaceTests(unittest.TestCase):
 class ExpectedRpeTests(unittest.TestCase):
     def test_median_of_own_sessions_within_the_intensity_window(self) -> None:
         rated = [
-            *_rated(0.80, 5, 3),
-            *_rated(0.85, 7, 2),  # the window's edge counts
-            *_rated(0.86, 9, 4),  # outside
-            *_rated(0.80, 9, 3, sport="ride"),
-            *_rated(0.80, 9, 3, rpe_scale="garmin"),
+            *_rated(80.0, 5, 3),
+            *_rated(85.0, 7, 2),  # the window's edge counts
+            *_rated(85.5, 9, 4),  # outside
+            *_rated(80.0, 9, 3, sport="ride"),
+            *_rated(80.0, 9, 3, rpe_scale="garmin"),
         ]
-        self.assertEqual((5.0, 5), expected_rpe(0.80, "run", "cr10", rated))
+        self.assertEqual((5.0, 5), expected_rpe(80.0, "run", "cr10", rated))
 
     def test_fewer_than_five_own_sessions_leave_it_unknown(self) -> None:
         self.assertEqual(
             (None, MIN_RATED - 1),
-            expected_rpe(0.8, "run", "cr10", _rated(0.8, 5, MIN_RATED - 1)),
+            expected_rpe(80.0, "run", "cr10", _rated(80.0, 5, MIN_RATED - 1)),
         )
 
 
 class ConditionChecksInTheReportTests(unittest.TestCase):
     def test_rpe_two_points_above_the_own_median_is_notable(self) -> None:
-        report = session_report(_with_rpe(_run(), 7, 0.8, _rated(0.8, 5, 5)))
+        report = session_report(_with_rpe(_run(), 7, 80.0, _rated(80.0, 5, 5)))
 
         check = _check(report, "rpe_intensity")
         assert check is not None
@@ -173,14 +175,14 @@ class ConditionChecksInTheReportTests(unittest.TestCase):
         self.assertIn("rpe_intensity", report["notable"])
 
     def test_a_smaller_gap_is_ok_and_too_few_sessions_unknown(self) -> None:
-        close = session_report(_with_rpe(_run(), 6.5, 0.8, _rated(0.8, 5, 5)))
+        close = session_report(_with_rpe(_run(), 6.5, 80.0, _rated(80.0, 5, 5)))
         self.assertEqual("ok", _check(close, "rpe_intensity")["verdict"])  # type: ignore[index]
-        few = session_report(_with_rpe(_run(), 9, 0.8, _rated(0.8, 5, 4)))
+        few = session_report(_with_rpe(_run(), 9, 80.0, _rated(80.0, 5, 4)))
         unknown = _check(few, "rpe_intensity")
         assert unknown is not None
         self.assertEqual("unknown", unknown["verdict"])
         self.assertIn("4 von 5", unknown["reason"])
-        unrated = session_report({**_run(), INPUTS: {"intensity": 0.8}})
+        unrated = session_report({**_run(), INPUTS: {"intensity": 80.0}})
         self.assertEqual(
             "Keine RPE-Bewertung der Einheit.",
             _check(unrated, "rpe_intensity")["reason"],  # type: ignore[index]
@@ -213,6 +215,31 @@ class ConditionChecksInTheReportTests(unittest.TestCase):
 
 
 class RatedSessionsReadTests(unittest.TestCase):
+    def test_the_window_reads_the_stored_intensity_scale(self) -> None:
+        # The local IF is stored in % (M6: IF x 100), and with_local_loads puts
+        # that value on the summary. In 2.1.24 a window of 0.05 met it, so no
+        # rated session ever counted (#3084).
+        self.assertEqual("%", MetricKind.INTENSITY_FACTOR.unit)
+        stored = {
+            f"s{n}": {MetricKind.INTENSITY_FACTOR.value: {"value": value}}
+            for n, value in enumerate((81.0, 82.0, 83.0, 84.0, 85.0, 90.5))
+        }
+        summaries = with_local_loads(
+            [
+                {"id": key, "sport": "run", "elapsed_duration_s": 3600, "rpe": 6}
+                for key in stored
+            ],
+            stored,
+        )
+        service = ActivityAnalysisReadService.__new__(ActivityAnalysisReadService)
+        service._feedback_service = Mock(for_activity_ids=Mock(return_value=[]))
+        with patch.object(service, "summaries_between", return_value=summaries):
+            rated = service.rated_sessions(date(2026, 8, 1), date(2026, 9, 20))
+
+        scale = rated[0]["rpe_scale"]
+        # IF 0.85 is 85.0 here: 81.0 to 85.0 lie within 5 points, 90.5 does not.
+        self.assertEqual((6.0, 5), expected_rpe(85.0, "run", scale, rated))
+
     def test_one_summary_snapshot_and_one_feedback_read_for_the_window(self) -> None:
         service = ActivityAnalysisReadService.__new__(ActivityAnalysisReadService)
         feedback = Mock()
@@ -221,16 +248,16 @@ class RatedSessionsReadTests(unittest.TestCase):
         ]
         service._feedback_service = feedback
         summaries = [
-            {"id": "a", "sport": "run", "intensity": 0.8, "elapsed_duration_s": 3600},
+            {"id": "a", "sport": "run", "intensity": 80.0, "elapsed_duration_s": 3600},
             # A provider rating counts with its own scale.
             {
                 "id": "b",
                 "sport": "ride",
-                "intensity": 0.7,
+                "intensity": 70.0,
                 "rpe": 4,
                 "elapsed_duration_s": 3600,
             },
-            {"id": "c", "sport": "run", "intensity": 0.9, "elapsed_duration_s": 3600},
+            {"id": "c", "sport": "run", "intensity": 90.0, "elapsed_duration_s": 3600},
             {"id": "d", "sport": "run", "rpe": 5, "elapsed_duration_s": 3600},
         ]
         with patch.object(
@@ -243,7 +270,7 @@ class RatedSessionsReadTests(unittest.TestCase):
             ["a", "b", "c", "d"], sessions_only=True
         )
         self.assertEqual(["a", "b"], [item["id"] for item in rated])
-        self.assertEqual((6.0, 0.8), (rated[0]["rpe"], rated[0]["intensity"]))
+        self.assertEqual((6.0, 80.0), (rated[0]["rpe"], rated[0]["intensity"]))
         self.assertNotEqual(rated[0]["rpe_scale"], rated[1]["rpe_scale"])
 
 

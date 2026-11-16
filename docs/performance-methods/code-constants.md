@@ -230,7 +230,7 @@ every named number the code fixes. A test fails when it is out of date.
 | `MOVING_MPS` | `1.0` | `backend/performance/session_conditions.py` | Samples below this speed are standing, not running (3.6 km/h). |
 | `STOP_S` | `30.0` | `backend/performance/session_conditions.py` | A gap longer than max(30 s, 3 x the median step) is a stop, as in the halves. |
 | `RPE_GAP_POINTS` | `2.0` | `backend/performance/session_conditions.py` | RPE against intensity (athlete decision on #3084, 2026-11-15; Foster session-RPE, R1): notable from this gap in points to the expected RPE. |
-| `RPE_IF_WINDOW` | `0.05` | `backend/performance/session_conditions.py` | The expected RPE is the median of own rated sessions of the same sport and RPE scale within this IF of the session (orchestrator decision on #3084). |
+| `RPE_INTENSITY_WINDOW_PCT` | `5.0` | `backend/performance/session_conditions.py` | The expected RPE is the median of own rated sessions of the same sport and RPE scale within +-0.05 IF of the session (orchestrator decision on #3084), in the stored scale: a summary's intensity is the local IF in % (M6, IF x 100, MetricKind.INTENSITY_FACTOR), so the window is 5 percentage points. |
 | `MIN_RATED` | `5` | `backend/performance/session_conditions.py` | Own rated sessions needed for an expected RPE; fewer leave the check unknown. |
 | `RATED_WINDOW_DAYS` | `84` | `backend/performance/session_conditions.py` | The rated sessions read for the expected RPE: the comparable-session window. |
 | `INPUTS` | `'condition_inputs'` | `backend/performance/session_conditions.py` | What the session report adds to the detail for these checks: the session's local IF, the device's grade-adjusted speed and the athlete's rated sessions. |
