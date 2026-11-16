@@ -101,7 +101,7 @@ DETAIL_FALLBACK_KEY: Final = "garmin_detail_fallback"
 DETAIL_ISSUE_KINDS_KEY: Final = "garmin_detail_issue_kinds"
 MAX_ISSUE_KINDS: Final = 64
 # Issue fields are the mappers' own names; anything else is labelled "other".
-_ISSUE_FIELD: Final = re.compile(r"[A-Za-z0-9_]{1,64}")
+_ISSUE_FIELD: Final = re.compile(r"\w{1,64}", re.ASCII)
 # The backfill needs only ``activity_details``, the part both transports serve.
 # The SDK-only parts (splits, HR and power zones, exercise sets) and the Personal
 # API-only FIT file pause only themselves; the collector skips a paused part
