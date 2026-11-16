@@ -39,6 +39,7 @@ from typing import Any, Final
 
 from backend.canonical.coverage import MetricWindow
 from backend.canonical.domain_records import (
+    THRESHOLD_ORIGINS,
     CategoricalObservation,
     GearActivityLink,
     GearItem,
@@ -488,7 +489,14 @@ def _zone_configuration(row: Mapping[str, Any]) -> ZoneConfiguration:
         percent_basis=None if basis is None else ZonePercentBasis(basis),
         provenance=_domain_provenance(row),
         model=details.get(canonical_domain_store.ZONE_MODEL_KEY),
+        threshold_origin=_threshold_origin(row, details),
     )
+
+
+def _threshold_origin(row: Mapping[str, Any], details: Mapping[str, Any]) -> str | None:
+    """The adopted estimate a local threshold came from; anything else reads as None."""
+    origin = details.get(canonical_domain_store.ZONE_THRESHOLD_ORIGIN_KEY)
+    return origin if row["provider"] is None and origin in THRESHOLD_ORIGINS else None
 
 
 def _gear_item(row: Mapping[str, Any]) -> GearItem:

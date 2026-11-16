@@ -327,6 +327,8 @@ ZONE_CONFIGURATION_FIELDS = (
     "maximum",
     "limits",
     "percent_limits",
+    # The adopted local LT2 estimate the threshold came from (#3273).
+    "threshold_origin",
 )
 
 # The exported fields, keyed like the export consent (metric_export_consent).

@@ -87,6 +87,7 @@ def public_configuration(configuration: ZoneConfiguration) -> dict[str, Any]:
         "percent_basis": None
         if configuration.percent_basis is None
         else configuration.percent_basis.value,
+        "threshold_origin": configuration.threshold_origin,
     }
 
 
@@ -213,6 +214,7 @@ def local_configuration(payload: Mapping[str, Any]) -> ZoneConfiguration:
             if percent_limits is None
             else ZonePercentBasis.THRESHOLD,
             provenance=_local_provenance(),
+            threshold_origin=payload.get("threshold_origin") or None,
         )
     except (TypeError, ValueError) as exc:
         raise AppError(400, _INVALID.format(exc)) from exc
@@ -308,12 +310,25 @@ class ZoneConfigurationService:
         ``from_beginning`` is the explicit undated base value for the first
         configuration; any other save keeps earlier days on their old value.
         """
-        dated = dict(payload)
+        # Only an adoption names an origin; a value entered by hand has none.
+        dated = {**payload, "threshold_origin": None}
         if payload.get("from_beginning") is True:
             dated["valid_from"] = None
         elif payload.get("valid_from") in (None, ""):
             dated["valid_from"] = self._today().isoformat()
-        configuration = local_configuration(dated)
+        return self._save(local_configuration(dated))
+
+    def save_adopted(self, payload: Mapping[str, Any]) -> dict[str, Any]:
+        """Save one local configuration adopted from a local estimate, from today.
+
+        ``payload`` names its ``threshold_origin``; the receipt and the undo are
+        those of every local save (#3273).
+        """
+        return self._save(
+            local_configuration({**payload, "valid_from": self._today().isoformat()})
+        )
+
+    def _save(self, configuration: ZoneConfiguration) -> dict[str, Any]:
         if configuration.valid_from and configuration.valid_from > self._today():
             raise AppError(400, "Das Datum „Gilt ab“ darf nicht in der Zukunft liegen.")
         key = canonical_domain_store.zone_configuration_key(configuration)
