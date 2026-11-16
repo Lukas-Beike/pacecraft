@@ -65,8 +65,11 @@ class FakeProcesses:
         partial_start=False,
         cleanup_error=False,
         listing=None,
+        engine_down=False,
     ):
         self.listing = listing or report()
+        # Docker Desktop's engine answering 500 while it is stuck starting (#3304).
+        self.engine_down = engine_down
         self.stop = threading.Event()
         self.commands = []
         self.ids = {}
@@ -105,6 +108,14 @@ class FakeProcesses:
         if command[:2] == ["docker", "rm"]:
             self.removed.append(command[-1])
             return 0, ""
+        if command[:2] == ["docker", "version"]:
+            if self.engine_down:
+                return 1, (
+                    "request returned 500 Internal Server Error for API route and "
+                    "version http://%2F%2F.%2Fpipe%2FdockerDesktopLinuxEngine/v1.56/"
+                    "version, check if the server supports the requested API version"
+                )
+            return 0, "29.9.3"
         if command[:2] == ["docker", "ps"]:
             run_id = command[command.index("--filter") + 1].rsplit("=", 1)[1]
             return 0, self.other_runs.get(run_id, "")
@@ -636,6 +647,32 @@ class BrowserRunnerTests(unittest.TestCase):
         fake = FakeProcesses()
         self.run_main(fake, current=True, extra_args=("--build",))
         self.assertNotIn(build, fake.commands)
+
+    def test_an_engine_that_does_not_answer_stops_first_with_the_fix(self):
+        # #3304: Docker Desktop stuck "starting" answers every call with 500;
+        # the runner says so and names the fix before any other Docker call.
+        fake = FakeProcesses(engine_down=True)
+        code, value, _path = self.run_main(fake, current=True)
+        self.assertNotEqual(code, 0)
+        self.assertEqual(value["status"], "failed")
+        self.assertIn("Docker engine does not answer", value["error"])
+        self.assertIn("wsl --shutdown", value["error"])
+        self.assertIn("500 Internal Server Error", value["error"])
+        self.assertEqual(
+            [command[:2] for command in fake.commands if command[0] == "docker"],
+            [["docker", "version"]],
+        )
+        self.assertFalse(fake.ids)
+
+    def test_the_engine_fix_names_docker_desktop_only_where_it_runs(self):
+        # #3305 review: a Linux daemon gets no Docker Desktop or WSL advice.
+        desktop = "request returned 500 for ... dockerDesktopLinuxEngine ..."
+        daemon = "Cannot connect to the Docker daemon at unix:///var/run/docker.sock."
+        self.assertIn("wsl --shutdown", runner.engine_fix(desktop))
+        linux = runner.engine_fix(daemon)
+        self.assertNotIn("wsl", linux)
+        self.assertNotIn("Docker Desktop", linux)
+        self.assertIn("Start the Docker daemon", linux)
 
     def test_each_checkout_gets_its_own_application_image_tag(self):
         with tempfile.TemporaryDirectory() as directory:
