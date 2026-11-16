@@ -114,7 +114,12 @@ class GarminAnalysisRefreshTests(unittest.TestCase):
                 {"calendarDate": "2026-09-24", "bmrKilocalories": 1750},
             ],
         )
-        client.get_user_summary.assert_called_once_with("2026-09-24")
+        # 09-23 has resting but no total kcal, so it is read per day too (#3157);
+        # its summary only fills what the row lacks, so 1,700 stays.
+        self.assertEqual(
+            [call.args for call in client.get_user_summary.call_args_list],
+            [("2026-09-23",), ("2026-09-24",)],
+        )
 
     def test_sessions_reader_requests_only_bounded_activities(self) -> None:
         reader = cast(Any, GarminRemoteReader.__new__(GarminRemoteReader))

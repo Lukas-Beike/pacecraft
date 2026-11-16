@@ -7,6 +7,8 @@ from backend.athlete.body_composition import (
     Sex,
     body_density,
     lean_mass_kg,
+    outside_fitted_ages,
+    resting_band,
     resting_energy,
     siri_body_fat_pct,
 )
@@ -43,6 +45,16 @@ class SkinfoldBodyFatTests(unittest.TestCase):
                 body_density(sex, folds, age)
 
 
+class FittedAgeTests(unittest.TestCase):
+    def test_ages_outside_the_fitted_range_are_flagged_per_sex(self):
+        # Fitted on men aged 18-61 and women aged 18-55 (M13, #3187 item 9).
+        for sex, last in ((Sex.MALE, 61), (Sex.FEMALE, 55)):
+            with self.subTest(sex=sex):
+                self.assertFalse(outside_fitted_ages(sex, 18))
+                self.assertFalse(outside_fitted_ages(sex, last))
+                self.assertTrue(outside_fitted_ages(sex, last + 1))
+
+
 class RestingEnergyTests(unittest.TestCase):
     def test_lean_mass_is_the_fat_free_share(self):
         self.assertAlmostEqual(lean_mass_kg(80, 15), 68.0, places=9)
@@ -60,6 +72,12 @@ class RestingEnergyTests(unittest.TestCase):
                     expected,
                     places=6,
                 )
+
+    def test_the_band_combines_formula_error_and_body_fat_error(self):
+        # 80 kg at 15 %: LBM 68, Katch-McArdle 1,838.8. Formula 10 % = 183.88;
+        # body fat 1.96 x 21.6 x 80 x 3.5 / 100 = 118.54; hypot = 218.78.
+        band = resting_band(RestingFormula.KATCH_MCARDLE, 80.0, 68.0)
+        self.assertAlmostEqual(band, 218.78, places=2)
 
     def test_cunningham_uses_its_own_coefficients(self):
         # Cunningham 1980: 500 + 22 x LBM; 68 kg -> 1996 kcal.

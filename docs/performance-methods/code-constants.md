@@ -10,20 +10,19 @@ every named number the code fixes. A test fails when it is out of date.
 | Constant | Value | Module | Code comment |
 | --- | --- | --- | --- |
 | `METHOD_ID` | `'activity-energy'` | `backend/performance/activity_energy.py` |  |
-| `METHOD_VERSION` | `1` | `backend/performance/activity_energy.py` | Bump when a formula or constant below changes the estimate. |
+| `METHOD_VERSION` | `2` | `backend/performance/activity_energy.py` | Bump when a formula or constant below changes the estimate. |
 | `J_PER_KCAL` | `4184.0` | `backend/performance/activity_energy.py` | Joules per kilocalorie (thermochemical calorie). |
 | `GRAVITY` | `9.81` | `backend/performance/activity_energy.py` | Standard gravity, m/s^2, for the vertical work of floors. |
-| `MINETTI_RUNNING` | `(155.4, -30.4, -43.3, 46.3, 19.5, 3.6)` | `backend/performance/activity_energy.py` | Minetti et al. 2002 (J Appl Physiol 93:1039, Fig. 2): net metabolic cost of running per unit distance, J/kg/m, as a 5th-order polynomial of the gradient (rise/run, -0.45 to +0.45); coefficients from i^5 down to the constant. |
-| `MINETTI_WALKING` | `(280.5, -58.7, -76.8, 51.9, 19.6, 2.5)` | `backend/performance/activity_energy.py` | Minetti et al. 2002: the same fit for walking. |
-| `GRADE_LIMIT` | `0.45` | `backend/performance/activity_energy.py` | The gradient range Minetti et al. 2002 measured; steeper segments are clamped. |
-| `GRADE_MIN_RUN_M` | `20.0` | `backend/performance/activity_energy.py` | Segments shorter than this are merged for the grade, so GPS altitude noise on a few metres does not become a steep gradient. |
+| `MINETTI_WALKING` | `(280.5, -58.7, -76.8, 51.9, 19.6, 2.5)` | `backend/performance/activity_energy.py` | Minetti et al. 2002: the running fit (MINETTI_RUNNING, its gradient range and the 200 m grade span come from grade_adjustment, #3187), and the same fit for walking. |
+| `ACSM_WALKING_O2_ML_PER_KG_M` | `0.1` | `backend/performance/activity_energy.py` | Level walking, net of rest, from the ACSM walking equation (ACSM's Guidelines for Exercise Testing and Prescription, metabolic equations; VO2 = 0.1 x S + 1.8 x S x G + 3.5, S in m/min): its horizontal term 0.1 mL O2/kg/m at the conventional 20.1 J per mL O2 (Schmidt-Nielsen 1984). Athlete decision on #3187 item 7: neither Minetti's measured minimum (1.64, at optimal speed) nor the fit's intercept (2.5). |
+| `J_PER_ML_O2` | `20.1` | `backend/performance/activity_energy.py` |  |
 | `CYCLING_GROSS_EFFICIENCY` | `0.2` | `backend/performance/activity_energy.py` | Gross efficiency of cycling (mechanical / metabolic energy): 19.8 % measured in 17 trained men by Moseley & Jeukendrup 2001 (R42); it varies with work rate and training (R41, R43), and the one calibration factor absorbs an individual offset (weak evidence). |
 | `STRENGTH_MET_GENERAL` | `3.5` | `backend/performance/activity_energy.py` | 2024 Adult Compendium of Physical Activities (Herrmann et al., J Sport Health Sci 13:6): code 02054, resistance training, multiple exercises, 8-15 reps. |
 | `STRENGTH_MET_VIGOROUS` | `6.0` | `backend/performance/activity_energy.py` | Compendium 2024 code 02050: free weights, power lifting, vigorous effort. |
 | `KEYTEL_MALE` | `(-55.0969, 0.6309, 0.1988, 0.2017)` | `backend/performance/activity_energy.py` | Keytel et al. 2005 (J Sports Sci 23:289), model without VO2max: gross energy expenditure in kJ/min from heart rate (bpm), weight (kg) and age (years): intercept, HR, weight, age. Coefficients as reproduced by several secondary sources; fallback only (about +-20-30 % individually). |
 | `KEYTEL_FEMALE` | `(-20.4022, 0.4472, -0.1263, 0.074)` | `backend/performance/activity_energy.py` |  |
-| `FLEX_HR_SKIP_S` | `180.0` | `backend/performance/activity_energy.py` | Flex-HR: the first minutes of a session are not steady state and are not fitted. |
-| `FLEX_HR_MIN_SEGMENTS` | `20` | `backend/performance/activity_energy.py` | Flex-HR needs at least this many steady segments from power sessions. |
+| `FLEX_HR_SKIP_S` | `180.0` | `backend/performance/activity_energy.py` | Flex-HR: a power session this short is not steady state and is not fitted. |
+| `FLEX_HR_MIN_SEGMENTS` | `20` | `backend/performance/activity_energy.py` | Flex-HR needs at least this many power sessions (one point each). |
 | `FLOOR_HEIGHT_M` | `3.0` | `backend/performance/activity_energy.py` | Vertical metres per counted floor (Garmin counts about 3 m of ascent). |
 | `UPHILL_WORK_EFFICIENCY` | `0.25` | `backend/performance/activity_energy.py` | Efficiency of vertical work when walking up steep gradients: Minetti et al. 2002 found uphill walking above +0.15 reaches concentric muscle efficiency, taken here as 0.25 (assumption from that statement). |
 | `STEP_LENGTH_PER_HEIGHT` | `0.415` | `backend/performance/activity_energy.py` | Step length from body height when no recorded walk measured it; a common heuristic, weak evidence (+-10-15 %). |
@@ -110,8 +109,9 @@ every named number the code fixes. A test fails when it is out of date.
 | `ACTIVITY_MAX_HR_CATEGORIES` | `('cycling', 'running')` | `backend/performance/garmin_canonical.py` |  |
 | `GARMIN_RUN_PREDICTION_SOURCE` | `'Garmin Connect Laufprognose'` | `backend/performance/garmin_metrics.py` |  |
 | `GARMIN_SOURCE` | `'Garmin Connect'` | `backend/performance/garmin_projection.py` |  |
-| `GRADE_SPAN_M` | `200.0` | `backend/performance/grade_adjustment.py` |  |
+| `GRADE_SPAN_M` | `200.0` | `backend/performance/grade_adjustment.py` | Distance over which a grade is taken from altitude, so GPS altitude noise over a few metres does not become a steep gradient; M8 and M11 (#3187). |
 | `MAX_GRADE` | `0.45` | `backend/performance/grade_adjustment.py` | Validity range of the Minetti polynomial, as a fraction. |
+| `MINETTI_RUNNING` | `(155.4, -30.4, -43.3, 46.3, 19.5, 3.6)` | `backend/performance/grade_adjustment.py` | Minetti et al. 2002 (J Appl Physiol 93:1039, Fig. 2): net metabolic cost of running per unit distance, J/kg/m, as a 5th-order polynomial of the gradient (rise/run, -0.45 to +0.45); coefficients from i^5 down to the constant. The one copy for grade-adjusted pace (M8) and running energy (M11). |
 | `CURRENT_DAYS` | `7` | `backend/performance/load_context.py` | The days the current local values and their averages are read from. |
 | `METHOD_ID` | `'local-tss-load'` | `backend/performance/local_tss.py` |  |
 | `METHOD_VERSION` | `7` | `backend/performance/local_tss.py` |  |
@@ -230,7 +230,7 @@ every named number the code fixes. A test fails when it is out of date.
 | `MOVING_MPS` | `1.0` | `backend/performance/session_conditions.py` | Samples below this speed are standing, not running (3.6 km/h). |
 | `STOP_S` | `30.0` | `backend/performance/session_conditions.py` | A gap longer than max(30 s, 3 x the median step) is a stop, as in the halves. |
 | `RPE_GAP_POINTS` | `2.0` | `backend/performance/session_conditions.py` | RPE against intensity (athlete decision on #3084, 2026-11-15; Foster session-RPE, R1): notable from this gap in points to the expected RPE. |
-| `RPE_IF_WINDOW` | `0.05` | `backend/performance/session_conditions.py` | The expected RPE is the median of own rated sessions of the same sport and RPE scale within this IF of the session (orchestrator decision on #3084). |
+| `RPE_INTENSITY_WINDOW_PCT` | `5.0` | `backend/performance/session_conditions.py` | The expected RPE is the median of own rated sessions of the same sport and RPE scale within +-0.05 IF of the session (orchestrator decision on #3084), in the stored scale: a summary's intensity is the local IF in % (M6, IF x 100, MetricKind.INTENSITY_FACTOR), so the window is 5 percentage points. |
 | `MIN_RATED` | `5` | `backend/performance/session_conditions.py` | Own rated sessions needed for an expected RPE; fewer leave the check unknown. |
 | `RATED_WINDOW_DAYS` | `84` | `backend/performance/session_conditions.py` | The rated sessions read for the expected RPE: the comparable-session window. |
 | `INPUTS` | `'condition_inputs'` | `backend/performance/session_conditions.py` | What the session report adds to the detail for these checks: the session's local IF, the device's grade-adjusted speed and the athlete's rated sessions. |

@@ -14,14 +14,15 @@ from __future__ import annotations
 import math
 import statistics
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date, timedelta
+from typing import cast
 
 from backend.performance.activity_energy import tef_kcal
 
 METHOD_ID = "adaptive-expenditure"
 # Bump when a formula or constant below changes the estimate.
-METHOD_VERSION = 1
+METHOD_VERSION = 2
 # Days per window and windows per week of the rolling view (#3099, #3100).
 WINDOW_DAYS = 28
 # Half-life in days of the exponentially weighted weight trend.
@@ -45,10 +46,25 @@ FORBES_CONSTANT_KG = 10.4
 # Fat share of a weight change without a body-fat measurement: 0.75 gives about
 # 7,500 kcal/kg, near the common 7,700 (product assumption).
 DEFAULT_FAT_SHARE = 0.75
-# Extra uncertainty of a flagged (estimated) meal day: a share of its intake.
+# Extra uncertainty of a flagged (estimated) meal: a share of its logged kcal.
 FLAGGED_DAY_UNCERTAINTY = 0.25
 # Two-sided 95 % band multiplier.
 BAND_Z = 1.96
+# Two-sided 95 % Student t quantiles by degrees of freedom (standard table);
+# a window's band uses the smaller of its intake (days - 1) and weight-slope
+# (weigh-ins - 2) degrees of freedom, BAND_Z beyond the table (#3187 item 10).
+T_QUANTILE_95 = {
+    1: 12.706, 2: 4.303, 3: 3.182, 4: 2.776, 5: 2.571, 6: 2.447, 7: 2.365,
+    8: 2.306, 9: 2.262, 10: 2.228, 11: 2.201, 12: 2.179, 13: 2.160,
+    14: 2.145, 15: 2.131, 16: 2.120, 17: 2.110, 18: 2.101, 19: 2.093,
+    20: 2.086, 21: 2.080, 22: 2.074, 23: 2.069, 24: 2.064, 25: 2.060,
+    26: 2.056, 27: 2.052, 28: 2.048, 29: 2.045, 30: 2.042, 40: 2.021,
+    60: 2.000, 120: 1.980,
+}  # fmt: skip
+# Uncertainty of the fat share of a weight change (SD), so the energy density
+# enters the band: a share between 0.5 and 1.0 taken as uniform, 0.5 / sqrt(12)
+# (product assumption, #3187 item 10).
+FAT_SHARE_SD = 0.144
 # The one activity calibration factor: prior 1 +- 0.10, clamped to 0.85-1.15,
 # fitted on complete windows of the last 12 weeks (method comment, #3100).
 CALIBRATION_PRIOR_SD = 0.10
@@ -75,6 +91,8 @@ class DayInputs:
     fat_g: float = 0.0
     entries: int = 0
     flagged: bool = False
+    # Logged kcal of the day's flagged (estimated) entries (#3187 item 13).
+    flagged_kcal: float = 0.0
     weight_kg: float | None = None
     activity_kcal: float | None = None  # M11 session net cost + NEAT, uncalibrated
 
@@ -100,7 +118,9 @@ class EnergyWindow:
     activity_kcal: float | None
     activity_kcal_raw: float | None
     tef_kcal: float | None
+    # All complete days count; flagged entries widen the band (#3187 item 14).
     adaptive_tdee: Estimate | None
+    # Only from a window without any flagged day, else None.
     adaptive_tdee_unflagged: Estimate | None
     derived_rmr: Estimate | None
     insufficient: str | None
@@ -108,6 +128,11 @@ class EnergyWindow:
     # Windows the calibration fit used; below MIN_CALIBRATION_WINDOWS the
     # factor is still the prior 1 and the display says so.
     calibration_windows: int = 0
+    # Flagged entries' logged kcal per complete day of the window.
+    flagged_kcal_per_day: float = 0.0
+    # With the learned flagged-meal bias b: flagged kcal x (1 + b), labelled;
+    # None until the bias is estimated. Logged entries are never rewritten.
+    adaptive_tdee_corrected: Estimate | None = None
 
 
 def weight_trend(weights_kg: Mapping[date, float]) -> dict[date, float]:
@@ -164,18 +189,32 @@ def _latest_body_fat(inputs: EnergyInputs, day: date) -> float | None:
     return inputs.body_fat_pct[max(measured)] if measured else None
 
 
+def t_quantile(dof: int) -> float:
+    """The 95 % two-sided t quantile, from the next smaller tabled dof."""
+    tabled = [d for d in T_QUANTILE_95 if d <= max(1, dof)]
+    return BAND_Z if dof > max(T_QUANTILE_95) else T_QUANTILE_95[max(tabled)]
+
+
 def _tdee(
-    intakes: Sequence[tuple[float, bool]], stored_per_day: float, store_sd: float
+    intakes: Sequence[tuple[float, float]],
+    stored_per_day: float,
+    store_sd: float,
+    weighins: int = 3,
 ) -> Estimate | None:
-    """Mean intake minus stored energy per day, with its 95 % band."""
+    """Mean intake minus stored energy per day, with its 95 % band.
+
+    Each intake is (day kcal, its flagged entries' kcal); the flagged part
+    widens the band by ``FLAGGED_DAY_UNCERTAINTY`` of itself.
+    """
     if not intakes:
         return None
     values = [kcal for kcal, _ in intakes]
     mean = statistics.fmean(values)
     spread = statistics.stdev(values) if len(values) > 1 else 0.0
-    flagged_var = sum((FLAGGED_DAY_UNCERTAINTY * k) ** 2 for k, f in intakes if f)
+    flagged_var = sum((FLAGGED_DAY_UNCERTAINTY * k) ** 2 for _, k in intakes)
     intake_var = spread**2 / len(values) + flagged_var / len(values) ** 2
-    band = BAND_Z * math.sqrt(intake_var + store_sd**2)
+    dof = min(len(values) - 1, weighins - 2)
+    band = t_quantile(dof) * math.sqrt(intake_var + store_sd**2)
     return Estimate(mean - stored_per_day, band)
 
 
@@ -196,9 +235,9 @@ def _stored_energy(
     """Stored energy per day over the weigh-ins, and its standard error.
 
     The least-squares slope of the window's own weigh-ins, at the energy
-    density of the body composition at the last one; the error is the slope's
-    standard error. Unlike the trend's change it has no warm-up lag after the
-    first weigh-in (Gitar on #3123).
+    density of the body composition at the last one. The error combines the
+    slope's standard error with the density's (``FAT_SHARE_SD``). Unlike the
+    trend's change the slope has no warm-up lag after the first weigh-in.
     """
     weighins = sorted(weights)
     last = weighins[-1]
@@ -212,7 +251,8 @@ def _stored_energy(
         y - (mean_y + slope * (x - mean_x)) for x, y in zip(xs, ys, strict=True)
     ]
     slope_se = math.sqrt(sum(r * r for r in residuals) / max(1, len(xs) - 2) / sxx)
-    return density * slope, density * slope_se
+    density_sd = FAT_SHARE_SD * (FAT_KCAL_PER_KG - LEAN_KCAL_PER_KG)
+    return density * slope, math.hypot(density * slope_se, slope * density_sd)
 
 
 def _window(
@@ -238,9 +278,9 @@ def _window(
     tdee = unflagged = derived = None
     if reason is None:
         stored, store_sd = _stored_energy(inputs, trend, weights)
-        everything = [(v.intake_kcal or 0.0, v.flagged) for v in complete.values()]
-        tdee = _tdee(everything, stored, store_sd)
-        unflagged = _tdee([p for p in everything if not p[1]], stored, store_sd)
+        everything = [(v.intake_kcal or 0.0, v.flagged_kcal) for v in complete.values()]
+        tdee = _tdee(everything, stored, store_sd, len(weighins))
+        unflagged = tdee if flagged == 0 else None
         if tdee is not None and raw is not None and tef is not None:
             rmr = tdee.kcal - raw * factor - tef
             derived = Estimate(rmr, math.hypot(tdee.band_kcal, 0.1 * raw * factor))
@@ -259,6 +299,11 @@ def _window(
         insufficient=reason,
         rmr_source=inputs.rmr_source,
         calibration_windows=calibration_windows,
+        flagged_kcal_per_day=statistics.fmean(
+            [v.flagged_kcal for v in complete.values()]
+        )
+        if complete
+        else 0.0,
     )
 
 
@@ -321,7 +366,23 @@ def energy_windows(
     uncalibrated = [_window(inputs, trend, e, 1.0) for e in ends]
     factor = calibration_factor(uncalibrated)
     used = len(_calibration_points(uncalibrated))
-    return tuple(_window(inputs, trend, e, factor, used) for e in ends)
+    windows = [_window(inputs, trend, e, factor, used) for e in ends]
+    bias = _bias(windows)
+    if bias is None:
+        return tuple(windows)
+    return tuple(_corrected(window, *bias) for window in windows)
+
+
+def _corrected(window: EnergyWindow, bias: float, band: float) -> EnergyWindow:
+    """The window with flagged kcal counted at (1 + b); its band adds b's."""
+    tdee = window.adaptive_tdee
+    if tdee is None:
+        return window
+    extra = window.flagged_kcal_per_day
+    corrected = Estimate(
+        tdee.kcal + bias * extra, math.hypot(tdee.band_kcal, band * extra)
+    )
+    return cast(EnergyWindow, replace(window, adaptive_tdee_corrected=corrected))
 
 
 def history_start(end: date, weeks: int = 12) -> date:
@@ -330,26 +391,24 @@ def history_start(end: date, weeks: int = 12) -> date:
 
 
 def flagged_meal_bias(inputs: EnergyInputs, end: date) -> tuple[float, float] | None:
-    """Mean misestimate of flagged days, in % of their logged kcal, with its band.
+    """Mean misestimate of flagged entries, in % of their logged kcal, with its band."""
+    bias = _bias(energy_windows(inputs, end))
+    return None if bias is None else (bias[0] * 100.0, bias[1] * 100.0)
 
-    Across the windows, mean logged intake minus stored energy is regressed on
-    the flagged days' logged kcal per day: y = T - b x. If flagged meals were
-    logged too high by b, more flagged intake shows as a lower expenditure.
-    Positive values mean flagged meals were in fact larger than logged.
+
+def _bias(windows: Sequence[EnergyWindow]) -> tuple[float, float] | None:
+    """The flagged-entry bias b and its band, as fractions (#3187 items 13, 14).
+
+    Across the windows, the adaptive TDEE is regressed on the flagged entries'
+    logged kcal per day x: TDEE = T - b x. If flagged meals were in fact
+    larger than logged by b, more flagged intake shows as a lower
+    expenditure, so b = -slope; positive b means they were larger.
     """
-    windows = energy_windows(inputs, end)
-    points = []
-    for window in windows:
-        if window.adaptive_tdee is None:
-            continue
-        start = window.end - timedelta(days=WINDOW_DAYS - 1)
-        complete = [
-            v
-            for d, v in inputs.days.items()
-            if start <= d <= window.end and is_complete(v, inputs.rmr_kcal)
-        ]
-        flagged = sum(v.intake_kcal or 0.0 for v in complete if v.flagged)
-        points.append((flagged / len(complete), window.adaptive_tdee.kcal))
+    points = [
+        (w.flagged_kcal_per_day, w.adaptive_tdee.kcal)
+        for w in windows
+        if w.adaptive_tdee is not None
+    ]
     usable = [p for p in points if p[0] > 0]
     if len(usable) < MIN_BIAS_WINDOWS or len({round(x, 6) for x, _ in points}) < 3:
         return None
@@ -362,5 +421,4 @@ def flagged_meal_bias(inputs: EnergyInputs, end: date) -> tuple[float, float] | 
     slope = sum((x - mean_x) * (y - mean_y) for x, y in points) / sxx
     residual = [y - (mean_y + slope * (x - mean_x)) for x, y in points]
     slope_sd = math.sqrt(sum(r * r for r in residual) / max(1, len(points) - 2) / sxx)
-    # The adaptive TDEE falls by b per logged flagged kcal: b = -slope.
-    return (-slope * 100.0, BAND_Z * slope_sd * 100.0)
+    return -slope, BAND_Z * slope_sd

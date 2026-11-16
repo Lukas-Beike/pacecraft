@@ -235,7 +235,11 @@ test("@responsive a failed trends read shows a retry on Laufen and on Radfahren"
   await routeTo(page, "#analysis/cycling");
   const cycling = page.locator("#cyclingRecurringSessions");
   await expect(cycling.getByRole("button", { name: /Erneut/ })).toBeVisible();
+  // Opening Laufen reads the trends again (a failed read is not kept). That read must fail before
+  // the retry is allowed, or it replaces the retry button under the click.
+  const reread = page.waitForResponse((response) => new URL(response.url()).pathname === TRENDS);
   await routeTo(page, "#analysis/running");
+  await reread;
   const running = page.locator("#runningRecurringSessions");
   await expect(running.getByRole("button", { name: /Erneut/ })).toBeVisible();
   fail = false;

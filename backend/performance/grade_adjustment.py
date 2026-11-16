@@ -12,19 +12,24 @@ from typing import Any, Final
 
 from backend.athlete.measurements import finite_float as _number
 
+# Distance over which a grade is taken from altitude, so GPS altitude noise
+# over a few metres does not become a steep gradient; M8 and M11 (#3187).
 GRADE_SPAN_M: Final = 200.0
 # Validity range of the Minetti polynomial, as a fraction.
 MAX_GRADE: Final = 0.45
-# Minetti et al. (2002): metabolic cost of running (J/kg/m) at fractional grade.
-_MINETTI: Final = (155.4, -30.4, -43.3, 46.3, 19.5, 3.6)
-_LEVEL_COST: Final = _MINETTI[-1]
+# Minetti et al. 2002 (J Appl Physiol 93:1039, Fig. 2): net metabolic cost of
+# running per unit distance, J/kg/m, as a 5th-order polynomial of the gradient
+# (rise/run, -0.45 to +0.45); coefficients from i^5 down to the constant. The
+# one copy for grade-adjusted pace (M8) and running energy (M11).
+MINETTI_RUNNING: Final = (155.4, -30.4, -43.3, 46.3, 19.5, 3.6)
+_LEVEL_COST: Final = MINETTI_RUNNING[-1]
 
 
 def grade_adjusted(speed: float, grade_pct: float) -> float:
     """Speed on level ground with the same metabolic cost."""
     grade = max(-MAX_GRADE, min(MAX_GRADE, grade_pct / 100))
     cost = 0.0
-    for coefficient in _MINETTI:
+    for coefficient in MINETTI_RUNNING:
         cost = cost * grade + coefficient
     return speed * cost / _LEVEL_COST if cost > 0 else speed
 

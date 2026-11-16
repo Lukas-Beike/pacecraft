@@ -1272,7 +1272,7 @@ def _condition_checks(facts: _Facts) -> list[dict[str, Any]]:
     value = {
         "rpe": rpe,
         "expected_rpe": expected,
-        "intensity": round(intensity, 2),
+        "intensity_pct": round(intensity, 1),
         "rated_sessions": count,
         "rpe_scale": scale,
     }
@@ -1296,7 +1296,7 @@ def _condition_checks(facts: _Facts) -> list[dict[str, Any]]:
             value={**value, "difference": round(difference, 1)},
             unit="RPE",
             rule="Session-RPE gegen den Median der eigenen bewerteten Einheiten "
-            "gleicher Sportart und Skala bei IF ± 0,05 (Foster)",
+            "gleicher Sportart und Skala bei IF ± 5 Prozentpunkten (Foster)",
             threshold=session_conditions.RPE_GAP_POINTS,
             measure=abs(difference),
             basis="personal",

@@ -70,6 +70,9 @@ def build_diagnostics(ctx: AppContext) -> DiagnosticsServices:
                 session_reports=ctx.session_report_counts.summary,
                 heavy_read_gate=ctx.heavy_read_gate.summary,
                 energy_balance=lambda db: ctx.nutrition.energy_basis(db),
+                expenditure_gaps=lambda db: (
+                    ctx.nutrition.diary_service().sync_status.expenditure_gaps(db)
+                ),
                 canonical_backfill=ctx.canonical_backfill.status_reader,
                 canonical_read=ctx.canonical_read,
                 # The Garmin change check's status: counts and times only (#2372).

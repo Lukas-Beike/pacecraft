@@ -44,6 +44,7 @@
       { ...speed, key: "speed_mps", average: finite(metrics.avg_speed_mps) ? speed.convert(metrics.avg_speed_mps) : null, max: finite(metrics.max_speed_mps) ? speed.convert(metrics.max_speed_mps) : null },
       { key: "power_w", label: "Leistung", unit: "W", color: "power", format: (v) => numberText(v), floorAtZero: true, average: metrics.avg_power, max: metrics.max_power_w },
       cadenceChannel(activity, metrics),
+      { key: "respiration_rate_brpm", label: "Atemfrequenz", unit: "/min", color: "respiration", format: (v) => numberText(v), floorAtZero: true },
       { key: "altitude_m", label: "Höhe", unit: "m", color: "elevation", format: (v) => numberText(v), elevation: true },
       // Running dynamics per second, named like their averages in the values (#2258).
       ...ActivityDetails.RUNNING_DYNAMICS.map(([key, label, unit, digits]) => ({ key, label, unit, color: "dynamics", format: (v) => numberText(v, digits), average: metrics[key] })),
@@ -279,7 +280,9 @@
     const columns = [
       ["Zeit", (lap) => (finite(seconds(lap)) ? clock(seconds(lap)) : null)],
       ["Distanz", (lap) => AppFormat.distance(lap.distance_m)],
-      [speed.invert ? "Pace" : "km/h", (lap) => (finite(lap.avg_speed_mps) && speed.convert(lap.avg_speed_mps) != null ? speed.format(speed.convert(lap.avg_speed_mps)) : null)],
+      [speed.invert ? "Pace" : "km/h", (lap) => speedText(speed, lap.avg_speed_mps)],
+      // Garmin's own grade-adjusted lap speed, shown like the pace beside it.
+      ["GAP Garmin", (lap) => speedText(speed, lap.avg_grade_adjusted_speed_mps)],
       ["Ø W", (lap) => (finite(lap.avg_power) ? numberText(lap.avg_power) : null)],
       ["Ø HF", (lap) => (finite(lap.avg_hr) ? numberText(lap.avg_hr) : null)],
       ["Anstieg", (lap) => (finite(lap.elevation_gain_m) ? `${numberText(lap.elevation_gain_m)} m` : null)],

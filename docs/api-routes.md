@@ -172,8 +172,8 @@ provider activity id of one of the session's records, as long as it
 names one session; no body.
 
 Response: 200 with `ok`, the document (`contract`, `session`, `metrics`,
-`streams`, `laps`, `zones`, `strength_sets`, `analysis`, `detail_data`
-and more, plus `weather` and `route` when stored, and `data_scope`),
+`streams`, `laps`, `workout_steps`, `device_zones`, `zones`,
+`strength_sets`, `analysis`, `detail_data` and more, plus `weather` and `route` when stored, and `data_scope`),
 `planned_adherence` for a run or ride the calendar pairs with a local
 planned unit (each step's time in target, the score and zone times),
 and `session_bundle` (the session's provider copies and merge
@@ -335,7 +335,8 @@ Request: no query, no body.
 Response: 200 with `measurements` (at most 20, each with `date`, `sex`
 `male` or `female` as the sites tell, `folds_mm` as `{site, label, mm}` in
 protocol order and `body_fat_pct` by Jackson-Pollock and Siri, null without
-a birth year in the profile), `birth_year_known` and `sites` (the sites per
+a birth year in the profile; `age_outside_fit` true when the age lies outside
+the equation's fitted range), `birth_year_known` and `sites` (the sites per
 sex).
 
 Errors: none beyond the common ones.
@@ -1028,6 +1029,7 @@ Request: JSON body, either `components` alone or one meal. Meal fields:
 `fat_g` (0 to 1000, or `carbs`, `carbohydrates`, `protein`, `fat`), `meal_date`
 (or `date`, default today), `meal_time` (or `logged_at`; a time or an ISO
 timestamp), `logged_time_known` (boolean; `false` needs `meal_type`),
+`estimate_uncertain` (boolean, default false: the amounts were estimated),
 `meal_type` (`breakfast`, `lunch`, `dinner`, `snack`; default derived from the
 time), `source` (`manual`, `voice`, `photo`, `coach`; anything else is
 `manual`), `packaging_label` (`true` marks label values), `food_ingredients`
@@ -1040,7 +1042,8 @@ items `{kind, amount, unit}` plus `product_id` (`local_product`), `food_id`
 
 Response: 200 `{"ok": true, "entry", "change"}`; `entry` is the stored entry
 (`id`, `meal_date`, `logged_at`, `meal_type`, `description`, `kcal`, the macros,
-`source`, `nutrition_basis`, `sync_state`, `logged_time_known`), `change` the
+`source`, `nutrition_basis`, `sync_state`, `logged_time_known`,
+`estimate_uncertain`), `change` the
 undo reference.
 
 Errors: 400 "Beschreibung der Mahlzeit ist erforderlich."; 400 "Kalorienangabe

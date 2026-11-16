@@ -38,3 +38,6 @@ python tools/quality_baseline.py --align-versions
 
 This changes only the version record. New diagnostics from the newer tool still
 fail the check until the code is fixed or the baseline is regenerated on purpose.
+While the auto-rebase workflow is off during a lane delivery, it does not align a
+Dependabot ruff or mypy bump: run the command above on that branch and commit the
+baseline with the bump (#3211).

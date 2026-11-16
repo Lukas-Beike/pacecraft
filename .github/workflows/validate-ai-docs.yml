@@ -11,7 +11,7 @@ permissions:
 jobs:
   ai-docs:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
     env:
       AI_DOCS_REQUIRED: '1'
     steps:
@@ -29,3 +29,12 @@ jobs:
           test -f tests/test_ai_docs_contract.py
       - name: Validate guidance, discovery, and local references
         run: python -m unittest discover -s tests -p test_ai_docs_contract.py -v
+      # A strict OpenSpec warning fails the PR that introduces it, not later lanes (#3173).
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v6.0.0
+        with:
+          node-version: '22'
+          package-manager-cache: false
+      - name: Install the pinned OpenSpec CLI
+        run: npm ci --ignore-scripts
+      - name: Validate the OpenSpec main specs strictly
+        run: python scripts/spec_validate.py

@@ -33,7 +33,8 @@ HEALTH = {
 }
 SESSIONS = [
     {"id": "run", "sport": "run", "started_at_local": "2026-10-01T07:00:00",
-     "moving_duration_s": 3000, "distance_m": 10_000, "avg_cadence": 170},
+     # Canonical run cadence counts one leg: 85 strides/min = 170 steps/min.
+     "moving_duration_s": 3000, "distance_m": 10_000, "avg_cadence": 85},
     {"id": "ride", "sport": "ride", "started_at_local": "2026-10-02T07:00:00",
      "moving_duration_s": 3600, "work_kj": 720, "avg_hr": 140},
     {"id": "gym", "sport": "strength", "started_at_local": "2026-10-03T18:00:00",
@@ -47,12 +48,14 @@ def sources(
     resting: tuple[float, str] | None = (1680.0, "katch_mcardle"),
     streams: dict[str, Any] | None = None,
     profile: dict[str, str] | None = None,
+    sessions: list[dict[str, Any]] | None = None,
+    health: dict[str, dict[str, Any]] | None = None,
 ) -> EnergySources:
     return EnergySources(
         diary=lambda _db, _s, _e: DIARY,
-        daily_health=lambda _db, _s, _e: HEALTH,
+        daily_health=lambda _db, _s, _e: HEALTH if health is None else health,
         weights=lambda _db, _s, _e: {DAY1: 70.0},
-        sessions=lambda _db, _s, _e: SESSIONS,
+        sessions=lambda _db, _s, _e: SESSIONS if sessions is None else sessions,
         streams=lambda _db, key: (streams or {}).get(key, {}),
         resting=lambda _db, _day: resting,
         body_fat=lambda _db, _s, _e: {DAY1: 12.0},
@@ -72,20 +75,22 @@ class EnergyInputsReaderTests(unittest.TestCase):
             (first.protein_g, first.carbohydrate_g, first.fat_g), (100, 200, 60)
         )
         self.assertEqual((second.intake_kcal, second.flagged), (900, True))
+        # Only the flagged entries' kcal widen the band (#3187 item 13).
+        self.assertEqual((first.flagged_kcal, second.flagged_kcal), (0.0, 900.0))
         self.assertIsNone(third.intake_kcal)
         self.assertEqual((first.weight_kg, second.weight_kg), (70.0, None))
         # Run: 70 kg x 10,000 m x 3.6 J/kg/m / 4,184 = 602.294 kcal. NEAT: step
-        # 0.415 x 1.80 = 0.747 m; 10,000 - 170 x 50 = 1,500 steps; 70 x 1,500 x
-        # 0.747 x 2.5 = 196,087.5 J plus floors 82,404 J = 66.561 kcal.
+        # 0.415 x 1.80 = 0.747 m; 10,000 - 2 x 85 x 50 = 1,500 steps; 70 x 1,500 x
+        # 0.747 x 2.01 = 157,654.35 J plus floors 82,404 J = 57.375 kcal.
         assert first.activity_kcal is not None
-        self.assertAlmostEqual(first.activity_kcal, 602.294 + 66.561, places=2)
-        # Ride: 790.421 kcal net (M11 example); NEAT 70 x 5,000 x 0.747 x 2.5 =
-        # 653,625 J = 156.220 kcal; the ride adds no steps.
+        self.assertAlmostEqual(first.activity_kcal, 602.294 + 57.375, places=2)
+        # Ride: 790.421 kcal net (M11 example); NEAT 70 x 5,000 x 0.747 x 2.01 =
+        # 525,514.5 J = 125.601 kcal; the ride adds no steps.
         assert second.activity_kcal is not None
-        self.assertAlmostEqual(second.activity_kcal, 790.421 + 156.220, places=2)
-        # Strength (3.5 - 1) x 70 kcal/h; no steps that day, so no NEAT; the swim
-        # has no HR fit (one ride is too few segments) and stays unpriced.
-        self.assertAlmostEqual(third.activity_kcal or 0.0, 175.0)
+        self.assertAlmostEqual(second.activity_kcal, 790.421 + 125.601, places=2)
+        # Day 3 has no steps (NEAT unknown) and an unpriced swim (no HR fit from
+        # one ride): its activity stays unknown, not the strength alone (#3187).
+        self.assertIsNone(third.activity_kcal)
         self.assertEqual(
             [(c.method, c.kcal is None) for c in costs],
             [("minetti", False), ("power", False), ("met", False), ("unknown", True)],
@@ -108,6 +113,57 @@ class EnergyInputsReaderTests(unittest.TestCase):
              "sessions": 4, "unpriced_sessions": 1, "rmr_source": "garmin"},
         )  # fmt: skip
 
+    def test_foot_cadence_counts_both_legs_and_a_bike_cadence_no_steps(
+        self,
+    ) -> None:
+        walk = {
+            "id": "walk",
+            "sport": "walk",
+            "started_at_local": "2026-10-01T12:00",
+            "moving_duration_s": 1000,
+            "distance_m": 1400,
+            "avg_cadence": 56,
+        }
+        ride = {
+            "id": "spin",
+            "sport": "ride",
+            "started_at_local": "2026-10-01T18:00",
+            "moving_duration_s": 1800,
+            "avg_hr": 120,
+            "avg_cadence": 90,
+        }
+        inputs, costs = read_energy_inputs(
+            None, sources(sessions=[walk, ride]), DAY1, DAY1
+        )  # fmt: skip
+        # 56 strides/min are 112 steps/min: 112 x 1,000 s / 60 = 1,866.67 steps.
+        self.assertAlmostEqual(costs[0].steps, 1866.667, places=2)
+        self.assertEqual(costs[1].steps, 0.0)
+        # Step length 1.4 m/s x 60 / 112 = 0.75 m (not 1.5 m from one leg).
+        # Walk: 70 x 1,400 x 2.01 = 196,980 J = 47.079 kcal; NEAT: (10,000 -
+        # 1,866.67) x 0.75 x 2.01 x 70 = 858,270 J plus floors 82,404 J =
+        # 224.826 kcal; the HR ride without a fit stays unpriced, so unknown.
+        self.assertIsNone(inputs.days[DAY1].activity_kcal)
+        alone, _ = read_energy_inputs(None, sources(sessions=[walk]), DAY1, DAY1)
+        activity = alone.days[DAY1].activity_kcal
+        assert activity is not None
+        self.assertAlmostEqual(activity, 47.079 + 224.826, places=2)
+
+    def test_without_a_resting_rate_net_costs_stay_unknown(self) -> None:
+        no_resting = {"2026-10-02": {"steps": 5_000}}
+        inputs, costs = read_energy_inputs(
+            None, sources(resting=None, health=no_resting), DAY1, DAY3
+        )
+        self.assertIsNone(inputs.rmr_kcal)
+        # Power and MET costs are net of the resting rate: unknown, not gross.
+        self.assertEqual(
+            [(c.method, c.kcal) for c in costs[1:3]],
+            [("unknown", None), ("unknown", None)],
+        )
+        self.assertIsNone(inputs.days[DAY2].activity_kcal)
+        # Day 1 has no steps either: its run is priced, its NEAT is unknown.
+        self.assertIsNotNone(costs[0].kcal)
+        self.assertIsNone(inputs.days[DAY1].activity_kcal)
+
     def test_energy_basis_counts_the_twelve_week_view(self) -> None:
         basis = energy_basis(None, sources(), DAY3)
         # 12 weekly windows; two logged days are far below 14 complete days.
@@ -120,13 +176,13 @@ class EnergyInputsReaderTests(unittest.TestCase):
     def test_run_grade_comes_from_the_streams(self) -> None:
         streams = {
             "run": {
-                StreamChannel.DISTANCE_M: [0.0, 100.0],
-                StreamChannel.ALTITUDE_M: [0.0, 10.0],
+                StreamChannel.DISTANCE_M: [0.0, 200.0],
+                StreamChannel.ALTITUDE_M: [0.0, 20.0],
             }
         }
         _, costs = read_energy_inputs(None, sources(streams=streams), DAY1, DAY1)
-        # 100 m at +10 %: 70 x 100 x 5.968214 / 4,184 = 9.985 kcal.
-        self.assertAlmostEqual(costs[0].kcal or 0.0, 9.985, places=3)
+        # 200 m at +10 %: 70 x 200 x 5.968214 / 4,184 = 19.970 kcal.
+        self.assertAlmostEqual(costs[0].kcal or 0.0, 19.970, places=3)
 
     def test_keytel_prices_hr_sessions_with_age_and_sex(self) -> None:
         profile = {"height_cm": "180", "birth_year": "1996", "sex": "male"}

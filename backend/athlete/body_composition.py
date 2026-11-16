@@ -3,16 +3,22 @@
 Pure functions, no storage. 3-site skinfolds give body density (Jackson &
 Pollock 1978 for men, Jackson, Pollock & Ward 1980 for women); the Siri (1961)
 equation turns density into body fat; lean mass is weight times the fat-free
-share. Resting energy from lean mass: Katch-McArdle (370 + 21.6 x LBM) and
-Cunningham 1980 (500 + 22 x LBM). Each is a formula estimate, shown beside
-Garmin's, never in its place.
+share. Resting energy from lean mass: Katch-McArdle (370 + 21.6 x LBM, the
+general equation of Cunningham 1991) and Cunningham 1980 (500 + 22 x LBM). Each
+is a formula estimate, shown beside Garmin's, never in its place. Card M13 in
+docs/performance-methods documents the sources and limits.
 """
 
 from __future__ import annotations
 
+import math
 from collections.abc import Mapping
 from enum import StrEnum
 from typing import Final
+
+METHOD_ID: Final = "body-composition-resting"
+# Bump with the M13 card version when a formula or constant below changes.
+METHOD_VERSION: Final = 1
 
 
 class Sex(StrEnum):
@@ -35,19 +41,30 @@ SKINFOLD_BOUNDS_MM: Final = (2.0, 80.0)
 # Accepted ages. The equations were fitted on men aged 18-61 and women aged 18-55;
 # the methods document names that range.
 SKINFOLD_AGES: Final = (18, 80)
+# The fitted ranges; an accepted age outside them is flagged, not refused (#3187).
+FITTED_AGES: Final = {Sex.MALE: (18, 61), Sex.FEMALE: (18, 55)}
 
 
 class RestingFormula(StrEnum):
     """Resting energy (kcal/day) = intercept + per_kg x lean mass (kg)."""
 
-    KATCH_MCARDLE = "katch_mcardle"  # 370 + 21.6 x LBM
-    CUNNINGHAM = "cunningham"  # Cunningham 1980: 500 + 22 x LBM
+    KATCH_MCARDLE = "katch_mcardle"  # 370 + 21.6 x LBM (Cunningham 1991)
+    CUNNINGHAM = (
+        "cunningham"  # Cunningham 1980: 500 + 22 x LBM, the abstract's rounding
+    )
 
 
 RESTING_COEFFICIENTS: Final = {
     RestingFormula.KATCH_MCARDLE: (370.0, 21.6),
     RestingFormula.CUNNINGHAM: (500.0, 22.0),
 }
+# Half-width of the nominal 95 % band of a formula's resting energy, as a share of
+# it: Cunningham 1980 expects a 10 % prediction error for an individual (#3187).
+RESTING_FORMULA_ERROR: Final = 0.10
+# Standard error of the 3-site body fat in percentage points: the middle of the
+# commonly cited 3.4-3.9 for the Jackson-Pollock equations (product assumption).
+SKINFOLD_BODY_FAT_SE: Final = 3.5
+BAND_Z: Final = 1.96
 
 
 def body_density(sex: Sex, folds_mm: Mapping[str, float], age_years: int) -> float:
@@ -66,6 +83,12 @@ def body_density(sex: Sex, folds_mm: Mapping[str, float], age_years: int) -> flo
     return a - b * total + c * total**2 - d * age_years
 
 
+def outside_fitted_ages(sex: Sex, age_years: int) -> bool:
+    """Whether the age lies outside the range the sex's equation was fitted on."""
+    youngest, oldest = FITTED_AGES[sex]
+    return not youngest <= age_years <= oldest
+
+
 def siri_body_fat_pct(density: float) -> float:
     """Body fat (%) from body density: 495 / density - 450 (Siri 1961)."""
     return 495.0 / density - 450.0
@@ -82,3 +105,16 @@ def resting_energy(formula: RestingFormula, lean_mass: float) -> float:
     """Resting energy (kcal/day) from lean mass by the named formula."""
     intercept, per_kg = RESTING_COEFFICIENTS[formula]
     return intercept + per_kg * lean_mass
+
+
+def resting_band(formula: RestingFormula, weight_kg: float, lean_mass: float) -> float:
+    """Half-width (kcal/day) of the nominal 95 % band of the formula's value.
+
+    The formula's own prediction error and the skinfold body fat's standard
+    error, carried through lean mass (weight x SE / 100 kg per percentage
+    point), are combined in quadrature.
+    """
+    _, per_kg = RESTING_COEFFICIENTS[formula]
+    formula_error = RESTING_FORMULA_ERROR * resting_energy(formula, lean_mass)
+    lean_error = BAND_Z * per_kg * weight_kg * SKINFOLD_BODY_FAT_SE / 100.0
+    return math.hypot(formula_error, lean_error)

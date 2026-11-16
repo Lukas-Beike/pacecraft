@@ -59,6 +59,14 @@ class SkinfoldServiceTests(unittest.TestCase):
         self.profile = {"birth_year": "1986"}
         self.assertEqual(self.on(TODAY).body_fat_pct, 17.1)
 
+    def test_an_age_outside_the_fitted_range_is_flagged_not_refused(self):
+        self.profile = {"birth_year": "1960"}  # 66 in 2026, above the men's 61
+        latest = self.save("2026-11-10", MEN)["measurements"][0]
+        self.assertIsNotNone(latest["body_fat_pct"])
+        self.assertTrue(latest["age_outside_fit"])
+        self.profile = {"birth_year": "1986"}
+        self.assertFalse(self.on(TODAY).age_outside_fit)
+
     def test_the_measurement_in_effect_is_the_latest_on_or_before_the_day(self):
         self.save("2026-10-01", {"chest": 10, "abdomen": 15, "thigh": 12})
         self.save("2026-11-10", MEN)

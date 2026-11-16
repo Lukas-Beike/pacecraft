@@ -327,6 +327,7 @@ def build_garmin(
             utc_now=utc_now,
             key_values=ctx.key_values,
             capability_allowed=sync_state_service().capability_allowed,
+            last_rate_limit=sync_state_service().last_rate_limit,
         )
 
     def targeted_refresh_service() -> GarminTargetedRefreshService:

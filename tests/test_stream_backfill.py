@@ -94,6 +94,7 @@ from backend.sync.wahoo_stream_backfill import (
     HISTORY_WORKOUT_PAGES,
     WahooStreamMapping,
     WahooStreamSource,
+    wahoo_replay_size,
 )
 from tests.test_fit_file import UINT8, UINT16, UINT32, FitBuilder
 
@@ -644,14 +645,9 @@ class WahooBackfillTests(unittest.TestCase):
                 "wahoo": {
                     "ride": {
                         "files": 2,
-                        "messages": {"27": 2, "7": 1},
-                        "unmapped_fields": {
-                            "19.136": 1,
-                            "19.137": 1,
-                            "19.161": 1,
-                            "19.71": 1,
-                            "20.108": 1,
-                        },
+                        # The mapper reads them now (#2220): none counts as unmapped.
+                        "messages": {},
+                        "unmapped_fields": {},
                         "developer_fields": {},
                         "new_decodes": {
                             "respiration_record.in_bounds": 1,
@@ -1003,6 +999,24 @@ class ReplayTests(unittest.TestCase):
         self.assertEqual([inside], ids)
         self.assertNotIn(current, ids)
         self.assertEqual(3, selected.with_streams)
+
+    def test_replay_size_counts_the_window_streams_a_bump_downloads_again(self) -> None:
+        # Diagnostics size the next FIT mapper bump before it ships (#2220).
+        env = self.env
+        self.stored_old_session(1, 200)
+        self.stored_old_session(2, 400)
+        seed(env, WAHOO, 3, TODAY - timedelta(days=100))
+        service, _lister, _downloads = wahoo_service(
+            env, [wahoo_row(3)], {3: fit_bytes()}
+        )
+        service.backfill(None)
+        seed(env, WAHOO, 4, TODAY - timedelta(days=10))
+
+        size = wahoo_replay_size(env.db, TODAY, FLOOR)
+
+        # 1 (older mapper) and 3 (current mapper) are in the window; 2 is older
+        # and 4 holds no streams, so the regular backfill reads it anyway.
+        self.assertEqual({"window_days": 365, "records": 2}, size)
 
     def test_an_outdated_session_is_replayed_once_and_not_selected_again(self) -> None:
         env = self.env

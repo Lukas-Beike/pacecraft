@@ -43,6 +43,10 @@ RUN_SPORTS = frozenset({"run"})
 WALK_SPORTS = frozenset({"walk", "hike"})
 RIDE_SPORTS = frozenset({"ride"})
 STRENGTH_SPORTS = frozenset({"strength"})
+# Canonical ``avg_cadence`` of a foot sport counts one leg (strides per
+# minute, ``CanonicalActivityRecord``); a step is half a stride (#3187).
+FOOT_SPORTS = RUN_SPORTS | WALK_SPORTS
+STEPS_PER_STRIDE = 2.0
 
 
 @dataclass(frozen=True)
@@ -229,16 +233,21 @@ def session_cost(
     db: Any,
     summary: Mapping[str, Any],
     mass: float | None,
-    rmr: float,
+    rmr: float | None,
     hr_cost: HeartRateCost,
     step_m: float | None,
 ) -> SessionCost:
-    """Net cost of one session by its sport, with the M11 method name."""
+    """Net cost of one session by its sport, with the M11 method name.
+
+    Only foot sports take steps out of the day's NEAT; a bike cadence is no step.
+    """
     day = date.fromisoformat(str(summary.get("started_at_local") or "")[:10])
     sport = str(summary.get("sport") or "")
     duration = _duration_s(summary)
-    cadence = _number(summary.get("avg_cadence"))
-    steps = cadence * duration / 60.0 if cadence and duration else 0.0
+    strides = _number(summary.get("avg_cadence")) if sport in FOOT_SPORTS else None
+    steps = (
+        STEPS_PER_STRIDE * strides * duration / 60.0 if strides and duration else 0.0
+    )
     if sport in RUN_SPORTS and mass:
         joules = sum(
             run * energy.running_cost_j_per_kg_m(grade)
@@ -252,20 +261,23 @@ def session_cost(
             steps = sum(run for run, _ in segments) / step_m
         return SessionCost(day, mass * joules / energy.J_PER_KCAL, "minetti", steps)
     kcal, method = _timed_cost(summary, sport, duration, rmr, hr_cost, mass, day)
-    return SessionCost(day, kcal, method, 0.0 if method in ("power", "met") else steps)
+    return SessionCost(day, kcal, method, 0.0)
 
 
 def _timed_cost(
     summary: Mapping[str, Any],
     sport: str,
     duration: float | None,
-    rmr: float,
+    rmr: float | None,
     hr_cost: HeartRateCost,
     mass: float | None,
     day: date,
 ) -> tuple[float | None, str]:
-    """Rides from work, strength from METs, the rest from heart rate."""
-    if not duration:
+    """Rides from work, strength from METs, the rest from heart rate.
+
+    Each is net of the resting rate, so without one the cost is unknown.
+    """
+    if not duration or rmr is None:
         return None, "unknown"
     work = _work_kj(summary, duration)
     if sport in RIDE_SPORTS and work:
@@ -288,7 +300,7 @@ def _step_length(
         cadence = _number(summary.get("avg_cadence"))
         if duration and distance and cadence:
             speeds.append(distance / duration)
-            cadences.append(cadence)
+            cadences.append(STEPS_PER_STRIDE * cadence)
     return energy.step_length_m(speeds, cadences, height_m)
 
 
@@ -325,9 +337,8 @@ def read_energy_inputs(
     trend = weight_trend(weights)
     sessions = list(sources.sessions(db, start, end))
     step_m = _step_length(sessions, height_cm / 100.0 if height_cm else None)
-    flex = _flex_fit(
-        [s for s in sessions if str(s.get("sport") or "") in RIDE_SPORTS], rmr or 0.0
-    )
+    rides = [s for s in sessions if str(s.get("sport") or "") in RIDE_SPORTS]
+    flex = _flex_fit(rides, rmr) if rmr is not None else None
     hr_cost = _heart_rate_cost(flex, profile, rmr or 0.0)
     costs = tuple(
         session_cost(
@@ -339,7 +350,7 @@ def read_energy_inputs(
                 date.fromisoformat(str(summary["started_at_local"])[:10]),
                 profile_weight,
             ),
-            rmr or 0.0,
+            rmr,
             hr_cost,
             step_m,
         )
@@ -407,7 +418,6 @@ def _day_inputs(
 ) -> DayInputs:
     """One day's intake, flags, weigh-in and own activity (sessions + NEAT)."""
     today = [c for c in costs if c.day == day]
-    priced = [c.kcal for c in today if c.kcal is not None]
     steps, floors = _number(health.get("steps")), _number(health.get("floors"))
     mass = _mass(trend, day, profile_weight)
     neat = (
@@ -417,7 +427,10 @@ def _day_inputs(
         if steps is not None and step_m and mass
         else None
     )
-    activity = None if neat is None and not priced else (neat or 0.0) + sum(priced)
+    # Unknown stays unknown: NEAT without steps or an unpriced session (#3187).
+    priced = [c.kcal for c in today if c.kcal is not None]
+    known = neat is not None and len(priced) == len(today)
+    activity = neat + sum(priced) if neat is not None and known else None
     return DayInputs(
         intake_kcal=sum(_number(e.get("kcal")) or 0.0 for e in entries)
         if entries
@@ -427,6 +440,11 @@ def _day_inputs(
         fat_g=sum(_number(e.get("fat_g")) or 0.0 for e in entries),
         entries=len(entries),
         flagged=any(bool(e.get("estimate_uncertain")) for e in entries),
+        flagged_kcal=sum(
+            _number(e.get("kcal")) or 0.0
+            for e in entries
+            if e.get("estimate_uncertain")
+        ),
         weight_kg=weights.get(day),
         activity_kcal=activity,
     )

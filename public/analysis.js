@@ -1404,9 +1404,11 @@ function loadSkinfolds() {
 
 function skinfoldRow(measurement, edit) {
   const folds = measurement.folds_mm.map((fold) => `${fold.label} ${analysisValue(fold.mm, "")}`).join(" · ");
+  // An age outside the equation's fitted range is shown, not refused (M13).
+  const outside = measurement.age_outside_fit && h("small", null, "Alter außerhalb der Studie");
   const fat = measurement.body_fat_pct == null
     ? h("span", null, "unbekannt", h("small", null, "ohne Geburtsjahr"))
-    : analysisValue(measurement.body_fat_pct, "%");
+    : h("span", null, analysisValue(measurement.body_fat_pct, "%"), outside);
   return h("tr", { dataset: { skinfold: measurement.date } },
     h("th", { scope: "row" }, dateLabel(measurement.date), h("small", null, `${folds} mm`)), h("td", null, fat), h("td", null, edit));
 }

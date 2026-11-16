@@ -457,6 +457,7 @@ class NutritionDiaryService:
             "meal_time",
             "meal_type",
             "logged_time_known",
+            "estimate_uncertain",
             "description",
             "kcal",
             "calories",

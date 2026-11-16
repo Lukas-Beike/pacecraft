@@ -711,6 +711,7 @@ effect `local_write`; gate domain `nutrition`; receipt „Ernährungseintrag ges
 - `payload.meal_date` (string)
 - `payload.meal_time` (string)
 - `payload.logged_time_known` (boolean)
+- `payload.estimate_uncertain` (boolean)
 - `payload.meal_type` (string; one of `"breakfast"`, `"lunch"`, `"dinner"`, `"snack"`)
 - `payload.description` (string)
 - `payload.kcal` (integer; ≥0; ≤10000)
@@ -774,6 +775,7 @@ effect `local_write`; gate domain `nutrition`; may call the food database; recei
 
 - `payload` (object; needs one of `components`, `food_ingredients`, `kcal`, `id`)
 - `payload.logged_time_known` (boolean)
+- `payload.estimate_uncertain` (boolean)
 - `payload.meal_type` (string; one of `"breakfast"`, `"lunch"`, `"dinner"`, `"snack"`)
 - `payload.description`* (string)
 - `payload.kcal` (integer; ≥0; ≤10000)
@@ -918,6 +920,7 @@ effect `local_write`; gate domain `nutrition`; receipt „Ernährungseintrag kor
 - `changes.logged_at` (string)
 - `changes.meal_time` (string)
 - `changes.logged_time_known` (boolean)
+- `changes.estimate_uncertain` (boolean)
 - `changes.meal_type` (string; one of `"breakfast"`, `"lunch"`, `"dinner"`, `"snack"`)
 - `changes.description` (string)
 - `changes.kcal` (integer; ≥0; ≤10000)

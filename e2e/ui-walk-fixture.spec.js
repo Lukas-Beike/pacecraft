@@ -18,21 +18,13 @@ test("@responsive every UI walk step passes on the fixture app", async ({ page, 
   await page.context().route("**/changelog.json", (route) => route.fulfill({ json: { releases: [{ version: "9.9.9", commits: ["build(quality): a fixture change (#1)"] }] } }));
   // The fixture's current week plans nothing, and only a long upcoming unit gets fuelling (#2921):
   // the first later stored ride or run is shown today instead, long, so the server still knows its equipment (#3011).
-  // On a Monday the shown week has no completed run yet: the latest earlier one is shown today too.
   await page.context().route(/\/api\/plan(\?|$)/, async (route) => {
     const data = await (await route.fetch()).json();
     const calendar = data.training_calendar || [];
-    const sport = (entry) => { const done = entry.is_completed_activity ? entry : entry.compliance?.actual_activity; return `${(done || entry).type} ${(done || entry).sport}`; };
-    const stored = calendar.find((entry) => entry.local_id && !entry.is_completed_activity && !entry.compliance?.actual_activity && entry.date > today && /ride|run/i.test(sport(entry)));
-    // A recorded run (with a distance), so its details hold stored data.
-    const ran = calendar.filter((entry) => entry.is_completed_activity && entry.distance_m > 0 && entry.date < today && /run/i.test(sport(entry))).sort((a, b) => b.date.localeCompare(a.date))[0];
-    // A planned unit is placed by starts_at_local, a completed activity by started_at_local.
-    const atToday = (stamp) => stamp && `${today}${stamp.slice(10)}`;
-    const moved = (entry, extra) => ({ ...entry, date: today, starts_at_local: atToday(entry.starts_at_local), started_at_local: atToday(entry.started_at_local), ...extra });
-    data.training_calendar = calendar.map((entry) => {
-      if (entry === stored) return moved(entry, { duration_minutes: 150, planned_duration_s: 9000 });
-      return entry === ran ? moved(entry, {}) : entry;
-    });
+    const stored = calendar.find((entry) => entry.local_id && !entry.is_completed_activity && !entry.compliance?.actual_activity && entry.date > today && /ride|run/i.test(`${entry.type} ${entry.sport}`));
+    const moved = (entry) => ({ ...entry, date: today, starts_at_local: entry.starts_at_local && `${today}${entry.starts_at_local.slice(10)}`, duration_minutes: 150, planned_duration_s: 9000 });
+    // Completed units are not moved: on a Monday the walk's completed-unit steps page back themselves (`seek`).
+    data.training_calendar = calendar.map((entry) => (entry === stored ? moved(entry) : entry));
     return route.fulfill({ json: data });
   });
   await page.goto("/");
