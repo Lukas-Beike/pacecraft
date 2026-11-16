@@ -96,6 +96,22 @@ class EnergyInputsReaderTests(unittest.TestCase):
             [("minetti", False), ("power", False), ("met", False), ("unknown", True)],
         )
         self.assertEqual(inputs.body_fat_pct, {DAY1: 12.0})
+        # Split A (#3100): the parts behind each activity; day 3 knows neither,
+        # no steps for NEAT and an unpriced swim for the sessions.
+        self.assertAlmostEqual(first.neat_kcal or 0.0, 57.375, places=2)
+        self.assertAlmostEqual(first.sport_kcal or 0.0, 602.294, places=2)
+        self.assertAlmostEqual(second.neat_kcal or 0.0, 125.601, places=2)
+        self.assertAlmostEqual(second.sport_kcal or 0.0, 790.421, places=2)
+        self.assertEqual((third.neat_kcal, third.sport_kcal), (None, None))
+
+    def test_a_day_without_sessions_has_sport_zero(self) -> None:
+        # Known to be zero, not unknown: 70 x 10,000 x 0.747 x 2.01 = 1,051,029 J
+        # plus floors 82,404 J = 270.897 kcal NEAT, all of the activity.
+        inputs, _ = read_energy_inputs(None, sources(sessions=[]), DAY1, DAY1)
+        day = inputs.days[DAY1]
+        self.assertEqual(day.sport_kcal, 0.0)
+        self.assertAlmostEqual(day.neat_kcal or 0.0, 270.897, places=2)
+        self.assertAlmostEqual(day.activity_kcal or 0.0, 270.897, places=2)
 
     def test_own_resting_rate_first_garmin_only_as_fallback(self) -> None:
         own, _ = read_energy_inputs(None, sources(), DAY1, DAY3)

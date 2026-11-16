@@ -53,6 +53,11 @@ estimate. It never rewrites logged values and never falls back to a formula.
    fewer than 4 windows or no spread in activity.
 7. **Derived resting rate:** `TDEE − k × activity − TEF`. Its band adds 10 % of
    the activity term.
+   The activity is shown in two parts (split A, #3100): NEAT (steps outside
+   sessions and floors) and the priced sessions, each as the mean over the
+   same days as the activity, raw and times `k`. They add up to the
+   activity; a day missing either part leaves both unknown, never 0, and a
+   day without sessions has 0 session kcal.
 8. **Flagged-meal bias `b`:** across the windows, `TDEE = T − b × x` by least
    squares, with `x` the flagged entries' logged kcal per complete day. `b` is
    reported in % with its band: positive means flagged meals were larger than

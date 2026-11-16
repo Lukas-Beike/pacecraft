@@ -27,6 +27,7 @@ def series(
     logged_factor: float = 1.0,
     skip: set[int] | None = None,
     weigh_every: int = 1,
+    split: tuple[float, float] | None = None,
 ) -> balance.EnergyInputs:
     """Days 0..days-1 ending on END; weight follows the true energy balance.
 
@@ -53,6 +54,8 @@ def series(
             flagged_kcal=logged if flagged else 0.0,
             weight_kg=weight if n % weigh_every == 0 else None,
             activity_kcal=600.0,
+            neat_kcal=split[0] if split else None,
+            sport_kcal=split[1] if split else None,
         )
     return balance.EnergyInputs(out, {}, rmr_kcal=1700.0, rmr_source="katch_mcardle")
 
@@ -140,6 +143,36 @@ class AdaptiveTdeeTests(unittest.TestCase):
             balance.is_complete(balance.DayInputs(2600, entries=1), 1700.0)
         )
         self.assertTrue(balance.is_complete(balance.DayInputs(2600, entries=2), 1700.0))
+
+    def test_the_activity_splits_into_neat_and_sessions(self) -> None:
+        # 450 kcal NEAT and 150 kcal sessions a day (split A, #3100): the parts
+        # add up to the 600 kcal activity, raw and times the factor k.
+        window = balance.energy_windows(
+            series(constant(2600.0), split=(450.0, 150.0)), END, weeks=1
+        )[-1]
+        self.assertEqual(
+            (window.neat_kcal_raw, window.sport_kcal_raw, window.activity_kcal_raw),
+            (450.0, 150.0, 600.0),
+        )
+        # One window is below the four the fit needs: k is the prior 1.
+        self.assertEqual(window.calibration_factor, 1.0)
+        self.assertEqual((window.neat_kcal, window.sport_kcal), (450.0, 150.0))
+        # A known activity without its parts leaves the split unknown, not 0.
+        unsplit = balance.energy_windows(series(constant(2600.0)), END, weeks=1)[-1]
+        self.assertEqual(unsplit.activity_kcal_raw, 600.0)
+        self.assertEqual((unsplit.neat_kcal_raw, unsplit.sport_kcal), (None, None))
+
+    def test_the_calibrated_split_scales_both_parts_by_k(self) -> None:
+        # A window built with the factor 1.1 scales both parts by it.
+        inputs = series(constant(2600.0), split=(450.0, 150.0))
+        weights = {
+            d: v.weight_kg for d, v in inputs.days.items() if v.weight_kg is not None
+        }
+        window = balance._window(inputs, balance.weight_trend(weights), END, 1.1)
+        self.assertEqual(window.calibration_factor, 1.1)
+        self.assertAlmostEqual(window.neat_kcal or 0.0, 495.0)
+        self.assertAlmostEqual(window.sport_kcal or 0.0, 165.0)
+        self.assertAlmostEqual(window.activity_kcal or 0.0, 660.0)
 
     def test_derived_rmr_is_tdee_minus_activity_and_tef(self) -> None:
         window = balance.energy_windows(series(constant(2600.0)), END, weeks=1)[-1]
