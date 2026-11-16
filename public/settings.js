@@ -716,7 +716,9 @@ function lt2SourceRows(sport, metrics = state.data?.performance?.metrics || {}, 
   const mainMetric = sport === "ride" ? "power" : "pace";
   const origins = new Set([effective(mainMetric)?.threshold_origin, effective("heart_rate")?.threshold_origin].filter(Boolean));
   const provider = lt2ProviderRow(metrics[keys.main], metrics[keys.hr], mainMetric, origins);
-  return [...(provider ? [provider] : []), ...Object.entries(estimates).map(([source, estimate]) => lt2EstimateRow(source, estimate, origins))];
+  // A fixed order whatever the server's key order: the provider, DFA-α1, then CS or CP.
+  const sources = Object.keys(LT2_SOURCE_NAMES).filter((source) => source in estimates);
+  return [...(provider ? [provider] : []), ...sources.map((source) => lt2EstimateRow(source, estimates[source], origins))];
 }
 
 function lt2ProviderRow(main, hr, mainMetric, origins) {

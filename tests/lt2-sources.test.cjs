@@ -103,3 +103,9 @@ test("a failed baseline save is not retried by itself, and one save per sport ru
   assert.equal(refreshes, 0);
   assert.deepEqual(toasts, ["Server nicht erreichbar"]);
 });
+
+test("the rows keep their order whatever the server's key order", () => {
+  const { lt2SourceRows } = lt2();
+  const swapped = { critical_speed: ESTIMATES.run.critical_speed, dfa_alpha1: ESTIMATES.run.dfa_alpha1 };
+  assert.deepEqual(plain(lt2SourceRows("run", METRICS, swapped, () => null)).map((row) => row.name), ["Garmin", "DFA-α1", "CS"]);
+});

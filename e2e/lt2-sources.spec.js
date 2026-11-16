@@ -74,7 +74,8 @@ test("adopting DFA-α1 offers each value and asks once more above 5 %", async ({
   await expect(dialog).toBeVisible();
   await expect(dialog.locator(".chip")).toHaveText(["Puls 169 bpm", "Pace 4:16 /km"]);
   // F8: only the pulse is adopted.
-  await dialog.getByText("Pace 4:16 /km").click();
+  // The chip's checkbox lies over its label, so the checkbox itself is unchecked.
+  await dialog.getByRole("checkbox", { name: "Pace 4:16 /km" }).uncheck();
   await dialog.getByRole("button", { name: "Übernehmen" }).click();
   const confirmation = page.locator("#confirmationDialog");
   await expect(confirmation.locator("#confirmationDialogTitle")).toHaveText("Große Abweichung");
