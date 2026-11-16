@@ -85,10 +85,11 @@ BACKFILL_BATCH_SIZE: Final = 10
 # keeps outdated sets as they are, and only new or changed activities run.
 REPLAY_ENABLED: Final = True
 # The daily budget of replay fetches grows with each clean day and resets on a 429;
-# a refresh takes a quarter of the day's budget, at most REPLAY_MAX_PER_REFRESH.
+# a refresh takes what is left of it, at most REPLAY_MAX_PER_REFRESH (orchestrator,
+# 2026-11-16: refreshes come only a few times a day, so a refresh may take 20).
 REPLAY_START_DAILY: Final = 20
 REPLAY_MAX_DAILY: Final = 80
-REPLAY_MAX_PER_REFRESH: Final = 10
+REPLAY_MAX_PER_REFRESH: Final = 20
 BACKFILL_WINDOW: Final = timedelta(days=90)
 BACKFILL_RATE_LIMIT_PAUSE: Final = timedelta(seconds=GARMIN_CAPABILITY_PAUSE_SECONDS)
 BACKFILL_STATE_KEY: Final = "garmin_activity_detail_backfill"
@@ -114,7 +115,8 @@ class _ReplayBudget:
 
     @property
     def per_refresh(self) -> int:
-        return min(REPLAY_MAX_PER_REFRESH, self.budget // 4)
+        """Replay fetches one refresh may still make today."""
+        return max(0, min(REPLAY_MAX_PER_REFRESH, self.budget - self.count))
 
 
 @dataclass(frozen=True)
@@ -265,14 +267,8 @@ class GarminActivityDetailService:
             return _backfill_result(
                 "paused", remaining=len(fresh), replay_remaining=len(replays)
             )
-        batch = fresh[:BACKFILL_BATCH_SIZE]
-        # New and changed activities first; replays only fill what is left.
-        room = min(
-            replay.per_refresh,
-            BACKFILL_BATCH_SIZE - len(batch),
-            max(0, replay.budget - replay.count),
-        )
-        batch += replays[:room]
+        # New and changed activities first; replays follow within today's budget.
+        batch = fresh[:BACKFILL_BATCH_SIZE] + replays[: replay.per_refresh]
         if not batch:
             self._save_backfill_state(
                 paused_until=None, empty=empty, retry=retry, replay=replay

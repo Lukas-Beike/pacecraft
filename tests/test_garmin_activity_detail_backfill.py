@@ -255,7 +255,7 @@ class BackfillCandidateTests(_Base):
                 "records": 2,
                 "strength": 0,
                 "daily_budget": 20,
-                "per_refresh": 5,
+                "per_refresh": 20,
                 "replayed_today": 0,
                 "clean_today": True,
             },
@@ -960,16 +960,16 @@ class BackfillReplayTests(_Base):
             )
         self.assertEqual([row["replay"] for row in rows], [False])
 
-    def test_replays_start_at_five_per_refresh_and_twenty_per_day(self) -> None:
+    def test_replays_start_at_twenty_per_refresh_and_twenty_per_day(self) -> None:
         rows = _days(30)
         _seed_outdated(self, rows)
-        counts = []
-        for _refresh in range(4):
-            reader = _Details({aid: _full(aid) for aid, _start in rows})
-            result = self.service(reader).backfill()
-            counts.append((len(reader.fetched), result["replayed"], result["fetched"]))
-        # Newest first: the first refresh took the five newest activities.
-        self.assertEqual(counts, [(5, 5, 5)] * 4)
+        reader = _Details({aid: _full(aid) for aid, _start in rows})
+        result = self.service(reader).backfill()
+        # One refresh may take the whole day's budget of 20 (orchestrator, 2026-11-16).
+        self.assertEqual(
+            (len(reader.fetched), result["replayed"], result["fetched"]), (20, 20, 20)
+        )
+        self.assertEqual(reader.fetched, [aid for aid, _start in reversed(rows)][:20])
         self.assertEqual(
             _stored_state(self.key_values)["replay"],
             {"day": NOW[:10], "count": 20, "budget": 20, "clean": True},
@@ -991,7 +991,7 @@ class BackfillReplayTests(_Base):
             },
         )
 
-        # A clean day doubles the budget: the next UTC day takes ten per refresh.
+        # A clean day doubles the budget to 40: the next UTC day takes the last ten.
         self.now = "2026-10-19T00:30:00+00:00"
         reader = _Details({aid: _full(aid) for aid, _start in rows})
         result = self.service(reader).backfill()
@@ -1017,15 +1017,16 @@ class BackfillReplayTests(_Base):
         today = "2026-10-18"
         start = {
             "daily_budget": 20,
-            "per_refresh": 5,
+            "per_refresh": 20,
             "replayed_today": 0,
             "clean_today": True,
         }
         self.assertEqual(counts(None, today), start)
         # An old state without the budget keys is the start state.
         self.assertEqual(counts({"day": "2026-10-17", "count": 0}, today), start)
-        # A clean day with replay fetches doubles: 20, 40, 80, then the cap.
-        for before, after, per_refresh in ((20, 40, 10), (40, 80, 10), (80, 80, 10)):
+        # A clean day with replay fetches doubles: 20, 40, 80, then the cap; a
+        # refresh takes at most 20 of it.
+        for before, after, per_refresh in ((20, 40, 20), (40, 80, 20), (80, 80, 20)):
             self.assertEqual(
                 counts(day(5, before), today),
                 {
@@ -1038,17 +1039,20 @@ class BackfillReplayTests(_Base):
         # A day with an error, or without replay fetches, leaves it unchanged.
         self.assertEqual(counts(day(5, 40, clean=False), today)["daily_budget"], 40)
         self.assertEqual(counts(day(0, 40), today)["daily_budget"], 40)
-        # The same day keeps its count and does not double again.
+        # The same day keeps its count and does not double again; a refresh takes
+        # what is left of the day's budget, at most 20.
         same = {"day": today, "count": 7, "budget": 40, "clean": False}
         self.assertEqual(
             counts(same, today),
             {
                 "daily_budget": 40,
-                "per_refresh": 10,
+                "per_refresh": 20,
                 "replayed_today": 7,
                 "clean_today": False,
             },
         )
+        self.assertEqual(counts(same | {"count": 33}, today)["per_refresh"], 7)
+        self.assertEqual(counts(same | {"count": 40}, today)["per_refresh"], 0)
 
     def _budget_state(self, **replay: Any) -> None:
         stored = {"day": "2026-10-17", "count": 5, "budget": 40, "clean": True}
@@ -1063,10 +1067,11 @@ class BackfillReplayTests(_Base):
 
         result = self.service(_Details({a: _full(a) for a, _s in rows})).backfill()
 
-        self.assertEqual(result["replayed"], 10)
+        # The doubled budget of 40 allows 20 in one refresh, the per-refresh cap.
+        self.assertEqual(result["replayed"], 20)
         self.assertEqual(
             _stored_state(self.key_values)["replay"],
-            {"day": NOW[:10], "count": 10, "budget": 40, "clean": True},
+            {"day": NOW[:10], "count": 20, "budget": 40, "clean": True},
         )
 
     def test_a_day_without_replays_leaves_the_budget_alone(self) -> None:
@@ -1169,27 +1174,35 @@ class BackfillReplayTests(_Base):
 
         ids = reader.calls[0][0]
         self.assertEqual(ids[:2], ("3001", "3002"))
-        self.assertEqual(len(ids), 2 + 5)
+        self.assertEqual(len(ids), 2 + 12)
         self.assertEqual(
-            (result["fetched"], result["replayed"], result["remaining"]), (7, 5, 0)
+            (result["fetched"], result["replayed"], result["remaining"]), (14, 12, 0)
         )
-        self.assertEqual(result["replay_remaining"], 7)
+        self.assertEqual(result["replay_remaining"], 0)
 
-    def test_replays_never_exceed_the_room_left_in_a_full_batch(self) -> None:
-        _seed_outdated(self, _days(6))
+    def test_a_full_batch_of_new_activities_still_leaves_the_replays_room(
+        self,
+    ) -> None:
+        # New activities keep their batch of ten; replays follow up to 20.
+        outdated = [
+            (str(2000 + index), f"2026-08-{index + 1:02d} 07:00:00")
+            for index in range(25)
+        ]
+        _seed_outdated(self, outdated)
         fresh = [
             (str(3000 + index), f"2026-10-{index + 1:02d} 07:00:00")
-            for index in range(8)
+            for index in range(12)
         ]
         _seed(self.manager, fresh)
-        reader = _Details({aid: _full(aid) for aid, _start in [*_days(6), *fresh]})
+        reader = _Details({aid: _full(aid) for aid, _start in [*outdated, *fresh]})
 
         result = self.service(reader).backfill()
 
-        self.assertEqual(len(reader.calls[0][0]), BACKFILL_BATCH_SIZE)
-        self.assertEqual((result["fetched"], result["replayed"]), (10, 2))
-        self.assertEqual(result["remaining"], 0)
-        self.assertEqual(result["replay_remaining"], 4)
+        ids = reader.calls[0][0]
+        self.assertEqual(len(ids), BACKFILL_BATCH_SIZE + 20)
+        self.assertTrue(all(aid.startswith("30") for aid in ids[:BACKFILL_BATCH_SIZE]))
+        self.assertEqual((result["fetched"], result["replayed"]), (30, 20))
+        self.assertEqual((result["remaining"], result["replay_remaining"]), (2, 5))
 
     def test_the_stop_switch_keeps_outdated_sets_and_runs_only_new_ones(self) -> None:
         _seed_outdated(self, _days(3))

@@ -267,7 +267,7 @@ class DiagnosticReportServiceTests(unittest.TestCase):
                     "records": 0,
                     "strength": 0,
                     "daily_budget": 20,
-                    "per_refresh": 5,
+                    "per_refresh": 20,
                     "replayed_today": 0,
                     "clean_today": True,
                 },

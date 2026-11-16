@@ -178,7 +178,7 @@ The system SHALL fetch Garmin detail kinds independently for locally known activ
 
 #### Scenario: Replay after a detail mapper change
 - **WHEN** a detail mapper change makes the activities of the 90-day window candidates again
-- **THEN** new and changed activities run first, replays take the places left in a batch within a daily budget of 20 fetches that doubles after each clean day up to 80 and resets after a 429, a failed or rate-limited replay keeps the stored full streams and laps, and the replay can be switched off (#2220).
+- **THEN** new and changed activities run first, then at most 20 replays per refresh within a daily budget of 20 fetches that doubles after each clean day up to 80 and resets after any 429, a failed or rate-limited replay keeps the stored full streams and laps, and the replay can be switched off (#2220).
 
 Detailed contract: A strength set list SHALL come from one source only, never merged set by set; a later fetch without exercise sets SHALL keep stored exercise sets rather than replace them with the file's set messages, and strength sets SHALL never mark a session's analysis stale. Each set keeps its type (active or rest), the FIT exercise category (unknown codes as `other`), the provider exercise code only as an upper-case identifier, repetitions, weight in kg (absent when no external load was reported, never 0), duration, start offset and the planned workout step it ran. Automatic detail backfill SHALL work newest first in bounded batches of ten, retain summary/version-aware empty and retry state, pause on rate limiting, bound retries for a failing summary, and continue to older candidates when one activity exhausts its retries. Cancellation SHALL stop between activities; token cleanup SHALL still run.
 
