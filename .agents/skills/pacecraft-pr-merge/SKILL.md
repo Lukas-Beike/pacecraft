@@ -18,6 +18,10 @@ python scripts/pr_merge.py <pr> [--wait <minutes>] [--allow-behind]
   thread is unresolved, and disarms an earlier auto-merge (#2947): an armed
   auto-merge does not wait for review comments (#2520). Fix, reply, resolve
   ([resolve-thread](../pacecraft-resolve-thread/SKILL.md)), then rerun.
+- Right after a push it first waits up to 30 s until GitHub reports the head
+  this checkout pushed (`origin/<branch>`), so a force-push is not checked as
+  the old head; if GitHub does not catch up it refuses (exit 1) naming both
+  heads: run it again a minute later (#3174).
 - Before arming it asks GitHub which files develop changed since the head
   branched off and refuses (exit 1, naming them) when this PR changes any of
   them, disarming an earlier auto-merge (#2901: "up to date before merge" is off

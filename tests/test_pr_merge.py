@@ -54,9 +54,11 @@ def next_count(threads):
 
 
 def run(
-    case, *args, auto_error="", views=None, behind=0, moved=(), threads=0, more=False
-):
-    """Run main against a stub that answers `pr view` from `views` in order."""
+    case, *args, auto_error="", views=None, behind=0, moved=(), threads=0, more=False,
+    pushed="",
+):  # fmt: skip
+    """Run main against a stub that answers `pr view` from `views` in order; this
+    checkout last pushed `pushed` ("" for none)."""
     calls, views = [], list(views or [view()])
 
     def fake(argv, **_kwargs):
@@ -83,6 +85,7 @@ def run(
     with (
         mock.patch.object(gh_cli.subprocess, "run", fake),
         mock.patch.object(pr_merge.time, "sleep") as sleep,
+        mock.patch.object(pr_merge, "pushed_head", return_value=pushed),
         redirect_stdout(out),
         redirect_stderr(err),
     ):
@@ -97,6 +100,23 @@ class PrMergeTests(unittest.TestCase):
         code, out, writes, _ = run(self, 7)
         self.assertEqual((code, writes), (0, [["pr", "merge", "7", "--auto", *PIN]]))
         self.assertIn("auto-merge armed", out)
+
+    def test_a_just_pushed_head_is_awaited_before_the_develop_check(self):
+        # #3174: right after a force-push GitHub still reported the old head, and
+        # the develop check compared that one and asked for a rebase already done.
+        old = view(headRefName="fix/x", headRefOid="0ld0ld")
+        code, out, writes, sleeps = run(
+            self, 7, views=[old, old, view()], pushed="feedc0de"
+        )
+        self.assertEqual(
+            (code, writes, sleeps), (0, [["pr", "merge", "7", "--auto", *PIN]], 2)
+        )
+        # GitHub never catches up: a refusal that names the heads, not a rebase.
+        stale = [view(headRefOid="0ld0ld")] * (pr_merge.HEAD_POLLS + 1)
+        code, out, writes, _ = run(self, 7, views=stale, pushed="feedc0de")
+        self.assertEqual((code, writes), (1, []))
+        self.assertIn("GitHub still reports head 0ld0ld, not the pushed feedc0de", out)
+        self.assertNotIn("rebase", out)
 
     def test_clean_status_refusal_merges_the_same_head_directly(self):
         # #2776: GitHub refuses auto-merge for a PR whose checks already passed

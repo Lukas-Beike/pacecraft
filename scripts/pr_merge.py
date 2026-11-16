@@ -16,9 +16,11 @@ thread; Gitar's and SonarCloud's status comments are not (#3034). The develop
 check runs at arming, as the lane rule asks; develop moving during CI is accepted.
 Before arming it also refuses while a review thread is unresolved, disarming
 too, with or without --allow-behind; new feedback during --wait disarms as
-well (#2947).
+well (#2947). Right after a push it first waits up to 30 s for GitHub to report
+the head this checkout pushed (#3174), so a force-push is not checked as the old head.
 Exit 0: merged (or armed, without --wait); 1: refused (base is not develop, an
-unresolved review thread, or develop changed this PR's files), closed unmerged,
+unresolved review thread, develop changed this PR's files, or GitHub kept
+reporting another head than the pushed one), closed unmerged,
 a failing check or new feedback; 2:
 bad input or a failed gh call; 3: still open when the wait ended.
 """
@@ -30,11 +32,13 @@ import sys
 import time
 from typing import Any
 
-from gh_cli import CliError, gh, gh_json, positive_int
+from gh_cli import CliError, gh, gh_json, git, positive_int
 from pr_state import base_overlap, check_outcome, unresolved_threads
 
-FIELDS = "state,baseRefName,headRefOid,autoMergeRequest,mergeCommit,statusCheckRollup,comments,reviews"
+FIELDS = "state,baseRefName,headRefName,headRefOid,autoMergeRequest,mergeCommit,statusCheckRollup,comments,reviews"
 POLLS_PER_MINUTE = 3
+# Just after a push GitHub can still report the old head (#3174); it catches up in seconds.
+HEAD_POLLS, HEAD_POLL_SECONDS = 10, 3
 
 
 def view(number: int) -> dict[str, Any]:
@@ -79,6 +83,33 @@ def arm(number: int, pr: dict[str, Any]) -> str:
             raise
     gh("pr", "merge", str(number), *pin)
     return f"already clean, merged {pr['headRefOid'][:10]} directly"
+
+
+def pushed_head(branch: str) -> str:
+    """The head this checkout last pushed to the PR branch, or "" if it has none."""
+    try:
+        return git(
+            "rev-parse", "--verify", "--quiet", f"refs/remotes/origin/{branch}"
+        ).strip()
+    except CliError:
+        return ""
+
+
+def seen_push(number: int, pr: dict[str, Any]) -> dict[str, Any] | None:
+    """The PR once GitHub reports the head this checkout pushed, so the develop
+    check and the pinned arming use it, not the head before a force-push (#3174);
+    None, with the reason, when GitHub does not catch up."""
+    pushed = pushed_head(pr.get("headRefName") or "")
+    for _ in range(HEAD_POLLS):
+        if not pushed or pr.get("headRefOid") == pushed:
+            return pr
+        time.sleep(HEAD_POLL_SECONDS)
+        pr = view(number)
+    print(
+        f"refused: GitHub still reports head {str(pr.get('headRefOid'))[:10]}, not the "
+        f"pushed {pushed[:10]}; run again in a minute, or fetch if someone else pushed"
+    )
+    return None
 
 
 def behind_develop(number: int, pr: dict[str, Any]) -> bool:
@@ -161,6 +192,10 @@ def main(argv: list[str] | None = None) -> int:
             print(f"refused: base is {pr.get('baseRefName')}, not develop")
             return 1
         if pr.get("state") == "OPEN":
+            seen = seen_push(args.number, pr)
+            if seen is None:
+                return 1
+            pr = seen
             if open_threads(args.number, pr):
                 return 1
             if current and behind_develop(args.number, pr):
