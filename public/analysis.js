@@ -1553,14 +1553,44 @@ function energyFitNote(read) {
   return h("p", { className: "analysis-reference-note", dataset: { energyFitNote: "" } }, [lead, ...parts].join(" · "));
 }
 
+// Split A (athlete decision 2026-11-16): one stacked bar per row; parts computed alike for every row are hatched.
+const ENERGY_PARTS = [["resting_kcal", "resting", "Ruhe"], ["neat_kcal", "neat", "Alltag"], ["sport_kcal", "sport", "Sport"], ["tef_kcal", "tef", "Verdauung"]];
+
+function energySplitRow(row) {
+  const split = row.split;
+  const total = split ? ENERGY_PARTS.reduce((sum, [key]) => sum + (split[key] || 0), 0) : 0;
+  if (!total) return null;
+  const text = ENERGY_PARTS.map(([key, , label], index) => {
+    const name = index === 0 && row.source === "own" ? "Ruhe (Rest)" : label;
+    const band = index === 0 && row.resting_band_kcal != null ? ` ± ${formatWhole(row.resting_band_kcal)}` : "";
+    return `${name} ${split[key] == null ? "–" : formatWhole(split[key])}${band}`;
+  }).join(" · ");
+  const bar = h("div", { className: "energy-split", role: "img", "aria-label": text });
+  for (const [key, part] of ENERGY_PARTS) {
+    if (split[key] == null || split[key] <= 0) continue;
+    const segment = h("span", { dataset: split.shared?.[part] ? { part, shared: "" } : { part } });
+    segment.style.width = `${(split[key] / total) * 100}%`;
+    bar.append(segment);
+  }
+  return h("tr", { className: "energy-split-row" }, h("td", { colSpan: 3 }, bar, h("small", null, text)));
+}
+
+function energySplitLegend(read) {
+  const splits = read.rows.map((row) => row.split).filter(Boolean);
+  if (!splits.length) return null;
+  const items = ENERGY_PARTS.map(([, part, label]) => h("li", { dataset: { part } }, label));
+  if (splits.some((split) => Object.values(split.shared || {}).some(Boolean))) items.push(h("li", { dataset: { part: "shared" } }, "gleich berechnet"));
+  return h("ul", "energy-split-legend", items);
+}
+
 function energyTable(read) {
-  const rows = ENERGY_SOURCES.map(([source, label, color]) => {
+  const rows = ENERGY_SOURCES.flatMap(([source, label, color]) => {
     const row = read.rows.find((item) => item.source === source) || {};
     const best = read.best === source ? [" ", createStatusChip("passt am besten", "ready")] : [];
-    return h("tr", { dataset: { energySource: source } },
+    return [h("tr", { dataset: { energySource: source } },
       h("th", { scope: "row", dataset: { color: String(color) } }, label, ...best),
       h("td", null, energyKcal(row.resting_kcal, row.resting_band_kcal)),
-      h("td", null, energyKcal(row.total_kcal, row.total_band_kcal)));
+      h("td", null, energyKcal(row.total_kcal, row.total_band_kcal))), energySplitRow(row)].filter(Boolean);
   });
   return h("table", { className: "current-performance-table" }, h("caption", null, "Energieverbrauch"),
     h("thead", null, h("tr", null, h("th", { scope: "col" }, "Quelle"), h("th", { scope: "col" }, "Ruhe"), h("th", { scope: "col" }, "Tag gesamt"))),
@@ -1587,7 +1617,7 @@ function energyCards() {
     return [h("section", "analysis-chart-card", createLoadingState("Energieverbrauch wird geladen…"))];
   }
   if (energyRead.failed) return [h("section", "analysis-chart-card", h("p", "empty", "Energieverbrauch konnte nicht geladen werden."))];
-  return [h("section", { className: "analysis-chart-card", dataset: { energy: "" } }, energyTable(energyRead), energyFitNote(energyRead), energyBasisNote(energyRead)), ...energyFitCharts(energyRead)];
+  return [h("section", { className: "analysis-chart-card", dataset: { energy: "" } }, energyTable(energyRead), energySplitLegend(energyRead), energyFitNote(energyRead), energyBasisNote(energyRead)), ...energyFitCharts(energyRead)];
 }
 
 function renderBodyAnalysis(body) {

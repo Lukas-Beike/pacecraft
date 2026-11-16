@@ -212,7 +212,7 @@ test("body overview uses profile body fat without creating a dated measurement",
 test("the energy table shows bands, the badge only with a fit, and the fit basis", () => {
   const charts = [];
   const { h } = extractFunctions("components.js", ["h", "SVG_NS", "svgNode"], { document: fakeDocument() });
-  const { energyTable, energyBasisNote, energyFitNote, energyFitCharts } = extractFunctions("analysis.js", ["ENERGY_SOURCES", "ENERGY_INSUFFICIENT", "energyKcal", "energyBasisNote", "energyFitNote", "energyTable", "energyFitCharts"], {
+  const { energyTable, energyBasisNote, energyFitNote, energyFitCharts } = extractFunctions("analysis.js", ["ENERGY_SOURCES", "ENERGY_INSUFFICIENT", "ENERGY_PARTS", "energyKcal", "energyBasisNote", "energyFitNote", "energySplitRow", "energyTable", "energyFitCharts"], {
     h, formatWhole: (v) => String(v), dateLabel: (v) => v, analysisValue: (v, unit) => `${v} ${unit}`,
     createStatusChip: (label) => h("span", null, label),
     analysisChart: (title, series) => { charts.push({ title, series }); return new FakeElement("section"); },
@@ -252,6 +252,28 @@ test("the energy table shows bands, the badge only with a fit, and the fit basis
   // Gitar #3180: without shared windows every mean is null, yet each window's distance is still drawn.
   const unshared = read.rows.map((row) => ({ ...row, mean_error_kcal: null }));
   assert.equal(energyFitCharts({ ...read, rows: unshared }).length, 1);
+});
+
+test("split A draws one stacked bar per row and hatches only the parts the backend marks shared", () => {
+  const { h } = extractFunctions("components.js", ["h", "SVG_NS", "svgNode"], { document: fakeDocument() });
+  const { energySplitRow, energySplitLegend } = extractFunctions("analysis.js", ["ENERGY_PARTS", "energySplitRow", "energySplitLegend"], { h, formatWhole: (v) => String(v) });
+  const split = (resting, neat, sport, tef, shared) => ({ resting_kcal: resting, neat_kcal: neat, sport_kcal: sport, tef_kcal: tef, shared });
+  const device = { source: "device", resting_band_kcal: null, split: split(1745, 610, 765, null, { neat: false, sport: false, tef: false }) };
+  // Calibrated (k != 1): only digestion is computed alike for every row.
+  const own = { source: "own", resting_band_kcal: 150, split: split(1690, 385, 507, 258, { neat: false, sport: false, tef: true }) };
+  const deviceRow = energySplitRow(device);
+  const [bar, numbers] = deviceRow.children[0].children;
+  assert.equal(textOf(numbers), "Ruhe 1745 · Alltag 610 · Sport 765 · Verdauung –", "Garmin has no digestion part");
+  assert.deepEqual([...bar.children].map((part) => part.dataset.part), ["resting", "neat", "sport"]);
+  assert.equal(bar.children[0].style.width, `${(1745 / 3120) * 100}%`);
+  assert.ok([...bar.children].every((part) => part.dataset.shared === undefined), "the device computes its own parts");
+  const ownRow = energySplitRow(own);
+  assert.equal(textOf(ownRow.children[0].children[1]), "Ruhe (Rest) 1690 ± 150 · Alltag 385 · Sport 507 · Verdauung 258");
+  assert.deepEqual([...ownRow.children[0].children[0].children].map((part) => part.dataset.shared ?? null), [null, null, null, ""]);
+  assert.equal(energySplitRow({ source: "katch_mcardle", split: null }), null, "no split, no bar");
+  const legend = energySplitLegend({ rows: [device, own] });
+  assert.deepEqual([...legend.children].map((item) => textOf(item)), ["Ruhe", "Alltag", "Sport", "Verdauung", "gleich berechnet"]);
+  assert.equal(energySplitLegend({ rows: [{ split: null }] }), null);
 });
 
 test("a reset drops the energy read in flight, so a pre-save answer is never shown", async () => {

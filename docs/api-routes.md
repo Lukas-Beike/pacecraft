@@ -337,8 +337,11 @@ Response: 200 with `end`, `windows` (the 12 weekly 4-week window ends,
 oldest first), `rows` (`katch_mcardle`, `cunningham`, `device` (the
 wearable's estimate) and `own`, each with `resting_kcal`, `total_kcal`
 and their nominal 95 % `*_band_kcal`; the first three also with
-`errors_kcal` per window and `mean_error_kcal` over the shared windows;
-null without a basis), `best` (the source whose lead over the next
+`errors_kcal` per window and `mean_error_kcal` over the shared windows,
+and `split` (`resting_kcal`, `neat_kcal`, `sport_kcal`, `tef_kcal`, and
+`shared` with `neat`, `sport`, `tef` true for each part every row
+computes alike; null until
+known); null without a basis), `best` (the source whose lead over the next
 exceeds the adaptive TDEE's mean band over at least 4 shared windows,
 else null), `fit` (`shared_windows`, `windows`, `min_windows`,
 `reference_band_kcal`), `basis` (`days`, `complete_days`,

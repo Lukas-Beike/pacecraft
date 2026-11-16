@@ -21,7 +21,7 @@ import math
 import statistics
 from collections.abc import Mapping, Sequence
 from datetime import date, timedelta
-from typing import Any
+from typing import Any, Final
 
 from backend.athlete.body_composition import (
     RestingFormula,
@@ -29,6 +29,7 @@ from backend.athlete.body_composition import (
     resting_band,
     resting_energy,
 )
+from backend.canonical.vocabulary import ProviderId
 from backend.nutrition.energy_balance import (
     EnergyInputs,
     EnergyWindow,
@@ -119,6 +120,70 @@ def _device_prediction(
     return mean("resting_kcal"), None, mean("calories"), None
 
 
+def _number(value: Any) -> float | None:
+    if isinstance(value, bool) or not isinstance(value, int | float):
+        return None
+    return float(value)
+
+
+def _garmin_sport(
+    sessions: Sequence[Mapping[str, Any]], resting: float
+) -> float | None:
+    """One day's Garmin session kcal net of its resting rate, or None if unpriced.
+
+    Only sessions Garmin recorded count: a ride on another head unit while the
+    watch was off is not in Garmin's active kcal (Gitar on #3216).
+    """
+    net = 0.0
+    for summary in sessions:
+        if ProviderId.GARMIN.value not in (summary.get("record_ids") or {}):
+            continue
+        kcal = _number(summary.get("energy_kcal"))
+        seconds = _number(summary.get("elapsed_duration_s")) or _number(
+            summary.get("moving_duration_s")
+        )
+        if not kcal or not seconds:
+            return None
+        net += max(0.0, kcal - resting / 1440.0 * seconds / 60.0)
+    return net
+
+
+def _device_split(
+    health: Mapping[str, Mapping[str, Any]],
+    sessions: Sequence[Mapping[str, Any]],
+    window: EnergyWindow,
+) -> tuple[float | None, float | None]:
+    """Garmin's everyday (NEAT) and sport kcal per day over the window.
+
+    Sport is Garmin's recorded session kcal net of its resting rate over their
+    duration; everyday is the active kcal minus it. A day counts only with
+    resting and active kcal and every Garmin session priced; everyday below
+    zero is not a valid split and stays None (split A, athlete decision
+    2026-11-16).
+    """
+    start = window.end - timedelta(days=window.days - 1)
+    by_day: dict[str, list[Mapping[str, Any]]] = {}
+    for summary in sessions:
+        day_key = str(summary.get("started_at_local") or "")[:10]
+        by_day.setdefault(day_key, []).append(summary)
+    everyday, sport = [], []
+    for offset in range(window.days):
+        key = (start + timedelta(days=offset)).isoformat()
+        day = health.get(key, {})
+        resting = _number(day.get("resting_kcal"))
+        active = _number(day.get("active_kcal"))
+        if not resting or resting < 0 or active is None or active < 0:
+            continue
+        day_sport = _garmin_sport(by_day.get(key, []), resting)
+        if day_sport is not None:
+            sport.append(day_sport)
+            everyday.append(active - day_sport)
+    if not sport:
+        return None, None
+    neat = statistics.fmean(everyday)
+    return (neat if neat >= 0 else None), statistics.fmean(sport)
+
+
 def _comparison(
     errors: Mapping[str, Sequence[float | None]], windows: Sequence[EnergyWindow]
 ) -> tuple[dict[str, float], str | None, dict[str, Any]]:
@@ -159,12 +224,38 @@ def _comparison(
     return means, best, fit
 
 
+# Which parts of a row's split are computed alike for every row ("gleich
+# berechnet", orchestrator rule of 2026-11-16): the formula rows share the own
+# everyday, sport and TEF; the own row shares TEF always and everyday and sport
+# only while the calibration factor is 1; Garmin computes its own.
+NOT_SHARED: Final = {"neat": False, "sport": False, "tef": False}
+FORMULA_SHARED: Final = {"neat": True, "sport": True, "tef": True}
+
+
+def _split(
+    resting: float | None,
+    neat: float | None,
+    sport: float | None,
+    tef: float | None,
+    shared: Mapping[str, bool],
+) -> dict[str, Any]:
+    """One row's day split and which of its parts every row computes alike."""
+    return {
+        "resting_kcal": _round(resting),
+        "neat_kcal": _round(neat),
+        "sport_kcal": _round(sport),
+        "tef_kcal": _round(tef),
+        "shared": dict(shared),
+    }
+
+
 def energy_view(
     inputs: EnergyInputs,
     windows: Sequence[EnergyWindow],
     health: Mapping[str, Mapping[str, Any]],
+    sessions: Sequence[Mapping[str, Any]] = (),
 ) -> dict[str, Any]:
-    """The table rows of the latest window, each source's fit and the basis."""
+    """The table rows of the latest window, each source's fit, split and basis."""
     trend = weight_trend(
         {d: v.weight_kg for d, v in inputs.days.items() if v.weight_kg is not None}
     )
@@ -187,9 +278,24 @@ def energy_view(
         for name, values in predictions.items()
     }
     means, best, fit = _comparison(errors, windows)
+    device_neat, device_sport = _device_split(health, sessions, latest)
     rows = []
     for name, values in predictions.items():
         resting, resting_band_kcal, total, total_band = values[-1]
+        # Formula rows add the same uncalibrated own everyday, sport and TEF
+        # (M11, #3220) as their daily total; Garmin splits its own day.
+        if resting is None:
+            split = None
+        elif name == DEVICE:
+            split = _split(resting, device_neat, device_sport, None, NOT_SHARED)
+        else:
+            split = _split(
+                resting,
+                latest.neat_kcal_raw,
+                latest.sport_kcal_raw,
+                latest.tef_kcal,
+                FORMULA_SHARED,
+            )
         rows.append(
             {
                 "source": name,
@@ -199,9 +305,24 @@ def energy_view(
                 "total_band_kcal": _round(total_band),
                 "errors_kcal": [_round(e) for e in errors[name]],
                 "mean_error_kcal": _round(means.get(name)),
+                "split": split,
             }
         )
     tdee, rmr = latest.adaptive_tdee, latest.derived_rmr
+    # The own row's resting rate is the residual of the calibrated terms; its
+    # everyday and sport equal the formula rows' only while k is 1.
+    uncalibrated = math.isclose(latest.calibration_factor, 1.0)
+    own_split = (
+        _split(
+            rmr.kcal,
+            latest.neat_kcal,
+            latest.sport_kcal,
+            latest.tef_kcal,
+            {"neat": uncalibrated, "sport": uncalibrated, "tef": True},
+        )
+        if rmr
+        else None
+    )
     rows.append(
         {
             "source": OWN,
@@ -209,6 +330,7 @@ def energy_view(
             "resting_band_kcal": _round(rmr.band_kcal) if rmr else None,
             "total_kcal": _round(tdee.kcal) if tdee else None,
             "total_band_kcal": _round(tdee.band_kcal) if tdee else None,
+            "split": own_split,
         }
     )
     body = bodies[-1]
@@ -242,4 +364,7 @@ def read_energy_view(db: Any, sources: EnergySources, end: date) -> dict[str, An
     start = history_start(end)
     inputs, _ = read_energy_inputs(db, sources, start, end)
     health = sources.daily_health(db, start, end)
-    return energy_view(inputs, energy_windows(inputs, end), health)
+    windows = energy_windows(inputs, end)
+    # The split is shown for the latest window only, so only its sessions are read.
+    latest = sources.sessions(db, end - timedelta(days=windows[-1].days - 1), end)
+    return energy_view(inputs, windows, health, latest)
