@@ -45,6 +45,77 @@ def _run(last_speed: float = 3.6) -> dict[str, Any]:
     return synthetic_session(segments)
 
 
+def _around_reps(before: str = "", after: str = "") -> str:
+    """A plan of the 5 fast reps the session runs, with steps before and after."""
+    return (
+        f"- 10m Z2 Pace\n{before}- 3m Z1 Pace\n\n5x\n- 3m 3:45-3:55/km Pace\n"
+        f"- 90s Z1 Pace\n\n- 3m Z1 Pace\n{after}- 2m Z1 Pace"
+    )
+
+
+# Plan shape -> (plan, unmatched hard steps) for the skipped-block rule (#3267).
+# A block (at least 2 hard steps of 30 s or more, separated only by recovery
+# steps) skipped always counts; any other unmatched hard time counts from 10 min
+# on (athlete, #3084 A', 2026-11-16).
+SKIPPED_BLOCK_SHAPES: dict[str, tuple[str, int]] = {
+    "5 min build": (_around_reps(before="- 5m Z3 Pace\n"), 0),
+    "5 + 5 min build and finish (10 min rule)": (
+        _around_reps(before="- 5m Z3 Pace\n", after="- 5m Z3 Pace\n"),
+        2,
+    ),
+    "4 + 4 min build and finish": (
+        _around_reps(before="- 4m Z3 Pace\n", after="- 4m Z3 Pace\n"),
+        0,
+    ),
+    "5 min and 299 s at the ends, 599 s together": (
+        _around_reps(before="- 5m Z3 Pace\n", after="- 299s Z3 Pace\n"),
+        0,
+    ),
+    "3 x 3 min block": (
+        _around_reps(before="\n3x\n- 3m Z3 Pace\n- 90s Z1 Pace\n\n"),
+        3,
+    ),
+    "2 x 4 min block": (
+        _around_reps(before="\n2x\n- 4m Z3 Pace\n- 2m Z1 Pace\n\n"),
+        2,
+    ),
+    # Below the reps' level, so the lap fitting keeps the reps as work steps.
+    "6 x 20 s strides": (
+        _around_reps(before="\n6x\n- 20s Z4 Pace\n- 40s Z1 Pace\n\n"),
+        0,
+    ),
+    "6 x 30 s block": (
+        _around_reps(before="\n6x\n- 30s Z4 Pace\n- 40s Z1 Pace\n\n"),
+        6,
+    ),
+    "8 x 45 s block": (
+        _around_reps(before="\n8x\n- 45s Z4 Pace\n- 45s Z1 Pace\n\n"),
+        8,
+    ),
+    "20 min tempo": (_around_reps(before="- 20m Z3 Pace\n"), 1),
+    "floats or unders between and after the reps": (
+        "- 10m Z2 Pace\n\n5x\n- 3m 3:45-3:55/km Pace\n- 90s Z3 Pace\n\n- 5m Z1 Pace",
+        0,
+    ),
+    # Distances are written in km or mtr: "1500m" would be 1500 minutes.
+    "distance reps": (
+        (
+            "- 10m Z2 Pace\n\n5x\n- 700mtr 3:45-3:55/km Pace\n- 90s Z1 Pace\n\n"
+            "- 5m Z1 Pace"
+        ),
+        0,
+    ),
+    # A distance step counts at its target pace: 1.5 km in zone 3 (about
+    # 3.64 m/s) is about 412 s, 3 km about 824 s.
+    "1.5 km distance build": (_around_reps(before="- 1.5km Z3 Pace\n"), 0),
+    "3 km distance tempo (10 min rule)": (_around_reps(before="- 3km Z3 Pace\n"), 1),
+    "3 x 1.5 km distance block": (
+        _around_reps(before="\n3x\n- 1.5km Z3 Pace\n- 90s Z1 Pace\n\n"),
+        3,
+    ),
+}
+
+
 def _display_streams(session: dict[str, Any]) -> dict[str, Any]:
     streams = session["streams"]
     return {
@@ -226,64 +297,27 @@ class PlannedTargetExecutionTests(unittest.TestCase):
             ),
         )
 
-    def test_ten_minutes_of_unmatched_hard_time_make_a_skipped_block(self) -> None:
-        # #3084 (athlete): a warm-up build of 5 min and a fast finish of 4 min 59 s,
-        # 599 s together, stay a build; a single skipped 10 min tempo is a block.
-        def unmatched(extra: str) -> int:
-            plan = (
-                "- 10m Z2 Pace\n" + extra + "- 3m Z1 Pace\n\n5x\n"
-                "- 3m 3:45-3:55/km Pace\n- 90s Z1 Pace\n\n- 5m Z1 Pace"
-            )
-            session = _run()
-            return planned_target_execution(
-                session_execution(session),
-                structured_steps(plan),
-                THRESHOLDS,
-                "run",
-                streams=_display_streams(session),
-            )["summary"]["unmatched_hard_steps"]
-
-        self.assertEqual(0, unmatched("- 5m Z3 Pace\n- 2m Z1 Pace\n- 299s Z3 Pace\n"))
-        self.assertEqual(1, unmatched("- 10m Z3 Pace\n"))
-        # A skipped block of distance steps counts at its target pace: 3 x
-        # 1500 m in zone 3 (about 3.6 m/s) is about 21 min.
-        self.assertEqual(
-            3,
-            unmatched("- 1500m Z3 Pace\n- 1500m Z3 Pace\n- 1500m Z3 Pace\n"),
-        )
-
-    def test_a_lone_hard_warm_up_build_is_no_skipped_block(self) -> None:
-        # #3084: a 5 min build to pace zone 3 in the warm-up, then the 5 fast
-        # reps run in full; one hard step outside the reps is no block.
-        plan = (
-            "- 10m Z2 Pace\n- 5m Z3 Pace\n- 3m Z1 Pace\n\n5x\n"
-            "- 3m 3:45-3:55/km Pace\n- 90s Z1 Pace\n\n- 5m Z1 Pace"
-        )
-        session = _run()
-        result = planned_target_execution(
-            session_execution(session),
-            structured_steps(plan),
-            THRESHOLDS,
-            "run",
-            streams=_display_streams(session),
-        )
-        self.assertEqual(0, result["summary"]["unmatched_hard_steps"])
-
-    def test_floats_between_and_after_the_reps_are_no_skipped_block(self) -> None:
-        # #3084: an over-under run in full, 5 fast reps each followed by a 90 s
-        # float in pace zone 3; the floats belong to the reps, not a block.
-        plan = (
-            "- 10m Z2 Pace\n\n5x\n- 3m 3:45-3:55/km Pace\n- 90s Z3 Pace\n\n- 5m Z1 Pace"
-        )
-        session = _run()
-        result = planned_target_execution(
-            session_execution(session),
-            structured_steps(plan),
-            THRESHOLDS,
-            "run",
-            streams=_display_streams(session),
-        )
-        self.assertEqual(0, result["summary"]["unmatched_hard_steps"])
+    def test_common_plan_shapes_keep_their_skipped_block_verdict(self) -> None:
+        # One row per plan shape (#3267, table pattern of #3248). The executed
+        # session runs the 5 fast reps in full; each row adds steps around them.
+        for shape, (plan, unmatched) in SKIPPED_BLOCK_SHAPES.items():
+            with self.subTest(shape=shape):
+                session = _run()
+                result = planned_target_execution(
+                    session_execution(session),
+                    structured_steps(plan),
+                    THRESHOLDS,
+                    "run",
+                    streams=_display_streams(session),
+                )
+                self.assertEqual(
+                    (5, 5, unmatched),
+                    (
+                        result["summary"]["planned_work_steps"],
+                        result["summary"]["executed_work_laps"],
+                        result["summary"]["unmatched_hard_steps"],
+                    ),
+                )
 
     def test_heart_rate_targets_use_the_second_half(self) -> None:
         execution = session_execution(_run())
