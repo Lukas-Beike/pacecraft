@@ -23,6 +23,7 @@ of its own modules.
 | [M10](m10-dfa-alpha1-first-threshold.md) | First threshold heart rate from chest-strap RR intervals (DFA-α1) | model estimate |
 | [M11](m11-activity-energy.md) | Own activity energy, net of resting metabolism | model estimate |
 | [M12](m12-adaptive-expenditure.md) | Adaptive daily expenditure from intake and the weight trend | model estimate |
+| [M13](m13-body-composition-resting.md) | Body fat from 3-site skinfolds and resting energy from lean mass | model estimate |
 
 M5 covers the smoothed load curves (#1432). M6 (#1725) replaces provider TSS
 with a local load; Banister TRIMP appears only as its heart-rate branch. M7
@@ -235,6 +236,11 @@ accessible text, not a declared absence.
 | R66 | LaForgia, Withers & Gore 2006, "Effects of exercise intensity and duration on the excess post-exercise oxygen consumption", J Sports Sci 24(12):1247-1264 | abstract | EPOC is about 6-15 % of the net exercise oxygen cost after continuous or intermittent exercise; weak evidence for a fixed share. |
 | R67 | Byrne et al. 2005, "Metabolic equivalent: one size does not fit all", J Appl Physiol 99(3):1112-1119 | abstract | 1 MET (3.5 ml/kg/min) overestimates measured resting VO2 by about 35 %; supports correcting MET values to the measured resting rate. |
 | R68 | Hall 2008, "What is the required energy deficit per unit weight loss?", Int J Obes 32(3):573-576 | abstract | Energy content of tissue change: 39.5 MJ/kg fat, 7.6 MJ/kg lean; the energy density of a weight change depends on body composition via Forbes' curve, so a fixed 7,700 kcal/kg misleads. Checked against the abstract (L21 citation check). |
+| R69 | Jackson & Pollock 1978, "Generalized equations for predicting body density of men", Br J Nutr 40(3):497-504, PMID 14748950 | abstract | Samples of 308 and 95 men aged 18-61 against hydrostatic density; the 3-site (chest, abdomen, thigh) coefficients match a secondary reference. Generalized, not athlete-specific. |
+| R70 | Jackson, Pollock & Ward 1980, "Generalized equations for predicting body density of women", Med Sci Sports Exerc 12(3):175-181 | metadata only | Women's 3-site (triceps, suprailiac, thigh) equation; coefficients match a secondary reference. Abstract not read. |
+| R71 | Siri 1961, "Body composition from fluid spaces and density: analysis of methods", in Brozek & Henschel (eds), Techniques for Measuring Body Composition, National Academy of Sciences, pp. 223-244 (also cited as 223-234) | metadata only | Two-compartment conversion %fat = 495/D - 450; assumes constant fat and fat-free densities. Book chapter, reprint located, not read. |
+| R72 | Cunningham 1980, "A reanalysis of the factors influencing basal metabolic rate in normal adults", Am J Clin Nutr 33(11):2372-2374, PMID 7435418 | full text (scanned copy) | 223 untrained adults from Harris & Benedict 1919, lean mass estimated from body-water equations; BMR = 501.6 + 21.6 LBM (adjusted R² 0.70, about 10 % individual error), abstract proposes 500 + 22 LBM. |
+| R73 | Cunningham 1991, "Body composition as a determinant of energy expenditure: a synthetic review and a proposed general prediction equation", Am J Clin Nutr 54(6):963-969 | abstract (record) | General equation REE = 370 + 21.6 FFM, explaining 65-90 % of the variation; the formula known as Katch-McArdle. |
 | L1 | Phillips & Steven 2026, "Perspective: sleep regularity—where do we go from here?", Sleep 49(8), PMID 42023690, DOI `10.1093/sleep/zsag114` | full text | Perspective without new data, formula, threshold or wearable/athlete content. Background only; not decision evidence. |
 
 ### Vendor documentation (not peer-reviewed)
