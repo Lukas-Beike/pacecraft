@@ -107,7 +107,9 @@ SECTION_FIELDS = {
         r"|new_decodes\.[a-z_]+(\.(in_bounds|out_of_bounds))?)"
     ),
     # Chest-strap runs of 60 days by DFA-a1 method (#3273).
-    "dfa_series": re.compile(r"status|runs|with_series|before_series|without_result"),
+    "dfa_series": re.compile(
+        r"status|runs|with_series|unreadable_series|before_series|without_result"
+    ),
     # Window records the next detail mapper bump downloads again (#2220).
     "mapper_replay": re.compile(
         r"status|garmin\.(window_days|pending|passed_over(_empty|_retries)?|records"

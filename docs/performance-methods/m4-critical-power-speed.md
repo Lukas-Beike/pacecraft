@@ -1,7 +1,7 @@
 # M4 — Critical Power and Critical Speed
 
 - **Card:** M4
-- **Card version:** 4
+- **Card version:** 5
 - **Method ID:** critical-power-speed v2 (`backend/performance/critical_power.py`)
 - **Status:** implemented as an experimental model estimate (#1431) on the local mean-maximal curve (#1430, `mean-max-curve` v3)
 - **Classification:** model estimate
@@ -14,6 +14,13 @@ Parameters of the two-parameter power-duration model for cycling (CP, W′) and
 distance-time model for running (CS, D′), fitted to suitable maximal efforts of
 one sport and one comparable period. They are model parameters, not measured
 FTP, lactate threshold, MLSS or an isolated anaerobic energy store (R3).
+
+Athlete decisions (2026-11-16, #3273, F4 to F7): the fit is also shown as a
+local LT2 estimate beside Garmin's LT2 under Zonen & Schwellen, as critical
+speed (pace) for runs and critical power for rides, unchanged and without a
+heart rate, over the best efforts of 42 days. The athlete may adopt it as the
+LT2 pace or FTP with an explicit action; it is stored with its origin and never
+adopted automatically.
 
 ## Formula and units
 
@@ -178,10 +185,23 @@ athlete's power meter or GPS.
 - "Your best 20-minute power in this file was 281 W" (observed best effort,
   not a CP).
 
+## LT2 row (card 5, #3273)
+
+- Window: the best efforts of 42 days (`second_threshold_estimate.CRITICAL_WINDOW_DAYS`);
+  the experimental M4 line keeps 28 days, so the two can differ and each names
+  its window.
+- Value: CS as pace (1000 / CS, s/km) or CP in W, unchanged (no markdown, F4).
+  Rides take the outdoor fit, else the indoor one. No heart rate: the heart
+  rate at CS or CP lies in the severe domain and is no LT2 heart rate.
+- Quality (F6): `good` when every effort lies within 1.5 % of the model line
+  and leaving any one effort out moves CS or CP by at most 3 %; otherwise
+  `low` (shown as "mittel"). A withheld fit is unknown with its reason.
+
 ## Forbidden statements
 
-- CP as FTP, lactate threshold, MLSS or a zone boundary, or automatic zone
-  changes from CP (#1421).
+- CP as FTP, lactate threshold, MLSS or a zone boundary, except as the athlete's
+  own explicit adoption of the LT2 row, stored with its origin (#3273); any
+  automatic zone change from CP stays forbidden (#1421).
 - W′ or D′ as a measured anaerobic capacity, or as reliable as CP or CS.
 - Marathon or long-race predictions from the short-duration model.
 - "Scientifically validated" for this athlete's estimate, or validity claimed

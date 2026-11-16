@@ -56,16 +56,21 @@ POWER_SOURCE_UNCHECKED: Final = "unchecked"
 
 
 def critical_power_speed(
-    records: Sequence[dict[str, Any]], today: date, *, input_fingerprint: str
+    records: Sequence[dict[str, Any]],
+    today: date,
+    *,
+    input_fingerprint: str,
+    window_days: int = WINDOW_DAYS,
 ) -> dict[str, Any]:
     """Fit cycling CP per environment and outdoor running CS from session curves.
 
-    ``records`` are the session curve records of the 28-day window.
+    ``records`` are the session curve records of the ``window_days`` window: 28
+    for the M4 line, 42 for the LT2 estimate (#3273).
     """
     fits = [
-        _fit(records, "ride", "outdoor", today),
-        _fit(records, "ride", "indoor", today),
-        _fit(records, "run", "outdoor", today),
+        _fit(records, "ride", "outdoor", today, window_days),
+        _fit(records, "ride", "indoor", today, window_days),
+        _fit(records, "run", "outdoor", today, window_days),
     ]
     return {
         "method": METHOD_ID,
@@ -73,7 +78,7 @@ def critical_power_speed(
         "card": "M4",
         "classification": "model estimate",
         "status": "experimental",
-        "window_days": WINDOW_DAYS,
+        "window_days": window_days,
         "protocol": "best 180, 420, 720 and 1200 s (cycling) or 180, 420 and 720 s (running) from training files",
         "fit": "least squares of work or distance on time",
         "test_intent": "unknown",
@@ -94,7 +99,11 @@ def fit_line(
 
 
 def _fit(
-    records: Sequence[dict[str, Any]], sport: str, environment: str, today: date
+    records: Sequence[dict[str, Any]],
+    sport: str,
+    environment: str,
+    today: date,
+    window_days: int = WINDOW_DAYS,
 ) -> dict[str, Any]:
     field = _FIELDS[sport][0]
     wanted = EFFORT_SECONDS[sport]
@@ -113,7 +122,9 @@ def _fit(
         return {
             **result,
             "status": "insufficient_data",
-            "reason": f"Keine unabhängigen {minutes}-Minuten-Belastungen in 28 Tagen.",
+            "reason": (
+                f"Keine unabhängigen {minutes}-Minuten-Belastungen in {window_days} Tagen."
+            ),
         }
     result["data_age_days"] = (
         today - min(date.fromisoformat(str(effort["date"])) for effort in efforts)

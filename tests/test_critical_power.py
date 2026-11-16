@@ -178,7 +178,17 @@ class StopRuleTests(unittest.TestCase):
         self.assertEqual("insufficient_data", fit["status"])
         self.assertEqual(3, len(fit["efforts"]))
         self.assertIn("3, 7, 12, 20", fit["reason"])
+        self.assertIn("in 28 Tagen", fit["reason"])
         self.assertNotIn("cp_watts", fit)
+
+    def test_the_reason_and_the_result_name_the_window_the_caller_chose(self):
+        # #3273: the LT2 row fits 42 days, the M4 line keeps 28.
+        result = critical_power_speed(
+            _model_rides()[:3], TODAY, input_fingerprint="fp", window_days=42
+        )
+        self.assertEqual(42, result["window_days"])
+        ride = next(fit for fit in result["fits"] if fit["sport"] == "ride")
+        self.assertIn("in 42 Tagen", ride["reason"])
 
     def test_residual_above_three_percent_is_withheld(self):
         records = _model_rides()

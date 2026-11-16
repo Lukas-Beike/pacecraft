@@ -487,7 +487,13 @@ class StoredEstimateTests(unittest.TestCase):
             )
         self.assertEqual(
             counts,
-            {"runs": 3, "with_series": 1, "before_series": 1, "without_result": 1},
+            {
+                "runs": 3,
+                "with_series": 1,
+                "unreadable_series": 0,
+                "before_series": 1,
+                "without_result": 1,
+            },
         )
 
     def test_quality_ranks_before_the_series_within_a_session(self) -> None:

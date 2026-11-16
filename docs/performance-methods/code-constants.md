@@ -223,6 +223,20 @@ every named number the code fixes. A test fails when it is out of date.
 | `GARMIN_SOURCE` | `'Garmin-Einordnung (Brustgurt), Garmin EPIX Handbuch'` | `backend/performance/running_dynamics.py` | Garmin's colour bands from the EPIX (Gen 2) owner's manual, the newest generation that still lists all five values ("Color Gauges and Running Dynamics Data", "Vertical Oscillation and Vertical Ratio Data", "Ground Contact Time Balance Data"; the Forerunner 945 manual has the same limits): population percentiles of Garmin's runners, purple > 95th, blue 70-95th, green 30-69th, orange 5-29th, red < 5th. The athlete runs with a chest strap (HRM-Pro/HRM-600), so vertical oscillation and ratio take the chest column. Each entry: the upper bounds of the colours in rising order of the value. |
 | `GARMIN_BALANCE_GREEN` | `0.7` | `backend/performance/running_dynamics.py` | Balance: green within 50.7 % on either side, orange up to 52.2 %, red beyond. |
 | `GARMIN_BALANCE_ORANGE` | `2.2` | `backend/performance/running_dynamics.py` |  |
+| `SECOND_ALPHA1` | `0.5` | `backend/performance/second_threshold_estimate.py` |  |
+| `SECOND_MARGIN` | `0.1` | `backend/performance/second_threshold_estimate.py` | The windows must reach this far below and above 0.5, as 0.65 and 0.85 bracket 0.75. |
+| `LATE_SHARE` | `0.25` | `backend/performance/second_threshold_estimate.py` | Windows below 0.5 only in this last share of a run are drift, not a crossing. |
+| `ESTIMATE_DAYS` | `60` | `backend/performance/second_threshold_estimate.py` |  |
+| `MIN_SESSIONS` | `3` | `backend/performance/second_threshold_estimate.py` |  |
+| `GOOD_MIN_SESSIONS` | `5` | `backend/performance/second_threshold_estimate.py` |  |
+| `GOOD_MAX_SPREAD_PCT` | `5.0` | `backend/performance/second_threshold_estimate.py` | Spread of the qualifying runs in percent of their median (F2: as for LT1). |
+| `BOUNDS_BPM` | `(60.0, 220.0)` | `backend/performance/second_threshold_estimate.py` |  |
+| `CRITICAL_WINDOW_DAYS` | `42` | `backend/performance/second_threshold_estimate.py` |  |
+| `GOOD_MAX_RESIDUAL` | `0.015` | `backend/performance/second_threshold_estimate.py` |  |
+| `GOOD_MAX_LEAVE_ONE_OUT` | `0.03` | `backend/performance/second_threshold_estimate.py` |  |
+| `DFA_LABEL` | `'Schätzung aus Brustgurt-RR-Intervallen (DFA-α1 0,5, Forschungsstand), kein Laborwert'` | `backend/performance/second_threshold_estimate.py` |  |
+| `CRITICAL_LABEL` | `'Modellschätzung aus Bestwerten (Critical Speed/Power, M4)'` | `backend/performance/second_threshold_estimate.py` |  |
+| `RUNS_ONLY` | `{'status': 'unknown', 'reason': 'nur aus Läufen', 'sessions': 0}` | `backend/performance/second_threshold_service.py` |  |
 | `TARGET_BASIS_FTP_KEY` | `'ftp'` | `backend/performance/session_analysis.py` |  |
 | `METHOD` | `'time-weighted-session-analysis-v3'` | `backend/performance/session_analysis.py` | v2: Pa:HR of outdoor runs uses grade-adjusted speed (card M8 v2, #1770). v3: the steady-output rule reads the CV of 60 s rolling means (#1832). |
 | `GRADE_ADJUSTED_SPEED` | `'grade_adjusted_speed'` | `backend/performance/session_analysis.py` |  |

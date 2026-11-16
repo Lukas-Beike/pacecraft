@@ -471,6 +471,9 @@ def _read_routes(
                 activity_read().summaries_on_days,
             ),
             first_threshold_service=athlete.first_threshold,
+            second_threshold_service=lambda: athlete.second_threshold(
+                ctx.performance.curve_records
+            ),
             skinfold_service=athlete.skinfolds,
             energy_view=ctx.nutrition.energy_view,
             race_plan=partial(
