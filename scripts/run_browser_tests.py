@@ -372,13 +372,28 @@ def require_engine(processes):
         ["docker", "version", "--format", "{{.Server.Version}}"]
     )
     if code:
+        # Docker writes the engine's error to stderr, which the run keeps aside.
+        error = getattr(getattr(processes, "errors", None), "last", b"") or b""
         raise RunnerError(
             "The Docker engine does not answer, so no browser test can start. "
+            + engine_fix(output + error.decode("utf-8", errors="replace"))
+            + " Then rerun."
+            + _stream_tail(processes, output)
+        )
+
+
+def engine_fix(output):
+    """The one fix for an engine that does not answer, read from its own error:
+    Docker Desktop's for its Windows pipe, a plain daemon's elsewhere (#3305
+    review)."""
+    if "dockerDesktop" in output or "pipe/docker" in output:
+        return (
             "Start Docker Desktop and wait until it reports running; if it stays "
             "'starting', quit Docker Desktop, run `wsl --shutdown` and start it "
             "again (this stops every lane's containers, so tell the other lanes "
-            "first). Then rerun." + _stream_tail(processes, output)
+            "first)."
         )
+    return "Start the Docker daemon (for example `sudo systemctl start docker`)."
 
 
 def checked(processes, command, **kwargs):

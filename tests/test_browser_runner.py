@@ -664,6 +664,16 @@ class BrowserRunnerTests(unittest.TestCase):
         )
         self.assertFalse(fake.ids)
 
+    def test_the_engine_fix_names_docker_desktop_only_where_it_runs(self):
+        # #3305 review: a Linux daemon gets no Docker Desktop or WSL advice.
+        desktop = "request returned 500 for ... dockerDesktopLinuxEngine ..."
+        daemon = "Cannot connect to the Docker daemon at unix:///var/run/docker.sock."
+        self.assertIn("wsl --shutdown", runner.engine_fix(desktop))
+        linux = runner.engine_fix(daemon)
+        self.assertNotIn("wsl", linux)
+        self.assertNotIn("Docker Desktop", linux)
+        self.assertIn("Start the Docker daemon", linux)
+
     def test_each_checkout_gets_its_own_application_image_tag(self):
         with tempfile.TemporaryDirectory() as directory:
             first, second = Path(directory) / "first", Path(directory) / "second"
