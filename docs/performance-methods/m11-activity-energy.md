@@ -43,8 +43,9 @@ counting it twice. 1 kcal = 4184 J.
    used for strength.
 5. **NEAT:** steps outside recorded sessions × step length × Minetti's level
    walking cost `C_w(0) = 2.5 J/kg/m` × mass, plus floors as vertical work
-   `m × g × 3 m / 0.25`. Step length from recorded walks (speed ÷ cadence),
-   else 0.415 × height.
+   `m × g × 3 m / 0.25`. Step length from recorded walks (speed ÷ steps per
+   minute), else 0.415 × height. A run, walk or hike takes its steps out of
+   NEAT as 2 × its one-leg cadence × duration; other sessions take none.
 6. **TEF:** `0.25 × 4 × protein_g + 0.10 × 4 × carbohydrate_g + 0.015 × 9 × fat_g`.
 7. **EPOC (optional, off by default):** 6 % of the net cost of a session above
    the threshold.
@@ -107,7 +108,9 @@ line is calibrated on power-derived cost, not calorimetry (weak evidence).
   Keytel; Keytel needs weight, age and sex, else no value.
 - NEAT needs the day's steps; without a measured or height-based step length
   there is no value.
-- A missing input gives "unknown", never a device value in its place.
+- A missing input gives "unknown", never a device value in its place: a day
+  without steps or with an unpriced session has no activity value, and the
+  net costs need the resting rate.
 
 ## Numeric rules
 
