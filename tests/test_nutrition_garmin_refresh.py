@@ -514,6 +514,61 @@ class GarminNutritionRefreshTests(unittest.TestCase):
         self.assertEqual(records[0]["calories"], {"burnedTotal": 733})
         client.get_user_summary.assert_called_once_with("2026-09-24")
 
+    def test_remote_energy_refresh_reads_missing_total_energy_per_day(self) -> None:
+        # Stored before the watch synced: resting energy only (#3157).
+        reader = cast(Any, GarminRemoteReader.__new__(GarminRemoteReader))
+        client = Mock()
+        client.get_daily_summaries.return_value = [
+            {"calendarDate": "2026-11-07", "bmrKilocalories": 1800},
+            # An empty nested object is no total either.
+            {"calendarDate": "2026-11-08", "bmrKilocalories": 1800,
+             "calories": {"burnedTotal": None}},
+        ]  # fmt: skip
+        client.get_user_summary.side_effect = [
+            {
+                "calendarDate": "2026-11-07",
+                "totalKilocalories": 2600,
+                "activeKilocalories": 800,
+                "bmrKilocalories": None,
+            },
+            {
+                "calendarDate": "2026-11-08",
+                "totalKilocalories": None,
+                "bmrKilocalories": "",
+            },
+        ]
+        reader.configured = Mock(return_value=True)
+        reader._external_call = lambda _cancel: (
+            lambda _service, _operation, call, _details: call()
+        )
+        reader._authenticated_client = lambda _external: (client, "")
+        reader._garmin_tokens = None
+
+        records, _complete = reader.fetch_nutrition_data(
+            "daily_stats", date(2026, 11, 7), date(2026, 11, 8)
+        )
+
+        # The summary adds its values and never blanks the range row's own.
+        self.assertEqual(
+            records[0],
+            {
+                "calendarDate": "2026-11-07",
+                "totalKilocalories": 2600,
+                "activeKilocalories": 800,
+                "bmrKilocalories": 1800,
+            },
+        )
+        # An equally empty summary leaves the range row as it was.
+        self.assertEqual(
+            records[1],
+            {
+                "calendarDate": "2026-11-08",
+                "bmrKilocalories": 1800,
+                "calories": {"burnedTotal": None},
+            },
+        )
+        self.assertEqual(client.get_user_summary.call_count, 2)
+
     def test_remote_body_refresh_uses_only_the_weight_range(self) -> None:
         reader = cast(Any, GarminRemoteReader.__new__(GarminRemoteReader))
         client = Mock()

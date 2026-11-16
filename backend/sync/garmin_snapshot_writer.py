@@ -26,6 +26,7 @@ from backend.canonical.vocabulary import ProviderId
 from backend.db import garmin_store
 from backend.db.repositories import KeyValueRepository
 from backend.providers.canonical_plans import garmin_payload_retrieved_at
+from backend.providers.garmin_fields import flatten_daily_summary
 from backend.providers.garmin_weight_walk import WEIGHT_SECTIONS
 from backend.sync.canonical_coverage_store import (
     CanonicalCoverageStore,
@@ -65,6 +66,8 @@ ANALYSIS_SOURCES: Final = frozenset(
 NUTRITION_SOURCES: Final = frozenset({"daily_stats", "weight"})
 # The values of the day the change check stores by day (#2303).
 DAYTIME_SOURCES: Final = frozenset({"daily_stats", "body_battery"})
+# The daily summaries: merged field by field, never emptied or pruned (#3157).
+DAILY_SUMMARY_SECTION: Final = "daily_stats"
 
 
 class GarminSnapshotWriter:
@@ -89,6 +92,7 @@ class GarminSnapshotWriter:
         stored activity on those days that the payload lacks is marked deleted.
         """
         zone = self._zone_provider() or UTC
+        payload = _keeping_daily_values(db, payload)
         counters = ingest_garmin_payload(
             db, payload, zone=zone, deletion_window=deletion_window
         )
@@ -135,6 +139,7 @@ class GarminSnapshotWriter:
         if not set(sections).issubset(allowed):
             raise ValueError("Unsupported Garmin refresh source")
         zone = self._zone_provider() or UTC
+        sections = _keeping_daily_values(db, sections)
         activity_window = windows.get(ACTIVITIES_SECTION)
         counters = ingest_garmin_payload(
             db,
@@ -165,7 +170,11 @@ class GarminSnapshotWriter:
 
     @staticmethod
     def _prune(db: Any, section: str, value: Any, window: tuple[date, date]) -> None:
-        if section in ITEM_SECTIONS and section != ACTIVITIES_SECTION:
+        # A stored daily summary stays when a read leaves its day out (#3157).
+        if section in ITEM_SECTIONS and section not in (
+            ACTIVITIES_SECTION,
+            DAILY_SUMMARY_SECTION,
+        ):
             garmin_store.prune_section(
                 db,
                 section,
@@ -211,6 +220,66 @@ def _current_activity_read(
     if window is None or retrieved_at is None:
         return False
     return window[1] >= retrieved_at.astimezone(zone).date()
+
+
+def _keeping_daily_values(db: Any, sections: Mapping[str, Any]) -> Mapping[str, Any]:
+    """Merge each incoming daily summary over its stored one, field by field.
+
+    A read never replaces a stored value with an empty one: a missing, null or
+    empty field, or a zero over a stored positive number, keeps the stored
+    value; nested records merge the same way (#3157, as #3128 for streams).
+    """
+    rows = sections.get(DAILY_SUMMARY_SECTION)
+    if not isinstance(rows, list):
+        return sections
+    merged = []
+    for item in split_section(rows):
+        stored = garmin_store.read_item(db, DAILY_SUMMARY_SECTION, item.key)
+        incoming = item.value
+        if isinstance(stored, Mapping) and isinstance(incoming, Mapping):
+            incoming = _merge_daily(stored, incoming)
+        merged.append(incoming)
+    return {**sections, DAILY_SUMMARY_SECTION: merged}
+
+
+def _merge_daily(
+    stored: Mapping[str, Any], incoming: Mapping[str, Any]
+) -> dict[str, Any]:
+    """Merge one day; a nested incoming value also updates its stored flat alias.
+
+    Flat keys win when a summary is read (``flatten_daily_summary``), so a stale
+    flat value kept from an earlier per-day read would hide a newer nested one.
+    """
+    merged = _merge_fields(stored, incoming)
+    for alias, value in flatten_daily_summary(incoming).items():
+        stale = alias not in incoming and alias in merged
+        if stale and not _empty_over(value, merged[alias]):
+            merged[alias] = value
+    return merged
+
+
+def _merge_fields(
+    stored: Mapping[str, Any], incoming: Mapping[str, Any]
+) -> dict[str, Any]:
+    merged = dict(stored)
+    for key, value in incoming.items():
+        old = stored.get(key)
+        if isinstance(value, Mapping) and isinstance(old, Mapping):
+            merged[key] = _merge_fields(old, value)
+        elif not _empty_over(value, old):
+            merged[key] = value
+    return merged
+
+
+def _empty_over(value: Any, old: Any) -> bool:
+    """Whether ``value`` would only erase ``old``: empty, or zero over a positive."""
+    if value is None or value in ("", [], {}):
+        return old is not None
+    numbers = (int, float)
+    zero_over_positive = (
+        isinstance(value, numbers) and isinstance(old, numbers) and value == 0 < old
+    )
+    return zero_over_positive and not isinstance(value, bool)
 
 
 def _identifiers(section: str, value: Any) -> set[str]:
