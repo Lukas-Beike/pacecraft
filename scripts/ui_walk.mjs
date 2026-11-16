@@ -321,9 +321,14 @@ async function candidateCount(page, each) {
 // The step's element, waited for while the view shows it is loading (up to LOADING_CAP_MS), else for `timeout`.
 async function waitReady(page, step, timeout) {
   const deadline = Date.now() + LOADING_CAP_MS;
+  let waited = false;
   for (;;) {
     const outcome = await page.waitForFunction(probe, [step.ready, step.kind, step.absent || null, step.never || null], { timeout, polling: 50 }).then((handle) => handle.jsonValue()).catch(() => "empty");
-    if (outcome !== "empty" || Date.now() > deadline || !(await page.evaluate(loading))) return outcome;
+    if (outcome !== "empty" || Date.now() > deadline) return outcome;
+    const still = await page.evaluate(loading);
+    // After a load it waited out, the step looks once more: the element may come with the load's end.
+    if (!still && !waited) return outcome;
+    waited = still;
   }
 }
 
