@@ -94,11 +94,9 @@ def own_tool(tool: str) -> Path | None:
     """The worktree's prepared tool, or None: never in CI, where a committed
     `.quality-tools` must not replace the interpreter's tools, and never half
     installed."""
-    entry = (
-        TOOLS_DIR / "bin" / ("ruff.exe" if os.name == "nt" else "ruff")
-        if tool == "ruff"
-        else TOOLS_DIR / tool / "__main__.py"
-    )
+    entry = TOOLS_DIR / tool / "__main__.py"
+    if tool == "ruff":
+        entry = TOOLS_DIR / "bin" / ("ruff.exe" if os.name == "nt" else "ruff")
     return None if os.environ.get("CI") or not entry.is_file() else entry
 
 
