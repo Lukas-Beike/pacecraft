@@ -5,7 +5,8 @@ the ten view reads of #2966: first one after another, then all at once. It
 prints per read and per burst the median, minimum and maximum, so a second run
 can be compared against the spread instead of a single number. Without
 ``--right-after-start`` it first waits until the diagnostics report the
-all-time curve build ``ready`` (steady state). One login only: every login is
+all-time curve build ``ready`` and no section ``running`` (steady state): a
+backfill stage still running would be measured with the change (#3172). One login only: every login is
 a write that empties the summary memo.
 
 Only a loopback fixture is measured (default ``http://127.0.0.1:8091``, the
@@ -108,18 +109,35 @@ class Client:
 
 
 def wait_until_ready(
-    client: Client, limit_s: float, clock: Callable[[], float]
+    client: Client,
+    limit_s: float,
+    clock: Callable[[], float],
+    pause: Callable[[float], None] = time.sleep,
 ) -> float:
-    """Start the all-time build if needed and wait for ``ready``; returns the wait."""
+    """Start the all-time build if needed and wait for ``ready`` while no
+    diagnostics section reports ``running`` (the backfill stages); returns the wait."""
     started = clock()
     client.get("/api/analysis/power-profiles")  # the first all-time read starts it
+    shown: list[str] = []
     while True:
-        status = (client.get("/api/diagnostics").get("curve_build") or {}).get("status")
-        if status == "ready":
+        diagnostics = client.get("/api/diagnostics")
+        status = (diagnostics.get("curve_build") or {}).get("status")
+        running = sorted(
+            name
+            for name, section in diagnostics.items()
+            if isinstance(section, dict) and section.get("status") == "running"
+        )
+        if status == "ready" and not running:
             return clock() - started
         if status == "failed" or clock() - started > limit_s:
-            raise SystemExit(f"curve build not ready ({status}) after {limit_s:.0f} s")
-        time.sleep(5)
+            raise SystemExit(
+                f"not steady after {limit_s:.0f} s: curve build {status}, "
+                f"running {', '.join(running) or 'nothing'}"
+            )
+        if running and running != shown:
+            print(f"waiting for {', '.join(running)}", file=sys.stderr)
+            shown = running
+        pause(5)
 
 
 def read_routes(path: str | None, client: Client) -> tuple[str, ...]:
