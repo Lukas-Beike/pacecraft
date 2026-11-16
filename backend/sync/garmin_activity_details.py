@@ -677,15 +677,17 @@ def _window_pending(
     return pending, empty, retry
 
 
-def detail_replay_size(db: Any, key_values: Any, now: datetime) -> dict[str, int]:
-    """Window records the backfill fetches, counts only (#2220).
+def detail_replay_size(db: Any, key_values: Any, now: datetime) -> dict[str, Any]:
+    """Window records the backfill fetches and today's replay budget, counts only (#2220).
 
     ``pending`` records have no set of the current mapper version yet; ``records``
     have none of the next one, so the next mapper bump would fetch them again,
     ``strength`` of them with one call more (their exercise sets). Both leave out
-    what the backfill leaves out: empty marks and used-up retries.
+    what the backfill leaves out: empty marks and used-up retries. The budget
+    fields are ``replay_budget_counts`` of today (UTC).
     """
-    state = _parse_backfill_state(key_values.get(db, BACKFILL_STATE_KEY))
+    raw = key_values.get(db, BACKFILL_STATE_KEY)
+    state = _parse_backfill_state(raw)
     since = now - BACKFILL_WINDOW
 
     def below(version: int) -> list[str]:
@@ -700,6 +702,7 @@ def detail_replay_size(db: Any, key_values: Any, now: datetime) -> dict[str, int
         "pending": len(below(MAPPER_VERSION)),
         "records": len(ids),
         "strength": len(strength_record_ids(db, GARMIN_ID, ids)),
+        **replay_budget_counts(raw, now.astimezone(UTC).date().isoformat()),
     }
 
 

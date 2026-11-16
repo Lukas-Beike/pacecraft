@@ -246,8 +246,19 @@ class BackfillCandidateTests(_Base):
         # Outside the window: 1001. Current sets: 1003, stored by this mapper.
         # Marked empty for its summary: 1004, which the backfill skips. So only
         # 1002 is pending now, while a bump would fetch 1002 and 1003 again.
+        # Today's replay budget comes along: nothing replayed yet, start values.
         self.assertEqual(
-            size, {"window_days": 90, "pending": 1, "records": 2, "strength": 0}
+            size,
+            {
+                "window_days": 90,
+                "pending": 1,
+                "records": 2,
+                "strength": 0,
+                "daily_budget": 20,
+                "per_refresh": 5,
+                "replayed_today": 0,
+                "clean_today": True,
+            },
         )
 
     def test_window_boundary_uses_offset_aware_start_times(self) -> None:
