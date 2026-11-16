@@ -1292,6 +1292,21 @@ class BackfillReplayTests(_Base):
             _stored_state(self.key_values)["replay"], DIRTY_DAY | {"count": 1}
         )
 
+    def test_a_store_error_counts_only_the_replay_that_was_fetched(self) -> None:
+        # The error comes while storing 2001; 2000 was never fetched (#3208 review).
+        _seed_outdated(self, _days(2))
+        reader = _Details({"2001": _full("2001"), "2000": _full("2000")})
+        service = self.service(reader)
+
+        with patch.object(
+            service, "_store_records", side_effect=RuntimeError("database is locked")
+        ):
+            result = service.backfill()
+
+        self.assertEqual(result["status"], "failed")
+        self.assertEqual(reader.fetched, ["2001"])
+        self.assertEqual(_stored_state(self.key_values)["replay"]["count"], 1)
+
     def test_a_replay_whose_file_call_failed_keeps_the_sets_and_is_passed_over(
         self,
     ) -> None:

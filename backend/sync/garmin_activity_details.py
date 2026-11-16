@@ -321,9 +321,12 @@ class GarminActivityDetailService:
             list(by_id), strength_ids=strength_ids, cancel_event=cancel_event
         )
         seen = 0
+        # True while a fetched activity is stored: it is already counted then.
+        storing = False
         try:
             for provider_activity_id, collected in details:
                 seen += 1
+                storing = True
                 if not self._store_collected(
                     provider_activity_id,
                     collected,
@@ -331,6 +334,7 @@ class GarminActivityDetailService:
                     outcome,
                 ):
                     break
+                storing = False
                 if not self._detail_capabilities_allowed():
                     outcome.status = "paused"
                     break
@@ -339,7 +343,8 @@ class GarminActivityDetailService:
                     break
         except Exception as error:  # noqa: BLE001 - backfill errors are logged by type and never stop the sync
             # The fetch in flight already made calls: it counts like any attempt.
-            if seen < len(batch) and batch[seen]["replay"]:
+            # An error while storing came after the count of the stored activity.
+            if not storing and seen < len(batch) and batch[seen]["replay"]:
                 outcome.replay = replace(outcome.replay, count=outcome.replay.count + 1)
             if sync_job_error_class(error) == "rate_limited":
                 outcome.paused_until = (
