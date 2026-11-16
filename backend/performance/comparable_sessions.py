@@ -126,6 +126,7 @@ def comparable_sessions(
         "median_of_peers": median,
         "median_peers": median_peers,
         "upper_quartile_of_peers": quartile,
+        "at_same_output": _at_same_output(mine, peers),
         "difference": difference,
         "peers": [
             {
@@ -201,6 +202,41 @@ def _medians(
         if isinstance(mine.get(metric), (int, float)):
             difference[metric] = rounded_metric(float(mine[metric]) - median[metric])
     return median, difference, counts, quartile
+
+
+# Interval peers within this share of the session's rep power (#3084, ERG).
+SAME_OUTPUT_SHARE: Final = 0.05
+
+
+def _at_same_output(
+    mine: Mapping[str, Any], peers: Sequence[Mapping[str, Any]]
+) -> dict[str, Any] | None:
+    """Peers whose mean rep power is within ``SAME_OUTPUT_SHARE`` of this one's,
+    with their median closing heart rate: an efficiency trend at equal power."""
+    output = mine.get("rep_output_mean")
+    if (
+        mine.get("output_unit") != "W"
+        or not isinstance(output, (int, float))
+        or not output
+    ):
+        return None
+    rates = [
+        float(row["execution_summary"]["heart_rate_end_mean"])
+        for row in peers
+        if isinstance(
+            power := row["execution_summary"].get("rep_output_mean"), (int, float)
+        )
+        and abs(power / output - 1) <= SAME_OUTPUT_SHARE
+        and isinstance(
+            row["execution_summary"].get("heart_rate_end_mean"), (int, float)
+        )
+    ]
+    return {
+        "count": len(rates),
+        "heart_rate_end_mean": rounded_metric(statistics.median(rates))
+        if rates
+        else None,
+    }
 
 
 def _similar(mine: Mapping[str, Any], other: Mapping[str, Any]) -> bool:

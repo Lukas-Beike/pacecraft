@@ -36,6 +36,8 @@ class CoachAthleteRecordToolServiceTests(unittest.TestCase):
         self.competitions.delete.return_value = {"status": "deleted"}
         self.nutrition.log_meal.return_value = {"id": "nut-1", "meal_type": "lunch"}
         self.nutrition.delete_meal.return_value = {"status": "deleted", "id": "nut-1"}
+        # A meal outside a session slot has no session to report.
+        self.nutrition.session_info.return_value = None
         cases = (
             ("save_checkin", {"payload": {"notes": "Synthetic"}}, "local_checkin"),
             (

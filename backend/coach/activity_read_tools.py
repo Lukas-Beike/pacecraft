@@ -48,7 +48,7 @@ from backend.performance.planned_targets import (
 from backend.performance.report_service import PROFILE_WINDOW_DAYS
 from backend.performance.session_conditions import INPUTS as CONDITION_INPUTS
 from backend.performance.session_conditions import RATED_WINDOW_DAYS
-from backend.performance.session_report import session_report
+from backend.performance.session_report import CLIMB_CADENCE_RPM, session_report
 from backend.planning import leg_strength
 from backend.planning.race_plan import race_plan
 from backend.planning.sport import planned_sport_environment
@@ -183,6 +183,17 @@ def _critical_speed(
         "window_days": CRITICAL_SPEED_DAYS,
         "reason": fit.get("reason"),
     }
+
+
+_CADENCE_TARGET = re.compile(r"(\d{2,3})\s*(?:rpm|u/min)", re.IGNORECASE)
+
+
+def _plans_low_cadence(description: Any) -> bool:
+    """True when the unit's text sets a cadence below the climb limit (#3084)."""
+    return any(
+        int(value) < CLIMB_CADENCE_RPM
+        for value in _CADENCE_TARGET.findall(str(description or ""))
+    )
 
 
 def _plan_zones(adherence: Any) -> dict[str, Any] | None:
@@ -663,6 +674,8 @@ class CoachActivityReadToolService:
                 "duration_s": estimate.duration_s,
                 "load": estimate.load,
                 "above_easy_s": bands.get("moderate", 0.0) + bands.get("high", 0.0),
+                # The plan sets a low cadence (low-cadence reps are planned, #3084).
+                "cadence": _plans_low_cadence(unit.get("description")),
             }
         own = _own_summary(session, nearby) or {}
         day = _session_date(session)

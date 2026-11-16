@@ -93,6 +93,7 @@ handler's docstring. Regenerate it with
 | POST | `/api/nutrition/entry` | Session + CSRF | after access | Log a meal; returns a `change` undo reference. |
 | POST | `/api/nutrition/entry/add-product` | Session + CSRF | after access | Add a saved product to a logged meal as one more component. |
 | POST | `/api/nutrition/entry/delete` | Session + CSRF | after access | Delete a logged meal. |
+| POST | `/api/nutrition/entry/session` | Session + CSRF | after access | Attach a "Vor/Während der Einheit" entry to the session the athlete chose. |
 | GET | `/api/nutrition/products` | Session | no | Product search, barcode lookup or food database entries. |
 | POST | `/api/nutrition/products` | Session + CSRF | after access | Save a confirmed product. |
 | PUT | `/api/nutrition/products` | Session + CSRF | before access | Update a confirmed saved product. |
@@ -1036,7 +1037,10 @@ Response: 200 `{"ok": true, ...}` with the day of `get_day_summary`: `date`,
 `total_kcal`, `total_carbs_g`, `total_protein_g`, `total_fat_g`,
 `total_sugar_g`, `total_salt_g`, `known_macro_totals`, `known_intake_totals`,
 `entries_without_macros`, `entry_count`, `entries` and `energy_expenditure`; a
-macro total is `null` unless every entry reports it. `macro_ranges` maps
+macro total is `null` unless every entry reports it. `sessions` lists the
+day's sessions (`id`, `sport`, `started_at_local`, `elapsed_duration_s`); each
+`pre_session`/`during_session` entry carries `session`, its attached
+session or `null`. `macro_ranges` maps
 `protein_g`, `carbs_g` and `fat_g` to `[low, high]` where weight and training
 calendar allow it.
 
@@ -1053,8 +1057,12 @@ Request: JSON body, either `components` alone or one meal. Meal fields:
 (or `date`, default today), `meal_time` (or `logged_at`; a time or an ISO
 timestamp), `logged_time_known` (boolean; `false` needs `meal_type`),
 `estimate_uncertain` (boolean, default false: the amounts were estimated),
-`meal_type` (`breakfast`, `lunch`, `dinner`, `snack`; default derived from the
-time), `source` (`manual`, `voice`, `photo`, `coach`; anything else is
+`meal_type` (`breakfast`, `lunch`, `dinner`, `snack`, `pre_session`,
+`during_session`; default derived from the time, never a session slot),
+`volume_ml` (drink volume above 0 up to 10000, absent when not stated),
+`session_id` (only for a session slot: a session of that day, else the
+server attaches the one session or the unique match by time and leaves
+the entry unattached when it is ambiguous),`source` (`manual`, `voice`, `photo`, `coach`; anything else is
 `manual`), `packaging_label` (`true` marks label values), `food_ingredients`
 (list of `{food_id, amount, unit}`) or `product_id` with `amount` and `unit`
 (nutrients calculated from the saved product). `components` is a list of 1 to 20
@@ -1074,7 +1082,8 @@ Errors: 400 "Beschreibung der Mahlzeit ist erforderlich."; 400 "Kalorienangabe
 400 "Ungültiges Datumsformat '{value}'. Erwartet wird YYYY-MM-DD."; 400
 "Ungültige Uhrzeit '{value}'."; 400 "Bei unbekannter Uhrzeit ist der Mahlzeittyp
 erforderlich."; 400 "Ungültiger Mahlzeittyp '{value}'. Erlaubt sind: breakfast,
-lunch, dinner, snack."; 400 "Komponenten dürfen nicht mit Einzelzutaten,
+lunch, dinner, snack, pre_session, during_session."; 400 "Volumen muss größer als 0
+sein."; 400 `session_not_found` "Einheit nicht gefunden."; 400 "Komponenten dürfen nicht mit Einzelzutaten,
 Summenwerten oder clientseitiger Herkunft kombiniert werden."; 400 "1 bis 20
 Mahlzeitenkomponenten sind erforderlich."; 400 "Ungültige Mahlzeitenkomponente."
 and 400 "Einheit muss g, ml oder portion sein." for a malformed component; 404
@@ -1114,6 +1123,19 @@ is the undo reference.
 
 Errors: 400 "id ist erforderlich zum Löschen." for a missing id; 404
 "Ernährungseintrag nicht gefunden."
+
+### `POST /api/nutrition/entry/session`
+
+Request: JSON body `{"id": string, "session_id": string}`; `id` is the entry id,
+`session_id` an active session of the entry's day, the day before or after.
+
+Response: 200 `{"ok": true, "entry", "change"}` with the updated entry and the
+undo reference. The choice is kept: a later refresh never changes it.
+
+Errors: 400 "Ungültige Eintrags-ID."; 404 "Ernährungseintrag nicht gefunden.";
+400 `session_not_found` "Einheit nicht gefunden."; 400 "Eine Einheit kann nur bei
+„Vor/Während der Einheit“ gesetzt werden." for another meal type; 400
+"session_id ist erforderlich." for an empty `session_id`.
 
 ### `GET /api/nutrition/products`
 
@@ -1291,10 +1313,20 @@ without own data), `drinking` (`l_per_h`, `total_l`, `max_l_per_h`,
 `within_loss_share` with the expected `loss_l` when the loss stays
 within 2 % of body weight, `sodium_g_per_l`, or `generic_l_per_h` without own data),
 `drinking_source`, `carbohydrates`, `carbohydrate_source` and
-`weight`. It reads stored data only and fetches nothing.
+`weight`. It reads stored data only and fetches nothing. With `session_id`
+(and `date`, the day the session started) in the query instead: the
+intake logged for that performed session, facts only: `session_id`,
+`duration_s`, `during` (`entries`, `carbs_g`, `carbs_g_per_h`, `advised`
+step, `notable` true only when the rate is more than 20 % below the
+advised lower bound, `volume_ml` and `ml_per_h` with an entry without ml
+counted as 0 ml, `entries_without_volume` naming how many;
+unknown values are `null`, never 0) and `before` (list of `carbs_g`,
+`minutes_before`).
 
 Errors: 400 `invalid_session_fuelling` "Ungültige Angaben für die
-Verpflegungsempfehlung." for a missing or invalid query value.
+Verpflegungsempfehlung." for a missing or invalid query value; 404
+`session_not_found` "Einheit nicht gefunden." for an unknown, hidden or
+deleted `session_id`.
 
 ### `GET /api/nutrition/week`
 

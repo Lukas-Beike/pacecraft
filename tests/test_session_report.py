@@ -6,6 +6,8 @@ import unittest
 from collections.abc import Sequence
 from typing import Any
 
+from backend.performance import session_conditions
+from backend.performance import session_report as session_report_module
 from backend.performance.session_report import session_report
 from backend.planning.race_plan import race_plan
 
@@ -532,6 +534,40 @@ class PlanTests(unittest.TestCase):
             self.assertEqual("unknown", found[key]["verdict"], key)
             self.assertIn("weichen ab", found[key]["reason"])
 
+    def test_unmatched_hard_steps_make_the_mapping_uncertain(self) -> None:
+        # Five laps against five fitted steps, but three planned hard steps of a
+        # lower block have no lap: structure and rep targets are unknown.
+        found = checks(
+            session_report(
+                result(
+                    focus="vo2max",
+                    execution={"output_unit": "W", "reps": [{"rep": 1, "output": 300}]},
+                    planned_targets={
+                        "status": "ok",
+                        "summary": {
+                            "planned_work_steps": 5,
+                            "executed_work_laps": 5,
+                            "unmatched_hard_steps": 3,
+                        },
+                        "reps": [{"rep": 1, "time_in_target_pct": 90}],
+                    },
+                ),
+                {"duration_s": 3600, "load": 80},
+            )
+        )
+        self.assertEqual(
+            (
+                "unknown",
+                {
+                    "planned_work_steps": 8,
+                    "executed_work_laps": 5,
+                    "unmatched_hard_steps": 3,
+                },
+            ),
+            (found["plan_structure"]["verdict"], found["plan_structure"]["value"]),
+        )
+        self.assertEqual("unknown", found["rep_target"]["verdict"])
+
     def test_an_easy_session_gets_no_structure_check(self) -> None:
         # A stored heart-rate cap alone makes planned_targets "not_covered".
         found = checks(
@@ -1056,6 +1092,408 @@ class ZoneTimeAndFactsTests(unittest.TestCase):
         )
         # Facts carry no verdict and never lead.
         self.assertTrue(all("verdict" not in fact for fact in report["facts"]))
+
+
+class RideBlockTests(unittest.TestCase):
+    """#3084 Part 2b: the ride's own checks, ERG and facts."""
+
+    def _erg(self, hr: float, peers: int, median: float = 150) -> dict[str, Any]:
+        reps = [
+            {"rep": 1, "output": 250, "heart_rate_end": hr},
+            {"rep": 2, "output": 250, "heart_rate_end": hr},
+            {"rep": 3, "output": 250, "heart_rate_end": hr},
+        ]
+        return checks(
+            session_report(
+                result(
+                    sport="ride",
+                    focus="threshold",
+                    execution={
+                        "output_unit": "W",
+                        "erg_like": True,
+                        "reps": reps,
+                        "data_quality": {"heart_rate": "ok"},
+                    },
+                    comparable_sessions={
+                        "status": "ok",
+                        "this": {"heart_rate_end_mean": hr},
+                        "at_same_output": {
+                            "count": peers,
+                            "heart_rate_end_mean": median,
+                        },
+                    },
+                )
+            )
+        )
+
+    def test_erg_power_pacing_is_not_applicable_and_heart_rate_compares(self) -> None:
+        # 156 against a median of 150 bpm at the same power: 4.0 % > 3.
+        found = self._erg(156, 6)
+        for key in ("rep_fade", "within_rep_fade", "start_change"):
+            self.assertEqual("not_applicable", found[key]["verdict"], key)
+        self.assertEqual(
+            (4.0, "notable", "personal"),
+            (
+                found["erg_heart_rate"]["value"]["higher_pct"],
+                found["erg_heart_rate"]["verdict"],
+                found["erg_heart_rate"]["basis"],
+            ),
+        )
+        self.assertEqual("ok", self._erg(153, 6)["erg_heart_rate"]["verdict"])
+        self.assertEqual("unknown", self._erg(156, 4)["erg_heart_rate"]["verdict"])
+
+    def test_low_cadence_on_climbs_unless_the_plan_sets_it(self) -> None:
+        # 60 m over 1000 m is 6 %, at 64 rpm: low. 30 m is 3 %: no climb.
+        reps = [
+            {
+                "rep": 1,
+                "output": 280,
+                "elevation_change_m": 60,
+                "distance_m": 1000,
+                "cadence": 64,
+            },
+            {
+                "rep": 2,
+                "output": 280,
+                "elevation_change_m": 60,
+                "distance_m": 1000,
+                "cadence": 82,
+            },
+            {
+                "rep": 3,
+                "output": 280,
+                "elevation_change_m": 30,
+                "distance_m": 1000,
+                "cadence": 60,
+            },
+        ]
+
+        def climb(planned: dict[str, Any] | None) -> dict[str, Any]:
+            return checks(
+                session_report(
+                    result(
+                        sport="ride",
+                        focus="threshold",
+                        execution={"output_unit": "W", "reps": reps},
+                    ),
+                    planned,
+                )
+            )["climb_cadence"]
+
+        found = climb(None)
+        self.assertEqual(
+            ([{"rep": 1, "grade_pct": 6.0, "cadence_rpm": 64}], 2, "notable"),
+            (
+                found["value"]["low_cadence_reps"],
+                found["value"]["climbing_reps"],
+                found["verdict"],
+            ),
+        )
+        self.assertEqual("not_applicable", climb({"cadence": True})["verdict"])
+        # An indoor course's grade is simulated: no climb check.
+        indoor = session_report(
+            {
+                **result(
+                    sport="ride",
+                    focus="threshold",
+                    execution={"output_unit": "W", "reps": reps},
+                ),
+                "session": {
+                    "activity_id": "act_1",
+                    "sport": "ride",
+                    "environment": "virtual",
+                },
+            }
+        )
+        self.assertNotIn("climb_cadence", checks(indoor))
+
+    def test_ride_if_against_the_focus_range(self) -> None:
+        # NP 240 W at a stored 80 % gives the day's FTP 300 W.
+        def intensity(
+            focus: str, stored: float | None, main: float | None = None
+        ) -> dict[str, Any]:
+            execution: dict[str, Any] = {"output_unit": "W", "structure": "continuous"}
+            if main is not None:
+                execution["halves"] = {"main": {"normalized_power": main}}
+            return checks(
+                session_report(
+                    {
+                        **result(
+                            sport="ride",
+                            focus=focus,
+                            metrics={"normalized_power": metric(240)},
+                            execution=execution,
+                        ),
+                        session_conditions.INPUTS: {"intensity": stored},
+                    }
+                )
+            )["ride_intensity"]
+
+        # Endurance 0.56-0.75: the session's 0.80 is outside.
+        outside = intensity("endurance", 80)
+        self.assertEqual(
+            (0.8, "session", "notable"),
+            (
+                outside["value"]["intensity_factor"],
+                outside["value"]["part"],
+                outside["verdict"],
+            ),
+        )
+        # Threshold with a warm-up: the main part's NP 285 W of 300 W is 0.95,
+        # inside 0.91-1.05, although the whole session's 0.80 is not.
+        main = intensity("threshold", 80, main=285)
+        self.assertEqual(
+            (0.95, "main_part", "ok"),
+            (main["value"]["intensity_factor"], main["value"]["part"], main["verdict"]),
+        )
+        # Rounded as shown: 0.754 shows as 0.75 and is inside the endurance range.
+        self.assertEqual("ok", intensity("endurance", 75.4)["verdict"])
+        self.assertEqual("unknown", intensity("endurance", None)["verdict"])
+
+    def test_reps_in_percent_of_the_session_days_ftp(self) -> None:
+        # NP 240 W at IF 0.80: FTP 300 W; a 270 W rep is 90 %.
+        report = session_report(
+            {
+                **result(
+                    sport="ride",
+                    focus="threshold",
+                    metrics={"normalized_power": metric(240)},
+                    execution={"output_unit": "W", "reps": [{"rep": 1, "output": 270}]},
+                ),
+                session_conditions.INPUTS: {"intensity": 80},
+            }
+        )
+        fact = {f["id"]: f["value"] for f in report["facts"]}["reps_of_ftp"]
+        self.assertEqual({"reps": [{"rep": 1, "pct_of_ftp": 90}], "ftp_w": 300}, fact)
+
+
+# The checks session_conditions owns; it declares their gates itself (#3248).
+CONDITION_CHECKS = frozenset(
+    {
+        "grade_adjusted_pace",
+        "wind",
+        "training_effect",
+        "data_quality",
+        "strength_before",
+        "heat",
+        "hills",
+        "recovery_before",
+        "prior_load",
+        "strength_sets",
+        "rpe_intensity",
+    }
+)
+_OK = {"heart_rate": "ok", "speed": "ok"}
+
+
+def _easy_run() -> dict[str, Any]:
+    return result(
+        focus="easy",
+        metrics={"decoupling_pct": metric(9.0)},
+        zones=zones(1000, 1500, 800, 300),
+        execution={"data_quality": dict(_OK)},
+        planned_targets={
+            "heart_rate_cap": {
+                "cap_bpm": 150,
+                "time_above_cap_pct": 30,
+                "verdict": "above_cap",
+            }
+        },
+        pace_at_heart_rate={
+            "status": "ok",
+            "session": {"pace_s_per_km": 330},
+            "comparable": {"count": 6, "median_pace_s_per_km": 300},
+            "difference_s_per_km": 30,
+        },
+        comparable_sessions={
+            "status": "ok",
+            "this": {"gap_cv_pct": 9.0},
+            "median_peers": {"gap_cv_pct": 6, "decoupling_pct": 6},
+            "upper_quartile_of_peers": {"gap_cv_pct": 5.0, "decoupling_pct": 5.0},
+        },
+    )
+
+
+def _interval_run() -> dict[str, Any]:
+    reps = [
+        {
+            "rep": 1,
+            "output": 240,
+            "duration_s": 240,
+            "within_rep_change_pct": -6,
+            "start_change_pct": 6,
+            "heart_rate_end": 150,
+            "stride_length_first_half_m": 1.20,
+            "stride_length_second_half_m": 1.10,
+        },
+        {"rep": 2, "output": 260, "duration_s": 240, "heart_rate_end": 160},
+        {"rep": 3, "output": 242, "duration_s": 240, "heart_rate_end": 170},
+    ]
+    return result(
+        focus="vo2max",
+        execution={
+            "status": "ok",
+            "structure": "interval",
+            "output_unit": "s/km",
+            "reps": reps,
+            "recoveries": [{"heart_rate_drop_60s": 15}, {"heart_rate_drop_60s": 15}],
+            "data_quality": dict(_OK),
+        },
+        comparable_sessions={
+            "status": "ok",
+            "median_of_peers": {"recovery_drop_mean": 30},
+            "median_peers": {"recovery_drop_mean": 6},
+        },
+    )
+
+
+def _tempo_run() -> dict[str, Any]:
+    return result(
+        focus="tempo",
+        execution={
+            "structure": "continuous",
+            "halves": {"change_pct": -5.0},
+            "data_quality": dict(_OK),
+        },
+    )
+
+
+def _race() -> dict[str, Any]:
+    return {
+        **result(
+            focus="race",
+            execution={"halves": {"change_pct": -4.0}, "data_quality": dict(_OK)},
+        ),
+        "streams": km_streams([280] + [300] * 5 + [330] * 4),
+    }
+
+
+def _erg_ride() -> dict[str, Any]:
+    reps = [{"rep": n, "output": 250, "heart_rate_end": 156} for n in (1, 2, 3)]
+    return result(
+        sport="ride",
+        focus="threshold",
+        execution={
+            "output_unit": "W",
+            "erg_like": True,
+            "reps": reps,
+            "data_quality": dict(_OK),
+        },
+        comparable_sessions={
+            "status": "ok",
+            "this": {"heart_rate_end_mean": 156},
+            "at_same_output": {"count": 6, "heart_rate_end_mean": 150},
+        },
+    )
+
+
+def _outdoor_ride() -> dict[str, Any]:
+    reps = [
+        {
+            "rep": n,
+            "output": 280,
+            "elevation_change_m": 60,
+            "distance_m": 1000,
+            "cadence": 64,
+        }
+        for n in (1, 2)
+    ]
+    return {
+        **result(
+            sport="ride",
+            focus="threshold",
+            execution={"output_unit": "W", "reps": reps},
+        ),
+        "session": {"activity_id": "act_1", "sport": "ride", "environment": "outdoor"},
+    }
+
+
+_RACE_PLAN = race_plan(
+    {
+        "id": "c",
+        "sport": "run",
+        "distance": 10000,
+        "target": "0:50:00",
+        "course_profile": "km 0-5 0 %; km 5-10 0 %",
+    },
+    None,
+)
+_ZONES = {
+    "status": "ok",
+    "metric": "heartrate",
+    "zones": [{"zone": 2, "planned_s": 3000, "actual_s": 2000}],
+}
+# Each base and the report arguments it needs; every base makes checks notable.
+BASES: dict[str, tuple[Any, dict[str, Any]]] = {
+    "easy_run": (_easy_run, {"plan_zones": _ZONES}),
+    "interval_run": (_interval_run, {}),
+    "tempo_run": (_tempo_run, {}),
+    "race": (_race, {"race": _RACE_PLAN}),
+    "erg_ride": (_erg_ride, {}),
+    "outdoor_ride": (_outdoor_ride, {}),
+}
+
+
+def _gate_spikes(result_: dict[str, Any]) -> None:
+    result_["analysis"]["execution"].setdefault("data_quality", {})["heart_rate"] = (
+        "spikes"
+    )
+
+
+def _gate_speed(result_: dict[str, Any]) -> None:
+    result_["analysis"]["execution"].setdefault("data_quality", {})["speed"] = "jumps"
+
+
+def _gate_indoor(result_: dict[str, Any]) -> None:
+    result_["session"] = {**result_["session"], "environment": "indoor"}
+
+
+def _gate_erg(result_: dict[str, Any]) -> None:
+    result_["analysis"]["execution"]["erg_like"] = True
+
+
+MUTATIONS = {
+    "heart_rate": _gate_spikes,
+    "speed": _gate_speed,
+    "indoor": _gate_indoor,
+    "erg": _gate_erg,
+}
+
+
+class CheckGateTests(unittest.TestCase):
+    """#3248: a check never turns notable on data its declared gates refuse."""
+
+    def test_every_check_declares_its_gates(self) -> None:
+        self.assertEqual(
+            set(session_report_module._WEIGHT) - CONDITION_CHECKS,
+            set(session_report_module.GATES),
+        )
+        self.assertLessEqual(
+            {gate for gates in session_report_module.GATES.values() for gate in gates},
+            set(MUTATIONS),
+        )
+
+    def test_a_failed_gate_never_leaves_a_check_notable(self) -> None:
+        covered: set[str] = set()
+        for name, (build, arguments) in BASES.items():
+            notable = session_report(build(), **arguments)["notable"]
+            covered.update(notable)
+            for check in notable:
+                for gate in session_report_module.GATES.get(check, ()):
+                    with self.subTest(base=name, check=check, gate=gate):
+                        bad = build()
+                        if gate == "speed" and bad["session"]["sport"] != "run":
+                            continue
+                        MUTATIONS[gate](bad)
+                        verdict = (
+                            checks(session_report(bad, **arguments))
+                            .get(check, {})
+                            .get("verdict")
+                        )
+                        self.assertNotEqual("notable", verdict)
+        gated = {check for check, gates in session_report_module.GATES.items() if gates}
+        # Every gated check is notable in some base, so its gates are exercised.
+        self.assertEqual(set(), gated - covered)
 
 
 class RaceAndRankingTests(unittest.TestCase):

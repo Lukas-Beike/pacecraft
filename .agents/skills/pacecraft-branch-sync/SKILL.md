@@ -7,7 +7,19 @@ description: Base skill. Rebase the current feature branch onto origin/develop, 
 
 ```powershell
 python scripts/branch_sync.py [--onto origin/develop] [--push] [--allow-root <file>]
+                              [--after-pr <number>]
 ```
+
+- **Stacked layer** (#3243): once the PR this branch was built on is
+  squash-merged, run `--after-pr <that PR> --push`. After the fetch it refuses
+  (exit 1, nothing changed) unless that PR is merged, the target holds its
+  merge commit (a stale or failed fetch does not) and this branch is built on
+  its last head. It then rebases only this layer's own commits, runs the checks
+  below and a dry-run push through the same hooks and lease, and only then
+  retargets this branch's PR to the merged PR's base, prints base and head,
+  waits 60 s for the retarget to settle (#2934) and pushes. A push the hooks
+  refuse leaves the PR untouched; rerun the same command after the fix (an
+  already restacked layer is accepted). Never retarget or arm a layer by hand.
 
 - Refuses on `develop`, `main`, a detached HEAD and uncommitted tracked changes.
   Fetches `origin`, rebases, then lists commit subjects that do not match

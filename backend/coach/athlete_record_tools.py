@@ -206,15 +206,17 @@ class CoachAthleteRecordToolService:
                 ),
             }
         if name == "log_nutrition_template":
-            return {
-                "ok": True,
-                "entry": self._nutrition_diary.log_template(
+            return self._with_session_info(
+                self._nutrition_diary.log_template(
                     str(arguments.get("id") or ""),
                     arguments.get("portions", 1),
                     meal_date=arguments.get("meal_date"),
                     meal_time=arguments.get("meal_time"),
-                ),
-            }
+                    meal_type=arguments.get("meal_type"),
+                    volume_ml=arguments.get("volume_ml"),
+                    session_id=arguments.get("session_id"),
+                )
+            )
         if name in {"save_nutrition_entry", "update_nutrition_entry"}:
             return self._save_or_update_nutrition_entry(name, arguments)
         entry_id = str(arguments.get("id") or arguments.get("entry_id") or "").strip()
@@ -273,16 +275,22 @@ class CoachAthleteRecordToolService:
     ) -> dict[str, Any]:
         nutrition = self._nutrition_diary_service()
         if name == "save_nutrition_entry":
-            return {
-                "ok": True,
-                "entry": nutrition.log_meal(structured_action_payload(arguments)),
-            }
-        return {
-            "ok": True,
-            "entry": nutrition.correct_meal(
+            return self._with_session_info(
+                nutrition.log_meal(structured_action_payload(arguments))
+            )
+        return self._with_session_info(
+            nutrition.correct_meal(
                 str(arguments.get("id") or ""), arguments.get("changes")
-            ),
-        }
+            )
+        )
+
+    def _with_session_info(self, entry: dict[str, Any]) -> dict[str, Any]:
+        """The tool result: the entry, and for a session slot where it belongs now."""
+        result: dict[str, Any] = {"ok": True, "entry": entry}
+        info = self._nutrition_diary_service().session_info(entry)
+        if info is not None:
+            result["session"] = info
+        return result
 
     def _nutrition_diary_service(self) -> NutritionDiaryService:
         if self._nutrition_diary is None:

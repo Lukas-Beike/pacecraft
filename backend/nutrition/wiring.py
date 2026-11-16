@@ -7,6 +7,7 @@ from dataclasses import dataclass, replace
 from datetime import date, timedelta
 from typing import Any
 
+from backend.activities.activity_reference import ActivityReferences
 from backend.app.context import AppContext
 from backend.canonical.vocabulary import MetricKind
 from backend.db.repositories import (
@@ -106,6 +107,10 @@ def build_nutrition(ctx: AppContext) -> NutritionServices:
             local_now=ctx.clock.now,
             meal_library=meal_library_service(),
             observation_reader=lambda: ctx.canonical_read,
+            activity_summaries=lambda db, start, end: (
+                ctx.canonical_read.activity_summaries(db, start=start, end=end)
+            ),
+            references=ActivityReferences(ctx.database()),
         )
 
     def energy_sources() -> EnergySources:

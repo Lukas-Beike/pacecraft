@@ -21,7 +21,7 @@ The system SHALL add to every `get_activity_details` result a `session_report` (
 
 #### Scenario: Plan against actual
 - **WHEN** the session has a paired planned unit
-- **THEN** the report judges for runs and rides the duration (elapsed for interval sessions, whose planned rests the estimate counts, else moving) and the local TSS-scale load (M6, the scale of the plan estimate; never a provider load) against the unit's estimate, notable beyond ±20 %. For detected intervals it judges the planned work steps against the executed work laps (notable on missing or extra steps, with the mapping confidence); without a plan-to-lap mapping that check is unknown with the mapping's reason.
+- **THEN** the report judges for runs and rides the duration (elapsed for interval sessions, whose planned rests the estimate counts, else moving) and the local TSS-scale load (M6, the scale of the plan estimate; never a provider load) against the unit's estimate, notable beyond ±20 %. For detected intervals it judges the planned work steps against the executed work laps (notable on missing or extra steps, with the mapping confidence); without a plan-to-lap mapping that check is unknown with the mapping's reason. When the lap fitting leaves planned steps in zone 3 or above, outside the paired reps and their floats, without a lap for at least 10 minutes of planned time together (a skipped block; less is a warm-up build or a fast finish), the mapping is uncertain: structure, time in target and recovery length are unknown, and the structure names the planned and unmatched hard steps.
 
 #### Scenario: Easy, recovery and long sessions
 - **WHEN** the session focus is recovery, easy, endurance or long
@@ -174,6 +174,14 @@ The session report SHALL add the run's own checks, zone time against the plan, d
 #### Scenario: Run steadiness against own runs
 - **WHEN** an easy, recovery, endurance or long run has at least 5 comparable runs with a GAP variation
 - **THEN** the coefficient of variation of its grade-adjusted speed over the moving time is notable above their upper quartile; with fewer runs the value is a fact only, never judged against a fixed bound.
+
+#### Scenario: Ride checks
+- **WHEN** the session is a ride
+- **THEN** the report judges:
+  - a continuous or easy ride's IF (NP over the session day's FTP) against Coggan's range of its focus (recovery under 0.55, endurance 0.56–0.75, tempo 0.76–0.87, sweet spot 0.84–0.97, threshold 0.91–1.05), notable outside it;
+  - reps steeper than 4 % below 70 rpm, not applicable when the plan sets a cadence;
+  - in ERG (the trainer held the power), the rep fade, within-rep fade and start checks as not applicable, never unknown, and the closing heart rate against at least 5 own sessions within 5 % of the rep power, notable from 3 % higher (athlete, confirmed 2026-11-16);
+  - and states the reps in % of the session day's FTP as a fact.
 
 #### Scenario: Zone time against the plan
 - **WHEN** a run or ride has a paired planned unit with zone times

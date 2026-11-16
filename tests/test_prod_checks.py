@@ -329,14 +329,26 @@ class ProdChecksTests(unittest.TestCase):
         self.assertEqual(
             prod_diagnostics.comparison_lines(
                 {
-                    "counts": {"external_calendar_events": 20, "competitions": 2},
+                    "counts": {
+                        "external_calendar_events": 20,
+                        "competitions": 2,
+                        "nutrition_logs": 410,
+                    },
                     "memory": {},
                 },
-                {"counts": {"external_calendar_events": 21, "competitions": 3}},
+                {
+                    "counts": {
+                        "external_calendar_events": 21,
+                        "competitions": 3,
+                        "nutrition_logs": 412,
+                    }
+                },
             ),
             [
                 ("info", "count external_calendar_events 21 -> 20"),
                 ("FAIL", "count competitions 3 -> 2"),
+                # A diary that lost entries across a release fails (#3234).
+                ("FAIL", "count nutrition_logs 412 -> 410"),
             ],
         )
         self.assertEqual(

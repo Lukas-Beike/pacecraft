@@ -15,6 +15,7 @@ import bisect
 import itertools
 import math
 import statistics
+from collections import deque
 from collections.abc import Mapping, Sequence
 from typing import Any, Final
 
@@ -47,6 +48,8 @@ ERG_VARIABILITY_PCT: Final = 3.0
 MIN_LAP_S: Final = 5.0
 MIN_SESSION_S: Final = 600.0
 WARMUP_EXCLUDED_S: Final = 600.0
+# Coggan's NP rolls 30 s means of the power (#3084, the ride's main-part IF).
+NP_ROLLING_S: Final = 30.0
 MAX_GAP_S: Final = 5.0
 # A channel is uncertain once more than this share of the recorded time sits in
 # runs of missing values longer than MAX_GAP_S (athlete, #3084 3c D); longer
@@ -336,6 +339,32 @@ class _Reader:
             }
         )
 
+    def normalized_power(self, start: float, end: float) -> float | None:
+        """Coggan's NP of a power window: the 4th-power mean of 30 s rolling means.
+
+        The session report judges a ride's main-part IF on it (#3084); a
+        window shorter than one rolling span has none.
+        """
+        values = self._streams.get("watts")
+        if self._channel != "watts" or not isinstance(values, list):
+            return None
+        span: deque[tuple[float, float]] = deque()
+        total = 0.0
+        rolled: list[float] = []
+        for time, value in zip(self._times, values, strict=False):
+            watts = _number(value)
+            if time is None or watts is None or not start <= time <= end:
+                continue
+            span.append((time, watts))
+            total += watts
+            while span and span[0][0] <= time - NP_ROLLING_S:
+                total -= span.popleft()[1]
+            if time - start >= NP_ROLLING_S:
+                rolled.append(total / len(span))
+        if not rolled:
+            return None
+        return round(statistics.fmean(value**4 for value in rolled) ** 0.25)
+
 
 def _intervals(laps: Sequence[Mapping[str, Any]], reader: _Reader) -> dict[str, Any]:
     works = [index for index, lap in enumerate(laps) if lap["kind"] == _WORK]
@@ -500,7 +529,12 @@ def _halves(
         # On the clock of the session's streams, like a lap's start_s (#3084).
         "start_s": round(start),
         "main_part_s": round(end - start),
-        "main": reader.part(start, end),
+        "main": _drop_none(
+            {
+                **reader.part(start, end),
+                "normalized_power": reader.normalized_power(start, end),
+            }
+        ),
         **halves,
         "change_pct": _change_pct(
             reader.raw_output(start, middle), reader.raw_output(middle, end)
