@@ -30,7 +30,7 @@ import json
 import logging
 import re
 import threading
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from contextlib import AbstractContextManager
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta
@@ -41,7 +41,7 @@ from backend.canonical.activity_detail import (
     ActivityStreamSet,
     ActivityStrengthSetSet,
 )
-from backend.canonical.mapping import MappingResult
+from backend.canonical.mapping import MappingIssue, MappingResult
 from backend.canonical.vocabulary import (
     GARMIN_ID,
     ActivityRecordState,
@@ -97,6 +97,11 @@ BACKFILL_STATE_KEY: Final = "garmin_activity_detail_backfill"
 BACKFILL_RETRY_ATTEMPTS: Final = 3
 # Counts of fallback sets (chart streams, splits) kept out or stored (#3122).
 DETAIL_FALLBACK_KEY: Final = "garmin_detail_fallback"
+# Mapping issues by kind (field.reason), counts only, for the post-check (#2220).
+DETAIL_ISSUE_KINDS_KEY: Final = "garmin_detail_issue_kinds"
+MAX_ISSUE_KINDS: Final = 64
+# Issue fields are the mappers' own names; anything else is labelled "other".
+_ISSUE_FIELD: Final = re.compile(r"\w{1,64}", re.ASCII)
 # The backfill needs only ``activity_details``, the part both transports serve.
 # The SDK-only parts (splits, HR and power zones, exercise sets) and the Personal
 # API-only FIT file pause only themselves; the collector skips a paused part
@@ -214,6 +219,7 @@ class GarminActivityDetailService:
             now = self._utc_now()
             mapped = _map_collected(collected, recorded_by=recorded_by, now=now)
         self._count_fit(provider_activity_id, collected)
+        self._count_issues(mapped)
         keep_file_sets = self._keeps_file_sets(provider_activity_id, mapped)
         # Malformed parts are dropped by the mapper, so they count like failures.
         incomplete = _incomplete(collected) or bool(mapped.issues)
@@ -395,6 +401,7 @@ class GarminActivityDetailService:
             now=observed,
         )
         self._count_fit(provider_activity_id, collected)
+        self._count_issues(mapped)
         keep_file_sets = self._keeps_file_sets(provider_activity_id, mapped)
         # Malformed parts are dropped by the mapper, so they count like failures.
         failed = _failed(collected) or bool(mapped.issues)
@@ -514,6 +521,20 @@ class GarminActivityDetailService:
             resolution = stored_stream_resolution(db, GARMIN_ID, provider_activity_id)
         return resolution == StreamResolution.FULL.value
 
+    def _count_issues(self, mapped: MappingResult[Any]) -> None:
+        """Add the fetch's mapping issues to the counts by kind (#2220); a kind
+        beyond ``MAX_ISSUE_KINDS`` distinct ones is not added."""
+        if not mapped.issues or self._key_values is None:
+            return
+        with self._database_manager.unit_of_work() as db:
+            counts = detail_issue_kind_counts(db, self._key_values)
+            for kind, count in issue_kinds(mapped.issues).items():
+                if kind in counts or len(counts) < MAX_ISSUE_KINDS:
+                    counts[kind] = counts.get(kind, 0) + count
+            self._key_values.set(
+                db, DETAIL_ISSUE_KINDS_KEY, json.dumps(counts, sort_keys=True)
+            )
+
     def _count_fallback(self, db: Any, sets: int, *, kept: bool) -> None:
         """Count fallback sets kept out or stored, counts only (#3122)."""
         if not sets or self._key_values is None:
@@ -602,10 +623,38 @@ def _map_collected(
             "garmin activity detail mapping produced issues",
             extra={
                 "event": "garmin_activity_detail_mapping_issues",
-                "context": {"issues": len(mapped.issues)},
+                "context": {
+                    "issues": len(mapped.issues),
+                    "kinds": issue_kinds(mapped.issues),
+                },
             },
         )
     return mapped
+
+
+def issue_kinds(issues: Iterable[MappingIssue]) -> dict[str, int]:
+    """Mapping issues counted by ``field.reason``: names only, never a value or id."""
+    kinds: dict[str, int] = {}
+    for issue in issues:
+        field_name = issue.field if _ISSUE_FIELD.fullmatch(issue.field) else "other"
+        kind = f"{field_name}.{issue.reason.value}"
+        kinds[kind] = kinds.get(kind, 0) + 1
+    return dict(sorted(kinds.items()))
+
+
+def detail_issue_kind_counts(db: Any, key_values: Any) -> dict[str, int]:
+    """The stored issue counts by kind; unreadable entries are left out."""
+    try:
+        stored = json.loads(key_values.get(db, DETAIL_ISSUE_KINDS_KEY) or "{}")
+    except ValueError:
+        return {}
+    if not isinstance(stored, dict):
+        return {}
+    return {
+        str(kind): count
+        for kind, count in stored.items()
+        if type(count) is int and count > 0 and str(kind).count(".") == 1
+    }
 
 
 def _fallback_sets(mapped: MappingResult[Any]) -> tuple[Any, ...]:
@@ -737,7 +786,17 @@ def detail_replay_size(db: Any, key_values: Any, now: datetime) -> dict[str, Any
         "records": len(ids),
         "strength": len(strength_record_ids(db, GARMIN_ID, ids)),
         **replay_budget_counts(raw, now.astimezone(UTC).date().isoformat()),
+        "issue_kinds": _by_field(detail_issue_kind_counts(db, key_values)),
     }
+
+
+def _by_field(kinds: Mapping[str, int]) -> dict[str, dict[str, int]]:
+    """``field.reason`` counts nested as field -> reason -> count."""
+    nested: dict[str, dict[str, int]] = {}
+    for kind, count in kinds.items():
+        field_name, reason = kind.split(".")
+        nested.setdefault(field_name, {})[reason] = count
+    return nested
 
 
 def _keeps_corrected_sets(db: Any, provider_activity_id: str, item: Any) -> bool:
