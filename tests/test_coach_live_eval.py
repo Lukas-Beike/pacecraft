@@ -159,6 +159,33 @@ class ScorerTests(unittest.TestCase):
             ["notable_not_named:heart_rate_cap"], live.unnamed_notables(turns)
         )
 
+    def test_a_title_word_other_checks_share_names_none_of_them(self) -> None:
+        # "Wiederholungen" is in both interval titles: it names neither. Their
+        # own words ("Nachlassen", "Schrittlänge") do, with an ending allowed.
+        report = {
+            "session_report": {
+                "notable": ["rep_fade", "stride_halves"],
+                "checks": [
+                    {"id": "rep_fade", "title": "Nachlassen über die Wiederholungen"},
+                    {"id": "stride_halves", "title": "Schrittlänge je Wiederholung"},
+                ],
+            }
+        }
+
+        def misses(text: str) -> list[str]:
+            return live.unnamed_notables(
+                [{"tool_outputs": [json.dumps(report)], "text": text}]
+            )
+
+        self.assertEqual(
+            ["notable_not_named:rep_fade", "notable_not_named:stride_halves"],
+            misses("Die Wiederholungen waren hart."),
+        )
+        self.assertEqual(
+            [],
+            misses("Du hast nachgelassen? Nein: Nachlassen und kürzere Schrittlängen."),
+        )
+
     def test_every_number_of_the_answer_needs_a_tool_or_message_source(self):
         # #3084: 6,2 rounds from 6.24, 4:30 is 270 s/km, 30 min is 1800 s,
         # 10:00 stands in the timestamp, 6.9. is a date and 3 a free count; 91

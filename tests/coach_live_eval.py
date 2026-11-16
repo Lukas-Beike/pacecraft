@@ -617,14 +617,37 @@ def _session_reports(turns: list[dict[str, Any]]) -> Iterator[dict[str, Any]]:
             yield report
 
 
+def _same_stem(word: str, other: str) -> bool:
+    """Two title words of one stem: one starts with the other (an ending)."""
+    return word.startswith(other) or other.startswith(word)
+
+
+def _distinctive(titles: dict[Any, str]) -> dict[Any, tuple[set[str], bool]]:
+    """Each check's title words no other check title of the report shares.
+
+    A word is shared when another title holds the same stem ("Wiederholung",
+    "Wiederholungen"). A check whose words are all shared keeps all of them and
+    is named only when every one is: the flag says so.
+    """
+    words = {key: _title_words(title) for key, title in titles.items()}
+    result: dict[Any, tuple[set[str], bool]] = {}
+    for key, found in words.items():
+        others = [w for other, ws in words.items() if other != key for w in ws]
+        own = {word for word in found if not any(_same_stem(word, o) for o in others)}
+        result[key] = (own, False) if own else (found, True)
+    return result
+
+
 def unnamed_notables(turns: list[dict[str, Any]]) -> list[str]:
     """Notable checks of the session report the final answer does not name (#3084).
 
-    The playbook asks for every notable check: a check counts as named when the
-    answer carries one distinctive word of its title ("Entkopplung" for
-    "Aerobe Entkopplung").
+    The playbook asks for every notable check: a check counts as named when
+    the answer carries a title word no other check of the report shares
+    ("Entkopplung" for "Aerobe Entkopplung"), as a whole word that may carry
+    an ending.
     """
     answer = (turns[-1]["text"] if turns else "").lower()
+    tokens = set(re.findall(r"[a-zäöüß-]+", answer))
     misses = []
     for report in _session_reports(turns):
         titles = {
@@ -632,12 +655,12 @@ def unnamed_notables(turns: list[dict[str, Any]]) -> list[str]:
             for check in report.get("checks") or ()
             if isinstance(check, dict)
         }
-        misses += [
-            f"notable_not_named:{key}"
-            for key in report.get("notable") or ()
-            if (words := _title_words(titles.get(key, "")))
-            and not any(word in answer for word in words)
-        ]
+        distinctive = _distinctive(titles)
+        for key in report.get("notable") or ():
+            words, all_needed = distinctive.get(key, (set(), False))
+            hits = [any(token.startswith(word) for token in tokens) for word in words]
+            if words and not (all(hits) if all_needed else any(hits)):
+                misses.append(f"notable_not_named:{key}")
     return list(dict.fromkeys(misses))
 
 
