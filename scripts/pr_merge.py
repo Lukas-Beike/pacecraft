@@ -248,18 +248,24 @@ def arming_gates(
     number: int, pr: dict[str, Any], *, current: bool, minutes: int
 ) -> dict[str, Any] | int:
     """The open PR to arm once every gate passed, else the exit code of the gate
-    that refused: the merge freeze, the pushed head, review threads, develop's
-    overlap and Gitar's check on that head (#3308)."""
-    if (reason := frozen(number)) is not None:
-        refuse(number, pr, f"merge freeze (untrusted text): {reason}")
-        return 1
+    that refused: the pushed head, Gitar's check on that head (#3308), then the
+    merge freeze, review threads and develop's overlap. Those come after the
+    Gitar wait, so they see a freeze, a moved develop and the threads Gitar
+    posts as it finishes (#3310 review)."""
     seen = seen_push(number, pr)
-    if seen is None or open_threads(number, seen):
+    if seen is None:
         return 1
-    if current and behind_develop(number, seen):
+    if (gated := gitar_gate(seen["headRefOid"], minutes)) is not None:
+        # Like every refusing gate, an armed auto-merge does not stay armed.
+        if seen.get("autoMergeRequest"):
+            gh("pr", "merge", str(number), "--disable-auto")
+        return gated
+    if (reason := frozen(number)) is not None:
+        refuse(number, seen, f"merge freeze (untrusted text): {reason}")
         return 1
-    gated = gitar_gate(seen["headRefOid"], minutes)
-    return seen if gated is None else gated
+    if open_threads(number, seen) or (current and behind_develop(number, seen)):
+        return 1
+    return seen
 
 
 def main(argv: list[str] | None = None) -> int:
