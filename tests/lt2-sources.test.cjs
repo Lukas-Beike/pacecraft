@@ -86,3 +86,20 @@ test("Analyse lists each known local estimate as an estimate", () => {
   assert.equal(values.run_lt2_cs_pace_seconds_per_km, undefined);
   assert.deepEqual(plain(withLt2Estimates({ a: 1 }, null)), { a: 1 });
 });
+
+test("a failed baseline save is not retried by itself, and one save per sport runs at a time", async () => {
+  // Gitar on #3303: a failing first save must not loop through refreshLt2Notice.
+  let calls = 0;
+  let refreshes = 0;
+  const toasts = [];
+  const { seeLt2Values } = extractFunctions("settings.js", ["lt2BaselineSaving", "seeLt2Values"], {
+    state: { data: {} },
+    api: async () => { calls += 1; throw new Error("Server nicht erreichbar"); },
+    toast: (message) => toasts.push(message),
+    refreshLt2Notice: () => { refreshes += 1; },
+  });
+  await Promise.all([seeLt2Values("run", { provider_hr: 171 }), seeLt2Values("run", { provider_hr: 171 })]);
+  assert.equal(calls, 1);
+  assert.equal(refreshes, 0);
+  assert.deepEqual(toasts, ["Server nicht erreichbar"]);
+});

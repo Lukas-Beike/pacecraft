@@ -866,11 +866,19 @@ function lt2NoticeDetail(changes, provider = "") {
   }).join(", ");
 }
 
+// One save per sport at a time; a failed save is not retried by itself (Gitar on #3303).
+const lt2BaselineSaving = new Set();
+
 async function seeLt2Values(sport, values) {
+  if (lt2BaselineSaving.has(sport)) return;
+  lt2BaselineSaving.add(sport);
   try {
     const result = await api("/api/zones/lt2/notice-baseline", { method: "PUT", body: JSON.stringify({ sport, values }) });
     if (state.data) state.data.lt2_notice_baselines = result.lt2_notice_baselines;
-  } catch (error) { toast(error.message, true); }
+  } catch (error) {
+    toast(error.message, true);
+    return;
+  } finally { lt2BaselineSaving.delete(sport); }
   refreshLt2Notice();
 }
 

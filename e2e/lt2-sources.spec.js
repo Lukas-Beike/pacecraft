@@ -10,16 +10,11 @@ const ZONES = {
   configurations: [PROVIDER_HR],
   effective: [{ sport: "run", metric: "heart_rate", environment: null, key: PROVIDER_HR.key }],
 };
-const ESTIMATES = {
-  run: {
-    dfa_alpha1: { status: "ok", heart_rate_bpm: 169, pace_seconds_per_km: 256, sessions: 6, window_days: 60, quality: "good" },
-    critical_speed: { status: "unknown", reason: "Keine unabhängigen 3, 7, 12-Minuten-Belastungen in 42 Tagen.", sessions: 0 },
-  },
-  ride: {
-    dfa_alpha1: { status: "unknown", reason: "nur aus Läufen", sessions: 0 },
-    critical_power: { status: "ok", power_w: 271, durations_s: [180, 420, 720, 1200], window_days: 42, quality: "low" },
-  },
-};
+// The run only: the ride has no estimates here, so its notice values stay unknown.
+const ESTIMATES = { run: {
+  critical_speed: { status: "unknown", sessions: 0, reason: "Keine unabhängigen 3, 7, 12-Minuten-Belastungen in 42 Tagen." },
+  dfa_alpha1: { status: "ok", quality: "good", sessions: 6, window_days: 60, heart_rate_bpm: 169, pace_seconds_per_km: 256 },
+} };
 const METRICS = {
   run_threshold_pace_seconds_per_km: { value: 252, unit: "s/km", source: "Garmin", source_provider: "garmin", observed_at: "2026-11-03" },
   run_threshold_hr_bpm: { value: 158, unit: "bpm", source: "Garmin", source_provider: "garmin", observed_at: "2026-11-03" },
@@ -92,7 +87,7 @@ test("adopting DFA-α1 offers each value and asks once more above 5 %", async ({
 test("a changed value raises one notice, and closing it stores the seen values", async ({ page }) => {
   const seen = await openRunThresholds(page, {
     run: { provider_hr: 158, provider_pace: 252, dfa_hr: 169, dfa_pace: 256, cs_pace: 255 },
-    ride: { provider_power: null, provider_hr: null, cp_power: 271 },
+    ride: { provider_power: null, provider_hr: null, cp_power: null },
   });
   await page.evaluate(() => refreshLt2Notice());
   const strip = page.locator("#statusStrip");
