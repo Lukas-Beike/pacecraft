@@ -259,18 +259,11 @@ class GarminActivityDetailService:
         )
         fresh = [item for item in pending if not item["replay"]]
         replays = [item for item in pending if item["replay"]] if REPLAY_ENABLED else []
-        today = now.astimezone(UTC).date().isoformat()
-        replay = _roll_replay(state.replay, today)
-        paused_until = state.paused_until
-        limited_at = self._last_rate_limit() if self._last_rate_limit else None
-        if limited_at is not None and now - limited_at < BACKFILL_RATE_LIMIT_PAUSE:
-            # Any Garmin 429 counts like one of the backfill: the budget starts
-            # again and the backfill pauses for a day from it.
-            replay = replace(replay, budget=REPLAY_START_DAILY, clean=False)
-            held = limited_at + BACKFILL_RATE_LIMIT_PAUSE
-            paused_until = held if paused_until is None else max(paused_until, held)
-        if paused_until is not None and paused_until <= now:
-            paused_until = None
+        replay, paused_until = _in_force(
+            state,
+            now,
+            self._last_rate_limit() if self._last_rate_limit else None,
+        )
         if paused_until is not None or not self._detail_capabilities_allowed():
             self._save_backfill_state(
                 paused_until=paused_until, empty=empty, retry=retry, replay=replay
@@ -843,6 +836,26 @@ def _parse_replay(value: object) -> _ReplayBudget:
         ),
         clean=clean if isinstance(clean, bool) else True,
     )
+
+
+def _in_force(
+    state: _BackfillState, now: datetime, limited_at: datetime | None
+) -> tuple[_ReplayBudget, datetime | None]:
+    """The replay budget and the backfill pause in force at ``now``.
+
+    A new UTC day rolls the budget. Any Garmin 429 of the last day, also one of a
+    sync that skipped the backfill, counts like one of the backfill: the budget
+    starts again and the backfill pauses for a day from it. A passed pause is gone.
+    """
+    replay = _roll_replay(state.replay, now.astimezone(UTC).date().isoformat())
+    paused_until = state.paused_until
+    if limited_at is not None and now - limited_at < BACKFILL_RATE_LIMIT_PAUSE:
+        replay = replace(replay, budget=REPLAY_START_DAILY, clean=False)
+        held = limited_at + BACKFILL_RATE_LIMIT_PAUSE
+        paused_until = held if paused_until is None else max(paused_until, held)
+    if paused_until is not None and paused_until <= now:
+        paused_until = None
+    return replay, paused_until
 
 
 def _roll_replay(previous: _ReplayBudget, today: str) -> _ReplayBudget:
