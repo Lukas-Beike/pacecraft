@@ -1637,7 +1637,7 @@ function energyTable(read) {
 // With meals flagged as estimated, the own total without them (only clean windows, #3187 item 14)
 // and with the learned correction sit under "Aus deinen Daten" (athlete decision on #3100).
 function energyFlaggedRows(flagged) {
-  if (!(flagged?.days > 0)) return [];
+  if ((flagged?.days ?? 0) <= 0) return [];
   const row = (kind, label, value) => h("tr", { className: "energy-flag-row", dataset: { energyFlag: kind } }, h("th", { scope: "row" }, label), h("td", null, "–"), h("td", null, value));
   const unflagged = flagged.unflagged;
   const rows = [row("unflagged", "ohne geschätzte Tage", unflagged ? energyKcal(unflagged.total_kcal, unflagged.total_band_kcal) : "kein sauberer Zeitraum")];
