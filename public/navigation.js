@@ -37,7 +37,7 @@ const NAV_VIEWS = (() => {
   const sport = view(["/api/performance", "/api/analysis/power-profiles"], ANALYSIS_ACTIONS, ALL_STATES);
   const period = view(["/api/performance"], [...ANALYSIS_ACTIONS, ...PERIODS, "12 Wochen anzeigen"], ALL_STATES);
   const overview = view([...PLAN_READS, "/api/activities?limit=100"], [...PLAN_ACTIONS, "Woche", "Monat", "Woche synchronisieren", "Verschieben", "Feedback", "Mit dem Coach analysieren", "Mit Coach lösen"], ALL_STATES);
-  const diary = view(["/api/nutrition/day"], ["Ernährung aktualisieren", "Vorheriger Tag", "Nächster Tag", "Heute", "Löschen", "Rückgängig", "Erneut laden"], ENTRIES);
+  const diary = view(["/api/nutrition/day", "/api/body/energy"], ["Ernährung aktualisieren", "Vorheriger Tag", "Nächster Tag", "Heute", "Löschen", "Rückgängig", "Erneut laden"], ENTRIES);
   const connections = view([...MORE_READS, "/api/providers/connections", "/api/nutrition/yazio/status"], ["Verbindung prüfen", "Mit Garmin anmelden", "Garmin trennen", "Wahoo verbinden", "Synchronisieren", "Speichern", "Entfernen"], ["loading", "error", "notConfigured", "offline"]);
   return Object.freeze({
     coach: view(["/api/chat/history?limit=100"], ["Senden", "Morgen-Check-in", "Analyse & Plan", "Antwort stoppen", "Weitere Nachrichten laden", "Coach fragen"], ALL_STATES),

@@ -196,13 +196,17 @@ test("body overview uses profile body fat without creating a dated measurement",
     isPreferredSource: () => true, analysisValidPoint: (p) => p.value != null,
     dateLabel: (v) => v, analysisValue: (v, unit) => `${v} ${unit}`,
     analysisPeriodControls: () => new FakeElement("nav"), bodyHistoryPeriod: "twelveWeeks",
-    skinfoldCard: () => new FakeElement("section"), energyCards: () => [],
+    skinfoldCard: () => new FakeElement("section"), energyBodyCards: () => [],
+    skinfoldEditButton: () => new FakeElement("button"), openSkinfoldDialog: () => {},
   });
   const body = { windows: {} };
   renderBodyAnalysis(body);
   const rows = root.children[0].children[0].children[1].children;
   assert.equal(textOf(rows[1].children[0].children[1]), "Profil");
   assert.equal(textOf(rows[1].children[1]), "18.5 %");
+  // #3252: body fat stays derived; its row carries the skinfold edit button, weight none yet.
+  assert.equal(rows[1].children[2].children[0].tagName, "BUTTON");
+  assert.equal(rows[0].children[2].children.length, 0);
   assert.equal(bodyProfileFat({ body_fat_pct: "" }), null);
   assert.equal(bodyProfileFat({ body_fat_pct: "18,5" }), 18.5);
   assert.equal(bodyProfileFat({ body_fat_pct: 71 }), null);
@@ -212,7 +216,7 @@ test("body overview uses profile body fat without creating a dated measurement",
 test("the energy table shows bands, the badge only with a fit, and the fit basis", () => {
   const charts = [];
   const { h } = extractFunctions("components.js", ["h", "SVG_NS", "svgNode"], { document: fakeDocument() });
-  const { energyTable, energyBasisNote, energyFitNote, energyFitCharts } = extractFunctions("analysis.js", ["ENERGY_SOURCES", "ENERGY_INSUFFICIENT", "ENERGY_STEP_SOURCES", "ENERGY_IMPLAUSIBLE", "ENERGY_IMPLAUSIBLE_REASON", "ENERGY_PARTS", "energyKcal", "energyNeatInputs", "energyInfoId", "energyInfo", "energyBasisNote", "energyFitNote", "energySplitRow", "energyTable", "energyFitCharts"], {
+  const { energyTable, energyBasisText, energyFitNote, energyFitCharts } = extractFunctions("analysis.js", ["ENERGY_SOURCES", "ENERGY_INSUFFICIENT", "ENERGY_STEP_SOURCES", "ENERGY_IMPLAUSIBLE", "ENERGY_IMPLAUSIBLE_REASON", "ENERGY_PARTS", "energyKcal", "energyNeatInputs", "energyBasisText", "energyInfoId", "energyInfo", "energyFitNote", "energySplitRow", "energyTable", "energyFitCharts"], {
     bindAnalysisPopover: (button, info) => { button.dataset.popoverTarget = info.id; },
     h, formatWhole: (v) => String(v), dateLabel: (v) => v, analysisValue: (v, unit) => `${v} ${unit}`,
     createStatusChip: (label) => h("span", null, label),
@@ -230,7 +234,14 @@ test("the energy table shows bands, the badge only with a fit, and the fit basis
     basis: { days: 28, complete_days: 24, insufficient: null },
     skinfold: { date: "2026-11-04", body_fat_pct: 15, lean_mass_kg: 68 },
   };
-  const rows = energyTable(read).children[2].children;
+  const table = energyTable(read);
+  // #3252: how the values come about sits behind the small "i", not under the table.
+  const [captionText, info, tooltip] = table.children[0].children;
+  assert.equal(captionText, "Energieverbrauch ");
+  assert.equal(textOf(info), "i");
+  assert.equal(info.dataset.popoverTarget, tooltip.id);
+  assert.match(textOf(tooltip), /Ruhe aus deinen Daten ist ein Rest/);
+  const rows = table.children[2].children;
   assert.equal(textOf(rows[0].children[0]), "Katch-McArdle passt am besten");
   assert.equal(textOf(rows[0].children[1]), "1839 ± 219", "a formula row carries its band");
   assert.equal(textOf(rows[1].children[0]), "Cunningham", "only the best source carries the badge");
@@ -240,21 +251,18 @@ test("the energy table shows bands, the badge only with a fit, and the fit basis
   assert.equal(textOf(energyFitNote(read)), "Vergleich · 4 von 12 Fenstern · Band aus deinen Daten ± 120 kcal");
   assert.equal(textOf(energyFitNote({ ...read, best: null, fit: { ...read.fit, shared_windows: 3 } })), "Welche Quelle passt: noch nicht unterscheidbar · 3 von 12 Fenstern · Band aus deinen Daten ± 120 kcal");
   assert.equal(textOf(energyFitNote({ ...read, best: null, fit: { ...read.fit, shared_windows: 0, reference_band_kcal: null } })), "Welche Quelle passt: noch nicht unterscheidbar · 0 von 12 Fenstern");
-  const note = textOf(energyBasisNote(read));
+  const note = energyBasisText(read);
   assert.match(note, /24 von 28 Tagen vollständig .* Falten vom 2026-11-04, KFA 15 %, fettfreie Masse 68 kg/);
   assert.match(note, /Bänder nominal 95 %, ohne Fehler beim Erfassen des Essens/, "#3187 item 6");
   assert.match(note, /Ruhe aus deinen Daten ist ein Rest/, "#3187 item 8");
-  assert.match(textOf(energyBasisNote({ ...read, basis: { insufficient: "weighins" }, skinfold: null })), /Datenbasis zu gering \(unter 8 Wiegungen\).*Ohne Hautfaltenmessung/);
-  // #3255: NEAT's inputs sit behind a small "i" in the caption, never in the basis line.
+  assert.match(energyBasisText({ ...read, basis: { insufficient: "weighins" }, skinfold: null }), /Datenbasis zu gering \(unter 8 Wiegungen\).*Ohne Hautfaltenmessung/);
+  // #3255, #3252: NEAT's inputs join the basis behind the one "i", never a line under the table.
   const neat = { days: 27, steps_per_day: 14200, session_steps_per_day: 3100, floors_per_day: 9.5, step_length_m: 0.78, step_length_source: "height" };
   const withNeat = { ...read, basis: { ...read.basis, neat } };
-  assert.doesNotMatch(textOf(energyBasisNote(withNeat)), /Schritten/, "the basis line carries no NEAT inputs");
-  const [caption] = energyTable(withNeat).children;
-  const [, button, info] = caption.children;
-  assert.equal(textOf(button), "i");
-  assert.equal(button.dataset.popoverTarget, info.id, "the i opens the popover");
-  assert.equal(textOf(info), "Alltag aus 14200 Schritten/Tag, davon 3100 in Einheiten abgezogen, Schrittlänge 0.78 m (aus Körpergröße), 9.5 Etagen ohne Einheiten");
-  assert.equal(energyTable(read).children[0].children.length, 1, "without NEAT inputs no i");
+  assert.doesNotMatch(energyBasisText(withNeat), /Schritten/, "the basis text itself carries no NEAT inputs");
+  const [, neatButton, neatInfo] = energyTable(withNeat).children[0].children;
+  assert.match(textOf(neatInfo), /Ruhe aus deinen Daten ist ein Rest .* · Alltag aus 14200 Schritten\/Tag, davon 3100 in Einheiten abgezogen, Schrittlänge 0.78 m \(aus Körpergröße\), 9.5 Etagen ohne Einheiten$/);
+  assert.equal(neatButton.dataset.popoverTarget, neatInfo.id);
   // #3255: a residual below the resting reference is not shown as a value.
   const implausible = { ...read, rows: [...read.rows.slice(0, 3), { source: "own", resting_kcal: null, resting_band_kcal: null, resting_implausible: true, total_kcal: 2832, total_band_kcal: 455 }] };
   const gated = energyTable(implausible).children[2].children;
@@ -299,9 +307,9 @@ test("a reset drops the energy read in flight, so a pre-save answer is never sho
   // Gitar #3180: a reused in-flight read used to write the view from before the skinfold save.
   const answers = [];
   let renders = 0;
-  const fns = extractFunctions("analysis.js", ["energyRead", "energyRequest", "energyGeneration", "resetEnergy", "loadEnergy", "energyCards"], {
+  const fns = extractFunctions("analysis.js", ["energyRead", "energyRequest", "energyGeneration", "resetEnergy", "loadEnergy"], {
     api: () => new Promise((resolve) => answers.push(resolve)),
-    renderBodyAnalysis: () => { renders += 1; },
+    renderBodyAnalysis: () => { renders += 1; }, renderDiaryEnergy: () => { renders += 1; },
     state: { data: {} },
     createLoadingState: () => ({}), h: () => ({}),
   });
@@ -314,7 +322,7 @@ test("a reset drops the energy read in flight, so a pre-save answer is never sho
   assert.equal(renders, 0, "the stale answer neither renders nor is kept");
   answers[1]({ rows: [], stale: false });
   await new Promise((resolve) => setTimeout(resolve, 0));
-  assert.equal(renders, 1);
+  assert.equal(renders, 2, "the fresh answer renders the body view and the diary (#3252)");
 });
 
 test("a failed skinfold read re-renders the card instead of loading forever", async () => {
@@ -346,7 +354,8 @@ test("body overview falls back to Garmin when the profile fat is absent", () => 
     analysisValidPoint: (point) => point.value != null, dateLabel: (v) => v,
     analysisValue: (v, unit) => `${v} ${unit}`, analysisPeriodControls: () => new FakeElement("nav"),
     bodyHistoryPeriod: "twelveWeeks", bodyMetricChart: () => null,
-    skinfoldCard: () => new FakeElement("section"), energyCards: () => [],
+    skinfoldCard: () => new FakeElement("section"), energyBodyCards: () => [],
+    skinfoldEditButton: () => new FakeElement("button"), openSkinfoldDialog: () => {},
   });
   const point = { date: "2026-10-10", value: 16 };
   const body = { preferred_providers: { body_fat_pct: "garmin" }, windows: { "12w": { start: "2026-10-01", end: "2026-10-15", metrics: { body_fat_pct: [{ source_provider: "garmin", points: [point] }] } } } };

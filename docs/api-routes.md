@@ -122,7 +122,7 @@ handler's docstring. Regenerate it with
 | POST | `/api/privacy/gps` | Session + CSRF | after access | Turn GPS-track storage on or off (`enabled`). |
 | POST | `/api/privacy/gps/delete` | Session + CSRF | after access | Delete every stored GPS track and the routes derived from them after the typed confirmation (`confirm`). |
 | POST | `/api/privacy/restore` | Session + CSRF | no | Restore a database backup; ends every session. |
-| GET | `/api/profile` | Session | no | Profile, competitions and the first threshold estimate. |
+| GET | `/api/profile` | Session | no | Profile, competitions and the threshold estimates. |
 | PUT | `/api/profile` | Session + CSRF | before access | Patch only the submitted profile fields. |
 | POST | `/api/profile/first-threshold/adopt` | Session + CSRF | after access | Adopt the shown first threshold estimate into the profile. |
 | GET | `/api/providers/connections` | Session | no | Last local connection check per provider, without contacting any provider. |
@@ -1600,7 +1600,12 @@ Response: 200 with `profile` (every profile field as a string),
 `competitions` (up to 100; a past competition carries `result` when a
 session is linked to it) and `first_threshold_estimate`: `percent_lthr`,
 `bpm`, `sessions`, `quality`, `from`, `to`, `spread_pct`, `source`, or null
-without an estimate or when computing it fails.
+without an estimate or when computing it fails. `lt2_estimates` (#3273)
+holds per sport (`run`, `ride`) the local LT2 estimates `dfa_alpha1` and
+`critical_speed` (run) or `critical_power` (ride): `status` `ok` with the
+value (`heart_rate_bpm` and `pace_seconds_per_km`, or
+`pace_seconds_per_km`, or `power_w`), `quality`, its basis and `source`, or
+`unknown` with `reason`; null when computing them fails.
 
 Errors: none beyond the common ones.
 

@@ -49,8 +49,8 @@ test("@responsive Body plots measurements and W/kg appears only in the cycling t
   await expect(root.locator("[data-body-metric='weight_kg'] svg")).toHaveCount(1);
   const overview = root.locator("[data-body-overview]");
   await expect(overview.locator("tbody tr")).toHaveCount(2);
-  await expect(overview.locator("[data-metric='weight_kg'] td")).toHaveText("71,8 kg");
-  await expect(overview.locator("[data-metric='body_fat_pct'] td")).toHaveText("19,8 %");
+  await expect(overview.locator("[data-metric='weight_kg'] td").first()).toHaveText("71,8 kg");
+  await expect(overview.locator("[data-metric='body_fat_pct'] td").first()).toHaveText("19,8 %");
   await expect(overview.locator("th small")).toHaveText(["06.10.2026", "06.10.2026"]);
   expect(await overview.evaluate((element) => element.closest("section").parentElement.firstElementChild.contains(element))).toBe(true);
   // The body charts name no provider; only the energy cards label the Garmin estimate (#3099).
@@ -63,12 +63,12 @@ test("@responsive Body plots measurements and W/kg appears only in the cycling t
   await expect(root.locator("[data-body-metric='weight_kg'] circle[data-series='0']")).toHaveCount(14);
   await expect(root.locator("[data-body-metric='body_fat_pct'] circle[data-series='0']")).toHaveCount(14);
   await expect(root.locator("circle[data-series='1']")).toHaveCount(0);
-  await expect(overview.locator("[data-metric='weight_kg'] td")).toHaveText("71,8 kg");
+  await expect(overview.locator("[data-metric='weight_kg'] td").first()).toHaveText("71,8 kg");
   await page.evaluate(() => {
     state.data.profile.body_fat_pct = "17.5";
     renderBodyAnalysis(state.data.performance.history.body);
   });
-  await expect(root.locator("[data-body-overview] [data-metric='body_fat_pct'] td")).toHaveText("17,5 %");
+  await expect(root.locator("[data-body-overview] [data-metric='body_fat_pct'] td").first()).toHaveText("17,5 %");
   await expect(root.locator("[data-body-overview] [data-metric='body_fat_pct'] th small")).toHaveText("Profil");
   await expect(root.locator("[data-body-metric='body_fat_pct'] circle[data-series='0']")).toHaveCount(14);
   await page.evaluate(() => { state.data.profile.body_fat_pct = ""; });
@@ -81,7 +81,7 @@ test("@responsive Body plots measurements and W/kg appears only in the cycling t
     }
     renderBodyAnalysis(body);
   });
-  await expect(overview.locator("td")).toHaveText(["—", "—"]);
+  await expect(overview.locator("td:first-of-type")).toHaveText(["—", "—"]);
   await expect(root.locator("circle[data-series]")).toHaveCount(0);
   await expect(root.locator("[data-body-metric]")).toHaveCount(0);
   await expect(root).not.toContainText("Keine Daten");
