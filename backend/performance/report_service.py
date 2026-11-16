@@ -959,6 +959,20 @@ def _curve_sessions(
     ]
 
 
+def _with_decoupling(
+    execution: Mapping[str, Any] | None, summary: Mapping[str, Any]
+) -> Mapping[str, Any] | None:
+    """The execution's comparison numbers with the stored aerobic decoupling (M8).
+
+    A continuous session's peers compare it, so the session report can judge
+    decoupling against the athlete's own comparable sessions (#3084).
+    """
+    decoupling = summary.get("decoupling_pct")
+    if not isinstance(execution, Mapping) or not isinstance(decoupling, (int, float)):
+        return execution
+    return {**execution, "decoupling_pct": decoupling}
+
+
 def _curve_record(
     summary: Mapping[str, Any],
     curves: Mapping[str, SessionCurve],
@@ -985,7 +999,9 @@ def _curve_record(
         "running_profile": {} if curve is None else curve.running,
         "pace_at_hr_profile": {} if curve is None else curve.pace_at_hr,
         "power_at_hr_profile": {} if curve is None else curve.power_at_hr,
-        "execution_summary": None if curve is None else curve.execution_summary,
+        "execution_summary": _with_decoupling(
+            None if curve is None else curve.execution_summary, summary
+        ),
         "running_dynamics": None if curve is None else curve.running_dynamics,
         # The run averages the provider reports, for Garmin's colour bands (#2829).
         "dynamics_averages": {

@@ -45,14 +45,17 @@ or empty element where data exists is `FAIL` and names the feature it covers.
 `--compare` prints each step's time against the previous walk and a `FAIL` for a
 step that passed before and is skipped now, whatever the reason. Optional steps
 are skipped without data, so a skipped step in the notes is read, not ignored.
-The completed-unit steps come last in the calendar: the first pages back to the
-latest week with a completed unit (on a Monday the current week has none yet),
-the others use that week, and Laufdynamik may page on to a week with a run.
+A step that needs a kind of unit looks for one that has its element: completed-
+unit steps page back, planned-unit steps (Schuh/Rad geplant, Löschen,
+Verpflegung) page forward, week by week, and each returns to the current week.
+While the view shows it is loading (a loading marker, `aria-busy`, or an app
+data load), a step waits for its element up to 60 s instead of its cap.
 
 To add a step, append one object to `STEPS`: `view`, `name`, `covers` (feature or
 issue), optional `pre` (open once), `each` (candidates tried in turn) and `opens`
 (open inside the candidate), `seek` (a paging control pressed, at most six
-times, until a candidate shows), `ready` (selector), `kind`, `optional`, `absent`.
+times, while no candidate has the element) with `unseek` (pressed as often
+afterwards), `ready` (selector), `kind`, `optional`, `absent`.
 Controls are limited to opening, expanding, paging and tab controls
 (`isOpener`), and a label that names save, sync, send, delete, export, undo or
 settings is refused; choosing a select value is never part of a step. The

@@ -42,8 +42,16 @@ SCOPE: Final = (
     "listed so heat is not read as a fitness change; null when no weather is "
     "stored, never the device sensor. Descriptive; at least 3 peers."
 )
+# Metrics the session report judges against the peers' upper quartile (#3084).
+PERSONAL_LIMIT_METRICS: Final = frozenset({"decoupling_pct"})
 _METRICS: Final = {
-    "continuous": ("output", "heart_rate_avg", "heart_rate_change_bpm", "cadence"),
+    "continuous": (
+        "output",
+        "heart_rate_avg",
+        "heart_rate_change_bpm",
+        "cadence",
+        "decoupling_pct",
+    ),
     "interval": (
         "rep_output_mean",
         "heart_rate_end_mean",
@@ -100,7 +108,7 @@ def comparable_sessions(
             **window,
         )
     metrics = _METRICS.get(str(mine.get("structure")), ())
-    median, difference, median_peers = _medians(mine, peers, metrics)
+    median, difference, median_peers, quartile = _medians(mine, peers, metrics)
     peers.sort(key=lambda row: str(row.get("date")), reverse=True)
     return {
         **base,
@@ -114,6 +122,7 @@ def comparable_sessions(
         },
         "median_of_peers": median,
         "median_peers": median_peers,
+        "upper_quartile_of_peers": quartile,
         "difference": difference,
         "peers": [
             {
@@ -165,11 +174,13 @@ def _medians(
     mine: Mapping[str, Any],
     peers: Sequence[Mapping[str, Any]],
     metrics: Sequence[str],
-) -> tuple[dict[str, float], dict[str, float], dict[str, int]]:
-    """The peers' median of each metric, this session's difference and the peers it rests on."""
+) -> tuple[dict[str, float], dict[str, float], dict[str, int], dict[str, float]]:
+    """The peers' median of each metric, this session's difference, the peers it
+    rests on and their upper quartile (inclusive method), for personal limits."""
     median: dict[str, float] = {}
     difference: dict[str, float] = {}
     counts: dict[str, int] = {}
+    quartile: dict[str, float] = {}
     for metric in metrics:
         values = [
             float(row["execution_summary"][metric])
@@ -180,9 +191,13 @@ def _medians(
             continue
         median[metric] = rounded_metric(statistics.median(values))
         counts[metric] = len(values)
+        if metric in PERSONAL_LIMIT_METRICS:
+            quartile[metric] = rounded_metric(
+                statistics.quantiles(values, n=4, method="inclusive")[2]
+            )
         if isinstance(mine.get(metric), (int, float)):
             difference[metric] = rounded_metric(float(mine[metric]) - median[metric])
-    return median, difference, counts
+    return median, difference, counts, quartile
 
 
 def _similar(mine: Mapping[str, Any], other: Mapping[str, Any]) -> bool:

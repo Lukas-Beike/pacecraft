@@ -115,6 +115,35 @@ class EasySessionTests(unittest.TestCase):
         self.assertEqual("unknown", found["decoupling"]["verdict"])
         self.assertIn("nicht geprüft", found["decoupling"]["reason"])
 
+    def test_decoupling_against_the_own_upper_quartile_and_5_percent(self) -> None:
+        # Own upper quartile 7 % of 6 peers: 6.2 % is ok, 7.5 % notable. With 4
+        # peers the fixed 5 % decides, so 6.2 % is notable.
+        def decoupling(value: float, peers: int) -> dict[str, Any]:
+            return checks(
+                session_report(
+                    result(
+                        focus="easy",
+                        metrics={"decoupling_pct": metric(value)},
+                        execution={"data_quality": {"heart_rate": "ok", "speed": "ok"}},
+                        comparable_sessions={
+                            "status": "ok",
+                            "median_peers": {"decoupling_pct": peers},
+                            "upper_quartile_of_peers": {"decoupling_pct": 7.0},
+                        },
+                    )
+                )
+            )["decoupling"]
+
+        self.assertEqual(
+            ("ok", "personal"),
+            (decoupling(6.2, 6)["verdict"], decoupling(6.2, 6)["basis"]),
+        )
+        self.assertEqual("notable", decoupling(7.5, 6)["verdict"])
+        self.assertEqual(
+            ("notable", "fixed"),
+            (decoupling(6.2, 4)["verdict"], decoupling(6.2, 4)["basis"]),
+        )
+
     def test_heart_rate_spikes_make_heart_rate_checks_unknown(self) -> None:
         report = session_report(
             result(
@@ -702,6 +731,289 @@ class RacePlanTests(unittest.TestCase):
         for key in ("race_sections", "race_start", "race_fade", "race_finish"):
             self.assertEqual("unknown", found[key]["verdict"], key)
             self.assertIn("Distanz", found[key]["reason"])
+
+
+class RunBlockTests(unittest.TestCase):
+    """#3084 Part 2: the run's own checks beside its session type."""
+
+    def test_form_drift_reads_the_stored_verdict(self) -> None:
+        def drift(contact: float, flagged: bool) -> dict[str, Any]:
+            return {
+                "status": "ok",
+                "pace_change_percent": 0.8,
+                "flagged": flagged,
+                "metrics": {
+                    "contact_time": {
+                        "change_percent": contact,
+                        "threshold_percent": 5.0,
+                    },
+                    "step_length": {"change_percent": -2.0, "threshold_percent": 5.0},
+                },
+            }
+
+        def found(analysis: dict[str, Any]) -> dict[str, Any]:
+            report = session_report({**result(focus="long"), "analysis": analysis})
+            return checks(report)["form_drift"]
+
+        flagged = found({"form_drift": drift(6.1, True)})
+        self.assertEqual(
+            ("notable", 6.1),
+            (
+                flagged["verdict"],
+                flagged["value"]["metrics"]["contact_time"]["change_pct"],
+            ),
+        )
+        self.assertEqual("ok", found({"form_drift": drift(3.0, False)})["verdict"])
+        short = found(
+            {
+                "form_drift": {
+                    "status": "insufficient_data",
+                    "reason": "Die Einheit ist kürzer als 45 Minuten.",
+                }
+            }
+        )
+        self.assertEqual(
+            ("unknown", "Die Einheit ist kürzer als 45 Minuten."),
+            (short["verdict"], short["reason"]),
+        )
+
+    def test_shoe_against_its_own_target_else_700_km(self) -> None:
+        # Own 600 km target, 610 km run: 101.7 %, due. No target: 350 of 700 km.
+        # A third at 630 of 700 km is exactly 90 %: due (athlete, 2026-11-16).
+        own = {
+            "id": "shoe-1",
+            "kind": "shoes",
+            "usage": {"distance_km": 610},
+            "lifetime": {"target_km": 600},
+            "lifetime_target_source": "local",
+        }
+        fresh = {"id": "shoe-2", "kind": "shoes", "usage": {"distance_km": 350}}
+        worn = {"id": "shoe-3", "kind": "shoes", "usage": {"distance_km": 630}}
+        bike = {"id": "bike-1", "kind": "bike", "usage": {"distance_km": 9000}}
+        report = session_report(
+            {**result(focus="easy"), "equipment": [own, fresh, worn, bike]}
+        )
+        shoes = [c for c in report["checks"] if c["id"] == "shoe_mileage"]
+        self.assertEqual(
+            [
+                ("shoe-1", 101.7, "local", "notable"),
+                ("shoe-2", 50.0, "default", "ok"),
+                ("shoe-3", 90.0, "default", "notable"),
+            ],
+            [
+                (
+                    c["value"]["equipment_id"],
+                    c["value"]["share_pct"],
+                    c["value"]["target_source"],
+                    c["verdict"],
+                )
+                for c in shoes
+            ],
+        )
+
+    def test_pace_at_heart_rate_against_own_runs(self) -> None:
+        # Median 300 s/km of 6 own runs, this one 10 s/km slower: 3.3 % > 3.
+        def found(difference: float, count: int) -> dict[str, Any]:
+            data = {
+                "status": "ok",
+                "session": {"pace_s_per_km": 300 + difference},
+                "comparable": {"count": count, "median_pace_s_per_km": 300},
+                "difference_s_per_km": difference,
+                "heart_rate_band_bpm": [140, 149],
+            }
+            return checks(
+                session_report(
+                    result(
+                        focus="easy",
+                        execution={"data_quality": {"heart_rate": "ok", "speed": "ok"}},
+                        pace_at_heart_rate=data,
+                    )
+                )
+            )["pace_at_heart_rate"]
+
+        slower = found(10, 6)
+        self.assertEqual(
+            (3.3, "notable", "personal"),
+            (slower["value"]["slower_pct"], slower["verdict"], slower["basis"]),
+        )
+        self.assertEqual("ok", found(6, 6)["verdict"])
+        self.assertEqual("unknown", found(10, 4)["verdict"])
+
+    def test_stride_length_halves_of_each_rep(self) -> None:
+        # 1.20 to 1.12 m is 6.7 % shorter > 5; 1.20 to 1.18 m is 1.7 %.
+        reps = [
+            {
+                "rep": 1,
+                "output": 240,
+                "stride_length_first_half_m": 1.20,
+                "stride_length_second_half_m": 1.18,
+            },
+            {
+                "rep": 2,
+                "output": 242,
+                "stride_length_first_half_m": 1.20,
+                "stride_length_second_half_m": 1.12,
+            },
+        ]
+        stride = checks(
+            session_report(
+                result(
+                    focus="threshold",
+                    execution={
+                        "output_unit": "s/km",
+                        "reps": reps,
+                        "data_quality": {"speed": "ok"},
+                    },
+                )
+            )
+        )["stride_halves"]
+        self.assertEqual(
+            (
+                {
+                    "worst_rep": 2,
+                    "second_vs_first_half_pct": -6.7,
+                    "below_threshold_reps": [2],
+                },
+                "notable",
+            ),
+            (stride["value"], stride["verdict"]),
+        )
+
+    def test_a_ride_gets_no_run_block(self) -> None:
+        report = session_report(
+            {
+                **result(sport="ride", focus="endurance"),
+                "equipment": [
+                    {"id": "s", "kind": "shoes", "usage": {"distance_km": 900}}
+                ],
+            }
+        )
+        self.assertFalse({"form_drift", "shoe_mileage"} & checks(report).keys())
+
+
+class ZoneTimeAndFactsTests(unittest.TestCase):
+    """#3084 Part 2: zone time against the plan, and facts without a verdict."""
+
+    def test_zone_time_against_the_planned_seconds(self) -> None:
+        # Planned 600 / 1800 / 60 s; Z4 holds 2.4 % of 2460 s and is left out.
+        # Z1 650 s is +8.3 %, Z2 1300 s is -27.8 %: off plan beyond 20 %.
+        zones = {
+            "status": "ok",
+            "metric": "heartrate",
+            "zones": [
+                {"zone": 1, "planned_s": 600, "actual_s": 650},
+                {"zone": 2, "planned_s": 1800, "actual_s": 1300},
+                {"zone": 4, "planned_s": 60, "actual_s": 300},
+            ],
+        }
+        found = checks(
+            session_report(
+                result(focus="easy", execution={"data_quality": {"heart_rate": "ok"}}),
+                plan_zones=zones,
+            )
+        )["zone_time"]
+        self.assertEqual(
+            ([8.3, -27.8], "notable"),
+            (
+                [row["difference_pct"] for row in found["value"]["zones"]],
+                found["verdict"],
+            ),
+        )
+        unpaired = checks(session_report(result(focus="easy")))
+        self.assertNotIn("zone_time", unpaired)
+
+    def test_zone_time_is_unknown_without_a_zone_for_most_of_the_session(
+        self,
+    ) -> None:
+        # 1800 planned zone seconds of a 3000 s session: the free warm-up and
+        # cool-down would always count as off plan.
+        partial = {
+            "status": "ok",
+            "metric": "heartrate",
+            "zones": [
+                {"zone": 2, "planned_s": 1800, "actual_s": 2500},
+                {"zone": 3, "planned_s": 0, "actual_s": 500},
+            ],
+        }
+        found = checks(
+            session_report(
+                result(focus="easy", execution={"data_quality": {"heart_rate": "ok"}}),
+                plan_zones=partial,
+            )
+        )["zone_time"]
+        self.assertEqual(
+            ("unknown", "Nicht jeder geplante Abschnitt hat eine Zielzone."),
+            (found["verdict"], found["reason"]),
+        )
+        # Speed zones of a run whose GPS jumps are not judged.
+        speed = {
+            **partial,
+            "metric": "speed",
+            "zones": [{"zone": 2, "planned_s": 1800, "actual_s": 1700}],
+        }
+        jumping = checks(
+            session_report(
+                result(focus="easy", execution={"data_quality": {"speed": "jumps"}}),
+                plan_zones=speed,
+            )
+        )["zone_time"]
+        self.assertEqual("unknown", jumping["verdict"])
+
+    def test_stops_elevation_and_work_laps_of_critical_speed(self) -> None:
+        # A flagged stop of 40 s, one of 20 s and an auto-pause gap of 50 s
+        # (no samples, moving on both sides): two over 30 s, 90 s in all. A
+        # standstill still open at the end is no stop. 240 s/km is 4.167 m/s,
+        # 104.2 % of a 4.0 m/s critical speed.
+        times = [0, 10, 20, 60, 70, 90, 100, 150, 160, 170]
+        moving = [1, 1, 0, 1, 0, 1, 1, 1, 1, 0]
+        report = session_report(
+            {
+                **result(
+                    focus="threshold",
+                    execution={
+                        "output_unit": "s/km",
+                        "reps": [{"rep": 1, "output": 240}],
+                    },
+                ),
+                "session": {
+                    "activity_id": "act_1",
+                    "sport": "run",
+                    "environment": "outdoor",
+                },
+                "metrics": {
+                    "elevation_gain_m": metric(212.4),
+                    "elevation_loss_m": metric(210),
+                },
+                "streams": {
+                    "time_s": times,
+                    "channels": {"moving": {"values": moving}},
+                },
+                "critical_speed": {"status": "ok", "cs_mps": 4.0},
+            }
+        )
+        facts = {fact["id"]: fact["value"] for fact in report["facts"]}
+        self.assertEqual({"count": 2, "total_s": 90}, facts["stops"])
+        self.assertEqual(212, facts["elevation"]["gain_m"])
+        self.assertEqual(
+            [{"rep": 1, "pct_of_critical_speed": 104.2}],
+            facts["work_laps_of_critical_speed"]["laps"],
+        )
+        # A 20 h ride downsampled to one point every 36 s is no chain of stops.
+        coarse = session_report(
+            {
+                **result(sport="ride", focus="endurance"),
+                "streams": {
+                    "time_s": [36 * index for index in range(2000)],
+                    "channels": {"moving": {"values": [1] * 2000}},
+                },
+            }
+        )
+        self.assertEqual(
+            {"count": 0, "total_s": 0},
+            {fact["id"]: fact["value"] for fact in coarse["facts"]}["stops"],
+        )
+        # Facts carry no verdict and never lead.
+        self.assertTrue(all("verdict" not in fact for fact in report["facts"]))
 
 
 class RaceAndRankingTests(unittest.TestCase):

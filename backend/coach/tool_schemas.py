@@ -1274,8 +1274,12 @@ def build_structured_tool_schemas(
         ),
         _canonical_coach_tool(
             "read_nutrition",
-            "Read nutrition entries and day summaries for a date or a range of at most 31 days.",
+            "Read nutrition entries and day summaries for a date or a range of at most 31 days, or with energy true the athlete's daily energy expenditure.",
             {
+                "energy": {
+                    "type": "boolean",
+                    "description": "True reads only the energy expenditure up to yesterday: resting_kcal and total_kcal per source (katch_mcardle and cunningham from skinfold lean mass, device = Garmin's own estimate, name it Garmin, own = intake versus weight trend), each with its nominal 95 % *_band_kcal (excluding logging bias; own resting is a residual), each row's split (resting, neat = everyday steps and floors, sport = sessions, tef = digestion; shared marks parts every row computes alike, so they are no independent evidence), each source's mean_error_kcal against own over the shared windows, fit (shared_windows of windows, reference_band_kcal) and best. best is set only with at least 4 shared windows and a lead beyond the band; when it is null, say the sources are not yet distinguishable. Name the source with every value; null means no basis, never estimate it.",
+                },
                 "date": {
                     "type": "string",
                     "description": "Optional specific date YYYY-MM-DD",

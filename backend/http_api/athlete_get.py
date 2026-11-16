@@ -41,8 +41,10 @@ class AthleteGetRoutes:
         first_threshold_service: Callable[[], Any] | None = None,
         race_plan: Callable[[str], dict[str, Any] | None] | None = None,
         skinfold_service: Callable[[], Any] | None = None,
+        energy_view: Callable[[], dict[str, Any]] | None = None,
     ) -> None:
         self._skinfold_service = skinfold_service
+        self._energy_view = energy_view
         self._first_threshold_service = first_threshold_service
         self._race_plan = race_plan
         self._race_results = race_results
@@ -101,6 +103,16 @@ class AthleteGetRoutes:
             routes.append(Route("GET", ZONES_PATH, Access.SESSION, self._zones))
         if self._skinfold_service is not None:
             routes.append(Route("GET", SKINFOLDS_PATH, Access.SESSION, self._skinfolds))
+        if self._energy_view is not None:
+            routes.append(
+                Route(
+                    "GET",
+                    "/api/body/energy",
+                    Access.SESSION,
+                    self._energy,
+                    heavy=True,
+                )
+            )
         if self._race_plan is not None:
             routes.append(
                 Route("GET", RACE_PLAN_PATH, Access.SESSION, self._race_plan_read)
@@ -197,6 +209,32 @@ class AthleteGetRoutes:
         """
         if self._skinfold_service is not None:
             handler.send_json(200, self._skinfold_service().read())
+
+    def _energy(self, handler: Any, _request: RouteRequest) -> None:
+        """Resting and daily expenditure per source, up to yesterday.
+
+        Request: no query, no body.
+
+        Response: 200 with `end`, `windows` (the 12 weekly 4-week window ends,
+        oldest first), `rows` (`katch_mcardle`, `cunningham`, `device` (the
+        wearable's estimate) and `own`, each with `resting_kcal`, `total_kcal`
+        and their nominal 95 % `*_band_kcal`; the first three also with
+        `errors_kcal` per window and `mean_error_kcal` over the shared windows,
+        and `split` (`resting_kcal`, `neat_kcal`, `sport_kcal`, `tef_kcal`, and
+        `shared` with `neat`, `sport`, `tef` true for each part every row
+        computes alike; null until
+        known); null without a basis), `best` (the source whose lead over the next
+        exceeds the adaptive TDEE's mean band over at least 4 shared windows,
+        else null), `fit` (`shared_windows`, `windows`, `min_windows`,
+        `reference_band_kcal`), `basis` (`days`, `complete_days`,
+        `flagged_days`, `weighins`, `insufficient`, `windows_with_estimate`,
+        `rmr_source`) and `skinfold` (`date`, `body_fat_pct`, `lean_mass_kg`,
+        or null).
+
+        Errors: none beyond the common ones.
+        """
+        if self._energy_view is not None:
+            handler.send_json(200, self._energy_view())
 
     def _preview(self, handler: Any, _request: RouteRequest) -> None:
         """Preview of the context the Coach receives.

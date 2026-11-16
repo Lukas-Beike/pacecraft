@@ -402,6 +402,7 @@ def build_coach_read_tools(
             ctx.nutrition.diary_service,
             ctx.nutrition.meal_library_service,
             ctx.coach_context.structured_context_service,
+            energy_view=ctx.nutrition.energy_view,
         )
 
     return CoachReadToolServices(read_service)

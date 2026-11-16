@@ -64,6 +64,56 @@ class ComparableSessionsTests(unittest.TestCase):
         self.assertEqual(result["this"]["weather_temp_c"], 8.0)
         self.assertEqual(result["peers"][0]["date"], "2026-10-27")
 
+    def test_the_upper_quartile_of_the_peers_backs_personal_limits(self) -> None:
+        # #3084: decoupling of 2, 3, 4, 5 and 6 % in five peers: median 4 %,
+        # upper quartile (inclusive) 5 %.
+        own = {**_easy(330, 140), "decoupling_pct": 6.5}
+        records = [_row("2026-11-03", own)] + [
+            _row(day, {**_easy(340, 142), "decoupling_pct": value})
+            for day, value in (
+                ("2026-10-28", 2.0),
+                ("2026-10-24", 3.0),
+                ("2026-10-20", 4.0),
+                ("2026-10-16", 5.0),
+                ("2026-10-12", 6.0),
+            )
+        ]
+        result = comparable_sessions(records, "act_2026-11-03")
+        self.assertEqual(
+            (4.0, 5.0, 5),
+            (
+                result["median_of_peers"]["decoupling_pct"],
+                result["upper_quartile_of_peers"]["decoupling_pct"],
+                result["median_peers"]["decoupling_pct"],
+            ),
+        )
+
+    def test_the_curve_record_compares_the_stored_decoupling(self) -> None:
+        # #3084: the summary's stored decoupling (M8) joins the execution's
+        # comparison numbers; without a curve or a value nothing is added.
+        from backend.performance.mean_max_curve import SessionCurve
+        from backend.performance.report_service import _curve_record
+
+        summary = {
+            "id": "act_1",
+            "sport": "run",
+            "started_at": "2026-11-03T07:00:00+00:00",
+            "decoupling_pct": 4.2,
+        }
+        curve = SessionCurve(
+            power={},
+            running={},
+            fingerprint="f",
+            pace_at_hr={},
+            power_at_hr={},
+            execution_summary=_easy(330, 140),
+        )
+        record = _curve_record(summary, {"act_1": curve}, {})
+        self.assertEqual(4.2, record["execution_summary"]["decoupling_pct"])
+        self.assertNotIn("decoupling_pct", curve.execution_summary or {})
+        bare = _curve_record({**summary, "decoupling_pct": None}, {"act_1": curve}, {})
+        self.assertNotIn("decoupling_pct", bare["execution_summary"])
+
     def test_other_shapes_places_and_old_sessions_are_not_peers(self) -> None:
         records = [
             _row("2026-11-03", _easy(330, 140)),

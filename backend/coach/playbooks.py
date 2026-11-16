@@ -77,17 +77,14 @@ _SESSION_NUMBERS = """Session numbers (get_activity_details):
 
 # One block per sport, chosen from the analysed session's sport (#3038).
 _RUN_SESSION = """Run block (session.sport run):
-- Dynamics: metrics ground_contact_time_ms, ground_contact_balance_pct, vertical_oscillation_cm, vertical_ratio_pct, step_length_m; drift in analysis.form_drift; per rep stride and cadence halves. Prefer lap_pace for short reps.
-- pace_at_heart_rate only when ok, naming the count; positive is slower; not_covered is unknown.
-- zones.heart_rate and pace_zone_times (ids of current_performance.training_zones) against the focus.
-- Work-lap pace against critical speed (get_training_report power_profiles), never as a threshold.
-- equipment: shoe and usage.distance_km."""
+- session_report judges form drift, pace_at_heart_rate, stride halves per rep, zone time against the plan and shoe mileage; work laps in % of critical speed are a model-estimate fact, never a threshold.
+- Beyond it cite metrics ground_contact_time_ms, ground_contact_balance_pct, vertical_oscillation_cm, vertical_ratio_pct, step_length_m and per rep cadence halves; prefer lap_pace for short reps."""
 
 _RIDE_SESSION = """Ride block (session.sport ride):
-- metrics normalized_power, variability_index, intensity factor (normalized power / current_performance.thresholds.ftp_w), decoupling_pct (aerobic durability).
-- zones.power against the focus; work reps (output) relative to that FTP.
-- Cadence: halves cadence_change; per rep cadence with elevation_change_m (very low on climbs).
-- Indoor or virtual session.environment with erg_like: judge heart rate and cadence, not power, unless focus.test_evaluation says otherwise. Outdoor: elevation_gain_m, stops (elapsed_duration_s minus moving_duration_s)."""
+- metrics normalized_power, variability_index, intensity factor (normalized power / current_performance.thresholds.ftp_w), decoupling_pct.
+- zones.power against the focus; work reps against that FTP.
+- Cadence: halves cadence_change; per rep cadence with elevation_change_m (low on climbs).
+- Indoor or virtual session.environment with erg_like: judge heart rate and cadence, not power, unless focus.test_evaluation says otherwise. Outdoor: elevation and stops are facts."""
 
 _SPORT_BLOCKS = {"run": _RUN_SESSION, "ride": _RIDE_SESSION}
 
@@ -96,7 +93,7 @@ _TASKS = {
 Task: analyze the requested completed session, by default the last one.
 - Load it with get_activity_details (activity_id, else date, sport, start_time); on ambiguous or not_found ask, never guess. planned_units hold the local plan one day around it. Rules 6d and 8c-8e stay; read_coach_context loads planned units beyond two days.
 - session_report holds every deterministic check: value, rule, threshold, basis (personal, plan or fixed), verdict and severity. Explain it; never compute numbers or verdicts yourself.
-- Lead with the checks in session_report.lead, then mention every other notable check and name each unknown with its reason. An ok check only when the focus needs it.
+- Lead with the checks in session_report.lead, then mention every other notable check and name each unknown with its reason. An ok check only when the focus needs it; facts are stated, never judged.
 - Beyond the report, raise an observation only by citing a field and its value from the details (warm-up, cool-down or recovery pace, a strap swap, an unplanned stop), never by your own arithmetic.
 - Interpret: likely causes (heat, hills, wind, sleep, the days before, sensor errors) and fitness versus fatigue. Temperature only from weather.temperature_c and heat_note, never a device; else unknown.
 - Race (purpose race): pacing and finish against target; no interval verdicts.

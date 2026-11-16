@@ -392,11 +392,30 @@ class CoachActivityReadToolServiceTests(unittest.TestCase):
         report = result["session_report"]
         self.assertEqual("session-report-v1", report["method"])
         self.assertEqual(
-            {"method", "scope", "session_type", "checks", "notable", "lead", "unknown"},
+            {
+                "method",
+                "scope",
+                "session_type",
+                "checks",
+                "notable",
+                "lead",
+                "unknown",
+                "facts",
+            },
             set(report),
         )
         notable = [c["id"] for c in report["checks"] if c["verdict"] == "notable"]
         self.assertEqual(sorted(notable), sorted(report["notable"]))
+
+    def test_critical_speed_needs_its_whole_window_in_the_records(self):
+        # #3084: the 28 days before 2026-09-30 reach back to 2026-09-02; records
+        # from 2026-09-10 cannot fit that CS, so no fact rests on part of it.
+        from backend.coach.activity_read_tools import _critical_speed
+
+        self.assertIsNone(_critical_speed([], date(2026, 9, 30), date(2026, 9, 10)))
+        whole = _critical_speed([], date(2026, 9, 30), date(2026, 9, 2))
+        assert whole is not None
+        self.assertEqual("insufficient_data", whole["status"])
 
     def test_a_race_is_judged_against_its_linked_competitions_race_plan(self):
         # #3084 Part 1c: the session's competition_id selects the race plan.
@@ -471,6 +490,7 @@ class CoachActivityReadToolServiceTests(unittest.TestCase):
         # day (never the session or a later one that day) and its local IF feed
         # the RPE check.
         activity_read = Mock()
+        activity_read.summaries_between.return_value = []
         activity_read.rated_sessions.return_value = [
             {"id": f"r{n}", "sport": "run", "intensity": 80.0, "rpe": 5}
             | {"rpe_scale": "cr10"}
@@ -829,9 +849,13 @@ class CoachActivityReadToolServiceTests(unittest.TestCase):
             "backend.performance.activity_read_service.current_performance_context",
             return_value={},
         ) as project:
-            service.execute("get_activity_details", {"activity_id": "synthetic-1"})
+            result = service.execute(
+                "get_activity_details", {"activity_id": "synthetic-1"}
+            )
         canonical = project.call_args.kwargs["canonical"]
         self.assertIsNotNone(canonical.recovery)
+        self.assertIsInstance(result["recovery_before"], list)
+        # The night before (#3084 3c G) comes from this same read, not a second one.
         selector.reader_for.assert_called_once()
         served_kinds = {
             call.args[1]

@@ -196,7 +196,7 @@ test("body overview uses profile body fat without creating a dated measurement",
     isPreferredSource: () => true, analysisValidPoint: (p) => p.value != null,
     dateLabel: (v) => v, analysisValue: (v, unit) => `${v} ${unit}`,
     analysisPeriodControls: () => new FakeElement("nav"), bodyHistoryPeriod: "twelveWeeks",
-    skinfoldCard: () => new FakeElement("section"),
+    skinfoldCard: () => new FakeElement("section"), energyCards: () => [],
   });
   const body = { windows: {} };
   renderBodyAnalysis(body);
@@ -208,6 +208,95 @@ test("body overview uses profile body fat without creating a dated measurement",
   assert.equal(bodyProfileFat({ body_fat_pct: 71 }), null);
 });
 
+
+test("the energy table shows bands, the badge only with a fit, and the fit basis", () => {
+  const charts = [];
+  const { h } = extractFunctions("components.js", ["h", "SVG_NS", "svgNode"], { document: fakeDocument() });
+  const { energyTable, energyBasisNote, energyFitNote, energyFitCharts } = extractFunctions("analysis.js", ["ENERGY_SOURCES", "ENERGY_INSUFFICIENT", "ENERGY_PARTS", "energyKcal", "energyBasisNote", "energyFitNote", "energySplitRow", "energyTable", "energyFitCharts"], {
+    h, formatWhole: (v) => String(v), dateLabel: (v) => v, analysisValue: (v, unit) => `${v} ${unit}`,
+    createStatusChip: (label) => h("span", null, label),
+    analysisChart: (title, series) => { charts.push({ title, series }); return new FakeElement("section"); },
+  });
+  const read = {
+    end: "2026-11-14", windows: ["2026-11-07", "2026-11-14"], best: "katch_mcardle",
+    fit: { shared_windows: 4, windows: 12, min_windows: 4, reference_band_kcal: 120 },
+    rows: [
+      { source: "katch_mcardle", resting_kcal: 1839, resting_band_kcal: 219, total_kcal: 2689, total_band_kcal: 227, errors_kcal: [null, 11], mean_error_kcal: 11 },
+      { source: "cunningham", resting_kcal: 1996, resting_band_kcal: 233, total_kcal: 2846, total_band_kcal: 241, errors_kcal: [null, 146], mean_error_kcal: 146 },
+      { source: "device", resting_kcal: null, total_kcal: null, errors_kcal: [null, null], mean_error_kcal: null },
+      { source: "own", resting_kcal: 1850, resting_band_kcal: 150, total_kcal: 2700, total_band_kcal: 120 },
+    ],
+    basis: { days: 28, complete_days: 24, insufficient: null },
+    skinfold: { date: "2026-11-04", body_fat_pct: 15, lean_mass_kg: 68 },
+  };
+  const rows = energyTable(read).children[2].children;
+  assert.equal(textOf(rows[0].children[0]), "Katch-McArdle passt am besten");
+  assert.equal(textOf(rows[0].children[1]), "1839 ± 219", "a formula row carries its band");
+  assert.equal(textOf(rows[1].children[0]), "Cunningham", "only the best source carries the badge");
+  assert.equal(textOf(rows[2].children[1]), "–", "a source without a value stays unknown");
+  assert.equal(textOf(rows[3].children[2]), "2700 ± 120");
+  assert.equal(textOf(energyTable({ ...read, best: null }).children[2].children[0].children[0]), "Katch-McArdle", "no best, no badge");
+  assert.equal(textOf(energyFitNote(read)), "Vergleich · 4 von 12 Fenstern · Band aus deinen Daten ± 120 kcal");
+  assert.equal(textOf(energyFitNote({ ...read, best: null, fit: { ...read.fit, shared_windows: 3 } })), "Welche Quelle passt: noch nicht unterscheidbar · 3 von 12 Fenstern · Band aus deinen Daten ± 120 kcal");
+  assert.equal(textOf(energyFitNote({ ...read, best: null, fit: { ...read.fit, shared_windows: 0, reference_band_kcal: null } })), "Welche Quelle passt: noch nicht unterscheidbar · 0 von 12 Fenstern");
+  const note = textOf(energyBasisNote(read));
+  assert.match(note, /24 von 28 Tagen vollständig .* Falten vom 2026-11-04, KFA 15 %, fettfreie Masse 68 kg/);
+  assert.match(note, /Bänder nominal 95 %, ohne Fehler beim Erfassen des Essens/, "#3187 item 6");
+  assert.match(note, /Ruhe aus deinen Daten ist ein Rest/, "#3187 item 8");
+  assert.match(textOf(energyBasisNote({ ...read, basis: { insufficient: "weighins" }, skinfold: null })), /Datenbasis zu gering \(unter 8 Wiegungen\).*Ohne Hautfaltenmessung/);
+  assert.equal(energyFitCharts(read).length, 1, "the chart alone; the ±100 hit-rate bars are gone");
+  assert.deepEqual([...charts[0].series].map((item) => item.label), ["Katch-McArdle", "Cunningham"], "Garmin without a fit is left out");
+  assert.deepEqual(JSON.parse(JSON.stringify(charts[0].series[0].points)), [{ date: "2026-11-07", value: null }, { date: "2026-11-14", value: 11 }]);
+  assert.match(charts[0].series[0].explanation, /innerhalb von ± 120 kcal sind nicht unterscheidbar/);
+  assert.equal(energyFitCharts({ ...read, rows: read.rows.slice(2) }).length, 0, "no fit, no chart");
+  // Gitar #3180: without shared windows every mean is null, yet each window's distance is still drawn.
+  const unshared = read.rows.map((row) => ({ ...row, mean_error_kcal: null }));
+  assert.equal(energyFitCharts({ ...read, rows: unshared }).length, 1);
+});
+
+test("split A draws one stacked bar per row and hatches only the parts the backend marks shared", () => {
+  const { h } = extractFunctions("components.js", ["h", "SVG_NS", "svgNode"], { document: fakeDocument() });
+  const { energySplitRow, energySplitLegend } = extractFunctions("analysis.js", ["ENERGY_PARTS", "energySplitRow", "energySplitLegend"], { h, formatWhole: (v) => String(v) });
+  const split = (resting, neat, sport, tef, shared) => ({ resting_kcal: resting, neat_kcal: neat, sport_kcal: sport, tef_kcal: tef, shared });
+  const device = { source: "device", resting_band_kcal: null, split: split(1745, 610, 765, null, { neat: false, sport: false, tef: false }) };
+  // Calibrated (k != 1): only digestion is computed alike for every row.
+  const own = { source: "own", resting_band_kcal: 150, split: split(1690, 385, 507, 258, { neat: false, sport: false, tef: true }) };
+  const deviceRow = energySplitRow(device);
+  const [bar, numbers] = deviceRow.children[0].children;
+  assert.equal(textOf(numbers), "Ruhe 1745 · Alltag 610 · Sport 765 · Verdauung –", "Garmin has no digestion part");
+  assert.deepEqual([...bar.children].map((part) => part.dataset.part), ["resting", "neat", "sport"]);
+  assert.equal(bar.children[0].style.width, `${(1745 / 3120) * 100}%`);
+  assert.ok([...bar.children].every((part) => part.dataset.shared === undefined), "the device computes its own parts");
+  const ownRow = energySplitRow(own);
+  assert.equal(textOf(ownRow.children[0].children[1]), "Ruhe (Rest) 1690 ± 150 · Alltag 385 · Sport 507 · Verdauung 258");
+  assert.deepEqual([...ownRow.children[0].children[0].children].map((part) => part.dataset.shared ?? null), [null, null, null, ""]);
+  assert.equal(energySplitRow({ source: "katch_mcardle", split: null }), null, "no split, no bar");
+  const legend = energySplitLegend({ rows: [device, own] });
+  assert.deepEqual([...legend.children].map((item) => textOf(item)), ["Ruhe", "Alltag", "Sport", "Verdauung", "gleich berechnet"]);
+  assert.equal(energySplitLegend({ rows: [{ split: null }] }), null);
+});
+
+test("a reset drops the energy read in flight, so a pre-save answer is never shown", async () => {
+  // Gitar #3180: a reused in-flight read used to write the view from before the skinfold save.
+  const answers = [];
+  let renders = 0;
+  const fns = extractFunctions("analysis.js", ["energyRead", "energyRequest", "energyGeneration", "resetEnergy", "loadEnergy", "energyCards"], {
+    api: () => new Promise((resolve) => answers.push(resolve)),
+    renderBodyAnalysis: () => { renders += 1; },
+    state: { data: {} },
+    createLoadingState: () => ({}), h: () => ({}),
+  });
+  fns.loadEnergy();
+  fns.resetEnergy(); // a skinfold save while the first read waits on the gate
+  fns.loadEnergy();
+  assert.equal(answers.length, 2, "the reset starts a new read instead of reusing the old one");
+  answers[0]({ rows: [], stale: true });
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.equal(renders, 0, "the stale answer neither renders nor is kept");
+  answers[1]({ rows: [], stale: false });
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.equal(renders, 1);
+});
 
 test("a failed skinfold read re-renders the card instead of loading forever", async () => {
   // Gitar #3120: only a successful read used to re-render the body view.
@@ -238,7 +327,7 @@ test("body overview falls back to Garmin when the profile fat is absent", () => 
     analysisValidPoint: (point) => point.value != null, dateLabel: (v) => v,
     analysisValue: (v, unit) => `${v} ${unit}`, analysisPeriodControls: () => new FakeElement("nav"),
     bodyHistoryPeriod: "twelveWeeks", bodyMetricChart: () => null,
-    skinfoldCard: () => new FakeElement("section"),
+    skinfoldCard: () => new FakeElement("section"), energyCards: () => [],
   });
   const point = { date: "2026-10-10", value: 16 };
   const body = { preferred_providers: { body_fat_pct: "garmin" }, windows: { "12w": { start: "2026-10-01", end: "2026-10-15", metrics: { body_fat_pct: [{ source_provider: "garmin", points: [point] }] } } } };

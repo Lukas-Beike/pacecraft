@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import unittest
-from datetime import date
+from datetime import date, timedelta
 from typing import Any
 from unittest.mock import Mock, patch
 
@@ -16,6 +16,7 @@ from backend.performance.session_conditions import (
     body_headwind,
     expected_rpe,
     grade_adjusted_pace,
+    prior_load,
 )
 from backend.performance.session_report import session_report
 from backend.sync.local_load import with_local_loads
@@ -353,6 +354,8 @@ class FactChecksTests(unittest.TestCase):
             ("ok", ["heart_rate"]), (check["verdict"], check["value"]["doubted"])
         )
         self.assertIn("20 bpm", check["rule"])
+        # The gap rule is named too (#3084 3c D).
+        self.assertIn("Lücken über 5 s in mehr als 5 %", check["rule"])
         self.assertNotIn("data_quality", report["notable"])
 
     def test_strength_before_gives_facts_only(self) -> None:
@@ -402,6 +405,158 @@ class FactChecksTests(unittest.TestCase):
         unplanned = _check(session_report(unchecked), "strength_before")
         assert unplanned is not None
         self.assertEqual("unknown", unplanned["verdict"])
+
+
+class PlanHeatHillsTests(unittest.TestCase):
+    """Strength sets, heat and hills (#3084 Part 3c B, C, E)."""
+
+    def test_strength_sets_are_judged_against_plan_by_twenty_percent(self) -> None:
+        def sets(done: int) -> dict:
+            result = _run(
+                strength_plan={"planned_sets": 10, "completed_sets": done},
+            )
+            result["session"]["sport"] = "strength"
+            check = _check(session_report(result), "strength_sets")
+            assert check is not None
+            return check
+
+        self.assertEqual("notable", sets(7)["verdict"])  # -30 %
+        self.assertEqual("ok", sets(8)["verdict"])  # -20 % is inside
+        self.assertEqual("plan", sets(8)["basis"])
+
+    def test_heat_explains_only_notable_heart_rate_checks_from_25_degrees(self) -> None:
+        def heat(apparent: float, decoupling: float) -> dict:
+            result = _run(
+                focus={"status": "matched", "session_focus": "easy"},
+                metrics={"decoupling_pct": {"value": decoupling}},
+                weather={
+                    "apparent_temperature_c": apparent,
+                    "temperature_c": apparent - 2,
+                    "source": "Open-Meteo Modell, Startposition",
+                },
+            )
+            check = _check(session_report(result), "heat")
+            assert check is not None
+            return check
+
+        hot = heat(27.0, 8.0)
+        self.assertEqual(
+            ("ok", ["decoupling"]), (hot["verdict"], hot["value"]["explains"])
+        )
+        self.assertEqual([], heat(24.9, 8.0)["value"]["explains"])
+        self.assertEqual([], heat(27.0, 3.0)["value"]["explains"])
+
+    def test_hills_per_rep_of_a_ride_are_facts(self) -> None:
+        result = _run(sport="ride")
+        result["analysis"]["execution"]["reps"] = [
+            {"rep": 1, "elevation_change_m": 40.0, "distance_m": 1000.0},
+            {"rep": 2, "elevation_change_m": -5.0, "distance_m": 1000.0},
+            {"rep": 3, "elevation_change_m": None, "distance_m": 1000.0},
+        ]
+
+        check = _check(session_report(result), "hills")
+
+        assert check is not None
+        self.assertEqual(("ok", 0), (check["verdict"], check["severity"]))
+        self.assertEqual(
+            [
+                {"rep": 1, "elevation_change_m": 40.0, "grade_pct": 4.0},
+                {"rep": 2, "elevation_change_m": -5.0, "grade_pct": -0.5},
+                {"rep": 3, "elevation_change_m": None, "grade_pct": None},
+            ],
+            check["value"],
+        )
+
+
+def _dated(result: dict, day: str = "2026-09-22") -> dict:
+    result["session"]["started_at_local"] = f"{day}T07:00:00"
+    return result
+
+
+def _night(metric: str, position: str, observed_at: str = "2026-09-22") -> dict:
+    return {
+        "metric": metric,
+        "measurement": "x",
+        "value": 1.0,
+        "unit": "h",
+        "observed_at": observed_at,
+        "median": 1.0,
+        "lower": 0.9,
+        "upper": 1.1,
+        "position": position,
+        "status": "ok",
+        "source": "Garmin Connect",
+        "history": [{"date": "2026-09-21", "value": 1.0}],
+    }
+
+
+class RecoveryAndLoadTests(unittest.TestCase):
+    """The night before and the load of the 3 days before (#3084 Part 3c G, H)."""
+
+    def test_prior_load_known_answer(self) -> None:
+        day = date(2026, 9, 22)
+        loads = {
+            (day - timedelta(days=back)).isoformat(): 30.0 for back in range(1, 46)
+        }
+        # Every 3-day sum is 90; one heavy day before the session lifts only the
+        # latest window: 60 + 30 + 30 + 60 = 180, the median stays 90.
+        loads[(day - timedelta(days=1)).isoformat()] = 120.0
+        self.assertEqual(
+            {"sum_3_days": 180.0, "median_3_days_42": 90.0, "window_days": 42},
+            prior_load(loads, day),
+        )
+        self.assertIsNone(prior_load({}, day))
+
+    def test_prior_load_check_is_facts(self) -> None:
+        result = _dated(_run())
+        result[INPUTS] = {"daily_loads": {"2026-09-21": 60.0, "2026-09-19": 30.0}}
+
+        check = _check(session_report(result), "prior_load")
+
+        assert check is not None
+        self.assertEqual(
+            ("ok", 0, "personal"), (check["verdict"], check["severity"], check["basis"])
+        )
+        self.assertEqual(90.0, check["value"]["sum_3_days"])
+
+    def test_the_night_before_explains_only_a_notable_heart_rate_check(self) -> None:
+        def recovery(nights: list, decoupling: float) -> dict:
+            result = _dated(
+                _run(
+                    focus={"status": "matched", "session_focus": "easy"},
+                    metrics={"decoupling_pct": {"value": decoupling}},
+                )
+            )
+            result["recovery_before"] = nights
+            check = _check(session_report(result), "recovery_before")
+            assert check is not None
+            return check
+
+        short = recovery([_night("sleep", "below")], 8.0)
+        self.assertEqual(
+            ("ok", ["decoupling"]), (short["verdict"], short["value"]["explains"])
+        )
+        night = short["value"]["nights"][0]
+        self.assertTrue(night["that_night"])
+        self.assertNotIn("history", night)
+        # The favourable side, an older value or an ok heart rate explain nothing.
+        self.assertEqual(
+            [], recovery([_night("sleep", "above")], 8.0)["value"]["explains"]
+        )
+        self.assertEqual(
+            [],
+            recovery([_night("sleep", "below", "2026-09-20")], 8.0)["value"][
+                "explains"
+            ],
+        )
+        self.assertEqual(
+            [], recovery([_night("resting_hr", "above")], 3.0)["value"]["explains"]
+        )
+        self.assertEqual(
+            ["decoupling"],
+            recovery([_night("resting_hr", "above")], 8.0)["value"]["explains"],
+        )
+        self.assertEqual("unknown", recovery([], 8.0)["verdict"])
 
 
 class RatedSessionsReadTests(unittest.TestCase):

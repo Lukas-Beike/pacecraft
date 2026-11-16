@@ -26,6 +26,7 @@ from backend.nutrition.energy_inputs import (
     session_streams,
     weighins,
 )
+from backend.nutrition.energy_view import read_energy_view
 from backend.nutrition.food_database import FoodDatabaseService
 from backend.nutrition.food_mirror import FoodDatabaseMirror
 from backend.nutrition.meal_library import NutritionMealLibraryService
@@ -50,6 +51,8 @@ class NutritionServices:
     intervals_sync_service: Callable[[], IntervalsNutritionSyncService]
     # Counts of the adaptive expenditure basis for the diagnostics (#3100).
     energy_basis: Callable[[Any], dict[str, Any]]
+    # Resting and daily expenditure per source and their fit (#3099).
+    energy_view: Callable[[], dict[str, Any]]
 
 
 def build_nutrition(ctx: AppContext) -> NutritionServices:
@@ -158,6 +161,12 @@ def build_nutrition(ctx: AppContext) -> NutritionServices:
             profile=ctx.athlete_profile.get,
         )
 
+    def energy_view() -> dict[str, Any]:
+        # Up to yesterday: today's intake and Garmin totals are still partial.
+        end = ctx.clock.now().date() - timedelta(days=1)
+        with ctx.database().reader() as db:
+            return read_energy_view(db, energy_sources(), end)
+
     def intervals_sync_service() -> IntervalsNutritionSyncService:
         config = ctx.config()
         return IntervalsNutritionSyncService(
@@ -180,4 +189,5 @@ def build_nutrition(ctx: AppContext) -> NutritionServices:
         energy_basis=lambda db: energy_basis(
             db, energy_sources(), ctx.clock.now().date()
         ),
+        energy_view=energy_view,
     )

@@ -48,6 +48,7 @@ every named number the code fixes. A test fails when it is out of date.
 | `DURATION_SHARE` | `0.35` | `backend/performance/comparable_sessions.py` |  |
 | `REP_COUNT_SPREAD` | `2` | `backend/performance/comparable_sessions.py` |  |
 | `HEART_RATE_BAND` | `8` | `backend/performance/comparable_sessions.py` | Continuous sessions compare only at a similar effort, so an easy run is never a tempo run's peer; within the band a faster pace still shows as fitter. |
+| `PERSONAL_LIMIT_METRICS` | `frozenset({'decoupling_pct'})` | `backend/performance/comparable_sessions.py` | Metrics the session report judges against the peers' upper quartile (#3084). |
 | `EFFORT_METHOD` | `'equal-effort-trend-v1'` | `backend/performance/comparable_sessions.py` |  |
 | `VO2MAX_UNIT` | `'ml/kg/min'` | `backend/performance/comparisons.py` |  |
 | `REASON_CANONICAL_PENDING` | `'canonical_pending'` | `backend/performance/context.py` | The reason an unavailable context gives while the canonical source serves nothing yet. |
@@ -239,6 +240,8 @@ every named number the code fixes. A test fails when it is out of date.
 | `WIND_EXPLAINS_MPS` | `3.0` | `backend/performance/session_conditions.py` | Wind explains a slower part from this headwind at body height in that part... |
 | `WIND_SECOND_SIGNAL_MPS` | `2.0` | `backend/performance/session_conditions.py` | ...when that part had this much more headwind than the part it is compared with. |
 | `WIND_MIN_COVERAGE_PCT` | `50.0` | `backend/performance/session_conditions.py` | A headwind needs a direction and a wind value for this share of the moving time. |
+| `PRIOR_LOAD_DAYS` | `3` | `backend/performance/session_conditions.py` | The 3-day prior load (athlete, #3084 3c H): the local load of the 3 days before the session against the median of every 3-day sum in the 42 days before; facts. |
+| `PRIOR_LOAD_WINDOW_DAYS` | `42` | `backend/performance/session_conditions.py` |  |
 | `INPUTS` | `'condition_inputs'` | `backend/performance/session_conditions.py` | What the session report adds to the detail for these checks: the session's local IF, the device's grade-adjusted speed and the athlete's rated sessions. |
 | `METHOD` | `'session-execution-v1'` | `backend/performance/session_execution.py` |  |
 | `SCOPE` | `"Descriptive execution of this one session from its own streams and laps. Output is pace in s/km ... (sha256 3cc2c071)` | `backend/performance/session_execution.py` |  |
@@ -251,6 +254,8 @@ every named number the code fixes. A test fails when it is out of date.
 | `MIN_SESSION_S` | `600.0` | `backend/performance/session_execution.py` |  |
 | `WARMUP_EXCLUDED_S` | `600.0` | `backend/performance/session_execution.py` |  |
 | `MAX_GAP_S` | `5.0` | `backend/performance/session_execution.py` |  |
+| `GAP_SHARE` | `0.05` | `backend/performance/session_execution.py` | A channel is uncertain once more than this share of the recorded time sits in runs of missing values longer than MAX_GAP_S (athlete, #3084 3c D); longer jumps of the clock itself are pauses, not missing data. |
+| `PAUSE_S` | `30.0` | `backend/performance/session_execution.py` |  |
 | `MAX_REPS` | `40` | `backend/performance/session_execution.py` |  |
 | `WORK_GAP_SHARE` | `0.15` | `backend/performance/session_execution.py` | Lap outputs split into work and recovery when the largest gap between sorted lap outputs is at least this share of the faster side. |
 | `RUN_CADENCE_FACTOR` | `2.0` | `backend/performance/session_execution.py` |  |
@@ -296,6 +301,10 @@ every named number the code fixes. A test fails when it is out of date.
 | `RACE_FINISH_PCT` | `2.0` | `backend/performance/session_report.py` | Finish slower than the competition's target time by this much. |
 | `RACE_DISTANCE_SHARE` | `0.1` | `backend/performance/session_report.py` | The recorded distance may differ this much from the plan's (GPS, course). |
 | `WALK_OFF_SPEED_SHARE` | `0.6` | `backend/performance/session_report.py` | A final stretch slower than this share of the race's median speed is a walk or roll-out after the line, not the race. |
+| `SHOE_DEFAULT_TARGET_KM` | `700.0` | `backend/performance/session_report.py` | A shoe without its own or Garmin's target is due at this many km (athlete, #3084). |
+| `SHOE_DUE_SHARE` | `0.9` | `backend/performance/session_report.py` | The shoe hint is notable from this share of its target distance. |
+| `PACE_AT_HR_PCT` | `3.0` | `backend/performance/session_report.py` | Pace at the same heart rate this much slower than own comparable runs (athlete, #3084). |
+| `ZONE_MIN_SHARE` | `0.1` | `backend/performance/session_report.py` | Zone time is judged in the zones holding at least this share of the planned time. |
 | `LEAD_COUNT` | `4` | `backend/performance/session_report.py` | The notable checks the answer leads with. |
 | `EASY_FOCUS` | `frozenset({'recovery', 'easy', 'endurance', 'long'})` | `backend/performance/session_report.py` |  |
 | `INTERVAL_FOCUS` | `frozenset({'tempo', 'threshold', 'vo2max', 'anaerobic', 'sweet_spot', 'test'})` | `backend/performance/session_report.py` |  |

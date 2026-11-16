@@ -549,6 +549,7 @@ effect `read`.
 
 effect `read`.
 
+- `energy` (boolean)
 - `date` (string)
 - `start` (string)
 - `end` (string)

@@ -60,6 +60,14 @@ The system SHALL add to every `get_activity_details` result a `session_report` (
 - **WHEN** the session has a provider training effect, an execution data-quality result, or (for a run or ride) strength sessions in the 48 h before it
 - **THEN** the report carries the facts checks `training_effect` (aerobic, anaerobic and label, each with its own source, basis `provider`, unchanged), `data_quality` (the heart-rate and speed states and which data the rules doubt; the checks on doubted data are unknown) and `strength_before` (count, leg sessions, intensities, the closest hours before and whether they were confirmed). Each is `ok` with weight 0, never in `notable` or `lead`, and unknown only when its data is missing or unreadable; no strength session found while the planned units could not be read is unknown, not zero (#3084 Part 3c).
 
+#### Scenario: Strength sets, heat, gaps and hills
+- **WHEN** a strength session has a plan with sets, a run or ride has stored weather, its streams have holes, or a ride has reps
+- **THEN** the report judges completed against planned sets through the plan rule (notable outside ±20 %; sets only, no load). It gives the check `heat` (the activity weather only, never a finding), whose `explains` names the heart-rate checks the report finds notable (decoupling, time above zone 2, cardiac drift) from 25 °C apparent temperature. The execution marks a heart-rate or speed channel `gaps` once more than 5 % of the recorded time (clock jumps over 30 s are pauses) sits in runs of missing values longer than 5 s, so the checks reading it are unknown. The check `hills` lists each ride rep's net elevation change and mean grade as facts (athlete decisions B to E, #3084 Part 3c).
+
+#### Scenario: The night before and the load of the days before
+- **WHEN** a run or ride is read
+- **THEN** the detail carries `recovery_before`: sleep, HRV and resting HR anchored at the session's day by the personal-recovery rule (own quartiles from at least 14 values in 42 days), computed from the canonical inputs the detail read already holds, without a second read and without the history series. The report gives the check `recovery_before` as facts with `that_night`, and its `explains` names the notable heart-rate checks only when a value of that night lies on its unfavourable side (less sleep, lower HRV, higher resting HR). The check `prior_load` gives the local load (M6) of the 3 days before against the median of every 3-day sum of the 42 days before, from one bounded read. Both are `ok` with weight 0, never a finding (athlete decisions G and H, #3084 Part 3c).
+
 #### Scenario: Wind at body height
 - **WHEN** an outdoor run or ride has a stored headwind on its own track (#3084 Part 3b)
 - **THEN** the report carries the check `wind` ("Wind auf Körperhöhe (geschätzt)"): the signed mean wind component along the direction of travel at body height (the stored 10 m model value × 0.72, log wind profile with z0 0.03 m for open land), the head and tail shares (±45°, beyond ±135°) and the coverage. It is unknown below 50 % coverage or without a track, and always `ok` with weight 0, never in `notable` or `lead`. Its `explains` names a slower part only when that part's own check in the report finds it (the race split, or the main-part fade of a continuous tempo effort, each with its own rule; or the rep fade with its weakest rep), the part had at least 3 m/s headwind at body height and 2 m/s more than the part it is compared with. The stored 60 s bins reach no tool output; only these reduced values leave the report.
@@ -150,4 +158,33 @@ The session report SHALL judge a race linked to a stored competition against tha
 Evidence:
 - `backend/performance/session_report.py:_RacePlan`
 - `backend/coach/activity_read_tools.py:CoachActivityReadToolService._race`
+- `tests/test_session_report.py`
+
+### Requirement: Run block, zone time and facts
+The session report SHALL add the run's own checks, zone time against the plan, decoupling against the athlete's own sessions and a list of facts without a verdict, with the athlete's decisions on #3084 (2026-11-16).
+
+#### Scenario: Run checks
+- **WHEN** the session is a run
+- **THEN** the report judges:
+  - the stored form drift, notable when ground contact rises 5 % from the first to the last third at the same pace;
+  - pace in the session's heart-rate band, notable from 3 % slower than the median of at least 5 own comparable runs of 42 days, else unknown;
+  - for interval runs, the stride length of each rep's second half, notable from 5 % shorter than the first;
+  - each shoe of the run, notable from 90 % of its target distance (its own, Garmin's, else 700 km).
+
+#### Scenario: Zone time against the plan
+- **WHEN** a run or ride has a paired planned unit with zone times
+- **THEN** the seconds of each zone holding at least 10 % of the planned time are judged against the plan, notable beyond ±20 %; when the zone-targeted plan covers less than 80 % of the recorded zone time (free warm-up or cool-down), or the zone metric's data quality failed, the check is unknown.
+
+#### Scenario: Decoupling against own sessions
+- **WHEN** at least 5 comparable sessions (same sport and kind, duration ±35 %, heart rate ±8 bpm) carry a decoupling
+- **THEN** decoupling is notable when above their upper quartile and above 5 %; with fewer the fixed 5 % decides.
+
+#### Scenario: Facts without a verdict
+- **WHEN** the report is built
+- **THEN** `facts` states, without a verdict: an outdoor run's work laps in % of critical speed (a model estimate of the 28 days before the session's day), its running dynamics per pace band against own runs as the app rates them, the elevation of an outdoor session and stops over 30 s, flagged standstills or recording gaps (count and total).
+
+Evidence:
+- `backend/performance/session_report.py:_run_block`
+- `backend/performance/session_report.py:_session_facts`
+- `backend/performance/comparable_sessions.py:comparable_sessions`
 - `tests/test_session_report.py`

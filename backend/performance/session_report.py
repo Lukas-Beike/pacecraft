@@ -18,6 +18,7 @@ from __future__ import annotations
 import statistics
 from bisect import bisect_left
 from collections.abc import Mapping, Sequence
+from datetime import date
 from itertools import pairwise
 from typing import Any, Final
 
@@ -26,18 +27,27 @@ from backend.athlete.measurements import finite_float as _number
 from backend.canonical.activity_summary import summary_is_indoor
 from backend.performance import session_conditions
 from backend.performance.comparable_sessions import DURATION_SHARE
+from backend.performance.form_drift import (
+    CONTACT_TIME_RISE_PCT,
+    STEP_LENGTH_FALL_PCT,
+)
 from backend.performance.planned_targets import (
     CAP_ABOVE_SHARE_PCT,
     FAIR_SHARE_PCT,
     adherence_band,
 )
+from backend.performance.session_conditions import STOP_S
 from backend.performance.session_execution import (
+    GAP_SHARE,
     HR_SPIKE_BPM,
     HR_SPIKE_SHARE,
+    MAX_GAP_S,
+    PAUSE_S,
     SPEED_JUMP_MPS,
     SPEED_JUMP_SHARE,
     comparison_metrics,
 )
+from backend.weather.activity_weather import HEAT_APPARENT_C
 
 METHOD: Final = "session-report-v1"
 SCOPE: Final = (
@@ -79,6 +89,14 @@ RACE_DISTANCE_SHARE: Final = 0.10
 # A final stretch slower than this share of the race's median speed is a walk
 # or roll-out after the line, not the race.
 WALK_OFF_SPEED_SHARE: Final = 0.6
+# A shoe without its own or Garmin's target is due at this many km (athlete, #3084).
+SHOE_DEFAULT_TARGET_KM: Final = 700.0
+# The shoe hint is notable from this share of its target distance.
+SHOE_DUE_SHARE: Final = 0.9
+# Pace at the same heart rate this much slower than own comparable runs (athlete, #3084).
+PACE_AT_HR_PCT: Final = 3.0
+# Zone time is judged in the zones holding at least this share of the planned time.
+ZONE_MIN_SHARE: Final = 0.10
 # The notable checks the answer leads with.
 LEAD_COUNT: Final = 4
 EASY_FOCUS: Final = frozenset({"recovery", "easy", "endurance", "long"})
@@ -97,6 +115,11 @@ _WEIGHT: Final = {
     "race_sections": 4,
     "race_start": 3,
     "race_fade": 3,
+    "form_drift": 3,
+    "shoe_mileage": 1,
+    "zone_time": 4,
+    "pace_at_heart_rate": 3,
+    "stride_halves": 3,
     "plan_duration": 3,
     "plan_load": 3,
     "decoupling": 3,
@@ -115,6 +138,12 @@ _WEIGHT: Final = {
     "training_effect": 0,
     "data_quality": 0,
     "strength_before": 0,
+    "heat": 0,
+    "hills": 0,
+    "recovery_before": 0,
+    "prior_load": 0,
+    # Strength plan against sets (athlete, #3084 3c B): a plan check.
+    "strength_sets": 3,
 }
 
 
@@ -123,6 +152,7 @@ def session_report(
     planned: Mapping[str, Any] | None = None,
     training_load: float | None = None,
     race: Mapping[str, Any] | None = None,
+    plan_zones: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """The report of a ``get_activity_details`` result.
 
@@ -131,6 +161,8 @@ def session_report(
     unit; ``training_load`` is the session's local TSS-scale load (M6), the
     scale of the estimate. A provider load is never compared. ``race`` is
     the linked competition's race plan (``race_plan``), None without one.
+    ``plan_zones`` is the paired unit's planned against actual seconds per zone
+    (``planned_step_adherence`` zones), None without a paired unit.
     """
     analysis = result.get("analysis")
     execution = analysis.get("execution") if isinstance(analysis, Mapping) else None
@@ -142,6 +174,8 @@ def session_report(
         *(_continuous_checks(facts) if facts.kind == "continuous" else ()),
         *(_interval_checks(facts) if facts.kind == "interval" else ()),
         *(_race_checks(facts, race) if facts.kind == "race" else ()),
+        *(_run_block(facts) if facts.sport == "run" else ()),
+        *_zone_time(facts, plan_zones),
         *_condition_checks(facts),
     ]
     notable = sorted(
@@ -156,6 +190,7 @@ def session_report(
         "notable": [check["id"] for check in notable],
         "lead": [check["id"] for check in notable[:LEAD_COUNT]],
         "unknown": [check["id"] for check in checks if check["verdict"] == "unknown"],
+        "facts": _session_facts(facts),
     }
 
 
@@ -361,10 +396,36 @@ def _decoupling(facts: _Facts) -> dict[str, Any]:
         return _unknown(
             "decoupling", title, "Keine Entkopplung berechnet (zu kurz oder unruhig)."
         )
+    peers = _number(
+        _mapping(facts.comparable.get("median_peers")).get("decoupling_pct")
+    )
+    quartile = _number(
+        _mapping(facts.comparable.get("upper_quartile_of_peers")).get("decoupling_pct")
+    )
+    if (
+        facts.comparable.get("status") == "ok"
+        and peers
+        and peers >= MIN_PERSONAL
+        and quartile is not None
+    ):
+        return _judged(
+            "decoupling",
+            title,
+            value={
+                "decoupling_pct": round(value, 1),
+                "own_upper_quartile_pct": quartile,
+                "peers": int(peers),
+            },
+            unit="%",
+            rule="Leistung bzw. Tempo pro Herzschlag, zweite gegen erste Hälfte, über dem oberen Quartil eigener vergleichbarer Einheiten und über 5 %",
+            threshold=max(quartile, DECOUPLING_PCT),
+            measure=value,
+            basis="personal",
+        )
     return _judged(
         "decoupling",
         title,
-        value=round(value, 1),
+        value={"decoupling_pct": round(value, 1)},
         unit="%",
         rule="Leistung bzw. Tempo pro Herzschlag, zweite gegen erste Hälfte",
         threshold=DECOUPLING_PCT,
@@ -760,6 +821,326 @@ def _recovery_heart_rate_drop(facts: _Facts) -> dict[str, Any]:
         threshold=HEART_RATE_DROP_BELOW_BPM,
         measure=below,
         basis="personal",
+    )
+
+
+def _run_block(facts: _Facts) -> list[dict[str, Any]]:
+    """The run's own checks beside its session type (#3084 Part 2)."""
+    reps = [
+        rep
+        for rep in facts.execution.get("reps") or ()
+        if isinstance(rep, Mapping) and not rep.get("short")
+    ]
+    checks = [
+        _form_drift(facts),
+        _pace_at_heart_rate(facts),
+        _stride_halves(facts, reps) if facts.kind == "interval" and reps else None,
+    ]
+    shoes = [
+        item
+        for item in facts.result.get("equipment") or ()
+        if isinstance(item, Mapping) and item.get("kind") == "shoes"
+    ]
+    checks.extend(_shoe_mileage(item) for item in shoes)
+    return [check for check in checks if check is not None]
+
+
+def _form_drift(facts: _Facts) -> dict[str, Any] | None:
+    """The stored form drift of a run: running dynamics from the first to the last third."""
+    drift = _mapping(_mapping(facts.result.get("analysis")).get("form_drift"))
+    if not drift:
+        return None
+    title = "Laufstil-Drift"
+    if drift.get("status") != "ok":
+        return _unknown(
+            "form_drift", title, str(drift.get("reason") or "Keine Form-Drift.")
+        )
+    metrics = {
+        name: {
+            "change_pct": item.get("change_percent"),
+            "threshold_pct": item.get("threshold_percent"),
+        }
+        for name, item in _mapping(drift.get("metrics")).items()
+        if isinstance(item, Mapping)
+    }
+    rise = _number(metrics.get("contact_time", {}).get("change_pct"))
+    return _judged(
+        "form_drift",
+        title,
+        value={
+            "pace_change_pct": drift.get("pace_change_percent"),
+            "metrics": metrics,
+        },
+        unit="%",
+        rule="Bodenkontaktzeit vom ersten zum letzten Drittel bei gleichem Tempo (Form-Drift)",
+        threshold=CONTACT_TIME_RISE_PCT,
+        measure=rise or 0.0,
+        basis="fixed",
+        notable=drift.get("flagged") is True,
+    )
+
+
+def _pace_at_heart_rate(facts: _Facts) -> dict[str, Any] | None:
+    """Pace in the session's heart-rate band against own comparable runs of 42 days."""
+    data = _mapping(facts.result.get("pace_at_heart_rate"))
+    if not data:
+        return None
+    title = "Tempo bei gleichem Puls"
+    if reason := facts.heart_rate_unknown():
+        return _unknown("pace_at_heart_rate", title, reason, basis="personal")
+    if data.get("status") != "ok":
+        reason = str(data.get("reason") or "Nicht vergleichbar.")
+        return _unknown("pace_at_heart_rate", title, reason, basis="personal")
+    comparable = _mapping(data.get("comparable"))
+    count = int(_number(comparable.get("count")) or 0)
+    median = _number(comparable.get("median_pace_s_per_km"))
+    difference = _number(data.get("difference_s_per_km"))
+    if count < MIN_PERSONAL or not median or difference is None:
+        return _unknown(
+            "pace_at_heart_rate",
+            title,
+            f"Weniger als {MIN_PERSONAL} vergleichbare Läufe.",
+            basis="personal",
+        )
+    slower = difference / median * 100
+    return _judged(
+        "pace_at_heart_rate",
+        title,
+        value={
+            "pace_s_per_km": _mapping(data.get("session")).get("pace_s_per_km"),
+            "own_median_s_per_km": median,
+            "slower_pct": round(slower, 1),
+            "heart_rate_band_bpm": data.get("heart_rate_band_bpm"),
+            "peers": count,
+        },
+        unit="%",
+        rule="Tempo im Pulsband der Einheit gegen den Median eigener vergleichbarer Läufe (positiv: langsamer)",
+        threshold=PACE_AT_HR_PCT,
+        measure=slower,
+        basis="personal",
+    )
+
+
+def _stride_halves(facts: _Facts, reps: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+    """Stride length of each rep's second half against its first."""
+    title = "Schrittlänge je Wiederholung"
+    if reason := facts.output_unknown():
+        return _unknown("stride_halves", title, reason)
+    changes = [
+        (rep.get("rep"), (second / first - 1) * 100)
+        for rep in reps
+        if (first := _number(rep.get("stride_length_first_half_m")))
+        and (second := _number(rep.get("stride_length_second_half_m"))) is not None
+    ]
+    if not changes:
+        return _unknown(
+            "stride_halves", title, "Keine Wiederholung ab 2 min mit Schrittlänge."
+        )
+    worst_rep, worst = min(changes, key=lambda item: item[1])
+    return _judged(
+        "stride_halves",
+        title,
+        value={
+            "worst_rep": worst_rep,
+            "second_vs_first_half_pct": round(worst, 1),
+            "below_threshold_reps": [
+                rep for rep, change in changes if change < -STEP_LENGTH_FALL_PCT
+            ],
+        },
+        unit="%",
+        rule="Schrittlänge der zweiten gegen die erste Hälfte einer Wiederholung (negativ: kürzer)",
+        threshold=STEP_LENGTH_FALL_PCT,
+        measure=-worst,
+        basis="fixed",
+    )
+
+
+def _zone_time(
+    facts: _Facts, plan_zones: Mapping[str, Any] | None
+) -> list[dict[str, Any]]:
+    """Seconds per zone against the paired unit's plan, in the plan's leading metric."""
+    if not plan_zones:
+        return []
+    title = "Zonenzeit gegen Plan"
+    if plan_zones.get("status") != "ok":
+        missing = str(plan_zones.get("reason") or "Keine Zonenzeiten im Plan.")
+        return [_unknown("zone_time", title, missing, basis="plan")]
+    reason = (
+        facts.heart_rate_unknown()
+        if plan_zones.get("metric") == "heartrate"
+        else facts.output_unknown()
+    )
+    if reason:
+        return [_unknown("zone_time", title, reason, basis="plan")]
+    rows = [row for row in plan_zones.get("zones") or () if isinstance(row, Mapping)]
+    total = sum(_number(row.get("planned_s")) or 0.0 for row in rows)
+    judged: list[dict[str, Any]] = [
+        {
+            "zone": row.get("zone"),
+            "planned_s": planned,
+            "actual_s": actual,
+            "difference_pct": round((actual / planned - 1) * 100, 1),
+        }
+        for row in rows
+        if (planned := _number(row.get("planned_s")) or 0.0) >= total * ZONE_MIN_SHARE
+        and planned > 0
+        and (actual := _number(row.get("actual_s"))) is not None
+    ]
+    if not judged:
+        return [
+            _unknown("zone_time", title, "Keine geplanten Zonenzeiten.", basis="plan")
+        ]
+    # Untargeted steps (a free warm-up) count in the actual seconds only, so
+    # a plan covering much less than the session cannot be judged per zone.
+    recorded = sum(_number(row.get("actual_s")) or 0.0 for row in rows)
+    if total < recorded * (1 - PLAN_TOLERANCE_PCT / 100):
+        return [
+            _unknown(
+                "zone_time",
+                title,
+                "Nicht jeder geplante Abschnitt hat eine Zielzone.",
+                basis="plan",
+            )
+        ]
+    return [
+        _judged(
+            "zone_time",
+            title,
+            value={"metric": plan_zones.get("metric"), "zones": judged},
+            unit="%",
+            rule="Sekunden je Zone gegen den Plan, in Zonen mit mindestens 10 % der geplanten Zeit, Betrag",
+            threshold=PLAN_TOLERANCE_PCT,
+            measure=max(abs(row["difference_pct"]) for row in judged),
+            basis="plan",
+        )
+    ]
+
+
+def _session_facts(facts: _Facts) -> list[dict[str, Any]]:
+    """Values the report states without a verdict (athlete, #3084 Part 2)."""
+    found = [
+        _work_laps_of_critical_speed(facts),
+        _dynamics_bands(facts),
+        _elevation(facts),
+        _stops(facts),
+    ]
+    return [fact for fact in found if fact is not None]
+
+
+def _work_laps_of_critical_speed(facts: _Facts) -> dict[str, Any] | None:
+    """A run's work laps in % of its critical speed, a model estimate."""
+    critical = _mapping(facts.result.get("critical_speed"))
+    speed = _number(critical.get("cs_mps"))
+    if facts.sport != "run" or not speed or summary_is_indoor(facts.session):
+        return None
+    laps = [
+        {"rep": rep, "pct_of_critical_speed": round(value / speed * 100, 1)}
+        for rep, value in _rep_outputs(facts, facts.execution.get("reps") or ())
+    ]
+    if not laps:
+        return None
+    return {
+        "id": "work_laps_of_critical_speed",
+        "title": "Arbeitsrunden in % der kritischen Geschwindigkeit",
+        "value": {"laps": laps, "critical_speed_mps": speed},
+        "unit": "%",
+        "basis": "model estimate",
+    }
+
+
+def _dynamics_bands(facts: _Facts) -> dict[str, Any] | None:
+    """Running dynamics per pace band against own runs: better, usual or worse."""
+    rating = _mapping(facts.result.get("running_dynamics_rating"))
+    if facts.sport != "run" or rating.get("status") != "ok":
+        return None
+    return {
+        "id": "running_dynamics_bands",
+        "title": "Laufdynamik je Tempobereich gegen eigene Läufe",
+        "value": {key: rating[key] for key in ("bands", "metrics") if key in rating},
+        "unit": None,
+        "basis": "personal",
+    }
+
+
+def _elevation(facts: _Facts) -> dict[str, Any] | None:
+    gain = facts.metric("elevation_gain_m")
+    if gain is None or summary_is_indoor(facts.session):
+        return None
+    return {
+        "id": "elevation",
+        "title": "Höhenmeter",
+        "value": {"gain_m": round(gain), "loss_m": facts.metric("elevation_loss_m")},
+        "unit": "m",
+    }
+
+
+def _stops(facts: _Facts) -> dict[str, Any] | None:
+    """Standstills longer than ``STOP_S``: their count and total time.
+
+    A standstill is a stretch flagged not moving, or a recording gap (auto
+    pause) longer than the stop limit. A standstill still open at the end is
+    after the session, not a stop.
+    """
+    streams = _mapping(facts.result.get("streams"))
+    moving = _mapping(_mapping(streams.get("channels")).get("moving")).get("values")
+    if not isinstance(moving, list):
+        return None
+    samples = [
+        (clock, flag)
+        for time, flag in _aligned(streams.get("time_s") or [], moving)
+        if (clock := _number(time)) is not None and flag is not None
+    ]
+    # A gap counts as a pause only beyond three sampling steps, so a long
+    # session's coarse, downsampled stream is not all stops.
+    steps = [
+        after - before
+        for (before, _), (after, _) in pairwise(samples)
+        if after > before
+    ]
+    gap = max(STOP_S, 3 * statistics.median(steps)) if steps else STOP_S
+    stops: list[float] = []
+    started = None
+    for (before, was_moving), (after, flag) in pairwise(samples):
+        if started is None and (not was_moving or after - before > gap):
+            started = before
+        if started is not None and flag:
+            stops.append(after - started)
+            started = None
+    long_stops = [seconds for seconds in stops if seconds > STOP_S]
+    return {
+        "id": "stops",
+        "title": "Stopps über 30 s",
+        "value": {"count": len(long_stops), "total_s": round(sum(long_stops))},
+        "unit": "s",
+    }
+
+
+def _shoe_mileage(item: Mapping[str, Any]) -> dict[str, Any] | None:
+    """The run's shoe against its target distance: its own, Garmin's, else 700 km."""
+    usage = _number(_mapping(item.get("usage")).get("distance_km"))
+    if usage is None:
+        return None
+    lifetime = _mapping(item.get("lifetime"))
+    target = _number(lifetime.get("target_km"))
+    source = item.get("lifetime_target_source") if target else "default"
+    target = target or SHOE_DEFAULT_TARGET_KM
+    share = usage / target
+    return _judged(
+        "shoe_mileage",
+        "Schuh-Kilometer",
+        value={
+            "equipment_id": item.get("id"),
+            "usage_km": round(usage, 1),
+            "target_km": round(target, 1),
+            "target_source": source,
+            "share_pct": round(share * 100, 1),
+        },
+        unit="%",
+        rule="Gelaufene Kilometer gegen das Ziel des Schuhs (eigenes, Garmin, sonst 700 km)",
+        threshold=SHOE_DUE_SHARE * 100,
+        measure=share * 100,
+        basis="fixed",
+        notable=share >= SHOE_DUE_SHARE,
     )
 
 
@@ -1446,6 +1827,32 @@ def _fact_checks(facts: _Facts) -> list[dict[str, Any]]:
     before = _mapping(facts.result.get("strength_before"))
     if before and facts.sport in ("run", "ride"):
         checks.append(_strength_before(before))
+    plan = _mapping(facts.result.get("strength_plan"))
+    if plan:
+        # Sets only, no load (athlete, #3084 3c B); a set is done at reps >= planned.
+        checks.append(
+            _against_plan(
+                "strength_sets",
+                "Sätze gegen Plan",
+                _number(plan.get("completed_sets")),
+                plan.get("planned_sets"),
+                "count",
+            )
+        )
+    weather = _mapping(facts.result.get("weather"))
+    if weather and facts.sport in ("run", "ride"):
+        checks.append(_heat(facts, weather))
+    inputs = _mapping(facts.result.get(session_conditions.INPUTS))
+    if facts.sport in ("run", "ride"):
+        if isinstance(facts.result.get("recovery_before"), list):
+            checks.append(_recovery_before(facts, facts.result["recovery_before"]))
+        if isinstance(inputs.get("daily_loads"), Mapping):
+            checks.append(_prior_load(facts, inputs["daily_loads"]))
+    reps = [
+        rep for rep in facts.execution.get("reps") or () if isinstance(rep, Mapping)
+    ]
+    if facts.sport == "ride" and reps:
+        checks.append(_hills(reps))
     return checks
 
 
@@ -1513,8 +1920,10 @@ def _data_quality(quality: Mapping[str, Any]) -> dict[str, Any]:
         f"Herzfrequenz: Spitzen über {HR_SPIKE_BPM:.0f} bpm in mehr als "
         f"{HR_SPIKE_SHARE * 100:.0f} % der Paare oder Kadenz-Kopplung; Tempo: "
         f"Sprünge über {SPEED_JUMP_MPS:g} m/s in mehr als "
-        f"{SPEED_JUMP_SHARE * 100:.0f} % der Paare. Prüfungen auf bezweifelten "
-        "Daten sind unbekannt",
+        f"{SPEED_JUMP_SHARE * 100:.0f} % der Paare; beide: Lücken über "
+        f"{MAX_GAP_S:g} s in mehr als {GAP_SHARE * 100:.0f} % der aufgezeichneten "
+        f"Zeit (Uhrsprünge über {PAUSE_S:g} s sind Pausen). Prüfungen auf "
+        "bezweifelten Daten sind unbekannt",
         "fixed",
     )
 
@@ -1548,4 +1957,169 @@ def _strength_before(before: Mapping[str, Any]) -> dict[str, Any]:
         "Krafteinheiten in den 48 h vor dem Start: erledigt, sonst geplant und "
         "nicht bestätigt; nur Fakten, keine Ursache",
         "fixed",
+    )
+
+
+def _heat(facts: _Facts, weather: Mapping[str, Any]) -> dict[str, Any]:
+    """Heat from the activity weather only (#3036), only ever an explanation.
+
+    From 25 C apparent temperature it names in ``explains`` the heart-rate
+    checks the report finds notable (decoupling, time above zone 2, cardiac
+    drift), each judged by its own function (athlete, #3084 3c C).
+    """
+    title = "Hitze (Wetter der Einheit)"
+    apparent = _number(weather.get("apparent_temperature_c"))
+    if apparent is None:
+        return _unknown("heat", title, "Keine gefühlte Temperatur gespeichert.")
+    explains = _notable_heart_checks(facts) if apparent >= HEAT_APPARENT_C else []
+    return _judged(
+        "heat",
+        title,
+        value={
+            "apparent_temperature_c": apparent,
+            "temperature_c": _number(weather.get("temperature_c")),
+            "source": weather.get("source"),
+            "explains": explains,
+        },
+        unit="C",
+        rule=f"Gefühlte Temperatur ab {HEAT_APPARENT_C:.0f} °C erklärt auffällige "
+        "Herzfrequenz-Prüfungen; nie ein eigener Befund",
+        threshold=HEAT_APPARENT_C,
+        measure=0,
+        basis="fixed",
+        notable=False,
+    )
+
+
+def _hills(reps: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+    """Each rep's net elevation change and mean grade, facts only (athlete, #3084 3c E)."""
+    rows = []
+    for rep in reps:
+        change = _number(rep.get("elevation_change_m"))
+        distance = _number(rep.get("distance_m"))
+        rows.append(
+            {
+                "rep": rep.get("rep"),
+                "elevation_change_m": None if change is None else round(change, 1),
+                "grade_pct": round(100 * change / distance, 1)
+                if change is not None and distance
+                else None,
+            }
+        )
+    return _fact(
+        "hills",
+        "Steigung je Wiederholung",
+        rows,
+        "Netto-Höhenänderung und mittlere Steigung je Wiederholung; nur Fakten",
+        "fixed",
+    )
+
+
+def _notable_heart_checks(facts: _Facts) -> list[str]:
+    """The heart-rate checks the report finds notable, each by its own function.
+
+    Decoupling and time above zone 2 for easy sessions, cardiac drift for
+    interval sessions: what heat or the night before may explain (#3084 3c).
+    """
+    heart_checks = []
+    if facts.kind == "easy":
+        heart_checks = [_decoupling(facts), _easy_time_above(facts)]
+    elif facts.kind == "interval":
+        reps = [
+            rep for rep in facts.execution.get("reps") or () if isinstance(rep, Mapping)
+        ]
+        heart_checks = [_cardiac_drift(facts, reps)] if reps else []
+    return [check["id"] for check in heart_checks if check["verdict"] == "notable"]
+
+
+# The side of the athlete's own quartiles that may explain a heart-rate finding.
+_UNFAVOURABLE: Final = {"sleep": "below", "hrv": "below", "resting_hr": "above"}
+
+
+def _recovery_before(
+    facts: _Facts, baselines: Sequence[Mapping[str, Any]]
+) -> dict[str, Any]:
+    """The night before against the athlete's own quartiles, facts only (#3084 3c G).
+
+    ``explains`` names notable heart-rate checks only when a value of that very
+    night lies on its unfavourable side: less sleep, lower HRV, higher resting HR.
+    """
+    title = "Die Nacht davor (Schlaf, HRV, Ruhepuls)"
+    day = str(_mapping(facts.session).get("started_at_local") or "")[:10]
+    nights = []
+    for baseline in baselines:
+        if not isinstance(baseline, Mapping):
+            continue
+        nights.append(
+            {
+                key: baseline.get(key)
+                for key in (
+                    "metric",
+                    "measurement",
+                    "value",
+                    "unit",
+                    "observed_at",
+                    "median",
+                    "lower",
+                    "upper",
+                    "position",
+                    "status",
+                    "source",
+                )
+            }
+            | {"that_night": baseline.get("observed_at") == day}
+        )
+    if not nights:
+        return _unknown(
+            "recovery_before", title, "Keine Werte zu Schlaf, HRV oder Ruhepuls."
+        )
+    unfavourable = any(
+        night["that_night"]
+        and night["position"] is not None
+        and night["position"] == _UNFAVOURABLE.get(str(night["metric"]))
+        for night in nights
+    )
+    return _judged(
+        "recovery_before",
+        title,
+        value={
+            "nights": nights,
+            "explains": _notable_heart_checks(facts) if unfavourable else [],
+        },
+        unit=None,
+        rule="Wert der Nacht vor der Einheit gegen die eigenen mittleren Quartile "
+        "(mindestens 14 Werte in 42 Tagen); nur Fakten, Erklärung nur zu einer "
+        "auffälligen Herzfrequenz-Prüfung",
+        threshold=0,
+        measure=0,
+        basis="personal",
+        notable=False,
+    )
+
+
+def _prior_load(facts: _Facts, loads: Mapping[str, Any]) -> dict[str, Any]:
+    """The local load of the 3 days before against the own 42-day median (#3084 3c H)."""
+    title = "Belastung der 3 Tage davor"
+    day = str(_mapping(facts.session).get("started_at_local") or "")[:10]
+    try:
+        session_day = date.fromisoformat(day)
+    except ValueError:
+        return _unknown("prior_load", title, "Kein Datum der Einheit.")
+    load = session_conditions.prior_load(
+        {
+            key: float(value)
+            for key, value in loads.items()
+            if _number(value) is not None
+        },
+        session_day,
+    )
+    if load is None:
+        return _unknown("prior_load", title, "Keine lokale Belastung in 45 Tagen.")
+    return _fact(
+        "prior_load",
+        title,
+        load,
+        "Lokale Belastung (M6) der 3 Tage vor der Einheit gegen den Median aller "
+        "3-Tages-Summen der 42 Tage davor; nur Fakten",
+        "personal",
     )
