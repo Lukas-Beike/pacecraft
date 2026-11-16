@@ -621,6 +621,10 @@ class CoachActivityReadToolService:
             )
         )
         inputs = {
+            # The stored headwind with its bins: for the report only (#3084).
+            "headwind": self._activity_read.session_headwind(
+                str(session.get("activity_id") or "")
+            ),
             "intensity": own.get("intensity"),
             "grade_adjusted_speed_mps": own.get("grade_adjusted_speed_mps"),
             "rated_sessions": rated,

@@ -492,6 +492,8 @@ def _halves(
     halves = {"first": reader.part(start, middle), "second": reader.part(middle, end)}
     result: dict[str, Any] = {
         "status": "ok",
+        # On the clock of the session's streams, like a lap's start_s (#3084).
+        "start_s": round(start),
         "main_part_s": round(end - start),
         "main": reader.part(start, end),
         **halves,

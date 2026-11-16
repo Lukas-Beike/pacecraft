@@ -56,6 +56,10 @@ The system SHALL add to every `get_activity_details` result a `session_report` (
 - **WHEN** the session is an outdoor run with speed and a grade or altitude stream
 - **THEN** the report carries its grade-adjusted pace after Minetti 2002 over the moving time, overall and per lap, with the pace, the difference in percent, the grade coverage and the device's own value as a comparison; the check is an estimate and stays `ok`, never notable alone, and is unknown without the streams or when the speed fails its data-quality rule (#3084 Part 3).
 
+#### Scenario: Wind at body height
+- **WHEN** an outdoor run or ride has a stored headwind on its own track (#3084 Part 3b)
+- **THEN** the report carries the check `wind` ("Wind auf Körperhöhe (geschätzt)"): the signed mean wind component along the direction of travel at body height (the stored 10 m model value × 0.72, log wind profile with z0 0.03 m for open land), the head and tail shares (±45°, beyond ±135°) and the coverage. It is unknown below 50 % coverage or without a track, and always `ok` with weight 0, never in `notable` or `lead`. Its `explains` names a slower part only when that part's own check finds it (the halves, or the rep fade with its weakest rep), the part had at least 3 m/s headwind at body height and 2 m/s more than the part it is compared with. The stored 60 s bins reach no tool output; only these reduced values leave the report.
+
 #### Scenario: RPE against intensity
 - **WHEN** a run or ride carries a session RPE and a local IF
 - **THEN** the report compares the RPE with the median RPE of the athlete's own rated sessions of the same sport and RPE scale within ±0.05 IF (5 points of the stored IF in %) over the 84 days before the session's day (a session later that day never counts), read once for that window; notable from a 2-point gap; unknown with fewer than 5 such sessions or without a rating or IF (#3084 Part 3).
@@ -68,6 +72,8 @@ Evidence:
 - `backend/performance/session_report.py:session_report`
 - `backend/coach/activity_read_tools.py:CoachActivityReadToolService._with_session_context`
 - `backend/performance/session_conditions.py:grade_adjusted_pace`
+- `backend/performance/session_conditions.py:body_headwind`
+- `backend/performance/activity_read_service.py:ActivityAnalysisReadService.session_headwind`
 - `backend/performance/session_conditions.py:expected_rpe`
 - `backend/performance/activity_read_service.py:ActivityAnalysisReadService.rated_sessions`
 - `tests/test_session_report.py`

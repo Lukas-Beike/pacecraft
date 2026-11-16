@@ -102,8 +102,9 @@ _WEIGHT: Final = {
     "recovery_duration": 2,
     "recovery_heart_rate_drop": 2,
     "rpe_intensity": 2,
-    # An estimate: shown with every run, never a finding alone.
+    # Estimates: shown, never a finding alone.
     "grade_adjusted_pace": 0,
+    "wind": 0,
 }
 
 
@@ -1252,6 +1253,8 @@ def _condition_checks(facts: _Facts) -> list[dict[str, Any]]:
             )
     if facts.sport not in ("run", "ride"):
         return checks
+    if not summary_is_indoor(facts.session):
+        checks.append(_wind_check(facts))
     title = "RPE gegen Intensität"
     inputs = _mapping(facts.result.get(session_conditions.INPUTS))
     load = _mapping(facts.result.get("session_rpe_load"))
@@ -1304,3 +1307,107 @@ def _condition_checks(facts: _Facts) -> list[dict[str, Any]]:
         )
     )
     return checks
+
+
+def _wind_check(facts: _Facts) -> dict[str, Any]:
+    """Wind at body height, only ever an explanation (#3084 Part 3b).
+
+    It stays ``ok`` with weight 0 and names in ``explains`` a slower part it
+    explains: the second half slower than the first (the halves check) or a
+    fading rep (the rep fade check), each judged by its own function, with at
+    least 3 m/s headwind at body height in that part and 2 m/s more than in the
+    part it is compared with.
+    """
+    title = "Wind auf Körperhöhe (geschätzt)"
+    wind = _mapping(
+        _mapping(facts.result.get(session_conditions.INPUTS)).get("headwind")
+    )
+    coverage = _number(wind.get("coverage_pct"))
+    if not wind or coverage is None:
+        return _unknown("wind", title, "Kein Gegenwindwert (kein eigener Track).")
+    if coverage < session_conditions.WIND_MIN_COVERAGE_PCT:
+        return _unknown(
+            "wind",
+            title,
+            f"Laufrichtung nur für {coverage:.0f} % der Bewegungszeit bekannt.",
+        )
+    explains = [*_wind_halves(facts, wind), *_wind_reps(facts, wind)]
+    return _judged(
+        "wind",
+        title,
+        value={
+            "headwind_mps": session_conditions.body_headwind(wind),
+            "head_share_pct": wind.get("head_share_pct"),
+            "tail_share_pct": wind.get("tail_share_pct"),
+            "coverage_pct": coverage,
+            "explains": explains,
+        },
+        unit="m/s",
+        rule=(
+            "Mittlere Windkomponente in Bewegungsrichtung (+ Gegenwind), Wind am "
+            "Start (Open-Meteo, 10 m) auf 2 m reduziert (log. Windprofil, z0 0,03 m); "
+            "nur Erklärung, mit zweitem Signal"
+        ),
+        threshold=session_conditions.WIND_EXPLAINS_MPS,
+        measure=0,
+        basis="fixed",
+        notable=False,
+    )
+
+
+def _wind_halves(facts: _Facts, wind: Mapping[str, Any]) -> list[dict[str, Any]]:
+    """The second half, when the halves check finds it slower and wind explains it."""
+    if _halves_change(facts, "main_fade", "", FADE_PCT)["verdict"] != "notable":
+        return []
+    halves = _mapping(facts.execution.get("halves"))
+    start, length = _number(halves.get("start_s")), _number(halves.get("main_part_s"))
+    if start is None or not length:
+        return []
+    middle = start + length / 2
+    first = session_conditions.body_headwind(wind, (start, middle))
+    second = session_conditions.body_headwind(wind, (middle, start + length))
+    if not _wind_explains(second, first):
+        return []
+    return [{"check": "halves", "part_mps": second, "compared_mps": first}]
+
+
+def _wind_reps(facts: _Facts, wind: Mapping[str, Any]) -> list[dict[str, Any]]:
+    """The weakest rep, when the rep fade check finds it and wind explains it."""
+    reps = [
+        rep for rep in facts.execution.get("reps") or () if isinstance(rep, Mapping)
+    ]
+    if facts.kind != "interval" or not reps:
+        return []
+    fade = _rep_fade(facts, reps)
+    if fade["verdict"] != "notable":
+        return []
+    winds = {}
+    for rep in _similar_reps(reps):
+        start, length = _number(rep.get("start_s")), _number(rep.get("duration_s"))
+        if start is not None and length:
+            value = session_conditions.body_headwind(wind, (start, start + length))
+            if value is not None:
+                winds[rep.get("rep")] = value
+    worst = _mapping(fade.get("value")).get("worst_rep")
+    if worst not in winds or len(winds) < 3:
+        return []
+    median = statistics.median(winds.values())
+    if not _wind_explains(winds[worst], median):
+        return []
+    return [
+        {
+            "check": "rep_fade",
+            "rep": worst,
+            "part_mps": winds[worst],
+            "compared_mps": median,
+        }
+    ]
+
+
+def _wind_explains(part: float | None, compared: float | None) -> bool:
+    return (
+        part is not None
+        and compared is not None
+        and part >= session_conditions.WIND_EXPLAINS_MPS
+        and part - compared >= session_conditions.WIND_SECOND_SIGNAL_MPS
+    )

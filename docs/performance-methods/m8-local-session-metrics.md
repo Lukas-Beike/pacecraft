@@ -85,6 +85,19 @@ Athlete decisions (2026-11-07, #1680):
      left out), overall and per lap on the stream clock. It is an estimate,
      labelled with its method, and never a finding alone; the device's own
      grade-adjusted speed is shown only as a comparison.
+   - Wind (#3084 Part 3b): the session report reduces the stored mean wind
+     component along the direction of travel (Open-Meteo 10 m model wind at
+     the start cell, see the activity weather) to body height with the
+     logarithmic wind profile `u(2 m) / u(10 m) = ln(2 / z0) / ln(10 / z0)`,
+     z0 = 0.03 m for open flat land (Stull 1988, ch. 9; Davenport-Wieringa
+     class "open", WMO-No. 8, 2018, Vol. I, ch. 5), a factor of about 0.72.
+     **Assumption:** open land. In towns or forest the real wind is lower, so
+     the value overstates it there. Parts are reduced as the signed
+     time-weighted mean of 60 s bins, so tailwind offsets headwind. Wind only
+     ever explains a slower part (athlete decisions, 2026-11-16): at least
+     3 m/s at body height in that part and 2 m/s more than in the part it is
+     compared with, never a finding of its own; below 50 % of the moving time
+     with a direction it is unknown.
    - Treadmill and virtual runs are flat: their speed is not adjusted. An
      outdoor run without a grade or altitude and distance stream gets no
      decoupling.

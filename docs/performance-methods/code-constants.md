@@ -233,6 +233,12 @@ every named number the code fixes. A test fails when it is out of date.
 | `RPE_INTENSITY_WINDOW_PCT` | `5.0` | `backend/performance/session_conditions.py` | The expected RPE is the median of own rated sessions of the same sport and RPE scale within +-0.05 IF of the session (orchestrator decision on #3084), in the stored scale: a summary's intensity is the local IF in % (M6, IF x 100, MetricKind.INTENSITY_FACTOR), so the window is 5 percentage points. |
 | `MIN_RATED` | `5` | `backend/performance/session_conditions.py` | Own rated sessions needed for an expected RPE; fewer leave the check unknown. |
 | `RATED_WINDOW_DAYS` | `84` | `backend/performance/session_conditions.py` | The rated sessions read for the expected RPE: the comparable-session window. |
+| `WIND_BODY_HEIGHT_M` | `2.0` | `backend/performance/session_conditions.py` | Wind (athlete decisions on #3084, 2026-11-16). The 10 m model wind is reduced to body height with the logarithmic wind profile u(z) ~ ln(z / z0) (Stull 1988, An Introduction to Boundary Layer Meteorology, ch. 9) for open flat land, z0 = 0.03 m (Davenport-Wieringa roughness class "open", WMO-No. 8, 2018, Vol. I, ch. 5, annex): factor about 0.72. In towns or forest the real wind is lower still. |
+| `WIND_MODEL_HEIGHT_M` | `10.0` | `backend/performance/session_conditions.py` |  |
+| `WIND_ROUGHNESS_M` | `0.03` | `backend/performance/session_conditions.py` |  |
+| `WIND_EXPLAINS_MPS` | `3.0` | `backend/performance/session_conditions.py` | Wind explains a slower part from this headwind at body height in that part... |
+| `WIND_SECOND_SIGNAL_MPS` | `2.0` | `backend/performance/session_conditions.py` | ...when that part had this much more headwind than the part it is compared with. |
+| `WIND_MIN_COVERAGE_PCT` | `50.0` | `backend/performance/session_conditions.py` | A headwind needs a direction and a wind value for this share of the moving time. |
 | `INPUTS` | `'condition_inputs'` | `backend/performance/session_conditions.py` | What the session report adds to the detail for these checks: the session's local IF, the device's grade-adjusted speed and the athlete's rated sessions. |
 | `METHOD` | `'session-execution-v1'` | `backend/performance/session_execution.py` |  |
 | `SCOPE` | `"Descriptive execution of this one session from its own streams and laps. Output is pace in s/km ... (sha256 3cc2c071)` | `backend/performance/session_execution.py` |  |
