@@ -113,7 +113,10 @@ SECTION_FIELDS = {
     # Window records the next detail mapper bump downloads again (#2220).
     "mapper_replay": re.compile(
         r"status|garmin\.(window_days|pending|passed_over(_empty|_retries)?|records"
-        r"|strength|daily_budget|per_refresh|replayed_today|clean_today)"
+        r"|strength|daily_budget|per_refresh|replayed_today|clean_today"
+        # Mapping issues by the mappers' field name and the IssueReason value.
+        r"|issue_kinds\.[A-Za-z0-9_]+\.(missing|invalid_type|invalid_number"
+        r"|out_of_range|unknown_value|unsupported))"
         r"|wahoo\.(window_days|records)"
     ),
 }
