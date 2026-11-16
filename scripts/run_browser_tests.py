@@ -361,6 +361,26 @@ def _stream_tail(processes, output, lines=10):
     return "".join(f"\n{line}" for line in tail)
 
 
+def require_engine(processes):
+    """Stop first, with the fix, when the Docker engine does not answer (#3304).
+
+    Docker Desktop stuck "starting" (its docker-desktop WSL distro stopped)
+    answers every API call with HTTP 500; every later step would only repeat that
+    as a bare failure. Nothing is cleaned up or restarted here.
+    """
+    code, output = processes.run(
+        ["docker", "version", "--format", "{{.Server.Version}}"]
+    )
+    if code:
+        raise RunnerError(
+            "The Docker engine does not answer, so no browser test can start. "
+            "Start Docker Desktop and wait until it reports running; if it stays "
+            "'starting', quit Docker Desktop, run `wsl --shutdown` and start it "
+            "again (this stops every lane's containers, so tell the other lanes "
+            "first). Then rerun." + _stream_tail(processes, output)
+        )
+
+
 def checked(processes, command, **kwargs):
     code, output = processes.run(command, **kwargs)
     if code:
@@ -1618,6 +1638,7 @@ def main(argv=None):
                     code = 0
                 else:
                     with evidence.phase("prerequisites"):
+                        require_engine(processes)
                         evidence.update(stale_containers_removed=sweep_stale(processes))
                         try:
                             image = image_identity(processes, args.image)

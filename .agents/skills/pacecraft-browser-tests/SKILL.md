@@ -50,6 +50,11 @@ python scripts/run_browser_tests.py --project all --keep-going
   after application changes, or pass `--build` for local runs: it builds a
   missing or stale image, then checks it again (#3106). Without it, a run
   against an image that differs from the source stops before any fixture starts.
+- "The Docker engine does not answer" (#3304): Docker Desktop is stopped or
+  stuck "starting" (its `docker-desktop` WSL distro stopped), and every Docker
+  call answers HTTP 500. Start it; if it stays "starting", quit it, run
+  `wsl --shutdown` and start it again. That stops every lane's containers, so
+  tell the other lanes first.
 - Exit 0: passed. Non-zero: a test failed (reports under
   `test-results/browser-runs/`), the host ran out of resources, or the image is
   stale (no reports; rebuild as the message says); the output says which and how
