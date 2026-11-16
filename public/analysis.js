@@ -1673,7 +1673,7 @@ function renderDiaryEnergy() {
   let slot = document.querySelector("#nutritionEnergy");
   if (!slot) {
     slot = h("div", { id: "nutritionEnergy" });
-    totals.insertAdjacentElement("afterend", slot);
+    totals.after(slot);
   }
   slot.replaceChildren(...energyDiaryCards());
 }
