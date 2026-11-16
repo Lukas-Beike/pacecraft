@@ -464,7 +464,7 @@ class DiagnosticReportService:
                     "mapper_replay",
                     lambda: {
                         ProviderId.GARMIN.value: detail_replay_size(
-                            db, datetime.fromisoformat(deps.utc_now())
+                            db, key_values, datetime.fromisoformat(deps.utc_now())
                         ),
                         ProviderId.WAHOO.value: wahoo_replay_size(
                             db,
