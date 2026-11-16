@@ -429,8 +429,8 @@ def _day_inputs(
     )
     # Unknown stays unknown: NEAT without steps or an unpriced session (#3187).
     priced = [c.kcal for c in today if c.kcal is not None]
-    known = neat is not None and len(priced) == len(today)
-    activity = neat + sum(priced) if neat is not None and known else None
+    sport = sum(priced) if len(priced) == len(today) else None
+    activity = neat + sport if neat is not None and sport is not None else None
     return DayInputs(
         intake_kcal=sum(_number(e.get("kcal")) or 0.0 for e in entries)
         if entries
@@ -447,4 +447,6 @@ def _day_inputs(
         ),
         weight_kg=weights.get(day),
         activity_kcal=activity,
+        neat_kcal=neat,
+        sport_kcal=sport,
     )

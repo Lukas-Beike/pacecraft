@@ -95,6 +95,10 @@ class DayInputs:
     flagged_kcal: float = 0.0
     weight_kg: float | None = None
     activity_kcal: float | None = None  # M11 session net cost + NEAT, uncalibrated
+    # Its parts (split A, #3100): NEAT net of rest, and the day's priced
+    # sessions (0.0 without any); None where unknown, never 0 (#3187).
+    neat_kcal: float | None = None
+    sport_kcal: float | None = None
 
 
 @dataclass(frozen=True)
@@ -133,6 +137,15 @@ class EnergyWindow:
     # With the learned flagged-meal bias b: flagged kcal x (1 + b), labelled;
     # None until the bias is estimated. Logged entries are never rewritten.
     adaptive_tdee_corrected: Estimate | None = None
+    # Split A (#3100), kcal/day over the same days as activity_kcal_raw, so
+    # neat + sport is the activity; None when any of those days lacks a part.
+    neat_kcal_raw: float | None = None
+    sport_kcal_raw: float | None = None
+    # The same parts times the calibration factor k, like activity_kcal.
+    neat_kcal: float | None = None
+    sport_kcal: float | None = None
+    # The k applied to this window's activity (1.0 while it stays the prior).
+    calibration_factor: float = 1.0
 
 
 def weight_trend(weights_kg: Mapping[date, float]) -> dict[date, float]:
@@ -269,8 +282,9 @@ def _window(
     flagged = sum(1 for v in complete.values() if v.flagged)
     weights = {d: v.weight_kg for d, v in days.items() if v.weight_kg is not None}
     weighins = sorted(weights)
-    activity = [v.activity_kcal for v in days.values() if v.activity_kcal is not None]
-    raw = statistics.fmean(activity) if activity else None
+    active = [v for v in days.values() if v.activity_kcal is not None]
+    raw = statistics.fmean(v.activity_kcal or 0.0 for v in active) if active else None
+    neat_raw, sport_raw = _split(active)
     tef = (
         statistics.fmean([day_tef(v) for v in complete.values()]) if complete else None
     )
@@ -299,11 +313,32 @@ def _window(
         insufficient=reason,
         rmr_source=inputs.rmr_source,
         calibration_windows=calibration_windows,
+        neat_kcal_raw=neat_raw,
+        sport_kcal_raw=sport_raw,
+        neat_kcal=None if neat_raw is None else neat_raw * factor,
+        sport_kcal=None if sport_raw is None else sport_raw * factor,
+        calibration_factor=factor,
         flagged_kcal_per_day=statistics.fmean(
             [v.flagged_kcal for v in complete.values()]
         )
         if complete
         else 0.0,
+    )
+
+
+def _split(active: Sequence[DayInputs]) -> tuple[float | None, float | None]:
+    """Mean NEAT and session kcal over the days with a known activity.
+
+    Both stay None unless every one of those days has both parts, so the two
+    always add up to the window's activity (split A, #3100).
+    """
+    neat = [v.neat_kcal for v in active]
+    sport = [v.sport_kcal for v in active]
+    if not active or None in neat or None in sport:
+        return None, None
+    return (
+        statistics.fmean(n for n in neat if n is not None),
+        statistics.fmean(s for s in sport if s is not None),
     )
 
 
