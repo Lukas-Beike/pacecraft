@@ -65,8 +65,8 @@ CLASSIFICATIONS = {
 TAGS = {"source", "product assumption"}
 FRONT_FIELD = re.compile(r"^- \*\*([^*]+):\*\* (.+)$", re.MULTILINE)
 SECTION = re.compile(r"^## (.+)$", re.MULTILINE)
-EVIDENCE_ID = re.compile(r"\b(R\d{1,2}|L\d)\b")
-REGISTER_ROW = re.compile(r"^\| (R\d{1,2}|L\d) \|", re.MULTILINE)
+EVIDENCE_ID = re.compile(r"\b(R\d+|L\d)\b")
+REGISTER_ROW = re.compile(r"\| (R\d+|L\d) \|")
 REVIEW = re.compile(r"blocked|released \d{4}-\d{2}-\d{2} \([^)]+\)")
 VERSION = re.compile(r"[1-9]\d*")
 DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
@@ -78,8 +78,32 @@ METHOD_ID_VERSION = re.compile(r"[\s-]v([1-9]\d*)\b")
 VALUE_LIMIT = 100
 
 
-def register_ids(readme: str) -> set[str]:
-    return set(REGISTER_ROW.findall(readme))
+def register_ids(readme: str) -> list[str]:
+    """The register's IDs in row order; a repeated row stays visible (#3291).
+
+    Only tables headed "| ID | Source |" are the register; the funding table
+    lists the same IDs once more.
+    """
+    ids: list[str] = []
+    in_register = False
+    for line in readme.splitlines():
+        if line.startswith("| ID |"):
+            in_register = line.startswith("| ID | Source |")
+        elif not line.startswith("|"):
+            in_register = False
+        elif in_register and (row := REGISTER_ROW.match(line)):
+            ids.append(row.group(1))
+    return ids
+
+
+def register_problems(ids: list[str]) -> list[str]:
+    """Every ID listed twice, with the next free source ID for the second row."""
+    sources = [int(item[1:]) for item in ids if item.startswith("R")]
+    following = f"R{max(sources, default=0) + 1}"
+    return [
+        f"duplicate evidence ID {item} (next free {following})"
+        for item in sorted({item for item in ids if ids.count(item) > 1})
+    ]
 
 
 def section_bodies(card: str) -> dict[str, str]:
@@ -310,12 +334,35 @@ def version_problems(card: str) -> list[str]:
 
 class PerformanceMethodCardTests(unittest.TestCase):
     def setUp(self) -> None:
-        self.known_ids = register_ids((CARDS_DIR / "README.md").read_text("utf-8"))
+        self.register = register_ids((CARDS_DIR / "README.md").read_text("utf-8"))
+        self.known_ids = set(self.register)
 
     def test_register_lists_sources_and_lead(self) -> None:
+        self.assertEqual(register_problems(self.register), [])
         self.assertEqual(
             self.known_ids, {f"R{number}" for number in range(1, 76)} | {"L1"}
         )
+
+    def test_register_check_rejects_a_repeated_id(self) -> None:
+        # #3291: two lanes picked the same ID; the next free one is named.
+        readme = (
+            "| ID | Funding |\n| --- | --- |\n| R74 | none |\n\n"
+            "| ID | Source |\n| --- | --- |\n"
+            "| R1 | a |\n| R74 | b |\n| R74 | c |\n| L1 | d |\n"
+        )
+        self.assertEqual(
+            register_problems(register_ids(readme)),
+            ["duplicate evidence ID R74 (next free R75)"],
+        )
+
+    def test_ids_from_r100_on_are_read_and_checked(self) -> None:
+        # #3291: R\d{1,2} read no row from R100 on and checked no such citation.
+        self.assertEqual(
+            register_ids("| ID | Source |\n| --- | --- |\n| R100 | a |\n| R7 | b |\n"),
+            ["R100", "R7"],
+        )
+        card = (CARDS_DIR / CARD_NAMES[0]).read_text("utf-8") + "\nSee R100.\n"
+        self.assertIn("unknown evidence ID R100", card_problems(card, self.known_ids))
 
     def test_every_card_is_complete(self) -> None:
         for name in CARD_NAMES:
