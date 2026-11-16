@@ -237,6 +237,7 @@ every named number the code fixes. A test fails when it is out of date.
 | `DFA_LABEL` | `'Schätzung aus Brustgurt-RR-Intervallen (DFA-α1 0,5, Forschungsstand), kein Laborwert'` | `backend/performance/second_threshold_estimate.py` |  |
 | `CRITICAL_LABEL` | `'Modellschätzung aus Bestwerten (Critical Speed/Power, M4)'` | `backend/performance/second_threshold_estimate.py` |  |
 | `RUNS_ONLY` | `{'status': 'unknown', 'reason': 'nur aus Läufen', 'sessions': 0}` | `backend/performance/second_threshold_service.py` |  |
+| `CONFIRM_DEVIATION_SHARE` | `0.05` | `backend/performance/second_threshold_service.py` | Above this share of the value in effect an adoption needs a second confirmation (F9). |
 | `TARGET_BASIS_FTP_KEY` | `'ftp'` | `backend/performance/session_analysis.py` |  |
 | `METHOD` | `'time-weighted-session-analysis-v3'` | `backend/performance/session_analysis.py` | v2: Pa:HR of outdoor runs uses grade-adjusted speed (card M8 v2, #1770). v3: the steady-output rule reads the CV of 60 s rolling means (#1832). |
 | `GRADE_ADJUSTED_SPEED` | `'grade_adjusted_speed'` | `backend/performance/session_analysis.py` |  |

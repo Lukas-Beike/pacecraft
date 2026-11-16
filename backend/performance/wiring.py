@@ -262,6 +262,17 @@ def build_athlete_data(
     def profile() -> ProfileService:
         return profile_for(database_manager())
 
+    def zones() -> ZoneConfigurationService:
+        return ZoneConfigurationService(
+            database_manager(),
+            table_reader(),
+            utc_now,
+            today=local_date,
+            effective_zone=effective_zone_configuration,
+            on_change=zones_changed,
+            threshold_warnings=threshold_warnings,
+        )
+
     return AthleteDataServices(
         activity_summaries=activity_summaries,
         session_summaries=session_summaries,
@@ -275,15 +286,7 @@ def build_athlete_data(
         equipment_history=lambda: equipment_history_records(
             utc_now, activity_summaries
         ),
-        zones=lambda: ZoneConfigurationService(
-            database_manager(),
-            table_reader(),
-            utc_now,
-            today=local_date,
-            effective_zone=effective_zone_configuration,
-            on_change=zones_changed,
-            threshold_warnings=threshold_warnings,
-        ),
+        zones=zones,
         activity_feedback=lambda: ActivityFeedbackService(
             database_manager(),
             activity_feedback_repository,
@@ -306,6 +309,7 @@ def build_athlete_data(
             lambda: run_lthr().day_resolver(),
             curve_records,
             local_date,
+            zones=zones,
         ),
         profile=profile,
         profile_for=profile_for,

@@ -149,6 +149,7 @@ handler's docstring. Regenerate it with
 | POST | `/api/weather/sync` | Session + CSRF | after access | Queue a provider synchronization, or a targeted refresh of the external calendars or the weather. |
 | GET | `/api/zones` | Session | no | Local and provider zone configurations. |
 | PUT | `/api/zones` | Session + CSRF | before access | Save one local zone configuration. |
+| POST | `/api/zones/lt2/adopt` | Session + CSRF | after access | Adopt one value of a local LT2 estimate as the threshold in effect. |
 | PUT | `/api/zones/remove` | Session + CSRF | before access | Remove one local zone configuration. |
 
 ## Route contracts
@@ -1984,6 +1985,26 @@ maximalen Herzfrequenz liegen."; 400 "Das Datum „Gilt ab“ darf nicht in der
 Zukunft liegen.".
 
 The route exists only where zone editing is configured.
+
+### `POST /api/zones/lt2/adopt`
+
+Request: JSON body `{"sport": "run" | "ride", "source": "dfa_alpha1" |
+"critical_speed" | "critical_power", "value": "heart_rate" | "pace" |
+"power", "shown": number, "confirm_deviation": boolean, "replace_local":
+boolean}`. `shown` is the number `GET /api/profile` showed in
+`lt2_estimates` (bpm, s/km or W).
+
+Response: 200 `{"configuration": object, "change": object | null}`, the
+receipt of the local zone configuration saved from today with the zone
+limits in effect and its `threshold_origin`; `change` is the undo reference.
+
+Errors: 400 for an unknown sport, source or value; 409 with reason
+`lt2_unknown` (no estimate), `lt2_changed` (`shown` differs from the
+current estimate), `lt2_no_zones` (no zones of that kind), `lt2_replace_local`
+(a value the athlete entered is in effect; send `replace_local: true`),
+`lt2_deviation` (more than 5 % from the value in effect; send
+`confirm_deviation: true`) or `lt2_zone_limits` (the absolute zone limits
+do not fit the new threshold).
 
 ### `PUT /api/zones/remove`
 

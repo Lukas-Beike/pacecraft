@@ -49,6 +49,8 @@ MAX_REPORTED_SLEEP_S: Final = 86_400.0
 MAX_ZONES: Final = 19
 # Percent limits keep a provider's open-top marker such as 999.
 ZONE_PERCENT_BOUNDS: Final = (1.0, 1_000.0)
+# Where an adopted local threshold comes from (#3273); None is entered by hand.
+THRESHOLD_ORIGINS: Final = frozenset({"dfa_alpha1", "critical_speed", "critical_power"})
 ZONE_VALUE_BOUNDS: Final = {
     ZoneConfigurationMetric.HEART_RATE: HEART_RATE_BOUNDS,
     ZoneConfigurationMetric.POWER: (1.0, MAX_ACTIVITY_POWER_W),
@@ -187,7 +189,8 @@ class ZoneConfiguration:
     ``limits`` are ascending upper zone limits in the metric's unit (beats per
     minute, watts, metres per second). ``percent_limits`` keep limits a provider
     reports as percentages of ``percent_basis``; absolute values are never
-    invented for them. A local configuration has no provider.
+    invented for them. A local configuration has no provider. ``threshold_origin``
+    names the local estimate the athlete adopted its threshold from (#3273).
     """
 
     metric: ZoneConfigurationMetric
@@ -203,6 +206,7 @@ class ZoneConfiguration:
     percent_basis: ZonePercentBasis | None
     provenance: Provenance
     model: str | None = None
+    threshold_origin: str | None = None
 
     def __post_init__(self) -> None:
         require_instance(self.metric, ZoneConfigurationMetric, "metric")
@@ -243,6 +247,11 @@ class ZoneConfiguration:
         if provenance.provider is not None and provenance.source_record_id is None:
             raise ValueError("provider zone configurations need a source record id")
         optional_slug(self.model, "model")
+        if self.threshold_origin is not None and (
+            self.threshold_origin not in THRESHOLD_ORIGINS
+            or provenance.provider is not None
+        ):
+            raise ValueError("threshold_origin names a local adopted estimate")
 
 
 def _require_validity(valid_from: date | None, valid_until: date | None) -> None:

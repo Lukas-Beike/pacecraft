@@ -1,9 +1,12 @@
-"""The local LT2 estimates of one athlete, read for the profile and the Coach (#3273).
+"""The local LT2 estimates of one athlete and their adoption (#3273).
 
 Garmin's LT2 stays where it is (the current metrics); this service adds the two
 local estimates beside it: DFA-a1 at 0.5 for runs (heart rate, and the pace at
 that heart rate from the athlete's own steady runs, card M9) and critical speed
-or power over 42 days (card M4). Read-only: nothing here writes or adopts.
+or power over 42 days (card M4). The profile and the Coach read them; only the
+athlete's explicit adoption (``adopt``) writes, one value at a time (F8), as a
+local zone configuration valid from today with its origin, through the zone
+save path with its receipt and undo. Nothing is adopted automatically.
 """
 
 from __future__ import annotations
@@ -12,12 +15,15 @@ from collections.abc import Callable, Mapping, Sequence
 from datetime import date, timedelta
 from typing import Any
 
+from backend.activities.zone_settings import effective_zone_configuration
+from backend.canonical.domain_records import ZoneConfiguration
 from backend.canonical.first_threshold import (
     FIRST_THRESHOLD_FIELD,
     first_threshold_percent,
 )
-from backend.canonical.vocabulary import Sport
+from backend.canonical.vocabulary import Sport, ZoneConfigurationMetric
 from backend.db import activity_detail_store
+from backend.errors import AppError
 from backend.performance.critical_power import critical_power_speed
 from backend.performance.pace_at_hr import LT1_DAYS, output_at_heart_rate
 from backend.performance.second_threshold_estimate import (
@@ -28,6 +34,18 @@ from backend.performance.second_threshold_estimate import (
 )
 
 RUNS_ONLY = {"status": "unknown", "reason": "nur aus Läufen", "sessions": 0}
+# Above this share of the value in effect an adoption needs a second confirmation (F9).
+CONFIRM_DEVIATION_SHARE = 0.05
+# Adoptable value -> (estimate field, zone metric, label, unit).
+_VALUES: dict[str, tuple[str, ZoneConfigurationMetric, str, str]] = {
+    "heart_rate": ("heart_rate_bpm", ZoneConfigurationMetric.HEART_RATE, "Puls", "bpm"),
+    "pace": ("pace_seconds_per_km", ZoneConfigurationMetric.PACE, "Pace", "s/km"),
+    "power": ("power_w", ZoneConfigurationMetric.POWER, "Leistung", "W"),
+}
+_SOURCES = {
+    "run": ("dfa_alpha1", "critical_speed"),
+    "ride": ("critical_power",),
+}
 
 
 class SecondThresholdService:
@@ -40,7 +58,9 @@ class SecondThresholdService:
         lthr_resolver: Callable[[], Any],
         curve_records: Callable[[int], Sequence[Mapping[str, Any]]],
         today: Callable[[], date],
+        zones: Callable[[], Any] | None = None,
     ) -> None:
+        self._zones = zones
         self._manager = manager
         self._profile_service = profile_service
         self._lthr_resolver = lthr_resolver
@@ -94,3 +114,113 @@ class SecondThresholdService:
         if percent is None or lthr is None or lthr <= 0:
             return None
         return float(percent * lthr / 100)
+
+    def adopt(self, payload: Mapping[str, Any]) -> dict[str, Any]:
+        """Adopt one shown value of a local estimate as the LT2 threshold in effect.
+
+        ``payload``: ``sport``, ``source`` (``dfa_alpha1``, ``critical_speed`` or
+        ``critical_power``), ``value`` (``heart_rate``, ``pace`` or ``power``) and
+        ``shown`` (the number displayed, so a changed estimate is refused). A
+        value more than 5 % from the one in effect needs ``confirm_deviation``;
+        a value the athlete entered needs ``replace_local``.
+        """
+        if self._zones is None:
+            raise AppError(503, "Die Zonen sind nicht verfügbar.")
+        sport, source, value = (
+            str(payload.get(key) or "") for key in ("sport", "source", "value")
+        )
+        if source not in _SOURCES.get(sport, ()) or value not in _VALUES:
+            raise AppError(400, "Unbekannte Schätzung oder unbekannter Wert.")
+        field, metric, label, unit = _VALUES[value]
+        estimate = self.estimates()[sport][source]
+        number = estimate.get(field) if estimate.get("status") == "ok" else None
+        if number is None:
+            raise AppError(
+                409, "Diese Schätzung liegt nicht vor.", reason="lt2_unknown"
+            )
+        if payload.get("shown") != number:
+            raise AppError(
+                409,
+                "Die Schätzung hat sich geändert. Bitte die Anzeige aktualisieren.",
+                reason="lt2_changed",
+            )
+        zones = self._zones()
+        current = effective_zone_configuration(
+            zones.configurations(), metric, Sport(sport), day=self._today()
+        )
+        if current is None:
+            raise AppError(
+                409, "Erst Zonen anlegen, dann übernehmen.", reason="lt2_no_zones"
+            )
+        _check_replace(current, payload, label)
+        threshold = (
+            1000 / number if metric is ZoneConfigurationMetric.PACE else float(number)
+        )
+        _check_deviation(current, threshold, payload, label, number, unit)
+        try:
+            receipt: dict[str, Any] = zones.save_adopted(
+                _adopted(current, sport, metric, threshold, source)
+            )
+        except AppError as exc:
+            if exc.status != 400:
+                raise
+            raise AppError(
+                409,
+                "Zonengrenzen passen nicht zur neuen Schwelle. Bitte die Zonen bearbeiten.",
+                reason="lt2_zone_limits",
+            ) from exc
+        return receipt
+
+
+def _check_replace(
+    current: ZoneConfiguration, payload: Mapping[str, Any], label: str
+) -> None:
+    """A value the athlete entered is replaced only when the request says so."""
+    entered = current.provenance.provider is None and current.threshold_origin is None
+    if entered and payload.get("replace_local") is not True:
+        raise AppError(
+            409,
+            f"{label}: ein selbst eingetragener Wert gilt. Zum Ersetzen bitte bestätigen.",
+            reason="lt2_replace_local",
+        )
+
+
+def _check_deviation(
+    current: ZoneConfiguration,
+    threshold: float,
+    payload: Mapping[str, Any],
+    label: str,
+    shown: float,
+    unit: str,
+) -> None:
+    """More than 5 % from the value in effect needs the second confirmation (F9)."""
+    if current.threshold is None or current.threshold <= 0:
+        return
+    share = abs(threshold - current.threshold) / current.threshold
+    if share > CONFIRM_DEVIATION_SHARE and payload.get("confirm_deviation") is not True:
+        raise AppError(
+            409,
+            f"{label} {shown:g} {unit} weicht {round(share * 100)} % vom geltenden Wert ab.",
+            reason="lt2_deviation",
+        )
+
+
+def _adopted(
+    current: ZoneConfiguration,
+    sport: str,
+    metric: ZoneConfigurationMetric,
+    threshold: float,
+    source: str,
+) -> dict[str, Any]:
+    """The local configuration: the new threshold with the limits in effect (T1)."""
+    percent = current.percent_limits is not None
+    return {
+        "sport": sport,
+        "metric": metric.value,
+        "environment": None,
+        "threshold": round(threshold, 3),
+        "maximum": current.maximum,
+        "limits": None if percent else list(current.limits or ()),
+        "percent_limits": list(current.percent_limits or ()) if percent else None,
+        "threshold_origin": source,
+    }

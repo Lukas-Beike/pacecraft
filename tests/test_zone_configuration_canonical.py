@@ -363,6 +363,59 @@ class LocalZoneEditTests(unittest.TestCase):
             )
         )
 
+    def test_an_adopted_origin_survives_history_and_undo(self) -> None:
+        # #3273: an adopted LT2 value keeps its origin through a later save by hand
+        # and its undo; a save by hand never takes an origin from its request.
+        self.service.save_adopted({**LOCAL_POWER, "threshold_origin": "critical_power"})
+        (local,) = self.local()
+        self.assertEqual(local["threshold_origin"], "critical_power")
+        self.assertEqual(local["valid_from"], SAVE_DAY.isoformat())
+        entered = self.service.save(
+            {**LOCAL_POWER, "threshold": 290, "threshold_origin": "critical_power"}
+        )["change"]
+        (local,) = self.local()
+        self.assertIsNone(local["threshold_origin"])
+        self.undo.apply(
+            {"change_id": entered["id"], "expected_current_hash": entered["after_hash"]}
+        )
+        (local,) = self.local()
+        self.assertEqual(
+            (local["threshold"], local["threshold_origin"]), (280, "critical_power")
+        )
+
+    def test_a_zone_change_recorded_before_the_origin_can_still_be_undone(
+        self,
+    ) -> None:
+        # Gitar on #3282: history rows of released builds hash the zone without
+        # threshold_origin; their undo must not read as stale history.
+        self.service.save(LOCAL_POWER)
+        update = self.service.save({**LOCAL_POWER, "threshold": 290})["change"]
+        (local,) = self.local()
+        legacy = {
+            key: local[key]
+            for key in change_history.ZONE_CONFIGURATION_FIELDS
+            if key != "threshold_origin"
+        }
+        after_hash = change_history.audit_hash(legacy)
+        with self.manager.unit_of_work() as db:
+            db.execute(
+                "UPDATE change_history SET after_hash = ?, before_hash = ? WHERE id = ?",
+                (
+                    after_hash,
+                    change_history.audit_hash({**legacy, "threshold": 280}),
+                    update["id"],
+                ),
+            )
+        self.undo.apply(
+            {"change_id": update["id"], "expected_current_hash": after_hash}
+        )
+        (local,) = self.local()
+        self.assertEqual(local["threshold"], 280)
+
+    def test_an_unknown_origin_is_refused(self) -> None:
+        with self.assertRaises(AppError):
+            self.service.save_adopted({**LOCAL_POWER, "threshold_origin": "garmin"})
+
     def test_read_carries_the_threshold_warning_only_when_present(self) -> None:
         self.assertNotIn("threshold_warnings", self.service.read())
         warning: dict[str, Any] = {
