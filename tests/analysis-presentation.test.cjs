@@ -249,6 +249,9 @@ test("the energy table shows bands, the badge only with a fit, and the fit basis
   assert.deepEqual(JSON.parse(JSON.stringify(charts[0].series[0].points)), [{ date: "2026-11-07", value: null }, { date: "2026-11-14", value: 11 }]);
   assert.match(charts[0].series[0].explanation, /innerhalb von ± 120 kcal sind nicht unterscheidbar/);
   assert.equal(energyFitCharts({ ...read, rows: read.rows.slice(2) }).length, 0, "no fit, no chart");
+  // Gitar #3180: without shared windows every mean is null, yet each window's distance is still drawn.
+  const unshared = read.rows.map((row) => ({ ...row, mean_error_kcal: null }));
+  assert.equal(energyFitCharts({ ...read, rows: unshared }).length, 1);
 });
 
 test("a reset drops the energy read in flight, so a pre-save answer is never shown", async () => {

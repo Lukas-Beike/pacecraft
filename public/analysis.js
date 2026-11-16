@@ -1568,7 +1568,7 @@ function energyTable(read) {
 }
 
 function energyFitCharts(read) {
-  const fitted = ENERGY_SOURCES.slice(0, 3).map(([source, label, color]) => [read.rows.find((item) => item.source === source), label, color]).filter(([row]) => row?.mean_error_kcal != null);
+  const fitted = ENERGY_SOURCES.slice(0, 3).map(([source, label, color]) => [read.rows.find((item) => item.source === source), label, color]).filter(([row]) => row?.errors_kcal?.some((value) => value != null));
   if (!fitted.length) return [];
   const band = read.fit.reference_band_kcal;
   const within = band == null ? "" : ` Abstände innerhalb von ± ${formatWhole(band)} kcal sind nicht unterscheidbar.`;
