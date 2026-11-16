@@ -105,7 +105,11 @@ class ResolveReviewThreadTests(unittest.TestCase):
             ("unknown thread", None),
             ("thread of another PR", thread(number=9)),
             ("someone else's PR", thread(author="someone-else")),
-            ("already resolved", thread(resolved=True)),
+            ("resolved thread of another PR", thread(number=9, resolved=True)),
+            (
+                "resolved thread of someone else's PR",
+                thread(author="someone-else", resolved=True),
+            ),
             ("no reply", thread(reply_by=None)),
             ("reply by another user", thread(reply_by="someone-else")),
             ("reply without a commit", thread(reply="Fixed.")),
@@ -120,6 +124,16 @@ class ResolveReviewThreadTests(unittest.TestCase):
                 self.assertEqual(mutations, [])
         code, _out, mutations = run(thread(), thread_id="not-a-thread")
         self.assertEqual((code, mutations), (2, []))
+
+    def test_an_already_resolved_thread_is_done_without_a_mutation(self):
+        # #3317: Gitar resolves its thread once the reply names the fix commit;
+        # the goal state is no error.
+        for reply in ("Fixed in abcdef1234567.", "Fixed."):
+            with self.subTest(reply=reply):
+                code, out, mutations = run(thread(resolved=True, reply=reply))
+                self.assertEqual((code, mutations), (0, []))
+                self.assertIn("already resolved", out)
+                self.assertNotIn("refused", out)
 
     def test_an_unconfirmed_resolve_is_an_error(self):
         code, _out, mutations = run(thread(), resolved_after=False)
@@ -204,8 +218,9 @@ class GuardHookTests(unittest.TestCase):
                 value = here if args[1] == "hash-object" else there
                 return mock.Mock(returncode=0 if value else 1, stdout=value or "")
 
-            with self.subTest(here=here, there=there), mock.patch.object(
-                guard.subprocess, "run", side_effect=fake
+            with (
+                self.subTest(here=here, there=there),
+                mock.patch.object(guard.subprocess, "run", side_effect=fake),
             ):
                 self.assertFalse(guard.unchanged())
 
@@ -237,7 +252,9 @@ class GuardHookTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             scripts = Path(directory) / "scripts"
             (scripts / "json").mkdir(parents=True)
-            (scripts / "json" / ".git").write_text("gitdir: elsewhere\n", encoding="utf-8")
+            (scripts / "json" / ".git").write_text(
+                "gitdir: elsewhere\n", encoding="utf-8"
+            )
             (scripts / "ui_walk.mjs").write_text("", encoding="utf-8")
             with (
                 mock.patch.object(guard, "SCRIPTS", scripts),
@@ -271,7 +288,8 @@ class GuardHookTests(unittest.TestCase):
         with (
             tempfile.TemporaryDirectory() as directory,
             mock.patch.dict(
-                os.environ, {"GIT_CONFIG_GLOBAL": os.devnull, "GIT_CONFIG_NOSYSTEM": "1"}
+                os.environ,
+                {"GIT_CONFIG_GLOBAL": os.devnull, "GIT_CONFIG_NOSYSTEM": "1"},
             ),
         ):
             repo = Path(directory)
