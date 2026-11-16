@@ -53,6 +53,29 @@ test("a step waits until the app's data load ends before it checks the view", as
   expect((await runStep(page, { name: "x", covers: "test", ready: "#late .v", kind: "numbers" }, 300)).status).toBe("ok");
 });
 
+test("a seek step passes a week whose units lack the element and pages back to where it started", async ({ page }) => {
+  const { runStep } = await import(pathToFileURL(path.join(__dirname, "..", "scripts", "ui_walk.mjs")).href);
+  // 2.1.26: the week's units had no fuelling advice; a unit two weeks on has it.
+  await page.setContent(`<p id="week">0</p>
+    <button type="button" aria-label="Nächste Woche" onclick="week.textContent = +week.textContent + 1; show()">›</button>
+    <button type="button" aria-label="Vorherige Woche" onclick="week.textContent = +week.textContent - 1; show()">‹</button>
+    <details class="planned-entry is-planned"><summary>Di</summary><p class="f"></p></details>
+    <script>function show() { document.querySelector(".f").textContent = week.textContent === "2" ? "0,5 l" : ""; }</script>`);
+  const step = { name: "x", covers: "test", each: ".planned-entry.is-planned > summary", ready: ".planned-entry[open] .f", kind: "numbers", optional: true };
+  expect(await runStep(page, step, 300)).toMatchObject({ status: "skip", why: "none of 1 has it" });
+  const later = { ...step, seek: 'button[aria-label="Nächste Woche"]', unseek: 'button[aria-label="Vorherige Woche"]' };
+  expect((await runStep(page, later, 300)).status).toBe("ok");
+  await expect(page.locator("#week")).toHaveText("0");
+});
+
+test("an element is waited for while the view shows it is loading", async ({ page }) => {
+  const { runStep } = await import(pathToFileURL(path.join(__dirname, "..", "scripts", "ui_walk.mjs")).href);
+  // 2.1.26: right after the restart "Ausrüstung" loaded longer than the step's cap.
+  await page.setContent(`<section class="panel active"><div class="loading-state" aria-busy="true">lädt</div><p id="gear" hidden>Schuh 1</p></section>
+    <script>setTimeout(() => { document.querySelector(".loading-state").remove(); document.querySelector("#gear").hidden = false; }, 1500);</script>`);
+  expect((await runStep(page, { name: "x", covers: "test", ready: "#gear", kind: "text" }, 300)).status).toBe("ok");
+});
+
 test("a seek step pages back to a week with a completed unit, a step without seek does not", async ({ page }) => {
   const { runStep } = await import(pathToFileURL(path.join(__dirname, "..", "scripts", "ui_walk.mjs")).href);
   // A Monday: the shown week has no completed unit; the week before has one.
