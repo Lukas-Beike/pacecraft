@@ -8,7 +8,7 @@ import sys
 import time
 import uuid
 from dataclasses import replace
-from datetime import UTC, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta, timezone
 
 BLS_OATS_ID = "bls:C133000"
 FIXTURE_DEMO_SEED_VERSION = "9"
@@ -74,6 +74,25 @@ from backend.sync.garmin_snapshot_writer import GarminSnapshotWriter
 FIXTURE_SOURCE = "synthetic fixture"
 
 FIXTURE_BIKE_NAME = "Fixture road bike"
+
+
+def pin_athlete_day() -> None:
+    """`run_browser_tests.py --today` (#3200): the athlete clock shows that date at
+    the real time of day, so a weekday-dependent spec fails on the pinned day. The
+    one clock instance is shared by every service, so its time source is replaced."""
+    pinned = os.environ.get("FIXTURE_TODAY")
+    if not pinned:
+        return
+    day = date.fromisoformat(pinned)
+    real = server.ATHLETE_CLOCK._now
+
+    def now(zone=None):
+        return real(zone).replace(year=day.year, month=day.month, day=day.day)
+
+    server.ATHLETE_CLOCK._now = now
+
+
+pin_athlete_day()
 
 
 def blocked_provider(*args, **kwargs):
