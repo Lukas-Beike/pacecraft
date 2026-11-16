@@ -731,7 +731,7 @@ def activity_detail_backfill_candidates(
     limit: int,
     mapper_version: int,
     retry_ids: Collection[str] = (),
-) -> list[dict[str, str]]:
+) -> list[dict[str, Any]]:
     """Return recent records whose details are missing or outdated, newest first.
 
     A record qualifies when it is an active, non-manual record of a live session
@@ -743,7 +743,10 @@ def activity_detail_backfill_candidates(
     the one given is outdated, so a mapper change refetches the window.
     ``started_at`` and ``since`` are compared as instants (julianday), so stored
     UTC offsets order correctly. Each row carries the current summary hash,
-    which is stored with any fetched details.
+    which is stored with any fetched details, and ``replay``: True when a set of
+    the current summary exists whose mapper version is older, so the record is
+    not new or changed but re-fetched for a mapper change (also after a replay
+    that kept some of its sets).
     ``retry_ids`` qualify despite current sets, because their last fetch was
     incomplete; the caller bounds how often they are retried.
     """
@@ -754,7 +757,11 @@ def activity_detail_backfill_candidates(
         else ""
     )
     rows = db.execute(
-        "SELECT r.provider_activity_id, r.recorded_by, p.payload_hash AS summary_sha256 "
+        "SELECT r.provider_activity_id, r.recorded_by, p.payload_hash AS summary_sha256, "
+        "EXISTS (SELECT 1 FROM activity_detail_sets AS c "
+        "WHERE c.provider = r.provider AND c.provider_activity_id = r.provider_activity_id "
+        "AND (c.summary_sha256 IS NULL OR c.summary_sha256 = p.payload_hash) "
+        "AND c.mapper_version < ?) AS replay "
         "FROM activity_records AS r "
         "JOIN provider_records AS p ON p.provider = r.provider "
         "AND p.record_kind = ? AND p.source_record_id = r.provider_activity_id AND p.state = ? "
@@ -768,6 +775,7 @@ def activity_detail_backfill_candidates(
         + retry_clause
         + ") ORDER BY julianday(r.started_at) DESC, r.provider_activity_id LIMIT ?",
         (
+            mapper_version,
             record_kind,
             ProviderRecordState.ACTIVE.value,
             ActivitySessionState.DELETED.value,
@@ -785,9 +793,46 @@ def activity_detail_backfill_candidates(
             "provider_activity_id": row["provider_activity_id"],
             "recorded_by": row["recorded_by"],
             "summary_sha256": row["summary_sha256"],
+            "replay": bool(row["replay"]),
         }
         for row in rows
     ]
+
+
+def outdated_file_set_records(
+    db: Any, provider: str, record_kind: str, *, since: datetime, mapper_version: int
+) -> set[str]:
+    """Ids of window records whose streams or laps are below ``mapper_version``.
+
+    Records as in ``activity_detail_backfill_candidates`` (active, non-manual, of a
+    live session, started since ``since``); only sets of the current summary count,
+    and only the streams and laps kinds, which a file replaces.
+    """
+    rows = db.execute(
+        "SELECT DISTINCT r.provider_activity_id FROM activity_records AS r "
+        "JOIN provider_records AS p ON p.provider = r.provider "
+        "AND p.record_kind = ? AND p.source_record_id = r.provider_activity_id AND p.state = ? "
+        "JOIN activity_sessions AS s ON s.activity_id = r.activity_id AND s.state <> ? "
+        "WHERE r.provider = ? AND r.state = ? AND r.recorded_by <> ? "
+        "AND julianday(r.started_at) >= julianday(?) "
+        "AND EXISTS (SELECT 1 FROM activity_detail_sets AS d "
+        "WHERE d.provider = r.provider AND d.provider_activity_id = r.provider_activity_id "
+        "AND (d.summary_sha256 IS NULL OR d.summary_sha256 = p.payload_hash) "
+        "AND d.detail_kind IN (?, ?) AND d.mapper_version < ?)",
+        (
+            record_kind,
+            ProviderRecordState.ACTIVE.value,
+            ActivitySessionState.DELETED.value,
+            provider,
+            ActivityRecordState.ACTIVE.value,
+            RecordingOrigin.MANUAL.value,
+            since.isoformat(),
+            ActivityDetailKind.STREAMS.value,
+            ActivityDetailKind.LAPS.value,
+            mapper_version,
+        ),
+    ).fetchall()
+    return {row["provider_activity_id"] for row in rows}
 
 
 def sensor_uses(db: Any) -> list[SensorUse]:
@@ -1232,7 +1277,9 @@ def _watch_header(detail: ActivityDetailSet) -> dict[str, str | None]:
     return {
         "device_zones": None if zones is None else _compact_json(_zones_json(zones)),
         "workout_steps": (
-            _compact_json([_step_json(step) for step in steps]) if steps else None
+            _compact_json([workout_step_json(step) for step in steps])
+            if steps
+            else None
         ),
     }
 
@@ -1358,7 +1405,7 @@ def stored_device_zones(text: object) -> DeviceZoneBasis | None:
     return None if zones.is_empty else zones
 
 
-def _step_json(step: WorkoutStep) -> dict[str, Any]:
+def workout_step_json(step: WorkoutStep) -> dict[str, Any]:
     """One executed workout step by fixed key: numbers and vocabulary names only."""
     return {
         "index": step.index,

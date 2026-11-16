@@ -19,7 +19,7 @@ from intervals_wellness_stub import map_intervals_wellness
 
 from backend.activities.activity_reference import ActivityReferences
 from backend.activities.detail_contract import COACH_ACTIVITY_DETAIL_MAX_SERIES_POINTS
-from backend.canonical.vocabulary import MetricKind, ProviderId
+from backend.canonical.vocabulary import MetricKind, ProviderId, RecordingOrigin
 from backend.coach.activity_read_tools import (
     CoachActivityReadToolService,
     resolve_session,
@@ -290,6 +290,65 @@ class CoachActivityReadToolServiceTests(unittest.TestCase):
         self.assertNotIn("Other run", text)
         garmin.sync_status.assert_called_once_with()
         profile.get.assert_called_once_with()
+
+    def test_text_of_a_fit_file_reaches_neither_the_tool_output_nor_the_stored_rows(
+        self,
+    ):
+        from backend.db.activity_detail_store import replace_detail_set
+        from backend.providers.garmin_activity_detail_mapping import (
+            MAPPER_VERSION,
+            map_garmin_activity_detail,
+        )
+        from tests.test_fit_activity_detail_mapping import INSTRUCTION, instruction_fit
+
+        raw_activity = {
+            "id": "synthetic-1",
+            "name": "Synthetic tempo",
+            "type": "Run",
+            "start_date_local": "2026-09-22T07:00:00",
+        }
+        manager = _sessions(self, raw_activity)
+        mapped = map_garmin_activity_detail(
+            {"activity_id": "synthetic-1", "fit": instruction_fit()},
+            recorded_by=RecordingOrigin.GARMIN,
+            retrieved_at=datetime(2026, 9, 22, 8, tzinfo=UTC),
+        )
+        with manager.unit_of_work() as db:
+            for record in mapped.records:
+                replace_detail_set(
+                    db,
+                    record,
+                    mapper_version=MAPPER_VERSION,
+                    summary_sha256=None,
+                    now="2026-09-22T08:00:00+00:00",
+                )
+        garmin = Mock(sync_status=Mock(return_value=NO_GARMIN_SYNC_STATUS))
+        service = _detail_tool(
+            manager, [raw_activity], garmin, Mock(get=Mock(return_value={}))
+        )
+
+        result = service.execute("get_activity_details", {"activity_id": "synthetic-1"})
+
+        # The step is read (numbers only) and linked to the lap; no text survives.
+        self.assertEqual([0], [step["index"] for step in result["workout_steps"]])
+        self.assertEqual(0, result["laps"]["laps"][0]["workout_step_index"])
+        self.assertIsNone(result["laps"]["laps"][0]["name"])
+        self.assertNotIn(INSTRUCTION, json.dumps(result))
+        with manager.reader() as db:
+            tables = [
+                row["name"]
+                for row in db.execute(
+                    "SELECT name FROM sqlite_master WHERE type = 'table'"
+                )
+            ]
+            stored = " ".join(
+                str(list(row.values()))
+                for table in tables
+                for row in db.execute(f"SELECT * FROM {table}")
+            )
+        self.assertIn('"duration_type"', stored)
+        self.assertNotIn(INSTRUCTION, stored)
+        self.assertNotIn("Ignore all previous", stored)
 
     def _detail_with_plan(self, started: str, planned: _PlannedUnits) -> dict:
         raw_activity = {

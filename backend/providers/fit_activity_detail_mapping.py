@@ -38,6 +38,28 @@ a newer number maps to ``other``, 65534 unknown to none) and wkt_step_index
 (11, the step number without the message-index flag bits). The per-category
 exercise subtype (8) is not mapped, so FIT sets carry no exercise name.
 
+Breathing rate (record 108, lap 136 and 137, all /100 breaths per minute) and the
+device's grade-adjusted lap speed (161, /1000 m/s) are read like the other
+metrics; a value outside the canonical bounds is a gap or None, silently, since
+these fields never make a file incomplete. A lap also keeps its workout step
+index (71, the number without the message-index flag bits) and trigger (24: the
+FIT ``lap_trigger`` enum 0-8; a newer number is None).
+
+The executed workout steps (``workout_step`` 27) go to the lap set by ascending
+index, at most ``MAX_WORKOUT_STEPS``. Only numbers are read: duration type (1:
+0 time /1000 s, 1 distance /100 m, 2 and 3 heart rate below and above, 5 open,
+6 repeat until steps complete, 14 and 15 power below and above, 29 reps; any
+other type is ``other`` without a value) with its value (2), intensity (7), target
+type (3: 0 speed, 1 heart rate, 2 open, 3 cadence, 4 power) and either a zone
+(4) or a custom range (5, 6: speed /1000 m/s; heart rate, above 100 is bpm
+plus 100, up to 100 percent of the maximum; power, above 1000 is watts plus
+1000, up to 1000 percent of the FTP). A repeat step carries the step to return to
+(2) and the repeat count (4). Step names (27.0) and notes (27.8) and the workout
+message (26, name and description) are free text of the file and never read; a
+step without a usable index is dropped. The zone basis of the watch comes from
+``zones_target`` (7): maximum and threshold heart rate (1, 2), FTP (3) and the
+calculation types (5, 7); it is shown, never used in a calculation.
+
 Device information (23) yields the heart rate and power source of the stream set
 and its external heart rate and power sensors, with the serial only as a pseudonymous hash
 (``fit_sensor_mapping``). The hrv messages (78) of a chest-strap recording give
@@ -52,6 +74,7 @@ Caller arguments are checked and may raise, as in the Garmin mapper.
 
 from __future__ import annotations
 
+import math
 from collections.abc import Mapping
 from dataclasses import replace
 from typing import Any, Final, cast
@@ -61,6 +84,8 @@ from backend.canonical.activity_detail import (
     MAX_STREAM_POINTS,
     MAX_STREAM_SPAN_S,
     MAX_STRENGTH_SETS,
+    MAX_WORKOUT_STEP_INDEX,
+    MAX_WORKOUT_STEPS,
     ActivityDetailSet,
     ActivityDfaAlpha1,
     ActivityLap,
@@ -68,6 +93,8 @@ from backend.canonical.activity_detail import (
     ActivityStreamSet,
     ActivityStrengthSet,
     ActivityStrengthSetSet,
+    DeviceZoneBasis,
+    WorkoutStep,
     clean_series,
     strength_set_accepts,
 )
@@ -77,14 +104,21 @@ from backend.canonical.records import Provenance
 from backend.canonical.validation import require_instance, require_text
 from backend.canonical.vocabulary import (
     ActivityDetailOrigin,
+    DeviceHeartRateCalc,
+    DevicePowerCalc,
     ExerciseCategory,
     HeartRateSource,
     LapKind,
     LapSource,
+    LapTrigger,
     StreamChannel,
     StreamResolution,
     StrengthSetSource,
     StrengthSetType,
+    WorkoutDurationType,
+    WorkoutStepIntensity,
+    WorkoutTargetType,
+    WorkoutTargetUnit,
 )
 from backend.providers.fit_file import FitMessage, fit_field, fit_messages
 from backend.providers.fit_rr_mapping import HRV_MESSAGE, rr_intervals_ms
@@ -102,7 +136,10 @@ from backend.providers.fit_sensor_mapping import DEVICE_INFO_MESSAGE, sensor_pro
 # Version 8: running dynamics channels from the record messages (#1870).
 # Version 9: ``active`` laps are work laps when the file has rest or recovery laps,
 # and records with a compressed timestamp header keep their timestamp (#1936).
-MAPPER_VERSION: Final = 9
+# Version 10: breathing rate (record and lap), the device's lap grade-adjusted
+# speed, the lap's workout step and trigger, the executed workout steps and the
+# watch's zone basis (#2220).
+MAPPER_VERSION: Final = 10
 
 # Same limit as the Garmin and Intervals mappers, so issues stay bounded.
 MAX_FIT_ACTIVITY_ID_LENGTH: Final = 200
@@ -214,6 +251,83 @@ _LAP_KINDS: Final[Mapping[int, LapKind]] = {
     3: LapKind.COOLDOWN,
     4: LapKind.RECOVERY,
     5: LapKind.WORK,
+}
+# Breathing rate (record 108, lap 136 and 137) and the device's lap GAP (161), each
+# with its divisor to the canonical unit. Their bounds are the canonical types'.
+_RESPIRATION_FIELD: Final = 108
+_RESPIRATION_DIVISOR: Final = 100.0
+_LAP_DEVICE_FIELDS: Final[tuple[tuple[str, int, float], ...]] = (
+    ("avg_respiration_rate_brpm", 136, 100.0),
+    ("max_respiration_rate_brpm", 137, 100.0),
+    ("avg_grade_adjusted_speed_mps", 161, 1000.0),
+)
+_LAP_TRIGGER_FIELD: Final = 24
+_LAP_STEP_FIELD: Final = 71
+# FIT ``lap_trigger`` numbers 0-8, in profile order.
+_FIT_LAP_TRIGGERS: Final[tuple[LapTrigger, ...]] = (
+    LapTrigger.MANUAL,
+    LapTrigger.TIME,
+    LapTrigger.DISTANCE,
+    LapTrigger.POSITION_START,
+    LapTrigger.POSITION_LAP,
+    LapTrigger.POSITION_WAYPOINT,
+    LapTrigger.POSITION_MARKED,
+    LapTrigger.SESSION_END,
+    LapTrigger.FITNESS_EQUIPMENT,
+)
+_WORKOUT_MESSAGE: Final = 26
+_WORKOUT_STEP_MESSAGE: Final = 27
+_STEP_INDEX_FIELD: Final = 254
+_STEP_DURATION_TYPE_FIELD: Final = 1
+_STEP_DURATION_VALUE_FIELD: Final = 2
+_STEP_TARGET_TYPE_FIELD: Final = 3
+_STEP_TARGET_VALUE_FIELD: Final = 4
+_STEP_TARGET_LOW_FIELD: Final = 5
+_STEP_TARGET_HIGH_FIELD: Final = 6
+_STEP_INTENSITY_FIELD: Final = 7
+# FIT ``wkt_step_duration``; the repeat_until_* types other than steps complete
+# have no count to show and map to ``other``.
+_REPEAT_UNTIL_STEPS_COMPLETE: Final = 6
+_STEP_DURATIONS: Final[Mapping[int, WorkoutDurationType]] = {
+    0: WorkoutDurationType.TIME,
+    1: WorkoutDurationType.DISTANCE,
+    2: WorkoutDurationType.HR_BELOW,
+    3: WorkoutDurationType.HR_ABOVE,
+    5: WorkoutDurationType.OPEN,
+    _REPEAT_UNTIL_STEPS_COMPLETE: WorkoutDurationType.REPEAT,
+    14: WorkoutDurationType.POWER_BELOW,
+    15: WorkoutDurationType.POWER_ABOVE,
+    29: WorkoutDurationType.REPS,
+}
+_STEP_INTENSITIES: Final[Mapping[int, WorkoutStepIntensity]] = {
+    0: WorkoutStepIntensity.ACTIVE,
+    1: WorkoutStepIntensity.REST,
+    2: WorkoutStepIntensity.WARMUP,
+    3: WorkoutStepIntensity.COOLDOWN,
+    4: WorkoutStepIntensity.RECOVERY,
+    5: WorkoutStepIntensity.INTERVAL,
+}
+_STEP_TARGETS: Final[Mapping[int, WorkoutTargetType]] = {
+    0: WorkoutTargetType.SPEED,
+    1: WorkoutTargetType.HEART_RATE,
+    2: WorkoutTargetType.OPEN,
+    3: WorkoutTargetType.CADENCE,
+    4: WorkoutTargetType.POWER,
+}
+# A heart rate target or duration above this value is bpm plus this offset, up to
+# it a percent of the maximum; power counts the same way in watts and FTP.
+_HEART_RATE_OFFSET: Final = 100
+_POWER_OFFSET: Final = 1000
+_ZONES_TARGET_MESSAGE: Final = 7
+_HR_CALCS: Final[Mapping[int, DeviceHeartRateCalc]] = {
+    0: DeviceHeartRateCalc.CUSTOM,
+    1: DeviceHeartRateCalc.PERCENT_MAX_HR,
+    2: DeviceHeartRateCalc.PERCENT_HRR,
+    3: DeviceHeartRateCalc.PERCENT_LTHR,
+}
+_POWER_CALCS: Final[Mapping[int, DevicePowerCalc]] = {
+    0: DevicePowerCalc.CUSTOM,
+    1: DevicePowerCalc.PERCENT_FTP,
 }
 
 
@@ -332,16 +446,30 @@ def _measured(value: float | None, divisor: float) -> float | None:
     return value / divisor if value else None
 
 
+def _scaled(fields: Mapping[int, object], field: int, divisor: float) -> float | None:
+    """One raw field in its canonical unit; a missing, invalid or array value is None."""
+    value = fields.get(field)
+    if isinstance(value, bool) or not isinstance(value, int | float):
+        return None
+    return value / divisor if math.isfinite(value) else None
+
+
 def _add_channel(
     channels: dict[StreamChannel, tuple[float | None, ...]],
     ref: str,
     channel: StreamChannel,
     values: list[float | None],
     issues: list[MappingIssue],
+    *,
+    report: bool = True,
 ) -> None:
-    """Clean one channel; a channel without any usable point is dropped."""
+    """Clean one channel; a channel without any usable point is dropped.
+
+    ``report=False`` leaves out the issue for rejected points: an issue makes a
+    Garmin detail fetch partial, and a channel added later must not do that.
+    """
     points, rejected = clean_series(channel, values)
-    if rejected:
+    if rejected and report:
         _add_issue(issues, ref, channel.value, IssueReason.OUT_OF_RANGE)
     if any(point is not None for point in points):
         channels[channel] = points
@@ -368,6 +496,14 @@ def _add_sensor_channels(
             )
         ]
         _add_channel(channels, ref, channel, degrees, issues)
+    _add_channel(
+        channels,
+        ref,
+        StreamChannel.RESPIRATION_RATE_BRPM,
+        [_scaled(fields, _RESPIRATION_FIELD, _RESPIRATION_DIVISOR) for fields in rows],
+        issues,
+        report=False,
+    )
 
 
 def _stream_set(
@@ -417,6 +553,7 @@ def _stream_set(
             power_source=power_source,
             sensors=sensors,
             dfa_alpha1=_first_threshold(messages, hr_source),
+            device_zones=_device_zones(messages),
         )
     except TypeError, ValueError:
         _add_issue(issues, ref, "record", IssueReason.OUT_OF_RANGE)
@@ -481,6 +618,7 @@ def _lap_set(
                 cast(ActivityLap, replace(lap, index=position))
                 for position, lap in enumerate(kept)
             ),
+            workout_steps=_workout_steps(messages),
         )
     except TypeError, ValueError:
         _add_issue(issues, ref, "lap", IssueReason.OUT_OF_RANGE)
@@ -512,13 +650,21 @@ def _lap(
             metrics[name] = value
         else:
             _add_issue(issues, ref, name, IssueReason.OUT_OF_RANGE)
+    # The device's own values never raise and never make an issue: out of bounds is None.
+    device: dict[str, Any] = {
+        name: _scaled(fields, field_number, divisor)
+        for name, field_number, divisor in _LAP_DEVICE_FIELDS
+    }
     try:
         return ActivityLap(
             index=0,
             kind=_lap_kind(fields, active_is_work),
             start_offset_s=start_offset,
             end_offset_s=start_offset + elapsed,
+            workout_step_index=_step_index(fields.get(_LAP_STEP_FIELD)),
+            lap_trigger=_lap_trigger(fields.get(_LAP_TRIGGER_FIELD)),
             **metrics,
+            **device,
         )
     except TypeError, ValueError:
         _add_issue(issues, ref, "lap", IssueReason.OUT_OF_RANGE)
@@ -651,19 +797,166 @@ def _category(value: object) -> ExerciseCategory | None:
     return None
 
 
+def _lap_trigger(value: object) -> LapTrigger | None:
+    number = _whole(value)
+    if number is None or not 0 <= number < len(_FIT_LAP_TRIGGERS):
+        return None
+    return _FIT_LAP_TRIGGERS[number]
+
+
+def _workout_steps(messages: list[FitMessage]) -> tuple[WorkoutStep, ...]:
+    """The workout steps of the file by ascending index, at most MAX_WORKOUT_STEPS.
+
+    A step without a usable index is dropped, and so is a later one that repeats
+    an index. This never raises.
+    """
+    steps: dict[int, WorkoutStep] = {}
+    for number, fields in messages:
+        if number != _WORKOUT_STEP_MESSAGE or len(steps) == MAX_WORKOUT_STEPS:
+            continue
+        step = _workout_step(fields)
+        if step is not None:
+            steps.setdefault(step.index, step)
+    return tuple(steps[index] for index in sorted(steps))
+
+
+def _workout_step(fields: Mapping[int, object]) -> WorkoutStep | None:
+    """One step from its numeric fields; the name (0) and notes (8) are never read."""
+    index = _step_index(fields.get(_STEP_INDEX_FIELD))
+    if index is None or index > MAX_WORKOUT_STEP_INDEX:
+        return None
+    duration_type = _choice(
+        _STEP_DURATIONS,
+        fields.get(_STEP_DURATION_TYPE_FIELD),
+        WorkoutDurationType.OTHER,
+    )
+    values: dict[str, Any] = {
+        "index": index,
+        "intensity": _choice(
+            _STEP_INTENSITIES,
+            fields.get(_STEP_INTENSITY_FIELD),
+            WorkoutStepIntensity.OTHER,
+        ),
+        "duration_type": duration_type,
+    }
+    duration = fields.get(_STEP_DURATION_VALUE_FIELD)
+    zone = _whole(fields.get(_STEP_TARGET_VALUE_FIELD))
+    if duration_type is WorkoutDurationType.REPEAT:
+        # A repeat step names the step to return to and, as its target value, the count.
+        values["repeat_from"] = _step_index(duration)
+        values["repeat_count"] = zone
+        values["target_type"] = WorkoutTargetType.OPEN
+    else:
+        values["duration_value"] = _duration_value(duration_type, _whole(duration))
+        values.update(_step_target(fields, zone))
+    try:
+        return WorkoutStep(**values)
+    except TypeError, ValueError:
+        return None
+
+
+def _choice[T](table: Mapping[int, T], value: object, default: T) -> T:
+    """The member a FIT enum number names, else the default (also for no number)."""
+    number = _whole(value)
+    return default if number is None else table.get(number, default)
+
+
+def _duration_value(kind: WorkoutDurationType, raw: int | None) -> float | None:
+    if raw is None:
+        return None
+    if kind is WorkoutDurationType.TIME:
+        return raw / 1000
+    if kind is WorkoutDurationType.DISTANCE:
+        return raw / 100
+    if kind is WorkoutDurationType.REPS:
+        return float(raw)
+    if kind in (WorkoutDurationType.HR_BELOW, WorkoutDurationType.HR_ABOVE):
+        return raw - _HEART_RATE_OFFSET if raw > _HEART_RATE_OFFSET else None
+    if kind in (WorkoutDurationType.POWER_BELOW, WorkoutDurationType.POWER_ABOVE):
+        return raw - _POWER_OFFSET if raw > _POWER_OFFSET else None
+    return None
+
+
+def _step_target(fields: Mapping[int, object], zone: int | None) -> dict[str, Any]:
+    """The target type with its zone (target value 4) or custom range (5 and 6)."""
+    target_type = _choice(
+        _STEP_TARGETS, fields.get(_STEP_TARGET_TYPE_FIELD), WorkoutTargetType.OTHER
+    )
+    target: dict[str, Any] = {"target_type": target_type}
+    if target_type in (WorkoutTargetType.OPEN, WorkoutTargetType.OTHER):
+        return target
+    if zone:
+        target["target_zone"] = zone
+        return target
+    raw_bounds = (
+        _whole(fields.get(_STEP_TARGET_LOW_FIELD)),
+        _whole(fields.get(_STEP_TARGET_HIGH_FIELD)),
+    )
+    # Zero on both sides is the device's way of saying that no range is set.
+    if not any(raw_bounds):
+        return target
+    bounds = [
+        None if raw is None else _target_bound(target_type, raw) for raw in raw_bounds
+    ]
+    units = {bound[0] for bound in bounds if bound is not None}
+    # One unit per range: a bpm low with a percent high is not a range.
+    if len(units) == 1:
+        target["target_unit"] = units.pop()
+        target["target_low"], target["target_high"] = (
+            None if bound is None else bound[1] for bound in bounds
+        )
+    return target
+
+
+def _target_bound(
+    target_type: WorkoutTargetType, raw: int
+) -> tuple[WorkoutTargetUnit, float]:
+    """One bound of a custom target range in its canonical unit."""
+    if target_type is WorkoutTargetType.SPEED:
+        return WorkoutTargetUnit.MPS, raw / 1000
+    if target_type is WorkoutTargetType.HEART_RATE:
+        if raw > _HEART_RATE_OFFSET:
+            return WorkoutTargetUnit.BPM, float(raw - _HEART_RATE_OFFSET)
+        return WorkoutTargetUnit.PCT_MAX_HR, float(raw)
+    if target_type is WorkoutTargetType.POWER:
+        if raw > _POWER_OFFSET:
+            return WorkoutTargetUnit.W, float(raw - _POWER_OFFSET)
+        return WorkoutTargetUnit.PCT_FTP, float(raw)
+    return WorkoutTargetUnit.RPM, float(raw)
+
+
+def _device_zones(messages: list[FitMessage]) -> DeviceZoneBasis | None:
+    """The watch's zone basis from the first zones_target message that holds one."""
+    for number, fields in messages:
+        if number != _ZONES_TARGET_MESSAGE:
+            continue
+        zones = DeviceZoneBasis(
+            max_hr=_whole(fields.get(1)),
+            threshold_hr=_whole(fields.get(2)),
+            ftp_w=_whole(fields.get(3)),
+            hr_calc=_choice(_HR_CALCS, fields.get(5), None),
+            power_calc=_choice(_POWER_CALCS, fields.get(7), None),
+        )
+        if not zones.is_empty:
+            return zones
+    return None
+
+
 # Fields each mapped message is read for (#2220); 253 (timestamp) and 254
 # (message index) are structural and never counted.
 _STRUCTURAL_FIELDS: Final = frozenset({253, 254})
 MAPPED_FIELDS: Final[Mapping[int, frozenset[int]]] = {
     _RECORD_MESSAGE: frozenset(
-        {_CADENCE_FIELD, _FRACTIONAL_CADENCE_FIELD, 73, 78}
+        {_CADENCE_FIELD, _FRACTIONAL_CADENCE_FIELD, 73, 78, _RESPIRATION_FIELD}
         | {field for _channel, field in _RECORD_CHANNEL_FIELDS}
         | {field for _channel, field, _divisor in _DYNAMICS_FIELDS}
         | {field for _channel, field in _POSITION_FIELDS}
     ),
     _LAP_MESSAGE: frozenset(
         {_LAP_START_FIELD, _LAP_ELAPSED_FIELD, _LAP_INTENSITY_FIELD, 110, 111}
+        | {_LAP_TRIGGER_FIELD, _LAP_STEP_FIELD}
         | {field for _name, field in _LAP_METRIC_FIELDS}
+        | {field for _name, field, _divisor in _LAP_DEVICE_FIELDS}
     ),
     _SET_MESSAGE: frozenset(
         {
@@ -677,6 +970,19 @@ MAPPED_FIELDS: Final[Mapping[int, frozenset[int]]] = {
         }
     ),
     DEVICE_INFO_MESSAGE: frozenset({0, 1, 2, 3, 4, 25}),
+    _ZONES_TARGET_MESSAGE: frozenset({1, 2, 3, 5, 7}),
+    # The step name (0) and notes (8) stay unread: free text of the file.
+    _WORKOUT_STEP_MESSAGE: frozenset(
+        {
+            _STEP_DURATION_TYPE_FIELD,
+            _STEP_DURATION_VALUE_FIELD,
+            _STEP_TARGET_TYPE_FIELD,
+            _STEP_TARGET_VALUE_FIELD,
+            _STEP_TARGET_LOW_FIELD,
+            _STEP_TARGET_HIGH_FIELD,
+            _STEP_INTENSITY_FIELD,
+        }
+    ),
 }
 # Field description (206): developer data index (0) and field number (1).
 _FIELD_DESCRIPTION_MESSAGE: Final = 206
@@ -698,7 +1004,11 @@ def fit_inventory(data: object) -> frozenset[str] | None:
         return None
     keys: set[str] = set()
     for number, fields in messages:
-        if number not in MAPPED_FIELDS and number != HRV_MESSAGE:
+        # The hrv and workout (name, description) messages are never read whole.
+        if number not in MAPPED_FIELDS and number not in (
+            HRV_MESSAGE,
+            _WORKOUT_MESSAGE,
+        ):
             keys.add(f"m{number}")
         if number == _FIELD_DESCRIPTION_MESSAGE:
             index, field = _whole(fields.get(0)), _whole(fields.get(1))

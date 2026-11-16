@@ -106,7 +106,8 @@ SECTION_FIELDS = {
     ),
     # Window records the next detail mapper bump downloads again (#2220).
     "mapper_replay": re.compile(
-        r"status|garmin\.(window_days|pending|records|strength)"
+        r"status|garmin\.(window_days|pending|passed_over|records|strength|daily_budget"
+        r"|per_refresh|replayed_today|clean_today)"
         r"|wahoo\.(window_days|records)"
     ),
 }

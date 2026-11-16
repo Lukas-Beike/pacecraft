@@ -622,6 +622,34 @@ class GarminFitPartTests(unittest.TestCase):
             len(_fixture("splits")["lapDTOs"]),
         )
 
+    def test_the_watch_fields_of_the_fit_survive_the_composition(self):
+        from tests.test_fit_activity_detail_mapping import _step, _watch_fit
+
+        fit = _watch_fit(
+            breathing=[1850, 2025],
+            laps=[{136: 2150, 161: 3333, 71: 1, 24: 1}],
+            steps=[_step(index=1, duration=0, value=60_000, target=2)],
+            zones=[{1: 185}],
+        )
+        result = _map(_collected(fit=fit))
+
+        streams = _only(result, ActivityStreamSet)
+        laps = _only(result, ActivityLapSet)
+        self.assertEqual(
+            streams.channels[StreamChannel.RESPIRATION_RATE_BRPM], (18.5, 20.25)
+        )
+        self.assertEqual(streams.device_zones.max_hr, 185.0)
+        self.assertEqual(
+            (
+                laps.laps[0].avg_respiration_rate_brpm,
+                laps.laps[0].avg_grade_adjusted_speed_mps,
+                laps.laps[0].workout_step_index,
+                laps.laps[0].lap_trigger.value,
+                [step.index for step in laps.workout_steps],
+            ),
+            (21.5, 3.333, 1, "time", [1]),
+        )
+
     def test_fit_alone_yields_streams_and_laps(self):
         result = _map({"activity_id": ID, "fit": _synthetic_fit()})
 

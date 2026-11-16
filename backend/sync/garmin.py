@@ -27,6 +27,8 @@ from backend.observability import Redactor
 from backend.performance.freshness import GarminSyncStatus
 from backend.provider_credentials import GARMIN_PERSONAL_KEY_REJECTED_KEY
 from backend.providers.garmin_capability import (
+    GARMIN_LAST_RATE_LIMIT_KEY,
+    RATE_LIMITED,
     capability_failure_class,
     capability_key,
     clear_capability_state,
@@ -822,6 +824,15 @@ class GarminSyncStateService:
             capability_key(source),
             json.dumps(state, ensure_ascii=False, separators=(",", ":")),
         )
+        if error_class == RATE_LIMITED:
+            self._set(GARMIN_LAST_RATE_LIMIT_KEY, self._current_time().isoformat())
+
+    def last_rate_limit(self) -> datetime | None:
+        """When Garmin last answered any call with a rate limit, or None."""
+        try:
+            return datetime.fromisoformat(str(self._get(GARMIN_LAST_RATE_LIMIT_KEY)))
+        except TypeError, ValueError:
+            return None
 
     def record_capability_success(self, source: str) -> None:
         if self.capability_state(source):

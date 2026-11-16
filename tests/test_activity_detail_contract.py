@@ -23,15 +23,19 @@ from backend.canonical.activity_detail import (
     ActivityLap,
     ActivityLapSet,
     ActivityStreamSet,
+    DeviceZoneBasis,
+    WorkoutStep,
     ZoneBucket,
     ZoneDistribution,
 )
 from backend.canonical.records import ActivityRecord, Provenance
 from backend.canonical.vocabulary import (
     ActivityDetailOrigin,
+    DeviceHeartRateCalc,
     Environment,
     LapKind,
     LapSource,
+    LapTrigger,
     LoadModel,
     ProviderId,
     RecordingOrigin,
@@ -39,6 +43,10 @@ from backend.canonical.vocabulary import (
     Sport,
     StreamChannel,
     StreamResolution,
+    WorkoutDurationType,
+    WorkoutStepIntensity,
+    WorkoutTargetType,
+    WorkoutTargetUnit,
     ZoneBoundarySource,
     ZoneMetric,
 )
@@ -281,6 +289,8 @@ class DocumentShapeTests(unittest.TestCase):
                 "streams",
                 "running_dynamics_streams",
                 "laps",
+                "workout_steps",
+                "device_zones",
                 "zones",
                 "strength_sets",
                 "analysis",
@@ -715,7 +725,15 @@ class LapAndZoneTests(unittest.TestCase):
         self.assertEqual(5, len(laps["laps"]))
         first = laps["laps"][0]
         self.assertEqual(
-            {"index", "kind", "start_offset_s", "end_offset_s", "name"}
+            {
+                "index",
+                "kind",
+                "start_offset_s",
+                "end_offset_s",
+                "name",
+                "workout_step_index",
+                "lap_trigger",
+            }
             | set(LAP_METRIC_FIELDS),
             set(first),
         )
@@ -737,6 +755,151 @@ class LapAndZoneTests(unittest.TestCase):
                 }
             ],
             laps["alternatives"],
+        )
+
+    def test_watch_fields_reach_the_document(self) -> None:
+        step = WorkoutStep(
+            index=2,
+            intensity=WorkoutStepIntensity.INTERVAL,
+            duration_type=WorkoutDurationType.TIME,
+            duration_value=240.0,
+            target_type=WorkoutTargetType.HEART_RATE,
+            target_low=150.0,
+            target_high=160.0,
+            target_unit=WorkoutTargetUnit.BPM,
+        )
+        laps = ActivityLapSet(
+            provider_activity_id="g-run-1",
+            provenance=provenance(GARMIN, RecordingOrigin.GARMIN, "Garmin Connect"),
+            origin=ActivityDetailOrigin.FETCH,
+            lap_source=LapSource.DEVICE_LAPS,
+            laps=(
+                ActivityLap(
+                    index=0,
+                    kind=LapKind.WORK,
+                    start_offset_s=0.0,
+                    end_offset_s=240.0,
+                    avg_respiration_rate_brpm=24.5,
+                    max_respiration_rate_brpm=30.0,
+                    avg_grade_adjusted_speed_mps=3.4,
+                    workout_step_index=2,
+                    lap_trigger=LapTrigger.DISTANCE,
+                ),
+            ),
+            workout_steps=(step,),
+        )
+        streams = ActivityStreamSet(
+            provider_activity_id="g-run-1",
+            provenance=provenance(GARMIN, RecordingOrigin.GARMIN, "Garmin Connect"),
+            origin=ActivityDetailOrigin.FETCH,
+            resolution=StreamResolution.FULL,
+            channels={
+                StreamChannel.TIME_S: TIME,
+                StreamChannel.RESPIRATION_RATE_BRPM: tuple(
+                    20.0 + index % 5 for index in range(len(TIME))
+                ),
+            },
+            device_zones=DeviceZoneBasis(
+                max_hr=188.0,
+                threshold_hr=170.0,
+                hr_calc=DeviceHeartRateCalc.PERCENT_LTHR,
+            ),
+        )
+        doc = build(
+            [record(GARMIN, "g-run-1", recorded_by=RecordingOrigin.GARMIN)],
+            [candidate(laps), candidate(streams)],
+        )
+
+        lap = doc["laps"]["laps"][0]
+        self.assertEqual(
+            (
+                lap["avg_respiration_rate_brpm"],
+                lap["max_respiration_rate_brpm"],
+                lap["avg_grade_adjusted_speed_mps"],
+                lap["workout_step_index"],
+                lap["lap_trigger"],
+            ),
+            (24.5, 30.0, 3.4, 2, "distance"),
+        )
+        self.assertEqual(
+            doc["workout_steps"],
+            [
+                {
+                    "index": 2,
+                    "intensity": "interval",
+                    "duration_type": "time",
+                    "duration_value": 240.0,
+                    "repeat_from": None,
+                    "repeat_count": None,
+                    "target_type": "heart_rate",
+                    "target_low": 150.0,
+                    "target_high": 160.0,
+                    "target_unit": "bpm",
+                    "target_zone": None,
+                }
+            ],
+        )
+        self.assertEqual(
+            doc["device_zones"],
+            {
+                "max_hr": 188.0,
+                "threshold_hr": 170.0,
+                "ftp_w": None,
+                "hr_calc": "percent_lthr",
+                "power_calc": None,
+                "source": {
+                    "provider": "garmin",
+                    "label": "Garmin-Uhr",
+                    "kind": "measured",
+                    "recorded_by": "garmin",
+                },
+            },
+        )
+        channel = doc["streams"]["channels"]["respiration_rate_brpm"]
+        self.assertEqual((20.0, 24.0), (channel["values"][0], max(channel["values"])))
+        self.assertEqual("garmin", channel["source"]["provider"])
+        self.assertNotIn("respiration_rate_brpm", doc["running_dynamics_streams"] or {})
+
+    def test_without_watch_fields_the_document_has_no_steps_and_no_zone_basis(
+        self,
+    ) -> None:
+        doc = build(
+            [record(GARMIN, "g-ride-99", recorded_by=RecordingOrigin.GARMIN)],
+            [
+                candidate(
+                    lap_set(
+                        GARMIN,
+                        "g-ride-99",
+                        LapSource.DEVICE_LAPS,
+                        2,
+                        recorded_by=RecordingOrigin.GARMIN,
+                    )
+                ),
+                candidate(
+                    stream_set(
+                        GARMIN,
+                        "g-ride-99",
+                        {HR: heart_rate_values()},
+                        recorded_by=RecordingOrigin.GARMIN,
+                    )
+                ),
+            ],
+        )
+        self.assertEqual([], doc["workout_steps"])
+        self.assertIsNone(doc["device_zones"])
+        self.assertEqual(
+            (None, None),
+            (
+                doc["laps"]["laps"][0]["workout_step_index"],
+                doc["laps"]["laps"][0]["lap_trigger"],
+            ),
+        )
+        self.assertEqual(
+            ([], None),
+            (
+                build([record(GARMIN, "g")])["workout_steps"],
+                build([record(GARMIN, "g")])["device_zones"],
+            ),
         )
 
     def test_zones_name_their_boundary_source_and_list_the_others(self) -> None:

@@ -236,6 +236,53 @@ test("@responsive calendar details chart running dynamics per second and retry a
   await expect(details.locator(".error-state")).toHaveCount(0);
 });
 
+test("@responsive calendar details chart the breathing rate and show Garmin's lap GAP beside the pace", async ({ page }) => {
+  const times = Array.from({ length: 20 }, (_, index) => index * 15);
+  const lap = (index, gap) => ({ index, start_offset_s: index * 150, end_offset_s: index * 150 + 150, distance_m: 500, avg_speed_mps: 3.2, avg_grade_adjusted_speed_mps: gap });
+  await page.route(/\/api\/activities\//, (route) => {
+    const id = new URL(route.request().url()).pathname.split("/")[3];
+    const breathing = id === "act_breath" ? { respiration_rate_brpm: { values: times.map((time) => 22 + (time % 30) / 5) } } : {};
+    return route.fulfill({ json: {
+      session: { activity_id: id, sport: "run" },
+      metrics: {},
+      streams: { time_s: times, channels: { heart_rate_bpm: { values: times.map((time) => 140 + (time % 20)) }, ...breathing } },
+      laps: { laps: [lap(0, id === "act_breath" ? 3.5 : null), lap(1, null)] },
+      detail_data: { providers: [] },
+    } });
+  });
+  await page.goto("/#plan/overview");
+  await expect(page.locator("#appShell")).toBeVisible();
+  await page.waitForFunction(() => state.initialStateLoaded);
+  await renderCalendarSessions(page, [
+    { id: "act_breath", name: "Synthetic breathing run", sport: "run", started_at_local: "2026-10-17T07:00:00", moving_duration_s: 300 },
+    { id: "act_plain", name: "Synthetic plain run", sport: "run", started_at_local: "2026-10-16T07:00:00", moving_duration_s: 300 },
+  ]);
+  const breath = await openSessionDetails(page, "Synthetic breathing run");
+  await expect(breath.getByRole("img", { name: /^Atemfrequenz: Ø \d+ · Max \d+ \/min/ })).toBeVisible();
+  const headers = breath.locator(".activity-analysis-laps th[scope=col]");
+  await expect(headers).toHaveText(["#", "Zeit", "Distanz", "Pace", "GAP Garmin"]);
+  // 1000 / 3.5 m/s is 4:46 min/km; the lap without a value shows a dash.
+  const gapCells = breath.locator(".activity-analysis-laps tbody tr td:nth-child(5)");
+  await expect(gapCells).toHaveText(["4:46", "—"]);
+  const plain = await openSessionDetails(page, "Synthetic plain run");
+  await expect(plain.getByRole("img", { name: /^Herzfrequenz: / })).toBeVisible();
+  await expect(plain.getByRole("img", { name: /^Atemfrequenz/ })).toHaveCount(0);
+  await expect(plain.locator(".activity-analysis-laps th[scope=col]")).toHaveText(["#", "Zeit", "Distanz", "Pace"]);
+});
+
+test("@responsive the session dialog charts the breathing rate", async ({ page }) => {
+  await page.goto("/#plan/overview");
+  await expect(page.locator("#appShell")).toBeVisible();
+  const headings = await page.evaluate(async () => {
+    const data = { session: { activity_id: "synthetic-breath", name: "Synthetic breath", sport: "run" }, streams: { time_s: [0, 1, 2], channels: { respiration_rate_brpm: { values: [20, 22, 24] } } }, detail_data: { providers: [] } };
+    await ActivityDetails.open({ id: "synthetic-breath" }, { api: async () => data, showDialog: (dialog) => dialog.showModal() });
+    const result = [...document.querySelectorAll(".activity-series h3")].map((node) => node.textContent);
+    ActivityDetails.close(false);
+    return result;
+  });
+  expect(headings).toEqual(["Atemfrequenz (/min)"]);
+});
+
 test("@responsive the calendar details open a Garmin-only indoor session; old Einheiten links land on the calendar", async ({ page }) => {
   await page.route(/\/api\/activities\//, (route) => route.fulfill({ json: { session: { activity_id: "act_garmin_only", sport: "ride", environment: "virtual" }, metrics: {}, detail_data: { providers: [] } } }));
   await page.goto("/#analysis/sessions");

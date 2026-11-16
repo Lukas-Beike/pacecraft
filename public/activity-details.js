@@ -306,7 +306,7 @@
     show(); content.append(line);
   }
 
-  const COVERAGE_LABELS = { power_w: "Leistung", heart_rate_bpm: "Herzfrequenz", speed_mps: "Geschwindigkeit", altitude_m: "Höhe", distance_m: "Distanz", grade_pct: "Steigung", cadence_rpm: "Kadenz" };
+  const COVERAGE_LABELS = { power_w: "Leistung", heart_rate_bpm: "Herzfrequenz", speed_mps: "Geschwindigkeit", altitude_m: "Höhe", distance_m: "Distanz", grade_pct: "Steigung", cadence_rpm: "Kadenz", respiration_rate_brpm: "Atemfrequenz" };
 
   // Per provider: the load state and the data coverage, with readable channel names.
   function providerFacts(entry) {
@@ -425,7 +425,7 @@
   function renderSeries(session, streams, content) {
     let charts = 0;
     const cadence = cadenceDisplay(session);
-    const labels = { power_w: ["Leistung", "W"], heart_rate_bpm: ["Herzfrequenz", "bpm"], speed_mps: ["Geschwindigkeit", "m/s"], altitude_m: ["Höhe", "m"], distance_m: ["Distanz", "m"], grade_pct: ["Steigung", "%"], cadence_rpm: [cadence.label, cadence.unit] };
+    const labels = { power_w: ["Leistung", "W"], heart_rate_bpm: ["Herzfrequenz", "bpm"], speed_mps: ["Geschwindigkeit", "m/s"], altitude_m: ["Höhe", "m"], distance_m: ["Distanz", "m"], grade_pct: ["Steigung", "%"], cadence_rpm: [cadence.label, cadence.unit], respiration_rate_brpm: ["Atemfrequenz", "/min"] };
     const channels = streams?.channels || {};
     for (const [key, [label, unit]] of Object.entries(labels)) {
       let values = channels[key]?.values;

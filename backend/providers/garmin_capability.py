@@ -12,6 +12,10 @@ from __future__ import annotations
 from typing import Any, Final
 
 GARMIN_CAPABILITY_KEY_PREFIX: Final = "garmin_capability_"
+# When Garmin last answered any call with a rate limit; the activity detail
+# backfill pauses a day from it (#2220). Not a pause itself, so it survives a
+# new key or login.
+GARMIN_LAST_RATE_LIMIT_KEY: Final = "garmin_last_rate_limit_at"
 # Prefix of the source name the wellness history backfill pauses under.
 WELLNESS_BACKFILL_PREFIX: Final = "wellness_backfill_"
 

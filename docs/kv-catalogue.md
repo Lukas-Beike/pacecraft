@@ -16,7 +16,7 @@ read. A new key needs no entry: it appears here when its write is added.
   `profile` is only set when absent.
 
 <!-- BEGIN GENERATED KEYS -->
-91 keys and 22 key patterns; `<value>` stands for a value the code computes.
+92 keys and 22 key patterns; `<value>` stands for a value the code computes.
 
 | Key | Written by | Deleted by | Export | Reset at start | Purge |
 | --- | --- | --- | --- | --- | --- |
@@ -59,6 +59,7 @@ read. A new key needs no entry: it appears here when its write is added.
 | `garmin_equipment_initialized` | backend/athlete/equipment.py:EquipmentService.sync_garmin_snapshot | - | yes | - | - |
 | `garmin_full_resync_running` | backend/sync/state.py:settle_interrupted_sync_state | - | no | - | - |
 | `garmin_full_resync_status` | backend/sync/state.py:settle_interrupted_sync_state | - | no | - | - |
+| `garmin_last_rate_limit_at` | backend/sync/garmin.py:GarminSyncStateService.record_capability_failure | - | yes | - | - |
 | `garmin_metric_export_enabled` | backend/sync/metric_export_consent.py:store_fields | - | yes | - | - |
 | `garmin_metric_export_fields` | backend/sync/metric_export_consent.py:store_fields | - | yes | - | - |
 | `garmin_oauth_tokens` | backend/sync/garmin_login.py:GarminTokenStore.store<br>backend/sync/garmin_login.py:GarminTokenStore.write_back | backend/sync/garmin_login.py:GarminTokenStore.clear | no | - | - |
