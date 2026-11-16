@@ -335,7 +335,8 @@ Request: no query, no body.
 Response: 200 with `measurements` (at most 20, each with `date`, `sex`
 `male` or `female` as the sites tell, `folds_mm` as `{site, label, mm}` in
 protocol order and `body_fat_pct` by Jackson-Pollock and Siri, null without
-a birth year in the profile), `birth_year_known` and `sites` (the sites per
+a birth year in the profile; `age_outside_fit` true when the age lies outside
+the equation's fitted range), `birth_year_known` and `sites` (the sites per
 sex).
 
 Errors: none beyond the common ones.

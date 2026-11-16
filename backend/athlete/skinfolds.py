@@ -21,6 +21,7 @@ from backend.athlete.body_composition import (
     SKINFOLD_SITES,
     Sex,
     body_density,
+    outside_fitted_ages,
     siri_body_fat_pct,
 )
 from backend.canonical.records import MetricValue, Observation, Provenance
@@ -59,6 +60,8 @@ class SkinfoldMeasurement:
     sex: Sex
     folds_mm: Mapping[str, float]
     body_fat_pct: float | None  # None without a birth year in the profile
+    # The age lies outside the equation's fitted range (M13); the value extrapolates.
+    age_outside_fit: bool = False
 
 
 def _provenance() -> Provenance:
@@ -107,9 +110,13 @@ def measurements_from_rows(
         if sex is None:
             continue
         day = date.fromisoformat(day_text)
-        found.append(
-            SkinfoldMeasurement(day, sex, folds, _body_fat(sex, folds, day, birth_year))
+        fat = _body_fat(sex, folds, day, birth_year)
+        outside = (
+            fat is not None
+            and birth_year is not None
+            and outside_fitted_ages(sex, day.year - birth_year)
         )
+        found.append(SkinfoldMeasurement(day, sex, folds, fat, outside))
     return found
 
 
@@ -135,6 +142,7 @@ def public_measurement(measurement: SkinfoldMeasurement) -> dict[str, Any]:
             for site in SKINFOLD_SITES[measurement.sex]
         ],
         "body_fat_pct": measurement.body_fat_pct,
+        "age_outside_fit": measurement.age_outside_fit,
     }
 
 
