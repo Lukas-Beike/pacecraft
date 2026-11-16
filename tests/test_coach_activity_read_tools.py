@@ -407,6 +407,15 @@ class CoachActivityReadToolServiceTests(unittest.TestCase):
         notable = [c["id"] for c in report["checks"] if c["verdict"] == "notable"]
         self.assertEqual(sorted(notable), sorted(report["notable"]))
 
+    def test_a_plan_sets_a_low_cadence_only_below_the_climb_limit(self):
+        # #3084: 60 rpm or 65 U/min plans low-cadence work; 110 rpm spin-ups do not.
+        from backend.coach.activity_read_tools import _plans_low_cadence
+
+        self.assertTrue(_plans_low_cadence("3x10min 60rpm Kraftausdauer"))
+        self.assertTrue(_plans_low_cadence("Trittfrequenz 65 U/min am Berg"))
+        self.assertFalse(_plans_low_cadence("Spin-ups 110 rpm"))
+        self.assertFalse(_plans_low_cadence(None))
+
     def test_critical_speed_needs_its_whole_window_in_the_records(self):
         # #3084: the 28 days before 2026-09-30 reach back to 2026-09-02; records
         # from 2026-09-10 cannot fit that CS, so no fact rests on part of it.

@@ -81,10 +81,8 @@ _RUN_SESSION = """Run block (session.sport run):
 - Beyond it cite metrics ground_contact_time_ms, ground_contact_balance_pct, vertical_oscillation_cm, vertical_ratio_pct, step_length_m and per rep cadence halves; prefer lap_pace for short reps."""
 
 _RIDE_SESSION = """Ride block (session.sport ride):
-- metrics normalized_power, variability_index, intensity factor (normalized power / current_performance.thresholds.ftp_w), decoupling_pct.
-- zones.power against the focus; work reps against that FTP.
-- Cadence: halves cadence_change; per rep cadence with elevation_change_m (low on climbs).
-- Indoor or virtual session.environment with erg_like: judge heart rate and cadence, not power, unless focus.test_evaluation says otherwise. Outdoor: elevation and stops are facts."""
+- session_report judges VI, IF against the focus and climb cadence; with erg_like power pacing is not_applicable and heart rate at equal power is judged, unless focus.test_evaluation says otherwise. Reps in % of the session day's FTP, elevation and stops are facts; current_performance.thresholds.ftp_w is today's.
+- Beyond it cite metrics normalized_power, decoupling_pct and per rep cadence halves."""
 
 _SPORT_BLOCKS = {"run": _RUN_SESSION, "ride": _RIDE_SESSION}
 

@@ -6,6 +6,7 @@ import unittest
 from collections.abc import Sequence
 from typing import Any
 
+from backend.performance import session_conditions
 from backend.performance.session_report import session_report
 from backend.planning.race_plan import race_plan
 
@@ -1056,6 +1057,179 @@ class ZoneTimeAndFactsTests(unittest.TestCase):
         )
         # Facts carry no verdict and never lead.
         self.assertTrue(all("verdict" not in fact for fact in report["facts"]))
+
+
+class RideBlockTests(unittest.TestCase):
+    """#3084 Part 2b: the ride's own checks, ERG and facts."""
+
+    def _erg(self, hr: float, peers: int, median: float = 150) -> dict[str, Any]:
+        reps = [
+            {"rep": 1, "output": 250, "heart_rate_end": hr},
+            {"rep": 2, "output": 250, "heart_rate_end": hr},
+            {"rep": 3, "output": 250, "heart_rate_end": hr},
+        ]
+        return checks(
+            session_report(
+                result(
+                    sport="ride",
+                    focus="threshold",
+                    execution={
+                        "output_unit": "W",
+                        "erg_like": True,
+                        "reps": reps,
+                        "data_quality": {"heart_rate": "ok"},
+                    },
+                    comparable_sessions={
+                        "status": "ok",
+                        "this": {"heart_rate_end_mean": hr},
+                        "at_same_output": {
+                            "count": peers,
+                            "heart_rate_end_mean": median,
+                        },
+                    },
+                )
+            )
+        )
+
+    def test_erg_power_pacing_is_not_applicable_and_heart_rate_compares(self) -> None:
+        # 156 against a median of 150 bpm at the same power: 4.0 % > 3.
+        found = self._erg(156, 6)
+        for key in ("rep_fade", "within_rep_fade", "start_change"):
+            self.assertEqual("not_applicable", found[key]["verdict"], key)
+        self.assertEqual(
+            (4.0, "notable", "personal"),
+            (
+                found["erg_heart_rate"]["value"]["higher_pct"],
+                found["erg_heart_rate"]["verdict"],
+                found["erg_heart_rate"]["basis"],
+            ),
+        )
+        self.assertEqual("ok", self._erg(153, 6)["erg_heart_rate"]["verdict"])
+        self.assertEqual("unknown", self._erg(156, 4)["erg_heart_rate"]["verdict"])
+
+    def test_low_cadence_on_climbs_unless_the_plan_sets_it(self) -> None:
+        # 60 m over 1000 m is 6 %, at 64 rpm: low. 30 m is 3 %: no climb.
+        reps = [
+            {
+                "rep": 1,
+                "output": 280,
+                "elevation_change_m": 60,
+                "distance_m": 1000,
+                "cadence": 64,
+            },
+            {
+                "rep": 2,
+                "output": 280,
+                "elevation_change_m": 60,
+                "distance_m": 1000,
+                "cadence": 82,
+            },
+            {
+                "rep": 3,
+                "output": 280,
+                "elevation_change_m": 30,
+                "distance_m": 1000,
+                "cadence": 60,
+            },
+        ]
+
+        def climb(planned: dict[str, Any] | None) -> dict[str, Any]:
+            return checks(
+                session_report(
+                    result(
+                        sport="ride",
+                        focus="threshold",
+                        execution={"output_unit": "W", "reps": reps},
+                    ),
+                    planned,
+                )
+            )["climb_cadence"]
+
+        found = climb(None)
+        self.assertEqual(
+            ([{"rep": 1, "grade_pct": 6.0, "cadence_rpm": 64}], 2, "notable"),
+            (
+                found["value"]["low_cadence_reps"],
+                found["value"]["climbing_reps"],
+                found["verdict"],
+            ),
+        )
+        self.assertEqual("not_applicable", climb({"cadence": True})["verdict"])
+        # An indoor course's grade is simulated: no climb check.
+        indoor = session_report(
+            {
+                **result(
+                    sport="ride",
+                    focus="threshold",
+                    execution={"output_unit": "W", "reps": reps},
+                ),
+                "session": {
+                    "activity_id": "act_1",
+                    "sport": "ride",
+                    "environment": "virtual",
+                },
+            }
+        )
+        self.assertNotIn("climb_cadence", checks(indoor))
+
+    def test_ride_if_against_the_focus_range(self) -> None:
+        # NP 240 W at a stored 80 % gives the day's FTP 300 W.
+        def intensity(
+            focus: str, stored: float | None, main: float | None = None
+        ) -> dict[str, Any]:
+            execution: dict[str, Any] = {"output_unit": "W", "structure": "continuous"}
+            if main is not None:
+                execution["halves"] = {"main": {"output": main}}
+            return checks(
+                session_report(
+                    {
+                        **result(
+                            sport="ride",
+                            focus=focus,
+                            metrics={"normalized_power": metric(240)},
+                            execution=execution,
+                        ),
+                        session_conditions.INPUTS: {"intensity": stored},
+                    }
+                )
+            )["ride_intensity"]
+
+        # Endurance 0.56-0.75: the session's 0.80 is outside.
+        outside = intensity("endurance", 80)
+        self.assertEqual(
+            (0.8, "session", "notable"),
+            (
+                outside["value"]["intensity_factor"],
+                outside["value"]["part"],
+                outside["verdict"],
+            ),
+        )
+        # Threshold with a warm-up: the main part's 285 W of 300 W is 0.95,
+        # inside 0.91-1.05, although the whole session's 0.80 is not.
+        main = intensity("threshold", 80, main=285)
+        self.assertEqual(
+            (0.95, "main_part", "ok"),
+            (main["value"]["intensity_factor"], main["value"]["part"], main["verdict"]),
+        )
+        # Rounded as shown: 0.754 shows as 0.75 and is inside the endurance range.
+        self.assertEqual("ok", intensity("endurance", 75.4)["verdict"])
+        self.assertEqual("unknown", intensity("endurance", None)["verdict"])
+
+    def test_reps_in_percent_of_the_session_days_ftp(self) -> None:
+        # NP 240 W at IF 0.80: FTP 300 W; a 270 W rep is 90 %.
+        report = session_report(
+            {
+                **result(
+                    sport="ride",
+                    focus="threshold",
+                    metrics={"normalized_power": metric(240)},
+                    execution={"output_unit": "W", "reps": [{"rep": 1, "output": 270}]},
+                ),
+                session_conditions.INPUTS: {"intensity": 80},
+            }
+        )
+        fact = {f["id"]: f["value"] for f in report["facts"]}["reps_of_ftp"]
+        self.assertEqual({"reps": [{"rep": 1, "pct_of_ftp": 90}], "ftp_w": 300}, fact)
 
 
 class RaceAndRankingTests(unittest.TestCase):

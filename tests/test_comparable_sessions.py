@@ -123,6 +123,32 @@ class ComparableSessionsTests(unittest.TestCase):
             ("not_covered", 6.1), (result["status"], result["this"]["gap_cv_pct"])
         )
 
+    def test_interval_rides_compare_heart_rate_at_the_same_power(self) -> None:
+        # #3084 ERG: peers at 245 and 255 W are within 5 % of 250 W, 280 W is
+        # not; their closing heart rates 150 and 154 have the median 152.
+        def ride(power: float, heart: float) -> dict[str, Any]:
+            return {
+                "structure": "interval",
+                "output_unit": "W",
+                "rep_count": 5,
+                "median_rep_s": 300,
+                "rep_output_mean": power,
+                "heart_rate_end_mean": heart,
+            }
+
+        records = [_row("2026-11-03", ride(250, 158), sport="ride")] + [
+            _row(day, ride(power, heart), sport="ride")
+            for day, power, heart in (
+                ("2026-10-30", 245, 150),
+                ("2026-10-26", 255, 154),
+                ("2026-10-22", 280, 170),
+            )
+        ]
+        result = comparable_sessions(records, "act_2026-11-03")
+        self.assertEqual(
+            {"count": 2, "heart_rate_end_mean": 152.0}, result["at_same_output"]
+        )
+
     def test_other_shapes_places_and_old_sessions_are_not_peers(self) -> None:
         records = [
             _row("2026-11-03", _easy(330, 140)),

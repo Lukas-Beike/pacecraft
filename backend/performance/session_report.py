@@ -3,7 +3,8 @@
 Every check carries its value, the rule and threshold it applies, the basis of
 that threshold (``personal`` when the athlete has enough own comparable values,
 ``plan`` against the planned unit, else ``fixed``), a verdict (``ok``,
-``notable`` or ``unknown`` with a reason) and a deterministic severity. The
+``notable``, ``unknown`` with a reason, or ``not_applicable`` with a reason,
+such as a power pacing check in ERG) and a deterministic severity. The
 checks read the session's existing derivations (execution, planned targets,
 session metrics, zones, comparable sessions); nothing is computed twice.
 
@@ -26,7 +27,10 @@ from backend.activities.session_purpose import summary_is_race
 from backend.athlete.measurements import finite_float as _number
 from backend.canonical.activity_summary import summary_is_indoor
 from backend.performance import session_conditions
-from backend.performance.comparable_sessions import DURATION_SHARE
+from backend.performance.comparable_sessions import (
+    DURATION_SHARE,
+    SAME_OUTPUT_SHARE,
+)
 from backend.performance.form_drift import (
     CONTACT_TIME_RISE_PCT,
     STEP_LENGTH_FALL_PCT,
@@ -54,8 +58,9 @@ SCOPE: Final = (
     "Checks computed by code from this session's stored data, each with its "
     "value, rule, threshold, basis (personal, plan or fixed), verdict and "
     "severity. notable lists every notable check by severity; lead is the "
-    "first four of them. unknown checks name why. Thresholds: athlete "
-    "decisions on #3084 (2026-11-15)."
+    "first four of them. unknown checks name why; not_applicable checks do "
+    "not apply to this session (ERG, a planned cadence) and name why. facts "
+    "are values without a verdict. Thresholds: athlete decisions on #3084."
 )
 # Plan against actual: duration, load and recoveries (TrainingPeaks green, ±20 %).
 PLAN_TOLERANCE_PCT: Final = 20.0
@@ -93,6 +98,21 @@ WALK_OFF_SPEED_SHARE: Final = 0.6
 SHOE_DEFAULT_TARGET_KM: Final = 700.0
 # The shoe hint is notable from this share of its target distance.
 SHOE_DUE_SHARE: Final = 0.9
+# Ride IF (NP / FTP) per session focus, Coggan's levels (athlete, #3084).
+RIDE_IF_RANGES: Final = {
+    "recovery": (0.0, 0.55),
+    "easy": (0.56, 0.75),
+    "endurance": (0.56, 0.75),
+    "long": (0.56, 0.75),
+    "tempo": (0.76, 0.87),
+    "sweet_spot": (0.84, 0.97),
+    "threshold": (0.91, 1.05),
+}
+# Low cadence on climbs: a ride rep steeper than this (%) below this cadence (athlete, #3084).
+CLIMB_GRADE_PCT: Final = 4.0
+CLIMB_CADENCE_RPM: Final = 70.0
+# ERG: heart rate this much above them at the same power (mirrors PACE_AT_HR_PCT).
+ERG_HEART_RATE_PCT: Final = 3.0
 # Pace at the same heart rate this much slower than own comparable runs (athlete, #3084).
 PACE_AT_HR_PCT: Final = 3.0
 # Zone time is judged in the zones holding at least this share of the planned time.
@@ -117,6 +137,9 @@ _WEIGHT: Final = {
     "race_fade": 3,
     "form_drift": 3,
     "shoe_mileage": 1,
+    "ride_intensity": 3,
+    "erg_heart_rate": 3,
+    "climb_cadence": 2,
     "zone_time": 4,
     "pace_at_heart_rate": 3,
     "stride_halves": 3,
@@ -204,6 +227,7 @@ class _Facts:
         planned: Mapping[str, Any],
     ):
         self.planned = planned
+        self.planned_cadence = planned.get("cadence") is True
         self.result = result
         session = result.get("session")
         self.session = session if isinstance(session, Mapping) else {}
@@ -360,6 +384,8 @@ def _easy_checks(facts: _Facts) -> list[dict[str, Any]]:
     checks: list[dict[str, Any]] = []
     if facts.sport == "ride":
         checks.append(_ride_steadiness(facts))
+        if (intensity := _ride_intensity(facts)) is not None:
+            checks.append(intensity)
     elif (steady := _run_steadiness(facts)) is not None:
         checks.append(steady)
     checks.append(_decoupling(facts))
@@ -405,6 +431,54 @@ def _run_steadiness(facts: _Facts) -> dict[str, Any] | None:
         threshold=quartile,
         measure=own,
         basis="personal",
+    )
+
+
+def _session_if(facts: _Facts) -> float | None:
+    """The session's local IF (NP / FTP of the session day); stored as a percent."""
+    stored = _number(
+        _mapping(facts.result.get(session_conditions.INPUTS)).get("intensity")
+    )
+    return stored / 100 if stored is not None and stored > 0 else None
+
+
+def _ride_intensity(facts: _Facts) -> dict[str, Any] | None:
+    """A continuous ride's IF against Coggan's range of its focus.
+
+    The main part's power, without the warm-up the halves leave out, at the
+    session day's FTP (NP / IF), rounded as shown before it is judged.
+    """
+    limits = RIDE_IF_RANGES.get(str(facts.focus))
+    if limits is None:
+        return None
+    title = "Intensität gegen Fokus (IF)"
+    factor = _session_if(facts)
+    power = facts.metric("normalized_power")
+    if factor is None or not power:
+        return _unknown(
+            "ride_intensity", title, "Keine Intensität (IF) der Einheit, etwa ohne FTP."
+        )
+    halves = _mapping(facts.execution.get("halves"))
+    main = _number(_mapping(halves.get("main")).get("output"))
+    part = "session"
+    if main and facts.execution.get("output_unit") == "W":
+        factor, part = main / (power / factor), "main_part"
+    shown = round(factor, 2)
+    low, high = limits
+    return _judged(
+        "ride_intensity",
+        title,
+        value={
+            "intensity_factor": shown,
+            "range": [low, high],
+            "focus": facts.focus,
+            "part": part,
+        },
+        unit=None,
+        rule="IF des Hauptteils (Leistung / FTP des Tages) im Coggan-Bereich des Fokus",
+        threshold=0,
+        measure=round(max(0.0, low - shown, shown - high), 2),
+        basis="fixed",
     )
 
 
@@ -548,6 +622,8 @@ def _continuous_checks(facts: _Facts) -> list[dict[str, Any]]:
     checks: list[dict[str, Any]] = []
     if facts.sport == "ride":
         checks.append(_ride_steadiness(facts))
+        if (intensity := _ride_intensity(facts)) is not None:
+            checks.append(intensity)
     if facts.focus in INTERVAL_FOCUS:
         checks.append(
             _halves_change(facts, "main_fade", "Nachlassen im Hauptteil", FADE_PCT)
@@ -562,13 +638,139 @@ def _interval_checks(facts: _Facts) -> list[dict[str, Any]]:
     if not reps:
         reason = facts.execution.get("reason") or "Keine Wiederholungen erkannt."
         return [_unknown("rep_fade", "Nachlassen über die Wiederholungen", str(reason))]
+    pacing = (
+        [
+            _not_applicable("rep_fade", "Nachlassen über die Wiederholungen"),
+            _not_applicable(
+                "within_rep_fade", "Nachlassen innerhalb der Wiederholungen"
+            ),
+            _not_applicable("start_change", "Zu schneller Start der Wiederholungen"),
+            _erg_heart_rate(facts),
+        ]
+        if facts.execution.get("erg_like") is True
+        else [
+            _rep_fade(facts, reps),
+            _within_rep_fade(facts, reps),
+            _start_change(facts, reps),
+        ]
+    )
     return [
         *_rep_targets(facts),
-        _rep_fade(facts, reps),
-        _within_rep_fade(facts, reps),
-        _start_change(facts, reps),
+        *pacing,
         _cardiac_drift(facts, reps),
         *_recovery_checks(facts),
+        *(_climb_cadence(facts, reps) if facts.sport == "ride" else ()),
+    ]
+
+
+def _not_applicable(key: str, title: str) -> dict[str, Any]:
+    """A pacing check the athlete did not pace: the ERG trainer held the power."""
+    return {
+        "id": key,
+        "title": title,
+        "value": None,
+        "verdict": "not_applicable",
+        "reason": "ERG: der Trainer hielt die Leistung.",
+        "basis": "fixed",
+        "severity": 0,
+    }
+
+
+def _erg_heart_rate(facts: _Facts) -> dict[str, Any]:
+    """Heart rate at the same ERG power against own comparable sessions.
+
+    An efficiency trend: within ``ERG_POWER_SHARE`` of the rep power, at
+    least 5 own sessions, else a value only (athlete, #3084; the 3 % mirrors
+    the pace-at-heart-rate decision).
+    """
+    title = "Puls bei gleicher ERG-Leistung"
+    if reason := facts.heart_rate_unknown():
+        return _unknown("erg_heart_rate", title, reason, basis="personal")
+    same = _mapping(facts.comparable.get("at_same_output"))
+    own = _number(_mapping(facts.comparable.get("this")).get("heart_rate_end_mean"))
+    median = _number(same.get("heart_rate_end_mean"))
+    count = int(_number(same.get("count")) or 0)
+    share = f"±{SAME_OUTPUT_SHARE * 100:g} %"
+    if own is None:
+        reason = str(
+            facts.comparable.get("reason") or "Kein Puls am Ende der Wiederholungen."
+        )
+        return _unknown("erg_heart_rate", title, reason, basis="personal")
+    if median is None or count < MIN_PERSONAL:
+        return _unknown(
+            "erg_heart_rate",
+            title,
+            f"Weniger als {MIN_PERSONAL} eigene Einheiten bei gleicher Leistung ({share}).",
+            basis="personal",
+            value={"heart_rate_end_mean": own},
+        )
+    higher = (own / median - 1) * 100
+    return _judged(
+        "erg_heart_rate",
+        title,
+        value={
+            "heart_rate_end_mean": own,
+            "own_median_bpm": median,
+            "higher_pct": round(higher, 1),
+            "peers": count,
+        },
+        unit="%",
+        rule=f"Puls am Ende der Wiederholungen gegen den Median eigener Einheiten bei gleicher Leistung ({share})",
+        threshold=ERG_HEART_RATE_PCT,
+        measure=higher,
+        basis="personal",
+    )
+
+
+def _climb_cadence(
+    facts: _Facts, reps: Sequence[Mapping[str, Any]]
+) -> list[dict[str, Any]]:
+    """Ride reps steeper than ``CLIMB_GRADE_PCT`` below ``CLIMB_CADENCE_RPM``.
+
+    Outdoors only: an indoor or virtual course's grade is simulated.
+    """
+    if summary_is_indoor(facts.session):
+        return []
+    climbs = [
+        (rep.get("rep"), grade, cadence)
+        for rep in reps
+        if (rise := _number(rep.get("elevation_change_m"))) is not None
+        and (distance := _number(rep.get("distance_m")))
+        and (grade := rise / distance * 100) > CLIMB_GRADE_PCT
+        and (cadence := _number(rep.get("cadence"))) is not None
+    ]
+    if not climbs:
+        return []
+    title = "Trittfrequenz am Anstieg"
+    if facts.planned_cadence:
+        return [
+            {
+                **_not_applicable("climb_cadence", title),
+                "reason": "Der Plan gibt eine Trittfrequenz vor.",
+            }
+        ]
+    low = [
+        (rep, round(grade, 1), round(cadence))
+        for rep, grade, cadence in climbs
+        if cadence < CLIMB_CADENCE_RPM
+    ]
+    return [
+        _judged(
+            "climb_cadence",
+            title,
+            value={
+                "climbing_reps": len(climbs),
+                "low_cadence_reps": [
+                    {"rep": rep, "grade_pct": grade, "cadence_rpm": cadence}
+                    for rep, grade, cadence in low
+                ],
+            },
+            unit="count",
+            rule="Wiederholungen über 4 % Steigung mit weniger als 70 U/min",
+            threshold=0,
+            measure=len(low),
+            basis="fixed",
+        )
     ]
 
 
@@ -1061,6 +1263,7 @@ def _session_facts(facts: _Facts) -> list[dict[str, Any]]:
     found = [
         _work_laps_of_critical_speed(facts),
         _steadiness_fact(facts),
+        _reps_of_ftp(facts),
         _dynamics_bands(facts),
         _elevation(facts),
         _stops(facts),
@@ -1116,6 +1319,33 @@ def _steadiness_fact(facts: _Facts) -> dict[str, Any] | None:
         "value": {"gap_cv_pct": own, "peers": peers},
         "unit": "%",
         "basis": "personal",
+    }
+
+
+def _reps_of_ftp(facts: _Facts) -> dict[str, Any] | None:
+    """A ride's reps in % of the session day's FTP (NP / IF), a fact."""
+    factor = _session_if(facts)
+    power = facts.metric("normalized_power")
+    if (
+        facts.sport != "ride"
+        or facts.execution.get("output_unit") != "W"
+        or not factor
+        or not power
+    ):
+        return None
+    ftp = power / factor
+    reps = [
+        {"rep": rep.get("rep"), "pct_of_ftp": round(output / ftp * 100)}
+        for rep in facts.execution.get("reps") or ()
+        if isinstance(rep, Mapping) and (output := _number(rep.get("output")))
+    ]
+    if not reps:
+        return None
+    return {
+        "id": "reps_of_ftp",
+        "title": "Wiederholungen in % der FTP",
+        "value": {"reps": reps, "ftp_w": round(ftp)},
+        "unit": "%",
     }
 
 
