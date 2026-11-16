@@ -85,26 +85,32 @@ def arm(number: int, pr: dict[str, Any]) -> str:
     return f"already clean, merged {pr['headRefOid'][:10]} directly"
 
 
-def pushed_head(branch: str) -> str:
-    """The head this checkout last pushed to the PR branch, or "" if it has none."""
+def pushed_over(branch: str) -> tuple[str, set[str]]:
+    """This checkout's origin/<branch> head and the heads it held before (its
+    reflog), or ("", set()) without one."""
     try:
-        return git(
-            "rev-parse", "--verify", "--quiet", f"refs/remotes/origin/{branch}"
-        ).strip()
+        log = git(
+            "reflog", "show", "--format=%H", f"refs/remotes/origin/{branch}", "--"
+        )
     except CliError:
-        return ""
+        return "", set()
+    heads = log.split()
+    return (heads[0], set(heads[1:])) if heads else ("", set())
 
 
 def seen_push(number: int, pr: dict[str, Any]) -> dict[str, Any] | None:
     """The PR once GitHub reports the head this checkout pushed, so the develop
     check and the pinned arming use it, not the head before a force-push (#3174);
-    None, with the reason, when GitHub does not catch up."""
-    pushed = pushed_head(pr.get("headRefName") or "")
-    for _ in range(HEAD_POLLS):
-        if not pushed or pr.get("headRefOid") == pushed:
+    None, with the reason, when GitHub does not catch up. It waits only while
+    GitHub reports a head this checkout's ref held before: a head it never saw
+    (someone else's push, an old fetch) is checked as it is."""
+    pushed, before = pushed_over(pr.get("headRefName") or "")
+    for attempt in range(HEAD_POLLS + 1):
+        if pr.get("headRefOid") == pushed or pr.get("headRefOid") not in before:
             return pr
-        time.sleep(HEAD_POLL_SECONDS)
-        pr = view(number)
+        if attempt < HEAD_POLLS:
+            time.sleep(HEAD_POLL_SECONDS)
+            pr = view(number)
     print(
         f"refused: GitHub still reports head {str(pr.get('headRefOid'))[:10]}, not the "
         f"pushed {pushed[:10]}; run again in a minute, or fetch if someone else pushed"

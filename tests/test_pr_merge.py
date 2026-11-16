@@ -55,10 +55,10 @@ def next_count(threads):
 
 def run(
     case, *args, auto_error="", views=None, behind=0, moved=(), threads=0, more=False,
-    pushed="",
+    pushed=("", set()),
 ):  # fmt: skip
     """Run main against a stub that answers `pr view` from `views` in order; this
-    checkout last pushed `pushed` ("" for none)."""
+    checkout's origin/<branch> is `pushed`: its head and the heads it held before."""
     calls, views = [], list(views or [view()])
 
     def fake(argv, **_kwargs):
@@ -85,7 +85,7 @@ def run(
     with (
         mock.patch.object(gh_cli.subprocess, "run", fake),
         mock.patch.object(pr_merge.time, "sleep") as sleep,
-        mock.patch.object(pr_merge, "pushed_head", return_value=pushed),
+        mock.patch.object(pr_merge, "pushed_over", return_value=pushed),
         redirect_stdout(out),
         redirect_stderr(err),
     ):
@@ -104,19 +104,27 @@ class PrMergeTests(unittest.TestCase):
     def test_a_just_pushed_head_is_awaited_before_the_develop_check(self):
         # #3174: right after a force-push GitHub still reported the old head, and
         # the develop check compared that one and asked for a rebase already done.
+        arms = [["pr", "merge", "7", "--auto", *PIN]]
+        pushed = ("feedc0de", {"0ld0ld"})  # this checkout pushed over 0ld0ld
         old = view(headRefName="fix/x", headRefOid="0ld0ld")
         code, out, writes, sleeps = run(
-            self, 7, views=[old, old, view()], pushed="feedc0de"
+            self, 7, views=[old, old, view()], pushed=pushed
         )
-        self.assertEqual(
-            (code, writes, sleeps), (0, [["pr", "merge", "7", "--auto", *PIN]], 2)
-        )
+        self.assertEqual((code, writes, sleeps), (0, arms, 2))
+        # GitHub catches up on the last re-read: that read counts (Gitar P3).
+        late = [old] * pr_merge.HEAD_POLLS + [view()]
+        code, out, writes, sleeps = run(self, 7, views=late, pushed=pushed)
+        self.assertEqual((code, writes, sleeps), (0, arms, pr_merge.HEAD_POLLS))
         # GitHub never catches up: a refusal that names the heads, not a rebase.
-        stale = [view(headRefOid="0ld0ld")] * (pr_merge.HEAD_POLLS + 1)
-        code, out, writes, _ = run(self, 7, views=stale, pushed="feedc0de")
+        stale = [old] * (pr_merge.HEAD_POLLS + 1)
+        code, out, writes, _ = run(self, 7, views=stale, pushed=pushed)
         self.assertEqual((code, writes), (1, []))
         self.assertIn("GitHub still reports head 0ld0ld, not the pushed feedc0de", out)
         self.assertNotIn("rebase", out)
+        # A head this checkout never held (someone else's push, an old fetch) is
+        # checked as GitHub reports it, without waiting (Gitar P2).
+        code, out, writes, sleeps = run(self, 7, pushed=("0ther", {"0ld0ld"}))
+        self.assertEqual((code, writes, sleeps), (0, arms, 0))
 
     def test_clean_status_refusal_merges_the_same_head_directly(self):
         # #2776: GitHub refuses auto-merge for a PR whose checks already passed

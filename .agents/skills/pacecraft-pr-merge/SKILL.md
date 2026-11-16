@@ -20,8 +20,10 @@ python scripts/pr_merge.py <pr> [--wait <minutes>] [--allow-behind]
   ([resolve-thread](../pacecraft-resolve-thread/SKILL.md)), then rerun.
 - Right after a push it first waits up to 30 s until GitHub reports the head
   this checkout pushed (`origin/<branch>`), so a force-push is not checked as
-  the old head; if GitHub does not catch up it refuses (exit 1) naming both
-  heads: run it again a minute later (#3174).
+  the old head; it waits only while GitHub reports a head that ref held before
+  (its reflog), and checks a head it never saw at once. If GitHub does not
+  catch up it refuses (exit 1) naming both heads: run it again a minute later
+  (#3174).
 - Before arming it asks GitHub which files develop changed since the head
   branched off and refuses (exit 1, naming them) when this PR changes any of
   them, disarming an earlier auto-merge (#2901: "up to date before merge" is off
