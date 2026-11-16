@@ -70,6 +70,10 @@ SESSION_SERIES_KINDS: Final = frozenset(
 _ATHLETE_SERIES_KINDS: Final = frozenset(
     {MetricKind.WEIGHT, MetricKind.EFTP, MetricKind.BODY_FAT}
 )
+# Metrics whose athlete-entered rows (no provider) the current-row read returns
+# beside the providers' rows: the hand-entered weight (#3252). Other entered
+# metrics (the skinfolds) keep their own service; nothing else changes.
+ENTERED_METRICS: Final = frozenset({MetricKind.WEIGHT.value})
 # Kinds whose athlete value collides with a wellness value only without a sport:
 # the athlete's sport VO2max keeps the daily key it had before mapper version 9.
 _ATHLETE_SPORTLESS_SERIES_KINDS: Final = frozenset({MetricKind.VO2MAX})
@@ -756,7 +760,8 @@ def current_observation_rows(
     """Return active observation rows of one metric at each provider's current mapper version.
 
     ``versions`` maps a provider value to its current observation mapper version;
-    rows of any other version, or of no provider, are not returned. Bounds are
+    rows of any other version, or of no provider, are not returned, except the
+    athlete-entered rows of ``ENTERED_METRICS`` (#3252). Bounds are
     inclusive ISO dates on ``observed_on``. A natural key has one row, which a
     re-projection rewrites in place, so ``oldest_versions`` also returns the rows
     that still carry a version from that provider's oldest version up to the
@@ -766,6 +771,9 @@ def current_observation_rows(
     """
     version_clause, version_params = _current_version_clause(versions, oldest_versions)
     params: list[object] = [metric, *version_params]
+    if metric in ENTERED_METRICS:
+        version_clause = f"({version_clause} OR (provider IS NULL AND source_kind = ?))"
+        params.append(SourceKind.ATHLETE_ENTERED.value)
     clauses = ["metric = ?", version_clause, _ACTIVE_OBSERVATION]
     if start is not None:
         clauses.append("observed_on >= ?")

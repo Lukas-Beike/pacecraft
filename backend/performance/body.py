@@ -21,7 +21,8 @@ from backend.performance.source_policy import (
 from backend.providers.source_labels import SourceView, provider_label
 
 GARMIN_SOURCE = provider_label(ProviderId.GARMIN, SourceView.BODY_HISTORY)
-_MEASUREMENT_SOURCES = {ProviderId.GARMIN: GARMIN_SOURCE}
+# None: the weights the athlete entered by hand (#3252).
+_MEASUREMENT_SOURCES = {ProviderId.GARMIN: GARMIN_SOURCE, None: "Lokal"}
 
 
 def _number(value: Any) -> float | None:
@@ -93,7 +94,7 @@ def _weekly(
 
 
 def _series(
-    provider: ProviderId,
+    provider: ProviderId | None,
     unit: str,
     records: dict[date, tuple[float, str, Any]],
     start: date,
@@ -107,7 +108,7 @@ def _series(
     ]
     return {
         "source": _MEASUREMENT_SOURCES[provider],
-        "source_provider": provider.value,
+        "source_provider": None if provider is None else provider.value,
         "unit": unit,
         "points": points,
         "weekly": _weekly(points, start, end),
@@ -207,7 +208,8 @@ def body_history(
 
     Garmin weight, body fat and FTP come solely from canonical observations. The
     W/kg series divides Garmin's dated FTP only. The Garmin sync status supplies
-    only sync times.
+    only sync times. The athlete's own weigh-ins form a "Lokal" weight series
+    (no provider) when there are any (#3252).
     """
     garmin_synced_at = _sync_timestamp(garmin, "weight")
     garmin_values = {
@@ -215,6 +217,7 @@ def body_history(
         "body_fat_pct": _stamped(canonical.garmin_body_fat_pct, garmin_synced_at),
     }
     weights = {ProviderId.GARMIN: garmin_values["weight_kg"]}
+    entered = _stamped(canonical.entered_weight_kg, None)
     ftp = _garmin_ftp(garmin, today, garmin_ftp)
     windows: dict[str, Any] = {}
     for key, days in (("14d", 14), ("12w", 84)):
@@ -227,7 +230,8 @@ def body_history(
                 "weight_kg": [
                     _series(provider, "kg", values, start, today)
                     for provider, values in weights.items()
-                ],
+                ]
+                + ([_series(None, "kg", entered, start, today)] if entered else []),
                 "body_fat_pct": [
                     _series(
                         ProviderId.GARMIN,

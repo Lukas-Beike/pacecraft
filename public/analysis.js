@@ -1304,6 +1304,11 @@ function renderProviderMetrics(metrics, root, start, end, missing) {
 
 let bodyHistoryPeriod = "twelveWeeks";
 
+// The athlete's own weigh-ins (no provider, "Lokal") show beside the preferred source (#3252).
+function bodySourceShown(item, preferredProvider) {
+  return isPreferredSource(item, preferredProvider) || item?.source_provider === null;
+}
+
 function bodyWeeklyPoints(points, start, end) {
   return analysisWeeklyPoints(points, start, end, (readings) => {
     const latest = readings.at(-1);
@@ -1319,10 +1324,10 @@ function bodySeriesPoints(item, window, period = bodyHistoryPeriod) {
 
 function bodyMetricChart(metric, title, unit, window, period, preferred = {}) {
   const power = metric === "cycling_w_per_kg";
-  const entries = (window.metrics?.[metric] || []).filter((item) => power || isPreferredSource(item, preferred[metric]));
+  const entries = (window.metrics?.[metric] || []).filter((item) => power || bodySourceShown(item, preferred[metric]));
   const series = entries.map((item, index) => ({
-    label: power ? [item.power_method, item.source].filter(Boolean).join(" \u00b7 ") : title,
-    legendLabel: power ? item.source : title,
+    label: power ? [item.power_method, item.source].filter(Boolean).join(" \u00b7 ") : [title, entries.length > 1 && item.source].filter(Boolean).join(" \u00b7 "),
+    legendLabel: power || entries.length > 1 ? item.source : title,
     source: power ? item.source : "",
     unit,
     color: index,
@@ -1368,15 +1373,20 @@ function bodyOverviewDisplayValue(profileFat, latest, unit) {
 
 function renderBodyOverviewRow(metric, title, unit, body, preferred) {
   const readings = Object.values(body?.windows || {}).flatMap((window) => (window.metrics?.[metric] || [])
-    .filter((item) => isPreferredSource(item, preferred[metric]))
-    .flatMap((item) => (item.points || []).filter((point) => point.date >= window.start && point.date <= window.end && analysisValidPoint(point))));
-  readings.sort((a, b) => (a.observed_at || a.date).localeCompare(b.observed_at || b.date));
-  const latest = readings.at(-1);
+    .filter((item) => bodySourceShown(item, preferred[metric]))
+    .flatMap((item) => (item.points || []).filter((point) => point.date >= window.start && point.date <= window.end && analysisValidPoint(point))
+      .map((point) => ({ ...point, local: item.source_provider === null }))));
+  readings.sort((a, b) => (a.observed_at || a.date).localeCompare(b.observed_at || b.date) || Number(b.local) - Number(a.local));
+  // As in the current weight: within a day of the newest reading, a measurement wins over
+  // the athlete's own entry (RECENCY_TIE_DAYS).
+  const newest = readings.at(-1);
+  const tieFrom = newest && new Date(Date.parse(newest.date) - 86400000).toISOString().slice(0, 10);
+  const latest = newest?.local ? readings.findLast((item) => !item.local && item.date >= tieFrom) || newest : newest;
   const profileFat = metric === "body_fat_pct" ? bodyProfileFat(state.data?.profile) : null;
   let note = latest && dateLabel(latest.observed_at || latest.date);
   if (profileFat != null) note = "Profil";
   const row = h("tr", { dataset: { metric } }, h("th", { scope: "row" }, title, note && h("small", null, note)), h("td", null, bodyOverviewDisplayValue(profileFat, latest, unit)),
-    h("td", null, metric === "body_fat_pct" ? skinfoldEditButton() : null));
+    h("td", null, metric === "body_fat_pct" ? skinfoldEditButton() : weightEditButton()));
   // Body fat stays derived from the folds: tapping its row opens the skinfold dialog (#3252).
   if (metric === "body_fat_pct") row.addEventListener("click", (event) => { if (!event.target.closest("button")) openSkinfoldDialog(); });
   return row;
@@ -1481,6 +1491,72 @@ function bindSkinfoldDialog() {
     await sendSkinfolds("/api/body/skinfolds/remove", { date: day, confirmed: true }, remove);
   });
   document.querySelector("#skinfoldDialogCancel").addEventListener("click", () => document.querySelector("#skinfoldDialog").close());
+}
+
+// The athlete's own weigh-ins (#3252): the dialog lists them to fill a day that has one.
+let weightRead = null;
+
+function fillWeightDialog() {
+  const form = document.querySelector("#weightDialogForm");
+  const entry = weightRead?.entries.find((item) => item.date === form.elements.date.value);
+  form.elements.kg.value = entry ? String(entry.kg) : "";
+  document.querySelector("#weightDialogRemove").hidden = !entry;
+}
+
+async function openWeightDialog() {
+  bindWeightDialog();
+  const form = document.querySelector("#weightDialogForm");
+  form.elements.date.value = timezoneDateKey(state.data?.profile?.timezone, new Date());
+  document.querySelector("#weightDialogStatus").textContent = "";
+  for (const button of form.querySelectorAll("button")) button.disabled = false;
+  document.querySelector("#weightDialog").showModal();
+  try { weightRead = await api("/api/body/weight"); } catch { weightRead = { entries: [] }; }
+  fillWeightDialog();
+}
+
+// A saved or removed weigh-in reaches the body values and the energy table on the next read.
+async function sendWeight(path, payload, button) {
+  const status = document.querySelector("#weightDialogStatus");
+  button.disabled = true;
+  try {
+    weightRead = await api(path, { method: "PUT", body: JSON.stringify(payload) });
+    resetEnergy();
+    document.querySelector("#weightDialog").close();
+    const result = await api("/api/performance");
+    state.data.performance = result.performance || result;
+    renderBodyAnalysis(state.data.performance?.history?.body);
+    return true;
+  } catch (error) {
+    status.textContent = error.message;
+    button.disabled = false;
+    return false;
+  }
+}
+
+let weightDialogBound = false;
+
+function bindWeightDialog() {
+  const form = document.querySelector("#weightDialogForm");
+  if (weightDialogBound || !form) return;
+  weightDialogBound = true;
+  form.elements.date.addEventListener("change", fillWeightDialog);
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    if (await sendWeight("/api/body/weight", { date: form.elements.date.value, kg: form.elements.kg.value }, document.querySelector("#weightDialogSave"))) toast("Gewicht gespeichert.");
+  });
+  const remove = document.querySelector("#weightDialogRemove");
+  remove.addEventListener("click", async () => {
+    const day = form.elements.date.value;
+    if (!await requestConfirmation(`Gewicht vom ${dateLabel(day)} löschen?`, { title: "Gewicht löschen?", confirmLabel: "Löschen" })) return;
+    await sendWeight("/api/body/weight/remove", { date: day, confirmed: true }, remove);
+  });
+  document.querySelector("#weightDialogCancel").addEventListener("click", () => document.querySelector("#weightDialog").close());
+}
+
+function weightEditButton() {
+  const button = messageActionButton("edit", "Gewicht eintragen");
+  button.addEventListener("click", () => void openWeightDialog());
+  return button;
 }
 
 function skinfoldEditButton() {

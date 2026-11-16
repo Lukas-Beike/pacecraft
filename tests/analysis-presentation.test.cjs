@@ -191,27 +191,48 @@ test("a filled analysis chart is kept and is not listed as missing", () => {
 test("body overview uses profile body fat without creating a dated measurement", () => {
   const root = Object.assign(new FakeElement("div"), { querySelectorAll: () => [] });
   const state = { data: { profile: { body_fat_pct: "18.5" } } };
-  const { bodyProfileFat, renderBodyAnalysis } = extractFunctions("analysis.js", ["bodyProfileFat", "bodyOverviewDisplayValue", "renderBodyOverviewRow", "renderBodyAnalysis"], {
+  const { bodyProfileFat, renderBodyAnalysis } = extractFunctions("analysis.js", ["bodySourceShown", "bodyProfileFat", "bodyOverviewDisplayValue", "renderBodyOverviewRow", "renderBodyAnalysis"], {
     state, document: { ...fakeDocument(), getElementById: () => root },
     isPreferredSource: () => true, analysisValidPoint: (p) => p.value != null,
     dateLabel: (v) => v, analysisValue: (v, unit) => `${v} ${unit}`,
     analysisPeriodControls: () => new FakeElement("nav"), bodyHistoryPeriod: "twelveWeeks",
     skinfoldCard: () => new FakeElement("section"), energyBodyCards: () => [],
     skinfoldEditButton: () => new FakeElement("button"), openSkinfoldDialog: () => {},
+    weightEditButton: () => new FakeElement("button"),
   });
   const body = { windows: {} };
   renderBodyAnalysis(body);
   const rows = root.children[0].children[0].children[1].children;
   assert.equal(textOf(rows[1].children[0].children[1]), "Profil");
   assert.equal(textOf(rows[1].children[1]), "18.5 %");
-  // #3252: body fat stays derived; its row carries the skinfold edit button, weight none yet.
+  // #3252: body fat stays derived (skinfold button); weight is entered with its own pencil.
   assert.equal(rows[1].children[2].children[0].tagName, "BUTTON");
-  assert.equal(rows[0].children[2].children.length, 0);
+  assert.equal(rows[0].children[2].children[0].tagName, "BUTTON");
   assert.equal(bodyProfileFat({ body_fat_pct: "" }), null);
   assert.equal(bodyProfileFat({ body_fat_pct: "18,5" }), 18.5);
   assert.equal(bodyProfileFat({ body_fat_pct: 71 }), null);
 });
 
+
+test("an entered weight shows beside the preferred source; a measurement wins within a day", () => {
+  const { renderBodyOverviewRow } = extractFunctions("analysis.js", ["bodySourceShown", "bodyProfileFat", "bodyOverviewDisplayValue", "renderBodyOverviewRow"], {
+    state: { data: { profile: {} } }, document: fakeDocument(),
+    isPreferredSource: (item, preferred) => item.source_provider === preferred,
+    analysisValidPoint: (p) => p.value != null, dateLabel: (v) => v, analysisValue: (v, unit) => `${v} ${unit}`,
+    skinfoldEditButton: () => new FakeElement("button"), openSkinfoldDialog: () => {},
+    weightEditButton: () => new FakeElement("button"),
+  });
+  const series = (provider, points) => ({ source_provider: provider, points: points.map(([date, value]) => ({ date, value, observed_at: date })) });
+  const body = (local) => ({ windows: { "14d": { start: "2026-11-01", end: "2026-11-14", metrics: { weight_kg: [
+    series("garmin", [["2026-11-12", 71.2]]), series("wahoo", [["2026-11-14", 90]]), series(null, local),
+  ] } } } });
+  const shown = (local) => textOf(renderBodyOverviewRow("weight_kg", "Gewicht", "kg", body(local), { weight_kg: "garmin" }).children[1]);
+  // Wahoo is not the preferred source; a local entry two days newer is the latest weight.
+  assert.equal(shown([["2026-11-14", 72.5]]), "72.5 kg");
+  // Within a day of it, or on the same day, the scale's measurement stands.
+  assert.equal(shown([["2026-11-13", 72.5]]), "71.2 kg");
+  assert.equal(shown([["2026-11-12", 72.5]]), "71.2 kg");
+});
 
 test("the energy table shows bands, the badge only with a fit, and the fit basis", () => {
   const charts = [];
@@ -358,7 +379,7 @@ test("a failed skinfold read re-renders the card instead of loading forever", as
 test("body overview falls back to Garmin when the profile fat is absent", () => {
   const root = Object.assign(new FakeElement("div"), { querySelectorAll: () => [] });
   const state = { data: { profile: { body_fat_pct: "" } } };
-  const { renderBodyAnalysis } = extractFunctions("analysis.js", ["bodyProfileFat", "bodyOverviewDisplayValue", "renderBodyOverviewRow", "renderBodyAnalysis"], {
+  const { renderBodyAnalysis } = extractFunctions("analysis.js", ["bodySourceShown", "bodyProfileFat", "bodyOverviewDisplayValue", "renderBodyOverviewRow", "renderBodyAnalysis"], {
     state, document: { ...fakeDocument(), getElementById: () => root },
     isPreferredSource: (item, preferred) => item.source_provider === preferred,
     analysisValidPoint: (point) => point.value != null, dateLabel: (v) => v,
@@ -366,6 +387,7 @@ test("body overview falls back to Garmin when the profile fat is absent", () => 
     bodyHistoryPeriod: "twelveWeeks", bodyMetricChart: () => null,
     skinfoldCard: () => new FakeElement("section"), energyBodyCards: () => [],
     skinfoldEditButton: () => new FakeElement("button"), openSkinfoldDialog: () => {},
+    weightEditButton: () => new FakeElement("button"),
   });
   const point = { date: "2026-10-10", value: 16 };
   const body = { preferred_providers: { body_fat_pct: "garmin" }, windows: { "12w": { start: "2026-10-01", end: "2026-10-15", metrics: { body_fat_pct: [{ source_provider: "garmin", points: [point] }] } } } };

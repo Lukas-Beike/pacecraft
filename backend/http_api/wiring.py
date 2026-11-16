@@ -476,6 +476,7 @@ def _read_routes(
                 ctx.performance.curve_records
             ),
             skinfold_service=athlete.skinfolds,
+            weight_service=athlete.weight_entries,
             energy_view=ctx.nutrition.energy_view,
             race_plan=partial(
                 read_race_plan,
@@ -518,6 +519,7 @@ def _athlete_write_routes(
                 athlete.profile()
             ).export(profile, revision, deadline),
             skinfold_service=athlete.skinfolds,
+            weight_service=athlete.weight_entries,
         ),
         AuthPostRoutes(session_auth_service, ctx.maintenance),
         FeedbackPostRoutes(

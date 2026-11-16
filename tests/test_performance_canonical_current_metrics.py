@@ -19,9 +19,19 @@ from canonical_consumer_cases import CASES, RETRIEVED_AT, TODAY, Case, _observat
 from canonical_read_support import CanonicalReadFixture, make_selector, populate
 from performance_day_support import snapshot_metrics
 
-from backend.canonical.records import Observation
-from backend.canonical.vocabulary import MetricKind, ProviderId, Sport
-from backend.coach.context import CoachPerformanceContextReader
+from backend.athlete.skinfolds import local_provenance
+from backend.canonical.records import MetricValue, Observation, Provenance
+from backend.canonical.vocabulary import (
+    MetricKind,
+    ProviderId,
+    RecordingOrigin,
+    SourceKind,
+    Sport,
+)
+from backend.coach.context import (
+    CoachPerformanceContextReader,
+    coach_performance_projection,
+)
 from backend.performance.canonical_current import (
     NO_CURRENT_INPUTS,
     CanonicalCurrentInputs,
@@ -33,6 +43,7 @@ from backend.performance.canonical_inputs import (
     read_performance_inputs,
 )
 from backend.performance.context import current_performance_context
+from backend.performance.current_metrics import _performance_body_metrics
 from backend.performance.freshness import GarminSyncStatus
 from backend.providers.wahoo_threshold_mapping import (
     map_wahoo_power_zones,
@@ -180,6 +191,7 @@ class IntervalsValuesAreNotCurrentTests(unittest.TestCase):
             {
                 "wahoo_ftp",
                 "wahoo_weight",
+                "entered_weights",
                 "zone_thresholds",
                 "threshold_candidates",
                 "configured_thresholds",
@@ -399,3 +411,87 @@ class WahooAgeLimitProductionReadTests(unittest.TestCase):
         inputs = context.read_inputs()
         assert inputs is not None
         self.assertEqual(inputs.current, NO_CURRENT_INPUTS)
+
+
+def _weight(value: float, day: date, provider: ProviderId | None) -> Observation:
+    provenance = (
+        local_provenance()
+        if provider is None
+        else Provenance(
+            provider=provider,
+            source_kind=SourceKind.DEVICE_MEASURED,
+            source_record_id=day.isoformat(),
+            recorded_by=RecordingOrigin.GARMIN,
+            retrieved_at=None,
+            label=None,
+        )
+    )
+    return Observation(
+        kind=MetricKind.WEIGHT,
+        value=MetricValue(value=value, unit="kg"),
+        observed_on=day,
+        observed_at=None,
+        provenance=provenance,
+    )
+
+
+class EnteredWeightTests(unittest.TestCase):
+    """The athlete's own weigh-in (#3252) under the existing recency rule."""
+
+    def current(self, *observations: Observation) -> dict[str, Any]:
+        inputs = read_current_inputs(ObservationStub(observations), None, as_of=AS_OF)
+        garmin = tuple(
+            item for item in observations if item.provenance.provider is not None
+        )
+        return _performance_body_metrics(
+            {"weight_kg": 70.0}, {}, inputs, garmin, AS_OF
+        )["weight_kg"]
+
+    def test_a_newer_entered_weight_wins_and_is_labelled_lokal(self) -> None:
+        weight = self.current(
+            _weight(74.0, AS_OF - timedelta(days=10), ProviderId.GARMIN),
+            _weight(72.5, AS_OF - timedelta(days=1), None),
+        )
+        self.assertEqual(
+            (72.5, "Lokal", None),
+            (weight["value"], weight["source"], weight["source_provider"]),
+        )
+        self.assertEqual(
+            ["Garmin Connect"], [item["source"] for item in weight["alternatives"]]
+        )
+
+    def test_a_scale_reading_of_the_same_day_wins_over_the_entry(self) -> None:
+        weight = self.current(
+            _weight(74.0, AS_OF, ProviderId.GARMIN),
+            _weight(72.5, AS_OF, None),
+        )
+        self.assertEqual(74.0, weight["value"])
+        self.assertEqual(
+            [(72.5, "Lokal", None)],
+            [
+                (item["value"], item["source"], item["source_provider"])
+                for item in weight["alternatives"]
+            ],
+        )
+
+    def test_an_entry_after_as_of_is_not_read(self) -> None:
+        weight = self.current(_weight(72.5, AS_OF + timedelta(days=1), None))
+        # Only the undated profile value is left.
+        self.assertEqual((70.0, "Manuell"), (weight["value"], weight["source"]))
+
+    def test_the_coach_reads_the_entered_weight_as_lokal(self) -> None:
+        current = read_current_inputs(
+            ObservationStub((_weight(72.5, AS_OF - timedelta(days=1), None),)),
+            None,
+            as_of=AS_OF,
+        )
+        performance = coach_performance_projection(
+            current_performance_context(
+                GarminSyncStatus.from_state(None),
+                {"weight_kg": 70.0},
+                AS_OF,
+                canonical=replace(EMPTY_PERFORMANCE_INPUTS, current=current),
+            )
+        )
+        weight = performance["metrics"]["weight_kg"]
+        self.assertEqual((72.5, "Lokal"), (weight["value"], weight["source"]))

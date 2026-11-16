@@ -64,7 +64,8 @@ class SkinfoldMeasurement:
     age_outside_fit: bool = False
 
 
-def _provenance() -> Provenance:
+def local_provenance() -> Provenance:
+    """An athlete-entered value without a provider, labelled "Lokal" (#3099, #3252)."""
     return Provenance(
         provider=None,
         source_kind=SourceKind.ATHLETE_ENTERED,
@@ -212,7 +213,7 @@ class SkinfoldService:
                     value=MetricValue(millimetres, "mm"),
                     observed_on=day,
                     observed_at=None,
-                    provenance=_provenance(),
+                    provenance=local_provenance(),
                 )
                 canonical_store.upsert_observation(
                     db, observation, mapper_version=MAPPER_VERSION, now=self._now()

@@ -11,13 +11,14 @@ from backend.backup.restore_validation import (
     DatabaseRestoreValidationConfig,
     DatabaseRestoreValidationService,
 )
-from backend.db import migrations, row_factory
+from backend.db import canonical_store, migrations, row_factory
 from backend.db.bootstrap import apply_startup_invariants
 from backend.db.migrations import migrate_schema
 from backend.db.repositories import KeyValueRepository, PlanningStateRepository
 from backend.db.schema import CURRENT_SCHEMA_VERSION, database_schema_is_current
 from backend.errors import AppError
 from backend.planning.revision import PlanningRevisionService
+from backend.providers.canonical_plans import current_observation_mapper_versions
 from backend.sync.state import settle_interrupted_sync_state
 
 # Schema v26, release 2.0.5: the schema production runs and the only baseline.
@@ -187,6 +188,14 @@ class DatabaseRestoreValidationTests(unittest.TestCase):
                     "('log', '2026-10-16', '2026-10-16T10:00:00', 'snack', 'Gel', "
                     "100, 25, 'now', 'now')"
                 )
+                # A weight the athlete entered by hand: no provider (#3252).
+                connection.execute(
+                    "INSERT INTO observations(natural_key, metric, value, unit, "
+                    "source_kind, recorded_by, provider, observed_on, label, "
+                    "mapper_version, created_at, updated_at) VALUES ('entered', "
+                    "'weight', 72.5, 'kg', 'athlete_entered', 'manual', NULL, "
+                    "'2026-10-15', 'Lokal', 1, 'now', 'now')"
+                )
                 if version == 31:
                     for step in (
                         migrations._canonical_products,
@@ -245,6 +254,16 @@ class DatabaseRestoreValidationTests(unittest.TestCase):
                         )
                     ],
                     [("log", "snack", 100, 25.0, None, None)],
+                )
+                served = canonical_store.current_observation_rows(
+                    connection, "weight", current_observation_mapper_versions()
+                )
+                self.assertEqual(
+                    [("2026-10-15", 72.5, None)],
+                    [
+                        (row["observed_on"], row["value"], row["provider"])
+                        for row in served
+                    ],
                 )
 
     def test_validate_applies_startup_invariants_to_the_restored_database(self) -> None:
