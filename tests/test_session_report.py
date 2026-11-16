@@ -1180,6 +1180,61 @@ class RideBlockTests(unittest.TestCase):
         ]
         self.assertEqual(fading, [])
 
+    def test_a_ride_without_power_is_judged_on_heart_rate_only(self) -> None:
+        # #3293 (athlete): labelled work laps of at least 3 min and equal length;
+        # closing heart rate of the last against the first, notable above 5 %.
+        found = checks(session_report(_no_power_ride()))
+        rise = found["heart_rate_rise"]
+        self.assertEqual(("notable", 6.7), (rise["verdict"], rise["value"]["rise_pct"]))
+        self.assertEqual("Puls-Anstieg über die Wiederholungen", rise["title"])
+        self.assertIn("offen", rise["rule"])
+        for key in ("rep_fade", "within_rep_fade", "start_change", "cardiac_drift"):
+            self.assertEqual("unknown", found[key]["verdict"], key)
+            self.assertEqual("Leistung fehlt.", found[key]["reason"], key)
+
+    def test_a_ride_without_power_has_its_recovery_heart_rate_judged(self) -> None:
+        # Gitar on #3300: the recovery drop is read without output-bearing reps,
+        # so a 65 s+ rest of a ride without power reaches the peer comparison.
+        base = _no_power_ride()
+        base["analysis"]["execution"]["recoveries"] = [
+            {"after_rep": 1, "duration_s": 120, "heart_rate_drop_60s": 30},
+            {"after_rep": 2, "duration_s": 120, "heart_rate_drop_60s": 26},
+        ]
+        drop = checks(session_report(base))["recovery_heart_rate_drop"]
+        self.assertNotIn("65 s", drop.get("reason", ""))
+        self.assertEqual({"mean_drop_bpm": 28.0}, drop["value"])
+
+    def test_short_or_unequal_laps_and_unlabelled_rides_are_not_judged(self) -> None:
+        def rise(reps=None, structure="interval"):
+            base = _no_power_ride()
+            execution = base["analysis"]["execution"]
+            execution["structure"] = structure
+            if reps is not None:
+                execution["reps"] = reps
+            return checks(session_report(base))["heart_rate_rise"]
+
+        # 179 s is under the 3-min minimum; 180 s counts (boundary).
+        short = rise(
+            [{"rep": n, "duration_s": 179, "heart_rate_end": 150 + n} for n in (1, 2)]
+        )
+        self.assertEqual("unknown", short["verdict"])
+        self.assertIn("unter 3 min", short["reason"])
+        exact = rise(
+            [{"rep": n, "duration_s": 180, "heart_rate_end": 150} for n in (1, 2)]
+        )
+        self.assertEqual("ok", exact["verdict"])
+        # 240 against 270 s differs by 12.5 %, beyond 10 %.
+        unequal = rise(
+            [
+                {"rep": 1, "duration_s": 240, "heart_rate_end": 150},
+                {"rep": 2, "duration_s": 270, "heart_rate_end": 160},
+            ]
+        )
+        self.assertEqual("unknown", unequal["verdict"])
+        unlabelled = rise(structure="continuous")
+        self.assertEqual("unknown", unlabelled["verdict"])
+        self.assertIn("nicht aus der Geschwindigkeit", unlabelled["reason"])
+
     def test_a_jittery_erg_ride_is_judged_ok_on_power(self) -> None:
         # #3288 (athlete decision C): not erg_like at 3 % jitter, so the reps are
         # judged, on power: 346 against 351 W is -1.4 %, ok, no fade.
@@ -1445,6 +1500,25 @@ def _erg_ride() -> dict[str, Any]:
     )
 
 
+def _no_power_ride() -> dict[str, Any]:
+    # #3293: closing heart rate 150 to 160 bpm over 4-min laps, +6.7 %.
+    reps = [
+        {"rep": n, "duration_s": 240, "heart_rate_end": hr}
+        for n, hr in ((1, 150), (2, 155), (3, 160))
+    ]
+    return result(
+        sport="ride",
+        focus="threshold",
+        execution={
+            "output_unit": None,
+            "output_reason": "Leistung fehlt.",
+            "structure": "interval",
+            "reps": reps,
+            "data_quality": dict(_OK),
+        },
+    )
+
+
 def _outdoor_ride() -> dict[str, Any]:
     reps = [
         {
@@ -1489,6 +1563,7 @@ BASES: dict[str, tuple[Any, dict[str, Any]]] = {
     "race": (_race, {"race": _RACE_PLAN}),
     "erg_ride": (_erg_ride, {}),
     "outdoor_ride": (_outdoor_ride, {}),
+    "no_power_ride": (_no_power_ride, {}),
 }
 
 

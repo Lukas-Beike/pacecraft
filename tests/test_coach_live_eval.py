@@ -191,6 +191,20 @@ class ScorerTests(unittest.TestCase):
                 "Die Wiederholungen wurden nicht schwächer; die Geschwindigkeit ist virtuell.",
             ):
                 self.assertEqual([], misses(found, fine), fine)
+        # #3293: a ride without power's heart-rate rise is no fade; a "Puls-Anstieg"
+        # may be named, never turned into weaker reps.
+        rise = {
+            "session_report": {
+                "notable": ["heart_rate_rise"],
+                "checks": [{"id": "heart_rate_rise", "verdict": "notable"}],
+            }
+        }
+        self.assertEqual(
+            ["fade_not_in_report"], misses(rise, "Die Wiederholungen wurden schwächer.")
+        )
+        self.assertEqual(
+            [], misses(rise, "Dein Puls stieg über die Wiederholungen um 6,7 %.")
+        )
         # A notable fade check backs the claim; without a report the scorer is silent.
         self.assertEqual(
             [], misses(report("notable"), "Die Wiederholungen wurden schwächer.")
