@@ -221,40 +221,49 @@ const STEP_TOTAL_MS = 30000;
 const SETTLE_MS = 15000;
 // Runs in the page: no data load of the app runs (a page without the app is always settled).
 const settled = () => !globalThis.AppState || (!globalThis.AppState.state.loadPromise && !globalThis.AppState.state.loadingAreas?.size);
+// Runs in the page: a data load runs or the shown view marks itself as loading (2.1.26 cold start).
+const loading = () => Boolean(globalThis.AppState?.state.loadPromise || globalThis.AppState?.state.loadingAreas?.size)
+  || [...document.querySelectorAll(".panel.active :is(.loading-state, [aria-busy='true'], .skeleton)")].some((node) => node.checkVisibility());
+// While the view shows it is loading, an element is waited for up to this long instead of the step's cap.
+const LOADING_CAP_MS = 60000;
 const DONE = ".planned-entry.is-completed > summary";
 // Today's unit is marked is-today; on a Sunday it is the week's only upcoming one.
 const PLANNED = ".planned-entry:is(.is-planned, .is-today) > summary";
 const MONTH = '.planned-view-switch button[data-view="month"]';
 const BACK = 'button[aria-label="Vorherige Woche"]';
-// How many weeks a `seek` step pages back at most.
+const NEXT = 'button[aria-label="Nächste Woche"]';
+// How many weeks a `seek` step pages at most; `unseek` pages back as often afterwards.
 const SEEK_WEEKS = 6;
+// A step that needs a kind of unit looks for one that has its element, week by week, and returns.
+const EARLIER = { seek: BACK, unseek: NEXT };
+const LATER = { seek: NEXT, unseek: BACK };
 const tab = (area, segment) => `a[data-${area}-segment="${segment}"]`;
-const detail = (name, covers, ready, kind, extra) => ({ view: "plan", name, covers, each: DONE, opens: [DETAILS_OPEN], ready, kind, absent: NO_DETAILS, ...extra });
+const detail = (name, covers, ready, kind, extra) => ({ view: "plan", name, covers, each: DONE, ...EARLIER, opens: [DETAILS_OPEN], ready, kind, absent: NO_DETAILS, ...extra });
 export const STEPS = [
   { view: "coach", name: "Coach: Verlauf", covers: "Coach history", ready: "#messages [data-message-id]", kind: "text" },
-  { view: "plan", name: "Kalender: Schuh/Rad geplant", covers: "#3011 planned equipment chip", each: PLANNED, ready: '.planned-entry[open] .planned-equipment-chip[aria-label*=": "]', kind: "text", optional: true },
+  // A planned unit with equipment, with "Löschen" or with fuelling advice may lie in a later week (2.1.26).
+  { view: "plan", name: "Kalender: Schuh/Rad geplant", covers: "#3011 planned equipment chip", each: PLANNED, ...LATER, ready: '.planned-entry[open] .planned-equipment-chip[aria-label*=": "]', kind: "text", optional: true },
   { view: "plan", name: "Kalender: geplante Einheit", covers: "#2189 planned session", pre: ['button[aria-label="Nächste Woche"]'], each: PLANNED, ready: ".planned-entry[open] .planned-entry-details", kind: "text", optional: true, post: ['button[aria-label="Vorherige Woche"]'] },
   // Read-only: the walk checks that "Löschen" is there, it never presses it (#3027).
-  { view: "plan", name: "Kalender: Löschen", covers: "#3027 calendar delete", each: PLANNED, ready: ".planned-entry[open] .planned-activity-actions .danger-button", kind: "text", optional: true },
-  { view: "plan", name: "Kalender: Verpflegung", covers: "#2921 fuelling", each: PLANNED, ready: ".planned-entry[open] .planned-fuelling", kind: "numbers", optional: true },
+  { view: "plan", name: "Kalender: Löschen", covers: "#3027 calendar delete", each: PLANNED, ...LATER, ready: ".planned-entry[open] .planned-activity-actions .danger-button", kind: "text", optional: true },
+  { view: "plan", name: "Kalender: Verpflegung", covers: "#2921 fuelling", each: PLANNED, ...LATER, ready: ".planned-entry[open] .planned-fuelling", kind: "numbers", optional: true },
   // Choosing a past day narrows the month's range, so the planned day comes first.
   { view: "plan", name: "Monat: geplante Einheit", covers: "#2189 month", pre: [MONTH], each: ".planned-month-day:not([disabled]):has(.planned-month-mark.is-planned)", opens: [PLANNED], ready: ".planned-entry[open] .planned-entry-details", kind: "text", optional: true },
   { view: "plan", name: "Monat: absolvierte Einheit", covers: "#2189 month", pre: [MONTH], each: ".planned-month-day:not([disabled]):has(.planned-month-mark.is-completed)", opens: [DONE], ready: ".planned-entry[open] .planned-entry-details", kind: "text" },
   { view: "plan", name: "Kalender: Wochenansicht", covers: "#2189 week and month switch", pre: ['.planned-view-switch button[data-view="week"]'], ready: ".planned-week .planned-day", kind: "text" },
   // Read-only as well: the library card offers "Einplanen" and "Löschen"; the walk presses neither (#3028).
   { view: "plan", name: "Bibliothek: Einplanen, Löschen", covers: "#3028 library actions", pre: [tab("plan", "library")], opens: ["#library details.library-sport > summary"], ready: "#library .library-card .planned-activity-actions .danger-button", kind: "text", optional: true, post: [tab("plan", "overview")] },
-  // Completed units come last in the calendar: on a Monday the current week has none yet, so the first
-  // step pages back to the latest week that has one (`seek`); the paging stays, so the steps after it
-  // use that week, and the steps above keep the current week.
-  { view: "plan", name: "Kalender: Einheit öffnen", covers: "#2189 calendar agenda and detail", each: DONE, seek: BACK, ready: ".planned-entry[open] .planned-entry-details", kind: "text" },
+  // Completed units: on a Monday the current week has none yet, so each step looks back for a unit that
+  // has its element (`seek`) and returns to the current week (`unseek`).
+  { view: "plan", name: "Kalender: Einheit öffnen", covers: "#2189 calendar agenda and detail", each: DONE, ...EARLIER, ready: ".planned-entry[open] .planned-entry-details", kind: "text" },
   detail("Kalender: Details", "#2258 session details", ".planned-entry[open] .activity-analysis-stats", "numbers"),
   // The watch's temperature sensor reads body-warmed values, so no session charts it (#3036).
   detail("Kalender: Diagramm", "#2258 session charts", '.planned-entry[open] .activity-analysis-panel svg[role="img"]', "chart", { never: '.planned-entry[open] .activity-analysis-panel svg[aria-label^="Temperatur"]' }),
   detail("Kalender: Zonenbalken", "#2258 time in zones", ".planned-entry[open] .activity-analysis-zones", "numbers", { optional: true }),
   // The chip shows "…" until its read; once loaded its label names the choice ("Rad: …").
-  { view: "plan", name: "Kalender: Schuh/Rad", covers: "#3011 equipment chip", each: DONE, ready: '.planned-entry[open] .planned-equipment-chip[aria-label*=": "]', kind: "text", optional: true },
-  // Last: from that week it may page back further, to a week with a run.
-  detail("Kalender: Laufdynamik", "#2910 running dynamics", ".planned-entry[open] .activity-dynamics-value", "numbers", { optional: true, seek: BACK, each: ".planned-entry.is-completed[data-sport='Laufen'] > summary" }),
+  { view: "plan", name: "Kalender: Schuh/Rad", covers: "#3011 equipment chip", each: DONE, ...EARLIER, ready: '.planned-entry[open] .planned-equipment-chip[aria-label*=": "]', kind: "text", optional: true },
+  // A week with a run that shows running dynamics may lie further back.
+  detail("Kalender: Laufdynamik", "#2910 running dynamics", ".planned-entry[open] .activity-dynamics-value", "numbers", { optional: true, each: ".planned-entry.is-completed[data-sport='Laufen'] > summary" }),
   // The sport cards are tables: a measured value is a cell with a digit; a missing one is marked and has none.
   ...[["running", "Laufen", "#runningBestEfforts td:not(.value-missing)", "numbers"], ["cycling", "Radfahren", "#cyclingPowerProfile td:not(.value-missing)", "numbers"], ["load", "Belastung", "#analysisLoadCharts svg", "chart"], ["recovery", "Erholung", "#personalRecovery svg", "chart"]]
     .map(([segment, label, ready, kind]) => ({ view: "analysis", name: `Analyse: ${label}`, covers: "Analyse tabs", pre: [tab("analysis", segment)], ready, kind })),
@@ -302,15 +311,39 @@ async function press(page, selector, nth = 0) {
 }
 
 // Views render asynchronously: give the first candidate a moment to appear.
-// A step with `seek` presses that control (a week back) until its candidates show, at most SEEK_WEEKS times.
-async function candidateCount(page, each, seek) {
+async function candidateCount(page, each) {
   if (!each) return 1;
   const candidates = page.locator(each).filter({ visible: true });
-  for (let back = 0; ; back += 1) {
-    const shown = await candidates.first().waitFor({ timeout: 3000 }).then(() => true, () => false);
-    if (shown || !seek || back === SEEK_WEEKS) return Math.min(await candidates.count(), MAX_CANDIDATES);
-    await press(page, seek);
+  await candidates.first().waitFor({ timeout: 3000 }).catch(() => null);
+  return Math.min(await candidates.count(), MAX_CANDIDATES);
+}
+
+// The step's element, waited for while the view shows it is loading (up to LOADING_CAP_MS), else for `timeout`.
+async function waitReady(page, step, timeout) {
+  const deadline = Date.now() + LOADING_CAP_MS;
+  let waited = false;
+  for (;;) {
+    const outcome = await page.waitForFunction(probe, [step.ready, step.kind, step.absent || null, step.never || null], { timeout, polling: 50 }).then((handle) => handle.jsonValue()).catch(() => "empty");
+    if (outcome !== "empty" || Date.now() > deadline) return outcome;
+    const still = await page.evaluate(loading);
+    // After a load it waited out, the step looks once more: the element may come with the load's end.
+    if (!still && !waited) return outcome;
+    waited = still;
   }
+}
+
+// One week's candidates: { result } once one is ready or shows a `never` element, else the counts.
+async function tryWeek(page, step, capMs, began) {
+  const count = await candidateCount(page, step.each);
+  let empty = 0;
+  for (let index = 0; index < count && Date.now() - began < STEP_TOTAL_MS; index += 1) {
+    const started = Date.now();
+    const outcome = await tryCandidate(page, step, index, capMs);
+    const result = { ready: { status: "ok" }, shown: { status: "fail", why: `shows ${step.never}` } }[outcome];
+    if (result) return { result: { ...result, ms: Date.now() - started }, count, empty };
+    if (outcome === "empty") empty += 1;
+  }
+  return { count, empty };
 }
 
 // Opens candidate `index` with the other candidates closed, so the controls pressed and the element checked
@@ -327,26 +360,38 @@ async function tryCandidate(page, step, index, capMs) {
     if (error.name !== "TimeoutError" || !step.optional) throw error;
     return "passed over";
   }
-  const timeout = step.each ? Math.min(CANDIDATE_CAP_MS, capMs) : capMs;
-  return page.waitForFunction(probe, [step.ready, step.kind, step.absent || null, step.never || null], { timeout, polling: 50 }).then((handle) => handle.jsonValue()).catch(() => "empty");
+  return waitReady(page, step, step.each ? Math.min(CANDIDATE_CAP_MS, capMs) : capMs);
+}
+
+// Whether a `seek` step pages on after a week whose `count` candidates all lacked the element.
+async function maySeek(page, step, count, paged, began) {
+  if (!step.seek || paged === SEEK_WEEKS || Date.now() - began >= STEP_TOTAL_MS) return false;
+  // A required step pages only past weeks without a candidate: an empty element of a shown unit is a finding.
+  if (!step.optional && count) return false;
+  // The calendar pages only so far (four weeks ahead): a disabled control ends the search.
+  return page.locator(step.seek).filter({ visible: true }).first().isEnabled().catch(() => false);
 }
 
 // One step: { status: ok|fail|skip, ms (interaction to ready, of the candidate that passed), why }.
-export async function runStep(page, { pre = [], post = [], ...step }, capMs = STEP_CAP_MS) {
+export async function runStep(page, { pre = [], post = [], unseek, ...step }, capMs = STEP_CAP_MS) {
   // After a restart the app reloads its data as each start sync ends, and a reload re-renders the view:
   // a step starts once no load runs, so it checks the cards it opens, not ones a reload replaces (2.1.25).
   await page.waitForFunction(settled, null, { timeout: SETTLE_MS, polling: 100 }).catch(() => null);
   const began = Date.now();
+  let paged = 0;
   try {
     for (const selector of pre) await press(page, selector);
-    const count = await candidateCount(page, step.each, step.seek);
+    // A `seek` step tries the next week (at most SEEK_WEEKS) while no candidate has its element.
+    let count = 0;
     let empty = 0;
-    for (let index = 0; index < count && Date.now() - began < STEP_TOTAL_MS; index += 1) {
-      const started = Date.now();
-      const outcome = await tryCandidate(page, step, index, capMs);
-      const settled = { ready: { status: "ok" }, shown: { status: "fail", why: `shows ${step.never}` } }[outcome];
-      if (settled) return { ...settled, ms: Date.now() - started };
-      if (outcome === "empty") empty += 1;
+    for (;;) {
+      const week = await tryWeek(page, step, capMs, began);
+      if (week.result) return week.result;
+      count += week.count;
+      empty += week.empty;
+      if (!(await maySeek(page, step, week.count, paged, began))) break;
+      await press(page, step.seek);
+      paged += 1;
     }
     // Nothing loaded and nothing empty: the data this step needs does not exist (info, not a failure).
     if (!empty) return { status: "skip", ms: 0, why: count ? "no stored data" : NO_SESSION };
@@ -355,6 +400,7 @@ export async function runStep(page, { pre = [], post = [], ...step }, capMs = ST
     return { status: "fail", ms: Date.now() - began, why: error.name === "TimeoutError" ? "control missing" : error.message.split("\n")[0] };
   } finally {
     // Undo the step's navigation (such as paging to next week), so later steps start where they expect.
+    for (let back = 0; back < paged; back += 1) await press(page, unseek).catch(() => null);
     for (const selector of post) await press(page, selector).catch(() => null);
   }
 }
