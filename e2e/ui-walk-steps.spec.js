@@ -43,6 +43,16 @@ test("a step fails on an empty chart or panel and passes on a drawn one", async 
   expect(refused.why).toMatch(/opening control/);
 });
 
+test("a step waits until the app's data load ends before it checks the view", async ({ page }) => {
+  const { runStep } = await import(pathToFileURL(path.join(__dirname, "..", "scripts", "ui_walk.mjs")).href);
+  // 2.1.25: right after a restart a reload re-rendered the calendar while the first step checked it.
+  await page.setContent(`<section id="late" hidden><p class="v">7 km</p></section><script>
+    globalThis.AppState = { state: { loadPromise: Promise.resolve(), loadingAreas: new Set(["plan"]) } };
+    setTimeout(() => { document.querySelector("#late").hidden = false; AppState.state.loadingAreas.clear(); AppState.state.loadPromise = null; }, 1500);
+  </script>`);
+  expect((await runStep(page, { name: "x", covers: "test", ready: "#late .v", kind: "numbers" }, 300)).status).toBe("ok");
+});
+
 test("a seek step pages back to a week with a completed unit, a step without seek does not", async ({ page }) => {
   const { runStep } = await import(pathToFileURL(path.join(__dirname, "..", "scripts", "ui_walk.mjs")).href);
   // A Monday: the shown week has no completed unit; the week before has one.
