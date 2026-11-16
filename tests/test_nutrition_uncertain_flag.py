@@ -6,13 +6,16 @@ import json
 import sqlite3
 import unittest
 from datetime import UTC, datetime
+from unittest.mock import Mock
 
 from nutrition_service_support import build_nutrition_services
-from support import temp_database
+from support import dispatch_route, temp_database
 
 from backend.change_history import accepted_audit_hashes, audit_hash, audit_projection
 from backend.db.repositories import NutritionRepository
 from backend.errors import AppError
+from backend.http_api.nutrition import NutritionPostRoutes
+from backend.http_api.route_table import Access
 
 MEAL = {
     "meal_date": "2026-09-24",
@@ -31,7 +34,7 @@ class UncertainMealFlagTests(unittest.TestCase):
         self.manager = temp_database(
             self, "uncertain.db", row_factory=sqlite3.Row, schema=True
         )
-        self.service, _ = build_nutrition_services(
+        self.service, self.library = build_nutrition_services(
             self.manager,
             lambda: "2026-09-24T21:00:00+00:00",
             lambda: datetime(2026, 9, 24, 21, 0, tzinfo=UTC),
@@ -80,6 +83,34 @@ class UncertainMealFlagTests(unittest.TestCase):
         with self.assertRaises(AppError) as raised:
             self.service.log_meal({**MEAL, "estimate_uncertain": "ja"})
         self.assertEqual(raised.exception.status, 400)
+
+    def test_the_diary_route_sets_and_clears_the_flag_with_undo(self) -> None:
+        # The diary card's button (#3100 part 2): CSRF-protected, logged values kept.
+        entry = self.service.log_meal(MEAL)
+        routes = NutritionPostRoutes(lambda: self.service, lambda: self.library)
+        path = "/api/nutrition/entry/estimate"
+        route = next(r for r in routes.routes() if r.path == path)
+        self.assertEqual(Access.SESSION_CSRF, route.access)
+        handler = Mock()
+        handler.read_json.return_value = {"id": entry["id"], "estimate_uncertain": True}
+        dispatch_route(routes, handler, path, method="POST")
+        status, body = handler.send_json.call_args.args
+        self.assertEqual(
+            (200, True, 900),
+            (status, body["entry"]["estimate_uncertain"], body["entry"]["kcal"]),
+        )
+        self.assertIn("change", body)
+        handler.read_json.return_value = {
+            "id": entry["id"],
+            "estimate_uncertain": False,
+        }
+        dispatch_route(routes, handler, path, method="POST")
+        self.assertIs(
+            handler.send_json.call_args.args[1]["entry"]["estimate_uncertain"], False
+        )
+        handler.read_json.return_value = {"id": entry["id"], "estimate_uncertain": "ja"}
+        with self.assertRaises(AppError):
+            dispatch_route(routes, handler, path, method="POST")
 
     def test_history_rows_from_before_the_flag_still_match(self) -> None:
         entry = self.service.log_meal(MEAL)

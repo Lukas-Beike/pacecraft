@@ -35,6 +35,7 @@ from backend.nutrition.energy_balance import (
     EnergyWindow,
     Estimate,
     energy_windows,
+    flagged_meal_bias,
     history_start,
     weight_trend,
 )
@@ -301,11 +302,46 @@ def _neat_basis(inputs: EnergyInputs, window: EnergyWindow) -> dict[str, Any] | 
     }
 
 
+def _flagged_view(
+    windows: Sequence[EnergyWindow], bias: tuple[float, float] | None
+) -> dict[str, Any]:
+    """The meals flagged as estimated (#3100): the expenditure of the latest clean
+    window, the learned correction of the latest window and the bias.
+
+    Only a window without any flagged day gives the value without estimates
+    (#3187 item 14); without one there is no clean period. The correction and
+    the bias are per flagged entry (#3195) and exist only once b is estimated.
+    """
+    latest = windows[-1]
+    clean = next((w for w in reversed(windows) if w.adaptive_tdee_unflagged), None)
+    unflagged = None if clean is None else clean.adaptive_tdee_unflagged
+    corrected = latest.adaptive_tdee_corrected
+    return {
+        "days": latest.flagged_days,
+        "unflagged": None
+        if unflagged is None or clean is None
+        else {
+            "total_kcal": _round(unflagged.kcal),
+            "total_band_kcal": _round(unflagged.band_kcal),
+            "end": clean.end.isoformat(),
+        },
+        "corrected": None
+        if corrected is None
+        else {
+            "total_kcal": _round(corrected.kcal),
+            "total_band_kcal": _round(corrected.band_kcal),
+        },
+        "bias_pct": None if bias is None else _round(bias[0]),
+        "bias_band_pct": None if bias is None else _round(bias[1]),
+    }
+
+
 def energy_view(
     inputs: EnergyInputs,
     windows: Sequence[EnergyWindow],
     health: Mapping[str, Mapping[str, Any]],
     sessions: Sequence[Mapping[str, Any]] = (),
+    bias: tuple[float, float] | None = None,
 ) -> dict[str, Any]:
     """The table rows of the latest window, each source's fit, split and basis."""
     trend = weight_trend(
@@ -397,6 +433,7 @@ def energy_view(
         "rows": rows,
         "best": best,
         "fit": fit,
+        "flagged": _flagged_view(windows, bias),
         "basis": {
             "days": latest.days,
             "complete_days": latest.complete_days,
@@ -425,4 +462,4 @@ def read_energy_view(db: Any, sources: EnergySources, end: date) -> dict[str, An
     windows = energy_windows(inputs, end)
     # The split is shown for the latest window only, so only its sessions are read.
     latest = sources.sessions(db, end - timedelta(days=windows[-1].days - 1), end)
-    return energy_view(inputs, windows, health, latest)
+    return energy_view(inputs, windows, health, latest, flagged_meal_bias(inputs, end))

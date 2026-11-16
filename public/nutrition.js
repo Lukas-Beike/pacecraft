@@ -117,6 +117,18 @@ async function deleteNutritionEntry(item) {
   } catch (error) { status.textContent = `Mahlzeit konnte nicht gelöscht werden: ${error.message}`; }
 }
 
+// Flags or clears a meal as estimated; the logged values stay, the energy table reads again (#3100).
+async function markNutritionEstimate(item) {
+  const status = document.querySelector("#nutritionStatus");
+  const flag = !item.estimate_uncertain;
+  const reload = () => { resetEnergy(); return loadNutrition({ preserve: true }); };
+  try {
+    const result = await api("/api/nutrition/entry/estimate", { method: "POST", body: JSON.stringify({ id: item.id, estimate_uncertain: flag }) });
+    await reload();
+    showNutritionReceipt(status, flag ? "Als geschätzt markiert." : "Markierung entfernt.", result.change, reload);
+  } catch (error) { status.textContent = `Markierung konnte nicht gespeichert werden: ${error.message}`; }
+}
+
 // "Open Food Facts" or "Yazio" for a product from a database; "" for an own product.
 function nutritionDatabaseLabel(product) {
   if (!product?.origin || product.origin === "own") return "";
@@ -234,19 +246,30 @@ function nutritionCard(item, template, sessions = []) {
   const sourceText = basisLabel && !isDefaultSource ? basisLabel + sourceSuffix : "";
   const volume = item.volume_ml > 0 ? ` · ${AppFormat.number(item.volume_ml, { digits: 0 })} ml` : "";
   const card = h("article", "nutrition-card",
-    h("h3", null, template ? item.name : nutritionMealTitle(item)),
+    h("h3", null, template ? item.name : nutritionMealTitle(item), ...(template ? [] : nutritionEstimateChip(item))),
     template ? null : nutritionSessionBlock(item, sessions),
     h("p", null, item.description),
     h("p", null, `${nutritionNumber(item.kcal)} kcal · KH ${nutritionNumber(item.carbs_g)} g · Protein ${nutritionNumber(item.protein_g)} g · Fett ${nutritionNumber(item.fat_g)} g${template ? " / Portion" : ""}${volume}`),
     sourceText ? h("small", null, sourceText) : null);
-  if (!template) {
-    const details = nutritionComponentDetails(item);
-    if (details) card.append(details);
-    const remove = h("button", { type: "button", className: "secondary-button", "aria-label": `Mahlzeit löschen: ${item.description}` }, "Löschen");
-    remove.addEventListener("click", () => void deleteNutritionEntry(item));
-    card.append(remove);
-  }
+  if (!template) card.append(...nutritionEntryActions(item));
   return card;
+}
+
+// A meal whose amounts were estimated (restaurant, friends) says so in its title (#3100).
+function nutritionEstimateChip(item) {
+  if (!item.estimate_uncertain) return [];
+  const chip = createStatusChip("Menge geschätzt", "estimate");
+  chip.classList.add("estimate-chip");
+  return [" ", chip];
+}
+
+// A logged meal's ingredients, its estimate mark and its removal.
+function nutritionEntryActions(item) {
+  const estimate = h("button", { type: "button", className: "secondary-button" }, item.estimate_uncertain ? "Nicht geschätzt" : "Als geschätzt markieren");
+  estimate.addEventListener("click", () => void markNutritionEstimate(item));
+  const remove = h("button", { type: "button", className: "secondary-button", "aria-label": `Mahlzeit löschen: ${item.description}` }, "Löschen");
+  remove.addEventListener("click", () => void deleteNutritionEntry(item));
+  return [nutritionComponentDetails(item), estimate, remove].filter(Boolean);
 }
 
 function nutritionExpenditureDate(value) {
