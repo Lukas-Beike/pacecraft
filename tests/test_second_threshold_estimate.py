@@ -16,6 +16,7 @@ from backend.athlete.zones import local_configuration
 from backend.canonical.activity_detail import ActivityDfaAlpha1, DfaWindow
 from backend.canonical.vocabulary import DfaQuality
 from backend.coach.context import CoachStructuredContextService
+from backend.db.repositories import KeyValueRepository
 from backend.errors import AppError
 from backend.http_api.athlete_get import AthleteGetRoutes
 from backend.performance import second_threshold_estimate as lt2
@@ -507,6 +508,52 @@ class AdoptTests(unittest.TestCase):
             with self.subTest(payload=payload), self.assertRaises(AppError) as raised:
                 self.adopt(zones, **payload)
             self.assertEqual(raised.exception.status, status)
+
+
+class NoticeBaselineTests(unittest.TestCase):
+    """F10: the values the athlete last saw are stored on the server, per sport."""
+
+    manager: object
+    counter: int
+
+    def setUp(self) -> None:
+        open_database(self)
+        self.service = SecondThresholdService(
+            self.manager,
+            Mock(),
+            Mock(),
+            lambda _days: [],
+            lambda: TODAY,
+            key_values=KeyValueRepository(lambda: "2026-11-16T18:00:00+00:00"),
+        )
+
+    def test_seen_values_are_kept_per_sport_with_unknown_as_null(self) -> None:
+        self.assertEqual(self.service.notice_baselines(), {})
+        self.service.save_notice_baseline(
+            {
+                "sport": "run",
+                "values": {"provider_hr": 171, "cs_pace": None, "other": 5},
+            }
+        )
+        stored = self.service.save_notice_baseline(
+            {"sport": "ride", "values": {"cp_power": 271}}
+        )
+        self.assertEqual(stored["run"]["provider_hr"], 171.0)
+        self.assertIsNone(stored["run"]["cs_pace"])
+        self.assertNotIn("other", stored["run"])
+        self.assertEqual(self.service.notice_baselines()["ride"]["cp_power"], 271.0)
+
+    def test_bad_sports_and_values_are_refused(self) -> None:
+        for payload in (
+            {"sport": "swim", "values": {}},
+            {"sport": "run", "values": []},
+            {"sport": "run", "values": {"provider_hr": "171"}},
+            {"sport": "run", "values": {"provider_hr": True}},
+            {"sport": "run", "values": {"provider_hr": -1}},
+        ):
+            with self.subTest(payload=payload), self.assertRaises(AppError) as raised:
+                self.service.save_notice_baseline(payload)
+            self.assertEqual(raised.exception.status, 400)
 
 
 if __name__ == "__main__":
