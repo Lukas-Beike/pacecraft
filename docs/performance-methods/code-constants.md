@@ -48,6 +48,7 @@ every named number the code fixes. A test fails when it is out of date.
 | `DURATION_SHARE` | `0.35` | `backend/performance/comparable_sessions.py` |  |
 | `REP_COUNT_SPREAD` | `2` | `backend/performance/comparable_sessions.py` |  |
 | `HEART_RATE_BAND` | `8` | `backend/performance/comparable_sessions.py` | Continuous sessions compare only at a similar effort, so an easy run is never a tempo run's peer; within the band a faster pace still shows as fitter. |
+| `PERSONAL_LIMIT_METRICS` | `frozenset({'decoupling_pct'})` | `backend/performance/comparable_sessions.py` | Metrics the session report judges against the peers' upper quartile (#3084). |
 | `EFFORT_METHOD` | `'equal-effort-trend-v1'` | `backend/performance/comparable_sessions.py` |  |
 | `VO2MAX_UNIT` | `'ml/kg/min'` | `backend/performance/comparisons.py` |  |
 | `REASON_CANONICAL_PENDING` | `'canonical_pending'` | `backend/performance/context.py` | The reason an unavailable context gives while the canonical source serves nothing yet. |
@@ -296,6 +297,10 @@ every named number the code fixes. A test fails when it is out of date.
 | `RACE_FINISH_PCT` | `2.0` | `backend/performance/session_report.py` | Finish slower than the competition's target time by this much. |
 | `RACE_DISTANCE_SHARE` | `0.1` | `backend/performance/session_report.py` | The recorded distance may differ this much from the plan's (GPS, course). |
 | `WALK_OFF_SPEED_SHARE` | `0.6` | `backend/performance/session_report.py` | A final stretch slower than this share of the race's median speed is a walk or roll-out after the line, not the race. |
+| `SHOE_DEFAULT_TARGET_KM` | `700.0` | `backend/performance/session_report.py` | A shoe without its own or Garmin's target is due at this many km (athlete, #3084). |
+| `SHOE_DUE_SHARE` | `0.9` | `backend/performance/session_report.py` | The shoe hint is notable from this share of its target distance. |
+| `PACE_AT_HR_PCT` | `3.0` | `backend/performance/session_report.py` | Pace at the same heart rate this much slower than own comparable runs (athlete, #3084). |
+| `ZONE_MIN_SHARE` | `0.1` | `backend/performance/session_report.py` | Zone time is judged in the zones holding at least this share of the planned time. |
 | `LEAD_COUNT` | `4` | `backend/performance/session_report.py` | The notable checks the answer leads with. |
 | `EASY_FOCUS` | `frozenset({'recovery', 'easy', 'endurance', 'long'})` | `backend/performance/session_report.py` |  |
 | `INTERVAL_FOCUS` | `frozenset({'tempo', 'threshold', 'vo2max', 'anaerobic', 'sweet_spot', 'test'})` | `backend/performance/session_report.py` |  |

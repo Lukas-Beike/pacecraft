@@ -151,3 +151,32 @@ Evidence:
 - `backend/performance/session_report.py:_RacePlan`
 - `backend/coach/activity_read_tools.py:CoachActivityReadToolService._race`
 - `tests/test_session_report.py`
+
+### Requirement: Run block, zone time and facts
+The session report SHALL add the run's own checks, zone time against the plan, decoupling against the athlete's own sessions and a list of facts without a verdict, with the athlete's decisions on #3084 (2026-11-16).
+
+#### Scenario: Run checks
+- **WHEN** the session is a run
+- **THEN** the report judges:
+  - the stored form drift, notable when ground contact rises 5 % from the first to the last third at the same pace;
+  - pace in the session's heart-rate band, notable from 3 % slower than the median of at least 5 own comparable runs of 42 days, else unknown;
+  - for interval runs, the stride length of each rep's second half, notable from 5 % shorter than the first;
+  - each shoe of the run, notable from 90 % of its target distance (its own, Garmin's, else 700 km).
+
+#### Scenario: Zone time against the plan
+- **WHEN** a run or ride has a paired planned unit with zone times
+- **THEN** the seconds of each zone holding at least 10 % of the planned time are judged against the plan, notable beyond ±20 %; when the zone-targeted plan covers less than 80 % of the recorded zone time (free warm-up or cool-down), or the zone metric's data quality failed, the check is unknown.
+
+#### Scenario: Decoupling against own sessions
+- **WHEN** at least 5 comparable sessions (same sport and kind, duration ±35 %, heart rate ±8 bpm) carry a decoupling
+- **THEN** decoupling is notable when above their upper quartile and above 5 %; with fewer the fixed 5 % decides.
+
+#### Scenario: Facts without a verdict
+- **WHEN** the report is built
+- **THEN** `facts` states, without a verdict: an outdoor run's work laps in % of critical speed (a model estimate of the 28 days before the session's day), its running dynamics per pace band against own runs as the app rates them, the elevation of an outdoor session and stops over 30 s, flagged standstills or recording gaps (count and total).
+
+Evidence:
+- `backend/performance/session_report.py:_run_block`
+- `backend/performance/session_report.py:_session_facts`
+- `backend/performance/comparable_sessions.py:comparable_sessions`
+- `tests/test_session_report.py`
