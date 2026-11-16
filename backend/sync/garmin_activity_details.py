@@ -567,7 +567,11 @@ def _encode_backfill_state(
     retry: dict[str, tuple[str, int]],
     replay: _ReplayBudget,
 ) -> str:
-    stored: dict[str, Any] = {"empty": dict(sorted(empty.items()))}
+    # Empty marks and retries hold for the mapper that made them (#2220).
+    stored: dict[str, Any] = {
+        "empty": dict(sorted(empty.items())),
+        "mapper_version": MAPPER_VERSION,
+    }
     if replay.count or replay.budget != REPLAY_START_DAILY or not replay.clean:
         stored["replay"] = {
             "day": replay.day,
@@ -690,29 +694,43 @@ def detail_replay_size(db: Any, key_values: Any, now: datetime) -> dict[str, Any
     ``strength`` of them with one call more (their exercise sets). Both leave out
     what the backfill leaves out: empty marks and used-up retries. ``passed_over``
     records are not pending although their full streams or device laps are still
-    below the current mapper version (a file the replay never got), so ``pending``
-    at 0 alone does not mean the window is current. The budget fields are
-    ``replay_budget_counts`` of today (UTC).
+    below the current mapper version, so ``pending`` at 0 alone does not mean the
+    window is current. ``passed_over_empty`` of them were marked empty by this
+    mapper: Garmin served no detail part, so their streams and laps came from the
+    stream backfill, which has no replay; ``passed_over_retries`` used up their
+    retries on this mapper. The budget fields are ``replay_budget_counts`` of
+    today (UTC).
     """
     raw = key_values.get(db, BACKFILL_STATE_KEY)
     state = _parse_backfill_state(raw)
     since = now - BACKFILL_WINDOW
 
-    def below(version: int) -> list[str]:
+    def below(version: int, backfill: _BackfillState = state) -> set[str]:
         pending, _empty, _retry = _window_pending(
-            db, state, since=since, mapper_version=version
+            db, backfill, since=since, mapper_version=version
         )
-        return [item["provider_activity_id"] for item in pending]
+        return {item["provider_activity_id"] for item in pending}
 
-    ids = below(MAPPER_VERSION + 1)
+    ids = sorted(below(MAPPER_VERSION + 1))
     pending = below(MAPPER_VERSION)
-    outdated = outdated_file_set_records(
-        db, GARMIN_ID, ACTIVITY_RECORD_KIND, since=since, mapper_version=MAPPER_VERSION
+    passed = (
+        outdated_file_set_records(
+            db,
+            GARMIN_ID,
+            ACTIVITY_RECORD_KIND,
+            since=since,
+            mapper_version=MAPPER_VERSION,
+        )
+        - pending
     )
+    # Without the empty marks, the marked ones count as pending again.
+    marked = below(MAPPER_VERSION, replace(state, empty={})) - pending
     return {
         "window_days": BACKFILL_WINDOW.days,
         "pending": len(pending),
-        "passed_over": len(outdated - set(pending)),
+        "passed_over": len(passed),
+        "passed_over_empty": len(passed & marked),
+        "passed_over_retries": len(passed - marked),
         "records": len(ids),
         "strength": len(strength_record_ids(db, GARMIN_ID, ids)),
         **replay_budget_counts(raw, now.astimezone(UTC).date().isoformat()),
@@ -797,7 +815,12 @@ def _stored_fetch_time(item: Any) -> datetime | None:
 
 
 def _parse_backfill_state(raw: object) -> _BackfillState:
-    """Read the stored backfill state; unreadable content resets to an empty state."""
+    """Read the stored backfill state; unreadable content resets to an empty state.
+
+    Empty marks and retries made by an older (or unrecorded) detail mapper no
+    longer count: a mapper bump gives every window activity one fresh fetch,
+    whatever an older mapper's fetch got (#2220).
+    """
     if not isinstance(raw, str) or not raw:
         return _BackfillState()
     try:
@@ -806,16 +829,17 @@ def _parse_backfill_state(raw: object) -> _BackfillState:
         return _BackfillState()
     if not isinstance(parsed, dict):
         return _BackfillState()
+    current = parsed.get("mapper_version") == MAPPER_VERSION
     marks = parsed.get("empty")
     empty = (
         {str(key): str(value) for key, value in marks.items()}
-        if isinstance(marks, dict)
+        if current and isinstance(marks, dict)
         else {}
     )
     return _BackfillState(
         paused_until=_parse_time(parsed.get("paused_until")),
         empty=empty,
-        retry=_parse_retry(parsed.get("retry")),
+        retry=_parse_retry(parsed.get("retry")) if current else {},
         replay=_parse_replay(parsed.get("replay")),
     )
 
