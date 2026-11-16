@@ -32,6 +32,7 @@ from backend.nutrition.food_database import FoodDatabaseService
 from backend.nutrition.food_mirror import FoodDatabaseMirror
 from backend.nutrition.meal_library import NutritionMealLibraryService
 from backend.nutrition.photo import NutritionPhotoExtractionService
+from backend.nutrition.product_refresh import ProductRefreshRunner
 from backend.nutrition.sync import IntervalsNutritionSyncService
 from backend.nutrition.web_search import NutritionWebSearchService
 from backend.performance.daily_health import read_daily_health_by_date
@@ -54,6 +55,8 @@ class NutritionServices:
     energy_basis: Callable[[Any], dict[str, Any]]
     # Resting and daily expenditure per source and their fit (#3099).
     energy_view: Callable[[], dict[str, Any]]
+    # One run re-checking every product (#3299); stopped at shutdown.
+    product_refresh: ProductRefreshRunner
 
 
 def build_nutrition(ctx: AppContext) -> NutritionServices:
@@ -195,4 +198,13 @@ def build_nutrition(ctx: AppContext) -> NutritionServices:
             db, energy_sources(), ctx.clock.now().date()
         ),
         energy_view=energy_view,
+        product_refresh=ProductRefreshRunner(
+            # Every product, not the first 1000 the list shows.
+            lambda: meal_library_service().product_catalog.list_all_products(
+                limit=None
+            ),
+            lambda product_id: meal_library_service().refresh_database_food(product_id),
+            lambda: ctx.maintenance,
+            utc_now,
+        ),
     )

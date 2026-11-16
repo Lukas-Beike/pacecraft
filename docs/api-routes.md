@@ -107,6 +107,8 @@ handler's docstring. Regenerate it with
 | POST | `/api/nutrition/products/extract` | Session + CSRF | after access | Extract a product from a label photo; the image is not stored. |
 | POST | `/api/nutrition/products/favorite` | Session + CSRF | after access | Mark or unmark a product as favorite. |
 | POST | `/api/nutrition/products/lookup` | Session + CSRF | after access | Look a product up by barcode or name, local products first. |
+| GET | `/api/nutrition/products/refresh-all` | Session | no | The progress of the current or last run re-checking every product. |
+| POST | `/api/nutrition/products/refresh-all` | Session + CSRF | after access | Re-check every product in the background; gaps fill, known values stay. |
 | POST | `/api/nutrition/refresh` | Session + CSRF | after access | Run a targeted nutrition refresh. |
 | GET | `/api/nutrition/session-fuelling` | Session | no | Drinking and carbohydrates for a long planned run or ride (#2804). |
 | GET | `/api/nutrition/week` | Session | no | Nutrition week summary of the closed days before today. |
@@ -1328,6 +1330,25 @@ Errors: 400 "Suchbegriff muss mindestens 2 Zeichen enthalten." without a barcode
 and a query of fewer than 2 characters; 400 "Suchbegriff muss 2 bis 120 Zeichen
 enthalten." for a longer query; 400 "Ungültige Lebensmitteldatenbank." for
 another `source`.
+
+### `GET /api/nutrition/products/refresh-all`
+
+Request: no query, no body.
+
+Response: 200 `{"running": bool}`, after a start also `total`, `done`,
+`filled`, `unchanged`, `skipped` (own products without an EAN),
+`failed`, `started_at` and, once ended, `finished_at`.
+
+Errors: none beyond the common ones.
+
+### `POST /api/nutrition/products/refresh-all`
+
+Request: JSON object; its content is ignored. A run already in progress
+is not started again.
+
+Response: 200 as `GET /api/nutrition/products/refresh-all`.
+
+Errors: none beyond the common ones.
 
 ### `POST /api/nutrition/refresh`
 

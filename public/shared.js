@@ -146,7 +146,7 @@ function renderActiveRoute(mainRoute, panelRoute) {
     AppState.setPlanSegment(planSegment);
     AppViews.renderPlanSegments(planSegment);
   }
-  if (mainRoute === "nutrition") { renderNutritionSegments(panelRoute); if (state.data) { if (panelRoute === "nutrition/products") void loadNutritionProducts(); else void loadNutrition(); } }
+  if (mainRoute === "nutrition") { renderNutritionSegments(panelRoute); if (state.data) { if (panelRoute === "nutrition/products") { void loadNutritionProducts(); void pollNutritionRefreshAll(); } else void loadNutrition(); } }
   if (state.data && mainRoute === "more") {
     void loadContextPreview();
     void loadLogs();

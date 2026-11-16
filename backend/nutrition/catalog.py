@@ -99,10 +99,15 @@ class ProductCatalogService:
             )
         ][: max(1, min(int(limit), 100))]
 
-    def list_all_products(self, query: str | None = None) -> list[dict[str, Any]]:
-        """Own products and stored database foods by name; search covers EAN."""
+    def list_all_products(
+        self, query: str | None = None, *, limit: int | None = 1000
+    ) -> list[dict[str, Any]]:
+        """Own products and stored database foods by name; search covers EAN.
+
+        ``limit`` None lists every product.
+        """
         with self._database_manager.reader() as db:
-            found = self._products.list_all(db, query=query)
+            found = self._products.list_all(db, query=query, limit=limit)
             if found or not (query and query.strip()):
                 return found
             everything = self._products.list_all(db)

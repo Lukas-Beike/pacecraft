@@ -485,3 +485,31 @@ test("@responsive a stored database entry is refreshed on request and the list i
   await expect.poll(() => listed).toBeGreaterThan(1);
   await expect(card).not.toContainText("fehlt:");
 });
+
+// #3299: "Alle aktualisieren" starts one background run, shows its progress on the button and
+// ends with the counts. The run is mocked: no food source is asked.
+test("@responsive all products are re-checked in one run with progress and a receipt", async ({ page }) => {
+  const runs = { posts: 0, reads: 0 };
+  const running = (done) => ({ running: true, total: 3, done, filled: 0, unchanged: 0, skipped: 1, failed: 0, started_at: "2026-11-16T12:00:00+00:00" });
+  await page.route("**/api/nutrition/products/refresh-all", async (route) => {
+    if (route.request().method() === "POST") {
+      runs.posts += 1;
+      return route.fulfill({ json: running(1) });
+    }
+    runs.reads += 1;
+    if (runs.posts === 0) return route.fulfill({ json: { running: false } });
+    if (runs.reads < 3) return route.fulfill({ json: running(2) });
+    return route.fulfill({ json: { ...running(3), running: false, filled: 1, failed: 1, finished_at: "2026-11-16T12:00:05+00:00" } });
+  });
+  await page.goto("/#nutrition/products");
+  const button = page.locator("#nutritionRefreshAllButton");
+  await expect(button).toHaveText("Alle aktualisieren");
+  await button.click();
+  await expect(button).toBeDisabled();
+  await expect(button).toHaveText(/Aktualisiere [12] \/ 3/);
+  await expect(page.locator("#nutritionProductStatus")).toHaveText("Alle aktualisiert: 1 ergänzt, 0 unverändert, 1 ohne EAN übersprungen, 1 fehlgeschlagen.", { timeout: 15_000 });
+  await expect(button).toBeEnabled();
+  await expect(button).toHaveText("Alle aktualisieren");
+  expect(runs.posts).toBe(1);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBeTruthy();
+});

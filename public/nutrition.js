@@ -792,6 +792,40 @@ async function refreshNutritionProduct(product, button) {
   button.disabled = false;
 }
 
+// #3299: one background run re-checks every product with the single "Aktualisieren" rule; the
+// button shows its progress and the end its counts.
+let nutritionRefreshAllTimer = null;
+
+function nutritionRefreshAllReceipt(run) {
+  return `Alle aktualisiert: ${run.filled} ergänzt, ${run.unchanged} unverändert, ${run.skipped} ohne EAN übersprungen, ${run.failed} fehlgeschlagen.`;
+}
+
+async function showNutritionRefreshAll(run, announce) {
+  const button = document.querySelector("#nutritionRefreshAllButton");
+  clearTimeout(nutritionRefreshAllTimer);
+  button.disabled = Boolean(run?.running);
+  button.textContent = run?.running ? `Aktualisiere ${run.done} / ${run.total}` : "Alle aktualisieren";
+  if (run?.running) {
+    nutritionRefreshAllTimer = setTimeout(() => void pollNutritionRefreshAll(true), 1500);
+  } else if (announce && run?.finished_at) {
+    const generation = state.sessionGeneration;
+    await reloadNutritionProducts({ refresh: true });
+    if (generation === state.sessionGeneration) document.querySelector("#nutritionProductStatus").textContent = nutritionRefreshAllReceipt(run);
+  }
+}
+
+async function pollNutritionRefreshAll(announce = false, start = false) {
+  const generation = state.sessionGeneration;
+  try {
+    const run = await api("/api/nutrition/products/refresh-all", start ? { method: "POST", body: "{}" } : undefined);
+    if (generation === state.sessionGeneration) await showNutritionRefreshAll(run, announce);
+  } catch (error) {
+    if (generation !== state.sessionGeneration) return;
+    await showNutritionRefreshAll(null, false);
+    showNutritionProductError("Aktualisieren", error);
+  }
+}
+
 async function deleteNutritionProduct(product) {
   const database = nutritionIsDatabaseProduct(product);
   const question = database ? `Eintrag „${product.name}“ aus der Datenbank entfernen? Eigene Produkte bleiben erhalten.` : `Produkt „${product.name}“ wirklich löschen?`;
@@ -1114,6 +1148,7 @@ async function scanNutritionBarcode() {
 
 document.querySelector("#nutritionProductSearch")?.addEventListener("submit", (event) => { event.preventDefault(); void loadNutritionProducts(document.querySelector("#nutritionProductQuery").value.trim()); });
 document.querySelector("#nutritionLabelButton")?.addEventListener("click", () => document.querySelector("#nutritionLabelInput").click());
+document.querySelector("#nutritionRefreshAllButton")?.addEventListener("click", () => void pollNutritionRefreshAll(true, true));
 document.querySelector("#nutritionProductManual")?.addEventListener("click", () => saveNutritionProduct({ source: "manual", basis_amount: 100, basis_unit: "g" }));
 document.querySelector("#nutritionLabelInput")?.addEventListener("change", (event) => { const file = event.target.files?.[0]; event.target.value = ""; if (file) void extractNutritionProduct(file); });
 document.querySelector("#nutritionBarcodeButton")?.addEventListener("click", () => void scanNutritionBarcode());
