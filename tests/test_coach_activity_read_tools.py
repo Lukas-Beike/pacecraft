@@ -21,7 +21,11 @@ from backend.activities.activity_reference import ActivityReferences
 from backend.activities.detail_contract import COACH_ACTIVITY_DETAIL_MAX_SERIES_POINTS
 from backend.canonical.vocabulary import MetricKind, ProviderId, RecordingOrigin
 from backend.coach.activity_read_tools import (
+    POWER_SPEED_NOTE,
+    RAW_SPEED_NOTE,
+    VIRTUAL_SPEED_NOTE,
     CoachActivityReadToolService,
+    _without_virtual_speed,
     resolve_session,
 )
 from backend.coach.context import coach_context_json_size
@@ -362,6 +366,46 @@ class CoachActivityReadToolServiceTests(unittest.TestCase):
         profile = Mock(get=Mock(return_value={}))
         service = _detail_tool(manager, [raw_activity], garmin, profile, planned)
         return service.execute("get_activity_details", {"activity_id": "synthetic-1"})
+
+    def test_a_ride_reaches_the_coach_in_the_athletes_signal_order(self):
+        # #3288 (athlete): with power only power and heart rate count; indoors the
+        # speed is virtual; outdoors without power the raw speed stays as data
+        # with a note that it is no effort measure. Distance and duration stay.
+        def detail(sport, environment, power=True):
+            metrics = {"avg_speed_mps": {"value": 11.0}, "distance_m": {"value": 40000}}
+            channels = {"speed_mps": {}, "heart_rate_bpm": {}}
+            if power:
+                metrics["avg_power"] = {"value": 260}
+                channels["power_w"] = {}
+            return {
+                "session": {"sport": sport, "environment": environment},
+                "metrics": metrics,
+                "streams": {"channels": channels},
+                "laps": [
+                    {"avg_speed_mps": 13.9, "max_speed_mps": 15.0, "distance_m": 400}
+                ],
+            }
+
+        cases = (
+            ("outdoor", True, POWER_SPEED_NOTE),
+            ("virtual", True, VIRTUAL_SPEED_NOTE),
+            ("indoor", False, VIRTUAL_SPEED_NOTE),
+        )
+        for environment, power, note in cases:
+            found = detail("ride", environment, power)
+            _without_virtual_speed(found)
+            self.assertNotIn("avg_speed_mps", found["metrics"], environment)
+            self.assertIn("distance_m", found["metrics"])
+            self.assertNotIn("speed_mps", found["streams"]["channels"])
+            self.assertEqual(found["laps"], [{"distance_m": 400}])
+            self.assertEqual(found["speed_note"], note)
+        raw = detail("ride", "outdoor", power=False)
+        _without_virtual_speed(raw)
+        self.assertIn("avg_speed_mps", raw["metrics"])
+        self.assertEqual(raw["speed_note"], RAW_SPEED_NOTE)
+        run = detail("run", "outdoor")
+        _without_virtual_speed(run)
+        self.assertEqual(run, detail("run", "outdoor"))
 
     def test_detail_of_an_old_session_carries_its_planned_units(self):
         planned = _PlannedUnits("2026-09-12", "2026-09-13", "2026-09-14", "2026-09-16")

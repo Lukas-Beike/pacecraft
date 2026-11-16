@@ -6,8 +6,11 @@ import unittest
 from collections.abc import Sequence
 from typing import Any
 
+from session_stream_support import erg_ride
+
 from backend.performance import session_conditions
 from backend.performance import session_report as session_report_module
+from backend.performance.session_execution import session_execution
 from backend.performance.session_report import session_report
 from backend.planning.race_plan import race_plan
 
@@ -1141,6 +1144,61 @@ class RideBlockTests(unittest.TestCase):
         )
         self.assertEqual("ok", self._erg(153, 6)["erg_heart_rate"]["verdict"])
         self.assertEqual("unknown", self._erg(156, 4)["erg_heart_rate"]["verdict"])
+
+    def test_an_erg_ride_on_zwift_reports_no_fading_reps(self) -> None:
+        # #3288: 5 x 30 s held at about 350 W while Zwift's speed swings 50 to 30
+        # km/h. No rep fade: power pacing is not applicable, heart-rate drift is
+        # still judged, and no check reads the virtual speed.
+        found = checks(
+            session_report(
+                result(
+                    sport="ride",
+                    focus="vo2max",
+                    session={
+                        "activity_id": "act_1",
+                        "sport": "ride",
+                        "environment": "virtual",
+                    },
+                    execution=session_execution(erg_ride()),
+                )
+            )
+        )
+        for key in ("rep_fade", "within_rep_fade", "start_change"):
+            self.assertEqual("not_applicable", found[key]["verdict"], key)
+            self.assertIn("ERG", found[key]["reason"])
+        # ERG switches off power pacing only: the heart-rate checks stay. Drift
+        # needs reps from 2 min (#3084), so 30-s reps leave it unknown with that
+        # reason; heart rate at equal ERG power is the ERG session's own check.
+        for key in ("cardiac_drift", "erg_heart_rate"):
+            self.assertNotEqual("not_applicable", found[key]["verdict"], key)
+        self.assertIn("ab 2 min", found["cardiac_drift"]["reason"])
+        self.assertNotIn("climb_cadence", found)
+        fading = [
+            key
+            for key, check in found.items()
+            if "fade" in key and check["verdict"] == "notable"
+        ]
+        self.assertEqual(fading, [])
+
+    def test_a_jittery_erg_ride_is_judged_ok_on_power(self) -> None:
+        # #3288 (athlete decision C): not erg_like at 3 % jitter, so the reps are
+        # judged, on power: 346 against 351 W is -1.4 %, ok, no fade.
+        found = checks(
+            session_report(
+                result(
+                    sport="ride",
+                    focus="vo2max",
+                    session={
+                        "activity_id": "act_1",
+                        "sport": "ride",
+                        "environment": "virtual",
+                    },
+                    execution=session_execution(erg_ride(jitter=0.03)),
+                )
+            )
+        )
+        self.assertEqual("ok", found["rep_fade"]["verdict"])
+        self.assertEqual(-1.4, found["rep_fade"]["value"]["worst_vs_median_pct"])
 
     def test_low_cadence_on_climbs_unless_the_plan_sets_it(self) -> None:
         # 60 m over 1000 m is 6 %, at 64 rpm: low. 30 m is 3 %: no climb.

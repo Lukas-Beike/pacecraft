@@ -5,6 +5,7 @@ from __future__ import annotations
 import unittest
 from typing import Any
 
+from session_stream_support import erg_ride
 from session_stream_support import synthetic_session as _session
 
 from backend.performance.session_execution import session_execution
@@ -277,6 +278,35 @@ class SessionExecutionTests(unittest.TestCase):
         outdoor = _session(segments, sport="ride", output="watts", cadence=90.0)
         outdoor["environment"] = "outdoor"
         self.assertNotIn("erg_like", session_execution(outdoor))
+
+    def test_an_erg_ride_is_judged_on_power_never_on_its_virtual_speed(self) -> None:
+        # #3288: Zwift's speed swings with its terrain; the reps are read as power.
+        execution = session_execution(erg_ride())
+        self.assertTrue(execution["erg_like"])
+        self.assertEqual(execution["output_unit"], "W")
+        self.assertEqual(
+            [rep["output"] for rep in execution["reps"]], [351, 351, 351, 350, 346]
+        )
+
+    def test_a_jittery_erg_ride_is_not_erg_like_and_still_read_as_power(self) -> None:
+        # #3288 (athlete decision C): 3 % per-second jitter keeps the ERG heuristic
+        # off, unchanged; the reps are still judged on their power, not speed.
+        execution = session_execution(erg_ride(jitter=0.03))
+        self.assertNotIn("erg_like", execution)
+        self.assertEqual(
+            [rep["output"] for rep in execution["reps"]], [351, 351, 351, 350, 346]
+        )
+
+    def test_a_ride_without_power_never_falls_back_to_its_raw_speed(self) -> None:
+        # #3288 (athlete): a ride's raw speed is no effort signal, indoors (virtual)
+        # or outdoors (gradient and wind); without power the ride has no output.
+        for environment in ("virtual", "indoor", "outdoor"):
+            session = erg_ride()
+            del session["streams"]["watts"]
+            session["environment"] = environment
+            found = session_execution(session)
+            self.assertEqual(found["status"], "insufficient_data", environment)
+            self.assertIn("kein Leistungsmaß", found["reason"])
 
     def test_short_labelled_rests_keep_the_session_an_interval_one(self) -> None:
         segments: list[tuple[str, int, float, tuple[float, float]]] = [

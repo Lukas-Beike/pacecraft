@@ -159,6 +159,46 @@ class ScorerTests(unittest.TestCase):
             ["notable_not_named:heart_rate_cap"], live.unnamed_notables(turns)
         )
 
+    def test_a_fade_needs_the_reports_own_fade_verdict(self) -> None:
+        # #3288: the report judges a ride's reps on power. In ERG the trainer held
+        # it, and with 3 % jitter the reps are still judged ok on power; Zwift's
+        # slower virtual speed is no fade. Only a notable fade check backs a claim.
+        def report(verdict: str, reason: str = "") -> dict:
+            check = {"id": "rep_fade", "title": "Nachlassen über die Wiederholungen"}
+            return {
+                "session_report": {
+                    "notable": [],
+                    "checks": [{**check, "verdict": verdict, "reason": reason}],
+                }
+            }
+
+        def misses(found: dict, text: str) -> list[str]:
+            return live.unbacked_fade_claims(
+                [{"tool_outputs": [json.dumps(found)], "text": text}]
+            )
+
+        erg = report("not_applicable", "ERG: der Trainer hielt die Leistung.")
+        held = report("ok")
+        for found in (erg, held):
+            for claim in (
+                "Die 30-s-Wiederholungen wurden über die Einheit schwächer.",
+                "Deine Leistung ließ in der letzten Wiederholung nach.",
+                "Das Tempo sank von 50 auf 39 km/h.",
+            ):
+                self.assertEqual(["fade_not_in_report"], misses(found, claim), claim)
+            for fine in (
+                "Kein Nachlassen: die Leistung blieb bei 350 W.",
+                "Die Wiederholungen wurden nicht schwächer; die Geschwindigkeit ist virtuell.",
+            ):
+                self.assertEqual([], misses(found, fine), fine)
+        # A notable fade check backs the claim; without a report the scorer is silent.
+        self.assertEqual(
+            [], misses(report("notable"), "Die Wiederholungen wurden schwächer.")
+        )
+        self.assertEqual(
+            [], live.unbacked_fade_claims([{"tool_outputs": [], "text": "schwächer"}])
+        )
+
     def test_a_title_word_other_checks_share_names_none_of_them(self) -> None:
         # "Wiederholungen" is in both interval titles: it names neither. Their
         # own words ("Nachlassen", "Schrittlänge") do, with an ending allowed.
