@@ -485,6 +485,8 @@ class ServiceTests(unittest.TestCase):
                     # Stored before Garmin had the calories: the resting part only.
                     {"calendarDate": "2026-11-07", "bmrKilocalories": 1700},
                     {"calendarDate": "2026-11-08", "totalKilocalories": 2500},
+                    # A second summary of a day, stored under its own id key.
+                    {"id": 7, "calendarDate": "2026-11-08", "totalKilocalories": 2500},
                     {"calendarDate": "2026-11-09", "totalKilocalories": 2600,
                      "activeKilocalories": 800},
                     # The range endpoint's nested form counts the same way.
@@ -504,6 +506,7 @@ class ServiceTests(unittest.TestCase):
                 "partial": 1,
                 "without_calories": 1,
                 "without_summary": 86,
+                "several_summaries": 1,
             },
         )
 
