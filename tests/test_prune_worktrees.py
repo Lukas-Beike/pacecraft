@@ -20,6 +20,14 @@ SPEC.loader.exec_module(prune)
 
 DAY = 86400
 Usage = namedtuple("Usage", "total used free")
+# Subagent worktrees whose branch the main session squashed into another PR.
+AGENTS = {
+    ".claude/worktrees/agent-squashed": "t3/agent-squashed",
+    ".claude/worktrees/agent-missing": "t3/agent-missing",
+    ".claude/worktrees/agent-open": "t3/agent-open",
+    ".claude/worktrees/agent-dirty": "t3/agent-dirty",
+    "lane-squashed": "t3/lane-squashed",
+}
 
 
 def done(stdout="", code=0, stderr=""):
@@ -30,15 +38,28 @@ class FakeRepo:
     """Answers git/gh calls from a table; records every command."""
 
     def __init__(
-        self, tmp, dirty=(), merged=(), pr_merged=(), remove_fails=(), reused=()
+        self,
+        tmp,
+        dirty=(),
+        merged=(),
+        pr_merged=(),
+        remove_fails=(),
+        reused=(),
+        on_base=(),
+        open_prs=(),
+        patches=(),
     ):
         self.tmp = Path(tmp)
         self.reused = set(reused)
         self.dirty, self.merged = set(dirty), set(merged)
         self.pr_merged, self.remove_fails = set(pr_merged), set(remove_fails)
+        # Branches whose changed files all read the same on the base (#3290).
+        self.on_base, self.open_prs = set(on_base), set(open_prs)
+        # Branches whose every commit has a patch-equivalent one on the base.
+        self.patches = set(patches)
         self.calls = []
-        for name in ("primary", "current", "old", "dirty", "open", "pr"):
-            (self.tmp / name).mkdir()
+        for name in ("primary", "current", "old", "dirty", "open", "pr", *AGENTS):
+            (self.tmp / name).mkdir(parents=True)
 
     def porcelain(self):
         rows = [
@@ -48,6 +69,7 @@ class FakeRepo:
             ("dirty", "feat/dirty"),
             ("open", "feat/open"),
             ("pr", "feat/pr"),
+            *AGENTS.items(),
         ]
         return "\n\n".join(
             f"worktree {self.tmp / d}\nHEAD abc\nbranch refs/heads/{b}\n"
@@ -66,16 +88,33 @@ class FakeRepo:
             return done(f"tip-of-{args[1]}\n")
         if args[0] == "status":
             return done(" M file\n" if Path(cwd).name in self.dirty else "")
-        if args[0] == "merge-base":
-            return done(code=0 if args[2] in self.merged else 1)
+        if args[0] in ("merge-base", "diff", "cherry", "--literal-pathspecs"):
+            return self.content(args)
         if args[:2] == ("worktree", "remove"):
             bad = Path(args[2]).name in self.remove_fails
             return done(code=1 if bad else 0, stderr="contains changes\nmore")
         return done()
 
+    def content(self, args):
+        """Ancestry and the branch's changes against the base (#3290)."""
+        if args[0] == "cherry":
+            return done("- c1\n- c2\n" if args[2] in self.patches else "+ c1\n- c2\n")
+        if args[1] == "--is-ancestor":
+            return done(code=0 if args[2] in self.merged else 1)
+        if args[0] == "merge-base":
+            return done("fork-point\n")
+        if args[0] == "diff" and "--name-only" in args:
+            return done("backend/a.py\0docs/with space*.md\0")
+        # diff --quiet base branch -- <paths>: only the exact, literal paths count.
+        literal = args[-2:] == ("backend/a.py", "docs/with space*.md")
+        on_base = args[args.index("--quiet") + 2] in self.on_base
+        return done(code=0 if on_base and literal else 1)
+
     def run(self, args, cwd=None):
         self.calls.append(tuple(args))
         branch = args[args.index("--head") + 1]
+        if args[args.index("--state") + 1] == "open":
+            return done("17\n" if branch in self.open_prs else "")
         listed = ""
         if branch in self.pr_merged:
             listed = f"tip-of-{branch}\n"
@@ -155,6 +194,56 @@ class PruneWorktreesTests(unittest.TestCase):
         self.assertIn("branch not merged", out)
         self.assertEqual(repo.removed(), [])
         self.assertNotIn(("git", "branch", "-D", "feat/old"), repo.calls)
+
+    def test_a_squashed_agent_worktree_whose_changes_are_on_the_base_goes(self):
+        # #3290: the main session squashed the subagent's work into another PR.
+        repo = self.make(
+            dirty={"agent-dirty"},
+            on_base={
+                "t3/agent-squashed",
+                "t3/agent-open",
+                "t3/agent-dirty",
+                "t3/lane-squashed",
+            },
+            open_prs={"t3/agent-open"},
+        )
+        _code, out, _ = self.run_main(repo, [])
+        lines = {
+            line.split("[")[1].split("]")[0]: line
+            for line in out.splitlines()
+            if "[" in line
+        }
+        self.assertTrue(lines["t3/agent-squashed"].startswith("prune  "))
+        self.assertIn("content on base", lines["t3/agent-squashed"])
+        # A change the base lacks, an open PR or local edits keep the worktree.
+        self.assertIn("branch not merged", lines["t3/agent-missing"])
+        self.assertIn("branch not merged", lines["t3/agent-open"])
+        self.assertIn("uncommitted or untracked changes", lines["t3/agent-dirty"])
+        # The rule covers subagent worktrees only, not a lane's own worktree.
+        self.assertIn("branch not merged", lines["t3/lane-squashed"])
+
+        # #3294 review: the paths reach git whole and literal, even with a space.
+        quiet = [c for c in repo.calls if "--quiet" in c]
+        self.assertTrue(quiet)
+        self.assertTrue(all(c[1] == "--literal-pathspecs" for c in quiet))
+
+        # Applied, the squashed branch is not an ancestor, so it goes with -D.
+        _code, _out, _ = self.run_main(repo, ["--apply"])
+        self.assertIn(("git", "branch", "-D", "t3/agent-squashed"), repo.calls)
+        removed = [c[3] for c in repo.removed()]
+        self.assertEqual(
+            [Path(path).name for path in removed if "agent-" in path],
+            ["agent-squashed"],
+        )
+
+    def test_an_agent_branch_whose_commits_all_landed_as_patches_goes(self):
+        # Develop changed the files since, so they differ, but every commit
+        # has a patch-equivalent one there (git cherry: only "-").
+        repo = self.make(patches={"t3/agent-missing"})
+        _code, out, _ = self.run_main(repo, [])
+        line = next(row for row in out.splitlines() if "[t3/agent-missing]" in row)
+        self.assertTrue(line.startswith("prune  "))
+        self.assertIn("content on base", line)
 
     def test_recently_modified_worktree_is_kept(self):
         repo = self.make(merged={"feat/old"})
