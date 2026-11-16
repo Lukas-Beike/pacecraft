@@ -125,7 +125,8 @@ includes the SQLCipher migration, upgrade and restore modules. `-Suite all` runs
 every module; duration recording and coverage require it. It finishes green: the
 repository files tests read are mounted, `/tmp` allows the temporary scripts some
 tests run, and the few Windows-, PowerShell- or Node-only tests skip with their
-reason, which each shard's `result.json` lists under `skip_reasons` (#2553).
+reason, which each shard's `result.json` lists under `skip_reasons` (#2553). The
+run's summary names each skipped test under its reason (#3163).
 
 ```powershell
 ./tests/run_sqlcipher_tests.ps1

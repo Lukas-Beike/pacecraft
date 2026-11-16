@@ -66,11 +66,22 @@ def stamp():
     return datetime.now(UTC).isoformat()
 
 
+def long_path(path):
+    """On Windows the extended-length form, which reaches past MAX_PATH (#3161)."""
+    path = Path(path).resolve()
+    if os.name == "nt" and not str(path).startswith("\\\\?\\"):
+        return Path("\\\\?\\" + str(path))
+    return path
+
+
 def error_reports(output):
-    """Per-test ``artifacts/*/error-context.md`` reports; symlinks are skipped."""
+    """Per-test ``artifacts/*/error-context.md`` reports; symlinks are skipped. A long
+    worktree path puts them past MAX_PATH on Windows, so the extended form is read."""
     return [
         report
-        for report in sorted((Path(output) / "artifacts").glob("*/error-context.md"))
+        for report in sorted(
+            (long_path(output) / "artifacts").glob("*/error-context.md")
+        )
         if not report.is_symlink() and not report.parent.is_symlink()
     ]
 
@@ -1447,11 +1458,11 @@ def changed_project(base, root=ROOT):
 
 def screenshots(directory):
     """Playwright's own end-state images of a run (#2843), not a spec's crops
-    or the HTML report's copies."""
+    or the HTML report's copies; read in the extended form past MAX_PATH (#3161)."""
     return sorted(
         shot
         for pattern in ("test-finished-*.png", "test-failed-*.png")
-        for shot in directory.rglob(pattern)
+        for shot in long_path(directory).rglob(pattern)
         if "artifacts" in shot.parts
     )
 

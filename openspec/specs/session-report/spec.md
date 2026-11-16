@@ -52,6 +52,14 @@ The system SHALL add to every `get_activity_details` result a `session_report` (
 - **WHEN** the session focus or purpose is race
 - **THEN** the report judges the second half of the main part against the first, notable at 2 % slower. The halves leave out a warm-up lap or else the first 10 min of a session of 30 min or more, so the rule names that a fast start is not part of it.
 
+#### Scenario: Grade-adjusted pace
+- **WHEN** the session is an outdoor run with speed and a grade or altitude stream
+- **THEN** the report carries its grade-adjusted pace after Minetti 2002 over the moving time, overall and per lap, with the pace, the difference in percent, the grade coverage and the device's own value as a comparison; the check is an estimate and stays `ok`, never notable alone, and is unknown without the streams or when the speed fails its data-quality rule (#3084 Part 3).
+
+#### Scenario: RPE against intensity
+- **WHEN** a run or ride carries a session RPE and a local IF
+- **THEN** the report compares the RPE with the median RPE of the athlete's own rated sessions of the same sport and RPE scale within ±0.05 IF over the 84 days before the session's day (a session later that day never counts), read once for that window; notable from a 2-point gap; unknown with fewer than 5 such sessions or without a rating or IF (#3084 Part 3).
+
 #### Scenario: Data quality gates verdicts
 - **WHEN** the heart-rate data shows spikes or a cadence lock or was not checked, or the speed of a speed-based output (a run, a ride without power) jumps
 - **THEN** every check that reads those data is unknown with the data-quality reason instead of notable. Other unknown reasons pass on the owner's reason (comparable sessions, halves).
@@ -59,7 +67,11 @@ The system SHALL add to every `get_activity_details` result a `session_report` (
 Evidence:
 - `backend/performance/session_report.py:session_report`
 - `backend/coach/activity_read_tools.py:CoachActivityReadToolService._with_session_context`
+- `backend/performance/session_conditions.py:grade_adjusted_pace`
+- `backend/performance/session_conditions.py:expected_rpe`
+- `backend/performance/activity_read_service.py:ActivityAnalysisReadService.rated_sessions`
 - `tests/test_session_report.py`
+- `tests/test_session_conditions.py`
 
 ### Requirement: Deterministic session resolution
 The system SHALL resolve which session `get_activity_details` reads in the server, never by the model's choice, and SHALL return the candidates instead of a detail when the reference is not unique (#3084, #3080).
@@ -101,3 +113,31 @@ Evidence:
 - `tests/test_coach_tool_execution_service.py:StructuredToolExecutionTests.test_only_the_athletes_own_request_names_a_provider_or_session`
 - `tests/test_coach_playbooks.py`
 - `tests/test_coach_live_eval.py`
+
+### Requirement: Race against its race plan
+The session report SHALL judge a race linked to a stored competition against that competition's race plan (#2803), with the athlete's limits from #3084 (2026-11-15). Runs compare recorded times with the plan's grade-adjusted section times, rides the distance-weighted mean power with the planned power.
+
+#### Scenario: Recording laid onto the course
+- **WHEN** the recording ends with a stretch slower than 60 % of the race's median speed, or GPS measured the course a little long or short
+- **THEN** that slow stretch (a walk-off after the line) is cut off and the rest is scaled onto the plan's distance.
+
+#### Scenario: Sections and start
+- **WHEN** the race plan is ready and the recording covers the plan's distance within 10 %
+- **THEN** each section more than 3 % off the plan is notable, and the start, the first 10 % of the distance and at least 1 km, is notable when more than 3 % faster than the plan there (or 3 % more power).
+
+#### Scenario: Fade point
+- **WHEN** every km from one km to the finish is more than 3 % behind the plan there, and a km before it was on plan
+- **THEN** the report names that km as the fade point and is notable; a race behind plan from the first km has no fade point.
+
+#### Scenario: Finish against the target
+- **WHEN** the competition has a target or planned time and the recording covers the plan's distance
+- **THEN** the time to the plan's finish line more than 2 % slower than the target is notable; a faster finish is named, not notable. A race given up short of the distance is unknown, never a fast finish.
+
+#### Scenario: No usable plan or recording
+- **WHEN** the plan is unavailable, a ride has no target power or power stream, a run's speed jumps, or the recorded distance differs more than 10 % from the plan's
+- **THEN** the section, start and fade checks are unknown with that reason.
+
+Evidence:
+- `backend/performance/session_report.py:_RacePlan`
+- `backend/coach/activity_read_tools.py:CoachActivityReadToolService._race`
+- `tests/test_session_report.py`

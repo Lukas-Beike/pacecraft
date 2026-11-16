@@ -203,10 +203,16 @@ class RunnerEvidenceTests(unittest.TestCase):
             def test_case(self):
                 pass
 
-        code, result = self.run_fixture(Skipped)
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            code, result = self.run_fixture(Skipped, stdout=out)
         self.assertEqual(code, 0)
         self.assertEqual(result["skips"], 1)
         self.assertEqual(result["skip_reasons"], {"synthetic skip": 1})
+        # The log names each skipped test under its reason (#3163).
+        lines = out.getvalue().splitlines()
+        reason = lines.index("  skip reason (1): synthetic skip")
+        self.assertEqual(f"    {result['executed_ids'][0]}", lines[reason + 1])
         self.assertEqual(result["tests_run"], 1)
         self.assertEqual(result["executed_ids"], result["selected_ids"])
 

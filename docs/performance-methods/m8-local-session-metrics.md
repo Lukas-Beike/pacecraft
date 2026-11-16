@@ -79,6 +79,12 @@ Athlete decisions (2026-11-07, #1680):
      to ±45 %. The grade is the stored grade stream, else the altitude change
      over the next 200 m of distance. This is the same adjustment as
      `pace-at-heart-rate-v2`.
+   - The session report (#3084) gives an outdoor run's grade-adjusted pace
+     with this adjustment over the moving samples of the detail streams
+     (speed at least 1 m/s, stops longer than max(30 s, 3 × the median step)
+     left out), overall and per lap on the stream clock. It is an estimate,
+     labelled with its method, and never a finding alone; the device's own
+     grade-adjusted speed is shown only as a comparison.
    - Treadmill and virtual runs are flat: their speed is not adjusted. An
      outdoor run without a grade or altitude and distance stream gets no
      decoupling.

@@ -30,7 +30,6 @@ import subprocess
 import sys
 import time
 import unittest
-from collections import Counter
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -379,13 +378,15 @@ def main(args: argparse.Namespace | None = None) -> int:
         raise
     assert isinstance(result, ClassTimingResult)
     elapsed = time.perf_counter() - started
-    # Environment skips (#2553) stay visible by reason, not only as a count.
-    skip_reasons = Counter(reason for _test, reason in result.skipped)
+    # Environment skips (#2553) stay visible by reason and by test (#3163).
+    skipped_ids: dict[str, list[str]] = {}
+    for test, reason in result.skipped:
+        skipped_ids.setdefault(reason, []).append(test.id())
     evidence.update(
         status="passed" if result.wasSuccessful() else "failed",
         tests_run=result.testsRun,
         skips=len(result.skipped),
-        skip_reasons=dict(sorted(skip_reasons.items())),
+        skip_reasons={reason: len(ids) for reason, ids in sorted(skipped_ids.items())},
         failures=len(result.failures),
         errors=len(result.errors),
         error_ids=[test.id() for test, _ in result.errors],
@@ -398,8 +399,10 @@ def main(args: argparse.Namespace | None = None) -> int:
         f"Discovery: {len(tests)} tests; shard {args.shard}/{args.total}: "
         f"{result.testsRun} run, {len(result.skipped)} skipped in {elapsed:.2f}s"
     )
-    for reason, count in sorted(skip_reasons.items()):
-        print(f"  skip reason ({count}): {reason}")
+    for reason, ids in sorted(skipped_ids.items()):
+        print(f"  skip reason ({len(ids)}): {reason}")
+        for test_id in sorted(ids):
+            print(f"    {test_id}")
     # Last, so a reader of the output's tail still sees which tests failed.
     for kind, entries in (("FAILED", result.failures), ("ERROR", result.errors)):
         for test, _trace in entries:

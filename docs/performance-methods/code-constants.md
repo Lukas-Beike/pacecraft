@@ -226,6 +226,14 @@ every named number the code fixes. A test fails when it is out of date.
 | `HEART_RATE_HISTOGRAM_VERSION` | `2` | `backend/performance/session_analysis.py` | Bump when heart_rate_histogram counts differently, so stored rows recompute. v2: steps up to the adaptive gap rule of the zone times count (#1950). |
 | `HISTOGRAM_MIN_BPM` | `30` | `backend/performance/session_analysis.py` |  |
 | `HISTOGRAM_MAX_BPM` | `240` | `backend/performance/session_analysis.py` |  |
+| `GAP_METHOD` | `'Minetti et al. 2002: Energiekosten des Laufens je Steigung (Schätzung aus den Streams der Einheit)'` | `backend/performance/session_conditions.py` | Grade-adjusted pace: Minetti et al. 2002 (R44), the adjustment of M8 and pace at HR. |
+| `MOVING_MPS` | `1.0` | `backend/performance/session_conditions.py` | Samples below this speed are standing, not running (3.6 km/h). |
+| `STOP_S` | `30.0` | `backend/performance/session_conditions.py` | A gap longer than max(30 s, 3 x the median step) is a stop, as in the halves. |
+| `RPE_GAP_POINTS` | `2.0` | `backend/performance/session_conditions.py` | RPE against intensity (athlete decision on #3084, 2026-11-15; Foster session-RPE, R1): notable from this gap in points to the expected RPE. |
+| `RPE_IF_WINDOW` | `0.05` | `backend/performance/session_conditions.py` | The expected RPE is the median of own rated sessions of the same sport and RPE scale within this IF of the session (orchestrator decision on #3084). |
+| `MIN_RATED` | `5` | `backend/performance/session_conditions.py` | Own rated sessions needed for an expected RPE; fewer leave the check unknown. |
+| `RATED_WINDOW_DAYS` | `84` | `backend/performance/session_conditions.py` | The rated sessions read for the expected RPE: the comparable-session window. |
+| `INPUTS` | `'condition_inputs'` | `backend/performance/session_conditions.py` | What the session report adds to the detail for these checks: the session's local IF, the device's grade-adjusted speed and the athlete's rated sessions. |
 | `METHOD` | `'session-execution-v1'` | `backend/performance/session_execution.py` |  |
 | `SCOPE` | `"Descriptive execution of this one session from its own streams and laps. Output is pace in s/km ... (sha256 3cc2c071)` | `backend/performance/session_execution.py` |  |
 | `SHORT_REP_S` | `120.0` | `backend/performance/session_execution.py` |  |
@@ -276,6 +284,12 @@ every named number the code fixes. A test fails when it is out of date.
 | `HEART_RATE_DROP_BELOW_BPM` | `5.0` | `backend/performance/session_report.py` | HR drop 60 s into recoveries: notable this far below the athlete's own median. |
 | `MIN_PERSONAL` | `5` | `backend/performance/session_report.py` | A personal basis needs this many own comparable values. |
 | `RACE_SPLIT_PCT` | `2.0` | `backend/performance/session_report.py` | Race: second half this much slower than the first (positive split). |
+| `RACE_PLAN_PCT` | `3.0` | `backend/performance/session_report.py` | Race against its race plan (#2803): a section, the start or the km after the fade point this far off the plan there (athlete, #3084). |
+| `RACE_START_SHARE` | `0.1` | `backend/performance/session_report.py` | The start is this share of the distance, at least RACE_START_MIN_KM. |
+| `RACE_START_MIN_KM` | `1.0` | `backend/performance/session_report.py` | The shortest start a race is judged by, in km. |
+| `RACE_FINISH_PCT` | `2.0` | `backend/performance/session_report.py` | Finish slower than the competition's target time by this much. |
+| `RACE_DISTANCE_SHARE` | `0.1` | `backend/performance/session_report.py` | The recorded distance may differ this much from the plan's (GPS, course). |
+| `WALK_OFF_SPEED_SHARE` | `0.6` | `backend/performance/session_report.py` | A final stretch slower than this share of the race's median speed is a walk or roll-out after the line, not the race. |
 | `LEAD_COUNT` | `4` | `backend/performance/session_report.py` | The notable checks the answer leads with. |
 | `EASY_FOCUS` | `frozenset({'recovery', 'easy', 'endurance', 'long'})` | `backend/performance/session_report.py` |  |
 | `INTERVAL_FOCUS` | `frozenset({'tempo', 'threshold', 'vo2max', 'anaerobic', 'sweet_spot', 'test'})` | `backend/performance/session_report.py` |  |

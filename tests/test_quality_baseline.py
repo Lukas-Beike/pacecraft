@@ -521,8 +521,15 @@ class QualityBaselineTests(unittest.TestCase):
             self.baseline, self.versions, [self.existing], ("eslint",)
         )
         self.assertEqual(result, 0)
+        # Without a named node_modules (the caller may have set one, #3170).
+        environment = {
+            key: value
+            for key, value in os.environ.items()
+            if key != "PACECRAFT_NODE_MODULES"
+        }
         with (
             patch("tools.quality_baseline.eslint_script", return_value=None),
+            patch.dict("os.environ", environment, clear=True),
             contextlib.redirect_stdout(io.StringIO()) as output,
         ):
             self.assertIsNone(quality_baseline.javascript_diagnostics(Path.cwd()))

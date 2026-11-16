@@ -339,6 +339,40 @@ class CoachActivityReadToolServiceTests(unittest.TestCase):
         notable = [c["id"] for c in report["checks"] if c["verdict"] == "notable"]
         self.assertEqual(sorted(notable), sorted(report["notable"]))
 
+    def test_a_race_is_judged_against_its_linked_competitions_race_plan(self):
+        # #3084 Part 1c: the session's competition_id selects the race plan.
+        competitions = Mock()
+        competitions.get.return_value = {
+            "id": "race-1",
+            "sport": "run",
+            "distance": 10000,
+            "target": "0:50:00",
+        }
+        service = CoachActivityReadToolService(
+            Mock(), Mock(), Mock(), date.today, competitions=lambda: competitions
+        )
+        session = {"activity_id": "act_1", "sport": "run", "competition_id": "race-1"}
+        report = service._session_report(
+            {
+                "session": {**session, "purpose": "race"},
+                "focus": {"status": "unknown"},
+                # 10 km reached after 3200 s.
+                "streams": {
+                    "time_s": [0, 3200],
+                    "channels": {"distance_m": {"values": [0, 10000]}},
+                },
+            },
+            session,
+            None,
+            None,
+        )
+        competitions.get.assert_called_once_with("race-1")
+        finish = next(c for c in report["checks"] if c["id"] == "race_finish")
+        # 3200 s against the 50:00 target: 6.7 % over, notable.
+        self.assertEqual(
+            (6.7, "notable"), (finish["value"]["behind_target_pct"], finish["verdict"])
+        )
+
     def test_session_report_sets_the_plan_estimate_against_the_local_load(self):
         # The estimate is TSS-scale (M6); the provider's own load (300 on
         # Garmin's scale) never enters the plan comparison.
@@ -372,6 +406,47 @@ class CoachActivityReadToolServiceTests(unittest.TestCase):
             ({"actual": 84, "planned": 80, "difference_pct": 5.0}, "ok"),
             (load["value"], load["verdict"]),
         )
+
+    def test_session_report_judges_rpe_against_the_own_rated_sessions(self):
+        # #3084 Part 3: the rated sessions of the 84 days before the session's
+        # day (never the session or a later one that day) and its local IF feed
+        # the RPE check.
+        activity_read = Mock()
+        activity_read.rated_sessions.return_value = [
+            {"id": f"r{n}", "sport": "run", "intensity": 0.8, "rpe": 5}
+            | {"rpe_scale": "cr10"}
+            for n in range(5)
+        ]
+        service = CoachActivityReadToolService(activity_read, Mock(), Mock(), Mock())
+        session = {
+            "activity_id": "act_1",
+            "sport": "run",
+            "started_at_local": "2026-09-22T07:00:00",
+        }
+        result = {
+            "session": session,
+            "session_rpe_load": {"rpe": 7, "rpe_scale": "cr10"},
+        }
+        report = service._session_report(
+            result,
+            session,
+            None,
+            [{"id": "act_1", "intensity": 0.8}],
+        )
+        activity_read.rated_sessions.assert_called_once_with(
+            date(2026, 6, 30), date(2026, 9, 21)
+        )
+        check = next(c for c in report["checks"] if c["id"] == "rpe_intensity")
+        self.assertEqual(
+            (5.0, 5, "notable"),
+            (
+                check["value"]["expected_rpe"],
+                check["value"]["rated_sessions"],
+                check["verdict"],
+            ),
+        )
+        # The inputs go to the report only; the tool result stays as it was.
+        self.assertEqual({"session", "session_rpe_load"}, set(result))
 
     def test_detail_result_size_does_not_grow_with_the_recording(self):
         raw_activity = {

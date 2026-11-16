@@ -385,6 +385,7 @@ def build_coach_read_tools(
             plan_guard.planned_unit_estimator(),
             ctx.athlete.session_corrections(),
             ctx.session_report_counts,
+            ctx.planning.competition,
         )
 
     def read_service() -> CoachReadToolService:
