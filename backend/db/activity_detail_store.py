@@ -891,6 +891,44 @@ def first_threshold_results(
     with more windows. Methods 2 and 3 both count. Rows with an unreadable day or
     without a 0.75 estimate are skipped. Oldest session first.
     """
+    return _session_dfa_results(
+        db,
+        since=since,
+        until=until,
+        sport=sport,
+        keep=lambda result: result.estimate_bpm is not None,
+        rank=_dfa_rank,
+    )
+
+
+def dfa_series_results(
+    db: Any, *, since: date, until: date, sport: Sport
+) -> list[SessionFirstThreshold]:
+    """Return one stored DFA-a1 result per live session for the window series (#3273).
+
+    Within a session a record whose series is readable wins, then the one with
+    more windows; a session without one keeps its older record, which counts as
+    not evaluated. Oldest session first.
+    """
+    return _session_dfa_results(
+        db,
+        since=since,
+        until=until,
+        sport=sport,
+        keep=lambda _result: True,
+        rank=lambda result: (1 if result.series_evaluated else 0, result.windows),
+    )
+
+
+def _session_dfa_results(
+    db: Any,
+    *,
+    since: date,
+    until: date,
+    sport: Sport,
+    keep: Callable[[ActivityDfaAlpha1], bool],
+    rank: Callable[[ActivityDfaAlpha1], tuple[int, ...]],
+) -> list[SessionFirstThreshold]:
     best: dict[str, SessionFirstThreshold] = {}
     for row in db.execute(
         "SELECT CASE WHEN s.state = ? THEN s.merged_into ELSE s.activity_id END "
@@ -919,10 +957,10 @@ def first_threshold_results(
             day = date.fromisoformat(str(row["day"]))
         except ValueError:
             continue
-        if result is None or result.estimate_bpm is None:
+        if result is None or not keep(result):
             continue
         found = best.get(row["session_id"])
-        if found is None or _dfa_rank(result) > _dfa_rank(found.result):
+        if found is None or rank(result) > rank(found.result):
             best[row["session_id"]] = SessionFirstThreshold(
                 row["session_id"], day, result
             )
@@ -932,16 +970,19 @@ def first_threshold_results(
 def dfa_series_counts(db: Any, *, since: date) -> dict[str, int]:
     """Chest-strap run stream sets since ``since`` by DFA-a1 method, counts only.
 
-    ``with_series`` rows were evaluated with the window series (method 3 or
-    later, #3273), ``before_series`` rows by an earlier method, and
-    ``without_result`` rows hold no DFA-a1 result (too few windows, or a file
-    without RR intervals).
+    ``with_series`` rows hold a readable window series (method 3 or later,
+    #3273), ``unreadable_series`` rows of method 3 or later do not,
+    ``before_series`` rows come from an earlier method, and ``without_result``
+    rows hold no DFA-a1 result: too few windows, a file without RR intervals or,
+    before method 3, a recording without a 0.75 crossing, so such a row is never
+    read as "no crossing".
     """
-    row = db.execute(
-        "SELECT COUNT(*) AS runs, "
-        "COALESCE(SUM(d.dfa_alpha1 IS NULL), 0) AS without_result, "
-        "COALESCE(SUM(json_extract(d.dfa_alpha1, '$.method') < ?), 0) AS before_series, "
-        "COALESCE(SUM(json_extract(d.dfa_alpha1, '$.method') >= ?), 0) AS with_series "
+    counts = dict.fromkeys(
+        ("runs", "with_series", "unreadable_series", "before_series", "without_result"),
+        0,
+    )
+    for row in db.execute(
+        "SELECT d.dfa_alpha1 "
         "FROM activity_detail_sets AS d "
         "JOIN activity_records AS r ON r.provider = d.provider "
         "AND r.provider_activity_id = d.provider_activity_id "
@@ -950,8 +991,6 @@ def dfa_series_counts(db: Any, *, since: date) -> dict[str, int]:
         "AND s.state <> ? AND r.sport = ? "
         "AND COALESCE(s.local_date, substr(r.started_at, 1, 10)) >= ?",
         (
-            DFA_SERIES_METHOD,
-            DFA_SERIES_METHOD,
             ActivityDetailKind.STREAMS.value,
             HeartRateSource.CHEST_STRAP.value,
             ActivityRecordState.ACTIVE.value,
@@ -959,11 +998,18 @@ def dfa_series_counts(db: Any, *, since: date) -> dict[str, int]:
             Sport.RUN.value,
             since.isoformat(),
         ),
-    ).fetchone()
-    return {
-        key: int(row[key])
-        for key in ("runs", "with_series", "before_series", "without_result")
-    }
+    ).fetchall():
+        counts["runs"] += 1
+        result = stored_dfa_alpha1(row["dfa_alpha1"])
+        if result is None:
+            counts["without_result"] += 1
+        elif result.series_evaluated:
+            counts["with_series"] += 1
+        elif result.method >= DFA_SERIES_METHOD:
+            counts["unreadable_series"] += 1
+        else:
+            counts["before_series"] += 1
+    return counts
 
 
 def _dfa_rank(result: ActivityDfaAlpha1) -> tuple[int, int, int]:

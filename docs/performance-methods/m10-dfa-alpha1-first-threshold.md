@@ -1,7 +1,7 @@
 # M10 — First threshold heart rate from chest-strap RR intervals (DFA-α1)
 
 - **Card:** M10
-- **Card version:** 2
+- **Card version:** 3
 - **Method ID:** dfa-alpha1-first-threshold v3 (`backend/canonical/dfa_alpha1.py:METHOD_VERSION`), athlete-level value in `backend/performance/first_threshold_estimate.py` (#2131, C-008)
 - **Status:** implemented (`backend/providers/fit_rr_mapping.py` reads the RR intervals); per-session result stored with the stream set, athlete-level estimate shown in the profile and the Coach context, adopted only by the athlete
 - **Classification:** model estimate
@@ -22,6 +22,12 @@ the first threshold with the origin `estimated` (`first_threshold_origin`).
 
 Athlete decision (2026-11-10, #2131): write this card and list the method as
 implemented, no longer as deferred.
+
+Athlete decisions (2026-11-16, #3273, F1 to F3, F7): the stored window series
+also gives a second threshold, the heart rate where alpha1 crosses 0.5 (the
+VT2 analogue, Rogers et al. 2021), shown as a local LT2 estimate beside Garmin's
+for runs only. The athlete may adopt it with an explicit action; it is stored
+with its origin and never adopted automatically.
 
 ## Formula and units
 
@@ -71,6 +77,27 @@ of the run threshold HR, "% LSHF"):
    rounded half up, and absent when no threshold HR is known.
 4. The athlete-level quality is `good` with at least 5 sessions whose values
    spread at most 5 percentage points, else `low`.
+
+Second threshold per run (`second_threshold_estimate.session_second_threshold`):
+
+1. Only runs whose stored series is readable (method 3); older rows are not
+   evaluated, never "no crossing".
+2. A least-squares line of alpha1 on window heart rate over the windows with
+   alpha1 at or below 0.75 only, so the easy part does not place the crossing.
+3. A result needs at least 10 such windows, a heart-rate spread of 10 bpm,
+   windows reaching 0.40 and 0.60, a falling line, a crossing inside the
+   observed heart rates and within 60 to 220 bpm, above the same run's 0.75
+   crossing, and windows below 0.5 not only in the last quarter of the run
+   (late drift).
+4. Quality as for the first threshold: `good` with at least 20 windows, a
+   recording artifact share of at most 0.03 and R² of at least 0.5.
+
+Athlete level (`dfa_second_threshold`): the median in bpm over at least 3 good
+runs of the last 60 days (F1); a percent of the threshold heart rate would move
+with the value adopted from it. `good` with at least 5 runs whose spread is at
+most 5 % of the median (F2, as for the first threshold, without a per-run
+window rule). It must lie above the stored first threshold. The pace beside it
+is the athlete's own steady-run pace at that heart rate (card M9).
 
 ## Sources
 
@@ -223,10 +250,11 @@ of the run threshold HR, "% LSHF"):
 - An automatic adoption or a Coach adoption; the Coach may only suggest it.
 - Zones, heart-rate caps or plans changed from the estimate without the
   athlete's adoption; after adoption the caps carry the source `estimated`.
-- A statement on the anaerobic threshold (alpha1 0.5) or on fitness, form,
-  readiness or injury risk from alpha1.
+- A statement on fitness, form, readiness or injury risk from alpha1; the
+  anaerobic threshold (alpha1 0.5) only as the labelled local LT2 estimate
+  (#3273).
 - An estimate from optical heart rate, from fewer sessions than the minimum or
-  from a cycling session.
+  from a cycling session (LT1 and LT2 alike, F3).
 
 ## Open points
 

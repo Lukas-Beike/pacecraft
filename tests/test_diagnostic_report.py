@@ -267,7 +267,13 @@ class DiagnosticReportServiceTests(unittest.TestCase):
         # Chest-strap runs by DFA-a1 method, counts only (#3273).
         self.assertEqual(
             report["dfa_series"],
-            {"runs": 0, "with_series": 0, "before_series": 0, "without_result": 0},
+            {
+                "runs": 0,
+                "with_series": 0,
+                "unreadable_series": 0,
+                "before_series": 0,
+                "without_result": 0,
+            },
         )
         # Fallback detail sets kept out or stored, counts only (#3122).
         self.assertEqual(report["garmin_detail_fallback"], {"kept": 0, "stored": 0})

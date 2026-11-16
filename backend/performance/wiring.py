@@ -34,6 +34,7 @@ from backend.performance.report_service import (
     TrainingReportServices,
     TrainingSeasonReadService,
 )
+from backend.performance.second_threshold_service import SecondThresholdService
 from backend.performance.source_policy import (
     PREFERENCE_PROFILE_FIELDS,
     preferences_from_profile,
@@ -182,6 +183,10 @@ class AthleteDataServices:
     session_corrections: Callable[[], SessionCorrectionService]
     checkin: Callable[[], CheckinService]
     first_threshold: Callable[[], FirstThresholdService]
+    # The local LT2 estimates read the session curves of the performance services.
+    second_threshold: Callable[
+        [Callable[[int], Sequence[Mapping[str, Any]]]], SecondThresholdService
+    ]
     profile: Callable[[], ProfileService]
     # The athlete's 3-site skinfolds and the body fat they give (#3099).
     skinfolds: Callable[[], SkinfoldService]
@@ -293,6 +298,13 @@ def build_athlete_data(
             database_manager(),
             profile(),
             lambda: run_lthr().day_resolver(),
+            local_date,
+        ),
+        second_threshold=lambda curve_records: SecondThresholdService(
+            database_manager(),
+            profile(),
+            lambda: run_lthr().day_resolver(),
+            curve_records,
             local_date,
         ),
         profile=profile,

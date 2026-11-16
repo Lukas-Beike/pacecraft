@@ -39,6 +39,7 @@ class AthleteGetRoutes:
         race_results: Callable[[list[dict[str, Any]]], list[dict[str, Any]]]
         | None = None,
         first_threshold_service: Callable[[], Any] | None = None,
+        second_threshold_service: Callable[[], Any] | None = None,
         race_plan: Callable[[str], dict[str, Any] | None] | None = None,
         skinfold_service: Callable[[], Any] | None = None,
         energy_view: Callable[[], dict[str, Any]] | None = None,
@@ -46,6 +47,7 @@ class AthleteGetRoutes:
         self._skinfold_service = skinfold_service
         self._energy_view = energy_view
         self._first_threshold_service = first_threshold_service
+        self._second_threshold_service = second_threshold_service
         self._race_plan = race_plan
         self._race_results = race_results
         self._public_performance_state_service = public_performance_state_service
@@ -139,8 +141,17 @@ class AthleteGetRoutes:
             ),
         )
 
+    @staticmethod
+    def _lt2_estimates(service: Callable[[], Any]) -> dict[str, Any] | None:
+        try:
+            result: dict[str, Any] = service().estimates()
+        except Exception as exc:  # noqa: BLE001 - the estimates are optional; never fail the profile
+            _LOGGER.warning("LT2 estimates unavailable: %s", type(exc).__name__)
+            return None
+        return result
+
     def _profile(self, handler: Any, _request: RouteRequest) -> None:
-        """Profile, competitions and the first threshold estimate.
+        """Profile, competitions and the threshold estimates.
 
         Request: no query, no body.
 
@@ -148,7 +159,12 @@ class AthleteGetRoutes:
         `competitions` (up to 100; a past competition carries `result` when a
         session is linked to it) and `first_threshold_estimate`: `percent_lthr`,
         `bpm`, `sessions`, `quality`, `from`, `to`, `spread_pct`, `source`, or null
-        without an estimate or when computing it fails.
+        without an estimate or when computing it fails. `lt2_estimates` (#3273)
+        holds per sport (`run`, `ride`) the local LT2 estimates `dfa_alpha1` and
+        `critical_speed` (run) or `critical_power` (ride): `status` `ok` with the
+        value (`heart_rate_bpm` and `pace_seconds_per_km`, or
+        `pace_seconds_per_km`, or `power_w`), `quality`, its basis and `source`, or
+        `unknown` with `reason`; null when computing them fails.
 
         Errors: none beyond the common ones.
         """
@@ -159,6 +175,10 @@ class AthleteGetRoutes:
         if self._first_threshold_service is not None:
             payload["first_threshold_estimate"] = self._first_threshold_estimate(
                 self._first_threshold_service
+            )
+        if self._second_threshold_service is not None:
+            payload["lt2_estimates"] = self._lt2_estimates(
+                self._second_threshold_service
             )
         handler.send_json(200, payload)
 

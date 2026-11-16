@@ -311,6 +311,9 @@ def build_coach_context(
             zone_configurations=zone_configurations,
             threshold_warnings=threshold_warnings,
             first_threshold_estimate=lambda: ctx.athlete.first_threshold().estimate(),
+            lt2_estimates=lambda: ctx.athlete.second_threshold(
+                ctx.performance.curve_records
+            ).estimates(),
             planning_brief=lambda: plan_guard.plan_guard_service().brief(),
             today=local_date,
         )
