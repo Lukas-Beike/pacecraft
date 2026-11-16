@@ -43,12 +43,15 @@ at both widths: `ok|FAIL <width> <step> <ms> ms`; `info ... skipped` when the
 data does not exist (no planned unit, no recorded running dynamics); a missing
 or empty element where data exists is `FAIL` and names the feature it covers.
 `--compare` prints each step's time against the previous walk and a `FAIL` for a
-step that passed before and is skipped now. Optional steps are skipped without
-data, so a skipped step in the notes is read, not ignored.
+step that passed before and is skipped now, whatever the reason. Optional steps
+are skipped without data, so a skipped step in the notes is read, not ignored.
+The completed-unit steps come last in the calendar and page back to the latest
+week with a completed unit (on a Monday the current week has none yet).
 
 To add a step, append one object to `STEPS`: `view`, `name`, `covers` (feature or
 issue), optional `pre` (open once), `each` (candidates tried in turn) and `opens`
-(open inside the candidate), `ready` (selector), `kind`, `optional`, `absent`.
+(open inside the candidate), `seek` (a paging control pressed, at most six
+times, until a candidate shows), `ready` (selector), `kind`, `optional`, `absent`.
 Controls are limited to opening, expanding, paging and tab controls
 (`isOpener`), and a label that names save, sync, send, delete, export, undo or
 settings is refused; choosing a select value is never part of a step. The
