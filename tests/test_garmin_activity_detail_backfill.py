@@ -25,7 +25,7 @@ from backend.errors import AppError
 from backend.providers import canonical_plans as plans
 from backend.providers.canonical_plans import ACTIVITY_RECORD_KIND
 from backend.providers.garmin_activity_detail_mapping import MAPPER_VERSION
-from backend.sync import garmin, garmin_wiring
+from backend.sync import garmin, garmin_activity_details, garmin_wiring
 from backend.sync.canonical_ingest import ingest_plan
 from backend.sync.garmin_activity_details import (
     BACKFILL_BATCH_SIZE,
@@ -34,7 +34,10 @@ from backend.sync.garmin_activity_details import (
     BACKFILL_STATE_KEY,
     BACKFILL_WINDOW,
     DETAIL_FALLBACK_KEY,
+    REPLAY_BATCH_SIZE,
+    REPLAY_DAILY_LIMIT,
     GarminActivityDetailService,
+    _parse_backfill_state,
     detail_replay_size,
 )
 from backend.sync.garmin_service import GarminRemoteReader
@@ -389,7 +392,14 @@ class BackfillBatchTests(_Base):
         self.assertEqual(ids[0], "1011")
         self.assertEqual(
             result,
-            {"status": "completed", "fetched": 10, "empty": 0, "remaining": 2},
+            {
+                "status": "completed",
+                "fetched": 10,
+                "empty": 0,
+                "remaining": 2,
+                "replayed": 0,
+                "replay_remaining": 0,
+            },
         )
         self.assertEqual(_stored_kinds(self.manager, "1011")[0], "heart_rate_zones")
         self.assertEqual(_stored_kinds(self.manager, "1000"), [])
@@ -445,7 +455,15 @@ class BackfillBatchTests(_Base):
         result = self.service(reader).backfill()
 
         self.assertEqual(
-            result, {"status": "completed", "fetched": 1, "empty": 0, "remaining": 0}
+            result,
+            {
+                "status": "completed",
+                "fetched": 1,
+                "empty": 0,
+                "remaining": 0,
+                "replayed": 0,
+                "replay_remaining": 0,
+            },
         )
         self.assertEqual(reader.fetched, ["1002"])
         state = _stored_state(self.key_values)
@@ -850,9 +868,309 @@ class BackfillBatchTests(_Base):
         result = self.service(reader).backfill()
 
         self.assertEqual(
-            result, {"status": "completed", "fetched": 0, "empty": 0, "remaining": 0}
+            result,
+            {
+                "status": "completed",
+                "fetched": 0,
+                "empty": 0,
+                "remaining": 0,
+                "replayed": 0,
+                "replay_remaining": 0,
+            },
         )
         self.assertEqual(reader.calls, [])
+
+
+def _full(activity_id: str) -> dict[str, Any]:
+    payload = _with_fit()
+    payload["activity_id"] = activity_id
+    return payload
+
+
+def _seed_outdated(case: _Base, rows: list[tuple[str, str]]) -> None:
+    """Store full sets for the rows as the mapper before the bump wrote them."""
+    _seed(case.manager, rows)
+    with patch.object(garmin_activity_details, "MAPPER_VERSION", MAPPER_VERSION - 1):
+        for _refresh in range(-(-len(rows) // BACKFILL_BATCH_SIZE)):
+            case.service(_Details({aid: _full(aid) for aid, _start in rows})).backfill()
+    case.key_values.values.clear()
+
+
+def _days(count: int) -> list[tuple[str, str]]:
+    return [
+        (str(2000 + index), f"2026-09-{index + 1:02d} 07:00:00")
+        for index in range(count)
+    ]
+
+
+class BackfillReplayTests(_Base):
+    """A mapper bump re-fetches the window slowly and never before new activities (#2220)."""
+
+    def test_the_candidate_query_tells_replays_from_new_and_changed_activities(
+        self,
+    ) -> None:
+        _seed_outdated(
+            self, [("1001", "2026-10-01 07:00:00"), ("1003", "2026-10-03 07:00:00")]
+        )
+        _set_summary_hash(self.manager, "1003")
+        _seed(self.manager, [("1002", "2026-10-02 07:00:00")])
+        with self.manager.reader() as db:
+            rows = activity_detail_backfill_candidates(
+                db,
+                GARMIN_ID,
+                ACTIVITY_RECORD_KIND,
+                since=SINCE,
+                limit=10,
+                mapper_version=MAPPER_VERSION,
+            )
+
+        # Replay: sets of the current summary, only their version is older. A new
+        # activity and one whose summary changed carry no set of the current one.
+        self.assertEqual(
+            {row["provider_activity_id"]: row["replay"] for row in rows},
+            {"1003": False, "1002": False, "1001": True},
+        )
+
+    def test_a_retry_with_up_to_date_sets_is_not_a_replay(self) -> None:
+        _seed(self.manager, [("1001", "2026-10-01 07:00:00")])
+        self.service(_Details({"1001": _payload("1001")})).backfill()
+        with self.manager.reader() as db:
+            rows = activity_detail_backfill_candidates(
+                db,
+                GARMIN_ID,
+                ACTIVITY_RECORD_KIND,
+                since=SINCE,
+                limit=10,
+                mapper_version=MAPPER_VERSION,
+                retry_ids=("1001",),
+            )
+        self.assertEqual([row["replay"] for row in rows], [False])
+
+    def test_replays_run_five_per_refresh_and_twenty_per_day(self) -> None:
+        rows = _days(30)
+        _seed_outdated(self, rows)
+        counts = []
+        for _refresh in range(4):
+            reader = _Details({aid: _full(aid) for aid, _start in rows})
+            result = self.service(reader).backfill()
+            counts.append((len(reader.fetched), result["replayed"], result["fetched"]))
+        # Newest first: the first refresh took the five newest activities.
+        self.assertEqual(counts, [(REPLAY_BATCH_SIZE, 5, 5)] * 4)
+        self.assertEqual(
+            _stored_state(self.key_values)["replay"],
+            {"day": NOW[:10], "count": REPLAY_DAILY_LIMIT},
+        )
+
+        # The day's budget is spent: nothing runs, and the rest waits.
+        reader = _Details({})
+        result = self.service(reader).backfill()
+        self.assertEqual(reader.calls, [])
+        self.assertEqual(
+            result,
+            {
+                "status": "completed",
+                "fetched": 0,
+                "empty": 0,
+                "remaining": 0,
+                "replayed": 0,
+                "replay_remaining": 10,
+            },
+        )
+
+        # The next UTC day starts a new budget.
+        self.now = "2026-10-19T00:30:00+00:00"
+        reader = _Details({aid: _full(aid) for aid, _start in rows})
+        result = self.service(reader).backfill()
+        self.assertEqual(
+            (result["replayed"], result["replay_remaining"]), (REPLAY_BATCH_SIZE, 5)
+        )
+        self.assertEqual(
+            _stored_state(self.key_values)["replay"], {"day": "2026-10-19", "count": 5}
+        )
+
+    def test_new_activities_come_first_and_replays_fill_the_rest(self) -> None:
+        rows = _days(12)
+        _seed_outdated(self, rows)
+        fresh = [("3001", "2026-10-10 07:00:00"), ("3002", "2026-10-09 07:00:00")]
+        _seed(self.manager, fresh)
+        reader = _Details(
+            {aid: _full(aid) for aid, _start in [*rows, *fresh]},
+        )
+
+        result = self.service(reader).backfill()
+
+        ids = reader.calls[0][0]
+        self.assertEqual(ids[:2], ("3001", "3002"))
+        self.assertEqual(len(ids), 2 + REPLAY_BATCH_SIZE)
+        self.assertEqual(
+            (result["fetched"], result["replayed"], result["remaining"]), (7, 5, 0)
+        )
+        self.assertEqual(result["replay_remaining"], 7)
+
+    def test_replays_never_exceed_the_room_left_in_a_full_batch(self) -> None:
+        _seed_outdated(self, _days(6))
+        fresh = [
+            (str(3000 + index), f"2026-10-{index + 1:02d} 07:00:00")
+            for index in range(8)
+        ]
+        _seed(self.manager, fresh)
+        reader = _Details({aid: _full(aid) for aid, _start in [*_days(6), *fresh]})
+
+        result = self.service(reader).backfill()
+
+        self.assertEqual(len(reader.calls[0][0]), BACKFILL_BATCH_SIZE)
+        self.assertEqual((result["fetched"], result["replayed"]), (10, 2))
+        self.assertEqual(result["remaining"], 0)
+        self.assertEqual(result["replay_remaining"], 4)
+
+    def test_the_stop_switch_keeps_outdated_sets_and_runs_only_new_ones(self) -> None:
+        _seed_outdated(self, _days(3))
+        _seed(self.manager, [("3001", "2026-10-10 07:00:00")])
+        reader = _Details({"3001": _full("3001")})
+
+        with patch.object(garmin_activity_details, "REPLAY_ENABLED", False):
+            result = self.service(reader).backfill()
+
+        self.assertEqual(reader.fetched, ["3001"])
+        self.assertEqual((result["replayed"], result["replay_remaining"]), (0, 0))
+        self.assertNotIn("replay", _stored_state(self.key_values))
+        with self.manager.reader() as db:
+            versions = {
+                item.mapper_version for item in detail_sets_for(db, GARMIN_ID, "2000")
+            }
+        self.assertEqual(versions, {MAPPER_VERSION - 1})
+
+    def test_a_state_stored_before_the_replay_still_parses(self) -> None:
+        _seed_outdated(self, _days(2))
+        summary = _summary_hash(self.manager, "2000")
+        older = {"empty": {"9999": "x"}, "retry": {"9998": [summary, 1]}}
+        self.key_values.values[BACKFILL_STATE_KEY] = json.dumps(older)
+
+        self.service(_Details({aid: _full(aid) for aid, _s in _days(2)})).backfill()
+
+        state = _stored_state(self.key_values)
+        self.assertEqual(state["replay"], {"day": NOW[:10], "count": 2})
+
+        # Unreadable replay entries count as no attempts.
+        for broken in (
+            {"day": 20261018, "count": "7"},
+            {"day": NOW[:10], "count": -3},
+            {"count": True},
+            "x",
+        ):
+            state = _parse_backfill_state(json.dumps({"replay": broken}))
+            self.assertEqual(state.replay_count, 0)
+        self.assertEqual((_parse_backfill_state(json.dumps(older)).replay_count), 0)
+
+    def test_a_replay_with_the_file_replaces_the_sets_and_ends_the_candidacy(
+        self,
+    ) -> None:
+        _seed_outdated(self, [("1001", "2026-10-01 07:00:00")])
+
+        result = self.service(_Details({"1001": _full("1001")})).backfill()
+
+        self.assertEqual(result["replayed"], 1)
+        with self.manager.reader() as db:
+            versions = {
+                item.mapper_version for item in detail_sets_for(db, GARMIN_ID, "1001")
+            }
+        self.assertEqual(versions, {MAPPER_VERSION})
+        self.assertEqual(_candidate_ids(self.manager), [])
+
+    def test_a_rate_limited_replay_keeps_the_full_sets_pauses_and_counts(self) -> None:
+        # #3122/#3128: a 429 before the file leaves chart streams and splits, which
+        # never replace the stored full streams and device laps.
+        _seed_outdated(
+            self, [("1002", "2026-10-02 07:00:00"), ("1001", "2026-10-01 07:00:00")]
+        )
+        before = _grades(self.manager, "1002")
+        summary = _summary_hash(self.manager, "1002")
+        reader = _Details(
+            {"1002": _payload("1002", rate_limited=True), "1001": _full("1001")}
+        )
+
+        result = self.service(reader).backfill()
+
+        self.assertEqual(result["status"], "rate_limited")
+        self.assertEqual(reader.fetched, ["1002"])
+        after = _grades(self.manager, "1002")
+        self.assertEqual(
+            (after["streams"], after["laps"]), (before["streams"], before["laps"])
+        )
+        state = _stored_state(self.key_values)
+        self.assertEqual(state["replay"], {"day": NOW[:10], "count": 1})
+        self.assertEqual(state["retry"], {"1002": [summary, 1]})
+        self.assertEqual(
+            datetime.fromisoformat(state["paused_until"]),
+            NOW_AT + BACKFILL_RATE_LIMIT_PAUSE,
+        )
+        # The 24 hour pause holds: nothing is fetched until it ends.
+        later = _Details({})
+        self.assertEqual(self.service(later).backfill()["status"], "paused")
+        self.assertEqual(later.calls, [])
+
+    def test_a_rate_limit_error_counts_the_replay_in_flight(self) -> None:
+        _seed_outdated(self, _days(2))
+        reader = _Details({"2001": AppError(429, "synthetic", reason="garmin_429")})
+
+        result = self.service(reader).backfill()
+
+        self.assertEqual(result["status"], "rate_limited")
+        self.assertEqual(
+            _stored_state(self.key_values)["replay"], {"day": NOW[:10], "count": 1}
+        )
+
+    def test_a_replay_whose_file_call_failed_keeps_the_sets_and_is_passed_over(
+        self,
+    ) -> None:
+        _seed_outdated(self, [("1001", "2026-10-01 07:00:00")])
+        before = _grades(self.manager, "1001")
+        summary = _summary_hash(self.manager, "1001")
+        failed = _payload(
+            "1001", errors=[{"source": "activity_fit", "message": "synthetic"}]
+        )
+
+        for attempt in range(1, BACKFILL_RETRY_ATTEMPTS + 1):
+            self.service(_Details({"1001": failed})).backfill()
+            self.assertEqual(
+                _stored_state(self.key_values)["retry"], {"1001": [summary, attempt]}
+            )
+            self.assertEqual(
+                _grades(self.manager, "1001")["streams"], before["streams"]
+            )
+
+        reader = _Details({"1001": failed})
+        self.service(reader).backfill()
+        self.assertEqual(reader.calls, [])
+        # Every attempt, successful or not, counted against the day.
+        self.assertEqual(
+            _stored_state(self.key_values)["replay"],
+            {"day": NOW[:10], "count": BACKFILL_RETRY_ATTEMPTS},
+        )
+
+    def test_a_replay_the_file_never_reaches_cannot_block_the_others(self) -> None:
+        # No file and no error (a transport without it): the full sets stay, and
+        # each such attempt is incomplete, so the record is passed over.
+        _seed_outdated(self, _days(2))
+        for _attempt in range(BACKFILL_RETRY_ATTEMPTS):
+            self.service(
+                _Details({"2001": _payload("2001"), "2000": _full("2000")})
+            ).backfill()
+
+        reader = _Details({"2001": _payload("2001"), "2000": _full("2000")})
+        self.service(reader).backfill()
+
+        self.assertEqual(reader.calls, [])
+        with self.manager.reader() as db:
+            versions = {
+                item.detail.kind.value: item.mapper_version
+                for item in detail_sets_for(db, GARMIN_ID, "2001")
+            }
+        # The full streams and laps stay; only the parts the payload brought moved on.
+        self.assertEqual(
+            (versions["streams"], versions["laps"]),
+            (MAPPER_VERSION - 1, MAPPER_VERSION - 1),
+        )
 
 
 class BackfillAssemblyTests(unittest.TestCase):

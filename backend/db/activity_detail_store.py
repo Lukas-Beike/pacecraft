@@ -731,7 +731,7 @@ def activity_detail_backfill_candidates(
     limit: int,
     mapper_version: int,
     retry_ids: Collection[str] = (),
-) -> list[dict[str, str]]:
+) -> list[dict[str, Any]]:
     """Return recent records whose details are missing or outdated, newest first.
 
     A record qualifies when it is an active, non-manual record of a live session
@@ -743,7 +743,10 @@ def activity_detail_backfill_candidates(
     the one given is outdated, so a mapper change refetches the window.
     ``started_at`` and ``since`` are compared as instants (julianday), so stored
     UTC offsets order correctly. Each row carries the current summary hash,
-    which is stored with any fetched details.
+    which is stored with any fetched details, and ``replay``: True when a set of
+    the current summary exists whose mapper version is older, so the record is
+    not new or changed but re-fetched for a mapper change (also after a replay
+    that kept some of its sets).
     ``retry_ids`` qualify despite current sets, because their last fetch was
     incomplete; the caller bounds how often they are retried.
     """
@@ -754,7 +757,11 @@ def activity_detail_backfill_candidates(
         else ""
     )
     rows = db.execute(
-        "SELECT r.provider_activity_id, r.recorded_by, p.payload_hash AS summary_sha256 "
+        "SELECT r.provider_activity_id, r.recorded_by, p.payload_hash AS summary_sha256, "
+        "EXISTS (SELECT 1 FROM activity_detail_sets AS c "
+        "WHERE c.provider = r.provider AND c.provider_activity_id = r.provider_activity_id "
+        "AND (c.summary_sha256 IS NULL OR c.summary_sha256 = p.payload_hash) "
+        "AND c.mapper_version < ?) AS replay "
         "FROM activity_records AS r "
         "JOIN provider_records AS p ON p.provider = r.provider "
         "AND p.record_kind = ? AND p.source_record_id = r.provider_activity_id AND p.state = ? "
@@ -768,6 +775,7 @@ def activity_detail_backfill_candidates(
         + retry_clause
         + ") ORDER BY julianday(r.started_at) DESC, r.provider_activity_id LIMIT ?",
         (
+            mapper_version,
             record_kind,
             ProviderRecordState.ACTIVE.value,
             ActivitySessionState.DELETED.value,
@@ -785,6 +793,7 @@ def activity_detail_backfill_candidates(
             "provider_activity_id": row["provider_activity_id"],
             "recorded_by": row["recorded_by"],
             "summary_sha256": row["summary_sha256"],
+            "replay": bool(row["replay"]),
         }
         for row in rows
     ]

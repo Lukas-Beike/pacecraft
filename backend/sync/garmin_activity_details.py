@@ -9,8 +9,14 @@ fetch failed or stored only some parts is fetched again on later syncs, at most
 ``BACKFILL_RETRY_ATTEMPTS`` times per activity summary; after that it is passed
 over, so it cannot hold back older activities. A rate limit that stored nothing
 does not count as an attempt. Kinds a payload does not return keep their stored
-sets. A fetch without the original file falls back to chart streams and splits;
-those never replace the full streams and laps an earlier file gave (#3122): the
+sets. After a mapper bump every activity of the window is a candidate again
+(a replay: its sets exist for the current summary, only their mapper version is
+older). New or changed activities always come first; replays fill the rest of the
+batch, at most ``REPLAY_BATCH_SIZE`` per refresh and ``REPLAY_DAILY_LIMIT`` per UTC
+day, each fetch attempt counting, so about five Garmin calls per activity never
+run into the rate limit all at once (#2220). ``REPLAY_ENABLED`` stops them. A
+fetch without the original file falls back to chart streams and splits; those
+never replace the full streams and laps an earlier file gave (#3122): the
 stored sets stay and diagnostics count it. A failed file call or a rate limit
 already makes the attempt incomplete; a transport without the file does not.
 Nothing is written back to Garmin.
@@ -25,7 +31,7 @@ import threading
 from collections.abc import Callable, Mapping
 from contextlib import AbstractContextManager
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from typing import Any, Final
 
 from backend.canonical.activity_detail import (
@@ -72,6 +78,12 @@ _LOGGER = logging.getLogger("intervals_coach")
 ACTIVITY_ID_PATTERN: Final = re.compile(r"[A-Za-z0-9_-]{1,200}")
 COOLDOWN: Final = timedelta(minutes=10)
 BACKFILL_BATCH_SIZE: Final = 10
+# A mapper change re-fetches every activity of the window (about five Garmin calls
+# each), so the replays are paced apart from the batch of new activities: False
+# keeps outdated sets as they are, and only new or changed activities run.
+REPLAY_ENABLED: Final = True
+REPLAY_BATCH_SIZE: Final = 5
+REPLAY_DAILY_LIMIT: Final = 20
 BACKFILL_WINDOW: Final = timedelta(days=90)
 BACKFILL_RATE_LIMIT_PAUSE: Final = timedelta(seconds=GARMIN_CAPABILITY_PAUSE_SECONDS)
 BACKFILL_STATE_KEY: Final = "garmin_activity_detail_backfill"
@@ -92,16 +104,25 @@ class _BackfillState:
     empty: dict[str, str] = field(default_factory=dict)
     # Activity id -> (summary hash, incomplete fetch attempts for that summary).
     retry: dict[str, tuple[str, int]] = field(default_factory=dict)
+    # UTC day and the replay fetches attempted on it.
+    replay_day: str = ""
+    replay_count: int = 0
 
 
 @dataclass
 class _BatchOutcome:
     empty: dict[str, str]
     retry: dict[str, tuple[str, int]]
+    replay: tuple[str, int]
     status: str = "completed"
     fetched: int = 0
     marked: int = 0
     skipped: int = 0
+    # Activities settled this run (stored, marked empty or skipped), new or changed
+    # ones and replays apart; ``replayed`` counts the replays stored.
+    done: int = 0
+    replay_done: int = 0
+    replayed: int = 0
     paused_until: datetime | None = None
 
 
@@ -213,31 +234,52 @@ class GarminActivityDetailService:
         pending, empty, retry = self._pending_candidates(
             state, since=now - BACKFILL_WINDOW
         )
+        fresh = [item for item in pending if not item["replay"]]
+        replays = [item for item in pending if item["replay"]] if REPLAY_ENABLED else []
+        today = now.astimezone(UTC).date().isoformat()
+        used = state.replay_count if state.replay_day == today else 0
+        replay = (today, used)
         paused_until = state.paused_until
         if paused_until is not None and paused_until <= now:
             paused_until = None
         if paused_until is not None or not self._detail_capabilities_allowed():
             self._save_backfill_state(
-                paused_until=paused_until, empty=empty, retry=retry
+                paused_until=paused_until, empty=empty, retry=retry, replay=replay
             )
-            return _backfill_result("paused", remaining=len(pending))
-        batch = pending[:BACKFILL_BATCH_SIZE]
+            return _backfill_result(
+                "paused", remaining=len(fresh), replay_remaining=len(replays)
+            )
+        batch = fresh[:BACKFILL_BATCH_SIZE]
+        # New and changed activities first; replays only fill what is left.
+        room = min(
+            REPLAY_BATCH_SIZE,
+            BACKFILL_BATCH_SIZE - len(batch),
+            max(0, REPLAY_DAILY_LIMIT - used),
+        )
+        batch += replays[:room]
         if not batch:
-            self._save_backfill_state(paused_until=None, empty=empty, retry=retry)
-            return _backfill_result("completed")
+            self._save_backfill_state(
+                paused_until=None, empty=empty, retry=retry, replay=replay
+            )
+            return _backfill_result("completed", replay_remaining=len(replays))
 
-        outcome = _BatchOutcome(empty=empty, retry=retry)
+        outcome = _BatchOutcome(empty=empty, retry=retry, replay=replay)
         self._fetch_batch(batch, outcome, cancel_event)
         if outcome.status == "completed" and _is_set(cancel_event):
             outcome.status = "cancelled"
         self._save_backfill_state(
-            paused_until=outcome.paused_until, empty=outcome.empty, retry=outcome.retry
+            paused_until=outcome.paused_until,
+            empty=outcome.empty,
+            retry=outcome.retry,
+            replay=outcome.replay,
         )
         return _backfill_result(
             outcome.status,
             fetched=outcome.fetched,
             empty=outcome.marked,
-            remaining=len(pending) - outcome.fetched - outcome.marked - outcome.skipped,
+            remaining=len(fresh) - outcome.done,
+            replayed=outcome.replayed,
+            replay_remaining=len(replays) - outcome.replay_done,
         )
 
     def _pending_candidates(
@@ -262,8 +304,10 @@ class GarminActivityDetailService:
         details = self._reader.fetch_activity_details(
             list(by_id), strength_ids=strength_ids, cancel_event=cancel_event
         )
+        seen = 0
         try:
             for provider_activity_id, collected in details:
+                seen += 1
                 if not self._store_collected(
                     provider_activity_id,
                     collected,
@@ -278,6 +322,9 @@ class GarminActivityDetailService:
                     outcome.status = "cancelled"
                     break
         except Exception as error:  # noqa: BLE001 - backfill errors are logged by type and never stop the sync
+            # The fetch in flight already made calls: it counts like any attempt.
+            if seen < len(batch) and batch[seen]["replay"]:
+                _count_replay(outcome)
             if sync_job_error_class(error) == "rate_limited":
                 outcome.paused_until = (
                     _aware(self._utc_now()) + BACKFILL_RATE_LIMIT_PAUSE
@@ -317,6 +364,9 @@ class GarminActivityDetailService:
     ) -> bool:
         """Store one fetched activity; False when the batch must stop."""
         observed = self._utc_now()
+        if candidate["replay"]:
+            # Every replay fetch counts against the day, whatever its outcome.
+            _count_replay(outcome)
         mapped = _map_collected(
             collected,
             recorded_by=_recorded_by(candidate["recorded_by"]),
@@ -332,11 +382,14 @@ class GarminActivityDetailService:
             # spending its retries, so it is fetched again once the pause ends.
             _keep_candidate(retry, provider_activity_id, candidate["summary_sha256"])
         else:
+            # A replay that kept its stored full sets did not get the new fields:
+            # each such attempt is incomplete, so a record the file never reaches
+            # is passed over after its attempts instead of blocking the replay.
             _note_attempt(
                 retry,
                 provider_activity_id,
                 candidate["summary_sha256"],
-                incomplete=failed,
+                incomplete=failed or (candidate["replay"] and keep_file_sets),
             )
         # The retry entry is committed with the detail rows, so a stop before the
         # final state write cannot leave a partial fetch looking complete.
@@ -344,11 +397,12 @@ class GarminActivityDetailService:
             provider_activity_id,
             mapped,
             now=observed,
-            backfill_state=(outcome.empty, retry),
+            backfill_state=(outcome.empty, retry, outcome.replay),
             keep_file_sets=keep_file_sets,
         )
         if stored:
             outcome.fetched += 1
+            _settle(outcome, candidate, stored=True)
         # A rate limit that stored nothing says nothing about this activity.
         if stored or not collected.get("rate_limited"):
             outcome.retry = retry
@@ -360,6 +414,7 @@ class GarminActivityDetailService:
         if mapped.records:
             if not stored:
                 outcome.skipped += 1
+                _settle(outcome, candidate, stored=False)
         elif failed or collected.get("skipped"):
             # Nothing is marked, so a later sync retries this activity.
             outcome.status = "failed"
@@ -367,6 +422,7 @@ class GarminActivityDetailService:
         else:
             outcome.empty[provider_activity_id] = candidate["summary_sha256"]
             outcome.marked += 1
+            _settle(outcome, candidate, stored=False)
         return True
 
     def _store_records(
@@ -375,12 +431,15 @@ class GarminActivityDetailService:
         mapped: MappingResult[Any],
         *,
         now: str,
-        backfill_state: tuple[dict[str, str], dict[str, tuple[str, int]]] | None = None,
+        backfill_state: (
+            tuple[dict[str, str], dict[str, tuple[str, int]], tuple[str, int]] | None
+        ) = None,
         keep_file_sets: bool = False,
     ) -> bool:
         """Replace the mapped sets of one active record; False when it is no longer active.
 
-        ``backfill_state`` (empty marks, retries) is written in the same transaction.
+        ``backfill_state`` (empty marks, retries, replay day and count) is written in
+        the same transaction.
         ``keep_file_sets`` keeps the stored stream and lap sets of an earlier file
         instead of this fetch's fallback sets (#3122).
         """
@@ -416,11 +475,13 @@ class GarminActivityDetailService:
                 )
             self._count_fallback(db, len(fallback), kept=keep_file_sets)
             if backfill_state is not None:
-                empty, retry = backfill_state
+                empty, retry, replay = backfill_state
                 self._backfill_key_values().set(
                     db,
                     BACKFILL_STATE_KEY,
-                    _encode_backfill_state(paused_until=None, empty=empty, retry=retry),
+                    _encode_backfill_state(
+                        paused_until=None, empty=empty, retry=retry, replay=replay
+                    ),
                 )
         return True
 
@@ -467,6 +528,7 @@ class GarminActivityDetailService:
         paused_until: datetime | None,
         empty: dict[str, str],
         retry: dict[str, tuple[str, int]],
+        replay: tuple[str, int],
     ) -> None:
         key_values = self._backfill_key_values()
         with self._database_manager.unit_of_work() as db:
@@ -474,7 +536,7 @@ class GarminActivityDetailService:
                 db,
                 BACKFILL_STATE_KEY,
                 _encode_backfill_state(
-                    paused_until=paused_until, empty=empty, retry=retry
+                    paused_until=paused_until, empty=empty, retry=retry, replay=replay
                 ),
             )
 
@@ -484,8 +546,11 @@ def _encode_backfill_state(
     paused_until: datetime | None,
     empty: dict[str, str],
     retry: dict[str, tuple[str, int]],
+    replay: tuple[str, int],
 ) -> str:
     stored: dict[str, Any] = {"empty": dict(sorted(empty.items()))}
+    if replay[1]:
+        stored["replay"] = {"day": replay[0], "count": replay[1]}
     if retry:
         stored["retry"] = {
             key: [summary, attempts]
@@ -712,10 +777,15 @@ def _parse_backfill_state(raw: object) -> _BackfillState:
         if isinstance(marks, dict)
         else {}
     )
+    replay = parsed.get("replay")
+    day = replay.get("day") if isinstance(replay, dict) else None
+    count = replay.get("count") if isinstance(replay, dict) else None
     return _BackfillState(
         paused_until=_parse_time(parsed.get("paused_until")),
         empty=empty,
         retry=_parse_retry(parsed.get("retry")),
+        replay_day=day if isinstance(day, str) else "",
+        replay_count=count if type(count) is int and count > 0 else 0,
     )
 
 
@@ -799,14 +869,37 @@ def _parse_time(value: object) -> datetime | None:
 
 
 def _backfill_result(
-    status: str, *, fetched: int = 0, empty: int = 0, remaining: int = 0
+    status: str,
+    *,
+    fetched: int = 0,
+    empty: int = 0,
+    remaining: int = 0,
+    replayed: int = 0,
+    replay_remaining: int = 0,
 ) -> dict[str, Any]:
     return {
         "status": status,
         "fetched": fetched,
         "empty": empty,
         "remaining": remaining,
+        "replayed": replayed,
+        "replay_remaining": replay_remaining,
     }
+
+
+def _count_replay(outcome: _BatchOutcome) -> None:
+    """Count one replay fetch attempt against the UTC day."""
+    day, count = outcome.replay
+    outcome.replay = (day, count + 1)
+
+
+def _settle(outcome: _BatchOutcome, candidate: dict[str, Any], *, stored: bool) -> None:
+    """Count one activity as settled for this run, replays apart from new ones."""
+    if candidate["replay"]:
+        outcome.replay_done += 1
+        outcome.replayed += stored
+    else:
+        outcome.done += 1
 
 
 def _is_set(cancel_event: threading.Event | None) -> bool:
