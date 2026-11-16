@@ -43,6 +43,18 @@ test("a step fails on an empty chart or panel and passes on a drawn one", async 
   expect(refused.why).toMatch(/opening control/);
 });
 
+test("a seek step pages back to a week with a completed unit, a step without seek does not", async ({ page }) => {
+  const { runStep } = await import(pathToFileURL(path.join(__dirname, "..", "scripts", "ui_walk.mjs")).href);
+  // A Monday: the shown week has no completed unit; the week before has one.
+  const week = `<button type="button" aria-label="Vorherige Woche" onclick="document.querySelector('#before').hidden = false">‹</button>
+    <section id="before" hidden><details class="planned-entry is-completed"><summary>So</summary><p class="d">5 km</p></details></section>`;
+  const step = { name: "x", covers: "test", each: ".planned-entry.is-completed > summary", ready: ".planned-entry[open] .d", kind: "numbers" };
+  await page.setContent(week);
+  expect(await runStep(page, step, 300)).toMatchObject({ status: "skip", why: "no such session" });
+  await page.setContent(week);
+  expect((await runStep(page, { ...step, seek: 'button[aria-label="Vorherige Woche"]' }, 300)).status).toBe("ok");
+});
+
 test("the changelog step passes on an entry of only Technik changes and not on an entry without changes", async ({ page }) => {
   const { STEPS, runStep } = await import(pathToFileURL(path.join(__dirname, "..", "scripts", "ui_walk.mjs")).href);
   const step = { ...STEPS.find((item) => item.name === "Mehr: Betrieb, Änderungen"), pre: [] };

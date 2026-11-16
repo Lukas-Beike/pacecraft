@@ -106,11 +106,10 @@ export function compareLines(current, previous) {
   if (!previous) return lines;
   const same = current.marks.cache === previous.marks?.cache;
   lines.push(`info service-worker cache ${same ? "unchanged" : "changed"} since the previous walk`);
-  // A step that passed before and is skipped now lost its data or its function: a finding.
-  // A week without a matching session depends on the date, not on the app, and stays info.
+  // A step that passed before and is skipped now lost its data or its function: a finding, whatever the reason.
   for (const [key, step] of Object.entries(current.steps || {})) {
     const before = previous.steps?.[key];
-    if (before?.status === "ok" && step.status === "skip" && step.why !== NO_SESSION) lines.push(`FAIL step ${key} passed in the previous walk, skipped now (${step.why})`);
+    if (before?.status === "ok" && step.status === "skip") lines.push(`FAIL step ${key} passed in the previous walk, skipped now (${step.why})`);
     else if (before?.status === "ok" && step.status === "ok") lines.push(`info step ${key} ${step.ms} ms (was ${before.ms} ms)`);
   }
   if (previous.measure !== current.measure) {
@@ -222,18 +221,13 @@ const DONE = ".planned-entry.is-completed > summary";
 // Today's unit is marked is-today; on a Sunday it is the week's only upcoming one.
 const PLANNED = ".planned-entry:is(.is-planned, .is-today) > summary";
 const MONTH = '.planned-view-switch button[data-view="month"]';
+const BACK = 'button[aria-label="Vorherige Woche"]';
+// How many weeks a `seek` step pages back at most.
+const SEEK_WEEKS = 6;
 const tab = (area, segment) => `a[data-${area}-segment="${segment}"]`;
 const detail = (name, covers, ready, kind, extra) => ({ view: "plan", name, covers, each: DONE, opens: [DETAILS_OPEN], ready, kind, absent: NO_DETAILS, ...extra });
 export const STEPS = [
   { view: "coach", name: "Coach: Verlauf", covers: "Coach history", ready: "#messages [data-message-id]", kind: "text" },
-  { view: "plan", name: "Kalender: Einheit öffnen", covers: "#2189 calendar agenda and detail", each: DONE, ready: ".planned-entry[open] .planned-entry-details", kind: "text" },
-  detail("Kalender: Details", "#2258 session details", ".planned-entry[open] .activity-analysis-stats", "numbers"),
-  // The watch's temperature sensor reads body-warmed values, so no session charts it (#3036).
-  detail("Kalender: Diagramm", "#2258 session charts", '.planned-entry[open] .activity-analysis-panel svg[role="img"]', "chart", { never: '.planned-entry[open] .activity-analysis-panel svg[aria-label^="Temperatur"]' }),
-  detail("Kalender: Zonenbalken", "#2258 time in zones", ".planned-entry[open] .activity-analysis-zones", "numbers", { optional: true }),
-  detail("Kalender: Laufdynamik", "#2910 running dynamics", ".planned-entry[open] .activity-dynamics-value", "numbers", { optional: true, each: ".planned-entry.is-completed[data-sport='Laufen'] > summary" }),
-  // The chip shows "…" until its read; once loaded its label names the choice ("Rad: …").
-  { view: "plan", name: "Kalender: Schuh/Rad", covers: "#3011 equipment chip", each: DONE, ready: '.planned-entry[open] .planned-equipment-chip[aria-label*=": "]', kind: "text", optional: true },
   { view: "plan", name: "Kalender: Schuh/Rad geplant", covers: "#3011 planned equipment chip", each: PLANNED, ready: '.planned-entry[open] .planned-equipment-chip[aria-label*=": "]', kind: "text", optional: true },
   { view: "plan", name: "Kalender: geplante Einheit", covers: "#2189 planned session", pre: ['button[aria-label="Nächste Woche"]'], each: PLANNED, ready: ".planned-entry[open] .planned-entry-details", kind: "text", optional: true, post: ['button[aria-label="Vorherige Woche"]'] },
   // Read-only: the walk checks that "Löschen" is there, it never presses it (#3027).
@@ -245,6 +239,18 @@ export const STEPS = [
   { view: "plan", name: "Kalender: Wochenansicht", covers: "#2189 week and month switch", pre: ['.planned-view-switch button[data-view="week"]'], ready: ".planned-week .planned-day", kind: "text" },
   // Read-only as well: the library card offers "Einplanen" and "Löschen"; the walk presses neither (#3028).
   { view: "plan", name: "Bibliothek: Einplanen, Löschen", covers: "#3028 library actions", pre: [tab("plan", "library")], opens: ["#library details.library-sport > summary"], ready: "#library .library-card .planned-activity-actions .danger-button", kind: "text", optional: true, post: [tab("plan", "overview")] },
+  // Completed units come last in the calendar: on a Monday the current week has none yet, so the first
+  // step pages back to the latest week that has one (`seek`); the paging stays, so the steps after it
+  // use that week, and the steps above keep the current week.
+  { view: "plan", name: "Kalender: Einheit öffnen", covers: "#2189 calendar agenda and detail", each: DONE, seek: BACK, ready: ".planned-entry[open] .planned-entry-details", kind: "text" },
+  detail("Kalender: Details", "#2258 session details", ".planned-entry[open] .activity-analysis-stats", "numbers"),
+  // The watch's temperature sensor reads body-warmed values, so no session charts it (#3036).
+  detail("Kalender: Diagramm", "#2258 session charts", '.planned-entry[open] .activity-analysis-panel svg[role="img"]', "chart", { never: '.planned-entry[open] .activity-analysis-panel svg[aria-label^="Temperatur"]' }),
+  detail("Kalender: Zonenbalken", "#2258 time in zones", ".planned-entry[open] .activity-analysis-zones", "numbers", { optional: true }),
+  // The chip shows "…" until its read; once loaded its label names the choice ("Rad: …").
+  { view: "plan", name: "Kalender: Schuh/Rad", covers: "#3011 equipment chip", each: DONE, ready: '.planned-entry[open] .planned-equipment-chip[aria-label*=": "]', kind: "text", optional: true },
+  // Last: from that week it may page back further, to a week with a run.
+  detail("Kalender: Laufdynamik", "#2910 running dynamics", ".planned-entry[open] .activity-dynamics-value", "numbers", { optional: true, seek: BACK, each: ".planned-entry.is-completed[data-sport='Laufen'] > summary" }),
   // The sport cards are tables: a measured value is a cell with a digit; a missing one is marked and has none.
   ...[["running", "Laufen", "#runningBestEfforts td:not(.value-missing)", "numbers"], ["cycling", "Radfahren", "#cyclingPowerProfile td:not(.value-missing)", "numbers"], ["load", "Belastung", "#analysisLoadCharts svg", "chart"], ["recovery", "Erholung", "#personalRecovery svg", "chart"]]
     .map(([segment, label, ready, kind]) => ({ view: "analysis", name: `Analyse: ${label}`, covers: "Analyse tabs", pre: [tab("analysis", segment)], ready, kind })),
@@ -292,11 +298,15 @@ async function press(page, selector, nth = 0) {
 }
 
 // Views render asynchronously: give the first candidate a moment to appear.
-async function candidateCount(page, each) {
+// A step with `seek` presses that control (a week back) until its candidates show, at most SEEK_WEEKS times.
+async function candidateCount(page, each, seek) {
   if (!each) return 1;
   const candidates = page.locator(each).filter({ visible: true });
-  await candidates.first().waitFor({ timeout: 3000 }).catch(() => null);
-  return Math.min(await candidates.count(), MAX_CANDIDATES);
+  for (let back = 0; ; back += 1) {
+    const shown = await candidates.first().waitFor({ timeout: 3000 }).then(() => true, () => false);
+    if (shown || !seek || back === SEEK_WEEKS) return Math.min(await candidates.count(), MAX_CANDIDATES);
+    await press(page, seek);
+  }
 }
 
 // Opens candidate `index` with the other candidates closed, so the controls pressed and the element checked
@@ -322,7 +332,7 @@ export async function runStep(page, { pre = [], post = [], ...step }, capMs = ST
   const began = Date.now();
   try {
     for (const selector of pre) await press(page, selector);
-    const count = await candidateCount(page, step.each);
+    const count = await candidateCount(page, step.each, step.seek);
     let empty = 0;
     for (let index = 0; index < count && Date.now() - began < STEP_TOTAL_MS; index += 1) {
       const started = Date.now();

@@ -108,7 +108,7 @@ test("ui walk steps press only opening controls and name the feature they cover 
   assert.equal(new Set(names).size, names.length);
   for (const step of walk.STEPS) {
     assert.ok(step.covers && step.ready && walk.STEP_KINDS.includes(step.kind), step.name);
-    for (const selector of [...(step.pre || []), ...(step.opens || []), ...(step.post || []), ...(step.each ? [step.each] : [])]) {
+    for (const selector of [...(step.pre || []), ...(step.opens || []), ...(step.post || []), ...(step.seek ? [step.seek] : []), ...(step.each ? [step.each] : [])]) {
       assert.ok(walk.isOpener(selector), `${step.name}: ${selector}`);
       assert.ok(!walk.refusedLabel(selector), `${step.name}: ${selector}`);
     }
@@ -142,8 +142,8 @@ test("ui walk reports each step and flags one that passed before and is skipped 
   const compared = walk.compareLines({ ...result, marks: { cache: "a" } }, previous);
   assert.ok(compared.includes("info step phone Kalender: Details 200 ms (was 150 ms)"));
   assert.ok(compared.includes("FAIL step phone Kalender: Zonenbalken passed in the previous walk, skipped now (no stored data)"));
-  // A week without a planned session depends on the date, not on the app.
-  assert.ok(!compared.some((line) => line.includes("geplante Einheit")));
+  // Every step that passed before and is skipped now is a finding, also for "no such session" (2.1.24).
+  assert.ok(compared.includes("FAIL step phone Kalender: geplante Einheit passed in the previous walk, skipped now (no such session)"));
 });
 
 test("ui walk refuses missing arguments and an unreadable secret file without a browser", () => {
