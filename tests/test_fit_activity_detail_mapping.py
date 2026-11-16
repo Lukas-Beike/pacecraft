@@ -1187,12 +1187,33 @@ def golden_snapshot():
     return snapshot
 
 
+def _before_the_dfa_series(case, value):
+    """The snapshot as the golden pinned it before the DFA-a1 window series (#3273).
+
+    The series is additive and its row says so by ``method`` 3 (the guard
+    exception of #3273); every other field, the 0.75 estimate included, must stay
+    exactly as pinned. Each DFA result found must carry a non-empty series.
+    """
+    if isinstance(value, list):
+        return [_before_the_dfa_series(case, item) for item in value]
+    if not isinstance(value, dict):
+        return value
+    if value.get("type") == "ActivityDfaAlpha1":
+        case.assertEqual(value["method"], 3)
+        case.assertTrue(value["series"])
+        value = {key: item for key, item in value.items() if key != "series"}
+        return {**value, "method": 2}
+    return {key: _before_the_dfa_series(case, item) for key, item in value.items()}
+
+
 class DetailMapperGoldenTests(unittest.TestCase):
     def test_files_without_the_watch_fields_map_exactly_as_before(self):
         # Captured from the mapper before it read breathing rate, lap GAP, steps,
         # lap triggers and the zone basis; new fields stay None or empty.
         golden = json.loads(GOLDEN.read_text(encoding="utf-8"))
-        current = json.loads(json.dumps(golden_snapshot()))
+        current = _before_the_dfa_series(
+            self, json.loads(json.dumps(golden_snapshot()))
+        )
         self.assertEqual(sorted(golden), sorted(current))
         for name in golden:
             with self.subTest(name):

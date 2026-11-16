@@ -38,6 +38,13 @@ _OTHER_TABLES = (
 )
 
 
+class _Zeros(dict):
+    """A row whose every count column is 0, such as the DFA-a1 counts (#3273)."""
+
+    def __missing__(self, key):
+        return 0
+
+
 class _Database:
     def __init__(self):
         self.queries = []
@@ -56,7 +63,7 @@ class _Database:
         if query == "PRAGMA user_version":
             return SimpleNamespace(fetchone=lambda: {"user_version": 25})
         if any(table in query for table in _OTHER_TABLES):
-            return SimpleNamespace(fetchall=list, fetchone=lambda: {"count": 0})
+            return SimpleNamespace(fetchall=list, fetchone=lambda: _Zeros(count=0))
         table = query.rsplit("FROM ", 1)[1]
         if table == "kv WHERE key = ?":
             return SimpleNamespace(fetchone=lambda: None)
@@ -225,6 +232,7 @@ class DiagnosticReportServiceTests(unittest.TestCase):
                 "backup",
                 "stream_backfill",
                 "fit_inventory",
+                "dfa_series",
                 "garmin_detail_fallback",
                 "mapper_replay",
                 "session_metrics",
@@ -256,6 +264,11 @@ class DiagnosticReportServiceTests(unittest.TestCase):
         self.assertEqual(report["canonical_backfill"], {"status": "unavailable"})
         # Counts only, per recording origin and sport; empty before any file (#2220).
         self.assertEqual(report["fit_inventory"], {})
+        # Chest-strap runs by DFA-a1 method, counts only (#3273).
+        self.assertEqual(
+            report["dfa_series"],
+            {"runs": 0, "with_series": 0, "before_series": 0, "without_result": 0},
+        )
         # Fallback detail sets kept out or stored, counts only (#3122).
         self.assertEqual(report["garmin_detail_fallback"], {"kept": 0, "stored": 0})
         # Window records the next mapper bump downloads again, counts only (#2220).
@@ -375,8 +388,9 @@ class DiagnosticReportServiceTests(unittest.TestCase):
         # of the stored daily summaries (#3157); the mapper replay size adds nine
         # (the Garmin window and its candidates, each for this and the next
         # mapper and once without empty marks, the records with outdated file
-        # sets, and two Wahoo selections; #2220); the diary count adds one (#3234).
-        self.assertEqual(len(self.db.queries), 41)
+        # sets, and two Wahoo selections; #2220); the diary count adds one (#3234);
+        # the DFA-a1 method counts of chest-strap runs add one (#3273).
+        self.assertEqual(len(self.db.queries), 42)
         self.assertEqual(
             [query.rsplit("FROM ", 1)[1] for query in count_queries],
             [

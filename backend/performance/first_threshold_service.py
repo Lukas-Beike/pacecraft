@@ -61,8 +61,10 @@ class FirstThresholdService:
             )
         resolver = self._lthr_resolver()
         sessions = [
-            SessionThreshold(row.day, row.result.estimate_bpm, row.result.quality)
+            SessionThreshold(row.day, estimate, quality)
             for row in rows
+            if (estimate := row.result.estimate_bpm) is not None
+            and (quality := row.result.quality) is not None
         ]
         return (
             first_threshold_estimate(sessions, lambda day: resolver(day), today),
