@@ -244,7 +244,7 @@ test("an entered weight shows beside the preferred source and wins its own day",
 test("the energy table shows bands, the badge only with a fit, and the fit basis", () => {
   const charts = [];
   const { h } = extractFunctions("components.js", ["h", "SVG_NS", "svgNode"], { document: fakeDocument() });
-  const { energyTable, energyBasisText, energyFitNote, energyFitCharts } = extractFunctions("analysis.js", ["ENERGY_SOURCES", "ENERGY_INSUFFICIENT", "ENERGY_STEP_SOURCES", "ENERGY_IMPLAUSIBLE", "ENERGY_IMPLAUSIBLE_REASON", "ENERGY_PARTS", "ENERGY_FORMULAS", "ENERGY_BODY_MISSING", "energyMissingCell", "energyKcal", "energyNeatInputs", "energyBasisText", "energyBiasText", "energyInfoId", "energyInfo", "energyFitNote", "energySplitRow", "energyFlaggedRows", "energyTable", "energyFitCharts"], {
+  const { energyTable, energyBasisText, energyFitNote, energyFitCharts } = extractFunctions("analysis.js", ["ENERGY_SOURCES", "ENERGY_INSUFFICIENT", "ENERGY_STEP_SOURCES", "ENERGY_IMPLAUSIBLE", "ENERGY_IMPLAUSIBLE_REASON", "ENERGY_PARTS", "ENERGY_FORMULAS", "ENERGY_BODY_MISSING", "energyMissingCell", "energyKcal", "energyNeatInputs", "energyBodyText", "energyBasisText", "energyBiasText", "energyInfoId", "energyInfo", "energyFitNote", "energySplitRow", "energyFlaggedRows", "energyTable", "energyFitCharts"], {
     bindAnalysisPopover: (button, info) => { button.dataset.popoverTarget = info.id; },
     h, formatWhole: (v) => String(v), dateLabel: (v) => v, analysisValue: (v, unit) => `${v} ${unit}`,
     createStatusChip: (label) => h("span", null, label),
@@ -260,7 +260,7 @@ test("the energy table shows bands, the badge only with a fit, and the fit basis
       { source: "own", resting_kcal: 1850, resting_band_kcal: 150, total_kcal: 2700, total_band_kcal: 120 },
     ],
     basis: { days: 28, complete_days: 24, insufficient: null },
-    skinfold: { date: "2026-11-04", body_fat_pct: 15, lean_mass_kg: 68 },
+    body: { source: "skinfold", label: "Hautfalten", date: "2026-11-04", body_fat_pct: 15, lean_mass_kg: 68 },
   };
   const table = energyTable(read);
   // #3252: how the values come about sits behind the small "i", not under the table.
@@ -270,21 +270,21 @@ test("the energy table shows bands, the badge only with a fit, and the fit basis
   assert.equal(info.dataset.popoverTarget, tooltip.id);
   assert.match(textOf(tooltip), /Ruhe aus deinen Daten ist ein Rest/);
   const rows = table.children[2].children;
-  assert.equal(textOf(rows[0].children[0]), "Katch-McArdle passt am besten");
+  assert.equal(textOf(rows[0].children[0]), "Katch-McArdle passt am bestenKFA: Hautfalten");
   assert.equal(textOf(rows[0].children[1]), "1839 ± 219", "a formula row carries its band");
-  assert.equal(textOf(rows[1].children[0]), "Cunningham", "only the best source carries the badge");
+  assert.equal(textOf(rows[1].children[0]), "CunninghamKFA: Hautfalten", "only the best source carries the badge");
   assert.equal(textOf(rows[2].children[0]), "Synthetic Watch", "#3323: the device row's name comes from the read");
   assert.equal(textOf(rows[2].children[1]), "–", "a source without a value stays unknown");
   assert.equal(textOf(rows[3].children[2]), "2700 ± 120");
-  assert.equal(textOf(energyTable({ ...read, best: null }).children[2].children[0].children[0]), "Katch-McArdle", "no best, no badge");
+  assert.equal(textOf(energyTable({ ...read, best: null }).children[2].children[0].children[0]), "Katch-McArdleKFA: Hautfalten", "no best, no badge");
   assert.equal(textOf(energyFitNote(read)), "Vergleich · 4 von 12 Fenstern · Band aus deinen Daten ± 120 kcal");
   assert.equal(textOf(energyFitNote({ ...read, best: null, fit: { ...read.fit, shared_windows: 3 } })), "Welche Quelle passt: noch nicht unterscheidbar · 3 von 12 Fenstern · Band aus deinen Daten ± 120 kcal");
   assert.equal(textOf(energyFitNote({ ...read, best: null, fit: { ...read.fit, shared_windows: 0, reference_band_kcal: null } })), "Welche Quelle passt: noch nicht unterscheidbar · 0 von 12 Fenstern");
   const note = energyBasisText(read);
-  assert.match(note, /24 von 28 Tagen vollständig .* Falten vom 2026-11-04, KFA 15 %, fettfreie Masse 68 kg/);
+  assert.match(note, /24 von 28 Tagen vollständig .* KFA 15 % \(Hautfalten vom 2026-11-04\), fettfreie Masse 68 kg/);
   assert.match(note, /Bänder nominal 95 %, ohne Fehler beim Erfassen des Essens/, "#3187 item 6");
   assert.match(note, /Ruhe aus deinen Daten ist ein Rest/, "#3187 item 8");
-  assert.match(energyBasisText({ ...read, basis: { insufficient: "weighins" }, skinfold: null }), /Datenbasis zu gering \(unter 8 Wiegungen\).*Ohne Hautfaltenmessung/);
+  assert.match(energyBasisText({ ...read, basis: { insufficient: "weighins" }, body: null }), /Datenbasis zu gering \(unter 8 Wiegungen\).*Ohne Körperfettwert/);
   // #3255, #3252: NEAT's inputs join the basis behind the one "i", never a line under the table.
   const neat = { days: 27, steps_per_day: 14200, session_steps_per_day: 3100, floors_per_day: 9.5, step_length_m: 0.78, step_length_source: "height" };
   const withNeat = { ...read, basis: { ...read.basis, neat } };
@@ -693,14 +693,14 @@ test("the watch-upload sentence appears from 24 hours on and never without a kno
 test("an empty formula row names its reason and opens the dialog that fills it (#3336)", () => {
   const { h } = extractFunctions("components.js", ["h", "SVG_NS", "svgNode"], { document: fakeDocument() });
   const opened = [];
-  const { energyTable } = extractFunctions("analysis.js", ["ENERGY_SOURCES", "ENERGY_INSUFFICIENT", "ENERGY_STEP_SOURCES", "ENERGY_IMPLAUSIBLE", "ENERGY_IMPLAUSIBLE_REASON", "ENERGY_PARTS", "ENERGY_FORMULAS", "ENERGY_BODY_MISSING", "energyMissingCell", "energyKcal", "energyNeatInputs", "energyBasisText", "energyBiasText", "energyInfoId", "energyInfo", "energySplitRow", "energyFlaggedRows", "energyTable"], {
+  const { energyTable } = extractFunctions("analysis.js", ["ENERGY_SOURCES", "ENERGY_INSUFFICIENT", "ENERGY_STEP_SOURCES", "ENERGY_IMPLAUSIBLE", "ENERGY_IMPLAUSIBLE_REASON", "ENERGY_PARTS", "ENERGY_FORMULAS", "ENERGY_BODY_MISSING", "energyMissingCell", "energyKcal", "energyNeatInputs", "energyBodyText", "energyBasisText", "energyBiasText", "energyInfoId", "energyInfo", "energySplitRow", "energyFlaggedRows", "energyTable"], {
     bindAnalysisPopover: () => {}, h, formatWhole: (v) => String(v), dateLabel: (v) => v,
     analysisValue: (v, unit) => `${v} ${unit}`, createStatusChip: (label) => h("span", null, label),
     openSkinfoldDialog: () => opened.push("skinfold"), openWeightDialog: () => opened.push("weight"),
   });
   const read = (reason) => ({
     rows: [{ source: "katch_mcardle" }, { source: "cunningham" }, { source: "garmin", resting_kcal: 1700, total_kcal: 2500 }, { source: "own" }],
-    basis: { complete_days: 30, days: 30 }, skinfold: null, skinfold_missing: reason, flagged: null,
+    basis: { complete_days: 30, days: 30 }, body: null, skinfold_missing: reason, flagged: null,
   });
   const table = energyTable(read("no_skinfold"));
   const rows = table.children[2].children;
@@ -716,4 +716,22 @@ test("an empty formula row names its reason and opens the dialog that fills it (
   assert.equal(textOf(weight), "Gewicht fehlt");
   weight.children[0].fire("click");
   assert.deepEqual([...opened], ["skinfold", "weight"]);
+});
+
+test("a body fat fallback names its source on both formula rows (#3362)", () => {
+  const { h } = extractFunctions("components.js", ["h", "SVG_NS", "svgNode"], { document: fakeDocument() });
+  const { energyTable, energyBasisText } = extractFunctions("analysis.js", ["ENERGY_SOURCES", "ENERGY_INSUFFICIENT", "ENERGY_STEP_SOURCES", "ENERGY_IMPLAUSIBLE", "ENERGY_IMPLAUSIBLE_REASON", "ENERGY_PARTS", "ENERGY_FORMULAS", "ENERGY_BODY_MISSING", "energyMissingCell", "energyKcal", "energyNeatInputs", "energyBodyText", "energyBasisText", "energyBiasText", "energyInfoId", "energyInfo", "energySplitRow", "energyFlaggedRows", "energyTable"], {
+    bindAnalysisPopover: () => {}, h, formatWhole: (v) => String(v), dateLabel: (v) => v,
+    analysisValue: (v, unit) => `${v} ${unit}`, createStatusChip: (label) => h("span", null, label),
+  });
+  const read = {
+    rows: [{ source: "katch_mcardle", resting_kcal: 1700, resting_band_kcal: 200, total_kcal: 2500, total_band_kcal: 220 }, { source: "cunningham", resting_kcal: 1850, total_kcal: 2650 }, { source: "device", label: "Garmin Connect" }, { source: "own" }],
+    basis: { complete_days: 30, days: 30 }, flagged: null, skinfold_missing: null,
+    body: { source: "profile", label: "Profil", date: null, body_fat_pct: 18.5, lean_mass_kg: 61 },
+  };
+  const rows = energyTable(read).children[2].children;
+  assert.equal(textOf(rows[0].children[0]), "Katch-McArdleKFA: Profil");
+  assert.equal(textOf(rows[1].children[0]), "CunninghamKFA: Profil");
+  assert.equal(textOf(rows[2].children[0]), "Garmin Connect", "the device row names no body fat");
+  assert.match(energyBasisText(read), /KFA 18.5 % \(Profil\), fettfreie Masse 61 kg/);
 });

@@ -127,8 +127,14 @@ class EnergyViewTests(unittest.TestCase):
             ),
         )
         self.assertEqual(
-            {"date": "2026-10-05", "body_fat_pct": 15.0, "lean_mass_kg": 68.0},
-            view["skinfold"],
+            {
+                "source": "skinfold",
+                "label": "Hautfalten",
+                "date": "2026-10-05",
+                "body_fat_pct": 15.0,
+                "lean_mass_kg": 68.0,
+            },
+            view["body"],
         )
 
     def test_a_lead_beyond_the_band_over_four_shared_windows_fits_best(self) -> None:
@@ -200,7 +206,7 @@ class EnergyViewTests(unittest.TestCase):
                         km["mean_error_kcal"],
                     ),
                 )
-                self.assertIsNone(view["skinfold"])
+                self.assertIsNone(view["body"])
 
     def test_one_source_alone_is_never_the_best(self) -> None:
         view = energy_view(inputs({}), windows(), garmin())
@@ -482,7 +488,7 @@ class EnergyViewTests(unittest.TestCase):
         self.assertEqual(1700, row(view, "device")["resting_kcal"])
         # 70 kg at 12 %: 61.6 kg lean mass, Katch-McArdle 370 + 21.6 x 61.6.
         self.assertEqual(1701, row(view, "katch_mcardle")["resting_kcal"])
-        self.assertEqual(DAY1.isoformat(), view["skinfold"]["date"])
+        self.assertEqual(DAY1.isoformat(), view["body"]["date"])
 
 
 if __name__ == "__main__":

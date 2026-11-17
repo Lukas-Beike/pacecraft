@@ -1,7 +1,7 @@
 // Headless read-only walk through the running app at phone and desktop width.
 //
 //   node scripts/ui_walk.mjs --url <app address> --password-file <secret file>
-//     --out-dir <new scratchpad dir> [--compare <previous ui-walk.json>]
+//     --out-dir <new scratchpad dir> [--compare <previous walk's out-dir or its ui-walk.json>]
 //
 // Logs in with the password read from the file (never printed or passed on a
 // command line), opens each main view, switches the calendar between week and
@@ -65,6 +65,12 @@ export function scratchPath(target) {
   return confined(target, [os.tmpdir()], new Error("files must be in the system temp directory"));
 }
 
+// --compare takes the previous walk's out-dir or its ui-walk.json (#3346).
+export function previousWalkPath(compare) {
+  const given = scratchPath(compare);
+  return fs.statSync(given, { throwIfNoEntry: false })?.isDirectory() ? scratchPath(path.join(given, "ui-walk.json")) : given;
+}
+
 // Writes one file of the walk by its fixed name (#2661): the out-dir is
 // checked again right before the write and the file is created exclusively, so
 // any entry already at the name (a file, a link or a hard link) stops the walk
@@ -76,6 +82,8 @@ export function writeFresh(outDir, name, data) {
   fs.writeFileSync(scratchPath(file), data, { flag: "wx" });
 }
 
+// Names the fix, the release skill's request step (#3354); no path or content.
+export const SECRET_MISSING = "secret missing, empty or unreadable: request a new one with request_secret (file delivery)";
 export function secretPath(target, secrets = T3_SECRETS) {
   if (!path.isAbsolute(String(target))) throw new Error("the password file path must be absolute");
   const refused = new Error("the password file must be in the system temp directory or the T3 secret folder");
@@ -221,9 +229,10 @@ const STEP_TOTAL_MS = 30000;
 const SETTLE_MS = 15000;
 // Runs in the page: no data load of the app runs (a page without the app is always settled).
 const settled = () => !globalThis.AppState || (!globalThis.AppState.state.loadPromise && !globalThis.AppState.state.loadingAreas?.size);
-// Runs in the page: a data load runs or the shown view marks itself as loading (2.1.26 cold start).
+// Runs in the page: a data load runs or the shown view marks itself as loading (2.1.26 cold start);
+// a unit's fuelling read marks only its section (2.1.37: 2.0-2.1 s against the candidate cap, #3298).
 const loading = () => Boolean(globalThis.AppState?.state.loadPromise || globalThis.AppState?.state.loadingAreas?.size)
-  || [...document.querySelectorAll(".panel.active :is(.loading-state, [aria-busy='true'], .skeleton)")].some((node) => node.checkVisibility());
+  || [...document.querySelectorAll(".panel.active :is(.loading-state, [aria-busy='true'], .skeleton, .planned-fuelling[data-state='loading'])")].some((node) => node.checkVisibility());
 // While the view shows it is loading, an element is waited for up to this long instead of the step's cap.
 const LOADING_CAP_MS = 60000;
 const DONE = ".planned-entry.is-completed > summary";
@@ -519,15 +528,18 @@ async function main() {
   let url;
   let outDir;
   let password;
+  let readingSecret = false;
   try {
     if (!values.url || !values["password-file"] || !values["out-dir"]) throw new Error("--url, --password-file and --out-dir are required");
     url = baseUrl(values.url);
     outDir = scratchPath(values["out-dir"]);
+    readingSecret = true;
     password = fs.readFileSync(secretPath(values["password-file"]), "utf8").trim();
-    if (!password) throw new Error("the secret file is empty");
+    if (!password) throw new Error(SECRET_MISSING);
   } catch (error) {
-    // A file-system error names the secret file's path; never print it.
-    console.log(`FAIL ${error.syscall ? "cannot read the secret file" : error.message}`);
+    // A file-system error names a path; never print it.
+    const fsError = readingSecret ? SECRET_MISSING : "cannot use the out-dir";
+    console.log(`FAIL ${error.syscall ? fsError : error.message}`);
     return 2;
   }
   try {
@@ -537,11 +549,15 @@ async function main() {
     return 2;
   }
   let previous = null;
+  let expected = values.compare;
   try {
-    previous = values.compare ? JSON.parse(fs.readFileSync(scratchPath(values.compare), "utf8")) : null;
+    if (values.compare) {
+      expected = previousWalkPath(values.compare);
+      previous = JSON.parse(fs.readFileSync(expected, "utf8"));
+    }
   } catch {
     // The error text could quote the file's content; never print it.
-    console.log("FAIL cannot read the previous walk");
+    console.log(`FAIL cannot read the previous walk at ${expected} (its out-dir or ui-walk.json)`);
     return 2;
   }
   const { chromium } = await import("@playwright/test");

@@ -14,9 +14,9 @@ from __future__ import annotations
 import math
 import statistics
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from datetime import date, timedelta
-from typing import cast
+from typing import Any, cast
 
 from backend.performance.activity_energy import tef_kcal
 
@@ -118,6 +118,10 @@ class EnergyInputs:
     # NEAT's step length and where it comes from: 'walks' or 'height' (#3255).
     step_m: float | None = None
     step_source: str | None = None
+    # The formula rows' body fat without a skinfold (#3362): a device's or
+    # scale's per day with its provider, then the profile's.
+    device_body_fat: Mapping[date, tuple[float, Any]] = field(default_factory=dict)
+    profile_body_fat_pct: float | None = None
 
 
 @dataclass(frozen=True)

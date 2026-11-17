@@ -25,6 +25,14 @@ paths) and are never committed. The
 previous release's results come from the session notes. Whether the release
 carries a given fix: [release-contains](../pacecraft-release-contains/SKILL.md).
 
+**Current checkout:** run every step from one checkout at `origin/develop`; an
+older one runs old checks and an old UI walk against the new release (#3344).
+`prod_diagnostics.py` and `prod_guards.py` (steps 2 and 3, before the walk)
+print `WARN this checkout is N commit(s) behind origin/develop` with the
+command that fixes it, and refuse with `--require-current` (exit 2); a warning
+there also holds for the walk. They compare the local git state only, so fetch
+first.
+
 **Stop rule:** on an unexpected effect (a dropped record count, a failed
 guard, an undo that does not fully restore, any remote write, an error state),
 stop, report it, and do not try to repair production.
@@ -35,7 +43,11 @@ stop, report it, and do not try to repair production.
    [image-verify](../pacecraft-image-verify/SKILL.md) with `--running` (after a
    restart without a release, the running digest equals the current tag).
 2. **Diagnostics and no data lost:** [prod-diagnostics](../pacecraft-prod-diagnostics/SKILL.md)
-   with `--expect-version <tag> --expect-schema <current schema> --compare <previous result>`.
+   with `--expect-version <tag> --expect-schema <current schema> --compare <previous result> --check-docs`,
+   with tags fetched (`git fetch --tags`). A failed
+   docs line (`AGENTS.md`, the db-migrations skill, `docs/schema-history.md`)
+   is a stale document, not a production error: it does not stop the check;
+   [release-unraid](../pacecraft-release-unraid/SKILL.md) opens the docs PR.
    Any unexplained drop in a record count stops the check. Judge the plan-sync
    error kinds against the previous result: whether they persist after the
    athlete's week sync; never press a sync control to find out. The `backup`
@@ -67,8 +79,12 @@ stop, report it, and do not try to repair production.
    climbing with uptime is a finding. Report the recovery copies' count, newest
    age and size; the app reads them by stat only. Container memory as the host
    sees it comes from the Unraid MCP, read-only.
-6. **UI walk:** [ui-walk](../pacecraft-ui-walk/SKILL.md) with `--compare
-   <previous walk>`. Look at every screenshot: Coach, Kalender (week, month,
+6. **UI walk:** first wait for the all-time curve build with
+   `python scripts/prod_diagnostics.py --url <app address> --password-file
+   <secret file> --wait-ready 900 --section curve_build` (exit 3: still
+   building after 15 min, a finding; never a hand-written polling loop, #3346).
+   Then [ui-walk](../pacecraft-ui-walk/SKILL.md) with `--compare
+   <previous walk's out-dir>`. Look at every screenshot: Coach, Kalender (week, month,
    paging, detail pane at desktop width), Analyse, Ernährung, Mehr. After a
    deploy the service-worker cache name must differ from the previous walk
    (new asset versions served). Keep the load times per view in the session

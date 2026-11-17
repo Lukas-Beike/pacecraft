@@ -120,7 +120,12 @@ from backend.canonical.vocabulary import (
     WorkoutTargetType,
     WorkoutTargetUnit,
 )
-from backend.providers.fit_file import FitMessage, fit_field, fit_messages
+from backend.providers.fit_file import (
+    FitDecodeError,
+    FitMessage,
+    fit_field,
+    fit_messages,
+)
 from backend.providers.fit_rr_mapping import HRV_MESSAGE, rr_intervals_ms
 from backend.providers.fit_sensor_mapping import DEVICE_INFO_MESSAGE, sensor_profile
 
@@ -139,7 +144,9 @@ from backend.providers.fit_sensor_mapping import DEVICE_INFO_MESSAGE, sensor_pro
 # Version 10: breathing rate (record and lap), the device's lap grade-adjusted
 # speed, the lap's workout step and trigger, the executed workout steps and the
 # watch's zone basis (#2220).
-MAPPER_VERSION: Final = 10
+# Version 11: files with an unset (zero) header CRC and chained files decode,
+# and a file that does not names why in its issue field (#3337).
+MAPPER_VERSION: Final = 11
 
 # Same limit as the Garmin and Intervals mappers, so issues stay bounded.
 MAX_FIT_ACTIVITY_ID_LENGTH: Final = 200
@@ -351,13 +358,16 @@ def map_fit_activity_detail(
     require_instance(provenance, Provenance, "provenance")
     if provenance.provider is None:
         raise ValueError("provenance.provider is required for activity details")
-    invalid = MappingIssue(ref, "fit", IssueReason.INVALID_TYPE)
+    # The whole file is skipped; the field names why, as a bounded code (#3337).
     if not isinstance(data, bytes):
-        return MappingResult(issues=(invalid,))
+        return MappingResult(
+            issues=(MappingIssue(ref, "fit_not_bytes", IssueReason.INVALID_TYPE),)
+        )
     try:
         messages = fit_messages(data)
-    except ValueError:
-        return MappingResult(issues=(invalid,))
+    except FitDecodeError as error:
+        failed = MappingIssue(ref, f"fit_{error.code}", IssueReason.INVALID_TYPE)
+        return MappingResult(issues=(failed,))
     issues: list[MappingIssue] = []
     records: list[ActivityDetailSet] = []
     stream_set = _stream_set(ref, provenance, messages, issues)

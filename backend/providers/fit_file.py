@@ -22,9 +22,36 @@ type FitMessage = tuple[int, dict[int, object]]
 # The most data messages one file may hold: the longest stream a session stores
 # (172,800 record messages) plus laps, events, sets and the like.
 MAX_FIT_MESSAGES: Final = 200_000
+# A chained file holds a few files (a recording split by the device); the cap
+# bounds the work an empty-file chain could cause, as each one is a slice copy.
+MAX_FIT_CHAINED_FILES: Final = 64
 FIT_SIGNATURE: Final = b".FIT"
 FIT_EPOCH: Final = datetime(1989, 12, 31, tzinfo=UTC)
 _UNSUPPORTED_FIT_BASE_TYPE: Final = "Unsupported FIT base type"
+# Why a file did not decode, as bounded codes the diagnostics count (#3337).
+FIT_ERROR_CODES: Final = frozenset(
+    {
+        "bad_header",
+        "compressed",
+        "header_crc",
+        "crc",
+        "truncated",
+        "structure",
+        "unsupported_base_type",
+        "too_many_records",
+    }
+)
+_ZIP_SIGNATURE: Final = b"PK\x03\x04"
+
+
+class FitDecodeError(ValueError):
+    """A malformed FIT file; ``code`` is one of FIT_ERROR_CODES, never file content."""
+
+    def __init__(self, code: str, message: str) -> None:
+        super().__init__(message)
+        self.code = code
+
+
 _FIT_CRC_TABLE: Final[tuple[int, ...]] = (
     0x0000,
     0xCC01,
@@ -209,21 +236,36 @@ def _fit_crc16(data: bytes) -> int:
     return crc
 
 
-def _fit_validate_checksums(data: bytes, header_size: int, data_end: int) -> None:
-    if header_size > 12:
-        if header_size < 14:
-            raise ValueError("Invalid FIT header size")
-        header_crc_offset = header_size - 2
-        expected = struct.unpack_from("<H", data, header_crc_offset)[0]
-        if _fit_crc16(data[:header_crc_offset]) != expected:
-            raise ValueError("Invalid FIT header CRC")
+def _fit_validate_header(data: bytes, header_size: int) -> None:
+    if header_size <= 12:
+        return
+    if header_size < 14:
+        raise FitDecodeError("bad_header", "Invalid FIT header size")
+    header_crc_offset = header_size - 2
+    expected = struct.unpack_from("<H", data, header_crc_offset)[0]
+    # A zero header CRC is "not computed" (FIT SDK), as third-party writers leave it.
+    if expected and _fit_crc16(data[:header_crc_offset]) != expected:
+        raise FitDecodeError("header_crc", "Invalid FIT header CRC")
+
+
+def _fit_file_end(data: bytes, data_end: int) -> int:
+    """Where this file ends after its optional CRC, which is checked.
+
+    A chained FIT file (FIT protocol) is complete files back to back, each with
+    its CRC; only the last may lack it. Any other tail is refused.
+    """
+    following = data_end + 2 + 12
+    chained = len(data) >= following and data[following - 4 : following] == (
+        FIT_SIGNATURE
+    )
     trailer_size = len(data) - data_end
-    if trailer_size not in {0, 2}:
-        raise ValueError("Invalid FIT file CRC length")
-    if trailer_size == 2:
+    if trailer_size not in {0, 2} and not chained:
+        raise FitDecodeError("crc", "Invalid FIT file CRC length")
+    if trailer_size:
         expected = struct.unpack_from("<H", data, data_end)[0]
         if _fit_crc16(data[:data_end]) != expected:
-            raise ValueError("Invalid FIT file CRC")
+            raise FitDecodeError("crc", "Invalid FIT file CRC")
+    return data_end + min(trailer_size, 2)
 
 
 def _fit_decode_values(
@@ -236,7 +278,7 @@ def _fit_decode_values(
         return raw
     fmt = _FIT_BASE_TYPE_FORMATS.get(base_type)
     if not fmt:
-        raise ValueError(_UNSUPPORTED_FIT_BASE_TYPE)
+        raise FitDecodeError("unsupported_base_type", _UNSUPPORTED_FIT_BASE_TYPE)
     endian = "<" if architecture == 0 else ">"
     values = [
         struct.unpack(endian + fmt, raw[index : index + size])[0]
@@ -252,7 +294,7 @@ def _fit_value(raw: bytes, base_type: int, architecture: int) -> object:
     type_num = base_type & 0x1F
     size = _FIT_BASE_TYPE_SIZES.get(type_num)
     if size is None:
-        raise ValueError(_UNSUPPORTED_FIT_BASE_TYPE)
+        raise FitDecodeError("unsupported_base_type", _UNSUPPORTED_FIT_BASE_TYPE)
     if type_num == 7:
         return raw.rstrip(b"\x00").decode("utf-8", "replace")
     if type_num == 13:
@@ -264,10 +306,10 @@ def _fit_definition(
     data: bytes, offset: int, record_header: int, data_end: int
 ) -> tuple[int, _FitDefinition]:
     if offset + 5 > data_end:
-        raise ValueError("Truncated FIT definition")
+        raise FitDecodeError("truncated", "Truncated FIT definition")
     architecture = data[offset + 1]
     if architecture not in (0, 1):
-        raise ValueError("Invalid FIT architecture")
+        raise FitDecodeError("structure", "Invalid FIT architecture")
     endian = "<" if architecture == 0 else ">"
     global_number = struct.unpack_from(endian + "H", data, offset + 2)[0]
     field_count = data[offset + 4]
@@ -275,12 +317,12 @@ def _fit_definition(
     fields: list[_FitField] = []
     for _ in range(field_count):
         if offset + 3 > data_end:
-            raise ValueError("Truncated FIT field definition")
+            raise FitDecodeError("truncated", "Truncated FIT field definition")
         number, size, base_type = data[offset : offset + 3]
         if size <= 0:
-            raise ValueError("Invalid FIT field size")
+            raise FitDecodeError("structure", "Invalid FIT field size")
         if base_type & 0x1F not in _FIT_BASE_TYPE_SIZES:
-            raise ValueError(_UNSUPPORTED_FIT_BASE_TYPE)
+            raise FitDecodeError("unsupported_base_type", _UNSUPPORTED_FIT_BASE_TYPE)
         fields.append((number, size, base_type))
         offset += 3
     developer_size, developer_fields = _fit_developer_definition(
@@ -288,7 +330,7 @@ def _fit_definition(
     )
     offset += developer_size
     if not fields and not developer_fields:
-        raise ValueError("FIT definition has no fields")
+        raise FitDecodeError("structure", "FIT definition has no fields")
     return offset, (architecture, global_number, fields, developer_fields)
 
 
@@ -298,17 +340,17 @@ def _fit_developer_definition(
     if not record_header & 0x20:
         return 0, []
     if offset >= data_end:
-        raise ValueError("Truncated FIT developer definition")
+        raise FitDecodeError("truncated", "Truncated FIT developer definition")
     start_offset = offset
     developer_count = data[offset]
     offset += 1
     developer_fields: list[_FitField] = []
     for _ in range(developer_count):
         if offset + 3 > data_end:
-            raise ValueError("Truncated FIT developer definition")
+            raise FitDecodeError("truncated", "Truncated FIT developer definition")
         size, developer_index = data[offset + 1 : offset + 3]
         if size <= 0:
-            raise ValueError("Invalid FIT developer field size")
+            raise FitDecodeError("structure", "Invalid FIT developer field size")
         developer_fields.append((developer_index, size, 13))
         offset += 3
     return offset - start_offset, developer_fields
@@ -324,12 +366,12 @@ def _fit_data_record(
 ) -> tuple[int, int | None, FitMessage]:
     compressed = bool(record_header & 0x80)
     if definition is None:
-        raise ValueError("FIT data has no definition")
+        raise FitDecodeError("structure", "FIT data has no definition")
     architecture, global_number, fields, developer_fields = definition
     developer_size = sum(field[1] for field in developer_fields)
     total_size = sum(field[1] for field in fields)
     if offset + total_size + developer_size > data_end:
-        raise ValueError("Truncated FIT data record")
+        raise FitDecodeError("truncated", "Truncated FIT data record")
     values: dict[int, object] = {}
     for number, size, base_type in fields:
         values[number] = _fit_value(
@@ -363,19 +405,37 @@ def _fit_local_number(record_header: int) -> int:
 
 
 def fit_messages(data: bytes) -> list[FitMessage]:
-    """Read FIT definitions and data records without trusting provider bytes."""
+    """Read FIT definitions and data records without trusting provider bytes.
+
+    A chained file decodes file by file, each with its own definitions (#3337).
+    """
+    if data[:4] == _ZIP_SIGNATURE:
+        raise FitDecodeError("compressed", "FIT file is a zip archive")
+    messages: list[FitMessage] = []
+    start = _fit_file_messages(data, messages)
+    for _ in range(MAX_FIT_CHAINED_FILES - 1):
+        if start >= len(data):
+            return messages
+        start += _fit_file_messages(data[start:], messages)
+    if start < len(data):
+        raise FitDecodeError("structure", "Too many chained FIT files")
+    return messages
+
+
+def _fit_file_messages(data: bytes, messages: list[FitMessage]) -> int:
+    """Append one file's messages; return where the file ends after its CRC."""
     if len(data) < 12 or data[8:12] != FIT_SIGNATURE:
-        raise ValueError("Invalid FIT header")
+        raise FitDecodeError("bad_header", "Invalid FIT header")
     header_size = data[0]
     if header_size < 12 or header_size > len(data):
-        raise ValueError("Invalid FIT header size")
+        raise FitDecodeError("bad_header", "Invalid FIT header size")
     data_size = struct.unpack_from("<I", data, 4)[0]
     data_end = header_size + data_size
     if data_end > len(data):
-        raise ValueError("Truncated FIT data")
-    _fit_validate_checksums(data, header_size, data_end)
+        raise FitDecodeError("truncated", "Truncated FIT data")
+    _fit_validate_header(data, header_size)
+    file_end = _fit_file_end(data, data_end)
     definitions: dict[int, _FitDefinition] = {}
-    messages: list[FitMessage] = []
     offset = header_size
     last_timestamp: int | None = None
     while offset < data_end:
@@ -386,7 +446,7 @@ def fit_messages(data: bytes) -> list[FitMessage]:
             definitions[record_header & 0x0F] = definition
             continue
         if len(messages) >= MAX_FIT_MESSAGES:
-            raise ValueError("Too many FIT records")
+            raise FitDecodeError("too_many_records", "Too many FIT records")
         local_number = _fit_local_number(record_header)
         offset, last_timestamp, message = _fit_data_record(
             data,
@@ -397,7 +457,7 @@ def fit_messages(data: bytes) -> list[FitMessage]:
             last_timestamp,
         )
         messages.append(message)
-    return messages
+    return file_end
 
 
 def fit_timestamp_iso(value: object) -> str | None:

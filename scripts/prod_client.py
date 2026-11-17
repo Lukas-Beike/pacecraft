@@ -11,6 +11,7 @@ from __future__ import annotations
 import http.cookiejar
 import json
 import ssl
+import subprocess
 import tempfile
 import urllib.error
 import urllib.request
@@ -23,10 +24,46 @@ ROOT = Path(__file__).resolve().parents[1]
 T3_SECRETS = Path.home() / ".t3" / "userdata" / "secrets"
 CSRF_COOKIE = "ic_csrf"
 TIMEOUT = 30
+# An old checkout runs old checks against a new release (#3344).
+CHECKOUT_FIX = "git fetch origin develop && git switch --detach origin/develop"
+# Names the fix, the release skill's request step (#3354); no path or content.
+SECRET_MISSING = (
+    "secret missing, empty or unreadable: request a new one with request_secret "
+    "(file delivery)"
+)
 
 
 class ProdError(RuntimeError):
     """A failed request or refused input; the message holds no secret or body text."""
+
+
+def checkout_current(require_current: bool, root: Path | None = None) -> bool:
+    """Warn when this checkout's HEAD lacks commits of origin/develop, from the
+    local git state only: no fetch (#3344). With --require-current print FAIL
+    instead and return False, also when git cannot tell; silent when current."""
+    try:
+        done = subprocess.run(
+            ["git", "rev-list", "--count", "HEAD..origin/develop"],
+            cwd=root or ROOT,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            check=False,
+            timeout=15,
+        )
+        behind: int | None = int(done.stdout) if done.returncode == 0 else None
+    except OSError, ValueError, subprocess.TimeoutExpired:
+        behind = None
+    if behind == 0 or (behind is None and not require_current):
+        return True
+    state = (
+        "cannot be compared with origin/develop"
+        if behind is None
+        else f"is {behind} commit(s) behind origin/develop"
+    )
+    word = "FAIL" if require_current else "WARN"
+    print(f"{word} this checkout {state}; update it: {CHECKOUT_FIX}")
+    return not require_current
 
 
 def base_url(text: str) -> str:
@@ -129,10 +166,10 @@ class Session:
     def login(self, password_file: str) -> None:
         try:
             password = secret_path(password_file).read_text(encoding="utf-8").strip()
-        except OSError:
-            raise ProdError("cannot read the secret file") from None
+        except OSError, UnicodeDecodeError:
+            raise ProdError(SECRET_MISSING) from None
         if not password:
-            raise ProdError("the secret file is empty")
+            raise ProdError(SECRET_MISSING)
         code = self.status("POST", "/api/login", body={"password": password})
         del password
         if code != 200 or not self.cookie(CSRF_COOKIE):

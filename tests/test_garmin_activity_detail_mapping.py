@@ -191,6 +191,37 @@ class GarminActivityDetailMappingTests(unittest.TestCase):
         )
         self.assertEqual(len(result.issues), 1)
 
+    def test_heart_rate_sensor_markers_are_gaps_without_an_issue(self):
+        # #3337: 0 and 255 mark "no reading" from the strap, not a measured rate.
+        details = _fixture("details")
+        _set_rows(details, 2, [96.0, 0, 255, 147.0])
+
+        result = _map(_collected(details=details))
+        stream = _only(result, ActivityStreamSet)
+
+        self.assertEqual(
+            stream.channels[StreamChannel.HEART_RATE_BPM], (96.0, None, None, 147.0)
+        )
+        self.assertNotIn("directHeartRate", {issue.field for issue in result.issues})
+
+    def test_lap_heart_rate_markers_are_missing_not_out_of_range(self):
+        splits = _fixture("splits")
+        splits["lapDTOs"][0]["averageHR"] = 0
+        splits["lapDTOs"][0]["maxHR"] = 255
+
+        result = _map(_collected(splits=splits))
+        laps = _only(result, ActivityLapSet)
+
+        self.assertIsNone(laps.laps[1].avg_hr)
+        self.assertIsNone(laps.laps[1].max_hr)
+        for field in ("averageHR", "maxHR"):
+            self.assertIn(_issue(field, IssueReason.MISSING), result.issues)
+            self.assertNotIn(_issue(field, IssueReason.OUT_OF_RANGE), result.issues)
+        # A real rate beyond the bounds stays out of range.
+        splits["lapDTOs"][0]["maxHR"] = 300
+        result = _map(_collected(splits=splits))
+        self.assertIn(_issue("maxHR", IssueReason.OUT_OF_RANGE), result.issues)
+
     def test_unknown_metric_keys_are_ignored_silently(self):
         result = _map(_collected())
 
@@ -665,4 +696,4 @@ class GarminFitPartTests(unittest.TestCase):
         self.assertEqual(
             _only(result, ActivityStreamSet).resolution, StreamResolution.DOWNSAMPLED
         )
-        self.assertIn(_issue("fit", IssueReason.INVALID_TYPE), result.issues)
+        self.assertIn(_issue("fit_bad_header", IssueReason.INVALID_TYPE), result.issues)

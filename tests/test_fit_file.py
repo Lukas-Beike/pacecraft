@@ -14,6 +14,8 @@ from unittest import mock
 
 from backend.providers import fit_file
 from backend.providers.fit_file import (
+    FIT_ERROR_CODES,
+    FitDecodeError,
     _fit_crc16,
     fit_field,
     fit_messages,
@@ -350,6 +352,97 @@ class FitFileRobustnessTests(unittest.TestCase):
             elif isinstance(node, ast.ImportFrom) and node.module:
                 imported.add(node.module)
         self.assertEqual([name for name in imported if name.startswith("backend")], [])
+
+    def test_parse_failures_carry_a_bounded_reason_code(self):
+        # #3337: the diagnostics name why a file fails, never with its bytes.
+        sample = _sample().build()
+        crc = bytearray(sample)
+        crc[-3] ^= 0x01
+        header_crc = bytearray(sample)
+        header_crc[12] ^= 0xFF
+        unknown_type = FitBuilder().raw(bytes([0x40, 0, 0, 20, 0, 1, 3, 1, 0x11]))
+        no_definition = FitBuilder().raw(bytes([0x00, 0x01]))
+        cases = {
+            b"\x0c" + bytes(7) + b"NOPE" + bytes(4): "bad_header",
+            # A zip archive reaching the decoder instead of its FIT member.
+            b"PK\x03\x04" + bytes(30): "compressed",
+            bytes(crc): "crc",
+            bytes(header_crc): "header_crc",
+            _sample().build(file_crc=False)[:-3]: "truncated",
+            unknown_type.build(): "unsupported_base_type",
+            no_definition.build(): "structure",
+        }
+        for data, code in cases.items():
+            with self.subTest(code=code), self.assertRaises(FitDecodeError) as caught:
+                fit_messages(data)
+            self.assertEqual(caught.exception.code, code)
+            self.assertIn(caught.exception.code, FIT_ERROR_CODES)
+
+    def test_a_header_crc_of_zero_means_not_computed(self):
+        # FIT SDK: a zero header CRC is not checked; third-party writers set it.
+        data = bytearray(_sample().build(file_crc=False))
+        data[12:14] = b"\x00\x00"
+        data += struct.pack("<H", crc16_reference(bytes(data)))
+        self.assertEqual(len(fit_messages(bytes(data))), 2)
+
+    def test_a_file_without_its_crc_trailer_still_decodes(self):
+        self.assertEqual(len(fit_messages(_sample().build(file_crc=False))), 2)
+
+    def test_chained_files_decode_in_turn_with_their_own_definitions(self):
+        # A chained FIT file is several complete files back to back (FIT protocol).
+        second = (
+            FitBuilder()
+            .define(0, 19, [(253, UINT32), (7, UINT32)])
+            .data(0, {253: 2000, 7: 60000})
+        )
+        chained = _sample().build() + second.build()
+        self.assertEqual(
+            fit_messages(chained),
+            [
+                (20, {253: 1000, 3: 120, 4: 80}),
+                (20, {253: 1001, 3: 122, 4: 81}),
+                (19, {253: 2000, 7: 60000}),
+            ],
+        )
+        # The last file may lack its CRC; a stray tail is still refused.
+        self.assertEqual(
+            len(fit_messages(_sample().build() + second.build(file_crc=False))), 3
+        )
+        with self.assertRaises(FitDecodeError) as caught:
+            fit_messages(_sample().build() + b"\x00\x00\x00")
+        self.assertEqual(caught.exception.code, "crc")
+
+    def test_the_number_of_chained_files_is_bounded(self):
+        # Gitar on #3339: empty files add no messages, so only a file cap bounds
+        # the work (each file is a slice copy of the rest).
+        empty = FitBuilder().build()
+        limit = fit_file.MAX_FIT_CHAINED_FILES
+        self.assertEqual(fit_messages(empty * limit), [])
+        with self.assertRaises(FitDecodeError) as caught:
+            fit_messages(empty * 200_000)
+        self.assertEqual(caught.exception.code, "structure")
+
+    def test_developer_fields_are_skipped_and_their_messages_kept(self):
+        # Protocol 2.0, as Zwift and Connect IQ apps write: developer_data_id
+        # (207), field_description (206) and a record carrying a developer field.
+        builder = (
+            FitBuilder()
+            .define(1, 207, [(3, UINT8)])
+            .data(1, {3: 0})
+            .define(2, 206, [(0, UINT8), (1, UINT8), (2, UINT8)])
+            .data(2, {0: 0, 1: 0, 2: 2})
+        )
+        # Record definition with the developer flag: two fields, one 2-byte
+        # developer field of developer index 0.
+        builder.raw(bytes([0x60, 0, 0, 20, 0, 2, 253, 4, 0x86, 3, 1, 0x02, 1, 0, 2, 0]))
+        builder.raw(bytes([0x00]) + struct.pack("<IB", 1000, 130) + b"\x34\x12")
+        data = bytearray(builder.build(file_crc=False))
+        data[12:14] = b"\x00\x00"  # Zwift-style unset header CRC
+        data += struct.pack("<H", crc16_reference(bytes(data)))
+        self.assertEqual(
+            fit_messages(bytes(data)),
+            [(207, {3: 0}), (206, {0: 0, 1: 0, 2: 2}), (20, {253: 1000, 3: 130})],
+        )
 
     def test_random_and_mutated_inputs_raise_only_value_error(self):
         rng = random.Random(20261019)

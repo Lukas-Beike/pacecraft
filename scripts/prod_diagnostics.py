@@ -2,9 +2,13 @@
 
     python scripts/prod_diagnostics.py --url <app address> --password-file <secret file>
         [--expect-version 2.1.2] [--expect-schema 27] [--out result.json]
-        [--compare previous.json] [--ca-file ca.pem]
+        [--compare previous.json] [--ca-file ca.pem] [--require-current]
+        [--check-docs]
     python scripts/prod_diagnostics.py --url <app address> --password-file <secret file>
         --section <name> [--section <name> ...]
+    Either form takes [--wait-ready <seconds>]: before it reads the report it
+    waits until `curve_build.status` is `ready`; exit 3 when the time runs out,
+    1 when the build failed (#3346).
 
 Prints one line per check (`ok` / `FAIL` / `info`); never a response body,
 cookie, password or error text. Exit 0 all ok, 1 a check failed (a count
@@ -14,20 +18,42 @@ instead of the checks, only the allow-listed counts, flags, state words and
 ages in hours (a `*_at` time as `*_hours`) of the sections in SECTION_FIELDS,
 or the sums of a section in DERIVED_SECTIONS (`coach_local_first`: the #3080
 counts over the Coach history); the state words in FAIL_STATES and a missing
-section print as FAIL.
+section print as FAIL. `--check-docs` also compares the production schema and
+version with the production line in AGENTS.md and the db-migrations skill and
+with the docs/schema-history.md row, and names the exact change when stale.
 """
 
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
 import math
 import re
+import subprocess
 import sys
+import time
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 
-from prod_client import ProdError, Session, read_result, write_result
+from prod_client import (
+    ROOT,
+    ProdError,
+    Session,
+    checkout_current,
+    read_result,
+    write_result,
+)
+
+# The production schema line the docs keep by hand (#3351).
+PRODUCTION_LINE = re.compile(
+    r"Production\s+runs\s+v(\d+)\s+since\s+release\s+(\d+\.\d+\.\d+)"
+)
+PRODUCTION_LINE_DOCS = ("AGENTS.md", ".agents/skills/pacecraft-db-migrations/SKILL.md")
+SCHEMA_HISTORY = "docs/schema-history.md"
+SCHEMA_SOURCE = "backend/db/schema.py"
+RELEASE = r"\d+\.\d+\.\d+"
 
 COUNTS = (
     "messages",
@@ -112,6 +138,14 @@ SECTION_FIELDS = {
     "dfa_series": re.compile(
         r"status|runs|with_series|unreadable_series|before_series|without_result"
     ),
+    # The energy table's basis and its formula rows' body fat (#3100, #3336, #3362).
+    "energy_balance": re.compile(
+        r"status|latest_window_(complete_days|weighins|insufficient)|windows"
+        r"|windows_with_estimate|calibration_windows|days|logged_days|flagged_days"
+        r"|weighins|sessions|unpriced_sessions|rmr_source|skinfolds_with_body_fat"
+        r"|newest_skinfold_age_days|body_resolved|body_missing|body_source"
+        r"|body_source_windows\.(skinfold|device|profile|none)"
+    ),
     # Window records the next detail mapper bump downloads again (#2220).
     "mapper_replay": re.compile(
         r"status|garmin\.(window_days|pending|passed_over(_empty|_retries)?|records"
@@ -149,7 +183,30 @@ STATES = {
     "unavailable",
     "blocked",
 }
+# The energy table's codes (#3100, #3336, #3362): its basis gap, the resting
+# reference, why the formula rows lack a body and where their body fat came from.
+STATES |= {
+    "intake_days",
+    "weighins",
+    "weight_span",
+    "katch_mcardle_skinfold",
+    "katch_mcardle_body_fat",
+    "garmin",
+    "no_skinfold",
+    "skinfold_too_old",
+    "no_birth_year",
+    "no_weight",
+    "invalid",
+    "skinfold",
+    "device",
+    "profile",
+}
 FAIL_STATES = {"failed", "unavailable", "blocked"}
+# Seconds between two reads of `--wait-ready` (#3346).
+WAIT_POLL_S = 15
+# The Analyse view's all-time read, which starts a `pending` curve build.
+CURVE_READ = "/api/analysis/power-profiles"
+DIAGNOSTICS = "/api/diagnostics"
 
 
 def hours_since(stamp: str | None, now: datetime) -> float | None:
@@ -528,13 +585,92 @@ def backup_line(result: dict[str, Any], max_hours: float | None) -> tuple[str, s
     return mark(ok, f"{text} (needs under {max_hours:g} h, verified)")
 
 
+def read_doc(root: Path, name: str) -> str:
+    try:
+        return (root / name).read_text(encoding="utf-8")
+    except OSError:
+        return ""
+
+
+def schema_releases(root: Path, schema: int, version: str) -> tuple[str, str | None]:
+    """The first release tag up to `version` whose code wrote `schema`, and the
+    tag before it, from the checkout's git tags; `(version, None)` without them."""
+
+    def git(*args: str) -> str:
+        done = subprocess.run(
+            ["git", "-C", str(root), *args],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            check=False,
+        )
+        return done.stdout if done.returncode == 0 else ""
+
+    def key(tag: str) -> tuple[int, ...]:
+        return tuple(int(part) for part in tag.split("."))
+
+    tags = sorted(
+        (t for t in git("tag", "--list").split() if re.fullmatch(RELEASE, t)),
+        key=key,
+    )
+    since, before = version, None
+    for tag in reversed([t for t in tags if key(t) <= key(version)]):
+        source = git("show", f"{tag}:{SCHEMA_SOURCE}")
+        found = re.search(r"^CURRENT_SCHEMA_VERSION = (\d+)", source, re.MULTILINE)
+        if not found or int(found[1]) != schema:
+            before = tag
+            break
+        since = tag
+    return since, before
+
+
+def open_history_rows(history: str) -> dict[int, str]:
+    """The schema-history rows still open (`| N | since X |`): schema to X."""
+    opened = {}
+    for text in history.splitlines():
+        cells = [cell.strip() for cell in text.strip().strip("|").split("|")]
+        if len(cells) == 2 and cells[0].isdigit() and cells[1].startswith("since "):
+            opened[int(cells[0])] = cells[1].removeprefix("since ")
+    return opened
+
+
+def docs_lines(root: Path, schema: int, version: str) -> list[tuple[str, str]]:
+    """Compare the production schema and version with the docs' production
+    line and schema-history row; a stale one names the exact change (#3351)."""
+    if type(schema) is not int or not re.fullmatch(RELEASE, str(version)):
+        return [mark(False, "docs: production schema or version unknown")]
+    opened = open_history_rows(read_doc(root, SCHEMA_HISTORY))
+    if list(opened) == [schema]:
+        since = opened[schema]
+        lines = [mark(True, f"{SCHEMA_HISTORY}: schema {schema} row since {since}")]
+    else:
+        since, before = schema_releases(root, schema, version)
+        last = before or f"the release before {since}"
+        closes = "".join(
+            f"; set `| {n} | {first if first == last else f'{first} to {last}'} |`"
+            for n, first in sorted(opened.items())
+            if n != schema
+        )
+        stale = f"stale; set `| {schema} | since {since} |`{closes}"
+        lines = [mark(False, f"{SCHEMA_HISTORY}: schema {schema} row {stale}")]
+    want = f"v{schema} since release {since}"
+    for name in PRODUCTION_LINE_DOCS:
+        found = PRODUCTION_LINE.search(read_doc(root, name))
+        have = f"v{found[1]} since release {found[2]}" if found else "missing"
+        change = "" if have == want else f"; change it to `Production runs {want}`"
+        lines.append(mark(have == want, f"{name}: production runs {have}{change}"))
+    return lines
+
+
 def checks(
     result: dict[str, Any],
     previous: dict[str, Any] | None,
     expect_version: str | None,
     expect_schema: int | None,
     expect_backup_hours: float | None = None,
+    check_docs: bool = False,
 ) -> list[tuple[str, str]]:
+    docs = docs_lines(ROOT, result["schema"], result["version"]) if check_docs else []
     return [
         expected("version", result["version"], expect_version),
         expected("schema", result["schema"], expect_schema),
@@ -561,7 +697,36 @@ def checks(
             ),
         ),
         *comparison_lines(result, previous),
+        *docs,
     ]
+
+
+def curve_state(report: Any) -> str:
+    """The curve build's state word; `missing` without the section."""
+    section = report.get("curve_build") if isinstance(report, dict) else None
+    return word(section.get("status")) if isinstance(section, dict) else "missing"
+
+
+def wait_ready(session: Session, seconds: float) -> int:
+    """Poll `curve_build.status` until `ready` (0), failed (1) or out of time (3)."""
+    start = time.monotonic()
+    state = curve_state(session.get_json(DIAGNOSTICS))
+    if state == "pending":
+        # `pending` lasts until the first all-time read; make the Analyse
+        # view's own read once, as the UI walk does. Its body is not read.
+        with contextlib.suppress(ProdError):
+            session.status("GET", CURVE_READ)
+    while True:
+        waited = round(time.monotonic() - start)
+        if state == "ready":
+            print(f"ok curve build ready, waited {waited} s")
+            return 0
+        failed = state in FAIL_STATES or state in {"missing", "?"}
+        if failed or waited >= seconds:
+            print(f"FAIL curve build {state}, waited {waited} s")
+            return 1 if failed else 3
+        time.sleep(min(WAIT_POLL_S, max(seconds - waited, 1)))
+        state = curve_state(session.get_json(DIAGNOSTICS))
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -574,18 +739,24 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--out")
     parser.add_argument("--compare")
     parser.add_argument("--ca-file")
+    parser.add_argument("--check-docs", action="store_true")
     parser.add_argument(
         "--section",
         action="append",
         choices=sorted({*SECTION_FIELDS, *DERIVED_SECTIONS}),
     )
+    parser.add_argument("--wait-ready", type=float, metavar="SECONDS")
+    parser.add_argument("--require-current", action="store_true")
     args = parser.parse_args(argv)
+    if not checkout_current(args.require_current):
+        return 2
     checks_asked = (
         args.out,
         args.compare,
         args.expect_version,
         args.expect_schema,
         args.expect_backup_hours,
+        args.check_docs or None,
     )
     if args.section and any(value is not None for value in checks_asked):
         parser.error("--section prints sections; it runs no checks or results")
@@ -597,7 +768,11 @@ def main(argv: list[str] | None = None) -> int:
         print(f"{'ok' if healthy else 'FAIL'} health")
         session.login(args.password_file)
         try:
-            report = session.get_json("/api/diagnostics")
+            if args.wait_ready is not None and (
+                waited := wait_ready(session, args.wait_ready)
+            ):
+                return waited
+            report = session.get_json(DIAGNOSTICS)
         finally:
             logout = session.logout()
             print(f"{'ok' if logout == 200 else 'FAIL'} logout {logout}")
@@ -616,6 +791,7 @@ def main(argv: list[str] | None = None) -> int:
             args.expect_version,
             args.expect_schema,
             args.expect_backup_hours,
+            args.check_docs,
         )
     )
     for state, text in lines:

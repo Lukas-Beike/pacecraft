@@ -109,7 +109,12 @@ class DevelopRunCheckTests(unittest.TestCase):
 
     def test_failed_run_reports_previous_conclusion_and_failed_jobs(self):
         previous = run_record(0, "CI", "older", "2026-11-10T10:00:00Z")
-        runs = [previous, run_record(1, *CI, conclusion="failure")]
+        # A newer develop push cancels the run before it (#3353); the hint
+        # compares with the last run that finished.
+        cancelled = run_record(
+            2, "CI", "between", "2026-11-11T09:00:00Z", conclusion="cancelled"
+        )
+        runs = [previous, cancelled, run_record(1, *CI, conclusion="failure")]
         code, out, _, fake = check("--sha", SHA, runs=runs, jobs=FAILED_JOBS)
         self.assertEqual(code, 1)
         self.assertIn("CI: failed (failure)", out)

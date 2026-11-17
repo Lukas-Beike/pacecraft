@@ -1,8 +1,10 @@
 """Post-release base scripts against a local fake app; no real server or network."""
 
 import io
+import itertools
 import json
 import secrets
+import subprocess
 import sys
 import tempfile
 import threading
@@ -21,6 +23,7 @@ from backend.coach.read_tools import LOOKUP_OUTCOMES
 from backend.coach.receipt_compaction import compact_tool_result
 from backend.coach.turn_failures import coach_error_metadata
 from backend.errors import AppError
+from backend.nutrition.energy_inputs import RESTING_FROM_SKINFOLDS
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 import prod_client
@@ -162,12 +165,18 @@ class FakeApp(BaseHTTPRequestHandler):
         return "ic_session=s1" in (self.headers.get("Cookie") or "")
 
     def do_GET(self):
+        self.state.setdefault("gets", []).append(self.path)
         if self.path == "/api/health":
             return self.send(200, {"status": "ok"})
         if not self.session():
             return self.send(401, {"error": "Anmeldung erforderlich."})
         if self.path == "/api/diagnostics":
-            return self.send(200, report(self.state.get("messages", 40)))
+            data = report(self.state.get("messages", 40))
+            # One curve build status per read; the last one stays (#3346).
+            if curves := self.state.get("curves"):
+                status = curves.pop(0) if len(curves) > 1 else curves[0]
+                data["curve_build"] = {"status": status, "building_s": 7}
+            return self.send(200, data)
         if self.path.startswith("/api/logs"):
             entries = [
                 {"level": "ERROR", "event": "plan_push_failed", "message": FAKE_LOGIN},
@@ -214,6 +223,17 @@ class ProdChecksTests(unittest.TestCase):
         self.addCleanup(self.tmp.cleanup)
         self.secret = Path(self.tmp.name) / "secret"
         self.secret.write_text(FAKE_LOGIN + "\n", encoding="utf-8")
+        # The checks compare a checkout with origin/develop (#3344): here a
+        # directory without git state, not this repository, unless a test sets one.
+        self.checkout = Path(self.tmp.name)
+        for module in (prod_diagnostics, prod_guards):
+            patcher = mock.patch.object(
+                module,
+                "checkout_current",
+                lambda required: prod_client.checkout_current(required, self.checkout),
+            )
+            patcher.start()
+            self.addCleanup(patcher.stop)
 
     def run_main(self, module, *args):
         out = io.StringIO()
@@ -391,6 +411,39 @@ class ProdChecksTests(unittest.TestCase):
                 ["--url", self.url, "--password-file", str(self.secret),
                  "--section", "fit_inventory", "--expect-version", "2.1.2"]
             )  # fmt: skip
+
+    def test_energy_balance_prints_the_body_codes_and_counts(self):
+        # #3362: the energy table's body source and reason are readable on prod.
+        report = {
+            "energy_balance": {
+                "status": "ready",
+                # The backend's own codes, so a rename fails here (Gitar #3366).
+                "rmr_source": RESTING_FROM_SKINFOLDS,
+                "latest_window_insufficient": "weight_span",
+                "body_resolved": False,
+                "body_missing": "no_skinfold",
+                "body_source": "profile",
+                "body_source_windows": {"skinfold": 0, "device": 2, "profile": 9},
+                "skinfolds_with_body_fat": 0,
+                "newest_skinfold_age_days": None,
+                "planted": "never printed",
+            }
+        }
+        lines = [
+            text for _, text in prod_diagnostics.section_lines(report, "energy_balance")
+        ]
+        prefix = "energy_balance."
+        for expected in (
+            f'{prefix}body_missing "no_skinfold"',
+            f'{prefix}body_source "profile"',
+            f"{prefix}body_source_windows.device 2",
+            f"{prefix}body_resolved false",
+            f'{prefix}rmr_source "{RESTING_FROM_SKINFOLDS}"',
+            f'{prefix}latest_window_insufficient "weight_span"',
+            f"{prefix}newest_skinfold_age_days null",
+        ):
+            self.assertIn(expected, lines)
+        self.assertFalse(any("planted" in line for line in lines))
 
     def test_coach_local_first_prints_the_3080_sums_only(self):
         code, text = self.run_main(
@@ -590,6 +643,39 @@ class ProdChecksTests(unittest.TestCase):
                 sport_name = getattr(sport, "value", sport)
                 self.assertTrue(fit.fullmatch(f"{origin.value}.{sport_name}.files"))
 
+    def test_wait_ready_polls_the_curve_build_until_ready_or_timeout(self):
+        wait = ("--url", self.url, "--password-file", str(self.secret))
+        FakeApp.state["curves"] = ["pending", "pending", "building", "ready"]
+        with mock.patch.object(prod_diagnostics.time, "sleep") as slept:
+            code, text = self.run_main(
+                prod_diagnostics, *wait, "--wait-ready", "600",
+                "--section", "curve_build",
+            )  # fmt: skip
+        self.assertEqual(code, 0, text)
+        self.assertEqual(slept.call_count, 3)
+        # A pending build is started once with the Analyse view's own read.
+        self.assertEqual(FakeApp.state["gets"].count("/api/analysis/power-profiles"), 1)
+        self.assertIn("ok curve build ready, waited", text)
+        self.assertIn('info curve_build.status "ready"', text)
+        self.assertIn("ok logout 200", text)
+        # Still building when the time runs out: exit 3, logged out.
+        FakeApp.state["curves"] = ["building"]
+        clock = itertools.count(0, 20)
+        with (
+            mock.patch.object(prod_diagnostics.time, "sleep"),
+            mock.patch.object(prod_diagnostics.time, "monotonic", lambda: next(clock)),
+        ):
+            code, text = self.run_main(prod_diagnostics, *wait, "--wait-ready", "60")
+        self.assertEqual(code, 3, text)
+        self.assertIn("FAIL curve build building, waited 60 s", text)
+        self.assertIn("ok logout 200", text)
+        self.assertNotIn("ok version", text)
+        # A failed build stops at once.
+        FakeApp.state["curves"] = ["failed"]
+        code, text = self.run_main(prod_diagnostics, *wait, "--wait-ready", "60")
+        self.assertEqual(code, 1, text)
+        self.assertIn("FAIL curve build failed, waited 0 s", text)
+
     def test_diagnostics_version_mismatch_and_wrong_password(self):
         code, text = self.run_main(
             prod_diagnostics, "--url", self.url, "--password-file", str(self.secret),
@@ -603,6 +689,114 @@ class ProdChecksTests(unittest.TestCase):
         self.assertEqual(code, 2)
         self.assertIn("FAIL login answered 401", text)
         self.assertNotIn("wrong password value", text)
+
+    def test_missing_or_empty_secret_names_the_request_step(self):
+        # An expired secret held a deploy for hours behind a bare "cannot read" (#3354).
+        line = (
+            "FAIL secret missing, empty or unreadable: "
+            "request a new one with request_secret (file delivery)"
+        )
+        # The UI walk prints the same line.
+        walk = (prod_client.ROOT / "scripts" / "ui_walk.mjs").read_text("utf-8")
+        self.assertIn(line.removeprefix("FAIL "), walk)
+        missing = Path(self.tmp.name) / "expired-secret"
+        for module in (prod_diagnostics, prod_guards, prod_logs):
+            code, text = self.run_main(
+                module, "--url", self.url, "--password-file", str(missing)
+            )
+            self.assertEqual(code, 2)
+            self.assertIn(line, text)
+            self.assertNotIn("expired-secret", text)
+        for content in (b"  \n", b"\xe4" + FAKE_LOGIN.encode()):
+            self.secret.write_bytes(content)
+            code, text = self.run_main(
+                prod_diagnostics, "--url", self.url, "--password-file", str(self.secret)
+            )
+            self.assertEqual(code, 2)
+            self.assertIn(line, text)
+
+    def test_check_docs_fails_on_a_stale_production_line(self):
+        # After schema v30 shipped, AGENTS.md still said v29 (#3351).
+        root = Path(self.tmp.name) / "repo"
+        source = root / "backend/db/schema.py"
+        source.parent.mkdir(parents=True)
+
+        def git(*args):
+            identity = ("-c", "user.name=t", "-c", "user.email=t@example.invalid")
+            subprocess.run(["git", *identity, "-C", str(root), *args], check=True,
+                           capture_output=True)  # fmt: skip
+
+        git("init", "-q")
+        # Release 2.1.2 wrote schema 27; 2.1.3 and 2.1.4 wrote schema 28.
+        for tag, schema in (("2.1.2", 27), ("2.1.3", 28), ("2.1.4", 28)):
+            source.write_text(f"CURRENT_SCHEMA_VERSION = {schema}\n", "utf-8")
+            git("add", "-A")
+            git("commit", "-q", "--allow-empty", "-m", tag)
+            git("tag", tag)
+        skill_doc = ".agents/skills/pacecraft-db-migrations/SKILL.md"
+        (root / skill_doc).parent.mkdir(parents=True)
+        (root / "docs").mkdir()
+
+        def docs(history, since, skill=True):
+            (root / "docs/schema-history.md").write_text(history, "utf-8")
+            line = f"Production\n  runs {since} (the only instance)"
+            (root / "AGENTS.md").write_text(line, "utf-8")
+            (root / skill_doc).unlink(missing_ok=True)
+            if skill:
+                (root / skill_doc).write_text(line.replace("\n ", ""), "utf-8")
+
+        docs("| 26 | 2.0.5 |\n|27|  since 2.1.0 | \n| 28 | not released yet |\n",
+             "v27 since release 2.1.0")  # fmt: skip
+        self.assertEqual(
+            prod_diagnostics.docs_lines(root, 27, "2.1.2"),
+            [
+                ("ok", "docs/schema-history.md: schema 27 row since 2.1.0"),
+                ("ok", "AGENTS.md: production runs v27 since release 2.1.0"),
+                ("ok", f"{skill_doc}: production runs v27 since release 2.1.0"),
+            ],
+        )
+        # A hotfix 2.1.4 shipped before the docs PR: the change still names
+        # 2.1.3, the first release of schema 28, and closes the 27 row.
+        docs("| 27 | since 2.1.0 |\n| 28 | not released yet |\n",
+             "v27 since release 2.1.0", skill=False)  # fmt: skip
+        change = "change it to `Production runs v28 since release 2.1.3`"
+        rows = "set `| 28 | since 2.1.3 |`; set `| 27 | 2.1.0 to 2.1.2 |`"
+        self.assertEqual(
+            prod_diagnostics.docs_lines(root, 28, "2.1.4"),
+            [
+                ("FAIL", f"docs/schema-history.md: schema 28 row stale; {rows}"),
+                (
+                    "FAIL",
+                    f"AGENTS.md: production runs v27 since release 2.1.0; {change}",
+                ),
+                ("FAIL", f"{skill_doc}: production runs missing; {change}"),
+            ],
+        )
+        # A schema that only one release wrote closes as that release.
+        docs("| 27 | since 2.1.2 |\n| 28 | not released yet |\n",
+             "v27 since release 2.1.2")  # fmt: skip
+        self.assertTrue(
+            prod_diagnostics.docs_lines(root, 28, "2.1.4")[0][1].endswith(
+                "set `| 28 | since 2.1.3 |`; set `| 27 | 2.1.2 |`"
+            )
+        )
+        # Two open rows are stale too.
+        docs("| 27 | since 2.1.0 |\n| 28 | since 2.1.3 |\n", "v28 since release 2.1.3")
+        self.assertEqual(prod_diagnostics.docs_lines(root, 28, "2.1.4")[0][0], "FAIL")
+        # The fake app reports schema 27 and 2.1.2 against these docs.
+        docs("| 27 | 2.1.0 to 2.1.2 |\n| 28 | since 2.1.3 |\n",
+             "v28 since release 2.1.3")  # fmt: skip
+        with mock.patch.object(prod_diagnostics, "ROOT", root):
+            code, text = self.run_main(
+                prod_diagnostics, "--url", self.url,
+                "--password-file", str(self.secret), "--check-docs",
+            )  # fmt: skip
+        self.assertEqual(code, 1)
+        self.assertIn(
+            "FAIL AGENTS.md: production runs v28 since release 2.1.3; change it to "
+            "`Production runs v27 since release 2.1.2`",
+            text,
+        )
 
     def test_result_files_stay_outside_the_repository(self):
         inside = Path(prod_client.ROOT) / "result.json"
@@ -648,6 +842,49 @@ class ProdChecksTests(unittest.TestCase):
         )
         self.assertEqual(code, 1)
         self.assertIn("FAIL no CSRF token -> 200", text)
+
+    def test_checks_warn_or_refuse_when_the_checkout_is_behind_develop(self):
+        # A checkout one commit behind origin/develop, local state only (#3344).
+        repo = Path(self.tmp.name) / "repo"
+        repo.mkdir()
+
+        def git(*args):
+            subprocess.run(
+                ["git", "-C", str(repo), *args], check=True, capture_output=True
+            )
+
+        git("init", "-q")
+        for message in ("a", "b"):
+            git("-c", "user.name=t", "-c", "user.email=t@example.invalid",
+                "commit", "-q", "--allow-empty", "-m", message)  # fmt: skip
+        git("update-ref", "refs/remotes/origin/develop", "HEAD")
+        git("checkout", "-q", "--detach", "HEAD~1")
+        login = ("--url", self.url, "--password-file", str(self.secret))
+        fix = (
+            "update it: git fetch origin develop && git switch --detach origin/develop"
+        )
+        self.checkout = repo
+        code, text = self.run_main(prod_guards, *login)
+        self.assertEqual(code, 0, text)
+        self.assertIn(
+            f"WARN this checkout is 1 commit(s) behind origin/develop; {fix}", text
+        )
+        code, text = self.run_main(prod_diagnostics, *login, "--require-current")
+        self.assertEqual(code, 2, text)
+        self.assertTrue(
+            text.startswith("FAIL this checkout is 1 commit(s) behind"), text
+        )
+        self.assertNotIn("health", text)
+        git("checkout", "-q", "--detach", "origin/develop")
+        code, text = self.run_main(prod_guards, *login, "--require-current")
+        self.assertEqual(code, 0, text)
+        self.assertNotIn("checkout", text)
+        # Without git state to compare, only --require-current refuses.
+        self.checkout = Path(self.tmp.name)
+        self.assertNotIn("checkout", self.run_main(prod_guards, *login)[1])
+        code, text = self.run_main(prod_guards, *login, "--require-current")
+        self.assertEqual(code, 2)
+        self.assertIn("FAIL this checkout cannot be compared with origin/develop", text)
 
     def test_logs_from_the_app_and_from_a_saved_file(self):
         code, text = self.run_main(

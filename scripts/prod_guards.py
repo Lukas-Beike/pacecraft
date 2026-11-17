@@ -1,7 +1,7 @@
 """Check that production still refuses unauthenticated and CSRF-less requests.
 
     python scripts/prod_guards.py --url <app address> --password-file <secret file>
-        [--min-tls-days 14] [--ca-file ca.pem]
+        [--min-tls-days 14] [--ca-file ca.pem] [--require-current]
 
 Probes have no effect even if accepted: a GET of diagnostics without a session,
 and a logout of the probe's own session without the CSRF token. For an https
@@ -18,7 +18,7 @@ import sys
 import time
 from urllib.parse import urlsplit
 
-from prod_client import ProdError, Session
+from prod_client import ProdError, Session, checkout_current
 
 
 def tls_days(url: str, ca_file: str | None) -> float:
@@ -46,7 +46,10 @@ def main(argv: list[str] | None = None) -> int:
     # Fewer days to certificate expiry fail the check (exit 1).
     parser.add_argument("--min-tls-days", type=float, default=14)
     parser.add_argument("--ca-file")
+    parser.add_argument("--require-current", action="store_true")
     args = parser.parse_args(argv)
+    if not checkout_current(args.require_current):
+        return 2
     results: list[tuple[bool, str]] = []
     try:
         anonymous = Session(args.url, args.ca_file)
