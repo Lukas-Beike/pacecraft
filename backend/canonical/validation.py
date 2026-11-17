@@ -16,6 +16,9 @@ from backend.canonical.vocabulary import MetricKind
 
 MAX_TEXT_LENGTH: Final = 256
 HEART_RATE_BOUNDS: Final = (20.0, 250.0)
+# What a strap or watch reports for "no reading" (0, and the FIT uint8 invalid
+# value 255): a missing value, not a rate out of range (#3337).
+HEART_RATE_SENSOR_MARKERS: Final = frozenset({0.0, 255.0})
 MAX_ACTIVITY_DURATION_S: Final = 7 * 24 * 3600.0
 MAX_ACTIVITY_DISTANCE_M: Final = 2_000_000.0
 MAX_ACTIVITY_LOAD: Final = 10_000.0

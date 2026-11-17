@@ -72,6 +72,7 @@ from backend.canonical.mapping import (
 )
 from backend.canonical.records import Provenance
 from backend.canonical.validation import (
+    HEART_RATE_SENSOR_MARKERS,
     MAX_ACTIVITY_DURATION_S,
     require_aware_datetime,
     require_instance,
@@ -108,7 +109,9 @@ from backend.providers.garmin_activity_mapping import GARMIN_LABEL
 # Version 11: breathing rate, the device's lap grade-adjusted speed, the lap's
 # workout step and trigger, the executed workout steps and the watch's zone
 # basis of FIT sets (#2220).
-MAPPER_VERSION: Final = 11
+# Version 12: FIT files with an unset header CRC and chained files decode, and
+# heart rate sensor markers (0, 255) are missing values, not out of range (#3337).
+MAPPER_VERSION: Final = 12
 
 # Same limit as the Intervals mapper; kept local so providers do not import each other.
 MAX_GARMIN_ACTIVITY_ID_LENGTH: Final = 200
@@ -150,6 +153,7 @@ _LAP_METRIC_KEYS: Final[tuple[tuple[str, str], ...]] = (
     ("maxSpeed", "max_speed_mps"),
     ("elevationGain", "elevation_gain_m"),
 )
+_LAP_HEART_RATES: Final = frozenset({"avg_hr", "max_hr"})
 _LAP_CADENCE_KEY: Final = "averageBikeCadence"
 _ZONE_KEYS: Final = (
     ("hr_zones", ZoneMetric.HEART_RATE),
@@ -564,6 +568,9 @@ def _lap_metrics(
         number = coerce_number(value)
         if number is None:
             issues.append(MappingIssue(ref, key, IssueReason.INVALID_NUMBER))
+        elif name in _LAP_HEART_RATES and number in HEART_RATE_SENSOR_MARKERS:
+            # A strap's "no reading" marker, not a rate out of range (#3337).
+            issues.append(MappingIssue(ref, key, IssueReason.MISSING))
         elif not _lap_accepts(name, number):
             issues.append(MappingIssue(ref, key, IssueReason.OUT_OF_RANGE))
         else:

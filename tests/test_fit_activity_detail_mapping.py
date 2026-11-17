@@ -595,12 +595,24 @@ class FitActivityDetailMappingTests(unittest.TestCase):
 
     def test_non_bytes_and_corrupt_bytes_give_one_invalid_type_issue(self):
         valid = _fit(records=[_record(1000, hr=100), _record(1001, hr=101)])
-        for data in ("text", None, 123, bytearray(valid), b"", b"not a fit file"):
+        # #3337: the field names why, as a bounded code; never a value.
+        crc = bytearray(valid)
+        crc[-1] ^= 0xFF
+        for data, field in (
+            ("text", "fit_not_bytes"),
+            (None, "fit_not_bytes"),
+            (123, "fit_not_bytes"),
+            (bytearray(valid), "fit_not_bytes"),
+            (b"", "fit_bad_header"),
+            (b"not a fit file", "fit_bad_header"),
+            (b"PK\x03\x04" + bytes(30), "fit_compressed"),
+            (bytes(crc), "fit_crc"),
+        ):
             with self.subTest(data=data):
                 result = _map(data)
                 self.assertEqual(result.records, ())
                 self.assertEqual(
-                    result.issues, (_issue("fit", IssueReason.INVALID_TYPE),)
+                    result.issues, (_issue(field, IssueReason.INVALID_TYPE),)
                 )
                 # The inventory counts nothing and raises nothing (#2220).
                 self.assertIsNone(mapper.fit_inventory(data))

@@ -1382,7 +1382,7 @@ Payload evidence for this scope: the sanitized payload files contain the Garmin 
 ### `garmin_activity_detail_mapping.py`
 
 Status: Live. Called by `_map_collected` in `backend/sync/garmin_activity_details.py` for every Garmin activity detail fetch and backfill; stored with `replace_detail_set(mapper_version=MAPPER_VERSION)`.
-Mapper version: **11**
+Mapper version: **12**
 Inputs: the dict from `collect_garmin_activity_detail` (`backend/providers/garmin.py`) with the parts `details`, `splits`, `hr_zones`, `power_zones`, `exercise_sets` (strength activities only) and `fit`. Transport: the Personal API serves `details` (with `maxChartSize` 2,000) and the original FIT file (`download_activity_fit`, unzipped by `fit_from_archive`); the unofficial login serves `splits`, the two zone parts and `exercise_sets`. A part that is absent gives no set and no issue; a present but malformed part gives one value-free issue and no set for it.
 Evidence: documented only (fixtures `tests/fixtures/providers/garmin/activity_detail/details.json`, `splits.json`, `hr_zones.json`, `power_zones.json`; strength and FIT cases are built inline in `tests/test_garmin_activity_detail_mapping.py`). The sanitized payload files `garmin_activity_detail_run_2026-11-03` and `garmin_personal_activity_detail_run_2026-11-03` hold the activity summary only.
 
@@ -1419,7 +1419,7 @@ Streams from `details` (`_stream_set`, `_metric_columns`). Columns are read by `
 | `resolution` | | `downsampled` | Fixed. |
 | `origin` | | `fetch` | Fixed. |
 
-`clean_series` turns non-numbers, booleans, non-finite and out-of-bounds points into gaps and reports one `out_of_range` issue per key. A channel with no usable point is dropped; fewer than two channels (including `time_s`) gives no stream set.
+`clean_series` turns non-numbers, booleans, non-finite and out-of-bounds points into gaps and reports one `out_of_range` issue per key; a heart rate sensor marker (0 or 255, "no reading") is a gap without an issue (#3337). A channel with no usable point is dropped; fewer than two channels (including `time_s`) gives no stream set.
 
 Laps from `splits` (`_lap_set`, only when the FIT file yields no lap set). `lap_source` `device_laps`, `kind` `lap` for every lap, no `name`.
 
@@ -1440,7 +1440,7 @@ Laps from `splits` (`_lap_set`, only when the FIT file yields no lap set). `lap_
 | `elevation_gain_m` | `elevationGain` | m | |
 | `avg_cadence` | `averageBikeCadence` | rpm | Run cadence (`averageRunCadence`) is not mapped, unit not verified. |
 
-Each lap metric goes through `coerce_number` (numbers and dot-decimal text) and `_lap_accepts` (the `ActivityLap` bounds); a rejected metric is dropped with an issue, the lap stays. More than 200 laps are cut with an `out_of_range` issue. `load`, `intensity_pct` and `name` are not produced.
+Each lap metric goes through `coerce_number` (numbers and dot-decimal text) and `_lap_accepts` (the `ActivityLap` bounds); a rejected metric is dropped with an issue, the lap stays. A heart rate sensor marker in `averageHR` or `maxHR` (0 or 255) is dropped as `missing`, not `out_of_range` (#3337). More than 200 laps are cut with an `out_of_range` issue. `load`, `intensity_pct` and `name` are not produced.
 
 Zone distributions (`_zone_distribution`). `hr_zones` gives metric `heart_rate`, `power_zones` gives metric `power`. Each part is a list of `{zoneNumber, secsInZone, zoneLowBoundary}`.
 
@@ -1476,8 +1476,8 @@ Not mapped: `directDoubleCadence`, every other metric descriptor key (for exampl
 ### `fit_activity_detail_mapping.py`
 
 Status: Live. Called by `_fit_sets` in `garmin_activity_detail_mapping.py` (Garmin FIT from the Personal API) and by `WahooActivityDetailImport._import_one` in `backend/sync/wahoo_activity_details.py` (Wahoo FIT). Both store with `replace_detail_set(mapper_version=MAPPER_VERSION)`, Garmin with the `MAPPER_VERSION` of `garmin_activity_detail_mapping.py`.
-Mapper version: **10**
-Inputs: the raw bytes of one FIT activity file (`bytes`); decoding and scaling by `fit_file.py` (`fit_messages`, `fit_field`). Anything else gives one `fit` `invalid_type` issue. The caller passes `provider_activity_id` (Garmin activity id or Wahoo workout id) and the provenance (see the provenance table).
+Mapper version: **11**
+Inputs: the raw bytes of one FIT activity file (`bytes`); decoding and scaling by `fit_file.py` (`fit_messages`, `fit_field`). Anything else gives one `invalid_type` issue whose field names why (#3337): `fit_not_bytes`, or `fit_<code>` with the decoder's bounded code (`bad_header`, `compressed` for a zip archive, `header_crc`, `crc`, `truncated`, `structure`, `unsupported_base_type`, `too_many_records`). The caller passes `provider_activity_id` (Garmin activity id or Wahoo workout id) and the provenance (see the provenance table).
 Evidence: documented only (FIT SDK profile; synthetic FIT bytes built in `tests/test_fit_activity_detail_mapping.py` and `tests/test_fit_file.py`; there is no FIT file or Wahoo payload in the payload files).
 
 Record keywords set per kind: stream set `provider_activity_id`, `provenance`, `origin`, `resolution`, `channels`, `device_zones`; lap set `provider_activity_id`, `provenance`, `origin`, `lap_source`, `laps`, `workout_steps`; strength set list `provider_activity_id`, `provenance`, `origin`, `source`, `sets`.
@@ -1629,7 +1629,7 @@ Status: Live. Hardened stdlib FIT decoder used by `fit_activity_detail_mapping.p
 Inputs: raw FIT bytes. Returns `(global message number, {field number: value})` per data message.
 Evidence: documented only (FIT SDK profile; `tests/test_fit_file.py`).
 
-Decoder rules: header signature `.FIT` at bytes 8 to 12; header CRC checked when the header is longer than 12 bytes; file CRC checked when present (trailer must be 0 or 2 bytes); at most 200,000 data messages (`MAX_FIT_MESSAGES`, more than the 172,800 record messages a stream may hold; more gives `ValueError` and the mapper reports a `fit` issue and no sets); little- or big-endian per definition; compressed-timestamp headers rebuild field 253; developer fields are skipped; a field whose width does not divide by its base type size is kept as raw bytes. Values are `raw / divisor + offset` for the entries of `_FIT_FIELD_SCALES`, otherwise raw. The enhanced field of a pair (`_FIT_FIELD_PREFERENCES`) wins per message when it holds a usable value.
+Decoder rules: header signature `.FIT` at bytes 8 to 12; header CRC checked when the header is longer than 12 bytes and the CRC is not 0 (zero means "not computed" in the FIT SDK); file CRC checked when present (trailer must be 0 or 2 bytes); a chained file (complete FIT files back to back, each with its CRC) decodes file by file, each with its own definitions (#3337); at most 200,000 data messages over all chained files (`MAX_FIT_MESSAGES`, more than the 172,800 record messages a stream may hold; more gives `FitDecodeError` `too_many_records` and the mapper reports a `fit_too_many_records` issue and no sets); little- or big-endian per definition; compressed-timestamp headers rebuild field 253; developer fields are skipped; a field whose width does not divide by its base type size is kept as raw bytes. Values are `raw / divisor + offset` for the entries of `_FIT_FIELD_SCALES`, otherwise raw. The enhanced field of a pair (`_FIT_FIELD_PREFERENCES`) wins per message when it holds a usable value.
 
 Invalid sentinels (`_FIT_INVALID_VALUES`, decoded to `None`; for arrays per element):
 

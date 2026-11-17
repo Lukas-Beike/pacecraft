@@ -21,6 +21,7 @@ from typing import Final, cast
 from backend.canonical.records import Provenance
 from backend.canonical.validation import (
     HEART_RATE_BOUNDS,
+    HEART_RATE_SENSOR_MARKERS,
     MAX_ACTIVITY_CADENCE_RPM,
     MAX_ACTIVITY_DISTANCE_M,
     MAX_ACTIVITY_DURATION_S,
@@ -126,9 +127,13 @@ def clean_series(
     """Return the points of one channel with unusable values replaced by None.
 
     Non-numbers, booleans, non-finite and out-of-range points become gaps; the
-    second item counts the replaced points so mappers can report them.
+    second item counts the replaced points so mappers can report them. A heart
+    rate sensor marker is a gap like None and is not counted (#3337).
     """
     lower, upper = CHANNEL_BOUNDS[channel]
+    markers = (
+        HEART_RATE_SENSOR_MARKERS if channel is StreamChannel.HEART_RATE_BPM else ()
+    )
     cleaned: list[float | None] = []
     rejected = 0
     for value in values:
@@ -144,9 +149,9 @@ def clean_series(
             )
         except OverflowError:
             point = math.nan
-        if not math.isfinite(point) or not lower <= point <= upper:
+        if point in markers or not math.isfinite(point) or not lower <= point <= upper:
             cleaned.append(None)
-            rejected += 1
+            rejected += point not in markers
             continue
         cleaned.append(point)
     return tuple(cleaned), rejected
