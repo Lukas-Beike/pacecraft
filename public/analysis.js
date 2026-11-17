@@ -1490,7 +1490,8 @@ function loadEnergy() {
 
 function energyKcal(value, band) {
   if (value == null) return "–";
-  return band == null ? formatWhole(value) : h("span", null, formatWhole(value), h("small", null, ` ± ${formatWhole(band)}`));
+  // The space sits outside the band, so large text may wrap before "±" and nowhere else (#3362).
+  return band == null ? formatWhole(value) : h("span", null, formatWhole(value), " ", h("small", null, `± ${formatWhole(band)}`));
 }
 
 // NEAT's inputs (#3255), so an outlier in steps or step length can be checked.

@@ -30,7 +30,8 @@ test("@responsive the diary shows the energy table and explains it behind the in
   // #3336: the same small info icon as Analyse › Laufen › Entwicklung, not a yellow badge.
   const info = card.getByRole("button", { name: "Energieverbrauch: Informationen" });
   await expect(info).toHaveClass("analysis-legend-info analysis-info-icon");
-  expect(await info.evaluate((element) => getComputedStyle(element).backgroundColor)).toBe("rgba(0, 0, 0, 0)");
+  // The table re-renders when its read arrives, so the style check retries on the current node.
+  await expect(info).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
   await info.click();
   await expect(tooltip).toBeVisible();
   await expect(tooltip).toContainText("Datenbasis zu gering");
