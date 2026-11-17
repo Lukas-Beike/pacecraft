@@ -27,7 +27,7 @@ LEVEL = re.compile(r"\b(ERROR|WARNING|CRITICAL)\b")
 CLEANUP = "garmin_past_workouts_removed"
 TOOL_FAILED = "coach_tool_failed"
 # A tool name, reason code or exception type; anything else prints as `?`.
-CODE = re.compile(r"^[A-Za-z][A-Za-z0-9_]{0,63}$")
+CODE = re.compile(r"^[A-Za-z]\w{0,63}$", re.ASCII)
 LEVELS = ("CRITICAL", "ERROR", "WARNING")
 
 
