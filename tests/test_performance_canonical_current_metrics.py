@@ -464,7 +464,8 @@ class EnteredWeightTests(unittest.TestCase):
             metric="body_fat_pct",
         )
         self.assertEqual((14.3, "Lokal"), (body_fat["value"], body_fat["source"]))
-        self.assertEqual([18.0], [item["value"] for item in body_fat["alternatives"]])
+        # #3464: Garmin's value of the entry's own day is no second value.
+        self.assertNotIn("alternatives", body_fat)
 
     def test_a_newer_entered_weight_wins_and_is_labelled_lokal(self) -> None:
         weight = self.current(
@@ -481,7 +482,12 @@ class EnteredWeightTests(unittest.TestCase):
 
     def test_the_entry_wins_over_a_scale_reading_of_its_day(self) -> None:
         # Athlete decision 2026-11-16: the value the athlete set for a day stands.
-        for garmin_day in (AS_OF, AS_OF - timedelta(days=1)):
+        # #3464: Garmin's value of the entry's own day is no second value; one of
+        # the day before stays an alternative.
+        for garmin_day, alternatives in (
+            (AS_OF, []),
+            (AS_OF - timedelta(days=1), [74.0]),
+        ):
             with self.subTest(garmin_day=garmin_day):
                 weight = self.current(
                     _weight(74.0, garmin_day, ProviderId.GARMIN),
@@ -489,7 +495,8 @@ class EnteredWeightTests(unittest.TestCase):
                 )
                 self.assertEqual((72.5, "Lokal"), (weight["value"], weight["source"]))
                 self.assertEqual(
-                    [74.0], [item["value"] for item in weight["alternatives"]]
+                    alternatives,
+                    [item["value"] for item in weight.get("alternatives", [])],
                 )
 
     def test_a_scale_reading_of_the_next_day_is_the_newest(self) -> None:

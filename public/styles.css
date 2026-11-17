@@ -416,6 +416,9 @@ h2 {
 .analysis-chart-table table { width: 100%; border-collapse: collapse; color: var(--ink); font-size: .75rem; }
 .analysis-chart-table caption { padding: 8px; text-align: left; color: var(--muted); }
 .analysis-chart-table th, .analysis-chart-table td { padding: 8px; border-bottom: 1px solid var(--line); text-align: left; }
+/* A cell breaks only between words, whatever its container allows; a lap value or header never wraps, the region scrolls sideways (#3465). */
+.analysis-chart-table table :is(th, td) { overflow-wrap: normal; word-break: normal; }
+.activity-analysis-laps .analysis-chart-table :is(th, td) { white-space: nowrap; }
 
 .skeleton-stack { display: grid; gap: 10px; width: min(100%, 640px); margin: auto; padding: 28px 8px; }
 .skeleton-row { display: flex; align-items: center; gap: 10px; padding: 12px; border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--translucent-surface); }
