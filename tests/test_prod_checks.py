@@ -964,8 +964,77 @@ NOT_PRINTED = {
 }
 
 
+# Top-level diagnostics blocks without a `--section` choice, each with its reason
+# (#3430). Every other block needs SECTION_FIELDS or DERIVED_SECTIONS in
+# scripts/prod_diagnostics.py, so the post-release check can read it.
+_DEFAULT_RUN = "read by the default check run (no --section)"
+_EXPORT_ONLY = "read only in the full export; no --section yet (before #3430)"
+NOT_SECTIONED: dict[str, str] = {
+    "app": _DEFAULT_RUN,
+    "sync": _DEFAULT_RUN,
+    "plan_sync": _DEFAULT_RUN,
+    "external_calendar": _DEFAULT_RUN,
+    "generated_at": "the report's own time, not a count",
+    "note": "free text",
+    "coach_commands": "summed by --section coach_local_first",
+    "garmin_body_push": "its section is pending with L29 (#3403, #3430)",
+    **dict.fromkeys(
+        (
+            "activity_routes",
+            "activity_weather",
+            "canonical_backfill",
+            "canonical_coverage",
+            "canonical_provider_composition",
+            "canonical_read",
+            "canonical_session_conflicts",
+            "configuration",
+            "debug_capture",
+            "garmin",
+            "garmin_change_check",
+            "garmin_detail_fallback",
+            "local_load",
+            "logs",
+            "lt1_ride_coverage",
+            "morning_checkin",
+            "openai",
+            "profile_weekly_plan_removal",
+            "provider_freshness",
+            "session_analysis",
+            "session_focus_backfill",
+            "session_metrics",
+            "session_rebundle",
+            "wahoo",
+        ),
+        _EXPORT_ONLY,
+    ),
+}
+
+
 class SectionFieldsCoverTheProducersTests(ServerTestCase):
     """A new diagnostics key fails here until prod_diagnostics prints or names it (#3131)."""
+
+    def test_every_block_the_report_emits_has_its_section(self):
+        # #3430: energy_balance and garmin_body_push shipped without a section,
+        # so the post-release check could not read the counts they were for.
+        report = server.DIAGNOSTICS.report_service().report()
+        sectioned = set(prod_diagnostics.SECTION_FIELDS)
+        missing = sorted(set(report) - sectioned - set(NOT_SECTIONED))
+        self.assertEqual(
+            missing,
+            [],
+            "diagnostics blocks without a --section: add each to SECTION_FIELDS in "
+            "scripts/prod_diagnostics.py (with its test), or to NOT_SECTIONED in "
+            "this test with the reason",
+        )
+        # A named exception that the report no longer emits, or that now has its
+        # section, is stale and leaves the list.
+        self.assertEqual(sorted(set(NOT_SECTIONED) - set(report)), [])
+        self.assertEqual(sorted(set(NOT_SECTIONED) & sectioned), [])
+        # The check itself: a fixture block without a section is reported.
+        self.assertEqual(
+            sorted({"new_block", *report} - sectioned - set(NOT_SECTIONED)),
+            ["new_block"],
+        )
 
     def test_coach_local_first_sums_the_real_history_projection(self):
         # #3080: the backend's names and shapes, so a rename fails here
