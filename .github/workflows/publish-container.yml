@@ -28,7 +28,7 @@ permissions:
 # run (main, releases, dispatches) get their own group, so nothing cancels
 # them or drops them from the queue.
 concurrency:
-  group: publish-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || github.event_name == 'push' && github.ref == 'refs/heads/develop' && !startsWith(github.event.head_commit.message, 'chore(release): set application version to ') && 'develop-push' || github.run_id }}
+  group: "publish-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || github.event_name == 'push' && github.ref == 'refs/heads/develop' && !startsWith(github.event.head_commit.message, 'chore(release): set application version to ') && 'develop-push' || github.run_id }}"
   cancel-in-progress: true
 
 env:

@@ -518,10 +518,11 @@ class WorkflowSourceTests(unittest.TestCase):
             "!startsWith(github.event.head_commit.message, "
             "'chore(release): set application version to ')"
         )
+        # Quoted: the prefix holds ": ", which a plain YAML scalar refuses.
         self.assertIn(
-            "group: publish-${{ github.event_name == 'pull_request' && "
+            "  group: \"publish-${{ github.event_name == 'pull_request' && "
             "format('pr-{0}', github.event.pull_request.number) || "
-            f"{develop_push} && 'develop-push' || github.run_id }}}}",
+            f"{develop_push} && 'develop-push' || github.run_id }}}}\"\n",
             head,
         )
         # Every other run has its own run_id group, so nothing can cancel it.
