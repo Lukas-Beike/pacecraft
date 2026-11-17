@@ -550,6 +550,16 @@ class ProdChecksTests(unittest.TestCase):
                 "intervals": {"units": 2, "without_structure": 1},
                 "unit_name": "text never printed",
             },
+            "garmin_body_push": {
+                "sent": 3,
+                "removed": 0,
+                "failed": 1,
+                "retried": 1,
+                "linked_days": 2,
+                "pending_days": 1,
+                "unlinked_uploads": 0,
+                "day": "2026-11-15 never printed",
+            },
             "backup": {
                 "known": True,
                 "age_hours": 3.5,
@@ -620,6 +630,10 @@ class ProdChecksTests(unittest.TestCase):
             ],
             "recovery_copies": [
                 "count 1", "newest_age_hours 2.0", "total_bytes 2048",
+            ],
+            "garmin_body_push": [
+                "failed 1", "linked_days 2", "pending_days 1", "removed 0",
+                "retried 1", "sent 3", "unlinked_uploads 0",
             ],
             "garmin_strength_push": [
                 "garmin.several_exercises 1", "garmin.units 2", "garmin.with_kg 1",
@@ -977,7 +991,6 @@ NOT_SECTIONED: dict[str, str] = {
     "generated_at": "the report's own time, not a count",
     "note": "free text",
     "coach_commands": "summed by --section coach_local_first",
-    "garmin_body_push": "its section is pending with L29 (#3403, #3430)",
     **dict.fromkeys(
         (
             "activity_routes",
