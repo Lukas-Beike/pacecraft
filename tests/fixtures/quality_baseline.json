@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "base": "f9bb36b2a01bd4f26c12db8a1c3050d86f02c207",
+  "base": "f3326c98f4cc4b394f2b3066aeb9293377860e42",
   "versions": {
     "ruff": "0.17.5",
     "mypy": "2.4.1"
@@ -83,6 +83,48 @@
       "path": "backend/planning/changes.py",
       "code": "ARG004",
       "message_sha256": "65500c398a77984b1b392abcf3776c894b2035811a4d00dfe7b8fe59b4a931e3"
+    },
+    {
+      "tool": "cognitive",
+      "path": "scripts/run_browser_tests.py",
+      "code": "S1192",
+      "message_sha256": "2204b9a738f349118be0bf1765c63e855821c7db015f652d5463c81070cecdc7"
+    },
+    {
+      "tool": "cognitive",
+      "path": "tests/canonical_consumer_cases.py",
+      "code": "S1192",
+      "message_sha256": "64fdee673b62b85b366bae8e92d0ef15daf23487ee93b9dee8b99bef572e680c"
+    },
+    {
+      "tool": "cognitive",
+      "path": "scripts/run_browser_tests.py",
+      "code": "S1192",
+      "message_sha256": "6ae04a7a38c186f448861abf69fad839f43f035d14dd10a4e653024723132828"
+    },
+    {
+      "tool": "cognitive",
+      "path": "tests/workout_export_parity_matrix.py",
+      "code": "S1192",
+      "message_sha256": "8cdfcf3ed3fb13a178aa3acbcb3f5841cbb3997d424bf5eb81af2750833712ae"
+    },
+    {
+      "tool": "cognitive",
+      "path": "tests/canonical_recovery_support.py",
+      "code": "S1192",
+      "message_sha256": "d1a802059123dbad6fa78b63afb0df5a8384f9c5ddc95c76b2d25deb80abc59e"
+    },
+    {
+      "tool": "cognitive",
+      "path": "scripts/run_browser_tests.py",
+      "code": "S1192",
+      "message_sha256": "f196b37cdbdefc8ac353e4486787bf0b20a4641c8aa9b235ef4ae7d44af17521"
+    },
+    {
+      "tool": "cognitive",
+      "path": "tests/support.py",
+      "code": "S1192",
+      "message_sha256": "feb5349f07140fdadb3de82c1104138a3c51b1cfbeb99f9171522fc15252b577"
     },
     {
       "tool": "cognitive",
@@ -1565,6 +1607,216 @@
       "path": "tests/navigation-state.test.cjs",
       "code": "sonarjs/no-nested-template-literals",
       "message_sha256": "97c9d913a81eae95a369b395aaae2aff303a4cfa89fdcd11cee7d0ee40a3bcaa"
+    },
+    {
+      "tool": "eslint",
+      "path": "tests/coach_live_eval.py",
+      "code": "sonarjs/super-linear-regex",
+      "message_sha256": "05c947c2f1dd4a6a0fa8d0129929aca4aa84443dab2d2f7421b4728a9fc8c173"
+    },
+    {
+      "tool": "eslint",
+      "path": "backend/activities/workout_text.py",
+      "code": "sonarjs/super-linear-regex",
+      "message_sha256": "14a20754cac8b197bebf31ad43f7e56682f751f70ee3e0147ed15a8d87885388"
+    },
+    {
+      "tool": "eslint",
+      "path": "e2e/analysis-info.spec.js",
+      "code": "sonarjs/super-linear-regex",
+      "message_sha256": "30ac2a0aa989d2adc48f42189e48710dcbd9db9ca8a51c01ef7e9419223a56ee"
+    },
+    {
+      "tool": "eslint",
+      "path": "e2e/ux-polish.spec.js",
+      "code": "sonarjs/super-linear-regex",
+      "message_sha256": "30ac2a0aa989d2adc48f42189e48710dcbd9db9ca8a51c01ef7e9419223a56ee"
+    },
+    {
+      "tool": "eslint",
+      "path": "tests/frontend-cleanup.test.cjs",
+      "code": "sonarjs/super-linear-regex",
+      "message_sha256": "30ac2a0aa989d2adc48f42189e48710dcbd9db9ca8a51c01ef7e9419223a56ee"
+    },
+    {
+      "tool": "eslint",
+      "path": "tests/frontend-cleanup.test.cjs",
+      "code": "sonarjs/super-linear-regex",
+      "message_sha256": "30ac2a0aa989d2adc48f42189e48710dcbd9db9ca8a51c01ef7e9419223a56ee"
+    },
+    {
+      "tool": "eslint",
+      "path": "tests/post-release-actions.test.cjs",
+      "code": "sonarjs/super-linear-regex",
+      "message_sha256": "30ac2a0aa989d2adc48f42189e48710dcbd9db9ca8a51c01ef7e9419223a56ee"
+    },
+    {
+      "tool": "eslint",
+      "path": "tests/post-release-actions.test.cjs",
+      "code": "sonarjs/super-linear-regex",
+      "message_sha256": "30ac2a0aa989d2adc48f42189e48710dcbd9db9ca8a51c01ef7e9419223a56ee"
+    },
+    {
+      "tool": "eslint",
+      "path": "tests/test_key_value_service.py",
+      "code": "sonarjs/super-linear-regex",
+      "message_sha256": "3ed682c6dde5db4bba822861db628425ddf13bfce1c6f3f14de49a65b53b60ef"
+    },
+    {
+      "tool": "eslint",
+      "path": "tests/test_ai_docs_contract.py",
+      "code": "sonarjs/super-linear-regex",
+      "message_sha256": "5625b1b369d8d04b3dd052d92e0caab31dae1b538d599f818f0b2c253043ceed"
+    },
+    {
+      "tool": "eslint",
+      "path": "tests/canonical_field_map_support.py",
+      "code": "sonarjs/super-linear-regex",
+      "message_sha256": "62bd2bfdf3a26b040c2a7d1f9071a4e9fffa7f87db93d71f253273f0cd18e2ef"
+    },
+    {
+      "tool": "eslint",
+      "path": "tests/test_data_safety_coverage.py",
+      "code": "sonarjs/super-linear-regex",
+      "message_sha256": "6b74947e729838ca5818dd6126d732254e42d0ca71b5ffdedf6ba717575360ae"
+    },
+    {
+      "tool": "eslint",
+      "path": "tests/coach_live_eval.py",
+      "code": "sonarjs/super-linear-regex",
+      "message_sha256": "6eb8010de4972441a364d75a55df1f00f170a6f4b13dd8b550be04af7f27190f"
+    },
+    {
+      "tool": "eslint",
+      "path": "tests/test_workout_repair.py",
+      "code": "sonarjs/super-linear-regex",
+      "message_sha256": "7df6871bd00f7d06f29f84aad87ef8511a67b194145981df38388389d5554eac"
+    },
+    {
+      "tool": "eslint",
+      "path": "tests/test_coach_dialogue_plan_scope.py",
+      "code": "sonarjs/super-linear-regex",
+      "message_sha256": "82afe455fb2f797969a9354e398e8e68d7799fe8bc7f4c155df40f0b6beb41a8"
+    },
+    {
+      "tool": "eslint",
+      "path": "scripts/run_sqlcipher_tests.py",
+      "code": "sonarjs/super-linear-regex",
+      "message_sha256": "8892d631833bd2379df3f5ce52fe73044c10f6ff7b0fb9717b99c92b5592729b"
+    },
+    {
+      "tool": "eslint",
+      "path": "tests/test_ai_docs_contract.py",
+      "code": "sonarjs/super-linear-regex",
+      "message_sha256": "89401ec4f167aa411b70ee7705f020ea93d09f6e03be9aa2b367a314189a7dc4"
+    },
+    {
+      "tool": "eslint",
+      "path": "tests/test_server_http.py",
+      "code": "sonarjs/super-linear-regex",
+      "message_sha256": "8a487bed669467e8c37f523c0778115aea6b813c19f8f468d883de12f138dd2e"
+    },
+    {
+      "tool": "eslint",
+      "path": "backend/providers/source_labels.py",
+      "code": "sonarjs/super-linear-regex",
+      "message_sha256": "8ce7a46adb8370e9e5cb8fac95b431ba085d8d5a822b9df606044a6d345de950"
+    },
+    {
+      "tool": "eslint",
+      "path": "tests/test_session_focus.py",
+      "code": "sonarjs/super-linear-regex",
+      "message_sha256": "8d10323f491abcbb93f6cfc3083672a30bd7712f51b18cba793713a98a8e2ec4"
+    },
+    {
+      "tool": "eslint",
+      "path": "backend/providers/wahoo_plan_mapping.py",
+      "code": "sonarjs/super-linear-regex",
+      "message_sha256": "8f62542b4fa2675e7aa3508088edb2fe422f67c24f81e068eb184357712e4ea1"
+    },
+    {
+      "tool": "eslint",
+      "path": "backend/providers/garmin_run_workout.py",
+      "code": "sonarjs/super-linear-regex",
+      "message_sha256": "96f73fadde0dd15825f53fa0826a7381f9c6f8b1b49a7f55c5e100b1cf1bd3d1"
+    },
+    {
+      "tool": "eslint",
+      "path": "backend/providers/garmin_run_workout.py",
+      "code": "sonarjs/super-linear-regex",
+      "message_sha256": "9b9cf7e5113fecb0303742de4b4206b5509413205b3f3b8d6c68d06f2fdfc489"
+    },
+    {
+      "tool": "eslint",
+      "path": "backend/providers/wahoo_plan_mapping.py",
+      "code": "sonarjs/super-linear-regex",
+      "message_sha256": "9b9cf7e5113fecb0303742de4b4206b5509413205b3f3b8d6c68d06f2fdfc489"
+    },
+    {
+      "tool": "eslint",
+      "path": "tests/test_athlete_clock.py",
+      "code": "sonarjs/super-linear-regex",
+      "message_sha256": "9efcc8f79080837e110c6e07ef773d979873501120a9e2c0cf3bfac8c67b0fd2"
+    },
+    {
+      "tool": "eslint",
+      "path": "tests/test_server_http.py",
+      "code": "sonarjs/super-linear-regex",
+      "message_sha256": "ac66ee03b08a8f0ba8e05539d51c43f4f68b38ad510cd8131d117835204ce697"
+    },
+    {
+      "tool": "eslint",
+      "path": "tests/test_server_http.py",
+      "code": "sonarjs/super-linear-regex",
+      "message_sha256": "ac66ee03b08a8f0ba8e05539d51c43f4f68b38ad510cd8131d117835204ce697"
+    },
+    {
+      "tool": "eslint",
+      "path": "backend/planning/workout_validation.py",
+      "code": "sonarjs/super-linear-regex",
+      "message_sha256": "b41c023f5247d7ab7b8816af8142c8502e66c00cb84cbeffea8ea4ef503f37a7"
+    },
+    {
+      "tool": "eslint",
+      "path": "tests/test_ai_docs_contract.py",
+      "code": "sonarjs/super-linear-regex",
+      "message_sha256": "c3bac953b06178fe1e58e9ddf79551313a858aeb3005d4c4c01fd39c7da79667"
+    },
+    {
+      "tool": "eslint",
+      "path": "scripts/graphify_local.py",
+      "code": "sonarjs/super-linear-regex",
+      "message_sha256": "c661c06a688eee934bf15d29586fec40fc02c776d7b3a2246b41e91d1377ef5d"
+    },
+    {
+      "tool": "eslint",
+      "path": "tests/test_db_provider_schema.py",
+      "code": "sonarjs/super-linear-regex",
+      "message_sha256": "d4d0c428e44b2bb2aa50bf5bead57e0bff96fb20718e1303a07b894f00a46dda"
+    },
+    {
+      "tool": "eslint",
+      "path": "tests/test_db_provider_schema.py",
+      "code": "sonarjs/super-linear-regex",
+      "message_sha256": "d4d0c428e44b2bb2aa50bf5bead57e0bff96fb20718e1303a07b894f00a46dda"
+    },
+    {
+      "tool": "eslint",
+      "path": "tests/test_key_value_service.py",
+      "code": "sonarjs/super-linear-regex",
+      "message_sha256": "e005685093b474195c463247ead72736624afbc672cda476aa5e178dda9a8d07"
+    },
+    {
+      "tool": "eslint",
+      "path": "backend/providers/calendar.py",
+      "code": "sonarjs/super-linear-regex",
+      "message_sha256": "e759ceede98c480a0aea32bcb5a97e75364b5b2e2afe8111a06159d61c758d37"
+    },
+    {
+      "tool": "eslint",
+      "path": "tests/test_provider_wire_fixtures.py",
+      "code": "sonarjs/super-linear-regex",
+      "message_sha256": "fdd0cf21fd92a06b4da5e7d29eea42376de70174202fe39edbd615a7d87b60ea"
     },
     {
       "tool": "mypy",
