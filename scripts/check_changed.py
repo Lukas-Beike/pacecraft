@@ -125,7 +125,8 @@ def run_steps(
         try:
             passed, seconds, output = run_step(argv, (envs or {}).get(name))
         except MissingTool as exc:
-            missing = missing or unrun(name, str(exc))
+            # unrun() first: every missing tool is reported, not just the first.
+            missing = unrun(name, str(exc)) or missing
             continue
         print(f"{'ok' if passed else 'FAILED'} {name} ({seconds:.1f}s)")
         if not passed:

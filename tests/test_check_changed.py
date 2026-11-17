@@ -219,6 +219,11 @@ class CheckChangedTests(unittest.TestCase):
         self.assertIn("FAILED node-tests", out)
         self.assertIn("node is not installed", out)
         self.assertIn("ok quality", out)
+        # Every missing tool is reported, not only the first one.
+        runner = FakeRun(missing=(sys.executable, "node"))
+        code, out, _ = run_main(check_changed, ["--js"], runner)
+        self.assertEqual(code, 2)
+        self.assertEqual(out.count(" is not installed."), 4)
 
     def test_unknown_base_is_exit_two(self):
         def git(*_args, **_kwargs):
