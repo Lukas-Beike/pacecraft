@@ -456,14 +456,14 @@ Errors: none beyond the common ones.
 
 ### `PUT /api/body/weight`
 
-Request: JSON body `{"date": "YYYY-MM-DD", "kg": number}`, 20 to 400 kg
+Request: JSON body `{"date": "YYYY-MM-DD", "kg": number}`, 30 to 300 kg
 (comma decimals allowed). The date must not be in the future.
 
 Response: 200 as `GET /api/body/weight`.
 
 Errors: 400 "Das Datum fehlt oder ist ungültig."; 400 "Das Datum darf
 nicht in der Zukunft liegen."; 400 "Das Gewicht braucht einen Wert in
-kg."; 400 "Das Gewicht muss zwischen 20 und 400 kg liegen.".
+kg."; 400 "Das Gewicht muss zwischen 30 und 300 kg liegen.".
 
 ### `PUT /api/body/weight/remove`
 
