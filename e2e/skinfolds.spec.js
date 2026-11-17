@@ -98,5 +98,13 @@ test("@responsive a weight is entered and removed through the weight dialog", as
   await page.locator("#confirmationDialog").getByRole("button", { name: "Löschen" }).click();
   await expect(dialog).toBeHidden();
   await expect(row.locator("td").first()).not.toContainText("123,4");
+
+  // #3403: the receipt's "Rückgängig" puts the removed weight back. The fixture has no Garmin
+  // write login, so nothing is sent and the receipt names only the local change.
+  const toast = page.locator("#toast");
+  await expect(toast).toContainText("Gewicht gelöscht.");
+  await toast.getByRole("button", { name: "Rückgängig" }).click();
+  await expect(toast).toContainText("Zurückgenommen.");
+  await expect(row.locator("td").first()).toContainText("123,4");
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBeTruthy();
 });

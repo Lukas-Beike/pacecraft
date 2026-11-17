@@ -1407,7 +1407,7 @@ async function openWeightDialog() {
 // The receipt of a body change (#3403): what happened locally and at Garmin Connect, and the
 // request that puts the day back as it was (the day's previous entry, else its removal).
 function bodyReceipt(noun, done, garmin, undo) {
-  const local = { sent: `${noun} ${done} und an Garmin Connect gesendet.`,
+  const local = { sent: done === "gelöscht" ? `${noun} gelöscht, Garmin Connect aktualisiert.` : `${noun} ${done} und an Garmin Connect gesendet.`,
     removed: `${noun} ${done} und in Garmin Connect entfernt.`,
     pending: `${noun} lokal ${done}, Garmin-Sync fehlgeschlagen – wird erneut versucht.`,
     needs_weight: `${noun} lokal ${done}, Garmin braucht ein Gewicht am selben Tag.` };
@@ -1422,7 +1422,9 @@ function weightReceipt(day, done) {
 
 function bodyFatReceipt(day, folds, done) {
   if (folds) {
-    const before = skinfoldRead?.measurements?.find((item) => item.date === day);
+    // Without the read the earlier measurement is unknown, so no undo is offered.
+    if (!skinfoldRead?.measurements) return (garmin) => bodyReceipt("Messung", done, garmin, null);
+    const before = skinfoldRead.measurements.find((item) => item.date === day);
     const undo = before ? ["/api/body/skinfolds", { date: day, folds_mm: Object.fromEntries(before.folds_mm.map((fold) => [fold.site, fold.mm])) }] : ["/api/body/skinfolds/remove", { date: day, confirmed: true }];
     return (garmin) => bodyReceipt("Messung", done, garmin, undo);
   }
