@@ -230,6 +230,35 @@ class BrowserRunnerTests(unittest.TestCase):
         with redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
             runner.main(["--project", "desktop", "--base", "origin/main"])
 
+    def test_today_names_the_specs_whose_browser_clock_it_does_not_pin(self):
+        # #3410: --today pinned only the fixture day of a spec without the helper,
+        # and the browser showed the real day (#3371, #3399).
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "e2e").mkdir()
+            (root / "e2e/week.spec.js").write_text(
+                'const { test } = require("./helpers/today");\n', encoding="utf-8"
+            )
+            (root / "e2e/plain.spec.js").write_text(
+                'const { test } = require("@playwright/test");\n', encoding="utf-8"
+            )
+            children = [
+                {"file": "e2e/week.spec.js"},
+                {"file": "e2e/plain.spec.js"},
+                {"file": "e2e/plain.spec.js"},
+            ]
+            with redirect_stderr(io.StringIO()) as err:
+                runner.note_unpinned_specs(date(2026, 11, 16), children, root)
+            self.assertEqual(
+                err.getvalue(),
+                "--today pins only the fixture day for e2e/plain.spec.js; "
+                "its browser clock shows the real day\n",
+            )
+            # Without --today nothing is said.
+            with redirect_stderr(io.StringIO()) as err:
+                runner.note_unpinned_specs(None, children, root)
+            self.assertEqual(err.getvalue(), "")
+
     def test_changed_specs_that_read_the_weekday_are_found(self):
         # #3324: a changed spec importing e2e/helpers/today.js reads the weekday.
         isolated = {"GIT_CONFIG_GLOBAL": os.devnull, "GIT_CONFIG_NOSYSTEM": "1"}

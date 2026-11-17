@@ -1541,6 +1541,23 @@ def screenshots(directory):
     )
 
 
+def note_unpinned_specs(today, children, root=ROOT):
+    """With --today, name each selected spec without e2e/helpers/today.js: only its
+    fixture day is pinned, its browser clock shows the real day (#3410)."""
+    if not today:
+        return
+    for spec in sorted({child["file"] for child in children}):
+        path = root / spec
+        if not path.is_file() or not TODAY_IMPORT.search(
+            path.read_text(encoding="utf-8")
+        ):
+            print(
+                f"--today pins only the fixture day for {spec}; "
+                "its browser clock shows the real day",
+                file=sys.stderr,
+            )
+
+
 def weekday_specs(base, root=ROOT):
     """The changed specs whose expectation reads the weekday: those importing
     e2e/helpers/today.js (#3200)."""
@@ -1699,6 +1716,7 @@ def main(argv=None, pinned=None):
                     children = select(
                         listing, args.project, args.spec, args.shard, args.total, timing
                     )
+                    note_unpinned_specs(args.today, children, ROOT)
                     revision = checked(processes, ["git", "rev-parse", "HEAD"]).strip()
                     dirty = bool(
                         checked(
