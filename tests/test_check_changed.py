@@ -1,6 +1,7 @@
 """scripts/check_changed.py with a fake subprocess; nothing real runs."""
 
 import io
+import os
 import subprocess
 import sys
 import tempfile
@@ -234,6 +235,60 @@ class CheckChangedTests(unittest.TestCase):
         self.assertEqual(code, 2)
         self.assertIn("bad revision", err)
         self.assertEqual(runner.calls, [])
+
+
+class FormatChangedTests(unittest.TestCase):
+    def test_fix_format_formats_exactly_the_changed_python_files(self):
+        # #3382: `ruff format tests` rewrote 22 baselined files nobody changed.
+        isolated = {"GIT_CONFIG_GLOBAL": os.devnull, "GIT_CONFIG_NOSYSTEM": "1"}
+        ugly = "x  =  1\n"
+        with (
+            mock.patch.dict(os.environ, isolated),
+            tempfile.TemporaryDirectory() as directory,
+        ):
+            root = Path(directory)
+
+            def git(*args):
+                subprocess.run(
+                    ["git", "-C", str(root), *args], check=True, capture_output=True
+                )
+
+            git("init", "-q", "-b", "base")
+            git("config", "user.email", "test@example.invalid")
+            git("config", "user.name", "Test")
+            for name in ("kept.py", "changed.py", "gone.py"):
+                (root / name).write_text(ugly, encoding="utf-8")
+            git("add", ".")
+            git("commit", "-q", "-m", "base")
+            (root / "changed.py").write_text("x  =  2\n", encoding="utf-8")
+            (root / "new.py").write_text(ugly, encoding="utf-8")
+            (root / "notes.md").write_text("a  b\n", encoding="utf-8")
+            (root / "gone.py").unlink()
+
+            formatted = check_changed.format_changed("base", root)
+
+            self.assertEqual(formatted, ["changed.py", "new.py"])
+            self.assertEqual(
+                (root / "changed.py").read_text(encoding="utf-8"), "x = 2\n"
+            )
+            self.assertEqual((root / "new.py").read_text(encoding="utf-8"), "x = 1\n")
+            # An unchanged file stays as it is, however it is formatted.
+            self.assertEqual((root / "kept.py").read_text(encoding="utf-8"), ugly)
+            self.assertEqual((root / "notes.md").read_text(encoding="utf-8"), "a  b\n")
+
+    def test_the_flag_formats_before_the_steps_and_names_the_files(self):
+        runner = FakeRun()
+        with mock.patch.object(
+            check_changed, "format_changed", return_value=["backend/x.py"]
+        ) as formatted:
+            code, out, _err = run_main(check_changed, ["--fix-format"], runner)
+        self.assertEqual(code, 0)
+        formatted.assert_called_once_with("origin/develop")
+        self.assertIn("formatted 1 changed Python file: backend/x.py", out)
+        # Without the flag nothing is formatted.
+        with mock.patch.object(check_changed, "format_changed") as formatted:
+            run_main(check_changed, [], FakeRun())
+        formatted.assert_not_called()
 
 
 if __name__ == "__main__":
