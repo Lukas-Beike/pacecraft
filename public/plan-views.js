@@ -2404,7 +2404,7 @@ function weekReviewFailed(card) {
   retry.addEventListener("click", () => retryWeekReview(card, true));
   card.replaceChildren(card.firstElementChild, h("p", "empty", "Wochenrückblick gerade nicht verfügbar"), retry);
   // A retry started from the button keeps the keyboard there when it fails again (Gitar #3413).
-  if (card.dataset.retryFocus) retry.focus();
+  if (card.dataset.retryFocus && document.activeElement === card) retry.focus();
   delete card.dataset.retryFocus;
 }
 
@@ -2442,7 +2442,13 @@ async function fillWeekReview(card, refill = false) {
   }
   if (!tiles.length) {
     const planLine = weekReviewFallbacks.get(card);
+    // A focused card hands the keyboard to the plan line that replaces it (Gitar #3413).
+    const hadFocus = card.contains(document.activeElement);
     if (planLine) card.replaceWith(planLine); else card.remove();
+    if (hadFocus && planLine) {
+      planLine.tabIndex = -1;
+      planLine.focus();
+    }
     return;
   }
   card.dataset.version = version;
