@@ -26,7 +26,19 @@ test("@responsive the diary shows the energy table and explains it behind the in
   // Today's Garmin rest names the full day it comes from, if any (#3443).
   const deviceNote = device.resting_from ? `${device.label}Ruhe ` : `${device.label}`;
   await expect(card.locator("tbody th")).toHaveText([`Katch-McArdle${kfa}`, `Cunningham${kfa}`, new RegExp(`^${deviceNote}.*bis jetzt$`), "Aus deinen DatenØ 28 Tage"]);
-  await expect(card.locator("[data-energy-source='katch_mcardle'] td").first()).toHaveText(/^[\d.]+ ± \d+$/);
+  // #3478: the estimate with its low–high span on one line below it, and no "±" left in the energy views.
+  const resting = card.locator("[data-energy-source='katch_mcardle'] td").first();
+  const shown = resting.locator(".energy-span [aria-hidden]");
+  await expect(shown).toHaveText(/^\d{1,3}(?:\.\d{3})*–\d{1,3}(?:\.\d{3})*$/);
+  const [low, high] = (await shown.textContent()).split("–");
+  await expect(resting.locator(".energy-span .sr-only")).toHaveText(`zwischen ${low} und ${high} kcal`);
+  const spanLines = await shown.evaluate((node) => {
+    const range = document.createRange();
+    range.selectNodeContents(node);
+    return new Set([...range.getClientRects()].map((rect) => Math.round(rect.top))).size;
+  });
+  expect(spanLines).toBe(1);
+  await expect(card).not.toContainText("±");
   await expect(card.locator(".analysis-reference-note")).toHaveCount(0);
   const tooltip = card.locator(".analysis-info-tooltip");
   await expect(tooltip).toBeHidden();
@@ -213,8 +225,7 @@ for (const theme of ["light", "dark"]) {
     const [cardBox, chartBox] = await Promise.all([card.boundingBox(), page.locator("#nutritionWeekChartSection").boundingBox()]);
     expect(cardBox.y + cardBox.height).toBeLessThanOrEqual(chartBox.y);
     await page.getByRole("button", { name: "12 Wochen" }).click();
-    await expect(card).toHaveAttribute("data-energy-fit", "12w");
-    await expect(card.locator(".energy-fit-row")).toHaveText([/^Deine Daten2\.726 ± 454$/, /^Garmin Connect3\.157 \(\+431\)$/, /^Katch-McArdle3\.768 \(\+1\.042\)$/, /^Cunningham3\.930 \(\+1\.204\)$/]);
+    await expect(card).toHaveAttribute("data-energy-fit", "12w");    await expect(card.locator(".energy-fit-row")).toHaveText([/^Deine Daten2\.7262\.272–3\.180zwischen 2\.272 und 3\.180 kcal$/, /^Garmin Connect3\.157 \(\+431\)$/, /^Katch-McArdle3\.768 \(\+1\.042\)$/, /^Cunningham3\.930 \(\+1\.204\)$/]);
     await expect(card.locator(".energy-fit-row[data-inside='true']")).toHaveCount(1);
     // At 360 px nothing in a lane overlaps another label or leaves the card.
     await page.setViewportSize({ width: 360, height: 800 });
@@ -230,6 +241,7 @@ for (const theme of ["light", "dark"]) {
       return found;
     });
     expect(clashes).toEqual([]);
+    if (theme === "light") await card.screenshot({ path: test.info().outputPath("Fit.png") });
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBeTruthy();
     // The diary outlines the nearest source dashed while none is distinguishable.
     await page.goto("/#nutrition/diary");

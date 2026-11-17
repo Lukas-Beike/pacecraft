@@ -1866,6 +1866,11 @@ button:focus-visible, a:focus-visible, summary:focus-visible {
 .energy-fit-own { position: absolute; top: 0; bottom: 0; width: 2px; margin-left: -1px; background: var(--accent); }
 .energy-fit-point { position: absolute; top: 7px; width: 12px; height: 12px; margin-left: -6px; border-radius: 50%; background: var(--fit-color); }
 .energy-fit-label { position: absolute; top: 5px; color: var(--ink); font-size: .72rem; font-weight: 700; white-space: nowrap; }
+/* An energy band as its low–high span under the estimate: small, muted, on one line (#3478). */
+.energy-span { display: block; color: var(--muted); font-size: .72rem; font-weight: 400; white-space: nowrap; }
+.energy-fit-row[data-fit-source="own"] .energy-fit-lane { height: 40px; }
+/* The band's dashed edge stops behind the span, so it never reads as a sign. */
+.energy-fit-label .energy-span { width: fit-content; padding-inline: 2px; border-radius: 3px; background: var(--surface); }
 .energy-fit [data-color="1"] { --fit-color: var(--chart-series-1); }
 .energy-fit [data-color="2"] { --fit-color: var(--chart-series-2); }
 .energy-fit [data-color="3"] { --fit-color: var(--chart-series-3); }
