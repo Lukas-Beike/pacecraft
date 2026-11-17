@@ -118,7 +118,12 @@ tree, the clone's HEAD (`PACECRAFT_GIT_ROOT`) in the pre-push export (#3091).
 Make a script executable with `git update-index --chmod=+x <file>`. The same
 ratchet reports a function above Sonar's cognitive complexity 15 (rule
 `python:S3776`) as a `cognitive` finding named by function, not score, and a
-conditional expression nested in another (`python:S3358`, #3271). Ruff's
+conditional expression nested in another (`python:S3358`, #3271), and a
+string literal used three times in one file (`python:S1192`, with
+sonar-python's exclusions: under 5 characters, word-like, formatting or colour
+literals, docstrings, f-strings, decorators, annotations, and files named
+`test*`; #3381). The patterns of `re` calls go through `eslint-plugin-sonarjs`'s
+`super-linear-regex` (`python:S8786`, an `eslint` finding, #3381). Ruff's
 `PLR0913` reports a function with more than 13 parameters, `self` not
 counted, as Sonar's `python:S107` does (#3316). It
 reports a selector list repeated in the same at-rule context of `public/*.css`
@@ -126,8 +131,10 @@ reports a selector list repeated in the same at-rule context of `public/*.css`
 since CI's Sonar gate otherwise is the first to see it (#3077). It
 also checks the JavaScript Sonar analyzes (`public/*.js`, the `scripts/` and
 `tools/` modules, the `e2e/` specs, `tests/*.cjs` and the root `*.cjs`, #3058)
-for Sonar's cognitive complexity above 15 (S3776), nested ternaries (S3358) and
-nested template literals (S4624, #3271) through `eslint-plugin-sonarjs`; Sonar's
+for Sonar's cognitive complexity above 15 (S3776), nested ternaries (S3358),
+nested template literals (S4624, #3271), super-linear regular expressions
+(S8786) and commands found through `PATH` (S4036, #3381) through
+`eslint-plugin-sonarjs`; Sonar's
 Set-membership rule (S7776) needs `eslint-plugin-unicorn`, which this repository
 does not install, so it stays Sonar-only. It checks the page scripts for
 identifiers declared nowhere (ESLint `no-undef`, #3016): page scripts may use

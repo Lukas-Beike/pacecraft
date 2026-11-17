@@ -1,5 +1,5 @@
 {
-  "catalog_version": 19,
+  "catalog_version": 20,
   "cases": [
     {
       "id": "issue-update-positive", "skill": "pacecraft-issue-update", "kind": "positive", "activate": true,
@@ -91,6 +91,20 @@
       "setup": "Synthetic issue is a pure UI copy change; no state is derived from new writes.",
       "expected": ["Implement the copy change without an upgrade or backfill step"],
       "prohibited": ["Add an adoption, backfill or pre-existing-data test the change does not need"]
+    },
+    {
+      "id": "deliver-issue-lane-question-athlete-away", "skill": "deliver-issue", "kind": "boundary", "activate": true,
+      "prompt": "Continue with your lane queue.",
+      "setup": "Synthetic orchestrated lane; the turn comes from an orchestrator nudge, not from the athlete; the current issue needs a content decision; the next queued issue is independent.",
+      "expected": ["Report the question to the orchestrator", "Keep the current item parked in the queue and continue with the next queued issue"],
+      "prohibited": ["Open AskUserQuestion or any blocking dialog in this turn", "Write the closing sentence while the item is parked"]
+    },
+    {
+      "id": "deliver-issue-lane-question-athlete-turn", "skill": "deliver-issue", "kind": "boundary", "activate": true,
+      "prompt": "Please continue with issue 46 and ask me what you need.",
+      "setup": "The athlete wrote this message in the orchestrated lane's own thread just now; issue 46 needs a content decision.",
+      "expected": ["Ask the athlete through AskUserQuestion in this turn"],
+      "prohibited": ["Park the item and route the question to the orchestrator instead"]
     },
     {
       "id": "deliver-issue-wait-in-turn", "skill": "deliver-issue", "kind": "boundary", "activate": true,
@@ -966,7 +980,7 @@
       "id": "orchestrator-positive", "skill": "pacecraft-orchestrator", "kind": "positive", "activate": true,
       "prompt": "Orchestrate three lanes for the planning, sync and calendar queues.",
       "setup": "Synthetic issue queues per area; thread tools are recording stubs.",
-      "expected": ["Start one lane per independent area with a self-contained brief: issues in order, athlete rules, hard limits, how to reach the orchestrator and the closing sentence", "Ask every lane to report started #N"],
+      "expected": ["Start one lane per independent area with a self-contained brief: issues in order, athlete rules, hard limits, how to reach the orchestrator and the closing sentence", "Ask every lane to claim each item before its first edit and post claimed #N"],
       "prohibited": ["Let two lanes edit the same files", "Change rulesets or workflows"]
     },
     {

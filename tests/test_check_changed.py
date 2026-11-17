@@ -1,6 +1,7 @@
 """scripts/check_changed.py with a fake subprocess; nothing real runs."""
 
 import io
+import os
 import subprocess
 import sys
 import tempfile
@@ -155,6 +156,57 @@ class CheckChangedTests(unittest.TestCase):
                     )
                     self.assertGreater(len(node[0]), 3)
 
+    def test_a_changed_workflow_is_linted_with_the_pinned_actionlint(self):
+        # #3377: the same image and flags as .github/workflows/workflow-lint.yml.
+        lint = (check_changed.ROOT / ".github/workflows/workflow-lint.yml").read_text(
+            encoding="utf-8"
+        )
+        for part in check_changed.ACTIONLINT:
+            self.assertIn(part.replace('"', ""), lint.replace('"', ""))
+        changed = [".github/workflows/workflow-lint.yml", ".github/workflows/gone.yml"]
+        runner = FakeRun()
+        code, out, _ = run_main(check_changed, [], runner, fake_git(changed))
+        self.assertEqual(code, 0)
+        docker = [call for call in runner.calls if call[0] == "docker"]
+        self.assertEqual(len(docker), 1)
+        self.assertEqual(docker[0][1:3], ["run", "--rm"])
+        self.assertEqual(docker[0][-1], ".github/workflows/workflow-lint.yml")
+        self.assertIn("ok actionlint", out)
+        # No changed workflow: no Docker call.
+        runner = FakeRun()
+        run_main(check_changed, [], runner, fake_git(["backend/x.py"]))
+        self.assertFalse(any(call[0] == "docker" for call in runner.calls))
+        # A lint finding fails the run.
+        runner = FakeRun(failing=("-oneline",))
+        code, out, _ = run_main(check_changed, [], runner, fake_git(changed))
+        self.assertEqual(code, 1)
+        self.assertIn("FAILED actionlint", out)
+
+    def test_actionlint_without_docker_is_reported_as_unrun(self):
+        changed = fake_git([".github/workflows/workflow-lint.yml"])
+        code, out, _ = run_main(
+            check_changed, [], FakeRun(missing=("docker",)), changed
+        )
+        self.assertEqual(code, 0)
+        self.assertIn("unrun actionlint: docker is not installed.", out)
+        down = FakeRun(
+            failing=("-oneline",), extra="\nCannot connect to the Docker daemon"
+        )
+        code, out, _ = run_main(check_changed, [], down, changed)
+        self.assertEqual(code, 0)
+        self.assertIn("unrun actionlint: the Docker daemon is not reachable.", out)
+        desktop = "\nfailed to connect to the docker API at npipe:////./pipe/x"
+        code, out, _ = run_main(
+            check_changed, [], FakeRun(failing=("-oneline",), extra=desktop), changed
+        )
+        self.assertEqual(code, 0)
+        self.assertIn("unrun actionlint", out)
+        # The same text from a failing test step stays a test failure.
+        tests = FakeRun(failing=("--changed",), extra=desktop)
+        code, out, _ = run_main(check_changed, [], tests, changed)
+        self.assertEqual(code, 1)
+        self.assertIn("FAILED tests", out)
+
     def test_untracked_js_counts_as_a_change(self):
         git = fake_git(["backend/x.py"], untracked=["public/new.mjs"])
         runner = FakeRun()
@@ -168,6 +220,11 @@ class CheckChangedTests(unittest.TestCase):
         self.assertIn("FAILED node-tests", out)
         self.assertIn("node is not installed", out)
         self.assertIn("ok quality", out)
+        # Every missing tool is reported, not only the first one.
+        runner = FakeRun(missing=(sys.executable, "node"))
+        code, out, _ = run_main(check_changed, ["--js"], runner)
+        self.assertEqual(code, 2)
+        self.assertEqual(out.count(" is not installed."), 4)
 
     def test_unknown_base_is_exit_two(self):
         def git(*_args, **_kwargs):
@@ -178,6 +235,83 @@ class CheckChangedTests(unittest.TestCase):
         self.assertEqual(code, 2)
         self.assertIn("bad revision", err)
         self.assertEqual(runner.calls, [])
+
+
+class FormatChangedTests(unittest.TestCase):
+    def test_fix_format_formats_exactly_the_changed_python_files(self):
+        # #3382: `ruff format tests` rewrote 22 baselined files nobody changed.
+        isolated = {"GIT_CONFIG_GLOBAL": os.devnull, "GIT_CONFIG_NOSYSTEM": "1"}
+        ugly = "x  =  1\n"
+        with (
+            mock.patch.dict(os.environ, isolated),
+            tempfile.TemporaryDirectory() as directory,
+        ):
+            root = Path(directory)
+
+            def git(*args):
+                subprocess.run(
+                    ["git", "-C", str(root), *args], check=True, capture_output=True
+                )
+
+            git("init", "-q", "-b", "base")
+            git("config", "user.email", "test@example.invalid")
+            git("config", "user.name", "Test")
+            for name in ("kept.py", "changed.py", "gone.py"):
+                (root / name).write_text(ugly, encoding="utf-8")
+            git("add", ".")
+            git("commit", "-q", "-m", "base")
+            (root / "changed.py").write_text("x  =  2\n", encoding="utf-8")
+            (root / "new.py").write_text(ugly, encoding="utf-8")
+            (root / "notes.md").write_text("a  b\n", encoding="utf-8")
+            (root / "gone.py").unlink()
+
+            formatted = check_changed.format_changed("base", root)
+
+            self.assertEqual(formatted, ["changed.py", "new.py"])
+            self.assertEqual(
+                (root / "changed.py").read_text(encoding="utf-8"), "x = 2\n"
+            )
+            self.assertEqual((root / "new.py").read_text(encoding="utf-8"), "x = 1\n")
+            # An unchanged file stays as it is, however it is formatted.
+            self.assertEqual((root / "kept.py").read_text(encoding="utf-8"), ugly)
+            self.assertEqual((root / "notes.md").read_text(encoding="utf-8"), "a  b\n")
+            # Gitar on #3389: a syntax error mid-edit is a reported failure.
+            (root / "broken.py").write_text("def (:\n", encoding="utf-8")
+            with (
+                redirect_stderr(io.StringIO()),
+                self.assertRaisesRegex(check_changed.FormatFailed, "ruff format"),
+            ):
+                check_changed.format_changed("base", root)
+
+    def test_the_flag_formats_before_the_steps_and_names_the_files(self):
+        runner = FakeRun()
+        with mock.patch.object(
+            check_changed, "format_changed", return_value=["backend/x.py"]
+        ) as formatted:
+            code, out, _err = run_main(check_changed, ["--fix-format"], runner)
+        self.assertEqual(code, 0)
+        formatted.assert_called_once_with("origin/develop")
+        self.assertIn("formatted 1 changed Python file: backend/x.py", out)
+        # Without the flag nothing is formatted.
+        with mock.patch.object(check_changed, "format_changed") as formatted:
+            run_main(check_changed, [], FakeRun())
+        formatted.assert_not_called()
+
+    def test_a_failed_or_missing_formatter_reports_and_the_steps_still_run(self):
+        # Gitar on #3389: no traceback; the steps run, exit 1 or 2 as for a step.
+        for error, exit_code in (
+            (check_changed.FormatFailed("ruff format failed (exit 2)"), 1),
+            (check_changed.MissingTool("ruff is not installed."), 2),
+        ):
+            with (
+                self.subTest(exit_code=exit_code),
+                mock.patch.object(check_changed, "format_changed", side_effect=error),
+            ):
+                runner = FakeRun()
+                code, out, _err = run_main(check_changed, ["--fix-format"], runner)
+                self.assertEqual(code, exit_code)
+                self.assertIn(f"FAILED format (0.0s)\n  {error}", out)
+                self.assertEqual(len(runner.calls), 3)
 
 
 if __name__ == "__main__":

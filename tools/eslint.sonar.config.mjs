@@ -70,6 +70,10 @@ const sonarOnly = {
     // S4624 failed #3254 only in CI (#3271). S7776 (Set membership) maps to
     // unicorn/prefer-set-has, a plugin this repository does not install.
     "sonarjs/no-nested-template-literals": "error",
+    // S8786 (super-linear regex) and S4036 (command from PATH) failed L28's
+    // pull requests only in CI (#3381).
+    "sonarjs/super-linear-regex": "error",
+    "sonarjs/no-os-command-from-path": "error",
   },
 };
 // A call to a helper declared nowhere is a runtime ReferenceError (#3016).

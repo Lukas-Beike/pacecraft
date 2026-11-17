@@ -2,6 +2,7 @@ const { test, expect } = require("@playwright/test");
 const AxeBuilder = require("@axe-core/playwright").default;
 const { showCalendarDay } = require("./helpers/ui");
 const { openCalendar } = require("./helpers/calendar");
+const { stubSyncJobs } = require("./helpers/sync-jobs");
 
 // Three future endurance units on one day: already sent, never sent, and changed since it was sent.
 async function renderUnits(page) {
@@ -97,4 +98,38 @@ test("@responsive the profile has no weekly plan editor", async ({ page, request
   const profile = await page.evaluate(async () => api("/api/profile"));
   expect(profile).not.toHaveProperty("weekly_fallback");
   expect(profile.profile).not.toHaveProperty("weekly_plan");
+});
+
+// #3384: the Kalender badge adds the running week's units to sync to the undecided events, by
+// the week sync button's rule, and drops once the (mocked) week sync has sent them.
+test("@responsive the Kalender badge sums undecided events and the running week's units to sync", async ({ page, request }) => {
+  await openCalendar(page, request);
+  const posted = await stubSyncJobs(page);
+  const until = await page.evaluate(() => {
+    const today = timezoneDateKey(state.data?.profile?.timezone, new Date());
+    const unit = (id) => ({ id, local_id: id, payload_hash: "a".repeat(64), date: today, name: id, type: "Ride", duration_minutes: 60, push_pending: { intervals: true } });
+    state.data.configured = { ...(state.data.configured || {}), intervals: true };
+    state.data.calendar_display = { past_weeks: 0, future_weeks: 1 };
+    state.data.training_calendar = [unit("neu"), unit("geaendert"), { ...unit("gesendet"), push_pending: { intervals: false } }];
+    state.data.external_calendar = { ...(state.data.external_calendar || {}), undecided_upcoming: 1, events: [] };
+    // The week sync reloads the state; the server then reports every unit as sent.
+    globalThis.load = async () => {
+      state.data.training_calendar = state.data.training_calendar.map((item) => ({ ...item, push_pending: { intervals: false } }));
+      renderPlanned(state.data.training_calendar);
+      renderExternalCalendar(state.data);
+    };
+    renderPlanned(state.data.training_calendar);
+    renderExternalCalendar(state.data);
+    return new Intl.DateTimeFormat("de-DE", { day: "2-digit", month: "2-digit" }).format(dateFromKey(addDateKey(today, 14)));
+  });
+  const nav = page.locator('.nav-item[data-route="plan"]').filter({ visible: true });
+  await expect(nav.locator("b.nav-count")).toHaveText("3");
+  await expect(nav).toHaveAccessibleName(`Kalender, 1 neuer Termin bis ${until}, 2 Einheiten zu synchronisieren`);
+  const button = page.locator(".planned-week .planned-week-sync-button").first();
+  await button.scrollIntoViewIfNeeded();
+  await button.click();
+  await expect.poll(() => posted.length).toBeGreaterThan(0);
+  await expect(nav.locator("b.nav-count")).toHaveText("1");
+  await expect(nav).toHaveAccessibleName(`Kalender, 1 neuer Termin bis ${until}`);
+  await page.unrouteAll({ behavior: "ignoreErrors" });
 });
