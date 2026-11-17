@@ -68,7 +68,8 @@ athlete decision 2026-11-17).
 - [ ] Every lane got the successor's thread id (and `environmentId` when it
       runs on another machine); lanes kept reporting to the old orchestrator,
       which forwarded their messages 3 times at V6 -> V7 and 2 at V7 -> V8
-- [ ] The predecessor stopped its scheduled checks and forwarding
+- [ ] The predecessor stopped its scheduled checks; it forwards lane messages
+      until the next item is ticked, then stops
 - [ ] All lanes confirmed the new orchestrator (one line each, by message or
       `ORCHESTRATOR:` in their own thread)
 ```
