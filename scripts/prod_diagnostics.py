@@ -159,6 +159,7 @@ FAIL_STATES = {"failed", "unavailable", "blocked"}
 WAIT_POLL_S = 15
 # The Analyse view's all-time read, which starts a `pending` curve build.
 CURVE_READ = "/api/analysis/power-profiles"
+DIAGNOSTICS = "/api/diagnostics"
 
 
 def hours_since(stamp: str | None, now: datetime) -> float | None:
@@ -582,7 +583,7 @@ def curve_state(report: Any) -> str:
 def wait_ready(session: Session, seconds: float) -> int:
     """Poll `curve_build.status` until `ready` (0), failed (1) or out of time (3)."""
     start = time.monotonic()
-    state = curve_state(session.get_json("/api/diagnostics"))
+    state = curve_state(session.get_json(DIAGNOSTICS))
     if state == "pending":
         # `pending` lasts until the first all-time read; make the Analyse
         # view's own read once, as the UI walk does. Its body is not read.
@@ -598,7 +599,7 @@ def wait_ready(session: Session, seconds: float) -> int:
             print(f"FAIL curve build {state}, waited {waited} s")
             return 1 if failed else 3
         time.sleep(min(WAIT_POLL_S, max(seconds - waited, 1)))
-        state = curve_state(session.get_json("/api/diagnostics"))
+        state = curve_state(session.get_json(DIAGNOSTICS))
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -639,7 +640,7 @@ def main(argv: list[str] | None = None) -> int:
                 waited := wait_ready(session, args.wait_ready)
             ):
                 return waited
-            report = session.get_json("/api/diagnostics")
+            report = session.get_json(DIAGNOSTICS)
         finally:
             logout = session.logout()
             print(f"{'ok' if logout == 200 else 'FAIL'} logout {logout}")
