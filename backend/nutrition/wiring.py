@@ -67,8 +67,9 @@ def build_nutrition(ctx: AppContext) -> NutritionServices:
     """One food database and mirror for the process; the rest fresh per call."""
     utc_now = runtime_clock.utc_now
     mirror = FoodDatabaseMirror(ctx.database, utc_now)
+    off = OpenFoodFactsClient(opener=ctx.observed_opener("open_food_facts"))
     food_database = FoodDatabaseService(
-        off=OpenFoodFactsClient(opener=ctx.observed_opener("open_food_facts")),
+        off=off,
         mirror=mirror,
         yazio=YazioClient(
             ctx.config,
@@ -221,5 +222,6 @@ def build_nutrition(ctx: AppContext) -> NutritionServices:
             lambda product_id: meal_library_service().refresh_database_food(product_id),
             lambda: ctx.maintenance,
             utc_now,
+            source_timeouts=lambda: off.consecutive_timeouts,
         ),
     )

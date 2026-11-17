@@ -228,6 +228,42 @@ class RefreshAllRunnerTests(unittest.TestCase):
         self.assertEqual([0.5, 1.0, 0.25], pauses)
         self.assertLessEqual(max(pauses), MAX_BACKOFF_SECONDS)
 
+    def test_open_food_facts_timeouts_in_a_row_stop_the_run(self) -> None:
+        # #3475: OFF answered after 10 s timeouts only; 3 in a row stop the run
+        # and the products not reached are not asked.
+        products = [{"id": f"off:{n}", "origin": "off"} for n in range(6)]
+        calls: list[str] = []
+        # The shared client count is stale at 3 from an earlier run: a cached
+        # first product asks nothing, so only this run's own timeouts count
+        # (Gitar #3481).
+        timeouts = [3]
+
+        def refresh(product_id: str) -> dict[str, Any]:
+            calls.append(product_id)
+            if product_id == "off:0":
+                return {"food": {"missing_fields": []}}
+            timeouts[0] += 1
+            raise AppError(502, "Lebensmitteldatenbank nicht erreichbar.")
+
+        run = runner(lambda: products, refresh, source_timeouts=lambda: timeouts[0])
+        run.start()
+        state = finished(run)
+        self.assertEqual(["off:0", "off:1", "off:2", "off:3"], calls)
+        self.assertEqual(
+            ("food_database_timeout", 4, 6, 1, 3),
+            (
+                state["stopped"],
+                state["done"],
+                state["total"],
+                state["unchanged"],
+                state["failed"],
+            ),
+        )
+        # A full run has no stop reason.
+        ok = runner(lambda: products[:1], lambda _id: {"food": {"missing_fields": []}})
+        ok.start()
+        self.assertNotIn("stopped", finished(ok))
+
     def test_a_stopped_runner_starts_nothing(self) -> None:
         run = runner(lambda: [{"id": "off:1", "origin": "off"}], lambda _id: {})
         run.stop()

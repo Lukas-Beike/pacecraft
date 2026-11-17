@@ -4,8 +4,9 @@ import http.client
 import io
 import json
 import unittest
+from typing import Any
 from unittest.mock import Mock
-from urllib.error import HTTPError
+from urllib.error import HTTPError, URLError
 
 from backend.errors import AppError
 from backend.nutrition.food_database import (
@@ -253,6 +254,34 @@ class OpenFoodFactsTests(unittest.TestCase):
         self.assertEqual(raised.exception.status, 429)
         clock.return_value = 61
         client.product("1234567892000")
+
+    def test_timeouts_in_a_row_are_counted_until_any_answer(self):
+        # #3475: a timeout, also wrapped in a URLError, adds one; any answer,
+        # an HTTP error included, resets the count.
+        answers: list[Any] = [
+            TimeoutError(),
+            URLError(TimeoutError()),
+            HTTPError("https://world.openfoodfacts.org/", 404, "x", {}, None),
+            TimeoutError(),
+            URLError("refused"),
+        ]
+
+        def opener(request, timeout):
+            raise answers.pop(0)
+
+        client = OpenFoodFactsClient(opener=opener, clock=Mock(return_value=0))
+        counts = []
+        for index in range(5):
+            with self.assertRaises(AppError):
+                client.product(str(1234567890100 + index))
+            counts.append(client.consecutive_timeouts)
+        self.assertEqual([1, 2, 0, 1, 0], counts)
+        client = OpenFoodFactsClient(
+            opener=lambda request, timeout: response({"product": product()}),
+            clock=Mock(return_value=0),
+        )
+        client.product("1234567890123")
+        self.assertEqual(0, client.consecutive_timeouts)
 
     def test_search_filters_germany_and_has_independent_limit(self):
         opener = Mock(
