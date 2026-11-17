@@ -39,6 +39,8 @@ from backend.nutrition.energy_balance import (
     day_tef,
     energy_windows,
     history_start,
+    is_complete,
+    period_window,
     weight_trend,
     windows_bias,
 )
@@ -466,6 +468,11 @@ def energy_view(
             "rmr_source": latest.rmr_source,
             "neat": _neat_basis(inputs, day_window),
         },
+        # "Welche Quelle trifft dein Gewicht?" per Verlauf period (#3397).
+        "fit_scale": {
+            key: _fit_scale(inputs, trend, health, latest, days)
+            for key, days in FIT_PERIODS.items()
+        },
         "skinfold_missing": body_missing,
         "body": _public_body(day_body),
     }
@@ -505,6 +512,61 @@ def selected_day(text: str | None, today: date) -> date | None:
     if day > today:
         raise AppError(400, "Der Tag liegt in der Zukunft.")
     return day
+
+
+# Verlauf's periods; the own estimate needs the rules' spans, so a period shorter
+# than a window takes it from the latest window (orchestrator, #3397).
+FIT_PERIODS: Final = {"14d": 14, "12w": 84}
+
+
+def _fit_scale(
+    inputs: EnergyInputs,
+    trend: Mapping[date, float],
+    health: Mapping[str, Mapping[str, Any]],
+    latest: EnergyWindow,
+    days: int,
+) -> dict[str, Any]:
+    """Each source's mean daily total over ``days`` against the own estimate.
+
+    ``own_days`` names the span of the own value and its band.
+    """
+    period = period_window(inputs, latest.end, days, latest.calibration_factor)
+    own = period if days >= latest.days else latest
+    body = resolve_body(inputs, trend, latest.end)
+    sources = [
+        {"source": name, "total_kcal": _round(_formula_prediction(f, body, period)[2])}
+        for name, f in FORMULAS.items()
+    ]
+    sources.append(
+        {
+            "source": DEVICE,
+            "label": _device_label(health, period),
+            "total_kcal": _round(_device_prediction(health, period)[2]),
+        }
+    )
+    tdee = own.adaptive_tdee
+    return {
+        "days": days,
+        "own_days": own.days,
+        "own_kcal": _round(tdee.kcal) if tdee else None,
+        "own_band_kcal": _round(tdee.band_kcal) if tdee else None,
+        "sources": sources,
+        "weeks": days // 7,
+        "weeks_with_data": _weeks_with_data(inputs, latest.end, days),
+    }
+
+
+def _weeks_with_data(inputs: EnergyInputs, end: date, days: int) -> int:
+    """The period's 7-day blocks holding at least one completely logged day."""
+    return sum(
+        1
+        for week in range(days // 7)
+        if any(
+            is_complete(day, inputs.rmr_kcal)
+            for n in range(7)
+            if (day := inputs.days.get(end - timedelta(days=7 * week + n)))
+        )
+    )
 
 
 def _public_body(body: Mapping[str, Any] | None) -> dict[str, Any] | None:

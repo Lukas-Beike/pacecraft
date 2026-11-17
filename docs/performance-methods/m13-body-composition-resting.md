@@ -69,7 +69,7 @@ None of these is a validation in this athlete or in trained endurance athletes a
 
 - **Body fat:** the 3-site equations carry about ±3 to 4 percentage points of standard error for the individual. The caliper reading, the site location and the measurer add to that. One year of age shifts body fat by about 0.11 percentage points for men (495 / D² × 0.0002574 at D ≈ 1.07) and about 0.06 for women (× 0.0001392 at D ≈ 1.04).
 - **Resting energy:** per R72, about 10 % for an individual. An error of 1 kg in lean mass moves the result by 21.6 to 22 kcal/day.
-- **Display:** the formula rows show the band of formula 6. Their fit against the adaptive expenditure (the M12 windows) is the empirical check. It compares the same windows for every source, needs at least 4 of them, and marks a source "passt am besten" only when its lead over the next exceeds the mean band of "Aus deinen Daten". Otherwise it says "noch nicht unterscheidbar" (athlete decision on #3187).
+- **Display:** the formula rows show the band of formula 6. Their fit against the adaptive expenditure (the M12 windows) is the empirical check. It compares the same windows for every source, needs at least 4 of them, and outlines a source's row (solid) only when its lead over the next exceeds the mean band of "Aus deinen Daten" (#3397: an outline replaced the "passt am besten" chip). Otherwise it outlines the nearest dashed and says "noch nicht sicher" (athlete decision on #3187).
 - **Nominal bands:** they exclude a logging bias in the intake and the error of the activity method beyond 10 %.
 
 ## Bias and transferability

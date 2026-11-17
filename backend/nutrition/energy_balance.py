@@ -286,9 +286,10 @@ def _window(
     end: date,
     factor: float,
     calibration_windows: int = 0,
+    length: int = WINDOW_DAYS,
 ) -> EnergyWindow:
-    start = end - timedelta(days=WINDOW_DAYS - 1)
-    span = [start + timedelta(days=n) for n in range(WINDOW_DAYS)]
+    start = end - timedelta(days=length - 1)
+    span = [start + timedelta(days=n) for n in range(length)]
     days = {d: inputs.days[d] for d in span if d in inputs.days}
     complete = {d: v for d, v in days.items() if is_complete(v, inputs.rmr_kcal)}
     flagged = sum(1 for v in complete.values() if v.flagged)
@@ -312,7 +313,7 @@ def _window(
             derived = Estimate(rmr, math.hypot(tdee.band_kcal, 0.1 * raw * factor))
     return EnergyWindow(
         end=end,
-        days=WINDOW_DAYS,
+        days=length,
         complete_days=len(complete),
         flagged_days=flagged,
         weighins=len(weighins),
@@ -336,6 +337,20 @@ def _window(
         if complete
         else 0.0,
     )
+
+
+def period_window(
+    inputs: EnergyInputs, end: date, days: int, factor: float
+) -> EnergyWindow:
+    """One window of ``days`` ending on ``end``, by the same rules and calibration.
+
+    The fit scale's periods (#3397); a period too short for the rules has no
+    own estimate, as any window.
+    """
+    weights = {
+        d: v.weight_kg for d, v in inputs.days.items() if v.weight_kg is not None
+    }
+    return _window(inputs, weight_trend(weights), end, factor, length=days)
 
 
 def _split(active: Sequence[DayInputs]) -> tuple[float | None, float | None]:

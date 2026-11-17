@@ -266,14 +266,11 @@ test("an entered weight shows beside the preferred source and wins its own day",
   assert.equal(shown([["2026-11-11", 72.5]]), "71.2 kg");
 });
 
-test("the energy table shows bands, the badge only with a fit, and the fit basis", () => {
-  const charts = [];
+test("the energy table shows bands, outlines the best source, and the basis", () => {
   const { h } = extractFunctions("components.js", ["h", "SVG_NS", "svgNode"], { document: fakeDocument() });
-  const { energyTable, energyBasisText, energyFitNote, energyFitCharts } = extractFunctions("analysis.js", ["ENERGY_SOURCES", "ENERGY_INSUFFICIENT", "ENERGY_STEP_SOURCES", "ENERGY_IMPLAUSIBLE", "ENERGY_IMPLAUSIBLE_REASON", "ENERGY_PARTS", "ENERGY_FORMULAS", "ENERGY_BODY_MISSING", "energyMissingCell", "energyKcal", "energyNeatInputs", "energyBodyText", "energyBasisText", "energyBiasText", "energyInfoId", "energyInfo", "energyFitNote", "energySplitValue", "energySplitRow", "energyFlaggedRows", "ENERGY_DAY_NOTE", "energyRowNote", "energyTable", "energyFitCharts"], {
+  const { energyTable, energyBasisText } = extractFunctions("analysis.js", ["ENERGY_SOURCES", "ENERGY_INSUFFICIENT", "ENERGY_STEP_SOURCES", "ENERGY_IMPLAUSIBLE", "ENERGY_IMPLAUSIBLE_REASON", "ENERGY_PARTS", "ENERGY_FORMULAS", "ENERGY_BODY_MISSING", "energyMissingCell", "energyKcal", "energyNeatInputs", "energyBodyText", "energyBasisText", "energyBiasText", "energyInfoId", "energyInfo", "energySplitValue", "energySplitRow", "energyFlaggedRows", "ENERGY_DAY_NOTE", "energyRowNote", "energyFitMarker", "energyTable"], {
     bindAnalysisPopover: (button, info) => { button.dataset.popoverTarget = info.id; },
     h, formatWhole: (v) => String(v), dateLabel: (v) => v, analysisValue: (v, unit) => `${v} ${unit}`,
-    createStatusChip: (label) => h("span", null, label),
-    analysisChart: (title, series) => { charts.push({ title, series }); return new FakeElement("section"); },
   });
   const read = {
     end: "2026-11-14", windows: ["2026-11-07", "2026-11-14"], best: "katch_mcardle",
@@ -295,16 +292,19 @@ test("the energy table shows bands, the badge only with a fit, and the fit basis
   assert.equal(info.dataset.popoverTarget, tooltip.id);
   assert.match(textOf(tooltip), /Ruhe aus deinen Daten ist ein Rest/);
   const rows = table.children[2].children;
-  assert.equal(textOf(rows[0].children[0]), "Katch-McArdle passt am bestenKFA: Hautfalten");
+  // #3397: the best source's row is outlined (solid), no chip; while none is distinguishable the
+  // nearest by the 12-week fit is outlined dashed; the own row never.
+  assert.equal(textOf(rows[0].children[0]), "Katch-McArdleKFA: Hautfalten");
+  assert.equal(rows[0].dataset.fit, "best");
   assert.equal(textOf(rows[0].children[1]), "1839 ± 219", "a formula row carries its band");
-  assert.equal(textOf(rows[1].children[0]), "CunninghamKFA: Hautfalten", "only the best source carries the badge");
+  assert.equal(rows[2].dataset.fit, undefined, "only the best source is outlined");
   assert.equal(textOf(rows[2].children[0]), "Synthetic Watch", "#3323: the device row's name comes from the read");
   assert.equal(textOf(rows[2].children[1]), "–", "a source without a value stays unknown");
   assert.equal(textOf(rows[3].children[2]), "2700 ± 120");
-  assert.equal(textOf(energyTable({ ...read, best: null }).children[2].children[0].children[0]), "Katch-McArdleKFA: Hautfalten", "no best, no badge");
-  assert.equal(textOf(energyFitNote(read)), "Vergleich · 4 von 12 Fenstern · Band aus deinen Daten ± 120 kcal");
-  assert.equal(textOf(energyFitNote({ ...read, best: null, fit: { ...read.fit, shared_windows: 3 } })), "Welche Quelle passt: noch nicht unterscheidbar · 3 von 12 Fenstern · Band aus deinen Daten ± 120 kcal");
-  assert.equal(textOf(energyFitNote({ ...read, best: null, fit: { ...read.fit, shared_windows: 0, reference_band_kcal: null } })), "Welche Quelle passt: noch nicht unterscheidbar · 0 von 12 Fenstern");
+  const undecided = energyTable({ ...read, best: null }).children[2].children.filter((row) => row.dataset.energySource);
+  assert.deepEqual(undecided.map((row) => row.dataset.fit), ["nearest", undefined, undefined, undefined]);
+  const unfitted = energyTable({ ...read, best: null, rows: read.rows.map((row) => ({ ...row, mean_error_kcal: null })) }).children[2].children;
+  assert.ok(unfitted.every((row) => row.dataset.fit === undefined), "no fit, no outline");
   const note = energyBasisText(read);
   assert.match(note, /24 von 28 Tagen vollständig .* KFA 15 % \(Hautfalten vom 2026-11-04\), fettfreie Masse 68 kg/);
   assert.match(note, /Bänder nominal 95 %, ohne Fehler beim Erfassen des Essens/, "#3187 item 6");
@@ -332,17 +332,6 @@ test("the energy table shows bands, the badge only with a fit, and the fit basis
   assert.equal(energyTable({ ...read, flagged: { ...flagged, days: 0 } }).children[2].children.length, energyTable(read).children[2].children.length, "no flagged day, no extra row");
   const [, , flaggedInfo] = energyTable({ ...read, flagged }).children[0].children;
   assert.match(textOf(flaggedInfo), /Geschätzte Mahlzeiten wirken im Mittel 12 % höher als erfasst \(± 9 %\)$/);
-  assert.equal(energyFitCharts(read).length, 1, "the chart alone; the ±100 hit-rate bars are gone");
-  assert.deepEqual([...charts[0].series].map((item) => item.label), ["Katch-McArdle", "Cunningham"], "Garmin without a fit is left out");
-  assert.deepEqual(JSON.parse(JSON.stringify(charts[0].series[0].points)), [{ date: "2026-11-07", value: null }, { date: "2026-11-14", value: 11 }]);
-  assert.match(charts[0].series[0].explanation, /innerhalb von ± 120 kcal sind nicht unterscheidbar/);
-  assert.equal(energyFitCharts({ ...read, rows: read.rows.slice(2) }).length, 0, "no fit, no chart");
-  // Gitar #3180: without shared windows every mean is null, yet each window's distance is still drawn.
-  const unshared = read.rows.map((row) => ({ ...row, mean_error_kcal: null }));
-  assert.equal(energyFitCharts({ ...read, rows: unshared }).length, 1);
-  const fittedDevice = read.rows.map((row) => (row.source === "device" ? { ...row, errors_kcal: [null, 40] } : row));
-  energyFitCharts({ ...read, rows: fittedDevice });
-  assert.equal(charts.at(-1).series[2].label, "Synthetic Watch", "#3323: the fit legend names the device from the read");
 });
 
 test("split A draws one stacked bar per row and hatches only the parts the backend marks shared", () => {
@@ -376,7 +365,7 @@ test("a reset drops the energy read in flight, so a pre-save answer is never sho
   let renders = 0;
   const fns = extractFunctions("analysis.js", ["energyRead", "energyRequest", "energyGeneration", "energyReadDay", "energyDay", "resetEnergy", "loadEnergy"], {
     api: () => new Promise((resolve) => answers.push(resolve)),
-    renderBodyAnalysis: () => { renders += 1; }, renderDiaryEnergy: () => { renders += 1; },
+    renderBodyAnalysis: () => { renders += 1; }, renderDiaryEnergy: () => { renders += 1; }, renderNutritionFit: () => {},
     state: { data: {} },
     createLoadingState: () => ({}), h: () => ({}),
     document: { querySelector: () => null },
@@ -698,7 +687,7 @@ test("the watch-upload sentence appears from 24 hours on and never without a kno
 test("an empty formula row names its reason and opens the dialog that fills it (#3336)", () => {
   const { h } = extractFunctions("components.js", ["h", "SVG_NS", "svgNode"], { document: fakeDocument() });
   const opened = [];
-  const { energyTable } = extractFunctions("analysis.js", ["ENERGY_SOURCES", "ENERGY_INSUFFICIENT", "ENERGY_STEP_SOURCES", "ENERGY_IMPLAUSIBLE", "ENERGY_IMPLAUSIBLE_REASON", "ENERGY_PARTS", "ENERGY_FORMULAS", "ENERGY_BODY_MISSING", "energyMissingCell", "energyKcal", "energyNeatInputs", "energyBodyText", "energyBasisText", "energyBiasText", "energyInfoId", "energyInfo", "energySplitValue", "energySplitRow", "energyFlaggedRows", "ENERGY_DAY_NOTE", "energyRowNote", "energyTable"], {
+  const { energyTable } = extractFunctions("analysis.js", ["ENERGY_SOURCES", "ENERGY_INSUFFICIENT", "ENERGY_STEP_SOURCES", "ENERGY_IMPLAUSIBLE", "ENERGY_IMPLAUSIBLE_REASON", "ENERGY_PARTS", "ENERGY_FORMULAS", "ENERGY_BODY_MISSING", "energyMissingCell", "energyKcal", "energyNeatInputs", "energyBodyText", "energyBasisText", "energyBiasText", "energyInfoId", "energyInfo", "energySplitValue", "energySplitRow", "energyFlaggedRows", "ENERGY_DAY_NOTE", "energyRowNote", "energyFitMarker", "energyTable"], {
     bindAnalysisPopover: () => {}, h, formatWhole: (v) => String(v), dateLabel: (v) => v,
     analysisValue: (v, unit) => `${v} ${unit}`, createStatusChip: (label) => h("span", null, label),
     openBodyFatDialog: () => opened.push("body fat"), openWeightDialog: () => opened.push("weight"),
@@ -725,7 +714,7 @@ test("an empty formula row names its reason and opens the dialog that fills it (
 
 test("a body fat fallback names its source on both formula rows (#3362)", () => {
   const { h } = extractFunctions("components.js", ["h", "SVG_NS", "svgNode"], { document: fakeDocument() });
-  const { energyTable, energyBasisText } = extractFunctions("analysis.js", ["ENERGY_SOURCES", "ENERGY_INSUFFICIENT", "ENERGY_STEP_SOURCES", "ENERGY_IMPLAUSIBLE", "ENERGY_IMPLAUSIBLE_REASON", "ENERGY_PARTS", "ENERGY_FORMULAS", "ENERGY_BODY_MISSING", "energyMissingCell", "energyKcal", "energyNeatInputs", "energyBodyText", "energyBasisText", "energyBiasText", "energyInfoId", "energyInfo", "energySplitValue", "energySplitRow", "energyFlaggedRows", "ENERGY_DAY_NOTE", "energyRowNote", "energyTable"], {
+  const { energyTable, energyBasisText } = extractFunctions("analysis.js", ["ENERGY_SOURCES", "ENERGY_INSUFFICIENT", "ENERGY_STEP_SOURCES", "ENERGY_IMPLAUSIBLE", "ENERGY_IMPLAUSIBLE_REASON", "ENERGY_PARTS", "ENERGY_FORMULAS", "ENERGY_BODY_MISSING", "energyMissingCell", "energyKcal", "energyNeatInputs", "energyBodyText", "energyBasisText", "energyBiasText", "energyInfoId", "energyInfo", "energySplitValue", "energySplitRow", "energyFlaggedRows", "ENERGY_DAY_NOTE", "energyRowNote", "energyFitMarker", "energyTable"], {
     bindAnalysisPopover: () => {}, h, formatWhole: (v) => String(v), dateLabel: (v) => v,
     analysisValue: (v, unit) => `${v} ${unit}`, createStatusChip: (label) => h("span", null, label),
   });
@@ -781,7 +770,7 @@ test("a body receipt names the Garmin outcome and puts the day back on undo (#34
 
 test("the table labels today's rows bis jetzt, the own row its 28 days, and missing digestion (#3395)", () => {
   const { h } = extractFunctions("components.js", ["h", "SVG_NS", "svgNode"], { document: fakeDocument() });
-  const { energyTable } = extractFunctions("analysis.js", ["ENERGY_SOURCES", "ENERGY_INSUFFICIENT", "ENERGY_STEP_SOURCES", "ENERGY_IMPLAUSIBLE", "ENERGY_IMPLAUSIBLE_REASON", "ENERGY_PARTS", "ENERGY_FORMULAS", "ENERGY_BODY_MISSING", "energyMissingCell", "energyKcal", "energyNeatInputs", "energyBodyText", "energyBasisText", "energyBiasText", "energyInfoId", "ENERGY_DAY_NOTE", "energyInfo", "energySplitValue", "energySplitRow", "energyFlaggedRows", "energyRowNote", "energyTable"], {
+  const { energyTable } = extractFunctions("analysis.js", ["ENERGY_SOURCES", "ENERGY_INSUFFICIENT", "ENERGY_STEP_SOURCES", "ENERGY_IMPLAUSIBLE", "ENERGY_IMPLAUSIBLE_REASON", "ENERGY_PARTS", "ENERGY_FORMULAS", "ENERGY_BODY_MISSING", "energyMissingCell", "energyKcal", "energyNeatInputs", "energyBodyText", "energyBasisText", "energyBiasText", "energyInfoId", "ENERGY_DAY_NOTE", "energyInfo", "energySplitValue", "energySplitRow", "energyFlaggedRows", "energyRowNote", "energyFitMarker", "energyTable"], {
     bindAnalysisPopover: () => {}, h, formatWhole: (v) => String(v), dateLabel: (v) => v,
     analysisValue: (v, unit) => `${v} ${unit}`, createStatusChip: (label) => h("span", null, label),
   });
@@ -806,4 +795,40 @@ test("the table labels today's rows bis jetzt, the own row its 28 days, and miss
   // A past day carries no "bis jetzt".
   const past = energyTable({ ...read, day_partial: false }).children[2].children;
   assert.equal(textOf(past[0].children[0]), "Katch-McArdleKFA: Profil");
+});
+
+test("the fit scale names the own value, sorts the sources nearest first and signs their distance (#3397)", () => {
+  const { h } = extractFunctions("components.js", ["h", "SVG_NS", "svgNode"], { document: fakeDocument() });
+  const { energyFitScale } = extractFunctions("analysis.js", ["FIT_PERIOD_NAMES", "FIT_SOURCE_NAMES", "FIT_COLORS", "energyFitSources", "energyFitSigned", "energyFitSpan", "energyFitVerdict", "energyFitDomain", "energyFitMark", "energyFitLabel", "energyFitLane", "energyFitAxis", "energyFitOwnRow", "energyFitSourceRow", "energyFitNoteText", "energyFitScale"], {
+    h, formatWhole: (v) => String(v),
+  });
+  const scale = {
+    days: 84, own_days: 84, own_kcal: 2726, own_band_kcal: 454, weeks: 12, weeks_with_data: 3,
+    sources: [
+      { source: "katch_mcardle", total_kcal: 3768 },
+      { source: "cunningham", total_kcal: 3930 },
+      { source: "device", label: "Garmin Connect", total_kcal: 3157 },
+    ],
+  };
+  const card = energyFitScale({ best: null, fit_scale: { "12w": scale } }, "12w");
+  const [, verdict, , list, note] = card.children;
+  // Not yet distinguishable: the nearest is named, with its signed distance, and not called certain.
+  assert.equal(textOf(verdict), "Über 12 Wochen verbrauchst du rund 2726 kcal am Tag. Am nächsten: Garmin Connect (+431) – noch nicht sicher.");
+  const rows = list.children;
+  assert.deepEqual(rows.map((row) => row.dataset.fitSource), ["own", "device", "katch_mcardle", "cunningham"]);
+  assert.deepEqual(rows.map((row) => textOf(row.children[1])), ["2726 ± 454", "3157 (+431)", "3768 (+1042)", "3930 (+1204)"]);
+  // +431 lies inside the ±454 band, the formulas outside.
+  assert.deepEqual(rows.slice(1).map((row) => row.dataset.inside), ["true", "false", "false"]);
+  assert.equal(textOf(note), "kcal pro Tag, Ø letzte 12 Wochen. Grünes Band: so genau kennt die App deinen echten Verbrauch – liegt eine Quelle darin, trifft sie. 3 von 12 Wochen mit Daten.");
+  // Distinguishable by the 12-week rule: the nearest is named as fitting, with "mehr"/"weniger".
+  const sure = energyFitScale({ best: "device", fit_scale: { "12w": { ...scale, sources: [{ source: "device", label: "Garmin Connect", total_kcal: 2600 }] } } }, "12w");
+  assert.equal(textOf(sure.children[1]), "Über 12 Wochen verbrauchst du rund 2726 kcal am Tag. Am nächsten liegt Garmin Connect mit 126 kcal weniger.");
+  // 14 days: the own value comes from the latest 4 weeks, and the note says so.
+  const short = energyFitScale({ best: null, fit_scale: { "14d": { ...scale, days: 14, own_days: 28, weeks: 2, weeks_with_data: 1 } } }, "14d");
+  assert.match(textOf(short.children[1]), /^In den letzten 4 Wochen verbrauchst du rund 2726 kcal/);
+  assert.match(textOf(short.children.at(-1)), /^kcal pro Tag, Ø letzte 14 Tage, dein Wert aus 4 Wochen\. .* 1 von 2 Wochen mit Daten\.$/);
+  // Without an own estimate the verdict says what is missing; the sources still show, unsigned.
+  const none = energyFitScale({ best: null, fit_scale: { "12w": { ...scale, own_kcal: null, own_band_kcal: null } } }, "12w");
+  assert.equal(textOf(none.children[1]), "Für einen Vergleich fehlen noch genug vollständig erfasste Tage und Wiegungen.");
+  assert.deepEqual(none.children[3].children.map((row) => textOf(row.children[1])), ["3157", "3768", "3930"]);
 });
