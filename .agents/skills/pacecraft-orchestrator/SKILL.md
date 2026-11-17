@@ -76,6 +76,10 @@ athlete decision 2026-11-17).
 - [ ] Every lane got the successor's thread id (and `environmentId` when it
       runs on another machine); lanes kept reporting to the old orchestrator,
       which forwarded their messages 3 times at V6 -> V7 and 2 at V7 -> V8
+- [ ] ... as a `steer` to a running lane, an ordinary message to an idle one
+      (a queued repoint waited 71 minutes behind a turn at V8 -> V9, #3457)
+- [ ] The successor's periodic check runs as the skill's cron (see
+      [Periodic check](#periodic-check))
 - [ ] The predecessor stopped its scheduled checks; it forwards lane messages
       until the next item is ticked, then stops
 - [ ] All lanes confirmed the new orchestrator (one line each, by message or
@@ -136,7 +140,10 @@ done.
 
 ## Periodic check
 
-About every 20 minutes: run [status-snapshot](../pacecraft-status-snapshot/SKILL.md),
+Every 10 minutes, as a session cron (`CronCreate`) with the prompt
+`Periodic orchestrator check (Orchestrator Vn)`, Vn being your own name. A cron
+job lives only in its session, so each successor starts its own from this
+line (#3457). Each check: run [status-snapshot](../pacecraft-status-snapshot/SKILL.md),
 read every lane's thread, and check the `develop` push runs of new merges.
 Read each lane's runs too, not only its last message: `t3_thread_read` with
 `runLimit: 3`, judging the newest run that started (`startedAt` set; a queued
