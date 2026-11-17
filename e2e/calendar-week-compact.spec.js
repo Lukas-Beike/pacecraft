@@ -394,8 +394,13 @@ test("@responsive a failed week review keeps the card with its reason and a retr
   await expect(page.locator(".planned-week .planned-week-totals, .planned-week .week-review")).toHaveCount(0);
   await page.locator(".planned-week .planned-sport-filter").getByRole("radio", { name: "Alle", exact: true }).check();
   await expect(review).toContainText("Wochenrückblick gerade nicht verfügbar");
+  // A keyboard retry that fails again leaves the focus on the new retry button.
+  await review.getByRole("button", { name: "Erneut laden" }).focus();
+  await page.keyboard.press("Enter");
+  await expect(review.getByRole("button", { name: "Erneut laden" })).toBeFocused();
   fail = false;
   await review.getByRole("button", { name: "Erneut laden" }).click();
+  await expect(review).toBeFocused();
   await expect(review.locator(".week-review-tile").first()).toHaveText("Plan1 von 54 noch offen");
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBeTruthy();
 });

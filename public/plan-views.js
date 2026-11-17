@@ -2401,13 +2401,22 @@ function refreshWeekReview(root) {
 function weekReviewFailed(card) {
   card.dataset.failed = "true";
   const retry = h("button", { type: "button", className: "secondary-button" }, "Erneut laden");
-  retry.addEventListener("click", () => retryWeekReview(card));
+  retry.addEventListener("click", () => retryWeekReview(card, true));
   card.replaceChildren(card.firstElementChild, h("p", "empty", "Wochenrückblick gerade nicht verfügbar"), retry);
+  // A retry started from the button keeps the keyboard there when it fails again (Gitar #3413).
+  if (card.dataset.retryFocus) retry.focus();
+  delete card.dataset.retryFocus;
 }
 
-function retryWeekReview(card) {
+// The pressed button leaves the card, so a tapped retry moves focus to the card while it loads.
+function retryWeekReview(card, focus = false) {
   delete card.dataset.failed;
   card.replaceChildren(card.firstElementChild, createLoadingState("Wochenrückblick wird geladen…"));
+  if (focus) {
+    card.dataset.retryFocus = "true";
+    card.tabIndex = -1;
+    card.focus();
+  }
   void fillWeekReview(card);
 }
 
@@ -2437,6 +2446,7 @@ async function fillWeekReview(card, refill = false) {
     return;
   }
   card.dataset.version = version;
+  delete card.dataset.retryFocus;
   card.replaceChildren(card.firstElementChild, h("div", "week-review-tiles", ...tiles));
 }
 
