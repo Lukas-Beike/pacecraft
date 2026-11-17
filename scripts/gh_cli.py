@@ -7,9 +7,11 @@ files, and never print credentials: `gh` keeps its own authentication.
 from __future__ import annotations
 
 import json
+import os
 import re
 import subprocess
 import sys
+import time
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
@@ -30,6 +32,11 @@ MAX_BODY = 60_000
 # The quality ratchet's finding lines; a refused push shows all of them (#2944).
 RATCHET_LINES = ("NEW ", "OBSOLETE ", "Obsolete baseline")
 RATCHET_SHOWN = 50
+FETCH_ATTEMPTS = 3
+TRANSIENT_FETCH = re.compile(
+    r"cannot lock ref '[^']+': is at \w+ but expected|\.lock': File exists"
+    r"|Operation too slow|timed out"
+)
 
 
 class CliError(RuntimeError):
@@ -97,6 +104,34 @@ def git(
     *args: str, cwd: Path | None = None, env: Mapping[str, str] | None = None
 ) -> str:
     return run("git", *args, cwd=cwd, env=env)
+
+
+def fetch(*refs: str, cwd: Path | None = None) -> None:
+    """Fetch origin; retry while a parallel worktree holds a lock (#2828, #3378).
+
+    Worktrees share one .git: a ref moved under a parallel fetch, a packed-refs
+    lock file, or a stalled transfer (aborted below 1 KB/s for 60 s) is retried.
+    A ref name conflict and every other failure raise at once, so no caller
+    goes on with a stale ref.
+    """
+    env = {
+        **os.environ,
+        "LC_ALL": "C",  # English messages for the checks below
+        "GIT_HTTP_LOW_SPEED_LIMIT": "1000",
+        "GIT_HTTP_LOW_SPEED_TIME": "60",
+    }
+    for attempt in range(1, FETCH_ATTEMPTS + 1):
+        try:
+            git("fetch", "origin", *refs, cwd=cwd, env=env)
+            return
+        except CliError as exc:
+            if not TRANSIENT_FETCH.search(str(exc)) or attempt == FETCH_ATTEMPTS:
+                raise
+            print(
+                f"fetch hit a lock or stall (attempt {attempt}); retrying",
+                file=sys.stderr,
+            )
+            time.sleep(attempt)
 
 
 def read_body(path: str) -> str:
