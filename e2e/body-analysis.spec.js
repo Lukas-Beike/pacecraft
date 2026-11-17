@@ -50,8 +50,9 @@ test("@responsive Body plots measurements and W/kg appears only in the cycling t
   const overview = root.locator("[data-body-overview]");
   await expect(overview.locator("tbody tr")).toHaveCount(2);
   await expect(overview.locator("[data-metric='weight_kg'] td").first()).toHaveText("71,8 kg");
-  await expect(overview.locator("[data-metric='body_fat_pct'] td").first()).toHaveText("19,8 %");
-  await expect(overview.locator("th small")).toHaveText(["06.10.2026", "06.10.2026"]);
+  // #3336: KFA comes from the folds only; the fixture has none, so the row says so.
+  await expect(overview.locator("[data-metric='body_fat_pct'] td").first()).toHaveText("Hautfalten fehlen");
+  await expect(overview.locator("th small")).toHaveText(["06.10.2026"]);
   expect(await overview.evaluate((element) => element.closest("section").parentElement.firstElementChild.contains(element))).toBe(true);
   // The body charts name no provider; only the energy cards label the Garmin estimate (#3099).
   const bodyCards = root.locator(":scope > :not([data-energy], [data-energy-fit])");
@@ -68,8 +69,9 @@ test("@responsive Body plots measurements and W/kg appears only in the cycling t
     state.data.profile.body_fat_pct = "17.5";
     renderBodyAnalysis(state.data.performance.history.body);
   });
-  await expect(root.locator("[data-body-overview] [data-metric='body_fat_pct'] td").first()).toHaveText("17,5 %");
-  await expect(root.locator("[data-body-overview] [data-metric='body_fat_pct'] th small")).toHaveText("Profil");
+  // A profile body fat is not KFA (#3252, #3336): the row still names the missing folds.
+  await expect(root.locator("[data-body-overview] [data-metric='body_fat_pct'] td").first()).toHaveText("Hautfalten fehlen");
+  await expect(root.locator("[data-body-overview] [data-metric='body_fat_pct'] th small")).toHaveCount(0);
   await expect(root.locator("[data-body-metric='body_fat_pct'] circle[data-series='0']")).toHaveCount(14);
   await page.evaluate(() => { state.data.profile.body_fat_pct = ""; });
   await page.evaluate(() => {
@@ -81,7 +83,7 @@ test("@responsive Body plots measurements and W/kg appears only in the cycling t
     }
     renderBodyAnalysis(body);
   });
-  await expect(overview.locator("td:first-of-type")).toHaveText(["—", "—"]);
+  await expect(overview.locator("td:first-of-type")).toHaveText(["—", "Hautfalten fehlen"]);
   await expect(root.locator("circle[data-series]")).toHaveCount(0);
   await expect(root.locator("[data-body-metric]")).toHaveCount(0);
   await expect(root).not.toContainText("Keine Daten");
@@ -115,12 +117,12 @@ test("@responsive Body keeps old measurements dated and long gaps empty", async 
   await page.goto("/#nutrition/body");
   const root = page.locator("#bodyAnalysisCharts");
   await expect(root.locator("[data-body-overview] caption")).toHaveText("Körperwerte");
-  await expect(root.locator("[data-body-overview] th small")).toHaveText(["14.08.2026", "14.08.2026"]);
+  await expect(root.locator("[data-body-overview] th small")).toHaveText(["14.08.2026"]);
   await expect(root.locator("[data-body-metric='weight_kg'] circle[data-series='0']")).toHaveCount(2);
   await root.getByRole("button", { name: "Letzte 14 Tage", exact: true }).click();
   await expect(root.locator("[data-body-metric]")).toHaveCount(0);
   await expect(root).not.toContainText("Keine Daten");
-  await expect(root.locator("[data-body-overview] th small")).toHaveText(["14.08.2026", "14.08.2026"]);
+  await expect(root.locator("[data-body-overview] th small")).toHaveText(["14.08.2026"]);
 });
 
 

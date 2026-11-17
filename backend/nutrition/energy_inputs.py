@@ -61,6 +61,10 @@ class EnergySources:
     resting: Callable[[Any, date], tuple[float, str] | None]
     body_fat: Callable[[Any, date, date], Mapping[date, float]]  # skinfolds
     profile: Callable[[], Mapping[str, str]] = field(default=dict)
+    # The skinfold measurements on or before a day, newest first (#3336).
+    skinfolds: Callable[[Any, date], Sequence[SkinfoldMeasurement]] = field(
+        default=lambda _db, _day: ()
+    )
 
 
 @dataclass(frozen=True)
@@ -85,6 +89,8 @@ RESTING_FROM_SKINFOLDS = "katch_mcardle_skinfold"
 RESTING_FROM_BODY_FAT = "katch_mcardle_body_fat"
 # How far back a weigh-in or body fat still counts for the resting reference.
 RESTING_LOOKBACK_DAYS = 90
+# A skinfold taken up to a day after the view's end still counts (#3336).
+BODY_GRACE_DAYS = 1
 
 
 def own_resting(
@@ -408,14 +414,97 @@ def read_energy_inputs(
             trend, profile_weight, costs, step_m,
         )  # fmt: skip
         day += timedelta(days=1)
-    body_fat = dict(sources.body_fat(db, start, end))
+    body_fat = dict(sources.body_fat(db, start, end + timedelta(days=BODY_GRACE_DAYS)))
     return EnergyInputs(days, body_fat, rmr, rmr_source, step_m, step_source), costs
 
 
 def energy_basis(db: Any, sources: EnergySources, end: date) -> dict[str, Any]:
     """The diagnostics counts of the 12-week view ending on ``end`` (#3100)."""
     inputs, costs = read_energy_inputs(db, sources, history_start(end), end)
-    return diagnostics(inputs, costs, energy_windows(inputs, end))
+    skinfolds, missing = skinfold_state(db, sources, inputs, end)
+    return diagnostics(
+        inputs, costs, energy_windows(inputs, end)
+    ) | skinfold_diagnostics(skinfolds, missing, end)
+
+
+def resolve_body(
+    inputs: EnergyInputs, trend: Mapping[date, float], day: date
+) -> dict[str, Any] | None:
+    """The skinfold in effect on ``day`` with the trend weight's lean mass.
+
+    A measurement up to ``BODY_GRACE_DAYS`` after ``day`` counts: the view
+    ends yesterday because today's intake is partial, not the body (#3336).
+    """
+    since = day - timedelta(days=RESTING_LOOKBACK_DAYS)
+    until = day + timedelta(days=BODY_GRACE_DAYS)
+    measured = [d for d in inputs.body_fat_pct if since <= d <= until]
+    weighed = [d for d in trend if d <= day]
+    if not measured or not weighed:
+        return None
+    fat_pct = inputs.body_fat_pct[max(measured)]
+    weight = trend[max(weighed)]
+    try:
+        lean = lean_mass_kg(weight, fat_pct)
+    except ValueError:
+        return None
+    return {
+        "measured_on": max(measured),
+        "body_fat_pct": fat_pct,
+        "weight_kg": weight,
+        "lean_mass_kg": lean,
+    }
+
+
+def body_missing(
+    skinfolds: Sequence[SkinfoldMeasurement],
+    birth_year_known: bool,
+    inputs: EnergyInputs,
+    day: date,
+) -> str | None:
+    """Why the formula rows have no body on ``day``, or None when they have one.
+
+    ``skinfolds`` are the measurements up to the grace day, newest first.
+    """
+    trend = weight_trend(
+        {d: v.weight_kg for d, v in inputs.days.items() if v.weight_kg is not None}
+    )
+    if resolve_body(inputs, trend, day) is not None:
+        return None
+    newest = skinfolds[0] if skinfolds else None
+    if newest is None:
+        return "no_skinfold"
+    if newest.body_fat_pct is None:
+        return "invalid" if birth_year_known else "no_birth_year"
+    if newest.measured_on < day - timedelta(days=RESTING_LOOKBACK_DAYS):
+        return "skinfold_too_old"
+    if not any(d <= day for d in trend):
+        return "no_weight"
+    return "invalid"
+
+
+def skinfold_state(
+    db: Any, sources: EnergySources, inputs: EnergyInputs, end: date
+) -> tuple[Sequence[SkinfoldMeasurement], str | None]:
+    """The measurements up to the grace day and why the body is missing on ``end``."""
+    skinfolds = sources.skinfolds(db, end + timedelta(days=BODY_GRACE_DAYS))
+    birth_year = str(sources.profile().get("birth_year") or "").strip()
+    return skinfolds, body_missing(skinfolds, bool(birth_year), inputs, end)
+
+
+def skinfold_diagnostics(
+    skinfolds: Sequence[SkinfoldMeasurement], missing: str | None, end: date
+) -> dict[str, int | str | bool | None]:
+    """Counts only (#3336): measurements with a body fat, the newest one's age,
+    and whether the latest window has a body, else the reason code."""
+    valid = [item for item in skinfolds if item.body_fat_pct is not None]
+    return {
+        "skinfolds_with_body_fat": len(valid),
+        "newest_skinfold_age_days": (end - valid[0].measured_on).days
+        if valid
+        else None,
+        "body_resolved": missing is None,
+        "body_missing": missing,
+    }
 
 
 def diagnostics(

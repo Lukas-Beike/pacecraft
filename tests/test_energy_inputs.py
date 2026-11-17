@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import unittest
+from dataclasses import replace
 from datetime import date
 from types import SimpleNamespace
 from typing import Any
@@ -19,8 +20,10 @@ from backend.nutrition.energy_inputs import (
     energy_basis,
     read_energy_inputs,
 )
+from backend.nutrition.energy_view import read_energy_view
 
 DAY1, DAY2, DAY3 = date(2026, 10, 1), date(2026, 10, 2), date(2026, 10, 3)
+DAY4 = date(2026, 10, 4)
 
 DIARY = [
     {"meal_date": "2026-10-01", "kcal": 1200, "protein_g": 50, "carbs_g": 100, "fat_g": 30},
@@ -308,6 +311,102 @@ class StoreAdapterTests(unittest.TestCase):
             energy_inputs, "detail_sets_for_session", return_value=[laps]
         ):
             self.assertEqual(energy_inputs.session_streams("db", "a1"), {})
+
+
+FOLDS = {"chest": 10.0, "abdomen": 20.0, "thigh": 15.0}
+
+
+def folds_on(day: date, fat: float | None = 12.0) -> SkinfoldMeasurement:
+    return SkinfoldMeasurement(day, Sex.MALE, FOLDS, fat)
+
+
+def skinfold_sources(
+    measured: list[SkinfoldMeasurement],
+    *,
+    weights: dict[date, float] | None = None,
+    profile: dict[str, str] | None = None,
+) -> EnergySources:
+    """Sources whose skinfold reads honour the day they are asked for."""
+
+    def until(day: date) -> list[SkinfoldMeasurement]:
+        return sorted(
+            (m for m in measured if m.measured_on <= day),
+            key=lambda m: m.measured_on,
+            reverse=True,
+        )
+
+    return replace(
+        sources(profile=profile or {"height_cm": "180", "birth_year": "1990"}),
+        weights=lambda _db, _s, _e: {DAY1: 70.0} if weights is None else weights,
+        body_fat=lambda _db, _s, end: {
+            m.measured_on: m.body_fat_pct
+            for m in until(end)
+            if m.body_fat_pct is not None
+        },
+        skinfolds=lambda _db, day: until(day),
+    )
+
+
+class SkinfoldBodyTests(unittest.TestCase):
+    """#3336: the formula rows' body, and why it is missing, from a fixture."""
+
+    def test_a_measurement_of_today_fills_the_rows_of_the_view_ending_yesterday(
+        self,
+    ) -> None:
+        # The view ends yesterday (DAY3); the dialog dates a new measurement today.
+        # Only the body-fat read is set, so the same fixture runs on the old reader.
+        src = replace(
+            sources(),
+            body_fat=lambda _db, _s, end: {DAY4: 12.0} if end >= DAY4 else {},
+        )
+        view = read_energy_view(None, src, DAY3)
+        self.assertEqual("2026-10-04", (view["skinfold"] or {}).get("date"))
+        katch = next(r for r in view["rows"] if r["source"] == "katch_mcardle")
+        self.assertIsNotNone(katch["resting_kcal"])
+
+    def test_each_missing_body_names_its_reason(self) -> None:
+        cases = {
+            "no_skinfold": skinfold_sources([]),
+            "skinfold_too_old": skinfold_sources([folds_on(date(2026, 6, 1))]),
+            "no_birth_year": skinfold_sources(
+                [folds_on(DAY2, None)], profile={"height_cm": "180"}
+            ),
+            "invalid": skinfold_sources([folds_on(DAY2, None)]),
+            "no_weight": skinfold_sources([folds_on(DAY2)], weights={}),
+        }
+        for reason, src in cases.items():
+            with self.subTest(reason=reason):
+                view = read_energy_view(None, src, DAY3)
+                self.assertEqual(reason, view["skinfold_missing"])
+                self.assertIsNone(view["skinfold"])
+
+    def test_the_diagnostics_count_measurements_and_the_reason_only(self) -> None:
+        resolved = energy_basis(
+            None,
+            skinfold_sources([folds_on(DAY2), folds_on(DAY1, None)]),
+            DAY3,
+        )
+        self.assertEqual(
+            {
+                "skinfolds_with_body_fat": 1,
+                "newest_skinfold_age_days": 1,
+                "body_resolved": True,
+                "body_missing": None,
+            },
+            {key: resolved[key] for key in SKINFOLD_KEYS},
+        )
+        missing = energy_basis(None, skinfold_sources([]), DAY3)
+        self.assertEqual(
+            (0, None, False, "no_skinfold"), tuple(missing[k] for k in SKINFOLD_KEYS)
+        )
+
+
+SKINFOLD_KEYS = (
+    "skinfolds_with_body_fat",
+    "newest_skinfold_age_days",
+    "body_resolved",
+    "body_missing",
+)
 
 
 if __name__ == "__main__":
