@@ -4,8 +4,8 @@ The exact current schema, its digest and the acceptance rule are in the
 generated [schema reference](schema-reference.md).
 
 Releases preserve the athlete's existing encrypted database. The only
-supported baseline is the schema production runs: version 26, written by
-release 2.0.5. Startup and restore accept it in place, retaining existing
+supported baseline is schema version 26, written by release 2.0.5 and frozen
+as a test fixture. Startup and restore accept it in place, retaining existing
 records and SQLCipher encryption. Older, unknown or newer schemas are rejected
 without deleting or partially changing the data: open a version 21 to 25
 database or backup with release 2.0.5 first (and an older one with release
@@ -14,8 +14,8 @@ mount and `APP_PASSWORD` when recreating the container, and do not replace or
 reset the data directory to resolve a rejected schema. A fresh database is only
 required when the athlete explicitly chooses to start over. Future schema
 changes add explicit, versioned and transactional migrations from the baseline
-with upgrade regression tests; the baseline moves only when production runs a
-newer schema.
+with upgrade regression tests; the baseline moves only after the athlete
+confirms a newer production schema from the diagnostics report.
 The current schema is version 32. This table is the only place that lists
 which releases wrote each schema; other documents name a schema by the release
 that introduced it ("v29, since 2.1.17"), so a release with an unchanged schema
@@ -37,8 +37,8 @@ needs no documentation edit (#3130).
 | 31 | since 2.1.22 |
 | 32 | not released yet |
 
-Versions 27 to 31 keep only their shape digests and enter the chain after the baseline's
-product step and the calendar decision step. Version 10 adds canonical activity detail
+Versions 27 to 31 keep only their shape digests; each enters the chain at its own
+upgrade step. Version 10 adds canonical activity detail
 (streams, laps and zone times), version 11 the food-database mirror, version 12
 stores the Garmin collection as one keyed row per element instead of one large
 `garmin_snapshot` value, version 13 adds the maximum speed of each lap, and

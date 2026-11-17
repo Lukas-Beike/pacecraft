@@ -40,7 +40,7 @@ Evidence: `backend/db/schema.py::configure_cipher`; `backend/db/manager.py::Data
 
 ### Requirement: Baseline schema upgrades
 
-The database SHALL recognize the version-and-shape pair of the baseline, the schema production runs (v26, release 2.0.5, frozen as one fixture and one digest), and of the current schema, executing the versioned steps from the baseline within one rollback-capable migration transaction. A schema that never reached production SHALL get no frozen shape of its own.
+The database SHALL recognize the version-and-shape pair of the baseline (v26, release 2.0.5, frozen as one fixture and one digest), of the released later schemas by their frozen digests, and of the current schema, executing the versioned steps from the baseline within one rollback-capable migration transaction. A schema that never reached production SHALL get no frozen shape of its own.
 
 #### Scenario: Baseline database
 - **WHEN** a populated baseline database is opened by this build
@@ -179,7 +179,7 @@ The database manager SHALL block new leases, wait for active operations and clos
 Evidence: `backend/db/manager.py::DatabaseManager.restore_drain`; `backend/db/manager.py::DatabaseHolder`. Tests: `tests/test_db_manager.py`; `tests/test_database_restore_service.py::test_restores_after_checkpoint_and_drain_then_resumes_both_job_owners`.
 
 ### Requirement: Canonical extension upgrade preservation
-The extended schema SHALL preserve all athlete records, feedback, snapshots, tombstones, plans, sessions, settings, conversations, usage and sync state. Supported populated upgrades, injected-failure rollback, same-build restart and encrypted backup/restore SHALL be verified from the baseline, the schema production runs (v26, release 2.0.5, the only production instance).
+The extended schema SHALL preserve all athlete records, feedback, snapshots, tombstones, plans, sessions, settings, conversations, usage and sync state. Supported populated upgrades, injected-failure rollback, same-build restart and encrypted backup/restore SHALL be verified from the baseline (the frozen v26 fixture, release 2.0.5) and from a database at the released production schema.
 
 #### Scenario: Populated baseline
 - **WHEN** the frozen baseline schema is populated and opened

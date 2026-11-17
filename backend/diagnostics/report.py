@@ -81,7 +81,7 @@ from backend.sync.session_focus_backfill import summarize_session_focus_backfill
 from backend.sync.session_metrics import summarize_session_metrics
 from backend.sync.session_rebundle import summarize_session_rebundle
 from backend.sync.state import last_error_key, last_sync_key
-from backend.sync.stream_backfill import fit_inventory_counts
+from backend.sync.stream_backfill import fit_inventory_counts, fit_value_probe_report
 from backend.sync.wahoo_stream_backfill import wahoo_replay_size
 
 LOGGER = logging.getLogger("intervals_coach")
@@ -468,6 +468,11 @@ class DiagnosticReportService:
                 ),
                 "fit_inventory": section(
                     "fit_inventory", lambda: fit_inventory_counts(db, key_values)
+                ),
+                # Garmin's performance condition and stamina fields, counts only
+                # (#3374, a temporary probe).
+                "fit_value_probe": section(
+                    "fit_value_probe", lambda: fit_value_probe_report(db, key_values)
                 ),
                 # Chest-strap runs of 60 days by DFA-a1 method, counts only (#3273).
                 "dfa_series": section(

@@ -107,7 +107,8 @@ class ReleaseDispatchTests(unittest.TestCase):
         code, out, _ = follow("--version", V, errors=[outage], **chain)
         self.assertEqual(code, 0, out)
         # An outage that outlasts the retries is pending, then the next follow is ok.
-        code, out, _ = follow("--version", V, errors=[outage] * 4, **chain)
+        # Each of the four attempts is a gh read that gh_cli tries twice (#3393).
+        code, out, _ = follow("--version", V, errors=[outage] * 8, **chain)
         self.assertEqual(code, 3, out)
         self.assertIn("pending GitHub unavailable", out)
         self.assertEqual(follow("--version", V, **chain)[0], 0)

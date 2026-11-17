@@ -21,7 +21,7 @@ from backend.planning.revision import PlanningRevisionService
 from backend.providers.canonical_plans import current_observation_mapper_versions
 from backend.sync.state import settle_interrupted_sync_state
 
-# Schema v26, release 2.0.5: the schema production runs and the only baseline.
+# Schema v26, release 2.0.5: the only baseline, kept as a frozen fixture.
 BASELINE_FIXTURE = Path(__file__).with_name("fixtures") / "schema_v26.sql.txt"
 
 
