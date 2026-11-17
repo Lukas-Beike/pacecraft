@@ -116,8 +116,9 @@ also gets one adversarial bypass review before the PR (#3102).
 - Report the result to whoever asked for the change. In the public PR text,
   describe it neutrally ("tighten detection"), never as a step-by-step bypass.
 - Loosening a text guard (an exception for a guarded name in harmless text)
-  starts with a design question to whoever owns the guard, before code;
-  prefer the Write/Edit tools over any shell exception. #3347 found a new
+  starts with a design question to whoever owns the guard, before code, and
+  still gets the bypass review above; prefer the Write/Edit tools over any
+  shell exception. #3347 found a new
   bypass class in each of three review rounds and kept the guard.
 
 Fix valid findings with new commits and rerun the affected checks, then push. A
