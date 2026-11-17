@@ -144,7 +144,8 @@ The full local suite runs only on a selector fallback, to reproduce CI, or on
 request; browser checks start with `--project changed` (#2759).
 A change that adds or alters a user-visible function adds or updates its step in
 `STEPS` of `scripts/ui_walk.mjs` in the same PR, or the PR names why it cannot
-be walked read-only (#3009).
+be walked read-only (#3009); `e2e/ui-walk-fixture.spec.js` checks that step
+against the fixture before the push (#3416).
 Wait for a running suite or review inside the turn (poll its output until the
 verdict); never end a turn with that work in flight (#2735).
 

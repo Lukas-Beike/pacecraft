@@ -28,7 +28,10 @@ python scripts/run_browser_tests.py --project all --keep-going
   projection change affects the specs of every view that shows the read, not
   the files the diff touches: grep `e2e/` for the view's data selectors (such
   as `data-body-metric`) and check `e2e/fixture_runtime.py` for seeded rows the
-  change starts or stops serving (#3315). `--list` resolves the
+  change starts or stops serving (#3315). A change to `STEPS` in
+  `scripts/ui_walk.mjs` also runs `e2e/ui-walk-fixture.spec.js` on at least one
+  project: it runs every walk step against the fixture and fails a step the
+  fixture cannot satisfy (#3416). `--list` resolves the
   selection without Docker or a browser. A spec a selected project does not
   list (a desktop-only spec on mobile) is skipped there with a note.
 - Flaky test: `--repeat-each N --grep "<title regex>"` repeats one test in its
