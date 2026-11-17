@@ -309,6 +309,32 @@ class GarminBodyPushTests(unittest.TestCase):
         self.assertEqual(("55", RemoteLinkState.SYNCED),
                          (self.link().remote_id, self.link().sync_state))  # fmt: skip
 
+    def test_an_accepted_upload_that_never_shows_is_not_sent_again(self):
+        # Final review: a read-back that keeps failing must not add one entry per refresh.
+        self.sdk.hide_uploads = True
+        self.assertEqual(
+            "pending", self.weights.save({"date": "2026-11-15", "kg": 80})["remote"]
+        )
+        for _ in range(3):
+            self.push.retry_pending()
+        self.assertEqual(1, len([c for c in self.sdk.calls if c[0] == "upload"]))
+        self.assertEqual(1, self.counts()["unlinked_uploads"])
+
+    def test_a_change_while_garmin_cannot_be_written_waits_for_it(self):
+        self.weights.save({"date": "2026-11-15", "kg": 80})
+        self.ready = False
+        read = self.weights.remove({"date": "2026-11-15", "confirmed": True})
+        self.assertEqual(("pending", RemoteLinkState.PENDING),
+                         (read["remote"], self.link().sync_state))  # fmt: skip
+        # A day Garmin never held stays off: no backfill.
+        self.assertEqual(
+            "off", self.weights.save({"date": "2026-11-14", "kg": 79})["remote"]
+        )
+        self.ready = True
+        self.assertEqual(1, self.push.retry_pending())
+        self.assertEqual([], self.sdk.days["2026-11-15"])
+        self.assertIsNone(self.link())
+
     def test_two_matching_entries_link_the_newest_and_leave_the_other(self):
         twin = {
             "samplePk": 9,

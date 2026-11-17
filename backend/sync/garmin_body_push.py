@@ -75,6 +75,8 @@ SENT, REMOVED, UNCHANGED, PENDING, NEEDS_WEIGHT, OFF = (
     "needs_weight",
     "off",
 )
+# Marks a sent fingerprint Garmin accepted: it is only searched for, never sent again.
+ACCEPTED: Final = "accepted:"
 _LOGGER = logging.getLogger("intervals_coach")
 # One push at a time, so two saves of one day never upload twice.
 _PUSH_LOCK = threading.Lock()
@@ -107,7 +109,7 @@ class BodyEntry:
     @staticmethod
     def parse(fingerprint: str | None) -> BodyEntry | None:
         try:
-            weight, fat = str(fingerprint).split("|")
+            weight, fat = str(fingerprint).removeprefix(ACCEPTED).split("|")
             return BodyEntry(float(weight), float(fat) if fat else None)
         except ValueError:
             return None
@@ -119,7 +121,9 @@ class _Day:
 
     remote_id: str | None  # the linked entry
     baseline: str | None  # what the linked entry holds
-    sending: str | None  # an upload whose entry is not linked yet
+    # An upload whose entry is not linked yet: its fingerprint, with ``ACCEPTED``
+    # in front once Garmin accepted it.
+    sending: str | None
 
     @staticmethod
     def of(link: RemoteLink | None) -> _Day:
@@ -179,7 +183,8 @@ class GarminBodyPushService:
         """
         try:
             if not self._write_ready():
-                return OFF
+                # A linked day keeps waiting, so its change reaches Garmin later.
+                return PENDING if self._mark_pending(day, linked_only=True) else OFF
             if not _PUSH_LOCK.acquire(timeout=_LOCK_WAIT_S):
                 self._mark_pending(day)
                 return PENDING
@@ -206,7 +211,7 @@ class GarminBodyPushService:
                     for link in self._links.list_for_provider(db, GARMIN, KIND)
                     if link.sync_state is RemoteLinkState.PENDING
                     and link.local_id >= oldest
-                ][:RETRY_BATCH]
+                ][::-1][:RETRY_BATCH]  # newest first
             tried = 0
             for day in days:
                 tried += 1
@@ -258,17 +263,24 @@ class GarminBodyPushService:
             _delete(sdk, day, known.remote_id)
             known.remote_id, known.baseline = None, None
             self._store(day, known)
-        sent = BodyEntry.parse(known.sending)
-        if sent is not None and known.sending != target:
+        sending = (known.sending or "").removeprefix(ACCEPTED) or None
+        sent = BodyEntry.parse(sending)
+        if sent is not None and sending != target:
             # An earlier upload of other values may have landed: remove it.
             stale = _find_all(sdk, day, sent)
             if stale:
                 _delete(sdk, day, stale[-1])
             known.sending = None
             self._store(day, known)
-        if wanted is None or known.remote_id is not None:
-            return
-        found = _find_all(sdk, day, wanted) if known.sending == target else []
+        if wanted is not None and known.remote_id is None:
+            self._send(sdk, day, known, wanted)
+
+    def _send(self, sdk: Any, day: date, known: _Day, wanted: BodyEntry) -> None:
+        """Link the day's upload, sending it only when Garmin may not have it."""
+        target = wanted.fingerprint()
+        found = _find_all(sdk, day, wanted) if known.sending else []
+        if not found and known.sending == ACCEPTED + target:
+            raise _Unlinked  # Garmin has it: search again later, never send it twice
         if not found:
             known.sending = target
             self._store(day, known)  # before the upload, so it is never repeated blind
@@ -279,6 +291,7 @@ class GarminBodyPushService:
             )
             if _rejected(response):
                 raise _Rejected
+            known.sending = ACCEPTED + target
             found = _find_all(sdk, day, wanted)
         if not found:
             raise _Unlinked
@@ -345,10 +358,14 @@ class GarminBodyPushService:
                 extra={"event": "garmin_body_push_state_failed"},
             )
 
-    def _mark_pending(self, day: date) -> None:
+    def _mark_pending(self, day: date, *, linked_only: bool = False) -> bool:
+        """Keep the day pending; with ``linked_only`` only a day Garmin holds."""
         with self._database_manager.reader() as db:
             link = self._links.get(db, KIND, day.isoformat(), GARMIN)
+        if linked_only and link is None:
+            return False
         self._store(day, _Day.of(link), done=False, outcome="failed")
+        return True
 
     def _store(
         self,

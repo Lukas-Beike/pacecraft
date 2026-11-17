@@ -1261,6 +1261,8 @@ function bodyOverviewRow(metric, title, unit, reading, edit) {
 
 // 3-site skinfolds (#3099) per the profile's sex. The read is kept until a save or a removal.
 const SKINFOLD_SITES = { male: ["chest", "abdomen", "thigh"], female: ["triceps", "suprailiac", "thigh"] };
+// The skinfold read's list length (backend/athlete/skinfolds.py LIST_LIMIT).
+const SKINFOLD_READ_LIMIT = 20;
 const SKINFOLD_LABELS = { chest: "Brust", abdomen: "Bauch", thigh: "Oberschenkel", triceps: "Trizeps", suprailiac: "Hüfte" };
 // Jackson-Pollock density (a - b*S + c*S² - d*age) as backend/athlete/body_composition.py (M13).
 const SKINFOLD_DENSITY = { male: [1.10938, 0.0008267, 0.0000016, 0.0002574], female: [1.0994921, 0.0009929, 0.0000023, 0.0001392] };
@@ -1425,6 +1427,8 @@ function bodyFatReceipt(day, folds, done) {
     // Without the read the earlier measurement is unknown, so no undo is offered.
     if (!skinfoldRead?.measurements) return (garmin) => bodyReceipt("Messung", done, garmin, null);
     const before = skinfoldRead.measurements.find((item) => item.date === day);
+    // The read lists at most 20 measurements: an older day's earlier state is unknown.
+    if (!before && skinfoldRead.measurements.length >= SKINFOLD_READ_LIMIT) return (garmin) => bodyReceipt("Messung", done, garmin, null);
     const undo = before ? ["/api/body/skinfolds", { date: day, folds_mm: Object.fromEntries(before.folds_mm.map((fold) => [fold.site, fold.mm])) }] : ["/api/body/skinfolds/remove", { date: day, confirmed: true }];
     return (garmin) => bodyReceipt("Messung", done, garmin, undo);
   }
