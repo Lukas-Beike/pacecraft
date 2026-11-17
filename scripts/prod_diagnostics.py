@@ -614,8 +614,9 @@ def docs_lines(root: Path, schema: int, version: str) -> list[tuple[str, str]]:
         lines = [mark(True, f"{SCHEMA_HISTORY}: schema {schema} row since {since}")]
     else:
         since, before = schema_releases(root, schema, version)
+        last = before or f"the release before {since}"
         closes = "".join(
-            f"; set `| {n} | {first} to {before or 'the release before ' + since} |`"
+            f"; set `| {n} | {first if first == last else f'{first} to {last}'} |`"
             for n, first in sorted(opened.items())
             if n != schema
         )

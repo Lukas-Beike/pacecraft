@@ -738,6 +738,14 @@ class ProdChecksTests(unittest.TestCase):
                 ("FAIL", f"{skill_doc}: production runs missing; {change}"),
             ],
         )
+        # A schema that only one release wrote closes as that release.
+        docs("| 27 | since 2.1.2 |\n| 28 | not released yet |\n",
+             "v27 since release 2.1.2")  # fmt: skip
+        self.assertTrue(
+            prod_diagnostics.docs_lines(root, 28, "2.1.4")[0][1].endswith(
+                "set `| 28 | since 2.1.3 |`; set `| 27 | 2.1.2 |`"
+            )
+        )
         # Two open rows are stale too.
         docs("| 27 | since 2.1.0 |\n| 28 | since 2.1.3 |\n", "v28 since release 2.1.3")
         self.assertEqual(prod_diagnostics.docs_lines(root, 28, "2.1.4")[0][0], "FAIL")
