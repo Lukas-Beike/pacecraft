@@ -44,6 +44,7 @@ from backend.nutrition.energy_inputs import (
     EnergySources,
     read_energy_inputs,
 )
+from backend.providers.source_labels import SourceView, provider_label
 
 # The fit needs this many windows shared by every compared source (#3187).
 MIN_SHARED_WINDOWS = 4
@@ -120,6 +121,23 @@ def _device_prediction(
         return statistics.fmean(values) if values else None
 
     return mean("resting_kcal"), None, mean("calories"), None
+
+
+def _device_label(health: Mapping[str, Mapping[str, Any]], window: EnergyWindow) -> str:
+    """The providers of the window's daily totals, from the source labels the
+    daily health read gives them (#3323); Garmin's while no day has one."""
+    start = window.end - timedelta(days=window.days - 1)
+    labels = {
+        label
+        for n in range(window.days)
+        for label in str(
+            health.get((start + timedelta(days=n)).isoformat(), {}).get("source") or ""
+        ).split(", ")
+        if label
+    }
+    return ", ".join(sorted(labels)) or provider_label(
+        ProviderId.GARMIN, SourceView.DAILY_HEALTH
+    )
 
 
 def _number(value: Any) -> float | None:
@@ -396,6 +414,8 @@ def energy_view(
                 "split": split,
             }
         )
+    # Only the device row is named by the read; the client names the others.
+    rows[list(predictions).index(DEVICE)]["label"] = _device_label(health, latest)
     tdee = latest.adaptive_tdee
     shown, implausible = _gated_resting(
         latest.derived_rmr, predictions["katch_mcardle"][-1], predictions[DEVICE][-1]
