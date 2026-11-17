@@ -13,6 +13,7 @@ from backend.db.manager import DatabaseManager
 from backend.db.repositories import (
     MANUAL_ORIGIN,
     NUTRIENT_COLUMNS,
+    PRODUCT_SIZE_FIELDS,
     FoodDatabaseEntryRepository,
     NutritionProductRepository,
     NutritionRepository,
@@ -22,8 +23,12 @@ from backend.errors import AppError
 from backend.nutrition.components import MealComponentCalculator
 from backend.nutrition.food_database import FoodDatabaseService, matches_all_terms
 from backend.nutrition.food_mirror import FOOD_ENTITY_TYPE, food_history_value
-from backend.nutrition.models import nutrition_number
-from backend.nutrition.photo import _validated_number, validate_packaging_extraction
+from backend.nutrition.models import nutrition_number, stored_size_amount
+from backend.nutrition.photo import (
+    _validated_number,
+    product_sizes,
+    validate_packaging_extraction,
+)
 
 PRODUCT_NOT_FOUND = "Produkt nicht gefunden."
 FOOD_NOT_FOUND = "Datenbankeintrag nicht gefunden."
@@ -243,7 +248,11 @@ class ProductCatalogService:
         if is_food:
             return self._update_database_food(str(product_id), payload)
         current = self.get_product(product_id)
-        merged = {**current, **(payload if isinstance(payload, dict) else {})}
+        payload = payload if isinstance(payload, dict) else {}
+        if payload.get("basis_unit", current["basis_unit"]) != current["basis_unit"]:
+            # A size counts in the basis unit, so it never moves to another one.
+            current = {**current, **dict.fromkeys(PRODUCT_SIZE_FIELDS)}
+        merged = {**current, **payload}
         if merged.get("confidence") is None:
             # The stored value is the product's own; an edit without one keeps it.
             merged["confidence"] = current.get("extraction_confidence")
@@ -554,6 +563,7 @@ class ProductCatalogService:
             raise AppError(400, "Ung\u00fcltige Produktmenge.") from exc
         if not math.isfinite(quantity) or not 0 < quantity <= 10000:
             raise AppError(400, "Produktmenge muss zwischen 0 und 10000 liegen.")
+        quantity, unit = stored_size_amount(product, quantity, unit)
         if unit != product["basis_unit"]:
             raise AppError(
                 400,
@@ -615,6 +625,7 @@ class ProductCatalogService:
         extraction_confidence = candidate.get("confidence")
         return {
             **candidate,
+            **product_sizes(payload, candidate["basis_unit"], strict=True),
             "id": str(payload.get("id") or uuid.uuid4().hex),
             "source": source,
             "provenance": {

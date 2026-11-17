@@ -90,7 +90,9 @@ TimeoutErrorFactory = Callable[[], Exception]
 # changed no exported row, so it kept version 20.
 # Version 22 adds volume_ml and session_id to nutrition_logs.jsonl, and the
 # meal types pre_session and during_session (schema v32).
-PRIVACY_EXPORT_FORMAT_VERSION = 22
+# Version 23 adds portion_amount, portion_unit, package_amount and package_unit
+# to nutrition_products.jsonl (schema v33).
+PRIVACY_EXPORT_FORMAT_VERSION = 23
 
 
 class PrivacyArchiveExportService:

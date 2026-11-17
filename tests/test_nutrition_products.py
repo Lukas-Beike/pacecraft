@@ -22,6 +22,7 @@ from backend.nutrition.photo import (
     validate_packaging_extraction,
 )
 from backend.providers.model_seam import ModelTurn
+from backend.providers.open_food_facts import product_size, project_product
 
 
 class NutritionProductContractTests(unittest.TestCase):
@@ -841,6 +842,138 @@ class NutritionProductContractTests(unittest.TestCase):
         self.assertIsNone(result["protein_g"])
         with self.assertRaises(AppError):
             self.library.product_catalog.calculate_product(saved["id"], 250, "g")
+
+    def test_portion_and_package_are_stored_and_refused_in_another_unit(self):
+        catalog = self.library.product_catalog
+        sizes = ("portion_amount", "portion_unit", "package_amount", "package_unit")
+        saved = catalog.save_product(
+            self.product_payload(
+                portion_amount="30",
+                portion_unit="g",
+                package_amount=450,
+                package_unit="g",
+            )
+        )
+        self.assertEqual([saved[key] for key in sizes], [30.0, "g", 450.0, "g"])
+        # An edit without the sizes keeps them; an empty size clears it.
+        kept = catalog.update_product(saved["id"], {"protein_g": 80.0})
+        self.assertEqual([kept[key] for key in sizes], [30.0, "g", 450.0, "g"])
+        cleared = catalog.update_product(
+            saved["id"], {"package_amount": None, "package_unit": None}
+        )
+        self.assertEqual([cleared[key] for key in sizes], [30.0, "g", None, None])
+        for changes in (
+            {"portion_amount": 30, "portion_unit": "ml"},  # not the basis unit
+            {"portion_amount": 0, "portion_unit": "g"},
+            {"portion_amount": "viel", "portion_unit": "g"},
+            {"portion_amount": None, "portion_unit": "g"},
+            {"package_amount": 450, "package_unit": None},
+            {"package_amount": 450, "package_unit": "kg"},
+            # A product counted per portion takes no size.
+            {
+                "basis_unit": "portion",
+                "basis_amount": 1,
+                "portion_amount": 30,
+                "portion_unit": "g",
+            },
+        ):
+            with (
+                self.subTest(changes=changes),
+                self.assertRaises(AppError) as caught,
+            ):
+                catalog.update_product(saved["id"], changes)
+            self.assertEqual(caught.exception.reason, "invalid_product_size")
+        self.assertEqual(
+            [catalog.get_product(saved["id"])[key] for key in sizes],
+            [30.0, "g", None, None],
+        )
+        # A new basis unit drops the sizes, which counted in the old one.
+        moved = catalog.update_product(saved["id"], {"basis_unit": "ml"})
+        self.assertEqual([moved[key] for key in sizes], [None] * 4)
+
+    def test_a_portion_or_package_counts_its_stored_amount(self):
+        catalog = self.library.product_catalog
+        saved = catalog.save_product(
+            self.product_payload(portion_amount=30, portion_unit="g")
+        )
+        portion = catalog.calculate_product(saved["id"], 1, "portion")
+        self.assertEqual((portion["amount"], portion["unit"]), (30.0, "g"))
+        self.assertEqual(portion["kcal"], 112.8)
+        # Without a stored package, "package" is no amount of this product.
+        for calculate in (
+            lambda: catalog.calculate_product(saved["id"], 1, "package"),
+            lambda: catalog.calculate_components(
+                [{"kind": "local_product", "product_id": saved["id"], "amount": 1, "unit": "package"}]
+            ),
+        ):  # fmt: skip
+            with self.assertRaises(AppError) as caught:
+                calculate()
+            self.assertEqual(caught.exception.reason, "product_size_missing")
+        catalog.update_product(
+            saved["id"], {"package_amount": 450, "package_unit": "g"}
+        )
+        meal = catalog.calculate_components(
+            [
+                {"kind": "local_product", "product_id": saved["id"], "amount": 1, "unit": "portion"},
+                {"kind": "local_product", "product_id": saved["id"], "amount": 0.5, "unit": "package"},
+            ]
+        )  # fmt: skip
+        self.assertEqual(
+            [
+                (item["amount"], item["unit"])
+                for item in meal["nutrition_basis"]["components"]
+            ],
+            [(30.0, "g"), (225.0, "g")],
+        )
+        self.assertEqual(meal["kcal"], round(376 * 2.55))
+
+    def test_a_proposal_keeps_only_the_sizes_in_the_basis_unit(self):
+        candidate = validate_packaging_extraction(
+            {
+                "name": "Synthetic skyr",
+                "basis_amount": 100,
+                "basis_unit": "g",
+                "portion_amount": "150",
+                "portion_unit": "g",
+                "package_amount": 1,
+                "package_unit": "ml",
+            }
+        )["candidate"]
+        self.assertEqual(
+            [candidate[key] for key in ("portion_amount", "portion_unit", "package_amount", "package_unit")],
+            [150.0, "g", None, None],
+        )  # fmt: skip
+
+    def test_open_food_facts_serving_and_package_become_sizes_in_the_basis_unit(self):
+        for amount, unit, text, basis, expected in (
+            (30, "g", "1 Riegel (30 g)", "g", (30.0, "g")),
+            (None, None, "30 g", "g", (30.0, "g")),
+            (None, None, "0,5 l", "ml", (500.0, "ml")),
+            (None, None, "1 kg", "g", (1000.0, "g")),
+            (None, None, "33 cl", "ml", (330.0, "ml")),
+            # Not plain g or ml, another unit than the basis, or no basis.
+            (None, None, "1 Riegel (30 g)", "g", (None, None)),
+            (None, None, "6 x 0,33 l", "ml", (None, None)),
+            (250, "ml", "", "g", (None, None)),
+            (30, "g", "", None, (None, None)),
+            (0, "g", "", "g", (None, None)),
+        ):
+            with self.subTest(text=text, unit=unit, basis=basis):
+                self.assertEqual(product_size(amount, unit, text, basis), expected)
+        food = project_product(
+            {
+                "code": "4006381333999",
+                "product_name": "Synthetic skyr",
+                "nutrition_data_per": "100g",
+                "nutriments": {"energy-kcal_100g": 63},
+                "serving_size": "150 g",
+                "quantity": "450 g",
+            }
+        )
+        self.assertEqual(
+            [food[key] for key in ("portion_amount", "portion_unit", "package_amount", "package_unit")],
+            [150.0, "g", 450.0, "g"],
+        )  # fmt: skip
 
     def test_photo_candidate_is_not_saved_until_explicit_save(self):
         response = {

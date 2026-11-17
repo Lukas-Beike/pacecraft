@@ -11,8 +11,8 @@ description: Plan, implement, or review SQLCipher schema migrations and released
    Record the current version and the baseline from code: the frozen fixture
    is v26 (release 2.0.5), the oldest schema the code opens. Production runs
    v32 since release 2.1.28 (the only production instance; releases per schema
-   in `docs/schema-history.md`); v27 to v31 are accepted by their frozen digests
-   and v32 is the current schema. New changes need evidence from both:
+   in `docs/schema-history.md`); v27 to v32 are accepted by their frozen digests
+   and v33 is the current schema. New changes need evidence from both:
    populated upgrade, rollback and restart from the v26 fixture and from a v32
    database. Move the
    baseline only after the athlete confirms a newer production schema from the

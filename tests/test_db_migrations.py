@@ -40,6 +40,7 @@ from backend.db.schema_history import (
     SHAPE_SCHEMA_V29,
     SHAPE_SCHEMA_V30,
     SHAPE_SCHEMA_V31,
+    SHAPE_SCHEMA_V32,
     released_shape,
     signature_digest,
 )
@@ -406,6 +407,32 @@ def populated_v31_database(db) -> None:
     db.commit()
 
 
+# Schema v32, since release 2.1.28, has no fixture of its own either: v31 after
+# its diary step, with a drink in a session slot next to the baseline's products.
+def populated_v32_database(db) -> None:
+    populated_v31_database(db)
+    migrations._session_fuelling(db)
+    db.execute("PRAGMA user_version = 32")
+    db.execute(
+        "INSERT INTO nutrition_logs(id, meal_date, logged_at, meal_type, "
+        "description, kcal, volume_ml, session_id, created_at, updated_at) VALUES "
+        "('drink', '2026-10-16', '2026-10-16T09:00:00', 'during_session', 'Iso', "
+        "120, 500, 'act_1', ?, ?)",
+        (STAMP, STAMP),
+    )
+    db.commit()
+
+
+def product_sizes(db) -> list[tuple]:
+    return [
+        tuple(row)
+        for row in db.execute(
+            "SELECT id, portion_amount, portion_unit, package_amount, package_unit "
+            "FROM nutrition_products ORDER BY id"
+        )
+    ]
+
+
 class FailAfter:
     """A connection whose statement starting with ``prefix`` fails once it ran."""
 
@@ -494,6 +521,10 @@ class DatabaseSchemaGateTests(unittest.TestCase):
             ],
             [(*row, None, None) for row in BASELINE_DIARY],
         )
+        # Every product keeps its row and has no portion or package yet (#3452).
+        sizes = product_sizes(db)
+        self.assertGreater(len(sizes), 0)
+        self.assertEqual({size[1:] for size in sizes}, {(None,) * 4})
 
     def test_baseline_mirror_rows_become_canonical_products_without_loss(self):
         db = self.connect()
@@ -593,6 +624,10 @@ class DatabaseSchemaGateTests(unittest.TestCase):
             dict(row)
             for row in db.execute("SELECT * FROM nutrition_products ORDER BY id")
         ]
+        # The v33 step adds empty sizes; the v27 rows stay frozen without them.
+        for row in rows:
+            sizes = [row.pop(key) for key in repositories.PRODUCT_SIZE_FIELDS]
+            self.assertEqual(sizes, [None] * 4)
         half = next(row for row in rows if row["id"] == "prod-half")
         # 200 kcal and 3 g fat per 100 g fill 50 g; the ml food fills no nutrient.
         self.assertEqual(
@@ -807,6 +842,7 @@ class DatabaseSchemaGateTests(unittest.TestCase):
             populated_v29_database,
             populated_v30_database,
             populated_v31_database,
+            populated_v32_database,
         ):
             with (
                 self.subTest(populate=populate.__name__),
@@ -1177,6 +1213,93 @@ class DatabaseSchemaGateTests(unittest.TestCase):
                 db.commit()
                 self.assertTrue(database_schema_is_current(db))
 
+    def test_frozen_v32_shape_is_v31_after_its_diary_step(self):
+        db = self.connect()
+        populated_v32_database(db)
+        self.assertEqual(
+            released_shape(database_schema_signature(db)), SHAPE_SCHEMA_V32
+        )
+
+    def test_populated_v32_products_keep_every_row_and_gain_empty_sizes(self):
+        db = self.connect()
+        populated_v32_database(db)
+        tables = self.user_tables(db)
+        columns = self.table_columns(db, tables)
+        before = self.table_rows(db, tables, columns)
+        products = [
+            row[0]
+            for row in db.execute("SELECT id FROM nutrition_products ORDER BY id")
+        ]
+        migrate_schema(db)
+        db.commit()
+        self.assertTrue(database_schema_is_current(db))
+        self.assertEqual(
+            db.execute("PRAGMA user_version").fetchone()[0], CURRENT_SCHEMA_VERSION
+        )
+        self.assertEqual(self.user_tables(db), tables)
+        self.assertEqual(self.table_rows(db, tables, columns), before)
+        self.assertEqual(
+            product_sizes(db), [(id_, None, None, None, None) for id_ in products]
+        )
+        self.assertEqual(
+            tuple(
+                db.execute(
+                    "SELECT volume_ml, session_id FROM nutrition_logs WHERE id = 'drink'"
+                ).fetchone()
+            ),
+            (500.0, "act_1"),
+        )
+        self.assertEqual(db.execute("PRAGMA integrity_check").fetchone()[0], "ok")
+        product = products[0]
+        update = (
+            "UPDATE nutrition_products SET portion_amount = ?, portion_unit = ?, "
+            "package_amount = ?, package_unit = ? WHERE id = ?"
+        )
+        for sizes in ((150, "g", 450.0, "g"), (None, None, 1000, "ml"), (None,) * 4):
+            db.execute(update, (*sizes, product))
+        for sizes in (
+            (150, None, None, None),  # an amount needs its unit
+            (None, "g", None, None),  # and a unit its amount
+            (0, "g", None, None),
+            (-5, "g", None, None),
+            (None, None, "viel", "g"),
+            (150, "portion", None, None),
+            (None, None, 450, "kg"),
+        ):
+            with self.subTest(sizes=sizes), self.assertRaises(sqlite3.IntegrityError):
+                db.execute(update, (*sizes, product))
+
+    def test_product_size_step_failing_leaves_v32_unchanged(self):
+        # After the first and the last new column, and at the final validation.
+        for prefix in (
+            "ALTER TABLE nutrition_products ADD COLUMN portion_amount",
+            "ALTER TABLE nutrition_products ADD COLUMN package_unit",
+            None,
+        ):
+            with self.subTest(after=prefix or "final validation"):
+                db = self.connect()
+                populated_v32_database(db)
+                before = list(db.iterdump())
+                if prefix is None:
+                    with (
+                        mock.patch.object(
+                            migrations,
+                            "database_schema_is_current",
+                            side_effect=[False, False],
+                        ),
+                        self.assertRaisesRegex(RuntimeError, "validiert"),
+                    ):
+                        migrate_schema(db)
+                else:
+                    with self.assertRaisesRegex(RuntimeError, "injected"):
+                        migrate_schema(FailAfter(db, prefix))
+                db.rollback()
+                self.assertEqual(list(db.iterdump()), before)
+                self.assertEqual(db.execute("PRAGMA user_version").fetchone()[0], 32)
+                migrate_schema(db)
+                db.commit()
+                self.assertTrue(database_schema_is_current(db))
+
     def test_populated_v28_database_gains_an_empty_location_with_every_row(self):
         db = self.connect()
         populated_v28_database(db)
@@ -1259,6 +1382,7 @@ class DatabaseSchemaGateTests(unittest.TestCase):
             populated_v29_database,
             populated_v30_database,
             populated_v31_database,
+            populated_v32_database,
         ):
             with self.subTest(populate=populate.__name__):
                 self.assert_encrypted_upgrade(populate)

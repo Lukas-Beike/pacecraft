@@ -185,6 +185,7 @@ EXPORT_FORMAT_FOR_SCHEMA = {
     30: 20,
     31: 21,
     32: 22,
+    33: 23,
 }
 
 # Key/value families (exact key or prefix ending in ":") and what the privacy

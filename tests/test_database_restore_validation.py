@@ -166,9 +166,10 @@ class DatabaseRestoreValidationTests(unittest.TestCase):
 
     def test_validate_accepts_a_populated_baseline_backup(self) -> None:
         # The baseline (v26), released schemas (v28, #2803; v31, the one before
-        # the diary rebuild of #3234) and a current backup restore into the
-        # current schema with their rows, the diary entry included.
-        for version in (26, 28, 31, CURRENT_SCHEMA_VERSION):
+        # the diary rebuild of #3234; v32, the one before product sizes) and a
+        # current backup restore into the current schema with their rows, the
+        # diary entry included.
+        for version in (26, 28, 31, 32, CURRENT_SCHEMA_VERSION):
             with self.subTest(version=version):
                 self.assert_backup_upgrades(version)
 
@@ -196,16 +197,18 @@ class DatabaseRestoreValidationTests(unittest.TestCase):
                     "'weight', 72.5, 'kg', 'athlete_entered', 'manual', NULL, "
                     "'2026-10-15', 'Lokal', 1, 'now', 'now')"
                 )
-                if version == 31:
+                if version in (31, 32):
                     for step in (
                         migrations._canonical_products,
                         migrations._calendar_decisions,
                         migrations._competition_location,
                         migrations._session_curves,
                         migrations._device_workout,
+                        # v32, production's since 2.1.28, before the product sizes.
+                        *([migrations._session_fuelling] if version == 32 else []),
                     ):
                         step(connection)
-                    connection.execute("PRAGMA user_version = 31")
+                    connection.execute(f"PRAGMA user_version = {version}")
                 if version == CURRENT_SCHEMA_VERSION:
                     migrate_schema(connection)
                 if version == 28:

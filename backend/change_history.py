@@ -240,6 +240,10 @@ NUTRITION_PRODUCT_FIELDS = (
     "provenance",
     "extraction_confidence",
     "status",
+    "portion_amount",
+    "portion_unit",
+    "package_amount",
+    "package_unit",
 )
 # A stored database food: its nutrient values and the basis they count on. Only
 # a gap fill and the athlete's edit record it; a refetch replaces the values and

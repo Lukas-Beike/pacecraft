@@ -182,6 +182,54 @@ test("@responsive products show their use count, most used first, and a new one 
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBeTruthy();
 });
 
+// #3452: a stored portion and package are shown on the card and fill the amount as quick choices.
+test("@responsive a product's portion and package fill the amount as quick choices", async ({ page }) => {
+  const productName = `Größenprodukt ${Date.now()}`;
+  await page.goto("/#nutrition/products");
+  await page.locator("#nutritionProductManual").click();
+  const editor = page.locator("#nutritionExtraction");
+  await editor.locator('[name="name"]').fill(productName);
+  await editor.locator('[name="kcal"]').fill("63");
+  await editor.locator('[name="basis_amount"]').fill("100");
+  // A product counted per portion takes no size; per gram it takes both.
+  await editor.locator('[name="basis_unit"]').selectOption("portion");
+  await expect(editor.locator('[name="portion_amount"]')).toBeHidden();
+  await expect(editor.locator('[name="package_amount"]')).toBeHidden();
+  await editor.locator('[name="basis_unit"]').selectOption("g");
+  await expect(editor.getByLabel("Portion (g)")).toBeVisible();
+  await editor.locator('[name="portion_amount"]').fill("150");
+  await editor.locator('[name="package_amount"]').fill("450");
+  await editor.getByRole("button", { name: "Produkt lokal speichern" }).click();
+  const dialog = page.locator("#nutritionProductUseDialog");
+  const amount = page.locator("#nutritionProductUseAmount");
+  await expect(dialog).toBeVisible();
+  // The portion is preselected; a chip fills the amount, which stays editable.
+  const chips = dialog.locator("#nutritionProductUseSizes label.chip");
+  await expect(chips).toHaveText(["1 Portion · 150 g", "½ Packung · 225 g", "1 Packung · 450 g"]);
+  await expect(amount).toHaveValue("150");
+  await expect(dialog.getByRole("radio", { name: "1 Portion · 150 g" })).toBeChecked();
+  await chips.filter({ hasText: "½ Packung" }).click();
+  await expect(amount).toHaveValue("225");
+  await amount.fill("200");
+  await expect(dialog.getByRole("radio", { checked: true })).toHaveCount(0);
+  await page.locator("#nutritionProductUseCancel").click();
+  const cards = await openProductSection(page, "all");
+  const card = cards.filter({ hasText: productName }).first();
+  await expect(card.locator("small")).toContainText("Basis: 100 g · Portion 150 g · Packung 450 g");
+  // Without a stored size there are no chips and the amount starts at the basis.
+  await page.locator("#nutritionProductManual").click();
+  await editor.locator('[name="name"]').fill(`${productName} ohne Größe`);
+  await editor.locator('[name="kcal"]').fill("50");
+  await editor.locator('[name="basis_amount"]').fill("100");
+  await editor.locator('[name="basis_unit"]').selectOption("g");
+  await editor.getByRole("button", { name: "Produkt lokal speichern" }).click();
+  await expect(dialog).toBeVisible();
+  await expect(dialog.locator("#nutritionProductUseSizes")).toBeHidden();
+  await expect(amount).toHaveValue("100");
+  await page.locator("#nutritionProductUseCancel").click();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBeTruthy();
+});
+
 // #3444: "Aufräumen" names the products not used for the chosen days, lists them, removes them
 // in one run and one "Rückgängig" brings all of them back.
 test("@responsive the cleanup counts, lists, removes and restores unused products in one run", async ({ page }) => {

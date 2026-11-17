@@ -657,13 +657,18 @@ function normalizeNutritionProduct(product = {}) {
 
 function nutritionProductForm(product = {}) {
   const form = h("form", "nutrition-product-form");
-  form.innerHTML = `<input name="id" type="hidden"><input name="source" type="hidden"><input name="source_url" type="hidden"><input name="external_id" type="hidden"><input name="provenance" type="hidden"><input name="warnings" type="hidden"><label>Marke<input name="brand" maxlength="120"></label><label>EAN/GTIN<input name="barcode" inputmode="numeric" pattern="[0-9]{8,14}" maxlength="14"></label><div class="nutrition-product-grid"><label>Name<input name="name" required maxlength="160"></label><label>kcal<input name="kcal" type="number" min="0" step="any"></label><label>Kohlenhydrate (g)<input name="carbs_g" type="number" min="0" step="any"></label><label>Protein (g)<input name="protein_g" type="number" min="0" step="any"></label><label>Fett (g)<input name="fat_g" type="number" min="0" step="any"></label><label>Bezugsmenge<input name="basis_amount" type="number" min="0.1" step="0.1" value="100"></label><label>Einheit<select name="basis_unit"><option value="g">pro 100 g</option><option value="ml">pro 100 ml</option><option value="portion">pro Portion</option></select></label></div><p class="fine-print" data-extraction-confidence></p><ul class="nutrition-warning-checklist" data-extraction-warnings aria-label="Hinweise zur Prüfung" hidden></ul><p class="fine-print">Leere Nährwerte bleiben unbekannt. Bitte prüfe jede erkannte Zahl vor dem Speichern.</p><div class="nutrition-actions"><button type="submit" class="push-button">Produkt lokal speichern</button><button type="button" class="secondary-button" data-product-cancel>Abbrechen</button></div>`;
+  form.innerHTML = `<input name="id" type="hidden"><input name="source" type="hidden"><input name="source_url" type="hidden"><input name="external_id" type="hidden"><input name="provenance" type="hidden"><input name="warnings" type="hidden"><label>Marke<input name="brand" maxlength="120"></label><label>EAN/GTIN<input name="barcode" inputmode="numeric" pattern="[0-9]{8,14}" maxlength="14"></label><div class="nutrition-product-grid"><label>Name<input name="name" required maxlength="160"></label><label>kcal<input name="kcal" type="number" min="0" step="any"></label><label>Kohlenhydrate (g)<input name="carbs_g" type="number" min="0" step="any"></label><label>Protein (g)<input name="protein_g" type="number" min="0" step="any"></label><label>Fett (g)<input name="fat_g" type="number" min="0" step="any"></label><label>Bezugsmenge<input name="basis_amount" type="number" min="0.1" step="0.1" value="100"></label><label>Einheit<select name="basis_unit"><option value="g">pro 100 g</option><option value="ml">pro 100 ml</option><option value="portion">pro Portion</option></select></label><label data-product-size="portion">Portion (<span data-size-unit>g</span>)<input name="portion_amount" type="number" min="0.1" max="10000" step="any"></label><label data-product-size="package">Packung (<span data-size-unit>g</span>)<input name="package_amount" type="number" min="0.1" max="10000" step="any"></label></div><p class="fine-print" data-extraction-confidence></p><ul class="nutrition-warning-checklist" data-extraction-warnings aria-label="Hinweise zur Prüfung" hidden></ul><p class="fine-print">Leere Nährwerte bleiben unbekannt. Bitte prüfe jede erkannte Zahl vor dem Speichern.</p><div class="nutrition-actions"><button type="submit" class="push-button">Produkt lokal speichern</button><button type="button" class="secondary-button" data-product-cancel>Abbrechen</button></div>`;
   populateNutritionProductFields(form, product);
   form.elements.source.value = product.source || "packaging_label";
   form.append(h("input", { name: "confidence", type: "hidden", value: nutritionProductValue(product.confidence) }));
   form.elements.basis_amount.required = true;
   form.elements.basis_unit.required = true;
   setNutritionProductBasis(form, product);
+  form.elements.basis_unit.addEventListener("change", () => {
+    for (const name of ["portion_amount", "package_amount"]) form.elements[name].value = "";
+    syncNutritionProductSizes(form);
+  });
+  syncNutritionProductSizes(form);
   setNutritionProductMetadata(form, product);
   setNutritionProductConfidence(form, product);
   if (product.origin && nutritionIsDatabaseProduct(product)) lockNutritionDatabaseFields(form);
@@ -674,6 +679,8 @@ function nutritionProductForm(product = {}) {
 function lockNutritionDatabaseFields(form) {
   form.dataset.database = "true";
   for (const name of ["name", "brand", "barcode", "basis_amount", "basis_unit"]) form.elements[name].disabled = true;
+  // Portion and package sizes belong to own products only (#3452).
+  for (const label of form.querySelectorAll("[data-product-size]")) label.hidden = true;
   // The values come from the database, not from a label photo.
   for (const hint of form.querySelectorAll("p.fine-print")) hint.hidden = true;
   form.querySelector('button[type="submit"]').textContent = "Nährwerte speichern";
@@ -695,6 +702,15 @@ function setNutritionProductBasis(form, product) {
   if (product.basis_unit) return;
   form.elements.basis_unit.prepend(h("option", { value: "", selected: true, disabled: true }, "Bezugsmenge auswählen"));
   form.elements.basis_unit.value = "";
+}
+
+// A size counts in the basis unit; a product counted per portion takes none (#3452).
+function syncNutritionProductSizes(form) {
+  const unit = form.elements.basis_unit.value;
+  for (const label of form.querySelectorAll("[data-product-size]")) {
+    label.hidden = form.dataset.database === "true" || !["g", "ml"].includes(unit);
+    label.querySelector("[data-size-unit]").textContent = unit;
+  }
 }
 
 function setNutritionProductMetadata(form, product) {
@@ -729,6 +745,11 @@ function nutritionProductPayload(form) {
   const payload = { ...data, source, provenance: { ...(provenance && typeof provenance === "object" ? provenance : {}), kind: source, confirmed: true } };
   try { payload.warnings = JSON.parse(data.warnings || "[]"); } catch { payload.warnings = []; }
   for (const key of [...numbers, "basis_amount", "confidence"]) payload[key] = data[key] === "" ? null : Number(data[key]);
+  for (const size of ["portion", "package"]) {
+    const amount = ["g", "ml"].includes(data.basis_unit) && data[`${size}_amount`] ? Number(data[`${size}_amount`]) : null;
+    payload[`${size}_amount`] = amount;
+    payload[`${size}_unit`] = amount === null ? null : data.basis_unit;
+  }
   return payload;
 }
 
@@ -979,7 +1000,7 @@ function nutritionProductCard(product, local) {
       h("span", "nutrition-origin", nutritionOriginText(product)),
       nutritionLastUseText(product) ? h("span", "nutrition-last-use", nutritionLastUseText(product)) : null,
       missing.length ? nutritionIncompleteMark(`Unvollständig, es fehlen: ${missing.join(", ")}`, `⚠ fehlt: ${missing.join(", ")}`) : null),
-    h("small", null, [product.barcode ? `EAN ${product.barcode}` : "", product.basis_amount && product.basis_unit ? `Basis: ${product.basis_amount} ${product.basis_unit}` : "Bezugsmenge unbekannt"].filter(Boolean).join(" · ")));
+    h("small", null, [product.barcode ? `EAN ${product.barcode}` : "", product.basis_amount && product.basis_unit ? `Basis: ${product.basis_amount} ${product.basis_unit}` : "Bezugsmenge unbekannt", ...nutritionProductSizes(product).map(({ label, amount, unit }) => `${label} ${nutritionNumber(amount)} ${unit}`)].filter(Boolean).join(" · ")));
   appendNutritionProductActions(card, product, local);
   return card;
 }
@@ -1009,7 +1030,8 @@ async function useNutritionProduct(product) {
   const dialog = document.querySelector("#nutritionProductUseDialog");
   document.querySelector("#nutritionProductUseName").textContent = product.name || "Lokales Produkt";
   document.querySelector("#nutritionProductUseUnit").textContent = `(in ${unit})`;
-  const amount = document.querySelector("#nutritionProductUseAmount"); amount.value = product.basis_amount || 100;
+  const amount = document.querySelector("#nutritionProductUseAmount");
+  amount.value = renderNutritionProductUseSizes(product, unit) ?? (product.basis_amount || 100);
   const select = document.querySelector("#nutritionProductUseMeal");
   const addButton = document.querySelector("#nutritionProductUseAdd");
   const status = document.querySelector("#nutritionProductUseStatus");
@@ -1027,6 +1049,35 @@ async function useNutritionProduct(product) {
   } finally {
     if (generation === state.sessionGeneration && useSequence === nutritionProductUseSequence) addButton.disabled = false;
   }
+}
+
+// The stored portion and package of a product, in its basis unit (#3452).
+function nutritionProductSizes(product = {}) {
+  return [["portion", "Portion"], ["package", "Packung"]]
+    .filter(([size]) => Number(product[`${size}_amount`]) > 0 && product[`${size}_unit`] === product.basis_unit)
+    .map(([size, label]) => ({ size, label, amount: Number(product[`${size}_amount`]), unit: product[`${size}_unit`] }));
+}
+
+// Chips for 1 Portion, ½ Packung and 1 Packung; returns the portion to start with.
+function renderNutritionProductUseSizes(product, unit) {
+  const field = document.querySelector("#nutritionProductUseSizes");
+  const group = field.querySelector(".chip-group");
+  const choices = nutritionProductSizes(product).flatMap(({ size, amount }) => size === "portion"
+    ? [["1 Portion", amount]]
+    : [["½ Packung", amount / 2], ["1 Packung", amount]]);
+  const portion = choices.find(([text]) => text === "1 Portion")?.[1];
+  group.replaceChildren(...choices.map(([text, value]) => h("label", "chip",
+    h("input", { type: "radio", name: "nutritionProductUseSize", value: String(value), checked: text === "1 Portion" }),
+    h("span", null, `${text} · ${nutritionNumber(value)} ${unit}`))));
+  field.hidden = choices.length === 0;
+  return portion;
+}
+
+function selectNutritionProductUseSize(event) {
+  const amount = document.querySelector("#nutritionProductUseAmount");
+  if (event.target.name === "nutritionProductUseSize") { amount.value = event.target.value; return; }
+  // A typed amount keeps a chip only while it is that chip's amount.
+  for (const chip of document.querySelectorAll("#nutritionProductUseSizes input")) chip.checked = Number(chip.value) === Number(amount.value) && chip.checked;
 }
 
 function nutritionProductUnit(product = {}) {
@@ -1247,6 +1298,7 @@ document.querySelector("#nutritionBarcodeForm")?.addEventListener("submit", (eve
 document.querySelector("#nutritionProductUseCancel")?.addEventListener("click", () => document.querySelector("#nutritionProductUseDialog")?.close());
 document.querySelector("#nutritionProductUseDialog")?.addEventListener("close", () => { nutritionProductForUse = null; ++nutritionProductUseSequence; });
 document.querySelector("#nutritionProductUseForm")?.addEventListener("submit", (event) => { event.preventDefault(); void addNutritionProductToMeal(); });
+document.querySelector("#nutritionProductUseForm")?.addEventListener("input", selectNutritionProductUseSize);
 document.querySelector("#nutritionProductUseCoach")?.addEventListener("click", addNutritionProductToCoachDraft);
 function handleNutritionRoute(route) {
   if (route === "nutrition/products") return;

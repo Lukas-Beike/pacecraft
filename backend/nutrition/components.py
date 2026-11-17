@@ -8,7 +8,7 @@ from typing import Any
 from backend.db.repositories import NutritionProductRepository
 from backend.errors import AppError
 from backend.nutrition.food_database import NUTRIENTS, FoodDatabaseService
-from backend.nutrition.models import nutrition_number
+from backend.nutrition.models import nutrition_number, stored_size_amount
 
 PRODUCT_NOT_FOUND = "Produkt nicht gefunden."
 
@@ -80,6 +80,8 @@ class MealComponentCalculator:
             name, nutrients, origin = self._resolve_local_product(
                 db, item, quantity, unit
             )
+            # The receipt shows the amount a portion or package stands for.
+            quantity, unit = stored_size_amount(origin["product"], quantity, unit)
         elif kind == "database":
             name, nutrients, origin = self._resolve_database(
                 item, quantity, unit, resolved_food
@@ -119,8 +121,8 @@ class MealComponentCalculator:
                 raise AppError(400, "Komponentenreferenz muss eine Zeichenkette sein.")
         quantity = MealComponentCalculator._validated_quantity(item.get("amount"))
         unit = item.get("unit")
-        if not isinstance(unit, str) or unit not in {"g", "ml", "portion"}:
-            raise AppError(400, "Einheit muss g, ml oder portion sein.")
+        if not isinstance(unit, str) or unit not in {"g", "ml", "portion", "package"}:
+            raise AppError(400, "Einheit muss g, ml, portion oder package sein.")
         return kind, quantity, unit
 
     def _resolve_local_product(
@@ -140,6 +142,7 @@ class MealComponentCalculator:
                 "Archivierte Produkte k\u00f6nnen nicht erfasst werden.",
                 reason="nutrition_product_archived",
             )
+        quantity, unit = stored_size_amount(product, quantity, unit)
         if unit != product["basis_unit"]:
             raise AppError(
                 400,
