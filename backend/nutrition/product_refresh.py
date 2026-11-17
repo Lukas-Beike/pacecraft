@@ -6,8 +6,11 @@ fill, known and own values stay, and own products record their change. One run
 at a time; a start while one runs returns its progress. Products are re-checked
 one after another with a pause towards the food sources, which grows after a
 rate limit or a server error. One product's failure is counted and the run goes
-on. Each product holds the maintenance gate on its own, so a restore never
-waits for a whole run. The progress and the last receipt live in memory.
+on. After ``STOP_AFTER_TIMEOUTS`` Open Food Facts timeouts in a row the run
+stops with ``stopped`` ``food_database_timeout``; the products not reached
+keep their values (#3475). Each product holds the maintenance gate on its
+own, so a restore never waits for a whole run. The progress and the last
+receipt live in memory.
 """
 
 from __future__ import annotations
@@ -25,6 +28,8 @@ _LOGGER = logging.getLogger("intervals_coach")
 PACE_SECONDS: Final = 1.5
 # After a rate limit (429) or a server error (5xx) the pause doubles up to this.
 MAX_BACKOFF_SECONDS: Final = 60.0
+# Open Food Facts timeouts in a row that stop a run (#3475).
+STOP_AFTER_TIMEOUTS: Final = 3
 _COUNTS: Final = ("filled", "unchanged", "skipped", "failed")
 
 
@@ -70,6 +75,7 @@ class ProductRefreshRunner:
         *,
         pace_seconds: float = PACE_SECONDS,
         thread_factory: Callable[..., threading.Thread] | None = None,
+        source_timeouts: Callable[[], int] = lambda: 0,
     ) -> None:
         self._products = products
         self._refresh_product = refresh
@@ -77,6 +83,7 @@ class ProductRefreshRunner:
         self._utc_now = utc_now
         self._pace_seconds = pace_seconds
         self._thread_factory = thread_factory or threading.Thread
+        self._source_timeouts = source_timeouts
         self._lock = threading.Lock()
         self._stop_event = threading.Event()
         self._thread: threading.Thread | None = None
@@ -125,6 +132,10 @@ class ProductRefreshRunner:
                 with self._lock:
                     self._state[outcome] += 1
                     self._state["done"] += 1
+                if self._source_timeouts() >= STOP_AFTER_TIMEOUTS:
+                    with self._lock:
+                        self._state["stopped"] = "food_database_timeout"
+                    break
         finally:
             with self._lock:
                 self._state["running"] = False

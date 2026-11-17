@@ -137,6 +137,7 @@ class OpenFoodFactsClient:
         }
         # OFF counts search and product lookups separately, so block them separately.
         self._blocked_until = {"product": 0.0, "search": 0.0}
+        self._timeouts = 0
 
     def search(self, query: str) -> list[dict[str, Any]]:
         # Legacy CGI is OFF's documented text-search endpoint; v2 has no text search.
@@ -218,7 +219,14 @@ class OpenFoodFactsClient:
                 self._cache.popitem(last=False)
             return copy.deepcopy(response.payload)
 
+    @property
+    def consecutive_timeouts(self) -> int:
+        """Requests in a row that timed out; any answer resets it (#3475)."""
+        return self._timeouts
+
     def _request_response(self, request: Request, category: str) -> Any:
+        # An answer, even an error, resets the timeout count; only a timeout adds.
+        timed_out = False
         try:
             return request_json(
                 request, timeout=10, max_bytes=500_000, opener=self._opener
@@ -231,10 +239,15 @@ class OpenFoodFactsClient:
             http.client.HTTPException,
             ProviderInvalidResponse,
             ProviderResponseTooLarge,
-        ):
+        ) as exc:
+            timed_out = isinstance(exc, TimeoutError) or isinstance(
+                getattr(exc, "reason", None), TimeoutError
+            )
             raise AppError(
                 502, UNAVAILABLE, reason="food_database_unavailable"
             ) from None
+        finally:
+            self._timeouts = self._timeouts + 1 if timed_out else 0
 
     def _raise_http_error(self, exc: HTTPError, category: str) -> None:
         if exc.code == 404:

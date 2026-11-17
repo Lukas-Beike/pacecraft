@@ -7,7 +7,8 @@ The first form reads container logs saved from the Unraid MCP; the second the
 app's own redacted recent entries (`/api/logs`). Prints counts per level and
 event name, the Garmin cleanup count, plan-sync error events and the Coach
 tool failures per allow-listed tool and reason code (else the exception
-type), counts only (#3460). Exit 0 no
+type), counts only (#3460), and the failed external requests per service,
+HTTP status and error code (#3475). Exit 0 no
 ERROR entry, 1 ERROR entries found, 2 unreadable input.
 """
 
@@ -25,9 +26,22 @@ from prod_client import ProdError, Session, scratch_path
 EVENT = re.compile(r"^[a-z][a-z0-9_.]{0,63}$")
 LEVEL = re.compile(r"\b(ERROR|WARNING|CRITICAL)\b")
 CLEANUP = "garmin_past_workouts_removed"
-TOOL_FAILED = "coach_tool_failed"
-# A tool name, reason code or exception type; anything else prints as `?`.
-CODE = re.compile(r"^[A-Za-z]\w{0,63}$", re.ASCII)
+# Events counted per key: its label and, per key, the context fields read in
+# order, the first one set counting (#3460, #3475).
+KEYED: dict[str, tuple[str, tuple[tuple[str, ...], ...]]] = {
+    "coach_tool_failed": ("coach tool failed", (("tool",), ("reason", "type"))),
+    "external_request_failed": (
+        "external request failed",
+        (("service",), ("status",), ("error_code", "reason", "error_type")),
+    ),
+    "upstream_network_error": (
+        "upstream network error",
+        (("service",), ("status",), ("error_code", "error_type")),
+    ),
+}
+# A tool or service name, reason code or exception type, or a status number;
+# anything else (a host, a URL, text) prints as `?`, a missing field as `-`.
+CODE = re.compile(r"^[A-Za-z][\w-]{0,63}$", re.ASCII)
 LEVELS = ("CRITICAL", "ERROR", "WARNING")
 
 
@@ -65,22 +79,29 @@ def classify(
     return level, name, count if isinstance(count, int) else 0
 
 
-def tool_failure(raw: dict[str, Any] | str) -> tuple[str, str]:
-    """The tool and reason code (else the exception type) of a failed Coach step."""
+def keys(raw: dict[str, Any] | str, name: str) -> tuple[str, ...]:
+    """The count keys of one keyed event, from its context fields only."""
     entry = parse(raw) if isinstance(raw, str) else raw
     context = (entry or {}).get("context")
     context = context if isinstance(context, dict) else {}
-    return code(context.get("tool")), code(context.get("reason") or context.get("type"))
+    return tuple(
+        code(next((context[f] for f in fields if context.get(f) is not None), None))
+        for fields in KEYED[name][1]
+    )
 
 
 def code(value: Any) -> str:
+    if value is None:
+        return "-"
+    if isinstance(value, int) and not isinstance(value, bool):
+        return str(value)
     return value if isinstance(value, str) and CODE.match(value) else "?"
 
 
 def summarize(entries: list[dict[str, Any] | str], since: str | None) -> dict[str, Any]:
     levels: Counter[str] = Counter()
     events: Counter[tuple[str, str]] = Counter()
-    tools: Counter[tuple[str, str]] = Counter()
+    keyed: Counter[tuple[str, ...]] = Counter()
     cleanup = 0
     for raw in entries:
         found = classify(raw, since)
@@ -88,8 +109,8 @@ def summarize(entries: list[dict[str, Any] | str], since: str | None) -> dict[st
             continue
         level, name, count = found
         cleanup += count
-        if name == TOOL_FAILED:
-            tools[tool_failure(raw)] += 1
+        if name in KEYED:
+            keyed[(KEYED[name][0], *keys(raw, name))] += 1
         if level in LEVELS:
             levels[level] += 1
             events[(level, name)] += 1
@@ -97,7 +118,7 @@ def summarize(entries: list[dict[str, Any] | str], since: str | None) -> dict[st
         "levels": levels,
         "events": events,
         "garmin_removed": cleanup,
-        "tools": tools,
+        "keyed": keyed,
     }
 
 
@@ -112,8 +133,8 @@ def report(summary: dict[str, Any]) -> list[str]:
         if "plan" in name and ("error" in name or "fail" in name)
     )
     lines.append(f"plan sync error events: {plan}")
-    for (tool, reason), count in sorted(summary["tools"].items()):
-        lines.append(f"coach tool failed {tool} {reason} {count}")
+    for key, count in sorted(summary["keyed"].items()):
+        lines.append(f"{' '.join(key)} {count}")
     return lines
 
 
