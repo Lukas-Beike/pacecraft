@@ -124,15 +124,20 @@ class ProductRefreshRunner:
 
     def _run(self, targets: list[dict[str, Any]]) -> None:
         pause = self._pace_seconds
+        # Products in a row whose own refresh timed out; the shared client count
+        # may be stale from an earlier run or moved by other lookups (Gitar #3481).
+        streak = 0
         try:
             for index, product in enumerate(targets):
                 if index and self._stop_event.wait(pause):
                     break
+                before = self._source_timeouts()
                 outcome, pause = self._refresh(product, pause)
                 with self._lock:
                     self._state[outcome] += 1
                     self._state["done"] += 1
-                if self._source_timeouts() >= STOP_AFTER_TIMEOUTS:
+                streak = streak + 1 if self._source_timeouts() > before else 0
+                if streak >= STOP_AFTER_TIMEOUTS:
                     with self._lock:
                         self._state["stopped"] = "food_database_timeout"
                     break

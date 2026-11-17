@@ -233,7 +233,10 @@ class RefreshAllRunnerTests(unittest.TestCase):
         # and the products not reached are not asked.
         products = [{"id": f"off:{n}", "origin": "off"} for n in range(6)]
         calls: list[str] = []
-        timeouts = [0]
+        # The shared client count is stale at 3 from an earlier run: a cached
+        # first product asks nothing, so only this run's own timeouts count
+        # (Gitar #3481).
+        timeouts = [3]
 
         def refresh(product_id: str) -> dict[str, Any]:
             calls.append(product_id)
