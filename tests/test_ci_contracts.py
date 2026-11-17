@@ -616,7 +616,8 @@ class WorkflowSourceTests(unittest.TestCase):
             with self.subTest(workflow=path.name):
                 # Also a line of a multi-line `run: |` block.
                 self.assertNotRegex(
-                    workflow, re.compile(r"^\s*(run: +)?npm (ci|install)\b", re.MULTILINE)
+                    workflow,
+                    re.compile(r"^\s*(run: +)?npm (ci|install)\b", re.MULTILINE),
                 )
                 installs += workflow.count("run: bash .github/scripts/npm_ci_retry.sh")
         self.assertEqual(installs, 4)
