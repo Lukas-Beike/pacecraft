@@ -188,10 +188,11 @@ test("a filled analysis chart is kept and is not listed as missing", () => {
   assert.deepEqual(Array.from(missing), ["Körperfett"], "only the empty chart is listed");
 });
 
-test("body overview uses profile body fat without creating a dated measurement", () => {
+test("body overview shows the folds' body fat, never the profile's, else why not (#3336)", () => {
   const root = Object.assign(new FakeElement("div"), { querySelectorAll: () => [] });
   const state = { data: { profile: { body_fat_pct: "18.5" } } };
-  const { bodyProfileFat, renderBodyAnalysis } = extractFunctions("analysis.js", ["bodySourceShown", "bodyProfileFat", "bodyOverviewDisplayValue", "renderBodyOverviewRow", "renderBodyAnalysis"], {
+  let skinfoldRead = { measurements: [{ date: "2026-11-15", body_fat_pct: 14.3 }] };
+  const { bodyFoldFat, renderBodyAnalysis } = extractFunctions("analysis.js", ["bodySourceShown", "bodyFoldFat", "bodyOverviewDisplayValue", "renderBodyOverviewRow", "renderBodyAnalysis"], {
     state, document: { ...fakeDocument(), getElementById: () => root },
     isPreferredSource: () => true, analysisValidPoint: (p) => p.value != null,
     dateLabel: (v) => v, analysisValue: (v, unit) => `${v} ${unit}`,
@@ -199,23 +200,28 @@ test("body overview uses profile body fat without creating a dated measurement",
     skinfoldCard: () => new FakeElement("section"), energyBodyCards: () => [],
     skinfoldEditButton: () => new FakeElement("button"), openSkinfoldDialog: () => {},
     weightEditButton: () => new FakeElement("button"),
+    get skinfoldRead() { return skinfoldRead; },
   });
   const body = { windows: {} };
   renderBodyAnalysis(body);
   const rows = root.children[0].children[0].children[1].children;
-  assert.equal(textOf(rows[1].children[0].children[1]), "Profil");
-  assert.equal(textOf(rows[1].children[1]), "18.5 %");
+  assert.equal(textOf(rows[1].children[0].children[1]), "2026-11-15");
+  assert.equal(textOf(rows[1].children[1]), "14.3 %");
   // #3252: body fat stays derived (skinfold button); weight is entered with its own pencil.
   assert.equal(rows[1].children[2].children[0].tagName, "BUTTON");
   assert.equal(rows[0].children[2].children[0].tagName, "BUTTON");
-  assert.equal(bodyProfileFat({ body_fat_pct: "" }), null);
-  assert.equal(bodyProfileFat({ body_fat_pct: "18,5" }), 18.5);
-  assert.equal(bodyProfileFat({ body_fat_pct: 71 }), null);
+  // Without folds the row names the gap (the profile's 18.5 % is not KFA); null while loading.
+  skinfoldRead = { measurements: [] };
+  renderBodyAnalysis(body);
+  assert.equal(textOf(root.children[0].children[0].children[1].children[1].children[1]), "Hautfalten fehlen");
+  const unknown = bodyFoldFat({ measurements: [{ date: "2026-11-15", body_fat_pct: null }] });
+  assert.equal(`${unknown.text} ${unknown.note}`, "unbekannt ohne Geburtsjahr");
+  assert.equal(bodyFoldFat(null), null);
 });
 
 
 test("an entered weight shows beside the preferred source and wins its own day", () => {
-  const { renderBodyOverviewRow } = extractFunctions("analysis.js", ["bodySourceShown", "bodyProfileFat", "bodyOverviewDisplayValue", "renderBodyOverviewRow"], {
+  const { renderBodyOverviewRow } = extractFunctions("analysis.js", ["bodySourceShown", "bodyFoldFat", "bodyOverviewDisplayValue", "renderBodyOverviewRow"], {
     state: { data: { profile: {} } }, document: fakeDocument(),
     isPreferredSource: (item, preferred) => item.source_provider === preferred,
     analysisValidPoint: (p) => p.value != null, dateLabel: (v) => v, analysisValue: (v, unit) => `${v} ${unit}`,
@@ -238,7 +244,7 @@ test("an entered weight shows beside the preferred source and wins its own day",
 test("the energy table shows bands, the badge only with a fit, and the fit basis", () => {
   const charts = [];
   const { h } = extractFunctions("components.js", ["h", "SVG_NS", "svgNode"], { document: fakeDocument() });
-  const { energyTable, energyBasisText, energyFitNote, energyFitCharts } = extractFunctions("analysis.js", ["ENERGY_SOURCES", "ENERGY_INSUFFICIENT", "ENERGY_STEP_SOURCES", "ENERGY_IMPLAUSIBLE", "ENERGY_IMPLAUSIBLE_REASON", "ENERGY_PARTS", "energyKcal", "energyNeatInputs", "energyBasisText", "energyBiasText", "energyInfoId", "energyInfo", "energyFitNote", "energySplitRow", "energyFlaggedRows", "energyTable", "energyFitCharts"], {
+  const { energyTable, energyBasisText, energyFitNote, energyFitCharts } = extractFunctions("analysis.js", ["ENERGY_SOURCES", "ENERGY_INSUFFICIENT", "ENERGY_STEP_SOURCES", "ENERGY_IMPLAUSIBLE", "ENERGY_IMPLAUSIBLE_REASON", "ENERGY_PARTS", "ENERGY_FORMULAS", "ENERGY_BODY_MISSING", "energyMissingCell", "energyKcal", "energyNeatInputs", "energyBasisText", "energyBiasText", "energyInfoId", "energyInfo", "energyFitNote", "energySplitRow", "energyFlaggedRows", "energyTable", "energyFitCharts"], {
     bindAnalysisPopover: (button, info) => { button.dataset.popoverTarget = info.id; },
     h, formatWhole: (v) => String(v), dateLabel: (v) => v, analysisValue: (v, unit) => `${v} ${unit}`,
     createStatusChip: (label) => h("span", null, label),
@@ -381,10 +387,10 @@ test("a failed skinfold read re-renders the card instead of loading forever", as
 });
 
 
-test("body overview falls back to Garmin when the profile fat is absent", () => {
+test("body overview leaves a scale's body fat to the chart, not the KFA row (#3336)", () => {
   const root = Object.assign(new FakeElement("div"), { querySelectorAll: () => [] });
   const state = { data: { profile: { body_fat_pct: "" } } };
-  const { renderBodyAnalysis } = extractFunctions("analysis.js", ["bodySourceShown", "bodyProfileFat", "bodyOverviewDisplayValue", "renderBodyOverviewRow", "renderBodyAnalysis"], {
+  const { renderBodyAnalysis } = extractFunctions("analysis.js", ["bodySourceShown", "bodyFoldFat", "bodyOverviewDisplayValue", "renderBodyOverviewRow", "renderBodyAnalysis"], {
     state, document: { ...fakeDocument(), getElementById: () => root },
     isPreferredSource: (item, preferred) => item.source_provider === preferred,
     analysisValidPoint: (point) => point.value != null, dateLabel: (v) => v,
@@ -392,14 +398,13 @@ test("body overview falls back to Garmin when the profile fat is absent", () => 
     bodyHistoryPeriod: "twelveWeeks", bodyMetricChart: () => null,
     skinfoldCard: () => new FakeElement("section"), energyBodyCards: () => [],
     skinfoldEditButton: () => new FakeElement("button"), openSkinfoldDialog: () => {},
-    weightEditButton: () => new FakeElement("button"),
+    weightEditButton: () => new FakeElement("button"), skinfoldRead: null,
   });
   const point = { date: "2026-10-10", value: 16 };
   const body = { preferred_providers: { body_fat_pct: "garmin" }, windows: { "12w": { start: "2026-10-01", end: "2026-10-15", metrics: { body_fat_pct: [{ source_provider: "garmin", points: [point] }] } } } };
   renderBodyAnalysis(body);
   const row = root.children[0].children[0].children[1].children[1];
-  assert.equal(textOf(row.children[0].children[1]), "2026-10-10");
-  assert.equal(textOf(row.children[1]), "16 %");
+  assert.equal(textOf(row.children[1]), "\u2014");
   assert.deepEqual(point, { date: "2026-10-10", value: 16 });
 });
 
@@ -683,4 +688,32 @@ test("the watch-upload sentence appears from 24 hours on and never without a kno
   assert.equal(deviceSyncSentence("2026-11-12T07:00:00Z", now), "Die Uhr hat seit 2 Tagen nichts übertragen.");
   assert.equal(deviceSyncSentence(null, now), "");
   assert.equal(deviceSyncSentence("kein Datum", now), "");
+});
+
+test("an empty formula row names its reason and opens the dialog that fills it (#3336)", () => {
+  const { h } = extractFunctions("components.js", ["h", "SVG_NS", "svgNode"], { document: fakeDocument() });
+  const opened = [];
+  const { energyTable } = extractFunctions("analysis.js", ["ENERGY_SOURCES", "ENERGY_INSUFFICIENT", "ENERGY_STEP_SOURCES", "ENERGY_IMPLAUSIBLE", "ENERGY_IMPLAUSIBLE_REASON", "ENERGY_PARTS", "ENERGY_FORMULAS", "ENERGY_BODY_MISSING", "energyMissingCell", "energyKcal", "energyNeatInputs", "energyBasisText", "energyBiasText", "energyInfoId", "energyInfo", "energySplitRow", "energyFlaggedRows", "energyTable"], {
+    bindAnalysisPopover: () => {}, h, formatWhole: (v) => String(v), dateLabel: (v) => v,
+    analysisValue: (v, unit) => `${v} ${unit}`, createStatusChip: (label) => h("span", null, label),
+    openSkinfoldDialog: () => opened.push("skinfold"), openWeightDialog: () => opened.push("weight"),
+  });
+  const read = (reason) => ({
+    rows: [{ source: "katch_mcardle" }, { source: "cunningham" }, { source: "garmin", resting_kcal: 1700, total_kcal: 2500 }, { source: "own" }],
+    basis: { complete_days: 30, days: 30 }, skinfold: null, skinfold_missing: reason, flagged: null,
+  });
+  const table = energyTable(read("no_skinfold"));
+  const rows = table.children[2].children;
+  const cell = rows[0].children[1];
+  assert.equal(cell.colSpan, 2);
+  assert.equal(textOf(cell), "Hautfalten fehlen");
+  cell.children[0].fire("click");
+  assert.deepEqual([...opened], ["skinfold"]);
+  // Garmin keeps its numbers; the info icon is the chart groups' one, not the yellow badge.
+  assert.equal(rows[2].children.length, 3);
+  assert.equal(table.children[0].children[1].className, "analysis-legend-info analysis-info-icon");
+  const weight = energyTable(read("no_weight")).children[2].children[0].children[1];
+  assert.equal(textOf(weight), "Gewicht fehlt");
+  weight.children[0].fire("click");
+  assert.deepEqual([...opened], ["skinfold", "weight"]);
 });

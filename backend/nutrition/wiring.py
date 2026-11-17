@@ -166,6 +166,7 @@ def build_nutrition(ctx: AppContext) -> NutritionServices:
             streams=session_streams,
             resting=resting,
             body_fat=body_fat,
+            skinfolds=lambda db, day: skinfolds.measurements_on(db, day),
             profile=ctx.athlete_profile.get,
         )
 

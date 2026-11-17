@@ -15,9 +15,19 @@ test("@responsive the diary shows the energy table and explains it behind the in
   await expect(card.locator(".analysis-reference-note")).toHaveCount(0);
   const tooltip = card.locator(".analysis-info-tooltip");
   await expect(tooltip).toBeHidden();
-  await card.getByRole("button", { name: "Berechnung des Energieverbrauchs" }).click();
+  // #3336: the same small info icon as Analyse › Laufen › Entwicklung, not a yellow badge.
+  const info = card.getByRole("button", { name: "Energieverbrauch: Informationen" });
+  await expect(info).toHaveClass("analysis-legend-info analysis-info-icon");
+  expect(await info.evaluate((element) => getComputedStyle(element).backgroundColor)).toBe("rgba(0, 0, 0, 0)");
+  await info.click();
   await expect(tooltip).toBeVisible();
   await expect(tooltip).toContainText("Datenbasis zu gering");
+  // The fixture has no skinfold: both formula rows name it and open the skinfold dialog.
+  const missing = card.locator("[data-energy-missing='no_skinfold']");
+  await expect(missing).toHaveText(["Hautfalten fehlen", "Hautfalten fehlen"]);
+  await missing.first().click();
+  await expect(page.locator("#skinfoldDialog")).toBeVisible();
+  await page.locator("#skinfoldDialogCancel").click();
   await expect(page.locator("#nutritionExpenditure")).toHaveCount(0);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBeTruthy();
 });

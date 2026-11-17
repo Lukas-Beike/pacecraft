@@ -270,8 +270,11 @@ class AthleteGetRoutes:
         `rmr_source`, and `neat` with `days`, `steps_per_day`,
         `session_steps_per_day`, `floors_per_day`, `step_length_m` and
         `step_length_source` (`walks` or `height`) over the latest window's days
-        with steps, or null) and `skinfold` (`date`, `body_fat_pct`, `lean_mass_kg`,
-        or null).
+        with steps, or null), `skinfold` (`date`, `body_fat_pct`, `lean_mass_kg`,
+        or null; a measurement up to a day after `end` counts) and
+        `skinfold_missing` (why the formula rows are empty: `no_skinfold`,
+        `skinfold_too_old`, `no_birth_year`, `no_weight` or `invalid`; null with a
+        body).
 
         Errors: none beyond the common ones.
         """
