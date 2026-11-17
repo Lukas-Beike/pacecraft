@@ -117,7 +117,7 @@ def _series(
 
 # The source of one day's value in the merged body series (#3464).
 ENTERED_LABEL = "eingetragen"
-GARMIN_LABEL = "Garmin"
+GARMIN_LABEL = GARMIN_SOURCE
 
 
 def _day_series(

@@ -425,7 +425,7 @@ class CanonicalBodyInputTests(unittest.TestCase):
                     {
                         linked.isoformat(): (30.5, "eingetragen"),
                         own.isoformat(): (31.0, "eingetragen"),
-                        garmin_day.isoformat(): (32.0, "Garmin"),
+                        garmin_day.isoformat(): (32.0, "Garmin Connect"),
                         differs.isoformat(): (33.0, "eingetragen"),
                     },
                     days,
