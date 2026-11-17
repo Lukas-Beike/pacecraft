@@ -46,7 +46,7 @@ handler's docstring. Regenerate it with
 | GET | `/api/body/body-fat` | Session | no | The body fats the athlete entered as a percentage, newest first. |
 | PUT | `/api/body/body-fat` | Session + CSRF | before access | Save one body fat percentage; one of the same day is replaced. |
 | PUT | `/api/body/body-fat/remove` | Session + CSRF | before access | Remove the entered body fat of one day. |
-| GET | `/api/body/energy` | Session | no | Resting and daily expenditure per source, up to yesterday. |
+| GET | `/api/body/energy` | Session | no | Resting and daily expenditure per source for one diary day. |
 | GET | `/api/body/skinfolds` | Session | no | The athlete's 3-site skinfold measurements, newest first. |
 | PUT | `/api/body/skinfolds` | Session + CSRF | before access | Save one 3-site skinfold measurement; one of the same day is replaced. |
 | PUT | `/api/body/skinfolds/remove` | Session + CSRF | before access | Remove the skinfold measurement of one day. |
@@ -375,12 +375,18 @@ unless `confirmed` is `true`; 400 "Das Datum fehlt oder ist ungültig.";
 
 ### `GET /api/body/energy`
 
-Request: no query, no body.
+Request: optional query `date` (ISO day, today or earlier; default
+yesterday); no body.
 
-Response: 200 with `end`, `windows` (the 12 weekly 4-week window ends,
+Response: 200 with `end` (yesterday, where the windows end), `day` (the
+day the source rows show) and `day_partial` (true for today, whose values
+are still partial), `windows` (the 12 weekly 4-week window ends,
 oldest first), `rows` (`katch_mcardle`, `cunningham`, `device` (the
 wearable's estimate) and `own`, each with `resting_kcal`, `total_kcal`
-and their nominal 95 % `*_band_kcal`; the first three also with
+and their nominal 95 % `*_band_kcal`; the first three show `day`: its
+resting rate, its everyday and sport (0 without a session) and its
+digestion (null without logged meals, then no total); `own` stays on its
+latest 28-day window, named by `window_days`; the first three also with
 `errors_kcal` per window and `mean_error_kcal` over the shared windows,
 and `split` (`resting_kcal`, `neat_kcal`, `sport_kcal`, `tef_kcal`, and
 `shared` with `neat`, `sport`, `tef` true for each part every row
@@ -406,7 +412,8 @@ device value counts from 90 days before up to a day after `end`) and
 `skinfold_too_old`, `no_birth_year`, `no_weight` or `invalid`; null with a
 body).
 
-Errors: none beyond the common ones.
+Errors: 400 "Das Datum fehlt oder ist ungültig."; 400 "Der Tag liegt in
+der Zukunft.".
 
 ### `GET /api/body/skinfolds`
 
@@ -456,14 +463,14 @@ Errors: none beyond the common ones.
 
 ### `PUT /api/body/weight`
 
-Request: JSON body `{"date": "YYYY-MM-DD", "kg": number}`, 20 to 400 kg
+Request: JSON body `{"date": "YYYY-MM-DD", "kg": number}`, 30 to 300 kg
 (comma decimals allowed). The date must not be in the future.
 
 Response: 200 as `GET /api/body/weight`.
 
 Errors: 400 "Das Datum fehlt oder ist ungültig."; 400 "Das Datum darf
 nicht in der Zukunft liegen."; 400 "Das Gewicht braucht einen Wert in
-kg."; 400 "Das Gewicht muss zwischen 20 und 400 kg liegen.".
+kg."; 400 "Das Gewicht muss zwischen 30 und 300 kg liegen.".
 
 ### `PUT /api/body/weight/remove`
 

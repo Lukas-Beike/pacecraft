@@ -28,7 +28,7 @@ from backend.nutrition.energy_inputs import (
     session_streams,
     weighins,
 )
-from backend.nutrition.energy_view import read_energy_view
+from backend.nutrition.energy_view import read_energy_view, selected_day
 from backend.nutrition.food_database import FoodDatabaseService
 from backend.nutrition.food_mirror import FoodDatabaseMirror
 from backend.nutrition.meal_library import NutritionMealLibraryService
@@ -174,11 +174,15 @@ def build_nutrition(ctx: AppContext) -> NutritionServices:
             profile=ctx.athlete_profile.get,
         )
 
-    def energy_view() -> dict[str, Any]:
-        # Up to yesterday: today's intake and Garmin totals are still partial.
-        end = ctx.clock.now().date() - timedelta(days=1)
+    def energy_view(day_text: str | None = None) -> dict[str, Any]:
+        # The windows end yesterday: today's intake and Garmin totals are still
+        # partial. The source rows show the chosen diary day (#3395), else yesterday.
+        today = ctx.clock.now().date()
+        day = selected_day(day_text, today)
         with ctx.database().reader() as db:
-            return read_energy_view(db, energy_sources(), end)
+            return read_energy_view(
+                db, energy_sources(), today - timedelta(days=1), day
+            )
 
     def intervals_sync_service() -> IntervalsNutritionSyncService:
         config = ctx.config()

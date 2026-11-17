@@ -84,6 +84,7 @@ expression. Other inline status lines are not listed.
 | `showProfileCardsState` | `createLoadingState` | (computed) `` `${title} wird geladen…` `` |  |
 | `renderAnalysisTrends` | `createErrorState` | (computed) ` error.message ` |  |
 | `renderRunningBestEfforts` | `markValueMissing` | – |  |
+| `energyPending` | `h(.empty)` | Tag liegt in der Zukunft |  |
 | `energyPending` | `createLoadingState` | Energieverbrauch wird geladen… |  |
 | `energyPending` | `h(.empty)` | Energieverbrauch konnte nicht geladen werden. |  |
 | `renderBodyAnalysis` | `h(.empty)` | Noch keine Körper-Historie verfügbar. |  |

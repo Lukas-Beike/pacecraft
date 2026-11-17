@@ -269,7 +269,7 @@ test("an entered weight shows beside the preferred source and wins its own day",
 test("the energy table shows bands, the badge only with a fit, and the fit basis", () => {
   const charts = [];
   const { h } = extractFunctions("components.js", ["h", "SVG_NS", "svgNode"], { document: fakeDocument() });
-  const { energyTable, energyBasisText, energyFitNote, energyFitCharts } = extractFunctions("analysis.js", ["ENERGY_SOURCES", "ENERGY_INSUFFICIENT", "ENERGY_STEP_SOURCES", "ENERGY_IMPLAUSIBLE", "ENERGY_IMPLAUSIBLE_REASON", "ENERGY_PARTS", "ENERGY_FORMULAS", "ENERGY_BODY_MISSING", "energyMissingCell", "energyKcal", "energyNeatInputs", "energyBodyText", "energyBasisText", "energyBiasText", "energyInfoId", "energyInfo", "energyFitNote", "energySplitRow", "energyFlaggedRows", "energyTable", "energyFitCharts"], {
+  const { energyTable, energyBasisText, energyFitNote, energyFitCharts } = extractFunctions("analysis.js", ["ENERGY_SOURCES", "ENERGY_INSUFFICIENT", "ENERGY_STEP_SOURCES", "ENERGY_IMPLAUSIBLE", "ENERGY_IMPLAUSIBLE_REASON", "ENERGY_PARTS", "ENERGY_FORMULAS", "ENERGY_BODY_MISSING", "energyMissingCell", "energyKcal", "energyNeatInputs", "energyBodyText", "energyBasisText", "energyBiasText", "energyInfoId", "energyInfo", "energyFitNote", "energySplitValue", "energySplitRow", "energyFlaggedRows", "ENERGY_DAY_NOTE", "energyRowNote", "energyTable", "energyFitCharts"], {
     bindAnalysisPopover: (button, info) => { button.dataset.popoverTarget = info.id; },
     h, formatWhole: (v) => String(v), dateLabel: (v) => v, analysisValue: (v, unit) => `${v} ${unit}`,
     createStatusChip: (label) => h("span", null, label),
@@ -347,7 +347,7 @@ test("the energy table shows bands, the badge only with a fit, and the fit basis
 
 test("split A draws one stacked bar per row and hatches only the parts the backend marks shared", () => {
   const { h } = extractFunctions("components.js", ["h", "SVG_NS", "svgNode"], { document: fakeDocument() });
-  const { energySplitRow, energySplitLegend } = extractFunctions("analysis.js", ["ENERGY_IMPLAUSIBLE", "ENERGY_IMPLAUSIBLE_REASON", "ENERGY_PARTS", "energySplitRow", "energySplitLegend"], { h, formatWhole: (v) => String(v) });
+  const { energySplitRow, energySplitLegend } = extractFunctions("analysis.js", ["ENERGY_IMPLAUSIBLE", "ENERGY_IMPLAUSIBLE_REASON", "ENERGY_PARTS", "energySplitValue", "energySplitRow", "energySplitLegend"], { h, formatWhole: (v) => String(v) });
   const split = (resting, neat, sport, tef, shared) => ({ resting_kcal: resting, neat_kcal: neat, sport_kcal: sport, tef_kcal: tef, shared });
   const device = { source: "device", resting_band_kcal: null, split: split(1745, 610, 765, null, { neat: false, sport: false, tef: false }) };
   // Calibrated (k != 1): only digestion is computed alike for every row.
@@ -374,11 +374,12 @@ test("a reset drops the energy read in flight, so a pre-save answer is never sho
   // Gitar #3180: a reused in-flight read used to write the view from before the skinfold save.
   const answers = [];
   let renders = 0;
-  const fns = extractFunctions("analysis.js", ["energyRead", "energyRequest", "energyGeneration", "resetEnergy", "loadEnergy"], {
+  const fns = extractFunctions("analysis.js", ["energyRead", "energyRequest", "energyGeneration", "energyReadDay", "energyDay", "resetEnergy", "loadEnergy"], {
     api: () => new Promise((resolve) => answers.push(resolve)),
     renderBodyAnalysis: () => { renders += 1; }, renderDiaryEnergy: () => { renders += 1; },
     state: { data: {} },
     createLoadingState: () => ({}), h: () => ({}),
+    document: { querySelector: () => null },
   });
   fns.loadEnergy();
   fns.resetEnergy(); // a skinfold save while the first read waits on the gate
@@ -697,7 +698,7 @@ test("the watch-upload sentence appears from 24 hours on and never without a kno
 test("an empty formula row names its reason and opens the dialog that fills it (#3336)", () => {
   const { h } = extractFunctions("components.js", ["h", "SVG_NS", "svgNode"], { document: fakeDocument() });
   const opened = [];
-  const { energyTable } = extractFunctions("analysis.js", ["ENERGY_SOURCES", "ENERGY_INSUFFICIENT", "ENERGY_STEP_SOURCES", "ENERGY_IMPLAUSIBLE", "ENERGY_IMPLAUSIBLE_REASON", "ENERGY_PARTS", "ENERGY_FORMULAS", "ENERGY_BODY_MISSING", "energyMissingCell", "energyKcal", "energyNeatInputs", "energyBodyText", "energyBasisText", "energyBiasText", "energyInfoId", "energyInfo", "energySplitRow", "energyFlaggedRows", "energyTable"], {
+  const { energyTable } = extractFunctions("analysis.js", ["ENERGY_SOURCES", "ENERGY_INSUFFICIENT", "ENERGY_STEP_SOURCES", "ENERGY_IMPLAUSIBLE", "ENERGY_IMPLAUSIBLE_REASON", "ENERGY_PARTS", "ENERGY_FORMULAS", "ENERGY_BODY_MISSING", "energyMissingCell", "energyKcal", "energyNeatInputs", "energyBodyText", "energyBasisText", "energyBiasText", "energyInfoId", "energyInfo", "energySplitValue", "energySplitRow", "energyFlaggedRows", "ENERGY_DAY_NOTE", "energyRowNote", "energyTable"], {
     bindAnalysisPopover: () => {}, h, formatWhole: (v) => String(v), dateLabel: (v) => v,
     analysisValue: (v, unit) => `${v} ${unit}`, createStatusChip: (label) => h("span", null, label),
     openBodyFatDialog: () => opened.push("body fat"), openWeightDialog: () => opened.push("weight"),
@@ -724,7 +725,7 @@ test("an empty formula row names its reason and opens the dialog that fills it (
 
 test("a body fat fallback names its source on both formula rows (#3362)", () => {
   const { h } = extractFunctions("components.js", ["h", "SVG_NS", "svgNode"], { document: fakeDocument() });
-  const { energyTable, energyBasisText } = extractFunctions("analysis.js", ["ENERGY_SOURCES", "ENERGY_INSUFFICIENT", "ENERGY_STEP_SOURCES", "ENERGY_IMPLAUSIBLE", "ENERGY_IMPLAUSIBLE_REASON", "ENERGY_PARTS", "ENERGY_FORMULAS", "ENERGY_BODY_MISSING", "energyMissingCell", "energyKcal", "energyNeatInputs", "energyBodyText", "energyBasisText", "energyBiasText", "energyInfoId", "energyInfo", "energySplitRow", "energyFlaggedRows", "energyTable"], {
+  const { energyTable, energyBasisText } = extractFunctions("analysis.js", ["ENERGY_SOURCES", "ENERGY_INSUFFICIENT", "ENERGY_STEP_SOURCES", "ENERGY_IMPLAUSIBLE", "ENERGY_IMPLAUSIBLE_REASON", "ENERGY_PARTS", "ENERGY_FORMULAS", "ENERGY_BODY_MISSING", "energyMissingCell", "energyKcal", "energyNeatInputs", "energyBodyText", "energyBasisText", "energyBiasText", "energyInfoId", "energyInfo", "energySplitValue", "energySplitRow", "energyFlaggedRows", "ENERGY_DAY_NOTE", "energyRowNote", "energyTable"], {
     bindAnalysisPopover: () => {}, h, formatWhole: (v) => String(v), dateLabel: (v) => v,
     analysisValue: (v, unit) => `${v} ${unit}`, createStatusChip: (label) => h("span", null, label),
   });
@@ -749,6 +750,9 @@ test("a diary render with the shown energy read keeps the table and its open pop
     h: (tag, attributes) => Object.assign(new FakeElement(tag), { id: attributes?.id }),
     energyDiaryCards: () => { built += 1; return [new FakeElement("section")]; },
     energyRead: { rows: [] },
+    // The same diary day as the read holds (#3395).
+    energyReadDay: "2026-11-17",
+    energyDay: () => "2026-11-17",
   });
   totals.after = (node) => { slot = node; };
   context.renderDiaryEnergy();
@@ -773,4 +777,33 @@ test("a body receipt names the Garmin outcome and puts the day back on undo (#34
   assert.equal(JSON.stringify(saved("sent").undo), JSON.stringify(["/api/body/weight", { date: "2026-11-15", kg: 80 }]));
   assert.equal(JSON.stringify(weightReceipt("2026-11-14", "gespeichert")("sent").undo), JSON.stringify(["/api/body/weight/remove", { date: "2026-11-14", confirmed: true }]));
   assert.equal(weightReceipt("2026-11-15", "gelöscht")("removed").text, "Gewicht gelöscht und in Garmin Connect entfernt.");
+});
+
+test("the table labels today's rows bis jetzt, the own row its 28 days, and missing digestion (#3395)", () => {
+  const { h } = extractFunctions("components.js", ["h", "SVG_NS", "svgNode"], { document: fakeDocument() });
+  const { energyTable } = extractFunctions("analysis.js", ["ENERGY_SOURCES", "ENERGY_INSUFFICIENT", "ENERGY_STEP_SOURCES", "ENERGY_IMPLAUSIBLE", "ENERGY_IMPLAUSIBLE_REASON", "ENERGY_PARTS", "ENERGY_FORMULAS", "ENERGY_BODY_MISSING", "energyMissingCell", "energyKcal", "energyNeatInputs", "energyBodyText", "energyBasisText", "energyBiasText", "energyInfoId", "ENERGY_DAY_NOTE", "energyInfo", "energySplitValue", "energySplitRow", "energyFlaggedRows", "energyRowNote", "energyTable"], {
+    bindAnalysisPopover: () => {}, h, formatWhole: (v) => String(v), dateLabel: (v) => v,
+    analysisValue: (v, unit) => `${v} ${unit}`, createStatusChip: (label) => h("span", null, label),
+  });
+  const split = (tef) => ({ resting_kcal: 1700, neat_kcal: 250, sport_kcal: 0, tef_kcal: tef, shared: {} });
+  const read = {
+    day: "2026-11-17", day_partial: true, skinfold_missing: null, flagged: null,
+    basis: { complete_days: 30, days: 30 },
+    body: { source: "profile", label: "Profil", date: null, body_fat_pct: 18.5, lean_mass_kg: 61 },
+    rows: [
+      { source: "katch_mcardle", resting_kcal: 1700, total_kcal: null, split: split(null) },
+      { source: "cunningham", resting_kcal: 1850, total_kcal: null, split: split(null) },
+      { source: "device", label: "Garmin Connect", resting_kcal: 1500, total_kcal: 1900, split: split(null) },
+      { source: "own", resting_kcal: 1800, total_kcal: 2600, window_days: 28 },
+    ],
+  };
+  const rows = energyTable(read).children[2].children;
+  const heads = rows.filter((row) => row.dataset.energySource).map((row) => textOf(row.children[0]));
+  assert.deepEqual(heads, ["Katch-McArdleKFA: Profil · bis jetzt", "CunninghamKFA: Profil · bis jetzt", "Garmin Connectbis jetzt", "Aus deinen DatenØ 28 Tage"]);
+  // Without logged meals a computed row's digestion is not recorded; Garmin has no such part.
+  assert.match(textOf(rows[1]), /Sport 0 · Verdauung nicht erfasst$/);
+  assert.match(textOf(rows[5]), /Verdauung –$/);
+  // A past day carries no "bis jetzt".
+  const past = energyTable({ ...read, day_partial: false }).children[2].children;
+  assert.equal(textOf(past[0].children[0]), "Katch-McArdleKFA: Profil");
 });

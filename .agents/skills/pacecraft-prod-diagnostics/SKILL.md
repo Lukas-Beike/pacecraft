@@ -50,6 +50,10 @@ field not on the allow-list are never printed. Sections with an allow-list:
 `garmin_past_workout_removal`, `garmin_strength_push`, `stream_backfill` and
 `fit_inventory`. A section without an allow-list entry is refused; add the
 entry and its test in `tests/test_prod_checks.py` together with the section.
+A new top-level diagnostics block fails
+`test_every_block_the_report_emits_has_its_section` until it has its entry, or
+a named reason in that test's `NOT_SECTIONED`, so the post-release check can read
+every block a PR adds (#3430).
 `--wait-ready <seconds>` (with or without `--section`) first polls
 `curve_build.status` every 15 s and prints only the state and the wait:
 `ready` continues, a failed or missing build exits 1, and a build still
