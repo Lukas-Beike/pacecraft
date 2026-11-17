@@ -16,7 +16,7 @@ read. A new key needs no entry: it appears here when its write is added.
   `profile` is only set when absent.
 
 <!-- BEGIN GENERATED KEYS -->
-95 keys and 22 key patterns; `<value>` stands for a value the code computes.
+97 keys and 22 key patterns; `<value>` stands for a value the code computes.
 
 | Key | Written by | Deleted by | Export | Reset at start | Purge |
 | --- | --- | --- | --- | --- | --- |
@@ -54,7 +54,9 @@ read. A new key needs no entry: it appears here when its write is added.
 | `fit_value_probe` | backend/sync/stream_backfill.py:count_fit_file | - | yes | - | - |
 | `garmin_activity_detail_backfill` | backend/sync/garmin_activity_details.py:GarminActivityDetailService._save_backfill_state<br>backend/sync/garmin_activity_details.py:GarminActivityDetailService._store_records | - | yes | - | - |
 | `garmin_app_workout_cleanup` | backend/sync/garmin_strength_push.py:GarminStrengthPushService._save_cleanup | - | yes | - | - |
+| `garmin_body_push_counts` | backend/sync/garmin_body_push.py:GarminBodyPushService._count | - | yes | - | - |
 | `garmin_capability_<value>` | backend/sync/garmin.py:GarminSyncStateService.record_capability_failure | backend/providers/garmin_capability.py:clear_capability_state | yes | - | - |
+| `garmin_capability_body_push` | backend/sync/garmin.py:GarminSyncStateService.record_capability_success | backend/providers/garmin_capability.py:clear_capability_state | yes | - | - |
 | `garmin_capability_wellness_backfill_<value>` | backend/sync/garmin.py:GarminSyncStateService.record_capability_success | backend/providers/garmin_capability.py:clear_capability_state | yes | - | - |
 | `garmin_detail_fallback` | backend/sync/garmin_activity_details.py:GarminActivityDetailService._count_fallback | - | yes | - | - |
 | `garmin_detail_issue_kinds` | backend/sync/garmin_activity_details.py:GarminActivityDetailService._count_issues | - | yes | - | - |

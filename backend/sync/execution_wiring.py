@@ -88,6 +88,7 @@ def build_sync_job_execution(
                 stream_backfill_service=ctx.garmin.stream_backfill_service(),
             ),
             plan_push=ctx.garmin.strength_push_service(),
+            body_push=ctx.garmin.body_push_service(),
         )
 
     def executor() -> sync_executor.SyncJobExecutor:

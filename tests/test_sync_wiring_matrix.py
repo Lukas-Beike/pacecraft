@@ -164,6 +164,10 @@ class _Service:
         """The Garmin refresh removes past pushed workouts; the double has none."""
         return 0
 
+    def retry_pending(self) -> int:
+        """The Garmin refresh retries pending body writes (#3403); the double has none."""
+        return 0
+
     def sync_approved(self, *args: Any, **kwargs: Any) -> dict[str, Any]:
         return {**self._hit(), "synced_dates": []}
 
@@ -271,6 +275,7 @@ class Harness:
                 fixture_loader=lambda: no_fixture,
                 activity_detail_service=lambda: service("garmin.details"),
                 strength_push_service=lambda: service("garmin.plan"),
+                body_push_service=lambda: service("garmin.body"),
                 wellness_history_service=lambda: service("garmin.wellness"),
                 stream_backfill_service=lambda: service("garmin.streams"),
             ),

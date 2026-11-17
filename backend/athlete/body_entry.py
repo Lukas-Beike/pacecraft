@@ -75,11 +75,15 @@ class BodyEntryService:
         now: Callable[[], str],
         today: Callable[[], date],
         entry: BodyEntryKind = WEIGHT_ENTRY,
+        on_change: Callable[[date], str] | None = None,
     ) -> None:
         self._database_manager = database_manager
         self._now = now
         self._today = today
         self._entry = entry
+        # Mirrors the changed day to Garmin Connect after the commit (#3403);
+        # its outcome is the receipt's ``remote``.
+        self._on_change = on_change
 
     def read(self) -> dict[str, Any]:
         """Every active entry, newest first, each with its date and value."""
@@ -118,7 +122,7 @@ class BodyEntryService:
                 mapper_version=MAPPER_VERSION,
                 now=self._now(),
             )
-        return self.read()
+        return self._changed(day)
 
     def remove(self, payload: Mapping[str, Any]) -> dict[str, Any]:
         """Retire the entry of one day; the request must be confirmed."""
@@ -128,7 +132,13 @@ class BodyEntryService:
         with self._database_manager.unit_of_work() as db:
             if not self._retire(db, day):
                 raise AppError(404, self._entry.missing)
-        return self.read()
+        return self._changed(day)
+
+    def _changed(self, day: date) -> dict[str, Any]:
+        read = self.read()
+        if self._on_change is not None:
+            read["remote"] = self._on_change(day)
+        return read
 
     def _retire(self, db: Any, day: date) -> int:
         cursor = db.execute(

@@ -25,7 +25,10 @@ python scripts/sonar_check.py --pr <number>
   skipped), `python:S8786` (the `re` patterns through sonarjs), `css:S4666`, and
   through `eslint-plugin-sonarjs` `S3776`, `S3358`, `S4624`, `S8786` and
   `S4036` for JavaScript (#3271, #3381). Every other rule, and
-  `jssecurity:S8707`, is checked only in CI.
+  `jssecurity:S8707`, is checked only in CI. So is the server-side `pythonbugs`
+  engine (`pythonbugs:S2583`, `S2589` and the rest, flow analysis such as a list
+  a worker thread fills read as "always empty"): neither this CLI nor the
+  ratchet runs it, so a clean local run says nothing about it (#3424).
 - Exit 0: no issues. Exit 1: issues, failures or no usable result. Exit 2: bad
   input or the CLI is missing (install it, put it on `PATH`, `sonar auth login`).
   Exit 3: no issues, but the `limit` part was not run; continue and record the

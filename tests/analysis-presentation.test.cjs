@@ -757,3 +757,20 @@ test("a diary render with the shown energy read keeps the table and its open pop
   assert.equal(built, 1, "the same read is not rebuilt");
   assert.equal(slot.children[0], table, "the table node stays, so an open popover stays open");
 });
+
+test("a body receipt names the Garmin outcome and puts the day back on undo (#3403)", () => {
+  let weightRead = { entries: [{ date: "2026-11-15", kg: 80 }] };
+  const { weightReceipt } = extractFunctions("analysis.js", ["bodyReceipt", "weightReceipt"], {
+    get weightRead() { return weightRead; },
+  });
+  const saved = weightReceipt("2026-11-15", "gespeichert");
+  assert.equal(saved("sent").text, "Gewicht gespeichert und an Garmin Connect gesendet.");
+  assert.equal(saved("pending").text, "Gewicht lokal gespeichert, Garmin-Sync fehlgeschlagen – wird erneut versucht.");
+  assert.equal(saved("pending").error, true);
+  assert.equal(saved("needs_weight").text, "Gewicht lokal gespeichert, Garmin braucht ein Gewicht am selben Tag.");
+  assert.equal(saved("off").text, "Gewicht gespeichert.");
+  // Undo restores the day's earlier entry, or removes a day that had none.
+  assert.equal(JSON.stringify(saved("sent").undo), JSON.stringify(["/api/body/weight", { date: "2026-11-15", kg: 80 }]));
+  assert.equal(JSON.stringify(weightReceipt("2026-11-14", "gespeichert")("sent").undo), JSON.stringify(["/api/body/weight/remove", { date: "2026-11-14", confirmed: true }]));
+  assert.equal(weightReceipt("2026-11-15", "gelöscht")("removed").text, "Gewicht gelöscht und in Garmin Connect entfernt.");
+});

@@ -479,6 +479,7 @@ Kind of local entity that a provider-neutral remote link refers to.
 | `planned_unit` |  |
 | `competition` |  |
 | `observation` |  |
+| `body_composition` |  |
 
 ### `RemoteLinkState`
 

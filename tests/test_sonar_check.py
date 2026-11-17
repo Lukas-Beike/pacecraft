@@ -113,6 +113,9 @@ class SonarCheckTests(unittest.TestCase):
         self.assertIn("issues 0, failures 0", out)
         # #3063: a clean local run is not a clean gate.
         self.assertIn("an approximation of the SonarCloud gate", out)
+        # #3424: S2583 failed #3415's gate after a clean local run; the
+        # server-only pythonbugs engine is named as not checked here.
+        self.assertIn("pythonbugs:* (such as S2583, S2589) not checked locally", out)
         self.assertIn("limit:", out)
         self.assertIn("not a pass", out)
 

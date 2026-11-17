@@ -353,6 +353,31 @@ Evidence:
 - `tests/test_metric_export_runner.py`
 - `tests/test_sync_garmin_service.py:test_export_failure_preserves_import_and_does_not_expose_error`
 
+### Requirement: Entered body values mirrored to Garmin Connect
+The system SHALL write, update or delete the Garmin Connect body-composition entry of a day when the athlete saves, changes or removes an entered weight, entered body fat or skinfold measurement of that day, and SHALL write nothing for any other day or value. A failed write SHALL keep the local save and be retried after a later Garmin refresh outside Garmin's rate-limit pause.
+
+#### Scenario: Save, change and removal
+- **WHEN** an entered weight, body fat or skinfold measurement of a day is saved, changed or removed and Garmin can be written
+- **THEN** one entry with the weight and the day's body fat is uploaded at the fixed local time, linked by the `samplePk` whose time, weight and body fat match, a change deletes the linked entry before the new upload, a removal deletes it, and the receipt names the outcome with undo.
+
+#### Scenario: Failure, pause and retry
+- **WHEN** Garmin fails, answers with a rate limit, or the rate-limit pause holds
+- **THEN** the local value stays, the day is pending and the receipt says "lokal gespeichert, Garmin-Sync fehlgeschlagen – wird erneut versucht", a later Garmin refresh retries at most five pending days of the last 30, and an upload whose answer was lost is searched for before any new upload.
+
+#### Scenario: Body fat without a weight
+- **WHEN** a body fat is entered on a day without an entered weight
+- **THEN** it goes with that day's Garmin-measured weight that is not the echo of the app's own upload, and without one nothing is sent and the receipt says Garmin needs a weight on the same day.
+
+Evidence:
+- `backend/sync/garmin_body_push.py:GarminBodyPushService.push`
+- `backend/sync/garmin_body_push.py:GarminBodyPushService.retry_pending`
+- `backend/sync/executor.py:GarminJobAdapter.execute`
+- `tests/test_garmin_body_push.py:test_save_writes_one_entry_and_links_it`
+- `tests/test_garmin_body_push.py:test_edit_updates_and_delete_removes_only_the_linked_entry`
+- `tests/test_garmin_body_push.py:test_a_rate_limit_keeps_the_local_save_and_a_paced_retry_follows`
+- `tests/test_garmin_body_push.py:test_an_upload_with_a_lost_answer_is_never_sent_twice`
+- `tests/test_garmin_body_push.py:test_a_body_fat_goes_with_the_days_garmin_weight_else_waits`
+
 ### Requirement: Explicit Wahoo library-plan export
 The system SHALL export local library workouts to Wahoo only through an explicit Wahoo `plan_push` request with expected payload hashes. It SHALL serialize supported workouts before remote writes, retain Wahoo links separately from Intervals slots, verify readback, and reuse the existing remote plan or matching coach external identity on repeat export. It SHALL refuse Wahoo calendar scheduling and repair operations.
 

@@ -33,10 +33,12 @@ SETUP_HINT = (
 TIMEOUT = 900  # seconds; bounds any hung sonar CLI call
 # The SonarCloud project of this repository; ``list issues`` requires it (#2834).
 SONAR_PROJECT = "Lukas-Beike_pacecraft"
-# The CLI does not apply every rule of the SonarCloud gate the same way (#3063).
+# The CLI does not apply every rule of the SonarCloud gate the same way (#3063),
+# and the server-side pythonbugs engine does not run here at all (#3424).
 GATE_NOTE = (
     "note: an approximation of the SonarCloud gate; rules known to differ: "
-    "python:S1192. scripts/pr_state.py names the gate's own findings."
+    "python:S1192; pythonbugs:* (such as S2583, S2589) not checked locally. "
+    "scripts/pr_state.py names the gate's own findings."
 )
 SAFE_RULE = re.compile(r"[A-Za-z0-9_.:-]{1,80}")
 SAFE_FILE = re.compile(r"[\w./\\@+ -]{1,200}")
