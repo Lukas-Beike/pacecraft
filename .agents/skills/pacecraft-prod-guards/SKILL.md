@@ -13,7 +13,8 @@ The probes have no effect even if accepted: a diagnostics read without a
 session, and a logout of the probe's own session without the CSRF token. The
 script then logs out properly and, for an https address, reads the
 certificate's expiry. Exit 0 every guard holds, 1 a guard failed or the
-certificate expires within the limit, 2 unreachable.
+certificate expires within the limit, 2 unreachable or the secret file
+missing, empty or unreadable (the line names the request step).
 
 A failed guard is a security finding: stop the post-release check and report
 it at once. Never weaken a guard to make this pass.
