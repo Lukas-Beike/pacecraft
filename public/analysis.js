@@ -1224,47 +1224,45 @@ function bodyMetricChart(metric, title, unit, window, period, preferred = {}) {
   return chart;
 }
 
-// KFA stays derived from the folds (#3252): the newest skinfold body fat, else why there is
-// none (#3336). A profile or scale value is not shown as KFA; null while the folds load.
-function bodyFoldFat(read) {
-  if (!read || read.failed) return null;
-  const newest = read.measurements?.[0];
-  if (!newest) return { text: "Hautfalten fehlen" };
-  if (newest.body_fat_pct == null) return { text: "unbekannt", note: "ohne Geburtsjahr" };
-  return { value: newest.body_fat_pct, note: dateLabel(newest.date) };
-}
-
-function bodyOverviewDisplayValue(fold, latest, unit) {
-  if (fold) return fold.value == null ? fold.text : analysisValue(fold.value, unit);
-  if (latest) return analysisValue(latest.value, unit);
-  return "\u2014";
-}
-
-function renderBodyOverviewRow(metric, title, unit, body, preferred) {
+// The newest shown reading of a metric (``local`` only the athlete's own); on its day the
+// athlete's own entry wins over a measurement, as in the current weight (#3252).
+function bodyOverviewLatest(metric, body, preferred, local = false) {
   const readings = Object.values(body?.windows || {}).flatMap((window) => (window.metrics?.[metric] || [])
-    .filter((item) => bodySourceShown(item, preferred[metric]))
+    .filter((item) => bodySourceShown(item, preferred[metric]) && (!local || item.source_provider === null))
     .flatMap((item) => (item.points || []).filter((point) => point.date >= window.start && point.date <= window.end && analysisValidPoint(point))
-      .map((point) => ({ ...point, local: item.source_provider === null }))));
-  // As in the current weight: the newest day wins, and on its day the athlete's own entry
-  // wins over a measurement (#3252).
+      .map((point) => ({ ...point, local: item.source_provider === null, source: item.source_provider === null ? "Lokal" : item.source }))));
   readings.sort((a, b) => a.date.localeCompare(b.date) || Number(a.local) - Number(b.local)
     || (a.observed_at || a.date).localeCompare(b.observed_at || b.date));
-  const fat = metric === "body_fat_pct";
-  const fold = fat ? bodyFoldFat(skinfoldRead) : null;
-  const latest = fat ? null : readings.at(-1);
-  const note = fold ? fold.note : latest && dateLabel(latest.observed_at || latest.date);
-  const row = h("tr", { dataset: { metric } }, h("th", { scope: "row" }, title, note && h("small", null, note)), h("td", null, bodyOverviewDisplayValue(fold, latest, unit)),
-    h("td", null, metric === "body_fat_pct" ? skinfoldEditButton() : weightEditButton()));
-  // Body fat stays derived from the folds: tapping its row opens the skinfold dialog (#3252).
-  if (metric === "body_fat_pct") row.addEventListener("click", (event) => { if (!event.target.closest("button")) openSkinfoldDialog(); });
-  return row;
+  return readings.at(-1) || null;
 }
 
-// 3-site skinfolds (#3099): the latest measurements with their Jackson-Pollock body fat, and
-// a form that stores one measurement per day. The read is kept until a save or a removal.
+// KFA (#3402): the newest of the folds' body fat and an entered percentage, the folds winning a
+// shared day; a scale's or the profile's value is not KFA (#3336). Null while the folds load.
+function bodyFoldFat(read, entered) {
+  if (!read || read.failed) return null;
+  const newest = read.measurements?.[0];
+  const fold = newest?.body_fat_pct == null ? null : newest;
+  if (entered && !(fold && fold.date >= entered.date)) return { value: entered.value, note: `Lokal · ${dateLabel(entered.date)}` };
+  if (fold) return { value: fold.body_fat_pct, note: `Lokal (Hautfalten) · ${dateLabel(fold.date)}` };
+  return newest ? { text: "unbekannt", note: "ohne Geburtsjahr" } : null;
+}
+
+function bodyOverviewReading(metric, body, preferred) {
+  if (metric === "body_fat_pct") return bodyFoldFat(skinfoldRead, bodyOverviewLatest(metric, body, preferred, true)) || { text: "—" };
+  const latest = bodyOverviewLatest(metric, body, preferred);
+  return latest ? { value: latest.value, note: `${latest.source} · ${dateLabel(latest.observed_at || latest.date)}` } : { text: "—" };
+}
+
+function bodyOverviewRow(metric, title, unit, reading, edit) {
+  return h("tr", { dataset: { metric } }, h("th", { scope: "row" }, title, reading.note && h("small", null, reading.note)),
+    h("td", null, reading.value == null ? reading.text : analysisValue(reading.value, unit)), h("td", null, edit));
+}
+
+// 3-site skinfolds (#3099) per the profile's sex. The read is kept until a save or a removal.
 const SKINFOLD_SITES = { male: ["chest", "abdomen", "thigh"], female: ["triceps", "suprailiac", "thigh"] };
 const SKINFOLD_LABELS = { chest: "Brust", abdomen: "Bauch", thigh: "Oberschenkel", triceps: "Trizeps", suprailiac: "Hüfte" };
-const SKINFOLDS_SHOWN = 3;
+// Jackson-Pollock density (a - b*S + c*S² - d*age) as backend/athlete/body_composition.py (M13).
+const SKINFOLD_DENSITY = { male: [1.10938, 0.0008267, 0.0000016, 0.0002574], female: [1.0994921, 0.0009929, 0.0000023, 0.0001392] };
 let skinfoldRead = null;
 let skinfoldRequest = null;
 
@@ -1285,81 +1283,101 @@ function loadSkinfolds() {
     });
 }
 
-function skinfoldRow(measurement, edit) {
-  const folds = measurement.folds_mm.map((fold) => `${fold.label} ${analysisValue(fold.mm, "")}`).join(" · ");
-  // An age outside the equation's fitted range is shown, not refused (M13).
-  const outside = measurement.age_outside_fit && h("small", null, "Alter außerhalb der Studie");
-  const fat = measurement.body_fat_pct == null
-    ? h("span", null, "unbekannt", h("small", null, "ohne Geburtsjahr"))
-    : h("span", null, analysisValue(measurement.body_fat_pct, "%"), outside);
-  return h("tr", { dataset: { skinfold: measurement.date } },
-    h("th", { scope: "row" }, dateLabel(measurement.date), h("small", null, `${folds} mm`)), h("td", null, fat), h("td", null, edit));
-}
-
 function skinfoldDialogSites() {
   return SKINFOLD_SITES[state.data?.profile?.sex === "female" ? "female" : "male"];
 }
 
-// Picking a day that has a measurement fills the dialog with it and offers its removal.
-function fillSkinfoldDialog() {
-  const form = document.querySelector("#skinfoldDialogForm");
-  const measured = skinfoldRead?.measurements.find((item) => item.date === form.elements.date.value);
+// Siri body fat (%) from the folds in mm, or null outside the accepted folds and ages.
+function skinfoldBodyFat(sex, folds, age) {
+  if (!(age >= 18 && age <= 80) || folds.some((mm) => !(mm >= 2 && mm <= 80))) return null;
+  const total = folds.reduce((sum, mm) => sum + mm, 0);
+  const [a, b, c, d] = SKINFOLD_DENSITY[sex];
+  return Math.round((495 / (a - b * total + c * total ** 2 - d * age) - 450) * 10) / 10;
+}
+
+// Body fat (#3402): one dialog takes a percentage or the folds; a day with an entry of the
+// shown mode fills it and offers its removal.
+let bodyFatEntries = [];
+let bodyFatMode = "pct";
+
+function showSkinfoldResult() {
+  const form = document.querySelector("#bodyFatDialogForm");
+  const profile = state.data?.profile || {};
+  const age = Number(form.elements.date.value.slice(0, 4)) - Number(profile.birth_year);
+  const folds = skinfoldDialogSites().map((site) => Number(String(form.elements[site].value).replace(",", ".")));
+  const fat = profile.birth_year ? skinfoldBodyFat(profile.sex === "female" ? "female" : "male", folds, age) : null;
+  document.querySelector("#bodyFatDialogResult").textContent = fat == null ? "" : `Ergibt ${analysisValue(fat, "%")} Körperfett`;
+}
+
+function fillBodyFatDialog() {
+  const form = document.querySelector("#bodyFatDialogForm");
+  const day = form.elements.date.value;
+  const entry = bodyFatEntries.find((item) => item.date === day);
+  const measured = skinfoldRead?.measurements?.find((item) => item.date === day);
+  form.elements.pct.value = entry ? String(entry.pct) : "";
   const values = Object.fromEntries((measured?.folds_mm || []).map((fold) => [fold.site, fold.mm]));
   for (const site of skinfoldDialogSites()) form.elements[site].value = values[site] ?? "";
-  document.querySelector("#skinfoldDialogRemove").hidden = !measured;
+  document.querySelector("#bodyFatDialogRemove").hidden = !(bodyFatMode === "folds" ? measured : entry);
+  showSkinfoldResult();
 }
 
-function openSkinfoldDialog() {
-  bindSkinfoldDialog();
-  const form = document.querySelector("#skinfoldDialogForm");
-  // The fold fields sit in the dialog's own form grid, after the date, for the profile's sex.
+// A hidden field is disabled too, so the form validates only the shown mode.
+function setBodyFatMode(mode) {
+  bodyFatMode = mode;
+  const form = document.querySelector("#bodyFatDialogForm");
+  for (const button of form.querySelectorAll("[data-body-fat-mode]")) button.setAttribute("aria-pressed", String(button.dataset.bodyFatMode === mode));
+  for (const input of [form.elements.pct, ...skinfoldDialogSites().map((site) => form.elements[site])]) {
+    const shown = (input.name === "pct") === (mode === "pct");
+    input.disabled = !shown;
+    input.closest("label").hidden = !shown;
+  }
+  document.querySelector("#bodyFatDialogResult").hidden = mode !== "folds";
+  fillBodyFatDialog();
+}
+
+async function openBodyFatDialog() {
+  bindBodyFatDialog();
+  const form = document.querySelector("#bodyFatDialogForm");
+  // The fold fields sit in the dialog's own form grid, after the percentage, for the profile's sex.
   form.querySelectorAll("[data-skinfold-site]").forEach((label) => label.remove());
-  form.elements.date.closest("label").after(...skinfoldDialogSites().map((site) => h("label", { dataset: { skinfoldSite: site } }, `${SKINFOLD_LABELS[site]} (mm)`,
+  form.elements.pct.closest("label").after(...skinfoldDialogSites().map((site) => h("label", { dataset: { skinfoldSite: site } }, `${SKINFOLD_LABELS[site]} (mm)`,
     h("input", { name: site, type: "number", min: "2", max: "80", step: "0.5", inputMode: "decimal", required: true }))));
   form.elements.date.value = timezoneDateKey(state.data?.profile?.timezone, new Date());
-  document.querySelector("#skinfoldDialogStatus").textContent = "";
+  document.querySelector("#bodyFatDialogStatus").textContent = "";
   for (const button of form.querySelectorAll("button")) button.disabled = false;
-  fillSkinfoldDialog();
-  document.querySelector("#skinfoldDialog").showModal();
+  // Read before opening, so a late answer never overwrites what the athlete typed.
+  try { bodyFatEntries = (await api("/api/body/body-fat")).entries; } catch { bodyFatEntries = []; }
+  setBodyFatMode("pct");
+  document.querySelector("#bodyFatDialog").showModal();
 }
 
-async function sendSkinfolds(path, payload, button) {
-  const status = document.querySelector("#skinfoldDialogStatus");
-  button.disabled = true;
-  try {
-    skinfoldRead = await api(path, { method: "PUT", body: JSON.stringify(payload) });
-    resetEnergy();
-    document.querySelector("#skinfoldDialog").close();
-    renderBodyAnalysis(state.data?.performance?.history?.body);
-    renderDiaryEnergy();
-    return true;
-  } catch (error) {
-    status.textContent = error.message;
-    button.disabled = false;
-    return false;
-  }
-}
-
-let skinfoldDialogBound = false;
+let bodyFatDialogBound = false;
 
 // Bound on the first open, so loading the script touches no dialog.
-function bindSkinfoldDialog() {
-  const form = document.querySelector("#skinfoldDialogForm");
-  if (skinfoldDialogBound || !form) return;
-  skinfoldDialogBound = true;
-  form.elements.date.addEventListener("change", fillSkinfoldDialog);
+function bindBodyFatDialog() {
+  const form = document.querySelector("#bodyFatDialogForm");
+  if (bodyFatDialogBound || !form) return;
+  bodyFatDialogBound = true;
+  form.elements.date.addEventListener("change", fillBodyFatDialog);
+  form.addEventListener("input", (event) => { if (event.target.closest("[data-skinfold-site]")) showSkinfoldResult(); });
+  for (const button of form.querySelectorAll("[data-body-fat-mode]")) button.addEventListener("click", () => setBodyFatMode(button.dataset.bodyFatMode));
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
-    const folds = Object.fromEntries(skinfoldDialogSites().map((site) => [site, form.elements[site].value]));
-    if (await sendSkinfolds("/api/body/skinfolds", { date: form.elements.date.value, folds_mm: folds }, document.querySelector("#skinfoldDialogSave"))) toast("Messung gespeichert.");
+    const day = form.elements.date.value;
+    const folds = bodyFatMode === "folds";
+    const [path, payload] = folds
+      ? ["/api/body/skinfolds", { date: day, folds_mm: Object.fromEntries(skinfoldDialogSites().map((site) => [site, form.elements[site].value])) }]
+      : ["/api/body/body-fat", { date: day, pct: form.elements.pct.value }];
+    if (await sendBodyEntry("bodyFatDialog", path, payload, document.querySelector("#bodyFatDialogSave"))) toast(folds ? "Messung gespeichert." : "Körperfett gespeichert.");
   });
-  const remove = document.querySelector("#skinfoldDialogRemove");
+  const remove = document.querySelector("#bodyFatDialogRemove");
   remove.addEventListener("click", async () => {
     const day = form.elements.date.value;
-    if (!await requestConfirmation(`Messung vom ${dateLabel(day)} löschen?`, { title: "Messung löschen?", confirmLabel: "Löschen" })) return;
-    await sendSkinfolds("/api/body/skinfolds/remove", { date: day, confirmed: true }, remove);
+    const [name, path] = bodyFatMode === "folds" ? ["Messung", "/api/body/skinfolds/remove"] : ["Körperfett", "/api/body/body-fat/remove"];
+    if (!await requestConfirmation(`${name} vom ${dateLabel(day)} löschen?`, { title: `${name} löschen?`, confirmLabel: "Löschen" })) return;
+    await sendBodyEntry("bodyFatDialog", path, { date: day, confirmed: true }, remove);
   });
-  document.querySelector("#skinfoldDialogCancel").addEventListener("click", () => document.querySelector("#skinfoldDialog").close());
+  document.querySelector("#bodyFatDialogCancel").addEventListener("click", () => document.querySelector("#bodyFatDialog").close());
 }
 
 // The athlete's own weigh-ins (#3252): the dialog lists them to fill a day that has one.
@@ -1383,19 +1401,19 @@ async function openWeightDialog() {
   fillWeightDialog();
 }
 
-// A saved or removed weigh-in reaches the body values and the energy table on the next read.
-async function sendWeight(path, payload, button) {
-  const status = document.querySelector("#weightDialogStatus");
+// A saved or removed body value reaches the body values and the energy table on the next read.
+async function sendBodyEntry(dialog, path, payload, button) {
+  const status = document.querySelector(`#${dialog}Status`);
   button.disabled = true;
   try {
-    weightRead = await api(path, { method: "PUT", body: JSON.stringify(payload) });
+    await api(path, { method: "PUT", body: JSON.stringify(payload) });
   } catch (error) {
     status.textContent = error.message;
     button.disabled = false;
     return false;
   }
-  resetEnergy();
-  document.querySelector("#weightDialog").close();
+  resetSkinfolds();
+  document.querySelector(`#${dialog}`).close();
   renderDiaryEnergy();
   // The save stands; a failed re-read is reported outside the closed dialog.
   try {
@@ -1417,42 +1435,21 @@ function bindWeightDialog() {
   form.elements.date.addEventListener("change", fillWeightDialog);
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
-    if (await sendWeight("/api/body/weight", { date: form.elements.date.value, kg: form.elements.kg.value }, document.querySelector("#weightDialogSave"))) toast("Gewicht gespeichert.");
+    if (await sendBodyEntry("weightDialog", "/api/body/weight", { date: form.elements.date.value, kg: form.elements.kg.value }, document.querySelector("#weightDialogSave"))) toast("Gewicht gespeichert.");
   });
   const remove = document.querySelector("#weightDialogRemove");
   remove.addEventListener("click", async () => {
     const day = form.elements.date.value;
     if (!await requestConfirmation(`Gewicht vom ${dateLabel(day)} löschen?`, { title: "Gewicht löschen?", confirmLabel: "Löschen" })) return;
-    await sendWeight("/api/body/weight/remove", { date: day, confirmed: true }, remove);
+    await sendBodyEntry("weightDialog", "/api/body/weight/remove", { date: day, confirmed: true }, remove);
   });
   document.querySelector("#weightDialogCancel").addEventListener("click", () => document.querySelector("#weightDialog").close());
 }
 
-function weightEditButton() {
-  const button = messageActionButton("edit", "Gewicht eintragen");
-  button.addEventListener("click", () => void openWeightDialog());
+function bodyEditButton(label, open) {
+  const button = messageActionButton("edit", label);
+  button.addEventListener("click", () => void open());
   return button;
-}
-
-function skinfoldEditButton() {
-  const button = messageActionButton("edit", "Hautfalten eintragen");
-  button.addEventListener("click", openSkinfoldDialog);
-  return button;
-}
-
-function skinfoldCard() {
-  if (!skinfoldRead) {
-    loadSkinfolds();
-    return h("section", "analysis-chart-card", createLoadingState("Hautfalten werden geladen…"));
-  }
-  if (skinfoldRead.failed) return h("section", "analysis-chart-card", h("p", "empty", "Hautfalten konnten nicht geladen werden."));
-  const shown = skinfoldRead.measurements.slice(0, SKINFOLDS_SHOWN);
-  // The button sits on the current (newest) measurement, or on the empty row.
-  const rows = shown.length
-    ? shown.map((measurement, index) => skinfoldRow(measurement, index === 0 ? skinfoldEditButton() : null))
-    : h("tr", null, h("th", { scope: "row" }, "Noch keine Messung"), h("td"), h("td", null, skinfoldEditButton()));
-  return h("section", { className: "analysis-chart-card", dataset: { skinfolds: "" } },
-    h("table", { className: "current-performance-table" }, h("caption", null, "Hautfalten"), h("tbody", null, rows)));
 }
 
 // Each source keeps its chart colour in the table, the error chart and the hit-rate bars.
@@ -1581,7 +1578,7 @@ function energySplitLegend(read) {
 
 // Why the formula rows are empty (#3336); each opens the dialog that supplies the input.
 const ENERGY_BODY_MISSING = {
-  no_skinfold: "Hautfalten fehlen",
+  no_skinfold: "Körperfett fehlt",
   skinfold_too_old: "Hautfalten älter als 90 Tage",
   no_birth_year: "Geburtsjahr fehlt",
   no_weight: "Gewicht fehlt",
@@ -1594,7 +1591,7 @@ function energyMissingCell(reason) {
   button.addEventListener("click", () => {
     if (reason === "no_weight") void openWeightDialog();
     else if (reason === "no_birth_year") void AppRouter.navigate("more/profile", { historyMode: "push" });
-    else openSkinfoldDialog();
+    else void openBodyFatDialog();
   });
   return h("td", { colSpan: 2 }, button);
 }
@@ -1686,14 +1683,21 @@ function renderBodyAnalysis(body) {
   if (!root) return;
   const openDetails = new Set([...root.querySelectorAll("details[open]")].map((item) => item.querySelector("summary")?.textContent));
   root.replaceChildren();
+  if (!skinfoldRead) loadSkinfolds();
   const metrics = [
     ["weight_kg", "Gewicht", "kg"],
     ["body_fat_pct", "Körperfett", "%"],
   ];
   const preferred = body?.preferred_providers || {};
-  const rows = h("tbody", null, metrics.map(([metric, title, unit]) => renderBodyOverviewRow(metric, title, unit, body, preferred)));
-  root.append(h("section", "analysis-chart-card", h("table", { className: "current-performance-table", dataset: { bodyOverview: "" } }, h("caption", null, "Körperwerte"), rows)));
-  root.append(skinfoldCard(), ...energyBodyCards());
+  const weight = bodyOverviewReading("weight_kg", body, preferred);
+  const fat = bodyOverviewReading("body_fat_pct", body, preferred);
+  const fatRow = bodyOverviewRow("body_fat_pct", "Körperfett", "%", fat, bodyEditButton("Körperfett eintragen", openBodyFatDialog));
+  fatRow.addEventListener("click", (event) => { if (!event.target.closest("button")) void openBodyFatDialog(); });
+  const rows = [bodyOverviewRow("weight_kg", "Gewicht", "kg", weight, bodyEditButton("Gewicht eintragen", openWeightDialog)), fatRow];
+  // The fat-free mass stays derived from the two values, without a pencil (#3402).
+  if (weight.value != null && fat.value != null) rows.push(bodyOverviewRow("lean_mass_kg", "Fettfreie Masse", "kg", { value: weight.value * (1 - fat.value / 100) }, null));
+  root.append(h("section", "analysis-chart-card", h("table", { className: "current-performance-table", dataset: { bodyOverview: "" } }, h("caption", null, "Körperwerte"), h("tbody", null, rows))));
+  root.append(...energyBodyCards());
   const key = bodyHistoryPeriod === "fortnight" ? "14d" : "12w";
   const window = body?.windows?.[key];
   root.append(analysisPeriodControls("Zeitraum für Körper", bodyHistoryPeriod, (period) => {

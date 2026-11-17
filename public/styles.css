@@ -1814,7 +1814,6 @@ button:focus-visible, a:focus-visible, summary:focus-visible {
 .current-performance-table th, .current-performance-table td { padding: 12px 0; border-bottom: 1px solid var(--line); hyphens: auto; }
 .current-performance-table th { text-align: left; font-size: .85rem; font-weight: 500; }
 .current-performance-table th small { display: block; margin-top: 4px; color: var(--muted); font-size: .72rem; font-weight: 400; overflow-wrap: anywhere; }
-[data-skinfolds] .current-performance-table td { white-space: nowrap; padding-left: 8px; }
 [data-body-overview] tr[data-metric="body_fat_pct"] { cursor: pointer; }
 /* A value keeps its band on its line; at large text the band alone moves below (#3362). */
 [data-energy] .current-performance-table td { white-space: nowrap; }

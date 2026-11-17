@@ -724,12 +724,15 @@
       <div class="dialog-actions"><button type="button" id="nutritionProductUseCancel" class="secondary-button">Abbrechen</button><button type="button" id="nutritionProductUseCoach" class="secondary-button">Zur Coach-Nachricht</button><button type="submit" id="nutritionProductUseAdd" class="adaptive-planning-button">Erfassen</button></div>
     </form>
   </dialog>
-  <dialog id="skinfoldDialog" aria-labelledby="skinfoldDialogTitle">
-    <form id="skinfoldDialogForm" class="confirmation-dialog">
-      <h2 id="skinfoldDialogTitle">Hautfalten</h2>
-      <label for="skinfoldDialogDate">Datum<input id="skinfoldDialogDate" name="date" type="date" required></label>
-      <output id="skinfoldDialogStatus" class="tab-sync-detail" aria-live="polite"></output>
-      <div class="dialog-actions"><button type="button" id="skinfoldDialogCancel" class="secondary-button">Abbrechen</button><button type="button" id="skinfoldDialogRemove" class="secondary-button" hidden>Löschen</button><button type="submit" id="skinfoldDialogSave" class="adaptive-planning-button">Speichern</button></div>
+  <dialog id="bodyFatDialog" aria-labelledby="bodyFatDialogTitle">
+    <form id="bodyFatDialogForm" class="confirmation-dialog">
+      <h2 id="bodyFatDialogTitle">Körperfett eintragen</h2>
+      <fieldset id="bodyFatDialogMode" class="segmented-control"><legend class="sr-only">Eingabe</legend><button type="button" data-body-fat-mode="pct" aria-pressed="true">Prozent</button><button type="button" data-body-fat-mode="folds" aria-pressed="false">Hautfalten</button></fieldset>
+      <label for="bodyFatDialogDate">Datum<input id="bodyFatDialogDate" name="date" type="date" required></label>
+      <label for="bodyFatDialogPct">Körperfett (%)<input id="bodyFatDialogPct" name="pct" type="number" min="1" max="80" step="0.1" inputmode="decimal" required></label>
+      <output id="bodyFatDialogResult" aria-live="polite" hidden></output>
+      <output id="bodyFatDialogStatus" class="tab-sync-detail" aria-live="polite"></output>
+      <div class="dialog-actions"><button type="button" id="bodyFatDialogCancel" class="secondary-button">Abbrechen</button><button type="button" id="bodyFatDialogRemove" class="secondary-button" hidden>Löschen</button><button type="submit" id="bodyFatDialogSave" class="adaptive-planning-button">Speichern</button></div>
     </form>
   </dialog>
   <dialog id="lt2AdoptDialog" aria-labelledby="lt2AdoptTitle">

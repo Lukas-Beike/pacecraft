@@ -65,8 +65,9 @@ COUNTS = (
     "external_calendar_events",
     # Diary entries (#3234).
     "nutrition_logs",
-    # Weights the athlete entered by hand (#3252).
+    # Weights and body fats the athlete entered by hand (#3252, #3402).
     "entered_weights",
+    "entered_body_fats",
 )
 MEMORY = ("rss_bytes", "peak_rss_bytes")
 # Storage and runtime health compared between releases (#2848).

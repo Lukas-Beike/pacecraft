@@ -326,11 +326,15 @@ def skinfold_sources(
     weights: dict[date, float] | None = None,
     profile: dict[str, str] | None = None,
     device: dict[date, float] | None = None,
+    entered: dict[date, float] | None = None,
 ) -> EnergySources:
     """Sources whose skinfold reads honour the day they are asked for.
 
-    ``device`` is a scale's body fat per day (Garmin), read by window.
+    ``device`` is a scale's body fat per day (Garmin), read by window;
+    ``entered`` the athlete's own percentages (no provider, #3402).
     """
+    fats = {day: (value, ProviderId.GARMIN) for day, value in (device or {}).items()}
+    fats |= {day: (value, None) for day, value in (entered or {}).items()}
 
     def until(day: date) -> list[SkinfoldMeasurement]:
         return sorted(
@@ -349,9 +353,7 @@ def skinfold_sources(
         },
         skinfolds=lambda _db, day: until(day),
         device_body_fat=lambda _db, start, end: {
-            day: (value, ProviderId.GARMIN)
-            for day, value in (device or {}).items()
-            if start <= day <= end
+            day: value for day, value in fats.items() if start <= day <= end
         },
     )
 
@@ -415,18 +417,28 @@ PROFILE_FAT = {"height_cm": "180", "birth_year": "1990", "body_fat_pct": "18,5"}
 
 
 class BodyFatFallbackTests(unittest.TestCase):
-    """#3362: skinfold, then a device or scale, then the profile; labelled."""
+    """#3362, #3402: skinfold, entered, device or scale, then the profile; labelled."""
 
     def body(self, src: EnergySources) -> dict[str, Any] | None:
         return read_energy_view(None, src, DAY3)["body"]
 
-    def test_skinfold_beats_device_beats_profile(self) -> None:
+    def test_skinfold_beats_entered_beats_device_beats_profile(self) -> None:
         cases = [
             (
                 skinfold_sources(
-                    [folds_on(DAY2)], device={DAY2: 20.0}, profile=PROFILE_FAT
+                    [folds_on(DAY1)],
+                    entered={DAY2: 15.0},
+                    device={DAY2: 20.0},
+                    profile=PROFILE_FAT,
                 ),
-                ("skinfold", "Hautfalten", 12.0, "2026-10-02"),
+                ("skinfold", "Hautfalten", 12.0, "2026-10-01"),
+            ),
+            (
+                # An older entry still beats a newer scale reading (#3402).
+                skinfold_sources(
+                    [], entered={DAY1: 15.0}, device={DAY2: 20.0}, profile=PROFILE_FAT
+                ),
+                ("entered", "Lokal", 15.0, "2026-10-01"),
             ),
             (
                 skinfold_sources([], device={DAY2: 20.0}, profile=PROFILE_FAT),
@@ -450,8 +462,13 @@ class BodyFatFallbackTests(unittest.TestCase):
                     ),
                 )
 
-    def test_the_ninety_days_hold_for_skinfold_and_device(self) -> None:
-        old = skinfold_sources([folds_on(OLD)], device={OLD: 20.0}, profile=PROFILE_FAT)
+    def test_the_ninety_days_hold_for_skinfold_entered_and_device(self) -> None:
+        old = skinfold_sources(
+            [folds_on(OLD)],
+            entered={OLD: 15.0},
+            device={OLD: 20.0},
+            profile=PROFILE_FAT,
+        )
         self.assertEqual("profile", (self.body(old) or {}).get("source"))
         without_profile = skinfold_sources([folds_on(OLD)], device={OLD: 20.0})
         view = read_energy_view(None, without_profile, DAY3)
@@ -479,7 +496,9 @@ class BodyFatFallbackTests(unittest.TestCase):
         self.assertEqual("device", basis["body_source"])
         counts = basis["body_source_windows"]
         self.assertEqual(12, sum(counts.values()))
-        self.assertEqual({"skinfold", "device", "profile", "none"}, set(counts))
+        self.assertEqual(
+            {"skinfold", "entered", "device", "profile", "none"}, set(counts)
+        )
         # The latest window has the device value; older windows lack a weight.
         self.assertGreaterEqual(counts["device"], 1)
         self.assertGreaterEqual(counts["none"], 1)

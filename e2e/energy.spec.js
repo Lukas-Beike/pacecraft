@@ -54,25 +54,25 @@ test("@responsive formula rows without a body fat name the reason and open the d
   await page.goto("/#nutrition/diary");
   const card = page.locator("#nutritionEnergy [data-energy]");
   const missing = card.locator("[data-energy-missing='no_skinfold']");
-  await expect(missing).toHaveText(["Hautfalten fehlen", "Hautfalten fehlen"]);
+  await expect(missing).toHaveText(["Körperfett fehlt", "Körperfett fehlt"]);
   await expect(card.locator("tbody th small")).toHaveCount(0);
   await missing.first().click();
-  await expect(page.locator("#skinfoldDialog")).toBeVisible();
-  await page.locator("#skinfoldDialogCancel").click();
+  await expect(page.locator("#bodyFatDialog")).toBeVisible();
+  await page.locator("#bodyFatDialogCancel").click();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBeTruthy();
 });
 
 // #3252: which source meets the weight stays under Körper; tapping the body-fat row opens the
-// skinfold dialog, so body fat stays derived from the folds.
-test("@responsive Körper keeps the fit note and opens the skinfold dialog from body fat", async ({ page }) => {
+// body fat dialog (#3402).
+test("@responsive Körper keeps the fit note and opens the body fat dialog from body fat", async ({ page }) => {
   await page.goto("/#nutrition/body");
   const root = page.locator("#bodyAnalysisCharts");
   await expect(root.locator("[data-energy-fit]")).toContainText("noch nicht unterscheidbar");
   await expect(root.locator("[data-energy]")).toHaveCount(0);
   await root.locator("[data-body-overview] tr[data-metric='body_fat_pct'] th").click();
-  await expect(page.locator("#skinfoldDialog")).toBeVisible();
-  await page.locator("#skinfoldDialogCancel").click();
-  await expect(page.locator("#skinfoldDialog")).toBeHidden();
+  await expect(page.locator("#bodyFatDialog")).toBeVisible();
+  await page.locator("#bodyFatDialogCancel").click();
+  await expect(page.locator("#bodyFatDialog")).toBeHidden();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBeTruthy();
 });
 

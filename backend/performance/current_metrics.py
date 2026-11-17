@@ -343,7 +343,7 @@ def _undated(observation: Observation | None) -> tuple[Candidate, ...]:
 
 
 def _entered(observations: Iterable[Observation]) -> tuple[Candidate, ...]:
-    """The newest weight the athlete entered by hand (#3252): dated, no provider.
+    """The newest weight or body fat the athlete entered (#3252): dated, no provider.
 
     It takes the local slot before the undated profile value, so the recency
     rule ranks it as an athlete entry.
@@ -407,7 +407,12 @@ def _performance_body_metrics(
     )
     body_fat = resolve_candidates(
         MetricKind.BODY_FAT,
-        _body_candidates(MetricKind.BODY_FAT, garmin_body, profile.get("body_fat_pct")),
+        _body_candidates(
+            MetricKind.BODY_FAT,
+            garmin_body,
+            profile.get("body_fat_pct"),
+            entered=canonical.entered_body_fats,
+        ),
         as_of=as_of,
         preferences=canonical.preferences,
     )

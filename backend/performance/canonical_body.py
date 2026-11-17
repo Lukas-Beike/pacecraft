@@ -35,12 +35,14 @@ BODY_FAT_BOUNDS = (2.0, 70.0)
 class CanonicalBodyInputs:
     """Per-day Garmin weight and body-fat values, bounded and rounded.
 
-    ``entered_weight_kg`` holds the athlete's own weigh-ins (#3252).
+    ``entered_weight_kg`` and ``entered_body_fat_pct`` hold the athlete's own
+    entries (#3252, #3402).
     """
 
     garmin_weight_kg: Mapping[date, float]
     garmin_body_fat_pct: Mapping[date, float]
     entered_weight_kg: Mapping[date, float] = MappingProxyType({})
+    entered_body_fat_pct: Mapping[date, float] = MappingProxyType({})
 
 
 EMPTY_BODY_INPUTS = CanonicalBodyInputs(
@@ -68,6 +70,7 @@ def read_body_inputs(
         garmin_weight_kg=_daily(weights, ProviderId.GARMIN, today, WEIGHT_BOUNDS),
         garmin_body_fat_pct=_daily(body_fat, ProviderId.GARMIN, today, BODY_FAT_BOUNDS),
         entered_weight_kg=_daily(weights, None, today, WEIGHT_BOUNDS),
+        entered_body_fat_pct=_daily(body_fat, None, today, BODY_FAT_BOUNDS),
     )
 
 
