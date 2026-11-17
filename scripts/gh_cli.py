@@ -42,7 +42,9 @@ TRANSIENT_FETCH = re.compile(
 # A failed call's detail is cut to this length, HTML tags removed: gh puts a whole
 # GitHub error page (55 KB) on its one error line (#3393).
 MAX_DETAIL = 300
-HTML_TAG = re.compile(r"<[^>]*>")
+# A tag ends at its ">" or before the next "<", so a page full of unclosed "<" is
+# read once, not again from every "<" (Sonar S8786).
+HTML_TAG = re.compile(r"<[^<>]*>")
 HTTP_STATUS = re.compile(r"HTTP \d{3}")
 # A transient GitHub failure: a read is tried once more after a pause (#3393, the
 # family #3345 retries in release follow). A 4xx stays terminal, and so does any
