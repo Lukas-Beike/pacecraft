@@ -387,6 +387,7 @@ ATHLETE_DATA = build_athlete_data(
     load_inputs_changed=lambda: CANONICAL_BACKFILL.worker.start(),
     thresholds_changed=lambda: METRIC_EXPORT_RUNNER.request(),
     threshold_warnings=lambda: THRESHOLD_WARNINGS.read(),
+    body_changed=lambda day: APP.garmin.body_push_service().push(day),
 )
 ATHLETE_PROFILE_SERVICE = ATHLETE_DATA.profile_for(database_manager)
 # Declared ahead of its first lambda reference; assigned by build_canonical_read below.

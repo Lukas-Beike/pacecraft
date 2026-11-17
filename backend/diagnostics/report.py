@@ -63,6 +63,7 @@ from backend.sync.activity_weather import summarize_activity_weather
 from backend.sync.external_calendar import ExternalCalendarSyncService
 from backend.sync.freshness import ProviderFreshnessService
 from backend.sync.garmin import GarminFixtureLoader, GarminSyncStateService
+from backend.sync.garmin_body_push import summarize_body_push
 from backend.sync.garmin_activity_details import (
     detail_fallback_counts,
     detail_replay_size,
@@ -429,6 +430,10 @@ class DiagnosticReportService:
                 "nutrition_expenditure_gaps": section(
                     "nutrition_expenditure_gaps",
                     lambda: deps.expenditure_gaps(db) if deps.expenditure_gaps else {},
+                ),
+                # The entered body days mirrored to Garmin, counts only (#3403).
+                "garmin_body_push": section(
+                    "garmin_body_push", lambda: summarize_body_push(db)
                 ),
                 "garmin_strength_push": section(
                     "garmin_strength_push",

@@ -227,6 +227,7 @@ class DiagnosticReportServiceTests(unittest.TestCase):
                 "garmin_change_check",
                 "lt1_ride_coverage",
                 "curve_build",
+                "garmin_body_push",
                 "garmin_strength_push",
                 "recovery_copies",
                 "backup",
@@ -402,8 +403,9 @@ class DiagnosticReportServiceTests(unittest.TestCase):
         # mapper and once without empty marks, the records with outdated file
         # sets, and two Wahoo selections; #2220); the diary count adds one (#3234);
         # the DFA-a1 method counts of chest-strap runs add one (#3273); the
-        # entered weights add one (#3252).
-        self.assertEqual(len(self.db.queries), 44)
+        # entered weights add one (#3252), the entered body fats one (#3402); the
+        # Garmin body push adds its counts and its links (#3403).
+        self.assertEqual(len(self.db.queries), 46)
         self.assertEqual(
             [query.rsplit("FROM ", 1)[1] for query in count_queries],
             [
@@ -417,6 +419,8 @@ class DiagnosticReportServiceTests(unittest.TestCase):
                 "kv WHERE key IN (?, ?, ?)",
                 # The last archive purge's count (#3141).
                 "kv WHERE key = ?",
+                "kv WHERE key = ?",
+                # The Garmin body push counts (#3403).
                 "kv WHERE key = ?",
                 "provider_sync_cursors WHERE provider=? AND stream=?",
             ],

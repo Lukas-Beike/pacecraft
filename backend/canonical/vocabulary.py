@@ -584,6 +584,8 @@ class RemoteEntityKind(StrEnum):
     COMPETITION = "competition"
     # A canonical metric value written to a provider field by an explicit export.
     OBSERVATION = "observation"
+    # One day's entered weight and body fat mirrored to Garmin Connect (#3403).
+    BODY_COMPOSITION = "body_composition"
 
 
 class RemoteLinkState(StrEnum):

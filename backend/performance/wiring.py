@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
+from datetime import date
 from typing import Any
 
 from backend.activities.activity_reference import ActivityReferences
@@ -217,6 +218,8 @@ def build_athlete_data(
     thresholds_changed: Callable[[], None],
     # The stale-threshold and Garmin SDK warning shown with the zones (#1768).
     threshold_warnings: Callable[[], dict[str, Any] | None],
+    # Mirrors an entered body day to Garmin Connect; returns its outcome (#3403).
+    body_changed: Callable[[date], str] | None = None,
 ) -> AthleteDataServices:
     """Fresh athlete and activity services per call over shared repositories.
 
@@ -319,13 +322,13 @@ def build_athlete_data(
         profile=profile,
         profile_for=profile_for,
         skinfolds=lambda: SkinfoldService(
-            database_manager(), profiles.get, utc_now, local_date
+            database_manager(), profiles.get, utc_now, local_date, body_changed
         ),
         weight_entries=lambda: BodyEntryService(
-            database_manager(), utc_now, local_date
+            database_manager(), utc_now, local_date, on_change=body_changed
         ),
         body_fat_entries=lambda: BodyEntryService(
-            database_manager(), utc_now, local_date, BODY_FAT_ENTRY
+            database_manager(), utc_now, local_date, BODY_FAT_ENTRY, body_changed
         ),
     )
 
