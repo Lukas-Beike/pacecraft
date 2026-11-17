@@ -23,7 +23,9 @@ test("@responsive the diary shows the energy table and explains it behind the in
   expect(["device", "profile"]).toContain(read.body.source);
   // The diary opens on today, whose rows are still partial (#3395).
   const kfa = `KFA: ${read.body.label} · bis jetzt`;
-  await expect(card.locator("tbody th")).toHaveText([`Katch-McArdle${kfa}`, `Cunningham${kfa}`, `${device.label}bis jetzt`, "Aus deinen DatenØ 28 Tage"]);
+  // Today's Garmin rest names the full day it comes from, if any (#3443).
+  const deviceNote = device.resting_from ? `${device.label}Ruhe ` : `${device.label}`;
+  await expect(card.locator("tbody th")).toHaveText([`Katch-McArdle${kfa}`, `Cunningham${kfa}`, new RegExp(`^${deviceNote}.*bis jetzt$`), "Aus deinen DatenØ 28 Tage"]);
   await expect(card.locator("[data-energy-source='katch_mcardle'] td").first()).toHaveText(/^[\d.]+ ± \d+$/);
   await expect(card.locator(".analysis-reference-note")).toHaveCount(0);
   const tooltip = card.locator(".analysis-info-tooltip");
@@ -96,6 +98,33 @@ test("@responsive a diary card marks a meal as estimated and clears the mark", a
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBeTruthy();
 });
 
+// #3443: today Garmin's rest is still counting; its row shows yesterday's, or why it has none.
+test("@responsive today's Garmin row shows yesterday's rest with its label, or the reason", async ({ page }) => {
+  let device = null;
+  await page.route("**/api/body/energy*", async (route) => {
+    const response = await route.fetch();
+    const data = await response.json();
+    const row = data.rows.find((item) => item.source === "device");
+    for (const key of ["resting_from", "resting_missing"]) delete row[key];
+    Object.assign(row, device(data.day));
+    await route.fulfill({ response, json: { ...data, day_partial: true } });
+  });
+  device = (day) => {
+    const yesterday = new Date(`${day}T12:00:00Z`);
+    yesterday.setUTCDate(yesterday.getUTCDate() - 1);
+    return { resting_kcal: 1800, resting_band_kcal: null, total_kcal: 2200, total_band_kcal: null, resting_from: yesterday.toISOString().slice(0, 10) };
+  };
+  await page.goto("/#nutrition/diary");
+  const row = page.locator("#nutritionEnergy tr[data-energy-source='device']");
+  await expect(row.locator("th small")).toHaveText("Ruhe wie gestern · bis jetzt");
+  await expect(row.locator("td")).toHaveText([/^1\.800/, /^2\.200/]);
+  device = () => ({ resting_kcal: null, resting_band_kcal: null, total_kcal: null, total_band_kcal: null, split: null, resting_missing: "no_recent_resting" });
+  await page.evaluate(() => { resetEnergy(); return loadEnergy(); });
+  // The array form retries while the two value cells are still being replaced.
+  await expect(row.locator("td")).toHaveText(["kein Ruhewert der letzten Tage"]);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBeTruthy();
+});
+
 // #3395: the table shows the diary's selected day; switching the date reads that day.
 test("@responsive the energy table follows the diary date: sport per day, today bis jetzt, own Ø 28 Tage", async ({ page }) => {
   const asked = [];
@@ -152,14 +181,26 @@ const fitScale = (days, ownDays, own, band) => ({
     { source: "device", label: "Garmin Connect", total_kcal: 3157 },
   ],
 });
+// Playwright's messages for a request whose page went away (#3449).
+const GONE = /Response has been disposed|Target page, context or browser has been closed/;
 for (const theme of ["light", "dark"]) {
   test(`@responsive the fit scale follows Verlauf's period without overlaps, and the diary outlines the best source (${theme})`, async ({ page }) => {
     await page.emulateMedia({ colorScheme: theme });
     await page.route("**/api/body/energy*", async (route) => {
-      const response = await route.fetch();
-      const data = await response.json();
+      // A read still in flight when the test moves to the diary is disposed with the
+      // old page; that request is gone and needs no answer (#3449).
+      let response;
+      let data;
+      try {
+        response = await route.fetch();
+        data = await response.json();
+      } catch (error) {
+        if (GONE.test(String(error))) return;
+        throw error;
+      }
       for (const row of data.rows) if (row.source !== "own") row.mean_error_kcal = { katch_mcardle: 1042, cunningham: 1204, device: 431 }[row.source];
-      await route.fulfill({ response, json: { ...data, best: null, fit_scale: { "14d": fitScale(14, 28, 2690, 720), "12w": fitScale(84, 84, 2726, 454) } } });
+      await route.fulfill({ response, json: { ...data, best: null, fit_scale: { "14d": fitScale(14, 28, 2690, 720), "12w": fitScale(84, 84, 2726, 454) } } })
+        .catch((error) => { if (!GONE.test(String(error))) throw error; });
     });
     await page.goto("/#nutrition/week");
     const card = page.locator("#nutritionFitScale [data-energy-fit]");

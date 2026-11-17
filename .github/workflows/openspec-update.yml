@@ -33,7 +33,7 @@ jobs:
           node-version: '22'
           package-manager-cache: false
       - name: Install locked OpenSpec
-        run: npm ci --ignore-scripts
+        run: bash .github/scripts/npm_ci_retry.sh
       - name: Regenerate OpenSpec skills
         run: npm run openspec -- update
       - name: Collect generated changes

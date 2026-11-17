@@ -461,6 +461,7 @@ class ProdChecksTests(unittest.TestCase):
                 "body_source_windows": {"skinfold": 0, "device": 2, "profile": 9},
                 "skinfolds_with_body_fat": 0,
                 "newest_skinfold_age_days": None,
+                "today_resting_days_back": 1,
                 "planted": "never printed",
             }
         }
@@ -476,6 +477,7 @@ class ProdChecksTests(unittest.TestCase):
             f'{prefix}rmr_source "{RESTING_FROM_SKINFOLDS}"',
             f'{prefix}latest_window_insufficient "weight_span"',
             f"{prefix}newest_skinfold_age_days null",
+            f"{prefix}today_resting_days_back 1",
         ):
             self.assertIn(expected, lines)
         self.assertFalse(any("planted" in line for line in lines))

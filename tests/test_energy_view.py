@@ -622,6 +622,86 @@ class SelectedDayTests(unittest.TestCase):
             (row(past, "device")["resting_kcal"], row(past, "device")["total_kcal"]),
         )
 
+    def today_device(
+        self, health: dict[str, Any], sessions: list[dict[str, Any]] | None = None
+    ) -> dict[str, Any]:
+        today = END + timedelta(days=1)
+        view = energy_view(
+            replace(inputs(), days={**inputs().days, today: DayInputs(weight_kg=80.0)}),
+            [window(END, 2700.0, 1850.0)],
+            health,
+            sessions or [],
+            day=today,
+        )
+        return row(view, "device")
+
+    def test_today_garmin_ruhe_is_the_newest_full_day_within_a_week(self) -> None:
+        """#3443: today's resting is still counting; the row shows yesterday's."""
+        today = (END + timedelta(days=1)).isoformat()
+        health = garmin()
+        health[END.isoformat()] = {"resting_kcal": 1800.0, "calories": 2900.0}
+        health[today] = {
+            "resting_kcal": 900.0,
+            "active_kcal": 400.0,
+            "calories": 1300.0,
+        }
+        device = self.today_device(health)
+        # Projected Ruhe plus Alltag and Sport so far.
+        self.assertEqual(
+            (1800, 2200, END.isoformat()),
+            (device["resting_kcal"], device["total_kcal"], device["resting_from"]),
+        )
+        # A 60-min 700 kcal run nets the projected rate, not today's partial 900
+        # (Gitar): 700 - 1,800 / 1,440 x 60 = 625 sport, 1,000 - 625 = 375 everyday.
+        health[today]["active_kcal"] = 1000.0
+        run = {
+            "started_at_local": f"{today}T06:00:00",
+            "energy_kcal": 700.0,
+            "record_ids": GARMIN_IDS,
+            "elapsed_duration_s": 3600,
+        }
+        split = self.today_device(health, [run])["split"]
+        self.assertEqual(
+            (1800, 375, 625),
+            (split["resting_kcal"], split["neat_kcal"], split["sport_kcal"]),
+        )
+        health[today]["active_kcal"] = 400.0
+        # Yesterday missing: the newest earlier day within 7 days.
+        del health[END.isoformat()]
+        health[(END - timedelta(days=1)).isoformat()]["resting_kcal"] = 1700.0
+        device = self.today_device(health)
+        self.assertEqual(
+            (1700, 2100, (END - timedelta(days=1)).isoformat()),
+            (device["resting_kcal"], device["total_kcal"], device["resting_from"]),
+        )
+        # Nothing in the 7 days before today: no value, and the reason.
+        quiet = {today: health[today]}
+        quiet[(END - timedelta(days=7)).isoformat()] = {"resting_kcal": 1700.0}
+        device = self.today_device(quiet)
+        self.assertEqual(
+            (None, None, "no_recent_resting"),
+            (device["resting_kcal"], device["total_kcal"], device["resting_missing"]),
+        )
+        self.assertNotIn("resting_from", device)
+
+    def test_a_past_day_keeps_its_own_garmin_ruhe(self) -> None:
+        health = garmin()
+        health[(END - timedelta(days=3)).isoformat()] = {
+            "resting_kcal": 1650.0,
+            "calories": 2800.0,
+        }
+        past = row(
+            energy_view(
+                inputs(),
+                [window(END, 2700.0, 1850.0)],
+                health,
+                day=END - timedelta(days=2),
+            ),
+            "device",
+        )
+        self.assertEqual((1745, 3120), (past["resting_kcal"], past["total_kcal"]))
+        self.assertNotIn("resting_from", past)
+
     def test_the_selected_day_is_an_iso_date_up_to_today(self) -> None:
         today = date(2026, 11, 17)
         self.assertEqual(today, selected_day("2026-11-17", today))

@@ -496,6 +496,8 @@ class BodyFatFallbackTests(unittest.TestCase):
             None, skinfold_sources([], device={DAY2: 20.0}, profile=PROFILE_FAT), DAY3
         )
         self.assertEqual("device", basis["body_source"])
+        # #3443: DAY2's resting is 0, so today's Garmin rest comes from DAY1.
+        self.assertEqual(2, basis["today_resting_days_back"])
         counts = basis["body_source_windows"]
         self.assertEqual(12, sum(counts.values()))
         self.assertEqual(
