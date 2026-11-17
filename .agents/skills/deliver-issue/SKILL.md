@@ -126,7 +126,7 @@ its risks, record it and its approval as an issue comment, and hand the approved
 note to any implementer; the coordinating orchestrator approves it, the athlete
 a behaviour choice or when no orchestrator runs. Schema or migration changes go through
 [database migrations](../pacecraft-db-migrations/SKILL.md) and need the
-`AGENTS.md` evidence (populated upgrade from the production baseline, rollback
+`AGENTS.md` evidence (populated upgrade from the frozen baseline and from production's schema, rollback
 on failure, same-build restart) before the PR. When a change derives state from
 data only the new code writes, cover the first state after an upgrade on
 existing data (adopt or backfill from durable data, or state why not) with a

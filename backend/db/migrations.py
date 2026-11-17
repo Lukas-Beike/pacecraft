@@ -1,7 +1,7 @@
 """Versioned, transactional upgrades of supported encrypted application schemas.
 
-The only supported baseline is the schema production runs: version 26, written
-by release 2.0.5. Older databases and backups are rejected unchanged; upgrade
+The only supported baseline is schema version 26, written by release 2.0.5
+and frozen as a test fixture. Older databases and backups are rejected unchanged; upgrade
 them with release 2.0.5 first. The baseline keeps its frozen fixture in
 tests/fixtures and its digest in backend.db.schema_history; each later schema
 adds one upgrade step here, so the baseline reaches the current schema.

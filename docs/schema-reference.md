@@ -3,8 +3,8 @@
 The normative storage contract of the current build. Everything between the
 markers is generated from the live DDL (`backend/db/schema.py:initialize_schema`)
 by `python tests/test_db_migrations.py --write`; a test fails when it is out of
-date. The supported baseline, the schema production runs (version 26, release
-2.0.5), is frozen as `tests/fixtures/schema_v26.sql.txt` with its digest in
+date. The supported baseline (version 26, release 2.0.5) is frozen as
+`tests/fixtures/schema_v26.sql.txt` with its digest in
 `backend/db/schema_history.py`; [schema-history.md](schema-history.md) lists the
 releases and what each version added.
 The keys of the `kv` table are listed in [kv-catalogue.md](kv-catalogue.md).
@@ -18,9 +18,9 @@ The keys of the `kv` table are listed in [kv-catalogue.md](kv-catalogue.md).
   `ensure_ascii=False` and the separators `,` and `:`.
 - **Current:** `PRAGMA user_version` is the schema version below, the table and
   index sets are exactly those below and the signature equals the one the DDL
-  below produces. A database at the baseline version with the baseline
-  digest is upgraded in one transaction; any other version, digest or pair is
-  refused unchanged.
+  below produces. A database whose version and digest match the baseline or a
+  released later schema (v27 to v31) is upgraded in one transaction; any other
+  version, digest or pair is refused unchanged.
 - **New database:** `PRAGMA journal_mode=WAL`, then the DDL below in one
   `BEGIN IMMEDIATE` transaction that also sets `PRAGMA user_version`. A database
   with version 0 that already holds tables is not new and is refused.

@@ -1,9 +1,9 @@
 """Frozen signatures of the schema shapes written by supported releases.
 
-Only the schema production runs is frozen: the baseline. Its digest is the
+The baseline (v26) and the released later schemas are frozen as digests: the
 SHA-256 of the normalized schema signature (object type, name, table and
-whitespace-normalized SQL), computed once from the frozen fixture in
-tests/fixtures and hard-coded here, so the runtime never reads fixture files.
+whitespace-normalized SQL). The baseline's comes from its frozen fixture in
+tests/fixtures; all are hard-coded here, so the runtime never reads fixture files.
 The current shape is deliberately not frozen: it is derived from the live
 schema in backend.db.schema.
 """
@@ -53,8 +53,8 @@ RELEASED_SHAPE_DIGESTS: Final[Mapping[str, str]] = {
 OLDEST_SUPPORTED_SCHEMA_VERSION: Final = 26
 
 # Stored PRAGMA user_version -> schema shapes that version is allowed to hold.
-# When CURRENT_SCHEMA_VERSION is bumped, accept the baseline shape for its
-# version here and add one upgrade step from it; a schema that never reached
+# When CURRENT_SCHEMA_VERSION is bumped after a release, freeze the released
+# previous shape's digest for its version here and add one upgrade step from it; a schema that never reached
 # production gets no frozen shape of its own.
 ACCEPTED_SHAPES_BY_VERSION: Final[Mapping[int, frozenset[str]]] = {
     26: frozenset({SHAPE_SCHEMA_V26}),
