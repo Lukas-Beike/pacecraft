@@ -9,7 +9,7 @@
   "devDependencies": {
     "@axe-core/playwright": "4.14.0",
     "@fission-ai/openspec": "2.0.0",
-    "@playwright/test": "1.65.0",
+    "@playwright/test": "1.65.1",
     "eslint": "10.15.0",
     "eslint-plugin-sonarjs": "4.2.2",
     "modern-web-guidance": "1.0.0"
