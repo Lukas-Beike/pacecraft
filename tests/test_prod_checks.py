@@ -260,10 +260,13 @@ class ProdChecksTests(unittest.TestCase):
 
     def test_diagnostics_prints_named_fields_and_logs_out(self):
         result = Path(self.tmp.name) / "first.json"
-        code, text = self.run_main(
-            prod_diagnostics, "--url", self.url, "--password-file", str(self.secret),
-            "--expect-version", "2.1.2", "--expect-schema", "27", "--out", str(result),
-        )  # fmt: skip
+        # --expect-schema checks the docs (#3454): on a temporary root, never
+        # this checkout (Gitar #3456).
+        with mock.patch.object(prod_diagnostics, "ROOT", Path(self.tmp.name)):
+            code, text = self.run_main(
+                prod_diagnostics, "--url", self.url, "--password-file", str(self.secret),
+                "--expect-version", "2.1.2", "--expect-schema", "27", "--out", str(result),
+            )  # fmt: skip
         self.assertEqual(code, 1)  # sync.last_error is set
         self.assertIn("ok version 2.1.2", text)
         self.assertIn("ok schema 27", text)
