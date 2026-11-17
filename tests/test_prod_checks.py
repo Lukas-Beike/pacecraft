@@ -978,7 +978,6 @@ NOT_PRINTED = {
 }
 
 
-
 # Top-level diagnostics blocks without a `--section` choice, each with its reason
 # (#3430). Every other block needs SECTION_FIELDS or DERIVED_SECTIONS in
 # scripts/prod_diagnostics.py, so the post-release check can read it.
