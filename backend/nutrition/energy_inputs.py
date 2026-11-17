@@ -16,7 +16,7 @@ import statistics
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from datetime import date, timedelta
-from typing import Any
+from typing import Any, Final
 
 from backend.athlete.body_composition import (
     RestingFormula,
@@ -466,9 +466,31 @@ def energy_basis(db: Any, sources: EnergySources, end: date) -> dict[str, Any]:
         {d: v.weight_kg for d, v in inputs.days.items() if v.weight_kg is not None}
     )
     bodies = [resolve_body(inputs, trend, w.end) for w in windows]
-    return diagnostics(inputs, costs, windows) | skinfold_diagnostics(
-        skinfolds, missing, end, bodies
+    week = sources.daily_health(db, end - timedelta(days=GARMIN_RESTING_DAYS), end)
+    found = newest_resting(week, end)
+    return (
+        diagnostics(inputs, costs, windows)
+        | skinfold_diagnostics(skinfolds, missing, end, bodies)
+        # How many days back today's Garmin Ruhe comes from, None = none (#3443).
+        | {"today_resting_days_back": (end - found[0]).days if found else None}
     )
+
+
+# How far back today's Garmin Ruhe looks for a full day's resting value (#3443).
+GARMIN_RESTING_DAYS: Final = 7
+
+
+def newest_resting(
+    health: Mapping[str, Mapping[str, Any]], day: date
+) -> tuple[date, float] | None:
+    """The newest day within ``GARMIN_RESTING_DAYS`` before ``day`` with
+    Garmin resting kcal, and that value; today's own is still counting."""
+    for back in range(1, GARMIN_RESTING_DAYS + 1):
+        earlier = day - timedelta(days=back)
+        resting = _number(health.get(earlier.isoformat(), {}).get("resting_kcal"))
+        if resting and resting > 0:
+            return earlier, resting
+    return None
 
 
 # The formula rows' body fat sources, in their order (athlete decisions, #3362, #3402).

@@ -46,6 +46,7 @@ from backend.nutrition.energy_balance import (
 )
 from backend.nutrition.energy_inputs import (
     EnergySources,
+    newest_resting,
     read_energy_inputs,
     resolve_body,
     skinfold_state,
@@ -377,12 +378,15 @@ def energy_view(
     means, best, fit = _comparison(errors, windows)
     day_window = _day_window(inputs, latest, day or latest.end)
     day_body = resolve_body(inputs, trend, day_window.end)
+    device_prediction, device_rest = _device_day(
+        health, day_window, day_window.end > latest.end
+    )
     day_predictions = {
         **{
             name: _formula_prediction(f, day_body, day_window)
             for name, f in FORMULAS.items()
         },
-        DEVICE: _device_prediction(health, day_window),
+        DEVICE: device_prediction,
     }
     device_neat, device_sport = _device_split(health, sessions, day_window)
     rows = []
@@ -415,7 +419,9 @@ def energy_view(
             }
         )
     # Only the device row is named by the read; the client names the others.
-    rows[list(predictions).index(DEVICE)]["label"] = _device_label(health, day_window)
+    rows[list(predictions).index(DEVICE)].update(
+        label=_device_label(health, day_window), **device_rest
+    )
     tdee = latest.adaptive_tdee
     shown, implausible = _gated_resting(
         latest.derived_rmr, predictions["katch_mcardle"][-1], predictions[DEVICE][-1]
@@ -567,6 +573,27 @@ def _weeks_with_data(inputs: EnergyInputs, end: date, days: int) -> int:
             if (day := inputs.days.get(end - timedelta(days=7 * week + n)))
         )
     )
+
+
+def _device_day(
+    health: Mapping[str, Mapping[str, Any]], window: EnergyWindow, today: bool
+) -> tuple[Prediction, dict[str, Any]]:
+    """Garmin's row for the shown day and where its Ruhe comes from.
+
+    Today Garmin's resting value is still counting (#3443): the row takes the
+    newest full day's within a week as Ruhe, plus today's active kcal so far;
+    without one the Ruhe and the total stay unknown and the row names why.
+    """
+    if not today:
+        return _device_prediction(health, window), {}
+    day = window.end
+    found = newest_resting(health, day)
+    if found is None:
+        return (None, None, None, None), {"resting_missing": "no_recent_resting"}
+    earlier, resting = found
+    active = _number(health.get(day.isoformat(), {}).get("active_kcal"))
+    total = resting + active if active is not None and active >= 0 else None
+    return (resting, None, total, None), {"resting_from": earlier.isoformat()}
 
 
 def _public_body(body: Mapping[str, Any] | None) -> dict[str, Any] | None:
