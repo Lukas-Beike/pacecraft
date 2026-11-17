@@ -27,7 +27,9 @@ Use this skill only when the user explicitly asks to start or carry out a Pacecr
    no-op run or a chain that never forms stops the release. Let the workflow's
    own checks and PR flow proceed: never bypass branch protections or merge a
    blocked PR manually. A required review, check, or external action that
-   blocks progress is reported, and the release stops.
+   blocks progress is reported, and the release stops. Never cancel develop
+   push runs by hand: a newer develop push cancels the superseded run itself,
+   and the version commit's run has its own group (#3353).
 4. The release must be the one this chain produced: its tag equals the chain's
    version and its target is the promotion PR's merge commit on `main`; never
    select an unrelated or merely newest release. Which develop fixes it carries:
