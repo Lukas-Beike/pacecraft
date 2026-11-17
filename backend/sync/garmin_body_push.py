@@ -34,6 +34,7 @@ from __future__ import annotations
 
 import json
 import logging
+import queue
 import threading
 from collections.abc import Callable, Mapping
 from contextlib import AbstractContextManager
@@ -188,15 +189,16 @@ class GarminBodyPushService:
         """
         if retry:
             return self._guarded(day, retry=True)
-        outcome: list[str] = []
-        worker = threading.Thread(
-            target=lambda: outcome.append(self._guarded(day, retry=False)),
+        answers: queue.SimpleQueue[str] = queue.SimpleQueue()
+        threading.Thread(
+            target=lambda: answers.put(self._guarded(day, retry=False)),
             name="garmin-body-push",
             daemon=True,
-        )
-        worker.start()
-        worker.join(REQUEST_DEADLINE_S)
-        return outcome[0] if outcome else PENDING
+        ).start()
+        try:
+            return answers.get(timeout=REQUEST_DEADLINE_S)
+        except queue.Empty:
+            return PENDING
 
     def _guarded(self, day: date, *, retry: bool) -> str:
         try:
