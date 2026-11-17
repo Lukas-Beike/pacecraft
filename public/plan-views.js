@@ -1925,8 +1925,33 @@ function plannedUndecidedBanner() {
 }
 
 // The Kalender navigation items carry the same count.
+// #3384: what the running week's sync button would act on (Monday to Sunday), by the button's
+// own jobs: each unit it sends counts once, whatever the providers, and each leftover it removes.
+function runningWeekSyncCount(trainingCalendar) {
+  const todayKey = timezoneDateKey(state.data?.profile?.timezone, new Date());
+  const weekKey = planWeekStart(todayKey);
+  const lastDay = addDateKey(weekKey, 6);
+  const futureWeeks = calendarDisplayValue(state.data?.calendar_display?.future_weeks, 4);
+  const entries = (Array.isArray(trainingCalendar) ? trainingCalendar : [])
+    .filter((item) => item && !item.archived && !item.local_deleted)
+    .filter((item) => { const day = plannedEventDate(item); return day && day >= weekKey && day <= lastDay; });
+  const leftovers = plannedLeftoversByWeek(trainingCalendar, weekKey, addDateKey(weekKey, 7 * futureWeeks)).get(weekKey);
+  const jobs = plannedWeekJobs(entries, leftovers, todayKey);
+  const units = new Set(jobs.flatMap((job) => job.units.map((unit) => unit.local_id)));
+  const removals = new Set(jobs.flatMap((job) => job.items.map((item) => job.provider + ":" + item.id)));
+  return units.size + removals.size;
+}
+
+function weekSyncNoticeText(count) {
+  return `${count} ${count === 1 ? "Einheit" : "Einheiten"} zu synchronisieren`;
+}
+
+// One badge for both: undecided events plus the running week's units to sync (#3384).
 function renderUndecidedNavCount() {
-  const count = undecidedPlannedCount();
+  const undecided = undecidedPlannedCount();
+  const sync = runningWeekSyncCount(renderedCalendar);
+  const count = undecided + sync;
+  const parts = [undecided ? undecidedNoticeText(undecided) : "", sync ? weekSyncNoticeText(sync) : ""].filter(Boolean);
   for (const link of document.querySelectorAll('.nav-item[data-route="plan"]')) {
     let badge = link.querySelector("b.nav-count");
     if (!badge) {
@@ -1934,7 +1959,7 @@ function renderUndecidedNavCount() {
       link.append(badge);
     }
     badge.textContent = count ? String(count) : "";
-    link.setAttribute("aria-label", count ? `Kalender, ${undecidedNoticeText(count)}` : "Kalender");
+    link.setAttribute("aria-label", ["Kalender", ...parts].join(", "));
   }
 }
 
