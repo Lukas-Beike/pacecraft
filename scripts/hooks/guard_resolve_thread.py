@@ -8,7 +8,8 @@ any `scripts/` module it imports match origin/develop byte for byte, and no
 entry in `scripts/` (tracked, ignored or untracked) can shadow a module the run
 imports (#3072). Other scripts, the hooks and non-Python files may differ.
 The name matches in any case, through quotes, escapes, globs and short names,
-and input without a command string blocks (#3367). Exit code 2 blocks the call.
+and input without a command string blocks (#3367). Exit code 2 blocks the call;
+the message names the word that matched, as the hook read it (#3459).
 """
 
 import ast
@@ -186,23 +187,28 @@ def wildened(text: str) -> str:
     return text
 
 
-def names_script(command: str) -> bool:
-    """Whether the command names the script in any spelling the shell, Python
-    or a case-insensitive file system resolves to it (#3367). The name's
-    letters in order, whatever stands between them, count as the name."""
+def matching_word(command: str) -> str | None:
+    """The word by which the command names the script in any spelling the
+    shell, Python or a case-insensitive file system resolves to it (#3367),
+    as the hook read it (variables as `*`), or None. The name's letters in
+    order, whatever stands between them, count as the name."""
     raw = unicodedata.normalize("NFKC", command).casefold()
     text = unescaped(raw)
     if any(NAME in unquoted(form) for form in (raw, text)):
-        return True
+        return NAME
     # Negated and POSIX character classes as fnmatch reads them.
     text = re.sub(r"\[:[a-z]+:\]", "a-z0-9_.", text.replace("[^", "[!"))
     text = DOS_ONE.sub("?", DOS_STAR.sub("*", STREAM.sub("", wildened(text))))
     # A variable can hold any folder or name.
     text = VARIABLE.sub("*", text)
-    return any(
-        word_reaches_script(word)
-        for variant in (unquoted(text), unquoted(text, "/"))
-        for word in WORDS.split(variant)
+    return next(
+        (
+            word
+            for variant in (unquoted(text), unquoted(text, "/"))
+            for word in WORDS.split(variant)
+            if word_reaches_script(word)
+        ),
+        None,
     )
 
 
@@ -252,14 +258,21 @@ def decide() -> int:
         # Fail closed (#3367): a shape this hook does not know blocks.
         print("Blocked: hook input without a command string.", file=sys.stderr)
         return 2
-    if not names_script(command):
+    word = matching_word(command)
+    if word is None:
         return 0
     if EXACT.fullmatch(command.strip()) and unchanged():
         return 0
     print(
         "Blocked: the review-thread resolve script runs only as "
         "`python scripts/resolve_review_thread.py <pr> <PRRT_id>`, alone, from a "
-        "checkout whose scripts/ matches origin/develop (#2629).",
+        "checkout whose scripts/ matches origin/develop (#2629)."
+        + (
+            ""
+            if word == NAME
+            else f" Matched word `{word}` (variables read as `*`): a variable or"
+            " glob path can resolve to the script; spell the path out (#3459)."
+        ),
         file=sys.stderr,
     )
     return 2
