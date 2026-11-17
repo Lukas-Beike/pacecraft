@@ -272,6 +272,10 @@ class GuardHookTests(unittest.TestCase):
             "for f in tests/*.py; do echo $f; done",
             "gh pr list -q '.[] | {n: .number}'",
             "awk '{print $1, $2}' notes.txt",
+            "find . -name '*.py'",
+            "ls *",
+            "git commit -m 'fix: resolve review thread hook'",
+            "grep -n resolveReviewThread docs/notes.md",
             "git log -1 > notes.txt 2>&1",
         ):
             with self.subTest(command):

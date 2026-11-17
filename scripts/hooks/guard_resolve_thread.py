@@ -24,11 +24,12 @@ from pathlib import Path
 
 EXACT = re.compile(r"python scripts/resolve_review_thread\.py \d+ PRRT_[A-Za-z0-9_-]+")
 NAME = "resolve_review_thread"
-LETTERS = re.sub(r"[^a-z]", "", NAME)
 TARGETS = (NAME, f"{NAME}.py")
+# ASCII and typographic quotes, which PowerShell also reads as quotes.
+QUOTES = "[\"'‘’“”]"
 # Shell glob characters, brace expansion and extglob groups.
 GLOB = re.compile(r"[*?\[]")
-WIDE = re.compile(r"[@+!?*]\([^()]*\)|\{[^{}\s]*(?:,|\.\.)[^{}\s]*\}")
+WIDE = re.compile(r"[@+!?*]\([^()]*\)|\{(?=[^{}\s]*\})[^{}\s]*(?:,|\.\.)[^{}\s]*\}")
 # DOS wildcards inside a word: `<` reads as `*`, `>` as `?`.
 DOS_STAR = re.compile(r"(?<=[\w.*?])<(?=[\w.*?])")
 DOS_ONE = re.compile(r"(?<=[\w.*?])>(?=[\w.*?])")
@@ -160,10 +161,23 @@ def unescaped(text: str) -> str:
     return ESCAPE.sub(decode, text)
 
 
+def unquoted(text: str, backslash: str = "") -> str:
+    """Text without quoting and escape characters: adjacent string literals
+    joined, line continuations, quotes, `$`, backticks and carets removed, and
+    each other backslash replaced by `backslash`."""
+    text = re.sub(f"{QUOTES}\\s*\\+?\\s*{QUOTES}", "", text)
+    text = re.sub(f"\\\\\\n|\\$|`|\\^|{QUOTES}", "", text)
+    return text.replace("\\", backslash)
+
+
 def wildened(text: str) -> str:
     """Extglob groups and brace expansions (a list or a range; `{x}` stays
     literal in bash), innermost first, widened to `*`."""
-    while (wider := WIDE.sub("*", text)) != text:
+    def wide(match: re.Match[str]) -> str:
+        # A group holding a path keeps a folder of its own.
+        return "*/*" if re.search(r"[/\\]", match[0]) else "*"
+
+    while (wider := WIDE.sub(wide, text)) != text:
         text = wider
     return text
 
@@ -174,15 +188,14 @@ def names_script(command: str) -> bool:
     letters in order, whatever stands between them, count as the name."""
     raw = unicodedata.normalize("NFKC", command).casefold()
     text = unescaped(raw)
-    if any(LETTERS in re.sub(r"[^a-z]", "", form) for form in (raw, text)):
+    if any(NAME in unquoted(form) for form in (raw, text)):
         return True
     # Negated and POSIX character classes as fnmatch reads them.
     text = re.sub(r"\[:[a-z]+:\]", "a-z0-9_.", text.replace("[^", "[!"))
     text = DOS_ONE.sub("?", DOS_STAR.sub("*", STREAM.sub("", wildened(text))))
-    text = re.sub(r"\\\n|[$\"'`^‘’“”]", "", text)
     return any(
         word_reaches_script(word)
-        for variant in (text.replace("\\", ""), text.replace("\\", "/"))
+        for variant in (unquoted(text), unquoted(text, "/"))
         for word in WORDS.split(variant)
     )
 
@@ -195,9 +208,13 @@ def word_reaches_script(word: str) -> bool:
     # Windows also matches a wildcard against the short name.
     if (short and NAME.startswith(short[1][:2])) or ("~" in last and GLOB.search(last)):
         return True
-    folder = folders[-1].rstrip(". ") if folders else ""
+    folder = folders[-1].rstrip(". ") if folders else None
     # A file in a plainly named other folder is never the script.
-    if folder not in {"", ".", "..", "scripts"} and not GLOB.search(folder):
+    if folder not in {None, "", ".", "..", "scripts"} and not GLOB.search(folder):
+        return False
+    # Without a folder, a glob must keep part of the name: `*` and `*.py`
+    # pass, `r*` does not.
+    if folder is None and not re.sub(r"[*?]", "", last).removesuffix(".py"):
         return False
     return bool(GLOB.search(last)) and any(
         fnmatch.fnmatchcase(target, last) for target in TARGETS
