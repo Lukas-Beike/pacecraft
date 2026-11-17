@@ -104,7 +104,8 @@ question, while lane reports piled up (#3348). So:
   as an open athlete question in the session notes (and the handoff) and ask at
   the athlete's next message.
 - Ask a blocking question once. Whether asked or parked, tell the affected
-  lanes to continue with other work meanwhile.
+  lanes to continue with other work meanwhile, and pass each answer back to the
+  lane that raised the question.
 
 ## Merge rules
 
