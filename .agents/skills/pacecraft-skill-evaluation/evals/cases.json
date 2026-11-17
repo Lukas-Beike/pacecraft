@@ -984,6 +984,13 @@
       "prohibited": ["Announce a merge-rule switch to the lanes", "Change rulesets or workflows"]
     },
     {
+      "id": "orchestrator-periodic-check-defers-question", "skill": "pacecraft-orchestrator", "kind": "boundary", "activate": true,
+      "prompt": "Periodic check (scheduled turn).",
+      "setup": "Synthetic scheduled check turn; the athlete last wrote three hours ago; a lane reports a non-urgent content question for the athlete and can continue with its next item.",
+      "expected": ["Park the question in the ledger and handoff notes to ask at the athlete's next message", "Tell the lane to continue with other work meanwhile", "Finish the check (status, lane runs, develop runs) in this turn"],
+      "prohibited": ["Ask the athlete through AskUserQuestion or any blocking dialog in this turn"]
+    },
+    {
       "id": "ponytail-positive", "skill": "pacecraft-ponytail", "kind": "positive", "activate": true,
       "prompt": "Fix the off-by-one in the pagination helper.",
       "setup": "Synthetic helper with an existing test table; callers share the helper.",

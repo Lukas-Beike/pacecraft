@@ -57,6 +57,21 @@ personal data). The successor checks the handoff against the issues and ledger.
   working as a steer into its running turn, not as a message queued behind it
   (#2735).
 
+## Athlete questions
+
+A question dialog blocks the turn until the athlete answers, and with it every
+periodic check, merge watch and release. Twice it waited all night: V6
+2026-11-14 22:58 to 05:41 on a release-timing question, while `develop` went
+red unnoticed and lanes idled; V7 2026-11-15 21:55 to 05:23 on a calorie-gap
+question, while lane reports piled up (#3348). So:
+
+- Never ask from a periodic-check turn.
+- Ask a non-urgent question only while the athlete is active (they wrote
+  within about the last 15 minutes). Otherwise park it in the ledger and the
+  handoff and ask at the athlete's next message.
+- Ask a question that blocks a release or a lane once, and tell the lanes to
+  continue with other work meanwhile.
+
 ## Merge rules
 
 The athlete decides whether the merge rules (required up-to-date branches) are
@@ -95,6 +110,6 @@ L20's run ended after 3 seconds and sat idle with open work for almost 3 hours,
 unseen by checks that read only its messages (#3352).
 Nudge a lane that has stalled without a stated reason; answer questions or put
 them to the athlete as deliver-issue's "Working with the athlete" says (one
-decision per question). A lane is settled when its queue is
+decision per question), within [Athlete questions](#athlete-questions). A lane is settled when its queue is
 delivered, its retro ran, and it wrote its closing sentence; then archive or
 close it as the athlete prefers.
