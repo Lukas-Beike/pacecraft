@@ -134,6 +134,15 @@ SECTION_FIELDS = {
         r"|unknown)\.(files|(messages|unmapped_fields|developer_fields)\.[0-9.]+"
         r"|new_decodes\.[a-z_]+(\.(in_bounds|out_of_bounds))?)"
     ),
+    # Files per origin and sport whose probed field is present, in or out of its
+    # expected range, constant or falling (#3374, a temporary probe).
+    "fit_value_probe": re.compile(
+        r"status|(garmin|wahoo|strava|zwift|manual|upload|unknown)\."
+        r"(ride|run|swim|walk|hike|strength|row|nordic_ski|alpine_ski|yoga|other"
+        r"|unknown)\.(files|(perf_condition_20_90|perf_condition_140_1"
+        r"|stamina_20_137|stamina_20_138)\.(present|in_range|out_of_range|constant"
+        r"|falling))"
+    ),
     # Chest-strap runs of 60 days by DFA-a1 method (#3273).
     "dfa_series": re.compile(
         r"status|runs|with_series|unreadable_series|before_series|without_result"

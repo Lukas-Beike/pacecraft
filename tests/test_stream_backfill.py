@@ -78,6 +78,7 @@ from backend.sync.refresh import sync_job_error_class
 from backend.sync.stream_backfill import (
     BLOCKED_PERSONAL_API,
     FAILURE_LIMIT,
+    FIT_VALUE_PROBE_KEY,
     StreamBackfillService,
     StreamCandidate,
     StreamReplay,
@@ -85,6 +86,8 @@ from backend.sync.stream_backfill import (
     count_fit_file,
     fit_inventory_counts,
     fit_new_decode_counts,
+    fit_value_probe_counts,
+    fit_value_probe_report,
     select_stream_candidates,
     state_key,
     stop_error,
@@ -96,7 +99,7 @@ from backend.sync.wahoo_stream_backfill import (
     WahooStreamSource,
     wahoo_replay_size,
 )
-from tests.test_fit_file import UINT8, UINT16, UINT32, FitBuilder
+from tests.test_fit_file import SINT8, UINT8, UINT16, UINT32, FitBuilder
 
 NOW = "2026-11-08T20:00:00+00:00"
 FLOOR = date(2020, 1, 1)
@@ -625,6 +628,84 @@ class WahooBackfillTests(unittest.TestCase):
         ):
             with self.subTest(label):
                 self.assertEqual(expected, fit_new_decode_counts(data))
+
+    def test_the_value_probe_counts_files_by_range_constancy_and_fall(self) -> None:
+        # #3374, athlete 2026-11-17: probe Garmin's undocumented performance
+        # condition (20.90, 140.1, expected -20..+20) and stamina (20.137 and
+        # 20.138, expected 0..100) before anything is shown. Files only.
+        def probe_fit(rows, condition=None):
+            builder = FitBuilder().define(0, 20, [(253, UINT32), (90, SINT8)])
+            builder.define(1, 20, [(253, UINT32), (137, UINT8), (138, UINT8)])
+            for index, (pc, stamina, potential) in enumerate(rows):
+                builder.data(
+                    0, {253: 1000 + index, **({90: pc} if pc is not None else {})}
+                )
+                builder.data(1, {253: 1000 + index, 137: stamina, 138: potential})
+            if condition is not None:
+                builder.define(2, 140, [(1, SINT8)])
+                builder.data(2, {1: condition})
+            return builder.build()
+
+        self.assertEqual(
+            {
+                "perf_condition_20_90.present": 1,
+                "perf_condition_20_90.in_range": 1,
+                "stamina_20_137.present": 1,
+                "stamina_20_137.in_range": 1,
+                "stamina_20_137.falling": 1,
+                "stamina_20_138.present": 1,
+                "stamina_20_138.in_range": 1,
+                "stamina_20_138.constant": 1,
+                "perf_condition_140_1.present": 1,
+                "perf_condition_140_1.out_of_range": 1,
+            },
+            fit_value_probe_counts(
+                probe_fit([(-3, 100, 80), (2, 91, 80), (5, 84, 80)], condition=40)
+            ),
+        )
+        # One value outside the range marks the file out of range, not in range.
+        self.assertEqual(
+            {
+                "perf_condition_20_90.present": 1,
+                "perf_condition_20_90.out_of_range": 1,
+                "stamina_20_137.present": 1,
+                "stamina_20_137.out_of_range": 1,
+                "stamina_20_137.falling": 1,
+                "stamina_20_138.present": 1,
+                "stamina_20_138.in_range": 1,
+            },
+            fit_value_probe_counts(probe_fit([(-21, 101, 0), (None, 99, 3)])),
+        )
+        self.assertEqual({}, fit_value_probe_counts(fit_bytes(laps=1)))
+        self.assertEqual({}, fit_value_probe_counts(b"not a fit file"))
+
+    def test_the_value_probe_counts_files_the_inventory_has_seen(self) -> None:
+        # The replay re-reads files the inventory already counted; the probe has
+        # its own seen hashes, so it counts each of them once all the same.
+        env = self.env
+        seed(env, GARMIN, 21, date(2026, 11, 3), recorded_by=RecordingOrigin.GARMIN)
+        builder = FitBuilder().define(0, 20, [(253, UINT32), (90, SINT8)])
+        data = builder.data(0, {253: 1000, 90: 3}).build()
+        count_fit_file(env.db, env.key_values, GARMIN, "21", data)
+        # As after the release: the inventory has seen the file, the probe has not.
+        env.key_values.set(env.db, FIT_VALUE_PROBE_KEY, "{}")
+        count_fit_file(env.db, env.key_values, GARMIN, "21", data)
+        count_fit_file(env.db, env.key_values, GARMIN, "21", data)
+        self.assertEqual(
+            {
+                "garmin": {
+                    "ride": {
+                        "files": 1,
+                        "perf_condition_20_90.present": 1,
+                        "perf_condition_20_90.in_range": 1,
+                    }
+                }
+            },
+            fit_value_probe_report(env.db, env.key_values),
+        )
+        self.assertEqual(
+            1, fit_inventory_counts(env.db, env.key_values)["garmin"]["ride"]["files"]
+        )
 
     def test_new_decodes_add_up_per_origin_and_sport_and_keep_the_largest_steps(
         self,

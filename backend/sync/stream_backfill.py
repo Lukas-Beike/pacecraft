@@ -102,6 +102,18 @@ _DECODE_VALUES: Final[tuple[tuple[str, int, int, int, tuple[float, float]], ...]
     ("respiration_lap_max", _LAP_MESSAGE, 137, 100, RESPIRATION_RATE_BOUNDS_BRPM),
     ("lap_grade_speed", _LAP_MESSAGE, 161, 1000, (0.0, MAX_SPEED_MPS)),
 )
+# A count-only probe of Garmin's undocumented performance condition and stamina
+# fields (#3374, athlete decision 2026-11-17: probe first, then decide; removal
+# #3396). It keeps its own seen hashes, so the replay counts files the inventory
+# already counted.
+FIT_VALUE_PROBE_KEY: Final = "fit_value_probe"
+# Name, FIT message, field and the range the community reading expects.
+_PROBE_FIELDS: Final[tuple[tuple[str, int, int, tuple[int, int]], ...]] = (
+    ("perf_condition_20_90", 20, 90, (-20, 20)),
+    ("perf_condition_140_1", 140, 1, (-20, 20)),
+    ("stamina_20_137", 20, 137, (0, 100)),
+    ("stamina_20_138", 20, 138, (0, 100)),
+)
 
 STORED: Final = "stored"
 NO_STREAMS: Final = "no_streams"
@@ -669,13 +681,15 @@ def count_fit_file(
     provider_activity_id: str,
     data: object,
 ) -> None:
-    """Add one read FIT file to the inventory by recording origin and sport."""
+    """Add one read FIT file to the inventory and to the value probe (#3374) by
+    recording origin and sport; each counts a file once, by its own hashes."""
     keys = fit_inventory(data)
     if keys is None or not isinstance(data, bytes):
         return
     digest = hashlib.sha256(data).hexdigest()[:32]
-    state = _inventory_state(key_values, db)
-    if digest in state["seen"]:
+    inventory = _inventory_state(key_values, db)
+    probe = _inventory_state(key_values, db, FIT_VALUE_PROBE_KEY)
+    if digest in inventory["seen"] and digest in probe["seen"]:
         return
     row = db.execute(
         "SELECT sport, recorded_by FROM activity_records "
@@ -684,13 +698,67 @@ def count_fit_file(
     ).fetchone()
     origin = _vocabulary(row and row["recorded_by"], RecordingOrigin) or provider
     sport = _vocabulary(row and row["sport"], Sport) or "unknown"
+    if digest not in inventory["seen"]:
+        additions = dict.fromkeys(("files", *sorted(keys)), 1)
+        _add_file(
+            inventory, digest, (origin, sport), additions | fit_new_decode_counts(data)
+        )
+        key_values.set(db, FIT_INVENTORY_KEY, json.dumps(inventory, sort_keys=True))
+    if digest not in probe["seen"]:
+        _add_file(
+            probe, digest, (origin, sport), {"files": 1} | fit_value_probe_counts(data)
+        )
+        key_values.set(db, FIT_VALUE_PROBE_KEY, json.dumps(probe, sort_keys=True))
+
+
+def _add_file(
+    state: dict[str, Any],
+    digest: str,
+    group: tuple[str, str],
+    additions: dict[str, int],
+) -> None:
+    """Add one file's counts to its origin and sport, and remember its hash."""
+    origin, sport = group
     bucket = state["counts"].setdefault(origin, {}).setdefault(sport, {})
-    additions = dict.fromkeys(("files", *sorted(keys)), 1) | fit_new_decode_counts(data)
-    for key, value in additions.items():
-        known = int(bucket.get(key) or 0)
-        bucket[key] = max(known, value) if key.endswith(_MAX_KEY) else known + value
+    for name, value in additions.items():
+        known = int(bucket.get(name) or 0)
+        bucket[name] = max(known, value) if name.endswith(_MAX_KEY) else known + value
     state["seen"] = [*state["seen"], digest][-_MAX_SEEN_FILES:]
-    key_values.set(db, FIT_INVENTORY_KEY, json.dumps(state, sort_keys=True))
+
+
+def fit_value_probe_counts(data: bytes) -> dict[str, int]:
+    """What one file holds in the probed fields (#3374), as count keys per field:
+    ``.present``, ``.in_range`` when every value lies in the expected range, else
+    ``.out_of_range``, ``.constant`` when several values are all equal, and
+    ``.falling`` when the last value is below the first. Never a value."""
+    try:
+        messages = fit_messages(data)
+    except ValueError:
+        return {}
+    counts: dict[str, int] = {}
+    for name, message, field, (lower, upper) in _PROBE_FIELDS:
+        values = [
+            value
+            for number, fields in messages
+            if number == message
+            if isinstance(value := fields.get(field), int | float)
+            and not isinstance(value, bool)
+        ]
+        if not values:
+            continue
+        inside = all(lower <= value <= upper for value in values)
+        counts[f"{name}.present"] = 1
+        counts[f"{name}.{'in_range' if inside else 'out_of_range'}"] = 1
+        if len(values) > 1 and len(set(values)) == 1:
+            counts[f"{name}.constant"] = 1
+        if values[-1] < values[0]:
+            counts[f"{name}.falling"] = 1
+    return counts
+
+
+def fit_value_probe_report(db: Any, key_values: KeyValueRepository) -> dict[str, Any]:
+    """The probe's counts per recording origin and sport, without the hashes."""
+    return _inventory_state(key_values, db, FIT_VALUE_PROBE_KEY)["counts"]
 
 
 def _scaled(value: object, divisor: int) -> float | None:
@@ -783,9 +851,11 @@ def fit_inventory_counts(db: Any, key_values: KeyValueRepository) -> dict[str, A
     return result
 
 
-def _inventory_state(key_values: KeyValueRepository, db: Any) -> dict[str, Any]:
+def _inventory_state(
+    key_values: KeyValueRepository, db: Any, key: str = FIT_INVENTORY_KEY
+) -> dict[str, Any]:
     try:
-        stored = json.loads(key_values.get(db, FIT_INVENTORY_KEY) or "{}")
+        stored = json.loads(key_values.get(db, key) or "{}")
     except ValueError:
         stored = {}
     stored = stored if isinstance(stored, dict) else {}
