@@ -5,7 +5,12 @@ target-version = "py314"
 [tool.ruff.lint]
 # ARG001-ARG004 match SonarCloud's unused-parameter rule (python:S1172), which
 # failed the quality gate of #1505 after push; existing cases are ratchet debt.
-extend-select = ["DTZ", "ARG001", "ARG002", "ARG003", "ARG004"]
+# PLR0913 at 13 matches Sonar's parameter limit (python:S107, self not counted),
+# which failed #3295 only in CI (#3316); tests are analyzed too, so no ignore.
+extend-select = ["DTZ", "ARG001", "ARG002", "ARG003", "ARG004", "PLR0913"]
+
+[tool.ruff.lint.pylint]
+max-args = 13
 
 [tool.ruff.lint.per-file-ignores]
 # Tests keep these ignores locally; SonarCloud's automatic analysis does check
