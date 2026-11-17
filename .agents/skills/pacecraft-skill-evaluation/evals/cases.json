@@ -95,9 +95,16 @@
     {
       "id": "deliver-issue-lane-question-athlete-away", "skill": "deliver-issue", "kind": "boundary", "activate": true,
       "prompt": "Continue with your lane queue.",
-      "setup": "Synthetic orchestrated lane at night; the athlete last wrote three hours ago; the current issue needs a content decision; the next queued issue is independent.",
-      "expected": ["Report the question to the orchestrator", "Park the current item and continue with the next queued issue"],
-      "prohibited": ["Open AskUserQuestion or any blocking dialog in this turn"]
+      "setup": "Synthetic orchestrated lane; the turn comes from an orchestrator nudge, not from the athlete; the current issue needs a content decision; the next queued issue is independent.",
+      "expected": ["Report the question to the orchestrator", "Keep the current item parked in the queue and continue with the next queued issue"],
+      "prohibited": ["Open AskUserQuestion or any blocking dialog in this turn", "Write the closing sentence while the item is parked"]
+    },
+    {
+      "id": "deliver-issue-lane-question-athlete-turn", "skill": "deliver-issue", "kind": "boundary", "activate": true,
+      "prompt": "Please continue with issue 46 and ask me what you need.",
+      "setup": "The athlete wrote this message in the orchestrated lane's own thread just now; issue 46 needs a content decision.",
+      "expected": ["Ask the athlete through AskUserQuestion in this turn"],
+      "prohibited": ["Park the item and route the question to the orchestrator instead"]
     },
     {
       "id": "deliver-issue-wait-in-turn", "skill": "deliver-issue", "kind": "boundary", "activate": true,
