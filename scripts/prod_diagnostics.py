@@ -20,7 +20,8 @@ or the sums of a section in DERIVED_SECTIONS (`coach_local_first`: the #3080
 counts over the Coach history); the state words in FAIL_STATES and a missing
 section print as FAIL. `--check-docs` also compares the production schema and
 version with the production line in AGENTS.md and the db-migrations skill and
-with the docs/schema-history.md row, and names the exact change when stale.
+with the docs/schema-history.md row, and names the exact change when stale;
+`--expect-schema` turns it on, so a post-release run never leaves it out (#3454).
 """
 
 from __future__ import annotations
@@ -686,7 +687,9 @@ def checks(
     expect_backup_hours: float | None = None,
     check_docs: bool = False,
 ) -> list[tuple[str, str]]:
-    docs = docs_lines(ROOT, result["schema"], result["version"]) if check_docs else []
+    # A post-release run (with an expected schema) always checks the docs (#3454).
+    docs_asked = check_docs or expect_schema is not None
+    docs = docs_lines(ROOT, result["schema"], result["version"]) if docs_asked else []
     return [
         expected("version", result["version"], expect_version),
         expected("schema", result["schema"], expect_schema),

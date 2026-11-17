@@ -65,7 +65,7 @@ Then run [post-release-check](../pacecraft-post-release-check/SKILL.md). Step 4 
 "Update Unraid" already covers its container step: pass the verified release digest as
 `--running` there instead of repeating the update steps.
 
-After a schema release, the check's `--check-docs` lines fail until the docs
+After a schema release, the check's docs lines (on with `--expect-schema`) fail until the docs
 name the new production schema: open one docs PR with exactly the changes they
 print (the `AGENTS.md` line needs the orchestrator's `AGENTS.md` turn). Each
 schema release had needed such a PR found by hand (#3145, #3168; #3351).
