@@ -1,6 +1,7 @@
 """Post-release base scripts against a local fake app; no real server or network."""
 
 import io
+import itertools
 import json
 import secrets
 import sys
@@ -162,12 +163,18 @@ class FakeApp(BaseHTTPRequestHandler):
         return "ic_session=s1" in (self.headers.get("Cookie") or "")
 
     def do_GET(self):
+        self.state.setdefault("gets", []).append(self.path)
         if self.path == "/api/health":
             return self.send(200, {"status": "ok"})
         if not self.session():
             return self.send(401, {"error": "Anmeldung erforderlich."})
         if self.path == "/api/diagnostics":
-            return self.send(200, report(self.state.get("messages", 40)))
+            data = report(self.state.get("messages", 40))
+            # One curve build status per read; the last one stays (#3346).
+            if curves := self.state.get("curves"):
+                status = curves.pop(0) if len(curves) > 1 else curves[0]
+                data["curve_build"] = {"status": status, "building_s": 7}
+            return self.send(200, data)
         if self.path.startswith("/api/logs"):
             entries = [
                 {"level": "ERROR", "event": "plan_push_failed", "message": FAKE_LOGIN},
@@ -589,6 +596,39 @@ class ProdChecksTests(unittest.TestCase):
             for sport in [*Sport, "unknown"]:
                 sport_name = getattr(sport, "value", sport)
                 self.assertTrue(fit.fullmatch(f"{origin.value}.{sport_name}.files"))
+
+    def test_wait_ready_polls_the_curve_build_until_ready_or_timeout(self):
+        wait = ("--url", self.url, "--password-file", str(self.secret))
+        FakeApp.state["curves"] = ["pending", "pending", "building", "ready"]
+        with mock.patch.object(prod_diagnostics.time, "sleep") as slept:
+            code, text = self.run_main(
+                prod_diagnostics, *wait, "--wait-ready", "600",
+                "--section", "curve_build",
+            )  # fmt: skip
+        self.assertEqual(code, 0, text)
+        self.assertEqual(slept.call_count, 3)
+        # A pending build is started once with the Analyse view's own read.
+        self.assertEqual(FakeApp.state["gets"].count("/api/analysis/power-profiles"), 1)
+        self.assertIn("ok curve build ready, waited", text)
+        self.assertIn('info curve_build.status "ready"', text)
+        self.assertIn("ok logout 200", text)
+        # Still building when the time runs out: exit 3, logged out.
+        FakeApp.state["curves"] = ["building"]
+        clock = itertools.count(0, 20)
+        with (
+            mock.patch.object(prod_diagnostics.time, "sleep"),
+            mock.patch.object(prod_diagnostics.time, "monotonic", lambda: next(clock)),
+        ):
+            code, text = self.run_main(prod_diagnostics, *wait, "--wait-ready", "60")
+        self.assertEqual(code, 3, text)
+        self.assertIn("FAIL curve build building, waited 60 s", text)
+        self.assertIn("ok logout 200", text)
+        self.assertNotIn("ok version", text)
+        # A failed build stops at once.
+        FakeApp.state["curves"] = ["failed"]
+        code, text = self.run_main(prod_diagnostics, *wait, "--wait-ready", "60")
+        self.assertEqual(code, 1, text)
+        self.assertIn("FAIL curve build failed, waited 0 s", text)
 
     def test_diagnostics_version_mismatch_and_wrong_password(self):
         code, text = self.run_main(

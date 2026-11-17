@@ -5,6 +5,9 @@
         [--compare previous.json] [--ca-file ca.pem]
     python scripts/prod_diagnostics.py --url <app address> --password-file <secret file>
         --section <name> [--section <name> ...]
+    Either form takes [--wait-ready <seconds>]: before it reads the report it
+    waits until `curve_build.status` is `ready`; exit 3 when the time runs out,
+    1 when the build failed (#3346).
 
 Prints one line per check (`ok` / `FAIL` / `info`); never a response body,
 cookie, password or error text. Exit 0 all ok, 1 a check failed (a count
@@ -20,10 +23,12 @@ section print as FAIL.
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
 import math
 import re
 import sys
+import time
 from datetime import UTC, datetime
 from typing import Any
 
@@ -150,6 +155,11 @@ STATES = {
     "blocked",
 }
 FAIL_STATES = {"failed", "unavailable", "blocked"}
+# Seconds between two reads of `--wait-ready` (#3346).
+WAIT_POLL_S = 15
+# The Analyse view's all-time read, which starts a `pending` curve build.
+CURVE_READ = "/api/analysis/power-profiles"
+DIAGNOSTICS = "/api/diagnostics"
 
 
 def hours_since(stamp: str | None, now: datetime) -> float | None:
@@ -564,6 +574,34 @@ def checks(
     ]
 
 
+def curve_state(report: Any) -> str:
+    """The curve build's state word; `missing` without the section."""
+    section = report.get("curve_build") if isinstance(report, dict) else None
+    return word(section.get("status")) if isinstance(section, dict) else "missing"
+
+
+def wait_ready(session: Session, seconds: float) -> int:
+    """Poll `curve_build.status` until `ready` (0), failed (1) or out of time (3)."""
+    start = time.monotonic()
+    state = curve_state(session.get_json(DIAGNOSTICS))
+    if state == "pending":
+        # `pending` lasts until the first all-time read; make the Analyse
+        # view's own read once, as the UI walk does. Its body is not read.
+        with contextlib.suppress(ProdError):
+            session.status("GET", CURVE_READ)
+    while True:
+        waited = round(time.monotonic() - start)
+        if state == "ready":
+            print(f"ok curve build ready, waited {waited} s")
+            return 0
+        failed = state in FAIL_STATES or state in {"missing", "?"}
+        if failed or waited >= seconds:
+            print(f"FAIL curve build {state}, waited {waited} s")
+            return 1 if failed else 3
+        time.sleep(min(WAIT_POLL_S, max(seconds - waited, 1)))
+        state = curve_state(session.get_json(DIAGNOSTICS))
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--url", required=True)
@@ -579,6 +617,7 @@ def main(argv: list[str] | None = None) -> int:
         action="append",
         choices=sorted({*SECTION_FIELDS, *DERIVED_SECTIONS}),
     )
+    parser.add_argument("--wait-ready", type=float, metavar="SECONDS")
     args = parser.parse_args(argv)
     checks_asked = (
         args.out,
@@ -597,7 +636,11 @@ def main(argv: list[str] | None = None) -> int:
         print(f"{'ok' if healthy else 'FAIL'} health")
         session.login(args.password_file)
         try:
-            report = session.get_json("/api/diagnostics")
+            if args.wait_ready is not None and (
+                waited := wait_ready(session, args.wait_ready)
+            ):
+                return waited
+            report = session.get_json(DIAGNOSTICS)
         finally:
             logout = session.logout()
             print(f"{'ok' if logout == 200 else 'FAIL'} logout {logout}")

@@ -47,6 +47,12 @@ field not on the allow-list are never printed. Sections with an allow-list:
 `garmin_past_workout_removal`, `garmin_strength_push`, `stream_backfill` and
 `fit_inventory`. A section without an allow-list entry is refused; add the
 entry and its test in `tests/test_prod_checks.py` together with the section.
+`--wait-ready <seconds>` (with or without `--section`) first polls
+`curve_build.status` every 15 s and prints only the state and the wait:
+`ready` continues, a failed or missing build exits 1, and a build still
+`pending` or `building` when the time runs out exits 3 (#3346). On `pending`
+it makes the Analyse view's own read once (as the UI walk does), which starts
+the build; it reads no answer body.
 `DERIVED_SECTIONS` prints sums instead of leaves: `coach_local_first` counts
 the #3080 local-first outcomes over the Coach history (`coach_commands`);
 the session resolutions are in `--section runtime`.

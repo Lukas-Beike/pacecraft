@@ -1,7 +1,7 @@
 // Headless read-only walk through the running app at phone and desktop width.
 //
 //   node scripts/ui_walk.mjs --url <app address> --password-file <secret file>
-//     --out-dir <new scratchpad dir> [--compare <previous ui-walk.json>]
+//     --out-dir <new scratchpad dir> [--compare <previous walk's out-dir or its ui-walk.json>]
 //
 // Logs in with the password read from the file (never printed or passed on a
 // command line), opens each main view, switches the calendar between week and
@@ -63,6 +63,12 @@ function confined(target, roots, refused) {
 // session scratchpad), never in the repository or anywhere else a path could reach.
 export function scratchPath(target) {
   return confined(target, [os.tmpdir()], new Error("files must be in the system temp directory"));
+}
+
+// --compare takes the previous walk's out-dir or its ui-walk.json (#3346).
+export function previousWalkPath(compare) {
+  const given = scratchPath(compare);
+  return fs.statSync(given, { throwIfNoEntry: false })?.isDirectory() ? scratchPath(path.join(given, "ui-walk.json")) : given;
 }
 
 // Writes one file of the walk by its fixed name (#2661): the out-dir is
@@ -542,11 +548,15 @@ async function main() {
     return 2;
   }
   let previous = null;
+  let expected = values.compare;
   try {
-    previous = values.compare ? JSON.parse(fs.readFileSync(scratchPath(values.compare), "utf8")) : null;
+    if (values.compare) {
+      expected = previousWalkPath(values.compare);
+      previous = JSON.parse(fs.readFileSync(expected, "utf8"));
+    }
   } catch {
     // The error text could quote the file's content; never print it.
-    console.log("FAIL cannot read the previous walk");
+    console.log(`FAIL cannot read the previous walk at ${expected} (its out-dir or ui-walk.json)`);
     return 2;
   }
   const { chromium } = await import("@playwright/test");
