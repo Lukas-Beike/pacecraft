@@ -36,7 +36,8 @@ rewritten for lane succession and this repository's privacy rules; see
 repository, and give it in the successor's start message: link the issues, PRs,
 ledger and memory files instead of restating them; name the skills to load first;
 state what is running or waiting and on whom, and for an orchestrator the
-AGENTS.md turn holder, the merge-rule state and any merge hold. A lane handoff
+AGENTS.md turn holder, the merge-rule state, any merge hold and the open
+athlete questions. A lane handoff
 still carries the "Start a lane" brief. Copy nothing `AGENTS.md` forbids copying
 (secrets, credentials, tokens, database keys, backup contents, athlete or
 personal data). The successor checks the handoff against the issues and ledger.
@@ -56,6 +57,22 @@ personal data). The successor checks the handoff against the issues and ledger.
 - **Go and hold messages:** send a "go" or a merge hold to a lane that is
   working as a steer into its running turn, not as a message queued behind it
   (#2735).
+
+## Athlete questions
+
+A question dialog blocks the turn until the athlete answers, and with it every
+periodic check, merge watch and release. Twice it waited all night: V6
+2026-11-14 22:58 to 05:41 on a release-timing question, while `develop` went
+red unnoticed and lanes idled; V7 2026-11-15 21:55 to 05:23 on a calorie-gap
+question, while lane reports piled up (#3348). So:
+
+- Never ask from a periodic-check turn; this wins over the rules below.
+- Ask only while the athlete is active (they wrote within about the last 15
+  minutes), also a question that blocks a release or a lane. Otherwise park it
+  as an open athlete question in the session notes (and the handoff) and ask at
+  the athlete's next message.
+- Ask a blocking question once. Whether asked or parked, tell the affected
+  lanes to continue with other work meanwhile.
 
 ## Merge rules
 
@@ -95,6 +112,6 @@ L20's run ended after 3 seconds and sat idle with open work for almost 3 hours,
 unseen by checks that read only its messages (#3352).
 Nudge a lane that has stalled without a stated reason; answer questions or put
 them to the athlete as deliver-issue's "Working with the athlete" says (one
-decision per question). A lane is settled when its queue is
+decision per question), within [Athlete questions](#athlete-questions). A lane is settled when its queue is
 delivered, its retro ran, and it wrote its closing sentence; then archive or
 close it as the athlete prefers.
