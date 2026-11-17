@@ -614,7 +614,10 @@ class WorkflowSourceTests(unittest.TestCase):
         for path in sorted((root / ".github/workflows").glob("*.yml")):
             workflow = path.read_text(encoding="utf-8")
             with self.subTest(workflow=path.name):
-                self.assertNotRegex(workflow, r"run: +npm (ci|install)\b")
+                # Also a line of a multi-line `run: |` block.
+                self.assertNotRegex(
+                    workflow, re.compile(r"^\s*(run: +)?npm (ci|install)\b", re.M)
+                )
                 installs += workflow.count("run: bash .github/scripts/npm_ci_retry.sh")
         self.assertEqual(installs, 4)
         script = (root / ".github/scripts/npm_ci_retry.sh").read_text(encoding="utf-8")
