@@ -8,13 +8,14 @@ from datetime import date, timedelta
 from typing import Any
 
 from backend.canonical.vocabulary import ProviderId
+from backend.errors import AppError
 from backend.nutrition.energy_balance import (
     DayInputs,
     EnergyInputs,
     EnergyWindow,
     Estimate,
 )
-from backend.nutrition.energy_view import energy_view, read_energy_view
+from backend.nutrition.energy_view import energy_view, read_energy_view, selected_day
 from backend.providers.source_labels import SourceView, provider_label
 from tests.test_energy_inputs import DAY1, DAY3, sources
 
@@ -60,6 +61,16 @@ def windows(tdee: float = 2700.0, band: float = 120.0) -> list[EnergyWindow]:
 
 def inputs(body_fat: dict[date, float] | None = None) -> EnergyInputs:
     days = {END - timedelta(days=n): DayInputs(weight_kg=80.0) for n in range(60)}
+    # The shown day (#3395): everyday 250 + sport 350 = activity 600, and TEF
+    # 250 from 250 g protein (0.25 x 4 kcal/g), as the windows' means have.
+    days[END] = DayInputs(
+        weight_kg=80.0,
+        activity_kcal=600.0,
+        neat_kcal=250.0,
+        sport_kcal=350.0,
+        protein_g=250.0,
+        entries=3,
+    )
     fat = {END - timedelta(days=40): 15.0} if body_fat is None else body_fat
     return EnergyInputs(days, fat, rmr_kcal=1838.8, rmr_source="katch_mcardle")
 
@@ -228,20 +239,33 @@ class EnergyViewTests(unittest.TestCase):
             view["fit"],
         )
 
-    def test_garmin_means_only_the_window_and_skips_missing_days(self) -> None:
+    def test_the_device_row_shows_its_day_and_nothing_for_a_day_without_values(
+        self,
+    ) -> None:
+        # #3395: Garmin's own values of the shown day, never a mean; the fit
+        # still compares over the windows.
         health = garmin()
         health[END.isoformat()] = {"resting_kcal": 0, "calories": None}
-        # A day before the 28-day window does not count.
-        health[(END - timedelta(days=28)).isoformat()] = {
-            "resting_kcal": 9000.0,
-            "calories": 9000.0,
+        health[(END - timedelta(days=3)).isoformat()] = {
+            "resting_kcal": 1800.0,
+            "calories": 2950.0,
         }
         view = energy_view(inputs(), [window(END, 3100.0)], health)
-        self.assertEqual(
-            (1745, 3120),
-            (row(view, "device")["resting_kcal"], row(view, "device")["total_kcal"]),
+        device = row(view, "device")
+        self.assertEqual((None, None), (device["resting_kcal"], device["total_kcal"]))
+        # The fit stays on the window: (26 x 3,120 + 2,950) / 27 = 3,113.7 against
+        # the own 3,100, END's missing total skipped.
+        self.assertEqual(14, device["mean_error_kcal"])
+        earlier = energy_view(
+            inputs(), [window(END, 3100.0)], health, day=END - timedelta(days=3)
         )
-        self.assertEqual(20, row(view, "device")["mean_error_kcal"])
+        self.assertEqual(
+            (1800, 2950),
+            (
+                row(earlier, "device")["resting_kcal"],
+                row(earlier, "device")["total_kcal"],
+            ),
+        )
 
     def test_the_device_row_names_the_providers_of_its_window(self) -> None:
         # #3323: the label comes from the provider labels the daily totals carry,
@@ -267,9 +291,9 @@ class EnergyViewTests(unittest.TestCase):
         self.assertEqual(garmin_label, row(view, "device")["label"])
 
     def test_garmin_splits_its_day_into_everyday_and_sessions(self) -> None:
-        # 28 days of 1,745 resting and 1,375 active kcal. One 60-min session of
-        # 800 kcal on END: net of resting 800 - 1,745 / 1,440 x 60 = 727.29.
-        # Sessions 727.29 / 28 = 25.97 per day; everyday 1,375 - 25.97 = 1,349.03.
+        # The day END: 1,745 resting and 1,375 active kcal. One 60-min session of
+        # 800 kcal on it: net of resting 800 - 1,745 / 1,440 x 60 = 727.29, so
+        # everyday 1,375 - 727.29 = 647.71 (#3395: the day, not a 28-day mean).
         health = {key: {**day, "active_kcal": 1375.0} for key, day in garmin().items()}
         session = {
             "started_at_local": f"{END}T07:00:00",
@@ -281,8 +305,8 @@ class EnergyViewTests(unittest.TestCase):
         self.assertEqual(
             {
                 "resting_kcal": 1745,
-                "neat_kcal": 1349,
-                "sport_kcal": 26,
+                "neat_kcal": 648,
+                "sport_kcal": 727,
                 "tef_kcal": None,
                 "shared": {"neat": False, "sport": False, "tef": False},
             },
@@ -369,8 +393,8 @@ class EnergyViewTests(unittest.TestCase):
             (1105, False), (alone["resting_kcal"], alone["resting_implausible"])
         )
 
-    def test_the_basis_names_neats_inputs_over_the_latest_window(self) -> None:
-        # 20 of the window's 28 days have steps; the older days do not count.
+    def test_the_basis_names_neats_inputs_of_the_shown_day(self) -> None:
+        # #3395: the shown day's steps; a day without steps gives no basis.
         days = {
             END - timedelta(days=n): DayInputs(
                 weight_kg=80.0,
@@ -383,12 +407,12 @@ class EnergyViewTests(unittest.TestCase):
         days[END - timedelta(days=40)] = DayInputs(steps=99_000.0)
         source = replace(inputs(), days=days, step_m=0.748, step_source="walks")
         neat = energy_view(source, [window(END, 2700.0)], garmin())["basis"]["neat"]
-        # Session steps: 10 days x 2,000 over 20 days = 1,000 per day.
+        # END has 12,000 steps of which its sessions take 2,000.
         self.assertEqual(
             {
-                "days": 20,
+                "days": 1,
                 "steps_per_day": 12000,
-                "session_steps_per_day": 1000,
+                "session_steps_per_day": 2000,
                 "floors_per_day": 8.0,
                 "step_length_m": 0.75,
                 "step_length_source": "walks",
@@ -403,8 +427,8 @@ class EnergyViewTests(unittest.TestCase):
         self,
     ) -> None:
         health = {key: {**day, "active_kcal": 1375.0} for key, day in garmin().items()}
-        # END has more active kcal, so counting it would lift everyday to
-        # (27 x 1,375 + 2,000) / 28 = 1,397; dropped, everyday stays 1,375.
+        # #3395: the day END with a session Garmin did not price has no split;
+        # another day without a session splits into everyday 1,375 and sport 0.
         health[END.isoformat()] = {**health[END.isoformat()], "active_kcal": 2000.0}
         unpriced = {
             "started_at_local": f"{END}T07:00:00",
@@ -414,7 +438,14 @@ class EnergyViewTests(unittest.TestCase):
         split = row(
             energy_view(inputs(), [window(END, 2700.0)], health, [unpriced]), "device"
         )["split"]
-        self.assertEqual((1375, 0), (split["neat_kcal"], split["sport_kcal"]))
+        self.assertEqual((None, None), (split["neat_kcal"], split["sport_kcal"]))
+        quiet = row(
+            energy_view(
+                inputs(), [window(END, 2700.0)], health, [], day=END - timedelta(days=1)
+            ),
+            "device",
+        )["split"]
+        self.assertEqual((1375, 0), (quiet["neat_kcal"], quiet["sport_kcal"]))
         low = {key: {**day, "active_kcal": 10.0} for key, day in garmin().items()}
         big = [
             {
@@ -481,14 +512,88 @@ class EnergyViewTests(unittest.TestCase):
         )
 
     def test_the_reader_builds_twelve_windows_with_garmin_beside_them(self) -> None:
-        view = read_energy_view(None, sources(), DAY3)
+        view = read_energy_view(None, sources(), DAY3, DAY1)
         self.assertEqual(12, len(view["windows"]))
         self.assertEqual("intake_days", view["basis"]["insufficient"])
-        # Garmin's one positive resting value; day 2's zero is no measurement.
+        # The shown day DAY1 has Garmin's resting value; DAY3 has none.
+        self.assertEqual((DAY1.isoformat(), False), (view["day"], view["day_partial"]))
         self.assertEqual(1700, row(view, "device")["resting_kcal"])
+        self.assertIsNone(
+            row(read_energy_view(None, sources(), DAY3), "device")["resting_kcal"]
+        )
         # 70 kg at 12 %: 61.6 kg lean mass, Katch-McArdle 370 + 21.6 x 61.6.
         self.assertEqual(1701, row(view, "katch_mcardle")["resting_kcal"])
         self.assertEqual(DAY1.isoformat(), view["body"]["date"])
+
+
+class SelectedDayTests(unittest.TestCase):
+    """#3395: the source rows show the diary's selected day, the own row 28 days."""
+
+    def view(self, day: date, days: dict[date, DayInputs] | None = None, **kw: Any):
+        source = inputs()
+        if days:
+            source = replace(source, days={**source.days, **days})
+        return energy_view(
+            source, [window(END, 2700.0, 1850.0)], garmin(), day=day, **kw
+        )
+
+    def test_a_day_without_a_session_has_sport_zero_not_a_mean(self) -> None:
+        rest_day = END - timedelta(days=1)
+        quiet = DayInputs(weight_kg=80.0, activity_kcal=250.0, neat_kcal=250.0,
+                          sport_kcal=0.0, protein_g=250.0, entries=3)  # fmt: skip
+        split = row(self.view(rest_day, {rest_day: quiet}), "katch_mcardle")["split"]
+        self.assertEqual(
+            (250, 0, 250), (split["neat_kcal"], split["sport_kcal"], split["tef_kcal"])
+        )
+        # 1,838.8 + 250 + 0 + 250.
+        self.assertEqual(
+            2339,
+            row(self.view(rest_day, {rest_day: quiet}), "katch_mcardle")["total_kcal"],
+        )
+        with_session = row(self.view(END), "katch_mcardle")["split"]
+        self.assertEqual(350, with_session["sport_kcal"])
+
+    def test_a_day_without_meals_has_no_digestion_and_no_total(self) -> None:
+        empty = END - timedelta(days=2)
+        no_meals = DayInputs(
+            weight_kg=80.0, activity_kcal=250.0, neat_kcal=250.0, sport_kcal=0.0
+        )
+        km = row(self.view(empty, {empty: no_meals}), "katch_mcardle")
+        self.assertIsNone(km["split"]["tef_kcal"])
+        self.assertIsNone(km["total_kcal"])
+        self.assertEqual(1839, km["resting_kcal"])
+
+    def test_today_is_partial_and_a_past_day_has_garmin_values(self) -> None:
+        today = END + timedelta(days=1)
+        view = self.view(today, {today: DayInputs(weight_kg=80.0, sport_kcal=0.0)})
+        self.assertEqual((today.isoformat(), True), (view["day"], view["day_partial"]))
+        past = self.view(END - timedelta(days=5))
+        self.assertEqual(
+            ((END - timedelta(days=5)).isoformat(), False),
+            (past["day"], past["day_partial"]),
+        )
+        self.assertEqual(
+            (1745, 3120),
+            (row(past, "device")["resting_kcal"], row(past, "device")["total_kcal"]),
+        )
+
+    def test_the_selected_day_is_an_iso_date_up_to_today(self) -> None:
+        today = date(2026, 11, 17)
+        self.assertEqual(today, selected_day("2026-11-17", today))
+        self.assertIsNone(selected_day(None, today))
+        for text in ("2026-11-18", "17.11.2026"):
+            with self.subTest(text=text), self.assertRaises(AppError) as error:
+                selected_day(text, today)
+            self.assertEqual(400, error.exception.status)
+
+    def test_the_own_row_stays_on_its_28_day_window_whatever_the_day(self) -> None:
+        for day in (END, END - timedelta(days=5)):
+            with self.subTest(day=day):
+                own = row(self.view(day), "own")
+                self.assertEqual(
+                    (2700, 1850, 28),
+                    (own["total_kcal"], own["resting_kcal"], own["window_days"]),
+                )
 
 
 if __name__ == "__main__":
