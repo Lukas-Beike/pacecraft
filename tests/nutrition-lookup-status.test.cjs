@@ -84,7 +84,7 @@ test("product editor follows the barcode result before the product lists", () =>
 });
 
 // The product page: one merged list in two sections (#2267).
-const LIST_FUNCTIONS = ["NUTRITION_FIELD_NAMES", "NUTRITION_SOURCE_NAMES", "NUTRITION_PRODUCT_SECTIONS", "nutritionProductSectionsOpen", "nutritionProductSearchShown", "nutritionProductSectionsBeforeSearch", "nutritionIsDatabaseProduct", "nutritionMissingFields", "nutritionProductDate", "nutritionOriginText", "nutritionIncompleteMark", "nutritionProductSection", "nutritionUsageCount", "nutritionProductCard", "renderNutritionProducts", "appendNutritionProductActions", "nutritionFavoriteButton", "normalizeNutritionProduct", "nutritionDatabaseSource"];
+const LIST_FUNCTIONS = ["NUTRITION_FIELD_NAMES", "NUTRITION_SOURCE_NAMES", "NUTRITION_PRODUCT_SECTIONS", "nutritionProductSectionsOpen", "nutritionProductSearchShown", "nutritionProductSectionsBeforeSearch", "nutritionIsDatabaseProduct", "nutritionMissingFields", "nutritionProductDate", "nutritionOriginText", "nutritionIncompleteMark", "nutritionProductSection", "nutritionUsageCount", "nutritionShortDay", "nutritionLastUseText", "nutritionProductCard", "renderNutritionProducts", "appendNutritionProductActions", "nutritionFavoriteButton", "normalizeNutritionProduct", "nutritionDatabaseSource"];
 const OWN = { id: "own-1", name: "Whey", brand: "Fixture", barcode: "4000000000017", basis_amount: 100, basis_unit: "g", origin: "own", fetched_at: null, favorite: 1, kcal: 380, carbs_g: 5, protein_g: 72, fat_g: 6, sugar_g: 2, fiber_g: 1, salt_g: 0.1, missing_fields: [] };
 const FOOD = { id: "off:4006381333931", name: "Haferdrink", brand: "Beispiel", barcode: "4006381333931", basis_amount: 100, basis_unit: "ml", origin: "open_food_facts", source: "open_food_facts", fetched_at: "2026-10-01T08:00:00+00:00", favorite: 0, kcal: 46, carbs_g: 6.7, protein_g: 1, fat_g: 1.5, sugar_g: null, fiber_g: 0, salt_g: null, missing_fields: ["sugar_g", "salt_g"] };
 
@@ -238,4 +238,18 @@ test("a re-check shows the outcome the server reports", async () => {
   const { context, status } = actionContext({ "/api/nutrition/products/database/refresh": { ok: true, notice: "Nichts zu ergänzen." } });
   await context.refreshNutritionProduct({ id: "off:1", name: "Haferdrink", origin: "open_food_facts" }, new FakeElement("button"));
   assert.equal(status.textContent, "„Haferdrink“ aktualisiert. Nichts zu ergänzen.");
+});
+
+test("a product card names its last use, or that it was never used and since when (#3444)", () => {
+  const { nutritionLastUseText } = extractFunctions("nutrition.js", ["nutritionShortDay", "nutritionLastUseText"], {
+    state: { data: { profile: { timezone: "Europe/Berlin" } } },
+    timezoneDateKey: (_zone, value) => value.toISOString().slice(0, 10),
+  });
+  const today = "2026-11-17";
+  assert.equal(nutritionLastUseText({ usage_count: 3, last_used: "2026-11-17" }, today), "zuletzt heute");
+  assert.equal(nutritionLastUseText({ usage_count: 3, last_used: "2026-11-14" }, today), "zuletzt 14.11.");
+  assert.equal(nutritionLastUseText({ usage_count: 1, last_used: "2025-12-24" }, today), "zuletzt 24.12.2025");
+  assert.equal(nutritionLastUseText({ usage_count: 0, last_used: null, created_at: "2026-11-03T08:00:00+00:00" }, today), "nie genutzt · angelegt 03.11.");
+  // A list read without counts shows no last use.
+  assert.equal(nutritionLastUseText({ name: "Skyr" }, today), "");
 });

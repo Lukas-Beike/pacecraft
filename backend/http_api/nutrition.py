@@ -20,6 +20,7 @@ from backend.nutrition.photo import PHOTO_REQUEST_MAX_BYTES
 NUTRITION_ENTRY_PATH = "/api/nutrition/entry"
 NUTRITION_PRODUCTS_PATH = "/api/nutrition/products"
 REFRESH_ALL_PATH = f"{NUTRITION_PRODUCTS_PATH}/refresh-all"
+CLEANUP_PATH = f"{NUTRITION_PRODUCTS_PATH}/cleanup"
 PRODUCT_ENTITY = "nutrition_product"
 INVALID_BODY = "Ungültiger Anfrageinhalt."
 
@@ -234,7 +235,9 @@ class NutritionPostRoutes:
         nutrition_refresh_service: Callable[[], Any] | None = None,
         local_now: Callable[[], datetime] | None = None,
         product_refresh: Any = None,
+        product_cleanup: Callable[[], Any] | None = None,
     ) -> None:
+        self._product_cleanup = product_cleanup
         self._product_refresh = product_refresh
         self._diary_service = diary_service
         self._meal_library_service = meal_library_service
@@ -242,37 +245,52 @@ class NutritionPostRoutes:
         self._local_now = local_now or datetime.now
 
     def routes(self) -> list[Route]:
-        return [
-            Route("POST", path, Access.SESSION_CSRF, handle)
-            for path, handle in (
-                ("/api/nutrition/yazio/check", self._check_yazio),
-                (NUTRITION_ENTRY_PATH, self._create),
-                (f"{NUTRITION_ENTRY_PATH}/delete", self._delete),
-                (f"{NUTRITION_ENTRY_PATH}/add-product", self._add_product),
-                (f"{NUTRITION_ENTRY_PATH}/session", self._set_session),
-                (f"{NUTRITION_ENTRY_PATH}/estimate", self._set_estimate),
-                ("/api/nutrition/refresh", self._refresh),
-                (NUTRITION_PRODUCTS_PATH, self._save_product),
-                (f"{NUTRITION_PRODUCTS_PATH}/lookup", self._lookup_product),
-                (f"{NUTRITION_PRODUCTS_PATH}/extract", self._extract_product),
-                (f"{NUTRITION_PRODUCTS_PATH}/archive", self._archive_product),
-                (f"{NUTRITION_PRODUCTS_PATH}/favorite", self._favorite_product),
-                (
-                    f"{NUTRITION_PRODUCTS_PATH}/database/delete",
-                    self._forget_database_food,
-                ),
-                (
-                    f"{NUTRITION_PRODUCTS_PATH}/database/refresh",
-                    self._refresh_database_food,
-                ),
-            )
-        ] + (
+        return (
             [
-                Route("POST", REFRESH_ALL_PATH, Access.SESSION_CSRF, self._refresh_all),
-                Route("GET", REFRESH_ALL_PATH, Access.SESSION, self._refresh_all_state),
+                Route("POST", path, Access.SESSION_CSRF, handle)
+                for path, handle in (
+                    ("/api/nutrition/yazio/check", self._check_yazio),
+                    (NUTRITION_ENTRY_PATH, self._create),
+                    (f"{NUTRITION_ENTRY_PATH}/delete", self._delete),
+                    (f"{NUTRITION_ENTRY_PATH}/add-product", self._add_product),
+                    (f"{NUTRITION_ENTRY_PATH}/session", self._set_session),
+                    (f"{NUTRITION_ENTRY_PATH}/estimate", self._set_estimate),
+                    ("/api/nutrition/refresh", self._refresh),
+                    (NUTRITION_PRODUCTS_PATH, self._save_product),
+                    (f"{NUTRITION_PRODUCTS_PATH}/lookup", self._lookup_product),
+                    (f"{NUTRITION_PRODUCTS_PATH}/extract", self._extract_product),
+                    (f"{NUTRITION_PRODUCTS_PATH}/archive", self._archive_product),
+                    (f"{NUTRITION_PRODUCTS_PATH}/favorite", self._favorite_product),
+                    (
+                        f"{NUTRITION_PRODUCTS_PATH}/database/delete",
+                        self._forget_database_food,
+                    ),
+                    (
+                        f"{NUTRITION_PRODUCTS_PATH}/database/refresh",
+                        self._refresh_database_food,
+                    ),
+                )
             ]
-            if self._product_refresh is not None
-            else []
+            + (
+                [
+                    Route(
+                        "POST", REFRESH_ALL_PATH, Access.SESSION_CSRF, self._refresh_all
+                    ),
+                    Route(
+                        "GET", REFRESH_ALL_PATH, Access.SESSION, self._refresh_all_state
+                    ),
+                ]
+                if self._product_refresh is not None
+                else []
+            )
+            + (
+                [
+                    Route("GET", CLEANUP_PATH, Access.SESSION, self._cleanup_preview),
+                    Route("POST", CLEANUP_PATH, Access.SESSION_CSRF, self._cleanup),
+                ]
+                if self._product_cleanup is not None
+                else []
+            )
         )
 
     def _refresh_all(self, handler: Any, _request: RouteRequest) -> None:
@@ -287,6 +305,40 @@ class NutritionPostRoutes:
         """
         handler.read_json()
         handler.send_json(200, self._product_refresh.start())
+
+    def _cleanup_preview(self, handler: Any, request: RouteRequest) -> None:
+        """The products a cleanup with `days` would remove (#3444).
+
+        Request: query `days`, one of 30, 90, 180 or 365.
+
+        Response: 200 `{"days", "count", "products"}`, each product `id`, `name`,
+        `brand`, `last_used` (newest meal day or null) and `created_at`; newest
+        use first. Favorites and products a saved meal or template uses are
+        never listed.
+
+        Errors: 400 `invalid_days` "Bitte 30, 90, 180 oder 365 Tage wählen.".
+        """
+        if self._product_cleanup is not None:
+            days = request.query.get("days", [None])[0]
+            handler.send_json(200, self._product_cleanup().preview(days))
+
+    def _cleanup(self, handler: Any, _request: RouteRequest) -> None:
+        """Remove the products not used for `days`, as one undoable run (#3444).
+
+        Request: JSON body `{"days": 30 | 90 | 180 | 365, "confirmed": true}`. The
+        server finds the products itself, as the preview does: own products are
+        archived, stored database foods removed.
+
+        Response: 200 `{"ok": true, "count", "change"}`; `change` undoes the whole
+        run through `POST /api/change-history/undo` (null when nothing was removed).
+
+        Errors: 400 `confirmation_required` "Das Aufräumen muss ausdrücklich
+        bestätigt werden."; 400 `invalid_days` "Bitte 30, 90, 180 oder 365 Tage
+        wählen.".
+        """
+        if self._product_cleanup is not None:
+            payload = _read_object(handler)
+            handler.send_json(200, self._product_cleanup().run(payload))
 
     def _refresh_all_state(self, handler: Any, _request: RouteRequest) -> None:
         """The progress of the current or last run re-checking every product.

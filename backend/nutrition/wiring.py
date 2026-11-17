@@ -33,6 +33,7 @@ from backend.nutrition.food_database import FoodDatabaseService
 from backend.nutrition.food_mirror import FoodDatabaseMirror
 from backend.nutrition.meal_library import NutritionMealLibraryService
 from backend.nutrition.photo import NutritionPhotoExtractionService
+from backend.nutrition.product_cleanup import ProductCleanupService
 from backend.nutrition.product_refresh import ProductRefreshRunner
 from backend.nutrition.sync import IntervalsNutritionSyncService
 from backend.nutrition.web_search import NutritionWebSearchService
@@ -50,6 +51,8 @@ class NutritionServices:
     food_mirror: Callable[[], FoodDatabaseMirror]
     meal_library_service: Callable[[], NutritionMealLibraryService]
     product_catalog_service: Callable[[], ProductCatalogService]
+    # Removes products not used for a chosen number of days, as one run (#3444).
+    product_cleanup: Callable[[], ProductCleanupService]
     diary_service: Callable[[], NutritionDiaryService]
     intervals_sync_service: Callable[[], IntervalsNutritionSyncService]
     # Counts of the adaptive expenditure basis for the diagnostics (#3100).
@@ -201,6 +204,9 @@ def build_nutrition(ctx: AppContext) -> NutritionServices:
         food_mirror=lambda: mirror,
         meal_library_service=meal_library_service,
         product_catalog_service=lambda: meal_library_service().product_catalog,
+        product_cleanup=lambda: ProductCleanupService(
+            ctx.database(), lambda: ctx.clock.now().date(), utc_now
+        ),
         diary_service=diary_service,
         intervals_sync_service=intervals_sync_service,
         energy_basis=lambda db: energy_basis(

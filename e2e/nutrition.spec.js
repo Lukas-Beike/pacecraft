@@ -182,6 +182,41 @@ test("@responsive products show their use count, most used first, and a new one 
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBeTruthy();
 });
 
+// #3444: "Aufräumen" names the products not used for the chosen days, lists them, removes them
+// in one run and one "Rückgängig" brings all of them back.
+test("@responsive the cleanup counts, lists, removes and restores unused products in one run", async ({ page }) => {
+  const name = `Aufräumprodukt ${Date.now()}`;
+  await page.goto("/#nutrition/products");
+  await expect(page.locator("#appShell")).toBeVisible();
+  await page.evaluate((productName) => api("/api/nutrition/products", { method: "POST", body: JSON.stringify({ name: productName, basis_amount: 100, basis_unit: "g", kcal: 80, carbs_g: 1, protein_g: 1, fat_g: 1, source: "manual", confirmed: true }) }), name);
+  await page.reload();
+  const cards = await openProductSection(page, "all");
+  await expect(cards.filter({ hasText: name }).locator(".nutrition-last-use")).toContainText("nie genutzt · angelegt");
+  await page.getByRole("button", { name: "Aufräumen" }).click();
+  const dialog = page.locator("#nutritionCleanupDialog");
+  await expect(dialog).toBeVisible();
+  await expect(page.locator("#nutritionCleanupDays")).toHaveValue("90");
+  const count = page.locator("#nutritionCleanupCount");
+  await expect(count).toHaveText(/^\d+ Produkte? werden? gelöscht\.$/);
+  await page.locator("#nutritionCleanupDays").selectOption("365");
+  await expect(count).toHaveText(/^\d+ Produkte? werden? gelöscht\.$/);
+  const total = Number.parseInt(await count.textContent(), 10);
+  await page.locator("#nutritionCleanupList > summary").click();
+  await expect(page.locator("#nutritionCleanupList li")).toHaveCount(total);
+  await expect(page.locator("#nutritionCleanupList")).toContainText(name);
+  const confirm = page.locator("#nutritionCleanupConfirm");
+  await expect(confirm).toHaveText(`${total} löschen`);
+  await confirm.click();
+  await expect(dialog).toBeHidden();
+  const status = page.locator("#nutritionProductStatus");
+  await expect(status).toContainText(`${total} ${total === 1 ? "Produkt" : "Produkte"} gelöscht.`);
+  await expect(cards.filter({ hasText: name })).toHaveCount(0);
+  await status.getByRole("button", { name: "Rückgängig" }).click();
+  await expect(status).toContainText("Zurückgenommen.");
+  await expect(cards.filter({ hasText: name })).toHaveCount(1);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBeTruthy();
+});
+
 test("@responsive the product list has sections, markers and the same four actions for own and database products", async ({ page }) => {
   const nutrients = { kcal: 46, carbs_g: 6.7, protein_g: 1, fat_g: 1.5, sugar_g: 4, fiber_g: 0, salt_g: 0.1 };
   const base = { basis_amount: 100, basis_unit: "g", status: "active", filled_fields: {}, favorite: 0, ...nutrients };

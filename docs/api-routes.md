@@ -105,6 +105,8 @@ handler's docstring. Regenerate it with
 | POST | `/api/nutrition/products` | Session + CSRF | after access | Save a confirmed product. |
 | PUT | `/api/nutrition/products` | Session + CSRF | before access | Update a confirmed saved product. |
 | POST | `/api/nutrition/products/archive` | Session + CSRF | after access | Archive a product. |
+| GET | `/api/nutrition/products/cleanup` | Session | no | The products a cleanup with `days` would remove (#3444). |
+| POST | `/api/nutrition/products/cleanup` | Session + CSRF | after access | Remove the products not used for `days`, as one undoable run (#3444). |
 | POST | `/api/nutrition/products/database/delete` | Session + CSRF | after access | Forget a food database entry. |
 | POST | `/api/nutrition/products/database/refresh` | Session + CSRF | after access | Re-check one food database entry or own product online now; gaps fill. |
 | POST | `/api/nutrition/products/extract` | Session + CSRF | after access | Extract a product from a label photo; the image is not stored. |
@@ -1310,6 +1312,30 @@ the undo reference.
 
 Errors: 400 `confirmation_required` "Das Archivieren muss ausdrücklich bestätigt
 werden."; 404 `nutrition_product_not_found` "Produkt nicht gefunden."
+
+### `GET /api/nutrition/products/cleanup`
+
+Request: query `days`, one of 30, 90, 180 or 365.
+
+Response: 200 `{"days", "count", "products"}`, each product `id`, `name`,
+`brand`, `last_used` (newest meal day or null) and `created_at`; newest
+use first. Favorites and products a saved meal or template uses are
+never listed.
+
+Errors: 400 `invalid_days` "Bitte 30, 90, 180 oder 365 Tage wählen.".
+
+### `POST /api/nutrition/products/cleanup`
+
+Request: JSON body `{"days": 30 | 90 | 180 | 365, "confirmed": true}`. The
+server finds the products itself, as the preview does: own products are
+archived, stored database foods removed.
+
+Response: 200 `{"ok": true, "count", "change"}`; `change` undoes the whole
+run through `POST /api/change-history/undo` (null when nothing was removed).
+
+Errors: 400 `confirmation_required` "Das Aufräumen muss ausdrücklich
+bestätigt werden."; 400 `invalid_days` "Bitte 30, 90, 180 oder 365 Tage
+wählen.".
 
 ### `POST /api/nutrition/products/database/delete`
 
