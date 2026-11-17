@@ -99,7 +99,7 @@ read. A new key needs no entry: it appears here when its write is added.
 | `morning_body_battery_history` | backend/performance/morning_battery_service.py:MorningBatteryStore.persist | - | yes | - | - |
 | `morning_checkin_date` | backend/coach/morning_completion.py:MorningCoachJobCompletionService.complete | - | yes | - | - |
 | `morning_checkin_status` | backend/coach/morning_completion.py:MorningCoachJobCompletionService.complete | - | no | - | - |
-| `nutrition_product_cleanup:<value>` | backend/nutrition/product_cleanup.py:ProductCleanupService.run | backend/nutrition/product_cleanup.py:ProductCleanupService.restore_in_transaction | yes | - | - |
+| `nutrition_product_cleanup:<value>` | backend/nutrition/product_cleanup.py:ProductCleanupService.run | backend/nutrition/product_cleanup.py:ProductCleanupService._prune_runs<br>backend/nutrition/product_cleanup.py:ProductCleanupService.restore_in_transaction | yes | - | - |
 | `openai_conversation_id` | backend/coach/conversation.py:CoachConversationProvisionService.ensure<br>backend/coach/conversation.py:CoachConversationProvisionService.rotate<br>backend/coach/conversation.py:CoachConversationResetService._reset_local<br>backend/coach/conversation_recovery.py:CoachConversationRecoveryService.recover_if_invalid | - | yes | - | - |
 | `openai_rate_limits` | backend/providers/state.py:ProviderStateService.record_rate_limits | - | yes | - | - |
 | `openai_status` | backend/providers/state.py:ProviderStateService._record_status_unlocked | - | no | - | - |
@@ -143,6 +143,7 @@ read. A new key needs no entry: it appears here when its write is added.
 
 - every key is deleted by `backend/privacy.py:PrivacyDeleteService.delete`
 - `garmin_capability_` is deleted by prefix by `backend/providers/garmin_capability.py:clear_capability_state`
+- `nutrition_product_cleanup:` is deleted by prefix by `backend/nutrition/product_cleanup.py:ProductCleanupService._prune_runs`
 - `garmin_snapshot` is left out of the export; nothing writes it
 - `garmin_snapshot_legacy` is left out of the export; nothing writes it
 <!-- END GENERATED KEYS -->

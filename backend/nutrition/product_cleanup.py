@@ -125,13 +125,11 @@ class ProductCleanupService:
 
     def _prune_runs(self, db: Any) -> None:
         """Drop stored runs whose change-history row is gone: they cannot be undone."""
-        for row in db.execute(
-            "SELECT key FROM kv WHERE key LIKE ? AND substr(key, ?) NOT IN "
+        db.execute(
+            "DELETE FROM kv WHERE substr(key, 1, ?) = ? AND substr(key, ?) NOT IN "
             "(SELECT entity_id FROM change_history WHERE entity_type = ?)",
-            (_RUN_PREFIX + "%", len(_RUN_PREFIX) + 1, ENTITY_TYPE),
-        ).fetchall():
-            (key,) = row_values(row)
-            self._key_values.delete(db, str(key))
+            (len(_RUN_PREFIX), _RUN_PREFIX, len(_RUN_PREFIX) + 1, ENTITY_TYPE),
+        )
 
     def current(
         self, db: Any, entity_id: str
