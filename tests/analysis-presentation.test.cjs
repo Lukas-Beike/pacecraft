@@ -250,7 +250,7 @@ test("the energy table shows bands, the badge only with a fit, and the fit basis
     rows: [
       { source: "katch_mcardle", resting_kcal: 1839, resting_band_kcal: 219, total_kcal: 2689, total_band_kcal: 227, errors_kcal: [null, 11], mean_error_kcal: 11 },
       { source: "cunningham", resting_kcal: 1996, resting_band_kcal: 233, total_kcal: 2846, total_band_kcal: 241, errors_kcal: [null, 146], mean_error_kcal: 146 },
-      { source: "device", resting_kcal: null, total_kcal: null, errors_kcal: [null, null], mean_error_kcal: null },
+      { source: "device", label: "Synthetic Watch", resting_kcal: null, total_kcal: null, errors_kcal: [null, null], mean_error_kcal: null },
       { source: "own", resting_kcal: 1850, resting_band_kcal: 150, total_kcal: 2700, total_band_kcal: 120 },
     ],
     basis: { days: 28, complete_days: 24, insufficient: null },
@@ -267,6 +267,7 @@ test("the energy table shows bands, the badge only with a fit, and the fit basis
   assert.equal(textOf(rows[0].children[0]), "Katch-McArdle passt am besten");
   assert.equal(textOf(rows[0].children[1]), "1839 ± 219", "a formula row carries its band");
   assert.equal(textOf(rows[1].children[0]), "Cunningham", "only the best source carries the badge");
+  assert.equal(textOf(rows[2].children[0]), "Synthetic Watch", "#3323: the device row's name comes from the read");
   assert.equal(textOf(rows[2].children[1]), "–", "a source without a value stays unknown");
   assert.equal(textOf(rows[3].children[2]), "2700 ± 120");
   assert.equal(textOf(energyTable({ ...read, best: null }).children[2].children[0].children[0]), "Katch-McArdle", "no best, no badge");
@@ -308,6 +309,9 @@ test("the energy table shows bands, the badge only with a fit, and the fit basis
   // Gitar #3180: without shared windows every mean is null, yet each window's distance is still drawn.
   const unshared = read.rows.map((row) => ({ ...row, mean_error_kcal: null }));
   assert.equal(energyFitCharts({ ...read, rows: unshared }).length, 1);
+  const fittedDevice = read.rows.map((row) => (row.source === "device" ? { ...row, errors_kcal: [null, 40] } : row));
+  energyFitCharts({ ...read, rows: fittedDevice });
+  assert.equal(charts.at(-1).series[2].label, "Synthetic Watch", "#3323: the fit legend names the device from the read");
 });
 
 test("split A draws one stacked bar per row and hatches only the parts the backend marks shared", () => {
