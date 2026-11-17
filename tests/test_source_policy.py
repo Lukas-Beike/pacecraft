@@ -25,6 +25,7 @@ from intervals_wellness_stub import (
 )
 from performance_day_support import snapshot_metrics
 
+from backend.athlete.skinfolds import local_provenance
 from backend.canonical.records import MetricValue, Observation, Provenance
 from backend.canonical.vocabulary import (
     MetricKind,
@@ -686,6 +687,29 @@ class RecencyResolutionTests(unittest.TestCase):
 
         assert resolved is not None
         self.assertIs(resolved.winner, wahoo)
+
+    def test_only_garmins_copy_of_an_entered_day_leaves_the_alternatives(self) -> None:
+        # #3464: the entry is that day's Garmin entry (#3403), so Garmin's value of
+        # the day is no alternative; another provider's reading of the day stays
+        # one and still raises the conflict (Gitar, #3474).
+        own = _obs(MetricKind.WEIGHT, 72.5, TODAY, GARMIN)
+        entered = Candidate(
+            None, 72.5, TODAY, replace(own, provenance=local_provenance())
+        )
+        garmin = _weight(GARMIN, 74.0, TODAY, SourceKind.DEVICE_MEASURED)
+        wahoo = _weight(ProviderId.WAHOO, 78.0, TODAY)
+
+        resolved = resolve_candidates(
+            MetricKind.WEIGHT, (garmin, wahoo, entered), as_of=TODAY
+        )
+
+        assert resolved is not None
+        self.assertIs(resolved.winner, entered)
+        self.assertEqual(resolved.alternatives, (wahoo,))
+        self.assertTrue(resolved.conflict)
+        alone = resolve_candidates(MetricKind.WEIGHT, (garmin, entered), as_of=TODAY)
+        assert alone is not None
+        self.assertEqual((alone.alternatives, alone.conflict), ((), False))
 
     def test_undated_values_are_fallbacks_in_order(self) -> None:
         wahoo = _weight(ProviderId.WAHOO, 74.0, None)

@@ -90,6 +90,12 @@ test("@responsive a weight is entered and removed through the weight dialog", as
   await dialog.getByRole("button", { name: "Speichern" }).click();
   await expect(dialog).toBeHidden();
   await expect(row.locator("td").first()).toContainText("123,4");
+  // #3464: one weight series; the entry is today's mark, no second series beside Garmin's.
+  const chart = page.locator("#bodyAnalysisCharts [data-body-metric='weight_kg']").first();
+  await expect(chart.locator("circle[data-series='0']").last()).toBeAttached();
+  await expect(chart.locator("circle[data-series='1']")).toHaveCount(0);
+  await chart.locator("details > summary", { hasText: "Werte ansehen" }).click();
+  await expect(chart.locator(".analysis-chart-table tbody tr").last()).toContainText("eingetragen");
 
   await row.getByRole("button", { name: "Gewicht eintragen" }).click();
   await expect(page.locator("#weightDialogDate")).toHaveValue(today);

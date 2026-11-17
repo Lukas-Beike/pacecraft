@@ -852,3 +852,23 @@ test("the fit scale names the own value, sorts the sources nearest first and sig
   assert.equal(textOf(none.children[1]), "Für einen Vergleich fehlen noch genug vollständig erfasste Tage und Wiegungen.");
   assert.deepEqual(none.children[3].children.map((row) => textOf(row.children[1])), ["3157", "3768", "3930"]);
 });
+
+test("one merged body series names each day's source in the overview and the table (#3464)", () => {
+  const { bodyOverviewReading } = extractFunctions("analysis.js", ["bodySourceShown", "bodyOverviewLatest", "bodyFoldFat", "bodyOverviewReading"], {
+    isPreferredSource: (item, preferred) => item.source_provider === preferred,
+    analysisValidPoint: (p) => p.value != null, dateLabel: (v) => v,
+    skinfoldRead: { measurements: [] },
+  });
+  const merged = (points) => ({ preferred_providers: { weight_kg: "garmin", body_fat_pct: "garmin" }, windows: { "14d": { start: "2026-11-01", end: "2026-11-17", metrics: {
+    weight_kg: [{ source: "Garmin Connect", source_provider: "garmin", points }],
+    body_fat_pct: [{ source: "Garmin Connect", source_provider: "garmin", points }],
+  } } } });
+  const preferred = { weight_kg: "garmin", body_fat_pct: "garmin" };
+  const entered = merged([{ date: "2026-11-16", value: 80, source_label: "Garmin" }, { date: "2026-11-17", value: 79.5, source_label: "eingetragen" }]);
+  assert.equal(JSON.stringify(bodyOverviewReading("weight_kg", entered, preferred)), JSON.stringify({ value: 79.5, note: "Lokal · 2026-11-17" }));
+  const garmin = merged([{ date: "2026-11-17", value: 80, source_label: "Garmin" }]);
+  assert.equal(bodyOverviewReading("weight_kg", garmin, preferred).note, "Garmin Connect · 2026-11-17");
+  // KFA reads only the athlete's own days, also out of the merged series.
+  assert.equal(bodyOverviewReading("body_fat_pct", entered, preferred).value, 79.5);
+  assert.equal(bodyOverviewReading("body_fat_pct", garmin, preferred).text, "—");
+});

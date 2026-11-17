@@ -33,6 +33,7 @@ every named number the code fixes. A test fails when it is out of date.
 | `KCAL_PER_G_CARBOHYDRATE` | `4.0` | `backend/performance/activity_energy.py` |  |
 | `KCAL_PER_G_FAT` | `9.0` | `backend/performance/activity_energy.py` |  |
 | `EPOC_SHARE` | `0.06` | `backend/performance/activity_energy.py` | Optional excess post-exercise oxygen consumption for sessions above the threshold: 6 % of the net session cost, the low end of LaForgia et al. 2006 (J Sports Sci 24:1247, 6-15 %). Off unless asked for; weak evidence. |
+| `ENTERED_LABEL` | `'eingetragen'` | `backend/performance/body.py` | The source of one day's value in the merged body series (#3464). |
 | `WINDOW_DAYS` | `84` | `backend/performance/canonical_body.py` |  |
 | `WEIGHT_BOUNDS` | `(30.0, 300.0)` | `backend/performance/canonical_body.py` |  |
 | `BODY_FAT_BOUNDS` | `(2.0, 70.0)` | `backend/performance/canonical_body.py` |  |
