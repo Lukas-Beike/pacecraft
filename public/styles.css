@@ -1830,7 +1830,7 @@ button:focus-visible, a:focus-visible, summary:focus-visible {
 [data-body-overview] tr[data-metric="body_fat_pct"] { cursor: pointer; }
 /* A value keeps its band on its line; at large text the band alone moves below (#3362). */
 [data-energy] .current-performance-table td { white-space: nowrap; }
-[data-energy] .current-performance-table td:has(> span > small), [data-energy] .energy-split-row td { white-space: normal; }
+[data-energy] .current-performance-table td:has(> span > small), [data-energy] .energy-split-row td, [data-energy] .current-performance-table td.muted { white-space: normal; }
 [data-energy] .current-performance-table td > span > small { white-space: nowrap; }
 [data-energy] thead th + th { text-align: right; padding-left: 12px; }
 [data-energy] .energy-flag-row th { padding-left: 18px; color: var(--muted); font-size: .8rem; }
@@ -1839,12 +1839,18 @@ button:focus-visible, a:focus-visible, summary:focus-visible {
 [data-energy] th[data-color="3"] { --zone-color: var(--chart-series-3); }
 [data-energy] th[data-color="4"] { --zone-color: var(--chart-series-4); }
 [data-energy] th[data-color]::before { content: ""; display: inline-block; width: 10px; height: 10px; margin-right: 8px; border-radius: 50%; background: var(--zone-color); vertical-align: middle; }
-/* The 12-week best source's row is outlined (#3397): solid when distinguishable, dashed when only nearest. */
-[data-energy] tr[data-fit] > * { --fit-line: 2px solid var(--accent); border-top: var(--fit-line); border-bottom: var(--fit-line); }
-[data-energy] tr[data-fit="nearest"] > * { --fit-line: 2px dashed var(--accent); }
+/* The 12-week best source's row is outlined (#3397): solid when distinguishable, dashed when only nearest.
+   The outline encloses the head line with its bar and detail line (#3476). */
+[data-energy] :is(tr[data-fit], tr[data-fit] + .energy-split-row) { --fit-line: 2px solid var(--accent); }
+[data-energy] :is(tr[data-fit="nearest"], tr[data-fit="nearest"] + .energy-split-row) { --fit-line: 2px dashed var(--accent); }
+[data-energy] tr[data-fit] > * { border-top: var(--fit-line); border-bottom: var(--fit-line); }
+[data-energy] tr[data-fit]:has(+ .energy-split-row) > * { border-bottom: 0; }
 [data-energy] tr[data-fit] > :first-child { border-left: var(--fit-line); }
 [data-energy] tr[data-fit] > :last-child { border-right: var(--fit-line); }
-[data-energy] tr[data-fit]:has(+ .energy-split-row) > * { border-bottom: var(--fit-line); padding-bottom: 8px; }
+[data-energy] tr[data-fit] + .energy-split-row > td { border: var(--fit-line); border-top: 0; }
+/* Every row keeps the outline's room inside, so no text touches it and no row shifts when it moves (#3476). */
+[data-energy] tr > :where(:first-child) { border-left: 2px solid var(--transparent); padding-left: 8px; }
+[data-energy] tr > :where(:last-child) { border-right: 2px solid var(--transparent); padding-right: 8px; }
 /* "Welche Quelle trifft dein Gewicht?" as one kcal scale (#3397, A2). */
 .energy-fit-verdict { margin: 4px 0 12px; font-size: .86rem; line-height: 1.4; }
 .energy-fit-verdict b { color: var(--accent); }
