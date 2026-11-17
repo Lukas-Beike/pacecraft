@@ -1225,7 +1225,8 @@ function bodyMetricChart(metric, title, unit, window, period, preferred = {}) {
     metric === "cycling_w_per_kg"
       ? "W/kg verwendet FTP (Garmin Connect) und ein höchstens sieben Tage altes gemessenes Gewicht."
       : "Gemessene Verlaufswerte. Fehlende Messungen werden nicht ergänzt.",
-    { sparse: true });
+    // A weekly reading sits on its rolling week's start, so the axis reads in weeks (#3450).
+    { sparse: true, calendarWeeks: period === "twelveWeeks" });
   if (!chart) return null;
   chart.dataset.bodyMetric = metric;
   if (period === "twelveWeeks") chart.querySelectorAll(".analysis-info-tooltip").forEach((info) => {
