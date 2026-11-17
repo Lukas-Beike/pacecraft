@@ -39,8 +39,47 @@ TRANSIENT_FETCH = re.compile(
 )
 
 
+# A failed call's detail is cut to this length, HTML tags removed: gh puts a whole
+# GitHub error page (55 KB) on its one error line (#3393).
+MAX_DETAIL = 300
+HTML_TAG = re.compile(r"<[^>]*>")
+HTTP_STATUS = re.compile(r"HTTP \d{3}")
+# A transient GitHub failure: a read is tried once more after a pause (#3393, the
+# family #3345 retries in release follow). A 4xx stays terminal, and so does any
+# write, which a 5xx may have applied already: it is never sent twice.
+TRANSIENT_GH = re.compile(
+    r"HTTP 5\d\d|No server is currently available|timed out|timeout", re.IGNORECASE
+)
+GH_RETRY_SECONDS = 3
+GH_WRITE_FLAGS = frozenset(
+    {"-X", "--method", "-f", "-F", "--field", "--raw-field", "--input"}
+)
+GH_READ_COMMANDS = frozenset({"view", "list", "status", "checks", "diff", "search"})
+
+
 class CliError(RuntimeError):
     """A failed command or a refused input; the message is safe to print."""
+
+
+def _short_detail(detail: str) -> str:
+    """The detail without HTML, at most MAX_DETAIL characters, its HTTP status kept."""
+    text = " ".join(HTML_TAG.sub(" ", detail).split())
+    if len(text) <= MAX_DETAIL:
+        return text
+    status = HTTP_STATUS.search(text)
+    kept = text[:MAX_DETAIL].rstrip() + " …"
+    return (
+        f"{kept} ({status.group()})" if status and status.group() not in kept else kept
+    )
+
+
+def _retryable(program: str, args: tuple[str, ...], output: str) -> bool:
+    """A gh read that failed transiently; writes and 4xx are never retried."""
+    if program != "gh" or not TRANSIENT_GH.search(output) or not args:
+        return False
+    if args[0] == "api":
+        return not GH_WRITE_FLAGS.intersection(args)
+    return len(args) > 1 and args[1] in GH_READ_COMMANDS
 
 
 def _push_refusal(done: subprocess.CompletedProcess, lines: list[str]) -> list[str]:
@@ -57,14 +96,14 @@ def _push_refusal(done: subprocess.CompletedProcess, lines: list[str]) -> list[s
     return [*ratchet[:RATCHET_SHOWN], *more, *hook[-5:]]
 
 
-def run(
+def _attempt(
     program: str,
-    *args: str,
-    cwd: Path | None = None,
-    env: Mapping[str, str] | None = None,
-) -> str:
+    args: tuple[str, ...],
+    cwd: Path | None,
+    env: Mapping[str, str] | None,
+) -> subprocess.CompletedProcess:
     try:
-        done = subprocess.run(
+        return subprocess.run(
             [program, *args],
             check=False,
             capture_output=True,
@@ -75,13 +114,27 @@ def run(
         )
     except FileNotFoundError as exc:
         raise CliError(f"{program} is not installed.") from exc
+
+
+def run(
+    program: str,
+    *args: str,
+    cwd: Path | None = None,
+    env: Mapping[str, str] | None = None,
+) -> str:
+    done = _attempt(program, args, cwd, env)
+    if done.returncode != 0 and _retryable(
+        program, args, (done.stderr or "") + (done.stdout or "")
+    ):
+        time.sleep(GH_RETRY_SECONDS)
+        done = _attempt(program, args, cwd, env)
     if done.returncode != 0:
         lines = (done.stderr or done.stdout or "").strip().splitlines()
         # git prints progress ("To <remote>") before the line that says why.
         reason = next(
             (x for x in lines if x.startswith(("error", "fatal", " ! "))), None
         )
-        detail = reason or (lines[0] if lines else "no output")
+        detail = _short_detail(reason or (lines[0] if lines else "no output"))
         if "push" in args:
             # A refusing pre-push hook explains itself before git's generic line.
             detail = "\n".join([detail, *_push_refusal(done, lines)])
