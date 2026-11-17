@@ -156,6 +156,7 @@ def _device_split(
     health: Mapping[str, Mapping[str, Any]],
     sessions: Sequence[Mapping[str, Any]],
     window: EnergyWindow,
+    projected_resting: float | None = None,
 ) -> tuple[float | None, float | None]:
     """Garmin's everyday (NEAT) and sport kcal per day over the window.
 
@@ -163,7 +164,8 @@ def _device_split(
     duration; everyday is the active kcal minus it. A day counts only with
     resting and active kcal and every Garmin session priced; everyday below
     zero is not a valid split and stays None (split A, athlete decision
-    2026-11-16).
+    2026-11-16). Today the row's projected resting replaces the day's own,
+    which is still counting (Gitar, #3443).
     """
     start = window.end - timedelta(days=window.days - 1)
     by_day: dict[str, list[Mapping[str, Any]]] = {}
@@ -174,7 +176,7 @@ def _device_split(
     for offset in range(window.days):
         key = (start + timedelta(days=offset)).isoformat()
         day = health.get(key, {})
-        resting = _number(day.get("resting_kcal"))
+        resting = projected_resting or _number(day.get("resting_kcal"))
         active = _number(day.get("active_kcal"))
         if not resting or resting < 0 or active is None or active < 0:
             continue
@@ -388,7 +390,10 @@ def energy_view(
         },
         DEVICE: device_prediction,
     }
-    device_neat, device_sport = _device_split(health, sessions, day_window)
+    # Past days keep their own resting; device_rest is empty for them.
+    device_neat, device_sport = _device_split(
+        health, sessions, day_window, device_prediction[0] if device_rest else None
+    )
     rows = []
     for name in predictions:
         resting, resting_band_kcal, total, total_band = day_predictions[name]

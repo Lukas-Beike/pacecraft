@@ -622,12 +622,15 @@ class SelectedDayTests(unittest.TestCase):
             (row(past, "device")["resting_kcal"], row(past, "device")["total_kcal"]),
         )
 
-    def today_device(self, health: dict[str, Any]) -> dict[str, Any]:
+    def today_device(
+        self, health: dict[str, Any], sessions: list[dict[str, Any]] | None = None
+    ) -> dict[str, Any]:
         today = END + timedelta(days=1)
         view = energy_view(
             replace(inputs(), days={**inputs().days, today: DayInputs(weight_kg=80.0)}),
             [window(END, 2700.0, 1850.0)],
             health,
+            sessions or [],
             day=today,
         )
         return row(view, "device")
@@ -648,6 +651,21 @@ class SelectedDayTests(unittest.TestCase):
             (1800, 2200, END.isoformat()),
             (device["resting_kcal"], device["total_kcal"], device["resting_from"]),
         )
+        # A 60-min 700 kcal run nets the projected rate, not today's partial 900
+        # (Gitar): 700 - 1,800 / 1,440 x 60 = 625 sport, 1,000 - 625 = 375 everyday.
+        health[today]["active_kcal"] = 1000.0
+        run = {
+            "started_at_local": f"{today}T06:00:00",
+            "energy_kcal": 700.0,
+            "record_ids": GARMIN_IDS,
+            "elapsed_duration_s": 3600,
+        }
+        split = self.today_device(health, [run])["split"]
+        self.assertEqual(
+            (1800, 375, 625),
+            (split["resting_kcal"], split["neat_kcal"], split["sport_kcal"]),
+        )
+        health[today]["active_kcal"] = 400.0
         # Yesterday missing: the newest earlier day within 7 days.
         del health[END.isoformat()]
         health[(END - timedelta(days=1)).isoformat()]["resting_kcal"] = 1700.0
