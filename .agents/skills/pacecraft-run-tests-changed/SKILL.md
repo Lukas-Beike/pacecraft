@@ -14,6 +14,11 @@ python scripts/check_changed.py [--base origin/develop] [--js]
 - Runs `tests/run_tests.py --changed --base <base>`, `compileall`,
   `tools/quality_baseline.py` and, with `--js` or when the diff against the base
   touches a `.js`, `.cjs` or `.mjs` file, `node --test tests/*.cjs`.
+- When the diff touches a workflow under `.github/workflows/`, an `actionlint`
+  step lints the changed workflows with the pinned image and flags of
+  `workflow-lint.yml` in Docker (#3377). Without Docker, or with its daemon
+  down, it prints `unrun actionlint: <reason>` and does not change the exit
+  code; report it as an unrun check.
 - The quality step uses this checkout's `node_modules` for ESLint, as the
   pre-push hook does: a fresh worktree without `npm ci` fails it here with the
   `npm ci` hint, not later at the push (#2832).
