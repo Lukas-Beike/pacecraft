@@ -435,15 +435,17 @@ def read_energy_inputs(
 def device_body_fats(
     observations: Iterable[Observation],
 ) -> dict[date, tuple[float, Any]]:
-    """A device's or scale's body fat per day, with its provider (#3362).
+    """A device's, scale's or the athlete's body fat per day, with its provider (#3362).
 
-    The last one read for a day wins; rows without a provider are skipped.
+    The last one read for a day wins, except that an entered one (provider None,
+    #3402) wins its day.
     """
-    return {
-        o.observed_on: (float(o.value.value), o.provenance.provider)
-        for o in observations
-        if o.provenance.provider is not None and o.sport is None
-    }
+    days: dict[date, tuple[float, Any]] = {}
+    for o in observations:
+        held = days.get(o.observed_on)
+        if o.sport is None and (held is None or held[1] is not None):
+            days[o.observed_on] = (float(o.value.value), o.provenance.provider)
+    return days
 
 
 def _profile_fat(value: Any) -> float | None:
@@ -469,9 +471,10 @@ def energy_basis(db: Any, sources: EnergySources, end: date) -> dict[str, Any]:
     )
 
 
-# The formula rows' body fat sources, in their order (athlete decision, #3362).
-BODY_SOURCES = ("skinfold", "device", "profile")
+# The formula rows' body fat sources, in their order (athlete decisions, #3362, #3402).
+BODY_SOURCES = ("skinfold", "entered", "device", "profile")
 _SKINFOLD_LABEL = "Hautfalten"
+_ENTERED_LABEL = "Lokal"
 _PROFILE_LABEL = "Profil"
 
 
@@ -483,15 +486,25 @@ def _newest_within(values: Mapping[date, Any], day: date) -> date | None:
 
 
 def _body_fat(inputs: EnergyInputs, day: date) -> dict[str, Any] | None:
-    """The body fat in effect on ``day``: skinfold, else device or scale, else profile."""
+    """The body fat in effect on ``day``: skinfold, entered, device or scale, profile."""
     if (on := _newest_within(inputs.body_fat_pct, day)) is not None:
         return {"source": "skinfold", "label": _SKINFOLD_LABEL,
                 "measured_on": on, "body_fat_pct": inputs.body_fat_pct[on]}  # fmt: skip
-    if (on := _newest_within(inputs.device_body_fat, day)) is not None:
-        value, provider = inputs.device_body_fat[on]
-        label = provider_label(provider, SourceView.BODY_HISTORY)
-        return {"source": "device", "label": label, "measured_on": on,
-                "body_fat_pct": value}  # fmt: skip
+    for source in ("entered", "device"):
+        values = {
+            d: value
+            for d, value in inputs.device_body_fat.items()
+            if (value[1] is None) is (source == "entered")
+        }
+        if (on := _newest_within(values, day)) is not None:
+            fat, provider = values[on]
+            label = (
+                _ENTERED_LABEL
+                if provider is None
+                else provider_label(provider, SourceView.BODY_HISTORY)
+            )
+            return {"source": source, "label": label, "measured_on": on,
+                    "body_fat_pct": fat}  # fmt: skip
     if inputs.profile_body_fat_pct is not None:
         return {"source": "profile", "label": _PROFILE_LABEL, "measured_on": None,
                 "body_fat_pct": inputs.profile_body_fat_pct}  # fmt: skip
@@ -505,8 +518,9 @@ def resolve_body(
 
     A measurement up to ``BODY_GRACE_DAYS`` after ``day`` counts: the view
     ends yesterday because today's intake is partial, not the body (#3336).
-    The body fat comes from the newest skinfold, else a device or scale, else
-    the profile (#3362); ``source`` and ``label`` name it.
+    The body fat comes from the newest skinfold, else an entered one, else a
+    device or scale, else the profile (#3362, #3402); ``source`` and ``label``
+    name it.
     """
     weighed = [d for d in trend if d <= day]
     fat = _body_fat(inputs, day)

@@ -41,6 +41,9 @@ python scripts/run_browser_tests.py --project all --keep-going
   CI needs a draft PR: the CI browser (`--browser-image`) needs a Linux host.
 - Weekday: `--today YYYY-MM-DD` pins the fixture's athlete day and, in specs
   that import `test` from `e2e/helpers/today.js`, the browser clock (#3200).
+  The runner names each selected spec without the helper ("--today pins only
+  the fixture day for …"): its browser shows the real day, so it is no weekday
+  evidence (#3410).
   A spec whose expectation depends on the weekday (the week's completed units,
   yesterday) imports it and computes dates outside the page with its
   `todayIn(zone)`. Without `--today`, the runner also runs such a spec, when

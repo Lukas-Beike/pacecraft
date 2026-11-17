@@ -1,15 +1,17 @@
-"""Weights the athlete enters by hand, one per day (#3252).
+"""Weights and body fats the athlete enters by hand, one per day (#3252, #3402).
 
-An entry is an athlete-entered canonical observation (``weight``, kg, no
-provider, label "Lokal"), stored like the skinfolds, so no schema change. The
-canonical reader returns these rows for the allowlisted entered metrics
-(``canonical_store.ENTERED_METRICS``); a provider refresh retires only its own
-provider's rows, so an entry stays until the athlete removes it.
+An entry is an athlete-entered canonical observation (``weight`` in kg or
+``body_fat_pct`` in %, no provider, label "Lokal"), stored like the skinfolds,
+so no schema change. The canonical reader returns these rows for the
+allowlisted entered metrics (``canonical_store.ENTERED_METRICS``); a provider
+refresh retires only its own provider's rows, so an entry stays until the
+athlete removes it.
 """
 
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping
+from dataclasses import dataclass
 from datetime import date
 from typing import Any, Final
 
@@ -29,24 +31,62 @@ _ROWS_SQL: Final = (
 )
 
 
-class WeightEntryService:
-    """Save, list and remove the athlete's own weigh-ins, one per day."""
+@dataclass(frozen=True, slots=True)
+class BodyEntryKind:
+    """One enterable body value: its metric, payload key, unit and messages."""
+
+    kind: MetricKind
+    key: str  # the payload and read key of the value
+    unit: str
+    noun: str  # "Das Gewicht" / "Der Körperfettanteil"
+    confirm: str
+    missing: str
+    # Accepted range; None takes the canonical ``METRIC_BOUNDS`` of the kind.
+    bounds: tuple[float, float] | None = None
+
+
+WEIGHT_ENTRY: Final = BodyEntryKind(
+    MetricKind.WEIGHT,
+    "kg",
+    "kg",
+    "Das Gewicht",
+    "Das Löschen eines Gewichts muss bestätigt werden.",
+    "Für diesen Tag gibt es kein eingetragenes Gewicht.",
+)
+BODY_FAT_ENTRY: Final = BodyEntryKind(
+    MetricKind.BODY_FAT,
+    "pct",
+    "%",
+    "Der Körperfettanteil",
+    "Das Löschen eines Körperfettwerts muss bestätigt werden.",
+    "Für diesen Tag gibt es keinen eingetragenen Körperfettwert.",
+    # The range the body readers and the lean mass accept (canonical_body,
+    # BODY_FAT_BOUNDS), so a saved entry is always shown and used.
+    (2.0, 70.0),
+)
+
+
+class BodyEntryService:
+    """Save, list and remove the athlete's own values of one body metric, one per day."""
 
     def __init__(
         self,
         database_manager: Any,
         now: Callable[[], str],
         today: Callable[[], date],
+        entry: BodyEntryKind = WEIGHT_ENTRY,
     ) -> None:
         self._database_manager = database_manager
         self._now = now
         self._today = today
+        self._entry = entry
 
     def read(self) -> dict[str, Any]:
-        """Every active entry, newest first, each with its date and kg."""
+        """Every active entry, newest first, each with its date and value."""
         with self._database_manager.reader() as db:
             cursor = db.execute(
-                _ROWS_SQL, (MetricKind.WEIGHT.value, SourceKind.ATHLETE_ENTERED.value)
+                _ROWS_SQL,
+                (self._entry.kind.value, SourceKind.ATHLETE_ENTERED.value),
             )
             names = [column[0] for column in cursor.description]
             rows = [
@@ -55,22 +95,22 @@ class WeightEntryService:
             ]
         return {
             "entries": [
-                {"date": str(row["observed_on"]), "kg": float(row["value"])}
+                {"date": str(row["observed_on"]), self._entry.key: float(row["value"])}
                 for row in rows
             ]
         }
 
     def save(self, payload: Mapping[str, Any]) -> dict[str, Any]:
-        """Save one weigh-in; an entry of the same day is replaced."""
+        """Save one value; an entry of the same day is replaced."""
         day = self._day(payload.get("date"))
-        kg = self._kg(payload.get("kg"))
+        value = self._value(payload.get(self._entry.key))
         with self._database_manager.unit_of_work() as db:
             self._retire(db, day)
             canonical_store.upsert_observation(
                 db,
                 Observation(
-                    kind=MetricKind.WEIGHT,
-                    value=MetricValue(kg, "kg"),
+                    kind=self._entry.kind,
+                    value=MetricValue(value, self._entry.unit),
                     observed_on=day,
                     observed_at=None,
                     provenance=local_provenance(),
@@ -83,13 +123,11 @@ class WeightEntryService:
     def remove(self, payload: Mapping[str, Any]) -> dict[str, Any]:
         """Retire the entry of one day; the request must be confirmed."""
         if payload.get("confirmed") is not True:
-            raise AppError(400, "Das Löschen eines Gewichts muss bestätigt werden.")
+            raise AppError(400, self._entry.confirm)
         day = self._day(payload.get("date"))
         with self._database_manager.unit_of_work() as db:
             if not self._retire(db, day):
-                raise AppError(
-                    404, "Für diesen Tag gibt es kein eingetragenes Gewicht."
-                )
+                raise AppError(404, self._entry.missing)
         return self.read()
 
     def _retire(self, db: Any, day: date) -> int:
@@ -99,7 +137,7 @@ class WeightEntryService:
             "AND observed_on = ? AND state = 'active'",
             (
                 self._now(),
-                MetricKind.WEIGHT.value,
+                self._entry.kind.value,
                 SourceKind.ATHLETE_ENTERED.value,
                 day.isoformat(),
             ),
@@ -115,15 +153,19 @@ class WeightEntryService:
             raise AppError(400, "Das Datum darf nicht in der Zukunft liegen.")
         return day
 
-    @staticmethod
-    def _kg(value: Any) -> float:
+    def _value(self, value: Any) -> float:
+        entry = self._entry
         try:
-            kg = float(str(value).replace(",", "."))
+            number = float(str(value).replace(",", "."))
         except ValueError as exc:
-            raise AppError(400, "Das Gewicht braucht einen Wert in kg.") from exc
-        lower, upper = METRIC_BOUNDS[MetricKind.WEIGHT]
-        if not lower <= kg <= upper:
             raise AppError(
-                400, f"Das Gewicht muss zwischen {lower:g} und {upper:g} kg liegen."
+                400, f"{entry.noun} braucht einen Wert in {entry.unit}."
+            ) from exc
+        lower, upper = entry.bounds or METRIC_BOUNDS[entry.kind]
+        if not lower <= number <= upper:
+            raise AppError(
+                400,
+                f"{entry.noun} muss zwischen {lower:g} und {upper:g} "
+                f"{entry.unit} liegen.",
             )
-        return round(kg, 1)
+        return round(number, 1)

@@ -375,15 +375,55 @@ test("@responsive the week review sits under a past or running week and follows 
 
 // A review that cannot be read (offline, a server error) leaves the plan line in its place, and a
 // sport filter hides both, as they count the whole week (#3298).
-test("@responsive a failed week review shows the plan line, and a sport filter hides both", async ({ page, request }) => {
-  await page.route("**/api/analysis/week-review?*", (route) => route.fulfill({ status: 500, json: { error: "Serverfehler" } }));
+// #3391: a failed read never removes the card; it names the gap and retries on tap.
+test("@responsive a failed week review keeps the card with its reason and a retry, and a sport filter hides it", async ({ page, request }) => {
+  let fail = true;
+  await page.route("**/api/analysis/week-review?*", async (route) => {
+    if (fail) return route.fulfill({ status: 500, json: { error: "Serverfehler" } });
+    const [today, monday] = await page.evaluate(() => {
+      const day = timezoneDateKey(state.data?.profile?.timezone, new Date());
+      return [day, planWeekStart(day)];
+    });
+    return route.fulfill({ json: weekReviewFor(monday, today) });
+  });
   await openCalendar(page, request);
-  const week = page.locator(".planned-week");
-  await expect(week.locator(".planned-week-totals")).toHaveCount(1);
-  await expect(week.locator(".week-review, .error-state")).toHaveCount(0);
-  await week.locator(".planned-sport-filter").getByRole("radio", { name: "Lauf" }).check();
+  const review = page.locator(".planned-week .week-review");
+  await expect(review).toContainText("Wochenrückblick gerade nicht verfügbar");
+  await expect(page.locator(".planned-week .error-state")).toHaveCount(0);
+  await page.locator(".planned-week .planned-sport-filter").getByRole("radio", { name: "Lauf" }).check();
   await expect(page.locator(".planned-week .planned-week-totals, .planned-week .week-review")).toHaveCount(0);
   await page.locator(".planned-week .planned-sport-filter").getByRole("radio", { name: "Alle", exact: true }).check();
+  await expect(review).toContainText("Wochenrückblick gerade nicht verfügbar");
+  // A keyboard retry that fails again leaves the focus on the new retry button.
+  await review.getByRole("button", { name: "Erneut laden" }).focus();
+  await page.keyboard.press("Enter");
+  await expect(review.getByRole("button", { name: "Erneut laden" })).toBeFocused();
+  fail = false;
+  await review.getByRole("button", { name: "Erneut laden" }).click();
+  await expect(review).toBeFocused();
+  await expect(review.locator(".week-review-tile").first()).toHaveText("Plan1 von 54 noch offen");
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBeTruthy();
+});
+
+// #3391: a slow read (the server under load after a deploy) keeps the card in its loading state.
+test("@responsive a slow week review keeps the card loading until it arrives", async ({ page, request }) => {
+  let release = () => {};
+  const held = new Promise((resolve) => { release = resolve; });
+  await page.route("**/api/analysis/week-review?*", async (route) => {
+    const [today, monday] = await page.evaluate(() => {
+      const day = timezoneDateKey(state.data?.profile?.timezone, new Date());
+      return [day, planWeekStart(day)];
+    });
+    await held;
+    await route.fulfill({ json: weekReviewFor(monday, today) });
+  });
+  await openCalendar(page, request);
+  const review = page.locator(".planned-week .week-review");
+  await expect(review).toContainText("Wochenrückblick wird geladen");
+  await page.waitForTimeout(1_500);
+  await expect(review).toContainText("Wochenrückblick wird geladen");
+  release();
+  await expect(review.locator(".week-review-tile").first()).toHaveText("Plan1 von 54 noch offen");
 });
 
 test("@responsive an old link to the Analyse week opens the calendar", async ({ page, request }) => {

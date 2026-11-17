@@ -59,8 +59,9 @@ class CanonicalCurrentInputs:
 
     wahoo_ftp: Observation | None = None
     wahoo_weight: Observation | None = None
-    # The weights the athlete entered by hand (no provider, #3252).
+    # The weights and body fats the athlete entered by hand (no provider, #3252).
     entered_weights: tuple[Observation, ...] = ()
+    entered_body_fats: tuple[Observation, ...] = ()
     zone_thresholds: tuple[Observation, ...] = ()
     threshold_candidates: tuple[Observation, ...] = ()
     configured_thresholds: tuple[Observation, ...] = ()
@@ -87,11 +88,14 @@ def read_current_inputs(
     Without anything stored every field is empty.
     """
     wahoo_ftp, wahoo_weight = _wahoo_current(reader, db, as_of=as_of)
-    entered = tuple(
-        item
-        for item in reader.observations(db, MetricKind.WEIGHT, end=as_of)
-        if item.provenance.provider is None
-    )
+    entered = {
+        kind: tuple(
+            item
+            for item in reader.observations(db, kind, end=as_of)
+            if item.provenance.provider is None
+        )
+        for kind in (MetricKind.WEIGHT, MetricKind.BODY_FAT)
+    }
     candidates = (wahoo_ftp,) if wahoo_ftp is not None else ()
     providers = _provider_thresholds(reader, db, wahoo_ftp)
     configured = (
@@ -102,7 +106,8 @@ def read_current_inputs(
     return CanonicalCurrentInputs(
         wahoo_ftp=wahoo_ftp,
         wahoo_weight=wahoo_weight,
-        entered_weights=entered,
+        entered_weights=entered[MetricKind.WEIGHT],
+        entered_body_fats=entered[MetricKind.BODY_FAT],
         zone_thresholds=provider_zone_thresholds(
             providers, as_of=as_of, preferences=preferences
         ),

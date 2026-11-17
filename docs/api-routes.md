@@ -43,6 +43,9 @@ handler's docstring. Regenerate it with
 | GET | `/api/analysis/trends` | Session | no | Pace at equal heart rate and recurring sessions, as the Coach reads them (#2802). |
 | GET | `/api/analysis/week-review` | Session | no | The local review of one ISO week against the week before (#2805). |
 | GET | `/api/auth/status` | Public | no | Current login status. |
+| GET | `/api/body/body-fat` | Session | no | The body fats the athlete entered as a percentage, newest first. |
+| PUT | `/api/body/body-fat` | Session + CSRF | before access | Save one body fat percentage; one of the same day is replaced. |
+| PUT | `/api/body/body-fat/remove` | Session + CSRF | before access | Remove the entered body fat of one day. |
 | GET | `/api/body/energy` | Session | no | Resting and daily expenditure per source, up to yesterday. |
 | GET | `/api/body/skinfolds` | Session | no | The athlete's 3-site skinfold measurements, newest first. |
 | PUT | `/api/body/skinfolds` | Session + CSRF | before access | Save one 3-site skinfold measurement; one of the same day is replaced. |
@@ -339,6 +342,36 @@ Response: 200 with `authenticated` (boolean) and `maintenance` (`active`,
 `running_operations`).
 
 Errors: none beyond the common ones.
+
+### `GET /api/body/body-fat`
+
+Request: no query, no body.
+
+Response: 200 with `entries` (every active one, each `date` and `pct`).
+
+Errors: none beyond the common ones.
+
+### `PUT /api/body/body-fat`
+
+Request: JSON body `{"date": "YYYY-MM-DD", "pct": number}`, 2 to 70 %
+(comma decimals allowed). The date must not be in the future.
+
+Response: 200 as `GET /api/body/body-fat`.
+
+Errors: 400 "Das Datum fehlt oder ist ungültig."; 400 "Das Datum darf
+nicht in der Zukunft liegen."; 400 "Der Körperfettanteil braucht einen
+Wert in %."; 400 "Der Körperfettanteil muss zwischen 2 und 70 %
+liegen.".
+
+### `PUT /api/body/body-fat/remove`
+
+Request: JSON body `{"date": "YYYY-MM-DD", "confirmed": true}`.
+
+Response: 200 as `GET /api/body/body-fat`.
+
+Errors: 400 "Das Löschen eines Körperfettwerts muss bestätigt werden."
+unless `confirmed` is `true`; 400 "Das Datum fehlt oder ist ungültig.";
+404 "Für diesen Tag gibt es keinen eingetragenen Körperfettwert.".
 
 ### `GET /api/body/energy`
 

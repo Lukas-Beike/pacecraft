@@ -2392,12 +2392,37 @@ function plannedWeekReview(weekKey, todayKey, extra, planLine) {
 // A calendar render without changes keeps the card, so a new check-in or sync refills it in place.
 function refreshWeekReview(root) {
   const card = root.querySelector(".week-review");
-  if (card?.dataset.version && card.dataset.version !== analysisReportVersionKey()) void fillWeekReview(card, true);
+  if (card?.dataset.failed) retryWeekReview(card);
+  else if (card?.dataset.version && card.dataset.version !== analysisReportVersionKey()) void fillWeekReview(card, true);
+}
+
+// A failed or timed-out read never removes the card (#3391): it names the gap and offers a retry;
+// the next calendar refresh retries as well.
+function weekReviewFailed(card) {
+  card.dataset.failed = "true";
+  const retry = h("button", { type: "button", className: "secondary-button" }, "Erneut laden");
+  retry.addEventListener("click", () => retryWeekReview(card, true));
+  card.replaceChildren(card.firstElementChild, h("p", "empty", "Wochenrückblick gerade nicht verfügbar"), retry);
+  // A retry started from the button keeps the keyboard there when it fails again (Gitar #3413).
+  if (card.dataset.retryFocus && document.activeElement === card) retry.focus();
+  delete card.dataset.retryFocus;
+}
+
+// The pressed button leaves the card, so a tapped retry moves focus to the card while it loads.
+function retryWeekReview(card, focus = false) {
+  delete card.dataset.failed;
+  card.replaceChildren(card.firstElementChild, createLoadingState("Wochenrückblick wird geladen…"));
+  if (focus) {
+    card.dataset.retryFocus = "true";
+    card.tabIndex = -1;
+    card.focus();
+  }
+  void fillWeekReview(card);
 }
 
 // A step to another week or a new calendar render replaces the card; a late answer for it is dropped.
-// A failed read (offline too) or a week without data shows the plan line instead, or nothing; a
-// failed refill keeps what the card shows.
+// A week without data shows the plan line instead, or nothing; a failed read shows why with a retry,
+// and a failed refill keeps what the card shows.
 async function fillWeekReview(card, refill = false) {
   const generation = ++weekReviewGeneration;
   const session = state.sessionGeneration;
@@ -2412,14 +2437,22 @@ async function fillWeekReview(card, refill = false) {
     if (!current()) return;
     if (review.week_start === weekKey) tiles = weekReviewTiles(review, Number(extra), thisWeek === "true");
   } catch {
-    if (!current() || refill) return;
+    if (current() && !refill) weekReviewFailed(card);
+    return;
   }
   if (!tiles.length) {
     const planLine = weekReviewFallbacks.get(card);
+    // A focused card hands the keyboard to the plan line that replaces it (Gitar #3413).
+    const hadFocus = card.contains(document.activeElement);
     if (planLine) card.replaceWith(planLine); else card.remove();
+    if (hadFocus && planLine) {
+      planLine.tabIndex = -1;
+      planLine.focus();
+    }
     return;
   }
   card.dataset.version = version;
+  delete card.dataset.retryFocus;
   card.replaceChildren(card.firstElementChild, h("div", "week-review-tiles", ...tiles));
 }
 

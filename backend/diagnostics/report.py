@@ -173,6 +173,11 @@ class DiagnosticReportService:
                 "observations WHERE metric = 'weight' AND provider IS NULL "
                 "AND source_kind = 'athlete_entered' AND state = 'active'"
             ),
+            # Body fats the athlete entered as a percentage (#3402).
+            "entered_body_fats": count(
+                "observations WHERE metric = 'body_fat' AND provider IS NULL "
+                "AND source_kind = 'athlete_entered' AND state = 'active'"
+            ),
         }
         counts["stored_payload_bytes"] = self._stored_payload_bytes(db)
         return counts | self._storage()
