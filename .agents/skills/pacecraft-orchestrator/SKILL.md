@@ -77,6 +77,20 @@ done.
 
 About every 20 minutes: run [status-snapshot](../pacecraft-status-snapshot/SKILL.md),
 read every lane's thread, and check the `develop` push runs of new merges.
+Read each lane's latest run too, not only its last message
+(`t3_thread_read` with `runLimit: 1`: `recentRuns[0].status`, `startedAt`,
+`completedAt`; the thread's `status`, `settled` and `pendingRequestCount`).
+Flag a lane when:
+
+- its last run `failed`;
+- its last run ended within about 10 seconds while its queue or open issues
+  still hold work;
+- it is settled with work still open.
+
+Restart a flagged lane with a message naming its next item (it starts a new
+run), or report it to the athlete when a restart fails. On 2026-11-15 lane
+L20's run ended after 3 seconds and sat idle with open work for almost 3 hours,
+unseen by checks that read only its messages (#3352).
 Nudge a lane that has stalled without a stated reason; answer questions or put
 them to the athlete as deliver-issue's "Working with the athlete" says (one
 decision per question). A lane is settled when its queue is
