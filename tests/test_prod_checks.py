@@ -1,6 +1,7 @@
 """Post-release base scripts against a local fake app; no real server or network."""
 
 import io
+import itertools
 import json
 import secrets
 import sys
@@ -613,7 +614,7 @@ class ProdChecksTests(unittest.TestCase):
         self.assertIn("ok logout 200", text)
         # Still building when the time runs out: exit 3, logged out.
         FakeApp.state["curves"] = ["building"]
-        clock = iter(range(0, 1000, 20))
+        clock = itertools.count(0, 20)
         with (
             mock.patch.object(prod_diagnostics.time, "sleep"),
             mock.patch.object(prod_diagnostics.time, "monotonic", lambda: next(clock)),
