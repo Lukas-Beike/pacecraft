@@ -326,6 +326,7 @@ class QualityBaselineTests(unittest.TestCase):
             patch("tools.quality_baseline.executable_bit_diagnostics", return_value=[]),
             patch("tools.quality_baseline.run", side_effect=fake_run),
             patch("tools.quality_baseline.javascript_diagnostics", return_value=[]),
+            patch("tools.quality_baseline.python_regex_diagnostics", return_value=[]),
         ):
             quality_baseline.collect(Path.cwd(), {})
         self.assertGreater(len(ruff_commands), 1)
@@ -533,6 +534,107 @@ class QualityBaselineTests(unittest.TestCase):
             ],
         )
         self.assertEqual(self.check(found)[0], 1)
+
+    @staticmethod
+    def python_findings(files, regexes=False):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            for name, text in files.items():
+                (root / name).parent.mkdir(parents=True, exist_ok=True)
+                (root / name).write_text(text, encoding="utf-8")
+            names = sorted(files)
+            if regexes:
+                return quality_baseline.python_regex_diagnostics(root, names)
+            return quality_baseline.cognitive_diagnostics(root, names)
+
+    def test_a_string_literal_used_three_times_is_found_as_sonar_counts_it(self):
+        # #3381: python:S1192 failed #3360 only in CI. The rules follow
+        # sonar-python's StringLiteralDuplicationCheck: at least 5 characters, not
+        # word-like, formatting or a colour, not a docstring, f-string, decorator
+        # or annotation, counted per file by the literal with its quotes, and no
+        # file whose name starts with "test".
+        source = chr(10).join(
+            [
+                '"""A docstring, repeated, a docstring."""',
+                'URL = "/api/diagnostics"',
+                'BOTH = (get("/api/diagnostics"), get("/api/diagnostics"))',
+                'KEYS = ("status-x", "status-x", "status-x")',
+                'STAMP = ("%Y-%m-%d", "%Y-%m-%d", "%Y-%m-%d")',
+                'COLOR = ("#a0b1c2", "#a0b1c2", "#a0b1c2")',
+                'SHORT = ("a/b", "a/b", "a/b")',
+                'PARTS = [f"/x/{URL}/y", f"/x/{URL}/y", f"/x/{URL}/y"]',
+                "QUOTES = ('/one/two', \"/one/two\", '/one/two')",
+                'def typed(a: "Some Type") -> "Some Type":',
+                '    value: "Some Type" = a',
+                "    return value",
+            ]
+        )
+        found = self.python_findings(
+            {"backend/sample.py": source, "tests/test_sample.py": source}
+        )
+        self.assertEqual(
+            [
+                (item["path"], item["line"], item["code"])
+                for item in found
+                if item["code"] == "S1192"
+            ],
+            [("backend/sample.py", 2, "S1192")],
+        )
+
+    @unittest.skipUnless(quality_baseline.eslint_script(), "needs npm ci for ESLint")
+    def test_a_python_regex_with_super_linear_backtracking_is_found(self):
+        # #3381: python:S8786 failed #3372 only in CI. The patterns of re calls go
+        # through Sonar's own JavaScript engine (sonarjs/super-linear-regex).
+        source = chr(10).join(
+            [
+                "import re",
+                'SLOW = re.compile(r"\\{[^{}\\s]*(?:,|\\.\\.)[^{}\\s]*\\}")',
+                'FIXED = re.compile(r"[@+!?*]\\([^()]*\\)|\\{[^{}\\s]*\\}")',
+                'NAMED = re.search(r"(?P<k>\\{[^{}\\s]*(?:,|\\.\\.)[^{}\\s]*\\})", "x")',
+                'LOOSE = re.compile(r"\\{[^{}\\s]*(?:,|\\.\\.)[^{}\\s]*\\}", re.X)',
+            ]
+        )
+        found = self.python_findings({"scripts/sample.py": source}, regexes=True)
+        rule = "sonarjs/super-linear-regex"
+        self.assertEqual(
+            [
+                (item["tool"], item["path"], item["line"], item["code"])
+                for item in found
+            ],
+            [
+                ("eslint", "scripts/sample.py", 2, rule),
+                ("eslint", "scripts/sample.py", 4, rule),
+            ],
+        )
+        # Without Node (CI's quality job) the step is skipped like ESLint.
+        with patch("tools.quality_baseline.eslint_script", return_value=None):
+            self.assertIsNone(self.python_findings({"a.py": source}, regexes=True))
+
+    @unittest.skipUnless(quality_baseline.eslint_script(), "needs npm ci for ESLint")
+    def test_javascript_slow_regexes_and_commands_from_path_are_found(self):
+        # #3381: javascript:S4036 failed #3363 only in CI; S8786 for JS as well.
+        script = chr(10).join(
+            [
+                'import { spawnSync } from "node:child_process";',
+                'export const run = () => spawnSync("git", ["status"]);',
+                "export const own = () => spawnSync(process.execPath, []);",
+                "export const slow = /\\{[^{}\\s]*(?:,|\\.\\.)[^{}\\s]*\\}/;",
+            ]
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "public").mkdir()
+            (root / "public/page.js").write_text("const page = 1;", encoding="utf-8")
+            (root / "scripts").mkdir()
+            (root / "scripts/walk.mjs").write_text(script, encoding="utf-8")
+            found = quality_baseline.javascript_diagnostics(root)
+        self.assertEqual(
+            sorted((item["path"], item["line"], item["code"]) for item in found or []),
+            [
+                ("scripts/walk.mjs", 2, "sonarjs/no-os-command-from-path"),
+                ("scripts/walk.mjs", 4, "sonarjs/super-linear-regex"),
+            ],
+        )
 
     @unittest.skipUnless(quality_baseline.eslint_script(), "needs npm ci for ESLint")
     def test_complexity_score_is_not_part_of_the_identity_and_nosonar_suppresses(self):

@@ -16,10 +16,16 @@ python scripts/sonar_check.py --pr <number>
   `issue <rule> <file>:<line>`. Messages and matched text are never printed.
 - A `limit:` line means part of the analysis (the server-side agentic one) was
   forbidden and not run. Report it as a limit, never as a pass.
-- Code-quality rules (such as `python:S8786`) run only in the SonarCloud CI
-  analysis on this plan; the local mode covers secrets. Once the SonarCloud
-  check has reported on the pushed head, run `--pr <number>`; an earlier result
-  is not a pass.
+- This CLI's local mode covers secrets only; the code-quality rules run in the
+  SonarCloud CI analysis on this plan. Once the SonarCloud check has reported on
+  the pushed head, run `--pr <number>`; an earlier result is not a pass.
+- The quality ratchet (`python tools/quality_baseline.py`, also in the pre-push
+  hook) checks these Sonar rules locally, new findings only: `python:S3776`,
+  `python:S3358`, `python:S1192` (sonar-python's exclusions, files named `test*`
+  skipped), `python:S8786` (the `re` patterns through sonarjs), `css:S4666`, and
+  through `eslint-plugin-sonarjs` `S3776`, `S3358`, `S4624`, `S8786` and
+  `S4036` for JavaScript (#3271, #3381). Every other rule, and
+  `jssecurity:S8707`, is checked only in CI.
 - Exit 0: no issues. Exit 1: issues, failures or no usable result. Exit 2: bad
   input or the CLI is missing (install it, put it on `PATH`, `sonar auth login`).
   Exit 3: no issues, but the `limit` part was not run; continue and record the

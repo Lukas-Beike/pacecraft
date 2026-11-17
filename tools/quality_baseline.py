@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import ast
 import hashlib
+import itertools
 import json
 import os
 import re
@@ -38,6 +39,29 @@ COGNITIVE_CODE = "S3776"
 COGNITIVE_LIMIT = 15
 # Sonar's python:S3358: a conditional expression nested in another (#3271).
 NESTED_CONDITIONAL_CODE = "S3358"
+# Sonar's python:S1192 as sonar-python's StringLiteralDuplicationCheck counts it
+# (#3381): a literal of at least 5 characters, used 3 times in one file, unless it
+# is word-like, a formatting pattern or a colour.
+DUPLICATE_LITERAL_CODE = "S1192"
+DUPLICATE_LITERAL_EXCLUSIONS = (
+    re.compile(r"[_\-a-zA-Z0-9]+"),
+    re.compile(r"[0-9{} .\-_%:dfrsymhYMHS<>]+"),
+    re.compile(r"#[0-9a-fA-F]{6}"),
+)
+# Sonar's python:S8786 (super-linear regex): the patterns of these re calls go
+# through Sonar's own engine, sonarjs/super-linear-regex (#3381).
+SLOW_REGEX_RULE = "sonarjs/super-linear-regex"
+REGEX_CALLS = frozenset(
+    {"compile", "search", "match", "fullmatch", "sub", "subn", "split", "findall"}
+    | {"finditer"}
+)
+# Loads sonarjs from the same node_modules as ESLint (PACECRAFT_NODE_MODULES).
+REGEX_ESLINT_CONFIG = """import { createRequire } from "node:module";
+const load = createRequire(__MODULES__ + "/_");
+export default [{ files: ["*.mjs"], plugins: { sonarjs: load("eslint-plugin-sonarjs") },
+  languageOptions: { ecmaVersion: "latest", sourceType: "module" },
+  rules: { "sonarjs/super-linear-regex": "error" } }];
+"""
 # Sonar's css:S4666 (Stylelint no-duplicate-selectors): the same selector list in
 # the same at-rule context twice. Like the cognitive counter it is this module's
 # own code; CI's Sonar gate failed on it while every local check passed (#3077).
@@ -368,11 +392,13 @@ def cognitive_diagnostics(root: Path, files: list[str]) -> list[dict]:
     baseline identity survives the score changing."""
     diagnostics = []
     for path in files:
+        source = (root / path).read_text(encoding="utf-8")
         try:
-            tree = ast.parse((root / path).read_text(encoding="utf-8"), path)
+            tree = ast.parse(source, path)
         except SyntaxError as error:
             raise RuntimeError(f"Cannot parse {path} for complexity") from error
         diagnostics.extend(nested_conditional_diagnostics(tree, path))
+        diagnostics.extend(duplicated_literal_diagnostics(tree, path, source))
         for name, function in _functions(tree):
             if cognitive_complexity(function) > COGNITIVE_LIMIT:
                 message = f"Cognitive complexity of {name} is above {COGNITIVE_LIMIT}"
@@ -413,6 +439,162 @@ def nested_conditional_diagnostics(tree: ast.AST, path: str) -> list[dict]:
         for node in ast.walk(tree)
         if isinstance(node, ast.IfExp) and _inner_conditional(node)
     ]
+
+
+def _annotations(node: ast.AST) -> list[ast.AST]:
+    """The type annotations one node declares."""
+    if isinstance(node, ast.AnnAssign):
+        return [node.annotation]
+    if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+        return []
+    arguments = [
+        arg.annotation
+        for arg in ast.walk(node.args)
+        if isinstance(arg, ast.arg) and arg.annotation
+    ]
+    return [*arguments, *([node.returns] if node.returns else [])]
+
+
+def _uncounted_literals(tree: ast.AST) -> set[int]:
+    """Ids of the string constants Sonar's S1192 skips: docstrings, f-string parts,
+    and everything in a decorator or a type annotation."""
+    scopes = (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)
+    skipped: list[ast.AST] = []
+    for node in ast.walk(tree):
+        if isinstance(node, scopes):
+            if node.body and isinstance(node.body[0], ast.Expr):
+                skipped.append(node.body[0].value)
+            skipped.extend(getattr(node, "decorator_list", []))
+        skipped.extend(_annotations(node))
+        if isinstance(node, ast.JoinedStr):
+            skipped.append(node)
+    return {id(inner) for outer in skipped for inner in ast.walk(outer)}
+
+
+def duplicated_literal_diagnostics(tree: ast.AST, path: str, source: str) -> list[dict]:
+    """Sonar's python:S1192 (#3381): one finding per literal used 3 times, at its
+    first use, counted with its quotes, never in a file named test*."""
+    if Path(path).name.startswith("test"):
+        return []
+    skipped = _uncounted_literals(tree)
+    lines = source.splitlines(keepends=True)
+    starts = [0, *itertools.accumulate(len(line) for line in lines)]
+    uses: dict[str, list[ast.Constant]] = {}
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Constant) or not isinstance(node.value, str):
+            continue
+        value = node.value
+        if id(node) in skipped or len(value) < 5:
+            continue
+        if any(pattern.fullmatch(value) for pattern in DUPLICATE_LITERAL_EXCLUSIONS):
+            continue
+        end_line = node.end_lineno or node.lineno
+        text = source[
+            starts[node.lineno - 1] + node.col_offset : starts[end_line - 1]
+            + (node.end_col_offset or 0)
+        ]
+        uses.setdefault(text, []).append(node)
+    diagnostics = []
+    for text, nodes in uses.items():
+        if len(nodes) < 3:
+            continue
+        first = min(nodes, key=lambda node: (node.lineno, node.col_offset))
+        message = f"Duplicated literal {text}"
+        diagnostics.append(
+            {
+                "tool": COGNITIVE,
+                "path": path,
+                "line": first.lineno,
+                "column": first.col_offset + 1,
+                "code": DUPLICATE_LITERAL_CODE,
+                "message_sha256": hashlib.sha256(message.encode()).hexdigest(),
+            }
+        )
+    return diagnostics
+
+
+def _regex_patterns(tree: ast.AST) -> list[tuple[int, str]]:
+    """(line, pattern) of each literal pattern an re call compiles; a verbose one
+    (re.X) is left out, as its whitespace and comments are no pattern syntax."""
+    found = []
+    for node in ast.walk(tree):
+        if not (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and isinstance(node.func.value, ast.Name)
+            and node.func.value.id == "re"
+            and node.func.attr in REGEX_CALLS
+        ):
+            continue
+        given = [
+            *node.args[:1],
+            *(k.value for k in node.keywords if k.arg == "pattern"),
+        ]
+        verbose = any(
+            isinstance(inner, ast.Attribute) and inner.attr in ("X", "VERBOSE")
+            for inner in ast.walk(node)
+        )
+        literal = given[0] if given else None
+        if isinstance(literal, ast.Constant) and isinstance(literal.value, str):
+            found.extend([] if verbose else [(node.lineno, literal.value)])
+    return found
+
+
+def _javascript_pattern(pattern: str) -> str:
+    """The pattern in JavaScript syntax: named groups, their back references and
+    the string anchors; a leading inline flag group carries no structure."""
+    text = re.sub(r"^\(\?[aiLmsux]+\)", "", pattern)
+    text = text.replace("(?P<", "(?<")
+    text = re.sub(r"\(\?P=(\w+)\)", r"\\k<\1>", text)
+    return text.replace("\\A", "^").replace("\\Z", "$")
+
+
+def python_regex_diagnostics(root: Path, files: list[str]) -> list[dict] | None:
+    """Sonar's python:S8786 through sonarjs/super-linear-regex; None if ESLint is
+    not installed. A pattern JavaScript cannot read is skipped by the rule."""
+    script = eslint_script()
+    if script is None:
+        return None
+    patterns: list[tuple[str, int, str]] = []
+    for path in files:
+        tree = ast.parse((root / path).read_text(encoding="utf-8"), path)
+        patterns.extend((path, line, text) for line, text in _regex_patterns(tree))
+    if not patterns:
+        return []
+    modules = os.environ.get("PACECRAFT_NODE_MODULES") or str(ROOT / "node_modules")
+    config = REGEX_ESLINT_CONFIG.replace("__MODULES__", json.dumps(modules))
+    with tempfile.TemporaryDirectory(prefix="quality-regex-") as directory:
+        folder = Path(directory)
+        (folder / "eslint.config.mjs").write_text(config, encoding="utf-8")
+        (folder / "patterns.mjs").write_text(
+            "".join(
+                f"new RegExp({json.dumps(_javascript_pattern(text))});\n"
+                for _path, _line, text in patterns
+            ),
+            encoding="utf-8",
+        )
+        output = run(
+            ["node", str(script), "--config", "eslint.config.mjs", "--format", "json"]
+            + ["patterns.mjs"],
+            folder,
+        )
+    diagnostics = []
+    for item in json.loads(output)[0]["messages"]:
+        path, line, text = patterns[item["line"] - 1]
+        message = f"Super-linear regular expression {text}"
+        # ESLint's finding, so the step is skipped like ESLint where Node is not
+        # installed (CI's quality job), and so are its baseline entries.
+        diagnostics.append(
+            {
+                "tool": "eslint",
+                "path": path,
+                "line": line,
+                "column": 1,
+                "code": SLOW_REGEX_RULE,
+                "message_sha256": hashlib.sha256(message.encode()).hexdigest(),
+            }
+        )
+    return diagnostics
 
 
 def _css_selector_key(prelude: str) -> str:
@@ -620,6 +802,7 @@ def collect(root: Path, notes: dict[str, str]) -> tuple[dict[str, str], list[dic
     diagnostics.extend(executable_bit_diagnostics(root, files))
     diagnostics.extend(format_diagnostics(root, files))
     diagnostics.extend(cognitive_diagnostics(root, files))
+    diagnostics.extend(python_regex_diagnostics(root, files) or [])
     diagnostics.extend(css_duplicate_diagnostics(root))
     diagnostics.extend(javascript_diagnostics(root) or [])
 
