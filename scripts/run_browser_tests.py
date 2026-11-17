@@ -29,7 +29,7 @@ import urllib.request
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager, suppress
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -49,6 +49,8 @@ MAX_JOBS = 2
 # hosts). A child whose every failing test names it hit the machine's limits, not a
 # test assertion; it is reported as an infrastructure error with a rerun hint.
 HOST_NETWORK_ERROR = "net::ERR_NO_BUFFER_SPACE"
+# A spec importing this helper pins its browser clock to --today (#3200).
+TODAY_IMPORT = re.compile(r"""require\(\s*["']\./helpers/today(?:\.js)?["']\s*\)""")
 
 
 class RunnerError(Exception):
@@ -1526,8 +1528,81 @@ def screenshots(directory):
     )
 
 
-def main(argv=None):
-    args = parser().parse_args(argv)
+def weekday_specs(base, root=ROOT):
+    """The changed specs whose expectation reads the weekday: those importing
+    e2e/helpers/today.js (#3200)."""
+    paths = _load("changed_tests", "tests/changed_tests.py").changed_paths(base, root)
+    return sorted(
+        path
+        for path in paths
+        if re.fullmatch(r"e2e/[^/]+\.spec\.js", path)
+        and (root / path).is_file()
+        and TODAY_IMPORT.search((root / path).read_text(encoding="utf-8"))
+    )
+
+
+def weekday_runs(args):
+    """CI's pinned-day step for the selection's changed weekday specs (#3324):
+    desktop runs on this week's Monday and Sunday (UTC), after the real day.
+    None for an explicit --today, which is one pinned run already."""
+    if args.today:
+        return []
+    base = args.base or "origin/develop"
+    try:
+        specs = weekday_specs(base)
+    except (OSError, subprocess.CalledProcessError) as error:
+        print(
+            f"Weekday runs skipped: cannot diff against {base}: {error}",
+            file=sys.stderr,
+        )
+        return []
+    if args.spec:
+        chosen = {Path(spec).name for spec in args.spec}
+        specs = [spec for spec in specs if Path(spec).name in chosen]
+    today = datetime.now(UTC).date()
+    monday = today - timedelta(days=today.weekday())
+    return [
+        {"today": day.isoformat(), "project": "desktop", "specs": specs}
+        for day in (monday, monday + timedelta(days=6))
+        if specs
+    ]
+
+
+def listed_weekday_runs(runs, listing):
+    """The weekday runs with only the specs the listing has on their project:
+    --grep filters the listing, and a spec desktop does not list gets no pinned
+    run, so neither turns a passing run into a failed one (Gitar on #3327)."""
+    return [
+        {**run, "specs": specs}
+        for run in runs
+        if (
+            specs := [
+                spec for spec in run["specs"] if (run["project"], spec) in listing
+            ]
+        )
+    ]
+
+
+def weekday_pass(args, code):
+    """Run the weekday runs after the real day's run and report the exits
+    together; the first non-zero exit is the result (#3324)."""
+    codes = {"real day": code}
+    for pinned in [] if args.list else args.weekday_runs:
+        if 130 in codes.values():
+            break
+        day = date.fromisoformat(pinned["today"])
+        values = {**vars(args), "today": day, "project": pinned["project"]}
+        values.update(spec=pinned["specs"], base=None, shard=1, total=1)
+        codes[f"{day:%A} {day}"] = main(pinned=argparse.Namespace(**values))
+    if len(codes) > 1:
+        summary = "; ".join(f"{name} exit {value}" for name, value in codes.items())
+        print(f"Weekday runs (#3324): {summary}", file=sys.stderr)
+    return next((value for value in codes.values() if value), 0)
+
+
+def main(argv=None, pinned=None):
+    """One run; `pinned` is a weekday run's parsed arguments (#3324)."""
+    args = parser().parse_args(argv) if pinned is None else pinned
     if args.print_image:
         print(args.image)
         return 0
@@ -1555,6 +1630,7 @@ def main(argv=None):
             return 0
         args.project = project
         args.chosen_by = {"requested": "changed", "base": base, "reason": reason}
+    args.weekday_runs = weekday_runs(args)
     run_id = uuid.uuid4().hex
     args.results_dir = args.results_dir.resolve()
     directory = args.results_dir / run_id
@@ -1600,6 +1676,7 @@ def main(argv=None):
                             )
                         )
                     )
+                    args.weekday_runs = listed_weekday_runs(args.weekday_runs, listing)
                     expected_identities = [
                         identity
                         for (project, _), values in sorted(listing.items())
@@ -1646,6 +1723,7 @@ def main(argv=None):
                                 "version": 1,
                                 "selection": evidence.data["selection"],
                                 "children": children,
+                                "weekday_runs": args.weekday_runs,
                             },
                             indent=2,
                         )
@@ -1791,7 +1869,7 @@ def main(argv=None):
         if args.screenshots:  # also what finished before a failure
             for shot in screenshots(directory):
                 print("Screenshot: " + str(shot), file=sys.stderr)
-    return code
+    return weekday_pass(args, code)
 
 
 if __name__ == "__main__":
