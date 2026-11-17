@@ -1528,6 +1528,12 @@ const ENERGY_IMPLAUSIBLE_REASON = "unter dem Ruheumsatz: Essen unvollständig er
 let energyRead = null;
 let energyRequest = null;
 let energyGeneration = 0;
+// The diary day the read holds (#3395); a picked other day reads again.
+let energyReadDay = null;
+
+function energyDay() {
+  return document.querySelector("#nutritionDate")?.value || "";
+}
 
 // A reset also drops the read in flight, so its answer from before a skinfold save is not shown (Gitar, #3180).
 function resetEnergy() {
@@ -1539,7 +1545,9 @@ function resetEnergy() {
 function loadEnergy() {
   if (energyRequest) return;
   const generation = energyGeneration;
-  energyRequest = api("/api/body/energy")
+  const day = energyDay();
+  energyReadDay = day;
+  energyRequest = api(day ? `/api/body/energy?date=${day}` : "/api/body/energy")
     .then((read) => { if (generation === energyGeneration) energyRead = read; })
     .catch(() => { if (generation === energyGeneration) energyRead = { failed: true }; })
     .finally(() => {
@@ -1592,8 +1600,10 @@ function energyBiasText(flagged) {
   return `Geschätzte Mahlzeiten wirken im Mittel ${formatWhole(Math.abs(flagged.bias_pct))} % ${direction} als erfasst (± ${formatWhole(flagged.bias_band_pct)} %)`;
 }
 
+const ENERGY_DAY_NOTE = "Formeln und Garmin zeigen den gewählten Tag (Sport 0 ohne Einheit, Verdauung nur mit erfassten Mahlzeiten, heute bis jetzt); Aus deinen Daten ist das Mittel der letzten 28 Tage";
+
 function energyInfo(read) {
-  const text = [energyBasisText(read), energyNeatInputs(read.basis?.neat), energyBiasText(read.flagged)].filter(Boolean).join(" · ");
+  const text = [ENERGY_DAY_NOTE, energyBasisText(read), energyNeatInputs(read.basis?.neat), energyBiasText(read.flagged)].filter(Boolean).join(" · ");
   // The same small info icon as the chart groups (Analyse › Laufen › Entwicklung, #3336).
   const button = h("button", { type: "button", className: "analysis-legend-info analysis-info-icon", "aria-label": "Energieverbrauch: Informationen" }, "i");
   const info = h("div", { className: "analysis-info-tooltip", id: `energy-info-${++energyInfoId}` }, text);
@@ -1621,7 +1631,7 @@ function energySplitRow(row) {
     const name = index === 0 && row.source === "own" ? "Ruhe (Rest)" : label;
     if (index === 0 && row.resting_implausible) return `${name} ${ENERGY_IMPLAUSIBLE} (${ENERGY_IMPLAUSIBLE_REASON})`;
     const band = index === 0 && row.resting_band_kcal != null ? ` ± ${formatWhole(row.resting_band_kcal)}` : "";
-    return `${name} ${split[key] == null ? "–" : formatWhole(split[key])}${band}`;
+    return `${name} ${energySplitValue(key, split[key], row.source)}${band}`;
   }).join(" · ");
   const bar = h("div", { className: "energy-split", role: "img", "aria-label": text });
   for (const [key, part] of ENERGY_PARTS) {
@@ -1631,6 +1641,12 @@ function energySplitRow(row) {
     bar.append(segment);
   }
   return h("tr", { className: "energy-split-row" }, h("td", { colSpan: 3 }, bar, h("small", null, text)));
+}
+
+// Digestion comes from the logged meals: without any it is not recorded; Garmin has no such part.
+function energySplitValue(key, value, source) {
+  if (value != null) return formatWhole(value);
+  return key === "tef_kcal" && source !== "device" ? "nicht erfasst" : "–";
 }
 
 function energySplitLegend(read) {
@@ -1661,13 +1677,20 @@ function energyMissingCell(reason) {
   return h("td", { colSpan: 2 }, button);
 }
 
+// Under a row's name: the formulas' body fat source, "bis jetzt" for today, and the own row's
+// window, which a single day cannot have (#3395).
+function energyRowNote(read, source, row) {
+  if (source === "own") return row.window_days ? [h("small", null, `Ø ${row.window_days} Tage`)] : [];
+  const parts = [ENERGY_FORMULAS.has(source) && read.body ? `KFA: ${read.body.label}` : "", read.day_partial ? "bis jetzt" : ""].filter(Boolean);
+  return parts.length ? [h("small", null, parts.join(" · "))] : [];
+}
+
 function energyTable(read) {
   const rows = ENERGY_SOURCES.flatMap(([source, label, color]) => {
     const row = read.rows.find((item) => item.source === source) || {};
     const best = read.best === source ? [" ", createStatusChip("passt am besten", "ready")] : [];
     return [h("tr", { dataset: { energySource: source } },
-      h("th", { scope: "row", dataset: { color: String(color) } }, label ?? row.label, ...best,
-        ...(ENERGY_FORMULAS.has(source) && read.body ? [h("small", null, `KFA: ${read.body.label}`)] : [])),
+      h("th", { scope: "row", dataset: { color: String(color) } }, label ?? row.label, ...best, ...energyRowNote(read, source, row)),
       ...(ENERGY_FORMULAS.has(source) && row.resting_kcal == null && read.skinfold_missing
         ? [energyMissingCell(read.skinfold_missing)]
         : [h("td", null, row.resting_implausible ? ENERGY_IMPLAUSIBLE : energyKcal(row.resting_kcal, row.resting_band_kcal)),
@@ -1705,6 +1728,11 @@ function energyFitCharts(read) {
 
 // The read's loading or failure card, or null once it is there; the first call starts the read.
 function energyPending() {
+  const day = energyDay();
+  if (day && day > timezoneDateKey(state.data?.profile?.timezone, new Date())) {
+    return h("section", "analysis-chart-card", h("p", "empty", "Tag liegt in der Zukunft"));
+  }
+  if (energyRead && energyReadDay !== day) resetEnergy();
   if (!energyRead) {
     loadEnergy();
     return h("section", "analysis-chart-card", createLoadingState("Energieverbrauch wird geladen…"));
@@ -1738,7 +1766,8 @@ function renderDiaryEnergy() {
     totals.after(slot);
   }
   // A diary render with the read already shown keeps the table, so an open "i" stays open (#3379).
-  if (energyRead && slot.energyShown === energyRead) return;
+  // Another diary day needs its own read (#3395), so only the same day's read is kept.
+  if (energyRead && slot.energyShown === energyRead && energyReadDay === energyDay()) return;
   slot.replaceChildren(...energyDiaryCards());
   slot.energyShown = energyRead;
 }

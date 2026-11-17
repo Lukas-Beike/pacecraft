@@ -20,8 +20,9 @@ from __future__ import annotations
 import math
 import statistics
 from collections.abc import Mapping, Sequence
+from dataclasses import replace
 from datetime import date, timedelta
-from typing import Any, Final
+from typing import Any, Final, cast
 
 from backend.athlete.body_composition import (
     RestingFormula,
@@ -29,10 +30,13 @@ from backend.athlete.body_composition import (
     resting_energy,
 )
 from backend.canonical.vocabulary import ProviderId
+from backend.errors import AppError
 from backend.nutrition.energy_balance import (
+    DayInputs,
     EnergyInputs,
     EnergyWindow,
     Estimate,
+    day_tef,
     energy_windows,
     history_start,
     weight_trend,
@@ -338,10 +342,14 @@ def energy_view(
     sessions: Sequence[Mapping[str, Any]] = (),
     bias: tuple[float, float] | None = None,
     body_missing: str | None = None,
+    day: date | None = None,
 ) -> dict[str, Any]:
-    """The table rows of the latest window, each source's fit, split and basis.
+    """The source rows of ``day``, each source's fit over the windows, and the basis.
 
     ``body_missing`` is why the formula rows have no body (#3336), shown with them.
+    ``day`` (default the latest window's end) gives the formula and device rows
+    that day's resting rate, everyday, sport and digestion (athlete decision,
+    #3395); "Aus deinen Daten" stays on the latest 28-day window.
     """
     trend = weight_trend(
         {d: v.weight_kg for d, v in inputs.days.items() if v.weight_kg is not None}
@@ -365,10 +373,19 @@ def energy_view(
         for name, values in predictions.items()
     }
     means, best, fit = _comparison(errors, windows)
-    device_neat, device_sport = _device_split(health, sessions, latest)
+    day_window = _day_window(inputs, latest, day or latest.end)
+    day_body = resolve_body(inputs, trend, day_window.end)
+    day_predictions = {
+        **{
+            name: _formula_prediction(f, day_body, day_window)
+            for name, f in FORMULAS.items()
+        },
+        DEVICE: _device_prediction(health, day_window),
+    }
+    device_neat, device_sport = _device_split(health, sessions, day_window)
     rows = []
-    for name, values in predictions.items():
-        resting, resting_band_kcal, total, total_band = values[-1]
+    for name in predictions:
+        resting, resting_band_kcal, total, total_band = day_predictions[name]
         # Formula rows add the same uncalibrated own everyday, sport and TEF
         # (M11, #3220) as their daily total; Garmin splits its own day.
         if resting is None:
@@ -378,9 +395,9 @@ def energy_view(
         else:
             split = _split(
                 resting,
-                latest.neat_kcal_raw,
-                latest.sport_kcal_raw,
-                latest.tef_kcal,
+                day_window.neat_kcal_raw,
+                day_window.sport_kcal_raw,
+                day_window.tef_kcal,
                 FORMULA_SHARED,
             )
         rows.append(
@@ -396,7 +413,7 @@ def energy_view(
             }
         )
     # Only the device row is named by the read; the client names the others.
-    rows[list(predictions).index(DEVICE)]["label"] = _device_label(health, latest)
+    rows[list(predictions).index(DEVICE)]["label"] = _device_label(health, day_window)
     tdee = latest.adaptive_tdee
     shown, implausible = _gated_resting(
         latest.derived_rmr, predictions["katch_mcardle"][-1], predictions[DEVICE][-1]
@@ -425,11 +442,15 @@ def energy_view(
             "total_kcal": _round(tdee.kcal) if tdee else None,
             "total_band_kcal": _round(tdee.band_kcal) if tdee else None,
             "split": own_split,
+            # A window method: its days, shown as "Ø 28 Tage" (#3395).
+            "window_days": latest.days,
         }
     )
-    body = bodies[-1]
     return {
         "end": latest.end.isoformat(),
+        # The day the source rows show; after ``end`` (today) it is partial.
+        "day": day_window.end.isoformat(),
+        "day_partial": day_window.end > latest.end,
         "windows": [w.end.isoformat() for w in windows],
         "rows": rows,
         "best": best,
@@ -443,11 +464,47 @@ def energy_view(
             "insufficient": latest.insufficient,
             "windows_with_estimate": sum(1 for w in windows if w.adaptive_tdee),
             "rmr_source": latest.rmr_source,
-            "neat": _neat_basis(inputs, latest),
+            "neat": _neat_basis(inputs, day_window),
         },
         "skinfold_missing": body_missing,
-        "body": _public_body(body),
+        "body": _public_body(day_body),
     }
+
+
+def _day_window(inputs: EnergyInputs, latest: EnergyWindow, day: date) -> EnergyWindow:
+    """``day`` as a one-day window for the source rows (#3395).
+
+    Its own everyday and sport (0 without a session), and digestion only from
+    logged meals (None without any). The latest window itself when ``day`` is
+    its end and no day was chosen keeps nothing else: the 28-day means are
+    never shown for one day.
+    """
+    values = inputs.days.get(day, DayInputs())
+    return cast(
+        EnergyWindow,
+        replace(
+            latest,
+            end=day,
+            days=1,
+            activity_kcal_raw=values.activity_kcal,
+            neat_kcal_raw=values.neat_kcal,
+            sport_kcal_raw=values.sport_kcal,
+            tef_kcal=day_tef(values) if values.entries else None,
+        ),
+    )
+
+
+def selected_day(text: str | None, today: date) -> date | None:
+    """The diary day the table shows: an ISO date up to ``today``, or None."""
+    if not text:
+        return None
+    try:
+        day = date.fromisoformat(text)
+    except ValueError:
+        raise AppError(400, "Das Datum fehlt oder ist ungültig.") from None
+    if day > today:
+        raise AppError(400, "Der Tag liegt in der Zukunft.")
+    return day
 
 
 def _public_body(body: Mapping[str, Any] | None) -> dict[str, Any] | None:
@@ -464,16 +521,27 @@ def _public_body(body: Mapping[str, Any] | None) -> dict[str, Any] | None:
     }
 
 
-def read_energy_view(db: Any, sources: EnergySources, end: date) -> dict[str, Any]:
-    """Read the 12-week history ending on ``end`` and build the view."""
-    start = history_start(end)
-    inputs, _ = read_energy_inputs(db, sources, start, end)
-    health = sources.daily_health(db, start, end)
+def read_energy_view(
+    db: Any, sources: EnergySources, end: date, day: date | None = None
+) -> dict[str, Any]:
+    """Read the 12-week history ending on ``end`` and build the view of ``day``.
+
+    ``day`` (default ``end``) may be today, after ``end``, or before the history.
+    """
+    day = day or end
+    start = min(history_start(end), day)
+    last = max(end, day)
+    inputs, _ = read_energy_inputs(db, sources, start, last)
+    health = sources.daily_health(db, start, last)
     windows = energy_windows(inputs, end)
-    # The split is shown for the latest window only, so only its sessions are read.
-    latest = sources.sessions(db, end - timedelta(days=windows[-1].days - 1), end)
-    _, missing = skinfold_state(db, sources, inputs, end)
+    _, missing = skinfold_state(db, sources, inputs, day)
     # The bias comes from the windows already built, not a second build (Gitar).
     return energy_view(
-        inputs, windows, health, latest, windows_bias(windows), body_missing=missing
+        inputs,
+        windows,
+        health,
+        sources.sessions(db, day, day),
+        windows_bias(windows),
+        body_missing=missing,
+        day=day,
     )

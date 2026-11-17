@@ -42,7 +42,7 @@ class AthleteGetRoutes:
         second_threshold_service: Callable[[], Any] | None = None,
         race_plan: Callable[[str], dict[str, Any] | None] | None = None,
         skinfold_service: Callable[[], Any] | None = None,
-        energy_view: Callable[[], dict[str, Any]] | None = None,
+        energy_view: Callable[..., dict[str, Any]] | None = None,
     ) -> None:
         self._skinfold_service = skinfold_service
         self._energy_view = energy_view
@@ -244,15 +244,21 @@ class AthleteGetRoutes:
         if self._skinfold_service is not None:
             handler.send_json(200, self._skinfold_service().read())
 
-    def _energy(self, handler: Any, _request: RouteRequest) -> None:
-        """Resting and daily expenditure per source, up to yesterday.
+    def _energy(self, handler: Any, request: RouteRequest) -> None:
+        """Resting and daily expenditure per source for one diary day.
 
-        Request: no query, no body.
+        Request: optional query `date` (ISO day, today or earlier; default
+        yesterday); no body.
 
-        Response: 200 with `end`, `windows` (the 12 weekly 4-week window ends,
+        Response: 200 with `end` (yesterday, where the windows end), `day` (the
+        day the source rows show) and `day_partial` (true for today, whose values
+        are still partial), `windows` (the 12 weekly 4-week window ends,
         oldest first), `rows` (`katch_mcardle`, `cunningham`, `device` (the
         wearable's estimate) and `own`, each with `resting_kcal`, `total_kcal`
-        and their nominal 95 % `*_band_kcal`; the first three also with
+        and their nominal 95 % `*_band_kcal`; the first three show `day`: its
+        resting rate, its everyday and sport (0 without a session) and its
+        digestion (null without logged meals, then no total); `own` stays on its
+        latest 28-day window, named by `window_days`; the first three also with
         `errors_kcal` per window and `mean_error_kcal` over the shared windows,
         and `split` (`resting_kcal`, `neat_kcal`, `sport_kcal`, `tef_kcal`, and
         `shared` with `neat`, `sport`, `tef` true for each part every row
@@ -278,10 +284,12 @@ class AthleteGetRoutes:
         `skinfold_too_old`, `no_birth_year`, `no_weight` or `invalid`; null with a
         body).
 
-        Errors: none beyond the common ones.
+        Errors: 400 "Das Datum fehlt oder ist ungültig."; 400 "Der Tag liegt in
+        der Zukunft.".
         """
         if self._energy_view is not None:
-            handler.send_json(200, self._energy_view())
+            days = request.query.get("date") or []
+            handler.send_json(200, self._energy_view(days[0] if days else None))
 
     def _preview(self, handler: Any, _request: RouteRequest) -> None:
         """Preview of the context the Coach receives.
