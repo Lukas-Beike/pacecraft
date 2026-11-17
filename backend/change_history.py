@@ -39,6 +39,8 @@ ENTITY_TYPES = {
     "equipment_rule_apply",
     "equipment_maintenance",
     "metric_export",
+    # One run of the product cleanup with every product it removed (#3444).
+    "nutrition_product_cleanup",
 }
 # A metric export to a provider; its entity id is "<provider>:<remote record>".
 # The write is remote, so it is shown but never undone.
@@ -315,6 +317,8 @@ _FIELD_LIMITS = {
     "equipment_maintenance": 20_000,
     # Up to RULE_HISTORY_LIMIT dated choices of one kind.
     "equipment_rule": 20_000,
+    # Every removed product row of one cleanup run, so undo restores them (#3444).
+    "nutrition_product_cleanup": 4_000_000,
 }
 _DEFAULT_FIELD_LIMIT = 4000
 # A local zone configuration; its entity id is the configuration key.
@@ -365,6 +369,7 @@ def audit_projection_fields(entity_type: str) -> set[str]:
         "equipment_rule": set(EQUIPMENT_RULE_FIELDS),
         "equipment_rule_apply": set(EQUIPMENT_RULE_APPLY_FIELDS),
         "equipment_maintenance": set(EQUIPMENT_MAINTENANCE_FIELDS),
+        "nutrition_product_cleanup": {"operation_id", "days", "removed_at", "products"},
         METRIC_EXPORT_ENTITY: set(METRIC_EXPORT_FIELDS),
     }
     try:

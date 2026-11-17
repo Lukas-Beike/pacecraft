@@ -16,7 +16,7 @@ read. A new key needs no entry: it appears here when its write is added.
   `profile` is only set when absent.
 
 <!-- BEGIN GENERATED KEYS -->
-97 keys and 22 key patterns; `<value>` stands for a value the code computes.
+97 keys and 23 key patterns; `<value>` stands for a value the code computes.
 
 | Key | Written by | Deleted by | Export | Reset at start | Purge |
 | --- | --- | --- | --- | --- | --- |
@@ -99,6 +99,7 @@ read. A new key needs no entry: it appears here when its write is added.
 | `morning_body_battery_history` | backend/performance/morning_battery_service.py:MorningBatteryStore.persist | - | yes | - | - |
 | `morning_checkin_date` | backend/coach/morning_completion.py:MorningCoachJobCompletionService.complete | - | yes | - | - |
 | `morning_checkin_status` | backend/coach/morning_completion.py:MorningCoachJobCompletionService.complete | - | no | - | - |
+| `nutrition_product_cleanup:<value>` | backend/nutrition/product_cleanup.py:ProductCleanupService.run | backend/nutrition/product_cleanup.py:ProductCleanupService.restore_in_transaction | yes | - | - |
 | `openai_conversation_id` | backend/coach/conversation.py:CoachConversationProvisionService.ensure<br>backend/coach/conversation.py:CoachConversationProvisionService.rotate<br>backend/coach/conversation.py:CoachConversationResetService._reset_local<br>backend/coach/conversation_recovery.py:CoachConversationRecoveryService.recover_if_invalid | - | yes | - | - |
 | `openai_rate_limits` | backend/providers/state.py:ProviderStateService.record_rate_limits | - | yes | - | - |
 | `openai_status` | backend/providers/state.py:ProviderStateService._record_status_unlocked | - | no | - | - |

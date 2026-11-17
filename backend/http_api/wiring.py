@@ -604,6 +604,7 @@ def _domain_routes(
             ctx.garmin.targeted_refresh_service,
             ctx.clock.now,
             nutrition.product_refresh,
+            nutrition.product_cleanup,
         ),
         SyncCommandPostRoute(sync_command_endpoint),
         PrivacyDeletePostRoutes(privacy_delete),

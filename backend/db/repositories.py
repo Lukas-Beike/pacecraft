@@ -277,7 +277,27 @@ def _relevance(name: str, query: str | None) -> int:
     return 3
 
 
-def _basis_product_ids(basis: Any) -> set[str]:
+def row_values(row: Any) -> tuple[Any, ...]:
+    """A row's values in column order: the app's rows are dicts, tests' sqlite3.Row."""
+    return tuple(row.values()) if isinstance(row, Mapping) else tuple(row)
+
+
+# One product's use in the meal log: how many meals, and the newest meal day.
+type ProductUse = tuple[int, str]
+
+
+def _merged_use(
+    first: tuple[int, str | None] | None, second: tuple[int, str | None] | None
+) -> tuple[int, str | None]:
+    """Two uses as one: the counts added, the newer day kept."""
+    days = [day for day in ((first or (0, None))[1], (second or (0, None))[1]) if day]
+    return (
+        (first or (0, None))[0] + (second or (0, None))[0],
+        max(days) if days else None,
+    )
+
+
+def basis_product_ids(basis: Any) -> set[str]:
     """The saved products and database foods one logged meal used (#3435).
 
     A single product's basis names it under ``product``, a database meal its
@@ -299,7 +319,7 @@ def _basis_product_ids(basis: Any) -> set[str]:
     components = basis.get("components")
     for component in components if isinstance(components, list) else ():
         if isinstance(component, dict):
-            found |= _basis_product_ids(component.get("nutrition_basis"))
+            found |= basis_product_ids(component.get("nutrition_basis"))
     return found
 
 
@@ -403,13 +423,14 @@ class NutritionProductRepository:
         *,
         query: str | None = None,
         limit: int | None = 1000,
-        usage: Mapping[str, int] | None = None,
+        usage: Mapping[str, ProductUse] | None = None,
     ) -> builtins.list[dict[str, Any]]:
         """Active own products and stored database foods together.
 
         The search covers name, brand and EAN. Each product names its
         ``origin``, ``fetched_at``, ``missing_fields`` and ``usage_count`` (the
-        logged meals that used it, from ``usage``). The order is the search's
+        logged meals that used it, from ``usage``) and ``last_used`` (the newest
+        meal day, or None; #3444). The order is the search's
         relevance, then the most used, then the name (#3435). ``limit`` None
         lists every product (the refresh-all run, #3299).
         """
@@ -423,9 +444,13 @@ class NutritionProductRepository:
         ).fetchall()
         # Sorted before the cut: SQLite folds ASCII case only, and "Äpfel"
         # belongs under A, not after Z.
-        counts = self._with_hidden_foods(db, usage) if usage else {}
+        uses = self._with_hidden_foods(db, usage) if usage else {}
         listed = [
-            {**product, "usage_count": int(counts.get(product["id"], 0))}
+            {
+                **product,
+                "usage_count": uses.get(product["id"], (0, None))[0],
+                "last_used": uses.get(product["id"], (0, None))[1],
+            }
             for product in (self._listed(row) for row in rows)
         ]
         listed.sort(
@@ -439,29 +464,30 @@ class NutritionProductRepository:
         return listed if limit is None else listed[: max(1, min(int(limit), 1000))]
 
     @staticmethod
-    def _with_hidden_foods(db: Any, usage: Mapping[str, int]) -> dict[str, int]:
+    def _with_hidden_foods(
+        db: Any, usage: Mapping[str, ProductUse]
+    ) -> dict[str, tuple[int, str | None]]:
         """Usage where an own product also counts the database food of its EAN.
 
         The list hides such a food behind the own product (``_LISTED``), so the
-        meals logged with the food stay counted (#3435).
+        meals logged with the food stay counted and dated (#3435, #3444).
         """
-        counts = dict(usage)
+        uses: dict[str, tuple[int, str | None]] = dict(usage)
         own: dict[str, str] = {}
-        foods: dict[str, int] = {}
+        foods: dict[str, list[str]] = {}
         for row in db.execute(
             "SELECT id, barcode, origin FROM nutrition_products "
             "WHERE barcode IS NOT NULL AND (origin <> 'own' OR status = 'active')"
         ):
-            product_id, barcode, origin = tuple(row)
+            product_id, barcode, origin = row_values(row)
             if origin == "own":
                 own[str(barcode)] = str(product_id)
             else:
-                foods[str(barcode)] = foods.get(str(barcode), 0) + int(
-                    usage.get(str(product_id), 0)
-                )
+                foods.setdefault(str(barcode), []).append(str(product_id))
         for barcode, product_id in own.items():
-            counts[product_id] = counts.get(product_id, 0) + foods.get(barcode, 0)
-        return counts
+            for food_id in foods.get(barcode, []):
+                uses[product_id] = _merged_use(uses.get(product_id), usage.get(food_id))
+        return uses
 
     def get_database(self, db: Any, product_id: str) -> dict[str, Any] | None:
         """A stored database food as a product, or None for any other id."""
@@ -1703,20 +1729,27 @@ class NutritionRepository:
         return entry
 
     @staticmethod
-    def product_usage(db: Any) -> dict[str, int]:
-        """How many logged meals used each saved product or database food (#3435).
+    def product_usage(db: Any) -> dict[str, ProductUse]:
+        """Each saved product's or database food's logged meals and newest meal day.
 
-        Counted from the meal log on every read, so logging, editing, deleting
-        and undoing a meal keep it right without a stored count.
+        Read from the meal log every time, so logging, editing, deleting and
+        undoing a meal keep it right without a stored count (#3435, #3444).
         """
         counts: Counter[str] = Counter()
-        for row in db.execute("SELECT nutrition_basis FROM nutrition_logs"):
-            (text,) = tuple(row.values()) if isinstance(row, Mapping) else tuple(row)
+        last: dict[str, str] = {}
+        for row in db.execute("SELECT meal_date, nutrition_basis FROM nutrition_logs"):
+            day, text = row_values(row)
             try:
-                counts.update(_basis_product_ids(json.loads(text)))
+                found = basis_product_ids(json.loads(text))
             except TypeError, ValueError:
                 continue
-        return dict(counts)
+            counts.update(found)
+            for product_id in found:
+                last[product_id] = max(last.get(product_id, ""), str(day))
+        return {
+            product_id: (count, last[product_id])
+            for product_id, count in counts.items()
+        }
 
     @staticmethod
     def _basis_json(entry: dict[str, Any]) -> str:

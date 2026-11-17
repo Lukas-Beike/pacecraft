@@ -11,7 +11,7 @@ from unittest.mock import Mock
 from nutrition_service_support import build_nutrition_services
 from support import temp_database
 
-from backend.db.repositories import FoodDatabaseEntryRepository, _basis_product_ids
+from backend.db.repositories import FoodDatabaseEntryRepository, basis_product_ids
 from backend.errors import AppError
 
 
@@ -146,7 +146,7 @@ class FavoritesAndMealAdditionTests(unittest.TestCase):
         ]  # fmt: skip
         for basis, expected in cases:
             with self.subTest(kind=basis["kind"]):
-                self.assertEqual(_basis_product_ids(basis), expected)
+                self.assertEqual(basis_product_ids(basis), expected)
 
     def test_favorite_needs_a_known_product_and_a_boolean(self) -> None:
         product = self.product("Skyr")

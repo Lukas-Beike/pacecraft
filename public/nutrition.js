@@ -795,6 +795,56 @@ async function refreshNutritionProduct(product, button) {
 
 // #3299: one background run re-checks every product with the single "Aktualisieren" rule; the
 // button shows its progress and the end its counts.
+// "Aufräumen" (#3444): the server names the products not used for the chosen days;
+// the athlete sees the number and the list first, then one run removes them, with one undo.
+let nutritionCleanupSequence = 0;
+
+async function openNutritionCleanup() {
+  document.querySelector("#nutritionCleanupDays").value = "90";
+  document.querySelector("#nutritionCleanupDialog").showModal();
+  await loadNutritionCleanup();
+}
+
+async function loadNutritionCleanup() {
+  const sequence = ++nutritionCleanupSequence;
+  const days = document.querySelector("#nutritionCleanupDays").value;
+  const count = document.querySelector("#nutritionCleanupCount");
+  const list = document.querySelector("#nutritionCleanupList");
+  const confirm = document.querySelector("#nutritionCleanupConfirm");
+  const status = document.querySelector("#nutritionCleanupStatus");
+  confirm.disabled = true; status.textContent = ""; count.textContent = "Wird gezählt…";
+  try {
+    const preview = await api(`/api/nutrition/products/cleanup?days=${encodeURIComponent(days)}`);
+    if (sequence !== nutritionCleanupSequence) return;
+    const today = todayIso();
+    const noun = preview.count === 1 ? "Produkt wird" : "Produkte werden";
+    count.textContent = preview.count ? `${preview.count} ${noun} gelöscht.` : "Nichts zu löschen.";
+    list.hidden = !preview.count;
+    list.querySelector("ul").replaceChildren(...preview.products.map((product) => h("li", null,
+      [product.brand, product.name].filter(Boolean).join(" · "), " ",
+      h("small", null, nutritionLastUseText({ ...product, usage_count: product.last_used ? 1 : 0 }, today)))));
+    confirm.textContent = `${preview.count} löschen`;
+    confirm.disabled = !preview.count;
+  } catch (error) {
+    if (sequence === nutritionCleanupSequence) { count.textContent = ""; status.textContent = `Konnte nicht gezählt werden: ${error.message}`; }
+  }
+}
+
+async function runNutritionCleanup() {
+  const confirm = document.querySelector("#nutritionCleanupConfirm");
+  const days = Number(document.querySelector("#nutritionCleanupDays").value);
+  confirm.disabled = true;
+  try {
+    const result = await api("/api/nutrition/products/cleanup", { method: "POST", body: JSON.stringify({ days, confirmed: true }) });
+    document.querySelector("#nutritionCleanupDialog").close();
+    await reloadNutritionProducts();
+    showNutritionReceipt(document.querySelector("#nutritionProductStatus"), `${result.count} ${result.count === 1 ? "Produkt" : "Produkte"} gelöscht.`, result.change, () => reloadNutritionProducts());
+  } catch (error) {
+    document.querySelector("#nutritionCleanupStatus").textContent = error.message;
+    confirm.disabled = false;
+  }
+}
+
 let nutritionRefreshAllTimer = null;
 
 function nutritionRefreshAllReceipt(run) {
@@ -891,11 +941,26 @@ function nutritionProductSection(key, title, products, searching) {
   return section;
 }
 
-// How many logged meals used the product (#3435), from the merged list's read.
+// How many logged meals used the product (#3435) and when it was last used (#3444),
+// from the merged list's read.
 function nutritionUsageCount(product) {
   if (!Number.isInteger(product.usage_count)) return null;
   const count = product.usage_count;
   return h("span", { className: `nutrition-usage${count ? "" : " is-zero"}`, title: `${count}-mal erfasst` }, `${count}×`);
+}
+
+// "14.11." for a day of this year, "14.11.2025" for an older one.
+function nutritionShortDay(day, today) {
+  const [year, month, date] = String(day).slice(0, 10).split("-");
+  return `${date}.${month}.${year === today.slice(0, 4) ? "" : year}`;
+}
+
+function nutritionLastUseText(product, day = null) {
+  if (!Number.isInteger(product.usage_count)) return "";
+  const today = day || todayIso();
+  if (product.last_used) return product.last_used === today ? "zuletzt heute" : `zuletzt ${nutritionShortDay(product.last_used, today)}`;
+  const created = product.created_at ? timezoneDateKey(state.data?.profile?.timezone, new Date(product.created_at)) : "";
+  return created ? `nie genutzt · angelegt ${nutritionShortDay(created, today)}` : "nie genutzt";
 }
 
 function nutritionProductCard(product, local) {
@@ -909,6 +974,7 @@ function nutritionProductCard(product, local) {
     h("p", null, `${kcalLabel} · KH ${product.carbs_g ?? "–"} g · Protein ${product.protein_g ?? "–"} g · Fett ${product.fat_g ?? "–"} g`),
     h("div", "nutrition-product-marks",
       h("span", "nutrition-origin", nutritionOriginText(product)),
+      nutritionLastUseText(product) ? h("span", "nutrition-last-use", nutritionLastUseText(product)) : null,
       missing.length ? nutritionIncompleteMark(`Unvollständig, es fehlen: ${missing.join(", ")}`, `⚠ fehlt: ${missing.join(", ")}`) : null),
     h("small", null, [product.barcode ? `EAN ${product.barcode}` : "", product.basis_amount && product.basis_unit ? `Basis: ${product.basis_amount} ${product.basis_unit}` : "Bezugsmenge unbekannt"].filter(Boolean).join(" · ")));
   appendNutritionProductActions(card, product, local);
@@ -1165,6 +1231,10 @@ async function scanNutritionBarcode() {
 document.querySelector("#nutritionProductSearch")?.addEventListener("submit", (event) => { event.preventDefault(); void loadNutritionProducts(document.querySelector("#nutritionProductQuery").value.trim()); });
 document.querySelector("#nutritionLabelButton")?.addEventListener("click", () => document.querySelector("#nutritionLabelInput").click());
 document.querySelector("#nutritionRefreshAllButton")?.addEventListener("click", () => void pollNutritionRefreshAll(true, true));
+document.querySelector("#nutritionCleanupButton")?.addEventListener("click", () => void openNutritionCleanup());
+document.querySelector("#nutritionCleanupDays")?.addEventListener("change", () => void loadNutritionCleanup());
+document.querySelector("#nutritionCleanupCancel")?.addEventListener("click", () => document.querySelector("#nutritionCleanupDialog").close());
+document.querySelector("#nutritionCleanupForm")?.addEventListener("submit", (event) => { event.preventDefault(); void runNutritionCleanup(); });
 document.querySelector("#nutritionProductManual")?.addEventListener("click", () => saveNutritionProduct({ source: "manual", basis_amount: 100, basis_unit: "g" }));
 document.querySelector("#nutritionLabelInput")?.addEventListener("change", (event) => { const file = event.target.files?.[0]; event.target.value = ""; if (file) void extractNutritionProduct(file); });
 document.querySelector("#nutritionBarcodeButton")?.addEventListener("click", () => void scanNutritionBarcode());
