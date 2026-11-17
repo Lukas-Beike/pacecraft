@@ -235,6 +235,9 @@ test("body overview: the newest own body fat with its source, weight with its so
   const unknown = bodyFoldFat({ measurements: [{ date: "2026-11-15", body_fat_pct: null }] }, null);
   assert.equal(`${unknown.text} ${unknown.note}`, "unbekannt ohne Geburtsjahr");
   assert.equal(bodyFoldFat(null, null), null);
+  // A failed skinfold read still shows the entered percentage.
+  assert.equal(bodyFoldFat({ failed: true }, { date: "2026-11-15", value: 15 }).value, 15);
+  assert.equal(bodyFoldFat({ failed: true }, null), null);
 });
 
 test("the skinfold preview gives Jackson-Pollock body fat as the server does (#3402)", () => {

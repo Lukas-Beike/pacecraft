@@ -1239,8 +1239,9 @@ function bodyOverviewLatest(metric, body, preferred, local = false) {
 // KFA (#3402): the newest of the folds' body fat and an entered percentage, the folds winning a
 // shared day; a scale's or the profile's value is not KFA (#3336). Null while the folds load.
 function bodyFoldFat(read, entered) {
-  if (!read || read.failed) return null;
-  const newest = read.measurements?.[0];
+  if (!read) return null;
+  // A failed skinfold read still shows an entered percentage (Gitar, #3412).
+  const newest = read.failed ? null : read.measurements?.[0];
   const fold = newest?.body_fat_pct == null ? null : newest;
   if (entered && !(fold && fold.date >= entered.date)) return { value: entered.value, note: `Lokal · ${dateLabel(entered.date)}` };
   if (fold) return { value: fold.body_fat_pct, note: `Lokal (Hautfalten) · ${dateLabel(fold.date)}` };
