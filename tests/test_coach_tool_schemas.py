@@ -121,6 +121,16 @@ class CoachToolSchemaTests(unittest.TestCase):
         self.assertIn("any connected provider", description)
         self.assertIn("act_", description)
 
+    def test_energy_read_names_the_formula_body_fat_source(self):
+        # #3419: the formula rows' body fat comes from skinfolds, an entered
+        # value, a device or the profile (#3362, #3402), named in ``body``.
+        tool = _tools()["read_nutrition"]
+        energy = tool["parameters"]["properties"]["energy"]["description"]
+        self.assertNotIn("from skinfold lean mass", energy)
+        for source in ("skinfold", "entered", "device", "profile"):
+            self.assertIn(source, energy)
+        self.assertIn("body.label", energy)
+
     def test_session_tools_name_the_total_time_as_a_strength_duration(self):
         # #2317: rest between sets is part of a strength session's work.
         for name in ("list_recent_activities", "get_activity_details"):
