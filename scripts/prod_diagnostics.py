@@ -138,6 +138,14 @@ SECTION_FIELDS = {
     "dfa_series": re.compile(
         r"status|runs|with_series|unreadable_series|before_series|without_result"
     ),
+    # The energy table's basis and its formula rows' body fat (#3100, #3336, #3362).
+    "energy_balance": re.compile(
+        r"status|latest_window_(complete_days|weighins|insufficient)|windows"
+        r"|windows_with_estimate|calibration_windows|days|logged_days|flagged_days"
+        r"|weighins|sessions|unpriced_sessions|rmr_source|skinfolds_with_body_fat"
+        r"|newest_skinfold_age_days|body_resolved|body_missing|body_source"
+        r"|body_source_windows\.(skinfold|device|profile|none)"
+    ),
     # Window records the next detail mapper bump downloads again (#2220).
     "mapper_replay": re.compile(
         r"status|garmin\.(window_days|pending|passed_over(_empty|_retries)?|records"
@@ -174,6 +182,22 @@ STATES = {
     "failed",
     "unavailable",
     "blocked",
+}
+# The energy table's codes (#3100, #3336, #3362): its basis gap, the resting
+# reference, why the formula rows lack a body and where their body fat came from.
+STATES |= {
+    "intake_days",
+    "weighins",
+    "katch_mcardle",
+    "garmin",
+    "no_skinfold",
+    "skinfold_too_old",
+    "no_birth_year",
+    "no_weight",
+    "invalid",
+    "skinfold",
+    "device",
+    "profile",
 }
 FAIL_STATES = {"failed", "unavailable", "blocked"}
 # Seconds between two reads of `--wait-ready` (#3346).

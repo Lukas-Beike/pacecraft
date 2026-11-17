@@ -20,6 +20,7 @@ from backend.nutrition.diary import NutritionDiaryService
 from backend.nutrition.energy_inputs import (
     RESTING_LOOKBACK_DAYS,
     EnergySources,
+    device_body_fats,
     energy_basis,
     latest_value,
     own_resting,
@@ -167,6 +168,9 @@ def build_nutrition(ctx: AppContext) -> NutritionServices:
             resting=resting,
             body_fat=body_fat,
             skinfolds=lambda db, day: skinfolds.measurements_on(db, day),
+            device_body_fat=lambda db, s, e: device_body_fats(
+                read.observations(db, MetricKind.BODY_FAT, start=s, end=e)
+            ),
             profile=ctx.athlete_profile.get,
         )
 

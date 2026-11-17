@@ -411,6 +411,36 @@ class ProdChecksTests(unittest.TestCase):
                  "--section", "fit_inventory", "--expect-version", "2.1.2"]
             )  # fmt: skip
 
+    def test_energy_balance_prints_the_body_codes_and_counts(self):
+        # #3362: the energy table's body source and reason are readable on prod.
+        report = {
+            "energy_balance": {
+                "status": "ready",
+                "rmr_source": "katch_mcardle",
+                "body_resolved": False,
+                "body_missing": "no_skinfold",
+                "body_source": "profile",
+                "body_source_windows": {"skinfold": 0, "device": 2, "profile": 9},
+                "skinfolds_with_body_fat": 0,
+                "newest_skinfold_age_days": None,
+                "planted": "never printed",
+            }
+        }
+        lines = [
+            text for _, text in prod_diagnostics.section_lines(report, "energy_balance")
+        ]
+        prefix = "energy_balance."
+        for expected in (
+            f'{prefix}body_missing "no_skinfold"',
+            f'{prefix}body_source "profile"',
+            f"{prefix}body_source_windows.device 2",
+            f"{prefix}body_resolved false",
+            f'{prefix}rmr_source "katch_mcardle"',
+            f"{prefix}newest_skinfold_age_days null",
+        ):
+            self.assertIn(expected, lines)
+        self.assertFalse(any("planted" in line for line in lines))
+
     def test_coach_local_first_prints_the_3080_sums_only(self):
         code, text = self.run_main(
             prod_diagnostics, "--url", self.url, "--password-file", str(self.secret),

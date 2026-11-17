@@ -446,13 +446,21 @@ def energy_view(
             "neat": _neat_basis(inputs, latest),
         },
         "skinfold_missing": body_missing,
-        "skinfold": None
-        if body is None
-        else {
-            "date": body["measured_on"].isoformat(),
-            "body_fat_pct": round(body["body_fat_pct"], 1),
-            "lean_mass_kg": round(body["lean_mass_kg"], 1),
-        },
+        "body": _public_body(body),
+    }
+
+
+def _public_body(body: Mapping[str, Any] | None) -> dict[str, Any] | None:
+    """The formula rows' body fat and where it came from (#3362), or None."""
+    if body is None:
+        return None
+    measured_on = body["measured_on"]
+    return {
+        "source": body["source"],
+        "label": body["label"],
+        "date": measured_on and measured_on.isoformat(),
+        "body_fat_pct": round(body["body_fat_pct"], 1),
+        "lean_mass_kg": round(body["lean_mass_kg"], 1),
     }
 
 
