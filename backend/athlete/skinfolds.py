@@ -156,12 +156,15 @@ class SkinfoldService:
         profile_json: Callable[[Any], str | None],
         now: Callable[[], str],
         today: Callable[[], date],
+        on_change: Callable[[date], str] | None = None,
     ) -> None:
         self._database_manager = database_manager
         # ``ProfileRepository.get``: the stored profile JSON for the birth year.
         self._profile_json = profile_json
         self._now = now
         self._today = today
+        # Mirrors the changed day's body fat to Garmin Connect (#3403).
+        self._on_change = on_change
 
     def _measurements(
         self, db: Any, *, until: date | None = None
@@ -222,7 +225,7 @@ class SkinfoldService:
                 canonical_store.upsert_observation(
                     db, observation, mapper_version=MAPPER_VERSION, now=self._now()
                 )
-        return self.read()
+        return self._changed(day)
 
     def remove(self, payload: Mapping[str, Any]) -> dict[str, Any]:
         """Retire the measurement of one day; the request must be confirmed."""
@@ -232,7 +235,20 @@ class SkinfoldService:
         with self._database_manager.unit_of_work() as db:
             if not self._retire(db, day):
                 raise AppError(404, "Für diesen Tag gibt es keine Hautfaltenmessung.")
-        return self.read()
+        return self._changed(day)
+
+    def _changed(self, day: date) -> dict[str, Any]:
+        read = self.read()
+        if self._on_change is not None:
+            read["remote"] = self._on_change(day)
+        return read
+
+    def body_fat_on(self, db: Any, day: date) -> float | None:
+        """The body fat of a measurement taken exactly on ``day``, or None."""
+        newest = self.skinfold_on(db, day)
+        if newest is None or newest.measured_on != day:
+            return None
+        return newest.body_fat_pct
 
     def _retire(self, db: Any, day: date) -> int:
         kinds = [kind.value for kind in SITE_KINDS.values()]

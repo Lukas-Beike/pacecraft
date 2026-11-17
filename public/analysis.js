@@ -1261,6 +1261,8 @@ function bodyOverviewRow(metric, title, unit, reading, edit) {
 
 // 3-site skinfolds (#3099) per the profile's sex. The read is kept until a save or a removal.
 const SKINFOLD_SITES = { male: ["chest", "abdomen", "thigh"], female: ["triceps", "suprailiac", "thigh"] };
+// The skinfold read's list length (backend/athlete/skinfolds.py LIST_LIMIT).
+const SKINFOLD_READ_LIMIT = 20;
 const SKINFOLD_LABELS = { chest: "Brust", abdomen: "Bauch", thigh: "Oberschenkel", triceps: "Trizeps", suprailiac: "Hüfte" };
 // Jackson-Pollock density (a - b*S + c*S² - d*age) as backend/athlete/body_composition.py (M13).
 const SKINFOLD_DENSITY = { male: [1.10938, 0.0008267, 0.0000016, 0.0002574], female: [1.0994921, 0.0009929, 0.0000023, 0.0001392] };
@@ -1370,14 +1372,15 @@ function bindBodyFatDialog() {
     const [path, payload] = folds
       ? ["/api/body/skinfolds", { date: day, folds_mm: Object.fromEntries(skinfoldDialogSites().map((site) => [site, form.elements[site].value])) }]
       : ["/api/body/body-fat", { date: day, pct: form.elements.pct.value }];
-    if (await sendBodyEntry("bodyFatDialog", path, payload, document.querySelector("#bodyFatDialogSave"))) toast(folds ? "Messung gespeichert." : "Körperfett gespeichert.");
+    await sendBodyEntry("bodyFatDialog", path, payload, document.querySelector("#bodyFatDialogSave"), bodyFatReceipt(day, folds, "gespeichert"));
   });
   const remove = document.querySelector("#bodyFatDialogRemove");
   remove.addEventListener("click", async () => {
     const day = form.elements.date.value;
-    const [name, path] = bodyFatMode === "folds" ? ["Messung", "/api/body/skinfolds/remove"] : ["Körperfett", "/api/body/body-fat/remove"];
+    const folds = bodyFatMode === "folds";
+    const [name, path] = folds ? ["Messung", "/api/body/skinfolds/remove"] : ["Körperfett", "/api/body/body-fat/remove"];
     if (!await requestConfirmation(`${name} vom ${dateLabel(day)} löschen?`, { title: `${name} löschen?`, confirmLabel: "Löschen" })) return;
-    await sendBodyEntry("bodyFatDialog", path, { date: day, confirmed: true }, remove);
+    await sendBodyEntry("bodyFatDialog", path, { date: day, confirmed: true }, remove, bodyFatReceipt(day, folds, "gelöscht"));
   });
   document.querySelector("#bodyFatDialogCancel").addEventListener("click", () => document.querySelector("#bodyFatDialog").close());
 }
@@ -1403,19 +1406,62 @@ async function openWeightDialog() {
   fillWeightDialog();
 }
 
-// A saved or removed body value reaches the body values and the energy table on the next read.
-async function sendBodyEntry(dialog, path, payload, button) {
-  const status = document.querySelector(`#${dialog}Status`);
-  button.disabled = true;
-  try {
-    await api(path, { method: "PUT", body: JSON.stringify(payload) });
-  } catch (error) {
-    status.textContent = error.message;
-    button.disabled = false;
-    return false;
+// The receipt of a body change (#3403): what happened locally and at Garmin Connect, and the
+// request that puts the day back as it was (the day's previous entry, else its removal).
+function bodyReceipt(noun, done, garmin, undo) {
+  const local = { sent: done === "gelöscht" ? `${noun} gelöscht, Garmin Connect aktualisiert.` : `${noun} ${done} und an Garmin Connect gesendet.`,
+    removed: `${noun} ${done} und in Garmin Connect entfernt.`,
+    pending: `${noun} lokal ${done}, Garmin-Sync fehlgeschlagen – wird erneut versucht.`,
+    needs_weight: `${noun} lokal ${done}, Garmin braucht ein Gewicht am selben Tag.` };
+  return { text: local[garmin] || `${noun} ${done}.`, error: garmin === "pending", undo };
+}
+
+function weightReceipt(day, done) {
+  const before = weightRead?.entries.find((item) => item.date === day);
+  const undo = before ? ["/api/body/weight", { date: day, kg: before.kg }] : ["/api/body/weight/remove", { date: day, confirmed: true }];
+  return (garmin) => bodyReceipt("Gewicht", done, garmin, undo);
+}
+
+function bodyFatReceipt(day, folds, done) {
+  if (folds) {
+    // Without the read the earlier measurement is unknown, so no undo is offered.
+    if (!skinfoldRead?.measurements) return (garmin) => bodyReceipt("Messung", done, garmin, null);
+    const before = skinfoldRead.measurements.find((item) => item.date === day);
+    // The read lists at most 20 measurements: an older day's earlier state is unknown.
+    if (!before && skinfoldRead.measurements.length >= SKINFOLD_READ_LIMIT) return (garmin) => bodyReceipt("Messung", done, garmin, null);
+    const undo = before ? ["/api/body/skinfolds", { date: day, folds_mm: Object.fromEntries(before.folds_mm.map((fold) => [fold.site, fold.mm])) }] : ["/api/body/skinfolds/remove", { date: day, confirmed: true }];
+    return (garmin) => bodyReceipt("Messung", done, garmin, undo);
   }
+  const before = bodyFatEntries.find((item) => item.date === day);
+  const undo = before ? ["/api/body/body-fat", { date: day, pct: before.pct }] : ["/api/body/body-fat/remove", { date: day, confirmed: true }];
+  return (garmin) => bodyReceipt("Körperfett", done, garmin, undo);
+}
+
+// The receipt stays in the toast with "Rückgängig" a little longer than a plain message.
+function showBodyReceipt(receipt) {
+  toast(receipt.text, receipt.error);
+  if (!receipt.undo) return;
+  const undo = h("button", { type: "button", className: "message-undo" }, "Rückgängig");
+  undo.addEventListener("click", async () => {
+    undo.disabled = true;
+    const [path, payload] = receipt.undo;
+    try {
+      const read = await api(path, { method: "PUT", body: JSON.stringify(payload) });
+      await bodyEntryChanged();
+      toast(read?.remote === "pending" ? "Zurückgenommen. Garmin-Sync fehlgeschlagen – wird erneut versucht." : "Zurückgenommen.", read?.remote === "pending");
+    } catch (error) {
+      undo.disabled = false;
+      toast(error.message, true);
+    }
+  });
+  document.querySelector("#toast")?.append(undo);
+  clearTimeout(toast.timer);
+  toast.timer = setTimeout(hideToast, 10000);
+}
+
+// A saved or removed body value reaches the body values and the energy table on the next read.
+async function bodyEntryChanged() {
   resetSkinfolds();
-  document.querySelector(`#${dialog}`).close();
   renderDiaryEnergy();
   // The save stands; a failed re-read is reported outside the closed dialog.
   try {
@@ -1425,6 +1471,22 @@ async function sendBodyEntry(dialog, path, payload, button) {
   } catch (error) {
     toast(error.message, true);
   }
+}
+
+async function sendBodyEntry(dialog, path, payload, button, receipt) {
+  const status = document.querySelector(`#${dialog}Status`);
+  button.disabled = true;
+  let read;
+  try {
+    read = await api(path, { method: "PUT", body: JSON.stringify(payload) });
+  } catch (error) {
+    status.textContent = error.message;
+    button.disabled = false;
+    return false;
+  }
+  document.querySelector(`#${dialog}`).close();
+  await bodyEntryChanged();
+  showBodyReceipt(receipt(read?.remote));
   return true;
 }
 
@@ -1437,13 +1499,14 @@ function bindWeightDialog() {
   form.elements.date.addEventListener("change", fillWeightDialog);
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
-    if (await sendBodyEntry("weightDialog", "/api/body/weight", { date: form.elements.date.value, kg: form.elements.kg.value }, document.querySelector("#weightDialogSave"))) toast("Gewicht gespeichert.");
+    const day = form.elements.date.value;
+    await sendBodyEntry("weightDialog", "/api/body/weight", { date: day, kg: form.elements.kg.value }, document.querySelector("#weightDialogSave"), weightReceipt(day, "gespeichert"));
   });
   const remove = document.querySelector("#weightDialogRemove");
   remove.addEventListener("click", async () => {
     const day = form.elements.date.value;
     if (!await requestConfirmation(`Gewicht vom ${dateLabel(day)} löschen?`, { title: "Gewicht löschen?", confirmLabel: "Löschen" })) return;
-    await sendBodyEntry("weightDialog", "/api/body/weight/remove", { date: day, confirmed: true }, remove);
+    await sendBodyEntry("weightDialog", "/api/body/weight/remove", { date: day, confirmed: true }, remove, weightReceipt(day, "gelöscht"));
   });
   document.querySelector("#weightDialogCancel").addEventListener("click", () => document.querySelector("#weightDialog").close());
 }

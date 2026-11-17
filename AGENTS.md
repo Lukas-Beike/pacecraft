@@ -56,7 +56,9 @@ Use [README.md](README.md) for the overview and [docs/setup.md](docs/setup.md) a
   athlete explicitly synchronizes the library to Intervals.icu. Do not add
   implicit remote workout writes. The one exception is the deletion of the
   app's own linked Garmin workouts once their day has passed, after a Garmin
-  refresh (athlete decision 2026-11-11, #2185).
+  refresh (athlete decision 2026-11-11, #2185). Named exception (athlete,
+  2026-11-17, #3403): saving, changing or removing an entered weight or body fat
+  writes, updates or deletes that day's Garmin entry; nothing else is written.
 - Adaptive replanning may update future local library entries only after its preview is
   explicitly approved (the athlete's own Intervals.icu sync request for an
   illness pause approves it, #2342); it must not silently overwrite, delete, or

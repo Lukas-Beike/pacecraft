@@ -136,6 +136,7 @@ class LiveCredentialHarness:
                 fixture_loader=mock.Mock,
                 activity_detail_service=mock.Mock,
                 strength_push_service=mock.Mock,
+                body_push_service=mock.Mock,
                 wellness_history_service=mock.Mock,
                 stream_backfill_service=mock.Mock,
             ),

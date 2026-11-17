@@ -557,10 +557,17 @@ class GarminStrengthPushOwner(Protocol):
     def remove_past(self) -> int: ...
 
 
+class GarminBodyPushOwner(Protocol):
+    """Retries the entered body days whose Garmin write is pending (#3403)."""
+
+    def retry_pending(self) -> int: ...
+
+
 class GarminJobAdapter:
     """Run the explicit strength-workout push or the Garmin sync owner.
 
-    A finished refresh also removes the app's Garmin workouts of past days (#2185).
+    A finished refresh also removes the app's Garmin workouts of past days (#2185)
+    and retries the pending body writes (#3403).
     """
 
     def __init__(
@@ -568,9 +575,11 @@ class GarminJobAdapter:
         *,
         jobs: GarminSyncJobOwner,
         plan_push: GarminStrengthPushOwner | None = None,
+        body_push: GarminBodyPushOwner | None = None,
     ) -> None:
         self._jobs = jobs
         self._plan_push = plan_push
+        self._body_push = body_push
 
     def execute(
         self,
@@ -589,6 +598,8 @@ class GarminJobAdapter:
         result = self._jobs.execute(job, payload, reason)
         if job_type == "refresh" and self._plan_push is not None:
             self._plan_push.remove_past()
+        if job_type == "refresh" and self._body_push is not None:
+            self._body_push.retry_pending()
         return result
 
 

@@ -67,6 +67,8 @@ class GarminServices:
     strength_push_service: Callable[[], Any]
     sdk_write_ready: Callable[[], bool]
     body_export: Callable[[Any], Any]
+    # Mirrors the athlete's entered body days to Garmin Connect (#3403).
+    body_push_service: Callable[[], Any]
     remote_reader: Callable[[], GarminRemoteReader]
     check_stored_login: Callable[[], None]
     change_check: Callable[[], GarminChangeCheck]
@@ -203,6 +205,21 @@ def build_garmin(
 
         return GarminProfileBodyExport(
             profile, remote_reader(), fixture_loader(), tokens
+        )
+
+    def body_push_service() -> Any:
+        """The entered body days' Garmin mirror; it opens no connection yet."""
+        from backend.sync.garmin_body_push import GarminBodyPushService
+        from backend.sync.garmin_strength_push import GarminSdkWriteSession
+
+        skinfolds = ctx.athlete.skinfolds()
+        return GarminBodyPushService(
+            ctx.database(),
+            GarminSdkWriteSession(remote_reader(), fixture_loader(), tokens),
+            sync_state_service(),
+            skinfolds.body_fat_on,
+            sdk_write_ready_now,
+            _datetime_now,
         )
 
     def remote_reader() -> GarminRemoteReader:
@@ -404,6 +421,7 @@ def build_garmin(
         strength_push_service,
         sdk_write_ready_now,
         body_export,
+        body_push_service,
         remote_reader,
         check_stored_login,
         change_check,

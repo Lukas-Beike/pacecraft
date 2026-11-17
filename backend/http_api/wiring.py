@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
+from datetime import date
 from functools import partial
 from http.server import BaseHTTPRequestHandler
 from pathlib import Path
@@ -508,6 +509,11 @@ def _athlete_write_routes(
     athlete = ctx.athlete
     history_undo = ctx.history.undo_service
     rpe_load = partial(_session_rpe_load, ctx)
+
+    def body_changed(day: date) -> str:
+        """Mirror an entered body day to Garmin Connect (#3403)."""
+        return str(ctx.garmin.body_push_service().push(day))
+
     return (
         SettingsPutRoutes(ctx.settings),
         AthletePutRoutes(
@@ -517,9 +523,9 @@ def _athlete_write_routes(
             lambda profile, revision, deadline: ctx.garmin.body_export(
                 athlete.profile()
             ).export(profile, revision, deadline),
-            skinfold_service=athlete.skinfolds,
-            weight_service=athlete.weight_entries,
-            body_fat_service=athlete.body_fat_entries,
+            skinfold_service=lambda: athlete.skinfolds(body_changed),
+            weight_service=lambda: athlete.weight_entries(body_changed),
+            body_fat_service=lambda: athlete.body_fat_entries(body_changed),
         ),
         AuthPostRoutes(session_auth_service, ctx.maintenance),
         FeedbackPostRoutes(

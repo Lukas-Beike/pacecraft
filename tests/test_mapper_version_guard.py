@@ -119,7 +119,7 @@ PINNED: Final[dict[str, tuple[tuple[int, ...], str]]] = {
     ),
     "canonical.vocabulary": (
         (11, 12, 21, 25, 8, 2),
-        "3b1e38a09bdad915f1b62ad61413e387b3cddeddc79d7d73aa0ed0cae5b356c8",
+        "0e03c4634c8cb01f66e3d033097a96256067b890f15c5d73af97b8ae2d10212e",
     ),
     "fit_activity_detail_mapping": (
         (11, 12),
