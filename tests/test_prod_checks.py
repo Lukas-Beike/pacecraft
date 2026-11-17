@@ -23,6 +23,7 @@ from backend.coach.read_tools import LOOKUP_OUTCOMES
 from backend.coach.receipt_compaction import compact_tool_result
 from backend.coach.turn_failures import coach_error_metadata
 from backend.errors import AppError
+from backend.nutrition.energy_inputs import RESTING_FROM_SKINFOLDS
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 import prod_client
@@ -416,7 +417,9 @@ class ProdChecksTests(unittest.TestCase):
         report = {
             "energy_balance": {
                 "status": "ready",
-                "rmr_source": "katch_mcardle",
+                # The backend's own codes, so a rename fails here (Gitar #3366).
+                "rmr_source": RESTING_FROM_SKINFOLDS,
+                "latest_window_insufficient": "weight_span",
                 "body_resolved": False,
                 "body_missing": "no_skinfold",
                 "body_source": "profile",
@@ -435,7 +438,8 @@ class ProdChecksTests(unittest.TestCase):
             f'{prefix}body_source "profile"',
             f"{prefix}body_source_windows.device 2",
             f"{prefix}body_resolved false",
-            f'{prefix}rmr_source "katch_mcardle"',
+            f'{prefix}rmr_source "{RESTING_FROM_SKINFOLDS}"',
+            f'{prefix}latest_window_insufficient "weight_span"',
             f"{prefix}newest_skinfold_age_days null",
         ):
             self.assertIn(expected, lines)

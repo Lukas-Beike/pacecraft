@@ -188,7 +188,9 @@ STATES = {
 STATES |= {
     "intake_days",
     "weighins",
-    "katch_mcardle",
+    "weight_span",
+    "katch_mcardle_skinfold",
+    "katch_mcardle_body_fat",
     "garmin",
     "no_skinfold",
     "skinfold_too_old",
