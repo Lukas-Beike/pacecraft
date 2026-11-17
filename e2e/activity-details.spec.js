@@ -270,6 +270,48 @@ test("@responsive calendar details chart the breathing rate and show Garmin's la
   await expect(plain.locator(".activity-analysis-laps th[scope=col]")).toHaveText(["#", "Zeit", "Distanz", "Pace"]);
 });
 
+test("@responsive the lap table keeps every value and word on one line and scrolls sideways", async ({ page }, testInfo) => {
+  // #3465: twelve full laps, so the lap number, times, paces and power all reach their usual width.
+  const laps = Array.from({ length: 12 }, (_, index) => ({ index, start_offset_s: index * 365, end_offset_s: index * 365 + 365, distance_m: 1000,
+    avg_speed_mps: 2.74, avg_grade_adjusted_speed_mps: 2.9, avg_power: 361, avg_hr: 152, elevation_gain_m: 12 }));
+  await page.route(/\/api\/activities\//, (route) => route.fulfill({ json: {
+    session: { activity_id: "act_laps", sport: "run" }, metrics: {},
+    streams: { time_s: [0, 15, 30], channels: { heart_rate_bpm: { values: [140, 150, 145] } } },
+    laps: { laps }, detail_data: { providers: [] },
+  } }));
+  await page.goto("/#plan/overview");
+  await expect(page.locator("#appShell")).toBeVisible();
+  await page.waitForFunction(() => state.initialStateLoaded);
+  await renderCalendarSessions(page, [{ id: "act_laps", name: "Synthetic lap run", sport: "run", started_at_local: "2026-10-17T07:00:00", moving_duration_s: 4380 }]);
+  const details = await openSessionDetails(page, "Synthetic lap run");
+  const section = details.locator(".activity-analysis-laps");
+  await expect(section.locator("th[scope=col]")).toHaveText(["#", "Zeit", "Distanz", "Pace", "GAP Garmin", "Ø W", "Ø HF", "Anstieg"]);
+  await section.scrollIntoViewIfNeeded();
+  if (testInfo.project.name === "mobile") await section.screenshot({ path: testInfo.outputPath("Runden.png") });
+  const layout = await section.evaluate((root) => {
+    // The lines one text occupies: distinct line tops of its rendered boxes.
+    const lines = (node, start = 0, end = node.textContent.length) => {
+      const range = document.createRange();
+      range.setStart(node, start); range.setEnd(node, end);
+      return new Set([...range.getClientRects()].filter((rect) => rect.width > 0).map((rect) => Math.round(rect.top))).size;
+    };
+    const split = [];
+    for (const cell of root.querySelectorAll("th, td")) {
+      const text = cell.firstChild;
+      if (text?.nodeType !== Node.TEXT_NODE) continue;
+      const header = cell.matches("th[scope=col]");
+      // A value never wraps; a header may wrap only between its words.
+      if (!header && lines(text) > 1) split.push(cell.textContent);
+      if (header) for (const match of text.textContent.matchAll(/\S+/g)) if (lines(text, match.index, match.index + match[0].length) > 1) split.push(cell.textContent);
+    }
+    const region = root.querySelector(".analysis-chart-table");
+    return { split, overflowX: getComputedStyle(region).overflowX, fits: region.scrollWidth <= region.clientWidth || region.scrollWidth >= region.querySelector("table").scrollWidth };
+  });
+  expect(layout.split).toEqual([]);
+  expect(["auto", "scroll"]).toContain(layout.overflowX);
+  expect(layout.fits).toBe(true);
+});
+
 test("@responsive the session dialog charts the breathing rate", async ({ page }) => {
   await page.goto("/#plan/overview");
   await expect(page.locator("#appShell")).toBeVisible();
