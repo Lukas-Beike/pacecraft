@@ -192,6 +192,7 @@ class IntervalsValuesAreNotCurrentTests(unittest.TestCase):
                 "wahoo_ftp",
                 "wahoo_weight",
                 "entered_weights",
+                "entered_body_fats",
                 "zone_thresholds",
                 "threshold_candidates",
                 "configured_thresholds",
@@ -413,7 +414,12 @@ class WahooAgeLimitProductionReadTests(unittest.TestCase):
         self.assertEqual(inputs.current, NO_CURRENT_INPUTS)
 
 
-def _weight(value: float, day: date, provider: ProviderId | None) -> Observation:
+def _weight(
+    value: float,
+    day: date,
+    provider: ProviderId | None,
+    kind: MetricKind = MetricKind.WEIGHT,
+) -> Observation:
     provenance = (
         local_provenance()
         if provider is None
@@ -427,8 +433,8 @@ def _weight(value: float, day: date, provider: ProviderId | None) -> Observation
         )
     )
     return Observation(
-        kind=MetricKind.WEIGHT,
-        value=MetricValue(value=value, unit="kg"),
+        kind=kind,
+        value=MetricValue(value=value, unit="kg" if kind is MetricKind.WEIGHT else "%"),
         observed_on=day,
         observed_at=None,
         provenance=provenance,
@@ -438,14 +444,27 @@ def _weight(value: float, day: date, provider: ProviderId | None) -> Observation
 class EnteredWeightTests(unittest.TestCase):
     """The athlete's own weigh-in (#3252): it wins its day, else the newest wins."""
 
-    def current(self, *observations: Observation) -> dict[str, Any]:
+    def current(
+        self, *observations: Observation, metric: str = "weight_kg"
+    ) -> dict[str, Any]:
         inputs = read_current_inputs(ObservationStub(observations), None, as_of=AS_OF)
         garmin = tuple(
             item for item in observations if item.provenance.provider is not None
         )
         return _performance_body_metrics(
-            {"weight_kg": 70.0}, {}, inputs, garmin, AS_OF
-        )["weight_kg"]
+            {"weight_kg": 70.0, "body_fat_pct": 20.0}, {}, inputs, garmin, AS_OF
+        )[metric]
+
+    def test_an_entered_body_fat_wins_its_day_and_is_labelled_lokal(self) -> None:
+        # #3402: a body fat the athlete entered follows the weight's rule.
+        fat = MetricKind.BODY_FAT
+        body_fat = self.current(
+            _weight(18.0, AS_OF, ProviderId.GARMIN, fat),
+            _weight(14.3, AS_OF, None, fat),
+            metric="body_fat_pct",
+        )
+        self.assertEqual((14.3, "Lokal"), (body_fat["value"], body_fat["source"]))
+        self.assertEqual([18.0], [item["value"] for item in body_fat["alternatives"]])
 
     def test_a_newer_entered_weight_wins_and_is_labelled_lokal(self) -> None:
         weight = self.current(

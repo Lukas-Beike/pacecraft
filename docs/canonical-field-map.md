@@ -150,8 +150,8 @@ Each kind has exactly one canonical unit (`MetricKind.unit`) and a plausibility 
 
 | Kind | Unit | Range | Meaning | Emitted by | Status |
 |---|---|---|---|---|---|
-| `weight` | `kg` | 20 to 400 | Body weight. | `garmin_health_mapping.py`, `wahoo_threshold_mapping.py`, `weight_entry.py` | read |
-| `body_fat` | `%` | 1 to 80 | Body-fat share of body weight. | `garmin_health_mapping.py` | read |
+| `weight` | `kg` | 20 to 400 | Body weight. | `garmin_health_mapping.py`, `wahoo_threshold_mapping.py`, `body_entry.py` | read |
+| `body_fat` | `%` | 1 to 80 | Body-fat share of body weight. | `garmin_health_mapping.py`, `body_entry.py` | read |
 | `ftp` | `W` | 0 to 2,500 | Functional threshold power; the sport field says ride or run (run FTP = running threshold power). | `garmin_health_mapping.py`, `wahoo_threshold_mapping.py` | read |
 | `threshold_hr` | `bpm` | 20 to 250 | Lactate-threshold heart rate (per sport). | `garmin_health_mapping.py` | read |
 | `max_hr` | `bpm` | 20 to 250 | Maximum heart rate (per sport). | `garmin_health_mapping.py` | read |
@@ -2663,22 +2663,22 @@ Inputs: the athlete's save request (API/UI); no provider payload.
 | `observed_at`, `sport`, `method`, `aggregation`, `period` | none | |
 | `provenance` | `provider` none; `source_kind` = `athlete_entered`; `source_record_id` none; `recorded_by` = `manual`; `retrieved_at` none; `label` = "Lokal" (`LOCAL_LABEL`) | Provider re-projection never retires these rows (it is scoped by provider). |
 
-Stored with `mapper_version` 1 (`MAPPER_VERSION`). The canonical readers skip rows without a provider (except the weights of `weight_entry.py`), so `skinfolds.py` reads its own rows (`provider IS NULL`, `source_kind = 'athlete_entered'`, active).
+Stored with `mapper_version` 1 (`MAPPER_VERSION`). The canonical readers skip rows without a provider (except the weights and body fats of `body_entry.py`), so `skinfolds.py` reads its own rows (`provider IS NULL`, `source_kind = 'athlete_entered'`, active).
 
-### `weight_entry.py`
+### `body_entry.py`
 
-Status: Live. `backend/athlete/weight_entry.py` is the only producer of weights the athlete enters by hand (#3252). `WeightEntryService.save` writes one observation through `canonical_store.upsert_observation`; a save on the same day first retires that day's active entered row, and `WeightEntryService.remove` (confirmed) retires it.
+Status: Live. `backend/athlete/body_entry.py` is the only producer of weights (#3252) and body fat percentages (#3402) the athlete enters by hand. `BodyEntryService.save` writes one observation through `canonical_store.upsert_observation`; a save on the same day first retires that day's active entered row of the same metric, and `BodyEntryService.remove` (confirmed) retires it. `WEIGHT_ENTRY` and `BODY_FAT_ENTRY` name the metric, the request key and the unit.
 Inputs: the athlete's save request (API/UI); no provider payload.
 
 | `Observation` field | Local value | Notes |
 |---|---|---|
-| `kind` | `weight` | |
-| `value` | request `kg` in `kg`, rounded to 0.1 | 20..400 kg (`METRIC_BOUNDS`); comma decimals allowed. |
-| `observed_on` | request `date` (ISO day, not in the future) | Part of the natural key `|weight|||<day>`. |
+| `kind` | `weight` (`WEIGHT_ENTRY`) or `body_fat` (`BODY_FAT_ENTRY`) | |
+| `value` | request `kg` in `kg` or `pct` in `%`, rounded to 0.1 | 20..400 kg (`METRIC_BOUNDS`) or 2..70 % (the body readers' range); comma decimals allowed. |
+| `observed_on` | request `date` (ISO day, not in the future) | Part of the natural key `|weight|||<day>` or `|body_fat|||<day>`. |
 | `observed_at`, `sport`, `method`, `aggregation`, `period` | none | |
 | `provenance` | `provider` none; `source_kind` = `athlete_entered`; `source_record_id` none; `recorded_by` = `manual`; `retrieved_at` none; `label` = "Lokal" (`local_provenance`) | Provider re-projection never retires these rows (it is scoped by provider). |
 
-Stored with `mapper_version` 1. `canonical_store.current_observation_rows` serves these rows for the metrics in `ENTERED_METRICS` (weight only), so the canonical weight readers see them: the current weight takes the newest one under `RECENCY_ORDERS`, where an entry on the newest day wins over a measurement of that or the previous day (athlete decision 2026-11-16), the body history charts them as a "Lokal" series, and the energy weigh-ins take them over a provider weigh-in of the same day.
+Stored with `mapper_version` 1. `canonical_store.current_observation_rows` serves these rows for the metrics in `ENTERED_METRICS` (weight and body fat), so the canonical readers see them: the current weight and body fat take the newest one under `RECENCY_ORDERS`, where an entry on the newest day wins over a measurement of that or the previous day (athlete decision 2026-11-16), the body history charts them as a "Lokal" series, the energy weigh-ins and body fats take them over a provider value of the same day, and the formula rows take an entered body fat after the skinfolds and before a device or scale (#3402).
 
 ### `zone_settings.py`
 

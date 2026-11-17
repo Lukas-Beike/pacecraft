@@ -65,8 +65,9 @@ COUNTS = (
     "external_calendar_events",
     # Diary entries (#3234).
     "nutrition_logs",
-    # Weights the athlete entered by hand (#3252).
+    # Weights and body fats the athlete entered by hand (#3252, #3402).
     "entered_weights",
+    "entered_body_fats",
 )
 MEMORY = ("rss_bytes", "peak_rss_bytes")
 # Storage and runtime health compared between releases (#2848).
@@ -153,7 +154,7 @@ SECTION_FIELDS = {
         r"|windows_with_estimate|calibration_windows|days|logged_days|flagged_days"
         r"|weighins|sessions|unpriced_sessions|rmr_source|skinfolds_with_body_fat"
         r"|newest_skinfold_age_days|body_resolved|body_missing|body_source"
-        r"|body_source_windows\.(skinfold|device|profile|none)"
+        r"|body_source_windows\.(skinfold|entered|device|profile|none)"
     ),
     # Window records the next detail mapper bump downloads again (#2220).
     "mapper_replay": re.compile(

@@ -213,26 +213,31 @@ class ObservationRetirementTests(unittest.TestCase):
         )
 
     def test_a_provider_refresh_leaves_an_entered_weight_active(self) -> None:
-        # #3252: the athlete's own weigh-in has no provider, so a provider's
-        # retirement never touches it, and the read keeps serving it.
+        # #3252, #3402: the athlete's own weigh-in and body fat have no provider,
+        # so a provider's retirement never touches them, and the read serves them.
         self.ingest_intervals(intervals([{"id": DAY, "weight": 71.0}]))
-        canonical_store.upsert_observation(
-            self.db,
-            Observation(
-                kind=MetricKind.WEIGHT,
-                value=MetricValue(72.5, "kg"),
-                observed_on=date.fromisoformat(DAY),
-                observed_at=None,
-                provenance=local_provenance(),
-            ),
-            mapper_version=1,
-            now=NOW,
-        )
+        for kind, value, unit in (
+            (MetricKind.WEIGHT, 72.5, "kg"),
+            (MetricKind.BODY_FAT, 14.3, "%"),
+        ):
+            canonical_store.upsert_observation(
+                self.db,
+                Observation(
+                    kind=kind,
+                    value=MetricValue(value, unit),
+                    observed_on=date.fromisoformat(DAY),
+                    observed_at=None,
+                    provenance=local_provenance(),
+                ),
+                mapper_version=1,
+                now=NOW,
+            )
         self.assertEqual(sorted(self.served("weight")), [(DAY, 71.0), (DAY, 72.5)])
 
         self.ingest_intervals(intervals([{"id": DAY, "weight": None}], synced_at=LATER))
 
         self.assertEqual(self.served("weight"), [(DAY, 72.5)])
+        self.assertEqual(self.served("body_fat"), [(DAY, 14.3)])
         states = {
             row["provider"]: row["state"]
             for row in self.db.execute(

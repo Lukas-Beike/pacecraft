@@ -330,6 +330,7 @@ class DiagnosticReportServiceTests(unittest.TestCase):
                 "change_history": 8,
                 "nutrition_logs": 9,
                 "entered_weights": 0,
+                "entered_body_fats": 0,
                 "stored_payload_bytes": {
                     "garmin_state": 4096,
                     "garmin_snapshot_legacy": 0,
@@ -402,7 +403,7 @@ class DiagnosticReportServiceTests(unittest.TestCase):
         # sets, and two Wahoo selections; #2220); the diary count adds one (#3234);
         # the DFA-a1 method counts of chest-strap runs add one (#3273); the
         # entered weights add one (#3252).
-        self.assertEqual(len(self.db.queries), 43)
+        self.assertEqual(len(self.db.queries), 44)
         self.assertEqual(
             [query.rsplit("FROM ", 1)[1] for query in count_queries],
             [
@@ -487,10 +488,15 @@ class DiagnosticReportServiceTests(unittest.TestCase):
                     ("weight", None, "athlete_entered", "active"),
                     ("weight", None, "athlete_entered", "retired"),
                     ("weight", "garmin", "device_measured", "active"),
-                    ("body_fat_pct", None, "athlete_entered", "active"),
+                    ("body_fat", None, "athlete_entered", "active"),
+                    ("body_fat", None, "athlete_entered", "retired"),
+                    ("body_fat", "garmin", "device_measured", "active"),
                 ],
             )
             self.assertEqual(self.service._database_counts(db)["entered_weights"], 1)
+            # And the body fats the athlete entered as a percentage (#3402).
+            counts = self.service._database_counts(db)
+            self.assertEqual(counts["entered_body_fats"], 1)
             self.assertEqual(
                 self.service._database_counts(db)["stored_payload_bytes"],
                 {

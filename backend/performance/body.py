@@ -208,8 +208,8 @@ def body_history(
 
     Garmin weight, body fat and FTP come solely from canonical observations. The
     W/kg series divides Garmin's dated FTP only. The Garmin sync status supplies
-    only sync times. The athlete's own weigh-ins form a "Lokal" weight series
-    (no provider) when there are any (#3252).
+    only sync times. The athlete's own weigh-ins and body fats form a "Lokal"
+    series (no provider) when there are any (#3252, #3402).
     """
     garmin_synced_at = _sync_timestamp(garmin, "weight")
     garmin_values = {
@@ -218,6 +218,7 @@ def body_history(
     }
     weights = {ProviderId.GARMIN: garmin_values["weight_kg"]}
     entered = _stamped(canonical.entered_weight_kg, None)
+    entered_fat = _stamped(canonical.entered_body_fat_pct, None)
     ftp = _garmin_ftp(garmin, today, garmin_ftp)
     windows: dict[str, Any] = {}
     for key, days in (("14d", 14), ("12w", 84)):
@@ -240,7 +241,12 @@ def body_history(
                         start,
                         today,
                     ),
-                ],
+                ]
+                + (
+                    [_series(None, "%", entered_fat, start, today)]
+                    if entered_fat
+                    else []
+                ),
                 "cycling_w_per_kg": [
                     _quotient_series(
                         ftp,
