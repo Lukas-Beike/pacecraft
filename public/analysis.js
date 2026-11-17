@@ -1582,7 +1582,7 @@ function loadEnergy(day = energyDay()) {
 
 // A band shows as its low and high end (#3478); a kcal value is never negative, so the low end stops at 0.
 function energyKcalRange(value, band) {
-  return [Math.max(0, value - band), value + band].map(formatWhole);
+  return [Math.max(0, value - band), value + band].map((kcal) => formatWhole(kcal));
 }
 
 // The span "low–high" on its own line under the estimate, read out as "zwischen … und … kcal".
