@@ -1,4 +1,4 @@
-const { test, expect } = require("@playwright/test");
+const { test, expect } = require("./helpers/today");
 const { showCalendarDay } = require("./helpers/ui");
 const { openCalendar, renderSyntheticCalendar } = require("./helpers/calendar");
 
@@ -206,16 +206,29 @@ test("@responsive an opened completed session shows its time in zones as one bar
   await expect(zone.locator(".planned-zone-time-source")).toHaveText("Leistungszonen · Garmin Connect");
   // A session without zones, and one whose read fails, show no bar.
   await showCalendarDay(page, days.past);
+  // A wide week without a coming day opens its last card on its own, on a Tuesday the failing
+  // session; count this test's reads from after that opening's read has settled (#3371).
+  const runReads = () => reads.filter((id) => id === "past-run").length;
+  await expect.poll(async () => {
+    const seen = runReads();
+    await page.evaluate(() => new Promise((resolve) => setTimeout(resolve, 100)).then(() => AppApi.settled()));
+    return runReads() === seen;
+  }).toBe(true);
+  const start = runReads();
   for (const name of ["Vergangene Ausfahrt", "Vergangener Lauf"]) {
     const card = page.locator(`.planned-day[data-date="${days.past}"] .planned-entry`).filter({ hasText: name });
     await card.evaluate((element) => { for (let node = element; node; node = node.parentElement) if (node.tagName === "DETAILS") node.open = true; });
-    await expect.poll(() => reads.includes(name === "Vergangene Ausfahrt" ? "past-ride" : "past-run")).toBe(true);
+    if (name === "Vergangene Ausfahrt") await expect.poll(() => reads.includes("past-ride")).toBe(true);
+    // Opening the failing session reads it once more: a failed read is not kept.
+    else await expect.poll(runReads).toBe(start + 1);
     await expect(card.locator(".planned-zone-time")).toHaveCount(0);
   }
   // "Details" reuses the bar's read of the same session (#2478); a failed read is not shared.
   const failed = page.locator(`.planned-day[data-date="${days.past}"] .planned-entry`).filter({ hasText: "Vergangener Lauf" });
   await failed.locator(".planned-activity-more > summary").click();
-  await expect.poll(() => reads.filter((id) => id === "past-run").length).toBe(2);
+  await expect.poll(runReads).toBe(start + 2);
+  await expect(failed.locator(".activity-analysis-panel")).not.toContainText("Details werden geladen");
+  expect(runReads()).toBe(start + 2);
   await showCalendarDay(page, days.today);
   if (!await ride.evaluate((element) => element.open)) await ride.locator(":scope > summary").click();
   await ride.locator(".planned-activity-more > summary").click();
