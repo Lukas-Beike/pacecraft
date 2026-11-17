@@ -102,6 +102,16 @@ test("ui walk reports errors per view and compares load times with the previous 
   assert.deepEqual(walk.compareLines(result, null), []);
 });
 
+test("ui walk checks the week review under the running calendar week, not in Analyse (#3298)", async () => {
+  const walk = await load();
+  assert.ok(!walk.STEPS.some((step) => step.view === "analysis" && /Woche/.test(step.name)), "Analyse has no week tab since #3319");
+  const review = walk.STEPS.find((step) => step.name === "Kalender: Wochenrückblick");
+  assert.equal(review.view, "plan");
+  // The server answers "current" with the running week, and its check-in tile is always there.
+  assert.ok(!review.optional, "a missing review of the running week is a finding");
+  assert.match(review.ready, /\.week-review\[data-this-week="true"\] \.week-review-tile/);
+});
+
 test("ui walk steps press only opening controls and name the feature they cover (#3009)", async () => {
   const walk = await load();
   const names = walk.STEPS.map((step) => step.name);
