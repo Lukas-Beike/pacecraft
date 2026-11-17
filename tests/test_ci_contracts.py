@@ -537,14 +537,18 @@ class WorkflowSourceTests(unittest.TestCase):
             name: lock["packages"][f"node_modules/{name}"]["version"]
             for name in ("@playwright/test", "playwright", "playwright-core")
         }
+        # An image in another form is compared whole, so it fails with the recipe.
+        image = re.fullmatch(
+            r"mcr\.microsoft\.com/playwright:v([0-9.]+)-noble@sha256:[a-f0-9]{64}",
+            pin["image"],
+        )
         declared = {
             "package.json": package["devDependencies"]["@playwright/test"],
             **locked,
             "browser_environment.json version": pin["version"],
-            "browser_environment.json image tag": re.fullmatch(
-                r"mcr\.microsoft\.com/playwright:v([0-9.]+)-noble@sha256:[a-f0-9]{64}",
-                pin["image"],
-            ).group(1),
+            "browser_environment.json image tag": image.group(1)
+            if image
+            else pin["image"],
         }
         self.assertEqual(
             len(set(declared.values())),
