@@ -152,14 +152,26 @@ const fitScale = (days, ownDays, own, band) => ({
     { source: "device", label: "Garmin Connect", total_kcal: 3157 },
   ],
 });
+// Playwright's messages for a request whose page went away (#3449).
+const GONE = /Response has been disposed|Target page, context or browser has been closed/;
 for (const theme of ["light", "dark"]) {
   test(`@responsive the fit scale follows Verlauf's period without overlaps, and the diary outlines the best source (${theme})`, async ({ page }) => {
     await page.emulateMedia({ colorScheme: theme });
     await page.route("**/api/body/energy*", async (route) => {
-      const response = await route.fetch();
-      const data = await response.json();
+      // A read still in flight when the test moves to the diary is disposed with the
+      // old page; that request is gone and needs no answer (#3449).
+      let response;
+      let data;
+      try {
+        response = await route.fetch();
+        data = await response.json();
+      } catch (error) {
+        if (GONE.test(String(error))) return;
+        throw error;
+      }
       for (const row of data.rows) if (row.source !== "own") row.mean_error_kcal = { katch_mcardle: 1042, cunningham: 1204, device: 431 }[row.source];
-      await route.fulfill({ response, json: { ...data, best: null, fit_scale: { "14d": fitScale(14, 28, 2690, 720), "12w": fitScale(84, 84, 2726, 454) } } });
+      await route.fulfill({ response, json: { ...data, best: null, fit_scale: { "14d": fitScale(14, 28, 2690, 720), "12w": fitScale(84, 84, 2726, 454) } } })
+        .catch((error) => { if (!GONE.test(String(error))) throw error; });
     });
     await page.goto("/#nutrition/week");
     const card = page.locator("#nutritionFitScale [data-energy-fit]");
