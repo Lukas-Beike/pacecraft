@@ -1568,6 +1568,21 @@ def weekday_runs(args):
     ]
 
 
+def listed_weekday_runs(runs, listing):
+    """The weekday runs with only the specs the listing has on their project:
+    --grep filters the listing, and a spec desktop does not list gets no pinned
+    run, so neither turns a passing run into a failed one (Gitar on #3327)."""
+    return [
+        {**run, "specs": specs}
+        for run in runs
+        if (
+            specs := [
+                spec for spec in run["specs"] if (run["project"], spec) in listing
+            ]
+        )
+    ]
+
+
 def weekday_pass(args, code):
     """Run the weekday runs after the real day's run and report the exits
     together; the first non-zero exit is the result (#3324)."""
@@ -1661,6 +1676,7 @@ def main(argv=None, pinned=None):
                             )
                         )
                     )
+                    args.weekday_runs = listed_weekday_runs(args.weekday_runs, listing)
                     expected_identities = [
                         identity
                         for (project, _), values in sorted(listing.items())

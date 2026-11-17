@@ -292,6 +292,18 @@ class BrowserRunnerTests(unittest.TestCase):
             fake, list_only=True, weekday=weekday, extra_args=("--today", "2026-11-18")
         )
         self.assertEqual(json.loads(self.stdout)["weekday_runs"], [])
+        # Gitar on #3327: a spec the (--grep filtered) desktop listing lacks gets
+        # no pinned run, so a passing focused run stays passing.
+        others = FakeProcesses(listing=report(("b.spec.js",)))
+        code, values = self.run_main(
+            others, weekday=weekday, extra_args=("--grep", "settings")
+        )
+        self.assertEqual(
+            (code, [value["selection"]["today"] for value in values]),
+            (0, [None]),
+            self.stderr,
+        )
+        self.assertNotIn("Weekday runs", self.stderr)
 
     def test_spec_a_project_does_not_list_is_skipped_with_a_note(self):
         data = report()
