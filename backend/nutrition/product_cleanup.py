@@ -113,11 +113,25 @@ class ProductCleanupService:
                 "removed_at": stamp,
                 "products": rows,
             }
+            self._prune_runs(db)
             self._key_values.set(db, _RUN_PREFIX + operation_id, json.dumps(run))
             change = change_history.record_change(
                 db, ENTITY_TYPE, operation_id, "create", None, run
             )
+        if change is not None:
+            # Only what the undo needs; the recorded run can be megabytes.
+            change = {key: change[key] for key in change_history.UNDO_REFERENCE_FIELDS}
         return {"ok": True, "count": len(rows), "change": change}
+
+    def _prune_runs(self, db: Any) -> None:
+        """Drop stored runs whose change-history row is gone: they cannot be undone."""
+        for row in db.execute(
+            "SELECT key FROM kv WHERE key LIKE ? AND substr(key, ?) NOT IN "
+            "(SELECT entity_id FROM change_history WHERE entity_type = ?)",
+            (_RUN_PREFIX + "%", len(_RUN_PREFIX) + 1, ENTITY_TYPE),
+        ).fetchall():
+            (key,) = row_values(row)
+            self._key_values.delete(db, str(key))
 
     def current(
         self, db: Any, entity_id: str

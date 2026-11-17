@@ -135,8 +135,29 @@ class ProductCleanupTests(unittest.TestCase):
         # Undone once: the run is gone, a second undo finds nothing.
         with self.manager.reader() as db:
             self.assertEqual(
-                (None, None), self.cleanup.current(db, result["change"]["entity_id"])
+                (None, None), self.cleanup.current(db, self.run_id(result["change"]))
             )
+
+    def test_the_receipt_carries_the_undo_reference_and_old_runs_are_dropped(
+        self,
+    ) -> None:
+        # Review of #3444: the run's rows stay out of the response, and a stored
+        # run whose history row is gone (pruned after 180 days) is dropped.
+        self.product("Nie genutzt")
+        first = self.cleanup.run({"days": 90, "confirmed": True})["change"]
+        self.assertEqual({"id", "entity_type", "action", "after_hash"}, set(first))
+        with self.manager.unit_of_work() as db:
+            db.execute("DELETE FROM change_history WHERE id = ?", (first["id"],))
+        self.product("Auch nie genutzt")
+        second = self.cleanup.run({"days": 90, "confirmed": True})["change"]
+        with self.manager.reader() as db:
+            keys = [
+                row["key"]
+                for row in db.execute(
+                    "SELECT key FROM kv WHERE key LIKE 'nutrition_product_cleanup:%'"
+                )
+            ]
+        self.assertEqual(["nutrition_product_cleanup:" + self.run_id(second)], keys)
 
     def test_nothing_to_remove_records_nothing(self) -> None:
         fresh = self.product("Frisch")
@@ -145,6 +166,13 @@ class ProductCleanupTests(unittest.TestCase):
             {"ok": True, "count": 0, "change": None},
             self.cleanup.run({"days": 30, "confirmed": True}),
         )
+
+    def run_id(self, change: dict[str, str]) -> str:
+        with self.manager.reader() as db:
+            row = db.execute(
+                "SELECT entity_id FROM change_history WHERE id = ?", (change["id"],)
+            ).fetchone()
+        return str(row["entity_id"])
 
     def records(self) -> dict[str, Any]:
         return {"nutrition_product_cleanup": self.cleanup}
