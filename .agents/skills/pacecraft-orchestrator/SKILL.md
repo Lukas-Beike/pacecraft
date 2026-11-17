@@ -77,6 +77,22 @@ done.
 
 About every 20 minutes: run [status-snapshot](../pacecraft-status-snapshot/SKILL.md),
 read every lane's thread, and check the `develop` push runs of new merges.
+Read each lane's runs too, not only its last message: `t3_thread_read` with
+`runLimit: 3`, judging the newest run that started (`startedAt` set; a queued
+run comes first). A lane with `pendingRequestCount` above 0 gets its request
+answered. A lane with `pendingBackgroundTasks`, `blockedOnThreadWait`, or a
+stated hold or wait is fine. Flag any other lane whose queue or open issues
+still hold work when:
+
+- that run ended `failed`, `interrupted` or `cancelled`;
+- it ended within about 10 seconds;
+- the thread's `settled` flag is set.
+
+Restart a flagged lane with a message naming its next item (it starts a new
+run), or report it to the athlete when a restart fails. Report, never
+restart, a run the athlete stopped. On 2026-11-15 lane
+L20's run ended after 3 seconds and sat idle with open work for almost 3 hours,
+unseen by checks that read only its messages (#3352).
 Nudge a lane that has stalled without a stated reason; answer questions or put
 them to the athlete as deliver-issue's "Working with the athlete" says (one
 decision per question). A lane is settled when its queue is
