@@ -598,17 +598,22 @@ def schema_releases(root: Path, schema: int, version: str) -> tuple[str, str | N
     return since, before
 
 
+def open_history_rows(history: str) -> dict[int, str]:
+    """The schema-history rows still open (`| N | since X |`): schema to X."""
+    opened = {}
+    for text in history.splitlines():
+        cells = [cell.strip() for cell in text.strip().strip("|").split("|")]
+        if len(cells) == 2 and cells[0].isdigit() and cells[1].startswith("since "):
+            opened[int(cells[0])] = cells[1].removeprefix("since ")
+    return opened
+
+
 def docs_lines(root: Path, schema: int, version: str) -> list[tuple[str, str]]:
     """Compare the production schema and version with the docs' production
     line and schema-history row; a stale one names the exact change (#3351)."""
     if type(schema) is not int or not re.fullmatch(RELEASE, str(version)):
         return [mark(False, "docs: production schema or version unknown")]
-    rows = {}
-    for text in read_doc(root, SCHEMA_HISTORY).splitlines():
-        cells = [cell.strip() for cell in text.strip().strip("|").split("|")]
-        if len(cells) == 2 and cells[0].isdigit():
-            rows[int(cells[0])] = cells[1]
-    opened = {n: text[6:] for n, text in rows.items() if text.startswith("since ")}
+    opened = open_history_rows(read_doc(root, SCHEMA_HISTORY))
     if list(opened) == [schema]:
         since = opened[schema]
         lines = [mark(True, f"{SCHEMA_HISTORY}: schema {schema} row since {since}")]
