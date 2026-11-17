@@ -124,7 +124,8 @@ test("@responsive the threshold charts show the LT1 progression with gaps, heart
     history.first_thresholds = { status: "ok", run: [point(weekEnd(3), null), point(weekEnd(2), 333), point(weekEnd(1), 330), point(end, 328)], ride: [] };
     state.data.performance = { ...state.data.performance, history };
     renderAnalysisHistory(history);
-    return [weekEnd(3), weekEnd(2)];
+    // A week's LT1 point sits on its week start, the slot of the other weekly series (#3450).
+    return [addDateKey(weekEnd(3), -6), addDateKey(weekEnd(2), -6)];
   });
   const pace = page.locator(".analysis-subchart").filter({ has: page.getByRole("heading", { name: "Schwellenpace", exact: true }) });
   await expect(pace.locator(".analysis-chart-legend")).toContainText("LT1 · aerobe Schwelle");

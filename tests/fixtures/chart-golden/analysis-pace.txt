@@ -85,13 +85,13 @@
       <svg:title>
         "Zielpace · 08.10.2026: 5:05 min/km"
     <svg:path d="M60.00,127.50 L436.00,111.25 " data-color="1" data-line="dashed" data-series="1" fill="none">
-    <svg:text class="analysis-point-value" data-value-series="0" text-anchor="start" x="60" y="85">
+    <svg:text class="analysis-point-value" data-value-series="0" text-anchor="middle" x="72" y="85">
       "5:00"
-    <svg:text class="analysis-point-value" data-value-series="0" text-anchor="end" x="436" y="52.5">
+    <svg:text class="analysis-point-value" data-value-series="0" text-anchor="middle" x="436" y="52.5">
       "4:50"
-    <svg:text class="analysis-point-value" data-value-series="1" text-anchor="start" x="60" y="117.5">
+    <svg:text class="analysis-point-value" data-value-series="1" text-anchor="middle" x="72" y="145.5">
       "5:10"
-    <svg:text class="analysis-point-value" data-value-series="1" text-anchor="end" x="436" y="101.25">
+    <svg:text class="analysis-point-value" data-value-series="1" text-anchor="middle" x="436" y="129.25">
       "5:05"
     <svg:line class="analysis-tick-mark" x1="60" x2="60" y1="160" y2="168">
     <svg:text class="analysis-date-tick" text-anchor="middle" x="60" y="188">

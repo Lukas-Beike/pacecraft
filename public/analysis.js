@@ -141,13 +141,14 @@ function analysisChart(title, series, unit, start, end, note, {
   }
   const fewReadings = sparse && series.every((item) => item.points.filter(valid).length < 3);
   if (fewReadings) section.querySelectorAll(".analysis-info-tooltip").forEach((info) => info.append(h("p", "analysis-sparse-note", "Wenige Messungen · kein belastbarer Trend.")));
-  const scales = analysisPlotScales(series, start, end, { unit, zeroCentered });
+  const weekTicks = calendarWeeks && series.length > 0 && series.every((item) => item.cadenceDays === 7);
+  // A week's mark sits on its week start; half a week of room keeps the first mark off the value axis.
+  const scales = analysisPlotScales(series, weekTicks ? addDateKey(start, -3) : start, end, { unit, zeroCentered });
   const svg = svgNode("svg", { viewBox: `0 0 ${scales.chartWidth} 200`, role: "group", "aria-label": `${title}: datierter Verlauf. Tageswerte auswählen oder Werte ansehen öffnen.` });
   svg.append(svgNode("title", {}, `${title} · ${dateLabel(start)} bis ${dateLabel(end)}`));
   svg.append(svgNode("desc", {}, `Eigene Skala: ${caption}. Fehlende Messungen bleiben unbekannt.`));
   appendAnalysisAxes(svg, unit, scales, caption);
   appendAnalysisSeries(svg, series, unit, scales, zeroCentered, caption);
-  const weekTicks = calendarWeeks && series.length > 0 && series.every((item) => item.cadenceDays === 7);
   appendAnalysisDateTicks(svg, start, end, scales, weekTicks ? analysisWeekTickLabel : analysisDayTickLabel);
   appendAnalysisPointInspectors(section, svg, series, unit, scales);
   section.append(svg);
@@ -354,18 +355,30 @@ function analysisLabelledPoints(item) {
 
 function analysisPointValueLabel(item, point, { index, unit, scales }) {
   const label = analysisValue(point.value, item.unit || unit).split(" ")[0];
-  const { chartRight, x, y } = scales;
+  const { x, y } = scales;
   let pointX = x(point.date);
   if (item.bars) {
     const { left, width } = analysisBarGeometry(item, point, scales);
     pointX = left + width / 2;
   }
-  const width = label.length * 8 + 8;
-  let anchor = "middle";
-  let left = pointX - width / 2;
-  if (left < 60) { anchor = "start"; left = pointX - 4; }
-  else if (left + width > chartRight + 16) { anchor = "end"; left = pointX - width + 4; }
-  return { label, x: pointX, left, width, anchor, index, bars: Boolean(item.bars), pointY: item.bars ? Math.min(y(point.value), y(0)) : y(point.value) };
+  return { label, x: pointX, width: label.length * 7 + 4, index, bars: Boolean(item.bars), pointY: item.bars ? Math.min(y(point.value), y(0)) : y(point.value) };
+}
+
+// The closest free box for a label that still spans its point: above or below it, centred or slid sideways.
+// A line label tries both slots on the side with more room before the next mark or line, away from another series.
+function analysisLabelSlot(label, clear, chartWidth, obstacles) {
+  const { x, width, pointY } = label;
+  const lefts = [x - width / 2, x - 4, x - width + 4, chartWidth - width, 56].filter((left) => left <= x - 2 && left + width >= x + 2);
+  const room = (side) => Math.min(200, ...obstacles.filter((box) => box.left <= x && box.right >= x)
+    .map((box) => (side < 0 ? pointY - box.bottom : box.top - pointY)).filter((distance) => distance > 3));
+  let offsets = [-10, -20, 18, 28];
+  if (label.bars) offsets = [-10, -20];
+  else if (room(1) > room(-1)) offsets = [18, 28, -10, -20];
+  for (const offset of offsets) {
+    const box = lefts.map((left) => ({ left, right: left + width, top: pointY + offset - 12, bottom: pointY + offset + 3 })).find((candidate) => clear(candidate));
+    if (box) return box;
+  }
+  return null;
 }
 
 function analysisTextBox(x, y, text, charWidth) {
@@ -409,7 +422,7 @@ function appendAnalysisSeriesPoints(svg, item, { index, unit, scales, zeroCenter
     previous = point;
   });
   flushAnalysisArea(svg, segment, zeroCentered, color, x, y);
-  for (const point of analysisLabelledPoints(item)) labels.push(analysisPointValueLabel(item, point, { index, unit, scales }));
+  analysisLabelledPoints(item).forEach((point, order) => labels.push({ ...analysisPointValueLabel(item, point, { index, unit, scales }), newest: order === 0 }));
   return path;
 }
 
@@ -417,7 +430,8 @@ function analysisBoxesOverlap(box, other, gapX, gapY) {
   return box.left < other.right + gapX && box.right > other.left - gapX && box.top < other.bottom + gapY && box.bottom > other.top - gapY;
 }
 
-// Labels avoid marks, lines, the caption and each other and stay inside the plot; a label without a free slot is dropped.
+// Labels avoid marks, lines, the caption and each other and stay inside the plot; a label without a free slot
+// next to its point is dropped. Every series' newest value is placed first (#3450).
 function appendAnalysisPointLabels(svg, labels, obstacles, { chartWidth }) {
   const occupied = [];
   const accepted = [];
@@ -425,25 +439,24 @@ function appendAnalysisPointLabels(svg, labels, obstacles, { chartWidth }) {
     && !obstacles.some((other) => analysisBoxesOverlap(box, other, 1, 1))
     && !occupied.some((other) => analysisBoxesOverlap(box, other, 6, 4));
   const seen = new Set();
-  labels.forEach((label) => {
+  [...labels].sort((a, b) => Number(b.newest) - Number(a.newest)).forEach((label) => {
     const key = `${label.index}:${label.label}`;
     if (seen.has(key)) return;
-    const offsets = label.bars ? [-10, -32, -54, -76] : [-10, 18, -30, 38, -50, 58];
-    const position = offsets.map((offset) => label.pointY + offset)
-      .find((y) => clear({ left: label.left, right: label.left + label.width, top: y - 12, bottom: y + 3 }));
-    if (position == null) return;
-    label.y = position;
+    const box = analysisLabelSlot(label, clear, chartWidth, obstacles);
+    if (!box) return;
     seen.add(key);
-    occupied.push({ left: label.left, right: label.left + label.width, top: position - 12, bottom: position + 3 });
-    accepted.push(label);
+    occupied.push(box);
+    accepted.push({ ...label, box });
   });
   accepted.sort((a, b) => a.index - b.index || a.x - b.x);
-  accepted.forEach((label) => svg.append(svgNode("text", { x: label.x, y: label.y, "text-anchor": label.anchor, class: "analysis-point-value", "data-value-series": label.index }, label.label)));
+  accepted.forEach(({ box, index, label }) => svg.append(svgNode("text", { x: (box.left + box.right) / 2, y: box.bottom - 3, "text-anchor": "middle", class: "analysis-point-value", "data-value-series": index }, label)));
 }
 
 function appendAnalysisSeries(svg, series, unit, scales, zeroCentered, caption) {
   const labels = [];
   const obstacles = [analysisTextBox(4, 15, caption, 6.4)];
+  // A dashed zero line beside a label reads as a minus sign (#3450).
+  if (scales.min < 0 && scales.max > 0) obstacles.push({ left: 60, right: scales.chartRight, top: scales.y(0) - 1, bottom: scales.y(0) + 1 });
   series.forEach((item, index) => {
     const color = item.color ?? index;
     appendAnalysisReferenceLines(svg, item, index, unit, scales, obstacles);
@@ -886,8 +899,9 @@ function performanceSeriesExplanation(key) {
 // three own steady sessions stay gaps; the readout names the heart rate and the origin.
 function firstThresholdSeries(lt1, start, end) {
   return [["run", "Lauf", "s/km"], ["ride", "Rad", "W"]].map(([sport, label, unit]) => {
+    // The server dates a week at its end and the running week at today; the chart uses the week's slot (#3450).
     const points = (lt1?.[sport] || []).filter((point) => point.date >= start && point.date <= end).map((point) => ({
-      date: point.date, value: point.value,
+      date: addDateKey(start, Math.floor((Date.parse(point.date) - Date.parse(start)) / 604800000) * 7), observedDate: point.date, value: point.value,
       readout: [point.hr_bpm == null ? null : `bei ${point.hr_bpm} bpm`, THRESHOLD_ORIGINS[point.origin]].filter(Boolean).join(" · "),
     }));
     return { label: `${label} · LT1`, legendLabel: "LT1 · aerobe Schwelle", unit, color: 1, line: "solid", cadenceDays: 7,
@@ -1211,7 +1225,8 @@ function bodyMetricChart(metric, title, unit, window, period, preferred = {}) {
     metric === "cycling_w_per_kg"
       ? "W/kg verwendet FTP (Garmin Connect) und ein höchstens sieben Tage altes gemessenes Gewicht."
       : "Gemessene Verlaufswerte. Fehlende Messungen werden nicht ergänzt.",
-    { sparse: true });
+    // A weekly reading sits on its rolling week's start, so the axis reads in weeks (#3450).
+    { sparse: true, calendarWeeks: period === "twelveWeeks" });
   if (!chart) return null;
   chart.dataset.bodyMetric = metric;
   if (period === "twelveWeeks") chart.querySelectorAll(".analysis-info-tooltip").forEach((info) => {
@@ -2721,13 +2736,13 @@ function equipmentLifetime(lifetime, usageKm, targetKm) {
 
 // One bucket per seven days from `start`, the last one cut at `end`. `summarize` turns a week's valid
 // readings into the fields of its point; a week without any is a gap (value null) carrying `gap`.
+// Each point is dated at its week's first day, so the unfinished week keeps its own slot (#3450).
 function analysisWeeklyPoints(points, start, end, summarize, gap = {}) {
   const weeks = [];
   for (let weekStart = start; weekStart <= end; weekStart = addDateKey(weekStart, 7)) {
-    let date = addDateKey(weekStart, 6);
-    if (date > end) date = end;
-    const readings = points.filter((point) => point.date >= weekStart && point.date <= date && analysisValidPoint(point));
-    weeks.push(readings.length ? { ...summarize(readings), date } : { date, value: null, ...gap });
+    const last = addDateKey(weekStart, 6);
+    const readings = points.filter((point) => point.date >= weekStart && point.date <= last && point.date <= end && analysisValidPoint(point));
+    weeks.push(readings.length ? { ...summarize(readings), date: weekStart } : { date: weekStart, value: null, ...gap });
   }
   return weeks;
 }
