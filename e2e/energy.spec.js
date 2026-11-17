@@ -1,34 +1,64 @@
 const { test, expect } = require("@playwright/test");
 
-// #3099, #3252: the energy table sits in the diary, its explanation behind the small "i"; the
-// fixture's thin diary gives every source as unknown and names why, never a formula fallback.
+// #3099, #3252: the energy table sits in the diary, its explanation behind the small "i". The
+// fixture has no skinfold: with a weigh-in and a profile body fat, the formula rows fall back
+// to the scale's or the profile's body fat and name it (#3362).
 test("@responsive the diary shows the energy table and explains it behind the info button", async ({ page }) => {
-  const energy = page.waitForResponse((response) => new URL(response.url()).pathname === "/api/body/energy");
   await page.goto("/#nutrition/diary");
+  await expect(page.locator("#nutritionEnergy [data-energy]")).toBeVisible();
+  await page.evaluate(async () => {
+    const day = new Date(Date.now() - 3 * 864e5).toISOString().slice(0, 10);
+    await api("/api/body/weight", { method: "PUT", body: JSON.stringify({ date: day, kg: 72 }) });
+    await api("/api/profile", { method: "PUT", body: JSON.stringify({ body_fat_pct: "18,5" }) });
+  });
+  const energy = page.waitForResponse((response) => new URL(response.url()).pathname === "/api/body/energy");
+  await page.reload();
   // #3323: the device row's name is the provider label the read gives it, never a client literal.
-  const device = (await (await energy).json()).rows.find((row) => row.source === "device");
+  const read = await (await energy).json();
+  const device = read.rows.find((row) => row.source === "device");
   expect(device.label).toBeTruthy();
   expect(device.label).not.toContain("Schätzung");
   const card = page.locator("#nutritionEnergy [data-energy]");
   await expect(card.locator("tbody tr[data-energy-source]")).toHaveCount(4);
-  await expect(card.locator("tbody th")).toHaveText(["Katch-McArdle", "Cunningham", device.label, "Aus deinen Daten"]);
+  expect(["device", "profile"]).toContain(read.body.source);
+  const kfa = `KFA: ${read.body.label}`;
+  await expect(card.locator("tbody th")).toHaveText([`Katch-McArdle${kfa}`, `Cunningham${kfa}`, device.label, "Aus deinen Daten"]);
+  await expect(card.locator("[data-energy-source='katch_mcardle'] td").first()).toHaveText(/^[\d.]+ ± \d+$/);
   await expect(card.locator(".analysis-reference-note")).toHaveCount(0);
   const tooltip = card.locator(".analysis-info-tooltip");
   await expect(tooltip).toBeHidden();
   // #3336: the same small info icon as Analyse › Laufen › Entwicklung, not a yellow badge.
   const info = card.getByRole("button", { name: "Energieverbrauch: Informationen" });
   await expect(info).toHaveClass("analysis-legend-info analysis-info-icon");
-  expect(await info.evaluate((element) => getComputedStyle(element).backgroundColor)).toBe("rgba(0, 0, 0, 0)");
-  await info.click();
-  await expect(tooltip).toBeVisible();
+  // The table re-renders when its read arrives, so the style check retries on the current node.
+  await expect(info).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
+  // A late diary load re-renders the table and closes the popover: open it until it stays.
+  await expect(async () => {
+    if (!await tooltip.isVisible()) await info.click();
+    await expect(tooltip).toBeVisible({ timeout: 2_000 });
+  }).toPass();
   await expect(tooltip).toContainText("Datenbasis zu gering");
-  // The fixture has no skinfold: both formula rows name it and open the skinfold dialog.
+  await expect(tooltip).toContainText(`(${read.body.label}`);
+  await expect(page.locator("#nutritionExpenditure")).toHaveCount(0);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBeTruthy();
+});
+
+// #3336, #3362: without any body fat both formula rows name the reason and open its dialog.
+test("@responsive formula rows without a body fat name the reason and open the dialog", async ({ page }) => {
+  await page.route("**/api/body/energy", async (route) => {
+    const response = await route.fetch();
+    const data = await response.json();
+    for (const row of data.rows) if (row.source === "katch_mcardle" || row.source === "cunningham") Object.assign(row, { resting_kcal: null, resting_band_kcal: null, total_kcal: null, total_band_kcal: null, split: null });
+    await route.fulfill({ response, json: { ...data, body: null, skinfold_missing: "no_skinfold" } });
+  });
+  await page.goto("/#nutrition/diary");
+  const card = page.locator("#nutritionEnergy [data-energy]");
   const missing = card.locator("[data-energy-missing='no_skinfold']");
   await expect(missing).toHaveText(["Hautfalten fehlen", "Hautfalten fehlen"]);
+  await expect(card.locator("tbody th small")).toHaveCount(0);
   await missing.first().click();
   await expect(page.locator("#skinfoldDialog")).toBeVisible();
   await page.locator("#skinfoldDialogCancel").click();
-  await expect(page.locator("#nutritionExpenditure")).toHaveCount(0);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBeTruthy();
 });
 

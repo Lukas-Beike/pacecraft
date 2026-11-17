@@ -12,7 +12,7 @@ from unittest.mock import Mock, patch
 from backend.athlete.body_composition import Sex
 from backend.athlete.skinfolds import SkinfoldMeasurement
 from backend.canonical.activity_detail import ActivityStreamSet
-from backend.canonical.vocabulary import StreamChannel
+from backend.canonical.vocabulary import ProviderId, StreamChannel
 from backend.nutrition import energy_inputs
 from backend.nutrition.energy_inputs import (
     EnergySources,
@@ -325,8 +325,12 @@ def skinfold_sources(
     *,
     weights: dict[date, float] | None = None,
     profile: dict[str, str] | None = None,
+    device: dict[date, float] | None = None,
 ) -> EnergySources:
-    """Sources whose skinfold reads honour the day they are asked for."""
+    """Sources whose skinfold reads honour the day they are asked for.
+
+    ``device`` is a scale's body fat per day (Garmin), read by window.
+    """
 
     def until(day: date) -> list[SkinfoldMeasurement]:
         return sorted(
@@ -344,6 +348,11 @@ def skinfold_sources(
             if m.body_fat_pct is not None
         },
         skinfolds=lambda _db, day: until(day),
+        device_body_fat=lambda _db, start, end: {
+            day: (value, ProviderId.GARMIN)
+            for day, value in (device or {}).items()
+            if start <= day <= end
+        },
     )
 
 
@@ -360,7 +369,7 @@ class SkinfoldBodyTests(unittest.TestCase):
             body_fat=lambda _db, _s, end: {DAY4: 12.0} if end >= DAY4 else {},
         )
         view = read_energy_view(None, src, DAY3)
-        self.assertEqual("2026-10-04", (view["skinfold"] or {}).get("date"))
+        self.assertEqual("2026-10-04", (view["body"] or {}).get("date"))
         katch = next(r for r in view["rows"] if r["source"] == "katch_mcardle")
         self.assertIsNotNone(katch["resting_kcal"])
 
@@ -378,7 +387,7 @@ class SkinfoldBodyTests(unittest.TestCase):
             with self.subTest(reason=reason):
                 view = read_energy_view(None, src, DAY3)
                 self.assertEqual(reason, view["skinfold_missing"])
-                self.assertIsNone(view["skinfold"])
+                self.assertIsNone(view["body"])
 
     def test_the_diagnostics_count_measurements_and_the_reason_only(self) -> None:
         resolved = energy_basis(
@@ -399,6 +408,81 @@ class SkinfoldBodyTests(unittest.TestCase):
         self.assertEqual(
             (0, None, False, "no_skinfold"), tuple(missing[k] for k in SKINFOLD_KEYS)
         )
+
+
+OLD = date(2026, 6, 1)  # more than 90 days before DAY3
+PROFILE_FAT = {"height_cm": "180", "birth_year": "1990", "body_fat_pct": "18,5"}
+
+
+class BodyFatFallbackTests(unittest.TestCase):
+    """#3362: skinfold, then a device or scale, then the profile; labelled."""
+
+    def body(self, src: EnergySources) -> dict[str, Any] | None:
+        return read_energy_view(None, src, DAY3)["body"]
+
+    def test_skinfold_beats_device_beats_profile(self) -> None:
+        cases = [
+            (
+                skinfold_sources(
+                    [folds_on(DAY2)], device={DAY2: 20.0}, profile=PROFILE_FAT
+                ),
+                ("skinfold", "Hautfalten", 12.0, "2026-10-02"),
+            ),
+            (
+                skinfold_sources([], device={DAY2: 20.0}, profile=PROFILE_FAT),
+                ("device", "Garmin Connect", 20.0, "2026-10-02"),
+            ),
+            (
+                skinfold_sources([], profile=PROFILE_FAT),
+                ("profile", "Profil", 18.5, None),
+            ),
+        ]
+        for src, expected in cases:
+            with self.subTest(source=expected[0]):
+                body = self.body(src) or {}
+                self.assertEqual(
+                    expected,
+                    (
+                        body.get("source"),
+                        body.get("label"),
+                        body.get("body_fat_pct"),
+                        body.get("date"),
+                    ),
+                )
+
+    def test_the_ninety_days_hold_for_skinfold_and_device(self) -> None:
+        old = skinfold_sources([folds_on(OLD)], device={OLD: 20.0}, profile=PROFILE_FAT)
+        self.assertEqual("profile", (self.body(old) or {}).get("source"))
+        without_profile = skinfold_sources([folds_on(OLD)], device={OLD: 20.0})
+        view = read_energy_view(None, without_profile, DAY3)
+        self.assertIsNone(view["body"])
+        self.assertEqual("skinfold_too_old", view["skinfold_missing"])
+
+    def test_without_any_source_the_reason_stays(self) -> None:
+        view = read_energy_view(None, skinfold_sources([]), DAY3)
+        self.assertIsNone(view["body"])
+        self.assertEqual("no_skinfold", view["skinfold_missing"])
+        katch = next(r for r in view["rows"] if r["source"] == "katch_mcardle")
+        self.assertIsNone(katch["resting_kcal"])
+
+    def test_a_fallback_fills_both_formula_rows(self) -> None:
+        view = read_energy_view(None, skinfold_sources([], profile=PROFILE_FAT), DAY3)
+        self.assertIsNone(view["skinfold_missing"])
+        for source in ("katch_mcardle", "cunningham"):
+            row = next(r for r in view["rows"] if r["source"] == source)
+            self.assertIsNotNone(row["resting_kcal"])
+
+    def test_the_diagnostics_count_the_body_sources(self) -> None:
+        basis = energy_basis(
+            None, skinfold_sources([], device={DAY2: 20.0}, profile=PROFILE_FAT), DAY3
+        )
+        self.assertEqual("device", basis["body_source"])
+        counts = basis["body_source_windows"]
+        self.assertEqual(12, sum(counts.values()))
+        self.assertEqual({"skinfold", "device", "profile", "none"}, set(counts))
+        # The latest window has the device value; older windows lack a weight.
+        self.assertGreaterEqual(counts["device"], 1)
+        self.assertGreaterEqual(counts["none"], 1)
 
 
 SKINFOLD_KEYS = (

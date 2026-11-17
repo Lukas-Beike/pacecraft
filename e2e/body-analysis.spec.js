@@ -53,7 +53,8 @@ test("@responsive Body plots measurements and W/kg appears only in the cycling t
   // #3336: KFA comes from the folds only; the fixture has none, so the row says so.
   await expect(overview.locator("[data-metric='body_fat_pct'] td").first()).toHaveText("Hautfalten fehlen");
   await expect(overview.locator("th small")).toHaveText(["06.10.2026"]);
-  expect(await overview.evaluate((element) => element.closest("section").parentElement.firstElementChild.contains(element))).toBe(true);
+  // The skinfold and energy reads re-render the view, so the check re-resolves the overview.
+  await expect.poll(() => overview.evaluate((element) => element.closest("section")?.parentElement?.firstElementChild.contains(element) ?? false)).toBe(true);
   // The body charts name no provider; only the energy cards label the Garmin estimate (#3099).
   const bodyCards = root.locator(":scope > :not([data-energy], [data-energy-fit])");
   await expect(bodyCards.filter({ hasText: "Intervals.icu" })).toHaveCount(0);

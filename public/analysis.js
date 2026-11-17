@@ -1490,7 +1490,8 @@ function loadEnergy() {
 
 function energyKcal(value, band) {
   if (value == null) return "–";
-  return band == null ? formatWhole(value) : h("span", null, formatWhole(value), h("small", null, ` ± ${formatWhole(band)}`));
+  // The space sits outside the band, so large text may wrap before "±" and nowhere else (#3362).
+  return band == null ? formatWhole(value) : h("span", null, formatWhole(value), " ", h("small", null, `± ${formatWhole(band)}`));
 }
 
 // NEAT's inputs (#3255), so an outlier in steps or step length can be checked.
@@ -1502,14 +1503,19 @@ function energyNeatInputs(neat) {
   return parts.join(", ");
 }
 
+// The formulas' body fat: skinfold, else a device or scale, else the profile (#3362).
+function energyBodyText(body) {
+  if (!body) return "Ohne Körperfettwert der letzten 90 Tage keine Formelwerte";
+  const source = body.date ? `${body.label} vom ${dateLabel(body.date)}` : body.label;
+  return `KFA ${analysisValue(body.body_fat_pct, "%")} (${source}), fettfreie Masse ${analysisValue(body.lean_mass_kg, "kg")}`;
+}
+
 function energyBasisText(read) {
-  const { basis, skinfold } = read;
+  const { basis, body } = read;
   const own = basis.insufficient
     ? `Aus deinen Daten: Datenbasis zu gering (${ENERGY_INSUFFICIENT[basis.insufficient] || basis.insufficient})`
     : `Aus deinen Daten: ${basis.complete_days} von ${basis.days} Tagen vollständig`;
-  const folds = skinfold
-    ? `Falten vom ${dateLabel(skinfold.date)}, KFA ${analysisValue(skinfold.body_fat_pct, "%")}, fettfreie Masse ${analysisValue(skinfold.lean_mass_kg, "kg")}`
-    : "Ohne Hautfaltenmessung der letzten 90 Tage keine Formelwerte";
+  const folds = energyBodyText(body);
   return `kcal/Tag · ${own} · Formeln: Ruhe + eigene Aktivität + Verdauung · ${folds} · `
     + "Bänder nominal 95 %, ohne Fehler beim Erfassen des Essens · Ruhe aus deinen Daten ist ein Rest (Gesamt − eigene Aktivität − Verdauung) und trägt deren Fehler mit";
 }
@@ -1598,7 +1604,8 @@ function energyTable(read) {
     const row = read.rows.find((item) => item.source === source) || {};
     const best = read.best === source ? [" ", createStatusChip("passt am besten", "ready")] : [];
     return [h("tr", { dataset: { energySource: source } },
-      h("th", { scope: "row", dataset: { color: String(color) } }, label ?? row.label, ...best),
+      h("th", { scope: "row", dataset: { color: String(color) } }, label ?? row.label, ...best,
+        ...(ENERGY_FORMULAS.has(source) && read.body ? [h("small", null, `KFA: ${read.body.label}`)] : [])),
       ...(ENERGY_FORMULAS.has(source) && row.resting_kcal == null && read.skinfold_missing
         ? [energyMissingCell(read.skinfold_missing)]
         : [h("td", null, row.resting_implausible ? ENERGY_IMPLAUSIBLE : energyKcal(row.resting_kcal, row.resting_band_kcal)),
