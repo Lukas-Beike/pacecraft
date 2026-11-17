@@ -957,7 +957,17 @@ class ProdChecksTests(unittest.TestCase):
             '"event":"weather_refresh_failed","message":"token=abc"}\n'
             "plain line with ERROR and a payload\n"
             '{"timestamp":"2026-11-10T00:00:00","level":"ERROR","event":"old"}\n'
-            '{"level":"ERROR","event":"Bad Event; drop table"}\n',
+            '{"level":"ERROR","event":"Bad Event; drop table"}\n'
+            # #3460: Coach tool failures per allow-listed tool and reason code,
+            # else the exception type; other text prints as `?`.
+            '{"level":"WARNING","event":"coach_tool_failed","context":{"tool":'
+            '"read_nutrition","reason":"tool_arguments_invalid","type":"AppError"}}\n'
+            '{"level":"WARNING","event":"coach_tool_failed","context":{"tool":'
+            '"read_nutrition","reason":"tool_arguments_invalid"}}\n'
+            '{"level":"WARNING","event":"coach_tool_failed","context":{"tool":'
+            '"unknown","type":"KeyError"}}\n'
+            '{"level":"WARNING","event":"coach_tool_failed","context":{"tool":'
+            '"x; rm -rf","reason":"secret=1"}}\n',
             encoding="utf-8",
         )
         code, text = self.run_main(
@@ -969,6 +979,12 @@ class ProdChecksTests(unittest.TestCase):
         self.assertNotIn("old", text)
         self.assertNotIn("token=abc", text)
         self.assertNotIn("payload", text)
+        self.assertIn("  WARNING coach_tool_failed 4", text)
+        self.assertIn("coach tool failed read_nutrition tool_arguments_invalid 2", text)
+        self.assertIn("coach tool failed unknown KeyError 1", text)
+        self.assertIn("coach tool failed ? ? 1", text)
+        self.assertNotIn("secret", text)
+        self.assertNotIn("rm -rf", text)
         code, text = self.run_main(
             prod_logs, "--log-file", str(Path(prod_client.ROOT) / "README.md")
         )

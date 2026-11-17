@@ -5,7 +5,9 @@
 
 The first form reads container logs saved from the Unraid MCP; the second the
 app's own redacted recent entries (`/api/logs`). Prints counts per level and
-event name, the Garmin cleanup count and plan-sync error events. Exit 0 no
+event name, the Garmin cleanup count, plan-sync error events and the Coach
+tool failures per allow-listed tool and reason code (else the exception
+type), counts only (#3460). Exit 0 no
 ERROR entry, 1 ERROR entries found, 2 unreadable input.
 """
 
@@ -23,6 +25,9 @@ from prod_client import ProdError, Session, scratch_path
 EVENT = re.compile(r"^[a-z][a-z0-9_.]{0,63}$")
 LEVEL = re.compile(r"\b(ERROR|WARNING|CRITICAL)\b")
 CLEANUP = "garmin_past_workouts_removed"
+TOOL_FAILED = "coach_tool_failed"
+# A tool name, reason code or exception type; anything else prints as `?`.
+CODE = re.compile(r"^[A-Za-z][A-Za-z0-9_]{0,63}$")
 LEVELS = ("CRITICAL", "ERROR", "WARNING")
 
 
@@ -60,9 +65,22 @@ def classify(
     return level, name, count if isinstance(count, int) else 0
 
 
+def tool_failure(raw: dict[str, Any] | str) -> tuple[str, str]:
+    """The tool and reason code (else the exception type) of a failed Coach step."""
+    entry = parse(raw) if isinstance(raw, str) else raw
+    context = (entry or {}).get("context")
+    context = context if isinstance(context, dict) else {}
+    return code(context.get("tool")), code(context.get("reason") or context.get("type"))
+
+
+def code(value: Any) -> str:
+    return value if isinstance(value, str) and CODE.match(value) else "?"
+
+
 def summarize(entries: list[dict[str, Any] | str], since: str | None) -> dict[str, Any]:
     levels: Counter[str] = Counter()
     events: Counter[tuple[str, str]] = Counter()
+    tools: Counter[tuple[str, str]] = Counter()
     cleanup = 0
     for raw in entries:
         found = classify(raw, since)
@@ -70,10 +88,17 @@ def summarize(entries: list[dict[str, Any] | str], since: str | None) -> dict[st
             continue
         level, name, count = found
         cleanup += count
+        if name == TOOL_FAILED:
+            tools[tool_failure(raw)] += 1
         if level in LEVELS:
             levels[level] += 1
             events[(level, name)] += 1
-    return {"levels": levels, "events": events, "garmin_removed": cleanup}
+    return {
+        "levels": levels,
+        "events": events,
+        "garmin_removed": cleanup,
+        "tools": tools,
+    }
 
 
 def report(summary: dict[str, Any]) -> list[str]:
@@ -87,6 +112,8 @@ def report(summary: dict[str, Any]) -> list[str]:
         if "plan" in name and ("error" in name or "fail" in name)
     )
     lines.append(f"plan sync error events: {plan}")
+    for (tool, reason), count in sorted(summary["tools"].items()):
+        lines.append(f"coach tool failed {tool} {reason} {count}")
     return lines
 
 
