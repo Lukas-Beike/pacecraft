@@ -101,15 +101,19 @@ class ProductCatalogService:
         ][: max(1, min(int(limit), 100))]
 
     def list_all_products(
-        self, query: str | None = None, *, limit: int | None = 1000
+        self,
+        query: str | None = None,
+        *,
+        limit: int | None = 1000,
+        counted: bool = True,
     ) -> list[dict[str, Any]]:
         """Own products and stored database foods, most used first (#3435).
 
         A search ranks its best hits first; search covers EAN. ``limit`` None
-        lists every product.
+        lists every product; ``counted`` False skips the counts and sorts by name.
         """
         with self._database_manager.reader() as db:
-            usage = NutritionRepository.product_usage(db)
+            usage = NutritionRepository.product_usage(db) if counted else None
             found = self._products.list_all(db, query=query, limit=limit, usage=usage)
             if found or not (query and query.strip()):
                 return found

@@ -423,7 +423,7 @@ class NutritionProductRepository:
         ).fetchall()
         # Sorted before the cut: SQLite folds ASCII case only, and "Äpfel"
         # belongs under A, not after Z.
-        counts = usage or {}
+        counts = self._with_hidden_foods(db, usage) if usage else {}
         listed = [
             {**product, "usage_count": int(counts.get(product["id"], 0))}
             for product in (self._listed(row) for row in rows)
@@ -437,6 +437,31 @@ class NutritionProductRepository:
             )
         )
         return listed if limit is None else listed[: max(1, min(int(limit), 1000))]
+
+    @staticmethod
+    def _with_hidden_foods(db: Any, usage: Mapping[str, int]) -> dict[str, int]:
+        """Usage where an own product also counts the database food of its EAN.
+
+        The list hides such a food behind the own product (``_LISTED``), so the
+        meals logged with the food stay counted (#3435).
+        """
+        counts = dict(usage)
+        own: dict[str, str] = {}
+        foods: dict[str, int] = {}
+        for row in db.execute(
+            "SELECT id, barcode, origin FROM nutrition_products "
+            "WHERE barcode IS NOT NULL AND (origin <> 'own' OR status = 'active')"
+        ):
+            product_id, barcode, origin = tuple(row)
+            if origin == "own":
+                own[str(barcode)] = str(product_id)
+            else:
+                foods[str(barcode)] = foods.get(str(barcode), 0) + int(
+                    usage.get(str(product_id), 0)
+                )
+        for barcode, product_id in own.items():
+            counts[product_id] = counts.get(product_id, 0) + foods.get(barcode, 0)
+        return counts
 
     def get_database(self, db: Any, product_id: str) -> dict[str, Any] | None:
         """A stored database food as a product, or None for any other id."""
@@ -1686,7 +1711,7 @@ class NutritionRepository:
         """
         counts: Counter[str] = Counter()
         for row in db.execute("SELECT nutrition_basis FROM nutrition_logs"):
-            text = row[0] if isinstance(row, tuple) else row["nutrition_basis"]
+            (text,) = tuple(row.values()) if isinstance(row, Mapping) else tuple(row)
             try:
                 counts.update(_basis_product_ids(json.loads(text)))
             except TypeError, ValueError:

@@ -108,6 +108,27 @@ class FavoritesAndMealAdditionTests(unittest.TestCase):
             ["Skyr", "Skyrella Riegel", "Brot mit Skyr"],
         )
 
+    def test_an_own_product_keeps_the_uses_of_the_food_of_its_ean(self) -> None:
+        # #3435 review: the list hides the food behind the own product of its EAN.
+        catalog = self.library.product_catalog
+        food_id = self.store_food()
+        for _ in range(3):
+            self.diary.log_product(food_id, 100, "g")
+        self.assertEqual(
+            [(p["id"], p["usage_count"]) for p in catalog.list_all_products()],
+            [(food_id, 3)],
+        )
+        own = self.product("Apfelmus", barcode="4000000000017")
+        self.diary.log_product(own["id"], 100, "g")
+        self.assertEqual(
+            [(p["id"], p["usage_count"]) for p in catalog.list_all_products()],
+            [(own["id"], 4)],
+        )
+        # The refresh-all run reads no counts.
+        self.assertEqual(
+            [p["usage_count"] for p in catalog.list_all_products(counted=False)], [0]
+        )
+
     def test_every_logged_basis_shape_names_its_products(self) -> None:
         # #3435: single product, database meal, composite (also a logged template).
         product = {"kind": "local_product", "product": {"id": "own-1"}}
