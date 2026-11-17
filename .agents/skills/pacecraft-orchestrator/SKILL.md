@@ -26,6 +26,11 @@ skipped #3342 while another held unpushed work for it; #3383). A lane that
 cannot message your thread writes its reports in its own thread, prefixed
 `ORCHESTRATOR:`; read those threads on every periodic check.
 
+Extra scope for a lane gets its own issue with one owner and claim; never add
+"also check X" to a lane message while X is or may be assigned elsewhere (two
+lanes built the same contract test, #3438). Give a lane an issue number only
+from the `gh issue create` output, never one announced before it exists.
+
 Before moving queued issues from a lane to another thread, ask the lane which
 of them it has started. It pushes those as branches, stops work on every moved
 item and drops them from its queue; give the receiving thread the branch names
@@ -106,6 +111,9 @@ question, while lane reports piled up (#3348). So:
   minutes), also a question that blocks a release or a lane. Otherwise park it
   as an open athlete question in the session notes (and the handoff) and ask at
   the athlete's next message.
+- A mockup for the athlete renders as one column, with the frame height
+  measured (`html_preview` contentHeight) or generous, never as fixed
+  side-by-side columns: on a phone those stack beyond the frame (#3438).
 - Ask a blocking question once. Whether asked or parked, tell the affected
   lanes to continue with other work meanwhile, and pass each answer back to the
   lane that raised the question.
