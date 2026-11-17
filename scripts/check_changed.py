@@ -40,7 +40,11 @@ ACTIONLINT = [
 # Steps that need a tool a workstation may lack: without it they are reported
 # as unrun, not as a failure.
 OPTIONAL = {"actionlint"}
-DOCKER_DOWN = re.compile(r"Cannot connect to the Docker daemon|error during connect")
+DOCKER_DOWN = re.compile(
+    r"Cannot connect to the Docker daemon|error during connect"
+    r"|failed to connect to the docker API",
+    re.IGNORECASE,
+)
 TAIL_LINES = 20
 # The unittest lines that name a failed test; they sit far above the tail.
 FAILED_TEST = re.compile(r"^(?:FAIL|ERROR): ")
@@ -80,7 +84,11 @@ def run_step(
     except FileNotFoundError as exc:
         raise MissingTool(f"{argv[0]} is not installed.") from exc
     seconds = time.monotonic() - started
-    if done.returncode and DOCKER_DOWN.search(done.stdout or ""):
+    if (
+        argv[0] == "docker"
+        and done.returncode
+        and DOCKER_DOWN.search(done.stdout or "")
+    ):
         raise MissingTool("the Docker daemon is not reachable.")
     return done.returncode == 0, seconds, done.stdout or ""
 

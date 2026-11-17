@@ -194,6 +194,17 @@ class CheckChangedTests(unittest.TestCase):
         code, out, _ = run_main(check_changed, [], down, changed)
         self.assertEqual(code, 0)
         self.assertIn("unrun actionlint: the Docker daemon is not reachable.", out)
+        desktop = "\nfailed to connect to the docker API at npipe:////./pipe/x"
+        code, out, _ = run_main(
+            check_changed, [], FakeRun(failing=("-oneline",), extra=desktop), changed
+        )
+        self.assertEqual(code, 0)
+        self.assertIn("unrun actionlint", out)
+        # The same text from a failing test step stays a test failure.
+        tests = FakeRun(failing=("--changed",), extra=desktop)
+        code, out, _ = run_main(check_changed, [], tests, changed)
+        self.assertEqual(code, 1)
+        self.assertIn("FAILED tests", out)
 
     def test_untracked_js_counts_as_a_change(self):
         git = fake_git(["backend/x.py"], untracked=["public/new.mjs"])
