@@ -67,8 +67,12 @@ stop, report it, and do not try to repair production.
    climbing with uptime is a finding. Report the recovery copies' count, newest
    age and size; the app reads them by stat only. Container memory as the host
    sees it comes from the Unraid MCP, read-only.
-6. **UI walk:** [ui-walk](../pacecraft-ui-walk/SKILL.md) with `--compare
-   <previous walk>`. Look at every screenshot: Coach, Kalender (week, month,
+6. **UI walk:** first wait for the all-time curve build with
+   `python scripts/prod_diagnostics.py --url <app address> --password-file
+   <secret file> --wait-ready 900 --section curve_build` (exit 3: still
+   building after 15 min, a finding; never a hand-written polling loop, #3346).
+   Then [ui-walk](../pacecraft-ui-walk/SKILL.md) with `--compare
+   <previous walk's out-dir>`. Look at every screenshot: Coach, Kalender (week, month,
    paging, detail pane at desktop width), Analyse, Ernährung, Mehr. After a
    deploy the service-worker cache name must differ from the previous walk
    (new asset versions served). Keep the load times per view in the session

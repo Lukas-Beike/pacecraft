@@ -15,8 +15,11 @@ needs a fresh output directory: a file already at one of its names stops the
 walk with exit 2.
 
 ```powershell
-node scripts/ui_walk.mjs --url <app address> --password-file <secret file> --out-dir <scratchpad>/walk [--compare <previous walk>/ui-walk.json]
+node scripts/ui_walk.mjs --url <app address> --password-file <secret file> --out-dir <scratchpad>/walk [--compare <previous walk>]
 ```
+
+`--compare` takes the previous walk's out-dir or its `ui-walk.json`; an
+unreadable one stops with exit 2 and names the file it expected (#3346).
 
 At 412 px and 1280 px it logs in through the login dialog with the password
 read from the file, opens Coach, Kalender, Analyse, Ernährung and Mehr, opens

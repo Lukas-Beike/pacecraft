@@ -180,10 +180,16 @@ test("ui walk refuses missing arguments and an unreadable secret file without a 
   const notJson = path.join(scratch, "previous.json");
   fs.writeFileSync(notJson, "fake-login-value is not JSON");
   done = run("--url", "http://127.0.0.1:9", "--password-file", secret, "--out-dir", path.join(scratch, "walk"), "--compare", notJson);
-  fs.rmSync(scratch, { recursive: true, force: true });
   assert.equal(done.status, 2);
   assert.match(done.stdout, /cannot read the previous walk/);
   assert.doesNotMatch(done.stdout, /fake-login-value/);
+  // A walk directory without its ui-walk.json names the file it expected (#3346).
+  const emptyWalk = path.join(scratch, "empty-walk");
+  fs.mkdirSync(emptyWalk);
+  done = run("--url", "http://127.0.0.1:9", "--password-file", secret, "--out-dir", path.join(scratch, "walk2"), "--compare", emptyWalk);
+  fs.rmSync(scratch, { recursive: true, force: true });
+  assert.equal(done.status, 2);
+  assert.ok(done.stdout.includes(`cannot read the previous walk at ${path.join(emptyWalk, "ui-walk.json")}`), done.stdout);
   // An out-dir that cannot be created (a file already holds its path) exits 2 without a stack trace (#2661).
   const blocked = fs.mkdtempSync(path.join(os.tmpdir(), "walk-blocked-"));
   fs.writeFileSync(path.join(blocked, "file"), "x");
@@ -193,6 +199,20 @@ test("ui walk refuses missing arguments and an unreadable secret file without a 
   assert.equal(done.status, 2);
   assert.match(done.stdout, /^FAIL cannot create the out-dir$/m);
   assert.doesNotMatch(done.stderr, /at .*ui_walk/);
+});
+
+test("ui walk --compare takes the previous walk's out-dir or its ui-walk.json (#3346)", async () => {
+  const walk = await load();
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "walk-previous-"));
+  try {
+    const file = path.join(dir, "ui-walk.json");
+    fs.writeFileSync(file, "{}");
+    assert.equal(walk.previousWalkPath(dir), file);
+    assert.equal(walk.previousWalkPath(file), file);
+    assert.throws(() => walk.previousWalkPath(path.join(__dirname, "..", "package.json")));
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test("ui walk refuses a file, link or hard link at a fixed name instead of following it (#2661)", async () => {
