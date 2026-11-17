@@ -32,11 +32,11 @@ test("@responsive the diary shows the energy table and explains it behind the in
   await expect(info).toHaveClass("analysis-legend-info analysis-info-icon");
   // The table re-renders when its read arrives, so the style check retries on the current node.
   await expect(info).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
-  // A late diary load re-renders the table and closes the popover: open it until it stays.
-  await expect(async () => {
-    if (!await tooltip.isVisible()) await info.click();
-    await expect(tooltip).toBeVisible({ timeout: 2_000 });
-  }).toPass();
+  // A late diary render keeps the shown table, so one click opens the popover for good (#3379).
+  await info.click();
+  await expect(tooltip).toBeVisible();
+  await page.evaluate(() => renderDiaryEnergy());
+  await expect(tooltip).toBeVisible();
   await expect(tooltip).toContainText("Datenbasis zu gering");
   await expect(tooltip).toContainText(`(${read.body.label}`);
   await expect(page.locator("#nutritionExpenditure")).toHaveCount(0);

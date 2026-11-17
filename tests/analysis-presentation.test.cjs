@@ -735,3 +735,21 @@ test("a body fat fallback names its source on both formula rows (#3362)", () => 
   assert.equal(textOf(rows[2].children[0]), "Garmin Connect", "the device row names no body fat");
   assert.match(energyBasisText(read), /KFA 18.5 % \(Profil\), fettfreie Masse 61 kg/);
 });
+
+test("a diary render with the shown energy read keeps the table and its open popover (#3379)", () => {
+  const totals = new FakeElement("div");
+  let slot = null;
+  let built = 0;
+  const context = extractFunctions("analysis.js", ["renderDiaryEnergy"], {
+    document: { querySelector: (selector) => (selector === "#nutritionTotals" ? totals : slot) },
+    h: (tag, attributes) => Object.assign(new FakeElement(tag), { id: attributes?.id }),
+    energyDiaryCards: () => { built += 1; return [new FakeElement("section")]; },
+    energyRead: { rows: [] },
+  });
+  totals.after = (node) => { slot = node; };
+  context.renderDiaryEnergy();
+  const table = slot.children[0];
+  context.renderDiaryEnergy();
+  assert.equal(built, 1, "the same read is not rebuilt");
+  assert.equal(slot.children[0], table, "the table node stays, so an open popover stays open");
+});

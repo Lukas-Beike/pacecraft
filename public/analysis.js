@@ -1675,7 +1675,10 @@ function renderDiaryEnergy() {
     slot = h("div", { id: "nutritionEnergy" });
     totals.after(slot);
   }
+  // A diary render with the read already shown keeps the table, so an open "i" stays open (#3379).
+  if (energyRead && slot.energyShown === energyRead) return;
   slot.replaceChildren(...energyDiaryCards());
+  slot.energyShown = energyRead;
 }
 
 function renderBodyAnalysis(body) {
