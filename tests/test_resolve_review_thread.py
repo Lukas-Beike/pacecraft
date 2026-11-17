@@ -155,11 +155,10 @@ class ResolveReviewThreadTests(unittest.TestCase):
 
 
 class GuardHookTests(unittest.TestCase):
-    def decide(self, command, unchanged=True):
+    def decide(self, command, unchanged=True, raw=None):
         stdin = mock.Mock()
-        stdin.buffer.read.return_value = json.dumps(
-            {"tool_input": {"command": command}}
-        ).encode()
+        payload = json.dumps({"tool_input": {"command": command}})
+        stdin.buffer.read.return_value = (payload if raw is None else raw).encode()
         with (
             mock.patch.object(guard.sys, "stdin", stdin),
             mock.patch.object(guard, "unchanged", return_value=unchanged),
@@ -182,6 +181,66 @@ class GuardHookTests(unittest.TestCase):
         ):
             with self.subTest(command):
                 self.assertEqual(self.decide(command), 2)
+
+    def test_input_of_an_unexpected_shape_blocks(self):
+        # Fails closed (#3367): only an object with a command string is read.
+        for payload in (
+            [],
+            "text",
+            1,
+            None,
+            {},
+            {"tool_input": None},
+            {"tool_input": []},
+            {"tool_input": "text"},
+            {"tool_input": {}},
+            {"tool_input": {"command": None}},
+            {"tool_input": {"command": ["git", "status"]}},
+        ):
+            with self.subTest(payload=payload):
+                self.assertEqual(self.decide("", raw=json.dumps(payload)), 2)
+        self.assertEqual(self.decide("", raw='{"tool_input": {"command": ""}}'), 0)
+
+    def test_spelling_variants_of_the_script_name_block(self):
+        # Case, quoting, escapes, globs and short names all reach the same file
+        # (#3367); only the documented exact form runs.
+        for command in (
+            "python scripts/Resolve_Review_Thread.py 2671 PRRT_a1",
+            "PYTHON SCRIPTS/RESOLVE_REVIEW_THREAD.PY 2671 PRRT_a1",
+            "python scripts/resolve_'review'_thread.py 2671 PRRT_a1",
+            'python scripts/resolve_"review"_thread.py 2671 PRRT_a1',
+            "python scripts/resolve\\_review_thread.py 2671 PRRT_a1",
+            "python scripts\\resolve_review_thread.py 2671 PRRT_a1",
+            "python scripts/resolve_review_threa[d].py 2671 PRRT_a1",
+            "python scripts/resolve_review_threa[!x].py 2671 PRRT_a1",
+            "python scripts/resolve_review_threa[^x].py 2671 PRRT_a1",
+            "python scripts/resolve_review_thr?ad.py 2671 PRRT_a1",
+            "python scripts/resolve_*.py 2671 PRRT_a1",
+            "python scripts/r*d.py 2671 PRRT_a1",
+            "python scripts/*thread.py 2671 PRRT_a1",
+            "python scripts/resolve_review_{thread,x}.py 2671 PRRT_a1",
+            "python scripts/resolve_review_@(thread).py 2671 PRRT_a1",
+            "python scripts/RESOLV~1.PY 2671 PRRT_a1",
+            "cd scripts && python r* 2671 PRRT_a1",
+            "python -m resolve_review_threa? 2671 PRRT_a1",
+            "find scripts -name 'resolve*' -exec python {} 2671 PRRT_a1 ;",
+            "python s*/r*.py 2671 PRRT_a1",
+            "cd scripts/x && python ../r* 2671 PRRT_a1",
+            "python ./r* 2671 PRRT_a1",
+        ):
+            with self.subTest(command):
+                self.assertEqual(self.decide(command), 2)
+        # Globs and names that cannot reach the script stay as they were.
+        for command in (
+            "node --test tests/*.cjs",
+            "git diff -- openspec/specs/*/spec.md",
+            "python scripts/release_dispatch.py follow",
+            "ls tests/test_?.py",
+            "for f in tests/*.py; do echo $f; done",
+            "gh pr list -q '.[] | {n: .number}'",
+        ):
+            with self.subTest(command):
+                self.assertEqual(self.decide(command), 0)
 
     def test_the_run_is_compared_with_develop_by_content(self):
         calls = []
