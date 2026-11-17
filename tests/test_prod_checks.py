@@ -681,6 +681,89 @@ class ProdChecksTests(unittest.TestCase):
             self.assertEqual(code, 2)
             self.assertIn(line, text)
 
+    def test_check_docs_fails_on_a_stale_production_line(self):
+        # After schema v30 shipped, AGENTS.md still said v29 (#3351).
+        root = Path(self.tmp.name) / "repo"
+        source = root / "backend/db/schema.py"
+        source.parent.mkdir(parents=True)
+
+        def git(*args):
+            identity = ("-c", "user.name=t", "-c", "user.email=t@example.invalid")
+            subprocess.run(["git", *identity, "-C", str(root), *args], check=True,
+                           capture_output=True)  # fmt: skip
+
+        git("init", "-q")
+        # Release 2.1.2 wrote schema 27; 2.1.3 and 2.1.4 wrote schema 28.
+        for tag, schema in (("2.1.2", 27), ("2.1.3", 28), ("2.1.4", 28)):
+            source.write_text(f"CURRENT_SCHEMA_VERSION = {schema}\n", "utf-8")
+            git("add", "-A")
+            git("commit", "-q", "--allow-empty", "-m", tag)
+            git("tag", tag)
+        skill_doc = ".agents/skills/pacecraft-db-migrations/SKILL.md"
+        (root / skill_doc).parent.mkdir(parents=True)
+        (root / "docs").mkdir()
+
+        def docs(history, since, skill=True):
+            (root / "docs/schema-history.md").write_text(history, "utf-8")
+            line = f"Production\n  runs {since} (the only instance)"
+            (root / "AGENTS.md").write_text(line, "utf-8")
+            (root / skill_doc).unlink(missing_ok=True)
+            if skill:
+                (root / skill_doc).write_text(line.replace("\n ", ""), "utf-8")
+
+        docs("| 26 | 2.0.5 |\n|27|  since 2.1.0 | \n| 28 | not released yet |\n",
+             "v27 since release 2.1.0")  # fmt: skip
+        self.assertEqual(
+            prod_diagnostics.docs_lines(root, 27, "2.1.2"),
+            [
+                ("ok", "docs/schema-history.md: schema 27 row since 2.1.0"),
+                ("ok", "AGENTS.md: production runs v27 since release 2.1.0"),
+                ("ok", f"{skill_doc}: production runs v27 since release 2.1.0"),
+            ],
+        )
+        # A hotfix 2.1.4 shipped before the docs PR: the change still names
+        # 2.1.3, the first release of schema 28, and closes the 27 row.
+        docs("| 27 | since 2.1.0 |\n| 28 | not released yet |\n",
+             "v27 since release 2.1.0", skill=False)  # fmt: skip
+        change = "change it to `Production runs v28 since release 2.1.3`"
+        rows = "set `| 28 | since 2.1.3 |`; set `| 27 | 2.1.0 to 2.1.2 |`"
+        self.assertEqual(
+            prod_diagnostics.docs_lines(root, 28, "2.1.4"),
+            [
+                ("FAIL", f"docs/schema-history.md: schema 28 row stale; {rows}"),
+                (
+                    "FAIL",
+                    f"AGENTS.md: production runs v27 since release 2.1.0; {change}",
+                ),
+                ("FAIL", f"{skill_doc}: production runs missing; {change}"),
+            ],
+        )
+        # A schema that only one release wrote closes as that release.
+        docs("| 27 | since 2.1.2 |\n| 28 | not released yet |\n",
+             "v27 since release 2.1.2")  # fmt: skip
+        self.assertTrue(
+            prod_diagnostics.docs_lines(root, 28, "2.1.4")[0][1].endswith(
+                "set `| 28 | since 2.1.3 |`; set `| 27 | 2.1.2 |`"
+            )
+        )
+        # Two open rows are stale too.
+        docs("| 27 | since 2.1.0 |\n| 28 | since 2.1.3 |\n", "v28 since release 2.1.3")
+        self.assertEqual(prod_diagnostics.docs_lines(root, 28, "2.1.4")[0][0], "FAIL")
+        # The fake app reports schema 27 and 2.1.2 against these docs.
+        docs("| 27 | 2.1.0 to 2.1.2 |\n| 28 | since 2.1.3 |\n",
+             "v28 since release 2.1.3")  # fmt: skip
+        with mock.patch.object(prod_diagnostics, "ROOT", root):
+            code, text = self.run_main(
+                prod_diagnostics, "--url", self.url,
+                "--password-file", str(self.secret), "--check-docs",
+            )  # fmt: skip
+        self.assertEqual(code, 1)
+        self.assertIn(
+            "FAIL AGENTS.md: production runs v28 since release 2.1.3; change it to "
+            "`Production runs v27 since release 2.1.2`",
+            text,
+        )
+
     def test_result_files_stay_outside_the_repository(self):
         inside = Path(prod_client.ROOT) / "result.json"
         code, text = self.run_main(

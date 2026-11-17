@@ -3,6 +3,7 @@
     python scripts/prod_diagnostics.py --url <app address> --password-file <secret file>
         [--expect-version 2.1.2] [--expect-schema 27] [--out result.json]
         [--compare previous.json] [--ca-file ca.pem] [--require-current]
+        [--check-docs]
     python scripts/prod_diagnostics.py --url <app address> --password-file <secret file>
         --section <name> [--section <name> ...]
     Either form takes [--wait-ready <seconds>]: before it reads the report it
@@ -17,7 +18,9 @@ instead of the checks, only the allow-listed counts, flags, state words and
 ages in hours (a `*_at` time as `*_hours`) of the sections in SECTION_FIELDS,
 or the sums of a section in DERIVED_SECTIONS (`coach_local_first`: the #3080
 counts over the Coach history); the state words in FAIL_STATES and a missing
-section print as FAIL.
+section print as FAIL. `--check-docs` also compares the production schema and
+version with the production line in AGENTS.md and the db-migrations skill and
+with the docs/schema-history.md row, and names the exact change when stale.
 """
 
 from __future__ import annotations
@@ -27,18 +30,30 @@ import contextlib
 import json
 import math
 import re
+import subprocess
 import sys
 import time
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 
 from prod_client import (
+    ROOT,
     ProdError,
     Session,
     checkout_current,
     read_result,
     write_result,
 )
+
+# The production schema line the docs keep by hand (#3351).
+PRODUCTION_LINE = re.compile(
+    r"Production\s+runs\s+v(\d+)\s+since\s+release\s+(\d+\.\d+\.\d+)"
+)
+PRODUCTION_LINE_DOCS = ("AGENTS.md", ".agents/skills/pacecraft-db-migrations/SKILL.md")
+SCHEMA_HISTORY = "docs/schema-history.md"
+SCHEMA_SOURCE = "backend/db/schema.py"
+RELEASE = r"\d+\.\d+\.\d+"
 
 COUNTS = (
     "messages",
@@ -544,13 +559,92 @@ def backup_line(result: dict[str, Any], max_hours: float | None) -> tuple[str, s
     return mark(ok, f"{text} (needs under {max_hours:g} h, verified)")
 
 
+def read_doc(root: Path, name: str) -> str:
+    try:
+        return (root / name).read_text(encoding="utf-8")
+    except OSError:
+        return ""
+
+
+def schema_releases(root: Path, schema: int, version: str) -> tuple[str, str | None]:
+    """The first release tag up to `version` whose code wrote `schema`, and the
+    tag before it, from the checkout's git tags; `(version, None)` without them."""
+
+    def git(*args: str) -> str:
+        done = subprocess.run(
+            ["git", "-C", str(root), *args],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            check=False,
+        )
+        return done.stdout if done.returncode == 0 else ""
+
+    def key(tag: str) -> tuple[int, ...]:
+        return tuple(int(part) for part in tag.split("."))
+
+    tags = sorted(
+        (t for t in git("tag", "--list").split() if re.fullmatch(RELEASE, t)),
+        key=key,
+    )
+    since, before = version, None
+    for tag in reversed([t for t in tags if key(t) <= key(version)]):
+        source = git("show", f"{tag}:{SCHEMA_SOURCE}")
+        found = re.search(r"^CURRENT_SCHEMA_VERSION = (\d+)", source, re.MULTILINE)
+        if not found or int(found[1]) != schema:
+            before = tag
+            break
+        since = tag
+    return since, before
+
+
+def open_history_rows(history: str) -> dict[int, str]:
+    """The schema-history rows still open (`| N | since X |`): schema to X."""
+    opened = {}
+    for text in history.splitlines():
+        cells = [cell.strip() for cell in text.strip().strip("|").split("|")]
+        if len(cells) == 2 and cells[0].isdigit() and cells[1].startswith("since "):
+            opened[int(cells[0])] = cells[1].removeprefix("since ")
+    return opened
+
+
+def docs_lines(root: Path, schema: int, version: str) -> list[tuple[str, str]]:
+    """Compare the production schema and version with the docs' production
+    line and schema-history row; a stale one names the exact change (#3351)."""
+    if type(schema) is not int or not re.fullmatch(RELEASE, str(version)):
+        return [mark(False, "docs: production schema or version unknown")]
+    opened = open_history_rows(read_doc(root, SCHEMA_HISTORY))
+    if list(opened) == [schema]:
+        since = opened[schema]
+        lines = [mark(True, f"{SCHEMA_HISTORY}: schema {schema} row since {since}")]
+    else:
+        since, before = schema_releases(root, schema, version)
+        last = before or f"the release before {since}"
+        closes = "".join(
+            f"; set `| {n} | {first if first == last else f'{first} to {last}'} |`"
+            for n, first in sorted(opened.items())
+            if n != schema
+        )
+        stale = f"stale; set `| {schema} | since {since} |`{closes}"
+        lines = [mark(False, f"{SCHEMA_HISTORY}: schema {schema} row {stale}")]
+    want = f"v{schema} since release {since}"
+    for name in PRODUCTION_LINE_DOCS:
+        found = PRODUCTION_LINE.search(read_doc(root, name))
+        have = f"v{found[1]} since release {found[2]}" if found else "missing"
+        change = "" if have == want else f"; change it to `Production runs {want}`"
+        lines.append(mark(have == want, f"{name}: production runs {have}{change}"))
+    return lines
+
+
 def checks(
     result: dict[str, Any],
     previous: dict[str, Any] | None,
     expect_version: str | None,
     expect_schema: int | None,
     expect_backup_hours: float | None = None,
+    check_docs: bool = False,
 ) -> list[tuple[str, str]]:
+    docs = docs_lines(ROOT, result["schema"], result["version"]) if check_docs else []
     return [
         expected("version", result["version"], expect_version),
         expected("schema", result["schema"], expect_schema),
@@ -577,6 +671,7 @@ def checks(
             ),
         ),
         *comparison_lines(result, previous),
+        *docs,
     ]
 
 
@@ -618,6 +713,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--out")
     parser.add_argument("--compare")
     parser.add_argument("--ca-file")
+    parser.add_argument("--check-docs", action="store_true")
     parser.add_argument(
         "--section",
         action="append",
@@ -634,6 +730,7 @@ def main(argv: list[str] | None = None) -> int:
         args.expect_version,
         args.expect_schema,
         args.expect_backup_hours,
+        args.check_docs or None,
     )
     if args.section and any(value is not None for value in checks_asked):
         parser.error("--section prints sections; it runs no checks or results")
@@ -668,6 +765,7 @@ def main(argv: list[str] | None = None) -> int:
             args.expect_version,
             args.expect_schema,
             args.expect_backup_hours,
+            args.check_docs,
         )
     )
     for state, text in lines:
