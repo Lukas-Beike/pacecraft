@@ -977,17 +977,6 @@ NOT_PRINTED = {
     },
 }
 
-# Report sections read only in the full diagnostics export, not with --section
-# (state when #3403 added this check). A new one fails the check below.
-WITHOUT_SECTION = {
-    "activity_routes", "activity_weather", "app", "canonical_backfill",
-    "canonical_coverage", "canonical_provider_composition", "canonical_read",
-    "canonical_session_conflicts", "configuration", "debug_capture",
-    "external_calendar", "garmin", "garmin_change_check", "garmin_detail_fallback",
-    "local_load", "lt1_ride_coverage", "morning_checkin", "openai", "plan_sync",
-    "profile_weekly_plan_removal", "session_analysis", "session_focus_backfill",
-    "session_metrics", "session_rebundle", "sync", "wahoo",
-}  # fmt: skip
 
 
 # Top-level diagnostics blocks without a `--section` choice, each with its reason
@@ -1003,7 +992,6 @@ NOT_SECTIONED: dict[str, str] = {
     "generated_at": "the report's own time, not a count",
     "note": "free text",
     "coach_commands": "summed by --section coach_local_first",
-    "garmin_body_push": "its section is pending with L29 (#3403, #3430)",
     **dict.fromkeys(
         (
             "activity_routes",
@@ -1137,22 +1125,6 @@ class SectionFieldsCoverTheProducersTests(ServerTestCase):
                         "SECTION_FIELDS in scripts/prod_diagnostics.py, or to "
                         "NOT_PRINTED in this test with the reason",
                     )
-
-    def test_every_dict_section_of_the_report_has_an_allow_list(self):
-        # #3403: a section without an allow-list cannot be read with --section.
-        report = server.DIAGNOSTICS.report_service().report()
-        listed = {*prod_diagnostics.SECTION_FIELDS, *prod_diagnostics.DERIVED_SECTIONS}
-        unlisted = {
-            name
-            for name, value in report.items()
-            if isinstance(value, dict) and name not in listed
-        }
-        self.assertEqual(
-            unlisted,
-            WITHOUT_SECTION,
-            "a new diagnostics section needs SECTION_FIELDS in "
-            "scripts/prod_diagnostics.py, or WITHOUT_SECTION in this test",
-        )
 
 
 if __name__ == "__main__":
