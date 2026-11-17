@@ -127,7 +127,7 @@ PINNED: Final[dict[str, tuple[tuple[int, ...], str]]] = {
     ),
     "fit_file": (
         (11, 12),
-        "4f195106e4873015ce04f270375e85617c74b79527590fcba6b90ef88dca86f5",
+        "220282c0c094e17db97c5694fc3efbb86035dd8efe8bb021b1cdb20407e7ca72",
     ),
     "fit_rr_mapping": (
         (11, 12),

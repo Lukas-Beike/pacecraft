@@ -412,6 +412,16 @@ class FitFileRobustnessTests(unittest.TestCase):
             fit_messages(_sample().build() + b"\x00\x00\x00")
         self.assertEqual(caught.exception.code, "crc")
 
+    def test_the_number_of_chained_files_is_bounded(self):
+        # Gitar on #3339: empty files add no messages, so only a file cap bounds
+        # the work (each file is a slice copy of the rest).
+        empty = FitBuilder().build()
+        limit = fit_file.MAX_FIT_CHAINED_FILES
+        self.assertEqual(fit_messages(empty * limit), [])
+        with self.assertRaises(FitDecodeError) as caught:
+            fit_messages(empty * 200_000)
+        self.assertEqual(caught.exception.code, "structure")
+
     def test_developer_fields_are_skipped_and_their_messages_kept(self):
         # Protocol 2.0, as Zwift and Connect IQ apps write: developer_data_id
         # (207), field_description (206) and a record carrying a developer field.

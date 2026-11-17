@@ -22,6 +22,9 @@ type FitMessage = tuple[int, dict[int, object]]
 # The most data messages one file may hold: the longest stream a session stores
 # (172,800 record messages) plus laps, events, sets and the like.
 MAX_FIT_MESSAGES: Final = 200_000
+# A chained file holds a few files (a recording split by the device); the cap
+# bounds the work an empty-file chain could cause, as each one is a slice copy.
+MAX_FIT_CHAINED_FILES: Final = 64
 FIT_SIGNATURE: Final = b".FIT"
 FIT_EPOCH: Final = datetime(1989, 12, 31, tzinfo=UTC)
 _UNSUPPORTED_FIT_BASE_TYPE: Final = "Unsupported FIT base type"
@@ -410,8 +413,12 @@ def fit_messages(data: bytes) -> list[FitMessage]:
         raise FitDecodeError("compressed", "FIT file is a zip archive")
     messages: list[FitMessage] = []
     start = _fit_file_messages(data, messages)
-    while start < len(data):
+    for _ in range(MAX_FIT_CHAINED_FILES - 1):
+        if start >= len(data):
+            return messages
         start += _fit_file_messages(data[start:], messages)
+    if start < len(data):
+        raise FitDecodeError("structure", "Too many chained FIT files")
     return messages
 
 
