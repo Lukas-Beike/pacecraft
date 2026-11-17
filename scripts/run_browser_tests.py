@@ -398,8 +398,12 @@ def engine_fix(output):
     return "Start the Docker daemon (for example `sudo systemctl start docker`)."
 
 
-def checked(processes, command, **kwargs):
+def checked(processes, command, explain=None, **kwargs):
+    """The command's output; a failure raises RunnerError, with the cause and fix
+    from ``explain`` (exit code -> message) when the code is a known one."""
     code, output = processes.run(command, **kwargs)
+    if code in (explain or {}):
+        raise RunnerError(explain[code])
     if code:
         # Name the program and its subcommand words only (no options, paths or
         # scripts) and show the end of each stream, so a failure is visible (#2656).
@@ -988,7 +992,16 @@ console.log(JSON.stringify({revisions:expected,node:process.version}));"""
     native_script = """const fs=require('node:fs');const p=require('playwright-core');
 if(!fs.existsSync(p.chromium.executablePath()))process.exit(2);
 console.log(JSON.stringify({node:process.version}));"""
-    observed = json.loads(checked(processes, [node, "-e", native_script]))
+    # Exit 2: the locked Playwright's Chromium is not installed, as after a bump;
+    # npm ci --ignore-scripts installs no browser (#3342).
+    missing = (
+        f"Chromium of the locked Playwright {versions['@playwright/test']} is not "
+        "installed; run python scripts/prepare_worktree.py or "
+        "node node_modules/@playwright/test/cli.js install chromium"
+    )
+    observed = json.loads(
+        checked(processes, [node, "-e", native_script], explain={2: missing})
+    )
     return {"mode": "native", "revisions": expected, **observed}
 
 

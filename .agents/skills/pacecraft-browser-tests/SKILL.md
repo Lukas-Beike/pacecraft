@@ -61,6 +61,10 @@ python scripts/run_browser_tests.py --project all --keep-going
   call answers HTTP 500. Start it; if it stays "starting", quit it, run
   `wsl --shutdown` and start it again. That stops every lane's containers, so
   tell the other lanes first.
+- "Chromium of the locked Playwright … is not installed" (#3342): after a
+  Playwright bump the native browser is missing, because `npm ci --ignore-scripts`
+  installs none. Run `python scripts/prepare_worktree.py` (or
+  `node node_modules/@playwright/test/cli.js install chromium`).
 - Exit 0: passed. Non-zero: a test failed (reports under
   `test-results/browser-runs/`), the host ran out of resources, or the image is
   stale (no reports; rebuild as the message says); the output says which and how

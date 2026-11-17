@@ -1287,6 +1287,34 @@ class BrowserRunnerTests(unittest.TestCase):
                     root, args, "node", versions, fake, containers, root
                 )
 
+    def test_a_missing_native_chromium_names_the_browser_and_the_prepare_step(self):
+        # #3342: after a Playwright bump the native check exits 2, and the run
+        # said only "node.EXE exit 2".
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            (root / "node_modules/playwright-core").mkdir(parents=True)
+            (root / "node_modules/playwright-core/browsers.json").write_text(
+                json.dumps({"browsers": [{"name": "chromium", "revision": "1255"}]})
+            )
+            args = runner.parser().parse_args(["--project", "desktop"])
+            versions = {"@playwright/test": "1.65.1"}
+            fake = FakeProcesses()
+            fake.run = lambda command, **kwargs: (2, "")
+            with self.assertRaises(runner.RunnerError) as caught:
+                runner.verify_browser(root, args, "node", versions, fake, None, root)
+            message = str(caught.exception)
+            for part in (
+                "Chromium",
+                "1.65.1",
+                "python scripts/prepare_worktree.py",
+                "install chromium",
+            ):
+                self.assertIn(part, message)
+            # Another failure of the check keeps the generic message.
+            fake.run = lambda command, **kwargs: (3, "")
+            with self.assertRaisesRegex(runner.RunnerError, r"\(exit 3\): node"):
+                runner.verify_browser(root, args, "node", versions, fake, None, root)
+
     def test_expected_identities_survive_spec_and_shard_filters(self):
         listing = report()
         for spec in listing["suites"][0]["specs"]:
