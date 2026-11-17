@@ -240,7 +240,7 @@ class SkinfoldService:
     def _changed(self, day: date) -> dict[str, Any]:
         read = self.read()
         if self._on_change is not None:
-            read["garmin"] = self._on_change(day)
+            read["remote"] = self._on_change(day)
         return read
 
     def body_fat_on(self, db: Any, day: date) -> float | None:

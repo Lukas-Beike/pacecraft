@@ -63,11 +63,11 @@ from backend.sync.activity_weather import summarize_activity_weather
 from backend.sync.external_calendar import ExternalCalendarSyncService
 from backend.sync.freshness import ProviderFreshnessService
 from backend.sync.garmin import GarminFixtureLoader, GarminSyncStateService
-from backend.sync.garmin_body_push import summarize_body_push
 from backend.sync.garmin_activity_details import (
     detail_fallback_counts,
     detail_replay_size,
 )
+from backend.sync.garmin_body_push import summarize_body_push
 from backend.sync.garmin_projection_service import GarminProjectionService
 from backend.sync.garmin_wellness_history import summarize_daily_calories
 from backend.sync.jobs import utc_timestamp

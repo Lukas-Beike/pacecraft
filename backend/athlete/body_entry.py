@@ -82,7 +82,7 @@ class BodyEntryService:
         self._today = today
         self._entry = entry
         # Mirrors the changed day to Garmin Connect after the commit (#3403);
-        # its outcome is the receipt's ``garmin``.
+        # its outcome is the receipt's ``remote``.
         self._on_change = on_change
 
     def read(self) -> dict[str, Any]:
@@ -137,7 +137,7 @@ class BodyEntryService:
     def _changed(self, day: date) -> dict[str, Any]:
         read = self.read()
         if self._on_change is not None:
-            read["garmin"] = self._on_change(day)
+            read["remote"] = self._on_change(day)
         return read
 
     def _retire(self, db: Any, day: date) -> int:

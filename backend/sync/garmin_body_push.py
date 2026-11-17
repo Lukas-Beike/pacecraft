@@ -121,6 +121,22 @@ class _Day:
     baseline: str | None  # what the linked entry holds
     sending: str | None  # an upload whose entry is not linked yet
 
+    @staticmethod
+    def of(link: RemoteLink | None) -> _Day:
+        if link is None:
+            return _Day(None, None, None)
+        return _Day(link.remote_id, link.baseline_hash, link.remote_external_id)
+
+    def settled_as(self, link: RemoteLink | None, target: str | None) -> bool:
+        """Whether Garmin already holds ``target`` (None: nothing) for the day."""
+        if link is None:
+            return target is None
+        return (
+            link.sync_state is RemoteLinkState.SYNCED
+            and self.baseline == target
+            and self.sending is None
+        )
+
     def own_weights(self) -> set[float]:
         entries = (BodyEntry.parse(self.baseline), BodyEntry.parse(self.sending))
         return {entry.weight_kg for entry in entries if entry is not None}
@@ -174,7 +190,7 @@ class GarminBodyPushService:
         except Exception as error:  # noqa: BLE001 - a local fault; text never kept
             _LOGGER.warning(
                 "Garmin body push stopped",
-                extra={"event": "garmin_body_push_error", "error_type": type(error).__name__},
+                extra={"event": "garmin_body_push_error", "context": {"error_type": type(error).__name__}},
             )  # fmt: skip
             return PENDING
 
@@ -203,28 +219,16 @@ class GarminBodyPushService:
         except Exception as error:  # noqa: BLE001 - must not fail the refresh job
             _LOGGER.warning(
                 "Garmin body retry stopped",
-                extra={"event": "garmin_body_push_error", "error_type": type(error).__name__},
+                extra={"event": "garmin_body_push_error", "context": {"error_type": type(error).__name__}},
             )  # fmt: skip
             return 0
 
     def _push(self, day: date, retry: bool) -> str:
         with self._database_manager.reader() as db:
             link = self._links.get(db, KIND, day.isoformat(), GARMIN)
-            known = _Day(
-                link.remote_id if link else None,
-                link.baseline_hash if link else None,
-                link.remote_external_id if link else None,
-            )
+            known = _Day.of(link)
             wanted, needs_weight = self._wanted(db, day, known.own_weights())
-        target = wanted.fingerprint() if wanted else None
-        if link is None and wanted is None:
-            return NEEDS_WEIGHT if needs_weight else UNCHANGED
-        if (
-            link is not None
-            and link.sync_state is RemoteLinkState.SYNCED
-            and known.baseline == target
-            and known.sending is None
-        ):
+        if known.settled_as(link, wanted.fingerprint() if wanted else None):
             return NEEDS_WEIGHT if needs_weight else UNCHANGED
         if self._paused():
             self._store(day, known, done=False, outcome="failed", retry=retry)
@@ -232,11 +236,9 @@ class GarminBodyPushService:
         try:
             with self._sdk_session() as sdk:
                 self._apply(sdk, day, known, wanted)
-        except _Unlinked:
-            self._store(day, known, done=False, outcome="failed", retry=retry)
-            return PENDING
         except Exception as error:  # noqa: BLE001 - provider boundary, text never kept
-            self._record_failure(error)
+            if not isinstance(error, _Unlinked):
+                self._record_failure(error)
             self._store(day, known, done=False, outcome="failed", retry=retry)
             return PENDING
         self._record_success()
@@ -330,7 +332,7 @@ class GarminBodyPushService:
             "Garmin body push failed",
             extra={
                 "event": "garmin_body_push_failed",
-                "error_type": type(error).__name__,
+                "context": {"error_type": type(error).__name__},
             },
         )
 
@@ -346,12 +348,7 @@ class GarminBodyPushService:
     def _mark_pending(self, day: date) -> None:
         with self._database_manager.reader() as db:
             link = self._links.get(db, KIND, day.isoformat(), GARMIN)
-        known = _Day(
-            link.remote_id if link else None,
-            link.baseline_hash if link else None,
-            link.remote_external_id if link else None,
-        )
-        self._store(day, known, done=False, outcome="failed")
+        self._store(day, _Day.of(link), done=False, outcome="failed")
 
     def _store(
         self,

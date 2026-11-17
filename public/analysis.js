@@ -1444,7 +1444,7 @@ function showBodyReceipt(receipt) {
     try {
       const read = await api(path, { method: "PUT", body: JSON.stringify(payload) });
       await bodyEntryChanged();
-      toast(read?.garmin === "pending" ? "Zurückgenommen. Garmin-Sync fehlgeschlagen – wird erneut versucht." : "Zurückgenommen.", read?.garmin === "pending");
+      toast(read?.remote === "pending" ? "Zurückgenommen. Garmin-Sync fehlgeschlagen – wird erneut versucht." : "Zurückgenommen.", read?.remote === "pending");
     } catch (error) {
       undo.disabled = false;
       toast(error.message, true);
@@ -1482,7 +1482,7 @@ async function sendBodyEntry(dialog, path, payload, button, receipt) {
   }
   document.querySelector(`#${dialog}`).close();
   await bodyEntryChanged();
-  showBodyReceipt(receipt(read?.garmin));
+  showBodyReceipt(receipt(read?.remote));
   return true;
 }
 

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
-from datetime import date
 from typing import Any
 
 from backend.activities.activity_reference import ActivityReferences
@@ -191,10 +190,12 @@ class AthleteDataServices:
     ]
     profile: Callable[[], ProfileService]
     # The athlete's 3-site skinfolds and the body fat they give (#3099).
-    skinfolds: Callable[[], SkinfoldService]
+    # The body services take an optional ``on_change(day)`` that mirrors a
+    # changed day to Garmin Connect (#3403); the HTTP routes pass it.
+    skinfolds: Callable[..., SkinfoldService]
     # Weights and body fats the athlete enters by hand, one per day (#3252, #3402).
-    weight_entries: Callable[[], BodyEntryService]
-    body_fat_entries: Callable[[], BodyEntryService]
+    weight_entries: Callable[..., BodyEntryService]
+    body_fat_entries: Callable[..., BodyEntryService]
     # Binds the athlete clock to the existing shared manager cache owner.
     profile_for: Callable[[Any], ProfileService]
 
@@ -218,8 +219,6 @@ def build_athlete_data(
     thresholds_changed: Callable[[], None],
     # The stale-threshold and Garmin SDK warning shown with the zones (#1768).
     threshold_warnings: Callable[[], dict[str, Any] | None],
-    # Mirrors an entered body day to Garmin Connect; returns its outcome (#3403).
-    body_changed: Callable[[date], str] | None = None,
 ) -> AthleteDataServices:
     """Fresh athlete and activity services per call over shared repositories.
 
@@ -321,14 +320,14 @@ def build_athlete_data(
         ),
         profile=profile,
         profile_for=profile_for,
-        skinfolds=lambda: SkinfoldService(
-            database_manager(), profiles.get, utc_now, local_date, body_changed
+        skinfolds=lambda on_change=None: SkinfoldService(
+            database_manager(), profiles.get, utc_now, local_date, on_change
         ),
-        weight_entries=lambda: BodyEntryService(
-            database_manager(), utc_now, local_date, on_change=body_changed
+        weight_entries=lambda on_change=None: BodyEntryService(
+            database_manager(), utc_now, local_date, on_change=on_change
         ),
-        body_fat_entries=lambda: BodyEntryService(
-            database_manager(), utc_now, local_date, BODY_FAT_ENTRY, body_changed
+        body_fat_entries=lambda on_change=None: BodyEntryService(
+            database_manager(), utc_now, local_date, BODY_FAT_ENTRY, on_change
         ),
     )
 

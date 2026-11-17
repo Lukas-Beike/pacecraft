@@ -141,7 +141,7 @@ PRIVACY_DELETE_SCOPE = (
 _REMOTE_LINK_KINDS_BY_CATEGORY = {
     "library": (RemoteEntityKind.LIBRARY_WORKOUT, RemoteEntityKind.PLANNED_UNIT),
     "competitions": (RemoteEntityKind.COMPETITION,),
-    "provider_data": (RemoteEntityKind.OBSERVATION,),
+    "provider_data": (RemoteEntityKind.OBSERVATION, RemoteEntityKind.BODY_COMPOSITION),
 }
 # Not a database table: files beside the database, reported next to the categories.
 RECOVERY_COPIES_CATEGORY = "recovery_copies"

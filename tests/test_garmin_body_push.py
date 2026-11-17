@@ -191,9 +191,9 @@ class GarminBodyPushTests(unittest.TestCase):
 
     def test_save_writes_one_entry_and_links_it(self):
         read = self.weights.save({"date": "2026-11-15", "kg": 80})
-        self.assertEqual("sent", read["garmin"])
+        self.assertEqual("sent", read["remote"])
         self.assertEqual(
-            "sent", self.fats.save({"date": "2026-11-15", "pct": 15})["garmin"]
+            "sent", self.fats.save({"date": "2026-11-15", "pct": 15})["remote"]
         )
         # The body fat goes with the weight of its day; the first entry is replaced.
         self.assertEqual(
@@ -211,7 +211,7 @@ class GarminBodyPushTests(unittest.TestCase):
         )
         # Saving the same values again writes nothing.
         self.assertEqual(
-            "unchanged", self.fats.save({"date": "2026-11-15", "pct": 15})["garmin"]
+            "unchanged", self.fats.save({"date": "2026-11-15", "pct": 15})["remote"]
         )
         self.assertEqual(3, len(self.sdk.writes()))
 
@@ -222,11 +222,11 @@ class GarminBodyPushTests(unittest.TestCase):
         self.weights.save({"date": "2026-11-15", "kg": 80})
         self.assertEqual("101", self.link().remote_id)
         self.assertEqual(
-            "sent", self.weights.save({"date": "2026-11-15", "kg": 81})["garmin"]
+            "sent", self.weights.save({"date": "2026-11-15", "kg": 81})["remote"]
         )
         self.assertEqual("102", self.link().remote_id)
         read = self.weights.remove({"date": "2026-11-15", "confirmed": True})
-        self.assertEqual("removed", read["garmin"])
+        self.assertEqual("removed", read["remote"])
         self.assertIsNone(self.link())
         self.assertEqual([own], self.sdk.days["2026-11-15"])
         self.assertEqual(
@@ -240,7 +240,7 @@ class GarminBodyPushTests(unittest.TestCase):
         with self.assertLogs("intervals_coach", logging.WARNING) as logs:
             read = self.weights.save({"date": "2026-11-15", "kg": 80})
         self.assertEqual(("pending", [{"date": "2026-11-15", "kg": 80.0}]),
-                         (read["garmin"], read["entries"]))  # fmt: skip
+                         (read["remote"], read["entries"]))  # fmt: skip
         self.assertEqual(RemoteLinkState.PENDING, self.link().sync_state)
         # Garmin's text, the credentials and the payload stay out of the logs.
         logged = "\n".join(logs.output) + json.dumps(
@@ -252,7 +252,7 @@ class GarminBodyPushTests(unittest.TestCase):
         self.sdk.fail = None
         calls = len(self.sdk.calls)
         self.assertEqual(
-            "pending", self.weights.save({"date": "2026-11-15", "kg": 80.5})["garmin"]
+            "pending", self.weights.save({"date": "2026-11-15", "kg": 80.5})["remote"]
         )
         self.assertEqual(0, self.push.retry_pending())
         self.assertEqual(calls, len(self.sdk.calls))
@@ -274,13 +274,13 @@ class GarminBodyPushTests(unittest.TestCase):
         self.assertEqual([], self.sdk.calls)
         self.ready = False
         self.assertEqual(
-            "off", self.weights.save({"date": "2026-11-15", "kg": 80})["garmin"]
+            "off", self.weights.save({"date": "2026-11-15", "kg": 80})["remote"]
         )
         self.assertEqual([], self.sdk.calls)
 
     def test_a_body_fat_goes_with_the_days_garmin_weight_else_waits(self):
         self.assertEqual(
-            "needs_weight", self.fats.save({"date": "2026-11-15", "pct": 15})["garmin"]
+            "needs_weight", self.fats.save({"date": "2026-11-15", "pct": 15})["remote"]
         )
         self.assertEqual([], self.sdk.calls)
         self.store_garmin_weight(79.0)
@@ -296,7 +296,7 @@ class GarminBodyPushTests(unittest.TestCase):
     def test_an_upload_that_cannot_be_read_back_is_searched_never_sent_twice(self):
         self.sdk.hide_uploads = True
         self.assertEqual(
-            "pending", self.weights.save({"date": "2026-11-15", "kg": 80})["garmin"]
+            "pending", self.weights.save({"date": "2026-11-15", "kg": 80})["remote"]
         )
         self.assertEqual(1, self.counts()["unlinked_uploads"])
         self.sdk.hide_uploads = False
@@ -318,7 +318,7 @@ class GarminBodyPushTests(unittest.TestCase):
         }
         self.sdk.days["2026-11-15"] = [dict(twin)]
         self.assertEqual(
-            "sent", self.weights.save({"date": "2026-11-15", "kg": 80})["garmin"]
+            "sent", self.weights.save({"date": "2026-11-15", "kg": 80})["remote"]
         )
         self.assertEqual("101", self.link().remote_id)
         self.weights.remove({"date": "2026-11-15", "confirmed": True})
@@ -328,7 +328,7 @@ class GarminBodyPushTests(unittest.TestCase):
         # Review of the write path: Garmin keeps the entry, the answer times out.
         self.sdk.fail_after_upload = _HttpError(504)
         self.assertEqual(
-            "pending", self.weights.save({"date": "2026-11-15", "kg": 80})["garmin"]
+            "pending", self.weights.save({"date": "2026-11-15", "kg": 80})["remote"]
         )
         self.sdk.fail_after_upload = None
         self.assertEqual(1, self.push.retry_pending())
@@ -369,7 +369,7 @@ class GarminBodyPushTests(unittest.TestCase):
         # The next refresh reads the app's own upload back as a Garmin weight.
         self.store_garmin_weight(80.0)
         read = self.weights.remove({"date": "2026-11-15", "confirmed": True})
-        self.assertEqual("needs_weight", read["garmin"])
+        self.assertEqual("needs_weight", read["remote"])
         self.assertEqual([], self.sdk.days["2026-11-15"])
         self.assertIsNone(self.link())
 
