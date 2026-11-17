@@ -199,6 +199,8 @@ for (const theme of ["light", "dark"]) {
         throw error;
       }
       for (const row of data.rows) if (row.source !== "own") row.mean_error_kcal = { katch_mcardle: 1042, cunningham: 1204, device: 431 }[row.source];
+      // Every row carries its split, so the outlined row has its bar and detail line (#3476).
+      for (const row of data.rows) row.split ??= { resting_kcal: 1650, neat_kcal: 520, sport_kcal: 610, tef_kcal: 230 };
       await route.fulfill({ response, json: { ...data, best: null, fit_scale: { "14d": fitScale(14, 28, 2690, 720), "12w": fitScale(84, 84, 2726, 454) } } })
         .catch((error) => { if (!GONE.test(String(error))) throw error; });
     });
@@ -236,6 +238,37 @@ for (const theme of ["light", "dark"]) {
     // The diary re-renders the table when its reads land, so the style check retries on the current cell.
     await expect(device.locator("th")).toHaveCSS("border-top-style", "dashed");
     await expect(page.locator("#nutritionEnergy")).not.toContainText("passt am besten");
+    // #3476: the outline encloses the whole source row (head line, bar and detail line), with room inside its border.
+    // The diary re-renders when its reads land, so each try reads the current row.
+    const outlineProblems = () => device.evaluate((row) => {
+      const split = row.nextElementSibling?.matches(".energy-split-row") ? row.nextElementSibling : null;
+      if (!split) return ["no split row"];
+      const cells = [...row.children, ...split.children];
+      const drawn = (cell, side) => getComputedStyle(cell)[`border${side}Style`] === "dashed";
+      const box = (node) => node.getBoundingClientRect();
+      const edge = {
+        left: Math.min(...cells.filter((cell) => drawn(cell, "Left")).map((cell) => box(cell).left)),
+        right: Math.max(...cells.filter((cell) => drawn(cell, "Right")).map((cell) => box(cell).right)),
+        top: Math.min(...cells.filter((cell) => drawn(cell, "Top")).map((cell) => box(cell).top)),
+        bottom: Math.max(...cells.filter((cell) => drawn(cell, "Bottom")).map((cell) => box(cell).bottom)),
+      };
+      const outside = [];
+      for (const node of [split?.querySelector(".energy-split"), split?.querySelector("small")]) {
+        const rect = node && box(node);
+        if (!rect || rect.left < edge.left + 2 || rect.right > edge.right - 2 || rect.top < edge.top + 2 || rect.bottom > edge.bottom - 2) outside.push(node?.className || node?.tagName || "missing");
+      }
+      // The colour dot is the name cell's ::before, so the name cell's content must start clear of the border.
+      const name = row.querySelector("th");
+      const inset = box(name).left + parseFloat(getComputedStyle(name).borderLeftWidth) + parseFloat(getComputedStyle(name).paddingLeft) - edge.left;
+      // The room inside the outline must not push the table past its card.
+      const card = row.closest("[data-energy]");
+      const cardRight = box(card).right - parseFloat(getComputedStyle(card).paddingRight);
+      if (box(row.closest("table")).right > cardRight + 1) outside.push("table past its card");
+      return inset < 6 ? [...outside, `name ${inset}px from the border`] : outside;
+    }).catch((error) => [String(error)]);
+    await expect.poll(outlineProblems).toEqual([]);
+    // A late read can still re-render the card mid-capture, so the capture is retried.
+    if (theme === "light") await expect(() => page.locator("#nutritionEnergy [data-energy]").screenshot({ path: test.info().outputPath("Energieverbrauch.png"), timeout: 5_000 })).toPass();
   });
 }
 

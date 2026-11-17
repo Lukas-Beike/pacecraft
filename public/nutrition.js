@@ -848,7 +848,10 @@ async function runNutritionCleanup() {
 let nutritionRefreshAllTimer = null;
 
 function nutritionRefreshAllReceipt(run) {
-  return `Alle aktualisiert: ${run.filled} ergänzt, ${run.unchanged} unverändert, ${run.skipped} ohne EAN übersprungen, ${run.failed} fehlgeschlagen.`;
+  const counts = `${run.filled} ergänzt, ${run.unchanged} unverändert, ${run.skipped} ohne EAN übersprungen, ${run.failed} fehlgeschlagen`;
+  // #3475: a run stops after repeated Open Food Facts timeouts; the rest keeps its values.
+  if (run.stopped === "food_database_timeout") return `Open Food Facts antwortet gerade nicht. Angehalten nach ${run.done} / ${run.total}: ${counts}. Die übrigen Produkte bleiben unverändert.`;
+  return `Alle aktualisiert: ${counts}.`;
 }
 
 async function showNutritionRefreshAll(run, announce) {

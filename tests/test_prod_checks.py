@@ -967,7 +967,18 @@ class ProdChecksTests(unittest.TestCase):
             '{"level":"WARNING","event":"coach_tool_failed","context":{"tool":'
             '"unknown","type":"KeyError"}}\n'
             '{"level":"WARNING","event":"coach_tool_failed","context":{"tool":'
-            '"x; rm -rf","reason":"secret=1"}}\n',
+            '"x; rm -rf","reason":"secret=1"}}\n'
+            # #3475: failed external requests per service, status and code; a host
+            # or error text never prints.
+            '{"level":"WARNING","event":"external_request_failed","context":{"service":'
+            '"open-meteo-forecast-ecmwf","status":504,"error_code":"timeout",'
+            '"error":"GET https://user:pw@example.invalid/x failed"}}\n'
+            '{"level":"WARNING","event":"external_request_failed","context":{"service":'
+            '"open-meteo-forecast-ecmwf","status":504,"error_code":"timeout"}}\n'
+            '{"level":"WARNING","event":"external_request_failed","context":{"service":'
+            '"api.example.invalid","error_type":"URLError"}}\n'
+            '{"level":"ERROR","event":"upstream_network_error","context":{"service":'
+            '"wahoo","error_code":"connection_reset","error_type":"OSError"}}\n',
             encoding="utf-8",
         )
         code, text = self.run_main(
@@ -985,6 +996,13 @@ class ProdChecksTests(unittest.TestCase):
         self.assertIn("coach tool failed ? ? 1", text)
         self.assertNotIn("secret", text)
         self.assertNotIn("rm -rf", text)
+        self.assertIn(
+            "external request failed open-meteo-forecast-ecmwf 504 timeout 2", text
+        )
+        self.assertIn("external request failed ? - URLError 1", text)
+        self.assertIn("upstream network error wahoo - connection_reset 1", text)
+        for private in ("example.invalid", "pw@", "https"):
+            self.assertNotIn(private, text)
         code, text = self.run_main(
             prod_logs, "--log-file", str(Path(prod_client.ROOT) / "README.md")
         )
