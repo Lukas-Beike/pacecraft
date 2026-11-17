@@ -47,17 +47,21 @@ real hand-over (#3349):
 
 ```text
 - [ ] Successor launched from a turn the athlete started (a relaunch from a
-      scheduled turn was refused with `parent_not_active`), with
-      `runtimeMode: full-access` (V7 in `auto` could not reach the full-access
-      lanes: `runtime_mode_escalation_denied`), from local `develop` after
-      `git fetch` with `startFromOrigin: false` (launches from origin failed in
-      workspace preparation for V7 and V8)
-- [ ] Its worktree exists (`t3_thread_read`: `worktreePath`) before its
-      "V(n) CHECK"
-- [ ] Every lane got the successor's thread id and `environmentId` and
-      confirmed it in one line (lanes kept reporting to the old orchestrator,
-      which forwarded their messages 3 times at V6 -> V7 and 2 at V7 -> V8)
-- [ ] All lanes confirmed the new orchestrator
+      scheduled turn was refused with `parent_not_active`)
+- [ ] ... with `runtimeMode: full-access` (V7 in `auto` could not reach the
+      full-access lanes: `runtime_mode_escalation_denied`)
+- [ ] ... from local `develop` fast-forwarded to `origin/develop`
+      (`git fetch`, then `git merge --ff-only origin/develop` on `develop`),
+      with `startFromOrigin: false` (launches from origin failed in workspace
+      preparation for V7 and V8)
+- [ ] Its worktree exists (`t3_thread_read`: `worktreePath`) before its first
+      periodic check
+- [ ] Every lane got the successor's thread id (and `environmentId` when it
+      runs on another machine); lanes kept reporting to the old orchestrator,
+      which forwarded their messages 3 times at V6 -> V7 and 2 at V7 -> V8
+- [ ] The predecessor stopped its scheduled checks and forwarding
+- [ ] All lanes confirmed the new orchestrator (one line each, by message or
+      `ORCHESTRATOR:` in their own thread)
 ```
 
 ## Shared resources
