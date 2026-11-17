@@ -1451,7 +1451,8 @@ function skinfoldCard() {
 }
 
 // Each source keeps its chart colour in the table, the error chart and the hit-rate bars.
-const ENERGY_SOURCES = [["katch_mcardle", "Katch-McArdle", 1], ["cunningham", "Cunningham", 2], ["device", "Garmin-Gerät", 3], ["own", "Aus deinen Daten", 4]];
+// The device row's name is the provider label of its daily totals in the read (#3323).
+const ENERGY_SOURCES = [["katch_mcardle", "Katch-McArdle", 1], ["cunningham", "Cunningham", 2], ["device", null, 3], ["own", "Aus deinen Daten", 4]];
 const ENERGY_INSUFFICIENT = { intake_days: "unter 14 vollständige Ernährungstage", weighins: "unter 8 Wiegungen", weight_span: "Wiegungen über weniger als 21 Tage" };
 const ENERGY_STEP_SOURCES = { walks: "aus Gehen", height: "aus Körpergröße" };
 // The own resting residual below every physiological reference is not a value (#3255).
@@ -1571,7 +1572,7 @@ function energyTable(read) {
     const row = read.rows.find((item) => item.source === source) || {};
     const best = read.best === source ? [" ", createStatusChip("passt am besten", "ready")] : [];
     return [h("tr", { dataset: { energySource: source } },
-      h("th", { scope: "row", dataset: { color: String(color) } }, label, ...best),
+      h("th", { scope: "row", dataset: { color: String(color) } }, label ?? row.label, ...best),
       h("td", null, row.resting_implausible ? ENERGY_IMPLAUSIBLE : energyKcal(row.resting_kcal, row.resting_band_kcal)),
       h("td", null, energyKcal(row.total_kcal, row.total_band_kcal))), energySplitRow(row)].filter(Boolean);
   });
@@ -1597,7 +1598,7 @@ function energyFitCharts(read) {
   const band = read.fit.reference_band_kcal;
   const within = band == null ? "" : ` Abstände innerhalb von ± ${formatWhole(band)} kcal sind nicht unterscheidbar.`;
   const series = fitted.map(([row, label, color]) => ({
-    label, color, line: "solid", cadenceDays: 7, explanation: `Abstand zum Verbrauch aus deinen Daten je 4-Wochen-Fenster; niedriger passt besser.${within}`,
+    label: label ?? row.label, color, line: "solid", cadenceDays: 7, explanation: `Abstand zum Verbrauch aus deinen Daten je 4-Wochen-Fenster; niedriger passt besser.${within}`,
     points: read.windows.map((date, index) => ({ date, value: row.errors_kcal[index] })),
   }));
   const chart = analysisChart("Welche Quelle trifft dein Gewicht?", series, "kcal", read.windows[0], read.end, "", { calendarWeeks: true });

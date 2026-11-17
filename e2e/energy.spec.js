@@ -3,10 +3,15 @@ const { test, expect } = require("@playwright/test");
 // #3099, #3252: the energy table sits in the diary, its explanation behind the small "i"; the
 // fixture's thin diary gives every source as unknown and names why, never a formula fallback.
 test("@responsive the diary shows the energy table and explains it behind the info button", async ({ page }) => {
+  const energy = page.waitForResponse((response) => new URL(response.url()).pathname === "/api/body/energy");
   await page.goto("/#nutrition/diary");
+  // #3323: the device row's name is the provider label the read gives it, never a client literal.
+  const device = (await (await energy).json()).rows.find((row) => row.source === "device");
+  expect(device.label).toBeTruthy();
+  expect(device.label).not.toContain("Schätzung");
   const card = page.locator("#nutritionEnergy [data-energy]");
   await expect(card.locator("tbody tr[data-energy-source]")).toHaveCount(4);
-  await expect(card.locator("tbody th")).toHaveText(["Katch-McArdle", "Cunningham", "Garmin-Gerät", "Aus deinen Daten"]);
+  await expect(card.locator("tbody th")).toHaveText(["Katch-McArdle", "Cunningham", device.label, "Aus deinen Daten"]);
   await expect(card.locator(".analysis-reference-note")).toHaveCount(0);
   const tooltip = card.locator(".analysis-info-tooltip");
   await expect(tooltip).toBeHidden();

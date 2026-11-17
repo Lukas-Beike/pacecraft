@@ -15,6 +15,7 @@ from backend.nutrition.energy_balance import (
     Estimate,
 )
 from backend.nutrition.energy_view import energy_view, read_energy_view
+from backend.providers.source_labels import SourceView, provider_label
 from tests.test_energy_inputs import DAY1, DAY3, sources
 
 END = date(2026, 11, 14)
@@ -235,6 +236,29 @@ class EnergyViewTests(unittest.TestCase):
             (row(view, "device")["resting_kcal"], row(view, "device")["total_kcal"]),
         )
         self.assertEqual(20, row(view, "device")["mean_error_kcal"])
+
+    def test_the_device_row_names_the_providers_of_its_window(self) -> None:
+        # #3323: the label comes from the provider labels the daily totals carry,
+        # never from a client literal; the formula and own rows keep their keys.
+        garmin_label = provider_label(ProviderId.GARMIN, SourceView.DAILY_HEALTH)
+        wahoo_label = provider_label(ProviderId.WAHOO, SourceView.DAILY_HEALTH)
+        health = {day: {**v, "source": garmin_label} for day, v in garmin().items()}
+        view = energy_view(inputs(), [window(END, 3100.0)], health)
+        self.assertEqual("Garmin Connect", row(view, "device")["label"])
+        self.assertEqual(
+            ["device"], [r["source"] for r in view["rows"] if "label" in r]
+        )
+        # Another provider in the window joins it; one before the window does not.
+        health[END.isoformat()]["source"] = f"{garmin_label}, {wahoo_label}"
+        health[(END - timedelta(days=28)).isoformat()]["source"] = "Other"
+        view = energy_view(inputs(), [window(END, 3100.0)], health)
+        self.assertEqual(
+            ", ".join(sorted({garmin_label, wahoo_label})),
+            row(view, "device")["label"],
+        )
+        # Without any daily total the row still names the wearable source.
+        view = energy_view(inputs(), [window(END, 3100.0)], {})
+        self.assertEqual(garmin_label, row(view, "device")["label"])
 
     def test_garmin_splits_its_day_into_everyday_and_sessions(self) -> None:
         # 28 days of 1,745 resting and 1,375 active kcal. One 60-min session of
