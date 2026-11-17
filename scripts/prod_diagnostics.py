@@ -30,6 +30,7 @@ import contextlib
 import json
 import math
 import re
+import subprocess
 import sys
 import time
 from datetime import UTC, datetime
@@ -51,6 +52,8 @@ PRODUCTION_LINE = re.compile(
 )
 PRODUCTION_LINE_DOCS = ("AGENTS.md", ".agents/skills/pacecraft-db-migrations/SKILL.md")
 SCHEMA_HISTORY = "docs/schema-history.md"
+SCHEMA_SOURCE = "backend/db/schema.py"
+RELEASE = r"\d+\.\d+\.\d+"
 
 COUNTS = (
     "messages",
@@ -556,31 +559,71 @@ def backup_line(result: dict[str, Any], max_hours: float | None) -> tuple[str, s
     return mark(ok, f"{text} (needs under {max_hours:g} h, verified)")
 
 
+def read_doc(root: Path, name: str) -> str:
+    try:
+        return (root / name).read_text(encoding="utf-8")
+    except OSError:
+        return ""
+
+
+def schema_releases(root: Path, schema: int, version: str) -> tuple[str, str | None]:
+    """The first release tag up to `version` whose code wrote `schema`, and the
+    tag before it, from the checkout's git tags; `(version, None)` without them."""
+
+    def git(*args: str) -> str:
+        done = subprocess.run(
+            ["git", "-C", str(root), *args],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            check=False,
+        )
+        return done.stdout if done.returncode == 0 else ""
+
+    def key(tag: str) -> tuple[int, ...]:
+        return tuple(int(part) for part in tag.split("."))
+
+    tags = sorted(
+        (t for t in git("tag", "--list").split() if re.fullmatch(RELEASE, t)),
+        key=key,
+    )
+    since, before = version, None
+    for tag in reversed([t for t in tags if key(t) <= key(version)]):
+        source = git("show", f"{tag}:{SCHEMA_SOURCE}")
+        found = re.search(r"^CURRENT_SCHEMA_VERSION = (\d+)", source, re.MULTILINE)
+        if not found or int(found[1]) != schema:
+            before = tag
+            break
+        since = tag
+    return since, before
+
+
 def docs_lines(root: Path, schema: int, version: str) -> list[tuple[str, str]]:
     """Compare the production schema and version with the docs' production
     line and schema-history row; a stale one names the exact change (#3351)."""
-    if not isinstance(schema, int) or not isinstance(version, str):
+    if type(schema) is not int or not re.fullmatch(RELEASE, str(version)):
         return [mark(False, "docs: production schema or version unknown")]
-    history = (root / SCHEMA_HISTORY).read_text(encoding="utf-8")
-    row = re.search(
-        rf"^\| {schema} \| since (\d+\.\d+\.\d+) \|$", history, re.MULTILINE
-    )
-    since = row[1] if row else version
-    lines = [
-        mark(
-            row is not None,
-            f"{SCHEMA_HISTORY}: schema {schema} row"
-            + (
-                f" since {since}"
-                if row
-                else f" stale; set it to `| {schema} | since {version} |` and close"
-                f" the schema {schema - 1} row at the release before {version}"
-            ),
+    rows = {}
+    for text in read_doc(root, SCHEMA_HISTORY).splitlines():
+        cells = [cell.strip() for cell in text.strip().strip("|").split("|")]
+        if len(cells) == 2 and cells[0].isdigit():
+            rows[int(cells[0])] = cells[1]
+    opened = {n: text[6:] for n, text in rows.items() if text.startswith("since ")}
+    if list(opened) == [schema]:
+        since = opened[schema]
+        lines = [mark(True, f"{SCHEMA_HISTORY}: schema {schema} row since {since}")]
+    else:
+        since, before = schema_releases(root, schema, version)
+        closes = "".join(
+            f"; set `| {n} | {first} to {before or 'the release before ' + since} |`"
+            for n, first in sorted(opened.items())
+            if n != schema
         )
-    ]
+        stale = f"stale; set `| {schema} | since {since} |`{closes}"
+        lines = [mark(False, f"{SCHEMA_HISTORY}: schema {schema} row {stale}")]
     want = f"v{schema} since release {since}"
     for name in PRODUCTION_LINE_DOCS:
-        found = PRODUCTION_LINE.search((root / name).read_text(encoding="utf-8"))
+        found = PRODUCTION_LINE.search(read_doc(root, name))
         have = f"v{found[1]} since release {found[2]}" if found else "missing"
         change = "" if have == want else f"; change it to `Production runs {want}`"
         lines.append(mark(have == want, f"{name}: production runs {have}{change}"))
