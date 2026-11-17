@@ -2392,12 +2392,28 @@ function plannedWeekReview(weekKey, todayKey, extra, planLine) {
 // A calendar render without changes keeps the card, so a new check-in or sync refills it in place.
 function refreshWeekReview(root) {
   const card = root.querySelector(".week-review");
-  if (card?.dataset.version && card.dataset.version !== analysisReportVersionKey()) void fillWeekReview(card, true);
+  if (card?.dataset.failed) retryWeekReview(card);
+  else if (card?.dataset.version && card.dataset.version !== analysisReportVersionKey()) void fillWeekReview(card, true);
+}
+
+// A failed or timed-out read never removes the card (#3391): it names the gap and offers a retry;
+// the next calendar refresh retries as well.
+function weekReviewFailed(card) {
+  card.dataset.failed = "true";
+  const retry = h("button", { type: "button", className: "secondary-button" }, "Erneut laden");
+  retry.addEventListener("click", () => retryWeekReview(card));
+  card.replaceChildren(card.firstElementChild, h("p", "empty", "Wochenrückblick gerade nicht verfügbar"), retry);
+}
+
+function retryWeekReview(card) {
+  delete card.dataset.failed;
+  card.replaceChildren(card.firstElementChild, createLoadingState("Wochenrückblick wird geladen…"));
+  void fillWeekReview(card);
 }
 
 // A step to another week or a new calendar render replaces the card; a late answer for it is dropped.
-// A failed read (offline too) or a week without data shows the plan line instead, or nothing; a
-// failed refill keeps what the card shows.
+// A week without data shows the plan line instead, or nothing; a failed read shows why with a retry,
+// and a failed refill keeps what the card shows.
 async function fillWeekReview(card, refill = false) {
   const generation = ++weekReviewGeneration;
   const session = state.sessionGeneration;
@@ -2412,7 +2428,8 @@ async function fillWeekReview(card, refill = false) {
     if (!current()) return;
     if (review.week_start === weekKey) tiles = weekReviewTiles(review, Number(extra), thisWeek === "true");
   } catch {
-    if (!current() || refill) return;
+    if (current() && !refill) weekReviewFailed(card);
+    return;
   }
   if (!tiles.length) {
     const planLine = weekReviewFallbacks.get(card);

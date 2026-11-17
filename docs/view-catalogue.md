@@ -115,6 +115,8 @@ expression. Other inline status lines are not listed.
 | Function | Helper | Text | Detail |
 | --- | --- | --- | --- |
 | `plannedWeekReview` | `createLoadingState` | Wochenrückblick wird geladen… |  |
+| `weekReviewFailed` | `h(.empty)` | Wochenrückblick gerade nicht verfügbar |  |
+| `retryWeekReview` | `createLoadingState` | Wochenrückblick wird geladen… |  |
 | `renderLibrary` | `h(.context-empty)` | Noch keine Einheiten in der Bibliothek. Der Coach legt hier Einheiten ab, wenn du sie planst. |  |
 | `renderCompetitions` | `h(.context-empty)` | Noch keine Wettkämpfe gespeichert. |  |
 <!-- END GENERATED STATES -->
