@@ -42,6 +42,24 @@ still carries the "Start a lane" brief. Copy nothing `AGENTS.md` forbids copying
 (secrets, credentials, tokens, database keys, backup contents, athlete or
 personal data). The successor checks the handoff against the issues and ledger.
 
+An orchestrator hand-over also runs this checklist; each step failed in a
+real hand-over (#3349):
+
+```text
+- [ ] Successor launched from a turn the athlete started (a relaunch from a
+      scheduled turn was refused with `parent_not_active`), with
+      `runtimeMode: full-access` (V7 in `auto` could not reach the full-access
+      lanes: `runtime_mode_escalation_denied`), from local `develop` after
+      `git fetch` with `startFromOrigin: false` (launches from origin failed in
+      workspace preparation for V7 and V8)
+- [ ] Its worktree exists (`t3_thread_read`: `worktreePath`) before its
+      "V(n) CHECK"
+- [ ] Every lane got the successor's thread id and `environmentId` and
+      confirmed it in one line (lanes kept reporting to the old orchestrator,
+      which forwarded their messages 3 times at V6 -> V7 and 2 at V7 -> V8)
+- [ ] All lanes confirmed the new orchestrator
+```
+
 ## Shared resources
 
 - **AGENTS.md turn:** one lane at a time may change `AGENTS.md`. Grant the turn
