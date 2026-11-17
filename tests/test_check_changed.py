@@ -155,6 +155,57 @@ class CheckChangedTests(unittest.TestCase):
                     )
                     self.assertGreater(len(node[0]), 3)
 
+    def test_a_changed_workflow_is_linted_with_the_pinned_actionlint(self):
+        # #3377: the same image and flags as .github/workflows/workflow-lint.yml.
+        lint = (check_changed.ROOT / ".github/workflows/workflow-lint.yml").read_text(
+            encoding="utf-8"
+        )
+        for part in check_changed.ACTIONLINT:
+            self.assertIn(part.replace('"', ""), lint.replace('"', ""))
+        changed = [".github/workflows/workflow-lint.yml", ".github/workflows/gone.yml"]
+        runner = FakeRun()
+        code, out, _ = run_main(check_changed, [], runner, fake_git(changed))
+        self.assertEqual(code, 0)
+        docker = [call for call in runner.calls if call[0] == "docker"]
+        self.assertEqual(len(docker), 1)
+        self.assertEqual(docker[0][1:3], ["run", "--rm"])
+        self.assertEqual(docker[0][-1], ".github/workflows/workflow-lint.yml")
+        self.assertIn("ok actionlint", out)
+        # No changed workflow: no Docker call.
+        runner = FakeRun()
+        run_main(check_changed, [], runner, fake_git(["backend/x.py"]))
+        self.assertFalse(any(call[0] == "docker" for call in runner.calls))
+        # A lint finding fails the run.
+        runner = FakeRun(failing=("-oneline",))
+        code, out, _ = run_main(check_changed, [], runner, fake_git(changed))
+        self.assertEqual(code, 1)
+        self.assertIn("FAILED actionlint", out)
+
+    def test_actionlint_without_docker_is_reported_as_unrun(self):
+        changed = fake_git([".github/workflows/workflow-lint.yml"])
+        code, out, _ = run_main(
+            check_changed, [], FakeRun(missing=("docker",)), changed
+        )
+        self.assertEqual(code, 0)
+        self.assertIn("unrun actionlint: docker is not installed.", out)
+        down = FakeRun(
+            failing=("-oneline",), extra="\nCannot connect to the Docker daemon"
+        )
+        code, out, _ = run_main(check_changed, [], down, changed)
+        self.assertEqual(code, 0)
+        self.assertIn("unrun actionlint: the Docker daemon is not reachable.", out)
+        desktop = "\nfailed to connect to the docker API at npipe:////./pipe/x"
+        code, out, _ = run_main(
+            check_changed, [], FakeRun(failing=("-oneline",), extra=desktop), changed
+        )
+        self.assertEqual(code, 0)
+        self.assertIn("unrun actionlint", out)
+        # The same text from a failing test step stays a test failure.
+        tests = FakeRun(failing=("--changed",), extra=desktop)
+        code, out, _ = run_main(check_changed, [], tests, changed)
+        self.assertEqual(code, 1)
+        self.assertIn("FAILED tests", out)
+
     def test_untracked_js_counts_as_a_change(self):
         git = fake_git(["backend/x.py"], untracked=["public/new.mjs"])
         runner = FakeRun()
@@ -168,6 +219,11 @@ class CheckChangedTests(unittest.TestCase):
         self.assertIn("FAILED node-tests", out)
         self.assertIn("node is not installed", out)
         self.assertIn("ok quality", out)
+        # Every missing tool is reported, not only the first one.
+        runner = FakeRun(missing=(sys.executable, "node"))
+        code, out, _ = run_main(check_changed, ["--js"], runner)
+        self.assertEqual(code, 2)
+        self.assertEqual(out.count(" is not installed."), 4)
 
     def test_unknown_base_is_exit_two(self):
         def git(*_args, **_kwargs):
