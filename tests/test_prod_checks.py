@@ -681,6 +681,51 @@ class ProdChecksTests(unittest.TestCase):
             self.assertEqual(code, 2)
             self.assertIn(line, text)
 
+    def test_check_docs_fails_on_a_stale_production_line(self):
+        # After schema v30 shipped, AGENTS.md still said v29 (#3351).
+        root = Path(self.tmp.name) / "repo"
+        (root / "docs").mkdir(parents=True)
+        skill_doc = ".agents/skills/pacecraft-db-migrations/SKILL.md"
+        skill = (root / skill_doc).parent
+        skill.mkdir(parents=True)
+        history = root / "docs/schema-history.md"
+        history.write_text(
+            "| 26 | 2.0.5 |\n| 27 | since 2.1.2 |\n| 28 | not released yet |\n",
+            encoding="utf-8",
+        )
+        line = "Production\n  runs v27 since release 2.1.2 (the only instance)"
+        (root / "AGENTS.md").write_text(line, encoding="utf-8")
+        (skill / "SKILL.md").write_text(line.replace("\n ", ""), encoding="utf-8")
+        self.assertEqual(
+            prod_diagnostics.docs_lines(root, 27, "2.1.5"),
+            [
+                ("ok", "docs/schema-history.md: schema 27 row since 2.1.2"),
+                ("ok", "AGENTS.md: production runs v27 since release 2.1.2"),
+                ("ok", f"{skill_doc}: production runs v27 since release 2.1.2"),
+            ],
+        )
+        stale = prod_diagnostics.docs_lines(root, 28, "2.1.9")
+        self.assertEqual([state for state, _ in stale], ["FAIL"] * 3)
+        self.assertIn(
+            "set it to `| 28 | since 2.1.9 |` and close the schema 27 row"
+            " at the release before 2.1.9",
+            stale[0][1],
+        )
+        self.assertEqual(
+            stale[1][1],
+            "AGENTS.md: production runs v27 since release 2.1.2; "
+            "change it to `Production runs v28 since release 2.1.9`",
+        )
+        # The fake app reports schema 27 and 2.1.2; the repository's docs
+        # name a later production schema, so the run fails.
+        code, text = self.run_main(
+            prod_diagnostics, "--url", self.url, "--password-file", str(self.secret),
+            "--check-docs",
+        )  # fmt: skip
+        self.assertEqual(code, 1)
+        self.assertIn("FAIL AGENTS.md: production runs v", text)
+        self.assertIn("change it to `Production runs v27 since release 2.1.2`", text)
+
     def test_result_files_stay_outside_the_repository(self):
         inside = Path(prod_client.ROOT) / "result.json"
         code, text = self.run_main(

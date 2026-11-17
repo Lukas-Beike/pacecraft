@@ -3,6 +3,7 @@
     python scripts/prod_diagnostics.py --url <app address> --password-file <secret file>
         [--expect-version 2.1.2] [--expect-schema 27] [--out result.json]
         [--compare previous.json] [--ca-file ca.pem] [--require-current]
+        [--check-docs]
     python scripts/prod_diagnostics.py --url <app address> --password-file <secret file>
         --section <name> [--section <name> ...]
     Either form takes [--wait-ready <seconds>]: before it reads the report it
@@ -17,7 +18,9 @@ instead of the checks, only the allow-listed counts, flags, state words and
 ages in hours (a `*_at` time as `*_hours`) of the sections in SECTION_FIELDS,
 or the sums of a section in DERIVED_SECTIONS (`coach_local_first`: the #3080
 counts over the Coach history); the state words in FAIL_STATES and a missing
-section print as FAIL.
+section print as FAIL. `--check-docs` also compares the production schema and
+version with the production line in AGENTS.md and the db-migrations skill and
+with the docs/schema-history.md row, and names the exact change when stale.
 """
 
 from __future__ import annotations
@@ -30,15 +33,24 @@ import re
 import sys
 import time
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 
 from prod_client import (
+    ROOT,
     ProdError,
     Session,
     checkout_current,
     read_result,
     write_result,
 )
+
+# The production schema line the docs keep by hand (#3351).
+PRODUCTION_LINE = re.compile(
+    r"Production\s+runs\s+v(\d+)\s+since\s+release\s+(\d+\.\d+\.\d+)"
+)
+PRODUCTION_LINE_DOCS = ("AGENTS.md", ".agents/skills/pacecraft-db-migrations/SKILL.md")
+SCHEMA_HISTORY = "docs/schema-history.md"
 
 COUNTS = (
     "messages",
@@ -544,6 +556,37 @@ def backup_line(result: dict[str, Any], max_hours: float | None) -> tuple[str, s
     return mark(ok, f"{text} (needs under {max_hours:g} h, verified)")
 
 
+def docs_lines(root: Path, schema: int, version: str) -> list[tuple[str, str]]:
+    """Compare the production schema and version with the docs' production
+    line and schema-history row; a stale one names the exact change (#3351)."""
+    if not isinstance(schema, int) or not isinstance(version, str):
+        return [mark(False, "docs: production schema or version unknown")]
+    history = (root / SCHEMA_HISTORY).read_text(encoding="utf-8")
+    row = re.search(
+        rf"^\| {schema} \| since (\d+\.\d+\.\d+) \|$", history, re.MULTILINE
+    )
+    since = row[1] if row else version
+    lines = [
+        mark(
+            row is not None,
+            f"{SCHEMA_HISTORY}: schema {schema} row"
+            + (
+                f" since {since}"
+                if row
+                else f" stale; set it to `| {schema} | since {version} |` and close"
+                f" the schema {schema - 1} row at the release before {version}"
+            ),
+        )
+    ]
+    want = f"v{schema} since release {since}"
+    for name in PRODUCTION_LINE_DOCS:
+        found = PRODUCTION_LINE.search((root / name).read_text(encoding="utf-8"))
+        have = f"v{found[1]} since release {found[2]}" if found else "missing"
+        change = "" if have == want else f"; change it to `Production runs {want}`"
+        lines.append(mark(have == want, f"{name}: production runs {have}{change}"))
+    return lines
+
+
 def checks(
     result: dict[str, Any],
     previous: dict[str, Any] | None,
@@ -618,6 +661,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--out")
     parser.add_argument("--compare")
     parser.add_argument("--ca-file")
+    parser.add_argument("--check-docs", action="store_true")
     parser.add_argument(
         "--section",
         action="append",
@@ -634,6 +678,7 @@ def main(argv: list[str] | None = None) -> int:
         args.expect_version,
         args.expect_schema,
         args.expect_backup_hours,
+        args.check_docs or None,
     )
     if args.section and any(value is not None for value in checks_asked):
         parser.error("--section prints sections; it runs no checks or results")
@@ -670,6 +715,8 @@ def main(argv: list[str] | None = None) -> int:
             args.expect_backup_hours,
         )
     )
+    if args.check_docs:
+        lines += docs_lines(ROOT, result["schema"], result["version"])
     for state, text in lines:
         print(f"{state} {text}")
     failed = not healthy or logout != 200 or any(s == "FAIL" for s, _ in lines)
