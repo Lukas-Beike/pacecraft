@@ -42,6 +42,9 @@ python scripts/run_browser_tests.py --project all --keep-going
   write it to `testInfo.outputPath("<name>")` in the spec; the file lands under
   the run's `artifacts/` in `test-results/browser-runs/`. A flake seen only in
   CI needs a draft PR: the CI browser (`--browser-image`) needs a Linux host.
+- A browser test the PR adds or changes that fails even once in that PR's CI
+  runs `--repeat-each 20` on the failing project before auto-merge, with the
+  result in the PR body; a passing rerun alone is no evidence (#3458).
 - Weekday: `--today YYYY-MM-DD` pins the fixture's athlete day and, in specs
   that import `test` from `e2e/helpers/today.js`, the browser clock (#3200).
   The runner names each selected spec without the helper ("--today pins only
