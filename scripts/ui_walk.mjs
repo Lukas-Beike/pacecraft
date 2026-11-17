@@ -229,9 +229,10 @@ const STEP_TOTAL_MS = 30000;
 const SETTLE_MS = 15000;
 // Runs in the page: no data load of the app runs (a page without the app is always settled).
 const settled = () => !globalThis.AppState || (!globalThis.AppState.state.loadPromise && !globalThis.AppState.state.loadingAreas?.size);
-// Runs in the page: a data load runs or the shown view marks itself as loading (2.1.26 cold start).
+// Runs in the page: a data load runs or the shown view marks itself as loading (2.1.26 cold start);
+// a unit's fuelling read marks only its section (2.1.37: 2.0-2.1 s against the candidate cap, #3298).
 const loading = () => Boolean(globalThis.AppState?.state.loadPromise || globalThis.AppState?.state.loadingAreas?.size)
-  || [...document.querySelectorAll(".panel.active :is(.loading-state, [aria-busy='true'], .skeleton)")].some((node) => node.checkVisibility());
+  || [...document.querySelectorAll(".panel.active :is(.loading-state, [aria-busy='true'], .skeleton, .planned-fuelling[data-state='loading'])")].some((node) => node.checkVisibility());
 // While the view shows it is loading, an element is waited for up to this long instead of the step's cap.
 const LOADING_CAP_MS = 60000;
 const DONE = ".planned-entry.is-completed > summary";

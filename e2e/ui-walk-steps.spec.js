@@ -94,6 +94,20 @@ test("an element is waited for while the view shows it is loading", async ({ pag
   expect((await runStep(page, { name: "x", covers: "test", ready: "#gear", kind: "text" }, 300)).status).toBe("ok");
 });
 
+test("a fuelling read still running is waited for past the candidate cap", async ({ page }) => {
+  const { runStep } = await import(pathToFileURL(path.join(__dirname, "..", "scripts", "ui_walk.mjs")).href);
+  // 2.1.37: "Verpflegung" took 2008-2075 ms against the 2 s candidate cap (#3298).
+  await page.setContent(`<section class="panel active"><details class="planned-entry is-planned"><summary>Lauf</summary>
+    <section class="planned-fuelling" data-state="loading"><output>Verpflegung wird berechnet …</output></section></details></section>
+    <script>document.querySelector(".planned-entry > summary").addEventListener("click", () => setTimeout(() => {
+      const section = document.querySelector(".planned-fuelling");
+      section.dataset.state = "ready";
+      section.textContent = "60 g Kohlenhydrate pro Stunde";
+    }, 3000));</script>`);
+  const step = { name: "x", covers: "test", each: ".planned-entry:is(.is-planned, .is-today) > summary", ready: ".planned-entry[open] .planned-fuelling", kind: "numbers", optional: true };
+  expect((await runStep(page, step)).status).toBe("ok");
+});
+
 test("a seek step pages back to a week with a completed unit, a step without seek does not", async ({ page }) => {
   const { runStep } = await import(pathToFileURL(path.join(__dirname, "..", "scripts", "ui_walk.mjs")).href);
   // A Monday: the shown week has no completed unit; the week before has one.
