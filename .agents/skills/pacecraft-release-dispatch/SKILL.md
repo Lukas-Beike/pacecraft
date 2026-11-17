@@ -15,7 +15,9 @@ workflow picks the next patch) and prints the run it started. `follow` prints
 one line per link: version PR, promotion PR to `main`, the GitHub Release, and
 the `Test and publish container image` run for that tag. Exit 0 published,
 1 a link failed or a PR was closed unmerged, 3 still in progress (call it
-again later), 2 bad input or a failed `gh` call.
+again later), 2 bad input or a failed `gh` call. A transient GitHub error
+(HTTP 5xx, a timeout) is retried with a backoff and, if it lasts, reported as
+`pending GitHub unavailable` with exit 3, not as an error (#3345).
 
 A release that must ship alone (a schema release) runs under a merge freeze: the
 orchestrator sets it with `gh variable set MERGE_FREEZE --body "<reason>, only #<release PR>"`
