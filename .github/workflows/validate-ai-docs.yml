@@ -35,6 +35,6 @@ jobs:
           node-version: '22'
           package-manager-cache: false
       - name: Install the pinned OpenSpec CLI
-        run: npm ci --ignore-scripts
+        run: bash .github/scripts/npm_ci_retry.sh
       - name: Validate the OpenSpec main specs strictly
         run: python scripts/spec_validate.py

@@ -68,7 +68,7 @@ class WorkflowSourceTests(unittest.TestCase):
         ):
             self.assertLess(workflow.index(f"test -f {relative}"), validator)
         # #3173: every PR runs the strict OpenSpec validation with the pinned CLI.
-        install = workflow.index("run: npm ci --ignore-scripts")
+        install = workflow.index("run: bash .github/scripts/npm_ci_retry.sh")
         self.assertLess(install, workflow.index("run: python scripts/spec_validate.py"))
 
     def test_dependabot_covers_all_manifests_on_develop(self):
@@ -606,6 +606,52 @@ class WorkflowSourceTests(unittest.TestCase):
         self.assertIn("Verify image signature", workflow)
         self.assertIn("cosign verify", workflow)
 
+    def test_every_npm_install_retries_a_transient_failure(self):
+        # #3439: a registry or network blip in `npm ci` failed a browser shard of
+        # a release PR; every install runs through the bounded retry instead.
+        root = Path(__file__).resolve().parents[1]
+        installs = 0
+        for path in sorted((root / ".github/workflows").glob("*.yml")):
+            workflow = path.read_text(encoding="utf-8")
+            with self.subTest(workflow=path.name):
+                self.assertNotRegex(workflow, r"run: +npm (ci|install)\b")
+                installs += workflow.count("run: bash .github/scripts/npm_ci_retry.sh")
+        self.assertEqual(installs, 4)
+        script = (root / ".github/scripts/npm_ci_retry.sh").read_text(encoding="utf-8")
+        self.assertIn("ci --ignore-scripts", script)
+        self.assertIn('attempts="${NPM_CI_ATTEMPTS:-3}"', script)
+        self.assertIn('delay="${NPM_CI_DELAY_S:-15}"', script)
+
+    @unittest.skipUnless(shutil.which("bash"), "bash is not available")
+    def test_npm_retry_passes_on_a_later_attempt_and_fails_after_the_last(self):
+        root = Path(__file__).resolve().parents[1]
+        with tempfile.TemporaryDirectory() as folder:
+            calls = Path(folder, "calls").as_posix()
+            fake = Path(folder, "npm")
+            # Fails until its failure budget is used up, counting every call.
+            fake.write_text(
+                "#!/usr/bin/env bash\n"
+                f'echo "$*" >> "{calls}"\n'
+                f'[ "$(wc -l < "{calls}")" -gt "$FAKE_FAILURES" ]\n',
+                encoding="utf-8",
+            )
+            fake.chmod(0o755)
+            for failures, code, runs in ((1, 0, 2), (5, 1, 3)):
+                with self.subTest(failures=failures):
+                    Path(calls).write_text("", encoding="utf-8")
+                    done = subprocess.run(
+                        # The bash on PATH: on Windows a bare "bash" starts WSL's.
+                        [str(shutil.which("bash")), ".github/scripts/npm_ci_retry.sh"],
+                        cwd=root,
+                        env={**os.environ, "NPM": fake.as_posix(),
+                             "NPM_CI_DELAY_S": "0", "FAKE_FAILURES": str(failures)},
+                        capture_output=True, text=True, check=False,
+                    )  # fmt: skip
+                    lines = Path(calls).read_text(encoding="utf-8").splitlines()
+                    self.assertEqual((done.returncode, len(lines)), (code, runs))
+                    self.assertEqual(set(lines), {"ci --ignore-scripts"})
+            self.assertIn("failed after 3 attempts", done.stdout)
+
     def test_openspec_update_runs_pinned_cli_before_any_write_token(self):
         workflow = (
             Path(__file__).resolve().parents[1]
@@ -614,7 +660,7 @@ class WorkflowSourceTests(unittest.TestCase):
         self.assertIn("permissions:\n  contents: read", workflow)
         self.assertIn("schedule:", workflow)
         regenerate, publish = workflow.split("\n  publish:\n")
-        self.assertIn("npm ci --ignore-scripts", regenerate)
+        self.assertIn("run: bash .github/scripts/npm_ci_retry.sh", regenerate)
         self.assertIn("npm run openspec -- update", regenerate)
         self.assertNotIn("secrets.", regenerate)
         self.assertNotIn("npm ", publish)
