@@ -503,18 +503,41 @@ class WorkflowSourceTests(unittest.TestCase):
                     found = setup.search(job)
                     self.assertTrue(found and found.start() < first.start(), first[0])
 
-    def test_pull_request_runs_cancel_only_their_own_older_run(self):
-        workflow = (
-            Path(__file__).resolve().parents[1]
-            / ".github/workflows/publish-container.yml"
-        ).read_text(encoding="utf-8")
+    def test_newer_pr_and_develop_pushes_cancel_only_their_superseded_run(self):
+        # #3353: about 20 superseded develop runs were cancelled by hand. A
+        # newer develop push now replaces them; the release version commit's
+        # run, which the release chain reuses, keeps its own group, as do main
+        # pushes, releases and dispatches.
+        root = Path(__file__).resolve().parents[1]
+        workflow = (root / ".github/workflows/publish-container.yml").read_text(
+            encoding="utf-8"
+        )
         head = workflow.split("\njobs:\n", 1)[0]
+        develop_push = (
+            "github.event_name == 'push' && github.ref == 'refs/heads/develop' && "
+            "!startsWith(github.event.head_commit.message, "
+            "'chore(release): set application version to ')"
+        )
         self.assertIn(
-            "group: publish-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || github.run_id }}",
+            "group: publish-${{ github.event_name == 'pull_request' && "
+            "format('pr-{0}', github.event.pull_request.number) || "
+            f"{develop_push} && 'develop-push' || github.run_id }}}}",
             head,
         )
         self.assertIn(
-            "cancel-in-progress: ${{ github.event_name == 'pull_request' }}", head
+            "cancel-in-progress: ${{ github.event_name == 'pull_request' || "
+            f"{develop_push} }}}}",
+            head,
+        )
+        self.assertEqual(head.count("concurrency:"), 1)
+        # The excluded prefix is the one the release chain gives its version
+        # commit (the squash merge keeps the PR title).
+        release = (root / ".github/workflows/daily-release.yml").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn(
+            '--title "chore(release): set application version to $next_tag"',
+            release,
         )
 
     def test_pages_deploy_only_from_main(self):
