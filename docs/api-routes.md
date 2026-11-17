@@ -380,7 +380,10 @@ yesterday); no body.
 
 Response: 200 with `end` (yesterday, where the windows end), `day` (the
 day the source rows show) and `day_partial` (true for today, whose values
-are still partial), `windows` (the 12 weekly 4-week window ends,
+are still partial; today `device` takes the newest full day's resting
+kcal of the 7 days before as `resting_kcal`, named by `resting_from`, or
+has none with `resting_missing` `no_recent_resting`), `windows` (the 12
+weekly 4-week window ends,
 oldest first), `rows` (`katch_mcardle`, `cunningham`, `device` (the
 wearable's estimate) and `own`, each with `resting_kcal`, `total_kcal`
 and their nominal 95 % `*_band_kcal`; the first three show `day`: its

@@ -1673,8 +1673,17 @@ function energyMissingCell(reason) {
 // window, which a single day cannot have (#3395).
 function energyRowNote(read, source, row) {
   if (source === "own") return row.window_days ? [h("small", null, `Ø ${row.window_days} Tage`)] : [];
-  const parts = [ENERGY_FORMULAS.has(source) && read.body ? `KFA: ${read.body.label}` : "", read.day_partial ? "bis jetzt" : ""].filter(Boolean);
+  const parts = [ENERGY_FORMULAS.has(source) && read.body ? `KFA: ${read.body.label}` : "", energyRestingFrom(read, row), read.day_partial ? "bis jetzt" : ""].filter(Boolean);
   return parts.length ? [h("small", null, parts.join(" · "))] : [];
+}
+
+// Today Garmin's Ruhe is the newest full day's resting value (#3443); its day names it.
+function energyRestingFrom(read, row) {
+  const from = row.resting_from;
+  if (!from) return "";
+  const yesterday = new Date(`${read.day}T12:00:00Z`);
+  yesterday.setUTCDate(yesterday.getUTCDate() - 1);
+  return from === yesterday.toISOString().slice(0, 10) ? "Ruhe wie gestern" : `Ruhe vom ${from.slice(8, 10)}.${from.slice(5, 7)}.`;
 }
 
 // The 12-week evaluation outlines one row (#3397): solid for the distinguishable best source,
@@ -1685,16 +1694,20 @@ function energyFitMarker(read, source) {
   return ranked[0]?.source === source ? "nearest" : null;
 }
 
+function energyValueCells(read, source, row) {
+  if (ENERGY_FORMULAS.has(source) && row.resting_kcal == null && read.skinfold_missing) return [energyMissingCell(read.skinfold_missing)];
+  if (row.resting_missing) return [h("td", { colSpan: 2, className: "muted" }, "kein Ruhewert der letzten Tage")];
+  return [h("td", null, row.resting_implausible ? ENERGY_IMPLAUSIBLE : energyKcal(row.resting_kcal, row.resting_band_kcal)),
+    h("td", null, energyKcal(row.total_kcal, row.total_band_kcal))];
+}
+
 function energyTable(read) {
   const rows = ENERGY_SOURCES.flatMap(([source, label, color]) => {
     const row = read.rows.find((item) => item.source === source) || {};
     const fit = energyFitMarker(read, source);
     return [h("tr", { dataset: fit ? { energySource: source, fit } : { energySource: source } },
       h("th", { scope: "row", dataset: { color: String(color) } }, label ?? row.label, ...energyRowNote(read, source, row)),
-      ...(ENERGY_FORMULAS.has(source) && row.resting_kcal == null && read.skinfold_missing
-        ? [energyMissingCell(read.skinfold_missing)]
-        : [h("td", null, row.resting_implausible ? ENERGY_IMPLAUSIBLE : energyKcal(row.resting_kcal, row.resting_band_kcal)),
-          h("td", null, energyKcal(row.total_kcal, row.total_band_kcal))])), energySplitRow(row)].filter(Boolean);
+      ...energyValueCells(read, source, row)), energySplitRow(row)].filter(Boolean);
   });
   return h("table", { className: "current-performance-table" }, h("caption", null, "Energieverbrauch ", ...energyInfo(read)),
     h("thead", null, h("tr", null, h("th", { scope: "col" }, "Quelle"), h("th", { scope: "col" }, "Ruhe"), h("th", { scope: "col" }, "Tag gesamt"))),
