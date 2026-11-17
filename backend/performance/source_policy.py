@@ -558,8 +558,8 @@ def resolve_candidates(
     remaining source in ``source_order`` wins; the others stay as alternatives in
     that order. ``RECENCY_ORDERS`` kinds rank by recency instead (``_by_recency``).
     A conflict is an alternative that differs from the winner by more than the
-    kind's ``CONFLICT_TOLERANCE`` or ``ABSOLUTE_CONFLICT_TOLERANCE``. A value of
-    the same day as a winning athlete entry is left out (#3464). ``sport``
+    kind's ``CONFLICT_TOLERANCE`` or ``ABSOLUTE_CONFLICT_TOLERANCE``. Garmin's
+    value of the same day as a winning athlete entry is left out (#3464). ``sport``
     selects a ``SPORT_ORDERS`` entry. None without any current candidate.
     """
     rule = CURRENT_RULES.get(kind)
@@ -579,10 +579,16 @@ def resolve_candidates(
         return None
     winner, *alternatives = ranked
     if _entered(winner):
-        # The entry of a day is that day's Garmin entry too (#3403): another
-        # value of the same day is no second value of that day (#3464).
+        # The entry of a day is that day's Garmin entry too (#3403): Garmin's
+        # value of the same day is no second value of that day (#3464). Another
+        # provider's reading stays an alternative (Gitar, #3474).
         alternatives = [
-            item for item in alternatives if item.observed_on != winner.observed_on
+            item
+            for item in alternatives
+            if not (
+                item.source is ProviderId.GARMIN
+                and item.observed_on == winner.observed_on
+            )
         ]
     return Resolved(winner, tuple(alternatives), _conflict(kind, winner, alternatives))
 
