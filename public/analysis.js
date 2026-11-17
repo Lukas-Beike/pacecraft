@@ -1305,7 +1305,8 @@ function showSkinfoldResult() {
   const profile = state.data?.profile || {};
   const age = Number(form.elements.date.value.slice(0, 4)) - Number(profile.birth_year);
   const folds = skinfoldDialogSites().map((site) => Number(String(form.elements[site].value).replace(",", ".")));
-  const fat = profile.birth_year ? skinfoldBodyFat(profile.sex === "female" ? "female" : "male", folds, age) : null;
+  const sex = profile.sex === "female" ? "female" : "male";
+  const fat = profile.birth_year ? skinfoldBodyFat(sex, folds, age) : null;
   document.querySelector("#bodyFatDialogResult").textContent = fat == null ? "" : `Ergibt ${analysisValue(fat, "%")} Körperfett`;
 }
 

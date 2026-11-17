@@ -333,7 +333,9 @@ def skinfold_sources(
     ``device`` is a scale's body fat per day (Garmin), read by window;
     ``entered`` the athlete's own percentages (no provider, #3402).
     """
-    fats = {day: (value, ProviderId.GARMIN) for day, value in (device or {}).items()}
+    fats: dict[date, tuple[float, ProviderId | None]] = {
+        day: (value, ProviderId.GARMIN) for day, value in (device or {}).items()
+    }
     fats |= {day: (value, None) for day, value in (entered or {}).items()}
 
     def until(day: date) -> list[SkinfoldMeasurement]:

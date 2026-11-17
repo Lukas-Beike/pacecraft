@@ -11,12 +11,12 @@ from backend.activities.feedback import ActivityFeedbackService
 from backend.activities.session_corrections import SessionCorrectionService
 from backend.activities.zone_settings import effective_zone_configuration
 from backend.app.context import AppContext
+from backend.athlete.body_entry import BODY_FAT_ENTRY, BodyEntryService
 from backend.athlete.checkins import CheckinService
 from backend.athlete.equipment import EquipmentService
 from backend.athlete.equipment_history import equipment_history_records
 from backend.athlete.profile import ProfileService
 from backend.athlete.skinfolds import SkinfoldService
-from backend.athlete.body_entry import BODY_FAT_ENTRY, BodyEntryService
 from backend.athlete.zones import ZoneConfigurationService
 from backend.canonical.activity_summary import ActivitySummary
 from backend.canonical.vocabulary import ProviderId
