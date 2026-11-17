@@ -44,7 +44,7 @@ stop, report it, and do not try to repair production.
    restart without a release, the running digest equals the current tag).
 2. **Diagnostics and no data lost:** [prod-diagnostics](../pacecraft-prod-diagnostics/SKILL.md)
    with `--expect-version <tag> --expect-schema <current schema> --compare <previous result> --check-docs`,
-   from a checkout of the current `origin/develop` with tags fetched. A failed
+   with tags fetched (`git fetch --tags`). A failed
    docs line (`AGENTS.md`, the db-migrations skill, `docs/schema-history.md`)
    is a stale document, not a production error: it does not stop the check;
    [release-unraid](../pacecraft-release-unraid/SKILL.md) opens the docs PR.

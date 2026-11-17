@@ -642,7 +642,9 @@ def checks(
     expect_version: str | None,
     expect_schema: int | None,
     expect_backup_hours: float | None = None,
+    check_docs: bool = False,
 ) -> list[tuple[str, str]]:
+    docs = docs_lines(ROOT, result["schema"], result["version"]) if check_docs else []
     return [
         expected("version", result["version"], expect_version),
         expected("schema", result["schema"], expect_schema),
@@ -669,6 +671,7 @@ def checks(
             ),
         ),
         *comparison_lines(result, previous),
+        *docs,
     ]
 
 
@@ -762,10 +765,9 @@ def main(argv: list[str] | None = None) -> int:
             args.expect_version,
             args.expect_schema,
             args.expect_backup_hours,
+            args.check_docs,
         )
     )
-    if args.check_docs:
-        lines += docs_lines(ROOT, result["schema"], result["version"])
     for state, text in lines:
         print(f"{state} {text}")
     failed = not healthy or logout != 200 or any(s == "FAIL" for s, _ in lines)
