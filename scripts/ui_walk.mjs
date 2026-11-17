@@ -2,7 +2,6 @@
 //
 //   node scripts/ui_walk.mjs --url <app address> --password-file <secret file>
 //     --out-dir <new scratchpad dir> [--compare <previous walk's out-dir or its ui-walk.json>]
-//     [--require-current]
 //
 // Logs in with the password read from the file (never printed or passed on a
 // command line), opens each main view, switches the calendar between week and
@@ -11,7 +10,6 @@
 // records the service-worker cache name and asset versions, and logs out.
 // It presses no control that saves, syncs, deletes or sends. Exit 0 no error,
 // 1 a view or step failed or logged errors, 2 bad input or login refused.
-import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -59,20 +57,6 @@ function confined(target, roots, refused) {
     }
   }
   return resolved;
-}
-
-// An old checkout walks old STEPS against a new release (#3344): warn, or refuse
-// with --require-current (also when git cannot tell), when HEAD lacks commits of
-// origin/develop. The local git state only, no fetch; silent when current.
-// Returns false when the walk must not run.
-export const CHECKOUT_FIX = "git fetch origin develop && git switch --detach origin/develop";
-export function checkoutCurrent(requireCurrent, root = ROOT) {
-  const done = spawnSync("git", ["rev-list", "--count", "HEAD..origin/develop"], { cwd: root, encoding: "utf8", timeout: 15000 });
-  const behind = done.status === 0 && /^\d+\s*$/.test(done.stdout) ? Number(done.stdout) : null;
-  if (behind === 0 || (behind === null && !requireCurrent)) return true;
-  const state = behind === null ? "cannot be compared with origin/develop" : `is ${behind} commit(s) behind origin/develop`;
-  console.log(`${requireCurrent ? "FAIL" : "WARN"} this checkout ${state}; update it: ${CHECKOUT_FIX}`);
-  return !requireCurrent;
 }
 
 // Every file the walk reads or writes lives in the system temp directory (the
@@ -539,9 +523,8 @@ export function reportLines(result) {
 
 async function main() {
   const { values } = parseArgs({
-    options: { url: { type: "string" }, "password-file": { type: "string" }, "out-dir": { type: "string" }, compare: { type: "string" }, "require-current": { type: "boolean" } },
+    options: { url: { type: "string" }, "password-file": { type: "string" }, "out-dir": { type: "string" }, compare: { type: "string" } },
   });
-  if (!checkoutCurrent(Boolean(values["require-current"]))) return 2;
   let url;
   let outDir;
   let password;
