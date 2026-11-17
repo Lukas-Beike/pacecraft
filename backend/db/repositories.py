@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import builtins
 import json
+import re
 import unicodedata
+from collections import Counter
 from collections.abc import Callable, Mapping, Sequence
 from typing import Any
 
@@ -254,6 +256,53 @@ def _name_key(name: str) -> str:
     return "".join(c for c in folded if not unicodedata.combining(c))
 
 
+def _relevance(name: str, query: str | None) -> int:
+    """How well a listed product's name answers a search, best first (#3435).
+
+    0: the name is the search; 1: the name starts with it; 2: every searched
+    word starts a word of the name; 3: any other hit (brand, inside a word, EAN).
+    Without a search every product ranks the same.
+    """
+    term = _name_key(" ".join((query or "").split()))
+    if not term:
+        return 0
+    key = _name_key(name)
+    if key == term:
+        return 0
+    if key.startswith(term):
+        return 1
+    words = re.split(r"[^0-9a-z]+", key)
+    if all(any(word.startswith(part) for word in words) for part in term.split()):
+        return 2
+    return 3
+
+
+def _basis_product_ids(basis: Any) -> set[str]:
+    """The saved products and database foods one logged meal used (#3435).
+
+    A single product's basis names it under ``product``, a database meal its
+    ``ingredients``, a composite meal each component's own basis.
+    """
+    if not isinstance(basis, dict):
+        return set()
+    ingredients = basis.get("ingredients")
+    items = [
+        basis.get("product"),
+        basis.get("food"),
+        *(ingredients if isinstance(ingredients, list) else []),
+    ]
+    found = {
+        item["id"]
+        for item in items
+        if isinstance(item, dict) and isinstance(item.get("id"), str)
+    }
+    components = basis.get("components")
+    for component in components if isinstance(components, list) else ():
+        if isinstance(component, dict):
+            found |= _basis_product_ids(component.get("nutrition_basis"))
+    return found
+
+
 class NutritionProductRepository:
     """Persist athlete-confirmed food products independently from meal logs.
 
@@ -349,13 +398,20 @@ class NutritionProductRepository:
         return [self._row(row) for row in rows]
 
     def list_all(
-        self, db: Any, *, query: str | None = None, limit: int | None = 1000
+        self,
+        db: Any,
+        *,
+        query: str | None = None,
+        limit: int | None = 1000,
+        usage: Mapping[str, int] | None = None,
     ) -> builtins.list[dict[str, Any]]:
-        """Active own products and stored database foods together, by name.
+        """Active own products and stored database foods together.
 
         The search covers name, brand and EAN. Each product names its
-        ``origin``, ``fetched_at`` and ``missing_fields``. ``limit`` None lists
-        every product (the refresh-all run, #3299).
+        ``origin``, ``fetched_at``, ``missing_fields`` and ``usage_count`` (the
+        logged meals that used it, from ``usage``). The order is the search's
+        relevance, then the most used, then the name (#3435). ``limit`` None
+        lists every product (the refresh-all run, #3299).
         """
         if (found := _term_clauses(query, barcodes=True)) is None:
             return []
@@ -367,9 +423,18 @@ class NutritionProductRepository:
         ).fetchall()
         # Sorted before the cut: SQLite folds ASCII case only, and "Äpfel"
         # belongs under A, not after Z.
-        listed = sorted(
-            (self._listed(row) for row in rows),
-            key=lambda product: (_name_key(product["name"]), product["id"]),
+        counts = usage or {}
+        listed = [
+            {**product, "usage_count": int(counts.get(product["id"], 0))}
+            for product in (self._listed(row) for row in rows)
+        ]
+        listed.sort(
+            key=lambda product: (
+                _relevance(product["name"], query),
+                -product["usage_count"],
+                _name_key(product["name"]),
+                product["id"],
+            )
         )
         return listed if limit is None else listed[: max(1, min(int(limit), 1000))]
 
@@ -1611,6 +1676,22 @@ class NutritionRepository:
         entry["nutrition_basis"] = basis
         entry["logged_time_known"] = bool(entry["logged_time_known"])
         return entry
+
+    @staticmethod
+    def product_usage(db: Any) -> dict[str, int]:
+        """How many logged meals used each saved product or database food (#3435).
+
+        Counted from the meal log on every read, so logging, editing, deleting
+        and undoing a meal keep it right without a stored count.
+        """
+        counts: Counter[str] = Counter()
+        for row in db.execute("SELECT nutrition_basis FROM nutrition_logs"):
+            text = row[0] if isinstance(row, tuple) else row["nutrition_basis"]
+            try:
+                counts.update(_basis_product_ids(json.loads(text)))
+            except TypeError, ValueError:
+                continue
+        return dict(counts)
 
     @staticmethod
     def _basis_json(entry: dict[str, Any]) -> str:

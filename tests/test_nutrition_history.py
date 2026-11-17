@@ -48,6 +48,34 @@ class NutritionHistoryCase(unittest.TestCase):
 
 
 class NutritionHistoryTests(NutritionHistoryCase):
+    def usage(self) -> dict[str, int]:
+        return {
+            product["name"]: product["usage_count"]
+            for product in self.library.product_catalog.list_all_products()
+        }
+
+    def test_product_usage_follows_the_meal_log_through_delete_and_undo(self) -> None:
+        # #3435: counted from the logged meals, a composite meal counts each product once.
+        catalog = self.library.product_catalog
+        base = {"basis_amount": 100, "basis_unit": "g", "kcal": 100, "carbs_g": 10,
+                "protein_g": 5, "fat_g": 2, "source": "manual"}  # fmt: skip
+        skyr = catalog.save_product({"name": "Skyr", **base})
+        banana = catalog.save_product({"name": "Banane", **base})
+        catalog.save_product({"name": "Kokosmilch", **base})
+        first = self.diary.log_product(skyr["id"], 200, "g")
+        self.diary.log_product(skyr["id"], 150, "g")
+        self.assertEqual({"Skyr": 2, "Banane": 0, "Kokosmilch": 0}, self.usage())
+        # An edit that adds a product counts it; the same product twice stays one use.
+        self.diary.add_product_to_meal(first["id"], banana["id"], 100, "g")
+        self.diary.add_product_to_meal(first["id"], banana["id"], 50, "g")
+        self.assertEqual({"Skyr": 2, "Banane": 1, "Kokosmilch": 0}, self.usage())
+        _, changes = self.collected(lambda: self.diary.delete_meal(first["id"]))
+        self.assertEqual({"Skyr": 1, "Banane": 0, "Kokosmilch": 0}, self.usage())
+        self.undo(changes)
+        self.assertEqual({"Skyr": 2, "Banane": 1, "Kokosmilch": 0}, self.usage())
+        # Most used first, then by name.
+        self.assertEqual(["Skyr", "Banane", "Kokosmilch"], list(self.usage()))
+
     def undo(self, changes: list[dict[str, str]]) -> None:
         unused: Any = None
         undo = HistoryUndoService(

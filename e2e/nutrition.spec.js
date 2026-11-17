@@ -141,6 +141,47 @@ test("@responsive nutrition product library supports review, local save, favorit
   await expect(favorites.filter({ hasText: productName })).toHaveCount(0);
 });
 
+// #3435: every product shows how often it was logged, most used first; a new product is
+// selected for a meal at once and counts once it is logged.
+test("@responsive products show their use count, most used first, and a new one is selected at once", async ({ page }) => {
+  const productName = `Zählprodukt ${Date.now()}`;
+  await page.goto("/#nutrition/products");
+  await page.locator("#nutritionProductManual").click();
+  const editor = page.locator("#nutritionExtraction");
+  await editor.locator('[name="name"]').fill(productName);
+  await editor.locator('[name="kcal"]').fill("86");
+  await editor.locator('[name="basis_amount"]').fill("100");
+  await editor.locator('[name="basis_unit"]').selectOption("g");
+  await editor.getByRole("button", { name: "Produkt lokal speichern" }).click();
+  // Confirmed: the meal entry opens with the new product, no search needed.
+  const dialog = page.locator("#nutritionProductUseDialog");
+  await expect(dialog).toBeVisible();
+  await expect(page.locator("#nutritionProductUseName")).toHaveText(productName);
+  await page.locator("#nutritionProductUseAmount").fill("200");
+  await page.locator("#nutritionProductUseAdd").click();
+  await expect(page.locator("#nutritionProductStatus")).toContainText("als Snack erfasst");
+  await expect(dialog).toBeHidden();
+  // A second new product, not logged, ranks below the logged one.
+  const unused = `${productName} ungenutzt`;
+  await page.locator("#nutritionProductManual").click();
+  await editor.locator('[name="name"]').fill(unused);
+  await editor.locator('[name="kcal"]').fill("50");
+  await editor.locator('[name="basis_amount"]').fill("100");
+  await editor.locator('[name="basis_unit"]').selectOption("g");
+  await editor.getByRole("button", { name: "Produkt lokal speichern" }).click();
+  await expect(dialog).toBeVisible();
+  await page.locator("#nutritionProductUseCancel").click();
+  const cards = await openProductSection(page, "all");
+  await expect(cards.filter({ hasText: productName }).first().locator(".nutrition-usage")).toHaveText("1×");
+  await expect(cards.filter({ hasText: unused }).locator(".nutrition-usage")).toHaveText("0×");
+  // The counts never rise down the list, and the logged product comes first.
+  const counts = (await cards.locator(".nutrition-usage").allTextContents()).map((text) => Number.parseInt(text, 10));
+  expect(counts).toEqual([...counts].sort((a, b) => b - a));
+  const names = await cards.locator("h3").allTextContents();
+  expect(names.indexOf(productName)).toBeLessThan(names.indexOf(unused));
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBeTruthy();
+});
+
 test("@responsive the product list has sections, markers and the same four actions for own and database products", async ({ page }) => {
   const nutrients = { kcal: 46, carbs_g: 6.7, protein_g: 1, fat_g: 1.5, sugar_g: 4, fiber_g: 0, salt_g: 0.1 };
   const base = { basis_amount: 100, basis_unit: "g", status: "active", filled_fields: {}, favorite: 0, ...nutrients };
@@ -347,6 +388,9 @@ test("@responsive Open Food Facts lookup can be explicitly saved into the local 
   expect(savedPayload.sugar_g).toBe(4);
   expect(savedPayload.fiber_g).toBe(0);
   expect(savedPayload.salt_g).toBe(0.03);
+  // A new product opens the meal entry at once (#3435); this flow continues without it.
+  await expect(page.locator("#nutritionProductUseDialog")).toBeVisible();
+  await page.locator("#nutritionProductUseCancel").click();
   await page.locator("#nutritionBarcodeButton").click();
   await page.locator("#nutritionBarcodeManual").fill("4006381333931");
   await page.locator("#nutritionBarcodeLookup").click();

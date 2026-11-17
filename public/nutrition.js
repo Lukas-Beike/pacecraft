@@ -890,12 +890,20 @@ function nutritionProductSection(key, title, products, searching) {
   return section;
 }
 
+// How many logged meals used the product (#3435), from the merged list's read.
+function nutritionUsageCount(product) {
+  if (!Number.isInteger(product.usage_count)) return null;
+  const count = product.usage_count;
+  return h("span", { className: `nutrition-usage${count ? "" : " is-zero"}`, title: `${count}-mal erfasst` }, `${count}×`);
+}
+
 function nutritionProductCard(product, local) {
   const kcalLabel = product.kcal == null ? "kcal unbekannt" : `${product.kcal} kcal`;
   const missing = nutritionMissingFields(product);
   const card = h("article", "nutrition-card nutrition-product-card",
     h("div", "nutrition-product-head",
       h("h3", null, [product.brand, product.name].filter(Boolean).join(" · ") || "Unbenanntes Produkt"),
+      nutritionUsageCount(product),
       local && product.id && product.local !== false ? nutritionFavoriteButton(product) : null),
     h("p", null, `${kcalLabel} · KH ${product.carbs_g ?? "–"} g · Protein ${product.protein_g ?? "–"} g · Fett ${product.fat_g ?? "–"} g`),
     h("div", "nutrition-product-marks",
@@ -998,7 +1006,11 @@ async function addNutritionProductToMeal() {
     const result = await api(mealId ? "/api/nutrition/entry/add-product" : "/api/nutrition/entry", { method: "POST", body: JSON.stringify(body) });
     if (generation !== state.sessionGeneration) return;
     closeNutritionProductUse();
-    showNutritionReceipt(document.querySelector("#nutritionProductStatus"), `„${use.product.name}“ ${mealId ? "zur Mahlzeit ergänzt" : "als Snack erfasst"}.`, result.change);
+    // The list shows the new use in the product's count (#3435); its reload
+    // clears the status line, so the receipt follows it.
+    await reloadNutritionProducts();
+    if (generation !== state.sessionGeneration) return;
+    showNutritionReceipt(document.querySelector("#nutritionProductStatus"), `„${use.product.name}“ ${mealId ? "zur Mahlzeit ergänzt" : "als Snack erfasst"}.`, result.change, () => reloadNutritionProducts());
   } catch (error) {
     if (generation !== state.sessionGeneration) return;
     document.querySelector("#nutritionProductUseStatus").textContent = `Produkt konnte nicht erfasst werden: ${error.message}`;
@@ -1057,7 +1069,10 @@ async function submitNutritionProductForm(form) {
     editor.hidden = true; editor.replaceChildren(); await reloadNutritionProducts();
     const name = saved.product?.name || "Produkt";
     const message = form.dataset.database === "true" ? `Nährwerte von „${name}“ gespeichert.` : `Produkt „${name}“ lokal gespeichert.`;
-    if (generation === state.sessionGeneration) showNutritionReceipt(status, message, saved.change, () => reloadNutritionProducts());
+    if (generation !== state.sessionGeneration) return;
+    showNutritionReceipt(status, message, saved.change, () => reloadNutritionProducts());
+    // A new product is selected for a meal at once, no search needed (#3435).
+    if (!payload.id && saved.product?.id && saved.product.basis_unit) void useNutritionProduct(normalizeNutritionProduct(saved.product));
   } catch (error) { if (generation === state.sessionGeneration) status.textContent = `Produkt konnte nicht gespeichert werden: ${error.message}`; }
 }
 

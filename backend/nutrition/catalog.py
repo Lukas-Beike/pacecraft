@@ -15,6 +15,7 @@ from backend.db.repositories import (
     NUTRIENT_COLUMNS,
     FoodDatabaseEntryRepository,
     NutritionProductRepository,
+    NutritionRepository,
     fill_empty_nutrients,
 )
 from backend.errors import AppError
@@ -102,15 +103,17 @@ class ProductCatalogService:
     def list_all_products(
         self, query: str | None = None, *, limit: int | None = 1000
     ) -> list[dict[str, Any]]:
-        """Own products and stored database foods by name; search covers EAN.
+        """Own products and stored database foods, most used first (#3435).
 
-        ``limit`` None lists every product.
+        A search ranks its best hits first; search covers EAN. ``limit`` None
+        lists every product.
         """
         with self._database_manager.reader() as db:
-            found = self._products.list_all(db, query=query, limit=limit)
+            usage = NutritionRepository.product_usage(db)
+            found = self._products.list_all(db, query=query, limit=limit, usage=usage)
             if found or not (query and query.strip()):
                 return found
-            everything = self._products.list_all(db)
+            everything = self._products.list_all(db, usage=usage)
         # The same typo-tolerant fallback as the own-product list.
         return [
             product

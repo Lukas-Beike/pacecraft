@@ -5,12 +5,13 @@ from __future__ import annotations
 import sqlite3
 import unittest
 from datetime import UTC, datetime
+from typing import Any
 from unittest.mock import Mock
 
 from nutrition_service_support import build_nutrition_services
 from support import temp_database
 
-from backend.db.repositories import FoodDatabaseEntryRepository
+from backend.db.repositories import FoodDatabaseEntryRepository, _basis_product_ids
 from backend.errors import AppError
 
 
@@ -84,6 +85,47 @@ class FavoritesAndMealAdditionTests(unittest.TestCase):
         self.assertEqual(
             self.library.product_catalog.get_product(hafer["id"])["favorite"], 0
         )
+
+    def test_the_list_sorts_most_used_first_and_search_keeps_relevance_first(
+        self,
+    ) -> None:
+        # #3435: ties by name; a search ranks the name match above more use.
+        catalog = self.library.product_catalog
+        products = {
+            name: self.product(name)
+            for name in ("Skyrella Riegel", "Skyr", "Banane", "Apfel", "Brot mit Skyr")
+        }
+        for name, times in (("Skyrella Riegel", 3), ("Brot mit Skyr", 2), ("Skyr", 1)):
+            for _ in range(times):
+                self.diary.log_product(products[name]["id"], 100, "g")
+        self.assertEqual(
+            [(p["name"], p["usage_count"]) for p in catalog.list_all_products()],
+            [("Skyrella Riegel", 3), ("Brot mit Skyr", 2), ("Skyr", 1),
+             ("Apfel", 0), ("Banane", 0)],
+        )  # fmt: skip
+        self.assertEqual(
+            [p["name"] for p in catalog.list_all_products("skyr")],
+            ["Skyr", "Skyrella Riegel", "Brot mit Skyr"],
+        )
+
+    def test_every_logged_basis_shape_names_its_products(self) -> None:
+        # #3435: single product, database meal, composite (also a logged template).
+        product = {"kind": "local_product", "product": {"id": "own-1"}}
+        cases: list[tuple[dict[str, Any], set[str]]] = [
+            (product, {"own-1"}),
+            ({"kind": "database", "ingredients": [{"id": "off:1"}, {"id": "bls:2"}]},
+             {"off:1", "bls:2"}),
+            ({"kind": "composite", "components": [
+                {"nutrition_basis": product},
+                {"nutrition_basis": {"kind": "database", "food": {"id": "off:1"}}},
+                {"nutrition_basis": {"kind": "estimate"}},
+            ]}, {"own-1", "off:1"}),
+            ({"kind": "manual"}, set()),
+            ({"kind": "database", "ingredients": "broken"}, set()),
+        ]  # fmt: skip
+        for basis, expected in cases:
+            with self.subTest(kind=basis["kind"]):
+                self.assertEqual(_basis_product_ids(basis), expected)
 
     def test_favorite_needs_a_known_product_and_a_boolean(self) -> None:
         product = self.product("Skyr")
