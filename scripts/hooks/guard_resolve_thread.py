@@ -214,11 +214,14 @@ def word_reaches_script(word: str) -> bool:
     # Windows also matches a wildcard against the short name.
     if (short and NAME.startswith(short[1][:2])) or ("~" in last and GLOB.search(last)):
         return True
-    folder = folders[-1].rstrip(". ") if folders else None
+    folder = folders[-1] if folders else None
+    if folder not in {None, ".", ".."}:
+        # Windows drops trailing dots and spaces of a folder name.
+        folder = folder.rstrip(". ")
     # A file in a plainly named other folder is never the script; a tilde
     # folder (`~+` is the current one) is not plain.
     plain = folder is not None and not folder.startswith("~") and not GLOB.search(folder)
-    if plain and folder not in {"", ".", "..", "scripts"}:
+    if plain and folder not in {".", "..", "scripts"}:
         return False
     # Without a folder, a glob must keep part of the name: `*` and `*.py`
     # pass, `r*` does not.

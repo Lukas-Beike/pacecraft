@@ -280,6 +280,7 @@ class GuardHookTests(unittest.TestCase):
             "ls *",
             "git commit -m 'fix: resolve review thread hook'",
             "grep -n resolveReviewThread docs/notes.md",
+            'echo "costs \\$5 or \\${x}" > notes.txt',
             "git log -1 > notes.txt 2>&1",
         ):
             with self.subTest(command):
