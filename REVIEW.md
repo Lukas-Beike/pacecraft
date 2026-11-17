@@ -65,10 +65,12 @@ flow rather than demanding unrelated changes or a repository-wide redesign.
   SQLCipher remains enabled, writes retain their transaction boundaries, and
   failures do not leave partially applied state.
 - Schema changes require an explicit versioned, transactional migration from
-  the baseline: the schema production runs, v26 (release 2.0.5, the only
-  production instance). Missing upgrades from older schemas are intended and
-  not a finding, but opening or restoring one must still be refused unchanged.
-  Require the frozen baseline fixture and regression evidence from it for
+  the baseline, the frozen v26 fixture (release 2.0.5); released later schemas
+  enter the chain by their frozen digests. Missing upgrades from older schemas
+  are intended and not a finding, but opening or restoring one must still be
+  refused unchanged. Require the frozen baseline fixture and regression
+  evidence from it, and from a database at production's schema (named in
+  `AGENTS.md`), for
   populated upgrade, rollback on failure, and same-build restart; a schema that
   never reached production needs no fixture of its own. Identify the specific
   missing upgrade path or evidence when reporting a violation.

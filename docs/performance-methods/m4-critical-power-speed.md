@@ -218,8 +218,8 @@ athlete's power meter or GPS.
 - No comparison with published reference or controlled validation data yet;
   the estimate stays experimental (gate G4) and never feeds FTP or zones.
 - Athlete-marked protocol tests with recorded intent, sensor and calibration
-  are not stored; adding them needs a schema migration from the baseline, the
-  schema production runs (v26).
+  are not stored; adding them needs a schema migration from the baseline (the
+  frozen v26 fixture).
 - R4 participant count and recovery for its repeated-effort protocol were not
   reachable.
 - Passive CS from everyday runs (R16) stays deferred to M5.

@@ -1,6 +1,6 @@
 """SQLCipher open, upgrade, rollback, restart and backup/restore at the baseline.
 
-The baseline (schema v26, release 2.0.5, the schema production runs) is
+The baseline (schema v26, release 2.0.5, the frozen fixture) is
 populated in an encrypted temporary database. It reaches the live schema with
 every original value, the file stays encrypted, a failing upgrade step leaves the
 database exactly as it was and a retry succeeds, a restart with the same build

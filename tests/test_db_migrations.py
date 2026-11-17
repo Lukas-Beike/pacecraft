@@ -1,4 +1,4 @@
-"""Schema gate: the production baseline reaches the live schema; all else stays unchanged."""
+"""Schema gate: the frozen baseline and released schemas reach the live one; all else stays put."""
 
 import hashlib
 import json
@@ -47,7 +47,7 @@ from backend.sync.state import settle_interrupted_sync_state
 
 INTERVALS = ProviderId.INTERVALS.value
 STAMP = "2026-10-16T08:00:00+00:00"
-# Schema v26, release 2.0.5: the schema production runs and the only baseline.
+# Schema v26, release 2.0.5: the only baseline, kept as a frozen fixture.
 OLDEST_SUPPORTED_VERSION = 26
 BASELINE_FIXTURE = Path(__file__).with_name("fixtures") / "schema_v26.sql.txt"
 # No released schema precedes the baseline, so the upgrade path runs on a
