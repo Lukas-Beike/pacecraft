@@ -956,7 +956,8 @@ def _roll_replay(previous: _ReplayBudget, today: str) -> _ReplayBudget:
     day whose budget is used up doubles at once (athlete, 2026-11-17, #2220)."""
     if previous.day == today:
         if previous.clean and previous.count >= previous.budget:
-            return replace(previous, budget=min(2 * previous.budget, REPLAY_MAX_DAILY))
+            budget = min(2 * previous.budget, REPLAY_MAX_DAILY)
+            return _ReplayBudget(day=today, count=previous.count, budget=budget)
         return previous
     budget = previous.budget
     if previous.count and previous.clean:
