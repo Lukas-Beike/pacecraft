@@ -184,7 +184,9 @@ class NutritionGetRoutes:
         Request: query `q` (search text, optional), `source`, `scope` and `barcode`,
         checked in this order. `source=database` lists the stored food database entries
         (at most 50, newest first without `q`). `scope=all` lists own products and
-        stored database foods matching `q`. A `barcode` looks the product up, local
+        stored database foods matching `q`, each with `usage_count` (the logged meals
+        that used it): the best name matches of `q` first, then the most used, then by
+        name (#3435). A `barcode` looks the product up, local
         first, then the food databases. Otherwise the active own products matching `q`,
         favorites first, at most 50.
 
