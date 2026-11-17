@@ -15,6 +15,7 @@ import time
 import unittest
 from collections import Counter
 from contextlib import redirect_stderr
+from datetime import date
 from pathlib import Path
 from unittest import mock
 
@@ -229,6 +230,69 @@ class BrowserRunnerTests(unittest.TestCase):
         with redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
             runner.main(["--project", "desktop", "--base", "origin/main"])
 
+    def test_changed_specs_that_read_the_weekday_are_found(self):
+        # #3324: a changed spec importing e2e/helpers/today.js reads the weekday.
+        isolated = {"GIT_CONFIG_GLOBAL": os.devnull, "GIT_CONFIG_NOSYSTEM": "1"}
+        week = 'const { test } = require("./helpers/today");\n'
+        with (
+            mock.patch.dict(os.environ, isolated),
+            tempfile.TemporaryDirectory() as directory,
+        ):
+            root = Path(directory)
+
+            def git(*args):
+                subprocess.run(
+                    ["git", "-C", str(root), *args], check=True, capture_output=True
+                )
+
+            (root / "e2e").mkdir()
+            (root / "e2e/kept.spec.js").write_text(week, encoding="utf-8")
+            git("init", "-q", "-b", "base")
+            git("config", "user.email", "test@example.invalid")
+            git("config", "user.name", "Test")
+            git("add", ".")
+            git("commit", "-q", "-m", "base")
+            (root / "e2e/week.spec.js").write_text(week, encoding="utf-8")
+            plain = 'const { test } = require("@playwright/test");\n'
+            (root / "e2e/plain.spec.js").write_text(plain, encoding="utf-8")
+            self.assertEqual(runner.weekday_specs("base", root), ["e2e/week.spec.js"])
+
+    def test_a_changed_weekday_spec_lists_and_runs_on_monday_and_sunday(self):
+        # #3324: as CI's pinned-day step, after the real day's run.
+        fake = FakeProcesses()
+        weekday = ["e2e/a.spec.js"]
+        self.run_main(fake, list_only=True, weekday=weekday)
+        listed = json.loads(self.stdout)["weekday_runs"]
+        days = [date.fromisoformat(run["today"]) for run in listed]
+        self.assertEqual([day.weekday() for day in days], [0, 6])
+        self.assertEqual((days[1] - days[0]).days, 6)
+        self.assertEqual(
+            [(run["project"], run["specs"]) for run in listed],
+            [("desktop", weekday)] * 2,
+        )
+        # A selection without the changed weekday spec: one run, as before.
+        self.run_main(
+            fake, list_only=True, weekday=weekday, extra_args=("--spec", "b.spec.js")
+        )
+        self.assertEqual(json.loads(self.stdout)["weekday_runs"], [])
+        code, values = self.run_main(FakeProcesses(), weekday=weekday)
+        self.assertEqual(code, 0, self.stderr)
+        self.assertEqual(
+            sorted((value["selection"]["today"] or "") for value in values),
+            ["", *(run["today"] for run in listed)],
+        )
+        pinned = [value for value in values if value["selection"]["today"]]
+        self.assertEqual(
+            [[c["file"] for c in value["children"]] for value in pinned],
+            [weekday] * 2,
+        )
+        self.assertIn("Weekday runs (#3324): real day exit 0; ", self.stderr)
+        # An explicit --today is one pinned run already.
+        self.run_main(
+            fake, list_only=True, weekday=weekday, extra_args=("--today", "2026-11-18")
+        )
+        self.assertEqual(json.loads(self.stdout)["weekday_runs"], [])
+
     def test_spec_a_project_does_not_list_is_skipped_with_a_note(self):
         data = report()
         data["suites"][0]["specs"][0]["tests"].append(
@@ -294,7 +358,14 @@ class BrowserRunnerTests(unittest.TestCase):
                 sock.close()
 
     def run_main(
-        self, fake, jobs=1, list_only=False, extra_args=(), current=True, ready=None
+        self,
+        fake,
+        jobs=1,
+        list_only=False,
+        extra_args=(),
+        current=True,
+        ready=None,
+        weekday=(),
     ):
         temporary = tempfile.TemporaryDirectory()
         self.addCleanup(temporary.cleanup)
@@ -309,8 +380,16 @@ class BrowserRunnerTests(unittest.TestCase):
         args.extend(extra_args)
         if list_only:
             args.append("--list")
+        # Each run makes its own Processes; a weekday run gets a fresh fake (#3324).
+        fakes = iter([fake])
         with (
-            mock.patch.object(runner, "Processes", return_value=fake),
+            mock.patch.object(
+                runner,
+                "Processes",
+                side_effect=lambda: (
+                    next(fakes, None) or FakeProcesses(listing=fake.listing)
+                ),
+            ),
             mock.patch.object(runner, "LOCK_DIR", Path(temporary.name) / "locks"),
             mock.patch.object(
                 runner,
@@ -330,12 +409,16 @@ class BrowserRunnerTests(unittest.TestCase):
                 runner, "verify_browser", return_value={"mode": "native"}
             ),
             mock.patch.object(runner, "ready", side_effect=ready),
-            mock.patch("sys.stdout", new_callable=io.StringIO),
+            # The checkout's own diff never adds weekday runs here (#3324).
+            mock.patch.object(runner, "weekday_specs", return_value=list(weekday)),
+            mock.patch("sys.stdout", new_callable=io.StringIO) as stdout,
             mock.patch("sys.stderr", new_callable=io.StringIO) as stderr,
         ):
             code = runner.main(args)
-        self.stderr = stderr.getvalue()
+        self.stdout, self.stderr = stdout.getvalue(), stderr.getvalue()
         manifests = list(Path(temporary.name).glob("*/manifest.json"))
+        if weekday and not list_only:
+            return code, [json.loads(path.read_text()) for path in manifests]
         self.assertEqual(len(manifests), 1)
         return code, json.loads(manifests[0].read_text()), manifests[0]
 
