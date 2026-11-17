@@ -76,7 +76,6 @@ class PlanGuardWriteTests(unittest.TestCase):
         self.manager = temp_database(
             self,
             path=path,
-            row_factory=sqlite3.Row,
             persist_connections=False,
         )
         self.units: list[dict[str, Any]] = []
@@ -146,7 +145,9 @@ class PlanGuardWriteTests(unittest.TestCase):
 
     def stored(self) -> int:
         with self.manager.reader() as db:
-            return db.execute("SELECT COUNT(*) FROM synthetic_writes").fetchone()[0]
+            return db.execute("SELECT COUNT(*) AS n FROM synthetic_writes").fetchone()[
+                "n"
+            ]
 
     def test_violation_rolls_back_and_returns_findings(self) -> None:
         with self.assertRaises(PlanCheckError) as raised:

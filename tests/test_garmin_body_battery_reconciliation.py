@@ -6,7 +6,6 @@ clients only, no Garmin account or token.
 
 from __future__ import annotations
 
-import sqlite3
 import unittest
 from dataclasses import replace
 from datetime import UTC, date, datetime
@@ -219,7 +218,7 @@ class CollectorTests(unittest.TestCase):
 
 class StoredReconciliationTests(unittest.TestCase):
     def setUp(self) -> None:
-        self.database = temp_database(self, "test.sqlite3", row_factory=sqlite3.Row)
+        self.database = temp_database(self, "test.sqlite3")
         self.key_values = KeyValueRepository(lambda: NOW)
         self.today = TODAY
         sync_state = SyncStateRepository(self.database, self.key_values, lambda: NOW)
@@ -250,8 +249,10 @@ class StoredReconciliationTests(unittest.TestCase):
     def counts(self) -> tuple[int, int]:
         with self.database.reader() as db:
             return (
-                db.execute("SELECT COUNT(*) FROM provider_records").fetchone()[0],
-                db.execute("SELECT COUNT(*) FROM observations").fetchone()[0],
+                db.execute("SELECT COUNT(*) AS n FROM provider_records").fetchone()[
+                    "n"
+                ],
+                db.execute("SELECT COUNT(*) AS n FROM observations").fetchone()["n"],
             )
 
     def test_the_day_is_reconciled_once_and_a_new_day_again(self) -> None:

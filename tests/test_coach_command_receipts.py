@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import sqlite3
 import unittest
 
 from support import temp_database
@@ -18,7 +17,6 @@ class CoachCommandReceiptServiceTests(unittest.TestCase):
         self.manager = temp_database(
             self,
             "receipts.sqlite",
-            row_factory=sqlite3.Row,
             persist_connections=False,
         )
         with self.manager.unit_of_work() as db:

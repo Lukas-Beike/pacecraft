@@ -31,7 +31,6 @@ class NutritionProductContractTests(unittest.TestCase):
         self.manager = temp_database(
             self,
             path=Path(self.temporary.name) / "nutrition-products.db",
-            row_factory=sqlite3.Row,
             schema=True,
         )
         self.off = Mock()

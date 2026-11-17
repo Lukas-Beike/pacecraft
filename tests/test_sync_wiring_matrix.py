@@ -19,7 +19,6 @@ import ast
 import contextlib
 import json
 import logging
-import sqlite3
 import threading
 import unittest
 from collections.abc import Iterator
@@ -212,9 +211,7 @@ class Harness:
         garmin: bool = True,
         wahoo: bool = True,
     ) -> None:
-        self.database = temp_database(
-            case, "matrix.sqlite", row_factory=sqlite3.Row, schema=True
-        )
+        self.database = temp_database(case, "matrix.sqlite", schema=True)
         self.calls: list[str] = []
         self.garmin = _Connected("garmin.sync", self.calls, garmin)
         self.wahoo = _Connected("wahoo.sync", self.calls, wahoo)
@@ -331,7 +328,9 @@ class Harness:
 
     def stored_jobs(self) -> int:
         with self.database.reader() as db:
-            return int(db.execute("SELECT COUNT(*) FROM sync_jobs").fetchone()[0])
+            return int(
+                db.execute("SELECT COUNT(*) AS n FROM sync_jobs").fetchone()["n"]
+            )
 
 
 class RegistryCoverageTests(unittest.TestCase):
@@ -441,7 +440,7 @@ class ManualRouteWiringTests(unittest.TestCase):
                 with harness.database.reader() as db:
                     stored = db.execute(
                         "SELECT payload FROM sync_jobs WHERE id=?", (job["id"],)
-                    ).fetchone()[0]
+                    ).fetchone()["payload"]
                 self.assertEqual(queued, json.loads(stored))
                 self.assertEqual("completed", harness.run_next()["status"])
                 self.assertIn(CASES[provider, "refresh"][1], harness.calls)

@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import io
 import json
-import sqlite3
 import unittest
 from datetime import UTC, date, datetime
 from types import SimpleNamespace
@@ -377,9 +376,7 @@ class NutritionRouteBodyTests(unittest.TestCase):
     """Routes read real JSON bodies into the real diary on temporary storage."""
 
     def setUp(self) -> None:
-        manager = temp_database(
-            self, "nutrition.db", row_factory=sqlite3.Row, schema=True
-        )
+        manager = temp_database(self, "nutrition.db", schema=True)
         self.diary, self.library = build_nutrition_services(
             manager,
             lambda: "2026-09-24T12:00:00+00:00",

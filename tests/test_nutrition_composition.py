@@ -21,9 +21,7 @@ class NutritionCompositionTests(unittest.TestCase):
         self.temp_dir = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp_dir.cleanup)
         self.db_path = Path(self.temp_dir.name) / "nutrition.db"
-        self.manager = temp_database(
-            self, path=self.db_path, row_factory=sqlite3.Row, schema=True
-        )
+        self.manager = temp_database(self, path=self.db_path, schema=True)
         self.fixed_now = "2026-09-24T12:00:00+00:00"
         self._make_service()
 
@@ -553,7 +551,7 @@ class NutritionCompositionTests(unittest.TestCase):
         )
 
         self.manager.close()
-        self.manager = temp_database(self, path=self.db_path, row_factory=sqlite3.Row)
+        self.manager = temp_database(self, path=self.db_path)
         self._make_service()
         self.assertEqual(
             self.service.get_meal(entry["id"])["nutrition_basis"], expected_entry_basis

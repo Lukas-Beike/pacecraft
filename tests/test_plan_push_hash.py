@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import sqlite3
 import unittest
 from datetime import date
 from unittest.mock import Mock
@@ -94,7 +93,7 @@ def _state(store: SyncJobStore, job_id: str) -> dict:
 
 class SettledItemsTests(unittest.TestCase):
     def setUp(self) -> None:
-        self.manager = temp_database(self, "jobs.sqlite", row_factory=sqlite3.Row)
+        self.manager = temp_database(self, "jobs.sqlite")
         with self.manager.unit_of_work() as db:
             db.executescript(
                 """

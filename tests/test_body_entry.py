@@ -31,9 +31,6 @@ class BodyEntryServiceTests(unittest.TestCase):
         self.manager = temp_database(
             self,
             schema=True,
-            row_factory=lambda cursor, row: dict(
-                zip([column[0] for column in cursor.description], row, strict=True)
-            ),
         )
         self.service = BodyEntryService(
             self.manager, now=lambda: "2026-11-16T10:00:00+00:00", today=lambda: TODAY

@@ -110,7 +110,7 @@ class CoachQuickActionsServiceTests(unittest.TestCase):
         connection.commit()
         connection.close()
 
-        manager = temp_database(self, path=database_path, row_factory=sqlite3.Row)
+        manager = temp_database(self, path=database_path)
         service = CoachQuickActionsService(
             manager,
             KeyValueRepository(lambda: "2026-09-20T08:00:00"),

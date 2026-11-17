@@ -21,7 +21,6 @@ class CoachProposalConfirmationTests(unittest.TestCase):
         self.manager = temp_database(
             self,
             path=self.db_path,
-            row_factory=sqlite3.Row,
             persist_connections=False,
         )
         with closing(sqlite3.connect(self.db_path)) as db:

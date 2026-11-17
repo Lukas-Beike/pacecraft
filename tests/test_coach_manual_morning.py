@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-import sqlite3
 import unittest
 from datetime import date, timedelta
 from unittest.mock import MagicMock, Mock, patch
@@ -122,9 +121,7 @@ class ManualMorningCheckinServiceTests(unittest.TestCase):
 
 class MorningCheckinStateServiceTests(unittest.TestCase):
     def setUp(self) -> None:
-        self.database = temp_database(
-            self, "test.sqlite3", row_factory=sqlite3.Row, schema=True
-        )
+        self.database = temp_database(self, "test.sqlite3", schema=True)
         self.key_values = KeyValueRepository(lambda: "2026-09-23T12:00:00")
         self.service = MorningCheckinStateService(
             self.database, self.key_values, lambda: TODAY

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import sqlite3
 import threading
 import unittest
 from datetime import UTC, datetime
@@ -19,9 +18,7 @@ from backend.sync.canonical_table_reader import CanonicalTableReader
 
 class NutritionUseCaseServiceTests(unittest.TestCase):
     def setUp(self) -> None:
-        self.manager = temp_database(
-            self, "nutrition.db", row_factory=sqlite3.Row, schema=True
-        )
+        self.manager = temp_database(self, "nutrition.db", schema=True)
         self.lock = threading.Lock()
         self.now = "2026-09-24T12:00:00Z"
         self.repository = NutritionRepository(now=lambda: self.now)

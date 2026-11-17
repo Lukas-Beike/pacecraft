@@ -632,7 +632,7 @@ class SyncJobStoreTests(unittest.TestCase):
     now = "2026-09-20T12:00:00+00:00"
 
     def setUp(self):
-        self.manager = temp_database(self, "sync-jobs.sqlite", row_factory=sqlite3.Row)
+        self.manager = temp_database(self, "sync-jobs.sqlite")
         with self.manager.unit_of_work() as db:
             db.executescript(
                 """
@@ -722,7 +722,6 @@ class SyncJobStoreTests(unittest.TestCase):
         manager = temp_database(
             self,
             path=self.manager.path,
-            row_factory=sqlite3.Row,
             persist_connections=False,
         )
         store = SyncJobStore(manager, lambda: self.current_now, lambda: "unused")
@@ -757,10 +756,10 @@ class SyncJobStoreTests(unittest.TestCase):
         with self.manager.reader() as db:
             stored_payload = db.execute(
                 "SELECT payload FROM sync_jobs WHERE id=?", (job["id"],)
-            ).fetchone()[0]
+            ).fetchone()["payload"]
             stored_hash = db.execute(
                 "SELECT payload_hash FROM sync_job_items WHERE job_id=?", (job["id"],)
-            ).fetchone()[0]
+            ).fetchone()["payload_hash"]
         self.assertEqual(stored_payload, '{"reason":"München"}')
         self.assertEqual(
             stored_hash, hashlib.sha256(serialized.encode("utf-8")).hexdigest()

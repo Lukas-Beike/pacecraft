@@ -17,7 +17,7 @@ class ExportStreamTransportTests(unittest.TestCase):
     def backup(self, root: Path) -> DatabaseBackupService:
         database_path = root / "coach.db"
         manager = self.manager = temp_database(
-            self, path=database_path, row_factory=None, persist_connections=False
+            self, path=database_path, persist_connections=False
         )
         with manager.unit_of_work() as db:
             db.execute("CREATE TABLE records(value TEXT NOT NULL)")

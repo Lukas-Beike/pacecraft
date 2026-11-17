@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import sqlite3
 import unittest
 from typing import Any
 
@@ -26,9 +25,7 @@ class _ExternalCalendarReader:
 
 class CalendarConflictServiceTests(unittest.TestCase):
     def setUp(self) -> None:
-        self.database_manager = temp_database(
-            self, "calendar.sqlite", row_factory=sqlite3.Row
-        )
+        self.database_manager = temp_database(self, "calendar.sqlite")
         with self.database_manager.unit_of_work() as db:
             db.execute(
                 "CREATE TABLE planned_units (local_id TEXT PRIMARY KEY, payload TEXT)"

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import sqlite3
 import unittest
 from datetime import UTC, datetime
 from unittest.mock import Mock
@@ -31,9 +30,7 @@ MEAL = {
 
 class UncertainMealFlagTests(unittest.TestCase):
     def setUp(self) -> None:
-        self.manager = temp_database(
-            self, "uncertain.db", row_factory=sqlite3.Row, schema=True
-        )
+        self.manager = temp_database(self, "uncertain.db", schema=True)
         self.service, self.library = build_nutrition_services(
             self.manager,
             lambda: "2026-09-24T21:00:00+00:00",

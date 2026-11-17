@@ -738,8 +738,10 @@ class DatabaseSchemaGateTests(unittest.TestCase):
             selected = (
                 ", ".join(f'"{name}"' for name in columns[table]) if columns else "*"
             )
+            # The app's rows are dicts (#3466): compare their values, not keys.
             rows[table] = [
-                tuple(row) for row in db.execute(f"SELECT {selected} FROM {table}")
+                tuple(row.values() if isinstance(row, dict) else row)
+                for row in db.execute(f"SELECT {selected} FROM {table}")
             ]
         return rows
 

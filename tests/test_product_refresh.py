@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import sqlite3
 import threading
 import unittest
 from contextlib import nullcontext
@@ -70,9 +69,7 @@ def finished(run: ProductRefreshRunner) -> dict[str, Any]:
 
 class RefreshAllServiceTests(unittest.TestCase):
     def setUp(self) -> None:
-        self.manager = temp_database(
-            self, "refresh_all.db", row_factory=sqlite3.Row, schema=True
-        )
+        self.manager = temp_database(self, "refresh_all.db", schema=True)
         self.off = FakeOpenFoodFacts(
             {
                 "5711953068011": food(
