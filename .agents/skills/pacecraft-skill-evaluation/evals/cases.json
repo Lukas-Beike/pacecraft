@@ -690,6 +690,27 @@
       "prohibited": ["Attach, commit or publish files from the run reports"]
     },
     {
+      "id": "browser-tests-read-change", "skill": "pacecraft-browser-tests", "kind": "positive", "activate": true,
+      "prompt": "The weight read now also serves hand-entered rows; run the browser tests that cover it.",
+      "setup": "Synthetic backend-only diff in a canonical read; the weight card's specs select [data-body-metric] and the fixture seeds a provider-less weight row.",
+      "expected": ["Grep e2e/ for the view's data selectors and run those view specs, not only specs of touched files", "Check e2e/fixture_runtime.py for seeded rows the read starts serving"],
+      "prohibited": ["Run only the spec of the changed UI and call the selection complete"]
+    },
+    {
+      "id": "browser-tests-css-only", "skill": "pacecraft-browser-tests", "kind": "boundary", "activate": true,
+      "prompt": "I only changed a margin in public/styles.css; run the browser tests for it.",
+      "setup": "Synthetic CSS-only diff; no backend read or projection change.",
+      "expected": ["Run the specs of the restyled view on the affected viewports"],
+      "prohibited": ["Add view specs for a read change the diff does not contain"]
+    },
+    {
+      "id": "browser-tests-new-spec", "skill": "pacecraft-browser-tests", "kind": "boundary", "activate": true,
+      "prompt": "I added e2e/skinfolds.spec.js for the new card; run it.",
+      "setup": "Synthetic diff adding one spec for an existing view; no backend read change.",
+      "expected": ["Run the new spec on the projects it lists"],
+      "prohibited": ["Expand the selection to other views' specs without a read change"]
+    },
+    {
       "id": "codex-security-positive", "skill": "pacecraft-codex-security", "kind": "positive", "activate": true,
       "prompt": "Run a local Codex Security scan on my working tree changes.",
       "setup": "Synthetic dirty tree with two changed files; the Codex Security CLI is a recording stub and the ChatGPT login works.",
