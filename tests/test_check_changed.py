@@ -275,6 +275,13 @@ class FormatChangedTests(unittest.TestCase):
             # An unchanged file stays as it is, however it is formatted.
             self.assertEqual((root / "kept.py").read_text(encoding="utf-8"), ugly)
             self.assertEqual((root / "notes.md").read_text(encoding="utf-8"), "a  b\n")
+            # Gitar on #3389: a syntax error mid-edit is a reported failure.
+            (root / "broken.py").write_text("def (:\n", encoding="utf-8")
+            with (
+                redirect_stderr(io.StringIO()),
+                self.assertRaisesRegex(check_changed.FormatFailed, "ruff format"),
+            ):
+                check_changed.format_changed("base", root)
 
     def test_the_flag_formats_before_the_steps_and_names_the_files(self):
         runner = FakeRun()
@@ -289,6 +296,22 @@ class FormatChangedTests(unittest.TestCase):
         with mock.patch.object(check_changed, "format_changed") as formatted:
             run_main(check_changed, [], FakeRun())
         formatted.assert_not_called()
+
+    def test_a_failed_or_missing_formatter_reports_and_the_steps_still_run(self):
+        # Gitar on #3389: no traceback; the steps run, exit 1 or 2 as for a step.
+        for error, exit_code in (
+            (check_changed.FormatFailed("ruff format failed (exit 2)"), 1),
+            (check_changed.MissingTool("ruff is not installed."), 2),
+        ):
+            with (
+                self.subTest(exit_code=exit_code),
+                mock.patch.object(check_changed, "format_changed", side_effect=error),
+            ):
+                runner = FakeRun()
+                code, out, _err = run_main(check_changed, ["--fix-format"], runner)
+                self.assertEqual(code, exit_code)
+                self.assertIn(f"FAILED format (0.0s)\n  {error}", out)
+                self.assertEqual(len(runner.calls), 3)
 
 
 if __name__ == "__main__":
