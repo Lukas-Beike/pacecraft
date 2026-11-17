@@ -137,6 +137,8 @@ The test workflow SHALL run on pushes and pull requests to `develop` and `main`,
 #### Scenario: Run cancellation
 - **WHEN** a pull request or `develop` push run is in progress and a newer push to the same pull request or to `develop` arrives
 - **THEN** the newer run cancels it, except the run of a `develop` commit whose message starts with `chore(release): set application version to `
+
+#### Scenario: Protected runs
 - **WHEN** a `main` push, release or dispatch run or that version commit's `develop` run is in progress
 - **THEN** no other run cancels it
 

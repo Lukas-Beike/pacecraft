@@ -84,6 +84,9 @@ def hints(run: dict, history: list[dict]) -> list[str]:
         ]
     jobs = gh_json("run", "view", str(run["databaseId"]), "--json", "jobs")["jobs"]
     failed = ", ".join(j["name"] for j in jobs if j["conclusion"] == "failure")
+    # A newer develop push cancels the run before it (#3353): compare with
+    # the last push run that finished.
+    older = [r for r in older if r["conclusion"] != "cancelled"]
     if older:
         previous = older[-1]
         outcome = previous["conclusion"] or previous["status"]

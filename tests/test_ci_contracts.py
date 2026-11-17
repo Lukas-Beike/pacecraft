@@ -524,14 +524,12 @@ class WorkflowSourceTests(unittest.TestCase):
             f"{develop_push} && 'develop-push' || github.run_id }}}}",
             head,
         )
-        self.assertIn(
-            "cancel-in-progress: ${{ github.event_name == 'pull_request' || "
-            f"{develop_push} }}}}",
-            head,
-        )
+        # Every other run has its own run_id group, so nothing can cancel it.
+        self.assertIn("  cancel-in-progress: true\n", head)
         self.assertEqual(head.count("concurrency:"), 1)
         # The excluded prefix is the one the release chain gives its version
-        # commit (the squash merge keeps the PR title).
+        # commit: the repository's squash subject is the PR title, which the
+        # changelog and release-dispatch filters rely on as well.
         release = (root / ".github/workflows/daily-release.yml").read_text(
             encoding="utf-8"
         )

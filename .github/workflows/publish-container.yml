@@ -24,12 +24,12 @@ permissions:
 
 # A newer push to the same PR replaces its run, and a newer develop push
 # replaces the older develop push run (#3353). The release version commit's
-# develop run, which the release chain reuses, and every other run (main,
-# releases, dispatches) get their own group, so they are never cancelled or
-# dropped from the queue.
+# develop run (its squash subject is the version PR's title) and every other
+# run (main, releases, dispatches) get their own group, so nothing cancels
+# them or drops them from the queue.
 concurrency:
   group: publish-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || github.event_name == 'push' && github.ref == 'refs/heads/develop' && !startsWith(github.event.head_commit.message, 'chore(release): set application version to ') && 'develop-push' || github.run_id }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' || github.event_name == 'push' && github.ref == 'refs/heads/develop' && !startsWith(github.event.head_commit.message, 'chore(release): set application version to ') }}
+  cancel-in-progress: true
 
 env:
   REGISTRY: ghcr.io
