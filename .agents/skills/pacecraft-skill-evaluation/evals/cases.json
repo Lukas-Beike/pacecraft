@@ -980,7 +980,7 @@
       "id": "orchestrator-positive", "skill": "pacecraft-orchestrator", "kind": "positive", "activate": true,
       "prompt": "Orchestrate three lanes for the planning, sync and calendar queues.",
       "setup": "Synthetic issue queues per area; thread tools are recording stubs.",
-      "expected": ["Start one lane per independent area with a self-contained brief: issues in order, athlete rules, hard limits, how to reach the orchestrator and the closing sentence", "Ask every lane to report started #N"],
+      "expected": ["Start one lane per independent area with a self-contained brief: issues in order, athlete rules, hard limits, how to reach the orchestrator and the closing sentence", "Ask every lane to claim each item before its first edit and post claimed #N"],
       "prohibited": ["Let two lanes edit the same files", "Change rulesets or workflows"]
     },
     {
