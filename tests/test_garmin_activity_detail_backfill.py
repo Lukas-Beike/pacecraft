@@ -1006,7 +1006,7 @@ class BackfillReplayTests(_Base):
             )
         self.assertEqual([row["replay"] for row in rows], [False])
 
-    def test_replays_start_at_twenty_per_refresh_and_twenty_per_day(self) -> None:
+    def test_replays_start_at_twenty_and_a_spent_clean_day_doubles(self) -> None:
         rows = _days(30)
         _seed_outdated(self, rows)
         reader = _Details({aid: _full(aid) for aid, _start in rows})
@@ -1021,30 +1021,14 @@ class BackfillReplayTests(_Base):
             {"day": NOW[:10], "count": 20, "budget": 20, "clean": True},
         )
 
-        # The day's budget is spent: nothing runs, and the rest waits.
-        reader = _Details({})
-        result = self.service(reader).backfill()
-        self.assertEqual(reader.calls, [])
-        self.assertEqual(
-            result,
-            {
-                "status": "completed",
-                "fetched": 0,
-                "empty": 0,
-                "remaining": 0,
-                "replayed": 0,
-                "replay_remaining": 10,
-            },
-        )
-
-        # A clean day doubles the budget to 40: the next UTC day takes the last ten.
-        self.now = "2026-10-19T00:30:00+00:00"
+        # The clean day's budget is spent, so it doubles to 40 at once (athlete,
+        # 2026-11-17, #2220): the next refresh of the same day takes the last ten.
         reader = _Details({aid: _full(aid) for aid, _start in rows})
         result = self.service(reader).backfill()
         self.assertEqual((result["replayed"], result["replay_remaining"]), (10, 0))
         self.assertEqual(
             _stored_state(self.key_values)["replay"],
-            {"day": "2026-10-19", "count": 10, "budget": 40, "clean": True},
+            {"day": NOW[:10], "count": 30, "budget": 40, "clean": True},
         )
 
     def test_the_budget_doubles_after_a_clean_day_up_to_eighty(self) -> None:
@@ -1099,6 +1083,54 @@ class BackfillReplayTests(_Base):
         )
         self.assertEqual(counts(same | {"count": 33}, today)["per_refresh"], 7)
         self.assertEqual(counts(same | {"count": 40}, today)["per_refresh"], 0)
+
+    def test_a_clean_used_up_day_doubles_within_the_day_up_to_eighty(self) -> None:
+        # #2220, athlete 2026-11-17: a clean day whose budget is used up doubles
+        # at once, so the rest of the window need not wait for the next UTC day.
+        today = "2026-10-18"
+
+        def counts(count: int, budget: int, clean: bool = True) -> dict[str, Any]:
+            replay = {"day": today, "count": count, "budget": budget, "clean": clean}
+            return replay_budget_counts(json.dumps({"replay": replay}), today)
+
+        self.assertEqual(
+            counts(40, 40),
+            {
+                "daily_budget": 80,
+                "per_refresh": 20,
+                "replayed_today": 40,
+                "clean_today": True,
+            },
+        )
+        self.assertEqual(counts(20, 20)["daily_budget"], 40)
+        # Not used up yet: unchanged.
+        self.assertEqual(counts(39, 40)["daily_budget"], 40)
+        # The cap: 80 used up stays 80, and nothing is left today.
+        self.assertEqual(
+            (counts(80, 80)["daily_budget"], counts(80, 80)["per_refresh"]), (80, 0)
+        )
+        # A day with a 429 or a Garmin error does not double.
+        self.assertEqual(
+            (
+                counts(20, 20, False)["daily_budget"],
+                counts(20, 20, False)["per_refresh"],
+            ),
+            (20, 0),
+        )
+
+    def test_a_refresh_after_a_clean_used_up_day_replays_twenty_more(self) -> None:
+        rows = _days(30)
+        _seed_outdated(self, rows)
+        self._budget_state(day=NOW[:10], count=40, budget=40)
+
+        result = self.service(_Details({a: _full(a) for a, _s in rows})).backfill()
+
+        # Doubled to 80 within the day; one refresh still takes at most 20.
+        self.assertEqual(result["replayed"], 20)
+        self.assertEqual(
+            _stored_state(self.key_values)["replay"],
+            {"day": NOW[:10], "count": 60, "budget": 80, "clean": True},
+        )
 
     def _budget_state(self, **replay: Any) -> None:
         stored = {"day": "2026-10-17", "count": 5, "budget": 40, "clean": True}
