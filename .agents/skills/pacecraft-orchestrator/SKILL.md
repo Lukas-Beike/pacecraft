@@ -42,10 +42,17 @@ still carries the "Start a lane" brief. Copy nothing `AGENTS.md` forbids copying
 (secrets, credentials, tokens, database keys, backup contents, athlete or
 personal data). The successor checks the handoff against the issues and ledger.
 
-An orchestrator hand-over also runs this checklist; each step failed in a
-real hand-over (#3349):
+An orchestrator hand-over also runs this checklist; each step comes from a
+real hand-over (#3349). The retro comes first because a sweep of the V6 and V7
+transcripts on 2026-11-17 found 7 findings nobody had filed (#3348-#3354;
+athlete decision 2026-11-17).
 
 ```text
+- [ ] Own retro done before handing over: tooling failures, workarounds, false
+      alarms and process slips of this session, each checked against existing
+      issues (`gh issue list --state all --search ...`); new ones filed with
+      the `retro` label and an owner lane; their numbers in the hand-over
+      memory and the ledger; process-only lessons in the handoff's lessons
 - [ ] Successor launched from a turn the athlete started (a relaunch from a
       scheduled turn was refused with `parent_not_active`)
 - [ ] ... with `runtimeMode: full-access` (V7 in `auto` could not reach the
@@ -56,6 +63,8 @@ real hand-over (#3349):
       preparation for V7 and V8)
 - [ ] Its worktree exists (`t3_thread_read`: `worktreePath`) before its first
       periodic check
+- [ ] Its first check confirmed that the predecessor's retro issues exist and
+      have owners
 - [ ] Every lane got the successor's thread id (and `environmentId` when it
       runs on another machine); lanes kept reporting to the old orchestrator,
       which forwarded their messages 3 times at V6 -> V7 and 2 at V7 -> V8
