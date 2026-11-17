@@ -18,8 +18,11 @@ athlete, English in the repository, every question through AskUserQuestion as
 [deliver-issue](../deliver-issue/SKILL.md#working-with-the-athlete) words it, UI
 questions only with rendered mockups), the hard limits from `AGENTS.md`, how
 to reach you (your thread id and its `environmentId` when the lane runs on
-another machine), and the closing sentence. Every lane reports "started #N" when
-it begins an item. A lane that cannot message your thread writes its reports in
+another machine), and the closing sentence. Every lane posts "claimed #N" to
+you when it starts an item, before its first edit, and keep each claim in the
+ledger until the issue closes; a lane checks those claims before starting,
+because local commits show neither as a PR nor as a pushed branch (a lane
+skipped #3342 while another held unpushed work for it; #3383). A lane that cannot message your thread writes its reports in
 its own thread, prefixed `ORCHESTRATOR:`; read those threads on every periodic
 check.
 
