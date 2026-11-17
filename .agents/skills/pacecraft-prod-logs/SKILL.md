@@ -18,7 +18,9 @@ python scripts/prod_logs.py --url <app address> --password-file <secret file>
 It prints counts per level and per event name, the number of removed past
 app-created Garmin workouts (`garmin_past_workouts_removed`), and the number of
 plan-sync error events. Event names that are not plain identifiers are counted
-as `unnamed`. Exit 0 no error entry, 1 error entries, 2 unreadable input.
+as `unnamed`. `coach tool failed <tool> <reason> <count>` counts the Coach tool
+failures per allow-listed tool and reason code (else the exception type; other
+text prints as `?`); a tool with repeated failures gets its own issue (#3460). Exit 0 no error entry, 1 error entries, 2 unreadable input.
 
 Never copy log lines into output, issues or notes: they can hold payload
 fragments. Delete the saved log file when the check ends.
