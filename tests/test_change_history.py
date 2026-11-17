@@ -359,6 +359,23 @@ class ChangeHistoryTests(unittest.TestCase):
             change_history.accepted_audit_hashes("nutrition_entry", value),
         )
 
+    def test_a_product_change_recorded_before_schema_v33_stays_undoable(self):
+        # #3452: rows before v33 carry no sizes; the current projection adds
+        # all four, empty.
+        before = {"id": "prod", "name": "Skyr", "basis_amount": 100, "basis_unit": "g"}
+        sizes = ("portion_amount", "portion_unit", "package_amount", "package_unit")
+        value = change_history.audit_projection(
+            "nutrition_product", {**before, **dict.fromkeys(sizes)}
+        )
+        self.assertTrue(
+            set(sizes)
+            <= set(change_history.audit_projection_fields("nutrition_product"))
+        )
+        self.assertIn(
+            change_history.audit_hash(before),
+            change_history.accepted_audit_hashes("nutrition_product", value),
+        )
+
     def test_preferred_sources_are_audited_and_older_rows_stay_matchable(self):
         value = {"name": "Ada", "preferred_source_body": "intervals"}
 
