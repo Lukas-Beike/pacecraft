@@ -209,23 +209,26 @@ def report_newer_versions(root: Path, npm: str | None) -> None:
 def report_workflow_scope() -> None:
     """Name a GitHub CLI token without the `workflow` scope: GitHub refuses its
     pushes that touch .github/workflows/ (#3350). Only the scope list is read;
-    the status output is never printed."""
+    the status output is never printed. A token without OAuth scopes
+    (`none`: fine-grained or from the environment) is not judged."""
     gh = shutil.which("gh")
     if not gh:
         return
     try:
         status = subprocess.run(
-            [gh, "auth", "status", "--hostname", "github.com"],
+            [gh, "auth", "status", "--active", "--hostname", "github.com"],
             capture_output=True,
             text=True,
             encoding="utf-8",
+            errors="replace",
             check=False,
-            timeout=NPM_TIMEOUT,
+            timeout=CHECK_TIMEOUT,
         )
-    except OSError, subprocess.TimeoutExpired:
+    except OSError, subprocess.SubprocessError:
         return
-    scopes = re.search(r"Token scopes: (.*)", status.stdout + status.stderr)
-    if scopes and "'workflow'" not in scopes[1]:
+    line = re.search(r"Token scopes: (.*)", status.stdout + status.stderr)
+    scopes = {s.strip(" '\"") for s in line[1].split(",")} if line else {"none"}
+    if "workflow" not in scopes and scopes != {"none"}:
         print(
             "GitHub CLI token lacks the `workflow` scope: pushes that touch "
             ".github/workflows/ fail until you run `gh auth refresh -s workflow`"

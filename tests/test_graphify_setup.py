@@ -739,6 +739,11 @@ class WorktreePreparationTests(unittest.TestCase):
         for scopes, which, warned in (
             ("'gist', 'read:org', 'repo'", "gh", True),
             ("'gist', 'read:org', 'repo', 'workflow'", "gh", False),
+            # Older gh printed the scopes without quotes.
+            ("gist, read:org, repo", "gh", True),
+            ("gist, repo, workflow", "gh", False),
+            # A fine-grained or environment token has no OAuth scopes.
+            ("none", "gh", False),
             (None, "gh", False),
             ("'repo'", None, False),
         ):
@@ -758,16 +763,20 @@ class WorktreePreparationTests(unittest.TestCase):
             self.assertEqual(out.getvalue() == "", not warned)
             self.assertNotIn(token, out.getvalue())
             if which:
-                self.assertEqual(run.call_args.args[0][1:3], ["auth", "status"])
+                self.assertEqual(
+                    run.call_args.args[0][1:4], ["auth", "status", "--active"]
+                )
 
     def test_a_failed_gh_call_prints_nothing(self):
-        with (
-            patch.object(prepare.shutil, "which", return_value="gh"),
-            patch.object(prepare.subprocess, "run", side_effect=OSError("gone")),
-            contextlib.redirect_stdout(io.StringIO()) as out,
-        ):
-            prepare.report_workflow_scope()
-        self.assertEqual(out.getvalue(), "")
+        for error in (OSError("gone"), subprocess.TimeoutExpired("gh", 5)):
+            with (
+                self.subTest(error=type(error).__name__),
+                patch.object(prepare.shutil, "which", return_value="gh"),
+                patch.object(prepare.subprocess, "run", side_effect=error),
+                contextlib.redirect_stdout(io.StringIO()) as out,
+            ):
+                prepare.report_workflow_scope()
+            self.assertEqual(out.getvalue(), "")
 
 
 if __name__ == "__main__":
