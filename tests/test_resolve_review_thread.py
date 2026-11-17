@@ -155,16 +155,30 @@ class ResolveReviewThreadTests(unittest.TestCase):
 
 
 class GuardHookTests(unittest.TestCase):
-    def decide(self, command, unchanged=True, raw=None):
+    def decide(self, command, unchanged=True, raw=None, err=None):
         stdin = mock.Mock()
         payload = json.dumps({"tool_input": {"command": command}})
         stdin.buffer.read.return_value = (payload if raw is None else raw).encode()
         with (
             mock.patch.object(guard.sys, "stdin", stdin),
             mock.patch.object(guard, "unchanged", return_value=unchanged),
-            redirect_stderr(io.StringIO()),
+            redirect_stderr(err or io.StringIO()),
         ):
             return guard.main()
+
+    def test_the_block_names_the_word_that_matched(self):
+        # #3459: a variable path still blocks (fail closed) and the message says
+        # why; the plain name keeps the plain message.
+        err = io.StringIO()
+        command = 'for f in a b; do git show "FETCH_HEAD:$f" > "$S/$f"; done'
+        self.assertEqual(self.decide(command, err=err), 2)
+        self.assertIn("Matched word `*/*` (variables read as `*`)", err.getvalue())
+        self.assertIn("spell the path out", err.getvalue())
+        err = io.StringIO()
+        self.assertEqual(
+            self.decide("python scripts/resolve_review_thread.py", err=err), 2
+        )
+        self.assertNotIn("Matched word", err.getvalue())
 
     def test_only_the_exact_call_from_an_unchanged_checkout_runs(self):
         exact = "python scripts/resolve_review_thread.py 2671 PRRT_a1"
