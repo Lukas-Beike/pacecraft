@@ -242,10 +242,10 @@ const detail = (name, covers, ready, kind, extra) => ({ view: "plan", name, cove
 export const STEPS = [
   { view: "coach", name: "Coach: Verlauf", covers: "Coach history", ready: "#messages [data-message-id]", kind: "text" },
   // The week review left Analyse for a card under the selected week (#3298). It is the first calendar
-  // step, while the calendar still shows today: the running week always has one (the server answers
-  // "current" with this week, and its check-in tile is always there), so a missing card is a finding.
-  // Later steps select other weeks and days.
-  { view: "plan", name: "Kalender: Wochenrückblick", covers: "#3298 week review (formerly Analyse › Woche, #3000)", pre: ['.planned-view-switch button[data-view="week"]'], ready: '.planned-week .week-review[data-this-week="true"] .week-review-tile', kind: "numbers" },
+  // step, while the calendar still shows today; later steps select other weeks and days. A running
+  // week without any data yet (no plan, session, recovery value or check-in, early on a Monday) has
+  // no card, so the step is optional.
+  { view: "plan", name: "Kalender: Wochenrückblick", covers: "#3298 week review (formerly Analyse › Woche, #3000)", pre: ['.planned-view-switch button[data-view="week"]'], ready: '.planned-week .week-review[data-this-week="true"] .week-review-tile', kind: "numbers", optional: true },
   // A planned unit with equipment, with "Löschen" or with fuelling advice may lie in a later week (2.1.26).
   { view: "plan", name: "Kalender: Schuh/Rad geplant", covers: "#3011 planned equipment chip", each: PLANNED, ...LATER, ready: '.planned-entry[open] .planned-equipment-chip[aria-label*=": "]', kind: "text", optional: true },
   { view: "plan", name: "Kalender: geplante Einheit", covers: "#2189 planned session", pre: ['button[aria-label="Nächste Woche"]'], each: PLANNED, ready: ".planned-entry[open] .planned-entry-details", kind: "text", optional: true, post: ['button[aria-label="Vorherige Woche"]'] },
