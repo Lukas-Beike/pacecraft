@@ -29,10 +29,11 @@ TARGETS = (NAME, f"{NAME}.py")
 QUOTES = "[\"'‘’“”]"
 # Shell glob characters, brace expansion and extglob groups.
 GLOB = re.compile(r"[*?\[]")
-WIDE = re.compile(r"[@+!?*]\([^()]*\)|\{(?=[^{}\s]*\})[^{}\s]*(?:,|\.\.)[^{}\s]*\}")
+WIDE = re.compile(r"[@+!?*]\([^()]*\)|\{[^{}\s]*\}")
 # DOS wildcards inside a word: `<` reads as `*`, `>` as `?`.
 DOS_STAR = re.compile(r"(?<=[\w.*?])<(?=[\w.*?])")
 DOS_ONE = re.compile(r"(?<=[\w.*?])>(?=[\w.*?])")
+VARIABLE = re.compile(r"\$\{?[a-z_][a-z0-9_]*\}?|%[a-z_][a-z0-9_]*%")
 # NTFS stream names that address the same folder or file.
 STREAM = re.compile(r"::?\$(?:index_allocation|i30|data)")
 # Separators between words, also of PowerShell arrays, script blocks and
@@ -174,8 +175,11 @@ def wildened(text: str) -> str:
     """Extglob groups and brace expansions (a list or a range; `{x}` stays
     literal in bash), innermost first, widened to `*`."""
     def wide(match: re.Match[str]) -> str:
+        group = match[0]
+        if group.startswith("{") and "," not in group and ".." not in group:
+            return group
         # A group holding a path keeps a folder of its own.
-        return "*/*" if re.search(r"[/\\]", match[0]) else "*"
+        return "*/*" if re.search(r"[/\\]", group) else "*"
 
     while (wider := WIDE.sub(wide, text)) != text:
         text = wider
@@ -193,6 +197,8 @@ def names_script(command: str) -> bool:
     # Negated and POSIX character classes as fnmatch reads them.
     text = re.sub(r"\[:[a-z]+:\]", "a-z0-9_.", text.replace("[^", "[!"))
     text = DOS_ONE.sub("?", DOS_STAR.sub("*", STREAM.sub("", wildened(text))))
+    # A variable can hold any folder or name.
+    text = VARIABLE.sub("*", text)
     return any(
         word_reaches_script(word)
         for variant in (unquoted(text), unquoted(text, "/"))
@@ -209,8 +215,10 @@ def word_reaches_script(word: str) -> bool:
     if (short and NAME.startswith(short[1][:2])) or ("~" in last and GLOB.search(last)):
         return True
     folder = folders[-1].rstrip(". ") if folders else None
-    # A file in a plainly named other folder is never the script.
-    if folder not in {None, "", ".", "..", "scripts"} and not GLOB.search(folder):
+    # A file in a plainly named other folder is never the script; a tilde
+    # folder (`~+` is the current one) is not plain.
+    plain = folder is not None and not folder.startswith("~") and not GLOB.search(folder)
+    if plain and folder not in {"", ".", "..", "scripts"}:
         return False
     # Without a folder, a glob must keep part of the name: `*` and `*.py`
     # pass, `r*` does not.

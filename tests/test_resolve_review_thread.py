@@ -260,6 +260,10 @@ class GuardHookTests(unittest.TestCase):
             'for %f in ("scripts::$INDEX_ALLOCATION\\r*") do python %f',
             "cd scripts/x && python ../r* 2671 PRRT_a1",
             "python ./r* 2671 PRRT_a1",
+            "cd scripts && python $PWD/r* 2671 PRRT_a1",
+            "cd scripts && python ${PWD}/r* 2671 PRRT_a1",
+            "cd scripts && python ~+/r* 2671 PRRT_a1",
+            "cd scripts && python %CD%\\r* 2671 PRRT_a1",
         ):
             with self.subTest(command):
                 self.assertEqual(self.decide(command), 2)
