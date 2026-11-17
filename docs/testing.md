@@ -222,7 +222,8 @@ the run focused (#3094). `--today YYYY-MM-DD` gives the fixture's athlete clock
 that date at the real time of day and, for specs built on `e2e/helpers/today.js`
 (the compact calendar week and the fixture UI walk), the browser clock, so a
 weekday-dependent expectation fails on a pinned Monday or Sunday; the manifest
-records the day (#3200). Without `--today`, a selected spec of the diff that
+records the day (#3200). The runner names each selected spec without the
+helper, whose browser keeps the real day (#3410). Without `--today`, a selected spec of the diff that
 imports the helper runs again on desktop on this week's Monday and Sunday (UTC),
 as CI's pinned-day step does; `--list` names these runs under `weekday_runs`,
 and each run writes its own manifest (#3324).
