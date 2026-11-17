@@ -13,7 +13,10 @@ python scripts/pr_merge.py <pr> [--wait <minutes>] [--allow-behind]
   auto-merge. Refuses a PR whose base is not `develop`.
 - Arms `--auto --squash` pinned to the current head (skipped when already
   armed). When GitHub refuses because the PR is already in clean status, it
-  merges that head directly (#2776).
+  merges that head directly (#2776). A 5xx, timeout or "Merge already in
+  progress" is transient: it reads the PR again after a pause, reports a merge
+  or auto-merge GitHub completed meanwhile, and repeats the write only for the
+  same head, at most three times; never re-run a merge write blindly (#3432).
 - Before arming it refuses (exit 1, naming the thread ids) while a review
   thread is unresolved, and disarms an earlier auto-merge (#2947): an armed
   auto-merge does not wait for review comments (#2520). Fix, reply, resolve

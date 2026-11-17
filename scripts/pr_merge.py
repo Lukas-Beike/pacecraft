@@ -7,7 +7,10 @@ off, and disarms an armed auto-merge then (#2901: "up to date before merge" is
 off while lanes run, and the lane rule asks for a rebase when develop moved in
 your files); --allow-behind skips that. Arms `gh pr merge --auto --squash` pinned to the current head,
 unless it is armed already; when GitHub refuses because the PR is already in
-clean status, merges that head at once with `--squash` (#2776). `--wait` then
+clean status, merges that head at once with `--squash` (#2776). A 5xx, timeout
+or "Merge already in progress" from that write reads the PR again after a pause
+and reports a merge or armed auto-merge found then; it repeats the write only for
+the same head, at most three times (#3432). `--wait` then
 polls every 20 s in the same turn until the PR is merged or closed, a check
 fails or new feedback arrives, at most MINUTES (#2795): the host's PR watcher
 does not reliably wake on the merge itself. Feedback is a person's comment or
@@ -53,6 +56,13 @@ HEAD_POLLS, HEAD_POLL_SECONDS = 10, 3
 # The orchestrator's merge freeze (#3203): `gh variable set MERGE_FREEZE --body
 # "<reason>"` starts it, `gh variable delete MERGE_FREEZE` lifts it.
 FREEZE = "MERGE_FREEZE"
+# A merge write's transient failures (#3432): a gateway 5xx, a timeout, or GitHub
+# still finishing an earlier merge request. Pauses before each re-read and retry.
+MERGE_TRANSIENT = re.compile(
+    r"(?:HTTP|status code:?) ?5\d\d|Merge already in progress|timed out|timeout",
+    re.IGNORECASE,
+)
+MERGE_RETRY_SECONDS = (10, 30, 60)
 
 
 def frozen(number: int) -> str | None:
@@ -138,6 +148,34 @@ def gitar_gate(sha: str, minutes: int) -> int | None:
 
 
 def arm(number: int, pr: dict[str, Any]) -> str:
+    """Arm (or merge) the read head; a transient error reads the state again first.
+
+    A 5xx or "Merge already in progress" may hide a merge GitHub completes on its
+    own (#3432): before every new attempt the PR is read again, a merge or an
+    armed auto-merge found then is reported, a moved head stops, and the write is
+    sent again only for the same head.
+    """
+    head = pr["headRefOid"]
+    delays = iter(MERGE_RETRY_SECONDS)
+    while True:
+        try:
+            return _arm_once(number, pr)
+        except CliError as exc:
+            delay = next(delays, None)
+            if delay is None or not MERGE_TRANSIENT.search(str(exc)):
+                raise
+            print(
+                f"transient merge error on #{number}: {exc}; reading the PR in {delay} s"
+            )
+        time.sleep(delay)
+        pr = view(number)
+        if pr.get("state") == "MERGED":
+            return "merged meanwhile"
+        if pr.get("headRefOid") != head or pr.get("state") != "OPEN":
+            raise CliError("head changed or PR not open after a merge error; run again")
+
+
+def _arm_once(number: int, pr: dict[str, Any]) -> str:
     if pr.get("autoMergeRequest"):
         return "auto-merge already armed"
     pin = ["--squash", "--match-head-commit", pr["headRefOid"]]

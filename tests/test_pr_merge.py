@@ -79,6 +79,18 @@ def rest_answer(argv, gitar, compare):
     return None
 
 
+def merge_answer(argv, auto_error):
+    """A `pr merge` answer: `auto_error` fails every --auto call, or a list answers
+    one --auto call each in order ("" succeeds, #3432)."""
+    if "--auto" not in argv:
+        error = ""
+    elif isinstance(auto_error, list):
+        error = auto_error.pop(0) if auto_error else ""
+    else:
+        error = auto_error
+    return subprocess.CompletedProcess(argv, int(bool(error)), "", error)
+
+
 def run(
     case, *args, auto_error="", views=None, behind=0, moved=(), threads=0, more=False,
     pushed=("", set()), freeze=None, gitar="success", calls=None,
@@ -112,8 +124,7 @@ def run(
         rest = rest_answer(argv, gitar, {"behind": behind, "files": list(moved)})
         if rest is not None:
             return subprocess.CompletedProcess(argv, 0, rest, "")
-        failed = auto_error and "--auto" in argv
-        return subprocess.CompletedProcess(argv, int(bool(failed)), "", auto_error)
+        return merge_answer(argv, auto_error)
 
     out, err = io.StringIO(), io.StringIO()
     with (
@@ -240,6 +251,46 @@ class PrMergeTests(unittest.TestCase):
         code, out, writes, _ = run(self, 7, auto_error=CLEAN)
         self.assertEqual((code, writes[-1]), (0, ["pr", "merge", "7", *PIN]))
         self.assertIn("merged feedc0de directly", out)
+
+    def test_a_transient_merge_error_reads_the_state_before_trying_again(self):
+        # #3432: a 502, then "Merge already in progress"; GitHub merged on its own.
+        gateway = "non-200 OK status code: 502 Bad Gateway"
+        busy = "GraphQL: Merge already in progress (mergePullRequest)"
+        code, out, writes, sleeps = run(
+            self, 7, auto_error=[gateway, ""], views=[view(), view()]
+        )
+        self.assertEqual(code, 0, out)
+        self.assertEqual(writes, [["pr", "merge", "7", "--auto", *PIN]] * 2)
+        self.assertIn("auto-merge armed on feedc0de", out)
+        self.assertEqual(sleeps, 1)
+        code, out, writes, _ = run(
+            self, 7, auto_error=[gateway, busy],
+            views=[view(), view(), view("MERGED")],
+        )  # fmt: skip
+        self.assertEqual(code, 0, out)
+        self.assertEqual(len(writes), 2)
+        self.assertIn("merged meanwhile", out)
+        # Armed meanwhile: no further write.
+        code, out, writes, _ = run(
+            self, 7, auto_error=[busy],
+            views=[view(), view(autoMergeRequest={"mergeMethod": "SQUASH"})],
+        )  # fmt: skip
+        self.assertEqual((code, len(writes)), (0, 1), out)
+        self.assertIn("auto-merge already armed", out)
+
+    def test_a_transient_merge_error_never_arms_a_moved_head_or_retries_forever(self):
+        gateway = "non-200 OK status code: 502 Bad Gateway"
+        code, out, writes, _ = run(
+            self, 7, auto_error=[gateway], views=[view(), view(headRefOid="b0b")]
+        )
+        self.assertEqual((code, len(writes)), (2, 1), out)
+        self.assertIn("head changed", out)
+        tries = len(pr_merge.MERGE_RETRY_SECONDS) + 1
+        code, out, writes, _ = run(
+            self, 7, auto_error=[gateway] * tries, views=[view()] * tries
+        )
+        self.assertEqual((code, len(writes)), (2, tries), out)
+        self.assertIn("502", out)
 
     def test_refusals_never_merge_directly(self):
         for kwargs, expect in (
