@@ -215,6 +215,40 @@ test("ui walk --compare takes the previous walk's out-dir or its ui-walk.json (#
   }
 });
 
+test("ui walk warns, or refuses with --require-current, when the checkout is behind origin/develop (#3344)", async () => {
+  const walk = await load();
+  const repo = fs.mkdtempSync(path.join(os.tmpdir(), "walk-checkout-"));
+  const git = (...args) => assert.equal(spawnSync("git", ["-C", repo, ...args], { encoding: "utf8" }).status, 0);
+  // The printed line, or null, and whether the walk may run.
+  const check = (requireCurrent) => {
+    const printed = [];
+    const log = console.log;
+    console.log = (line) => printed.push(line);
+    try {
+      const runs = walk.checkoutCurrent(requireCurrent, repo);
+      return [printed[0] ?? null, runs];
+    } finally {
+      console.log = log;
+    }
+  };
+  try {
+    git("init", "-q");
+    for (const message of ["a", "b"]) git("-c", "user.name=t", "-c", "user.email=t@example.invalid", "commit", "-q", "--allow-empty", "-m", message);
+    git("update-ref", "refs/remotes/origin/develop", "HEAD");
+    git("checkout", "-q", "--detach", "HEAD~1");
+    const fix = "update it: git fetch origin develop && git switch --detach origin/develop";
+    assert.deepEqual(check(false), [`WARN this checkout is 1 commit(s) behind origin/develop; ${fix}`, true]);
+    assert.deepEqual(check(true), [`FAIL this checkout is 1 commit(s) behind origin/develop; ${fix}`, false]);
+    git("checkout", "-q", "--detach", "origin/develop");
+    assert.deepEqual(check(true), [null, true]);
+    fs.rmSync(path.join(repo, ".git"), { recursive: true, force: true });
+    assert.deepEqual(check(false), [null, true]);
+    assert.deepEqual(check(true), [`FAIL this checkout cannot be compared with origin/develop; ${fix}`, false]);
+  } finally {
+    fs.rmSync(repo, { recursive: true, force: true });
+  }
+});
+
 test("ui walk refuses a file, link or hard link at a fixed name instead of following it (#2661)", async () => {
   const walk = await load();
   const outDir = fs.mkdtempSync(path.join(os.tmpdir(), "walk-out-"));

@@ -2,7 +2,7 @@
 
     python scripts/prod_diagnostics.py --url <app address> --password-file <secret file>
         [--expect-version 2.1.2] [--expect-schema 27] [--out result.json]
-        [--compare previous.json] [--ca-file ca.pem]
+        [--compare previous.json] [--ca-file ca.pem] [--require-current]
     python scripts/prod_diagnostics.py --url <app address> --password-file <secret file>
         --section <name> [--section <name> ...]
     Either form takes [--wait-ready <seconds>]: before it reads the report it
@@ -32,7 +32,13 @@ import time
 from datetime import UTC, datetime
 from typing import Any
 
-from prod_client import ProdError, Session, read_result, write_result
+from prod_client import (
+    ProdError,
+    Session,
+    checkout_current,
+    read_result,
+    write_result,
+)
 
 COUNTS = (
     "messages",
@@ -618,7 +624,10 @@ def main(argv: list[str] | None = None) -> int:
         choices=sorted({*SECTION_FIELDS, *DERIVED_SECTIONS}),
     )
     parser.add_argument("--wait-ready", type=float, metavar="SECONDS")
+    parser.add_argument("--require-current", action="store_true")
     args = parser.parse_args(argv)
+    if not checkout_current(args.require_current):
+        return 2
     checks_asked = (
         args.out,
         args.compare,
