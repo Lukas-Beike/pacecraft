@@ -222,6 +222,17 @@ class ProdChecksTests(unittest.TestCase):
         self.addCleanup(self.tmp.cleanup)
         self.secret = Path(self.tmp.name) / "secret"
         self.secret.write_text(FAKE_LOGIN + "\n", encoding="utf-8")
+        # The checks compare a checkout with origin/develop (#3344): here a
+        # directory without git state, not this repository, unless a test sets one.
+        self.checkout = Path(self.tmp.name)
+        for module in (prod_diagnostics, prod_guards):
+            patcher = mock.patch.object(
+                module,
+                "checkout_current",
+                lambda required: prod_client.checkout_current(required, self.checkout),
+            )
+            patcher.start()
+            self.addCleanup(patcher.stop)
 
     def run_main(self, module, *args):
         out = io.StringIO()
@@ -735,32 +746,28 @@ class ProdChecksTests(unittest.TestCase):
         fix = (
             "update it: git fetch origin develop && git switch --detach origin/develop"
         )
-        with mock.patch.object(prod_client, "ROOT", repo):
-            code, text = self.run_main(prod_guards, *login)
-            self.assertEqual(code, 0, text)
-            self.assertIn(
-                f"WARN this checkout is 1 commit(s) behind origin/develop; {fix}", text
-            )
-            code, text = self.run_main(prod_diagnostics, *login, "--require-current")
-            self.assertEqual(code, 2, text)
-            self.assertTrue(
-                text.startswith("FAIL this checkout is 1 commit(s) behind"), text
-            )
-            self.assertNotIn("health", text)
-            git("checkout", "-q", "--detach", "origin/develop")
-            code, text = self.run_main(prod_guards, *login, "--require-current")
-            self.assertEqual(code, 0, text)
-            self.assertNotIn("checkout", text)
+        self.checkout = repo
+        code, text = self.run_main(prod_guards, *login)
+        self.assertEqual(code, 0, text)
+        self.assertIn(
+            f"WARN this checkout is 1 commit(s) behind origin/develop; {fix}", text
+        )
+        code, text = self.run_main(prod_diagnostics, *login, "--require-current")
+        self.assertEqual(code, 2, text)
+        self.assertTrue(
+            text.startswith("FAIL this checkout is 1 commit(s) behind"), text
+        )
+        self.assertNotIn("health", text)
+        git("checkout", "-q", "--detach", "origin/develop")
+        code, text = self.run_main(prod_guards, *login, "--require-current")
+        self.assertEqual(code, 0, text)
+        self.assertNotIn("checkout", text)
         # Without git state to compare, only --require-current refuses.
-        plain = Path(self.tmp.name) / "plain"
-        plain.mkdir()
-        with mock.patch.object(prod_client, "ROOT", plain):
-            self.assertNotIn("checkout", self.run_main(prod_guards, *login)[1])
-            code, text = self.run_main(prod_guards, *login, "--require-current")
-            self.assertEqual(code, 2)
-            self.assertIn(
-                "FAIL this checkout cannot be compared with origin/develop", text
-            )
+        self.checkout = Path(self.tmp.name)
+        self.assertNotIn("checkout", self.run_main(prod_guards, *login)[1])
+        code, text = self.run_main(prod_guards, *login, "--require-current")
+        self.assertEqual(code, 2)
+        self.assertIn("FAIL this checkout cannot be compared with origin/develop", text)
 
     def test_logs_from_the_app_and_from_a_saved_file(self):
         code, text = self.run_main(
