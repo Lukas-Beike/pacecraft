@@ -167,6 +167,9 @@ class BodyEntryServiceTests(unittest.TestCase):
             {"date": "2026-11-15", "kg": "viel"},
             {"date": "2026-11-15", "kg": 19.9},  # below the canonical 20 kg
             {"date": "2026-11-15", "kg": 400.1},
+            # Outside what the body readers show (30 to 300 kg, #3418).
+            {"date": "2026-11-15", "kg": 29.9},
+            {"date": "2026-11-15", "kg": 300.1},
         ):
             with self.subTest(payload=payload), self.assertRaises(AppError):
                 self.service.save(payload)

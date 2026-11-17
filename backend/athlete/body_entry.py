@@ -52,6 +52,9 @@ WEIGHT_ENTRY: Final = BodyEntryKind(
     "Das Gewicht",
     "Das Löschen eines Gewichts muss bestätigt werden.",
     "Für diesen Tag gibt es kein eingetragenes Gewicht.",
+    # The range the body readers accept (canonical_body, WEIGHT_BOUNDS), so a
+    # saved entry is always shown and used (#3418).
+    (30.0, 300.0),
 )
 BODY_FAT_ENTRY: Final = BodyEntryKind(
     MetricKind.BODY_FAT,
