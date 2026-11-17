@@ -13,8 +13,9 @@ sets. After a mapper bump every activity of the window is a candidate again
 (a replay: its sets exist for the current summary, only their mapper version is
 older). New or changed activities always come first; replays fill the rest of the
 batch within a daily budget that starts at ``REPLAY_START_DAILY`` fetches, doubles
-after a UTC day of replays without a rate limit or Garmin error (up to
-``REPLAY_MAX_DAILY``) and falls back to the start after a 429, each fetch attempt
+after a UTC day of replays without a rate limit or Garmin error, and at once when
+such a day has used it up (up to ``REPLAY_MAX_DAILY``), and falls back to the start
+after a 429, each refresh taking at most ``REPLAY_MAX_PER_REFRESH``, each fetch attempt
 counting, so about five Garmin calls per activity never run into the rate limit
 all at once (#2220). ``REPLAY_ENABLED`` stops them. A
 fetch without the original file falls back to chart streams and splits; those
@@ -951,8 +952,12 @@ def _in_force(
 
 def _roll_replay(previous: _ReplayBudget, today: str) -> _ReplayBudget:
     """The replay state of ``today``: a new UTC day doubles the budget (to the cap)
-    when the previous one made replay fetches and ran clean, else keeps it."""
+    when the previous one made replay fetches and ran clean, else keeps it. A clean
+    day whose budget is used up doubles at once (athlete, 2026-11-17, #2220)."""
     if previous.day == today:
+        if previous.clean and previous.count >= previous.budget:
+            budget = min(2 * previous.budget, REPLAY_MAX_DAILY)
+            return _ReplayBudget(day=today, count=previous.count, budget=budget)
         return previous
     budget = previous.budget
     if previous.count and previous.clean:

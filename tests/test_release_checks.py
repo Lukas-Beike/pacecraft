@@ -26,12 +26,15 @@ PROMOTION_PR = {
 }  # fmt: skip
 
 
-def fake_gh(prs, release=None, publish=()):
+def fake_gh(prs, release=None, publish=(), errors=()):
     calls = []
+    errors = list(errors)
 
     def run(argv, **_kwargs):
         calls.append(argv)
         args = argv[1:]
+        if errors:
+            return subprocess.CompletedProcess(argv, 1, "", errors.pop(0))
         if args[:2] == ["pr", "list"]:
             base = args[args.index("--base") + 1]
             data = [p for p in prs if ("promote" in p["title"]) == (base == "main")]
@@ -53,7 +56,12 @@ def fake_gh(prs, release=None, publish=()):
 def follow(*args, **fakes):
     run, calls = fake_gh(**fakes)
     out = io.StringIO()
-    with mock.patch.object(gh_cli.subprocess, "run", run), redirect_stdout(out):
+    with (
+        mock.patch.object(gh_cli.subprocess, "run", run),
+        mock.patch.object(release_dispatch.time, "sleep"),
+        redirect_stdout(out),
+        mock.patch("sys.stderr", io.StringIO()),
+    ):
         code = release_dispatch.main(["follow", *args])
     return code, out.getvalue(), calls
 
@@ -83,6 +91,31 @@ class ReleaseDispatchTests(unittest.TestCase):
         code, out, _ = follow("--version", V, prs=[VERSION_PR, closed])
         self.assertEqual(code, 1)
         self.assertIn("failed promotion PR #2 CLOSED", out)
+        failed_run = {"databaseId": 9, "status": "completed", "conclusion": "failure", "headBranch": V, "url": "u"}  # fmt: skip
+        code, out, _ = follow("--version", V, prs=[VERSION_PR], publish=[failed_run])
+        self.assertEqual(code, 1)
+        self.assertIn("failed publish run 9 failure", out)
+
+    def test_transient_github_errors_are_pending_and_real_ones_stay_terminal(self):
+        # One 503 is retried and the chain still completes (#3345).
+        chain = {
+            "prs": [VERSION_PR, PROMOTION_PR],
+            "release": {"tagName": V, "isDraft": False, "targetCommitish": "abc"},
+            "publish": [{"databaseId": 9, "status": "completed", "conclusion": "success", "headBranch": V, "url": "u"}],
+        }  # fmt: skip
+        outage = "HTTP 503: No server is currently available to service your request"
+        code, out, _ = follow("--version", V, errors=[outage], **chain)
+        self.assertEqual(code, 0, out)
+        # An outage that outlasts the retries is pending, then the next follow is ok.
+        code, out, _ = follow("--version", V, errors=[outage] * 4, **chain)
+        self.assertEqual(code, 3, out)
+        self.assertIn("pending GitHub unavailable", out)
+        self.assertEqual(follow("--version", V, **chain)[0], 0)
+        # A 4xx is not retried and stays an error.
+        code, out, calls = follow(
+            "--version", V, errors=["HTTP 404: Not Found"], **chain
+        )
+        self.assertEqual((code, out, len(calls)), (2, "", 1))
 
     def test_follow_finds_the_version_from_the_newest_version_pr(self):
         code, out, _ = follow("--since", "2026-11-11T09:00:00Z", prs=[VERSION_PR])

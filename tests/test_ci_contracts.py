@@ -524,6 +524,40 @@ class WorkflowSourceTests(unittest.TestCase):
         self.assertIn("    branches: [main]\n", workflow)
         self.assertIn("  workflow_dispatch:\n", workflow)
 
+    def test_the_browser_image_pin_moves_with_the_locked_playwright(self):
+        # #3334: a Dependabot @playwright/test bump moved only the package and the
+        # lock, and every browser shard stopped in verify_browser (#3332).
+        root = Path(__file__).resolve().parents[1]
+        package = json.loads((root / "package.json").read_text(encoding="utf-8"))
+        lock = json.loads((root / "package-lock.json").read_text(encoding="utf-8"))
+        pin = json.loads(
+            (root / "scripts/browser_environment.json").read_text(encoding="utf-8")
+        )
+        locked = {
+            name: lock["packages"][f"node_modules/{name}"]["version"]
+            for name in ("@playwright/test", "playwright", "playwright-core")
+        }
+        # An image in another form is compared whole, so it fails with the recipe.
+        image = re.fullmatch(
+            r"mcr\.microsoft\.com/playwright:v([0-9.]+)-noble@sha256:[a-f0-9]{64}",
+            pin["image"],
+        )
+        declared = {
+            "package.json": package["devDependencies"]["@playwright/test"],
+            **locked,
+            "browser_environment.json version": pin["version"],
+            "browser_environment.json image tag": image.group(1)
+            if image
+            else pin["image"],
+        }
+        self.assertEqual(
+            len(set(declared.values())),
+            1,
+            f"Playwright versions differ: {declared}. Bump scripts/browser_environment"
+            ".json (version, image tag and index digest) with the package: "
+            "docs/dependencies.md",
+        )
+
     def test_dependabot_updates_wait_three_days(self):
         config = (
             Path(__file__).resolve().parents[1] / ".github/dependabot.yml"

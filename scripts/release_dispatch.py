@@ -7,7 +7,9 @@
 `follow` prints one line per link of the chain: the version PR, the promotion
 PR to main, the GitHub Release, and the container publish run for that tag.
 Exit 0 published, 1 a link failed or was closed unmerged, 2 bad input or a
-failed gh call, 3 still in progress. It never merges, approves or reruns.
+failed gh call, 3 still in progress. A transient GitHub error (HTTP 5xx, a
+timeout) is retried, then reported as pending (#3345). It never merges,
+approves or reruns.
 """
 
 from __future__ import annotations
@@ -17,8 +19,10 @@ import re
 import sys
 import time
 from datetime import UTC, datetime
+from typing import Any
 
-from gh_cli import CliError, gh, gh_json
+import gh_cli
+from gh_cli import CliError, gh
 
 WORKFLOW = "daily-release.yml"
 PUBLISH = "Test and publish container image"
@@ -27,6 +31,22 @@ VERSION_PR = re.compile(
     r"^chore\(release\): set application version to (\d+\.\d+\.\d+)$"
 )
 GREEN = {"success", "skipped", "neutral"}
+TRANSIENT = re.compile(
+    r"HTTP 5\d\d|No server is currently available|timed out|timeout", re.IGNORECASE
+)
+RETRY_DELAYS = (2, 5, 10)
+
+
+def gh_json(*args: str) -> Any:
+    """A gh read, retried with a backoff while GitHub fails transiently."""
+    for delay in RETRY_DELAYS:
+        try:
+            return gh_cli.gh_json(*args)
+        except CliError as exc:
+            if not TRANSIENT.search(str(exc)):
+                raise
+            time.sleep(delay)
+    return gh_cli.gh_json(*args)
 
 
 def version_arg(text: str) -> str:
@@ -155,6 +175,9 @@ def main(argv: list[str] | None = None) -> int:
             return dispatch(args.version)
         return follow(args.version, args.since)
     except CliError as exc:
+        if args.command == "follow" and TRANSIENT.search(str(exc)):
+            print(f"pending GitHub unavailable, follow again: {exc}")
+            return 3
         print(f"error: {exc}", file=sys.stderr)
         return 2
 

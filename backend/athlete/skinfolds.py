@@ -188,8 +188,12 @@ class SkinfoldService:
 
     def skinfold_on(self, db: Any, day: date) -> SkinfoldMeasurement | None:
         """The latest complete measurement on or before ``day``, or None."""
-        found = self._measurements(db, until=day)
+        found = self.measurements_on(db, day)
         return found[0] if found else None
+
+    def measurements_on(self, db: Any, day: date) -> list[SkinfoldMeasurement]:
+        """Every complete measurement on or before ``day``, newest first."""
+        return self._measurements(db, until=day)
 
     def read(self) -> dict[str, Any]:
         with self._database_manager.reader() as db:

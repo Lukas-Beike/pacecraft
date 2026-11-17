@@ -1224,15 +1224,18 @@ function bodyMetricChart(metric, title, unit, window, period, preferred = {}) {
   return chart;
 }
 
-function bodyProfileFat(profile) {
-  const raw = profile?.body_fat_pct;
-  if (raw == null || String(raw).trim() === "") return null;
-  const value = Number(String(raw).replace(",", "."));
-  return Number.isFinite(value) && value >= 1 && value <= 70 ? value : null;
+// KFA stays derived from the folds (#3252): the newest skinfold body fat, else why there is
+// none (#3336). A profile or scale value is not shown as KFA; null while the folds load.
+function bodyFoldFat(read) {
+  if (!read || read.failed) return null;
+  const newest = read.measurements?.[0];
+  if (!newest) return { text: "Hautfalten fehlen" };
+  if (newest.body_fat_pct == null) return { text: "unbekannt", note: "ohne Geburtsjahr" };
+  return { value: newest.body_fat_pct, note: dateLabel(newest.date) };
 }
 
-function bodyOverviewDisplayValue(profileFat, latest, unit) {
-  if (profileFat != null) return analysisValue(profileFat, unit);
+function bodyOverviewDisplayValue(fold, latest, unit) {
+  if (fold) return fold.value == null ? fold.text : analysisValue(fold.value, unit);
   if (latest) return analysisValue(latest.value, unit);
   return "\u2014";
 }
@@ -1246,11 +1249,11 @@ function renderBodyOverviewRow(metric, title, unit, body, preferred) {
   // wins over a measurement (#3252).
   readings.sort((a, b) => a.date.localeCompare(b.date) || Number(a.local) - Number(b.local)
     || (a.observed_at || a.date).localeCompare(b.observed_at || b.date));
-  const latest = readings.at(-1);
-  const profileFat = metric === "body_fat_pct" ? bodyProfileFat(state.data?.profile) : null;
-  let note = latest && dateLabel(latest.observed_at || latest.date);
-  if (profileFat != null) note = "Profil";
-  const row = h("tr", { dataset: { metric } }, h("th", { scope: "row" }, title, note && h("small", null, note)), h("td", null, bodyOverviewDisplayValue(profileFat, latest, unit)),
+  const fat = metric === "body_fat_pct";
+  const fold = fat ? bodyFoldFat(skinfoldRead) : null;
+  const latest = fat ? null : readings.at(-1);
+  const note = fold ? fold.note : latest && dateLabel(latest.observed_at || latest.date);
+  const row = h("tr", { dataset: { metric } }, h("th", { scope: "row" }, title, note && h("small", null, note)), h("td", null, bodyOverviewDisplayValue(fold, latest, unit)),
     h("td", null, metric === "body_fat_pct" ? skinfoldEditButton() : weightEditButton()));
   // Body fat stays derived from the folds: tapping its row opens the skinfold dialog (#3252).
   if (metric === "body_fat_pct") row.addEventListener("click", (event) => { if (!event.target.closest("button")) openSkinfoldDialog(); });
@@ -1328,6 +1331,7 @@ async function sendSkinfolds(path, payload, button) {
     resetEnergy();
     document.querySelector("#skinfoldDialog").close();
     renderBodyAnalysis(state.data?.performance?.history?.body);
+    renderDiaryEnergy();
     return true;
   } catch (error) {
     status.textContent = error.message;
@@ -1392,6 +1396,7 @@ async function sendWeight(path, payload, button) {
   }
   resetEnergy();
   document.querySelector("#weightDialog").close();
+  renderDiaryEnergy();
   // The save stands; a failed re-read is reported outside the closed dialog.
   try {
     const result = await api("/api/performance");
@@ -1521,7 +1526,8 @@ function energyBiasText(flagged) {
 
 function energyInfo(read) {
   const text = [energyBasisText(read), energyNeatInputs(read.basis?.neat), energyBiasText(read.flagged)].filter(Boolean).join(" · ");
-  const button = h("button", { type: "button", className: "threshold-info", "aria-label": "Berechnung des Energieverbrauchs" }, "i");
+  // The same small info icon as the chart groups (Analyse › Laufen › Entwicklung, #3336).
+  const button = h("button", { type: "button", className: "analysis-legend-info analysis-info-icon", "aria-label": "Energieverbrauch: Informationen" }, "i");
   const info = h("div", { className: "analysis-info-tooltip", id: `energy-info-${++energyInfoId}` }, text);
   bindAnalysisPopover(button, info);
   return [button, info];
@@ -1567,14 +1573,36 @@ function energySplitLegend(read) {
   return h("ul", "energy-split-legend", items);
 }
 
+// Why the formula rows are empty (#3336); each opens the dialog that supplies the input.
+const ENERGY_BODY_MISSING = {
+  no_skinfold: "Hautfalten fehlen",
+  skinfold_too_old: "Hautfalten älter als 90 Tage",
+  no_birth_year: "Geburtsjahr fehlt",
+  no_weight: "Gewicht fehlt",
+  invalid: "Hautfalten prüfen",
+};
+const ENERGY_FORMULAS = new Set(["katch_mcardle", "cunningham"]);
+
+function energyMissingCell(reason) {
+  const button = h("button", { type: "button", className: "analysis-legend-info", dataset: { energyMissing: reason } }, ENERGY_BODY_MISSING[reason] || reason);
+  button.addEventListener("click", () => {
+    if (reason === "no_weight") void openWeightDialog();
+    else if (reason === "no_birth_year") void AppRouter.navigate("more/profile", { historyMode: "push" });
+    else openSkinfoldDialog();
+  });
+  return h("td", { colSpan: 2 }, button);
+}
+
 function energyTable(read) {
   const rows = ENERGY_SOURCES.flatMap(([source, label, color]) => {
     const row = read.rows.find((item) => item.source === source) || {};
     const best = read.best === source ? [" ", createStatusChip("passt am besten", "ready")] : [];
     return [h("tr", { dataset: { energySource: source } },
       h("th", { scope: "row", dataset: { color: String(color) } }, label ?? row.label, ...best),
-      h("td", null, row.resting_implausible ? ENERGY_IMPLAUSIBLE : energyKcal(row.resting_kcal, row.resting_band_kcal)),
-      h("td", null, energyKcal(row.total_kcal, row.total_band_kcal))), energySplitRow(row)].filter(Boolean);
+      ...(ENERGY_FORMULAS.has(source) && row.resting_kcal == null && read.skinfold_missing
+        ? [energyMissingCell(read.skinfold_missing)]
+        : [h("td", null, row.resting_implausible ? ENERGY_IMPLAUSIBLE : energyKcal(row.resting_kcal, row.resting_band_kcal)),
+          h("td", null, energyKcal(row.total_kcal, row.total_band_kcal))])), energySplitRow(row)].filter(Boolean);
   });
   return h("table", { className: "current-performance-table" }, h("caption", null, "Energieverbrauch ", ...energyInfo(read)),
     h("thead", null, h("tr", null, h("th", { scope: "col" }, "Quelle"), h("th", { scope: "col" }, "Ruhe"), h("th", { scope: "col" }, "Tag gesamt"))),

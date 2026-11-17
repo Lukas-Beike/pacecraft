@@ -25,7 +25,6 @@ from typing import Any, Final
 
 from backend.athlete.body_composition import (
     RestingFormula,
-    lean_mass_kg,
     resting_band,
     resting_energy,
 )
@@ -40,9 +39,10 @@ from backend.nutrition.energy_balance import (
     windows_bias,
 )
 from backend.nutrition.energy_inputs import (
-    RESTING_LOOKBACK_DAYS,
     EnergySources,
     read_energy_inputs,
+    resolve_body,
+    skinfold_state,
 )
 from backend.providers.source_labels import SourceView, provider_label
 
@@ -64,29 +64,6 @@ type Prediction = tuple[float | None, float | None, float | None, float | None]
 
 def _round(value: float | None) -> int | None:
     return None if value is None else round(value)
-
-
-def _body(
-    inputs: EnergyInputs, trend: Mapping[date, float], day: date
-) -> dict[str, Any] | None:
-    """The skinfold in effect on ``day`` with the trend weight's lean mass."""
-    since = day - timedelta(days=RESTING_LOOKBACK_DAYS)
-    measured = [d for d in inputs.body_fat_pct if since <= d <= day]
-    weighed = [d for d in trend if d <= day]
-    if not measured or not weighed:
-        return None
-    fat_pct = inputs.body_fat_pct[max(measured)]
-    weight = trend[max(weighed)]
-    try:
-        lean = lean_mass_kg(weight, fat_pct)
-    except ValueError:
-        return None
-    return {
-        "measured_on": max(measured),
-        "body_fat_pct": fat_pct,
-        "weight_kg": weight,
-        "lean_mass_kg": lean,
-    }
 
 
 def _formula_prediction(
@@ -360,13 +337,17 @@ def energy_view(
     health: Mapping[str, Mapping[str, Any]],
     sessions: Sequence[Mapping[str, Any]] = (),
     bias: tuple[float, float] | None = None,
+    body_missing: str | None = None,
 ) -> dict[str, Any]:
-    """The table rows of the latest window, each source's fit, split and basis."""
+    """The table rows of the latest window, each source's fit, split and basis.
+
+    ``body_missing`` is why the formula rows have no body (#3336), shown with them.
+    """
     trend = weight_trend(
         {d: v.weight_kg for d, v in inputs.days.items() if v.weight_kg is not None}
     )
     latest = windows[-1]
-    bodies = [_body(inputs, trend, w.end) for w in windows]
+    bodies = [resolve_body(inputs, trend, w.end) for w in windows]
     predictions: dict[str, list[Prediction]] = {
         name: [
             _formula_prediction(f, b, w) for b, w in zip(bodies, windows, strict=True)
@@ -464,6 +445,7 @@ def energy_view(
             "rmr_source": latest.rmr_source,
             "neat": _neat_basis(inputs, latest),
         },
+        "skinfold_missing": body_missing,
         "skinfold": None
         if body is None
         else {
@@ -482,5 +464,8 @@ def read_energy_view(db: Any, sources: EnergySources, end: date) -> dict[str, An
     windows = energy_windows(inputs, end)
     # The split is shown for the latest window only, so only its sessions are read.
     latest = sources.sessions(db, end - timedelta(days=windows[-1].days - 1), end)
+    _, missing = skinfold_state(db, sources, inputs, end)
     # The bias comes from the windows already built, not a second build (Gitar).
-    return energy_view(inputs, windows, health, latest, windows_bias(windows))
+    return energy_view(
+        inputs, windows, health, latest, windows_bias(windows), body_missing=missing
+    )

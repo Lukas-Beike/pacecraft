@@ -41,3 +41,13 @@ fail the check until the code is fixed or the baseline is regenerated on purpose
 While the auto-rebase workflow is off during a lane delivery, it does not align a
 Dependabot ruff or mypy bump: run the command above on that branch and commit the
 baseline with the bump (#3211).
+
+CI's browser shards run in the prepared image pinned by `scripts/browser_environment.json`,
+and the runner refuses an image whose `version` is not the locked `@playwright/test`
+("Prepared image differs from locked declared environment"). A Dependabot bump of
+`@playwright/test` changes only `package.json` and `package-lock.json`, so it fails
+every shard: supersede it with one PR that also sets `version` and the
+`mcr.microsoft.com/playwright:v<version>-noble` image with its multi-platform index
+digest (`docker buildx imagetools inspect <image>`, the top-level `Digest`), then
+install the new Chromium locally (`node node_modules/@playwright/test/cli.js install
+chromium`) for a native run (#3332).
