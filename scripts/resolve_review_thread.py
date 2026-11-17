@@ -11,8 +11,9 @@ call run, and only while this script matches origin/develop and nothing in
 
     python scripts/resolve_review_thread.py <pr> <thread-id>
 
-Exit 0: resolved. 1: refused (the reason is printed). 2: bad input or a failed
-`gh` call.
+Exit 0: resolved, or already resolved on the named pull request of that user
+(nothing is sent; #3317). 1: refused (the reason is printed). 2: bad input or a
+failed `gh` call.
 """
 
 from __future__ import annotations
@@ -37,6 +38,9 @@ MUTATION = (
 )
 THREAD_ID = re.compile(r"PRRT_[A-Za-z0-9_-]+")
 SHA = re.compile(r"\b[0-9a-f]{7,40}\b")
+# The goal state, not a refusal: Gitar resolves its own thread once the reply
+# names the fix commit (#3317).
+ALREADY_RESOLVED = "the thread is already resolved"
 
 
 class CliError(RuntimeError):
@@ -53,7 +57,9 @@ def gh_json(*args: str) -> Any:
         raise CliError("gh is not installed.") from exc
     if done.returncode != 0:
         lines = (done.stderr or done.stdout or "").strip().splitlines()
-        raise CliError(f"gh {' '.join(args[:2])} failed: {lines[0] if lines else 'no output'}")
+        raise CliError(
+            f"gh {' '.join(args[:2])} failed: {lines[0] if lines else 'no output'}"
+        )
     try:
         return json.loads(done.stdout or "null")
     except json.JSONDecodeError as exc:
@@ -75,7 +81,7 @@ def refusal(thread: dict | None, pr: int, viewer: str) -> str | None:
     if (pull.get("author") or {}).get("login") != viewer:
         return "the pull request was not authored by the authenticated user"
     if thread["isResolved"]:
-        return "the thread is already resolved"
+        return ALREADY_RESOLVED
     comments = thread["comments"]["nodes"]
     if len(comments) < 2 or (comments[-1]["author"] or {}).get("login") != viewer:
         return "the thread's last comment is not a reply by the authenticated user"
@@ -106,6 +112,9 @@ def main(argv: list[str] | None = None) -> int:
             "api", "graphql", "-f", f"query={QUERY}", "-f", f"id={args.thread}"
         )
         reason = refusal((data.get("data") or {}).get("node"), args.pr, viewer)
+        if reason == ALREADY_RESOLVED:
+            print(f"already resolved: {args.thread} on #{args.pr}; nothing to do")
+            return 0
         if reason:
             print(f"refused: {reason}")
             return 1

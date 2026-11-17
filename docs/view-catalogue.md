@@ -29,7 +29,6 @@ Default route: `#coach`. Navigation items: `#coach`, `#plan`, `#nutrition`, `#an
 | `#analysis/load` | `dataPanel` | `analysis` | `/api/performance` | Analyse aktualisieren, Jetzt abgleichen, Anbindung einrichten, Letzte 14 Tage, 12 Wochen, 12 Wochen anzeigen | loading, empty, error, notConfigured, offline |
 | `#analysis/recovery` | `dataPanel` | `analysis` | `/api/performance` | Analyse aktualisieren, Jetzt abgleichen, Anbindung einrichten, Letzte 14 Tage, 12 Wochen, 12 Wochen anzeigen | loading, empty, error, notConfigured, offline |
 | `#analysis/running` | `dataPanel` | `analysis` | `/api/performance`, `/api/analysis/power-profiles` | Analyse aktualisieren, Jetzt abgleichen, Anbindung einrichten | loading, empty, error, notConfigured, offline |
-| `#analysis/week` | `dataPanel` | `analysis` | `/api/analysis/week-review` | Analyse aktualisieren, Jetzt abgleichen, Anbindung einrichten, Diese, Letzte | loading, empty, error, notConfigured, offline |
 | `#coach` | `chatPanel` | `coach` | `/api/chat/history?limit=100` | Senden, Morgen-Check-in, Analyse & Plan, Antwort stoppen, Weitere Nachrichten laden, Coach fragen | loading, empty, error, notConfigured, offline |
 | `#more` | `settingsPanel` | `more` | `/api/context-preview`, `/api/logs?limit=250`, `/api/providers/connections`, `/api/nutrition/yazio/status` | Verbindung prüfen, Mit Garmin anmelden, Garmin trennen, Wahoo verbinden, Synchronisieren, Speichern, Entfernen | loading, error, notConfigured, offline |
 | `#more/appearance` | `settingsPanel` | `more` | `/api/context-preview`, `/api/logs?limit=250` | System, Hell, Dunkel, Kalenderansicht speichern | loading, offline |
@@ -43,9 +42,9 @@ Default route: `#coach`. Navigation items: `#coach`, `#plan`, `#nutrition`, `#an
 | `#nutrition/diary` | `nutritionPanel` | `nutrition` | `/api/nutrition/day`, `/api/body/energy` | Ernährung aktualisieren, Vorheriger Tag, Nächster Tag, Heute, Als geschätzt markieren, Nicht geschätzt, Löschen, Rückgängig, Erneut laden | loading, empty, error, offline |
 | `#nutrition/products` | `nutritionPanel` | `nutrition` | `/api/nutrition/products?scope=all`, `/api/nutrition/products/refresh-all` | Barcode scannen, Nährwerttabelle fotografieren, Produkt manuell erfassen, Suchen, Alle aktualisieren | loading, empty, error, offline |
 | `#nutrition/week` | `nutritionPanel` | `nutrition` | `/api/nutrition/week` | Ernährung aktualisieren, Letzte 14 Tage, 12 Wochen, Tageswerte anzeigen | loading, empty, error, offline |
-| `#plan` | `workoutsPanel` | `plan` | `/api/plan`, `/api/library?limit=100`, `/api/activities?limit=100` | Kalender aktualisieren, Woche, Monat, Woche synchronisieren, Verschieben, Feedback, Mit dem Coach analysieren, Mit Coach lösen | loading, empty, error, notConfigured, offline |
+| `#plan` | `workoutsPanel` | `plan` | `/api/plan`, `/api/library?limit=100`, `/api/activities?limit=100`, `/api/analysis/week-review` | Kalender aktualisieren, Woche, Monat, Woche synchronisieren, Verschieben, Feedback, Mit dem Coach analysieren, Mit Coach lösen | loading, empty, error, notConfigured, offline |
 | `#plan/library` | `workoutsPanel` | `plan` | `/api/plan`, `/api/library?limit=100` | Kalender aktualisieren, Weitere Bibliothekseinheiten laden, Erneut senden | loading, empty, error, offline |
-| `#plan/overview` | `workoutsPanel` | `plan` | `/api/plan`, `/api/library?limit=100`, `/api/activities?limit=100` | Kalender aktualisieren, Woche, Monat, Woche synchronisieren, Verschieben, Feedback, Mit dem Coach analysieren, Mit Coach lösen | loading, empty, error, notConfigured, offline |
+| `#plan/overview` | `workoutsPanel` | `plan` | `/api/plan`, `/api/library?limit=100`, `/api/activities?limit=100`, `/api/analysis/week-review` | Kalender aktualisieren, Woche, Monat, Woche synchronisieren, Verschieben, Feedback, Mit dem Coach analysieren, Mit Coach lösen | loading, empty, error, notConfigured, offline |
 | `#plan/season` | `workoutsPanel` | `plan` | `/api/plan`, `/api/library?limit=100`, `/api/profile` | Kalender aktualisieren, Erneut laden | loading, empty, error, offline |
 
 Kalender segments: `overview`, `library`, `season`.
@@ -55,6 +54,7 @@ Former routes that open another view:
 
 - `#analysis/performance` opens `#analysis/running`
 - `#analysis/sessions` opens `#plan/overview`
+- `#analysis/week` opens `#plan/overview`
 <!-- END GENERATED VIEWS -->
 
 ## State texts
@@ -84,8 +84,6 @@ expression. Other inline status lines are not listed.
 | `showProfileCardsState` | `createLoadingState` | (computed) `` `${title} wird geladen…` `` |  |
 | `renderAnalysisTrends` | `createErrorState` | (computed) ` error.message ` |  |
 | `renderRunningBestEfforts` | `markValueMissing` | – |  |
-| `renderWeekReview` | `createLoadingState` | Wochenrückblick wird geladen… |  |
-| `renderWeekReview` | `createErrorState` | (computed) ` error?.message \|\| "Konnte nicht geladen werden." ` |  |
 | `skinfoldCard` | `createLoadingState` | Hautfalten werden geladen… |  |
 | `skinfoldCard` | `h(.empty)` | Hautfalten konnten nicht geladen werden. |  |
 | `energyPending` | `createLoadingState` | Energieverbrauch wird geladen… |  |
@@ -118,6 +116,7 @@ expression. Other inline status lines are not listed.
 
 | Function | Helper | Text | Detail |
 | --- | --- | --- | --- |
+| `plannedWeekReview` | `createLoadingState` | Wochenrückblick wird geladen… |  |
 | `renderLibrary` | `h(.context-empty)` | Noch keine Einheiten in der Bibliothek. Der Coach legt hier Einheiten ab, wenn du sie planst. |  |
 | `renderCompetitions` | `h(.context-empty)` | Noch keine Wettkämpfe gespeichert. |  |
 <!-- END GENERATED STATES -->

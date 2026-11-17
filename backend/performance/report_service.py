@@ -58,7 +58,7 @@ from backend.performance.session_rpe_load import FeedbackLookup, feedback_by_ses
 from backend.performance.smoothed_load import history_start
 from backend.performance.tag_impact import tag_impact
 from backend.performance.training_report import training_report
-from backend.performance.week_review import week_review
+from backend.performance.week_review import review_monday, week_review
 from backend.weather.activity_weather_store import session_temperatures
 
 # Analysis windows of the power and running profiles, shortest first.
@@ -727,19 +727,17 @@ class TrainingReportReadService:
         )
 
     def week_review(self, week: str, timezone: str = "UTC") -> dict[str, Any]:
-        """The local review of the current or previous ISO week (#2805).
+        """The local review of one ISO week the calendar shows (#2805, #3298).
 
         Reads the existing summaries only: the weekly progress of the week and
         the week before (no session curves), the plan with its compliance, the
         session summaries, the recovery baselines and the check-ins. No model
-        is asked.
+        is asked. The recovery range is read as of the week's last day so far,
+        so a past week is set against the range it had then.
         """
-        if week not in ("current", "previous"):
-            raise AppError(400, "Ungültige Woche.")
         today = self._today()
-        monday = today - timedelta(days=today.weekday())
-        if week == "previous":
-            monday -= timedelta(days=7)
+        monday = review_monday(week, today)
+        as_of = min(monday + timedelta(days=6), today)
         before = monday - timedelta(days=7)
         # One read from the week before; its first two weeks are compared.
         progress = self.progress(
@@ -751,7 +749,7 @@ class TrainingReportReadService:
             recovery_inputs = read_recovery_inputs(
                 resolve_reader(canonical.observation_reader(), db),
                 db,
-                as_of=today,
+                as_of=as_of,
                 preferences=canonical.preferences_in(db),
             )
         return week_review(
@@ -760,7 +758,7 @@ class TrainingReportReadService:
             progress=progress,
             calendar=(self._read_plan() or {}).get("training_calendar") or [],
             summaries=summaries,
-            recovery=personal_recovery({}, today, canonical=recovery_inputs),
+            recovery=personal_recovery({}, as_of, canonical=recovery_inputs),
             checkins=self._read_checkins(),
             timezone=timezone,
         )

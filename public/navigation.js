@@ -14,7 +14,6 @@ const NAV_ROUTES = Object.freeze({
   "analysis/load": "dataPanel",
   "nutrition/body": "nutritionPanel",
   "analysis/recovery": "dataPanel",
-  "analysis/week": "dataPanel",
   more: "settingsPanel",
   "more/connections": "settingsPanel",
   "more/coach": "settingsPanel",
@@ -36,7 +35,7 @@ const NAV_VIEWS = (() => {
   const ENTRIES = ["loading", "empty", "error", "offline"];
   const sport = view(["/api/performance", "/api/analysis/power-profiles"], ANALYSIS_ACTIONS, ALL_STATES);
   const period = view(["/api/performance"], [...ANALYSIS_ACTIONS, ...PERIODS, "12 Wochen anzeigen"], ALL_STATES);
-  const overview = view([...PLAN_READS, "/api/activities?limit=100"], [...PLAN_ACTIONS, "Woche", "Monat", "Woche synchronisieren", "Verschieben", "Feedback", "Mit dem Coach analysieren", "Mit Coach lösen"], ALL_STATES);
+  const overview = view([...PLAN_READS, "/api/activities?limit=100", "/api/analysis/week-review"], [...PLAN_ACTIONS, "Woche", "Monat", "Woche synchronisieren", "Verschieben", "Feedback", "Mit dem Coach analysieren", "Mit Coach lösen"], ALL_STATES);
   const diary = view(["/api/nutrition/day", "/api/body/energy"], ["Ernährung aktualisieren", "Vorheriger Tag", "Nächster Tag", "Heute", "Als geschätzt markieren", "Nicht geschätzt", "Löschen", "Rückgängig", "Erneut laden"], ENTRIES);
   const connections = view([...MORE_READS, "/api/providers/connections", "/api/nutrition/yazio/status"], ["Verbindung prüfen", "Mit Garmin anmelden", "Garmin trennen", "Wahoo verbinden", "Synchronisieren", "Speichern", "Entfernen"], ["loading", "error", "notConfigured", "offline"]);
   return Object.freeze({
@@ -55,7 +54,6 @@ const NAV_VIEWS = (() => {
     "analysis/load": period,
     "nutrition/body": view(["/api/performance", "/api/body/skinfolds", "/api/body/energy"], ["Ernährung aktualisieren", ...PERIODS, "Hautfalten eintragen", "Speichern", "Löschen", "Abbrechen"], ENTRIES),
     "analysis/recovery": period,
-    "analysis/week": view(["/api/analysis/week-review"], [...ANALYSIS_ACTIONS, "Diese", "Letzte"], ALL_STATES),
     more: connections,
     "more/connections": connections,
     "more/coach": view(MORE_READS, ["Chat zurücksetzen", "Kontext laden"], ["loading", "error", "offline"]),
@@ -92,8 +90,9 @@ globalThis.AppRouter = (() => {
   let hashchangeRegistered = false;
 
   // Removed views whose content lives elsewhere now: the single sessions are in the calendar (#2258),
-  // the former Leistung segment is split by sport and its links open Laufen (#2265).
-  const ROUTE_ALIASES = Object.freeze({ "analysis/sessions": "plan/overview", "analysis/performance": "analysis/running" });
+  // the former Leistung segment is split by sport and its links open Laufen (#2265), the week review
+  // sits under the calendar week (#3298).
+  const ROUTE_ALIASES = Object.freeze({ "analysis/sessions": "plan/overview", "analysis/performance": "analysis/running", "analysis/week": "plan/overview" });
 
   function routeFromHash(hash = globalThis.location.hash) {
     const rawRoute = String(hash || "").replace(/^#/, "").toLowerCase();

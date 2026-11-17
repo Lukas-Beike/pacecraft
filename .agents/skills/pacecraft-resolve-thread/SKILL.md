@@ -27,5 +27,9 @@ python scripts/resolve_review_thread.py <pr> <thread-id>
 - It sends only the `resolveReviewThread` mutation, and only when you authored
   the PR, the thread is open, and its last comment is your reply naming a
   commit of the PR made after the finding.
-- Exit 0: resolved. Exit 1: refused, with the reason; leave the thread to the
-  user. Exit 2: bad input or a failed `gh` call.
+- The reply must name the fix commit's SHA (seven or more hex characters), not
+  only describe the fix. Gitar usually resolves its own thread once such a
+  reply arrives, so check pr-state before running this (#3317).
+- Exit 0: resolved, or already resolved on your PR ("already resolved", nothing
+  sent). Exit 1: refused, with the reason; leave the thread to the user. Exit 2:
+  bad input or a failed `gh` call.

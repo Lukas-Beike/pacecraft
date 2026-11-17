@@ -24,7 +24,11 @@ python scripts/run_browser_tests.py --project all --keep-going
   UI change, otherwise `all`. One project takes 28-32 min
   locally with `--jobs 1`. Run the
   smallest selection that covers the change: the affected spec on the affected
-  project, then the other viewports for layout changes. `--list` resolves the
+  project, then the other viewports for layout changes. A backend read or
+  projection change affects the specs of every view that shows the read, not
+  the files the diff touches: grep `e2e/` for the view's data selectors (such
+  as `data-body-metric`) and check `e2e/fixture_runtime.py` for seeded rows the
+  change starts or stops serving (#3315). `--list` resolves the
   selection without Docker or a browser. A spec a selected project does not
   list (a desktop-only spec on mobile) is skipped there with a note.
 - Flaky test: `--repeat-each N --grep "<title regex>"` repeats one test in its

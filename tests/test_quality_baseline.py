@@ -574,6 +574,38 @@ class QualityBaselineTests(unittest.TestCase):
         ):
             quality_baseline.javascript_diagnostics(Path.cwd())
 
+    def test_a_fourteenth_parameter_is_new_debt_like_sonar_s107(self):
+        # #3316: S107 failed #3295 in CI only; Sonar allows 13 and skips self.
+        names = ", ".join(f"p{index}" for index in range(13))
+        source = (
+            f"class Routes:\n    def __init__(self, {names}, *, extra=None): ...\n\n\n"
+            f"class Wiring:\n    def __init__(self, {names}): ...\n\n\n"
+            f"def build({names}): ...\n"
+        )
+        config = str(Path(quality_baseline.__file__).parents[1] / "pyproject.toml")
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            for name in ("backend/routes.py", "tests/test_routes.py"):
+                (root / name).parent.mkdir()
+                (root / name).write_text(source, encoding="utf-8")
+            output = quality_baseline.run(
+                [*quality_baseline.tool_command("ruff"), "check", "--no-cache"]
+                + ["--config", config, "--output-format=json", "backend", "tests"],
+                root,
+            )
+            found = [
+                quality_baseline.diagnostic("ruff", item, root)
+                for item in json.loads(output)
+            ]
+        self.assertEqual(
+            sorted((item["path"], item["line"], item["code"]) for item in found),
+            [
+                ("backend/routes.py", 2, "PLR0913"),
+                ("tests/test_routes.py", 2, "PLR0913"),
+            ],
+        )
+        self.assertEqual(self.check(found)[0], 1)
+
     @patch("tools.quality_baseline.subprocess.run")
     def test_tool_failure_cannot_become_baseline_debt(self, mocked_run):
         mocked_run.return_value.returncode = 2
