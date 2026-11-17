@@ -1554,6 +1554,7 @@ function loadEnergy(day = energyDay()) {
       energyRequest = null;
       renderBodyAnalysis(state.data?.performance?.history?.body);
       renderDiaryEnergy();
+      renderNutritionFit();
     });
 }
 
@@ -1611,14 +1612,6 @@ function energyInfo(read) {
 }
 
 // The badge needs enough shared windows and a lead beyond the own band (athlete decision on #3187).
-function energyFitNote(read) {
-  const { shared_windows: shared, windows, reference_band_kcal: band } = read.fit;
-  const parts = [`${shared} von ${windows} Fenstern`];
-  if (band != null) parts.push(`Band aus deinen Daten ± ${formatWhole(band)} kcal`);
-  const lead = read.best ? "Vergleich" : "Welche Quelle passt: noch nicht unterscheidbar";
-  return h("p", { className: "analysis-reference-note", dataset: { energyFitNote: "" } }, [lead, ...parts].join(" · "));
-}
-
 // Split A (athlete decision 2026-11-16): one stacked bar per row; parts computed alike for every row are hatched.
 const ENERGY_PARTS = [["resting_kcal", "resting", "Ruhe"], ["neat_kcal", "neat", "Alltag"], ["sport_kcal", "sport", "Sport"], ["tef_kcal", "tef", "Verdauung"]];
 
@@ -1684,12 +1677,20 @@ function energyRowNote(read, source, row) {
   return parts.length ? [h("small", null, parts.join(" · "))] : [];
 }
 
+// The 12-week evaluation outlines one row (#3397): solid for the distinguishable best source,
+// dashed for the nearest one while none is distinguishable yet; the own row is never outlined.
+function energyFitMarker(read, source) {
+  if (read.best) return read.best === source ? "best" : null;
+  const ranked = read.rows.filter((row) => row.source !== "own" && row.mean_error_kcal != null).sort((a, b) => a.mean_error_kcal - b.mean_error_kcal);
+  return ranked[0]?.source === source ? "nearest" : null;
+}
+
 function energyTable(read) {
   const rows = ENERGY_SOURCES.flatMap(([source, label, color]) => {
     const row = read.rows.find((item) => item.source === source) || {};
-    const best = read.best === source ? [" ", createStatusChip("passt am besten", "ready")] : [];
-    return [h("tr", { dataset: { energySource: source } },
-      h("th", { scope: "row", dataset: { color: String(color) } }, label ?? row.label, ...best, ...energyRowNote(read, source, row)),
+    const fit = energyFitMarker(read, source);
+    return [h("tr", { dataset: fit ? { energySource: source, fit } : { energySource: source } },
+      h("th", { scope: "row", dataset: { color: String(color) } }, label ?? row.label, ...energyRowNote(read, source, row)),
       ...(ENERGY_FORMULAS.has(source) && row.resting_kcal == null && read.skinfold_missing
         ? [energyMissingCell(read.skinfold_missing)]
         : [h("td", null, row.resting_implausible ? ENERGY_IMPLAUSIBLE : energyKcal(row.resting_kcal, row.resting_band_kcal)),
@@ -1709,20 +1710,6 @@ function energyFlaggedRows(flagged) {
   const rows = [row("unflagged", "ohne geschätzte Tage", unflagged ? energyKcal(unflagged.total_kcal, unflagged.total_band_kcal) : "kein sauberer Zeitraum")];
   if (flagged.corrected) rows.push(row("corrected", "mit gelernter Korrektur", energyKcal(flagged.corrected.total_kcal, flagged.corrected.total_band_kcal)));
   return rows;
-}
-
-function energyFitCharts(read) {
-  const fitted = ENERGY_SOURCES.slice(0, 3).map(([source, label, color]) => [read.rows.find((item) => item.source === source), label, color]).filter(([row]) => row?.errors_kcal?.some((value) => value != null));
-  if (!fitted.length) return [];
-  const band = read.fit.reference_band_kcal;
-  const within = band == null ? "" : ` Abstände innerhalb von ± ${formatWhole(band)} kcal sind nicht unterscheidbar.`;
-  const series = fitted.map(([row, label, color]) => ({
-    label: label ?? row.label, color, line: "solid", cadenceDays: 7, explanation: `Abstand zum Verbrauch aus deinen Daten je 4-Wochen-Fenster; niedriger passt besser.${within}`,
-    points: read.windows.map((date, index) => ({ date, value: row.errors_kcal[index] })),
-  }));
-  const chart = analysisChart("Welche Quelle trifft dein Gewicht?", series, "kcal", read.windows[0], read.end, "", { calendarWeeks: true });
-  if (chart) chart.dataset.energyFit = "";
-  return chart ? [chart] : [];
 }
 
 // The read's loading or failure card, or null once it is there; the first call starts the read.
@@ -1747,14 +1734,138 @@ function energyDiaryCards() {
   return [h("section", { className: "analysis-chart-card", dataset: { energy: "" } }, energyTable(energyRead), energySplitLegend(energyRead))];
 }
 
-// Which source meets the weight stays under Körper: the fit chart with its comparison note (#3252).
-function energyBodyCards() {
-  const pending = energyPending();
-  if (pending) return [pending];
-  const note = energyFitNote(energyRead);
-  const [chart] = energyFitCharts(energyRead);
-  if (chart) chart.append(note);
-  return [chart || h("section", { className: "analysis-chart-card", dataset: { energyFit: "" } }, h("h3", null, "Welche Quelle trifft dein Gewicht?"), note)];
+// "Welche Quelle trifft dein Gewicht?" (A2, athlete decision on #3397): one kcal/day scale for
+// Verlauf's period; the own estimate as a mark with its green band, each source as a dot labelled
+// with its value and signed distance, nearest first, under a verdict and one note line.
+const FIT_PERIOD_NAMES = { "14d": "letzte 14 Tage", "12w": "letzte 12 Wochen" };
+const FIT_SOURCE_NAMES = { katch_mcardle: "Katch-McArdle", cunningham: "Cunningham" };
+const FIT_COLORS = { katch_mcardle: 1, cunningham: 2, device: 3 };
+
+function energyFitSources(scale) {
+  const own = scale.own_kcal;
+  return scale.sources.filter((item) => item.total_kcal != null).map((item) => ({
+    ...item,
+    name: item.label || FIT_SOURCE_NAMES[item.source] || item.source,
+    diff: own == null ? null : item.total_kcal - own,
+  })).sort((a, b) => (a.diff == null ? a.total_kcal - b.total_kcal : Math.abs(a.diff) - Math.abs(b.diff)));
+}
+
+function energyFitSigned(diff) {
+  let sign = "±";
+  if (diff > 0) sign = "+";
+  else if (diff < 0) sign = "−";
+  return `${sign}${formatWhole(Math.abs(diff))}`;
+}
+
+function energyFitSpan(days) {
+  if (days >= 84) return "Über 12 Wochen";
+  if (days === 14) return "In den letzten 14 Tagen";
+  return `In den letzten ${days / 7} Wochen`;
+}
+
+// The verdict names the own value and the nearest source; certain only by the 12-week rule (#3187).
+function energyFitVerdict(read, scale, sources) {
+  if (scale.own_kcal == null) return h("p", { className: "energy-fit-verdict" }, "Für einen Vergleich fehlen noch genug vollständig erfasste Tage und Wiegungen.");
+  const parts = [`${energyFitSpan(scale.own_days)} verbrauchst du rund `, h("b", null, `${formatWhole(scale.own_kcal)} kcal am Tag`), "."];
+  const nearest = sources[0];
+  if (nearest) {
+    const more = nearest.diff >= 0 ? "mehr" : "weniger";
+    parts.push(read.best === nearest.source
+      ? [" Am nächsten liegt ", h("b", null, nearest.name), ` mit ${formatWhole(Math.abs(nearest.diff))} kcal ${more}.`]
+      : [" Am nächsten: ", h("b", null, nearest.name), ` (${energyFitSigned(nearest.diff)}) – noch nicht sicher.`]);
+  }
+  return h("p", { className: "energy-fit-verdict" }, ...parts.flat());
+}
+
+function energyFitDomain(scale, sources) {
+  const values = sources.map((item) => item.total_kcal);
+  if (scale.own_kcal != null) values.push(scale.own_kcal - (scale.own_band_kcal || 0), scale.own_kcal + (scale.own_band_kcal || 0));
+  const low = Math.floor(Math.min(...values) / 500) * 500;
+  const high = Math.max(low + 500, Math.ceil(Math.max(...values) / 500) * 500);
+  const step = (high - low) / 500 > 6 ? 1000 : 500;
+  return { low, high, step, at: (value) => ((value - low) / (high - low)) * 100 };
+}
+
+// One positioned element of a lane; the position is set through the style object (CSP).
+function energyFitMark(className, left, width = null, color = null) {
+  const node = h("span", color ? { className, dataset: { color: String(color) } } : className);
+  node.style.left = `${left.toFixed(1)}%`;
+  if (width != null) node.style.width = `${width.toFixed(1)}%`;
+  return node;
+}
+
+// A label right of its mark, or left of it in the right part of the lane, so it stays inside.
+function energyFitLabel(text, at) {
+  const node = h("span", "energy-fit-label", text);
+  if (at > 55) node.style.right = `${(100 - at + 3).toFixed(1)}%`;
+  else node.style.left = `${(at + 3).toFixed(1)}%`;
+  return node;
+}
+
+function energyFitLane(domain, scale, faint) {
+  const lane = h("div", "energy-fit-lane");
+  if (scale.own_kcal != null && scale.own_band_kcal != null) {
+    const band = energyFitMark(`energy-fit-band${faint ? " is-faint" : ""}`, domain.at(scale.own_kcal - scale.own_band_kcal), domain.at(scale.own_kcal + scale.own_band_kcal) - domain.at(scale.own_kcal - scale.own_band_kcal));
+    lane.append(band);
+  }
+  return lane;
+}
+
+function energyFitAxis(domain) {
+  const axis = h("div", { className: "energy-fit-axis", "aria-hidden": "true" });
+  for (let value = domain.low; value <= domain.high; value += domain.step) {
+    const tick = energyFitMark("energy-fit-tick", domain.at(value));
+    tick.textContent = formatWhole(value);
+    axis.append(tick);
+  }
+  return axis;
+}
+
+function energyFitOwnRow(domain, scale) {
+  const lane = energyFitLane(domain, scale, false);
+  const band = scale.own_band_kcal == null ? "" : ` ± ${formatWhole(scale.own_band_kcal)}`;
+  lane.append(energyFitMark("energy-fit-own", domain.at(scale.own_kcal)), energyFitLabel(formatWhole(scale.own_kcal) + band, domain.at(scale.own_kcal)));
+  return h("li", { className: "energy-fit-row", dataset: { fitSource: "own" } }, h("span", "energy-fit-name", "Deine Daten"), lane);
+}
+
+// A source row: its dot and "value (signed distance)"; inside marks a distance within the own band.
+function energyFitSourceRow(domain, scale, item) {
+  const lane = energyFitLane(domain, scale, true);
+  const at = domain.at(item.total_kcal);
+  const label = item.diff == null ? formatWhole(item.total_kcal) : `${formatWhole(item.total_kcal)} (${energyFitSigned(item.diff)})`;
+  lane.append(energyFitMark("energy-fit-point", at, null, FIT_COLORS[item.source]), energyFitLabel(label, at));
+  const inside = item.diff != null && scale.own_band_kcal != null && Math.abs(item.diff) <= scale.own_band_kcal;
+  return h("li", { className: "energy-fit-row", dataset: { fitSource: item.source, inside: String(inside) } }, h("span", { className: "energy-fit-name", dataset: { color: String(FIT_COLORS[item.source]) } }, item.name), lane);
+}
+
+function energyFitNoteText(scale, key) {
+  const own = scale.own_days === scale.days ? "" : `, dein Wert aus ${scale.own_days / 7} Wochen`;
+  return `kcal pro Tag, Ø ${FIT_PERIOD_NAMES[key]}${own}. Grünes Band: so genau kennt die App deinen echten Verbrauch – liegt eine Quelle darin, trifft sie. ${scale.weeks_with_data} von ${scale.weeks} Wochen mit Daten.`;
+}
+
+function energyFitScale(read, key) {
+  const scale = read?.fit_scale?.[key];
+  const card = h("section", { className: "analysis-chart-card energy-fit", dataset: { energyFit: key } }, h("h3", null, "Welche Quelle trifft dein Gewicht?"));
+  if (!scale) return card;
+  const sources = energyFitSources(scale);
+  card.append(energyFitVerdict(read, scale, sources));
+  if (sources.length || scale.own_kcal != null) {
+    const domain = energyFitDomain(scale, sources);
+    const rows = sources.map((item) => energyFitSourceRow(domain, scale, item));
+    if (scale.own_kcal != null) rows.unshift(energyFitOwnRow(domain, scale));
+    card.append(energyFitAxis(domain), h("ul", "energy-fit-rows", rows));
+  }
+  card.append(h("p", { className: "analysis-reference-note", dataset: { energyFitNote: "" } }, energyFitNoteText(scale, key)));
+  return card;
+}
+
+// Verlauf shows the scale above "Tagesverlauf" for its period; any loaded read serves it.
+function renderNutritionFit() {
+  const slot = document.querySelector("#nutritionFitScale");
+  if (!slot) return;
+  const pending = energyPending(null);
+  const key = nutritionHistoryPeriod === "twelveWeeks" ? "12w" : "14d";
+  slot.replaceChildren(pending || energyFitScale(energyRead, key));
 }
 
 function renderDiaryEnergy() {
@@ -1791,7 +1902,6 @@ function renderBodyAnalysis(body) {
   // The fat-free mass stays derived from the two values, without a pencil (#3402).
   if (weight.value != null && fat.value != null) rows.push(bodyOverviewRow("lean_mass_kg", "Fettfreie Masse", "kg", { value: weight.value * (1 - fat.value / 100) }, null));
   root.append(h("section", "analysis-chart-card", h("table", { className: "current-performance-table", dataset: { bodyOverview: "" } }, h("caption", null, "Körperwerte"), h("tbody", null, rows))));
-  root.append(...energyBodyCards());
   const key = bodyHistoryPeriod === "fortnight" ? "14d" : "12w";
   const window = body?.windows?.[key];
   root.append(analysisPeriodControls("Zeitraum für Körper", bodyHistoryPeriod, (period) => {

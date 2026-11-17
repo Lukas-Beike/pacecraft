@@ -1750,6 +1750,9 @@ button:focus-visible, a:focus-visible, summary:focus-visible {
 .nutrition-product-card { display: grid; gap: 7px; }
 .nutrition-product-head { display: flex; gap: 8px; align-items: flex-start; justify-content: space-between; }
 .nutrition-product-head h3 { margin: 0; min-width: 0; }
+/* The product's use count sits right of its name (#3435). */
+.nutrition-usage { margin-left: auto; color: var(--ink); font-weight: 750; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.nutrition-usage.is-zero { color: var(--muted); font-weight: 600; }
 .nutrition-favorite { flex: none; min-width: 44px; min-height: 44px; margin: -8px -8px 0 0; padding: 0; border: 0; background: none; color: var(--accent); font-size: 1.4rem; line-height: 1; cursor: pointer; }
 .nutrition-product-section > summary { min-height: 44px; display: flex; align-items: center; gap: 6px; cursor: pointer; color: var(--ink); font-weight: 650; list-style: none; }
 .nutrition-product-section > summary::-webkit-details-marker { display: none; }
@@ -1829,6 +1832,30 @@ button:focus-visible, a:focus-visible, summary:focus-visible {
 [data-energy] th[data-color="3"] { --zone-color: var(--chart-series-3); }
 [data-energy] th[data-color="4"] { --zone-color: var(--chart-series-4); }
 [data-energy] th[data-color]::before { content: ""; display: inline-block; width: 10px; height: 10px; margin-right: 8px; border-radius: 50%; background: var(--zone-color); vertical-align: middle; }
+/* The 12-week best source's row is outlined (#3397): solid when distinguishable, dashed when only nearest. */
+[data-energy] tr[data-fit] > * { --fit-line: 2px solid var(--accent); border-top: var(--fit-line); border-bottom: var(--fit-line); }
+[data-energy] tr[data-fit="nearest"] > * { --fit-line: 2px dashed var(--accent); }
+[data-energy] tr[data-fit] > :first-child { border-left: var(--fit-line); }
+[data-energy] tr[data-fit] > :last-child { border-right: var(--fit-line); }
+[data-energy] tr[data-fit]:has(+ .energy-split-row) > * { border-bottom: var(--fit-line); padding-bottom: 8px; }
+/* "Welche Quelle trifft dein Gewicht?" as one kcal scale (#3397, A2). */
+.energy-fit-verdict { margin: 4px 0 12px; font-size: .86rem; line-height: 1.4; }
+.energy-fit-verdict b { color: var(--accent); }
+.energy-fit-axis { position: relative; height: 18px; margin: 0 8px 4px calc(min(30%, 112px) + 8px); color: var(--muted); font-size: .72rem; }
+.energy-fit-tick { position: absolute; transform: translateX(-50%); }
+.energy-fit-rows { display: grid; gap: 10px; margin: 0; padding: 0; list-style: none; }
+.energy-fit-row { display: grid; grid-template-columns: min(30%, 112px) minmax(0, 1fr); gap: 8px; align-items: center; font-size: .8rem; }
+.energy-fit-name { min-width: 0; overflow-wrap: anywhere; }
+.energy-fit-name::before { content: ""; display: inline-block; width: 9px; height: 9px; margin-right: 6px; border-radius: 50%; background: var(--fit-color, var(--accent)); vertical-align: middle; }
+.energy-fit-lane { position: relative; height: 26px; margin-right: 8px; }
+.energy-fit-band { position: absolute; top: 0; bottom: 0; border-inline: 1px dashed var(--accent); background: var(--success-surface); }
+.energy-fit-band.is-faint { background: var(--accent-wash); }
+.energy-fit-own { position: absolute; top: 0; bottom: 0; width: 2px; margin-left: -1px; background: var(--accent); }
+.energy-fit-point { position: absolute; top: 7px; width: 12px; height: 12px; margin-left: -6px; border-radius: 50%; background: var(--fit-color); }
+.energy-fit-label { position: absolute; top: 5px; color: var(--ink); font-size: .72rem; font-weight: 700; white-space: nowrap; }
+.energy-fit [data-color="1"] { --fit-color: var(--chart-series-1); }
+.energy-fit [data-color="2"] { --fit-color: var(--chart-series-2); }
+.energy-fit [data-color="3"] { --fit-color: var(--chart-series-3); }
 [data-energy] tr:has(+ .energy-split-row) > * { border-bottom: 0; padding-bottom: 4px; }
 [data-energy] .energy-split-row td { padding-top: 0; text-align: left; white-space: normal; font-size: .8rem; font-weight: 400; }
 .energy-split { display: flex; height: 12px; margin-bottom: 4px; overflow: hidden; border-radius: 6px; background: var(--surface-raised); }

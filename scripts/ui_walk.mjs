@@ -283,10 +283,11 @@ export const STEPS = [
     .map(([segment, label, ready, kind]) => ({ view: "analysis", name: `Analyse: ${label}`, covers: "Analyse tabs", pre: [tab("analysis", segment)], ready, kind })),
   { view: "nutrition", name: "Ernährung: Verlauf", covers: "Nutrition week", pre: [tab("nutrition", "week")], ready: "#nutritionWeek", kind: "numbers" },
   // The body values' edit icons are svgs too, so the chart step waits for a body chart.
+  { view: "nutrition", name: "Ernährung: Produktzähler", covers: "#3435 product use counts", pre: [tab("nutrition", "products")], opens: ['#nutritionProducts details[data-section="all"] > summary'], ready: "#nutritionProducts details[data-section='all'] .nutrition-usage", kind: "text" },
   { view: "nutrition", name: "Ernährung: Körper", covers: "Body analysis", pre: [tab("nutrition", "body")], ready: "#bodyAnalysisCharts [data-body-metric] svg", kind: "chart" },
   { view: "nutrition", name: "Ernährung: Körperwerte", covers: "#3402 weight and body fat with their pencils", pre: [tab("nutrition", "body")], ready: "#bodyAnalysisCharts [data-body-overview] [data-metric='weight_kg'] th small", kind: "text" },
   { view: "nutrition", name: "Ernährung: Energieverbrauch", covers: "#3099 #3252 energy table in the diary, #3255 plausibility gate and NEAT basis", pre: [tab("nutrition", "diary")], ready: "#nutritionEnergy [data-energy] tbody tr", kind: "text" },
-  { view: "nutrition", name: "Ernährung: Welche Quelle trifft", covers: "#3252 fit note under Körper", pre: [tab("nutrition", "body")], ready: "#bodyAnalysisCharts [data-energy-fit] [data-energy-fit-note]", kind: "text" },
+  { view: "nutrition", name: "Ernährung: Welche Quelle trifft", covers: "#3397 fit scale under Verlauf", pre: [tab("nutrition", "week")], ready: "#nutritionFitScale [data-energy-fit] [data-energy-fit-note]", kind: "text" },
   { view: "more", name: "Mehr: Ausrüstung", covers: "#2935 equipment", pre: [tab("more", "equipment")], ready: "#equipmentItems .equipment-card", kind: "text" },
   { view: "more", name: "Mehr: Ausrüstung Standard", covers: "#3014 default equipment", pre: [tab("more", "equipment")], ready: "#equipmentItems .equipment-rules select", kind: "options" },
   // The current release's entry: a listed change, or only its collapsed "Technik (n)" (2.1.20).
