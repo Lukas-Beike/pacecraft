@@ -213,9 +213,13 @@ test("@responsive an opened completed session shows its time in zones as one bar
     await expect(card.locator(".planned-zone-time")).toHaveCount(0);
   }
   // "Details" reuses the bar's read of the same session (#2478); a failed read is not shared.
+  // A wide week opens its last card on its own when no day is ahead, which on some weekdays is
+  // this one: count from the settled reads, once every opening has read (#3371).
+  await page.evaluate(async () => { await new Promise((resolve) => setTimeout(resolve)); await AppApi.settled(); });
+  const before = reads.filter((id) => id === "past-run").length;
   const failed = page.locator(`.planned-day[data-date="${days.past}"] .planned-entry`).filter({ hasText: "Vergangener Lauf" });
   await failed.locator(".planned-activity-more > summary").click();
-  await expect.poll(() => reads.filter((id) => id === "past-run").length).toBe(2);
+  await expect.poll(() => reads.filter((id) => id === "past-run").length).toBe(before + 1);
   await showCalendarDay(page, days.today);
   if (!await ride.evaluate((element) => element.open)) await ride.locator(":scope > summary").click();
   await ride.locator(".planned-activity-more > summary").click();
