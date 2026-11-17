@@ -96,8 +96,8 @@ class BodyEntryServiceTests(unittest.TestCase):
         self.body_fat.remove({"date": "2026-11-15", "confirmed": True})
         self.assertEqual([], self.served("body_fat"))
         for payload in (
-            {"date": "2026-11-15", "pct": 0.9},  # below the canonical 1 %
-            {"date": "2026-11-15", "pct": 80.1},
+            {"date": "2026-11-15", "pct": 1.9},  # below what the readers show (2 %)
+            {"date": "2026-11-15", "pct": 70.1},  # above the lean-mass range
             {"date": "2026-11-15", "pct": "nan"},
             {"date": "2026-11-15", "kg": 14},  # the weight key is not read
         ):

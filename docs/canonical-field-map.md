@@ -2673,7 +2673,7 @@ Inputs: the athlete's save request (API/UI); no provider payload.
 | `Observation` field | Local value | Notes |
 |---|---|---|
 | `kind` | `weight` (`WEIGHT_ENTRY`) or `body_fat` (`BODY_FAT_ENTRY`) | |
-| `value` | request `kg` in `kg` or `pct` in `%`, rounded to 0.1 | 20..400 kg or 1..80 % (`METRIC_BOUNDS`); comma decimals allowed. |
+| `value` | request `kg` in `kg` or `pct` in `%`, rounded to 0.1 | 20..400 kg (`METRIC_BOUNDS`) or 2..70 % (the body readers' range); comma decimals allowed. |
 | `observed_on` | request `date` (ISO day, not in the future) | Part of the natural key `|weight|||<day>` or `|body_fat|||<day>`. |
 | `observed_at`, `sport`, `method`, `aggregation`, `period` | none | |
 | `provenance` | `provider` none; `source_kind` = `athlete_entered`; `source_record_id` none; `recorded_by` = `manual`; `retrieved_at` none; `label` = "Lokal" (`local_provenance`) | Provider re-projection never retires these rows (it is scoped by provider). |

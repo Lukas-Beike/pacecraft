@@ -41,6 +41,8 @@ class BodyEntryKind:
     noun: str  # "Das Gewicht" / "Der Körperfettanteil"
     confirm: str
     missing: str
+    # Accepted range; None takes the canonical ``METRIC_BOUNDS`` of the kind.
+    bounds: tuple[float, float] | None = None
 
 
 WEIGHT_ENTRY: Final = BodyEntryKind(
@@ -58,6 +60,9 @@ BODY_FAT_ENTRY: Final = BodyEntryKind(
     "Der Körperfettanteil",
     "Das Löschen eines Körperfettwerts muss bestätigt werden.",
     "Für diesen Tag gibt es keinen eingetragenen Körperfettwert.",
+    # The range the body readers and the lean mass accept (canonical_body,
+    # BODY_FAT_BOUNDS), so a saved entry is always shown and used.
+    (2.0, 70.0),
 )
 
 
@@ -156,7 +161,7 @@ class BodyEntryService:
             raise AppError(
                 400, f"{entry.noun} braucht einen Wert in {entry.unit}."
             ) from exc
-        lower, upper = METRIC_BOUNDS[entry.kind]
+        lower, upper = entry.bounds or METRIC_BOUNDS[entry.kind]
         if not lower <= number <= upper:
             raise AppError(
                 400,

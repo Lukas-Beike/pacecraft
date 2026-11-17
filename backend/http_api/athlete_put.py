@@ -99,14 +99,14 @@ class AthletePutRoutes:
     def _save_body_fat(self, handler: Any, _request: RouteRequest) -> None:
         """Save one body fat percentage; one of the same day is replaced.
 
-        Request: JSON body `{"date": "YYYY-MM-DD", "pct": number}`, 1 to 80 %
+        Request: JSON body `{"date": "YYYY-MM-DD", "pct": number}`, 2 to 70 %
         (comma decimals allowed). The date must not be in the future.
 
         Response: 200 as `GET /api/body/body-fat`.
 
         Errors: 400 "Das Datum fehlt oder ist ungültig."; 400 "Das Datum darf
         nicht in der Zukunft liegen."; 400 "Der Körperfettanteil braucht einen
-        Wert in %."; 400 "Der Körperfettanteil muss zwischen 1 und 80 %
+        Wert in %."; 400 "Der Körperfettanteil muss zwischen 2 und 70 %
         liegen.".
         """
         self._send_entry(self._body_fat_service, handler, "save")
