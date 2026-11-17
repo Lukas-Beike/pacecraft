@@ -13,7 +13,7 @@ from backend.activities.hr_cap import effective_caps, resolved_range
 from backend.activities.identity import activity_kind
 from backend.canonical.decimal_text import provider_number as as_number
 from backend.canonical.records import Observation
-from backend.canonical.vocabulary import MetricKind, ProviderId, Sport
+from backend.canonical.vocabulary import MetricKind, ProviderId, SourceKind, Sport
 from backend.performance.canonical_current import CanonicalCurrentInputs
 from backend.performance.current_thresholds import (
     ThresholdKey,
@@ -531,17 +531,34 @@ def _resolved_entry(
             _candidate_label(winner, local_label),
             provider=winner.source,
         )
-    if resolved.alternatives:
+    # The entry of a day is that day's Garmin entry too (#3403): Garmin's value
+    # of the same day is no second value of that day (#3464).
+    alternatives = [
+        item for item in resolved.alternatives if not _behind_entry(winner, item)
+    ]
+    if alternatives:
         entry["alternatives"] = [
             {
                 "value": convert(item.value),
                 "source": _candidate_label(item, local_label),
                 "source_provider": None if item.source is None else item.source.value,
             }
-            for item in resolved.alternatives
+            for item in alternatives
         ]
         entry["conflict"] = resolved.conflict
     return entry
+
+
+def _behind_entry(winner: Candidate, item: Candidate) -> bool:
+    """Whether ``item`` is another value of the day the athlete's entry won."""
+    entry = winner.observation
+    return (
+        winner.source is None
+        and entry is not None
+        and entry.provenance.source_kind is SourceKind.ATHLETE_ENTERED
+        and item.observed_on is not None
+        and item.observed_on == winner.observed_on
+    )
 
 
 def _performance_threshold_metrics(

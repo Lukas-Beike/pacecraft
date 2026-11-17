@@ -2679,7 +2679,7 @@ Inputs: the athlete's save request (API/UI); no provider payload.
 | `observed_at`, `sport`, `method`, `aggregation`, `period` | none | |
 | `provenance` | `provider` none; `source_kind` = `athlete_entered`; `source_record_id` none; `recorded_by` = `manual`; `retrieved_at` none; `label` = "Lokal" (`local_provenance`) | Provider re-projection never retires these rows (it is scoped by provider). |
 
-Stored with `mapper_version` 1. `canonical_store.current_observation_rows` serves these rows for the metrics in `ENTERED_METRICS` (weight and body fat), so the canonical readers see them: the current weight and body fat take the newest one under `RECENCY_ORDERS`, where an entry on the newest day wins over a measurement of that or the previous day (athlete decision 2026-11-16), the body history charts them as a "Lokal" series, the energy weigh-ins and body fats take them over a provider value of the same day, and the formula rows take an entered body fat after the skinfolds and before a device or scale (#3402).
+Stored with `mapper_version` 1. `canonical_store.current_observation_rows` serves these rows for the metrics in `ENTERED_METRICS` (weight and body fat), so the canonical readers see them: the current weight and body fat take the newest one under `RECENCY_ORDERS`, where an entry on the newest day wins over a measurement of that or the previous day (athlete decision 2026-11-16), the body history puts them into the one series of their metric, where they win their day over Garmin's value (#3464), the energy weigh-ins and body fats take them over a provider value of the same day, and the formula rows take an entered body fat after the skinfolds and before a device or scale (#3402).
 
 ### `zone_settings.py`
 

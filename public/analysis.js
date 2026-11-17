@@ -238,6 +238,8 @@ function appendAnalysisTable(section, title, series, unit, caption = analysisAxi
     const point = item.points.find((candidate) => candidate.date === date);
     let value = analysisValidPoint(point) ? analysisPointValue(item, point, unit) : "–";
     if (point?.count || point?.weekReadings || point?.observedDate) value += analysisReadingDetails(point, item.unit || unit);
+    // A merged body series names each day's source (#3464).
+    if (analysisValidPoint(point) && point.source_label) value += ` · ${point.source_label}`;
     return value;
   })]);
   scroll.append(table(["Tag", ...series.map((item) => item.label)], rows, { caption: `${title} · ${caption} · nur vorhandene Werte` }));
@@ -1243,9 +1245,14 @@ function bodyMetricChart(metric, title, unit, window, period, preferred = {}) {
 // athlete's own entry wins over a measurement, as in the current weight (#3252).
 function bodyOverviewLatest(metric, body, preferred, local = false) {
   const readings = Object.values(body?.windows || {}).flatMap((window) => (window.metrics?.[metric] || [])
-    .filter((item) => bodySourceShown(item, preferred[metric]) && (!local || item.source_provider === null))
+    .filter((item) => bodySourceShown(item, preferred[metric]))
     .flatMap((item) => (item.points || []).filter((point) => point.date >= window.start && point.date <= window.end && analysisValidPoint(point))
-      .map((point) => ({ ...point, local: item.source_provider === null, source: item.source_provider === null ? "Lokal" : item.source }))));
+      // One series per metric (#3464): each day names its own source.
+      .map((point) => {
+        const own = point.source_label ? point.source_label === "eingetragen" : item.source_provider === null;
+        return { ...point, local: own, source: own ? "Lokal" : item.source };
+      })
+      .filter((point) => !local || point.local)));
   readings.sort((a, b) => a.date.localeCompare(b.date) || Number(a.local) - Number(b.local)
     || (a.observed_at || a.date).localeCompare(b.observed_at || b.date));
   return readings.at(-1) || null;

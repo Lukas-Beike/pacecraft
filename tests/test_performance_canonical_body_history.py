@@ -372,45 +372,71 @@ class CanonicalBodyInputTests(unittest.TestCase):
         inputs = read_body_inputs(BodyReader(observations), "db", TODAY)
         self.assertEqual({DAY: 80.0}, inputs.garmin_weight_kg)
 
-    def test_an_entered_weight_is_a_local_series_beside_garmin(self) -> None:
-        # #3252: the athlete's own weigh-in has no provider; it is read apart from
-        # Garmin's and charted as its own "Lokal" series.
-        entered = Observation(
-            kind=MetricKind.WEIGHT,
-            value=MetricValue(value=72.46, unit="kg"),
-            observed_on=DAY,
-            observed_at=None,
-            provenance=Provenance(
-                provider=None,
-                source_kind=SourceKind.ATHLETE_ENTERED,
-                source_record_id=None,
-                recorded_by=RecordingOrigin.MANUAL,
-                retrieved_at=None,
-                label="Lokal",
-            ),
-        )
-        garmin = _measure(MetricKind.WEIGHT, 71.0, DAY, provider=ProviderId.GARMIN)
-        inputs = read_body_inputs(BodyReader((garmin, entered)), "db", TODAY)
-        self.assertEqual({DAY: 71.0}, inputs.garmin_weight_kg)
-        self.assertEqual({DAY: 72.46}, inputs.entered_weight_kg)
+    def test_weight_and_body_fat_are_one_series_where_an_entry_wins_its_day(
+        self,
+    ) -> None:
+        # #3464: an entry is written to that day's Garmin entry (#3403), so the
+        # athlete has one value per day; Garmin's value fills the other days.
+        def entered(kind: MetricKind, value: float, day: date) -> Observation:
+            return Observation(
+                kind=kind,
+                value=MetricValue(
+                    value=value, unit="kg" if kind is MetricKind.WEIGHT else "%"
+                ),
+                observed_on=day,
+                observed_at=None,
+                provenance=Provenance(
+                    provider=None,
+                    source_kind=SourceKind.ATHLETE_ENTERED,
+                    source_record_id=None,
+                    recorded_by=RecordingOrigin.MANUAL,
+                    retrieved_at=None,
+                    label="Lokal",
+                ),
+            )
 
-        series = _body({}, None, inputs)["windows"]["14d"]["metrics"]["weight_kg"]
-        self.assertEqual(
-            [("Garmin Connect", "garmin"), ("Lokal", None)],
-            [(item["source"], item["source_provider"]) for item in series],
+        linked, own, garmin_day, differs = (DAY - timedelta(days=n) for n in range(4))
+        for kind, metric in (
+            (MetricKind.WEIGHT, "weight_kg"),
+            (MetricKind.BODY_FAT, "body_fat_pct"),
+        ):
+            with self.subTest(metric=metric):
+                observations = (
+                    # Entered and linked: Garmin read the same value back.
+                    entered(kind, 30.5, linked),
+                    _measure(kind, 30.5, linked, provider=ProviderId.GARMIN),
+                    entered(kind, 31.0, own),  # entered only
+                    _measure(kind, 32.0, garmin_day, provider=ProviderId.GARMIN),
+                    # Both, different: another weigh-in that day does not show.
+                    entered(kind, 33.0, differs),
+                    _measure(kind, 34.0, differs, provider=ProviderId.GARMIN),
+                )
+                inputs = read_body_inputs(BodyReader(observations), "db", TODAY)
+                series = _body({}, None, inputs)["windows"]["14d"]["metrics"][metric]
+                self.assertEqual(
+                    ["garmin"], [item["source_provider"] for item in series]
+                )
+                days = {
+                    point["date"]: (point["value"], point.get("source_label"))
+                    for point in series[0]["points"]
+                    if point["value"] is not None
+                }
+                self.assertEqual(
+                    {
+                        linked.isoformat(): (30.5, "eingetragen"),
+                        own.isoformat(): (31.0, "eingetragen"),
+                        garmin_day.isoformat(): (32.0, "Garmin"),
+                        differs.isoformat(): (33.0, "eingetragen"),
+                    },
+                    days,
+                )
+        # Only entries, no Garmin value: still one series, the athlete's own.
+        alone = read_body_inputs(
+            BodyReader((entered(MetricKind.WEIGHT, 72.5, DAY),)), "db", TODAY
         )
-        local = {point["date"]: point["value"] for point in series[1]["points"]}
-        self.assertEqual(72.46, local[DAY.isoformat()])
-        # Without an entry there is no local series.
-        alone = read_body_inputs(BodyReader((garmin,)), "db", TODAY)
+        series = _body({}, None, alone)["windows"]["14d"]["metrics"]["weight_kg"]
         self.assertEqual(
-            ["garmin"],
-            [
-                item["source_provider"]
-                for item in _body({}, None, alone)["windows"]["14d"]["metrics"][
-                    "weight_kg"
-                ]
-            ],
+            [("Lokal", None)], [(i["source"], i["source_provider"]) for i in series]
         )
 
     def test_intervals_values_are_not_body_inputs(self) -> None:

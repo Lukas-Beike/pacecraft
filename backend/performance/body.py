@@ -115,6 +115,39 @@ def _series(
     }
 
 
+# The source of one day's value in the merged body series (#3464).
+ENTERED_LABEL = "eingetragen"
+GARMIN_LABEL = "Garmin"
+
+
+def _day_series(
+    unit: str,
+    garmin: dict[date, tuple[float, str, Any]],
+    entered: dict[date, tuple[float, str, Any]],
+    start: date,
+    end: date,
+) -> dict[str, Any]:
+    """One series of the athlete's day values: an entered value wins its day.
+
+    An entered weight or body fat is written to that day's Garmin entry
+    (#3403), so the athlete has one value per day, not a local and a Garmin
+    one; every other day shows Garmin's value. Each point names its source in
+    ``source_label`` (#3464).
+    """
+    series = _series(
+        ProviderId.GARMIN if garmin or not entered else None,
+        unit,
+        {**garmin, **entered},
+        start,
+        end,
+    )
+    for point in series["points"]:
+        if point["value"] is not None:
+            day = date.fromisoformat(point["date"])
+            point["source_label"] = ENTERED_LABEL if day in entered else GARMIN_LABEL
+    return series
+
+
 def _quotient_series(
     ftp: dict[date, tuple[float, str, Any]],
     weights: dict[ProviderId, dict[date, tuple[float, str, Any]]],
@@ -208,8 +241,9 @@ def body_history(
 
     Garmin weight, body fat and FTP come solely from canonical observations. The
     W/kg series divides Garmin's dated FTP only. The Garmin sync status supplies
-    only sync times. The athlete's own weigh-ins and body fats form a "Lokal"
-    series (no provider) when there are any (#3252, #3402).
+    only sync times. Weight and body fat are one series each: the athlete's own
+    entry wins its day over Garmin's value, and each point names its source
+    (#3252, #3402, #3464).
     """
     garmin_synced_at = _sync_timestamp(garmin, "weight")
     garmin_values = {
@@ -229,24 +263,13 @@ def body_history(
             "days": days,
             "metrics": {
                 "weight_kg": [
-                    _series(provider, "kg", values, start, today)
-                    for provider, values in weights.items()
-                ]
-                + ([_series(None, "kg", entered, start, today)] if entered else []),
+                    _day_series("kg", garmin_values["weight_kg"], entered, start, today)
+                ],
                 "body_fat_pct": [
-                    _series(
-                        ProviderId.GARMIN,
-                        "%",
-                        garmin_values["body_fat_pct"],
-                        start,
-                        today,
-                    ),
-                ]
-                + (
-                    [_series(None, "%", entered_fat, start, today)]
-                    if entered_fat
-                    else []
-                ),
+                    _day_series(
+                        "%", garmin_values["body_fat_pct"], entered_fat, start, today
+                    )
+                ],
                 "cycling_w_per_kg": [
                     _quotient_series(
                         ftp,
