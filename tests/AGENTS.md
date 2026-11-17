@@ -14,6 +14,16 @@
   unconfigured providers; never part of the suite, CI or pre-push. Normal tests
   stay mocked.
 
+- Format only the files you changed: `python scripts/check_changed.py
+  --fix-format` formats the changed Python files and nothing else. Never run
+  `ruff format tests` (or any whole folder); it rewrites unchanged, baselined
+  files (#3382).
+- A test file named after a guarded script (such as the review-thread resolver's
+  test module) is blocked in any shell command that names it, by design (#3103,
+  #3347). Read and search it with the Read and Grep tools, run it through
+  `python tests/run_tests.py --changed`, and format it through
+  `--fix-format`; never disguise its name.
+
 - `tests/changed_tests.py` selects modules by imports and by string literals
   naming changed paths or modules. A test that depends on a file another way
   (computed paths, dynamic imports) must name it as a literal, or the selector
