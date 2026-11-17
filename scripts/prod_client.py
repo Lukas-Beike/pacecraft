@@ -23,6 +23,11 @@ ROOT = Path(__file__).resolve().parents[1]
 T3_SECRETS = Path.home() / ".t3" / "userdata" / "secrets"
 CSRF_COOKIE = "ic_csrf"
 TIMEOUT = 30
+# Names the fix, the release skill's request step (#3354); no path or content.
+SECRET_MISSING = (
+    "secret missing or unreadable: request a new one with request_secret "
+    "(file delivery) before deploying"
+)
 
 
 class ProdError(RuntimeError):
@@ -130,9 +135,9 @@ class Session:
         try:
             password = secret_path(password_file).read_text(encoding="utf-8").strip()
         except OSError:
-            raise ProdError("cannot read the secret file") from None
+            raise ProdError(SECRET_MISSING) from None
         if not password:
-            raise ProdError("the secret file is empty")
+            raise ProdError(f"the secret file is empty; {SECRET_MISSING}")
         code = self.status("POST", "/api/login", body={"password": password})
         del password
         if code != 200 or not self.cookie(CSRF_COOKIE):

@@ -76,6 +76,8 @@ export function writeFresh(outDir, name, data) {
   fs.writeFileSync(scratchPath(file), data, { flag: "wx" });
 }
 
+// Names the fix, the release skill's request step (#3354); no path or content.
+export const SECRET_MISSING = "secret missing or unreadable: request a new one with request_secret (file delivery) before deploying";
 export function secretPath(target, secrets = T3_SECRETS) {
   if (!path.isAbsolute(String(target))) throw new Error("the password file path must be absolute");
   const refused = new Error("the password file must be in the system temp directory or the T3 secret folder");
@@ -524,10 +526,10 @@ async function main() {
     url = baseUrl(values.url);
     outDir = scratchPath(values["out-dir"]);
     password = fs.readFileSync(secretPath(values["password-file"]), "utf8").trim();
-    if (!password) throw new Error("the secret file is empty");
+    if (!password) throw new Error(`the secret file is empty; ${SECRET_MISSING}`);
   } catch (error) {
     // A file-system error names the secret file's path; never print it.
-    console.log(`FAIL ${error.syscall ? "cannot read the secret file" : error.message}`);
+    console.log(`FAIL ${error.syscall ? SECRET_MISSING : error.message}`);
     return 2;
   }
   try {
