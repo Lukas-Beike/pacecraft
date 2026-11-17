@@ -200,6 +200,14 @@ class GuardHookTests(unittest.TestCase):
             with self.subTest(payload=payload):
                 self.assertEqual(self.decide("", raw=json.dumps(payload)), 2)
         self.assertEqual(self.decide("", raw='{"tool_input": {"command": ""}}'), 0)
+        # Any failure inside the hook blocks as well.
+        for error in (RecursionError, OSError, AttributeError):
+            with (
+                self.subTest(error=error),
+                mock.patch.object(guard, "decide", side_effect=error),
+                redirect_stderr(io.StringIO()),
+            ):
+                self.assertEqual(guard.main(), 2)
 
     def test_spelling_variants_of_the_script_name_block(self):
         # Case, quoting, escapes, globs and short names all reach the same file
@@ -225,6 +233,26 @@ class GuardHookTests(unittest.TestCase):
             "python -m resolve_review_threa? 2671 PRRT_a1",
             "find scripts -name 'resolve*' -exec python {} 2671 PRRT_a1 ;",
             "python s*/r*.py 2671 PRRT_a1",
+            "python scripts/resolve_review_threa[[:alpha:]].py 2671 PRRT_a1",
+            "python {scripts/r,x}*.py 2671 PRRT_a1",
+            "python scripts/@(resolve|x)_review_thread.py 2671 PRRT_a1",
+            "python scripts/@(res@(olve))_review_thread.py 2671 PRRT_a1",
+            "python $(ls scripts/r*) 2671 PRRT_a1",
+            "gci scripts -Filter:r*.py | % { python $_ 2671 PRRT_a1 }",
+            "gci scripts\\x,scripts\\r* | % { python $_ }",
+            "python C:scripts\\RESOLV~1.PY 2671 PRRT_a1",
+            "python scripts.\\RESOLV~1.PY\\. 2671 PRRT_a1",
+            "python scripts/RE1A2B~1.PY 2671 PRRT_a1",
+            "python scripts/resolve$''_review_thread.py 2671 PRRT_a1",
+            "python scripts/$'\\x72'esolve_review_thread.py 2671 PRRT_a1",
+            "python scripts/resolve_\\\nreview_thread.py 2671 PRRT_a1",
+            "cmd /c python scripts\\res^olve_review_thread.py 2671 PRRT_a1",
+            "python scripts/resolve_‘review’_thread.py 2671 PRRT_a1",
+            'python "scripts/resolve`u{5f}review_thread.py" 2671 PRRT_a1',
+            "python -c \"exec(open('scripts/resolve_' 'review_thread.py').read())\"",
+            "python -c \"import runpy; runpy.run_path('scripts/\\x72esolve_review_thread.py')\"",
+            "python -c \"__import__('\\N{LATIN SMALL LETTER R}esolve_review_thread')\"",
+            "python -c 'import ｒesolve_review_thread'",
             "cd scripts/x && python ../r* 2671 PRRT_a1",
             "python ./r* 2671 PRRT_a1",
         ):

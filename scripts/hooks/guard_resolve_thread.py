@@ -15,18 +15,29 @@ import ast
 import fnmatch
 import json
 import os
+import posixpath
 import re
 import subprocess
 import sys
+import unicodedata
 from pathlib import Path
 
 EXACT = re.compile(r"python scripts/resolve_review_thread\.py \d+ PRRT_[A-Za-z0-9_-]+")
 NAME = "resolve_review_thread"
+LETTERS = re.sub(r"[^a-z]", "", NAME)
 TARGETS = (NAME, f"{NAME}.py")
 # Shell glob characters, brace expansion and extglob groups.
-GLOB = re.compile(r"[*?\[{]|[@+!]\(")
-BRACES = re.compile(r"\{[^{}]*(?:,|\.\.)[^{}]*\}")
-# A Windows 8.3 short name: up to six characters, a tilde and a digit.
+GLOB = re.compile(r"[*?\[]")
+WIDE = re.compile(r"[@+!?*]\([^()]*\)|\{[^{}]*(?:,|\.\.)[^{}]*\}")
+# Separators between words, also of PowerShell arrays, script blocks and
+# `-Name:value` parameters.
+WORDS = re.compile(r"[\s;&|<>=(){},:]+")
+# \xHH, \uHHHH, \u{H}, `u{H} (PowerShell), \NNN (octal), \N{NAME} (Python).
+ESCAPE = re.compile(
+    r"\\x([0-9a-f]{2})|\\u([0-9a-f]{4})|[\\`]u\{([0-9a-f]{1,6})\}"
+    r"|\\([0-7]{1,3})|\\n\{([^}]*)\}"
+)
+# A Windows 8.3 short name, also a hashed one: a tilde and a digit.
 SHORT_NAME = re.compile(r"([a-z0-9_]{1,6})~\d")
 
 
@@ -125,43 +136,74 @@ def unchanged() -> bool:
     )
 
 
-def glob_pattern(word: str) -> str:
-    """A shell glob as an fnmatch pattern; extglob groups and brace expansions
-    (a list or a range; `{x}` stays literal in bash) widen to `*`."""
-    word = re.sub(r"[@+!?*]\([^)]*\)", "*", word)
-    while (wider := BRACES.sub("*", word)) != word:
-        word = wider
-    return word.replace("[^", "[!")
+def unescaped(text: str) -> str:
+    """Text with shell, Python and PowerShell character escapes decoded."""
+
+    def decode(match: re.Match[str]) -> str:
+        hex_code = next((group for group in match.groups()[:3] if group), None)
+        try:
+            if hex_code:
+                return chr(int(hex_code, 16))
+            if match[4]:
+                return chr(int(match[4], 8))
+            return unicodedata.lookup(match[5])
+        except (ValueError, KeyError, OverflowError):
+            return ""
+
+    return ESCAPE.sub(decode, text)
+
+
+def wildened(text: str) -> str:
+    """Extglob groups and brace expansions (a list or a range; `{x}` stays
+    literal in bash), innermost first, widened to `*`."""
+    while (wider := WIDE.sub("*", text)) != text:
+        text = wider
+    return text
 
 
 def names_script(command: str) -> bool:
-    """Whether the command names the script in any spelling the shell or a
-    case-insensitive file system resolves to it: case, quotes, escapes, globs,
-    braces and 8.3 short names (#3367)."""
-    text = re.sub(r"[\"'`]", "", command.casefold())
+    """Whether the command names the script in any spelling the shell, Python
+    or a case-insensitive file system resolves to it (#3367). The name's
+    letters in order, whatever stands between them, count as the name."""
+    text = unescaped(unicodedata.normalize("NFKC", command).casefold())
+    if LETTERS in re.sub(r"[^a-z]", "", text):
+        return True
+    # Negated and POSIX character classes as fnmatch reads them.
+    text = re.sub(r"\[:[a-z]+:\]", "a-z0-9_.", text.replace("[^", "[!"))
+    text = wildened(text)
+    text = re.sub(r"\\\n|[$\"'`^‘’“”]", "", text)
     return any(
-        NAME in variant
-        or any(word_reaches_script(word) for word in re.split(r"[\s;&|<>=]+", variant))
+        word_reaches_script(word)
         for variant in (text.replace("\\", ""), text.replace("\\", "/"))
+        for word in WORDS.split(variant)
     )
 
 
 def word_reaches_script(word: str) -> bool:
     """A glob or 8.3 short name that can resolve to the script's file."""
-    *folders, last = word.rstrip("/").split("/")
-    other = folders and folders[-1] not in {"", ".", "..", "scripts"}
-    # A file in a plainly named other folder is never the script.
-    if other and not GLOB.search(folders[-1]):
-        return False
+    *folders, last = posixpath.normpath(word).split("/")
+    last = last.rstrip(". ")
     short = SHORT_NAME.match(last)
-    if short and NAME.startswith(short[1]):
+    if short and NAME.startswith(short[1][:2]):
         return True
+    folder = folders[-1].rstrip(". ") if folders else ""
+    # A file in a plainly named other folder is never the script.
+    if folder not in {"", ".", "..", "scripts"} and not GLOB.search(folder):
+        return False
     return bool(GLOB.search(last)) and any(
-        fnmatch.fnmatchcase(target, glob_pattern(last)) for target in TARGETS
+        fnmatch.fnmatchcase(target, last) for target in TARGETS
     )
 
 
 def main() -> int:
+    try:
+        return decide()
+    except Exception as error:  # noqa: BLE001 - any failure blocks (#3367)
+        print(f"Blocked: the hook failed ({type(error).__name__}).", file=sys.stderr)
+        return 2
+
+
+def decide() -> int:
     try:
         payload = json.loads(sys.stdin.buffer.read().decode("utf-8-sig"))
     except ValueError:
