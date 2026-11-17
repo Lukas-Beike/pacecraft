@@ -81,6 +81,9 @@ _LOGGER = logging.getLogger("intervals_coach")
 # One push at a time, so two saves of one day never upload twice.
 _PUSH_LOCK = threading.Lock()
 _LOCK_WAIT_S: Final = 60.0
+# A save waits at most this long for Garmin; the push then finishes in the
+# background and the receipt says pending (the browser gives up after 25 s).
+REQUEST_DEADLINE_S: Final = 15.0
 _WEIGHT_TOLERANCE_KG: Final = 0.05
 _FAT_TOLERANCE_PCT: Final = 0.05
 _ENTERED_SQL: Final = (
@@ -179,8 +182,23 @@ class GarminBodyPushService:
     def push(self, day: date, *, retry: bool = False) -> str:
         """Bring Garmin's entry of ``day`` in line with the local values.
 
-        Never raises: the local save has already been committed.
+        Never raises: the local save has already been committed. A save's push
+        runs on its own thread and answers within ``REQUEST_DEADLINE_S``; a busy
+        or slow Garmin keeps going there and the receipt says pending.
         """
+        if retry:
+            return self._guarded(day, retry=True)
+        outcome: list[str] = []
+        worker = threading.Thread(
+            target=lambda: outcome.append(self._guarded(day, retry=False)),
+            name="garmin-body-push",
+            daemon=True,
+        )
+        worker.start()
+        worker.join(REQUEST_DEADLINE_S)
+        return outcome[0] if outcome else PENDING
+
+    def _guarded(self, day: date, *, retry: bool) -> str:
         try:
             if not self._write_ready():
                 # A linked day keeps waiting, so its change reaches Garmin later.

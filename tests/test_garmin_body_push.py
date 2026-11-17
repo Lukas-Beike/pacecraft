@@ -6,6 +6,8 @@ Garmin is a mocked SDK: no request leaves the test.
 import contextlib
 import json
 import logging
+import threading
+import time
 import unittest
 import unittest.mock
 from datetime import UTC, date, datetime, timedelta
@@ -334,6 +336,31 @@ class GarminBodyPushTests(unittest.TestCase):
         self.assertEqual(1, self.push.retry_pending())
         self.assertEqual([], self.sdk.days["2026-11-15"])
         self.assertIsNone(self.link())
+
+    def test_a_slow_garmin_never_holds_the_save_past_its_deadline(self):
+        # Gitar (#3415): a running Garmin refresh holds its lock; the save answers
+        # "pending" in time and the push finishes on its own thread.
+        release = threading.Event()
+
+        @contextlib.contextmanager
+        def busy():
+            release.wait(5)
+            yield self.sdk
+
+        self.push._sdk_session = busy
+        with unittest.mock.patch.object(garmin_body_push, "REQUEST_DEADLINE_S", 0.05):
+            read = self.weights.save({"date": "2026-11-15", "kg": 80})
+        self.assertEqual("pending", read["remote"])
+        self.assertEqual({"date": "2026-11-15", "kg": 80.0}, read["entries"][0])
+        release.set()
+        for _ in range(100):
+            link = self.link()
+            if link is not None and link.sync_state is RemoteLinkState.SYNCED:
+                break
+            time.sleep(0.02)
+        self.assertEqual(
+            ("101", RemoteLinkState.SYNCED), (link.remote_id, link.sync_state)
+        )
 
     def test_two_matching_entries_link_the_newest_and_leave_the_other(self):
         twin = {
