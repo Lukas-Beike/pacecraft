@@ -192,7 +192,8 @@ for (const theme of ["light", "dark"]) {
     await page.goto("/#nutrition/diary");
     const device = page.locator("#nutritionEnergy tr[data-energy-source='device']");
     await expect(device).toHaveAttribute("data-fit", "nearest");
-    expect(await device.locator("th").evaluate((cell) => getComputedStyle(cell).borderTopStyle)).toBe("dashed");
+    // The diary re-renders the table when its reads land, so the style check retries on the current cell.
+    await expect(device.locator("th")).toHaveCSS("border-top-style", "dashed");
     await expect(page.locator("#nutritionEnergy")).not.toContainText("passt am besten");
   });
 }
