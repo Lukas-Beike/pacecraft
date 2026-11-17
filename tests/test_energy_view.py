@@ -526,6 +526,51 @@ class EnergyViewTests(unittest.TestCase):
         self.assertEqual(DAY1.isoformat(), view["body"]["date"])
 
 
+class FitScaleTests(unittest.TestCase):
+    """#3397: each Verlauf period's source means against the own estimate."""
+
+    def test_each_period_means_its_days_and_names_the_own_span(self) -> None:
+        source = inputs()
+        logged = DayInputs(
+            weight_kg=80.0, intake_kcal=2500.0, entries=3, activity_kcal=500.0
+        )
+        # Complete days in the latest week and four weeks back only.
+        days = {**source.days, END: logged, END - timedelta(days=30): logged}
+        health = garmin()
+        # A day 20 days back counts for 12 weeks, not for 14 days.
+        health[(END - timedelta(days=20)).isoformat()] = {
+            "resting_kcal": 1745.0,
+            "calories": 6000.0,
+        }
+        view = energy_view(replace(source, days=days), [window(END, 2700.0)], health)
+        short, long = view["fit_scale"]["14d"], view["fit_scale"]["12w"]
+        device = lambda scale: next(
+            s for s in scale["sources"] if s["source"] == "device"
+        )
+        self.assertEqual(
+            (14, 28, 2, 1),
+            (
+                short["days"],
+                short["own_days"],
+                short["weeks"],
+                short["weeks_with_data"],
+            ),
+        )
+        self.assertEqual(
+            (84, 84, 12, 2),
+            (long["days"], long["own_days"], long["weeks"], long["weeks_with_data"]),
+        )
+        self.assertEqual(3120, device(short)["total_kcal"])
+        # The fixture holds 60 days: 59 at 3,120 and one at 6,000 = 3,168.
+        self.assertEqual(3168, device(long)["total_kcal"])
+        self.assertEqual(
+            ["katch_mcardle", "cunningham", "device"],
+            [s["source"] for s in long["sources"]],
+        )
+        # Too few logged days for the rules: no own value, never a guess.
+        self.assertEqual((None, None), (long["own_kcal"], long["own_band_kcal"]))
+
+
 class SelectedDayTests(unittest.TestCase):
     """#3395: the source rows show the diary's selected day, the own row 28 days."""
 

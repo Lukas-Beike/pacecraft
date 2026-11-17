@@ -415,6 +415,7 @@ function renderNutritionWeek(week) {
   const scale = Math.max(1, ...chartDays.flatMap((day) => [day.intake_kcal, day.expenditure_kcal].filter((value) => Number.isFinite(value) && value >= 0)));
   document.querySelector("#nutritionWeekChart").replaceChildren(...nutritionChartRows(chartDays).map((entry) => (entry.empty ? nutritionEmptyRunRow(entry) : nutritionChartDayRow(entry.day, scale))));
   document.querySelector("#nutritionWeekChartSection").hidden = false;
+  renderNutritionFit();
   document.querySelector("#nutritionWeekDays").replaceChildren(...week.days.map((day) => h("tr", null,
     h("th", { scope: "row" }, nutritionExpenditureDate(day.date).slice(0, 5)),
     ...["intake_kcal", "expenditure_kcal", "balance_kcal"].map((key) => h("td", null, day[key] == null ? "–" : nutritionWeekValue(day[key], "", key === "balance_kcal"))))));

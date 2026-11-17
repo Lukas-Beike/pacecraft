@@ -65,12 +65,13 @@ test("@responsive formula rows without a body fat name the reason and open the d
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBeTruthy();
 });
 
-// #3252: which source meets the weight stays under Körper; tapping the body-fat row opens the
+// #3397: which source meets the weight moved to Verlauf; tapping the body-fat row opens the
 // body fat dialog (#3402).
-test("@responsive Körper keeps the fit note and opens the body fat dialog from body fat", async ({ page }) => {
+test("@responsive Körper opens the body fat dialog from body fat and no longer holds the fit", async ({ page }) => {
   await page.goto("/#nutrition/body");
   const root = page.locator("#bodyAnalysisCharts");
-  await expect(root.locator("[data-energy-fit]")).toContainText("noch nicht unterscheidbar");
+  await expect(root.locator("[data-body-overview]")).toBeVisible();
+  await expect(root.locator("[data-energy-fit]")).toHaveCount(0);
   await expect(root.locator("[data-energy]")).toHaveCount(0);
   await root.locator("[data-body-overview] tr[data-metric='body_fat_pct'] th").click();
   await expect(page.locator("#bodyFatDialog")).toBeVisible();
@@ -127,16 +128,72 @@ test("@responsive the energy table follows the diary date: sport per day, today 
   await expect(katch.locator("th small")).not.toContainText("bis jetzt");
   expect(asked.at(-1)).toBe(await page.locator("#nutritionDate").inputValue());
   expect(asked).toContain(today);
-  // A future diary day reads nothing; Körper's fit, which is no day's, stays (Gitar #3423).
+  // A future diary day reads nothing; Verlauf's fit, which is no day's, stays (Gitar #3423, #3397).
   await page.getByRole("button", { name: "Nächster Tag" }).click();
   await expect(page.locator("#nutritionDate")).toHaveValue(today);
   await page.getByRole("button", { name: "Nächster Tag" }).click();
   await expect(page.locator("#nutritionDate")).not.toHaveValue(today);
   await expect(page.locator("#nutritionEnergy")).toContainText("Tag liegt in der Zukunft");
   const reads = asked.length;
-  await page.goto("/#nutrition/body");
-  await expect(page.locator("#bodyAnalysisCharts [data-energy-fit]")).toBeVisible();
-  await expect(page.locator("#bodyAnalysisCharts")).not.toContainText("Tag liegt in der Zukunft");
+  await page.goto("/#nutrition/week");
+  await expect(page.locator("#nutritionFitScale [data-energy-fit]")).toBeVisible();
+  await expect(page.locator("#nutritionFitScale")).not.toContainText("Tag liegt in der Zukunft");
   expect(asked.length).toBeLessThanOrEqual(reads + 1);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBeTruthy();
 });
+
+// #3397 (A2): Verlauf shows one kcal scale above "Tagesverlauf" for its period; the Tagebuch
+// outlines the best source's row. The read is shaped here; the values come from the method tests.
+const fitScale = (days, ownDays, own, band) => ({
+  days, own_days: ownDays, own_kcal: own, own_band_kcal: band, weeks: days / 7, weeks_with_data: Math.min(3, days / 7),
+  sources: [
+    { source: "katch_mcardle", total_kcal: 3768 },
+    { source: "cunningham", total_kcal: 3930 },
+    { source: "device", label: "Garmin Connect", total_kcal: 3157 },
+  ],
+});
+for (const theme of ["light", "dark"]) {
+  test(`@responsive the fit scale follows Verlauf's period without overlaps, and the diary outlines the best source (${theme})`, async ({ page }) => {
+    await page.emulateMedia({ colorScheme: theme });
+    await page.route("**/api/body/energy*", async (route) => {
+      const response = await route.fetch();
+      const data = await response.json();
+      for (const row of data.rows) if (row.source !== "own") row.mean_error_kcal = { katch_mcardle: 1042, cunningham: 1204, device: 431 }[row.source];
+      await route.fulfill({ response, json: { ...data, best: null, fit_scale: { "14d": fitScale(14, 28, 2690, 720), "12w": fitScale(84, 84, 2726, 454) } } });
+    });
+    await page.goto("/#nutrition/week");
+    const card = page.locator("#nutritionFitScale [data-energy-fit]");
+    await expect(card).toHaveAttribute("data-energy-fit", "14d");
+    await expect(card.locator(".energy-fit-verdict")).toHaveText(/^In den letzten 4 Wochen verbrauchst du rund 2\.690 kcal am Tag\. Am nächsten: Garmin Connect \(\+467\) – noch nicht sicher\.$/);
+    await expect(card.locator("[data-energy-fit-note]")).toContainText("Ø letzte 14 Tage, dein Wert aus 4 Wochen");
+    // Above the Tagesverlauf.
+    const [cardBox, chartBox] = await Promise.all([card.boundingBox(), page.locator("#nutritionWeekChartSection").boundingBox()]);
+    expect(cardBox.y + cardBox.height).toBeLessThanOrEqual(chartBox.y);
+    await page.getByRole("button", { name: "12 Wochen" }).click();
+    await expect(card).toHaveAttribute("data-energy-fit", "12w");
+    await expect(card.locator(".energy-fit-row")).toHaveText([/^Deine Daten2\.726 ± 454$/, /^Garmin Connect3\.157 \(\+431\)$/, /^Katch-McArdle3\.768 \(\+1\.042\)$/, /^Cunningham3\.930 \(\+1\.204\)$/]);
+    await expect(card.locator(".energy-fit-row[data-inside='true']")).toHaveCount(1);
+    // At 360 px nothing in a lane overlaps another label or leaves the card.
+    await page.setViewportSize({ width: 360, height: 800 });
+    const clashes = await card.evaluate((element) => {
+      const box = element.getBoundingClientRect();
+      const found = [];
+      for (const lane of element.querySelectorAll(".energy-fit-lane")) {
+        const label = lane.querySelector(".energy-fit-label").getBoundingClientRect();
+        if (label.left < box.left - 1 || label.right > box.right + 1) found.push(`${label.left}-${label.right} outside`);
+      }
+      const ticks = [...element.querySelectorAll(".energy-fit-tick")].map((tick) => tick.getBoundingClientRect());
+      ticks.slice(1).forEach((tick, index) => { if (tick.left < ticks[index].right) found.push("ticks overlap"); });
+      return found;
+    });
+    expect(clashes).toEqual([]);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBeTruthy();
+    // The diary outlines the nearest source dashed while none is distinguishable.
+    await page.goto("/#nutrition/diary");
+    const device = page.locator("#nutritionEnergy tr[data-energy-source='device']");
+    await expect(device).toHaveAttribute("data-fit", "nearest");
+    expect(await device.locator("th").evaluate((cell) => getComputedStyle(cell).borderTopStyle)).toBe("dashed");
+    await expect(page.locator("#nutritionEnergy")).not.toContainText("passt am besten");
+  });
+}
+
