@@ -36,7 +36,8 @@ rewritten for lane succession and this repository's privacy rules; see
 repository, and give it in the successor's start message: link the issues, PRs,
 ledger and memory files instead of restating them; name the skills to load first;
 state what is running or waiting and on whom, and for an orchestrator the
-AGENTS.md turn holder, the merge-rule state and any merge hold. A lane handoff
+AGENTS.md turn holder, the merge-rule state, any merge hold and the open
+athlete questions. A lane handoff
 still carries the "Start a lane" brief. Copy nothing `AGENTS.md` forbids copying
 (secrets, credentials, tokens, database keys, backup contents, athlete or
 personal data). The successor checks the handoff against the issues and ledger.
@@ -65,12 +66,13 @@ periodic check, merge watch and release. Twice it waited all night: V6
 red unnoticed and lanes idled; V7 2026-11-15 21:55 to 05:23 on a calorie-gap
 question, while lane reports piled up (#3348). So:
 
-- Never ask from a periodic-check turn.
-- Ask a non-urgent question only while the athlete is active (they wrote
-  within about the last 15 minutes). Otherwise park it in the ledger and the
-  handoff and ask at the athlete's next message.
-- Ask a question that blocks a release or a lane once, and tell the lanes to
-  continue with other work meanwhile.
+- Never ask from a periodic-check turn; this wins over the rules below.
+- Ask only while the athlete is active (they wrote within about the last 15
+  minutes), also a question that blocks a release or a lane. Otherwise park it
+  as an open athlete question in the session notes (and the handoff) and ask at
+  the athlete's next message.
+- Ask a blocking question once. Whether asked or parked, tell the affected
+  lanes to continue with other work meanwhile.
 
 ## Merge rules
 
