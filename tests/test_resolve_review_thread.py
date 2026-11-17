@@ -253,6 +253,11 @@ class GuardHookTests(unittest.TestCase):
             "python -c \"import runpy; runpy.run_path('scripts/\\x72esolve_review_thread.py')\"",
             "python -c \"__import__('\\N{LATIN SMALL LETTER R}esolve_review_thread')\"",
             "python -c 'import ｒesolve_review_thread'",
+            "printf '\\N{'; python scripts/resolve_review_thread.py 2671 PRRT_a1; echo }",
+            "python scripts/\\U00000072esolve_review_thread.py 2671 PRRT_a1",
+            "for %f in (scripts\\RESOLV~?.PY) do python %f 2671 PRRT_a1",
+            'cmd /c for %f in ("scripts\\r<.py") do python %f',
+            'for %f in ("scripts::$INDEX_ALLOCATION\\r*") do python %f',
             "cd scripts/x && python ../r* 2671 PRRT_a1",
             "python ./r* 2671 PRRT_a1",
         ):
@@ -266,6 +271,8 @@ class GuardHookTests(unittest.TestCase):
             "ls tests/test_?.py",
             "for f in tests/*.py; do echo $f; done",
             "gh pr list -q '.[] | {n: .number}'",
+            "awk '{print $1, $2}' notes.txt",
+            "git log -1 > notes.txt 2>&1",
         ):
             with self.subTest(command):
                 self.assertEqual(self.decide(command), 0)

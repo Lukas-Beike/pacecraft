@@ -28,14 +28,20 @@ LETTERS = re.sub(r"[^a-z]", "", NAME)
 TARGETS = (NAME, f"{NAME}.py")
 # Shell glob characters, brace expansion and extglob groups.
 GLOB = re.compile(r"[*?\[]")
-WIDE = re.compile(r"[@+!?*]\([^()]*\)|\{[^{}]*(?:,|\.\.)[^{}]*\}")
+WIDE = re.compile(r"[@+!?*]\([^()]*\)|\{[^{}\s]*(?:,|\.\.)[^{}\s]*\}")
+# DOS wildcards inside a word: `<` reads as `*`, `>` as `?`.
+DOS_STAR = re.compile(r"(?<=[\w.*?])<(?=[\w.*?])")
+DOS_ONE = re.compile(r"(?<=[\w.*?])>(?=[\w.*?])")
+# NTFS stream names that address the same folder or file.
+STREAM = re.compile(r"::?\$(?:index_allocation|i30|data)")
 # Separators between words, also of PowerShell arrays, script blocks and
 # `-Name:value` parameters.
 WORDS = re.compile(r"[\s;&|<>=(){},:]+")
-# \xHH, \uHHHH, \u{H}, `u{H} (PowerShell), \NNN (octal), \N{NAME} (Python).
+# \xHH, \UHHHHHHHH, \uHHHH, \u{H}, `u{H} (PowerShell), \NNN and \0NNN
+# (octal), \N{NAME} (Python), after casefolding.
 ESCAPE = re.compile(
-    r"\\x([0-9a-f]{2})|\\u([0-9a-f]{4})|[\\`]u\{([0-9a-f]{1,6})\}"
-    r"|\\([0-7]{1,3})|\\n\{([^}]*)\}"
+    r"\\x([0-9a-f]{2})|\\u([0-9a-f]{8})|\\u([0-9a-f]{4})|[\\`]u\{([0-9a-f]{1,6})\}"
+    r"|\\0?([0-7]{1,3})|\\n\{([a-z0-9 -]+)\}"
 )
 # A Windows 8.3 short name, also a hashed one: a tilde and a digit.
 SHORT_NAME = re.compile(r"([a-z0-9_]{1,6})~\d")
@@ -140,15 +146,16 @@ def unescaped(text: str) -> str:
     """Text with shell, Python and PowerShell character escapes decoded."""
 
     def decode(match: re.Match[str]) -> str:
-        hex_code = next((group for group in match.groups()[:3] if group), None)
+        hex_code = next((group for group in match.groups()[:4] if group), None)
         try:
             if hex_code:
                 return chr(int(hex_code, 16))
-            if match[4]:
-                return chr(int(match[4], 8))
-            return unicodedata.lookup(match[5])
+            if match[5]:
+                return chr(int(match[5], 8))
+            return unicodedata.lookup(match[6])
         except (ValueError, KeyError, OverflowError):
-            return ""
+            # Undecodable text stays as it is, so it can still match.
+            return match[0]
 
     return ESCAPE.sub(decode, text)
 
@@ -165,12 +172,13 @@ def names_script(command: str) -> bool:
     """Whether the command names the script in any spelling the shell, Python
     or a case-insensitive file system resolves to it (#3367). The name's
     letters in order, whatever stands between them, count as the name."""
-    text = unescaped(unicodedata.normalize("NFKC", command).casefold())
-    if LETTERS in re.sub(r"[^a-z]", "", text):
+    raw = unicodedata.normalize("NFKC", command).casefold()
+    text = unescaped(raw)
+    if any(LETTERS in re.sub(r"[^a-z]", "", form) for form in (raw, text)):
         return True
     # Negated and POSIX character classes as fnmatch reads them.
     text = re.sub(r"\[:[a-z]+:\]", "a-z0-9_.", text.replace("[^", "[!"))
-    text = wildened(text)
+    text = DOS_ONE.sub("?", DOS_STAR.sub("*", STREAM.sub("", wildened(text))))
     text = re.sub(r"\\\n|[$\"'`^‘’“”]", "", text)
     return any(
         word_reaches_script(word)
@@ -184,7 +192,8 @@ def word_reaches_script(word: str) -> bool:
     *folders, last = posixpath.normpath(word).split("/")
     last = last.rstrip(". ")
     short = SHORT_NAME.match(last)
-    if short and NAME.startswith(short[1][:2]):
+    # Windows also matches a wildcard against the short name.
+    if (short and NAME.startswith(short[1][:2])) or ("~" in last and GLOB.search(last)):
         return True
     folder = folders[-1].rstrip(". ") if folders else ""
     # A file in a plainly named other folder is never the script.
