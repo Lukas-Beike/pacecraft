@@ -493,6 +493,7 @@ class WorktreePreparationTests(unittest.TestCase):
                 self.subTest(results=results, image=image),
                 patch.object(prepare.shutil, "which", return_value="npm.cmd"),
                 patch.object(prepare, "report_newer_versions") as report,
+                patch.object(prepare, "report_workflow_scope") as scope,
                 patch.object(prepare, "build_app_image", return_value=image) as build,
                 patch.object(
                     prepare.subprocess,
@@ -504,6 +505,7 @@ class WorktreePreparationTests(unittest.TestCase):
             ):
                 self.assertEqual(prepare.main(), int(any(results) or bool(image)))
                 report.assert_called_once()
+                scope.assert_called_once()
                 build.assert_called_once()
                 calls = [call.args[0] for call in run.call_args_list]
                 self.assertEqual(calls[0], ["npm.cmd", "ci", "--ignore-scripts"])
@@ -582,6 +584,7 @@ class WorktreePreparationTests(unittest.TestCase):
         with (
             patch.object(prepare.shutil, "which", return_value=None),
             patch.object(prepare, "report_newer_versions"),
+            patch.object(prepare, "report_workflow_scope"),
             patch.object(prepare, "build_app_image", return_value=0),
             patch.object(
                 prepare.subprocess,
@@ -716,6 +719,7 @@ class WorktreePreparationTests(unittest.TestCase):
         with (
             patch.object(prepare.shutil, "which", return_value="npm.cmd"),
             patch.object(prepare, "report_newer_versions") as report,
+            patch.object(prepare, "report_workflow_scope"),
             patch.object(prepare, "build_app_image", return_value=0),
             patch.object(
                 prepare.subprocess,
@@ -727,6 +731,43 @@ class WorktreePreparationTests(unittest.TestCase):
         ):
             self.assertEqual(prepare.main(), 1)
         self.assertIsNone(report.call_args.args[1])
+
+    def test_a_token_without_the_workflow_scope_names_the_fix(self):
+        # #3350: pushes touching .github/workflows/ were refused twice.
+        fix = "run `gh auth refresh -s workflow`"
+        token = "gho_" + "x" * 8  # fake; never printed
+        for scopes, which, warned in (
+            ("'gist', 'read:org', 'repo'", "gh", True),
+            ("'gist', 'read:org', 'repo', 'workflow'", "gh", False),
+            (None, "gh", False),
+            ("'repo'", None, False),
+        ):
+            lines = ["github.com", f"  - Token: {token}"]
+            if scopes is not None:
+                lines.append(f"  - Token scopes: {scopes}")
+            done = subprocess.CompletedProcess([], 0, "\n".join(lines), "")
+            out = io.StringIO()
+            with (
+                self.subTest(scopes=scopes, which=which),
+                patch.object(prepare.shutil, "which", return_value=which),
+                patch.object(prepare.subprocess, "run", return_value=done) as run,
+                contextlib.redirect_stdout(out),
+            ):
+                prepare.report_workflow_scope()
+            self.assertEqual(fix in out.getvalue(), warned)
+            self.assertEqual(out.getvalue() == "", not warned)
+            self.assertNotIn(token, out.getvalue())
+            if which:
+                self.assertEqual(run.call_args.args[0][1:3], ["auth", "status"])
+
+    def test_a_failed_gh_call_prints_nothing(self):
+        with (
+            patch.object(prepare.shutil, "which", return_value="gh"),
+            patch.object(prepare.subprocess, "run", side_effect=OSError("gone")),
+            contextlib.redirect_stdout(io.StringIO()) as out,
+        ):
+            prepare.report_workflow_scope()
+        self.assertEqual(out.getvalue(), "")
 
 
 if __name__ == "__main__":

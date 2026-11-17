@@ -6,7 +6,9 @@ development dependencies and the locked Playwright Chromium, the hash-locked
 interpreter (`tools/quality_baseline.py` runs the tools as `python -m`; Windows
 has no system time zone database), set up Graphify, generate the first graph,
 and build this checkout's browser-test app image (skipped when Docker is not
-running). Agent worktrees run it too, so each gets its own `node_modules`. It then
+running). Agent worktrees run it too, so each gets its own `node_modules`. When
+the GitHub CLI token lacks the `workflow` scope, it says that pushes touching
+`.github/workflows/` fail until `gh auth refresh -s workflow` (#3350). It then
 prints an advisory list of pinned Python (queried at pypi.org) and npm
 (`npm outdated`) packages that have a newer release; this needs network access,
 installs nothing and never changes the exit code.
