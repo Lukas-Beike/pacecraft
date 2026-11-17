@@ -13,11 +13,12 @@ Use this skill only when the user explicitly asks to start or carry out a Pacecr
    Request the app-password secret now (`request_secret`, file delivery; see
    [post-release-check](../pacecraft-post-release-check/SKILL.md)) and prove it
    readable before dispatching: run
-   [prod-guards](../pacecraft-prod-guards/SKILL.md) once. A `secret missing or
-   unreadable` line means request a new one. Before the Unraid update, request
-   it again when it was delivered more than an hour earlier or a check reports
-   it missing. A secret that vanished overnight held the 2.1.33 deploy for
-   about 7 hours (#3354).
+   [prod-guards](../pacecraft-prod-guards/SKILL.md) once. Its `secret missing,
+   empty or unreadable` line means request a new one; any other failure stops
+   the release before dispatch. Run it again right before the Unraid update and
+   before the post-release check, and request a new secret on that line. A
+   secret that vanished overnight held the 2.1.33 deploy for about 7 hours
+   (#3354).
 2. Start the release with [release-dispatch](../pacecraft-release-dispatch/SKILL.md)
    `dispatch`, passing `--version` only when the user named one. Never dispatch
    `publish-container.yml` directly to publish around the release chain.

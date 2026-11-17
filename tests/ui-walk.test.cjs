@@ -163,14 +163,19 @@ test("ui walk refuses missing arguments and an unreadable secret file without a 
   // A malformed address keeps its own message, not the secret-file one.
   done = run("--url", "not a url", "--password-file", path.join(os.tmpdir(), "missing-secret-file"), "--out-dir", path.join(os.tmpdir(), "walk"));
   assert.equal(done.status, 2);
-  assert.doesNotMatch(done.stdout, /secret missing/);
+  assert.doesNotMatch(done.stdout, /secret missing|out-dir/);
   done = run("--url", "http://127.0.0.1:9", "--password-file", path.join(os.tmpdir(), "missing-secret-file"), "--out-dir", path.join(os.tmpdir(), "walk"));
   assert.equal(done.status, 2);
   // A missing secret names the request step, never the path (#3354).
-  assert.match(done.stdout, /FAIL secret missing or unreadable: request a new one with request_secret/);
+  const missing = "FAIL secret missing, empty or unreadable: request a new one with request_secret (file delivery)";
+  assert.ok(done.stdout.includes(missing));
   assert.doesNotMatch(done.stdout, /missing-secret-file/);
   const scratch = fs.mkdtempSync(path.join(os.tmpdir(), "walk-test-"));
   const secret = path.join(scratch, "secret");
+  fs.writeFileSync(secret, "  \n");
+  done = run("--url", "http://127.0.0.1:9", "--password-file", secret, "--out-dir", path.join(scratch, "walk"));
+  assert.equal(done.status, 2);
+  assert.ok(done.stdout.includes(missing));
   fs.writeFileSync(secret, "fake-login-value");
   const notJson = path.join(scratch, "previous.json");
   fs.writeFileSync(notJson, "fake-login-value is not JSON");

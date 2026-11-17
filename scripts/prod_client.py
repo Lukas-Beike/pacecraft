@@ -25,8 +25,8 @@ CSRF_COOKIE = "ic_csrf"
 TIMEOUT = 30
 # Names the fix, the release skill's request step (#3354); no path or content.
 SECRET_MISSING = (
-    "secret missing or unreadable: request a new one with request_secret "
-    "(file delivery) before deploying"
+    "secret missing, empty or unreadable: request a new one with request_secret "
+    "(file delivery)"
 )
 
 
@@ -134,10 +134,10 @@ class Session:
     def login(self, password_file: str) -> None:
         try:
             password = secret_path(password_file).read_text(encoding="utf-8").strip()
-        except OSError:
+        except OSError, UnicodeDecodeError:
             raise ProdError(SECRET_MISSING) from None
         if not password:
-            raise ProdError(f"the secret file is empty; {SECRET_MISSING}")
+            raise ProdError(SECRET_MISSING)
         code = self.status("POST", "/api/login", body={"password": password})
         del password
         if code != 200 or not self.cookie(CSRF_COOKIE):

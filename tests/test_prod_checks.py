@@ -606,23 +606,28 @@ class ProdChecksTests(unittest.TestCase):
 
     def test_missing_or_empty_secret_names_the_request_step(self):
         # An expired secret held a deploy for hours behind a bare "cannot read" (#3354).
+        line = (
+            "FAIL secret missing, empty or unreadable: "
+            "request a new one with request_secret (file delivery)"
+        )
+        # The UI walk prints the same line.
+        walk = (prod_client.ROOT / "scripts" / "ui_walk.mjs").read_text("utf-8")
+        self.assertIn(line.removeprefix("FAIL "), walk)
         missing = Path(self.tmp.name) / "expired-secret"
         for module in (prod_diagnostics, prod_guards, prod_logs):
             code, text = self.run_main(
                 module, "--url", self.url, "--password-file", str(missing)
             )
             self.assertEqual(code, 2)
-            self.assertIn(f"FAIL {prod_client.SECRET_MISSING}", text)
-            self.assertIn("request_secret", text)
+            self.assertIn(line, text)
             self.assertNotIn("expired-secret", text)
-        self.secret.write_text("  \n", encoding="utf-8")
-        code, text = self.run_main(
-            prod_diagnostics, "--url", self.url, "--password-file", str(self.secret)
-        )
-        self.assertEqual(code, 2)
-        self.assertIn(
-            f"FAIL the secret file is empty; {prod_client.SECRET_MISSING}", text
-        )
+        for content in (b"  \n", b"\xe4" + FAKE_LOGIN.encode()):
+            self.secret.write_bytes(content)
+            code, text = self.run_main(
+                prod_diagnostics, "--url", self.url, "--password-file", str(self.secret)
+            )
+            self.assertEqual(code, 2)
+            self.assertIn(line, text)
 
     def test_result_files_stay_outside_the_repository(self):
         inside = Path(prod_client.ROOT) / "result.json"
