@@ -155,7 +155,8 @@ class BranchSyncTests(unittest.TestCase):
             "error: cannot lock ref 'refs/remotes/origin/foo': "
             "'refs/remotes/origin/foo/bar' exists"
         )
-        real = branch_sync.git
+        # The retry lives in gh_cli.fetch, shared with line_balance (#3378).
+        real = gh_cli.git
         self.advance_develop()
         # (message, failing fetches, exit, sleeps); the stale cases run first.
         for message, failures, expect, sleeps in (
@@ -173,8 +174,8 @@ class BranchSyncTests(unittest.TestCase):
 
             with (
                 self.subTest(message=message),
-                mock.patch.object(branch_sync, "git", flaky),
-                mock.patch.object(branch_sync.time, "sleep") as sleep,
+                mock.patch.object(gh_cli, "git", flaky),
+                mock.patch.object(gh_cli.time, "sleep") as sleep,
             ):
                 code, _, err = self.sync()
                 self.assertEqual((code, sleep.call_count), (expect, sleeps))

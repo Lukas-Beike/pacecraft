@@ -52,21 +52,16 @@ from collections.abc import Callable, Mapping
 from pathlib import Path
 
 import regenerate_docs
-from gh_cli import CliError, gh, gh_json, git
+from gh_cli import CliError, fetch, gh, gh_json, git
 from regenerate_docs import conflict_resolvable, upstream_side
 
 PROTECTED = {"develop", "main"}
 TYPES = "build|chore|ci|docs|feat|fix|perf|refactor|revert|style|test"
 SUBJECT = re.compile(rf"^(?:{TYPES})(?:\([a-z0-9][a-z0-9-]*\))?!?: \S")
-FETCH_ATTEMPTS = 3
 # Wait between retargeting a stacked layer and pushing it (#2934, pr skill).
 RETARGET_SETTLE_SECONDS = 60
 LOCK = "package-lock.json"
 SCRIPT = re.compile(r"^(?:e2e|public)/.+\.(?:js|cjs|mjs)$")
-TRANSIENT_FETCH = re.compile(
-    r"cannot lock ref '[^']+': is at \w+ but expected|\.lock': File exists"
-    r"|Operation too slow|timed out"
-)
 
 
 def sonar_dirs(env: Mapping[str, str], home: Path) -> list[Path]:
@@ -88,34 +83,6 @@ def push_env(env: Mapping[str, str], home: Path) -> dict[str, str]:
         "the pre-push hook needs the SonarQube CLI (sonar); install it first "
         "(setup prerequisite) so it is on PATH."
     )
-
-
-def fetch() -> None:
-    """Fetch origin; retry while a parallel worktree holds a lock (#2828).
-
-    Worktrees share one .git: a ref moved under a parallel fetch, a packed-refs
-    lock file, or a stalled transfer (aborted below 1 KB/s for 60 s) is retried.
-    A ref name conflict and every other failure raise at once, so the rebase
-    never runs on a stale target.
-    """
-    env = {
-        **os.environ,
-        "LC_ALL": "C",  # English messages for the checks below
-        "GIT_HTTP_LOW_SPEED_LIMIT": "1000",
-        "GIT_HTTP_LOW_SPEED_TIME": "60",
-    }
-    for attempt in range(1, FETCH_ATTEMPTS + 1):
-        try:
-            git("fetch", "origin", env=env)
-            return
-        except CliError as exc:
-            if not TRANSIENT_FETCH.search(str(exc)) or attempt == FETCH_ATTEMPTS:
-                raise
-            print(
-                f"fetch hit a lock or stall (attempt {attempt}); retrying",
-                file=sys.stderr,
-            )
-            time.sleep(attempt)
 
 
 def invalid_subjects(onto: str) -> list[str]:

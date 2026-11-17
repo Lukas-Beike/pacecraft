@@ -4,7 +4,7 @@ import io
 import subprocess
 import sys
 import unittest
-from contextlib import redirect_stdout
+from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 from unittest import mock
 
@@ -28,23 +28,35 @@ NUMSTAT = (
 )
 
 
+LOCKED = (
+    "error: cannot lock ref 'refs/remotes/origin/develop': is at 1111 but expected 2222"
+)
+
+
 class FakeGit:
-    def __init__(self, missing=0):
+    def __init__(self, missing=0, locked=0):
         self.calls = []
         self.missing = missing  # diffs that fail like an unfetched commit
+        self.locked = locked  # fetches that meet a parallel worktree's lock
 
     def __call__(self, argv, **_kwargs):
         self.calls.append(argv)
         if argv[1] == "diff" and self.missing:
             self.missing -= 1
             return subprocess.CompletedProcess(argv, 128, "", "fatal: bad revision")
+        if argv[1] == "fetch" and self.locked:
+            self.locked -= 1
+            return subprocess.CompletedProcess(argv, 1, "", LOCKED)
         return subprocess.CompletedProcess(argv, 0, NUMSTAT, "")
 
 
 class LineBalanceTests(unittest.TestCase):
-    def balance(self, missing=0, **kwargs):
-        fake = FakeGit(missing)
-        with mock.patch.object(gh_cli.subprocess, "run", fake):
+    def balance(self, missing=0, locked=0, **kwargs):
+        fake = FakeGit(missing, locked)
+        with (
+            mock.patch.object(gh_cli.subprocess, "run", fake),
+            mock.patch.object(gh_cli.time, "sleep"),
+        ):
             return line_balance.balance(**kwargs), fake
 
     def test_sorts_files_into_three_categories_and_counts_binary_as_zero(self):
@@ -68,12 +80,30 @@ class LineBalanceTests(unittest.TestCase):
         result, fake = self.balance(missing=1, commit="abc123")
         self.assertEqual(result["production"], (20, 3))
         self.assertEqual([call[1] for call in fake.calls], ["diff", "fetch", "diff"])
-        self.assertEqual(
-            fake.calls[1][1:], ["fetch", "--quiet", "origin", "develop", "main"]
-        )
+        self.assertEqual(fake.calls[1][1:], ["fetch", "origin", "develop", "main"])
         for kwargs in ({"missing": 2, "commit": "abc123"}, {"missing": 1}):
             with self.subTest(**kwargs), self.assertRaises(gh_cli.CliError):
                 self.balance(**kwargs)  # still missing, or a range: no fetch
+
+    def test_a_fetch_that_meets_a_parallel_worktrees_lock_is_retried(self):
+        # #3378: the lock clears once the other fetch ends; git's text is not shown.
+        out, err = io.StringIO(), io.StringIO()
+        fake = FakeGit(missing=1, locked=1)
+        with (
+            mock.patch.object(gh_cli.subprocess, "run", fake),
+            mock.patch.object(gh_cli.time, "sleep") as sleep,
+            redirect_stdout(out),
+            redirect_stderr(err),
+        ):
+            code = line_balance.main(["--commit", "abc123"])
+        self.assertEqual(code, 0)
+        self.assertEqual(sleep.call_count, 1)
+        self.assertEqual(
+            [call[1] for call in fake.calls], ["diff", "fetch", "fetch", "diff"]
+        )
+        self.assertIn("production: +20 / -3", out.getvalue())
+        self.assertIn("retrying", err.getvalue())
+        self.assertNotIn("cannot lock ref", out.getvalue() + err.getvalue())
 
     def test_main_prints_three_pasteable_lines(self):
         out = io.StringIO()

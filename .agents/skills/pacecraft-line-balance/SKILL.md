@@ -22,7 +22,8 @@ other: +E / -F
   count as 0.
 - Fetch the base first (`git fetch origin`) so the numbers match the PR. With
   `--commit`, a merge commit that is not local yet is fetched once with
-  develop and main (#2920); a short SHA works too.
+  develop and main (#2920), retrying a ref lock a parallel worktree's fetch
+  holds, as branch_sync does (#3378); a short SHA works too.
 - Exit 0: printed. Exit 2: bad input or a failed `git` call.
 - Other scripts reuse `line_balance.balance()`, which returns the same counts
   as a dict of `(added, removed)` pairs.

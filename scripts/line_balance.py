@@ -15,7 +15,7 @@ import argparse
 import sys
 from pathlib import Path
 
-from gh_cli import CliError, git
+from gh_cli import CliError, fetch, git
 
 PRODUCTION = ("backend/", "public/", "server.py")
 TESTS = ("tests/", "e2e/")
@@ -55,8 +55,9 @@ def balance(
             raise
         # Right after a merge the squash commit is often not local yet: fetch
         # develop and main once (a short SHA cannot be fetched), then diff
-        # again (#2920).
-        git("fetch", "--quiet", "origin", "develop", "main", cwd=cwd)
+        # again (#2920). A lock held by a parallel worktree's fetch is
+        # retried (#3378).
+        fetch("develop", "main", cwd=cwd)
         numstat = git("diff", "--numstat", "-M", span, cwd=cwd)
     for line in numstat.splitlines():
         added, removed, path = line.split("\t", 2)
