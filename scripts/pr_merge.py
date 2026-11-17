@@ -42,6 +42,7 @@ import argparse
 import re
 import sys
 import time
+from collections.abc import Callable
 from typing import Any
 
 from gh_cli import CliError, gh, gh_json, git, positive_int
@@ -147,13 +148,26 @@ def gitar_gate(sha: str, minutes: int) -> int | None:
     return 3 if minutes > 0 else 1
 
 
-def arm(number: int, pr: dict[str, Any]) -> str:
+class GateRefused(Exception):
+    """A gate refused on a re-check after a merge error; carries its exit code."""
+
+    def __init__(self, code: int) -> None:
+        super().__init__(code)
+        self.code = code
+
+
+def arm(
+    number: int,
+    pr: dict[str, Any],
+    gates: Callable[[dict[str, Any]], dict[str, Any] | int],
+) -> str:
     """Arm (or merge) the read head; a transient error reads the state again first.
 
     A 5xx or "Merge already in progress" may hide a merge GitHub completes on its
     own (#3432): before every new attempt the PR is read again, a merge or an
-    armed auto-merge found then is reported, a moved head stops, and the write is
-    sent again only for the same head.
+    armed auto-merge found then is reported, a moved head stops, every arming
+    gate runs again (the pause can bring a freeze or a review thread), and the
+    write is sent again only for the same head.
     """
     head = pr["headRefOid"]
     delays = iter(MERGE_RETRY_SECONDS)
@@ -173,6 +187,10 @@ def arm(number: int, pr: dict[str, Any]) -> str:
             return "merged meanwhile"
         if pr.get("headRefOid") != head or pr.get("state") != "OPEN":
             raise CliError("head changed or PR not open after a merge error; run again")
+        gated = gates(pr)
+        if isinstance(gated, int):
+            raise GateRefused(gated)
+        pr = gated
 
 
 def _arm_once(number: int, pr: dict[str, Any]) -> str:
@@ -330,7 +348,15 @@ def main(argv: list[str] | None = None) -> int:
             if isinstance(gated, int):
                 return gated
             pr = gated
-            print(f"PR #{args.number}: {arm(args.number, pr)}")
+
+            # The same gates, run again before a write is repeated (#3434 review).
+            def recheck(fresh: dict[str, Any]) -> dict[str, Any] | int:
+                return arming_gates(args.number, fresh, current=current, minutes=0)
+
+            try:
+                print(f"PR #{args.number}: {arm(args.number, pr, recheck)}")
+            except GateRefused as refused:
+                return refused.code
             if args.wait <= 0:
                 return 0
         return wait(args.number, max(args.wait, 0), feedback(pr))

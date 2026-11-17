@@ -291,6 +291,12 @@ class PrMergeTests(unittest.TestCase):
         )
         self.assertEqual((code, len(writes)), (2, tries), out)
         self.assertIn("502", out)
+        # Gitar on #3434: the pause can bring a freeze or a review thread, so every
+        # gate runs again before the write is repeated; a refusal ends with its code.
+        code, out, writes, _ = run(
+            self, 7, auto_error=[gateway, ""], views=[view(), view()], threads=[0, 1]
+        )
+        self.assertEqual((code, len(writes)), (1, 1), out)
 
     def test_refusals_never_merge_directly(self):
         for kwargs, expect in (
