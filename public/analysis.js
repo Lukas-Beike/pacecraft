@@ -1580,10 +1580,20 @@ function loadEnergy(day = energyDay()) {
     });
 }
 
+// A band shows as its low and high end (#3478); a kcal value is never negative, so the low end stops at 0.
+function energyKcalRange(value, band) {
+  return [Math.max(0, value - band), value + band].map((kcal) => formatWhole(kcal));
+}
+
+// The span "low–high" on its own line under the estimate, read out as "zwischen … und … kcal".
+function energyKcalSpan(value, band) {
+  const [low, high] = energyKcalRange(value, band);
+  return h("small", "energy-span", h("span", { "aria-hidden": "true" }, `${low}–${high}`), h("span", "sr-only", `zwischen ${low} und ${high} kcal`));
+}
+
 function energyKcal(value, band) {
   if (value == null) return "–";
-  // The space sits outside the band, so large text may wrap before "±" and nowhere else (#3362).
-  return band == null ? formatWhole(value) : h("span", null, formatWhole(value), " ", h("small", null, `± ${formatWhole(band)}`));
+  return band == null ? formatWhole(value) : h("span", null, formatWhole(value), energyKcalSpan(value, band));
 }
 
 // NEAT's inputs (#3255), so an outlier in steps or step length can be checked.
@@ -1644,7 +1654,7 @@ function energySplitRow(row) {
   const text = ENERGY_PARTS.map(([key, , label], index) => {
     const name = index === 0 && row.source === "own" ? "Ruhe (Rest)" : label;
     if (index === 0 && row.resting_implausible) return `${name} ${ENERGY_IMPLAUSIBLE} (${ENERGY_IMPLAUSIBLE_REASON})`;
-    const band = index === 0 && row.resting_band_kcal != null ? ` ± ${formatWhole(row.resting_band_kcal)}` : "";
+    const band = index === 0 && row.resting_band_kcal != null && split[key] != null ? ` (${energyKcalRange(split[key], row.resting_band_kcal).join("–")})` : "";
     return `${name} ${energySplitValue(key, split[key], row.source)}${band}`;
   }).join(" · ");
   const bar = h("div", { className: "energy-split", role: "img", "aria-label": text });
@@ -1786,7 +1796,8 @@ function energyFitSources(scale) {
 }
 
 function energyFitSigned(diff) {
-  let sign = "±";
+  // An equal value reads "0", so no "±" remains in the energy views (#3478).
+  let sign = "";
   if (diff > 0) sign = "+";
   else if (diff < 0) sign = "−";
   return `${sign}${formatWhole(Math.abs(diff))}`;
@@ -1858,8 +1869,9 @@ function energyFitAxis(domain) {
 
 function energyFitOwnRow(domain, scale) {
   const lane = energyFitLane(domain, scale, false);
-  const band = scale.own_band_kcal == null ? "" : ` ± ${formatWhole(scale.own_band_kcal)}`;
-  lane.append(energyFitMark("energy-fit-own", domain.at(scale.own_kcal)), energyFitLabel(formatWhole(scale.own_kcal) + band, domain.at(scale.own_kcal)));
+  const label = energyFitLabel(formatWhole(scale.own_kcal), domain.at(scale.own_kcal));
+  if (scale.own_band_kcal != null) label.append(energyKcalSpan(scale.own_kcal, scale.own_band_kcal));
+  lane.append(energyFitMark("energy-fit-own", domain.at(scale.own_kcal)), label);
   return h("li", { className: "energy-fit-row", dataset: { fitSource: "own" } }, h("span", "energy-fit-name", "Deine Daten"), lane);
 }
 
