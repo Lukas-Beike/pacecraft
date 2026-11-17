@@ -3,6 +3,9 @@ import sqlite3
 import unittest
 from datetime import UTC, datetime, timedelta
 
+from nutrition_service_support import build_nutrition_services
+from support import temp_database
+
 from backend import change_history
 from backend.athlete.profile import DEFAULT_PROFILE
 from backend.coach import limits as coach_limits
@@ -374,6 +377,35 @@ class ChangeHistoryTests(unittest.TestCase):
         self.assertIn(
             change_history.audit_hash(before),
             change_history.accepted_audit_hashes("nutrition_product", value),
+        )
+
+    def test_undoing_an_old_basis_change_after_new_sizes_is_stale(self):
+        # A pre-v33 row changed the basis to ml; a portion in ml was set since.
+        # Its legacy hash still matches, but undo would strand the portion.
+        manager = temp_database(self, schema=True)
+        now = datetime(2026, 11, 18, 8, tzinfo=UTC)
+        catalog = build_nutrition_services(manager, now.isoformat, lambda: now)[
+            1
+        ].product_catalog
+        product = catalog.save_product(
+            {"name": "Skyr", "basis_amount": 100, "basis_unit": "ml", "kcal": 63}
+        )
+        catalog.update_product(
+            product["id"], {"portion_amount": 150, "portion_unit": "ml"}
+        )
+        with manager.unit_of_work() as db, self.assertRaises(AppError) as caught:
+            current, _projection = catalog.current(db, product["id"])
+            catalog.restore_in_transaction(
+                db, product["id"], current, {"basis_unit": "g"}
+            )
+        self.assertEqual(
+            (caught.exception.status, caught.exception.reason),
+            (409, "nutrition_product_changed_since"),
+        )
+        stored = catalog.get_product(product["id"])
+        self.assertEqual(
+            (stored["basis_unit"], stored["portion_amount"], stored["portion_unit"]),
+            ("ml", 150.0, "ml"),
         )
 
     def test_preferred_sources_are_audited_and_older_rows_stay_matchable(self):

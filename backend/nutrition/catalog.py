@@ -667,6 +667,20 @@ class ProductCatalogService:
             # Undo of a created product.
             self._products.delete(db, entity_id)
             return None
+        stored = current or {}
+        if target.get("basis_unit", stored.get("basis_unit")) != stored.get(
+            "basis_unit"
+        ) and any(
+            stored.get(key) is not None and key not in target
+            for key in PRODUCT_SIZE_FIELDS
+        ):
+            # Sizes set since count in the current unit; the recorded basis
+            # would leave them behind (#3452), so the change is no longer undone.
+            raise AppError(
+                409,
+                "Die lokale Änderung wurde inzwischen weiter geändert; Undo wurde abgebrochen.",
+                reason="nutrition_product_changed_since",
+            )
         # The target holds only changed fields, so a stored None would be missing.
         merged = {
             **dict.fromkeys(change_history.NUTRITION_PRODUCT_FIELDS),
