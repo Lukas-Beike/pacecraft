@@ -365,11 +365,17 @@ function analysisPointValueLabel(item, point, { index, unit, scales }) {
 }
 
 // The closest free box for a label that still spans its point: above or below it, centred or slid sideways.
-function analysisLabelSlot(label, clear, chartWidth) {
+// A line label tries both slots on the side with more room before the next mark or line, away from another series.
+function analysisLabelSlot(label, clear, chartWidth, obstacles) {
   const { x, width, pointY } = label;
   const lefts = [x - width / 2, x - 4, x - width + 4, chartWidth - width, 56].filter((left) => left <= x - 2 && left + width >= x + 2);
-  for (const offset of label.bars ? [-10, -20] : [-10, 18, -20, 28]) {
-    const box = lefts.map((left) => ({ left, right: left + width, top: pointY + offset - 12, bottom: pointY + offset + 3 })).find(clear);
+  const room = (side) => Math.min(200, ...obstacles.filter((box) => box.left <= x && box.right >= x)
+    .map((box) => (side < 0 ? pointY - box.bottom : box.top - pointY)).filter((distance) => distance > 3));
+  let offsets = [-10, -20, 18, 28];
+  if (label.bars) offsets = [-10, -20];
+  else if (room(1) > room(-1)) offsets = [18, 28, -10, -20];
+  for (const offset of offsets) {
+    const box = lefts.map((left) => ({ left, right: left + width, top: pointY + offset - 12, bottom: pointY + offset + 3 })).find((candidate) => clear(candidate));
     if (box) return box;
   }
   return null;
@@ -436,7 +442,7 @@ function appendAnalysisPointLabels(svg, labels, obstacles, { chartWidth }) {
   [...labels].sort((a, b) => Number(b.newest) - Number(a.newest)).forEach((label) => {
     const key = `${label.index}:${label.label}`;
     if (seen.has(key)) return;
-    const box = analysisLabelSlot(label, clear, chartWidth);
+    const box = analysisLabelSlot(label, clear, chartWidth, obstacles);
     if (!box) return;
     seen.add(key);
     occupied.push(box);

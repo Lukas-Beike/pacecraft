@@ -57,11 +57,9 @@
     <svg:rect class="analysis-series-bar" data-color="0" height="97.5" rx="3" width="24" x="48" y="62.5">
     <svg:rect class="analysis-series-bar" data-color="0" height="88.39999999999999" rx="3" width="24" x="236" y="71.60000000000001">
     <svg:rect class="analysis-series-bar" data-color="0" height="106.6" rx="3" width="24" x="424" y="53.400000000000006">
-    <svg:text class="analysis-point-value" data-value-series="0" text-anchor="start" x="60" y="30.5">
+    <svg:text class="analysis-point-value" data-value-series="0" text-anchor="middle" x="72" y="42.5">
       "7:30"
-    <svg:text class="analysis-point-value" data-value-series="0" text-anchor="middle" x="248" y="39.60000000000001">
-      "6:48"
-    <svg:text class="analysis-point-value" data-value-series="0" text-anchor="end" x="436" y="21.400000000000006">
+    <svg:text class="analysis-point-value" data-value-series="0" text-anchor="middle" x="436" y="33.400000000000006">
       "8:12"
     <svg:line class="analysis-tick-mark" x1="60" x2="60" y1="160" y2="168">
     <svg:text class="analysis-date-tick" text-anchor="middle" x="60" y="188">
