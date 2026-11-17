@@ -167,7 +167,7 @@
             <label for="nutritionProductQuery">Produkte suchen</label>
             <div class="nutrition-search-row"><input id="nutritionProductQuery" type="search" autocomplete="off" placeholder="Name, Marke oder EAN"><button type="submit" class="secondary-button">Suchen</button></div>
           </form>
-          <div class="nutrition-actions"><button type="button" class="secondary-button" id="nutritionRefreshAllButton">Alle aktualisieren</button></div>
+          <div class="nutrition-actions"><button type="button" class="secondary-button" id="nutritionRefreshAllButton">Alle aktualisieren</button><button type="button" class="secondary-button" id="nutritionCleanupButton">Aufräumen</button></div>
           <output id="nutritionProductStatus" class="tab-sync-detail" aria-live="polite"></output>
           <div id="nutritionLookupResult" class="nutrition-list" hidden></div>
           <div id="nutritionExtraction" class="nutrition-product-editor" hidden></div>
@@ -713,6 +713,16 @@
       <p id="nutritionBarcodeStatus" class="tab-sync-detail" aria-live="polite">Kamera wird vorbereitet …</p>
       <label for="nutritionBarcodeManual">EAN manuell eingeben<input id="nutritionBarcodeManual" inputmode="numeric" pattern="[0-9]{8,14}" maxlength="14" autocomplete="off"></label>
       <div class="dialog-actions"><button type="button" id="nutritionBarcodeCancel" class="secondary-button">Abbrechen</button><button type="submit" id="nutritionBarcodeLookup" class="adaptive-planning-button">Produkt suchen</button></div>
+    </form>
+  </dialog>
+  <dialog id="nutritionCleanupDialog" aria-labelledby="nutritionCleanupTitle">
+    <form id="nutritionCleanupForm" class="confirmation-dialog">
+      <h2 id="nutritionCleanupTitle">Produkte aufräumen</h2>
+      <label for="nutritionCleanupDays">Nicht genutzt seit<select id="nutritionCleanupDays" name="days"><option value="30">30 Tagen</option><option value="90" selected>90 Tagen</option><option value="180">180 Tagen</option><option value="365">365 Tagen</option></select></label>
+      <p id="nutritionCleanupCount" aria-live="polite"></p>
+      <details id="nutritionCleanupList" hidden><summary>Betroffene Produkte</summary><ul></ul></details>
+      <output id="nutritionCleanupStatus" class="tab-sync-detail" aria-live="polite"></output>
+      <div class="dialog-actions"><button type="button" id="nutritionCleanupCancel" class="secondary-button">Abbrechen</button><button type="submit" id="nutritionCleanupConfirm" class="secondary-button danger-button" disabled>Löschen</button></div>
     </form>
   </dialog>
   <dialog id="nutritionProductUseDialog" aria-labelledby="nutritionProductUseTitle">

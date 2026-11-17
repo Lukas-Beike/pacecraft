@@ -603,6 +603,8 @@ class HistoryBuilderTests(unittest.TestCase):
                 "checkin",
                 "nutrition_template",
                 "nutrition_product",
+                # One product cleanup run, undone as a whole (#3444).
+                "nutrition_product_cleanup",
                 "food_database_entry",
                 "equipment",
             ],

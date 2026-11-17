@@ -29,7 +29,8 @@ check. `external_calendar_events` is only `info`:
 the calendar sync refills it from today on every refresh. `--check-docs`
 compares the production schema and version with the production line in
 `AGENTS.md` and the db-migrations skill and with the `docs/schema-history.md`
-row, and a stale one fails with the exact change to make (#3351).
+row, and a stale one fails with the exact change to make (#3351);
+`--expect-schema` turns it on, so a post-release run cannot leave it out (#3454).
 
 Exit 0 all ok, 1 a check failed, 2 unreachable or login refused. The script
 prints no response body, cookie, or password; do not add a mode that does.

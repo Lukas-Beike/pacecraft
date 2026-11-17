@@ -62,6 +62,9 @@ test("@responsive Body plots measurements and W/kg appears only in the cycling t
   await expect(bodyCards.filter({ hasText: "Garmin" })).toHaveCount(0);
   const missing = root.locator("[data-body-metric='weight_kg']");
   await expect(missing.locator("circle[data-series='0']")).toHaveCount(11);
+  // #3450: a weekly mark sits on its rolling week's start, so the axis reads in weeks and keeps the first mark off the value axis.
+  await expect(missing.locator(".analysis-week-caption")).toHaveText("Woche ab");
+  expect(Math.min(...await missing.locator("circle[data-series='0']").evaluateAll((dots) => dots.map((dot) => Number(dot.getAttribute("cx")))))).toBeGreaterThan(60);
   await root.getByRole("button", { name: "Letzte 14 Tage", exact: true }).click();
   await expect(root.locator("[data-body-metric='weight_kg'] circle[data-series='0']")).toHaveCount(14);
   await expect(root.locator("[data-body-metric='body_fat_pct'] circle[data-series='0']")).toHaveCount(14);

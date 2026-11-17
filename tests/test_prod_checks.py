@@ -260,10 +260,13 @@ class ProdChecksTests(unittest.TestCase):
 
     def test_diagnostics_prints_named_fields_and_logs_out(self):
         result = Path(self.tmp.name) / "first.json"
-        code, text = self.run_main(
-            prod_diagnostics, "--url", self.url, "--password-file", str(self.secret),
-            "--expect-version", "2.1.2", "--expect-schema", "27", "--out", str(result),
-        )  # fmt: skip
+        # --expect-schema checks the docs (#3454): on a temporary root, never
+        # this checkout (Gitar #3456).
+        with mock.patch.object(prod_diagnostics, "ROOT", Path(self.tmp.name)):
+            code, text = self.run_main(
+                prod_diagnostics, "--url", self.url, "--password-file", str(self.secret),
+                "--expect-version", "2.1.2", "--expect-schema", "27", "--out", str(result),
+            )  # fmt: skip
         self.assertEqual(code, 1)  # sync.last_error is set
         self.assertIn("ok version 2.1.2", text)
         self.assertIn("ok schema 27", text)
@@ -837,17 +840,20 @@ class ProdChecksTests(unittest.TestCase):
         # The fake app reports schema 27 and 2.1.2 against these docs.
         docs("| 27 | 2.1.0 to 2.1.2 |\n| 28 | since 2.1.3 |\n",
              "v28 since release 2.1.3")  # fmt: skip
-        with mock.patch.object(prod_diagnostics, "ROOT", root):
-            code, text = self.run_main(
-                prod_diagnostics, "--url", self.url,
-                "--password-file", str(self.secret), "--check-docs",
-            )  # fmt: skip
-        self.assertEqual(code, 1)
-        self.assertIn(
-            "FAIL AGENTS.md: production runs v28 since release 2.1.3; change it to "
-            "`Production runs v27 since release 2.1.2`",
-            text,
-        )
+        # A post-release run with --expect-schema checks the docs without the
+        # flag: 2.1.38 to 2.1.43 left it out and stale lines went unseen (#3454).
+        for flag in ("--check-docs", "--expect-schema=27"):
+            with mock.patch.object(prod_diagnostics, "ROOT", root):
+                code, text = self.run_main(
+                    prod_diagnostics, "--url", self.url,
+                    "--password-file", str(self.secret), flag,
+                )  # fmt: skip
+            self.assertEqual(code, 1, flag)
+            self.assertIn(
+                "FAIL AGENTS.md: production runs v28 since release 2.1.3; change it to "
+                "`Production runs v27 since release 2.1.2`",
+                text,
+            )
 
     def test_result_files_stay_outside_the_repository(self):
         inside = Path(prod_client.ROOT) / "result.json"

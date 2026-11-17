@@ -480,7 +480,7 @@ test("12-week body charts show the latest reading of each week and draw a single
   const weeks = bodyWeeklyPoints(points, "2026-10-24", "2026-11-06");
   assert.equal(weeks.length, 2);
   assert.deepEqual([weeks[0].value, weeks[0].weekReadings], [null, 0], "a week without readings stays a gap");
-  assert.deepEqual([weeks[1].date, weeks[1].value, weeks[1].weekReadings], ["2026-11-06", 14.9, 3], "the week shows its last reading, not the median 15.2");
+  assert.deepEqual([weeks[1].date, weeks[1].value, weeks[1].weekReadings], ["2026-10-31", 14.9, 3], "the week sits on its start and shows its last reading, not the median 15.2");
   assert.equal(analysisPlottable({ points: weeks, minPoints: 1 }), true, "body charts draw one weekly value");
   assert.equal(analysisPlottable({ points: weeks }), false, "other charts still need two values");
 });
@@ -603,26 +603,26 @@ const WEEKLY_POINTS = [
 
 test("weekly sums add the known days per week, keep empty weeks as gaps and cut the last week at the end", () => {
   assert.deepEqual(plain(weekly().analysisWeeklySumPoints(WEEKLY_POINTS, "2026-10-05", "2026-10-21")), [
-    { date: "2026-10-11", value: 4.3, observedDate: "2026-10-11" },
-    { date: "2026-10-18", value: null },
-    { date: "2026-10-21", value: 10, observedDate: "2026-10-21" },
+    { date: "2026-10-05", value: 4.3, observedDate: "2026-10-11" },
+    { date: "2026-10-12", value: null },
+    { date: "2026-10-19", value: 10, observedDate: "2026-10-21" },
   ]);
 });
 
 test("weekly means round to one decimal over the known days of each week", () => {
   assert.deepEqual(plain(weekly().analysisWeeklyMeanPoints(WEEKLY_POINTS, "2026-10-05", "2026-10-21")), [
-    { date: "2026-10-11", value: 1.4, observedDate: "2026-10-11" },
-    { date: "2026-10-18", value: null },
-    { date: "2026-10-21", value: 5, observedDate: "2026-10-21" },
+    { date: "2026-10-05", value: 1.4, observedDate: "2026-10-11" },
+    { date: "2026-10-12", value: null },
+    { date: "2026-10-19", value: 5, observedDate: "2026-10-21" },
   ]);
 });
 
 test("the weekly state keeps the last known point of each week with its fields", () => {
   const points = WEEKLY_POINTS.map((point) => ({ ...point, source: "garmin" }));
   assert.deepEqual(plain(weekly().analysisWeeklyLastPoints(points, "2026-10-05", "2026-10-21")), [
-    { date: "2026-10-11", value: 0.3, source: "garmin", observedDate: "2026-10-11" },
-    { date: "2026-10-18", value: null },
-    { date: "2026-10-21", value: 3, source: "garmin", observedDate: "2026-10-21" },
+    { date: "2026-10-05", value: 0.3, source: "garmin", observedDate: "2026-10-11" },
+    { date: "2026-10-12", value: null },
+    { date: "2026-10-19", value: 3, source: "garmin", observedDate: "2026-10-21" },
   ]);
 });
 
@@ -632,14 +632,14 @@ test("weekly performance takes the latest reading by date, or the median with it
     { date: "2026-10-20", value: 30 }, { date: "2026-10-19", value: 10 },
   ];
   assert.deepEqual(plain(weekly().analysisWeeklyPerformancePoints(points, "2026-10-05", "2026-10-21")), [
-    { date: "2026-10-11", value: 40, observedDate: "2026-10-09" },
-    { date: "2026-10-18", value: null },
-    { date: "2026-10-21", value: 30, observedDate: "2026-10-20" },
+    { date: "2026-10-05", value: 40, observedDate: "2026-10-09" },
+    { date: "2026-10-12", value: null },
+    { date: "2026-10-19", value: 30, observedDate: "2026-10-20" },
   ]);
   assert.deepEqual(plain(weekly().analysisWeeklyPerformancePoints(points, "2026-10-05", "2026-10-21", true)), [
-    { date: "2026-10-11", value: 50, observedDate: "2026-10-09", count: 3 },
-    { date: "2026-10-18", value: null },
-    { date: "2026-10-21", value: 20, observedDate: "2026-10-20", count: 2 },
+    { date: "2026-10-05", value: 50, observedDate: "2026-10-09", count: 3 },
+    { date: "2026-10-12", value: null },
+    { date: "2026-10-19", value: 20, observedDate: "2026-10-20", count: 2 },
   ]);
 });
 
@@ -649,9 +649,9 @@ test("weekly body points keep the last reading with its fields, the reading coun
     { date: "2026-10-20", value: 69.1, observed_at: "2026-10-20T07:00:00Z" },
   ];
   assert.deepEqual(plain(weekly().bodyWeeklyPoints(points, "2026-10-05", "2026-10-21")), [
-    { date: "2026-10-11", value: 69.8, weekReadings: 2, observedDate: "2026-10-08" },
-    { date: "2026-10-18", value: null, weekReadings: 0 },
-    { date: "2026-10-21", value: 69.1, observed_at: "2026-10-20T07:00:00Z", weekReadings: 1, observedDate: "2026-10-20T07:00:00Z" },
+    { date: "2026-10-05", value: 69.8, weekReadings: 2, observedDate: "2026-10-08" },
+    { date: "2026-10-12", value: null, weekReadings: 0 },
+    { date: "2026-10-19", value: 69.1, observed_at: "2026-10-20T07:00:00Z", weekReadings: 1, observedDate: "2026-10-20T07:00:00Z" },
   ]);
 });
 

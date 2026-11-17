@@ -29,6 +29,7 @@ def build_history(ctx: AppContext) -> HistoryServices:
             "checkin": athlete.checkin(),
             "nutrition_template": nutrition.meal_library_service(),
             "nutrition_product": nutrition.product_catalog_service(),
+            "nutrition_product_cleanup": nutrition.product_cleanup(),
             # The Coach's food gap fill is recorded and undone there.
             "food_database_entry": nutrition.food_mirror(),
             **athlete.equipment_history(),
