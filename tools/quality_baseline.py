@@ -455,6 +455,17 @@ def _annotations(node: ast.AST) -> list[ast.AST]:
     return [*arguments, *([node.returns] if node.returns else [])]
 
 
+def _docstring(
+    node: ast.Module | ast.ClassDef | ast.FunctionDef | ast.AsyncFunctionDef,
+) -> list[ast.AST]:
+    """The scope's docstring: a string literal as its first statement, nothing
+    else (a first call with string arguments is ordinary code, Gitar on #3388)."""
+    first = node.body[0] if node.body else None
+    if isinstance(first, ast.Expr) and isinstance(first.value, ast.Constant):
+        return [first.value] if isinstance(first.value.value, str) else []
+    return []
+
+
 def _uncounted_literals(tree: ast.AST) -> set[int]:
     """Ids of the string constants Sonar's S1192 skips: docstrings, f-string parts,
     and everything in a decorator or a type annotation."""
@@ -462,13 +473,21 @@ def _uncounted_literals(tree: ast.AST) -> set[int]:
     skipped: list[ast.AST] = []
     for node in ast.walk(tree):
         if isinstance(node, scopes):
-            if node.body and isinstance(node.body[0], ast.Expr):
-                skipped.append(node.body[0].value)
+            skipped.extend(_docstring(node))
             skipped.extend(getattr(node, "decorator_list", []))
         skipped.extend(_annotations(node))
         if isinstance(node, ast.JoinedStr):
             skipped.append(node)
     return {id(inner) for outer in skipped for inner in ast.walk(outer)}
+
+
+def _literal_text(node: ast.Constant, source: str, starts: list[int]) -> str:
+    """The literal as written, quotes and prefix included, as Sonar groups it."""
+    end_line = node.end_lineno or node.lineno
+    return source[
+        starts[node.lineno - 1] + node.col_offset : starts[end_line - 1]
+        + (node.end_col_offset or 0)
+    ]
 
 
 def duplicated_literal_diagnostics(tree: ast.AST, path: str, source: str) -> list[dict]:
@@ -488,17 +507,13 @@ def duplicated_literal_diagnostics(tree: ast.AST, path: str, source: str) -> lis
             continue
         if any(pattern.fullmatch(value) for pattern in DUPLICATE_LITERAL_EXCLUSIONS):
             continue
-        end_line = node.end_lineno or node.lineno
-        text = source[
-            starts[node.lineno - 1] + node.col_offset : starts[end_line - 1]
-            + (node.end_col_offset or 0)
-        ]
-        uses.setdefault(text, []).append(node)
+        uses.setdefault(_literal_text(node, source, starts), []).append(node)
     diagnostics = []
     for text, nodes in uses.items():
-        if len(nodes) < 3:
-            continue
         first = min(nodes, key=lambda node: (node.lineno, node.col_offset))
+        # Sonar suppresses an issue on a line marked NOSONAR (Gitar on #3388).
+        if len(nodes) < 3 or "NOSONAR" in lines[first.lineno - 1]:
+            continue
         message = f"Duplicated literal {text}"
         diagnostics.append(
             {
@@ -557,8 +572,14 @@ def python_regex_diagnostics(root: Path, files: list[str]) -> list[dict] | None:
         return None
     patterns: list[tuple[str, int, str]] = []
     for path in files:
-        tree = ast.parse((root / path).read_text(encoding="utf-8"), path)
-        patterns.extend((path, line, text) for line, text in _regex_patterns(tree))
+        source = (root / path).read_text(encoding="utf-8")
+        lines = source.splitlines()
+        # Sonar suppresses an issue on a line marked NOSONAR (Gitar on #3388).
+        patterns.extend(
+            (path, line, text)
+            for line, text in _regex_patterns(ast.parse(source, path))
+            if "NOSONAR" not in lines[line - 1]
+        )
     if not patterns:
         return []
     modules = os.environ.get("PACECRAFT_NODE_MODULES") or str(ROOT / "node_modules")

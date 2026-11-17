@@ -567,18 +567,23 @@ class QualityBaselineTests(unittest.TestCase):
                 'def typed(a: "Some Type") -> "Some Type":',
                 '    value: "Some Type" = a',
                 "    return value",
+                # Gitar on #3388: a first call is code, not a docstring; a line
+                # marked NOSONAR is suppressed, as in Sonar.
+                "def setup():",
+                '    register("/first/call", "/first/call", "/first/call")',
+                'MARKED = ("/no/sonar", "/no/sonar", "/no/sonar")  # NOSONAR',
             ]
         )
         found = self.python_findings(
             {"backend/sample.py": source, "tests/test_sample.py": source}
         )
         self.assertEqual(
-            [
+            sorted(
                 (item["path"], item["line"], item["code"])
                 for item in found
                 if item["code"] == "S1192"
-            ],
-            [("backend/sample.py", 2, "S1192")],
+            ),
+            [("backend/sample.py", 2, "S1192"), ("backend/sample.py", 14, "S1192")],
         )
 
     @unittest.skipUnless(quality_baseline.eslint_script(), "needs npm ci for ESLint")
@@ -592,6 +597,7 @@ class QualityBaselineTests(unittest.TestCase):
                 'FIXED = re.compile(r"[@+!?*]\\([^()]*\\)|\\{[^{}\\s]*\\}")',
                 'NAMED = re.search(r"(?P<k>\\{[^{}\\s]*(?:,|\\.\\.)[^{}\\s]*\\})", "x")',
                 'LOOSE = re.compile(r"\\{[^{}\\s]*(?:,|\\.\\.)[^{}\\s]*\\}", re.X)',
+                'MARKED = re.compile(r"\\{[^{}\\s]*(?:,|\\.\\.)[^{}\\s]*\\}")  # NOSONAR',
             ]
         )
         found = self.python_findings({"scripts/sample.py": source}, regexes=True)
