@@ -550,6 +550,16 @@ class ProdChecksTests(unittest.TestCase):
                 "intervals": {"units": 2, "without_structure": 1},
                 "unit_name": "text never printed",
             },
+            "garmin_body_push": {
+                "sent": 3,
+                "removed": 0,
+                "failed": 1,
+                "retried": 1,
+                "linked_days": 2,
+                "pending_days": 1,
+                "unlinked_uploads": 0,
+                "day": "2026-11-15 never printed",
+            },
             "backup": {
                 "known": True,
                 "age_hours": 3.5,
@@ -620,6 +630,10 @@ class ProdChecksTests(unittest.TestCase):
             ],
             "recovery_copies": [
                 "count 1", "newest_age_hours 2.0", "total_bytes 2048",
+            ],
+            "garmin_body_push": [
+                "failed 1", "linked_days 2", "pending_days 1", "removed 0",
+                "retried 1", "sent 3", "unlinked_uploads 0",
             ],
             "garmin_strength_push": [
                 "garmin.several_exercises 1", "garmin.units 2", "garmin.with_kg 1",
@@ -963,6 +977,18 @@ NOT_PRINTED = {
     },
 }
 
+# Report sections read only in the full diagnostics export, not with --section
+# (state when #3403 added this check). A new one fails the check below.
+WITHOUT_SECTION = {
+    "activity_routes", "activity_weather", "app", "canonical_backfill",
+    "canonical_coverage", "canonical_provider_composition", "canonical_read",
+    "canonical_session_conflicts", "configuration", "debug_capture",
+    "external_calendar", "garmin", "garmin_change_check", "garmin_detail_fallback",
+    "local_load", "lt1_ride_coverage", "morning_checkin", "openai", "plan_sync",
+    "profile_weekly_plan_removal", "session_analysis", "session_focus_backfill",
+    "session_metrics", "session_rebundle", "sync", "wahoo",
+}  # fmt: skip
+
 
 # Top-level diagnostics blocks without a `--section` choice, each with its reason
 # (#3430). Every other block needs SECTION_FIELDS or DERIVED_SECTIONS in
@@ -1111,6 +1137,22 @@ class SectionFieldsCoverTheProducersTests(ServerTestCase):
                         "SECTION_FIELDS in scripts/prod_diagnostics.py, or to "
                         "NOT_PRINTED in this test with the reason",
                     )
+
+    def test_every_dict_section_of_the_report_has_an_allow_list(self):
+        # #3403: a section without an allow-list cannot be read with --section.
+        report = server.DIAGNOSTICS.report_service().report()
+        listed = {*prod_diagnostics.SECTION_FIELDS, *prod_diagnostics.DERIVED_SECTIONS}
+        unlisted = {
+            name
+            for name, value in report.items()
+            if isinstance(value, dict) and name not in listed
+        }
+        self.assertEqual(
+            unlisted,
+            WITHOUT_SECTION,
+            "a new diagnostics section needs SECTION_FIELDS in "
+            "scripts/prod_diagnostics.py, or WITHOUT_SECTION in this test",
+        )
 
 
 if __name__ == "__main__":

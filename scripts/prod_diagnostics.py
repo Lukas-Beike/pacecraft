@@ -156,6 +156,11 @@ SECTION_FIELDS = {
         r"|newest_skinfold_age_days|body_resolved|body_missing|body_source"
         r"|body_source_windows\.(skinfold|entered|device|profile|none)"
     ),
+    # The entered body days mirrored to Garmin Connect, counts only (#3403).
+    "garmin_body_push": re.compile(
+        r"status|sent|removed|failed|retried|linked_days|pending_days"
+        r"|unlinked_uploads"
+    ),
     # Window records the next detail mapper bump downloads again (#2220).
     "mapper_replay": re.compile(
         r"status|garmin\.(window_days|pending|passed_over(_empty|_retries)?|records"
