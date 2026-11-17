@@ -1542,10 +1542,9 @@ function resetEnergy() {
   energyGeneration += 1;
 }
 
-function loadEnergy() {
+function loadEnergy(day = energyDay()) {
   if (energyRequest) return;
   const generation = energyGeneration;
-  const day = energyDay();
   energyReadDay = day;
   energyRequest = api(day ? `/api/body/energy?date=${day}` : "/api/body/energy")
     .then((read) => { if (generation === energyGeneration) energyRead = read; })
@@ -1727,14 +1726,15 @@ function energyFitCharts(read) {
 }
 
 // The read's loading or failure card, or null once it is there; the first call starts the read.
-function energyPending() {
-  const day = energyDay();
+// The diary asks for its day (#3395); Körper's fit does not depend on the day (`null`), so it takes
+// any read there is and never shows a diary day's note (Gitar #3423).
+function energyPending(day = null) {
   if (day && day > timezoneDateKey(state.data?.profile?.timezone, new Date())) {
     return h("section", "analysis-chart-card", h("p", "empty", "Tag liegt in der Zukunft"));
   }
-  if (energyRead && energyReadDay !== day) resetEnergy();
+  if (energyRead && day !== null && energyReadDay !== day) resetEnergy();
   if (!energyRead) {
-    loadEnergy();
+    loadEnergy(day ?? "");
     return h("section", "analysis-chart-card", createLoadingState("Energieverbrauch wird geladen…"));
   }
   return energyRead.failed ? h("section", "analysis-chart-card", h("p", "empty", "Energieverbrauch konnte nicht geladen werden.")) : null;
@@ -1742,7 +1742,7 @@ function energyPending() {
 
 // The table sits in the diary in place of the former Garmin expenditure card (#3252).
 function energyDiaryCards() {
-  const pending = energyPending();
+  const pending = energyPending(energyDay());
   if (pending) return [pending];
   return [h("section", { className: "analysis-chart-card", dataset: { energy: "" } }, energyTable(energyRead), energySplitLegend(energyRead))];
 }

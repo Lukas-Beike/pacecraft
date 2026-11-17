@@ -127,5 +127,16 @@ test("@responsive the energy table follows the diary date: sport per day, today 
   await expect(katch.locator("th small")).not.toContainText("bis jetzt");
   expect(asked.at(-1)).toBe(await page.locator("#nutritionDate").inputValue());
   expect(asked).toContain(today);
+  // A future diary day reads nothing; Körper's fit, which is no day's, stays (Gitar #3423).
+  await page.getByRole("button", { name: "Nächster Tag" }).click();
+  await expect(page.locator("#nutritionDate")).toHaveValue(today);
+  await page.getByRole("button", { name: "Nächster Tag" }).click();
+  await expect(page.locator("#nutritionDate")).not.toHaveValue(today);
+  await expect(page.locator("#nutritionEnergy")).toContainText("Tag liegt in der Zukunft");
+  const reads = asked.length;
+  await page.goto("/#nutrition/body");
+  await expect(page.locator("#bodyAnalysisCharts [data-energy-fit]")).toBeVisible();
+  await expect(page.locator("#bodyAnalysisCharts")).not.toContainText("Tag liegt in der Zukunft");
+  expect(asked.length).toBeLessThanOrEqual(reads + 1);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBeTruthy();
 });
