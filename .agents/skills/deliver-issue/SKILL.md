@@ -72,7 +72,12 @@ When an orchestrator coordinates the run: ask it for the `AGENTS.md` turn before
 touching that file, follow its hold on a red `develop`, and report each closed
 issue or merged part with a one-line entry from
 [ledger-line](../pacecraft-ledger-line/SKILL.md), written after the `close` or
-`tick`, because it reads the issue's live state.
+`tick`, because it reads the issue's live state. A question dialog blocks the
+lane's turn until the athlete answers, so when the athlete has not written in
+about the last 15 minutes, report the question to the orchestrator instead,
+park that item and continue with the next one; the orchestrator asks it under
+its [athlete question rules](../pacecraft-orchestrator/SKILL.md#athlete-questions)
+(#3376).
 
 ## 1. Requirements brief
 
