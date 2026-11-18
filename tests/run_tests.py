@@ -13,7 +13,8 @@ CONTAINER_SUITE_PATTERNS. The default ``--suite all`` runs everything.
 ``--changed`` keeps only the modules changed_tests.py finds affected by the
 diff against ``--base``; it falls back to the whole suite where that selector
 says so; CI uses it, with ``--with-heavy``, only on a documentation-only pull
-request. ``--module`` (repeatable) runs only the named
+request. For a changed ``public/*.js`` file it also prints the ``node --test``
+command of the harness tests that load it (#3496). ``--module`` (repeatable) runs only the named
 test modules, for focused runs in the SQLCipher container.
 """
 
@@ -328,6 +329,8 @@ def main(args: argparse.Namespace | None = None) -> int:
             print(f"  {module}: {why}", flush=True)
         for module, why in sorted(skipped.items()):
             print(f"  skipped {module}: {why}", flush=True)
+        if node := changed_tests.node_tests(paths):
+            print(f"Also run the node tests: node --test {' '.join(node)}", flush=True)
         if modules == {}:
             evidence["status"] = "empty"
             save()
