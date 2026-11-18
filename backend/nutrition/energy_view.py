@@ -622,7 +622,12 @@ def _so_far(
         "sport": window.sport_kcal_raw is None and not sessions,
         "tef": not day.entries,
     }
-    neat = _part_so_far(window.neat_kcal_raw, day.neat_kcal, absent["neat"])
+    # Lagging everyday counts 0 like any part not there yet (Gitar, #3532).
+    neat = (
+        0.0
+        if behind
+        else _part_so_far(window.neat_kcal_raw, day.neat_kcal, absent["neat"])
+    )
     sport = _part_so_far(window.sport_kcal_raw, day.sport_kcal, absent["sport"])
     pending = [part for part, missing in absent.items() if missing]
     shown = replace(

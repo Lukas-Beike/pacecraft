@@ -657,6 +657,13 @@ class SelectedDayTests(unittest.TestCase):
         km = row(self.view(today, {today: behind}, sessions=[session]), "katch_mcardle")
         self.assertIn("neat", km["pending_parts"])
         self.assertNotIn("sport", km["pending_parts"])
+        # It counts 0 in the total, not the stale 13 kcal (Gitar, #3532).
+        self.assertEqual(0, km["split"]["neat_kcal"])
+        split = km["split"]
+        self.assertEqual(
+            km["resting_kcal"] + split["sport_kcal"] + (split["tef_kcal"] or 0),
+            km["total_kcal"],
+        )
         past = END - timedelta(days=2)
         km = row(self.view(past, {past: behind}, sessions=[session]), "katch_mcardle")
         self.assertEqual([], km["pending_parts"])
