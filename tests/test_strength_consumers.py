@@ -17,6 +17,7 @@ from backend.activities.strength_sets import (
     select_strength_sets,
     strength_summaries,
     strength_summary,
+    trained_structure,
     with_strength_summaries,
 )
 from backend.canonical.activity_detail import (
@@ -216,7 +217,9 @@ class PlanComparisonTests(unittest.TestCase):
     def summary(self) -> dict[str, Any]:
         return strength_summary(stored(set_list(SQUAT_SESSION)), set_list=False)
 
-    def test_completed_sets_count_planned_reps_and_unknowns_are_no_miss(self) -> None:
+    def test_completed_sets_count_reps_proportionally_and_unknowns_are_no_miss(
+        self,
+    ) -> None:
         structure = [
             planned("Barbell Back Squat", "SQUAT", "BARBELL_BACK_SQUAT", 4, 5, 82.5),
             planned("Barbell Bench Press", "BENCH_PRESS", "BARBELL_BENCH_PRESS", 3, 8),
@@ -224,15 +227,16 @@ class PlanComparisonTests(unittest.TestCase):
         ]
         comparison = plan_comparison(structure, self.summary())
         assert comparison is not None
-        # Squat: 4 planned, 3 done, 2 at 5 reps; bench: 3 planned, 2 done at 8.
+        # #3521, athlete 2026-11-18: a set counts done over planned reps. Squat:
+        # 4 planned, 5 + 5 + 3 of 5 reps = 2.6; bench: 3 planned, 2 done at 8.
         self.assertEqual(
-            (comparison["planned_sets"], comparison["completed_sets"]), (7, 4)
+            (comparison["planned_sets"], comparison["completed_sets"]), (7, 4.6)
         )
-        self.assertEqual(comparison["percentage"], 57)
+        self.assertEqual(comparison["percentage"], 66)
         squat, bench, mystery = comparison["exercises"]
         self.assertEqual(
             (squat["done_sets"], squat["completed_sets"], squat["reps"]),
-            (3, 2, [5, 5, 3]),
+            (3, 2.6, [5, 5, 3]),
         )
         self.assertEqual(squat["planned_kg"], 82.5)
         self.assertEqual(bench["completed_sets"], 2)
@@ -266,9 +270,41 @@ class PlanComparisonTests(unittest.TestCase):
         self.assertEqual(compare([5, 8, 8, 8])["reps"], [8, 8, 8])
         # A failed last working set stays visible behind a high-rep warm-up.
         failed = compare([12, 8, 8, 6])
-        self.assertEqual((failed["reps"], failed["completed_sets"]), ([8, 8, 6], 2))
+        self.assertEqual((failed["reps"], failed["completed_sets"]), ([8, 8, 6], 2.75))
         # A skipped warm-up costs no working set.
         self.assertEqual(compare([8, 8, 8])["reps"], [8, 8, 8])
+
+    def test_a_set_counts_its_share_of_the_planned_reps_at_most_once(self) -> None:
+        # #3521: 12 of 15 reps is 0.8 of a set; 18 of 15 never counts above 1.
+        rows = [(ACTIVE, SQUAT, None, reps, 60.0, None) for reps in (12, 18, 15)]
+        summary = strength_summary(stored(set_list(rows)), set_list=False)
+        comparison = plan_comparison(
+            [planned("Squat", "SQUAT", "BARBELL_BACK_SQUAT", 3, 15)], summary
+        )
+        assert comparison is not None
+        self.assertEqual(comparison["exercises"][0]["completed_sets"], 2.8)
+        self.assertEqual(comparison["percentage"], 93)
+
+    def test_a_session_keeps_the_plan_it_trained_after_a_later_edit(self) -> None:
+        # #3521: version A (2 x 5) was trained at 18:00; the Coach changed it to B
+        # (3 x 15) at 20:00. The session is compared with A, a later one with B.
+        version_a = [planned("Squat", "SQUAT", "BARBELL_BACK_SQUAT", 2, 5)]
+        version_b = [planned("Squat", "SQUAT", "BARBELL_BACK_SQUAT", 3, 15)]
+        unit = {
+            "strength_structure": version_b,
+            "strength_structure_versions": [
+                {"replaced_at": "2026-11-05T19:00:00+00:00", "structure": version_a}
+            ],
+        }
+        self.assertIs(trained_structure(unit, "2026-11-05T17:00:00+00:00"), version_a)
+        self.assertIs(trained_structure(unit, "2026-11-05T20:00:00+00:00"), version_b)
+        # A start without an offset is UTC; an unreadable one keeps the current plan.
+        self.assertIs(trained_structure(unit, "2026-11-05T17:00:00"), version_a)
+        self.assertIs(trained_structure(unit, None), version_b)
+        self.assertIs(
+            trained_structure({"strength_structure": version_b}, "2026-11-05T17:00:00"),
+            version_b,
+        )
 
     def test_no_usable_side_gives_no_comparison(self) -> None:
         self.assertIsNone(plan_comparison([], self.summary()))
@@ -308,9 +344,26 @@ class ComplianceAndLegTests(unittest.TestCase):
             self.event(strength_structure=structure), self.activity(), date(2026, 11, 7)
         )
         self.assertEqual(result["basis"], "strength_sets")
-        self.assertEqual(result["percentage"], 67)
-        self.assertEqual((result["planned_value"], result["actual_value"]), (3, 2))
+        # #3521: 5 + 5 + 3 of 5 reps count 2.6 of 3 sets.
+        self.assertEqual(result["percentage"], 87)
+        self.assertEqual((result["planned_value"], result["actual_value"]), (3, 2.6))
         self.assertEqual(result["strength_sets"]["exercises"][0]["status"], "matched")
+
+    def test_compliance_uses_the_plan_the_session_trained(self) -> None:
+        # #3521: the Coach changed 3 x 5 to 3 x 15 after the session; the calendar
+        # keeps judging the session against 3 x 5.
+        trained = [planned("Squat", "SQUAT", "BARBELL_BACK_SQUAT", 3, 5)]
+        edited = [planned("Squat", "SQUAT", "BARBELL_BACK_SQUAT", 3, 15)]
+        event = self.event(
+            strength_structure=edited,
+            strength_structure_versions=[
+                {"replaced_at": "2026-11-05T20:00:00+00:00", "structure": trained}
+            ],
+        )
+        activity = {**self.activity(), "started_at": "2026-11-05T17:00:00+00:00"}
+        result = workout_compliance(event, activity, date(2026, 11, 7))
+        self.assertEqual((result["planned_value"], result["actual_value"]), (3, 2.6))
+        self.assertEqual(result["strength_sets"]["exercises"][0]["planned_reps"], 5)
 
     def test_without_sets_or_structure_the_old_basis_stays(self) -> None:
         plain = workout_compliance(self.event(), self.activity(), date(2026, 11, 7))
@@ -540,9 +593,29 @@ class CoachStrengthPlanTests(unittest.TestCase):
         }
         result = _strength_plan(detail, session, None, [unit])
         assert result is not None
-        self.assertEqual((result["planned_unit_id"], result["percentage"]), ("u1", 67))
+        # #3521: 5 + 5 + 3 of 5 reps count 2.6 of 3 sets.
+        self.assertEqual((result["planned_unit_id"], result["percentage"]), ("u1", 87))
         self.assertIsNone(
             _strength_plan(detail, {**session, "sport": "run"}, None, [unit])
+        )
+        # #3521: a structure the Coach replaced after the session stays the plan.
+        edited = {
+            **unit,
+            "strength_structure": [
+                planned("Squat", "SQUAT", "BARBELL_BACK_SQUAT", 3, 15)
+            ],
+            "strength_structure_versions": [
+                {
+                    "replaced_at": "2026-11-05T20:00:00+00:00",
+                    "structure": unit["strength_structure"],
+                }
+            ],
+        }
+        trained = {**session, "started_at": "2026-11-05T17:00:00+00:00"}
+        result = _strength_plan(detail, trained, None, [edited])
+        assert result is not None
+        self.assertEqual(
+            (result["percentage"], result["exercises"][0]["planned_reps"]), (87, 5)
         )
         self.assertIsNone(_strength_plan({}, session, None, [unit]))
 

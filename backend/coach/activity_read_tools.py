@@ -9,7 +9,7 @@ from typing import Any, Final
 
 from backend.activities.hr_cap import stored_cap
 from backend.activities.session_purpose import summary_is_not_training
-from backend.activities.strength_sets import plan_comparison
+from backend.activities.strength_sets import plan_comparison, trained_structure
 from backend.athlete.local_date import iso_date_prefix
 from backend.athlete.profile import ProfileService
 from backend.canonical.activity_summary import (
@@ -568,8 +568,10 @@ class CoachActivityReadToolService:
         """Local planned units from two days before the session's date on."""
         if self._planned_units is None or day is None:
             return None
+        # The earlier strength structures let the session be compared with the
+        # plan it trained (#3521).
         return self._planned_units.list(
-            250, future_only=True, since=day - timedelta(days=2)
+            250, future_only=True, since=day - timedelta(days=2), trained_versions=True
         )
 
     @staticmethod
@@ -1070,7 +1072,10 @@ def _strength_plan(
     if session.get("sport") != "strength" or not isinstance(executed, dict):
         return None
     unit = _matched_unit(session, focus, around)
-    structure = None if unit is None else unit.get("strength_structure")
+    # The structure the session trained, not a later edit (#3521).
+    structure = (
+        None if unit is None else trained_structure(unit, session.get("started_at"))
+    )
     if not isinstance(structure, list):
         return None
     comparison = plan_comparison(

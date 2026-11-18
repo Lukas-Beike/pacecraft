@@ -16,6 +16,7 @@ from backend.canonical.planning_fields import (
     FOCUS_ONLY_KEYS,
     HR_CAP,
     STRENGTH_STRUCTURE,
+    STRENGTH_STRUCTURE_VERSIONS,
     TEMPLATE_ID,
 )
 from backend.canonical.planning_fields import SESSION_FOCUS_KEYS as FOCUS_KEYS
@@ -83,6 +84,20 @@ def _differs_only_in_focus(restored: dict[str, Any], current: dict[str, Any]) ->
 def _start_time_suffix(start: str) -> str | None:
     """Return the time part of a local start such as 2026-09-21T07:15:00."""
     return start[10:] if len(start) > 10 and start[10] == "T" else None
+
+
+def with_structure_versions(db: Any, payloads: list[dict[str, Any]]) -> None:
+    """Add each strength unit's earlier structures from the change history, with
+    the time each was replaced (#3521), so a past session is compared with the
+    plan it trained. Read-only; a unit never edited gets nothing."""
+    replaced = change_history.replaced_values(db, "planned_unit", STRENGTH_STRUCTURE)
+    for payload in payloads:
+        versions = replaced.get(str(payload.get("id") or ""))
+        if versions and payload.get(STRENGTH_STRUCTURE) is not None:
+            payload[STRENGTH_STRUCTURE_VERSIONS] = [
+                {"replaced_at": replaced_at, "structure": structure}
+                for replaced_at, structure in versions
+            ]
 
 
 class PlannedUnitService:
@@ -384,8 +399,10 @@ class PlannedUnitService:
         future_only: bool = False,
         since: date | None = None,
         push_state: bool = False,
+        trained_versions: bool = False,
     ) -> list[dict[str, Any]]:
-        """Return planned units; ``push_state`` adds the calendar sync-button state."""
+        """Return planned units; ``push_state`` adds the calendar sync-button state,
+        ``trained_versions`` the earlier strength structures (#3521)."""
         with self._database_manager.reader() as db:
             rows = planning_store.planned_unit_rows(
                 db,
@@ -412,6 +429,8 @@ class PlannedUnitService:
                 if push_state
                 else set()
             )
+            if trained_versions:
+                with_structure_versions(db, [payload for _row, payload in pairs])
         if push_state:
             attach_push_state(
                 pairs,
@@ -425,13 +444,19 @@ class PlannedUnitService:
             )
         return [payload for _row, payload in pairs]
 
-    def list_between(self, start: date, end: date) -> builtins.list[dict[str, Any]]:
-        """Return the unarchived planned units from ``start`` to ``end`` inclusive."""
+    def list_between(
+        self, start: date, end: date, *, trained_versions: bool = False
+    ) -> builtins.list[dict[str, Any]]:
+        """Return the unarchived planned units from ``start`` to ``end`` inclusive;
+        ``trained_versions`` adds the earlier strength structures (#3521)."""
         with self._database_manager.reader() as db:
             rows = planning_store.planned_unit_rows_between(db, start, end)
-        return [
-            payload for row in rows if (payload := planned_unit_payload(row, False))
-        ]
+            payloads = [
+                payload for row in rows if (payload := planned_unit_payload(row, False))
+            ]
+            if trained_versions:
+                with_structure_versions(db, payloads)
+        return payloads
 
     def list_for_coach(self, limit: int = 250) -> dict[str, Any]:
         """Return the future local planned units in the Coach calendar shape."""
