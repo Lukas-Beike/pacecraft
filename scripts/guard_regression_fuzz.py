@@ -3,15 +3,18 @@
     python scripts/guard_regression_fuzz.py scripts/hooks/guard_resolve_thread.py \
         [--base origin/develop] [--count 60000] [--seed 1] [--seed-command TEXT ...]
 
-Loads the hook as it is at ``--base`` (``git show``) and as it is in the working
-tree, feeds both the same mutated shell commands as PreToolUse input
-(``{"tool_input": {"command": ...}}``) and compares their verdicts (exit 2
-blocks). A command the new hook allows but the old one blocks is "newly
-allowed", the regression a tightening must never have; it exits 1 and prints up
-to ten of them. Newly blocked commands are counted only. The commands grow from
-seed commands, by default ones that run or name the review-thread resolve
-script, with case, quote, escape, glob, variable, short-name, brace, separator
-and wrapper mutations (#3527). A guard PR states its "0 newly allowed" line.
+Takes the whole ``scripts/hooks`` tree as it is at ``--base`` (``git archive``)
+and as it is in the working tree, and runs the hook of each in its own worker
+process with its own tree first on ``sys.path``, so a hook that imports a
+sibling guard gets that version's sibling. Both get the same mutated shell
+commands as PreToolUse input (``{"tool_input": {"command": ...}}``); exit 2
+blocks, and a crash counts as a block, as the hooks fail closed. A command the
+new hook allows but the old one blocks is "newly allowed", the regression a
+tightening must never have: the tool exits 1 and prints up to ten of them.
+Newly blocked commands are counted only. The commands grow from seed commands,
+by default ones that run or name the review-thread resolve script, with case,
+quote, escape, glob, variable, short-name, brace, separator and wrapper
+mutations (#3527). A guard PR states its "0 newly allowed" line.
 """
 
 from __future__ import annotations
@@ -22,8 +25,10 @@ import importlib.util
 import io
 import json
 import random
+import re
 import subprocess
 import sys
+import tarfile
 import tempfile
 from collections.abc import Callable, Iterable, Iterator, Sequence
 from dataclasses import dataclass, field
@@ -31,7 +36,12 @@ from pathlib import Path
 from types import ModuleType
 
 ROOT = Path(__file__).resolve().parents[1]
+HOOKS = "scripts/hooks"
 BLOCK = 2
+# Only a guard hook of this repository and a plain ref are accepted, so the
+# arguments can reach neither another path nor a git option.
+HOOK_PATH = re.compile(r"scripts/hooks/(guard_[a-z0-9_]+\.py)")
+REF = re.compile(r"[A-Za-z0-9][A-Za-z0-9._/~^-]*")
 TARGET = "scripts/resolve_review_thread.py"
 DEFAULT_SEEDS = (
     f"python {TARGET} 3500 PRRT_abc",
@@ -87,8 +97,7 @@ def _brace(text: str, rng: random.Random) -> str:
 
 
 def _join(text: str, rng: random.Random) -> str:
-    other = rng.choice(DEFAULT_SEEDS)
-    return text + rng.choice(SEPARATORS) + other
+    return text + rng.choice(SEPARATORS) + rng.choice(DEFAULT_SEEDS)
 
 
 def _wrap(text: str, rng: random.Random) -> str:
@@ -108,44 +117,17 @@ MUTATIONS: tuple[Callable[[str, random.Random], str], ...] = (
 )
 
 
-def commands(seeds: Sequence[str], count: int, seed: int) -> Iterable[str]:
+def commands(seeds: Sequence[str], count: int, seed: int) -> list[str]:
     """The seeds, then ``count`` mutants of one to three stacked mutations."""
     rng = random.Random(seed)
-    yield from seeds
+    result = list(seeds)
     for _ in range(count):
         text = rng.choice(seeds)
         for _step in range(rng.randint(1, 3)):
             if text:
                 text = rng.choice(MUTATIONS)(text, rng)
-        yield text
-
-
-def load(path: Path, name: str) -> ModuleType:
-    """One hook version as its own module; its sibling modules stay importable."""
-    sys.path.insert(0, str(ROOT / "scripts/hooks"))
-    spec = importlib.util.spec_from_file_location(name, path)
-    assert spec and spec.loader
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
-
-
-def verdict(hook: ModuleType, command: str) -> int:
-    """The hook's exit code for one command; a crash counts as a block, as the
-    hooks fail closed."""
-    payload = json.dumps({"tool_input": {"command": command}}).encode()
-    stdin = io.TextIOWrapper(io.BytesIO(payload), encoding="utf-8")
-    with (
-        contextlib.redirect_stderr(io.StringIO()),
-        contextlib.redirect_stdout(io.StringIO()),
-        _stdin(stdin),
-    ):
-        try:
-            return int(hook.main())
-        except SystemExit as exit_:
-            return int(exit_.code or 0)
-        except Exception:  # noqa: BLE001 - a failing hook blocks
-            return BLOCK
+        result.append(text)
+    return result
 
 
 @contextlib.contextmanager
@@ -158,6 +140,54 @@ def _stdin(stream: io.TextIOWrapper) -> Iterator[None]:
         sys.stdin = previous
 
 
+def verdict(hook: ModuleType, command: str) -> int:
+    """The hook's exit code for one command; a crash counts as a block."""
+    payload = json.dumps({"tool_input": {"command": command}}).encode()
+    stdin = io.TextIOWrapper(io.BytesIO(payload), encoding="utf-8")
+    with (
+        contextlib.redirect_stderr(io.StringIO()),
+        contextlib.redirect_stdout(io.StringIO()),
+        _stdin(stdin),
+    ):
+        try:
+            return int(hook.main())
+        except Exception:  # noqa: BLE001 - a failing hook blocks
+            return BLOCK
+
+
+def worker(hooks: Path, name: str) -> int:
+    """Judge the commands on stdin with one hooks tree, in this process only."""
+    tree = hooks.resolve()
+    allowed = (ROOT / HOOKS, Path(tempfile.gettempdir()).resolve())
+    if not re.fullmatch(r"guard_[a-z0-9_]+\.py", name) or not any(
+        tree == root or tree.is_relative_to(root) for root in allowed
+    ):
+        print("the worker takes a guard of a hooks tree", file=sys.stderr)
+        return 2
+    sys.path.insert(0, str(tree))
+    hooks = tree
+    spec = importlib.util.spec_from_file_location(Path(name).stem, hooks / name)
+    assert spec and spec.loader
+    hook = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(hook)
+    inputs = json.loads(sys.stdin.read())
+    print(json.dumps([verdict(hook, command) for command in inputs]))
+    return 0
+
+
+def verdicts(hooks: Path, name: str, inputs: list[str]) -> list[int]:
+    """Each command's verdict from ``hooks/name`` in its own process."""
+    done = subprocess.run(
+        [sys.executable, str(Path(__file__).resolve()), "--worker", str(hooks), name],
+        input=json.dumps(inputs),
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    return [int(item) for item in json.loads(done.stdout)]
+
+
 @dataclass
 class Comparison:
     checked: int = 0
@@ -165,47 +195,52 @@ class Comparison:
     newly_blocked: int = 0
 
 
-def compare(old: ModuleType, new: ModuleType, inputs: Iterable[str]) -> Comparison:
-    """Each command's verdict under both versions."""
-    result = Comparison()
-    for command in inputs:
-        result.checked += 1
-        before = verdict(old, command) == BLOCK
-        after = verdict(new, command) == BLOCK
-        if before and not after:
+def compare(old: Path, new: Path, name: str, inputs: Iterable[str]) -> Comparison:
+    """Each command's verdict under the old and the new hooks tree."""
+    items = list(inputs)
+    result = Comparison(checked=len(items))
+    pairs = zip(verdicts(old, name, items), verdicts(new, name, items), strict=True)
+    for command, (before, after) in zip(items, pairs, strict=True):
+        if before == BLOCK and after != BLOCK:
             result.newly_allowed.append(command)
-        elif after and not before:
+        elif after == BLOCK and before != BLOCK:
             result.newly_blocked += 1
     return result
 
 
-def base_version(base: str, hook: str, directory: Path) -> Path:
-    source = subprocess.run(
-        ["git", "show", f"{base}:{hook}"],
+def base_hooks(base: str, directory: Path) -> Path:
+    """The ``scripts/hooks`` tree at ``base``, extracted into ``directory``."""
+    archive = subprocess.run(
+        ["git", "archive", "--format=tar", base, HOOKS],
         cwd=ROOT,
         check=True,
         capture_output=True,
     ).stdout
-    path = directory / f"base_{Path(hook).name}"
-    path.write_bytes(source)
-    return path
+    with tarfile.open(fileobj=io.BytesIO(archive)) as tar:
+        tar.extractall(directory, filter="data")
+    return directory / HOOKS
 
 
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument(
-        "hook", help="repository path of the hook, e.g. scripts/hooks/guard_shell.py"
+        "hook", help="the guard, e.g. scripts/hooks/guard_resolve_thread.py"
     )
     parser.add_argument("--base", default="origin/develop")
     parser.add_argument("--count", type=int, default=60_000)
     parser.add_argument("--seed", type=int, default=1)
     parser.add_argument("--seed-command", action="append", default=[], dest="seeds")
     args = parser.parse_args(argv)
-    seeds = tuple(args.seeds) or DEFAULT_SEEDS
+    hook = HOOK_PATH.fullmatch(args.hook)
+    if hook is None or REF.fullmatch(args.base) is None:
+        parser.error(
+            "the hook must be scripts/hooks/guard_*.py and the base a plain ref"
+        )
+    name = hook.group(1)
     with tempfile.TemporaryDirectory() as directory:
-        old = load(base_version(args.base, args.hook, Path(directory)), "guard_old")
-        new = load(ROOT / args.hook, "guard_new")
-        result = compare(old, new, commands(seeds, args.count, args.seed))
+        old = base_hooks(args.base, Path(directory))
+        inputs = commands(tuple(args.seeds) or DEFAULT_SEEDS, args.count, args.seed)
+        result = compare(old, ROOT / HOOKS, name, inputs)
     print(
         f"{args.hook}: {result.checked} commands against {args.base}; "
         f"{len(result.newly_allowed)} newly allowed, {result.newly_blocked} newly blocked"
@@ -216,4 +251,6 @@ def main(argv: Sequence[str] | None = None) -> int:
 
 
 if __name__ == "__main__":
+    if sys.argv[1:2] == ["--worker"]:
+        sys.exit(worker(Path(sys.argv[2]), sys.argv[3]))
     sys.exit(main())
