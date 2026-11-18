@@ -314,8 +314,8 @@ class GuardHookTests(unittest.TestCase):
             "echo x # it's\npython scripts/r["
             + "a" * 300
             + "' 'e]solve_review_thread.py",
-            # More `[` than the readings start at blocks.
-            "echo " + "[a]" * 257,
+            # Brackets swallowed again and again past the readings' work cap block.
+            "echo '" + "[" * 4000 + "]'",
             "python {scripts/r,x}*.py 2671 PRRT_a1",
             "python scripts/@(resolve|x)_review_thread.py 2671 PRRT_a1",
             "python scripts/@(res@(olve))_review_thread.py 2671 PRRT_a1",
@@ -364,6 +364,11 @@ class GuardHookTests(unittest.TestCase):
             "grep -n resolveReviewThread docs/notes.md",
             'echo "costs \\$5 or \\${x}" > notes.txt',
             "git log -1 > notes.txt 2>&1",
+            # Gitar on #3517: many brackets or a long open one in ordinary
+            # commands neither block nor cost one reading per bracket.
+            "echo " + "[a]" * 300,
+            "python - <<'EOF'\n" + "x = [1, [2]]\n" * 300 + "EOF",
+            'git commit -m "fix: [' + "words " * 60 + '"',
         ):
             with self.subTest(command):
                 self.assertEqual(self.decide(command), 0)

@@ -54,13 +54,16 @@ WORD_END = frozenset(" \t\n;&|<>()")
 # The longest bracket expression read; a longer open one blocks, so padding
 # can neither hide a class nor slow the hook down (#3507).
 MAX_BRACKET = 256
-# The `[` a reading may start at; a command with more blocks (#3507).
-MAX_BRACKET_STARTS = 256
+# The characters all readings without quotes may read together (readings x
+# command length); a command needing more blocks, so it stays fast (#3507).
+MAX_WIDE_WORK = 8_000_000
+# How far a swallowed class's own reading looks either side for its word.
+MAX_WORD = 4096
 
 
 class OverlongBracket(ValueError):
-    """A bracket expression that stays open past MAX_BRACKET characters, or
-    more than MAX_BRACKET_STARTS of them."""
+    """A bracket expression that stays open past MAX_BRACKET characters, or a
+    command whose readings would read more than MAX_WIDE_WORK characters."""
 
 
 SCRIPTS = Path("scripts")
@@ -219,19 +222,13 @@ def matching_word(command: str) -> str | None:
     text = unescaped(raw)
     if any(NAME in unquoted(form) for form in (raw, text)):
         return NAME
-    # Also every bash bracket expression as `?`, read with quotes, and from each
-    # `[` on without them, so no quote, comment or substitution before it can
-    # hide one: added readings beside the unchanged one, so they only ever
-    # block more (#3507).
-    starts = [index for index, char in enumerate(text) if char == "["]
+    # Also every bash bracket expression as `?`, read with quotes, and without
+    # them from the first `[` and from each `[` an earlier bracket swallowed, so
+    # no quote, comment, substitution or stray `[` before a class can hide it:
+    # added readings beside the unchanged one, so they only ever block more
+    # (#3507).
     try:
-        if len(starts) > MAX_BRACKET_STARTS:
-            raise OverlongBracket
-        readings = (
-            text,
-            bracket_wildcards(text),
-            *(wildcards_from(text, start) for start in starts),
-        )
+        readings = (text, bracket_wildcards(text), *wide_readings(text))
     except OverlongBracket:
         return "an overlong bracket expression"
     variants = []
@@ -320,8 +317,8 @@ def bracket_wildcards(text: str) -> str:
 def wide_end(text: str, start: int) -> int | None:
     """The index after the bracket expression at ``start`` read without quotes
     or word ends: an optional `!` or `^`, a leading `]`, and `[.x.]`, `[=x=]`
-    or `[:x:]` classes inside. None when it never closes; OverlongBracket when
-    it stays open past MAX_BRACKET characters."""
+    or `[:x:]` classes inside, up to MAX_BRACKET characters; a longer one
+    closes at the next `]`. None when it never closes."""
     limit = min(len(text), start + MAX_BRACKET)
     index = start + 1
     index += text[index : index + 1] in ("!", "^")
@@ -335,24 +332,64 @@ def wide_end(text: str, start: int) -> int | None:
             index = close + 2
             continue
         index += 1 + (char == "\\")
-    if limit < len(text):
-        raise OverlongBracket
-    return None
+    close = text.find("]", limit)
+    return close + 1 if close >= 0 else None
 
 
-def wildcards_from(text: str, start: int) -> str:
+def wildcards_from(text: str, start: int) -> tuple[str, list[int]]:
     """Every bracket expression from ``start`` on read as `?`, without reading
-    quotes, comments or substitutions, so no quoting before ``start`` can hide
-    a class after it (#3507)."""
+    quotes, comments or substitutions, and the `[` it swallowed: a reading
+    from one of those may see a class this one hid (#3507)."""
     parts, last, index = [text[:start]], start, start
-    while (found := text.find("[", index)) >= 0:
+    swallowed: list[int] = []
+    final_close = text.rfind("]")
+    # A `[` after the last `]` can never close, so the scan stops there.
+    while 0 <= (found := text.find("[", index)) < final_close:
         end = wide_end(text, found)
         if end:
             parts.append(text[last:found] + "?")
+            swallowed += [i for i in range(found + 1, end) if text[i] == "["]
             last = index = end
         else:
             index = found + 1
-    return "".join([*parts, text[last:]])
+    return "".join([*parts, text[last:]]), swallowed
+
+
+def wide_readings(text: str) -> list[str]:
+    """The readings without quotes: the whole command from the first `[`, then
+    the word around each `[` a reading swallowed, read from that `[` on; a
+    later `[` a reading reaches adds nothing new. OverlongBracket past
+    MAX_WIDE_WORK characters read."""
+    first = text.find("[")
+    if first < 0:
+        return []
+    reading, pending = wildcards_from(text, first)
+    readings, seen, work = [reading], {first, *pending}, len(text)
+    while pending:
+        start = pending.pop()
+        low, high = _word_around(text, start)
+        work += high - low
+        if work > MAX_WIDE_WORK:
+            raise OverlongBracket
+        reading, swallowed = wildcards_from(text[low:high], start - low)
+        readings.append(reading)
+        fresh = [low + i for i in swallowed if low + i not in seen]
+        seen.update(fresh)
+        pending += fresh
+    return readings
+
+
+def _word_around(text: str, start: int) -> tuple[int, int]:
+    """The span from the last blank before ``start`` to the first blank after
+    the bracket expression at it, at most MAX_WORD characters each way: the
+    word a class there can belong to, quoted blanks inside it included."""
+    end = wide_end(text, start) or start + 1
+    low = max(text.rfind(blank, max(0, start - MAX_WORD), start) for blank in " \t\n")
+    highs = [text.find(blank, end, end + MAX_WORD) for blank in " \t\n"]
+    high = min(
+        [found for found in highs if found >= 0] or [min(len(text), end + MAX_WORD)]
+    )
+    return max(low + 1, start - MAX_WORD, 0), high
 
 
 def word_reaches_script(word: str) -> bool:
