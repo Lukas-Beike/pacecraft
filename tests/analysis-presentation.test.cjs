@@ -358,6 +358,11 @@ test("split A draws one stacked bar per row and hatches only the parts the backe
   assert.equal(textOf(ownRow.children[0].children[1]), "Ruhe (Rest) 1690 (1540–1840) · Alltag 385 · Sport 507 · Verdauung 258", "#3478: the band as its span");
   assert.deepEqual([...ownRow.children[0].children[0].children].map((part) => part.dataset.shared ?? null), [null, null, null, ""]);
   assert.equal(energySplitRow({ source: "katch_mcardle", split: null }), null, "no split, no bar");
+  // #3494: today a part without data yet says so; on a past day it stays unknown.
+  const early = (source) => ({ source, resting_band_kcal: null, split: split(1800, null, null, null, {}) });
+  assert.equal(textOf(energySplitRow(early("katch_mcardle"), true).children[0].children[1]), "Ruhe 1800 · Alltag noch keine Daten · Sport noch keine Daten · Verdauung noch keine Daten");
+  assert.equal(textOf(energySplitRow(early("device"), true).children[0].children[1]), "Ruhe 1800 · Alltag noch keine Daten · Sport noch keine Daten · Verdauung –");
+  assert.equal(textOf(energySplitRow(early("katch_mcardle")).children[0].children[1]), "Ruhe 1800 · Alltag – · Sport – · Verdauung nicht erfasst");
   const gated = energySplitRow({ source: "own", resting_band_kcal: null, resting_implausible: true, split: split(null, 942, 417, 368, { neat: true, sport: true, tef: true }) });
   assert.equal(textOf(gated.children[0].children[1]), "Ruhe (Rest) nicht plausibel (unter dem Ruheumsatz: Essen unvollständig erfasst oder Alltag überschätzt) · Alltag 942 · Sport 417 · Verdauung 368");
   assert.deepEqual([...gated.children[0].children[0].children].map((part) => part.dataset.part), ["neat", "sport", "tef"]);
@@ -816,12 +821,14 @@ test("the table labels today's rows bis jetzt, the own row its 28 days, and miss
   const rows = energyTable(read).children[2].children;
   const heads = rows.filter((row) => row.dataset.energySource).map((row) => textOf(row.children[0]));
   assert.deepEqual(heads, ["Katch-McArdleKFA: Profil · bis jetzt", "CunninghamKFA: Profil · bis jetzt", "Garmin Connectbis jetzt", "Aus deinen DatenØ 28 Tage"]);
-  // Without logged meals a computed row's digestion is not recorded; Garmin has no such part.
-  assert.match(textOf(rows[1]), /Sport 0 · Verdauung nicht erfasst$/);
+  // Today without logged meals a computed row's digestion has no data yet (#3494); Garmin
+  // has no such part.
+  assert.match(textOf(rows[1]), /Sport 0 · Verdauung noch keine Daten$/);
   assert.match(textOf(rows[5]), /Verdauung –$/);
-  // A past day carries no "bis jetzt".
+  // A past day carries no "bis jetzt", and its missing digestion is not recorded.
   const past = energyTable({ ...read, day_partial: false }).children[2].children;
   assert.equal(textOf(past[0].children[0]), "Katch-McArdleKFA: Profil");
+  assert.match(textOf(past[1]), /Sport 0 · Verdauung nicht erfasst$/);
 });
 
 test("the fit scale names the own value, sorts the sources nearest first and signs their distance (#3397)", () => {

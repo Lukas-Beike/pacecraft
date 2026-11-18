@@ -608,6 +608,26 @@ class SelectedDayTests(unittest.TestCase):
         self.assertIsNone(km["total_kcal"])
         self.assertEqual(1839, km["resting_kcal"])
 
+    def test_today_without_any_data_yet_totals_its_resting_alone(self) -> None:
+        # #3494: early morning there are no steps, sessions or meals yet; today
+        # they count 0 so far, a past day with the same gaps has no total.
+        today = END + timedelta(days=1)
+        bare = DayInputs(weight_kg=80.0)
+        km = row(self.view(today, {today: bare}), "katch_mcardle")
+        self.assertEqual(km["resting_kcal"], km["total_kcal"])
+        self.assertEqual(
+            (None, None, None),
+            (
+                km["split"]["neat_kcal"],
+                km["split"]["sport_kcal"],
+                km["split"]["tef_kcal"],
+            ),
+        )
+        past = END - timedelta(days=2)
+        self.assertIsNone(
+            row(self.view(past, {past: bare}), "katch_mcardle")["total_kcal"]
+        )
+
     def test_today_is_partial_and_a_past_day_has_garmin_values(self) -> None:
         today = END + timedelta(days=1)
         view = self.view(today, {today: DayInputs(weight_kg=80.0, sport_kcal=0.0)})

@@ -74,14 +74,24 @@ def _round(value: float | None) -> int | None:
 
 
 def _formula_prediction(
-    formula: RestingFormula, body: Mapping[str, Any] | None, window: EnergyWindow
+    formula: RestingFormula,
+    body: Mapping[str, Any] | None,
+    window: EnergyWindow,
+    today: bool = False,
 ) -> Prediction:
-    """Resting from lean mass, and the day with the same own activity and TEF."""
+    """Resting from lean mass, and the day with the same own activity and TEF.
+
+    Today a part without data yet counts 0 so far (athlete decision, #3494);
+    on any other day a missing part leaves the total unknown.
+    """
     if body is None:
         return None, None, None, None
     resting = resting_energy(formula, body["lean_mass_kg"])
     band = resting_band(formula, body["weight_kg"], body["lean_mass_kg"])
     activity, tef = window.activity_kcal_raw, window.tef_kcal
+    if today:
+        activity = (window.neat_kcal_raw or 0.0) + (window.sport_kcal_raw or 0.0)
+        tef = tef or 0.0
     if activity is None or tef is None:
         return resting, band, None, None
     total_band = math.hypot(band, ACTIVITY_BAND_SHARE * activity)
@@ -385,7 +395,9 @@ def energy_view(
     )
     day_predictions = {
         **{
-            name: _formula_prediction(f, day_body, day_window)
+            name: _formula_prediction(
+                f, day_body, day_window, day_window.end > latest.end
+            )
             for name, f in FORMULAS.items()
         },
         DEVICE: device_prediction,
@@ -586,8 +598,9 @@ def _device_day(
     """Garmin's row for the shown day and where its Ruhe comes from.
 
     Today Garmin's resting value is still counting (#3443): the row takes the
-    newest full day's within a week as Ruhe, plus today's active kcal so far;
-    without one the Ruhe and the total stay unknown and the row names why.
+    newest full day's within a week as Ruhe, plus today's active kcal so far,
+    0 before Garmin has any (#3494); without one the Ruhe and the total stay
+    unknown and the row names why.
     """
     if not today:
         return _device_prediction(health, window), {}
@@ -597,7 +610,7 @@ def _device_day(
         return (None, None, None, None), {"resting_missing": "no_recent_resting"}
     earlier, resting = found
     active = _number(health.get(day.isoformat(), {}).get("active_kcal"))
-    total = resting + active if active is not None and active >= 0 else None
+    total = resting + max(active or 0.0, 0.0)
     return (resting, None, total, None), {"resting_from": earlier.isoformat()}
 
 
