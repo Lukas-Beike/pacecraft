@@ -16,7 +16,7 @@ required when the athlete explicitly chooses to start over. Future schema
 changes add explicit, versioned and transactional migrations from the baseline
 with upgrade regression tests; the baseline moves only after the athlete
 confirms a newer production schema from the diagnostics report.
-The current schema is version 32. This table is the only place that lists
+The current schema is version 33. This table is the only place that lists
 which releases wrote each schema; other documents name a schema by the release
 that introduced it ("v29, since 2.1.17"), so a release with an unchanged schema
 needs no documentation edit (#3130).
@@ -36,8 +36,9 @@ needs no documentation edit (#3130).
 | 30 | 2.1.20 to 2.1.21 |
 | 31 | 2.1.22 to 2.1.27 |
 | 32 | since 2.1.28 |
+| 33 | not released yet |
 
-Versions 27 to 31 keep only their shape digests; each enters the chain at its own
+Versions 27 to 32 keep only their shape digests; each enters the chain at its own
 upgrade step. Version 10 adds canonical activity detail
 (streams, laps and zone times), version 11 the food-database mirror, version 12
 stores the Garmin collection as one keyed row per element instead of one large
@@ -93,7 +94,12 @@ session it belongs to, read through session merges so a merge, split or
 deletion never rewrites it. SQLite cannot change a CHECK, so the upgrade
 rebuilds `nutrition_logs`: every row is copied with its values and the new
 columns stay empty. The privacy export gains the two columns (export format
-22). Release
+22).
+Version 33 adds an own product's usual portion and its package size (#3452):
+`portion_amount`/`portion_unit` and `package_amount`/`package_unit`, each an
+amount above 0 in `g` or `ml` with its unit, or both NULL (not stated). The
+upgrade adds only empty columns and changes no row. The privacy export gains
+the four columns (export format 23). Release
 2.0.5 upgrades a version 21 to 25 database or backup to it in place within one
 transaction, and a failed upgrade leaves it unchanged. Change-history entries
 written before version 16 still name the former fields and can no longer be

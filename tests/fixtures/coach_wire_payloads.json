@@ -299,7 +299,7 @@
      {
       "content": [
        {
-        "text": "Lies die deutsche Nährwerttabelle dieses Produktfotos. Antworte ausschließlich als JSON mit name, brand, barcode, basis_amount, basis_unit, kcal, carbs_g, protein_g, fat_g, sugar_g, fiber_g, salt_g und confidence. Unlesbare Werte sowie unbekannte basis_amount/basis_unit sind null; nicht raten. basis_unit ist g, ml oder portion. Der Produktname darf fehlen, wenn nur eine Nährwerttabelle sichtbar ist.",
+        "text": "Lies die deutsche Nährwerttabelle dieses Produktfotos. Antworte ausschließlich als JSON mit name, brand, barcode, basis_amount, basis_unit, kcal, carbs_g, protein_g, fat_g, sugar_g, fiber_g, salt_g, portion_amount, portion_unit, package_amount, package_unit und confidence. Unlesbare Werte sowie unbekannte basis_amount/basis_unit sind null; nicht raten. basis_unit ist g, ml oder portion. portion_* ist die auf der Packung genannte Portionsgröße, package_* die Füllmenge der Packung, jeweils in g oder ml, sonst null. Der Produktname darf fehlen, wenn nur eine Nährwerttabelle sichtbar ist.",
         "type": "input_text"
        },
        {

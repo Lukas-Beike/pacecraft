@@ -20,6 +20,8 @@ MAX_IMAGE_BYTES = 5 * 1024 * 1024
 PHOTO_REQUEST_MAX_BYTES = 4 * math.ceil(MAX_IMAGE_BYTES / 3) + 64 * 1024
 _DATA_URL = re.compile(r"^data:(image/(?:jpeg|png|webp));base64,([A-Za-z0-9+/=]+)$")
 INVALID_BASIS_AMOUNT = "Ungültige Bezugsmenge."
+# Portion and package size of a product (#3452), with their editor labels.
+PRODUCT_SIZES = (("portion", "Portion"), ("package", "Packung"))
 
 
 def _validated_number(value: Any, *, field: str) -> float | None:
@@ -100,6 +102,7 @@ def validate_packaging_extraction(
         "salt_g",
     ):
         result[key] = _validated_number(payload.get(key), field=key)
+    result.update(product_sizes(payload, result["basis_unit"], strict=False))
     _add_confidence(result, payload.get("confidence"))
     return {
         "ok": True,
@@ -107,6 +110,37 @@ def validate_packaging_extraction(
         "provenance": "packaging_label",
         "requires_confirmation": True,
     }
+
+
+def product_sizes(
+    payload: dict[str, Any], basis_unit: str | None, *, strict: bool
+) -> dict[str, Any]:
+    """The portion and package size of a product, each an amount and a unit.
+
+    A size counts in the product's basis unit, as g and ml cannot be converted;
+    a product counted per portion takes none. A proposal (``strict`` false)
+    leaves an unusable size empty; a saved product refuses it.
+    """
+    sizes: dict[str, Any] = {}
+    for size, label in PRODUCT_SIZES:
+        amount = payload.get(f"{size}_amount")
+        unit = str(payload.get(f"{size}_unit") or "").strip().lower()
+        sizes[f"{size}_amount"] = sizes[f"{size}_unit"] = None
+        if amount in (None, "") and not unit:
+            continue
+        try:
+            value = _basis_amount(amount)
+        except AppError:
+            value = None
+        if value is not None and unit in {"g", "ml"} and unit == (basis_unit or unit):
+            sizes[f"{size}_amount"], sizes[f"{size}_unit"] = value, unit
+        elif strict:
+            raise AppError(
+                400,
+                f"{label} braucht eine Menge über 0 in der Einheit der Bezugsmenge (g oder ml).",
+                reason="invalid_product_size",
+            )
+    return sizes
 
 
 def _add_confidence(result: dict[str, Any], confidence: Any) -> None:
@@ -196,7 +230,7 @@ class NutritionPhotoExtractionService:
         instruction = (
             "Lies die deutsche Nährwerttabelle dieses Produktfotos. Antworte ausschließlich als JSON "
             "mit name, brand, barcode, basis_amount, basis_unit, kcal, carbs_g, protein_g, fat_g, "
-            "sugar_g, fiber_g, salt_g und confidence. Unlesbare Werte sowie unbekannte basis_amount/basis_unit sind null; nicht raten. basis_unit ist g, ml oder portion. Der Produktname darf fehlen, wenn nur eine Nährwerttabelle sichtbar ist."
+            "sugar_g, fiber_g, salt_g, portion_amount, portion_unit, package_amount, package_unit und confidence. Unlesbare Werte sowie unbekannte basis_amount/basis_unit sind null; nicht raten. basis_unit ist g, ml oder portion. portion_* ist die auf der Packung genannte Portionsgröße, package_* die Füllmenge der Packung, jeweils in g oder ml, sonst null. Der Produktname darf fehlen, wenn nur eine Nährwerttabelle sichtbar ist."
         )
         encoded = base64.b64encode(image).decode("ascii")
         text = self._request_text(model, mime, encoded, instruction)

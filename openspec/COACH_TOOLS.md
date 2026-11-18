@@ -276,7 +276,7 @@ effect `read`; may call the food database.
 - `components[](kind=local_product).kind`* (string; one of `"local_product"`)
 - `components[](kind=local_product).product_id`* (string)
 - `components[](kind=local_product).amount`* (number; >0; ≤10000)
-- `components[](kind=local_product).unit`* (string; one of `"g"`, `"ml"`, `"portion"`)
+- `components[](kind=local_product).unit`* (string; one of `"g"`, `"ml"`, `"portion"`, `"package"`)
 - `components[](kind=database).kind`* (string; one of `"database"`)
 - `components[](kind=database).food_id`* (string)
 - `components[](kind=database).amount`* (number; >0; ≤10000)
@@ -291,7 +291,7 @@ effect `read`; may call the food database.
 - `components[](kind=estimate|packaging_label|manual).fat_g`* (number/null; ≥0; ≤1000)
 - `product_id` (string)
 - `amount` (number; >0; ≤10000)
-- `unit` (string; one of `"g"`, `"ml"`, `"portion"`)
+- `unit` (string; one of `"g"`, `"ml"`, `"portion"`, `"package"`)
 
 ### `cancel_coach_request`
 
@@ -730,7 +730,7 @@ effect `local_write`; gate domain `nutrition`; receipt „Ernährungseintrag ges
 - `payload.components[](kind=local_product).kind`* (string; one of `"local_product"`)
 - `payload.components[](kind=local_product).product_id`* (string)
 - `payload.components[](kind=local_product).amount`* (number; >0; ≤10000)
-- `payload.components[](kind=local_product).unit`* (string; one of `"g"`, `"ml"`, `"portion"`)
+- `payload.components[](kind=local_product).unit`* (string; one of `"g"`, `"ml"`, `"portion"`, `"package"`)
 - `payload.components[](kind=database).kind`* (string; one of `"database"`)
 - `payload.components[](kind=database).food_id`* (string)
 - `payload.components[](kind=database).amount`* (number; >0; ≤10000)
@@ -749,7 +749,7 @@ effect `local_write`; gate domain `nutrition`; receipt „Ernährungseintrag ges
 - `payload.food_ingredients[].unit`* (string; one of `"g"`, `"ml"`)
 - `payload.product_id` (string)
 - `payload.amount` (number; >0; ≤10000)
-- `payload.unit` (string; one of `"g"`, `"ml"`, `"portion"`)
+- `payload.unit` (string; one of `"g"`, `"ml"`, `"portion"`, `"package"`)
 - `_request`* (the envelope above)
 
 ### `save_nutrition_product`
@@ -796,7 +796,7 @@ effect `local_write`; gate domain `nutrition`; may call the food database; recei
 - `payload.components[](kind=local_product).kind`* (string; one of `"local_product"`)
 - `payload.components[](kind=local_product).product_id`* (string)
 - `payload.components[](kind=local_product).amount`* (number; >0; ≤10000)
-- `payload.components[](kind=local_product).unit`* (string; one of `"g"`, `"ml"`, `"portion"`)
+- `payload.components[](kind=local_product).unit`* (string; one of `"g"`, `"ml"`, `"portion"`, `"package"`)
 - `payload.components[](kind=database).kind`* (string; one of `"database"`)
 - `payload.components[](kind=database).food_id`* (string)
 - `payload.components[](kind=database).amount`* (number; >0; ≤10000)
@@ -815,7 +815,7 @@ effect `local_write`; gate domain `nutrition`; may call the food database; recei
 - `payload.food_ingredients[].unit`* (string; one of `"g"`, `"ml"`)
 - `payload.product_id` (string)
 - `payload.amount` (number; >0; ≤10000)
-- `payload.unit` (string; one of `"g"`, `"ml"`, `"portion"`)
+- `payload.unit` (string; one of `"g"`, `"ml"`, `"portion"`, `"package"`)
 - `payload.name`* (string; ≤120 chars)
 - `payload.id` (string)
 - `_request`* (the envelope above)
@@ -942,7 +942,7 @@ effect `local_write`; gate domain `nutrition`; receipt „Ernährungseintrag kor
 - `changes.components[](kind=local_product).kind`* (string; one of `"local_product"`)
 - `changes.components[](kind=local_product).product_id`* (string)
 - `changes.components[](kind=local_product).amount`* (number; >0; ≤10000)
-- `changes.components[](kind=local_product).unit`* (string; one of `"g"`, `"ml"`, `"portion"`)
+- `changes.components[](kind=local_product).unit`* (string; one of `"g"`, `"ml"`, `"portion"`, `"package"`)
 - `changes.components[](kind=database).kind`* (string; one of `"database"`)
 - `changes.components[](kind=database).food_id`* (string)
 - `changes.components[](kind=database).amount`* (number; >0; ≤10000)

@@ -5,7 +5,7 @@ and frozen as a test fixture. Older databases and backups are rejected unchanged
 them with release 2.0.5 first. The baseline keeps its frozen fixture in
 tests/fixtures and its digest in backend.db.schema_history; each later schema
 adds one upgrade step here, so the baseline reaches the current schema.
-Released later schemas (v27 to v31) keep only their digests and enter the
+Released later schemas (v27 to v32) keep only their digests and enter the
 chain there.
 """
 
@@ -33,6 +33,7 @@ from backend.db.schema_history import (
     SHAPE_SCHEMA_V29,
     SHAPE_SCHEMA_V30,
     SHAPE_SCHEMA_V31,
+    SHAPE_SCHEMA_V32,
     released_shape,
 )
 
@@ -474,6 +475,20 @@ def _session_fuelling(db: Any) -> None:
     db.execute("DROP TABLE nutrition_logs_v31")
 
 
+# Frozen copy of the v33 product sizes (#3452); the live DDL may change later.
+_V33_PRODUCT_SIZES_DDL: Final = """
+    ALTER TABLE nutrition_products ADD COLUMN portion_amount REAL CHECK (portion_amount IS NULL OR (typeof(portion_amount) IN ('integer', 'real') AND portion_amount > 0));
+    ALTER TABLE nutrition_products ADD COLUMN portion_unit TEXT CHECK ((portion_unit IS NULL) = (portion_amount IS NULL) AND (portion_unit IS NULL OR portion_unit IN ('g', 'ml')));
+    ALTER TABLE nutrition_products ADD COLUMN package_amount REAL CHECK (package_amount IS NULL OR (typeof(package_amount) IN ('integer', 'real') AND package_amount > 0));
+    ALTER TABLE nutrition_products ADD COLUMN package_unit TEXT CHECK ((package_unit IS NULL) = (package_amount IS NULL) AND (package_unit IS NULL OR package_unit IN ('g', 'ml')))"""
+
+
+def _product_sizes(db: Any) -> None:
+    """Schema v33: products gain a portion and a package size, empty for every
+    stored product (#3452)."""
+    execute_ddl(db, _V33_PRODUCT_SIZES_DDL)
+
+
 # Released shape -> (next shape, step).
 UPGRADE_STEPS: Final[Mapping[str, tuple[str, Callable[[Any], None]]]] = {
     SHAPE_SCHEMA_V26: (SHAPE_SCHEMA_V27, _canonical_products),
@@ -481,5 +496,6 @@ UPGRADE_STEPS: Final[Mapping[str, tuple[str, Callable[[Any], None]]]] = {
     SHAPE_SCHEMA_V28: (SHAPE_SCHEMA_V29, _competition_location),
     SHAPE_SCHEMA_V29: (SHAPE_SCHEMA_V30, _session_curves),
     SHAPE_SCHEMA_V30: (SHAPE_SCHEMA_V31, _device_workout),
-    SHAPE_SCHEMA_V31: (SHAPE_CURRENT, _session_fuelling),
+    SHAPE_SCHEMA_V31: (SHAPE_SCHEMA_V32, _session_fuelling),
+    SHAPE_SCHEMA_V32: (SHAPE_CURRENT, _product_sizes),
 }

@@ -337,3 +337,24 @@ def _normalize_macros(
 def _normalize_source(value: Any) -> str:
     source = str(value or "manual").strip().lower()
     return source if source in VALID_SOURCES else "manual"
+
+
+def stored_size_amount(
+    product: dict[str, Any], quantity: float, unit: str
+) -> tuple[float, str]:
+    """Count ``quantity`` portions or packages of a product in its basis unit.
+
+    "portion" and "package" use the product's stored size (#3452); a product
+    counted per portion keeps "portion", and any other unit stays as it is.
+    """
+    if unit in {"portion", "package"} and unit != product.get("basis_unit"):
+        amount = product.get(f"{unit}_amount")
+        if amount is None or not product.get(f"{unit}_unit"):
+            label = "Portion" if unit == "portion" else "Packung"
+            raise AppError(
+                400,
+                f"F\u00fcr dieses Produkt ist keine {label} gespeichert.",
+                reason="product_size_missing",
+            )
+        return quantity * float(amount), str(product[f"{unit}_unit"])
+    return quantity, unit

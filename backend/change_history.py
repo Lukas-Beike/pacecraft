@@ -240,6 +240,10 @@ NUTRITION_PRODUCT_FIELDS = (
     "provenance",
     "extraction_confidence",
     "status",
+    "portion_amount",
+    "portion_unit",
+    "package_amount",
+    "package_unit",
 )
 # A stored database food: its nutrient values and the basis they count on. Only
 # a gap fill and the athlete's edit record it; a refetch replaces the values and
@@ -466,6 +470,10 @@ _FIELDS_ADDED_TO_AUDIT: dict[str, tuple[tuple[str, ...], ...]] = {
     "food_database_entry": (("filled_fields",),),
     # #3100: the uncertain-meal flag; schema v32 (#3234): volume and session.
     "nutrition_entry": (("estimate_uncertain",), ("volume_ml", "session_id")),
+    # Schema v33 (#3452): a product's portion and package size.
+    "nutrition_product": (
+        ("portion_amount", "portion_unit", "package_amount", "package_unit"),
+    ),
     # #3273: the adopted LT2 origin of a local zone threshold.
     "zone_configuration": (("threshold_origin",),),
 }

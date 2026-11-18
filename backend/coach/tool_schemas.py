@@ -242,7 +242,10 @@ def build_structured_tool_schemas(
                             "exclusiveMinimum": 0,
                             "maximum": 10000,
                         },
-                        "unit": {"type": "string", "enum": ["g", "ml", "portion"]},
+                        "unit": {
+                            "type": "string",
+                            "enum": ["g", "ml", "portion", "package"],
+                        },
                     },
                 },
                 {
@@ -354,7 +357,7 @@ def build_structured_tool_schemas(
                 "components": nutrition_components,
                 "product_id": {"type": "string"},
                 "amount": {"type": "number", "exclusiveMinimum": 0, "maximum": 10000},
-                "unit": {"type": "string", "enum": ["g", "ml", "portion"]},
+                "unit": {"type": "string", "enum": ["g", "ml", "portion", "package"]},
             },
         ),
         _canonical_coach_tool(
@@ -1470,7 +1473,10 @@ def build_structured_tool_schemas(
         "exclusiveMinimum": 0,
         "maximum": 10000,
     }
-    meal_properties["unit"] = {"type": "string", "enum": ["g", "ml", "portion"]}
+    meal_properties["unit"] = {
+        "type": "string",
+        "enum": ["g", "ml", "portion", "package"],
+    }
     next(
         tool
         for tool in COACH_STRUCTURED_TOOLS

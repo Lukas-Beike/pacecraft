@@ -19,7 +19,7 @@ from backend.canonical.vocabulary import (
     ProviderRecordState,
 )
 
-CURRENT_SCHEMA_VERSION = 32
+CURRENT_SCHEMA_VERSION = 33
 
 # Provider-neutral canonical tables (schema version 6). Only closed lifecycle
 # enums are CHECKed here; they are generated from backend.canonical.vocabulary so
@@ -688,6 +688,15 @@ NUTRITION_LOGS_DDL = """
     CREATE INDEX idx_nutrition_logs_date ON nutrition_logs(meal_date, logged_at DESC);
     CREATE INDEX idx_nutrition_logs_session ON nutrition_logs(session_id) WHERE session_id IS NOT NULL"""
 
+# Schema version 33: an own product's usual portion and its package size
+# (#3452), each an amount in g or ml or both NULL (not stated). Whether the unit
+# matches the product's basis is checked in Python, where the editor refuses it.
+PRODUCT_SIZES_DDL = """
+    ALTER TABLE nutrition_products ADD COLUMN portion_amount REAL CHECK (portion_amount IS NULL OR (typeof(portion_amount) IN ('integer', 'real') AND portion_amount > 0));
+    ALTER TABLE nutrition_products ADD COLUMN portion_unit TEXT CHECK ((portion_unit IS NULL) = (portion_amount IS NULL) AND (portion_unit IS NULL OR portion_unit IN ('g', 'ml')));
+    ALTER TABLE nutrition_products ADD COLUMN package_amount REAL CHECK (package_amount IS NULL OR (typeof(package_amount) IN ('integer', 'real') AND package_amount > 0));
+    ALTER TABLE nutrition_products ADD COLUMN package_unit TEXT CHECK ((package_unit IS NULL) = (package_amount IS NULL) AND (package_unit IS NULL OR package_unit IN ('g', 'ml')))"""
+
 
 def execute_ddl(db: Any, ddl: str) -> None:
     """Run DDL statement by statement inside the caller's transaction.
@@ -1020,6 +1029,7 @@ def _create_schema_statements(db: Any) -> None:
     execute_ddl(db, SESSION_CURVES_DDL)
     execute_ddl(db, DEVICE_WORKOUT_DDL)
     execute_ddl(db, NUTRITION_LOGS_DDL)
+    execute_ddl(db, PRODUCT_SIZES_DDL)
     db.execute(f"PRAGMA user_version = {CURRENT_SCHEMA_VERSION}")
 
 

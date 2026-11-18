@@ -32,9 +32,9 @@ The keys of the `kv` table are listed in [kv-catalogue.md](kv-catalogue.md).
 ## Current schema
 
 <!-- BEGIN GENERATED SCHEMA -->
-Schema version: `32` (`PRAGMA user_version`).
+Schema version: `33` (`PRAGMA user_version`).
 
-Shape digest: `5c96e07d4ba532222130a559c2ee1f0b53011cfc437d0f703ab00ede7ae35e69`.
+Shape digest: `ae6a8f2f9500b7cbc41404660a093588f98d94b4abb1170721e760cdd8eadde9`.
 
 48 tables and 36 named indexes, in signature order.
 
@@ -780,7 +780,7 @@ CREATE TABLE nutrition_products (
     favorite INTEGER NOT NULL DEFAULT 0 CHECK (favorite IN (0, 1)),
     origin TEXT NOT NULL DEFAULT 'own' CHECK (origin GLOB '[a-z]*' AND length(origin) <= 32),
     fetched_at TEXT,
-    details TEXT NOT NULL DEFAULT '{}' CHECK (json_valid(details) AND json_type(details) = 'object'),
+    details TEXT NOT NULL DEFAULT '{}' CHECK (json_valid(details) AND json_type(details) = 'object'), portion_amount REAL CHECK (portion_amount IS NULL OR (typeof(portion_amount) IN ('integer', 'real') AND portion_amount > 0)), portion_unit TEXT CHECK ((portion_unit IS NULL) = (portion_amount IS NULL) AND (portion_unit IS NULL OR portion_unit IN ('g', 'ml'))), package_amount REAL CHECK (package_amount IS NULL OR (typeof(package_amount) IN ('integer', 'real') AND package_amount > 0)), package_unit TEXT CHECK ((package_unit IS NULL) = (package_amount IS NULL) AND (package_unit IS NULL OR package_unit IN ('g', 'ml'))),
     CHECK (origin <> 'own' OR basis_unit IS NOT NULL)
 );
 ```
