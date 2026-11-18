@@ -18,19 +18,26 @@ A planned ``strength_structure`` exercise is compared by exercise category: the
 category of its Garmin catalogue exercise (explicit, stored pair, name or the
 small alias list). A planned exercise without a known category is ``unknown``,
 never a miss; so is one whose category was not recognized in a session that
-has unrecognized sets. A planned exercise counts its sets done at or above the
-planned reps; a set without reported reps counts as done, as nothing shows it
-fell short.
+has unrecognized sets. A planned exercise counts its sets by reps (athlete,
+#3521): done reps over planned reps, each set at most 1, so 12 of 15 counts 0.8;
+a set without reported reps counts as done, as nothing shows it fell short.
+The plan is the structure the athlete trained: a version the unit had at the
+session's start (``trained_structure``), never a later edit.
 """
 
 from __future__ import annotations
 
 from collections.abc import Collection, Iterable, Mapping, Sequence
+from datetime import UTC, datetime
 from typing import Any, Final
 
 from backend.canonical.activity_detail import (
     ActivityStrengthSet,
     ActivityStrengthSetSet,
+)
+from backend.canonical.planning_fields import (
+    STRENGTH_STRUCTURE,
+    STRENGTH_STRUCTURE_VERSIONS,
 )
 from backend.canonical.vocabulary import (
     ExerciseCategory,
@@ -248,14 +255,46 @@ def planned_category(exercise: Mapping[str, Any]) -> ExerciseCategory | None:
         return ExerciseCategory.OTHER
 
 
+def _utc(value: Any) -> datetime | None:
+    try:
+        moment = datetime.fromisoformat(str(value))
+    except TypeError, ValueError:
+        return None
+    return moment if moment.tzinfo else moment.replace(tzinfo=UTC)
+
+
+def trained_structure(unit: Mapping[str, Any], started_at: Any) -> Any:
+    """The unit's ``strength_structure`` as trained in a session started at
+    ``started_at`` (#3521): the earliest version replaced after the start, else
+    the current one, so a later edit never changes a past session's verdict."""
+    start = _utc(started_at)
+    versions = unit.get(STRENGTH_STRUCTURE_VERSIONS)
+    if start is not None and isinstance(versions, list):
+        for version in versions:
+            replaced = (
+                _utc(version.get("replaced_at"))
+                if isinstance(version, Mapping)
+                else None
+            )
+            if replaced is not None and replaced > start:
+                structure = version.get("structure")
+                # A structure the history could not keep (over its field limit) is
+                # unknown, so the current one stands in.
+                if isinstance(structure, list):
+                    return structure
+                break
+    return unit.get(STRENGTH_STRUCTURE)
+
+
 def plan_comparison(
     structure: Sequence[Mapping[str, Any]], summary: Mapping[str, Any]
 ) -> dict[str, Any] | None:
     """Planned against executed sets per exercise, or None without a usable side.
 
     Executed sets of one category go to the planned exercises of that category
-    in plan order. ``percentage`` is the share of planned sets of the matched
-    exercises done at or above the planned reps; None when nothing matched.
+    in plan order. ``completed_sets`` counts each set by done over planned reps,
+    at most 1 (#3521); ``percentage`` is its share of the planned sets of the
+    matched exercises; None when nothing matched.
     """
     by_category = summary.get("by_category")
     if not structure or not isinstance(by_category, Mapping) or not by_category:
@@ -263,7 +302,8 @@ def plan_comparison(
     pools = {key: list(value) for key, value in by_category.items()}
     unrecognized = bool(summary.get("unrecognized_sets"))
     rows: list[dict[str, Any]] = []
-    planned_total = done_total = 0
+    planned_total = 0
+    done_total = 0.0
     for item in structure:
         rows.append(row := _planned_row(item, pools, unrecognized=unrecognized))
         if row["status"] == "matched":
@@ -272,7 +312,7 @@ def plan_comparison(
     return {
         "basis": "strength_sets",
         "planned_sets": planned_total,
-        "completed_sets": done_total,
+        "completed_sets": round(done_total, 2),
         "percentage": round(done_total * 100 / planned_total)
         if planned_total
         else None,
@@ -311,11 +351,20 @@ def _planned_row(
     skip = min(warmup_sets, max(0, len(pool) - planned_sets))
     pool = pool[skip:]
     taken, pools[category.value] = pool[:planned_sets], pool[planned_sets:]
-    completed = sum(1 for reps in taken if reps is None or reps >= planned_reps)
     return {
         **row,
         "status": "matched",
         "done_sets": len(taken),
-        "completed_sets": completed,
+        "completed_sets": round(
+            sum(_set_share(reps, planned_reps) for reps in taken), 2
+        ),
         "reps": taken,
     }
+
+
+def _set_share(reps: int | None, planned_reps: int) -> float:
+    """One set's share of the plan: done over planned reps, at most 1 (#3521);
+    a set without reported reps or a plan without reps counts as done."""
+    if reps is None or planned_reps <= 0:
+        return 1.0
+    return min(reps, planned_reps) / planned_reps

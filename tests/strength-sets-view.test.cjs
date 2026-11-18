@@ -105,13 +105,14 @@ test("the calendar comparison shows executed sets next to the planned structure"
   const context = loadPublicScript(["performance-view.js", "plan-views.js"], { AppFormat: require("../public/format.js"), document: fakeDocument() });
   const list = context.plannedStrengthRows({
     exercises: [
-      { name: "Kniebeuge", category: "squat", status: "matched", planned_sets: 4, planned_reps: 5, planned_kg: 82.5, completed_sets: 2, reps: [5, 5, 3] },
+      { name: "Kniebeuge", category: "squat", status: "matched", planned_sets: 4, planned_reps: 5, planned_kg: 82.5, completed_sets: 2.6, reps: [5, 5, 3] },
       { name: "Mystery", status: "unknown", planned_sets: 3, planned_reps: 10, planned_kg: null },
       { name: null, category: "deadlift", status: "matched", planned_sets: 1, planned_reps: 5, planned_kg: null, completed_sets: 1, reps: [5] },
     ],
   });
   const [matched, unknown, unnamed] = list.children.map(textOf);
-  assert.equal(matched, "Kniebeuge: 2/4 Sätze erreicht · Ist 5/5/3 Wdh. · Plan 4×5 @ 82,5 kg");
+  // #3521: sets count by reps, so a short set shows as a part (5 + 5 + 3 of 5 reps).
+  assert.equal(matched, "Kniebeuge: 2,6/4 Sätze erreicht · Ist 5/5/3 Wdh. · Plan 4×5 @ 82,5 kg");
   assert.equal(unknown, "Mystery: nicht zugeordnet · Plan 3×10");
   assert.equal(unnamed, "Kreuzheben: 1/1 Sätze erreicht · Ist 5 Wdh. · Plan 1×5");
   assert.equal(context.plannedStrengthRows(null), null);

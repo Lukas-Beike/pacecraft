@@ -7,6 +7,9 @@ PLANNED_INTENSITY: Final = "planned_intensity"
 SESSION_FOCUS: Final = "session_focus"
 STRENGTH_INTENSITY: Final = "strength_intensity"
 STRENGTH_STRUCTURE: Final = "strength_structure"
+# A read-only key of a served planned unit, never stored: its earlier strength
+# structures with the time each was replaced, oldest first (#3521).
+STRENGTH_STRUCTURE_VERSIONS: Final = "strength_structure_versions"
 # The heart-rate cap of an easy run unit: percent of the threshold HR plus bpm.
 HR_CAP: Final = "hr_cap"
 # The undated library template a planned unit was planned from (#2379).

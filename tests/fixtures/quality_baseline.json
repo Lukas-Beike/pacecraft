@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "base": "f3326c98f4cc4b394f2b3066aeb9293377860e42",
+  "base": "1777b67c667a2f018168c0262e4b823f8dea805b",
   "versions": {
     "ruff": "0.17.5",
     "mypy": "2.4.1"
@@ -1023,12 +1023,6 @@
     {
       "tool": "format",
       "path": "scripts/hooks/guard_private_paths.py",
-      "code": "format",
-      "message_sha256": "f87c4a0ecaf8e40a8d167170353b2aeb564e58f72247b4568c3db29c296f105f"
-    },
-    {
-      "tool": "format",
-      "path": "scripts/hooks/guard_resolve_thread.py",
       "code": "format",
       "message_sha256": "f87c4a0ecaf8e40a8d167170353b2aeb564e58f72247b4568c3db29c296f105f"
     },

@@ -115,7 +115,9 @@ class PublicPlanStateService:
         start, end = day - timedelta(days=1), day + timedelta(days=1)
         manager = self._database_manager_factory()
         with manager.read_snapshot() as db:
-            planned = self._planned_units.list_between(start, end)
+            planned = self._planned_units.list_between(
+                start, end, trained_versions=True
+            )
             activities = (
                 self._activity_rows.between(db, start, end)
                 if self._activity_rows
@@ -151,7 +153,8 @@ class PublicPlanStateService:
 
     def _read(self, weather: dict[str, Any] | None, db: Any) -> dict[str, Any]:
         local_planned = _with_template_names(
-            self._template_names(), self._planned_units.list(500, push_state=True)
+            self._template_names(),
+            self._planned_units.list(500, push_state=True, trained_versions=True),
         )
         canonical_planned = calendar_canonical.canonical_planned_workouts(local_planned)
         activities = self._activity_rows.compact() if self._activity_rows else []
