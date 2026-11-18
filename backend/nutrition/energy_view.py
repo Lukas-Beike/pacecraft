@@ -463,7 +463,7 @@ def energy_view(
             "total_kcal": _round(tdee.kcal) if tdee else None,
             "total_band_kcal": _round(tdee.band_kcal) if tdee else None,
             "split": own_split,
-            # A window method: its days, shown as "Ø 28 Tage" (#3395).
+            # A window method: its days, shown as "Ø pro Tag, letzte 28 Tage" (#3395, #3513).
             "window_days": latest.days,
         }
     )

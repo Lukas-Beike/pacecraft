@@ -1704,9 +1704,9 @@ function energyMissingCell(reason) {
 }
 
 // Under a row's name: the formulas' body fat source, "bis jetzt" for today, and the own row's
-// window, which a single day cannot have (#3395).
+// window, which a single day cannot have (#3395); it reads as a daily mean, not the day (#3513).
 function energyRowNote(read, source, row) {
-  if (source === "own") return row.window_days ? [h("small", null, `Ø ${row.window_days} Tage`)] : [];
+  if (source === "own") return row.window_days ? [h("small", null, `Ø pro Tag, letzte ${row.window_days} Tage`)] : [];
   const parts = [ENERGY_FORMULAS.has(source) && read.body ? `KFA: ${read.body.label}` : "", energyRestingFrom(read, row), read.day_partial ? "bis jetzt" : ""].filter(Boolean);
   return parts.length ? [h("small", null, parts.join(" · "))] : [];
 }

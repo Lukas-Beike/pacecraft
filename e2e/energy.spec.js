@@ -25,7 +25,7 @@ test("@responsive the diary shows the energy table and explains it behind the in
   const kfa = `KFA: ${read.body.label} · bis jetzt`;
   // Today's Garmin rest names the full day it comes from, if any (#3443).
   const deviceNote = device.resting_from ? `${device.label}Ruhe ` : `${device.label}`;
-  await expect(card.locator("tbody th")).toHaveText([`Katch-McArdle${kfa}`, `Cunningham${kfa}`, new RegExp(`^${deviceNote}.*bis jetzt$`), "Aus deinen DatenØ 28 Tage"]);
+  await expect(card.locator("tbody th")).toHaveText([`Katch-McArdle${kfa}`, `Cunningham${kfa}`, new RegExp(`^${deviceNote}.*bis jetzt$`), "Aus deinen DatenØ pro Tag, letzte 28 Tage"]);
   // #3478: the estimate with its low–high span on one line below it, and no "±" left in the energy views.
   const resting = card.locator("[data-energy-source='katch_mcardle'] td").first();
   const shown = resting.locator(".energy-span [aria-hidden]");
@@ -156,7 +156,7 @@ test("@responsive the early-morning row totals its rest and names the parts with
 });
 
 // #3395: the table shows the diary's selected day; switching the date reads that day.
-test("@responsive the energy table follows the diary date: sport per day, today bis jetzt, own Ø 28 Tage", async ({ page }) => {
+test("@responsive the energy table follows the diary date: sport per day, today bis jetzt, own daily mean of 28 days", async ({ page }) => {
   const asked = [];
   await page.route("**/api/body/energy*", async (route) => {
     const day = new URL(route.request().url()).searchParams.get("date");
@@ -179,7 +179,8 @@ test("@responsive the energy table follows the diary date: sport per day, today 
   const split = card.locator("tr.energy-split-row").first();
   await expect(katch.locator("th small")).toContainText("bis jetzt");
   await expect(split).toContainText("Sport 0 · Verdauung nicht erfasst");
-  await expect(card.locator("tr[data-energy-source='own'] th small")).toHaveText("Ø 28 Tage");
+  // #3513: the own row is a daily mean over its window, never the selected day.
+  await expect(card.locator("tr[data-energy-source='own'] th small")).toHaveText("Ø pro Tag, letzte 28 Tage");
   const today = await page.locator("#nutritionDate").inputValue();
   await page.getByRole("button", { name: "Vorheriger Tag" }).click();
   await expect(page.locator("#nutritionDate")).not.toHaveValue(today);
