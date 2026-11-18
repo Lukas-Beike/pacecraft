@@ -101,8 +101,12 @@ class SelectModulesTests(unittest.TestCase):
         (tests / "chart.test.cjs").write_text(
             'extractFunctions("analysis.js", ["energyTable"]);', "utf-8"
         )
+        # Gitar #3501: a test may require the file by its path.
+        (tests / "format.test.cjs").write_text(
+            'const f = require("../public/nutrition.js");', "utf-8"
+        )
         self.assertEqual(
-            ["tests/card.test.cjs"],
+            ["tests/card.test.cjs", "tests/format.test.cjs"],
             changed_tests.node_tests(["public/nutrition.js"], self.root),
         )
         self.assertEqual(
