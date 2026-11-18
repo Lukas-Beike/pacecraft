@@ -1015,7 +1015,7 @@ class _PlannedUnits:
         self.units = [{"id": f"unit-{day}", "date": f"{day}T00:00:00"} for day in days]
         self.calls: list[date | None] = []
 
-    def list(self, limit, *, future_only=False, since=None):
+    def list(self, limit, *, future_only=False, since=None, trained_versions=False):
         self.calls.append(since)
         lower = since or date(2026, 9, 23)
         return [u for u in self.units if date.fromisoformat(u["date"][:10]) >= lower]

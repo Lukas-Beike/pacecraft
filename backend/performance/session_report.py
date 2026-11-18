@@ -2260,7 +2260,8 @@ def _fact_checks(facts: _Facts) -> list[dict[str, Any]]:
         checks.append(_strength_before(before))
     plan = _mapping(facts.result.get("strength_plan"))
     if plan:
-        # Sets only, no load (athlete, #3084 3c B); a set is done at reps >= planned.
+        # Sets only, no load (athlete, #3084 3c B); a set counts done over planned
+        # reps, at most 1, against the plan the session trained (#3521).
         checks.append(
             _against_plan(
                 "strength_sets",

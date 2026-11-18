@@ -563,7 +563,7 @@ function plannedStrengthRows(strength) {
     const plan = `${exercise.planned_sets}×${exercise.planned_reps}${load}`;
     const name = plannedStrengthName(exercise);
     return h("li", null, exercise.status === "matched"
-      ? `${name}: ${exercise.completed_sets}/${exercise.planned_sets} Sätze erreicht · Ist ${(exercise.reps || []).map((reps) => reps ?? "?").join("/") || "–"} Wdh. · Plan ${plan}`
+      ? `${name}: ${calendarMetricNumber(exercise.completed_sets)}/${exercise.planned_sets} Sätze erreicht · Ist ${(exercise.reps || []).map((reps) => reps ?? "?").join("/") || "–"} Wdh. · Plan ${plan}`
       : `${name}: nicht zugeordnet · Plan ${plan}`);
   }));
 }

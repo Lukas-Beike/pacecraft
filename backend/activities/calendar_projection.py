@@ -12,7 +12,11 @@ from backend.activities.matching import (
     match_planned_workouts,
 )
 from backend.activities.matching import first_present as _first_present
-from backend.activities.strength_sets import STRENGTH_KEY, plan_comparison
+from backend.activities.strength_sets import (
+    STRENGTH_KEY,
+    plan_comparison,
+    trained_structure,
+)
 from backend.athlete.local_date import iso_date_prefix
 from backend.canonical.activity_summary import summary_leading_duration_s
 from backend.canonical.decimal_text import provider_number as _as_number
@@ -158,10 +162,15 @@ def _workout_compliance_percentage(
 def _strength_compliance(
     event: dict[str, Any], activity: dict[str, Any] | None
 ) -> dict[str, Any] | None:
-    """Planned against executed sets when both sides exist and an exercise matched."""
-    structure = event.get("strength_structure")
+    """Planned against executed sets when both sides exist and an exercise matched.
+
+    The plan is the structure the session trained, not a later edit (#3521).
+    """
     executed = None if activity is None else activity.get(STRENGTH_KEY)
-    if not isinstance(structure, list) or not isinstance(executed, dict):
+    if activity is None or not isinstance(executed, dict):
+        return None
+    structure = trained_structure(event, activity.get("started_at"))
+    if not isinstance(structure, list):
         return None
     comparison = plan_comparison(
         [item for item in structure if isinstance(item, dict)], executed

@@ -333,6 +333,55 @@ class ChangeHistoryTests(unittest.TestCase):
             {}, profile_body_fat_history(self.db, today + timedelta(days=1))
         )
 
+    def test_a_strength_unit_keeps_the_structures_it_replaced(self):
+        # #3521: a planned unit's earlier strength structures, with the time each
+        # was replaced, oldest first; a unit without an edit to it gets none.
+        from backend.planning.planned_unit_service import with_structure_versions
+
+        version_a = [{"name": "Squat", "sets": 2, "reps": 5}]
+        version_b = [{"name": "Squat", "sets": 3, "reps": 15}]
+        for before, after in ((version_a, version_b), (version_b, version_a)):
+            change_history.record_change(
+                self.db, "planned_unit", "u1", "update",
+                {"strength_structure": before}, {"strength_structure": after},
+            )  # fmt: skip
+        change_history.record_change(
+            self.db, "planned_unit", "u2", "update", {"name": "A"}, {"name": "B"}
+        )
+        replaced = change_history.replaced_values(
+            self.db, "planned_unit", "strength_structure"
+        )
+        self.assertEqual(
+            [version_a, version_b], [value for _at, value in replaced["u1"]]
+        )
+        self.assertNotIn("u2", replaced)
+        units = [
+            {"id": "u1", "strength_structure": version_a},
+            {"id": "u2", "strength_structure": version_a},
+            {"id": "u3", "name": "run"},
+        ]
+        with_structure_versions(self.db, units)
+        self.assertEqual(
+            [version_a, version_b],
+            [item["structure"] for item in units[0]["strength_structure_versions"]],
+        )
+        self.assertTrue(
+            all(item["replaced_at"] for item in units[0]["strength_structure_versions"])
+        )
+        self.assertNotIn("strength_structure_versions", units[1])
+        self.assertNotIn("strength_structure_versions", units[2])
+        # A structure over the history's field limit is not kept: its version is
+        # None, which trained_structure treats as unknown (current plan).
+        oversized = [{"name": "Squat " + "x" * 4100, "sets": 3, "reps": 5}]
+        change_history.record_change(
+            self.db, "planned_unit", "u4", "update",
+            {"strength_structure": oversized}, {"strength_structure": version_b},
+        )  # fmt: skip
+        replaced = change_history.replaced_values(
+            self.db, "planned_unit", "strength_structure"
+        )
+        self.assertEqual([None], [value for _at, value in replaced["u4"]])
+
     def test_unchanged_record_is_skipped_but_undo_is_retained(self):
         value = {"name": "Same"}
         self.assertIsNone(

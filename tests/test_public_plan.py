@@ -117,7 +117,10 @@ class PublicPlanStateServiceTests(unittest.TestCase):
         ):
             state = service.read(local_only=True)
 
-        services["planned"].list.assert_called_once_with(500, push_state=True)
+        # #3521: the calendar reads the earlier strength structures too.
+        services["planned"].list.assert_called_once_with(
+            500, push_state=True, trained_versions=True
+        )
         services["feedback"].attach_to_activities.assert_called_once_with(
             snapshot["recent_activities"][:1000]
         )
@@ -237,7 +240,9 @@ class PublicPlanStateServiceTests(unittest.TestCase):
             entries = service.read_training_day(date(2026, 11, 2))
 
         window = (date(2026, 11, 1), date(2026, 11, 3))
-        services["planned"].list_between.assert_called_once_with(*window)
+        services["planned"].list_between.assert_called_once_with(
+            *window, trained_versions=True
+        )
         self.assertEqual(window, activity_rows.between.call_args.args[1:])
         self.assertEqual([{"id": "a1"}], project.call_args.args[1])
         self.assertEqual([{"id": "u1", "training_load": 30}], entries)
