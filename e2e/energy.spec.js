@@ -326,6 +326,9 @@ test("@responsive the energy goal is set in Körper and priced in the diary", as
   await expect(page).toHaveURL(/#nutrition\/body$/);
   const dialog = page.locator("#energyGoalDialog");
   await expect(dialog).toBeVisible();
+  // Any whole kcal the API accepts can be entered (Gitar on #3558).
+  await dialog.getByLabel("Defizit pro Tag (kcal)").fill("420");
+  expect(await dialog.getByLabel("Defizit pro Tag (kcal)").evaluate((input) => input.validity.valid)).toBeTruthy();
   await dialog.getByLabel("Defizit pro Tag (kcal)").fill("500");
   await expect(dialog.locator("#energyGoalDialogWeek")).toHaveText("≈ 0,45 kg Fett pro Woche");
   await dialog.getByText("Halten").click();

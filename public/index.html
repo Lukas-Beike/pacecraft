@@ -771,7 +771,7 @@
     <form id="energyGoalDialogForm" class="confirmation-dialog">
       <h2 id="energyGoalDialogTitle">Energieziel</h2>
       <fieldset class="segmented-control"><legend class="sr-only">Ziel</legend><label><input type="radio" name="goal" value="lose" checked>Abnehmen</label><label><input type="radio" name="goal" value="hold">Halten</label><label><input type="radio" name="goal" value="build">Aufbauen</label></fieldset>
-      <label for="energyGoalDialogKcal"><span id="energyGoalDialogKcalLabel">Defizit pro Tag (kcal)</span><input id="energyGoalDialogKcal" name="kcal" type="number" min="0" max="1500" step="50" inputmode="numeric"></label>
+      <label for="energyGoalDialogKcal"><span id="energyGoalDialogKcalLabel">Defizit pro Tag (kcal)</span><input id="energyGoalDialogKcal" name="kcal" type="number" min="0" max="1500" step="1" inputmode="numeric"></label>
       <output id="energyGoalDialogWeek" class="tab-sync-detail"></output>
       <output id="energyGoalDialogStatus" class="tab-sync-detail" aria-live="polite"></output>
       <div class="dialog-actions"><button type="button" id="energyGoalDialogCancel" class="secondary-button">Abbrechen</button><button type="button" id="energyGoalDialogRemove" class="secondary-button" hidden>Entfernen</button><button type="submit" id="energyGoalDialogSave" class="adaptive-planning-button">Speichern</button></div>
