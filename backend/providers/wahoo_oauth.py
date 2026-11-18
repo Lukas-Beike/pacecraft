@@ -22,6 +22,7 @@ WAHOO_TOKEN_URL = f"{WAHOO_API_BASE}/oauth/token"
 WAHOO_PERMISSIONS_URL = f"{WAHOO_API_BASE}/v1/permissions"
 WAHOO_SCOPES = (
     "user_read",
+    "user_write",
     "workouts_read",
     "workouts_write",
     "plans_read",
@@ -107,7 +108,9 @@ class WahooOAuthClient:
         )
         return f"{WAHOO_AUTHORIZE_URL}?{query}"
 
-    def _token_request(self, fields: dict[str, str]) -> WahooTokenGrant:
+    def _token_request(
+        self, fields: dict[str, str], granted: str | None = None
+    ) -> WahooTokenGrant:
         config = self._config()
         body = urlencode(
             {
@@ -124,7 +127,7 @@ class WahooOAuthClient:
             timeout=TOKEN_TIMEOUT_SECONDS,
             service=WAHOO_SERVICE,
         )
-        return _grant_from_payload(payload, self.scope)
+        return _grant_from_payload(payload, granted or self.scope)
 
     def exchange_code(self, code: str) -> WahooTokenGrant:
         return self._token_request(
@@ -135,9 +138,13 @@ class WahooOAuthClient:
             }
         )
 
-    def refresh(self, refresh_token: str) -> WahooTokenGrant:
+    def refresh(
+        self, refresh_token: str, granted: str | None = None
+    ) -> WahooTokenGrant:
+        """Rotate the tokens; a response without a scope keeps ``granted``,
+        so an older grant never gains a scope it lacks (#3559)."""
         return self._token_request(
-            {"grant_type": "refresh_token", "refresh_token": refresh_token}
+            {"grant_type": "refresh_token", "refresh_token": refresh_token}, granted
         )
 
     def deauthorize(self, access_token: str) -> None:

@@ -469,6 +469,11 @@ class ProdChecksTests(unittest.TestCase):
                 "skinfolds_with_body_fat": 0,
                 "newest_skinfold_age_days": None,
                 "today_resting_days_back": 1,
+                # #3557: weigh-in days per source, dropped days per provider.
+                "latest_window_weighin_sources": {
+                    "by_source": {"app": 12, "garmin": 3},
+                    "dropped_days": {"wahoo": 28},
+                },
                 "planted": "never printed",
             }
         }
@@ -485,6 +490,9 @@ class ProdChecksTests(unittest.TestCase):
             f'{prefix}latest_window_insufficient "weight_span"',
             f"{prefix}newest_skinfold_age_days null",
             f"{prefix}today_resting_days_back 1",
+            f"{prefix}latest_window_weighin_sources.by_source.app 12",
+            f"{prefix}latest_window_weighin_sources.by_source.garmin 3",
+            f"{prefix}latest_window_weighin_sources.dropped_days.wahoo 28",
         ):
             self.assertIn(expected, lines)
         self.assertFalse(any("planted" in line for line in lines))
@@ -569,6 +577,13 @@ class ProdChecksTests(unittest.TestCase):
                 "unlinked_uploads": 0,
                 "day": "2026-11-15 never printed",
             },
+            "wahoo_weight_push": {
+                "sent": 2,
+                "failed": 1,
+                "retried": 1,
+                "pending": 0,
+                "sent_kg": "80.4 never printed",
+            },
             "backup": {
                 "known": True,
                 "age_hours": 3.5,
@@ -643,6 +658,9 @@ class ProdChecksTests(unittest.TestCase):
             "garmin_body_push": [
                 "failed 1", "linked_days 2", "pending_days 1", "removed 0",
                 "retried 1", "sent 3", "unlinked_uploads 0",
+            ],
+            "wahoo_weight_push": [
+                "failed 1", "pending 0", "retried 1", "sent 2",
             ],
             "garmin_strength_push": [
                 "garmin.several_exercises 1", "garmin.units 2", "garmin.with_kg 1",

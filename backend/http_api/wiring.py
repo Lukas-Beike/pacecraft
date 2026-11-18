@@ -514,6 +514,11 @@ def _athlete_write_routes(
         """Mirror an entered body day to Garmin Connect (#3403)."""
         return str(ctx.garmin.body_push_service().push(day))
 
+    def weight_changed(day: date) -> str:
+        """Also set the Wahoo profile weight, in the background (#3559)."""
+        ctx.wahoo.weight_push_service().start()
+        return body_changed(day)
+
     return (
         SettingsPutRoutes(ctx.settings),
         AthletePutRoutes(
@@ -524,7 +529,7 @@ def _athlete_write_routes(
                 athlete.profile()
             ).export(profile, revision, deadline),
             skinfold_service=lambda: athlete.skinfolds(body_changed),
-            weight_service=lambda: athlete.weight_entries(body_changed),
+            weight_service=lambda: athlete.weight_entries(weight_changed),
             body_fat_service=lambda: athlete.body_fat_entries(body_changed),
         ),
         AuthPostRoutes(session_auth_service, ctx.maintenance),

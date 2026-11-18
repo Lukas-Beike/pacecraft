@@ -52,12 +52,11 @@ from backend.nutrition.energy_inputs import (
     resolve_body,
     skinfold_state,
 )
+from backend.performance.activity_energy import TEF_ERROR_KCAL
 from backend.providers.source_labels import SourceView, provider_label
 
 # The fit needs this many windows shared by every compared source (#3187).
 MIN_SHARED_WINDOWS = 4
-# The daily band adds this share of the own activity, as M12's derived rate does.
-ACTIVITY_BAND_SHARE = 0.10
 FORMULAS = {
     "katch_mcardle": RestingFormula.KATCH_MCARDLE,
     "cunningham": RestingFormula.CUNNINGHAM,
@@ -85,7 +84,9 @@ def _formula_prediction(
     activity, tef = window.activity_kcal_raw, window.tef_kcal
     if activity is None or tef is None:
         return resting, band, None, None
-    total_band = math.hypot(band, ACTIVITY_BAND_SHARE * activity)
+    # Each activity part and digestion carry their M11 errors, as M12's derived
+    # rate does (#3552).
+    total_band = math.hypot(band, window.activity_error_kcal_raw, TEF_ERROR_KCAL)
     return resting, band, resting + activity + tef, total_band
 
 
@@ -681,6 +682,7 @@ def _day_window(inputs: EnergyInputs, latest: EnergyWindow, day: date) -> Energy
             end=day,
             days=1,
             activity_kcal_raw=values.activity_kcal,
+            activity_error_kcal_raw=values.activity_error_kcal,
             neat_kcal_raw=values.neat_kcal,
             sport_kcal_raw=values.sport_kcal,
             tef_kcal=day_tef(values) if values.entries else None,

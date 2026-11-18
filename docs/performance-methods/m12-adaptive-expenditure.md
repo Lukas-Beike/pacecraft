@@ -1,8 +1,8 @@
 # M12 — Adaptive daily expenditure from intake and the weight trend
 
 - **Card:** M12
-- **Card version:** 3
-- **Method ID:** adaptive-expenditure v3 (#3100, #3187, #3255)
+- **Card version:** 4
+- **Method ID:** adaptive-expenditure v4 (#3100, #3187, #3255, #3552)
 - **Status:** method implemented (`backend/nutrition/energy_balance.py`); the reader, diagnostics and display follow (#3100, #3099)
 - **Classification:** model estimate
 - **Literature checked:** 2026-11-15
@@ -51,8 +51,10 @@ estimate. It never rewrites logged values and never falls back to a formula.
    uncalibrated M11 activity over the windows, combined with the prior 1 ± 0.10
    as a precision-weighted mean, then clamped to 0.85–1.15. It stays 1 with
    fewer than 4 windows or no spread in activity.
-7. **Derived resting rate:** `TDEE − k × activity − TEF`. Its band adds 10 % of
-   the activity term.
+7. **Derived resting rate:** `TDEE − k × activity − TEF`. Its band adds `k`
+   times the window's mean M11 activity error (each part's method share, not
+   averaged out across days) and the TEF error of 80 kcal/day, in quadrature
+   (#3552).
    The activity is shown in two parts (split A, #3100): NEAT (steps outside
    sessions and floors) and the priced sessions, each as the mean over the
    same days as the activity, raw and times `k`. They add up to the
@@ -95,6 +97,16 @@ noise widens it.
 28-day windows ending weekly over the last 12 weeks. Intake comes from the
 diary, the weight from canonical weigh-ins, body fat from skinfold
 measurements (#3099), and the activity and TEF terms from M11.
+
+Weigh-ins come only from the app (athlete decision, #3557): weights entered
+in the app and the profile's weights from the change history, dated by the
+day of the save. Garmin's weights are copies of them and count only on a day
+without an app weight; a provider's stored profile weight (Wahoo `user_read`)
+and any other provider never count. The profile's body fat values are dated
+3-site skinfold readings and count as skinfolds; Garmin's body fat values fill
+only days without an app value. The diagnostics count the latest window's
+weigh-in days per source and the dropped days per provider
+(`latest_window_weighin_sources`).
 
 ## Measurement error and uncertainty
 
@@ -185,7 +197,7 @@ bias that is the same on every day is not visible in the band.
 | Constant | Value | Module | Code comment |
 | --- | --- | --- | --- |
 | `METHOD_ID` | `'adaptive-expenditure'` | `backend/nutrition/energy_balance.py` |  |
-| `METHOD_VERSION` | `3` | `backend/nutrition/energy_balance.py` | Bump when a formula or constant below changes the estimate. |
+| `METHOD_VERSION` | `4` | `backend/nutrition/energy_balance.py` | Bump when a formula or constant below changes the estimate. |
 | `WINDOW_DAYS` | `28` | `backend/nutrition/energy_balance.py` | Days per window and windows per week of the rolling view (#3099, #3100). |
 | `TREND_HALF_LIFE_DAYS` | `10.0` | `backend/nutrition/energy_balance.py` | Half-life in days of the exponentially weighted weight trend. |
 | `MIN_COMPLETE_DAYS` | `14` | `backend/nutrition/energy_balance.py` | A window needs this many complete logging days, weigh-ins and days between its first and last weigh-in; otherwise it gives its reason, never a formula. |

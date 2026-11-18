@@ -35,6 +35,9 @@ every named number the code fixes. A test fails when it is out of date.
 | `KCAL_PER_G_CARBOHYDRATE` | `4.0` | `backend/performance/activity_energy.py` |  |
 | `KCAL_PER_G_FAT` | `9.0` | `backend/performance/activity_energy.py` |  |
 | `EPOC_SHARE` | `0.06` | `backend/performance/activity_energy.py` | Optional excess post-exercise oxygen consumption for sessions above the threshold: 6 % of the net session cost, the low end of LaForgia et al. 2006 (J Sports Sci 24:1247, 6-15 %). Off unless asked for; weak evidence. |
+| `METHOD_ERROR_SHARE` | `{'minetti': 0.1, 'power': 0.1, 'flex_hr': 0.15, 'keytel': 0.3, 'met': 0.5}` | `backend/performance/activity_energy.py` | The 95 % error of a session's net cost as a share of it, by M11 method: the upper end of each expected error (method comment on #3100, #3552): running (Minetti) +-8-10 %, cycling power +-10 %, flex-HR +-10-15 %, Keytel +-20-30 %, MET (strength) +-30-50 %. A method not listed takes the widest share. |
+| `STEP_ERROR_SHARE` | `0.15` | `backend/performance/activity_energy.py` | Everyday energy from steps carries the step length's +-10-15 %. |
+| `TEF_ERROR_KCAL` | `80.0` | `backend/performance/activity_energy.py` | Thermic effect of food: +-30-80 kcal per day, the upper end. |
 | `ENTERED_LABEL` | `'eingetragen'` | `backend/performance/body.py` | The source of one day's value in the merged body series (#3464). |
 | `WINDOW_DAYS` | `84` | `backend/performance/canonical_body.py` |  |
 | `WEIGHT_BOUNDS` | `(30.0, 300.0)` | `backend/performance/canonical_body.py` |  |

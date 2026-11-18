@@ -110,6 +110,7 @@ def build_sync_job_execution(
                 sync=ctx.wahoo.sync_service(),
                 plan_push=ctx.wahoo.plan_push_service(),
                 stream_backfill=ctx.wahoo.stream_backfill_service(),
+                weight_push=ctx.wahoo.weight_push_service(),
             ),
         }
         return sync_executor.SyncJobExecutor(

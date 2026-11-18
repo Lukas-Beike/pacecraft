@@ -158,12 +158,17 @@ SECTION_FIELDS = {
         r"|newest_skinfold_age_days|body_resolved|body_missing|body_source"
         r"|body_source_windows\.(skinfold|entered|device|profile|none)"
         r"|today_resting_days_back|store_method_windows\.(measured|forbes)"
+        # Weigh-in days per source and dropped days per provider (#3557).
+        r"|latest_window_weighin_sources\.(by_source\.(app|garmin)"
+        r"|dropped_days\.(garmin|wahoo|intervals))"
     ),
     # The entered body days mirrored to Garmin Connect, counts only (#3403).
     "garmin_body_push": re.compile(
         r"status|sent|removed|failed|retried|linked_days|pending_days"
         r"|unlinked_uploads"
     ),
+    # The Wahoo profile-weight write, counts only (#3559).
+    "wahoo_weight_push": re.compile(r"status|sent|failed|retried|pending"),
     # Window records the next detail mapper bump downloads again (#2220).
     "mapper_replay": re.compile(
         r"status|garmin\.(window_days|pending|passed_over(_empty|_retries)?|records"
