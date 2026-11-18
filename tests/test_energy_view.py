@@ -709,6 +709,12 @@ class SelectedDayTests(unittest.TestCase):
             (1700, 2100, (END - timedelta(days=1)).isoformat()),
             (device["resting_kcal"], device["total_kcal"], device["resting_from"]),
         )
+        # No active kcal yet counts 0 so far; a negative one is invalid and keeps
+        # the total unknown (#3494, Gitar).
+        for active, total in ((None, 1700), (-5.0, None)):
+            health[today] = {"resting_kcal": 900.0, "active_kcal": active}
+            self.assertEqual(total, self.today_device(health)["total_kcal"])
+        health[today] = {"resting_kcal": 900.0, "active_kcal": 400.0}
         # Nothing in the 7 days before today: no value, and the reason.
         quiet = {today: health[today]}
         quiet[(END - timedelta(days=7)).isoformat()] = {"resting_kcal": 1700.0}

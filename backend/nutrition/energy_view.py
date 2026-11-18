@@ -654,7 +654,8 @@ def _device_day(
         return (None, None, None, None), {"resting_missing": "no_recent_resting"}
     earlier, resting = found
     active = _number(health.get(day.isoformat(), {}).get("active_kcal"))
-    total = resting + max(active or 0.0, 0.0)
+    # Absent active kcal count 0 so far (#3494); a negative value is invalid.
+    total = None if active is not None and active < 0 else resting + (active or 0.0)
     return (resting, None, total, None), {"resting_from": earlier.isoformat()}
 
 
