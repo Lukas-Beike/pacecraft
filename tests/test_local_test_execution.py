@@ -130,7 +130,9 @@ class RunnerEvidenceTests(unittest.TestCase):
                 pass
 
         tests = list(
-            run_tests.iter_tests(unittest.defaultTestLoader.loadTestsFromTestCase(Quick))
+            run_tests.iter_tests(
+                unittest.defaultTestLoader.loadTestsFromTestCase(Quick)
+            )
         )
         # 600: armed before discovery, disarmed after. 0 (a nested in-process
         # main() inside an armed shard): never cancels the shard's timer.
@@ -215,6 +217,60 @@ class RunnerEvidenceTests(unittest.TestCase):
         self.assertEqual(f"    {result['executed_ids'][0]}", lines[reason + 1])
         self.assertEqual(result["tests_run"], 1)
         self.assertEqual(result["executed_ids"], result["selected_ids"])
+
+    def test_schema_evidence_tests_are_listed_with_their_subtests(self):
+        # #3542: the migration evidence modules print each test and subtest, also
+        # into the job summary, so a schema PR's CI page shows them as passed.
+        class Evidence(unittest.TestCase):
+            def test_upgrade(self):
+                for version in (27, 33):
+                    with self.subTest(version=version):
+                        pass
+
+        Evidence.__module__ = "test_db_migrations"
+        out = io.StringIO()
+        with tempfile.TemporaryDirectory() as directory:
+            summary = Path(directory) / "summary.md"
+            with mock.patch.dict(os.environ, {"GITHUB_STEP_SUMMARY": str(summary)}):
+                code, result = self.run_fixture(Evidence, stdout=out)
+            table = summary.read_text(encoding="utf-8")
+        self.assertEqual(0, code)
+        test_id = result["executed_ids"][0]
+        lines = out.getvalue().splitlines()
+        start = lines.index("Schema evidence (3 results):")
+        self.assertEqual(
+            [
+                f"  passed {test_id}",
+                "    passed version=27",
+                "    passed version=33",
+            ],
+            lines[start + 1 : start + 4],
+        )
+        self.assertIn(f"| {test_id} | version=33 | passed |", table)
+
+    def test_a_skipped_encrypted_test_fails_where_sqlcipher_is_installed(self):
+        # #3542: an encrypted evidence test may not skip where SQLCipher exists.
+        class Encrypted(unittest.TestCase):
+            @unittest.skip("SQLCipher requires the Docker runtime")
+            def test_encrypted(self):
+                pass
+
+        Encrypted.__module__ = "test_db_encrypted_upgrade_matrix"
+        for installed, expected in ((True, 1), (False, 0)):
+            out = io.StringIO()
+            with (
+                self.subTest(installed=installed),
+                mock.patch.object(
+                    run_tests, "sqlcipher_installed", return_value=installed
+                ),
+            ):
+                code, result = self.run_fixture(Encrypted, stdout=out)
+                self.assertEqual(expected, code)
+                # The result JSON says the same as the exit code.
+                self.assertEqual("failed" if installed else "passed", result["status"])
+                self.assertEqual(
+                    installed, "encrypted evidence test skipped" in out.getvalue()
+                )
 
     def test_partial_and_list_recording_rejected_without_overwrite(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -627,7 +683,9 @@ class SupervisorTests(unittest.TestCase):
                 except (FileNotFoundError, PermissionError) as error:
                     last_error = error
                     time.sleep(0.02)
-            self.assertIsNotNone(observed, f"owned descendant reached readiness: {last_error!r}")
+            self.assertIsNotNone(
+                observed, f"owned descendant reached readiness: {last_error!r}"
+            )
             if os.name == "nt":
                 kernel = ctypes.WinDLL("kernel32", use_last_error=True)
                 kernel.OpenProcess.argtypes = [
