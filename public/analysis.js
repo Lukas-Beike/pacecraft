@@ -1745,7 +1745,15 @@ function energyInfo(read) {
 // Split A (athlete decision 2026-11-16): one stacked bar per row; parts computed alike for every row are hatched.
 const ENERGY_PARTS = [["resting_kcal", "resting", "Ruhe"], ["neat_kcal", "neat", "Alltag"], ["sport_kcal", "sport", "Sport"], ["tef_kcal", "tef", "Verdauung"]];
 
-function energySplitRow(row) {
+// A strength session's MET follows its session RPE (athlete decision, #3530); the formula rows name both.
+function energyStrengthNote(strength) {
+  return (strength || []).map(({ rpe, met }) => {
+    const rating = rpe == null ? "ohne RPE" : "RPE " + formatWhole(rpe);
+    return `Kraft ${rating}, MET ${met.toLocaleString("de-DE")}`;
+  }).join("; ");
+}
+
+function energySplitRow(row, strength = "") {
   const split = row.split;
   const total = split ? ENERGY_PARTS.reduce((sum, [key]) => sum + (split[key] || 0), 0) : 0;
   if (!total) return null;
@@ -1753,7 +1761,8 @@ function energySplitRow(row) {
     const name = index === 0 && row.source === "own" ? "Ruhe (Rest)" : label;
     if (index === 0 && row.resting_implausible) return `${name} ${ENERGY_IMPLAUSIBLE} (${ENERGY_IMPLAUSIBLE_REASON})`;
     const band = index === 0 && row.resting_band_kcal != null && split[key] != null ? ` (${energyKcalRange(split[key], row.resting_band_kcal).join("–")})` : "";
-    return `${name} ${energySplitValue(key, split[key], row.source, row.pending_parts?.includes(part))}${band}`;
+    const note = key === "sport_kcal" && strength ? ` (${strength})` : "";
+    return `${name} ${energySplitValue(key, split[key], row.source, row.pending_parts?.includes(part))}${band}${note}`;
   }).join(" · ");
   const bar = h("div", { className: "energy-split", role: "img", "aria-label": text });
   for (const [key, part] of ENERGY_PARTS) {
@@ -1849,7 +1858,7 @@ function energyTable(read) {
     const fit = energyFitMarker(read, source);
     return [h("tr", { dataset: fit ? { energySource: source, fit } : { energySource: source } },
       h("th", { scope: "row", dataset: { color: String(color) } }, label ?? row.label, ...energyRowNote(read, source, row)),
-      ...energyValueCells(read, source, row)), energySplitRow(row)].filter(Boolean);
+      ...energyValueCells(read, source, row)), energySplitRow(row, source === "device" ? "" : energyStrengthNote(read.strength))].filter(Boolean);
   });
   return h("table", { className: "current-performance-table" }, h("caption", null, "Energieverbrauch ", ...energyInfo(read)),
     energyTableHead(), h("tbody", null, rows));

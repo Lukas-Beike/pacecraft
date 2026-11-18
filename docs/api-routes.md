@@ -403,7 +403,8 @@ when its residual band lies entirely below the resting reference band,
 with its resting value and band then null), `best` (the source whose lead over the next
 exceeds the adaptive TDEE's mean band over at least 4 shared windows,
 else null), `fit` (`shared_windows`, `windows`, `min_windows`,
-`reference_band_kcal`), `flagged` (meals marked as estimated: `days` in
+`reference_band_kcal`), `strength` (the day's strength sessions with `rpe`, local first, the
+`met` it set and `kcal`, #3530), `flagged` (meals marked as estimated: `days` in
 the latest window, `unflagged` from the latest window without any
 flagged day or null, `corrected` with the learned per-entry correction
 or null, `bias_pct` and `bias_band_pct` or null), `basis` (`days`, `complete_days`,

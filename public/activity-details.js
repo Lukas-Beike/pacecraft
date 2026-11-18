@@ -167,8 +167,10 @@
         const generation = ++loadGeneration;
         const result = await api(`/api/activities/${encodeURIComponent(activityId)}/feedback`, { method: "POST", body: JSON.stringify(value) });
         const previous = shown; shown = result.activity_feedback;
+        // A strength session's RPE sets its energy (#3530): the next energy table reads it anew.
+        resetEnergy();
         status.textContent = result.activity_feedback ? "Feedback gespeichert. " : "Feedback entfernt. ";
-        if (result.change?.id) status.append(feedbackUndoButton(api, result.change, activityId, status, () => ++loadGeneration, (response, generation) => { shown = previous; fill(previous); void applyLoad(generation, response); }));
+        if (result.change?.id) status.append(feedbackUndoButton(api, result.change, activityId, status, () => ++loadGeneration, (response, generation) => { shown = previous; fill(previous); resetEnergy(); void applyLoad(generation, response); }));
         void applyLoad(generation, result);
       } catch (error) { status.textContent = error.message; } finally { save.disabled = false; }
     });

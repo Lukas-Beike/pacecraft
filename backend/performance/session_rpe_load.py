@@ -91,7 +91,7 @@ def _rpe_scale(source: str | None, label: str | None) -> str | None:
     return _RPE_SCALES[source]
 
 
-def _rating(
+def session_rating(
     summary: Mapping[str, Any], feedback: Mapping[str, Any] | None
 ) -> tuple[float, str, str] | str:
     """The session's RPE with its source and label, or the reason it has none."""
@@ -157,7 +157,7 @@ def session_load(
     timezone: str | None = None,
 ) -> tuple[dict[str, Any], float | None]:
     """One session's output entry and its unrounded AU, or ``None`` with a reason."""
-    rating = _rating(summary, feedback)
+    rating = session_rating(summary, feedback)
     rpe, source, label = (None, None, None) if isinstance(rating, str) else rating
     raw_elapsed = _finite(summary.get("elapsed_duration_s"))
     elapsed = raw_elapsed if raw_elapsed is not None and raw_elapsed > 0 else None

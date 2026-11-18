@@ -551,9 +551,12 @@ class EnergyViewTests(unittest.TestCase):
         # The shown day DAY1 has Garmin's resting value; DAY3 has none.
         self.assertEqual((DAY1.isoformat(), False), (view["day"], view["day_partial"]))
         self.assertEqual(1700, row(view, "device")["resting_kcal"])
-        self.assertIsNone(
-            row(read_energy_view(None, sources(), DAY3), "device")["resting_kcal"]
-        )
+        day3 = read_energy_view(None, sources(), DAY3)
+        self.assertIsNone(row(day3, "device")["resting_kcal"])
+        # #3530: the day's strength session names the RPE and MET that priced
+        # it; without a rating MET 3.5: 2.5 x 1,680 x 3,600 / 86,400 = 175.
+        self.assertEqual([], view["strength"])
+        self.assertEqual([{"rpe": None, "met": 3.5, "kcal": 175}], day3["strength"])
         # 70 kg at 12 %: 61.6 kg lean mass, Katch-McArdle 370 + 21.6 x 61.6.
         self.assertEqual(1701, row(view, "katch_mcardle")["resting_kcal"])
         self.assertEqual(DAY1.isoformat(), view["body"]["date"])
