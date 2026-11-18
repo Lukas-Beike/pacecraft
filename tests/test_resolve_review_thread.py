@@ -192,6 +192,11 @@ class GuardHookTests(unittest.TestCase):
             self.decide("python scripts/resolve_review_thread.py", err=err), 2
         )
         self.assertNotIn("Matched word", err.getvalue())
+        # #3509 (Gitar): a ripgrep block says what is blocked, not "spell it out".
+        err = io.StringIO()
+        self.assertEqual(self.decide("rg --pre python x scripts", err=err), 2)
+        self.assertIn("ripgrep's --pre, --hostname-bin", err.getvalue())
+        self.assertNotIn("spell the path out", err.getvalue())
 
     def test_only_the_exact_call_from_an_unchanged_checkout_runs(self):
         exact = "python scripts/resolve_review_thread.py 2671 PRRT_a1"
@@ -346,6 +351,46 @@ class GuardHookTests(unittest.TestCase):
             "cd scripts && python ${PWD}/r* 2671 PRRT_a1",
             "cd scripts && python ~+/r* 2671 PRRT_a1",
             "cd scripts && python %CD%\\r* 2671 PRRT_a1",
+            # #3509: quoted words a blank apart stay apart in bash; ripgrep's
+            # --pre and --hostname-bin run a program on the files it searches.
+            "python '-u' 'scripts/'resolve_review_threa?.py 1 PRRT_x",
+            "python 'x' 'scripts/'r?solve_review_thread.py",
+            "rg --pre=python x scripts",
+            'rg "--pre" python x .',
+            "/usr/bin/rg -n --hostname-bin=python x",
+            "ls; rg -l x --pre python scripts",
+            # Bypass review: quoted, pathed, expanded or indirect ripgrep runs.
+            "rg '--pre' 'python' x scripts",
+            "rg '--hostname-bin' 'python' x",
+            "C:\\tools\\rg.exe --pre python x scripts",
+            "a=`rg --pre python x scripts`",
+            "&{rg --pre python x scripts}",
+            "rg --pr${x}e python x scripts",
+            "rg --pr$@e python x scripts",
+            "o=--pre; rg $o python x scripts",
+            "x=rg; $x --pre python x scripts",
+            "echo --pre python x scripts | xargs rg",
+            "/usr/bin/r[g] --pre python x scripts",
+            "printf -- '--pre=python' > c; RIPGREP_CONFIG_PATH=c rg x scripts",
+            # Second round: empty substitutions and brace lists inside the option.
+            "rg --p$()re python x scripts",
+            "rg --p$(:)re python x scripts",
+            "rg --hostname$()-bin python x",
+            "export RIPGREP_CONFIG$()_PATH=c; rg x scripts",
+            "rg --{pre,pre} python x scripts",
+            # Gitar on #3523: every item of a brace list, and combined lists.
+            "rg --pr{etty,e} python x scripts",
+            "rg --{pretty,pre} python x scripts",
+            "rg --hostname{x,-bin}=python x",
+            "rg --{x,p}r{y,e} python x scripts",
+            # Gitar: a quoted or escaped blank inside a brace list.
+            "rg -{' ',-}pre python x scripts",
+            "rg -{\\ ,-}pre python x scripts",
+            # Gitar: a line continuation or a quoted line break in the list.
+            "rg -{\\\n,-}pre python x scripts",
+            "rg -{'\n',-}pre python x scripts",
+            # A brace expansion too large to read blocks.
+            "rg x --" + "{a,b}" * 20,
         ):
             with self.subTest(command):
                 self.assertEqual(self.decide(command), 2)
@@ -369,6 +414,17 @@ class GuardHookTests(unittest.TestCase):
             "echo " + "[a]" * 300,
             "python - <<'EOF'\n" + "x = [1, [2]]\n" * 300 + "EOF",
             'git commit -m "fix: [' + "words " * 60 + '"',
+            "rg -n 'pre' docs",
+            "rg -n x --pretty docs",
+            "npm install --prefix tools",
+            # Brace lists without `-` or `_` cannot spell a ripgrep option and
+            # stay unexpanded; long commands stay within the budget (#3509).
+            "echo " + "{a,b}" * 20,
+            "cat <<'EOF'\n" + '{"key":1,"other":2}\n' * 4000 + "EOF",
+            "python - <<'EOF'\n# it's a test\n"
+            + "row = {'first_key': 1, 'second_key': 2}\n" * 4000
+            + "EOF",
+            "git log --pretty=oneline",
         ):
             with self.subTest(command):
                 self.assertEqual(self.decide(command), 0)
