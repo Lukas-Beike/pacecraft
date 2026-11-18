@@ -18,7 +18,7 @@ from typing import Final
 
 METHOD_ID: Final = "body-composition-resting"
 # Bump with the M13 card version when a formula or constant below changes.
-METHOD_VERSION: Final = 1
+METHOD_VERSION: Final = 2
 
 
 class Sex(StrEnum):

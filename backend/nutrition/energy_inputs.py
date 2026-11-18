@@ -158,12 +158,18 @@ def recent_fat_pct(
     return folds[newest] if newest is not None and newest >= since else None
 
 
-def latest_value(
-    observations: Iterable[Observation], app: Mapping[date, float] | None = None
-) -> float | None:
+def latest_value(observations: Iterable[Observation]) -> float | None:
     """The last day's value under the weigh-in source rule, or None."""
-    values = weighins(observations, app)
+    values = weighins(observations)
     return values[max(values)] if values else None
+
+
+def current_weight(
+    observations: Iterable[Observation], app: Mapping[date, float], day: date
+) -> float | None:
+    """The current weight on ``day`` under the weigh-in source rule: the same
+    lag-free value the formula rows take from ``weight_trend`` (#3551)."""
+    return _mass(weight_trend(weighins(observations, app)), day, None)
 
 
 def session_streams(

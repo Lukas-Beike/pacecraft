@@ -71,12 +71,30 @@ class CompositionAndTrendTests(unittest.TestCase):
         # 0.51963 x 9,441 + 0.48037 x 1,816 = 5,778.2 kcal/kg.
         self.assertAlmostEqual(balance.energy_density(75.0, 15.0), 5778.2, places=0)
 
-    def test_trend_moves_halfway_in_one_half_life(self) -> None:
+    def test_the_current_weight_follows_a_steady_change_without_lag(self) -> None:
+        # #3551: 80 kg today after a steady loss (or gain) of 1 kg per week,
+        # with a scale that reads 0.3 kg high and low on alternate weigh-ins;
+        # the exponential trend lagged 2 to 3.9 kg here.
+        for per_week in (-1.0, 1.0):
+            for every in (1, 2):
+                with self.subTest(per_week=per_week, every=every):
+                    weights = {
+                        END - timedelta(days=n): 80.0
+                        - per_week * n / 7
+                        + (0.3 if (n // every) % 2 else -0.3)
+                        for n in range(0, 56, every)
+                    }
+                    trend = balance.weight_trend(weights)
+                    self.assertLess(abs(trend[END] - 80.0), 0.3)
+        # Too few weigh-ins for a line: their mean; after a gap longer than
+        # the line's span, the last value carries.
         start = date(2026, 1, 1)
-        weights = {start: 80.0}
-        weights.update({start + timedelta(days=n): 70.0 for n in range(1, 11)})
-        trend = balance.weight_trend(weights)
-        self.assertAlmostEqual(trend[start + timedelta(days=10)], 75.0, places=6)
+        sparse = balance.weight_trend({start: 81.0, start + timedelta(days=3): 80.0})
+        self.assertEqual(80.5, sparse[start + timedelta(days=3)])
+        far = start + timedelta(days=40)
+        gap = balance.weight_trend({start: 81.0, far: 79.0})
+        self.assertEqual(81.0, gap[far - timedelta(days=1)])
+        self.assertEqual(79.0, gap[far])
         self.assertEqual(balance.weight_trend({}), {})
 
 

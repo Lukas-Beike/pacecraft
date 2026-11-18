@@ -1,8 +1,8 @@
 # M12 — Adaptive daily expenditure from intake and the weight trend
 
 - **Card:** M12
-- **Card version:** 4
-- **Method ID:** adaptive-expenditure v4 (#3100, #3187, #3255, #3552)
+- **Card version:** 5
+- **Method ID:** adaptive-expenditure v5 (#3100, #3187, #3255, #3552, #3551)
 - **Status:** method implemented (`backend/nutrition/energy_balance.py`); the reader, diagnostics and display follow (#3100, #3099)
 - **Classification:** model estimate
 - **Literature checked:** 2026-11-15
@@ -12,7 +12,7 @@
 
 The athlete's total daily energy expenditure (TDEE) over rolling 4-week
 windows, estimated from their own logged intake and the change in stored
-energy shown by the smoothed weight trend. From it:
+energy shown by the weigh-ins. From it:
 
 - the one activity calibration factor for M11;
 - the derived resting rate, `TDEE − own activity − TEF`;
@@ -23,17 +23,21 @@ estimate. It never rewrites logged values and never falls back to a formula.
 
 ## Formula and units
 
-1. **Weight trend:** exponentially weighted, half-life 10 days, from the first
-   weigh-in on; days without a weigh-in carry it.
+1. **Current weight:** per day from the first weigh-in on, the least-squares
+   line through the weigh-ins of the last 28 days, read at the latest of them,
+   so a steady change has no lag (#3551; an exponential trend lagged it by
+   about 14 weigh-ins). With fewer than 3 weigh-ins or a span below 7 days it
+   is their mean; a day with none in those 28 days carries the previous value.
+   It gives the mass of the formula rows' lean mass, of the activity pricing
+   and of the energy density, and the resting reference uses the same weight.
 2. **Energy density of a weight change:**
    `ρ = p × 9,441 + (1 − p) × 1,816` kcal/kg (39.5 MJ/kg fat and 7.6 MJ/kg lean,
    R68). The fat share `p = FM / (FM + 10.4 kg)` follows Forbes' curve as used by
    R68, with FM from the latest skinfold body fat. Without skinfolds,
    `p = 0.75` (about 7,535 kcal/kg).
 3. **Stored energy per day:** `ρ × slope`, the least-squares slope of the
-   window's own weigh-ins in kg/day. Unlike the trend's change, it has no
-   warm-up lag after the first weigh-in. The trend only supplies the mass for
-   `ρ`.
+   window's own weigh-ins in kg/day. The current weight only supplies the
+   mass for `ρ`.
 4. **Adaptive TDEE:** mean intake of the window's complete days minus the stored
    energy per day. All complete days count; flagged entries only widen the
    band (athlete decision, #3187 item 14). The value "ohne Schätzung" comes
@@ -118,8 +122,8 @@ bias that is the same on every day is not visible in the band.
 
 - Logging bias and expenditure bias cannot be separated (weak evidence).
 - The windows overlap, so their calibration points are correlated.
-- Water and glycogen shifts move the weight without stored energy; the 10-day
-  trend and the 28-day window damp them.
+- Water and glycogen shifts move the weight without stored energy; the 28-day
+  line and the 28-day window damp them.
 
 ## Deviations from the studied procedure
 
@@ -147,7 +151,7 @@ bias that is the same on every day is not visible in the band.
 | Fat / lean energy density | 9,441 / 1,816 kcal/kg | source | R68 (39.5 / 7.6 MJ/kg) |
 | Forbes constant | 10.4 kg | source | R68, Forbes' curve |
 | Fat share without skinfolds | 0.75 | product assumption | about 7,535 kcal/kg, near the common 7,700 |
-| Trend half-life | 10 days | product assumption | damps water shifts, follows real change |
+| Current weight | 28-day line at the latest weigh-in; mean below 3 weigh-ins or 7 days | product assumption | no lag on a steady change, damps single readings (#3551) |
 | Window / step | 28 / 7 days | product assumption | #3099, #3100 |
 | Complete day | ≥ 2 entries, ≥ 60 % of own estimate | product assumption | excludes clearly partial logging |
 | Minimum basis | 14 complete days, 8 weigh-ins, 21-day span | product assumption | stop rule, no formula fallback |
@@ -197,9 +201,11 @@ bias that is the same on every day is not visible in the band.
 | Constant | Value | Module | Code comment |
 | --- | --- | --- | --- |
 | `METHOD_ID` | `'adaptive-expenditure'` | `backend/nutrition/energy_balance.py` |  |
-| `METHOD_VERSION` | `4` | `backend/nutrition/energy_balance.py` | Bump when a formula or constant below changes the estimate. |
+| `METHOD_VERSION` | `5` | `backend/nutrition/energy_balance.py` | Bump when a formula or constant below changes the estimate. |
 | `WINDOW_DAYS` | `28` | `backend/nutrition/energy_balance.py` | Days per window and windows per week of the rolling view (#3099, #3100). |
-| `TREND_HALF_LIFE_DAYS` | `10.0` | `backend/nutrition/energy_balance.py` | Half-life in days of the exponentially weighted weight trend. |
+| `CURRENT_WEIGHT_DAYS` | `28` | `backend/nutrition/energy_balance.py` | A day's current weight is the least-squares line through the weigh-ins of this many days up to it, at its latest weigh-in, so a steady change has no lag (#3551); with fewer weigh-ins or a shorter span, their mean. |
+| `MIN_LINE_WEIGHINS` | `3` | `backend/nutrition/energy_balance.py` |  |
+| `MIN_LINE_SPAN_DAYS` | `7` | `backend/nutrition/energy_balance.py` |  |
 | `MIN_COMPLETE_DAYS` | `14` | `backend/nutrition/energy_balance.py` | A window needs this many complete logging days, weigh-ins and days between its first and last weigh-in; otherwise it gives its reason, never a formula. |
 | `MIN_WEIGHINS` | `8` | `backend/nutrition/energy_balance.py` |  |
 | `MIN_WEIGHT_SPAN_DAYS` | `21` | `backend/nutrition/energy_balance.py` |  |
