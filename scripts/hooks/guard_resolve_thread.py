@@ -48,6 +48,16 @@ ESCAPE = re.compile(
 )
 # A Windows 8.3 short name, also a hashed one: a tilde and a digit.
 SHORT_NAME = re.compile(r"([a-z0-9_]{1,6})~\d")
+# Unquoted characters that end a bash word, so no bracket expression spans
+# them (#3507).
+WORD_END = frozenset(" \t\n;&|<>()")
+# The longest bracket expression read; a longer open one blocks, so padding
+# can neither hide a class nor slow the hook down (#3507).
+MAX_BRACKET = 256
+
+
+class OverlongBracket(ValueError):
+    """A bracket expression that stays open past MAX_BRACKET characters."""
 
 
 SCRIPTS = Path("scripts")
@@ -92,17 +102,24 @@ def local_imports(name: str) -> list[str]:
     """The scripts/ modules one module imports by absolute name."""
     try:
         tree = ast.parse((SCRIPTS / f"{name}.py").read_text(encoding="utf-8"))
-    except (OSError, SyntaxError, ValueError):
+    except OSError, SyntaxError, ValueError:
         return []
     names = [
-        alias.name for node in ast.walk(tree) if isinstance(node, ast.Import)
+        alias.name
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Import)
         for alias in node.names
     ] + [
-        node.module for node in ast.walk(tree)
+        node.module
+        for node in ast.walk(tree)
         if isinstance(node, ast.ImportFrom) and not node.level and node.module
     ]
     tops = {full.split(".")[0] for full in names}
-    return [top for top in tops if (SCRIPTS / f"{top}.py").exists() or (SCRIPTS / top).exists()]
+    return [
+        top
+        for top in tops
+        if (SCRIPTS / f"{top}.py").exists() or (SCRIPTS / top).exists()
+    ]
 
 
 def run_modules() -> set[str]:
@@ -124,7 +141,9 @@ def shadows(entry: str, run: set[str]) -> bool:
     # Names compare case-folded, as a case-insensitive file system resolves them.
     if name in {module.casefold() for module in run}:
         return entry not in {f"{module}.py" for module in run}
-    return name in {module.casefold() for module in (*STARTUP, *sys.stdlib_module_names)}
+    return name in {
+        module.casefold() for module in (*STARTUP, *sys.stdlib_module_names)
+    }
 
 
 def unchanged() -> bool:
@@ -156,7 +175,7 @@ def unescaped(text: str) -> str:
             if match[5]:
                 return chr(int(match[5], 8))
             return unicodedata.lookup(match[6])
-        except (ValueError, KeyError, OverflowError):
+        except ValueError, KeyError, OverflowError:
             # Undecodable text stays as it is, so it can still match.
             return match[0]
 
@@ -175,6 +194,7 @@ def unquoted(text: str, backslash: str = "") -> str:
 def wildened(text: str) -> str:
     """Extglob groups and brace expansions (a list or a range; `{x}` stays
     literal in bash), innermost first, widened to `*`."""
+
     def wide(match: re.Match[str]) -> str:
         group = match[0]
         if group.startswith("{") and "," not in group and ".." not in group:
@@ -196,20 +216,93 @@ def matching_word(command: str) -> str | None:
     text = unescaped(raw)
     if any(NAME in unquoted(form) for form in (raw, text)):
         return NAME
-    # Negated and POSIX character classes as fnmatch reads them.
-    text = re.sub(r"\[:[a-z]+:\]", "a-z0-9_.", text.replace("[^", "[!"))
-    text = DOS_ONE.sub("?", DOS_STAR.sub("*", STREAM.sub("", wildened(text))))
-    # A variable can hold any folder or name.
-    text = VARIABLE.sub("*", text)
+    # Also every bash bracket expression as `?`: an added reading beside the
+    # unchanged one, so it only ever blocks more (#3507).
+    try:
+        readings = (text, bracket_wildcards(text))
+    except OverlongBracket:
+        return "an overlong bracket expression"
+    variants = []
+    for reading in readings:
+        # Negated and POSIX character classes as fnmatch reads them.
+        reading = re.sub(r"\[:[a-z]+:\]", "a-z0-9_.", reading.replace("[^", "[!"))
+        reading = DOS_ONE.sub("?", DOS_STAR.sub("*", STREAM.sub("", wildened(reading))))
+        # A variable can hold any folder or name.
+        reading = VARIABLE.sub("*", reading)
+        variants += [unquoted(reading), unquoted(reading, "/")]
     return next(
         (
             word
-            for variant in (unquoted(text), unquoted(text, "/"))
+            for variant in variants
             for word in WORDS.split(variant)
             if word_reaches_script(word)
         ),
         None,
     )
+
+
+def bracket_end(text: str, start: int) -> int | None:
+    """The index after the bash bracket expression opening at ``start``, read
+    as bash reads it: an optional `!` or `^`, a leading `]` as a member, an
+    escaped or quoted character as a member, and `[.x.]`, `[=x=]` or `[:x:]`
+    classes inside (an unclosed one is a plain member). None when an unquoted
+    word end comes first, so a stray `[` stays a literal; OverlongBracket when
+    it stays open past MAX_BRACKET characters."""
+    limit = min(len(text), start + MAX_BRACKET)
+    first = start + 1
+    first += text[first : first + 1] in ("!", "^")
+    first += text[first : first + 1] == "]"
+    index: int | None = first
+    while index is not None and index < limit and text[index] not in WORD_END:
+        if text[index] == "]":
+            return index + 1
+        index = _after_member(text, index, limit)
+    if index is not None and index >= limit and limit < len(text):
+        raise OverlongBracket
+    return None
+
+
+def _after_member(text: str, index: int, limit: int) -> int | None:
+    """The index after one bracket member, searched up to ``limit``: an escaped
+    character, a quoted run (None when it never closes), a class `[.x.]`,
+    `[=x=]` or `[:x:]`, or one character."""
+    char, after = text[index], text[index + 1 : index + 2]
+    if char in "'\"":
+        close = text.find(char, index + 1, limit)
+        if close < 0 and limit < len(text):
+            raise OverlongBracket
+        return close + 1 if close >= 0 else None
+    if char == "[" and after and after in ".=:":
+        found = text.find(after + "]", index + 2, limit)
+        if found >= 0 and not WORD_END.intersection(text[index:found]):
+            return found + 2
+    return index + 1 + (char == "\\")
+
+
+def bracket_wildcards(text: str) -> str:
+    """Each bash bracket expression outside quotes read as `?`: it matches one
+    character, whatever negation, POSIX class, collating symbol or equivalence
+    class it holds, so none of them hides the name; a quoted `[` is a literal
+    to bash (#3507)."""
+    # The open quote: `'`, `"`, or `$'` (ANSI-C, closed by `'`, with escapes).
+    parts, last, index, quote = [], 0, 0, ""
+    while index < len(text):
+        char = text[index]
+        end = None
+        if quote:
+            quote = "" if char == quote[-1] else quote
+        elif text.startswith("$'", index):
+            quote, index = "$'", index + 1
+        elif char in "'\"":
+            quote = char
+        elif char == "[":
+            end = bracket_end(text, index)
+        if end:
+            parts.append(text[last:index] + "?")
+            last = index = end
+            continue
+        index += 2 if char == "\\" and quote != "'" else 1
+    return "".join([*parts, text[last:]])
 
 
 def word_reaches_script(word: str) -> bool:
@@ -226,7 +319,9 @@ def word_reaches_script(word: str) -> bool:
         folder = folder.rstrip(". ")
     # A file in a plainly named other folder is never the script; a tilde
     # folder (`~+` is the current one) is not plain.
-    plain = folder is not None and not folder.startswith("~") and not GLOB.search(folder)
+    plain = (
+        folder is not None and not folder.startswith("~") and not GLOB.search(folder)
+    )
     if plain and folder not in {".", "..", "scripts"}:
         return False
     # Without a folder, a glob must keep part of the name: `*` and `*.py`

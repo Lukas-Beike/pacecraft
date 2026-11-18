@@ -9,6 +9,7 @@ import re
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
@@ -166,6 +167,18 @@ class GuardHookTests(unittest.TestCase):
         ):
             return guard.main()
 
+    def test_padded_brackets_are_read_in_linear_time(self):
+        # #3507 review: each bracket scan is bounded, so 20 KB of `[`, `[.` or
+        # `[:` reads at once (a quadratic scan took minutes); a padding that
+        # stays open blocks.
+        for padding in ("[" * 20000, "[." * 10000, "[:" * 10000):
+            with self.subTest(padding[:2]):
+                started = time.monotonic()
+                guard.bracket_wildcards(f"echo '{padding}'; ls")
+                with self.assertRaises(guard.OverlongBracket):
+                    guard.bracket_wildcards(padding)
+                self.assertLess(time.monotonic() - started, 5)
+
     def test_the_block_names_the_word_that_matched(self):
         # #3459: a variable path still blocks (fail closed) and the message says
         # why; the plain name keeps the plain message.
@@ -248,6 +261,50 @@ class GuardHookTests(unittest.TestCase):
             "find scripts -name 'resolve*' -exec python {} 2671 PRRT_a1 ;",
             "python s*/r*.py 2671 PRRT_a1",
             "python scripts/resolve_review_threa[[:alpha:]].py 2671 PRRT_a1",
+            # #3507: bash collating symbols and equivalence classes.
+            "python scripts/[[.r.]]esolve_review_thread.py",
+            "python scripts/[[=r=]]esolve_review_thread.py",
+            "python scripts/resolve_review_threa[[.d.][.x.]].py",
+            "python scripts/r[[=e=]]solve_review_thread.py 2671 PRRT_a1",
+            # Bypass review of #3507: a top-level class, negated classes, `=`
+            # and `:` inside a class, and a class pattern spanning words.
+            "python scripts/[.r.]esolve_review_thread.py 1 PRRT_x",
+            "python scripts/[![.x.]]esolve_review_thread.py",
+            "python scripts/[^[=x=]]esolve_review_thread.py",
+            "python scripts/[![:digit:]]esolve_review_thread.py",
+            "python scripts/[=r=]esolve_review_thread.py",
+            "python scripts/[:r:]esolve_review_thread.py",
+            "echo [. ; python scripts/r?solve_review_thread.py 1 x.]",
+            "echo [= ; python scripts/r?solve_review_thread.py 1 x=]",
+            # Second round: an escaped or quoted `]` or separator inside a class,
+            # and an unclosed `[.`, `[=` or `[:` as a plain member.
+            *(
+                # Third round: also after a stray `[` in an earlier word.
+                f"{prefix}python scripts/resolve_review_th{spelling}ead.py"
+                for prefix in ("", "echo [ ; ", "echo a[b ; ", "x=[ ")
+                for spelling in (
+                    "[\\]r]",
+                    '["]"r]',
+                    "[$'\\x5d'r]",
+                    "[r[.]",
+                    "[r[=]",
+                    "[r[:]",
+                    "[\\ r]",
+                    "[';'r]",
+                    "[\\;r]",
+                    "['|'r]",
+                    "['('r]",
+                    "['<'r]",
+                )
+            ),
+            # Fourth round: a quoted `[` earlier is a literal, not an opener;
+            # an ANSI-C quote keeps its escapes; a padded class blocks.
+            "echo '['; python scripts/r[[.e.]]solve_review_thread.py 'x]'",
+            'echo "["; python scripts/r[[.e.]]solve_review_thread.py "x]"',
+            "echo '[' && python scripts/r[[=e=]]solve_review_thread.py 'x]'",
+            "a='['; python scripts/r[[.e.]]solve_review_thread.py b=']'",
+            "echo $'\\''; python scripts/r[[.e.]]solve_review_thread.py 'x]'",
+            "python scripts/r[" + "a" * 300 + "[.e.]]solve_review_thread.py",
             "python {scripts/r,x}*.py 2671 PRRT_a1",
             "python scripts/@(resolve|x)_review_thread.py 2671 PRRT_a1",
             "python scripts/@(res@(olve))_review_thread.py 2671 PRRT_a1",
