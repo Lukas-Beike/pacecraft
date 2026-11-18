@@ -46,7 +46,8 @@ at both widths: `ok|FAIL <width> <step> <ms> ms`; `info ... skipped` when the
 data does not exist (no planned unit, no recorded running dynamics); a missing
 or empty element where data exists is `FAIL` and names the feature it covers.
 `--compare` prints each step's time against the previous walk and a `FAIL` for a
-step that passed before and is skipped now, whatever the reason. Optional steps
+step that passed before and is still skipped after one retry 20 s later (an
+`info` line names the retry), whatever the reason. Optional steps
 are skipped without data, so a skipped step in the notes is read, not ignored.
 A step that needs a kind of unit looks for one that has its element: completed-
 unit steps page back, planned-unit steps (Schuh/Rad geplant, Löschen,

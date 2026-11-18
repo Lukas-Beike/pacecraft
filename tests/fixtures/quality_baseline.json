@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "base": "1777b67c667a2f018168c0262e4b823f8dea805b",
+  "base": "5124ae6b4e494f92157880cdcb5236f31a883089",
   "versions": {
     "ruff": "0.17.5",
     "mypy": "2.4.1"
@@ -1077,12 +1077,6 @@
     {
       "tool": "format",
       "path": "tests/test_http_state_events_get_routes.py",
-      "code": "format",
-      "message_sha256": "f87c4a0ecaf8e40a8d167170353b2aeb564e58f72247b4568c3db29c296f105f"
-    },
-    {
-      "tool": "format",
-      "path": "tests/test_local_test_execution.py",
       "code": "format",
       "message_sha256": "f87c4a0ecaf8e40a8d167170353b2aeb564e58f72247b4568c3db29c296f105f"
     },

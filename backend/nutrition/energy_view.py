@@ -348,6 +348,7 @@ def energy_view(
     bias: tuple[float, float] | None = None,
     body_missing: str | None = None,
     day: date | None = None,
+    goal: Mapping[str, str] | None = None,
 ) -> dict[str, Any]:
     """The source rows of ``day``, each source's fit over the windows, and the basis.
 
@@ -356,7 +357,8 @@ def energy_view(
     that day's resting rate, everyday, sport and digestion (athlete decision,
     #3395); "Aus deinen Daten" takes its resting rate from the latest 28-day
     window and the day's other parts like the formula rows, and its 28-day row
-    with every part's mean is ``own_window``, for Verlauf (#3531).
+    with every part's mean is ``own_window``, for Verlauf (#3531). ``goal`` is
+    the profile's energy goal, priced on the shown day (#3547).
     """
     trend = weight_trend(
         {d: v.weight_kg for d, v in inputs.days.items() if v.weight_kg is not None}
@@ -474,6 +476,53 @@ def energy_view(
         "body": _public_body(day_body),
         # The 28-day row with every part's mean, shown in Verlauf only (#3531).
         "own_window": _own_window_row(shown, implausible, latest),
+        "goal": _energy_goal(rows, best, goal, inputs.days.get(day_window.end)),
+    }
+
+
+# The signed daily kcal of each goal kind (#3547).
+_GOAL_SIGN = {"lose": -1, "hold": 0, "build": 1}
+
+
+def _outlined(rows: Sequence[Mapping[str, Any]], best: str | None) -> str | None:
+    """The row the diary outlines (#3397): the best source, else the nearest
+    one by mean error; the own row never."""
+    if best:
+        return best
+    ranked = [
+        r for r in rows if r["source"] != "own" and r["mean_error_kcal"] is not None
+    ]
+    return min(ranked, key=lambda r: r["mean_error_kcal"])["source"] if ranked else None
+
+
+def _energy_goal(
+    rows: Sequence[Mapping[str, Any]],
+    best: str | None,
+    profile: Mapping[str, str] | None,
+    day: DayInputs | None,
+) -> dict[str, Any] | None:
+    """'Heute noch essen' (#3547): the outlined source's day total (so far
+    today) with the goal's deficit or surplus, less what was eaten."""
+    kind = (profile or {}).get("energy_goal") or ""
+    if kind not in _GOAL_SIGN:
+        return None
+    try:
+        kcal = round(float((profile or {}).get("energy_goal_kcal") or 0))
+    except ValueError:
+        kcal = 0
+    kcal *= abs(_GOAL_SIGN[kind])
+    source = _outlined(rows, best)
+    total = next((r["total_kcal"] for r in rows if r["source"] == source), None)
+    eaten = round(day.intake_kcal or 0) if day else 0
+    target = None if total is None else total + _GOAL_SIGN[kind] * kcal
+    return {
+        "goal": kind,
+        "goal_kcal": kcal,
+        "source": source if total is not None else None,
+        "total_kcal": total,
+        "target_kcal": target,
+        "eaten_kcal": eaten,
+        "remaining_kcal": None if target is None else target - eaten,
     }
 
 
@@ -763,12 +812,12 @@ def read_energy_view(
     day = day or end
     start = min(history_start(end), day)
     last = max(end, day)
-    inputs, _ = read_energy_inputs(db, sources, start, last)
+    inputs, costs = read_energy_inputs(db, sources, start, last)
     health = sources.daily_health(db, start, last)
     windows = energy_windows(inputs, end)
     _, missing = skinfold_state(db, sources, inputs, day)
     # The bias comes from the windows already built, not a second build (Gitar).
-    return energy_view(
+    view = energy_view(
         inputs,
         windows,
         health,
@@ -776,4 +825,12 @@ def read_energy_view(
         windows_bias(windows),
         body_missing=missing,
         day=day,
+        goal=sources.profile(),
     )
+    # The day's strength sessions with the RPE and MET that priced them (#3530).
+    view["strength"] = [
+        {"rpe": cost.rpe, "met": cost.met, "kcal": _round(cost.kcal)}
+        for cost in costs
+        if cost.day == day and cost.met is not None
+    ]
+    return view

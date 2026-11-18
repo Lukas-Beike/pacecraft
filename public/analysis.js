@@ -1539,6 +1539,104 @@ function bodyEditButton(label, open) {
   return button;
 }
 
+// The energy goal (#3547) sits with the body values; the diary's "Heute noch essen" prices it.
+const ENERGY_GOAL_NAMES = { lose: "Abnehmen", hold: "Halten", build: "Aufbauen" };
+const ENERGY_GOAL_KCAL_LABELS = { lose: "Defizit pro Tag (kcal)", build: "Überschuss pro Tag (kcal)" };
+// About 7,700 kcal per kg of body fat, for the weekly equivalent.
+const FAT_KCAL_PER_KG = 7700;
+
+function energyGoalText(profile) {
+  const name = ENERGY_GOAL_NAMES[profile?.energy_goal];
+  if (!name) return "nicht gesetzt";
+  return profile.energy_goal === "hold" ? name : `${name}, ${profile.energy_goal_kcal} kcal/Tag`;
+}
+
+function energyGoalRow() {
+  return h("tr", { id: "energyGoalRow", dataset: { metric: "energy_goal" } }, h("th", { scope: "row" }, "Energieziel"),
+    h("td", null, energyGoalText(state.data?.profile)), h("td", null, bodyEditButton("Energieziel festlegen", openEnergyGoalDialog)));
+}
+
+// The kcal field names deficit or surplus, hides for "Halten", and shows its fat per week.
+function updateEnergyGoalDialog() {
+  const form = document.querySelector("#energyGoalDialogForm");
+  const goal = form.elements.goal.value;
+  const kcal = Number(form.elements.kcal.value);
+  form.elements.kcal.closest("label").hidden = goal === "hold";
+  form.elements.kcal.required = goal !== "hold";
+  document.querySelector("#energyGoalDialogKcalLabel").textContent = ENERGY_GOAL_KCAL_LABELS[goal] || "";
+  const week = (kcal * 7 / FAT_KCAL_PER_KG).toLocaleString("de-DE", { maximumFractionDigits: 2 });
+  document.querySelector("#energyGoalDialogWeek").textContent = goal !== "hold" && kcal > 0 ? `≈ ${week} kg Fett pro Woche` : "";
+}
+
+let energyGoalDialogBound = false;
+
+function bindEnergyGoalDialog() {
+  const form = document.querySelector("#energyGoalDialogForm");
+  if (energyGoalDialogBound || !form) return;
+  energyGoalDialogBound = true;
+  form.addEventListener("input", updateEnergyGoalDialog);
+  form.addEventListener("submit", (event) => {
+    event.preventDefault();
+    const goal = form.elements.goal.value;
+    void saveEnergyGoal({ energy_goal: goal, energy_goal_kcal: goal === "hold" ? "" : form.elements.kcal.value }, document.querySelector("#energyGoalDialogSave"));
+  });
+  const remove = document.querySelector("#energyGoalDialogRemove");
+  remove.addEventListener("click", () => void saveEnergyGoal({ energy_goal: "", energy_goal_kcal: "" }, remove));
+  document.querySelector("#energyGoalDialogCancel").addEventListener("click", () => document.querySelector("#energyGoalDialog").close());
+}
+
+function openEnergyGoalDialog() {
+  bindEnergyGoalDialog();
+  const form = document.querySelector("#energyGoalDialogForm");
+  const profile = state.data?.profile || {};
+  form.elements.goal.value = ENERGY_GOAL_NAMES[profile.energy_goal] ? profile.energy_goal : "lose";
+  form.elements.kcal.value = profile.energy_goal_kcal || "500";
+  document.querySelector("#energyGoalDialogRemove").hidden = !ENERGY_GOAL_NAMES[profile.energy_goal];
+  document.querySelector("#energyGoalDialogStatus").textContent = "";
+  for (const button of form.querySelectorAll("button")) button.disabled = false;
+  updateEnergyGoalDialog();
+  document.querySelector("#energyGoalDialog").showModal();
+}
+
+// The goal is a profile patch; the diary's energy read is priced again with it.
+async function saveEnergyGoal(patch, button) {
+  button.disabled = true;
+  try {
+    const saved = await api("/api/profile", { method: "PUT", body: JSON.stringify(patch) });
+    if (state.data) state.data.profile = saved;
+    resetEnergy();
+    document.querySelector("#energyGoalDialog").close();
+    toast(patch.energy_goal ? "Energieziel gespeichert." : "Energieziel entfernt.");
+    renderBodyAnalysis(state.data?.performance?.history?.body);
+  } catch (error) {
+    document.querySelector("#energyGoalDialogStatus").textContent = error.message;
+    button.disabled = false;
+  }
+}
+
+// "Heute noch essen" (#3547) heads the diary's energy card: the outlined source's day total with
+// the goal, less what was eaten; without a goal a link to the goal row in Körper.
+function energyGoalStrip(read) {
+  const goal = read.goal;
+  if (!goal) {
+    // The link jumps to the goal row in Körper and opens its dialog.
+    const link = h("button", { type: "button", className: "analysis-legend-info" }, "Ziel festlegen");
+    link.addEventListener("click", () => void AppRouter.navigate("nutrition/body", { historyMode: "push" }).then(openEnergyGoalDialog));
+    return h("p", { className: "energy-goal", dataset: { energyGoal: "none" } }, link);
+  }
+  if (goal.remaining_kcal == null) return h("p", { className: "energy-goal muted", dataset: { energyGoal: "pending" } }, "Noch kein Tagesverbrauch für dein Ziel");
+  const kcal = (value) => `${formatWhole(value)} kcal`;
+  const source = ENERGY_SOURCES.find(([name]) => name === goal.source)?.[1] ?? read.rows.find((row) => row.source === goal.source)?.label ?? goal.source;
+  const delta = { lose: `− Ziel-Defizit ${kcal(goal.goal_kcal)}`, build: `+ Ziel-Überschuss ${kcal(goal.goal_kcal)}` }[goal.goal];
+  const lines = [`Verbrauch${read.day_partial ? " bis jetzt" : ""} (${source}) ${kcal(goal.total_kcal)}`, delta, `= Essen für dein Ziel ${kcal(goal.target_kcal)}`, `bisher gegessen ${kcal(goal.eaten_kcal)}`];
+  const left = goal.remaining_kcal < 0 ? `${kcal(-goal.remaining_kcal)} über Ziel` : kcal(goal.remaining_kcal);
+  const target = Math.max(goal.target_kcal, 1);
+  return h("div", { className: "energy-goal", dataset: { energyGoal: goal.goal } },
+    h("p", null, h("span", null, read.day_partial ? "Heute noch essen" : "Noch essen"), h("strong", null, left)),
+    h("progress", { max: String(target), value: String(Math.min(goal.eaten_kcal, target)), "aria-label": "Gegessen von deinem Ziel" }),
+    h("small", null, lines.filter(Boolean).join(" · ")));
+}
+
 // Each source keeps its chart colour in the table, the error chart and the hit-rate bars.
 // The device row's name is the provider label of its daily totals in the read (#3323).
 const ENERGY_SOURCES = [["katch_mcardle", "Katch-McArdle", 1], ["cunningham", "Cunningham", 2], ["device", null, 3], ["own", "Aus deinen Daten", 4]];
@@ -1647,7 +1745,15 @@ function energyInfo(read) {
 // Split A (athlete decision 2026-11-16): one stacked bar per row; parts computed alike for every row are hatched.
 const ENERGY_PARTS = [["resting_kcal", "resting", "Ruhe"], ["neat_kcal", "neat", "Alltag"], ["sport_kcal", "sport", "Sport"], ["tef_kcal", "tef", "Verdauung"]];
 
-function energySplitRow(row) {
+// A strength session's MET follows its session RPE (athlete decision, #3530); the formula rows name both.
+function energyStrengthNote(strength) {
+  return (strength || []).map(({ rpe, met }) => {
+    const rating = rpe == null ? "ohne RPE" : "RPE " + formatWhole(rpe);
+    return `Kraft ${rating}, MET ${met.toLocaleString("de-DE")}`;
+  }).join("; ");
+}
+
+function energySplitRow(row, strength = "") {
   const split = row.split;
   const total = split ? ENERGY_PARTS.reduce((sum, [key]) => sum + (split[key] || 0), 0) : 0;
   if (!total) return null;
@@ -1655,7 +1761,8 @@ function energySplitRow(row) {
     const name = index === 0 && row.source === "own" ? "Ruhe (Rest)" : label;
     if (index === 0 && row.resting_implausible) return `${name} ${ENERGY_IMPLAUSIBLE} (${ENERGY_IMPLAUSIBLE_REASON})`;
     const band = index === 0 && row.resting_band_kcal != null && split[key] != null ? ` (${energyKcalRange(split[key], row.resting_band_kcal).join("–")})` : "";
-    return `${name} ${energySplitValue(key, split[key], row.source, row.pending_parts?.includes(part))}${band}`;
+    const note = key === "sport_kcal" && strength ? ` (${strength})` : "";
+    return `${name} ${energySplitValue(key, split[key], row.source, row.pending_parts?.includes(part))}${band}${note}`;
   }).join(" · ");
   const bar = h("div", { className: "energy-split", role: "img", "aria-label": text });
   for (const [key, part] of ENERGY_PARTS) {
@@ -1751,7 +1858,7 @@ function energyTable(read) {
     const fit = energyFitMarker(read, source);
     return [h("tr", { dataset: fit ? { energySource: source, fit } : { energySource: source } },
       h("th", { scope: "row", dataset: { color: String(color) } }, label ?? row.label, ...energyRowNote(read, source, row)),
-      ...energyValueCells(read, source, row)), energySplitRow(row)].filter(Boolean);
+      ...energyValueCells(read, source, row)), energySplitRow(row, source === "device" ? "" : energyStrengthNote(read.strength))].filter(Boolean);
   });
   return h("table", { className: "current-performance-table" }, h("caption", null, "Energieverbrauch ", ...energyInfo(read)),
     energyTableHead(), h("tbody", null, rows));
@@ -1805,7 +1912,7 @@ function energyPending(day = null) {
 function energyDiaryCards() {
   const pending = energyPending(energyDay());
   if (pending) return [pending];
-  return [h("section", { className: "analysis-chart-card", dataset: { energy: "" } }, energyTable(energyRead), energySplitLegend(energyRead))];
+  return [h("section", { className: "analysis-chart-card", dataset: { energy: "" } }, energyGoalStrip(energyRead), energyTable(energyRead), energySplitLegend(energyRead))];
 }
 
 // "Welche Quelle trifft dein Gewicht?" (A2, athlete decision on #3397): one kcal/day scale for
@@ -1978,6 +2085,7 @@ function renderBodyAnalysis(body) {
   const rows = [bodyOverviewRow("weight_kg", "Gewicht", "kg", weight, bodyEditButton("Gewicht eintragen", openWeightDialog)), fatRow];
   // The fat-free mass stays derived from the two values, without a pencil (#3402).
   if (weight.value != null && fat.value != null) rows.push(bodyOverviewRow("lean_mass_kg", "Fettfreie Masse", "kg", { value: weight.value * (1 - fat.value / 100) }, null));
+  rows.push(energyGoalRow());
   root.append(h("section", "analysis-chart-card", h("table", { className: "current-performance-table", dataset: { bodyOverview: "" } }, h("caption", null, "Körperwerte"), h("tbody", null, rows))));
   const key = bodyHistoryPeriod === "fortnight" ? "14d" : "12w";
   const window = body?.windows?.[key];

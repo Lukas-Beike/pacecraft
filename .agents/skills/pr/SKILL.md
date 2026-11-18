@@ -113,6 +113,10 @@ also gets one adversarial bypass review before the PR (#3102).
 - Ask for concrete inputs or commands the change wrongly allows or fails open
   on, each with an expected result, and for the attacks it ruled out.
 - Add every valid case as a test before the PR.
+- For a hook that judges command text (`scripts/hooks/guard_*.py`), run
+  `python scripts/guard_regression_fuzz.py <hook> --base origin/develop` before
+  the bypass review; a tightening must show "0 newly allowed", and the PR body
+  states that line (#3527).
 - Report the result to whoever asked for the change. In the public PR text,
   describe it neutrally ("tighten detection"), never as a step-by-step bypass.
 - Loosening a text guard (a hook that blocks guarded names in command text,

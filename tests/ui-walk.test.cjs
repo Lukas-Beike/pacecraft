@@ -262,3 +262,28 @@ test("the walk waits while the curve build runs and prints only its state word (
   const lines = walk.reportLines({ loadMs: {}, errors: {}, calendar: {}, marks: null, curves: ready });
   assert.ok(lines.includes(`info curve build ready, waited ${ready.waited} s before the walk`));
 });
+
+test("a step that passed before and skips now is retried once before it is a FAIL (#3540)", async () => {
+  const walk = await load();
+  const waits = [];
+  const wait = async (ms) => waits.push(ms);
+  const runs = (...steps) => async () => steps.shift();
+  const before = { status: "ok", ms: 40 };
+  // A warm-up skip: the retry passes, the step is ok with an info note, no FAIL.
+  const warm = await walk.retriedStep(runs({ status: "skip", why: "no data" }, { status: "ok", ms: 50 }), before, wait);
+  assert.deepEqual(waits, [walk.RETRY_WAIT_MS]);
+  assert.equal(warm.status, "ok");
+  const result = { loadMs: {}, errors: {}, calendar: {}, marks: { assetVersions: [] }, steps: { "phone Kalender: Wochenrückblick": warm } };
+  const lines = [...walk.reportLines(result), ...walk.compareLines(result, { steps: { "phone Kalender: Wochenrückblick": before } })];
+  assert.ok(lines.includes(`info phone Kalender: Wochenrückblick retried once after ${walk.RETRY_WAIT_MS / 1000} s: first skipped (no data)`));
+  assert.ok(!lines.some((line) => line.startsWith("FAIL")));
+  // Skipped twice: still the FAIL, so a real loss stays visible.
+  const lost = await walk.retriedStep(runs({ status: "skip", why: "no data" }, { status: "skip", why: "no data" }), before, wait);
+  const compared = walk.compareLines({ marks: {}, loadMs: {}, steps: { s: lost } }, { steps: { s: before } });
+  assert.ok(compared.includes("FAIL step s passed in the previous walk, skipped now (no data)"));
+  // No retry without a previous pass, nor for a step that did not skip.
+  waits.length = 0;
+  assert.equal((await walk.retriedStep(runs({ status: "skip", why: "none" }), undefined, wait)).status, "skip");
+  assert.equal((await walk.retriedStep(runs({ status: "fail", why: "x" }), before, wait)).status, "fail");
+  assert.deepEqual(waits, []);
+});

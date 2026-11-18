@@ -25,6 +25,7 @@ from backend.athlete.body_composition import (
 )
 from backend.athlete.skinfolds import SkinfoldMeasurement
 from backend.canonical.activity_detail import ActivityStreamSet
+from backend.canonical.activity_summary import stored_activity_key
 from backend.canonical.records import Observation
 from backend.canonical.vocabulary import ProviderId, StreamChannel
 from backend.db.activity_detail_store import detail_sets_for_session
@@ -37,6 +38,11 @@ from backend.nutrition.energy_balance import (
     weight_trend,
 )
 from backend.performance import activity_energy as energy
+from backend.performance.session_rpe_load import (
+    FeedbackLookup,
+    feedback_by_session,
+    session_rating,
+)
 from backend.providers.source_labels import SourceView, provider_label
 
 # Session sports by how M11 prices them.
@@ -70,6 +76,8 @@ class EnergySources:
     skinfolds: Callable[[Any, date], Sequence[SkinfoldMeasurement]] = field(
         default=lambda _db, _day: ()
     )
+    # The sessions' saved feedback, for a strength session's RPE (#3530).
+    feedback: FeedbackLookup | None = None
 
 
 @dataclass(frozen=True)
@@ -82,6 +90,9 @@ class SessionCost:
     steps: float
     # A foot session's ascent leaves the day's floors (#3255); 0 otherwise.
     climb_m: float = 0.0
+    # A strength session's RPE, local first, and the MET it set (#3530).
+    rpe: float | None = None
+    met: float | None = None
 
 
 # Net kcal and method of a session from its mean HR, duration, mass and day.
@@ -266,6 +277,7 @@ def session_cost(
     rmr: float | None,
     hr_cost: HeartRateCost,
     step_m: float | None,
+    rpe: float | None = None,
 ) -> SessionCost:
     """Net cost of one session by its sport, with the M11 method name.
 
@@ -293,6 +305,16 @@ def session_cost(
         return SessionCost(
             day, mass * joules / energy.J_PER_KCAL, "minetti", steps, climb
         )
+    if sport in STRENGTH_SPORTS:
+        # Its MET follows its session RPE (#3530), the general one without.
+        met = energy.strength_met(rpe)
+        kcal = (
+            energy.strength_net_kcal(duration, rmr, met)
+            if duration and rmr is not None
+            else None
+        )
+        method = "met" if kcal is not None else "unknown"
+        return SessionCost(day, kcal, method, steps, climb, rpe, met)
     kcal, method = _timed_cost(summary, sport, duration, rmr, hr_cost, mass, day)
     return SessionCost(day, kcal, method, steps, climb)
 
@@ -331,8 +353,6 @@ def _timed_cost(
     work = _work_kj(summary, duration)
     if sport in RIDE_SPORTS and work:
         return energy.cycling_net_kcal(work, duration, rmr), "power"
-    if sport in STRENGTH_SPORTS:
-        return energy.strength_net_kcal(duration, rmr), "met"
     hr = _number(summary.get("avg_hr"))
     priced = hr_cost(hr, duration, mass, day) if hr else None
     return priced if priced is not None else (None, "unknown")
@@ -395,6 +415,10 @@ def read_energy_inputs(
     rides = [s for s in sessions if str(s.get("sport") or "") in RIDE_SPORTS]
     flex = _flex_fit(rides, rmr) if rmr is not None else None
     hr_cost = _heart_rate_cost(flex, profile, rmr or 0.0)
+    feedback = feedback_by_session(
+        [s for s in sessions if str(s.get("sport") or "") in STRENGTH_SPORTS],
+        sources.feedback,
+    )
     costs = tuple(
         session_cost(
             sources,
@@ -408,6 +432,7 @@ def read_energy_inputs(
             rmr,
             hr_cost,
             step_m,
+            _rpe(summary, feedback),
         )
         for summary in sessions
         if summary.get("started_at_local")
@@ -652,6 +677,16 @@ def diagnostics(
         "unpriced_sessions": sum(1 for c in costs if c.kcal is None),
         "rmr_source": inputs.rmr_source,
     }
+
+
+def _rpe(
+    summary: Mapping[str, Any], feedback: Mapping[str, Mapping[str, Any]]
+) -> float | None:
+    """A strength session's RPE, the local rating first (#3530)."""
+    if str(summary.get("sport") or "") not in STRENGTH_SPORTS:
+        return None
+    rating = session_rating(summary, feedback.get(stored_activity_key(summary)))
+    return None if isinstance(rating, str) else rating[0]
 
 
 def _day_inputs(

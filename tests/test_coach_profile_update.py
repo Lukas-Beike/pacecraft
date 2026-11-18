@@ -64,6 +64,24 @@ class CoachProfileUpdateTests(unittest.TestCase):
             {"name": "Updated", "goals": "Current"}
         )
 
+    def test_the_coach_reads_and_sets_the_energy_goal(self):
+        # #3547: the goal is a profile field, so the Coach context's
+        # durable_profile carries it and an athlete-started turn may set it.
+        self.profile.get.return_value = {"energy_goal": "", "energy_goal_kcal": ""}
+        result = self.service.apply(
+            {
+                "changes": [
+                    {"field": "energy_goal", "expected_value": "", "value": "lose"},
+                    {"field": "energy_goal_kcal", "expected_value": "", "value": "400"},
+                ]
+            },
+            self.intent,
+        )
+        self.assertEqual(result["updated_fields"], ["energy_goal", "energy_goal_kcal"])
+        self.assertEqual(
+            {"energy_goal": "lose", "energy_goal_kcal": "400"}, result["profile"]
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

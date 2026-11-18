@@ -48,7 +48,9 @@ test("@responsive Body plots measurements and W/kg appears only in the cycling t
   await expect(root.locator("[data-body-metric]")).toHaveCount(2);
   await expect(root.locator("[data-body-metric='weight_kg'] svg")).toHaveCount(1);
   const overview = root.locator("[data-body-overview]");
-  await expect(overview.locator("tbody tr")).toHaveCount(2);
+  // Weight, body fat and the energy goal (#3547).
+  await expect(overview.locator("tbody tr")).toHaveCount(3);
+  await expect(overview.locator("[data-metric='energy_goal'] td").first()).toHaveText("nicht gesetzt");
   await expect(overview.locator("[data-metric='weight_kg'] td").first()).toHaveText("71,8 kg");
   // #3336, #3402: KFA comes from the athlete's own values only; the fixture has none.
   await expect(overview.locator("[data-metric='body_fat_pct'] td").first()).toHaveText("—");
@@ -88,7 +90,7 @@ test("@responsive Body plots measurements and W/kg appears only in the cycling t
     }
     renderBodyAnalysis(body);
   });
-  await expect(overview.locator("td:first-of-type")).toHaveText(["—", "—"]);
+  await expect(overview.locator("td:first-of-type")).toHaveText(["—", "—", "nicht gesetzt"]);
   await expect(root.locator("circle[data-series]")).toHaveCount(0);
   await expect(root.locator("[data-body-metric]")).toHaveCount(0);
   await expect(root).not.toContainText("Keine Daten");

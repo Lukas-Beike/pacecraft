@@ -122,6 +122,27 @@ class EnergyInputsReaderTests(unittest.TestCase):
         # 2.5 x 1,680 x 1,163 / 86,400 = 56.535 kcal.
         self.assertAlmostEqual(56.535, costs[0].kcal or 0.0, places=2)
 
+    def test_a_strength_sessions_rpe_sets_its_met_local_first(self) -> None:
+        # #3530: the local session RPE comes before the provider's and sets the
+        # MET; RPE 8 is MET 5: 4 x 1,680 kcal/day x 2,700 s / 86,400 s = 210.
+        gym = {"id": "legs", "sport": "strength", "started_at_local": "2026-10-03T18:00:00",
+               "elapsed_duration_s": 2700, "rpe": 5}  # fmt: skip
+        rated = replace(
+            sources(sessions=[gym]),
+            feedback=lambda keys: [{"activity_id": k, "session_rpe": 8} for k in keys],
+        )
+        _inputs, costs = read_energy_inputs(None, rated, DAY1, DAY3)
+        self.assertEqual((8, 5.0), (costs[0].rpe, costs[0].met))
+        self.assertAlmostEqual(210.0, costs[0].kcal or 0.0, places=2)
+        # Without local feedback the provider's RPE 5 keeps the general MET
+        # (131.25 kcal); without any RPE, too.
+        _inputs, costs = read_energy_inputs(None, sources(sessions=[gym]), DAY1, DAY3)
+        self.assertEqual((5, 3.5), (costs[0].rpe, costs[0].met))
+        self.assertAlmostEqual(131.25, costs[0].kcal or 0.0, places=2)
+        del gym["rpe"]
+        _inputs, costs = read_energy_inputs(None, sources(sessions=[gym]), DAY1, DAY3)
+        self.assertEqual((None, 3.5), (costs[0].rpe, costs[0].met))
+
     def test_a_day_without_sessions_has_sport_zero(self) -> None:
         # Known to be zero, not unknown: 70 x 10,000 x 0.747 x 2.01 = 1,051,029 J
         # plus floors 82,404 J = 270.897 kcal NEAT, all of the activity.

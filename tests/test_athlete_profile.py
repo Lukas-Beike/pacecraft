@@ -64,6 +64,8 @@ class AthleteProfileTests(unittest.TestCase):
                 "weather_location": "",
                 "sleep_target_hours": "",
                 "fueling_tolerance": "",
+                "energy_goal": "",
+                "energy_goal_kcal": "",
                 "first_threshold_pct": "",
                 "first_threshold_origin": "",
                 "preferred_source_thresholds": "",
@@ -147,6 +149,31 @@ class AthleteProfileTests(unittest.TestCase):
                     normalize_profile({field: edge}, validate_timezone=True)[field],
                     edge,
                 )
+
+    def test_the_energy_goal_is_lose_hold_or_build_with_whole_kcal(self):
+        # #3547: lose and build take kcal per day, 0 to 1500; hold keeps none.
+        saved = normalize_profile(
+            {"energy_goal": "lose", "energy_goal_kcal": "500,4"},
+            validate_timezone=True,
+        )
+        self.assertEqual(
+            ("lose", "500"), (saved["energy_goal"], saved["energy_goal_kcal"])
+        )
+        held = normalize_profile(
+            {"energy_goal": "hold", "energy_goal_kcal": "300"}, validate_timezone=True
+        )
+        self.assertEqual(("hold", ""), (held["energy_goal"], held["energy_goal_kcal"]))
+        for bad in (
+            {"energy_goal": "cut"},
+            {"energy_goal": "build", "energy_goal_kcal": "1501"},
+            {"energy_goal": "lose", "energy_goal_kcal": "viel"},
+            {"energy_goal": "lose"},
+        ):
+            with self.subTest(bad=bad), self.assertRaises(AppError) as raised:
+                normalize_profile(bad, validate_timezone=True)
+            self.assertEqual(raised.exception.status, 400)
+        # A stored unknown goal reads as none.
+        self.assertEqual("", normalize_profile({"energy_goal": "cut"})["energy_goal"])
 
     def test_reads_keep_legacy_number_text_and_strict_keeps_unchanged_values(self):
         legacy = {"weight_kg": "72 kg", "height_cm": "tall"}

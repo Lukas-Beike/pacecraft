@@ -44,6 +44,10 @@ PREFERRED_SOURCES = ("", ProviderId.GARMIN.value)
 # The athlete's sex for sex-specific methods (M6 TRIMP constants, #1774); empty
 # means not set.
 SEXES = ("", "male", "female")
+# The energy goal (#3547): lose takes a deficit, build a surplus, in kcal per
+# day; hold has none; empty means not set.
+ENERGY_GOALS = ("", "lose", "hold", "build")
+ENERGY_GOAL_KCAL = (0, 1500)
 # The athlete's first threshold heart rate (entered in bpm, for example from a lab
 # test, or adopted from the estimate) and where it comes from; empty means not
 # set. Only the athlete sets them, through the profile form or the API: the Coach
@@ -80,6 +84,8 @@ DEFAULT_PROFILE = {
     "weather_location": "",
     "sleep_target_hours": "",
     "fueling_tolerance": "",
+    "energy_goal": "",
+    "energy_goal_kcal": "",
     FIRST_THRESHOLD_FIELD: "",
     FIRST_THRESHOLD_ORIGIN_FIELD: "",
     **dict.fromkeys(PREFERRED_SOURCE_FIELDS, ""),
@@ -136,6 +142,32 @@ def _normalize_sex(result: dict[str, str], *, strict: bool) -> None:
     if strict:
         raise AppError(400, "Unbekanntes Geschlecht; erlaubt: male, female oder leer.")
     result["sex"] = ""
+
+
+def _normalize_energy_goal(result: dict[str, str], *, strict: bool) -> None:
+    """Keep a known goal with whole kcal (none for hold); reject (strict) an
+    unknown goal or a lose or build without kcal in range, else clear it."""
+    goal = result["energy_goal"]
+    if goal not in ENERGY_GOALS:
+        if strict:
+            raise AppError(
+                400, "Unbekanntes Energieziel; erlaubt: lose, hold, build oder leer."
+            )
+        goal = result["energy_goal"] = ""
+    if goal in ("", "hold"):
+        result["energy_goal_kcal"] = ""
+        return
+    low, high = ENERGY_GOAL_KCAL
+    try:
+        kcal = comma_decimal_float(result["energy_goal_kcal"])
+    except ValueError:
+        kcal = math.nan
+    if math.isfinite(kcal) and low <= kcal <= high:
+        result["energy_goal_kcal"] = str(round(kcal))
+    elif strict:
+        raise AppError(400, f"Das Energieziel braucht {low} bis {high} kcal pro Tag.")
+    else:
+        result["energy_goal"] = result["energy_goal_kcal"] = ""
 
 
 BIRTH_YEARS = (1920, 2010)
@@ -250,6 +282,7 @@ def normalize_profile(
     _normalize_preferred_sources(result, strict=validate_timezone)
     _normalize_sex(result, strict=validate_timezone)
     _normalize_birth_year(result, strict=validate_timezone)
+    _normalize_energy_goal(result, strict=validate_timezone)
     _normalize_first_threshold(result, strict=validate_timezone)
     _normalize_numbers(result, previous, strict=validate_timezone)
     return result
