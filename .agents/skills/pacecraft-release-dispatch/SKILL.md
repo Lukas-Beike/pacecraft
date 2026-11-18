@@ -6,9 +6,17 @@ description: Base skill. Dispatch the daily release workflow on develop and foll
 # Dispatch and follow a release
 
 ```powershell
-python scripts/release_dispatch.py dispatch [--version <MAJOR.MINOR.PATCH>]
-python scripts/release_dispatch.py follow [--version <MAJOR.MINOR.PATCH>] [--since <time printed by dispatch>]
+python scripts/release_dispatch.py dispatch [--version <MAJOR.MINOR.PATCH>] [--when-green [--timeout <min>]]
+python scripts/release_dispatch.py follow [--version <MAJOR.MINOR.PATCH>] [--since <time printed by dispatch>] [--wait [--timeout <min>]]
 ```
+
+Use `dispatch --when-green` and `follow --wait` instead of shell loops (#3539):
+`--when-green` reads the `develop` head through the GitHub API, never a local
+fetch, waits until that commit's `Test and publish container image` run
+succeeded (a newer head takes over) and then dispatches; a red run exits 1, no
+green run within the time limit (60 min) exits 3. `--wait` follows the chain by
+itself, printing only links that changed, until published (0), failed (1) or
+the time limit (90 min, exit 3).
 
 `dispatch` starts `daily-release.yml` on `develop` (without `--version` the
 workflow picks the next patch) and prints the run it started. `follow` prints
