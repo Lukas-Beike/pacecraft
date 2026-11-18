@@ -37,13 +37,15 @@ class CanonicalBodyInputs:
     """Per-day Garmin weight and body-fat values, bounded and rounded.
 
     ``entered_weight_kg`` and ``entered_body_fat_pct`` hold the athlete's own
-    entries (#3252, #3402).
+    entries (#3252, #3402); ``skinfold_body_fat_pct`` the profile's earlier
+    body fat values, 3-site skinfolds, on days without an entry (#3557, #3569).
     """
 
     garmin_weight_kg: Mapping[date, float]
     garmin_body_fat_pct: Mapping[date, float]
     entered_weight_kg: Mapping[date, float] = MappingProxyType({})
     entered_body_fat_pct: Mapping[date, float] = MappingProxyType({})
+    skinfold_body_fat_pct: Mapping[date, float] = MappingProxyType({})
 
 
 EMPTY_BODY_INPUTS = CanonicalBodyInputs(
@@ -67,20 +69,23 @@ def read_body_inputs(
         start=today - timedelta(days=BODY_FAT_READ_DAYS),
         end=today,
     )
-    # Earlier profile values are dated entered ones; an entry of that day wins
-    # (athlete decision, #3477). Only a database holds the change history.
+    # Earlier profile values are dated skinfolds; an entry of that day wins
+    # (athlete decisions, #3477, #3557). Only a database holds the change history.
     profile = (
         profile_body_fat_history(db, today - timedelta(days=BODY_FAT_READ_DAYS))
         if hasattr(db, "execute")
         else {}
     )
+    entered_fat = _daily(body_fat, None, today, BODY_FAT_BOUNDS)
     return CanonicalBodyInputs(
         garmin_weight_kg=_daily(weights, ProviderId.GARMIN, today, WEIGHT_BOUNDS),
         garmin_body_fat_pct=_daily(body_fat, ProviderId.GARMIN, today, BODY_FAT_BOUNDS),
         entered_weight_kg=_daily(weights, None, today, WEIGHT_BOUNDS),
-        entered_body_fat_pct={
-            **{day: value for day, value in profile.items() if day <= today},
-            **_daily(body_fat, None, today, BODY_FAT_BOUNDS),
+        entered_body_fat_pct=entered_fat,
+        skinfold_body_fat_pct={
+            day: value
+            for day, value in profile.items()
+            if day <= today and day not in entered_fat
         },
     )
 

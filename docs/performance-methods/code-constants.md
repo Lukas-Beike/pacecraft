@@ -39,6 +39,7 @@ every named number the code fixes. A test fails when it is out of date.
 | `STEP_ERROR_SHARE` | `0.15` | `backend/performance/activity_energy.py` | Everyday energy from steps carries the step length's +-10-15 %. |
 | `TEF_ERROR_KCAL` | `80.0` | `backend/performance/activity_energy.py` | Thermic effect of food: +-30-80 kcal per day, the upper end. |
 | `ENTERED_LABEL` | `'eingetragen'` | `backend/performance/body.py` | The source of one day's value in the merged body series (#3464). |
+| `SKINFOLD_LABEL` | `'Hautfalten'` | `backend/performance/body.py` | The profile's earlier body fat values are 3-site skinfolds (#3557, #3569). |
 | `WINDOW_DAYS` | `84` | `backend/performance/canonical_body.py` |  |
 | `WEIGHT_BOUNDS` | `(30.0, 300.0)` | `backend/performance/canonical_body.py` |  |
 | `BODY_FAT_BOUNDS` | `(2.0, 70.0)` | `backend/performance/canonical_body.py` |  |
