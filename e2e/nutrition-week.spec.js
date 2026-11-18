@@ -38,8 +38,9 @@ test("@responsive nutrition week shows coverage, signed balance and missing days
   await expect(week.locator(".nutrition-week-chart-day").first()).toContainText("2.200 kcal");
   await expect(week.locator(".nutrition-week-chart-track.is-missing")).toHaveCount(1);
   await week.getByText("Tageswerte anzeigen", { exact: true }).click();
-  await expect(week.locator("tbody tr")).toHaveCount(14);
-  await expect(week.locator("tbody tr").last().locator("td")).toHaveText(["–", "–", "–"]);
+  // The day table's rows; Verlauf's 28-day energy card has rows of its own (#3531).
+  await expect(week.locator("#nutritionWeekDays tr")).toHaveCount(14);
+  await expect(week.locator("#nutritionWeekDays tr").last().locator("td")).toHaveText(["–", "–", "–"]);
   await expect(page.locator("#nutritionFueling, #trainingFueling")).toHaveCount(0);
   expect(fuelingRequests).toBe(0);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
@@ -72,7 +73,7 @@ test("@responsive nutrition history switches between 14 days and 12 weeks", asyn
   await expect(root.locator("#nutritionWeekChartHeading")).toHaveText("Wochendurchschnitte");
   await expect(root.locator("#nutritionWeekStatus")).toContainText("84 Tagen");
   await root.getByText("Tageswerte anzeigen", { exact: true }).click();
-  await expect(root.locator("tbody tr")).toHaveCount(84);
+  await expect(root.locator("#nutritionWeekDays tr")).toHaveCount(84);
   await page.reload();
   await expect(root.locator("#nutritionWeekChartHeading")).toHaveText("Tagesverlauf");
   await root.getByRole("button", { name: "12 Wochen", exact: true }).click();

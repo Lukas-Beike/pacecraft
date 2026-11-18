@@ -354,7 +354,9 @@ def energy_view(
     ``body_missing`` is why the formula rows have no body (#3336), shown with them.
     ``day`` (default the latest window's end) gives the formula and device rows
     that day's resting rate, everyday, sport and digestion (athlete decision,
-    #3395); "Aus deinen Daten" stays on the latest 28-day window.
+    #3395); "Aus deinen Daten" takes its resting rate from the latest 28-day
+    window and the day's other parts like the formula rows, and its 28-day row
+    with every part's mean is ``own_window``, for Verlauf (#3531).
     """
     trend = weight_trend(
         {d: v.weight_kg for d, v in inputs.days.items() if v.weight_kg is not None}
@@ -401,6 +403,10 @@ def energy_view(
     device_neat, device_sport = _device_split(
         health, sessions, day_window, device_prediction[0] if device_rest else None
     )
+    day_predictions[DEVICE], behind = _garmin_behind(
+        device_prediction, device_neat, device_sport, bool(device_rest)
+    )
+    pending[1].extend(behind)
     rows = []
     for name in predictions:
         resting, resting_band_kcal, total, total_band = day_predictions[name]
@@ -435,41 +441,10 @@ def energy_view(
     rows[list(predictions).index(DEVICE)].update(
         label=_device_label(health, day_window), **device_rest
     )
-    tdee = latest.adaptive_tdee
     shown, implausible = _gated_resting(
         latest.derived_rmr, predictions["katch_mcardle"][-1], predictions[DEVICE][-1]
     )
-    # The own row's resting rate is the residual of the calibrated terms; its
-    # everyday and sport equal the formula rows' only while k is 1.
-    uncalibrated = math.isclose(latest.calibration_factor, 1.0)
-    own_resting = shown.kcal if shown else None
-    own_split = (
-        _split(
-            own_resting,
-            latest.neat_kcal,
-            latest.sport_kcal,
-            latest.tef_kcal,
-            {"neat": uncalibrated, "sport": uncalibrated, "tef": True},
-        )
-        if latest.derived_rmr
-        else None
-    )
-    rows.append(
-        {
-            "source": OWN,
-            "resting_kcal": _round(shown.kcal) if shown else None,
-            "resting_band_kcal": _round(shown.band_kcal) if shown else None,
-            "resting_implausible": implausible,
-            "total_kcal": _round(tdee.kcal) if tdee else None,
-            "total_band_kcal": _round(tdee.band_kcal) if tdee else None,
-            "split": own_split,
-            # A window method: its days, shown as "Ø pro Tag, letzte 28 Tage" (#3395, #3513).
-            "window_days": latest.days,
-            # "measured" from two dated body fat measurements, else "forbes";
-            # None without an estimate (#3477).
-            "store_method": latest.store_method,
-        }
-    )
+    rows.append(_own_day_row(shown, implausible, latest, day_window, pending[False]))
     return {
         "end": latest.end.isoformat(),
         # The day the source rows show; after ``end`` (today) it is partial.
@@ -497,6 +472,84 @@ def energy_view(
         },
         "skinfold_missing": body_missing,
         "body": _public_body(day_body),
+        # The 28-day row with every part's mean, shown in Verlauf only (#3531).
+        "own_window": _own_window_row(shown, implausible, latest),
+    }
+
+
+def _own_day_row(
+    shown: Estimate | None,
+    implausible: bool,
+    latest: EnergyWindow,
+    day: EnergyWindow,
+    pending: list[str],
+) -> dict[str, Any]:
+    """ "Aus deinen Daten" for the diary's day (athlete decision, #3531): the own
+    resting rate from the 28-day window with its band, and the day's everyday,
+    sport and digestion exactly as the formula rows; the day total is their sum,
+    with the resting rate's band."""
+    resting = shown.kcal if shown else None
+    activity, tef = day.activity_kcal_raw, day.tef_kcal
+    total = (
+        None
+        if resting is None or activity is None or tef is None
+        else resting + activity + tef
+    )
+    return {
+        "source": OWN,
+        "resting_kcal": _round(resting),
+        "resting_band_kcal": _round(shown.band_kcal) if shown else None,
+        "resting_implausible": implausible,
+        "total_kcal": _round(total),
+        "total_band_kcal": _round(shown.band_kcal)
+        if total is not None and shown
+        else None,
+        # A held-back resting rate (#3255) keeps the day's other parts.
+        "split": None
+        if latest.derived_rmr is None
+        else _split(
+            resting, day.neat_kcal_raw, day.sport_kcal_raw, tef, FORMULA_SHARED
+        ),
+        "pending_parts": pending,
+        # The days the resting rate comes from, shown as "Ruhe aus 28 Tagen".
+        "window_days": latest.days,
+        # "measured" from two dated body fat measurements, else "forbes";
+        # None without an estimate (#3477).
+        "store_method": latest.store_method,
+    }
+
+
+def _own_window_row(
+    shown: Estimate | None, implausible: bool, latest: EnergyWindow
+) -> dict[str, Any]:
+    """The 28-day row: every part's mean over the window, for Verlauf (#3531).
+
+    Its resting rate is the residual of the calibrated terms; its everyday and
+    sport equal the formula rows' only while k is 1.
+    """
+    tdee = latest.adaptive_tdee
+    uncalibrated = math.isclose(latest.calibration_factor, 1.0)
+    resting = shown.kcal if shown else None
+    split = None
+    if latest.derived_rmr:
+        split = _split(
+            resting,
+            latest.neat_kcal,
+            latest.sport_kcal,
+            latest.tef_kcal,
+            {"neat": uncalibrated, "sport": uncalibrated, "tef": True},
+        )
+    return {
+        "source": OWN,
+        "resting_kcal": _round(resting),
+        "resting_band_kcal": _round(shown.band_kcal) if shown else None,
+        "resting_implausible": implausible,
+        "total_kcal": _round(tdee.kcal) if tdee else None,
+        "total_band_kcal": _round(tdee.band_kcal) if tdee else None,
+        "split": split,
+        # A window method: its days, shown as "Ø pro Tag, letzte 28 Tage" (#3395, #3513).
+        "window_days": latest.days,
+        "store_method": latest.store_method,
     }
 
 
@@ -610,12 +663,20 @@ def _so_far(
     if not today:
         return window, ([], [])
     day = day or DayInputs()
+    # Fewer day steps than the sessions' own: the day summary lags behind the
+    # activity, so its everyday has not arrived yet either (#3530).
+    behind = day.steps is not None and day.session_steps > day.steps
     absent = {
-        "neat": window.neat_kcal_raw is None and day.steps is None,
+        "neat": (window.neat_kcal_raw is None and day.steps is None) or behind,
         "sport": window.sport_kcal_raw is None and not sessions,
         "tef": not day.entries,
     }
-    neat = _part_so_far(window.neat_kcal_raw, day.neat_kcal, absent["neat"])
+    # Lagging everyday counts 0 like any part not there yet (Gitar, #3532).
+    neat = (
+        0.0
+        if behind
+        else _part_so_far(window.neat_kcal_raw, day.neat_kcal, absent["neat"])
+    )
     sport = _part_so_far(window.sport_kcal_raw, day.sport_kcal, absent["sport"])
     pending = [part for part, missing in absent.items() if missing]
     shown = replace(
@@ -628,6 +689,22 @@ def _so_far(
     active = _number(garmin_day.get("active_kcal"))
     device = ["neat", "sport"] if active is None else []
     return cast(EnergyWindow, shown), (pending, device)
+
+
+def _garmin_behind(
+    prediction: Prediction,
+    neat: float | None,
+    sport: float | None,
+    today: bool,
+) -> tuple[Prediction, list[str]]:
+    """Today Garmin's day summary can lag behind its activity: its active kcal
+    is then below the session's, and everyday would come out negative. The
+    row then counts the session so far and shows everyday as not there yet,
+    instead of "–" (#3530)."""
+    resting = prediction[0]
+    if not today or resting is None or neat is not None or sport is None:
+        return prediction, []
+    return (resting, None, resting + sport, None), ["neat"]
 
 
 def _part_so_far(

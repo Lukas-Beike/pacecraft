@@ -66,6 +66,85 @@ class OverlongBracket(ValueError):
     command whose readings would read more than MAX_WIDE_WORK characters."""
 
 
+# ripgrep's options that run a program on each file it searches, and its
+# config file that can hold them; blocked wherever they appear, since `rg`
+# itself can hide behind a variable, a glob, xargs or a path (#3509).
+RG_RUNS = re.compile(r"--pre(?![a-z0-9_])|hostname-bin|ripgrep_config_path")
+# Shell expansions an option may hide in, read as nothing; a word with a brace
+# list reads as all its expansions, as bash expands it (#3509).
+EXPANSION = re.compile(r"\$(?:\{[^}]*\}|\([^()]*\)|[a-z_][a-z0-9_]*|[@*#?$!0-9-])")
+RG_BLOCKED = "rg --pre"
+# How much brace expansion may add to a command before it blocks (#3509).
+MAX_BRACE_GROWTH = 1_000_000
+
+
+def brace_expanded(text: str) -> str:
+    """The text with each word that holds a brace list and a `-` or `_` (every
+    ripgrep spelling RG_RUNS looks for has one) replaced by all its
+    expansions, as bash expands them. OverlongBracket when that adds more than
+    MAX_BRACE_GROWTH characters, so no large expansion is left unread (#3509)."""
+    budget = [MAX_BRACE_GROWTH]
+    return "".join(
+        " ".join(_word_expansions(word, budget))
+        if "{" in word and ("-" in word or "_" in word)
+        else word
+        for word in _brace_words(text)
+    )
+
+
+def _brace_words(text: str) -> list[str]:
+    """The text, line continuations removed, cut at blanks outside brace pairs,
+    so a quoted or escaped blank inside a brace list stays in its word (Gitar,
+    #3509). Quotes count only inside an open brace, so an apostrophe elsewhere
+    never joins lines; an unquoted line break always cuts."""
+    text = text.replace("\\\n", "")
+    words, start, depth, quote = [], 0, 0, ""
+    for index, char in enumerate(text):
+        if quote:
+            quote = "" if char == quote else quote
+        elif char in "'\"" and depth:
+            quote = char
+        elif char == "\n":
+            depth = 0
+        elif char == "{":
+            depth += 1
+        elif char == "}":
+            depth = max(depth - 1, 0)
+        if char.isspace() and not quote and (depth == 0 or char == "\n"):
+            words += [text[start:index], char]
+            start = index + 1
+    return [*words, text[start:]]
+
+
+def _word_expansions(word: str, budget: list[int]) -> list[str]:
+    """Every expansion of one word, innermost brace list first."""
+    pending, done = [word], []
+    while pending:
+        current = pending.pop()
+        found = _brace_list(current)
+        if found is None:
+            done.append(current)
+            continue
+        low, high = found
+        items = current[low + 1 : high].split(",")
+        budget[0] -= len(current) * (len(items) - 1)
+        if budget[0] < 0:
+            raise OverlongBracket
+        pending += [current[:low] + item + current[high + 1 :] for item in items]
+    return done
+
+
+def _brace_list(word: str) -> tuple[int, int] | None:
+    """The innermost brace list (a `{}` pair holding a comma) in ``word``."""
+    position = 0
+    while (high := word.find("}", position)) >= 0:
+        low = word.rfind("{", 0, high)
+        if low >= 0 and "," in word[low + 1 : high]:
+            return low, high
+        position = high + 1
+    return None
+
+
 SCRIPTS = Path("scripts")
 RUN = "resolve_review_thread"
 # Python imports these at start from the script's directory as well.
@@ -188,11 +267,13 @@ def unescaped(text: str) -> str:
     return ESCAPE.sub(decode, text)
 
 
-def unquoted(text: str, backslash: str = "") -> str:
+def unquoted(text: str, backslash: str = "", blanks: bool = True) -> str:
     """Text without quoting and escape characters: adjacent string literals
-    joined, line continuations, quotes, `$`, backticks and carets removed, and
-    each other backslash replaced by `backslash`."""
-    text = re.sub(f"{QUOTES}\\s*\\+?\\s*{QUOTES}", "", text)
+    joined (across blanks only with ``blanks``, as Python joins them; bash
+    keeps such words apart, #3509), line continuations, quotes, `$`, backticks
+    and carets removed, and each other backslash replaced by `backslash`."""
+    joined = f"{QUOTES}\\s*\\+?\\s*{QUOTES}" if blanks else f"{QUOTES}\\+?{QUOTES}"
+    text = re.sub(joined, "", text)
     text = re.sub(f"\\\\\\n|\\$|`|\\^|{QUOTES}", "", text)
     return text.replace("\\", backslash)
 
@@ -222,6 +303,14 @@ def matching_word(command: str) -> str | None:
     text = unescaped(raw)
     if any(NAME in unquoted(form) for form in (raw, text)):
         return NAME
+    # ripgrep's `--pre` and `--hostname-bin` run a program on its files (#3509).
+    try:
+        bare = brace_expanded(EXPANSION.sub("", text))
+    except OverlongBracket:
+        return "an overlong brace expansion"
+    forms = (text, bare, unquoted(bare), unquoted(bare, blanks=False))
+    if any(RG_RUNS.search(form) for form in forms):
+        return RG_BLOCKED
     # Also every bash bracket expression as `?`, read with quotes, and without
     # them from the first `[` and from each `[` an earlier bracket swallowed, so
     # no quote, comment, substitution or stray `[` before a class can hide it:
@@ -238,7 +327,13 @@ def matching_word(command: str) -> str | None:
         reading = DOS_ONE.sub("?", DOS_STAR.sub("*", STREAM.sub("", wildened(reading))))
         # A variable can hold any folder or name.
         reading = VARIABLE.sub("*", reading)
-        variants += [unquoted(reading), unquoted(reading, "/")]
+        # Quoted words a blank apart also stay apart, as bash reads them (#3509).
+        variants += [
+            unquoted(reading),
+            unquoted(reading, "/"),
+            unquoted(reading, blanks=False),
+            unquoted(reading, "/", blanks=False),
+        ]
     return next(
         (
             word
@@ -445,6 +540,14 @@ def decide() -> int:
         return 0
     if EXACT.fullmatch(command.strip()) and unchanged():
         return 0
+    if word == RG_BLOCKED:
+        print(
+            "Blocked: ripgrep's --pre, --hostname-bin and RIPGREP_CONFIG_PATH run "
+            "a program on the files it searches, which can run the review-thread "
+            "resolve script (#3509); search without them.",
+            file=sys.stderr,
+        )
+        return 2
     print(
         "Blocked: the review-thread resolve script runs only as "
         "`python scripts/resolve_review_thread.py <pr> <PRRT_id>`, alone, from a "
