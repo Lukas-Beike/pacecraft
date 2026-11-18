@@ -43,7 +43,9 @@ counting it twice. 1 kcal = 4184 J.
 4. **Strength:** `net = (MET − 1) × RMR/min × duration` with the Compendium
    2024 MET 3.5 (general) or 6.0 (vigorous), i.e. the MET corrected to the
    measured resting rate instead of 1 MET = 3.5 ml/kg/min. Heart rate is not
-   used for strength.
+   used for strength. The duration is the session's elapsed time, else its
+   moving time: the MET covers the rests between sets, which a watch's moving
+   time leaves out (#3530).
 5. **NEAT:** steps outside recorded sessions × step length × the level
    walking cost `C_w(0) = 2.01 J/kg/m` × mass, plus floors as vertical work
    `m × g × 3 m / 0.25`. Step length from recorded walks (speed ÷ steps per
