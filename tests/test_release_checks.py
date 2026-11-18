@@ -33,12 +33,15 @@ def next_answer(answers):
 
 def with_develop(run, calls, heads, develop_runs):
     """``run`` that also answers the develop head (#3539), one of ``heads`` per
-    read, and that head's container runs, one list of ``develop_runs`` per read."""
+    read, and that head's container runs, one list of ``develop_runs`` per read;
+    ``run`` keeps answering the injected errors first."""
     heads = list(heads)
     runs = {sha: list(reads) for sha, reads in (develop_runs or {}).items()}
 
     def answer(argv, **kwargs):
         args = argv[1:]
+        if run.errors:
+            return run(argv, **kwargs)
         if args[:1] == ["api"]:
             data = {"sha": next_answer(heads)}
         elif "--commit" in args:
@@ -75,6 +78,7 @@ def fake_gh(prs, release=None, publish=(), errors=(), heads=(), develop_runs=Non
             return subprocess.CompletedProcess(argv, 1, "", "unexpected")
         return subprocess.CompletedProcess(argv, 0, json.dumps(data), "")
 
+    run.errors = errors
     if heads:
         return with_develop(run, calls, heads, develop_runs), calls
     return run, calls
@@ -240,6 +244,59 @@ class ReleaseDispatchTests(unittest.TestCase):
         )  # fmt: skip
         self.assertEqual((0, 1), (code, len(dispatched)))
         self.assertIn("develop b2 green", out)
+
+    def test_when_green_and_wait_outlast_outages_and_superseded_runs(self):
+        # Gitar on #3543: a run a newer push cancelled is no red verdict, and a
+        # GitHub outage inside the loop is a later look, not the end.
+        cancelled = [
+            {
+                "databaseId": 5,
+                "status": "completed",
+                "conclusion": "cancelled",
+                "headSha": "a1",
+            }
+        ]
+        new_green = [
+            {
+                "databaseId": 6,
+                "status": "completed",
+                "conclusion": "success",
+                "headSha": "b2",
+            }
+        ]
+        started = [
+            {
+                "databaseId": 7,
+                "status": "queued",
+                "createdAt": "2999-01-01T00:00:00Z",
+                "url": "u",
+            }
+        ]
+        outage = [
+            "HTTP 503: No server is currently available to service your request"
+        ] * 8
+        code, out, _calls, dispatched = self.run_main(
+            ["dispatch", "--when-green"], prs=[], heads=["a1", "b2"], publish=started,
+            develop_runs={"a1": [cancelled], "b2": [new_green]}, errors=outage,
+        )  # fmt: skip
+        self.assertEqual((0, 1), (code, len(dispatched)), out)
+        self.assertIn("develop b2 green", out)
+        published = {"tagName": V, "isDraft": False, "targetCommitish": "abc"}
+        done = [
+            {
+                "databaseId": 9,
+                "status": "completed",
+                "conclusion": "success",
+                "headBranch": V,
+                "url": "u",
+            }
+        ]
+        code, out, _calls, _ = self.run_main(
+            ["follow", "--version", V, "--wait"], prs=[VERSION_PR, PROMOTION_PR],
+            release=published, publish=done, errors=outage,
+        )  # fmt: skip
+        self.assertEqual(0, code, out)
+        self.assertIn("pending GitHub unavailable", out)
 
     def test_dispatch_when_green_stops_on_red_or_at_the_time_limit(self):
         red = [

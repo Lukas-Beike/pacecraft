@@ -87,7 +87,8 @@ def dispatch(version: str | None) -> int:
 
 def develop_state() -> tuple[str, str]:
     """The develop head and the state of its container run: ``green``, a red
-    conclusion, or ``pending`` while it has none or it runs."""
+    conclusion, or ``pending`` while it has none, it runs, or a newer push
+    cancelled it (the develop runs share one concurrency group)."""
     head = str(gh_json("api", "repos/{owner}/{repo}/commits/develop")["sha"])
     runs = gh_json(
         "run", "list", "--workflow", PUBLISH, "--branch", "develop", "--event", "push",
@@ -97,15 +98,23 @@ def develop_state() -> tuple[str, str]:
     if not mine or mine[0]["status"] != "completed":
         return head, "pending"
     conclusion = str(mine[0]["conclusion"])
+    if conclusion == "cancelled":
+        return head, "pending"
     return head, "green" if conclusion in GREEN else conclusion
 
 
 def when_green(minutes: int) -> int:
     """Wait for a green container run of the develop head; 0 green, 1 red, 3
-    none within ``minutes``."""
+    none within ``minutes``. A transient GitHub error only means a later look."""
     deadline = time.monotonic() + minutes * 60
+    head = "develop"
     while True:
-        head, state = develop_state()
+        try:
+            head, state = develop_state()
+        except CliError as exc:
+            if not TRANSIENT.search(str(exc)):
+                raise
+            state = "pending"
         if state != "pending":
             print(f"develop {head[:12]} {state}")
             return 0 if state == "green" else 1
@@ -117,13 +126,13 @@ def when_green(minutes: int) -> int:
 
 def follow_wait(version: str | None, since: str | None, minutes: int) -> int:
     """Follow until published or failed, printing only what changed; 3 at the
-    time limit."""
+    time limit. A transient GitHub error is a pending round, not the end."""
     deadline = time.monotonic() + minutes * 60
     shown: list[str] = []
     while True:
         out = io.StringIO()
         with contextlib.redirect_stdout(out):
-            code = follow(version, since)
+            code = _follow_round(version, since)
         lines = out.getvalue().splitlines()
         for line in lines:
             if line not in shown:
@@ -135,6 +144,16 @@ def follow_wait(version: str | None, since: str | None, minutes: int) -> int:
             print(f"still pending after {minutes} min; follow again")
             return 3
         time.sleep(POLL_SECONDS)
+
+
+def _follow_round(version: str | None, since: str | None) -> int:
+    try:
+        return follow(version, since)
+    except CliError as exc:
+        if not TRANSIENT.search(str(exc)):
+            raise
+        print("pending GitHub unavailable")
+        return 3
 
 
 def pull(title: str, base: str) -> dict | None:
