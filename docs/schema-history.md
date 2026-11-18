@@ -35,8 +35,8 @@ needs no documentation edit (#3130).
 | 29 | 2.1.17 to 2.1.19 |
 | 30 | 2.1.20 to 2.1.21 |
 | 31 | 2.1.22 to 2.1.27 |
-| 32 | since 2.1.28 |
-| 33 | not released yet |
+| 32 | 2.1.28 to 2.1.50 |
+| 33 | since 2.1.51 |
 
 Versions 27 to 32 keep only their shape digests; each enters the chain at its own
 upgrade step. Version 10 adds canonical activity detail
