@@ -54,10 +54,13 @@ WORD_END = frozenset(" \t\n;&|<>()")
 # The longest bracket expression read; a longer open one blocks, so padding
 # can neither hide a class nor slow the hook down (#3507).
 MAX_BRACKET = 256
+# The `[` a reading may start at; a command with more blocks (#3507).
+MAX_BRACKET_STARTS = 256
 
 
 class OverlongBracket(ValueError):
-    """A bracket expression that stays open past MAX_BRACKET characters."""
+    """A bracket expression that stays open past MAX_BRACKET characters, or
+    more than MAX_BRACKET_STARTS of them."""
 
 
 SCRIPTS = Path("scripts")
@@ -216,10 +219,19 @@ def matching_word(command: str) -> str | None:
     text = unescaped(raw)
     if any(NAME in unquoted(form) for form in (raw, text)):
         return NAME
-    # Also every bash bracket expression as `?`: an added reading beside the
-    # unchanged one, so it only ever blocks more (#3507).
+    # Also every bash bracket expression as `?`, read with quotes, and from each
+    # `[` on without them, so no quote, comment or substitution before it can
+    # hide one: added readings beside the unchanged one, so they only ever
+    # block more (#3507).
+    starts = [index for index, char in enumerate(text) if char == "["]
     try:
-        readings = (text, bracket_wildcards(text))
+        if len(starts) > MAX_BRACKET_STARTS:
+            raise OverlongBracket
+        readings = (
+            text,
+            bracket_wildcards(text),
+            *(wildcards_from(text, start) for start in starts),
+        )
     except OverlongBracket:
         return "an overlong bracket expression"
     variants = []
@@ -302,6 +314,44 @@ def bracket_wildcards(text: str) -> str:
             last = index = end
             continue
         index += 2 if char == "\\" and quote != "'" else 1
+    return "".join([*parts, text[last:]])
+
+
+def wide_end(text: str, start: int) -> int | None:
+    """The index after the bracket expression at ``start`` read without quotes
+    or word ends: an optional `!` or `^`, a leading `]`, and `[.x.]`, `[=x=]`
+    or `[:x:]` classes inside. None when it never closes; OverlongBracket when
+    it stays open past MAX_BRACKET characters."""
+    limit = min(len(text), start + MAX_BRACKET)
+    index = start + 1
+    index += text[index : index + 1] in ("!", "^")
+    index += text[index : index + 1] == "]"
+    while index < limit:
+        char, after = text[index], text[index + 1 : index + 2]
+        if char == "]":
+            return index + 1
+        close = text.find(after + "]", index + 2, limit) if after else -1
+        if char == "[" and after in (".", "=", ":") and close >= 0:
+            index = close + 2
+            continue
+        index += 1 + (char == "\\")
+    if limit < len(text):
+        raise OverlongBracket
+    return None
+
+
+def wildcards_from(text: str, start: int) -> str:
+    """Every bracket expression from ``start`` on read as `?`, without reading
+    quotes, comments or substitutions, so no quoting before ``start`` can hide
+    a class after it (#3507)."""
+    parts, last, index = [text[:start]], start, start
+    while (found := text.find("[", index)) >= 0:
+        end = wide_end(text, found)
+        if end:
+            parts.append(text[last:found] + "?")
+            last = index = end
+        else:
+            index = found + 1
     return "".join([*parts, text[last:]])
 
 

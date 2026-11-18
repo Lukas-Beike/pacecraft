@@ -305,6 +305,17 @@ class GuardHookTests(unittest.TestCase):
             "a='['; python scripts/r[[.e.]]solve_review_thread.py b=']'",
             "echo $'\\''; python scripts/r[[.e.]]solve_review_thread.py 'x]'",
             "python scripts/r[" + "a" * 300 + "[.e.]]solve_review_thread.py",
+            # Gitar on #3517: a quote in a comment or a substitution desyncs
+            # the quote reading; the readings from each `[` read no quotes.
+            "echo x # it's\npython scripts/r[[.e.]]solve_review_thread.py 1 x",
+            'echo "$(echo "\'")"; python scripts/r[[.e.]]solve_review_thread.py 1 x',
+            "echo x # it's\npython scripts/r[' 'e]solve_review_thread.py",
+            "echo x # it's\necho [ ; python scripts/resolve_review_th[' 'r]ead.py",
+            "echo x # it's\npython scripts/r["
+            + "a" * 300
+            + "' 'e]solve_review_thread.py",
+            # More `[` than the readings start at blocks.
+            "echo " + "[a]" * 257,
             "python {scripts/r,x}*.py 2671 PRRT_a1",
             "python scripts/@(resolve|x)_review_thread.py 2671 PRRT_a1",
             "python scripts/@(res@(olve))_review_thread.py 2671 PRRT_a1",
