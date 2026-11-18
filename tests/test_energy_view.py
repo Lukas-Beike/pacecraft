@@ -14,7 +14,9 @@ from backend.nutrition.energy_balance import (
     EnergyInputs,
     EnergyWindow,
     Estimate,
+    history_start,
 )
+from backend.nutrition.energy_inputs import EnergySources
 from backend.nutrition.energy_view import energy_view, read_energy_view, selected_day
 from backend.providers.source_labels import SourceView, provider_label
 from tests.test_energy_inputs import DAY1, DAY3, sources
@@ -887,6 +889,138 @@ class SelectedDayTests(unittest.TestCase):
         # A day without its parts (no meals, no activity) has no own day total.
         bare = row(self.view(END - timedelta(days=5)), "own")
         self.assertEqual((1850, None), (bare["resting_kcal"], bare["total_kcal"]))
+
+
+# One synthetic day walks the table from morning to evening through the API's
+# read path (#3541): twelve settled weeks (2,600 kcal eaten, 8,000 steps, a flat
+# 75 kg), then today at 06:30, after the reported strength session (45 minutes,
+# 19 moving, Garmin 278 kcal) with Garmin's summary still behind, and evening.
+SCENARIO_TODAY = date(2026, 11, 18)
+SCENARIO_END = SCENARIO_TODAY - timedelta(days=1)
+FORMULAS = ("katch_mcardle", "cunningham")
+DAY_PARTS = ("neat_kcal", "sport_kcal", "tef_kcal")
+STRENGTH = {
+    "started_at_local": f"{SCENARIO_TODAY}T17:00:00",
+    "sport": "strength",
+    "moving_duration_s": 19 * 60.0,
+    "elapsed_duration_s": 45 * 60.0,
+    "energy_kcal": 278.0,
+    "steps": 1500.0,
+    "record_ids": {ProviderId.GARMIN.value: "g-strength"},
+}
+
+
+def day_scenario(
+    today: dict[str, Any] | None, sessions: list[dict[str, Any]], meals: int
+) -> dict[str, Any]:
+    start = history_start(SCENARIO_END)
+    days = [start + timedelta(days=n) for n in range((SCENARIO_END - start).days + 1)]
+    meal = {"kcal": 900.0, "protein_g": 50.0, "carbs_g": 100.0, "fat_g": 30.0}
+    health = {
+        d.isoformat(): {"steps": 8000.0, "floors": 5.0, "resting_kcal": 1700.0,
+                        "active_kcal": 450.0, "calories": 2150.0}
+        for d in days
+    }  # fmt: skip
+    diary = [{**meal, "kcal": 1300.0, "meal_date": d.isoformat()} for d in days] * 2
+    diary += [{**meal, "meal_date": SCENARIO_TODAY.isoformat()}] * meals
+    if today is not None:
+        health[SCENARIO_TODAY.isoformat()] = today
+
+    def within(items: list[dict[str, Any]], key: str, s: date, e: date) -> list:
+        return [i for i in items if s <= date.fromisoformat(i[key][:10]) <= e]
+
+    return read_energy_view(
+        None,
+        EnergySources(
+            diary=lambda _db, s, e: within(diary, "meal_date", s, e),
+            daily_health=lambda _db, _s, _e: health,
+            weights=lambda _db, s, e: {d: 75.0 for d in days[::2] if s <= d <= e},
+            sessions=lambda _db, s, e: within(sessions, "started_at_local", s, e),
+            streams=lambda _db, _key: {},
+            resting=lambda _db, _day: (1700.0, "katch_mcardle"),
+            body_fat=lambda _db, _s, _e: {SCENARIO_END - timedelta(days=10): 15.0},
+            profile=lambda: {"height_cm": "180"},
+        ),
+        SCENARIO_END,
+        SCENARIO_TODAY,
+    )
+
+
+class EnergyDayScenarioTests(unittest.TestCase):
+    """Each phase fails on a revert of #3494, #3530 or #3531 (#3541)."""
+
+    morning: dict[str, Any]
+    after: dict[str, Any]
+    evening: dict[str, Any]
+    phases: dict[str, dict[str, Any]]
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.morning = day_scenario({"resting_kcal": 300.0}, [], 0)
+        cls.after = day_scenario(
+            {"steps": 500.0, "floors": 0.0, "resting_kcal": 1200.0,
+             "active_kcal": 120.0},
+            [STRENGTH], 1,
+        )  # fmt: skip
+        cls.evening = day_scenario(
+            {"steps": 9500.0, "floors": 6.0, "resting_kcal": 1650.0,
+             "active_kcal": 640.0},
+            [STRENGTH], 3,
+        )  # fmt: skip
+        cls.phases = {
+            "morning": cls.morning,
+            "after": cls.after,
+            "evening": cls.evening,
+        }
+
+    def test_every_row_has_a_total_so_far(self) -> None:
+        # #3494: no phase of today leaves Tag gesamt empty.
+        for phase, view in self.phases.items():
+            for item in view["rows"]:
+                with self.subTest(phase=phase, source=item["source"]):
+                    self.assertTrue(view["day_partial"])
+                    self.assertIsNotNone(item["total_kcal"])
+        # Early morning a formula row's total is its rest alone; without a
+        # session sport is 0, not open.
+        for source in FORMULAS:
+            item = row(self.morning, source)
+            with self.subTest(phase="morning", source=source):
+                self.assertEqual(item["resting_kcal"], item["total_kcal"])
+                self.assertEqual(["neat", "tef"], sorted(item["pending_parts"]))
+                self.assertEqual(0, item["split"]["sport_kcal"])
+
+    def test_the_strength_session_and_a_lagging_summary(self) -> None:
+        # #3530: the session is priced over its 45 minutes, near Garmin's net
+        # session kcal; everyday waits for the day summary and counts 0.
+        for phase in ("after", "evening"):
+            garmin = row(self.phases[phase], "device")["split"]["sport_kcal"]
+            for source in FORMULAS:
+                sport = row(self.phases[phase], source)["split"]["sport_kcal"]
+                with self.subTest(phase=phase, source=source):
+                    self.assertTrue(0.5 <= sport / garmin <= 2.0, (sport, garmin))
+        for source in (*FORMULAS, "device"):
+            item, later = row(self.after, source), row(self.evening, source)
+            with self.subTest(source=source):
+                self.assertIn("neat", item["pending_parts"])
+                counted = sum(item["split"][p] or 0 for p in DAY_PARTS)
+                self.assertEqual(item["resting_kcal"] + counted, item["total_kcal"])
+                self.assertNotIn("neat", later["pending_parts"])
+                self.assertGreater(later["split"]["neat_kcal"], 0)
+
+    def test_the_own_row_is_the_day_not_the_28_day_mean(self) -> None:
+        # #3531: its day parts are the formula rows', its rest the window's.
+        for phase, view in self.phases.items():
+            own, katch = row(view, "own"), row(view, "katch_mcardle")
+            window = view["own_window"]
+            with self.subTest(phase=phase):
+                for part in DAY_PARTS:
+                    self.assertEqual(katch["split"][part], own["split"][part])
+                self.assertEqual(window["resting_kcal"], own["resting_kcal"])
+                self.assertEqual(
+                    own["total_kcal"],
+                    own["resting_kcal"] + katch["total_kcal"] - katch["resting_kcal"],
+                )
+                self.assertNotEqual(window["total_kcal"], own["total_kcal"])
 
 
 if __name__ == "__main__":
