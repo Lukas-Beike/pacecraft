@@ -24,6 +24,7 @@ from tests.test_wahoo_client import ClientCase
 DAY = date(2026, 11, 15)
 EARLIER = date(2026, 11, 10)
 FULL = "user_read user_write workouts_read"
+ONLINE = {"connected": True, "scope": FULL, "connected_at": "2026-11-01T08:00:00Z"}
 SECRET = "fake-wahoo-error-text-123"
 
 
@@ -42,7 +43,7 @@ class WahooWeightPushTests(unittest.TestCase):
     def setUp(self):
         self.manager = temp_database(self, schema=True)
         self.client = FakeClient()
-        self.status = {"connected": True, "scope": FULL}
+        self.status = dict(ONLINE)
         self.push = WahooWeightPushService(
             self.manager,
             lambda: self.client,
@@ -123,15 +124,49 @@ class WahooWeightPushTests(unittest.TestCase):
         self.assertEqual([], self.client.weights)
         self.assertEqual(1, self.counts()["pending"])
         # After the reconnect with user_write the refresh sends the newest weight.
-        self.status = {"connected": True, "scope": FULL}
-        self.weights.save({"date": EARLIER.isoformat(), "kg": 82})
+        self.status = dict(ONLINE)
         self.refresh()
         self.assertEqual([80.4], self.client.weights)
+        self.assertEqual({"sent": 1, "failed": 0, "retried": 1, "pending": 0},
+                         self.counts())  # fmt: skip
+
+    def test_a_new_connection_is_written_anew(self):
+        self.weights.save({"date": DAY.isoformat(), "kg": 80.4})
+        self.status = dict(ONLINE, connected_at="2026-11-17T08:00:00Z")
+        self.weights.save({"date": DAY.isoformat(), "kg": 80.4})
+        self.assertEqual([80.4, 80.4], self.client.weights)
+
+    def test_an_unanswered_write_is_never_taken_as_the_older_value(self):
+        self.weights.save({"date": DAY.isoformat(), "kg": 80.0})
+        # Wahoo applies 81.0 but the answer is lost; the athlete goes back to 80.0.
+        self.client.fail = TimeoutError()
+        with self.assertLogs("intervals_coach", "WARNING"):
+            self.weights.save({"date": DAY.isoformat(), "kg": 81.0})
+        self.client.fail = None
+        self.weights.save({"date": DAY.isoformat(), "kg": 80.0})
+        self.assertEqual([80.0, 80.0], self.client.weights)
+        self.assertEqual(["sent", "pending", "sent"], self.outcomes)
+
+    def test_a_push_stopped_mid_request_stays_pending(self):
+        def stop(weight_kg):
+            with self.manager.reader() as db:
+                self.seen = summarize_weight_push(db)["pending"]
+            raise SystemExit  # the process ends during the request
+
+        self.client.update_user_weight = stop
+        self.weights = BodyEntryService(
+            self.manager, now=lambda: "x", today=lambda: DAY
+        )
+        self.weights.save({"date": DAY.isoformat(), "kg": 80.4})
+        with self.assertRaises(SystemExit):
+            self.push.push()
+        self.assertEqual(1, self.seen)
+        self.assertEqual(1, self.counts()["pending"])
 
     def test_a_disconnected_wahoo_is_not_written_or_remembered(self):
         self.status = {"connected": False, "scope": None}
         self.weights.save({"date": DAY.isoformat(), "kg": 80.4})
-        self.status = {"connected": True, "scope": FULL}
+        self.status = dict(ONLINE)
         self.refresh()
         self.assertEqual([], self.client.weights)
         self.assertEqual(["off"], self.outcomes)
@@ -139,7 +174,7 @@ class WahooWeightPushTests(unittest.TestCase):
     def test_start_pushes_in_the_background(self):
         self.status = {"connected": False, "scope": None}
         self.weights.save({"date": DAY.isoformat(), "kg": 80.4})
-        self.status = {"connected": True, "scope": FULL}
+        self.status = dict(ONLINE)
         self.push.start()
         for thread in threading.enumerate():
             if thread.name == "wahoo-weight-push":

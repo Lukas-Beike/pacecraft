@@ -13,8 +13,9 @@ the change waits (``pending``) until the athlete reconnects Wahoo with that
 scope. A failed or unanswered write also stays pending; the next Wahoo refresh
 retries it once with the then-newest weight. The write overwrites one value, so
 a resent write is harmless. A disconnected Wahoo is not remembered: the next
-save writes. Wahoo's text never reaches the logs or the diagnostics; the state
-in ``STATE_KEY`` holds the last sent weight, the pending flag and counts only.
+save writes, and a new connection is written anew. Wahoo's text never reaches
+the logs or the diagnostics; the state in ``STATE_KEY`` holds the last sent
+weight with its connection time, the pending flag and counts only.
 """
 
 from __future__ import annotations
@@ -61,10 +62,16 @@ class WahooWeightPushService:
         self._key_values = KeyValueRepository(now)
 
     def start(self) -> None:
-        """Push after a weight change without holding up the save."""
-        threading.Thread(
-            target=self.push, name="wahoo-weight-push", daemon=True
-        ).start()
+        """Push after a weight change without holding up the save; never raises."""
+        try:
+            threading.Thread(
+                target=self.push, name="wahoo-weight-push", daemon=True
+            ).start()
+        except Exception as error:  # noqa: BLE001 - the save has been committed
+            _LOGGER.warning(
+                "Wahoo weight push not started",
+                extra={"event": "wahoo_weight_push_error", "context": {"error_type": type(error).__name__}},
+            )  # fmt: skip
 
     def retry_pending(self) -> str | None:
         """Retry a pending push after a Wahoo refresh; None when none waits."""
@@ -95,16 +102,24 @@ class WahooWeightPushService:
                 (MetricKind.WEIGHT.value, SourceKind.ATHLETE_ENTERED.value),
             ).fetchone()
         newest = None if row is None else round(_value(row), 1)
-        if newest is None or (newest == state.get("sent_kg") and not retry):
+        if newest is None:
             self._store(state, pending=False)
             return UNCHANGED
         status = self._status()
         if not status.get("connected"):
             self._store(state, pending=False)
             return OFF
+        # What was sent is bound to the connection, so a new one is written anew.
+        sent = f"{newest:.1f}@{status.get('connected_at') or ''}"
+        if sent == state.get("sent_value") and not retry:
+            self._store(state, pending=False)
+            return UNCHANGED
         if USER_WRITE_SCOPE not in str(status.get("scope") or "").split():
             self._store(state, pending=True)
             return PENDING
+        # Pending before the request: a lost answer or a stop is retried, and an
+        # older value is never taken as sent.
+        state = self._store(dict(state, sent_value=None), pending=True)
         counts = ("retried",) if retry else ()
         try:
             self._client().update_user_weight(newest)
@@ -115,8 +130,9 @@ class WahooWeightPushService:
             )  # fmt: skip
             self._store(state, pending=True, counts=(*counts, "failed"))
             return PENDING
-        state["sent_kg"] = newest
-        self._store(state, pending=False, counts=(*counts, "sent"))
+        self._store(
+            dict(state, sent_value=sent), pending=False, counts=(*counts, "sent")
+        )
         return SENT
 
     def _state(self, db: Any) -> dict[str, Any]:
@@ -124,14 +140,14 @@ class WahooWeightPushService:
 
     def _store(
         self, state: dict[str, Any], *, pending: bool, counts: tuple[str, ...] = ()
-    ) -> None:
+    ) -> dict[str, Any]:
         changed = dict(state, pending=pending)
         for name in counts:
             changed[name] = int(changed.get(name) or 0) + 1
-        if changed == state:
-            return
-        with self._database_manager.unit_of_work() as db:
-            self._key_values.set(db, STATE_KEY, json.dumps(changed, sort_keys=True))
+        if changed != state:
+            with self._database_manager.unit_of_work() as db:
+                self._key_values.set(db, STATE_KEY, json.dumps(changed, sort_keys=True))
+        return changed
 
 
 def read_state(raw: str | None) -> dict[str, Any]:
