@@ -384,7 +384,7 @@ class GuardHookTests(unittest.TestCase):
             "rg --hostname{x,-bin}=python x",
             "rg --{x,p}r{y,e} python x scripts",
             # A brace expansion too large to read blocks.
-            "rg x " + "{a,b}" * 20,
+            "rg x --" + "{a,b}" * 20,
         ):
             with self.subTest(command):
                 self.assertEqual(self.decide(command), 2)
@@ -411,6 +411,10 @@ class GuardHookTests(unittest.TestCase):
             "rg -n 'pre' docs",
             "rg -n x --pretty docs",
             "npm install --prefix tools",
+            # Brace lists without `-` or `_` cannot spell a ripgrep option and
+            # stay unexpanded; long commands stay within the budget (#3509).
+            "echo " + "{a,b}" * 20,
+            "cat <<'EOF'\n" + '{"key":1,"other":2}\n' * 4000 + "EOF",
             "git log --pretty=oneline",
         ):
             with self.subTest(command):

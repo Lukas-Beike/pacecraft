@@ -73,26 +73,53 @@ RG_RUNS = re.compile(r"--pre(?![a-z0-9_])|hostname-bin|ripgrep_config_path")
 # Shell expansions an option may hide in, read as nothing; a word with a brace
 # list reads as all its expansions, as bash expands it (#3509).
 EXPANSION = re.compile(r"\$(?:\{[^}]*\}|\([^()]*\)|[a-z_][a-z0-9_]*|[@*#?$!0-9-])")
-# A word's first brace list, its prefix and the rest of the word (later lists
-# expand in the next round).
-BRACE_WORD = re.compile(r"(?<!\S)([^\s{}]*)\{([^{},]*(?:,[^{},]*)+)\}(\S*)")
 RG_BLOCKED = "rg --pre"
+# How much brace expansion may add to a command before it blocks (#3509).
+MAX_BRACE_GROWTH = 65536
 
 
 def brace_expanded(text: str) -> str:
-    """The text with each word holding a brace list replaced by all its
-    expansions, nested lists innermost first. OverlongBracket when it grows
-    past 64 KB or keeps growing, so no large expansion is left unread (#3509)."""
-    for _ in range(16):
-        wider = BRACE_WORD.sub(
-            lambda m: " ".join(m[1] + item + m[3] for item in m[2].split(",")), text
-        )
-        if len(wider) > 65536:
+    """The text with each word that holds a brace list and a `-` or `_` (every
+    ripgrep spelling RG_RUNS looks for has one) replaced by all its
+    expansions, as bash expands them. OverlongBracket when that adds more than
+    MAX_BRACE_GROWTH characters, so no large expansion is left unread (#3509)."""
+    budget = [len(text) + MAX_BRACE_GROWTH]
+    words = re.split(r"(\s+)", text)
+    return "".join(
+        " ".join(_word_expansions(word, budget))
+        if "{" in word and ("-" in word or "_" in word)
+        else word
+        for word in words
+    )
+
+
+def _word_expansions(word: str, budget: list[int]) -> list[str]:
+    """Every expansion of one word, innermost brace list first."""
+    pending, done = [word], []
+    while pending:
+        current = pending.pop()
+        found = _brace_list(current)
+        if found is None:
+            done.append(current)
+            continue
+        low, high = found
+        items = current[low + 1 : high].split(",")
+        budget[0] -= len(current) * (len(items) - 1)
+        if budget[0] < 0:
             raise OverlongBracket
-        if wider == text:
-            return text
-        text = wider
-    raise OverlongBracket
+        pending += [current[:low] + item + current[high + 1 :] for item in items]
+    return done
+
+
+def _brace_list(word: str) -> tuple[int, int] | None:
+    """The innermost brace list (a `{}` pair holding a comma) in ``word``."""
+    position = 0
+    while (high := word.find("}", position)) >= 0:
+        low = word.rfind("{", 0, high)
+        if low >= 0 and "," in word[low + 1 : high]:
+            return low, high
+        position = high + 1
+    return None
 
 
 SCRIPTS = Path("scripts")
