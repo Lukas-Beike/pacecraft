@@ -1811,17 +1811,14 @@ function energyMissingCell(reason) {
 }
 
 // Under a row's name: the formulas' body fat source, "bis jetzt" for today, and where the own
-// row's resting rate comes from: the day row takes it from the last 28 days (#3531), and the
-// 28-day row in Verlauf reads as a daily mean, not the day (#3513).
+// row's resting rate comes from: the last 28 days (#3531).
 // The own row also names how its weight change split into fat and lean mass (#3477).
 const ENERGY_STORE_METHODS = { measured: "Fettanteil gemessen", forbes: "Fettanteil geschätzt (Forbes)" };
 
 function energyRowNote(read, source, row) {
   if (source === "own") {
-    const mean = read.own_window === row;
-    const origin = mean ? `Ø pro Tag, letzte ${row.window_days} Tage` : `Ruhe aus ${row.window_days} Tagen`;
-    const partial = !mean && read.day_partial ? "bis jetzt" : "";
-    const parts = [row.window_days ? origin : "", ENERGY_STORE_METHODS[row.store_method] || "", partial].filter(Boolean);
+    const origin = `Ruhe aus ${row.window_days} Tagen`;
+    const parts = [row.window_days ? origin : "", ENERGY_STORE_METHODS[row.store_method] || "", read.day_partial ? "bis jetzt" : ""].filter(Boolean);
     return parts.length ? [h("small", null, parts.join(" · "))] : [];
   }
   const parts = [ENERGY_FORMULAS.has(source) && read.body ? `KFA: ${read.body.label}` : "", energyRestingFrom(read, row), read.day_partial ? "bis jetzt" : ""].filter(Boolean);
@@ -1868,18 +1865,100 @@ function energyTableHead() {
   return h("thead", null, h("tr", null, h("th", { scope: "col" }, "Quelle"), h("th", { scope: "col" }, "Ruhe"), h("th", { scope: "col" }, "Tag gesamt")));
 }
 
-// The 28-day row of "Aus deinen Daten" with every part's mean sits in Verlauf only (#3531), with
-// the flagged-meal rows, which are 28-day values too.
-function energyWindowCard(read) {
-  const row = read?.own_window;
-  if (!row) return null;
-  const color = ENERGY_SOURCES.find(([source]) => source === "own")[2];
-  const head = h("tr", { dataset: { energySource: "own" } },
-    h("th", { scope: "row", dataset: { color: String(color) } }, "Aus deinen Daten", ...energyRowNote(read, "own", row)),
-    ...energyValueCells(read, "own", row));
-  const table = h("table", { className: "current-performance-table" }, h("caption", null, "Energieverbrauch, Ø 28 Tage"),
-    energyTableHead(), h("tbody", null, [head, energySplitRow(row)].filter(Boolean), energyFlaggedRows(read.flagged)));
-  return h("section", { className: "analysis-chart-card", dataset: { energy: "", energyWindow: "" } }, table);
+// "Dein Defizit, letzte 28 Tage" (#3548) replaces Verlauf's 28-day own row: the energy per day
+// from the body stores as the hero, the goal marker, the boxes weight and body fat → fat → kcal per
+// day, and a short text (the athlete asked for it), with the flagged-meal rows under it.
+const DEFICIT_UNCERTAINTY = { body_fat: "Messfehler des Körperfetts", fat_share: "Fettanteil nur geschätzt (Faustregel)", weight_scatter: "Schwankungen der Wiegungen" };
+const DEFICIT_GOAL_STATUS = { in: "✓ im Ziel", under: "unter Ziel", over: "über Ziel" };
+
+function deficitDecimal(value) {
+  return AppFormat.number(value, { digits: 1, minDigits: 1 });
+}
+
+function deficitSigned(value) {
+  const sign = { 1: "+", [-1]: "−" }[Math.sign(value)] || "";
+  return `${sign}${deficitDecimal(Math.abs(value))}`;
+}
+
+// The hero's 95 % span is signed, not clamped at 0: a deficit's span may reach into a surplus
+// (Gitar on #3562), then it reads "−135 bis 335".
+function deficitSpan(card) {
+  const value = Math.abs(card.deficit_kcal);
+  const [low, high] = [value - card.band_kcal, value + card.band_kcal];
+  const text = (kcal) => `${kcal < 0 ? "−" : ""}${formatWhole(Math.abs(kcal))}`;
+  const shown = low < 0 ? `${text(low)} bis ${text(high)}` : `${text(low)}–${text(high)}`;
+  return h("small", "energy-span", h("span", { "aria-hidden": "true" }, shown), h("span", "sr-only", `zwischen ${text(low)} und ${text(high)} kcal`));
+}
+
+// The deficit's span with the estimate and, with a goal, its marker on one bar.
+function deficitGoalBar(card) {
+  const goal = card.goal;
+  if (!goal) return [];
+  const sign = goal.goal === "build" ? -1 : 1;
+  const target = sign * goal.goal_kcal;
+  const low = card.deficit_kcal - card.band_kcal;
+  const high = card.deficit_kcal + card.band_kcal;
+  const min = Math.min(low, target) - 100;
+  const max = Math.max(high, target) + 100;
+  const at = (value) => `${((value - min) / (max - min)) * 100}%`;
+  const mark = (className, left, width) => {
+    const node = h("span", className);
+    node.style.left = left;
+    if (width) node.style.width = width;
+    return node;
+  };
+  const noun = goal.goal === "build" ? "Überschuss" : "Defizit";
+  const label = goal.goal === "hold" ? "Ziel: Halten" : `Ziel: ${formatWhole(goal.goal_kcal)} kcal ${noun}`;
+  return [h("div", { className: "energy-deficit-bar", "aria-hidden": "true" },
+    mark("energy-deficit-band", at(low), `calc(${at(high)} - ${at(low)})`),
+    mark("energy-deficit-mark", at(card.deficit_kcal)),
+    mark("energy-deficit-goal", at(target))),
+  h("p", { className: "energy-deficit-status", dataset: { goalStatus: goal.status } }, `${label} · ${DEFICIT_GOAL_STATUS[goal.status]}`)];
+}
+
+function deficitBoxes(card) {
+  const change = card.weight_end_kg - card.weight_start_kg;
+  const measured = card.method === "measured";
+  let fat = card.fat_pct_end == null ? "keine Messung" : "nur eine Messung";
+  if (measured) fat = `${deficitDecimal(card.fat_pct_start)} → ${deficitDecimal(card.fat_pct_end)} %`;
+  const box = (kind, title, value, note) => h("li", { dataset: { deficitBox: kind } }, h("small", null, title), h("strong", null, value), note && h("small", null, note));
+  return h("ol", "energy-deficit-flow",
+    box("weight", "Gewicht", `${deficitSigned(change)} kg`, `${deficitDecimal(card.weight_start_kg)} → ${deficitDecimal(card.weight_end_kg)}`),
+    box("body_fat", "Körperfett", fat, null),
+    box("fat", "davon Fett", `≈ ${deficitDecimal(Math.abs(card.fat_change_kg))} kg`, measured || card.fat_share_pct == null ? null : `Faustregel ≈ ${card.fat_share_pct} %`),
+    box("kcal", "pro Tag", `≈ ${formatWhole(Math.abs(card.deficit_kcal))} kcal`, `${formatWhole(Math.abs(card.stored_kcal))} kcal ÷ ${card.span_days} Tage`));
+}
+
+// The athlete's words: what changed, what it means per day, and the real expenditure.
+function deficitText(card, deviceLabel) {
+  const change = card.weight_end_kg - card.weight_start_kg;
+  const kg = deficitDecimal(Math.abs(change));
+  const weight = change <= 0 ? `Du hast ${kg} kg abgenommen` : `Du hast ${kg} kg zugenommen`;
+  const fatKg = deficitDecimal(Math.abs(card.fat_change_kg));
+  const moved = card.fat_pct_end <= card.fat_pct_start ? "gesunken" : "gestiegen";
+  const fat = card.method === "measured"
+    ? `, dein Körperfett ist von ${deficitDecimal(card.fat_pct_start)} % auf ${deficitDecimal(card.fat_pct_end)} % ${moved} – etwa ${fatKg} kg Fett.`
+    : `. Ohne zweite Körperfettmessung schätzt die Faustregel davon etwa ${card.fat_share_pct ?? "–"} % als Fett – etwa ${fatKg} kg.`;
+  const balance = `Das entspricht einem ${card.deficit_kcal >= 0 ? "Defizit" : "Überschuss"} von etwa ${formatWhole(Math.abs(card.deficit_kcal))} kcal pro Tag.`;
+  const device = card.device_total_kcal == null ? "" : ` (${deviceLabel || "Gerät"}: ${formatWhole(card.device_total_kcal)})`;
+  return `${weight}${fat} ${balance} Dein echter Verbrauch lag damit bei rund ${formatWhole(card.total_kcal)} kcal${device}.`;
+}
+
+function energyDeficitCard(read) {
+  const card = read?.deficit;
+  if (!card) return null;
+  const surplus = card.deficit_kcal < 0;
+  const deviceLabel = read.rows?.find((row) => row.source === "device")?.label;
+  const flagged = energyFlaggedRows(read.flagged);
+  return h("section", { className: "analysis-chart-card", dataset: { energy: "", energyDeficit: card.method } },
+    h("h3", null, `Dein ${surplus ? "Überschuss" : "Defizit"}, letzte ${card.days} Tage`),
+    h("p", "energy-deficit-hero", h("strong", null, `≈ ${formatWhole(Math.abs(card.deficit_kcal))} kcal`),
+      h("small", null, surplus ? "pro Tag in die Speicher" : "pro Tag aus den Reserven"),
+      deficitSpan(card)),
+    ...deficitGoalBar(card), deficitBoxes(card),
+    h("p", { className: "energy-deficit-text" }, deficitText(card, deviceLabel)),
+    h("small", "energy-deficit-uncertainty", `Unsicherheit vor allem: ${DEFICIT_UNCERTAINTY[card.uncertainty] || card.uncertainty}`),
+    flagged.length ? h("table", { className: "current-performance-table" }, h("caption", null, "Verbrauch, Ø 28 Tage"), h("tbody", null, flagged)) : null);
 }
 
 // With meals flagged as estimated, the own total without them (only clean windows, #3187 item 14)
@@ -2042,14 +2121,14 @@ function energyFitScale(read, key) {
   return card;
 }
 
-// Verlauf shows the scale above "Tagesverlauf" for its period, then the 28-day "Aus deinen
-// Daten" row (#3531); any loaded read serves both, as neither depends on the diary's day.
+// Verlauf shows the scale above "Tagesverlauf" for its period, then the 28-day deficit card
+// (#3548); any loaded read serves both, as neither depends on the diary's day.
 function renderNutritionFit() {
   const slot = document.querySelector("#nutritionFitScale");
   if (!slot) return;
   const pending = energyPending(null);
   const key = nutritionHistoryPeriod === "twelveWeeks" ? "12w" : "14d";
-  slot.replaceChildren(...(pending ? [pending] : [energyFitScale(energyRead, key), energyWindowCard(energyRead)].filter(Boolean)));
+  slot.replaceChildren(...(pending ? [pending] : [energyFitScale(energyRead, key), energyDeficitCard(energyRead)].filter(Boolean)));
 }
 
 function renderDiaryEnergy() {

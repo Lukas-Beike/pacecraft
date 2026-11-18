@@ -14,6 +14,7 @@ from backend.nutrition.energy_balance import (
     EnergyInputs,
     EnergyWindow,
     Estimate,
+    StoredEnergy,
     history_start,
 )
 from backend.nutrition.energy_inputs import EnergySources
@@ -659,6 +660,77 @@ class EnergyGoalTests(unittest.TestCase):
             None, replace(sources(), profile=lambda: LOSE), DAY3, DAY1
         )["goal"]
         self.assertEqual(("lose", 500), (goal["goal"], goal["goal_kcal"]))
+
+
+MEASURED = StoredEnergy(
+    -565.0, 120.0, "measured", 28, 91.2, 89.2, -1.6, 15.5, 14.1, "body_fat"
+)
+
+
+class DeficitCardTests(unittest.TestCase):
+    """'Dein Defizit, letzte 28 Tage' in Verlauf (#3548)."""
+
+    def view(
+        self, store: StoredEnergy | None, goal: dict[str, str] | None = None
+    ) -> Any:
+        latest = replace(window(END, 3800.0), store=store)
+        return energy_view(inputs(), [*windows()[:-1], latest], garmin(), goal=goal)[
+            "deficit"
+        ]
+
+    def test_the_card_shows_the_stores_terms_and_the_real_expenditure(self) -> None:
+        card = self.view(MEASURED)
+        self.assertEqual(
+            {
+                "days": 28,
+                "deficit_kcal": 565,
+                "band_kcal": 235,
+                "method": "measured",
+                "span_days": 28,
+                "weight_start_kg": 91.2,
+                "weight_end_kg": 89.2,
+                "fat_pct_start": 15.5,
+                "fat_pct_end": 14.1,
+                "fat_change_kg": -1.6,
+                "fat_share_pct": 80,
+                "stored_kcal": -15820,
+                "uncertainty": "body_fat",
+                "total_kcal": 3800,
+                "device_total_kcal": 3120,
+                "goal": None,
+            },
+            card,
+        )
+        # Forbes has one percentage at most; a surplus is a negative deficit.
+        forbes = self.view(
+            MEASURED._replace(
+                kcal_per_day=300.0,
+                method="forbes",
+                fat_pct_start=None,
+                uncertainty="fat_share",
+            )
+        )
+        self.assertEqual(
+            (-300, "forbes", None),
+            (forbes["deficit_kcal"], forbes["method"], forbes["fat_pct_start"]),
+        )
+        self.assertIsNone(self.view(None))
+
+    def test_the_goal_marker_reads_in_under_or_over(self) -> None:
+        # Deficit 565 with a band of 235: 330 to 800 counts as in the goal.
+        for goal, kcal, status in (
+            ("lose", "500", "in"),
+            ("lose", "1000", "under"),
+            ("lose", "300", "over"),
+            ("hold", "", "over"),
+            ("build", "300", "under"),
+        ):
+            with self.subTest(goal=goal, kcal=kcal):
+                card = self.view(
+                    MEASURED, {"energy_goal": goal, "energy_goal_kcal": kcal}
+                )
+                self.assertEqual(status, card["goal"]["status"])
+        self.assertIsNone(self.view(MEASURED, {"energy_goal": ""})["goal"])
 
 
 class FitScaleTests(unittest.TestCase):
