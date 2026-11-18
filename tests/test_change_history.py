@@ -11,6 +11,248 @@ from backend.athlete.profile import DEFAULT_PROFILE
 from backend.coach import limits as coach_limits
 from backend.errors import AppError
 
+# #3497: each entity's audit projection fields as first released, before any
+# later generation. A field added to a projection must be listed in a new
+# _FIELDS_ADDED_TO_AUDIT generation, so rows hashed without it stay undoable;
+# a new entity type is recorded here deliberately.
+RELEASED_AUDIT_FIELDS = {
+    "activity_feedback": frozenset(["rows"]),
+    "activity_session": frozenset(["sessions"]),
+    "checkin": frozenset(
+        [
+            "availability_notes",
+            "available_minutes",
+            "checkin_date",
+            "day_form",
+            "day_status",
+            "illness",
+            "motivation",
+            "notes",
+            "pain",
+            "session_rpe",
+            "soreness",
+            "stress",
+            "tag_answers",
+        ]
+    ),
+    "competition": frozenset(
+        [
+            "category",
+            "course_profile",
+            "description",
+            "distance",
+            "environment",
+            "event_date",
+            "id",
+            "name",
+            "notes",
+            "planned_duration_s",
+            "priority",
+            "sport",
+            "sport_detail",
+            "starts_at_local",
+            "sync_state",
+            "target",
+        ]
+    ),
+    "equipment": frozenset(
+        [
+            "environment",
+            "id",
+            "initial_distance_km",
+            "initial_hours",
+            "kind",
+            "lifetime_target_km",
+            "lifetime_target_source",
+            "maintenance_hours",
+            "maintenance_km",
+            "name",
+            "parent_id",
+            "parent_pending",
+            "sport",
+            "sport_pending",
+            "start_date",
+            "status",
+        ]
+    ),
+    "equipment_assignment": frozenset(["activity_id", "equipment_id"]),
+    "equipment_maintenance": frozenset(
+        ["date", "distance_km", "equipment_id", "id", "notes"]
+    ),
+    "equipment_planned": frozenset(["equipment_id", "planned_unit_id"]),
+    "equipment_rule": frozenset(["history", "kind", "revision"]),
+    "equipment_rule_apply": frozenset(
+        ["applied_at", "equipment_id", "kind", "operation_id"]
+    ),
+    "food_database_entry": frozenset(
+        [
+            "basis_amount",
+            "basis_unit",
+            "carbs_g",
+            "fat_g",
+            "fiber_g",
+            "id",
+            "kcal",
+            "protein_g",
+            "salt_g",
+            "sugar_g",
+        ]
+    ),
+    "metric_export": frozenset(
+        [
+            "body_fat",
+            "ftp",
+            "max_hr",
+            "resting_hr",
+            "run_ftp",
+            "threshold_hr",
+            "threshold_pace",
+            "weight",
+        ]
+    ),
+    "nutrition_entry": frozenset(
+        [
+            "carbs_g",
+            "description",
+            "fat_g",
+            "id",
+            "kcal",
+            "logged_at",
+            "logged_time_known",
+            "meal_date",
+            "meal_type",
+            "nutrition_basis",
+            "protein_g",
+            "source",
+        ]
+    ),
+    "nutrition_product": frozenset(
+        [
+            "barcode",
+            "basis_amount",
+            "basis_unit",
+            "brand",
+            "carbs_g",
+            "external_id",
+            "extraction_confidence",
+            "fat_g",
+            "fiber_g",
+            "id",
+            "kcal",
+            "name",
+            "protein_g",
+            "provenance",
+            "salt_g",
+            "source",
+            "source_url",
+            "status",
+            "sugar_g",
+        ]
+    ),
+    "nutrition_product_cleanup": frozenset(
+        ["days", "operation_id", "products", "removed_at"]
+    ),
+    "nutrition_template": frozenset(
+        [
+            "carbs_g",
+            "description",
+            "fat_g",
+            "id",
+            "kcal",
+            "meal_type",
+            "meal_type_explicit",
+            "name",
+            "nutrition_basis",
+            "protein_g",
+            "source",
+        ]
+    ),
+    "planned_unit": frozenset(
+        [
+            "archived",
+            "date",
+            "description",
+            "duration_minutes",
+            "environment",
+            "id",
+            "local_deleted",
+            "name",
+            "origin",
+            "plan_id",
+            "plan_name",
+            "planned_duration_s",
+            "rationale",
+            "remote_event_category",
+            "remote_event_external_id",
+            "remote_event_id",
+            "source",
+            "sport",
+            "sport_detail",
+            "sync_status",
+            "target",
+            "type",
+        ]
+    ),
+    "profile": frozenset(
+        [
+            "availability",
+            "body_fat_pct",
+            "coaching_style",
+            "constraints",
+            "equipment",
+            "goals",
+            "height_cm",
+            "name",
+            "performance_notes",
+            "sports",
+            "timezone",
+            "training_background",
+            "training_preferences",
+            "typical_weekly_volume",
+            "weather_location",
+            "weight_kg",
+        ]
+    ),
+    "training_plan": frozenset(
+        ["end_date", "goal", "id", "name", "start_date", "status"]
+    ),
+    "workout_library": frozenset(
+        [
+            "archived",
+            "date",
+            "description",
+            "duration_minutes",
+            "environment",
+            "id",
+            "local_marked",
+            "name",
+            "plan_id",
+            "plan_name",
+            "planned_duration_s",
+            "private_calendar_adjustment",
+            "rationale",
+            "source",
+            "sport",
+            "sport_detail",
+            "sync_status",
+            "target",
+            "type",
+        ]
+    ),
+    "zone_configuration": frozenset(
+        [
+            "environment",
+            "limits",
+            "maximum",
+            "metric",
+            "percent_limits",
+            "sport",
+            "threshold",
+            "valid_from",
+        ]
+    ),
+}
+
 
 class ChangeHistoryTests(unittest.TestCase):
     def setUp(self):
@@ -331,6 +573,20 @@ class ChangeHistoryTests(unittest.TestCase):
         self.assertNotIn(
             "weekly_plan", change_history.audit_projection_fields("profile")
         )
+
+    def test_every_added_audit_field_is_a_registered_generation(self):
+        added = change_history._FIELDS_ADDED_TO_AUDIT
+        self.assertEqual(set(RELEASED_AUDIT_FIELDS), change_history.ENTITY_TYPES)
+        for entity, released in RELEASED_AUDIT_FIELDS.items():
+            generations = {f for gen in added.get(entity, ()) for f in gen}
+            with self.subTest(entity):
+                self.assertEqual(
+                    set(),
+                    change_history.audit_projection_fields(entity)
+                    - released
+                    - generations,
+                    "a new audit field needs a _FIELDS_ADDED_TO_AUDIT generation",
+                )
 
     def test_a_profile_row_hashed_before_the_birth_year_stays_undoable(self):
         # #3099: rows of 2.1.10-2.1.14 carry every field up to the first threshold
