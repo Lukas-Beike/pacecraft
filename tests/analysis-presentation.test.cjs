@@ -303,7 +303,7 @@ test("'Heute noch essen' heads the diary's energy card, else a link to the goal 
   assert.equal(energyGoalText({ energy_goal: "hold" }), "Halten");
 });
 
-const DEFICIT_CARD_FUNCTIONS = ["DEFICIT_UNCERTAINTY", "DEFICIT_GOAL_STATUS", "deficitDecimal", "deficitSigned", "deficitGoalBar", "deficitBoxes", "deficitText", "energyDeficitCard"];
+const DEFICIT_CARD_FUNCTIONS = ["DEFICIT_UNCERTAINTY", "DEFICIT_GOAL_STATUS", "deficitDecimal", "deficitSigned", "deficitSpan", "deficitGoalBar", "deficitBoxes", "deficitText", "energyDeficitCard"];
 
 test("Verlauf's deficit card: hero, goal marker, boxes and text agree, measured and Forbes (#3548)", () => {
   const { h } = extractFunctions("components.js", ["h", "SVG_NS", "svgNode"], { document: fakeDocument() });
@@ -329,6 +329,9 @@ test("Verlauf's deficit card: hero, goal marker, boxes and text agree, measured 
   assert.match(textOf(surplus.children[1]), /pro Tag in die Speicher/);
   assert.deepEqual(surplus.children[2].children.map(textOf), ["Gewicht+1,0 kg70,0 → 71,0", "Körperfettnur eine Messung", "davon Fett≈ 0,6 kgFaustregel ≈ 60 %", "pro Tag≈ 300 kcal8.400 kcal ÷ 28 Tage"]);
   assert.equal(textOf(surplus.children[3]), "Du hast 1,0 kg zugenommen. Ohne zweite Körperfettmessung schätzt die Faustregel davon etwa 60 % als Fett – etwa 0,6 kg. Das entspricht einem Überschuss von etwa 300 kcal pro Tag. Dein echter Verbrauch lag damit bei rund 3.800 kcal (Garmin: 3.100).");
+  // A span reaching past 0 into a surplus is signed, not clamped (Gitar on #3562).
+  const small = energyDeficitCard({ rows, deficit: { ...measured, deficit_kcal: 100, band_kcal: 235 } });
+  assert.match(textOf(small.children[1]), /−135 bis 335zwischen −135 und 335 kcal$/);
   assert.equal(energyDeficitCard({ rows, deficit: null }), null);
 });
 

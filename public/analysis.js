@@ -1880,6 +1880,16 @@ function deficitSigned(value) {
   return `${sign}${deficitDecimal(Math.abs(value))}`;
 }
 
+// The hero's 95 % span is signed, not clamped at 0: a deficit's span may reach into a surplus
+// (Gitar on #3562), then it reads "−135 bis 335".
+function deficitSpan(card) {
+  const value = Math.abs(card.deficit_kcal);
+  const [low, high] = [value - card.band_kcal, value + card.band_kcal];
+  const text = (kcal) => `${kcal < 0 ? "−" : ""}${formatWhole(Math.abs(kcal))}`;
+  const shown = low < 0 ? `${text(low)} bis ${text(high)}` : `${text(low)}–${text(high)}`;
+  return h("small", "energy-span", h("span", { "aria-hidden": "true" }, shown), h("span", "sr-only", `zwischen ${text(low)} und ${text(high)} kcal`));
+}
+
 // The deficit's span with the estimate and, with a goal, its marker on one bar.
 function deficitGoalBar(card) {
   const goal = card.goal;
@@ -1944,7 +1954,7 @@ function energyDeficitCard(read) {
     h("h3", null, `Dein ${surplus ? "Überschuss" : "Defizit"}, letzte ${card.days} Tage`),
     h("p", "energy-deficit-hero", h("strong", null, `≈ ${formatWhole(Math.abs(card.deficit_kcal))} kcal`),
       h("small", null, surplus ? "pro Tag in die Speicher" : "pro Tag aus den Reserven"),
-      energyKcalSpan(Math.abs(card.deficit_kcal), card.band_kcal)),
+      deficitSpan(card)),
     ...deficitGoalBar(card), deficitBoxes(card),
     h("p", { className: "energy-deficit-text" }, deficitText(card, deviceLabel)),
     h("small", "energy-deficit-uncertainty", `Unsicherheit vor allem: ${DEFICIT_UNCERTAINTY[card.uncertainty] || card.uncertainty}`),
