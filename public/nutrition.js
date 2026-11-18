@@ -1064,7 +1064,9 @@ function renderNutritionProductUseSizes(product, unit) {
   const group = field.querySelector(".chip-group");
   const choices = nutritionProductSizes(product).flatMap(({ size, amount }) => size === "portion"
     ? [["1 Portion", amount]]
-    : [["½ Packung", amount / 2], ["1 Packung", amount]]);
+    : [["½ Packung", amount / 2], ["1 Packung", amount]])
+    // The amount field takes steps of 0.1, so a chip fills a value it accepts.
+    .map(([text, value]) => [text, Math.round(value * 10) / 10]);
   const portion = choices.find(([text]) => text === "1 Portion")?.[1];
   group.replaceChildren(...choices.map(([text, value]) => h("label", "chip",
     h("input", { type: "radio", name: "nutritionProductUseSize", value: String(value), checked: text === "1 Portion" }),

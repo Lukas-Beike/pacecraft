@@ -198,24 +198,26 @@ test("@responsive a product's portion and package fill the amount as quick choic
   await editor.locator('[name="basis_unit"]').selectOption("g");
   await expect(editor.getByLabel("Portion (g)")).toBeVisible();
   await editor.locator('[name="portion_amount"]').fill("150");
-  await editor.locator('[name="package_amount"]').fill("450");
+  await editor.locator('[name="package_amount"]').fill("450.5");
   await editor.getByRole("button", { name: "Produkt lokal speichern" }).click();
   const dialog = page.locator("#nutritionProductUseDialog");
   const amount = page.locator("#nutritionProductUseAmount");
   await expect(dialog).toBeVisible();
   // The portion is preselected; a chip fills the amount, which stays editable.
   const chips = dialog.locator("#nutritionProductUseSizes label.chip");
-  await expect(chips).toHaveText(["1 Portion · 150 g", "½ Packung · 225 g", "1 Packung · 450 g"]);
+  await expect(chips).toHaveText(["1 Portion · 150 g", "½ Packung · 225,3 g", "1 Packung · 450,5 g"]);
   await expect(amount).toHaveValue("150");
   await expect(dialog.getByRole("radio", { name: "1 Portion · 150 g" })).toBeChecked();
   await chips.filter({ hasText: "½ Packung" }).click();
-  await expect(amount).toHaveValue("225");
+  // Half of 450.5 g is rounded to the field's 0.1 steps, so it stays valid.
+  await expect(amount).toHaveValue("225.3");
+  expect(await amount.evaluate((input) => input.checkValidity())).toBeTruthy();
   await amount.fill("200");
   await expect(dialog.getByRole("radio", { checked: true })).toHaveCount(0);
   await page.locator("#nutritionProductUseCancel").click();
   const cards = await openProductSection(page, "all");
   const card = cards.filter({ hasText: productName }).first();
-  await expect(card.locator("small")).toContainText("Basis: 100 g · Portion 150 g · Packung 450 g");
+  await expect(card.locator("small")).toContainText("Basis: 100 g · Portion 150 g · Packung 450,5 g");
   // Without a stored size there are no chips and the amount starts at the basis.
   await page.locator("#nutritionProductManual").click();
   await editor.locator('[name="name"]').fill(`${productName} ohne Größe`);
