@@ -93,18 +93,24 @@ def brace_expanded(text: str) -> str:
 
 
 def _brace_words(text: str) -> list[str]:
-    """The text cut at blanks outside brace pairs, so a quoted or escaped blank
-    inside a brace list stays in its word (Gitar, #3509); a line break always
-    cuts, so an open brace never joins lines."""
-    words, start, depth = [], 0, 0
+    """The text, line continuations removed, cut at blanks outside brace pairs,
+    so a quoted or escaped blank inside a brace list stays in its word (Gitar,
+    #3509). Quotes count only inside an open brace, so an apostrophe elsewhere
+    never joins lines; an unquoted line break always cuts."""
+    text = text.replace("\\\n", "")
+    words, start, depth, quote = [], 0, 0, ""
     for index, char in enumerate(text):
-        if char == "\n":
+        if quote:
+            quote = "" if char == quote else quote
+        elif char in "'\"" and depth:
+            quote = char
+        elif char == "\n":
             depth = 0
         elif char == "{":
             depth += 1
         elif char == "}":
             depth = max(depth - 1, 0)
-        if char.isspace() and (depth == 0 or char == "\n"):
+        if char.isspace() and not quote and (depth == 0 or char == "\n"):
             words += [text[start:index], char]
             start = index + 1
     return [*words, text[start:]]

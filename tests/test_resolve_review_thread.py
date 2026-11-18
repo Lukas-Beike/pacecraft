@@ -386,6 +386,9 @@ class GuardHookTests(unittest.TestCase):
             # Gitar: a quoted or escaped blank inside a brace list.
             "rg -{' ',-}pre python x scripts",
             "rg -{\\ ,-}pre python x scripts",
+            # Gitar: a line continuation or a quoted line break in the list.
+            "rg -{\\\n,-}pre python x scripts",
+            "rg -{'\n',-}pre python x scripts",
             # A brace expansion too large to read blocks.
             "rg x --" + "{a,b}" * 20,
         ):
