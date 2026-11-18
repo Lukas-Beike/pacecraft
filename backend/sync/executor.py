@@ -620,6 +620,12 @@ class WahooPlanPushOwner(Protocol):
     def sync(self, payload: dict[str, Any]) -> dict[str, Any]: ...
 
 
+class WahooWeightPushOwner(Protocol):
+    """Retries a pending Wahoo profile-weight write (#3559)."""
+
+    def retry_pending(self) -> str | None: ...
+
+
 class WahooStreamBackfill(StreamBackfill, Protocol):
     """The stream backfill plus the restart of its chain for a mapper replay."""
 
@@ -630,7 +636,8 @@ class WahooJobAdapter:
     """Run the explicit Wahoo plan export, the stream backfill or the read-only sync.
 
     A finished refresh restarts the stream chain once per FIT mapper version, so the
-    paced backfill downloads the files of sessions an older mapper stored (#1936).
+    paced backfill downloads the files of sessions an older mapper stored (#1936),
+    and retries a pending profile-weight write (#3559).
     """
 
     def __init__(
@@ -639,8 +646,10 @@ class WahooJobAdapter:
         sync: WahooSyncJobOwner,
         plan_push: WahooPlanPushOwner | None = None,
         stream_backfill: WahooStreamBackfill | None = None,
+        weight_push: WahooWeightPushOwner | None = None,
     ) -> None:
         self._sync = sync
+        self._weight_push = weight_push
         self._plan_push = plan_push
         self._stream_backfill = stream_backfill
 
@@ -663,6 +672,8 @@ class WahooJobAdapter:
         result = self._sync.sync(payload.get("days"), reason, operation_id=job["id"])
         if self._stream_backfill is not None:
             self._stream_backfill.rearm()
+        if self._weight_push is not None:
+            self._weight_push.retry_pending()
         return result
 
 

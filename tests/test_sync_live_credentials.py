@@ -145,6 +145,7 @@ class LiveCredentialHarness:
                 sync_service=mock.Mock,
                 plan_push_service=mock.Mock,
                 stream_backfill_service=mock.Mock,
+                weight_push_service=mock.Mock,
             ),
         )
         # Built once, like the sync worker; every later job reuses this executor.

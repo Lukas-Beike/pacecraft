@@ -47,6 +47,7 @@ from backend.sync.wahoo_sync import (
     WahooSyncService,
     WahooSyncStorage,
 )
+from backend.sync.wahoo_weight_push import WahooWeightPushService
 from backend.sync.wahoo_workout_export import WahooWorkoutExport, plan_references
 
 
@@ -65,6 +66,7 @@ class WahooSyncServices:
     workout_export: Callable[[], WahooWorkoutExport]
     library_state: Callable[[], WahooLibraryState]
     plan_push_service: Callable[[], WahooPlanPushService]
+    weight_push_service: Callable[[], WahooWeightPushService]
 
 
 def _utc_datetime() -> datetime:
@@ -233,6 +235,15 @@ def build_wahoo_sync(
                 )
             return shared_plan_push
 
+    def weight_push_service() -> WahooWeightPushService:
+        """The profile-weight write after an entered weight changes (#3559)."""
+        return WahooWeightPushService(
+            ctx.database,
+            client,
+            lambda: connection().status(),
+            lambda: _utc_datetime().isoformat(),
+        )
+
     return WahooSyncServices(
         client,
         sync_service,
@@ -242,4 +253,5 @@ def build_wahoo_sync(
         workout_export,
         library_state,
         plan_push_service,
+        weight_push_service,
     )

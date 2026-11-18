@@ -22,6 +22,7 @@ WAHOO_TOKEN_URL = f"{WAHOO_API_BASE}/oauth/token"
 WAHOO_PERMISSIONS_URL = f"{WAHOO_API_BASE}/v1/permissions"
 WAHOO_SCOPES = (
     "user_read",
+    "user_write",
     "workouts_read",
     "workouts_write",
     "plans_read",

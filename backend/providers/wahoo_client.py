@@ -1,7 +1,8 @@
 """Wahoo Cloud API transport.
 
-Reads the workout list, one workout summary and the user, and writes training
-plans (create, update, delete) on explicit export. The bearer token comes from
+Reads the workout list, one workout summary and the user, writes training
+plans (create, update, delete) on explicit export, and the profile weight
+after an entered weight changes (#3559). The bearer token comes from
 injected callables owned by the connection use case, so this module never
 stores, logs or returns a token. Every request goes through the shared JSON
 client, which applies the timeout and the response size cap and records
@@ -44,6 +45,8 @@ POWER_ZONES_PATH: Final = "/v1/power_zones"
 # The OAuth scopes that allow reading the power zones and the user profile.
 POWER_ZONES_SCOPE: Final = "power_zones_read"
 USER_SCOPE: Final = "user_read"
+# The scope that allows writing the profile weight (#3559).
+USER_WRITE_SCOPE: Final = "user_write"
 FORM_CONTENT_TYPE: Final = "application/x-www-form-urlencoded"
 PLAN_DATA_URI_PREFIX: Final = "data:application/json;base64,"
 REQUEST_TIMEOUT_SECONDS: Final = 30
@@ -206,6 +209,10 @@ class WahooClient:
         if not isinstance(payload, dict):
             raise _invalid_response()
         return payload
+
+    def update_user_weight(self, weight_kg: float) -> None:
+        """Set the profile weight of the connected Wahoo user (#3559)."""
+        self._write("PUT", USER_PATH, {"user[weight]": f"{weight_kg:.1f}"})
 
     def create_plan(
         self,

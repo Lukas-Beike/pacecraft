@@ -569,6 +569,13 @@ class ProdChecksTests(unittest.TestCase):
                 "unlinked_uploads": 0,
                 "day": "2026-11-15 never printed",
             },
+            "wahoo_weight_push": {
+                "sent": 2,
+                "failed": 1,
+                "retried": 1,
+                "pending": 0,
+                "sent_kg": "80.4 never printed",
+            },
             "backup": {
                 "known": True,
                 "age_hours": 3.5,
@@ -643,6 +650,9 @@ class ProdChecksTests(unittest.TestCase):
             "garmin_body_push": [
                 "failed 1", "linked_days 2", "pending_days 1", "removed 0",
                 "retried 1", "sent 3", "unlinked_uploads 0",
+            ],
+            "wahoo_weight_push": [
+                "failed 1", "pending 0", "retried 1", "sent 2",
             ],
             "garmin_strength_push": [
                 "garmin.several_exercises 1", "garmin.units 2", "garmin.with_kg 1",
