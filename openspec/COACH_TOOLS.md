@@ -965,8 +965,8 @@ effect `local_write`; gate domain `nutrition`; receipt „Ernährungseintrag kor
 
 effect `local_write`; gate domain `profile`; receipt „Profil aktualisiert“; proposal card „Profil aktualisieren“; fully tracked by change history.
 
-- `changes`* (array; ≥1 items; ≤31 items)
-- `changes[].field`* (string; one of `"name"`, `"goals"`, `"sports"`, `"training_background"`, `"typical_weekly_volume"`, `"availability"`, `"constraints"`, `"equipment"`, `"training_preferences"`, `"training_preferences_running"`, `"training_preferences_cycling"`, `"training_preferences_swimming"`, `"training_preferences_strength"`, `"training_preferences_mobility"`, `"training_model"`, `"performance_notes"`, `"weight_kg"`, `"body_fat_pct"`, `"height_cm"`, `"sex"`, `"birth_year"`, `"coaching_style"`, `"timezone"`, `"weather_location"`, `"sleep_target_hours"`, `"fueling_tolerance"`, `"preferred_source_thresholds"`, `"preferred_source_body"`, `"preferred_source_hrv"`, `"preferred_source_resting_hr"`, `"preferred_source_sleep"`)
+- `changes`* (array; ≥1 items; ≤33 items)
+- `changes[].field`* (string; one of `"name"`, `"goals"`, `"sports"`, `"training_background"`, `"typical_weekly_volume"`, `"availability"`, `"constraints"`, `"equipment"`, `"training_preferences"`, `"training_preferences_running"`, `"training_preferences_cycling"`, `"training_preferences_swimming"`, `"training_preferences_strength"`, `"training_preferences_mobility"`, `"training_model"`, `"performance_notes"`, `"weight_kg"`, `"body_fat_pct"`, `"height_cm"`, `"sex"`, `"birth_year"`, `"coaching_style"`, `"timezone"`, `"weather_location"`, `"sleep_target_hours"`, `"fueling_tolerance"`, `"energy_goal"`, `"energy_goal_kcal"`, `"preferred_source_thresholds"`, `"preferred_source_body"`, `"preferred_source_hrv"`, `"preferred_source_resting_hr"`, `"preferred_source_sleep"`)
 - `changes[].expected_value`* (string; ≤4000 chars)
 - `changes[].value`* (string; ≤4000 chars)
 - `_request`* (the envelope above)

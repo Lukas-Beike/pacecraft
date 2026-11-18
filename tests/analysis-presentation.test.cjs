@@ -188,11 +188,12 @@ test("a filled analysis chart is kept and is not listed as missing", () => {
   assert.deepEqual(Array.from(missing), ["Körperfett"], "only the empty chart is listed");
 });
 
-const BODY_OVERVIEW_FUNCTIONS = ["bodySourceShown", "bodyOverviewLatest", "bodyFoldFat", "bodyOverviewReading", "bodyOverviewRow", "renderBodyAnalysis"];
+const BODY_OVERVIEW_FUNCTIONS = ["bodySourceShown", "bodyOverviewLatest", "bodyFoldFat", "bodyOverviewReading", "bodyOverviewRow", "energyGoalText", "energyGoalRow", "renderBodyAnalysis"];
 
-function bodyOverviewHarness(root, reads) {
+function bodyOverviewHarness(root, reads, profile = { body_fat_pct: "18.5" }) {
   return extractFunctions("analysis.js", BODY_OVERVIEW_FUNCTIONS, {
-    state: { data: { profile: { body_fat_pct: "18.5" } } }, document: { ...fakeDocument(), getElementById: () => root },
+    state: { data: { profile } }, document: { ...fakeDocument(), getElementById: () => root },
+    ENERGY_GOAL_NAMES: { lose: "Abnehmen", hold: "Halten", build: "Aufbauen" }, openEnergyGoalDialog: () => {},
     isPreferredSource: (item, preferred) => item.source_provider === preferred,
     analysisValidPoint: (p) => p.value != null, dateLabel: (v) => v, analysisValue: (v, unit) => `${v} ${unit}`,
     analysisPeriodControls: () => new FakeElement("nav"), bodyHistoryPeriod: "twelveWeeks", bodyMetricChart: () => null,
@@ -231,7 +232,11 @@ test("body overview: the newest own body fat with its source, weight with its so
   reads.skinfolds = { measurements: [] };
   shown = rows([]);
   assert.equal(textOf(shown[1].children[1]), "\u2014");
-  assert.equal(shown.length, 2);
+  // Weight, body fat and the energy goal (#3547), no lean mass.
+  assert.equal(shown.length, 3);
+  assert.equal(textOf(shown[2].children[0]), "Energieziel");
+  assert.equal(textOf(shown[2].children[1]), "nicht gesetzt");
+  assert.equal(shown[2].children[2].children[0].label, "Energieziel festlegen");
   const unknown = bodyFoldFat({ measurements: [{ date: "2026-11-15", body_fat_pct: null }] }, null);
   assert.equal(`${unknown.text} ${unknown.note}`, "unbekannt ohne Geburtsjahr");
   assert.equal(bodyFoldFat(null, null), null);
@@ -264,6 +269,38 @@ test("an entered weight shows beside the preferred source and wins its own day",
   assert.equal(shown([["2026-11-12", 72.5]]), "72.5 kg");
   // A measurement of a later day is the newest.
   assert.equal(shown([["2026-11-11", 72.5]]), "71.2 kg");
+});
+
+test("'Heute noch essen' heads the diary's energy card, else a link to the goal (#3547)", async () => {
+  const { h } = extractFunctions("components.js", ["h", "SVG_NS", "svgNode"], { document: fakeDocument() });
+  const opened = [];
+  const { energyGoalStrip, energyGoalText } = extractFunctions("analysis.js", ["ENERGY_SOURCES", "ENERGY_GOAL_NAMES", "energyGoalText", "energyGoalStrip"], {
+    h, formatWhole: (v) => String(v), openEnergyGoalDialog: () => opened.push("dialog"),
+    AppRouter: { navigate: async (route) => { opened.push(route); } },
+  });
+  const goal = { goal: "lose", goal_kcal: 500, source: "katch_mcardle", total_kcal: 2400, target_kcal: 1900, eaten_kcal: 1200, remaining_kcal: 700 };
+  const read = { day_partial: true, rows: [], goal };
+  const strip = energyGoalStrip(read);
+  assert.equal(strip.dataset.energyGoal, "lose");
+  assert.equal(textOf(strip.children[0]), "Heute noch essen700 kcal");
+  assert.equal(strip.children[1].max, "1900");
+  assert.equal(strip.children[1].value, "1200");
+  assert.equal(textOf(strip.children[2]), "Verbrauch bis jetzt (Katch-McArdle) 2400 kcal · − Ziel-Defizit 500 kcal · = Essen für dein Ziel 1900 kcal · bisher gegessen 1200 kcal");
+  // Above the goal, a surplus goal, a past day, the device's own name, and hold without a line.
+  const over = energyGoalStrip({ day_partial: false, rows: [{ source: "device", label: "Garmin" }], goal: { ...goal, goal: "build", goal_kcal: 300, source: "device", target_kcal: 2700, eaten_kcal: 2900, remaining_kcal: -200 } });
+  assert.equal(textOf(over.children[0]), "Noch essen200 kcal über Ziel");
+  assert.match(textOf(over.children[2]), /^Verbrauch \(Garmin\) 2400 kcal · \+ Ziel-Überschuss 300 kcal/);
+  const hold = energyGoalStrip({ ...read, goal: { ...goal, goal: "hold", goal_kcal: 0, target_kcal: 2400, remaining_kcal: 1200 } });
+  assert.doesNotMatch(textOf(hold.children[2]), /Ziel-/);
+  assert.equal(energyGoalStrip({ ...read, goal: { ...goal, source: null, total_kcal: null, target_kcal: null, remaining_kcal: null } }).dataset.energyGoal, "pending");
+  // No goal: the link opens Körper and the goal dialog.
+  const none = energyGoalStrip({ ...read, goal: null });
+  assert.equal(textOf(none), "Ziel festlegen");
+  none.children[0].fire("click");
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(opened, ["nutrition/body", "dialog"]);
+  assert.equal(energyGoalText({ energy_goal: "lose", energy_goal_kcal: "500" }), "Abnehmen, 500 kcal/Tag");
+  assert.equal(energyGoalText({ energy_goal: "hold" }), "Halten");
 });
 
 test("the energy table shows bands, outlines the best source, and the basis", () => {

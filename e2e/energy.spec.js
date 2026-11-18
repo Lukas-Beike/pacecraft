@@ -316,3 +316,41 @@ for (const theme of ["light", "dark"]) {
   });
 }
 
+// #3547: without a goal the diary links to it; the goal row in Körper sets it, and the diary's energy
+// card then opens with "Heute noch essen" from the outlined source's day total.
+test("@responsive the energy goal is set in Körper and priced in the diary", async ({ page }) => {
+  await page.goto("/#nutrition/diary");
+  const strip = page.locator("#nutritionEnergy [data-energy-goal]");
+  await expect(strip).toHaveText("Ziel festlegen");
+  await strip.getByRole("button", { name: "Ziel festlegen" }).click();
+  await expect(page).toHaveURL(/#nutrition\/body$/);
+  const dialog = page.locator("#energyGoalDialog");
+  await expect(dialog).toBeVisible();
+  await dialog.getByLabel("Defizit pro Tag (kcal)").fill("500");
+  await expect(dialog.locator("#energyGoalDialogWeek")).toHaveText("≈ 0,45 kg Fett pro Woche");
+  await dialog.getByText("Halten").click();
+  await expect(dialog.getByLabel("Defizit pro Tag (kcal)")).toBeHidden();
+  await dialog.getByText("Abnehmen").click();
+  await dialog.getByRole("button", { name: "Speichern" }).click();
+  await expect(dialog).toBeHidden();
+  const row = page.locator("#energyGoalRow");
+  await expect(row).toContainText("Abnehmen, 500 kcal/Tag");
+  try {
+    const energy = page.waitForResponse((response) => new URL(response.url()).pathname === "/api/body/energy");
+    await page.goto("/#nutrition/diary");
+    const read = await (await energy).json();
+    expect(read.goal).toMatchObject({ goal: "lose", goal_kcal: 500 });
+    if (read.goal.remaining_kcal == null) {
+      await expect(strip).toHaveText("Noch kein Tagesverbrauch für dein Ziel");
+    } else {
+      await expect(strip.locator("p")).toContainText("Heute noch essen");
+      await expect(strip.locator("small")).toContainText("− Ziel-Defizit 500 kcal");
+      await expect(strip.locator("progress")).toBeVisible();
+    }
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBeTruthy();
+  } finally {
+    // The fixture keeps no goal for the other scenarios.
+    await page.evaluate(() => api("/api/profile", { method: "PUT", body: JSON.stringify({ energy_goal: "", energy_goal_kcal: "" }) }));
+  }
+});
+
