@@ -43,7 +43,7 @@ from collections.abc import Callable, Mapping, Sequence
 from contextlib import AbstractContextManager, nullcontext
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
-from typing import Any, Final, Protocol
+from typing import Any, Final, Protocol, TypeIs
 
 from backend.athlete.local_date import iso_date_prefix
 from backend.canonical.activity_detail import (
@@ -67,7 +67,7 @@ from backend.db.repositories import KeyValueRepository
 from backend.errors import AppError
 from backend.providers.canonical_plans import ACTIVITY_RECORD_KIND
 from backend.providers.fit_activity_detail_mapping import fit_inventory
-from backend.providers.fit_file import fit_messages
+from backend.providers.fit_file import FitMessage, fit_messages
 from backend.providers.garmin_fit_history import FitTransportMissing
 from backend.providers.garmin_personal import PERSONAL_KEY_REJECTED_REASON
 from backend.providers.garmin_rating_history import (
@@ -730,7 +730,8 @@ def fit_value_probe_counts(data: bytes) -> dict[str, int]:
     """What one file holds in the probed fields (#3374), as count keys per field:
     ``.present``, ``.in_range`` when every value lies in the expected range, else
     ``.out_of_range``, ``.constant`` when several values are all equal, and
-    ``.falling`` when the last value is below the first. Never a value."""
+    ``.falling`` when the last value is below the first, plus the stamina fields'
+    order (``stamina_order.*``). Never a value."""
     try:
         messages = fit_messages(data)
     except ValueError:
@@ -753,7 +754,36 @@ def fit_value_probe_counts(data: bytes) -> dict[str, int]:
             counts[f"{name}.constant"] = 1
         if values[-1] < values[0]:
             counts[f"{name}.falling"] = 1
+    counts.update(dict.fromkeys(_stamina_order(messages), 1))
     return counts
+
+
+def _probe_number(value: object) -> TypeIs[int | float]:
+    return isinstance(value, int | float) and not isinstance(value, bool)
+
+
+def _stamina_order(messages: Sequence[FitMessage]) -> set[str]:
+    """Which stamina field holds the higher value in every record holding both
+    (#3374): Garmin's potential stamina is never below the current one, so this
+    names the fields. Both directions when all are equal, else ``mixed``."""
+    pairs = [
+        (first, second)
+        for number, fields in messages
+        if number == 20
+        and _probe_number(first := fields.get(137))
+        and _probe_number(second := fields.get(138))
+    ]
+    if not pairs:
+        return set()
+    order = {
+        key
+        for key, holds in (
+            ("stamina_order.137_ge_138", all(a >= b for a, b in pairs)),
+            ("stamina_order.138_ge_137", all(b >= a for a, b in pairs)),
+        )
+        if holds
+    }
+    return order or {"stamina_order.mixed"}
 
 
 def fit_value_probe_report(db: Any, key_values: KeyValueRepository) -> dict[str, Any]:
