@@ -65,6 +65,12 @@ T_QUANTILE_95 = {
 # enters the band: a share between 0.5 and 1.0 taken as uniform, 0.5 / sqrt(12)
 # (product assumption, #3187 item 10).
 FAT_SHARE_SD = 0.144
+# Precision of one body fat measurement by the same method (percentage points,
+# test-retest), the band of a measured fat-mass change (#3477).
+MEASURED_FAT_SD_PCT = 1.0
+# The shortest span between the first and last measurement of a measured
+# change: a shorter one divides the measurement noise by too few days.
+MIN_FAT_SPAN_DAYS = 14
 # The one activity calibration factor: prior 1 +- 0.10, clamped to 0.85-1.15,
 # fitted on complete windows of the last 12 weeks (method comment, #3100).
 CALIBRATION_PRIOR_SD = 0.10
@@ -158,6 +164,9 @@ class EnergyWindow:
     sport_kcal: float | None = None
     # The k applied to this window's activity (1.0 while it stays the prior).
     calibration_factor: float = 1.0
+    # How the stored energy split fat and lean mass: "measured" from two dated
+    # body fat measurements, else "forbes"; None without an estimate (#3477).
+    store_method: str | None = None
 
 
 def weight_trend(weights_kg: Mapping[date, float]) -> dict[date, float]:
@@ -254,16 +263,62 @@ def _insufficient(complete_days: int, weighins: Sequence[date]) -> str | None:
     return None
 
 
-def _stored_energy(
-    inputs: EnergyInputs, trend: Mapping[date, float], weights: Mapping[date, float]
-) -> tuple[float, float]:
-    """Stored energy per day over the weigh-ins, and its standard error.
+def _fat_series(inputs: EnergyInputs) -> list[dict[date, float]]:
+    """The dated body fat measurements per method: skinfold, entered, device."""
+    entered = {d: v for d, (v, p) in inputs.device_body_fat.items() if p is None}
+    device = {d: v for d, (v, p) in inputs.device_body_fat.items() if p is not None}
+    return [dict(inputs.body_fat_pct), entered, device]
 
-    The least-squares slope of the window's own weigh-ins, at the energy
-    density of the body composition at the last one. The error combines the
-    slope's standard error with the density's (``FAT_SHARE_SD``). Unlike the
-    trend's change the slope has no warm-up lag after the first weigh-in.
+
+def _measured_store(
+    inputs: EnergyInputs, weights: Mapping[date, float], start: date, end: date
+) -> tuple[float, float] | None:
+    """Stored energy per day from the measured fat-mass change, and its error.
+
+    The first method with two dated measurements in the window gives the fat
+    mass (weight x body fat, the weigh-in nearest each day) at its first and
+    last one; lean mass is the rest of the weight change (athlete decision,
+    #3477). Methods are never mixed. None without two measurements at least
+    ``MIN_FAT_SPAN_DAYS`` apart (Gitar).
     """
+    for series in _fat_series(inputs):
+        days = sorted(d for d in series if start <= d <= end)
+        if len(days) >= 2 and (days[-1] - days[0]).days >= MIN_FAT_SPAN_DAYS:
+            break
+    else:
+        return None
+
+    def masses(day: date) -> tuple[float, float]:
+        nearest = min(weights, key=lambda w: (abs((w - day).days), w))
+        return weights[nearest], weights[nearest] * series[day] / 100.0
+
+    (weight0, fat0), (weight1, fat1) = masses(days[0]), masses(days[-1])
+    span = (days[-1] - days[0]).days
+    fat_change = fat1 - fat0
+    lean_change = (weight1 - weight0) - fat_change
+    stored = (fat_change * FAT_KCAL_PER_KG + lean_change * LEAN_KCAL_PER_KG) / span
+    fat_sd = math.hypot(weight0, weight1) * MEASURED_FAT_SD_PCT / 100.0
+    return stored, fat_sd * (FAT_KCAL_PER_KG - LEAN_KCAL_PER_KG) / span
+
+
+def _stored_energy(
+    inputs: EnergyInputs,
+    trend: Mapping[date, float],
+    weights: Mapping[date, float],
+    start: date,
+    end: date,
+) -> tuple[float, float, str]:
+    """Stored energy per day over the weigh-ins, its standard error and how fat
+    and lean mass were split: measured from two dated body fat measurements
+    (#3477), else Forbes.
+
+    Forbes: the least-squares slope of the window's own weigh-ins, at the
+    energy density of the body composition at the last one. The error combines
+    the slope's standard error with the density's (``FAT_SHARE_SD``). Unlike
+    the trend's change the slope has no warm-up lag after the first weigh-in.
+    """
+    if measured := _measured_store(inputs, weights, start, end):
+        return (*measured, "measured")
     weighins = sorted(weights)
     last = weighins[-1]
     density = energy_density(trend[last], _latest_body_fat(inputs, last))
@@ -277,7 +332,8 @@ def _stored_energy(
     ]
     slope_se = math.sqrt(sum(r * r for r in residuals) / max(1, len(xs) - 2) / sxx)
     density_sd = FAT_SHARE_SD * (FAT_KCAL_PER_KG - LEAN_KCAL_PER_KG)
-    return density * slope, math.hypot(density * slope_se, slope * density_sd)
+    stored_sd = math.hypot(density * slope_se, slope * density_sd)
+    return density * slope, stored_sd, "forbes"
 
 
 def _window(
@@ -303,8 +359,9 @@ def _window(
     )
     reason = _insufficient(len(complete), weighins)
     tdee = unflagged = derived = None
+    method = None
     if reason is None:
-        stored, store_sd = _stored_energy(inputs, trend, weights)
+        stored, store_sd, method = _stored_energy(inputs, trend, weights, start, end)
         everything = [(v.intake_kcal or 0.0, v.flagged_kcal) for v in complete.values()]
         tdee = _tdee(everything, stored, store_sd, len(weighins))
         unflagged = tdee if flagged == 0 else None
@@ -331,6 +388,7 @@ def _window(
         neat_kcal=None if neat_raw is None else neat_raw * factor,
         sport_kcal=None if sport_raw is None else sport_raw * factor,
         calibration_factor=factor,
+        store_method=method,
         flagged_kcal_per_day=statistics.fmean(
             [v.flagged_kcal for v in complete.values()]
         )

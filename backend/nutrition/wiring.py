@@ -9,6 +9,7 @@ from typing import Any
 
 from backend.activities.activity_reference import ActivityReferences
 from backend.app.context import AppContext
+from backend.athlete.profile import profile_body_fat_history
 from backend.canonical.vocabulary import MetricKind
 from backend.db.repositories import (
     NutritionProductRepository,
@@ -172,9 +173,18 @@ def build_nutrition(ctx: AppContext) -> NutritionServices:
             resting=resting,
             body_fat=body_fat,
             skinfolds=lambda db, day: skinfolds.measurements_on(db, day),
-            device_body_fat=lambda db, s, e: device_body_fats(
-                read.observations(db, MetricKind.BODY_FAT, start=s, end=e)
-            ),
+            # Earlier profile values count as entered ones on their day; a
+            # measurement of that day wins (athlete decision, #3477).
+            device_body_fat=lambda db, s, e: {
+                **{
+                    day: (value, None)
+                    for day, value in profile_body_fat_history(db, s).items()
+                    if day <= e
+                },
+                **device_body_fats(
+                    read.observations(db, MetricKind.BODY_FAT, start=s, end=e)
+                ),
+            },
             profile=ctx.athlete_profile.get,
         )
 
