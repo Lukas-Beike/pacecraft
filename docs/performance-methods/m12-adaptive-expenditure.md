@@ -146,9 +146,11 @@ bias that is the same on every day is not visible in the band.
 
 ## Allowed statements
 
-- "Verbrauch aus deinen Daten: X ± Y kcal/Tag (Z vollständige Tage)".
-- "Ohne geschätzte Mahlzeiten: X ± Y", only from windows without any flagged day.
-- "Mit gelernter Korrektur geschätzter Mahlzeiten: X ± Y", once `b` exists.
+- "Verbrauch aus deinen Daten: X kcal/Tag, Spanne L–H (Z vollständige Tage)",
+  with L = max(0, X − Y) and H = X + Y; the app shows the span under the
+  estimate and never as "± Y" (#3478).
+- "Ohne geschätzte Mahlzeiten: X (L–H)", only from windows without any flagged day.
+- "Mit gelernter Korrektur geschätzter Mahlzeiten: X (L–H)", once `b` exists.
 - "Geschätzte Mahlzeiten wirken im Mittel X % niedriger/höher als erfasst (± Y)".
 - "Datenbasis zu gering", with the reason.
 
