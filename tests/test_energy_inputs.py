@@ -156,6 +156,14 @@ class EnergyInputsReaderTests(unittest.TestCase):
             math.hypot(0.50 * costs[0].kcal, 0.15 * day.neat_kcal),
             day.activity_error_kcal or 0.0,
         )
+        # Without steps (today before the day summary) the session keeps its
+        # error, so the so-far total is not understated (Gitar on #3567).
+        late = {**gym, "started_at_local": "2026-10-03T18:00:00"}
+        inputs, costs = read_energy_inputs(None, sources(sessions=[late]), DAY1, DAY3)
+        self.assertIsNone(inputs.days[DAY3].neat_kcal)
+        self.assertAlmostEqual(
+            0.50 * (costs[0].kcal or 0.0), inputs.days[DAY3].activity_error_kcal
+        )
         # A day without sessions has the step length's error only.
         rest, _ = read_energy_inputs(None, sources(sessions=[]), DAY1, DAY1)
         self.assertAlmostEqual(
