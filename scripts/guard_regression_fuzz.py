@@ -1,7 +1,8 @@
 """Prove a command guard change only blocks more: old against new, side by side.
 
     python scripts/guard_regression_fuzz.py scripts/hooks/guard_resolve_thread.py \
-        [--base origin/develop] [--count 60000] [--seed 1] [--seed-command TEXT ...]
+        [--base origin/develop|origin/main|HEAD] [--count 60000] [--seed 1] \
+        [--seed-command TEXT ...]
 
 Takes the whole ``scripts/hooks`` tree as it is at ``--base`` (``git archive``)
 and as it is in the working tree, and runs the hook of each in its own worker
@@ -38,10 +39,11 @@ from types import ModuleType
 ROOT = Path(__file__).resolve().parents[1]
 HOOKS = "scripts/hooks"
 BLOCK = 2
-# Only a guard hook of this repository and a plain ref are accepted, so the
-# arguments can reach neither another path nor a git option.
+# Only a guard hook of this repository and one of these bases are accepted, so
+# the arguments can reach neither another path nor a git option.
 HOOK_PATH = re.compile(r"scripts/hooks/(guard_[a-z0-9_]+\.py)")
-REF = re.compile(r"[A-Za-z0-9][A-Za-z0-9._/~^-]*")
+DEFAULT_BASE = "origin/develop"
+BASES = {ref: ref for ref in (DEFAULT_BASE, "origin/main", "HEAD")}
 TARGET = "scripts/resolve_review_thread.py"
 DEFAULT_SEEDS = (
     f"python {TARGET} 3500 PRRT_abc",
@@ -183,6 +185,7 @@ def verdicts(hooks: Path, name: str, inputs: list[str]) -> list[int]:
         cwd=ROOT,
         capture_output=True,
         text=True,
+        encoding="utf-8",
         check=True,
     )
     return [int(item) for item in json.loads(done.stdout)]
@@ -226,19 +229,17 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument(
         "hook", help="the guard, e.g. scripts/hooks/guard_resolve_thread.py"
     )
-    parser.add_argument("--base", default="origin/develop")
+    parser.add_argument("--base", default=DEFAULT_BASE, choices=sorted(BASES))
     parser.add_argument("--count", type=int, default=60_000)
     parser.add_argument("--seed", type=int, default=1)
     parser.add_argument("--seed-command", action="append", default=[], dest="seeds")
     args = parser.parse_args(argv)
     hook = HOOK_PATH.fullmatch(args.hook)
-    if hook is None or REF.fullmatch(args.base) is None:
-        parser.error(
-            "the hook must be scripts/hooks/guard_*.py and the base a plain ref"
-        )
+    if hook is None:
+        parser.error("the hook must be scripts/hooks/guard_*.py")
     name = hook.group(1)
     with tempfile.TemporaryDirectory() as directory:
-        old = base_hooks(args.base, Path(directory))
+        old = base_hooks(BASES[args.base], Path(directory))
         inputs = commands(tuple(args.seeds) or DEFAULT_SEEDS, args.count, args.seed)
         result = compare(old, ROOT / HOOKS, name, inputs)
     print(
