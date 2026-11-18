@@ -14,7 +14,9 @@ python scripts/check_changed.py [--base origin/develop] [--js] [--fix-format]
 - `--fix-format` first formats the changed Python files (committed, staged,
   unstaged and new against the base) with the ratchet's own Ruff and names them.
   Unchanged files are never touched, even unformatted baselined ones; never run
-  `ruff format` on a whole folder (#3382).
+  `ruff format` on a whole folder (#3382). A changed file with a format baseline
+  entry is formatted only in its changed lines (`ruff format --range`), so its
+  diff stays small and its baseline entry stays valid (#3526).
 - Runs `tests/run_tests.py --changed --base <base>`, `compileall`,
   `tools/quality_baseline.py` and, with `--js` or when the diff against the base
   touches a `.js`, `.cjs` or `.mjs` file, `node --test tests/*.cjs`.

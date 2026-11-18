@@ -4,6 +4,8 @@
 
 --fix-format first formats the changed Python files with the ratchet's Ruff and
 names them; unchanged files, baselined ones included, are never touched (#3382).
+A changed file with a format baseline entry is formatted only in its changed
+lines, so its diff and its baseline entry stay as they are (#3526).
 Every step runs even after a failure. One line per step; for each failed step its
 unittest FAIL/ERROR lines, the last lines of its output, and the path of a
 temporary file with its full output. Node tests run with --js or when the diff against the
@@ -17,6 +19,7 @@ from __future__ import annotations
 
 import argparse
 import importlib.util
+import json
 import os
 import re
 import subprocess
@@ -163,9 +166,37 @@ def changed_files(base: str, root: Path = ROOT) -> list[str]:
     return changed
 
 
-def format_changed(base: str, root: Path = ROOT) -> list[str]:
+def format_baselined(root: Path = ROOT) -> set[str]:
+    """The files the quality baseline records as unformatted debt."""
+    baseline = root / "tests/fixtures/quality_baseline.json"
+    if not baseline.is_file():
+        return set()
+    diagnostics = json.loads(baseline.read_text(encoding="utf-8")).get(
+        "diagnostics", []
+    )
+    return {item["path"] for item in diagnostics if item.get("tool") == "format"}
+
+
+def changed_ranges(base: str, path: str, root: Path = ROOT) -> list[tuple[int, int]]:
+    """The added line ranges of ``path`` against the base, as (first, end) with
+    the end exclusive, last range first, so formatting one keeps the earlier
+    line numbers valid."""
+    fork = git("merge-base", base, "HEAD", cwd=root).strip()
+    ranges = []
+    for line in git("diff", "-U0", fork, "--", path, cwd=root).splitlines():
+        hunk = re.match(r"@@ -\S+ \+(\d+)(?:,(\d+))? @@", line)
+        if hunk and (count := int(hunk.group(2) or 1)):
+            first = int(hunk.group(1))
+            ranges.append((first, first + count))
+    return sorted(ranges, reverse=True)
+
+
+def format_changed(
+    base: str, root: Path = ROOT, *, baselined: set[str] | None = None
+) -> list[str]:
     """Format the changed Python files that still exist with the ratchet's own
-    Ruff, and return them; an unchanged file is never touched (#3382)."""
+    Ruff, and return them; an unchanged file is never touched (#3382), and a
+    format-baselined one only in its changed lines (#3526)."""
     files = sorted(
         {
             path
@@ -173,26 +204,36 @@ def format_changed(base: str, root: Path = ROOT) -> list[str]:
             if path.endswith(".py") and (root / path).is_file()
         }
     )
-    if files:
-        spec = importlib.util.spec_from_file_location(
-            "quality_baseline", ROOT / "tools/quality_baseline.py"
+    debt = format_baselined(root) if baselined is None else baselined
+    whole = [path for path in files if path not in debt]
+    ranged = [path for path in files if path in debt]
+    if whole:
+        _ruff_format(root, whole)
+    for path in ranged:
+        for first, end in changed_ranges(base, path, root):
+            _ruff_format(root, [path], f"--range={first}-{end}")
+    return whole + [f"{path} (changed lines)" for path in ranged]
+
+
+def _ruff_format(root: Path, files: list[str], *options: str) -> None:
+    spec = importlib.util.spec_from_file_location(
+        "quality_baseline", ROOT / "tools/quality_baseline.py"
+    )
+    assert spec and spec.loader
+    quality = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(quality)
+    try:
+        done = subprocess.run(
+            [*quality.tool_command("ruff"), "format", "--quiet", *options, *files],
+            cwd=root,
+            check=False,
         )
-        assert spec and spec.loader
-        quality = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(quality)
-        try:
-            done = subprocess.run(
-                [*quality.tool_command("ruff"), "format", "--quiet", *files],
-                cwd=root,
-                check=False,
-            )
-        except FileNotFoundError as exc:
-            raise MissingTool("ruff is not installed.") from exc
-        if done.returncode:
-            raise FormatFailed(
-                f"ruff format failed (exit {done.returncode}); fix what it names above"
-            )
-    return files
+    except FileNotFoundError as exc:
+        raise MissingTool("ruff is not installed.") from exc
+    if done.returncode:
+        raise FormatFailed(
+            f"ruff format failed (exit {done.returncode}); fix what it names above"
+        )
 
 
 def format_step(base: str) -> int:
