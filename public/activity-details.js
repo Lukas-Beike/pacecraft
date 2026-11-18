@@ -306,7 +306,7 @@
     show(); content.append(line);
   }
 
-  const COVERAGE_LABELS = { power_w: "Leistung", heart_rate_bpm: "Herzfrequenz", speed_mps: "Geschwindigkeit", altitude_m: "Höhe", distance_m: "Distanz", grade_pct: "Steigung", cadence_rpm: "Kadenz", respiration_rate_brpm: "Atemfrequenz" };
+  const COVERAGE_LABELS = { power_w: "Leistung", heart_rate_bpm: "Herzfrequenz", speed_mps: "Geschwindigkeit", altitude_m: "Höhe", distance_m: "Distanz", grade_pct: "Steigung", cadence_rpm: "Kadenz", respiration_rate_brpm: "Atemfrequenz", performance_condition: "Leistungszustand", stamina_137_pct: "Ausdauer A", stamina_138_pct: "Ausdauer B" };
 
   // Per provider: the load state and the data coverage, with readable channel names.
   function providerFacts(entry) {
@@ -425,13 +425,16 @@
   function renderSeries(session, streams, content) {
     let charts = 0;
     const cadence = cadenceDisplay(session);
-    const labels = { power_w: ["Leistung", "W"], heart_rate_bpm: ["Herzfrequenz", "bpm"], speed_mps: ["Geschwindigkeit", "m/s"], altitude_m: ["Höhe", "m"], distance_m: ["Distanz", "m"], grade_pct: ["Steigung", "%"], cadence_rpm: [cadence.label, cadence.unit], respiration_rate_brpm: ["Atemfrequenz", "/min"] };
+    const labels = { power_w: ["Leistung", "W"], heart_rate_bpm: ["Herzfrequenz", "bpm"], speed_mps: ["Geschwindigkeit", "m/s"], altitude_m: ["Höhe", "m"], distance_m: ["Distanz", "m"], grade_pct: ["Steigung", "%"], cadence_rpm: [cadence.label, cadence.unit], respiration_rate_brpm: ["Atemfrequenz", "/min"], performance_condition: ["Leistungszustand", ""], stamina_137_pct: ["Ausdauer A", "%"], stamina_138_pct: ["Ausdauer B", "%"] };
     const channels = streams?.channels || {};
     for (const [key, [label, unit]] of Object.entries(labels)) {
       let values = channels[key]?.values;
       if (!Array.isArray(values)) continue;
       if (key === "cadence_rpm" && cadence.factor !== 1) values = values.map((value) => (typeof value === "number" ? value * cadence.factor : value));
-      const series = chart(streams.time_s, values, label, unit);
+      // An unofficial provider value names itself as such, in the server's words (#3374).
+      const source = channels[key].source;
+      const title = source?.kind === "unofficial" && source.label ? `${label} · ${source.label}` : label;
+      const series = chart(streams.time_s, values, title, unit);
       if (series) { content.append(series); charts += 1; }
     }
     if (!charts) content.append(h("p", null, "Keine darstellbaren Messreihen vorhanden. Fehlende Sensorwerte werden nicht als Null interpretiert."));

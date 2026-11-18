@@ -111,7 +111,9 @@ from backend.providers.garmin_activity_mapping import GARMIN_LABEL
 # basis of FIT sets (#2220).
 # Version 12: FIT files with an unset header CRC and chained files decode, and
 # heart rate sensor markers (0, 255) are missing values, not out of range (#3337).
-MAPPER_VERSION: Final = 12
+# Version 13: the watch's undocumented performance condition and stamina fields
+# of FIT sets as unofficial channels (#3374).
+MAPPER_VERSION: Final = 13
 
 # Same limit as the Intervals mapper; kept local so providers do not import each other.
 MAX_GARMIN_ACTIVITY_ID_LENGTH: Final = 200

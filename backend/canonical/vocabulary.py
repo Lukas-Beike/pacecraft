@@ -648,6 +648,13 @@ class StreamChannel(StrEnum):
     # Breaths per minute (schema version 31); stored and served like every
     # other channel, filled only by a mapper that reads it.
     RESPIRATION_RATE_BRPM = "respiration_rate_brpm"
+    # Garmin's undocumented performance condition and two stamina fields (#3374,
+    # athlete decision 2026-11-18): shown as the provider's unofficial values,
+    # never used in a calculation. The stamina channels keep the neutral names of
+    # their FIT fields until a probe tells current from potential stamina.
+    PERFORMANCE_CONDITION = "performance_condition"
+    STAMINA_137_PCT = "stamina_137_pct"
+    STAMINA_138_PCT = "stamina_138_pct"
 
 
 # Raw GPS positions stay in storage, backup and export only. They are never
@@ -655,6 +662,17 @@ class StreamChannel(StrEnum):
 # them; weather and route features derive coarse values from the stored set.
 POSITION_CHANNELS: Final = frozenset(
     {StreamChannel.LATITUDE_DEG, StreamChannel.LONGITUDE_DEG}
+)
+
+
+# Provider values without a documented field (#3374): served and labelled as the
+# provider's unofficial values, never used in a calculation.
+UNOFFICIAL_CHANNELS: Final = frozenset(
+    {
+        StreamChannel.PERFORMANCE_CONDITION,
+        StreamChannel.STAMINA_137_PCT,
+        StreamChannel.STAMINA_138_PCT,
+    }
 )
 
 

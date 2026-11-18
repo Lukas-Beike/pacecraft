@@ -113,6 +113,9 @@ CHANNEL_BOUNDS: Final[Mapping[StreamChannel, tuple[float, float]]] = {
     StreamChannel.VERTICAL_RATIO_PCT: (0.0, MAX_VERTICAL_RATIO_PCT),
     StreamChannel.STEP_LENGTH_M: (0.0, MAX_STEP_LENGTH_M),
     StreamChannel.RESPIRATION_RATE_BRPM: RESPIRATION_RATE_BOUNDS_BRPM,
+    StreamChannel.PERFORMANCE_CONDITION: (-20.0, 20.0),
+    StreamChannel.STAMINA_137_PCT: (0.0, MAX_PERCENT),
+    StreamChannel.STAMINA_138_PCT: (0.0, MAX_PERCENT),
 }
 
 ZONE_BOUNDARY_BOUNDS: Final[Mapping[ZoneMetric, tuple[float, float]]] = {

@@ -37,6 +37,7 @@ from backend.canonical.vocabulary import (
     POSITION_CHANNELS,
     PROVIDER_PRECEDENCE,
     RUNNING_DYNAMICS_CHANNELS,
+    UNOFFICIAL_CHANNELS,
     ProviderId,
     RecordingOrigin,
     SourceKind,
@@ -98,6 +99,11 @@ _UNSHOWN_CHANNELS: Final = frozenset({StreamChannel.TEMPERATURE_C})
 # The watch's own zone basis is labelled by the watch, not by the cloud service.
 _WATCH_LABELS: Final[Mapping[str | None, str | None]] = {
     ProviderId.GARMIN.value: "Garmin-Uhr"
+}
+# A channel without a documented field is served as the provider's unofficial value
+# (#3374), so the calendar and the Coach both read it as such.
+_UNOFFICIAL_LABELS: Final[Mapping[str | None, str]] = {
+    ProviderId.GARMIN.value: "Garmin, inoffiziell"
 }
 # Measured averages that fall back to the merged stream mean when no record has them.
 _GAP_FILL: Final[Mapping[str, tuple[StreamChannel, str]]] = {
@@ -405,7 +411,7 @@ def _channels(
     channels = {
         channel.value: {
             "values": _downsample_series(list(choice.values)),
-            "source": _candidate_source(choice.source),
+            "source": _channel_source(channel, choice.source),
             "aligned": choice.aligned,
         }
         for channel, choice in streams.channels.items()
@@ -608,6 +614,18 @@ def _source(provenance: Provenance, kind: str) -> dict[str, Any]:
 
 def _candidate_source(candidate: DetailCandidate) -> dict[str, Any]:
     return _source(candidate.stored.detail.provenance, "measured")
+
+
+def _channel_source(
+    channel: StreamChannel, candidate: DetailCandidate
+) -> dict[str, Any]:
+    source = _candidate_source(candidate)
+    if channel not in UNOFFICIAL_CHANNELS:
+        return source
+    label = _UNOFFICIAL_LABELS.get(
+        source["provider"], f"{source['label']}, inoffiziell"
+    )
+    return {**source, "kind": "unofficial", "label": label}
 
 
 def _lap_set(candidate: DetailCandidate) -> ActivityLapSet:

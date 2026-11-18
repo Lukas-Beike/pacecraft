@@ -795,6 +795,61 @@ class FitWatchFieldsTests(unittest.TestCase):
         )
         self.assertEqual(result.issues, ())
 
+    def test_garmin_condition_and_stamina_are_unofficial_channels_of_garmin_files(self):
+        # #3374, athlete 2026-11-18: record 90 (performance condition, -20..+20)
+        # and 137/138 (two stamina fields, percent), unscaled; a value outside the
+        # range is a gap without an issue. Another recorder's file keeps none.
+        builder = fit_builder.FitBuilder()
+        builder.define(
+            0, 20, [(253, UINT32), (3, UINT8), (90, SINT8), (137, UINT8), (138, UINT8)]
+        )
+        for second, (condition, first, second_field) in enumerate(
+            [(3, 96, 100), (-2, 95, 99), (-21, 101, 98)]
+        ):
+            builder.data(
+                0,
+                {
+                    253: 1000 + second,
+                    3: 120,
+                    90: condition,
+                    137: first,
+                    138: second_field,
+                },
+            )
+        data = builder.build()
+        result = _map(data)
+        channels = _channels(result)
+        self.assertEqual(
+            channels[StreamChannel.PERFORMANCE_CONDITION], (3.0, -2.0, None)
+        )
+        self.assertEqual(channels[StreamChannel.STAMINA_137_PCT], (96.0, 95.0, None))
+        self.assertEqual(channels[StreamChannel.STAMINA_138_PCT], (100.0, 99.0, 98.0))
+        self.assertEqual(result.issues, ())
+        wahoo = Provenance(
+            provider=ProviderId.WAHOO,
+            source_kind=SourceKind.PROVIDER_REPORTED,
+            source_record_id=None,
+            recorded_by=RecordingOrigin.WAHOO,
+            retrieved_at=RETRIEVED,
+            label=None,
+        )
+        other = dict(
+            _only(
+                map_fit_activity_detail(
+                    data, provider_activity_id=ID, provenance=wahoo
+                ),
+                ActivityStreamSet,
+            ).channels
+        )
+        self.assertFalse(
+            {
+                StreamChannel.PERFORMANCE_CONDITION,
+                StreamChannel.STAMINA_137_PCT,
+                StreamChannel.STAMINA_138_PCT,
+            }
+            & set(other)
+        )
+
     def test_a_file_without_breathing_rate_has_no_channel(self):
         result = _map(_watch_fit(breathing=[None, None]))
         self.assertNotIn(StreamChannel.RESPIRATION_RATE_BRPM, _channels(result))
