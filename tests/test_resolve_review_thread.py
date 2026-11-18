@@ -155,9 +155,9 @@ class ResolveReviewThreadTests(unittest.TestCase):
 
 
 class GuardHookTests(unittest.TestCase):
-    def decide(self, command, unchanged=True, raw=None, err=None):
+    def decide(self, command, unchanged=True, raw=None, err=None, tool="Bash"):
         stdin = mock.Mock()
-        payload = json.dumps({"tool_input": {"command": command}})
+        payload = json.dumps({"tool_name": tool, "tool_input": {"command": command}})
         stdin.buffer.read.return_value = (payload if raw is None else raw).encode()
         with (
             mock.patch.object(guard.sys, "stdin", stdin),
@@ -299,6 +299,68 @@ class GuardHookTests(unittest.TestCase):
         ):
             with self.subTest(command):
                 self.assertEqual(self.decide(command), 0)
+
+    def test_a_quoted_class_in_a_grep_pattern_is_no_path_glob(self):
+        # #3498: lane L29's three searches; quotes are never globbed and grep
+        # or rg never run or glob their pattern.
+        for command in (
+            'grep -n "^from\\|^    [a-z_]*,$" backend/x.py',
+            'grep -o "basis_unit ist g, ml oder portion\\.[^\\"]\\{0,120\\}" docs/x.md',
+            'grep -rhno "temp_database([^)]*row_factory=[A-Za-z_.]*" tests',
+            "rg -n '[a-z_]*_kcal' backend",
+            '/usr/bin/grep -c "[0-9]\\{3\\}" x.txt',
+            # Single quotes are never expanded: the whole text is grep's pattern.
+            "grep 'a&[&{python,scripts/res?lve_review_thread.py}&]' x",
+        ):
+            with self.subTest(command):
+                self.assertEqual(self.decide(command), 0)
+        # PowerShell quotes differently, so its commands keep the full check.
+        self.assertEqual(
+            self.decide('grep -n "^    [a-z_]*,$" x', tool="PowerShell"), 2
+        )
+        # A class that could still match keeps a wildcard; a file glob option,
+        # an unquoted path, a substitution, other commands and later commands
+        # keep the full check.
+        for command in (
+            'grep "r[e]solve_review_thread*" x',
+            "grep x scripts/r*",
+            "grep -l '[a-z]*' scripts/* | xargs python",
+            "rg --files -g '[r][e][s]*' scripts",
+            "rg --files -g '[a-z_]*' scripts",
+            "rg --glob='[a-z]*' x",
+            "grep -r --include='[a-z]*' x .",
+            "grep -f '[a-z]*' x",
+            'grep "$(python scripts/[r][e][s]*)" x',
+            'grep "`python scripts/[r][e][s]*`" x',
+            "sed -n 'e python scripts/[a-z]*' x",
+            "awk '/[a-z]*/' scripts/r*",
+            "find scripts -name '[r]*' -exec python {} ;",
+            "grep '[a-z]*' x; python scripts/r*",
+            "grep '[a-z]*' x && python s*/[r]*",
+            "python '[r]*'",
+            # Adversarial review: a quoted assignment posing as grep, a shell
+            # function or alias named grep, an unbalanced class, a POSIX class.
+            "A='x grep' sh -c 'echo [; python scripts/res?lve_review_thread.py 1 x; echo ]'",
+            "A='x grep' sh -c 'python scripts/r[[:alpha:]]solve_review_thread.py 1 x'",
+            "grep(){ sh -c \"$1\"; }; grep 'echo [; python scripts/res?lve_review_thread.py'",
+            "alias grep='sh -c'; grep 'python scripts/[r]esolve*'",
+            "grep 'echo [; python scripts/res?lve_review_thread.py; echo ]' x | sh",
+            # An ANSI-C quote desyncs a plain quote scanner (second review round).
+            "grep x $'\\''&[&{python,scripts/res?lve_review_thread.py}&]$'\\''",
+            "grep x $'\\''|[|{python,scripts/res?lve_review_thread.py}|]$'\\''",
+            # Third round: a comment desyncs quotes; eval defines a function.
+            "grep x #'\n[&python${IFS}scripts/res?lve_review_thread.py&]\n#'",
+            "eval 'grep''() { sh -c \"$1\"; }'; grep '[&python${IFS}scripts/res?lve_review_thread.py&]'",
+            'grep "\\"; python (gci scripts/r*); \\"" x',
+            "LC_ALL=C grep -c '[0-9]' scripts/r*",
+            # Fresh fourth round: a quoted option and a class the reading
+            # cannot close.
+            'rg "--pre=python" "--glob=scripts/resolve_review_threa[[d].py" x .',
+            "rg '--pre=python' '--glob=**/resolve_review_threa[[d].py' x .",
+            'grep "--file=scripts/resolve_review_threa[[d].py" x',
+        ):
+            with self.subTest(command):
+                self.assertEqual(self.decide(command), 2)
 
     def test_the_run_is_compared_with_develop_by_content(self):
         calls = []

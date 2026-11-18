@@ -50,6 +50,25 @@ ESCAPE = re.compile(
 SHORT_NAME = re.compile(r"([a-z0-9_]{1,6})~\d")
 
 
+# A plain search whose quoted pattern bash never globs and the program never
+# globs or runs (#3498). Only a single bash command of this shape qualifies;
+# anything else keeps the full check (adversarial review, three rounds).
+SEARCH_COMMANDS = frozenset({"grep", "egrep", "fgrep", "rg"})
+# Options that name files by a glob, read patterns from a file or run a program.
+# Read on the text without quotes, so a quoted option counts too.
+FILE_OPTIONS = re.compile(
+    r"(?:^|\s)(?:--(?:i?glob|include|exclude|exclude-dir|files?|pre|type-add"
+    r"|hostname-bin)\b|-[a-z]*[gf])"
+)
+QUOTED = re.compile(r"'[^']*'|\"(?:[^\"\\]|\\.)*\"")
+# Outside the quotes only plain words: no separator, redirection, substitution,
+# expansion, escape, glob or quote left over.
+UNSAFE_OUTSIDE = re.compile(r"[;&|()<>$\\{}*?\[\]`'\"#\n]")
+# A regex bracket expression and a regex interval inside the quoted pattern.
+BRACKET = re.compile(r"\[[!^]?\]?(?:\[:[a-z]+:\]|\\.|[^\]\[\\])*\]")
+INTERVAL = re.compile(r"\\?\{\d*(?:,\d*)?\\?\}")
+
+
 SCRIPTS = Path("scripts")
 RUN = "resolve_review_thread"
 # Python imports these at start from the script's directory as well.
@@ -187,7 +206,38 @@ def wildened(text: str) -> str:
     return text
 
 
-def matching_word(command: str) -> str | None:
+def plain_search(text: str) -> bool:
+    """Whether a bash command is one plain grep or rg run (#3498): its first
+    word the program itself, no file-glob option, nothing but plain words
+    outside the quotes, no `$` inside double quotes except a closing regex
+    anchor, and no backtick anywhere. Then no part of it is ever run or
+    globbed except the plain words, which keep the full check."""
+    words = text.split(maxsplit=1)
+    if not words or posixpath.basename(words[0]) not in SEARCH_COMMANDS:
+        return False
+    if FILE_OPTIONS.search(re.sub(r"['\"]", "", text)) or "`" in text:
+        return False
+    if UNSAFE_OUTSIDE.search(QUOTED.sub(" ", text)):
+        return False
+    return not any(
+        "$" in quoted[1:-2] for quoted in QUOTED.findall(text) if quoted[0] == '"'
+    )
+
+
+def search_patterns(text: str, bash: bool) -> str:
+    """The command with each regex bracket expression inside the quotes of a
+    plain bash grep or rg run read as one character (`?`) and each interval as
+    `*` (#3498); a wildcard stays, so a pattern that could still match the
+    script still blocks. Any other command, every PowerShell command, and one
+    with a class this reading cannot close (a `[` left over) come back
+    unchanged (adversarial review)."""
+    if not bash or not plain_search(text):
+        return text
+    read = QUOTED.sub(lambda m: INTERVAL.sub("*", BRACKET.sub("?", m[0])), text)
+    return text if any("[" in quoted for quoted in QUOTED.findall(read)) else read
+
+
+def matching_word(command: str, bash: bool = False) -> str | None:
     """The word by which the command names the script in any spelling the
     shell, Python or a case-insensitive file system resolves to it (#3367),
     as the hook read it (variables as `*`), or None. The name's letters in
@@ -196,6 +246,7 @@ def matching_word(command: str) -> str | None:
     text = unescaped(raw)
     if any(NAME in unquoted(form) for form in (raw, text)):
         return NAME
+    text = unescaped(search_patterns(raw, bash))
     # Negated and POSIX character classes as fnmatch reads them.
     text = re.sub(r"\[:[a-z]+:\]", "a-z0-9_.", text.replace("[^", "[!"))
     text = DOS_ONE.sub("?", DOS_STAR.sub("*", STREAM.sub("", wildened(text))))
@@ -258,7 +309,8 @@ def decide() -> int:
         # Fail closed (#3367): a shape this hook does not know blocks.
         print("Blocked: hook input without a command string.", file=sys.stderr)
         return 2
-    word = matching_word(command)
+    # Only bash quoting is read for the plain-search exception (#3498).
+    word = matching_word(command, payload.get("tool_name") == "Bash")
     if word is None:
         return 0
     if EXACT.fullmatch(command.strip()) and unchanged():
