@@ -1632,7 +1632,7 @@ function energyBiasText(flagged) {
   return `Geschätzte Mahlzeiten wirken im Mittel ${formatWhole(Math.abs(flagged.bias_pct))} % ${direction} als erfasst (± ${formatWhole(flagged.bias_band_pct)} %)`;
 }
 
-const ENERGY_DAY_NOTE = "Formeln und Garmin zeigen den gewählten Tag (Sport 0 ohne Einheit, Verdauung nur mit erfassten Mahlzeiten, heute bis jetzt); Aus deinen Daten ist das Mittel der letzten 28 Tage";
+const ENERGY_DAY_NOTE = "Alle Zeilen zeigen den gewählten Tag (Sport 0 ohne Einheit, Verdauung nur mit erfassten Mahlzeiten, heute bis jetzt); Aus deinen Daten nimmt die Ruhe aus den letzten 28 Tagen und Alltag, Sport und Verdauung wie die Formeln, das Mittel der 28 Tage steht im Verlauf";
 
 function energyInfo(read) {
   const text = [ENERGY_DAY_NOTE, energyBasisText(read), energyNeatInputs(read.basis?.neat), energyBiasText(read.flagged)].filter(Boolean).join(" · ");
@@ -1703,14 +1703,18 @@ function energyMissingCell(reason) {
   return h("td", { colSpan: 2 }, button);
 }
 
-// Under a row's name: the formulas' body fat source, "bis jetzt" for today, and the own row's
-// window, which a single day cannot have (#3395); it reads as a daily mean, not the day (#3513).
+// Under a row's name: the formulas' body fat source, "bis jetzt" for today, and where the own
+// row's resting rate comes from: the day row takes it from the last 28 days (#3531), and the
+// 28-day row in Verlauf reads as a daily mean, not the day (#3513).
 // The own row also names how its weight change split into fat and lean mass (#3477).
 const ENERGY_STORE_METHODS = { measured: "Fettanteil gemessen", forbes: "Fettanteil geschätzt (Forbes)" };
 
 function energyRowNote(read, source, row) {
   if (source === "own") {
-    const parts = [row.window_days ? `Ø pro Tag, letzte ${row.window_days} Tage` : "", ENERGY_STORE_METHODS[row.store_method] || ""].filter(Boolean);
+    const mean = read.own_window === row;
+    const origin = mean ? `Ø pro Tag, letzte ${row.window_days} Tage` : `Ruhe aus ${row.window_days} Tagen`;
+    const partial = !mean && read.day_partial ? "bis jetzt" : "";
+    const parts = [row.window_days ? origin : "", ENERGY_STORE_METHODS[row.store_method] || "", partial].filter(Boolean);
     return parts.length ? [h("small", null, parts.join(" · "))] : [];
   }
   const parts = [ENERGY_FORMULAS.has(source) && read.body ? `KFA: ${read.body.label}` : "", energyRestingFrom(read, row), read.day_partial ? "bis jetzt" : ""].filter(Boolean);
@@ -1750,12 +1754,29 @@ function energyTable(read) {
       ...energyValueCells(read, source, row)), energySplitRow(row)].filter(Boolean);
   });
   return h("table", { className: "current-performance-table" }, h("caption", null, "Energieverbrauch ", ...energyInfo(read)),
-    h("thead", null, h("tr", null, h("th", { scope: "col" }, "Quelle"), h("th", { scope: "col" }, "Ruhe"), h("th", { scope: "col" }, "Tag gesamt"))),
-    h("tbody", null, rows, energyFlaggedRows(read.flagged)));
+    energyTableHead(), h("tbody", null, rows));
+}
+
+function energyTableHead() {
+  return h("thead", null, h("tr", null, h("th", { scope: "col" }, "Quelle"), h("th", { scope: "col" }, "Ruhe"), h("th", { scope: "col" }, "Tag gesamt")));
+}
+
+// The 28-day row of "Aus deinen Daten" with every part's mean sits in Verlauf only (#3531), with
+// the flagged-meal rows, which are 28-day values too.
+function energyWindowCard(read) {
+  const row = read?.own_window;
+  if (!row) return null;
+  const color = ENERGY_SOURCES.find(([source]) => source === "own")[2];
+  const head = h("tr", { dataset: { energySource: "own" } },
+    h("th", { scope: "row", dataset: { color: String(color) } }, "Aus deinen Daten", ...energyRowNote(read, "own", row)),
+    ...energyValueCells(read, "own", row));
+  const table = h("table", { className: "current-performance-table" }, h("caption", null, "Energieverbrauch, Ø 28 Tage"),
+    energyTableHead(), h("tbody", null, [head, energySplitRow(row)].filter(Boolean), energyFlaggedRows(read.flagged)));
+  return h("section", { className: "analysis-chart-card", dataset: { energy: "", energyWindow: "" } }, table);
 }
 
 // With meals flagged as estimated, the own total without them (only clean windows, #3187 item 14)
-// and with the learned correction sit under "Aus deinen Daten" (athlete decision on #3100).
+// and with the learned correction sit under the 28-day "Aus deinen Daten" (athlete decision on #3100).
 function energyFlaggedRows(flagged) {
   if ((flagged?.days ?? 0) <= 0) return [];
   const row = (kind, label, value) => h("tr", { className: "energy-flag-row", dataset: { energyFlag: kind } }, h("th", { scope: "row" }, label), h("td", null, "–"), h("td", null, value));
@@ -1914,13 +1935,14 @@ function energyFitScale(read, key) {
   return card;
 }
 
-// Verlauf shows the scale above "Tagesverlauf" for its period; any loaded read serves it.
+// Verlauf shows the scale above "Tagesverlauf" for its period, then the 28-day "Aus deinen
+// Daten" row (#3531); any loaded read serves both, as neither depends on the diary's day.
 function renderNutritionFit() {
   const slot = document.querySelector("#nutritionFitScale");
   if (!slot) return;
   const pending = energyPending(null);
   const key = nutritionHistoryPeriod === "twelveWeeks" ? "12w" : "14d";
-  slot.replaceChildren(pending || energyFitScale(energyRead, key));
+  slot.replaceChildren(...(pending ? [pending] : [energyFitScale(energyRead, key), energyWindowCard(energyRead)].filter(Boolean)));
 }
 
 function renderDiaryEnergy() {
