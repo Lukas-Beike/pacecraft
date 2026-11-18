@@ -127,7 +127,8 @@ class EnergyViewTests(unittest.TestCase):
                 device["total_band_kcal"],
             ),
         )
-        own = row(view, "own")
+        # The 28-day row, for Verlauf since #3531.
+        own = view["own_window"]
         self.assertEqual(
             (1850, 150, 2700, 120),
             (
@@ -338,17 +339,17 @@ class EnergyViewTests(unittest.TestCase):
                 "tef_kcal": 250,
                 "shared": {"neat": False, "sport": False, "tef": True},
             },
-            row(view, "own")["split"],
+            view["own_window"]["split"],
         )
         plain = energy_view(
             inputs(), [window(END, 2700.0, 1850.0, factor=1.0)], garmin()
         )
         self.assertEqual(
             {"neat": True, "sport": True, "tef": True},
-            row(plain, "own")["split"]["shared"],
+            plain["own_window"]["split"]["shared"],
         )
         self.assertIsNone(
-            row(energy_view(inputs({}), [window(END, 2700.0)], garmin()), "own")[
+            energy_view(inputs({}), [window(END, 2700.0)], garmin())["own_window"][
                 "split"
             ]
         )
@@ -361,7 +362,7 @@ class EnergyViewTests(unittest.TestCase):
         low = replace(
             window(END, 2832.0, band=455.0), derived_rmr=Estimate(1105.0, 475.0)
         )
-        own = row(energy_view(inputs(), [low], garmin()), "own")
+        own = energy_view(inputs(), [low], garmin())["own_window"]
         self.assertEqual(
             (None, None, True, 2832, 455),
             (
@@ -817,14 +818,42 @@ class SelectedDayTests(unittest.TestCase):
                 selected_day(text, today)
             self.assertEqual(400, error.exception.status)
 
-    def test_the_own_row_stays_on_its_28_day_window_whatever_the_day(self) -> None:
+    def test_the_own_row_is_the_day_with_its_28_day_resting_rate(self) -> None:
+        # #3531: the diary's own row keeps its 28-day resting rate and takes
+        # the shown day's everyday, sport and digestion like the formula
+        # rows; the 28-day row stays the same whatever the day (Verlauf).
         for day in (END, END - timedelta(days=5)):
             with self.subTest(day=day):
-                own = row(self.view(day), "own")
+                view = self.view(day)
+                own, katch = row(view, "own"), row(view, "katch_mcardle")
+                window_row = view["own_window"]
                 self.assertEqual(
                     (2700, 1850, 28),
-                    (own["total_kcal"], own["resting_kcal"], own["window_days"]),
+                    (
+                        window_row["total_kcal"],
+                        window_row["resting_kcal"],
+                        window_row["window_days"],
+                    ),
                 )
+                self.assertEqual((1850, 28), (own["resting_kcal"], own["window_days"]))
+                for part in ("neat_kcal", "sport_kcal", "tef_kcal"):
+                    self.assertEqual(katch["split"][part], own["split"][part])
+        # Its day total: the 28-day resting plus the day's parts, the same
+        # parts the formula rows add to their own resting.
+        view = self.view(END)
+        own, katch = row(view, "own"), row(view, "katch_mcardle")
+        self.assertEqual(
+            own["total_kcal"], 1850 + katch["total_kcal"] - katch["resting_kcal"]
+        )
+        self.assertEqual(150, own["total_band_kcal"])
+        # A past day without meals has no digestion, so no total either.
+        empty = END - timedelta(days=5)
+        no_meals = DayInputs(
+            weight_kg=80.0, activity_kcal=250.0, neat_kcal=250.0, sport_kcal=0.0
+        )
+        own = row(self.view(empty, {empty: no_meals}), "own")
+        self.assertEqual((None, None), (own["total_kcal"], own["total_band_kcal"]))
+        self.assertEqual(250, own["split"]["neat_kcal"])
 
 
 if __name__ == "__main__":

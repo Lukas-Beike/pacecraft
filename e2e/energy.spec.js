@@ -26,7 +26,7 @@ test("@responsive the diary shows the energy table and explains it behind the in
   const kfa = `KFA: ${read.body.label} · bis jetzt`;
   // Today's Garmin rest names the full day it comes from, if any (#3443).
   const deviceNote = device.resting_from ? `${device.label}Ruhe ` : `${device.label}`;
-  await expect(card.locator("tbody th")).toHaveText([`Katch-McArdle${kfa}`, `Cunningham${kfa}`, new RegExp(`^${deviceNote}.*bis jetzt$`), "Aus deinen DatenØ pro Tag, letzte 28 Tage"]);
+  await expect(card.locator("tbody th")).toHaveText([`Katch-McArdle${kfa}`, `Cunningham${kfa}`, new RegExp(`^${deviceNote}.*bis jetzt$`), "Aus deinen DatenRuhe aus 28 Tagen · bis jetzt"]);
   // #3478: the estimate with its low–high span on one line below it, and no "±" left in the energy views.
   const resting = card.locator("[data-energy-source='katch_mcardle'] td").first();
   const shown = resting.locator(".energy-span [aria-hidden]");
@@ -180,12 +180,14 @@ test("@responsive the energy table follows the diary date: sport per day, today 
   const split = card.locator("tr.energy-split-row").first();
   await expect(katch.locator("th small")).toContainText("bis jetzt");
   await expect(split).toContainText("Sport 0 · Verdauung nicht erfasst");
-  // #3513: the own row is a daily mean over its window, never the selected day.
-  await expect(card.locator("tr[data-energy-source='own'] th small")).toHaveText("Ø pro Tag, letzte 28 Tage");
+  // #3531: the own row is the selected day with its resting rate from the window.
+  const ownNote = card.locator("tr[data-energy-source='own'] th small");
+  await expect(ownNote).toHaveText("Ruhe aus 28 Tagen · bis jetzt");
   const today = await page.locator("#nutritionDate").inputValue();
   await page.getByRole("button", { name: "Vorheriger Tag" }).click();
   await expect(page.locator("#nutritionDate")).not.toHaveValue(today);
   await expect(split).toContainText("Sport 418");
+  await expect(ownNote).toHaveText("Ruhe aus 28 Tagen");
   await expect(katch.locator("th small")).not.toContainText("bis jetzt");
   expect(asked.at(-1)).toBe(await page.locator("#nutritionDate").inputValue());
   expect(asked).toContain(today);
@@ -199,6 +201,8 @@ test("@responsive the energy table follows the diary date: sport per day, today 
   await page.goto("/#nutrition/week");
   await expect(page.locator("#nutritionFitScale [data-energy-fit]")).toBeVisible();
   await expect(page.locator("#nutritionFitScale")).not.toContainText("Tag liegt in der Zukunft");
+  // The own 28-day daily mean moved to Verlauf (#3531).
+  await expect(page.locator("#nutritionFitScale [data-energy-own-window] th small")).toHaveText("Ø pro Tag, letzte 28 Tage");
   expect(asked.length).toBeLessThanOrEqual(reads + 1);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBeTruthy();
 });

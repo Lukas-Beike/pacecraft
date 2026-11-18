@@ -1703,14 +1703,15 @@ function energyMissingCell(reason) {
   return h("td", { colSpan: 2 }, button);
 }
 
-// Under a row's name: the formulas' body fat source, "bis jetzt" for today, and the own row's
-// window, which a single day cannot have (#3395); it reads as a daily mean, not the day (#3513).
-// The own row also names how its weight change split into fat and lean mass (#3477).
+// Under a row's name: the formulas' body fat source and "bis jetzt" for today. The diary's own row
+// is the day with its resting rate from the window (#3531); Verlauf's own row is the window's daily
+// mean (#3513). Both name how the weight change split into fat and lean mass (#3477).
 const ENERGY_STORE_METHODS = { measured: "Fettanteil gemessen", forbes: "Fettanteil geschätzt (Forbes)" };
 
-function energyRowNote(read, source, row) {
+function energyRowNote(read, source, row, windowMean = false) {
   if (source === "own") {
-    const parts = [row.window_days ? `Ø pro Tag, letzte ${row.window_days} Tage` : "", ENERGY_STORE_METHODS[row.store_method] || ""].filter(Boolean);
+    const span = windowMean ? `Ø pro Tag, letzte ${row.window_days} Tage` : `Ruhe aus ${row.window_days} Tagen`;
+    const parts = [row.window_days ? span : "", ENERGY_STORE_METHODS[row.store_method] || "", !windowMean && read.day_partial ? "bis jetzt" : ""].filter(Boolean);
     return parts.length ? [h("small", null, parts.join(" · "))] : [];
   }
   const parts = [ENERGY_FORMULAS.has(source) && read.body ? `KFA: ${read.body.label}` : "", energyRestingFrom(read, row), read.day_partial ? "bis jetzt" : ""].filter(Boolean);
@@ -1751,11 +1752,23 @@ function energyTable(read) {
   });
   return h("table", { className: "current-performance-table" }, h("caption", null, "Energieverbrauch ", ...energyInfo(read)),
     h("thead", null, h("tr", null, h("th", { scope: "col" }, "Quelle"), h("th", { scope: "col" }, "Ruhe"), h("th", { scope: "col" }, "Tag gesamt"))),
-    h("tbody", null, rows, energyFlaggedRows(read.flagged)));
+    h("tbody", null, rows));
+}
+
+// Verlauf holds the own 28-day row (#3531), whatever diary day the read was for.
+function energyOwnWindowCard(read) {
+  const row = read?.own_window;
+  if (!row) return null;
+  const [, label, color] = ENERGY_SOURCES.find(([source]) => source === "own");
+  return h("section", { className: "analysis-chart-card", dataset: { energyOwnWindow: "" } },
+    h("table", { className: "current-performance-table" }, h("caption", null, "Energieverbrauch"),
+      h("thead", null, h("tr", null, h("th", { scope: "col" }, "Quelle"), h("th", { scope: "col" }, "Ruhe"), h("th", { scope: "col" }, "Tag gesamt"))),
+      h("tbody", null, [h("tr", { dataset: { energySource: "own" } }, h("th", { scope: "row", dataset: { color: String(color) } }, label, ...energyRowNote(read, "own", row, true)),
+        ...energyValueCells(read, "own", row)), energySplitRow(row)].filter(Boolean), energyFlaggedRows(read.flagged))));
 }
 
 // With meals flagged as estimated, the own total without them (only clean windows, #3187 item 14)
-// and with the learned correction sit under "Aus deinen Daten" (athlete decision on #3100).
+// and with the learned correction sit under the own 28-day row (athlete decision on #3100).
 function energyFlaggedRows(flagged) {
   if ((flagged?.days ?? 0) <= 0) return [];
   const row = (kind, label, value) => h("tr", { className: "energy-flag-row", dataset: { energyFlag: kind } }, h("th", { scope: "row" }, label), h("td", null, "–"), h("td", null, value));
@@ -1920,7 +1933,7 @@ function renderNutritionFit() {
   if (!slot) return;
   const pending = energyPending(null);
   const key = nutritionHistoryPeriod === "twelveWeeks" ? "12w" : "14d";
-  slot.replaceChildren(pending || energyFitScale(energyRead, key));
+  slot.replaceChildren(...(pending ? [pending] : [energyOwnWindowCard(energyRead), energyFitScale(energyRead, key)].filter(Boolean)));
 }
 
 function renderDiaryEnergy() {

@@ -388,12 +388,14 @@ has none with `resting_missing` `no_recent_resting`), `windows` (the 12
 weekly 4-week window ends,
 oldest first), `rows` (`katch_mcardle`, `cunningham`, `device` (the
 wearable's estimate) and `own`, each with `resting_kcal`, `total_kcal`
-and their nominal 95 % `*_band_kcal`; the first three show `day`: its
+and their nominal 95 % `*_band_kcal`; all four show `day`: its
 resting rate, its everyday and sport (0 without a session) and its
 digestion (null without logged meals, then no total; today a part whose
 input has not arrived counts 0 so far and is named in `pending_parts`,
-an unknown part stays null, #3494); `own` stays on its
-latest 28-day window, named by `window_days`; the first three also with
+an unknown part stays null, #3494); `own` takes its resting rate from
+its latest 28-day window, named by `window_days`, and the day's other
+parts as the formula rows do (#3531), while `own_window` is that
+window's row with every part a daily mean; the first three also with
 `errors_kcal` per window and `mean_error_kcal` over the shared windows,
 and `split` (`resting_kcal`, `neat_kcal`, `sport_kcal`, `tef_kcal`, and
 `shared` with `neat`, `sport`, `tef` true for each part every row
