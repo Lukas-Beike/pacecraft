@@ -422,6 +422,16 @@ export async function runStep(page, { pre = [], post = [], unseek, ...step }, ca
   }
 }
 
+// A step that passed in the previous walk and skips now runs once more after RETRY_WAIT_MS: right after a
+// deploy its data may still be loading (2.1.50). Skipped twice stays the compare FAIL (#3540).
+export const RETRY_WAIT_MS = 20000;
+export async function retriedStep(run, before, wait) {
+  const first = await run();
+  if (first.status !== "skip" || before?.status !== "ok") return first;
+  await wait(RETRY_WAIT_MS);
+  return { ...(await run()), retried: first.why };
+}
+
 // After a schema release the app rebuilds the all-time curves once, which slows every read for minutes
 // (2.1.28: 265 s). The walk reads only the build's state word from the diagnostics and starts once it is
 // no longer "building", at most CURVES_CAP_MS later.
@@ -443,13 +453,14 @@ export async function waitForCurves(page, capMs = CURVES_CAP_MS, pollMs = 10000)
   }
 }
 
-async function walk({ chromium, url, password, outDir }) {
+async function walk({ chromium, url, password, outDir, earlier = {} }) {
   const result = { measure: LOAD_MEASURE, loadMs: {}, notReady: {}, errors: {}, calendar: {}, steps: {}, marks: null, logout: {} };
   const browser = await chromium.launch();
   try {
     for (const [name, viewport] of Object.entries(WIDTHS)) {
       const context = await browser.newContext({ baseURL: url, viewport });
       const page = await context.newPage();
+      const pause = (ms) => page.waitForTimeout(ms);
       const errors = [];
       page.on("console", (message) => message.type() === "error" && errors.push("console"));
       page.on("pageerror", () => errors.push("page"));
@@ -476,7 +487,10 @@ async function walk({ chromium, url, password, outDir }) {
         if (view.capped) result.notReady[`${name} ${route}`] = view.open;
         await shot(route);
         // The steps start in the calendar's initial week; the calendar walk pages away from it.
-        for (const step of STEPS.filter((item) => item.view === route)) result.steps[`${name} ${step.name}`] = { ...(await runStep(page, step)), covers: step.covers };
+        for (const step of STEPS.filter((item) => item.view === route)) {
+          const key = `${name} ${step.name}`;
+          result.steps[key] = { ...(await retriedStep(() => runStep(page, step), earlier[key], pause)), covers: step.covers };
+        }
         if (route === "plan") result.calendar[name] = await walkCalendar(page, shot);
         result.errors[`${name} ${route}`] = errors.length - counted;
         counted = errors.length;
@@ -503,6 +517,11 @@ const STEP_LINE = {
   fail: (key, step) => `FAIL ${key} ${step.ms} ms, ${step.why} (covers ${step.covers})`,
 };
 
+function stepLines(key, step) {
+  const line = STEP_LINE[step.status](key, step);
+  return step.retried ? [`info ${key} retried once after ${RETRY_WAIT_MS / 1000} s: first skipped (${step.retried})`, line] : [line];
+}
+
 export function reportLines(result) {
   const lines = [];
   for (const [key, ms] of Object.entries(result.loadMs)) {
@@ -515,7 +534,7 @@ export function reportLines(result) {
   for (const [key, requests] of Object.entries(result.notReady || {})) {
     lines.push(`info ${key} not ready within 15 s; still loading: ${requests.join(", ") || "only a loading marker"}`);
   }
-  for (const [key, step] of Object.entries(result.steps || {})) lines.push(STEP_LINE[step.status](key, step));
+  for (const [key, step] of Object.entries(result.steps || {})) lines.push(...stepLines(key, step));
   if (result.curves) lines.push(`info curve build ${result.curves.status}, waited ${result.curves.waited} s before the walk`);
   for (const [name, steps] of Object.entries(result.calendar)) lines.push(`info calendar ${name}: ${steps.join(", ") || "no controls found"}`);
   lines.push(`info service-worker cache ${result.marks?.cache || "missing"}, ${result.marks?.assetVersions.length || 0} asset versions`);
@@ -565,7 +584,7 @@ async function main() {
   const { chromium } = await import("@playwright/test");
   let result;
   try {
-    result = await walk({ chromium, url, password, outDir });
+    result = await walk({ chromium, url, password, outDir, earlier: previous?.steps });
   } catch (error) {
     console.log(stopLine(error, `walk stopped (${error.name})`));
     return 2;
