@@ -74,24 +74,14 @@ def _round(value: float | None) -> int | None:
 
 
 def _formula_prediction(
-    formula: RestingFormula,
-    body: Mapping[str, Any] | None,
-    window: EnergyWindow,
-    today: bool = False,
+    formula: RestingFormula, body: Mapping[str, Any] | None, window: EnergyWindow
 ) -> Prediction:
-    """Resting from lean mass, and the day with the same own activity and TEF.
-
-    Today a part without data yet counts 0 so far (athlete decision, #3494);
-    on any other day a missing part leaves the total unknown.
-    """
+    """Resting from lean mass, and the day with the same own activity and TEF."""
     if body is None:
         return None, None, None, None
     resting = resting_energy(formula, body["lean_mass_kg"])
     band = resting_band(formula, body["weight_kg"], body["lean_mass_kg"])
     activity, tef = window.activity_kcal_raw, window.tef_kcal
-    if today:
-        activity = (window.neat_kcal_raw or 0.0) + (window.sport_kcal_raw or 0.0)
-        tef = tef or 0.0
     if activity is None or tef is None:
         return resting, band, None, None
     total_band = math.hypot(band, ACTIVITY_BAND_SHARE * activity)
@@ -393,11 +383,16 @@ def energy_view(
     device_prediction, device_rest = _device_day(
         health, day_window, day_window.end > latest.end
     )
+    day_window, pending = _so_far(
+        day_window,
+        inputs.days.get(day_window.end),
+        sessions,
+        health.get(day_window.end.isoformat(), {}),
+        day_window.end > latest.end,
+    )
     day_predictions = {
         **{
-            name: _formula_prediction(
-                f, day_body, day_window, day_window.end > latest.end
-            )
+            name: _formula_prediction(f, day_body, day_window)
             for name, f in FORMULAS.items()
         },
         DEVICE: device_prediction,
@@ -433,6 +428,7 @@ def energy_view(
                 "errors_kcal": [_round(e) for e in errors[name]],
                 "mean_error_kcal": _round(means.get(name)),
                 "split": split,
+                "pending_parts": pending[name == DEVICE],
             }
         )
     # Only the device row is named by the read; the client names the others.
@@ -590,6 +586,54 @@ def _weeks_with_data(inputs: EnergyInputs, end: date, days: int) -> int:
             if (day := inputs.days.get(end - timedelta(days=7 * week + n)))
         )
     )
+
+
+def _so_far(
+    window: EnergyWindow,
+    day: DayInputs | None,
+    sessions: Sequence[Mapping[str, Any]],
+    garmin_day: Mapping[str, Any],
+    today: bool,
+) -> tuple[EnergyWindow, tuple[list[str], list[str]]]:
+    """Today's parts so far and which of them have no data yet, for the
+    formula rows and for Garmin (athlete decision, #3494).
+
+    Only a part whose input has not arrived counts 0: everyday without any
+    steps, sport without any session, digestion without any meal (otherwise
+    the meals logged so far). An unknown part (an unpriced session, steps
+    without a step length) stays unknown. Garmin's everyday and sport have
+    no data while its day has no active kcal. Past days are unchanged.
+    """
+    if not today:
+        return window, ([], [])
+    day = day or DayInputs()
+    absent = {
+        "neat": window.neat_kcal_raw is None and day.steps is None,
+        "sport": window.sport_kcal_raw is None and not sessions,
+        "tef": not day.entries,
+    }
+    neat = _part_so_far(window.neat_kcal_raw, day.neat_kcal, absent["neat"])
+    sport = _part_so_far(window.sport_kcal_raw, day.sport_kcal, absent["sport"])
+    pending = [part for part, missing in absent.items() if missing]
+    shown = replace(
+        window,
+        neat_kcal_raw=neat,
+        sport_kcal_raw=sport,
+        activity_kcal_raw=None if neat is None or sport is None else neat + sport,
+        tef_kcal=window.tef_kcal if window.tef_kcal is not None else day_tef(day),
+    )
+    active = _number(garmin_day.get("active_kcal"))
+    device = ["neat", "sport"] if active is None else []
+    return cast(EnergyWindow, shown), (pending, device)
+
+
+def _part_so_far(
+    window_value: float | None, day_value: float | None, absent: bool
+) -> float | None:
+    """The window's part, else 0 when its input has not arrived, else the day's."""
+    if window_value is not None:
+        return window_value
+    return 0.0 if absent else day_value
 
 
 def _device_day(

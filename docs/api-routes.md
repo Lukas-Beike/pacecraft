@@ -390,8 +390,9 @@ oldest first), `rows` (`katch_mcardle`, `cunningham`, `device` (the
 wearable's estimate) and `own`, each with `resting_kcal`, `total_kcal`
 and their nominal 95 % `*_band_kcal`; the first three show `day`: its
 resting rate, its everyday and sport (0 without a session) and its
-digestion (null without logged meals, then no total; today a missing part
-counts 0 in the total so far, #3494); `own` stays on its
+digestion (null without logged meals, then no total; today a part whose
+input has not arrived counts 0 so far and is named in `pending_parts`,
+an unknown part stays null, #3494); `own` stays on its
 latest 28-day window, named by `window_days`; the first three also with
 `errors_kcal` per window and `mean_error_kcal` over the shared windows,
 and `split` (`resting_kcal`, `neat_kcal`, `sport_kcal`, `tef_kcal`, and

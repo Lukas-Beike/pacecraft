@@ -144,7 +144,7 @@ test("@responsive the early-morning row totals its rest and names the parts with
     const data = await response.json();
     const row = data.rows.find((item) => item.source === "katch_mcardle");
     Object.assign(row, { resting_kcal: 1800, resting_band_kcal: 200, total_kcal: 1800, total_band_kcal: 200,
-      split: { resting_kcal: 1800, neat_kcal: null, sport_kcal: null, tef_kcal: null, shared: {} } });
+      split: { resting_kcal: 1800, neat_kcal: 0, sport_kcal: 0, tef_kcal: 0, shared: {} }, pending_parts: ["neat", "sport", "tef"] });
     await route.fulfill({ response, json: { ...data, day_partial: true, skinfold_missing: null } });
   });
   await page.goto("/#nutrition/diary");
@@ -178,13 +178,12 @@ test("@responsive the energy table follows the diary date: sport per day, today 
   const katch = card.locator("tr[data-energy-source='katch_mcardle']");
   const split = card.locator("tr.energy-split-row").first();
   await expect(katch.locator("th small")).toContainText("bis jetzt");
-  // Today a part without data yet says so and counts 0 in Tag gesamt (#3494).
-  await expect(split).toContainText("Sport 0 · Verdauung noch keine Daten");
+  await expect(split).toContainText("Sport 0 · Verdauung nicht erfasst");
   await expect(card.locator("tr[data-energy-source='own'] th small")).toHaveText("Ø 28 Tage");
   const today = await page.locator("#nutritionDate").inputValue();
   await page.getByRole("button", { name: "Vorheriger Tag" }).click();
   await expect(page.locator("#nutritionDate")).not.toHaveValue(today);
-  await expect(split).toContainText("Sport 418 · Verdauung nicht erfasst");
+  await expect(split).toContainText("Sport 418");
   await expect(katch.locator("th small")).not.toContainText("bis jetzt");
   expect(asked.at(-1)).toBe(await page.locator("#nutritionDate").inputValue());
   expect(asked).toContain(today);

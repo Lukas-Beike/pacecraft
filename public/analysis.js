@@ -1647,15 +1647,15 @@ function energyInfo(read) {
 // Split A (athlete decision 2026-11-16): one stacked bar per row; parts computed alike for every row are hatched.
 const ENERGY_PARTS = [["resting_kcal", "resting", "Ruhe"], ["neat_kcal", "neat", "Alltag"], ["sport_kcal", "sport", "Sport"], ["tef_kcal", "tef", "Verdauung"]];
 
-function energySplitRow(row, partial = false) {
+function energySplitRow(row) {
   const split = row.split;
   const total = split ? ENERGY_PARTS.reduce((sum, [key]) => sum + (split[key] || 0), 0) : 0;
   if (!total) return null;
-  const text = ENERGY_PARTS.map(([key, , label], index) => {
+  const text = ENERGY_PARTS.map(([key, part, label], index) => {
     const name = index === 0 && row.source === "own" ? "Ruhe (Rest)" : label;
     if (index === 0 && row.resting_implausible) return `${name} ${ENERGY_IMPLAUSIBLE} (${ENERGY_IMPLAUSIBLE_REASON})`;
     const band = index === 0 && row.resting_band_kcal != null && split[key] != null ? ` (${energyKcalRange(split[key], row.resting_band_kcal).join("–")})` : "";
-    return `${name} ${energySplitValue(key, split[key], row.source, partial)}${band}`;
+    return `${name} ${energySplitValue(key, split[key], row.source, row.pending_parts?.includes(part))}${band}`;
   }).join(" · ");
   const bar = h("div", { className: "energy-split", role: "img", "aria-label": text });
   for (const [key, part] of ENERGY_PARTS) {
@@ -1668,13 +1668,11 @@ function energySplitRow(row, partial = false) {
 }
 
 // Digestion comes from the logged meals: without any it is not recorded; Garmin has no such part.
-// Today a part without data yet counts 0 in Tag gesamt and says so (#3494); Garmin has no
-// digestion of its own.
-function energySplitValue(key, value, source, partial = false) {
+// Today a part whose input has not arrived counts 0 in Tag gesamt and says so (#3494).
+function energySplitValue(key, value, source, pending = false) {
+  if (pending) return "noch keine Daten";
   if (value != null) return formatWhole(value);
-  if (key === "tef_kcal" && source === "device") return "–";
-  if (partial) return "noch keine Daten";
-  return key === "tef_kcal" ? "nicht erfasst" : "–";
+  return key === "tef_kcal" && source !== "device" ? "nicht erfasst" : "–";
 }
 
 function energySplitLegend(read) {
@@ -1743,7 +1741,7 @@ function energyTable(read) {
     const fit = energyFitMarker(read, source);
     return [h("tr", { dataset: fit ? { energySource: source, fit } : { energySource: source } },
       h("th", { scope: "row", dataset: { color: String(color) } }, label ?? row.label, ...energyRowNote(read, source, row)),
-      ...energyValueCells(read, source, row)), energySplitRow(row, read.day_partial && source !== "own")].filter(Boolean);
+      ...energyValueCells(read, source, row)), energySplitRow(row)].filter(Boolean);
   });
   return h("table", { className: "current-performance-table" }, h("caption", null, "Energieverbrauch ", ...energyInfo(read)),
     h("thead", null, h("tr", null, h("th", { scope: "col" }, "Quelle"), h("th", { scope: "col" }, "Ruhe"), h("th", { scope: "col" }, "Tag gesamt"))),
