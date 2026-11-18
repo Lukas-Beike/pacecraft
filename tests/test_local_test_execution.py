@@ -264,8 +264,10 @@ class RunnerEvidenceTests(unittest.TestCase):
                     run_tests, "sqlcipher_installed", return_value=installed
                 ),
             ):
-                code, _result = self.run_fixture(Encrypted, stdout=out)
+                code, result = self.run_fixture(Encrypted, stdout=out)
                 self.assertEqual(expected, code)
+                # The result JSON says the same as the exit code.
+                self.assertEqual("failed" if installed else "passed", result["status"])
                 self.assertEqual(
                     installed, "encrypted evidence test skipped" in out.getvalue()
                 )

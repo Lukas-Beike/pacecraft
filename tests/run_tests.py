@@ -489,8 +489,10 @@ def main(args: argparse.Namespace | None = None) -> int:
     skipped_ids: dict[str, list[str]] = {}
     for test, reason in result.skipped:
         skipped_ids.setdefault(reason, []).append(test.id())
+    # The schema evidence listing comes first, so the saved status includes its guard.
+    passed = report_evidence(result.evidence) and result.wasSuccessful()
     evidence.update(
-        status="passed" if result.wasSuccessful() else "failed",
+        status="passed" if passed else "failed",
         tests_run=result.testsRun,
         skips=len(result.skipped),
         skip_reasons={reason: len(ids) for reason, ids in sorted(skipped_ids.items())},
@@ -510,7 +512,6 @@ def main(args: argparse.Namespace | None = None) -> int:
         print(f"  skip reason ({len(ids)}): {reason}")
         for test_id in sorted(ids):
             print(f"    {test_id}")
-    evidence_ok = report_evidence(result.evidence)
     # Last, so a reader of the output's tail still sees which tests failed.
     for kind, entries in (("FAILED", result.failures), ("ERROR", result.errors)):
         for test, _trace in entries:
@@ -523,7 +524,7 @@ def main(args: argparse.Namespace | None = None) -> int:
         }
         if result.wasSuccessful():
             write_result(args.record_durations, recorded)
-    return 0 if result.wasSuccessful() and evidence_ok else 1
+    return 0 if passed else 1
 
 
 if __name__ == "__main__":
