@@ -192,6 +192,11 @@ class GuardHookTests(unittest.TestCase):
             self.decide("python scripts/resolve_review_thread.py", err=err), 2
         )
         self.assertNotIn("Matched word", err.getvalue())
+        # #3509 (Gitar): a ripgrep block says what is blocked, not "spell it out".
+        err = io.StringIO()
+        self.assertEqual(self.decide("rg --pre python x scripts", err=err), 2)
+        self.assertIn("ripgrep's --pre, --hostname-bin", err.getvalue())
+        self.assertNotIn("spell the path out", err.getvalue())
 
     def test_only_the_exact_call_from_an_unchanged_checkout_runs(self):
         exact = "python scripts/resolve_review_thread.py 2671 PRRT_a1"
@@ -373,6 +378,13 @@ class GuardHookTests(unittest.TestCase):
             "rg --hostname$()-bin python x",
             "export RIPGREP_CONFIG$()_PATH=c; rg x scripts",
             "rg --{pre,pre} python x scripts",
+            # Gitar on #3523: every item of a brace list, and combined lists.
+            "rg --pr{etty,e} python x scripts",
+            "rg --{pretty,pre} python x scripts",
+            "rg --hostname{x,-bin}=python x",
+            "rg --{x,p}r{y,e} python x scripts",
+            # A brace expansion too large to read blocks.
+            "rg x " + "{a,b}" * 20,
         ):
             with self.subTest(command):
                 self.assertEqual(self.decide(command), 2)

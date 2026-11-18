@@ -70,10 +70,29 @@ class OverlongBracket(ValueError):
 # config file that can hold them; blocked wherever they appear, since `rg`
 # itself can hide behind a variable, a glob, xargs or a path (#3509).
 RG_RUNS = re.compile(r"--pre(?![a-z0-9_])|hostname-bin|ripgrep_config_path")
-# Shell expansions an option may hide in, read as nothing; a brace list reads
-# as its first item (#3509).
+# Shell expansions an option may hide in, read as nothing; a word with a brace
+# list reads as all its expansions, as bash expands it (#3509).
 EXPANSION = re.compile(r"\$(?:\{[^}]*\}|\([^()]*\)|[a-z_][a-z0-9_]*|[@*#?$!0-9-])")
-BRACE_LIST = re.compile(r"\{([^{},]*),[^{}]*\}")
+# A word's first brace list, its prefix and the rest of the word (later lists
+# expand in the next round).
+BRACE_WORD = re.compile(r"(?<!\S)([^\s{}]*)\{([^{},]*(?:,[^{},]*)+)\}(\S*)")
+RG_BLOCKED = "rg --pre"
+
+
+def brace_expanded(text: str) -> str:
+    """The text with each word holding a brace list replaced by all its
+    expansions, nested lists innermost first. OverlongBracket when it grows
+    past 64 KB or keeps growing, so no large expansion is left unread (#3509)."""
+    for _ in range(16):
+        wider = BRACE_WORD.sub(
+            lambda m: " ".join(m[1] + item + m[3] for item in m[2].split(",")), text
+        )
+        if len(wider) > 65536:
+            raise OverlongBracket
+        if wider == text:
+            return text
+        text = wider
+    raise OverlongBracket
 
 
 SCRIPTS = Path("scripts")
@@ -235,10 +254,13 @@ def matching_word(command: str) -> str | None:
     if any(NAME in unquoted(form) for form in (raw, text)):
         return NAME
     # ripgrep's `--pre` and `--hostname-bin` run a program on its files (#3509).
-    bare = BRACE_LIST.sub(r"\1", EXPANSION.sub("", text))
+    try:
+        bare = brace_expanded(EXPANSION.sub("", text))
+    except OverlongBracket:
+        return "an overlong brace expansion"
     forms = (text, bare, unquoted(bare), unquoted(bare, blanks=False))
     if any(RG_RUNS.search(form) for form in forms):
-        return "rg --pre"
+        return RG_BLOCKED
     # Also every bash bracket expression as `?`, read with quotes, and without
     # them from the first `[` and from each `[` an earlier bracket swallowed, so
     # no quote, comment, substitution or stray `[` before a class can hide it:
@@ -468,6 +490,14 @@ def decide() -> int:
         return 0
     if EXACT.fullmatch(command.strip()) and unchanged():
         return 0
+    if word == RG_BLOCKED:
+        print(
+            "Blocked: ripgrep's --pre, --hostname-bin and RIPGREP_CONFIG_PATH run "
+            "a program on the files it searches, which can run the review-thread "
+            "resolve script (#3509); search without them.",
+            file=sys.stderr,
+        )
+        return 2
     print(
         "Blocked: the review-thread resolve script runs only as "
         "`python scripts/resolve_review_thread.py <pr> <PRRT_id>`, alone, from a "
