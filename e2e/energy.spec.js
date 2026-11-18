@@ -20,8 +20,9 @@ test("@responsive the diary shows the energy table and explains it behind the in
   expect(device.label).not.toContain("Schätzung");
   const card = page.locator("#nutritionEnergy [data-energy]");
   await expect(card.locator("tbody tr[data-energy-source]")).toHaveCount(4);
-  // A body fat saved in the profile is a dated entered measurement since #3477.
-  expect(["device", "entered", "profile"]).toContain(read.body.source);
+  // A body fat saved in the profile is a dated 3-site skinfold reading (#3477, #3557).
+  expect(read.body.source).toBe("skinfold");
+  expect(read.body.label).toBe("Hautfalten");
   // The diary opens on today, whose rows are still partial (#3395).
   const kfa = `KFA: ${read.body.label} · bis jetzt`;
   // Today's Garmin rest names the full day it comes from, if any (#3443).
