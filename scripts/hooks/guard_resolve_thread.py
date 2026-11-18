@@ -75,7 +75,7 @@ RG_RUNS = re.compile(r"--pre(?![a-z0-9_])|hostname-bin|ripgrep_config_path")
 EXPANSION = re.compile(r"\$(?:\{[^}]*\}|\([^()]*\)|[a-z_][a-z0-9_]*|[@*#?$!0-9-])")
 RG_BLOCKED = "rg --pre"
 # How much brace expansion may add to a command before it blocks (#3509).
-MAX_BRACE_GROWTH = 65536
+MAX_BRACE_GROWTH = 1_000_000
 
 
 def brace_expanded(text: str) -> str:
@@ -83,14 +83,31 @@ def brace_expanded(text: str) -> str:
     ripgrep spelling RG_RUNS looks for has one) replaced by all its
     expansions, as bash expands them. OverlongBracket when that adds more than
     MAX_BRACE_GROWTH characters, so no large expansion is left unread (#3509)."""
-    budget = [len(text) + MAX_BRACE_GROWTH]
-    words = re.split(r"(\s+)", text)
+    budget = [MAX_BRACE_GROWTH]
     return "".join(
         " ".join(_word_expansions(word, budget))
         if "{" in word and ("-" in word or "_" in word)
         else word
-        for word in words
+        for word in _brace_words(text)
     )
+
+
+def _brace_words(text: str) -> list[str]:
+    """The text cut at blanks outside brace pairs, so a quoted or escaped blank
+    inside a brace list stays in its word (Gitar, #3509); a line break always
+    cuts, so an open brace never joins lines."""
+    words, start, depth = [], 0, 0
+    for index, char in enumerate(text):
+        if char == "\n":
+            depth = 0
+        elif char == "{":
+            depth += 1
+        elif char == "}":
+            depth = max(depth - 1, 0)
+        if char.isspace() and (depth == 0 or char == "\n"):
+            words += [text[start:index], char]
+            start = index + 1
+    return [*words, text[start:]]
 
 
 def _word_expansions(word: str, budget: list[int]) -> list[str]:

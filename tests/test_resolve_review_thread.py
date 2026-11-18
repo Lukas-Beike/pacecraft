@@ -383,6 +383,9 @@ class GuardHookTests(unittest.TestCase):
             "rg --{pretty,pre} python x scripts",
             "rg --hostname{x,-bin}=python x",
             "rg --{x,p}r{y,e} python x scripts",
+            # Gitar: a quoted or escaped blank inside a brace list.
+            "rg -{' ',-}pre python x scripts",
+            "rg -{\\ ,-}pre python x scripts",
             # A brace expansion too large to read blocks.
             "rg x --" + "{a,b}" * 20,
         ):
@@ -415,6 +418,9 @@ class GuardHookTests(unittest.TestCase):
             # stay unexpanded; long commands stay within the budget (#3509).
             "echo " + "{a,b}" * 20,
             "cat <<'EOF'\n" + '{"key":1,"other":2}\n' * 4000 + "EOF",
+            "python - <<'EOF'\n# it's a test\n"
+            + "row = {'first_key': 1, 'second_key': 2}\n" * 4000
+            + "EOF",
             "git log --pretty=oneline",
         ):
             with self.subTest(command):
