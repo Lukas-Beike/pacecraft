@@ -64,8 +64,9 @@ QUOTED = re.compile(r"'[^']*'|\"(?:[^\"\\]|\\.)*\"")
 # Outside the quotes only plain words: no separator, redirection, substitution,
 # expansion, escape, glob or quote left over.
 UNSAFE_OUTSIDE = re.compile(r"[;&|()<>$\\{}*?\[\]`'\"#\n]")
-# A regex bracket expression and a regex interval inside the quoted pattern.
-BRACKET = re.compile(r"\[[!^]?\]?(?:\[:[a-z]+:\]|\\.|[^\]\[\\])*\]")
+# A regex bracket expression and a regex interval inside the quoted pattern; a
+# class holding a blank is left alone, so `?` never joins words (sixth round).
+BRACKET = re.compile(r"\[[!^]?\]?(?:\[:[a-z]+:\]|\\\S|[^\]\[\\\s])*\]")
 INTERVAL = re.compile(r"\\?\{\d*(?:,\d*)?\\?\}")
 
 
@@ -246,7 +247,9 @@ def matching_word(command: str, bash: bool = False) -> str | None:
     text = unescaped(raw)
     if any(NAME in unquoted(form) for form in (raw, text)):
         return NAME
-    text = unescaped(search_patterns(raw, bash))
+    # Only ASCII text: NFKC turns lookalikes (a fullwidth `＇`) into quotes bash
+    # never reads as quotes (sixth review round).
+    text = unescaped(search_patterns(raw, bash and command.isascii()))
     # Negated and POSIX character classes as fnmatch reads them.
     text = re.sub(r"\[:[a-z]+:\]", "a-z0-9_.", text.replace("[^", "[!"))
     text = DOS_ONE.sub("?", DOS_STAR.sub("*", STREAM.sub("", wildened(text))))

@@ -358,6 +358,10 @@ class GuardHookTests(unittest.TestCase):
             'rg "--pre=python" "--glob=scripts/resolve_review_threa[[d].py" x .',
             "rg '--pre=python' '--glob=**/resolve_review_threa[[d].py' x .",
             'grep "--file=scripts/resolve_review_threa[[d].py" x',
+            # Sixth round (diff only): NFKC turns a fullwidth quote into one bash
+            # never reads; a blank inside a class would join words.
+            "grep ＇x /dev/null;cd scripts;mkdir -p ];python -Xa/b[ ]/../resolve_review_threa?.py ＇",
+            "grep 'a/b[ ]/../resolve_review_threa?.py' f",
         ):
             with self.subTest(command):
                 self.assertEqual(self.decide(command), 2)
