@@ -383,6 +383,13 @@ def energy_view(
     device_prediction, device_rest = _device_day(
         health, day_window, day_window.end > latest.end
     )
+    day_window, pending = _so_far(
+        day_window,
+        inputs.days.get(day_window.end),
+        sessions,
+        health.get(day_window.end.isoformat(), {}),
+        day_window.end > latest.end,
+    )
     day_predictions = {
         **{
             name: _formula_prediction(f, day_body, day_window)
@@ -421,6 +428,7 @@ def energy_view(
                 "errors_kcal": [_round(e) for e in errors[name]],
                 "mean_error_kcal": _round(means.get(name)),
                 "split": split,
+                "pending_parts": pending[name == DEVICE],
             }
         )
     # Only the device row is named by the read; the client names the others.
@@ -580,14 +588,63 @@ def _weeks_with_data(inputs: EnergyInputs, end: date, days: int) -> int:
     )
 
 
+def _so_far(
+    window: EnergyWindow,
+    day: DayInputs | None,
+    sessions: Sequence[Mapping[str, Any]],
+    garmin_day: Mapping[str, Any],
+    today: bool,
+) -> tuple[EnergyWindow, tuple[list[str], list[str]]]:
+    """Today's parts so far and which of them have no data yet, for the
+    formula rows and for Garmin (athlete decision, #3494).
+
+    Only a part whose input has not arrived counts 0: everyday without any
+    steps, sport without any session, digestion without any meal (otherwise
+    the meals logged so far). An unknown part (an unpriced session, steps
+    without a step length) stays unknown. Garmin's everyday and sport have
+    no data while its day has no active kcal. Past days are unchanged.
+    """
+    if not today:
+        return window, ([], [])
+    day = day or DayInputs()
+    absent = {
+        "neat": window.neat_kcal_raw is None and day.steps is None,
+        "sport": window.sport_kcal_raw is None and not sessions,
+        "tef": not day.entries,
+    }
+    neat = _part_so_far(window.neat_kcal_raw, day.neat_kcal, absent["neat"])
+    sport = _part_so_far(window.sport_kcal_raw, day.sport_kcal, absent["sport"])
+    pending = [part for part, missing in absent.items() if missing]
+    shown = replace(
+        window,
+        neat_kcal_raw=neat,
+        sport_kcal_raw=sport,
+        activity_kcal_raw=None if neat is None or sport is None else neat + sport,
+        tef_kcal=window.tef_kcal if window.tef_kcal is not None else day_tef(day),
+    )
+    active = _number(garmin_day.get("active_kcal"))
+    device = ["neat", "sport"] if active is None else []
+    return cast(EnergyWindow, shown), (pending, device)
+
+
+def _part_so_far(
+    window_value: float | None, day_value: float | None, absent: bool
+) -> float | None:
+    """The window's part, else 0 when its input has not arrived, else the day's."""
+    if window_value is not None:
+        return window_value
+    return 0.0 if absent else day_value
+
+
 def _device_day(
     health: Mapping[str, Mapping[str, Any]], window: EnergyWindow, today: bool
 ) -> tuple[Prediction, dict[str, Any]]:
     """Garmin's row for the shown day and where its Ruhe comes from.
 
     Today Garmin's resting value is still counting (#3443): the row takes the
-    newest full day's within a week as Ruhe, plus today's active kcal so far;
-    without one the Ruhe and the total stay unknown and the row names why.
+    newest full day's within a week as Ruhe, plus today's active kcal so far,
+    0 before Garmin has any (#3494); without one the Ruhe and the total stay
+    unknown and the row names why.
     """
     if not today:
         return _device_prediction(health, window), {}
@@ -597,7 +654,8 @@ def _device_day(
         return (None, None, None, None), {"resting_missing": "no_recent_resting"}
     earlier, resting = found
     active = _number(health.get(day.isoformat(), {}).get("active_kcal"))
-    total = resting + active if active is not None and active >= 0 else None
+    # Absent active kcal count 0 so far (#3494); a negative value is invalid.
+    total = None if active is not None and active < 0 else resting + (active or 0.0)
     return (resting, None, total, None), {"resting_from": earlier.isoformat()}
 
 

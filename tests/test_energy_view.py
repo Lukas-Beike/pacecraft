@@ -608,6 +608,41 @@ class SelectedDayTests(unittest.TestCase):
         self.assertIsNone(km["total_kcal"])
         self.assertEqual(1839, km["resting_kcal"])
 
+    def test_today_without_any_data_yet_totals_its_resting_alone(self) -> None:
+        # #3494: early morning there are no steps, sessions or meals yet; today
+        # they count 0 so far, a past day with the same gaps has no total.
+        today = END + timedelta(days=1)
+        bare = DayInputs(weight_kg=80.0)
+        view = self.view(today, {today: bare})
+        km = row(view, "katch_mcardle")
+        self.assertEqual(km["resting_kcal"], km["total_kcal"])
+        parts = ("neat_kcal", "sport_kcal", "tef_kcal")
+        self.assertEqual((0, 0, 0), tuple(km["split"][key] for key in parts))
+        self.assertEqual(["neat", "sport", "tef"], km["pending_parts"])
+        # Garmin has no active kcal for today yet either.
+        self.assertEqual(["neat", "sport"], row(view, "device")["pending_parts"])
+        past = END - timedelta(days=2)
+        past_km = row(self.view(past, {past: bare}), "katch_mcardle")
+        self.assertIsNone(past_km["total_kcal"])
+        self.assertEqual([], past_km["pending_parts"])
+
+    def test_today_keeps_an_unknown_part_unknown(self) -> None:
+        # Gitar #3495: an unpriced session or steps without a step length are no
+        # timing gap; that part and the total stay unknown, never 0.
+        today = END + timedelta(days=1)
+        session = {"started_at_local": f"{today}T07:00:00", "sport": "run"}
+        unpriced = DayInputs(weight_kg=80.0, steps=4000.0, entries=1, protein_g=30.0)
+        km = row(
+            self.view(today, {today: unpriced}, sessions=[session]), "katch_mcardle"
+        )
+        self.assertIsNone(km["total_kcal"])
+        self.assertEqual(
+            (None, None), (km["split"]["neat_kcal"], km["split"]["sport_kcal"])
+        )
+        # Digestion counts the meals logged so far: 30 g protein x 4 kcal x 25 %.
+        self.assertEqual(30, km["split"]["tef_kcal"])
+        self.assertEqual([], km["pending_parts"])
+
     def test_today_is_partial_and_a_past_day_has_garmin_values(self) -> None:
         today = END + timedelta(days=1)
         view = self.view(today, {today: DayInputs(weight_kg=80.0, sport_kcal=0.0)})
@@ -674,6 +709,12 @@ class SelectedDayTests(unittest.TestCase):
             (1700, 2100, (END - timedelta(days=1)).isoformat()),
             (device["resting_kcal"], device["total_kcal"], device["resting_from"]),
         )
+        # No active kcal yet counts 0 so far; a negative one is invalid and keeps
+        # the total unknown (#3494, Gitar).
+        for active, total in ((None, 1700), (-5.0, None)):
+            health[today] = {"resting_kcal": 900.0, "active_kcal": active}
+            self.assertEqual(total, self.today_device(health)["total_kcal"])
+        health[today] = {"resting_kcal": 900.0, "active_kcal": 400.0}
         # Nothing in the 7 days before today: no value, and the reason.
         quiet = {today: health[today]}
         quiet[(END - timedelta(days=7)).isoformat()] = {"resting_kcal": 1700.0}
