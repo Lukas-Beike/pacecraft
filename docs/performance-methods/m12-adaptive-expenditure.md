@@ -98,6 +98,16 @@ noise widens it.
 diary, the weight from canonical weigh-ins, body fat from skinfold
 measurements (#3099), and the activity and TEF terms from M11.
 
+Weigh-ins come only from the app (athlete decision, #3557): weights entered
+in the app and the profile's weights from the change history, dated by the
+day of the save. Garmin's weights are copies of them and count only on a day
+without an app weight; a provider's stored profile weight (Wahoo `user_read`)
+and any other provider never count. The profile's body fat values are dated
+3-site skinfold readings and count as skinfolds; Garmin's body fat values fill
+only days without an app value. The diagnostics count the latest window's
+weigh-in days per source and the dropped days per provider
+(`latest_window_weighin_sources`).
+
 ## Measurement error and uncertainty
 
 Shown as a 95 % band. The intake scatter, the flagged-entry uncertainty

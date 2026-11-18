@@ -333,6 +333,26 @@ class ChangeHistoryTests(unittest.TestCase):
             {}, profile_body_fat_history(self.db, today + timedelta(days=1))
         )
 
+    def test_earlier_profile_weights_are_dated_app_weigh_ins(self):
+        # #3557: each saved profile weight is a weigh-in of the (UTC) day of its
+        # save, 30 to 300 kg; text and out-of-range values do not count.
+        from backend.athlete.profile import profile_weight_history
+
+        for before, after in (
+            ("", "82,4"),
+            ("82,4", "abc"),
+            ("abc", "29"),
+            ("29", "81.9"),
+        ):
+            change_history.record_change(
+                self.db, "profile", "profile", "update",
+                {"weight_kg": before}, {"weight_kg": after},
+            )  # fmt: skip
+        today = datetime.now(UTC).date()
+        self.assertEqual(
+            {today: 81.9}, profile_weight_history(self.db, today - timedelta(days=1))
+        )
+
     def test_a_strength_unit_keeps_the_structures_it_replaced(self):
         # #3521: a planned unit's earlier strength structures, with the time each
         # was replaced, oldest first; a unit without an edit to it gets none.

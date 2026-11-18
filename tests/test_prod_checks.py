@@ -469,6 +469,11 @@ class ProdChecksTests(unittest.TestCase):
                 "skinfolds_with_body_fat": 0,
                 "newest_skinfold_age_days": None,
                 "today_resting_days_back": 1,
+                # #3557: weigh-in days per source, dropped days per provider.
+                "latest_window_weighin_sources": {
+                    "by_source": {"app": 12, "garmin": 3},
+                    "dropped_days": {"wahoo": 28},
+                },
                 "planted": "never printed",
             }
         }
@@ -485,6 +490,9 @@ class ProdChecksTests(unittest.TestCase):
             f'{prefix}latest_window_insufficient "weight_span"',
             f"{prefix}newest_skinfold_age_days null",
             f"{prefix}today_resting_days_back 1",
+            f"{prefix}latest_window_weighin_sources.by_source.app 12",
+            f"{prefix}latest_window_weighin_sources.by_source.garmin 3",
+            f"{prefix}latest_window_weighin_sources.dropped_days.wahoo 28",
         ):
             self.assertIn(expected, lines)
         self.assertFalse(any("planted" in line for line in lines))

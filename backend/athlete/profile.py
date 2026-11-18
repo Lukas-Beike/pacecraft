@@ -94,16 +94,29 @@ DEFAULT_PROFILE = {
 
 def profile_body_fat_history(db: Any, since: date) -> dict[date, float]:
     """The body fat values once saved in the profile, by the (UTC) day of the
-    save, 1 to 70 %: dated entered measurements (athlete decision, #3477)."""
+    save, 1 to 70 %: dated 3-site skinfold readings (athlete decisions, #3477,
+    #3557)."""
+    return _profile_history(db, "body_fat_pct", since, (1, 70))
+
+
+def profile_weight_history(db: Any, since: date) -> dict[date, float]:
+    """The weights once saved in the profile, by the (UTC) day of the save, 30
+    to 300 kg: dated weigh-ins entered in the app (athlete decision, #3557)."""
+    return _profile_history(db, "weight_kg", since, (30, 300))
+
+
+def _profile_history(
+    db: Any, field: str, since: date, bounds: tuple[float, float]
+) -> dict[date, float]:
     days: dict[date, float] = {}
     for saved_at, value in change_history.field_values(
-        db, "profile", "body_fat_pct", since.isoformat()
+        db, "profile", field, since.isoformat()
     ):
         try:
             number = comma_decimal_float(value)
         except ValueError:
             continue
-        if 1 <= number <= 70:
+        if bounds[0] <= number <= bounds[1]:
             days[date.fromisoformat(saved_at[:10])] = number
     return days
 

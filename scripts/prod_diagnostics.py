@@ -158,6 +158,9 @@ SECTION_FIELDS = {
         r"|newest_skinfold_age_days|body_resolved|body_missing|body_source"
         r"|body_source_windows\.(skinfold|entered|device|profile|none)"
         r"|today_resting_days_back|store_method_windows\.(measured|forbes)"
+        # Weigh-in days per source and dropped days per provider (#3557).
+        r"|latest_window_weighin_sources\.(by_source\.(app|garmin)"
+        r"|dropped_days\.(garmin|wahoo|intervals))"
     ),
     # The entered body days mirrored to Garmin Connect, counts only (#3403).
     "garmin_body_push": re.compile(

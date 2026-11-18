@@ -405,6 +405,9 @@ class CanonicalBodyInputTests(unittest.TestCase):
                     # Entered and linked: Garmin read the same value back.
                     entered(kind, 30.5, linked),
                     _measure(kind, 30.5, linked, provider=ProviderId.GARMIN),
+                    # #3557, #3559: Wahoo's profile value read back after the
+                    # app pushed the entry never shows a second time.
+                    _measure(kind, 30.5, linked, provider=ProviderId.WAHOO),
                     entered(kind, 31.0, own),  # entered only
                     _measure(kind, 32.0, garmin_day, provider=ProviderId.GARMIN),
                     # Both, different: another weigh-in that day does not show.
