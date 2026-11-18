@@ -26,7 +26,32 @@ PROMOTION_PR = {
 }  # fmt: skip
 
 
-def fake_gh(prs, release=None, publish=(), errors=()):
+def next_answer(answers):
+    """The next of a fake's answers; the last one stays."""
+    return answers.pop(0) if len(answers) > 1 else answers[0]
+
+
+def with_develop(run, calls, heads, develop_runs):
+    """``run`` that also answers the develop head (#3539), one of ``heads`` per
+    read, and that head's container runs, one list of ``develop_runs`` per read."""
+    heads = list(heads)
+    runs = {sha: list(reads) for sha, reads in (develop_runs or {}).items()}
+
+    def answer(argv, **kwargs):
+        args = argv[1:]
+        if args[:1] == ["api"]:
+            data = {"sha": next_answer(heads)}
+        elif "--commit" in args:
+            data = next_answer(runs.get(args[args.index("--commit") + 1], [[]]))
+        else:
+            return run(argv, **kwargs)
+        calls.append(argv)
+        return subprocess.CompletedProcess(argv, 0, json.dumps(data), "")
+
+    return answer
+
+
+def fake_gh(prs, release=None, publish=(), errors=(), heads=(), develop_runs=None):
     calls = []
     errors = list(errors)
 
@@ -50,6 +75,8 @@ def fake_gh(prs, release=None, publish=(), errors=()):
             return subprocess.CompletedProcess(argv, 1, "", "unexpected")
         return subprocess.CompletedProcess(argv, 0, json.dumps(data), "")
 
+    if heads:
+        return with_develop(run, calls, heads, develop_runs), calls
     return run, calls
 
 
@@ -147,6 +174,120 @@ class ReleaseDispatchTests(unittest.TestCase):
         )
         with self.assertRaises(SystemExit), mock.patch("sys.stderr", io.StringIO()):
             release_dispatch.main(["dispatch", "--version", "v2.1"])
+
+    def run_main(self, argv, **fakes):
+        run, calls = fake_gh(**fakes)
+        out = io.StringIO()
+        clock = iter(range(0, 10**6, 30))
+        with (
+            mock.patch.object(gh_cli.subprocess, "run", run),
+            mock.patch.object(release_dispatch.time, "sleep"),
+            mock.patch.object(release_dispatch.time, "monotonic", lambda: next(clock)),
+            redirect_stdout(out),
+            mock.patch("sys.stderr", io.StringIO()),
+        ):
+            code = release_dispatch.main(argv)
+        dispatched = [call for call in calls if call[1:3] == ["workflow", "run"]]
+        return code, out.getvalue(), calls, dispatched
+
+    def test_dispatch_when_green_waits_for_the_develop_heads_container_run(self):
+        # #3539: the head comes from the GitHub API, never a local fetch; the run
+        # of that very commit must succeed before the release starts.
+        pending = [
+            {
+                "databaseId": 5,
+                "status": "in_progress",
+                "conclusion": "",
+                "headSha": "a1",
+            }
+        ]
+        green = [
+            {
+                "databaseId": 5,
+                "status": "completed",
+                "conclusion": "success",
+                "headSha": "a1",
+            }
+        ]
+        started = [
+            {
+                "databaseId": 7,
+                "status": "queued",
+                "createdAt": "2999-01-01T00:00:00Z",
+                "url": "u",
+            }
+        ]
+        code, out, calls, dispatched = self.run_main(
+            ["dispatch", "--when-green"], prs=[], heads=["a1"], publish=started,
+            develop_runs={"a1": [[], pending, green]},
+        )  # fmt: skip
+        self.assertEqual((0, 1), (code, len(dispatched)), out)
+        self.assertIn("develop a1 green", out)
+        self.assertTrue(any(call[1:2] == ["api"] for call in calls))
+        self.assertFalse(any("fetch" in call for call in calls))
+        # The head moved while a1 ran: the newer head's run decides.
+        new_green = [
+            {
+                "databaseId": 6,
+                "status": "completed",
+                "conclusion": "success",
+                "headSha": "b2",
+            }
+        ]
+        code, out, calls, dispatched = self.run_main(
+            ["dispatch", "--when-green"], prs=[], heads=["a1", "b2"], publish=started,
+            develop_runs={"a1": [pending], "b2": [[], new_green]},
+        )  # fmt: skip
+        self.assertEqual((0, 1), (code, len(dispatched)))
+        self.assertIn("develop b2 green", out)
+
+    def test_dispatch_when_green_stops_on_red_or_at_the_time_limit(self):
+        red = [
+            {
+                "databaseId": 5,
+                "status": "completed",
+                "conclusion": "failure",
+                "headSha": "a1",
+            }
+        ]
+        code, out, _calls, dispatched = self.run_main(
+            ["dispatch", "--when-green"],
+            prs=[],
+            heads=["a1"],
+            develop_runs={"a1": [red]},
+        )
+        self.assertEqual((1, []), (code, dispatched))
+        self.assertIn("develop a1 failure", out)
+        code, out, _calls, dispatched = self.run_main(
+            ["dispatch", "--when-green", "--timeout", "2"], prs=[], heads=["a1"]
+        )
+        self.assertEqual((3, []), (code, dispatched))
+        self.assertIn("no green container run", out)
+
+    def test_follow_wait_loops_until_published_and_prints_only_changes(self):
+        published = {"tagName": V, "isDraft": False, "targetCommitish": "abc"}
+        done = [
+            {
+                "databaseId": 9,
+                "status": "completed",
+                "conclusion": "success",
+                "headBranch": V,
+                "url": "u",
+            }
+        ]
+        code, out, _calls, _ = self.run_main(
+            ["follow", "--version", V, "--wait"],
+            prs=[VERSION_PR, PROMOTION_PR], release=published, publish=done,
+        )  # fmt: skip
+        self.assertEqual(0, code, out)
+        self.assertEqual(1, out.count("ok version PR #1 MERGED"))
+        # A chain that stays pending ends at the time limit with exit 3.
+        code, out, _calls, _ = self.run_main(
+            ["follow", "--version", V, "--wait", "--timeout", "2"], prs=[VERSION_PR]
+        )
+        self.assertEqual(3, code)
+        self.assertEqual(1, out.count("pending promotion PR not created yet"))
+        self.assertIn("still pending after 2 min", out)
 
 
 class FakeResponse(io.BytesIO):
