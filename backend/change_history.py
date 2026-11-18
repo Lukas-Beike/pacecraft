@@ -612,6 +612,27 @@ def record_change(
     return record
 
 
+def field_values(
+    db: Any, entity_type: str, field: str, since: str
+) -> list[tuple[str, Any]]:
+    """Each value a kept change row wrote to ``field`` since ``since`` (an ISO
+    time), oldest first, with the row's time (#3477)."""
+    rows = db.execute(
+        "SELECT created_at, diff FROM change_history WHERE entity_type = ? "
+        "AND created_at >= ? ORDER BY created_at",
+        (entity_type, since),
+    ).fetchall()
+    values = []
+    for row in rows:
+        try:
+            changed = json.loads(row["diff"]).get("fields", {})
+        except ValueError, AttributeError:
+            continue
+        if isinstance(changed, dict) and isinstance(changed.get(field), dict):
+            values.append((str(row["created_at"]), changed[field].get("after")))
+    return values
+
+
 def value_recorded_at(
     db: Any, entity_type: str, entity_id: str, value: dict[str, Any]
 ) -> str | None:

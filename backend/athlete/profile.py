@@ -86,6 +86,22 @@ DEFAULT_PROFILE = {
 }
 
 
+def profile_body_fat_history(db: Any, since: date) -> dict[date, float]:
+    """The body fat values once saved in the profile, by the (UTC) day of the
+    save, 1 to 70 %: dated entered measurements (athlete decision, #3477)."""
+    days: dict[date, float] = {}
+    for saved_at, value in change_history.field_values(
+        db, "profile", "body_fat_pct", since.isoformat()
+    ):
+        try:
+            number = comma_decimal_float(value)
+        except ValueError:
+            continue
+        if 1 <= number <= 70:
+            days[date.fromisoformat(saved_at[:10])] = number
+    return days
+
+
 def timezone_name(value: Any, *, strict: bool = False) -> str:
     """Return a valid IANA timezone name, falling back when allowed."""
     candidate = str(value or DEFAULT_TIMEZONE).strip()[:120] or DEFAULT_TIMEZONE
