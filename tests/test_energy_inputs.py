@@ -375,6 +375,14 @@ class StoreAdapterTests(unittest.TestCase):
                     energy_inputs.weighin_counts(order, profile),
                 )
         self.assertEqual({}, energy_inputs.weighins([weigh(DAY2, 84.0, WAHOO)]))
+        # #3559: after the app pushes an entry to Wahoo, the next refresh reads
+        # it back as Wahoo's profile weight of that day; it still never counts.
+        echo = [weigh(DAY1, 72.5, None), weigh(DAY1, 72.5, WAHOO)]
+        self.assertEqual({DAY1: 72.5}, energy_inputs.weighins(echo))
+        self.assertEqual(
+            {"by_source": {"app": 1, "garmin": 0}, "dropped_days": {"wahoo": 1}},
+            energy_inputs.weighin_counts(echo),
+        )
 
     def test_garmin_body_fat_fills_only_days_without_an_app_value(self) -> None:
         # #3557: a profile skinfold or an entry wins its day over Garmin's copy;
