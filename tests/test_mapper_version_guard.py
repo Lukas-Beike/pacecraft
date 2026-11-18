@@ -78,15 +78,15 @@ NOT_REPLAYED: Final[dict[str, str]] = {
 # Module -> (replaying versions, code fingerprint).
 PINNED: Final[dict[str, tuple[tuple[int, ...], str]]] = {
     "canonical.activity_detail": (
-        (11, 12),
-        "0dd504c348d0b4381511730643c5be91f11ff63121b430f454e569c33ebcf820",
+        (12, 13),
+        "b923a24740004724fb28c83dd54dd77ef374eb811bee98c9dbaa76ad8f667167",
     ),
     "canonical.decimal_text": (
-        (11, 12, 21, 25, 8, 2),
+        (12, 13, 21, 25, 8, 2),
         "fe45d029fb3c059900543f140a5715de91421a68f6226ddfb1f9d4a093edaaa6",
     ),
     "canonical.dfa_alpha1": (
-        (11, 12),
+        (12, 13),
         "022a2528063b9d007d02b7ba7f7218af3ed3d6b173308720af055a70158543fa",
     ),
     "canonical.domain_records": (
@@ -94,15 +94,15 @@ PINNED: Final[dict[str, tuple[tuple[int, ...], str]]] = {
         "8fbcd9efb3a0d40baa131c8a657eb799f8192a16e07a90f6959275de7dbacfe5",
     ),
     "canonical.local_time": (
-        (11, 12, 21, 25, 8, 2),
+        (12, 13, 21, 25, 8, 2),
         "bb8d2cace6846fc1f0f57aa0cc04ee9561fb8603105cb65f337204eece611886",
     ),
     "canonical.mapping": (
-        (11, 12, 21, 25, 8, 2),
+        (12, 13, 21, 25, 8, 2),
         "ce31fc467c34d7276223455adccf24557ed633520a1c849051216c23d0549359",
     ),
     "canonical.records": (
-        (11, 12, 21, 25, 8, 2),
+        (12, 13, 21, 25, 8, 2),
         "ca06ef248ed891b0643a14c08469268a974fd84a313389e6faa48fbc59a9e26d",
     ),
     "canonical.sleep_bounds": (
@@ -110,36 +110,36 @@ PINNED: Final[dict[str, tuple[tuple[int, ...], str]]] = {
         "a18b7a440cdfb7ba0d03909e5d28cc843a99fc962d73383d8f4905084022884c",
     ),
     "canonical.sports": (
-        (12, 21),
+        (13, 21),
         "223eb5ca42399100cccd4093e4ec74e042986f3cd34c71022651e794bba0df66",
     ),
     "canonical.validation": (
-        (11, 12, 21, 25, 8, 2),
+        (12, 13, 21, 25, 8, 2),
         "fb3ab6f3d47c71ef12f4c6bfbef99fd7f5b7319b9f68f71012d3c4d98a6d1b82",
     ),
     "canonical.vocabulary": (
-        (11, 12, 21, 25, 8, 2),
-        "0e03c4634c8cb01f66e3d033097a96256067b890f15c5d73af97b8ae2d10212e",
+        (12, 13, 21, 25, 8, 2),
+        "138f478c8e3791d6578161a379887d738e5f3ad27dd90e4f3217b9b257147207",
     ),
     "fit_activity_detail_mapping": (
-        (11, 12),
-        "6b938fcc18bdae5bd33e5e2f4aa0a01f09cdef62a818eb9849e6b877101fb9c2",
+        (12, 13),
+        "f9301d54f28de4628b761ff65a4641dae2f3d94242f69ea5fa1a6aa90d22d892",
     ),
     "fit_file": (
-        (11, 12),
+        (12, 13),
         "220282c0c094e17db97c5694fc3efbb86035dd8efe8bb021b1cdb20407e7ca72",
     ),
     "fit_rr_mapping": (
-        (11, 12),
+        (12, 13),
         "4319aab924017281cffb92b24b53fa67ed8633d747b55e9f61f57b58821c6981",
     ),
     "fit_sensor_mapping": (
-        (11, 12),
+        (12, 13),
         "0bc6dc6a5828641940f851dc9a2c4d6362d1b53d7f0f66d412f1f0ebdcbe71f6",
     ),
     "garmin_activity_detail_mapping": (
-        (12,),
-        "8943276d7749533bda088b67eccdcdcbb882910649035efaab05be4def67285a",
+        (13,),
+        "a67ac288a7c300c80e55678ac12f070bdbe62196c89bc6c493a321c80fdd6b77",
     ),
     "garmin_activity_mapping": (
         (21,),

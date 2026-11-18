@@ -45,6 +45,11 @@
       { key: "power_w", label: "Leistung", unit: "W", color: "power", format: (v) => numberText(v), floorAtZero: true, average: metrics.avg_power, max: metrics.max_power_w },
       cadenceChannel(activity, metrics),
       { key: "respiration_rate_brpm", label: "Atemfrequenz", unit: "/min", color: "respiration", format: (v) => numberText(v), floorAtZero: true },
+      // Garmin's undocumented values (#3374), labelled by the source the server sends; the
+      // stamina fields keep neutral names until a probe tells current from potential.
+      { key: "performance_condition", label: "Leistungszustand", unit: "", color: "dynamics", format: (v) => `${v > 0 ? "+" : ""}${numberText(v)}` },
+      { key: "stamina_137_pct", label: "Ausdauer A", unit: "%", color: "dynamics", format: (v) => numberText(v), floorAtZero: true },
+      { key: "stamina_138_pct", label: "Ausdauer B", unit: "%", color: "dynamics", format: (v) => numberText(v), floorAtZero: true },
       { key: "altitude_m", label: "Höhe", unit: "m", color: "elevation", format: (v) => numberText(v), elevation: true },
       // Running dynamics per second, named like their averages in the values (#2258).
       ...ActivityDetails.RUNNING_DYNAMICS.map(([key, label, unit, digits]) => ({ key, label, unit, color: "dynamics", format: (v) => numberText(v, digits), average: metrics[key] })),
@@ -175,7 +180,11 @@
 
     const readout = h("span", "activity-analysis-readout");
     const summaryText = chartSummary(channel, sorted, valid);
-    const header = h("div", "activity-analysis-chart-header", h("h4", null, channel.label), h("p", "activity-analysis-chart-stats", h("span", null, summaryText), readout));
+    // An unofficial provider value names itself as such, in the server's words (#3374).
+    const source = streams.channels[channel.key].source;
+    const unofficial = source?.kind === "unofficial" && source.label ? createStatusChip(source.label) : null;
+    unofficial?.classList.add("source-chip");
+    const header = h("div", "activity-analysis-chart-header", h("h4", null, channel.label, unofficial), h("p", "activity-analysis-chart-stats", h("span", null, summaryText), readout));
 
     const svg = svgNode("svg", { viewBox: `0 0 ${WIDTH} ${HEIGHT}`, role: "img", "aria-label": `${channel.label}: ${summaryText}, über ${clock(span)}` });
     appendAxes(svg, channel, scale);

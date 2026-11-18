@@ -241,7 +241,14 @@ test("@responsive calendar details chart the breathing rate and show Garmin's la
   const lap = (index, gap) => ({ index, start_offset_s: index * 150, end_offset_s: index * 150 + 150, distance_m: 500, avg_speed_mps: 3.2, avg_grade_adjusted_speed_mps: gap });
   await page.route(/\/api\/activities\//, (route) => {
     const id = new URL(route.request().url()).pathname.split("/")[3];
-    const breathing = id === "act_breath" ? { respiration_rate_brpm: { values: times.map((time) => 22 + (time % 30) / 5) } } : {};
+    // #3374: Garmin's undocumented values arrive labelled by the server as unofficial.
+    const unofficial = { provider: "garmin", label: "Garmin, inoffiziell", kind: "unofficial", recorded_by: "garmin" };
+    const breathing = id === "act_breath" ? {
+      respiration_rate_brpm: { values: times.map((time) => 22 + (time % 30) / 5) },
+      performance_condition: { values: times.map((time) => 3 - time / 60), source: unofficial },
+      stamina_137_pct: { values: times.map((time) => 96 - time / 30), source: unofficial },
+      stamina_138_pct: { values: times.map((time) => 99 - time / 60), source: unofficial },
+    } : {};
     return route.fulfill({ json: {
       session: { activity_id: id, sport: "run" },
       metrics: {},
@@ -259,6 +266,12 @@ test("@responsive calendar details chart the breathing rate and show Garmin's la
   ]);
   const breath = await openSessionDetails(page, "Synthetic breathing run");
   await expect(breath.getByRole("img", { name: /^Atemfrequenz: Ø \d+ · Max \d+ \/min/ })).toBeVisible();
+  // Performance condition and both stamina fields carry the server's "Garmin, inoffiziell".
+  for (const label of ["Leistungszustand", "Ausdauer A", "Ausdauer B"]) {
+    await expect(breath.getByRole("img", { name: new RegExp(`^${label}: Ø `) })).toBeVisible();
+    await expect(breath.locator(".activity-analysis-chart h4").filter({ hasText: label })).toHaveText(`${label}Garmin, inoffiziell`);
+  }
+  await expect(breath.locator(".activity-analysis-chart h4").filter({ hasText: "Atemfrequenz" }).locator(".source-chip")).toHaveCount(0);
   const headers = breath.locator(".activity-analysis-laps th[scope=col]");
   await expect(headers).toHaveText(["#", "Zeit", "Distanz", "Pace", "GAP Garmin"]);
   // 1000 / 3.5 m/s is 4:46 min/km; the lap without a value shows a dash.
@@ -267,6 +280,7 @@ test("@responsive calendar details chart the breathing rate and show Garmin's la
   const plain = await openSessionDetails(page, "Synthetic plain run");
   await expect(plain.getByRole("img", { name: /^Herzfrequenz: / })).toBeVisible();
   await expect(plain.getByRole("img", { name: /^Atemfrequenz/ })).toHaveCount(0);
+  await expect(plain.getByRole("img", { name: /^(Leistungszustand|Ausdauer)/ })).toHaveCount(0);
   await expect(plain.locator(".activity-analysis-laps th[scope=col]")).toHaveText(["#", "Zeit", "Distanz", "Pace"]);
 });
 

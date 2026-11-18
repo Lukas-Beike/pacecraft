@@ -798,6 +798,7 @@ class LapAndZoneTests(unittest.TestCase):
                 StreamChannel.RESPIRATION_RATE_BRPM: tuple(
                     20.0 + index % 5 for index in range(len(TIME))
                 ),
+                StreamChannel.PERFORMANCE_CONDITION: tuple(3.0 for _ in TIME),
             },
             device_zones=DeviceZoneBasis(
                 max_hr=188.0,
@@ -859,6 +860,14 @@ class LapAndZoneTests(unittest.TestCase):
         self.assertEqual((20.0, 24.0), (channel["values"][0], max(channel["values"])))
         self.assertEqual("garmin", channel["source"]["provider"])
         self.assertNotIn("respiration_rate_brpm", doc["running_dynamics_streams"] or {})
+        # #3374: an undocumented Garmin value is served as Garmin's unofficial one,
+        # for the calendar and the Coach alike.
+        condition = doc["streams"]["channels"]["performance_condition"]["source"]
+        self.assertEqual(
+            ("unofficial", "Garmin, inoffiziell", "garmin"),
+            (condition["kind"], condition["label"], condition["provider"]),
+        )
+        self.assertEqual("measured", channel["source"]["kind"])
 
     def test_without_watch_fields_the_document_has_no_steps_and_no_zone_basis(
         self,

@@ -41,7 +41,9 @@ exercise subtype (8) is not mapped, so FIT sets carry no exercise name.
 Breathing rate (record 108, lap 136 and 137, all /100 breaths per minute) and the
 device's grade-adjusted lap speed (161, /1000 m/s) are read like the other
 metrics; a value outside the canonical bounds is a gap or None, silently, since
-these fields never make a file incomplete. A lap also keeps its workout step
+these fields never make a file incomplete. Garmin's undocumented performance
+condition (record 90) and stamina fields (record 137 and 138) are read the same
+way, unscaled, as unofficial channels (#3374). A lap also keeps its workout step
 index (71, the number without the message-index flag bits) and trigger (24: the
 FIT ``lap_trigger`` enum 0-8; a newer number is None).
 
@@ -111,6 +113,7 @@ from backend.canonical.vocabulary import (
     LapKind,
     LapSource,
     LapTrigger,
+    RecordingOrigin,
     StreamChannel,
     StreamResolution,
     StrengthSetSource,
@@ -146,7 +149,9 @@ from backend.providers.fit_sensor_mapping import DEVICE_INFO_MESSAGE, sensor_pro
 # watch's zone basis (#2220).
 # Version 11: files with an unset (zero) header CRC and chained files decode,
 # and a file that does not names why in its issue field (#3337).
-MAPPER_VERSION: Final = 11
+# Version 12: Garmin's undocumented performance condition (record 90) and its two
+# stamina fields (record 137 and 138) as unofficial channels (#3374).
+MAPPER_VERSION: Final = 12
 
 # Same limit as the Garmin and Intervals mappers, so issues stay bounded.
 MAX_FIT_ACTIVITY_ID_LENGTH: Final = 200
@@ -263,6 +268,14 @@ _LAP_KINDS: Final[Mapping[int, LapKind]] = {
 # with its divisor to the canonical unit. Their bounds are the canonical types'.
 _RESPIRATION_FIELD: Final = 108
 _RESPIRATION_DIVISOR: Final = 100.0
+# Garmin's undocumented record fields (#3374): performance condition (90, points
+# -20..+20) and two stamina fields (137, 138, percent), all unscaled. A probe of
+# the athlete's files found them only in runs and rides and always in range.
+_UNOFFICIAL_FIELDS: Final[tuple[tuple[StreamChannel, int], ...]] = (
+    (StreamChannel.PERFORMANCE_CONDITION, 90),
+    (StreamChannel.STAMINA_137_PCT, 137),
+    (StreamChannel.STAMINA_138_PCT, 138),
+)
 _LAP_DEVICE_FIELDS: Final[tuple[tuple[str, int, float], ...]] = (
     ("avg_respiration_rate_brpm", 136, 100.0),
     ("max_respiration_rate_brpm", 137, 100.0),
@@ -544,6 +557,11 @@ def _stream_set(
         issues,
     )
     _add_sensor_channels(channels, ref, rows, issues)
+    # The undocumented fields mean what the probe found only in a Garmin recording.
+    if provenance.recorded_by is RecordingOrigin.GARMIN:
+        for channel, field_number in _UNOFFICIAL_FIELDS:
+            values = [_scaled(fields, field_number, 1.0) for fields in rows]
+            _add_channel(channels, ref, channel, values, issues, report=False)
     if len(channels) < 2:
         return None
     hr_source, power_source, sensors = sensor_profile(
@@ -961,6 +979,7 @@ MAPPED_FIELDS: Final[Mapping[int, frozenset[int]]] = {
         | {field for _channel, field in _RECORD_CHANNEL_FIELDS}
         | {field for _channel, field, _divisor in _DYNAMICS_FIELDS}
         | {field for _channel, field in _POSITION_FIELDS}
+        | {field for _channel, field in _UNOFFICIAL_FIELDS}
     ),
     _LAP_MESSAGE: frozenset(
         {_LAP_START_FIELD, _LAP_ELAPSED_FIELD, _LAP_INTENSITY_FIELD, 110, 111}
