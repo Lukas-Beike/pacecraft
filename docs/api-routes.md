@@ -417,7 +417,13 @@ for the profile), `body_fat_pct` and `lean_mass_kg`, or null; a skinfold or
 device value counts from 90 days before up to a day after `end`) and
 `skinfold_missing` (why the formula rows are empty: `no_skinfold`,
 `skinfold_too_old`, `no_birth_year`, `no_weight` or `invalid`; null with a
-body).
+body), and `goal` (#3547; null without the profile's `energy_goal`):
+`goal`, `goal_kcal` (0 for `hold`), `source` (the outlined row: `best`,
+else the source with the lowest `mean_error_kcal`; null without its
+total), `total_kcal` (that row's `total_kcal` of `day`), `target_kcal`
+(the total minus the deficit or plus the surplus), `eaten_kcal` (the
+day's logged kcal) and `remaining_kcal` (target minus eaten, negative
+above it; null without a total).
 
 Errors: 400 "Das Datum fehlt oder ist ungültig."; 400 "Der Tag liegt in
 der Zukunft.".
@@ -1772,7 +1778,9 @@ characters. Fields: `name`, `goals`, `sports`, `training_background`,
 (20 to 300), `body_fat_pct` (1 to 70), `height_cm` (50 to 250), `sex`
 (`male`, `female` or empty), `birth_year` (a whole year, 1920 to 2010),
 `coaching_style`, `timezone` (IANA name), `weather_location`,
-`sleep_target_hours` (4 to 12), `fueling_tolerance`,
+`sleep_target_hours` (4 to 12), `fueling_tolerance`, `energy_goal`
+(`lose`, `hold`, `build` or empty) with `energy_goal_kcal` (whole kcal per
+day, 0 to 1500, required for `lose` and `build`, empty for `hold`),
 `first_threshold_pct` (40 to 100, percent of the run threshold HR),
 `first_threshold_origin` (`measured`, `estimated` or empty) and
 `preferred_source_thresholds`, `_body`, `_hrv`, `_resting_hr`, `_sleep`

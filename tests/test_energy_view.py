@@ -559,6 +559,105 @@ class EnergyViewTests(unittest.TestCase):
         self.assertEqual(DAY1.isoformat(), view["body"]["date"])
 
 
+LOSE = {"energy_goal": "lose", "energy_goal_kcal": "500"}
+
+
+def with_intake(source: EnergyInputs, day: date, **parts: Any) -> EnergyInputs:
+    return replace(
+        source, days={**source.days, day: DayInputs(weight_kg=80.0, **parts)}
+    )
+
+
+class EnergyGoalTests(unittest.TestCase):
+    """'Heute noch essen' from the outlined source's day total (#3547)."""
+
+    def test_the_goal_takes_the_best_sources_total_and_subtracts_what_was_eaten(
+        self,
+    ) -> None:
+        source = with_intake(
+            inputs(),
+            END,
+            intake_kcal=1200.4,
+            activity_kcal=600.0,
+            neat_kcal=250.0,
+            sport_kcal=350.0,
+            protein_g=250.0,
+            entries=3,
+        )
+        cases = (("lose", "500", -500), ("build", "300", 300), ("hold", "", 0))
+        for goal, kcal, delta in cases:
+            with self.subTest(goal=goal):
+                profile = {"energy_goal": goal, "energy_goal_kcal": kcal}
+                view = energy_view(source, windows(), garmin(), goal=profile)
+                total = row(view, "katch_mcardle")["total_kcal"]
+                self.assertEqual(
+                    {
+                        "goal": goal,
+                        "goal_kcal": abs(delta),
+                        "source": "katch_mcardle",
+                        "total_kcal": total,
+                        "target_kcal": total + delta,
+                        "eaten_kcal": 1200,
+                        "remaining_kcal": total + delta - 1200,
+                    },
+                    view["goal"],
+                )
+
+    def test_without_a_goal_there_is_none(self) -> None:
+        for profile in (None, {}, {"energy_goal": ""}):
+            with self.subTest(profile=profile):
+                self.assertIsNone(
+                    energy_view(inputs(), windows(), garmin(), goal=profile)["goal"]
+                )
+
+    def test_the_basis_follows_the_outlined_row_best_else_nearest(self) -> None:
+        # Within the band nothing is best; Garmin at 2,700 is then nearest.
+        view = energy_view(inputs(), windows(), garmin(total=2700.0), goal=LOSE)
+        self.assertIsNone(view["best"])
+        self.assertEqual("device", view["goal"]["source"])
+        self.assertEqual(
+            row(view, "device")["total_kcal"] - 500, view["goal"]["target_kcal"]
+        )
+        best = energy_view(inputs(), windows(), garmin(), goal=LOSE)
+        self.assertEqual("katch_mcardle", best["goal"]["source"])
+        # Without any fit the goal has no basis yet, but is still the goal.
+        none = energy_view(inputs({}), [window(END, None)], {}, goal=LOSE)["goal"]
+        self.assertEqual(
+            ("lose", 500, None, None),
+            (none["goal"], none["goal_kcal"], none["source"], none["remaining_kcal"]),
+        )
+
+    def test_today_grows_from_the_morning_to_the_evening(self) -> None:
+        today = END + timedelta(days=1)
+        morning = with_intake(inputs(), today, intake_kcal=400.0)
+        evening = with_intake(
+            inputs(),
+            today,
+            intake_kcal=400.0,
+            activity_kcal=600.0,
+            neat_kcal=250.0,
+            sport_kcal=350.0,
+        )
+        early, late = (
+            energy_view(source, windows(), garmin(), day=today, goal=LOSE)
+            for source in (morning, evening)
+        )
+        self.assertTrue(early["day_partial"])
+        self.assertLess(early["goal"]["total_kcal"], late["goal"]["total_kcal"])
+        for view in (early, late):
+            goal = view["goal"]
+            self.assertEqual(
+                row(view, goal["source"])["total_kcal"], goal["total_kcal"]
+            )
+            self.assertEqual(goal["total_kcal"] - 500 - 400, goal["remaining_kcal"])
+
+    def test_the_reader_takes_the_goal_from_the_profile(self) -> None:
+        goal = read_energy_view(
+            None, replace(sources(), profile=lambda: LOSE), DAY3, DAY1
+        )["goal"]
+        self.assertEqual(("lose", 500), (goal["goal"], goal["goal_kcal"]))
+
+
 class FitScaleTests(unittest.TestCase):
     """#3397: each Verlauf period's source means against the own estimate."""
 

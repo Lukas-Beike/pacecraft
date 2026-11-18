@@ -225,7 +225,9 @@ class AthletePutRoutes:
         (20 to 300), `body_fat_pct` (1 to 70), `height_cm` (50 to 250), `sex`
         (`male`, `female` or empty), `birth_year` (a whole year, 1920 to 2010),
         `coaching_style`, `timezone` (IANA name), `weather_location`,
-        `sleep_target_hours` (4 to 12), `fueling_tolerance`,
+        `sleep_target_hours` (4 to 12), `fueling_tolerance`, `energy_goal`
+        (`lose`, `hold`, `build` or empty) with `energy_goal_kcal` (whole kcal per
+        day, 0 to 1500, required for `lose` and `build`, empty for `hold`),
         `first_threshold_pct` (40 to 100, percent of the run threshold HR),
         `first_threshold_origin` (`measured`, `estimated` or empty) and
         `preferred_source_thresholds`, `_body`, `_hrv`, `_resting_hr`, `_sleep`

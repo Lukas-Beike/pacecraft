@@ -99,6 +99,8 @@ PROFILE_FIELDS = {
     "performance_notes",
     "sleep_target_hours",
     "fueling_tolerance",
+    "energy_goal",
+    "energy_goal_kcal",
     "first_threshold_pct",
     "first_threshold_origin",
     "preferred_source_thresholds",
@@ -461,6 +463,8 @@ _FIELDS_ADDED_TO_AUDIT: dict[str, tuple[tuple[str, ...], ...]] = {
         ("first_threshold_origin",),
         # #3099: the birth year for the skinfold equations.
         ("birth_year",),
+        # #3547: the energy goal and its kcal per day.
+        ("energy_goal", "energy_goal_kcal"),
     ),
     "planned_unit": (("starts_at_local",), FOCUS_KEYS, (TEMPLATE_ID,)),
     "workout_library": (FOCUS_KEYS,),

@@ -287,7 +287,13 @@ class AthleteGetRoutes:
         device value counts from 90 days before up to a day after `end`) and
         `skinfold_missing` (why the formula rows are empty: `no_skinfold`,
         `skinfold_too_old`, `no_birth_year`, `no_weight` or `invalid`; null with a
-        body).
+        body), and `goal` (#3547; null without the profile's `energy_goal`):
+        `goal`, `goal_kcal` (0 for `hold`), `source` (the outlined row: `best`,
+        else the source with the lowest `mean_error_kcal`; null without its
+        total), `total_kcal` (that row's `total_kcal` of `day`), `target_kcal`
+        (the total minus the deficit or plus the surplus), `eaten_kcal` (the
+        day's logged kcal) and `remaining_kcal` (target minus eaten, negative
+        above it; null without a total).
 
         Errors: 400 "Das Datum fehlt oder ist ungültig."; 400 "Der Tag liegt in
         der Zukunft.".
