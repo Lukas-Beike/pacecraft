@@ -96,12 +96,21 @@ test("configured but not connected offers only Connect", () => {
 });
 
 test("connected offers only Disconnect and never exposes the scope", () => {
-  const view = wahooConnectionView({ wahoo: { configured: true, connected: true, scope: "workouts_read" } });
+  const view = wahooConnectionView({ wahoo: { configured: true, connected: true, scope: "workouts_read user_write" } });
   assert.equal(view.status, "Verbunden");
   assert.equal(view.ok, true);
   assert.equal(view.canConnect, false);
   assert.equal(view.canDisconnect, true);
   assert.ok(!JSON.stringify(view).includes("workouts_read"));
+});
+
+test("a grant without user_write offers a reconnect for the profile weight (#3559)", () => {
+  const view = wahooConnectionView({ wahoo: { configured: true, connected: true, scope: "workouts_read user_read" } });
+  assert.equal(view.status, "Verbunden");
+  assert.equal(view.canConnect, true);
+  assert.equal(view.connectLabel, "Wahoo neu verbinden");
+  assert.equal(view.canDisconnect, true);
+  assert.ok(!JSON.stringify(view).includes("user_read"));
 });
 
 test("the card detail shows only the connection state, without a scope note", () => {

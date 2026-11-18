@@ -283,6 +283,7 @@ class Harness:
                 sync_service=lambda: cast(Any, self.wahoo),
                 plan_push_service=lambda: service("wahoo.plan"),
                 stream_backfill_service=lambda: service("wahoo.streams"),
+                weight_push_service=lambda: service("wahoo.weight"),
             ),
         )
         self.configured = provider_configured_checks(cast(Any, ctx))

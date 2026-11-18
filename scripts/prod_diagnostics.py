@@ -164,6 +164,8 @@ SECTION_FIELDS = {
         r"status|sent|removed|failed|retried|linked_days|pending_days"
         r"|unlinked_uploads"
     ),
+    # The Wahoo profile-weight write, counts only (#3559).
+    "wahoo_weight_push": re.compile(r"status|sent|failed|retried|pending"),
     # Window records the next detail mapper bump downloads again (#2220).
     "mapper_replay": re.compile(
         r"status|garmin\.(window_days|pending|passed_over(_empty|_retries)?|records"

@@ -80,9 +80,17 @@ test("@responsive retrying a stale Wahoo entry starts one Wahoo sync", async ({ 
   await page.unrouteAll({ behavior: "ignoreErrors" });
 });
 
+test("@responsive a Wahoo grant without user_write offers a reconnect", async ({ page }) => {
+  await withWahooState(page, { configured: true, connected: true, scope: "workouts_read", connected_at: "2026-01-02T08:00:00+00:00" }, () => ({}));
+  await openConnections(page);
+  await expect(page.locator("#wahooConnectionStatus")).toHaveText("Verbunden");
+  await expect(page.locator("#wahooConnectButton")).toHaveText("Wahoo neu verbinden");
+  await expect(page.locator("#wahooDisconnectButton")).toBeVisible();
+});
+
 test("@responsive connected Wahoo shows its label everywhere and can be disconnected", async ({ page }, testInfo) => {
   let disconnected = false;
-  await withWahooState(page, { configured: true, connected: true, scope: "workouts_read", connected_at: "2026-01-02T08:00:00+00:00" }, (body) => ({
+  await withWahooState(page, { configured: true, connected: true, scope: "workouts_read user_write", connected_at: "2026-01-02T08:00:00+00:00" }, (body) => ({
     provider_labels: { ...body.provider_labels, wahoo: "Wahoo" },
     provider_freshness: [...(body.provider_freshness || []), { provider: "wahoo", label: "Wahoo", area: "activities", state: "fresh", configured: true }],
   }));

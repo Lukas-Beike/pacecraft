@@ -308,6 +308,16 @@ class WahooConnectionServiceTests(unittest.TestCase):
         self.assertEqual(stored["refresh_token"], "refresh-2")
         self.assertEqual(stored["connected_at"], NOW.isoformat())
 
+    def test_a_refresh_without_scope_keeps_the_granted_scope(self):
+        # An older grant must not gain user_write on a refresh (#3559).
+        self.request.return_value = grant_payload(scope="user_read workouts_read")
+        self.connect()
+        self.clock.now = NOW + timedelta(seconds=3600 - 60)
+        self.request.return_value = grant_payload(access="access-2", refresh="r-2")
+        self.assertEqual(self.service.access_token(), "access-2")
+        stored = json.loads(self.values.data[WAHOO_TOKENS_KEY])
+        self.assertEqual(stored["scope"], "user_read workouts_read")
+
     def test_rejected_refresh_requires_reconnect_and_drops_tokens(self):
         self.connect()
         self.clock.now = NOW + timedelta(hours=2)

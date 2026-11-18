@@ -84,6 +84,7 @@ from backend.sync.session_rebundle import summarize_session_rebundle
 from backend.sync.state import last_error_key, last_sync_key
 from backend.sync.stream_backfill import fit_inventory_counts, fit_value_probe_report
 from backend.sync.wahoo_stream_backfill import wahoo_replay_size
+from backend.sync.wahoo_weight_push import summarize_weight_push
 
 LOGGER = logging.getLogger("intervals_coach")
 # Plan push counts per provider cover this many days (#2878).
@@ -434,6 +435,10 @@ class DiagnosticReportService:
                 # The entered body days mirrored to Garmin, counts only (#3403).
                 "garmin_body_push": section(
                     "garmin_body_push", lambda: summarize_body_push(db)
+                ),
+                # The Wahoo profile-weight write, counts only (#3559).
+                "wahoo_weight_push": section(
+                    "wahoo_weight_push", lambda: summarize_weight_push(db)
                 ),
                 "garmin_strength_push": section(
                     "garmin_strength_push",

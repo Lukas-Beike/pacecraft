@@ -59,6 +59,8 @@ Use [README.md](README.md) for the overview and [docs/setup.md](docs/setup.md) a
   refresh (athlete decision 2026-11-11, #2185). Named exception (athlete,
   2026-11-17, #3403): saving, changing or removing an entered weight or body fat
   writes, updates or deletes that day's Garmin entry; nothing else is written.
+  Named exception (athlete, 2026-11-18, #3559): saving, changing or removing an
+  entered weight also updates the Wahoo profile weight; nothing else is written to Wahoo.
 - Adaptive replanning may update future local library entries only after its preview is
   explicitly approved (the athlete's own Intervals.icu sync request for an
   illness pause approves it, #2342); it must not silently overwrite, delete, or

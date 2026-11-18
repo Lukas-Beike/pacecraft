@@ -259,8 +259,21 @@ Detailed contract: Optional profile and power-zone import SHALL run only with gr
 
 Evidence: `backend/sync/wahoo_connection.py:connection_status`, `backend/sync/wahoo_connection.py:WahooConnectionService.disconnect`, `backend/sync/wahoo_sync.py:WahooSyncService._threshold_fetch`; `tests/test_wahoo_connection.py:test_disconnect_during_code_exchange_prevents_reconnect`, `tests/test_wahoo_connection.py:test_disconnect_succeeds_locally_when_remote_revoke_fails`, `tests/test_wahoo_sync.py:test_a_forbidden_power_zones_read_is_non_fatal_and_keeps_the_workouts`.
 
+### Requirement: Wahoo profile weight write
+The system SHALL, after an entered weight is saved, changed or removed, set the Wahoo profile weight to the newest active entered weight in the background, only with a granted `user_write` scope, and SHALL write nothing else to Wahoo.
+
+#### Scenario: Weight change with the write scope
+- **WHEN** the newest entered weight changes and the Wahoo grant includes `user_write`
+- **THEN** `PUT /v1/user` sends that weight; removing every entry, a body fat or an older day's change sends nothing.
+
+#### Scenario: Write unavailable
+- **WHEN** the grant lacks `user_write` or the write fails
+- **THEN** the local save stands, the change stays pending and the next Wahoo refresh sends the then-newest weight once; the Wahoo card offers "Wahoo neu verbinden" while the scope is missing.
+
+Evidence: `backend/sync/wahoo_weight_push.py:WahooWeightPushService.push`; `tests/test_wahoo_weight_push.py`.
+
 ### Requirement: Wahoo transport contract
-The system SHALL request the Wahoo scopes `user_read`, `workouts_read`, `workouts_write`, `plans_read`, `plans_write` and `power_zones_read`, send token requests form-encoded with a 20-second timeout and API requests with a bearer token and a 30-second timeout, and map every Wahoo failure to a typed error without provider text.
+The system SHALL request the Wahoo scopes `user_read`, `user_write`, `workouts_read`, `workouts_write`, `plans_read`, `plans_write` and `power_zones_read`, send token requests form-encoded with a 20-second timeout and API requests with a bearer token and a 30-second timeout, and map every Wahoo failure to a typed error without provider text.
 
 #### Scenario: Rejected access token
 - **WHEN** Wahoo answers 401

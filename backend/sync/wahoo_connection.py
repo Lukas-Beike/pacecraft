@@ -359,7 +359,9 @@ class WahooConnectionService:
 
     def _refresh(self, tokens: dict[str, Any]) -> dict[str, Any]:
         try:
-            grant = self._oauth().refresh(str(tokens["refresh_token"]))
+            grant = self._oauth().refresh(
+                str(tokens["refresh_token"]), str(tokens.get("scope") or "") or None
+            )
         except AppError as exc:
             if exc.upstream_status in _REFRESH_REJECTED_STATUSES:
                 # The refresh token is dead; keeping it would only retry forever.

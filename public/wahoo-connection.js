@@ -49,6 +49,8 @@ function wahooConnectionView(data) {
   const wahooId = data?.provider_ids?.wahoo;
   const reconnect = configured && !connected
     && freshness.some((entry) => Boolean(wahooId) && entry?.provider === wahooId && entry.error_code === "auth_required");
+  // A grant without user_write cannot set the profile weight (#3559).
+  const needsWrite = connected && !String(wahoo.scope || "").split(" ").includes("user_write");
   let status = "Nicht verbunden";
   if (connected) status = "Verbunden";
   else if (!configured) status = "Nicht konfiguriert";
@@ -57,6 +59,9 @@ function wahooConnectionView(data) {
   let detail = "";
   if (since) detail = `Verbunden seit ${since}`;
   else if (reconnect) detail = status;
+  let connectLabel = "Wahoo verbinden";
+  if (reconnect) connectLabel = "Wahoo erneut verbinden";
+  else if (needsWrite) connectLabel = "Wahoo neu verbinden";
   let kind = "off";
   if (connected) kind = "ok";
   else if (reconnect) kind = "error";
@@ -68,8 +73,8 @@ function wahooConnectionView(data) {
     kind,
     ok: connected,
     detail,
-    connectLabel: reconnect ? "Wahoo erneut verbinden" : "Wahoo verbinden",
-    canConnect: configured && !connected,
+    connectLabel,
+    canConnect: configured && (!connected || needsWrite),
     canDisconnect: connected,
     // Manual and full sync only make sense for a connected account.
     canSync: connected,
