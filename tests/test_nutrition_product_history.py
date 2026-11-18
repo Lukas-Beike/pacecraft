@@ -5,7 +5,6 @@ Temporary database and synthetic products only.
 
 from __future__ import annotations
 
-import sqlite3
 import threading
 import unittest
 from datetime import UTC, datetime
@@ -39,9 +38,7 @@ PRODUCT: dict[str, Any] = {
 
 class NutritionProductHistoryTests(unittest.TestCase):
     def setUp(self) -> None:
-        self.manager = temp_database(
-            self, "product_history.db", row_factory=sqlite3.Row, schema=True
-        )
+        self.manager = temp_database(self, "product_history.db", schema=True)
         self.diary, self.library = build_nutrition_services(
             self.manager,
             lambda: "2026-09-24T12:00:00+00:00",

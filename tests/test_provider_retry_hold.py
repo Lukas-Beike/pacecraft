@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import sqlite3
 import unittest
 from datetime import UTC, datetime, timedelta
 
@@ -16,7 +15,7 @@ TOKENS = "garmin_oauth_tokens"
 
 class ProviderRetryHoldTests(unittest.TestCase):
     def setUp(self) -> None:
-        self.manager = temp_database(self, "hold.sqlite", row_factory=sqlite3.Row)
+        self.manager = temp_database(self, "hold.sqlite")
         with self.manager.unit_of_work() as db:
             db.executescript(
                 """

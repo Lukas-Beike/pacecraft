@@ -75,7 +75,7 @@ class RatingBackfillRemovalTests(SyncQueueFixtureMixin, unittest.TestCase):
 
     def rows(self, sql: str) -> list[Any]:
         with self.manager.reader() as db:
-            return [tuple(row) for row in db.execute(sql).fetchall()]
+            return [tuple(row.values()) for row in db.execute(sql).fetchall()]
 
     def test_only_the_backfills_own_key_and_cursor_are_removed(self) -> None:
         self.seed()

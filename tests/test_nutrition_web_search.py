@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import sqlite3
 import tempfile
 import unittest
 from datetime import UTC, datetime
@@ -371,7 +370,6 @@ class NutritionWebSearchCatalogTests(unittest.TestCase):
         manager = temp_database(
             self,
             path=Path(temporary.name) / "web-search.db",
-            row_factory=sqlite3.Row,
             schema=True,
         )
         self.searcher, self.sent = service(response([value("salt_g", 0.7)]))

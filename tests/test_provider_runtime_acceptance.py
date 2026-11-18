@@ -14,7 +14,6 @@ from __future__ import annotations
 
 import json
 import logging
-import sqlite3
 import tempfile
 import threading
 import unittest
@@ -166,7 +165,6 @@ class OrchestrationCase(unittest.TestCase):
         self.database = temp_database(
             self,
             path=root / "acceptance.sqlite",
-            row_factory=sqlite3.Row,
             schema=True,
         )
         self.config = make_config(

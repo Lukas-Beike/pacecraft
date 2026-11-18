@@ -1,6 +1,5 @@
 """Focused tests for persistent sync-job queue orchestration."""
 
-import sqlite3
 import threading
 import unittest
 from unittest.mock import Mock, patch
@@ -21,7 +20,7 @@ class SyncQueueFixtureMixin:
     now = "2026-09-20T12:00:00+00:00"
 
     def setUp(self):
-        self.manager = temp_database(self, "sync-queue.sqlite", row_factory=sqlite3.Row)
+        self.manager = temp_database(self, "sync-queue.sqlite")
         with self.manager.unit_of_work() as db:
             db.executescript(
                 """

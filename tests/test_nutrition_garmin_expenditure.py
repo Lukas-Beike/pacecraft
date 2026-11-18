@@ -1,4 +1,3 @@
-import sqlite3
 import unittest
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
@@ -13,9 +12,7 @@ from backend.sync.garmin_snapshot_writer import GarminSnapshotWriter
 
 class NutritionGarminExpenditureTests(unittest.TestCase):
     def setUp(self) -> None:
-        manager = temp_database(
-            self, "nutrition.db", row_factory=sqlite3.Row, schema=True
-        )
+        manager = temp_database(self, "nutrition.db", schema=True)
         self.manager = manager
         self.fixed_now = "2026-09-24T12:00:00+00:00"
         self.service, _ = build_nutrition_services(

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import sqlite3
 import tempfile
 import threading
 import unittest
@@ -31,7 +30,6 @@ class CoachTurnFailureTests(unittest.TestCase):
         self.manager = temp_database(
             self,
             path=Path(self.temporary.name) / "failure.sqlite",
-            row_factory=sqlite3.Row,
             persist_connections=False,
         )
         self.events = StateEventBuffer()
@@ -115,8 +113,8 @@ class CoachTurnFailureTests(unittest.TestCase):
         with self.manager.reader() as db:
             pending = json.loads(self.kv.get(db, "coach_pending_request"))
             assistants = db.execute(
-                "SELECT COUNT(*) FROM messages WHERE role='assistant'"
-            ).fetchone()[0]
+                "SELECT COUNT(*) AS n FROM messages WHERE role='assistant'"
+            ).fetchone()["n"]
         self.assertEqual(
             pending["completed_steps"], [{"tool": "save_checkin", "status": "saved"}]
         )
@@ -254,8 +252,8 @@ class CoachTurnFailureTests(unittest.TestCase):
             self.assertEqual(self.kv.get(db, "coach_pending_request"), "null")
             self.assertEqual(
                 db.execute(
-                    "SELECT COUNT(*) FROM messages WHERE role='assistant'"
-                ).fetchone()[0],
+                    "SELECT COUNT(*) AS n FROM messages WHERE role='assistant'"
+                ).fetchone()["n"],
                 1,
             )
         self.assertEqual(len(self.events.since()["events"]), 1)

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import sqlite3
 import unittest
 from datetime import date
 from typing import Any
@@ -333,7 +332,6 @@ class CoachFinalReceiptTests(unittest.TestCase):
         manager = temp_database(
             self,
             "coach.sqlite3",
-            row_factory=sqlite3.Row,
             persist_connections=False,
         )
         with manager.unit_of_work() as db:
@@ -364,10 +362,10 @@ class CoachFinalReceiptTests(unittest.TestCase):
             )
         with manager.unit_of_work() as db:
             self.assertEqual(
-                db.execute("SELECT COUNT(*) FROM messages").fetchone()[0], 0
+                db.execute("SELECT COUNT(*) AS n FROM messages").fetchone()["n"], 0
             )
             self.assertEqual(
-                db.execute("SELECT status FROM coach_commands").fetchone()[0],
+                db.execute("SELECT status FROM coach_commands").fetchone()["status"],
                 "running",
             )
         self.assertEqual(events.since()["events"], [])

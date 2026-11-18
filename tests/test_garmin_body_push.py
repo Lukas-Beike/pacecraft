@@ -132,9 +132,6 @@ class GarminBodyPushTests(unittest.TestCase):
         self.manager = temp_database(
             self,
             schema=True,
-            row_factory=lambda cursor, row: dict(
-                zip([column[0] for column in cursor.description], row, strict=True)
-            ),
         )
         self.sdk = FakeSdk()
         self.state = FakeSyncState()
@@ -240,15 +237,25 @@ class GarminBodyPushTests(unittest.TestCase):
     def test_a_rate_limit_keeps_the_local_save_and_a_paced_retry_follows(self):
         self.sdk.fail = _HttpError(429, f"Too many requests {SECRET}")
         with self.assertLogs("intervals_coach", logging.WARNING) as logs:
-            read = self.weights.save({"date": "2026-11-15", "kg": 80})
-        self.assertEqual(("pending", [{"date": "2026-11-15", "kg": 80.0}]),
+            read = self.weights.save({"date": "2026-11-15", "kg": 80.37})
+        self.assertEqual(("pending", [{"date": "2026-11-15", "kg": 80.4}]),
                          (read["remote"], read["entries"]))  # fmt: skip
         self.assertEqual(RemoteLinkState.PENDING, self.link().sync_state)
-        # Garmin's text, the credentials and the payload stay out of the logs.
+        # Garmin's text, the credentials and the payload stay out of the logs:
+        # the messages and each record's context, not its timing fields (#3487).
+        standard = set(vars(logging.makeLogRecord({})))
         logged = "\n".join(logs.output) + json.dumps(
-            [getattr(record, "__dict__", {}) for record in logs.records], default=str
+            [
+                {
+                    key: value
+                    for key, value in vars(record).items()
+                    if key not in standard
+                }
+                for record in logs.records
+            ],
+            default=str,
         )
-        for leaked in (SECRET, "Too many", "80.0"):
+        for leaked in (SECRET, "Too many", "80.37", "80.4"):
             self.assertNotIn(leaked, logged)
         # While Garmin's pause holds, neither a save nor a refresh calls Garmin.
         self.sdk.fail = None

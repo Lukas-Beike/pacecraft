@@ -656,6 +656,7 @@ class WahooBackfillTests(unittest.TestCase):
                 "stamina_20_138.present": 1,
                 "stamina_20_138.in_range": 1,
                 "stamina_20_138.constant": 1,
+                "stamina_order.137_ge_138": 1,
                 "perf_condition_140_1.present": 1,
                 "perf_condition_140_1.out_of_range": 1,
             },
@@ -673,9 +674,24 @@ class WahooBackfillTests(unittest.TestCase):
                 "stamina_20_137.falling": 1,
                 "stamina_20_138.present": 1,
                 "stamina_20_138.in_range": 1,
+                "stamina_order.137_ge_138": 1,
             },
             fit_value_probe_counts(probe_fit([(-21, 101, 0), (None, 99, 3)])),
         )
+        # Which stamina field is the potential one (never below the current one)
+        # is counted over the records holding both: one direction in every record,
+        # both when all are equal, else mixed.
+        for label, rows, order in (
+            ("138 above", [(None, 70, 80), (None, 60, 75)], {"138_ge_137"}),
+            ("equal", [(None, 80, 80), (None, 72, 72)], {"137_ge_138", "138_ge_137"}),
+            ("crossing", [(None, 90, 80), (None, 60, 75)], {"mixed"}),
+        ):
+            with self.subTest(label):
+                counts = fit_value_probe_counts(probe_fit(rows))
+                self.assertEqual(
+                    {f"stamina_order.{key}" for key in order},
+                    {key for key in counts if key.startswith("stamina_order.")},
+                )
         self.assertEqual({}, fit_value_probe_counts(fit_bytes(laps=1)))
         self.assertEqual({}, fit_value_probe_counts(b"not a fit file"))
 

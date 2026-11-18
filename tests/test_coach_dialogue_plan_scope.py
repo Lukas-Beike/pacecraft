@@ -26,9 +26,7 @@ class RecordingSQLiteBackend:
 class CoachDialoguePlanScopeServiceTests(unittest.TestCase):
     def setUp(self) -> None:
         self.backend = RecordingSQLiteBackend()
-        self.database = temp_database(
-            self, "scope.sqlite", backend=self.backend, row_factory=sqlite3.Row
-        )
+        self.database = temp_database(self, "scope.sqlite", backend=self.backend)
         self.lock = threading.RLock()
         self.service = CoachDialoguePlanScopeService(
             self.database,

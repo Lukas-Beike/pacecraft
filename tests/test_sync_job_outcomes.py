@@ -1,4 +1,3 @@
-import sqlite3
 import unittest
 from datetime import UTC, datetime, timedelta
 from threading import Event
@@ -17,7 +16,7 @@ class SyncJobOutcomeServiceTests(unittest.TestCase):
     def setUp(self):
         job_outcomes._CONTENDED_SINCE.clear()
         self.addCleanup(job_outcomes._CONTENDED_SINCE.clear)
-        self.manager = temp_database(self, "sync-jobs.sqlite", row_factory=sqlite3.Row)
+        self.manager = temp_database(self, "sync-jobs.sqlite")
         with self.manager.unit_of_work() as db:
             db.executescript(
                 """

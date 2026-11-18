@@ -1,3 +1,4 @@
+import re
 import subprocess
 import sys
 import unittest
@@ -57,6 +58,35 @@ with patch.object(Path, 'read_text', deny):
             check=False,
         )
         self.assertEqual(result.returncode, 0, result.stderr)
+
+
+# Test modules whose temporary databases use another row factory than the app's,
+# with the reason (#3466). Production reads dicts, so code tested against
+# sqlite3.Row can pass on a row type it never meets (#3435).
+OTHER_ROW_FACTORIES = {
+    "test_db_manager.py": "tests the connection manager itself with positional reads",
+}
+
+
+class TempDatabaseRowFactoryTests(unittest.TestCase):
+    def test_temporary_databases_read_rows_like_the_app_unless_listed(self):
+        overriding = set()
+        for path in sorted(Path(__file__).parent.glob("test_*.py")):
+            text = path.read_text(encoding="utf-8")
+            for match in re.finditer(r"temp_database\(", text):
+                depth, end = 1, match.end()
+                while depth:
+                    depth += {"(": 1, ")": -1}.get(text[end], 0)
+                    end += 1
+                factory = re.search(
+                    r"row_factory\s*=\s*([\w.]+)", text[match.end() : end]
+                )
+                if factory and factory[1] not in {
+                    "row_factory",
+                    "production_row_factory",
+                }:
+                    overriding.add(path.name)
+        self.assertEqual(overriding, set(OTHER_ROW_FACTORIES))
 
 
 if __name__ == "__main__":

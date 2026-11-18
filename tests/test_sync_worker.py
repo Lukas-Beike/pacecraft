@@ -299,7 +299,7 @@ class LostOutcomeTests(unittest.TestCase):
     """A job whose outcome cannot be stored must not stay running."""
 
     def setUp(self) -> None:
-        self.manager = temp_database(self, "jobs.sqlite", row_factory=sqlite3.Row)
+        self.manager = temp_database(self, "jobs.sqlite")
         with self.manager.unit_of_work() as db:
             db.executescript(
                 """
