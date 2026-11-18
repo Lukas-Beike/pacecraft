@@ -41,6 +41,7 @@ _COLUMNS: Final = (
     "carbs_g", "protein_g", "fat_g", "sugar_g", "fiber_g", "salt_g", "source",
     "source_url", "external_id", "provenance", "extraction_confidence", "status",
     "created_at", "updated_at", "favorite", "origin", "fetched_at", "details",
+    "portion_amount", "portion_unit", "package_amount", "package_unit",
 )  # fmt: skip
 _INVALID_DAYS: Final = "Bitte 30, 90, 180 oder 365 Tage wählen."
 

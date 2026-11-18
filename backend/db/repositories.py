@@ -63,6 +63,13 @@ NUTRIENT_COLUMNS = (
     "fiber_g",
     "salt_g",
 )
+# An own product's usual portion and package size, each in g or ml (#3452).
+PRODUCT_SIZE_FIELDS = (
+    "portion_amount",
+    "portion_unit",
+    "package_amount",
+    "package_unit",
+)
 _DATABASE_ORIGINS = {"off": "open_food_facts", "yazio": "yazio", "bls": "bls"}
 # Origin of a field value the athlete entered; a re-check keeps it.
 MANUAL_ORIGIN = "manual"
@@ -333,7 +340,8 @@ class NutritionProductRepository:
     _COLUMNS = (
         "id, barcode, name, brand, basis_amount, basis_unit, kcal, carbs_g, "
         "protein_g, fat_g, sugar_g, fiber_g, salt_g, source, source_url, external_id, "
-        "provenance, extraction_confidence, favorite, status, created_at, updated_at, details"
+        "provenance, extraction_confidence, favorite, status, created_at, updated_at, details, "
+        "portion_amount, portion_unit, package_amount, package_unit"
     )
     _SELECT = f"SELECT {_COLUMNS} FROM nutrition_products"
     # Listings of own and database products name where each product comes from.
@@ -538,6 +546,7 @@ class NutritionProductRepository:
             "status",
             "created_at",
             "updated_at",
+            *PRODUCT_SIZE_FIELDS,
         )
         db.execute(
             "INSERT INTO nutrition_products("

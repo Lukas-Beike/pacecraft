@@ -23,7 +23,7 @@ from backend.providers.http import (
 from backend.providers.yazio import bounded_number as _number
 
 BASE_URL = "https://world.openfoodfacts.org"
-FIELDS = "code,product_name,product_name_de,brands,nutrition,nutriments,nutrition_data_per,last_modified_t"
+FIELDS = "code,product_name,product_name_de,brands,nutrition,nutriments,nutrition_data_per,last_modified_t,serving_size,serving_quantity,serving_quantity_unit,quantity,product_quantity,product_quantity_unit"
 UNAVAILABLE = "Open Food Facts ist momentan nicht verfügbar. Verpackungswerte verwenden oder Schätzung kennzeichnen."
 
 
@@ -84,6 +84,43 @@ def _basis_unit(basis: Any) -> str | None:
     return None
 
 
+# "30 g", "0,5 l", "1 kg": one amount and one mass or volume unit, nothing more.
+_SIZE_TEXT = re.compile(r"(\d{1,6}(?:[.,]\d{1,3})?) ?(kg|g|l|cl|ml)", re.IGNORECASE)
+_SIZE_UNITS = {
+    "g": ("g", 1),
+    "kg": ("g", 1000),
+    "ml": ("ml", 1),
+    "cl": ("ml", 10),
+    "l": ("ml", 1000),
+}
+
+
+def product_size(
+    amount: Any, unit: Any, text: Any, basis_unit: str | None
+) -> tuple[float | None, str | None]:
+    """A serving or package size in the basis unit, or nothing.
+
+    The numeric field with its unit wins over the free text; a size that is not
+    plain g or ml, or not in the basis unit, stays empty (#3452).
+    """
+    size = None
+    if isinstance(unit, str) and unit.strip().lower() in _SIZE_UNITS:
+        size = (amount, unit.strip().lower())
+    elif isinstance(text, str) and (match := _SIZE_TEXT.fullmatch(text.strip()[:20])):
+        size = (match[1].replace(",", "."), match[2].lower())
+    if size is None or basis_unit is None:
+        return None, None
+    try:
+        value = float(size[0])
+    except TypeError, ValueError:
+        return None, None
+    target, factor = _SIZE_UNITS[size[1]]
+    value = round(value * factor, 1)
+    if target != basis_unit or not 0 < value <= 10000:
+        return None, None
+    return value, target
+
+
 def project_product(raw: Any) -> dict[str, Any] | None:
     if not isinstance(raw, dict) or not re.fullmatch(
         r"\d{8,14}", str(raw.get("code", ""))
@@ -96,6 +133,18 @@ def project_product(raw: Any) -> dict[str, Any] | None:
         kcal = round(kj / 4.184, 4) if kj is not None else None
     # OFF uses *_100g for both grams and millilitres. Never guess the unit.
     unit = _basis_unit(basis)
+    portion = product_size(
+        raw.get("serving_quantity"),
+        raw.get("serving_quantity_unit"),
+        raw.get("serving_size"),
+        unit,
+    )
+    package = product_size(
+        raw.get("product_quantity"),
+        raw.get("product_quantity_unit"),
+        raw.get("quantity"),
+        unit,
+    )
     return {
         "id": "off:" + str(raw["code"]),
         "name": str(raw.get("product_name_de") or raw.get("product_name") or "Produkt")[
@@ -107,6 +156,10 @@ def project_product(raw: Any) -> dict[str, Any] | None:
         "license": "ODbL 1.0 / Database Contents License",
         "basis_amount": 100,
         "basis_unit": unit,
+        "portion_amount": portion[0],
+        "portion_unit": portion[1],
+        "package_amount": package[0],
+        "package_unit": package[1],
         "per_100": {
             "kcal": kcal,
             "carbs_g": _number(nutrients.get("carbohydrates_100g"), 100),
