@@ -370,6 +370,17 @@ class ChangeHistoryTests(unittest.TestCase):
         )
         self.assertNotIn("strength_structure_versions", units[1])
         self.assertNotIn("strength_structure_versions", units[2])
+        # A structure over the history's field limit is not kept: its version is
+        # None, which trained_structure treats as unknown (current plan).
+        oversized = [{"name": "Squat " + "x" * 4100, "sets": 3, "reps": 5}]
+        change_history.record_change(
+            self.db, "planned_unit", "u4", "update",
+            {"strength_structure": oversized}, {"strength_structure": version_b},
+        )  # fmt: skip
+        replaced = change_history.replaced_values(
+            self.db, "planned_unit", "strength_structure"
+        )
+        self.assertEqual([None], [value for _at, value in replaced["u4"]])
 
     def test_unchanged_record_is_skipped_but_undo_is_retained(self):
         value = {"name": "Same"}

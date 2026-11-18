@@ -277,7 +277,12 @@ def trained_structure(unit: Mapping[str, Any], started_at: Any) -> Any:
                 else None
             )
             if replaced is not None and replaced > start:
-                return version.get("structure")
+                structure = version.get("structure")
+                # A structure the history could not keep (over its field limit) is
+                # unknown, so the current one stands in.
+                if isinstance(structure, list):
+                    return structure
+                break
     return unit.get(STRENGTH_STRUCTURE)
 
 

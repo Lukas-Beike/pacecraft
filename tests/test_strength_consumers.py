@@ -301,6 +301,17 @@ class PlanComparisonTests(unittest.TestCase):
         # A start without an offset is UTC; an unreadable one keeps the current plan.
         self.assertIs(trained_structure(unit, "2026-11-05T17:00:00"), version_a)
         self.assertIs(trained_structure(unit, None), version_b)
+        # A version the history could not keep (None: over its field limit) is
+        # unknown, so the current plan stands in rather than no comparison.
+        unknown = {
+            **unit,
+            "strength_structure_versions": [
+                {"replaced_at": "2026-11-05T19:00:00+00:00", "structure": None}
+            ],
+        }
+        self.assertIs(
+            trained_structure(unknown, "2026-11-05T17:00:00+00:00"), version_b
+        )
         self.assertIs(
             trained_structure({"strength_structure": version_b}, "2026-11-05T17:00:00"),
             version_b,
