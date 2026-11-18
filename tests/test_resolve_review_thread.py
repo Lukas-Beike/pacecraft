@@ -346,6 +346,33 @@ class GuardHookTests(unittest.TestCase):
             "cd scripts && python ${PWD}/r* 2671 PRRT_a1",
             "cd scripts && python ~+/r* 2671 PRRT_a1",
             "cd scripts && python %CD%\\r* 2671 PRRT_a1",
+            # #3509: quoted words a blank apart stay apart in bash; ripgrep's
+            # --pre and --hostname-bin run a program on the files it searches.
+            "python '-u' 'scripts/'resolve_review_threa?.py 1 PRRT_x",
+            "python 'x' 'scripts/'r?solve_review_thread.py",
+            "rg --pre=python x scripts",
+            'rg "--pre" python x .',
+            "/usr/bin/rg -n --hostname-bin=python x",
+            "ls; rg -l x --pre python scripts",
+            # Bypass review: quoted, pathed, expanded or indirect ripgrep runs.
+            "rg '--pre' 'python' x scripts",
+            "rg '--hostname-bin' 'python' x",
+            "C:\\tools\\rg.exe --pre python x scripts",
+            "a=`rg --pre python x scripts`",
+            "&{rg --pre python x scripts}",
+            "rg --pr${x}e python x scripts",
+            "rg --pr$@e python x scripts",
+            "o=--pre; rg $o python x scripts",
+            "x=rg; $x --pre python x scripts",
+            "echo --pre python x scripts | xargs rg",
+            "/usr/bin/r[g] --pre python x scripts",
+            "printf -- '--pre=python' > c; RIPGREP_CONFIG_PATH=c rg x scripts",
+            # Second round: empty substitutions and brace lists inside the option.
+            "rg --p$()re python x scripts",
+            "rg --p$(:)re python x scripts",
+            "rg --hostname$()-bin python x",
+            "export RIPGREP_CONFIG$()_PATH=c; rg x scripts",
+            "rg --{pre,pre} python x scripts",
         ):
             with self.subTest(command):
                 self.assertEqual(self.decide(command), 2)
@@ -369,6 +396,10 @@ class GuardHookTests(unittest.TestCase):
             "echo " + "[a]" * 300,
             "python - <<'EOF'\n" + "x = [1, [2]]\n" * 300 + "EOF",
             'git commit -m "fix: [' + "words " * 60 + '"',
+            "rg -n 'pre' docs",
+            "rg -n x --pretty docs",
+            "npm install --prefix tools",
+            "git log --pretty=oneline",
         ):
             with self.subTest(command):
                 self.assertEqual(self.decide(command), 0)

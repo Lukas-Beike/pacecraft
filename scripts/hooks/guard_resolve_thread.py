@@ -66,6 +66,16 @@ class OverlongBracket(ValueError):
     command whose readings would read more than MAX_WIDE_WORK characters."""
 
 
+# ripgrep's options that run a program on each file it searches, and its
+# config file that can hold them; blocked wherever they appear, since `rg`
+# itself can hide behind a variable, a glob, xargs or a path (#3509).
+RG_RUNS = re.compile(r"--pre(?![a-z0-9_])|hostname-bin|ripgrep_config_path")
+# Shell expansions an option may hide in, read as nothing; a brace list reads
+# as its first item (#3509).
+EXPANSION = re.compile(r"\$(?:\{[^}]*\}|\([^()]*\)|[a-z_][a-z0-9_]*|[@*#?$!0-9-])")
+BRACE_LIST = re.compile(r"\{([^{},]*),[^{}]*\}")
+
+
 SCRIPTS = Path("scripts")
 RUN = "resolve_review_thread"
 # Python imports these at start from the script's directory as well.
@@ -188,11 +198,13 @@ def unescaped(text: str) -> str:
     return ESCAPE.sub(decode, text)
 
 
-def unquoted(text: str, backslash: str = "") -> str:
+def unquoted(text: str, backslash: str = "", blanks: bool = True) -> str:
     """Text without quoting and escape characters: adjacent string literals
-    joined, line continuations, quotes, `$`, backticks and carets removed, and
-    each other backslash replaced by `backslash`."""
-    text = re.sub(f"{QUOTES}\\s*\\+?\\s*{QUOTES}", "", text)
+    joined (across blanks only with ``blanks``, as Python joins them; bash
+    keeps such words apart, #3509), line continuations, quotes, `$`, backticks
+    and carets removed, and each other backslash replaced by `backslash`."""
+    joined = f"{QUOTES}\\s*\\+?\\s*{QUOTES}" if blanks else f"{QUOTES}\\+?{QUOTES}"
+    text = re.sub(joined, "", text)
     text = re.sub(f"\\\\\\n|\\$|`|\\^|{QUOTES}", "", text)
     return text.replace("\\", backslash)
 
@@ -222,6 +234,11 @@ def matching_word(command: str) -> str | None:
     text = unescaped(raw)
     if any(NAME in unquoted(form) for form in (raw, text)):
         return NAME
+    # ripgrep's `--pre` and `--hostname-bin` run a program on its files (#3509).
+    bare = BRACE_LIST.sub(r"\1", EXPANSION.sub("", text))
+    forms = (text, bare, unquoted(bare), unquoted(bare, blanks=False))
+    if any(RG_RUNS.search(form) for form in forms):
+        return "rg --pre"
     # Also every bash bracket expression as `?`, read with quotes, and without
     # them from the first `[` and from each `[` an earlier bracket swallowed, so
     # no quote, comment, substitution or stray `[` before a class can hide it:
@@ -238,7 +255,13 @@ def matching_word(command: str) -> str | None:
         reading = DOS_ONE.sub("?", DOS_STAR.sub("*", STREAM.sub("", wildened(reading))))
         # A variable can hold any folder or name.
         reading = VARIABLE.sub("*", reading)
-        variants += [unquoted(reading), unquoted(reading, "/")]
+        # Quoted words a blank apart also stay apart, as bash reads them (#3509).
+        variants += [
+            unquoted(reading),
+            unquoted(reading, "/"),
+            unquoted(reading, blanks=False),
+            unquoted(reading, "/", blanks=False),
+        ]
     return next(
         (
             word
