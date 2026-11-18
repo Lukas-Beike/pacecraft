@@ -18,11 +18,11 @@ from dataclasses import dataclass, field, replace
 from datetime import date, timedelta
 from typing import Any, NamedTuple, cast
 
-from backend.performance.activity_energy import tef_kcal
+from backend.performance.activity_energy import TEF_ERROR_KCAL, tef_kcal
 
 METHOD_ID = "adaptive-expenditure"
 # Bump when a formula or constant below changes the estimate.
-METHOD_VERSION = 3
+METHOD_VERSION = 4
 # Days per window and windows per week of the rolling view (#3099, #3100).
 WINDOW_DAYS = 28
 # Half-life in days of the exponentially weighted weight trend.
@@ -101,6 +101,8 @@ class DayInputs:
     flagged_kcal: float = 0.0
     weight_kg: float | None = None
     activity_kcal: float | None = None  # M11 session net cost + NEAT, uncalibrated
+    # Its 95 % error from each part's M11 method share (#3552); 0 without it.
+    activity_error_kcal: float = 0.0
     # Its parts (split A, #3100): NEAT net of rest, and the day's priced
     # sessions (0.0 without any); None where unknown, never 0 (#3187).
     neat_kcal: float | None = None
@@ -190,6 +192,9 @@ class EnergyWindow:
     store_method: str | None = None
     # Its terms for the deficit card (#3548); None without an estimate.
     store: StoredEnergy | None = None
+    # The mean of the days' activity errors, uncalibrated (#3552): a method's
+    # error is the same on every day, so it does not average out.
+    activity_error_kcal_raw: float = 0.0
 
 
 def weight_trend(weights_kg: Mapping[date, float]) -> dict[date, float]:
@@ -402,6 +407,7 @@ def _window(
     weighins = sorted(weights)
     active = [v for v in days.values() if v.activity_kcal is not None]
     raw = statistics.fmean(v.activity_kcal or 0.0 for v in active) if active else None
+    raw_error = sum(v.activity_error_kcal for v in active) / max(1, len(active))
     neat_raw, sport_raw = _split(active)
     tef = (
         statistics.fmean([day_tef(v) for v in complete.values()]) if complete else None
@@ -414,8 +420,9 @@ def _window(
         tdee = _tdee(everything, store.kcal_per_day, store.sd, len(weighins))
         unflagged = tdee if flagged == 0 else None
         if tdee is not None and raw is not None and tef is not None:
-            rmr = tdee.kcal - raw * factor - tef
-            derived = Estimate(rmr, math.hypot(tdee.band_kcal, 0.1 * raw * factor))
+            # Activity and digestion carry their M11 errors (#3552).
+            band = math.hypot(tdee.band_kcal, raw_error * factor, TEF_ERROR_KCAL)
+            derived = Estimate(tdee.kcal - raw * factor - tef, band)
     return EnergyWindow(
         end=end,
         days=length,
@@ -424,6 +431,7 @@ def _window(
         weighins=len(weighins),
         activity_kcal=None if raw is None else raw * factor,
         activity_kcal_raw=raw,
+        activity_error_kcal_raw=raw_error,
         tef_kcal=tef,
         adaptive_tdee=tdee,
         adaptive_tdee_unflagged=unflagged,

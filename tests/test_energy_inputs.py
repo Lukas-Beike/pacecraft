@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 import unittest
 from dataclasses import replace
 from datetime import date
@@ -142,6 +143,33 @@ class EnergyInputsReaderTests(unittest.TestCase):
         del gym["rpe"]
         _inputs, costs = read_energy_inputs(None, sources(sessions=[gym]), DAY1, DAY3)
         self.assertEqual((None, 3.5), (costs[0].rpe, costs[0].met))
+
+    def test_the_days_activity_error_is_each_parts_method_share(self) -> None:
+        # #3552: the strength session's MET at ±50 % and the everyday's step
+        # length at ±15 %, in quadrature, instead of one flat 10 %.
+        gym = {"id": "legs", "sport": "strength", "started_at_local": "2026-10-01T18:00:00",
+               "elapsed_duration_s": 2700}  # fmt: skip
+        inputs, costs = read_energy_inputs(None, sources(sessions=[gym]), DAY1, DAY3)
+        day = inputs.days[DAY1]
+        assert day.neat_kcal is not None and costs[0].kcal is not None
+        self.assertAlmostEqual(
+            math.hypot(0.50 * costs[0].kcal, 0.15 * day.neat_kcal),
+            day.activity_error_kcal or 0.0,
+        )
+        # Without steps (today before the day summary) the session keeps its
+        # error, so the so-far total is not understated (Gitar on #3567).
+        late = {**gym, "started_at_local": "2026-10-03T18:00:00"}
+        inputs, costs = read_energy_inputs(None, sources(sessions=[late]), DAY1, DAY3)
+        self.assertIsNone(inputs.days[DAY3].neat_kcal)
+        self.assertAlmostEqual(
+            0.50 * (costs[0].kcal or 0.0), inputs.days[DAY3].activity_error_kcal
+        )
+        # A day without sessions has the step length's error only.
+        rest, _ = read_energy_inputs(None, sources(sessions=[]), DAY1, DAY1)
+        self.assertAlmostEqual(
+            0.15 * (rest.days[DAY1].neat_kcal or 0.0),
+            rest.days[DAY1].activity_error_kcal or 0.0,
+        )
 
     def test_a_day_without_sessions_has_sport_zero(self) -> None:
         # Known to be zero, not unknown: 70 x 10,000 x 0.747 x 2.01 = 1,051,029 J

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 import unittest
 from dataclasses import replace
 from datetime import date, timedelta
@@ -19,6 +20,7 @@ from backend.nutrition.energy_balance import (
 )
 from backend.nutrition.energy_inputs import EnergySources
 from backend.nutrition.energy_view import energy_view, read_energy_view, selected_day
+from backend.performance.activity_energy import TEF_ERROR_KCAL
 from backend.providers.source_labels import SourceView, provider_label
 from tests.test_energy_inputs import DAY1, DAY3, sources
 
@@ -69,6 +71,8 @@ def inputs(body_fat: dict[date, float] | None = None) -> EnergyInputs:
     days[END] = DayInputs(
         weight_kg=80.0,
         activity_kcal=600.0,
+        # Its M11 error (#3552), as 10 % of the activity.
+        activity_error_kcal=60.0,
         neat_kcal=250.0,
         sport_kcal=350.0,
         protein_g=250.0,
@@ -98,12 +102,12 @@ class EnergyViewTests(unittest.TestCase):
         # = 1,838.8; band hypot(10 % = 183.88, 1.96 x 21.6 x 80 x 3.5 % = 118.54)
         # = 218.78. Cunningham 500 + 22 x 68 = 1,996; band hypot(199.6, 120.74)
         # = 233.27. The day adds the raw own activity 600 and TEF 250, its band
-        # 10 % of the activity: hypot(218.78, 60) = 226.86, hypot(233.27, 60)
-        # = 240.86.
+        # the activity's M11 error 60 and digestion's 80 (#3552):
+        # hypot(218.78, 60, 80) = 240.55, hypot(233.27, 60, 80) = 253.80.
         view = energy_view(inputs(), [window(END, 2700.0, 1850.0)], garmin())
         km, cunningham = row(view, "katch_mcardle"), row(view, "cunningham")
         self.assertEqual(
-            (1839, 219, 2689, 227),
+            (1839, 219, 2689, 241),
             (
                 km["resting_kcal"],
                 km["resting_band_kcal"],
@@ -112,7 +116,7 @@ class EnergyViewTests(unittest.TestCase):
             ),
         )
         self.assertEqual(
-            (1996, 233, 2846, 241),
+            (1996, 233, 2846, 254),
             (
                 cunningham["resting_kcal"],
                 cunningham["resting_band_kcal"],
@@ -731,6 +735,41 @@ class DeficitCardTests(unittest.TestCase):
                 )
                 self.assertEqual(status, card["goal"]["status"])
         self.assertIsNone(self.view(MEASURED, {"energy_goal": ""})["goal"])
+
+
+class DayBandTests(unittest.TestCase):
+    """#3552: the formula rows' day band carries each activity part's own error."""
+
+    def day(self, sport: float, error: float) -> dict[str, Any]:
+        source = inputs()
+        days = dict(source.days)
+        days[END] = replace(
+            days[END],
+            activity_kcal=250.0 + sport,
+            sport_kcal=sport,
+            activity_error_kcal=error,
+        )
+        return row(
+            energy_view(replace(source, days=days), [window(END, 2700.0)], garmin()),
+            "katch_mcardle",
+        )
+
+    def test_a_strength_day_is_wider_than_a_ride_of_equal_kcal(self) -> None:
+        # Everyday 250 at ±15 % (37.5) with 350 kcal of strength (±50 %) or a
+        # ride (±10 %), in quadrature.
+        strength = self.day(350.0, math.hypot(37.5, 175.0))
+        ride = self.day(350.0, math.hypot(37.5, 35.0))
+        self.assertEqual(strength["total_kcal"], ride["total_kcal"])
+        self.assertGreater(strength["total_band_kcal"], ride["total_band_kcal"] + 40)
+        resting = strength["resting_band_kcal"]
+        self.assertEqual(
+            round(math.hypot(resting, math.hypot(37.5, 175.0), TEF_ERROR_KCAL)),
+            strength["total_band_kcal"],
+        )
+
+    def test_a_rest_day_stays_close_to_the_resting_band(self) -> None:
+        rest = self.day(0.0, 37.5)
+        self.assertLess(rest["total_band_kcal"] - rest["resting_band_kcal"], 25)
 
 
 class FitScaleTests(unittest.TestCase):

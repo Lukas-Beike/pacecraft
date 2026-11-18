@@ -9,6 +9,7 @@ Sources and their limits are on the method card
 
 from __future__ import annotations
 
+import math
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 
@@ -86,6 +87,36 @@ KCAL_PER_G_FAT = 9.0
 # threshold: 6 % of the net session cost, the low end of LaForgia et al. 2006
 # (J Sports Sci 24:1247, 6-15 %). Off unless asked for; weak evidence.
 EPOC_SHARE = 0.06
+# The 95 % error of a session's net cost as a share of it, by M11 method: the
+# upper end of each expected error (method comment on #3100, #3552): running
+# (Minetti) +-8-10 %, cycling power +-10 %, flex-HR +-10-15 %, Keytel +-20-30 %,
+# MET (strength) +-30-50 %. A method not listed takes the widest share.
+METHOD_ERROR_SHARE = {
+    "minetti": 0.10,
+    "power": 0.10,
+    "flex_hr": 0.15,
+    "keytel": 0.30,
+    "met": 0.50,
+}
+# Everyday energy from steps carries the step length's +-10-15 %.
+STEP_ERROR_SHARE = 0.15
+# Thermic effect of food: +-30-80 kcal per day, the upper end.
+TEF_ERROR_KCAL = 80.0
+
+
+def activity_error_kcal(
+    session_costs: Iterable[tuple[str, float]], neat_kcal: float
+) -> float:
+    """A day's activity error: each session's method share of its cost and the
+    step length's share of the everyday energy, in quadrature (#3552)."""
+    widest = max(METHOD_ERROR_SHARE.values())
+    return math.hypot(
+        STEP_ERROR_SHARE * neat_kcal,
+        *(
+            METHOD_ERROR_SHARE.get(method, widest) * kcal
+            for method, kcal in session_costs
+        ),
+    )
 
 
 def _polynomial(coefficients: Sequence[float], grade: float) -> float:
