@@ -153,6 +153,8 @@ def report(messages=40):
                     "perf_condition_20_90.in_range": 19,
                     "stamina_20_137.falling": 22,
                     "stamina_20_137.mean": 61,
+                    "stamina_order.137_ge_138": 21,
+                    "stamina_order.ratio": 3,
                     "note text": 1,
                 },
             },
@@ -412,6 +414,8 @@ class ProdChecksTests(unittest.TestCase):
                 f"{prefix}perf_condition_20_90.in_range 19",
                 f"{prefix}perf_condition_20_90.present 20",
                 f"{prefix}stamina_20_137.falling 22",
+                # #3374: which stamina field holds the higher value, files only.
+                f"{prefix}stamina_order.137_ge_138 21",
                 'info fit_value_probe.status "ready"',
             ],
         )
