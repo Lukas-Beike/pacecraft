@@ -283,6 +283,48 @@ class FormatChangedTests(unittest.TestCase):
             ):
                 check_changed.format_changed("base", root)
 
+    def test_a_format_baselined_file_is_formatted_only_in_its_changed_lines(self):
+        # #3526: formatting a baselined file whole pulled unrelated lines into the
+        # diff and made its baseline entry obsolete; only the changed hunks move.
+        isolated = {"GIT_CONFIG_GLOBAL": os.devnull, "GIT_CONFIG_NOSYSTEM": "1"}
+        with (
+            mock.patch.dict(os.environ, isolated),
+            tempfile.TemporaryDirectory() as directory,
+        ):
+            root = Path(directory)
+
+            def git(*args):
+                subprocess.run(
+                    ["git", "-C", str(root), *args], check=True, capture_output=True
+                )
+
+            git("init", "-q", "-b", "base")
+            git("config", "user.email", "test@example.invalid")
+            git("config", "user.name", "Test")
+            debt = "a = [ 1,2 ]\nb = [ 3,4 ]\nc = [ 5,6 ]\nd = [ 7,8 ]\ne = [ 9,0 ]\n"
+            (root / "debt.py").write_text(debt, encoding="utf-8")
+            git("add", ".")
+            git("commit", "-q", "-m", "base")
+            # Two separate hunks, lines 2 and 4; lines 1, 3 and 5 keep their debt.
+            changed = debt.replace("b = [ 3,4 ]", "b = [ 3,4,5 ]").replace(
+                "d = [ 7,8 ]", "d = [ 7,8,9 ]"
+            )
+            (root / "debt.py").write_text(changed, encoding="utf-8")
+
+            formatted = check_changed.format_changed(
+                "base", root, baselined={"debt.py"}
+            )
+
+            self.assertEqual(formatted, ["debt.py (changed lines)"])
+            self.assertEqual(
+                (root / "debt.py").read_text(encoding="utf-8"),
+                "a = [ 1,2 ]\nb = [3, 4, 5]\nc = [ 5,6 ]\nd = [7, 8, 9]\ne = [ 9,0 ]\n",
+            )
+            # The baseline is read from the repository's quality baseline.
+            self.assertIn(
+                "backend/athlete/equipment.py", check_changed.format_baselined()
+            )
+
     def test_the_flag_formats_before_the_steps_and_names_the_files(self):
         runner = FakeRun()
         with mock.patch.object(
