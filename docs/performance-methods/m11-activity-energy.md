@@ -41,8 +41,12 @@ counting it twice. 1 kcal = 4184 J.
    as the elapsed time. With fewer than 20 such sessions, or all at one
    heart rate, Keytel's equation without VO2max is the fallback, net of RMR.
 4. **Strength:** `net = (MET − 1) × RMR/min × duration` with the Compendium
-   2024 MET 3.5 (general) or 6.0 (vigorous), i.e. the MET corrected to the
-   measured resting rate instead of 1 MET = 3.5 ml/kg/min. Heart rate is not
+   2024 MET 3.5 (general) to 6.0 (vigorous), i.e. the MET corrected to the
+   measured resting rate instead of 1 MET = 3.5 ml/kg/min. The session RPE
+   (the athlete's own rating first, else the provider's) sets the MET: 3.5
+   up to RPE 5, then 0.5 more per RPE point, 6.0 at RPE 10; without an RPE
+   3.5 (athlete decision, #3530). A rating added later re-prices the
+   session on the next read, and the energy table names the RPE and MET. Heart rate is not
    used for strength. The duration is the session's elapsed time, else its
    moving time: the MET covers the rests between sets, which a watch's moving
    time leaves out (#3530).
@@ -139,6 +143,7 @@ line is calibrated on power-derived cost, not calorimetry (weak evidence).
 | Grade segment length | 200 m | product assumption | limits GPS altitude noise; the M8 grade span |
 | Cycling gross efficiency | 0.20 | source | R42 (19.8 % measured), varies per R41, R43 |
 | Strength MET general / vigorous | 3.5 / 6.0 | source | R64 codes 02054 / 02050 |
+| Strength MET by session RPE | 3.5 up to RPE 5, +0.5 per point, 6.0 at RPE 10 | product assumption | athlete decision, #3530; linear between the two Compendium classes |
 | MET correction to own RMR | (MET − 1) × RMR | source | R67 |
 | Keytel coefficients (kJ/min) | men −55.0969, 0.6309, 0.1988, 0.2017; women −20.4022, 0.4472, −0.1263, 0.074 | source | R63, as reproduced by secondary sources |
 | Flex-HR shortest session / minimum sessions | 180 s / 20 | product assumption | steady state; enough spread for three terms |
@@ -181,6 +186,8 @@ line is calibrated on power-derived cost, not calorimetry (weak evidence).
 | `CYCLING_GROSS_EFFICIENCY` | `0.2` | `backend/performance/activity_energy.py` | Gross efficiency of cycling (mechanical / metabolic energy): 19.8 % measured in 17 trained men by Moseley & Jeukendrup 2001 (R42); it varies with work rate and training (R41, R43), and the one calibration factor absorbs an individual offset (weak evidence). |
 | `STRENGTH_MET_GENERAL` | `3.5` | `backend/performance/activity_energy.py` | 2024 Adult Compendium of Physical Activities (Herrmann et al., J Sport Health Sci 13:6): code 02054, resistance training, multiple exercises, 8-15 reps. |
 | `STRENGTH_MET_VIGOROUS` | `6.0` | `backend/performance/activity_energy.py` | Compendium 2024 code 02050: free weights, power lifting, vigorous effort. |
+| `STRENGTH_GENERAL_UP_TO_RPE` | `5.0` | `backend/performance/activity_energy.py` | A strength session's MET by its session RPE (athlete decision, #3530): the general MET up to RPE 5, then 0.5 more per RPE point, up to the vigorous MET at RPE 10; without an RPE the general MET. |
+| `STRENGTH_MET_PER_RPE` | `0.5` | `backend/performance/activity_energy.py` |  |
 | `KEYTEL_MALE` | `(-55.0969, 0.6309, 0.1988, 0.2017)` | `backend/performance/activity_energy.py` | Keytel et al. 2005 (J Sports Sci 23:289), model without VO2max: gross energy expenditure in kJ/min from heart rate (bpm), weight (kg) and age (years): intercept, HR, weight, age. Coefficients as reproduced by several secondary sources; fallback only (about +-20-30 % individually). |
 | `KEYTEL_FEMALE` | `(-20.4022, 0.4472, -0.1263, 0.074)` | `backend/performance/activity_energy.py` |  |
 | `FLEX_HR_SKIP_S` | `180.0` | `backend/performance/activity_energy.py` | Flex-HR: a power session this short is not steady state and is not fitted. |

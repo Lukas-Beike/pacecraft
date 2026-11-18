@@ -48,6 +48,11 @@ CYCLING_GROSS_EFFICIENCY = 0.20
 STRENGTH_MET_GENERAL = 3.5
 # Compendium 2024 code 02050: free weights, power lifting, vigorous effort.
 STRENGTH_MET_VIGOROUS = 6.0
+# A strength session's MET by its session RPE (athlete decision, #3530): the
+# general MET up to RPE 5, then 0.5 more per RPE point, up to the vigorous MET
+# at RPE 10; without an RPE the general MET.
+STRENGTH_GENERAL_UP_TO_RPE = 5.0
+STRENGTH_MET_PER_RPE = 0.5
 # Keytel et al. 2005 (J Sports Sci 23:289), model without VO2max: gross
 # energy expenditure in kJ/min from heart rate (bpm), weight (kg) and age
 # (years): intercept, HR, weight, age. Coefficients as reproduced by several
@@ -170,11 +175,20 @@ def cycling_net_kcal(
     return max(0.0, gross - rmr_kcal_per_day * duration_s / 86400.0)
 
 
+def strength_met(rpe: float | None) -> float:
+    """The MET of a strength session with this session RPE (#3530)."""
+    if rpe is None:
+        return STRENGTH_MET_GENERAL
+    above = max(0.0, rpe - STRENGTH_GENERAL_UP_TO_RPE)
+    return min(
+        STRENGTH_MET_VIGOROUS, STRENGTH_MET_GENERAL + STRENGTH_MET_PER_RPE * above
+    )
+
+
 def strength_net_kcal(
-    duration_s: float, rmr_kcal_per_day: float, vigorous: bool = False
+    duration_s: float, rmr_kcal_per_day: float, met: float = STRENGTH_MET_GENERAL
 ) -> float:
     """(MET - 1) x the measured resting rate x duration (MET corrected to own RMR)."""
-    met = STRENGTH_MET_VIGOROUS if vigorous else STRENGTH_MET_GENERAL
     return (met - 1.0) * rmr_kcal_per_day * duration_s / 86400.0
 
 

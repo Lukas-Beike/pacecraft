@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass, replace
 from datetime import date, timedelta
+from functools import partial
 from typing import Any
 
 from backend.activities.activity_reference import ActivityReferences
@@ -186,6 +187,10 @@ def build_nutrition(ctx: AppContext) -> NutritionServices:
                 ),
             },
             profile=ctx.athlete_profile.get,
+            feedback=partial(
+                ctx.athlete.activity_feedback().for_activity_ids,
+                sessions_only=True,
+            ),
         )
 
     def energy_view(day_text: str | None = None) -> dict[str, Any]:

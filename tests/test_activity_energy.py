@@ -77,8 +77,17 @@ class CyclingStrengthAndHeartRateTests(unittest.TestCase):
         # 1,440 kcal/day is 60 kcal/h: (3.5 - 1) x 60 and (6 - 1) x 60.
         self.assertAlmostEqual(energy.strength_net_kcal(3600.0, 1440.0), 150.0)
         self.assertAlmostEqual(
-            energy.strength_net_kcal(3600.0, 1440.0, vigorous=True), 300.0
+            energy.strength_net_kcal(3600.0, 1440.0, energy.STRENGTH_MET_VIGOROUS),
+            300.0,
         )
+
+    def test_strength_met_rises_with_the_session_rpe(self) -> None:
+        # #3530 (athlete): 3.5 up to RPE 5, +0.5 per point, 6.0 at RPE 10.
+        self.assertEqual(
+            [3.5, 3.5, 3.5, 4.0, 4.5, 5.0, 5.5, 6.0],
+            [energy.strength_met(r) for r in (None, 0, 5, 6, 7, 8, 9, 10)],
+        )
+        self.assertEqual(4.75, energy.strength_met(7.5))
 
     def test_keytel_fallback_for_a_man(self) -> None:
         # -55.0969 + 0.6309 x 150 + 0.1988 x 70 + 0.2017 x 30 = 59.5051 kJ/min;

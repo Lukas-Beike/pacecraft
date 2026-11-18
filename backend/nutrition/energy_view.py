@@ -812,12 +812,12 @@ def read_energy_view(
     day = day or end
     start = min(history_start(end), day)
     last = max(end, day)
-    inputs, _ = read_energy_inputs(db, sources, start, last)
+    inputs, costs = read_energy_inputs(db, sources, start, last)
     health = sources.daily_health(db, start, last)
     windows = energy_windows(inputs, end)
     _, missing = skinfold_state(db, sources, inputs, day)
     # The bias comes from the windows already built, not a second build (Gitar).
-    return energy_view(
+    view = energy_view(
         inputs,
         windows,
         health,
@@ -827,3 +827,10 @@ def read_energy_view(
         day=day,
         goal=sources.profile(),
     )
+    # The day's strength sessions with the RPE and MET that priced them (#3530).
+    view["strength"] = [
+        {"rpe": cost.rpe, "met": cost.met, "kcal": _round(cost.kcal)}
+        for cost in costs
+        if cost.day == day and cost.met is not None
+    ]
+    return view
