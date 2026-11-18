@@ -68,6 +68,9 @@ FAT_SHARE_SD = 0.144
 # Precision of one body fat measurement by the same method (percentage points,
 # test-retest), the band of a measured fat-mass change (#3477).
 MEASURED_FAT_SD_PCT = 1.0
+# The shortest span between the first and last measurement of a measured
+# change: a shorter one divides the measurement noise by too few days.
+MIN_FAT_SPAN_DAYS = 14
 # The one activity calibration factor: prior 1 +- 0.10, clamped to 0.85-1.15,
 # fitted on complete windows of the last 12 weeks (method comment, #3100).
 CALIBRATION_PRIOR_SD = 0.10
@@ -275,11 +278,12 @@ def _measured_store(
     The first method with two dated measurements in the window gives the fat
     mass (weight x body fat, the weigh-in nearest each day) at its first and
     last one; lean mass is the rest of the weight change (athlete decision,
-    #3477). Methods are never mixed. None without two measurements.
+    #3477). Methods are never mixed. None without two measurements at least
+    ``MIN_FAT_SPAN_DAYS`` apart (Gitar).
     """
     for series in _fat_series(inputs):
         days = sorted(d for d in series if start <= d <= end)
-        if len(days) >= 2:
+        if len(days) >= 2 and (days[-1] - days[0]).days >= MIN_FAT_SPAN_DAYS:
             break
     else:
         return None

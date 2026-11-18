@@ -108,6 +108,10 @@ class MeasuredFatChangeTests(unittest.TestCase):
             self.inputs({self.START: 20.0}, {END: (19.0, None)}),
             # Outside the window it does not count.
             self.inputs({self.START - timedelta(days=1): 20.0, END: 19.0}),
+            # Two values one day apart would divide the noise by one day (Gitar).
+            self.inputs(
+                device={END - timedelta(days=1): (20.0, None), END: (19.5, None)}
+            ),
         ):
             with self.subTest(inputs.body_fat_pct):
                 self.assertIsNone(
