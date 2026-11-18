@@ -968,6 +968,10 @@ Channel bounds (`CHANNEL_BOUNDS`) and producers:
 | `vertical_ratio_pct` | percent | 0 to 30 | no | yes |
 | `step_length_m` | m | 0 to 4 | no | yes |
 | `respiration_rate_brpm` | breaths per minute | 1 to 100 | no | yes |
+| `performance_condition` | points | -20 to +20 | no | yes |
+| `stamina_137_pct`, `stamina_138_pct` | percent | 0 to 100 | no | yes |
+
+`performance_condition` and the two stamina channels (`UNOFFICIAL_CHANNELS`, #3374) are Garmin values without a documented FIT field. The `activity_detail.v1` document serves them with the source `kind` `unofficial` and the label "Garmin, inoffiziell", so the calendar and the Coach read them as Garmin's unofficial values; no calculation reads them. The stamina channels keep the names of their FIT fields until a probe tells current from potential stamina.
 
 The five running dynamics channels (`RUNNING_DYNAMICS_CHANNELS`) exist only with a supporting sensor (chest strap, running pod or a watch that measures them); absence is normal. They are stored and merged per channel, but they never decide the primary stream (`_populated_channel_count`), and the `activity_detail.v1` document leaves out both their series and their coverage, so the Coach and the API receive the summary values and the form drift result, never the series. The form drift analysis (`performance/form_drift.py`) reads them.
 
@@ -1146,7 +1150,7 @@ The property `kind` is always `strength_sets`.
 
 ### `StreamChannel`
 
-Members `time_s`, `distance_m`, `altitude_m`, `grade_pct`, `speed_mps`, `power_w`, `heart_rate_bpm`, `cadence_rpm`, `temperature_c`, `moving`, `latitude_deg`, `longitude_deg`, `ground_contact_time_ms`, `ground_contact_balance_pct`, `vertical_oscillation_cm`, `vertical_ratio_pct`, `step_length_m`, `respiration_rate_brpm`; units and producers in the `ActivityStreamSet` channel table.
+Members `time_s`, `distance_m`, `altitude_m`, `grade_pct`, `speed_mps`, `power_w`, `heart_rate_bpm`, `cadence_rpm`, `temperature_c`, `moving`, `latitude_deg`, `longitude_deg`, `ground_contact_time_ms`, `ground_contact_balance_pct`, `vertical_oscillation_cm`, `vertical_ratio_pct`, `step_length_m`, `respiration_rate_brpm`, `performance_condition`, `stamina_137_pct`, `stamina_138_pct`; units and producers in the `ActivityStreamSet` channel table.
 
 ### `DfaQuality`
 
@@ -1383,7 +1387,7 @@ Payload evidence for this scope: the sanitized payload files contain the Garmin 
 ### `garmin_activity_detail_mapping.py`
 
 Status: Live. Called by `_map_collected` in `backend/sync/garmin_activity_details.py` for every Garmin activity detail fetch and backfill; stored with `replace_detail_set(mapper_version=MAPPER_VERSION)`.
-Mapper version: **12**
+Mapper version: **13**
 Inputs: the dict from `collect_garmin_activity_detail` (`backend/providers/garmin.py`) with the parts `details`, `splits`, `hr_zones`, `power_zones`, `exercise_sets` (strength activities only) and `fit`. Transport: the Personal API serves `details` (with `maxChartSize` 2,000) and the original FIT file (`download_activity_fit`, unzipped by `fit_from_archive`); the unofficial login serves `splits`, the two zone parts and `exercise_sets`. A part that is absent gives no set and no issue; a present but malformed part gives one value-free issue and no set for it.
 Evidence: documented only (fixtures `tests/fixtures/providers/garmin/activity_detail/details.json`, `splits.json`, `hr_zones.json`, `power_zones.json`; strength and FIT cases are built inline in `tests/test_garmin_activity_detail_mapping.py`). The sanitized payload files `garmin_activity_detail_run_2026-11-03` and `garmin_personal_activity_detail_run_2026-11-03` hold the activity summary only.
 
@@ -1477,7 +1481,7 @@ Not mapped: `directDoubleCadence`, every other metric descriptor key (for exampl
 ### `fit_activity_detail_mapping.py`
 
 Status: Live. Called by `_fit_sets` in `garmin_activity_detail_mapping.py` (Garmin FIT from the Personal API) and by `WahooActivityDetailImport._import_one` in `backend/sync/wahoo_activity_details.py` (Wahoo FIT). Both store with `replace_detail_set(mapper_version=MAPPER_VERSION)`, Garmin with the `MAPPER_VERSION` of `garmin_activity_detail_mapping.py`.
-Mapper version: **11**
+Mapper version: **12**
 Inputs: the raw bytes of one FIT activity file (`bytes`); decoding and scaling by `fit_file.py` (`fit_messages`, `fit_field`). Anything else gives one `invalid_type` issue whose field names why (#3337): `fit_not_bytes`, or `fit_<code>` with the decoder's bounded code (`bad_header`, `compressed` for a zip archive, `header_crc`, `crc`, `truncated`, `structure`, `unsupported_base_type`, `too_many_records`). The caller passes `provider_activity_id` (Garmin activity id or Wahoo workout id) and the provenance (see the provenance table).
 Evidence: documented only (FIT SDK profile; synthetic FIT bytes built in `tests/test_fit_activity_detail_mapping.py` and `tests/test_fit_file.py`; there is no FIT file or Wahoo payload in the payload files).
 
@@ -1507,6 +1511,8 @@ Streams, record message 20 (`_stream_set`, `_kept_records`, `_RECORD_CHANNEL_FIE
 | `vertical_ratio_pct` | record `vertical_ratio` (83) | /100 percent; 0 is a gap | |
 | `step_length_m` | record `step_length` (85) | /10 mm, then /1000 to m; 0 is a gap | |
 | `respiration_rate_brpm` | record `enhanced_respiration_rate` (108) | /100 breaths per minute | Version 10. A value outside 1 to 100 (0 included) is a gap without an issue, so it never makes a Garmin fetch partial. |
+| `performance_condition` | record field 90 (undocumented) | unscaled points | Version 12, only when `recorded_by` is `garmin`. A value outside -20 to +20 is a gap without an issue. Read as Garmin's performance condition from a count-only probe (#3374): present only in runs and rides, always in range, mostly falling. |
+| `stamina_137_pct`, `stamina_138_pct` | record fields 137 and 138 (undocumented) | unscaled percent | Version 12, only when `recorded_by` is `garmin`. Outside 0 to 100 is a gap without an issue. Garmin's current and potential stamina, in an order the probe has not resolved yet (#3374). |
 | `grade_pct` | none | | Not produced. |
 | `moving` | none | | Not produced. |
 | `resolution` | | `full` | Fixed. |
