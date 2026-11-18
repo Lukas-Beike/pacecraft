@@ -208,9 +208,8 @@ test("@responsive the energy table follows the diary date: sport per day, today 
   await page.goto("/#nutrition/week");
   await expect(page.locator("#nutritionFitScale [data-energy-fit]")).toBeVisible();
   await expect(page.locator("#nutritionFitScale")).not.toContainText("Tag liegt in der Zukunft");
-  // #3531: Verlauf shows the 28-day own row with every part's mean.
-  const windowCard = page.locator("#nutritionFitScale [data-energy-window]");
-  await expect(windowCard.locator("tr[data-energy-source='own'] th small")).toHaveText(/^Ø pro Tag, letzte 28 Tage/);
+  // #3548: the 28-day own row gave way to the deficit card, which has no source rows.
+  await expect(page.locator("#nutritionFitScale tr[data-energy-source]")).toHaveCount(0);
   expect(asked.length).toBeLessThanOrEqual(reads + 1);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBeTruthy();
 });
@@ -313,6 +312,70 @@ for (const theme of ["light", "dark"]) {
     await expect.poll(outlineProblems).toEqual([]);
     // A late read can still re-render the card mid-capture, so the capture is retried.
     if (theme === "light") await expect(() => page.locator("#nutritionEnergy [data-energy]").screenshot({ path: test.info().outputPath("Energieverbrauch.png"), timeout: 5_000 })).toPass();
+  });
+}
+
+// #3548: Verlauf's deficit card for both store methods. The read's deficit is shaped here (the
+// values come from the method tests); its hero, boxes and text must agree.
+const DEFICITS = {
+  measured: { days: 28, deficit_kcal: 565, band_kcal: 235, method: "measured", span_days: 28, weight_start_kg: 91.2, weight_end_kg: 89.2,
+    fat_pct_start: 15.5, fat_pct_end: 14.1, fat_change_kg: -1.6, fat_share_pct: 80, stored_kcal: -15820, uncertainty: "body_fat",
+    total_kcal: 3800, device_total_kcal: 3100, goal: { goal: "lose", goal_kcal: 500, status: "in" } },
+  forbes: { days: 28, deficit_kcal: 420, band_kcal: 260, method: "forbes", span_days: 27, weight_start_kg: 80.4, weight_end_kg: 78.9,
+    fat_pct_start: null, fat_pct_end: 18, fat_change_kg: -0.9, fat_share_pct: 60, stored_kcal: -11340, uncertainty: "fat_share",
+    total_kcal: 3300, device_total_kcal: 2950, goal: null },
+};
+for (const [method, deficit] of Object.entries(DEFICITS)) {
+  test(`@responsive Verlauf's deficit card shows the stores' terms (${method})`, async ({ page }) => {
+    await page.route("**/api/body/energy*", async (route) => {
+      let response;
+      try {
+        response = await route.fetch();
+        await route.fulfill({ response, json: { ...(await response.json()), deficit } });
+      } catch (error) {
+        if (!GONE.test(String(error))) throw error;
+      }
+    });
+    await page.goto("/#nutrition/week");
+    const card = page.locator(`#nutritionFitScale [data-energy-deficit='${method}']`);
+    await expect(card.locator("h3")).toHaveText("Dein Defizit, letzte 28 Tage");
+    const kcal = deficit.deficit_kcal.toLocaleString("de-DE");
+    await expect(card.locator(".energy-deficit-hero strong")).toHaveText(`≈ ${kcal} kcal`);
+    const boxes = card.locator("[data-deficit-box]");
+    await expect(boxes).toHaveCount(4);
+    await expect(boxes.nth(3).locator("strong")).toHaveText(`≈ ${kcal} kcal`);
+    await expect(boxes.nth(3).locator("small").last()).toHaveText(`${Math.abs(deficit.stored_kcal).toLocaleString("de-DE")} kcal ÷ ${deficit.span_days} Tage`);
+    const text = card.locator(".energy-deficit-text");
+    await expect(text).toContainText(`einem Defizit von etwa ${kcal} kcal pro Tag`);
+    await expect(text).toContainText(`rund ${deficit.total_kcal.toLocaleString("de-DE")} kcal`);
+    if (method === "measured") {
+      await expect(boxes.nth(1)).toContainText("15,5 → 14,1 %");
+      await expect(text).toContainText("von 15,5 % auf 14,1 % gesunken – etwa 1,6 kg Fett");
+      await expect(card.locator(".energy-deficit-status")).toHaveText("Ziel: 500 kcal Defizit · ✓ im Ziel");
+      // The span is drawn, and the estimate and the goal marker sit inside it, in their order.
+      const marks = await card.locator(".energy-deficit-bar").evaluate((bar) => Object.fromEntries([...bar.children].map((node) => {
+        const rect = node.getBoundingClientRect();
+        return [node.className, { left: rect.left, right: rect.right, width: rect.width }];
+      })));
+      const band = marks["energy-deficit-band"];
+      expect(band.width).toBeGreaterThan(20);
+      for (const name of ["energy-deficit-mark", "energy-deficit-goal"]) {
+        expect(marks[name].left).toBeGreaterThanOrEqual(band.left - 2);
+        expect(marks[name].right).toBeLessThanOrEqual(band.right + 2);
+      }
+      // Goal 500 lies left of the estimate 565.
+      expect(marks["energy-deficit-goal"].left).toBeLessThan(marks["energy-deficit-mark"].left);
+    } else {
+      await expect(boxes.nth(1)).toContainText("nur eine Messung");
+      await expect(boxes.nth(2)).toContainText("Faustregel ≈ 60 %");
+      await expect(text).toContainText("Faustregel davon etwa 60 % als Fett – etwa 0,9 kg");
+      await expect(card.locator(".energy-deficit-bar")).toHaveCount(0);
+    }
+    // The boxes stay inside the card, also on a phone.
+    const overflow = await card.evaluate((node) => [...node.querySelectorAll("[data-deficit-box]")].some((box) => box.getBoundingClientRect().right > node.getBoundingClientRect().right + 1));
+    expect(overflow).toBeFalsy();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBeTruthy();
+    await expect(() => card.screenshot({ path: test.info().outputPath(`Defizit-${method}.png`), timeout: 5_000 })).toPass();
   });
 }
 

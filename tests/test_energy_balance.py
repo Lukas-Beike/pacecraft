@@ -121,6 +121,49 @@ class MeasuredFatChangeTests(unittest.TestCase):
         entered = self.inputs(device={self.START: (20.0, None), END: (19.0, None)})
         self.assertIsNotNone(balance._measured_store(entered, weights, self.START, END))
 
+    def test_the_store_carries_its_terms_for_the_deficit_card(self) -> None:
+        # #3548: the boxes show weight, body fat, the fat kg and the span.
+        weights = {self.START: 80.0, END: 78.0}
+        measured = balance._measured_store(
+            self.inputs({self.START: 20.0, END: 19.0}), weights, self.START, END
+        )
+        assert measured is not None
+        self.assertEqual(
+            ("measured", 27, 80.0, 78.0, 20.0, 19.0, "body_fat"),
+            (
+                measured.method,
+                measured.days,
+                measured.weight_start_kg,
+                measured.weight_end_kg,
+                measured.fat_pct_start,
+                measured.fat_pct_end,
+                measured.uncertainty,
+            ),
+        )
+        self.assertAlmostEqual(measured.fat_change_kg, -1.18, places=2)
+        # Forbes: the fitted line from the first to the last weigh-in, the
+        # share from the latest body fat, which is its only percentage.
+        line = {self.START + timedelta(days=n): 80.0 - n / 13.5 for n in range(28)}
+        forbes = balance._stored_energy(
+            self.inputs({END: 19.0}), balance.weight_trend(line), line, self.START, END
+        )
+        self.assertEqual(
+            ("forbes", 27, None, 19.0),
+            (forbes.method, forbes.days, forbes.fat_pct_start, forbes.fat_pct_end),
+        )
+        self.assertAlmostEqual(forbes.weight_start_kg, 80.0, places=6)
+        self.assertAlmostEqual(forbes.weight_end_kg, 78.0, places=6)
+        share = balance.fat_share(78.0, 19.0)
+        self.assertAlmostEqual(forbes.fat_change_kg, -2.0 * share, places=1)
+        # A straight line has no scatter: the fat share is the main uncertainty.
+        self.assertEqual("fat_share", forbes.uncertainty)
+        self.assertAlmostEqual(
+            forbes.kcal_per_day * 27,
+            forbes.fat_change_kg * balance.FAT_KCAL_PER_KG
+            + (-2.0 - forbes.fat_change_kg) * balance.LEAN_KCAL_PER_KG,
+            delta=40,
+        )
+
     def test_the_window_names_its_method(self) -> None:
         inputs = series(constant(2100.0), days=28)
         first, last = min(inputs.days), max(inputs.days)

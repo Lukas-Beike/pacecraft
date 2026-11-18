@@ -32,6 +32,7 @@ from backend.athlete.body_composition import (
 from backend.canonical.vocabulary import ProviderId
 from backend.errors import AppError
 from backend.nutrition.energy_balance import (
+    BAND_Z,
     DayInputs,
     EnergyInputs,
     EnergyWindow,
@@ -477,6 +478,68 @@ def energy_view(
         # The 28-day row with every part's mean, shown in Verlauf only (#3531).
         "own_window": _own_window_row(shown, implausible, latest),
         "goal": _energy_goal(rows, best, goal, inputs.days.get(day_window.end)),
+        "deficit": _deficit(latest, predictions[DEVICE][-1][2], goal),
+    }
+
+
+def _goal_status(
+    deficit: float, band: float, goal: Mapping[str, str] | None
+) -> dict[str, Any] | None:
+    """The 28-day deficit against the goal (#3548): ``in`` within its band,
+    else ``under`` or ``over`` the goal's deficit (surplus for build)."""
+    kind = (goal or {}).get("energy_goal") or ""
+    if kind not in _GOAL_SIGN:
+        return None
+    try:
+        kcal = round(float((goal or {}).get("energy_goal_kcal") or 0)) * abs(
+            _GOAL_SIGN[kind]
+        )
+    except ValueError:
+        kcal = 0
+    # Lose and hold count a deficit up, build a surplus.
+    amount = -deficit if kind == "build" else deficit
+    status = "in"
+    if amount < kcal - band:
+        status = "under"
+    elif amount > kcal + band:
+        status = "over"
+    return {"goal": kind, "goal_kcal": kcal, "status": status}
+
+
+def _deficit(
+    latest: EnergyWindow, device_total: float | None, goal: Mapping[str, str] | None
+) -> dict[str, Any] | None:
+    """'Dein Defizit, letzte 28 Tage' (#3548): the energy per day from (deficit)
+    or into (surplus) the body stores, with the terms of its boxes."""
+    store, tdee = latest.store, latest.adaptive_tdee
+    if store is None or tdee is None:
+        return None
+    deficit, band = -store.kcal_per_day, BAND_Z * store.sd
+    change = store.weight_end_kg - store.weight_start_kg
+    return {
+        "days": latest.days,
+        "deficit_kcal": _round(deficit),
+        "band_kcal": _round(band),
+        "method": store.method,
+        "span_days": store.days,
+        "weight_start_kg": round(store.weight_start_kg, 1),
+        "weight_end_kg": round(store.weight_end_kg, 1),
+        "fat_pct_start": None
+        if store.fat_pct_start is None
+        else round(store.fat_pct_start, 1),
+        "fat_pct_end": None
+        if store.fat_pct_end is None
+        else round(store.fat_pct_end, 1),
+        "fat_change_kg": round(store.fat_change_kg, 1),
+        # The fat share of the weight change; Forbes' rule of thumb shows it.
+        "fat_share_pct": round(100 * store.fat_change_kg / change)
+        if abs(change) >= 0.05
+        else None,
+        "stored_kcal": _round(store.kcal_per_day * store.days),
+        "uncertainty": store.uncertainty,
+        "total_kcal": _round(tdee.kcal),
+        "device_total_kcal": _round(device_total),
+        "goal": _goal_status(deficit, band, goal),
     }
 
 

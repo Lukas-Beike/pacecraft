@@ -424,7 +424,18 @@ else the source with the lowest `mean_error_kcal`; null without its
 total), `total_kcal` (that row's `total_kcal` of `day`), `target_kcal`
 (the total minus the deficit or plus the surplus), `eaten_kcal` (the
 day's logged kcal) and `remaining_kcal` (target minus eaten, negative
-above it; null without a total).
+above it; null without a total), and `deficit` (#3548; the latest
+window's energy per day from the body stores, null without an
+estimate): `days`, `deficit_kcal` (negative for a surplus) with its 95 %
+`band_kcal`, `method` (`measured` or `forbes`), `span_days`,
+`weight_start_kg`, `weight_end_kg`, `fat_pct_start` (null for Forbes),
+`fat_pct_end` (Forbes: the latest measurement or null),
+`fat_change_kg`, `fat_share_pct` (of the weight change, null below
+0.05 kg), `stored_kcal` (over the span), `uncertainty` (`body_fat`,
+`fat_share` or `weight_scatter`), `total_kcal` (the window's
+expenditure), `device_total_kcal` and `goal` (`goal`, `goal_kcal` and
+`status` `in`, `under` or `over` the goal within the band; null without
+a goal).
 
 Errors: 400 "Das Datum fehlt oder ist ungültig."; 400 "Der Tag liegt in
 der Zukunft.".

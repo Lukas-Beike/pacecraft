@@ -16,7 +16,7 @@ import statistics
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from datetime import date, timedelta
-from typing import Any, cast
+from typing import Any, NamedTuple, cast
 
 from backend.performance.activity_energy import tef_kcal
 
@@ -130,6 +130,27 @@ class EnergyInputs:
     profile_body_fat_pct: float | None = None
 
 
+class StoredEnergy(NamedTuple):
+    """Energy per day that went into (+) or came from (-) the body stores, its
+    standard error and how fat and lean mass were split, with the terms the
+    Verlauf deficit card shows (#3548)."""
+
+    kcal_per_day: float
+    sd: float
+    method: str
+    # Days between the first and the last weigh-in or measurement used.
+    days: int
+    weight_start_kg: float
+    weight_end_kg: float
+    fat_change_kg: float
+    # Measured: the two measurements; Forbes: only the latest one, if any.
+    fat_pct_start: float | None
+    fat_pct_end: float | None
+    # The main source of the error: "body_fat" (measurement), "fat_share"
+    # (Forbes' split) or "weight_scatter" (the weigh-ins around their line).
+    uncertainty: str
+
+
 @dataclass(frozen=True)
 class EnergyWindow:
     end: date
@@ -167,6 +188,8 @@ class EnergyWindow:
     # How the stored energy split fat and lean mass: "measured" from two dated
     # body fat measurements, else "forbes"; None without an estimate (#3477).
     store_method: str | None = None
+    # Its terms for the deficit card (#3548); None without an estimate.
+    store: StoredEnergy | None = None
 
 
 def weight_trend(weights_kg: Mapping[date, float]) -> dict[date, float]:
@@ -272,7 +295,7 @@ def _fat_series(inputs: EnergyInputs) -> list[dict[date, float]]:
 
 def _measured_store(
     inputs: EnergyInputs, weights: Mapping[date, float], start: date, end: date
-) -> tuple[float, float] | None:
+) -> StoredEnergy | None:
     """Stored energy per day from the measured fat-mass change, and its error.
 
     The first method with two dated measurements in the window gives the fat
@@ -298,7 +321,18 @@ def _measured_store(
     lean_change = (weight1 - weight0) - fat_change
     stored = (fat_change * FAT_KCAL_PER_KG + lean_change * LEAN_KCAL_PER_KG) / span
     fat_sd = math.hypot(weight0, weight1) * MEASURED_FAT_SD_PCT / 100.0
-    return stored, fat_sd * (FAT_KCAL_PER_KG - LEAN_KCAL_PER_KG) / span
+    return StoredEnergy(
+        stored,
+        fat_sd * (FAT_KCAL_PER_KG - LEAN_KCAL_PER_KG) / span,
+        "measured",
+        span,
+        weight0,
+        weight1,
+        fat_change,
+        series[days[0]],
+        series[days[-1]],
+        "body_fat",
+    )
 
 
 def _stored_energy(
@@ -307,7 +341,7 @@ def _stored_energy(
     weights: Mapping[date, float],
     start: date,
     end: date,
-) -> tuple[float, float, str]:
+) -> StoredEnergy:
     """Stored energy per day over the weigh-ins, its standard error and how fat
     and lean mass were split: measured from two dated body fat measurements
     (#3477), else Forbes.
@@ -318,10 +352,11 @@ def _stored_energy(
     the trend's change the slope has no warm-up lag after the first weigh-in.
     """
     if measured := _measured_store(inputs, weights, start, end):
-        return (*measured, "measured")
+        return measured
     weighins = sorted(weights)
     last = weighins[-1]
-    density = energy_density(trend[last], _latest_body_fat(inputs, last))
+    body_fat = _latest_body_fat(inputs, last)
+    density = energy_density(trend[last], body_fat)
     xs = [float((d - weighins[0]).days) for d in weighins]
     ys = [weights[d] for d in weighins]
     mean_x, mean_y = statistics.fmean(xs), statistics.fmean(ys)
@@ -332,8 +367,22 @@ def _stored_energy(
     ]
     slope_se = math.sqrt(sum(r * r for r in residuals) / max(1, len(xs) - 2) / sxx)
     density_sd = FAT_SHARE_SD * (FAT_KCAL_PER_KG - LEAN_KCAL_PER_KG)
-    stored_sd = math.hypot(density * slope_se, slope * density_sd)
-    return density * slope, stored_sd, "forbes"
+    scatter, split = abs(density * slope_se), abs(slope * density_sd)
+    span = xs[-1] - xs[0]
+    # The fitted line's weights at the first and the last weigh-in.
+    first = mean_y + slope * (xs[0] - mean_x)
+    return StoredEnergy(
+        density * slope,
+        math.hypot(scatter, split),
+        "forbes",
+        round(span),
+        first,
+        first + slope * span,
+        slope * span * fat_share(trend[last], body_fat),
+        None,
+        body_fat,
+        "fat_share" if split >= scatter else "weight_scatter",
+    )
 
 
 def _window(
@@ -358,12 +407,11 @@ def _window(
         statistics.fmean([day_tef(v) for v in complete.values()]) if complete else None
     )
     reason = _insufficient(len(complete), weighins)
-    tdee = unflagged = derived = None
-    method = None
+    tdee = unflagged = derived = store = None
     if reason is None:
-        stored, store_sd, method = _stored_energy(inputs, trend, weights, start, end)
+        store = _stored_energy(inputs, trend, weights, start, end)
         everything = [(v.intake_kcal or 0.0, v.flagged_kcal) for v in complete.values()]
-        tdee = _tdee(everything, stored, store_sd, len(weighins))
+        tdee = _tdee(everything, store.kcal_per_day, store.sd, len(weighins))
         unflagged = tdee if flagged == 0 else None
         if tdee is not None and raw is not None and tef is not None:
             rmr = tdee.kcal - raw * factor - tef
@@ -388,7 +436,8 @@ def _window(
         neat_kcal=None if neat_raw is None else neat_raw * factor,
         sport_kcal=None if sport_raw is None else sport_raw * factor,
         calibration_factor=factor,
-        store_method=method,
+        store_method=store.method if store else None,
+        store=store,
         flagged_kcal_per_day=statistics.fmean(
             [v.flagged_kcal for v in complete.values()]
         )
