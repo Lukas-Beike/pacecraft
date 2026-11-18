@@ -1249,7 +1249,8 @@ function bodyOverviewLatest(metric, body, preferred, local = false) {
     .flatMap((item) => (item.points || []).filter((point) => point.date >= window.start && point.date <= window.end && analysisValidPoint(point))
       // One series per metric (#3464): each day names its own source.
       .map((point) => {
-        const own = point.source_label ? point.source_label === "eingetragen" : item.source_provider === null;
+        // A profile body fat is the athlete's own skinfold (#3569).
+        const own = point.source_label ? ["eingetragen", "Hautfalten"].includes(point.source_label) : item.source_provider === null;
         return { ...point, local: own, source: own ? "Lokal" : item.source };
       })
       .filter((point) => !local || point.local)));
@@ -1265,7 +1266,10 @@ function bodyFoldFat(read, entered) {
   // A failed skinfold read still shows an entered percentage (Gitar, #3412).
   const newest = read.failed ? null : read.measurements?.[0];
   const fold = newest?.body_fat_pct == null ? null : newest;
-  if (entered && !(fold && fold.date >= entered.date)) return { value: entered.value, note: `Lokal · ${dateLabel(entered.date)}` };
+  if (entered && !(fold && fold.date >= entered.date)) {
+    const method = entered.source_label === "Hautfalten" ? "Lokal (Hautfalten)" : "Lokal";
+    return { value: entered.value, note: `${method} · ${dateLabel(entered.date)}` };
+  }
   if (fold) return { value: fold.body_fat_pct, note: `Lokal (Hautfalten) · ${dateLabel(fold.date)}` };
   return newest ? { text: "unbekannt", note: "ohne Geburtsjahr" } : null;
 }

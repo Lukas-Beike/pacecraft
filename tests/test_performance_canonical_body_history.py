@@ -14,9 +14,10 @@ import json
 import unittest
 from collections.abc import Iterator
 from contextlib import contextmanager
+from dataclasses import replace
 from datetime import UTC, date, datetime, timedelta, timezone
 from typing import Any
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 from canonical_consumer_cases import CASES, TODAY, _observations
 from canonical_read_support import (
@@ -440,6 +441,47 @@ class CanonicalBodyInputTests(unittest.TestCase):
         series = _body({}, None, alone)["windows"]["14d"]["metrics"]["weight_kg"]
         self.assertEqual(
             [("Lokal", None)], [(i["source"], i["source_provider"]) for i in series]
+        )
+
+    def test_a_profile_body_fat_shows_as_a_skinfold_once(self) -> None:
+        # #3569: the profile's earlier body fat values are 3-site skinfolds
+        # (#3557): labelled "Hautfalten", Garmin's copy of that day not shown
+        # a second time, and an entry of that day keeps its own label.
+        fold, entry = DAY - timedelta(days=1), DAY
+        observations = (
+            _measure(MetricKind.BODY_FAT, 16.0, fold, provider=ProviderId.GARMIN),
+            replace(
+                _measure(MetricKind.BODY_FAT, 15.5, entry),
+                provenance=Provenance(
+                    provider=None,
+                    source_kind=SourceKind.ATHLETE_ENTERED,
+                    source_record_id=None,
+                    recorded_by=RecordingOrigin.MANUAL,
+                    retrieved_at=None,
+                    label="Lokal",
+                ),
+            ),
+        )
+        db = Mock(spec=["execute"])
+        with patch(
+            "backend.performance.canonical_body.profile_body_fat_history",
+            return_value={fold: 16.0, entry: 15.0},
+        ):
+            inputs = read_body_inputs(BodyReader(observations), db, TODAY)
+        self.assertEqual({fold: 16.0}, dict(inputs.skinfold_body_fat_pct))
+        series = _body({}, None, inputs)["windows"]["14d"]["metrics"]["body_fat_pct"]
+        self.assertEqual(1, len(series))
+        shown = {
+            point["date"]: (point["value"], point["source_label"])
+            for point in series[0]["points"]
+            if point["value"] is not None
+        }
+        self.assertEqual(
+            {
+                fold.isoformat(): (16.0, "Hautfalten"),
+                entry.isoformat(): (15.5, "eingetragen"),
+            },
+            shown,
         )
 
     def test_intervals_values_are_not_body_inputs(self) -> None:

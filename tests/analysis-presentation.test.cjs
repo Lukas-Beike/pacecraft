@@ -971,4 +971,7 @@ test("one merged body series names each day's source in the overview and the tab
   // KFA reads only the athlete's own days, also out of the merged series.
   assert.equal(bodyOverviewReading("body_fat_pct", entered, preferred).value, 79.5);
   assert.equal(bodyOverviewReading("body_fat_pct", garmin, preferred).text, "—");
+  // #3569: a profile body fat is the athlete's own skinfold and says so.
+  const fold = merged([{ date: "2026-11-16", value: 14, source_label: "Garmin" }, { date: "2026-11-17", value: 13.5, source_label: "Hautfalten" }]);
+  assert.equal(JSON.stringify(bodyOverviewReading("body_fat_pct", fold, preferred)), JSON.stringify({ value: 13.5, note: "Lokal (Hautfalten) · 2026-11-17" }));
 });
