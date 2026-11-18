@@ -10,7 +10,7 @@ from typing import Any
 
 from backend.activities.activity_reference import ActivityReferences
 from backend.app.context import AppContext
-from backend.athlete.profile import profile_body_fat_history
+from backend.athlete.profile import profile_body_fat_history, profile_weight_history
 from backend.canonical.vocabulary import MetricKind
 from backend.db.repositories import (
     NutritionProductRepository,
@@ -28,6 +28,7 @@ from backend.nutrition.energy_inputs import (
     own_resting,
     recent_fat_pct,
     session_streams,
+    weighin_counts,
     weighins,
 )
 from backend.nutrition.energy_view import read_energy_view, selected_day
@@ -138,21 +139,35 @@ def build_nutrition(ctx: AppContext) -> NutritionServices:
             # Bounded by the athlete-local start date in the reader itself.
             return list(read.activity_summaries(db, start=start, end=end))
 
-        def latest(db: Any, kind: MetricKind, day: date) -> float | None:
-            since = day - timedelta(days=RESTING_LOOKBACK_DAYS)
-            return latest_value(read.observations(db, kind, start=since, end=day))
+        def saved(
+            history: Callable[[Any, date], dict[date, float]],
+            db: Any,
+            start: date,
+            end: date,
+        ) -> dict[date, float]:
+            # The profile's dated values of the days start to end (#3557).
+            return {d: v for d, v in history(db, start).items() if d <= end}
 
         def resting(db: Any, day: date) -> tuple[float, str] | None:
-            skinfold = skinfolds.skinfold_on(db, day)
+            since = day - timedelta(days=RESTING_LOOKBACK_DAYS)
+            weights = read.observations(db, MetricKind.WEIGHT, start=since, end=day)
+            measured = read.observations(db, MetricKind.BODY_FAT, start=since, end=day)
+            # The profile's body fat values are skinfolds too (#3557).
             return own_resting(
-                latest(db, MetricKind.WEIGHT, day),
-                recent_fat_pct(skinfold, day),
-                latest(db, MetricKind.BODY_FAT, day),
+                latest_value(weights, saved(profile_weight_history, db, since, day)),
+                recent_fat_pct(
+                    skinfolds.skinfold_on(db, day),
+                    day,
+                    saved(profile_body_fat_history, db, since, day),
+                ),
+                latest_value(measured),
             )
 
         def body_fat(db: Any, start: date, end: date) -> dict[date, float]:
-            """Skinfold body fat in effect at each weekly window end."""
-            found = {}
+            """Skinfold body fat in effect at each weekly window end, and the
+            profile's dated skinfold values of the lookback (#3557)."""
+            since = start - timedelta(days=RESTING_LOOKBACK_DAYS)
+            found = saved(profile_body_fat_history, db, since, end)
             for weeks in range((end - start).days // 7 + 1):
                 skinfold = skinfolds.skinfold_on(db, end - timedelta(days=7 * weeks))
                 if skinfold is not None and skinfold.body_fat_pct is not None:
@@ -166,30 +181,30 @@ def build_nutrition(ctx: AppContext) -> NutritionServices:
             daily_health=lambda db, s, e: read_daily_health_by_date(
                 read, db, start=s, end=e
             ),
+            # App weigh-ins first, Garmin's copies only for other days (#3557).
             weights=lambda db, s, e: weighins(
-                read.observations(db, MetricKind.WEIGHT, start=s, end=e)
+                read.observations(db, MetricKind.WEIGHT, start=s, end=e),
+                saved(profile_weight_history, db, s, e),
             ),
             sessions=sessions,
             streams=session_streams,
             resting=resting,
             body_fat=body_fat,
             skinfolds=lambda db, day: skinfolds.measurements_on(db, day),
-            # Earlier profile values count as entered ones on their day; a
-            # measurement of that day wins (athlete decision, #3477).
-            device_body_fat=lambda db, s, e: {
-                **{
-                    day: (value, None)
-                    for day, value in profile_body_fat_history(db, s).items()
-                    if day <= e
-                },
-                **device_body_fats(
-                    read.observations(db, MetricKind.BODY_FAT, start=s, end=e)
-                ),
-            },
+            # The profile's values are skinfolds (``body_fat``); Garmin's copies
+            # fill only the other days (athlete decision, #3557).
+            device_body_fat=lambda db, s, e: device_body_fats(
+                read.observations(db, MetricKind.BODY_FAT, start=s, end=e),
+                saved(profile_body_fat_history, db, s, e),
+            ),
             profile=ctx.athlete_profile.get,
             feedback=partial(
                 ctx.athlete.activity_feedback().for_activity_ids,
                 sessions_only=True,
+            ),
+            weighin_counts=lambda db, s, e: weighin_counts(
+                read.observations(db, MetricKind.WEIGHT, start=s, end=e),
+                saved(profile_weight_history, db, s, e),
             ),
         )
 

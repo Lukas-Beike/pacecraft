@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import unittest
 from dataclasses import replace
-from datetime import date
+from datetime import date, timedelta
 from types import SimpleNamespace
 from typing import Any
 from unittest.mock import Mock, patch
@@ -14,6 +14,12 @@ from backend.athlete.skinfolds import SkinfoldMeasurement
 from backend.canonical.activity_detail import ActivityStreamSet
 from backend.canonical.vocabulary import ProviderId, StreamChannel
 from backend.nutrition import energy_inputs
+from backend.nutrition.energy_balance import (
+    DayInputs,
+    EnergyInputs,
+    EnergyWindow,
+    energy_windows,
+)
 from backend.nutrition.energy_inputs import (
     EnergySources,
     diagnostics,
@@ -322,11 +328,21 @@ class OwnRestingTests(unittest.TestCase):
         self.assertIsNone(energy_inputs.recent_fat_pct(None, DAY3))
 
 
+def weigh(day: date, kg: Any, provider: ProviderId | None = ProviderId.GARMIN) -> Any:
+    """A canonical body observation of ``provider`` (None: entered in the app)."""
+    return SimpleNamespace(
+        observed_on=day,
+        sport=None,
+        value=SimpleNamespace(value=kg),
+        provenance=SimpleNamespace(provider=provider),
+    )
+
+
+GARMIN, WAHOO, INTERVALS = ProviderId.GARMIN, ProviderId.WAHOO, ProviderId.INTERVALS
+
+
 class StoreAdapterTests(unittest.TestCase):
     def test_weighins_keep_the_last_positive_value_per_day(self) -> None:
-        def weigh(day: date, kg: Any) -> Any:
-            return SimpleNamespace(observed_on=day, value=SimpleNamespace(value=kg))
-
         observations = [
             weigh(DAY1, 70.4),
             weigh(DAY1, 70.1),
@@ -334,6 +350,91 @@ class StoreAdapterTests(unittest.TestCase):
             weigh(DAY3, None),
         ]
         self.assertEqual(energy_inputs.weighins(observations), {DAY1: 70.1})
+
+    def test_weighins_take_the_app_first_garmin_as_fallback_never_wahoo(self) -> None:
+        # #3557: day 1 a Garmin weigh-in and Wahoo's stored profile weight;
+        # day 2 only the profile weight; day 3 Garmin's copy of a profile
+        # value saved that day; day 4 an entry beside a profile value and an
+        # old Intervals.icu row. Either read order gives the same days.
+        observations = [
+            weigh(DAY1, 80.0), weigh(DAY1, 84.0, WAHOO), weigh(DAY2, 84.0, WAHOO),
+            weigh(DAY3, 79.0), weigh(DAY4, 78.0, None), weigh(DAY4, 77.0, INTERVALS),
+        ]  # fmt: skip
+        profile = {DAY3: 78.5, DAY4: 78.6}
+        for order in (observations, observations[::-1]):
+            with self.subTest(reversed=order is not observations):
+                self.assertEqual(
+                    {DAY1: 80.0, DAY3: 78.5, DAY4: 78.0},
+                    energy_inputs.weighins(order, profile),
+                )
+                self.assertEqual(
+                    {
+                        "by_source": {"app": 2, "garmin": 1},
+                        "dropped_days": {"garmin": 1, "intervals": 1, "wahoo": 2},
+                    },
+                    energy_inputs.weighin_counts(order, profile),
+                )
+        self.assertEqual({}, energy_inputs.weighins([weigh(DAY2, 84.0, WAHOO)]))
+
+    def test_garmin_body_fat_fills_only_days_without_an_app_value(self) -> None:
+        # #3557: a profile skinfold or an entry wins its day over Garmin's copy;
+        # another provider's body fat never counts.
+        observations = [
+            weigh(DAY1, 18.0), weigh(DAY2, 17.5), weigh(DAY3, 17.0, None),
+            weigh(DAY3, 16.0), weigh(DAY4, 15.0, WAHOO),
+        ]  # fmt: skip
+        self.assertEqual(
+            {DAY2: (17.5, GARMIN), DAY3: (17.0, None)},
+            energy_inputs.device_body_fats(observations, {DAY1}),
+        )
+
+    def test_the_profile_weight_leaves_the_window_as_the_scale_gave_it(self) -> None:
+        # The issue's synthetic window: 28 days, a weigh-in on two of three
+        # days falling 0.07 kg/day from 82.0 kg, and Wahoo's profile weight of
+        # 84.0 kg stored on every day (#3557).
+        end = date(2026, 11, 15)
+        days = [end - timedelta(days=27 - n) for n in range(28)]
+        scale = [weigh(d, 82.0 - 0.07 * n) for n, d in enumerate(days) if n % 3 != 2]
+        profile = [weigh(d, 84.0, WAHOO) for d in days]
+
+        def window(observations: list[Any]) -> EnergyWindow:
+            weights = energy_inputs.weighins(observations)
+            inputs = EnergyInputs(
+                {
+                    d: DayInputs(
+                        intake_kcal=2473.0,
+                        entries=3,
+                        activity_kcal=600.0,
+                        weight_kg=weights.get(d),
+                    )
+                    for d in days
+                },
+                {},
+                rmr_kcal=1700.0,
+            )
+            return energy_windows(inputs, end, weeks=1)[-1]
+
+        alone, mixed = window(scale), window(scale + profile)
+        self.assertEqual(19, mixed.weighins)
+        self.assertIsNotNone(mixed.adaptive_tdee)
+        self.assertEqual(alone, mixed)
+        # Profile weights alone are no weigh-ins at all.
+        self.assertEqual("weighins", window(profile).insufficient)
+
+    def test_energy_basis_counts_the_latest_window_weighin_sources(self) -> None:
+        # #3557: counts only, read over the latest 28-day window.
+        seen: list[tuple[date, date]] = []
+
+        def counts(_db: Any, start: date, end: date) -> dict[str, Any]:
+            seen.append((start, end))
+            return {"by_source": {"app": 9, "garmin": 2}, "dropped_days": {"wahoo": 28}}
+
+        basis = energy_basis(None, replace(sources(), weighin_counts=counts), DAY3)
+        self.assertEqual([(DAY3 - timedelta(days=27), DAY3)], seen)
+        self.assertEqual(
+            {"by_source": {"app": 9, "garmin": 2}, "dropped_days": {"wahoo": 28}},
+            basis["latest_window_weighin_sources"],
+        )
 
     def test_session_streams_take_the_first_stream_set(self) -> None:
         laps = SimpleNamespace(detail=object())

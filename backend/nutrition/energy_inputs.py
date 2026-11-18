@@ -78,6 +78,10 @@ class EnergySources:
     )
     # The sessions' saved feedback, for a strength session's RPE (#3530).
     feedback: FeedbackLookup | None = None
+    # The weigh-in counts per source and dropped days per provider (#3557).
+    weighin_counts: Callable[[Any, date, date], Mapping[str, Any]] = field(
+        default=lambda _db, _start, _end: {}
+    )
 
 
 @dataclass(frozen=True)
@@ -135,20 +139,30 @@ def own_resting(
     return None
 
 
-def recent_fat_pct(measurement: SkinfoldMeasurement | None, day: date) -> float | None:
-    """A skinfold measurement's body fat if it lies within the lookback of ``day``.
+def recent_fat_pct(
+    measurement: SkinfoldMeasurement | None,
+    day: date,
+    profile: Mapping[date, float] | None = None,
+) -> float | None:
+    """The newest skinfold body fat within the lookback of ``day``: the
+    measurement's, or a dated profile value (3-site skinfolds too, #3557); the
+    measurement wins a shared day.
 
     An older one yields to a newer measured body fat or to Garmin (Gitar, #3142).
     """
-    if measurement is None:
-        return None
     since = day - timedelta(days=RESTING_LOOKBACK_DAYS)
-    return measurement.body_fat_pct if measurement.measured_on >= since else None
+    folds = {d: v for d, v in (profile or {}).items() if since <= d <= day}
+    if measurement is not None and measurement.body_fat_pct is not None:
+        folds[measurement.measured_on] = measurement.body_fat_pct
+    newest = max(folds, default=None)
+    return folds[newest] if newest is not None and newest >= since else None
 
 
-def latest_value(observations: Iterable[Observation]) -> float | None:
-    """The last day's positive value of canonical observations, or None."""
-    values = weighins(observations)
+def latest_value(
+    observations: Iterable[Observation], app: Mapping[date, float] | None = None
+) -> float | None:
+    """The last day's value under the weigh-in source rule, or None."""
+    values = weighins(observations, app)
     return values[max(values)] if values else None
 
 
@@ -162,24 +176,61 @@ def session_streams(
     return {}
 
 
-def weighins(observations: Iterable[Observation]) -> dict[date, float]:
-    """One canonical weigh-in per day: the last one read for that day.
+def weighins(
+    observations: Iterable[Observation], app: Mapping[date, float] | None = None
+) -> dict[date, float]:
+    """One weigh-in (or body fat) per day under the source rule of ``sourced``."""
+    days = sourced(observations, app)[0]
+    return {day: value for day, (value, _) in sorted(days.items())}
 
-    A weight the athlete entered (no provider) wins its day (#3252).
-    """
-    days: dict[date, float] = {}
-    entered: set[date] = set()
+
+# The weigh-in source rule (athlete decisions, #3557): the app's own records,
+# entered (no provider) or a dated profile value (``app``), win their day;
+# Garmin's are copies of them and fill only a day without one. Any other
+# provider's value, such as Wahoo's stored profile weight, never counts.
+APP_SOURCE: Final = "app"
+
+
+def sourced(
+    observations: Iterable[Observation], app: Mapping[date, float] | None = None
+) -> tuple[dict[date, tuple[float, str]], dict[str, set[date]]]:
+    """Per day the value and its source (``app`` or ``garmin``), and per
+    provider the days whose values were dropped. Within a source the last one
+    read wins; an entered one wins over a profile value of its day."""
+    days = {day: (value, APP_SOURCE) for day, value in (app or {}).items()}
+    garmin: dict[date, float] = {}
+    dropped: dict[str, set[date]] = {}
     for o in observations:
         value = _number(o.value.value)
-        if value is None or value <= 0:
+        if value is None or value <= 0 or o.sport is not None:
             continue
-        provenance = getattr(o, "provenance", None)
-        own = provenance is not None and provenance.provider is None
-        if own or o.observed_on not in entered:
-            days[o.observed_on] = value
-        if own:
-            entered.add(o.observed_on)
-    return days
+        provider = o.provenance.provider
+        if provider is None:
+            days[o.observed_on] = (value, APP_SOURCE)
+        elif provider is ProviderId.GARMIN:
+            garmin[o.observed_on] = value
+        else:
+            dropped.setdefault(provider.value, set()).add(o.observed_on)
+    for day, value in garmin.items():
+        if day in days:
+            dropped.setdefault(ProviderId.GARMIN.value, set()).add(day)
+        else:
+            days[day] = (value, ProviderId.GARMIN.value)
+    return days, dropped
+
+
+def weighin_counts(
+    observations: Iterable[Observation], app: Mapping[date, float] | None = None
+) -> dict[str, dict[str, int]]:
+    """Counts only (#3557): weigh-in days per source and dropped days per provider."""
+    days, dropped = sourced(observations, app)
+    sources = [source for _, source in days.values()]
+    return {
+        "by_source": {
+            s: sources.count(s) for s in (APP_SOURCE, ProviderId.GARMIN.value)
+        },
+        "dropped_days": {p: len(d) for p, d in sorted(dropped.items())},
+    }
 
 
 def _number(value: Any) -> float | None:
@@ -464,19 +515,19 @@ def read_energy_inputs(
 
 
 def device_body_fats(
-    observations: Iterable[Observation],
+    observations: Iterable[Observation], skinfold_days: Iterable[date] = ()
 ) -> dict[date, tuple[float, Any]]:
-    """A device's, scale's or the athlete's body fat per day, with its provider (#3362).
-
-    The last one read for a day wins, except that an entered one (provider None,
-    #3402) wins its day.
+    """The entered (provider None, #3402) or Garmin body fat per day (#3362)
+    under the source rule of ``sourced``: Garmin's copies fill only a day
+    without an entered value or a profile skinfold (``skinfold_days``, #3557).
     """
-    days: dict[date, tuple[float, Any]] = {}
-    for o in observations:
-        held = days.get(o.observed_on)
-        if o.sport is None and (held is None or held[1] is not None):
-            days[o.observed_on] = (float(o.value.value), o.provenance.provider)
-    return days
+    days, _ = sourced(observations)
+    skinfolds = set(skinfold_days)
+    return {
+        day: (value, None if source == APP_SOURCE else ProviderId.GARMIN)
+        for day, (value, source) in sorted(days.items())
+        if source == APP_SOURCE or day not in skinfolds
+    }
 
 
 def _profile_fat(value: Any) -> float | None:
@@ -499,8 +550,20 @@ def energy_basis(db: Any, sources: EnergySources, end: date) -> dict[str, Any]:
     bodies = [resolve_body(inputs, trend, w.end) for w in windows]
     week = sources.daily_health(db, end - timedelta(days=GARMIN_RESTING_DAYS), end)
     found = newest_resting(week, end)
+    latest = windows[-1] if windows else None
     return (
         diagnostics(inputs, costs, windows)
+        # The latest window's weigh-in days per source, and per provider the
+        # days whose weights the source rule dropped (#3557), counts only.
+        | {
+            "latest_window_weighin_sources": dict(
+                sources.weighin_counts(
+                    db, latest.end - timedelta(days=latest.days - 1), latest.end
+                )
+            )
+            if latest
+            else None
+        }
         | skinfold_diagnostics(skinfolds, missing, end, bodies)
         # How many days back today's Garmin Ruhe comes from, None = none (#3443).
         | {"today_resting_days_back": (end - found[0]).days if found else None}
