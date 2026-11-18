@@ -257,6 +257,21 @@ def full_suite_reason(paths: list[str]) -> str | None:
     return None
 
 
+def node_tests(paths: list[str], root: Path = ROOT) -> list[str]:
+    """The node harness tests that load a changed ``public/*.js`` file by name
+    (``extractFunctions("nutrition.js", …)``); CI's browser job runs them (#3496)."""
+    names = {
+        Path(path).name
+        for path in paths
+        if path.startswith("public/") and path.endswith(".js")
+    }
+    return sorted(
+        test.relative_to(root).as_posix()
+        for test in (root / "tests").glob("*.test.cjs")
+        if any(f'"{name}"' in test.read_text(encoding="utf-8") for name in names)
+    )
+
+
 def heavy_skips(paths: list[str]) -> dict[str, str]:
     """Return {heavy module: reason} for slow modules no changed path guards."""
     return {

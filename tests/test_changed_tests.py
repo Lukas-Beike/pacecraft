@@ -91,6 +91,24 @@ class SelectModulesTests(unittest.TestCase):
         modules, _reason = changed_tests.select_modules(list(paths), self.root)
         return modules
 
+    def test_a_changed_frontend_file_names_the_node_tests_that_load_it(self):
+        # #3496: #3483 broke six card tests that extract from nutrition.js, and
+        # the Python selection never ran them.
+        tests = self.root / "tests"
+        (tests / "card.test.cjs").write_text(
+            'extractFunctions("nutrition.js", ["nutritionCard"]);', "utf-8"
+        )
+        (tests / "chart.test.cjs").write_text(
+            'extractFunctions("analysis.js", ["energyTable"]);', "utf-8"
+        )
+        self.assertEqual(
+            ["tests/card.test.cjs"],
+            changed_tests.node_tests(["public/nutrition.js"], self.root),
+        )
+        self.assertEqual(
+            [], changed_tests.node_tests(["public/styles.css", "README.md"], self.root)
+        )
+
     def test_transitive_imports_and_support_modules_select_importers(self):
         self.assertEqual(
             set(self.select("backend/app/engine.py")),
