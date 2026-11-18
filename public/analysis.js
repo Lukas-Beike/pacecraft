@@ -1651,11 +1651,11 @@ function energySplitRow(row) {
   const split = row.split;
   const total = split ? ENERGY_PARTS.reduce((sum, [key]) => sum + (split[key] || 0), 0) : 0;
   if (!total) return null;
-  const text = ENERGY_PARTS.map(([key, , label], index) => {
+  const text = ENERGY_PARTS.map(([key, part, label], index) => {
     const name = index === 0 && row.source === "own" ? "Ruhe (Rest)" : label;
     if (index === 0 && row.resting_implausible) return `${name} ${ENERGY_IMPLAUSIBLE} (${ENERGY_IMPLAUSIBLE_REASON})`;
     const band = index === 0 && row.resting_band_kcal != null && split[key] != null ? ` (${energyKcalRange(split[key], row.resting_band_kcal).join("–")})` : "";
-    return `${name} ${energySplitValue(key, split[key], row.source)}${band}`;
+    return `${name} ${energySplitValue(key, split[key], row.source, row.pending_parts?.includes(part))}${band}`;
   }).join(" · ");
   const bar = h("div", { className: "energy-split", role: "img", "aria-label": text });
   for (const [key, part] of ENERGY_PARTS) {
@@ -1668,7 +1668,9 @@ function energySplitRow(row) {
 }
 
 // Digestion comes from the logged meals: without any it is not recorded; Garmin has no such part.
-function energySplitValue(key, value, source) {
+// Today a part whose input has not arrived counts 0 in Tag gesamt and says so (#3494).
+function energySplitValue(key, value, source, pending = false) {
+  if (pending) return "noch keine Daten";
   if (value != null) return formatWhole(value);
   return key === "tef_kcal" && source !== "device" ? "nicht erfasst" : "–";
 }

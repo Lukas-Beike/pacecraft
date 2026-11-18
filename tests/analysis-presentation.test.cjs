@@ -358,6 +358,13 @@ test("split A draws one stacked bar per row and hatches only the parts the backe
   assert.equal(textOf(ownRow.children[0].children[1]), "Ruhe (Rest) 1690 (1540–1840) · Alltag 385 · Sport 507 · Verdauung 258", "#3478: the band as its span");
   assert.deepEqual([...ownRow.children[0].children[0].children].map((part) => part.dataset.shared ?? null), [null, null, null, ""]);
   assert.equal(energySplitRow({ source: "katch_mcardle", split: null }), null, "no split, no bar");
+  // #3494: today a part whose input has not arrived counts 0 and says so; an unknown part
+  // stays "–" (Gitar #3495).
+  const early = (source, pending, parts) => ({ source, resting_band_kcal: null, pending_parts: pending, split: split(1800, ...parts, {}) });
+  const words = (row) => textOf(energySplitRow(row).children[0].children[1]);
+  assert.equal(words(early("katch_mcardle", ["neat", "sport", "tef"], [0, 0, 0])), "Ruhe 1800 · Alltag noch keine Daten · Sport noch keine Daten · Verdauung noch keine Daten");
+  assert.equal(words(early("device", ["neat", "sport"], [null, null, null])), "Ruhe 1800 · Alltag noch keine Daten · Sport noch keine Daten · Verdauung –");
+  assert.equal(words(early("katch_mcardle", [], [null, null, 30])), "Ruhe 1800 · Alltag – · Sport – · Verdauung 30");
   const gated = energySplitRow({ source: "own", resting_band_kcal: null, resting_implausible: true, split: split(null, 942, 417, 368, { neat: true, sport: true, tef: true }) });
   assert.equal(textOf(gated.children[0].children[1]), "Ruhe (Rest) nicht plausibel (unter dem Ruheumsatz: Essen unvollständig erfasst oder Alltag überschätzt) · Alltag 942 · Sport 417 · Verdauung 368");
   assert.deepEqual([...gated.children[0].children[0].children].map((part) => part.dataset.part), ["neat", "sport", "tef"]);
