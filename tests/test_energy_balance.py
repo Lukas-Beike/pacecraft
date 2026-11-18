@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import math
 import unittest
 from collections.abc import Callable
 from dataclasses import replace
 from datetime import date, timedelta
 
 from backend.nutrition import energy_balance as balance
+from backend.performance.activity_energy import TEF_ERROR_KCAL
 
 END = date(2026, 11, 15)
 TRUE_TDEE = 2600.0
@@ -54,6 +56,8 @@ def series(
             flagged_kcal=logged if flagged else 0.0,
             weight_kg=weight if n % weigh_every == 0 else None,
             activity_kcal=600.0,
+            # Its M11 error (#3552): 10 % of the activity, as a ride's.
+            activity_error_kcal=60.0,
             neat_kcal=split[0] if split else None,
             sport_kcal=split[1] if split else None,
         )
@@ -286,6 +290,18 @@ class AdaptiveTdeeTests(unittest.TestCase):
         # 0.25 x 600 + 0.10 x 1,200 + 0.015 x 720 = 280.8 kcal TEF per day.
         self.assertAlmostEqual(tef, 280.8)
         self.assertAlmostEqual(rmr.kcal, tdee.kcal - activity - tef)
+        # #3552: its band adds the activity's own error and digestion's, not a
+        # flat 10 % of the activity.
+        self.assertAlmostEqual(
+            rmr.band_kcal,
+            math.hypot(
+                tdee.band_kcal,
+                window.calibration_factor * (window.activity_error_kcal_raw or 0.0),
+                TEF_ERROR_KCAL,
+            ),
+        )
+        # The window keeps the days' mean error: method errors do not average out.
+        self.assertAlmostEqual(60.0, window.activity_error_kcal_raw or 0.0)
         # The resting reference keeps its source label (own formula first).
         self.assertEqual(window.rmr_source, "katch_mcardle")
 

@@ -29,7 +29,7 @@ These stand beside Garmin's resting value and the derived resting rate of M12 as
    - Katch-McArdle: `370 + 21.6 × LBM`. This is the general equation of Cunningham 1991 (R73).
    - Cunningham: `500 + 22 × LBM`, as proposed in the abstract of R72. Its regression in the results section is `501.6 + 21.6 × LBM`.
 5. **Fixed gap between the two rows:** Katch-McArdle is numerically Cunningham 1991, so the two rows always differ by `(500 + 22 L) − (370 + 21.6 L) = 130 + 0.4 L` kcal/day. That is about 146 kcal at 40 kg and 162 kcal at 80 kg of lean mass (about 155 at 62 kg). Which of them fits better therefore decides only this offset, not two independent methods (#3187 item 9).
-6. **Band of a formula's resting energy (nominal 95 %):** `√((0.10 × resting)² + (1.96 × slope × weight × 3.5 / 100)²)`. The first term is the formula's own individual error (R72). The second carries the skinfold body fat's standard error (3.5 percentage points) through the lean mass. The band of the daily total adds 10 % of the own activity in quadrature, as M12 does for the derived resting rate. TEF uncertainty is not included.
+6. **Band of a formula's resting energy (nominal 95 %):** `√((0.10 × resting)² + (1.96 × slope × weight × 3.5 / 100)²)`. The first term is the formula's own individual error (R72). The second carries the skinfold body fat's standard error (3.5 percentage points) through the lean mass. The band of the daily total adds the day's M11 activity error (each session by its method's share, the everyday energy by the step length's 15 %) and the TEF error of 80 kcal/day in quadrature, as M12 does for the derived resting rate (#3552).
 7. **Daily total of a formula row:** the formula's resting energy plus the same uncalibrated M11 own activity and TEF for both rows. The two rows therefore differ only in the resting formula.
 
 ## Sources
@@ -70,7 +70,7 @@ None of these is a validation in this athlete or in trained endurance athletes a
 - **Body fat:** the 3-site equations carry about ±3 to 4 percentage points of standard error for the individual. The caliper reading, the site location and the measurer add to that. One year of age shifts body fat by about 0.11 percentage points for men (495 / D² × 0.0002574 at D ≈ 1.07) and about 0.06 for women (× 0.0001392 at D ≈ 1.04).
 - **Resting energy:** per R72, about 10 % for an individual. An error of 1 kg in lean mass moves the result by 21.6 to 22 kcal/day.
 - **Display:** the formula rows show the band of formula 6. Their fit against the adaptive expenditure (the M12 windows) is the empirical check. It compares the same windows for every source, needs at least 4 of them, and outlines a source's row (solid) only when its lead over the next exceeds the mean band of "Aus deinen Daten" (#3397: an outline replaced the "passt am besten" chip). Otherwise it outlines the nearest dashed and says "noch nicht sicher" (athlete decision on #3187).
-- **Nominal bands:** they exclude a logging bias in the intake and the error of the activity method beyond 10 %.
+- **Nominal bands:** they exclude a logging bias in the intake and an activity error beyond the upper end of each M11 method's stated range.
 
 ## Bias and transferability
 
@@ -104,7 +104,7 @@ None of these is a validation in this athlete or in trained endurance athletes a
 | Cunningham | 500 + 22 × LBM | source | R72, abstract |
 | Formula error (95 %) | 10 % of the resting value | source | R72: a 10 % individual prediction error |
 | Skinfold body fat SE | 3.5 percentage points | product assumption | middle of the commonly cited 3.4–3.9 for R69/R70; not verified in the abstracts |
-| Activity term in the daily band | 10 % of own activity | product assumption | as M12's derived resting rate |
+| Activity term in the daily band | each part's M11 method share, plus TEF 80 kcal/day | product assumption | upper end of M11's stated errors, as M12's derived resting rate (#3552) |
 | Fit: shared windows | ≥ 4 | product assumption | athlete decision on #3187; 12 windows overlap and hold about 3–4 independent periods |
 | Fit: lead for the badge | > mean band of the adaptive TDEE | product assumption | athlete decision on #3187 |
 | Fold range | 2–80 mm | product assumption | a value outside is a typing error |

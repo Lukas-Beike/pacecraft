@@ -714,6 +714,13 @@ def _day_inputs(
     priced = [c.kcal for c in today if c.kcal is not None]
     sport = sum(priced) if len(priced) == len(today) else None
     activity = neat + sport if neat is not None and sport is not None else None
+    error = (
+        energy.activity_error_kcal(
+            [(c.method, c.kcal) for c in today if c.kcal is not None], neat or 0.0
+        )
+        if activity is not None
+        else 0.0
+    )
     return DayInputs(
         intake_kcal=sum(_number(e.get("kcal")) or 0.0 for e in entries)
         if entries
@@ -730,6 +737,7 @@ def _day_inputs(
         ),
         weight_kg=weights.get(day),
         activity_kcal=activity,
+        activity_error_kcal=error,
         neat_kcal=neat,
         sport_kcal=sport,
         steps=steps,

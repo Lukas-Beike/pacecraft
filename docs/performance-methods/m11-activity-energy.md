@@ -102,7 +102,15 @@ line is refitted on the last 4-8 weeks of power sessions.
 Expected error (method comment, #3100): running ±8-10 %, cycling ±10 %,
 flex-HR ±10-15 % individually calibrated and ±20-30 % or more with Keytel,
 strength ±30-50 % (small absolute share), step length ±10-15 %, TEF ±30-80
-kcal/day against a flat 10 %. Sums are reported with bands, not points.
+kcal/day. Sums are reported with bands, not points.
+
+A day's activity error (95 %, #3552) takes the upper end of each range: each
+session's net cost times its method's share (`METHOD_ERROR_SHARE`: Minetti
+and power 10 %, flex-HR 15 %, Keytel 30 %, MET 50 %, an unlisted method the
+widest) and the everyday energy times the step length's 15 %
+(`STEP_ERROR_SHARE`), in quadrature. Digestion adds `TEF_ERROR_KCAL` (80
+kcal/day). M12's derived resting rate and M13's formula day totals carry
+both.
 
 ## Bias and transferability
 
@@ -202,4 +210,7 @@ line is calibrated on power-derived cost, not calorimetry (weak evidence).
 | `KCAL_PER_G_CARBOHYDRATE` | `4.0` | `backend/performance/activity_energy.py` |  |
 | `KCAL_PER_G_FAT` | `9.0` | `backend/performance/activity_energy.py` |  |
 | `EPOC_SHARE` | `0.06` | `backend/performance/activity_energy.py` | Optional excess post-exercise oxygen consumption for sessions above the threshold: 6 % of the net session cost, the low end of LaForgia et al. 2006 (J Sports Sci 24:1247, 6-15 %). Off unless asked for; weak evidence. |
+| `METHOD_ERROR_SHARE` | `{'minetti': 0.1, 'power': 0.1, 'flex_hr': 0.15, 'keytel': 0.3, 'met': 0.5}` | `backend/performance/activity_energy.py` | The 95 % error of a session's net cost as a share of it, by M11 method: the upper end of each expected error (method comment on #3100, #3552): running (Minetti) +-8-10 %, cycling power +-10 %, flex-HR +-10-15 %, Keytel +-20-30 %, MET (strength) +-30-50 %. A method not listed takes the widest share. |
+| `STEP_ERROR_SHARE` | `0.15` | `backend/performance/activity_energy.py` | Everyday energy from steps carries the step length's +-10-15 %. |
+| `TEF_ERROR_KCAL` | `80.0` | `backend/performance/activity_energy.py` | Thermic effect of food: +-30-80 kcal per day, the upper end. |
 <!-- END GENERATED CONSTANTS -->
