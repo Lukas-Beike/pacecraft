@@ -822,7 +822,7 @@ test("the table labels today's rows bis jetzt, the own row its 28 days, and miss
   };
   const rows = energyTable(read).children[2].children;
   const heads = rows.filter((row) => row.dataset.energySource).map((row) => textOf(row.children[0]));
-  assert.deepEqual(heads, ["Katch-McArdleKFA: Profil · bis jetzt", "CunninghamKFA: Profil · bis jetzt", "Garmin Connectbis jetzt", "Aus deinen DatenØ 28 Tage"]);
+  assert.deepEqual(heads, ["Katch-McArdleKFA: Profil · bis jetzt", "CunninghamKFA: Profil · bis jetzt", "Garmin Connectbis jetzt", "Aus deinen DatenØ pro Tag, letzte 28 Tage"], "#3513: the own row is a daily mean, not the day");
   // Without logged meals a computed row's digestion is not recorded; Garmin has no such part.
   assert.match(textOf(rows[1]), /Sport 0 · Verdauung nicht erfasst$/);
   assert.match(textOf(rows[5]), /Verdauung –$/);
