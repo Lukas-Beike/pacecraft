@@ -1,6 +1,6 @@
 """Adaptive daily expenditure from intake and the weight trend (#3100).
 
-Pure functions over one ``EnergyInputs``: the smoothed weight trend, rolling
+Pure functions over one ``EnergyInputs``: the lag-free current weight, rolling
 4-week windows with the adaptive TDEE (mean logged intake minus the change in
 stored energy), the one shrunken activity calibration factor, the derived
 resting rate and the bias of meals flagged as uncertain. Results are bands, not
@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import math
 import statistics
+from bisect import bisect_left, bisect_right
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from datetime import date, timedelta
@@ -22,11 +23,15 @@ from backend.performance.activity_energy import TEF_ERROR_KCAL, tef_kcal
 
 METHOD_ID = "adaptive-expenditure"
 # Bump when a formula or constant below changes the estimate.
-METHOD_VERSION = 4
+METHOD_VERSION = 5
 # Days per window and windows per week of the rolling view (#3099, #3100).
 WINDOW_DAYS = 28
-# Half-life in days of the exponentially weighted weight trend.
-TREND_HALF_LIFE_DAYS = 10.0
+# A day's current weight is the least-squares line through the weigh-ins of
+# this many days up to it, at its latest weigh-in, so a steady change has no
+# lag (#3551); with fewer weigh-ins or a shorter span, their mean.
+CURRENT_WEIGHT_DAYS = 28
+MIN_LINE_WEIGHINS = 3
+MIN_LINE_SPAN_DAYS = 7
 # A window needs this many complete logging days, weigh-ins and days between
 # its first and last weigh-in; otherwise it gives its reason, never a formula.
 MIN_COMPLETE_DAYS = 14
@@ -198,24 +203,43 @@ class EnergyWindow:
 
 
 def weight_trend(weights_kg: Mapping[date, float]) -> dict[date, float]:
-    """Exponentially weighted weight trend per day from the first weigh-in on.
+    """The current weight per day from the first weigh-in on, without a lag (#3551).
 
-    Each day decays the previous trend by the half-life; a weigh-in pulls it
-    towards the measured value. Days without a weigh-in carry the trend.
+    A day's value is the least-squares line through the weigh-ins of the
+    ``CURRENT_WEIGHT_DAYS`` up to it, read at the latest of them; with fewer
+    than ``MIN_LINE_WEIGHINS`` or a span below ``MIN_LINE_SPAN_DAYS``, their
+    mean. A day without a weigh-in in that span carries the previous value.
     """
     if not weights_kg:
         return {}
-    alpha = 1.0 - 0.5 ** (1.0 / TREND_HALF_LIFE_DAYS)
-    first, last = min(weights_kg), max(weights_kg)
+    weighed = sorted(weights_kg)
     trend: dict[date, float] = {}
-    value = weights_kg[first]
-    day = first
-    while day <= last:
-        if day in weights_kg:
-            value += alpha * (weights_kg[day] - value)
-        trend[day] = value
+    day = weighed[0]
+    while day <= weighed[-1]:
+        since = day - timedelta(days=CURRENT_WEIGHT_DAYS - 1)
+        recent = weighed[bisect_left(weighed, since) : bisect_right(weighed, day)]
+        trend[day] = (
+            _line_at_latest([(d, weights_kg[d]) for d in recent])
+            if recent
+            else trend[day - timedelta(days=1)]
+        )
         day += timedelta(days=1)
     return trend
+
+
+def _line_at_latest(points: Sequence[tuple[date, float]]) -> float:
+    """The least-squares line's value at the latest point, else the mean."""
+    ys = [kg for _, kg in points]
+    latest = points[-1][0]
+    if len(points) < MIN_LINE_WEIGHINS or (
+        (latest - points[0][0]).days < MIN_LINE_SPAN_DAYS
+    ):
+        return statistics.fmean(ys)
+    xs = [float((d - latest).days) for d, _ in points]
+    mean_x, mean_y = statistics.fmean(xs), statistics.fmean(ys)
+    sxx = sum((x - mean_x) ** 2 for x in xs)
+    sxy = sum((x - mean_x) * (y - mean_y) for x, y in zip(xs, ys, strict=True))
+    return mean_y - sxy / sxx * mean_x
 
 
 def fat_share(weight_kg: float, body_fat_pct: float | None) -> float:

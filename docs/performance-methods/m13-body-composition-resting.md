@@ -1,8 +1,8 @@
 # M13 — Body fat from 3-site skinfolds and resting energy from lean mass
 
 - **Card:** M13
-- **Card version:** 1
-- **Method ID:** body-composition-resting v1 (#3099)
+- **Card version:** 2
+- **Method ID:** body-composition-resting v2 (#3099, #3551)
 - **Status:** method implemented (`backend/athlete/body_composition.py`, `backend/athlete/skinfolds.py`); the energy table that shows it is in review (#3180)
 - **Classification:** model estimate
 - **Literature checked:** 2026-11-16
@@ -23,7 +23,7 @@ These stand beside Garmin's resting value and the derived resting rate of M12 as
    - women (triceps, suprailiac, thigh; R70): `1.0994921 − 0.0009929 S + 0.0000023 S² − 0.0001392 A`.
 2. **Body fat (%)** from density `D` (R71, Siri): `495 / D − 450`.
 3. **Lean mass (kg):** `weight × (1 − body fat / 100)`.
-   - In the energy table, the weight is the smoothed M12 weight trend on the window's last day.
+   - In the energy table, the weight is M12's current weight on the window's last day: the least-squares line through the last 28 days' weigh-ins at the latest one, so a steady change has no lag (#3551). The resting reference uses the same weight.
    - The body fat is from the latest skinfold measurement within 90 days before that day.
 4. **Resting energy (kcal/day):**
    - Katch-McArdle: `370 + 21.6 × LBM`. This is the general equation of Cunningham 1991 (R73).
@@ -84,7 +84,7 @@ None of these is a validation in this athlete or in trained endurance athletes a
 - **Age range:** ages up to 80 are accepted (`SKINFOLD_AGES`). The equations were fitted on men aged 18–61 and women aged 18–55 (`FITTED_AGES`), so older ages extrapolate. Such a measurement keeps its body fat but carries `age_outside_fit`, and the Hautfalten card shows "Alter außerhalb der Studie" under it (#3187 item 9).
 - **Readings per site:** one value per site, as decided by the athlete, instead of the studies' repeated readings averaged by a trained measurer.
 - **Rounding:** Cunningham uses the abstract's rounded `500 + 22`, not the regression's `501.6 + 21.6`. The difference is `0.4 × LBM − 1.6` kcal/day: about 14 to 30 kcal/day for a lean mass between 40 and 80 kg.
-- **Weight:** the lean mass uses the smoothed weight trend instead of a weight taken at the moment of the skinfold measurement.
+- **Weight:** the lean mass uses M12's current weight (a 28-day line through the weigh-ins) instead of a weight taken at the moment of the skinfold measurement.
 
 ## Minimum data and stop rules
 
@@ -147,7 +147,7 @@ None of these is a validation in this athlete or in trained endurance athletes a
 | Constant | Value | Module | Code comment |
 | --- | --- | --- | --- |
 | `METHOD_ID` | `'body-composition-resting'` | `backend/athlete/body_composition.py` |  |
-| `METHOD_VERSION` | `1` | `backend/athlete/body_composition.py` | Bump with the M13 card version when a formula or constant below changes. |
+| `METHOD_VERSION` | `2` | `backend/athlete/body_composition.py` | Bump with the M13 card version when a formula or constant below changes. |
 | `SKINFOLD_BOUNDS_MM` | `(2.0, 80.0)` | `backend/athlete/body_composition.py` | A fold outside this range is a typing error, not a measurement (mm). |
 | `SKINFOLD_AGES` | `(18, 80)` | `backend/athlete/body_composition.py` | Accepted ages. The equations were fitted on men aged 18-61 and women aged 18-55; the methods document names that range. |
 | `RESTING_FORMULA_ERROR` | `0.1` | `backend/athlete/body_composition.py` | Half-width of the nominal 95 % band of a formula's resting energy, as a share of it: Cunningham 1980 expects a 10 % prediction error for an individual (#3187). |
