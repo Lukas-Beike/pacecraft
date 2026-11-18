@@ -1,6 +1,5 @@
 """Provider-fake tests for Coach conversation ID provisioning."""
 
-import sqlite3
 import unittest
 import uuid
 from contextlib import contextmanager
@@ -18,7 +17,6 @@ class CoachConversationProvisionTests(unittest.TestCase):
         self.database_manager = temp_database(
             self,
             "coach.sqlite3",
-            row_factory=lambda cursor, row: sqlite3.Row(cursor, row),
         )
         with self.database_manager.unit_of_work() as db:
             db.execute(

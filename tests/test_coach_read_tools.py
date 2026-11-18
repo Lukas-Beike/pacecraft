@@ -1,4 +1,3 @@
-import sqlite3
 import unittest
 from datetime import UTC, datetime
 from unittest.mock import Mock
@@ -457,9 +456,7 @@ class CoachReadToolServiceTests(unittest.TestCase):
     def test_omitted_text_source_uses_bls_and_never_queries_open_food_facts(
         self,
     ) -> None:
-        manager = temp_database(
-            self, "nutrition.db", row_factory=sqlite3.Row, schema=True
-        )
+        manager = temp_database(self, "nutrition.db", schema=True)
         _diary, meal_library = build_nutrition_services(
             manager,
             lambda: "2026-10-05T12:00:00+00:00",

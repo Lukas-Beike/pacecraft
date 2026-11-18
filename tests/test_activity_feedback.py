@@ -189,9 +189,7 @@ class ActivityFeedbackServiceTests(unittest.TestCase):
         )
 
     def setUp(self) -> None:
-        self.manager = temp_database(
-            self, "feedback.db", row_factory=sqlite3.Row, schema=True
-        )
+        self.manager = temp_database(self, "feedback.db", schema=True)
         self.feedback_repository = ActivityFeedbackRepository(
             lambda: "2026-09-20T12:00:00+00:00"
         )

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import sqlite3
 import unittest
 from datetime import UTC, datetime
 from typing import Any
@@ -17,9 +16,7 @@ from backend.errors import AppError
 
 class FavoritesAndMealAdditionTests(unittest.TestCase):
     def setUp(self) -> None:
-        self.manager = temp_database(
-            self, "favorites.db", row_factory=sqlite3.Row, schema=True
-        )
+        self.manager = temp_database(self, "favorites.db", schema=True)
         self.diary, self.library = build_nutrition_services(
             self.manager,
             lambda: "2026-11-04T12:00:00+00:00",

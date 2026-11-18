@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import sqlite3
 import tempfile
 import unittest
 from dataclasses import replace
@@ -360,9 +359,7 @@ class GarminMergeTests(unittest.TestCase):
 
 class GarminSyncStateServiceTests(unittest.TestCase):
     def setUp(self):
-        self.manager = temp_database(
-            self, "garmin-state.db", row_factory=sqlite3.Row, schema=True
-        )
+        self.manager = temp_database(self, "garmin-state.db", schema=True)
         self.now = datetime(2026, 9, 20, 10, 30, tzinfo=UTC)
         self.local_now = datetime(
             2026, 9, 20, 12, 30, tzinfo=timezone(timedelta(hours=2))

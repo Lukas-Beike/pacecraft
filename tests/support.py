@@ -22,6 +22,7 @@ from intervals_compaction import compact_snapshot
 
 from backend.coach import streams as coach_streams
 from backend.config import Config
+from backend.db import row_factory
 from backend.db.manager import DatabaseManager
 from backend.db.schema import initialize_schema
 from backend.errors import AppError
@@ -86,11 +87,14 @@ def temp_database(
     schema: bool = False,
     **options: Any,
 ) -> DatabaseManager:
-    """Build a DatabaseManager on temporary storage, closed at test cleanup."""
+    """Build a DatabaseManager on temporary storage, closed at test cleanup.
+
+    Rows come from the app's own row factory (dicts), so code is tested
+    against the row type production reads (#3466).
+    """
     if path is None:
         path = Path(test.enterContext(tempfile.TemporaryDirectory())) / name
-    if "row_factory" not in options:
-        options["row_factory"] = backend.Row
+    options.setdefault("row_factory", row_factory)
     manager = DatabaseManager(path, backend, **options)
     test.addCleanup(manager.close)
     if schema:

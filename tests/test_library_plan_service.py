@@ -6,7 +6,6 @@ import ast
 import inspect
 import itertools
 import json
-import sqlite3
 import unittest
 import uuid
 from datetime import date
@@ -52,7 +51,7 @@ class CalendarConflictFake:
 
 class LibraryPlanServiceTests(unittest.TestCase):
     def setUp(self):
-        self.manager = temp_database(self, "library-plan.db", row_factory=sqlite3.Row)
+        self.manager = temp_database(self, "library-plan.db")
         with self.manager.unit_of_work() as db:
             initialize_schema(db)
             db.execute(
@@ -75,7 +74,9 @@ class LibraryPlanServiceTests(unittest.TestCase):
 
         def publish_change():
             with self.manager.reader() as db:
-                count = db.execute("SELECT COUNT(*) FROM planned_units").fetchone()[0]
+                count = db.execute(
+                    "SELECT COUNT(*) AS n FROM planned_units"
+                ).fetchone()["n"]
             self.events.append(count)
 
         self.service = WorkoutLibraryPlanService(
@@ -116,7 +117,7 @@ class LibraryPlanServiceTests(unittest.TestCase):
             ).fetchall()
             revision = db.execute(
                 "SELECT revision FROM planning_state WHERE id=1"
-            ).fetchone()[0]
+            ).fetchone()["revision"]
         return rows, history, revision
 
     def test_input_bounds_and_item_validation_keep_existing_errors(self):

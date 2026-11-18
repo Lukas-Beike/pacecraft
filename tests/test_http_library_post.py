@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import itertools
 import json
-import sqlite3
 import threading
 import unittest
 import uuid
@@ -38,7 +37,7 @@ TEMPLATE = {
 
 class LibraryPostRoutesTests(unittest.TestCase):
     def setUp(self) -> None:
-        self.manager = temp_database(self, "library-post.db", row_factory=sqlite3.Row)
+        self.manager = temp_database(self, "library-post.db")
         with self.manager.unit_of_work() as db:
             initialize_schema(db)
             db.execute(

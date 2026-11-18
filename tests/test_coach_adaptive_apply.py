@@ -137,7 +137,6 @@ class AdaptiveApplyPlanGuardTests(unittest.TestCase):
         self.manager = temp_database(
             self,
             path=path,
-            row_factory=sqlite3.Row,
             persist_connections=False,
         )
         self.illness = ""
@@ -199,7 +198,9 @@ class AdaptiveApplyPlanGuardTests(unittest.TestCase):
 
     def stored(self) -> int:
         with self.manager.reader() as db:
-            return db.execute("SELECT COUNT(*) FROM synthetic_writes").fetchone()[0]
+            return db.execute("SELECT COUNT(*) AS n FROM synthetic_writes").fetchone()[
+                "n"
+            ]
 
     def apply(self, **arguments):
         return self.service.apply(

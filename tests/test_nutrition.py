@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import sqlite3
 import threading
 import unittest
 from datetime import UTC, datetime
@@ -358,9 +357,7 @@ class NutritionRepositoryAndServiceTests(unittest.TestCase):
         self.assertEqual(corrected["nutrition_basis"]["kind"], "packaging_label")
 
     def setUp(self) -> None:
-        self.manager = temp_database(
-            self, "test_nutrition.db", row_factory=sqlite3.Row, schema=True
-        )
+        self.manager = temp_database(self, "test_nutrition.db", schema=True)
 
         self.fixed_now = "2026-09-24T12:00:00+00:00"
         self.service, self.library = build_nutrition_services(

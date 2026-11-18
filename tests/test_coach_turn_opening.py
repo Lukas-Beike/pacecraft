@@ -52,7 +52,6 @@ class CoachTurnOpeningTests(unittest.TestCase):
         self.manager = temp_database(
             self,
             path=self.db_path,
-            row_factory=sqlite3.Row,
             persist_connections=False,
         )
         import threading
@@ -164,10 +163,11 @@ class CoachTurnOpeningTests(unittest.TestCase):
         require_owner.assert_called_once_with(prior_receipt, "synthetic-csrf-secret")
         with self.manager.reader() as db:
             self.assertEqual(
-                db.execute("SELECT COUNT(*) FROM messages").fetchone()[0], 0
+                db.execute("SELECT COUNT(*) AS n FROM messages").fetchone()["n"], 0
             )
             self.assertEqual(
-                db.execute("SELECT COUNT(*) FROM coach_commands").fetchone()[0], 1
+                db.execute("SELECT COUNT(*) AS n FROM coach_commands").fetchone()["n"],
+                1,
             )
 
     def test_same_turn_id_with_different_text_is_rejected_without_writes(self) -> None:
@@ -195,7 +195,7 @@ class CoachTurnOpeningTests(unittest.TestCase):
         self.assertEqual(padded, first)
         with self.manager.reader() as db:
             self.assertEqual(
-                db.execute("SELECT COUNT(*) FROM messages").fetchone()[0], 1
+                db.execute("SELECT COUNT(*) AS n FROM messages").fetchone()["n"], 1
             )
 
     def test_foreign_session_is_rejected_without_writes(self) -> None:
@@ -225,10 +225,11 @@ class CoachTurnOpeningTests(unittest.TestCase):
         )
         with self.manager.reader() as db:
             self.assertEqual(
-                db.execute("SELECT COUNT(*) FROM messages").fetchone()[0], 0
+                db.execute("SELECT COUNT(*) AS n FROM messages").fetchone()["n"], 0
             )
             self.assertEqual(
-                db.execute("SELECT COUNT(*) FROM coach_commands").fetchone()[0], 1
+                db.execute("SELECT COUNT(*) AS n FROM coach_commands").fetchone()["n"],
+                1,
             )
 
     def test_receipt_insert_failure_rolls_back_user_message(self) -> None:
@@ -243,10 +244,11 @@ class CoachTurnOpeningTests(unittest.TestCase):
 
         with self.manager.reader() as db:
             self.assertEqual(
-                db.execute("SELECT COUNT(*) FROM messages").fetchone()[0], 0
+                db.execute("SELECT COUNT(*) AS n FROM messages").fetchone()["n"], 0
             )
             self.assertEqual(
-                db.execute("SELECT COUNT(*) FROM coach_commands").fetchone()[0], 0
+                db.execute("SELECT COUNT(*) AS n FROM coach_commands").fetchone()["n"],
+                0,
             )
 
 

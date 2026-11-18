@@ -7,7 +7,6 @@ reaches a real Garmin account.
 from __future__ import annotations
 
 import logging
-import sqlite3
 import threading
 import unittest
 from datetime import date, datetime, timedelta, timezone
@@ -102,7 +101,7 @@ class _Personal:
 
 class GarminChangeCheckTests(unittest.TestCase):
     def setUp(self) -> None:
-        self.database = temp_database(self, "test.sqlite3", row_factory=sqlite3.Row)
+        self.database = temp_database(self, "test.sqlite3")
         self.key_values = KeyValueRepository(lambda: NOW)
         with self.database.unit_of_work() as db:
             initialize_schema(db)

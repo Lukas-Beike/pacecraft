@@ -1,4 +1,3 @@
-import sqlite3
 import unittest
 from datetime import UTC, date, datetime
 from types import SimpleNamespace
@@ -189,9 +188,7 @@ class SessionIntakeTests(unittest.TestCase):
     """Intake before or during a session: attach rules, reads and the report check."""
 
     def setUp(self):
-        self.manager = temp_database(
-            self, "session_intake.db", row_factory=sqlite3.Row, schema=True
-        )
+        self.manager = temp_database(self, "session_intake.db", schema=True)
         self.sessions = []
         self.service, self.library = build_nutrition_services(
             self.manager, lambda: STAMP, lambda: NOW, activity_summaries=self.summaries

@@ -1,4 +1,3 @@
-import sqlite3
 import unittest
 from datetime import UTC, date, timedelta
 from types import SimpleNamespace
@@ -852,7 +851,7 @@ class GarminPayloadServiceTests(unittest.TestCase):
         self.assertEqual(empty["source_freshness"]["gear"]["freshness"], "current")
 
     def setUp(self):
-        self.database = temp_database(self, "test.sqlite3", row_factory=sqlite3.Row)
+        self.database = temp_database(self, "test.sqlite3")
         self.key_values = KeyValueRepository(lambda: "2026-09-20T12:00:00")
         self.sync_state = SyncStateRepository(
             self.database,

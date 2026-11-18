@@ -14,8 +14,8 @@ class TrainingTemplateToolTests(unittest.TestCase):
     def test_restore_batch_uses_current_manager_and_rolls_back_prior_write(
         self,
     ) -> None:
-        old_manager = temp_database(self, "old.db", row_factory=None)
-        current_manager = temp_database(self, "current.db", row_factory=None)
+        old_manager = temp_database(self, "old.db")
+        current_manager = temp_database(self, "current.db")
         for manager in (old_manager, current_manager):
             with manager.unit_of_work() as db:
                 db.execute("CREATE TABLE writes (template_id TEXT PRIMARY KEY)")
@@ -99,7 +99,7 @@ class TrainingTemplateToolTests(unittest.TestCase):
         self,
     ) -> None:
         # #3080, scripted: the Coach creates a template the library already has.
-        manager = temp_database(self, "library.db", row_factory=None)
+        manager = temp_database(self, "library.db")
         easy = {
             "id": "11111111-1111-4111-8111-111111111111",
             "name": "Lockerer Dauerlauf",

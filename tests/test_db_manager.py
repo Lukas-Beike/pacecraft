@@ -126,7 +126,9 @@ class DatabaseManagerTests(unittest.TestCase):
         self.assertNotIn("160 MiB", doc)
 
     def make_manager(self, root: str) -> DatabaseManager:
-        return temp_database(self, path=Path(root) / "test.db", reader_count=4)
+        return temp_database(
+            self, path=Path(root) / "test.db", reader_count=4, row_factory=sqlite3.Row
+        )
 
     def test_holder_reuses_replaces_and_resets_the_active_manager(self):
         with tempfile.TemporaryDirectory() as root:
@@ -308,7 +310,10 @@ class DatabaseManagerTests(unittest.TestCase):
     def test_writer_wait_is_bounded(self):
         with tempfile.TemporaryDirectory() as root:
             manager = temp_database(
-                self, path=Path(root) / "bounded-writer.db", timeout=0.05
+                self,
+                path=Path(root) / "bounded-writer.db",
+                timeout=0.05,
+                row_factory=sqlite3.Row,
             )
             with manager.unit_of_work() as db:
                 db.execute("CREATE TABLE records (value INTEGER NOT NULL)")
@@ -349,7 +354,11 @@ class DatabaseManagerTests(unittest.TestCase):
     def test_readers_are_bounded_and_nested_reader_calls_reuse_the_lease(self):
         with tempfile.TemporaryDirectory() as root:
             manager = temp_database(
-                self, path=Path(root) / "bounded.db", reader_count=1, timeout=0.05
+                self,
+                path=Path(root) / "bounded.db",
+                reader_count=1,
+                timeout=0.05,
+                row_factory=sqlite3.Row,
             )
             with manager.reader() as first:
                 with manager.reader() as nested:
@@ -400,7 +409,9 @@ class DatabaseManagerTests(unittest.TestCase):
         self.assertEqual([1], done)
 
     def test_reader_slot_waits_count_slow_and_timed_out_waits_only(self):
-        manager = temp_database(self, "waits.db", reader_count=1, timeout=0.05)
+        manager = temp_database(
+            self, "waits.db", reader_count=1, timeout=0.05, row_factory=sqlite3.Row
+        )
         # A wait is timed only when no slot is free; a free slot costs no clock.
         clock = itertools.chain([0.0], itertools.repeat(1.5))
         with (
@@ -423,7 +434,7 @@ class DatabaseManagerTests(unittest.TestCase):
         )
 
     def make_wal_manager(self, **options) -> DatabaseManager:
-        manager = temp_database(self, "snapshot.db", **options)
+        manager = temp_database(self, "snapshot.db", **options, row_factory=sqlite3.Row)
         with manager.unit_of_work() as db:
             db.execute("PRAGMA journal_mode=WAL")
             db.execute("CREATE TABLE records (value INTEGER NOT NULL)")
@@ -621,7 +632,9 @@ class DatabaseManagerTests(unittest.TestCase):
             ),
             Row=sqlite3.Row,
         )
-        manager = temp_database(self, "pin.db", backend=backend)
+        manager = temp_database(
+            self, "pin.db", backend=backend, row_factory=sqlite3.Row
+        )
         with manager.unit_of_work() as db:
             db.execute("CREATE TABLE records (value INTEGER NOT NULL)")
         failing["begin"] = True
@@ -635,7 +648,7 @@ class DatabaseManagerTests(unittest.TestCase):
     def test_idle_job_claims_leave_the_revision_alone(self):
         # The sync and Coach workers claim about once a second; with nothing
         # due they change no row, so the kept summaries stay (#3043).
-        manager = temp_database(self, "claims.db", schema=True)
+        manager = temp_database(self, "claims.db", schema=True, row_factory=sqlite3.Row)
         sync_jobs = SyncJobStore(
             manager, lambda: "2026-11-15T08:00:00+00:00", lambda: "job-1"
         )
@@ -1200,7 +1213,7 @@ class WriterGateTests(unittest.TestCase):
             holding.join(5)
 
     def make_manager(self) -> DatabaseManager:
-        manager = temp_database(self, "gate.db")
+        manager = temp_database(self, "gate.db", row_factory=sqlite3.Row)
         with manager.unit_of_work() as db:
             db.execute("PRAGMA journal_mode=WAL")
             db.execute("CREATE TABLE records (value INTEGER NOT NULL)")

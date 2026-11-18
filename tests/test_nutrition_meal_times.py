@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import sqlite3
 import unittest
 from datetime import UTC, datetime
 from unittest.mock import Mock
@@ -19,9 +18,7 @@ from backend.nutrition.sync import IntervalsNutritionSyncService
 
 class NutritionMealTimeTests(unittest.TestCase):
     def setUp(self) -> None:
-        self.manager = temp_database(
-            self, "meal_times.db", row_factory=sqlite3.Row, schema=True
-        )
+        self.manager = temp_database(self, "meal_times.db", schema=True)
         self.service, _ = build_nutrition_services(
             self.manager,
             lambda: "2026-09-24T12:00:00+00:00",

@@ -8,7 +8,6 @@ No network, no real ``.env``, no data directory and no provider account.
 
 from __future__ import annotations
 
-import sqlite3
 import threading
 import unittest
 from datetime import UTC, datetime
@@ -66,9 +65,7 @@ def build_endpoint(
     garmin_configured: bool,
 ) -> tuple[SyncCommandEndpoint, DatabaseManager]:
     """Wire the real configured checks, queue and a temporary database for a case."""
-    database = temp_database(
-        case, "admission.sqlite", row_factory=sqlite3.Row, schema=True
-    )
+    database = temp_database(case, "admission.sqlite", schema=True)
     identifiers = iter(f"job-{index}" for index in range(1, 100))
     store = SyncJobStore(database, NOW.isoformat, lambda: next(identifiers))
     queue = SyncJobQueueService(
@@ -100,7 +97,7 @@ def build_endpoint(
 
 def stored_jobs(database: DatabaseManager) -> int:
     with database.unit_of_work() as db:
-        return int(db.execute("SELECT COUNT(*) FROM sync_jobs").fetchone()[0])
+        return int(db.execute("SELECT COUNT(*) AS n FROM sync_jobs").fetchone()["n"])
 
 
 class ConfiguredProviderTests(unittest.TestCase):

@@ -152,9 +152,7 @@ class DailySyncMarkerServiceTests(unittest.TestCase):
         self.service.mark("garmin", self.local_time)
         self.manager.close()
 
-        reopened_manager = temp_database(
-            self, path=self.database_path, row_factory=sqlite3.Row
-        )
+        reopened_manager = temp_database(self, path=self.database_path)
         reopened_service = DailySyncMarkerService(
             reopened_manager,
             KeyValueRepository(lambda: "2026-01-01T00:00:00+00:00"),
