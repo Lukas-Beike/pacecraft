@@ -23,6 +23,7 @@ from __future__ import annotations
 import argparse
 import faulthandler
 import fnmatch
+import importlib.util
 import json
 import os
 import platform
@@ -159,15 +160,62 @@ def select_shard(
     return [test for test in tests if assignment[class_key(test)] == shard - 1]
 
 
+# The schema evidence modules (#3542): their tests and subtests are listed after
+# the run, and one skipped for SQLCipher fails where SQLCipher is installed.
+EVIDENCE_MODULES = frozenset(
+    {
+        "test_db_migrations",
+        "test_db_encrypted_upgrade_matrix",
+        "test_database_restore_validation",
+    }
+)
+
+
+def sqlcipher_installed() -> bool:
+    return importlib.util.find_spec("sqlcipher3") is not None
+
+
 class ClassTimingResult(unittest.TextTestResult):
     """Attribute the wall time since the previous finished test to each test's
-    class, so setUpClass counts towards the class that needs it."""
+    class, so setUpClass counts towards the class that needs it; also note the
+    outcome of each schema evidence test and subtest (#3542)."""
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.class_seconds: dict[str, float] = {}
         self._mark = time.perf_counter()
         self.executed_ids: list[str] = []
+        # (test id, subtest parameters or "", outcome), in run order.
+        self.evidence: list[tuple[str, str, str]] = []
+
+    def _note(self, test, outcome: str, subtest=None) -> None:
+        if type(test).__module__.rsplit(".", 1)[-1] not in EVIDENCE_MODULES:
+            return
+        params = getattr(subtest, "params", None) or {}
+        label = ", ".join(f"{key}={value}" for key, value in params.items())
+        if subtest is not None and not label:
+            label = str(getattr(subtest, "_message", "") or "subtest")
+        self.evidence.append((test.id(), label, outcome))
+
+    def addSuccess(self, test):
+        super().addSuccess(test)
+        self._note(test, "passed")
+
+    def addSkip(self, test, reason):
+        super().addSkip(test, reason)
+        self._note(test, f"skipped: {reason}")
+
+    def addFailure(self, test, err):
+        super().addFailure(test, err)
+        self._note(test, "failed")
+
+    def addError(self, test, err):
+        super().addError(test, err)
+        self._note(test, "error")
+
+    def addSubTest(self, test, subtest, err):
+        super().addSubTest(test, subtest, err)
+        self._note(test, "passed" if err is None else "failed", subtest)
 
     def startTest(self, test):
         self.executed_ids.append(test.id())
@@ -179,6 +227,62 @@ class ClassTimingResult(unittest.TextTestResult):
         key = class_key(test)
         self.class_seconds[key] = self.class_seconds.get(key, 0.0) + now - self._mark
         self._mark = now
+
+
+def _evidence_rows(entries: list[tuple[str, str, str]]) -> list[tuple[str, str, str]]:
+    """Each test's own result, then its subtests, grouped by test in run order;
+    a test without a result of its own (a failed subtest) reads failed."""
+    order: dict[str, list[tuple[str, str]]] = {}
+    outcomes: dict[str, str] = {}
+    for test_id, label, outcome in entries:
+        subtests = order.setdefault(test_id, [])
+        if label:
+            subtests.append((label, outcome))
+        else:
+            outcomes[test_id] = outcome
+    rows = []
+    for test_id, subtests in order.items():
+        rows.append((test_id, "", outcomes.get(test_id, "failed")))
+        rows.extend((test_id, label, outcome) for label, outcome in subtests)
+    return rows
+
+
+def report_evidence(entries: list[tuple[str, str, str]]) -> bool:
+    """Print the schema evidence tests with their subtests, also into the job
+    summary on CI, and return False when one skipped for SQLCipher although
+    SQLCipher is installed (#3542)."""
+    if not entries:
+        return True
+    rows = _evidence_rows(entries)
+    print(f"Schema evidence ({len(entries)} results):")
+    for test_id, label, outcome in rows:
+        print(f"    {outcome} {label}" if label else f"  {outcome} {test_id}")
+    summary = os.environ.get("GITHUB_STEP_SUMMARY")
+    if summary:
+        table = [
+            f"| {test_id} | {label or '—'} | {outcome} |"
+            for test_id, label, outcome in rows
+        ]
+        with open(summary, "a", encoding="utf-8") as handle:
+            handle.write(
+                "### Schema evidence\n\n| Test | Subtest | Result |\n| --- | --- | --- |\n"
+                + "\n".join(table)
+                + "\n\n"
+            )
+    skipped = [
+        test_id
+        for test_id, label, outcome in rows
+        if not label
+        and outcome.startswith("skipped")
+        and "sqlcipher" in outcome.lower()
+    ]
+    if skipped and sqlcipher_installed():
+        for test_id in skipped:
+            print(
+                f"::error::encrypted evidence test skipped although SQLCipher is installed: {test_id}"
+            )
+        return False
+    return True
 
 
 def select_suite(tests, suite: str):
@@ -406,6 +510,7 @@ def main(args: argparse.Namespace | None = None) -> int:
         print(f"  skip reason ({len(ids)}): {reason}")
         for test_id in sorted(ids):
             print(f"    {test_id}")
+    evidence_ok = report_evidence(result.evidence)
     # Last, so a reader of the output's tail still sees which tests failed.
     for kind, entries in (("FAILED", result.failures), ("ERROR", result.errors)):
         for test, _trace in entries:
@@ -418,7 +523,7 @@ def main(args: argparse.Namespace | None = None) -> int:
         }
         if result.wasSuccessful():
             write_result(args.record_durations, recorded)
-    return 0 if result.wasSuccessful() else 1
+    return 0 if result.wasSuccessful() and evidence_ok else 1
 
 
 if __name__ == "__main__":
