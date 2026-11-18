@@ -401,6 +401,10 @@ def energy_view(
     device_neat, device_sport = _device_split(
         health, sessions, day_window, device_prediction[0] if device_rest else None
     )
+    day_predictions[DEVICE], behind = _garmin_behind(
+        device_prediction, device_neat, device_sport, bool(device_rest)
+    )
+    pending[1].extend(behind)
     rows = []
     for name in predictions:
         resting, resting_band_kcal, total, total_band = day_predictions[name]
@@ -610,8 +614,11 @@ def _so_far(
     if not today:
         return window, ([], [])
     day = day or DayInputs()
+    # Fewer day steps than the sessions' own: the day summary lags behind the
+    # activity, so its everyday has not arrived yet either (#3530).
+    behind = day.steps is not None and day.session_steps > day.steps
     absent = {
-        "neat": window.neat_kcal_raw is None and day.steps is None,
+        "neat": (window.neat_kcal_raw is None and day.steps is None) or behind,
         "sport": window.sport_kcal_raw is None and not sessions,
         "tef": not day.entries,
     }
@@ -628,6 +635,22 @@ def _so_far(
     active = _number(garmin_day.get("active_kcal"))
     device = ["neat", "sport"] if active is None else []
     return cast(EnergyWindow, shown), (pending, device)
+
+
+def _garmin_behind(
+    prediction: Prediction,
+    neat: float | None,
+    sport: float | None,
+    today: bool,
+) -> tuple[Prediction, list[str]]:
+    """Today Garmin's day summary can lag behind its activity: its active kcal
+    is then below the session's, and everyday would come out negative. The
+    row then counts the session so far and shows everyday as not there yet,
+    instead of "–" (#3530)."""
+    resting = prediction[0]
+    if not today or resting is None or neat is not None or sport is None:
+        return prediction, []
+    return (resting, None, resting + sport, None), ["neat"]
 
 
 def _part_so_far(

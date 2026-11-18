@@ -179,10 +179,16 @@ def _number(value: Any) -> float | None:
     return None if math.isnan(number) else number
 
 
-def _duration_s(summary: Mapping[str, Any]) -> float | None:
-    return _number(summary.get("moving_duration_s")) or _number(
-        summary.get("elapsed_duration_s")
-    )
+def _duration_s(
+    summary: Mapping[str, Any], elapsed_first: bool = False
+) -> float | None:
+    """A session's moving time, else its elapsed time; with ``elapsed_first``
+    the other way round: a strength session's MET covers its rests between
+    sets, which its moving time leaves out (#3530)."""
+    keys = ["moving_duration_s", "elapsed_duration_s"]
+    if elapsed_first:
+        keys.reverse()
+    return _number(summary.get(keys[0])) or _number(summary.get(keys[1]))
 
 
 def _mass(
@@ -270,7 +276,7 @@ def session_cost(
     """
     day = date.fromisoformat(str(summary.get("started_at_local") or "")[:10])
     sport = str(summary.get("sport") or "")
-    duration = _duration_s(summary)
+    duration = _duration_s(summary, elapsed_first=sport in STRENGTH_SPORTS)
     steps = _session_steps(summary, sport, duration, step_m)
     climb = (
         max(0.0, _number(summary.get("elevation_gain_m")) or 0.0)

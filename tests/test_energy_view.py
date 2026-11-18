@@ -643,6 +643,24 @@ class SelectedDayTests(unittest.TestCase):
         self.assertEqual(30, km["split"]["tef_kcal"])
         self.assertEqual([], km["pending_parts"])
 
+    def test_today_fewer_day_steps_than_session_steps_leave_everyday_pending(
+        self,
+    ) -> None:
+        # #3530: 500 day steps but 1,500 in the synced session: the day summary
+        # lags behind, so everyday has not arrived yet; a past day keeps its value.
+        today = END + timedelta(days=1)
+        session = {"started_at_local": f"{today}T17:00:00", "sport": "strength"}
+        behind = DayInputs(
+            weight_kg=80.0, steps=500.0, session_steps=1500.0,
+            neat_kcal=13.0, sport_kcal=160.0, activity_kcal=173.0,
+        )  # fmt: skip
+        km = row(self.view(today, {today: behind}, sessions=[session]), "katch_mcardle")
+        self.assertIn("neat", km["pending_parts"])
+        self.assertNotIn("sport", km["pending_parts"])
+        past = END - timedelta(days=2)
+        km = row(self.view(past, {past: behind}, sessions=[session]), "katch_mcardle")
+        self.assertEqual([], km["pending_parts"])
+
     def test_today_is_partial_and_a_past_day_has_garmin_values(self) -> None:
         today = END + timedelta(days=1)
         view = self.view(today, {today: DayInputs(weight_kg=80.0, sport_kcal=0.0)})
@@ -669,6 +687,46 @@ class SelectedDayTests(unittest.TestCase):
             day=today,
         )
         return row(view, "device")
+
+    def test_today_a_garmin_summary_behind_its_session_shows_everyday_pending(
+        self,
+    ) -> None:
+        # #3530: the session (348 kcal over 45 min) is synced, the day summary
+        # still has 150 active kcal: everyday would be negative, so it has no
+        # data yet and the day counts the session so far.
+        today = (END + timedelta(days=1)).isoformat()
+        health = garmin()
+        health[END.isoformat()] = {"resting_kcal": 2280.0, "calories": 3000.0}
+        health[today] = {"resting_kcal": 600.0, "active_kcal": 150.0}
+        session = {
+            "started_at_local": f"{today}T17:00:00",
+            "energy_kcal": 348.0,
+            "record_ids": GARMIN_IDS,
+            "elapsed_duration_s": 2700,
+        }
+        device = self.today_device(health, [session])
+        # Sport 348 - 2,280 / 1,440 x 45 = 276.75; total 2,280 + 276.75.
+        self.assertEqual(
+            (277, None, 2557),
+            (
+                device["split"]["sport_kcal"],
+                device["split"]["neat_kcal"],
+                device["total_kcal"],
+            ),
+        )
+        self.assertIn("neat", device["pending_parts"])
+        # Once the summary catches up (405 active kcal), everyday is the rest.
+        health[today]["active_kcal"] = 405.0
+        device = self.today_device(health, [session])
+        self.assertEqual(
+            (277, 128, 2685),
+            (
+                device["split"]["sport_kcal"],
+                device["split"]["neat_kcal"],
+                device["total_kcal"],
+            ),
+        )
+        self.assertNotIn("neat", device["pending_parts"])
 
     def test_today_garmin_ruhe_is_the_newest_full_day_within_a_week(self) -> None:
         """#3443: today's resting is still counting; the row shows yesterday's."""

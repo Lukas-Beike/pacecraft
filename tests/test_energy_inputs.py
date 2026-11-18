@@ -107,6 +107,21 @@ class EnergyInputsReaderTests(unittest.TestCase):
         self.assertAlmostEqual(second.sport_kcal or 0.0, 790.421, places=2)
         self.assertEqual((third.neat_kcal, third.sport_kcal), (None, None))
 
+    def test_a_strength_session_is_priced_over_its_elapsed_time(self) -> None:
+        # #3530: Garmin's moving time of a strength session leaves out the rests
+        # between sets, which its MET covers: 19.4 of 45 minutes gave 70 kcal.
+        gym = {"id": "legs", "sport": "strength", "started_at_local": "2026-10-03T18:00:00",
+               "moving_duration_s": 1163, "elapsed_duration_s": 2700}  # fmt: skip
+        _inputs, costs = read_energy_inputs(None, sources(sessions=[gym]), DAY1, DAY3)
+        # (3.5 - 1) x 1,680 kcal/day x 2,700 s / 86,400 s = 131.25 kcal.
+        self.assertEqual("met", costs[0].method)
+        self.assertAlmostEqual(131.25, costs[0].kcal or 0.0, places=2)
+        # Without an elapsed time the moving time still prices it.
+        del gym["elapsed_duration_s"]
+        _inputs, costs = read_energy_inputs(None, sources(sessions=[gym]), DAY1, DAY3)
+        # 2.5 x 1,680 x 1,163 / 86,400 = 56.535 kcal.
+        self.assertAlmostEqual(56.535, costs[0].kcal or 0.0, places=2)
+
     def test_a_day_without_sessions_has_sport_zero(self) -> None:
         # Known to be zero, not unknown: 70 x 10,000 x 0.747 x 2.01 = 1,051,029 J
         # plus floors 82,404 J = 270.897 kcal NEAT, all of the activity.
