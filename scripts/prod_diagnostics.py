@@ -157,7 +157,7 @@ SECTION_FIELDS = {
         r"|weighins|sessions|unpriced_sessions|rmr_source|skinfolds_with_body_fat"
         r"|newest_skinfold_age_days|body_resolved|body_missing|body_source"
         r"|body_source_windows\.(skinfold|entered|device|profile|none)"
-        r"|today_resting_days_back"
+        r"|today_resting_days_back|store_method_windows\.(measured|forbes)"
     ),
     # The entered body days mirrored to Garmin Connect, counts only (#3403).
     "garmin_body_push": re.compile(

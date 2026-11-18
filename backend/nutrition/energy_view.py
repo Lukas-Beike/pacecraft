@@ -465,6 +465,9 @@ def energy_view(
             "split": own_split,
             # A window method: its days, shown as "Ø pro Tag, letzte 28 Tage" (#3395, #3513).
             "window_days": latest.days,
+            # "measured" from two dated body fat measurements, else "forbes";
+            # None without an estimate (#3477).
+            "store_method": latest.store_method,
         }
     )
     return {

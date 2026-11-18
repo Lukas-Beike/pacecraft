@@ -18,6 +18,7 @@ from datetime import UTC, date, timedelta
 from types import MappingProxyType
 from typing import Any
 
+from backend.athlete.profile import profile_body_fat_history
 from backend.canonical.ordering import observation_order
 from backend.canonical.records import Observation
 from backend.canonical.vocabulary import MetricKind, ProviderId
@@ -66,11 +67,21 @@ def read_body_inputs(
         start=today - timedelta(days=BODY_FAT_READ_DAYS),
         end=today,
     )
+    # Earlier profile values are dated entered ones; an entry of that day wins
+    # (athlete decision, #3477). Only a database holds the change history.
+    profile = (
+        profile_body_fat_history(db, today - timedelta(days=BODY_FAT_READ_DAYS))
+        if hasattr(db, "execute")
+        else {}
+    )
     return CanonicalBodyInputs(
         garmin_weight_kg=_daily(weights, ProviderId.GARMIN, today, WEIGHT_BOUNDS),
         garmin_body_fat_pct=_daily(body_fat, ProviderId.GARMIN, today, BODY_FAT_BOUNDS),
         entered_weight_kg=_daily(weights, None, today, WEIGHT_BOUNDS),
-        entered_body_fat_pct=_daily(body_fat, None, today, BODY_FAT_BOUNDS),
+        entered_body_fat_pct={
+            **{day: value for day, value in profile.items() if day <= today},
+            **_daily(body_fat, None, today, BODY_FAT_BOUNDS),
+        },
     )
 
 

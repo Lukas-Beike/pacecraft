@@ -300,6 +300,39 @@ class ChangeHistoryTests(unittest.TestCase):
         self.assertNotIn("secret", row["diff"])
         self.assertEqual(row["before_hash"], record["before_hash"])
 
+    def test_earlier_profile_body_fat_values_are_dated_measurements(self):
+        # #3477: each saved profile body fat counts as an entered measurement
+        # on the (UTC) day of its save; text and out-of-range values do not.
+        from backend.athlete.profile import profile_body_fat_history
+
+        for before, after in (
+            ("", "18,5"),
+            ("18,5", "abc"),
+            ("abc", "95"),
+            ("95", "17"),
+        ):
+            change_history.record_change(
+                self.db, "profile", "profile", "update",
+                {"body_fat_pct": before}, {"body_fat_pct": after},
+            )  # fmt: skip
+        today = datetime.now(UTC).date()
+        self.assertEqual(
+            {today: 17.0},
+            profile_body_fat_history(self.db, today - timedelta(days=180)),
+        )
+        self.assertEqual(
+            [("18,5"), ("abc"), ("95"), ("17")],
+            [
+                value
+                for _at, value in change_history.field_values(
+                    self.db, "profile", "body_fat_pct", "2000-01-01"
+                )
+            ],
+        )
+        self.assertEqual(
+            {}, profile_body_fat_history(self.db, today + timedelta(days=1))
+        )
+
     def test_unchanged_record_is_skipped_but_undo_is_retained(self):
         value = {"name": "Same"}
         self.assertIsNone(

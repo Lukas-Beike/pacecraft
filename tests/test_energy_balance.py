@@ -76,6 +76,63 @@ class CompositionAndTrendTests(unittest.TestCase):
         self.assertEqual(balance.weight_trend({}), {})
 
 
+class MeasuredFatChangeTests(unittest.TestCase):
+    """#3477: two dated body fat measurements of one method give the measured
+    fat-mass change; otherwise Forbes stays."""
+
+    START = END - timedelta(days=27)
+
+    def inputs(self, skinfolds=None, device=None) -> balance.EnergyInputs:
+        return balance.EnergyInputs(
+            {}, skinfolds or {}, rmr_kcal=1700.0, device_body_fat=device or {}
+        )
+
+    def test_two_skinfolds_give_the_measured_change(self) -> None:
+        weights = {self.START: 80.0, END: 78.0}
+        measured = balance._measured_store(
+            self.inputs({self.START: 20.0, END: 19.0}), weights, self.START, END
+        )
+        assert measured is not None
+        # Fat 16.0 -> 14.82 kg (-1.18), lean the rest of -2.0 kg (-0.82):
+        # (-1.18 x 9,441 - 0.82 x 1,816) / 27 days = -467.8 kcal/day.
+        self.assertAlmostEqual(measured[0], -467.8, places=1)
+        # 1 percentage point per measurement: hypot(80, 78) x 1 % = 1.117 kg
+        # of fat, x (9,441 - 1,816) / 27 = 315.5 kcal/day.
+        self.assertAlmostEqual(measured[1], 315.5, places=1)
+
+    def test_one_measurement_or_mixed_methods_keep_forbes(self) -> None:
+        weights = {self.START: 80.0, END: 78.0}
+        for inputs in (
+            self.inputs({END: 19.0}),
+            # A skinfold and an entered value are never mixed.
+            self.inputs({self.START: 20.0}, {END: (19.0, None)}),
+            # Outside the window it does not count.
+            self.inputs({self.START - timedelta(days=1): 20.0, END: 19.0}),
+        ):
+            with self.subTest(inputs.body_fat_pct):
+                self.assertIsNone(
+                    balance._measured_store(inputs, weights, self.START, END)
+                )
+        # Two entered values (the profile history counts as entered) do count.
+        entered = self.inputs(device={self.START: (20.0, None), END: (19.0, None)})
+        self.assertIsNotNone(balance._measured_store(entered, weights, self.START, END))
+
+    def test_the_window_names_its_method(self) -> None:
+        inputs = series(constant(2100.0), days=28)
+        first, last = min(inputs.days), max(inputs.days)
+        for fats, method in (({}, "forbes"), ({first: 20.0, last: 19.5}, "measured")):
+            with self.subTest(method):
+                window = balance._window(
+                    replace(inputs, body_fat_pct=fats),
+                    balance.weight_trend(
+                        {d: v.weight_kg for d, v in inputs.days.items() if v.weight_kg}
+                    ),
+                    END,
+                    1.0,
+                )
+                self.assertEqual(method, window.store_method)
+
+
 class AdaptiveTdeeTests(unittest.TestCase):
     def assert_recovers_tdee(self, inputs: balance.EnergyInputs) -> None:
         window = balance.energy_windows(inputs, END, weeks=1)[-1]

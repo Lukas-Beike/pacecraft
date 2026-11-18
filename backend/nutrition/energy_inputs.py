@@ -621,7 +621,7 @@ def diagnostics(
     inputs: EnergyInputs,
     costs: Sequence[SessionCost],
     windows: Sequence[EnergyWindow] = (),
-) -> dict[str, int | str | None]:
+) -> dict[str, int | str | dict[str, int] | None]:
     """Counts only, no values: the read history, the latest window's basis and
     how many windows carry an estimate and the calibration."""
     days = inputs.days.values()
@@ -632,6 +632,11 @@ def diagnostics(
         "latest_window_insufficient": latest.insufficient if latest else None,
         "windows": len(windows),
         "windows_with_estimate": sum(1 for w in windows if w.adaptive_tdee),
+        # How each estimated window split fat and lean mass (#3477).
+        "store_method_windows": {
+            method: sum(1 for w in windows if w.store_method == method)
+            for method in ("measured", "forbes")
+        },
         "calibration_windows": latest.calibration_windows if latest else 0,
         "days": len(inputs.days),
         "logged_days": sum(1 for d in days if d.entries),

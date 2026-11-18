@@ -1705,8 +1705,14 @@ function energyMissingCell(reason) {
 
 // Under a row's name: the formulas' body fat source, "bis jetzt" for today, and the own row's
 // window, which a single day cannot have (#3395); it reads as a daily mean, not the day (#3513).
+// The own row also names how its weight change split into fat and lean mass (#3477).
+const ENERGY_STORE_METHODS = { measured: "Fettanteil gemessen", forbes: "Fettanteil geschätzt (Forbes)" };
+
 function energyRowNote(read, source, row) {
-  if (source === "own") return row.window_days ? [h("small", null, `Ø pro Tag, letzte ${row.window_days} Tage`)] : [];
+  if (source === "own") {
+    const parts = [row.window_days ? `Ø pro Tag, letzte ${row.window_days} Tage` : "", ENERGY_STORE_METHODS[row.store_method] || ""].filter(Boolean);
+    return parts.length ? [h("small", null, parts.join(" · "))] : [];
+  }
   const parts = [ENERGY_FORMULAS.has(source) && read.body ? `KFA: ${read.body.label}` : "", energyRestingFrom(read, row), read.day_partial ? "bis jetzt" : ""].filter(Boolean);
   return parts.length ? [h("small", null, parts.join(" · "))] : [];
 }
