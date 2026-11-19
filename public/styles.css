@@ -1907,6 +1907,7 @@ button:focus-visible, a:focus-visible, summary:focus-visible {
 .energy-split { display: flex; height: 12px; margin-bottom: 4px; overflow: hidden; border-radius: 6px; background: var(--surface-raised); }
 :is(.energy-split, .energy-split-legend) [data-part="resting"] { --part-color: var(--training-zone-1); }
 :is(.energy-split, .energy-split-legend) [data-part="neat"] { --part-color: var(--training-zone-2); }
+:is(.energy-split, .energy-split-legend) [data-part="unmeasured"] { --part-color: var(--training-zone-3); }
 :is(.energy-split, .energy-split-legend) [data-part="sport"] { --part-color: var(--training-zone-4); }
 :is(.energy-split, .energy-split-legend) [data-part="tef"] { --part-color: var(--training-zone-6); }
 .energy-split-legend [data-part="shared"] { --part-color: var(--muted); }

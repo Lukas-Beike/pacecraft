@@ -400,7 +400,10 @@ and `split` (`resting_kcal`, `neat_kcal`, `sport_kcal`, `tef_kcal`, and
 computes alike; null until
 known); null without a basis; `own` also has `resting_implausible`, true
 when its residual band lies entirely below the resting reference band,
-with its resting value and band then null), `best` (the source whose lead over the next
+with its resting value and band then null; where its residual exceeds
+the resting reference, its `resting_kcal` and band are the reference's
+and `split` adds `resting_source` (`katch_mcardle` or `device`),
+`unmeasured_kcal` and `unmeasured_band_kcal`, #3550), `best` (the source whose lead over the next
 exceeds the adaptive TDEE's mean band over at least 4 shared windows,
 else null), `fit` (`shared_windows`, `windows`, `min_windows`,
 `reference_band_kcal`), `strength` (the day's strength sessions with `rpe`, local first, the

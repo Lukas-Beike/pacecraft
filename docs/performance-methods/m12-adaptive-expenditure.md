@@ -70,7 +70,16 @@ estimate. It never rewrites logged values and never falls back to a formula.
    with its M13 band, else Garmin's mean resting value without a band), it
    is shown as "nicht plausibel" instead of a value; TDEE stays shown.
    Overlapping bands, or no reference, keep the value (athlete decision
-   2026-11-16), with its short reason in the row. The table's small "i"
+   2026-11-16), with its short reason in the row.
+   **Unmeasured everyday energy (#3550):** NEAT counts steps and floors
+   only, so standing, housework and unrecorded movement end up in the
+   residual. Where the residual exceeds that same resting reference, the
+   own row shows Ruhe at the reference (with its band) and the excess as
+   "nicht erfasster Alltag" with the residual's band; the total and the
+   other rows are unchanged. It is a named remainder, not an estimate: it
+   also carries logging and activity-model errors. Learning it as an offset
+   for the formula rows is a later step (athlete decision 2026-11-18).
+   The table's small "i"
    shows NEAT's inputs over the window: steps per day, the steps sessions
    take out, the step length with its source and the floors outside
    sessions.
