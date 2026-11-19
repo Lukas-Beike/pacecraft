@@ -34,18 +34,17 @@ WRITES = {
 FILE_FLAGS, TEXT_FLAGS = ("--body-file", "-F"), ("--body", "-b")
 # The `validate` step's "Require an issue link in the PR body" regex and message
 # (.github/workflows/validate-conventions.yml); [[:alnum:]_] is \w.
-ISSUE_LINK = re.compile(
-    r"(?:^|\W)(?:[Cc]loses|[Ff]ixes|[Rr]esolves|[Pp]art of) #[0-9]+"
-)
+ISSUE_LINK = re.compile(r"(?:^|\W)(?:[Cc]loses|[Ff]ixes|[Rr]esolves|[Pp]art of) #\d+")
 LINK_MESSAGE = (
     "The PR body must name its issue with 'Closes #N' (completes it) or "
     "'Part of #N' (one of several PRs)."
 )
 LINKED_WRITES = {"create", "edit"}  # gh pr writes whose body is the PR body
 OTHER_TARGET = {"-R", "--repo", "--web", "-w"}  # not this repository's CI
-# A file the command itself writes: `> F`, `>> F`, `tee F`, `Out-File F`, ...
+# A file the command itself writes: `> F`, `>F`, `>> F`, `tee F`, `Out-File F`,
+# ...; a redirect needs no space before its file (Gitar, #3535).
 WRITTEN = re.compile(
-    r"(?:>>?|\btee|\bOut-File|\bSet-Content)\s+(?:-\w+\s+)*[\"']?([^\s\"';&|()]+)",
+    r"(?:>>?\s*|(?:\btee|\bOut-File|\bSet-Content)\s+)(?:-\w+\s+)*[\"']?([^\s\"';&|()]+)",
     re.IGNORECASE,
 )
 
@@ -128,8 +127,13 @@ def _gh_writes(words: list[str]) -> list[tuple[str, str, int]]:
 
 def _file_bodies(values: list[str], cwd: Path, written: set[str]) -> list[str]:
     """The known texts of body files: not stdin, not written by the command
-    itself, not missing."""
-    texts = (_file_text(v, cwd) for v in values if v != "-" and v not in written)
+    itself (`./b.md` is `b.md`, Gitar #3535), not missing."""
+
+    def where(path: str) -> str:
+        return os.path.normcase(os.path.abspath(_local(path, cwd)))
+
+    ours = {where(path) for path in written}
+    texts = (_file_text(v, cwd) for v in values if v != "-" and where(v) not in ours)
     return [text for text in texts if text is not None]
 
 

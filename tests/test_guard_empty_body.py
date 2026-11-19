@@ -154,6 +154,10 @@ class GuardEmptyBodyTests(unittest.TestCase):
             "gh issue comment 1 --body-file refs.md && gh pr edit 1 --body-file part.md",
             # The command writes the body first: its new content is unknown.
             "gh pr view 1 --json body -q .body > refs.md && gh pr edit 1 -F refs.md",
+            # Gitar (#3535): a redirect without a space, or another spelling of
+            # the same path, also writes the body first.
+            "printf 'Closes #1' >refs.md && gh pr create --title t -F refs.md",
+            "printf 'Closes #1' > ./refs.md && gh pr create --title t -F refs.md",
             # Bypass review (#3535): gh gets these bodies after expansion, so they
             # are unknown here and never blocked by mistake.
             'gh pr create --title t --body "$BODY"',
