@@ -15,10 +15,13 @@ commit subject against the Conventional Commit types, and with --push pushes wit
 hooks (never --no-verify). The hooks need the SonarQube CLI on PATH. A push
 that adds a file at the repository root is refused unless --allow-root names it.
 A rebase conflict only in generated text (scripts/regenerate_docs.py) takes the
-upstream side, regenerates and continues; a conflict only in method version
-lines (METHOD_VERSION, a card's version and Method ID) adds the replayed bump to
-upstream's (#3649); any other conflict stops. A version bump that the rebase
-absorbs (both sides bumped to the same number) refuses after the rebase. Changed
+upstream side, regenerates and continues; a conflict block holding method
+version lines (METHOD_VERSION, a card's version and Method ID) adds the replayed
+bump to upstream's and merges its other lines one by one, such as a card's
+Status edited on one side (#3649, #3698); any other conflict stops. A version
+bump that the rebase absorbs (both sides bumped to the same number) refuses
+after the rebase, unless --bump-method takes the target's number + 1 for it,
+regenerates the cards' tables and commits that (#3698). Changed
 e2e/ and public/ scripts must pass `node --check` before the push (#3031).
 After the rebase, a node_modules that does not match package-lock.json (as
 tests/frontend-harness.cjs checks it) gets `npm ci --ignore-scripts` before
@@ -143,6 +146,11 @@ BLOCK = re.compile(
 )
 
 
+# --bump-method: both sides bumped to the same number take upstream's + 1
+# instead of stopping for a person (#3698).
+BUMP_ON_TOP = [False]
+
+
 def bumped(ours: str, base: str, theirs: str) -> str | None:
     """One version line with the replayed commit's bump on top of upstream's,
     or None when the three lines are not the same kind of version line."""
@@ -155,9 +163,10 @@ def bumped(ours: str, base: str, theirs: str) -> str | None:
         return None
     # Both bumped to the same number: the code line merged silently there, so
     # the card stays a conflict for a person rather than run ahead (#3649).
-    if int(o[2]) == int(t[2]) != int(b[2]):
+    same = int(o[2]) == int(t[2]) != int(b[2])
+    if same and not BUMP_ON_TOP[0]:
         return None
-    number = int(o[2]) + int(t[2]) - int(b[2])
+    number = int(o[2]) + 1 if same else int(o[2]) + int(t[2]) - int(b[2])
     if pattern is VERSION:
         return f"{o[1]}{number}"
     issues = o[3].split(", ")
@@ -188,13 +197,29 @@ def absorbed(onto: str, bumps: set[str]) -> bool:
     return bool(lost)
 
 
+def merged_line(ours: str, base: str, theirs: str) -> str | None:
+    """One line of a block: a version line bumped, another line taken from the
+    side that changed it (a card's Status edit next to its version, #3698),
+    None when both changed it differently."""
+    if VERSION.match(ours) or METHOD_ID.match(ours):
+        return bumped(ours, base, theirs)
+    if theirs in (ours, base):
+        return ours
+    return theirs if ours == base else None
+
+
 def merged_block(match: re.Match[str]) -> str:
-    """A diff3 conflict block of version lines only, resolved; else unchanged."""
+    """A diff3 conflict block holding version lines, merged line by line when
+    every other line changed on one side only; else unchanged."""
     sides = [match[n].splitlines() for n in (1, 2, 3)]
     if not sides[0] or len({len(side) for side in sides}) > 1:
         return match[0]
-    lines = [bumped(*trio) for trio in zip(*sides, strict=True)]
-    return match[0] if None in lines else "".join(f"{line}\n" for line in lines)
+    lines = [merged_line(*trio) for trio in zip(*sides, strict=True)]
+    if None in lines or not any(
+        VERSION.match(o) or METHOD_ID.match(o) for o in sides[0]
+    ):
+        return match[0]
+    return "".join(f"{line}\n" for line in lines)
 
 
 def resolve_versions(root: Path, conflicts: list[str]) -> list[str]:
@@ -344,12 +369,49 @@ def rebased(onto: str, upstream: str | None = None) -> bool:
     before = git("rev-parse", "HEAD").strip()
     if not replayed(onto, upstream):
         return False
-    if absorbed(onto, bumps):
+    if BUMP_ON_TOP[0] and (lost := sorted(bumps - version_bumps(onto))):
+        bump_on_top(onto, lost)
+    elif absorbed(onto, bumps):
         # Back to the branch as it was (the tree was clean), so every rerun
         # refuses again until the bump is made (Gitar on #3663).
         git("reset", "-q", "--hard", before)
         return False
     return True
+
+
+def bump_on_top(onto: str, files: list[str]) -> None:
+    """Set each absorbed version line to the target's number + 1, regenerate
+    the method cards' tables and commit it (--bump-method, #3698)."""
+    root = Path(git("rev-parse", "--show-toplevel").strip())
+    for name in files:
+        target = {
+            m[1]: int(m[2])
+            for line in git("show", f"{onto}:{name}").splitlines()
+            if (m := VERSION.match(line) or METHOD_ID.match(line))
+        }
+        text = (root / name).read_text(encoding="utf-8")
+        for prefix, number in target.items():
+            text = re.sub(
+                rf"^{re.escape(prefix)}{number}\b",
+                f"{prefix}{number + 1}",
+                text,
+                flags=re.MULTILINE,
+            )
+        (root / name).write_text(text, encoding="utf-8", newline="")
+    cards = tuple(
+        d
+        for d in regenerate_docs.GENERATED
+        if "performance-methods" in d and (root / d).exists()
+    )
+    regenerate(root, cards)
+    git("add", "--", *files, *cards)
+    git(
+        "commit",
+        "-q",
+        "-m",
+        f"chore(tooling): bump the method version on top of {onto}",
+    )
+    print(f"bumped the method version on top of {onto}: {', '.join(files)}")
 
 
 def replayed(onto: str, upstream: str | None) -> bool:
@@ -532,11 +594,17 @@ def main(argv: list[str] | None = None) -> int:
         help="restack onto the target after this merged pull request (#3243)",
     )
     parser.add_argument(
+        "--bump-method",
+        action="store_true",
+        help="when both sides bumped a method version to the same number, take the target's + 1 (#3698)",
+    )
+    parser.add_argument(
         "--to",
         metavar="BRANCH",
         help="the origin branch --push updates, when it differs from the local name (#3270)",
     )
     args = parser.parse_args(argv)
+    BUMP_ON_TOP[0] = args.bump_method
     try:
         return sync(
             args.onto, args.push, frozenset(args.allow_root), args.after_pr, args.to
