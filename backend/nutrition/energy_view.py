@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import math
 import statistics
-from collections.abc import Container, Mapping, Sequence
+from collections.abc import Callable, Container, Mapping, Sequence
 from dataclasses import replace
 from datetime import date, timedelta
 from typing import Any, Final, cast
@@ -1399,12 +1399,33 @@ def own_history(
     return inputs, energy_windows(inputs, end), sources.daily_health(db, start, end)
 
 
+def fit_start(end: date) -> date:
+    """The first day Verlauf's longest period reads (#3704)."""
+    return min(history_start(end), end - timedelta(days=max(FIT_PERIODS.values()) - 1))
+
+
+def read_fit_inputs(db: Any, sources: EnergySources, end: date) -> EnergyInputs | None:
+    """The inputs of Verlauf's periods ending on ``end``: their own read where
+    the longest reaches back past the 12 windows (#3704), else None. They
+    depend on the stored rows and ``end`` only, so a caller may keep them."""
+    first = fit_start(end)
+    if first >= history_start(end):
+        return None
+    return read_energy_inputs(db, sources, first, end)[0]
+
+
 def read_energy_view(
-    db: Any, sources: EnergySources, end: date, day: date | None = None
+    db: Any,
+    sources: EnergySources,
+    end: date,
+    day: date | None = None,
+    fit_inputs: Callable[[], EnergyInputs | None] | None = None,
 ) -> dict[str, Any]:
     """Read the 12-week history ending on ``end`` and build the view of ``day``.
 
     ``day`` (default ``end``) may be today, after ``end``, or before the history.
+    ``fit_inputs`` serves Verlauf's periods' inputs (``read_fit_inputs``) a
+    caller keeps; without it they are read here.
     """
     day = day or end
     # The 12-week span stays fixed; an older diary day is read beside it with
@@ -1412,14 +1433,11 @@ def read_energy_view(
     start = history_start(end)
     last = max(end, day)
     inputs, costs = read_energy_inputs(db, sources, start, last, older_day=day)
-    # Verlauf's longest period reaches back past the 12 windows (#3704).
-    fit_start = min(start, end - timedelta(days=max(FIT_PERIODS.values()) - 1))
-    fit_inputs = (
-        read_energy_inputs(db, sources, fit_start, last, older_day=day)[0]
-        if fit_start < start
-        else None
-    )
-    health = sources.daily_health(db, min(fit_start, day), last)
+    # Verlauf's longest period reaches back past the 12 windows (#3704); its
+    # read costs as much again, so a caller keeps it until the rows change.
+    first = fit_start(end)
+    periods = fit_inputs() if fit_inputs else read_fit_inputs(db, sources, end)
+    health = sources.daily_health(db, min(first, day), last)
     windows = energy_windows(inputs, end)
     _, missing = skinfold_state(db, sources, inputs, day)
     # The bias comes from the windows already built, not a second build (Gitar).
@@ -1432,7 +1450,7 @@ def read_energy_view(
         body_missing=missing,
         day=day,
         goal=sources.profile(),
-        fit_inputs=fit_inputs,
+        fit_inputs=periods,
     )
     # Digestion counts kcal without macros at 10 %, so it is estimated (#3617).
     view["tef_estimated"] = inputs.days.get(day, DayInputs()).uncovered_kcal > 0
