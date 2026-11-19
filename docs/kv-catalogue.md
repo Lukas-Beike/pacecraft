@@ -51,7 +51,7 @@ read. A new key needs no entry: it appears here when its write is added.
 | `equipment_rule:<value>` | backend/athlete/equipment.py:EquipmentService.save_rule<br>backend/athlete/equipment_history.py:_EquipmentRecordHistory._write | backend/athlete/equipment_history.py:_EquipmentRecordHistory._delete | yes | - | - |
 | `equipment_rule_apply:<value>` | backend/athlete/equipment.py:EquipmentService._apply_rule<br>backend/athlete/equipment_history.py:_EquipmentRecordHistory._write | backend/athlete/equipment_history.py:_EquipmentRecordHistory._delete | yes | - | - |
 | `fit_inventory` | backend/sync/stream_backfill.py:count_fit_file | - | yes | - | - |
-| `fit_value_probe` | backend/sync/stream_backfill.py:count_fit_file | - | yes | - | - |
+| `fit_value_probe` | - | backend/sync/rating_backfill_removal.py:RatingBackfillRemoval.run_batch | yes | - | - |
 | `garmin_activity_detail_backfill` | backend/sync/garmin_activity_details.py:GarminActivityDetailService._save_backfill_state<br>backend/sync/garmin_activity_details.py:GarminActivityDetailService._store_records | - | yes | - | - |
 | `garmin_app_workout_cleanup` | backend/sync/garmin_strength_push.py:GarminStrengthPushService._save_cleanup | - | yes | - | - |
 | `garmin_body_push_counts` | backend/sync/garmin_body_push.py:GarminBodyPushService._count | - | yes | - | - |
