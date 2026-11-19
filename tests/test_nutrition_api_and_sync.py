@@ -68,7 +68,7 @@ class NutritionHttpApiTests(unittest.TestCase):
 
     def test_history_period_is_forwarded(self) -> None:
         self.diary_service.sync_status.get_week_summary.return_value = {"days": []}
-        for count in (7, 14, 84):
+        for count in (7, 28, 91, 182):
             self.handler.path = f"/api/nutrition/week?days={count}"
             self.assertTrue(
                 dispatch_route(self.get_routes, self.handler, "/api/nutrition/week")
@@ -301,7 +301,7 @@ class NutritionHttpApiTests(unittest.TestCase):
     def test_nutrition_refresh_week_uses_requested_range(self) -> None:
         self.handler.read_json.return_value = {
             "area": "week",
-            "days": 84,
+            "days": 182,
             "date": "2026-09-23",
         }
         self.nutrition_refresh_service.refresh_nutrition.return_value = {
@@ -313,7 +313,7 @@ class NutritionHttpApiTests(unittest.TestCase):
         )
 
         self.nutrition_refresh_service.refresh_nutrition.assert_called_once_with(
-            "daily_stats", date(2026, 7, 2), date(2026, 9, 23)
+            "daily_stats", date(2026, 3, 26), date(2026, 9, 23)
         )
         self.handler.send_json.assert_called_once_with(
             200, {"ok": True, "area": "week", "status": "partial"}
@@ -353,12 +353,20 @@ class NutritionHttpApiTests(unittest.TestCase):
         )
 
     def test_nutrition_refresh_rejects_invalid_range(self) -> None:
-        self.handler.read_json.return_value = {"area": "week", "days": 15}
-
-        with self.assertRaises(AppError):
-            dispatch_route(
-                self.post_routes, self.handler, "/api/nutrition/refresh", method="POST"
-            )
+        # The week takes Verlauf's 28, 91 or 182 days (#3704), the body 14 or 84.
+        for payload in (
+            {"area": "week", "days": 15},
+            {"area": "week", "days": 84},
+            {"area": "body", "days": 28},
+        ):
+            self.handler.read_json.return_value = payload
+            with self.assertRaises(AppError):
+                dispatch_route(
+                    self.post_routes,
+                    self.handler,
+                    "/api/nutrition/refresh",
+                    method="POST",
+                )
         self.nutrition_refresh_service.refresh_nutrition.assert_not_called()
 
     def test_put_entry_route_is_removed(self) -> None:

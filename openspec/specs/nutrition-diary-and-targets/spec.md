@@ -286,11 +286,11 @@ Detailed contract: the fat range is 20 to 30 percent of the recorded kcal divide
 Evidence: `backend/nutrition/macro_ranges.py`, `backend/http_api/nutrition.py`, `public/nutrition.js`; `tests/test_nutrition_macro_ranges.py::test_ambiguous_zone_range_uses_light_fallback`, `tests/test_nutrition_macro_ranges.py::test_multiple_sessions_and_exact_high_intensity_cutoff`, `tests/test_nutrition_macro_ranges.py::test_completed_activity_uses_actual_day_and_skips_missed_plan`, `tests/test_nutrition_macro_ranges.py::test_context_keeps_the_weight_when_plan_is_unavailable`, `tests/test_nutrition_api_and_sync.py`, `tests/nutrition-macro-ranges.test.cjs::marks complete values outside a range and avoids premature low warnings`, `e2e/nutrition-macro-ranges.spec.js`.
 
 ### Requirement: Nutrition history shows average daily calorie balance
-The nutrition history SHALL show a signed average daily calorie balance alongside the total balance for both the 14-day and 12-week views, with the count of days used and the period's day count.
+The nutrition history SHALL show a signed average daily calorie balance alongside the total balance for the 4-week, 3-month and 6-month views (28, 91 and 182 days), with the count of days used and the period's day count.
 
 #### Scenario: Complete deficit period
-- **WHEN** all 14 days have intake and expenditure and their total balance is -4,468 kcal
-- **THEN** the total remains visible and the average displays -319 kcal per day with coverage of 14 of 14 days.
+- **WHEN** all 28 days have intake and expenditure and their total balance is -8,932 kcal
+- **THEN** the total remains visible and the average displays -319 kcal per day with coverage of 28 of 28 days.
 
 #### Scenario: Partial period
 - **WHEN** only some days have both intake and expenditure in either period
@@ -364,7 +364,7 @@ A correction SHALL accept only meal date, time, time knowledge, meal type, descr
 Evidence: `backend/nutrition/diary.py::NutritionDiaryService.correct_meal`, `backend/nutrition/diary.py::NutritionDiaryService._apply_meal_correction`, `backend/nutrition/diary.py::NutritionDiaryService.add_product_to_meal`, `backend/nutrition/diary.py::NutritionDiaryService._meal_component`, `backend/nutrition/diary.py::NutritionDiaryService._extended_description`; `tests/test_nutrition_favorites_and_meal_additions.py::test_an_estimated_meal_keeps_its_values_as_the_first_component`, `tests/test_nutrition_favorites_and_meal_additions.py::test_description_keeps_the_newest_product_within_the_limit`, `tests/test_nutrition_favorites_and_meal_additions.py::test_wrapped_meal_keeps_sugar_and_salt_totals`, `tests/test_nutrition.py::test_database_values_override_model_values_and_provenance_survives_corrections`.
 
 ### Requirement: Diary and history view states
-The client SHALL show the nutrition area as Tagebuch, Verlauf, Körper and Produkte. The diary SHALL offer a date field with previous, next and "Heute", show a cached copy of the requested view at once, and let the athlete delete a meal directly after a confirmation, with a "Rückgängig" receipt. The history SHALL switch between 14 days and 12 weeks and state the coverage of every figure.
+The client SHALL show the nutrition area as Tagebuch, Verlauf, Körper and Produkte. The diary SHALL offer a date field with previous, next and "Heute", show a cached copy of the requested view at once, and let the athlete delete a meal directly after a confirmation, with a "Rückgängig" receipt. The history SHALL switch between 4 weeks, 3 months and 6 months, draw one card layout with the period in every title row, and state the coverage of every figure.
 
 #### Scenario: Empty day
 - **WHEN** a day has no entries

@@ -75,13 +75,12 @@ class NutritionBuilderTests(unittest.TestCase):
             self.assertEqual(
                 (3, date(2026, 11, 19)), (read.call_count, read.call_args.args[2])
             )
-            # A period reaching before the history reads it directly.
-            with patch.object(
-                nutrition_wiring, "read_own_day_totals", return_value={}
-            ) as direct:
-                own([date(2026, 6, 1)])
-            direct.assert_called_once()
-            self.assertEqual(3, read.call_count)
+            # A day before the 12 windows has no own total (#3641): 6 months are
+            # served from the history, with no 6-month read of their own (#3708);
+            # after the day change the kept value is the old day's until a commit,
+            # so this call reads the new day's 12 weeks once more, as any call.
+            self.assertIsNone(own([date(2026, 6, 1)])[date(2026, 6, 1)])
+            self.assertEqual(4, read.call_count)
 
     def test_intervals_sync_uses_the_current_config_and_a_fresh_diary(self) -> None:
         services = self.make_services()

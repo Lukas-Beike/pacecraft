@@ -263,30 +263,33 @@ for (const theme of ["light", "dark"]) {
       // Every row carries its split, so the outlined row has its parts.
       for (const row of data.rows) row.split ??= { resting_kcal: 1650, neat_kcal: 520, sport_kcal: 610, tef_kcal: 230 };
       // #3613: the server names the one outlined source; 12 weeks name the weigh-ins' span.
-      const twelve = { ...fitScale(84, 84, 2726, 454), span_start: "2026-08-21", span_end: "2026-11-13" };
-      await route.fulfill({ response, json: { ...data, best: null, outlined: "device", fit_scale: { "14d": fitScale(14, 28, 2690, 720), "12w": twelve } } })
+      const quarter = { ...fitScale(91, 91, 2726, 454), span_start: "2026-08-21", span_end: "2026-11-13" };
+      await route.fulfill({ response, json: { ...data, best: null, outlined: "device", fit_scale: { "28d": fitScale(28, 28, 2690, 720), "91d": quarter, "182d": { ...quarter, days: 182, own_days: 182, span_start: "2026-05-15" } } } })
         .catch((error) => { if (!GONE.test(String(error))) throw error; });
     });
     await page.goto("/#nutrition/week");
     const card = page.locator("#nutritionFitScale [data-energy-fit]");
-    await expect(card).toHaveAttribute("data-energy-fit", "14d");
+    await expect(card).toHaveAttribute("data-energy-fit", "28d");
+    // The shared title row names the period (#3704).
+    await expect(card.locator(".verlauf-head")).toHaveText("Welche Quelle trifft dein Gewicht?4 Wochen");
     await expect(card.locator(".energy-fit-verdict")).toHaveText(/^In den letzten 4 Wochen verbrauchst du rund 2\.690 kcal am Tag\. Am besten bisher: Garmin Connect \(\+467\) – noch nicht sicher\.$/);
-    await expect(card.locator("[data-energy-fit-note]")).toContainText("Ø letzte 14 Tage, dein Wert aus 4 Wochen");
+    await expect(card.locator("[data-energy-fit-note]")).toContainText("Ø 4 Wochen. ");
     // Above the Tagesverlauf.
     const [cardBox, chartBox] = await Promise.all([card.boundingBox(), page.locator("#nutritionWeekChartSection").boundingBox()]);
     expect(cardBox.y + cardBox.height).toBeLessThanOrEqual(chartBox.y);
-    await page.getByRole("button", { name: "12 Wochen" }).click();
-    await expect(card).toHaveAttribute("data-energy-fit", "12w");
+    await page.getByRole("button", { name: "3 Monate" }).click();
+    await expect(card).toHaveAttribute("data-energy-fit", "91d");
     await expect(card.locator(".energy-fit-verdict")).toHaveText(/^Vom 21\.08\. bis 13\.11\. verbrauchst du rund 2\.726 kcal am Tag\. Am besten bisher: Garmin Connect \(\+431\) – noch nicht sicher\.$/);    await expect(card.locator(".energy-fit-row")).toHaveText([/^Deine Daten2\.7262\.272–3\.180zwischen 2\.272 und 3\.180 kcal$/, /^Garmin Connect3\.157 \(\+431\)$/, /^Katch-McArdle3\.768 \(\+1\.042\)$/, /^Cunningham3\.930 \(\+1\.204\)$/]);
     await expect(card.locator(".energy-fit-row[data-inside='true']")).toHaveCount(1);
-    // At 360 px nothing in a lane overlaps another label or leaves the card.
+    // At 360 px a row's value stays right of its lane and inside the card.
     await page.setViewportSize({ width: 360, height: 800 });
     const clashes = await card.evaluate((element) => {
       const box = element.getBoundingClientRect();
       const found = [];
-      for (const lane of element.querySelectorAll(".energy-fit-lane")) {
-        const label = lane.querySelector(".energy-fit-label").getBoundingClientRect();
-        if (label.left < box.left - 1 || label.right > box.right + 1) found.push(`${label.left}-${label.right} outside`);
+      for (const row of element.querySelectorAll(".energy-fit-row")) {
+        const lane = row.querySelector(".energy-fit-lane").getBoundingClientRect();
+        const value = row.querySelector(".energy-fit-value").getBoundingClientRect();
+        if (value.left < lane.right - 1 || value.right > box.right + 1) found.push(`${value.left}-${value.right} outside`);
       }
       const ticks = [...element.querySelectorAll(".energy-fit-tick")].map((tick) => tick.getBoundingClientRect());
       ticks.slice(1).forEach((tick, index) => { if (tick.left < ticks[index].right) found.push("ticks overlap"); });
@@ -309,6 +312,7 @@ for (const theme of ["light", "dark"]) {
 const DEFICITS = {
   measured: { days: 28, deficit_kcal: 565, band_kcal: 235, method: "measured", span_days: 28, weight_start_kg: 91.2, weight_end_kg: 89.2, weight_change_kg: -2.0,
     fat_pct_start: 15.5, fat_pct_end: 14.1, fat_date_start: "2026-10-07", fat_date_end: "2026-11-13", weight_last_kg: 89.2,
+    weight_date_start: "2026-10-17", weight_date_end: "2026-11-13",
     fat_change_kg: -1.6, fat_share_pct: 80, fat_share: { share_pct: 80, prior_pct: 57, prior_source: "forbes", measured_pct: 28 },
     stored_kcal: -15820, uncertainty: "fat_share",
     total_kcal: 3800, device_total_kcal: 3100, goal: { goal: "lose", goal_kcal: 500, status: "in", distance: "near" } },
@@ -317,20 +321,23 @@ const DEFICITS = {
     stored_kcal: -11340, uncertainty: "fat_share",
     total_kcal: 3300, device_total_kcal: 2950, goal: null },
 };
+// The read holds the deficit per Verlauf period (#3704); the 4 weeks' card is the one shown first.
+const withDeficit = (read, deficit) => ({ ...read, deficit, fit_scale: { ...read.fit_scale, "28d": { ...read.fit_scale["28d"], deficit } } });
 for (const [method, deficit] of Object.entries(DEFICITS)) {
   test(`@responsive Verlauf's deficit card shows the stores' terms (${method})`, async ({ page }) => {
     await page.route("**/api/body/energy*", async (route) => {
       let response;
       try {
         response = await route.fetch();
-        await route.fulfill({ response, json: { ...(await response.json()), deficit } });
+        await route.fulfill({ response, json: withDeficit(await response.json(), deficit) });
       } catch (error) {
         if (!GONE.test(String(error))) throw error;
       }
     });
     await page.goto("/#nutrition/week");
     const card = page.locator(`#nutritionFitScale [data-energy-deficit='${method}']`);
-    await expect(card.locator("h3")).toHaveText("Dein Defizit, letzte 28 Tage");
+    // The shared title row: the title left, the selected period right (#3704).
+    await expect(card.locator(".verlauf-head")).toHaveText("Defizit aus Gewicht und Körperfett4 Wochen");
     const kcal = deficit.deficit_kcal.toLocaleString("de-DE");
     await expect(card.locator(".energy-deficit-hero strong")).toHaveText(`≈ ${kcal} kcal`);
     const boxes = card.locator("[data-deficit-box]");
@@ -344,7 +351,9 @@ for (const [method, deficit] of Object.entries(DEFICITS)) {
     await expect(text).toHaveText(`Echter Verbrauch: ≈ ${deficit.total_kcal.toLocaleString("de-DE")} kcal am Tag (Garmin Connect: ${deficit.device_total_kcal.toLocaleString("de-DE")}).`);
     await expect(card.locator(".energy-deficit-uncertainty")).toHaveText(/^Unsicher vor allem: .+\.$/);
     if (method === "measured") {
-      await expect(boxes.nth(1)).toContainText("15,5 → 14,1 %");
+      // #3704: Gewicht and Körperfett are built alike: change, from → to, dates.
+      await expect(boxes.nth(0).locator("strong, small")).toHaveText(["Gewicht", "−2,0 kg", "91,2 → 89,2 kg", "17.10. → 13.11."]);
+      await expect(boxes.nth(1).locator("strong, small")).toHaveText(["Körperfett", "−1,4 %-Pkt.", "15,5 → 14,1 %", "07.10. → 13.11."]);
       // #3598: the readings span the phase, not the 28 days, and the box says so.
       await expect(boxes.nth(1)).toContainText("07.10. → 13.11.");
       // #3684: the prior follows Forbes at the current fat mass.
@@ -405,7 +414,7 @@ test("@responsive the deficit card stays without logged meals", async ({ page })
   await page.route("**/api/body/energy*", async (route) => {
     try {
       const response = await route.fetch();
-      await route.fulfill({ response, json: { ...(await response.json()), deficit, estimated_intake } });
+      await route.fulfill({ response, json: { ...withDeficit(await response.json(), deficit), estimated_intake } });
     } catch (error) {
       if (!GONE.test(String(error))) throw error;
     }
