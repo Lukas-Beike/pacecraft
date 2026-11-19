@@ -1765,7 +1765,9 @@ function energyBiasText(flagged) {
   return `Geschätzte Mahlzeiten wirken im Mittel ${formatWhole(Math.abs(flagged.bias_pct))} % ${direction} als erfasst (± ${formatWhole(flagged.bias_band_pct)} %)`;
 }
 
-const ENERGY_DAY_NOTE = "Alle Zeilen zeigen den gewählten Tag (Sport 0 ohne Einheit, Verdauung nur mit erfassten Mahlzeiten, heute bis jetzt); Aus deinen Daten nimmt die Ruhe aus den letzten 28 Tagen und Alltag, Sport und Verdauung wie die Formeln; Heute noch essen zieht das Gegessene vom Tag gesamt der umrandeten Quelle ab, das Defizit der letzten 28 Tage steht im Verlauf";
+// What the own row's resting rate rests on today (#3687).
+const ENERGY_BASE_SPAN = Object.freeze({ "12w": "12 Wochen", "12w_unstable": "12 Wochen (unsicher)" });
+const ENERGY_DAY_NOTE = "Alle Zeilen zeigen den gewählten Tag (Sport 0 ohne Einheit, Verdauung nur mit erfassten Mahlzeiten, heute bis jetzt); Aus deinen Daten nimmt die Ruhe heute aus den letzten 12 Wochen, an früheren Tagen aus deren 28 Tagen, und Alltag, Sport und Verdauung wie die Formeln; Heute noch essen zieht das Gegessene vom Tag gesamt der umrandeten Quelle ab, das Defizit der letzten 28 Tage steht im Verlauf";
 
 function energyInfo(read) {
   const text = [ENERGY_DAY_NOTE, energyBasisText(read), energyNeatInputs(read.basis?.neat), energyBiasText(read.flagged)].filter(Boolean).join(" · ");
@@ -1952,7 +1954,9 @@ function energyFatShareNote(share) {
 function energyRowNote(read, source, row) {
   if (source === "own") {
     // Split (#3550): Ruhe is the named reference, so the 28 days give the rest above it.
-    const origin = `${row.split?.unmeasured_kcal == null ? "Ruhe" : "nicht erfasster Alltag"} aus ${row.window_days} Tagen`;
+    // Today rests on the 12-week base, flagged when every window in it is unstable (#3687).
+    const span = ENERGY_BASE_SPAN[row.basis] || row.window_days + " Tagen";
+    const origin = `${row.split?.unmeasured_kcal == null ? "Ruhe" : "nicht erfasster Alltag"} aus ${span}`;
     const parts = [row.window_days ? origin : "", energyFatShareNote(row.fat_share), read.day_partial ? "bis jetzt" : ""].filter(Boolean);
     return parts.length ? [h("small", null, parts.join(" · "))] : [];
   }

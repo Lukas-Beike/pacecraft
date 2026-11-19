@@ -1264,6 +1264,45 @@ class SelectedDayTests(unittest.TestCase):
             source, [window(END, 2700.0, 1850.0)], garmin(), day=day, **kw
         )
 
+    def test_today_rests_on_the_twelve_week_base_and_a_past_day_on_its_window(
+        self,
+    ) -> None:
+        # #3687: equal bands of 150, the older window 42 days back weighs half:
+        # (1,850 + 0.5 x 1,650) / 1.5 = 1,783.3. Its band: SD 150 / 1.96 x
+        # sqrt(1.25) / 1.5 x sqrt(28 / 7) = 114.08, band 223.6.
+        older = window(END - timedelta(days=42), 2700.0, 1650.0)
+        latest = window(END, 2700.0, 1850.0)
+        today = END + timedelta(days=1)
+        view = energy_view(inputs(), [older, latest], garmin(), day=today)
+        own = row(view, "own")
+        self.assertEqual((1783, "12w"), (own["resting_kcal"], own["basis"]))
+        self.assertEqual(
+            {"kcal": 1783, "band_kcal": 224, "windows": 2, "weight_sum": 1.5,
+             "unstable": False},
+            view["base"],
+        )  # fmt: skip
+        # A past day keeps its own window (#3641), so the period balance and
+        # the diary agree on it (#3600).
+        past = energy_view(inputs(), [older, latest], garmin(), day=END)
+        own_past = row(past, "own")
+        # Its 1,850 exceeds Katch-McArdle's 1,839, so 11 are unmeasured (#3550).
+        self.assertEqual(
+            (1839, 11, None),
+            (own_past["resting_kcal"], own_past["split"]["unmeasured_kcal"],
+             own_past["basis"]),
+        )  # fmt: skip
+        # Today's period-balance total takes the same base.
+        totals = own_day_totals(inputs(), [older, latest], garmin(), [today, END])
+        self.assertEqual(own_past["total_kcal"], totals[END])
+        full = with_intake(inputs(), today, intake_kcal=2400.0, activity_kcal=600.0,
+                           neat_kcal=250.0, sport_kcal=350.0, protein_g=150.0,
+                           entries=3)  # fmt: skip
+        on_base = own_day_totals(full, [older, latest], garmin(), [today])[today]
+        on_latest = own_day_totals(full, [latest], garmin(), [today])[today]
+        assert on_base is not None and on_latest is not None
+        # One window alone is its own base: 1,850; with the older one 1,783.
+        self.assertAlmostEqual(1783 - 1850, on_base - on_latest, delta=1)
+
     def test_the_period_balance_takes_each_day_s_own_row_total(self) -> None:
         # #3600: the period balance reads the own day totals per day, and each
         # is exactly the diary's own day row for that day; a day without

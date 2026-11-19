@@ -1,8 +1,8 @@
 # M12 — Adaptive daily expenditure from intake and the weight trend
 
 - **Card:** M12
-- **Card version:** 20
-- **Method ID:** adaptive-expenditure v20 (#3100, #3187, #3255, #3552, #3551, #3553, #3555, #3554, #3586, #3603, #3612, #3614, #3617, #3577, #3616, #3618, #3604, #3667)
+- **Card version:** 21
+- **Method ID:** adaptive-expenditure v21 (#3100, #3187, #3255, #3552, #3551, #3553, #3555, #3554, #3586, #3603, #3612, #3614, #3617, #3577, #3616, #3618, #3604, #3667, #3687)
 - **Status:** method implemented (`backend/nutrition/energy_balance.py`, the weigh-in line in `backend/athlete/body_records.py`, #3640); the reader, diagnostics and display follow (#3100, #3099)
 - **Classification:** model estimate
 - **Literature checked:** 2026-11-15
@@ -185,6 +185,23 @@ estimate. It never rewrites logged values and never falls back to a formula.
     activity. A window half logged mixes the two phases and usually fails
     the neighbour check, so the newest calibration often ends a few weeks
     before the last logged day.
+11. **12-week base (athlete decision, #3687, amended):** today's and later
+    days' own resting rate is the mean of the estimated windows ending
+    within 84 days of the latest. Each window weighs by its precision
+    `1/SD²` (SD = band / 1.96) times an age weight `0.5^(age / 42)`, the
+    age running from the window's end to the latest's. An unstable window
+    (#3614) keeps its widened band, so it weighs less without being
+    dropped: the neighbour check cannot tell a real change from water, and
+    dropping those windows would hide a real change for 12 weeks. On
+    synthetic data a 1 kg water step two weeks back moves the base by 15
+    kcal against 384 on its window, and a real −300 kcal/day change six
+    weeks back by −112. The band is
+    `1.96 × sqrt(Σ wᵢ² SDᵢ² / (Σ wᵢ)² × 4)`, inflated for the windows'
+    overlap like `k` and `b` (#3554). When every window in it is unstable,
+    the base is flagged (`unstable`). A past day keeps the
+    window holding it (#3641). The learned everyday term (step 9 of #3577)
+    weighs its windows by the same age weight. The deficit card keeps the
+    latest 28 days.
 
 ## Sources
 
@@ -343,7 +360,7 @@ bias that is the same on every day is not visible in the band.
 | Constant | Value | Module | Code comment |
 | --- | --- | --- | --- |
 | `METHOD_ID` | `'adaptive-expenditure'` | `backend/nutrition/energy_balance.py` |  |
-| `METHOD_VERSION` | `20` | `backend/nutrition/energy_balance.py` | Bump when a formula or constant below changes the estimate. |
+| `METHOD_VERSION` | `21` | `backend/nutrition/energy_balance.py` | Bump when a formula or constant below changes the estimate. |
 | `WINDOW_DAYS` | `28` | `backend/nutrition/energy_balance.py` | Days per window and windows per week of the rolling view (#3099, #3100). |
 | `MIN_COMPLETE_DAYS` | `14` | `backend/nutrition/energy_balance.py` | A window needs this many complete logging days, weigh-ins and days between its first and last weigh-in; otherwise it gives its reason, never a formula. |
 | `MIN_WEIGHINS` | `8` | `backend/nutrition/energy_balance.py` |  |
@@ -369,6 +386,8 @@ bias that is the same on every day is not visible in the band.
 | `BIAS_MIN` | `-1.0` | `backend/nutrition/energy_balance.py` |  |
 | `BIAS_MAX_BAND` | `0.25` | `backend/nutrition/energy_balance.py` |  |
 | `MIN_INDEPENDENT_BIAS_WINDOWS` | `2` | `backend/nutrition/energy_balance.py` |  |
+| `BASE_DAYS` | `84` | `backend/nutrition/energy_balance.py` | The daily estimate rests on the estimated windows of the last 12 weeks, each weighted by its precision and by its age, halved every 6 weeks (athlete decision, #3687): a water or glycogen step largely cancels out over them. |
+| `BASE_HALF_LIFE_DAYS` | `42` | `backend/nutrition/energy_balance.py` |  |
 | `MAX_RESIDUAL_AUTOCORRELATION` | `0.8` | `backend/nutrition/energy_balance.py` | A weight step from water or glycogen is not tissue (#3614): weigh-ins whose scatter persists widen the slope's error by the AR(1) factor, with the lag-1 autocorrelation capped here (factor 3 at most); overlapping windows that differ beyond the 99 % band of the days they do not share are unstable and their band holds the difference. 2.576 / 1.96 turns the 95 % t into 99 %. |
 | `STABILITY_BAND_RATIO` | `2.576 / 1.96` | `backend/nutrition/energy_balance.py` |  |
 | `LEARNED_EVERYDAY_PRIOR_SD` | `250.0` | `backend/nutrition/energy_balance.py` | The learned everyday term of a formula row (#3577): the own total's excess over the row, shrunk towards 0 with this SD (kcal/day, product assumption). |
