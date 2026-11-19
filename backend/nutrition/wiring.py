@@ -32,7 +32,11 @@ from backend.nutrition.energy_inputs import (
     weighin_counts,
     weighins,
 )
-from backend.nutrition.energy_view import read_energy_view, selected_day
+from backend.nutrition.energy_view import (
+    read_energy_view,
+    read_own_day_totals,
+    selected_day,
+)
 from backend.nutrition.food_database import FoodDatabaseService
 from backend.nutrition.food_mirror import FoodDatabaseMirror
 from backend.nutrition.meal_library import NutritionMealLibraryService
@@ -123,7 +127,16 @@ def build_nutrition(ctx: AppContext) -> NutritionServices:
                 ctx.canonical_read.activity_summaries(db, start=start, end=end)
             ),
             references=ActivityReferences(ctx.database()),
+            own_day_totals=own_day_totals,
         )
+
+    def own_day_totals(days: list[date]) -> dict[date, float | None]:
+        # The period balance's expenditure: each day's own day total, from the
+        # windows ending yesterday as the energy view's (#3600).
+        with ctx.database().reader() as db:
+            return read_own_day_totals(
+                db, energy_sources(), ctx.clock.now().date() - timedelta(days=1), days
+            )
 
     def energy_sources() -> EnergySources:
         """The stores the adaptive expenditure reads (#3100).

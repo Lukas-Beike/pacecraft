@@ -294,6 +294,46 @@ def _gated_resting(
     return None, True
 
 
+def _own_resting(
+    latest: EnergyWindow,
+    body: Mapping[str, Any] | None,
+    health: Mapping[str, Mapping[str, Any]],
+) -> tuple[Estimate | None, bool]:
+    """The own row's resting rate from the latest window, gated against its
+    Katch-McArdle (``body`` at the window's end), else Garmin (#3255, #3531)."""
+    return _gated_resting(
+        latest.derived_rmr,
+        _formula_prediction(FORMULAS["katch_mcardle"], body, latest),
+        _device_prediction(health, latest),
+    )
+
+
+def own_day_totals(
+    inputs: EnergyInputs,
+    windows: Sequence[EnergyWindow],
+    health: Mapping[str, Mapping[str, Any]],
+    days: Sequence[date],
+) -> dict[date, float | None]:
+    """Each day's "Aus deinen Daten" day total, the diary's own day row for it
+    (#3531): the latest window's resting rate plus the day's everyday, sport and
+    digestion; None where a part is unknown or the resting rate is held back.
+    The period balance takes its expenditure from it (athlete decision, #3600).
+    """
+    latest = windows[-1]
+    trend = weight_trend(
+        {d: v.weight_kg for d, v in inputs.days.items() if v.weight_kg is not None}
+    )
+    shown, implausible = _own_resting(
+        latest, resolve_body(inputs, trend, latest.end), health
+    )
+    return {
+        day: _own_day_row(
+            shown, implausible, latest, _day_window(inputs, latest, day), []
+        )["total_kcal"]
+        for day in days
+    }
+
+
 def _resting_reference(
     own: Prediction, device: Prediction
 ) -> tuple[str, float, float | None] | None:
@@ -501,9 +541,7 @@ def energy_view(
     rows[list(predictions).index(DEVICE)].update(
         label=_device_label(health, day_window), **device_rest
     )
-    shown, implausible = _gated_resting(
-        latest.derived_rmr, predictions["katch_mcardle"][-1], predictions[DEVICE][-1]
-    )
+    shown, implausible = _own_resting(latest, bodies[-1], health)
     # The day row splits at the reference shown beside it that day; the
     # 28-day row at the latest window's, as the gate (#3550).
     reference = _resting_reference(
@@ -980,6 +1018,17 @@ def _public_body(body: Mapping[str, Any] | None) -> dict[str, Any] | None:
         "body_fat_pct": round(body["body_fat_pct"], 1),
         "lean_mass_kg": round(body["lean_mass_kg"], 1),
     }
+
+
+def read_own_day_totals(
+    db: Any, sources: EnergySources, end: date, days: Sequence[date]
+) -> dict[date, float | None]:
+    """The own day totals of ``days`` (up to ``end``) from the 12-week history
+    ending on ``end``, the same read the energy view makes (#3600)."""
+    start = min([history_start(end), *days])
+    inputs, _ = read_energy_inputs(db, sources, start, end)
+    windows = energy_windows(inputs, end)
+    return own_day_totals(inputs, windows, sources.daily_health(db, start, end), days)
 
 
 def read_energy_view(
