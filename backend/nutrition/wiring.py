@@ -10,6 +10,16 @@ from typing import Any
 
 from backend.activities.activity_reference import ActivityReferences
 from backend.app.context import AppContext
+from backend.athlete.body_records import (
+    RESTING_LOOKBACK_DAYS,
+    current_weight,
+    device_body_fats,
+    latest_value,
+    skinfold_body_fats,
+    weighin_counts,
+    weighin_sources,
+    weighins,
+)
 from backend.athlete.profile import profile_body_fat_history, profile_weight_history
 from backend.canonical.vocabulary import MetricKind
 from backend.db.manager import kept_until_change
@@ -22,19 +32,11 @@ from backend.nutrition.catalog import ProductCatalogService
 from backend.nutrition.diary import NutritionDiaryService
 from backend.nutrition.energy_balance import history_start
 from backend.nutrition.energy_inputs import (
-    RESTING_LOOKBACK_DAYS,
     EnergySources,
-    current_weight,
-    device_body_fats,
     energy_basis,
-    latest_value,
     own_resting,
     recent_fat_pct,
     session_streams,
-    skinfold_body_fats,
-    weighin_counts,
-    weighin_sources,
-    weighins,
 )
 from backend.nutrition.energy_view import (
     OwnHistory,
