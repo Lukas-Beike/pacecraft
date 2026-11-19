@@ -319,23 +319,71 @@ def own_day_totals(
     days: Sequence[date],
 ) -> dict[date, float | None]:
     """Each day's "Aus deinen Daten" day total, the diary's own day row for it
-    (#3531): the latest window's resting rate plus the day's everyday, sport and
-    digestion; None where a part is unknown or the resting rate is held back.
-    The period balance takes its expenditure from it (athlete decision, #3600).
+    (#3531): its window's resting rate plus the day's everyday, sport and
+    digestion; None where a part is unknown, the resting rate is held back or no
+    estimated window holds the day. The period balance takes its expenditure
+    from it (athlete decision, #3600).
+
+    A day's window is the estimated one holding it with the nearest middle, so
+    the latest window's rate prices only its last 17 days and 12 weeks follow
+    each window's (#3641); a day after the latest (today) takes the latest.
     """
-    latest = windows[-1]
     trend = weight_trend(
         {d: v.weight_kg for d, v in inputs.days.items() if v.weight_kg is not None}
     )
-    shown, implausible = _own_resting(
-        latest, resolve_body(inputs, trend, latest.end), health
-    )
-    return {
-        day: _own_day_row(
-            shown, implausible, latest, _day_window(inputs, latest, day), []
-        )["total_kcal"]
-        for day in days
+    resting = {
+        w.end: _own_resting(w, resolve_body(inputs, trend, w.end), health)
+        for w in windows
     }
+    totals: dict[date, float | None] = {}
+    for day in days:
+        window = _holding(windows, day)
+        if window is None:
+            totals[day] = None
+            continue
+        shown, implausible = resting[window.end]
+        day_window = _day_window(inputs, window, day)
+        row = _own_day_row(shown, implausible, window, day_window, [])
+        totals[day] = row["total_kcal"]
+    return totals
+
+
+def _own_day(
+    windows: Sequence[EnergyWindow],
+    bodies: Sequence[Mapping[str, Any] | None],
+    health: Mapping[str, Mapping[str, Any]],
+    day: EnergyWindow,
+    pending: list[str],
+    reference: tuple[str, float, float | None] | None,
+) -> dict[str, Any]:
+    """The diary's own day row, its resting rate from the day's own window as
+    the period balance's (#3641), split at the day's resting reference."""
+    own = _holding(windows, day.end)
+    shown, implausible = (
+        (None, False)
+        if own is None
+        else _own_resting(own, bodies[windows.index(own)], health)
+    )
+    row = _own_day_row(shown, implausible, own or windows[-1], day, pending)
+    return _unmeasured(row, shown, reference)
+
+
+def _holding(windows: Sequence[EnergyWindow], day: date) -> EnergyWindow | None:
+    """The estimated window holding ``day`` whose middle is nearest to it (the
+    newer on a tie), the latest for a day after it, else None (#3641)."""
+    if day > windows[-1].end:
+        return windows[-1]
+    holding = [
+        w
+        for w in windows
+        if w.derived_rmr is not None
+        and w.end - timedelta(days=w.days - 1) <= day <= w.end
+    ]
+    return min(
+        reversed(holding),
+        key=lambda w: abs(2 * (w.end - day).days - (w.days - 1)),
+        default=None,
+    )
 
 
 def _resting_reference(
@@ -557,9 +605,12 @@ def energy_view(
         predictions["katch_mcardle"][-1], predictions[DEVICE][-1]
     )
     rows.append(
-        _unmeasured(
-            _own_day_row(shown, implausible, latest, day_window, pending[False]),
-            shown,
+        _own_day(
+            windows,
+            bodies,
+            health,
+            day_window,
+            pending[False],
             _resting_reference(
                 day_predictions["katch_mcardle"], day_predictions[DEVICE]
             ),
