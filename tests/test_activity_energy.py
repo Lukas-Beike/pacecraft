@@ -146,6 +146,14 @@ class DailyTermsTests(unittest.TestCase):
         # 0.25 x 600 + 0.10 x 1,200 + 0.015 x 720 = 280.8 kcal.
         self.assertAlmostEqual(energy.tef_kcal(150, 300, 80), 280.8)
 
+    def test_kcal_without_macros_is_left_for_the_uncovered_share(self) -> None:
+        # #3617 item 3: 1,200 kcal with 50 g protein, 100 g carbs and 30 g fat
+        # cover 200 + 400 + 270 = 870 kcal, so 330 kcal are uncovered; an entry
+        # whose macros exceed its kcal leaves none.
+        self.assertAlmostEqual(energy.uncovered_kcal(1200, 50, 100, 30), 330.0)
+        self.assertEqual(0.0, energy.uncovered_kcal(500, 50, 100, 30))
+        self.assertEqual(0.10, energy.TEF_UNCOVERED)
+
     def test_epoc_is_optional(self) -> None:
         self.assertAlmostEqual(energy.epoc_kcal(500, True), 30.0)
         self.assertEqual(energy.epoc_kcal(500, False), 0.0)

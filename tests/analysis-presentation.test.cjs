@@ -492,6 +492,8 @@ test("split A draws one stacked bar per row and hatches only the parts the backe
   assert.equal(note, "Kraft RPE 8, MET 5; Kraft ohne RPE, MET 3,5");
   assert.equal(textOf(energySplitRow(own, note).children[0].children[1]), `Ruhe (Rest) 1690 (1540–1840) · Alltag 385 · Sport 507 (${note}) · Verdauung 258`);
   assert.equal(energyStrengthNote(undefined), "");
+  // #3617 item 3: digestion of kcal without macros reads as estimated.
+  assert.match(textOf(energySplitRow(own, "", null, null, true).children[0].children[1]), /Verdauung 258 \(geschätzt\)$/);
   // #3494: today a part whose input has not arrived counts 0 and says so; an unknown part
   // stays "–" (Gitar #3495).
   const early = (source, pending, parts) => ({ source, resting_band_kcal: null, pending_parts: pending, split: split(1800, ...parts, {}) });

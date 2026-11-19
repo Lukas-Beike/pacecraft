@@ -1092,6 +1092,19 @@ def _measured_weight_bands(windows: Sequence[EnergyWindow]) -> dict[str, int]:
     }
 
 
+def _uncovered_kcal(entries: Sequence[Mapping[str, Any]]) -> float:
+    """The day's logged kcal its entries' known macros do not cover (#3617)."""
+    return sum(
+        energy.uncovered_kcal(
+            _number(e.get("kcal")) or 0.0,
+            _number(e.get("protein_g")) or 0.0,
+            _number(e.get("carbs_g")) or 0.0,
+            _number(e.get("fat_g")) or 0.0,
+        )
+        for e in entries
+    )
+
+
 def _day_inputs(
     day: date,
     entries: Sequence[Mapping[str, Any]],
@@ -1132,6 +1145,7 @@ def _day_inputs(
         protein_g=sum(_number(e.get("protein_g")) or 0.0 for e in entries),
         carbohydrate_g=sum(_number(e.get("carbs_g")) or 0.0 for e in entries),
         fat_g=sum(_number(e.get("fat_g")) or 0.0 for e in entries),
+        uncovered_kcal=_uncovered_kcal(entries),
         entries=len(entries),
         flagged=any(bool(e.get("estimate_uncertain")) for e in entries),
         flagged_kcal=sum(

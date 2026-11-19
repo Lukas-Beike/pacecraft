@@ -21,7 +21,7 @@ from backend.performance.grade_adjustment import (
 
 METHOD_ID = "activity-energy"
 # Bump when a formula or constant below changes the estimate.
-METHOD_VERSION = 5
+METHOD_VERSION = 6
 # Joules per kilocalorie (thermochemical calorie).
 J_PER_KCAL = 4184.0
 # Standard gravity, m/s^2, for the vertical work of floors.
@@ -88,6 +88,9 @@ TEF_FAT = 0.015
 KCAL_PER_G_PROTEIN = 4.0
 KCAL_PER_G_CARBOHYDRATE = 4.0
 KCAL_PER_G_FAT = 9.0
+# The thermic effect of logged kcal that its known macros do not cover:
+# 10 %, a mixed meal's typical share, instead of 0 (#3617 item 3).
+TEF_UNCOVERED = 0.10
 # Optional excess post-exercise oxygen consumption for sessions above the
 # threshold: 6 % of the net session cost, the low end of LaForgia et al. 2006
 # (J Sports Sci 24:1247, 6-15 %). Off unless asked for; weak evidence.
@@ -360,6 +363,18 @@ def neat_net_kcal(
 def floors_outside_sessions(floors: float, session_climb_m: float) -> float:
     """The day's floors less the foot sessions' ascent in floors, never below 0."""
     return max(0.0, floors - max(0.0, session_climb_m) / FLOOR_HEIGHT_M)
+
+
+def uncovered_kcal(
+    kcal: float, protein_g: float, carbohydrate_g: float, fat_g: float
+) -> float:
+    """The logged kcal an entry's known macros do not cover, floored at 0."""
+    covered = (
+        KCAL_PER_G_PROTEIN * max(0.0, protein_g)
+        + KCAL_PER_G_CARBOHYDRATE * max(0.0, carbohydrate_g)
+        + KCAL_PER_G_FAT * max(0.0, fat_g)
+    )
+    return max(0.0, kcal - covered)
 
 
 def tef_kcal(protein_g: float, carbohydrate_g: float, fat_g: float) -> float:

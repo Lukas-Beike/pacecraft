@@ -1160,6 +1160,8 @@ def read_energy_view(
         day=day,
         goal=sources.profile(),
     )
+    # Digestion counts kcal without macros at 10 %, so it is estimated (#3617).
+    view["tef_estimated"] = inputs.days.get(day, DayInputs()).uncovered_kcal > 0
     # The day's strength sessions with the RPE and MET that priced them (#3530).
     view["strength"] = [
         {"rpe": cost.rpe, "met": cost.met, "kcal": _round(cost.kcal)}

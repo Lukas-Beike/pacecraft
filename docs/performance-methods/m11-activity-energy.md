@@ -1,8 +1,8 @@
 # M11 — Own activity energy, net of resting metabolism
 
 - **Card:** M11
-- **Card version:** 5
-- **Method ID:** activity-energy v5 (#3100, #3187, #3255, #3611, #3617)
+- **Card version:** 6
+- **Method ID:** activity-energy v6 (#3100, #3187, #3255, #3611, #3617)
 - **Status:** methods implemented (`backend/performance/activity_energy.py`); daily wiring, adaptive TDEE and display follow (#3100, #3099)
 - **Classification:** model estimate
 - **Literature checked:** 2026-11-15
@@ -140,6 +140,9 @@ formula rows' everyday energy runs low. M12's own row names that remainder
 
 ## Minimum data and stop rules
 
+- Digestion counts the logged kcal that an entry's known macros do not cover at
+  10 % (`TEF_UNCOVERED`), not 0, and the day's Verdauung then reads
+  "geschätzt" (#3617).
 - Running needs distance and altitude streams; without altitude the grade is 0.
   A run, walk or hike without any distance is unknown, not 0 kcal; its
   recorded steps still leave everyday (#3617).
@@ -197,7 +200,7 @@ formula rows' everyday energy runs low. M12's own row names that remainder
 | Constant | Value | Module | Code comment |
 | --- | --- | --- | --- |
 | `METHOD_ID` | `'activity-energy'` | `backend/performance/activity_energy.py` |  |
-| `METHOD_VERSION` | `5` | `backend/performance/activity_energy.py` | Bump when a formula or constant below changes the estimate. |
+| `METHOD_VERSION` | `6` | `backend/performance/activity_energy.py` | Bump when a formula or constant below changes the estimate. |
 | `J_PER_KCAL` | `4184.0` | `backend/performance/activity_energy.py` | Joules per kilocalorie (thermochemical calorie). |
 | `GRAVITY` | `9.81` | `backend/performance/activity_energy.py` | Standard gravity, m/s^2, for the vertical work of floors. |
 | `MINETTI_WALKING` | `(280.5, -58.7, -76.8, 51.9, 19.6, 2.5)` | `backend/performance/activity_energy.py` | Minetti et al. 2002: the running fit (MINETTI_RUNNING, its gradient range and the 200 m grade span come from grade_adjustment, #3187), and the same fit for walking. |
@@ -223,6 +226,7 @@ formula rows' everyday energy runs low. M12's own row names that remainder
 | `KCAL_PER_G_PROTEIN` | `4.0` | `backend/performance/activity_energy.py` | Atwater energy per gram: protein, carbohydrate, fat (kcal/g). |
 | `KCAL_PER_G_CARBOHYDRATE` | `4.0` | `backend/performance/activity_energy.py` |  |
 | `KCAL_PER_G_FAT` | `9.0` | `backend/performance/activity_energy.py` |  |
+| `TEF_UNCOVERED` | `0.1` | `backend/performance/activity_energy.py` | The thermic effect of logged kcal that its known macros do not cover: 10 %, a mixed meal's typical share, instead of 0 (#3617 item 3). |
 | `EPOC_SHARE` | `0.06` | `backend/performance/activity_energy.py` | Optional excess post-exercise oxygen consumption for sessions above the threshold: 6 % of the net session cost, the low end of LaForgia et al. 2006 (J Sports Sci 24:1247, 6-15 %). Off unless asked for; weak evidence. |
 | `METHOD_ERROR_SHARE` | `{'minetti': 0.1, 'power': 0.1, 'flex_hr': 0.15, 'keytel': 0.3, 'met': 0.5}` | `backend/performance/activity_energy.py` | The 95 % error of a session's net cost as a share of it, by M11 method: the upper end of each expected error (method comment on #3100, #3552): running (Minetti) +-8-10 %, cycling power +-10 %, flex-HR +-10-15 %, Keytel +-20-30 %, MET (strength) +-30-50 %. A method not listed takes the widest share. |
 | `STEP_ERROR_SHARE` | `0.15` | `backend/performance/activity_energy.py` | Everyday energy from steps carries the step length's +-10-15 %. |

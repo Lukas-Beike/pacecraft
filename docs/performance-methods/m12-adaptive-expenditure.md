@@ -1,8 +1,8 @@
 # M12 — Adaptive daily expenditure from intake and the weight trend
 
 - **Card:** M12
-- **Card version:** 15
-- **Method ID:** adaptive-expenditure v15 (#3100, #3187, #3255, #3552, #3551, #3553, #3555, #3554, #3586, #3603, #3612, #3614, #3617, #3577, #3616)
+- **Card version:** 16
+- **Method ID:** adaptive-expenditure v16 (#3100, #3187, #3255, #3552, #3551, #3553, #3555, #3554, #3586, #3603, #3612, #3614, #3617, #3577, #3616)
 - **Status:** method implemented (`backend/nutrition/energy_balance.py`); the reader, diagnostics and display follow (#3100, #3099)
 - **Classification:** model estimate
 - **Literature checked:** 2026-11-15
@@ -15,7 +15,8 @@ windows, estimated from their own logged intake and the change in stored
 energy shown by the weigh-ins. From it:
 
 - the one activity calibration factor for M11;
-- the derived resting rate, `TDEE − own activity − TEF`;
+- the derived resting rate, `TDEE − own activity − TEF`; TEF counts the macros' thermic effect plus 10 % of the logged kcal they do
+  not cover (M11, #3617);
 - the systematic bias of meals flagged as uncertain (restaurant, friends).
 
 It is information for energy-balance and fuelling advice, labelled as an
@@ -300,7 +301,7 @@ bias that is the same on every day is not visible in the band.
 | Constant | Value | Module | Code comment |
 | --- | --- | --- | --- |
 | `METHOD_ID` | `'adaptive-expenditure'` | `backend/nutrition/energy_balance.py` |  |
-| `METHOD_VERSION` | `15` | `backend/nutrition/energy_balance.py` | Bump when a formula or constant below changes the estimate. |
+| `METHOD_VERSION` | `16` | `backend/nutrition/energy_balance.py` | Bump when a formula or constant below changes the estimate. |
 | `WINDOW_DAYS` | `28` | `backend/nutrition/energy_balance.py` | Days per window and windows per week of the rolling view (#3099, #3100). |
 | `CURRENT_WEIGHT_DAYS` | `28` | `backend/nutrition/energy_balance.py` | A day's current weight is the least-squares line through the weigh-ins of this many days up to it, at its latest weigh-in, so a steady change has no lag (#3551); with fewer weigh-ins or a shorter span, their mean. |
 | `MIN_LINE_WEIGHINS` | `3` | `backend/nutrition/energy_balance.py` |  |
