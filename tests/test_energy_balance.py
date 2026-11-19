@@ -464,6 +464,27 @@ class FlaggedMealsAndCalibrationTests(unittest.TestCase):
         self.assertAlmostEqual(balance.calibration_factor(noisy), 1.000277, places=6)
         self.assertEqual(balance.calibration_factor(exact[:3]), 1.0)
 
+    def test_the_bias_fit_takes_activity_only_where_it_can(self) -> None:
+        # #3586: flagged meals 20 % larger than logged, TDEE = 2,600 - 0.2 x.
+        def window(x: float, activity: float | None) -> balance.EnergyWindow:
+            return balance.EnergyWindow(
+                END, 28, 28, 1, 28, activity, activity, 280.0,
+                balance.Estimate(2600.0 - 0.2 * x, 100.0), None, None, None,
+                flagged_kcal_per_day=x,
+            )  # fmt: skip
+
+        flagged = (100.0, 200.0, 300.0, 400.0)
+        # Activity unknown in one window: the single regression, b = 0.2.
+        partial = [
+            window(x, a) for x, a in zip(flagged, (500, None, 700, 600), strict=True)
+        ]
+        bias = balance._bias(partial)
+        assert bias is not None
+        self.assertAlmostEqual(0.2, bias[0])
+        # Flagged kcal that moved only with the activity cannot be told apart.
+        collinear = [window(x, 2.0 * x) for x in flagged]
+        self.assertIsNone(balance._bias(collinear))
+
     def test_k_and_b_see_one_fat_share_whatever_the_readings(self) -> None:
         # #3554, the issue's synthetic series: 111 days of a steady 0.07 kg/day
         # loss, 85 % of it fat, from 85 kg at 18 %; activity builds from 400 to
@@ -501,10 +522,12 @@ class FlaggedMealsAndCalibrationTests(unittest.TestCase):
                 # One share for every window: no step for b to read.
                 shares = {w.store.fat_share for w in windows if w.store}
                 self.assertEqual(1, len(shares))
-                # The rising activity alone leans b (no activity term in its
-                # fit); a reading pattern must not move it further.
+                # #3586: the rising activity alone leaned b to +32 %; with
+                # the activity as its second term, b is near the true 0, and
+                # a reading pattern does not move it.
                 bias = balance.windows_bias(windows)
                 assert bias is not None
+                self.assertAlmostEqual(0.0, bias[0], delta=5.0)  # percent
                 biases.append(bias[0])
         self.assertAlmostEqual(biases[0], biases[1], places=6)
         self.assertAlmostEqual(biases[0], biases[2], places=6)

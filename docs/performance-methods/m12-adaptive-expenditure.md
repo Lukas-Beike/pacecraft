@@ -1,8 +1,8 @@
 # M12 — Adaptive daily expenditure from intake and the weight trend
 
 - **Card:** M12
-- **Card version:** 8
-- **Method ID:** adaptive-expenditure v8 (#3100, #3187, #3255, #3552, #3551, #3553, #3555, #3554)
+- **Card version:** 9
+- **Method ID:** adaptive-expenditure v9 (#3100, #3187, #3255, #3552, #3551, #3553, #3555, #3554, #3586)
 - **Status:** method implemented (`backend/nutrition/energy_balance.py`); the reader, diagnostics and display follow (#3100, #3099)
 - **Classification:** model estimate
 - **Literature checked:** 2026-11-15
@@ -94,10 +94,12 @@ estimate. It never rewrites logged values and never falls back to a formula.
    shows NEAT's inputs over the window: steps per day, the steps sessions
    take out, the step length with its source and the floors outside
    sessions.
-8. **Flagged-meal bias `b`:** across the windows, `TDEE = T − b × x` by least
-   squares, with `x` the flagged entries' logged kcal per complete day. `b` is
-   reported in % with its band: positive means flagged meals were larger than
-   logged.
+8. **Flagged-meal bias `b`:** across the windows, `TDEE = T − b × x + c × a` by
+   least squares, with `x` the flagged entries' logged kcal per complete day
+   and `a` the window's raw M11 activity (#3586): `b` is the flagged effect at
+   fixed activity, so a change in training volume is not read as a logging
+   bias. Without spread in `a` the activity term drops out. `b` is reported
+   in % with its band: positive means flagged meals were larger than logged.
 9. **Learned correction:** once `b` is estimated, each window also shows
    `TDEE + b × x` (the flagged kcal counted at `1 + b`), labelled, with `x`
    times b's band added. Logged entries are never rewritten.
@@ -228,7 +230,7 @@ bias that is the same on every day is not visible in the band.
 | Constant | Value | Module | Code comment |
 | --- | --- | --- | --- |
 | `METHOD_ID` | `'adaptive-expenditure'` | `backend/nutrition/energy_balance.py` |  |
-| `METHOD_VERSION` | `8` | `backend/nutrition/energy_balance.py` | Bump when a formula or constant below changes the estimate. |
+| `METHOD_VERSION` | `9` | `backend/nutrition/energy_balance.py` | Bump when a formula or constant below changes the estimate. |
 | `WINDOW_DAYS` | `28` | `backend/nutrition/energy_balance.py` | Days per window and windows per week of the rolling view (#3099, #3100). |
 | `CURRENT_WEIGHT_DAYS` | `28` | `backend/nutrition/energy_balance.py` | A day's current weight is the least-squares line through the weigh-ins of this many days up to it, at its latest weigh-in, so a steady change has no lag (#3551); with fewer weigh-ins or a shorter span, their mean. |
 | `MIN_LINE_WEIGHINS` | `3` | `backend/nutrition/energy_balance.py` |  |
