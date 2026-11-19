@@ -708,6 +708,24 @@ class StoreAdapterTests(unittest.TestCase):
         self.assertEqual(
             counts["unstable_tdee_gap_kcal"], counts["unstable_intake_gap_kcal"]
         )
+        # Eaten for training is no intake gap (Gitar on #3660): 600 kcal more
+        # food on the 14 days with 600 kcal more activity, and a 1 kg water step
+        # 10 days ago that makes the windows unstable: the weight carries it.
+        trained = {
+            d: replace(
+                v,
+                intake_kcal=3100.0 if (end - d).days < 14 else 2500.0,
+                activity_kcal=600.0 if (end - d).days < 14 else 0.0,
+                weight_kg=(v.weight_kg or 0.0) + (1.0 if (end - d).days < 10 else 0.0),
+            )
+            for d, v in days.items()
+        }
+        fed = EnergyInputs(trained, {}, rmr_kcal=1600.0)
+        fed_counts = energy_inputs.underlog_counts(
+            fed, energy_windows(fed, end, weeks=8)
+        )
+        self.assertGreaterEqual(fed_counts["unstable_tdee_gap_kcal"], 200)
+        self.assertEqual(0, fed_counts["unstable_intake_gap_kcal"])
         narrow = counts["narrow_complete_day_pct"]
         self.assertGreater(narrow["unstable"], narrow["stable"] or 0)
         # Nothing unstable, nothing to compare.

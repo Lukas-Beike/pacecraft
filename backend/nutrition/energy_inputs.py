@@ -1103,6 +1103,13 @@ def _intake(window: EnergyWindow) -> float:
     return _tdee(window) + (window.store.kcal_per_day if window.store else 0.0)
 
 
+def _activity_gap(a: EnergyWindow, b: EnergyWindow) -> float:
+    """Their raw activity difference, which the stability check nets out."""
+    if a.activity_kcal_raw is None or b.activity_kcal_raw is None:
+        return 0.0
+    return a.activity_kcal_raw - b.activity_kcal_raw
+
+
 def _narrow_share(inputs: EnergyInputs, group: Sequence[EnergyWindow]) -> int | None:
     """The share of the windows' complete days below ``NARROW_DAY_REST_SHARE``
     of rest + TEF, in whole percent; None without complete days."""
@@ -1127,7 +1134,7 @@ def underlog_counts(
     """Whether under-logged but complete days drive the unstable windows (#3658).
 
     Each unstable window against the overlapping estimated neighbour whose TDEE
-    differs most: the mean size of that TDEE gap and of the logged-intake gap
+    differs most, net of their activity as the stability check compares them: the mean size of that TDEE gap and of the logged-intake gap
     in the same direction, to 50 kcal (equal gaps: the logged intake carries
     the jump; an intake gap near 0: the weight does), and the share of complete
     days below ``NARROW_DAY_REST_SHARE`` of rest + TEF in the unstable and the
@@ -1144,11 +1151,16 @@ def underlog_counts(
         ]
         if near:
             # The neighbour it differs from most, the likeliest to have flagged it.
-            other = max(near, key=lambda o: abs(_tdee(window) - _tdee(o)))
-            gap = _tdee(window) - _tdee(other)
+            # Both net of activity, as the check compares them (Gitar on #3660).
+            other = max(
+                near,
+                key=lambda o: abs(_tdee(window) - _tdee(o) - _activity_gap(window, o)),
+            )
+            activity = _activity_gap(window, other)
+            gap = _tdee(window) - _tdee(other) - activity
             tdee_gaps.append(abs(gap))
             intake_gaps.append(
-                math.copysign(1.0, gap) * (_intake(window) - _intake(other))
+                math.copysign(1.0, gap) * (_intake(window) - _intake(other) - activity)
             )
 
     def fifty(values: list[float]) -> int | None:
