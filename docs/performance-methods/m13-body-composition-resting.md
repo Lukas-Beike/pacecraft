@@ -158,4 +158,5 @@ None of these is a validation in this athlete or in trained endurance athletes a
 | `LIST_LIMIT` | `20` | `backend/athlete/skinfolds.py` |  |
 | `MAX_READINGS` | `3` | `backend/athlete/skinfolds.py` | Readings one site takes; their median is its value (#3556). |
 | `MIN_REPEAT_SITES` | `10` | `backend/athlete/skinfolds.py` | Sites with at least two readings before the athlete's own repeatability replaces the default one in the fat-share blend (#3556). |
+| `MEDIAN_GAIN` | `{1: 1.0, 2: 0.707, 3: 0.67}` | `backend/athlete/skinfolds.py` | The SD of the median of n normal readings relative to one reading: the mean of two (1 / sqrt 2), and about 0.67 for three, not 1 / sqrt 3 (Gitar on #3622). |
 <!-- END GENERATED CONSTANTS -->

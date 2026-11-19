@@ -149,7 +149,8 @@ class EnergyInputs:
     profile_body_fat_pct: float | None = None
     # The athlete's own SD of one skinfold body fat, from repeat readings;
     # None until there are enough, then the default applies (#3556).
-    skinfold_sd_pct: float | None = None
+    # Per measurement day, with its own median gain (Gitar on #3622).
+    skinfold_sd_pct: Mapping[date, float] = field(default_factory=dict)
 
 
 class StoredEnergy(NamedTuple):
@@ -385,6 +386,21 @@ def _slope(xs: Sequence[float], ys: Sequence[float]) -> tuple[float, float]:
     return sxy / sxx, sxx
 
 
+def _weighted_slope(
+    xs: Sequence[float], ys: Sequence[float], precisions: Sequence[float]
+) -> tuple[float, float]:
+    """The weighted least-squares slope and its precision, Σ w (x − x̄)²."""
+    total = sum(precisions)
+    mean_x = sum(w * x for w, x in zip(precisions, xs, strict=True)) / total
+    mean_y = sum(w * y for w, y in zip(precisions, ys, strict=True)) / total
+    leverage = sum(w * (x - mean_x) ** 2 for w, x in zip(precisions, xs, strict=True))
+    sxy = sum(
+        w * (x - mean_x) * (y - mean_y)
+        for w, x, y in zip(precisions, xs, ys, strict=True)
+    )
+    return sxy / leverage, leverage
+
+
 def fat_share(inputs: EnergyInputs, trend: Mapping[date, float], end: date) -> FatShare:
     """The fat share of a weight change up to ``end``: the prior blended with
     the measured one by their precisions (athlete decision, #3555).
@@ -410,7 +426,7 @@ def fat_share(inputs: EnergyInputs, trend: Mapping[date, float], end: date) -> F
         )
     xs = [float((d - days[0]).days) for d in days]
     weights = [trend[d] for d in days]
-    weight_slope, sxx = _slope(xs, weights)
+    weight_slope, _ = _slope(xs, weights)
     if abs(weight_slope) * (xs[-1] - xs[0]) < MIN_FAT_SHARE_WEIGHT_CHANGE_KG:
         return prior._replace(
             pct_first=series[days[0]],
@@ -418,12 +434,16 @@ def fat_share(inputs: EnergyInputs, trend: Mapping[date, float], end: date) -> F
             day_first=days[0],
             day_last=days[-1],
         )
-    fat_slope, _ = _slope(
-        xs, [w * series[d] / 100.0 for w, d in zip(weights, days, strict=True)]
-    )
-    own = inputs.skinfold_sd_pct if method == 0 else None
-    fat_sd = statistics.fmean(weights) * (own or BODY_FAT_REPEATABILITY_PCT) / 100.0
-    measured_sd = fat_sd / math.sqrt(sxx) / abs(weight_slope)
+    # Each fat mass weighs by its own SD: the skinfold day's own repeatability
+    # once known (#3556), else the default (weighted least squares).
+    own = inputs.skinfold_sd_pct if method == 0 else {}
+    precisions = [
+        (100.0 / (w * own.get(d, BODY_FAT_REPEATABILITY_PCT))) ** 2
+        for w, d in zip(weights, days, strict=True)
+    ]
+    fats = [w * series[d] / 100.0 for w, d in zip(weights, days, strict=True)]
+    fat_slope, fat_leverage = _weighted_slope(xs, fats, precisions)
+    measured_sd = 1.0 / math.sqrt(fat_leverage) / abs(weight_slope)
     precision = 1.0 / measured_sd**2
     total = precision + 1.0 / FAT_SHARE_PRIOR_SD**2
     weight = precision / total

@@ -52,6 +52,9 @@ MAX_READINGS: Final = 3
 # Sites with at least two readings before the athlete's own repeatability
 # replaces the default one in the fat-share blend (#3556).
 MIN_REPEAT_SITES: Final = 10
+# The SD of the median of n normal readings relative to one reading: the mean
+# of two (1 / sqrt 2), and about 0.67 for three, not 1 / sqrt 3 (Gitar on #3622).
+MEDIAN_GAIN: Final = {1: 1.0, 2: 0.707, 3: 0.670}
 _SITE_LABELS: Final = {
     "chest": "Brust",
     "abdomen": "Bauch",
@@ -167,9 +170,10 @@ def repeatability(measurements: Sequence[SkinfoldMeasurement]) -> Repeatability:
 
     The pooled within-site SD in mm goes through the protocol's sensitivity
     at the latest measurement with a body fat: dBF/dS = 495 / D^2 x (b - 2cS),
-    S the sum of three sites, so one measurement's SD is that x SD x sqrt(3)
-    over sqrt(readings per site), the median's gain (#3556). None in mm and
-    %-points below ``MIN_REPEAT_SITES`` sites with repeats.
+    S the sum of three sites, so a measurement of one reading per site has the
+    SD that x SD x sqrt(3) (#3556); ``measurement_sd_pct`` applies each
+    measurement's own median gain (Gitar on #3622). None in mm and %-points
+    below ``MIN_REPEAT_SITES`` sites with repeats.
     """
     sets = [r for m in measurements for r in (m.readings or {}).values()]
     if len(sets) < MIN_REPEAT_SITES:
@@ -183,10 +187,20 @@ def repeatability(measurements: Sequence[SkinfoldMeasurement]) -> Repeatability:
     total = sum(latest.folds_mm.values())
     density = 495.0 / (latest.body_fat_pct + 450.0)
     per_mm = 495.0 / density**2 * abs(b - 2.0 * c * total)
-    counts = [len((latest.readings or {}).get(site, (0,))) for site in latest.folds_mm]
-    per_site = statistics.median(counts)
-    sd_pct = per_mm * sd_mm * math.sqrt(len(latest.folds_mm)) / math.sqrt(per_site)
+    sd_pct = per_mm * sd_mm * math.sqrt(len(latest.folds_mm))
     return Repeatability(len(sets), sd_mm, sd_pct)
+
+
+def measurement_sd_pct(
+    measurement: SkinfoldMeasurement, found: Repeatability
+) -> float | None:
+    """One measurement's body fat SD: the one-reading SD times the gain of the
+    median of its own readings per site (#3556, Gitar on #3622)."""
+    if found.sd_pct is None:
+        return None
+    readings = measurement.readings or {}
+    counts = [len(readings.get(site, (0.0,))) for site in measurement.folds_mm]
+    return found.sd_pct * MEDIAN_GAIN[round(statistics.median(counts))]
 
 
 def birth_year_of(profile_json: str | None) -> int | None:
@@ -283,7 +297,7 @@ class SkinfoldService:
         return {
             "measurements": [public_measurement(item) for item in found[:LIST_LIMIT]],
             # "Deine Messgenauigkeit: ± 0,9 %-Punkte (aus 24 Wiederholungen)" (#3556).
-            "repeatability": _public_repeatability(repeatability(found)),
+            "repeatability": _public_repeatability(found),
             "birth_year_known": birth_year is not None,
             "sites": {sex.value: list(sites) for sex, sites in SKINFOLD_SITES.items()},
         }
@@ -388,9 +402,12 @@ def _site_readings(raw: Any) -> tuple[float, ...]:
     return tuple(readings)
 
 
-def _public_repeatability(found: Repeatability) -> dict[str, Any]:
+def _public_repeatability(found: Sequence[SkinfoldMeasurement]) -> dict[str, Any]:
+    """The repeat count and the newest measurement's own body fat SD."""
+    own = repeatability(found)
+    sd = measurement_sd_pct(found[0], own) if found else None
     return {
-        "repeat_sites": found.repeat_sites,
+        "repeat_sites": own.repeat_sites,
         "needed_sites": MIN_REPEAT_SITES,
-        "sd_pct": None if found.sd_pct is None else round(found.sd_pct, 1),
+        "sd_pct": None if sd is None else round(sd, 1),
     }

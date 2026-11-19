@@ -139,9 +139,10 @@ class SkinfoldServiceTests(unittest.TestCase):
         read = self.save("2026-11-10", repeated)
         # Pooled SD sqrt(26.667 / 24) = 1.054 mm; at S = 55 mm and 18.2 % body
         # fat, dBF/dS = 495 / D^2 x (b - 2cS) = 0.287 %/mm; x 1.054 x sqrt(3)
-        # over sqrt(3) readings per site = 0.30 points.
+        # = 0.523 points for one reading per site, x 0.67 for the median of
+        # three (Gitar on #3622) = 0.35 for the newest measurement.
         self.assertEqual(
-            {"repeat_sites": 12, "needed_sites": 10, "sd_pct": 0.3},
+            {"repeat_sites": 12, "needed_sites": 10, "sd_pct": 0.4},
             read["repeatability"],
         )
 
