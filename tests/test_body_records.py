@@ -52,6 +52,7 @@ class CurrentBodyTests(unittest.TestCase):
         # Wahoo's stored profile weight never counts (#3557).
         weights.append(weigh(DAY, 90.0, WAHOO))
         body = read_current_body(Reader(weight=weights), object(), DAY, skinfolds())
+        assert body.weight_kg is not None
         self.assertAlmostEqual(80.0, body.weight_kg, places=6)
         alone = read_current_body(
             Reader(weight=[weigh(DAY, 90.0, WAHOO)]), object(), DAY, skinfolds()
@@ -61,23 +62,24 @@ class CurrentBodyTests(unittest.TestCase):
     def test_the_body_fat_is_skinfold_then_entered_then_device(self) -> None:
         fats = [weigh(DAY - timedelta(days=2), 16.0, None), weigh(DAY, 18.0, GARMIN)]
         reader = Reader(body_fat=fats)
-        folded = read_current_body(
-            reader, object(), DAY, skinfolds(DAY - timedelta(days=30))
-        )
+
+        def fat(skinfolds_on: Any, read: Reader = reader) -> tuple[Any, ...]:
+            body = read_current_body(read, object(), DAY, skinfolds_on).body_fat
+            assert body is not None
+            return (body["source"], body["label"], body["measured_on"],
+                    body["body_fat_pct"])  # fmt: skip
+
         self.assertEqual(
             ("skinfold", "Hautfalten", DAY - timedelta(days=30), 14.0),
-            (folded.body_fat["source"], folded.body_fat["label"],
-             folded.body_fat["measured_on"], folded.body_fat["body_fat_pct"]),
-        )  # fmt: skip
-        entered = read_current_body(reader, object(), DAY, skinfolds())
-        self.assertEqual(("entered", "Lokal", 16.0), (
-            entered.body_fat["source"], entered.body_fat["label"],
-            entered.body_fat["body_fat_pct"]))  # fmt: skip
-        device = read_current_body(
-            Reader(body_fat=[weigh(DAY, 18.0, GARMIN)]), object(), DAY, skinfolds()
+            fat(skinfolds(DAY - timedelta(days=30))),
         )
-        self.assertEqual(("device", 18.0), (
-            device.body_fat["source"], device.body_fat["body_fat_pct"]))  # fmt: skip
+        self.assertEqual(
+            ("entered", "Lokal", DAY - timedelta(days=2), 16.0), fat(skinfolds())
+        )
+        self.assertEqual(
+            ("device", "Garmin Connect", DAY, 18.0),
+            fat(skinfolds(), Reader(body_fat=[weigh(DAY, 18.0, GARMIN)])),
+        )
         # Older than 90 days: no body fat, never a guess.
         old = read_current_body(
             Reader(body_fat=[weigh(DAY - timedelta(days=91), 18.0, None)]),
