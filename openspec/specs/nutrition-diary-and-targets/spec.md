@@ -155,11 +155,11 @@ The system SHALL compute displayed sugar and salt from the quantity and nutrient
 Evidence: `backend/nutrition/intake_totals.py::_snapshot_values`, `backend/nutrition/intake_totals.py::add_intake_totals`, `public/nutrition.js::nutritionTotalTile`; `tests/test_nutrition_composition.py::NutritionCompositionTests.test_sugar_and_salt_follow_consumption_snapshots_and_unknowns`, `tests/test_nutrition_composition.py::NutritionCompositionTests.test_composite_salt_sugar_scale_with_template_portions_and_week_coverage`.
 
 ### Requirement: Closed-day history preserves independent coverage
-The system SHALL return 7, 14, or 84 closed days ending yesterday, keep absent intake and expenditure unknown, and calculate balances only for dates with both values. Each average SHALL report its own observed-day count.
+The system SHALL return 7, 14, or 84 closed days ending yesterday, keep absent intake and expenditure unknown, and calculate balances only for dates with both values. Each day's expenditure SHALL be its own "Aus deinen Daten" day total from the energy table, named by `expenditure_source` "own", with the wearable's day kept beside it (#3600). Each average SHALL report its own observed-day count.
 
-#### Scenario: Unlogged day with expenditure
-- **WHEN** Garmin expenditure exists but the athlete recorded no meal on a historical day
-- **THEN** expenditure remains visible, intake and balance remain null, and the day does not count toward intake coverage.
+#### Scenario: Day without an own day total
+- **WHEN** the athlete recorded no meal on a historical day, or its everyday or sport part is unknown, while the wearable counted the day
+- **THEN** the day's expenditure and balance remain null, the wearable's day stays readable, and the day counts toward neither expenditure nor balance coverage.
 
 #### Scenario: Independently covered metrics
 - **WHEN** intake, macros, and expenditure cover different days
@@ -169,7 +169,7 @@ The system SHALL return 7, 14, or 84 closed days ending yesterday, keep absent i
 - **WHEN** the requested period is not the integer 7, 14, or 84, or no measurements exist
 - **THEN** invalid periods fail; an empty valid history contains dated gaps, null averages, and zero coverage instead of invented zero intake.
 
-Evidence: `backend/nutrition/sync_status.py::NutritionSyncStatusService.get_week_summary`, `backend/nutrition/sync_status.py::_week_day`, `public/nutrition.js::nutritionChartDays`; `tests/test_nutrition_garmin_expenditure.py::NutritionGarminExpenditureTests.test_week_uses_closed_days_and_only_paired_values_for_balance`, `tests/test_nutrition_garmin_expenditure.py::NutritionGarminExpenditureTests.test_history_rejects_unsupported_periods`, `tests/nutrition-history.test.cjs::weekly chart averages observed days independently and preserves empty weeks`.
+Evidence: `backend/nutrition/sync_status.py::NutritionSyncStatusService.get_week_summary`, `backend/nutrition/sync_status.py::_week_day`, `backend/nutrition/energy_view.py::own_day_totals`, `public/nutrition.js::nutritionChartDays`; `tests/test_nutrition_garmin_expenditure.py::NutritionGarminExpenditureTests.test_the_period_balance_takes_the_own_day_totals`, `tests/test_energy_view.py::SelectedDayTests.test_the_period_balance_takes_each_day_s_own_row_total`, `tests/test_nutrition_garmin_expenditure.py::NutritionGarminExpenditureTests.test_week_uses_closed_days_and_only_paired_values_for_balance`, `tests/test_nutrition_garmin_expenditure.py::NutritionGarminExpenditureTests.test_history_rejects_unsupported_periods`, `tests/nutrition-history.test.cjs::weekly chart averages observed days independently and preserves empty weeks`.
 
 ### Requirement: Measured expenditure retains date and freshness provenance
 The system SHALL keep measured total, active, and resting energy distinct and return source, measurement date, sync time, and freshness for the requested day. It SHALL report a measured total only when supplied, without manufacturing it from components.

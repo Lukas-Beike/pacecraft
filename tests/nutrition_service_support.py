@@ -22,6 +22,7 @@ def build_nutrition_services(
     observation_reader: Any = None,
     activity_summaries: Any = None,
     references: Any = None,
+    own_day_totals: Any = None,
 ) -> tuple[NutritionDiaryService, NutritionMealLibraryService]:
     food_database = food_database or FoodDatabaseService()
     product_repository = NutritionProductRepository()
@@ -47,5 +48,6 @@ def build_nutrition_services(
         observation_reader=observation_reader or CanonicalTableReader,
         activity_summaries=activity_summaries,
         references=references,
+        own_day_totals=own_day_totals,
     )
     return diary, meal_library

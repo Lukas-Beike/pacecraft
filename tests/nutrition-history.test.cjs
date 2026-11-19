@@ -94,4 +94,10 @@ test("history displays daily balance from paired days alongside the total", () =
     assert.match(textOf(tiles[1].children[2]), new RegExp(`^${paired} von ${count} Tagen`));
     assert.equal(tiles[0].style.gridColumn, undefined);
   }
+  // #3600: the expenditure card names the own day totals it averages.
+  const averages = Object.fromEntries(["intake_kcal", "expenditure_kcal", "carbs_g", "protein_g", "fat_g", "sugar_g", "salt_g"].map((key) => [key, { value: null, days: 0 }]));
+  for (const [source, label] of [["own", "Ø Verbrauch aus deinen Daten"], ["device", "Ø Verbrauch"]]) {
+    ctx.renderNutritionWeek({ days: Array(14).fill({ date: "2026-01-01" }), start_date: "start", end_date: "end", balance_kcal: null, balance_days: 0, averages, expenditure_source: source });
+    assert.equal(textOf(document.nodes.get("#nutritionWeekTotals").children[3].children[1]), label);
+  }
 });

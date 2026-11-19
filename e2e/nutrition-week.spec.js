@@ -67,6 +67,8 @@ test("@responsive nutrition history switches between 14 days and 12 weeks", asyn
   await page.goto("/#nutrition/week");
   const root = page.locator("#nutritionWeek");
   await expect(root.locator("#nutritionWeekChartHeading")).toHaveText("Tagesverlauf");
+  // #3600: the period's expenditure is the own day total, and its card says so.
+  await expect(root.locator("#nutritionWeekTotals .nutrition-total").nth(3)).toContainText("Ø Verbrauch aus deinen Daten");
   await expect(root.getByRole("button", { name: "Letzte 14 Tage", exact: true })).toHaveAttribute("aria-pressed", "true");
   await root.getByRole("button", { name: "12 Wochen", exact: true }).click();
   await expect(root.locator("#nutritionWeekPeriod")).toHaveText(/^\d{2}\.\d{2}\.\d{4} – \d{2}\.\d{2}\.\d{4}$/);

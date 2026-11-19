@@ -435,12 +435,15 @@ share, else `prior`), `fat_share` (`share_pct`, `prior_pct` and
 `measured_pct`, the measurements' weight, #3555), `span_days`,
 `weight_start_kg`, `weight_end_kg`, `fat_pct_start` (the first
 measurement used, else null), `fat_pct_end` (the last one, else the
-latest skinfold or null), `fat_change_kg`, `fat_share_pct` (of the
+latest skinfold or null), `fat_date_start` and `fat_date_end` (their
+days: the phase's span, which can start before the window, #3598),
+`weight_last_kg` (the window's last weigh-in), `fat_change_kg`, `fat_share_pct` (of the
 weight change, null below 0.05 kg), `stored_kcal` (over the span),
 `uncertainty` (`fat_share` or `weight_scatter`), `total_kcal` (the window's
 expenditure), `device_total_kcal` and `goal` (`goal`, `goal_kcal` and
-`status` `in`, `under` or `over` the goal within the band; null without
-a goal), and `wellness` (#3530; where Garmin's summary of `day` stands,
+`status` `in` within 150 kcal per day of the goal either way, else
+`under` or `over`, and `distance` `near` (within 150), `mid` (within
+350) or `far` (#3606); null without a goal), and `wellness` (#3530; where Garmin's summary of `day` stands,
 null when it is finished or names no end): `as_of` (`HH:MM`, its wellness
 end) and `behind` (true when a session of the day ends after it, so the
 summary's steps and active kcal leave it out; every row's everyday is
@@ -1514,10 +1517,12 @@ deleted `session_id`.
 Request: query `days` (integer, default `7`; `7`, `14` or `84`).
 
 Response: 200 `{"ok": true, "start_date", "end_date", "days", "averages",
-"balance_kcal", "balance_days"}`. Each item of `days` has `date`, `intake_kcal`,
-`expenditure_kcal`, `balance_kcal`, `energy_expenditure`, the macro totals and
-the intake fields; unknown values are `null`. `averages` gives `{"value",
-"days"}` per field.
+"balance_kcal", "balance_days", "expenditure_source"}`. Each item of `days`
+has `date`, `intake_kcal`, `expenditure_kcal` (the day's "Aus deinen Daten"
+total, `expenditure_source` "own", #3600), `balance_kcal`,
+`energy_expenditure` (the wearable's day), the macro totals and the intake
+fields; unknown values are `null`. `averages` gives `{"value", "days"}` per
+field.
 
 Errors: 400 "Ungültiger Zeitraum." for a non-integer `days`; 400 "Zeitraum muss
 7, 14 oder 84 Tage umfassen." for another number.

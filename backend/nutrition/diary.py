@@ -41,7 +41,7 @@ from backend.nutrition.session_fuelling import (
     session_window,
 )
 from backend.nutrition.session_fuelling import session_intake as build_session_intake
-from backend.nutrition.sync_status import NutritionSyncStatusService
+from backend.nutrition.sync_status import NutritionSyncStatusService, OwnDayTotals
 from backend.runtime.ports import ObservationReader
 
 INVALID_ENTRY_ID = "Ungültige Eintrags-ID."
@@ -104,6 +104,7 @@ class NutritionDiaryService:
         observation_reader: Callable[[], ObservationReader],
         activity_summaries: Callable[[Any, date, date], Iterable[Any]] | None = None,
         references: ActivityReferenceResolver | None = None,
+        own_day_totals: OwnDayTotals | None = None,
     ) -> None:
         # Without a session source every session slot entry stays unattached.
         self._activity_summaries = activity_summaries
@@ -119,6 +120,7 @@ class NutritionDiaryService:
             utc_now,
             local_now,
             observation_reader,
+            own_day_totals,
         )
 
     @property

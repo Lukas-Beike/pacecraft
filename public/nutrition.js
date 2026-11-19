@@ -403,7 +403,8 @@ function renderNutritionWeek(week) {
   if (balance != null && week.balance_days < dayCount) balanceLabel = "Erfasste Teilbilanz";
   const items = [[balanceLabel, balance, "kcal", week.balance_days, true],
     ["Ø Kalorienbilanz pro Tag", week.balance_days > 0 && balance != null ? Math.sign(balance) * Math.round(Math.abs(balance / week.balance_days)) || 0 : null, "kcal", week.balance_days, true],
-    ...[["Ø Aufnahme", "intake_kcal", "kcal"], ["Ø Verbrauch", "expenditure_kcal", "kcal"], ["Ø Kohlenhydrate", "carbs_g", "g"], ["Ø Protein", "protein_g", "g"], ["Ø Fett", "fat_g", "g"], ["Ø Zucker", "sugar_g", "g"], ["Ø Salz", "salt_g", "g"]].map(([label, key, unit]) => [label, week.averages[key].value, unit, week.averages[key].days, false])];
+    // The period balance's expenditure is the own day total (athlete decision, #3600); the card names it.
+    ...[["Ø Aufnahme", "intake_kcal", "kcal"], [week.expenditure_source === "own" ? "Ø Verbrauch aus deinen Daten" : "Ø Verbrauch", "expenditure_kcal", "kcal"], ["Ø Kohlenhydrate", "carbs_g", "g"], ["Ø Protein", "protein_g", "g"], ["Ø Fett", "fat_g", "g"], ["Ø Zucker", "sugar_g", "g"], ["Ø Salz", "salt_g", "g"]].map(([label, key, unit]) => [label, week.averages[key].value, unit, week.averages[key].days, false])];
   totals.replaceChildren(...items.map(([label, value, unit, days, isBalance]) => {
     const number = h("strong");
     if (value == null) markValueMissing(number); else setValueWithUnit(number, nutritionWeekValue(value, unit, isBalance));

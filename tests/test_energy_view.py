@@ -19,7 +19,12 @@ from backend.nutrition.energy_balance import (
     history_start,
 )
 from backend.nutrition.energy_inputs import EnergySources
-from backend.nutrition.energy_view import energy_view, read_energy_view, selected_day
+from backend.nutrition.energy_view import (
+    energy_view,
+    own_day_totals,
+    read_energy_view,
+    selected_day,
+)
 from backend.performance.activity_energy import TEF_ERROR_KCAL
 from backend.providers.source_labels import SourceView, provider_label
 from tests.test_energy_inputs import DAY1, DAY3, sources
@@ -732,7 +737,15 @@ class DeficitCardTests(unittest.TestCase):
         ]
 
     def test_the_card_shows_the_stores_terms_and_the_real_expenditure(self) -> None:
-        card = self.view(MEASURED)
+        # #3598: the readings span the phase (from 07.10.), not the window, and
+        # the window ends on its last weigh-in.
+        card = self.view(
+            MEASURED._replace(
+                fat_date_start=date(2026, 10, 7),
+                fat_date_end=date(2026, 11, 13),
+                weight_last_kg=89.24,
+            )
+        )
         self.assertEqual(
             {
                 "days": 28,
@@ -745,6 +758,9 @@ class DeficitCardTests(unittest.TestCase):
                 "weight_end_kg": 89.2,
                 "fat_pct_start": 15.5,
                 "fat_pct_end": 14.1,
+                "fat_date_start": "2026-10-07",
+                "fat_date_end": "2026-11-13",
+                "weight_last_kg": 89.2,
                 "fat_change_kg": -1.6,
                 "fat_share_pct": 80,
                 "stored_kcal": -15820,
@@ -782,21 +798,61 @@ class DeficitCardTests(unittest.TestCase):
         )
         self.assertIsNone(self.view(None))
 
-    def test_the_goal_marker_reads_in_under_or_over(self) -> None:
-        # Deficit 565 with a band of 235: 330 to 800 counts as in the goal.
-        for goal, kcal, status in (
-            ("lose", "500", "in"),
-            ("lose", "1000", "under"),
-            ("lose", "300", "over"),
-            ("hold", "", "over"),
-            ("build", "300", "under"),
-        ):
-            with self.subTest(goal=goal, kcal=kcal):
-                card = self.view(
-                    MEASURED, {"energy_goal": goal, "energy_goal_kcal": kcal}
-                )
-                self.assertEqual(status, card["goal"]["status"])
+    def test_the_goal_status_and_colour_follow_the_distance_to_the_goal(self) -> None:
+        # #3606: within 150 kcal of the goal, either way, is in the goal and
+        # green ("near"); up to 350 orange ("mid"); beyond red ("far"). Lose and
+        # hold count a deficit, build a surplus; hold's goal is 0.
+        goals = {"lose": ("500", 500, 1), "hold": ("", 0, 1), "build": ("300", 300, -1)}
+        for kind, (text, target, sign) in goals.items():
+            for distance, colour in ((0, "near"), (150, "near"), (151, "mid"),
+                                     (350, "mid"), (351, "far")):  # fmt: skip
+                for side in (1, -1):
+                    amount = target + side * distance
+                    store = MEASURED._replace(kcal_per_day=-sign * amount)
+                    with self.subTest(goal=kind, distance=distance, side=side):
+                        card = self.view(
+                            store, {"energy_goal": kind, "energy_goal_kcal": text}
+                        )
+                        status = "in"
+                        if distance > 150:
+                            status = "over" if side > 0 else "under"
+                        self.assertEqual(
+                            (status, colour),
+                            (card["goal"]["status"], card["goal"]["distance"]),
+                        )
         self.assertIsNone(self.view(MEASURED, {"energy_goal": ""})["goal"])
+
+
+class PartialGarminDayTests(unittest.TestCase):
+    """#3597: a Garmin day whose summary ended early leaves multi-day means."""
+
+    def test_a_partial_day_leaves_the_window_means_but_the_shown_day_keeps_it(
+        self,
+    ) -> None:
+        health = garmin()
+        # One day ended at 12:18 with half a day's resting and total kcal.
+        partial = (END - timedelta(days=3)).isoformat()
+        health[partial] = {
+            "resting_kcal": 870.0,
+            "calories": 1500.0,
+            "wellness_end_min": 738.0,
+        }
+        view = energy_view(inputs(), windows(), health)
+        # Every window mean stays the full days' 1,745 / 3,120, so the device's
+        # error to the 2,700 TDEE is 420 in each window, as without that day.
+        self.assertEqual(420, row(view, "device")["mean_error_kcal"])
+        # The shown day itself keeps its own values (and its Stand, #3530).
+        day = energy_view(
+            inputs(), [window(END, 2700.0)], health, day=END - timedelta(days=3)
+        )
+        self.assertEqual(870, row(day, "device")["resting_kcal"])
+        # "Welche Quelle trifft dein Gewicht?" means only complete days too: the
+        # 14-day and 12-week Garmin means stay the full days' 3,120 (#3597).
+        for key in ("14d", "12w"):
+            with self.subTest(period=key):
+                scale = view["fit_scale"][key]
+                device = next(s for s in scale["sources"] if s["source"] == "device")
+                self.assertEqual(3120, device["total_kcal"])
 
 
 class DayBandTests(unittest.TestCase):
@@ -925,6 +981,27 @@ class SelectedDayTests(unittest.TestCase):
         return energy_view(
             source, [window(END, 2700.0, 1850.0)], garmin(), day=day, **kw
         )
+
+    def test_the_period_balance_takes_each_day_s_own_row_total(self) -> None:
+        # #3600: the period balance reads the own day totals per day, and each
+        # is exactly the diary's own day row for that day; a day without
+        # meals has none and stays open.
+        rest_day, empty = END - timedelta(days=1), END - timedelta(days=2)
+        quiet = DayInputs(weight_kg=80.0, activity_kcal=250.0, neat_kcal=250.0,
+                          sport_kcal=0.0, protein_g=250.0, entries=3)  # fmt: skip
+        no_meals = replace(quiet, protein_g=0.0, entries=0)
+        days = {rest_day: quiet, empty: no_meals}
+        source = replace(inputs(), days={**inputs().days, **days})
+        totals = own_day_totals(
+            source, [window(END, 2700.0, 1850.0)], garmin(), [rest_day, empty, END]
+        )
+        for day in (rest_day, empty, END):
+            with self.subTest(day=day):
+                self.assertEqual(
+                    row(self.view(day, days), "own")["total_kcal"], totals[day]
+                )
+        # 1,850 own resting + 250 everyday + 0 sport + 250 digestion.
+        self.assertEqual((2350, None), (totals[rest_day], totals[empty]))
 
     def test_a_day_without_a_session_has_sport_zero_not_a_mean(self) -> None:
         rest_day = END - timedelta(days=1)
@@ -1118,6 +1195,22 @@ class SelectedDayTests(unittest.TestCase):
             (1700, 2100, (END - timedelta(days=1)).isoformat()),
             (device["resting_kcal"], device["total_kcal"], device["resting_from"]),
         )
+        # #3597: yesterday's summary ended at 12:18 (#3530), so its resting kcal
+        # covers half a day; the newest complete day counts, named by its date.
+        health[END.isoformat()] = {
+            "resting_kcal": 900.0,
+            "calories": 1500.0,
+            "wellness_end_min": 738.0,
+        }
+        device = self.today_device(health)
+        self.assertEqual(
+            (1700, 2100, (END - timedelta(days=1)).isoformat()),
+            (device["resting_kcal"], device["total_kcal"], device["resting_from"]),
+        )
+        # A finished day (1,440) is complete.
+        health[END.isoformat()]["wellness_end_min"] = 1440.0
+        self.assertEqual(900, self.today_device(health)["resting_kcal"])
+        del health[END.isoformat()]
         # No active kcal yet counts 0 so far; a negative one is invalid and keeps
         # the total unknown (#3494, Gitar).
         for active, total in ((None, 1700), (-5.0, None)):

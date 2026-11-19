@@ -55,6 +55,7 @@ from backend.nutrition.energy_inputs import (
     skinfold_state,
 )
 from backend.performance.activity_energy import TEF_ERROR_KCAL
+from backend.performance.daily_health import complete_garmin_day
 from backend.providers.source_labels import SourceView, provider_label
 
 # The fit needs this many windows shared by every compared source (#3187).
@@ -95,12 +96,16 @@ def _formula_prediction(
 def _device_prediction(
     health: Mapping[str, Mapping[str, Any]], window: EnergyWindow
 ) -> Prediction:
-    """Garmin's mean resting and total values over the window's days."""
+    """Garmin's mean resting and total values over the window's days. A day
+    whose summary ended early holds part of its day and leaves a mean of
+    several days (#3597); the shown day keeps its own values and its Stand."""
     start = window.end - timedelta(days=window.days - 1)
     days = [
         health.get((start + timedelta(days=n)).isoformat(), {})
         for n in range(window.days)
     ]
+    if window.days > 1:
+        days = [day for day in days if complete_garmin_day(day)]
 
     def mean(key: str) -> float | None:
         values = [
@@ -182,7 +187,9 @@ def _device_split(
         day = health.get(key, {})
         resting = projected_resting or _number(day.get("resting_kcal"))
         active = _number(day.get("active_kcal"))
-        if not resting or resting < 0 or active is None or active < 0:
+        # A day of several whose summary ended early holds part of it (#3597).
+        partial = window.days > 1 and not complete_garmin_day(day)
+        if partial or not resting or resting < 0 or active is None or active < 0:
             continue
         day_sport = _garmin_sport(by_day.get(key, []), resting)
         if day_sport is not None:
@@ -285,6 +292,46 @@ def _gated_resting(
     if rmr is None or resting_plausible(rmr, reference[0], reference[1]):
         return rmr, False
     return None, True
+
+
+def _own_resting(
+    latest: EnergyWindow,
+    body: Mapping[str, Any] | None,
+    health: Mapping[str, Mapping[str, Any]],
+) -> tuple[Estimate | None, bool]:
+    """The own row's resting rate from the latest window, gated against its
+    Katch-McArdle (``body`` at the window's end), else Garmin (#3255, #3531)."""
+    return _gated_resting(
+        latest.derived_rmr,
+        _formula_prediction(FORMULAS["katch_mcardle"], body, latest),
+        _device_prediction(health, latest),
+    )
+
+
+def own_day_totals(
+    inputs: EnergyInputs,
+    windows: Sequence[EnergyWindow],
+    health: Mapping[str, Mapping[str, Any]],
+    days: Sequence[date],
+) -> dict[date, float | None]:
+    """Each day's "Aus deinen Daten" day total, the diary's own day row for it
+    (#3531): the latest window's resting rate plus the day's everyday, sport and
+    digestion; None where a part is unknown or the resting rate is held back.
+    The period balance takes its expenditure from it (athlete decision, #3600).
+    """
+    latest = windows[-1]
+    trend = weight_trend(
+        {d: v.weight_kg for d, v in inputs.days.items() if v.weight_kg is not None}
+    )
+    shown, implausible = _own_resting(
+        latest, resolve_body(inputs, trend, latest.end), health
+    )
+    return {
+        day: _own_day_row(
+            shown, implausible, latest, _day_window(inputs, latest, day), []
+        )["total_kcal"]
+        for day in days
+    }
 
 
 def _resting_reference(
@@ -494,9 +541,7 @@ def energy_view(
     rows[list(predictions).index(DEVICE)].update(
         label=_device_label(health, day_window), **device_rest
     )
-    shown, implausible = _gated_resting(
-        latest.derived_rmr, predictions["katch_mcardle"][-1], predictions[DEVICE][-1]
-    )
+    shown, implausible = _own_resting(latest, bodies[-1], health)
     # The day row splits at the reference shown beside it that day; the
     # 28-day row at the latest window's, as the gate (#3550).
     reference = _resting_reference(
@@ -549,11 +594,19 @@ def energy_view(
     }
 
 
+# The deficit card's distance to the goal, in kcal per day either way (athlete
+# decision, #3606): within the first it is in the goal ("near", green), up to the
+# second "mid" (orange), beyond "far" (red).
+GOAL_NEAR_KCAL: Final = 150
+GOAL_MID_KCAL: Final = 350
+
+
 def _goal_status(
-    deficit: float, band: float, goal: Mapping[str, str] | None
+    deficit: float, goal: Mapping[str, str] | None
 ) -> dict[str, Any] | None:
-    """The 28-day deficit against the goal (#3548): ``in`` within its band,
-    else ``under`` or ``over`` the goal's deficit (surplus for build)."""
+    """The 28-day deficit against the goal (#3606): ``in`` within
+    ``GOAL_NEAR_KCAL`` either way, else ``under`` or ``over`` the goal's deficit
+    (surplus for build), with the distance class that colours the card."""
     kind = (goal or {}).get("energy_goal") or ""
     if kind not in _GOAL_SIGN:
         return None
@@ -564,13 +617,34 @@ def _goal_status(
     except ValueError:
         kcal = 0
     # Lose and hold count a deficit up, build a surplus.
-    amount = -deficit if kind == "build" else deficit
+    gap = (-deficit if kind == "build" else deficit) - kcal
     status = "in"
-    if amount < kcal - band:
-        status = "under"
-    elif amount > kcal + band:
-        status = "over"
-    return {"goal": kind, "goal_kcal": kcal, "status": status}
+    if abs(gap) > GOAL_NEAR_KCAL:
+        status = "over" if gap > 0 else "under"
+    distance = "near" if abs(gap) <= GOAL_NEAR_KCAL else "mid"
+    if abs(gap) > GOAL_MID_KCAL:
+        distance = "far"
+    return {"goal": kind, "goal_kcal": kcal, "status": status, "distance": distance}
+
+
+def _measured_terms(store: StoredEnergy) -> dict[str, Any]:
+    """The deficit card's measured values, each null when missing: the body fat
+    readings and their days, which span the phase that sets the fat share, not
+    the window (#3598), and the window's last weigh-in."""
+
+    def one(value: float | None) -> float | None:
+        return None if value is None else round(value, 1)
+
+    def day(value: date | None) -> str | None:
+        return None if value is None else value.isoformat()
+
+    return {
+        "fat_pct_start": one(store.fat_pct_start),
+        "fat_pct_end": one(store.fat_pct_end),
+        "fat_date_start": day(store.fat_date_start),
+        "fat_date_end": day(store.fat_date_end),
+        "weight_last_kg": one(store.weight_last_kg),
+    }
 
 
 def _deficit(
@@ -592,12 +666,7 @@ def _deficit(
         "span_days": store.days,
         "weight_start_kg": round(store.weight_start_kg, 1),
         "weight_end_kg": round(store.weight_end_kg, 1),
-        "fat_pct_start": None
-        if store.fat_pct_start is None
-        else round(store.fat_pct_start, 1),
-        "fat_pct_end": None
-        if store.fat_pct_end is None
-        else round(store.fat_pct_end, 1),
+        **_measured_terms(store),
         "fat_change_kg": round(store.fat_change_kg, 1),
         # The fat share of the weight change (#3555).
         "fat_share_pct": round(100 * store.fat_change_kg / change)
@@ -607,7 +676,7 @@ def _deficit(
         "uncertainty": store.uncertainty,
         "total_kcal": _round(tdee.kcal),
         "device_total_kcal": _round(device_total),
-        "goal": _goal_status(deficit, band, goal),
+        "goal": _goal_status(deficit, goal),
     }
 
 
@@ -973,6 +1042,17 @@ def _public_body(body: Mapping[str, Any] | None) -> dict[str, Any] | None:
         "body_fat_pct": round(body["body_fat_pct"], 1),
         "lean_mass_kg": round(body["lean_mass_kg"], 1),
     }
+
+
+def read_own_day_totals(
+    db: Any, sources: EnergySources, end: date, days: Sequence[date]
+) -> dict[date, float | None]:
+    """The own day totals of ``days`` (up to ``end``) from the 12-week history
+    ending on ``end``, the same read the energy view makes (#3600)."""
+    start = min([history_start(end), *days])
+    inputs, _ = read_energy_inputs(db, sources, start, end)
+    windows = energy_windows(inputs, end)
+    return own_day_totals(inputs, windows, sources.daily_health(db, start, end), days)
 
 
 def read_energy_view(
