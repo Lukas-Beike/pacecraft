@@ -49,6 +49,7 @@ from backend.nutrition.energy_balance import (
     DayInputs,
     EnergyInputs,
     EnergyWindow,
+    Estimate,
     LearnedEveryday,
     age_weight,
     below_former_share,
@@ -731,11 +732,11 @@ def learned_everyday(
     for name, formula in LEARNED_FORMULAS.items():
         points = [
             (
-                window.adaptive_tdee.kcal
-                - window.activity_kcal_raw
-                - window.tef_kcal
+                cast(Estimate, window.adaptive_tdee).kcal
+                - cast(float, window.activity_kcal_raw)
+                - cast(float, window.tef_kcal)
                 - resting_energy(formula, body["lean_mass_kg"]),
-                window.derived_rmr.band_kcal / BAND_Z,
+                cast(Estimate, window.derived_rmr).band_kcal / BAND_Z,
                 age_weight(window.end, cast(date, end)),
             )
             for window, body in used
