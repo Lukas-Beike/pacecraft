@@ -1955,7 +1955,8 @@ function energyRowNote(read, source, row) {
   if (source === "own") {
     // Split (#3550): Ruhe is the named reference, so the 28 days give the rest above it.
     // Today rests on the 12-week base, flagged when every window in it is unstable (#3687).
-    const origin = `${row.split?.unmeasured_kcal == null ? "Ruhe" : "nicht erfasster Alltag"} aus ${ENERGY_BASE_SPAN[row.basis] || `${row.window_days} Tagen`}`;
+    const span = ENERGY_BASE_SPAN[row.basis] || row.window_days + " Tagen";
+    const origin = `${row.split?.unmeasured_kcal == null ? "Ruhe" : "nicht erfasster Alltag"} aus ${span}`;
     const parts = [row.window_days ? origin : "", energyFatShareNote(row.fat_share), read.day_partial ? "bis jetzt" : ""].filter(Boolean);
     return parts.length ? [h("small", null, parts.join(" · "))] : [];
   }
