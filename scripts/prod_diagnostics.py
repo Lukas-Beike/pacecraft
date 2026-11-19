@@ -167,6 +167,12 @@ SECTION_FIELDS = {
     ),
     # The Wahoo profile-weight write, counts only (#3559).
     "wahoo_weight_push": re.compile(r"status|sent|failed|retried|pending"),
+    # The re-projection pass after a mapper bump: its state, batches and the
+    # per-provider counters (#3595).
+    "canonical_backfill": re.compile(
+        r"status|batches|providers\.(garmin|wahoo|intervals)\."
+        r"(skipped_invalid|duplicates|reprojected|retired|added)"
+    ),
     # Window records the next detail mapper bump downloads again (#2220).
     "mapper_replay": re.compile(
         r"status|garmin\.(window_days|pending|passed_over(_empty|_retries)?|records"
@@ -203,6 +209,9 @@ STATES = {
     "failed",
     "unavailable",
     "blocked",
+    # The canonical backfill's pass (#3595); pending and failed are above.
+    "running",
+    "complete",
 }
 # The energy table's codes (#3100, #3336, #3362): its basis gap, the resting
 # reference, why the formula rows lack a body and where their body fat came from.

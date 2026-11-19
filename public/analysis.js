@@ -1944,12 +1944,7 @@ function deficitGoalBar(card) {
   const min = Math.min(low, target) - 100;
   const max = Math.max(high, target) + 100;
   const at = (value) => `${((value - min) / (max - min)) * 100}%`;
-  const mark = (className, left, width) => {
-    const node = h("span", className);
-    node.style.left = left;
-    if (width) node.style.width = width;
-    return node;
-  };
+  const mark = (className, left, width) => h("span", { className, style: width ? { left, width } : { left } });
   const noun = goal.goal === "build" ? "Überschuss" : "Defizit";
   const label = goal.goal === "hold" ? "Ziel: Halten" : `Ziel: ${formatWhole(goal.goal_kcal)} kcal ${noun}`;
   return [h("div", { className: "energy-deficit-bar", "aria-hidden": "true" },
