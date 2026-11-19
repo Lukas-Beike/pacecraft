@@ -458,7 +458,56 @@ class FlaggedMealsAndCalibrationTests(unittest.TestCase):
             for a, e in ((400, 150), (500, -150), (600, -150), (700, 150))
         ]
         self.assertTrue(1.0 < balance.calibration_factor(noisy) < 1.10)
+        # #3554: the windows overlap by 21 of 28 days, so the slope variance
+        # 4 x 150^2 / 2 / 50,000 = 0.9 is inflated by 28 / 7 to 3.6: the
+        # posterior (1.10 / 3.6 + 100) / (1 / 3.6 + 100) = 1.000277.
+        self.assertAlmostEqual(balance.calibration_factor(noisy), 1.000277, places=6)
         self.assertEqual(balance.calibration_factor(exact[:3]), 1.0)
+
+    def test_k_and_b_see_one_fat_share_whatever_the_readings(self) -> None:
+        # #3554, the issue's synthetic series: 111 days of a steady 0.07 kg/day
+        # loss, 85 % of it fat, from 85 kg at 18 %; activity builds from 400 to
+        # 800 kcal/day; true expenditure 1,800 + activity + digestion, so the
+        # true k is 1. Some days hold a flagged meal of 500 kcal that was logged
+        # exactly, so the true b is 0. Mid-phase readings used to put a step
+        # into the windows (k 0.850 and 1.076) for k and b to read.
+        days, rest, tef = 111, 1800.0, balance.tef_kcal(150, 300, 80)
+        start = END - timedelta(days=days - 1)
+        density = 0.85 * balance.FAT_KCAL_PER_KG + 0.15 * balance.LEAN_KCAL_PER_KG
+
+        def weight(n: int) -> float:
+            return 85.0 - 0.07 * n
+
+        def fat_pct(n: int) -> float:
+            return 100.0 * (85.0 * 0.18 - 0.85 * 0.07 * n) / weight(n)
+
+        out = {}
+        for n in range(days):
+            activity = 400.0 + 400.0 * n / (days - 1)
+            flagged = (n % 7) < (n // 7) % 5  # a changing share per week
+            out[start + timedelta(days=n)] = balance.DayInputs(
+                intake_kcal=rest + activity + tef - 0.07 * density,
+                protein_g=150, carbohydrate_g=300, fat_g=80, entries=3,
+                flagged=flagged, flagged_kcal=500.0 if flagged else 0.0,
+                weight_kg=weight(n), activity_kcal=activity,
+            )  # fmt: skip
+        biases: list[float] = []
+        for readings in ([-10], [56], list(range(56, days, 14))):
+            with self.subTest(readings=readings):
+                folds = {start + timedelta(days=n): fat_pct(n) for n in readings}
+                inputs = balance.EnergyInputs(out, folds, rmr_kcal=rest)
+                windows = balance.energy_windows(inputs, END)
+                self.assertAlmostEqual(1.0, windows[-1].calibration_factor, delta=0.05)
+                # One share for every window: no step for b to read.
+                shares = {w.store.fat_share for w in windows if w.store}
+                self.assertEqual(1, len(shares))
+                # The rising activity alone leans b (no activity term in its
+                # fit); a reading pattern must not move it further.
+                bias = balance.windows_bias(windows)
+                assert bias is not None
+                biases.append(bias[0])
+        self.assertAlmostEqual(biases[0], biases[1], places=6)
+        self.assertAlmostEqual(biases[0], biases[2], places=6)
 
 
 if __name__ == "__main__":

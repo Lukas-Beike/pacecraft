@@ -1,8 +1,8 @@
 # M12 — Adaptive daily expenditure from intake and the weight trend
 
 - **Card:** M12
-- **Card version:** 7
-- **Method ID:** adaptive-expenditure v7 (#3100, #3187, #3255, #3552, #3551, #3553, #3555)
+- **Card version:** 8
+- **Method ID:** adaptive-expenditure v8 (#3100, #3187, #3255, #3552, #3551, #3553, #3555, #3554)
 - **Status:** method implemented (`backend/nutrition/energy_balance.py`); the reader, diagnostics and display follow (#3100, #3099)
 - **Classification:** model estimate
 - **Literature checked:** 2026-11-15
@@ -35,11 +35,14 @@ estimate. It never rewrites logged values and never falls back to a formula.
    R68). The fat share `p` blends a prior 0.70 ± 0.15 with the measured share
    by their precisions (athlete decision, #3555): the slope of the fat mass
    (current weight × body fat) over the slope of the weight, through all
-   dated body fat values of one method up to the window's end, each with a
+   dated body fat values of one method up to the latest window's end, each with a
    repeatability of 2 percentage points. Its SD is the fat mass's SD over
    `sqrt(Σ(t − t̄)²)` and the weight slope; the posterior SD enters the band.
    With fewer than two values 14 days apart, or under 0.1 kg of weight
-   change between them, `p = 0.70` (about 7,154 kcal/kg).
+   change between them, `p = 0.70` (about 7,154 kcal/kg). Every window of
+   the view takes this one phase-wide share, so a measurement that arrives
+   mid-phase moves all windows alike and puts no step into the windows
+   that `k` and `b` are fitted over (#3554).
 3. **Stored energy per day:** `ρ × slope`, the least-squares slope of the
    window's own weigh-ins in kg/day. The current weight only supplies the
    mass for `ρ`.
@@ -59,7 +62,10 @@ estimate. It never rewrites logged values and never falls back to a formula.
 6. **Calibration factor `k`:** the least-squares slope of `TDEE − TEF` on the
    uncalibrated M11 activity over the windows, combined with the prior 1 ± 0.10
    as a precision-weighted mean, then clamped to 0.85–1.15. It stays 1 with
-   fewer than 4 windows or no spread in activity.
+   fewer than 4 windows or no spread in activity. Neighbouring windows
+   share 21 of their 28 days, so the slope's variance is multiplied by
+   28 / 7 = 4 before the shrinkage; the bias `b` multiplies its slope
+   variance by the same 4, so its band doubles (#3554).
 7. **Derived resting rate:** `TDEE − k × activity − TEF`. Its band adds `k`
    times the window's mean M11 activity error (each part's method share, not
    averaged out across days) and the TEF error of 80 kcal/day, in quadrature
@@ -135,7 +141,8 @@ bias that is the same on every day is not visible in the band.
 ## Bias and transferability
 
 - Logging bias and expenditure bias cannot be separated (weak evidence).
-- The windows overlap, so their calibration points are correlated.
+- The windows overlap, so their calibration points are correlated; the
+  fits inflate their slope variance by 4 for it, an approximation (#3554).
 - Water and glycogen shifts move the weight without stored energy; the 28-day
   line and the 28-day window damp them.
 
@@ -221,7 +228,7 @@ bias that is the same on every day is not visible in the band.
 | Constant | Value | Module | Code comment |
 | --- | --- | --- | --- |
 | `METHOD_ID` | `'adaptive-expenditure'` | `backend/nutrition/energy_balance.py` |  |
-| `METHOD_VERSION` | `7` | `backend/nutrition/energy_balance.py` | Bump when a formula or constant below changes the estimate. |
+| `METHOD_VERSION` | `8` | `backend/nutrition/energy_balance.py` | Bump when a formula or constant below changes the estimate. |
 | `WINDOW_DAYS` | `28` | `backend/nutrition/energy_balance.py` | Days per window and windows per week of the rolling view (#3099, #3100). |
 | `CURRENT_WEIGHT_DAYS` | `28` | `backend/nutrition/energy_balance.py` | A day's current weight is the least-squares line through the weigh-ins of this many days up to it, at its latest weigh-in, so a steady change has no lag (#3551); with fewer weigh-ins or a shorter span, their mean. |
 | `MIN_LINE_WEIGHINS` | `3` | `backend/nutrition/energy_balance.py` |  |
