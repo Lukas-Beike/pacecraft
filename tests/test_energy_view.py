@@ -737,7 +737,15 @@ class DeficitCardTests(unittest.TestCase):
         ]
 
     def test_the_card_shows_the_stores_terms_and_the_real_expenditure(self) -> None:
-        card = self.view(MEASURED)
+        # #3598: the readings span the phase (from 07.10.), not the window, and
+        # the window ends on its last weigh-in.
+        card = self.view(
+            MEASURED._replace(
+                fat_date_start=date(2026, 10, 7),
+                fat_date_end=date(2026, 11, 13),
+                weight_last_kg=89.24,
+            )
+        )
         self.assertEqual(
             {
                 "days": 28,
@@ -750,6 +758,9 @@ class DeficitCardTests(unittest.TestCase):
                 "weight_end_kg": 89.2,
                 "fat_pct_start": 15.5,
                 "fat_pct_end": 14.1,
+                "fat_date_start": "2026-10-07",
+                "fat_date_end": "2026-11-13",
+                "weight_last_kg": 89.2,
                 "fat_change_kg": -1.6,
                 "fat_share_pct": 80,
                 "stored_kcal": -15820,
@@ -787,20 +798,28 @@ class DeficitCardTests(unittest.TestCase):
         )
         self.assertIsNone(self.view(None))
 
-    def test_the_goal_marker_reads_in_under_or_over(self) -> None:
-        # Deficit 565 with a band of 235: 330 to 800 counts as in the goal.
-        for goal, kcal, status in (
-            ("lose", "500", "in"),
-            ("lose", "1000", "under"),
-            ("lose", "300", "over"),
-            ("hold", "", "over"),
-            ("build", "300", "under"),
-        ):
-            with self.subTest(goal=goal, kcal=kcal):
-                card = self.view(
-                    MEASURED, {"energy_goal": goal, "energy_goal_kcal": kcal}
-                )
-                self.assertEqual(status, card["goal"]["status"])
+    def test_the_goal_status_and_colour_follow_the_distance_to_the_goal(self) -> None:
+        # #3606: within 150 kcal of the goal, either way, is in the goal and
+        # green ("near"); up to 350 orange ("mid"); beyond red ("far"). Lose and
+        # hold count a deficit, build a surplus; hold's goal is 0.
+        goals = {"lose": ("500", 500, 1), "hold": ("", 0, 1), "build": ("300", 300, -1)}
+        for kind, (text, target, sign) in goals.items():
+            for distance, colour in ((0, "near"), (150, "near"), (151, "mid"),
+                                     (350, "mid"), (351, "far")):  # fmt: skip
+                for side in (1, -1):
+                    amount = target + side * distance
+                    store = MEASURED._replace(kcal_per_day=-sign * amount)
+                    with self.subTest(goal=kind, distance=distance, side=side):
+                        card = self.view(
+                            store, {"energy_goal": kind, "energy_goal_kcal": text}
+                        )
+                        status = "in"
+                        if distance > 150:
+                            status = "over" if side > 0 else "under"
+                        self.assertEqual(
+                            (status, colour),
+                            (card["goal"]["status"], card["goal"]["distance"]),
+                        )
         self.assertIsNone(self.view(MEASURED, {"energy_goal": ""})["goal"])
 
 

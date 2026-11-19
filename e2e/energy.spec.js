@@ -351,9 +351,10 @@ for (const theme of ["light", "dark"]) {
 // values come from the method tests); its hero, boxes and text must agree.
 const DEFICITS = {
   measured: { days: 28, deficit_kcal: 565, band_kcal: 235, method: "measured", span_days: 28, weight_start_kg: 91.2, weight_end_kg: 89.2,
-    fat_pct_start: 15.5, fat_pct_end: 14.1, fat_change_kg: -1.6, fat_share_pct: 80, fat_share: { share_pct: 80, prior_pct: 70, measured_pct: 28 },
+    fat_pct_start: 15.5, fat_pct_end: 14.1, fat_date_start: "2026-10-07", fat_date_end: "2026-11-13", weight_last_kg: 89.2,
+    fat_change_kg: -1.6, fat_share_pct: 80, fat_share: { share_pct: 80, prior_pct: 70, measured_pct: 28 },
     stored_kcal: -15820, uncertainty: "fat_share",
-    total_kcal: 3800, device_total_kcal: 3100, goal: { goal: "lose", goal_kcal: 500, status: "in" } },
+    total_kcal: 3800, device_total_kcal: 3100, goal: { goal: "lose", goal_kcal: 500, status: "in", distance: "near" } },
   prior: { days: 28, deficit_kcal: 420, band_kcal: 260, method: "prior", span_days: 27, weight_start_kg: 80.4, weight_end_kg: 78.9,
     fat_pct_start: null, fat_pct_end: 18, fat_change_kg: -1.1, fat_share_pct: 70, fat_share: { share_pct: 70, prior_pct: 70, measured_pct: 0 },
     stored_kcal: -11340, uncertainty: "fat_share",
@@ -379,14 +380,31 @@ for (const [method, deficit] of Object.entries(DEFICITS)) {
     await expect(boxes).toHaveCount(4);
     await expect(boxes.nth(3).locator("strong")).toHaveText(`≈ ${kcal} kcal`);
     await expect(boxes.nth(3).locator("small").last()).toHaveText(`${Math.abs(deficit.stored_kcal).toLocaleString("de-DE")} kcal ÷ ${deficit.span_days} Tage`);
+    // #3606: the card comes before "Welche Quelle trifft dein Gewicht?", and its text is two lines.
+    const order = await page.locator("#nutritionFitScale > section").evaluateAll((cards) => cards.map((node) => ["energyDeficit", "energyFit"].find((key) => key in node.dataset) || "other"));
+    expect(order.slice(0, 2)).toEqual(["energyDeficit", "energyFit"]);
     const text = card.locator(".energy-deficit-text");
-    await expect(text).toContainText(`einem Defizit von etwa ${kcal} kcal pro Tag`);
-    await expect(text).toContainText(`rund ${deficit.total_kcal.toLocaleString("de-DE")} kcal`);
+    await expect(text).toHaveText(`Echter Verbrauch: ≈ ${deficit.total_kcal.toLocaleString("de-DE")} kcal am Tag (Garmin Connect: ${deficit.device_total_kcal.toLocaleString("de-DE")}).`);
+    await expect(card.locator(".energy-deficit-uncertainty")).toHaveText(/^Unsicher vor allem: .+\.$/);
     if (method === "measured") {
       await expect(boxes.nth(1)).toContainText("15,5 → 14,1 %");
-      await expect(text).toContainText("von 15,5 % auf 14,1 % gesunken. Faustregel und Messungen zusammen nehmen davon etwa 80 % als Fett – etwa 1,6 kg");
+      // #3598: the readings span the phase, not the 28 days, and the box says so.
+      await expect(boxes.nth(1)).toContainText("07.10. → 13.11.");
       await expect(boxes.nth(2)).toContainText("Faustregel 70 %, zu 28 % gemessen");
       await expect(card.locator(".energy-deficit-status")).toHaveText("Ziel: 500 kcal Defizit · ✓ im Ziel");
+      // #3606: 65 kcal from the goal is "near": the number and the mark take the accent colour.
+      await expect(card).toHaveAttribute("data-goal-distance", "near");
+      const colours = await card.evaluate((node) => {
+        const accent = getComputedStyle(node).getPropertyValue("--accent").trim();
+        const probe = document.createElement("span");
+        probe.style.color = accent;
+        node.append(probe);
+        const expected = getComputedStyle(probe).color;
+        probe.remove();
+        return { expected, hero: getComputedStyle(node.querySelector(".energy-deficit-hero strong")).color,
+          mark: getComputedStyle(node.querySelector(".energy-deficit-mark")).backgroundColor };
+      });
+      expect([colours.hero, colours.mark]).toEqual([colours.expected, colours.expected]);
       // The span is drawn, and the estimate and the goal marker sit inside it, in their order.
       const marks = await card.locator(".energy-deficit-bar").evaluate((bar) => Object.fromEntries([...bar.children].map((node) => {
         const rect = node.getBoundingClientRect();
@@ -408,8 +426,9 @@ for (const [method, deficit] of Object.entries(DEFICITS)) {
     } else {
       await expect(boxes.nth(1)).toContainText("nur eine Messung");
       await expect(boxes.nth(2)).toContainText("≈ 70 % · Faustregel 70 %");
-      await expect(text).toContainText("Faustregel davon etwa 70 % als Fett – etwa 1,1 kg");
       await expect(card.locator(".energy-deficit-bar")).toHaveCount(0);
+      // No goal, no distance class: the number keeps its colour.
+      await expect(card).not.toHaveAttribute("data-goal-distance", /.+/);
     }
     // The boxes stay inside the card, also on a phone.
     const overflow = await card.evaluate((node) => [...node.querySelectorAll("[data-deficit-box]")].some((box) => box.getBoundingClientRect().right > node.getBoundingClientRect().right + 1));
