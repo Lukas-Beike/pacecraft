@@ -28,7 +28,7 @@ from backend.performance.activity_energy import (
 
 METHOD_ID = "adaptive-expenditure"
 # Bump when a formula or constant below changes the estimate.
-METHOD_VERSION = 21
+METHOD_VERSION = 22
 # Days per window and windows per week of the rolling view (#3099, #3100).
 WINDOW_DAYS = 28
 # A window needs this many complete logging days, weigh-ins and days between
@@ -116,6 +116,12 @@ STABILITY_BAND_RATIO = 2.576 / 1.96
 # The learned everyday term of a formula row (#3577): the own total's excess over
 # the row, shrunk towards 0 with this SD (kcal/day, product assumption).
 LEARNED_EVERYDAY_PRIOR_SD = 250.0
+# A formula can overshoot too, so the term may reduce a row, down to this floor
+# (kcal/day); it is offered and applied only with this many stable windows that
+# share no day, or a posterior SD up to this (kcal/day) (#3689).
+LEARNED_EVERYDAY_FLOOR = -250.0
+LEARNED_EVERYDAY_MIN_INDEPENDENT = 3
+LEARNED_EVERYDAY_MAX_SD = 150.0
 
 
 @dataclass(frozen=True)
@@ -963,22 +969,28 @@ def flagged_meal_bias(inputs: EnergyInputs, end: date) -> tuple[float, float] | 
 
 class LearnedEveryday(NamedTuple):
     """A formula row's learned everyday term (#3577): the shrunken fit with its
-    sign kept (``raw_kcal``), the value shown (never below 0), its 95 % band
-    and the windows it was fitted over."""
+    sign kept (``raw_kcal``), the value shown and applied (floored at
+    ``LEARNED_EVERYDAY_FLOOR``, #3689), its 95 % band, the windows it was
+    fitted over, how many of the stable ones share no day, and whether it
+    qualifies to be offered and applied."""
 
     raw_kcal: float
     kcal: float
     band_kcal: float
     windows: int
+    independent: int = 0
+    qualified: bool = False
 
 
 def fit_learned_everyday(
-    points: Sequence[tuple[float, float, float]],
+    points: Sequence[tuple[float, float, float]], independent: int = 0
 ) -> LearnedEveryday | None:
     """The mean of each window's excess (value, SD, age weight), weighted by
     precision and age as the 12-week base (#3687), its variance inflated for
     the windows' overlap and shrunk towards 0 with ``LEARNED_EVERYDAY_PRIOR_SD``
-    (#3577); None without a window."""
+    by the conjugate normal update (#3577); None without a window. It
+    qualifies with ``LEARNED_EVERYDAY_MIN_INDEPENDENT`` stable windows that
+    share no day, or a posterior SD of ``LEARNED_EVERYDAY_MAX_SD`` (#3689)."""
     usable = [point for point in points if point[1] > 0]
     if not usable:
         return None
@@ -987,8 +999,26 @@ def fit_learned_everyday(
     posterior_var = 1.0 / (precision + 1.0 / LEARNED_EVERYDAY_PRIOR_SD**2)
     raw = posterior_var * precision * mean
     return LearnedEveryday(
-        raw, max(0.0, raw), BAND_Z * math.sqrt(posterior_var), len(usable)
+        raw,
+        max(LEARNED_EVERYDAY_FLOOR, raw),
+        BAND_Z * math.sqrt(posterior_var),
+        len(usable),
+        independent,
+        independent >= LEARNED_EVERYDAY_MIN_INDEPENDENT
+        or math.sqrt(posterior_var) <= LEARNED_EVERYDAY_MAX_SD,
     )
+
+
+def independent_windows(windows: Sequence[EnergyWindow]) -> int:
+    """The stable estimated windows that share no day, counted from the latest
+    back (#3689): the next counts only once it ends a full window earlier."""
+    count, before = 0, None
+    for window in reversed(windows):
+        if window.derived_rmr is None or not is_stable(window):
+            continue
+        if before is None or (before - window.end).days >= window.days:
+            count, before = count + 1, window.end
+    return count
 
 
 def windows_bias(windows: Sequence[EnergyWindow]) -> tuple[float, float] | None:

@@ -937,10 +937,12 @@ def _add_learned(
     checked: str | None,
 ) -> None:
     """Once ``checked``, each formula row carries its learned everyday term
-    (#3577): a split part of its own and in the day total."""
+    (#3577): a split part of its own and in the day total, a negative one as a
+    reduction; only while the term qualifies (#3689), the check staying
+    stored until it does."""
     for row in rows:
         fit = learned.get(str(row["source"])) if checked else None
-        if fit is None or row["split"] is None:
+        if fit is None or not fit.qualified or row["split"] is None:
             continue
         kcal = round(fit.kcal)
         row["split"] = {
@@ -965,6 +967,10 @@ def _learned_view(fit: LearnedEveryday | None) -> dict[str, Any] | None:
         "raw_kcal": round(fit.raw_kcal),
         "band_kcal": round(fit.band_kcal),
         "windows": fit.windows,
+        # Stable windows sharing no day, and whether it may be offered and
+        # applied; until then the line reads "noch nicht gelernt" (#3689).
+        "independent": fit.independent,
+        "qualified": fit.qualified,
     }
 
 

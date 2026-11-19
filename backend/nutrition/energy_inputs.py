@@ -43,6 +43,7 @@ from backend.canonical.vocabulary import ProviderId, StreamChannel
 from backend.db.activity_detail_store import detail_sets_for_session
 from backend.nutrition.energy_balance import (
     BAND_Z,
+    BASE_DAYS,
     WINDOW_DAYS,
     Base,
     DayInputs,
@@ -56,6 +57,7 @@ from backend.nutrition.energy_balance import (
     fat_share,
     fit_learned_everyday,
     history_start,
+    independent_windows,
     is_complete,
     is_stable,
     twelve_week_base,
@@ -708,10 +710,13 @@ def learned_everyday(
     over the estimated windows with a body at their end: the window's own TDEE
     less its uncalibrated activity, digestion and the formula's resting rate,
     what the row lacks against the own total at the rows' k = 1; its SD is
-    the derived resting rate's, and it weighs by its age as the 12-week base
-    does (#3687)."""
+    the derived resting rate's. It learns from the 12-week base's windows
+    (#3687, #3689): each weighs by its precision and age, an unstable one less
+    through its widened band (#3614), and it qualifies with enough stable
+    windows that share no day."""
     fits: dict[str, LearnedEveryday | None] = {}
     end = windows[-1].end if windows else None
+    independent = independent_windows(windows)
     for name, formula in LEARNED_FORMULAS.items():
         points = [
             (
@@ -728,10 +733,9 @@ def learned_everyday(
             and window.derived_rmr is not None
             and window.activity_kcal_raw is not None
             and window.tef_kcal is not None
-            # A window that fails the neighbour check (#3614) teaches nothing.
-            and is_stable(window)
+            and (cast(date, end) - window.end).days < BASE_DAYS
         ]
-        fits[name] = fit_learned_everyday(points)
+        fits[name] = fit_learned_everyday(points, independent)
     return fits
 
 

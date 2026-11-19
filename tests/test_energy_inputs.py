@@ -953,11 +953,12 @@ class BodyFatFallbackTests(unittest.TestCase):
         assert km is not None and cunningham is not None
         self.assertEqual((8, 1), (round(km.raw_kcal), km.windows))
         self.assertLess(cunningham.raw_kcal, 0)
-        # A window that fails the neighbour check (#3614) teaches nothing.
+        # #3689: it learns from the 12-week base's windows, so an unstable one
+        # (#3614) teaches through its own band, but counts as no independent one.
         unstable = replace(estimated, stable=False)
-        self.assertIsNone(
-            energy_inputs.learned_everyday([unstable], [body])["katch_mcardle"]
-        )
+        learned = energy_inputs.learned_everyday([unstable], [body])["katch_mcardle"]
+        assert learned is not None
+        self.assertEqual((8, 0), (round(learned.raw_kcal), learned.independent))
         # Without a body at a window's end it has no fit.
         self.assertIsNone(
             energy_inputs.learned_everyday([estimated], [None])["cunningham"]
