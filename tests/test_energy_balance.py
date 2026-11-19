@@ -501,10 +501,12 @@ class FlaggedMealsAndCalibrationTests(unittest.TestCase):
                 # One share for every window: no step for b to read.
                 shares = {w.store.fat_share for w in windows if w.store}
                 self.assertEqual(1, len(shares))
-                # The rising activity alone leans b (no activity term in its
-                # fit); a reading pattern must not move it further.
+                # #3586: the rising activity alone leaned b to +32 %; with
+                # the activity as its second term, b is near the true 0, and
+                # a reading pattern does not move it.
                 bias = balance.windows_bias(windows)
                 assert bias is not None
+                self.assertAlmostEqual(0.0, bias[0], delta=5.0)  # percent
                 biases.append(bias[0])
         self.assertAlmostEqual(biases[0], biases[1], places=6)
         self.assertAlmostEqual(biases[0], biases[2], places=6)

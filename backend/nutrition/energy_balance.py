@@ -23,7 +23,7 @@ from backend.performance.activity_energy import TEF_ERROR_KCAL, tef_kcal
 
 METHOD_ID = "adaptive-expenditure"
 # Bump when a formula or constant below changes the estimate.
-METHOD_VERSION = 8
+METHOD_VERSION = 9
 # Days per window and windows per week of the rolling view (#3099, #3100).
 WINDOW_DAYS = 28
 # A day's current weight is the least-squares line through the weigh-ins of
@@ -641,23 +641,49 @@ def _bias(windows: Sequence[EnergyWindow]) -> tuple[float, float] | None:
     logged kcal per day x: TDEE = T - b x. If flagged meals were in fact
     larger than logged by b, more flagged intake shows as a lower
     expenditure, so b = -slope; positive b means they were larger.
+
+    The TDEE also follows the window's own activity, so when that spreads
+    across the windows it is the fit's second term (#3586): both TDEE and x
+    are taken net of their line on the raw activity, and b is the flagged
+    slope at fixed activity (Frisch-Waugh), with one degree of freedom less.
     """
     points = [
-        (w.flagged_kcal_per_day, w.adaptive_tdee.kcal)
+        (w.flagged_kcal_per_day, w.adaptive_tdee.kcal, w.activity_kcal_raw)
         for w in windows
         if w.adaptive_tdee is not None
     ]
     usable = [p for p in points if p[0] > 0]
-    if len(usable) < MIN_BIAS_WINDOWS or len({round(x, 6) for x, _ in points}) < 3:
+    if len(usable) < MIN_BIAS_WINDOWS or len({round(p[0], 6) for p in points}) < 3:
         return None
-    xs = [x for x, _ in points]
-    ys = [y for _, y in points]
+    xs = [p[0] for p in points]
+    ys = [p[1] for p in points]
+    activity = [p[2] for p in points]
+    dof = len(points) - 2
+    if (
+        all(a is not None for a in activity)
+        and len({round(a or 0.0, 6) for a in activity}) > 1
+    ):
+        known = [a or 0.0 for a in activity]
+        xs, ys = _net_of(known, xs), _net_of(known, ys)
+        dof -= 1
     mean_x, mean_y = statistics.fmean(xs), statistics.fmean(ys)
     sxx = sum((x - mean_x) ** 2 for x in xs)
-    if sxx <= 0:
+    if sxx <= 1e-9:  # flagged kcal moved only with the activity
         return None
-    slope = sum((x - mean_x) * (y - mean_y) for x, y in points) / sxx
-    residual = [y - (mean_y + slope * (x - mean_x)) for x, y in points]
+    slope = sum((x - mean_x) * (y - mean_y) for x, y in zip(xs, ys, strict=True)) / sxx
+    residual = [
+        y - (mean_y + slope * (x - mean_x)) for x, y in zip(xs, ys, strict=True)
+    ]
     # The windows overlap, so their slope is less certain than OLS says (#3554).
-    slope_var = sum(r * r for r in residual) / max(1, len(points) - 2) / sxx
+    slope_var = sum(r * r for r in residual) / max(1, dof) / sxx
     return -slope, BAND_Z * math.sqrt(slope_var * WINDOW_OVERLAP_INFLATION)
+
+
+def _net_of(regressor: Sequence[float], values: Sequence[float]) -> list[float]:
+    """``values`` minus their least-squares line on ``regressor`` (#3586)."""
+    slope, _ = _slope(regressor, values)
+    mean_r, mean_v = statistics.fmean(regressor), statistics.fmean(values)
+    return [
+        v - mean_v - slope * (r - mean_r)
+        for r, v in zip(regressor, values, strict=True)
+    ]
