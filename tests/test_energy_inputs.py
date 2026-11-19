@@ -240,6 +240,7 @@ class EnergyInputsReaderTests(unittest.TestCase):
              "latest_window_weighins": None,
              "latest_window_insufficient": None, "windows": 0,
              "windows_with_estimate": 0,
+             "fat_prior_source": None, "fat_prior_pct": None,
              "unstable_windows": 0, "largest_unstable_spread_kcal": 0,
              "base_windows": 0, "base_weight_sum_tenths": 0, "base_unstable": 0,
              "windows_span_short": 0,
@@ -603,8 +604,9 @@ class StoreAdapterTests(unittest.TestCase):
 
     def test_the_lean_mass_is_carried_from_the_reading(self) -> None:
         # #3617 item 1: 20 % at 85 kg forty days ago (68 kg lean), then 0.1 kg
-        # a day lost. With one reading the share is the prior 0.70, so 30 % of
-        # the 4 kg is lean: 68 - 1.2 = 66.8 kg, not 81 kg x 80 % = 64.8 kg.
+        # a day lost. With one reading the share is Forbes' prior at 81 kg x
+        # 20 % = 16.2 kg of fat, 16.2 / 26.6 = 0.609 (#3684), so 39.1 % of the
+        # 4 kg is lean: 68 - 1.56 = 66.44 kg, not 81 kg x 80 % = 64.8 kg.
         end = date(2026, 11, 15)
         first = end - timedelta(days=40)
         weights = {first + timedelta(days=n): 85.0 - 0.1 * n for n in range(41)}
@@ -616,9 +618,10 @@ class StoreAdapterTests(unittest.TestCase):
         trend = weight_trend(weights)
         body = energy_inputs.resolve_body(inputs, trend, end)
         assert body is not None
-        carried = 0.8 * trend[first] + 0.3 * (trend[end] - trend[first])
-        self.assertAlmostEqual(carried, body["lean_mass_kg"], places=6)
-        self.assertAlmostEqual(66.8, body["lean_mass_kg"], delta=0.05)
+        lean = 1 - 16.2 / 26.6
+        carried = 0.8 * trend[first] + lean * (trend[end] - trend[first])
+        self.assertAlmostEqual(carried, body["lean_mass_kg"], places=2)
+        self.assertAlmostEqual(66.44, body["lean_mass_kg"], delta=0.05)
         # Without a dated reading there is no body: the profile's stored body
         # fat is no source (#3640).
         self.assertIsNone(
@@ -640,7 +643,7 @@ class StoreAdapterTests(unittest.TestCase):
         inputs, _ = read_energy_inputs(None, rated, DAY1, DAY3)
         body = energy_inputs.resolve_body(inputs, weight_trend(weights), DAY3)
         assert body is not None
-        self.assertAlmostEqual(66.8, body["lean_mass_kg"], delta=0.05)
+        self.assertAlmostEqual(66.44, body["lean_mass_kg"], delta=0.05)
         # Katch-McArdle 370 + 21.6 x lean, the same lean mass as the rows.
         self.assertAlmostEqual(
             370 + 21.6 * body["lean_mass_kg"], inputs.rmr_kcal or 0.0, places=6

@@ -19,7 +19,7 @@ from datetime import date, timedelta
 from itertools import pairwise
 from typing import Any, NamedTuple, cast
 
-from backend.athlete.body_records import weight_trend
+from backend.athlete.body_records import body_fat_on, weight_trend
 from backend.performance.activity_energy import (
     TEF_ERROR_KCAL,
     TEF_UNCOVERED,
@@ -28,7 +28,7 @@ from backend.performance.activity_energy import (
 
 METHOD_ID = "adaptive-expenditure"
 # Bump when a formula or constant below changes the estimate.
-METHOD_VERSION = 22
+METHOD_VERSION = 23
 # Days per window and windows per week of the rolling view (#3099, #3100).
 WINDOW_DAYS = 28
 # A window needs this many complete logging days, weigh-ins and days between
@@ -51,11 +51,14 @@ FORMER_DAY_SHARE = 0.6
 FAT_KCAL_PER_KG = 9441.0
 LEAN_KCAL_PER_KG = 1816.0
 # The fat share of a weight change is a precision-weighted blend of a prior
-# and the slope of the phase's measured fat mass (athlete decision, #3555):
-# the prior 0.70 +- 0.15 lies between Forbes' curve (about 0.55 at this body
-# fat) and the 0.80 of strength training with high protein, and covers both.
+# and the slope of the phase's measured fat mass (athlete decision, #3555).
+# The prior follows Forbes' curve at the current fat mass, FM / (FM + 10.4 kg)
+# (Forbes 1987, Hall 2008), clamped to 0.40-0.85, with SD 0.15; without a
+# body fat it falls back to 0.70 (athlete decision, #3684).
 FAT_SHARE_PRIOR = 0.70
 FAT_SHARE_PRIOR_SD = 0.15
+FORBES_FAT_MASS_KG = 10.4
+FAT_SHARE_PRIOR_BOUNDS = (0.40, 0.85)
 # Repeatability of one self-measured body fat value (percentage points, SD):
 # the upper end of the review's 1.5-2 for skinfolds (#3555).
 BODY_FAT_REPEATABILITY_PCT = 2.0
@@ -211,6 +214,9 @@ class StoredEnergy(NamedTuple):
     fat_date_end: date | None = None
     # The window's last weigh-in, which the weight chart ends on (#3598).
     weight_last_kg: float | None = None
+    # The prior of the fat share and its source (#3684).
+    fat_prior: float = FAT_SHARE_PRIOR
+    fat_prior_source: str = "fallback"
 
 
 @dataclass(frozen=True)
@@ -405,6 +411,25 @@ class FatShare(NamedTuple):
     # Their days: the phase's span the card names, not the window's (#3598).
     day_first: date | None = None
     day_last: date | None = None
+    # The prior it was blended with and where it came from: "forbes" or
+    # "fallback" (#3684).
+    prior: float = FAT_SHARE_PRIOR
+    prior_source: str = "fallback"
+
+
+def fat_share_prior(
+    inputs: EnergyInputs, trend: Mapping[date, float], end: date
+) -> tuple[float, str]:
+    """Forbes' fat share at the current fat mass on ``end``: the trend weight x
+    the body fat the view uses (skinfold, entered, device), clamped to
+    FAT_SHARE_PRIOR_BOUNDS; FAT_SHARE_PRIOR without either (#3684)."""
+    fat = body_fat_on(inputs.body_fat_pct, inputs.device_body_fat, end)
+    days = [d for d in trend if d <= end]
+    if fat is None or not days:
+        return FAT_SHARE_PRIOR, "fallback"
+    mass = trend[max(days)] * fat["body_fat_pct"] / 100.0
+    low, high = FAT_SHARE_PRIOR_BOUNDS
+    return min(high, max(low, mass / (mass + FORBES_FAT_MASS_KG))), "forbes"
 
 
 def _slope(xs: Sequence[float], ys: Sequence[float]) -> tuple[float, float]:
@@ -442,7 +467,8 @@ def fat_share(inputs: EnergyInputs, trend: Mapping[date, float], end: date) -> F
     number of measurements and their span; with fewer than two at least
     ``MIN_FAT_SPAN_DAYS`` apart, or no weight change, the prior stands alone.
     """
-    prior = FatShare(FAT_SHARE_PRIOR, FAT_SHARE_PRIOR_SD)
+    value, source = fat_share_prior(inputs, trend, end)
+    prior = FatShare(value, FAT_SHARE_PRIOR_SD, prior=value, prior_source=source)
     for method, series in enumerate(_fat_series(inputs)):
         days = sorted(d for d in series if d <= end and d in trend)
         if len(days) >= 2 and (days[-1] - days[0]).days >= MIN_FAT_SPAN_DAYS:
@@ -476,7 +502,7 @@ def fat_share(inputs: EnergyInputs, trend: Mapping[date, float], end: date) -> F
     precision = 1.0 / measured_sd**2
     total = precision + 1.0 / FAT_SHARE_PRIOR_SD**2
     weight = precision / total
-    share = weight * fat_slope / weight_slope + (1.0 - weight) * FAT_SHARE_PRIOR
+    share = weight * fat_slope / weight_slope + (1.0 - weight) * value
     return FatShare(
         min(1.0, max(0.0, share)),
         1.0 / math.sqrt(total),
@@ -485,6 +511,8 @@ def fat_share(inputs: EnergyInputs, trend: Mapping[date, float], end: date) -> F
         series[days[-1]],
         days[0],
         days[-1],
+        value,
+        source,
     )
 
 
@@ -538,6 +566,8 @@ def _stored_energy(
         share.day_first,
         share.day_last,
         ys[-1],
+        share.prior,
+        share.prior_source,
     )
 
 

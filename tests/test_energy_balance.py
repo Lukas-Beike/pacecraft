@@ -115,8 +115,9 @@ class CompositionAndTrendTests(unittest.TestCase):
 
 
 class FatShareBlendTests(unittest.TestCase):
-    """#3555: the fat share blends the prior 0.70 +- 0.15 with the slope of the
-    phase's measured fat mass, weighted by their precisions."""
+    """#3555: the fat share blends the prior (+- 0.15) with the slope of the
+    phase's measured fat mass, weighted by their precisions; the prior is
+    Forbes' FM / (FM + 10.4) at the current fat mass, else 0.70 (#3684)."""
 
     def phase(self, weeks: int, every: int = 7, true_share: float = 0.80):
         """85 kg losing 0.5 kg/week; body fat measured every ``every`` days as if
@@ -136,14 +137,47 @@ class FatShareBlendTests(unittest.TestCase):
         )
         return inputs, trend
 
+    def test_the_prior_follows_forbes_at_the_current_fat_mass(self) -> None:
+        # #3684: FM / (FM + 10.4): 12 kg of fat give 0.536, 30 kg 0.743; no
+        # body fat falls back to 0.70; 2 kg and 200 kg clamp to 0.40 and 0.85.
+        inputs, trend = self.phase(4)
+        weight = trend[END]
+        for fat_kg, expected, source in (
+            (12.0, 12.0 / 22.4, "forbes"),
+            (30.0, 30.0 / 40.4, "forbes"),
+            (2.0, 0.40, "forbes"),
+            (60.0, 0.85, "forbes"),
+            (None, 0.70, "fallback"),
+        ):
+            with self.subTest(fat_kg=fat_kg):
+                fats = {} if fat_kg is None else {END: 100.0 * fat_kg / weight}
+                prior, origin = balance.fat_share_prior(
+                    replace(inputs, body_fat_pct=fats), trend, END
+                )
+                self.assertAlmostEqual(expected, prior, places=4)
+                self.assertEqual(source, origin)
+
+    def test_the_blend_is_unchanged_apart_from_the_prior(self) -> None:
+        # #3684: the measurements' weight is the same, and the share is that
+        # weight times the measured 0.80 plus the rest times the new prior.
+        inputs, trend = self.phase(12)
+        share = balance.fat_share(inputs, trend, END)
+        self.assertAlmostEqual(0.28, share.measured_weight, delta=0.01)
+        blended = (
+            share.measured_weight * 0.80 + (1 - share.measured_weight) * share.prior
+        )
+        self.assertAlmostEqual(blended, share.share, places=6)
+
     def test_without_two_measurements_the_prior_stands_alone(self) -> None:
         inputs, trend = self.phase(4)
-        for fats in ({}, {END: 19.0}):
+        # 83 kg at 19 % on END: 15.77 kg of fat, Forbes 15.77 / 26.17 = 0.603.
+        for fats, prior in (({}, 0.70), ({END: 19.0}, 15.77 / 26.17)):
             with self.subTest(fats=fats):
                 share = balance.fat_share(
                     replace(inputs, body_fat_pct=fats), trend, END
                 )
-                self.assertEqual((0.70, 0.15, 0.0), share[:3])
+                self.assertAlmostEqual(prior, share.share, places=4)
+                self.assertEqual((0.15, 0.0), (share.sd, share.measured_weight))
         # A skinfold and an entered value are never mixed into one slope.
         mixed = replace(
             inputs,
@@ -175,11 +209,14 @@ class FatShareBlendTests(unittest.TestCase):
     def test_two_readings_14_days_apart_stay_near_the_prior(self) -> None:
         # Repeatability 2 points: 84 kg x 2 % = 1.68 kg of fat per reading over
         # a 1 kg loss give the measured share an SD of about 2.4, so it weighs
-        # little and the share stays near 0.70 with a narrow band.
+        # little and the share stays near the prior with a narrow band: Forbes
+        # at 84 kg and 16.2 kg of fat, 16.2 / 26.6 = 0.609 (#3684).
         inputs, trend = self.phase(2, every=14)
         share = balance.fat_share(inputs, trend, END)
         self.assertLess(share.measured_weight, 0.01)
-        self.assertAlmostEqual(0.70, share.share, delta=0.01)
+        self.assertEqual("forbes", share.prior_source)
+        self.assertAlmostEqual(16.2 / 26.6, share.prior, places=3)
+        self.assertAlmostEqual(share.prior, share.share, delta=0.01)
         self.assertAlmostEqual(0.15, share.sd, delta=0.001)
 
     def test_weekly_readings_weigh_more_the_longer_they_run(self) -> None:
@@ -189,7 +226,7 @@ class FatShareBlendTests(unittest.TestCase):
             share = balance.fat_share(inputs, trend, END)
             weights.append(share.measured_weight)
             # The share moves from the prior towards the measured 0.80.
-            self.assertGreater(share.share, 0.70)
+            self.assertGreater(share.share, share.prior)
             self.assertLess(share.share, 0.80)
             self.assertLess(share.sd, 0.15)
         # 12 weeks, 13 readings: measured SD 2 % x 82 kg / sqrt(sxx = 8,918
@@ -233,9 +270,11 @@ class FatShareBlendTests(unittest.TestCase):
         inputs, _ = self.phase(4, every=14)
         flat = {d: 80.0 for d in inputs.days}
         share = balance.fat_share(inputs, flat, END)
-        self.assertEqual(
-            (0.70, 0.0, 20.0), (share.share, share.measured_weight, share.pct_first)
-        )
+        # Forbes at the flat 80 kg and the latest reading, 15.4 kg of fat at
+        # 83 kg (18.55 %): 80 x 0.1855 = 14.84 kg, 14.84 / 25.24 (#3684).
+        fat = 80.0 * 15.4 / 83.0
+        self.assertAlmostEqual(fat / (fat + 10.4), share.share, places=4)
+        self.assertEqual((0.0, 20.0), (share.measured_weight, share.pct_first))
         self.assertIsNotNone(share.pct_last)
         inputs, trend = self.phase(2, every=14)
         weights = {d: v.weight_kg for d, v in inputs.days.items() if v.weight_kg}

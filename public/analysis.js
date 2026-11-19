@@ -1948,8 +1948,13 @@ function energyMissingCell(reason) {
 // row's resting rate comes from: the last 28 days (#3531).
 // The own row also names how its weight change split into fat and lean mass: the rule of thumb
 // blended with the measurements, and their weight in it (athlete decision, #3555).
+// The prior follows Forbes' curve at the current fat mass, else the rule of thumb (#3684).
+function energyFatSharePrior(share) {
+  return share?.prior_source === "forbes" ? "Forbes" : "Faustregel";
+}
+
 function energyFatShareRule(share) {
-  const prior = `Faustregel ${share.prior_pct} %`;
+  const prior = `${energyFatSharePrior(share)} ${share.prior_pct} %`;
   return share.measured_pct > 0 ? `${prior}, zu ${share.measured_pct} % gemessen` : prior;
 }
 
@@ -2091,8 +2096,10 @@ function deficitText(card, deviceLabel) {
   // An unstable window is an estimate, not the real expenditure (#3614).
   const kind = card.uncertainty === "unstable" ? "Geschätzter" : "Echter";
   const spent = card.total_kcal == null ? "Echter Verbrauch: braucht erfasste Mahlzeiten." : `${kind} Verbrauch: ≈ ${formatWhole(card.total_kcal)} kcal am Tag${device}.`;
-  return [spent,
-    `Unsicher vor allem: ${DEFICIT_UNCERTAINTY[card.uncertainty] || card.uncertainty}.`];
+  // The fat share names its prior's source as the box does (#3684).
+  let cause = DEFICIT_UNCERTAINTY[card.uncertainty] || card.uncertainty;
+  if (card.uncertainty === "fat_share") cause = `Fettanteil (${energyFatSharePrior(card.fat_share)} und Messungen)`;
+  return [spent, `Unsicher vor allem: ${cause}.`];
 }
 
 // Without logged meals, the intake from weight and activity (#3604): an estimate, never "gegessen"
