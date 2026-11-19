@@ -540,7 +540,8 @@ class CanonicalDailyHealthParityTests(unittest.TestCase):
         )
 
         self.assertEqual(list(canonical), ["2026-09-20"])
-        self.assertEqual(len(self.reader.calls), 5)
+        # Steps, floors, three energy kinds and the wellness end (#3530).
+        self.assertEqual(len(self.reader.calls), 6)
         self.assertTrue(all(call[1:] == window for call in self.reader.calls))
 
     def test_metrics_window_ignores_the_snapshot_daily_stats(self) -> None:

@@ -200,8 +200,10 @@ from backend.providers.garmin_fields import (
     GARMIN_TOTAL_KCAL_ALIASES,
     GARMIN_VO2MAX_ALIASES,
     GARMIN_WEIGHT_UNIT_ALIASES,
+    GARMIN_WELLNESS_END_MINUTE,
     colon_time_parts,
     flatten_daily_summary,
+    wellness_end_minute,
 )
 from backend.providers.garmin_training_mapping import (
     TRAINING_SECTIONS,
@@ -247,7 +249,9 @@ from backend.providers.garmin_weight_walk import (
 # Version 25: a day's readiness reading counts as scored only when its score is
 # kept, and every reader dates the chosen reading and its level by the day the
 # choice used, so a valid reading is no longer hidden or dropped (#2884).
-MAPPER_VERSION: Final = 25
+# Version 26: a day summary also maps where its wellness data ends, in minutes
+# after the day's local midnight (DAILY_WELLNESS_END, #3530).
+MAPPER_VERSION: Final = 26
 GARMIN_LABEL: Final = "Garmin Connect"
 
 _DATE_FIELD: Final = "calendarDate"
@@ -625,6 +629,12 @@ _GROUPED_SECTIONS: Final[Mapping[str, tuple[_Group, ...]]] = {
                     _PROVIDER,
                 ),
                 _Field(
+                    (GARMIN_WELLNESS_END_MINUTE,),
+                    MetricKind.DAILY_WELLNESS_END,
+                    _PROVIDER,
+                    whole=True,
+                ),
+                _Field(
                     GARMIN_RESTING_KCAL_ALIASES,
                     MetricKind.DAILY_ENERGY_RESTING,
                     _PROVIDER,
@@ -897,6 +907,17 @@ def _measure(
         field = f"{field}.{inner[0]}"
         raw = inner[1]
     return field, raw, unit
+
+
+def _with_wellness_end(
+    name: str, record: Mapping[str, object], day: date
+) -> Mapping[str, object]:
+    """A day summary with its wellness end time as minutes after the day's
+    local midnight, which the daily stats group maps (#3530)."""
+    if name != _DAILY_STATS:
+        return record
+    minute = wellness_end_minute(record, day)
+    return record if minute is None else {**record, GARMIN_WELLNESS_END_MINUTE: minute}
 
 
 def _field_value(field: _Field, number: float | None) -> float | None:
@@ -1369,6 +1390,7 @@ class _HealthMapping:
                 datetime_dates=name in ("cycling_ftp", "cycling_ftp_history"),
             )
             if day is not None:
+                record = _with_wellness_end(name, record, day)
                 for group in record_groups:
                     self._map_group(name, record, group, ref, day, index=index)
 

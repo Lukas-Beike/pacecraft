@@ -2,6 +2,7 @@
 
 import re
 from collections.abc import Mapping
+from datetime import date, datetime, time
 from itertools import islice
 from typing import Any
 
@@ -117,6 +118,35 @@ def _nested_value(record: Mapping[str, Any], path: tuple[str, ...]) -> Any:
             return None
         value = value.get(key)
     return value
+
+
+# The day summary's wellness end time (#3530): the range endpoint nests it,
+# the per-day summary keeps it flat; local clock time, so no timezone is needed.
+_WELLNESS_END_PATHS = (
+    ("wellnessChronology", "endTimestampLocal"),
+    ("wellnessEndTimeLocal",),
+)
+# The mapper's derived field: minutes after the day's local midnight.
+GARMIN_WELLNESS_END_MINUTE = "wellnessEndMinuteLocal"
+_MINUTES_PER_DAY = 1440
+
+
+def wellness_end_minute(record: Mapping[str, Any], day: date) -> float | None:
+    """Minutes after ``day``'s local midnight where the record's wellness data
+    ends, capped at the next midnight (1440); None when unreadable or before."""
+    for path in _WELLNESS_END_PATHS:
+        raw = _nested_value(record, path)
+        if not isinstance(raw, str):
+            continue
+        try:
+            end = datetime.fromisoformat(raw.strip())
+        except ValueError:
+            continue
+        minutes = (
+            end.replace(tzinfo=None) - datetime.combine(day, time())
+        ).total_seconds() / 60
+        return min(minutes, _MINUTES_PER_DAY) if minutes > 0 else None
+    return None
 
 
 def flatten_daily_summary(record: Mapping[str, Any]) -> Mapping[str, Any]:

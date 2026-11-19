@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import json
 import unittest
-from datetime import UTC, date, datetime, tzinfo
+from datetime import UTC, date, datetime, timedelta, tzinfo
 from pathlib import Path
 from typing import Final
 from zoneinfo import ZoneInfo
@@ -1652,6 +1652,37 @@ class DailyStatsTests(unittest.TestCase):
         )
         self.assertEqual(_issues(result), [])
 
+    def test_daily_stats_map_the_wellness_days_end_as_minutes_after_midnight(
+        self,
+    ) -> None:
+        # #3530: the day summary's wellness data ends at its local end time; a
+        # day still counting ends early (12:18 = minute 738), a finished one at
+        # the next midnight (1440). The flat per-day alias reads the same.
+        next_day = (date.fromisoformat(DAY) + timedelta(days=1)).isoformat()
+        for label, record, minute in (
+            ("range", {"wellnessChronology": {"endTimestampLocal": f"{DAY}T12:18:00.0",
+                                               "endTimestampGmt": f"{DAY}T11:18:00.0"}}, 738.0),
+            ("finished", {"wellnessChronology": {"endTimestampLocal": f"{next_day}T00:00:00.0"}}, 1440.0),
+            ("per day", {"wellnessEndTimeLocal": f"{DAY}T07:05:00.0"}, 425.0),
+        ):  # fmt: skip
+            with self.subTest(label):
+                result = _map({"daily_stats": [{"calendarDate": DAY, **record}]})
+                self.assertEqual(
+                    [("daily_wellness_end", minute, DAY, "-")], _rows(result)
+                )
+                self.assertEqual(_issues(result), [])
+        # Unreadable or before the day: no value, and no issue for an extra field.
+        for raw in ("12:18", "not a time", f"{DAY[:8]}01T23:00:00"):
+            with self.subTest(raw=raw):
+                result = _map(
+                    {
+                        "daily_stats": [
+                            {"calendarDate": DAY, "wellnessEndTimeLocal": raw}
+                        ]
+                    }
+                )
+                self.assertEqual([], _rows(result))
+
     def test_daily_stats_counts_are_rounded_like_the_serving_reader(self) -> None:
         result = _map(
             {
@@ -2319,7 +2350,7 @@ class PersonalApiShapeTests(unittest.TestCase):
 
 class ContractTests(unittest.TestCase):
     def test_mapper_version_is_pinned(self) -> None:
-        self.assertEqual(MAPPER_VERSION, 25)
+        self.assertEqual(MAPPER_VERSION, 26)
 
     def test_non_mapping_sections_yield_one_issue(self) -> None:
         for sections in (["sleep"], "sleep", None, 5):
