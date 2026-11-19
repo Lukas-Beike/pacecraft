@@ -9,6 +9,10 @@ edit` with an empty `--body`/`-b`. It reads the command as text before it
 runs, with guard_destructive_git.py's continuation and segment rules: a
 missing file passes (gh refuses it without writing), and so does a file the
 same command writes first, whose new content is unknown. Exit 2 blocks.
+
+A `gh pr create|edit` whose body is known (an existing --body-file or a --body
+text) must also name its issue as the `validate` step requires, with the same
+regex and message (#3535); the CI step stays the check of record.
 """
 
 import itertools
@@ -28,6 +32,16 @@ WRITES = {
     "issue": {"create", "edit", "comment"},
 }
 FILE_FLAGS, TEXT_FLAGS = ("--body-file", "-F"), ("--body", "-b")
+# The `validate` step's "Require an issue link in the PR body" regex and message
+# (.github/workflows/validate-conventions.yml); [[:alnum:]_] is \w.
+ISSUE_LINK = re.compile(
+    r"(?:^|\W)(?:[Cc]loses|[Ff]ixes|[Rr]esolves|[Pp]art of) #[0-9]+"
+)
+LINK_MESSAGE = (
+    "The PR body must name its issue with 'Closes #N' (completes it) or "
+    "'Part of #N' (one of several PRs)."
+)
+LINKED_WRITES = {"create", "edit"}  # gh pr writes whose body is the PR body
 # A file the command itself writes: `> F`, `>> F`, `tee F`, `Out-File F`, ...
 WRITTEN = re.compile(
     r"(?:>>?|\btee|\bOut-File|\bSet-Content)\s+(?:-\w+\s+)*[\"']?([^\s\"';&|()]+)",
@@ -59,13 +73,17 @@ def _local(path: str, cwd: Path) -> Path:
     return cwd / path
 
 
-def _empty_file(value: str, cwd: Path) -> bool:
+def _file_text(value: str, cwd: Path) -> str | None:
+    """The body file's text, or None when it is missing (gh refuses it)."""
     try:
         raw = _local(value, cwd).read_bytes()
     except OSError:
-        return False  # missing: gh refuses it without writing
+        return None
     utf16 = raw[:2] in (b"\xff\xfe", b"\xfe\xff")
-    text = raw.decode("utf-16" if utf16 else "utf-8-sig", "replace")
+    return raw.decode("utf-16" if utf16 else "utf-8-sig", "replace")
+
+
+def _blank(text: str) -> bool:
     return not text.strip().strip("\ufeff\x00").strip()
 
 
@@ -93,18 +111,41 @@ def _segments(text: str) -> list[list[str]]:
     return segments
 
 
-def _gh_writes(words: list[str]) -> list[tuple[str, int]]:
-    """(verb, index of its first argument) of each gh PR or issue write in one
-    shell segment; a write's arguments run to the end of the segment."""
+def _gh_writes(words: list[str]) -> list[tuple[str, str, int]]:
+    """(noun, verb, index of its first argument) of each gh PR or issue write in
+    one shell segment; a write's arguments run to the end of the segment."""
     return [
-        (words[start + 2], start + 3)
+        (words[start + 1], words[start + 2], start + 3)
         for start, word in enumerate(words[:-2])
         if Path(word).stem.lower() == "gh"
         and words[start + 2] in WRITES.get(words[start + 1], ())
     ]
 
 
-def blocked(command: str, cwd: Path) -> bool:
+def _file_bodies(values: list[str], cwd: Path, written: set[str]) -> list[str]:
+    """The known texts of body files: not stdin, not written by the command
+    itself, not missing."""
+    texts = (_file_text(v, cwd) for v in values if v != "-" and v not in written)
+    return [text for text in texts if text is not None]
+
+
+def _pr_bodies(
+    words: list[str], writes: list[tuple[str, str, int]], cwd: Path, written: set[str]
+) -> list[str]:
+    """The known bodies of the segment's `gh pr create|edit` writes, each from
+    its own arguments up to the next write."""
+    ends = [first - 3 for _, _, first in writes[1:]] + [len(words)]
+    bodies: list[str] = []
+    for (noun, verb, first), end in zip(writes, ends, strict=True):
+        if noun == "pr" and verb in LINKED_WRITES:
+            args = words[first:end]
+            bodies += _values(args, TEXT_FLAGS)
+            bodies += _file_bodies(_values(args, FILE_FLAGS), cwd, written)
+    return bodies
+
+
+def blocked(command: str, cwd: Path) -> str | None:
+    """Why the command is blocked: "empty" or "link" (#3535), else None."""
     text = CONTINUATION.sub(" ", command)
     written = {m.group(1) for m in WRITTEN.finditer(text.replace("\\", "/"))}
     for words in _segments(text):
@@ -113,16 +154,16 @@ def blocked(command: str, cwd: Path) -> bool:
             continue
         # A later write's arguments are a suffix of an earlier one's, so the first
         # write (and the first edit, for --body) covers every value once (#3119).
-        edits = [first for verb, first in writes if verb == "edit"]
+        edits = [first for _, verb, first in writes if verb == "edit"]
         texts = _values(words[edits[0] :], TEXT_FLAGS) if edits else []
-        files = [
-            v for v in _values(words[writes[0][1] :], FILE_FLAGS) if v not in written
-        ]
-        if any(not t.strip() for t in texts) or any(
-            _empty_file(v, cwd) for v in files if v != "-"
+        files = _file_bodies(_values(words[writes[0][2] :], FILE_FLAGS), cwd, written)
+        if any(not t.strip() for t in texts) or any(_blank(f) for f in files):
+            return "empty"
+        if any(
+            not ISSUE_LINK.search(b) for b in _pr_bodies(words, writes, cwd, written)
         ):
-            return True
-    return False
+            return "link"
+    return None
 
 
 def main() -> int:
@@ -132,8 +173,14 @@ def main() -> int:
         print("Blocked: unreadable hook input.", file=sys.stderr)
         return 2
     command = str((payload.get("tool_input") or {}).get("command") or "")
-    if "gh" not in command or not blocked(command, Path(payload.get("cwd") or ".")):
+    reason = (
+        blocked(command, Path(payload.get("cwd") or ".")) if "gh" in command else None
+    )
+    if reason is None:
         return 0
+    if reason == "link":
+        print(f"Blocked: {LINK_MESSAGE} (#3535)", file=sys.stderr)
+        return 2
     print(
         "Blocked: this gh write has an empty body (an empty --body or an empty "
         "--body-file); it would blank the PR or issue text (#2954). Check the "

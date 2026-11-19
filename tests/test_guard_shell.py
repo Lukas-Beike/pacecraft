@@ -62,7 +62,9 @@ class GuardShellTests(unittest.TestCase):
             ("echo" + ";" * 100_000 + 'gh pr edit 1 --body ""', 2),
             ("echo" + ";" * 100_000, 0),
             ("gh pr edit x " * 6_000 + '--body ""', 2),
-            ("gh pr edit x --body y " * 6_000, 0),
+            # A PR body names its issue (#3535), so the passing case carries one.
+            ("gh pr edit x --body 'Closes #1' " * 6_000, 0),
+            ("gh pr edit x --body y " * 6_000, 2),
         ):
             with self.subTest(command=command[-30:], code=code):
                 started = time.monotonic()
