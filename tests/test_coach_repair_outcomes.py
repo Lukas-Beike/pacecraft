@@ -1,7 +1,27 @@
 import unittest
 
-from backend.coach.outcomes import unresolved_coach_steps
-from backend.coach.service import dialogue_scope_repair_key, outcome_status
+from backend.coach.outcomes import (
+    coach_effect_label,
+    coach_failure_lines,
+    unresolved_coach_steps,
+)
+from backend.coach.service import (
+    coach_repair_key,
+    dialogue_scope_repair_key,
+    outcome_status,
+)
+
+
+def status_of(failures: list[dict], effects: list[dict]) -> str:
+    """A finished turn's status with these failures and effects (#3651)."""
+    return outcome_status(
+        question="",
+        incomplete_answer=False,
+        failures=failures,
+        missing_answer=False,
+        effects=effects,
+        cancelled=False,
+    )
 
 
 class UnresolvedCoachStepsTests(unittest.TestCase):
@@ -88,6 +108,77 @@ class UnresolvedCoachStepsTests(unittest.TestCase):
         self.assertEqual(unresolved_coach_steps([failed, retry]), [])
         other = {**retry, "scope_repair_key": "other-effect"}
         self.assertEqual(unresolved_coach_steps([failed, other]), [failed])
+
+    def test_a_scope_failure_redone_on_the_same_template_completes_the_turn(self):
+        # #3651: the first template edit named an unknown scope token and failed
+        # with request_scope; the retry edits the same template under
+        # library_workout:<id>, with its arguments refined.
+        def step(scope: str, local_id: str, ok: bool, name: str = "Z2") -> dict:
+            arguments = {
+                "templates": [{"action": "update", "local_id": local_id, "name": name}],
+                "_request": {"target": "local", "scope": [scope]},
+            }
+            return {
+                "tool": "manage_training_templates",
+                "step_key": f"{scope}-{name}",
+                "repair_key": coach_repair_key("manage_training_templates", arguments),
+                "scope_repair_key": dialogue_scope_repair_key(
+                    "manage_training_templates", arguments
+                ),
+                "request": arguments["_request"],
+                "result": {"ok": True, "templates": [{"local_id": local_id}]}
+                if ok
+                else {"ok": False, "reason": "request_scope"},
+            }
+
+        failed = step("training_template:t1", "t1", ok=False)
+        redone = step("library_workout:t1", "t1", ok=True, name="Z2 lang")
+        unresolved = unresolved_coach_steps([failed, redone])
+        self.assertEqual([], unresolved)
+        self.assertEqual(
+            "", coach_failure_lines(unresolved, {"manage_training_templates"})
+        )
+        self.assertEqual("completed", status_of(unresolved, [redone]))
+        self.assertEqual("Trainingsvorlagen bearbeitet (1)", coach_effect_label(redone))
+        # A success on another template leaves the failed one named: partial.
+        other = step("library_workout:t2", "t2", ok=True, name="Z2 lang")
+        unresolved = unresolved_coach_steps([failed, other])
+        self.assertEqual([failed], unresolved)
+        self.assertEqual("partial", status_of(unresolved, [other]))
+        self.assertIn(
+            "Trainingsvorlagen bearbeiten:",
+            coach_failure_lines(unresolved, {"manage_training_templates"}),
+        )
+        # Another operation on the same template repairs nothing: a failed
+        # delete stays named after a successful update (review on #3651).
+        delete = step("training_template:t1", "t1", ok=False)
+        delete["repair_key"] = coach_repair_key(
+            "manage_training_templates",
+            {"templates": [{"action": "delete", "local_id": "t1"}]},
+        )
+        self.assertEqual([delete], unresolved_coach_steps([delete, redone]))
+
+    def test_a_scope_failure_needs_the_same_record_of_its_object(self):
+        # #3651 review: logging a saved meal for dinner is not repaired by
+        # logging it for breakfast, but a corrected portion count is.
+        def log(meal: str, portions: float, ok: bool) -> dict:
+            arguments = {"id": "n1", "portions": portions, "meal_date": "2026-11-19",
+                         "meal_type": meal}  # fmt: skip
+            return {
+                "tool": "log_nutrition_template",
+                "step_key": f"{meal}-{portions}",
+                "repair_key": coach_repair_key("log_nutrition_template", arguments),
+                "result": {"ok": ok}
+                if ok
+                else {"ok": False, "reason": "request_scope"},
+            }
+
+        failed = log("dinner", 1, ok=False)
+        self.assertEqual(
+            [], unresolved_coach_steps([failed, log("dinner", 2, ok=True)])
+        )
+        breakfast = log("breakfast", 1, ok=True)
+        self.assertEqual([failed], unresolved_coach_steps([failed, breakfast]))
 
     def test_scope_denied_patch_retried_with_its_unit_tokens_completes_the_turn(self):
         # Step sequences of commands 7f90b1199805 and dc44424c7caf (#2617).
