@@ -619,10 +619,14 @@ def read_energy_inputs(
             basis=basis,
         )  # fmt: skip
         days, costs = {**old.days, **days}, old_costs + costs
-        body = _with_older_readings(body, old, start)
+        fats, device = _older_readings(body, old, start)
+    else:
+        fats, device = body.body_fat_pct, body.device_body_fat
     return replace(
         body,
         days=days,
+        body_fat_pct=fats,
+        device_body_fat=device,
         rmr_kcal=rmr,
         rmr_source=rmr_source,
         step_m=step_m,
@@ -630,24 +634,16 @@ def read_energy_inputs(
     ), costs
 
 
-def _with_older_readings(
+def _older_readings(
     body: EnergyInputs, old: EnergyInputs, start: date
-) -> EnergyInputs:
+) -> tuple[Mapping[date, float], Mapping[date, tuple[float, Any]]]:
     """The span's body fat readings plus the older day's from before the
     earliest day any window looks at, so the old day finds its own body and
     no window changes (Gitar on #3671)."""
     reach = start + timedelta(days=WINDOW_DAYS - 1 - RESTING_LOOKBACK_DAYS)
-    return replace(
-        body,
-        body_fat_pct={
-            **{d: v for d, v in old.body_fat_pct.items() if d < reach},
-            **body.body_fat_pct,
-        },
-        device_body_fat={
-            **{d: v for d, v in old.device_body_fat.items() if d < reach},
-            **body.device_body_fat,
-        },
-    )
+    fats = {d: v for d, v in old.body_fat_pct.items() if d < reach}
+    device = {d: v for d, v in old.device_body_fat.items() if d < reach}
+    return {**fats, **body.body_fat_pct}, {**device, **body.device_body_fat}
 
 
 def _span_basis(
