@@ -18,7 +18,7 @@ from typing import Final
 
 METHOD_ID: Final = "body-composition-resting"
 # Bump with the M13 card version when a formula or constant below changes.
-METHOD_VERSION: Final = 4
+METHOD_VERSION: Final = 5
 
 
 class Sex(StrEnum):
@@ -58,8 +58,10 @@ RESTING_COEFFICIENTS: Final = {
     RestingFormula.KATCH_MCARDLE: (370.0, 21.6),
     RestingFormula.CUNNINGHAM: (500.0, 22.0),
 }
-# Half-width of the nominal 95 % band of a formula's resting energy, as a share of
-# it: Cunningham 1980 expects a 10 % prediction error for an individual (#3187).
+# Half-width of a formula's resting band from its own error, as a share of
+# it: Cunningham 1980 expects a 10 % prediction error for an individual
+# (#3187), about one standard deviation, so this term covers about 68 %,
+# not 95 %; kept, and its coverage labelled on M13 (#3617).
 RESTING_FORMULA_ERROR: Final = 0.10
 # Standard error of the 3-site body fat in percentage points: the middle of the
 # commonly cited 3.4-3.9 for the Jackson-Pollock equations (product assumption).

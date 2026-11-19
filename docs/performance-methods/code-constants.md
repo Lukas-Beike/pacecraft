@@ -10,7 +10,7 @@ every named number the code fixes. A test fails when it is out of date.
 | Constant | Value | Module | Code comment |
 | --- | --- | --- | --- |
 | `METHOD_ID` | `'activity-energy'` | `backend/performance/activity_energy.py` |  |
-| `METHOD_VERSION` | `7` | `backend/performance/activity_energy.py` | Bump when a formula or constant below changes the estimate. |
+| `METHOD_VERSION` | `8` | `backend/performance/activity_energy.py` | Bump when a formula or constant below changes the estimate. |
 | `J_PER_KCAL` | `4184.0` | `backend/performance/activity_energy.py` | Joules per kilocalorie (thermochemical calorie). |
 | `GRAVITY` | `9.81` | `backend/performance/activity_energy.py` | Standard gravity, m/s^2, for the vertical work of floors. |
 | `MINETTI_WALKING` | `(280.5, -58.7, -76.8, 51.9, 19.6, 2.5)` | `backend/performance/activity_energy.py` | Minetti et al. 2002: the running fit (MINETTI_RUNNING, its gradient range and the 200 m grade span come from grade_adjustment, #3187), and the same fit for walking. |

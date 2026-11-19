@@ -1345,10 +1345,12 @@ def read_energy_view(
     ``day`` (default ``end``) may be today, after ``end``, or before the history.
     """
     day = day or end
-    start = min(history_start(end), day)
+    # The 12-week span stays fixed; an older diary day is read beside it with
+    # the span's step length, flex-HR line and resting reference (#3617 item 6).
+    start = history_start(end)
     last = max(end, day)
-    inputs, costs = read_energy_inputs(db, sources, start, last)
-    health = sources.daily_health(db, start, last)
+    inputs, costs = read_energy_inputs(db, sources, start, last, older_day=day)
+    health = sources.daily_health(db, min(start, day), last)
     windows = energy_windows(inputs, end)
     _, missing = skinfold_state(db, sources, inputs, day)
     # The bias comes from the windows already built, not a second build (Gitar).
