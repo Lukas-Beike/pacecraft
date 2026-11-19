@@ -370,7 +370,16 @@ def rebased(onto: str, upstream: str | None = None) -> bool:
     if not replayed(onto, upstream):
         return False
     if BUMP_ON_TOP[0] and (lost := sorted(bumps - version_bumps(onto))):
-        bump_on_top(onto, lost)
+        try:
+            bump_on_top(onto, lost)
+        except (CliError, OSError) as exc:
+            # A failed bump leaves the branch as it was, as a refusal does
+            # (Gitar on #3702).
+            git("reset", "-q", "--hard", before)
+            print(
+                f"refused: bumping the method version failed ({exc}); the branch is back as it was"
+            )
+            return False
     elif absorbed(onto, bumps):
         # Back to the branch as it was (the tree was clean), so every rerun
         # refuses again until the bump is made (Gitar on #3663).

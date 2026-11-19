@@ -346,6 +346,24 @@ class BranchSyncTests(unittest.TestCase):
             git(self.work, "log", "-1", "--format=%s"),
         )
 
+    def test_a_failed_bump_leaves_the_branch_as_it_was(self):
+        # Gitar on #3702: a generator failing during --bump-method resets to
+        # the pre-rebase head with a clean tree, as a refusal does.
+        self.method_on_both_sides(develop=11, branch=11)
+        before = git(self.work, "rev-parse", "HEAD")
+
+        def failing(_root, _documents):
+            raise CliError("generator failed")
+
+        with mock.patch.object(branch_sync, "regenerate", failing):
+            code, out, _ = self.sync("--bump-method")
+        self.assertEqual(1, code)
+        self.assertIn("bumping the method version failed", out)
+        self.assertEqual(before, git(self.work, "rev-parse", "HEAD"))
+        self.assertEqual(
+            "", git(self.work, "status", "--porcelain", "--untracked-files=no")
+        )
+
     def test_lists_invalid_subjects(self):
         commit(self.work, "c.txt", "1\n", "wip stuff")
         commit(self.work, "d.txt", "2\n", "feat(UI): bad scope")
