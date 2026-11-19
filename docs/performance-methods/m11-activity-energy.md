@@ -46,7 +46,7 @@ counting it twice. 1 kcal = 4184 J.
    (the athlete's own rating first, else the provider's) sets the MET: 3.5
    up to RPE 5, then 0.5 more per RPE point, 6.0 at RPE 10; without an RPE
    3.5 (athlete decision, #3530). A rating added later re-prices the
-   session on the next read, and the energy table names the RPE and MET. Heart rate is not
+   session on the next read, and the diary's energy card names the RPE and MET. Heart rate is not
    used for strength. The duration is the session's elapsed time, else its
    moving time: the MET covers the rests between sets, which a watch's moving
    time leaves out (#3530).
@@ -127,7 +127,7 @@ line is calibrated on power-derived cost, not calorimetry (weak evidence).
 NEAT counts only the walking of steps and floors; standing, housework,
 carrying, unrecorded cycling and stop-and-go movement have no term, so the
 formula rows' everyday energy runs low. M12's own row names that remainder
-"nicht erfasster Alltag" where its residual exceeds the resting reference
+"übriger Alltag" where its residual exceeds the resting reference
 (#3550); a learned offset follows once enough data exists.
 
 ## Deviations from the studied procedure

@@ -138,7 +138,7 @@ estimate. It never rewrites logged values and never falls back to a formula.
    only, so standing, housework and unrecorded movement end up in the
    residual. Where the residual exceeds that same resting reference, the
    own row shows Ruhe at the reference (with its band) and the excess as
-   "nicht erfasster Alltag" with the residual's band; the total and the
+   "übriger Alltag" with the residual's band; the total and the
    other rows are unchanged. It is a named remainder, not an estimate: it
    also carries logging and activity-model errors.
    **Learned everyday term (#3577, #3689):** per formula row f, each
@@ -157,11 +157,11 @@ estimate. It never rewrites logged values and never falls back to a formula.
    until then the line reads "noch nicht gelernt", and an earlier check
    stays stored and takes effect once it qualifies (#3689).
    Only after the athlete has taken it over (a dated profile check)
-   does each formula row carry it as "gelernter Alltag" in its split
-   and day total, and so in "Heute noch essen"; the fit with the
+   does each formula row carry it as "Übriger Alltag" in its split
+   and day total, and so in "Offene Kalorien"; the fit with the
    weight, its hit rate and the outlined source keep comparing the raw
    rows, so learning cannot make them meet the weight by construction.
-   The table's small "i"
+   The diary card's small "i"
    shows NEAT's inputs over the window: steps per day, the steps sessions
    take out, the step length with its source and the floors outside
    sessions.

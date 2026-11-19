@@ -444,7 +444,7 @@ def _unmeasured(
     shown: Estimate | None,
     reference: tuple[str, float, float | None] | None,
 ) -> dict[str, Any]:
-    """The own row with its residual split into Ruhe and "nicht erfasster
+    """The own row with its residual split into Ruhe and "übriger
     Alltag" where it exceeds the resting reference (athlete decision, #3550).
 
     Ruhe is then the reference with its band; the rest carries the residual's
@@ -979,7 +979,7 @@ def _energy_goal(
     profile: Mapping[str, str] | None,
     day: DayInputs | None,
 ) -> dict[str, Any] | None:
-    """'Heute noch essen' (#3547): the outlined source's day total (so far
+    """'Offene Kalorien' (#3547): the outlined source's day total (so far
     today) with the goal's deficit or surplus, less what was eaten."""
     kind = (profile or {}).get("energy_goal") or ""
     if kind not in _GOAL_SIGN:
