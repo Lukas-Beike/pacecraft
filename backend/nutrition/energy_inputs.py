@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import math
 import statistics
-from collections.abc import Callable, Iterable, Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from datetime import date, timedelta
 from typing import Any, Final
@@ -23,6 +23,14 @@ from backend.athlete.body_composition import (
     lean_mass_kg,
     resting_energy,
 )
+from backend.athlete.body_records import (
+    APP_SOURCE,
+    BODY_GRACE_DAYS,
+    RESTING_LOOKBACK_DAYS,
+    body_fat_on,
+    weight_on,
+    weight_trend,
+)
 from backend.athlete.skinfolds import (
     SkinfoldMeasurement,
     measurement_sd_pct,
@@ -30,7 +38,6 @@ from backend.athlete.skinfolds import (
 )
 from backend.canonical.activity_detail import ActivityStreamSet
 from backend.canonical.activity_summary import stored_activity_key
-from backend.canonical.records import Observation
 from backend.canonical.vocabulary import ProviderId, StreamChannel
 from backend.db.activity_detail_store import detail_sets_for_session
 from backend.nutrition.energy_balance import (
@@ -48,7 +55,6 @@ from backend.nutrition.energy_balance import (
     is_complete,
     is_stable,
     unexplained_spreads,
-    weight_trend,
 )
 from backend.performance import activity_energy as energy
 from backend.performance.daily_health import complete_garmin_day
@@ -57,7 +63,6 @@ from backend.performance.session_rpe_load import (
     feedback_by_session,
     session_rating,
 )
-from backend.providers.source_labels import SourceView, provider_label
 
 # Session sports by how M11 prices them.
 RUN_SPORTS = frozenset({"run"})
@@ -125,10 +130,6 @@ type HeartRateCost = Callable[
 # Labels of the resting reference, own first (orchestrator, 2026-11-15).
 RESTING_FROM_SKINFOLDS = "katch_mcardle_skinfold"
 RESTING_FROM_BODY_FAT = "katch_mcardle_body_fat"
-# How far back a weigh-in or body fat still counts for the resting reference.
-RESTING_LOOKBACK_DAYS = 90
-# A skinfold taken up to a day after the view's end still counts (#3336).
-BODY_GRACE_DAYS = 1
 
 
 def own_resting(
@@ -176,20 +177,6 @@ def recent_fat_pct(
     return folds[newest] if newest is not None and newest >= since else None
 
 
-def latest_value(observations: Iterable[Observation]) -> float | None:
-    """The last day's value under the weigh-in source rule, or None."""
-    values = weighins(observations)
-    return values[max(values)] if values else None
-
-
-def current_weight(
-    observations: Iterable[Observation], app: Mapping[date, float], day: date
-) -> float | None:
-    """The current weight on ``day`` under the weigh-in source rule: the same
-    lag-free value the formula rows take from ``weight_trend`` (#3551)."""
-    return _mass(weight_trend(weighins(observations, app)), day, None)
-
-
 def session_streams(
     db: Any, activity_id: str
 ) -> Mapping[StreamChannel, Sequence[float | None]]:
@@ -198,70 +185,6 @@ def session_streams(
         if isinstance(stored.detail, ActivityStreamSet):
             return stored.detail.channels
     return {}
-
-
-def weighins(
-    observations: Iterable[Observation], app: Mapping[date, float] | None = None
-) -> dict[date, float]:
-    """One weigh-in (or body fat) per day under the source rule of ``sourced``."""
-    days = sourced(observations, app)[0]
-    return {day: value for day, (value, _) in sorted(days.items())}
-
-
-# The weigh-in source rule (athlete decisions, #3557): the app's own records,
-# entered (no provider) or a dated profile value (``app``), win their day;
-# Garmin's are copies of them and fill only a day without one. Any other
-# provider's value, such as Wahoo's stored profile weight, never counts.
-APP_SOURCE: Final = "app"
-
-
-def sourced(
-    observations: Iterable[Observation], app: Mapping[date, float] | None = None
-) -> tuple[dict[date, tuple[float, str]], dict[str, set[date]]]:
-    """Per day the value and its source (``app`` or ``garmin``), and per
-    provider the days whose values were dropped. Within a source the last one
-    read wins; an entered one wins over a profile value of its day."""
-    days = {day: (value, APP_SOURCE) for day, value in (app or {}).items()}
-    garmin: dict[date, float] = {}
-    dropped: dict[str, set[date]] = {}
-    for o in observations:
-        value = _number(o.value.value)
-        if value is None or value <= 0 or o.sport is not None:
-            continue
-        provider = o.provenance.provider
-        if provider is None:
-            days[o.observed_on] = (value, APP_SOURCE)
-        elif provider is ProviderId.GARMIN:
-            garmin[o.observed_on] = value
-        else:
-            dropped.setdefault(provider.value, set()).add(o.observed_on)
-    for day, value in garmin.items():
-        if day in days:
-            dropped.setdefault(ProviderId.GARMIN.value, set()).add(day)
-        else:
-            days[day] = (value, ProviderId.GARMIN.value)
-    return days, dropped
-
-
-def weighin_counts(
-    observations: Iterable[Observation], app: Mapping[date, float] | None = None
-) -> dict[str, dict[str, int]]:
-    """Counts only (#3557): weigh-in days per source and dropped days per provider."""
-    days, dropped = sourced(observations, app)
-    sources = [source for _, source in days.values()]
-    return {
-        "by_source": {
-            s: sources.count(s) for s in (APP_SOURCE, ProviderId.GARMIN.value)
-        },
-        "dropped_days": {p: len(d) for p, d in sorted(dropped.items())},
-    }
-
-
-def weighin_sources(
-    observations: Iterable[Observation], app: Mapping[date, float] | None = None
-) -> dict[date, str]:
-    """Each weigh-in day's source after the source rule (#3557, #3638)."""
-    return {day: source for day, (_, source) in sourced(observations, app)[0].items()}
 
 
 def source_offset(
@@ -325,13 +248,6 @@ def _duration_s(
     if elapsed_first:
         keys.reverse()
     return _number(summary.get(keys[0])) or _number(summary.get(keys[1]))
-
-
-def _mass(
-    trend: Mapping[date, float], day: date, fallback: float | None
-) -> float | None:
-    known = [d for d in trend if d <= day]
-    return trend[max(known)] if known else fallback
 
 
 def _flex_fit(
@@ -650,9 +566,7 @@ def read_energy_inputs(
             db,
             summary,
             # Körper's weigh-ins carry the mass; the profile is none (#3640).
-            _mass(
-                trend, date.fromisoformat(str(summary["started_at_local"])[:10]), None
-            ),
+            weight_on(trend, date.fromisoformat(str(summary["started_at_local"])[:10])),
             rmr,
             hr_cost,
             step_m,
@@ -710,35 +624,6 @@ def _skinfold_sds(measurements: Sequence[SkinfoldMeasurement]) -> dict[date, flo
         m.measured_on: sd
         for m in measurements
         if (sd := measurement_sd_pct(m, own)) is not None
-    }
-
-
-def skinfold_body_fats(
-    measurements: Iterable[SkinfoldMeasurement], since: date
-) -> dict[date, float]:
-    """Every complete skinfold measurement on or after ``since`` with a body
-    fat, by day (#3617 item 2): a reading followed by another within the same
-    week counts too, not only the newest one per weekly checkpoint."""
-    return {
-        m.measured_on: m.body_fat_pct
-        for m in measurements
-        if m.measured_on >= since and m.body_fat_pct is not None
-    }
-
-
-def device_body_fats(
-    observations: Iterable[Observation], skinfold_days: Iterable[date] = ()
-) -> dict[date, tuple[float, Any]]:
-    """The entered (provider None, #3402) or Garmin body fat per day (#3362)
-    under the source rule of ``sourced``: Garmin's copies fill only a day
-    without an entered value or a profile skinfold (``skinfold_days``, #3557).
-    """
-    days, _ = sourced(observations)
-    skinfolds = set(skinfold_days)
-    return {
-        day: (value, None if source == APP_SOURCE else ProviderId.GARMIN)
-        for day, (value, source) in sorted(days.items())
-        if source == APP_SOURCE or day not in skinfolds
     }
 
 
@@ -895,38 +780,6 @@ def newest_resting(
 # The formula rows' body fat sources, in their order (athlete decisions, #3362,
 # #3402); the profile's stored value is none (#3640).
 BODY_SOURCES = ("skinfold", "entered", "device")
-_SKINFOLD_LABEL = "Hautfalten"
-_ENTERED_LABEL = "Lokal"
-
-
-def _newest_within(values: Mapping[date, Any], day: date) -> date | None:
-    """The newest day of ``values`` in the 90 days up to the grace day after ``day``."""
-    since = day - timedelta(days=RESTING_LOOKBACK_DAYS)
-    until = day + timedelta(days=BODY_GRACE_DAYS)
-    return max((d for d in values if since <= d <= until), default=None)
-
-
-def _body_fat(inputs: EnergyInputs, day: date) -> dict[str, Any] | None:
-    """The body fat in effect on ``day``: skinfold, entered, device or scale."""
-    if (on := _newest_within(inputs.body_fat_pct, day)) is not None:
-        return {"source": "skinfold", "label": _SKINFOLD_LABEL,
-                "measured_on": on, "body_fat_pct": inputs.body_fat_pct[on]}  # fmt: skip
-    for source in ("entered", "device"):
-        values = {
-            d: value
-            for d, value in inputs.device_body_fat.items()
-            if (value[1] is None) is (source == "entered")
-        }
-        if (on := _newest_within(values, day)) is not None:
-            fat, provider = values[on]
-            label = (
-                _ENTERED_LABEL
-                if provider is None
-                else provider_label(provider, SourceView.BODY_HISTORY)
-            )
-            return {"source": source, "label": label, "measured_on": on,
-                    "body_fat_pct": fat}  # fmt: skip
-    return None
 
 
 def resolve_body(
@@ -946,7 +799,7 @@ def resolve_body(
     Every source is dated since the profile's undated value left (#3640).
     """
     weighed = [d for d in trend if d <= day]
-    fat = _body_fat(inputs, day)
+    fat = body_fat_on(inputs.body_fat_pct, inputs.device_body_fat, day)
     if not weighed or fat is None:
         return None
     weight = trend[max(weighed)]
@@ -1235,7 +1088,7 @@ def _day_inputs(
     """One day's intake, flags, weigh-in and own activity (sessions + NEAT)."""
     today = [c for c in costs if c.day == day]
     steps, floors = _number(health.get("steps")), _number(health.get("floors"))
-    mass = _mass(trend, day, None)
+    mass = weight_on(trend, day)
     session_steps = sum(c.steps for c in today)
     climb = sum(c.climb_m for c in today)
     neat = (

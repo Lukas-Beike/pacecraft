@@ -15,6 +15,7 @@ from backend.athlete.body_entry import (
     BodyEntryHistory,
     BodyEntryService,
 )
+from backend.athlete.body_records import device_body_fats, weighins
 from backend.canonical.records import MetricValue, Observation, Provenance
 from backend.canonical.vocabulary import (
     MetricKind,
@@ -26,7 +27,6 @@ from backend.db import canonical_store
 from backend.errors import AppError
 from backend.history.service import ChangeHistoryService
 from backend.history.undo_service import HistoryUndoService
-from backend.nutrition.energy_inputs import device_body_fats, weighins
 from backend.providers.canonical_plans import current_observation_mapper_versions
 from backend.sync.canonical_table_reader import CanonicalTableReader
 

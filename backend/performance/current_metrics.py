@@ -11,6 +11,7 @@ from typing import Any, Final
 
 from backend.activities.hr_cap import effective_caps, resolved_range
 from backend.activities.identity import activity_kind
+from backend.athlete.body_records import CurrentBody
 from backend.canonical.decimal_text import provider_number as as_number
 from backend.canonical.records import Observation
 from backend.canonical.vocabulary import MetricKind, ProviderId, Sport
@@ -25,7 +26,6 @@ from backend.performance.source_policy import (
     Candidate,
     Resolved,
     SourcePreferences,
-    resolve_candidates,
     source_order,
 )
 from backend.providers.source_labels import (
@@ -50,6 +50,8 @@ VO2MAX_UNIT = "ml/kg/min"
 LOCAL_SOURCE_LABEL = "Lokal"
 # The label of a profile value.
 PROFILE_SOURCE_LABEL = "Manuell"
+# The weight is the weigh-in line's value, not one weigh-in (#3551, #3640).
+CURRENT_WEIGHT_LABEL = "aktuell"
 
 
 def _with_resolved_bpm(cap: dict[str, Any], lthr: float | None) -> dict[str, Any]:
@@ -323,100 +325,30 @@ def _first_performance_source(
     )
 
 
-def _dated(observation: Observation | None) -> tuple[Candidate, ...]:
-    if observation is None or observation.provenance.provider is None:
-        return ()
-    value = float(observation.value.value)
-    return (
-        Candidate(
-            observation.provenance.provider, value, observation.observed_on, observation
-        ),
-    )
-
-
-def _undated(observation: Observation | None) -> tuple[Candidate, ...]:
-    """A value that is no dated measurement: only a fallback for the recency rule."""
-    if observation is None or observation.provenance.provider is None:
-        return ()
-    value = float(observation.value.value)
-    return (Candidate(observation.provenance.provider, value, None, observation),)
-
-
-def _entered(observations: Iterable[Observation]) -> tuple[Candidate, ...]:
-    """The newest weight or body fat the athlete entered (#3252): dated, no provider.
-
-    It takes the local slot before the undated profile value, so the recency
-    rule ranks it as an athlete entry.
-    """
-    newest = max(
-        (item for item in observations if item.provenance.provider is None),
-        key=lambda item: item.observed_on,
-        default=None,
-    )
-    if newest is None:
-        return ()
-    value = float(newest.value.value)
-    return (Candidate(None, value, newest.observed_on, newest),)
-
-
-def _body_candidates(
-    kind: MetricKind,
-    garmin_body: Iterable[Observation],
-    wahoo: Observation | None = None,
-    entered: Iterable[Observation] = (),
-) -> tuple[Candidate, ...]:
-    """Weight or body fat of each source, in source order.
-
-    Garmin's latest measurement and the athlete's newest entered weight are
-    dated; Wahoo's profile weight is not. The athlete profile's stored values
-    are no source: Körper owns weight and body fat (#3640).
-    """
-    garmin = next((item for item in garmin_body if item.kind is kind), None)
-    return (*_dated(garmin), *_entered(entered), *_undated(wahoo))
-
-
 def _performance_body_metrics(
-    profile: dict[str, Any],
-    garmin_metrics: dict[str, dict[str, Any]],
-    canonical: CanonicalCurrentInputs,
-    garmin_body: tuple[Observation, ...],
-    as_of: date | None,
+    profile: dict[str, Any], body: CurrentBody
 ) -> dict[str, dict[str, Any]]:
-    """Weight and body fat by recency across sources (``source_policy``)."""
-    weight = resolve_candidates(
-        MetricKind.WEIGHT,
-        _body_candidates(
-            MetricKind.WEIGHT,
-            garmin_body,
-            canonical.wahoo_weight,
-            canonical.entered_weights,
-        ),
-        as_of=as_of,
-        preferences=canonical.preferences,
+    """Körper's current weight and body fat (#3640) and the profile's height.
+
+    The weight is the weigh-in line's, so it reads "aktuell"; the body fat is
+    the one in effect with its source and day.
+    """
+    weight = None if body.weight_kg is None else round(body.weight_kg, 1)
+    fat = body.body_fat
+    body_fat = metric(
+        None if fat is None else fat["body_fat_pct"],
+        "%",
+        None if fat is None else fat["label"],
     )
-    body_fat = resolve_candidates(
-        MetricKind.BODY_FAT,
-        _body_candidates(
-            MetricKind.BODY_FAT, garmin_body, entered=canonical.entered_body_fats
-        ),
-        as_of=as_of,
-        preferences=canonical.preferences,
-    )
+    if fat is not None:
+        body_fat["date"] = fat["measured_on"].isoformat()
     # The canonical height is in cm; only the profile may hold metres.
     height_value, height_source, height_provider = _first_performance_source(
         ((_height_in_cm(profile.get("height_cm")), PROFILE_SOURCE_LABEL, None),)
     )
     return {
-        "weight_kg": _resolved_entry(
-            weight,
-            "kg",
-            as_number,
-            garmin_metrics.get("weight_kg"),
-            PROFILE_SOURCE_LABEL,
-        ),
-        "body_fat_pct": _resolved_entry(
-            body_fat, "%", as_number, None, PROFILE_SOURCE_LABEL
-        ),
+        "weight_kg": metric(weight, "kg", CURRENT_WEIGHT_LABEL),
+        "body_fat_pct": body_fat,
         "height_cm": metric(
             height_value,
             "cm",
@@ -567,7 +499,6 @@ def current_performance_metrics(
     canonical: CanonicalCurrentInputs,
     activities: list[Any],
     garmin_thresholds: Iterable[Observation] = (),
-    garmin_body: Iterable[Observation] = (),
     as_of: date | None = None,
 ) -> dict[str, dict[str, Any]]:
     """Compose current metrics from canonical inputs, Garmin metrics and the profile.
@@ -575,7 +506,7 @@ def current_performance_metrics(
     Thresholds are resolved by the source policy from the current inputs'
     candidates and local values and the ``garmin_thresholds`` of the same read,
     current on ``as_of`` (None applies no age limit). Weight and body fat are
-    resolved by recency with Garmin's latest ``garmin_body`` measurements.
+    Körper's (``canonical.body``, #3640).
     """
     thresholds = resolve_current_thresholds(
         (*canonical.threshold_candidates, *garmin_thresholds),
@@ -598,9 +529,7 @@ def current_performance_metrics(
         canonical.preferences,
     )
     return {
-        **_performance_body_metrics(
-            profile, garmin_metrics, canonical, tuple(garmin_body), as_of
-        ),
+        **_performance_body_metrics(profile, canonical.body),
         **_performance_threshold_metrics(garmin_metrics, thresholds),
         "cycling_max_hr_bpm": cycling_max_hr,
         "running_max_hr_bpm": running_max_hr,

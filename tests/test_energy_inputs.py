@@ -10,7 +10,9 @@ from types import SimpleNamespace
 from typing import Any
 from unittest.mock import Mock, patch
 
+from backend.athlete import body_records
 from backend.athlete.body_composition import Sex
+from backend.athlete.body_records import skinfold_body_fats, weight_trend
 from backend.athlete.skinfolds import SkinfoldMeasurement
 from backend.canonical.activity_detail import ActivityStreamSet
 from backend.canonical.vocabulary import ProviderId, StreamChannel
@@ -21,14 +23,12 @@ from backend.nutrition.energy_balance import (
     EnergyWindow,
     Estimate,
     energy_windows,
-    weight_trend,
 )
 from backend.nutrition.energy_inputs import (
     EnergySources,
     diagnostics,
     energy_basis,
     read_energy_inputs,
-    skinfold_body_fats,
 )
 from backend.nutrition.energy_view import read_energy_view
 
@@ -500,7 +500,7 @@ class StoreAdapterTests(unittest.TestCase):
             weigh(DAY2, 0),
             weigh(DAY3, None),
         ]
-        self.assertEqual(energy_inputs.weighins(observations), {DAY1: 70.1})
+        self.assertEqual(body_records.weighins(observations), {DAY1: 70.1})
 
     def test_weighins_take_the_app_first_garmin_as_fallback_never_wahoo(self) -> None:
         # #3557: day 1 a Garmin weigh-in and Wahoo's stored profile weight;
@@ -516,23 +516,23 @@ class StoreAdapterTests(unittest.TestCase):
             with self.subTest(reversed=order is not observations):
                 self.assertEqual(
                     {DAY1: 80.0, DAY3: 78.5, DAY4: 78.0},
-                    energy_inputs.weighins(order, profile),
+                    body_records.weighins(order, profile),
                 )
                 self.assertEqual(
                     {
                         "by_source": {"app": 2, "garmin": 1},
                         "dropped_days": {"garmin": 1, "intervals": 1, "wahoo": 2},
                     },
-                    energy_inputs.weighin_counts(order, profile),
+                    body_records.weighin_counts(order, profile),
                 )
-        self.assertEqual({}, energy_inputs.weighins([weigh(DAY2, 84.0, WAHOO)]))
+        self.assertEqual({}, body_records.weighins([weigh(DAY2, 84.0, WAHOO)]))
         # #3559: after the app pushes an entry to Wahoo, the next refresh reads
         # it back as Wahoo's profile weight of that day; it still never counts.
         echo = [weigh(DAY1, 72.5, None), weigh(DAY1, 72.5, WAHOO)]
-        self.assertEqual({DAY1: 72.5}, energy_inputs.weighins(echo))
+        self.assertEqual({DAY1: 72.5}, body_records.weighins(echo))
         self.assertEqual(
             {"by_source": {"app": 1, "garmin": 0}, "dropped_days": {"wahoo": 1}},
-            energy_inputs.weighin_counts(echo),
+            body_records.weighin_counts(echo),
         )
 
     def test_garmin_body_fat_fills_only_days_without_an_app_value(self) -> None:
@@ -544,7 +544,7 @@ class StoreAdapterTests(unittest.TestCase):
         ]  # fmt: skip
         self.assertEqual(
             {DAY2: (17.5, GARMIN), DAY3: (17.0, None)},
-            energy_inputs.device_body_fats(observations, {DAY1}),
+            body_records.device_body_fats(observations, {DAY1}),
         )
 
     def test_the_profile_weight_leaves_the_window_as_the_scale_gave_it(self) -> None:
@@ -557,7 +557,7 @@ class StoreAdapterTests(unittest.TestCase):
         profile = [weigh(d, 84.0, WAHOO) for d in days]
 
         def window(observations: list[Any]) -> EnergyWindow:
-            weights = energy_inputs.weighins(observations)
+            weights = body_records.weighins(observations)
             inputs = EnergyInputs(
                 {
                     d: DayInputs(
@@ -595,7 +595,7 @@ class StoreAdapterTests(unittest.TestCase):
         trend = weight_trend({o.observed_on: o.value.value for o in scale})
         body = energy_inputs.resolve_body(inputs, trend, end)
         assert body is not None
-        reference = energy_inputs.current_weight(scale, {}, end)
+        reference = body_records.current_weight(scale, {}, end)
         self.assertEqual(reference, body["weight_kg"])
         self.assertAlmostEqual(80.17, reference or 0.0, places=2)
 

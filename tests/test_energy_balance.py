@@ -8,6 +8,7 @@ from collections.abc import Callable
 from dataclasses import replace
 from datetime import date, timedelta
 
+from backend.athlete import body_records
 from backend.nutrition import energy_balance as balance
 from backend.performance.activity_energy import TEF_ERROR_KCAL
 
@@ -97,18 +98,20 @@ class CompositionAndTrendTests(unittest.TestCase):
                         + (0.3 if (n // every) % 2 else -0.3)
                         for n in range(0, 56, every)
                     }
-                    trend = balance.weight_trend(weights)
+                    trend = body_records.weight_trend(weights)
                     self.assertLess(abs(trend[END] - 80.0), 0.3)
         # Too few weigh-ins for a line: their mean; after a gap longer than
         # the line's span, the last value carries.
         start = date(2026, 1, 1)
-        sparse = balance.weight_trend({start: 81.0, start + timedelta(days=3): 80.0})
+        sparse = body_records.weight_trend(
+            {start: 81.0, start + timedelta(days=3): 80.0}
+        )
         self.assertEqual(80.5, sparse[start + timedelta(days=3)])
         far = start + timedelta(days=40)
-        gap = balance.weight_trend({start: 81.0, far: 79.0})
+        gap = body_records.weight_trend({start: 81.0, far: 79.0})
         self.assertEqual(81.0, gap[far - timedelta(days=1)])
         self.assertEqual(79.0, gap[far])
-        self.assertEqual(balance.weight_trend({}), {})
+        self.assertEqual(body_records.weight_trend({}), {})
 
 
 class FatShareBlendTests(unittest.TestCase):
@@ -128,7 +131,7 @@ class FatShareBlendTests(unittest.TestCase):
                 fat_mass = 17.0 + true_share * (weight - 85.0)
                 fats[day] = 100.0 * fat_mass / weight
         inputs = balance.EnergyInputs(days, fats, rmr_kcal=1700.0)
-        trend = balance.weight_trend(
+        trend = body_records.weight_trend(
             {d: v.weight_kg for d, v in days.items() if v.weight_kg is not None}
         )
         return inputs, trend
@@ -474,7 +477,7 @@ class AdaptiveTdeeTests(unittest.TestCase):
         weights = {
             d: v.weight_kg for d, v in inputs.days.items() if v.weight_kg is not None
         }
-        window = balance._window(inputs, balance.weight_trend(weights), END, 1.1)
+        window = balance._window(inputs, body_records.weight_trend(weights), END, 1.1)
         self.assertEqual(window.calibration_factor, 1.1)
         self.assertAlmostEqual(window.neat_kcal or 0.0, 495.0)
         self.assertAlmostEqual(window.sport_kcal or 0.0, 165.0)

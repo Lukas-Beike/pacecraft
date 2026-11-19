@@ -391,6 +391,37 @@ class GuardHookTests(unittest.TestCase):
             "rg -{'\n',-}pre python x scripts",
             # A brace expansion too large to read blocks.
             "rg x --" + "{a,b}" * 20,
+            # #3648: a folder glob that can still reach scripts/ or its short
+            # name keeps blocking: a start of `scripts`, a tilde (8.3 name), a
+            # dot start (`..`), a trailing dot Windows drops, a bare wildcard.
+            "python scr*/r*.py 2671 PRRT_a1",
+            "python sc?ipts/r*.py 2671 PRRT_a1",
+            "python s[c]ripts/r*.py 2671 PRRT_a1",
+            "python script~1/r*.py 2671 PRRT_a1",
+            "python SCRIPT~1/resolv~1.py 2671 PRRT_a1",
+            "python sc*~1/r*.py 2671 PRRT_a1",
+            "cd scripts/x && python .*/r*.py 2671 PRRT_a1",
+            "python scripts.*/r*.py 2671 PRRT_a1",
+            "python */r*.py 2671 PRRT_a1",
+            "python ../*/r*.py 2671 PRRT_a1",
+            # Bypass review of #3648: a verbatim word that a substitution,
+            # pipe, eval or chained link rewrites before the shell globs it.
+            "w=qs*/res*.py; python ${w#q}",
+            "w=qs*/res*.py; python ${w:1}",
+            "w=x*/res*.py; python ${w/x/s}",
+            "set -- qs*/res*.py; python ${1#q}",
+            "read w <<< qs*/res*.py; python ${w#q}",
+            "python $(echo qs*/res*.py | tr -d q)",
+            "python $(echo qs*/res*.py | cut -c2-)",
+            "w=qs*/res*.py; eval python ${w#q}",
+            'w=qs*/res*.py; bash -c "python ${w#q}"',
+            "w=qs*/res*.py\npython ${w#q} 1 x",
+            "python (rvpa (echo qs*/res*.py).substring(1))",
+            "python (gci (echo qs*/res*.py).trimstart('q'))",
+            "$w = echo qs*/res*.py; python (rvpa $w.substring(1))",
+            "ln -s scripts abc; python abc*/r*.py",
+            "cmd /c mklink /j abc scripts && python abc*/r*.py",
+            "ln -s scripts abc\npython abc*/r*.py",
         ):
             with self.subTest(command):
                 self.assertEqual(self.decide(command), 2)
@@ -425,6 +456,11 @@ class GuardHookTests(unittest.TestCase):
             + "row = {'first_key': 1, 'second_key': 2}\n" * 4000
             + "EOF",
             "git log --pretty=oneline",
+            # #3648: a folder glob whose literal start is not a start of
+            # `scripts` can never be its folder.
+            "grep -n x backend/providers/garmin*/*.py",
+            "ls docs/perf*/m1*.md",
+            "gh pr view 1 --json state -q '.state+\" \"+.title'",
         ):
             with self.subTest(command):
                 self.assertEqual(self.decide(command), 0)

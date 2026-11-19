@@ -16,6 +16,7 @@ from datetime import UTC, date, datetime
 from typing import Any
 
 from backend.app.context import AppContext
+from backend.athlete.body_records import read_current_body
 from backend.coach import context as coach_context
 from backend.coach import limits as coach_limits
 from backend.coach import streams as coach_streams
@@ -261,6 +262,9 @@ def build_coach_context(
         coverage=canonical_reader,
         source_preferences=lambda db: preferences_from_profile(
             ctx.athlete.profile().get_from_db(db)
+        ),
+        current_body=lambda reader, db, day: read_current_body(
+            reader, db, day, ctx.athlete.skinfolds().measurements_on
         ),
     )
     activity_rows = ActivitySummarySource(

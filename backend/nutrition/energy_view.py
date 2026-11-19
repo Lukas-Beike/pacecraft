@@ -29,6 +29,7 @@ from backend.athlete.body_composition import (
     resting_band,
     resting_energy,
 )
+from backend.athlete.body_records import weight_trend
 from backend.athlete.profile import LEARNED_EVERYDAY_FIELD
 from backend.canonical.vocabulary import ProviderId
 from backend.errors import AppError
@@ -47,7 +48,6 @@ from backend.nutrition.energy_balance import (
     is_complete,
     is_stable,
     period_window,
-    weight_trend,
     window_t,
     windows_bias,
 )

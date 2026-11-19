@@ -2,7 +2,8 @@
 
 Domain owners: `coach/` (Coach), `planning/` (plans/seasons), `sync/` (sync/jobs),
 `providers/` (transport), `db/` (persistence), `http_api/` (HTTP/route assembly),
-`backup/` (backup/export), `athlete/` (profile/check-ins/local time),
+`backup/` (backup/export), `athlete/` (profile/check-ins/local time/body
+records: current weight and body fat, `body_records.py`),
 `activities/` (feedback/reads/workout text), `calendar/` (external calendars),
 `diagnostics/` (safe diagnostics), `history/` (changes/undo), `nutrition/`,
 `performance/` (derived/readiness), `runtime/` (lifecycle/maintenance),

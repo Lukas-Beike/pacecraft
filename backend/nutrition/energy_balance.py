@@ -13,13 +13,13 @@ from __future__ import annotations
 
 import math
 import statistics
-from bisect import bisect_left, bisect_right
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from datetime import date, timedelta
 from itertools import pairwise
 from typing import Any, NamedTuple, cast
 
+from backend.athlete.body_records import weight_trend
 from backend.performance.activity_energy import (
     TEF_ERROR_KCAL,
     TEF_UNCOVERED,
@@ -31,12 +31,6 @@ METHOD_ID = "adaptive-expenditure"
 METHOD_VERSION = 19
 # Days per window and windows per week of the rolling view (#3099, #3100).
 WINDOW_DAYS = 28
-# A day's current weight is the least-squares line through the weigh-ins of
-# this many days up to it, at its latest weigh-in, so a steady change has no
-# lag (#3551); with fewer weigh-ins or a shorter span, their mean.
-CURRENT_WEIGHT_DAYS = 28
-MIN_LINE_WEIGHINS = 3
-MIN_LINE_SPAN_DAYS = 7
 # A window needs this many complete logging days, weigh-ins and days between
 # its first and last weigh-in; otherwise it gives its reason, never a formula.
 MIN_COMPLETE_DAYS = 14
@@ -250,46 +244,6 @@ class EnergyWindow:
     # False when an overlapping window differs by more than the days they do
     # not share can explain (#3614); the band then holds that difference.
     stable: bool = True
-
-
-def weight_trend(weights_kg: Mapping[date, float]) -> dict[date, float]:
-    """The current weight per day from the first weigh-in on, without a lag (#3551).
-
-    A day's value is the least-squares line through the weigh-ins of the
-    ``CURRENT_WEIGHT_DAYS`` up to it, read at the latest of them; with fewer
-    than ``MIN_LINE_WEIGHINS`` or a span below ``MIN_LINE_SPAN_DAYS``, their
-    mean. A day without a weigh-in in that span carries the previous value.
-    """
-    if not weights_kg:
-        return {}
-    weighed = sorted(weights_kg)
-    trend: dict[date, float] = {}
-    day = weighed[0]
-    while day <= weighed[-1]:
-        since = day - timedelta(days=CURRENT_WEIGHT_DAYS - 1)
-        recent = weighed[bisect_left(weighed, since) : bisect_right(weighed, day)]
-        trend[day] = (
-            _line_at_latest([(d, weights_kg[d]) for d in recent])
-            if recent
-            else trend[day - timedelta(days=1)]
-        )
-        day += timedelta(days=1)
-    return trend
-
-
-def _line_at_latest(points: Sequence[tuple[date, float]]) -> float:
-    """The least-squares line's value at the latest point, else the mean."""
-    ys = [kg for _, kg in points]
-    latest = points[-1][0]
-    if len(points) < MIN_LINE_WEIGHINS or (
-        (latest - points[0][0]).days < MIN_LINE_SPAN_DAYS
-    ):
-        return statistics.fmean(ys)
-    xs = [float((d - latest).days) for d, _ in points]
-    mean_x, mean_y = statistics.fmean(xs), statistics.fmean(ys)
-    sxx = sum((x - mean_x) ** 2 for x in xs)
-    sxy = sum((x - mean_x) * (y - mean_y) for x, y in zip(xs, ys, strict=True))
-    return mean_y - sxy / sxx * mean_x
 
 
 def energy_density(share: float) -> float:

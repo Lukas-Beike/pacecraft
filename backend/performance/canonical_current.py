@@ -1,23 +1,24 @@
 """Canonical current metrics: Wahoo fallbacks, local and Garmin thresholds.
 
 Intervals.icu is output-only and never a source of current values (athlete
-decision 2026-11-07). The current inputs hold the stored Wahoo cycling FTP and
-weight, the locally confirmed thresholds in effect on the athlete-local ``as_of``
-day, and the plan-zone thresholds the source policy resolves from them and from
-Garmin's.
+decision 2026-11-07). The current inputs hold the stored Wahoo cycling FTP,
+Körper's current weight and body fat (#3640), the locally confirmed thresholds
+in effect on the athlete-local ``as_of`` day, and the plan-zone thresholds the
+source policy resolves from them and from Garmin's.
 
-Wahoo cycling FTP and Wahoo weight are read without a sync instant, because each
-Wahoo row keeps its own fetch time. A Wahoo value older than its age limit on
+The Wahoo cycling FTP is read without a sync instant, because each Wahoo row
+keeps its own fetch time. A Wahoo value older than its age limit on
 ``as_of`` is not current. Its row stays stored and readable, so history keeps it.
 """
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime
 from typing import Any, Final
 
+from backend.athlete.body_records import NO_BODY, CurrentBody
 from backend.canonical.domain_records import ZoneConfiguration
 from backend.canonical.records import Observation
 from backend.canonical.vocabulary import MetricKind, ProviderId, Sport
@@ -41,14 +42,16 @@ from backend.performance.source_policy import (
 from backend.runtime.ports import ObservationReader
 
 _EARLIEST: Final = datetime.min.replace(tzinfo=UTC)
+# Reads Körper's current body on a day with the unit's observation reader.
+type BodyReader = Callable[[ObservationReader, Any, date], CurrentBody]
 
 
 @dataclass(frozen=True, slots=True)
 class CanonicalCurrentInputs:
     """The stored Wahoo fallbacks and the resolved thresholds of one read.
 
-    ``wahoo_ftp`` is the newest cycling FTP and ``wahoo_weight`` the newest weight
-    stored from Wahoo, or None. ``zone_thresholds`` are the source-policy provider
+    ``wahoo_ftp`` is the newest cycling FTP stored from Wahoo, or None.
+    ``body`` is Körper's current weight and body fat (#3640). ``zone_thresholds`` are the source-policy provider
     winners per sport (FTP, threshold and maximum heart rate, threshold pace): the
     thresholds of the plan zones and of planned-unit load.
     ``threshold_candidates`` are the Wahoo threshold candidates of the current
@@ -58,10 +61,7 @@ class CanonicalCurrentInputs:
     """
 
     wahoo_ftp: Observation | None = None
-    wahoo_weight: Observation | None = None
-    # The weights and body fats the athlete entered by hand (no provider, #3252).
-    entered_weights: tuple[Observation, ...] = ()
-    entered_body_fats: tuple[Observation, ...] = ()
+    body: CurrentBody = NO_BODY
     zone_thresholds: tuple[Observation, ...] = ()
     threshold_candidates: tuple[Observation, ...] = ()
     configured_thresholds: tuple[Observation, ...] = ()
@@ -81,21 +81,17 @@ def read_current_inputs(
     *,
     as_of: date,
     preferences: SourcePreferences = NO_PREFERENCES,
+    body: BodyReader | None = None,
 ) -> CanonicalCurrentInputs:
     """Read the Wahoo fallbacks and the thresholds current on ``as_of``.
+
+    ``body`` reads Körper's current weight and body fat (``read_current_body``
+    with the skinfold store); without it both stay unknown.
 
     ``as_of`` is the athlete-local day the Wahoo values must be current on.
     Without anything stored every field is empty.
     """
-    wahoo_ftp, wahoo_weight = _wahoo_current(reader, db, as_of=as_of)
-    entered = {
-        kind: tuple(
-            item
-            for item in reader.observations(db, kind, end=as_of)
-            if item.provenance.provider is None
-        )
-        for kind in (MetricKind.WEIGHT, MetricKind.BODY_FAT)
-    }
+    wahoo_ftp = _wahoo_ftp(reader, db, as_of=as_of)
     candidates = (wahoo_ftp,) if wahoo_ftp is not None else ()
     providers = _provider_thresholds(reader, db, wahoo_ftp)
     configured = (
@@ -105,9 +101,7 @@ def read_current_inputs(
     )
     return CanonicalCurrentInputs(
         wahoo_ftp=wahoo_ftp,
-        wahoo_weight=wahoo_weight,
-        entered_weights=entered[MetricKind.WEIGHT],
-        entered_body_fats=entered[MetricKind.BODY_FAT],
+        body=NO_BODY if body is None else body(reader, db, as_of),
         zone_thresholds=provider_zone_thresholds(
             providers, as_of=as_of, preferences=preferences
         ),
@@ -174,25 +168,6 @@ def read_export_thresholds(
         ).items()
         if (winner := result.winner.observation) is not None
     }
-
-
-def _wahoo_current(
-    reader: ObservationReader, db: Any, *, as_of: date
-) -> tuple[Observation | None, Observation | None]:
-    """Return the current Wahoo cycling FTP and the current Wahoo weight, or None each.
-
-    Sport-scoped ranking ignores days, so the cycling FTP is reduced first to the
-    newest stored zone set, by observed day and then fetch time. The weight is
-    ranked by ``select_current`` over every stored Wahoo weight. Both must be within
-    their age limit on ``as_of``.
-    """
-    ftp = _wahoo_ftp(reader, db, as_of=as_of)
-    weights = [
-        observation
-        for observation in reader.observations(db, MetricKind.WEIGHT)
-        if observation.provenance.provider is ProviderId.WAHOO
-    ]
-    return ftp, select_current(weights, MetricKind.WEIGHT, as_of=as_of)
 
 
 def _wahoo_ftp(

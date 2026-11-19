@@ -34,7 +34,6 @@ from backend.canonical.vocabulary import (
     SourceKind,
     Sport,
 )
-from backend.performance.garmin_canonical import garmin_body
 from backend.performance.recovery_context import performance_recovery_context
 from backend.performance.source_policy import (
     CURRENT_RULES,
@@ -740,9 +739,10 @@ class PreferredSourceTests(unittest.TestCase):
         )
 
         self.assertEqual(dict(preferences), {})
-        # Only the body group has a preference (#2084); garmin is its one choice.
+        # #3640: the body group left too; Körper's weigh-in rule decides the
+        # weight and body fat, so a stored "garmin" chooses nothing.
         body = preferences_from_profile({"preferred_source_body": "garmin"})
-        self.assertEqual(dict(body), {"body": GARMIN})
+        self.assertEqual(dict(body), {})
 
     def test_a_stored_intervals_preference_is_ignored_everywhere(self) -> None:
         profile = {
@@ -772,36 +772,6 @@ class PreferredSourceTests(unittest.TestCase):
             source_order(MetricKind.WEIGHT, preferences=preferences),
             (GARMIN, None, ProviderId.WAHOO),
         )
-
-    def test_preferring_garmin_never_falls_back_to_another_method(self) -> None:
-        preferences = preferences_from_profile({"preferred_source_body": "garmin"})
-        intervals = _obs(MetricKind.BODY_FAT, 18.0, TODAY)
-
-        self.assertIsNone(
-            select_current([intervals], MetricKind.BODY_FAT, preferences=preferences)
-        )
-
-    def test_a_garmin_body_preference_keeps_the_profile_value_behind_garmin(
-        self,
-    ) -> None:
-        preferences = preferences_from_profile({"preferred_source_body": "garmin"})
-
-        self.assertEqual(
-            source_order(MetricKind.WEIGHT, preferences=preferences),
-            (GARMIN, None, ProviderId.WAHOO),
-        )
-        garmin = _weight(GARMIN, 72.0, date(2026, 4, 28), SourceKind.DEVICE_MEASURED)
-        profile = _weight(None, 73.0, TODAY)
-        resolved = resolve_candidates(
-            MetricKind.WEIGHT, (profile, garmin), as_of=TODAY, preferences=preferences
-        )
-        assert resolved is not None
-        self.assertIs(resolved.winner, garmin)
-        self.assertEqual(resolved.alternatives, (profile,))
-        # The control changes the outcome: without it the newer entry wins.
-        default = resolve_candidates(MetricKind.WEIGHT, (profile, garmin), as_of=TODAY)
-        assert default is not None
-        self.assertIs(default.winner, profile)
 
     def test_the_settings_show_one_control_per_effective_group(self) -> None:
         # Every source control shown changes an outcome, or is gone (#2084).
@@ -1002,34 +972,6 @@ class GarminSelectionTests(unittest.TestCase):
         self.assertEqual(
             _values(select_current(observations, MetricKind.MAX_HR, sport=Sport.RIDE)),
             188.0,
-        )
-
-    def test_weight_is_garmin_newest_over_the_wellness_rows(self) -> None:
-        self.assertEqual(self.current["weight_kg"]["value"], 80.5)
-        self.assertEqual(self.current["weight_kg"]["source"], "Garmin Connect")
-        self.assertNotIn("alternatives", self.current["weight_kg"])
-        self.assertEqual(
-            self.pick(MetricKind.WEIGHT), self.current["weight_kg"]["value"]
-        )
-
-    def test_body_fat_takes_the_garmin_measurement_only(self) -> None:
-        current = current_performance_metrics(
-            self.snapshot,
-            {},
-            self.garmin_metrics,
-            garmin_body=garmin_body(
-                {
-                    MetricKind.BODY_FAT: _of(
-                        self.observations, MetricKind.BODY_FAT, GARMIN
-                    )
-                }
-            ),
-        )
-
-        self.assertEqual(current["body_fat_pct"]["value"], 12)
-        self.assertNotIn("alternatives", current["body_fat_pct"])
-        self.assertEqual(
-            self.pick(MetricKind.BODY_FAT), current["body_fat_pct"]["value"]
         )
 
     def test_cycling_ftp_with_intervals_and_garmin_present_is_garmins(self) -> None:

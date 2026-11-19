@@ -10,6 +10,7 @@ from http.server import BaseHTTPRequestHandler
 from pathlib import Path
 from typing import Any
 
+from backend.athlete.body_records import read_current_body
 from backend.backup.database import MAX_BACKUP_BYTES
 from backend.calendar import local as calendar_local
 from backend.canonical.records import Observation
@@ -154,6 +155,9 @@ def build_public_state(
             activity_summaries=lambda: ctx.canonical_read,
             coverage=lambda: ctx.canonical_read,
             source_preferences=source_preferences,
+            current_body=lambda reader, db, day: read_current_body(
+                reader, db, day, ctx.athlete.skinfolds().measurements_on
+            ),
         )
 
     def plan_zone_thresholds(db: Any) -> tuple[Observation, ...]:

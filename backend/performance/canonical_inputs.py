@@ -25,6 +25,7 @@ from backend.performance.canonical_body import (
 )
 from backend.performance.canonical_current import (
     NO_CURRENT_INPUTS,
+    BodyReader,
     CanonicalCurrentInputs,
     read_current_inputs,
 )
@@ -119,6 +120,8 @@ class CanonicalPerformanceSource:
     coverage: Callable[[], ProviderCoverageReader] | None = None
     # Reads the athlete's preferred sources inside the caller's unit of work.
     source_preferences: Callable[[Any], SourcePreferences] | None = None
+    # Reads Körper's current weight and body fat (#3640); without it, unknown.
+    current_body: BodyReader | None = None
 
     def preferences_in(self, db: Any) -> SourcePreferences:
         """Return the athlete's preferred sources; none without an accessor."""
@@ -249,6 +252,7 @@ def inputs_for_snapshot(
             as_of=as_of,
             include_local_load=True,
             preferences=source.preferences_in(db),
+            body=source.current_body,
         ),
     )
 
@@ -363,6 +367,7 @@ def read_performance_inputs(
     as_of: date,
     include_local_load: bool = False,
     preferences: SourcePreferences = NO_PREFERENCES,
+    body: BodyReader | None = None,
 ) -> CanonicalPerformanceInputs | None:
     """Read canonical activity summaries and provider values in one selected unit.
 
@@ -399,6 +404,8 @@ def read_performance_inputs(
         else None,
     )
     return carried.inputs(
-        current=read_current_inputs(reader, db, as_of=as_of, preferences=preferences),
+        current=read_current_inputs(
+            reader, db, as_of=as_of, preferences=preferences, body=body
+        ),
         preferences=preferences,
     )
