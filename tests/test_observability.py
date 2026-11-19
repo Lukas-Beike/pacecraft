@@ -959,6 +959,12 @@ class RouteTimingTests(unittest.TestCase):
         self.assertEqual(
             (rows[0]["p50_ms"], rows[0]["p95_ms"], rows[0]["max_ms"]), (180, 342, 360)
         )
+        # Nearest rank, not round-half-even: the median of five is the third
+        # (Gitar on #3632).
+        odd = RouteTimings()
+        for value in (10.0, 20.0, 30.0, 40.0, 50.0):
+            odd.record("GET /api/odd", value)
+        self.assertEqual(30, odd.summary()[0]["p50_ms"])
         self.assertEqual(len(rows), RouteTimings.SHOWN + 1)
         self.assertEqual(rows[-1]["route"], "GET /api/left")
         self.assertIsNone(rows[-1]["p95_ms"])

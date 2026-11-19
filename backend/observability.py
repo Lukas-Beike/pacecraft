@@ -10,6 +10,7 @@ from __future__ import annotations
 import base64
 import json
 import logging
+import math
 import re
 import sys
 import threading
@@ -796,7 +797,9 @@ def _quantile(samples: Iterable[float], share: float) -> int | None:
     ordered = sorted(samples)
     if not ordered:
         return None
-    return round(ordered[max(0, round(share * len(ordered)) - 1)])
+    # Nearest rank: round() halves to even and took the value below the median
+    # of five (Gitar on #3632).
+    return round(ordered[max(0, math.ceil(share * len(ordered)) - 1)])
 
 
 def http_access_log_level(method: str | None, path: str, status: object) -> int:
