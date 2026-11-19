@@ -799,6 +799,38 @@ class DeficitCardTests(unittest.TestCase):
         self.assertIsNone(self.view(MEASURED, {"energy_goal": ""})["goal"])
 
 
+class PartialGarminDayTests(unittest.TestCase):
+    """#3597: a Garmin day whose summary ended early leaves multi-day means."""
+
+    def test_a_partial_day_leaves_the_window_means_but_the_shown_day_keeps_it(
+        self,
+    ) -> None:
+        health = garmin()
+        # One day ended at 12:18 with half a day's resting and total kcal.
+        partial = (END - timedelta(days=3)).isoformat()
+        health[partial] = {
+            "resting_kcal": 870.0,
+            "calories": 1500.0,
+            "wellness_end_min": 738.0,
+        }
+        view = energy_view(inputs(), windows(), health)
+        # Every window mean stays the full days' 1,745 / 3,120, so the device's
+        # error to the 2,700 TDEE is 420 in each window, as without that day.
+        self.assertEqual(420, row(view, "device")["mean_error_kcal"])
+        # The shown day itself keeps its own values (and its Stand, #3530).
+        day = energy_view(
+            inputs(), [window(END, 2700.0)], health, day=END - timedelta(days=3)
+        )
+        self.assertEqual(870, row(day, "device")["resting_kcal"])
+        # "Welche Quelle trifft dein Gewicht?" means only complete days too: the
+        # 14-day and 12-week Garmin means stay the full days' 3,120 (#3597).
+        for key in ("14d", "12w"):
+            with self.subTest(period=key):
+                scale = view["fit_scale"][key]
+                device = next(s for s in scale["sources"] if s["source"] == "device")
+                self.assertEqual(3120, device["total_kcal"])
+
+
 class DayBandTests(unittest.TestCase):
     """#3552: the formula rows' day band carries each activity part's own error."""
 
@@ -1118,6 +1150,22 @@ class SelectedDayTests(unittest.TestCase):
             (1700, 2100, (END - timedelta(days=1)).isoformat()),
             (device["resting_kcal"], device["total_kcal"], device["resting_from"]),
         )
+        # #3597: yesterday's summary ended at 12:18 (#3530), so its resting kcal
+        # covers half a day; the newest complete day counts, named by its date.
+        health[END.isoformat()] = {
+            "resting_kcal": 900.0,
+            "calories": 1500.0,
+            "wellness_end_min": 738.0,
+        }
+        device = self.today_device(health)
+        self.assertEqual(
+            (1700, 2100, (END - timedelta(days=1)).isoformat()),
+            (device["resting_kcal"], device["total_kcal"], device["resting_from"]),
+        )
+        # A finished day (1,440) is complete.
+        health[END.isoformat()]["wellness_end_min"] = 1440.0
+        self.assertEqual(900, self.today_device(health)["resting_kcal"])
+        del health[END.isoformat()]
         # No active kcal yet counts 0 so far; a negative one is invalid and keeps
         # the total unknown (#3494, Gitar).
         for active, total in ((None, 1700), (-5.0, None)):

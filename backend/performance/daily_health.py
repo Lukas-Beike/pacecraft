@@ -35,6 +35,14 @@ DAILY_HEALTH_KINDS: Mapping[MetricKind, str] = {
 }
 
 
+def complete_garmin_day(values: Mapping[str, Any]) -> bool:
+    """Whether a past day's Garmin summary covers the whole day: its wellness
+    data ends at midnight (#3530), or it names no end. One that ended earlier
+    holds part of the day's resting and total kcal (#3597)."""
+    end = values.get("wellness_end_min")
+    return not isinstance(end, int | float) or end >= 1440
+
+
 def _metric(
     value: Any, unit: str, source: str | None, note: str = ""
 ) -> dict[str, Any]:
@@ -313,6 +321,7 @@ def _projection_reference(
             and any(start <= record_day <= end for start, end in read_windows)
             and resting is not None
             and resting > 0
+            and complete_garmin_day(values)
             and (reference is None or record_day > reference[0])
         ):
             reference = (record_day, resting)

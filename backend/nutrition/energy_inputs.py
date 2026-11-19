@@ -40,6 +40,7 @@ from backend.nutrition.energy_balance import (
     weight_trend,
 )
 from backend.performance import activity_energy as energy
+from backend.performance.daily_health import complete_garmin_day
 from backend.performance.session_rpe_load import (
     FeedbackLookup,
     feedback_by_session,
@@ -449,7 +450,9 @@ def _resting(
     device = [
         value
         for day in health.values()
-        if (value := _number(day.get("resting_kcal"))) is not None and value > 0
+        if (value := _number(day.get("resting_kcal"))) is not None
+        and value > 0
+        and complete_garmin_day(day)
     ]
     if not device:
         return None, None
@@ -591,12 +594,14 @@ GARMIN_RESTING_DAYS: Final = 7
 def newest_resting(
     health: Mapping[str, Mapping[str, Any]], day: date
 ) -> tuple[date, float] | None:
-    """The newest day within ``GARMIN_RESTING_DAYS`` before ``day`` with
-    Garmin resting kcal, and that value; today's own is still counting."""
+    """The newest complete day within ``GARMIN_RESTING_DAYS`` before ``day``
+    with Garmin resting kcal, and that value; today's own is still counting, and
+    a summary that ended early holds part of its day (#3597)."""
     for back in range(1, GARMIN_RESTING_DAYS + 1):
         earlier = day - timedelta(days=back)
-        resting = _number(health.get(earlier.isoformat(), {}).get("resting_kcal"))
-        if resting and resting > 0:
+        values = health.get(earlier.isoformat(), {})
+        resting = _number(values.get("resting_kcal"))
+        if resting and resting > 0 and complete_garmin_day(values):
             return earlier, resting
     return None
 
