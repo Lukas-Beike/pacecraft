@@ -332,6 +332,7 @@ def _performance_body_metrics(
         None if fat is None else fat["body_fat_pct"],
         "%",
         None if fat is None else fat["label"],
+        provider=None if fat is None else fat.get("provider"),
     )
     if fat is not None:
         body_fat["date"] = fat["measured_on"].isoformat()
