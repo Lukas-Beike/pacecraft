@@ -233,11 +233,14 @@ class AthleteGetRoutes:
         Request: no query, no body.
 
         Response: 200 with `measurements` (at most 20, each with `date`, `sex`
-        `male` or `female` as the sites tell, `folds_mm` as `{site, label, mm}` in
-        protocol order and `body_fat_pct` by Jackson-Pollock and Siri, null without
-        a birth year in the profile; `age_outside_fit` true when the age lies outside
-        the equation's fitted range), `birth_year_known` and `sites` (the sites per
-        sex).
+        `male` or `female` as the sites tell, `folds_mm` as `{site, label, mm,
+        readings}` in protocol order, `mm` the median of the site's `readings`, and
+        `body_fat_pct` by Jackson-Pollock and Siri, null without a birth year in
+        the profile; `age_outside_fit` true when the age lies outside the
+        equation's fitted range), `birth_year_known`, `sites` (the sites per sex)
+        and `repeatability` (#3556: `repeat_sites` with two or more readings,
+        `needed_sites` and `sd_pct`, one measurement's body fat SD in percentage
+        points, null until enough sites have repeats).
 
         Errors: none beyond the common ones.
         """

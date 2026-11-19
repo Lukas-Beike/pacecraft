@@ -156,4 +156,6 @@ None of these is a validation in this athlete or in trained endurance athletes a
 | `LOCAL_LABEL` | `'Lokal'` | `backend/athlete/skinfolds.py` |  |
 | `MAPPER_VERSION` | `1` | `backend/athlete/skinfolds.py` |  |
 | `LIST_LIMIT` | `20` | `backend/athlete/skinfolds.py` |  |
+| `MAX_READINGS` | `3` | `backend/athlete/skinfolds.py` | Readings one site takes; their median is its value (#3556). |
+| `MIN_REPEAT_SITES` | `10` | `backend/athlete/skinfolds.py` | Sites with at least two readings before the athlete's own repeatability replaces the default one in the fat-share blend (#3556). |
 <!-- END GENERATED CONSTANTS -->

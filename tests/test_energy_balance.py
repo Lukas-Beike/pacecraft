@@ -181,6 +181,26 @@ class FatShareBlendTests(unittest.TestCase):
         self.assertAlmostEqual(0.28, weights[0], delta=0.01)
         self.assertAlmostEqual(0.73, weights[1], delta=0.02)
 
+    def test_the_athletes_own_repeatability_sets_the_skinfolds_weight(self) -> None:
+        # #3556: 1 point instead of the default 2 halves the measured SD
+        # (0.122 over 12 weeks), so the weight rises to 0.15^2 / (0.15^2 +
+        # 0.122^2) = 0.60; without an estimate the default stays (0.28).
+        inputs, trend = self.phase(12)
+        own = balance.fat_share(replace(inputs, skinfold_sd_pct=1.0), trend, END)
+        self.assertAlmostEqual(0.60, own.measured_weight, delta=0.01)
+        default = balance.fat_share(replace(inputs, skinfold_sd_pct=None), trend, END)
+        self.assertAlmostEqual(0.28, default.measured_weight, delta=0.01)
+        # Another method keeps the default: the estimate is the skinfolds' own.
+        entered = replace(
+            inputs,
+            body_fat_pct={},
+            device_body_fat={d: (v, None) for d, v in inputs.body_fat_pct.items()},
+            skinfold_sd_pct=1.0,
+        )
+        self.assertAlmostEqual(
+            0.28, balance.fat_share(entered, trend, END).measured_weight, delta=0.01
+        )
+
     def test_readings_that_do_not_weigh_keep_both_and_the_prior(self) -> None:
         # Gitar on #3581: a flat weight keeps both readings for the card, and a
         # weight below the label's 1 % stays "prior" as the label shows.

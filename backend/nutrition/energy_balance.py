@@ -147,6 +147,9 @@ class EnergyInputs:
     # scale's per day with its provider, then the profile's.
     device_body_fat: Mapping[date, tuple[float, Any]] = field(default_factory=dict)
     profile_body_fat_pct: float | None = None
+    # The athlete's own SD of one skinfold body fat, from repeat readings;
+    # None until there are enough, then the default applies (#3556).
+    skinfold_sd_pct: float | None = None
 
 
 class StoredEnergy(NamedTuple):
@@ -389,12 +392,13 @@ def fat_share(inputs: EnergyInputs, trend: Mapping[date, float], end: date) -> F
     The measured share is the slope of the fat mass (the day's current weight x
     body fat) over the slope of the weight, through all measurements of one
     method up to ``end`` that have a current weight; each fat mass carries the
-    repeatability ``BODY_FAT_REPEATABILITY_PCT``. Its weight grows with the
+    repeatability ``BODY_FAT_REPEATABILITY_PCT``, for skinfolds the athlete's
+    own from repeat readings once known (#3556). Its weight grows with the
     number of measurements and their span; with fewer than two at least
     ``MIN_FAT_SPAN_DAYS`` apart, or no weight change, the prior stands alone.
     """
     prior = FatShare(FAT_SHARE_PRIOR, FAT_SHARE_PRIOR_SD)
-    for series in _fat_series(inputs):
+    for method, series in enumerate(_fat_series(inputs)):
         days = sorted(d for d in series if d <= end and d in trend)
         if len(days) >= 2 and (days[-1] - days[0]).days >= MIN_FAT_SPAN_DAYS:
             break
@@ -417,7 +421,8 @@ def fat_share(inputs: EnergyInputs, trend: Mapping[date, float], end: date) -> F
     fat_slope, _ = _slope(
         xs, [w * series[d] / 100.0 for w, d in zip(weights, days, strict=True)]
     )
-    fat_sd = statistics.fmean(weights) * BODY_FAT_REPEATABILITY_PCT / 100.0
+    own = inputs.skinfold_sd_pct if method == 0 else None
+    fat_sd = statistics.fmean(weights) * (own or BODY_FAT_REPEATABILITY_PCT) / 100.0
     measured_sd = fat_sd / math.sqrt(sxx) / abs(weight_slope)
     precision = 1.0 / measured_sd**2
     total = precision + 1.0 / FAT_SHARE_PRIOR_SD**2

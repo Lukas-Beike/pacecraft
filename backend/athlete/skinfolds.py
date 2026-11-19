@@ -6,17 +6,24 @@ body fat is recomputed on each read. The sites tell the protocol: chest, abdomen
 and thigh for men, triceps, suprailiac and thigh for women (Jackson-Pollock).
 The age comes from the birth year in the profile; without one the body fat is
 None and the folds are still kept.
+
+A site takes up to three readings; its value is their median and the readings
+stay in the observation's details (#3556), so a row without them reads as
+before. Sites with repeats give the athlete's own repeatability.
 """
 
 from __future__ import annotations
 
 import json
-from collections.abc import Callable, Mapping
+import math
+import statistics
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date
 from typing import Any, Final
 
 from backend.athlete.body_composition import (
+    DENSITY_COEFFICIENTS,
     SKINFOLD_BOUNDS_MM,
     SKINFOLD_SITES,
     Sex,
@@ -40,6 +47,11 @@ _SITE_OF: Final = {kind.value: site for site, kind in SITE_KINDS.items()}
 LOCAL_LABEL: Final = "Lokal"
 MAPPER_VERSION: Final = 1
 LIST_LIMIT: Final = 20
+# Readings one site takes; their median is its value (#3556).
+MAX_READINGS: Final = 3
+# Sites with at least two readings before the athlete's own repeatability
+# replaces the default one in the fat-share blend (#3556).
+MIN_REPEAT_SITES: Final = 10
 _SITE_LABELS: Final = {
     "chest": "Brust",
     "abdomen": "Bauch",
@@ -48,7 +60,7 @@ _SITE_LABELS: Final = {
     "suprailiac": "Hüfte",
 }
 _ROWS_SQL: Final = (
-    "SELECT metric, value, observed_on FROM observations "
+    "SELECT metric, value, observed_on, details FROM observations "
     f"WHERE metric IN ({', '.join('?' * len(SITE_KINDS))}) "
     "AND provider IS NULL AND source_kind = ? AND state = 'active'"
 )
@@ -62,6 +74,19 @@ class SkinfoldMeasurement:
     body_fat_pct: float | None  # None without a birth year in the profile
     # The age lies outside the equation's fitted range (M13); the value extrapolates.
     age_outside_fit: bool = False
+    # Each site's readings when it had more than one; the fold is their median.
+    readings: Mapping[str, tuple[float, ...]] | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class Repeatability:
+    """The athlete's skinfold repeatability (#3556): the pooled within-site SD
+    in mm and, propagated through the protocol at the latest measurement, the
+    SD of one measurement's body fat in percentage points."""
+
+    repeat_sites: int
+    sd_mm: float | None = None
+    sd_pct: float | None = None
 
 
 def local_provenance() -> Provenance:
@@ -95,16 +120,30 @@ def _body_fat(
         return None  # an age outside the equations' range
 
 
+def _readings(details: object) -> tuple[float, ...] | None:
+    """A site's stored readings, or None for a row with one value (#3556)."""
+    try:
+        stored = json.loads(str(details or "{}")).get("derivation") or {}
+        values = tuple(float(v) for v in stored.get("readings") or ())
+    except TypeError, ValueError, AttributeError:
+        return None
+    return values if len(values) > 1 else None
+
+
 def measurements_from_rows(
-    rows: list[tuple[str, float, str]], birth_year: int | None
+    rows: Sequence[Sequence[Any]], birth_year: int | None
 ) -> list[SkinfoldMeasurement]:
-    """Complete measurements from (metric, mm, day) rows, newest first.
+    """Complete measurements from (metric, mm, day[, details]) rows, newest first.
 
     A day without one full protocol is skipped.
     """
     days: dict[str, dict[str, float]] = {}
-    for metric, millimetres, day_text in rows:
-        days.setdefault(str(day_text), {})[_SITE_OF[str(metric)]] = float(millimetres)
+    repeats: dict[str, dict[str, tuple[float, ...]]] = {}
+    for metric, millimetres, day_text, *details in rows:
+        site = _SITE_OF[str(metric)]
+        days.setdefault(str(day_text), {})[site] = float(millimetres)
+        if readings := _readings(details[0] if details else None):
+            repeats.setdefault(str(day_text), {})[site] = readings
     found = []
     for day_text, folds in sorted(days.items(), reverse=True):
         sex = _protocol(set(folds))
@@ -117,8 +156,37 @@ def measurements_from_rows(
             and birth_year is not None
             and outside_fitted_ages(sex, day.year - birth_year)
         )
-        found.append(SkinfoldMeasurement(day, sex, folds, fat, outside))
+        found.append(
+            SkinfoldMeasurement(day, sex, folds, fat, outside, repeats.get(day_text))
+        )
     return found
+
+
+def repeatability(measurements: Sequence[SkinfoldMeasurement]) -> Repeatability:
+    """The athlete's repeatability from every site with two or more readings.
+
+    The pooled within-site SD in mm goes through the protocol's sensitivity
+    at the latest measurement with a body fat: dBF/dS = 495 / D^2 x (b - 2cS),
+    S the sum of three sites, so one measurement's SD is that x SD x sqrt(3)
+    over sqrt(readings per site), the median's gain (#3556). None in mm and
+    %-points below ``MIN_REPEAT_SITES`` sites with repeats.
+    """
+    sets = [r for m in measurements for r in (m.readings or {}).values()]
+    if len(sets) < MIN_REPEAT_SITES:
+        return Repeatability(len(sets))
+    squares = sum(sum((x - statistics.fmean(r)) ** 2 for x in r) for r in sets)
+    sd_mm = math.sqrt(squares / sum(len(r) - 1 for r in sets))
+    latest = next((m for m in measurements if m.body_fat_pct is not None), None)
+    if latest is None or latest.body_fat_pct is None:
+        return Repeatability(len(sets), sd_mm)
+    _, b, c, _ = DENSITY_COEFFICIENTS[latest.sex]
+    total = sum(latest.folds_mm.values())
+    density = 495.0 / (latest.body_fat_pct + 450.0)
+    per_mm = 495.0 / density**2 * abs(b - 2.0 * c * total)
+    counts = [len((latest.readings or {}).get(site, (0,))) for site in latest.folds_mm]
+    per_site = statistics.median(counts)
+    sd_pct = per_mm * sd_mm * math.sqrt(len(latest.folds_mm)) / math.sqrt(per_site)
+    return Repeatability(len(sets), sd_mm, sd_pct)
 
 
 def birth_year_of(profile_json: str | None) -> int | None:
@@ -139,6 +207,11 @@ def public_measurement(measurement: SkinfoldMeasurement) -> dict[str, Any]:
                 "site": site,
                 "label": _SITE_LABELS[site],
                 "mm": measurement.folds_mm[site],
+                "readings": list(
+                    (measurement.readings or {}).get(
+                        site, (measurement.folds_mm[site],)
+                    )
+                ),
             }
             for site in SKINFOLD_SITES[measurement.sex]
         ],
@@ -181,7 +254,12 @@ class SkinfoldService:
         cursor = db.execute(sql, tuple(params))
         names = [column[0] for column in cursor.description]
         rows = [
-            (record["metric"], record["value"], record["observed_on"])
+            (
+                record["metric"],
+                record["value"],
+                record["observed_on"],
+                record["details"],
+            )
             for record in (
                 row if isinstance(row, Mapping) else dict(zip(names, row, strict=True))
                 for row in cursor.fetchall()
@@ -204,6 +282,8 @@ class SkinfoldService:
             birth_year = birth_year_of(self._profile_json(db))
         return {
             "measurements": [public_measurement(item) for item in found[:LIST_LIMIT]],
+            # "Deine Messgenauigkeit: ± 0,9 %-Punkte (aus 24 Wiederholungen)" (#3556).
+            "repeatability": _public_repeatability(repeatability(found)),
             "birth_year_known": birth_year is not None,
             "sites": {sex.value: list(sites) for sex, sites in SKINFOLD_SITES.items()},
         }
@@ -214,16 +294,23 @@ class SkinfoldService:
         folds = self._folds(payload.get("folds_mm"))
         with self._database_manager.unit_of_work() as db:
             self._retire(db, day)
-            for site, millimetres in folds.items():
+            for site, readings in folds.items():
                 observation = Observation(
                     kind=SITE_KINDS[site],
-                    value=MetricValue(millimetres, "mm"),
+                    value=MetricValue(round(statistics.median(readings), 2), "mm"),
                     observed_on=day,
                     observed_at=None,
                     provenance=local_provenance(),
                 )
                 canonical_store.upsert_observation(
-                    db, observation, mapper_version=MAPPER_VERSION, now=self._now()
+                    db,
+                    observation,
+                    mapper_version=MAPPER_VERSION,
+                    now=self._now(),
+                    # The readings behind the median (#3556); one reading has none.
+                    derivation={"readings": list(readings)}
+                    if len(readings) > 1
+                    else None,
                 )
         return self._changed(day)
 
@@ -270,24 +357,40 @@ class SkinfoldService:
         return day
 
     @staticmethod
-    def _folds(value: Any) -> dict[str, float]:
+    def _folds(value: Any) -> dict[str, tuple[float, ...]]:
         if not isinstance(value, Mapping) or _protocol(set(value)) is None:
             raise AppError(
                 400,
                 "Bitte genau drei Stellen messen: Brust, Bauch, Oberschenkel "
                 "oder Trizeps, Hüfte, Oberschenkel.",
             )
-        lower, upper = SKINFOLD_BOUNDS_MM
-        folds: dict[str, float] = {}
-        for site, raw in value.items():
-            try:
-                millimetres = float(str(raw).replace(",", "."))
-            except ValueError as exc:
-                raise AppError(400, "Jede Hautfalte braucht einen Wert in mm.") from exc
-            if not lower <= millimetres <= upper:
-                raise AppError(
-                    400,
-                    f"Eine Hautfalte muss zwischen {lower:g} und {upper:g} mm liegen.",
-                )
-            folds[str(site)] = round(millimetres, 1)
-        return folds
+        return {str(site): _site_readings(raw) for site, raw in value.items()}
+
+
+def _site_readings(raw: Any) -> tuple[float, ...]:
+    """One site's one to ``MAX_READINGS`` readings in mm, each within bounds."""
+    values = [v for v in (raw if isinstance(raw, list) else [raw]) if str(v).strip()]
+    if not 1 <= len(values) <= MAX_READINGS:
+        raise AppError(400, "Jede Hautfalte braucht ein bis drei Werte in mm.")
+    lower, upper = SKINFOLD_BOUNDS_MM
+    readings = []
+    for value in values:
+        try:
+            millimetres = float(str(value).replace(",", "."))
+        except ValueError as exc:
+            raise AppError(400, "Jede Hautfalte braucht einen Wert in mm.") from exc
+        if not lower <= millimetres <= upper:
+            raise AppError(
+                400,
+                f"Eine Hautfalte muss zwischen {lower:g} und {upper:g} mm liegen.",
+            )
+        readings.append(round(millimetres, 1))
+    return tuple(readings)
+
+
+def _public_repeatability(found: Repeatability) -> dict[str, Any]:
+    return {
+        "repeat_sites": found.repeat_sites,
+        "needed_sites": MIN_REPEAT_SITES,
+        "sd_pct": None if found.sd_pct is None else round(found.sd_pct, 1),
+    }

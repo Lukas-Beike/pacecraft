@@ -459,19 +459,24 @@ der Zukunft.".
 Request: no query, no body.
 
 Response: 200 with `measurements` (at most 20, each with `date`, `sex`
-`male` or `female` as the sites tell, `folds_mm` as `{site, label, mm}` in
-protocol order and `body_fat_pct` by Jackson-Pollock and Siri, null without
-a birth year in the profile; `age_outside_fit` true when the age lies outside
-the equation's fitted range), `birth_year_known` and `sites` (the sites per
-sex).
+`male` or `female` as the sites tell, `folds_mm` as `{site, label, mm,
+readings}` in protocol order, `mm` the median of the site's `readings`, and
+`body_fat_pct` by Jackson-Pollock and Siri, null without a birth year in
+the profile; `age_outside_fit` true when the age lies outside the
+equation's fitted range), `birth_year_known`, `sites` (the sites per sex)
+and `repeatability` (#3556: `repeat_sites` with two or more readings,
+`needed_sites` and `sd_pct`, one measurement's body fat SD in percentage
+points, null until enough sites have repeats).
 
 Errors: none beyond the common ones.
 
 ### `PUT /api/body/skinfolds`
 
-Request: JSON body `{"date": "YYYY-MM-DD", "folds_mm": {site: number}}`
-with exactly the sites `chest`, `abdomen`, `thigh` (men) or `triceps`,
-`suprailiac`, `thigh` (women), each 2 to 80 mm (comma decimals allowed).
+Request: JSON body `{"date": "YYYY-MM-DD", "folds_mm": {site: number or
+[number, ...]}}` with exactly the sites `chest`, `abdomen`, `thigh` (men)
+or `triceps`, `suprailiac`, `thigh` (women), each one to three readings of
+2 to 80 mm (comma decimals allowed); the site's value is their median
+(#3556).
 The date must not be in the future.
 
 Response: 200 as `GET /api/body/skinfolds`.

@@ -97,6 +97,10 @@ class SkinfoldServiceTests(unittest.TestCase):
             ("2026-11-10", {"chest": 16, "triceps": 20, "thigh": 17}),
             ("2026-11-10", {**MEN, "chest": 1}),
             ("2026-11-10", {**MEN, "chest": "abc"}),
+            # #3556: one to three readings per site, each within bounds.
+            ("2026-11-10", {**MEN, "chest": [16, 17, 18, 19]}),
+            ("2026-11-10", {**MEN, "chest": []}),
+            ("2026-11-10", {**MEN, "chest": [16, 1]}),
         ):
             with self.subTest(day=day, folds=folds), self.assertRaises(AppError):
                 self.save(day, folds)
@@ -104,6 +108,42 @@ class SkinfoldServiceTests(unittest.TestCase):
     def test_comma_decimals_are_read(self):
         read = self.save("2026-11-10", {"chest": "16,5", "abdomen": 20, "thigh": 17})
         self.assertEqual(read["measurements"][0]["folds_mm"][0]["mm"], 16.5)
+
+    def test_three_readings_give_their_median_and_stay_stored(self):
+        # #3556: the site's value is the median, the readings stay in details;
+        # a single reading reads as before, with itself as its only reading.
+        read = self.save("2026-11-10", {**MEN, "chest": [16, "17,5", 17]})
+        folds = read["measurements"][0]["folds_mm"]
+        self.assertEqual(
+            (17.0, [16.0, 17.5, 17.0]), (folds[0]["mm"], folds[0]["readings"])
+        )
+        self.assertEqual((20, [20]), (folds[1]["mm"], folds[1]["readings"]))
+        # The body fat comes from the medians 17/20/17 mm (16/20/17 gave 17.1).
+        self.assertEqual(17.4, self.on(TODAY).body_fat_pct)
+
+    def test_repeatability_needs_ten_sites_with_repeats(self):
+        # Each day: chest 16/17/18, abdomen 20/20/22, thigh 17/18/19 (medians
+        # 17, 20, 18). Within-site squares 2 + 2.667 + 2 = 6.667 on 6 degrees of
+        # freedom per day; three days give 9 sites, four give 12.
+        repeated = {
+            "chest": [16, 17, 18],
+            "abdomen": [20, 20, 22],
+            "thigh": [17, 18, 19],
+        }
+        for day in ("2026-10-20", "2026-10-27", "2026-11-03"):
+            read = self.save(day, repeated)
+        self.assertEqual(
+            {"repeat_sites": 9, "needed_sites": 10, "sd_pct": None},
+            read["repeatability"],
+        )
+        read = self.save("2026-11-10", repeated)
+        # Pooled SD sqrt(26.667 / 24) = 1.054 mm; at S = 55 mm and 18.2 % body
+        # fat, dBF/dS = 495 / D^2 x (b - 2cS) = 0.287 %/mm; x 1.054 x sqrt(3)
+        # over sqrt(3) readings per site = 0.30 points.
+        self.assertEqual(
+            {"repeat_sites": 12, "needed_sites": 10, "sd_pct": 0.3},
+            read["repeatability"],
+        )
 
 
 if __name__ == "__main__":

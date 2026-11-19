@@ -23,7 +23,7 @@ from backend.athlete.body_composition import (
     lean_mass_kg,
     resting_energy,
 )
-from backend.athlete.skinfolds import SkinfoldMeasurement
+from backend.athlete.skinfolds import SkinfoldMeasurement, repeatability
 from backend.canonical.activity_detail import ActivityStreamSet
 from backend.canonical.activity_summary import stored_activity_key
 from backend.canonical.records import Observation
@@ -522,6 +522,7 @@ def read_energy_inputs(
         inputs,
         device_body_fat=device,
         profile_body_fat_pct=_profile_fat(profile.get("body_fat_pct")),
+        skinfold_sd_pct=repeatability(sources.skinfolds(db, grace_end)).sd_pct,
     ), costs
 
 

@@ -1316,6 +1316,30 @@ function skinfoldDialogSites() {
   return SKINFOLD_SITES[state.data?.profile?.sex === "female" ? "female" : "male"];
 }
 
+// Up to three readings per site; the site's value is their median (#3556).
+const SKINFOLD_READINGS = 3;
+
+function skinfoldInputs(form, site) {
+  return Array.from({ length: SKINFOLD_READINGS }, (_, index) => form.elements[index ? `${site}_${index + 1}` : site]);
+}
+
+function skinfoldReadings(form, site) {
+  return skinfoldInputs(form, site).map((input) => input.value.trim()).filter(Boolean);
+}
+
+function skinfoldMedian(readings) {
+  const sorted = readings.map((value) => Number(value.replace(",", "."))).sort((a, b) => a - b);
+  const middle = Math.floor(sorted.length / 2);
+  return sorted.length % 2 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2;
+}
+
+// "Deine Messgenauigkeit: ± 0,9 %-Punkte (aus 24 Wiederholungen)" once the repeats suffice (#3556).
+function skinfoldRepeatabilityText(read) {
+  const found = read?.repeatability;
+  if (found?.sd_pct == null) return "";
+  return `Deine Messgenauigkeit: ± ${AppFormat.number(found.sd_pct, { digits: 1, minDigits: 1 })} %-Punkte (aus ${found.repeat_sites} Wiederholungen)`;
+}
+
 // Siri body fat (%) from the folds in mm, or null outside the accepted folds and ages.
 function skinfoldBodyFat(sex, folds, age) {
   if (!(age >= 18 && age <= 80) || folds.some((mm) => !(mm >= 2 && mm <= 80))) return null;
@@ -1333,10 +1357,11 @@ function showSkinfoldResult() {
   const form = document.querySelector("#bodyFatDialogForm");
   const profile = state.data?.profile || {};
   const age = Number(form.elements.date.value.slice(0, 4)) - Number(profile.birth_year);
-  const folds = skinfoldDialogSites().map((site) => Number(String(form.elements[site].value).replace(",", ".")));
+  const folds = skinfoldDialogSites().map((site) => skinfoldMedian(skinfoldReadings(form, site)));
   const sex = profile.sex === "female" ? "female" : "male";
   const fat = profile.birth_year ? skinfoldBodyFat(sex, folds, age) : null;
-  document.querySelector("#bodyFatDialogResult").textContent = fat == null ? "" : `Ergibt ${analysisValue(fat, "%")} Körperfett`;
+  const result = fat == null ? "" : `Ergibt ${analysisValue(fat, "%")} Körperfett`;
+  document.querySelector("#bodyFatDialogResult").textContent = [result, skinfoldRepeatabilityText(skinfoldRead)].filter(Boolean).join(" · ");
 }
 
 function fillBodyFatDialog() {
@@ -1345,8 +1370,8 @@ function fillBodyFatDialog() {
   const entry = bodyFatEntries.find((item) => item.date === day);
   const measured = skinfoldRead?.measurements?.find((item) => item.date === day);
   form.elements.pct.value = entry ? String(entry.pct) : "";
-  const values = Object.fromEntries((measured?.folds_mm || []).map((fold) => [fold.site, fold.mm]));
-  for (const site of skinfoldDialogSites()) form.elements[site].value = values[site] ?? "";
+  const values = Object.fromEntries((measured?.folds_mm || []).map((fold) => [fold.site, fold.readings || [fold.mm]]));
+  for (const site of skinfoldDialogSites()) skinfoldInputs(form, site).forEach((input, index) => { input.value = values[site]?.[index] ?? ""; });
   document.querySelector("#bodyFatDialogRemove").hidden = !(bodyFatMode === "folds" ? measured : entry);
   showSkinfoldResult();
 }
@@ -1356,7 +1381,7 @@ function setBodyFatMode(mode) {
   bodyFatMode = mode;
   const form = document.querySelector("#bodyFatDialogForm");
   for (const button of form.querySelectorAll("[data-body-fat-mode]")) button.setAttribute("aria-pressed", String(button.dataset.bodyFatMode === mode));
-  for (const input of [form.elements.pct, ...skinfoldDialogSites().map((site) => form.elements[site])]) {
+  for (const input of [form.elements.pct, ...skinfoldDialogSites().flatMap((site) => skinfoldInputs(form, site))]) {
     const shown = (input.name === "pct") === (mode === "pct");
     input.disabled = !shown;
     input.closest("label").hidden = !shown;
@@ -1370,8 +1395,12 @@ async function openBodyFatDialog() {
   const form = document.querySelector("#bodyFatDialogForm");
   // The fold fields sit in the dialog's own form grid, after the percentage, for the profile's sex.
   form.querySelectorAll("[data-skinfold-site]").forEach((label) => label.remove());
+  // Each site takes up to three readings in one row; only the first is required (#3556).
+  // The label names the first reading; the repeats carry their own name.
+  const reading = (site, index) => h("input", { name: index ? `${site}_${index + 1}` : site, type: "number", min: "2", max: "80", step: "0.5", inputMode: "decimal", required: !index,
+    ...(index ? { "aria-label": `${SKINFOLD_LABELS[site]}, Messung ${index + 1} (mm)` } : {}) });
   form.elements.pct.closest("label").after(...skinfoldDialogSites().map((site) => h("label", { dataset: { skinfoldSite: site } }, `${SKINFOLD_LABELS[site]} (mm)`,
-    h("input", { name: site, type: "number", min: "2", max: "80", step: "0.5", inputMode: "decimal", required: true }))));
+    h("span", "skinfold-readings", Array.from({ length: SKINFOLD_READINGS }, (_, index) => reading(site, index))))));
   form.elements.date.value = timezoneDateKey(state.data?.profile?.timezone, new Date());
   document.querySelector("#bodyFatDialogStatus").textContent = "";
   for (const button of form.querySelectorAll("button")) button.disabled = false;
@@ -1396,7 +1425,7 @@ function bindBodyFatDialog() {
     const day = form.elements.date.value;
     const folds = bodyFatMode === "folds";
     const [path, payload] = folds
-      ? ["/api/body/skinfolds", { date: day, folds_mm: Object.fromEntries(skinfoldDialogSites().map((site) => [site, form.elements[site].value])) }]
+      ? ["/api/body/skinfolds", { date: day, folds_mm: Object.fromEntries(skinfoldDialogSites().map((site) => [site, skinfoldReadings(form, site)])) }]
       : ["/api/body/body-fat", { date: day, pct: form.elements.pct.value }];
     await sendBodyEntry("bodyFatDialog", path, payload, document.querySelector("#bodyFatDialogSave"), bodyFatReceipt(day, folds, "gespeichert"));
   });

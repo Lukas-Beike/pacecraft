@@ -73,6 +73,44 @@ for (const scheme of ["light", "dark"]) {
   });
 }
 
+// #3556: each site takes up to three readings, the result uses their median, and with enough
+// repeats the dialog shows the athlete's own repeatability.
+test("@responsive three readings per site give their median and the repeatability", async ({ page }) => {
+  await page.goto("/#nutrition/body");
+  // Four earlier days with repeats: 12 sites, pooled 1.054 mm -> ± 0,3 %-Punkte (unit test).
+  await page.evaluate(async () => {
+    await api("/api/profile", { method: "PUT", body: JSON.stringify({ birth_year: "1986" }) });
+    for (const date of ["2026-10-20", "2026-10-27", "2026-11-03", "2026-11-04"]) {
+      await api("/api/body/skinfolds", { method: "PUT", body: JSON.stringify({ date, folds_mm: { chest: [16, 17, 18], abdomen: [20, 20, 22], thigh: [17, 18, 19] } }) });
+    }
+  });
+  await page.reload();
+  const row = page.locator("[data-body-overview] tr[data-metric='body_fat_pct']");
+  const dialog = page.locator("#bodyFatDialog");
+  await row.getByRole("button", { name: "Körperfett eintragen" }).click();
+  await dialog.getByRole("button", { name: "Hautfalten" }).click();
+  await page.locator("#bodyFatDialogDate").fill("2026-11-10");
+  await page.locator("#bodyFatDialogDate").dispatchEvent("change");
+  // Brust 16, 18, 17 -> median 17; 17/20/17 mm at 40 -> 17,4 %.
+  await dialog.getByLabel("Brust (mm)").fill("16");
+  await dialog.getByLabel("Brust, Messung 2 (mm)").fill("18");
+  await dialog.getByLabel("Brust, Messung 3 (mm)").fill("17");
+  await dialog.getByLabel("Bauch (mm)").fill("20");
+  await dialog.getByLabel("Oberschenkel (mm)").fill("17");
+  await expect(page.locator("#bodyFatDialogResult")).toHaveText("Ergibt 17,4 % Körperfett · Deine Messgenauigkeit: ± 0,3 %-Punkte (aus 12 Wiederholungen)");
+  expect(await new AxeBuilder({ page }).include("#bodyFatDialog").withTags(["wcag2aa"]).analyze()).toEqual(expect.objectContaining({ violations: [] }));
+  await dialog.getByRole("button", { name: "Speichern" }).click();
+  await expect(dialog).toBeHidden();
+  await expect(row.locator("td").first()).toHaveText("17,4 %");
+  // Reopened, the day fills its readings again.
+  await row.getByRole("button", { name: "Körperfett eintragen" }).click();
+  await dialog.getByRole("button", { name: "Hautfalten" }).click();
+  await page.locator("#bodyFatDialogDate").fill("2026-11-10");
+  await page.locator("#bodyFatDialogDate").dispatchEvent("change");
+  await expect(dialog.getByLabel("Brust, Messung 2 (mm)")).toHaveValue("18");
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBeTruthy();
+});
+
 // #3252: the pencil in the weight row enters a weight with its date; it becomes the latest
 // weight ("Lokal") and can be removed again.
 test("@responsive a weight is entered and removed through the weight dialog", async ({ page }) => {
