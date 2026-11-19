@@ -490,6 +490,8 @@ def energy_view(
     shown, implausible = _gated_resting(
         latest.derived_rmr, predictions["katch_mcardle"][-1], predictions[DEVICE][-1]
     )
+    # The day row splits at the reference shown beside it that day; the
+    # 28-day row at the latest window's, as the gate (#3550).
     reference = _resting_reference(
         predictions["katch_mcardle"][-1], predictions[DEVICE][-1]
     )
@@ -497,7 +499,9 @@ def energy_view(
         _unmeasured(
             _own_day_row(shown, implausible, latest, day_window, pending[False]),
             shown,
-            reference,
+            _resting_reference(
+                day_predictions["katch_mcardle"], day_predictions[DEVICE]
+            ),
         )
     )
     return {
