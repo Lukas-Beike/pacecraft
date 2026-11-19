@@ -36,7 +36,12 @@ estimate. It never rewrites logged values and never falls back to a formula.
    by their precisions (athlete decision, #3555): the slope of the fat mass
    (current weight × body fat) over the slope of the weight, through all
    dated body fat values of one method up to the latest window's end, each with a
-   repeatability of 2 percentage points. Its SD is the fat mass's SD over
+   repeatability of 2 percentage points; for skinfolds the athlete's own once
+   10 sites have repeat readings (#3556: the pooled within-site SD through
+   the protocol's sensitivity at the latest measurement, times each
+   measurement's own median gain: 1, 0.71 or 0.67 for one, two or three
+   readings per site), each fat mass weighted by its own SD (weighted least
+   squares). Its SD is the fat mass's SD over
    `sqrt(Σ(t − t̄)²)` and the weight slope; the posterior SD enters the band.
    With fewer than two values 14 days apart, or under 0.1 kg of weight
    change between them, `p = 0.70` (about 7,154 kcal/kg). Every window of
