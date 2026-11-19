@@ -910,13 +910,14 @@ def _measure(
 
 
 def _with_wellness_end(
-    name: str, record: Mapping[str, object], day: date
+    name: str, record: Mapping[str, object], day: date, zone: tzinfo
 ) -> Mapping[str, object]:
     """A day summary with its wellness end time as minutes after the day's
-    local midnight, which the daily stats group maps (#3530)."""
+    local midnight in the profile's ``zone``, which the daily stats group maps
+    (#3530)."""
     if name != _DAILY_STATS:
         return record
-    minute = wellness_end_minute(record, day)
+    minute = wellness_end_minute(record, day, zone)
     return record if minute is None else {**record, GARMIN_WELLNESS_END_MINUTE: minute}
 
 
@@ -1390,7 +1391,7 @@ class _HealthMapping:
                 datetime_dates=name in ("cycling_ftp", "cycling_ftp_history"),
             )
             if day is not None:
-                record = _with_wellness_end(name, record, day)
+                record = _with_wellness_end(name, record, day, self._zone)
                 for group in record_groups:
                     self._map_group(name, record, group, ref, day, index=index)
 

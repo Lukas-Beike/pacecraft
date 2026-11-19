@@ -1658,12 +1658,23 @@ class DailyStatsTests(unittest.TestCase):
         # #3530: the day summary's wellness data ends at its local end time; a
         # day still counting ends early (12:18 = minute 738), a finished one at
         # the next midnight (1440). The flat per-day alias reads the same.
+        # The nested wellnessChronology key is primary, local before GMT; the
+        # flat names are aliases. GMT text and epoch milliseconds (UTC) read in
+        # the profile's zone (Berlin, UTC+2 on DAY).
         next_day = (date.fromisoformat(DAY) + timedelta(days=1)).isoformat()
+        epoch_ms = datetime.fromisoformat(f"{DAY}T10:18:00+00:00").timestamp() * 1000
         for label, record, minute in (
-            ("range", {"wellnessChronology": {"endTimestampLocal": f"{DAY}T12:18:00.0",
-                                               "endTimestampGmt": f"{DAY}T11:18:00.0"}}, 738.0),
+            ("nested local", {"wellnessChronology": {"endTimestampLocal": f"{DAY}T12:18:00.0",
+                                                      "endTimestampGmt": f"{DAY}T05:00:00.0"}}, 738.0),
+            ("nested gmt", {"wellnessChronology": {"endTimestampGmt": f"{DAY}T10:18:00.0"}}, 738.0),
+            ("nested epoch ms", {"wellnessChronology": {"endTimestampLocal": epoch_ms}}, 738.0),
             ("finished", {"wellnessChronology": {"endTimestampLocal": f"{next_day}T00:00:00.0"}}, 1440.0),
-            ("per day", {"wellnessEndTimeLocal": f"{DAY}T07:05:00.0"}, 425.0),
+            ("nested before flat", {"wellnessChronology": {"endTimestampLocal": f"{DAY}T12:18:00"},
+                                    "wellnessEndTimeLocal": f"{DAY}T07:05:00"}, 738.0),
+            ("flat local", {"endTimestampLocal": f"{DAY}T07:05:00.0"}, 425.0),
+            ("flat gmt epoch", {"endTimestampGmt": epoch_ms}, 738.0),
+            ("flat wellness local", {"wellnessEndTimeLocal": f"{DAY}T07:05:00.0"}, 425.0),
+            ("flat wellness gmt", {"wellnessEndTimeGmt": f"{DAY}T05:05:00.0"}, 425.0),
         ):  # fmt: skip
             with self.subTest(label):
                 result = _map({"daily_stats": [{"calendarDate": DAY, **record}]})
