@@ -1,8 +1,8 @@
 # M13 — Body fat from 3-site skinfolds and resting energy from lean mass
 
 - **Card:** M13
-- **Card version:** 3
-- **Method ID:** body-composition-resting v3 (#3099, #3551, #3617)
+- **Card version:** 4
+- **Method ID:** body-composition-resting v4 (#3099, #3551, #3617)
 - **Status:** method implemented (`backend/athlete/body_composition.py`, `backend/athlete/skinfolds.py`); the energy table that shows it is in review (#3180)
 - **Classification:** model estimate
 - **Literature checked:** 2026-11-16
@@ -24,6 +24,7 @@ These stand beside Garmin's resting value and the derived resting rate of M12 as
 2. **Body fat (%)** from density `D` (R71, Siri): `495 / D − 450`.
 3. **Lean mass (kg):** `weight × (1 − body fat / 100)`.
    - In the energy table, the weight is M12's current weight on the window's last day: the least-squares line through the last 28 days' weigh-ins at the latest one, so a steady change has no lag (#3551). The resting reference uses the same weight.
+   - The lean mass is carried from the reading: its weight × (1 − body fat) plus (1 − M12's blended fat share) × the weight change since, not the reading's percentage on that day's weight (#3617). A profile value without a date applies to that day's weight. The own resting reference (Katch-McArdle) takes the same carried lean mass, and the reader takes the weights back to the oldest reading it can resolve; a reading before the first weigh-in takes the first weigh-in after it (Gitar on #3642).
    - The body fat is from the latest skinfold measurement within 90 days before that day; every measurement of the read span counts, also two within one week (#3617).
 4. **Resting energy (kcal/day):**
    - Katch-McArdle: `370 + 21.6 × LBM`. This is the general equation of Cunningham 1991 (R73).
@@ -147,7 +148,7 @@ None of these is a validation in this athlete or in trained endurance athletes a
 | Constant | Value | Module | Code comment |
 | --- | --- | --- | --- |
 | `METHOD_ID` | `'body-composition-resting'` | `backend/athlete/body_composition.py` |  |
-| `METHOD_VERSION` | `3` | `backend/athlete/body_composition.py` | Bump with the M13 card version when a formula or constant below changes. |
+| `METHOD_VERSION` | `4` | `backend/athlete/body_composition.py` | Bump with the M13 card version when a formula or constant below changes. |
 | `SKINFOLD_BOUNDS_MM` | `(2.0, 80.0)` | `backend/athlete/body_composition.py` | A fold outside this range is a typing error, not a measurement (mm). |
 | `SKINFOLD_AGES` | `(18, 80)` | `backend/athlete/body_composition.py` | Accepted ages. The equations were fitted on men aged 18-61 and women aged 18-55; the methods document names that range. |
 | `RESTING_FORMULA_ERROR` | `0.1` | `backend/athlete/body_composition.py` | Half-width of the nominal 95 % band of a formula's resting energy, as a share of it: Cunningham 1980 expects a 10 % prediction error for an individual (#3187). |
