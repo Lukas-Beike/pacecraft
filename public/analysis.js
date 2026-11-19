@@ -1822,7 +1822,13 @@ function energyLearnedLine(read) {
   const take = h("button", { type: "button", className: "secondary-button" }, "Übernehmen");
   const later = h("button", { type: "button", className: "secondary-button" }, "Noch nicht");
   take.addEventListener("click", () => void saveLearnedCheck(todayIso(), take));
-  later.addEventListener("click", () => { energyLearnedDeferred = true; renderDiaryEnergy(); });
+  later.addEventListener("click", () => {
+    energyLearnedDeferred = true;
+    // The shown read is kept by renderDiaryEnergy; the card must be built again (Gitar).
+    const slot = document.querySelector("#nutritionEnergy");
+    if (slot) slot.energyShown = null;
+    renderDiaryEnergy();
+  });
   line.append(h("div", "actions", take, later));
   return line;
 }

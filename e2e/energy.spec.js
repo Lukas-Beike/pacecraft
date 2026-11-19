@@ -125,6 +125,11 @@ test("@responsive the learned everyday term is taken over with a receipt and und
   const card = page.locator("#nutritionEnergy [data-energy]");
   const offered = card.locator("[data-learned='offered']");
   await expect(offered).toContainText("Gelernter Alltag aus 4 Fenstern");
+  // "Noch nicht" stores nothing and hides the buttons for this view (Gitar on #3637).
+  await offered.getByRole("button", { name: "Noch nicht" }).click();
+  await expect(card.locator("[data-learned='offered'] button")).toHaveCount(0);
+  await expect(card.locator("[data-learned='offered']")).toContainText("Gelernter Alltag aus 4 Fenstern");
+  await page.reload();
   await expect(offered).toContainText("Katch-McArdle +480 kcal/Tag (300–660) · Cunningham +330 (150–510)");
   await offered.getByRole("button", { name: "Übernehmen" }).click();
   await expect(page.locator("#toast")).toContainText("Gelernter Alltag übernommen.");
