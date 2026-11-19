@@ -25,9 +25,12 @@ another machine), and the closing sentence. Every lane claims an item before
 its first edit, as deliver-issue's parallel-work check says, and posts
 "claimed #N" to you; answer a second claim on the same issue with a stop to the
 later lane. Local commits show neither as a PR nor as a pushed branch (a lane
-skipped #3342 while another held unpushed work for it; #3383). A lane that
-cannot message your thread writes its reports in its own thread, prefixed
-`ORCHESTRATOR:`; read those threads on every periodic check.
+skipped #3342 while another held unpushed work for it; #3383). Launch every
+lane in your own runtime mode (`runtimeMode: full-access`), so its
+`t3_thread_send` reaches you: T3 refuses a send to a thread with a broader
+mode, and lane L21 in `auto` never reached the full-access V9 (#3668, the
+reverse of #2309). A lane that still cannot message your thread writes its
+reports in its own thread, prefixed `ORCHESTRATOR:`, and keeps building.
 
 Extra scope for a lane gets its own issue with one owner and claim; never add
 "also check X" to a lane message while X is or may be assigned elsewhere (two
@@ -148,6 +151,9 @@ Every 10 minutes, as a session cron (`CronCreate`) with the prompt
 job lives only in its session, so each successor starts its own from this
 line (#3457). Each check: run [status-snapshot](../pacecraft-status-snapshot/SKILL.md),
 read every lane's thread, and check the `develop` push runs of new merges.
+Read idle lane threads too, newest `ORCHESTRATOR:` lines first: a lane that
+cannot message you reports only there, and a report found late left the lane
+idle (#3668).
 Read each lane's runs too, not only its last message: `t3_thread_read` with
 `runLimit: 3`, judging the newest run that started (`startedAt` set; a queued
 run comes first). A lane with `pendingRequestCount` above 0 gets its request
