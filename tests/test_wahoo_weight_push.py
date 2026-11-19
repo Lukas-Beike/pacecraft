@@ -13,6 +13,7 @@ from support import temp_database
 
 from backend.athlete.body_entry import BODY_FAT_ENTRY, BodyEntryService
 from backend.db.repositories import KeyValueRepository
+from backend.errors import AppError
 from backend.sync.executor import WahooJobAdapter
 from backend.sync.wahoo_weight_push import (
     STATE_KEY,
@@ -83,8 +84,10 @@ class WahooWeightPushTests(unittest.TestCase):
         self.assertEqual([81.2, 80.4, 80.0, 81.0], self.client.weights)
         self.assertEqual(["sent", "sent", "unchanged", "sent", "sent"], self.outcomes)
         self.assertEqual(
-            {"sent": 4, "failed": 0, "retried": 0, "pending": 0}, self.counts()
-        )
+            {"sent": 4, "failed": 0, "retried": 0, "pending": 0,
+             "last_outcome": "sent"},
+            self.counts(),
+        )  # fmt: skip
 
     def test_an_undo_leaves_the_restored_weight_for_the_next_refresh(self):
         # #3640: a Coach turn undo writes to no provider; it marks the weight
@@ -121,8 +124,10 @@ class WahooWeightPushTests(unittest.TestCase):
         self.refresh()
         self.assertEqual([80.4], self.client.weights)
         self.assertEqual(
-            {"sent": 1, "failed": 1, "retried": 1, "pending": 0}, self.counts()
-        )
+            {"sent": 1, "failed": 1, "retried": 1, "pending": 0,
+             "last_outcome": "sent"},
+            self.counts(),
+        )  # fmt: skip
         # Nothing pending: a later refresh writes nothing.
         self.refresh()
         self.assertEqual([80.4], self.client.weights)
@@ -135,13 +140,74 @@ class WahooWeightPushTests(unittest.TestCase):
         self.weights.save({"date": DAY.isoformat(), "kg": 80.4})
         self.refresh()
         self.assertEqual([], self.client.weights)
-        self.assertEqual(1, self.counts()["pending"])
+        # #3677: prod showed exactly this, pending 1 with nothing sent, failed or
+        # retried; the outcome now names the missing scope.
+        self.assertEqual(
+            {"sent": 0, "failed": 0, "retried": 0, "pending": 1,
+             "last_outcome": "scope_missing"},
+            self.counts(),
+        )  # fmt: skip
         # After the reconnect with user_write the refresh sends the newest weight.
         self.status = dict(ONLINE)
         self.refresh()
         self.assertEqual([80.4], self.client.weights)
-        self.assertEqual({"sent": 1, "failed": 0, "retried": 1, "pending": 0},
-                         self.counts())  # fmt: skip
+        self.assertEqual({"sent": 1, "failed": 0, "retried": 1, "pending": 0,
+                          "last_outcome": "sent"}, self.counts())  # fmt: skip
+
+    def test_a_refused_write_ends_as_failed_and_a_server_error_waits(self):
+        # #3677: Wahoo refusing the write (4xx) is no outage; retrying it on
+        # every refresh would never end, so it ends as failed with its class.
+        self.client.fail = AppError(502, SECRET, upstream_status=403)
+        with self.assertLogs("intervals_coach", "WARNING"):
+            self.weights.save({"date": DAY.isoformat(), "kg": 80.4})
+        self.assertEqual({"sent": 0, "failed": 1, "retried": 0, "pending": 0,
+                          "last_outcome": "http_4xx"}, self.counts())  # fmt: skip
+        self.refresh()
+        self.assertEqual(1, self.counts()["failed"])
+        # A server error or a lost answer waits for the next refresh.
+        self.client.fail = AppError(502, SECRET, upstream_status=503)
+        with self.assertLogs("intervals_coach", "WARNING"):
+            self.weights.save({"date": DAY.isoformat(), "kg": 80.0})
+        self.assertEqual((1, "http_5xx"), (
+            self.counts()["pending"], self.counts()["last_outcome"]))  # fmt: skip
+        self.client.fail = TimeoutError()
+        with self.assertLogs("intervals_coach", "WARNING"):
+            self.refresh()
+        self.assertEqual((1, "error"), (
+            self.counts()["pending"], self.counts()["last_outcome"]))  # fmt: skip
+        with self.manager.reader() as db:
+            raw = KeyValueRepository(lambda: "").get(db, STATE_KEY)
+        self.assertNotIn(SECRET, raw)
+
+    def test_a_retry_stopped_after_an_undo_is_never_taken_as_sent(self):
+        # #3677: with the push already pending (an undo), the cleared sent value
+        # was not written before the request, so after a stop mid-request a
+        # save of the same weight read the old value as sent and dropped it.
+        self.weights.save({"date": DAY.isoformat(), "kg": 80.4})
+        self.push.mark_restored()
+        # The process ends during the retry's request.
+        self.client.fail = SystemExit()
+        with self.assertRaises(SystemExit):
+            self.push.retry_pending()
+        self.client.fail = None
+        self.weights.save({"date": DAY.isoformat(), "kg": 80.4})
+        self.assertEqual([80.4, 80.4], self.client.weights)
+        self.assertEqual(0, self.counts()["pending"])
+
+    def test_the_outcome_names_a_local_stop_and_an_absent_connection(self):
+        self.status = {"connected": False, "scope": None}
+        self.weights.save({"date": DAY.isoformat(), "kg": 80.4})
+        self.assertEqual("off", self.counts()["last_outcome"])
+
+        def broken():
+            raise RuntimeError(SECRET)
+
+        self.push = WahooWeightPushService(
+            self.manager, lambda: self.client, broken, lambda: "x"
+        )
+        with self.assertLogs("intervals_coach", "WARNING"):
+            self.assertEqual("pending", self.push.push())
+        self.assertEqual("stopped", self.counts()["last_outcome"])
 
     def test_a_new_connection_is_written_anew(self):
         self.weights.save({"date": DAY.isoformat(), "kg": 80.4})

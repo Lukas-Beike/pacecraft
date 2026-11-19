@@ -84,6 +84,8 @@ test("@responsive a Wahoo grant without user_write offers a reconnect", async ({
   await withWahooState(page, { configured: true, connected: true, scope: "workouts_read", connected_at: "2026-01-02T08:00:00+00:00" }, () => ({}));
   await openConnections(page);
   await expect(page.locator("#wahooConnectionStatus")).toHaveText("Verbunden");
+  // #3677: the card says the entered weight is not sent to Wahoo.
+  await expect(page.locator("#wahooConnectionDetail")).toContainText("Gewicht nicht freigegeben");
   await expect(page.locator("#wahooConnectButton")).toHaveText("Wahoo neu verbinden");
   await expect(page.locator("#wahooDisconnectButton")).toBeVisible();
 });

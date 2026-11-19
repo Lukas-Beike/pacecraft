@@ -59,6 +59,8 @@ function wahooConnectionView(data) {
   let detail = "";
   if (since) detail = `Verbunden seit ${since}`;
   else if (reconnect) detail = status;
+  // #3677: without user_write the entered weight never reaches Wahoo; the card says so.
+  if (configured && needsWrite) detail = [detail, "Gewicht nicht freigegeben"].filter(Boolean).join(" · ");
   let connectLabel = "Wahoo verbinden";
   if (reconnect) connectLabel = "Wahoo erneut verbinden";
   else if (needsWrite) connectLabel = "Wahoo neu verbinden";

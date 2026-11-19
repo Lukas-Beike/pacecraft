@@ -188,8 +188,9 @@ SECTION_FIELDS = {
         r"status|sent|removed|failed|retried|linked_days|pending_days"
         r"|unlinked_uploads"
     ),
-    # The Wahoo profile-weight write, counts only (#3559).
-    "wahoo_weight_push": re.compile(r"status|sent|failed|retried|pending"),
+    # The Wahoo profile-weight write, counts only (#3559), and why the last push
+    # ended as it did, an enum (#3677).
+    "wahoo_weight_push": re.compile(r"status|sent|failed|retried|pending|last_outcome"),
     # The re-projection pass after a mapper bump: its state, batches and the
     # per-provider counters (#3595).
     "canonical_backfill": re.compile(

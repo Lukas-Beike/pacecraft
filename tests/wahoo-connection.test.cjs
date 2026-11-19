@@ -107,6 +107,15 @@ test("connected offers only Disconnect and never exposes the scope", () => {
 test("a grant without user_write offers a reconnect for the profile weight (#3559)", () => {
   const view = wahooConnectionView({ wahoo: { configured: true, connected: true, scope: "workouts_read user_read" } });
   assert.equal(view.status, "Verbunden");
+  // #3677: the card says the weight is not sent, so the pending push is not silent.
+  assert.equal(view.detail, "Gewicht nicht freigegeben");
+  globalThis.AppFormat = { dateTime: () => "16.10.2026, 09:00" };
+  try {
+    const since = wahooConnectionView({ wahoo: { configured: true, connected: true, scope: "user_read", connected_at: "2026-10-16T07:00:00Z" } });
+    assert.equal(since.detail, "Verbunden seit 16.10.2026, 09:00 · Gewicht nicht freigegeben");
+  } finally {
+    delete globalThis.AppFormat;
+  }
   assert.equal(view.canConnect, true);
   assert.equal(view.connectLabel, "Wahoo neu verbinden");
   assert.equal(view.canDisconnect, true);
@@ -118,7 +127,8 @@ test("the card detail shows only the connection state, without a scope note", ()
   assert.equal(disconnected.detail, "");
   globalThis.AppFormat = { dateTime: () => "16.10.2026, 09:00" };
   try {
-    const connected = wahooConnectionView({ wahoo: { configured: true, connected: true, connected_at: "2026-10-16T07:00:00Z" } });
+    // A full grant names no scope; only a missing user_write is said (#3677).
+    const connected = wahooConnectionView({ wahoo: { configured: true, connected: true, scope: "user_read user_write", connected_at: "2026-10-16T07:00:00Z" } });
     assert.equal(connected.detail, "Verbunden seit 16.10.2026, 09:00");
   } finally {
     delete globalThis.AppFormat;

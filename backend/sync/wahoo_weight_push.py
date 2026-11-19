@@ -34,6 +34,11 @@ STATE_KEY: Final = "wahoo_weight_push"
 # Outcomes: written, nothing to write, waiting for a retry or for the scope,
 # Wahoo not connected.
 SENT, UNCHANGED, PENDING, OFF = "sent", "unchanged", "pending", "off"
+# Why the last push ended as it did (#3677), an enum for the diagnostics: the
+# grant lacks user_write, Wahoo refused (4xx, final) or failed (5xx), the
+# request failed otherwise, or a local fault stopped the push.
+SCOPE_MISSING, HTTP_4XX, HTTP_5XX = "scope_missing", "http_4xx", "http_5xx"
+ERROR, STOPPED = "error", "stopped"
 _LOGGER = logging.getLogger("intervals_coach")
 # One push at a time; each reads the newest weight inside the lock, so the last
 # push always sends the latest value.
@@ -99,6 +104,7 @@ class WahooWeightPushService:
                 "Wahoo weight push stopped",
                 extra={"event": "wahoo_weight_push_error", "context": {"error_type": type(error).__name__}},
             )  # fmt: skip
+            self._note(STOPPED)
             return PENDING
 
     def _push(self, retry: bool) -> str:
@@ -114,7 +120,7 @@ class WahooWeightPushService:
             return UNCHANGED
         status = self._status()
         if not status.get("connected"):
-            self._store(state, pending=False)
+            self._store(state, pending=False, last_outcome=OFF)
             return OFF
         # What was sent is bound to the connection, so a new one is written anew.
         sent = f"{newest:.1f}@{status.get('connected_at') or ''}"
@@ -122,11 +128,12 @@ class WahooWeightPushService:
             self._store(state, pending=False)
             return UNCHANGED
         if USER_WRITE_SCOPE not in str(status.get("scope") or "").split():
-            self._store(state, pending=True)
+            # A grant from before #3559 lacks the scope; the card says so (#3677).
+            self._store(state, pending=True, last_outcome=SCOPE_MISSING)
             return PENDING
         # Pending before the request: a lost answer or a stop is retried, and an
         # older value is never taken as sent.
-        state = self._store(dict(state, sent_value=None), pending=True)
+        state = self._store(state, pending=True, sent_value=None)
         counts = ("retried",) if retry else ()
         try:
             self._client().update_user_weight(newest)
@@ -135,20 +142,46 @@ class WahooWeightPushService:
                 "Wahoo weight push failed",
                 extra={"event": "wahoo_weight_push_failed", "context": {"error_type": type(error).__name__}},
             )  # fmt: skip
-            self._store(state, pending=True, counts=(*counts, "failed"))
+            outcome = _failure(error)
+            # Wahoo refusing the write is final; retrying it would never end.
+            self._store(
+                state,
+                pending=outcome != HTTP_4XX,
+                counts=(*counts, "failed"),
+                last_outcome=outcome,
+            )
             return PENDING
         self._store(
-            dict(state, sent_value=sent), pending=False, counts=(*counts, "sent")
+            state,
+            pending=False,
+            counts=(*counts, "sent"),
+            sent_value=sent,
+            last_outcome=SENT,
         )
         return SENT
+
+    def _note(self, outcome: str) -> None:
+        """Record a local stop's outcome; a fault here must not mask the first."""
+        try:
+            with self._database_manager.reader() as db:
+                state = self._state(db)
+            self._store(state, pending=bool(state.get("pending")), last_outcome=outcome)
+        except Exception:  # noqa: BLE001 - the push already failed and logged
+            return
 
     def _state(self, db: Any) -> dict[str, Any]:
         return read_state(self._key_values.get(db, STATE_KEY))
 
     def _store(
-        self, state: dict[str, Any], *, pending: bool, counts: tuple[str, ...] = ()
+        self,
+        state: dict[str, Any],
+        *,
+        pending: bool,
+        counts: tuple[str, ...] = (),
+        **changes: Any,
     ) -> dict[str, Any]:
-        changed = dict(state, pending=pending)
+        """Write ``state`` (as stored) with the changes; nothing when unchanged."""
+        changed = dict(state, pending=pending, **changes)
         for name in counts:
             changed[name] = int(changed.get(name) or 0) + 1
         if changed != state:
@@ -169,11 +202,29 @@ def _value(row: Any) -> float:
     return float(row["value"] if isinstance(row, Mapping) else row[0])
 
 
-def summarize_weight_push(db: Any) -> dict[str, int]:
-    """Counts only (#3559): writes, failures and retries so far, and whether a
-    change still waits for Wahoo."""
+def _failure(error: BaseException) -> str:
+    """The class of a failed write: Wahoo's HTTP status class, never its text."""
+    status = getattr(error, "upstream_status", None)
+    if isinstance(status, int) and 400 <= status < 500:
+        return HTTP_4XX
+    if isinstance(status, int) and status >= 500:
+        return HTTP_5XX
+    return ERROR
+
+
+_OUTCOMES: Final = frozenset(
+    {SENT, OFF, SCOPE_MISSING, HTTP_4XX, HTTP_5XX, ERROR, STOPPED}
+)
+
+
+def summarize_weight_push(db: Any) -> dict[str, Any]:
+    """Counts and one enum (#3559, #3677): writes, failures and retries so far,
+    whether a change still waits for Wahoo, and why the last push ended as it
+    did (``last_outcome``, None before the first)."""
     state = read_state(KeyValueRepository(lambda: "").get(db, STATE_KEY))
+    outcome = state.get("last_outcome")
     return {
         **{name: int(state.get(name) or 0) for name in ("sent", "failed", "retried")},
         "pending": int(bool(state.get("pending"))),
+        "last_outcome": outcome if outcome in _OUTCOMES else None,
     }
