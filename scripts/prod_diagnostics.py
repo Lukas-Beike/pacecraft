@@ -241,6 +241,9 @@ STATES |= {
     "skinfold",
     "device",
     "profile",
+    # NEAT's step length source (#3611).
+    "walks",
+    "height",
 }
 FAIL_STATES = {"failed", "unavailable", "blocked"}
 # Seconds between two reads of `--wait-ready` (#3346).

@@ -54,7 +54,8 @@ counting it twice. 1 kcal = 4184 J.
    walking cost `C_w(0) = 2.01 J/kg/m` × mass, plus floors as vertical work
    `m × g × 3 m / 0.25`. Step length from recorded walks (#3611): the total
    distance over the total steps of the walks whose own step length
-   (distance ÷ recorded steps, else ÷ cadence × elapsed time) lies within
+   (distance ÷ recorded steps, else the device's step length, else distance
+   ÷ cadence × moving time, as a session counts its steps) lies within
    0.30–0.55 × height (0.45–1.10 m without a height); else 0.415 × height.
    The former mean of speed ÷ cadence ratios came out near 2 m, because a
    short moving time or an odd cadence was not bounded. Every session takes its steps out of NEAT

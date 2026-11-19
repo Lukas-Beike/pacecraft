@@ -443,23 +443,26 @@ def _height_m(profile: Mapping[str, Any]) -> float | None:
 
 
 def _walk_steps(summary: Mapping[str, Any]) -> tuple[float, float] | None:
-    """A walk's (distance m, steps): its recorded steps, else its cadence over
-    its elapsed time, the span the device's average covers (#3611)."""
+    """A walk's (distance m, steps) (#3611): its recorded steps, else its
+    distance over the device's own step length, else its cadence over the
+    same moving time that ``_session_steps`` counts."""
     if str(summary.get("sport") or "") not in WALK_SPORTS:
         return None
     distance = _number(summary.get("distance_m"))
+    if not distance or distance <= 0:
+        return None
     steps = _number(summary.get("steps"))
+    step = _number(summary.get("step_length_m"))
+    if not steps and step and step > 0:
+        steps = distance / step
     if not steps:
-        strides = _number(summary.get("avg_cadence"))
-        duration = _duration_s(summary, elapsed_first=True)
+        strides, duration = _number(summary.get("avg_cadence")), _duration_s(summary)
         steps = (
             STEPS_PER_STRIDE * strides * duration / 60.0
             if strides and duration
             else None
         )
-    if not (distance and steps and distance > 0 and steps > 0):
-        return None
-    return distance, steps
+    return (distance, steps) if steps and steps > 0 else None
 
 
 def step_walk_counts(
