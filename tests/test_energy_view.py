@@ -1160,7 +1160,9 @@ class FitScaleTests(unittest.TestCase):
         before = END - timedelta(days=50)
         unlogged = END - timedelta(days=11)
         extra = {
-            before: replace(logged, weight_kg=None, activity_kcal=1600.0),
+            before: replace(
+                logged, weight_kg=None, intake_kcal=4000.0, activity_kcal=1600.0
+            ),
             unlogged: DayInputs(weight_kg=80.0, activity_kcal=3000.0),
         }
         busy = {**health, before.isoformat(): {"resting_kcal": 1745.0, "calories": 9000.0},
@@ -1170,7 +1172,11 @@ class FitScaleTests(unittest.TestCase):
             replace(base, days={**base.days, **extra}), [window(END, 2700.0)], busy
         )["fit_scale"]["12w"]
         self.assertIsNotNone(mixed["own_kcal"])
-        self.assertEqual(plain["sources"], mixed["sources"])
+        # The own value and every source stand on the same days (Gitar, #3662).
+        self.assertEqual(
+            (plain["own_kcal"], plain["own_band_kcal"], plain["sources"]),
+            (mixed["own_kcal"], mixed["own_band_kcal"], mixed["sources"]),
+        )
         self.assertEqual(3120, mixed["sources"][-1]["total_kcal"])
         self.assertEqual(
             ((END - timedelta(days=40)).isoformat(), END.isoformat()),

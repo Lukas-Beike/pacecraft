@@ -1123,8 +1123,15 @@ def _fit_scale(
             and weighed[0] <= d <= weighed[-1]
             and is_complete(v, inputs.rmr_kcal)
         }
-        only = replace(inputs, days={d: logged[d] for d in chosen})
-        basis = period_window(only, latest.end, days, latest.calibration_factor)
+        # Every weigh-in stays for the stored energy; only the chosen days keep
+        # their meals and activity, for the own value and the sources alike.
+        weights = {
+            d: DayInputs(weight_kg=v.weight_kg)
+            for d, v in inputs.days.items()
+            if v.weight_kg is not None
+        }
+        only = replace(inputs, days={**weights, **{d: logged[d] for d in chosen}})
+        basis = own = period_window(only, latest.end, days, latest.calibration_factor)
     sources = [
         {"source": name, "total_kcal": _round(_formula_prediction(f, body, basis)[2])}
         for name, f in FORMULAS.items()
