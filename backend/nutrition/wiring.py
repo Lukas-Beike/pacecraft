@@ -43,7 +43,6 @@ from backend.nutrition.energy_view import (
     own_history,
     read_energy_view,
     read_fit_inputs,
-    read_own_day_totals,
     selected_day,
 )
 from backend.nutrition.energy_view import own_day_totals as own_totals
@@ -152,15 +151,16 @@ def build_nutrition(ctx: AppContext) -> NutritionServices:
     def own_day_totals(days: list[date]) -> dict[date, float | None]:
         # The period balance's expenditure: each day's own day total, from the
         # windows ending yesterday as the energy view's (#3600).
+        # A day before the 12 windows has no own total (#3641), so 6 months
+        # are served from the kept history too (Gitar, #3708).
         end = ctx.clock.now().date() - timedelta(days=1)
-        if min(days, default=end) < history_start(end):
-            with ctx.database().reader() as db:
-                return read_own_day_totals(db, energy_sources(), end, days)
         kept_end, history = kept_history()
         if kept_end != end:  # a new day before the next commit
             kept_end, history = yesterdays_history()
         inputs, windows, health = history
-        return own_totals(inputs, windows, health, days)
+        first = history_start(end)
+        totals = own_totals(inputs, windows, health, [d for d in days if d >= first])
+        return {day: totals.get(day) for day in days}
 
     def energy_sources() -> EnergySources:
         """The stores the adaptive expenditure reads (#3100).
