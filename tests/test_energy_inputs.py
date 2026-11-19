@@ -959,6 +959,14 @@ class BodyFatFallbackTests(unittest.TestCase):
         learned = energy_inputs.learned_everyday([unstable], [body])["katch_mcardle"]
         assert learned is not None
         self.assertEqual((8, 0), (round(learned.raw_kcal), learned.independent))
+        # Independence counts only the windows the fit uses (Gitar, #3693): the
+        # oldest of three windows four weeks apart has no body at its end.
+        spaced = [replace(estimated, end=DAY3 - timedelta(days=n)) for n in (56, 28, 0)]
+        used = energy_inputs.learned_everyday(spaced, [None, body, body])[
+            "katch_mcardle"
+        ]
+        assert used is not None
+        self.assertEqual(2, used.independent)
         # Without a body at a window's end it has no fit.
         self.assertIsNone(
             energy_inputs.learned_everyday([estimated], [None])["cunningham"]

@@ -716,7 +716,18 @@ def learned_everyday(
     windows that share no day."""
     fits: dict[str, LearnedEveryday | None] = {}
     end = windows[-1].end if windows else None
-    independent = independent_windows(windows)
+    used = [
+        (window, body)
+        for window, body in zip(windows, bodies, strict=True)
+        if body is not None
+        and window.adaptive_tdee is not None
+        and window.derived_rmr is not None
+        and window.activity_kcal_raw is not None
+        and window.tef_kcal is not None
+        and (cast(date, end) - window.end).days < BASE_DAYS
+    ]
+    # Independence counts only the windows the fit uses (Gitar, #3693).
+    independent = independent_windows([window for window, _ in used])
     for name, formula in LEARNED_FORMULAS.items():
         points = [
             (
@@ -727,13 +738,7 @@ def learned_everyday(
                 window.derived_rmr.band_kcal / BAND_Z,
                 age_weight(window.end, cast(date, end)),
             )
-            for window, body in zip(windows, bodies, strict=True)
-            if body is not None
-            and window.adaptive_tdee is not None
-            and window.derived_rmr is not None
-            and window.activity_kcal_raw is not None
-            and window.tef_kcal is not None
-            and (cast(date, end) - window.end).days < BASE_DAYS
+            for window, body in used
         ]
         fits[name] = fit_learned_everyday(points, independent)
     return fits
