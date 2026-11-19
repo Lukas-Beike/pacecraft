@@ -451,7 +451,13 @@ expenditure, null without enough logged meals) with
 null), `device_total_kcal` and `goal` (`goal`, `goal_kcal` and
 `status` `in` within 150 kcal per day of the goal either way, else
 `under` or `over`, and `distance` `near` (within 150), `mid` (within
-350) or `far` (#3606); null without a goal), and `wellness` (#3530; where Garmin's summary of `day` stands,
+350) or `far` (#3606); null without a goal), `estimated_intake` (#3604;
+null with enough logged days or without a store): `kcal` with its 95 %
+`band_kcal` (the calibrated Katch-McArdle expenditure less the stored
+energy, both null when `missing` names why: `calibration`,
+`calibration_age` (over 63 days), `weight_change` (over 4 %),
+`activity_change` (over 30 %), `body` or `activity`), and the last
+calibrating window's `calibration_end` with `calibration_age_days`, and `wellness` (#3530; where Garmin's summary of `day` stands,
 null when it is finished or names no end): `as_of` (`HH:MM`, its wellness
 end) and `behind` (true when a session of the day ends after it, so the
 summary's steps and active kcal leave it out; every row's everyday is

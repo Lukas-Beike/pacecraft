@@ -930,6 +930,65 @@ class DeficitCardTests(unittest.TestCase):
         self.assertIsNone(self.view(MEASURED, {"energy_goal": ""})["goal"])
 
 
+def scale_phase(unlogged_days: int, eaten: float = 2100.0) -> dict[str, Any]:
+    """120 days at a true expenditure of 2600 kcal (activity 600): logged at
+    2600 first, then ``unlogged_days`` at ``eaten`` without logging, weighed
+    daily; the latest view's estimated intake (#3604)."""
+    weight, days = 80.0, {}
+    for n in range(120):
+        day = END - timedelta(days=119 - n)
+        logged = n < 120 - unlogged_days
+        true = 2600.0 if logged else eaten
+        # The prior fat share's 7,153.5 kcal per kg (Hall 2008).
+        weight += (true - 2600.0) / 7153.5
+        days[day] = DayInputs(
+            intake_kcal=true if logged else None,
+            protein_g=150.0 if logged else 0.0,
+            carbohydrate_g=300.0 if logged else 0.0,
+            fat_g=80.0 if logged else 0.0,
+            entries=3 if logged else 0,
+            weight_kg=weight,
+            activity_kcal=600.0,
+            activity_error_kcal=60.0,
+        )
+    source = EnergyInputs(days, {}, rmr_kcal=1750.0, profile_body_fat_pct=20.0)
+    return energy_view(source, energy_windows(source, END), {})["estimated_intake"]
+
+
+class EstimatedIntakeTests(unittest.TestCase):
+    """#3604 ("Nur Waage", step 2): without logged meals, the intake from the
+    calibrated expenditure and the weight change."""
+
+    def test_an_unlogged_phase_recovers_its_known_intake_within_the_band(
+        self,
+    ) -> None:
+        # The windows across the switch fail the neighbour check (#3614), so
+        # the newest calibration ends 8 weeks before the latest window.
+        estimate = scale_phase(35)
+        self.assertEqual(
+            (None, "2026-09-19", 56),
+            (
+                estimate["missing"],
+                estimate["calibration_end"],
+                estimate["calibration_age_days"],
+            ),
+        )
+        self.assertLessEqual(abs(estimate["kcal"] - 2100), estimate["band_kcal"])
+        self.assertLess(estimate["band_kcal"], 500)
+
+    def test_enough_logged_days_never_show_an_estimate(self) -> None:
+        self.assertIsNone(scale_phase(0))
+        self.assertIsNone(scale_phase(14))
+
+    def test_an_old_calibration_or_a_large_weight_change_gives_its_reason(
+        self,
+    ) -> None:
+        old = scale_phase(49, eaten=2550.0)
+        self.assertEqual(("calibration_age", None), (old["missing"], old["kcal"]))
+        moved = scale_phase(28, eaten=1600.0)
+        self.assertEqual(("weight_change", None), (moved["missing"], moved["kcal"]))
+
+
 class PartialGarminDayTests(unittest.TestCase):
     """#3597: a Garmin day whose summary ended early leaves multi-day means."""
 

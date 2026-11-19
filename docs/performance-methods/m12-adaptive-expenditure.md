@@ -1,8 +1,8 @@
 # M12 — Adaptive daily expenditure from intake and the weight trend
 
 - **Card:** M12
-- **Card version:** 18
-- **Method ID:** adaptive-expenditure v18 (#3100, #3187, #3255, #3552, #3551, #3553, #3555, #3554, #3586, #3603, #3612, #3614, #3617, #3577, #3616, #3618)
+- **Card version:** 19
+- **Method ID:** adaptive-expenditure v19 (#3100, #3187, #3255, #3552, #3551, #3553, #3555, #3554, #3586, #3603, #3612, #3614, #3617, #3577, #3616, #3618, #3604)
 - **Status:** method implemented (`backend/nutrition/energy_balance.py`); the reader, diagnostics and display follow (#3100, #3099)
 - **Classification:** model estimate
 - **Literature checked:** 2026-11-15
@@ -159,6 +159,27 @@ estimate. It never rewrites logged values and never falls back to a formula.
 9. **Learned correction:** once `b` is estimated, each window also shows
    `TDEE + b × x` (the flagged kcal counted at `1 + b`), labelled, with `x`
    times b's band added. Logged entries are never rewritten.
+10. **Estimated intake without logging ("Nur Waage", step 2, #3604):** when
+    the latest window has a store but too few complete days, the average
+    intake is `I = (E + S) / (1 − τ)`, with `S` the stored energy per day
+    and `E = resting_KM + u_KM + ā + k × (a − ā)`: Katch-McArdle's resting
+    rate from the current lean mass, its learned everyday term with its
+    sign, and the calibration windows' mean raw activity `ā` (the windows
+    the term was fitted over) with `k` on the activity's change from it.
+    The term was learned at k = 1, so `k × a` would count its excess twice.
+    `τ` is the calibration windows' TEF over their intake (TDEE + S), so
+    digestion follows the estimated intake. The band is
+    `hypot(t × SE_store, band_u, 80) / (1 − τ)`: the term's band already
+    holds the logged windows' TDEE and activity errors. It shows only
+    without enough logged days, labelled as an estimate from weight and
+    activity with the last calibrating window's end, and gives no value
+    but its reason when that window ended over 63 days before the latest
+    (`calibration_age`), the current weight differs from that window's by
+    over 4 % (`weight_change`), the activity from the calibration mean by
+    over 30 % (`activity_change`), or there is no calibration, body or
+    activity. A window half logged mixes the two phases and usually fails
+    the neighbour check, so the newest calibration often ends a few weeks
+    before the last logged day.
 
 ## Sources
 
@@ -236,6 +257,9 @@ bias that is the same on every day is not visible in the band.
   not the window has complete logging days, so the Verlauf deficit card stays.
   The TDEE, the derived resting rate and the calibration still need the
   complete days; without them the card names the missing expenditure.
+- The estimated intake (#3604) needs a calibrating window at most 63 days old,
+  a weight within 4 % of its and an activity within 30 % of the calibration
+  mean; otherwise it names the reason. With enough logged days it never shows.
 - The bias needs 4 windows with flagged days and spread in their share,
   at least 2 of them sharing no day, and a band of at most ± 25
   percentage points after the prior (#3616).
@@ -264,6 +288,7 @@ bias that is the same on every day is not visible in the band.
 | Residual autocorrelation cap | 0.8 (factor 3 at most) | product assumption | AR(1) factor for persisting weigh-in scatter (#3614) |
 | Stability band | 2.576 / 1.96 × t | product assumption | about 99 % per pair, so flat series are rarely flagged across up to 6 neighbour pairs (#3614) |
 | Fat share SD for the density | 0.144 | product assumption | share 0.5-1.0 uniform; the density's uncertainty in the band |
+| Estimated intake limits | calibration ≤ 63 days old, weight ± 4 %, activity ± 30 % | product assumption | the resting rate adapts over a lasting deficit; the 12-week view reaches 77 days (#3604) |
 
 ## Allowed statements
 
@@ -275,6 +300,7 @@ bias that is the same on every day is not visible in the band.
 - "Geschätzte Mahlzeiten wirken im Mittel X % niedriger/höher als erfasst (± Y)".
 - "Datenbasis zu gering", with the reason.
 - "Geschätzter Verbrauch" instead of "Echter Verbrauch" for an unstable window, with "Unsicher vor allem: Wasser im Gewicht, die Wochen widersprechen sich" (#3614).
+- "Geschätzte Aufnahme aus Gewicht und Aktivität: ≈ X kcal am Tag (L–H) (erfasst bis D)", only without enough logged days; never as logged or eaten intake (#3604).
 
 ## Forbidden statements
 
@@ -307,7 +333,7 @@ bias that is the same on every day is not visible in the band.
 | Constant | Value | Module | Code comment |
 | --- | --- | --- | --- |
 | `METHOD_ID` | `'adaptive-expenditure'` | `backend/nutrition/energy_balance.py` |  |
-| `METHOD_VERSION` | `18` | `backend/nutrition/energy_balance.py` | Bump when a formula or constant below changes the estimate. |
+| `METHOD_VERSION` | `19` | `backend/nutrition/energy_balance.py` | Bump when a formula or constant below changes the estimate. |
 | `WINDOW_DAYS` | `28` | `backend/nutrition/energy_balance.py` | Days per window and windows per week of the rolling view (#3099, #3100). |
 | `CURRENT_WEIGHT_DAYS` | `28` | `backend/nutrition/energy_balance.py` | A day's current weight is the least-squares line through the weigh-ins of this many days up to it, at its latest weigh-in, so a steady change has no lag (#3551); with fewer weigh-ins or a shorter span, their mean. |
 | `MIN_LINE_WEIGHINS` | `3` | `backend/nutrition/energy_balance.py` |  |

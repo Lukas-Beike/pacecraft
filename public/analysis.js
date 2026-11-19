@@ -2086,6 +2086,25 @@ function deficitText(card, deviceLabel) {
     `Unsicher vor allem: ${DEFICIT_UNCERTAINTY[card.uncertainty] || card.uncertainty}.`];
 }
 
+// Without logged meals, the intake from weight and activity (#3604): an estimate, never "gegessen"
+// as logged, with its span and the last logged window it was calibrated on, or why there is none.
+const ESTIMATE_MISSING = {
+  calibration: "keine erfassten 4 Wochen in den letzten 12",
+  calibration_age: "letzte Erfassung zu lange her",
+  weight_change: "Gewicht seitdem zu stark verändert",
+  activity_change: "Training seitdem zu stark verändert",
+  body: "Körperfett fehlt",
+  activity: "Aktivität fehlt",
+};
+
+function deficitIntake(estimate) {
+  if (!estimate) return null;
+  const since = estimate.calibration_end ? ` (erfasst bis ${deficitDay(estimate.calibration_end)})` : "";
+  if (estimate.kcal == null) return `Geschätzte Aufnahme: keine Schätzung, ${ESTIMATE_MISSING[estimate.missing] || estimate.missing}${since}.`;
+  const [low, high] = [estimate.kcal - estimate.band_kcal, estimate.kcal + estimate.band_kcal];
+  return `Geschätzte Aufnahme aus Gewicht und Aktivität: ≈ ${formatWhole(estimate.kcal)} kcal am Tag (${formatWhole(low)}–${formatWhole(high)})${since}.`;
+}
+
 function energyDeficitCard(read) {
   const card = read?.deficit;
   if (!card) return null;
@@ -2093,6 +2112,7 @@ function energyDeficitCard(read) {
   const deviceLabel = read.rows?.find((row) => row.source === "device")?.label;
   const flagged = energyFlaggedRows(read.flagged);
   const [spent, unsure] = deficitText(card, deviceLabel);
+  const intake = deficitIntake(read.estimated_intake);
   // The goal's distance class colours the number and the mark (#3606); without a goal they keep theirs.
   const dataset = { energy: "", energyDeficit: card.method, ...(card.goal ? { goalDistance: card.goal.distance } : {}) };
   return h("section", { className: "analysis-chart-card", dataset },
@@ -2102,6 +2122,7 @@ function energyDeficitCard(read) {
       deficitSpan(card)),
     ...deficitGoalBar(card), deficitBoxes(card),
     h("p", { className: "energy-deficit-text" }, spent),
+    intake ? h("p", { className: "energy-deficit-text", dataset: { estimatedIntake: read.estimated_intake.missing || "" } }, intake) : null,
     h("small", "energy-deficit-uncertainty", unsure),
     flagged.length ? h("table", { className: "current-performance-table" }, h("caption", null, "Verbrauch, Ø 28 Tage"), h("tbody", null, flagged)) : null);
 }
