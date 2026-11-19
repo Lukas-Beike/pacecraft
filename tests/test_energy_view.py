@@ -834,6 +834,42 @@ class DayBandTests(unittest.TestCase):
         self.assertLess(rest["total_band_kcal"] - rest["resting_band_kcal"], 25)
 
 
+class WellnessStandTests(unittest.TestCase):
+    """#3530: Garmin's day summary names where its wellness data ends."""
+
+    def view(self, end_min: float | None, sessions=(), day: date = END) -> Any:
+        health = garmin()
+        if end_min is not None:
+            health[day.isoformat()] = {
+                **health.get(day.isoformat(), {}),
+                "wellness_end_min": end_min,
+            }
+        return energy_view(
+            inputs(), [window(END, 2700.0)], health, list(sessions), day=day
+        )
+
+    def test_an_early_end_reads_as_stand_and_a_finished_day_has_none(self) -> None:
+        self.assertEqual(
+            {"as_of": "12:18", "behind": False}, self.view(738.0)["wellness"]
+        )
+        self.assertIsNone(self.view(1440.0)["wellness"])
+        self.assertIsNone(self.view(None)["wellness"])
+
+    def test_a_session_after_the_stand_is_behind_and_everyday_waits(self) -> None:
+        # The day summary ends 12:18; a 43-minute session from 18:00 is not in
+        # its steps, so today's everyday is not there yet, in every row.
+        today = END + timedelta(days=1)
+        session = {"started_at_local": f"{today}T18:00:00", "elapsed_duration_s": 2580,
+                   "record_ids": GARMIN_IDS, "energy_kcal": 277.0}  # fmt: skip
+        view = self.view(738.0, [session], day=today)
+        self.assertEqual({"as_of": "12:18", "behind": True}, view["wellness"])
+        for source in ("katch_mcardle", "cunningham", "device"):
+            self.assertIn("neat", row(view, source)["pending_parts"])
+        # A session that ended before the stand is in the summary.
+        early = {**session, "started_at_local": f"{today}T07:00:00"}
+        self.assertFalse(self.view(738.0, [early], day=today)["wellness"]["behind"])
+
+
 class FitScaleTests(unittest.TestCase):
     """#3397: each Verlauf period's source means against the own estimate."""
 

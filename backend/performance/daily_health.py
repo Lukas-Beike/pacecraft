@@ -30,6 +30,8 @@ DAILY_HEALTH_KINDS: Mapping[MetricKind, str] = {
     MetricKind.DAILY_ENERGY_TOTAL: "calories",
     MetricKind.DAILY_ENERGY_ACTIVE: "active_kcal",
     MetricKind.DAILY_ENERGY_RESTING: "resting_kcal",
+    # Where the day summary's wellness data ends, minutes after midnight (#3530).
+    MetricKind.DAILY_WELLNESS_END: "wellness_end_min",
 }
 
 

@@ -1775,7 +1775,14 @@ function energyPartName(row, key, label, reference) {
   return reference ? `Ruhe wie ${reference}` : "Ruhe (Rest)";
 }
 
-function energySplitRow(row, strength = "", reference = null) {
+// Garmin's day summary ends early (#3530): every row's Alltag comes from it, so it names the time,
+// and that a session after it is not in it yet.
+function energyStandNote(stand) {
+  if (!stand?.as_of) return "";
+  return ` (Stand ${stand.as_of}${stand.behind ? ", Garmin hängt hinterher" : ""})`;
+}
+
+function energySplitRow(row, strength = "", reference = null, stand = null) {
   const split = row.split;
   const parts = energyRowParts(split);
   const total = split ? parts.reduce((sum, [key]) => sum + (split[key] || 0), 0) : 0;
@@ -1785,7 +1792,8 @@ function energySplitRow(row, strength = "", reference = null) {
     const name = energyPartName(row, key, label, reference);
     if (key === "resting_kcal" && row.resting_implausible) return `${name} ${ENERGY_IMPLAUSIBLE} (${ENERGY_IMPLAUSIBLE_REASON})`;
     const band = bands[key] != null && split[key] != null ? ` (${energyKcalRange(split[key], bands[key]).join("–")})` : "";
-    const note = key === "sport_kcal" && strength ? ` (${strength})` : "";
+    const notes = { sport_kcal: strength ? ` (${strength})` : "", neat_kcal: energyStandNote(stand) };
+    const note = notes[key] || "";
     return `${name} ${energySplitValue(key, split[key], row.source, row.pending_parts?.includes(part))}${band}${note}`;
   }).join(" · ");
   const bar = h("div", { className: "energy-split", role: "img", "aria-label": text });
@@ -1890,7 +1898,7 @@ function energyTable(read) {
     return [h("tr", { dataset: fit ? { energySource: source, fit } : { energySource: source } },
       h("th", { scope: "row", dataset: { color: String(color) } }, label ?? row.label, ...energyRowNote(read, source, row)),
       ...energyValueCells(read, source, row)), energySplitRow(row, source === "device" ? "" : energyStrengthNote(read.strength),
-        energyReferenceName(read, row.split?.resting_source))].filter(Boolean);
+        energyReferenceName(read, row.split?.resting_source), read.wellness)].filter(Boolean);
   });
   return h("table", { className: "current-performance-table" }, h("caption", null, "Energieverbrauch ", ...energyInfo(read)),
     energyTableHead(), h("tbody", null, rows));

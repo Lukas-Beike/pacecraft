@@ -82,7 +82,7 @@ PINNED: Final[dict[str, tuple[tuple[int, ...], str]]] = {
         "b923a24740004724fb28c83dd54dd77ef374eb811bee98c9dbaa76ad8f667167",
     ),
     "canonical.decimal_text": (
-        (12, 13, 21, 25, 8, 2),
+        (12, 13, 21, 26, 8, 2),
         "fe45d029fb3c059900543f140a5715de91421a68f6226ddfb1f9d4a093edaaa6",
     ),
     "canonical.dfa_alpha1": (
@@ -90,23 +90,23 @@ PINNED: Final[dict[str, tuple[tuple[int, ...], str]]] = {
         "022a2528063b9d007d02b7ba7f7218af3ed3d6b173308720af055a70158543fa",
     ),
     "canonical.domain_records": (
-        (25,),
+        (26,),
         "8fbcd9efb3a0d40baa131c8a657eb799f8192a16e07a90f6959275de7dbacfe5",
     ),
     "canonical.local_time": (
-        (12, 13, 21, 25, 8, 2),
+        (12, 13, 21, 26, 8, 2),
         "bb8d2cace6846fc1f0f57aa0cc04ee9561fb8603105cb65f337204eece611886",
     ),
     "canonical.mapping": (
-        (12, 13, 21, 25, 8, 2),
+        (12, 13, 21, 26, 8, 2),
         "ce31fc467c34d7276223455adccf24557ed633520a1c849051216c23d0549359",
     ),
     "canonical.records": (
-        (12, 13, 21, 25, 8, 2),
+        (12, 13, 21, 26, 8, 2),
         "ca06ef248ed891b0643a14c08469268a974fd84a313389e6faa48fbc59a9e26d",
     ),
     "canonical.sleep_bounds": (
-        (25,),
+        (26,),
         "a18b7a440cdfb7ba0d03909e5d28cc843a99fc962d73383d8f4905084022884c",
     ),
     "canonical.sports": (
@@ -114,12 +114,12 @@ PINNED: Final[dict[str, tuple[tuple[int, ...], str]]] = {
         "223eb5ca42399100cccd4093e4ec74e042986f3cd34c71022651e794bba0df66",
     ),
     "canonical.validation": (
-        (12, 13, 21, 25, 8, 2),
-        "fb3ab6f3d47c71ef12f4c6bfbef99fd7f5b7319b9f68f71012d3c4d98a6d1b82",
+        (12, 13, 21, 26, 8, 2),
+        "da43456050d5763e2f48e0dc28d2d0e5fb131a36a836be5441ba1ac4bc832dfa",
     ),
     "canonical.vocabulary": (
-        (12, 13, 21, 25, 8, 2),
-        "138f478c8e3791d6578161a379887d738e5f3ad27dd90e4f3217b9b257147207",
+        (12, 13, 21, 26, 8, 2),
+        "955f8bae501843c175fe3b4b7e8e6cb44e897c58bcdbdc0aa25e3aba8ed47749",
     ),
     "fit_activity_detail_mapping": (
         (12, 13),
@@ -146,43 +146,43 @@ PINNED: Final[dict[str, tuple[tuple[int, ...], str]]] = {
         "adb059dae3b2103933de835f3cec94d2abf0a2e9d76e2898d394f1b015a27f8b",
     ),
     "garmin_device_records": (
-        (25,),
+        (26,),
         "68ecba9d45e93b4ec7d4427cca42a212b43e921f264960cdb532f67b192cce66",
     ),
     "garmin_fields": (
-        (25,),
-        "0091aa0ad891d7b0fe6d7e2dd90d3003c19dce4dc01f5509b0ba66a268bbb9ab",
+        (26,),
+        "89d941ff3dac7ee49c8f800bf8bcbfa4da96ad5ed6fd50c4e87cd2d3a0cf664a",
     ),
     "garmin_gear_mapping": (
-        (25,),
+        (26,),
         "b53d3b960450b21475f4f86a73c6be8ecd3d182afa0b73ed3055b535482d9028",
     ),
     "garmin_health_mapping": (
-        (25,),
-        "c2b13524002c374422b4e3638584a518ef7bc87f494aea5d7784d87375171f65",
+        (26,),
+        "4ad49a317ad43d0db3bd72266019b6ec1d28f728540b9aafd5f0fae10dd596ed",
     ),
     "garmin_performance_fields": (
-        (25,),
+        (26,),
         "6762077b0617cbc1ead19f39a298a29458d6647c2c7d2f391b76b54f55e1eec4",
     ),
     "garmin_status_mapping": (
-        (25,),
+        (26,),
         "9620141f6c44006d8d37431ca904758d5a0d1e9662db5002698ab907316c0e44",
     ),
     "garmin_training_mapping": (
-        (25,),
+        (26,),
         "0a6c4e99aa4fd1fb28ab7d87c0c0c410a7c002725c43a66cbe747083f8fcc19e",
     ),
     "garmin_weight_walk": (
-        (25,),
+        (26,),
         "8f795a850ba38fc4c15ea53623ecdca84e34a3ca7760f9c4379462b51372ed9d",
     ),
     "garmin_zone_mapping": (
-        (25,),
+        (26,),
         "b06dffd17d1c09036a5ef7c1aab7695d56f0d5d8e2e4616238afc4a5f21dfeee",
     ),
     "sleep_period_mapping": (
-        (25,),
+        (26,),
         "77efab15de0cda5414ed02c0d5005a9fe6fb1a650ec103bdb40e01cef065cf0f",
     ),
     "wahoo_activity_mapping": (

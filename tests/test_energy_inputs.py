@@ -304,6 +304,14 @@ class EnergyInputsReaderTests(unittest.TestCase):
         self.assertEqual(basis["latest_window_insufficient"], "intake_days")
         # 84 + 27 days are read: the whole history before the first window.
         self.assertEqual(basis["days"], 7 * 11 + 28)
+        # #3530: days of the last week whose summary names its wellness end.
+        self.assertEqual(0, basis["wellness_end_days"])
+        health: dict[str, dict[str, Any]] = {
+            **HEALTH,
+            DAY3.isoformat(): {"wellness_end_min": 738.0},
+        }
+        counted = energy_basis(None, sources(health=health), DAY3)
+        self.assertEqual(1, counted["wellness_end_days"])
 
     def test_run_grade_comes_from_the_streams(self) -> None:
         streams = {

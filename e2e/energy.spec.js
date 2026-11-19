@@ -204,7 +204,9 @@ test("@responsive the energy table follows the diary date: sport per day, today 
       resting_kcal: 1800, resting_band_kcal: 150, resting_implausible: false, total_kcal: null, total_band_kcal: null, window_days: 28,
       split: { resting_kcal: 1800, neat_kcal: 250, sport_kcal: sport, tef_kcal: null, shared: {} },
     });
-    await route.fulfill({ response, json: { ...data, day, day_partial: day === today, skinfold_missing: null } });
+    // #3530: today's Garmin day summary ends at 12:18, before nothing synced later.
+    const wellness = day === today ? { as_of: "12:18", behind: false } : null;
+    await route.fulfill({ response, json: { ...data, day, day_partial: day === today, skinfold_missing: null, wellness } });
   });
   await page.goto("/#nutrition/diary");
   const card = page.locator("#nutritionEnergy [data-energy]");
@@ -212,12 +214,15 @@ test("@responsive the energy table follows the diary date: sport per day, today 
   const split = card.locator("tr.energy-split-row").first();
   await expect(katch.locator("th small")).toContainText("bis jetzt");
   await expect(split).toContainText("Sport 0 · Verdauung nicht erfasst");
+  // #3530: every row's Alltag names where Garmin's day summary stands.
+  await expect(card.locator("tr.energy-split-row").filter({ hasText: "(Stand 12:18)" })).toHaveCount(await card.locator("tr.energy-split-row").count());
   // #3531: the own row shows the selected day; only its resting rate comes from 28 days.
   await expect(card.locator("tr[data-energy-source='own'] th small")).toHaveText("Ruhe aus 28 Tagen · bis jetzt");
   const today = await page.locator("#nutritionDate").inputValue();
   await page.getByRole("button", { name: "Vorheriger Tag" }).click();
   await expect(page.locator("#nutritionDate")).not.toHaveValue(today);
   await expect(split).toContainText("Sport 418");
+  await expect(split).not.toContainText("Stand");
   await expect(katch.locator("th small")).not.toContainText("bis jetzt");
   // The own row shows that day's Sport like the formula rows, with its resting rate from 28 days.
   const ownSplit = card.locator("tr[data-energy-source='own'] + tr.energy-split-row");

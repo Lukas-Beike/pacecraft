@@ -171,6 +171,9 @@ class MetricKind(StrEnum):
     RUN_THRESHOLD_POWER = "run_threshold_power"
     DAILY_ENERGY_TOTAL = "daily_energy_total"
     DAILY_ENERGY_ACTIVE = "daily_energy_active"
+    # Where the day summary's wellness data ends, in minutes after the day's
+    # local midnight; 1440 for a finished day (#3530).
+    DAILY_WELLNESS_END = "daily_wellness_end"
     STEPS = "steps"
     FLOORS = "floors"
     STRESS = "stress"
@@ -287,6 +290,7 @@ _METRIC_UNITS: Final[Mapping[MetricKind, str]] = {
     MetricKind.RUN_THRESHOLD_POWER: "W",
     MetricKind.DAILY_ENERGY_TOTAL: "kcal",
     MetricKind.DAILY_ENERGY_ACTIVE: "kcal",
+    MetricKind.DAILY_WELLNESS_END: "min",
     MetricKind.STEPS: "count",
     MetricKind.FLOORS: "count",
     MetricKind.STRESS: "score",

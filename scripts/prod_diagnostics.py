@@ -148,6 +148,8 @@ SECTION_FIELDS = {
         r"|newest_skinfold_age_days|body_resolved|body_missing|body_source"
         r"|body_source_windows\.(skinfold|entered|device|profile|none)"
         r"|today_resting_days_back"
+        # Days of the last week whose Garmin summary names its wellness end (#3530).
+        r"|wellness_end_days"
         # Estimated windows by the measurements' weight in their fat share (#3555).
         r"|fat_share_measured_windows\.(0|1-24|25-49|50-100)"
         # Weigh-in days per source and dropped days per provider (#3557).
