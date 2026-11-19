@@ -666,12 +666,61 @@ class FlaggedMealsAndCalibrationTests(unittest.TestCase):
         level = balance.fit_learned_everyday([(300.0, 100.0, 1.0), (0.0, 100.0, 1.0)])
         assert aged is not None and level is not None
         self.assertGreater(aged.raw_kcal, level.raw_kcal)
-        # A row that overshoots keeps its negative fit; it shows as 0.
+        # #3689: a row that overshoots shows its negative term as a reduction,
+        # down to the symmetric floor of -250 kcal/day.
         under = balance.fit_learned_everyday([(-200.0, 100.0, 1.0)] * 4)
         assert under is not None
         self.assertAlmostEqual(-172.41, under.raw_kcal, places=2)
-        self.assertEqual(0.0, under.kcal)
+        self.assertAlmostEqual(-172.41, under.kcal, places=2)
+        floored = balance.fit_learned_everyday([(-900.0, 10.0, 1.0)] * 4)
+        assert floored is not None
+        self.assertEqual(-250.0, floored.kcal)
         self.assertIsNone(balance.fit_learned_everyday([]))
+
+    def test_one_window_follows_the_conjugate_normal_update(self) -> None:
+        # #3689 point 1: prod's "+172 +- 439" from one window. Its SD 250 is
+        # overlap-inflated to 500; the prior 0 +- 250 gives the posterior
+        # variance 1 / (1/500^2 + 1/250^2) = 50,000 (SD 223.6, band 438.3)
+        # and the shrinkage 50,000 / 500^2 = 0.2: a raw 860 shows as 172.
+        fit = balance.fit_learned_everyday([(860.0, 250.0, 1.0)])
+        assert fit is not None
+        self.assertAlmostEqual(172.0, fit.raw_kcal, places=6)
+        self.assertAlmostEqual(1.96 * math.sqrt(50_000.0), fit.band_kcal, places=6)
+
+    def test_noise_around_zero_leaves_no_upward_bias(self) -> None:
+        # #3689 point 2: the former floor at 0 turned symmetric noise into a
+        # positive mean term.
+        fits = [
+            balance.fit_learned_everyday([(value, 50.0, 1.0)])
+            for value in (-200.0, -100.0, 100.0, 200.0)
+        ]
+        self.assertAlmostEqual(0.0, sum(fit.kcal for fit in fits if fit) / 4, places=6)
+
+    def test_the_term_qualifies_with_three_independent_windows_or_a_small_sd(
+        self,
+    ) -> None:
+        # #3689 point 3: posterior SD 223.6 > 150, so it needs 3 windows that
+        # share no day; a precise fit qualifies alone.
+        wide = [(860.0, 250.0, 1.0)]
+        for independent, qualified in ((1, False), (2, False), (3, True)):
+            with self.subTest(independent=independent):
+                fit = balance.fit_learned_everyday(wide, independent)
+                assert fit is not None
+                self.assertEqual(
+                    (qualified, independent), (fit.qualified, fit.independent)
+                )
+        precise = balance.fit_learned_everyday([(300.0, 50.0, 1.0)], 1)
+        assert precise is not None
+        self.assertTrue(precise.qualified)
+
+    def test_independent_windows_share_no_day(self) -> None:
+        # Weekly 28-day windows: of twelve stable ones, every fourth shares no
+        # day with the next: 3 independent; unstable ones never count.
+        windows = balance.energy_windows(series(constant(2400.0)), END)
+        self.assertEqual(3, balance.independent_windows(windows))
+        self.assertEqual(
+            0, balance.independent_windows([replace(w, stable=False) for w in windows])
+        )
 
     def test_the_bias_fit_takes_activity_only_where_it_can(self) -> None:
         flagged = (100.0, 200.0, 300.0, 400.0)

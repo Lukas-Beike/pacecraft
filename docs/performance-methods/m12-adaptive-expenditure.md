@@ -1,8 +1,8 @@
 # M12 — Adaptive daily expenditure from intake and the weight trend
 
 - **Card:** M12
-- **Card version:** 21
-- **Method ID:** adaptive-expenditure v21 (#3100, #3187, #3255, #3552, #3551, #3553, #3555, #3554, #3586, #3603, #3612, #3614, #3617, #3577, #3616, #3618, #3604, #3667, #3687)
+- **Card version:** 22
+- **Method ID:** adaptive-expenditure v22 (#3100, #3187, #3255, #3552, #3551, #3553, #3555, #3554, #3586, #3603, #3612, #3614, #3617, #3577, #3616, #3618, #3604, #3667, #3687, #3689)
 - **Status:** method implemented (`backend/nutrition/energy_balance.py`, the weigh-in line in `backend/athlete/body_records.py`, #3640); the reader, diagnostics and display follow (#3100, #3099)
 - **Classification:** model estimate
 - **Literature checked:** 2026-11-15
@@ -131,13 +131,21 @@ estimate. It never rewrites logged values and never falls back to a formula.
    "nicht erfasster Alltag" with the residual's band; the total and the
    other rows are unchanged. It is a named remainder, not an estimate: it
    also carries logging and activity-model errors.
-   **Learned everyday term (#3577):** per formula row f, each estimated
-   window that passes the neighbour check (#3614) gives `u_f = TDEE − raw activity − TEF − resting_f`, what the
+   **Learned everyday term (#3577, #3689):** per formula row f, each
+   estimated window of the 12-week base (#3687) gives `u_f = TDEE − raw activity − TEF − resting_f`, what the
    row lacks against the own total at the rows' k = 1, with the derived
-   resting rate's SD. Their precision-weighted mean, its variance
-   inflated ×4 for the windows' overlap, is shrunk towards 0 ± 250
-   kcal/day (product assumption); the band is 95 %. A fit below 0 keeps
-   its sign in the read and a counts-only diagnostic and shows as 0.
+   resting rate's SD; an unstable window (#3614) enters with its widened
+   band. Their mean weighted by precision × age (6-week half-life), its
+   variance inflated ×4 for the windows' overlap, is shrunk towards
+   0 ± 250 kcal/day (product assumption) by the conjugate normal update;
+   the band is 95 %. One window with SD 500 after inflation shrinks by
+   0.2 to a posterior SD of 224, so a raw 860 reads 172 ± 439. The term
+   may be negative, a reduction where a formula overshoots, down to a
+   floor of −250 kcal/day; a fit below 0 also counts in a counts-only
+   diagnostic. It is offered and applied only with at least 3 stable
+   windows that share no day, or a posterior SD of 150 kcal/day or less;
+   until then the line reads "noch nicht gelernt", and an earlier check
+   stays stored and takes effect once it qualifies (#3689).
    Only after the athlete has taken it over (a dated profile check)
    does each formula row carry it as "gelernter Alltag" in its split
    and day total, and so in "Heute noch essen"; the fit with the
@@ -360,7 +368,7 @@ bias that is the same on every day is not visible in the band.
 | Constant | Value | Module | Code comment |
 | --- | --- | --- | --- |
 | `METHOD_ID` | `'adaptive-expenditure'` | `backend/nutrition/energy_balance.py` |  |
-| `METHOD_VERSION` | `21` | `backend/nutrition/energy_balance.py` | Bump when a formula or constant below changes the estimate. |
+| `METHOD_VERSION` | `22` | `backend/nutrition/energy_balance.py` | Bump when a formula or constant below changes the estimate. |
 | `WINDOW_DAYS` | `28` | `backend/nutrition/energy_balance.py` | Days per window and windows per week of the rolling view (#3099, #3100). |
 | `MIN_COMPLETE_DAYS` | `14` | `backend/nutrition/energy_balance.py` | A window needs this many complete logging days, weigh-ins and days between its first and last weigh-in; otherwise it gives its reason, never a formula. |
 | `MIN_WEIGHINS` | `8` | `backend/nutrition/energy_balance.py` |  |
@@ -391,6 +399,9 @@ bias that is the same on every day is not visible in the band.
 | `MAX_RESIDUAL_AUTOCORRELATION` | `0.8` | `backend/nutrition/energy_balance.py` | A weight step from water or glycogen is not tissue (#3614): weigh-ins whose scatter persists widen the slope's error by the AR(1) factor, with the lag-1 autocorrelation capped here (factor 3 at most); overlapping windows that differ beyond the 99 % band of the days they do not share are unstable and their band holds the difference. 2.576 / 1.96 turns the 95 % t into 99 %. |
 | `STABILITY_BAND_RATIO` | `2.576 / 1.96` | `backend/nutrition/energy_balance.py` |  |
 | `LEARNED_EVERYDAY_PRIOR_SD` | `250.0` | `backend/nutrition/energy_balance.py` | The learned everyday term of a formula row (#3577): the own total's excess over the row, shrunk towards 0 with this SD (kcal/day, product assumption). |
+| `LEARNED_EVERYDAY_FLOOR` | `-250.0` | `backend/nutrition/energy_balance.py` | A formula can overshoot too, so the term may reduce a row, down to this floor (kcal/day); it is offered and applied only with this many stable windows that share no day, or a posterior SD up to this (kcal/day) (#3689). |
+| `LEARNED_EVERYDAY_MIN_INDEPENDENT` | `3` | `backend/nutrition/energy_balance.py` |  |
+| `LEARNED_EVERYDAY_MAX_SD` | `150.0` | `backend/nutrition/energy_balance.py` |  |
 | `CURRENT_WEIGHT_DAYS` | `28` | `backend/athlete/body_records.py` | A day's current weight is the least-squares line through the weigh-ins of this many days up to it, at its latest weigh-in, so a steady change has no lag (#3551); with fewer weigh-ins or a shorter span, their mean. |
 | `MIN_LINE_WEIGHINS` | `3` | `backend/athlete/body_records.py` |  |
 | `MIN_LINE_SPAN_DAYS` | `7` | `backend/athlete/body_records.py` |  |

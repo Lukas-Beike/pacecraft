@@ -533,16 +533,24 @@ test("split A draws one stacked bar per row and hatches only the parts the backe
 
 test("the learned everyday line offers the check, then names its date (#3577)", () => {
   const { h } = extractFunctions("components.js", ["h", "SVG_NS", "svgNode"], { document: fakeDocument() });
-  const { energyLearnedLine } = extractFunctions("analysis.js", ["ENERGY_LEARNED_FORMULAS", "energyLearnedDeferred", "energyKcalRange", "energyLearnedLine"], {
+  const { energyLearnedLine } = extractFunctions("analysis.js", ["ENERGY_LEARNED_FORMULAS", "energyLearnedDeferred", "energyKcalRange", "energyFitSigned", "energyLearnedLine"], {
     h, formatWhole: (v) => String(v), dateLabel: (v) => `am-${v}`, todayIso: () => "2026-11-19", saveLearnedCheck: () => {}, renderDiaryEnergy: () => {},
   });
-  const fit = (kcal, band) => ({ kcal, raw_kcal: kcal, band_kcal: band, windows: 4 });
+  const fit = (kcal, band, qualified = true) => ({ kcal, raw_kcal: kcal, band_kcal: band, windows: 4, qualified });
   const offered = energyLearnedLine({ learned_everyday: { katch_mcardle: fit(480, 180), cunningham: fit(330, 180), checked: null } });
   assert.equal(textOf(offered.children[0]), "Gelernter Alltag aus 4 FensternKatch-McArdle +480 kcal/Tag (300–660) · Cunningham +330 (150–510)");
   assert.deepEqual([...offered.children[1].children].map((button) => textOf(button)), ["Übernehmen", "Noch nicht"]);
   const checked = energyLearnedLine({ learned_everyday: { katch_mcardle: fit(480, 180), cunningham: null, checked: "2026-11-19" } });
   assert.equal(textOf(checked), "Gelernter Alltag übernommen am am-2026-11-19aus 4 Fenstern, wird mit jedem Fenster genauer");
   assert.equal(energyLearnedLine({ learned_everyday: { katch_mcardle: null, cunningham: null, checked: null } }), null);
+  // #3689: an overshooting formula's term is a reduction, signed.
+  const reduced = energyLearnedLine({ learned_everyday: { katch_mcardle: fit(-106, 256), cunningham: null, checked: null } });
+  assert.match(textOf(reduced.children[0]), /Katch-McArdle −106 kcal\/Tag \(-362–150\)$/);
+  // #3689: until it qualifies it is neither offered nor applied, also after an earlier check.
+  for (const checkedOn of [null, "2026-11-19"]) {
+    const unready = energyLearnedLine({ learned_everyday: { katch_mcardle: fit(172, 439, false), cunningham: fit(90, 439, false), checked: checkedOn } });
+    assert.equal(textOf(unready), "Gelernter Alltag noch nicht gelernt");
+  }
 });
 
 test("a reset drops the energy read in flight, so a pre-save answer is never shown", async () => {

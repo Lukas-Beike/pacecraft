@@ -1814,11 +1814,17 @@ function energyLearnedLine(read) {
   if (!fits.length) return null;
   const windows = Math.max(...fits.map(([key]) => learned[key].windows));
   const head = h("strong", null, "Gelernter Alltag");
+  // #3689: offered and applied only once it qualifies; an earlier check stays stored.
+  if (!fits.some(([key]) => learned[key].qualified)) {
+    return h("div", { className: "energy-learned", dataset: { learned: "pending" } }, h("p", null, head, " noch nicht gelernt"));
+  }
   if (learned.checked) {
     return h("div", { className: "energy-learned", dataset: { learned: "checked" } }, h("p", null, head, ` übernommen am ${dateLabel(learned.checked)}`, h("br"),
       h("small", null, `aus ${windows} Fenstern, wird mit jedem Fenster genauer`)));
   }
-  const values = fits.map(([key, label], index) => `${label} +${formatWhole(learned[key].kcal)}${index ? "" : " kcal/Tag"} (${energyKcalRange(learned[key].kcal, learned[key].band_kcal).join("–")})`).join(" · ");
+  // A term may be negative, a reduction (#3689), so its span is not clamped at 0.
+  const span = ({ kcal, band_kcal: band }) => [kcal - band, kcal + band].map((value) => formatWhole(value)).join("–");
+  const values = fits.map(([key, label], index) => `${label} ${energyFitSigned(learned[key].kcal)}${index ? "" : " kcal/Tag"} (${span(learned[key])})`).join(" · ");
   const line = h("div", { className: "energy-learned", dataset: { learned: "offered" } }, h("p", null, head, ` aus ${windows} Fenstern`, h("br"), h("small", null, values)));
   if (energyLearnedDeferred) return line;
   const take = h("button", { type: "button", className: "secondary-button" }, "Übernehmen");

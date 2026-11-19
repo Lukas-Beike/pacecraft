@@ -115,7 +115,8 @@ test("@responsive the own row names everyday energy the steps do not see", async
 // #3577: the learned everyday term is offered under the table; "Übernehmen" stores the dated
 // check in the profile with a receipt and undo, and the formula rows then carry it.
 test("@responsive the learned everyday term is taken over with a receipt and undo", async ({ page }) => {
-  const fit = (kcal) => ({ kcal, raw_kcal: kcal, band_kcal: 180, windows: 4 });
+  // #3689: offered once it qualifies (here 3 stable windows that share no day).
+  const fit = (kcal) => ({ kcal, raw_kcal: kcal, band_kcal: 180, windows: 4, independent: 3, qualified: true });
   await page.route("**/api/body/energy*", async (route) => {
     const response = await route.fetch();
     const data = await response.json();
