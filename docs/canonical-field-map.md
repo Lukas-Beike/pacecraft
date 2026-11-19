@@ -1790,7 +1790,7 @@ Evidence: observed `garmin_sleep_daily_2026-11-03`, `garmin_personal_sleep_2026-
 
 Plausibility (`_within_bounds`, `METRIC_BOUNDS`): a value outside the closed bounds is dropped and reported as
 `OUT_OF_RANGE` (issue names record index and field only). Zero is rejected for every kind except `_ZERO_ALLOWED`:
-`sleep_score`, `steps`, `floors`, `daily_energy_active`, `daily_wellness_end`, `stress`, `body_battery`, `body_battery_charged`,
+`sleep_score`, `steps`, `floors`, `daily_energy_active`, `stress`, `body_battery`, `body_battery_charged`,
 `body_battery_drained`, and the training kinds `acute_load`, `chronic_load`, `acute_chronic_ratio`,
 `load_balance_aerobic_low`, `load_balance_aerobic_low_target_min`, `load_balance_aerobic_low_target_max`,
 `load_balance_aerobic_high`, `load_balance_aerobic_high_target_min`, `load_balance_aerobic_high_target_max`,
