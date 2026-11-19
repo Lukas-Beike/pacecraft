@@ -625,8 +625,10 @@ def read_energy_inputs(
     grace_end = end + timedelta(days=BODY_GRACE_DAYS)
     weights = dict(sources.weights(db, lookback, end))
     trend = weight_trend(weights)
-    body = replace(
-        EnergyInputs({}, dict(sources.body_fat(db, start, grace_end)), None),
+    body = EnergyInputs(
+        days={},
+        body_fat_pct=dict(sources.body_fat(db, start, grace_end)),
+        rmr_kcal=None,
         device_body_fat=dict(sources.device_body_fat(db, lookback, grace_end)),
         profile_body_fat_pct=_profile_fat(profile.get("body_fat_pct")),
         skinfold_sd_pct=_skinfold_sds(sources.skinfolds(db, grace_end)),
