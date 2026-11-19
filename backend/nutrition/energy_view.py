@@ -55,6 +55,7 @@ from backend.nutrition.energy_inputs import (
     skinfold_state,
 )
 from backend.performance.activity_energy import TEF_ERROR_KCAL
+from backend.performance.daily_health import complete_garmin_day
 from backend.providers.source_labels import SourceView, provider_label
 
 # The fit needs this many windows shared by every compared source (#3187).
@@ -95,12 +96,16 @@ def _formula_prediction(
 def _device_prediction(
     health: Mapping[str, Mapping[str, Any]], window: EnergyWindow
 ) -> Prediction:
-    """Garmin's mean resting and total values over the window's days."""
+    """Garmin's mean resting and total values over the window's days. A day
+    whose summary ended early holds part of its day and leaves a mean of
+    several days (#3597); the shown day keeps its own values and its Stand."""
     start = window.end - timedelta(days=window.days - 1)
     days = [
         health.get((start + timedelta(days=n)).isoformat(), {})
         for n in range(window.days)
     ]
+    if window.days > 1:
+        days = [day for day in days if complete_garmin_day(day)]
 
     def mean(key: str) -> float | None:
         values = [
@@ -182,7 +187,9 @@ def _device_split(
         day = health.get(key, {})
         resting = projected_resting or _number(day.get("resting_kcal"))
         active = _number(day.get("active_kcal"))
-        if not resting or resting < 0 or active is None or active < 0:
+        # A day of several whose summary ended early holds part of it (#3597).
+        partial = window.days > 1 and not complete_garmin_day(day)
+        if partial or not resting or resting < 0 or active is None or active < 0:
             continue
         day_sport = _garmin_sport(by_day.get(key, []), resting)
         if day_sport is not None:

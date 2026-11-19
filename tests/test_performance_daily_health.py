@@ -191,6 +191,18 @@ class GarminDailyHealthTests(unittest.TestCase):
 
         closed_day = mapped_expenditure(snapshot, "2026-10-14", date(2026, 10, 15))
         self.assertIsNone(closed_day["projected_total_kcal"])
+        # #3597: a reference day whose summary ended at 12:18 (#3530) is not a
+        # complete day; the projection takes the newest complete one.
+        snapshot["daily_stats"][1] = {
+            "date": "2026-10-14",
+            "bmrKilocalories": 1160,
+            "wellnessChronology": {"endTimestampLocal": "2026-10-14T12:18:00.0"},
+        }
+        partial = mapped_expenditure(snapshot, "2026-10-15", date(2026, 10, 15))
+        self.assertEqual(
+            ("2026-10-13", 2324),
+            (partial["projection_reference_date"], partial["projection_resting_kcal"]),
+        )
 
     def test_running_day_projection_is_omitted_without_trustworthy_inputs(self):
         today = {
