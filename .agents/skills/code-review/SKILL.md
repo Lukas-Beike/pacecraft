@@ -55,7 +55,7 @@ model names do not authorize delegation or GitHub comments.
      wiring" check, including files outside the diff. For each changed API
      field, constant or user-visible wording, search
      `backend/coach/tool_schemas.py` and the API docs (`docs/api-routes.md`,
-     from `backend/http_api/*_get.py`) for their description, and take valid
+     from the route handlers in `backend/http_api/`) for their description, and take valid
      input values from the schema's enums, not from test fixtures (#3699).
    - Git blame/history where it explains an affected invariant or regression.
    - Relevant earlier PR discussions when available; prior comments are leads
