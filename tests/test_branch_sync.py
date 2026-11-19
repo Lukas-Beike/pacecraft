@@ -32,6 +32,30 @@ def commit(repo, name, text, subject):
     git(repo, "commit", "-q", "-m", subject)
 
 
+CARD = "docs/performance-methods/m.md"
+
+
+def method_card(version, issues):
+    """A card with its version lines and, as real cards, the generated table
+    row repeating the code's version (Gitar on #3663)."""
+    return (
+        f"- **Card version:** {version}\n"
+        f"- **Method ID:** m v{version} ({issues})\n\nText.\n\n"
+        "<!-- BEGIN GENERATED CONSTANTS -->\n"
+        f"| `METHOD_VERSION` | `{version}` |\n"
+        "<!-- END GENERATED CONSTANTS -->\n"
+    )
+
+
+def method_files(repo, version, issues, subject):
+    """A method's code version line and its card, committed together (#3649)."""
+    (repo / "m.py").write_text(f"METHOD_VERSION = {version}\nx = 1\n", encoding="utf-8")
+    (repo / CARD).parent.mkdir(parents=True, exist_ok=True)
+    (repo / CARD).write_text(method_card(version, issues), encoding="utf-8")
+    git(repo, "add", "m.py", CARD)
+    git(repo, "commit", "-q", "-m", subject)
+
+
 def make_sonar(directory):
     directory.mkdir(parents=True)
     tool = directory / SONAR_NAME
@@ -193,6 +217,86 @@ class BranchSyncTests(unittest.TestCase):
         self.assertIn("a.txt", out)
         self.assertIn("git rebase --abort", out)
         self.assertTrue((self.work / ".git" / "rebase-merge").exists())
+
+    def method_on_both_sides(self, develop: int, branch: int) -> None:
+        """Method v10 on develop; then the branch and develop each bump it."""
+        git(self.work, "checkout", "-q", "develop")
+        method_files(self.work, 10, "#1, #2", "chore: method")
+        git(self.work, "push", "-q", "origin", "develop")
+        git(self.work, "checkout", "-q", "feat/x")
+        git(self.work, "rebase", "-q", "develop")
+        method_files(self.work, branch, "#1, #2, #4", "fix: four")
+        git(self.work, "checkout", "-q", "develop")
+        method_files(self.work, develop, "#1, #2, #3", "fix: three")
+        git(self.work, "push", "-q", "origin", "develop")
+        git(self.work, "checkout", "-q", "feat/x")
+
+    def test_conflicts_only_in_method_versions_add_the_replayed_bump(self):
+        # #3649: develop went from v10 to v12, the branch to v11; the replayed
+        # bump lands on develop's, v13, and the card keeps both issues.
+        self.method_on_both_sides(develop=12, branch=11)
+
+        def regenerate(root, documents):
+            # As the card generator: the table repeats the code's version.
+            code = (root / "m.py").read_text(encoding="utf-8").split("\n")[0]
+            path = root / CARD
+            text = path.read_text(encoding="utf-8")
+            row = f"| `METHOD_VERSION` | `{code.rsplit(' ', 1)[1]}` |"
+            path.write_text(
+                "\n".join(
+                    row if line.startswith("| `METHOD_VERSION`") else line
+                    for line in text.split("\n")
+                ),
+                encoding="utf-8",
+            )
+
+        with mock.patch.object(branch_sync, "regenerate", regenerate):
+            code, out, _ = self.sync()
+        self.assertEqual(0, code, out)
+        self.assertEqual(
+            "METHOD_VERSION = 13\nx = 1\n", (self.work / "m.py").read_text("utf-8")
+        )
+        # The version lines merge and the generated table row follows the code
+        # (Gitar on #3663: both blocks of one real card).
+        self.assertEqual(
+            method_card(13, "#1, #2, #3, #4"), (self.work / CARD).read_text("utf-8")
+        )
+        self.assertEqual("fix: four", git(self.work, "log", "-1", "--format=%s"))
+
+    def test_the_same_bump_on_both_sides_is_refused_after_the_rebase(self):
+        # Both bumped v10 to v11: git merges that silently, so the branch
+        # would reuse develop's number (#3649).
+        self.method_on_both_sides(develop=11, branch=11)
+        code, out, _ = self.sync()
+        self.assertEqual(1, code)
+        # The card's issue lists conflict at the same number, so the card stays
+        # a conflict for a person instead of running ahead (review on #3649).
+        self.assertIn(CARD, out)
+        self.assertIn("<<<<<<< ", (self.work / CARD).read_text("utf-8"))
+        git(self.work, "rebase", "--abort")
+
+    def test_an_absorbed_bump_refuses_on_every_rerun(self):
+        # Gitar on #3663: only the code line, bumped to v11 on both sides,
+        # merges silently; the refusal puts the branch back, so a rerun
+        # without the bump refuses again.
+        for subject, version in (("chore: method", 10), ("fix: mine", 11)):
+            if subject == "fix: mine":
+                git(self.work, "checkout", "-q", "feat/x")
+                git(self.work, "rebase", "-q", "develop")
+            else:
+                git(self.work, "checkout", "-q", "develop")
+            (self.work / "m.py").write_text(f"METHOD_VERSION = {version}\n", "utf-8")
+            git(self.work, "add", "m.py")
+            git(self.work, "commit", "-q", "-m", subject)
+            if subject == "chore: method":
+                git(self.work, "push", "-q", "origin", "develop")
+        self.advance_develop("m.py", "METHOD_VERSION = 11\n")
+        before = git(self.work, "rev-parse", "HEAD")
+        for _ in range(2):
+            code, out, _ = self.sync()
+            self.assertEqual(1, code)
+            self.assertIn("the version bump in m.py equals origin/develop's", out)
+            self.assertEqual(before, git(self.work, "rev-parse", "HEAD"))
 
     def test_lists_invalid_subjects(self):
         commit(self.work, "c.txt", "1\n", "wip stuff")
@@ -481,16 +585,16 @@ class BranchSyncTests(unittest.TestCase):
     # Stacked pull requests (#3243): feat/x was built on PR #41 (feat/parent),
     # which develop has squash-merged; #42 is feat/x's own pull request.
 
-    def stack(self, *, merged=True):
+    def stack(self, *, merged=True, parent_text="parent\n"):
         """The parent's last head and its squash merge on origin/develop."""
         git(self.work, "checkout", "-q", "-b", "feat/parent", "develop")
-        commit(self.work, "p.txt", "parent\n", "feat(ui): parent layer")
+        commit(self.work, "p.txt", parent_text, "feat(ui): parent layer")
         parent_head = git(self.work, "rev-parse", "HEAD")
         git(self.work, "checkout", "-q", "-B", "feat/x", "feat/parent")
         commit(self.work, "c.txt", "child\n", "feat(ui): child layer")
         merge = "0" * 40
         if merged:
-            self.advance_develop("p.txt", "parent\n")  # the squash of #41
+            self.advance_develop("p.txt", parent_text)  # the squash of #41
             merge = git(self.origin, "rev-parse", "develop")
         return parent_head, merge
 
@@ -612,6 +716,14 @@ class BranchSyncTests(unittest.TestCase):
         self.assertEqual((code, calls), (2, []))
         self.assertIn("unable to access", err)
         self.assertEqual(git(self.work, "rev-parse", "HEAD"), before)
+
+    def test_a_merged_parents_version_bump_is_not_the_layers_to_lose(self):
+        # Review on #3649: the parent bumped a method version; the child did
+        # not, so the restack drops nothing of its own and is not refused.
+        parent = self.stack(parent_text="METHOD_VERSION = 11\n")
+        code, out, _err, _calls = self.stacked_sync(parent)
+        self.assertEqual(0, code, out)
+        self.assertNotIn("version bump", out)
 
     def test_without_a_push_the_layer_is_rebased_but_not_retargeted(self):
         code, out, _err, calls = self.stacked_sync(self.stack())

@@ -15,7 +15,10 @@ commit subject against the Conventional Commit types, and with --push pushes wit
 hooks (never --no-verify). The hooks need the SonarQube CLI on PATH. A push
 that adds a file at the repository root is refused unless --allow-root names it.
 A rebase conflict only in generated text (scripts/regenerate_docs.py) takes the
-upstream side, regenerates and continues; any other conflict stops. Changed
+upstream side, regenerates and continues; a conflict only in method version
+lines (METHOD_VERSION, a card's version and Method ID) adds the replayed bump to
+upstream's (#3649); any other conflict stops. A version bump that the rebase
+absorbs (both sides bumped to the same number) refuses after the rebase. Changed
 e2e/ and public/ scripts must pass `node --check` before the push (#3031).
 After the rebase, a node_modules that does not match package-lock.json (as
 tests/frontend-harness.cjs checks it) gets `npm ci --ignore-scripts` before
@@ -128,6 +131,97 @@ def resolve_generated(root: Path, conflicts: list[str]) -> bool:
         git("checkout", "--", *others)
     print(f"regenerated after a conflict: {', '.join(conflicts)}")
     return True
+
+
+# A method's version lines (#3649): the code's METHOD_VERSION, a card's version
+# and its Method ID with the issues behind it.
+VERSION = re.compile(r"^(METHOD_VERSION = |- \*\*Card version:\*\* )(\d+)$")
+METHOD_ID = re.compile(r"^(- \*\*Method ID:\*\* \S+ v)(\d+) \((.*)\)$")
+BLOCK = re.compile(
+    r"^<<<<<<< [^\n]*\n(.*?)^\|\|\|\|\|\|\| [^\n]*\n(.*?)^=======\n(.*?)^>>>>>>> [^\n]*\n",
+    re.MULTILINE | re.DOTALL,
+)
+
+
+def bumped(ours: str, base: str, theirs: str) -> str | None:
+    """One version line with the replayed commit's bump on top of upstream's,
+    or None when the three lines are not the same kind of version line."""
+    for pattern in (VERSION, METHOD_ID):
+        found = [pattern.match(line) for line in (ours, base, theirs)]
+        if all(found):
+            o, b, t = (m for m in found if m)
+            break
+    else:
+        return None
+    # Both bumped to the same number: the code line merged silently there, so
+    # the card stays a conflict for a person rather than run ahead (#3649).
+    if int(o[2]) == int(t[2]) != int(b[2]):
+        return None
+    number = int(o[2]) + int(t[2]) - int(b[2])
+    if pattern is VERSION:
+        return f"{o[1]}{number}"
+    issues = o[3].split(", ")
+    issues += [i for i in t[3].split(", ") if i not in b[3].split(", ") + issues]
+    return f"{o[1]}{number} ({', '.join(issues)})"
+
+
+def version_bumps(onto: str) -> set[str]:
+    """The files whose method version lines this branch changes against ``onto``."""
+    files, name = set(), ""
+    for line in git("diff", "-U0", f"{onto}...HEAD").splitlines():
+        if line.startswith("+++ "):
+            name = line.removeprefix("+++ b/")
+        elif line.startswith("+") and (
+            VERSION.match(line[1:]) or METHOD_ID.match(line[1:])
+        ):
+            files.add(name)
+    return files
+
+
+def absorbed(onto: str, bumps: set[str]) -> bool:
+    """Whether the rebase absorbed a version bump: both sides bumped to the
+    same number, which git merges without a conflict (#3649)."""
+    lost = sorted(bumps - version_bumps(onto))
+    if lost:
+        print(f"refused: the version bump in {', '.join(lost)} equals {onto}'s now")
+        print("the branch is back as it was: bump it on top of the target and rerun")
+    return bool(lost)
+
+
+def merged_block(match: re.Match[str]) -> str:
+    """A diff3 conflict block of version lines only, resolved; else unchanged."""
+    sides = [match[n].splitlines() for n in (1, 2, 3)]
+    if not sides[0] or len({len(side) for side in sides}) > 1:
+        return match[0]
+    lines = [bumped(*trio) for trio in zip(*sides, strict=True)]
+    return match[0] if None in lines else "".join(f"{line}\n" for line in lines)
+
+
+def resolve_versions(root: Path, conflicts: list[str]) -> list[str]:
+    """Resolve conflicts that lie only in method version lines, adding the
+    replayed commit's bump to upstream's (#3649); returns the files still
+    conflicted. Other blocks stay for the generated-text rule or a person."""
+    left = []
+    for name in conflicts:
+        try:
+            git("checkout", "--conflict=diff3", "--", name)
+            text = (root / name).read_text(encoding="utf-8")
+        except CliError, OSError, UnicodeDecodeError:
+            left.append(name)  # deleted, renamed or not text: a person decides
+            continue
+        merged = BLOCK.sub(merged_block, text)
+        if merged == text:
+            left.append(name)
+            continue
+        (root / name).write_text(merged, encoding="utf-8", newline="")
+        print(f"merged the version lines of {name}")
+        # Other blocks, such as a card's generated table, stay for the
+        # generated-text rule or a person (Gitar on #3663).
+        if "<<<<<<< " in merged:
+            left.append(name)
+        else:
+            git("add", name)
+    return left
 
 
 def stopped(onto: str, conflicts: list[str], error: CliError) -> bool:
@@ -243,9 +337,24 @@ def retarget(
 
 
 def rebased(onto: str, upstream: str | None = None) -> bool:
-    """Rebase onto the target, with ``upstream`` only the commits after it. A
-    conflict only in generated documents is resolved by regenerating them; any
-    other leaves the rebase in progress and is listed."""
+    """Rebase onto the target, with ``upstream`` only the commits after it, and
+    refuse a version bump the rebase absorbed (#3649). Only the replayed
+    commits' bumps count: a merged parent's are not this layer's."""
+    bumps = version_bumps(upstream or onto)
+    before = git("rev-parse", "HEAD").strip()
+    if not replayed(onto, upstream):
+        return False
+    if absorbed(onto, bumps):
+        # Back to the branch as it was (the tree was clean), so every rerun
+        # refuses again until the bump is made (Gitar on #3663).
+        git("reset", "-q", "--hard", before)
+        return False
+    return True
+
+
+def replayed(onto: str, upstream: str | None) -> bool:
+    """The rebase itself. A conflict only in method version lines or generated
+    documents is resolved; any other leaves the rebase in progress and is listed."""
     try:
         git("rebase", *(("--onto", onto, upstream) if upstream else (onto,)))
         return True
@@ -257,7 +366,8 @@ def rebased(onto: str, upstream: str | None = None) -> bool:
         conflicts = git("diff", "--name-only", "--diff-filter=U").splitlines()
         if not conflicts:
             raise error
-        if not resolve_generated(root, conflicts):
+        conflicts = resolve_versions(root, conflicts)
+        if conflicts and not resolve_generated(root, conflicts):
             return stopped(onto, conflicts, error)
         try:
             git("rebase", "--continue", env={**os.environ, "GIT_EDITOR": "true"})
