@@ -313,7 +313,7 @@ test("'Heute noch essen' heads the diary's energy card, else a link to the goal 
   assert.equal(energyGoalText({ energy_goal: "hold" }), "Halten");
 });
 
-const DEFICIT_CARD_FUNCTIONS = ["energyFatShareRule", "DEFICIT_UNCERTAINTY", "DEFICIT_GOAL_STATUS", "deficitDecimal", "deficitSigned", "deficitDay", "deficitSpan", "deficitGoalBar", "deficitBoxes", "deficitText", "energyDeficitCard"];
+const DEFICIT_CARD_FUNCTIONS = ["energyFatShareRule", "DEFICIT_UNCERTAINTY", "DEFICIT_GOAL_STATUS", "deficitDecimal", "deficitSigned", "deficitDay", "deficitSpan", "deficitGoalBar", "deficitBoxes", "deficitText", "ESTIMATE_MISSING", "deficitIntake", "energyDeficitCard"];
 
 test("Verlauf's deficit card: hero, goal marker, boxes and text agree, measured and the prior alone (#3548, #3555)", () => {
   const { h } = extractFunctions("components.js", ["h", "SVG_NS", "svgNode"], { document: fakeDocument() });
@@ -358,6 +358,15 @@ test("Verlauf's deficit card: hero, goal marker, boxes and text agree, measured 
   const scaleOnly = energyDeficitCard({ rows, deficit: { ...measured, total_kcal: null, expenditure_missing: "intake_days" } });
   assert.match(textOf(scaleOnly.children[1]), /^≈ 565 kcal/);
   assert.equal(textOf(scaleOnly.children[5]), "Echter Verbrauch: braucht erfasste Mahlzeiten.");
+  // #3604: the intake from weight and activity, labelled an estimate, with its span and calibration;
+  // without one the reason.
+  const estimated_intake = { kcal: 2100, band_kcal: 230, calibration_end: "2026-09-19", calibration_age_days: 56, missing: null };
+  const estimated = energyDeficitCard({ rows, deficit: { ...measured, total_kcal: null }, estimated_intake });
+  assert.equal(textOf(estimated.children[6]), "Geschätzte Aufnahme aus Gewicht und Aktivität: ≈ 2.100 kcal am Tag (1.870–2.330) (erfasst bis 19.09.).");
+  const stale = { ...estimated_intake, kcal: null, band_kcal: null, missing: "calibration_age" };
+  const none = energyDeficitCard({ rows, deficit: { ...measured, total_kcal: null }, estimated_intake: stale });
+  assert.equal(textOf(none.children[6]), "Geschätzte Aufnahme: keine Schätzung, letzte Erfassung zu lange her (erfasst bis 19.09.).");
+  assert.equal(none.children[6].dataset.estimatedIntake, "calibration_age");
   // #3614: an unstable window is an estimate and names the weight step.
   const unstable = energyDeficitCard({ rows, deficit: { ...measured, uncertainty: "unstable" } });
   assert.equal(textOf(unstable.children[5]), "Geschätzter Verbrauch: ≈ 3.800 kcal am Tag (Garmin: 3.100).");

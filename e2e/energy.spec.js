@@ -476,10 +476,12 @@ for (const [method, deficit] of Object.entries(DEFICITS)) {
 // expenditure is missing and says why.
 test("@responsive the deficit card stays without logged meals", async ({ page }) => {
   const deficit = { ...DEFICITS.measured, total_kcal: null, expenditure_missing: "intake_days" };
+  // #3604: the intake from weight and activity, labelled as an estimate.
+  const estimated_intake = { kcal: 2100, band_kcal: 230, calibration_end: "2026-09-19", calibration_age_days: 56, missing: null };
   await page.route("**/api/body/energy*", async (route) => {
     try {
       const response = await route.fetch();
-      await route.fulfill({ response, json: { ...(await response.json()), deficit } });
+      await route.fulfill({ response, json: { ...(await response.json()), deficit, estimated_intake } });
     } catch (error) {
       if (!GONE.test(String(error))) throw error;
     }
@@ -488,7 +490,10 @@ test("@responsive the deficit card stays without logged meals", async ({ page })
   const card = page.locator("#nutritionFitScale [data-energy-deficit]");
   await expect(card.locator(".energy-deficit-hero strong")).toHaveText("≈ 565 kcal");
   await expect(card.locator("[data-deficit-box]")).toHaveCount(4);
-  await expect(card.locator(".energy-deficit-text")).toHaveText("Echter Verbrauch: braucht erfasste Mahlzeiten.");
+  await expect(card.locator(".energy-deficit-text")).toHaveText([
+    "Echter Verbrauch: braucht erfasste Mahlzeiten.",
+    "Geschätzte Aufnahme aus Gewicht und Aktivität: ≈ 2.100 kcal am Tag (1.870–2.330) (erfasst bis 19.09.).",
+  ]);
   await expect(card.locator(".energy-deficit-status")).toHaveText("Ziel: 500 kcal Defizit · ✓ im Ziel");
 });
 

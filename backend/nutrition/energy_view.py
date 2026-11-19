@@ -45,6 +45,7 @@ from backend.nutrition.energy_balance import (
     energy_windows,
     history_start,
     is_complete,
+    is_stable,
     period_window,
     weight_trend,
     window_t,
@@ -657,6 +658,10 @@ def energy_view(
         # Where Garmin's day summary of the shown day stands (#3530).
         "wellness": stand,
         "deficit": _deficit(latest, predictions[DEVICE][-1][2], goal),
+        # Without enough logged days, the intake from weight and activity (#3604).
+        "estimated_intake": _estimated_intake(
+            latest, windows, bodies, learned.get(ESTIMATE_FORMULA)
+        ),
     }
 
 
@@ -753,6 +758,113 @@ def _deficit(
         "expenditure_missing": None if tdee else latest.insufficient,
         "device_total_kcal": _round(device_total),
         "goal": _goal_status(deficit, goal),
+    }
+
+
+# "Nur Waage", step 2 (#3604): the estimated intake rests on Katch-McArdle, the
+# reference row, and needs a calibration from a logged window at most 9 weeks
+# before the latest (the resting rate adapts over a lasting deficit; the
+# 12-week view reaches 11), with the weight and activity close to that window's.
+ESTIMATE_FORMULA: Final = "katch_mcardle"
+ESTIMATE_MAX_AGE_DAYS: Final = 63
+ESTIMATE_MAX_WEIGHT_CHANGE: Final = 0.04
+ESTIMATE_MAX_ACTIVITY_CHANGE: Final = 0.30
+
+
+def _calibration(
+    windows: Sequence[EnergyWindow], bodies: Sequence[Mapping[str, Any] | None]
+) -> list[EnergyWindow]:
+    """The windows the learned everyday term was fitted over (#3577)."""
+    return [
+        w
+        for w, body in zip(windows, bodies, strict=True)
+        if body is not None
+        and w.adaptive_tdee is not None
+        and w.derived_rmr is not None
+        and w.activity_kcal_raw is not None
+        and w.tef_kcal is not None
+        and w.store is not None
+        and is_stable(w)
+    ]
+
+
+def _estimate_missing(
+    latest: EnergyWindow,
+    body: Mapping[str, Any] | None,
+    calibration: Sequence[EnergyWindow],
+    fit: LearnedEveryday | None,
+) -> str | None:
+    """Why the latest window gets no estimated intake, or None (#3604)."""
+    if not calibration or fit is None:
+        return "calibration"
+    newest = calibration[-1]
+    if (latest.end - newest.end).days > ESTIMATE_MAX_AGE_DAYS:
+        return "calibration_age"
+    if body is None or latest.activity_kcal_raw is None:
+        return "body" if body is None else "activity"
+    store, before = cast(StoredEnergy, latest.store), cast(StoredEnergy, newest.store)
+    if abs(store.weight_end_kg / before.weight_end_kg - 1) > ESTIMATE_MAX_WEIGHT_CHANGE:
+        return "weight_change"
+    activity = statistics.fmean(cast(float, w.activity_kcal_raw) for w in calibration)
+    if (
+        abs(latest.activity_kcal_raw - activity)
+        > ESTIMATE_MAX_ACTIVITY_CHANGE * activity
+    ):
+        return "activity_change"
+    return None
+
+
+def _estimated_intake(
+    latest: EnergyWindow,
+    windows: Sequence[EnergyWindow],
+    bodies: Sequence[Mapping[str, Any] | None],
+    fit: LearnedEveryday | None,
+) -> dict[str, Any] | None:
+    """The average intake without logged meals (#3604): the calibrated
+    expenditure less the energy from the stores; None with enough logged days.
+
+    The expenditure is Katch-McArdle's resting rate plus its learned everyday
+    term (signed) plus the calibration windows' mean activity, with k on the
+    activity's change from that mean: the term was learned at k = 1, so k
+    times the whole activity would count its excess twice. Digestion is the
+    calibration windows' share of their intake, so the intake solves for it.
+    The band holds the store's, the learned term's (which holds the logged
+    windows' activity and TDEE errors) and digestion's.
+    """
+    if latest.adaptive_tdee is not None or latest.store is None:
+        return None
+    calibration = _calibration(windows, bodies)
+    reason = _estimate_missing(latest, bodies[-1], calibration, fit)
+    newest = calibration[-1] if calibration else None
+    view: dict[str, Any] = {
+        "kcal": None,
+        "band_kcal": None,
+        "calibration_end": newest.end.isoformat() if newest else None,
+        "calibration_age_days": (latest.end - newest.end).days if newest else None,
+        "missing": reason,
+    }
+    if reason is not None:
+        return view
+    fit, body = cast(LearnedEveryday, fit), cast(Mapping[str, Any], bodies[-1])
+    activity = statistics.fmean(cast(float, w.activity_kcal_raw) for w in calibration)
+    eaten = sum(
+        cast(Estimate, w.adaptive_tdee).kcal + cast(StoredEnergy, w.store).kcal_per_day
+        for w in calibration
+    )
+    share = sum(cast(float, w.tef_kcal) for w in calibration) / eaten
+    spent = (
+        resting_energy(FORMULAS[ESTIMATE_FORMULA], body["lean_mass_kg"])
+        + fit.raw_kcal
+        + activity
+        + latest.calibration_factor * (cast(float, latest.activity_kcal_raw) - activity)
+    )
+    band = math.hypot(
+        window_t(latest) * latest.store.sd, fit.band_kcal, TEF_ERROR_KCAL
+    ) / (1 - share)
+    return {
+        **view,
+        "kcal": _round((spent + latest.store.kcal_per_day) / (1 - share)),
+        "band_kcal": _round(band),
     }
 
 
