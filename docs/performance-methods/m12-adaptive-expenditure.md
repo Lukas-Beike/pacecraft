@@ -120,7 +120,7 @@ estimate. It never rewrites logged values and never falls back to a formula.
    other rows are unchanged. It is a named remainder, not an estimate: it
    also carries logging and activity-model errors.
    **Learned everyday term (#3577):** per formula row f, each estimated
-   window gives `u_f = TDEE − raw activity − TEF − resting_f`, what the
+   window that passes the neighbour check (#3614) gives `u_f = TDEE − raw activity − TEF − resting_f`, what the
    row lacks against the own total at the rows' k = 1, with the derived
    resting rate's SD. Their precision-weighted mean, its variance
    inflated ×4 for the windows' overlap, is shrunk towards 0 ± 250

@@ -701,6 +701,8 @@ def learned_everyday(
             and window.derived_rmr is not None
             and window.activity_kcal_raw is not None
             and window.tef_kcal is not None
+            # A window that fails the neighbour check (#3614) teaches nothing.
+            and is_stable(window)
         ]
         fits[name] = fit_learned_everyday(points)
     return fits
