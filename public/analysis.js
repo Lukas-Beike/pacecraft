@@ -1572,7 +1572,7 @@ function bodyEditButton(label, open) {
   return button;
 }
 
-// The energy goal (#3547) sits with the body values; the diary's "Heute noch essen" prices it.
+// The energy goal (#3547) sits with the body values; the diary's "Offene Kalorien" price it.
 const ENERGY_GOAL_NAMES = { lose: "Abnehmen", hold: "Halten", build: "Aufbauen" };
 const ENERGY_GOAL_KCAL_LABELS = { lose: "Defizit pro Tag (kcal)", build: "Überschuss pro Tag (kcal)" };
 // kcal per kg of body weight as the energy view prices it (#3618): the rule of thumb's 70 % fat at
@@ -1649,8 +1649,8 @@ async function saveEnergyGoal(patch, button) {
   }
 }
 
-// "Heute noch essen" (#3547) heads the diary's energy card: the outlined source's day total with
-// the goal, less what was eaten; without a goal a link to the goal row in Körper.
+// "Offene Kalorien" (#3547, #3703) head the diary's energy card: the outlined source's day total
+// with the goal, less what was eaten; without a goal a link to the goal row in Körper.
 function energyGoalStrip(read) {
   const goal = read.goal;
   if (!goal) {
@@ -1661,25 +1661,18 @@ function energyGoalStrip(read) {
   }
   if (goal.remaining_kcal == null) return h("p", { className: "energy-goal muted", dataset: { energyGoal: "pending" } }, "Noch kein Tagesverbrauch für dein Ziel");
   const kcal = (value) => `${formatWhole(value)} kcal`;
-  const source = ENERGY_SOURCES.find(([name]) => name === goal.source)?.[1] ?? read.rows.find((row) => row.source === goal.source)?.label ?? goal.source;
-  const delta = { lose: `− Ziel-Defizit ${kcal(goal.goal_kcal)}`, build: `+ Ziel-Überschuss ${kcal(goal.goal_kcal)}` }[goal.goal];
-  const lines = [`Verbrauch${read.day_partial ? " bis jetzt" : ""} (${source}) ${kcal(goal.total_kcal)}`, delta, `= Essen für dein Ziel ${kcal(goal.target_kcal)}`, `bisher gegessen ${kcal(goal.eaten_kcal)}`];
   const left = goal.remaining_kcal < 0 ? `${kcal(-goal.remaining_kcal)} über Ziel` : kcal(goal.remaining_kcal);
   const target = Math.max(goal.target_kcal, 1);
+  const wording = { lose: "Defizit", build: "Überschuss" }[goal.goal];
+  const aim = ["Ziel heute", formatWhole(goal.target_kcal), wording && `(${formatWhole(goal.goal_kcal)} ${wording})`].filter(Boolean).join(" ");
   return h("div", { className: "energy-goal", dataset: { energyGoal: goal.goal } },
-    h("p", null, h("span", null, read.day_partial ? "Heute noch essen" : "Noch essen"), h("strong", null, left)),
+    h("p", null, h("span", null, "Offene Kalorien"), h("strong", null, left)),
     h("progress", { max: String(target), value: String(Math.min(goal.eaten_kcal, target)), "aria-label": "Gegessen von deinem Ziel" }),
-    h("small", null, lines.filter(Boolean).join(" · ")));
+    h("ul", "energy-goal-items", h("li", null, `gegessen ${formatWhole(goal.eaten_kcal)}`), h("li", null, aim)));
 }
 
-// Each source keeps its chart colour in the table, the error chart and the hit-rate bars.
-// The device row's name is the provider label of its daily totals in the read (#3323).
-const ENERGY_SOURCES = [["katch_mcardle", "Katch-McArdle", 1], ["cunningham", "Cunningham", 2], ["device", null, 3], ["own", "Aus deinen Daten", 4]];
 const ENERGY_INSUFFICIENT = { intake_days: "unter 14 vollständige Ernährungstage", weighins: "unter 8 Wiegungen", weight_span: "Wiegungen über weniger als 21 Tage", logged_span: "erfasste Tage über weniger als 21 Tage" };
 const ENERGY_STEP_SOURCES = { walks: "aus Gehen", height: "aus Körpergröße" };
-// The own resting residual below every physiological reference is not a value (#3255).
-const ENERGY_IMPLAUSIBLE = "nicht plausibel";
-const ENERGY_IMPLAUSIBLE_REASON = "unter dem Ruheumsatz: Essen unvollständig erfasst oder Alltag überschätzt";
 let energyRead = null;
 let energyRequest = null;
 let energyGeneration = 0;
@@ -1732,7 +1725,7 @@ function energyKcal(value, band) {
 // NEAT's inputs (#3255), so an outlier in steps or step length can be checked.
 function energyNeatInputs(neat) {
   if (!neat) return "";
-  const parts = [`Alltag aus ${formatWhole(neat.steps_per_day)} Schritten/Tag, davon ${formatWhole(neat.session_steps_per_day)} in Einheiten abgezogen`];
+  const parts = [`Schritte & Treppen aus ${formatWhole(neat.steps_per_day)} Schritten/Tag, davon ${formatWhole(neat.session_steps_per_day)} in Einheiten abgezogen`];
   if (neat.step_length_m != null) parts.push(`Schrittlänge ${analysisValue(neat.step_length_m, "m")} (${ENERGY_STEP_SOURCES[neat.step_length_source] || neat.step_length_source})`);
   if (neat.floors_per_day != null) parts.push(`${analysisValue(neat.floors_per_day, "Etagen")} ohne Einheiten`);
   return parts.join(", ");
@@ -1765,9 +1758,7 @@ function energyBiasText(flagged) {
   return `Geschätzte Mahlzeiten wirken im Mittel ${formatWhole(Math.abs(flagged.bias_pct))} % ${direction} als erfasst (± ${formatWhole(flagged.bias_band_pct)} %)`;
 }
 
-// What the own row's resting rate rests on today (#3687).
-const ENERGY_BASE_SPAN = Object.freeze({ "12w": "12 Wochen", "12w_unstable": "12 Wochen (unsicher)" });
-const ENERGY_DAY_NOTE = "Alle Zeilen zeigen den gewählten Tag (Sport 0 ohne Einheit, Verdauung nur mit erfassten Mahlzeiten, heute bis jetzt); Aus deinen Daten nimmt die Ruhe heute aus den letzten 12 Wochen, an früheren Tagen aus deren 28 Tagen, und Alltag, Sport und Verdauung wie die Formeln; Heute noch essen zieht das Gegessene vom Tag gesamt der umrandeten Quelle ab, das Defizit der letzten 28 Tage steht im Verlauf";
+const ENERGY_DAY_NOTE = "Der Verbrauch ist der gewählte Tag, heute bis jetzt, der Quelle, die dein Gewicht am besten trifft (Vergleich im Verlauf); Sport 0 ohne Einheit, Verdauung nur mit erfassten Mahlzeiten; Offene Kalorien zieht das Gegessene vom Tag gesamt ab, das Defizit der letzten 28 Tage steht im Verlauf";
 
 function energyInfo(read) {
   const text = [ENERGY_DAY_NOTE, energyBasisText(read), energyNeatInputs(read.basis?.neat), energyBiasText(read.flagged)].filter(Boolean).join(" · ");
@@ -1778,9 +1769,8 @@ function energyInfo(read) {
   return [button, info];
 }
 
-// The badge needs enough shared windows and a lead beyond the own band (athlete decision on #3187).
-// Split A (athlete decision 2026-11-16): one stacked bar per row; parts computed alike for every row are hatched.
-const ENERGY_PARTS = [["resting_kcal", "resting", "Ruhe"], ["neat_kcal", "neat", "Alltag"], ["sport_kcal", "sport", "Sport"], ["tef_kcal", "tef", "Verdauung"]];
+// Split A (athlete decision 2026-11-16): one stacked bar for the outlined source, a row per part.
+const ENERGY_PARTS = [["resting_kcal", "resting", "Ruhe"], ["neat_kcal", "neat", "Schritte & Treppen"], ["sport_kcal", "sport", "Sport"], ["tef_kcal", "tef", "Verdauung"]];
 
 // A strength session's MET follows its session RPE (athlete decision, #3530); the formula rows name both.
 function energyStrengthNote(strength) {
@@ -1790,20 +1780,15 @@ function energyStrengthNote(strength) {
   }).join("; ");
 }
 
-// The own row's residual above the resting reference (athlete decision, #3550): Ruhe is then the
-// reference, named after its row, and the rest is everyday energy the steps do not see.
-const ENERGY_UNMEASURED = ["unmeasured_kcal", "unmeasured", "nicht erfasster Alltag"];
-
-// A checked formula row's learned everyday term follows its Alltag (#3577).
-const ENERGY_LEARNED = ["learned_kcal", "learned", "gelernter Alltag"];
+// A checked formula row's learned term follows its Schritte & Treppen (#3577).
+const ENERGY_LEARNED = ["learned_kcal", "learned", "Übriger Alltag"];
 
 function energyRowParts(split) {
   const [resting, neat, ...rest] = ENERGY_PARTS;
-  return [resting, ...(split?.unmeasured_kcal == null ? [] : [ENERGY_UNMEASURED]), neat,
-    ...(split?.learned_kcal == null ? [] : [ENERGY_LEARNED]), ...rest];
+  return [resting, neat, ...(split?.learned_kcal == null ? [] : [ENERGY_LEARNED]), ...rest];
 }
 
-// The learned everyday terms under the table (#3577): offered with "Übernehmen" until the athlete
+// The learned term under the card (#3577): offered with "Übernehmen" until the athlete
 // takes them over (a profile date, receipt and undo); afterwards the date. "Noch nicht" stores nothing.
 const ENERGY_LEARNED_FORMULAS = [["katch_mcardle", "Katch-McArdle"], ["cunningham", "Cunningham"]];
 let energyLearnedDeferred = false;
@@ -1813,7 +1798,7 @@ function energyLearnedLine(read) {
   const fits = ENERGY_LEARNED_FORMULAS.filter(([key]) => learned?.[key]);
   if (!fits.length) return null;
   const windows = Math.max(...fits.map(([key]) => learned[key].windows));
-  const head = h("strong", null, "Gelernter Alltag");
+  const head = h("strong", null, "Übriger Alltag");
   // #3689: offered and applied only once it qualifies; an earlier check stays stored.
   if (!fits.some(([key]) => learned[key].qualified)) {
     return h("div", { className: "energy-learned", dataset: { learned: "pending" } }, h("p", null, head, " noch nicht gelernt"));
@@ -1849,7 +1834,7 @@ async function saveLearnedCheck(day, button) {
     if (state.data) state.data.profile = saved;
     resetEnergy();
     renderDiaryEnergy();
-    toast(day ? "Gelernter Alltag übernommen." : "Gelernter Alltag zurückgenommen.");
+    toast(day ? "Übriger Alltag übernommen." : "Übriger Alltag zurückgenommen.");
     if (!day) return;
     const undo = h("button", { type: "button", className: "message-undo" }, "Rückgängig");
     undo.addEventListener("click", () => void saveLearnedCheck("", undo));
@@ -1862,46 +1847,60 @@ async function saveLearnedCheck(day, button) {
   }
 }
 
-// The read names the device row (#3323); the client names the formula rows.
-function energyReferenceName(read, source) {
-  return ENERGY_SOURCES.find(([known]) => known === source)?.[1] ?? read.rows.find((row) => row.source === source)?.label;
-}
-
-function energyPartName(row, key, label, reference) {
-  if (key !== "resting_kcal" || row.source !== "own") return label;
-  return reference ? `Ruhe wie ${reference}` : "Ruhe (Rest)";
-}
-
-// Garmin's day summary ends early (#3530): every row's Alltag comes from it, so it names the time,
+// Garmin's day summary ends early (#3530): the Schritte & Treppen come from it, so it names the time,
 // and that a session after it is not in it yet.
 function energyStandNote(stand) {
   if (!stand?.as_of) return "";
   return ` (Stand ${stand.as_of}${stand.behind ? ", Garmin hängt hinterher" : ""})`;
 }
 
-function energySplitRow(row, strength = "", reference = null, stand = null, tefEstimated = false) {
+// One part's value with its note: the Garmin day summary's time, the strength session, and
+// digestion of kcal without macros as estimated (#3617); Garmin has no digestion part.
+function energyPartText(read, row, [key, part]) {
   const split = row.split;
-  const parts = energyRowParts(split);
-  const total = split ? parts.reduce((sum, [key]) => sum + (split[key] || 0), 0) : 0;
-  if (!total) return null;
-  const bands = { resting_kcal: row.resting_band_kcal, unmeasured_kcal: split.unmeasured_band_kcal, learned_kcal: split.learned_band_kcal };
-  const text = parts.map(([key, part, label]) => {
-    const name = energyPartName(row, key, label, reference);
-    if (key === "resting_kcal" && row.resting_implausible) return `${name} ${ENERGY_IMPLAUSIBLE} (${ENERGY_IMPLAUSIBLE_REASON})`;
-    const band = bands[key] != null && split[key] != null ? ` (${energyKcalRange(split[key], bands[key]).join("–")})` : "";
-    // Digestion of kcal without macros is estimated (#3617); Garmin has none.
-    const notes = { sport_kcal: strength ? ` (${strength})` : "", neat_kcal: energyStandNote(stand), tef_kcal: tefEstimated && split.tef_kcal != null ? " (geschätzt)" : "" };
-    const note = notes[key] || "";
-    return `${name} ${energySplitValue(key, split[key], row.source, row.pending_parts?.includes(part))}${band}${note}`;
-  }).join(" · ");
-  const bar = h("div", { className: "energy-split", role: "img", "aria-label": text });
+  const formula = row.source !== "device";
+  const strength = formula ? energyStrengthNote(read.strength) : "";
+  const pending = row.pending_parts?.includes(part);
+  const notes = {
+    sport_kcal: strength ? ` (${strength})` : "",
+    neat_kcal: energyStandNote(read.wellness),
+    tef_kcal: formula && read.tef_estimated && split.tef_kcal != null && !pending ? " (geschätzt)" : "",
+  };
+  // The learned term may be negative, a reduction (#3689).
+  const value = key === "learned_kcal" ? energyFitSigned(split[key]) : energySplitValue(key, split[key], row.source, pending);
+  return `${value}${notes[key] || ""}`;
+}
+
+function energySplitBar(split, parts, label) {
+  const total = parts.reduce((sum, [key]) => sum + (split[key] || 0), 0);
+  const bar = h("div", { className: "energy-split", role: "img", "aria-label": label });
   for (const [key, part] of parts) {
     if (split[key] == null || split[key] <= 0) continue;
-    const segment = h("span", { dataset: split.shared?.[part] ? { part, shared: "" } : { part } });
+    const segment = h("span", { dataset: { part } });
     segment.style.width = `${(split[key] / total) * 100}%`;
     bar.append(segment);
   }
-  return h("tr", { className: "energy-split-row" }, h("td", { colSpan: 3 }, bar, h("small", null, text)));
+  return bar;
+}
+
+// The formula's name, the device row's label from the read (#3323).
+function energySourceLine(row) {
+  const name = FIT_SOURCE_NAMES[row.source] || row.label || row.source;
+  return h("small", { className: "energy-source", dataset: { energySource: row.source } }, row.split.learned_kcal == null ? `Quelle: ${name}` : `Quelle: ${name} mit übrigem Alltag`);
+}
+
+// The diary's "Verbrauch" (#3703): the outlined source only, as a stacked bar and a row per part,
+// then the day total with its band; the comparison of all sources is Verlauf's.
+function energyUsage(read) {
+  const row = read.rows.find((item) => item.source === read.outlined);
+  const head = h("div", "energy-usage-head", h("h3", null, read.day_partial ? "Verbrauch heute · bis jetzt" : "Verbrauch"), ...energyInfo(read));
+  if (!row?.split) return h("div", { className: "energy-usage" }, head, h("p", "muted", "Noch keine Quelle"));
+  const parts = energyRowParts(row.split);
+  const texts = parts.map((part) => energyPartText(read, row, part));
+  const items = parts.map(([, part, label], index) => h("li", { dataset: { part } }, h("span", null, label), h("span", null, texts[index])));
+  const bar = energySplitBar(row.split, parts, parts.map(([, , label], index) => `${label} ${texts[index]}`).join(" · "));
+  const total = h("li", { className: "energy-total" }, h("span", null, "Tag gesamt"), h("span", null, energyKcal(row.total_kcal, row.total_band_kcal)));
+  return h("div", { className: "energy-usage" }, head, bar, h("ul", "energy-parts", ...items, total), energySourceLine(row));
 }
 
 // Digestion comes from the logged meals: without any it is not recorded; Garmin has no such part.
@@ -1912,41 +1911,7 @@ function energySplitValue(key, value, source, pending = false) {
   return key === "tef_kcal" && source !== "device" ? "nicht erfasst" : "–";
 }
 
-function energySplitLegend(read) {
-  const splits = read.rows.map((row) => row.split).filter(Boolean);
-  if (!splits.length) return null;
-  const parts = energyRowParts({
-    unmeasured_kcal: splits.some((split) => split.unmeasured_kcal != null) ? 0 : null,
-    learned_kcal: splits.some((split) => split.learned_kcal != null) ? 0 : null,
-  });
-  const items = parts.map(([, part, label]) => h("li", { dataset: { part } }, label));
-  if (splits.some((split) => Object.values(split.shared || {}).some(Boolean))) items.push(h("li", { dataset: { part: "shared" } }, "gleich berechnet"));
-  return h("ul", "energy-split-legend", items);
-}
-
-// Why the formula rows are empty (#3336); each opens the dialog that supplies the input.
-const ENERGY_BODY_MISSING = {
-  no_skinfold: "Körperfett fehlt",
-  skinfold_too_old: "Hautfalten älter als 90 Tage",
-  no_birth_year: "Geburtsjahr fehlt",
-  no_weight: "Gewicht fehlt",
-  invalid: "Hautfalten prüfen",
-};
-const ENERGY_FORMULAS = new Set(["katch_mcardle", "cunningham"]);
-
-function energyMissingCell(reason) {
-  const button = h("button", { type: "button", className: "analysis-legend-info", dataset: { energyMissing: reason } }, ENERGY_BODY_MISSING[reason] || reason);
-  button.addEventListener("click", () => {
-    if (reason === "no_weight") void openWeightDialog();
-    else if (reason === "no_birth_year") void AppRouter.navigate("more/profile", { historyMode: "push" });
-    else void openBodyFatDialog();
-  });
-  return h("td", { colSpan: 2 }, button);
-}
-
-// Under a row's name: the formulas' body fat source, "bis jetzt" for today, and where the own
-// row's resting rate comes from: the last 28 days (#3531).
-// The own row also names how its weight change split into fat and lean mass: the rule of thumb
+// The deficit card names how its weight change split into fat and lean mass: the rule of thumb
 // blended with the measurements, and their weight in it (athlete decision, #3555).
 // The prior follows Forbes' curve at the current fat mass, else the rule of thumb (#3684).
 function energyFatSharePrior(share) {
@@ -1956,63 +1921,6 @@ function energyFatSharePrior(share) {
 function energyFatShareRule(share) {
   const prior = `${energyFatSharePrior(share)} ${share.prior_pct} %`;
   return share.measured_pct > 0 ? `${prior}, zu ${share.measured_pct} % gemessen` : prior;
-}
-
-function energyFatShareNote(share) {
-  return share ? `Fettanteil: ${energyFatShareRule(share)}` : "";
-}
-
-function energyRowNote(read, source, row) {
-  if (source === "own") {
-    // Split (#3550): Ruhe is the named reference, so the 28 days give the rest above it.
-    // Today rests on the 12-week base, flagged when every window in it is unstable (#3687).
-    const span = ENERGY_BASE_SPAN[row.basis] || row.window_days + " Tagen";
-    const origin = `${row.split?.unmeasured_kcal == null ? "Ruhe" : "nicht erfasster Alltag"} aus ${span}`;
-    const parts = [row.window_days ? origin : "", energyFatShareNote(row.fat_share), read.day_partial ? "bis jetzt" : ""].filter(Boolean);
-    return parts.length ? [h("small", null, parts.join(" · "))] : [];
-  }
-  const parts = [ENERGY_FORMULAS.has(source) && read.body ? `KFA: ${read.body.label}` : "", energyRestingFrom(read, row), read.day_partial ? "bis jetzt" : ""].filter(Boolean);
-  return parts.length ? [h("small", null, parts.join(" · "))] : [];
-}
-
-// Today Garmin's Ruhe is the newest full day's resting value (#3443); its day names it.
-function energyRestingFrom(read, row) {
-  const from = row.resting_from;
-  if (!from) return "";
-  const yesterday = new Date(`${read.day}T12:00:00Z`);
-  yesterday.setUTCDate(yesterday.getUTCDate() - 1);
-  return from === yesterday.toISOString().slice(0, 10) ? "Ruhe wie gestern" : `Ruhe vom ${from.slice(8, 10)}.${from.slice(5, 7)}.`;
-}
-
-// The server's one outlined source (#3613): solid while distinguishable as best, dashed while it
-// is only the nearest so far; the own row is never outlined.
-function energyFitMarker(read, source) {
-  if (!read.outlined || read.outlined !== source) return null;
-  return read.best ? "best" : "nearest";
-}
-
-function energyValueCells(read, source, row) {
-  if (ENERGY_FORMULAS.has(source) && row.resting_kcal == null && read.skinfold_missing) return [energyMissingCell(read.skinfold_missing)];
-  if (row.resting_missing) return [h("td", { colSpan: 2, className: "muted" }, "kein Ruhewert der letzten Tage")];
-  return [h("td", null, row.resting_implausible ? ENERGY_IMPLAUSIBLE : energyKcal(row.resting_kcal, row.resting_band_kcal)),
-    h("td", null, energyKcal(row.total_kcal, row.total_band_kcal))];
-}
-
-function energyTable(read) {
-  const rows = ENERGY_SOURCES.flatMap(([source, label, color]) => {
-    const row = read.rows.find((item) => item.source === source) || {};
-    const fit = energyFitMarker(read, source);
-    return [h("tr", { dataset: fit ? { energySource: source, fit } : { energySource: source } },
-      h("th", { scope: "row", dataset: { color: String(color) } }, label ?? row.label, ...energyRowNote(read, source, row)),
-      ...energyValueCells(read, source, row)), energySplitRow(row, source === "device" ? "" : energyStrengthNote(read.strength),
-        energyReferenceName(read, row.split?.resting_source), read.wellness, source !== "device" && read.tef_estimated)].filter(Boolean);
-  });
-  return h("table", { className: "current-performance-table" }, h("caption", null, "Energieverbrauch ", ...energyInfo(read)),
-    energyTableHead(), h("tbody", null, rows));
-}
-
-function energyTableHead() {
-  return h("thead", null, h("tr", null, h("th", { scope: "col" }, "Quelle"), h("th", { scope: "col" }, "Ruhe"), h("th", { scope: "col" }, "Tag gesamt")));
 }
 
 // "Dein Defizit, letzte 28 Tage" (#3548) replaces Verlauf's 28-day own row: the energy per day
@@ -2175,11 +2083,11 @@ function energyPending(day = null) {
   return energyRead.failed ? h("section", "analysis-chart-card", h("p", "empty", "Energieverbrauch konnte nicht geladen werden.")) : null;
 }
 
-// The table sits in the diary in place of the former Garmin expenditure card (#3252).
+// The card sits in the diary in place of the former Garmin expenditure card (#3252).
 function energyDiaryCards() {
   const pending = energyPending(energyDay());
   if (pending) return [pending];
-  return [h("section", { className: "analysis-chart-card", dataset: { energy: "" } }, energyGoalStrip(energyRead), energyTable(energyRead), energySplitLegend(energyRead), energyLearnedLine(energyRead))];
+  return [h("section", { className: "analysis-chart-card", dataset: { energy: "" } }, energyGoalStrip(energyRead), energyUsage(energyRead), energyLearnedLine(energyRead))];
 }
 
 // "Welche Quelle trifft dein Gewicht?" (A2, athlete decision on #3397): one kcal/day scale for

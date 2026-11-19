@@ -1,8 +1,10 @@
 import unittest
+from pathlib import Path
 
 from backend.athlete.profile import DEFAULT_PROFILE
 from backend.coach.tool_schemas import build_structured_tool_schemas
 
+ROOT = Path(__file__).resolve().parents[1]
 EXECUTOR_CHANGE_FIELDS = {
     "local_id",
     "action",
@@ -154,6 +156,34 @@ class CoachToolSchemaTests(unittest.TestCase):
             with self.subTest(field=field):
                 self.assertRegex(energy, rf"\b{field} (is|holds)\b")
         self.assertIn("unflagged.end", energy)
+
+    def test_energy_labels_use_the_diary_names_everywhere(self):
+        # #3703: "Schritte & Treppen", "Übriger Alltag" (the learned term),
+        # "übriger Alltag" (the own residual) and "Offene Kalorien" replace the
+        # old names in the cards and in the Coach's description of the read.
+        energy = _tools()["read_nutrition"]["parameters"]["properties"]["energy"][
+            "description"
+        ]
+        for name in (
+            "Schritte & Treppen",
+            "Übriger Alltag",
+            "übriger Alltag",
+            "Offene Kalorien",
+        ):
+            with self.subTest(name=name):
+                self.assertIn(name, energy)
+        old = ("gelernter Alltag", "nicht erfasster Alltag", "Heute noch essen")
+        sources = [
+            ROOT / "backend/coach/tool_schemas.py",
+            *(ROOT / "public").glob("*.js"),
+            *(ROOT / "public").glob("*.css"),
+            ROOT / "public/index.html",
+        ]
+        for path in sources:
+            text = path.read_text(encoding="utf-8").lower()
+            for phrase in old:
+                with self.subTest(path=path.name, phrase=phrase):
+                    self.assertNotIn(phrase.lower(), text)
 
     def test_session_tools_name_the_total_time_as_a_strength_duration(self):
         # #2317: rest between sets is part of a strength session's work.
