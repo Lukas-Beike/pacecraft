@@ -142,6 +142,8 @@ test("@responsive the profile holds no weight or body fat and Körper still ente
   await form.locator("> details.profile-section").first().locator(":scope > summary").click();
   await expect(form.locator('[name="height_cm"]')).toBeVisible();
   await expect(form.locator('[name="weight_kg"], [name="body_fat_pct"]')).toHaveCount(0);
+  // Körper's weigh-in rule decides the current values, so no source choice is left (#3640).
+  await expect(form.locator('[name="preferred_source_body"]')).toHaveCount(0);
   await expect(page.locator("#retryBodyGarmin")).toHaveCount(0);
   await page.goto("/#nutrition/body");
   const overview = page.locator("#bodyAnalysisCharts [data-body-overview]");

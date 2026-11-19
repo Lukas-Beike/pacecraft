@@ -10,18 +10,11 @@ contract.
 """
 
 import unittest
-from datetime import UTC, date, datetime
+from datetime import date
 from typing import Any
 
 from performance_day_support import snapshot_metrics
 
-from backend.canonical.records import MetricValue, Observation, Provenance
-from backend.canonical.vocabulary import (
-    MetricKind,
-    ProviderId,
-    RecordingOrigin,
-    SourceKind,
-)
 from backend.sync.garmin_performance_history import current_garmin_metrics
 
 TODAY = date(2026, 5, 4)
@@ -95,167 +88,6 @@ def _garmin_weight(day: str, grams: int) -> dict[str, Any]:
             }
         ]
     }
-
-
-def _garmin_body(kind: MetricKind, value: float, day: str) -> Observation:
-    """A Garmin device measurement as the canonical Garmin read returns it."""
-    return Observation(
-        kind=kind,
-        value=MetricValue(value, kind.unit),
-        observed_on=date.fromisoformat(day),
-        observed_at=None,
-        provenance=Provenance(
-            provider=ProviderId.GARMIN,
-            source_kind=SourceKind.DEVICE_MEASURED,
-            source_record_id=f"weight[0]:{day}",
-            recorded_by=RecordingOrigin.GARMIN,
-            retrieved_at=datetime(2026, 5, 4, 8, 0, tzinfo=UTC),
-            label=None,
-        ),
-    )
-
-
-class BodyRecencyTests(unittest.TestCase):
-    """Weight and body fat take the most recent Garmin, profile or Wahoo value."""
-
-    def _body(self, garmin_body: tuple[Observation, ...]) -> dict[str, Any]:
-        snapshot = _snapshot(
-            wellness=[_wellness("2026-05-03", weight=70.0, bodyFat=15.0)]
-        )
-        return snapshot_metrics(snapshot, {}, _garmin(), garmin_body=garmin_body)
-
-    def test_a_newer_intervals_measurement_does_not_beat_an_older_garmin_one(
-        self,
-    ) -> None:
-        result = self._body((_garmin_body(MetricKind.WEIGHT, 72.0, "2026-04-30"),))
-
-        weight = result["weight_kg"]
-        self.assertEqual((weight["value"], weight["source_provider"]), (72, "garmin"))
-        self.assertNotIn("alternatives", weight)
-
-    def test_a_garmin_device_measurement_wins_within_one_day(self) -> None:
-        result = self._body(
-            (
-                _garmin_body(MetricKind.WEIGHT, 70.5, "2026-05-02"),
-                _garmin_body(MetricKind.BODY_FAT, 16.0, "2026-05-03"),
-            )
-        )
-
-        self.assertEqual(result["weight_kg"]["value"], 70.5)
-        self.assertEqual(result["weight_kg"]["source_provider"], "garmin")
-        self.assertNotIn("alternatives", result["weight_kg"])
-        self.assertEqual(result["body_fat_pct"]["value"], 16)
-        self.assertEqual(result["body_fat_pct"]["source_provider"], "garmin")
-        self.assertNotIn("alternatives", result["body_fat_pct"])
-
-    def test_the_intervals_rows_alone_give_neither_weight_nor_body_fat(self) -> None:
-        result = self._body(())
-
-        self.assertEqual(_pair(result["weight_kg"]), (None, None))
-        self.assertEqual(_pair(result["body_fat_pct"]), (None, None))
-
-
-class CurrentWeightChainTests(unittest.TestCase):
-    def test_garmin_weight_wins_and_the_profile_and_intervals_are_no_source(
-        self,
-    ) -> None:
-        # #3640: the profile's stored weight is not even an alternative.
-        garmin = _garmin({"weight": _garmin_weight("2026-05-03", 72800)})
-        result = _current(
-            _snapshot(
-                athlete={"weight": 80},
-                wellness=[_wellness("2026-05-03", weight=79)],
-            ),
-            {"weight_kg": 81},
-            garmin,
-        )
-        self.assertEqual(dict(result["weight_kg"]), garmin["weight_kg"])
-        self.assertEqual(_pair(result["weight_kg"]), (72.8, GARMIN))
-        self.assertEqual(result["weight_kg"]["unit"], "kg")
-        self.assertNotIn("alternatives", result["weight_kg"])
-
-    def test_garmin_latest_dated_weight_is_used_regardless_of_list_order(
-        self,
-    ) -> None:
-        garmin = _garmin(
-            {
-                "weight": {
-                    "dailyWeightSummaries": [
-                        {
-                            "summaryDate": "2026-05-01",
-                            "latestWeight": {"weight": 73000},
-                        },
-                        {
-                            "summaryDate": "2026-05-03",
-                            "latestWeight": {"weight": 71000},
-                        },
-                    ]
-                }
-            }
-        )
-        result = _current(garmin=garmin)
-        self.assertEqual(_pair(result["weight_kg"]), (71.0, GARMIN))
-
-    def test_old_garmin_weight_still_wins_over_newer_wellness(self) -> None:
-        # Quirk: Garmin weight is not compared by date with Intervals wellness,
-        # so a 2026-04-01 Garmin weight beats the 2026-05-03 wellness weight; the
-        # wellness weight is no source at all.
-        garmin = _garmin({"weight": _garmin_weight("2026-04-01", 71500)})
-        result = _current(
-            _snapshot(wellness=[_wellness("2026-05-03", weight=78)]),
-            garmin=garmin,
-        )
-        self.assertEqual(_pair(result["weight_kg"]), (71.5, GARMIN))
-        self.assertNotIn("alternatives", result["weight_kg"])
-
-    def test_without_a_body_record_the_profile_weight_is_no_value(self) -> None:
-        # #3640: Körper owns the weight; the stored profile value never counts.
-        cases = (
-            (
-                "wellness",
-                _snapshot(
-                    athlete={"weight": 80},
-                    wellness=[_wellness("2026-05-03", weight=78)],
-                ),
-            ),
-            ("athlete", _snapshot(athlete={"weight": 80})),
-            ("profile", _snapshot()),
-        )
-        for name, snapshot in cases:
-            with self.subTest(source=name):
-                result = _current(snapshot, {"weight_kg": 81})
-                self.assertEqual(_pair(result["weight_kg"]), (None, None))
-                self.assertNotIn("alternatives", result["weight_kg"])
-
-    def test_weight_is_empty_without_any_source(self) -> None:
-        result = _current()
-        self.assertEqual(_pair(result["weight_kg"]), (None, None))
-        self.assertEqual(result["weight_kg"]["unit"], "kg")
-
-    def test_intervals_weight_alone_is_empty_in_every_form(self) -> None:
-        for name, snapshot in (
-            (
-                "comma decimal",
-                _snapshot(
-                    athlete={"weight": 79},
-                    wellness=[_wellness("2026-05-03", weight="78,5")],
-                ),
-            ),
-            (
-                "latest row of several",
-                _snapshot(
-                    wellness=[
-                        _wellness("2026-05-01", weight=80),
-                        _wellness("2026-05-03", weight=78),
-                        _wellness("2026-05-02", weight=79),
-                    ]
-                ),
-            ),
-            ("unpadded id", _snapshot(wellness=[_wellness("2026-5-9", weight=77)])),
-            ("zero", _snapshot(wellness=[_wellness("2026-05-03", weight=0)])),
-        ):
-            with self.subTest(name):
-                self.assertEqual(_pair(_current(snapshot)["weight_kg"]), (None, None))
 
 
 class CurrentBodyMetricTests(unittest.TestCase):

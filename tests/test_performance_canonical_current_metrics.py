@@ -19,6 +19,7 @@ from canonical_consumer_cases import CASES, RETRIEVED_AT, TODAY, Case, _observat
 from canonical_read_support import CanonicalReadFixture, make_selector, populate
 from performance_day_support import snapshot_metrics
 
+from backend.athlete.body_records import read_current_body
 from backend.athlete.skinfolds import local_provenance
 from backend.canonical.records import MetricValue, Observation, Provenance
 from backend.canonical.vocabulary import (
@@ -190,9 +191,7 @@ class IntervalsValuesAreNotCurrentTests(unittest.TestCase):
             names,
             {
                 "wahoo_ftp",
-                "wahoo_weight",
-                "entered_weights",
-                "entered_body_fats",
+                "body",
                 "zone_thresholds",
                 "threshold_candidates",
                 "configured_thresholds",
@@ -259,16 +258,15 @@ def _wahoo_weight(value: float) -> Observation:
 
 
 class WahooFallbackReadTests(unittest.TestCase):
-    def test_stored_wahoo_ftp_and_weight_are_the_only_current_inputs(self) -> None:
+    def test_the_stored_wahoo_ftp_is_read_and_its_weight_never_counts(self) -> None:
+        # #3640: Wahoo's stored profile weight is no weigh-in (#3557).
         reader = ObservationStub((_wahoo_ftp(250), _wahoo_weight(78.5)))
 
-        inputs = read_current_inputs(reader, None, as_of=TODAY)
+        inputs = read_current_inputs(reader, None, as_of=TODAY, body=_body)
 
-        assert inputs is not None
         assert inputs.wahoo_ftp is not None
-        assert inputs.wahoo_weight is not None
         self.assertEqual(250, inputs.wahoo_ftp.value.value)
-        self.assertEqual(78.5, inputs.wahoo_weight.value.value)
+        self.assertIsNone(inputs.body.weight_kg)
 
     def test_only_a_wahoo_ride_ftp_is_read(self) -> None:
         wahoo_ftp = _wahoo_ftp(300)
@@ -326,7 +324,7 @@ class _UnitOfWorkManager:
 
 
 class WahooAgeLimitProductionReadTests(unittest.TestCase):
-    """A Wahoo FTP or weight older than its limit is not current on the read day.
+    """A Wahoo FTP older than its limit is not current on the read day.
 
     The stored rows stay readable: history keeps them, and a read on a day within
     the limit still uses them.
@@ -364,9 +362,7 @@ class WahooAgeLimitProductionReadTests(unittest.TestCase):
         assert inputs is not None
         assert inputs.current is not None
         assert inputs.current.wahoo_ftp is not None
-        assert inputs.current.wahoo_weight is not None
         self.assertEqual(250, inputs.current.wahoo_ftp.value.value)
-        self.assertEqual(78.5, inputs.current.wahoo_weight.value.value)
 
     def test_the_stale_value_stays_stored_and_is_read_within_the_limit(self) -> None:
         stale = AS_OF - timedelta(days=WAHOO_AGE_LIMIT_DAYS + 1)
@@ -441,88 +437,56 @@ def _weight(
     )
 
 
-class EnteredWeightTests(unittest.TestCase):
-    """The athlete's own weigh-in (#3252): it wins its day, else the newest wins."""
+def _body(reader: ObservationReader, db: Any, day: date) -> Any:
+    return read_current_body(reader, db, day, lambda _db, _until: ())
+
+
+class CurrentBodyReadTests(unittest.TestCase):
+    """Körper's current weight and body fat (#3640) through the current inputs."""
 
     def current(
         self, *observations: Observation, metric: str = "weight_kg"
     ) -> dict[str, Any]:
-        inputs = read_current_inputs(ObservationStub(observations), None, as_of=AS_OF)
-        garmin = tuple(
-            item for item in observations if item.provenance.provider is not None
+        inputs = read_current_inputs(
+            ObservationStub(observations), None, as_of=AS_OF, body=_body
         )
-        return _performance_body_metrics(
-            {"weight_kg": 70.0, "body_fat_pct": 20.0}, {}, inputs, garmin, AS_OF
-        )[metric]
+        return _performance_body_metrics({"weight_kg": 70.0}, inputs.body)[metric]
 
     def test_an_entered_body_fat_wins_its_day_and_is_labelled_lokal(self) -> None:
-        # #3402: a body fat the athlete entered follows the weight's rule.
         fat = MetricKind.BODY_FAT
         body_fat = self.current(
             _weight(18.0, AS_OF, ProviderId.GARMIN, fat),
             _weight(14.3, AS_OF, None, fat),
             metric="body_fat_pct",
         )
-        self.assertEqual((14.3, "Lokal"), (body_fat["value"], body_fat["source"]))
-        # #3464: Garmin's value of the entry's own day is no second value.
+        self.assertEqual(
+            (14.3, "Lokal", AS_OF.isoformat()),
+            (body_fat["value"], body_fat["source"], body_fat["date"]),
+        )
         self.assertNotIn("alternatives", body_fat)
 
-    def test_a_newer_entered_weight_wins_and_is_labelled_lokal(self) -> None:
+    def test_the_entry_wins_its_day_and_the_weight_reads_aktuell(self) -> None:
+        # The weigh-in rule (#3557): Garmin's value of the entry's day is a copy.
         weight = self.current(
-            _weight(74.0, AS_OF - timedelta(days=10), ProviderId.GARMIN),
-            _weight(72.5, AS_OF - timedelta(days=1), None),
+            _weight(74.0, AS_OF, ProviderId.GARMIN), _weight(72.5, AS_OF, None)
         )
         self.assertEqual(
-            (72.5, "Lokal", None),
+            (72.5, "aktuell", None),
             (weight["value"], weight["source"], weight["source_provider"]),
         )
-        self.assertEqual(
-            ["Garmin Connect"], [item["source"] for item in weight["alternatives"]]
-        )
-
-    def test_the_entry_wins_over_a_scale_reading_of_its_day(self) -> None:
-        # Athlete decision 2026-11-16: the value the athlete set for a day stands.
-        # #3464: Garmin's value of the entry's own day is no second value; one of
-        # the day before stays an alternative.
-        for garmin_day, alternatives in (
-            (AS_OF, []),
-            (AS_OF - timedelta(days=1), [74.0]),
-        ):
-            with self.subTest(garmin_day=garmin_day):
-                weight = self.current(
-                    _weight(74.0, garmin_day, ProviderId.GARMIN),
-                    _weight(72.5, AS_OF, None),
-                )
-                self.assertEqual((72.5, "Lokal"), (weight["value"], weight["source"]))
-                self.assertEqual(
-                    alternatives,
-                    [item["value"] for item in weight.get("alternatives", [])],
-                )
-
-    def test_a_scale_reading_of_the_next_day_is_the_newest(self) -> None:
-        weight = self.current(
-            _weight(72.5, AS_OF - timedelta(days=1), None),
-            _weight(74.0, AS_OF, ProviderId.GARMIN),
-        )
-        self.assertEqual(74.0, weight["value"])
-        self.assertEqual(
-            [(72.5, "Lokal", None)],
-            [
-                (item["value"], item["source"], item["source_provider"])
-                for item in weight["alternatives"]
-            ],
-        )
+        self.assertNotIn("alternatives", weight)
 
     def test_an_entry_after_as_of_is_not_read(self) -> None:
         weight = self.current(_weight(72.5, AS_OF + timedelta(days=1), None))
         # Nothing is left: the profile's stored weight is no source (#3640).
         self.assertEqual((None, None), (weight["value"], weight["source"]))
 
-    def test_the_coach_reads_the_entered_weight_as_lokal(self) -> None:
+    def test_the_coach_reads_the_current_weight(self) -> None:
         current = read_current_inputs(
             ObservationStub((_weight(72.5, AS_OF - timedelta(days=1), None),)),
             None,
             as_of=AS_OF,
+            body=_body,
         )
         performance = coach_performance_projection(
             current_performance_context(
@@ -533,4 +497,6 @@ class EnteredWeightTests(unittest.TestCase):
             )
         )
         weight = performance["metrics"]["weight_kg"]
-        self.assertEqual((72.5, "Lokal"), (weight["value"], weight["source"]))
+        self.assertEqual((72.5, "aktuell"), (weight["value"], weight["source"]))
+        # The Coach's threshold weight is the same value.
+        self.assertEqual(72.5, performance["thresholds"]["weight"])

@@ -157,6 +157,7 @@ regression; precedence own sessions > zone 2 top > fixed share; labelled by orig
 | `VO2MAX_UNIT` | `'ml/kg/min'` | `backend/performance/current_metrics.py` |  |
 | `LOCAL_SOURCE_LABEL` | `'Lokal'` | `backend/performance/current_metrics.py` | The label of a locally confirmed zone configuration's value. |
 | `PROFILE_SOURCE_LABEL` | `'Manuell'` | `backend/performance/current_metrics.py` | The label of a profile value. |
+| `CURRENT_WEIGHT_LABEL` | `'aktuell'` | `backend/performance/current_metrics.py` | The weight is the weigh-in line's value, not one weigh-in (#3551, #3640). |
 | `LT1_HR_SHARE` | `0.85` | `backend/performance/current_metrics.py` | LT1 as a fixed share of LT2 when no measured or adopted value and no zone 2 of that kind exists (athlete decisions 2026-11-12, #2427): heart rate of the threshold HR, cycling power of the FTP and running speed of the threshold speed. Change them here only. |
 | `LT1_POWER_SHARE` | `0.75` | `backend/performance/current_metrics.py` |  |
 | `LT1_RUN_SPEED_SHARE` | `0.88` | `backend/performance/current_metrics.py` |  |

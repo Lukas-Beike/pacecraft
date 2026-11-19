@@ -30,8 +30,8 @@ Implemented in `backend/performance/source_policy.py` (`CURRENT_RULES`, `DAILY_R
 
 | Kind | Order (best first) | Bounds | Age limit |
 |---|---|---|---|
-| `weight` | Garmin, Wahoo; the athlete's newest entered weight (dated) between them, never the athlete profile's stored weight (#3640) (`RECENCY_ORDERS`: newest dated value wins, within `RECENCY_TIE_DAYS` = 1 day a device measurement beats a provider report beats an athlete entry, except that an entry on the newest day wins) | none (validation range 20 to 400 kg) | Wahoo 90 days |
-| `body_fat` | Garmin, local profile (same recency rule) | | |
+| `weight` | Körper's weigh-ins (#3640, `backend/athlete/body_records.py`): per day an entry or a profile value of the change history wins, Garmin's copy fills only a day without one, Wahoo's stored profile weight never counts (#3557); the current value is the weigh-in line of the last 28 days on the read day (#3551), labelled "aktuell" | none (validation range 20 to 400 kg) | 90 days |
+| `body_fat` | Körper (#3640): the newest skinfold, else an entered value, else Garmin's, each within 90 days (`body_fat_on`) | | 90 days |
 | `resting_hr` | Garmin | 30 to 230 bpm | |
 | `hrv_rmssd` | Garmin | 1 to 300 ms | |
 | `hrv_weekly_average` | Garmin (labelled fallback for RMSSD only) | 1 to 300 ms | |
@@ -47,7 +47,7 @@ Implemented in `backend/performance/source_policy.py` (`CURRENT_RULES`, `DAILY_R
 Daily rules (`DAILY_RULES`) exist for `sleep_duration`, `sleep_score`, `hrv_rmssd`, `resting_hr` and `readiness` and reuse the order and bounds above.
 
 - **Local first.** For `ftp`, `threshold_hr`, `threshold_pace`, `max_hr` (`LOCAL_FIRST_KINDS`) the athlete's confirmed zone configuration in effect on the day precedes every provider (`local_thresholds` builds transient observations from `ZoneConfiguration`; they are not stored). `resolve_candidates` returns the winner, the other sources as alternatives and a conflict flag when an alternative differs by more than `CONFLICT_TOLERANCE` (3 % of the winner for the threshold kinds; `ABSOLUTE_CONFLICT_TOLERANCE`: 1.5 kg weight, 2.0 points body fat).
-- **Preferences.** The profile field `preferred_source_body` makes Garmin's weight and body fat win over a newer local or Wahoo measurement. It is the only group in `PREFERENCE_GROUPS` (#2084): the stored fields `preferred_source_thresholds`, `_hrv`, `_resting_hr` and `_sleep` are kept but read nowhere, because Garmin already leads those orders. Only providers listed in `PREFERENCE_GROUPS` count (Garmin); any other stored value is ignored.
+- **Preferences.** `PREFERENCE_GROUPS` holds no group. The stored profile fields `preferred_source_thresholds`, `_hrv`, `_resting_hr` and `_sleep` are kept but read nowhere, because Garmin already leads those orders (#2084). `preferred_source_body` is kept but read nowhere since #3640: Körper's weigh-in rule (`backend/athlete/body_records.py`) decides the current weight and body fat.
 - **Not covered here.** Profile and manual values and the activity-derived maximum heart rate stay with the caller.
 
 ## Subjective rating scales
@@ -2687,7 +2687,7 @@ Inputs: the athlete's save request (API/UI); no provider payload.
 | `observed_at`, `sport`, `method`, `aggregation`, `period` | none | |
 | `provenance` | `provider` none; `source_kind` = `athlete_entered`; `source_record_id` none; `recorded_by` = `manual`; `retrieved_at` none; `label` = "Lokal" (`local_provenance`) | Provider re-projection never retires these rows (it is scoped by provider). |
 
-Stored with `mapper_version` 1. `canonical_store.current_observation_rows` serves these rows for the metrics in `ENTERED_METRICS` (weight and body fat), so the canonical readers see them: the current weight and body fat take the newest one under `RECENCY_ORDERS`, where an entry on the newest day wins over a measurement of that or the previous day (athlete decision 2026-11-16), the body history puts them into the one series of their metric, where they win their day over Garmin's value (#3464), the energy weigh-ins and body fats take them over a provider value of the same day, and the formula rows take an entered body fat after the skinfolds and before a device or scale (#3402).
+Stored with `mapper_version` 1. `canonical_store.current_observation_rows` serves these rows for the metrics in `ENTERED_METRICS` (weight and body fat), so the canonical readers see them: the current weight and body fat take them under Körper's rules (`backend/athlete/body_records.py`, #3640), where an entry wins its day over a provider value, the body history puts them into the one series of their metric, where they win their day over Garmin's value (#3464), the energy weigh-ins and body fats take them over a provider value of the same day, and the formula rows take an entered body fat after the skinfolds and before a device or scale (#3402).
 
 ### `zone_settings.py`
 

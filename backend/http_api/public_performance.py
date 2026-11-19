@@ -92,6 +92,7 @@ class PublicPerformanceStateService:
                     as_of=today,
                     include_local_load=True,
                     preferences=source.preferences_in(db),
+                    body=source.current_body,
                 ),
             )
             return self._project(
