@@ -1144,6 +1144,12 @@ class SelectedDayTests(unittest.TestCase):
         self.assertTrue(all(totals[d] == latest_total for d in period[:14]))
         # Older days follow their own (lower) window.
         self.assertLess(cast(float, totals[period[-1]]), latest_total)
+        # The diary's own day row is the same value for an old and a recent
+        # day (Gitar on #3647).
+        for day in (period[-1], period[40], END):
+            with self.subTest(day=day):
+                view = energy_view(source, windows, {}, day=day)
+                self.assertEqual(totals[day], row(view, "own")["total_kcal"])
 
     def test_a_day_without_a_session_has_sport_zero_not_a_mean(self) -> None:
         rest_day = END - timedelta(days=1)

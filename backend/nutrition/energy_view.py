@@ -338,14 +338,34 @@ def own_day_totals(
     totals: dict[date, float | None] = {}
     for day in days:
         window = _holding(windows, day)
-        totals[day] = (
-            None
-            if window is None
-            else _own_day_row(
-                *resting[window.end], window, _day_window(inputs, window, day), []
-            )["total_kcal"]
-        )
+        if window is None:
+            totals[day] = None
+            continue
+        shown, implausible = resting[window.end]
+        day_window = _day_window(inputs, window, day)
+        row = _own_day_row(shown, implausible, window, day_window, [])
+        totals[day] = row["total_kcal"]
     return totals
+
+
+def _own_day(
+    windows: Sequence[EnergyWindow],
+    bodies: Sequence[Mapping[str, Any] | None],
+    health: Mapping[str, Mapping[str, Any]],
+    day: EnergyWindow,
+    pending: list[str],
+    reference: tuple[str, float, float | None] | None,
+) -> dict[str, Any]:
+    """The diary's own day row, its resting rate from the day's own window as
+    the period balance's (#3641), split at the day's resting reference."""
+    own = _holding(windows, day.end)
+    shown, implausible = (
+        (None, False)
+        if own is None
+        else _own_resting(own, bodies[windows.index(own)], health)
+    )
+    row = _own_day_row(shown, implausible, own or windows[-1], day, pending)
+    return _unmeasured(row, shown, reference)
 
 
 def _holding(windows: Sequence[EnergyWindow], day: date) -> EnergyWindow | None:
@@ -585,9 +605,12 @@ def energy_view(
         predictions["katch_mcardle"][-1], predictions[DEVICE][-1]
     )
     rows.append(
-        _unmeasured(
-            _own_day_row(shown, implausible, latest, day_window, pending[False]),
-            shown,
+        _own_day(
+            windows,
+            bodies,
+            health,
+            day_window,
+            pending[False],
             _resting_reference(
                 day_predictions["katch_mcardle"], day_predictions[DEVICE]
             ),
