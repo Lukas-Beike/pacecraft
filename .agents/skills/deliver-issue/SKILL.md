@@ -82,7 +82,9 @@ to the orchestrator, which asks it under its
 [athlete question rules](../pacecraft-orchestrator/SKILL.md#athlete-questions)
 and passes the answer back (#3376). Keep that item in the queue as parked and
 continue with the next independent one; with none left, report that the lane
-waits for the answer. Record the answer as an issue comment; no closing
+waits for the answer. A question that offers a default parks only its item:
+keep building every item that needs no decision, and end the run only when no
+ready work is left (#3669). Record the answer as an issue comment; no closing
 sentence while an item is parked.
 
 ## 1. Requirements brief
