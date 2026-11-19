@@ -6,11 +6,13 @@ function h(tag, props = null, ...children) {
   const entries = typeof props === "string" ? [["className", props || null]] : Object.entries(props || {});
   for (const [key, value] of entries) {
     if (value == null) continue;
-    if (key === "dataset") Object.assign(element.dataset, value);
+    // A style object sets each property, as dataset does: assigned whole, a browser would drop it
+    // (#3596); style text stays a plain assignment.
+    if (["dataset", "style"].includes(key) && typeof value === "object") Object.assign(element[key], value);
     else if (key.includes("-")) element.setAttribute(key, String(value));
     else element[key] = value;
   }
-  for (const child of children.flat()) if (child != null && child !== false && child !== "") element.append(typeof child === "object" ? child : String(child));
+  for (const child of children.flat()) if (![null, undefined, false, ""].includes(child)) element.append(typeof child === "object" ? child : String(child));
   return element;
 }
 
