@@ -52,7 +52,11 @@ model names do not authorize delegation or GitHub comments.
    - Functional bugs, including security/privacy and durable-data effects;
      follow changed values through reachable callers and consumers. For
      canonical reads and Coach context, apply REVIEW.md's "Canonical read-path
-     wiring" check, including files outside the diff.
+     wiring" check, including files outside the diff. For each changed API
+     field, constant or user-visible wording, search
+     `backend/coach/tool_schemas.py` and the API docs (`docs/api-routes.md`,
+     from the route handlers in `backend/http_api/`) for their description, and take valid
+     input values from the schema's enums, not from test fixtures (#3699).
    - Git blame/history where it explains an affected invariant or regression.
    - Relevant earlier PR discussions when available; prior comments are leads
      to verify in current code, not findings to copy unquestioningly.
