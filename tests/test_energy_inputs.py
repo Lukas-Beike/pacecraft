@@ -30,7 +30,7 @@ from backend.nutrition.energy_inputs import (
     energy_basis,
     read_energy_inputs,
 )
-from backend.nutrition.energy_view import read_energy_view
+from backend.nutrition.energy_view import read_energy_view, read_fit_inputs
 
 DAY1, DAY2, DAY3 = date(2026, 10, 1), date(2026, 10, 2), date(2026, 10, 3)
 DAY4 = date(2026, 10, 4)
@@ -925,6 +925,18 @@ class BodyFatFallbackTests(unittest.TestCase):
             view = read_energy_view(None, src, DAY3)
             self.assertIsNone(view["body"])
             self.assertEqual("skinfold_too_old", view["skinfold_missing"])
+
+    def test_kept_period_inputs_give_the_same_view(self) -> None:
+        # #3704: the wiring keeps Verlauf's long read until the rows change; a
+        # kept read yields the very view a fresh one does, for any diary day.
+        src = skinfold_sources([folds_on(DAY1)])
+        kept = read_fit_inputs(None, src, DAY3)
+        for day in (DAY3, DAY3 + timedelta(days=1), DAY1):
+            with self.subTest(day=day):
+                self.assertEqual(
+                    read_energy_view(None, src, DAY3, day),
+                    read_energy_view(None, src, DAY3, day, lambda: kept),
+                )
 
     def test_without_any_source_the_reason_stays(self) -> None:
         view = read_energy_view(None, skinfold_sources([]), DAY3)

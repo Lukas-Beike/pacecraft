@@ -218,8 +218,10 @@ estimate. It never rewrites logged values and never falls back to a formula.
     overlap like `k` and `b` (#3554). When every window in it is unstable,
     the base is flagged (`unstable`). A past day keeps the
     window holding it (#3641). The learned everyday term (step 9 of #3577)
-    weighs its windows by the same age weight. The deficit card keeps the
-    latest 28 days.
+    weighs its windows by the same age weight. The deficit card follows
+    Verlauf's period (28, 91 or 182 days, #3704): the same stored energy, band
+    and fat share over that period's weigh-ins; the 28 days are the latest
+    window, unchanged.
 
 ## Sources
 

@@ -150,7 +150,7 @@ class NutritionCompositionTests(unittest.TestCase):
         summary = self.service.sync_status.get_day_summary("2026-09-23")
         self.assertEqual(summary["total_sugar_g"], 0)
         self.assertEqual(summary["total_salt_g"], 0.5)
-        week = self.service.sync_status.get_week_summary(14)
+        week = self.service.sync_status.get_week_summary(28)
         self.assertEqual(week["averages"]["sugar_g"], {"value": 0, "days": 1})
         self.assertEqual(week["averages"]["salt_g"], {"value": 0.5, "days": 1})
 

@@ -41,7 +41,7 @@ Default route: `#coach`. Navigation items: `#coach`, `#plan`, `#nutrition`, `#an
 | `#nutrition/body` | `nutritionPanel` | `nutrition` | `/api/performance`, `/api/body/skinfolds`, `/api/body/energy` | Ernährung aktualisieren, Letzte 14 Tage, 12 Wochen, Gewicht eintragen, Körperfett eintragen, Prozent, Hautfalten, Speichern, Löschen, Abbrechen | loading, empty, error, offline |
 | `#nutrition/diary` | `nutritionPanel` | `nutrition` | `/api/nutrition/day`, `/api/body/energy` | Ernährung aktualisieren, Vorheriger Tag, Nächster Tag, Heute, Als geschätzt markieren, Nicht geschätzt, Löschen, Rückgängig, Erneut laden | loading, empty, error, offline |
 | `#nutrition/products` | `nutritionPanel` | `nutrition` | `/api/nutrition/products?scope=all`, `/api/nutrition/products/refresh-all` | Barcode scannen, Nährwerttabelle fotografieren, Produkt manuell erfassen, Suchen, Alle aktualisieren, Aufräumen | loading, empty, error, offline |
-| `#nutrition/week` | `nutritionPanel` | `nutrition` | `/api/nutrition/week` | Ernährung aktualisieren, Letzte 14 Tage, 12 Wochen, Tageswerte anzeigen | loading, empty, error, offline |
+| `#nutrition/week` | `nutritionPanel` | `nutrition` | `/api/nutrition/week` | Ernährung aktualisieren, 4 Wochen, 3 Monate, 6 Monate, Tageswerte anzeigen | loading, empty, error, offline |
 | `#plan` | `workoutsPanel` | `plan` | `/api/plan`, `/api/library?limit=100`, `/api/activities?limit=100`, `/api/analysis/week-review` | Kalender aktualisieren, Woche, Monat, Woche synchronisieren, Verschieben, Feedback, Mit dem Coach analysieren, Mit Coach lösen | loading, empty, error, notConfigured, offline |
 | `#plan/library` | `workoutsPanel` | `plan` | `/api/plan`, `/api/library?limit=100` | Kalender aktualisieren, Weitere Bibliothekseinheiten laden, Erneut senden | loading, empty, error, offline |
 | `#plan/overview` | `workoutsPanel` | `plan` | `/api/plan`, `/api/library?limit=100`, `/api/activities?limit=100`, `/api/analysis/week-review` | Kalender aktualisieren, Woche, Monat, Woche synchronisieren, Verschieben, Feedback, Mit dem Coach analysieren, Mit Coach lösen | loading, empty, error, notConfigured, offline |
@@ -103,7 +103,8 @@ expression. Other inline status lines are not listed.
 | Function | Helper | Text | Detail |
 | --- | --- | --- | --- |
 | `nutritionTotalTile` | `markValueMissing` | nicht erfasst |  |
-| `renderNutritionWeek` | `markValueMissing` | nicht erfasst |  |
+| `nutritionStatTile` | `markValueMissing` | nicht erfasst |  |
+| `nutritionBalanceCard` | `markValueMissing` | nicht erfasst |  |
 
 ### `public/performance-view.js`
 

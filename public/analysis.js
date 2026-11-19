@@ -628,10 +628,10 @@ function analysisChartGroup(title, charts, series, note) {
   return group;
 }
 
-function analysisPeriodControls(label, value, change) {
+function analysisPeriodControls(label, value, change, periods = [["fortnight", "Letzte 14 Tage"], ["twelveWeeks", "12 Wochen"]]) {
   const controls = h("div", { className: "analysis-period-controls", "aria-label": label });
   controls.setAttribute("role", "group");
-  for (const [period, text] of [["fortnight", "Letzte 14 Tage"], ["twelveWeeks", "12 Wochen"]]) {
+  for (const [period, text] of periods) {
     const button = h("button", { className: "secondary-button", type: "button", "aria-pressed": String(period === value) }, text);
     button.addEventListener("click", () => change(period)); controls.append(button);
   }
@@ -1758,15 +1758,19 @@ function energyBiasText(flagged) {
   return `Geschätzte Mahlzeiten wirken im Mittel ${formatWhole(Math.abs(flagged.bias_pct))} % ${direction} als erfasst (± ${formatWhole(flagged.bias_band_pct)} %)`;
 }
 
-const ENERGY_DAY_NOTE = "Der Verbrauch ist der gewählte Tag, heute bis jetzt, der Quelle, die dein Gewicht am besten trifft (Vergleich im Verlauf); Sport 0 ohne Einheit, Verdauung nur mit erfassten Mahlzeiten; Offene Kalorien zieht das Gegessene vom Tag gesamt ab, das Defizit der letzten 28 Tage steht im Verlauf";
+const ENERGY_DAY_NOTE = "Der Verbrauch ist der gewählte Tag, heute bis jetzt, der Quelle, die dein Gewicht am besten trifft (Vergleich im Verlauf); Sport 0 ohne Einheit, Verdauung nur mit erfassten Mahlzeiten; Offene Kalorien zieht das Gegessene vom Tag gesamt ab, das Defizit des gewählten Zeitraums steht im Verlauf";
 
-function energyInfo(read) {
-  const text = [ENERGY_DAY_NOTE, energyBasisText(read), energyNeatInputs(read.basis?.neat), energyBiasText(read.flagged)].filter(Boolean).join(" · ");
-  // The same small info icon as the chart groups (Analyse › Laufen › Entwicklung, #3336).
-  const button = h("button", { type: "button", className: "analysis-legend-info analysis-info-icon", "aria-label": "Energieverbrauch: Informationen" }, "i");
+// The same small info icon as the chart groups (Analyse › Laufen › Entwicklung, #3336).
+function energyInfoButton(label, text) {
+  const button = h("button", { type: "button", className: "analysis-legend-info analysis-info-icon", "aria-label": label }, "i");
   const info = h("div", { className: "analysis-info-tooltip", id: `energy-info-${++energyInfoId}` }, text);
   bindAnalysisPopover(button, info);
   return [button, info];
+}
+
+function energyInfo(read) {
+  const text = [ENERGY_DAY_NOTE, energyBasisText(read), energyNeatInputs(read.basis?.neat), energyBiasText(read.flagged)].filter(Boolean).join(" · ");
+  return energyInfoButton("Energieverbrauch: Informationen", text);
 }
 
 // Split A (athlete decision 2026-11-16): one stacked bar for the outlined source, a row per part.
@@ -1923,9 +1927,35 @@ function energyFatShareRule(share) {
   return share.measured_pct > 0 ? `${prior}, zu ${share.measured_pct} % gemessen` : prior;
 }
 
-// "Dein Defizit, letzte 28 Tage" (#3548) replaces Verlauf's 28-day own row: the energy per day
-// from the body stores as the hero, the goal marker, the boxes weight and body fat → fat → kcal per
-// day, and a short text (the athlete asked for it), with the flagged-meal rows under it.
+// Verlauf's three periods (athlete decision, #3704): the key of the energy read's fit_scale, the
+// days of the week read, and the label of the button and of every card's title row.
+const VERLAUF_PERIODS = [
+  { key: "28d", days: 28, label: "4 Wochen", span: "den letzten 4 Wochen" },
+  { key: "91d", days: 91, label: "3 Monate", span: "den letzten 3 Monaten" },
+  { key: "182d", days: 182, label: "6 Monate", span: "den letzten 6 Monaten" },
+];
+
+function verlaufPeriod(key = nutritionHistoryPeriod) {
+  return VERLAUF_PERIODS.find((item) => item.key === key) || VERLAUF_PERIODS[0];
+}
+
+// The one title row of every Verlauf card: the title (and its "i") left, the period small and muted right.
+function verlaufHead(title, period, info = []) {
+  return h("div", "verlauf-head", h("h3", null, title), ...info, h("span", "verlauf-period", period));
+}
+
+// The distance of a balance per day to the energy goal, as the deficit card's (#3606): within 150 kcal
+// "near", within 350 "mid", else "far"; null without a goal or a balance.
+function verlaufGoalDistance(balance, goal) {
+  if (!goal || balance == null) return null;
+  const gap = (goal.goal === "build" ? balance : -balance) - goal.goal_kcal;
+  if (Math.abs(gap) <= 150) return "near";
+  return Math.abs(gap) <= 350 ? "mid" : "far";
+}
+
+// "Dein Defizit" (#3548) replaces Verlauf's 28-day own row, now for the selected period (#3704): the
+// energy per day from the body stores as the hero, the goal marker, the boxes weight and body fat →
+// fat → kcal per day, and a short text (the athlete asked for it); the flagged-meal rows are in its "i".
 const DEFICIT_UNCERTAINTY = { fat_share: "Fettanteil (Faustregel und Messungen)", weight_scatter: "Schwankungen der Wiegungen", unstable: "Wasser im Gewicht, die Wochen widersprechen sich" };
 const DEFICIT_GOAL_STATUS = { in: "✓ im Ziel", under: "unter Ziel", over: "über Ziel" };
 
@@ -1974,23 +2004,31 @@ function deficitDay(iso) {
   return iso ? `${iso.slice(8, 10)}.${iso.slice(5, 7)}.` : "";
 }
 
-// The body fat readings span the phase that sets the fat share, not the 28 days (#3598): the box
-// names their own days. The weight's end is the trend line's; it says "aktuell" when it differs
-// from the chart's last weigh-in at the shown precision.
+// "22.10. → 18.11." for a box's span, or null without both days.
+function deficitSpanDays(start, end) {
+  return start && end ? `${deficitDay(start)} → ${deficitDay(end)}` : null;
+}
+
+// The Körperfett box, built like the Gewicht box (athlete decision, #3704): the change, from → to,
+// and the readings' own days, which span the phase that sets the fat share, not the period (#3598).
+function deficitFatBox(card) {
+  if (card.fat_pct_start == null) {
+    return ["–", card.fat_pct_end == null ? "keine Messung" : "nur eine Messung", card.fat_date_end ? `vom ${deficitDay(card.fat_date_end)}` : null];
+  }
+  const change = Math.round((card.fat_pct_end - card.fat_pct_start) * 10) / 10;
+  return [`${deficitSigned(change)} %-Pkt.`, `${deficitDecimal(card.fat_pct_start)} → ${deficitDecimal(card.fat_pct_end)} %`, deficitSpanDays(card.fat_date_start, card.fat_date_end)];
+}
+
+// The weight's end is the trend line's; it says "aktuell" when it differs from the chart's last
+// weigh-in at the shown precision.
 function deficitBoxes(card) {
   // The fitted change, which the fat and kcal boxes take too, not the rounded ends' (#3618).
   const change = card.weight_change_kg;
-  let fat = card.fat_pct_end == null ? "keine Messung" : "nur eine Messung";
-  let fatDays = card.fat_date_end ? `vom ${deficitDay(card.fat_date_end)}` : null;
-  if (card.fat_pct_start != null) {
-    fat = `${deficitDecimal(card.fat_pct_start)} → ${deficitDecimal(card.fat_pct_end)} %`;
-    fatDays = card.fat_date_start ? `${deficitDay(card.fat_date_start)} → ${deficitDay(card.fat_date_end)}` : null;
-  }
   const current = card.weight_last_kg != null && deficitDecimal(card.weight_last_kg) !== deficitDecimal(card.weight_end_kg) ? " (aktuell)" : "";
-  const box = (kind, title, value, note) => h("li", { dataset: { deficitBox: kind } }, h("small", null, title), h("strong", null, value), note && h("small", null, note));
+  const box = (kind, title, value, ...notes) => h("li", { dataset: { deficitBox: kind } }, h("small", null, title), h("strong", null, value), ...notes.filter(Boolean).map((note) => h("small", null, note)));
   return h("ol", "energy-deficit-flow",
-    box("weight", "Gewicht", `${deficitSigned(change)} kg`, `${deficitDecimal(card.weight_start_kg)} → ${deficitDecimal(card.weight_end_kg)}${current}`),
-    box("body_fat", "Körperfett", fat, fatDays),
+    box("weight", "Gewicht", `${deficitSigned(change)} kg`, `${deficitDecimal(card.weight_start_kg)} → ${deficitDecimal(card.weight_end_kg)} kg${current}`, deficitSpanDays(card.weight_date_start, card.weight_date_end)),
+    box("body_fat", "Körperfett", ...deficitFatBox(card)),
     box("fat", "davon Fett", `≈ ${deficitDecimal(Math.abs(card.fat_change_kg))} kg`, card.fat_share ? `≈ ${card.fat_share.share_pct} % · ${energyFatShareRule(card.fat_share)}` : null),
     box("kcal", "pro Tag", `≈ ${formatWhole(Math.abs(card.deficit_kcal))} kcal`, `${formatWhole(Math.abs(card.stored_kcal))} kcal ÷ ${card.span_days} Tage`));
 }
@@ -2029,43 +2067,49 @@ function deficitIntake(estimate) {
   return `Geschätzte Aufnahme aus Gewicht und Aktivität: ≈ ${formatWhole(estimate.kcal)} kcal am Tag (${formatWhole(low)}–${formatWhole(high)})${since}.`;
 }
 
-function energyDeficitCard(read) {
-  const card = read?.deficit;
+// The card of Verlauf's selected period (#3704); the flagged-meal rows of the latest 28 days sit
+// behind its "i".
+function energyDeficitCard(read, key) {
+  const card = read?.fit_scale?.[key]?.deficit;
   if (!card) return null;
   const surplus = card.deficit_kcal < 0;
   const deviceLabel = read.rows?.find((row) => row.source === "device")?.label;
-  const flagged = energyFlaggedRows(read.flagged);
+  const flagged = energyFlaggedText(read.flagged);
   const [spent, unsure] = deficitText(card, deviceLabel);
   const intake = deficitIntake(read.estimated_intake);
   // The goal's distance class colours the number and the mark (#3606); without a goal they keep theirs.
   const dataset = { energy: "", energyDeficit: card.method, ...(card.goal ? { goalDistance: card.goal.distance } : {}) };
   return h("section", { className: "analysis-chart-card", dataset },
-    h("h3", null, `Dein ${surplus ? "Überschuss" : "Defizit"}, letzte ${card.days} Tage`),
+    verlaufHead("Defizit aus Gewicht und Körperfett", verlaufPeriod(key).label, flagged ? energyInfoButton("Verbrauch: Informationen", flagged) : []),
     h("p", "energy-deficit-hero", h("strong", null, `≈ ${formatWhole(Math.abs(card.deficit_kcal))} kcal`),
       h("small", null, surplus ? "pro Tag in die Speicher" : "pro Tag aus den Reserven"),
       deficitSpan(card)),
     ...deficitGoalBar(card), deficitBoxes(card),
     h("p", { className: "energy-deficit-text" }, spent),
     intake ? h("p", { className: "energy-deficit-text", dataset: { estimatedIntake: read.estimated_intake.missing || "" } }, intake) : null,
-    h("small", "energy-deficit-uncertainty", unsure),
-    flagged.length ? h("table", { className: "current-performance-table" }, h("caption", null, "Verbrauch, Ø 28 Tage"), h("tbody", null, flagged)) : null);
+    h("small", "energy-deficit-uncertainty", unsure));
+}
+
+// "2.700 (2.500–2.900) kcal" for the text of an "i".
+function energyKcalText(total) {
+  const [low, high] = energyKcalRange(total.total_kcal, total.total_band_kcal ?? 0);
+  return total.total_band_kcal == null ? `${formatWhole(total.total_kcal)} kcal` : `${formatWhole(total.total_kcal)} kcal (${low}–${high})`;
 }
 
 // With meals flagged as estimated, the own total without them (only clean windows, #3187 item 14)
-// and with the learned correction sit under the 28-day "Aus deinen Daten" (athlete decision on #3100).
-function energyFlaggedRows(flagged) {
-  if ((flagged?.days ?? 0) <= 0) return [];
-  const row = (kind, label, value) => h("tr", { className: "energy-flag-row", dataset: { energyFlag: kind } }, h("th", { scope: "row" }, label), h("td", null, "–"), h("td", null, value));
+// and with the learned correction of the latest 28 days (athlete decision on #3100) sit behind the
+// deficit card's "i" (#3704); "" without such meals.
+function energyFlaggedText(flagged) {
+  if ((flagged?.days ?? 0) <= 0) return "";
   const unflagged = flagged.unflagged;
   // The clean window is an older one than the 28 days beside it, so it names its last day (#3618).
   const label = unflagged?.end ? `ohne geschätzte Tage (bis ${deficitDay(unflagged.end)})` : "ohne geschätzte Tage";
-  const rows = [row("unflagged", label, unflagged ? energyKcal(unflagged.total_kcal, unflagged.total_band_kcal) : "kein sauberer Zeitraum")];
   // Until the bias is narrow enough and seen in independent windows it is not learned (#3616).
   // A learned bias without the latest window's total (too few logged days) shows "–" (Gitar on #3634).
   let corrected = flagged.bias_pct == null ? "noch nicht gelernt" : "–";
-  if (flagged.corrected) corrected = energyKcal(flagged.corrected.total_kcal, flagged.corrected.total_band_kcal);
-  rows.push(row("corrected", "mit gelernter Korrektur", corrected));
-  return rows;
+  if (flagged.corrected) corrected = energyKcalText(flagged.corrected);
+  const clean = unflagged ? energyKcalText(unflagged) : "kein sauberer Zeitraum";
+  return `Verbrauch, Ø 28 Tage, ${label}: ${clean} · mit gelernter Korrektur: ${corrected}`;
 }
 
 // The read's loading or failure card, or null once it is there; the first call starts the read.
@@ -2093,7 +2137,6 @@ function energyDiaryCards() {
 // "Welche Quelle trifft dein Gewicht?" (A2, athlete decision on #3397): one kcal/day scale for
 // Verlauf's period; the own estimate as a mark with its green band, each source as a dot labelled
 // with its value and signed distance, nearest first, under a verdict and one note line.
-const FIT_PERIOD_NAMES = { "14d": "letzte 14 Tage", "12w": "letzte 12 Wochen" };
 const FIT_SOURCE_NAMES = { katch_mcardle: "Katch-McArdle", cunningham: "Cunningham" };
 const FIT_COLORS = { katch_mcardle: 1, cunningham: 2, device: 3 };
 
@@ -2117,9 +2160,8 @@ function energyFitSigned(diff) {
 // The weigh-ins' span the sources average over (#3613), else the period the own value covers.
 function energyFitSpan(scale) {
   if (scale.span_start && scale.span_end) return `Vom ${deficitDay(scale.span_start)} bis ${deficitDay(scale.span_end)}`;
-  if (scale.own_days >= 84) return "Über 12 Wochen";
-  if (scale.own_days === 14) return "In den letzten 14 Tagen";
-  return `In den letzten ${scale.own_days / 7} Wochen`;
+  const period = VERLAUF_PERIODS.find((item) => item.days === scale.own_days);
+  return `In ${period?.span ?? "den letzten " + scale.own_days + " Tagen"}`;
 }
 
 // The verdict names the own value and the server's one outlined source with its distance in this
@@ -2142,7 +2184,8 @@ function energyFitDomain(scale, sources) {
   if (scale.own_kcal != null) values.push(scale.own_kcal - (scale.own_band_kcal || 0), scale.own_kcal + (scale.own_band_kcal || 0));
   const low = Math.floor(Math.min(...values) / 500) * 500;
   const high = Math.max(low + 500, Math.ceil(Math.max(...values) / 500) * 500);
-  const step = (high - low) / 500 > 6 ? 1000 : 500;
+  // The lane shares the row with the name and the value, so a tick every 1,000 keeps them apart.
+  const step = (high - low) / 500 > 3 ? 1000 : 500;
   return { low, high, step, at: (value) => ((value - low) / (high - low)) * 100 };
 }
 
@@ -2151,14 +2194,6 @@ function energyFitMark(className, left, width = null, color = null) {
   const node = h("span", color ? { className, dataset: { color: String(color) } } : className);
   node.style.left = `${left.toFixed(1)}%`;
   if (width != null) node.style.width = `${width.toFixed(1)}%`;
-  return node;
-}
-
-// A label right of its mark, or left of it in the right part of the lane, so it stays inside.
-function energyFitLabel(text, at) {
-  const node = h("span", "energy-fit-label", text);
-  if (at > 55) node.style.right = `${(100 - at + 3).toFixed(1)}%`;
-  else node.style.left = `${(at + 3).toFixed(1)}%`;
   return node;
 }
 
@@ -2183,30 +2218,29 @@ function energyFitAxis(domain) {
 
 function energyFitOwnRow(domain, scale) {
   const lane = energyFitLane(domain, scale, false);
-  const label = energyFitLabel(formatWhole(scale.own_kcal), domain.at(scale.own_kcal));
-  if (scale.own_band_kcal != null) label.append(energyKcalSpan(scale.own_kcal, scale.own_band_kcal));
-  lane.append(energyFitMark("energy-fit-own", domain.at(scale.own_kcal)), label);
-  return h("li", { className: "energy-fit-row", dataset: { fitSource: "own" } }, h("span", "energy-fit-name", "Deine Daten"), lane);
+  const value = h("span", "energy-fit-value", formatWhole(scale.own_kcal));
+  if (scale.own_band_kcal != null) value.append(energyKcalSpan(scale.own_kcal, scale.own_band_kcal));
+  lane.append(energyFitMark("energy-fit-own", domain.at(scale.own_kcal)));
+  return h("li", { className: "energy-fit-row", dataset: { fitSource: "own" } }, h("span", "energy-fit-name", "Deine Daten"), lane, value);
 }
 
-// A source row: its dot and "value (signed distance)"; inside marks a distance within the own band.
+// A source row: its name left, one lane with its dot, "value (signed distance)" right; inside marks
+// a distance within the own band.
 function energyFitSourceRow(domain, scale, item) {
   const lane = energyFitLane(domain, scale, true);
-  const at = domain.at(item.total_kcal);
   const label = item.diff == null ? formatWhole(item.total_kcal) : `${formatWhole(item.total_kcal)} (${energyFitSigned(item.diff)})`;
-  lane.append(energyFitMark("energy-fit-point", at, null, FIT_COLORS[item.source]), energyFitLabel(label, at));
+  lane.append(energyFitMark("energy-fit-point", domain.at(item.total_kcal), null, FIT_COLORS[item.source]));
   const inside = item.diff != null && scale.own_band_kcal != null && Math.abs(item.diff) <= scale.own_band_kcal;
-  return h("li", { className: "energy-fit-row", dataset: { fitSource: item.source, inside: String(inside) } }, h("span", { className: "energy-fit-name", dataset: { color: String(FIT_COLORS[item.source]) } }, item.name), lane);
+  return h("li", { className: "energy-fit-row", dataset: { fitSource: item.source, inside: String(inside) } }, h("span", { className: "energy-fit-name", dataset: { color: String(FIT_COLORS[item.source]) } }, item.name), lane, h("span", "energy-fit-value", label));
 }
 
 function energyFitNoteText(scale, key) {
-  const own = scale.own_days === scale.days ? "" : `, dein Wert aus ${scale.own_days / 7} Wochen`;
-  return `kcal pro Tag, Ø ${FIT_PERIOD_NAMES[key]}${own}. Grünes Band: so genau kennt die App deinen echten Verbrauch – liegt eine Quelle darin, trifft sie. ${scale.weeks_with_data} von ${scale.weeks} Wochen mit Daten.`;
+  return `kcal pro Tag, Ø ${verlaufPeriod(key).label}. Grünes Band: so genau kennt die App deinen echten Verbrauch – liegt eine Quelle darin, trifft sie. ${scale.weeks_with_data} von ${scale.weeks} Wochen mit Daten.`;
 }
 
 function energyFitScale(read, key) {
   const scale = read?.fit_scale?.[key];
-  const card = h("section", { className: "analysis-chart-card energy-fit", dataset: { energyFit: key } }, h("h3", null, "Welche Quelle trifft dein Gewicht?"));
+  const card = h("section", { className: "analysis-chart-card energy-fit", dataset: { energyFit: key } }, verlaufHead("Welche Quelle trifft dein Gewicht?", verlaufPeriod(key).label));
   if (!scale) return card;
   const sources = energyFitSources(scale);
   card.append(energyFitVerdict(read, scale, sources));
@@ -2220,14 +2254,16 @@ function energyFitScale(read, key) {
   return card;
 }
 
-// Verlauf shows the 28-day deficit card first (#3606), then the scale above "Tagesverlauf" for its
-// period (#3548); any loaded read serves both, as neither depends on the diary's day.
+// Verlauf shows the deficit card of the selected period (#3606, #3704), then the scale above
+// "Tagesverlauf" (#3548); any loaded read serves both, as neither depends on the diary's day. The
+// Bilanz takes its goal from the same read, so it is drawn again with it.
 function renderNutritionFit() {
   const slot = document.querySelector("#nutritionFitScale");
   if (!slot) return;
   const pending = energyPending(null);
-  const key = nutritionHistoryPeriod === "twelveWeeks" ? "12w" : "14d";
-  slot.replaceChildren(...(pending ? [pending] : [energyDeficitCard(energyRead), energyFitScale(energyRead, key)].filter(Boolean)));
+  const key = verlaufPeriod().key;
+  slot.replaceChildren(...(pending ? [pending] : [energyDeficitCard(energyRead, key), energyFitScale(energyRead, key)].filter(Boolean)));
+  if (nutritionWeekShown) renderNutritionGoalParts(nutritionWeekShown);
 }
 
 function renderDiaryEnergy() {

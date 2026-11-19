@@ -893,6 +893,37 @@ class DeficitCardTests(unittest.TestCase):
         )["deficit"]
         self.assertEqual((40, "in"), (hold["deficit_kcal"], hold["goal"]["status"]))
 
+    def test_the_deficit_follows_the_selected_period(self) -> None:
+        # #3704: a steady loss of 0.1 kg a day prices at 0.1 x 7,154 kcal/kg (the
+        # 70 % rule of thumb) = 715 kcal a day over every period, and each
+        # period's boxes span its own weigh-ins: 27, 90 and 181 days.
+        days = {
+            END - timedelta(days=n): DayInputs(weight_kg=80.0 + 0.1 * n)
+            for n in range(190)
+        }
+        source = replace(inputs(body_fat={}), days=days)
+        view = energy_view(source, energy_windows(source, END), garmin())
+        for key, span, change, first in (
+            ("28d", 27, -2.7, 27),
+            ("91d", 90, -9.0, 90),
+            ("182d", 181, -18.1, 181),
+        ):
+            with self.subTest(period=key):
+                card = view["fit_scale"][key]["deficit"]
+                self.assertEqual(
+                    (715, span, change),
+                    (card["deficit_kcal"], card["span_days"], card["weight_change_kg"]),
+                )
+                self.assertEqual(
+                    (
+                        (END - timedelta(days=first)).isoformat(),
+                        END.isoformat(),
+                    ),
+                    (card["weight_date_start"], card["weight_date_end"]),
+                )
+        # The latest 28 days stay the read's own deficit.
+        self.assertEqual(view["deficit"], view["fit_scale"]["28d"]["deficit"])
+
     def test_the_boxes_take_the_fitted_weight_change(self) -> None:
         # #3618 item 4: 91.24 → 89.16 kg is -2.08 on the fitted line; its
         # rounded endpoints would give -2.0, while the fat box takes 80 % of
@@ -951,6 +982,8 @@ class DeficitCardTests(unittest.TestCase):
                 "fat_date_start": "2026-10-07",
                 "fat_date_end": "2026-11-13",
                 "weight_last_kg": 89.2,
+                "weight_date_start": None,
+                "weight_date_end": None,
                 "fat_change_kg": -1.6,
                 "fat_share_pct": 80,
                 "stored_kcal": -15820,
@@ -1116,8 +1149,8 @@ class PartialGarminDayTests(unittest.TestCase):
         )
         self.assertEqual(870, row(day, "device")["resting_kcal"])
         # "Welche Quelle trifft dein Gewicht?" means only complete days too: the
-        # 14-day and 12-week Garmin means stay the full days' 3,120 (#3597).
-        for key in ("14d", "12w"):
+        # 4-week and 3-month Garmin means stay the full days' 3,120 (#3597).
+        for key in ("28d", "91d"):
             with self.subTest(period=key):
                 scale = view["fit_scale"][key]
                 device = next(s for s in scale["sources"] if s["source"] == "device")
@@ -1206,18 +1239,22 @@ class FitScaleTests(unittest.TestCase):
         # Complete days in the latest week and four weeks back only.
         days = {**source.days, END: logged, END - timedelta(days=30): logged}
         health = garmin()
-        # A day 20 days back counts for 12 weeks, not for 14 days.
-        health[(END - timedelta(days=20)).isoformat()] = {
+        # A day 40 days back counts for 3 months, not for 4 weeks.
+        health[(END - timedelta(days=40)).isoformat()] = {
             "resting_kcal": 1745.0,
             "calories": 6000.0,
         }
         view = energy_view(replace(source, days=days), [window(END, 2700.0)], health)
-        short, long = view["fit_scale"]["14d"], view["fit_scale"]["12w"]
+        self.assertEqual(
+            ["28d", "91d", "182d"],
+            list(view["fit_scale"]),
+        )
+        short, long = view["fit_scale"]["28d"], view["fit_scale"]["91d"]
         device = lambda scale: next(
             s for s in scale["sources"] if s["source"] == "device"
         )
         self.assertEqual(
-            (14, 28, 2, 1),
+            (28, 28, 4, 1),
             (
                 short["days"],
                 short["own_days"],
@@ -1226,7 +1263,7 @@ class FitScaleTests(unittest.TestCase):
             ),
         )
         self.assertEqual(
-            (84, 84, 12, 2),
+            (91, 91, 13, 2),
             (long["days"], long["own_days"], long["weeks"], long["weeks_with_data"]),
         )
         self.assertEqual(3120, device(short)["total_kcal"])
@@ -1265,10 +1302,10 @@ class FitScaleTests(unittest.TestCase):
         }
         busy = {**health, before.isoformat(): {"resting_kcal": 1745.0, "calories": 9000.0},
                 unlogged.isoformat(): {"resting_kcal": 1745.0, "calories": 6000.0}}  # fmt: skip
-        plain = energy_view(base, [window(END, 2700.0)], health)["fit_scale"]["12w"]
+        plain = energy_view(base, [window(END, 2700.0)], health)["fit_scale"]["91d"]
         mixed = energy_view(
             replace(base, days={**base.days, **extra}), [window(END, 2700.0)], busy
-        )["fit_scale"]["12w"]
+        )["fit_scale"]["91d"]
         self.assertIsNotNone(mixed["own_kcal"])
         # The own value and every source stand on the same days (Gitar, #3662).
         self.assertEqual(

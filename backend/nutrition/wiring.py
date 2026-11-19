@@ -30,7 +30,7 @@ from backend.db.repositories import (
 )
 from backend.nutrition.catalog import ProductCatalogService
 from backend.nutrition.diary import NutritionDiaryService
-from backend.nutrition.energy_balance import history_start
+from backend.nutrition.energy_balance import EnergyInputs, history_start
 from backend.nutrition.energy_inputs import (
     EnergySources,
     energy_basis,
@@ -42,7 +42,7 @@ from backend.nutrition.energy_view import (
     OwnHistory,
     own_history,
     read_energy_view,
-    read_own_day_totals,
+    read_fit_inputs,
     selected_day,
 )
 from backend.nutrition.energy_view import own_day_totals as own_totals
@@ -151,15 +151,16 @@ def build_nutrition(ctx: AppContext) -> NutritionServices:
     def own_day_totals(days: list[date]) -> dict[date, float | None]:
         # The period balance's expenditure: each day's own day total, from the
         # windows ending yesterday as the energy view's (#3600).
+        # A day before the 12 windows has no own total (#3641), so 6 months
+        # are served from the kept history too (Gitar, #3708).
         end = ctx.clock.now().date() - timedelta(days=1)
-        if min(days, default=end) < history_start(end):
-            with ctx.database().reader() as db:
-                return read_own_day_totals(db, energy_sources(), end, days)
         kept_end, history = kept_history()
         if kept_end != end:  # a new day before the next commit
             kept_end, history = yesterdays_history()
         inputs, windows, health = history
-        return own_totals(inputs, windows, health, days)
+        first = history_start(end)
+        totals = own_totals(inputs, windows, health, [d for d in days if d >= first])
+        return {day: totals.get(day) for day in days}
 
     def energy_sources() -> EnergySources:
         """The stores the adaptive expenditure reads (#3100).
@@ -248,15 +249,28 @@ def build_nutrition(ctx: AppContext) -> NutritionServices:
             ),
         )
 
+    def yesterdays_periods() -> tuple[date, EnergyInputs | None]:
+        end = ctx.clock.now().date() - timedelta(days=1)
+        with ctx.database().reader() as db:
+            return end, read_fit_inputs(db, energy_sources(), end)
+
+    # Verlauf's 6 months cost as much as the rest of the read: kept until a
+    # commit changes rows, as the 12-week history is (#3630, #3704).
+    kept_periods = kept_until_change(ctx.database, yesterdays_periods)
+
     def energy_view(day_text: str | None = None) -> dict[str, Any]:
         # The windows end yesterday: today's intake and Garmin totals are still
         # partial. The source rows show the chosen diary day (#3395), else yesterday.
         today = ctx.clock.now().date()
         day = selected_day(day_text, today)
+        end = today - timedelta(days=1)
+
+        def periods() -> EnergyInputs | None:
+            kept_end, inputs = kept_periods()
+            return inputs if kept_end == end else yesterdays_periods()[1]
+
         with ctx.database().reader() as db:
-            return read_energy_view(
-                db, energy_sources(), today - timedelta(days=1), day
-            )
+            return read_energy_view(db, energy_sources(), end, day, periods)
 
     def intervals_sync_service() -> IntervalsNutritionSyncService:
         config = ctx.config()

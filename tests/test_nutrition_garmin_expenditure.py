@@ -305,7 +305,7 @@ class NutritionGarminExpenditureTests(unittest.TestCase):
         self.assertEqual(2000, open_day["energy_expenditure"]["total_kcal"])
 
     def test_history_periods_keep_closed_days_and_missing_values(self) -> None:
-        for count in (14, 84):
+        for count in (28, 91, 182):
             with self.subTest(days=count):
                 summary = self.service.sync_status.get_week_summary(count)
                 self.assertEqual(len(summary["days"]), count)
@@ -325,7 +325,7 @@ class NutritionGarminExpenditureTests(unittest.TestCase):
     def test_history_rejects_unsupported_periods(self) -> None:
         from backend.errors import AppError
 
-        invalid_periods: tuple[Any, ...] = (0, 15, 85, True, "14")
+        invalid_periods: tuple[Any, ...] = (0, 14, 84, 183, True, "28")
         for count in invalid_periods:
             with self.subTest(days=count), self.assertRaises(AppError):
                 self.service.sync_status.get_week_summary(count)

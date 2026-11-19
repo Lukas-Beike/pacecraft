@@ -176,16 +176,14 @@
         </section>
         <div id="nutritionWeek" hidden>
           <div id="nutritionHistoryPeriod"></div>
-          <section class="nutrition-tools" aria-label="Ernährungsverlauf">
-            <p id="nutritionWeekPeriod" class="nutrition-week-period"></p>
-            <output id="nutritionWeekStatus" class="tab-sync-detail" aria-live="polite"></output>
-            <div id="nutritionWeekTotals" class="nutrition-totals"></div>
-            <div id="nutritionFitScale"></div>
-            <div id="nutritionWeekChartSection" class="nutrition-week-chart" aria-labelledby="nutritionWeekChartHeading" hidden>
-              <h4 id="nutritionWeekChartHeading">Tagesverlauf</h4>
-              <p class="nutrition-week-legend"><span>Aufnahme</span><span>Verbrauch</span></p>
-              <div id="nutritionWeekChart" class="nutrition-week-chart-days"></div>
-            </div>
+          <output id="nutritionWeekStatus" class="tab-sync-detail" aria-live="polite"></output>
+          <div id="nutritionWeekBalance"></div>
+          <div id="nutritionWeekMacros"></div>
+          <div id="nutritionFitScale"></div>
+          <section id="nutritionWeekChartSection" class="analysis-chart-card nutrition-week-chart" aria-labelledby="nutritionWeekChartHeading" hidden>
+            <div class="verlauf-head"><h3 id="nutritionWeekChartHeading">Tagesverlauf</h3><span id="nutritionWeekChartPeriod" class="verlauf-period"></span></div>
+            <p class="nutrition-week-legend"><span>Aufnahme</span><span>Verbrauch</span></p>
+            <div id="nutritionWeekChart" class="nutrition-week-chart-days"></div>
             <details id="nutritionWeekDetails" hidden><summary>Tageswerte anzeigen</summary><div class="nutrition-week-table"><table aria-label="Ernährung im gewählten Zeitraum"><thead><tr><th scope="col">Tag</th><th scope="col">Aufnahme<br>kcal</th><th scope="col">Verbrauch<br>kcal</th><th scope="col">Bilanz<br>kcal</th></tr></thead><tbody id="nutritionWeekDays"></tbody></table></div></details>
           </section>
         </div>
