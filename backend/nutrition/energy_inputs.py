@@ -1110,6 +1110,10 @@ def _activity_gap(a: EnergyWindow, b: EnergyWindow) -> float:
     return a.activity_kcal_raw - b.activity_kcal_raw
 
 
+def _abs_first(pair: tuple[float, EnergyWindow]) -> float:
+    return abs(pair[0])
+
+
 def _narrow_share(inputs: EnergyInputs, group: Sequence[EnergyWindow]) -> int | None:
     """The share of the windows' complete days below ``NARROW_DAY_REST_SHARE``
     of rest + TEF, in whole percent; None without complete days."""
@@ -1152,12 +1156,11 @@ def underlog_counts(
         if near:
             # The neighbour it differs from most, the likeliest to have flagged it.
             # Both net of activity, as the check compares them (Gitar on #3660).
-            other = max(
-                near,
-                key=lambda o: abs(_tdee(window) - _tdee(o) - _activity_gap(window, o)),
-            )
+            gaps = [
+                (_tdee(window) - _tdee(o) - _activity_gap(window, o), o) for o in near
+            ]
+            gap, other = max(gaps, key=_abs_first)
             activity = _activity_gap(window, other)
-            gap = _tdee(window) - _tdee(other) - activity
             tdee_gaps.append(abs(gap))
             intake_gaps.append(
                 math.copysign(1.0, gap) * (_intake(window) - _intake(other) - activity)
