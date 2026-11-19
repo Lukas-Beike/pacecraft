@@ -136,6 +136,36 @@ class CoachRepairKeyTests(unittest.TestCase):
         self.assertIsNone(
             coach_repair_key("save_checkin", {"changes": [{"field": "weight"}]})
         )
+        # Any other step names the stored objects it acts on with its operation:
+        # the action, else the fields it sets and the day and meal (#3651).
+        self.assertEqual(
+            {"objects": ["duration_min;:u2", "update:t1"]},
+            coach_repair_key(
+                "apply_training_patch",
+                {
+                    "changes": [
+                        {
+                            "local_id": "u2",
+                            "duration_min": 50,
+                            "expected_payload_hash": "h",
+                        },
+                        {"template": {"action": "Update", "local_id": "t1"}},
+                    ],
+                    "_request": {"scope": ["library_workout:x"], "id": "ignored"},
+                },
+            ),
+        )
+        self.assertEqual(
+            {
+                "objects": [
+                    "meal_date,meal_time;meal_date=2026-11-19;meal_time=19:00:n1"
+                ]
+            },
+            coach_repair_key(
+                "log_nutrition_template",
+                {"id": "n1", "meal_date": "2026-11-19", "meal_time": "19:00"},
+            ),
+        )
 
 
 if __name__ == "__main__":

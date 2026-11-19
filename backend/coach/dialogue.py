@@ -120,7 +120,8 @@ Never combine a clarification or cancellation with write tools in one response.
 
 Each write tool carries _request describing THIS step's target and scope:
 local_plan (creation or a bounded planning period), planned_unit:<id>,
-training_plan:<id>, library_workout:<id>, local_template (template creation),
+training_plan:<id>, library_workout:<id> (editing that library entry or training
+template), local_template (template creation),
 competition:<id>, local_competitions (competition creation/sync), local_profile, local_checkin,
 activity_feedback, local_nutrition (diary/meals/templates), local_nutrition_product (new product),
 local_nutrition_gaps (filling only empty product values),

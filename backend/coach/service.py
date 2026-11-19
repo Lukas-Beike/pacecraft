@@ -97,10 +97,58 @@ def dialogue_plan_effect_key(name: str, arguments: dict[str, Any]) -> str | None
     return coach_action_hash({"workouts": signatures})
 
 
+# Argument keys that name the stored object a write step acts on, and the
+# fields whose value says which record of it a step writes (#3651).
+_OBJECT_ID_KEYS = frozenset({"local_id", "id"})
+_RECORD_KEYS = ("date", "meal_date", "meal_time", "meal_type", "session_id")
+
+
+def _operation(value: dict[str, Any]) -> str:
+    """What a step does to its object: its action, else the fields it sets and
+    the day and meal it writes, so a refined value still matches but another
+    change to the same object does not."""
+    action = value.get("action")
+    if isinstance(action, str) and action.strip():
+        return action.strip().casefold()
+    fields = sorted(
+        str(key)
+        for key in value
+        if key not in _OBJECT_ID_KEYS
+        and key != "_request"
+        and not str(key).startswith("expected_")
+    )
+    marks = [f"{key}={value[key]}" for key in _RECORD_KEYS if key in value]
+    return ",".join(fields) + ";" + ";".join(marks)
+
+
+def _object_ids(value: Any) -> set[str]:
+    """Each object a step's arguments act on, with its operation, outside the
+    _request: ``<operation>:<id>``."""
+    if isinstance(value, list):
+        return {found for item in value for found in _object_ids(item)}
+    if not isinstance(value, dict):
+        return set()
+    ids = sorted(
+        str(value[key]).strip()
+        for key in _OBJECT_ID_KEYS
+        if isinstance(value.get(key), str | int) and str(value[key]).strip()
+    )
+    found = {f"{_operation(value)}:{object_id}" for object_id in ids}
+    for key, item in value.items():
+        if key != "_request" and isinstance(item, list | dict):
+            found |= _object_ids(item)
+    return found
+
+
 def coach_repair_key(name: str, arguments: dict[str, Any]) -> dict[str, Any] | None:
-    """Identify the affected object fields needed to match a correction."""
+    """Identify the affected object fields needed to match a correction.
+
+    A profile change names its fields; any other step names the stored objects
+    it acts on, so a retry on the same objects repairs a scope failure (#3651).
+    """
     if name != "update_profile":
-        return None
+        objects = sorted(_object_ids(arguments))
+        return {"objects": objects} if objects else None
     changes = arguments.get("changes")
     if not isinstance(changes, list):
         return None
