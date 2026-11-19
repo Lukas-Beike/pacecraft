@@ -610,6 +610,28 @@ class StoreAdapterTests(unittest.TestCase):
         assert body is not None
         self.assertAlmostEqual(0.8 * trend[end], body["lean_mass_kg"], places=6)
 
+    def test_the_resting_reference_carries_the_same_lean_mass(self) -> None:
+        # Gitar on #3642: the own Katch-McArdle takes the lean mass the formula
+        # rows carry; the reading lies before the read start, and the weights
+        # reach back to it, so it keeps its own weight (85 kg, 68 kg lean).
+        first = DAY3 - timedelta(days=40)
+        weights = {first + timedelta(days=n): 85.0 - 0.1 * n for n in range(41)}
+        rated = replace(
+            sources(),
+            resting=lambda _db, _day: (1500.0, energy_inputs.RESTING_FROM_SKINFOLDS),
+            weights=lambda _db, s, e: {d: w for d, w in weights.items() if s <= d <= e},
+            body_fat=lambda _db, _s, _e: {first: 20.0},
+        )
+        inputs, _ = read_energy_inputs(None, rated, DAY1, DAY3)
+        body = energy_inputs.resolve_body(inputs, weight_trend(weights), DAY3)
+        assert body is not None
+        self.assertAlmostEqual(66.8, body["lean_mass_kg"], delta=0.05)
+        # Katch-McArdle 370 + 21.6 x lean, the same lean mass as the rows.
+        self.assertAlmostEqual(
+            370 + 21.6 * body["lean_mass_kg"], inputs.rmr_kcal or 0.0, places=6
+        )
+        self.assertEqual(energy_inputs.RESTING_FROM_SKINFOLDS, inputs.rmr_source)
+
     def test_energy_basis_counts_the_latest_window_weighin_sources(self) -> None:
         # #3557: counts only, read over the latest 28-day window.
         seen: list[tuple[date, date]] = []

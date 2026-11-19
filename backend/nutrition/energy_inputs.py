@@ -619,9 +619,21 @@ def read_energy_inputs(
     profile = sources.profile()
     profile_weight = _number(profile.get("weight_kg"))
     health = sources.daily_health(db, start, end)
-    rmr, rmr_source = _resting(sources, db, end, health)
-    weights = dict(sources.weights(db, start, end))
+    # The first window looks 90 days back from its own end for a body fat,
+    # so the weights reach back as far: each reading has its weight (Gitar).
+    lookback = start - timedelta(days=RESTING_LOOKBACK_DAYS)
+    grace_end = end + timedelta(days=BODY_GRACE_DAYS)
+    weights = dict(sources.weights(db, lookback, end))
     trend = weight_trend(weights)
+    body = replace(
+        EnergyInputs({}, dict(sources.body_fat(db, start, grace_end)), None),
+        device_body_fat=dict(sources.device_body_fat(db, lookback, grace_end)),
+        profile_body_fat_pct=_profile_fat(profile.get("body_fat_pct")),
+        skinfold_sd_pct=_skinfold_sds(sources.skinfolds(db, grace_end)),
+    )
+    rmr, rmr_source = _carried_resting(
+        _resting(sources, db, end, health), body, trend, end
+    )
     sessions = list(sources.sessions(db, start, end))
     step_m, step_source = _step_length(sessions, _height_m(profile))
     rides = [s for s in sessions if str(s.get("sport") or "") in RIDE_SPORTS]
@@ -662,18 +674,32 @@ def read_energy_inputs(
             trend, profile_weight, costs, step_m,
         )  # fmt: skip
         day += timedelta(days=1)
-    grace_end = end + timedelta(days=BODY_GRACE_DAYS)
-    body_fat = dict(sources.body_fat(db, start, grace_end))
-    # The first window looks 90 days back from its own end.
-    lookback = start - timedelta(days=RESTING_LOOKBACK_DAYS)
-    device = dict(sources.device_body_fat(db, lookback, grace_end))
-    inputs = EnergyInputs(days, body_fat, rmr, rmr_source, step_m, step_source)
     return replace(
-        inputs,
-        device_body_fat=device,
-        profile_body_fat_pct=_profile_fat(profile.get("body_fat_pct")),
-        skinfold_sd_pct=_skinfold_sds(sources.skinfolds(db, grace_end)),
+        body,
+        days=days,
+        rmr_kcal=rmr,
+        rmr_source=rmr_source,
+        step_m=step_m,
+        step_source=step_source,
     ), costs
+
+
+def _carried_resting(
+    found: tuple[float | None, str | None],
+    body: EnergyInputs,
+    trend: Mapping[date, float],
+    end: date,
+) -> tuple[float | None, str | None]:
+    """The own Katch-McArdle with the lean mass the formula rows carry from
+    the reading (#3617 item 1, Gitar on #3642); Garmin's fallback stays."""
+    rmr, source = found
+    if source not in (RESTING_FROM_SKINFOLDS, RESTING_FROM_BODY_FAT):
+        return rmr, source
+    resolved = resolve_body(body, trend, end)
+    if resolved is None:
+        return rmr, source
+    lean = resolved["lean_mass_kg"]
+    return resting_energy(RestingFormula.KATCH_MCARDLE, lean), source
 
 
 def _skinfold_sds(measurements: Sequence[SkinfoldMeasurement]) -> dict[date, float]:
@@ -935,7 +961,10 @@ def resolve_body(
         return None
     weight = trend[max(weighed)]
     on = fat["measured_on"]
-    at_reading = [d for d in trend if on is not None and d <= on]
+    # A reading before the first weigh-in takes the first one after it.
+    at_reading = [d for d in trend if on is not None and d <= on] or (
+        [min(trend)] if on is not None else []
+    )
     try:
         if not at_reading:
             lean = lean_mass_kg(weight, fat["body_fat_pct"])
