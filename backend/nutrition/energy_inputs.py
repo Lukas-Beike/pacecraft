@@ -26,6 +26,7 @@ from backend.athlete.body_composition import (
 from backend.athlete.body_records import (
     APP_SOURCE,
     BODY_GRACE_DAYS,
+    CURRENT_WEIGHT_DAYS,
     RESTING_LOOKBACK_DAYS,
     body_fat_on,
     weight_on,
@@ -42,7 +43,6 @@ from backend.canonical.vocabulary import ProviderId, StreamChannel
 from backend.db.activity_detail_store import detail_sets_for_session
 from backend.nutrition.energy_balance import (
     BAND_Z,
-    CURRENT_WEIGHT_DAYS,
     WINDOW_DAYS,
     DayInputs,
     EnergyInputs,
