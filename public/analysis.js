@@ -1942,7 +1942,7 @@ function energyTableHead() {
 // "Dein Defizit, letzte 28 Tage" (#3548) replaces Verlauf's 28-day own row: the energy per day
 // from the body stores as the hero, the goal marker, the boxes weight and body fat → fat → kcal per
 // day, and a short text (the athlete asked for it), with the flagged-meal rows under it.
-const DEFICIT_UNCERTAINTY = { fat_share: "Fettanteil (Faustregel und Messungen)", weight_scatter: "Schwankungen der Wiegungen" };
+const DEFICIT_UNCERTAINTY = { fat_share: "Fettanteil (Faustregel und Messungen)", weight_scatter: "Schwankungen der Wiegungen", unstable: "Wasser im Gewicht, die Wochen widersprechen sich" };
 const DEFICIT_GOAL_STATUS = { in: "✓ im Ziel", under: "unter Ziel", over: "über Ziel" };
 
 function deficitDecimal(value) {
@@ -2017,7 +2017,9 @@ function deficitBoxes(card) {
 function deficitText(card, deviceLabel) {
   const device = card.device_total_kcal == null ? "" : ` (${deviceLabel || "Gerät"}: ${formatWhole(card.device_total_kcal)})`;
   // The weigh-ins carry the card; the expenditure also needs logged meals ("Nur Waage", #3603).
-  const spent = card.total_kcal == null ? "Echter Verbrauch: braucht erfasste Mahlzeiten." : `Echter Verbrauch: ≈ ${formatWhole(card.total_kcal)} kcal am Tag${device}.`;
+  // An unstable window is an estimate, not the real expenditure (#3614).
+  const kind = card.uncertainty === "unstable" ? "Geschätzter" : "Echter";
+  const spent = card.total_kcal == null ? "Echter Verbrauch: braucht erfasste Mahlzeiten." : `${kind} Verbrauch: ≈ ${formatWhole(card.total_kcal)} kcal am Tag${device}.`;
   return [spent,
     `Unsicher vor allem: ${DEFICIT_UNCERTAINTY[card.uncertainty] || card.uncertainty}.`];
 }

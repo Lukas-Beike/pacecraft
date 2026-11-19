@@ -315,7 +315,8 @@ class AthleteGetRoutes:
         days: the phase's span, which can start before the window, #3598),
         `weight_last_kg` (the window's last weigh-in), `fat_change_kg`, `fat_share_pct` (of the
         weight change, null below 0.05 kg), `stored_kcal` (over the span),
-        `uncertainty` (`fat_share` or `weight_scatter`), `total_kcal` (the window's
+        `uncertainty` (`fat_share`, `weight_scatter`, or `unstable` when
+        overlapping windows contradict each other, #3614), `total_kcal` (the window's
         expenditure, null without enough logged meals) with
         `expenditure_missing` (then its reason, such as `intake_days`, else
         null), `device_total_kcal` and `goal` (`goal`, `goal_kcal` and

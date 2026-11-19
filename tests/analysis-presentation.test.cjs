@@ -358,6 +358,10 @@ test("Verlauf's deficit card: hero, goal marker, boxes and text agree, measured 
   const scaleOnly = energyDeficitCard({ rows, deficit: { ...measured, total_kcal: null, expenditure_missing: "intake_days" } });
   assert.match(textOf(scaleOnly.children[1]), /^≈ 565 kcal/);
   assert.equal(textOf(scaleOnly.children[5]), "Echter Verbrauch: braucht erfasste Mahlzeiten.");
+  // #3614: an unstable window is an estimate and names the weight step.
+  const unstable = energyDeficitCard({ rows, deficit: { ...measured, uncertainty: "unstable" } });
+  assert.equal(textOf(unstable.children[5]), "Geschätzter Verbrauch: ≈ 3.800 kcal am Tag (Garmin: 3.100).");
+  assert.equal(textOf(unstable.children[6]), "Unsicher vor allem: Wasser im Gewicht, die Wochen widersprechen sich.");
   // The prior alone: one measurement, the rule of thumb's share, a surplus, and no goal.
   const prior = { ...measured, method: "prior", deficit_kcal: -300, stored_kcal: 8400, weight_start_kg: 70, weight_end_kg: 71, weight_change_kg: 1, weight_last_kg: 71, fat_pct_start: null, fat_date_start: null, fat_pct_end: 12, fat_change_kg: 0.7, fat_share_pct: 70, fat_share: { share_pct: 70, prior_pct: 70, measured_pct: 0 }, goal: null };
   const surplus = energyDeficitCard({ rows, deficit: prior });
