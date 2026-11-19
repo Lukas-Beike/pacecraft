@@ -951,7 +951,9 @@ def scale_phase(unlogged_days: int, eaten: float = 2100.0) -> dict[str, Any]:
             activity_kcal=600.0,
             activity_error_kcal=60.0,
         )
-    source = EnergyInputs(days, {}, rmr_kcal=1750.0, profile_body_fat_pct=20.0)
+    # One dated reading at the first window's end gives every window a body
+    # within 90 days and keeps the prior fat share; the profile holds none (#3640).
+    source = EnergyInputs(days, {END - timedelta(days=77): 20.0}, rmr_kcal=1750.0)
     return energy_view(source, energy_windows(source, END), {})["estimated_intake"]
 
 
