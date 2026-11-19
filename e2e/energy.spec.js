@@ -350,12 +350,12 @@ for (const theme of ["light", "dark"]) {
 // #3548, #3555: Verlauf's deficit card with measurements in the fat share and with the prior alone. The read's deficit is shaped here (the
 // values come from the method tests); its hero, boxes and text must agree.
 const DEFICITS = {
-  measured: { days: 28, deficit_kcal: 565, band_kcal: 235, method: "measured", span_days: 28, weight_start_kg: 91.2, weight_end_kg: 89.2,
+  measured: { days: 28, deficit_kcal: 565, band_kcal: 235, method: "measured", span_days: 28, weight_start_kg: 91.2, weight_end_kg: 89.2, weight_change_kg: -2.0,
     fat_pct_start: 15.5, fat_pct_end: 14.1, fat_date_start: "2026-10-07", fat_date_end: "2026-11-13", weight_last_kg: 89.2,
     fat_change_kg: -1.6, fat_share_pct: 80, fat_share: { share_pct: 80, prior_pct: 70, measured_pct: 28 },
     stored_kcal: -15820, uncertainty: "fat_share",
     total_kcal: 3800, device_total_kcal: 3100, goal: { goal: "lose", goal_kcal: 500, status: "in", distance: "near" } },
-  prior: { days: 28, deficit_kcal: 420, band_kcal: 260, method: "prior", span_days: 27, weight_start_kg: 80.4, weight_end_kg: 78.9,
+  prior: { days: 28, deficit_kcal: 420, band_kcal: 260, method: "prior", span_days: 27, weight_start_kg: 80.4, weight_end_kg: 78.9, weight_change_kg: -1.5,
     fat_pct_start: null, fat_pct_end: 18, fat_change_kg: -1.1, fat_share_pct: 70, fat_share: { share_pct: 70, prior_pct: 70, measured_pct: 0 },
     stored_kcal: -11340, uncertainty: "fat_share",
     total_kcal: 3300, device_total_kcal: 2950, goal: null },
@@ -472,7 +472,8 @@ test("@responsive the energy goal is set in Körper and priced in the diary", as
   await dialog.getByLabel("Defizit pro Tag (kcal)").fill("420");
   expect(await dialog.getByLabel("Defizit pro Tag (kcal)").evaluate((input) => input.validity.valid)).toBeTruthy();
   await dialog.getByLabel("Defizit pro Tag (kcal)").fill("500");
-  await expect(dialog.locator("#energyGoalDialogWeek")).toHaveText("≈ 0,45 kg Fett pro Woche");
+  // #3618: body weight per week at the energy view's density (70 % fat by the rule of thumb).
+  await expect(dialog.locator("#energyGoalDialogWeek")).toHaveText("≈ 0,49 kg Körpergewicht pro Woche");
   await dialog.getByText("Halten").click();
   await expect(dialog.getByLabel("Defizit pro Tag (kcal)")).toBeHidden();
   await dialog.getByText("Abnehmen").click();

@@ -433,7 +433,10 @@ do not suffice; logged meals are not needed, #3603): `days`, `deficit_kcal` (neg
 `band_kcal`, `method` (`measured` when measurements weigh in the fat
 share, else `prior`), `fat_share` (`share_pct`, `prior_pct` and
 `measured_pct`, the measurements' weight, #3555), `span_days`,
-`weight_start_kg`, `weight_end_kg`, `fat_pct_start` (the first
+`weight_start_kg`, `weight_end_kg` (the fitted line's ends),
+`weight_change_kg` (its change, which the fat change is a share of,
+#3618), `kcal_per_kg` (per kg of weight change at the blended share,
+#3618), `fat_pct_start` (the first
 measurement used, else null), `fat_pct_end` (the last one, else the
 latest skinfold or null), `fat_date_start` and `fat_date_end` (their
 days: the phase's span, which can start before the window, #3598),

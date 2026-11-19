@@ -40,6 +40,7 @@ from backend.nutrition.energy_balance import (
     Estimate,
     StoredEnergy,
     day_tef,
+    energy_density,
     energy_windows,
     history_start,
     is_complete,
@@ -668,6 +669,11 @@ def _deficit(
         "span_days": store.days,
         "weight_start_kg": round(store.weight_start_kg, 1),
         "weight_end_kg": round(store.weight_end_kg, 1),
+        # The fitted change, not the rounded ends', so the boxes add up (#3618).
+        "weight_change_kg": round(change, 1),
+        # kcal per kg of weight change at the blended share, for the goal's
+        # weekly weight (#3618).
+        "kcal_per_kg": _round(energy_density(store.fat_share)),
         **_measured_terms(store),
         "fat_change_kg": round(store.fat_change_kg, 1),
         # The fat share of the weight change (#3555).

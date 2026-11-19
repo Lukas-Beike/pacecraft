@@ -765,6 +765,29 @@ class DeficitCardTests(unittest.TestCase):
         )["deficit"]
         self.assertEqual((40, "in"), (hold["deficit_kcal"], hold["goal"]["status"]))
 
+    def test_the_boxes_take_the_fitted_weight_change(self) -> None:
+        # #3618 item 4: 91.24 → 89.16 kg is -2.08 on the fitted line; its
+        # rounded endpoints would give -2.0, while the fat box takes 80 % of
+        # -2.08. The weight box shows the fitted change, so the boxes add up.
+        card = self.view(
+            MEASURED._replace(
+                weight_start_kg=91.24, weight_end_kg=89.16, fat_change_kg=-1.664
+            )
+        )
+        self.assertEqual(
+            (91.2, 89.2, -2.1, -1.7, 80),
+            (
+                card["weight_start_kg"],
+                card["weight_end_kg"],
+                card["weight_change_kg"],
+                card["fat_change_kg"],
+                card["fat_share_pct"],
+            ),
+        )
+        self.assertAlmostEqual(
+            card["fat_change_kg"], card["weight_change_kg"] * 0.80, delta=0.05
+        )
+
     def test_the_card_shows_the_stores_terms_and_the_real_expenditure(self) -> None:
         # #3598: the readings span the phase (from 07.10.), not the window, and
         # the window ends on its last weigh-in.
@@ -785,6 +808,9 @@ class DeficitCardTests(unittest.TestCase):
                 "span_days": 28,
                 "weight_start_kg": 91.2,
                 "weight_end_kg": 89.2,
+                "weight_change_kg": -2.0,
+                # 80 % at 9,441 and 20 % at 1,816 kcal/kg (#3618 item 7).
+                "kcal_per_kg": 7916,
                 "fat_pct_start": 15.5,
                 "fat_pct_end": 14.1,
                 "fat_date_start": "2026-10-07",

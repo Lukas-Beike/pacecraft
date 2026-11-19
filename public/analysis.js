@@ -1575,8 +1575,9 @@ function bodyEditButton(label, open) {
 // The energy goal (#3547) sits with the body values; the diary's "Heute noch essen" prices it.
 const ENERGY_GOAL_NAMES = { lose: "Abnehmen", hold: "Halten", build: "Aufbauen" };
 const ENERGY_GOAL_KCAL_LABELS = { lose: "Defizit pro Tag (kcal)", build: "Überschuss pro Tag (kcal)" };
-// About 7,700 kcal per kg of body fat, for the weekly equivalent.
-const FAT_KCAL_PER_KG = 7700;
+// kcal per kg of body weight as the energy view prices it (#3618): the rule of thumb's 70 % fat at
+// 9,441 and 30 % lean at 1,816 kcal/kg, or the read's blended share once the deficit card has one.
+const PRIOR_KCAL_PER_KG = 7154;
 
 function energyGoalText(profile) {
   const name = ENERGY_GOAL_NAMES[profile?.energy_goal];
@@ -1589,7 +1590,7 @@ function energyGoalRow() {
     h("td", null, energyGoalText(state.data?.profile)), h("td", null, bodyEditButton("Energieziel festlegen", openEnergyGoalDialog)));
 }
 
-// The kcal field names deficit or surplus, hides for "Halten", and shows its fat per week.
+// The kcal field names deficit or surplus, hides for "Halten", and shows its body weight per week.
 function updateEnergyGoalDialog() {
   const form = document.querySelector("#energyGoalDialogForm");
   const goal = form.elements.goal.value;
@@ -1597,8 +1598,9 @@ function updateEnergyGoalDialog() {
   form.elements.kcal.closest("label").hidden = goal === "hold";
   form.elements.kcal.required = goal !== "hold";
   document.querySelector("#energyGoalDialogKcalLabel").textContent = ENERGY_GOAL_KCAL_LABELS[goal] || "";
-  const week = (kcal * 7 / FAT_KCAL_PER_KG).toLocaleString("de-DE", { maximumFractionDigits: 2 });
-  document.querySelector("#energyGoalDialogWeek").textContent = goal !== "hold" && kcal > 0 ? `≈ ${week} kg Fett pro Woche` : "";
+  const density = energyRead?.deficit?.kcal_per_kg || PRIOR_KCAL_PER_KG;
+  const week = (kcal * 7 / density).toLocaleString("de-DE", { maximumFractionDigits: 2 });
+  document.querySelector("#energyGoalDialogWeek").textContent = goal !== "hold" && kcal > 0 ? `≈ ${week} kg Körpergewicht pro Woche` : "";
 }
 
 let energyGoalDialogBound = false;
@@ -1992,7 +1994,8 @@ function deficitDay(iso) {
 // names their own days. The weight's end is the trend line's; it says "aktuell" when it differs
 // from the chart's last weigh-in at the shown precision.
 function deficitBoxes(card) {
-  const change = card.weight_end_kg - card.weight_start_kg;
+  // The fitted change, which the fat and kcal boxes take too, not the rounded ends' (#3618).
+  const change = card.weight_change_kg;
   let fat = card.fat_pct_end == null ? "keine Messung" : "nur eine Messung";
   let fatDays = card.fat_date_end ? `vom ${deficitDay(card.fat_date_end)}` : null;
   if (card.fat_pct_start != null) {
@@ -2045,7 +2048,9 @@ function energyFlaggedRows(flagged) {
   if ((flagged?.days ?? 0) <= 0) return [];
   const row = (kind, label, value) => h("tr", { className: "energy-flag-row", dataset: { energyFlag: kind } }, h("th", { scope: "row" }, label), h("td", null, "–"), h("td", null, value));
   const unflagged = flagged.unflagged;
-  const rows = [row("unflagged", "ohne geschätzte Tage", unflagged ? energyKcal(unflagged.total_kcal, unflagged.total_band_kcal) : "kein sauberer Zeitraum")];
+  // The clean window is an older one than the 28 days beside it, so it names its last day (#3618).
+  const label = unflagged?.end ? `ohne geschätzte Tage (bis ${deficitDay(unflagged.end)})` : "ohne geschätzte Tage";
+  const rows = [row("unflagged", label, unflagged ? energyKcal(unflagged.total_kcal, unflagged.total_band_kcal) : "kein sauberer Zeitraum")];
   if (flagged.corrected) rows.push(row("corrected", "mit gelernter Korrektur", energyKcal(flagged.corrected.total_kcal, flagged.corrected.total_band_kcal)));
   return rows;
 }
