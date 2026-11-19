@@ -42,6 +42,7 @@ LINK_MESSAGE = (
     "'Part of #N' (one of several PRs)."
 )
 LINKED_WRITES = {"create", "edit"}  # gh pr writes whose body is the PR body
+OTHER_TARGET = {"-R", "--repo", "--web", "-w"}  # not this repository's CI
 # A file the command itself writes: `> F`, `>> F`, `tee F`, `Out-File F`, ...
 WRITTEN = re.compile(
     r"(?:>>?|\btee|\bOut-File|\bSet-Content)\s+(?:-\w+\s+)*[\"']?([^\s\"';&|()]+)",
@@ -50,10 +51,13 @@ WRITTEN = re.compile(
 
 
 def _values(args: list[str], flags: tuple[str, ...]) -> list[str]:
-    """Values of `--flag value`, `--flag=value` and the short `-Fvalue`."""
-    found = [nxt for arg, nxt in itertools.pairwise(args) if arg in flags]
-    for arg, flag in itertools.product(args, flags):
-        if arg.startswith(f"{flag}="):
+    """Values of `--flag value`, `--flag=value` and the short `-Fvalue`, in
+    command order (gh takes the last one)."""
+    found: list[str] = []
+    for (index, arg), flag in itertools.product(enumerate(args), flags):
+        if arg == flag:
+            found += args[index + 1 : index + 2]
+        elif arg.startswith(f"{flag}="):
             found.append(arg[len(flag) + 1 :])
         elif len(flag) == 2 and arg.startswith(flag) and len(arg) > 2:
             found.append(arg[2:])
@@ -77,7 +81,7 @@ def _file_text(value: str, cwd: Path) -> str | None:
     """The body file's text, or None when it is missing (gh refuses it)."""
     try:
         raw = _local(value, cwd).read_bytes()
-    except OSError:
+    except OSError, ValueError:  # ValueError: a NUL in the path (review, #3535)
         return None
     utf16 = raw[:2] in (b"\xff\xfe", b"\xfe\xff")
     return raw.decode("utf-16" if utf16 else "utf-8-sig", "replace")
@@ -129,25 +133,44 @@ def _file_bodies(values: list[str], cwd: Path, written: set[str]) -> list[str]:
     return [text for text in texts if text is not None]
 
 
+def _pr_body(
+    args: list[str], cwd: Path, written: set[str], escaped: bool
+) -> str | None:
+    """The body one `gh pr create|edit` sends, from its own arguments, or None
+    when it is unknown: no body, stdin, a file the command writes or a missing
+    one, a text gh gets after expansion (`$`, a backtick) or with escaped quotes
+    the word split cannot follow, another repository, or the browser (#3535)."""
+    if OTHER_TARGET.intersection(args) or any(a.startswith("--repo=") for a in args):
+        return None
+    if texts := _values(args, TEXT_FLAGS):
+        known = not escaped and not set("$`").intersection(texts[-1])
+        return texts[-1] if known else None
+    files = _values(args, FILE_FLAGS)
+    return next(iter(_file_bodies(files[-1:], cwd, written)), None)
+
+
 def _pr_bodies(
-    words: list[str], writes: list[tuple[str, str, int]], cwd: Path, written: set[str]
+    words: list[str],
+    writes: list[tuple[str, str, int]],
+    known: tuple[Path, set[str], bool],
 ) -> list[str]:
     """The known bodies of the segment's `gh pr create|edit` writes, each from
-    its own arguments up to the next write."""
+    its own arguments up to the next write; gh takes the last body value."""
     ends = [first - 3 for _, _, first in writes[1:]] + [len(words)]
-    bodies: list[str] = []
-    for (noun, verb, first), end in zip(writes, ends, strict=True):
-        if noun == "pr" and verb in LINKED_WRITES:
-            args = words[first:end]
-            bodies += _values(args, TEXT_FLAGS)
-            bodies += _file_bodies(_values(args, FILE_FLAGS), cwd, written)
-    return bodies
+    bodies = [
+        _pr_body(words[first:end], *known)
+        for (noun, verb, first), end in zip(writes, ends, strict=True)
+        if noun == "pr" and verb in LINKED_WRITES
+    ]
+    return [body for body in bodies if body is not None]
 
 
 def blocked(command: str, cwd: Path) -> str | None:
     """Why the command is blocked: "empty" or "link" (#3535), else None."""
     text = CONTINUATION.sub(" ", command)
     written = {m.group(1) for m in WRITTEN.finditer(text.replace("\\", "/"))}
+    # `\"` or PowerShell's `` `" `` inside a quoted body: the word split loses it.
+    escaped = '\\"' in text or '`"' in text
     for words in _segments(text):
         writes = _gh_writes(words)
         if not writes:
@@ -159,9 +182,8 @@ def blocked(command: str, cwd: Path) -> str | None:
         files = _file_bodies(_values(words[writes[0][2] :], FILE_FLAGS), cwd, written)
         if any(not t.strip() for t in texts) or any(_blank(f) for f in files):
             return "empty"
-        if any(
-            not ISSUE_LINK.search(b) for b in _pr_bodies(words, writes, cwd, written)
-        ):
+        bodies = _pr_bodies(words, writes, (cwd, written, escaped))
+        if any(not ISSUE_LINK.search(body) for body in bodies):
             return "link"
     return None
 

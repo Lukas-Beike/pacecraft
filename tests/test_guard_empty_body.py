@@ -154,6 +154,20 @@ class GuardEmptyBodyTests(unittest.TestCase):
             "gh issue comment 1 --body-file refs.md && gh pr edit 1 --body-file part.md",
             # The command writes the body first: its new content is unknown.
             "gh pr view 1 --json body -q .body > refs.md && gh pr edit 1 -F refs.md",
+            # Bypass review (#3535): gh gets these bodies after expansion, so they
+            # are unknown here and never blocked by mistake.
+            'gh pr create --title t --body "$BODY"',
+            'gh pr create --title t --body "$(cat closes.md)"',
+            "gh pr edit 1 --body `cat closes.md`",
+            'gh pr create --title t --body "Use \\"x\\" here. Closes #1"',
+            # gh takes the last body value.
+            "gh pr create --title t --body-file refs.md --body-file closes.md",
+            # Another repository or the browser is not this repository's CI.
+            "gh pr create -R other/repo --title t --body x",
+            "gh pr create --repo=other/repo --title t --body x",
+            "gh pr create --web --title t --body x",
+            # A path gh cannot open is unknown, never a crash that lets all pass.
+            "gh pr edit 1 --body-file 'a\x00b.md'",
         ):
             with self.subTest(command=command):
                 self.assertEqual(0, run_hook(command, self.cwd))
