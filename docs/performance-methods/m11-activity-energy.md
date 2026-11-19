@@ -1,8 +1,8 @@
 # M11 — Own activity energy, net of resting metabolism
 
 - **Card:** M11
-- **Card version:** 6
-- **Method ID:** activity-energy v6 (#3100, #3187, #3255, #3611, #3617)
+- **Card version:** 7
+- **Method ID:** activity-energy v7 (#3100, #3187, #3255, #3611, #3617, #3530, #3552, #3618)
 - **Status:** methods implemented (`backend/performance/activity_energy.py`); daily wiring, adaptive TDEE and display follow (#3100, #3099)
 - **Classification:** model estimate
 - **Literature checked:** 2026-11-15
@@ -100,7 +100,8 @@ TDEE carries the individual offset.
 
 Per completed session from its canonical summary and stored streams (distance,
 altitude, power, heart rate); per day from Garmin steps and floors. The flex-HR
-line is refitted on the last 4-8 weeks of power sessions.
+line is refitted on the power sessions of the read span: the 12 weekly
+windows and the 27 days before the first, about 15 weeks (#3618).
 
 ## Measurement error and uncertainty
 
@@ -120,7 +121,7 @@ both.
 ## Bias and transferability
 
 Laboratory treadmill and ergometer values transfer imperfectly to outdoor
-terrain, wind and stops. GPS altitude is noisy; the 20 m merge limits it.
+terrain, wind and stops. GPS altitude is noisy; the 200 m grade span (`GRADE_SPAN_M`) limits it.
 Gross efficiency varies with work rate (lower below about 100 W). The flex-HR
 line is calibrated on power-derived cost, not calorimetry (weak evidence).
 NEAT counts only the walking of steps and floors; standing, housework,
@@ -200,7 +201,7 @@ formula rows' everyday energy runs low. M12's own row names that remainder
 | Constant | Value | Module | Code comment |
 | --- | --- | --- | --- |
 | `METHOD_ID` | `'activity-energy'` | `backend/performance/activity_energy.py` |  |
-| `METHOD_VERSION` | `6` | `backend/performance/activity_energy.py` | Bump when a formula or constant below changes the estimate. |
+| `METHOD_VERSION` | `7` | `backend/performance/activity_energy.py` | Bump when a formula or constant below changes the estimate. |
 | `J_PER_KCAL` | `4184.0` | `backend/performance/activity_energy.py` | Joules per kilocalorie (thermochemical calorie). |
 | `GRAVITY` | `9.81` | `backend/performance/activity_energy.py` | Standard gravity, m/s^2, for the vertical work of floors. |
 | `MINETTI_WALKING` | `(280.5, -58.7, -76.8, 51.9, 19.6, 2.5)` | `backend/performance/activity_energy.py` | Minetti et al. 2002: the running fit (MINETTI_RUNNING, its gradient range and the 200 m grade span come from grade_adjustment, #3187), and the same fit for walking. |
