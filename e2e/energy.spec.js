@@ -1,9 +1,23 @@
 const { test, expect } = require("@playwright/test");
 
-// #3099, #3252: the energy table sits in the diary, its explanation behind the small "i". The
-// fixture has no skinfold: with a weigh-in and a body fat entered in Körper, the formula rows
+// The read is shaped here (the values come from the method tests); `shape` gets it and the diary day.
+async function shapeEnergy(page, shape) {
+  await page.route("**/api/body/energy*", async (route) => {
+    const response = await route.fetch();
+    const day = new URL(route.request().url()).searchParams.get("date");
+    await route.fulfill({ response, json: shape(await response.json(), day) });
+  });
+}
+
+const formulaRow = (source, split, extra = {}) => ({ source, resting_kcal: split.resting_kcal, resting_band_kcal: 200, total_kcal: 2720, total_band_kcal: 210,
+  errors_kcal: [], mean_error_kcal: null, pending_parts: [], split, ...extra });
+const GOAL = { goal: "lose", goal_kcal: 300, source: "cunningham", total_kcal: 2720, target_kcal: 2420, eaten_kcal: 1400, remaining_kcal: 1020 };
+
+// #3099, #3252, #3703: the diary's energy card shows "Offene Kalorien", the outlined source's parts
+// with its day total and one source line, and no table of sources; the explanation sits behind the "i".
+// The fixture has no skinfold: with a weigh-in and a body fat entered in Körper the formulas
 // fall back to the entered body fat and name it (#3362, #3402; the profile holds none, #3640).
-test("@responsive the diary shows the energy table and explains it behind the info button", async ({ page }) => {
+test("@responsive the diary shows Offene Kalorien and the outlined source's parts, with no source table", async ({ page }) => {
   await page.goto("/#nutrition/diary");
   await expect(page.locator("#nutritionEnergy [data-energy]")).toBeVisible();
   await page.evaluate(async () => {
@@ -11,50 +25,46 @@ test("@responsive the diary shows the energy table and explains it behind the in
     await api("/api/body/weight", { method: "PUT", body: JSON.stringify({ date: day, kg: 72 }) });
     await api("/api/body/body-fat", { method: "PUT", body: JSON.stringify({ date: day, pct: 18.5 }) });
   });
+  await shapeEnergy(page, (data) => ({ ...data, day_partial: true, outlined: "cunningham", best: null, goal: GOAL, wellness: { as_of: "12:18", behind: false },
+    strength: [{ rpe: 8, met: 5, kcal: 210 }], tef_estimated: true,
+    rows: [...data.rows.filter((row) => row.source !== "cunningham"), formulaRow("cunningham", { resting_kcal: 1700, neat_kcal: 250, learned_kcal: 220, learned_band_kcal: 180, sport_kcal: 350, tef_kcal: 200 })] }));
   const energy = page.waitForResponse((response) => new URL(response.url()).pathname === "/api/body/energy");
   await page.reload();
-  // #3323: the device row's name is the provider label the read gives it, never a client literal.
   const read = await (await energy).json();
-  const device = read.rows.find((row) => row.source === "device");
-  expect(device.label).toBeTruthy();
-  expect(device.label).not.toContain("Schätzung");
-  const card = page.locator("#nutritionEnergy [data-energy]");
-  await expect(card.locator("tbody tr[data-energy-source]")).toHaveCount(4);
   // The body fat entered in Körper, named "Lokal" (#3402).
   expect(read.body.source).toBe("entered");
   expect(read.body.label).toBe("Lokal");
-  // The diary opens on today, whose rows are still partial (#3395).
-  const kfa = `KFA: ${read.body.label} · bis jetzt`;
-  // Today's Garmin rest names the full day it comes from, if any (#3443).
-  const deviceNote = device.resting_from ? `${device.label}Ruhe ` : `${device.label}`;
-  // Today the own row names its base (#3687): 12 weeks, flagged when every window in it is unstable;
-  // without an estimated window there is no base and it keeps "Ruhe aus 28 Tagen".
-  const own = read.rows.find((row) => row.source === "own");
-  const basis = { "12w": "Ruhe aus 12 Wochen", "12w_unstable": "Ruhe aus 12 Wochen (unsicher)" }[own.basis] ?? "Ruhe aus 28 Tagen";
-  expect(own.basis ?? null).toBe(read.base ? own.basis : null);
-  await expect(card.locator("tbody th")).toHaveText([`Katch-McArdle${kfa}`, `Cunningham${kfa}`, new RegExp(`^${deviceNote}.*bis jetzt$`), `Aus deinen Daten${basis} · bis jetzt`]);
-  // #3478: the estimate with its low–high span on one line below it, and no "±" left in the energy views.
-  const resting = card.locator("[data-energy-source='katch_mcardle'] td").first();
-  const shown = resting.locator(".energy-span [aria-hidden]");
-  await expect(shown).toHaveText(/^\d{1,3}(?:\.\d{3})*–\d{1,3}(?:\.\d{3})*$/);
-  const [low, high] = (await shown.textContent()).split("–");
-  await expect(resting.locator(".energy-span .sr-only")).toHaveText(`zwischen ${low} und ${high} kcal`);
+  const card = page.locator("#nutritionEnergy [data-energy]");
+  await expect(card.locator(".energy-goal > p")).toHaveText("Offene Kalorien1.020 kcal");
+  await expect(card.locator(".energy-goal progress")).toHaveAttribute("max", "2420");
+  await expect(card.locator(".energy-goal-items li")).toHaveText(["gegessen 1.400", "Ziel heute 2.420 (300 Defizit)"]);
+  await expect(card.locator(".energy-usage h3")).toHaveText("Verbrauch heute · bis jetzt");
+  await expect(card.locator(".energy-split [data-part]")).toHaveCount(5);
+  await expect(card.locator(".energy-parts li")).toHaveText([
+    "Ruhe1.700", "Schritte & Treppen250 (Stand 12:18)", "Übriger Alltag+220", "Sport350 (Kraft RPE 8, MET 5)", "Verdauung200 (geschätzt)", /^Tag gesamt2\.720/,
+  ]);
+  // #3478: the day total with its low–high span on one line below it, and no "±" left in the energy views.
+  const shown = card.locator(".energy-total .energy-span [aria-hidden]");
+  await expect(shown).toHaveText("2.510–2.930");
+  await expect(card.locator(".energy-total .energy-span .sr-only")).toHaveText("zwischen 2.510 und 2.930 kcal");
   const spanLines = await shown.evaluate((node) => {
     const range = document.createRange();
     range.selectNodeContents(node);
     return new Set([...range.getClientRects()].map((rect) => Math.round(rect.top))).size;
   });
   expect(spanLines).toBe(1);
+  await expect(card.locator(".energy-source")).toHaveText("Quelle: Cunningham mit übrigem Alltag");
   await expect(card).not.toContainText("±");
+  await expect(page.locator("#nutritionEnergy table")).toHaveCount(0);
   await expect(card.locator(".analysis-reference-note")).toHaveCount(0);
   const tooltip = card.locator(".analysis-info-tooltip");
   await expect(tooltip).toBeHidden();
   // #3336: the same small info icon as Analyse › Laufen › Entwicklung, not a yellow badge.
   const info = card.getByRole("button", { name: "Energieverbrauch: Informationen" });
   await expect(info).toHaveClass("analysis-legend-info analysis-info-icon");
-  // The table re-renders when its read arrives, so the style check retries on the current node.
+  // The card re-renders when its read arrives, so the style check retries on the current node.
   await expect(info).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
-  // A late diary render keeps the shown table, so one click opens the popover for good (#3379).
+  // A late diary render keeps the shown card, so one click opens the popover for good (#3379).
   await info.click();
   await expect(tooltip).toBeVisible();
   await page.evaluate(() => renderDiaryEnergy());
@@ -65,56 +75,21 @@ test("@responsive the diary shows the energy table and explains it behind the in
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBeTruthy();
 });
 
-// #3336, #3362: without any body fat both formula rows name the reason and open its dialog.
-test("@responsive formula rows without a body fat name the reason and open the dialog", async ({ page }) => {
-  // The read carries the diary day as `?date=` (#3395).
-  await page.route("**/api/body/energy*", async (route) => {
-    const response = await route.fetch();
-    const data = await response.json();
-    for (const row of data.rows) if (row.source === "katch_mcardle" || row.source === "cunningham") Object.assign(row, { resting_kcal: null, resting_band_kcal: null, total_kcal: null, total_band_kcal: null, split: null });
-    await route.fulfill({ response, json: { ...data, body: null, skinfold_missing: "no_skinfold" } });
-  });
+// #3703: without an outlined source the card names the heading and says so, with no parts.
+test("@responsive the diary card says Noch keine Quelle without an outlined source", async ({ page }) => {
+  await shapeEnergy(page, (data) => ({ ...data, day_partial: true, outlined: null, best: null }));
   await page.goto("/#nutrition/diary");
   const card = page.locator("#nutritionEnergy [data-energy]");
-  const missing = card.locator("[data-energy-missing='no_skinfold']");
-  await expect(missing).toHaveText(["Körperfett fehlt", "Körperfett fehlt"]);
-  // Without a body fat no row names a KFA source.
-  await expect(card.locator("tbody")).not.toContainText("KFA:");
-  await missing.first().click();
-  await expect(page.locator("#bodyFatDialog")).toBeVisible();
-  await page.locator("#bodyFatDialogCancel").click();
+  await expect(card.locator(".energy-usage h3")).toHaveText("Verbrauch heute · bis jetzt");
+  await expect(card.locator(".energy-usage")).toContainText("Noch keine Quelle");
+  await expect(card.locator(".energy-parts")).toHaveCount(0);
+  await expect(page.locator("#nutritionEnergy table")).toHaveCount(0);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBeTruthy();
 });
 
-// #3550: an own residual 300 kcal above Katch-McArdle shows Ruhe at that reference, named, and the
-// excess as "nicht erfasster Alltag" with the residual's span, as its own bar segment.
-test("@responsive the own row names everyday energy the steps do not see", async ({ page }) => {
-  await page.route("**/api/body/energy*", async (route) => {
-    const response = await route.fetch();
-    const data = await response.json();
-    // Synthetic rows, independent of the fixture's body: Katch-McArdle 1,839 and a residual of 2,139.
-    const parts = { neat_kcal: 250, sport_kcal: 350, tef_kcal: 250, shared: { neat: true, sport: true, tef: true } };
-    const katch = { source: "katch_mcardle", resting_kcal: 1839, resting_band_kcal: 219, total_kcal: 2689, total_band_kcal: 241,
-      errors_kcal: [], mean_error_kcal: null, pending_parts: [], split: { resting_kcal: 1839, ...parts } };
-    const own = { source: "own", resting_kcal: 1839, resting_band_kcal: 219, resting_implausible: false, total_kcal: 2989, total_band_kcal: 150,
-      split: { resting_kcal: 1839, ...parts, resting_source: "katch_mcardle", unmeasured_kcal: 300, unmeasured_band_kcal: 150 },
-      pending_parts: [], window_days: 28, fat_share: { share_pct: 70, prior_pct: 70, measured_pct: 0 } };
-    const others = data.rows.filter((row) => !["katch_mcardle", "own"].includes(row.source));
-    await route.fulfill({ response, json: { ...data, rows: [katch, ...others, own] } });
-  });
-  await page.goto("/#nutrition/diary");
-  const card = page.locator("#nutritionEnergy [data-energy]");
-  const ownSplit = card.locator("tr[data-energy-source='own'] + .energy-split-row");
-  await expect(ownSplit.locator("small")).toHaveText("Ruhe wie Katch-McArdle 1.839 (1.620–2.058) · nicht erfasster Alltag 300 (150–450) · Alltag 250 · Sport 350 · Verdauung 250");
-  await expect(ownSplit.locator(".energy-split [data-part='unmeasured']")).toHaveCount(1);
-  await expect(card.locator("tr[data-energy-source='own'] th small")).toContainText("nicht erfasster Alltag aus 28 Tagen");
-  await expect(card.locator(".energy-split-legend")).toContainText("nicht erfasster Alltag");
-  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBeTruthy();
-});
-
-// #3577: the learned everyday term is offered under the table; "Übernehmen" stores the dated
+// #3577: the learned term is offered under the card; "Übernehmen" stores the dated
 // check in the profile with a receipt and undo, and the formula rows then carry it.
-test("@responsive the learned everyday term is taken over with a receipt and undo", async ({ page }) => {
+test("@responsive the learned Übriger Alltag is taken over with a receipt and undo", async ({ page }) => {
   // #3689: offered once it qualifies (here 3 stable windows that share no day).
   const fit = (kcal) => ({ kcal, raw_kcal: kcal, band_kcal: 180, windows: 4, independent: 3, qualified: true });
   await page.route("**/api/body/energy*", async (route) => {
@@ -125,22 +100,24 @@ test("@responsive the learned everyday term is taken over with a receipt and und
     const rows = data.rows.map((row) => (row.source === "katch_mcardle" && checked
       ? { ...row, split: { ...(row.split || { resting_kcal: 1839, neat_kcal: 220, sport_kcal: 0, tef_kcal: 250, shared: {} }), learned_kcal: 480, learned_band_kcal: 180 } }
       : row));
-    await route.fulfill({ response, json: { ...data, rows, learned_everyday: { katch_mcardle: fit(480), cunningham: fit(330), checked } } });
+    await route.fulfill({ response, json: { ...data, rows, outlined: "katch_mcardle", learned_everyday: { katch_mcardle: fit(480), cunningham: fit(330), checked } } });
   });
   await page.goto("/#nutrition/diary");
   const card = page.locator("#nutritionEnergy [data-energy]");
   const offered = card.locator("[data-learned='offered']");
-  await expect(offered).toContainText("Gelernter Alltag aus 4 Fenstern");
+  await expect(offered).toContainText("Übriger Alltag aus 4 Fenstern");
   // "Noch nicht" stores nothing and hides the buttons for this view (Gitar on #3637).
   await offered.getByRole("button", { name: "Noch nicht" }).click();
   await expect(card.locator("[data-learned='offered'] button")).toHaveCount(0);
-  await expect(card.locator("[data-learned='offered']")).toContainText("Gelernter Alltag aus 4 Fenstern");
+  await expect(card.locator("[data-learned='offered']")).toContainText("Übriger Alltag aus 4 Fenstern");
   await page.reload();
   await expect(offered).toContainText("Katch-McArdle +480 kcal/Tag (300–660) · Cunningham +330 (150–510)");
   await offered.getByRole("button", { name: "Übernehmen" }).click();
-  await expect(page.locator("#toast")).toContainText("Gelernter Alltag übernommen.");
+  await expect(page.locator("#toast")).toContainText("Übriger Alltag übernommen.");
   await expect(card.locator("[data-learned='checked']")).toContainText("übernommen am");
   await expect(card.locator(".energy-split [data-part='learned']")).toHaveCount(1);
+  await expect(card.locator(".energy-parts [data-part='learned']")).toHaveText("Übriger Alltag+480");
+  await expect(card.locator(".energy-source")).toHaveText("Quelle: Katch-McArdle mit übrigem Alltag");
   await page.locator("#toast").getByRole("button", { name: "Rückgängig" }).click();
   await expect(card.locator("[data-learned='offered']")).toBeVisible();
   await expect(card.locator(".energy-split [data-part='learned']")).toHaveCount(0);
@@ -178,53 +155,34 @@ test("@responsive a diary card marks a meal as estimated and clears the mark", a
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBeTruthy();
 });
 
-// #3443: today Garmin's rest is still counting; its row shows yesterday's, or why it has none.
-test("@responsive today's Garmin row shows yesterday's rest with its label, or the reason", async ({ page }) => {
-  let device = null;
-  await page.route("**/api/body/energy*", async (route) => {
-    const response = await route.fetch();
-    const data = await response.json();
-    const row = data.rows.find((item) => item.source === "device");
-    for (const key of ["resting_from", "resting_missing"]) delete row[key];
-    Object.assign(row, device(data.day));
-    await route.fulfill({ response, json: { ...data, day_partial: true } });
-  });
-  device = (day) => {
-    const yesterday = new Date(`${day}T12:00:00Z`);
-    yesterday.setUTCDate(yesterday.getUTCDate() - 1);
-    return { resting_kcal: 1800, resting_band_kcal: null, total_kcal: 2200, total_band_kcal: null, resting_from: yesterday.toISOString().slice(0, 10) };
-  };
+// #3443, #3703: the wearable as outlined source names itself by the label the read gives it, and
+// has no digestion part.
+test("@responsive the wearable as outlined source names its label and its parts", async ({ page }) => {
+  await shapeEnergy(page, (data) => ({ ...data, day_partial: false, outlined: "device", best: null,
+    rows: [...data.rows.filter((row) => row.source !== "device"), formulaRow("device", { resting_kcal: 1745, neat_kcal: 610, sport_kcal: 765, tef_kcal: null }, { label: "Garmin Connect", total_band_kcal: null })] }));
   await page.goto("/#nutrition/diary");
-  const row = page.locator("#nutritionEnergy tr[data-energy-source='device']");
-  await expect(row.locator("th small")).toHaveText("Ruhe wie gestern · bis jetzt");
-  await expect(row.locator("td")).toHaveText([/^1\.800/, /^2\.200/]);
-  device = () => ({ resting_kcal: null, resting_band_kcal: null, total_kcal: null, total_band_kcal: null, split: null, resting_missing: "no_recent_resting" });
-  await page.evaluate(() => { resetEnergy(); return loadEnergy(); });
-  // The array form retries while the two value cells are still being replaced.
-  await expect(row.locator("td")).toHaveText(["kein Ruhewert der letzten Tage"]);
+  const card = page.locator("#nutritionEnergy [data-energy]");
+  await expect(card.locator(".energy-usage h3")).toHaveText("Verbrauch");
+  await expect(card.locator(".energy-parts li")).toHaveText(["Ruhe1.745", "Schritte & Treppen610", "Sport765", "Verdauung–", "Tag gesamt2.720"]);
+  await expect(card.locator(".energy-source")).toHaveText("Quelle: Garmin Connect");
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBeTruthy();
 });
 
-// #3494: early morning today has no steps, sessions or meals yet; Tag gesamt is the rest so far.
-test("@responsive the early-morning row totals its rest and names the parts without data yet", async ({ page }) => {
-  await page.route("**/api/body/energy*", async (route) => {
-    const response = await route.fetch();
-    const data = await response.json();
-    const row = data.rows.find((item) => item.source === "katch_mcardle");
-    Object.assign(row, { resting_kcal: 1800, resting_band_kcal: 200, total_kcal: 1800, total_band_kcal: 200,
-      split: { resting_kcal: 1800, neat_kcal: 0, sport_kcal: 0, tef_kcal: 0, shared: {} }, pending_parts: ["neat", "sport", "tef"] });
-    await route.fulfill({ response, json: { ...data, day_partial: true, skinfold_missing: null } });
-  });
+// #3494, #3703: early morning today has no steps, sessions or meals yet; Tag gesamt is the rest so far.
+test("@responsive the early-morning card totals its rest and names the parts without data yet", async ({ page }) => {
+  await shapeEnergy(page, (data) => ({ ...data, day_partial: true, outlined: "katch_mcardle", best: null, wellness: null, goal: null,
+    rows: [...data.rows.filter((row) => row.source !== "katch_mcardle"),
+      formulaRow("katch_mcardle", { resting_kcal: 1800, neat_kcal: 0, sport_kcal: 0, tef_kcal: 0 }, { total_kcal: 1800, pending_parts: ["neat", "sport", "tef"] })] }));
   await page.goto("/#nutrition/diary");
-  const row = page.locator("#nutritionEnergy tr[data-energy-source='katch_mcardle']");
-  await expect(row.locator("th small")).toContainText("bis jetzt");
-  await expect(row.locator("td")).toHaveText([/^1\.800/, /^1\.800/]);
-  await expect(page.locator("#nutritionEnergy tr.energy-split-row").first()).toContainText("Ruhe 1.800 (1.600–2.000) · Alltag noch keine Daten · Sport noch keine Daten · Verdauung noch keine Daten");
+  const card = page.locator("#nutritionEnergy [data-energy]");
+  await expect(card.locator(".energy-parts li")).toHaveText(["Ruhe1.800", "Schritte & Treppennoch keine Daten", "Sportnoch keine Daten", "Verdauungnoch keine Daten", /^Tag gesamt1\.800/]);
+  await expect(card.locator(".energy-source")).toHaveText("Quelle: Katch-McArdle");
+  await expect(card.locator(".energy-goal")).toHaveText("Ziel festlegen");
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBeTruthy();
 });
 
-// #3395: the table shows the diary's selected day; switching the date reads that day.
-test("@responsive the energy table follows the diary date: sport per day, today bis jetzt, the 28-day own row in Verlauf", async ({ page }) => {
+// #3395: the card shows the diary's selected day; switching the date reads that day.
+test("@responsive the energy card follows the diary date: sport per day, today bis jetzt", async ({ page }) => {
   const asked = [];
   await page.route("**/api/body/energy*", async (route) => {
     const day = new URL(route.request().url()).searchParams.get("date");
@@ -236,40 +194,26 @@ test("@responsive the energy table follows the diary date: sport per day, today 
     const sport = day === today ? 0 : 418;
     for (const row of data.rows) {
       if (row.source !== "katch_mcardle" && row.source !== "cunningham") continue;
-      Object.assign(row, { resting_kcal: 1700, resting_band_kcal: 200, total_kcal: 1950 + sport, total_band_kcal: 210,
+      Object.assign(row, { resting_kcal: 1700, resting_band_kcal: 200, total_kcal: 1950 + sport, total_band_kcal: 210, pending_parts: [],
         split: { resting_kcal: 1700, neat_kcal: 250, sport_kcal: sport, tef_kcal: null, shared: {} } });
     }
-    // #3531: the server gives the own row the formula rows' day parts and its 28-day resting rate.
-    // #3687: today rests on the 12-week base, a past day on its own window.
-    Object.assign(data.rows.find((row) => row.source === "own"), {
-      resting_kcal: 1800, resting_band_kcal: 150, resting_implausible: false, total_kcal: null, total_band_kcal: null, window_days: 28,
-      basis: day === today ? "12w" : null,
-      split: { resting_kcal: 1800, neat_kcal: 250, sport_kcal: sport, tef_kcal: null, shared: {} },
-    });
     // #3530: today's Garmin day summary ends at 12:18, before nothing synced later.
     const wellness = day === today ? { as_of: "12:18", behind: false } : null;
-    await route.fulfill({ response, json: { ...data, day, day_partial: day === today, skinfold_missing: null, wellness } });
+    await route.fulfill({ response, json: { ...data, day, day_partial: day === today, outlined: "katch_mcardle", best: null, skinfold_missing: null, wellness } });
   });
   await page.goto("/#nutrition/diary");
   const card = page.locator("#nutritionEnergy [data-energy]");
-  const katch = card.locator("tr[data-energy-source='katch_mcardle']");
-  const split = card.locator("tr.energy-split-row").first();
-  await expect(katch.locator("th small")).toContainText("bis jetzt");
-  await expect(split).toContainText("Sport 0 · Verdauung nicht erfasst");
-  // #3530: every row's Alltag names where Garmin's day summary stands.
-  await expect(card.locator("tr.energy-split-row").filter({ hasText: "(Stand 12:18)" })).toHaveCount(await card.locator("tr.energy-split-row").count());
-  // #3531: the own row shows the selected day; today its resting rate rests on the 12-week base (#3687).
-  await expect(card.locator("tr[data-energy-source='own'] th small")).toHaveText("Ruhe aus 12 Wochen · bis jetzt");
+  await expect(card.locator(".energy-usage h3")).toHaveText("Verbrauch heute · bis jetzt");
+  await expect(card.locator(".energy-parts [data-part='sport']")).toHaveText(/^Sport0/);
+  await expect(card.locator(".energy-parts [data-part='tef']")).toHaveText("Verdauungnicht erfasst");
+  // #3530: Schritte & Treppen name where Garmin's day summary stands.
+  await expect(card.locator(".energy-parts [data-part='neat']")).toHaveText("Schritte & Treppen250 (Stand 12:18)");
   const today = await page.locator("#nutritionDate").inputValue();
   await page.getByRole("button", { name: "Vorheriger Tag" }).click();
   await expect(page.locator("#nutritionDate")).not.toHaveValue(today);
-  await expect(split).toContainText("Sport 418");
-  await expect(split).not.toContainText("Stand");
-  await expect(katch.locator("th small")).not.toContainText("bis jetzt");
-  // The own row shows that day's Sport like the formula rows, with its resting rate from 28 days.
-  const ownSplit = card.locator("tr[data-energy-source='own'] + tr.energy-split-row");
-  await expect(ownSplit).toContainText("Ruhe (Rest) 1.800 (1.650–1.950) · Alltag 250 · Sport 418");
-  await expect(card.locator("tr[data-energy-source='own'] th small")).toHaveText("Ruhe aus 28 Tagen");
+  await expect(card.locator(".energy-parts [data-part='sport']")).toHaveText(/^Sport418/);
+  await expect(card.locator(".energy-parts [data-part='neat']")).toHaveText("Schritte & Treppen250");
+  await expect(card.locator(".energy-usage h3")).toHaveText("Verbrauch");
   expect(asked.at(-1)).toBe(await page.locator("#nutritionDate").inputValue());
   expect(asked).toContain(today);
   // A future diary day reads nothing; Verlauf's fit, which is no day's, stays (Gitar #3423, #3397).
@@ -283,7 +227,7 @@ test("@responsive the energy table follows the diary date: sport per day, today 
   await expect(page.locator("#nutritionFitScale [data-energy-fit]")).toBeVisible();
   await expect(page.locator("#nutritionFitScale")).not.toContainText("Tag liegt in der Zukunft");
   // #3548: the 28-day own row gave way to the deficit card, which has no source rows.
-  await expect(page.locator("#nutritionFitScale tr[data-energy-source]")).toHaveCount(0);
+  await expect(page.locator("#nutritionFitScale [data-energy-source]")).toHaveCount(0);
   expect(asked.length).toBeLessThanOrEqual(reads + 1);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBeTruthy();
 });
@@ -301,7 +245,7 @@ const fitScale = (days, ownDays, own, band) => ({
 // Playwright's messages for a request whose page went away (#3449).
 const GONE = /Response has been disposed|Target page, context or browser has been closed/;
 for (const theme of ["light", "dark"]) {
-  test(`@responsive the fit scale follows Verlauf's period without overlaps, and the diary outlines the best source (${theme})`, async ({ page }) => {
+  test(`@responsive the fit scale follows Verlauf's period without overlaps, and the diary card takes the outlined source (${theme})`, async ({ page }) => {
     await page.emulateMedia({ colorScheme: theme });
     await page.route("**/api/body/energy*", async (route) => {
       // A read still in flight when the test moves to the diary is disposed with the
@@ -316,7 +260,7 @@ for (const theme of ["light", "dark"]) {
         throw error;
       }
       for (const row of data.rows) if (row.source !== "own") row.mean_error_kcal = { katch_mcardle: 1042, cunningham: 1204, device: 431 }[row.source];
-      // Every row carries its split, so the outlined row has its bar and detail line (#3476).
+      // Every row carries its split, so the outlined row has its parts.
       for (const row of data.rows) row.split ??= { resting_kcal: 1650, neat_kcal: 520, sport_kcal: 610, tef_kcal: 230 };
       // #3613: the server names the one outlined source; 12 weeks name the weigh-ins' span.
       const twelve = { ...fitScale(84, 84, 2726, 454), span_start: "2026-08-21", span_end: "2026-11-13" };
@@ -351,42 +295,10 @@ for (const theme of ["light", "dark"]) {
     expect(clashes).toEqual([]);
     if (theme === "light") await card.screenshot({ path: test.info().outputPath("Fit.png") });
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBeTruthy();
-    // The diary outlines the nearest source dashed while none is distinguishable.
+    // The diary's card takes the server's outlined source, the nearest one while none is distinguishable.
     await page.goto("/#nutrition/diary");
-    const device = page.locator("#nutritionEnergy tr[data-energy-source='device']");
-    await expect(device).toHaveAttribute("data-fit", "nearest");
-    // The diary re-renders the table when its reads land, so the style check retries on the current cell.
-    await expect(device.locator("th")).toHaveCSS("border-top-style", "dashed");
+    await expect(page.locator("#nutritionEnergy .energy-source")).toHaveText(/^Quelle: (?!Katch|Cunningham).+/);
     await expect(page.locator("#nutritionEnergy")).not.toContainText("passt am besten");
-    // #3476: the outline encloses the whole source row (head line, bar and detail line), with room inside its border.
-    // The diary re-renders when its reads land, so each try reads the current row.
-    const outlineProblems = () => device.evaluate((row) => {
-      const split = row.nextElementSibling?.matches(".energy-split-row") ? row.nextElementSibling : null;
-      if (!split) return ["no split row"];
-      const cells = [...row.children, ...split.children];
-      const drawn = (cell, side) => getComputedStyle(cell)[`border${side}Style`] === "dashed";
-      const box = (node) => node.getBoundingClientRect();
-      const edge = {
-        left: Math.min(...cells.filter((cell) => drawn(cell, "Left")).map((cell) => box(cell).left)),
-        right: Math.max(...cells.filter((cell) => drawn(cell, "Right")).map((cell) => box(cell).right)),
-        top: Math.min(...cells.filter((cell) => drawn(cell, "Top")).map((cell) => box(cell).top)),
-        bottom: Math.max(...cells.filter((cell) => drawn(cell, "Bottom")).map((cell) => box(cell).bottom)),
-      };
-      const outside = [];
-      for (const node of [split?.querySelector(".energy-split"), split?.querySelector("small")]) {
-        const rect = node && box(node);
-        if (!rect || rect.left < edge.left + 2 || rect.right > edge.right - 2 || rect.top < edge.top + 2 || rect.bottom > edge.bottom - 2) outside.push(node?.className || node?.tagName || "missing");
-      }
-      // The colour dot is the name cell's ::before, so the name cell's content must start clear of the border.
-      const name = row.querySelector("th");
-      const inset = box(name).left + parseFloat(getComputedStyle(name).borderLeftWidth) + parseFloat(getComputedStyle(name).paddingLeft) - edge.left;
-      // The room inside the outline must not push the table past its card.
-      const card = row.closest("[data-energy]");
-      const cardRight = box(card).right - parseFloat(getComputedStyle(card).paddingRight);
-      if (box(row.closest("table")).right > cardRight + 1) outside.push("table past its card");
-      return inset < 6 ? [...outside, `name ${inset}px from the border`] : outside;
-    }).catch((error) => [String(error)]);
-    await expect.poll(outlineProblems).toEqual([]);
     // A late read can still re-render the card mid-capture, so the capture is retried.
     if (theme === "light") await expect(() => page.locator("#nutritionEnergy [data-energy]").screenshot({ path: test.info().outputPath("Energieverbrauch.png"), timeout: 5_000 })).toPass();
   });
@@ -510,7 +422,7 @@ test("@responsive the deficit card stays without logged meals", async ({ page })
 });
 
 // #3547: without a goal the diary links to it; the goal row in Körper sets it, and the diary's energy
-// card then opens with "Heute noch essen" from the outlined source's day total.
+// card then opens with "Offene Kalorien" from the outlined source's day total.
 test("@responsive the energy goal is set in Körper and priced in the diary", async ({ page }) => {
   await page.goto("/#nutrition/diary");
   const strip = page.locator("#nutritionEnergy [data-energy-goal]");
@@ -540,8 +452,8 @@ test("@responsive the energy goal is set in Körper and priced in the diary", as
     if (read.goal.remaining_kcal == null) {
       await expect(strip).toHaveText("Noch kein Tagesverbrauch für dein Ziel");
     } else {
-      await expect(strip.locator("p")).toContainText("Heute noch essen");
-      await expect(strip.locator("small")).toContainText("− Ziel-Defizit 500 kcal");
+      await expect(strip.locator("p")).toContainText("Offene Kalorien");
+      await expect(strip.locator("li").last()).toHaveText(/^Ziel heute [\d.]+ \(500 Defizit\)$/);
       await expect(strip.locator("progress")).toBeVisible();
     }
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBeTruthy();

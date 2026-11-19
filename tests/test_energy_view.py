@@ -147,8 +147,8 @@ class EnergyViewTests(unittest.TestCase):
         # 600 activity and 250 digestion, with the resting band; the 28-day row
         # keeps the window's TDEE and its band.
         # #3550: the residual 1,850 exceeds Katch-McArdle's 1,839, so Ruhe is
-        # that reference with its band and the 11 kcal above it are "nicht
-        # erfasster Alltag" in the split; the day total stays.
+        # that reference with its band and the 11 kcal above it are "übriger
+        # Alltag" in the split; the day total stays.
         own = row(view, "own")
         self.assertEqual(
             (1839, 219, 2700, 150),
@@ -236,7 +236,7 @@ class EnergyViewTests(unittest.TestCase):
         # #3550 (athlete decision 2026-11-18): 300 kcal/day of everyday energy
         # the steps do not see lifts the residual to 2,139 over Katch-McArdle's
         # 1,838.8 (band 218.78). The own row shows Ruhe at that reference and
-        # the 300 kcal above it as "nicht erfasster Alltag" with the residual's
+        # the 300 kcal above it as "übriger Alltag" with the residual's
         # band; its day total (2,139 + 600 + 250) and every other row stay.
         lifted = energy_view(inputs(), [window(END, 3000.0, 2139.0)], garmin())
         plain = energy_view(inputs(), [window(END, 2700.0, 1839.0)], garmin())
@@ -752,7 +752,7 @@ def with_intake(source: EnergyInputs, day: date, **parts: Any) -> EnergyInputs:
 
 
 class EnergyGoalTests(unittest.TestCase):
-    """'Heute noch essen' from the outlined source's day total (#3547)."""
+    """'Offene Kalorien' from the outlined source's day total (#3547)."""
 
     def test_the_goal_takes_the_best_sources_total_and_subtracts_what_was_eaten(
         self,
@@ -1884,7 +1884,7 @@ class EnergyDayScenarioTests(unittest.TestCase):
                 for part in DAY_PARTS:
                     self.assertEqual(katch["split"][part], own["split"][part])
                 self.assertEqual(window["resting_kcal"], own["resting_kcal"])
-                # #3550: Ruhe plus "nicht erfasster Alltag" is the residual.
+                # #3550: Ruhe plus "übriger Alltag" is the residual.
                 rest = own["resting_kcal"] + own["split"].get("unmeasured_kcal", 0)
                 self.assertEqual(
                     own["total_kcal"],

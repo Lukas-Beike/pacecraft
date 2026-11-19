@@ -57,7 +57,6 @@
   --warning-surface: rgba(255, 179, 64, .14);
   --danger-status-surface: rgba(255, 132, 121, .14);
   --translucent-surface: rgba(255, 255, 255, .025);
-  --split-hatch: rgba(255, 255, 255, .45);
   --accent-border: rgba(52, 207, 161, .28);
   --accent-wash: rgba(52, 207, 161, .06);
   --warning-ink: #201900;
@@ -1832,15 +1831,24 @@ button:focus-visible, a:focus-visible, summary:focus-visible {
 [data-body-overview] tr[data-metric="body_fat_pct"] { cursor: pointer; }
 /* A value keeps its band on its line; at large text the band alone moves below (#3362). */
 [data-energy] .current-performance-table td { white-space: nowrap; }
-[data-energy] .current-performance-table td:has(> span > small), [data-energy] .energy-split-row td, [data-energy] .current-performance-table td.muted { white-space: normal; }
+[data-energy] .current-performance-table td:has(> span > small), [data-energy] .current-performance-table td.muted { white-space: normal; }
 [data-energy] .current-performance-table td > span > small { white-space: nowrap; }
-[data-energy] thead th + th { text-align: right; padding-left: 12px; }
-/* "Heute noch essen" heads the diary's energy card (#3547). */
+/* "Offene Kalorien" head the diary's energy card (#3547, #3703). */
 .energy-goal { display: grid; gap: 6px; margin: 0 0 14px; }
 .energy-goal > p { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; margin: 0; }
 .energy-goal strong { font-size: 1.4rem; font-variant-numeric: tabular-nums; }
 .energy-goal progress { width: 100%; height: 10px; accent-color: var(--accent); border: 0; border-radius: 5px; overflow: hidden; }
-.energy-goal small { color: var(--muted); }
+.energy-goal-items { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 2px 12px; margin: 0; padding: 0; list-style: none; color: var(--muted); font-size: .85rem; }
+.energy-usage { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); }
+.energy-usage-head { display: flex; align-items: center; gap: 6px; margin: 0 0 8px; }
+.energy-usage h3 { margin: 0; font-size: 1rem; }
+.energy-parts { display: grid; gap: 4px; margin: 0 0 8px; padding: 0; list-style: none; font-size: .9rem; }
+.energy-parts li { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+.energy-parts li > :last-child { text-align: right; font-variant-numeric: tabular-nums; }
+.energy-parts li:not(.energy-total)::before { content: ""; flex: none; width: 12px; height: 12px; margin-right: -4px; align-self: center; border-radius: 3px; background-color: var(--part-color); }
+.energy-parts li > :first-child { flex: 1; }
+.energy-total { padding-top: 4px; border-top: 1px solid var(--line); font-weight: 700; }
+.energy-source { color: var(--muted); }
 /* Verlauf's deficit card (#3548): hero, goal bar, the boxes with arrows, and the text. */
 [data-energy-deficit] h3 { margin: 0 0 8px; font-size: 1rem; }
 .energy-deficit-hero { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; margin: 0 0 12px; }
@@ -1870,23 +1878,6 @@ button:focus-visible, a:focus-visible, summary:focus-visible {
 .energy-deficit-text { margin: 0 0 6px; }
 .energy-deficit-uncertainty { color: var(--muted); }
 [data-energy] .energy-flag-row th { padding-left: 18px; color: var(--muted); font-size: .8rem; }
-[data-energy] th[data-color="1"] { --zone-color: var(--chart-series-1); }
-[data-energy] th[data-color="2"] { --zone-color: var(--chart-series-2); }
-[data-energy] th[data-color="3"] { --zone-color: var(--chart-series-3); }
-[data-energy] th[data-color="4"] { --zone-color: var(--chart-series-4); }
-[data-energy] th[data-color]::before { content: ""; display: inline-block; width: 10px; height: 10px; margin-right: 8px; border-radius: 50%; background: var(--zone-color); vertical-align: middle; }
-/* The 12-week best source's row is outlined (#3397): solid when distinguishable, dashed when only nearest.
-   The outline encloses the head line with its bar and detail line (#3476). */
-[data-energy] :is(tr[data-fit], tr[data-fit] + .energy-split-row) { --fit-line: 2px solid var(--accent); }
-[data-energy] :is(tr[data-fit="nearest"], tr[data-fit="nearest"] + .energy-split-row) { --fit-line: 2px dashed var(--accent); }
-[data-energy] tr[data-fit] > * { border-top: var(--fit-line); border-bottom: var(--fit-line); }
-[data-energy] tr[data-fit]:has(+ .energy-split-row) > * { border-bottom: 0; }
-[data-energy] tr[data-fit] > :first-child { border-left: var(--fit-line); }
-[data-energy] tr[data-fit] > :last-child { border-right: var(--fit-line); }
-[data-energy] tr[data-fit] + .energy-split-row > td { border: var(--fit-line); border-top: 0; }
-/* Every row keeps the outline's room inside, so no text touches it and no row shifts when it moves (#3476). */
-[data-energy] tr > :where(:first-child) { border-left: 2px solid var(--transparent); padding-left: 8px; }
-[data-energy] tr > :where(:last-child) { border-right: 2px solid var(--transparent); padding-right: 8px; }
 /* "Welche Quelle trifft dein Gewicht?" as one kcal scale (#3397, A2). */
 .energy-fit-verdict { margin: 4px 0 12px; font-size: .86rem; line-height: 1.4; }
 .energy-fit-verdict b { color: var(--accent); }
@@ -1910,24 +1901,17 @@ button:focus-visible, a:focus-visible, summary:focus-visible {
 .energy-fit [data-color="1"] { --fit-color: var(--chart-series-1); }
 .energy-fit [data-color="2"] { --fit-color: var(--chart-series-2); }
 .energy-fit [data-color="3"] { --fit-color: var(--chart-series-3); }
-[data-energy] tr:has(+ .energy-split-row) > * { border-bottom: 0; padding-bottom: 4px; }
-[data-energy] .energy-split-row td { padding-top: 0; text-align: left; white-space: normal; font-size: .8rem; font-weight: 400; }
-.energy-split { display: flex; height: 12px; margin-bottom: 4px; overflow: hidden; border-radius: 6px; background: var(--surface-raised); }
-:is(.energy-split, .energy-split-legend) [data-part="resting"] { --part-color: var(--training-zone-1); }
-:is(.energy-split, .energy-split-legend) [data-part="neat"] { --part-color: var(--training-zone-2); }
-:is(.energy-split, .energy-split-legend) [data-part="unmeasured"] { --part-color: var(--training-zone-3); }
-:is(.energy-split, .energy-split-legend) [data-part="learned"] { --part-color: var(--training-zone-7); }
+.energy-split { display: flex; height: 12px; margin-bottom: 8px; overflow: hidden; border-radius: 6px; background: var(--surface-raised); }
+:is(.energy-split, .energy-parts) [data-part="resting"] { --part-color: var(--training-zone-1); }
+:is(.energy-split, .energy-parts) [data-part="neat"] { --part-color: var(--training-zone-2); }
+:is(.energy-split, .energy-parts) [data-part="learned"] { --part-color: var(--training-zone-7); }
 [data-energy] .energy-learned { display: grid; gap: 8px; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line); font-size: .85rem; }
 [data-energy] .energy-learned p { margin: 0; }
 [data-energy] .energy-learned small { color: var(--muted); }
 [data-energy] .energy-learned .actions { display: flex; flex-wrap: wrap; gap: 8px; }
-:is(.energy-split, .energy-split-legend) [data-part="sport"] { --part-color: var(--training-zone-4); }
-:is(.energy-split, .energy-split-legend) [data-part="tef"] { --part-color: var(--training-zone-6); }
-.energy-split-legend [data-part="shared"] { --part-color: var(--muted); }
+:is(.energy-split, .energy-parts) [data-part="sport"] { --part-color: var(--training-zone-4); }
+:is(.energy-split, .energy-parts) [data-part="tef"] { --part-color: var(--training-zone-6); }
 .energy-split > span { display: block; background-color: var(--part-color); }
-.energy-split > [data-shared], .energy-split-legend [data-part="shared"]::before { background-image: repeating-linear-gradient(135deg, var(--split-hatch) 0 2px, var(--transparent) 2px 6px); }
-.energy-split-legend { display: flex; flex-wrap: wrap; gap: 6px 14px; margin: 8px 0 0; padding: 0; list-style: none; font-size: .75rem; }
-.energy-split-legend li::before { content: ""; display: inline-block; width: 12px; height: 12px; margin-right: 4px; border-radius: 3px; background-color: var(--part-color); vertical-align: middle; }
 .current-performance-table td { text-align: right; padding-left: 12px; font-size: .95rem; font-weight: 600; font-variant-numeric: tabular-nums; }
 .current-performance-table tbody tr:last-child > * { border-bottom: 0; }
 
