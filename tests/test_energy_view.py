@@ -199,6 +199,8 @@ class EnergyViewTests(unittest.TestCase):
         )  # fmt: skip
         km, cunningham = row(checked, "katch_mcardle"), row(checked, "cunningham")
         self.assertEqual((2697, 8), (km["total_kcal"], km["split"]["learned_kcal"]))
+        # The total's band adds the learned term's: hypot(241, 256) = 351.6.
+        self.assertEqual(352, km["total_band_kcal"])
         self.assertEqual(0, cunningham["split"]["learned_kcal"])
         self.assertEqual("2026-11-19", checked["learned_everyday"]["checked"])
         # The comparison with the weight stays on the raw rows.

@@ -739,6 +739,11 @@ def _add_learned(
         }
         if row["total_kcal"] is not None:
             row["total_kcal"] += kcal
+        # Its uncertainty widens the day total's band (review, #3577).
+        if row["total_band_kcal"] is not None:
+            row["total_band_kcal"] = round(
+                math.hypot(row["total_band_kcal"], fit.band_kcal)
+            )
 
 
 def _learned_view(fit: LearnedEveryday | None) -> dict[str, Any] | None:
