@@ -2114,7 +2114,8 @@ function energyFlaggedRows(flagged) {
   // The clean window is an older one than the 28 days beside it, so it names its last day (#3618).
   const label = unflagged?.end ? `ohne geschätzte Tage (bis ${deficitDay(unflagged.end)})` : "ohne geschätzte Tage";
   const rows = [row("unflagged", label, unflagged ? energyKcal(unflagged.total_kcal, unflagged.total_band_kcal) : "kein sauberer Zeitraum")];
-  if (flagged.corrected) rows.push(row("corrected", "mit gelernter Korrektur", energyKcal(flagged.corrected.total_kcal, flagged.corrected.total_band_kcal)));
+  // Until the bias is narrow enough and seen in independent windows it is not learned (#3616).
+  rows.push(row("corrected", "mit gelernter Korrektur", flagged.corrected ? energyKcal(flagged.corrected.total_kcal, flagged.corrected.total_band_kcal) : "noch nicht gelernt"));
   return rows;
 }
 

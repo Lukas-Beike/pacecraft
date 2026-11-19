@@ -1,8 +1,8 @@
 # M12 — Adaptive daily expenditure from intake and the weight trend
 
 - **Card:** M12
-- **Card version:** 14
-- **Method ID:** adaptive-expenditure v14 (#3100, #3187, #3255, #3552, #3551, #3553, #3555, #3554, #3586, #3603, #3612, #3614, #3617, #3577)
+- **Card version:** 15
+- **Method ID:** adaptive-expenditure v15 (#3100, #3187, #3255, #3552, #3551, #3553, #3555, #3554, #3586, #3603, #3612, #3614, #3617, #3577, #3616)
 - **Status:** method implemented (`backend/nutrition/energy_balance.py`); the reader, diagnostics and display follow (#3100, #3099)
 - **Classification:** model estimate
 - **Literature checked:** 2026-11-15
@@ -141,6 +141,14 @@ estimate. It never rewrites logged values and never falls back to a formula.
    fixed activity, so a change in training volume is not read as a logging
    bias. Without spread in `a` the activity term drops out. `b` is reported
    in % with its band: positive means flagged meals were larger than logged.
+   The band takes the t quantile at the fit's dof (windows − 2, one less
+   with the activity term), on the slope variance inflated by 4 (#3616).
+   The slope is shrunk toward 0 by a prior 0 ± 0.25 (precision-weighted,
+   with the data's SD as its band / 1.96) and kept at or above −1, since
+   a flagged meal cannot be less than nothing. `b` is reported and applied
+   only when its band spans at most 50 percentage points (half-width
+   0.25) and its flagged days lie in at least 2 windows that share no
+   day; until then the row reads "noch nicht gelernt" (#3616).
 9. **Learned correction:** once `b` is estimated, each window also shows
    `TDEE + b × x` (the flagged kcal counted at `1 + b`), labelled, with `x`
    times b's band added. Logged entries are never rewritten.
@@ -221,7 +229,9 @@ bias that is the same on every day is not visible in the band.
   not the window has complete logging days, so the Verlauf deficit card stays.
   The TDEE, the derived resting rate and the calibration still need the
   complete days; without them the card names the missing expenditure.
-- The bias needs 4 windows with flagged days and spread in their share.
+- The bias needs 4 windows with flagged days and spread in their share,
+  at least 2 of them sharing no day, and a band of at most ± 25
+  percentage points after the prior (#3616).
 - The first read uses the existing diary and weigh-in history
   (`history_start`), not only days logged afterwards. With fewer than 4
   windows the calibration stays at 1 and each window carries how many windows
@@ -241,6 +251,8 @@ bias that is the same on every day is not visible in the band.
 | Minimum basis | 14 complete days, 8 weigh-ins, 21-day span | product assumption | stop rule, no formula fallback |
 | Flagged-entry uncertainty | 25 % of the flagged entries' kcal | product assumption | #3100 athlete decision, #3187 |
 | Calibration prior / bounds | 1 ± 0.10 / 0.85–1.15 | product assumption | method comment, #3100 |
+| Flagged-meal bias prior / bound | 0 ± 0.25 / at least −1 | product assumption | a flagged meal cannot be less than nothing (#3616) |
+| Flagged-meal bias gate | band ≤ ± 25 points, ≥ 2 independent windows | product assumption | overlapping windows hold about a quarter of the information (#3616) |
 | Band | t quantile, 1.96 beyond 120 dof | product assumption | two-sided 95 %, standard t table (#3187 item 10); the deficit card uses the same (#3614) |
 | Residual autocorrelation cap | 0.8 (factor 3 at most) | product assumption | AR(1) factor for persisting weigh-in scatter (#3614) |
 | Stability band | 2.576 / 1.96 × t | product assumption | about 99 % per pair, so flat series are rarely flagged across up to 6 neighbour pairs (#3614) |
@@ -288,7 +300,7 @@ bias that is the same on every day is not visible in the band.
 | Constant | Value | Module | Code comment |
 | --- | --- | --- | --- |
 | `METHOD_ID` | `'adaptive-expenditure'` | `backend/nutrition/energy_balance.py` |  |
-| `METHOD_VERSION` | `14` | `backend/nutrition/energy_balance.py` | Bump when a formula or constant below changes the estimate. |
+| `METHOD_VERSION` | `15` | `backend/nutrition/energy_balance.py` | Bump when a formula or constant below changes the estimate. |
 | `WINDOW_DAYS` | `28` | `backend/nutrition/energy_balance.py` | Days per window and windows per week of the rolling view (#3099, #3100). |
 | `CURRENT_WEIGHT_DAYS` | `28` | `backend/nutrition/energy_balance.py` | A day's current weight is the least-squares line through the weigh-ins of this many days up to it, at its latest weigh-in, so a steady change has no lag (#3551); with fewer weigh-ins or a shorter span, their mean. |
 | `MIN_LINE_WEIGHINS` | `3` | `backend/nutrition/energy_balance.py` |  |
@@ -313,6 +325,10 @@ bias that is the same on every day is not visible in the band.
 | `CALIBRATION_BOUNDS` | `(0.85, 1.15)` | `backend/nutrition/energy_balance.py` |  |
 | `MIN_CALIBRATION_WINDOWS` | `4` | `backend/nutrition/energy_balance.py` | Windows needed before the factor moves from 1, and before a flagged-meal bias is estimated. |
 | `MIN_BIAS_WINDOWS` | `4` | `backend/nutrition/energy_balance.py` |  |
+| `BIAS_PRIOR_SD` | `0.25` | `backend/nutrition/energy_balance.py` | The flagged-meal bias b (#3616): shrunk toward 0 by the prior 0 +- 0.25 and kept at or above -1 (a flagged meal cannot be less than nothing); reported and applied only once its 95 % band spans at most 50 percentage points (half-width 0.25) and its flagged days lie in at least 2 windows that share no day (product assumptions). |
+| `BIAS_MIN` | `-1.0` | `backend/nutrition/energy_balance.py` |  |
+| `BIAS_MAX_BAND` | `0.25` | `backend/nutrition/energy_balance.py` |  |
+| `MIN_INDEPENDENT_BIAS_WINDOWS` | `2` | `backend/nutrition/energy_balance.py` |  |
 | `MAX_RESIDUAL_AUTOCORRELATION` | `0.8` | `backend/nutrition/energy_balance.py` | A weight step from water or glycogen is not tissue (#3614): weigh-ins whose scatter persists widen the slope's error by the AR(1) factor, with the lag-1 autocorrelation capped here (factor 3 at most); overlapping windows that differ beyond the 99 % band of the days they do not share are unstable and their band holds the difference. 2.576 / 1.96 turns the 95 % t into 99 %. |
 | `STABILITY_BAND_RATIO` | `2.576 / 1.96` | `backend/nutrition/energy_balance.py` |  |
 | `LEARNED_EVERYDAY_PRIOR_SD` | `250.0` | `backend/nutrition/energy_balance.py` | The learned everyday term of a formula row (#3577): the own total's excess over the row, shrunk towards 0 with this SD (kcal/day, product assumption). |
