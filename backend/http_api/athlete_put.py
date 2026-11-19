@@ -177,9 +177,11 @@ class AthletePutRoutes:
     def _save_skinfolds(self, handler: Any, _request: RouteRequest) -> None:
         """Save one 3-site skinfold measurement; one of the same day is replaced.
 
-        Request: JSON body `{"date": "YYYY-MM-DD", "folds_mm": {site: number}}`
-        with exactly the sites `chest`, `abdomen`, `thigh` (men) or `triceps`,
-        `suprailiac`, `thigh` (women), each 2 to 80 mm (comma decimals allowed).
+        Request: JSON body `{"date": "YYYY-MM-DD", "folds_mm": {site: number or
+        [number, ...]}}` with exactly the sites `chest`, `abdomen`, `thigh` (men)
+        or `triceps`, `suprailiac`, `thigh` (women), each one to three readings of
+        2 to 80 mm (comma decimals allowed); the site's value is their median
+        (#3556).
         The date must not be in the future.
 
         Response: 200 as `GET /api/body/skinfolds`.

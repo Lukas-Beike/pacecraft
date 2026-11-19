@@ -32,7 +32,7 @@ SKINFOLD_SITES: Final = {
     Sex.MALE: ("chest", "abdomen", "thigh"),
     Sex.FEMALE: ("triceps", "suprailiac", "thigh"),
 }
-_DENSITY_COEFFICIENTS: Final = {
+DENSITY_COEFFICIENTS: Final = {
     Sex.MALE: (1.10938, 0.0008267, 0.0000016, 0.0002574),
     Sex.FEMALE: (1.0994921, 0.0009929, 0.0000023, 0.0001392),
 }
@@ -79,7 +79,7 @@ def body_density(sex: Sex, folds_mm: Mapping[str, float], age_years: int) -> flo
     if not youngest <= age_years <= oldest:
         raise ValueError(f"the skinfold equations hold for ages {youngest}-{oldest}")
     total = sum(folds_mm[site] for site in sites)
-    a, b, c, d = _DENSITY_COEFFICIENTS[sex]
+    a, b, c, d = DENSITY_COEFFICIENTS[sex]
     return a - b * total + c * total**2 - d * age_years
 
 

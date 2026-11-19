@@ -285,6 +285,16 @@ class BrowserRunnerTests(unittest.TestCase):
             plain = 'const { test } = require("@playwright/test");\n'
             (root / "e2e/plain.spec.js").write_text(plain, encoding="utf-8")
             self.assertEqual(runner.weekday_specs("base", root), ["e2e/week.spec.js"])
+            # #3610: without the base ref the weekday runs are skipped, and the
+            # line says it does not affect the run, so it is not read as its cause.
+            args = runner.parser().parse_args(["--base", "refs/missing"])
+            with redirect_stderr(io.StringIO()) as stderr:
+                self.assertEqual([], runner.weekday_runs(args))
+            self.assertIn(
+                "Weekday runs skipped (this run is unaffected): cannot diff "
+                "against refs/missing",
+                stderr.getvalue(),
+            )
 
     def test_a_changed_weekday_spec_lists_and_runs_on_monday_and_sunday(self):
         # #3324: as CI's pinned-day step, after the real day's run.
@@ -847,25 +857,64 @@ class BrowserRunnerTests(unittest.TestCase):
             script = containers.create.call_args.args[1][-1]
             self.assertIn("def source_digest", script)
             source.write_text("two", encoding="utf-8")
+            # A mismatch is an answer: it is never retried (#3610).
+            containers.create.reset_mock()
             self.assertFalse(
                 runner.image_matches_source(processes, containers, "image", root)
             )
+            self.assertEqual(1, containers.create.call_count)
+            # A check that did not finish, or could not start, runs once more,
+            # logged, and only that run's real answer counts (#3610).
+            source.write_text("one", encoding="utf-8")
+            for failure in ("run", "create"):
+                with self.subTest(failure=failure):
+                    containers.create.reset_mock(side_effect=True)
+                    processes.run.reset_mock(side_effect=True)
+                    stalled = getattr(
+                        processes if failure == "run" else containers, failure
+                    )
+                    stalled.side_effect = [runner.RunnerError("stalled"), mock.DEFAULT]
+                    processes.run.return_value = (0, digest + "\n")
+                    with redirect_stderr(io.StringIO()) as stderr:
+                        self.assertTrue(
+                            runner.image_matches_source(
+                                processes, containers, "image", root
+                            )
+                        )
+                    self.assertIn("stalled; retrying once", stderr.getvalue())
+                    self.assertEqual(2, containers.create.call_count)
+            containers.create.reset_mock(side_effect=True)
+            processes.run.reset_mock(side_effect=True)
+
+            # Unknown stays None (the run stops on it), and each says why, so a
+            # stalled check never reads as a stale image (#3610).
+            def unknown(reason):
+                with redirect_stderr(io.StringIO()) as stderr:
+                    self.assertIsNone(
+                        runner.image_matches_source(
+                            processes, containers, "image", root
+                        )
+                    )
+                self.assertIn(reason, stderr.getvalue())
+
             processes.run.return_value = (1, "")
-            self.assertIsNone(
-                runner.image_matches_source(processes, containers, "image", root)
-            )
+            unknown("source check exited with code 1")
+            processes.run.return_value = (0, "not a digest\n")
+            unknown("source check printed no digest")
+            # Neither is retried: the check ran and gave no answer.
+            self.assertEqual(2, containers.create.call_count)
             # A compare that times out still removes its container, so a second
-            # compare after --build can create one with the same name (#3243).
+            # compare after --build can create one with the same name (#3243);
+            # a second timeout stays unknown.
             containers.remove.reset_mock()
             processes.run.side_effect = runner.RunnerError("timed out")
-            self.assertIsNone(
-                runner.image_matches_source(processes, containers, "image", root)
+            unknown("source check did not finish: timed out")
+            self.assertEqual(
+                [mock.call(containers.create.return_value)] * 2,
+                containers.remove.call_args_list,
             )
-            containers.remove.assert_called_once_with(containers.create.return_value)
             containers.create.side_effect = runner.RunnerError("unavailable")
-            self.assertIsNone(
-                runner.image_matches_source(processes, containers, "image", root)
-            )
+            unknown("source check could not start: unavailable")
 
     def run_with_cleanup_exception(self, fake):
         snapshots = []

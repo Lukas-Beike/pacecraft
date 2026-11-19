@@ -32,7 +32,6 @@ from backend.athlete.body_composition import (
 from backend.canonical.vocabulary import ProviderId
 from backend.errors import AppError
 from backend.nutrition.energy_balance import (
-    BAND_Z,
     FAT_SHARE_PRIOR,
     DayInputs,
     EnergyInputs,
@@ -40,11 +39,13 @@ from backend.nutrition.energy_balance import (
     Estimate,
     StoredEnergy,
     day_tef,
+    energy_density,
     energy_windows,
     history_start,
     is_complete,
     period_window,
     weight_trend,
+    window_t,
     windows_bias,
 )
 from backend.nutrition.energy_inputs import (
@@ -657,7 +658,8 @@ def _deficit(
     store, tdee = latest.store, latest.adaptive_tdee
     if store is None:
         return None
-    deficit, band = -store.kcal_per_day, BAND_Z * store.sd
+    # The TDEE's own t quantile, one band rule for both (#3614).
+    deficit, band = -store.kcal_per_day, window_t(latest) * store.sd
     change = store.weight_end_kg - store.weight_start_kg
     return {
         "days": latest.days,
@@ -668,6 +670,11 @@ def _deficit(
         "span_days": store.days,
         "weight_start_kg": round(store.weight_start_kg, 1),
         "weight_end_kg": round(store.weight_end_kg, 1),
+        # The fitted change, not the rounded ends', so the boxes add up (#3618).
+        "weight_change_kg": round(change, 1),
+        # kcal per kg of weight change at the blended share, for the goal's
+        # weekly weight (#3618).
+        "kcal_per_kg": _round(energy_density(store.fat_share)),
         **_measured_terms(store),
         "fat_change_kg": round(store.fat_change_kg, 1),
         # The fat share of the weight change (#3555).
@@ -675,7 +682,8 @@ def _deficit(
         if abs(change) >= 0.05
         else None,
         "stored_kcal": _round(store.kcal_per_day * store.days),
-        "uncertainty": store.uncertainty,
+        # An unstable window names the weight step first (#3614).
+        "uncertainty": store.uncertainty if latest.stable else "unstable",
         "total_kcal": _round(tdee.kcal) if tdee else None,
         "expenditure_missing": None if tdee else latest.insufficient,
         "device_total_kcal": _round(device_total),

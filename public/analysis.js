@@ -1316,6 +1316,30 @@ function skinfoldDialogSites() {
   return SKINFOLD_SITES[state.data?.profile?.sex === "female" ? "female" : "male"];
 }
 
+// Up to three readings per site; the site's value is their median (#3556).
+const SKINFOLD_READINGS = 3;
+
+function skinfoldInputs(form, site) {
+  return Array.from({ length: SKINFOLD_READINGS }, (_, index) => form.elements[index ? `${site}_${index + 1}` : site]);
+}
+
+function skinfoldReadings(form, site) {
+  return skinfoldInputs(form, site).map((input) => input.value.trim()).filter(Boolean);
+}
+
+function skinfoldMedian(readings) {
+  const sorted = readings.map((value) => Number(value.replace(",", "."))).sort((a, b) => a - b);
+  const middle = Math.floor(sorted.length / 2);
+  return sorted.length % 2 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2;
+}
+
+// "Deine Messgenauigkeit: ± 0,9 %-Punkte (aus 24 Wiederholungen)" once the repeats suffice (#3556).
+function skinfoldRepeatabilityText(read) {
+  const found = read?.repeatability;
+  if (found?.sd_pct == null) return "";
+  return `Deine Messgenauigkeit: ± ${AppFormat.number(found.sd_pct, { digits: 1, minDigits: 1 })} %-Punkte (aus ${found.repeat_sites} Wiederholungen)`;
+}
+
 // Siri body fat (%) from the folds in mm, or null outside the accepted folds and ages.
 function skinfoldBodyFat(sex, folds, age) {
   if (!(age >= 18 && age <= 80) || folds.some((mm) => !(mm >= 2 && mm <= 80))) return null;
@@ -1333,10 +1357,11 @@ function showSkinfoldResult() {
   const form = document.querySelector("#bodyFatDialogForm");
   const profile = state.data?.profile || {};
   const age = Number(form.elements.date.value.slice(0, 4)) - Number(profile.birth_year);
-  const folds = skinfoldDialogSites().map((site) => Number(String(form.elements[site].value).replace(",", ".")));
+  const folds = skinfoldDialogSites().map((site) => skinfoldMedian(skinfoldReadings(form, site)));
   const sex = profile.sex === "female" ? "female" : "male";
   const fat = profile.birth_year ? skinfoldBodyFat(sex, folds, age) : null;
-  document.querySelector("#bodyFatDialogResult").textContent = fat == null ? "" : `Ergibt ${analysisValue(fat, "%")} Körperfett`;
+  const result = fat == null ? "" : `Ergibt ${analysisValue(fat, "%")} Körperfett`;
+  document.querySelector("#bodyFatDialogResult").textContent = [result, skinfoldRepeatabilityText(skinfoldRead)].filter(Boolean).join(" · ");
 }
 
 function fillBodyFatDialog() {
@@ -1345,8 +1370,8 @@ function fillBodyFatDialog() {
   const entry = bodyFatEntries.find((item) => item.date === day);
   const measured = skinfoldRead?.measurements?.find((item) => item.date === day);
   form.elements.pct.value = entry ? String(entry.pct) : "";
-  const values = Object.fromEntries((measured?.folds_mm || []).map((fold) => [fold.site, fold.mm]));
-  for (const site of skinfoldDialogSites()) form.elements[site].value = values[site] ?? "";
+  const values = Object.fromEntries((measured?.folds_mm || []).map((fold) => [fold.site, fold.readings || [fold.mm]]));
+  for (const site of skinfoldDialogSites()) skinfoldInputs(form, site).forEach((input, index) => { input.value = values[site]?.[index] ?? ""; });
   document.querySelector("#bodyFatDialogRemove").hidden = !(bodyFatMode === "folds" ? measured : entry);
   showSkinfoldResult();
 }
@@ -1356,7 +1381,7 @@ function setBodyFatMode(mode) {
   bodyFatMode = mode;
   const form = document.querySelector("#bodyFatDialogForm");
   for (const button of form.querySelectorAll("[data-body-fat-mode]")) button.setAttribute("aria-pressed", String(button.dataset.bodyFatMode === mode));
-  for (const input of [form.elements.pct, ...skinfoldDialogSites().map((site) => form.elements[site])]) {
+  for (const input of [form.elements.pct, ...skinfoldDialogSites().flatMap((site) => skinfoldInputs(form, site))]) {
     const shown = (input.name === "pct") === (mode === "pct");
     input.disabled = !shown;
     input.closest("label").hidden = !shown;
@@ -1370,8 +1395,12 @@ async function openBodyFatDialog() {
   const form = document.querySelector("#bodyFatDialogForm");
   // The fold fields sit in the dialog's own form grid, after the percentage, for the profile's sex.
   form.querySelectorAll("[data-skinfold-site]").forEach((label) => label.remove());
+  // Each site takes up to three readings in one row; only the first is required (#3556).
+  // The label names the first reading; the repeats carry their own name.
+  const reading = (site, index) => h("input", { name: index ? `${site}_${index + 1}` : site, type: "number", min: "2", max: "80", step: "0.5", inputMode: "decimal", required: !index,
+    ...(index ? { "aria-label": `${SKINFOLD_LABELS[site]}, Messung ${index + 1} (mm)` } : {}) });
   form.elements.pct.closest("label").after(...skinfoldDialogSites().map((site) => h("label", { dataset: { skinfoldSite: site } }, `${SKINFOLD_LABELS[site]} (mm)`,
-    h("input", { name: site, type: "number", min: "2", max: "80", step: "0.5", inputMode: "decimal", required: true }))));
+    h("span", "skinfold-readings", Array.from({ length: SKINFOLD_READINGS }, (_, index) => reading(site, index))))));
   form.elements.date.value = timezoneDateKey(state.data?.profile?.timezone, new Date());
   document.querySelector("#bodyFatDialogStatus").textContent = "";
   for (const button of form.querySelectorAll("button")) button.disabled = false;
@@ -1396,7 +1425,7 @@ function bindBodyFatDialog() {
     const day = form.elements.date.value;
     const folds = bodyFatMode === "folds";
     const [path, payload] = folds
-      ? ["/api/body/skinfolds", { date: day, folds_mm: Object.fromEntries(skinfoldDialogSites().map((site) => [site, form.elements[site].value])) }]
+      ? ["/api/body/skinfolds", { date: day, folds_mm: Object.fromEntries(skinfoldDialogSites().map((site) => [site, skinfoldReadings(form, site)])) }]
       : ["/api/body/body-fat", { date: day, pct: form.elements.pct.value }];
     await sendBodyEntry("bodyFatDialog", path, payload, document.querySelector("#bodyFatDialogSave"), bodyFatReceipt(day, folds, "gespeichert"));
   });
@@ -1546,8 +1575,9 @@ function bodyEditButton(label, open) {
 // The energy goal (#3547) sits with the body values; the diary's "Heute noch essen" prices it.
 const ENERGY_GOAL_NAMES = { lose: "Abnehmen", hold: "Halten", build: "Aufbauen" };
 const ENERGY_GOAL_KCAL_LABELS = { lose: "Defizit pro Tag (kcal)", build: "Überschuss pro Tag (kcal)" };
-// About 7,700 kcal per kg of body fat, for the weekly equivalent.
-const FAT_KCAL_PER_KG = 7700;
+// kcal per kg of body weight as the energy view prices it (#3618): the rule of thumb's 70 % fat at
+// 9,441 and 30 % lean at 1,816 kcal/kg, or the read's blended share once the deficit card has one.
+const PRIOR_KCAL_PER_KG = 7154;
 
 function energyGoalText(profile) {
   const name = ENERGY_GOAL_NAMES[profile?.energy_goal];
@@ -1560,7 +1590,7 @@ function energyGoalRow() {
     h("td", null, energyGoalText(state.data?.profile)), h("td", null, bodyEditButton("Energieziel festlegen", openEnergyGoalDialog)));
 }
 
-// The kcal field names deficit or surplus, hides for "Halten", and shows its fat per week.
+// The kcal field names deficit or surplus, hides for "Halten", and shows its body weight per week.
 function updateEnergyGoalDialog() {
   const form = document.querySelector("#energyGoalDialogForm");
   const goal = form.elements.goal.value;
@@ -1568,8 +1598,9 @@ function updateEnergyGoalDialog() {
   form.elements.kcal.closest("label").hidden = goal === "hold";
   form.elements.kcal.required = goal !== "hold";
   document.querySelector("#energyGoalDialogKcalLabel").textContent = ENERGY_GOAL_KCAL_LABELS[goal] || "";
-  const week = (kcal * 7 / FAT_KCAL_PER_KG).toLocaleString("de-DE", { maximumFractionDigits: 2 });
-  document.querySelector("#energyGoalDialogWeek").textContent = goal !== "hold" && kcal > 0 ? `≈ ${week} kg Fett pro Woche` : "";
+  const density = energyRead?.deficit?.kcal_per_kg || PRIOR_KCAL_PER_KG;
+  const week = (kcal * 7 / density).toLocaleString("de-DE", { maximumFractionDigits: 2 });
+  document.querySelector("#energyGoalDialogWeek").textContent = goal !== "hold" && kcal > 0 ? `≈ ${week} kg Körpergewicht pro Woche` : "";
 }
 
 let energyGoalDialogBound = false;
@@ -1911,7 +1942,7 @@ function energyTableHead() {
 // "Dein Defizit, letzte 28 Tage" (#3548) replaces Verlauf's 28-day own row: the energy per day
 // from the body stores as the hero, the goal marker, the boxes weight and body fat → fat → kcal per
 // day, and a short text (the athlete asked for it), with the flagged-meal rows under it.
-const DEFICIT_UNCERTAINTY = { fat_share: "Fettanteil (Faustregel und Messungen)", weight_scatter: "Schwankungen der Wiegungen" };
+const DEFICIT_UNCERTAINTY = { fat_share: "Fettanteil (Faustregel und Messungen)", weight_scatter: "Schwankungen der Wiegungen", unstable: "Wasser im Gewicht, die Wochen widersprechen sich" };
 const DEFICIT_GOAL_STATUS = { in: "✓ im Ziel", under: "unter Ziel", over: "über Ziel" };
 
 function deficitDecimal(value) {
@@ -1963,7 +1994,8 @@ function deficitDay(iso) {
 // names their own days. The weight's end is the trend line's; it says "aktuell" when it differs
 // from the chart's last weigh-in at the shown precision.
 function deficitBoxes(card) {
-  const change = card.weight_end_kg - card.weight_start_kg;
+  // The fitted change, which the fat and kcal boxes take too, not the rounded ends' (#3618).
+  const change = card.weight_change_kg;
   let fat = card.fat_pct_end == null ? "keine Messung" : "nur eine Messung";
   let fatDays = card.fat_date_end ? `vom ${deficitDay(card.fat_date_end)}` : null;
   if (card.fat_pct_start != null) {
@@ -1985,7 +2017,9 @@ function deficitBoxes(card) {
 function deficitText(card, deviceLabel) {
   const device = card.device_total_kcal == null ? "" : ` (${deviceLabel || "Gerät"}: ${formatWhole(card.device_total_kcal)})`;
   // The weigh-ins carry the card; the expenditure also needs logged meals ("Nur Waage", #3603).
-  const spent = card.total_kcal == null ? "Echter Verbrauch: braucht erfasste Mahlzeiten." : `Echter Verbrauch: ≈ ${formatWhole(card.total_kcal)} kcal am Tag${device}.`;
+  // An unstable window is an estimate, not the real expenditure (#3614).
+  const kind = card.uncertainty === "unstable" ? "Geschätzter" : "Echter";
+  const spent = card.total_kcal == null ? "Echter Verbrauch: braucht erfasste Mahlzeiten." : `${kind} Verbrauch: ≈ ${formatWhole(card.total_kcal)} kcal am Tag${device}.`;
   return [spent,
     `Unsicher vor allem: ${DEFICIT_UNCERTAINTY[card.uncertainty] || card.uncertainty}.`];
 }
@@ -2016,7 +2050,9 @@ function energyFlaggedRows(flagged) {
   if ((flagged?.days ?? 0) <= 0) return [];
   const row = (kind, label, value) => h("tr", { className: "energy-flag-row", dataset: { energyFlag: kind } }, h("th", { scope: "row" }, label), h("td", null, "–"), h("td", null, value));
   const unflagged = flagged.unflagged;
-  const rows = [row("unflagged", "ohne geschätzte Tage", unflagged ? energyKcal(unflagged.total_kcal, unflagged.total_band_kcal) : "kein sauberer Zeitraum")];
+  // The clean window is an older one than the 28 days beside it, so it names its last day (#3618).
+  const label = unflagged?.end ? `ohne geschätzte Tage (bis ${deficitDay(unflagged.end)})` : "ohne geschätzte Tage";
+  const rows = [row("unflagged", label, unflagged ? energyKcal(unflagged.total_kcal, unflagged.total_band_kcal) : "kein sauberer Zeitraum")];
   if (flagged.corrected) rows.push(row("corrected", "mit gelernter Korrektur", energyKcal(flagged.corrected.total_kcal, flagged.corrected.total_band_kcal)));
   return rows;
 }

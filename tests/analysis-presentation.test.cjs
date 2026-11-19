@@ -321,7 +321,7 @@ test("Verlauf's deficit card: hero, goal marker, boxes and text agree, measured 
   const { energyDeficitCard } = extractFunctions("analysis.js", ["energyKcalRange", "energyKcalSpan", "energyFlaggedRows", ...DEFICIT_CARD_FUNCTIONS], {
     h, AppFormat, formatWhole: (v) => AppFormat.number(Math.round(v), { digits: 0 }),
   });
-  const measured = { days: 28, deficit_kcal: 565, band_kcal: 235, method: "measured", span_days: 28, weight_start_kg: 91.2, weight_end_kg: 89.2, fat_pct_start: 15.5, fat_pct_end: 14.1, fat_date_start: "2026-10-07", fat_date_end: "2026-11-13", weight_last_kg: 89.2, fat_change_kg: -1.6, fat_share_pct: 80, fat_share: { share_pct: 80, prior_pct: 70, measured_pct: 28 }, stored_kcal: -15820, uncertainty: "fat_share", total_kcal: 3800, device_total_kcal: 3100, goal: { goal: "lose", goal_kcal: 500, status: "in" } };
+  const measured = { days: 28, deficit_kcal: 565, band_kcal: 235, method: "measured", span_days: 28, weight_start_kg: 91.2, weight_end_kg: 89.2, weight_change_kg: -2.0, fat_pct_start: 15.5, fat_pct_end: 14.1, fat_date_start: "2026-10-07", fat_date_end: "2026-11-13", weight_last_kg: 89.2, fat_change_kg: -1.6, fat_share_pct: 80, fat_share: { share_pct: 80, prior_pct: 70, measured_pct: 28 }, stored_kcal: -15820, uncertainty: "fat_share", total_kcal: 3800, device_total_kcal: 3100, goal: { goal: "lose", goal_kcal: 500, status: "in" } };
   const rows = [{ source: "device", label: "Garmin" }];
   const card = energyDeficitCard({ rows, deficit: measured });
   assert.equal(card.dataset.energyDeficit, "measured");
@@ -341,6 +341,10 @@ test("Verlauf's deficit card: hero, goal marker, boxes and text agree, measured 
   assert.equal(textOf(current.children[4].children[0]), "Gewicht−2,0 kg91,2 → 89,2 (aktuell)");
   // #3598: the readings span the phase, so the Körperfett box names its own dates.
   assert.deepEqual(boxes, ["Gewicht−2,0 kg91,2 → 89,2", "Körperfett15,5 → 14,1 %07.10. → 13.11.", "davon Fett≈ 1,6 kg≈ 80 % · Faustregel 70 %, zu 28 % gemessen", "pro Tag≈ 565 kcal15.820 kcal ÷ 28 Tage"]);
+  // #3618 item 4: the weight box shows the fitted change the fat box takes 80 % of (−2,08 → −2,1 and
+  // −1,7), not the difference of the rounded ends (−2,0).
+  const fitted = energyDeficitCard({ rows, deficit: { ...measured, weight_change_kg: -2.1, fat_change_kg: -1.7 } });
+  assert.deepEqual(fitted.children[4].children.slice(0, 3).map(textOf), ["Gewicht−2,1 kg91,2 → 89,2", "Körperfett15,5 → 14,1 %07.10. → 13.11.", "davon Fett≈ 1,7 kg≈ 80 % · Faustregel 70 %, zu 28 % gemessen"]);
   // #3606: two lines, the facts the boxes lack.
   assert.equal(textOf(card.children[5]), "Echter Verbrauch: ≈ 3.800 kcal am Tag (Garmin: 3.100).");
   assert.equal(textOf(card.children[6]), "Unsicher vor allem: Fettanteil (Faustregel und Messungen).");
@@ -354,8 +358,12 @@ test("Verlauf's deficit card: hero, goal marker, boxes and text agree, measured 
   const scaleOnly = energyDeficitCard({ rows, deficit: { ...measured, total_kcal: null, expenditure_missing: "intake_days" } });
   assert.match(textOf(scaleOnly.children[1]), /^≈ 565 kcal/);
   assert.equal(textOf(scaleOnly.children[5]), "Echter Verbrauch: braucht erfasste Mahlzeiten.");
+  // #3614: an unstable window is an estimate and names the weight step.
+  const unstable = energyDeficitCard({ rows, deficit: { ...measured, uncertainty: "unstable" } });
+  assert.equal(textOf(unstable.children[5]), "Geschätzter Verbrauch: ≈ 3.800 kcal am Tag (Garmin: 3.100).");
+  assert.equal(textOf(unstable.children[6]), "Unsicher vor allem: Wasser im Gewicht, die Wochen widersprechen sich.");
   // The prior alone: one measurement, the rule of thumb's share, a surplus, and no goal.
-  const prior = { ...measured, method: "prior", deficit_kcal: -300, stored_kcal: 8400, weight_start_kg: 70, weight_end_kg: 71, weight_last_kg: 71, fat_pct_start: null, fat_date_start: null, fat_pct_end: 12, fat_change_kg: 0.7, fat_share_pct: 70, fat_share: { share_pct: 70, prior_pct: 70, measured_pct: 0 }, goal: null };
+  const prior = { ...measured, method: "prior", deficit_kcal: -300, stored_kcal: 8400, weight_start_kg: 70, weight_end_kg: 71, weight_change_kg: 1, weight_last_kg: 71, fat_pct_start: null, fat_date_start: null, fat_pct_end: 12, fat_change_kg: 0.7, fat_share_pct: 70, fat_share: { share_pct: 70, prior_pct: 70, measured_pct: 0 }, goal: null };
   const surplus = energyDeficitCard({ rows, deficit: prior });
   assert.equal(textOf(surplus.children[0]), "Dein Überschuss, letzte 28 Tage");
   assert.match(textOf(surplus.children[1]), /pro Tag in die Speicher/);
@@ -437,10 +445,10 @@ test("the energy table shows bands, outlines the best source, and the basis", ()
   // #3100: with flagged meals, the clean-window total and the learned correction sit under the
   // 28-day deficit card in Verlauf (#3548); the per-entry bias joins the popover.
   const flagged = { days: 2, unflagged: { total_kcal: 2650, total_band_kcal: 130, end: "2026-10-24" }, corrected: { total_kcal: 2760, total_band_kcal: 160 }, bias_pct: 12, bias_band_pct: 9 };
-  const deficit = { days: 28, deficit_kcal: 565, band_kcal: 235, method: "measured", span_days: 28, weight_start_kg: 91.2, weight_end_kg: 89.2, fat_pct_start: 15.5, fat_pct_end: 14.1, fat_change_kg: -1.6, fat_share_pct: 80, fat_share: { share_pct: 80, prior_pct: 70, measured_pct: 28 }, stored_kcal: -15820, uncertainty: "fat_share", total_kcal: 3800, device_total_kcal: 3100, goal: null };
+  const deficit = { days: 28, deficit_kcal: 565, band_kcal: 235, method: "measured", span_days: 28, weight_start_kg: 91.2, weight_end_kg: 89.2, weight_change_kg: -2.0, fat_pct_start: 15.5, fat_pct_end: 14.1, fat_change_kg: -1.6, fat_share_pct: 80, fat_share: { share_pct: 80, prior_pct: 70, measured_pct: 28 }, stored_kcal: -15820, uncertainty: "fat_share", total_kcal: 3800, device_total_kcal: 3100, goal: null };
   const flaggedTable = (flags) => energyDeficitCard({ ...read, deficit, flagged: flags }).children.at(-1);
   const flaggedRows = flaggedTable(flagged).children[1].children;
-  assert.deepEqual(flaggedRows.map((row) => [textOf(row.children[0]), textOf(row.children[1]), textOf(row.children[2])]), [["ohne geschätzte Tage", "–", span(2650, 2520, 2780)], ["mit gelernter Korrektur", "–", span(2760, 2600, 2920)]]);
+  assert.deepEqual(flaggedRows.map((row) => [textOf(row.children[0]), textOf(row.children[1]), textOf(row.children[2])]), [["ohne geschätzte Tage (bis 24.10.)", "–", span(2650, 2520, 2780)], ["mit gelernter Korrektur", "–", span(2760, 2600, 2920)]]);
   const noClean = flaggedTable({ ...flagged, unflagged: null, corrected: null }).children[1].children.at(-1);
   assert.equal(textOf(noClean.children[2]), "kein sauberer Zeitraum");
   assert.notEqual(flaggedTable({ ...flagged, days: 0 }).tagName, "TABLE", "no flagged day, no table");

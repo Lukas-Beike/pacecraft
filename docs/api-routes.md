@@ -433,13 +433,17 @@ do not suffice; logged meals are not needed, #3603): `days`, `deficit_kcal` (neg
 `band_kcal`, `method` (`measured` when measurements weigh in the fat
 share, else `prior`), `fat_share` (`share_pct`, `prior_pct` and
 `measured_pct`, the measurements' weight, #3555), `span_days`,
-`weight_start_kg`, `weight_end_kg`, `fat_pct_start` (the first
+`weight_start_kg`, `weight_end_kg` (the fitted line's ends),
+`weight_change_kg` (its change, which the fat change is a share of,
+#3618), `kcal_per_kg` (per kg of weight change at the blended share,
+#3618), `fat_pct_start` (the first
 measurement used, else null), `fat_pct_end` (the last one, else the
 latest skinfold or null), `fat_date_start` and `fat_date_end` (their
 days: the phase's span, which can start before the window, #3598),
 `weight_last_kg` (the window's last weigh-in), `fat_change_kg`, `fat_share_pct` (of the
 weight change, null below 0.05 kg), `stored_kcal` (over the span),
-`uncertainty` (`fat_share` or `weight_scatter`), `total_kcal` (the window's
+`uncertainty` (`fat_share`, `weight_scatter`, or `unstable` when
+overlapping windows contradict each other, #3614), `total_kcal` (the window's
 expenditure, null without enough logged meals) with
 `expenditure_missing` (then its reason, such as `intake_days`, else
 null), `device_total_kcal` and `goal` (`goal`, `goal_kcal` and
@@ -459,19 +463,24 @@ der Zukunft.".
 Request: no query, no body.
 
 Response: 200 with `measurements` (at most 20, each with `date`, `sex`
-`male` or `female` as the sites tell, `folds_mm` as `{site, label, mm}` in
-protocol order and `body_fat_pct` by Jackson-Pollock and Siri, null without
-a birth year in the profile; `age_outside_fit` true when the age lies outside
-the equation's fitted range), `birth_year_known` and `sites` (the sites per
-sex).
+`male` or `female` as the sites tell, `folds_mm` as `{site, label, mm,
+readings}` in protocol order, `mm` the median of the site's `readings`, and
+`body_fat_pct` by Jackson-Pollock and Siri, null without a birth year in
+the profile; `age_outside_fit` true when the age lies outside the
+equation's fitted range), `birth_year_known`, `sites` (the sites per sex)
+and `repeatability` (#3556: `repeat_sites` with two or more readings,
+`needed_sites` and `sd_pct`, one measurement's body fat SD in percentage
+points, null until enough sites have repeats).
 
 Errors: none beyond the common ones.
 
 ### `PUT /api/body/skinfolds`
 
-Request: JSON body `{"date": "YYYY-MM-DD", "folds_mm": {site: number}}`
-with exactly the sites `chest`, `abdomen`, `thigh` (men) or `triceps`,
-`suprailiac`, `thigh` (women), each 2 to 80 mm (comma decimals allowed).
+Request: JSON body `{"date": "YYYY-MM-DD", "folds_mm": {site: number or
+[number, ...]}}` with exactly the sites `chest`, `abdomen`, `thigh` (men)
+or `triceps`, `suprailiac`, `thigh` (women), each one to three readings of
+2 to 80 mm (comma decimals allowed); the site's value is their median
+(#3556).
 The date must not be in the future.
 
 Response: 200 as `GET /api/body/skinfolds`.

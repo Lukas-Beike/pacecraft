@@ -17,13 +17,14 @@ from bisect import bisect_left, bisect_right
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from datetime import date, timedelta
+from itertools import pairwise
 from typing import Any, NamedTuple, cast
 
 from backend.performance.activity_energy import TEF_ERROR_KCAL, tef_kcal
 
 METHOD_ID = "adaptive-expenditure"
 # Bump when a formula or constant below changes the estimate.
-METHOD_VERSION = 11
+METHOD_VERSION = 12
 # Days per window and windows per week of the rolling view (#3099, #3100).
 WINDOW_DAYS = 28
 # A day's current weight is the least-squares line through the weigh-ins of
@@ -93,6 +94,13 @@ MIN_BIAS_WINDOWS = 4
 # a quarter of the information its window count suggests: the variance of the
 # k and b slopes is inflated by WINDOW_DAYS / 7 before the shrinkage (#3554).
 WINDOW_OVERLAP_INFLATION = WINDOW_DAYS / 7
+# A weight step from water or glycogen is not tissue (#3614): weigh-ins whose
+# scatter persists widen the slope's error by the AR(1) factor, with the lag-1
+# autocorrelation capped here (factor 3 at most); overlapping windows that
+# differ beyond the 99 % band of the days they do not share are unstable and
+# their band holds the difference. 2.576 / 1.96 turns the 95 % t into 99 %.
+MAX_RESIDUAL_AUTOCORRELATION = 0.8
+STABILITY_BAND_RATIO = 2.576 / 1.96
 
 
 @dataclass(frozen=True)
@@ -147,6 +155,10 @@ class EnergyInputs:
     # scale's per day with its provider, then the profile's.
     device_body_fat: Mapping[date, tuple[float, Any]] = field(default_factory=dict)
     profile_body_fat_pct: float | None = None
+    # The athlete's own SD of one skinfold body fat, from repeat readings;
+    # None until there are enough, then the default applies (#3556).
+    # Per measurement day, with its own median gain (Gitar on #3622).
+    skinfold_sd_pct: Mapping[date, float] = field(default_factory=dict)
 
 
 class StoredEnergy(NamedTuple):
@@ -218,6 +230,9 @@ class EnergyWindow:
     # The mean of the days' activity errors, uncalibrated (#3552): a method's
     # error is the same on every day, so it does not average out.
     activity_error_kcal_raw: float = 0.0
+    # False when an overlapping window differs by more than the days they do
+    # not share can explain (#3614); the band then holds that difference.
+    stable: bool = True
 
 
 def weight_trend(weights_kg: Mapping[date, float]) -> dict[date, float]:
@@ -299,6 +314,22 @@ def t_quantile(dof: int) -> float:
     return BAND_Z if dof > max(T_QUANTILE_95) else T_QUANTILE_95[max(tabled)]
 
 
+def _dof(complete_days: int, weighins: int) -> int:
+    """A window's band dof: the smaller of its intake and weight-slope dof."""
+    return min(complete_days - 1, weighins - 2)
+
+
+def window_t(window: EnergyWindow) -> float:
+    """The t quantile of a window's bands; the deficit card uses it too (#3614).
+
+    A window with weigh-ins but too few logged days ("Nur Waage", #3603) has
+    only the weight slope's dof.
+    """
+    if window.adaptive_tdee is None:
+        return t_quantile(window.weighins - 2)
+    return t_quantile(_dof(window.complete_days, window.weighins))
+
+
 def _tdee(
     intakes: Sequence[tuple[float, float]],
     stored_per_day: float,
@@ -317,8 +348,7 @@ def _tdee(
     spread = statistics.stdev(values) if len(values) > 1 else 0.0
     flagged_var = sum((FLAGGED_DAY_UNCERTAINTY * k) ** 2 for _, k in intakes)
     intake_var = spread**2 / len(values) + flagged_var / len(values) ** 2
-    dof = min(len(values) - 1, weighins - 2)
-    band = t_quantile(dof) * math.sqrt(intake_var + store_sd**2)
+    band = t_quantile(_dof(len(values), weighins)) * math.sqrt(intake_var + store_sd**2)
     return Estimate(mean - stored_per_day, band)
 
 
@@ -382,6 +412,21 @@ def _slope(xs: Sequence[float], ys: Sequence[float]) -> tuple[float, float]:
     return sxy / sxx, sxx
 
 
+def _weighted_slope(
+    xs: Sequence[float], ys: Sequence[float], precisions: Sequence[float]
+) -> tuple[float, float]:
+    """The weighted least-squares slope and its precision, Σ w (x − x̄)²."""
+    total = sum(precisions)
+    mean_x = sum(w * x for w, x in zip(precisions, xs, strict=True)) / total
+    mean_y = sum(w * y for w, y in zip(precisions, ys, strict=True)) / total
+    leverage = sum(w * (x - mean_x) ** 2 for w, x in zip(precisions, xs, strict=True))
+    sxy = sum(
+        w * (x - mean_x) * (y - mean_y)
+        for w, x, y in zip(precisions, xs, ys, strict=True)
+    )
+    return sxy / leverage, leverage
+
+
 def fat_share(inputs: EnergyInputs, trend: Mapping[date, float], end: date) -> FatShare:
     """The fat share of a weight change up to ``end``: the prior blended with
     the measured one by their precisions (athlete decision, #3555).
@@ -389,12 +434,13 @@ def fat_share(inputs: EnergyInputs, trend: Mapping[date, float], end: date) -> F
     The measured share is the slope of the fat mass (the day's current weight x
     body fat) over the slope of the weight, through all measurements of one
     method up to ``end`` that have a current weight; each fat mass carries the
-    repeatability ``BODY_FAT_REPEATABILITY_PCT``. Its weight grows with the
+    repeatability ``BODY_FAT_REPEATABILITY_PCT``, for skinfolds the athlete's
+    own from repeat readings once known (#3556). Its weight grows with the
     number of measurements and their span; with fewer than two at least
     ``MIN_FAT_SPAN_DAYS`` apart, or no weight change, the prior stands alone.
     """
     prior = FatShare(FAT_SHARE_PRIOR, FAT_SHARE_PRIOR_SD)
-    for series in _fat_series(inputs):
+    for method, series in enumerate(_fat_series(inputs)):
         days = sorted(d for d in series if d <= end and d in trend)
         if len(days) >= 2 and (days[-1] - days[0]).days >= MIN_FAT_SPAN_DAYS:
             break
@@ -406,7 +452,7 @@ def fat_share(inputs: EnergyInputs, trend: Mapping[date, float], end: date) -> F
         )
     xs = [float((d - days[0]).days) for d in days]
     weights = [trend[d] for d in days]
-    weight_slope, sxx = _slope(xs, weights)
+    weight_slope, _ = _slope(xs, weights)
     if abs(weight_slope) * (xs[-1] - xs[0]) < MIN_FAT_SHARE_WEIGHT_CHANGE_KG:
         return prior._replace(
             pct_first=series[days[0]],
@@ -414,11 +460,16 @@ def fat_share(inputs: EnergyInputs, trend: Mapping[date, float], end: date) -> F
             day_first=days[0],
             day_last=days[-1],
         )
-    fat_slope, _ = _slope(
-        xs, [w * series[d] / 100.0 for w, d in zip(weights, days, strict=True)]
-    )
-    fat_sd = statistics.fmean(weights) * BODY_FAT_REPEATABILITY_PCT / 100.0
-    measured_sd = fat_sd / math.sqrt(sxx) / abs(weight_slope)
+    # Each fat mass weighs by its own SD: the skinfold day's own repeatability
+    # once known (#3556), else the default (weighted least squares).
+    own = inputs.skinfold_sd_pct if method == 0 else {}
+    precisions = [
+        (100.0 / (w * own.get(d, BODY_FAT_REPEATABILITY_PCT))) ** 2
+        for w, d in zip(weights, days, strict=True)
+    ]
+    fats = [w * series[d] / 100.0 for w, d in zip(weights, days, strict=True)]
+    fat_slope, fat_leverage = _weighted_slope(xs, fats, precisions)
+    measured_sd = 1.0 / math.sqrt(fat_leverage) / abs(weight_slope)
     precision = 1.0 / measured_sd**2
     total = precision + 1.0 / FAT_SHARE_PRIOR_SD**2
     weight = precision / total
@@ -459,6 +510,7 @@ def _stored_energy(
         y - (mean_y + slope * (x - mean_x)) for x, y in zip(xs, ys, strict=True)
     ]
     slope_se = math.sqrt(sum(r * r for r in residuals) / max(1, len(xs) - 2) / sxx)
+    slope_se *= _persistence(residuals)
     share = share or fat_share(inputs, trend, end)
     density = energy_density(share.share)
     density_sd = share.sd * (FAT_KCAL_PER_KG - LEAN_KCAL_PER_KG)
@@ -484,6 +536,22 @@ def _stored_energy(
         share.day_last,
         ys[-1],
     )
+
+
+def _persistence(residuals: Sequence[float]) -> float:
+    """How much more uncertain the slope is because the weigh-ins' scatter
+    persists from one weigh-in to the next, as water and glycogen do (#3614).
+
+    The lag-1 autocorrelation r of the residuals around the line, clamped to
+    0 to ``MAX_RESIDUAL_AUTOCORRELATION``, scales the slope's standard error
+    by sqrt((1 + r) / (1 - r)), the AR(1) factor; 1 for independent scatter.
+    """
+    total = sum(r * r for r in residuals)
+    if total <= 0:
+        return 1.0
+    lagged = sum(a * b for a, b in pairwise(residuals)) / total
+    r = min(MAX_RESIDUAL_AUTOCORRELATION, max(0.0, lagged))
+    return math.sqrt((1.0 + r) / (1.0 - r))
 
 
 def _window(
@@ -646,10 +714,132 @@ def energy_windows(
     factor = calibration_factor(uncalibrated)
     used = len(_calibration_points(uncalibrated))
     windows = [_window(inputs, trend, e, factor, used, share=share) for e in ends]
+    spreads = unexplained_spreads(inputs, windows)
+    windows = [_widened(w, s) for w, s in zip(windows, spreads, strict=True)]
     bias = _bias(windows)
     if bias is None:
         return tuple(windows)
     return tuple(_corrected(window, *bias) for window in windows)
+
+
+def is_stable(window: EnergyWindow) -> bool:
+    """Whether the window agrees with its overlapping neighbours (#3614); a fit
+    over windows, such as the learned everyday term, uses only stable ones."""
+    return window.stable
+
+
+def _difference_terms(
+    inputs: EnergyInputs, window: EnergyWindow
+) -> tuple[dict[date, float], float, dict[date, float], float]:
+    """Each day's coefficient in the window's TDEE, for its intake and its
+    weigh-in, with the intake and weigh-in variance around them (#3614)."""
+    span = [window.end - timedelta(days=n) for n in range(window.days)]
+    days = {d: inputs.days[d] for d in span if d in inputs.days}
+    intake = {
+        d: v.intake_kcal or 0.0
+        for d, v in days.items()
+        if is_complete(v, inputs.rmr_kcal)
+    }
+    weights = {d: v.weight_kg for d, v in days.items() if v.weight_kg is not None}
+    first = min(weights)
+    xs = {d: float((d - first).days) for d in weights}
+    _, sxx = _slope(list(xs.values()), list(weights.values()))
+    mean_x = statistics.fmean(xs.values())
+    ordered = [weights[d] for d in sorted(weights)]
+    residual = sum((b - a) ** 2 for a, b in pairwise(ordered)) / (
+        2 * max(1, len(ordered) - 1)
+    )
+    density = energy_density(
+        window.store.fat_share if window.store else FAT_SHARE_PRIOR
+    )
+    return (
+        {d: 1.0 / len(intake) for d in intake},
+        statistics.variance(intake.values()),
+        {d: density * (x - mean_x) / sxx for d, x in xs.items()},
+        residual,
+    )
+
+
+def unexplained_spreads(
+    inputs: EnergyInputs, windows: Sequence[EnergyWindow]
+) -> list[float]:
+    """Per window, the largest difference to an overlapping window that the
+    days they do not share cannot explain, else 0 (#3614).
+
+    A step in weight from water or glycogen enters a window's slope at up to
+    1.45 x its size and moves its overlapping neighbours by different amounts.
+    Two windows' expenditure net of their own activity may differ only by the
+    noise of the days they do not share: each day's intake and weigh-in enters
+    the difference with the difference of its two coefficients, at the pair's
+    pooled intake and weigh-in scatter. A difference beyond the t band of that
+    marks both windows unstable.
+    """
+    estimated = [(i, w) for i, w in enumerate(windows) if w.adaptive_tdee is not None]
+    terms = {i: _difference_terms(inputs, w) for i, w in estimated}
+    spreads = [0.0] * len(windows)
+    for i, a in estimated:
+        for j, b in estimated:
+            if not 0 < (b.end - a.end).days < a.days:
+                continue
+            activity = (
+                (a.activity_kcal_raw or 0.0) - (b.activity_kcal_raw or 0.0)
+                if a.activity_kcal_raw is not None and b.activity_kcal_raw is not None
+                else 0.0
+            )
+            difference = abs(
+                cast(Estimate, a.adaptive_tdee).kcal
+                - cast(Estimate, b.adaptive_tdee).kcal
+                - activity
+            )
+            if difference > STABILITY_BAND_RATIO * min(
+                window_t(a), window_t(b)
+            ) * _difference_sd(inputs, terms[i], terms[j]):
+                spreads[i] = max(spreads[i], difference)
+                spreads[j] = max(spreads[j], difference)
+    return spreads
+
+
+def _difference_sd(
+    inputs: EnergyInputs,
+    a: tuple[dict[date, float], float, dict[date, float], float],
+    b: tuple[dict[date, float], float, dict[date, float], float],
+) -> float:
+    """The SD of two windows' TDEE difference from the days they do not share."""
+    intake_var, weight_var = (a[1] + b[1]) / 2, (a[3] + b[3]) / 2
+    variance = sum(
+        (a[0].get(d, 0.0) - b[0].get(d, 0.0)) ** 2
+        * (intake_var + (FLAGGED_DAY_UNCERTAINTY * inputs.days[d].flagged_kcal) ** 2)
+        for d in a[0].keys() | b[0].keys()
+    ) + weight_var * sum(
+        (a[2].get(d, 0.0) - b[2].get(d, 0.0)) ** 2 for d in a[2].keys() | b[2].keys()
+    )
+    return math.sqrt(variance)
+
+
+def _widened(window: EnergyWindow, spread: float) -> EnergyWindow:
+    """An unstable window: its store error and bands hold the spread (#3614)."""
+    if not spread or window.store is None or window.adaptive_tdee is None:
+        return window
+    store = window.store._replace(
+        sd=math.hypot(window.store.sd, spread / window_t(window))
+    )
+    tdee = Estimate(
+        window.adaptive_tdee.kcal, math.hypot(window.adaptive_tdee.band_kcal, spread)
+    )
+    derived = window.derived_rmr and Estimate(
+        window.derived_rmr.kcal, math.hypot(window.derived_rmr.band_kcal, spread)
+    )
+    return cast(
+        EnergyWindow,
+        replace(
+            window,
+            store=store,
+            adaptive_tdee=tdee,
+            adaptive_tdee_unflagged=window.adaptive_tdee_unflagged and tdee,
+            derived_rmr=derived,
+            stable=False,
+        ),
+    )
 
 
 def _corrected(window: EnergyWindow, bias: float, band: float) -> EnergyWindow:

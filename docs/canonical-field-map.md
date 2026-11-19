@@ -2667,7 +2667,7 @@ Inputs: the athlete's save request (API/UI); no provider payload.
 | `Observation` field | Local value | Notes |
 |---|---|---|
 | `kind` | `skinfold_chest`, `skinfold_abdomen`, `skinfold_thigh` (men) or `skinfold_triceps`, `skinfold_suprailiac`, `skinfold_thigh` (women) | Exactly one protocol per day; any other set of sites: HTTP 400. The sites tell the sex of the protocol. |
-| `value` | request `folds_mm[site]` in `mm`, rounded to 0.1 | 2..80 mm (`SKINFOLD_BOUNDS_MM`); comma decimals allowed. |
+| `value` | the median of request `folds_mm[site]` (one to three readings, each rounded to 0.1) in `mm` | 2..80 mm (`SKINFOLD_BOUNDS_MM`); comma decimals allowed. With more than one reading, `details.derivation.readings` keeps them (#3556); a row without them reads as one reading. |
 | `observed_on` | request `date` (ISO day, not in the future) | Part of the natural key `|skinfold_<site>|||<day>`. |
 | `observed_at`, `sport`, `method`, `aggregation`, `period` | none | |
 | `provenance` | `provider` none; `source_kind` = `athlete_entered`; `source_record_id` none; `recorded_by` = `manual`; `retrieved_at` none; `label` = "Lokal" (`LOCAL_LABEL`) | Provider re-projection never retires these rows (it is scoped by provider). |

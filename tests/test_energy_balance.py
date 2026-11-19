@@ -31,11 +31,13 @@ def series(
     skip: set[int] | None = None,
     weigh_every: int = 1,
     split: tuple[float, float] | None = None,
+    step_at: int = 10**6,
 ) -> balance.EnergyInputs:
     """Days 0..days-1 ending on END; weight follows the true energy balance.
 
     Flagged days are logged ``logged_factor`` times their true intake.
-    Day n's weight is the start weight plus the stored energy up to day n.
+    Day n's weight is the start weight plus the stored energy up to day n,
+    plus 1 kg of water and glycogen from day ``step_at`` on (#3614).
     """
     weight = 80.0
     out: dict[date, balance.DayInputs] = {}
@@ -55,7 +57,7 @@ def series(
             entries=3,
             flagged=flagged,
             flagged_kcal=logged if flagged else 0.0,
-            weight_kg=weight if n % weigh_every == 0 else None,
+            weight_kg=weight + float(n >= step_at) if n % weigh_every == 0 else None,
             activity_kcal=600.0,
             # Its M11 error (#3552): 10 % of the activity, as a ride's.
             activity_error_kcal=60.0,
@@ -180,6 +182,35 @@ class FatShareBlendTests(unittest.TestCase):
         # 0.28; 24 weeks, 25 readings: sxx 61,250, SD 0.091, weight 0.73.
         self.assertAlmostEqual(0.28, weights[0], delta=0.01)
         self.assertAlmostEqual(0.73, weights[1], delta=0.02)
+
+    def test_the_athletes_own_repeatability_sets_the_skinfolds_weight(self) -> None:
+        # #3556: 1 point instead of the default 2 on every day halves the
+        # measured SD (0.122 over 12 weeks), so the weight rises to 0.15^2 /
+        # (0.15^2 + 0.122^2) = 0.60; without an estimate the default stays (0.28).
+        inputs, trend = self.phase(12)
+        days = sorted(inputs.body_fat_pct)
+        own = balance.fat_share(
+            replace(inputs, skinfold_sd_pct=dict.fromkeys(days, 1.0)), trend, END
+        )
+        self.assertAlmostEqual(0.60, own.measured_weight, delta=0.01)
+        default = balance.fat_share(replace(inputs, skinfold_sd_pct={}), trend, END)
+        self.assertAlmostEqual(0.28, default.measured_weight, delta=0.01)
+        # Gitar on #3622: only the later, repeated days carry the tighter SD;
+        # the earlier single readings keep the default, so the weight lies
+        # between the two.
+        later = dict.fromkeys(days[len(days) // 2 :], 1.0)
+        mixed = balance.fat_share(replace(inputs, skinfold_sd_pct=later), trend, END)
+        self.assertTrue(0.30 < mixed.measured_weight < 0.58, mixed.measured_weight)
+        # Another method keeps the default: the estimate is the skinfolds' own.
+        entered = replace(
+            inputs,
+            body_fat_pct={},
+            device_body_fat={d: (v, None) for d, v in inputs.body_fat_pct.items()},
+            skinfold_sd_pct=dict.fromkeys(days, 1.0),
+        )
+        self.assertAlmostEqual(
+            0.28, balance.fat_share(entered, trend, END).measured_weight, delta=0.01
+        )
 
     def test_readings_that_do_not_weigh_keep_both_and_the_prior(self) -> None:
         # Gitar on #3581: a flat weight keeps both readings for the card, and a
@@ -367,6 +398,37 @@ class AdaptiveTdeeTests(unittest.TestCase):
         window = balance.energy_windows(series(constant(2100.0)), END, weeks=1)[-1]
         assert window.adaptive_tdee is not None
         self.assertAlmostEqual(window.adaptive_tdee.band_kcal, 164.36, delta=0.05)
+
+    def test_a_weight_step_widens_the_band_and_flags_the_window(self) -> None:
+        # 1 kg of water and glycogen 13 days before END, mid-window of the
+        # latest window, with constant intake: the slope reads it as tissue,
+        # about 1.45 x 1 kg x 7,153.5 / 27 days, roughly -380 kcal/day (#3614).
+        stepped = balance.energy_windows(series(constant(2600.0), step_at=106), END)
+        latest = stepped[-1]
+        assert latest.adaptive_tdee is not None and latest.store is not None
+        error = latest.adaptive_tdee.kcal - TRUE_TDEE
+        self.assertLess(error, -300)
+        self.assertFalse(balance.is_stable(latest))
+        self.assertLessEqual(abs(error), latest.adaptive_tdee.band_kcal)
+        # The store error carries it too, so the deficit card's band covers it.
+        self.assertLessEqual(abs(error), balance.window_t(latest) * latest.store.sd)
+        # Windows the step never reached stay stable and keep their band.
+        flat = balance.energy_windows(series(constant(2600.0)), END)
+        self.assertTrue(balance.is_stable(stepped[0]))
+        self.assertEqual(stepped[0].adaptive_tdee, flat[0].adaptive_tdee)
+
+    def test_flat_losing_and_gaining_weight_is_stable(self) -> None:
+        for intake in (2600.0, 2100.0, 3100.0):
+            with self.subTest(intake=intake):
+                windows = balance.energy_windows(series(constant(intake)), END)
+                self.assertTrue(all(balance.is_stable(w) for w in windows))
+        self.assertEqual(
+            balance.unexplained_spreads(
+                series(constant(2600.0)),
+                balance.energy_windows(series(constant(2600.0)), END),
+            ),
+            [0.0] * 12,
+        )
 
     def test_incomplete_days_are_dropped(self) -> None:
         day = balance.DayInputs(intake_kcal=800, entries=3, activity_kcal=600)

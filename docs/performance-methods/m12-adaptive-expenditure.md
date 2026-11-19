@@ -1,8 +1,8 @@
 # M12 — Adaptive daily expenditure from intake and the weight trend
 
 - **Card:** M12
-- **Card version:** 11
-- **Method ID:** adaptive-expenditure v11 (#3100, #3187, #3255, #3552, #3551, #3553, #3555, #3554, #3586, #3603, #3612)
+- **Card version:** 12
+- **Method ID:** adaptive-expenditure v12 (#3100, #3187, #3255, #3552, #3551, #3553, #3555, #3554, #3586, #3603, #3612, #3614)
 - **Status:** method implemented (`backend/nutrition/energy_balance.py`); the reader, diagnostics and display follow (#3100, #3099)
 - **Classification:** model estimate
 - **Literature checked:** 2026-11-15
@@ -36,7 +36,12 @@ estimate. It never rewrites logged values and never falls back to a formula.
    by their precisions (athlete decision, #3555): the slope of the fat mass
    (current weight × body fat) over the slope of the weight, through all
    dated body fat values of one method up to the latest window's end, each with a
-   repeatability of 2 percentage points. Its SD is the fat mass's SD over
+   repeatability of 2 percentage points; for skinfolds the athlete's own once
+   10 sites have repeat readings (#3556: the pooled within-site SD through
+   the protocol's sensitivity at the latest measurement, times each
+   measurement's own median gain: 1, 0.71 or 0.67 for one, two or three
+   readings per site), each fat mass weighted by its own SD (weighted least
+   squares). Its SD is the fat mass's SD over
    `sqrt(Σ(t − t̄)²)` and the weight slope; the posterior SD enters the band.
    With fewer than two values 14 days apart, or under 0.1 kg of weight
    change between them, `p = 0.70` (about 7,154 kcal/kg). Every window of
@@ -58,7 +63,32 @@ estimate. It never rewrites logged values and never falls back to a formula.
    `weigh-ins − 2` degrees of freedom (1.96 beyond 120). `SE_store` combines
    `ρ` times the slope's standard error with the slope times the density's
    SD, `0.144 × (9,441 − 1,816)` kcal/kg (fat share between 0.5 and 1.0 as
-   uniform).
+   uniform). The slope's standard error carries the AR(1) factor
+   `√((1 + r) / (1 − r))` of the lag-1 autocorrelation `r` of the weigh-ins
+   around their line, clamped to 0–0.8: scatter that persists from one
+   weigh-in to the next, as water and glycogen do, is fewer independent
+   readings (#3614). The deficit card's band is `t × SE_store` with the same
+   `t`, from `weigh-ins − 2` alone for a window without enough logged days
+   (#3614).
+5a. **Stability (#3614):** a weight step from water or glycogen is priced at
+   tissue density and enters a window's slope at up to 1.45 × its size (a
+   1 kg step at mid-window reads as about 380 kcal/day), with different
+   amounts in the overlapping windows. Two windows that share days
+   (7 to 21 days apart) may differ, net of their measured own activity, only
+   by the noise of the days they do not share: each day's intake and
+   weigh-in enters their difference with the difference of its two
+   coefficients, at the pair's pooled intake scatter (plus the flagged
+   entries' 25 %) and weigh-in scatter (half the mean squared change between
+   consecutive weigh-ins, which a single step barely moves). A difference
+   beyond `2.576 / 1.96 × t` times that SD, about the 99 % band, marks both
+   windows unstable; each unstable window's band, the derived resting rate's
+   and `SE_store` take its largest such difference in quadrature
+   (`SE_store` as difference / `t`). The deficit card then reads
+   "Geschätzter Verbrauch" and "Unsicher vor allem: Wasser im Gewicht, die
+   Wochen widersprechen sich". `is_stable(window)` is the check a fit over windows
+   uses to skip unstable ones. The check needs each window's TDEE, so a
+   window with weigh-ins but too few logged days ("Nur Waage", #3603) gets
+   only the autocorrelation factor, never the unstable flag.
 6. **Calibration factor `k`:** the least-squares slope of `TDEE − TEF` on the
    uncalibrated M11 activity over the windows, combined with the prior 1 ± 0.10
    as a precision-weighted mean, then clamped to 0.85–1.15. It stays 1 with
@@ -149,8 +179,13 @@ bias that is the same on every day is not visible in the band.
 - Logging bias and expenditure bias cannot be separated (weak evidence).
 - The windows overlap, so their calibration points are correlated; the
   fits inflate their slope variance by 4 for it, an approximation (#3554).
-- Water and glycogen shifts move the weight without stored energy; the 28-day
-  line and the 28-day window damp them.
+- Water and glycogen shifts move the weight without stored energy. A steady
+  drift is damped, but a step inside the window enters the slope at up to
+  1.45 × its size and is priced at tissue density; the residual
+  autocorrelation and the neighbour check widen the band for it instead of a
+  second glycogen model (#3614). In synthetic runs a 1 kg step at mid-window
+  is covered when the daily scatter is small; with a daily scatter of 0.5 kg
+  it is often indistinguishable from noise and only partly covered.
 
 ## Deviations from the studied procedure
 
@@ -195,7 +230,9 @@ bias that is the same on every day is not visible in the band.
 | Minimum basis | 14 complete days, 8 weigh-ins, 21-day span | product assumption | stop rule, no formula fallback |
 | Flagged-entry uncertainty | 25 % of the flagged entries' kcal | product assumption | #3100 athlete decision, #3187 |
 | Calibration prior / bounds | 1 ± 0.10 / 0.85–1.15 | product assumption | method comment, #3100 |
-| Band | t quantile, 1.96 beyond 120 dof | product assumption | two-sided 95 %, standard t table (#3187 item 10) |
+| Band | t quantile, 1.96 beyond 120 dof | product assumption | two-sided 95 %, standard t table (#3187 item 10); the deficit card uses the same (#3614) |
+| Residual autocorrelation cap | 0.8 (factor 3 at most) | product assumption | AR(1) factor for persisting weigh-in scatter (#3614) |
+| Stability band | 2.576 / 1.96 × t | product assumption | about 99 % per pair, so flat series are rarely flagged across up to 6 neighbour pairs (#3614) |
 | Fat share SD for the density | 0.144 | product assumption | share 0.5-1.0 uniform; the density's uncertainty in the band |
 
 ## Allowed statements
@@ -207,6 +244,7 @@ bias that is the same on every day is not visible in the band.
 - "Mit gelernter Korrektur geschätzter Mahlzeiten: X (L–H)", once `b` exists.
 - "Geschätzte Mahlzeiten wirken im Mittel X % niedriger/höher als erfasst (± Y)".
 - "Datenbasis zu gering", with the reason.
+- "Geschätzter Verbrauch" instead of "Echter Verbrauch" for an unstable window, with "Unsicher vor allem: Wasser im Gewicht, die Wochen widersprechen sich" (#3614).
 
 ## Forbidden statements
 
@@ -239,7 +277,7 @@ bias that is the same on every day is not visible in the band.
 | Constant | Value | Module | Code comment |
 | --- | --- | --- | --- |
 | `METHOD_ID` | `'adaptive-expenditure'` | `backend/nutrition/energy_balance.py` |  |
-| `METHOD_VERSION` | `11` | `backend/nutrition/energy_balance.py` | Bump when a formula or constant below changes the estimate. |
+| `METHOD_VERSION` | `12` | `backend/nutrition/energy_balance.py` | Bump when a formula or constant below changes the estimate. |
 | `WINDOW_DAYS` | `28` | `backend/nutrition/energy_balance.py` | Days per window and windows per week of the rolling view (#3099, #3100). |
 | `CURRENT_WEIGHT_DAYS` | `28` | `backend/nutrition/energy_balance.py` | A day's current weight is the least-squares line through the weigh-ins of this many days up to it, at its latest weigh-in, so a steady change has no lag (#3551); with fewer weigh-ins or a shorter span, their mean. |
 | `MIN_LINE_WEIGHINS` | `3` | `backend/nutrition/energy_balance.py` |  |
@@ -264,4 +302,6 @@ bias that is the same on every day is not visible in the band.
 | `CALIBRATION_BOUNDS` | `(0.85, 1.15)` | `backend/nutrition/energy_balance.py` |  |
 | `MIN_CALIBRATION_WINDOWS` | `4` | `backend/nutrition/energy_balance.py` | Windows needed before the factor moves from 1, and before a flagged-meal bias is estimated. |
 | `MIN_BIAS_WINDOWS` | `4` | `backend/nutrition/energy_balance.py` |  |
+| `MAX_RESIDUAL_AUTOCORRELATION` | `0.8` | `backend/nutrition/energy_balance.py` | A weight step from water or glycogen is not tissue (#3614): weigh-ins whose scatter persists widen the slope's error by the AR(1) factor, with the lag-1 autocorrelation capped here (factor 3 at most); overlapping windows that differ beyond the 99 % band of the days they do not share are unstable and their band holds the difference. 2.576 / 1.96 turns the 95 % t into 99 %. |
+| `STABILITY_BAND_RATIO` | `2.576 / 1.96` | `backend/nutrition/energy_balance.py` |  |
 <!-- END GENERATED CONSTANTS -->

@@ -200,6 +200,7 @@ class EnergyInputsReaderTests(unittest.TestCase):
              "latest_window_weighins": None,
              "latest_window_insufficient": None, "windows": 0,
              "windows_with_estimate": 0,
+             "unstable_windows": 0, "largest_unstable_spread_kcal": 0,
              "fat_share_measured_windows": {"0": 0, "1-24": 0, "25-49": 0, "50-100": 0},
              "calibration_windows": 0,
              "calibration_store_methods": {"measured": 0, "prior": 0},

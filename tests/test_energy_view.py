@@ -744,8 +744,10 @@ class DeficitCardTests(unittest.TestCase):
         latest = replace(window(END, None), store=MEASURED, insufficient="intake_days")
         view = energy_view(inputs(), [*windows()[:-1], latest], garmin())
         card = view["deficit"]
+        # Its band takes the weight slope's dof alone (#3614): 20 weigh-ins,
+        # 18 dof, t = 2.101; 2.101 x 120 = 252, not the 24 days' t.
         self.assertEqual(
-            (565, 235, None),
+            (565, 252, None),
             (card["deficit_kcal"], card["band_kcal"], card["total_kcal"]),
         )
         self.assertEqual("intake_days", card["expenditure_missing"])
@@ -765,6 +767,29 @@ class DeficitCardTests(unittest.TestCase):
         )["deficit"]
         self.assertEqual((40, "in"), (hold["deficit_kcal"], hold["goal"]["status"]))
 
+    def test_the_boxes_take_the_fitted_weight_change(self) -> None:
+        # #3618 item 4: 91.24 → 89.16 kg is -2.08 on the fitted line; its
+        # rounded endpoints would give -2.0, while the fat box takes 80 % of
+        # -2.08. The weight box shows the fitted change, so the boxes add up.
+        card = self.view(
+            MEASURED._replace(
+                weight_start_kg=91.24, weight_end_kg=89.16, fat_change_kg=-1.664
+            )
+        )
+        self.assertEqual(
+            (91.2, 89.2, -2.1, -1.7, 80),
+            (
+                card["weight_start_kg"],
+                card["weight_end_kg"],
+                card["weight_change_kg"],
+                card["fat_change_kg"],
+                card["fat_share_pct"],
+            ),
+        )
+        self.assertAlmostEqual(
+            card["fat_change_kg"], card["weight_change_kg"] * 0.80, delta=0.05
+        )
+
     def test_the_card_shows_the_stores_terms_and_the_real_expenditure(self) -> None:
         # #3598: the readings span the phase (from 07.10.), not the window, and
         # the window ends on its last weigh-in.
@@ -779,12 +804,17 @@ class DeficitCardTests(unittest.TestCase):
             {
                 "days": 28,
                 "deficit_kcal": 565,
-                "band_kcal": 235,
+                # The window's own t (#3614): 20 weigh-ins and 24 complete
+                # days give 18 dof, t = 2.101; 2.101 x 120 = 252.
+                "band_kcal": 252,
                 "method": "measured",
                 "fat_share": {"share_pct": 80, "prior_pct": 70, "measured_pct": 28},
                 "span_days": 28,
                 "weight_start_kg": 91.2,
                 "weight_end_kg": 89.2,
+                "weight_change_kg": -2.0,
+                # 80 % at 9,441 and 20 % at 1,816 kcal/kg (#3618 item 7).
+                "kcal_per_kg": 7916,
                 "fat_pct_start": 15.5,
                 "fat_pct_end": 14.1,
                 "fat_date_start": "2026-10-07",
@@ -827,6 +857,10 @@ class DeficitCardTests(unittest.TestCase):
             ),
         )
         self.assertIsNone(self.view(None))
+        # An unstable window names the weight step as its uncertainty (#3614).
+        latest = replace(window(END, 3800.0), store=MEASURED, stable=False)
+        unstable = energy_view(inputs(), [*windows()[:-1], latest], garmin())
+        self.assertEqual("unstable", unstable["deficit"]["uncertainty"])
 
     def test_the_goal_status_and_colour_follow_the_distance_to_the_goal(self) -> None:
         # #3606: within 150 kcal of the goal, either way, is in the goal and

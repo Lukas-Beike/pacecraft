@@ -161,6 +161,11 @@ SECTION_FIELDS = {
         r"|latest_window_former_rule_days"
         # The fit's estimated windows per store rule (#3554).
         r"|calibration_store_methods\.(measured|prior)"
+        # Windows failing the neighbour check, their largest spread and the
+        # weigh-in days per source over their span (#3614).
+        r"|unstable_windows|largest_unstable_spread_kcal"
+        r"|unstable_span_weighin_sources(\.(by_source\.(app|garmin)"
+        r"|dropped_days\.(garmin|wahoo|intervals)))?"
     ),
     # The entered body days mirrored to Garmin Connect, counts only (#3403).
     "garmin_body_push": re.compile(
