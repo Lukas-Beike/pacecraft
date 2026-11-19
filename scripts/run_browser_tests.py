@@ -810,11 +810,16 @@ def source_digest(root, names):
 
 
 def image_matches_source(processes, containers, image_id, root):
-    """Compare the image's /app copy with the working tree; None when unknown."""
+    """Compare the image's /app copy with the working tree; None when unknown,
+    printing why, so a stalled check is not read as a stale image (#3610)."""
     script = (
         inspect.getsource(source_digest)
         + f"print(source_digest('/app', {list(APPLICATION_SOURCES)!r}))"
     )
+
+    def unknown(reason):
+        print(f"Image source check: {reason}", file=sys.stderr, flush=True)
+
     try:
         cid = containers.create(
             "acb-" + containers.run_id + "-source",
@@ -831,17 +836,19 @@ def image_matches_source(processes, containers, image_id, root):
                 script,
             ],
         )
-    except RunnerError:
-        return None
+    except RunnerError as error:
+        return unknown(f"source check could not start: {error}")
     try:
         code, output = processes.run(["docker", "start", "--attach", cid])
-    except RunnerError:
-        return None
+    except RunnerError as error:
+        return unknown(f"source check did not finish: {error}")
     finally:
         # Removed also after a timeout, so a second compare (--build) can use the name (#3243).
         containers.remove(cid)
-    if code or not re.fullmatch(r"[a-f0-9]{64}", output.strip()):
-        return None
+    if code:
+        return unknown(f"source check exited with code {code}")
+    if not re.fullmatch(r"[a-f0-9]{64}", output.strip()):
+        return unknown("source check printed no digest")
     return output.strip() == source_digest(root, APPLICATION_SOURCES)
 
 
@@ -1582,7 +1589,10 @@ def weekday_runs(args):
         specs = weekday_specs(base)
     except (OSError, subprocess.CalledProcessError) as error:
         print(
-            f"Weekday runs skipped: cannot diff against {base}: {error}",
+            # CI pins its weekday runs in a step of its own; this line is never
+            # the cause of a failed run (#3610).
+            f"Weekday runs skipped (this run is unaffected): cannot diff "
+            f"against {base}: {error}",
             file=sys.stderr,
         )
         return []
