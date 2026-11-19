@@ -116,13 +116,23 @@ class CyclingStrengthAndHeartRateTests(unittest.TestCase):
 
 class DailyTermsTests(unittest.TestCase):
     def test_step_length_from_walks_else_height(self) -> None:
-        # 1.4 m/s at 112 steps/min is 0.75 m per step.
-        measured = energy.step_length_m([1.4], [112.0], 1.80)
-        from_height = energy.step_length_m([], [], 1.80)
-        assert measured is not None and from_height is not None
-        self.assertAlmostEqual(measured, 0.75)
-        self.assertAlmostEqual(from_height, 0.747)
-        self.assertIsNone(energy.step_length_m([], [], None))
+        # #3611: total distance over total steps of the plausible walks (0.30 to
+        # 0.55 x 1.80 m = 0.54 to 0.99 m): 4,500 m over 6,000 steps = 0.75 m.
+        measured = energy.step_length_m([(3000.0, 4000.0), (1500.0, 2000.0)], 1.80)
+        self.assertAlmostEqual(0.75, measured or 0.0)
+        # One walk at 2.0 m per step (the former bug's size) does not count at
+        # all; it neither enters the sum nor pulls a mean.
+        robust = energy.step_length_m([(3000.0, 4000.0), (4000.0, 2000.0)], 1.80)
+        self.assertAlmostEqual(0.75, robust or 0.0)
+        # No plausible walk: 0.415 x 1.80 m.
+        self.assertAlmostEqual(
+            0.747, energy.step_length_m([(4000.0, 2000.0)], 1.80) or 0.0
+        )
+        self.assertAlmostEqual(0.747, energy.step_length_m([], 1.80) or 0.0)
+        self.assertIsNone(energy.step_length_m([], None))
+        # Without a height the bounds are 0.45 to 1.10 m.
+        self.assertTrue(energy.plausible_step(0.75, None))
+        self.assertFalse(energy.plausible_step(2.0, None))
 
     def test_neat_counts_steps_outside_sessions_and_floors(self) -> None:
         # 70 x 8,000 x 0.75 x 2.01 = 844,200 J walking; floors 70 x 9.81 x 3 x

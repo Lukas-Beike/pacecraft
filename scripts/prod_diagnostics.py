@@ -167,6 +167,10 @@ SECTION_FIELDS = {
         r"|unstable_windows|largest_unstable_spread_kcal"
         r"|unstable_span_weighin_sources(\.(by_source\.(app|garmin)"
         r"|dropped_days\.(garmin|wahoo|intervals)))?"
+        # The walks behind NEAT's step length and its source (#3611).
+        r"|step_source|step_walks\.(walks|used|no_steps|implausible"
+        r"|without_recorded_steps|zero_cadence|short_moving_time|cadence_over_80"
+        r"|former_implausible)"
     ),
     # The entered body days mirrored to Garmin Connect, counts only (#3403).
     "garmin_body_push": re.compile(
@@ -238,6 +242,9 @@ STATES |= {
     "skinfold",
     "device",
     "profile",
+    # NEAT's step length source (#3611).
+    "walks",
+    "height",
 }
 FAIL_STATES = {"failed", "unavailable", "blocked"}
 # Seconds between two reads of `--wait-ready` (#3346).

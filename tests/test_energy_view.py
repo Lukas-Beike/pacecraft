@@ -1447,6 +1447,31 @@ class EnergyDayScenarioTests(unittest.TestCase):
             "evening": cls.evening,
         }
 
+    def test_everyday_energy_per_thousand_steps_is_physiological(self) -> None:
+        # #3611: a walk in the history whose speed/cadence ratio gives 2.68 m
+        # per step (6 km in 20 moving minutes at 56 strides/min) does not count;
+        # a walk of recorded steps (1,500 m / 2,000) sets the step at 0.75 m,
+        # so the evening's 8,000 steps outside the session cost 75 x 8,000 x
+        # 0.75 x 2.01 / 4,184 = 216.2 kcal, 27.0 per 1,000 steps (the former
+        # mean of ratios, (2.68 + 0.75) / 2 = 1.71 m, gave 61.6).
+        walks = [
+            {"started_at_local": f"{SCENARIO_END - timedelta(days=20)}T09:00:00",
+             "sport": "walk", "distance_m": 6000.0, "avg_cadence": 56.0,
+             "moving_duration_s": 1200.0, "elapsed_duration_s": 4500.0},
+            {"started_at_local": f"{SCENARIO_END - timedelta(days=10)}T09:00:00",
+             "sport": "walk", "distance_m": 1500.0, "steps": 2000.0,
+             "moving_duration_s": 1200.0, "elapsed_duration_s": 1200.0},
+        ]  # fmt: skip
+        evening = day_scenario(
+            {"steps": 9500.0, "floors": 0.0, "resting_kcal": 1650.0,
+             "active_kcal": 640.0},
+            [STRENGTH, *walks], 3,
+        )  # fmt: skip
+        neat = row(evening, "katch_mcardle")["split"]["neat_kcal"]
+        per_thousand = neat / 8.0
+        self.assertTrue(20.0 <= per_thousand <= 40.0, per_thousand)
+        self.assertEqual(216, neat)
+
     def test_every_row_has_a_total_so_far(self) -> None:
         # #3494: no phase of today leaves Tag gesamt empty.
         for phase, view in self.phases.items():

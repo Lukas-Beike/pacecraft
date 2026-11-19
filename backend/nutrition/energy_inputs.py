@@ -427,20 +427,94 @@ def _timed_cost(
 def _step_length(
     sessions: Sequence[Mapping[str, Any]], height_m: float | None
 ) -> tuple[float | None, str | None]:
-    """NEAT's step length and its source: recorded walks, else body height."""
-    speeds, cadences = [], []
+    """NEAT's step length and its source: the recorded walks' total distance
+    over their steps, of the plausible ones, else body height (#3611)."""
+    walks = [w for s in sessions if (w := _walk_steps(s)) is not None]
+    step = energy.step_length_m(walks, height_m)
+    if step is None:
+        return None, None
+    used = any(energy.plausible_step(d / s, height_m) for d, s in walks)
+    return step, "walks" if used else "height"
+
+
+def _height_m(profile: Mapping[str, Any]) -> float | None:
+    height_cm = _number(profile.get("height_cm"))
+    return height_cm / 100.0 if height_cm else None
+
+
+def _walk_steps(summary: Mapping[str, Any]) -> tuple[float, float] | None:
+    """A walk's (distance m, steps) (#3611): its recorded steps, else its
+    distance over the device's own step length, else its cadence over the
+    same moving time that ``_session_steps`` counts."""
+    if str(summary.get("sport") or "") not in WALK_SPORTS:
+        return None
+    distance = _number(summary.get("distance_m"))
+    if not distance or distance <= 0:
+        return None
+    steps = _number(summary.get("steps"))
+    step = _number(summary.get("step_length_m"))
+    if not steps and step and step > 0:
+        steps = distance / step
+    if not steps:
+        strides, duration = _number(summary.get("avg_cadence")), _duration_s(summary)
+        steps = (
+            STEPS_PER_STRIDE * strides * duration / 60.0
+            if strides and duration
+            else None
+        )
+    return (distance, steps) if steps and steps > 0 else None
+
+
+def step_walk_counts(
+    sessions: Sequence[Mapping[str, Any]], height_m: float | None
+) -> dict[str, int]:
+    """Counts only (#3611): the walks the step length used or rejected, and how
+    many show each suspected cause of the former 2 m step: no recorded steps,
+    no cadence, a moving time under 80 % of the elapsed time, a cadence above
+    80 per minute (likely steps, not strides), and a former speed/cadence step
+    outside the bounds."""
+    counts = dict.fromkeys(
+        ("walks", "used", "no_steps", "implausible", "without_recorded_steps",
+         "zero_cadence", "short_moving_time", "cadence_over_80", "former_implausible"),
+        0,
+    )  # fmt: skip
     for summary in sessions:
         if str(summary.get("sport") or "") not in WALK_SPORTS:
             continue
-        duration, distance = _duration_s(summary), _number(summary.get("distance_m"))
-        cadence = _number(summary.get("avg_cadence"))
-        if duration and distance and cadence:
-            speeds.append(distance / duration)
-            cadences.append(STEPS_PER_STRIDE * cadence)
-    step = energy.step_length_m(speeds, cadences, height_m)
-    if step is None:
-        return None, None
-    return step, "walks" if speeds else "height"
+        counts["walks"] += 1
+        walk = _walk_steps(summary)
+        if walk is None:
+            counts["no_steps"] += 1
+        else:
+            kept = energy.plausible_step(walk[0] / walk[1], height_m)
+            counts["used" if kept else "implausible"] += 1
+        for cause, found in _former_causes(summary, height_m).items():
+            counts[cause] += found
+    return counts
+
+
+def _former_causes(
+    summary: Mapping[str, Any], height_m: float | None
+) -> dict[str, bool]:
+    """Which suspected causes of the former speed/cadence step a walk shows."""
+    moving = _number(summary.get("moving_duration_s"))
+    elapsed = _number(summary.get("elapsed_duration_s"))
+    distance = _number(summary.get("distance_m"))
+    strides = _number(summary.get("avg_cadence"))
+    duration = _duration_s(summary)
+    former = (
+        distance / duration * 60.0 / (STEPS_PER_STRIDE * strides)
+        if distance and duration and strides
+        else None
+    )
+    return {
+        "without_recorded_steps": not _number(summary.get("steps")),
+        "zero_cadence": not strides,
+        "short_moving_time": bool(moving and elapsed and moving < 0.8 * elapsed),
+        "cadence_over_80": bool(strides and strides > 80),
+        "former_implausible": former is not None
+        and not energy.plausible_step(former, height_m),
+    }
 
 
 def _resting(
@@ -470,16 +544,13 @@ def read_energy_inputs(
 ) -> tuple[EnergyInputs, tuple[SessionCost, ...]]:
     """The days from ``start`` to ``end`` and the priced sessions behind them."""
     profile = sources.profile()
-    height_cm = _number(profile.get("height_cm"))
     profile_weight = _number(profile.get("weight_kg"))
     health = sources.daily_health(db, start, end)
     rmr, rmr_source = _resting(sources, db, end, health)
     weights = dict(sources.weights(db, start, end))
     trend = weight_trend(weights)
     sessions = list(sources.sessions(db, start, end))
-    step_m, step_source = _step_length(
-        sessions, height_cm / 100.0 if height_cm else None
-    )
+    step_m, step_source = _step_length(sessions, _height_m(profile))
     rides = [s for s in sessions if str(s.get("sport") or "") in RIDE_SPORTS]
     flex = _flex_fit(rides, rmr) if rmr is not None else None
     hr_cost = _heart_rate_cost(flex, profile, rmr or 0.0)
@@ -608,6 +679,14 @@ def energy_basis(db: Any, sources: EnergySources, end: date) -> dict[str, Any]:
             else None
         }
         | skinfold_diagnostics(skinfolds, missing, end, bodies)
+        # The walks behind NEAT's step length and their suspected causes (#3611).
+        | {
+            "step_walks": step_walk_counts(
+                sources.sessions(db, history_start(end), end),
+                _height_m(sources.profile()),
+            ),
+            "step_source": inputs.step_source,
+        }
         # How many days back today's Garmin Ruhe comes from, None = none (#3443).
         | {"today_resting_days_back": (end - found[0]).days if found else None}
         # Days of the last week whose Garmin summary names its wellness end (#3530).

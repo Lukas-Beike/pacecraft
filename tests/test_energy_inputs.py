@@ -411,6 +411,47 @@ def weigh(day: date, kg: Any, provider: ProviderId | None = ProviderId.GARMIN) -
 GARMIN, WAHOO, INTERVALS = ProviderId.GARMIN, ProviderId.WAHOO, ProviderId.INTERVALS
 
 
+class StepLengthTests(unittest.TestCase):
+    """#3611: the walks' step length is distance over steps, bounded by height."""
+
+    def walk(self, **summary: Any) -> dict[str, Any]:
+        return {"id": "w", "sport": "walk", "started_at_local": "2026-10-01T12:00",
+                "distance_m": 1400.0, **summary}  # fmt: skip
+
+    def test_each_kind_of_walk_is_rejected_or_plausible_and_counted(self) -> None:
+        walks = [
+            # Distance and recorded steps: 1,500 m / 2,000 = 0.75 m.
+            self.walk(distance_m=1500.0, steps=2000, avg_cadence=56,
+                      moving_duration_s=1000, elapsed_duration_s=1000),
+            # The device's own step length without steps: 1,400 / 0.70 = 2,000.
+            self.walk(step_length_m=0.70, moving_duration_s=1000),
+            # Short moving time: 1,400 m over 2 x 56 x 600 / 60 = 1,120 steps is
+            # 1.25 m, over 0.99 m, so it does not count.
+            self.walk(avg_cadence=56, moving_duration_s=600, elapsed_duration_s=1200),
+            # No steps, no step length and no cadence: nothing to measure.
+            self.walk(avg_cadence=0, moving_duration_s=1000),
+            # A cadence already in steps (112) halves the step: 1,400 m over
+            # 2 x 112 x 1,000 / 60 = 3,733 steps = 0.375 m, under 0.54 m.
+            self.walk(avg_cadence=112, moving_duration_s=1000, elapsed_duration_s=1000),
+        ]  # fmt: skip
+        step, source = energy_inputs._step_length(walks, 1.80)
+        # (1,500 + 1,400) / (2,000 + 2,000) = 0.725 m.
+        self.assertAlmostEqual(0.725, step or 0.0, places=3)
+        self.assertEqual("walks", source)
+        self.assertEqual(
+            {"walks": 5, "used": 2, "no_steps": 1, "implausible": 2,
+             "without_recorded_steps": 4, "zero_cadence": 2, "short_moving_time": 1,
+             "cadence_over_80": 1, "former_implausible": 2},
+            energy_inputs.step_walk_counts(walks, 1.80),
+        )  # fmt: skip
+
+    def test_without_a_valid_walk_the_height_gives_the_step(self) -> None:
+        odd = [self.walk(avg_cadence=0), self.walk(steps=700)]  # 2.0 m per step
+        self.assertEqual(
+            (0.415 * 1.80, "height"), energy_inputs._step_length(odd, 1.80)
+        )
+
+
 class StoreAdapterTests(unittest.TestCase):
     def test_weighins_keep_the_last_positive_value_per_day(self) -> None:
         observations = [

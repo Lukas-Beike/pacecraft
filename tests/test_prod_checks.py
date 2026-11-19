@@ -481,6 +481,9 @@ class ProdChecksTests(unittest.TestCase):
                 "latest_window_former_rule_days": 4,
                 # #3554: the fit's estimated windows per store rule.
                 "calibration_store_methods": {"measured": 4, "prior": 0},
+                # #3611: the walks behind NEAT's step length.
+                "step_source": "walks",
+                "step_walks": {"walks": 9, "used": 6, "former_implausible": 7},
                 "planted": "never printed",
             }
         }
@@ -504,6 +507,9 @@ class ProdChecksTests(unittest.TestCase):
             f"{prefix}latest_window_former_rule_days 4",
             f"{prefix}calibration_store_methods.measured 4",
             f"{prefix}calibration_store_methods.prior 0",
+            f'{prefix}step_source "walks"',
+            f"{prefix}step_walks.used 6",
+            f"{prefix}step_walks.former_implausible 7",
         ):
             self.assertIn(expected, lines)
         self.assertFalse(any("planted" in line for line in lines))
