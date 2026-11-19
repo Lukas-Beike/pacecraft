@@ -10,7 +10,7 @@ every named number the code fixes. A test fails when it is out of date.
 | Constant | Value | Module | Code comment |
 | --- | --- | --- | --- |
 | `METHOD_ID` | `'activity-energy'` | `backend/performance/activity_energy.py` |  |
-| `METHOD_VERSION` | `3` | `backend/performance/activity_energy.py` | Bump when a formula or constant below changes the estimate. |
+| `METHOD_VERSION` | `5` | `backend/performance/activity_energy.py` | Bump when a formula or constant below changes the estimate. |
 | `J_PER_KCAL` | `4184.0` | `backend/performance/activity_energy.py` | Joules per kilocalorie (thermochemical calorie). |
 | `GRAVITY` | `9.81` | `backend/performance/activity_energy.py` | Standard gravity, m/s^2, for the vertical work of floors. |
 | `MINETTI_WALKING` | `(280.5, -58.7, -76.8, 51.9, 19.6, 2.5)` | `backend/performance/activity_energy.py` | Minetti et al. 2002: the running fit (MINETTI_RUNNING, its gradient range and the 200 m grade span come from grade_adjustment, #3187), and the same fit for walking. |
@@ -28,6 +28,8 @@ every named number the code fixes. A test fails when it is out of date.
 | `FLOOR_HEIGHT_M` | `3.0` | `backend/performance/activity_energy.py` | Vertical metres per counted floor (Garmin counts about 3 m of ascent). |
 | `UPHILL_WORK_EFFICIENCY` | `0.25` | `backend/performance/activity_energy.py` | Efficiency of vertical work when walking up steep gradients: Minetti et al. 2002 found uphill walking above +0.15 reaches concentric muscle efficiency, taken here as 0.25 (assumption from that statement). |
 | `STEP_LENGTH_PER_HEIGHT` | `0.415` | `backend/performance/activity_energy.py` | Step length from body height when no recorded walk measured it; a common heuristic, weak evidence (+-10-15 %). |
+| `STEP_LENGTH_HEIGHT_BOUNDS` | `(0.3, 0.55)` | `backend/performance/activity_energy.py` | A walk's own step length (distance / steps) counts only within these shares of body height (#3611): a walking step is about 0.4 x height, and even race walkers stay near 0.55; without a height, the same shares of 1.50 and 2.00 m. |
+| `STEP_LENGTH_BOUNDS_M` | `(0.45, 1.1)` | `backend/performance/activity_energy.py` |  |
 | `TEF_PROTEIN` | `0.25` | `backend/performance/activity_energy.py` | Thermic effect of food as a share of each macronutrient's energy: midpoints of protein 20-30 %, carbohydrate 5-15 %, fat 0-3 % (Joosen & Westerterp 2006, Nutr Metab 3:25). Alcohol is not stored, so it has no term. |
 | `TEF_CARBOHYDRATE` | `0.1` | `backend/performance/activity_energy.py` |  |
 | `TEF_FAT` | `0.015` | `backend/performance/activity_energy.py` |  |

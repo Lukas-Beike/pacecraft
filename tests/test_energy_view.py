@@ -22,7 +22,9 @@ from backend.nutrition.energy_inputs import EnergySources
 from backend.nutrition.energy_view import (
     energy_view,
     own_day_totals,
+    own_history,
     read_energy_view,
+    read_own_day_totals,
     selected_day,
 )
 from backend.performance.activity_energy import TEF_ERROR_KCAL
@@ -169,6 +171,45 @@ class EnergyViewTests(unittest.TestCase):
             },
             view["body"],
         )
+
+    def test_each_formula_learns_its_everyday_term_and_shows_it_once_checked(
+        self,
+    ) -> None:
+        # #3577: the window's own TDEE 2,700 less its raw activity 600 and
+        # digestion 250 is 1,850. Katch-McArdle lacks 1,850 - 1,838.8 = 11.2,
+        # Cunningham overshoots by 146. One window, SD 150 / 1.96 = 76.53,
+        # overlap-inflated precision 4.2685e-5, prior 1.6e-5: variance 17,040,
+        # so 8.15 for Katch-McArdle, -106.2 for Cunningham (shown as 0), band
+        # 1.96 x 130.5 = 256.
+        plain = energy_view(inputs(), [window(END, 2700.0, 1850.0)], garmin())
+        self.assertEqual(
+            {
+                "katch_mcardle": {"kcal": 8, "raw_kcal": 8, "band_kcal": 256, "windows": 1},
+                "cunningham": {"kcal": 0, "raw_kcal": -106, "band_kcal": 256, "windows": 1},
+                "checked": None,
+            },
+            plain["learned_everyday"],
+        )  # fmt: skip
+        # Before the athlete's check no row carries it.
+        self.assertEqual(2689, row(plain, "katch_mcardle")["total_kcal"])
+        self.assertNotIn("learned_kcal", row(plain, "katch_mcardle")["split"])
+        checked = energy_view(
+            inputs(), [window(END, 2700.0, 1850.0)], garmin(),
+            goal={"learned_everyday_checked": "2026-11-19"},
+        )  # fmt: skip
+        km, cunningham = row(checked, "katch_mcardle"), row(checked, "cunningham")
+        self.assertEqual((2697, 8), (km["total_kcal"], km["split"]["learned_kcal"]))
+        # The total's band adds the learned term's: hypot(240.55, 255.94) = 351.2.
+        self.assertEqual(351, km["total_band_kcal"])
+        self.assertEqual(0, cunningham["split"]["learned_kcal"])
+        self.assertEqual("2026-11-19", checked["learned_everyday"]["checked"])
+        # The comparison with the weight stays on the raw rows.
+        for source in ("katch_mcardle", "cunningham"):
+            self.assertEqual(
+                row(plain, source)["mean_error_kcal"],
+                row(checked, source)["mean_error_kcal"],
+            )
+        self.assertEqual(plain["fit_scale"], checked["fit_scale"])
 
     def test_unmeasured_everyday_energy_is_named_never_resting(self) -> None:
         # #3550 (athlete decision 2026-11-18): 300 kcal/day of everyday energy
@@ -1385,6 +1426,20 @@ def day_scenario(
     yesterday: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Today's view; with ``yesterday``'s summary, yesterday's view instead."""
+    return read_energy_view(
+        None,
+        scenario_sources(today, sessions, meals, yesterday),
+        SCENARIO_END,
+        SCENARIO_TODAY if yesterday is None else SCENARIO_END,
+    )
+
+
+def scenario_sources(
+    today: dict[str, Any] | None,
+    sessions: list[dict[str, Any]],
+    meals: int,
+    yesterday: dict[str, Any] | None = None,
+) -> EnergySources:
     start = history_start(SCENARIO_END)
     days = [start + timedelta(days=n) for n in range((SCENARIO_END - start).days + 1)]
     meal = {"kcal": 900.0, "protein_g": 50.0, "carbs_g": 100.0, "fat_g": 30.0}
@@ -1403,21 +1458,30 @@ def day_scenario(
     def within(items: list[dict[str, Any]], key: str, s: date, e: date) -> list:
         return [i for i in items if s <= date.fromisoformat(i[key][:10]) <= e]
 
-    return read_energy_view(
-        None,
-        EnergySources(
-            diary=lambda _db, s, e: within(diary, "meal_date", s, e),
-            daily_health=lambda _db, _s, _e: health,
-            weights=lambda _db, s, e: {d: 75.0 for d in days[::2] if s <= d <= e},
-            sessions=lambda _db, s, e: within(sessions, "started_at_local", s, e),
-            streams=lambda _db, _key: {},
-            resting=lambda _db, _day: (1700.0, "katch_mcardle"),
-            body_fat=lambda _db, _s, _e: {SCENARIO_END - timedelta(days=10): 15.0},
-            profile=lambda: {"height_cm": "180"},
-        ),
-        SCENARIO_END,
-        SCENARIO_TODAY if yesterday is None else SCENARIO_END,
+    return EnergySources(
+        diary=lambda _db, s, e: within(diary, "meal_date", s, e),
+        daily_health=lambda _db, _s, _e: health,
+        weights=lambda _db, s, e: {d: 75.0 for d in days[::2] if s <= d <= e},
+        sessions=lambda _db, s, e: within(sessions, "started_at_local", s, e),
+        streams=lambda _db, _key: {},
+        resting=lambda _db, _day: (1700.0, "katch_mcardle"),
+        body_fat=lambda _db, _s, _e: {SCENARIO_END - timedelta(days=10): 15.0},
+        profile=lambda: {"height_cm": "180"},
     )
+
+
+class OwnHistoryTests(unittest.TestCase):
+    def test_the_kept_history_gives_the_period_balance_s_own_totals(self) -> None:
+        # #3630: the wiring keeps own_history ending yesterday; its totals are
+        # the direct read's for 14 and 84 days, real values, not only nulls.
+        sources = scenario_sources(None, [], 0)
+        history = own_history(None, sources, SCENARIO_END)
+        for count in (14, 84):
+            days = [SCENARIO_END - timedelta(days=n) for n in range(count)]
+            direct = read_own_day_totals(None, sources, SCENARIO_END, days)
+            with self.subTest(days=count):
+                self.assertEqual(count, sum(v is not None for v in direct.values()))
+                self.assertEqual(direct, own_day_totals(*history, days))
 
 
 class EnergyDayScenarioTests(unittest.TestCase):
@@ -1446,6 +1510,31 @@ class EnergyDayScenarioTests(unittest.TestCase):
             "after": cls.after,
             "evening": cls.evening,
         }
+
+    def test_everyday_energy_per_thousand_steps_is_physiological(self) -> None:
+        # #3611: a walk in the history whose speed/cadence ratio gives 2.68 m
+        # per step (6 km in 20 moving minutes at 56 strides/min) does not count;
+        # a walk of recorded steps (1,500 m / 2,000) sets the step at 0.75 m,
+        # so the evening's 8,000 steps outside the session cost 75 x 8,000 x
+        # 0.75 x 2.01 / 4,184 = 216.2 kcal, 27.0 per 1,000 steps (the former
+        # mean of ratios, (2.68 + 0.75) / 2 = 1.71 m, gave 61.6).
+        walks = [
+            {"started_at_local": f"{SCENARIO_END - timedelta(days=20)}T09:00:00",
+             "sport": "walk", "distance_m": 6000.0, "avg_cadence": 56.0,
+             "moving_duration_s": 1200.0, "elapsed_duration_s": 4500.0},
+            {"started_at_local": f"{SCENARIO_END - timedelta(days=10)}T09:00:00",
+             "sport": "walk", "distance_m": 1500.0, "steps": 2000.0,
+             "moving_duration_s": 1200.0, "elapsed_duration_s": 1200.0},
+        ]  # fmt: skip
+        evening = day_scenario(
+            {"steps": 9500.0, "floors": 0.0, "resting_kcal": 1650.0,
+             "active_kcal": 640.0},
+            [STRENGTH, *walks], 3,
+        )  # fmt: skip
+        neat = row(evening, "katch_mcardle")["split"]["neat_kcal"]
+        per_thousand = neat / 8.0
+        self.assertTrue(20.0 <= per_thousand <= 40.0, per_thousand)
+        self.assertEqual(216, neat)
 
     def test_every_row_has_a_total_so_far(self) -> None:
         # #3494: no phase of today leaves Tag gesamt empty.

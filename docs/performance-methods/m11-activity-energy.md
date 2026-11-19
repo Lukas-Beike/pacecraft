@@ -1,8 +1,8 @@
 # M11 — Own activity energy, net of resting metabolism
 
 - **Card:** M11
-- **Card version:** 3
-- **Method ID:** activity-energy v3 (#3100, #3187, #3255)
+- **Card version:** 5
+- **Method ID:** activity-energy v5 (#3100, #3187, #3255, #3611, #3617)
 - **Status:** methods implemented (`backend/performance/activity_energy.py`); daily wiring, adaptive TDEE and display follow (#3100, #3099)
 - **Classification:** model estimate
 - **Literature checked:** 2026-11-15
@@ -52,8 +52,13 @@ counting it twice. 1 kcal = 4184 J.
    time leaves out (#3530).
 5. **NEAT:** steps outside recorded sessions × step length × the level
    walking cost `C_w(0) = 2.01 J/kg/m` × mass, plus floors as vertical work
-   `m × g × 3 m / 0.25`. Step length from recorded walks (speed ÷ steps per
-   minute), else 0.415 × height. Every session takes its steps out of NEAT
+   `m × g × 3 m / 0.25`. Step length from recorded walks (#3611): the total
+   distance over the total steps of the walks whose own step length
+   (distance ÷ recorded steps, else the device's step length, else distance
+   ÷ cadence × moving time, as a session counts its steps) lies within
+   0.30–0.55 × height (0.45–1.10 m without a height); else 0.415 × height.
+   The former mean of speed ÷ cadence ratios came out near 2 m, because a
+   short moving time or an odd cadence was not bounded. Every session takes its steps out of NEAT
    (#3255): the device's recorded count first, since the watch also counts
    steps in a strength session or on a ride; a run, walk or hike without
    one uses 2 × its one-leg cadence × duration, else its distance ÷ step
@@ -136,6 +141,8 @@ formula rows' everyday energy runs low. M12's own row names that remainder
 ## Minimum data and stop rules
 
 - Running needs distance and altitude streams; without altitude the grade is 0.
+  A run, walk or hike without any distance is unknown, not 0 kcal; its
+  recorded steps still leave everyday (#3617).
 - Cycling needs the session's work (kJ) or a power stream.
 - Flex-HR needs 20 power sessions over at least two heart-rate levels, else
   Keytel; Keytel needs weight, age and sex, else no value.
@@ -190,7 +197,7 @@ formula rows' everyday energy runs low. M12's own row names that remainder
 | Constant | Value | Module | Code comment |
 | --- | --- | --- | --- |
 | `METHOD_ID` | `'activity-energy'` | `backend/performance/activity_energy.py` |  |
-| `METHOD_VERSION` | `3` | `backend/performance/activity_energy.py` | Bump when a formula or constant below changes the estimate. |
+| `METHOD_VERSION` | `5` | `backend/performance/activity_energy.py` | Bump when a formula or constant below changes the estimate. |
 | `J_PER_KCAL` | `4184.0` | `backend/performance/activity_energy.py` | Joules per kilocalorie (thermochemical calorie). |
 | `GRAVITY` | `9.81` | `backend/performance/activity_energy.py` | Standard gravity, m/s^2, for the vertical work of floors. |
 | `MINETTI_WALKING` | `(280.5, -58.7, -76.8, 51.9, 19.6, 2.5)` | `backend/performance/activity_energy.py` | Minetti et al. 2002: the running fit (MINETTI_RUNNING, its gradient range and the 200 m grade span come from grade_adjustment, #3187), and the same fit for walking. |
@@ -208,6 +215,8 @@ formula rows' everyday energy runs low. M12's own row names that remainder
 | `FLOOR_HEIGHT_M` | `3.0` | `backend/performance/activity_energy.py` | Vertical metres per counted floor (Garmin counts about 3 m of ascent). |
 | `UPHILL_WORK_EFFICIENCY` | `0.25` | `backend/performance/activity_energy.py` | Efficiency of vertical work when walking up steep gradients: Minetti et al. 2002 found uphill walking above +0.15 reaches concentric muscle efficiency, taken here as 0.25 (assumption from that statement). |
 | `STEP_LENGTH_PER_HEIGHT` | `0.415` | `backend/performance/activity_energy.py` | Step length from body height when no recorded walk measured it; a common heuristic, weak evidence (+-10-15 %). |
+| `STEP_LENGTH_HEIGHT_BOUNDS` | `(0.3, 0.55)` | `backend/performance/activity_energy.py` | A walk's own step length (distance / steps) counts only within these shares of body height (#3611): a walking step is about 0.4 x height, and even race walkers stay near 0.55; without a height, the same shares of 1.50 and 2.00 m. |
+| `STEP_LENGTH_BOUNDS_M` | `(0.45, 1.1)` | `backend/performance/activity_energy.py` |  |
 | `TEF_PROTEIN` | `0.25` | `backend/performance/activity_energy.py` | Thermic effect of food as a share of each macronutrient's energy: midpoints of protein 20-30 %, carbohydrate 5-15 %, fat 0-3 % (Joosen & Westerterp 2006, Nutr Metab 3:25). Alcohol is not stored, so it has no term. |
 | `TEF_CARBOHYDRATE` | `0.1` | `backend/performance/activity_energy.py` |  |
 | `TEF_FAT` | `0.015` | `backend/performance/activity_energy.py` |  |

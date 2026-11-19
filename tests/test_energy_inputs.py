@@ -19,6 +19,7 @@ from backend.nutrition.energy_balance import (
     DayInputs,
     EnergyInputs,
     EnergyWindow,
+    Estimate,
     energy_windows,
     weight_trend,
 )
@@ -27,6 +28,7 @@ from backend.nutrition.energy_inputs import (
     diagnostics,
     energy_basis,
     read_energy_inputs,
+    skinfold_body_fats,
 )
 from backend.nutrition.energy_view import read_energy_view
 
@@ -177,6 +179,31 @@ class EnergyInputsReaderTests(unittest.TestCase):
             0.15 * (rest.days[DAY1].neat_kcal or 0.0),
             rest.days[DAY1].activity_error_kcal or 0.0,
         )
+
+    def test_a_foot_session_without_a_distance_is_unknown(self) -> None:
+        # #3617 item 4: no distance and no stream is no cost, so the session is
+        # unknown, not 0 kcal; its recorded steps still leave everyday.
+        run = {"id": "run", "sport": "run", "started_at_local": "2026-10-03T07:00:00",
+               "moving_duration_s": 1800, "steps": 4000}  # fmt: skip
+        inputs, costs = read_energy_inputs(None, sources(sessions=[run]), DAY1, DAY3)
+        self.assertEqual(
+            ("unknown", None, 4000.0), (costs[0].method, costs[0].kcal, costs[0].steps)
+        )
+        self.assertIsNone(inputs.days[DAY3].sport_kcal)
+
+    def test_every_skinfold_reading_counts_not_one_per_week(self) -> None:
+        # #3617 item 2: two readings in one week both count; one before the
+        # lookback and one without a body fat do not.
+        found = skinfold_body_fats(
+            [
+                SkinfoldMeasurement(DAY4, Sex.MALE, {}, 12.0),
+                SkinfoldMeasurement(DAY2, Sex.MALE, {}, 12.5),
+                SkinfoldMeasurement(DAY1, Sex.MALE, {}, None),
+                SkinfoldMeasurement(date(2026, 9, 1), Sex.MALE, {}, 14.0),
+            ],
+            DAY1,
+        )
+        self.assertEqual({DAY4: 12.0, DAY2: 12.5}, found)
 
     def test_a_day_without_sessions_has_sport_zero(self) -> None:
         # Known to be zero, not unknown: 70 x 10,000 x 0.747 x 2.01 = 1,051,029 J
@@ -411,6 +438,47 @@ def weigh(day: date, kg: Any, provider: ProviderId | None = ProviderId.GARMIN) -
 GARMIN, WAHOO, INTERVALS = ProviderId.GARMIN, ProviderId.WAHOO, ProviderId.INTERVALS
 
 
+class StepLengthTests(unittest.TestCase):
+    """#3611: the walks' step length is distance over steps, bounded by height."""
+
+    def walk(self, **summary: Any) -> dict[str, Any]:
+        return {"id": "w", "sport": "walk", "started_at_local": "2026-10-01T12:00",
+                "distance_m": 1400.0, **summary}  # fmt: skip
+
+    def test_each_kind_of_walk_is_rejected_or_plausible_and_counted(self) -> None:
+        walks = [
+            # Distance and recorded steps: 1,500 m / 2,000 = 0.75 m.
+            self.walk(distance_m=1500.0, steps=2000, avg_cadence=56,
+                      moving_duration_s=1000, elapsed_duration_s=1000),
+            # The device's own step length without steps: 1,400 / 0.70 = 2,000.
+            self.walk(step_length_m=0.70, moving_duration_s=1000),
+            # Short moving time: 1,400 m over 2 x 56 x 600 / 60 = 1,120 steps is
+            # 1.25 m, over 0.99 m, so it does not count.
+            self.walk(avg_cadence=56, moving_duration_s=600, elapsed_duration_s=1200),
+            # No steps, no step length and no cadence: nothing to measure.
+            self.walk(avg_cadence=0, moving_duration_s=1000),
+            # A cadence already in steps (112) halves the step: 1,400 m over
+            # 2 x 112 x 1,000 / 60 = 3,733 steps = 0.375 m, under 0.54 m.
+            self.walk(avg_cadence=112, moving_duration_s=1000, elapsed_duration_s=1000),
+        ]  # fmt: skip
+        step, source = energy_inputs._step_length(walks, 1.80)
+        # (1,500 + 1,400) / (2,000 + 2,000) = 0.725 m.
+        self.assertAlmostEqual(0.725, step or 0.0, places=3)
+        self.assertEqual("walks", source)
+        self.assertEqual(
+            {"walks": 5, "used": 2, "no_steps": 1, "implausible": 2,
+             "without_recorded_steps": 4, "zero_cadence": 2, "short_moving_time": 1,
+             "cadence_over_80": 1, "former_implausible": 2},
+            energy_inputs.step_walk_counts(walks, 1.80),
+        )  # fmt: skip
+
+    def test_without_a_valid_walk_the_height_gives_the_step(self) -> None:
+        odd = [self.walk(avg_cadence=0), self.walk(steps=700)]  # 2.0 m per step
+        self.assertEqual(
+            (0.415 * 1.80, "height"), energy_inputs._step_length(odd, 1.80)
+        )
+
+
 class StoreAdapterTests(unittest.TestCase):
     def test_weighins_keep_the_last_positive_value_per_day(self) -> None:
         observations = [
@@ -527,7 +595,8 @@ class StoreAdapterTests(unittest.TestCase):
             return {"by_source": {"app": 9, "garmin": 2}, "dropped_days": {"wahoo": 28}}
 
         basis = energy_basis(None, replace(sources(), weighin_counts=counts), DAY3)
-        self.assertEqual([(DAY3 - timedelta(days=27), DAY3)], seen)
+        # The window ends yesterday, DAY2, as the view's does (#3617 item 7).
+        self.assertEqual([(DAY2 - timedelta(days=27), DAY2)], seen)
         self.assertEqual(
             {"by_source": {"app": 9, "garmin": 2}, "dropped_days": {"wahoo": 28}},
             basis["latest_window_weighin_sources"],
@@ -635,10 +704,11 @@ class SkinfoldBodyTests(unittest.TestCase):
             skinfold_sources([folds_on(DAY2), folds_on(DAY1, None)]),
             DAY3,
         )
+        # Today DAY3, the windows end on DAY2, the skinfold's day (#3617).
         self.assertEqual(
             {
                 "skinfolds_with_body_fat": 1,
-                "newest_skinfold_age_days": 1,
+                "newest_skinfold_age_days": 0,
                 "body_resolved": True,
                 "body_missing": None,
             },
@@ -727,6 +797,31 @@ class BodyFatFallbackTests(unittest.TestCase):
             row = next(r for r in view["rows"] if r["source"] == source)
             self.assertIsNotNone(row["resting_kcal"])
 
+    def test_learned_everyday_fits_each_formula_and_counts_negatives(self) -> None:
+        # #3577: one estimated window, own TDEE 2,700 less activity 600 and
+        # digestion 250 is 1,850 against Katch-McArdle 1,838.8 (68 kg lean)
+        # and Cunningham 1,996: one fit above 0, one below.
+        body = {"lean_mass_kg": 68.0}
+        estimated = EnergyWindow(
+            DAY3, 28, 28, 0, 28, 600.0, 600.0, 250.0,
+            Estimate(2700.0, 120.0), None, Estimate(1850.0, 150.0), None,
+        )  # fmt: skip
+        empty = replace(estimated, adaptive_tdee=None, derived_rmr=None)
+        fits = energy_inputs.learned_everyday([empty, estimated], [body, body])
+        km, cunningham = fits["katch_mcardle"], fits["cunningham"]
+        assert km is not None and cunningham is not None
+        self.assertEqual((8, 1), (round(km.raw_kcal), km.windows))
+        self.assertLess(cunningham.raw_kcal, 0)
+        # A window that fails the neighbour check (#3614) teaches nothing.
+        unstable = replace(estimated, stable=False)
+        self.assertIsNone(
+            energy_inputs.learned_everyday([unstable], [body])["katch_mcardle"]
+        )
+        # Without a body at a window's end it has no fit.
+        self.assertIsNone(
+            energy_inputs.learned_everyday([estimated], [None])["cunningham"]
+        )
+
     def test_the_diagnostics_count_the_body_sources(self) -> None:
         basis = energy_basis(
             None, skinfold_sources([], device={DAY2: 20.0}, profile=PROFILE_FAT), DAY3
@@ -734,6 +829,8 @@ class BodyFatFallbackTests(unittest.TestCase):
         self.assertEqual("device", basis["body_source"])
         # #3443: DAY2's resting is 0, so today's Garmin rest comes from DAY1.
         self.assertEqual(2, basis["today_resting_days_back"])
+        # #3577: no estimated window, so no learned everyday fit below 0.
+        self.assertEqual(0, basis["learned_everyday_negative"])
         counts = basis["body_source_windows"]
         self.assertEqual(12, sum(counts.values()))
         self.assertEqual(

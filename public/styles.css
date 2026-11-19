@@ -1916,6 +1916,11 @@ button:focus-visible, a:focus-visible, summary:focus-visible {
 :is(.energy-split, .energy-split-legend) [data-part="resting"] { --part-color: var(--training-zone-1); }
 :is(.energy-split, .energy-split-legend) [data-part="neat"] { --part-color: var(--training-zone-2); }
 :is(.energy-split, .energy-split-legend) [data-part="unmeasured"] { --part-color: var(--training-zone-3); }
+:is(.energy-split, .energy-split-legend) [data-part="learned"] { --part-color: var(--training-zone-7); }
+[data-energy] .energy-learned { display: grid; gap: 8px; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line); font-size: .85rem; }
+[data-energy] .energy-learned p { margin: 0; }
+[data-energy] .energy-learned small { color: var(--muted); }
+[data-energy] .energy-learned .actions { display: flex; flex-wrap: wrap; gap: 8px; }
 :is(.energy-split, .energy-split-legend) [data-part="sport"] { --part-color: var(--training-zone-4); }
 :is(.energy-split, .energy-split-legend) [data-part="tef"] { --part-color: var(--training-zone-6); }
 .energy-split-legend [data-part="shared"] { --part-color: var(--muted); }

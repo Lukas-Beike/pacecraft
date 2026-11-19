@@ -67,6 +67,18 @@ def series(
     return balance.EnergyInputs(out, {}, rmr_kcal=1700.0, rmr_source="katch_mcardle")
 
 
+def bias_window(
+    x: float, activity: float | None, back: int, noise: float = 0.0
+) -> balance.EnergyWindow:
+    """#3586: flagged meals 20 % larger than logged, TDEE = 2,600 - 0.2 x, in
+    a window ending ``back`` days before END."""
+    return balance.EnergyWindow(
+        END - timedelta(days=back), 28, 28, 1, 28, activity, activity, 280.0,
+        balance.Estimate(2600.0 - 0.2 * x + noise, 100.0), None, None, None,
+        flagged_kcal_per_day=x,
+    )  # fmt: skip
+
+
 class CompositionAndTrendTests(unittest.TestCase):
     def test_energy_density_follows_the_share_and_hall(self) -> None:
         self.assertAlmostEqual(balance.energy_density(0.70), DENSITY)
@@ -582,26 +594,62 @@ class FlaggedMealsAndCalibrationTests(unittest.TestCase):
         self.assertAlmostEqual(balance.calibration_factor(noisy), 1.000277, places=6)
         self.assertEqual(balance.calibration_factor(exact[:3]), 1.0)
 
-    def test_the_bias_fit_takes_activity_only_where_it_can(self) -> None:
-        # #3586: flagged meals 20 % larger than logged, TDEE = 2,600 - 0.2 x.
-        def window(x: float, activity: float | None) -> balance.EnergyWindow:
-            return balance.EnergyWindow(
-                END, 28, 28, 1, 28, activity, activity, 280.0,
-                balance.Estimate(2600.0 - 0.2 * x, 100.0), None, None, None,
-                flagged_kcal_per_day=x,
-            )  # fmt: skip
+    def test_the_learned_everyday_term_is_shrunk_and_keeps_its_sign(self) -> None:
+        # #3577: four windows 300 kcal/day over the row, each SD 100. The mean
+        # 300 has precision 4 / 100^2 = 4e-4, overlap-inflated to 1e-4; the
+        # prior 0 +- 250 adds 1.6e-5: posterior variance 1 / 1.16e-4 = 8,620.7,
+        # mean 8,620.7 x 1e-4 x 300 = 258.62, band 1.96 x 92.85 = 181.98.
+        fit = balance.fit_learned_everyday([(300.0, 100.0)] * 4)
+        assert fit is not None
+        self.assertAlmostEqual(258.62, fit.raw_kcal, places=2)
+        self.assertAlmostEqual(258.62, fit.kcal, places=2)
+        self.assertAlmostEqual(181.98, fit.band_kcal, places=2)
+        self.assertEqual(4, fit.windows)
+        # A row that overshoots keeps its negative fit; it shows as 0.
+        under = balance.fit_learned_everyday([(-200.0, 100.0)] * 4)
+        assert under is not None
+        self.assertAlmostEqual(-172.41, under.raw_kcal, places=2)
+        self.assertEqual(0.0, under.kcal)
+        self.assertIsNone(balance.fit_learned_everyday([]))
 
+    def test_the_bias_fit_takes_activity_only_where_it_can(self) -> None:
         flagged = (100.0, 200.0, 300.0, 400.0)
         # Activity unknown in one window: the single regression, b = 0.2.
         partial = [
-            window(x, a) for x, a in zip(flagged, (500, None, 700, 600), strict=True)
+            bias_window(x, a, 28 * n)
+            for n, (x, a) in enumerate(zip(flagged, (500, None, 700, 600), strict=True))
         ]
         bias = balance._bias(partial)
         assert bias is not None
         self.assertAlmostEqual(0.2, bias[0])
         # Flagged kcal that moved only with the activity cannot be told apart.
-        collinear = [window(x, 2.0 * x) for x in flagged]
+        collinear = [bias_window(x, 2.0 * x, 28 * n) for n, x in enumerate(flagged)]
         self.assertIsNone(balance._bias(collinear))
+
+    def test_the_bias_needs_a_narrow_t_band_and_independent_windows(self) -> None:
+        # #3616: the same exact fit in four overlapping weekly windows lies in
+        # one independent window only, so it is not learned.
+        weekly = [
+            bias_window(x, None, 7 * n) for n, x in enumerate((1e2, 2e2, 3e2, 4e2))
+        ]
+        self.assertIsNone(balance._bias(weekly))
+        # Four windows 28 days apart, activity as the second term: dof 1, so
+        # the band takes t = 12.706 and is far wider than 50 points. With z it
+        # would have been learned (0.13 +- 0.13).
+        xs, acts = (100.0, 200.0, 300.0, 400.0), (500.0, 650.0, 600.0, 700.0)
+        noisy = [
+            bias_window(x, a, 28 * (3 - n), 8.0 * (-1) ** n)
+            for n, (x, a) in enumerate(zip(xs, acts, strict=True))
+        ]
+        self.assertIsNone(balance._bias(noisy))
+        # The prior 0 +- 0.25 against data of the same SD (band 1.96 x 0.25)
+        # halves the slope; the posterior SD is 0.25 / sqrt 2.
+        bias, band = balance._shrunk_bias(0.4, 0.49)
+        self.assertAlmostEqual(0.2, bias)
+        self.assertAlmostEqual(1.96 * 0.25 / math.sqrt(2), band)
+        # An exact fit keeps its slope; below -100 % it is clamped to -1.
+        self.assertEqual((0.4, 0.0), balance._shrunk_bias(0.4, 0.0))
+        self.assertEqual((-1.0, 0.0), balance._shrunk_bias(-3.0, 0.0))
 
     def test_k_and_b_see_one_fat_share_whatever_the_readings(self) -> None:
         # #3554, the issue's synthetic series: 111 days of a steady 0.07 kg/day

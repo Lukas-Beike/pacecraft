@@ -470,6 +470,8 @@ class ProdChecksTests(unittest.TestCase):
                 "skinfolds_with_body_fat": 0,
                 "newest_skinfold_age_days": None,
                 "today_resting_days_back": 1,
+                # #3577: formulas whose learned everyday fit lies below 0.
+                "learned_everyday_negative": 1,
                 # #3530: days whose Garmin summary names its wellness end.
                 "wellness_end_days": 6,
                 # #3557: weigh-in days per source, dropped days per provider.
@@ -481,6 +483,9 @@ class ProdChecksTests(unittest.TestCase):
                 "latest_window_former_rule_days": 4,
                 # #3554: the fit's estimated windows per store rule.
                 "calibration_store_methods": {"measured": 4, "prior": 0},
+                # #3611: the walks behind NEAT's step length.
+                "step_source": "walks",
+                "step_walks": {"walks": 9, "used": 6, "former_implausible": 7},
                 "planted": "never printed",
             }
         }
@@ -497,6 +502,7 @@ class ProdChecksTests(unittest.TestCase):
             f'{prefix}latest_window_insufficient "weight_span"',
             f"{prefix}newest_skinfold_age_days null",
             f"{prefix}today_resting_days_back 1",
+            f"{prefix}learned_everyday_negative 1",
             f"{prefix}wellness_end_days 6",
             f"{prefix}latest_window_weighin_sources.by_source.app 12",
             f"{prefix}latest_window_weighin_sources.by_source.garmin 3",
@@ -504,6 +510,9 @@ class ProdChecksTests(unittest.TestCase):
             f"{prefix}latest_window_former_rule_days 4",
             f"{prefix}calibration_store_methods.measured 4",
             f"{prefix}calibration_store_methods.prior 0",
+            f'{prefix}step_source "walks"',
+            f"{prefix}step_walks.used 6",
+            f"{prefix}step_walks.former_implausible 7",
         ):
             self.assertIn(expected, lines)
         self.assertFalse(any("planted" in line for line in lines))
@@ -539,6 +548,38 @@ class ProdChecksTests(unittest.TestCase):
                 self.assertEqual(
                     prod_diagnostics.named_section_lines(broken, "coach_local_first"),
                     [("FAIL", "section coach_commands missing")],
+                )
+
+    def test_route_timings_print_each_route_s_counts_and_milliseconds(self):
+        # #3630: the slowest routes by pattern, counts and ms only; a planted
+        # field or a non-numeric value never prints, and a malformed row is skipped.
+        report = {
+            "runtime": {
+                "slowest_routes": [
+                    {"route": "GET /api/context-preview", "count": 4, "p50_ms": 900,
+                     "p95_ms": 3300, "max_ms": 3370, "disconnects": 0,
+                     "planted": "secret"},
+                    {"route": "GET /api/body/energy", "count": 2, "p50_ms": 2100,
+                     "p95_ms": None, "max_ms": 2400, "disconnects": 1},
+                    {"route": 5, "count": 1},
+                    "not a row",
+                ]
+            }
+        }  # fmt: skip
+        preview = "count 4 p50_ms 900 p95_ms 3300 max_ms 3370 disconnects 0"
+        energy = "count 2 p50_ms 2100 p95_ms null max_ms 2400 disconnects 1"
+        self.assertEqual(
+            prod_diagnostics.named_section_lines(report, "route_timings"),
+            [
+                ("info", f"route_timings.GET /api/context-preview {preview}"),
+                ("info", f"route_timings.GET /api/body/energy {energy}"),
+            ],
+        )
+        for broken in ({}, {"runtime": {}}, {"runtime": {"slowest_routes": None}}):
+            with self.subTest(report=broken):
+                self.assertEqual(
+                    prod_diagnostics.named_section_lines(broken, "route_timings"),
+                    [("FAIL", "section runtime.slowest_routes missing")],
                 )
 
     def test_post_release_sections_print_counts_and_state_words_only(self):
@@ -1048,7 +1089,7 @@ NOT_PRINTED = {
     "runtime": {
         "python": "free text: the interpreter version",
         "platform": "free text: the host platform",
-        "slowest_routes": "a list of route patterns, read in the full export (#3017)",
+        "slowest_routes": "a list of route patterns, printed by --section route_timings (#3630)",
     },
 }
 

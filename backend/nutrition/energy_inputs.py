@@ -34,11 +34,14 @@ from backend.canonical.records import Observation
 from backend.canonical.vocabulary import ProviderId, StreamChannel
 from backend.db.activity_detail_store import detail_sets_for_session
 from backend.nutrition.energy_balance import (
+    BAND_Z,
     DayInputs,
     EnergyInputs,
     EnergyWindow,
+    LearnedEveryday,
     below_former_share,
     energy_windows,
+    fit_learned_everyday,
     history_start,
     is_complete,
     is_stable,
@@ -362,15 +365,9 @@ def session_cost(
         else 0.0
     )
     if sport in FOOT_SPORTS and mass:
-        cost = (
-            energy.running_cost_j_per_kg_m
-            if sport in RUN_SPORTS
-            else energy.walking_cost_j_per_kg_m
-        )
-        joules = sum(run * cost(grade) for run, grade in _graded(sources, db, summary))
-        return SessionCost(
-            day, mass * joules / energy.J_PER_KCAL, "minetti", steps, climb
-        )
+        kcal = _foot_kcal(sources, db, summary, sport, mass)
+        method = "minetti" if kcal is not None else "unknown"
+        return SessionCost(day, kcal, method, steps, climb)
     if sport in STRENGTH_SPORTS:
         # Its MET follows its session RPE (#3530), the general one without.
         met = energy.strength_met(rpe)
@@ -383,6 +380,27 @@ def session_cost(
         return SessionCost(day, kcal, method, steps, climb, rpe, met)
     kcal, method = _timed_cost(summary, sport, duration, rmr, hr_cost, mass, day)
     return SessionCost(day, kcal, method, steps, climb)
+
+
+def _foot_kcal(
+    sources: EnergySources,
+    db: Any,
+    summary: Mapping[str, Any],
+    sport: str,
+    mass: float,
+) -> float | None:
+    """A run's or walk's net kcal from Minetti's cost over its graded
+    distance; without any distance it is unknown, not 0 (#3617 item 4)."""
+    graded = _graded(sources, db, summary)
+    if not graded:
+        return None
+    cost = (
+        energy.running_cost_j_per_kg_m
+        if sport in RUN_SPORTS
+        else energy.walking_cost_j_per_kg_m
+    )
+    joules = sum(run * cost(grade) for run, grade in graded)
+    return mass * joules / energy.J_PER_KCAL
 
 
 def _session_steps(
@@ -427,20 +445,94 @@ def _timed_cost(
 def _step_length(
     sessions: Sequence[Mapping[str, Any]], height_m: float | None
 ) -> tuple[float | None, str | None]:
-    """NEAT's step length and its source: recorded walks, else body height."""
-    speeds, cadences = [], []
+    """NEAT's step length and its source: the recorded walks' total distance
+    over their steps, of the plausible ones, else body height (#3611)."""
+    walks = [w for s in sessions if (w := _walk_steps(s)) is not None]
+    step = energy.step_length_m(walks, height_m)
+    if step is None:
+        return None, None
+    used = any(energy.plausible_step(d / s, height_m) for d, s in walks)
+    return step, "walks" if used else "height"
+
+
+def _height_m(profile: Mapping[str, Any]) -> float | None:
+    height_cm = _number(profile.get("height_cm"))
+    return height_cm / 100.0 if height_cm else None
+
+
+def _walk_steps(summary: Mapping[str, Any]) -> tuple[float, float] | None:
+    """A walk's (distance m, steps) (#3611): its recorded steps, else its
+    distance over the device's own step length, else its cadence over the
+    same moving time that ``_session_steps`` counts."""
+    if str(summary.get("sport") or "") not in WALK_SPORTS:
+        return None
+    distance = _number(summary.get("distance_m"))
+    if not distance or distance <= 0:
+        return None
+    steps = _number(summary.get("steps"))
+    step = _number(summary.get("step_length_m"))
+    if not steps and step and step > 0:
+        steps = distance / step
+    if not steps:
+        strides, duration = _number(summary.get("avg_cadence")), _duration_s(summary)
+        steps = (
+            STEPS_PER_STRIDE * strides * duration / 60.0
+            if strides and duration
+            else None
+        )
+    return (distance, steps) if steps and steps > 0 else None
+
+
+def step_walk_counts(
+    sessions: Sequence[Mapping[str, Any]], height_m: float | None
+) -> dict[str, int]:
+    """Counts only (#3611): the walks the step length used or rejected, and how
+    many show each suspected cause of the former 2 m step: no recorded steps,
+    no cadence, a moving time under 80 % of the elapsed time, a cadence above
+    80 per minute (likely steps, not strides), and a former speed/cadence step
+    outside the bounds."""
+    counts = dict.fromkeys(
+        ("walks", "used", "no_steps", "implausible", "without_recorded_steps",
+         "zero_cadence", "short_moving_time", "cadence_over_80", "former_implausible"),
+        0,
+    )  # fmt: skip
     for summary in sessions:
         if str(summary.get("sport") or "") not in WALK_SPORTS:
             continue
-        duration, distance = _duration_s(summary), _number(summary.get("distance_m"))
-        cadence = _number(summary.get("avg_cadence"))
-        if duration and distance and cadence:
-            speeds.append(distance / duration)
-            cadences.append(STEPS_PER_STRIDE * cadence)
-    step = energy.step_length_m(speeds, cadences, height_m)
-    if step is None:
-        return None, None
-    return step, "walks" if speeds else "height"
+        counts["walks"] += 1
+        walk = _walk_steps(summary)
+        if walk is None:
+            counts["no_steps"] += 1
+        else:
+            kept = energy.plausible_step(walk[0] / walk[1], height_m)
+            counts["used" if kept else "implausible"] += 1
+        for cause, found in _former_causes(summary, height_m).items():
+            counts[cause] += found
+    return counts
+
+
+def _former_causes(
+    summary: Mapping[str, Any], height_m: float | None
+) -> dict[str, bool]:
+    """Which suspected causes of the former speed/cadence step a walk shows."""
+    moving = _number(summary.get("moving_duration_s"))
+    elapsed = _number(summary.get("elapsed_duration_s"))
+    distance = _number(summary.get("distance_m"))
+    strides = _number(summary.get("avg_cadence"))
+    duration = _duration_s(summary)
+    former = (
+        distance / duration * 60.0 / (STEPS_PER_STRIDE * strides)
+        if distance and duration and strides
+        else None
+    )
+    return {
+        "without_recorded_steps": not _number(summary.get("steps")),
+        "zero_cadence": not strides,
+        "short_moving_time": bool(moving and elapsed and moving < 0.8 * elapsed),
+        "cadence_over_80": bool(strides and strides > 80),
+        "former_implausible": former is not None
+        and not energy.plausible_step(former, height_m),
+    }
 
 
 def _resting(
@@ -470,16 +562,13 @@ def read_energy_inputs(
 ) -> tuple[EnergyInputs, tuple[SessionCost, ...]]:
     """The days from ``start`` to ``end`` and the priced sessions behind them."""
     profile = sources.profile()
-    height_cm = _number(profile.get("height_cm"))
     profile_weight = _number(profile.get("weight_kg"))
     health = sources.daily_health(db, start, end)
     rmr, rmr_source = _resting(sources, db, end, health)
     weights = dict(sources.weights(db, start, end))
     trend = weight_trend(weights)
     sessions = list(sources.sessions(db, start, end))
-    step_m, step_source = _step_length(
-        sessions, height_cm / 100.0 if height_cm else None
-    )
+    step_m, step_source = _step_length(sessions, _height_m(profile))
     rides = [s for s in sessions if str(s.get("sport") or "") in RIDE_SPORTS]
     flex = _flex_fit(rides, rmr) if rmr is not None else None
     hr_cost = _heart_rate_cost(flex, profile, rmr or 0.0)
@@ -543,6 +632,19 @@ def _skinfold_sds(measurements: Sequence[SkinfoldMeasurement]) -> dict[date, flo
     }
 
 
+def skinfold_body_fats(
+    measurements: Iterable[SkinfoldMeasurement], since: date
+) -> dict[date, float]:
+    """Every complete skinfold measurement on or after ``since`` with a body
+    fat, by day (#3617 item 2): a reading followed by another within the same
+    week counts too, not only the newest one per weekly checkpoint."""
+    return {
+        m.measured_on: m.body_fat_pct
+        for m in measurements
+        if m.measured_on >= since and m.body_fat_pct is not None
+    }
+
+
 def device_body_fats(
     observations: Iterable[Observation], skinfold_days: Iterable[date] = ()
 ) -> dict[date, tuple[float, Any]]:
@@ -568,8 +670,51 @@ def _profile_fat(value: Any) -> float | None:
     return number if 1 <= number <= 70 else None
 
 
-def energy_basis(db: Any, sources: EnergySources, end: date) -> dict[str, Any]:
-    """The diagnostics counts of the 12-week view ending on ``end`` (#3100)."""
+# The formula rows that learn their everyday term (#3577).
+LEARNED_FORMULAS: Final = {
+    "katch_mcardle": RestingFormula.KATCH_MCARDLE,
+    "cunningham": RestingFormula.CUNNINGHAM,
+}
+
+
+def learned_everyday(
+    windows: Sequence[EnergyWindow], bodies: Sequence[Mapping[str, Any] | None]
+) -> dict[str, LearnedEveryday | None]:
+    """Each formula row's learned everyday term (#3577), fitted per formula
+    over the estimated windows with a body at their end: the window's own TDEE
+    less its uncalibrated activity, digestion and the formula's resting rate,
+    what the row lacks against the own total at the rows' k = 1; its SD is
+    the derived resting rate's."""
+    fits: dict[str, LearnedEveryday | None] = {}
+    for name, formula in LEARNED_FORMULAS.items():
+        points = [
+            (
+                window.adaptive_tdee.kcal
+                - window.activity_kcal_raw
+                - window.tef_kcal
+                - resting_energy(formula, body["lean_mass_kg"]),
+                window.derived_rmr.band_kcal / BAND_Z,
+            )
+            for window, body in zip(windows, bodies, strict=True)
+            if body is not None
+            and window.adaptive_tdee is not None
+            and window.derived_rmr is not None
+            and window.activity_kcal_raw is not None
+            and window.tef_kcal is not None
+            # A window that fails the neighbour check (#3614) teaches nothing.
+            and is_stable(window)
+        ]
+        fits[name] = fit_learned_everyday(points)
+    return fits
+
+
+def energy_basis(db: Any, sources: EnergySources, today: date) -> dict[str, Any]:
+    """The diagnostics counts of the 12-week view (#3100).
+
+    Its windows end yesterday, as the energy view's do (#3617 item 7); the
+    counts about today's Garmin rest and wellness end look at today.
+    """
+    end = today - timedelta(days=1)
     inputs, costs = read_energy_inputs(db, sources, history_start(end), end)
     skinfolds, missing = skinfold_state(db, sources, inputs, end)
     windows = energy_windows(inputs, end)
@@ -577,8 +722,8 @@ def energy_basis(db: Any, sources: EnergySources, end: date) -> dict[str, Any]:
         {d: v.weight_kg for d, v in inputs.days.items() if v.weight_kg is not None}
     )
     bodies = [resolve_body(inputs, trend, w.end) for w in windows]
-    week = sources.daily_health(db, end - timedelta(days=GARMIN_RESTING_DAYS), end)
-    found = newest_resting(week, end)
+    week = sources.daily_health(db, today - timedelta(days=GARMIN_RESTING_DAYS), today)
+    found = newest_resting(week, today)
     latest = windows[-1] if windows else None
     unstable = [w for w in windows if not is_stable(w)]
     return (
@@ -608,21 +753,38 @@ def energy_basis(db: Any, sources: EnergySources, end: date) -> dict[str, Any]:
             else None
         }
         | skinfold_diagnostics(skinfolds, missing, end, bodies)
+        # The walks behind NEAT's step length and their suspected causes (#3611).
+        | {
+            "step_walks": step_walk_counts(
+                sources.sessions(db, history_start(end), end),
+                _height_m(sources.profile()),
+            ),
+            "step_source": inputs.step_source,
+        }
+        # Formulas whose learned everyday fit lies below 0, shown as 0 (#3577).
+        | {
+            "learned_everyday_negative": sum(
+                1
+                for fit in learned_everyday(windows, bodies).values()
+                if fit is not None and fit.raw_kcal < 0
+            )
+        }
         # How many days back today's Garmin Ruhe comes from, None = none (#3443).
-        | {"today_resting_days_back": (end - found[0]).days if found else None}
+        | {"today_resting_days_back": (today - found[0]).days if found else None}
         # Days of the last week whose Garmin summary names its wellness end (#3530).
         | {
             "wellness_end_days": sum(
                 1 for day in week.values() if day.get("wellness_end_min") is not None
             )
         }
-        # Past days of the latest window whose summary ended early (#3612).
+        # Past days of the latest window whose summary ended early (#3612); the
+        # window ends yesterday, so today is never among them (#3617 item 7).
         | {
             "latest_window_unfinished_days": sum(
                 1
                 for when, day in inputs.days.items()
                 if day.unfinished
-                and latest.end - timedelta(days=latest.days) < when < end
+                and latest.end - timedelta(days=latest.days) < when <= end
             )
             if latest
             else None

@@ -2,6 +2,7 @@ import os
 import unittest
 
 from backend.athlete.profile import (
+    COACH_READ_ONLY_FIELDS,
     DEFAULT_PROFILE,
     DEFAULT_TIMEZONE,
     normalize_profile,
@@ -66,6 +67,7 @@ class AthleteProfileTests(unittest.TestCase):
                 "fueling_tolerance": "",
                 "energy_goal": "",
                 "energy_goal_kcal": "",
+                "learned_everyday_checked": "",
                 "first_threshold_pct": "",
                 "first_threshold_origin": "",
                 "preferred_source_thresholds": "",
@@ -174,6 +176,20 @@ class AthleteProfileTests(unittest.TestCase):
             self.assertEqual(raised.exception.status, 400)
         # A stored unknown goal reads as none.
         self.assertEqual("", normalize_profile({"energy_goal": "cut"})["energy_goal"])
+
+    def test_the_learned_everyday_check_is_a_date_only_the_athlete_sets(self):
+        # #3577: the date the athlete took the learned everyday term over.
+        field = "learned_everyday_checked"
+        saved = normalize_profile({field: "2026-11-19"}, validate_timezone=True)
+        self.assertEqual("2026-11-19", saved[field])
+        self.assertEqual(
+            "", normalize_profile({field: ""}, validate_timezone=True)[field]
+        )
+        with self.assertRaises(AppError) as raised:
+            normalize_profile({field: "gestern"}, validate_timezone=True)
+        self.assertEqual(400, raised.exception.status)
+        self.assertEqual("", normalize_profile({field: "gestern"})[field])
+        self.assertIn(field, COACH_READ_ONLY_FIELDS)
 
     def test_reads_keep_legacy_number_text_and_strict_keeps_unchanged_values(self):
         legacy = {"weight_kg": "72 kg", "height_cm": "tall"}

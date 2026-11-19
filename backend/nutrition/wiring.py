@@ -12,6 +12,7 @@ from backend.activities.activity_reference import ActivityReferences
 from backend.app.context import AppContext
 from backend.athlete.profile import profile_body_fat_history, profile_weight_history
 from backend.canonical.vocabulary import MetricKind
+from backend.db.manager import kept_until_change
 from backend.db.repositories import (
     NutritionProductRepository,
     NutritionRepository,
@@ -19,6 +20,7 @@ from backend.db.repositories import (
 )
 from backend.nutrition.catalog import ProductCatalogService
 from backend.nutrition.diary import NutritionDiaryService
+from backend.nutrition.energy_balance import history_start
 from backend.nutrition.energy_inputs import (
     RESTING_LOOKBACK_DAYS,
     EnergySources,
@@ -29,14 +31,18 @@ from backend.nutrition.energy_inputs import (
     own_resting,
     recent_fat_pct,
     session_streams,
+    skinfold_body_fats,
     weighin_counts,
     weighins,
 )
 from backend.nutrition.energy_view import (
+    OwnHistory,
+    own_history,
     read_energy_view,
     read_own_day_totals,
     selected_day,
 )
+from backend.nutrition.energy_view import own_day_totals as own_totals
 from backend.nutrition.food_database import FoodDatabaseService
 from backend.nutrition.food_mirror import FoodDatabaseMirror
 from backend.nutrition.meal_library import NutritionMealLibraryService
@@ -130,13 +136,27 @@ def build_nutrition(ctx: AppContext) -> NutritionServices:
             own_day_totals=own_day_totals,
         )
 
+    def yesterdays_history() -> tuple[date, OwnHistory]:
+        end = ctx.clock.now().date() - timedelta(days=1)
+        with ctx.database().reader() as db:
+            return end, own_history(db, energy_sources(), end)
+
+    # The 12-week history prices every session from its streams: kept until a
+    # commit changes rows, so Verlauf's next read costs nothing (#3630).
+    kept_history = kept_until_change(ctx.database, yesterdays_history)
+
     def own_day_totals(days: list[date]) -> dict[date, float | None]:
         # The period balance's expenditure: each day's own day total, from the
         # windows ending yesterday as the energy view's (#3600).
-        with ctx.database().reader() as db:
-            return read_own_day_totals(
-                db, energy_sources(), ctx.clock.now().date() - timedelta(days=1), days
-            )
+        end = ctx.clock.now().date() - timedelta(days=1)
+        if min(days, default=end) < history_start(end):
+            with ctx.database().reader() as db:
+                return read_own_day_totals(db, energy_sources(), end, days)
+        kept_end, history = kept_history()
+        if kept_end != end:  # a new day before the next commit
+            kept_end, history = yesterdays_history()
+        inputs, windows, health = history
+        return own_totals(inputs, windows, health, days)
 
     def energy_sources() -> EnergySources:
         """The stores the adaptive expenditure reads (#3100).
@@ -180,14 +200,11 @@ def build_nutrition(ctx: AppContext) -> NutritionServices:
             )
 
         def body_fat(db: Any, start: date, end: date) -> dict[date, float]:
-            """Skinfold body fat in effect at each weekly window end, and the
-            profile's dated skinfold values of the lookback (#3557)."""
+            """Every skinfold body fat of the lookback (#3617 item 2), over the
+            profile's dated skinfold values of the same days (#3557)."""
             since = start - timedelta(days=RESTING_LOOKBACK_DAYS)
             found = saved(profile_body_fat_history, db, since, end)
-            for weeks in range((end - start).days // 7 + 1):
-                skinfold = skinfolds.skinfold_on(db, end - timedelta(days=7 * weeks))
-                if skinfold is not None and skinfold.body_fat_pct is not None:
-                    found[skinfold.measured_on] = skinfold.body_fat_pct
+            found.update(skinfold_body_fats(skinfolds.measurements_on(db, end), since))
             return found
 
         return EnergySources(

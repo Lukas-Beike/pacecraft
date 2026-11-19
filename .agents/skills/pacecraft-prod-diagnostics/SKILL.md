@@ -63,7 +63,10 @@ it makes the Analyse view's own read once (as the UI walk does), which starts
 the build; it reads no answer body.
 `DERIVED_SECTIONS` prints sums instead of leaves: `coach_local_first` counts
 the #3080 local-first outcomes over the Coach history (`coach_commands`);
-the session resolutions are in `--section runtime`.
+the session resolutions are in `--section runtime`. `route_timings` prints
+`runtime.slowest_routes` since start, one line per route pattern with `count`,
+`p50_ms`, `p95_ms`, `max_ms` and `disconnects` (#3630); a view that loads slower
+names its slow request there.
 
 ## Temporary production probe
 

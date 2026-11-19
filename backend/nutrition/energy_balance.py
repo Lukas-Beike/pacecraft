@@ -24,7 +24,7 @@ from backend.performance.activity_energy import TEF_ERROR_KCAL, tef_kcal
 
 METHOD_ID = "adaptive-expenditure"
 # Bump when a formula or constant below changes the estimate.
-METHOD_VERSION = 12
+METHOD_VERSION = 15
 # Days per window and windows per week of the rolling view (#3099, #3100).
 WINDOW_DAYS = 28
 # A day's current weight is the least-squares line through the weigh-ins of
@@ -90,6 +90,15 @@ CALIBRATION_BOUNDS = (0.85, 1.15)
 # bias is estimated.
 MIN_CALIBRATION_WINDOWS = 4
 MIN_BIAS_WINDOWS = 4
+# The flagged-meal bias b (#3616): shrunk toward 0 by the prior 0 +- 0.25 and
+# kept at or above -1 (a flagged meal cannot be less than nothing); reported
+# and applied only once its 95 % band spans at most 50 percentage points
+# (half-width 0.25) and its flagged days lie in at least 2 windows that share
+# no day (product assumptions).
+BIAS_PRIOR_SD = 0.25
+BIAS_MIN = -1.0
+BIAS_MAX_BAND = 0.25
+MIN_INDEPENDENT_BIAS_WINDOWS = 2
 # Neighbouring windows share 21 of their 28 days, so a fit over them holds about
 # a quarter of the information its window count suggests: the variance of the
 # k and b slopes is inflated by WINDOW_DAYS / 7 before the shrinkage (#3554).
@@ -101,6 +110,9 @@ WINDOW_OVERLAP_INFLATION = WINDOW_DAYS / 7
 # their band holds the difference. 2.576 / 1.96 turns the 95 % t into 99 %.
 MAX_RESIDUAL_AUTOCORRELATION = 0.8
 STABILITY_BAND_RATIO = 2.576 / 1.96
+# The learned everyday term of a formula row (#3577): the own total's excess over
+# the row, shrunk towards 0 with this SD (kcal/day, product assumption).
+LEARNED_EVERYDAY_PRIOR_SD = 250.0
 
 
 @dataclass(frozen=True)
@@ -864,6 +876,38 @@ def flagged_meal_bias(inputs: EnergyInputs, end: date) -> tuple[float, float] | 
     return windows_bias(energy_windows(inputs, end))
 
 
+class LearnedEveryday(NamedTuple):
+    """A formula row's learned everyday term (#3577): the shrunken fit with its
+    sign kept (``raw_kcal``), the value shown (never below 0), its 95 % band
+    and the windows it was fitted over."""
+
+    raw_kcal: float
+    kcal: float
+    band_kcal: float
+    windows: int
+
+
+def fit_learned_everyday(
+    points: Sequence[tuple[float, float]],
+) -> LearnedEveryday | None:
+    """The precision-weighted mean of each window's excess (value, SD), its
+    variance inflated for the windows' overlap and shrunk towards 0 with
+    ``LEARNED_EVERYDAY_PRIOR_SD`` (#3577); None without a window."""
+    usable = [(value, sd) for value, sd in points if sd > 0]
+    if not usable:
+        return None
+    weights = [1.0 / sd**2 for _, sd in usable]
+    mean = sum(w * value for w, (value, _) in zip(weights, usable, strict=True)) / sum(
+        weights
+    )
+    precision = sum(weights) / WINDOW_OVERLAP_INFLATION
+    posterior_var = 1.0 / (precision + 1.0 / LEARNED_EVERYDAY_PRIOR_SD**2)
+    raw = posterior_var * precision * mean
+    return LearnedEveryday(
+        raw, max(0.0, raw), BAND_Z * math.sqrt(posterior_var), len(usable)
+    )
+
+
 def windows_bias(windows: Sequence[EnergyWindow]) -> tuple[float, float] | None:
     """The flagged-entry bias in % with its band, from windows already built."""
     bias = _bias(windows)
@@ -910,9 +954,40 @@ def _bias(windows: Sequence[EnergyWindow]) -> tuple[float, float] | None:
     residual = [
         y - (mean_y + slope * (x - mean_x)) for x, y in zip(xs, ys, strict=True)
     ]
-    # The windows overlap, so their slope is less certain than OLS says (#3554).
+    # The windows overlap, so their slope is less certain than OLS says (#3554);
+    # its band takes t at the fit's dof, not z (#3616).
     slope_var = sum(r * r for r in residual) / max(1, dof) / sxx
-    return -slope, BAND_Z * math.sqrt(slope_var * WINDOW_OVERLAP_INFLATION)
+    data_band = t_quantile(dof) * math.sqrt(slope_var * WINDOW_OVERLAP_INFLATION)
+    bias, band = _shrunk_bias(-slope, data_band)
+    if (
+        band > BIAS_MAX_BAND
+        or _independent_windows(windows) < MIN_INDEPENDENT_BIAS_WINDOWS
+    ):
+        return None
+    return bias, band
+
+
+def _shrunk_bias(raw: float, band: float) -> tuple[float, float]:
+    """``raw`` with its 95 % band, shrunk toward 0 by the prior 0 +- 0.25 and
+    kept at or above -1 (#3616): the data's SD is its band / 1.96."""
+    if band <= 0:
+        return max(BIAS_MIN, raw), 0.0
+    precision = (BAND_Z / band) ** 2
+    prior = 1.0 / BIAS_PRIOR_SD**2
+    shrunk = raw * precision / (precision + prior)
+    return max(BIAS_MIN, shrunk), BAND_Z / math.sqrt(precision + prior)
+
+
+def _independent_windows(windows: Sequence[EnergyWindow]) -> int:
+    """Estimated windows with flagged entries that share no day, counted from
+    the latest back (#3616)."""
+    count, last = 0, None
+    for window in sorted(windows, key=lambda w: w.end, reverse=True):
+        if window.adaptive_tdee is None or window.flagged_kcal_per_day <= 0:
+            continue
+        if last is None or (last - window.end).days >= window.days:
+            count, last = count + 1, window.end
+    return count
 
 
 def _net_of(regressor: Sequence[float], values: Sequence[float]) -> list[float]:

@@ -17,7 +17,8 @@ app could not be reached or read. `--section <name>` (repeatable) prints,
 instead of the checks, only the allow-listed counts, flags, state words and
 ages in hours (a `*_at` time as `*_hours`) of the sections in SECTION_FIELDS,
 or the sums of a section in DERIVED_SECTIONS (`coach_local_first`: the #3080
-counts over the Coach history); the state words in FAIL_STATES and a missing
+counts over the Coach history; `route_timings`: count, p50, p95 and maximum ms
+per route pattern, #3630); the state words in FAIL_STATES and a missing
 section print as FAIL. `--check-docs` also compares the production schema and
 version with the production line in AGENTS.md and the db-migrations skill and
 with the docs/schema-history.md row, and names the exact change when stale;
@@ -148,6 +149,8 @@ SECTION_FIELDS = {
         r"|newest_skinfold_age_days|body_resolved|body_missing|body_source"
         r"|body_source_windows\.(skinfold|entered|device|profile|none)"
         r"|today_resting_days_back"
+        # Formulas whose learned everyday fit lies below 0 (#3577).
+        r"|learned_everyday_negative"
         # Days of the last week whose Garmin summary names its wellness end (#3530).
         r"|wellness_end_days"
         # Past days of the latest window whose summary ended early (#3612).
@@ -166,6 +169,10 @@ SECTION_FIELDS = {
         r"|unstable_windows|largest_unstable_spread_kcal"
         r"|unstable_span_weighin_sources(\.(by_source\.(app|garmin)"
         r"|dropped_days\.(garmin|wahoo|intervals)))?"
+        # The walks behind NEAT's step length and its source (#3611).
+        r"|step_source|step_walks\.(walks|used|no_steps|implausible"
+        r"|without_recorded_steps|zero_cadence|short_moving_time|cadence_over_80"
+        r"|former_implausible)"
     ),
     # The entered body days mirrored to Garmin Connect, counts only (#3403).
     "garmin_body_push": re.compile(
@@ -237,6 +244,9 @@ STATES |= {
     "skinfold",
     "device",
     "profile",
+    # NEAT's step length source (#3611).
+    "walks",
+    "height",
 }
 FAIL_STATES = {"failed", "unavailable", "blocked"}
 # Seconds between two reads of `--wait-ready` (#3346).
@@ -494,8 +504,33 @@ def local_first_lines(report: dict[str, Any]) -> list[tuple[str, str]]:
     ]
 
 
+ROUTE_TIMING_FIELDS = ("count", "p50_ms", "p95_ms", "max_ms", "disconnects")
+
+
+def route_timing_lines(report: dict[str, Any]) -> list[tuple[str, str]]:
+    """The slowest routes since start by route pattern (no ids or queries):
+    counts and milliseconds only (#3017, #3630)."""
+    routes = (report.get("runtime") or {}).get("slowest_routes")
+    if not isinstance(routes, list):
+        return [("FAIL", "section runtime.slowest_routes missing")]
+    lines = []
+    for row in routes:
+        if not isinstance(row, dict) or not isinstance(row.get("route"), str):
+            continue
+        values = " ".join(
+            f"{name} {json.dumps(row.get(name))}"
+            for name in ROUTE_TIMING_FIELDS
+            if printable(row.get(name))
+        )
+        lines.append(("info", f"route_timings.{row['route']} {values}"))
+    return lines or [("info", "section route_timings empty")]
+
+
 # Sections `--section` derives from the report instead of printing its leaves.
-DERIVED_SECTIONS = {"coach_local_first": local_first_lines}
+DERIVED_SECTIONS = {
+    "coach_local_first": local_first_lines,
+    "route_timings": route_timing_lines,
+}
 
 
 def named_section_lines(report: dict[str, Any], name: str) -> list[tuple[str, str]]:

@@ -1792,8 +1792,66 @@ function energyStrengthNote(strength) {
 // reference, named after its row, and the rest is everyday energy the steps do not see.
 const ENERGY_UNMEASURED = ["unmeasured_kcal", "unmeasured", "nicht erfasster Alltag"];
 
+// A checked formula row's learned everyday term follows its Alltag (#3577).
+const ENERGY_LEARNED = ["learned_kcal", "learned", "gelernter Alltag"];
+
 function energyRowParts(split) {
-  return split?.unmeasured_kcal == null ? ENERGY_PARTS : [ENERGY_PARTS[0], ENERGY_UNMEASURED, ...ENERGY_PARTS.slice(1)];
+  const [resting, neat, ...rest] = ENERGY_PARTS;
+  return [resting, ...(split?.unmeasured_kcal == null ? [] : [ENERGY_UNMEASURED]), neat,
+    ...(split?.learned_kcal == null ? [] : [ENERGY_LEARNED]), ...rest];
+}
+
+// The learned everyday terms under the table (#3577): offered with "Übernehmen" until the athlete
+// takes them over (a profile date, receipt and undo); afterwards the date. "Noch nicht" stores nothing.
+const ENERGY_LEARNED_FORMULAS = [["katch_mcardle", "Katch-McArdle"], ["cunningham", "Cunningham"]];
+let energyLearnedDeferred = false;
+
+function energyLearnedLine(read) {
+  const learned = read.learned_everyday;
+  const fits = ENERGY_LEARNED_FORMULAS.filter(([key]) => learned?.[key]);
+  if (!fits.length) return null;
+  const windows = Math.max(...fits.map(([key]) => learned[key].windows));
+  const head = h("strong", null, "Gelernter Alltag");
+  if (learned.checked) {
+    return h("div", { className: "energy-learned", dataset: { learned: "checked" } }, h("p", null, head, ` übernommen am ${dateLabel(learned.checked)}`, h("br"),
+      h("small", null, `aus ${windows} Fenstern, wird mit jedem Fenster genauer`)));
+  }
+  const values = fits.map(([key, label], index) => `${label} +${formatWhole(learned[key].kcal)}${index ? "" : " kcal/Tag"} (${energyKcalRange(learned[key].kcal, learned[key].band_kcal).join("–")})`).join(" · ");
+  const line = h("div", { className: "energy-learned", dataset: { learned: "offered" } }, h("p", null, head, ` aus ${windows} Fenstern`, h("br"), h("small", null, values)));
+  if (energyLearnedDeferred) return line;
+  const take = h("button", { type: "button", className: "secondary-button" }, "Übernehmen");
+  const later = h("button", { type: "button", className: "secondary-button" }, "Noch nicht");
+  take.addEventListener("click", () => void saveLearnedCheck(todayIso(), take));
+  later.addEventListener("click", () => {
+    energyLearnedDeferred = true;
+    // The shown read is kept by renderDiaryEnergy; the card must be built again (Gitar).
+    const slot = document.querySelector("#nutritionEnergy");
+    if (slot) slot.energyShown = null;
+    renderDiaryEnergy();
+  });
+  line.append(h("div", "actions", take, later));
+  return line;
+}
+
+// The check is a profile patch with a receipt and undo; the diary's energy read is priced again with it.
+async function saveLearnedCheck(day, button) {
+  if (button) button.disabled = true;
+  try {
+    const saved = await api("/api/profile", { method: "PUT", body: JSON.stringify({ learned_everyday_checked: day }) });
+    if (state.data) state.data.profile = saved;
+    resetEnergy();
+    renderDiaryEnergy();
+    toast(day ? "Gelernter Alltag übernommen." : "Gelernter Alltag zurückgenommen.");
+    if (!day) return;
+    const undo = h("button", { type: "button", className: "message-undo" }, "Rückgängig");
+    undo.addEventListener("click", () => void saveLearnedCheck("", undo));
+    document.querySelector("#toast")?.append(undo);
+    clearTimeout(toast.timer);
+    toast.timer = setTimeout(hideToast, 10000);
+  } catch (error) {
+    if (button) button.disabled = false;
+    toast(error.message, true);
+  }
 }
 
 // The read names the device row (#3323); the client names the formula rows.
@@ -1818,7 +1876,7 @@ function energySplitRow(row, strength = "", reference = null, stand = null) {
   const parts = energyRowParts(split);
   const total = split ? parts.reduce((sum, [key]) => sum + (split[key] || 0), 0) : 0;
   if (!total) return null;
-  const bands = { resting_kcal: row.resting_band_kcal, unmeasured_kcal: split.unmeasured_band_kcal };
+  const bands = { resting_kcal: row.resting_band_kcal, unmeasured_kcal: split.unmeasured_band_kcal, learned_kcal: split.learned_band_kcal };
   const text = parts.map(([key, part, label]) => {
     const name = energyPartName(row, key, label, reference);
     if (key === "resting_kcal" && row.resting_implausible) return `${name} ${ENERGY_IMPLAUSIBLE} (${ENERGY_IMPLAUSIBLE_REASON})`;
@@ -1848,7 +1906,10 @@ function energySplitValue(key, value, source, pending = false) {
 function energySplitLegend(read) {
   const splits = read.rows.map((row) => row.split).filter(Boolean);
   if (!splits.length) return null;
-  const parts = energyRowParts(splits.find((split) => split.unmeasured_kcal != null));
+  const parts = energyRowParts({
+    unmeasured_kcal: splits.some((split) => split.unmeasured_kcal != null) ? 0 : null,
+    learned_kcal: splits.some((split) => split.learned_kcal != null) ? 0 : null,
+  });
   const items = parts.map(([, part, label]) => h("li", { dataset: { part } }, label));
   if (splits.some((split) => Object.values(split.shared || {}).some(Boolean))) items.push(h("li", { dataset: { part: "shared" } }, "gleich berechnet"));
   return h("ul", "energy-split-legend", items);
@@ -2053,7 +2114,11 @@ function energyFlaggedRows(flagged) {
   // The clean window is an older one than the 28 days beside it, so it names its last day (#3618).
   const label = unflagged?.end ? `ohne geschätzte Tage (bis ${deficitDay(unflagged.end)})` : "ohne geschätzte Tage";
   const rows = [row("unflagged", label, unflagged ? energyKcal(unflagged.total_kcal, unflagged.total_band_kcal) : "kein sauberer Zeitraum")];
-  if (flagged.corrected) rows.push(row("corrected", "mit gelernter Korrektur", energyKcal(flagged.corrected.total_kcal, flagged.corrected.total_band_kcal)));
+  // Until the bias is narrow enough and seen in independent windows it is not learned (#3616).
+  // A learned bias without the latest window's total (too few logged days) shows "–" (Gitar on #3634).
+  let corrected = flagged.bias_pct == null ? "noch nicht gelernt" : "–";
+  if (flagged.corrected) corrected = energyKcal(flagged.corrected.total_kcal, flagged.corrected.total_band_kcal);
+  rows.push(row("corrected", "mit gelernter Korrektur", corrected));
   return rows;
 }
 
@@ -2076,7 +2141,7 @@ function energyPending(day = null) {
 function energyDiaryCards() {
   const pending = energyPending(energyDay());
   if (pending) return [pending];
-  return [h("section", { className: "analysis-chart-card", dataset: { energy: "" } }, energyGoalStrip(energyRead), energyTable(energyRead), energySplitLegend(energyRead))];
+  return [h("section", { className: "analysis-chart-card", dataset: { energy: "" } }, energyGoalStrip(energyRead), energyTable(energyRead), energySplitLegend(energyRead), energyLearnedLine(energyRead))];
 }
 
 // "Welche Quelle trifft dein Gewicht?" (A2, athlete decision on #3397): one kcal/day scale for
