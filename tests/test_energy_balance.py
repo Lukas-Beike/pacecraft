@@ -31,11 +31,13 @@ def series(
     skip: set[int] | None = None,
     weigh_every: int = 1,
     split: tuple[float, float] | None = None,
+    step_at: int = 10**6,
 ) -> balance.EnergyInputs:
     """Days 0..days-1 ending on END; weight follows the true energy balance.
 
     Flagged days are logged ``logged_factor`` times their true intake.
-    Day n's weight is the start weight plus the stored energy up to day n.
+    Day n's weight is the start weight plus the stored energy up to day n,
+    plus 1 kg of water and glycogen from day ``step_at`` on (#3614).
     """
     weight = 80.0
     out: dict[date, balance.DayInputs] = {}
@@ -55,7 +57,7 @@ def series(
             entries=3,
             flagged=flagged,
             flagged_kcal=logged if flagged else 0.0,
-            weight_kg=weight if n % weigh_every == 0 else None,
+            weight_kg=weight + float(n >= step_at) if n % weigh_every == 0 else None,
             activity_kcal=600.0,
             # Its M11 error (#3552): 10 % of the activity, as a ride's.
             activity_error_kcal=60.0,
@@ -396,6 +398,37 @@ class AdaptiveTdeeTests(unittest.TestCase):
         window = balance.energy_windows(series(constant(2100.0)), END, weeks=1)[-1]
         assert window.adaptive_tdee is not None
         self.assertAlmostEqual(window.adaptive_tdee.band_kcal, 164.36, delta=0.05)
+
+    def test_a_weight_step_widens_the_band_and_flags_the_window(self) -> None:
+        # 1 kg of water and glycogen 13 days before END, mid-window of the
+        # latest window, with constant intake: the slope reads it as tissue,
+        # about 1.45 x 1 kg x 7,153.5 / 27 days, roughly -380 kcal/day (#3614).
+        stepped = balance.energy_windows(series(constant(2600.0), step_at=106), END)
+        latest = stepped[-1]
+        assert latest.adaptive_tdee is not None and latest.store is not None
+        error = latest.adaptive_tdee.kcal - TRUE_TDEE
+        self.assertLess(error, -300)
+        self.assertFalse(balance.is_stable(latest))
+        self.assertLessEqual(abs(error), latest.adaptive_tdee.band_kcal)
+        # The store error carries it too, so the deficit card's band covers it.
+        self.assertLessEqual(abs(error), balance.window_t(latest) * latest.store.sd)
+        # Windows the step never reached stay stable and keep their band.
+        flat = balance.energy_windows(series(constant(2600.0)), END)
+        self.assertTrue(balance.is_stable(stepped[0]))
+        self.assertEqual(stepped[0].adaptive_tdee, flat[0].adaptive_tdee)
+
+    def test_flat_losing_and_gaining_weight_is_stable(self) -> None:
+        for intake in (2600.0, 2100.0, 3100.0):
+            with self.subTest(intake=intake):
+                windows = balance.energy_windows(series(constant(intake)), END)
+                self.assertTrue(all(balance.is_stable(w) for w in windows))
+        self.assertEqual(
+            balance.unexplained_spreads(
+                series(constant(2600.0)),
+                balance.energy_windows(series(constant(2600.0)), END),
+            ),
+            [0.0] * 12,
+        )
 
     def test_incomplete_days_are_dropped(self) -> None:
         day = balance.DayInputs(intake_kcal=800, entries=3, activity_kcal=600)

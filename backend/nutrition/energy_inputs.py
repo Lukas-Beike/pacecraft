@@ -41,6 +41,8 @@ from backend.nutrition.energy_balance import (
     energy_windows,
     history_start,
     is_complete,
+    is_stable,
+    unexplained_spreads,
     weight_trend,
 )
 from backend.performance import activity_energy as energy
@@ -578,8 +580,22 @@ def energy_basis(db: Any, sources: EnergySources, end: date) -> dict[str, Any]:
     week = sources.daily_health(db, end - timedelta(days=GARMIN_RESTING_DAYS), end)
     found = newest_resting(week, end)
     latest = windows[-1] if windows else None
+    unstable = [w for w in windows if not is_stable(w)]
     return (
         diagnostics(inputs, costs, windows)
+        # Weigh-in days per source over the unstable windows' span (#3614):
+        # whether a step lines up with UTC-dated profile weigh-ins.
+        | {
+            "unstable_span_weighin_sources": dict(
+                sources.weighin_counts(
+                    db,
+                    unstable[0].end - timedelta(days=unstable[0].days - 1),
+                    unstable[-1].end,
+                )
+            )
+            if unstable
+            else None
+        }
         # The latest window's weigh-in days per source, and per provider the
         # days whose weights the source rule dropped (#3557), counts only.
         | {
@@ -788,6 +804,12 @@ def diagnostics(
         "latest_window_insufficient": latest.insufficient if latest else None,
         "windows": len(windows),
         "windows_with_estimate": sum(1 for w in windows if w.adaptive_tdee),
+        # Windows failing the neighbour check and their largest unexplained
+        # difference, to the nearest 100 kcal (#3614).
+        "unstable_windows": sum(1 for w in windows if not is_stable(w)),
+        "largest_unstable_spread_kcal": int(
+            round(max(unexplained_spreads(inputs, windows), default=0.0), -2)
+        ),
         # The measurements' weight in each estimated window's fat share, as
         # bands of whole percent (#3555): counts only.
         "fat_share_measured_windows": _measured_weight_bands(windows),

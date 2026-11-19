@@ -744,8 +744,10 @@ class DeficitCardTests(unittest.TestCase):
         latest = replace(window(END, None), store=MEASURED, insufficient="intake_days")
         view = energy_view(inputs(), [*windows()[:-1], latest], garmin())
         card = view["deficit"]
+        # Its band takes the weight slope's dof alone (#3614): 20 weigh-ins,
+        # 18 dof, t = 2.101; 2.101 x 120 = 252, not the 24 days' t.
         self.assertEqual(
-            (565, 235, None),
+            (565, 252, None),
             (card["deficit_kcal"], card["band_kcal"], card["total_kcal"]),
         )
         self.assertEqual("intake_days", card["expenditure_missing"])
@@ -802,7 +804,9 @@ class DeficitCardTests(unittest.TestCase):
             {
                 "days": 28,
                 "deficit_kcal": 565,
-                "band_kcal": 235,
+                # The window's own t (#3614): 20 weigh-ins and 24 complete
+                # days give 18 dof, t = 2.101; 2.101 x 120 = 252.
+                "band_kcal": 252,
                 "method": "measured",
                 "fat_share": {"share_pct": 80, "prior_pct": 70, "measured_pct": 28},
                 "span_days": 28,
@@ -853,6 +857,10 @@ class DeficitCardTests(unittest.TestCase):
             ),
         )
         self.assertIsNone(self.view(None))
+        # An unstable window names the weight step as its uncertainty (#3614).
+        latest = replace(window(END, 3800.0), store=MEASURED, stable=False)
+        unstable = energy_view(inputs(), [*windows()[:-1], latest], garmin())
+        self.assertEqual("unstable", unstable["deficit"]["uncertainty"])
 
     def test_the_goal_status_and_colour_follow_the_distance_to_the_goal(self) -> None:
         # #3606: within 150 kcal of the goal, either way, is in the goal and
