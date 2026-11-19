@@ -118,6 +118,8 @@ def _series(
 # The source of one day's value in the merged body series (#3464).
 ENTERED_LABEL = "eingetragen"
 GARMIN_LABEL = GARMIN_SOURCE
+# The profile's earlier body fat values are 3-site skinfolds (#3557, #3569).
+SKINFOLD_LABEL = "Hautfalten"
 
 
 def _day_series(
@@ -126,25 +128,32 @@ def _day_series(
     entered: dict[date, tuple[float, str, Any]],
     start: date,
     end: date,
+    skinfolds: Mapping[date, tuple[float, str, Any]] | None = None,
 ) -> dict[str, Any]:
-    """One series of the athlete's day values: an entered value wins its day.
+    """One series of the athlete's day values: an own value wins its day.
 
     An entered weight or body fat is written to that day's Garmin entry
     (#3403), so the athlete has one value per day, not a local and a Garmin
-    one; every other day shows Garmin's value. Each point names its source in
+    one; every other day shows Garmin's value. A profile skinfold counts as
+    the athlete's own (#3569). Each point names its source in
     ``source_label`` (#3464).
     """
+    own = {**(skinfolds or {}), **entered}
     series = _series(
-        ProviderId.GARMIN if garmin or not entered else None,
+        ProviderId.GARMIN if garmin or not own else None,
         unit,
-        {**garmin, **entered},
+        {**garmin, **own},
         start,
         end,
     )
+    labels = {
+        **dict.fromkeys(garmin, GARMIN_LABEL),
+        **dict.fromkeys(skinfolds or {}, SKINFOLD_LABEL),
+        **dict.fromkeys(entered, ENTERED_LABEL),
+    }
     for point in series["points"]:
         if point["value"] is not None:
-            day = date.fromisoformat(point["date"])
-            point["source_label"] = ENTERED_LABEL if day in entered else GARMIN_LABEL
+            point["source_label"] = labels[date.fromisoformat(point["date"])]
     return series
 
 
@@ -267,7 +276,12 @@ def body_history(
                 ],
                 "body_fat_pct": [
                     _day_series(
-                        "%", garmin_values["body_fat_pct"], entered_fat, start, today
+                        "%",
+                        garmin_values["body_fat_pct"],
+                        entered_fat,
+                        start,
+                        today,
+                        _stamped(canonical.skinfold_body_fat_pct, None),
                     )
                 ],
                 "cycling_w_per_kg": [

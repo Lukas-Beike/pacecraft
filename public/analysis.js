@@ -1249,7 +1249,8 @@ function bodyOverviewLatest(metric, body, preferred, local = false) {
     .flatMap((item) => (item.points || []).filter((point) => point.date >= window.start && point.date <= window.end && analysisValidPoint(point))
       // One series per metric (#3464): each day names its own source.
       .map((point) => {
-        const own = point.source_label ? point.source_label === "eingetragen" : item.source_provider === null;
+        // A profile body fat is the athlete's own skinfold (#3569).
+        const own = point.source_label ? ["eingetragen", "Hautfalten"].includes(point.source_label) : item.source_provider === null;
         return { ...point, local: own, source: own ? "Lokal" : item.source };
       })
       .filter((point) => !local || point.local)));
@@ -1265,7 +1266,10 @@ function bodyFoldFat(read, entered) {
   // A failed skinfold read still shows an entered percentage (Gitar, #3412).
   const newest = read.failed ? null : read.measurements?.[0];
   const fold = newest?.body_fat_pct == null ? null : newest;
-  if (entered && !(fold && fold.date >= entered.date)) return { value: entered.value, note: `Lokal · ${dateLabel(entered.date)}` };
+  if (entered && !(fold && fold.date >= entered.date)) {
+    const method = entered.source_label === "Hautfalten" ? "Lokal (Hautfalten)" : "Lokal";
+    return { value: entered.value, note: `${method} · ${dateLabel(entered.date)}` };
+  }
   if (fold) return { value: fold.body_fat_pct, note: `Lokal (Hautfalten) · ${dateLabel(fold.date)}` };
   return newest ? { text: "unbekannt", note: "ohne Geburtsjahr" } : null;
 }
@@ -1753,19 +1757,39 @@ function energyStrengthNote(strength) {
   }).join("; ");
 }
 
-function energySplitRow(row, strength = "") {
+// The own row's residual above the resting reference (athlete decision, #3550): Ruhe is then the
+// reference, named after its row, and the rest is everyday energy the steps do not see.
+const ENERGY_UNMEASURED = ["unmeasured_kcal", "unmeasured", "nicht erfasster Alltag"];
+
+function energyRowParts(split) {
+  return split?.unmeasured_kcal == null ? ENERGY_PARTS : [ENERGY_PARTS[0], ENERGY_UNMEASURED, ...ENERGY_PARTS.slice(1)];
+}
+
+// The read names the device row (#3323); the client names the formula rows.
+function energyReferenceName(read, source) {
+  return ENERGY_SOURCES.find(([known]) => known === source)?.[1] ?? read.rows.find((row) => row.source === source)?.label;
+}
+
+function energyPartName(row, key, label, reference) {
+  if (key !== "resting_kcal" || row.source !== "own") return label;
+  return reference ? `Ruhe wie ${reference}` : "Ruhe (Rest)";
+}
+
+function energySplitRow(row, strength = "", reference = null) {
   const split = row.split;
-  const total = split ? ENERGY_PARTS.reduce((sum, [key]) => sum + (split[key] || 0), 0) : 0;
+  const parts = energyRowParts(split);
+  const total = split ? parts.reduce((sum, [key]) => sum + (split[key] || 0), 0) : 0;
   if (!total) return null;
-  const text = ENERGY_PARTS.map(([key, part, label], index) => {
-    const name = index === 0 && row.source === "own" ? "Ruhe (Rest)" : label;
-    if (index === 0 && row.resting_implausible) return `${name} ${ENERGY_IMPLAUSIBLE} (${ENERGY_IMPLAUSIBLE_REASON})`;
-    const band = index === 0 && row.resting_band_kcal != null && split[key] != null ? ` (${energyKcalRange(split[key], row.resting_band_kcal).join("–")})` : "";
+  const bands = { resting_kcal: row.resting_band_kcal, unmeasured_kcal: split.unmeasured_band_kcal };
+  const text = parts.map(([key, part, label]) => {
+    const name = energyPartName(row, key, label, reference);
+    if (key === "resting_kcal" && row.resting_implausible) return `${name} ${ENERGY_IMPLAUSIBLE} (${ENERGY_IMPLAUSIBLE_REASON})`;
+    const band = bands[key] != null && split[key] != null ? ` (${energyKcalRange(split[key], bands[key]).join("–")})` : "";
     const note = key === "sport_kcal" && strength ? ` (${strength})` : "";
     return `${name} ${energySplitValue(key, split[key], row.source, row.pending_parts?.includes(part))}${band}${note}`;
   }).join(" · ");
   const bar = h("div", { className: "energy-split", role: "img", "aria-label": text });
-  for (const [key, part] of ENERGY_PARTS) {
+  for (const [key, part] of parts) {
     if (split[key] == null || split[key] <= 0) continue;
     const segment = h("span", { dataset: split.shared?.[part] ? { part, shared: "" } : { part } });
     segment.style.width = `${(split[key] / total) * 100}%`;
@@ -1785,7 +1809,8 @@ function energySplitValue(key, value, source, pending = false) {
 function energySplitLegend(read) {
   const splits = read.rows.map((row) => row.split).filter(Boolean);
   if (!splits.length) return null;
-  const items = ENERGY_PARTS.map(([, part, label]) => h("li", { dataset: { part } }, label));
+  const parts = energyRowParts(splits.find((split) => split.unmeasured_kcal != null));
+  const items = parts.map(([, part, label]) => h("li", { dataset: { part } }, label));
   if (splits.some((split) => Object.values(split.shared || {}).some(Boolean))) items.push(h("li", { dataset: { part: "shared" } }, "gleich berechnet"));
   return h("ul", "energy-split-legend", items);
 }
@@ -1817,7 +1842,8 @@ const ENERGY_STORE_METHODS = { measured: "Fettanteil gemessen", forbes: "Fettant
 
 function energyRowNote(read, source, row) {
   if (source === "own") {
-    const origin = `Ruhe aus ${row.window_days} Tagen`;
+    // Split (#3550): Ruhe is the named reference, so the 28 days give the rest above it.
+    const origin = `${row.split?.unmeasured_kcal == null ? "Ruhe" : "nicht erfasster Alltag"} aus ${row.window_days} Tagen`;
     const parts = [row.window_days ? origin : "", ENERGY_STORE_METHODS[row.store_method] || "", read.day_partial ? "bis jetzt" : ""].filter(Boolean);
     return parts.length ? [h("small", null, parts.join(" · "))] : [];
   }
@@ -1855,7 +1881,8 @@ function energyTable(read) {
     const fit = energyFitMarker(read, source);
     return [h("tr", { dataset: fit ? { energySource: source, fit } : { energySource: source } },
       h("th", { scope: "row", dataset: { color: String(color) } }, label ?? row.label, ...energyRowNote(read, source, row)),
-      ...energyValueCells(read, source, row)), energySplitRow(row, source === "device" ? "" : energyStrengthNote(read.strength))].filter(Boolean);
+      ...energyValueCells(read, source, row)), energySplitRow(row, source === "device" ? "" : energyStrengthNote(read.strength),
+        energyReferenceName(read, row.split?.resting_source))].filter(Boolean);
   });
   return h("table", { className: "current-performance-table" }, h("caption", null, "Energieverbrauch ", ...energyInfo(read)),
     energyTableHead(), h("tbody", null, rows));

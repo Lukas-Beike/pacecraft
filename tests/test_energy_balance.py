@@ -71,12 +71,30 @@ class CompositionAndTrendTests(unittest.TestCase):
         # 0.51963 x 9,441 + 0.48037 x 1,816 = 5,778.2 kcal/kg.
         self.assertAlmostEqual(balance.energy_density(75.0, 15.0), 5778.2, places=0)
 
-    def test_trend_moves_halfway_in_one_half_life(self) -> None:
+    def test_the_current_weight_follows_a_steady_change_without_lag(self) -> None:
+        # #3551: 80 kg today after a steady loss (or gain) of 1 kg per week,
+        # with a scale that reads 0.3 kg high and low on alternate weigh-ins;
+        # the exponential trend lagged 2 to 3.9 kg here.
+        for per_week in (-1.0, 1.0):
+            for every in (1, 2):
+                with self.subTest(per_week=per_week, every=every):
+                    weights = {
+                        END - timedelta(days=n): 80.0
+                        - per_week * n / 7
+                        + (0.3 if (n // every) % 2 else -0.3)
+                        for n in range(0, 56, every)
+                    }
+                    trend = balance.weight_trend(weights)
+                    self.assertLess(abs(trend[END] - 80.0), 0.3)
+        # Too few weigh-ins for a line: their mean; after a gap longer than
+        # the line's span, the last value carries.
         start = date(2026, 1, 1)
-        weights = {start: 80.0}
-        weights.update({start + timedelta(days=n): 70.0 for n in range(1, 11)})
-        trend = balance.weight_trend(weights)
-        self.assertAlmostEqual(trend[start + timedelta(days=10)], 75.0, places=6)
+        sparse = balance.weight_trend({start: 81.0, start + timedelta(days=3): 80.0})
+        self.assertEqual(80.5, sparse[start + timedelta(days=3)])
+        far = start + timedelta(days=40)
+        gap = balance.weight_trend({start: 81.0, far: 79.0})
+        self.assertEqual(81.0, gap[far - timedelta(days=1)])
+        self.assertEqual(79.0, gap[far])
         self.assertEqual(balance.weight_trend({}), {})
 
 
@@ -182,6 +200,54 @@ class MeasuredFatChangeTests(unittest.TestCase):
                     1.0,
                 )
                 self.assertEqual(method, window.store_method)
+
+
+class CompleteDayTests(unittest.TestCase):
+    """#3553: completeness no longer scales with the day's training."""
+
+    def day(
+        self, intake: float, activity: float, entries: int = 4
+    ) -> balance.DayInputs:
+        # TEF 0.25 x 400 + 0.10 x 1,200 + 0.015 x 720 = 230.8 kcal.
+        return balance.DayInputs(
+            intake_kcal=intake,
+            protein_g=100,
+            carbohydrate_g=300,
+            fat_g=80,
+            entries=entries,
+            activity_kcal=activity,
+        )
+
+    def test_a_fully_logged_long_day_counts(self) -> None:
+        # The issue's table: rest 1,800, activity 2,500, intake 2,600 was
+        # below 60 % of 4,530.8 and dropped; it is above 70 % of rest + TEF.
+        long_day = self.day(2600.0, 2500.0)
+        self.assertTrue(balance.is_complete(long_day, 1800.0))
+        self.assertTrue(balance.below_former_share(long_day, 1800.0))
+        for intake, activity in ((1900.0, 300.0), (2400.0, 1500.0), (2800.0, 2500.0)):
+            with self.subTest(intake=intake, activity=activity):
+                self.assertTrue(balance.is_complete(self.day(intake, activity), 1800.0))
+
+    def test_one_entry_or_an_intake_far_below_rest_still_does_not(self) -> None:
+        self.assertFalse(
+            balance.is_complete(self.day(2600.0, 300.0, entries=1), 1800.0)
+        )
+        # 70 % of 1,800 + 230.8 = 1,421.6 kcal.
+        self.assertFalse(balance.is_complete(self.day(1400.0, 0.0), 1800.0))
+        self.assertTrue(balance.is_complete(self.day(1430.0, 0.0), 1800.0))
+        self.assertFalse(balance.below_former_share(self.day(1400.0, 0.0), 1800.0))
+        # Without a resting rate the entries decide, as before.
+        self.assertTrue(balance.is_complete(self.day(900.0, 2500.0), None))
+
+    def test_a_window_counts_its_long_days(self) -> None:
+        # One long day a week (activity 2,500, intake 2,600), the rest 2,300.
+        inputs = series(lambda n: 2600.0 if n % 7 == 0 else 2300.0, days=28)
+        days = {
+            d: replace(v, activity_kcal=2500.0 if v.intake_kcal == 2600.0 else 600.0)
+            for d, v in inputs.days.items()
+        }
+        window = balance.energy_windows(replace(inputs, days=days), END, weeks=1)[-1]
+        self.assertEqual(28, window.complete_days)
 
 
 class AdaptiveTdeeTests(unittest.TestCase):

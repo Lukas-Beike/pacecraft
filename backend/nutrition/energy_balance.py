@@ -1,6 +1,6 @@
 """Adaptive daily expenditure from intake and the weight trend (#3100).
 
-Pure functions over one ``EnergyInputs``: the smoothed weight trend, rolling
+Pure functions over one ``EnergyInputs``: the lag-free current weight, rolling
 4-week windows with the adaptive TDEE (mean logged intake minus the change in
 stored energy), the one shrunken activity calibration factor, the derived
 resting rate and the bias of meals flagged as uncertain. Results are bands, not
@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import math
 import statistics
+from bisect import bisect_left, bisect_right
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from datetime import date, timedelta
@@ -22,20 +23,30 @@ from backend.performance.activity_energy import TEF_ERROR_KCAL, tef_kcal
 
 METHOD_ID = "adaptive-expenditure"
 # Bump when a formula or constant below changes the estimate.
-METHOD_VERSION = 4
+METHOD_VERSION = 6
 # Days per window and windows per week of the rolling view (#3099, #3100).
 WINDOW_DAYS = 28
-# Half-life in days of the exponentially weighted weight trend.
-TREND_HALF_LIFE_DAYS = 10.0
+# A day's current weight is the least-squares line through the weigh-ins of
+# this many days up to it, at its latest weigh-in, so a steady change has no
+# lag (#3551); with fewer weigh-ins or a shorter span, their mean.
+CURRENT_WEIGHT_DAYS = 28
+MIN_LINE_WEIGHINS = 3
+MIN_LINE_SPAN_DAYS = 7
 # A window needs this many complete logging days, weigh-ins and days between
 # its first and last weigh-in; otherwise it gives its reason, never a formula.
 MIN_COMPLETE_DAYS = 14
 MIN_WEIGHINS = 8
 MIN_WEIGHT_SPAN_DAYS = 21
-# A day counts as complete with this many diary entries and at least this share
-# of the day's own expenditure estimate (resting + own activity + TEF).
+# A day counts as complete with this many diary entries.
 MIN_DAY_ENTRIES = 2
-MIN_DAY_SHARE = 0.6
+# A complete day also needs an intake of at least this share of the resting rate plus the day's
+# TEF (#3553): independent of its training, so a fully logged long day counts;
+# an intake below it lies far beneath any planned deficit, so meals are missing
+# (product assumption).
+MIN_DAY_REST_SHARE = 0.7
+# The former rule's share of the day's whole expenditure (resting + own
+# activity + TEF); only the diagnostics count the complete days it dropped.
+FORMER_DAY_SHARE = 0.6
 # Hall 2008 (Int J Obes 32:573): 39.5 MJ per kg fat and 7.6 MJ per kg lean
 # tissue, in kcal/kg.
 FAT_KCAL_PER_KG = 9441.0
@@ -198,24 +209,43 @@ class EnergyWindow:
 
 
 def weight_trend(weights_kg: Mapping[date, float]) -> dict[date, float]:
-    """Exponentially weighted weight trend per day from the first weigh-in on.
+    """The current weight per day from the first weigh-in on, without a lag (#3551).
 
-    Each day decays the previous trend by the half-life; a weigh-in pulls it
-    towards the measured value. Days without a weigh-in carry the trend.
+    A day's value is the least-squares line through the weigh-ins of the
+    ``CURRENT_WEIGHT_DAYS`` up to it, read at the latest of them; with fewer
+    than ``MIN_LINE_WEIGHINS`` or a span below ``MIN_LINE_SPAN_DAYS``, their
+    mean. A day without a weigh-in in that span carries the previous value.
     """
     if not weights_kg:
         return {}
-    alpha = 1.0 - 0.5 ** (1.0 / TREND_HALF_LIFE_DAYS)
-    first, last = min(weights_kg), max(weights_kg)
+    weighed = sorted(weights_kg)
     trend: dict[date, float] = {}
-    value = weights_kg[first]
-    day = first
-    while day <= last:
-        if day in weights_kg:
-            value += alpha * (weights_kg[day] - value)
-        trend[day] = value
+    day = weighed[0]
+    while day <= weighed[-1]:
+        since = day - timedelta(days=CURRENT_WEIGHT_DAYS - 1)
+        recent = weighed[bisect_left(weighed, since) : bisect_right(weighed, day)]
+        trend[day] = (
+            _line_at_latest([(d, weights_kg[d]) for d in recent])
+            if recent
+            else trend[day - timedelta(days=1)]
+        )
         day += timedelta(days=1)
     return trend
+
+
+def _line_at_latest(points: Sequence[tuple[date, float]]) -> float:
+    """The least-squares line's value at the latest point, else the mean."""
+    ys = [kg for _, kg in points]
+    latest = points[-1][0]
+    if len(points) < MIN_LINE_WEIGHINS or (
+        (latest - points[0][0]).days < MIN_LINE_SPAN_DAYS
+    ):
+        return statistics.fmean(ys)
+    xs = [float((d - latest).days) for d, _ in points]
+    mean_x, mean_y = statistics.fmean(xs), statistics.fmean(ys)
+    sxx = sum((x - mean_x) ** 2 for x in xs)
+    sxy = sum((x - mean_x) * (y - mean_y) for x, y in zip(xs, ys, strict=True))
+    return mean_y - sxy / sxx * mean_x
 
 
 def fat_share(weight_kg: float, body_fat_pct: float | None) -> float:
@@ -237,13 +267,22 @@ def day_tef(day: DayInputs) -> float:
 
 
 def is_complete(day: DayInputs, rmr_kcal: float | None) -> bool:
-    """Enough entries and intake for the day's own expenditure estimate."""
+    """Enough entries, and an intake of at least ``MIN_DAY_REST_SHARE`` of the
+    resting rate plus the day's TEF, whatever the day's training (#3553)."""
     if day.intake_kcal is None or day.entries < MIN_DAY_ENTRIES:
         return False
-    if rmr_kcal is None or day.activity_kcal is None:
+    if rmr_kcal is None:
         return True
+    return day.intake_kcal >= MIN_DAY_REST_SHARE * (rmr_kcal + day_tef(day))
+
+
+def below_former_share(day: DayInputs, rmr_kcal: float | None) -> bool:
+    """Whether the former activity-scaled rule would have dropped the day: its
+    intake below ``FORMER_DAY_SHARE`` of resting + activity + TEF (#3553)."""
+    if day.intake_kcal is None or rmr_kcal is None or day.activity_kcal is None:
+        return False
     expected = rmr_kcal + day.activity_kcal + day_tef(day)
-    return day.intake_kcal >= MIN_DAY_SHARE * expected
+    return day.intake_kcal < FORMER_DAY_SHARE * expected
 
 
 def _latest_body_fat(inputs: EnergyInputs, day: date) -> float | None:

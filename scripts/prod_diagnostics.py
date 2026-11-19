@@ -161,6 +161,8 @@ SECTION_FIELDS = {
         # Weigh-in days per source and dropped days per provider (#3557).
         r"|latest_window_weighin_sources\.(by_source\.(app|garmin)"
         r"|dropped_days\.(garmin|wahoo|intervals))"
+        # Complete days the former activity-scaled rule dropped (#3553).
+        r"|latest_window_former_rule_days"
     ),
     # The entered body days mirrored to Garmin Connect, counts only (#3403).
     "garmin_body_push": re.compile(

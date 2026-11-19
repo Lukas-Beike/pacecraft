@@ -33,8 +33,10 @@ from backend.nutrition.energy_balance import (
     DayInputs,
     EnergyInputs,
     EnergyWindow,
+    below_former_share,
     energy_windows,
     history_start,
+    is_complete,
     weight_trend,
 )
 from backend.performance import activity_energy as energy
@@ -158,12 +160,18 @@ def recent_fat_pct(
     return folds[newest] if newest is not None and newest >= since else None
 
 
-def latest_value(
-    observations: Iterable[Observation], app: Mapping[date, float] | None = None
-) -> float | None:
+def latest_value(observations: Iterable[Observation]) -> float | None:
     """The last day's value under the weigh-in source rule, or None."""
-    values = weighins(observations, app)
+    values = weighins(observations)
     return values[max(values)] if values else None
+
+
+def current_weight(
+    observations: Iterable[Observation], app: Mapping[date, float], day: date
+) -> float | None:
+    """The current weight on ``day`` under the weigh-in source rule: the same
+    lag-free value the formula rows take from ``weight_trend`` (#3551)."""
+    return _mass(weight_trend(weighins(observations, app)), day, None)
 
 
 def session_streams(
@@ -711,6 +719,20 @@ def skinfold_diagnostics(
     }
 
 
+def _former_rule_days(inputs: EnergyInputs, window: EnergyWindow | None) -> int | None:
+    """The latest window's complete days the former rule dropped (#3553)."""
+    if window is None:
+        return None
+    span = (window.end - timedelta(days=n) for n in range(window.days))
+    days = [inputs.days[d] for d in span if d in inputs.days]
+    return sum(
+        1
+        for day in days
+        if is_complete(day, inputs.rmr_kcal)
+        and below_former_share(day, inputs.rmr_kcal)
+    )
+
+
 def diagnostics(
     inputs: EnergyInputs,
     costs: Sequence[SessionCost],
@@ -722,6 +744,8 @@ def diagnostics(
     latest = windows[-1] if windows else None
     return {
         "latest_window_complete_days": latest.complete_days if latest else None,
+        # Complete days the former activity-scaled rule dropped (#3553).
+        "latest_window_former_rule_days": _former_rule_days(inputs, latest),
         "latest_window_weighins": latest.weighins if latest else None,
         "latest_window_insufficient": latest.insufficient if latest else None,
         "windows": len(windows),

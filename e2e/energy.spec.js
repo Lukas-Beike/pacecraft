@@ -81,6 +81,32 @@ test("@responsive formula rows without a body fat name the reason and open the d
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBeTruthy();
 });
 
+// #3550: an own residual 300 kcal above Katch-McArdle shows Ruhe at that reference, named, and the
+// excess as "nicht erfasster Alltag" with the residual's span, as its own bar segment.
+test("@responsive the own row names everyday energy the steps do not see", async ({ page }) => {
+  await page.route("**/api/body/energy*", async (route) => {
+    const response = await route.fetch();
+    const data = await response.json();
+    // Synthetic rows, independent of the fixture's body: Katch-McArdle 1,839 and a residual of 2,139.
+    const parts = { neat_kcal: 250, sport_kcal: 350, tef_kcal: 250, shared: { neat: true, sport: true, tef: true } };
+    const katch = { source: "katch_mcardle", resting_kcal: 1839, resting_band_kcal: 219, total_kcal: 2689, total_band_kcal: 241,
+      errors_kcal: [], mean_error_kcal: null, pending_parts: [], split: { resting_kcal: 1839, ...parts } };
+    const own = { source: "own", resting_kcal: 1839, resting_band_kcal: 219, resting_implausible: false, total_kcal: 2989, total_band_kcal: 150,
+      split: { resting_kcal: 1839, ...parts, resting_source: "katch_mcardle", unmeasured_kcal: 300, unmeasured_band_kcal: 150 },
+      pending_parts: [], window_days: 28, store_method: "forbes" };
+    const others = data.rows.filter((row) => !["katch_mcardle", "own"].includes(row.source));
+    await route.fulfill({ response, json: { ...data, rows: [katch, ...others, own] } });
+  });
+  await page.goto("/#nutrition/diary");
+  const card = page.locator("#nutritionEnergy [data-energy]");
+  const ownSplit = card.locator("tr[data-energy-source='own'] + .energy-split-row");
+  await expect(ownSplit.locator("small")).toHaveText("Ruhe wie Katch-McArdle 1.839 (1.620–2.058) · nicht erfasster Alltag 300 (150–450) · Alltag 250 · Sport 350 · Verdauung 250");
+  await expect(ownSplit.locator(".energy-split [data-part='unmeasured']")).toHaveCount(1);
+  await expect(card.locator("tr[data-energy-source='own'] th small")).toContainText("nicht erfasster Alltag aus 28 Tagen");
+  await expect(card.locator(".energy-split-legend")).toContainText("nicht erfasster Alltag");
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBeTruthy();
+});
+
 // #3397: which source meets the weight moved to Verlauf; tapping the body-fat row opens the
 // body fat dialog (#3402).
 test("@responsive Körper opens the body fat dialog from body fat and no longer holds the fit", async ({ page }) => {

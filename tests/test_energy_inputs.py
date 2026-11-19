@@ -20,6 +20,7 @@ from backend.nutrition.energy_balance import (
     EnergyInputs,
     EnergyWindow,
     energy_windows,
+    weight_trend,
 )
 from backend.nutrition.energy_inputs import (
     EnergySources,
@@ -195,7 +196,8 @@ class EnergyInputsReaderTests(unittest.TestCase):
         _, costs = read_energy_inputs(None, sources(), DAY1, DAY3)
         self.assertEqual(
             diagnostics(garmin, costs),
-            {"latest_window_complete_days": None, "latest_window_weighins": None,
+            {"latest_window_complete_days": None, "latest_window_former_rule_days": None,
+             "latest_window_weighins": None,
              "latest_window_insufficient": None, "windows": 0,
              "windows_with_estimate": 0,
              "store_method_windows": {"measured": 0, "forbes": 0},
@@ -456,6 +458,25 @@ class StoreAdapterTests(unittest.TestCase):
         self.assertEqual(alone, mixed)
         # Profile weights alone are no weigh-ins at all.
         self.assertEqual("weighins", window(profile).insufficient)
+
+    def test_the_resting_reference_and_the_formula_rows_share_one_weight(self) -> None:
+        # #3551: the resting reference read the latest raw weigh-in while the
+        # rows took the lagging trend; now both take the current weight: on a
+        # steady 0.07 kg/day loss the line at the last weigh-in (80.17 kg, the
+        # day before ``end``), which the trend had put 2 kg higher.
+        end = date(2026, 11, 15)
+        scale = [weigh(end - timedelta(days=n), 80.1 + 0.07 * n) for n in range(1, 28)]
+        inputs = EnergyInputs(
+            {o.observed_on: DayInputs(weight_kg=o.value.value) for o in scale},
+            {end: 18.0},
+            rmr_kcal=1700.0,
+        )
+        trend = weight_trend({o.observed_on: o.value.value for o in scale})
+        body = energy_inputs.resolve_body(inputs, trend, end)
+        assert body is not None
+        reference = energy_inputs.current_weight(scale, {}, end)
+        self.assertEqual(reference, body["weight_kg"])
+        self.assertAlmostEqual(80.17, reference or 0.0, places=2)
 
     def test_energy_basis_counts_the_latest_window_weighin_sources(self) -> None:
         # #3557: counts only, read over the latest 28-day window.

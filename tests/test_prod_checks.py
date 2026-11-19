@@ -474,6 +474,8 @@ class ProdChecksTests(unittest.TestCase):
                     "by_source": {"app": 12, "garmin": 3},
                     "dropped_days": {"wahoo": 28},
                 },
+                # #3553: complete days the former activity-scaled rule dropped.
+                "latest_window_former_rule_days": 4,
                 "planted": "never printed",
             }
         }
@@ -493,6 +495,7 @@ class ProdChecksTests(unittest.TestCase):
             f"{prefix}latest_window_weighin_sources.by_source.app 12",
             f"{prefix}latest_window_weighin_sources.by_source.garmin 3",
             f"{prefix}latest_window_weighin_sources.dropped_days.wahoo 28",
+            f"{prefix}latest_window_former_rule_days 4",
         ):
             self.assertIn(expected, lines)
         self.assertFalse(any("planted" in line for line in lines))

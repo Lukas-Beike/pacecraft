@@ -22,6 +22,7 @@ from backend.nutrition.diary import NutritionDiaryService
 from backend.nutrition.energy_inputs import (
     RESTING_LOOKBACK_DAYS,
     EnergySources,
+    current_weight,
     device_body_fats,
     energy_basis,
     latest_value,
@@ -154,7 +155,9 @@ def build_nutrition(ctx: AppContext) -> NutritionServices:
             measured = read.observations(db, MetricKind.BODY_FAT, start=since, end=day)
             # The profile's body fat values are skinfolds too (#3557).
             return own_resting(
-                latest_value(weights, saved(profile_weight_history, db, since, day)),
+                current_weight(
+                    weights, saved(profile_weight_history, db, since, day), day
+                ),
                 recent_fat_pct(
                     skinfolds.skinfold_on(db, day),
                     day,
