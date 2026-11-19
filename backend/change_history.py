@@ -101,6 +101,7 @@ PROFILE_FIELDS = {
     "fueling_tolerance",
     "energy_goal",
     "energy_goal_kcal",
+    "learned_everyday_checked",
     "first_threshold_pct",
     "first_threshold_origin",
     "preferred_source_thresholds",
@@ -465,6 +466,8 @@ _FIELDS_ADDED_TO_AUDIT: dict[str, tuple[tuple[str, ...], ...]] = {
         ("birth_year",),
         # #3547: the energy goal and its kcal per day.
         ("energy_goal", "energy_goal_kcal"),
+        # #3577: the date the athlete took the learned everyday term over.
+        ("learned_everyday_checked",),
     ),
     "planned_unit": (("starts_at_local",), FOCUS_KEYS, (TEMPLATE_ID,)),
     "workout_library": (FOCUS_KEYS,),

@@ -230,6 +230,8 @@ class AthletePutRoutes:
         `sleep_target_hours` (4 to 12), `fueling_tolerance`, `energy_goal`
         (`lose`, `hold`, `build` or empty) with `energy_goal_kcal` (whole kcal per
         day, 0 to 1500, required for `lose` and `build`, empty for `hold`),
+        `learned_everyday_checked` (`YYYY-MM-DD` the athlete took the learned
+        everyday term over, or empty; the Coach cannot set it, #3577),
         `first_threshold_pct` (40 to 100, percent of the run threshold HR),
         `first_threshold_origin` (`measured`, `estimated` or empty) and
         `preferred_source_thresholds`, `_body`, `_hrv`, `_resting_hr`, `_sleep`
