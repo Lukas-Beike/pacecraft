@@ -1738,7 +1738,7 @@ function energyNeatInputs(neat) {
   return parts.join(", ");
 }
 
-// The formulas' body fat: skinfold, else a device or scale, else the profile (#3362).
+// The formulas' body fat: skinfold, else entered, else a device or scale (#3362, #3640).
 function energyBodyText(body) {
   if (!body) return "Ohne Körperfettwert der letzten 90 Tage keine Formelwerte";
   const source = body.date ? `${body.label} vom ${dateLabel(body.date)}` : body.label;

@@ -11,7 +11,11 @@ from backend.activities.feedback import ActivityFeedbackService
 from backend.activities.session_corrections import SessionCorrectionService
 from backend.activities.zone_settings import effective_zone_configuration
 from backend.app.context import AppContext
-from backend.athlete.body_entry import BODY_FAT_ENTRY, BodyEntryService
+from backend.athlete.body_entry import (
+    BODY_FAT_ENTRY,
+    BodyEntryHistory,
+    BodyEntryService,
+)
 from backend.athlete.checkins import CheckinService
 from backend.athlete.equipment import EquipmentService
 from backend.athlete.equipment_history import equipment_history_records
@@ -196,6 +200,8 @@ class AthleteDataServices:
     # Weights and body fats the athlete enters by hand, one per day (#3252, #3402).
     weight_entries: Callable[..., BodyEntryService]
     body_fat_entries: Callable[..., BodyEntryService]
+    # Their change history and undo (#3640); ``on_restore(day)`` follows an undo.
+    body_entry_history: Callable[..., BodyEntryHistory]
     # Binds the athlete clock to the existing shared manager cache owner.
     profile_for: Callable[[Any], ProfileService]
 
@@ -328,6 +334,9 @@ def build_athlete_data(
         ),
         body_fat_entries=lambda on_change=None: BodyEntryService(
             database_manager(), utc_now, local_date, BODY_FAT_ENTRY, on_change
+        ),
+        body_entry_history=lambda on_restore=None: BodyEntryHistory(
+            database_manager(), utc_now, on_restore
         ),
     )
 

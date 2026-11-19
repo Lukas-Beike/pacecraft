@@ -607,6 +607,8 @@ class HistoryBuilderTests(unittest.TestCase):
                 "nutrition_product_cleanup",
                 "food_database_entry",
                 "equipment",
+                # An entered weight or body fat of one day (#3640).
+                "body_entry",
             ],
             list(undo.call_args.kwargs["record_services"]),
         )

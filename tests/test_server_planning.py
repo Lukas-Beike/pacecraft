@@ -1323,13 +1323,13 @@ class ServerPlanningTests(ServerTestCase):
         self.assertNotIn('id="planningSummary"', markup)
 
     def test_change_history_records_safe_diff_and_explicit_undo(self):
-        server.ATHLETE_DATA.profile().save({"name": "Ada", "weight_kg": "71"})
-        server.ATHLETE_DATA.profile().save({"name": "Bea", "weight_kg": "72"})
+        server.ATHLETE_DATA.profile().save({"name": "Ada", "height_cm": "171"})
+        server.ATHLETE_DATA.profile().save({"name": "Bea", "height_cm": "172"})
         history = server.HISTORY.change_history_service().list()
         latest = next(item for item in history if item["entity_type"] == "profile")
         self.assertEqual(latest["action"], "update")
         self.assertEqual(latest["diff"]["fields"]["name"], {"changed": True})
-        self.assertEqual(latest["diff"]["fields"]["weight_kg"], {"changed": True})
+        self.assertEqual(latest["diff"]["fields"]["height_cm"], {"changed": True})
         self.assertNotIn("Ada", json.dumps(latest))
         self.assertNotIn('"before"', json.dumps(latest))
         self.assertNotIn('"after"', json.dumps(latest))

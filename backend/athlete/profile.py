@@ -59,6 +59,18 @@ COACH_READ_ONLY_FIELDS = frozenset(
     {FIRST_THRESHOLD_FIELD, FIRST_THRESHOLD_ORIGIN_FIELD, LEARNED_EVERYDAY_FIELD}
 )
 
+# Weight and body fat are measurements Körper enters (athlete decision, #3640):
+# no profile save changes them, and no reader takes them as the current value.
+# Their stored values and history stay data, read as dated weigh-ins and
+# skinfold readings (#3557).
+BODY_FIELDS = ("weight_kg", "body_fat_pct")
+
+
+def coach_profile(profile: Mapping[str, Any]) -> dict[str, Any]:
+    """The profile the Coach reads: the stored body fields are no current value."""
+    return {key: value for key, value in profile.items() if key not in BODY_FIELDS}
+
+
 DEFAULT_PROFILE = {
     "name": "",
     "goals": "",
@@ -76,6 +88,7 @@ DEFAULT_PROFILE = {
     "training_preferences_mobility": "",
     "training_model": TRAINING_MODELS[0],
     "performance_notes": "",
+    # Stored data only (#3640): Körper owns weight and body fat; see BODY_FIELDS.
     "weight_kg": "",
     "body_fat_pct": "",
     "height_cm": "",
@@ -279,9 +292,7 @@ def _normalize_first_threshold(result: dict[str, str], *, strict: bool) -> None:
 
 # Number fields with their inclusive bounds and the error shown for a bad entry.
 _NUMBER_FIELDS = {
-    "weight_kg": (20, 300, "Das Gewicht muss zwischen 20 und 300 kg liegen."),
     "height_cm": (50, 250, "Die Größe muss zwischen 50 und 250 cm liegen."),
-    "body_fat_pct": (1, 70, "Der Körperfettanteil muss zwischen 1 und 70 % liegen."),
     "sleep_target_hours": (
         4,
         12,
@@ -345,6 +356,9 @@ def normalize_profile(
     _normalize_learned_check(result, strict=validate_timezone)
     _normalize_first_threshold(result, strict=validate_timezone)
     _normalize_numbers(result, previous, strict=validate_timezone)
+    if validate_timezone:  # a save keeps what is stored (#3640)
+        for field_name in BODY_FIELDS:
+            result[field_name] = (previous or {}).get(field_name, "")
     return result
 
 

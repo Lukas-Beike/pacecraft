@@ -134,19 +134,21 @@ class ProviderIdPayloadTests(unittest.TestCase):
         self.assertNotIn("cycling_eftp_watts", result)
         self.assertIsNone(result["run_threshold_watts"]["value"])
         self.assertIsNone(result["run_threshold_watts"]["source_provider"])
-        # The profile weight is the only weight; the Intervals athlete weight is not.
-        self.assertEqual(result["weight_kg"]["source"], "Manuell")
+        # Neither the profile's stored weight (#3640) nor the Intervals athlete
+        # weight is a source.
+        self.assertIsNone(result["weight_kg"]["value"])
         self.assertIsNone(result["weight_kg"]["source_provider"])
         self.assertEqual(result["height_cm"]["source_provider"], None)
 
-    def test_manual_profile_weight_has_no_provider_id(self):
+    def test_a_profile_weight_is_no_current_weight(self):
+        # #3640: without a body record the weight is missing, not the profile's.
         result = snapshot_metrics(
             {"recent_wellness": [], "recent_activities": []},
             {"weight_kg": 81},
             _empty_garmin_metrics(),
         )
 
-        self.assertEqual(result["weight_kg"]["source"], "Manuell")
+        self.assertIsNone(result["weight_kg"]["value"])
         self.assertIsNone(result["weight_kg"]["source_provider"])
 
     def test_recovery_baselines_carry_provider_ids_and_policy(self):

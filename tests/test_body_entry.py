@@ -3,12 +3,18 @@
 #3252 (weight), #3402 (body fat).
 """
 
+import threading
 import unittest
 from datetime import date
 
 from support import temp_database
 
-from backend.athlete.body_entry import BODY_FAT_ENTRY, BodyEntryService
+from backend import change_history
+from backend.athlete.body_entry import (
+    BODY_FAT_ENTRY,
+    BodyEntryHistory,
+    BodyEntryService,
+)
 from backend.canonical.records import MetricValue, Observation, Provenance
 from backend.canonical.vocabulary import (
     MetricKind,
@@ -18,6 +24,8 @@ from backend.canonical.vocabulary import (
 )
 from backend.db import canonical_store
 from backend.errors import AppError
+from backend.history.service import ChangeHistoryService
+from backend.history.undo_service import HistoryUndoService
 from backend.nutrition.energy_inputs import device_body_fats, weighins
 from backend.providers.canonical_plans import current_observation_mapper_versions
 from backend.sync.canonical_table_reader import CanonicalTableReader
@@ -146,6 +154,69 @@ class BodyEntryServiceTests(unittest.TestCase):
         with self.assertRaises(AppError) as missing:
             self.service.remove({"date": "2026-11-15", "confirmed": True})
         self.assertEqual(404, missing.exception.status)
+
+    def test_each_change_is_recorded_and_undo_puts_the_day_back(self):
+        # #3640: the Coach records body values through this service, so its
+        # turn undo needs each save and removal in the change history.
+        restored: list[tuple[MetricKind, date]] = []
+        history = BodyEntryHistory(
+            self.manager,
+            now=lambda: "2026-11-16T10:00:00+00:00",
+            on_restore=lambda kind, day: restored.append((kind, day)),
+        )
+
+        def changed(write):
+            with change_history.collect_changes() as changes:
+                write()
+            return changes
+
+        first = changed(lambda: self.service.save({"date": "2026-11-15", "kg": 80}))
+        second = changed(lambda: self.service.save({"date": "2026-11-15", "kg": 79.4}))
+        fat = changed(lambda: self.body_fat.save({"date": "2026-11-15", "pct": 15}))
+        with self.manager.reader() as db:
+            rows = db.execute(
+                "SELECT entity_type, entity_id, action FROM change_history ORDER BY rowid"
+            ).fetchall()
+        self.assertEqual(
+            [("body_entry", "weight:2026-11-15", "create"),
+             ("body_entry", "weight:2026-11-15", "update"),
+             ("body_entry", "body_fat:2026-11-15", "create")],
+            [tuple(row.values()) if isinstance(row, dict) else tuple(row) for row in rows],
+        )  # fmt: skip
+        self.undo(history, second)
+        self.assertEqual([("2026-11-15", 80.0, None)], self.served())
+        self.undo(history, first)
+        self.assertEqual([], self.served())
+        self.undo(history, fat)
+        self.assertEqual([], self.served("body_fat"))
+        # A removal comes back with its value.
+        self.service.save({"date": "2026-11-14", "kg": 81})
+        removed = changed(
+            lambda: self.service.remove({"date": "2026-11-14", "confirmed": True})
+        )
+        self.undo(history, removed)
+        self.assertEqual([("2026-11-14", 81.0, None)], self.served())
+        # Each restored value is handed on with its metric, so Garmin (#3403)
+        # and, for a weight, Wahoo (#3559) follow it.
+        weight, fat_kind = MetricKind.WEIGHT, MetricKind.BODY_FAT
+        self.assertEqual(
+            [(weight, date(2026, 11, 15)), (weight, date(2026, 11, 15)),
+             (fat_kind, date(2026, 11, 15)), (weight, date(2026, 11, 14))],
+            restored,
+        )  # fmt: skip
+
+    def undo(self, history, changes):
+        undo = HistoryUndoService(
+            self.manager,
+            ChangeHistoryService(
+                self.manager, None, record_services={"body_entry": history}
+            ),
+            *(None,) * 6,
+            record_services={"body_entry": history},
+            profile_mutation_coordinator=threading.RLock(),
+        )
+        with self.manager.unit_of_work() as db:
+            return undo.apply_many(db, changes)
 
     def test_energy_weigh_ins_take_the_entry_over_a_measurement_of_its_day(self):
         # The athlete set the day's weight (decision 2026-11-16): a provider

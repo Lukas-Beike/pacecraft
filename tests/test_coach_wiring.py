@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import unittest
 from pathlib import Path
-from unittest.mock import DEFAULT, Mock, patch
+from unittest.mock import ANY, DEFAULT, Mock, patch
 
 from backend.coach import streams as coach_streams
 from backend.coach import tool_wiring, turn_wiring, wiring
@@ -516,6 +516,16 @@ class CoachCommandToolBuilderTests(unittest.TestCase):
             ctx.nutrition.meal_library_service.return_value,
             equipment=ctx.athlete.equipment.return_value,
             session_corrections=ctx.athlete.session_corrections.return_value,
+            body_entries=ANY,
+        )
+        # #3640: the Körper entry services, built lazily per kind.
+        body_entries = constructors["CoachAthleteRecordToolService"].call_args.kwargs[
+            "body_entries"
+        ]
+        ctx.athlete.weight_entries.assert_not_called()
+        self.assertIs(ctx.athlete.weight_entries.return_value, body_entries("weight"))
+        self.assertIs(
+            ctx.athlete.body_fat_entries.return_value, body_entries("body_fat")
         )
         constructors["CoachProfileUpdateService"].assert_called_once_with(
             ctx.athlete.profile.return_value,

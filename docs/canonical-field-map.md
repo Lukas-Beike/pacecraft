@@ -30,7 +30,7 @@ Implemented in `backend/performance/source_policy.py` (`CURRENT_RULES`, `DAILY_R
 
 | Kind | Order (best first) | Bounds | Age limit |
 |---|---|---|---|
-| `weight` | Garmin, Wahoo; the athlete's newest entered weight (dated) or else the undated local profile weight between them (`RECENCY_ORDERS`: newest dated value wins, within `RECENCY_TIE_DAYS` = 1 day a device measurement beats a provider report beats an athlete entry, except that an entry on the newest day wins) | none (validation range 20 to 400 kg) | Wahoo 90 days |
+| `weight` | Garmin, Wahoo; the athlete's newest entered weight (dated) between them, never the athlete profile's stored weight (#3640) (`RECENCY_ORDERS`: newest dated value wins, within `RECENCY_TIE_DAYS` = 1 day a device measurement beats a provider report beats an athlete entry, except that an entry on the newest day wins) | none (validation range 20 to 400 kg) | Wahoo 90 days |
 | `body_fat` | Garmin, local profile (same recency rule) | | |
 | `resting_hr` | Garmin | 30 to 230 bpm | |
 | `hrv_rmssd` | Garmin | 1 to 300 ms | |

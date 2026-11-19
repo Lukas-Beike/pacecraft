@@ -35,6 +35,7 @@ generated from the `covers` declarations; regenerate it with
 | `commit_training_plan` | `success` | `test_requested_draft_commit_and_metadata_lifecycle` |
 | `confirm_activity_session` | `success` | `test_session_tools_correct_the_bundle_and_leave_a_change_receipt` |
 | `delete_activity_feedback` | `success` | `test_daily_feedback_and_activity_feedback_are_separate_from_profile` |
+| `delete_body_entry` | `success` | `test_the_coach_records_weight_and_body_fat_in_koerper` |
 | `delete_competition` | `success` | `test_competition_lifecycle_syncs_only_after_explicit_followup` |
 | `delete_nutrition_entry` | `success` | `test_nutrition_entries_can_be_saved_read_and_deleted` |
 | `delete_nutrition_template` | `success` | `test_saved_meals_run_through_authorized_coach_and_receipts` |
@@ -64,6 +65,7 @@ generated from the `covers` declarations; regenerate it with
 | `replace_training_plan` | `success` | `test_replacement_changes_only_requested_period` |
 | `resolve_training_sync_conflict` | `adopt_remote`, `keep_local`, `retry_push`, `retry_read` | `test_conflict_choices_and_failed_job_retries` |
 | `save_activity_feedback` | `success` | `test_daily_feedback_and_activity_feedback_are_separate_from_profile` |
+| `save_body_entry` | `success` | `test_the_coach_records_weight_and_body_fat_in_koerper` |
 | `save_checkin` | `success` | `test_daily_feedback_and_activity_feedback_are_separate_from_profile` |
 | `save_competition` | `create`, `update` | `test_competition_lifecycle_syncs_only_after_explicit_followup` |
 | `save_equipment` | `success` | `test_training_records_and_equipment_tools_use_confirmed_local_state` |

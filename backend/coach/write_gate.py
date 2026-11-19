@@ -40,6 +40,7 @@ from typing import Any
 from backend.canonical.vocabulary import ProviderId
 from backend.coach.tool_specs import (
     APPROVAL_TOOLS,
+    BODY,
     BULK_FROM,
     CHECKIN,
     COMPETITION,
@@ -62,7 +63,7 @@ REMOTE_WAHOO = "remote_wahoo"
 REMOTE_DOMAINS = frozenset({REMOTE_INTERVALS, REMOTE_GARMIN, REMOTE_WAHOO})
 
 DOMAINS = frozenset(
-    {PLANNING, PROFILE, COMPETITION, CHECKIN, NUTRITION, UNDO, *REMOTE_DOMAINS}
+    {PLANNING, PROFILE, COMPETITION, CHECKIN, NUTRITION, BODY, UNDO, *REMOTE_DOMAINS}
 )
 # The model classifier may never grant a remote write.
 CLASSIFIER_DOMAINS = DOMAINS - REMOTE_DOMAINS
@@ -670,6 +671,9 @@ def _removes_records(tool_name: str, arguments: Mapping[str, Any] | None) -> boo
         return True
     if not isinstance(arguments, Mapping):
         return False
+    # Replacing a day's entered weight or body fat removes the old value (#3640).
+    if tool_name == "save_body_entry":
+        return arguments.get("replace") is True
     if tool_name in {"save_equipment", "update_training_plan"}:
         payload = arguments.get("payload")
         return isinstance(payload, Mapping) and (
@@ -980,9 +984,11 @@ CLASSIFIER_INSTRUCTIONS = (
     "anything else, including doubts, a plain training request, or mentioning "
     "the illness without asking to train through it. Domains: planning "
     "(training plan, workouts, schedule, templates), profile (athlete profile, "
-    "weight, FTP, goals, availability, equipment), competition (races, events), "
+    "FTP, goals, availability, equipment), competition (races, events), "
     "checkin (sleep, health, mood, symptoms, activity feedback), nutrition "
-    "(meals, food, products, templates), undo (revert an earlier change)."
+    "(meals, food, products, templates), body (weight, body fat, skinfolds), "
+    "undo (revert an earlier change). Changing a weight or body fat already "
+    "entered for a day is a delete in body."
 )
 
 CLASSIFIER_SCHEMA: dict[str, Any] = {

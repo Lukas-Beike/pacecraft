@@ -11,7 +11,7 @@ from backend.activities.hr_cap import (
     SOURCES,
     cap_table_text,
 )
-from backend.athlete.profile import COACH_READ_ONLY_FIELDS
+from backend.athlete.profile import BODY_FIELDS, COACH_READ_ONLY_FIELDS
 from backend.canonical.vocabulary import Sport
 from backend.db.repositories import NUTRIENT_COLUMNS
 from backend.nutrition.catalog import (
@@ -202,6 +202,12 @@ def build_structured_tool_schemas(
     COACH_TRAINING_CHANGE_LIMIT = training_change_limit
     LIBRARY_BULK_MAX_ENTRIES = library_bulk_max_entries
     DEFAULT_PROFILE = default_profile
+    # Körper owns weight and body fat (#3640).
+    writable_profile = [
+        name
+        for name in DEFAULT_PROFILE
+        if name not in COACH_READ_ONLY_FIELDS and name not in BODY_FIELDS
+    ]
     CHECKIN_TEXT_LIMITS = checkin_text_limits
     CHECKIN_SCORE_FIELDS = checkin_score_fields
     TRAINING_PLAN_STATUSES = training_plan_statuses
@@ -405,7 +411,7 @@ def build_structured_tool_schemas(
                 "changes": {
                     "type": "array",
                     "minItems": 1,
-                    "maxItems": len(DEFAULT_PROFILE) - len(COACH_READ_ONLY_FIELDS),
+                    "maxItems": len(writable_profile),
                     "items": {
                         "type": "object",
                         "additionalProperties": False,
@@ -413,11 +419,7 @@ def build_structured_tool_schemas(
                         "properties": {
                             "field": {
                                 "type": "string",
-                                "enum": [
-                                    name
-                                    for name in DEFAULT_PROFILE
-                                    if name not in COACH_READ_ONLY_FIELDS
-                                ],
+                                "enum": writable_profile,
                             },
                             "expected_value": {"type": "string", "maxLength": 4000},
                             "value": {"type": "string", "maxLength": 4000},
@@ -1423,6 +1425,26 @@ def build_structured_tool_schemas(
                 "notes": {"type": "string", "maxLength": 1000},
             },
             ["equipment_id", "date"],
+        ),
+        (
+            "save_body_entry",
+            "Record the athlete's own weight (kg, 30 to 300) or body fat (%, 2 to 70) for one day in Körper, as the Körper dialogs do; the profile holds neither. Only a value the athlete states in this message. A day that already holds an entry is refused unless replace is true, and replacing needs the athlete's explicit request to change it. Garmin Connect (and Wahoo for the weight) follow after the save.",
+            {
+                "kind": {"type": "string", "enum": ["weight", "body_fat"]},
+                "date": {"type": "string", "format": "date"},
+                "value": {"type": "number", "minimum": 2, "maximum": 300},
+                "replace": {"type": "boolean"},
+            },
+            ["kind", "date", "value", "replace"],
+        ),
+        (
+            "delete_body_entry",
+            "Remove the athlete's entered weight or body fat of one day from Körper, only on the athlete's explicit request to remove it.",
+            {
+                "kind": {"type": "string", "enum": ["weight", "body_fat"]},
+                "date": {"type": "string", "format": "date"},
+            },
+            ["kind", "date"],
         ),
     ]
     COACH_STRUCTURED_TOOLS.append(

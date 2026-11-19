@@ -7,7 +7,7 @@ from collections.abc import Callable, Mapping
 from datetime import date
 from typing import Any, Final
 
-from backend.athlete.profile import ProfileService
+from backend.athlete.profile import ProfileService, coach_profile
 from backend.coach.activity_read_tools import CoachActivityReadToolService
 from backend.coach.context import (
     bounded_coach_context_sections_by_priority,
@@ -178,7 +178,7 @@ class CoachReadToolService:
         self, name: str, arguments: dict[str, Any]
     ) -> dict[str, Any] | None:
         if name == "read_profile":
-            return {"ok": True, "profile": self._profile_service().get()}
+            return {"ok": True, "profile": coach_profile(self._profile_service().get())}
         if name == "read_training_state":
             return {
                 "ok": True,

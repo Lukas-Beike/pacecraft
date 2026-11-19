@@ -35,6 +35,7 @@ and repair details remain with the provider capabilities.
 | `commit_training_plan` | canonical_and_dialogue / local_write | planning | CoachPlanArtifactToolService | `training-plans-and-adaptation / TP2 Atomic revision-checked plan commit`; `coach-tool-authority / CA4 Domain-confirmed destructive and bulk effects` | `test_requested_draft_commit_and_metadata_lifecycle` |
 | `confirm_activity_session` | canonical_and_dialogue / local_write | profile | CoachAthleteRecordToolService | `activity-ingestion-and-storage / Athlete session corrections`; `coach-tool-authority / CA2 Athlete-message provenance and exact effect scope` | `test_session_tools_correct_the_bundle_and_leave_a_change_receipt` |
 | `delete_activity_feedback` | canonical_and_dialogue / local_write | checkin | CoachAthleteRecordToolService | `athlete-profile-and-checkins / AP7 Exact completed-activity feedback`; `coach-tool-authority / CA4 Domain-confirmed destructive and bulk effects` | `test_daily_feedback_and_activity_feedback_are_separate_from_profile` |
+| `delete_body_entry` | canonical_and_dialogue / local_write | body | CoachAthleteRecordToolService | `athlete-profile-and-checkins / Coach body entries`; `coach-tool-authority / CA4 Domain-confirmed destructive and bulk effects` | `test_the_coach_records_weight_and_body_fat_in_koerper` |
 | `delete_competition` | canonical_and_dialogue / local_write | competition | CoachAthleteRecordToolService | `competitions-and-seasons / CS4 Competition removal and remote tombstone retention`; `coach-tool-authority / CA4 Domain-confirmed destructive and bulk effects` | `test_competition_lifecycle_syncs_only_after_explicit_followup` |
 | `delete_nutrition_entry` | canonical_and_dialogue / local_write | nutrition | CoachAthleteRecordToolService | `coach-tool-authority / CA2 Athlete-message provenance and exact effect scope`; `coach-tool-authority / CA4 Domain-confirmed destructive and bulk effects` | `test_nutrition_entries_can_be_saved_read_and_deleted` |
 | `delete_nutrition_template` | canonical_and_dialogue / local_write | nutrition | CoachAthleteRecordToolService | `coach-tool-authority / CA2 Athlete-message provenance and exact effect scope`; `coach-tool-authority / CA4 Domain-confirmed destructive and bulk effects` | `test_saved_meals_run_through_authorized_coach_and_receipts` |
@@ -64,6 +65,7 @@ and repair details remain with the provider capabilities.
 | `replace_training_plan` | canonical_and_dialogue / local_write | planning | CoachPlanningChangeToolService | `training-plans-and-adaptation / TP6 Inclusive bounded local plan replacement`; `coach-tool-authority / CA4 Domain-confirmed destructive and bulk effects` | `test_replacement_changes_only_requested_period` |
 | `resolve_training_sync_conflict` | canonical_and_dialogue / conditional_remote_write | remote_intervals | CoachSyncToolService | `training-library / TL10 Exact explicit sync selection and complete repair manifests`; `coach-tool-authority / CA5 Named remote synchronization and explicit proposals` | `test_conflict_choices_and_failed_job_retries` |
 | `save_activity_feedback` | canonical_and_dialogue / local_write | checkin | CoachAthleteRecordToolService | `athlete-profile-and-checkins / AP7 Exact completed-activity feedback` | `test_daily_feedback_and_activity_feedback_are_separate_from_profile` |
+| `save_body_entry` | canonical_and_dialogue / local_write | body | CoachAthleteRecordToolService | `athlete-profile-and-checkins / Coach body entries` | `test_the_coach_records_weight_and_body_fat_in_koerper` |
 | `save_checkin` | canonical_and_dialogue / local_write | checkin | CoachAthleteRecordToolService | `athlete-profile-and-checkins / AP4 Validated daily subjective check-ins`; `athlete-profile-and-checkins / AP5 Coach check-in merging and explicit clearing`; `athlete-profile-and-checkins / AP6 Explicit day status, tags and durable check-in saves` | `test_daily_feedback_and_activity_feedback_are_separate_from_profile` |
 | `save_competition` | canonical_and_dialogue / local_write | competition | CoachAthleteRecordToolService | `competitions-and-seasons / CS1 Validated target-competition records`; `competitions-and-seasons / CS2 Local competition create and partial edit` | `test_competition_lifecycle_syncs_only_after_explicit_followup` |
 | `save_equipment` | canonical_and_dialogue / local_write | profile | CoachAthleteRecordToolService | `athlete-profile-and-checkins / AP8 Versioned local equipment records`; `coach-tool-authority / CA4 Domain-confirmed destructive and bulk effects` | `test_training_records_and_equipment_tools_use_confirmed_local_state` |
@@ -328,6 +330,15 @@ effect `local_write`; gate domain `profile`; receipt „Aufzeichnungen bestätig
 effect `local_write`; gate domain `checkin`; needs a confirmed delete request; receipt „Aktivitätsfeedback entfernt“; proposal card „Aktivitätsfeedback entfernen“; fully tracked by change history.
 
 - `activity_id` (string)
+- `_request`* (the envelope above)
+
+### `delete_body_entry`
+
+effect `local_write`; gate domain `body`; needs a confirmed delete request; receipt „Körperwert entfernt“; proposal card „Körperwert entfernen“; fully tracked by change history.
+
+- `payload` (object)
+- `payload.kind`* (string; one of `"weight"`, `"body_fat"`)
+- `payload.date`* (string; date)
 - `_request`* (the envelope above)
 
 ### `delete_competition`
@@ -641,6 +652,17 @@ effect `local_write`; gate domain `checkin`; receipt „Aktivitätsfeedback gesp
 - `payload.session_rpe` (number/null; ≥0; ≤10)
 - `payload.deviation_reason` (string/null; ≤500 chars)
 - `payload.purpose` (string/null; one of `"training"`, `"race"`, `"commute"`, `"warmup"`, `"cooldown"`, `null`)
+- `_request`* (the envelope above)
+
+### `save_body_entry`
+
+effect `local_write`; gate domain `body`; receipt „Körperwert gespeichert“; proposal card „Körperwert speichern“; fully tracked by change history.
+
+- `payload` (object)
+- `payload.kind`* (string; one of `"weight"`, `"body_fat"`)
+- `payload.date`* (string; date)
+- `payload.value`* (number; ≥2; ≤300)
+- `payload.replace`* (boolean)
 - `_request`* (the envelope above)
 
 ### `save_checkin`
@@ -965,8 +987,8 @@ effect `local_write`; gate domain `nutrition`; receipt „Ernährungseintrag kor
 
 effect `local_write`; gate domain `profile`; receipt „Profil aktualisiert“; proposal card „Profil aktualisieren“; fully tracked by change history.
 
-- `changes`* (array; ≥1 items; ≤33 items)
-- `changes[].field`* (string; one of `"name"`, `"goals"`, `"sports"`, `"training_background"`, `"typical_weekly_volume"`, `"availability"`, `"constraints"`, `"equipment"`, `"training_preferences"`, `"training_preferences_running"`, `"training_preferences_cycling"`, `"training_preferences_swimming"`, `"training_preferences_strength"`, `"training_preferences_mobility"`, `"training_model"`, `"performance_notes"`, `"weight_kg"`, `"body_fat_pct"`, `"height_cm"`, `"sex"`, `"birth_year"`, `"coaching_style"`, `"timezone"`, `"weather_location"`, `"sleep_target_hours"`, `"fueling_tolerance"`, `"energy_goal"`, `"energy_goal_kcal"`, `"preferred_source_thresholds"`, `"preferred_source_body"`, `"preferred_source_hrv"`, `"preferred_source_resting_hr"`, `"preferred_source_sleep"`)
+- `changes`* (array; ≥1 items; ≤31 items)
+- `changes[].field`* (string; one of `"name"`, `"goals"`, `"sports"`, `"training_background"`, `"typical_weekly_volume"`, `"availability"`, `"constraints"`, `"equipment"`, `"training_preferences"`, `"training_preferences_running"`, `"training_preferences_cycling"`, `"training_preferences_swimming"`, `"training_preferences_strength"`, `"training_preferences_mobility"`, `"training_model"`, `"performance_notes"`, `"height_cm"`, `"sex"`, `"birth_year"`, `"coaching_style"`, `"timezone"`, `"weather_location"`, `"sleep_target_hours"`, `"fueling_tolerance"`, `"energy_goal"`, `"energy_goal_kcal"`, `"preferred_source_thresholds"`, `"preferred_source_body"`, `"preferred_source_hrv"`, `"preferred_source_resting_hr"`, `"preferred_source_sleep"`)
 - `changes[].expected_value`* (string; ≤4000 chars)
 - `changes[].value`* (string; ≤4000 chars)
 - `_request`* (the envelope above)

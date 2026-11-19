@@ -481,7 +481,7 @@ def _read_routes(
             race_plan=partial(
                 read_race_plan,
                 ctx.planning.competition,
-                partial(body_weight, public.performance_state_service, athlete.profile),
+                partial(body_weight, public.performance_state_service),
                 lambda competition: ctx.weather.competition_weather().for_competition(
                     competition
                 ),
@@ -525,9 +525,6 @@ def _athlete_write_routes(
             athlete.profile,
             ctx.database,
             athlete.zones,
-            lambda profile, revision, deadline: ctx.garmin.body_export(
-                athlete.profile()
-            ).export(profile, revision, deadline),
             skinfold_service=lambda: athlete.skinfolds(body_changed),
             weight_service=lambda: athlete.weight_entries(weight_changed),
             body_fat_service=lambda: athlete.body_fat_entries(body_changed),
@@ -584,7 +581,6 @@ def _domain_routes(
                 macro_context,
                 public.performance_state_service,
                 public.plan_state_service,
-                ctx.athlete.profile,
             ),
             partial(
                 read_session_fuelling,
@@ -593,9 +589,7 @@ def _domain_routes(
                 ),
                 partial(_session_temperatures, ctx),
                 lambda: ctx.weather.service().state(refresh=False).get("days") or [],
-                partial(
-                    body_weight, public.performance_state_service, ctx.athlete.profile
-                ),
+                partial(body_weight, public.performance_state_service),
                 lambda: _local_today(ctx),
             ),
         ),

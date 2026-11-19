@@ -37,45 +37,6 @@ function profileFieldText(value) {
   return typeof value === "string" ? value : "";
 }
 
-function bodyExportMessage(status) {
-  const messages = {
-    success: "Profil gespeichert und an Garmin gesendet.",
-    invalid: "Profil gespeichert. Garmin braucht gültiges Gewicht und Körperfett.",
-    unavailable: "Profil gespeichert. Garmin ist nicht verfügbar.",
-    superseded: "Profil gespeichert. Neuere Körperwerte haben den Garmin-Upload ersetzt.",
-    rejected: "Profil gespeichert. Garmin hat den Upload abgelehnt.",
-    uncertain: "Profil gespeichert. Garmin-Upload unklar und möglicherweise noch aktiv. Bitte abwarten und Garmin prüfen, bevor du erneut sendest.",
-  };
-  return messages[status] || messages.uncertain;
-}
-
-function reportBodyExport(status) {
-  const button = document.getElementById("retryBodyGarmin");
-  if (button) button.hidden = !["invalid", "unavailable", "rejected"].includes(status);
-  toast(bodyExportMessage(status), status !== "success");
-}
-
-function isDefiniteProfileRejection(error) {
-  return Number.isInteger(error?.status) && error.status >= 400 && error.status < 500 && error.status !== 408;
-}
-
-async function retryBodyGarmin(event) {
-  if (profileSaveInFlight) return;
-  profileSaveInFlight = true;
-  const button = event.currentTarget;
-  button.disabled = true;
-  button.hidden = true;
-  try {
-    const saved = await api("/api/profile", { method: "PUT", body: JSON.stringify({ sync_body_to_garmin: true, retry_body_to_garmin: true }) });
-    reportBodyExport(saved.garmin_body_export || "uncertain");
-  } catch (error) {
-    if (isDefiniteProfileRejection(error)) {
-      button.hidden = false;
-      toast(error.message, true);
-    } else reportBodyExport("uncertain");
-  } finally { button.disabled = false; profileSaveInFlight = false; }
-}
-
 // The adopted value reaches the open form even while it holds unsaved edits: only the
 // stored-percent input and the estimate block change, every other edit stays.
 function applyAdoptedFirstThreshold(result) {
@@ -118,32 +79,6 @@ function determineChangedProfileFields(formValues, baseline) {
   );
 }
 
-function handleProfileSaveOutcome(saved, bodyChanged, retryControl, retryBeforeSave) {
-  const status = saved.garmin_body_export;
-  if (bodyChanged && !status) {
-    reportBodyExport("uncertain");
-  } else if (status === "unchanged") {
-    if (retryControl && retryBeforeSave) retryControl.hidden = false;
-    toast("Profil gespeichert; Körperwerte waren unverändert.");
-  } else if (status) {
-    reportBodyExport(status);
-  } else {
-    toast("Profil gespeichert und für den Coach aktiviert");
-  }
-}
-
-function handleProfileSaveError(error, changed, retryBeforeSave) {
-  const hasBodyChanges = Object.hasOwn(changed, "weight_kg") || Object.hasOwn(changed, "body_fat_pct");
-  const retry = document.getElementById("retryBodyGarmin");
-  if (hasBodyChanges && !isDefiniteProfileRejection(error)) {
-    if (retry) retry.hidden = true;
-    toast("Profil-Speicherung und Garmin-Upload unklar und möglicherweise noch aktiv. Bitte abwarten und beide prüfen, bevor du erneut speicherst.", true);
-  } else {
-    if (retry && retryBeforeSave) retry.hidden = false;
-    toast(error.message, true);
-  }
-}
-
 async function saveProfile(event) {
   event.preventDefault();
   if (profileSaveInFlight) return;
@@ -157,19 +92,11 @@ async function saveProfile(event) {
     button.textContent = "Athletenkontext wird gespeichert…";
   }
   const form = event.currentTarget;
-  const retryControl = document.getElementById("retryBodyGarmin");
-  const retryBeforeSave = retryControl?.hidden === false;
-  if (retryControl) retryControl.disabled = true;
   const generation = state.sessionGeneration;
   const submittedForm = JSON.stringify([...new FormData(form)]);
-  let changed = {};
   try {
-    changed = determineChangedProfileFields(profileFormValues(form), state.profileBaseline);
-    const bodyChanged = Object.hasOwn(changed, "weight_kg") || Object.hasOwn(changed, "body_fat_pct");
-    const retryButton = document.getElementById("retryBodyGarmin");
-    if (bodyChanged && retryButton) retryButton.hidden = true;
-    const requestBody = { ...changed, ...(bodyChanged ? { sync_body_to_garmin: true } : {}) };
-    const saved = await api("/api/profile", { method: "PUT", body: JSON.stringify(requestBody) });
+    const changed = determineChangedProfileFields(profileFormValues(form), state.profileBaseline);
+    const saved = await api("/api/profile", { method: "PUT", body: JSON.stringify(changed) });
     if (!profileSaveConfirmed(changed, saved)) {
       throw new Error("Die Profilbestätigung ist unvollständig. Der Entwurf bleibt erhalten.");
     }
@@ -183,7 +110,7 @@ async function saveProfile(event) {
     invalidateContextPreview();
     // The birth year and the sex decide the skinfold body fat and sites (#3099).
     if (Object.hasOwn(changed, "birth_year") || Object.hasOwn(changed, "sex")) resetSkinfolds();
-    handleProfileSaveOutcome(saved, bodyChanged, retryControl, retryBeforeSave);
+    toast("Profil gespeichert und für den Coach aktiviert");
     if (button) {
       button.disabled = false;
       button.removeAttribute("aria-busy");
@@ -191,10 +118,9 @@ async function saveProfile(event) {
     }
     await load();
   } catch (error) {
-    handleProfileSaveError(error, changed, retryBeforeSave);
+    toast(error.message, true);
   } finally {
     profileSaveInFlight = false;
-    if (retryControl) retryControl.disabled = false;
     if (button) {
       button.disabled = false;
       button.removeAttribute("aria-busy");

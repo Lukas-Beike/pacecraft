@@ -14,7 +14,7 @@ It is standalone software for a trusted LAN or private VPN (WireGuard, Tailscale
 6. Local performance methods M1-M8 (session load, fitness/fatigue/form, critical power/speed, HRV, sleep) with evidence cards.
 7. Analysis of load, performance, recovery and sessions with full-resolution charts.
 8. Weather, air quality, pollen and external calendars shape what the Coach plans; the weather during each outdoor session adds a heat note to its analysis.
-9. Nutrition diary with local food databases, saved meals and products, and Garmin energy use.
+9. Nutrition diary with local food databases, saved meals and products, and Garmin energy use; weight and body fat are entered under Ernährung › Körper, not in the profile.
 10. Private by design: SQLCipher encryption, one athlete, installable and offline-capable PWA, privacy export and restorable backups.
 
 All features in detail: [docs/features.md](docs/features.md).

@@ -277,13 +277,14 @@ class ServerPerformanceTests(ServerTestCase):
             validation["direct_activity_estimates"].get("activity_ftp_watts"), 300
         )
 
-    def test_manual_body_profile_values_are_used_when_api_values_are_absent(self):
+    def test_the_profile_height_fills_in_and_weight_and_body_fat_do_not(self):
         server.ATHLETE_DATA.profile().save(
             {"weight_kg": "71,4", "body_fat_pct": "10.5", "height_cm": "181"}
         )
         # Canonical reads (#1416): the context needs some provider value; the
-        # manual profile values then fill what the providers leave absent. Profile
+        # profile height then fills what the providers leave absent. Profile
         # values alone, without any synced provider data, keep it unavailable.
+        # Weight and body fat come from Körper only (#3640).
         today = server.ATHLETE_CLOCK.now().date().isoformat()
         alone = _current_performance_context(
             {"synced_at": "now", "athlete": {}, "recent_wellness": []}
@@ -297,8 +298,8 @@ class ServerPerformanceTests(ServerTestCase):
                 "recent_activities": [],
             }
         )
-        self.assertEqual(performance["metrics"]["weight_kg"]["value"], 71.4)
-        self.assertEqual(performance["metrics"]["body_fat_pct"]["source"], "Manuell")
+        self.assertIsNone(performance["metrics"]["weight_kg"]["value"])
+        self.assertIsNone(performance["metrics"]["body_fat_pct"]["value"])
         self.assertEqual(performance["metrics"]["height_cm"]["value"], 181)
         metric = _current_performance_context(
             {

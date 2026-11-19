@@ -73,6 +73,13 @@ class WahooWeightPushService:
                 extra={"event": "wahoo_weight_push_error", "context": {"error_type": type(error).__name__}},
             )  # fmt: skip
 
+    def mark_restored(self) -> None:
+        """An undo put an entered weight back (#3640): leave it pending, so the
+        next Wahoo refresh sends the newest weight; the undo writes nothing."""
+        with self._database_manager.unit_of_work() as db:
+            state = self._state(db)
+        self._store(state, pending=True)
+
     def retry_pending(self) -> str | None:
         """Retry a pending push after a Wahoo refresh; None when none waits."""
         try:

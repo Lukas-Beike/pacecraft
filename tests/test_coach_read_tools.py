@@ -72,6 +72,14 @@ class CoachReadToolServiceTests(unittest.TestCase):
             self.service.execute("read_profile", {}),
             {"ok": True, "profile": {"name": "Athlete"}},
         )
+        # #3640: the stored weight and body fat are no current value.
+        self.profile.get.return_value = {
+            "name": "Athlete", "weight_kg": "80", "body_fat_pct": "15"
+        }  # fmt: skip
+        self.assertEqual(
+            {"name": "Athlete"}, self.service.execute("read_profile", {})["profile"]
+        )
+        self.profile.get.return_value = {"name": "Athlete"}
         self.assertEqual(
             self.service.execute(
                 "read_training_state",

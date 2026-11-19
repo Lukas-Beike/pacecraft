@@ -19,7 +19,6 @@ from backend.errors import AppError
 from backend.history.service import ChangeHistoryService
 from backend.history.undo_service import HistoryUndoService
 from backend.http_api.athlete_put import AthletePutRoutes
-from backend.sync.garmin_profile_body_export import GarminProfileBodyExport
 
 
 class ProfileCoordinatorTests(unittest.TestCase):
@@ -71,34 +70,16 @@ class ProfileCoordinatorTests(unittest.TestCase):
                 done.set()
 
         entered, release = threading.Event(), threading.Event()
-        saved = {"weight_kg": "75", "body_fat_pct": "15", "timezone": "UTC"}
-        export_profile = Mock(mutation_coordinator=self.coordinator)
-        export_profile.get.return_value = saved
-        export_profile.revision.return_value = "synthetic-revision"
-        client = Mock()
-
-        def upload(**_kwargs):
-            entered.set()
-            if not release.wait(5):
-                raise TimeoutError("synthetic")
-            return {
-                "detailedImportResult": {
-                    "successes": [{"id": "synthetic"}],
-                    "failures": [],
-                }
-            }
-
-        client.add_body_composition.side_effect = upload
-        reader = Mock()
-        reader.configured.return_value = True
-        reader._authenticated_client.return_value = (client, "synthetic")
-        fixture = Mock()
-        fixture.path.return_value = None
-        exporter = GarminProfileBodyExport(export_profile, reader, fixture, None)
         results = []
-        export_thread = threading.Thread(
-            target=lambda: results.append(exporter.export(saved, "synthetic-revision"))
-        )
+
+        def hold():
+            # A long holder of the profile coordinator, as a provider call once
+            # was (the profile body export left with #3640).
+            with self.coordinator:
+                entered.set()
+                results.append("held" if release.wait(5) else "timeout")
+
+        export_thread = threading.Thread(target=hold)
         export_thread.start()
         self.assertTrue(entered.wait(2))
         thread = threading.Thread(target=run)
@@ -112,7 +93,7 @@ class ProfileCoordinatorTests(unittest.TestCase):
             release.set()
             export_thread.join(5)
             thread.join(5)
-        self.assertEqual(results, ["success"])
+        self.assertEqual(results, ["held"])
         self.assertTrue(done.is_set())
         self.assertEqual(errors, [])
         with self.manager.reader() as db:

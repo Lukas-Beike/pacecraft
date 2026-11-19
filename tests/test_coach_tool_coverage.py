@@ -31,6 +31,8 @@ from backend.providers import openai_requests
 from backend.providers.openai_responses_adapter import model_turn, request_payload
 from backend.sync import canonical_ingest
 from backend.sync.adaptive import IllnessPauseSyncService
+from backend.sync.garmin_body_push import GarminBodyPushService
+from backend.sync.wahoo_weight_push import WahooWeightPushService
 
 
 def covers(*cases):
@@ -2481,6 +2483,59 @@ class CoachToolCoverageTests(DialogueHarness, unittest.TestCase):
         self.assertEqual(
             [{"library_workout_id": local_id, "remove": True}], remove_entries
         )
+
+    @covers("save_body_entry:success", "delete_body_entry:success")
+    def test_the_coach_records_weight_and_body_fat_in_koerper(self):
+        # #3640: the profile holds no weight or body fat; the Coach saves them
+        # as Körper entries, and the pushes run only after the turn commits.
+        pushed = []
+        with (
+            patch.object(
+                GarminBodyPushService,
+                "push",
+                autospec=True,
+                side_effect=lambda _self, day: pushed.append(("garmin", day)) or "sent",
+            ),
+            patch.object(
+                WahooWeightPushService,
+                "start",
+                autospec=True,
+                side_effect=lambda _self: pushed.append(("wahoo", None)),
+            ),
+        ):
+            saved = self.run_tool(
+                "save_body_entry",
+                {
+                    "kind": "weight",
+                    "date": "2026-09-07",
+                    "value": 80.4,
+                    "replace": False,
+                },
+                ["local_body"],
+                message="Ich wiege heute 80,4 kg.",
+            )
+            self.assertEqual((80.4, "scheduled"), (saved["value"], saved["remote"]))
+            replaced = self.run_tool(
+                "save_body_entry",
+                {
+                    "kind": "weight",
+                    "date": "2026-09-07",
+                    "value": 80.1,
+                    "replace": True,
+                },
+                ["local_body"],
+                message="Korrigiere das Gewicht auf 80,1 kg.",
+            )
+            self.assertEqual(80.1, replaced["value"])
+            removed = self.run_tool(
+                "delete_body_entry",
+                {"kind": "weight", "date": "2026-09-07"},
+                ["local_body"],
+                message="Lösch das Gewicht von heute.",
+            )
+        self.assertEqual("weight", removed["kind"])
+        self.assertEqual(3, sum(1 for name, _ in pushed if name == "garmin"))
+        self.assertEqual({"entries": []}, server.ATHLETE_DATA.weight_entries().read())
 
     @covers(
         "read_training_records:success",

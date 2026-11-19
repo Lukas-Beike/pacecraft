@@ -6,7 +6,10 @@ import unittest
 from datetime import date
 from unittest.mock import Mock
 
+from support import temp_database
+
 from backend.activities.feedback import ActivityFeedbackService
+from backend.athlete.body_entry import BODY_FAT_ENTRY, WEIGHT_ENTRY, BodyEntryService
 from backend.athlete.checkins import CheckinService
 from backend.coach.athlete_record_tools import CoachAthleteRecordToolService
 from backend.coach.dialogue_action import CoachDialogueActionService
@@ -100,6 +103,68 @@ class CoachAthleteRecordToolServiceTests(unittest.TestCase):
             {"description": "Oatmeal", "kcal": 450}
         )
         self.nutrition.delete_meal.assert_called_once_with("nut-1")
+
+    def test_the_body_tools_record_through_the_koerper_entries(self):
+        # #3640: weight and body fat left the profile; the Coach records them as
+        # Körper entries, with the dialogs' Garmin and Wahoo writes.
+        manager = temp_database(self, schema=True)
+        pushed: list[tuple[str, date]] = []
+
+        def entries(kind):
+            return BodyEntryService(
+                manager,
+                now=lambda: "2026-11-19T10:00:00+00:00",
+                today=lambda: date(2026, 11, 19),
+                entry=BODY_FAT_ENTRY if kind == "body_fat" else WEIGHT_ENTRY,
+                on_change=lambda day: pushed.append((kind, day)) or "scheduled",
+            )
+
+        service = CoachAthleteRecordToolService(
+            Mock(), Mock(), Mock(), body_entries=entries
+        )
+
+        def run(name, arguments, scope="local_body"):
+            return service.execute(
+                name, arguments, {"operation": name, "authorization_scope": [scope]}
+            )
+
+        saved = run(
+            "save_body_entry", {"kind": "weight", "date": "2026-11-18", "value": 80.4}
+        )
+        self.assertEqual(
+            {"ok": True, "stored_locally": True, "kind": "weight",
+             "date": "2026-11-18", "value": 80.4, "remote": "scheduled"},
+            saved,
+        )  # fmt: skip
+        run(
+            "save_body_entry", {"kind": "body_fat", "date": "2026-11-18", "value": 14.5}
+        )
+        # An existing day's value changes only on an explicit replace.
+        with self.assertRaises(AppError) as exists:
+            run(
+                "save_body_entry", {"kind": "weight", "date": "2026-11-18", "value": 80}
+            )
+        self.assertEqual((409, "body_entry_exists"),
+                         (exists.exception.status, exists.exception.reason))  # fmt: skip
+        run(
+            "save_body_entry",
+            {"kind": "weight", "date": "2026-11-18", "value": 80, "replace": True},
+        )
+        removed = run("delete_body_entry", {"kind": "body_fat", "date": "2026-11-18"})
+        self.assertEqual(("body_fat", "2026-11-18"), (removed["kind"], removed["date"]))
+        self.assertEqual(
+            [("weight", date(2026, 11, 18)), ("body_fat", date(2026, 11, 18)),
+             ("weight", date(2026, 11, 18)), ("body_fat", date(2026, 11, 18))],
+            pushed,
+        )  # fmt: skip
+        # Scope, kind and authorization are checked before any write.
+        for name, arguments, scope in (
+            ("save_body_entry", {"kind": "weight", "date": "2026-11-17", "value": 80}, "local_profile"),
+            ("save_body_entry", {"kind": "height", "date": "2026-11-17", "value": 180}, "local_body"),
+        ):  # fmt: skip
+            with self.subTest(arguments=arguments), self.assertRaises(AppError):
+                run(name, arguments, scope)
+        self.assertEqual(4, len(pushed))
 
     def test_a_purpose_marking_reaches_the_feedback_service(self):
         for purpose in ("commute", None):

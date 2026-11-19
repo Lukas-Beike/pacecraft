@@ -15,6 +15,7 @@ from dataclasses import dataclass
 from datetime import date
 from typing import Any, Final
 
+from backend import change_history
 from backend.athlete.skinfolds import local_provenance
 from backend.canonical.records import MetricValue, Observation
 from backend.canonical.validation import METRIC_BOUNDS
@@ -111,20 +112,16 @@ class BodyEntryService:
         """Save one value; an entry of the same day is replaced."""
         day = self._day(payload.get("date"))
         value = self._value(payload.get(self._entry.key))
+        kind = self._entry.kind
         with self._database_manager.unit_of_work() as db:
-            self._retire(db, day)
-            canonical_store.upsert_observation(
-                db,
-                Observation(
-                    kind=self._entry.kind,
-                    value=MetricValue(value, self._entry.unit),
-                    observed_on=day,
-                    observed_at=None,
-                    provenance=local_provenance(),
-                ),
-                mapper_version=MAPPER_VERSION,
-                now=self._now(),
-            )
+            before = stored_entry(db, kind, day)
+            _retire(db, kind, day, self._now())
+            _store(db, self._entry, day, value, self._now())
+            # Recorded, so a Coach turn that saved it can be undone (#3640).
+            change_history.record_change(
+                db, ENTITY_TYPE, entity_id(kind, day), "update" if before else "create",
+                before, {"date": day.isoformat(), "value": value},
+            )  # fmt: skip
         return self._changed(day)
 
     def remove(self, payload: Mapping[str, Any]) -> dict[str, Any]:
@@ -132,9 +129,14 @@ class BodyEntryService:
         if payload.get("confirmed") is not True:
             raise AppError(400, self._entry.confirm)
         day = self._day(payload.get("date"))
+        kind = self._entry.kind
         with self._database_manager.unit_of_work() as db:
-            if not self._retire(db, day):
+            before = stored_entry(db, kind, day)
+            if not _retire(db, kind, day, self._now()):
                 raise AppError(404, self._entry.missing)
+            change_history.record_change(
+                db, ENTITY_TYPE, entity_id(kind, day), "delete", before, None
+            )
         return self._changed(day)
 
     def _changed(self, day: date) -> dict[str, Any]:
@@ -142,20 +144,6 @@ class BodyEntryService:
         if self._on_change is not None:
             read["remote"] = self._on_change(day)
         return read
-
-    def _retire(self, db: Any, day: date) -> int:
-        cursor = db.execute(
-            "UPDATE observations SET state = 'retired', updated_at = ? "
-            "WHERE metric = ? AND provider IS NULL AND source_kind = ? "
-            "AND observed_on = ? AND state = 'active'",
-            (
-                self._now(),
-                self._entry.kind.value,
-                SourceKind.ATHLETE_ENTERED.value,
-                day.isoformat(),
-            ),
-        )
-        return int(cursor.rowcount or 0)
 
     def _day(self, value: Any) -> date:
         try:
@@ -182,3 +170,107 @@ class BodyEntryService:
                 f"{entry.unit} liegen.",
             )
         return round(number, 1)
+
+
+# The change-history entity of an entered body value (#3640).
+ENTITY_TYPE: Final = "body_entry"
+_ENTRIES: Final = {entry.kind: entry for entry in (WEIGHT_ENTRY, BODY_FAT_ENTRY)}
+
+
+def entity_id(kind: MetricKind, day: date) -> str:
+    return f"{kind.value}:{day.isoformat()}"
+
+
+def stored_entry(db: Any, kind: MetricKind, day: date) -> dict[str, Any] | None:
+    """The day's active entry as change history records it, else None."""
+    row = db.execute(
+        "SELECT value FROM observations WHERE metric = ? AND provider IS NULL "
+        "AND source_kind = ? AND observed_on = ? AND state = 'active'",
+        (kind.value, SourceKind.ATHLETE_ENTERED.value, day.isoformat()),
+    ).fetchone()
+    if row is None:
+        return None
+    value = row["value"] if isinstance(row, Mapping) else row[0]
+    return {"date": day.isoformat(), "value": float(value)}
+
+
+def _retire(db: Any, kind: MetricKind, day: date, now: str) -> int:
+    cursor = db.execute(
+        "UPDATE observations SET state = 'retired', updated_at = ? "
+        "WHERE metric = ? AND provider IS NULL AND source_kind = ? "
+        "AND observed_on = ? AND state = 'active'",
+        (now, kind.value, SourceKind.ATHLETE_ENTERED.value, day.isoformat()),
+    )
+    return int(cursor.rowcount or 0)
+
+
+def _store(db: Any, entry: BodyEntryKind, day: date, value: float, now: str) -> None:
+    canonical_store.upsert_observation(
+        db,
+        Observation(
+            kind=entry.kind,
+            value=MetricValue(value, entry.unit),
+            observed_on=day,
+            observed_at=None,
+            provenance=local_provenance(),
+        ),
+        mapper_version=MAPPER_VERSION,
+        now=now,
+    )
+
+
+class BodyEntryHistory:
+    """Change history's reader and restorer of entered body values (#3640).
+
+    ``on_restore`` gets the metric and day of each value an undo put back,
+    inside the undo's transaction, so the Garmin (#3403) and Wahoo (#3559)
+    mirrors can follow it with their next refresh.
+    """
+
+    def __init__(
+        self,
+        database_manager: Any,
+        now: Callable[[], str],
+        on_restore: Callable[[MetricKind, date], Any] | None = None,
+    ) -> None:
+        self._database_manager = database_manager
+        self._now = now
+        self._on_restore = on_restore
+
+    def current(
+        self, db: Any, record: str
+    ) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
+        kind, day = self._parse(record)
+        value = stored_entry(db, kind, day)
+        return value, change_history.audit_projection(ENTITY_TYPE, value)
+
+    def restore_in_transaction(
+        self,
+        db: Any,
+        record: str,
+        current: dict[str, Any] | None,
+        target: dict[str, Any] | None,
+    ) -> dict[str, Any] | None:
+        """Put the day back: the recorded value, or no entry."""
+        del current  # the day's row is read again inside the transaction
+        kind, day = self._parse(record)
+        _retire(db, kind, day, self._now())
+        restored = None
+        if target is not None and target.get("value") is not None:
+            value = float(target["value"])
+            _store(db, _ENTRIES[kind], day, value, self._now())
+            restored = {"date": day.isoformat(), "value": value}
+        if self._on_restore is not None:
+            self._on_restore(kind, day)
+        return restored
+
+    @staticmethod
+    def _parse(record: str) -> tuple[MetricKind, date]:
+        name, _, day = str(record).partition(":")
+        try:
+            kind = MetricKind(name)
+            if kind not in _ENTRIES:
+                raise ValueError(name)
+            return kind, date.fromisoformat(day)
+        except ValueError as exc:
+            raise AppError(400, "Unbekannte lokale Änderung.") from exc

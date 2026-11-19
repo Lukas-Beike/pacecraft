@@ -90,7 +90,6 @@ $("#garmin-metric-export-toggle").addEventListener("click", (event) => toggleMet
 $("#garminFullResyncButton").addEventListener("click", () => fullResync(providerIds().garmin));
 $("#profileForm").addEventListener("submit", saveProfile);
 $("#firstThresholdAdopt").addEventListener("click", adoptFirstThreshold);
-$("#retryBodyGarmin").addEventListener("click", retryBodyGarmin);
 // The zone editor sits inside the profile section list but saves its own form (#2262).
 $("#profileForm").addEventListener("input", (event) => {
   if (event.target.form !== event.currentTarget) return;
