@@ -35,25 +35,41 @@ def commit(repo, name, text, subject):
 CARD = "docs/performance-methods/m.md"
 
 
-def method_card(version, issues):
-    """A card with its version lines and, as real cards, the generated table
-    row repeating the code's version (Gitar on #3663)."""
+def method_card(version, issues, status="drafted"):
+    """A card with its version lines, its Status right below them, and, as real
+    cards, the generated table row repeating the code's version (Gitar on
+    #3663, #3698)."""
     return (
         f"- **Card version:** {version}\n"
-        f"- **Method ID:** m v{version} ({issues})\n\nText.\n\n"
+        f"- **Method ID:** m v{version} ({issues})\n"
+        f"- **Status:** {status}\n\nText.\n\n"
         "<!-- BEGIN GENERATED CONSTANTS -->\n"
         f"| `METHOD_VERSION` | `{version}` |\n"
         "<!-- END GENERATED CONSTANTS -->\n"
     )
 
 
-def method_files(repo, version, issues, subject):
+def method_files(repo, version, issues, subject, status="drafted"):
     """A method's code version line and its card, committed together (#3649)."""
     (repo / "m.py").write_text(f"METHOD_VERSION = {version}\nx = 1\n", encoding="utf-8")
     (repo / CARD).parent.mkdir(parents=True, exist_ok=True)
-    (repo / CARD).write_text(method_card(version, issues), encoding="utf-8")
+    (repo / CARD).write_text(method_card(version, issues, status), encoding="utf-8")
     git(repo, "add", "m.py", CARD)
     git(repo, "commit", "-q", "-m", subject)
+
+
+def regenerated_table(root, documents):
+    """As the card generator: the table row repeats the code's version."""
+    code = (root / "m.py").read_text(encoding="utf-8").split("\n")[0]
+    path = root / CARD
+    lines = path.read_text(encoding="utf-8").split("\n")
+    row = f"| `METHOD_VERSION` | `{code.rsplit(' ', 1)[1]}` |"
+    path.write_text(
+        "\n".join(
+            row if line.startswith("| `METHOD_VERSION`") else line for line in lines
+        ),
+        encoding="utf-8",
+    )
 
 
 def make_sonar(directory):
@@ -218,7 +234,9 @@ class BranchSyncTests(unittest.TestCase):
         self.assertIn("git rebase --abort", out)
         self.assertTrue((self.work / ".git" / "rebase-merge").exists())
 
-    def method_on_both_sides(self, develop: int, branch: int) -> None:
+    def method_on_both_sides(
+        self, develop: int, branch: int, develop_status: str = "drafted"
+    ) -> None:
         """Method v10 on develop; then the branch and develop each bump it."""
         git(self.work, "checkout", "-q", "develop")
         method_files(self.work, 10, "#1, #2", "chore: method")
@@ -227,7 +245,7 @@ class BranchSyncTests(unittest.TestCase):
         git(self.work, "rebase", "-q", "develop")
         method_files(self.work, branch, "#1, #2, #4", "fix: four")
         git(self.work, "checkout", "-q", "develop")
-        method_files(self.work, develop, "#1, #2, #3", "fix: three")
+        method_files(self.work, develop, "#1, #2, #3", "fix: three", develop_status)
         git(self.work, "push", "-q", "origin", "develop")
         git(self.work, "checkout", "-q", "feat/x")
 
@@ -297,6 +315,67 @@ class BranchSyncTests(unittest.TestCase):
             self.assertEqual(1, code)
             self.assertIn("the version bump in m.py equals origin/develop's", out)
             self.assertEqual(before, git(self.work, "rev-parse", "HEAD"))
+
+    def test_a_status_edit_next_to_the_version_lines_merges_line_by_line(self):
+        # #3698: develop also edited the card's Status, right below its version
+        # lines, so git puts them into one block; each line merges on its own.
+        self.method_on_both_sides(develop=12, branch=11, develop_status="implemented")
+        with mock.patch.object(branch_sync, "regenerate", regenerated_table):
+            code, out, _ = self.sync()
+        self.assertEqual(0, code, out)
+        self.assertEqual(
+            method_card(13, "#1, #2, #3, #4", "implemented"),
+            (self.work / CARD).read_text("utf-8"),
+        )
+
+    def test_bump_method_takes_the_targets_number_plus_one(self):
+        # #3698: both sides took v11; with --bump-method the branch lands on
+        # v12, the code line included, in one commit, instead of refusing.
+        self.method_on_both_sides(develop=11, branch=11)
+        with mock.patch.object(branch_sync, "regenerate", regenerated_table):
+            code, out, _ = self.sync("--bump-method")
+        self.assertEqual(0, code, out)
+        self.assertEqual(
+            "METHOD_VERSION = 12\nx = 1\n", (self.work / "m.py").read_text("utf-8")
+        )
+        self.assertEqual(
+            method_card(12, "#1, #2, #3, #4"), (self.work / CARD).read_text("utf-8")
+        )
+        self.assertEqual(
+            "chore(tooling): bump the method version on top of origin/develop",
+            git(self.work, "log", "-1", "--format=%s"),
+        )
+
+    def test_a_second_bump_commit_is_never_bumped_twice(self):
+        # Gitar on #3702: develop 10 -> 11, the branch 10 -> 11 then 11 -> 12.
+        # The second commit's card no longer holds develop's own number, so it
+        # stops for a person instead of running ahead to v13.
+        self.method_on_both_sides(develop=11, branch=11)
+        method_files(self.work, 12, "#1, #2, #4", "fix: four again")
+        with mock.patch.object(branch_sync, "regenerate", regenerated_table):
+            code, out, _ = self.sync("--bump-method")
+        self.assertEqual(1, code)
+        self.assertIn(CARD, out)
+        self.assertNotIn("v13", (self.work / CARD).read_text("utf-8"))
+        git(self.work, "rebase", "--abort")
+
+    def test_a_failed_bump_leaves_the_branch_as_it_was(self):
+        # Gitar on #3702: a generator failing during --bump-method resets to
+        # the pre-rebase head with a clean tree, as a refusal does.
+        self.method_on_both_sides(develop=11, branch=11)
+        before = git(self.work, "rev-parse", "HEAD")
+
+        def failing(_root, _documents):
+            raise CliError("generator failed")
+
+        with mock.patch.object(branch_sync, "regenerate", failing):
+            code, out, _ = self.sync("--bump-method")
+        self.assertEqual(1, code)
+        self.assertIn("bumping the method version failed", out)
+        self.assertEqual(before, git(self.work, "rev-parse", "HEAD"))
+        self.assertEqual(
+            "", git(self.work, "status", "--porcelain", "--untracked-files=no")
+        )
 
     def test_lists_invalid_subjects(self):
         commit(self.work, "c.txt", "1\n", "wip stuff")

@@ -7,9 +7,14 @@ description: Base skill. Rebase the current feature branch onto origin/develop, 
 
 ```powershell
 python scripts/branch_sync.py [--onto origin/develop] [--push] [--allow-root <file>]
-                              [--after-pr <number>]
+                              [--after-pr <number>] [--bump-method]
 ```
 
+- **Method versions** (#3649, #3698): a conflict in a method's version lines
+  takes upstream's number plus the branch's bump and keeps both issue lists;
+  other lines of the same block merge one by one. When both sides bumped to
+  the same number the rebase refuses; rerun with `--bump-method` to take the
+  target's number + 1 in one extra commit.
 - **Stacked layer** (#3243): once the PR this branch was built on is
   squash-merged, run `--after-pr <that PR> --push`. After the fetch it refuses
   (exit 1, nothing changed) unless that PR is merged, the target holds its
