@@ -17,7 +17,8 @@ app could not be reached or read. `--section <name>` (repeatable) prints,
 instead of the checks, only the allow-listed counts, flags, state words and
 ages in hours (a `*_at` time as `*_hours`) of the sections in SECTION_FIELDS,
 or the sums of a section in DERIVED_SECTIONS (`coach_local_first`: the #3080
-counts over the Coach history); the state words in FAIL_STATES and a missing
+counts over the Coach history; `route_timings`: count, p50, p95 and maximum ms
+per route pattern, #3630); the state words in FAIL_STATES and a missing
 section print as FAIL. `--check-docs` also compares the production schema and
 version with the production line in AGENTS.md and the db-migrations skill and
 with the docs/schema-history.md row, and names the exact change when stale;
@@ -494,8 +495,33 @@ def local_first_lines(report: dict[str, Any]) -> list[tuple[str, str]]:
     ]
 
 
+ROUTE_TIMING_FIELDS = ("count", "p50_ms", "p95_ms", "max_ms", "disconnects")
+
+
+def route_timing_lines(report: dict[str, Any]) -> list[tuple[str, str]]:
+    """The slowest routes since start by route pattern (no ids or queries):
+    counts and milliseconds only (#3017, #3630)."""
+    routes = (report.get("runtime") or {}).get("slowest_routes")
+    if not isinstance(routes, list):
+        return [("FAIL", "section runtime.slowest_routes missing")]
+    lines = []
+    for row in routes:
+        if not isinstance(row, dict) or not isinstance(row.get("route"), str):
+            continue
+        values = " ".join(
+            f"{name} {json.dumps(row.get(name))}"
+            for name in ROUTE_TIMING_FIELDS
+            if printable(row.get(name))
+        )
+        lines.append(("info", f"route_timings.{row['route']} {values}"))
+    return lines or [("info", "section route_timings empty")]
+
+
 # Sections `--section` derives from the report instead of printing its leaves.
-DERIVED_SECTIONS = {"coach_local_first": local_first_lines}
+DERIVED_SECTIONS = {
+    "coach_local_first": local_first_lines,
+    "route_timings": route_timing_lines,
+}
 
 
 def named_section_lines(report: dict[str, Any], name: str) -> list[tuple[str, str]]:
