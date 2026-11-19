@@ -954,8 +954,11 @@ class RouteTimingTests(unittest.TestCase):
         timings.disconnect("GET /api/left")
         rows = timings.summary()
         self.assertEqual(rows[0]["route"], f"GET /api/r{RouteTimings.SHOWN + 2}")
-        # p95 of 1..20 times 18 is the 19th value: 19 * 18.
-        self.assertEqual((rows[0]["p95_ms"], rows[0]["max_ms"]), (342, 360))
+        # p95 of 1..20 times 18 is the 19th value: 19 * 18; the median (#3630)
+        # the 10th: 10 * 18.
+        self.assertEqual(
+            (rows[0]["p50_ms"], rows[0]["p95_ms"], rows[0]["max_ms"]), (180, 342, 360)
+        )
         self.assertEqual(len(rows), RouteTimings.SHOWN + 1)
         self.assertEqual(rows[-1]["route"], "GET /api/left")
         self.assertIsNone(rows[-1]["p95_ms"])
