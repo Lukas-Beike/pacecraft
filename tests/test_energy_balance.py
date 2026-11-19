@@ -432,6 +432,45 @@ class AdaptiveTdeeTests(unittest.TestCase):
         self.assertTrue(balance.is_stable(stepped[0]))
         self.assertEqual(stepped[0].adaptive_tdee, flat[0].adaptive_tdee)
 
+    def test_a_half_logged_window_prices_only_its_logged_span(self) -> None:
+        # #3667, L31's phase switch: true expenditure 2,600, logged at 2,600,
+        # then ``unlogged`` days eaten at 2,100 without logging, weighed daily.
+        def switch(unlogged: int) -> tuple[balance.EnergyWindow, ...]:
+            weight, days = 80.0, {}
+            for n in range(120):
+                logged = n < 120 - unlogged
+                true = 2600.0 if logged else 2100.0
+                weight += (true - TRUE_TDEE) / DENSITY
+                days[END - timedelta(days=119 - n)] = balance.DayInputs(
+                    intake_kcal=true if logged else None,
+                    entries=3 if logged else 0,
+                    weight_kg=weight,
+                    activity_kcal=600.0,
+                )
+            return balance.energy_windows(balance.EnergyInputs(days, {}, None), END)
+
+        # Never the mixed 2,688 / 2,863 the whole span gave.
+        tdees = [
+            w.adaptive_tdee.kcal
+            for unlogged in (5, 7, 14, 35)
+            for w in switch(unlogged)
+            if w.adaptive_tdee is not None
+        ]
+        self.assertGreater(len(tdees), 30)
+        self.assertLess(max(abs(t - TRUE_TDEE) for t in tdees), 1.0)
+        latest = switch(14)[-1]
+        # 14 logged days span 13: too short to price, the store stays whole
+        # for the deficit card ("Nur Waage", #3603).
+        self.assertEqual(
+            ("logged_span", 14), (latest.insufficient, latest.complete_days)
+        )
+        assert latest.store is not None
+        # Its 14 days at 500 below show as a deficit over the whole window
+        # (the least-squares line through the kink reads about 260).
+        self.assertLess(latest.store.kcal_per_day, -200.0)
+        # 23 logged days span 22: the window keeps its own TDEE.
+        self.assertIsNotNone(switch(5)[-1].adaptive_tdee)
+
     def test_flat_losing_and_gaining_weight_is_stable(self) -> None:
         for intake in (2600.0, 2100.0, 3100.0):
             with self.subTest(intake=intake):

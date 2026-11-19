@@ -1028,11 +1028,13 @@ class EstimatedIntakeTests(unittest.TestCase):
     def test_an_unlogged_phase_recovers_its_known_intake_within_the_band(
         self,
     ) -> None:
-        # The windows across the switch fail the neighbour check (#3614), so
-        # the newest calibration ends 8 weeks before the latest window.
+        # The half-logged windows across the switch price only their logged
+        # span (#3667): too short for a basis, they stay out, and the newest
+        # calibration is the last fully logged window, 5 weeks back (it was
+        # 8 while their mixed phases failed the neighbour check, #3614).
         estimate = scale_phase(35)
         self.assertEqual(
-            (None, "2026-09-19", 56),
+            (None, "2026-10-10", 35),
             (
                 estimate["missing"],
                 estimate["calibration_end"],
@@ -1044,12 +1046,18 @@ class EstimatedIntakeTests(unittest.TestCase):
 
     def test_enough_logged_days_never_show_an_estimate(self) -> None:
         self.assertIsNone(scale_phase(0))
-        self.assertIsNone(scale_phase(14))
+        # 23 logged days span 22, enough for the window's own TDEE (#3667).
+        self.assertIsNone(scale_phase(5))
+        # 14 logged days at the window's start span 13 days, too short to
+        # price (#3667): the window shows the estimate instead of a mixed
+        # TDEE, the 28 days' true mean intake of 2,350 within its band.
+        half = scale_phase(14)
+        self.assertLessEqual(abs(half["kcal"] - 2350), half["band_kcal"])
 
     def test_an_old_calibration_or_a_large_weight_change_gives_its_reason(
         self,
     ) -> None:
-        old = scale_phase(49, eaten=2550.0)
+        old = scale_phase(70, eaten=2550.0)
         self.assertEqual(("calibration_age", None), (old["missing"], old["kcal"]))
         moved = scale_phase(28, eaten=1600.0)
         self.assertEqual(("weight_change", None), (moved["missing"], moved["kcal"]))

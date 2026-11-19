@@ -1675,7 +1675,7 @@ function energyGoalStrip(read) {
 // Each source keeps its chart colour in the table, the error chart and the hit-rate bars.
 // The device row's name is the provider label of its daily totals in the read (#3323).
 const ENERGY_SOURCES = [["katch_mcardle", "Katch-McArdle", 1], ["cunningham", "Cunningham", 2], ["device", null, 3], ["own", "Aus deinen Daten", 4]];
-const ENERGY_INSUFFICIENT = { intake_days: "unter 14 vollständige Ernährungstage", weighins: "unter 8 Wiegungen", weight_span: "Wiegungen über weniger als 21 Tage" };
+const ENERGY_INSUFFICIENT = { intake_days: "unter 14 vollständige Ernährungstage", weighins: "unter 8 Wiegungen", weight_span: "Wiegungen über weniger als 21 Tage", logged_span: "erfasste Tage über weniger als 21 Tage" };
 const ENERGY_STEP_SOURCES = { walks: "aus Gehen", height: "aus Körpergröße" };
 // The own resting residual below every physiological reference is not a value (#3255).
 const ENERGY_IMPLAUSIBLE = "nicht plausibel";

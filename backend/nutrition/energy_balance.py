@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import math
 import statistics
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from datetime import date, timedelta
 from itertools import pairwise
@@ -28,7 +28,7 @@ from backend.performance.activity_energy import (
 
 METHOD_ID = "adaptive-expenditure"
 # Bump when a formula or constant below changes the estimate.
-METHOD_VERSION = 19
+METHOD_VERSION = 20
 # Days per window and windows per week of the rolling view (#3099, #3100).
 WINDOW_DAYS = 28
 # A window needs this many complete logging days, weigh-ins and days between
@@ -244,6 +244,11 @@ class EnergyWindow:
     # False when an overlapping window differs by more than the days they do
     # not share can explain (#3614); the band then holds that difference.
     stable: bool = True
+    # The mean logged intake of its complete days: TDEE plus the stored energy
+    # of their span, which can differ from the whole window's (#3667).
+    intake_kcal: float | None = None
+    # The weigh-ins inside that span, which set the TDEE band's dof (#3667).
+    logged_weighins: int = 0
 
 
 def energy_density(share: float) -> float:
@@ -300,7 +305,9 @@ def window_t(window: EnergyWindow) -> float:
     """
     if window.adaptive_tdee is None:
         return t_quantile(window.weighins - 2)
-    return t_quantile(_dof(window.complete_days, window.weighins))
+    # The TDEE's own dof: the weigh-ins of its logged span (#3667).
+    weighins = window.logged_weighins or window.weighins
+    return t_quantile(_dof(window.complete_days, weighins))
 
 
 def _tdee(
@@ -330,6 +337,18 @@ def _insufficient(complete_days: int, weighins: Sequence[date]) -> str | None:
     if complete_days < MIN_COMPLETE_DAYS:
         return "intake_days"
     return _weighins_short(weighins)
+
+
+def logged_weights(
+    weights: Mapping[date, float], complete: Iterable[date]
+) -> dict[date, float]:
+    """The weigh-ins between the first and the last complete day: the span
+    the intake mean covers, so the TDEE never prices a phase it did not log
+    (#3667); all of them without a complete day."""
+    days = sorted(complete)
+    if not days:
+        return dict(weights)
+    return {d: w for d, w in weights.items() if days[0] <= d <= days[-1]}
 
 
 def _scale_store(
@@ -527,6 +546,27 @@ def _persistence(residuals: Sequence[float]) -> float:
     return math.sqrt((1.0 + r) / (1.0 - r))
 
 
+def _logged_basis(
+    inputs: EnergyInputs,
+    trend: Mapping[date, float],
+    window: tuple[Mapping[date, float], Mapping[date, DayInputs], StoredEnergy | None],
+    end: date,
+    share: FatShare | None,
+) -> tuple[dict[date, float], str | None, StoredEnergy | None]:
+    """The weigh-ins of the complete days' span, why the window has no
+    expenditure (the minimum basis on that span, #3667) and the store the
+    expenditure prices over that span."""
+    weights, complete, store = window
+    logged = logged_weights(weights, complete)
+    reason = _insufficient(len(complete), sorted(logged))
+    if reason in {"weighins", "weight_span"} and not _weighins_short(sorted(weights)):
+        # The weigh-ins carry the window; only its logged days span too little.
+        reason = "logged_span"
+    if len(logged) == len(weights):
+        return logged, reason, store
+    return logged, reason, _scale_store(inputs, trend, logged, end, share)
+
+
 def _window(
     inputs: EnergyInputs,
     trend: Mapping[date, float],
@@ -550,13 +590,19 @@ def _window(
     tef = (
         statistics.fmean([day_tef(v) for v in complete.values()]) if complete else None
     )
-    reason = _insufficient(len(complete), weighins)
-    # The stored energy needs weigh-ins only; the expenditure also logged meals (#3603).
+    # The stored energy needs weigh-ins only; the expenditure also logged meals
+    # (#3603): the deficit card keeps the window's whole span.
     store = _scale_store(inputs, trend, weights, end, share)
-    tdee = unflagged = derived = None
-    if reason is None and store is not None:
+    logged, reason, intake_store = _logged_basis(
+        inputs, trend, (weights, complete, store), end, share
+    )
+    tdee = unflagged = derived = intake = None
+    if reason is None and intake_store is not None:
         everything = [(v.intake_kcal or 0.0, v.flagged_kcal) for v in complete.values()]
-        tdee = _tdee(everything, store.kcal_per_day, store.sd, len(weighins))
+        intake = statistics.fmean(kcal for kcal, _ in everything)
+        tdee = _tdee(
+            everything, intake_store.kcal_per_day, intake_store.sd, len(logged)
+        )
         unflagged = tdee if flagged == 0 else None
         if tdee is not None and raw is not None and tef is not None:
             # Activity and digestion carry their M11 errors (#3552).
@@ -584,6 +630,8 @@ def _window(
         sport_kcal=None if sport_raw is None else sport_raw * factor,
         calibration_factor=factor,
         store=store,
+        intake_kcal=intake,
+        logged_weighins=len(logged),
         flagged_kcal_per_day=statistics.fmean(
             [v.flagged_kcal for v in complete.values()]
         )
@@ -713,7 +761,10 @@ def _difference_terms(
         for d, v in days.items()
         if is_complete(v, inputs.rmr_kcal)
     }
-    weights = {d: v.weight_kg for d, v in days.items() if v.weight_kg is not None}
+    # The same span the window's TDEE prices (#3667).
+    weights = logged_weights(
+        {d: v.weight_kg for d, v in days.items() if v.weight_kg is not None}, intake
+    )
     first = min(weights)
     xs = {d: float((d - first).days) for d in weights}
     _, sxx = _slope(list(xs.values()), list(weights.values()))
