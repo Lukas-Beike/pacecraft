@@ -158,12 +158,12 @@ class CoachRepairKeyTests(unittest.TestCase):
         self.assertEqual(
             {
                 "objects": [
-                    "meal_date,meal_type;meal_date=2026-11-19;meal_type=dinner:n1"
+                    "meal_date,meal_time;meal_date=2026-11-19;meal_time=19:00:n1"
                 ]
             },
             coach_repair_key(
                 "log_nutrition_template",
-                {"id": "n1", "meal_date": "2026-11-19", "meal_type": "dinner"},
+                {"id": "n1", "meal_date": "2026-11-19", "meal_time": "19:00"},
             ),
         )
 

@@ -159,11 +159,11 @@ class UnresolvedCoachStepsTests(unittest.TestCase):
         self.assertEqual([delete], unresolved_coach_steps([delete, redone]))
 
     def test_a_scope_failure_needs_the_same_record_of_its_object(self):
-        # #3651 review: logging a saved meal for dinner is not repaired by
-        # logging it for breakfast, but a corrected portion count is.
+        # #3651 review: logging a saved meal at 19:00 is not repaired by
+        # logging it at 08:00 (Gitar on #3656: meal_time tells meals apart), but a corrected portion count is.
         def log(meal: str, portions: float, ok: bool) -> dict:
             arguments = {"id": "n1", "portions": portions, "meal_date": "2026-11-19",
-                         "meal_type": meal}  # fmt: skip
+                         "meal_time": meal}  # fmt: skip
             return {
                 "tool": "log_nutrition_template",
                 "step_key": f"{meal}-{portions}",
@@ -173,11 +173,9 @@ class UnresolvedCoachStepsTests(unittest.TestCase):
                 else {"ok": False, "reason": "request_scope"},
             }
 
-        failed = log("dinner", 1, ok=False)
-        self.assertEqual(
-            [], unresolved_coach_steps([failed, log("dinner", 2, ok=True)])
-        )
-        breakfast = log("breakfast", 1, ok=True)
+        failed = log("19:00", 1, ok=False)
+        self.assertEqual([], unresolved_coach_steps([failed, log("19:00", 2, ok=True)]))
+        breakfast = log("08:00", 1, ok=True)
         self.assertEqual([failed], unresolved_coach_steps([failed, breakfast]))
 
     def test_scope_denied_patch_retried_with_its_unit_tokens_completes_the_turn(self):

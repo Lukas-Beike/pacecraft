@@ -100,7 +100,7 @@ def dialogue_plan_effect_key(name: str, arguments: dict[str, Any]) -> str | None
 # Argument keys that name the stored object a write step acts on, and the
 # fields whose value says which record of it a step writes (#3651).
 _OBJECT_ID_KEYS = frozenset({"local_id", "id"})
-_RECORD_KEYS = ("date", "meal_date", "meal_type")
+_RECORD_KEYS = ("date", "meal_date", "meal_time", "meal_type", "session_id")
 
 
 def _operation(value: dict[str, Any]) -> str:
