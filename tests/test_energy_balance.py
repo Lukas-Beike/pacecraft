@@ -785,10 +785,10 @@ class TwelveWeekBaseTests(unittest.TestCase):
     def test_a_water_step_moves_the_base_far_less_than_its_window(self) -> None:
         # 1 kg of water and glycogen two weeks before the view's end (#3614).
         steady, step = series(constant(2400.0)), series(constant(2400.0), step_at=106)
-        on_window = abs(
-            balance.energy_windows(step, END)[-1].derived_rmr.kcal
-            - balance.energy_windows(steady, END)[-1].derived_rmr.kcal
-        )
+        stepped = balance.energy_windows(step, END)[-1].derived_rmr
+        level = balance.energy_windows(steady, END)[-1].derived_rmr
+        assert stepped is not None and level is not None
+        on_window = abs(stepped.kcal - level.kcal)
         moved = abs(self.base(step).estimate.kcal - self.base(steady).estimate.kcal)
         self.assertGreater(on_window, 300)
         self.assertLess(moved, on_window / 3)
