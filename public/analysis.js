@@ -1765,7 +1765,7 @@ function energyBiasText(flagged) {
   return `Geschätzte Mahlzeiten wirken im Mittel ${formatWhole(Math.abs(flagged.bias_pct))} % ${direction} als erfasst (± ${formatWhole(flagged.bias_band_pct)} %)`;
 }
 
-const ENERGY_DAY_NOTE = "Alle Zeilen zeigen den gewählten Tag (Sport 0 ohne Einheit, Verdauung nur mit erfassten Mahlzeiten, heute bis jetzt); Aus deinen Daten nimmt die Ruhe aus den letzten 28 Tagen und Alltag, Sport und Verdauung wie die Formeln, das Mittel der 28 Tage steht im Verlauf";
+const ENERGY_DAY_NOTE = "Alle Zeilen zeigen den gewählten Tag (Sport 0 ohne Einheit, Verdauung nur mit erfassten Mahlzeiten, heute bis jetzt); Aus deinen Daten nimmt die Ruhe aus den letzten 28 Tagen und Alltag, Sport und Verdauung wie die Formeln; Heute noch essen zieht das Gegessene vom Tag gesamt der umrandeten Quelle ab, das Defizit der letzten 28 Tage steht im Verlauf";
 
 function energyInfo(read) {
   const text = [ENERGY_DAY_NOTE, energyBasisText(read), energyNeatInputs(read.basis?.neat), energyBiasText(read.flagged)].filter(Boolean).join(" · ");

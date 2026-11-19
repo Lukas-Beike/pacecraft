@@ -1,8 +1,8 @@
 # M12 — Adaptive daily expenditure from intake and the weight trend
 
 - **Card:** M12
-- **Card version:** 17
-- **Method ID:** adaptive-expenditure v17 (#3100, #3187, #3255, #3552, #3551, #3553, #3555, #3554, #3586, #3603, #3612, #3614, #3617, #3577, #3616)
+- **Card version:** 18
+- **Method ID:** adaptive-expenditure v18 (#3100, #3187, #3255, #3552, #3551, #3553, #3555, #3554, #3586, #3603, #3612, #3614, #3617, #3577, #3616, #3618)
 - **Status:** method implemented (`backend/nutrition/energy_balance.py`); the reader, diagnostics and display follow (#3100, #3099)
 - **Classification:** model estimate
 - **Literature checked:** 2026-11-15
@@ -51,7 +51,12 @@ estimate. It never rewrites logged values and never falls back to a formula.
    that `k` and `b` are fitted over (#3554).
 3. **Stored energy per day:** `ρ × slope`, the least-squares slope of the
    window's own weigh-ins in kg/day. The current weight only supplies the
-   mass for `ρ`.
+   mass for `ρ`. The measured share's weight grows with the number and span
+   of the measurements and with the square of the rate of weight change: its
+   SD divides by that rate, so a slow change leaves the prior (#3618).
+   A window's NEAT is each day's own (its steps, floors and sessions); the
+   diary's source rows take the selected day's inputs, which `basis.neat`
+   names (#3395, #3618).
 4. **Adaptive TDEE:** mean intake of the window's complete days minus the stored
    energy per day. All complete days count; flagged entries only widen the
    band (athlete decision, #3187 item 14). The value "ohne Schätzung" comes
@@ -63,8 +68,9 @@ estimate. It never rewrites logged values and never falls back to a formula.
    the two-sided 95 % Student quantile for the smaller of `n − 1` and
    `weigh-ins − 2` degrees of freedom (1.96 beyond 120). `SE_store` combines
    `ρ` times the slope's standard error with the slope times the density's
-   SD, `0.144 × (9,441 − 1,816)` kcal/kg (fat share between 0.5 and 1.0 as
-   uniform). The slope's standard error carries the AR(1) factor
+   SD, the blended fat share's posterior SD × (9,441 − 1,816) kcal/kg:
+   0.15 × 7,625 = 1,144 kcal/kg while only the prior applies, less as the
+   measurements weigh in (#3555, #3618). The slope's standard error carries the AR(1) factor
    `√((1 + r) / (1 − r))` of the lag-1 autocorrelation `r` of the weigh-ins
    around their line, clamped to 0–0.8: scatter that persists from one
    weigh-in to the next, as water and glycogen do, is fewer independent
@@ -301,7 +307,7 @@ bias that is the same on every day is not visible in the band.
 | Constant | Value | Module | Code comment |
 | --- | --- | --- | --- |
 | `METHOD_ID` | `'adaptive-expenditure'` | `backend/nutrition/energy_balance.py` |  |
-| `METHOD_VERSION` | `17` | `backend/nutrition/energy_balance.py` | Bump when a formula or constant below changes the estimate. |
+| `METHOD_VERSION` | `18` | `backend/nutrition/energy_balance.py` | Bump when a formula or constant below changes the estimate. |
 | `WINDOW_DAYS` | `28` | `backend/nutrition/energy_balance.py` | Days per window and windows per week of the rolling view (#3099, #3100). |
 | `CURRENT_WEIGHT_DAYS` | `28` | `backend/nutrition/energy_balance.py` | A day's current weight is the least-squares line through the weigh-ins of this many days up to it, at its latest weigh-in, so a steady change has no lag (#3551); with fewer weigh-ins or a shorter span, their mean. |
 | `MIN_LINE_WEIGHINS` | `3` | `backend/nutrition/energy_balance.py` |  |
