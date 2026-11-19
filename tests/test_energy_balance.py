@@ -468,6 +468,20 @@ class AdaptiveTdeeTests(unittest.TestCase):
         # Its 14 days at 500 below show as a deficit over the whole window
         # (the least-squares line through the kink reads about 260).
         self.assertLess(latest.store.kcal_per_day, -200.0)
+        # Logged days spanning 25 days with only 6 weigh-ins inside them keep
+        # the plain `weighins` reason; the span is long enough (Gitar on #3676).
+        sparse = {
+            END - timedelta(days=27 - n): balance.DayInputs(
+                intake_kcal=2600.0 if n >= 2 else None,
+                entries=3 if n >= 2 else 0,
+                weight_kg=80.0 if n < 2 or n % 4 == 0 else None,
+            )
+            for n in range(28)
+        }
+        window = balance.energy_windows(
+            balance.EnergyInputs(sparse, {}, None), END, weeks=1
+        )[-1]
+        self.assertEqual("weighins", window.insufficient)
         # 23 logged days span 22: the window keeps its own TDEE.
         self.assertIsNotNone(switch(5)[-1].adaptive_tdee)
 

@@ -559,8 +559,14 @@ def _logged_basis(
     weights, complete, store = window
     logged = logged_weights(weights, complete)
     reason = _insufficient(len(complete), sorted(logged))
-    if reason in {"weighins", "weight_span"} and not _weighins_short(sorted(weights)):
-        # The weigh-ins carry the window; only its logged days span too little.
+    days = sorted(complete)
+    if (
+        reason in {"weighins", "weight_span"}
+        and not _weighins_short(sorted(weights))
+        and (days[-1] - days[0]).days < MIN_WEIGHT_SPAN_DAYS
+    ):
+        # The weigh-ins carry the window; only its logged days span too little
+        # (Gitar on #3676: too few weigh-ins inside a long span keep their reason).
         reason = "logged_span"
     if len(logged) == len(weights):
         return logged, reason, store
