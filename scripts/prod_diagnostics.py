@@ -170,6 +170,10 @@ SECTION_FIELDS = {
         # Windows mixing both weigh-in sources and each source's mean residual
         # around their lines, to 0.1 kg (#3638).
         r"|weighin_source_offset\.(mixed_windows|mean_residual_kg\.(app|garmin))"
+        # The unstable windows' TDEE and logged-intake gaps to 50 kcal, and the
+        # share of narrowly complete days (#3658).
+        r"|unstable_tdee_gap_kcal|unstable_intake_gap_kcal"
+        r"|narrow_complete_day_pct\.(unstable|stable)"
         r"|unstable_span_weighin_sources(\.(by_source\.(app|garmin)"
         r"|dropped_days\.(garmin|wahoo|intervals)))?"
         # The walks behind NEAT's step length and its source (#3611).

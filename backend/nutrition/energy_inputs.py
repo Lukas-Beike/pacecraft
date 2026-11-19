@@ -40,6 +40,7 @@ from backend.nutrition.energy_balance import (
     EnergyWindow,
     LearnedEveryday,
     below_former_share,
+    day_tef,
     energy_windows,
     fat_share,
     fit_learned_everyday,
@@ -830,6 +831,8 @@ def energy_basis(db: Any, sources: EnergySources, today: date) -> dict[str, Any]
                 sources.weighin_sources(db, history_start(end), end),
             )
         }
+        # Whether under-logged but complete days drive the unstable windows (#3658).
+        | underlog_counts(inputs, windows)
         | skinfold_diagnostics(skinfolds, missing, end, bodies)
         # The walks behind NEAT's step length and their suspected causes (#3611).
         | {
@@ -1083,6 +1086,81 @@ def diagnostics(
         "sessions": len(costs),
         "unpriced_sessions": sum(1 for c in costs if c.kcal is None),
         "rmr_source": inputs.rmr_source,
+    }
+
+
+# A complete day whose intake stays below this share of rest + TEF passes the
+# completeness rule (MIN_DAY_REST_SHARE) only narrowly (#3658).
+NARROW_DAY_REST_SHARE = 0.85
+
+
+def _tdee(window: EnergyWindow) -> float:
+    return window.adaptive_tdee.kcal if window.adaptive_tdee else 0.0
+
+
+def _intake(window: EnergyWindow) -> float:
+    """The window's mean logged intake: TDEE plus the stored energy per day."""
+    return _tdee(window) + (window.store.kcal_per_day if window.store else 0.0)
+
+
+def _narrow_share(inputs: EnergyInputs, group: Sequence[EnergyWindow]) -> int | None:
+    """The share of the windows' complete days below ``NARROW_DAY_REST_SHARE``
+    of rest + TEF, in whole percent; None without complete days."""
+    rest = inputs.rmr_kcal or 0.0
+    spans = {w.end - timedelta(days=n) for w in group for n in range(w.days)}
+    complete = [
+        day
+        for d in spans
+        if (day := inputs.days.get(d)) and is_complete(day, inputs.rmr_kcal)
+    ]
+    low = sum(
+        1
+        for d in complete
+        if (d.intake_kcal or 0.0) < NARROW_DAY_REST_SHARE * (rest + day_tef(d))
+    )
+    return round(100 * low / len(complete)) if complete else None
+
+
+def underlog_counts(
+    inputs: EnergyInputs, windows: Sequence[EnergyWindow]
+) -> dict[str, Any]:
+    """Whether under-logged but complete days drive the unstable windows (#3658).
+
+    Each unstable window against the overlapping estimated neighbour whose TDEE
+    differs most: the mean size of that TDEE gap and of the logged-intake gap
+    in the same direction, to 50 kcal (equal gaps: the logged intake carries
+    the jump; an intake gap near 0: the weight does), and the share of complete
+    days below ``NARROW_DAY_REST_SHARE`` of rest + TEF in the unstable and the
+    stable estimated windows, in whole percent. Counts and rounded means only.
+    """
+    estimated = [w for w in windows if w.adaptive_tdee is not None]
+    unstable = [w for w in estimated if not is_stable(w)]
+    tdee_gaps, intake_gaps = [], []
+    for window in unstable:
+        near = [
+            o
+            for o in estimated
+            if o is not window and abs((o.end - window.end).days) < window.days
+        ]
+        if near:
+            # The neighbour it differs from most, the likeliest to have flagged it.
+            other = max(near, key=lambda o: abs(_tdee(window) - _tdee(o)))
+            gap = _tdee(window) - _tdee(other)
+            tdee_gaps.append(abs(gap))
+            intake_gaps.append(
+                math.copysign(1.0, gap) * (_intake(window) - _intake(other))
+            )
+
+    def fifty(values: list[float]) -> int | None:
+        return int(round(statistics.fmean(values) / 50) * 50) if values else None
+
+    return {
+        "unstable_tdee_gap_kcal": fifty(tdee_gaps),
+        "unstable_intake_gap_kcal": fifty(intake_gaps),
+        "narrow_complete_day_pct": {
+            "unstable": _narrow_share(inputs, unstable),
+            "stable": _narrow_share(inputs, [w for w in estimated if is_stable(w)]),
+        },
     }
 
 

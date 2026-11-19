@@ -684,6 +684,41 @@ class StoreAdapterTests(unittest.TestCase):
             energy_inputs.source_offset(inputs, windows, dict.fromkeys(days, "app")),
         )
 
+    def test_underlog_counts_compare_unstable_windows_with_their_neighbours(
+        self,
+    ) -> None:
+        # #3658: the latest 14 days are logged at 1,250 kcal, complete (above 70 %
+        # of the 1,600 rest) but narrowly (below 85 %), the days before at
+        # 2,500; the weight stays flat, so the latest windows turn unstable.
+        end = date(2026, 11, 18)
+        days = {
+            end - timedelta(days=n): DayInputs(
+                intake_kcal=1250.0 if n < 14 else 2500.0,
+                entries=3,
+                weight_kg=80.0 + 0.1 * (n % 2),
+            )
+            for n in range(84)
+        }
+        inputs = EnergyInputs(days, {}, rmr_kcal=1600.0)
+        windows = energy_windows(inputs, end, weeks=8)
+        counts = energy_inputs.underlog_counts(inputs, windows)
+        # The logged intake carries the whole jump: both gaps are equal, as the
+        # weight stays flat (store within 3 kcal/day).
+        self.assertGreaterEqual(counts["unstable_tdee_gap_kcal"], 300)
+        self.assertEqual(
+            counts["unstable_tdee_gap_kcal"], counts["unstable_intake_gap_kcal"]
+        )
+        narrow = counts["narrow_complete_day_pct"]
+        self.assertGreater(narrow["unstable"], narrow["stable"] or 0)
+        # Nothing unstable, nothing to compare.
+        flat = {d: replace(v, intake_kcal=2500.0) for d, v in days.items()}
+        steady = EnergyInputs(flat, {}, rmr_kcal=1600.0)
+        self.assertEqual(
+            {"unstable_tdee_gap_kcal": None, "unstable_intake_gap_kcal": None,
+             "narrow_complete_day_pct": {"unstable": None, "stable": 0}},
+            energy_inputs.underlog_counts(steady, energy_windows(steady, end, weeks=8)),
+        )  # fmt: skip
+
     def test_session_streams_take_the_first_stream_set(self) -> None:
         laps = SimpleNamespace(detail=object())
         streams = SimpleNamespace(
