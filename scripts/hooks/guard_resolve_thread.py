@@ -46,6 +46,15 @@ ESCAPE = re.compile(
     r"\\x([0-9a-f]{2})|\\u([0-9a-f]{8})|\\u([0-9a-f]{4})|[\\`]u\{([0-9a-f]{1,6})\}"
     r"|\\0?([0-7]{1,3})|\\n\{([a-z0-9 -]+)\}"
 )
+# A word of plain path characters and globs only (#3648).
+PLAIN_WORD = re.compile(r"[a-z0-9_./*?-]+")
+# One simple command: nothing a shell substitutes, pipes, chains, redirects,
+# assigns or escapes, so each word is globbed as written (bypass review of
+# #3648: `${w#q}`, `$(…|tr)`, `(…).substring` rewrite a verbatim word).
+SIMPLE_COMMAND = re.compile(r"[^$`|<>(){}\[\]=;&\n\r\\%^!]*")
+CODE_RUNNERS = re.compile(
+    r"(?<![\w-])(?:-c|-command|-e|eval|exec|xargs|source)(?![\w-])"
+)
 # A Windows 8.3 short name, also a hashed one: a tilde and a digit.
 SHORT_NAME = re.compile(r"([a-z0-9_]{1,6})~\d")
 # Unquoted characters that end a bash word, so no bracket expression spans
@@ -339,7 +348,7 @@ def matching_word(command: str) -> str | None:
             word
             for variant in variants
             for word in WORDS.split(variant)
-            if word_reaches_script(word)
+            if word_reaches_script(word, raw)
         ),
         None,
     )
@@ -487,8 +496,9 @@ def _word_around(text: str, start: int) -> tuple[int, int]:
     return max(low + 1, start - MAX_WORD, 0), high
 
 
-def word_reaches_script(word: str) -> bool:
-    """A glob or 8.3 short name that can resolve to the script's file."""
+def word_reaches_script(word: str, raw: str = "") -> bool:
+    """A glob or 8.3 short name that can resolve to the script's file;
+    ``raw`` is the command as written, casefolded (#3648)."""
     *folders, last = posixpath.normpath(word).split("/")
     last = last.rstrip(". ")
     short = SHORT_NAME.match(last)
@@ -499,12 +509,30 @@ def word_reaches_script(word: str) -> bool:
     if folder not in {None, ".", ".."}:
         # Windows drops trailing dots and spaces of a folder name.
         folder = folder.rstrip(". ")
-    # A file in a plainly named other folder is never the script; a tilde
-    # folder (`~+` is the current one) is not plain.
-    plain = (
-        folder is not None and not folder.startswith("~") and not GLOB.search(folder)
-    )
+    # A file in a plainly named other folder is never the script; a folder with
+    # a tilde (`~+` is the current one, `script~1` the 8.3 short name of
+    # scripts/) is not plain (#3648).
+    plain = folder is not None and "~" not in folder and not GLOB.search(folder)
     if plain and folder not in {".", "..", "scripts"}:
+        return False
+    # A folder glob whose literal start is not a start of `scripts` matches
+    # neither it nor its 8.3 short names, which keep its first letters. Windows
+    # drops trailing dots and spaces, so `scripts.*` still matches `scripts`,
+    # and a start of dots alone may match `.` or `..` (#3648).
+    # Only for a word of plain path characters that stands in the command as
+    # written: a reading's widened group (`*(…)` read as `*/*`), `$`, `%`,
+    # quotes or code around it may hide the real folder.
+    head = re.split(r"[*?\[]", folder or "", maxsplit=1)[0].rstrip(". ")
+    if (
+        folder is not None
+        and GLOB.search(folder)
+        and "~" not in folder
+        and PLAIN_WORD.fullmatch(word)
+        and SIMPLE_COMMAND.fullmatch(raw)
+        and not CODE_RUNNERS.search(raw)
+        and word in WORDS.split(raw)
+        and not "scripts".startswith(head)
+    ):
         return False
     # Without a folder, a glob must keep part of the name: `*` and `*.py`
     # pass, `r*` does not.
