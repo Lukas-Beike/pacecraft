@@ -144,6 +144,22 @@ def report(messages=40):
             },
             "act_secret": {"ride": {"files": 1}},
         },
+        # #3595: the re-projection pass after a mapper bump, counts only.
+        "canonical_backfill": {
+            "status": "running",
+            "batches": 3,
+            "providers": {
+                "garmin": {
+                    "reprojected": 412,
+                    "added": 7,
+                    "retired": 0,
+                    "skipped_invalid": 0,
+                    "duplicates": 0,
+                    "cursor": 9,
+                },
+                "act_secret": {"reprojected": 1},
+            },
+        },
     }
 
 
@@ -379,6 +395,30 @@ class ProdChecksTests(unittest.TestCase):
                 {"counts": {"external_calendar_events": 20}, "memory": {}}, None
             ),
             [("info", "count external_calendar_events 20")],
+        )
+
+    def test_the_canonical_backfill_section_prints_its_pass_counts_only(self):
+        # #3595: after a mapper bump, whether the re-projection pass is done; an
+        # unknown counter or provider key is never printed.
+        code, text = self.run_main(
+            prod_diagnostics, "--url", self.url, "--password-file", str(self.secret),
+            "--section", "canonical_backfill",
+        )  # fmt: skip
+        self.assertEqual(code, 0)
+        prefix = "info canonical_backfill."
+        self.assertEqual(
+            text.splitlines(),
+            [
+                "ok health",
+                "ok logout 200",
+                f"{prefix}batches 3",
+                f"{prefix}providers.garmin.added 7",
+                f"{prefix}providers.garmin.duplicates 0",
+                f"{prefix}providers.garmin.reprojected 412",
+                f"{prefix}providers.garmin.retired 0",
+                f"{prefix}providers.garmin.skipped_invalid 0",
+                f'{prefix}status "running"',
+            ],
         )
 
     def test_section_prints_only_allow_listed_fields_in_path_order(self):
@@ -1030,7 +1070,6 @@ NOT_SECTIONED: dict[str, str] = {
         (
             "activity_routes",
             "activity_weather",
-            "canonical_backfill",
             "canonical_coverage",
             "canonical_provider_composition",
             "canonical_read",
