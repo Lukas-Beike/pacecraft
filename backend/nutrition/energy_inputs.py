@@ -639,8 +639,13 @@ def _profile_fat(value: Any) -> float | None:
     return number if 1 <= number <= 70 else None
 
 
-def energy_basis(db: Any, sources: EnergySources, end: date) -> dict[str, Any]:
-    """The diagnostics counts of the 12-week view ending on ``end`` (#3100)."""
+def energy_basis(db: Any, sources: EnergySources, today: date) -> dict[str, Any]:
+    """The diagnostics counts of the 12-week view (#3100).
+
+    Its windows end yesterday, as the energy view's do (#3617 item 7); the
+    counts about today's Garmin rest and wellness end look at today.
+    """
+    end = today - timedelta(days=1)
     inputs, costs = read_energy_inputs(db, sources, history_start(end), end)
     skinfolds, missing = skinfold_state(db, sources, inputs, end)
     windows = energy_windows(inputs, end)
@@ -648,8 +653,8 @@ def energy_basis(db: Any, sources: EnergySources, end: date) -> dict[str, Any]:
         {d: v.weight_kg for d, v in inputs.days.items() if v.weight_kg is not None}
     )
     bodies = [resolve_body(inputs, trend, w.end) for w in windows]
-    week = sources.daily_health(db, end - timedelta(days=GARMIN_RESTING_DAYS), end)
-    found = newest_resting(week, end)
+    week = sources.daily_health(db, today - timedelta(days=GARMIN_RESTING_DAYS), today)
+    found = newest_resting(week, today)
     latest = windows[-1] if windows else None
     unstable = [w for w in windows if not is_stable(w)]
     return (
@@ -688,20 +693,21 @@ def energy_basis(db: Any, sources: EnergySources, end: date) -> dict[str, Any]:
             "step_source": inputs.step_source,
         }
         # How many days back today's Garmin Ruhe comes from, None = none (#3443).
-        | {"today_resting_days_back": (end - found[0]).days if found else None}
+        | {"today_resting_days_back": (today - found[0]).days if found else None}
         # Days of the last week whose Garmin summary names its wellness end (#3530).
         | {
             "wellness_end_days": sum(
                 1 for day in week.values() if day.get("wellness_end_min") is not None
             )
         }
-        # Past days of the latest window whose summary ended early (#3612).
+        # Past days of the latest window whose summary ended early (#3612); the
+        # window ends yesterday, so today is never among them (#3617 item 7).
         | {
             "latest_window_unfinished_days": sum(
                 1
                 for when, day in inputs.days.items()
                 if day.unfinished
-                and latest.end - timedelta(days=latest.days) < when < end
+                and latest.end - timedelta(days=latest.days) < when <= end
             )
             if latest
             else None

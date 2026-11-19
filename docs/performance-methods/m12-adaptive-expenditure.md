@@ -159,8 +159,8 @@ is unknown and it leaves the window's activity means; its intake still counts
 (`latest_window_unfinished_days`).
 
 Weigh-ins come only from the app (athlete decision, #3557): weights entered
-in the app and the profile's weights from the change history, dated by the
-day of the save. Garmin's weights are copies of them and count only on a day
+in the app and the profile's weights from the change history, dated by the athlete's local
+day of the save (#3617). Garmin's weights are copies of them and count only on a day
 without an app weight; a provider's stored profile weight (Wahoo `user_read`)
 and any other provider never count. The profile's body fat values are dated
 3-site skinfold readings and count as skinfolds; Garmin's body fat values fill

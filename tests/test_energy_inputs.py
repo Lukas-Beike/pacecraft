@@ -568,7 +568,8 @@ class StoreAdapterTests(unittest.TestCase):
             return {"by_source": {"app": 9, "garmin": 2}, "dropped_days": {"wahoo": 28}}
 
         basis = energy_basis(None, replace(sources(), weighin_counts=counts), DAY3)
-        self.assertEqual([(DAY3 - timedelta(days=27), DAY3)], seen)
+        # The window ends yesterday, DAY2, as the view's does (#3617 item 7).
+        self.assertEqual([(DAY2 - timedelta(days=27), DAY2)], seen)
         self.assertEqual(
             {"by_source": {"app": 9, "garmin": 2}, "dropped_days": {"wahoo": 28}},
             basis["latest_window_weighin_sources"],
@@ -676,10 +677,11 @@ class SkinfoldBodyTests(unittest.TestCase):
             skinfold_sources([folds_on(DAY2), folds_on(DAY1, None)]),
             DAY3,
         )
+        # Today DAY3, the windows end on DAY2, the skinfold's day (#3617).
         self.assertEqual(
             {
                 "skinfolds_with_body_fat": 1,
-                "newest_skinfold_age_days": 1,
+                "newest_skinfold_age_days": 0,
                 "body_resolved": True,
                 "body_missing": None,
             },

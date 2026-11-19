@@ -4,7 +4,7 @@ import json
 import math
 import os
 from collections.abc import Callable, Mapping
-from datetime import date
+from datetime import UTC, date, datetime, time
 from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -93,32 +93,59 @@ DEFAULT_PROFILE = {
 
 
 def profile_body_fat_history(db: Any, since: date) -> dict[date, float]:
-    """The body fat values once saved in the profile, by the (UTC) day of the
-    save, 1 to 70 %: dated 3-site skinfold readings (athlete decisions, #3477,
-    #3557)."""
+    """The body fat values once saved in the profile, by the athlete-local day
+    of the save, 1 to 70 %: dated 3-site skinfold readings (athlete decisions,
+    #3477, #3557; local day #3617)."""
     return _profile_history(db, "body_fat_pct", since, (1, 70))
 
 
 def profile_weight_history(db: Any, since: date) -> dict[date, float]:
-    """The weights once saved in the profile, by the (UTC) day of the save, 30
-    to 300 kg: dated weigh-ins entered in the app (athlete decision, #3557)."""
+    """The weights once saved in the profile, by the athlete-local day of the
+    save, 30 to 300 kg: dated weigh-ins entered in the app (athlete decision,
+    #3557; local day #3617)."""
     return _profile_history(db, "weight_kg", since, (30, 300))
 
 
 def _profile_history(
     db: Any, field: str, since: date, bounds: tuple[float, float]
 ) -> dict[date, float]:
+    # The athlete's day, not the save's UTC day; from the local midnight of
+    # ``since`` on, as every other reader counts days (#3617 item 5).
+    zone = _profile_zone(db)
+    start = datetime.combine(since, time(), zone).astimezone(UTC).isoformat()
     days: dict[date, float] = {}
-    for saved_at, value in change_history.field_values(
-        db, "profile", field, since.isoformat()
-    ):
+    for saved_at, value in change_history.field_values(db, "profile", field, start):
         try:
             number = comma_decimal_float(value)
         except ValueError:
             continue
         if bounds[0] <= number <= bounds[1]:
-            days[date.fromisoformat(saved_at[:10])] = number
+            days[_local_day(saved_at, zone)] = number
     return days
+
+
+def _local_day(saved_at: str, zone: ZoneInfo) -> date:
+    """The athlete-local day of a stored time; a time without an offset is UTC."""
+    stamp = datetime.fromisoformat(saved_at)
+    stamp = stamp if stamp.tzinfo is not None else stamp.replace(tzinfo=UTC)
+    return stamp.astimezone(zone).date()
+
+
+def _profile_zone(db: Any) -> ZoneInfo:
+    """The stored profile's timezone, else the default (#3617 item 5)."""
+    has_store = db.execute(
+        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'kv'"
+    ).fetchone()
+    row = (
+        db.execute("SELECT value FROM kv WHERE key = 'profile'").fetchone()
+        if has_store
+        else None
+    )
+    try:
+        stored = json.loads(row["value"] or "{}").get("timezone") if row else None
+    except TypeError, ValueError, AttributeError:
+        stored = None
+    return ZoneInfo(timezone_name(stored))
 
 
 def timezone_name(value: Any, *, strict: bool = False) -> str:
