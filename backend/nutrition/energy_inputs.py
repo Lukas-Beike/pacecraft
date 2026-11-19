@@ -94,6 +94,10 @@ class EnergySources:
     weighin_counts: Callable[[Any, date, date], Mapping[str, Any]] = field(
         default=lambda _db, _start, _end: {}
     )
+    # Each weigh-in day's source, ``app`` or ``garmin`` (#3638).
+    weighin_sources: Callable[[Any, date, date], Mapping[date, str]] = field(
+        default=lambda _db, _start, _end: {}
+    )
 
 
 @dataclass(frozen=True)
@@ -248,6 +252,56 @@ def weighin_counts(
             s: sources.count(s) for s in (APP_SOURCE, ProviderId.GARMIN.value)
         },
         "dropped_days": {p: len(d) for p, d in sorted(dropped.items())},
+    }
+
+
+def weighin_sources(
+    observations: Iterable[Observation], app: Mapping[date, float] | None = None
+) -> dict[date, str]:
+    """Each weigh-in day's source after the source rule (#3557, #3638)."""
+    return {day: source for day, (_, source) in sourced(observations, app)[0].items()}
+
+
+def source_offset(
+    inputs: EnergyInputs,
+    windows: Sequence[EnergyWindow],
+    sources_by_day: Mapping[date, str],
+) -> dict[str, Any]:
+    """Whether Garmin's fallback weigh-ins sit apart from the app's (#3638).
+
+    Over the windows with a stored-energy estimate that hold weigh-ins of both
+    sources, each weigh-in's residual around its window's least-squares line,
+    averaged per source and rounded to 0.1 kg; a systematic offset between the
+    two reads as a step, which the slope prices as tissue. Counts and rounded
+    means only.
+    """
+    residuals: dict[str, list[float]] = {APP_SOURCE: [], ProviderId.GARMIN.value: []}
+    mixed = 0
+    for window in windows:
+        span = [window.end - timedelta(days=n) for n in range(window.days)]
+        points = [
+            (d, weight)
+            for d in sorted(span)
+            if (weight := inputs.days[d].weight_kg if d in inputs.days else None)
+            is not None
+        ]
+        kinds = [sources_by_day.get(d) for d, _ in points]
+        if window.store is None or not set(residuals) <= set(kinds):
+            continue
+        mixed += 1
+        line = statistics.linear_regression(
+            [float((d - points[0][0]).days) for d, _ in points], [w for _, w in points]
+        )
+        for (d, weight), kind in zip(points, kinds, strict=True):
+            if kind in residuals:
+                at = line.intercept + line.slope * (d - points[0][0]).days
+                residuals[kind].append(weight - at)
+    return {
+        "mixed_windows": mixed,
+        "mean_residual_kg": {
+            kind: round(statistics.fmean(values), 1) if values else None
+            for kind, values in residuals.items()
+        },
     }
 
 
@@ -751,6 +805,13 @@ def energy_basis(db: Any, sources: EnergySources, today: date) -> dict[str, Any]
             )
             if latest
             else None
+        }
+        | {
+            "weighin_source_offset": source_offset(
+                inputs,
+                windows,
+                sources.weighin_sources(db, history_start(end), end),
+            )
         }
         | skinfold_diagnostics(skinfolds, missing, end, bodies)
         # The walks behind NEAT's step length and their suspected causes (#3611).

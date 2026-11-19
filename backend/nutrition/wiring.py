@@ -33,6 +33,7 @@ from backend.nutrition.energy_inputs import (
     session_streams,
     skinfold_body_fats,
     weighin_counts,
+    weighin_sources,
     weighins,
 )
 from backend.nutrition.energy_view import (
@@ -236,6 +237,10 @@ def build_nutrition(ctx: AppContext) -> NutritionServices:
                 sessions_only=True,
             ),
             weighin_counts=lambda db, s, e: weighin_counts(
+                read.observations(db, MetricKind.WEIGHT, start=s, end=e),
+                saved(profile_weight_history, db, s, e),
+            ),
+            weighin_sources=lambda db, s, e: weighin_sources(
                 read.observations(db, MetricKind.WEIGHT, start=s, end=e),
                 saved(profile_weight_history, db, s, e),
             ),
