@@ -28,7 +28,6 @@ from backend.canonical.vocabulary import MetricKind, ProviderId
 from backend.performance.canonical_recovery import CanonicalRecoveryInputs
 from backend.performance.display_sources import preferred_providers
 from backend.performance.rolling_hrv import rolling_lnrmssd
-from backend.performance.source_policy import NO_PREFERENCES
 from backend.providers.source_labels import SourceView, provider_label
 
 # Each provider's series: (provider, kind) -> (metric, measurement label, scale).
@@ -113,9 +112,7 @@ def personal_recovery(
         "sleep_deficits": deficits,
         "sleep_target_hours": target if math.isfinite(target) else None,
         "regularity": regularity,
-        "preferred_providers": preferred_providers(
-            NO_PREFERENCES if canonical is None else canonical.preferences
-        ),
+        "preferred_providers": preferred_providers(),
         "note": _NOTE,
     }
 

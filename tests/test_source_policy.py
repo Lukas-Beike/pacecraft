@@ -38,13 +38,10 @@ from backend.performance.recovery_context import performance_recovery_context
 from backend.performance.source_policy import (
     CURRENT_RULES,
     DAILY_RULES,
-    PREFERENCE_PROFILE_FIELDS,
     Candidate,
-    preferences_from_profile,
     resolve_candidates,
     select_current,
     select_daily,
-    source_order,
 )
 from backend.providers.garmin_health_mapping import map_garmin_health
 from backend.sync.garmin_performance_history import current_garmin_metrics
@@ -627,157 +624,38 @@ def _of(
     )
 
 
-def _weight(
-    source: ProviderId | None,
-    value: float,
-    day: date | None,
-    source_kind: SourceKind = SourceKind.PROVIDER_REPORTED,
-) -> Candidate:
-    observation = None
-    if source is not None:
-        base = _obs(MetricKind.WEIGHT, value, day or TODAY, source)
-        observation = replace(
-            base, provenance=replace(base.provenance, source_kind=source_kind)
-        )
-    return Candidate(source, value, day, observation)
-
-
-class RecencyResolutionTests(unittest.TestCase):
-    def test_the_newest_measurement_wins_across_sources(self) -> None:
-        garmin = _weight(GARMIN, 72.0, date(2026, 5, 1), SourceKind.DEVICE_MEASURED)
-        profile = _weight(None, 71.0, TODAY)
-
-        resolved = resolve_candidates(MetricKind.WEIGHT, (garmin, profile), as_of=TODAY)
-
-        assert resolved is not None
-        self.assertIs(resolved.winner, profile)
-        self.assertEqual(resolved.alternatives, (garmin,))
-
-    def test_an_intervals_candidate_is_never_current(self) -> None:
-        garmin = _weight(GARMIN, 72.0, date(2026, 5, 1), SourceKind.DEVICE_MEASURED)
-        intervals = _weight(INTERVALS, 71.0, TODAY)
-
-        resolved = resolve_candidates(
-            MetricKind.WEIGHT, (intervals, garmin), as_of=TODAY
-        )
-
-        assert resolved is not None
-        self.assertIs(resolved.winner, garmin)
-        self.assertEqual(resolved.alternatives, ())
-        self.assertIsNone(
-            resolve_candidates(MetricKind.WEIGHT, (intervals,), as_of=TODAY)
-        )
-
-    def test_a_device_measurement_wins_within_one_day(self) -> None:
-        garmin = _weight(GARMIN, 72.0, date(2026, 5, 3), SourceKind.DEVICE_MEASURED)
-        wahoo = _weight(ProviderId.WAHOO, 70.0, TODAY)
-
-        resolved = resolve_candidates(MetricKind.WEIGHT, (wahoo, garmin), as_of=TODAY)
-
-        assert resolved is not None
-        self.assertIs(resolved.winner, garmin)
-        self.assertTrue(resolved.conflict)
-
-    def test_an_athlete_entry_yields_to_a_report_within_one_day(self) -> None:
-        typed = _weight(None, 72.0, TODAY)
-        wahoo = _weight(ProviderId.WAHOO, 71.5, date(2026, 5, 3))
-
-        resolved = resolve_candidates(MetricKind.WEIGHT, (typed, wahoo), as_of=TODAY)
-
-        assert resolved is not None
-        self.assertIs(resolved.winner, wahoo)
-
+class EnteredDayResolutionTests(unittest.TestCase):
     def test_only_garmins_copy_of_an_entered_day_leaves_the_alternatives(self) -> None:
         # #3464: the entry is that day's Garmin entry (#3403), so Garmin's value of
         # the day is no alternative; another provider's reading of the day stays
         # one and still raises the conflict (Gitar, #3474).
-        own = _obs(MetricKind.WEIGHT, 72.5, TODAY, GARMIN)
+        own = _obs(MetricKind.FTP, 250.0, TODAY, GARMIN, sport=Sport.RIDE)
         entered = Candidate(
-            None, 72.5, TODAY, replace(own, provenance=local_provenance())
+            None, 250.0, TODAY, replace(own, provenance=local_provenance())
         )
-        garmin = _weight(GARMIN, 74.0, TODAY, SourceKind.DEVICE_MEASURED)
-        wahoo = _weight(ProviderId.WAHOO, 78.0, TODAY)
+        garmin = Candidate(GARMIN, 260.0, TODAY)
+        wahoo = Candidate(ProviderId.WAHOO, 280.0, TODAY)
 
         resolved = resolve_candidates(
-            MetricKind.WEIGHT, (garmin, wahoo, entered), as_of=TODAY
+            MetricKind.FTP, (garmin, wahoo, entered), as_of=TODAY, sport=Sport.RIDE
         )
 
         assert resolved is not None
         self.assertIs(resolved.winner, entered)
         self.assertEqual(resolved.alternatives, (wahoo,))
         self.assertTrue(resolved.conflict)
-        alone = resolve_candidates(MetricKind.WEIGHT, (garmin, entered), as_of=TODAY)
+        alone = resolve_candidates(
+            MetricKind.FTP, (garmin, entered), as_of=TODAY, sport=Sport.RIDE
+        )
         assert alone is not None
         self.assertEqual((alone.alternatives, alone.conflict), ((), False))
 
-    def test_undated_values_are_fallbacks_in_order(self) -> None:
-        wahoo = _weight(ProviderId.WAHOO, 74.0, None)
-        profile = _weight(None, 73.0, None)
-
-        resolved = resolve_candidates(MetricKind.WEIGHT, (wahoo, profile), as_of=TODAY)
-
-        assert resolved is not None
-        self.assertIs(resolved.winner, profile)
-        dated = _weight(ProviderId.WAHOO, 74.0, None)
-        garmin = _weight(GARMIN, 75.0, date(2026, 1, 1), SourceKind.DEVICE_MEASURED)
-        resolved = resolve_candidates(MetricKind.WEIGHT, (dated, garmin), as_of=TODAY)
-        assert resolved is not None
-        self.assertIs(resolved.winner, garmin)
-
 
 class PreferredSourceTests(unittest.TestCase):
-    """The athlete's preferred source per metric group (#1668)."""
-
-    def test_only_known_groups_and_providers_are_read(self) -> None:
-        preferences = preferences_from_profile(
-            {
-                "preferred_source_hrv": "intervals",
-                "preferred_source_body": "wahoo",
-                "preferred_source_resting_hr": "garmin",
-                "preferred_source_sleep": "",
-            }
-        )
-
-        self.assertEqual(dict(preferences), {})
-        # #3640: the body group left too; Körper's weigh-in rule decides the
-        # weight and body fat, so a stored "garmin" chooses nothing.
-        body = preferences_from_profile({"preferred_source_body": "garmin"})
-        self.assertEqual(dict(body), {})
-
-    def test_a_stored_intervals_preference_is_ignored_everywhere(self) -> None:
-        profile = {
-            "preferred_source_thresholds": "intervals",
-            "preferred_source_body": "intervals",
-            "preferred_source_hrv": "intervals",
-            "preferred_source_resting_hr": "intervals",
-            "preferred_source_sleep": "intervals",
-        }
-        preferences = preferences_from_profile(profile)
-
-        self.assertEqual(dict(preferences), {})
-        self.assertEqual(profile["preferred_source_hrv"], "intervals")
-        garmin = _obs(MetricKind.HRV_RMSSD, 60.0, TODAY, GARMIN)
-        intervals = _obs(MetricKind.HRV_RMSSD, 45.0, TODAY)
-        self.assertIs(
-            select_current(
-                [intervals, garmin], MetricKind.HRV_RMSSD, preferences=preferences
-            ),
-            garmin,
-        )
-        self.assertEqual(
-            source_order(MetricKind.FTP, Sport.RIDE, preferences),
-            (None, GARMIN, ProviderId.WAHOO),
-        )
-        self.assertEqual(
-            source_order(MetricKind.WEIGHT, preferences=preferences),
-            (GARMIN, None, ProviderId.WAHOO),
-        )
-
-    def test_the_settings_show_one_control_per_effective_group(self) -> None:
-        # Every source control shown changes an outcome, or is gone (#2084).
+    def test_the_settings_show_no_preferred_source_control(self) -> None:
+        # The stored preferred_source_* values read nowhere (#2084, #3640).
         page = (ROOT / "public" / "index.html").read_text(encoding="utf-8")
-        shown = set(re.findall(r'name="(preferred_source_\w+)"', page))
-        self.assertEqual(shown, set(PREFERENCE_PROFILE_FIELDS.values()))
+        self.assertEqual(re.findall(r'name="(preferred_source_\w+)"', page), [])
 
 
 class DailySelectionTests(unittest.TestCase):

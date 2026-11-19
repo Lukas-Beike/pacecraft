@@ -196,7 +196,6 @@ class IntervalsValuesAreNotCurrentTests(unittest.TestCase):
                 "threshold_candidates",
                 "configured_thresholds",
                 "wahoo_activity_max_hr",
-                "preferences",
             },
         )
 

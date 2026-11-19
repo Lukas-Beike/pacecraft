@@ -20,7 +20,6 @@ from backend.canonical.vocabulary import (
     ZoneConfigurationMetric,
 )
 from backend.db import canonical_domain_store
-from backend.performance.source_policy import NO_PREFERENCES
 from backend.performance.threshold_staleness import (
     STALE_AFTER_DAYS,
     DatedThreshold,
@@ -158,7 +157,6 @@ class ServiceTests(unittest.TestCase):
             lambda: StubReader(tuple(observations)),
             lambda: TODAY,
             zone_configurations=lambda _db: tuple(configurations),
-            preferences=lambda _db: NO_PREFERENCES,
             **kwargs,
         )
         with mock.patch.object(
@@ -251,7 +249,6 @@ class ServiceTests(unittest.TestCase):
             lambda: None,
             lambda: TODAY,
             zone_configurations=lambda _db: (),
-            preferences=lambda _db: NO_PREFERENCES,
         )
         with self.assertLogs("intervals_coach", level="WARNING"):
             self.assertIsNone(service.read())

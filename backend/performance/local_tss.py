@@ -63,7 +63,6 @@ from backend.performance.current_thresholds import (
     resolve_current_thresholds,
 )
 from backend.performance.session_rpe_load import session_load
-from backend.performance.source_policy import NO_PREFERENCES, SourcePreferences
 
 METHOD_ID: Final = "local-tss-load"
 METHOD_VERSION: Final = 7
@@ -664,8 +663,6 @@ class DatedThresholds:
         observations: Iterable[Observation],
         configurations: Iterable[ZoneConfiguration] = (),
         resting_hr: Iterable[Observation] = (),
-        *,
-        preferences: SourcePreferences = NO_PREFERENCES,
     ) -> None:
         kept = [
             item
@@ -693,7 +690,6 @@ class DatedThresholds:
             for series in groups.values()
         )
         self._configurations = tuple(configurations)
-        self._preferences = preferences
         self._days: dict[date, dict[tuple[MetricKind, Sport], Threshold]] = {}
         self._later_days = sorted(
             {item.observed_on for item in self._observations}
@@ -723,7 +719,6 @@ class DatedThresholds:
             provider,
             configured_thresholds(self._configurations, day),
             as_of=day,
-            preferences=self._preferences,
         )
         values = {
             key: Threshold(

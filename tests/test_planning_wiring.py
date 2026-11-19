@@ -177,16 +177,13 @@ class PlanningWorkflowBuilderTests(unittest.TestCase):
             self.services.daily_planning_context_service()
 
         args = service.call_args.args
-        self.assertEqual(10, len(args))
+        self.assertEqual(9, len(args))
         self.assertIs(self.ctx.key_values, args[1])
         self.assertIs(self.ctx.athlete.checkin.return_value, args[2])
         self.assertIs(self.ctx.morning_body_battery_service.return_value, args[4])
         self.assertIs(self.ctx.athlete.activity_feedback.return_value, args[5])
         self.assertIs(args[8](), self.ctx.canonical_read)
         profile = self.ctx.athlete.profile.return_value
-        profile.get_from_db.return_value = {}
-        args[9]("db")
-        profile.get_from_db.assert_called_once_with("db")
         profile.get.return_value = {"timezone": "Europe/Berlin"}
         self.assertEqual("Europe/Berlin", service.call_args.kwargs["timezone"]())
         profile.get.return_value = {}
@@ -269,7 +266,7 @@ class PlanningWorkflowBuilderTests(unittest.TestCase):
             ),
             args[9],
         )
-        manager, reader, _preferences, local_date = overnight.call_args.args
+        manager, reader, local_date = overnight.call_args.args
         self.assertIs(self.ctx.database.return_value, manager)
         self.assertIs(reader(), self.ctx.canonical_read)
         self.assertIs(local_date(), self.ctx.clock.now.return_value.date.return_value)
@@ -307,11 +304,6 @@ class PlanGuardBuilderTests(unittest.TestCase):
         self.assertIs(self.today, kwargs["today"]())
         kwargs["zone_configurations"]()
         self.ctx.athlete.zones.return_value.configurations.assert_called_once_with()
-        profile = self.ctx.athlete.profile.return_value
-        with patch.object(planning_wiring, "preferences_from_profile") as preferences:
-            kwargs["source_preferences"]("db")
-        profile.get_from_db.assert_called_once_with("db")
-        preferences.assert_called_once_with(profile.get_from_db.return_value)
 
     def test_every_guard_is_fresh_and_reads_the_late_owners_on_use(self) -> None:
         _service, kwargs = self.build()

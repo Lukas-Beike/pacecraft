@@ -69,7 +69,6 @@ from backend.performance.session_zones import (
     session_zone_settings,
     zone_settings_part,
 )
-from backend.performance.source_policy import NO_PREFERENCES, SourcePreferences
 from backend.planning.target_snapshot import freeze_targets
 from backend.sync.canonical_backfill import (
     BatchReport,
@@ -85,7 +84,6 @@ STATE_KEY: Final = "session_analysis_state"
 DEFAULT_BATCH_SIZE: Final = 100
 
 PlannedUnits = Callable[[], list[dict[str, Any]]]
-Preferences = Callable[[Any], SourcePreferences]
 # Targets freeze only for sessions this recent, as the first detail load did;
 # older sessions would be matched against plans edited since.
 FREEZE_WINDOW_DAYS: Final = 7
@@ -144,7 +142,7 @@ class _Tally:
 
 
 def _thresholds(
-    db: Any, reader: CanonicalTableReader, preferences: SourcePreferences
+    db: Any, reader: CanonicalTableReader
 ) -> tuple[DatedThresholds, tuple[ZoneConfiguration, ...]]:
     """Local, Garmin and Wahoo thresholds by day, and their zone configurations.
 
@@ -154,7 +152,6 @@ def _thresholds(
     thresholds = dated_thresholds(
         [item for kind in THRESHOLD_KINDS for item in reader.observations(db, kind)],
         configurations,
-        preferences,
     )
     return thresholds, configurations
 
@@ -220,7 +217,6 @@ class SessionAnalysisStage:
         zone_provider: Callable[[], tzinfo | None],
         clock: Callable[[], str],
         planned_units: PlannedUnits = list,
-        preferences: Preferences = lambda _db: NO_PREFERENCES,
         reader: CanonicalTableReader | None = None,
         batch_size: int = DEFAULT_BATCH_SIZE,
     ) -> None:
@@ -230,7 +226,6 @@ class SessionAnalysisStage:
         self._zone_provider = zone_provider
         self._clock = clock
         self._planned_units = planned_units
-        self._preferences = preferences
         self._reader = reader or CanonicalTableReader()
         self._batch_size = batch_size
         self._prepared: dict[str, tuple[str, _Analysed]] | None = None
@@ -354,9 +349,7 @@ class SessionAnalysisStage:
                 for key in values
             },
         )
-        thresholds, configurations = _thresholds(
-            db, self._reader, self._preferences(db)
-        )
+        thresholds, configurations = _thresholds(db, self._reader)
         sessions: list[tuple[_Session, Mapping[str, Any] | None]] = []
         for summary in summaries:
             session_id = str(summary["id"])

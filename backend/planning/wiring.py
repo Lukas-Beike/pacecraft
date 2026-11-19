@@ -17,7 +17,6 @@ from backend.db.repositories import (
     PlanningStateRepository,
     TrainingPlanRepository,
 )
-from backend.performance.source_policy import preferences_from_profile
 from backend.planning import adaptive as planning_adaptive
 from backend.planning import changes as planning_changes
 from backend.planning.adaptive_preview_service import (
@@ -172,9 +171,6 @@ def build_planning_workflows(ctx: AppContext) -> PlanningWorkflowServices:
     def observation_reader() -> Any:
         return ctx.canonical_read
 
-    def source_preferences(db: Any) -> Any:
-        return preferences_from_profile(ctx.athlete.profile().get_from_db(db))
-
     def calendar_conflict_service() -> CalendarConflictService:
         return CalendarConflictService(ctx.database(), ctx.external_calendar.reader())
 
@@ -211,7 +207,6 @@ def build_planning_workflows(ctx: AppContext) -> PlanningWorkflowServices:
             local_date,
             calendar_window_days,
             observation_reader,
-            source_preferences,
             timezone=lambda: str(ctx.athlete.profile().get().get("timezone") or "UTC"),
         )
 
@@ -282,9 +277,7 @@ def build_planning_workflows(ctx: AppContext) -> PlanningWorkflowServices:
                 planning_adaptive.WEATHER_ADAPTIVE_MAX_MINUTES,
             ),
             lambda: profile_run_caps(ctx.athlete.profile().get()),
-            overnight_reader(
-                ctx.database(), observation_reader, source_preferences, local_date
-            ),
+            overnight_reader(ctx.database(), observation_reader, local_date),
         )
 
     return PlanningWorkflowServices(
@@ -306,16 +299,12 @@ def build_plan_guard(ctx: AppContext) -> PlanGuardServices:
     def local_date() -> Any:
         return ctx.clock.now().date()
 
-    def source_preferences(db: Any) -> Any:
-        return preferences_from_profile(ctx.athlete.profile().get_from_db(db))
-
     def thresholds() -> Any:
         return read_load_thresholds(
             ctx.database(),
             ctx.canonical_read,
             local_date(),
             ctx.athlete.zones().configurations(),
-            source_preferences,
         )
 
     def planned_unit_estimator() -> PlannedUnitEstimator:
@@ -324,7 +313,6 @@ def build_plan_guard(ctx: AppContext) -> PlanGuardServices:
             observation_reader=lambda: ctx.canonical_read,
             zone_configurations=lambda: ctx.athlete.zones().configurations(),
             today=local_date,
-            source_preferences=source_preferences,
         )
 
     def block_lessons() -> list[dict[str, object]]:

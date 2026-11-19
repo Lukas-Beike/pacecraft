@@ -93,7 +93,6 @@ from backend.performance.morning_battery_service import (
     MorningBatteryStore,
     MorningBodyBatteryService,
 )
-from backend.performance.source_policy import preferences_from_profile
 from backend.performance.threshold_staleness import ThresholdStalenessService
 from backend.performance.wiring import (
     build_activity_reads,
@@ -776,7 +775,6 @@ RUN_LTHR = RunLthr(
         CANONICAL_READ,
         ATHLETE_CLOCK.now().date(),
         ATHLETE_DATA.zones().configurations(),
-        lambda db: preferences_from_profile(ATHLETE_DATA.profile().get_from_db(db)),
     ),
     today=lambda: ATHLETE_CLOCK.now().date(),
     key_values=KEY_VALUE_REPOSITORY,
@@ -854,9 +852,6 @@ THRESHOLD_WARNINGS = ThresholdStalenessService(
     lambda: CANONICAL_READ,
     lambda: ATHLETE_CLOCK.now().date(),
     zone_configurations=CanonicalTableReader().zone_configurations,
-    preferences=lambda db: preferences_from_profile(
-        ATHLETE_DATA.profile().get_from_db(db)
-    ),
     sdk_failure=lambda: GARMIN_ASSEMBLY.sync_service().sdk_threshold_failure(),
 )
 
@@ -899,9 +894,6 @@ CANONICAL_BACKFILL = build_canonical_backfill(
     zone_provider=lambda: ATHLETE_CLOCK.now().tzinfo,
     maintenance_gate=runtime_maintenance.MAINTENANCE_GATE,
     clock=runtime_clock.utc_now,
-    source_preferences=lambda db: preferences_from_profile(
-        ATHLETE_DATA.profile().get_from_db(db)
-    ),
     # Strength sessions read their session RPE (card M6 v2).
     session_feedback=lambda keys: ATHLETE_DATA.activity_feedback().for_activity_ids(
         keys, sessions_only=True

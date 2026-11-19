@@ -93,10 +93,6 @@ from backend.performance.canonical_inputs import (
     resolve_reader,
 )
 from backend.performance.season_inputs import SeasonSource
-from backend.performance.source_policy import (
-    SourcePreferences,
-    preferences_from_profile,
-)
 from backend.planning import season as planning_season
 from backend.planning.compact_activities import ActivitySummarySource
 from backend.planning.race_plan import read_race_plan
@@ -144,9 +140,6 @@ def build_public_state(
     context receives later (the canonical read, the performance reports) are found.
     """
 
-    def source_preferences(db: Any) -> SourcePreferences:
-        return preferences_from_profile(ctx.athlete.profile().get_from_db(db))
-
     def canonical_performance_source() -> CanonicalPerformanceSource:
         return CanonicalPerformanceSource(
             ctx.database,
@@ -154,7 +147,6 @@ def build_public_state(
             serving=lambda: ctx.canonical_read,
             activity_summaries=lambda: ctx.canonical_read,
             coverage=lambda: ctx.canonical_read,
-            source_preferences=source_preferences,
             current_body=lambda reader, db, day: read_current_body(
                 reader, db, day, ctx.athlete.skinfolds().measurements_on
             ),
@@ -166,7 +158,6 @@ def build_public_state(
             resolve_reader(ctx.canonical_read, db),
             db,
             as_of=ctx.clock.now().date(),
-            preferences=source_preferences(db),
         )
 
     def state_version_service() -> StateVersionService:

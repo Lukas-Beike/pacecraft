@@ -11,11 +11,7 @@ from backend.canonical.decimal_text import provider_number as _as_number
 from backend.canonical.records import Observation
 from backend.canonical.vocabulary import MetricKind, ProviderId
 from backend.performance.fitness_fatigue import SOURCE_LABEL
-from backend.performance.source_policy import (
-    NO_PREFERENCES,
-    SourcePreferences,
-    select_daily,
-)
+from backend.performance.source_policy import select_daily
 from backend.runtime.ports import ObservationReader
 
 GARMIN_SOURCE = "Garmin Connect"
@@ -108,7 +104,6 @@ def canonical_planning_recovery(
     *,
     start: date,
     end: date,
-    preferences: SourcePreferences = NO_PREFERENCES,
 ) -> dict[str, dict[str, Any]]:
     """Build the date-indexed recovery view from canonical observations.
 
@@ -122,9 +117,7 @@ def canonical_planning_recovery(
         observations = tuple(reader.observations(db, kind, start=start, end=end))
         selected = {
             day: observation
-            for day, observation in select_daily(
-                observations, kind, preferences
-            ).items()
+            for day, observation in select_daily(observations, kind).items()
             if day >= start
         }
         _add_observations(recovery_by_date, field, kind, selected)
@@ -173,7 +166,6 @@ def planning_recovery_view(
     end: date,
     morning_battery_history: Any,
     morning_body_battery: Any,
-    preferences: SourcePreferences = NO_PREFERENCES,
     local_fitness_days: Sequence[Mapping[str, Any]] = (),
 ) -> dict[str, dict[str, Any]]:
     """Combine canonical recovery with the body battery and the local fitness.
@@ -182,9 +174,7 @@ def planning_recovery_view(
     CTL, ATL and form from the days of the local curve (card M7,
     ``read_local_fitness``); open and warm-up days have none.
     """
-    recovery_by_date = canonical_planning_recovery(
-        reader, db, start=start, end=end, preferences=preferences
-    )
+    recovery_by_date = canonical_planning_recovery(reader, db, start=start, end=end)
     _add_local_load(recovery_by_date, local_fitness_days)
     _add_morning_battery_recovery(
         recovery_by_date, morning_battery_history, morning_body_battery

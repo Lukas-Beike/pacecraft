@@ -22,7 +22,6 @@ from backend.canonical.vocabulary import ProviderId
 from backend.performance.canonical_current import read_export_thresholds
 from backend.performance.canonical_inputs import resolve_reader
 from backend.performance.current_thresholds import ThresholdKey
-from backend.performance.source_policy import preferences_from_profile
 from backend.runtime import clock as runtime_clock
 from backend.runtime import events as runtime_events
 from backend.sync import external_calendar as external_calendar_runtime
@@ -265,7 +264,6 @@ def build_export_thresholds(
             resolve_reader(ctx.canonical_read, db),
             db,
             as_of=ctx.clock.now().date(),
-            preferences=preferences_from_profile(ctx.athlete.profile().get_from_db(db)),
             configurations=CanonicalTableReader().zone_configurations(db),
         )
 

@@ -21,7 +21,6 @@ from backend.canonical.vocabulary import Sport
 from backend.errors import AppError
 from backend.performance.canonical_current import read_current_inputs
 from backend.performance.canonical_inputs import resolve_reader
-from backend.performance.source_policy import NO_PREFERENCES, SourcePreferences
 from backend.planning import (
     brief_budget,
     calendar_load,
@@ -120,19 +119,10 @@ def read_load_thresholds(
     observations: Any,
     today: date,
     configurations: Sequence[Any] = (),
-    preferences: Callable[[Any], SourcePreferences] | None = None,
 ) -> LoadThresholds:
-    """Local zone configurations, then the source-policy provider thresholds.
-
-    ``preferences`` reads the athlete's preferred sources in the same read.
-    """
+    """Local zone configurations, then the source-policy provider thresholds."""
     with database_manager.reader() as db:
-        current = read_current_inputs(
-            resolve_reader(observations, db),
-            db,
-            as_of=today,
-            preferences=NO_PREFERENCES if preferences is None else preferences(db),
-        )
+        current = read_current_inputs(resolve_reader(observations, db), db, as_of=today)
     return load_thresholds(current, today, configurations)
 
 
