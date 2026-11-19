@@ -21,7 +21,7 @@ from backend.performance.grade_adjustment import (
 
 METHOD_ID = "activity-energy"
 # Bump when a formula or constant below changes the estimate.
-METHOD_VERSION = 3
+METHOD_VERSION = 4
 # Joules per kilocalorie (thermochemical calorie).
 J_PER_KCAL = 4184.0
 # Standard gravity, m/s^2, for the vertical work of floors.
@@ -73,6 +73,11 @@ UPHILL_WORK_EFFICIENCY = 0.25
 # Step length from body height when no recorded walk measured it; a common
 # heuristic, weak evidence (+-10-15 %).
 STEP_LENGTH_PER_HEIGHT = 0.415
+# A walk's own step length (distance / steps) counts only within these shares
+# of body height (#3611): a walking step is about 0.4 x height, and even race
+# walkers stay near 0.55; without a height, the same shares of 1.50 and 2.00 m.
+STEP_LENGTH_HEIGHT_BOUNDS = (0.30, 0.55)
+STEP_LENGTH_BOUNDS_M = (0.45, 1.10)
 # Thermic effect of food as a share of each macronutrient's energy: midpoints
 # of protein 20-30 %, carbohydrate 5-15 %, fat 0-3 % (Joosen & Westerterp
 # 2006, Nutr Metab 3:25). Alcohol is not stored, so it has no term.
@@ -301,19 +306,32 @@ def flex_hr_net_kcal(fit: FlexHrFit, mean_hr: float, duration_s: float) -> float
     return max(0.0, rate) * minutes
 
 
+def plausible_step(length_m: float, height_m: float | None) -> bool:
+    """Whether a walk's step length lies in the bounds of ``height_m`` (#3611)."""
+    low, high = (
+        (bound * height_m for bound in STEP_LENGTH_HEIGHT_BOUNDS)
+        if height_m
+        else STEP_LENGTH_BOUNDS_M
+    )
+    return low <= length_m <= high
+
+
 def step_length_m(
-    walk_speeds_mps: Sequence[float],
-    walk_cadences_spm: Sequence[float],
-    height_m: float | None,
+    walks: Sequence[tuple[float, float]], height_m: float | None
 ) -> float | None:
-    """Mean step length of recorded walks (speed / cadence), else from height."""
-    lengths = [
-        speed * 60.0 / cadence
-        for speed, cadence in zip(walk_speeds_mps, walk_cadences_spm, strict=False)
-        if speed and cadence and speed > 0 and cadence > 0
+    """The recorded walks' step length, total distance over total steps of the
+    walks whose own step length is plausible, else 0.415 x height (#3611).
+
+    Each walk is (distance m, steps). A sum, not a mean of ratios, so one odd
+    walk cannot pull it far; an implausible walk does not count at all.
+    """
+    usable = [
+        (distance, steps)
+        for distance, steps in walks
+        if distance > 0 and steps > 0 and plausible_step(distance / steps, height_m)
     ]
-    if lengths:
-        return sum(lengths) / len(lengths)
+    if usable:
+        return sum(d for d, _ in usable) / sum(s for _, s in usable)
     return None if not height_m else STEP_LENGTH_PER_HEIGHT * height_m
 
 
