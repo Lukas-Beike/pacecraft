@@ -1065,10 +1065,23 @@ def read_own_day_totals(
 ) -> dict[date, float | None]:
     """The own day totals of ``days`` (up to ``end``) from the 12-week history
     ending on ``end``, the same read the energy view makes (#3600)."""
-    start = min([history_start(end), *days])
+    history = own_history(db, sources, end, min([history_start(end), *days]))
+    return own_day_totals(*history, days)
+
+
+type OwnHistory = tuple[
+    EnergyInputs, tuple[EnergyWindow, ...], Mapping[str, Mapping[str, Any]]
+]
+
+
+def own_history(
+    db: Any, sources: EnergySources, end: date, start: date | None = None
+) -> OwnHistory:
+    """The inputs, windows and daily health ``own_day_totals`` reads: the
+    12-week history ending on ``end``, or from an earlier ``start`` (#3630)."""
+    start = start or history_start(end)
     inputs, _ = read_energy_inputs(db, sources, start, end)
-    windows = energy_windows(inputs, end)
-    return own_day_totals(inputs, windows, sources.daily_health(db, start, end), days)
+    return inputs, energy_windows(inputs, end), sources.daily_health(db, start, end)
 
 
 def read_energy_view(

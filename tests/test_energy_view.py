@@ -22,7 +22,9 @@ from backend.nutrition.energy_inputs import EnergySources
 from backend.nutrition.energy_view import (
     energy_view,
     own_day_totals,
+    own_history,
     read_energy_view,
+    read_own_day_totals,
     selected_day,
 )
 from backend.performance.activity_energy import TEF_ERROR_KCAL
@@ -1385,6 +1387,20 @@ def day_scenario(
     yesterday: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Today's view; with ``yesterday``'s summary, yesterday's view instead."""
+    return read_energy_view(
+        None,
+        scenario_sources(today, sessions, meals, yesterday),
+        SCENARIO_END,
+        SCENARIO_TODAY if yesterday is None else SCENARIO_END,
+    )
+
+
+def scenario_sources(
+    today: dict[str, Any] | None,
+    sessions: list[dict[str, Any]],
+    meals: int,
+    yesterday: dict[str, Any] | None = None,
+) -> EnergySources:
     start = history_start(SCENARIO_END)
     days = [start + timedelta(days=n) for n in range((SCENARIO_END - start).days + 1)]
     meal = {"kcal": 900.0, "protein_g": 50.0, "carbs_g": 100.0, "fat_g": 30.0}
@@ -1403,21 +1419,30 @@ def day_scenario(
     def within(items: list[dict[str, Any]], key: str, s: date, e: date) -> list:
         return [i for i in items if s <= date.fromisoformat(i[key][:10]) <= e]
 
-    return read_energy_view(
-        None,
-        EnergySources(
-            diary=lambda _db, s, e: within(diary, "meal_date", s, e),
-            daily_health=lambda _db, _s, _e: health,
-            weights=lambda _db, s, e: {d: 75.0 for d in days[::2] if s <= d <= e},
-            sessions=lambda _db, s, e: within(sessions, "started_at_local", s, e),
-            streams=lambda _db, _key: {},
-            resting=lambda _db, _day: (1700.0, "katch_mcardle"),
-            body_fat=lambda _db, _s, _e: {SCENARIO_END - timedelta(days=10): 15.0},
-            profile=lambda: {"height_cm": "180"},
-        ),
-        SCENARIO_END,
-        SCENARIO_TODAY if yesterday is None else SCENARIO_END,
+    return EnergySources(
+        diary=lambda _db, s, e: within(diary, "meal_date", s, e),
+        daily_health=lambda _db, _s, _e: health,
+        weights=lambda _db, s, e: {d: 75.0 for d in days[::2] if s <= d <= e},
+        sessions=lambda _db, s, e: within(sessions, "started_at_local", s, e),
+        streams=lambda _db, _key: {},
+        resting=lambda _db, _day: (1700.0, "katch_mcardle"),
+        body_fat=lambda _db, _s, _e: {SCENARIO_END - timedelta(days=10): 15.0},
+        profile=lambda: {"height_cm": "180"},
     )
+
+
+class OwnHistoryTests(unittest.TestCase):
+    def test_the_kept_history_gives_the_period_balance_s_own_totals(self) -> None:
+        # #3630: the wiring keeps own_history ending yesterday; its totals are
+        # the direct read's for 14 and 84 days, real values, not only nulls.
+        sources = scenario_sources(None, [], 0)
+        history = own_history(None, sources, SCENARIO_END)
+        for count in (14, 84):
+            days = [SCENARIO_END - timedelta(days=n) for n in range(count)]
+            direct = read_own_day_totals(None, sources, SCENARIO_END, days)
+            with self.subTest(days=count):
+                self.assertEqual(count, sum(v is not None for v in direct.values()))
+                self.assertEqual(direct, own_day_totals(*history, days))
 
 
 class EnergyDayScenarioTests(unittest.TestCase):
