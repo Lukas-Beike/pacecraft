@@ -43,7 +43,7 @@ from collections.abc import Callable, Mapping, Sequence
 from contextlib import AbstractContextManager, nullcontext
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
-from typing import Any, Final, Protocol, TypeIs
+from typing import Any, Final, Protocol
 
 from backend.athlete.local_date import iso_date_prefix
 from backend.canonical.activity_detail import (
@@ -67,7 +67,7 @@ from backend.db.repositories import KeyValueRepository
 from backend.errors import AppError
 from backend.providers.canonical_plans import ACTIVITY_RECORD_KIND
 from backend.providers.fit_activity_detail_mapping import fit_inventory
-from backend.providers.fit_file import FitMessage, fit_messages
+from backend.providers.fit_file import fit_messages
 from backend.providers.garmin_fit_history import FitTransportMissing
 from backend.providers.garmin_personal import PERSONAL_KEY_REJECTED_REASON
 from backend.providers.garmin_rating_history import (
@@ -102,19 +102,6 @@ _DECODE_VALUES: Final[tuple[tuple[str, int, int, int, tuple[float, float]], ...]
     ("respiration_lap_max", _LAP_MESSAGE, 137, 100, RESPIRATION_RATE_BOUNDS_BRPM),
     ("lap_grade_speed", _LAP_MESSAGE, 161, 1000, (0.0, MAX_SPEED_MPS)),
 )
-# A count-only probe of Garmin's undocumented performance condition and stamina
-# fields (#3374, athlete decision 2026-11-17: probe first, then decide; removal
-# #3396). It keeps its own seen hashes, so the replay counts files the inventory
-# already counted.
-FIT_VALUE_PROBE_KEY: Final = "fit_value_probe"
-# Name, FIT message, field and the range the community reading expects.
-_PROBE_FIELDS: Final[tuple[tuple[str, int, int, tuple[int, int]], ...]] = (
-    ("perf_condition_20_90", 20, 90, (-20, 20)),
-    ("perf_condition_140_1", 140, 1, (-20, 20)),
-    ("stamina_20_137", 20, 137, (0, 100)),
-    ("stamina_20_138", 20, 138, (0, 100)),
-)
-
 STORED: Final = "stored"
 NO_STREAMS: Final = "no_streams"
 GONE: Final = "gone"
@@ -681,15 +668,13 @@ def count_fit_file(
     provider_activity_id: str,
     data: object,
 ) -> None:
-    """Add one read FIT file to the inventory and to the value probe (#3374) by
-    recording origin and sport; each counts a file once, by its own hashes."""
+    """Add one read FIT file to the inventory by recording origin and sport."""
     keys = fit_inventory(data)
     if keys is None or not isinstance(data, bytes):
         return
     digest = hashlib.sha256(data).hexdigest()[:32]
     inventory = _inventory_state(key_values, db)
-    probe = _inventory_state(key_values, db, FIT_VALUE_PROBE_KEY)
-    if digest in inventory["seen"] and digest in probe["seen"]:
+    if digest in inventory["seen"]:
         return
     row = db.execute(
         "SELECT sport, recorded_by FROM activity_records "
@@ -698,17 +683,11 @@ def count_fit_file(
     ).fetchone()
     origin = _vocabulary(row and row["recorded_by"], RecordingOrigin) or provider
     sport = _vocabulary(row and row["sport"], Sport) or "unknown"
-    if digest not in inventory["seen"]:
-        additions = dict.fromkeys(("files", *sorted(keys)), 1)
-        _add_file(
-            inventory, digest, (origin, sport), additions | fit_new_decode_counts(data)
-        )
-        key_values.set(db, FIT_INVENTORY_KEY, json.dumps(inventory, sort_keys=True))
-    if digest not in probe["seen"]:
-        _add_file(
-            probe, digest, (origin, sport), {"files": 1} | fit_value_probe_counts(data)
-        )
-        key_values.set(db, FIT_VALUE_PROBE_KEY, json.dumps(probe, sort_keys=True))
+    additions = dict.fromkeys(("files", *sorted(keys)), 1)
+    _add_file(
+        inventory, digest, (origin, sport), additions | fit_new_decode_counts(data)
+    )
+    key_values.set(db, FIT_INVENTORY_KEY, json.dumps(inventory, sort_keys=True))
 
 
 def _add_file(
@@ -724,71 +703,6 @@ def _add_file(
         known = int(bucket.get(name) or 0)
         bucket[name] = max(known, value) if name.endswith(_MAX_KEY) else known + value
     state["seen"] = [*state["seen"], digest][-_MAX_SEEN_FILES:]
-
-
-def fit_value_probe_counts(data: bytes) -> dict[str, int]:
-    """What one file holds in the probed fields (#3374), as count keys per field:
-    ``.present``, ``.in_range`` when every value lies in the expected range, else
-    ``.out_of_range``, ``.constant`` when several values are all equal, and
-    ``.falling`` when the last value is below the first, plus the stamina fields'
-    order (``stamina_order.*``). Never a value."""
-    try:
-        messages = fit_messages(data)
-    except ValueError:
-        return {}
-    counts: dict[str, int] = {}
-    for name, message, field, (lower, upper) in _PROBE_FIELDS:
-        values = [
-            value
-            for number, fields in messages
-            if number == message
-            if isinstance(value := fields.get(field), int | float)
-            and not isinstance(value, bool)
-        ]
-        if not values:
-            continue
-        inside = all(lower <= value <= upper for value in values)
-        counts[f"{name}.present"] = 1
-        counts[f"{name}.{'in_range' if inside else 'out_of_range'}"] = 1
-        if len(values) > 1 and len(set(values)) == 1:
-            counts[f"{name}.constant"] = 1
-        if values[-1] < values[0]:
-            counts[f"{name}.falling"] = 1
-    counts.update(dict.fromkeys(_stamina_order(messages), 1))
-    return counts
-
-
-def _probe_number(value: object) -> TypeIs[int | float]:
-    return isinstance(value, int | float) and not isinstance(value, bool)
-
-
-def _stamina_order(messages: Sequence[FitMessage]) -> set[str]:
-    """Which stamina field holds the higher value in every record holding both
-    (#3374): Garmin's potential stamina is never below the current one, so this
-    names the fields. Both directions when all are equal, else ``mixed``."""
-    pairs = [
-        (first, second)
-        for number, fields in messages
-        if number == 20
-        and _probe_number(first := fields.get(137))
-        and _probe_number(second := fields.get(138))
-    ]
-    if not pairs:
-        return set()
-    order = {
-        key
-        for key, holds in (
-            ("stamina_order.137_ge_138", all(a >= b for a, b in pairs)),
-            ("stamina_order.138_ge_137", all(b >= a for a, b in pairs)),
-        )
-        if holds
-    }
-    return order or {"stamina_order.mixed"}
-
-
-def fit_value_probe_report(db: Any, key_values: KeyValueRepository) -> dict[str, Any]:
-    """The probe's counts per recording origin and sport, without the hashes."""
-    return _inventory_state(key_values, db, FIT_VALUE_PROBE_KEY)["counts"]
 
 
 def _scaled(value: object, divisor: int) -> float | None:
@@ -881,11 +795,9 @@ def fit_inventory_counts(db: Any, key_values: KeyValueRepository) -> dict[str, A
     return result
 
 
-def _inventory_state(
-    key_values: KeyValueRepository, db: Any, key: str = FIT_INVENTORY_KEY
-) -> dict[str, Any]:
+def _inventory_state(key_values: KeyValueRepository, db: Any) -> dict[str, Any]:
     try:
-        stored = json.loads(key_values.get(db, key) or "{}")
+        stored = json.loads(key_values.get(db, FIT_INVENTORY_KEY) or "{}")
     except ValueError:
         stored = {}
     stored = stored if isinstance(stored, dict) else {}

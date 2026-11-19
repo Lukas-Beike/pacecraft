@@ -8,6 +8,9 @@ already settles a leftover one (an interrupted run is not replayed, a queued one
 fails with ``invalid_job_request``). A database restored from an older backup
 carries no state row of this stage, so it runs again on it. The state holds a
 status and counts only.
+
+Version 2 also deletes the retired FIT value probe's key (#3396): its counts
+decided the stamina naming of #3374, and its file hashes have no other use.
 """
 
 from __future__ import annotations
@@ -22,13 +25,15 @@ from backend.sync.canonical_backfill import BatchReport
 
 STAGE: Final = "rating_backfill_removal"
 STATE_KEY: Final = "rating_backfill_removal_state"
-VERSION: Final = 1
+VERSION: Final = 2
 RETIRED_STATE_KEY: Final = "garmin_rating_backfill_state"
+RETIRED_PROBE_KEY: Final = "fit_value_probe"
 RETIRED_CURSOR: Final = (GARMIN_ID, "rating_history")
 
 
 class RatingBackfillRemoval:
-    """Delete the retired rating backfill's state key and cursor, once."""
+    """Delete the retired rating backfill's state key and cursor and the retired
+    FIT value probe's key, once per version."""
 
     stage = STAGE
 
@@ -43,7 +48,8 @@ class RatingBackfillRemoval:
         removed = {
             "state_keys": db.execute(
                 "DELETE FROM kv WHERE key = ?", (RETIRED_STATE_KEY,)
-            ).rowcount,
+            ).rowcount
+            + db.execute("DELETE FROM kv WHERE key = ?", (RETIRED_PROBE_KEY,)).rowcount,
             "cursors": db.execute(
                 "DELETE FROM provider_sync_cursors WHERE provider = ? AND stream = ?",
                 RETIRED_CURSOR,
