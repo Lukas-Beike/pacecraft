@@ -437,6 +437,8 @@ class ProdChecksTests(unittest.TestCase):
                 },
                 # #3553: complete days the former activity-scaled rule dropped.
                 "latest_window_former_rule_days": 4,
+                # #3554: the fit's estimated windows per store rule.
+                "calibration_store_methods": {"measured": 4, "prior": 0},
                 "planted": "never printed",
             }
         }
@@ -457,6 +459,8 @@ class ProdChecksTests(unittest.TestCase):
             f"{prefix}latest_window_weighin_sources.by_source.garmin 3",
             f"{prefix}latest_window_weighin_sources.dropped_days.wahoo 28",
             f"{prefix}latest_window_former_rule_days 4",
+            f"{prefix}calibration_store_methods.measured 4",
+            f"{prefix}calibration_store_methods.prior 0",
         ):
             self.assertIn(expected, lines)
         self.assertFalse(any("planted" in line for line in lines))

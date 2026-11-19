@@ -754,6 +754,20 @@ def diagnostics(
         # bands of whole percent (#3555): counts only.
         "fat_share_measured_windows": _measured_weight_bands(windows),
         "calibration_windows": latest.calibration_windows if latest else 0,
+        # The estimated windows k and b are fitted over, per store rule; one
+        # phase-wide fat share puts them all under one rule (#3554).
+        "calibration_store_methods": {
+            method: sum(
+                1
+                for w in windows
+                if w.adaptive_tdee is not None
+                and w.activity_kcal_raw is not None
+                and w.tef_kcal is not None
+                and w.store
+                and w.store.method == method
+            )
+            for method in ("measured", "prior")
+        },
         "days": len(inputs.days),
         "logged_days": sum(1 for d in days if d.entries),
         "flagged_days": sum(1 for d in days if d.flagged),
