@@ -27,8 +27,6 @@ from backend.canonical.records import Observation
 from backend.canonical.vocabulary import MetricKind, ProviderId
 from backend.performance.source_policy import (
     FAMILY_LOOKBACK_DAYS,
-    NO_PREFERENCES,
-    SourcePreferences,
     select_current,
     within_current_bounds,
 )
@@ -57,7 +55,6 @@ class CanonicalRecoveryInputs:
 
     observations: Mapping[MetricKind, tuple[Observation, ...]]
     sleep_periods: tuple[SleepPeriod, ...] | None = None
-    preferences: SourcePreferences = NO_PREFERENCES
 
     def of(self, kind: MetricKind) -> tuple[Observation, ...]:
         """Return the observations of ``kind``; empty when it was not read."""
@@ -65,11 +62,7 @@ class CanonicalRecoveryInputs:
 
     def current(self, kind: MetricKind) -> Observation | None:
         """Return the current observation of ``kind`` under its source rule."""
-        return select_current(
-            self.of(kind),
-            kind,
-            preferences=self.preferences,
-        )
+        return select_current(self.of(kind), kind)
 
     def daily(
         self, kind: MetricKind, provider: ProviderId, *, bounded: bool = False
@@ -103,7 +96,6 @@ def read_recovery_inputs(
     db: Any,
     *,
     as_of: date,
-    preferences: SourcePreferences = NO_PREFERENCES,
 ) -> CanonicalRecoveryInputs:
     """Read every recovery kind once; ``reader`` must already be resolved."""
     start = as_of - timedelta(days=RECOVERY_HISTORY_DAYS - 1)
@@ -112,7 +104,6 @@ def read_recovery_inputs(
             kind: tuple(reader.observations(db, kind, start=start))
             for kind in RECOVERY_KINDS
         },
-        preferences=preferences,
         sleep_periods=(
             reader.sleep_periods(db, start=start - timedelta(days=1))
             if isinstance(reader, SleepPeriodReader)

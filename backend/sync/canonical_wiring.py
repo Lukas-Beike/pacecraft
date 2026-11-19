@@ -18,7 +18,6 @@ from zoneinfo import ZoneInfo
 from backend.athlete.profile import timezone_name
 from backend.db.repositories import CompetitionRepository, KeyValueRepository
 from backend.performance.session_rpe_load import FeedbackLookup
-from backend.performance.source_policy import NO_PREFERENCES
 from backend.runtime.maintenance import MaintenanceGate
 from backend.sync.activity_routes import ActivityRoutesStage
 from backend.sync.activity_weather import ActivityWeatherStage, Fetch, HomeLocation
@@ -33,7 +32,7 @@ from backend.sync.canonical_backfill_worker import (
 )
 from backend.sync.canonical_read_selector import CanonicalReadSelector
 from backend.sync.canonical_table_reader import CanonicalTableReader
-from backend.sync.local_load import LocalLoadStage, Preferences
+from backend.sync.local_load import LocalLoadStage
 from backend.sync.session_analysis_stage import PlannedUnits, SessionAnalysisStage
 from backend.sync.session_metrics import SessionMetricsStage
 
@@ -83,7 +82,6 @@ def build_canonical_backfill(
     zone_provider: Callable[[], tzinfo | None],
     maintenance_gate: MaintenanceGate,
     clock: Callable[[], str],
-    source_preferences: Preferences = lambda _db: NO_PREFERENCES,
     batch_size: int = DEFAULT_BATCH_SIZE,
     session_feedback: FeedbackLookup | None = None,
     planned_units: PlannedUnits = list,
@@ -104,7 +102,6 @@ def build_canonical_backfill(
         key_values=key_values,
         zone_provider=zone_provider,
         clock=clock,
-        preferences=source_preferences,
         session_feedback=session_feedback,
         athlete_sex=athlete_sex,
     )
@@ -118,7 +115,6 @@ def build_canonical_backfill(
         zone_provider=zone_provider,
         clock=clock,
         planned_units=planned_units,
-        preferences=source_preferences,
     )
     # The weather during outdoor sessions (#1868); without a fetch there is none.
     activity_weather = (

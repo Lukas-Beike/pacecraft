@@ -286,7 +286,9 @@ class AthleteGetRoutes:
         the latest window, `unflagged` from the latest window without any
         flagged day or null, `corrected` with the learned per-entry correction
         or null, `bias_pct` and `bias_band_pct` or null), `basis` (`days`, `complete_days`,
-        `flagged_days`, `weighins`, `insufficient`, `windows_with_estimate`,
+        `flagged_days`, `weighins`, `insufficient` (`intake_days`, `weighins`,
+        `weight_span`, `logged_span` when the logged days span too little,
+        #3667, or null), `windows_with_estimate`,
         `rmr_source`, and `neat` with `days`, `steps_per_day`,
         `session_steps_per_day`, `floors_per_day`, `step_length_m` and
         `step_length_source` (`walks` or `height`) of the shown day, whose steps,

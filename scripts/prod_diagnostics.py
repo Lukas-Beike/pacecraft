@@ -167,6 +167,8 @@ SECTION_FIELDS = {
         # Windows failing the neighbour check, their largest spread and the
         # weigh-in days per source over their span (#3614).
         r"|unstable_windows|largest_unstable_spread_kcal"
+        # Windows whose complete days span too little to price (#3667).
+        r"|windows_span_short"
         # Windows mixing both weigh-in sources and each source's mean residual
         # around their lines, to 0.1 kg (#3638).
         r"|weighin_source_offset\.(mixed_windows|mean_residual_kg\.(app|garmin))"
@@ -186,8 +188,9 @@ SECTION_FIELDS = {
         r"status|sent|removed|failed|retried|linked_days|pending_days"
         r"|unlinked_uploads"
     ),
-    # The Wahoo profile-weight write, counts only (#3559).
-    "wahoo_weight_push": re.compile(r"status|sent|failed|retried|pending"),
+    # The Wahoo profile-weight write, counts only (#3559), and why the last push
+    # ended as it did, an enum (#3677).
+    "wahoo_weight_push": re.compile(r"status|sent|failed|retried|pending|last_outcome"),
     # The re-projection pass after a mapper bump: its state, batches and the
     # per-provider counters (#3595).
     "canonical_backfill": re.compile(

@@ -21,13 +21,7 @@ from backend.performance.current_thresholds import (
     resolve_current_thresholds,
 )
 from backend.performance.garmin_canonical import ActivityMaxHr
-from backend.performance.source_policy import (
-    NO_PREFERENCES,
-    Candidate,
-    Resolved,
-    SourcePreferences,
-    source_order,
-)
+from backend.performance.source_policy import Candidate, Resolved, source_order
 from backend.providers.source_labels import (
     SourceView,
     observation_source_label,
@@ -215,7 +209,6 @@ def _activity_max_hr(activity: Any) -> tuple[float, ProviderId] | None:
 
 def _overall_max_hr(
     sports: tuple[tuple[dict[str, Any], bool], ...],
-    preferences: SourcePreferences = NO_PREFERENCES,
 ) -> dict[str, Any]:
     """The highest sport max HR among those of the best-ranked source.
 
@@ -226,7 +219,7 @@ def _overall_max_hr(
     """
     order = [
         None if source is None else source.value
-        for source in source_order(MetricKind.MAX_HR, None, preferences)
+        for source in source_order(MetricKind.MAX_HR)
     ]
 
     def rank(item: dict[str, Any], from_activity: bool) -> int:
@@ -512,7 +505,6 @@ def current_performance_metrics(
         (*canonical.threshold_candidates, *garmin_thresholds),
         canonical.configured_thresholds,
         as_of=as_of,
-        preferences=canonical.preferences,
     )
     wahoo = canonical.wahoo_activity_max_hr
     cycling_max_hr = _max_hr_metric(
@@ -525,8 +517,7 @@ def current_performance_metrics(
         (
             (cycling_max_hr, thresholds.get((MetricKind.MAX_HR, Sport.RIDE)) is None),
             (running_max_hr, thresholds.get((MetricKind.MAX_HR, Sport.RUN)) is None),
-        ),
-        canonical.preferences,
+        )
     )
     return {
         **_performance_body_metrics(profile, canonical.body),

@@ -49,16 +49,15 @@ function wahooConnectionView(data) {
   const wahooId = data?.provider_ids?.wahoo;
   const reconnect = configured && !connected
     && freshness.some((entry) => Boolean(wahooId) && entry?.provider === wahooId && entry.error_code === "auth_required");
-  // A grant without user_write cannot set the profile weight (#3559).
-  const needsWrite = connected && !String(wahoo.scope || "").split(" ").includes("user_write");
+  // A grant without user_write cannot set the profile weight (#3559); a reconnect needs the configuration.
+  const needsWrite = configured && connected && !String(wahoo.scope || "").split(" ").includes("user_write");
   let status = "Nicht verbunden";
   if (connected) status = "Verbunden";
   else if (!configured) status = "Nicht konfiguriert";
   else if (reconnect) status = "Erneute Verbindung erforderlich";
-  const since = connected && wahoo.connected_at ? globalThis.AppFormat?.dateTime(wahoo.connected_at) : null;
-  let detail = "";
-  if (since) detail = `Verbunden seit ${since}`;
-  else if (reconnect) detail = status;
+  const since = globalThis.AppFormat?.dateTime(connected ? wahoo.connected_at : null);
+  // A reconnect names itself; #3677: without user_write the entered weight never reaches Wahoo, so the card says so.
+  const detail = [since && `Verbunden seit ${since}`, reconnect && status, needsWrite && "Gewicht nicht freigegeben"].filter(Boolean).join(" · ");
   let connectLabel = "Wahoo verbinden";
   if (reconnect) connectLabel = "Wahoo erneut verbinden";
   else if (needsWrite) connectLabel = "Wahoo neu verbinden";
@@ -74,7 +73,7 @@ function wahooConnectionView(data) {
     ok: connected,
     detail,
     connectLabel,
-    canConnect: configured && (!connected || needsWrite),
+    canConnect: (configured && !connected) || needsWrite,
     canDisconnect: connected,
     // Manual and full sync only make sense for a connected account.
     canSync: connected,

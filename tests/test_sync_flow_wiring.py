@@ -252,18 +252,15 @@ class MetricExportBuilderTests(unittest.TestCase):
         with (
             patch.object(flow_wiring, "read_export_thresholds") as read,
             patch.object(flow_wiring, "resolve_reader") as resolve,
-            patch.object(flow_wiring, "preferences_from_profile") as preferences,
             patch.object(flow_wiring, "CanonicalTableReader") as table_reader,
         ):
             self.assertIs(thresholds("db"), read.return_value)
 
         resolve.assert_called_once_with(ctx.canonical_read, "db")
-        ctx.athlete.profile.return_value.get_from_db.assert_called_once_with("db")
         read.assert_called_once_with(
             resolve.return_value,
             "db",
             as_of=ctx.clock.now.return_value.date.return_value,
-            preferences=preferences.return_value,
             configurations=table_reader.return_value.zone_configurations.return_value,
         )
 

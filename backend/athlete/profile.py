@@ -29,10 +29,8 @@ from backend.errors import AppError
 DEFAULT_TIMEZONE = "Europe/Berlin"
 # Intensity distribution the Coach plans with; pyramidal unless the athlete chooses.
 TRAINING_MODELS = ("pyramidal", "polarized", "threshold", "sweet_spot")
-# The athlete's preferred source per metric group (#1668); empty keeps the
-# default order. ``source_policy.PREFERENCE_PROFILE_FIELDS`` reads only the body
-# field; the other four have no effect and no control since #2084 but stay so a
-# stored value is kept.
+# The athlete's preferred source per metric group (#1668). Nothing reads them
+# and they have no control (#2084, #3640); they stay so a stored value is kept.
 PREFERRED_SOURCE_FIELDS = (
     "preferred_source_thresholds",
     "preferred_source_body",

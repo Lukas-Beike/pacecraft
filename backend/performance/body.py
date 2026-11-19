@@ -8,16 +8,11 @@ from datetime import date, timedelta
 from typing import Any
 
 from backend.canonical.decimal_text import comma_decimal_float
-from backend.canonical.vocabulary import MetricKind, ProviderId
+from backend.canonical.vocabulary import ProviderId
 from backend.performance.activity_validation import bounded_performance_metric
 from backend.performance.canonical_body import CanonicalBodyInputs
 from backend.performance.display_sources import preferred_providers
 from backend.performance.freshness import GarminSyncStatus
-from backend.performance.source_policy import (
-    NO_PREFERENCES,
-    SourcePreferences,
-    preferred_source,
-)
 from backend.providers.source_labels import SourceView, provider_label
 
 GARMIN_SOURCE = provider_label(ProviderId.GARMIN, SourceView.BODY_HISTORY)
@@ -162,12 +157,10 @@ def _quotient_series(
     weights: dict[ProviderId, dict[date, tuple[float, str, Any]]],
     start: date,
     end: date,
-    preferred: ProviderId | None = None,
 ) -> dict[str, Any]:
     """Garmin FTP per kg with a weight from the seven preceding days.
 
-    The newest weight wins (Garmin on a tie); with the athlete's preferred body
-    source (``preferred``), its newest weight in the window wins when it has one.
+    The newest weight wins (Garmin on a tie).
     """
     all_weights = [
         (day, record, weight_provider)
@@ -186,9 +179,6 @@ def _quotient_series(
                 for item in all_weights
                 if day - timedelta(days=7) <= item[0] <= day
             ]
-            candidates = [
-                item for item in candidates if item[2] is preferred
-            ] or candidates
             weight_item = max(
                 candidates,
                 key=lambda item: (item[0], item[2] is ProviderId.GARMIN),
@@ -240,7 +230,6 @@ def body_history(
     *,
     canonical: CanonicalBodyInputs,
     garmin_ftp: Mapping[date, float],
-    preferences: SourcePreferences = NO_PREFERENCES,
 ) -> dict[str, Any]:
     """Return API-ready 14d/12w charts under performance.history.body.
 
@@ -284,20 +273,12 @@ def body_history(
                         _stamped(canonical.skinfold_body_fat_pct, None),
                     )
                 ],
-                "cycling_w_per_kg": [
-                    _quotient_series(
-                        ftp,
-                        weights,
-                        start,
-                        today,
-                        preferred_source(MetricKind.WEIGHT, preferences),
-                    )
-                ],
+                "cycling_w_per_kg": [_quotient_series(ftp, weights, start, today)],
             },
         }
     return {
         "version": 1,
         "default_window": "12w",
         "windows": windows,
-        "preferred_providers": preferred_providers(preferences),
+        "preferred_providers": preferred_providers(),
     }

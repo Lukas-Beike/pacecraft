@@ -1,8 +1,8 @@
 # M12 — Adaptive daily expenditure from intake and the weight trend
 
 - **Card:** M12
-- **Card version:** 19
-- **Method ID:** adaptive-expenditure v19 (#3100, #3187, #3255, #3552, #3551, #3553, #3555, #3554, #3586, #3603, #3612, #3614, #3617, #3577, #3616, #3618, #3604)
+- **Card version:** 20
+- **Method ID:** adaptive-expenditure v20 (#3100, #3187, #3255, #3552, #3551, #3553, #3555, #3554, #3586, #3603, #3612, #3614, #3617, #3577, #3616, #3618, #3604, #3667)
 - **Status:** method implemented (`backend/nutrition/energy_balance.py`, the weigh-in line in `backend/athlete/body_records.py`, #3640); the reader, diagnostics and display follow (#3100, #3099)
 - **Classification:** model estimate
 - **Literature checked:** 2026-11-15
@@ -58,7 +58,12 @@ estimate. It never rewrites logged values and never falls back to a formula.
    diary's source rows take the selected day's inputs, which `basis.neat`
    names (#3395, #3618).
 4. **Adaptive TDEE:** mean intake of the window's complete days minus the stored
-   energy per day. All complete days count; flagged entries only widen the
+   energy per day over the span of those days, from the first to the last
+   complete day (#3667): a window logged only in part never prices the
+   unlogged phase, whose intake may differ (a switch from 2,600 to an
+   unlogged 2,100 read 2,688 and 2,863 before). The deficit card keeps the
+   whole window's store, and the neighbour check compares the same span as
+   the TDEE. All complete days count; flagged entries only widen the
    band (athlete decision, #3187 item 14). The value "ohne Schätzung" comes
    only from a window without any flagged day; dropping a flagged day's
    intake while keeping the window's stored energy would bias it.
@@ -249,9 +254,14 @@ bias that is the same on every day is not visible in the band.
   raise the threshold, so a fully logged long day counts while the window's
   stored energy covers it anyway. The diagnostics count the complete days the
   former rule (60 % of resting + own activity + TEF) would have dropped.
-- A window needs 14 complete days, 8 weigh-ins and 21 days between its first
-  and last weigh-in. Otherwise it reports `intake_days`, `weighins` or
-  `weight_span` and shows "Datenbasis zu gering".
+- A window needs 14 complete days, and 8 weigh-ins with 21 days between the
+  first and last of them inside its complete days' span (#3667), so the
+  latest window needs 22 logged days in a row from its first complete day.
+  Otherwise it reports `intake_days`, `weighins` or `weight_span`, or
+  `logged_span` when the window's weigh-ins would carry it but its complete
+  days span too little ("erfasste Tage über weniger als 21 Tage"), and shows
+  "Datenbasis zu gering"; the diagnostics count those (`windows_span_short`).
+  The TDEE band's dof counts the weigh-ins of that span.
 - The stored energy needs the weigh-ins only ("Nur Waage", athlete decision,
   #3603): with 8 weigh-ins over 21 days it is computed with its band whether or
   not the window has complete logging days, so the Verlauf deficit card stays.
@@ -333,7 +343,7 @@ bias that is the same on every day is not visible in the band.
 | Constant | Value | Module | Code comment |
 | --- | --- | --- | --- |
 | `METHOD_ID` | `'adaptive-expenditure'` | `backend/nutrition/energy_balance.py` |  |
-| `METHOD_VERSION` | `19` | `backend/nutrition/energy_balance.py` | Bump when a formula or constant below changes the estimate. |
+| `METHOD_VERSION` | `20` | `backend/nutrition/energy_balance.py` | Bump when a formula or constant below changes the estimate. |
 | `WINDOW_DAYS` | `28` | `backend/nutrition/energy_balance.py` | Days per window and windows per week of the rolling view (#3099, #3100). |
 | `MIN_COMPLETE_DAYS` | `14` | `backend/nutrition/energy_balance.py` | A window needs this many complete logging days, weigh-ins and days between its first and last weigh-in; otherwise it gives its reason, never a formula. |
 | `MIN_WEIGHINS` | `8` | `backend/nutrition/energy_balance.py` |  |

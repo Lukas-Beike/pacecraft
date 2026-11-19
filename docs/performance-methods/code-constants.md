@@ -10,7 +10,7 @@ every named number the code fixes. A test fails when it is out of date.
 | Constant | Value | Module | Code comment |
 | --- | --- | --- | --- |
 | `METHOD_ID` | `'activity-energy'` | `backend/performance/activity_energy.py` |  |
-| `METHOD_VERSION` | `7` | `backend/performance/activity_energy.py` | Bump when a formula or constant below changes the estimate. |
+| `METHOD_VERSION` | `8` | `backend/performance/activity_energy.py` | Bump when a formula or constant below changes the estimate. |
 | `J_PER_KCAL` | `4184.0` | `backend/performance/activity_energy.py` | Joules per kilocalorie (thermochemical calorie). |
 | `GRAVITY` | `9.81` | `backend/performance/activity_energy.py` | Standard gravity, m/s^2, for the vertical work of floors. |
 | `MINETTI_WALKING` | `(280.5, -58.7, -76.8, 51.9, 19.6, 2.5)` | `backend/performance/activity_energy.py` | Minetti et al. 2002: the running fit (MINETTI_RUNNING, its gradient range and the 200 m grade span come from grade_adjustment, #3187), and the same fit for walking. |
@@ -386,7 +386,6 @@ every named number the code fixes. A test fails when it is out of date.
 | `WAHOO_CURRENT_MAX_AGE_DAYS` | `90` | `backend/performance/source_policy.py` | A Wahoo FTP or weight observed longer ago than this is history, not the current value. |
 | `GARMIN_THRESHOLD_MAX_AGE_DAYS` | `180` | `backend/performance/source_policy.py` | A Garmin threshold observed longer ago than this is history, not current. |
 | `FAMILY_LOOKBACK_DAYS` | `84` | `backend/performance/source_policy.py` | Days, ending on the latest day read, of recovery history every reader uses. |
-| `RECENCY_TIE_DAYS` | `1` | `backend/performance/source_policy.py` |  |
 | `STALE_AFTER_DAYS` | `56` | `backend/performance/threshold_staleness.py` | Athlete decision 2026-11-07: eight weeks. |
 | `REASON_STALE` | `'stale'` | `backend/performance/threshold_staleness.py` |  |
 | `REASON_EXPIRED` | `'expired'` | `backend/performance/threshold_staleness.py` |  |

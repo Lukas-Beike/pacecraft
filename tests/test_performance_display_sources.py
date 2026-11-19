@@ -6,7 +6,7 @@ from backend.performance.display_sources import (
     _DISPLAY_ONLY,
     preferred_providers,
 )
-from backend.performance.source_policy import CURRENT_RULES, preferences_from_profile
+from backend.performance.source_policy import CURRENT_RULES
 
 
 class DisplaySourcesTests(unittest.TestCase):
@@ -40,25 +40,6 @@ class DisplaySourcesTests(unittest.TestCase):
         first["sleep"] = "changed"
 
         self.assertEqual(preferred_providers()["sleep"], ProviderId.GARMIN.value)
-
-
-class PreferredDisplayTests(unittest.TestCase):
-    def test_a_preferred_group_source_replaces_its_display_keys(self):
-        payload = preferred_providers(
-            preferences_from_profile(
-                {
-                    "preferred_source_body": "garmin",
-                    "preferred_source_resting_hr": "intervals",
-                }
-            )
-        )
-
-        self.assertEqual(payload["hrv"], ProviderId.GARMIN.value)
-        self.assertEqual(payload["weight_kg"], ProviderId.GARMIN.value)
-        self.assertEqual(payload["body_fat_pct"], ProviderId.GARMIN.value)
-        # A stored Intervals.icu preference is ignored.
-        self.assertEqual(payload["resting_hr"], ProviderId.GARMIN.value)
-        self.assertEqual(payload["cycling_ftp_watts"], ProviderId.GARMIN.value)
 
 
 if __name__ == "__main__":

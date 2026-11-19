@@ -49,7 +49,6 @@ from backend.performance.canonical_current import (
 )
 from backend.performance.current_thresholds import ThresholdKey
 from backend.performance.garmin_canonical import read_garmin_thresholds
-from backend.performance.source_policy import SourcePreferences
 
 _LOGGER = logging.getLogger("intervals_coach")
 
@@ -316,7 +315,6 @@ class ThresholdStalenessService:
         today: Callable[[], date],
         *,
         zone_configurations: Callable[[Any], tuple[ZoneConfiguration, ...]],
-        preferences: Callable[[Any], SourcePreferences],
         sdk_failure: Callable[[], Mapping[str, Any] | None] = lambda: None,
     ) -> None:
         """``reader`` serves observations; the stored zone configurations come from ``zone_configurations``."""
@@ -324,7 +322,6 @@ class ThresholdStalenessService:
         self._reader = reader
         self._zone_configurations = zone_configurations
         self._today = today
-        self._preferences = preferences
         self._sdk_failure = sdk_failure
 
     def read(self) -> dict[str, Any] | None:
@@ -347,11 +344,7 @@ class ThresholdStalenessService:
         with self._database_manager().reader() as db:
             configurations = self._zone_configurations(db)
             winners = read_export_thresholds(
-                reader,
-                db,
-                as_of=today,
-                preferences=self._preferences(db),
-                configurations=configurations,
+                reader, db, as_of=today, configurations=configurations
             )
             providers = (
                 *read_garmin_thresholds(reader, db),

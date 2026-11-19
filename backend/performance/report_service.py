@@ -750,7 +750,6 @@ class TrainingReportReadService:
                 resolve_reader(canonical.observation_reader(), db),
                 db,
                 as_of=as_of,
-                preferences=canonical.preferences_in(db),
             )
         return week_review(
             monday=monday,

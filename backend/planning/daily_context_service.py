@@ -10,7 +10,6 @@ from backend.performance.canonical_inputs import resolve_reader
 from backend.performance.daily_health import read_daily_health_by_date
 from backend.performance.load_context import read_local_fitness
 from backend.performance.planning_recovery import planning_recovery_view
-from backend.performance.source_policy import NO_PREFERENCES, SourcePreferences
 from backend.planning.context import build_daily_planning_context
 from backend.runtime.ports import ObservationReader
 from backend.weather.history import decode_history
@@ -36,7 +35,6 @@ class DailyPlanningContextService:
         today: Callable[[], date],
         calendar_window_days: int,
         observation_reader: Callable[[], ObservationReader],
-        source_preferences: Callable[[Any], SourcePreferences] | None = None,
         *,
         timezone: Callable[[], str] | None = None,
     ) -> None:
@@ -49,7 +47,6 @@ class DailyPlanningContextService:
         self._today = today
         self._calendar_window_days = calendar_window_days
         self._observation_reader = observation_reader
-        self._source_preferences = source_preferences
         self._timezone = timezone
 
     def _recovery_by_date(
@@ -74,11 +71,6 @@ class DailyPlanningContextService:
             end=today,
             morning_battery_history=history,
             morning_body_battery=self._morning_body_battery_service.current_in(db),
-            preferences=(
-                NO_PREFERENCES
-                if self._source_preferences is None
-                else self._source_preferences(db)
-            ),
             # The sync day is taken in the athlete's zone, as on the load tab.
             local_fitness_days=read_local_fitness(
                 selector,

@@ -21,7 +21,7 @@ from backend.performance.grade_adjustment import (
 
 METHOD_ID = "activity-energy"
 # Bump when a formula or constant below changes the estimate.
-METHOD_VERSION = 7
+METHOD_VERSION = 8
 # Joules per kilocalorie (thermochemical calorie).
 J_PER_KCAL = 4184.0
 # Standard gravity, m/s^2, for the vertical work of floors.

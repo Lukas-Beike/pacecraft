@@ -853,10 +853,7 @@ def _estimated_intake(
         return view
     fit, body = cast(LearnedEveryday, fit), cast(Mapping[str, Any], bodies[-1])
     activity = statistics.fmean(cast(float, w.activity_kcal_raw) for w in calibration)
-    eaten = sum(
-        cast(Estimate, w.adaptive_tdee).kcal + cast(StoredEnergy, w.store).kcal_per_day
-        for w in calibration
-    )
+    eaten = sum(cast(float, w.intake_kcal) for w in calibration)
     share = sum(cast(float, w.tef_kcal) for w in calibration) / eaten
     spent = (
         resting_energy(FORMULAS[ESTIMATE_FORMULA], body["lean_mass_kg"])
@@ -1345,10 +1342,12 @@ def read_energy_view(
     ``day`` (default ``end``) may be today, after ``end``, or before the history.
     """
     day = day or end
-    start = min(history_start(end), day)
+    # The 12-week span stays fixed; an older diary day is read beside it with
+    # the span's step length, flex-HR line and resting reference (#3617 item 6).
+    start = history_start(end)
     last = max(end, day)
-    inputs, costs = read_energy_inputs(db, sources, start, last)
-    health = sources.daily_health(db, start, last)
+    inputs, costs = read_energy_inputs(db, sources, start, last, older_day=day)
+    health = sources.daily_health(db, min(start, day), last)
     windows = energy_windows(inputs, end)
     _, missing = skinfold_state(db, sources, inputs, day)
     # The bias comes from the windows already built, not a second build (Gitar).

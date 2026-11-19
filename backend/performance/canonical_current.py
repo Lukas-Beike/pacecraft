@@ -34,11 +34,7 @@ from backend.performance.garmin_canonical import (
     provider_activity_max_hr,
     read_garmin_thresholds,
 )
-from backend.performance.source_policy import (
-    NO_PREFERENCES,
-    SourcePreferences,
-    select_current,
-)
+from backend.performance.source_policy import select_current
 from backend.runtime.ports import ObservationReader
 
 _EARLIEST: Final = datetime.min.replace(tzinfo=UTC)
@@ -68,8 +64,6 @@ class CanonicalCurrentInputs:
     # The highest stored Wahoo activity max heart rate per category (cycling,
     # running), over the whole history: the activity fallback beside Garmin's.
     wahoo_activity_max_hr: Mapping[str, ActivityMaxHr] = field(default_factory=dict)
-    # The athlete's preferred sources, applied to the thresholds and body values.
-    preferences: SourcePreferences = NO_PREFERENCES
 
 
 NO_CURRENT_INPUTS: Final = CanonicalCurrentInputs()
@@ -80,7 +74,6 @@ def read_current_inputs(
     db: Any,
     *,
     as_of: date,
-    preferences: SourcePreferences = NO_PREFERENCES,
     body: BodyReader | None = None,
 ) -> CanonicalCurrentInputs:
     """Read the Wahoo fallbacks and the thresholds current on ``as_of``.
@@ -102,12 +95,9 @@ def read_current_inputs(
     return CanonicalCurrentInputs(
         wahoo_ftp=wahoo_ftp,
         body=NO_BODY if body is None else body(reader, db, as_of),
-        zone_thresholds=provider_zone_thresholds(
-            providers, as_of=as_of, preferences=preferences
-        ),
+        zone_thresholds=provider_zone_thresholds(providers, as_of=as_of),
         threshold_candidates=candidates,
         configured_thresholds=configured,
-        preferences=preferences,
         wahoo_activity_max_hr=provider_activity_max_hr(reader, db, ProviderId.WAHOO),
     )
 
@@ -117,7 +107,6 @@ def read_zone_thresholds(
     db: Any,
     *,
     as_of: date,
-    preferences: SourcePreferences = NO_PREFERENCES,
 ) -> tuple[Observation, ...]:
     """Return the plan-zone thresholds (``zone_thresholds``) current on ``as_of``.
 
@@ -126,7 +115,6 @@ def read_zone_thresholds(
     return provider_zone_thresholds(
         _provider_thresholds(reader, db, _wahoo_ftp(reader, db, as_of=as_of)),
         as_of=as_of,
-        preferences=preferences,
     )
 
 
@@ -145,7 +133,6 @@ def read_export_thresholds(
     db: Any,
     *,
     as_of: date,
-    preferences: SourcePreferences = NO_PREFERENCES,
     configurations: Iterable[ZoneConfiguration] | None = None,
 ) -> dict[ThresholdKey, Observation]:
     """Return the thresholds an outbound export sends, current on ``as_of``.
@@ -154,7 +141,7 @@ def read_export_thresholds(
     reader's are used (none when it serves no configurations).
 
     The local zone configuration in effect wins, then Garmin's watch zone set,
-    then the source-policy values (Garmin, Wahoo) under the athlete's preferences. Intervals.icu values are never
+    then the source-policy values (Garmin, Wahoo). Intervals.icu values are never
     a source, so a value Intervals reported is never sent back to it (#1729).
     """
     providers = _provider_thresholds(reader, db, _wahoo_ftp(reader, db, as_of=as_of))
@@ -164,7 +151,7 @@ def read_export_thresholds(
     return {
         key: winner
         for key, result in resolve_current_thresholds(
-            providers, configured, as_of=as_of, preferences=preferences
+            providers, configured, as_of=as_of
         ).items()
         if (winner := result.winner.observation) is not None
     }

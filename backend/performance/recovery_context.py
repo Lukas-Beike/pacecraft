@@ -61,9 +61,7 @@ def _average(
     cutoff = today - timedelta(days=AVERAGE_DAYS - 1)
     daily = {
         day: float(observation.value.value)
-        for day, observation in select_daily(
-            recovery.of(kind), kind, recovery.preferences
-        ).items()
+        for day, observation in select_daily(recovery.of(kind), kind).items()
     }
     return rounded_average(
         [value / scale for day, value in daily.items() if cutoff <= day <= today]

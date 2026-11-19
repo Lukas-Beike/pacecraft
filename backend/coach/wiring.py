@@ -58,7 +58,6 @@ from backend.coach.response_transport import CoachResponseTransport
 from backend.db.repositories import ChatRepository
 from backend.history.wiring import HistoryServices
 from backend.performance.canonical_inputs import CanonicalPerformanceSource
-from backend.performance.source_policy import preferences_from_profile
 from backend.planning.compact_activities import ActivitySummarySource
 from backend.planning.wiring import PlanGuardServices
 from backend.runtime import clock as runtime_clock
@@ -260,9 +259,6 @@ def build_coach_context(
         serving=canonical_reader,
         activity_summaries=canonical_reader,
         coverage=canonical_reader,
-        source_preferences=lambda db: preferences_from_profile(
-            ctx.athlete.profile().get_from_db(db)
-        ),
         current_body=lambda reader, db, day: read_current_body(
             reader, db, day, ctx.athlete.skinfolds().measurements_on
         ),

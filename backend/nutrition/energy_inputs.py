@@ -16,7 +16,7 @@ import statistics
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from datetime import date, timedelta
-from typing import Any, Final
+from typing import Any, Final, NamedTuple
 
 from backend.athlete.body_composition import (
     RestingFormula,
@@ -26,6 +26,7 @@ from backend.athlete.body_composition import (
 from backend.athlete.body_records import (
     APP_SOURCE,
     BODY_GRACE_DAYS,
+    CURRENT_WEIGHT_DAYS,
     RESTING_LOOKBACK_DAYS,
     body_fat_on,
     weight_on,
@@ -42,6 +43,7 @@ from backend.canonical.vocabulary import ProviderId, StreamChannel
 from backend.db.activity_detail_store import detail_sets_for_session
 from backend.nutrition.energy_balance import (
     BAND_Z,
+    WINDOW_DAYS,
     DayInputs,
     EnergyInputs,
     EnergyWindow,
@@ -529,10 +531,32 @@ def _resting(
     return statistics.fmean(device), ProviderId.GARMIN.value
 
 
+class SpanBasis(NamedTuple):
+    """What a read span fixes for every day it prices: the resting reference,
+    the step length and the flex-HR line (#3617 item 6)."""
+
+    rmr: float | None
+    rmr_source: str | None
+    step_m: float | None
+    step_source: str | None
+    flex: energy.FlexHrFit | None
+
+
 def read_energy_inputs(
-    db: Any, sources: EnergySources, start: date, end: date
+    db: Any,
+    sources: EnergySources,
+    start: date,
+    end: date,
+    older_day: date | None = None,
+    basis: SpanBasis | None = None,
 ) -> tuple[EnergyInputs, tuple[SessionCost, ...]]:
-    """The days from ``start`` to ``end`` and the priced sessions behind them."""
+    """The days from ``start`` to ``end`` and the priced sessions behind them.
+
+    An ``older_day`` before ``start`` is added with this span's resting
+    reference, step length and flex-HR line, so opening an old diary day
+    does not change the span's own values (#3617 item 6). ``basis`` gives
+    them from outside instead of reading them.
+    """
     profile = sources.profile()
     health = sources.daily_health(db, start, end)
     # The first window looks 90 days back from its own end for a body fat,
@@ -548,13 +572,12 @@ def read_energy_inputs(
         device_body_fat=dict(sources.device_body_fat(db, lookback, grace_end)),
         skinfold_sd_pct=_skinfold_sds(sources.skinfolds(db, grace_end)),
     )
-    rmr, rmr_source = _carried_resting(
-        _resting(sources, db, end, health), body, trend, end
-    )
     sessions = list(sources.sessions(db, start, end))
-    step_m, step_source = _step_length(sessions, _height_m(profile))
-    rides = [s for s in sessions if str(s.get("sport") or "") in RIDE_SPORTS]
-    flex = _flex_fit(rides, rmr) if rmr is not None else None
+    if basis is None:
+        basis = _span_basis(
+            _resting(sources, db, end, health), body, trend, end, sessions, profile
+        )
+    rmr, rmr_source, step_m, step_source, flex = basis
     hr_cost = _heart_rate_cost(flex, profile, rmr or 0.0)
     feedback = feedback_by_session(
         [s for s in sessions if str(s.get("sport") or "") in STRENGTH_SPORTS],
@@ -588,14 +611,55 @@ def read_energy_inputs(
             trend, costs, step_m,
         )  # fmt: skip
         day += timedelta(days=1)
+    if older_day is not None and older_day < start:
+        # The day with the weigh-ins its current weight needs (Gitar on #3671).
+        weighed_from = older_day - timedelta(days=CURRENT_WEIGHT_DAYS - 1)
+        old, old_costs = read_energy_inputs(
+            db, sources, weighed_from, min(older_day, start - timedelta(days=1)),
+            basis=basis,
+        )  # fmt: skip
+        days, costs = {**old.days, **days}, old_costs + costs
+        fats, device = _older_readings(body, old, start)
+    else:
+        fats, device = body.body_fat_pct, body.device_body_fat
     return replace(
         body,
         days=days,
+        body_fat_pct=fats,
+        device_body_fat=device,
         rmr_kcal=rmr,
         rmr_source=rmr_source,
         step_m=step_m,
         step_source=step_source,
     ), costs
+
+
+def _older_readings(
+    body: EnergyInputs, old: EnergyInputs, start: date
+) -> tuple[Mapping[date, float], Mapping[date, tuple[float, Any]]]:
+    """The span's body fat readings plus the older day's from before the
+    earliest day any window looks at, so the old day finds its own body and
+    no window changes (Gitar on #3671)."""
+    reach = start + timedelta(days=WINDOW_DAYS - 1 - RESTING_LOOKBACK_DAYS)
+    fats = {d: v for d, v in old.body_fat_pct.items() if d < reach}
+    device = {d: v for d, v in old.device_body_fat.items() if d < reach}
+    return {**fats, **body.body_fat_pct}, {**device, **body.device_body_fat}
+
+
+def _span_basis(
+    found: tuple[float | None, str | None],
+    body: EnergyInputs,
+    trend: Mapping[date, float],
+    end: date,
+    sessions: Sequence[Mapping[str, Any]],
+    profile: Mapping[str, Any],
+) -> SpanBasis:
+    """The span's resting reference, step length and flex-HR line."""
+    rmr, rmr_source = _carried_resting(found, body, trend, end)
+    step_m, step_source = _step_length(sessions, _height_m(profile))
+    rides = [s for s in sessions if str(s.get("sport") or "") in RIDE_SPORTS]
+    flex = _flex_fit(rides, rmr) if rmr is not None else None
+    return SpanBasis(rmr, rmr_source, step_m, step_source, flex)
 
 
 def _carried_resting(
@@ -911,6 +975,11 @@ def diagnostics(
         # Windows failing the neighbour check and their largest unexplained
         # difference, to the nearest 100 kcal (#3614).
         "unstable_windows": sum(1 for w in windows if not is_stable(w)),
+        # Windows whose weigh-ins carry the store and that hold enough complete
+        # days, but whose complete days span too little to price (#3667).
+        "windows_span_short": sum(
+            1 for w in windows if w.insufficient == "logged_span"
+        ),
         "largest_unstable_spread_kcal": int(
             round(max(unexplained_spreads(inputs, windows), default=0.0), -2)
         ),
@@ -953,7 +1022,7 @@ def _tdee(window: EnergyWindow) -> float:
 
 def _intake(window: EnergyWindow) -> float:
     """The window's mean logged intake: TDEE plus the stored energy per day."""
-    return _tdee(window) + (window.store.kcal_per_day if window.store else 0.0)
+    return window.intake_kcal if window.intake_kcal is not None else _tdee(window)
 
 
 def _activity_gap(a: EnergyWindow, b: EnergyWindow) -> float:

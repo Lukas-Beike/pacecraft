@@ -41,10 +41,8 @@ from backend.canonical.vocabulary import (
 )
 from backend.performance.source_policy import (
     LOCAL_FIRST_KINDS,
-    NO_PREFERENCES,
     Candidate,
     Resolved,
-    SourcePreferences,
     resolve_candidates,
 )
 
@@ -125,7 +123,6 @@ def resolve_current_thresholds(
     configured: Iterable[Observation] = (),
     *,
     as_of: date | None,
-    preferences: SourcePreferences = NO_PREFERENCES,
 ) -> Mapping[ThresholdKey, Resolved]:
     """Resolve each threshold key; keys without a current value are absent.
 
@@ -155,9 +152,7 @@ def resolve_current_thresholds(
             if item.kind is kind and item.sport is sport
         ]
         candidates += _provider_candidates(observations, kind, sport)
-        result = resolve_candidates(
-            kind, candidates, as_of=as_of, sport=sport, preferences=preferences
-        )
+        result = resolve_candidates(kind, candidates, as_of=as_of, sport=sport)
         if result is not None:
             resolved[(kind, sport)] = result
     return resolved
@@ -167,7 +162,6 @@ def provider_zone_thresholds(
     provider_observations: Iterable[Observation],
     *,
     as_of: date | None,
-    preferences: SourcePreferences = NO_PREFERENCES,
 ) -> tuple[Observation, ...]:
     """Return the provider winners per threshold key.
 
@@ -176,7 +170,7 @@ def provider_zone_thresholds(
     return tuple(
         winner
         for result in resolve_current_thresholds(
-            tuple(provider_observations), as_of=as_of, preferences=preferences
+            tuple(provider_observations), as_of=as_of
         ).values()
         if (winner := result.winner.observation) is not None
     )
