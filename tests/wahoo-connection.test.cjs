@@ -125,7 +125,8 @@ test("a grant without user_write offers a reconnect for the profile weight (#355
 test("the card detail shows only the connection state, without a scope note", () => {
   const disconnected = wahooConnectionView({ wahoo: { configured: true, connected: false } });
   assert.equal(disconnected.detail, "");
-  globalThis.AppFormat = { dateTime: () => "16.10.2026, 09:00" };
+  // Like format.js, no date formats as null.
+  globalThis.AppFormat = { dateTime: (value) => (value ? "16.10.2026, 09:00" : null) };
   try {
     // A disconnected card names no date, even with a stored connection time.
     assert.equal(wahooConnectionView({ wahoo: { configured: true, connected: false, connected_at: "2026-10-16T07:00:00Z" } }).detail, "");
