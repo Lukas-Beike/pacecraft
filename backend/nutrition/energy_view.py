@@ -556,11 +556,19 @@ def energy_view(
     }
 
 
+# The deficit card's distance to the goal, in kcal per day either way (athlete
+# decision, #3606): within the first it is in the goal ("near", green), up to the
+# second "mid" (orange), beyond "far" (red).
+GOAL_NEAR_KCAL: Final = 150
+GOAL_MID_KCAL: Final = 350
+
+
 def _goal_status(
-    deficit: float, band: float, goal: Mapping[str, str] | None
+    deficit: float, goal: Mapping[str, str] | None
 ) -> dict[str, Any] | None:
-    """The 28-day deficit against the goal (#3548): ``in`` within its band,
-    else ``under`` or ``over`` the goal's deficit (surplus for build)."""
+    """The 28-day deficit against the goal (#3606): ``in`` within
+    ``GOAL_NEAR_KCAL`` either way, else ``under`` or ``over`` the goal's deficit
+    (surplus for build), with the distance class that colours the card."""
     kind = (goal or {}).get("energy_goal") or ""
     if kind not in _GOAL_SIGN:
         return None
@@ -571,13 +579,34 @@ def _goal_status(
     except ValueError:
         kcal = 0
     # Lose and hold count a deficit up, build a surplus.
-    amount = -deficit if kind == "build" else deficit
+    gap = (-deficit if kind == "build" else deficit) - kcal
     status = "in"
-    if amount < kcal - band:
-        status = "under"
-    elif amount > kcal + band:
-        status = "over"
-    return {"goal": kind, "goal_kcal": kcal, "status": status}
+    if abs(gap) > GOAL_NEAR_KCAL:
+        status = "over" if gap > 0 else "under"
+    distance = "near" if abs(gap) <= GOAL_NEAR_KCAL else "mid"
+    if abs(gap) > GOAL_MID_KCAL:
+        distance = "far"
+    return {"goal": kind, "goal_kcal": kcal, "status": status, "distance": distance}
+
+
+def _measured_terms(store: StoredEnergy) -> dict[str, Any]:
+    """The deficit card's measured values, each null when missing: the body fat
+    readings and their days, which span the phase that sets the fat share, not
+    the window (#3598), and the window's last weigh-in."""
+
+    def one(value: float | None) -> float | None:
+        return None if value is None else round(value, 1)
+
+    def day(value: date | None) -> str | None:
+        return None if value is None else value.isoformat()
+
+    return {
+        "fat_pct_start": one(store.fat_pct_start),
+        "fat_pct_end": one(store.fat_pct_end),
+        "fat_date_start": day(store.fat_date_start),
+        "fat_date_end": day(store.fat_date_end),
+        "weight_last_kg": one(store.weight_last_kg),
+    }
 
 
 def _deficit(
@@ -599,12 +628,7 @@ def _deficit(
         "span_days": store.days,
         "weight_start_kg": round(store.weight_start_kg, 1),
         "weight_end_kg": round(store.weight_end_kg, 1),
-        "fat_pct_start": None
-        if store.fat_pct_start is None
-        else round(store.fat_pct_start, 1),
-        "fat_pct_end": None
-        if store.fat_pct_end is None
-        else round(store.fat_pct_end, 1),
+        **_measured_terms(store),
         "fat_change_kg": round(store.fat_change_kg, 1),
         # The fat share of the weight change (#3555).
         "fat_share_pct": round(100 * store.fat_change_kg / change)
@@ -614,7 +638,7 @@ def _deficit(
         "uncertainty": store.uncertainty,
         "total_kcal": _round(tdee.kcal),
         "device_total_kcal": _round(device_total),
-        "goal": _goal_status(deficit, band, goal),
+        "goal": _goal_status(deficit, goal),
     }
 
 

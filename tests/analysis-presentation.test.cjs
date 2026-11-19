@@ -313,7 +313,7 @@ test("'Heute noch essen' heads the diary's energy card, else a link to the goal 
   assert.equal(energyGoalText({ energy_goal: "hold" }), "Halten");
 });
 
-const DEFICIT_CARD_FUNCTIONS = ["energyFatShareRule", "DEFICIT_UNCERTAINTY", "DEFICIT_GOAL_STATUS", "deficitDecimal", "deficitSigned", "deficitSpan", "deficitGoalBar", "deficitBoxes", "deficitText", "energyDeficitCard"];
+const DEFICIT_CARD_FUNCTIONS = ["energyFatShareRule", "DEFICIT_UNCERTAINTY", "DEFICIT_GOAL_STATUS", "deficitDecimal", "deficitSigned", "deficitDay", "deficitSpan", "deficitGoalBar", "deficitBoxes", "deficitText", "energyDeficitCard"];
 
 test("Verlauf's deficit card: hero, goal marker, boxes and text agree, measured and the prior alone (#3548, #3555)", () => {
   const { h } = extractFunctions("components.js", ["h", "SVG_NS", "svgNode"], { document: fakeDocument() });
@@ -321,7 +321,7 @@ test("Verlauf's deficit card: hero, goal marker, boxes and text agree, measured 
   const { energyDeficitCard } = extractFunctions("analysis.js", ["energyKcalRange", "energyKcalSpan", "energyFlaggedRows", ...DEFICIT_CARD_FUNCTIONS], {
     h, AppFormat, formatWhole: (v) => AppFormat.number(Math.round(v), { digits: 0 }),
   });
-  const measured = { days: 28, deficit_kcal: 565, band_kcal: 235, method: "measured", span_days: 28, weight_start_kg: 91.2, weight_end_kg: 89.2, fat_pct_start: 15.5, fat_pct_end: 14.1, fat_change_kg: -1.6, fat_share_pct: 80, fat_share: { share_pct: 80, prior_pct: 70, measured_pct: 28 }, stored_kcal: -15820, uncertainty: "fat_share", total_kcal: 3800, device_total_kcal: 3100, goal: { goal: "lose", goal_kcal: 500, status: "in" } };
+  const measured = { days: 28, deficit_kcal: 565, band_kcal: 235, method: "measured", span_days: 28, weight_start_kg: 91.2, weight_end_kg: 89.2, fat_pct_start: 15.5, fat_pct_end: 14.1, fat_date_start: "2026-10-07", fat_date_end: "2026-11-13", weight_last_kg: 89.2, fat_change_kg: -1.6, fat_share_pct: 80, fat_share: { share_pct: 80, prior_pct: 70, measured_pct: 28 }, stored_kcal: -15820, uncertainty: "fat_share", total_kcal: 3800, device_total_kcal: 3100, goal: { goal: "lose", goal_kcal: 500, status: "in" } };
   const rows = [{ source: "device", label: "Garmin" }];
   const card = energyDeficitCard({ rows, deficit: measured });
   assert.equal(card.dataset.energyDeficit, "measured");
@@ -336,20 +336,31 @@ test("Verlauf's deficit card: hero, goal marker, boxes and text agree, measured 
   assert.equal(band.style.width, `calc(${at(800)} - ${at(330)})`);
   assert.ok(Object.hasOwn(band.style, "setProperty") || typeof band.style.setProperty === "function", "the element keeps its own style object");
   const boxes = card.children[4].children.map(textOf);
-  assert.deepEqual(boxes, ["Gewicht−2,0 kg91,2 → 89,2", "Körperfett15,5 → 14,1 %", "davon Fett≈ 1,6 kg≈ 80 % · Faustregel 70 %, zu 28 % gemessen", "pro Tag≈ 565 kcal15.820 kcal ÷ 28 Tage"]);
-  assert.equal(textOf(card.children[5]), "Du hast 2,0 kg abgenommen, dein Körperfett ist von 15,5 % auf 14,1 % gesunken. Faustregel und Messungen zusammen nehmen davon etwa 80 % als Fett – etwa 1,6 kg. Das entspricht einem Defizit von etwa 565 kcal pro Tag. Dein echter Verbrauch lag damit bei rund 3.800 kcal (Garmin: 3.100).");
-  assert.equal(textOf(card.children[6]), "Unsicherheit vor allem: Fettanteil (Faustregel und Messungen)");
+  // #3598: an end weight that differs from the last weigh-in at the shown precision is named "aktuell".
+  const current = energyDeficitCard({ rows, deficit: { ...measured, weight_last_kg: 89.4 } });
+  assert.equal(textOf(current.children[4].children[0]), "Gewicht−2,0 kg91,2 → 89,2 (aktuell)");
+  // #3598: the readings span the phase, so the Körperfett box names its own dates.
+  assert.deepEqual(boxes, ["Gewicht−2,0 kg91,2 → 89,2", "Körperfett15,5 → 14,1 %07.10. → 13.11.", "davon Fett≈ 1,6 kg≈ 80 % · Faustregel 70 %, zu 28 % gemessen", "pro Tag≈ 565 kcal15.820 kcal ÷ 28 Tage"]);
+  // #3606: two lines, the facts the boxes lack.
+  assert.equal(textOf(card.children[5]), "Echter Verbrauch: ≈ 3.800 kcal am Tag (Garmin: 3.100).");
+  assert.equal(textOf(card.children[6]), "Unsicher vor allem: Fettanteil (Faustregel und Messungen).");
+  // #3606: the read's distance class colours the card; without a goal there is none.
+  assert.equal(card.dataset.goalDistance, undefined, "the fixture's goal has no distance class yet");
+  const far = energyDeficitCard({ rows, deficit: { ...measured, goal: { ...measured.goal, status: "over", distance: "far" } } });
+  assert.equal(far.dataset.goalDistance, "far");
+  const unknown = energyDeficitCard({ rows, deficit: { ...measured, device_total_kcal: null } });
+  assert.equal(textOf(unknown.children[5]), "Echter Verbrauch: ≈ 3.800 kcal am Tag.");
   // The prior alone: one measurement, the rule of thumb's share, a surplus, and no goal.
-  const prior = { ...measured, method: "prior", deficit_kcal: -300, stored_kcal: 8400, weight_start_kg: 70, weight_end_kg: 71, fat_pct_start: null, fat_pct_end: 12, fat_change_kg: 0.7, fat_share_pct: 70, fat_share: { share_pct: 70, prior_pct: 70, measured_pct: 0 }, goal: null };
+  const prior = { ...measured, method: "prior", deficit_kcal: -300, stored_kcal: 8400, weight_start_kg: 70, weight_end_kg: 71, weight_last_kg: 71, fat_pct_start: null, fat_date_start: null, fat_pct_end: 12, fat_change_kg: 0.7, fat_share_pct: 70, fat_share: { share_pct: 70, prior_pct: 70, measured_pct: 0 }, goal: null };
   const surplus = energyDeficitCard({ rows, deficit: prior });
   assert.equal(textOf(surplus.children[0]), "Dein Überschuss, letzte 28 Tage");
   assert.match(textOf(surplus.children[1]), /pro Tag in die Speicher/);
-  assert.deepEqual(surplus.children[2].children.map(textOf), ["Gewicht+1,0 kg70,0 → 71,0", "Körperfettnur eine Messung", "davon Fett≈ 0,7 kg≈ 70 % · Faustregel 70 %", "pro Tag≈ 300 kcal8.400 kcal ÷ 28 Tage"]);
-  assert.equal(textOf(surplus.children[3]), "Du hast 1,0 kg zugenommen. Ohne zweite Körperfettmessung schätzt die Faustregel davon etwa 70 % als Fett – etwa 0,7 kg. Das entspricht einem Überschuss von etwa 300 kcal pro Tag. Dein echter Verbrauch lag damit bei rund 3.800 kcal (Garmin: 3.100).");
+  assert.deepEqual(surplus.children[2].children.map(textOf), ["Gewicht+1,0 kg70,0 → 71,0", "Körperfettnur eine Messungvom 13.11.", "davon Fett≈ 0,7 kg≈ 70 % · Faustregel 70 %", "pro Tag≈ 300 kcal8.400 kcal ÷ 28 Tage"]);
+  assert.equal(textOf(surplus.children[3]), "Echter Verbrauch: ≈ 3.800 kcal am Tag (Garmin: 3.100).");
+  assert.equal(surplus.dataset.goalDistance, undefined, "no goal, no distance class");
   // Two readings that do not weigh yet keep the rule of thumb but are not "missing" (Gitar on #3581).
   const light = energyDeficitCard({ rows, deficit: { ...measured, method: "prior", fat_share: { share_pct: 70, prior_pct: 70, measured_pct: 0 } } });
-  assert.equal(textOf(light.children[4].children[1]), "Körperfett15,5 → 14,1 %");
-  assert.match(textOf(light.children[5]), /von 15,5 % auf 14,1 % gesunken\. Die Messungen wiegen darin noch kaum, die Faustregel schätzt davon etwa 70 % als Fett/);
+  assert.equal(textOf(light.children[4].children[1]), "Körperfett15,5 → 14,1 %07.10. → 13.11.");
   // A span reaching past 0 into a surplus is signed, not clamped (Gitar on #3562).
   const small = energyDeficitCard({ rows, deficit: { ...measured, deficit_kcal: 100, band_kcal: 235 } });
   assert.match(textOf(small.children[1]), /−135 bis 335zwischen −135 und 335 kcal$/);

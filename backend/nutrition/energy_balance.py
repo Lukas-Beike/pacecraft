@@ -169,6 +169,11 @@ class StoredEnergy(NamedTuple):
     # The blended fat share and the measurements' weight in it, 0 to 1 (#3555).
     fat_share: float = FAT_SHARE_PRIOR
     measured_weight: float = 0.0
+    # The days of fat_pct_start and fat_pct_end: the phase's span (#3598).
+    fat_date_start: date | None = None
+    fat_date_end: date | None = None
+    # The window's last weigh-in, which the weight chart ends on (#3598).
+    weight_last_kg: float | None = None
 
 
 @dataclass(frozen=True)
@@ -341,6 +346,9 @@ class FatShare(NamedTuple):
     measured_weight: float = 0.0
     pct_first: float | None = None
     pct_last: float | None = None
+    # Their days: the phase's span the card names, not the window's (#3598).
+    day_first: date | None = None
+    day_last: date | None = None
 
 
 def _slope(xs: Sequence[float], ys: Sequence[float]) -> tuple[float, float]:
@@ -368,12 +376,21 @@ def fat_share(inputs: EnergyInputs, trend: Mapping[date, float], end: date) -> F
         if len(days) >= 2 and (days[-1] - days[0]).days >= MIN_FAT_SPAN_DAYS:
             break
     else:
-        return prior._replace(pct_last=_latest_body_fat(inputs, end))
+        measured = [d for d in inputs.body_fat_pct if d <= end]
+        return prior._replace(
+            pct_last=_latest_body_fat(inputs, end),
+            day_last=max(measured) if measured else None,
+        )
     xs = [float((d - days[0]).days) for d in days]
     weights = [trend[d] for d in days]
     weight_slope, sxx = _slope(xs, weights)
     if abs(weight_slope) * (xs[-1] - xs[0]) < MIN_FAT_SHARE_WEIGHT_CHANGE_KG:
-        return prior._replace(pct_first=series[days[0]], pct_last=series[days[-1]])
+        return prior._replace(
+            pct_first=series[days[0]],
+            pct_last=series[days[-1]],
+            day_first=days[0],
+            day_last=days[-1],
+        )
     fat_slope, _ = _slope(
         xs, [w * series[d] / 100.0 for w, d in zip(weights, days, strict=True)]
     )
@@ -389,6 +406,8 @@ def fat_share(inputs: EnergyInputs, trend: Mapping[date, float], end: date) -> F
         weight,
         series[days[0]],
         series[days[-1]],
+        days[0],
+        days[-1],
     )
 
 
@@ -438,6 +457,9 @@ def _stored_energy(
         "fat_share" if split >= scatter else "weight_scatter",
         share.share,
         share.measured_weight,
+        share.day_first,
+        share.day_last,
+        ys[-1],
     )
 
 

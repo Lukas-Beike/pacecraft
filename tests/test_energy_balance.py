@@ -135,6 +135,26 @@ class FatShareBlendTests(unittest.TestCase):
         )
         self.assertEqual(0.0, balance.fat_share(mixed, trend, END).measured_weight)
 
+    def test_the_share_names_the_dates_of_its_first_and_last_reading(self) -> None:
+        # #3598: the phase's readings start 12 weeks back, long before a 28-day
+        # window; the card names that span, so the share carries its dates.
+        inputs, trend = self.phase(12)
+        share = balance.fat_share(inputs, trend, END)
+        self.assertEqual(
+            (END - timedelta(days=84), END), (share.day_first, share.day_last)
+        )
+        weights = {d: v.weight_kg for d, v in inputs.days.items() if v.weight_kg}
+        recent = {d: w for d, w in weights.items() if d > END - timedelta(days=28)}
+        store = balance._stored_energy(inputs, trend, recent, END)
+        self.assertEqual(
+            (END - timedelta(days=84), END), (store.fat_date_start, store.fat_date_end)
+        )
+        # One reading alone: only its date, as its only percentage.
+        single = balance.fat_share(
+            replace(inputs, body_fat_pct={END: 19.0}), trend, END
+        )
+        self.assertEqual((None, END), (single.day_first, single.day_last))
+
     def test_two_readings_14_days_apart_stay_near_the_prior(self) -> None:
         # Repeatability 2 points: 84 kg x 2 % = 1.68 kg of fat per reading over
         # a 1 kg loss give the measured share an SD of about 2.4, so it weighs
