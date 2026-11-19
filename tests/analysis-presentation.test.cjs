@@ -449,8 +449,12 @@ test("the energy table shows bands, outlines the best source, and the basis", ()
   const flaggedTable = (flags) => energyDeficitCard({ ...read, deficit, flagged: flags }).children.at(-1);
   const flaggedRows = flaggedTable(flagged).children[1].children;
   assert.deepEqual(flaggedRows.map((row) => [textOf(row.children[0]), textOf(row.children[1]), textOf(row.children[2])]), [["ohne geschätzte Tage (bis 24.10.)", "–", span(2650, 2520, 2780)], ["mit gelernter Korrektur", "–", span(2760, 2600, 2920)]]);
-  const noClean = flaggedTable({ ...flagged, unflagged: null, corrected: null }).children[1].children.at(-1);
+  const [noClean, learnedNoTotal] = flaggedTable({ ...flagged, unflagged: null, corrected: null }).children[1].children;
   assert.equal(textOf(noClean.children[2]), "kein sauberer Zeitraum");
+  // #3616: a learned bias without the latest total shows "–"; until it is learned the row says so.
+  assert.equal(textOf(learnedNoTotal.children[2]), "–");
+  const notLearned = flaggedTable({ ...flagged, corrected: null, bias_pct: null, bias_band_pct: null }).children[1].children.at(-1);
+  assert.equal(textOf(notLearned.children[2]), "noch nicht gelernt");
   assert.notEqual(flaggedTable({ ...flagged, days: 0 }).tagName, "TABLE", "no flagged day, no table");
   // The diary's day table carries no 28-day row (#3531).
   assert.equal(energyTable({ ...read, flagged }).children[2].children.length, energyTable(read).children[2].children.length);
