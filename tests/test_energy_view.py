@@ -1381,7 +1381,11 @@ class SelectedDayTests(unittest.TestCase):
             cast(Estimate, w.adaptive_tdee).band_kcal for w in windows
         )
         self.assertLessEqual(abs(balance - true_balance), band)
-        self.assertGreater(abs(latest_rule - true_balance), band)
+        # The latest window's rate on all days misses by about 170 kcal/day:
+        # beyond the band before the water term widened it (#3690), still far
+        # beyond the per-window rule's own error.
+        self.assertGreater(abs(latest_rule - true_balance), 150)
+        self.assertLess(abs(balance - true_balance), 50)
         # The last 14 days lie in the latest window: its rate, as before.
         latest_total = cast(float, totals[END])
         self.assertTrue(all(totals[d] == latest_total for d in period[:14]))

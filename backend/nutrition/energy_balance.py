@@ -28,7 +28,7 @@ from backend.performance.activity_energy import (
 
 METHOD_ID = "adaptive-expenditure"
 # Bump when a formula or constant below changes the estimate.
-METHOD_VERSION = 23
+METHOD_VERSION = 24
 # Days per window and windows per week of the rolling view (#3099, #3100).
 WINDOW_DAYS = 28
 # A window needs this many complete logging days, weigh-ins and days between
@@ -58,6 +58,11 @@ LEAN_KCAL_PER_KG = 1816.0
 FAT_SHARE_PRIOR = 0.70
 FAT_SHARE_PRIOR_SD = 0.15
 FORBES_FAT_MASS_KG = 10.4
+# Water, glycogen and gut content the weigh-ins cannot tell from tissue: about
+# 1 kg (95 %) over a window, as early in a cut about 2 of 3.4 kg in 27 days
+# can be (Fable review, #3690); its SD, priced at the tissue density over the
+# window's span, enters the stored energy's error in quadrature.
+WATER_KG_SD = 1.0 / 1.96
 FAT_SHARE_PRIOR_BOUNDS = (0.40, 0.85)
 # Repeatability of one self-measured body fat value (percentage points, SD):
 # the upper end of the review's 1.5-2 for skinfolds (#3555).
@@ -526,20 +531,19 @@ def _stored_energy(
     """Stored energy per day over the weigh-ins, its standard error and how fat
     and lean mass were split.
 
-    The least-squares slope of the window's own weigh-ins, at the energy
+    The Theil-Sen slope of the window's own weigh-ins (#3690), at the energy
     density of the blended fat share (#3555): ``share``, the phase's one share
     the windows of a view share (#3554), else the one up to ``end``. The error
-    combines the slope's standard error with the share's. Unlike the trend's
-    change the slope has no warm-up lag after the first weigh-in.
+    combines the slope's standard error with the share's and an unmodelled
+    water term (``WATER_KG_SD``, #3690). Unlike the trend's change the slope
+    has no warm-up lag after the first weigh-in.
     """
     weighins = sorted(weights)
     xs = [float((d - weighins[0]).days) for d in weighins]
     ys = [weights[d] for d in weighins]
-    slope, sxx = _slope(xs, ys)
-    mean_x, mean_y = statistics.fmean(xs), statistics.fmean(ys)
-    residuals = [
-        y - (mean_y + slope * (x - mean_x)) for x, y in zip(xs, ys, strict=True)
-    ]
+    _, sxx = _slope(xs, ys)
+    slope, intercept = _theil_sen(xs, ys)
+    residuals = [y - (intercept + slope * x) for x, y in zip(xs, ys, strict=True)]
     slope_se = math.sqrt(sum(r * r for r in residuals) / max(1, len(xs) - 2) / sxx)
     slope_se *= _persistence(residuals)
     share = share or fat_share(inputs, trend, end)
@@ -547,11 +551,14 @@ def _stored_energy(
     density_sd = share.sd * (FAT_KCAL_PER_KG - LEAN_KCAL_PER_KG)
     scatter, split = abs(density * slope_se), abs(slope * density_sd)
     span = xs[-1] - xs[0]
+    # Water the weigh-ins cannot tell from tissue widens the error; the label
+    # still names the larger of the measured terms (#3690).
+    water = abs(density) * WATER_KG_SD / max(1.0, span)
     # The fitted line's weights at the first and the last weigh-in.
-    first = mean_y + slope * (xs[0] - mean_x)
+    first = intercept + slope * xs[0]
     return StoredEnergy(
         density * slope,
-        math.hypot(scatter, split),
+        math.hypot(scatter, split, water),
         # The same whole percent the label shows (Gitar on #3581).
         "measured" if round(100 * share.measured_weight) >= 1 else "prior",
         round(span),
@@ -569,6 +576,20 @@ def _stored_energy(
         share.prior,
         share.prior_source,
     )
+
+
+def _theil_sen(xs: Sequence[float], ys: Sequence[float]) -> tuple[float, float]:
+    """The Theil-Sen line: the median of the pairwise slopes and the median
+    intercept under it. A single bad weigh-in or a step near a window's edge
+    moves it far less than least squares (#3690)."""
+    slopes = [
+        (ys[j] - ys[i]) / (xs[j] - xs[i])
+        for i in range(len(xs))
+        for j in range(i + 1, len(xs))
+        if xs[j] != xs[i]
+    ]
+    slope = statistics.median(slopes)
+    return slope, statistics.median(y - slope * x for x, y in zip(xs, ys, strict=True))
 
 
 def _persistence(residuals: Sequence[float]) -> float:

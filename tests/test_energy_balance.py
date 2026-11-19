@@ -298,7 +298,9 @@ class FatShareBlendTests(unittest.TestCase):
         self.assertAlmostEqual(
             store.fat_change_kg, -27 / 14 * store.fat_share, places=6
         )
-        self.assertLess(BAND_Z * store.sd, 200)
+        # Below the old +-1,400 by far; the water term (#3690) alone adds
+        # 1.96 x 7,153.5 x 0.51 kg / 27 days = 265 in quadrature.
+        self.assertLess(BAND_Z * store.sd, 400)
         self.assertEqual("fat_share", store.uncertainty)
         prior = balance._stored_energy(
             replace(inputs, body_fat_pct={}), trend, window, END
@@ -445,13 +447,42 @@ class AdaptiveTdeeTests(unittest.TestCase):
         self.assertEqual(balance.t_quantile(6), 2.447)
         self.assertEqual(balance.t_quantile(35), 2.042)
         self.assertEqual(balance.t_quantile(500), 1.96)
-        # Losing 500 kcal/day with exact weigh-ins and constant intake: only the
-        # density term is left. Slope 500 / 7,153.5 = 0.069896 kg/day; the prior
-        # share's SD 0.15 x (9,441 - 1,816) = 1,143.75 kcal/kg; 79.943 kcal/day.
-        # 28 days and 28 weigh-ins give min(27, 26) dof: t = 2.056, band 164.36.
+        # Losing 500 kcal/day with exact weigh-ins and constant intake: the
+        # density and the water terms are left. Slope 500 / 7,153.5 = 0.069896
+        # kg/day; the prior share's SD 0.15 x (9,441 - 1,816) = 1,143.75
+        # kcal/kg gives 79.943 kcal/day; the water term (#3690) 7,153.5 x
+        # (1 / 1.96) kg / 27 days = 135.17 kcal/day; in quadrature 157.04.
+        # 28 days and 28 weigh-ins give min(27, 26) dof: t = 2.056, band 322.88.
         window = balance.energy_windows(series(constant(2100.0)), END, weeks=1)[-1]
         assert window.adaptive_tdee is not None
-        self.assertAlmostEqual(window.adaptive_tdee.band_kcal, 164.36, delta=0.05)
+        self.assertAlmostEqual(window.adaptive_tdee.band_kcal, 322.88, delta=0.05)
+
+    def test_the_store_slope_is_robust_to_an_edge_step_or_spike(self) -> None:
+        # #3690: losing 0.07 kg/day over 28 daily weigh-ins; a 1 kg water drop
+        # three days before the end, or one 2 kg reading on the last day,
+        # moves the Theil-Sen slope less than least squares; a clean line is
+        # the same for both.
+        xs = [float(n) for n in range(28)]
+        line = [80.0 - 0.07 * x for x in xs]
+        self.assertAlmostEqual(balance._theil_sen(xs, line)[0], -0.07, places=9)
+        self.assertAlmostEqual(balance._slope(xs, line)[0], -0.07, places=9)
+        step = [y - (1.0 if x >= 25 else 0.0) for x, y in zip(xs, line, strict=True)]
+        spike = [*line[:-1], line[-1] + 2.0]
+        for name, ys in (("step", step), ("spike", spike)):
+            with self.subTest(name):
+                robust = abs(balance._theil_sen(xs, ys)[0] + 0.07)
+                squares = abs(balance._slope(xs, ys)[0] + 0.07)
+                self.assertLess(robust, squares / 2)
+
+    def test_the_band_covers_a_water_step_near_the_edge(self) -> None:
+        # #3690: 1 kg of water 4 days before the end of a steady window; the
+        # stored energy reads part of it as tissue, and the band with its water
+        # term (1.96 x 7,153.5 x 0.51 kg / 27 days = 265) covers the error.
+        inputs = series(constant(TRUE_TDEE), step_at=116)
+        window = balance.energy_windows(inputs, END, weeks=1)[-1]
+        tdee = window.adaptive_tdee
+        assert tdee is not None
+        self.assertLessEqual(abs(tdee.kcal - TRUE_TDEE), tdee.band_kcal)
 
     def test_a_weight_step_widens_the_band_and_flags_the_window(self) -> None:
         # 1 kg of water and glycogen 13 days before END, mid-window of the
@@ -461,7 +492,7 @@ class AdaptiveTdeeTests(unittest.TestCase):
         latest = stepped[-1]
         assert latest.adaptive_tdee is not None and latest.store is not None
         error = latest.adaptive_tdee.kcal - TRUE_TDEE
-        self.assertLess(error, -300)
+        self.assertLess(error, -250)
         self.assertFalse(balance.is_stable(latest))
         self.assertLessEqual(abs(error), latest.adaptive_tdee.band_kcal)
         # The store error carries it too, so the deficit card's band covers it.
@@ -878,7 +909,9 @@ class TwelveWeekBaseTests(unittest.TestCase):
         assert stepped is not None and level is not None
         on_window = abs(stepped.kcal - level.kcal)
         moved = abs(self.base(step).estimate.kcal - self.base(steady).estimate.kcal)
-        self.assertGreater(on_window, 300)
+        # The Theil-Sen slope (#3690) reads a mid-window step at about 300,
+        # least squares at about 380; the base still moves far less.
+        self.assertGreater(on_window, 250)
         self.assertLess(moved, on_window / 3)
 
     def test_a_true_change_shows_half_in_about_six_weeks(self) -> None:
