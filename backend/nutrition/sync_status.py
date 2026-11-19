@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from datetime import date, datetime, timedelta
 from typing import Any
 
@@ -23,6 +23,9 @@ from backend.runtime.ports import ObservationReader
 # Closed days the expenditure gap counts of the diagnostics cover (#3157).
 EXPENDITURE_GAP_DAYS = 90
 
+# The "Aus deinen Daten" day total per day, None where it has no value (#3600).
+type OwnDayTotals = Callable[[list[date]], Mapping[date, float | None]]
+
 
 class NutritionSyncStatusService:
     def __init__(
@@ -32,7 +35,11 @@ class NutritionSyncStatusService:
         utc_now: Callable[[], str],
         local_now: Callable[[], datetime],
         observation_reader: Callable[[], ObservationReader],
+        own_day_totals: OwnDayTotals | None = None,
     ) -> None:
+        # The period balance's expenditure: the own day totals (#3600), else
+        # the wearable's daily total where they are not wired.
+        self._own_day_totals = own_day_totals
         self._observation_reader = observation_reader
         self._database_manager = database_manager
         self._nutrition_repository = nutrition_repository
@@ -131,7 +138,9 @@ class NutritionSyncStatusService:
             return self._nutrition_repository.day_sync_snapshot(db, validated_date)
 
     def get_week_summary(self, day_count: int = 7) -> dict[str, Any]:
-        """Compare logged intake with measured expenditure for closed days."""
+        """Compare logged intake with each closed day's expenditure: its own
+        "Aus deinen Daten" day total (athlete decision, #3600), named by
+        ``expenditure_source``; a day without one stays open."""
         if type(day_count) is not int or day_count not in (7, 14, 84):
             raise AppError(400, "Zeitraum muss 7, 14 oder 84 Tage umfassen.")
         today = self._local_now().date()
@@ -145,6 +154,11 @@ class NutritionSyncStatusService:
             ]
             snapshot = garmin_store.read_state(db)
             measured = self._filtered_energy(db, dates[0], dates[-1], snapshot, dates)
+        own = (
+            self._own_day_totals([date.fromisoformat(day) for day in dates])
+            if self._own_day_totals
+            else None
+        )
         days = []
         for summary in summaries:
             add_intake_totals(summary)
@@ -155,7 +169,12 @@ class NutritionSyncStatusService:
                 measured=measured.get(summary["date"], {}),
                 measured_history=measured,
             )
-            days.append(_week_day(summary, expenditure))
+            total = (
+                expenditure["total_kcal"]
+                if own is None
+                else own.get(date.fromisoformat(summary["date"]))
+            )
+            days.append(_week_day(summary, expenditure, total))
         averages = {}
         for key in (
             "intake_kcal",
@@ -180,6 +199,8 @@ class NutritionSyncStatusService:
             "averages": averages,
             "balance_kcal": sum(balances) if balances else None,
             "balance_days": len(balances),
+            # Where expenditure_kcal comes from: "own" (#3600) or "device".
+            "expenditure_source": "device" if own is None else "own",
         }
 
     def approval_manifest(
@@ -240,11 +261,13 @@ class NutritionSyncStatusService:
             )
 
 
-def _week_day(summary: dict[str, Any], expenditure: dict[str, Any]) -> dict[str, Any]:
-    """One closed day of the week summary: logged intake against expenditure."""
+def _week_day(
+    summary: dict[str, Any], expenditure: dict[str, Any], consumed: float | None
+) -> dict[str, Any]:
+    """One closed day of the week summary: logged intake against ``consumed``,
+    the day's expenditure; ``energy_expenditure`` keeps the wearable's day."""
     logged = bool(summary["entry_count"])
     intake = summary["total_kcal"] if logged else None
-    consumed = expenditure["total_kcal"]
     return {
         "date": summary["date"],
         "intake_kcal": intake,

@@ -19,7 +19,12 @@ from backend.nutrition.energy_balance import (
     history_start,
 )
 from backend.nutrition.energy_inputs import EnergySources
-from backend.nutrition.energy_view import energy_view, read_energy_view, selected_day
+from backend.nutrition.energy_view import (
+    energy_view,
+    own_day_totals,
+    read_energy_view,
+    selected_day,
+)
 from backend.performance.activity_energy import TEF_ERROR_KCAL
 from backend.providers.source_labels import SourceView, provider_label
 from tests.test_energy_inputs import DAY1, DAY3, sources
@@ -957,6 +962,27 @@ class SelectedDayTests(unittest.TestCase):
         return energy_view(
             source, [window(END, 2700.0, 1850.0)], garmin(), day=day, **kw
         )
+
+    def test_the_period_balance_takes_each_day_s_own_row_total(self) -> None:
+        # #3600: the period balance reads the own day totals per day, and each
+        # is exactly the diary's own day row for that day; a day without
+        # meals has none and stays open.
+        rest_day, empty = END - timedelta(days=1), END - timedelta(days=2)
+        quiet = DayInputs(weight_kg=80.0, activity_kcal=250.0, neat_kcal=250.0,
+                          sport_kcal=0.0, protein_g=250.0, entries=3)  # fmt: skip
+        no_meals = replace(quiet, protein_g=0.0, entries=0)
+        days = {rest_day: quiet, empty: no_meals}
+        source = replace(inputs(), days={**inputs().days, **days})
+        totals = own_day_totals(
+            source, [window(END, 2700.0, 1850.0)], garmin(), [rest_day, empty, END]
+        )
+        for day in (rest_day, empty, END):
+            with self.subTest(day=day):
+                self.assertEqual(
+                    row(self.view(day, days), "own")["total_kcal"], totals[day]
+                )
+        # 1,850 own resting + 250 everyday + 0 sport + 250 digestion.
+        self.assertEqual((2350, None), (totals[rest_day], totals[empty]))
 
     def test_a_day_without_a_session_has_sport_zero_not_a_mean(self) -> None:
         rest_day = END - timedelta(days=1)

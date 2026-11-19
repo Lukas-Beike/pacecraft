@@ -255,6 +255,55 @@ class NutritionGarminExpenditureTests(unittest.TestCase):
             week["days"][0]["energy_expenditure"]["source"], "Garmin Connect"
         )
 
+    def test_the_period_balance_takes_the_own_day_totals(self) -> None:
+        # #3600, athlete decision A: the wearable counts 2,000 kcal a day while
+        # the weight falls; the own day totals (intake against the scale) are
+        # 2,900. 2,400 kcal eaten: the wearable shows a +400 surplus a day, the
+        # own data the -500 deficit the weight shows. A day without an own
+        # total stays open.
+        own_totals: dict[date, float | None] = {
+            date(2026, 9, 17) + timedelta(days=n): 2900.0 for n in range(7)
+        }
+        own_totals[date(2026, 9, 20)] = None
+        asked: list[list[date]] = []
+
+        def own(days: list[date]) -> dict[date, float | None]:
+            asked.append(days)
+            return {day: own_totals.get(day) for day in days}
+
+        service, _ = build_nutrition_services(
+            self.manager,
+            lambda: self.fixed_now,
+            lambda: datetime(2026, 9, 24, 12, 0, tzinfo=UTC),
+            own_day_totals=own,
+        )
+        for n in range(7):
+            day = (date(2026, 9, 17) + timedelta(days=n)).isoformat()
+            service.log_meal({"meal_date": day, "description": "Synthetic meal",
+                              "kcal": 2400, "protein_g": 150, "carbs_g": 250, "fat_g": 80})  # fmt: skip
+        self.store_garmin({"daily_stats": [
+            {"date": (date(2026, 9, 17) + timedelta(days=n)).isoformat(),
+             "totalKilocalories": 2000} for n in range(7)
+        ]})  # fmt: skip
+        device = self.service.sync_status.get_week_summary()
+        self.assertEqual(
+            ("device", 7 * 400), (device["expenditure_source"], device["balance_kcal"])
+        )
+        week = service.sync_status.get_week_summary()
+        self.assertEqual(
+            [[date(2026, 9, 17) + timedelta(days=n) for n in range(7)]], asked
+        )
+        self.assertEqual("own", week["expenditure_source"])
+        self.assertEqual((6 * -500, 6), (week["balance_kcal"], week["balance_days"]))
+        self.assertEqual(
+            {"value": 2900.0, "days": 6}, week["averages"]["expenditure_kcal"]
+        )
+        open_day = week["days"][3]
+        self.assertEqual((2400, None, None), (open_day["intake_kcal"],
+                         open_day["expenditure_kcal"], open_day["balance_kcal"]))  # fmt: skip
+        # The wearable's day stays readable beside it.
+        self.assertEqual(2000, open_day["energy_expenditure"]["total_kcal"])
+
     def test_history_periods_keep_closed_days_and_missing_values(self) -> None:
         for count in (14, 84):
             with self.subTest(days=count):

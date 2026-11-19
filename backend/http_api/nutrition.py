@@ -162,10 +162,12 @@ class NutritionGetRoutes:
         Request: query `days` (integer, default `7`; `7`, `14` or `84`).
 
         Response: 200 `{"ok": true, "start_date", "end_date", "days", "averages",
-        "balance_kcal", "balance_days"}`. Each item of `days` has `date`, `intake_kcal`,
-        `expenditure_kcal`, `balance_kcal`, `energy_expenditure`, the macro totals and
-        the intake fields; unknown values are `null`. `averages` gives `{"value",
-        "days"}` per field.
+        "balance_kcal", "balance_days", "expenditure_source"}`. Each item of `days`
+        has `date`, `intake_kcal`, `expenditure_kcal` (the day's "Aus deinen Daten"
+        total, `expenditure_source` "own", #3600), `balance_kcal`,
+        `energy_expenditure` (the wearable's day), the macro totals and the intake
+        fields; unknown values are `null`. `averages` gives `{"value", "days"}` per
+        field.
 
         Errors: 400 "Ungültiger Zeitraum." for a non-integer `days`; 400 "Zeitraum muss
         7, 14 oder 84 Tage umfassen." for another number.
