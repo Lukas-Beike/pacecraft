@@ -1984,7 +1984,9 @@ function deficitBoxes(card) {
 // beside it, and the main source of the uncertainty.
 function deficitText(card, deviceLabel) {
   const device = card.device_total_kcal == null ? "" : ` (${deviceLabel || "Gerät"}: ${formatWhole(card.device_total_kcal)})`;
-  return [`Echter Verbrauch: ≈ ${formatWhole(card.total_kcal)} kcal am Tag${device}.`,
+  // The weigh-ins carry the card; the expenditure also needs logged meals ("Nur Waage", #3603).
+  const spent = card.total_kcal == null ? "Echter Verbrauch: braucht erfasste Mahlzeiten." : `Echter Verbrauch: ≈ ${formatWhole(card.total_kcal)} kcal am Tag${device}.`;
+  return [spent,
     `Unsicher vor allem: ${DEFICIT_UNCERTAINTY[card.uncertainty] || card.uncertainty}.`];
 }
 

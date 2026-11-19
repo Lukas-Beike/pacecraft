@@ -651,9 +651,11 @@ def _deficit(
     latest: EnergyWindow, device_total: float | None, goal: Mapping[str, str] | None
 ) -> dict[str, Any] | None:
     """'Dein Defizit, letzte 28 Tage' (#3548): the energy per day from (deficit)
-    or into (surplus) the body stores, with the terms of its boxes."""
+    or into (surplus) the body stores, with the terms of its boxes. The weigh-ins
+    alone carry it; without enough logged meals the expenditure is null and
+    ``expenditure_missing`` names why ("Nur Waage", #3603)."""
     store, tdee = latest.store, latest.adaptive_tdee
-    if store is None or tdee is None:
+    if store is None:
         return None
     deficit, band = -store.kcal_per_day, BAND_Z * store.sd
     change = store.weight_end_kg - store.weight_start_kg
@@ -674,7 +676,8 @@ def _deficit(
         else None,
         "stored_kcal": _round(store.kcal_per_day * store.days),
         "uncertainty": store.uncertainty,
-        "total_kcal": _round(tdee.kcal),
+        "total_kcal": _round(tdee.kcal) if tdee else None,
+        "expenditure_missing": None if tdee else latest.insufficient,
         "device_total_kcal": _round(device_total),
         "goal": _goal_status(deficit, goal),
     }
@@ -763,8 +766,8 @@ def _own_day_row(
         # The days the resting rate comes from, shown as "Ruhe aus 28 Tagen".
         "window_days": latest.days,
         # The blended fat share of the weight change; None without an
-        # estimate (#3555).
-        "fat_share": _fat_share_view(latest.store),
+        # estimate (#3555), even when the weigh-ins give a store (#3603).
+        "fat_share": _fat_share_view(latest.store if latest.adaptive_tdee else None),
     }
 
 
@@ -798,7 +801,7 @@ def _own_window_row(
         "split": split,
         # A window method: its days, shown as "Ø pro Tag, letzte 28 Tage" (#3395, #3513).
         "window_days": latest.days,
-        "fat_share": _fat_share_view(latest.store),
+        "fat_share": _fat_share_view(latest.store if latest.adaptive_tdee else None),
     }
 
 

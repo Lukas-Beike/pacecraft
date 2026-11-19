@@ -736,6 +736,35 @@ class DeficitCardTests(unittest.TestCase):
             "deficit"
         ]
 
+    def test_without_logged_meals_the_card_keeps_the_store_and_drops_the_expenditure(
+        self,
+    ) -> None:
+        # #3603 ("Nur Waage"): weigh-ins alone give the store; the expenditure
+        # needs logged meals and is null, and so is the own row.
+        latest = replace(window(END, None), store=MEASURED, insufficient="intake_days")
+        view = energy_view(inputs(), [*windows()[:-1], latest], garmin())
+        card = view["deficit"]
+        self.assertEqual(
+            (565, 235, None),
+            (card["deficit_kcal"], card["band_kcal"], card["total_kcal"]),
+        )
+        self.assertEqual("intake_days", card["expenditure_missing"])
+        # Without an estimate the own rows name no fat share (Gitar, #3620).
+        self.assertEqual(
+            (None, None, None),
+            (
+                row(view, "own")["total_kcal"],
+                row(view, "own")["fat_share"],
+                view["own_window"]["fat_share"],
+            ),
+        )
+        # Maintenance: a flat weight is near 0 and within "Halten".
+        flat = replace(latest, store=MEASURED._replace(kcal_per_day=-40.0))
+        hold = energy_view(
+            inputs(), [*windows()[:-1], flat], garmin(), goal={"energy_goal": "hold"}
+        )["deficit"]
+        self.assertEqual((40, "in"), (hold["deficit_kcal"], hold["goal"]["status"]))
+
     def test_the_card_shows_the_stores_terms_and_the_real_expenditure(self) -> None:
         # #3598: the readings span the phase (from 07.10.), not the window, and
         # the window ends on its last weigh-in.
@@ -766,6 +795,7 @@ class DeficitCardTests(unittest.TestCase):
                 "stored_kcal": -15820,
                 "uncertainty": "fat_share",
                 "total_kcal": 3800,
+                "expenditure_missing": None,
                 "device_total_kcal": 3120,
                 "goal": None,
             },

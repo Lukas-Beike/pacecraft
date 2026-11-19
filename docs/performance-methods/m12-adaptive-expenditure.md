@@ -1,8 +1,8 @@
 # M12 — Adaptive daily expenditure from intake and the weight trend
 
 - **Card:** M12
-- **Card version:** 9
-- **Method ID:** adaptive-expenditure v9 (#3100, #3187, #3255, #3552, #3551, #3553, #3555, #3554, #3586)
+- **Card version:** 10
+- **Method ID:** adaptive-expenditure v10 (#3100, #3187, #3255, #3552, #3551, #3553, #3555, #3554, #3586, #3603)
 - **Status:** method implemented (`backend/nutrition/energy_balance.py`); the reader, diagnostics and display follow (#3100, #3099)
 - **Classification:** model estimate
 - **Literature checked:** 2026-11-15
@@ -166,6 +166,11 @@ bias that is the same on every day is not visible in the band.
 - A window needs 14 complete days, 8 weigh-ins and 21 days between its first
   and last weigh-in. Otherwise it reports `intake_days`, `weighins` or
   `weight_span` and shows "Datenbasis zu gering".
+- The stored energy needs the weigh-ins only ("Nur Waage", athlete decision,
+  #3603): with 8 weigh-ins over 21 days it is computed with its band whether or
+  not the window has complete logging days, so the Verlauf deficit card stays.
+  The TDEE, the derived resting rate and the calibration still need the
+  complete days; without them the card names the missing expenditure.
 - The bias needs 4 windows with flagged days and spread in their share.
 - The first read uses the existing diary and weigh-in history
   (`history_start`), not only days logged afterwards. With fewer than 4
@@ -230,7 +235,7 @@ bias that is the same on every day is not visible in the band.
 | Constant | Value | Module | Code comment |
 | --- | --- | --- | --- |
 | `METHOD_ID` | `'adaptive-expenditure'` | `backend/nutrition/energy_balance.py` |  |
-| `METHOD_VERSION` | `9` | `backend/nutrition/energy_balance.py` | Bump when a formula or constant below changes the estimate. |
+| `METHOD_VERSION` | `10` | `backend/nutrition/energy_balance.py` | Bump when a formula or constant below changes the estimate. |
 | `WINDOW_DAYS` | `28` | `backend/nutrition/energy_balance.py` | Days per window and windows per week of the rolling view (#3099, #3100). |
 | `CURRENT_WEIGHT_DAYS` | `28` | `backend/nutrition/energy_balance.py` | A day's current weight is the least-squares line through the weigh-ins of this many days up to it, at its latest weigh-in, so a steady change has no lag (#3551); with fewer weigh-ins or a shorter span, their mean. |
 | `MIN_LINE_WEIGHINS` | `3` | `backend/nutrition/energy_balance.py` |  |
