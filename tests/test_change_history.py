@@ -1,13 +1,14 @@
 import json
 import sqlite3
 import unittest
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
+from zoneinfo import ZoneInfo
 
 from nutrition_service_support import build_nutrition_services
 from support import temp_database
 
 from backend import change_history
-from backend.athlete.profile import DEFAULT_PROFILE
+from backend.athlete.profile import DEFAULT_PROFILE, DEFAULT_TIMEZONE
 from backend.coach import limits as coach_limits
 from backend.errors import AppError
 
@@ -302,7 +303,8 @@ class ChangeHistoryTests(unittest.TestCase):
 
     def test_earlier_profile_body_fat_values_are_dated_measurements(self):
         # #3477: each saved profile body fat counts as an entered measurement
-        # on the (UTC) day of its save; text and out-of-range values do not.
+        # on the athlete-local day of its save (#3617); text and out-of-range
+        # values do not. Without a stored profile the default zone applies.
         from backend.athlete.profile import profile_body_fat_history
 
         for before, after in (
@@ -315,7 +317,7 @@ class ChangeHistoryTests(unittest.TestCase):
                 self.db, "profile", "profile", "update",
                 {"body_fat_pct": before}, {"body_fat_pct": after},
             )  # fmt: skip
-        today = datetime.now(UTC).date()
+        today = datetime.now(ZoneInfo(DEFAULT_TIMEZONE)).date()
         self.assertEqual(
             {today: 17.0},
             profile_body_fat_history(self.db, today - timedelta(days=180)),
@@ -334,8 +336,9 @@ class ChangeHistoryTests(unittest.TestCase):
         )
 
     def test_earlier_profile_weights_are_dated_app_weigh_ins(self):
-        # #3557: each saved profile weight is a weigh-in of the (UTC) day of its
-        # save, 30 to 300 kg; text and out-of-range values do not count.
+        # #3557: each saved profile weight is a weigh-in of the athlete-local
+        # day of its save (#3617), 30 to 300 kg; text and out-of-range values
+        # do not count.
         from backend.athlete.profile import profile_weight_history
 
         for before, after in (
@@ -348,9 +351,38 @@ class ChangeHistoryTests(unittest.TestCase):
                 self.db, "profile", "profile", "update",
                 {"weight_kg": before}, {"weight_kg": after},
             )  # fmt: skip
-        today = datetime.now(UTC).date()
+        today = datetime.now(ZoneInfo(DEFAULT_TIMEZONE)).date()
         self.assertEqual(
             {today: 81.9}, profile_weight_history(self.db, today - timedelta(days=1))
+        )
+
+    def test_profile_history_dates_a_save_by_the_athletes_local_day(self):
+        # #3617 item 5: a save at 20:00 UTC on 18 November is the 19th in
+        # Auckland (UTC+13), and a save at 10:30 UTC on the 18th, before
+        # Auckland's midnight of the 19th, is left out from the 19th on.
+        from backend.athlete.profile import profile_weight_history
+
+        self.db.execute("CREATE TABLE kv (key TEXT PRIMARY KEY, value TEXT)")
+        self.db.execute(
+            "INSERT INTO kv VALUES ('profile', ?)",
+            (json.dumps({"timezone": "Pacific/Auckland"}),),
+        )
+        for row_id, at, kg in (
+            ("a", "2026-11-18T10:30:00+00:00", "81"),
+            ("b", "2026-11-18T20:00:00+00:00", "80"),
+        ):
+            self.db.execute(
+                "INSERT INTO change_history VALUES (?, 'profile', 'profile', "
+                "'update', 'api', ?, '', '', ?)",
+                (row_id, at, json.dumps({"fields": {"weight_kg": {"after": kg}}})),
+            )  # fmt: skip
+        self.assertEqual(
+            {date(2026, 11, 18): 81.0, date(2026, 11, 19): 80.0},
+            profile_weight_history(self.db, date(2026, 11, 18)),
+        )
+        self.assertEqual(
+            {date(2026, 11, 19): 80.0},
+            profile_weight_history(self.db, date(2026, 11, 19)),
         )
 
     def test_a_strength_unit_keeps_the_structures_it_replaced(self):
