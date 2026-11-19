@@ -46,7 +46,7 @@
       cadenceChannel(activity, metrics),
       { key: "respiration_rate_brpm", label: "Atemfrequenz", unit: "/min", color: "respiration", format: (v) => numberText(v), floorAtZero: true },
       // Garmin's undocumented values (#3374), labelled by the source the server sends; the
-      // stamina fields keep neutral names until a probe tells current from potential.
+      // stamina fields keep neutral names: the probe found no fixed order between them (#3374).
       { key: "performance_condition", label: "Leistungszustand", unit: "", color: "dynamics", format: (v) => `${v > 0 ? "+" : ""}${numberText(v)}` },
       { key: "stamina_137_pct", label: "Ausdauer A", unit: "%", color: "dynamics", format: (v) => numberText(v), floorAtZero: true },
       { key: "stamina_138_pct", label: "Ausdauer B", unit: "%", color: "dynamics", format: (v) => numberText(v), floorAtZero: true },
