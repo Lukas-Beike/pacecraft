@@ -164,6 +164,13 @@ class WahooWeightPushTests(unittest.TestCase):
                           "last_outcome": "http_4xx"}, self.counts())  # fmt: skip
         self.refresh()
         self.assertEqual(1, self.counts()["failed"])
+        # A timeout or rate limit (408, 429) is transient and waits (Gitar).
+        for status in (408, 429):
+            self.client.fail = AppError(502, SECRET, upstream_status=status)
+            with self.assertLogs("intervals_coach", "WARNING"):
+                self.weights.save({"date": DAY.isoformat(), "kg": 80.2})
+            self.assertEqual((1, "throttled"), (
+                self.counts()["pending"], self.counts()["last_outcome"]))  # fmt: skip
         # A server error or a lost answer waits for the next refresh.
         self.client.fail = AppError(502, SECRET, upstream_status=503)
         with self.assertLogs("intervals_coach", "WARNING"):

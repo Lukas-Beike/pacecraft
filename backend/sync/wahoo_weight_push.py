@@ -39,6 +39,9 @@ SENT, UNCHANGED, PENDING, OFF = "sent", "unchanged", "pending", "off"
 # request failed otherwise, or a local fault stopped the push.
 SCOPE_MISSING, HTTP_4XX, HTTP_5XX = "scope_missing", "http_4xx", "http_5xx"
 ERROR, STOPPED = "error", "stopped"
+# A timeout or rate limit (408, 429) is transient: it waits like a 5xx.
+THROTTLED: Final = "throttled"
+_TRANSIENT_STATUSES: Final = frozenset({408, 429})
 _LOGGER = logging.getLogger("intervals_coach")
 # One push at a time; each reads the newest weight inside the lock, so the last
 # push always sends the latest value.
@@ -205,6 +208,8 @@ def _value(row: Any) -> float:
 def _failure(error: BaseException) -> str:
     """The class of a failed write: Wahoo's HTTP status class, never its text."""
     status = getattr(error, "upstream_status", None)
+    if status in _TRANSIENT_STATUSES:
+        return THROTTLED
     if isinstance(status, int) and 400 <= status < 500:
         return HTTP_4XX
     if isinstance(status, int) and status >= 500:
@@ -213,7 +218,7 @@ def _failure(error: BaseException) -> str:
 
 
 _OUTCOMES: Final = frozenset(
-    {SENT, OFF, SCOPE_MISSING, HTTP_4XX, HTTP_5XX, ERROR, STOPPED}
+    {SENT, OFF, SCOPE_MISSING, HTTP_4XX, HTTP_5XX, THROTTLED, ERROR, STOPPED}
 )
 
 
