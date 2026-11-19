@@ -99,7 +99,7 @@ The system SHALL accept explicit refreshes for diary, week, body, or products an
 
 #### Scenario: Defaults
 - **WHEN** `days` and `date` are omitted
-- **THEN** week reads 14 days ending yesterday and body 84 days ending today.
+- **THEN** week reads 28 days ending yesterday and body 84 days ending today.
 
 #### Scenario: Partial diary refresh
 - **WHEN** the energy read of a diary refresh is not `ok`

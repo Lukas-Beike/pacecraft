@@ -1,6 +1,6 @@
 // Read-only nutrition views; every write remains an explicit Coach request.
 let nutritionLoadSequence = 0;
-let nutritionHistoryPeriod = "fortnight";
+let nutritionHistoryPeriod = "28d";
 
 const MAX_NUTRITION_IMAGE_EDGE = 1600;
 const MAX_NUTRITION_IMAGE_BYTES = 1_200_000;
@@ -324,22 +324,25 @@ function nutritionWeekValue(value, unit, signed = false) {
 
 function renderNutritionHistoryPeriod() {
   const root = document.querySelector("#nutritionHistoryPeriod");
-  if (!root.childElementCount) root.append(analysisPeriodControls("Zeitraum für Ernährung", nutritionHistoryPeriod, (period) => {
-    nutritionHistoryPeriod = period;
-    void loadNutrition();
-  }));
+  if (!root.childElementCount) {
+    root.append(analysisPeriodControls("Zeitraum für Ernährung", nutritionHistoryPeriod, (period) => {
+      nutritionHistoryPeriod = period;
+      void loadNutrition();
+    }, VERLAUF_PERIODS.map((item) => [item.key, item.label])));
+  }
   root.querySelectorAll("button").forEach((button, index) => {
-    button.setAttribute("aria-pressed", String(["fortnight", "twelveWeeks"][index] === nutritionHistoryPeriod));
+    button.setAttribute("aria-pressed", String(VERLAUF_PERIODS[index].key === nutritionHistoryPeriod));
   });
-  document.querySelector("#nutritionRefreshButton").setAttribute("aria-label", `Ernährung aktualisieren: Verlauf, ${nutritionHistoryPeriod === "twelveWeeks" ? "12 Wochen" : "14 Tage"}`);
+  document.querySelector("#nutritionRefreshButton").setAttribute("aria-label", `Ernährung aktualisieren: Verlauf, ${verlaufPeriod().label}`);
 }
 
+// Up to 4 weeks show a row per day; 3 and 6 months a row per week, so the list stays short (#3704).
 function nutritionChartDays(days) {
-  if (days.length !== 84) return days;
-  return Array.from({ length: 12 }, (_, index) => {
+  if (days.length <= 28) return days;
+  return Array.from({ length: Math.ceil(days.length / 7) }, (_, index) => {
     const week = days.slice(index * 7, index * 7 + 7);
     const point = { date: week[0].date, end_date: week.at(-1).date };
-    for (const key of ["intake_kcal", "expenditure_kcal"]) {
+    for (const key of ["intake_kcal", "expenditure_kcal", "balance_kcal"]) {
       const values = week.map((day) => day[key]).filter(Number.isFinite);
       point[`${key}_days`] = values.length;
       point[key] = values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : null;
@@ -366,56 +369,103 @@ function nutritionEmptyRunRow({ start, end }) {
   return h("div", "nutrition-week-chart-day is-empty", h("strong", null, first === last ? first : `${first}–${last}`), h("span", null, "keine Daten"));
 }
 
-function nutritionChartDayRow(day, scale) {
-  const row = h("div", "nutrition-week-chart-day",
-    h("strong", { "aria-label": (day.end_date && `${nutritionExpenditureDate(day.date)} bis ${nutritionExpenditureDate(day.end_date)}`) || null }, nutritionExpenditureDate(day.date).slice(0, 5)));
-  for (const [key, label, kind] of [["intake_kcal", "Aufnahme", "intake"], ["expenditure_kcal", "Verbrauch", "expenditure"]]) {
-    const value = day[key];
-    const track = h("span", "nutrition-week-chart-track");
-    const measured = Number.isFinite(value) && value >= 0;
-    track.classList.toggle("is-missing", !measured);
-    if (measured) {
-      const bar = h("span", "nutrition-week-chart-bar");
-      bar.style.width = `${value / scale * 100}%`;
-      track.append(bar);
-    }
-    const amountText = value == null ? "–" : nutritionWeekValue(value, "kcal");
-    const coverage = day.end_date ? `${day[key + "_days"]} von 7 Tagen` : "";
-    let ariaLabel = `${label}: ${amountText}${value == null ? " (keine Daten)" : ""}`;
-    if (coverage) ariaLabel = `${label}: ${amountText}, ${coverage}`;
-    row.append(h("div", { className: `nutrition-week-chart-series is-${kind}`, "aria-label": ariaLabel },
-      track, h("span", null, amountText, coverage ? [h("br"), h("small", null, coverage)] : null)));
-  }
-  return row;
+// One bar of a row: Aufnahme blue, Verbrauch green, with its amount.
+function nutritionChartSeries(day, [key, label, kind], scale) {
+  const value = day[key];
+  const track = h("span", "nutrition-week-chart-track");
+  if (Number.isFinite(value) && value >= 0) {
+    const bar = h("span", "nutrition-week-chart-bar");
+    bar.style.width = `${value / scale * 100}%`;
+    track.append(bar);
+  } else track.classList.add("is-missing");
+  const amountText = value == null ? "–" : nutritionWeekValue(value, "kcal");
+  const coverage = day.end_date ? `${day[key + "_days"]} von 7 Tagen` : "";
+  let ariaLabel = `${label}: ${amountText}${value == null ? " (keine Daten)" : ""}`;
+  if (coverage) ariaLabel = `${label}: ${amountText}, ${coverage}`;
+  return h("div", { className: `nutrition-week-chart-series is-${kind}`, "aria-label": ariaLabel },
+    track, h("span", null, amountText, coverage ? [h("br"), h("small", null, coverage)] : null));
 }
 
-function renderNutritionWeek(week) {
+// The day's balance, coloured by its distance to the energy goal (#3704).
+function nutritionChartBalance(balance, goal) {
+  const distance = verlaufGoalDistance(balance, goal);
+  const text = balance == null ? "keine Daten" : nutritionWeekValue(balance, "kcal", true);
+  return h("span", { className: "nutrition-week-chart-balance", "aria-label": `Bilanz: ${text}`, dataset: distance ? { goalDistance: distance } : {} },
+    balance == null ? "–" : nutritionWeekValue(balance, "", true));
+}
+
+// A row of the Tagesverlauf: the day, its two bars and, right, its balance.
+function nutritionChartDayRow(day, scale, goal = null) {
+  const bars = h("div", "nutrition-week-chart-bars",
+    ...[["intake_kcal", "Aufnahme", "intake"], ["expenditure_kcal", "Verbrauch", "expenditure"]].map((series) => nutritionChartSeries(day, series, scale)));
+  return h("div", "nutrition-week-chart-day",
+    h("strong", { "aria-label": (day.end_date && `${nutritionExpenditureDate(day.date)} bis ${nutritionExpenditureDate(day.end_date)}`) || null }, nutritionExpenditureDate(day.date).slice(0, 5)),
+    bars, nutritionChartBalance(day.balance_kcal, goal));
+}
+
+const NUTRITION_WEEK_MACROS = [["Kohlenhydrate", "carbs_g"], ["Protein", "protein_g"], ["Fett", "fat_g"], ["Zucker", "sugar_g"], ["Salz", "salt_g"]];
+
+// One stat tile of Verlauf's cards: label, value, a small line; a missing value says so.
+function nutritionStatTile(label, value, unit, note, signed = false) {
+  const number = h("strong");
+  if (value == null) markValueMissing(number); else setValueWithUnit(number, nutritionWeekValue(value, unit, signed));
+  return h("div", "stat-tile", h("span", null, label), number, note ? h("small", null, note) : null);
+}
+
+// "Makros" as tiles; Zucker and Salz only when logged on any day of the period (#3704).
+function nutritionMacroCard(week) {
+  const tiles = NUTRITION_WEEK_MACROS
+    .filter(([, key]) => !["sugar_g", "salt_g"].includes(key) || week.averages[key].days > 0)
+    .map(([label, key]) => nutritionStatTile(label, week.averages[key].value, "g", `${week.averages[key].days}/${week.days.length} Tage`));
+  return h("section", { className: "analysis-chart-card", dataset: { verlaufCard: "macros" } }, verlaufHead("Makros", `${verlaufPeriod().label} · Ø pro Tag`), h("div", "stat-tiles", tiles));
+}
+
+// The goal as a balance per day: "Ziel −300" for a deficit, "Ziel +300" for a surplus, "Ziel 0" to hold.
+function nutritionGoalText(goal) {
+  if (!goal) return null;
+  if (goal.goal === "hold") return "Ziel 0";
+  return `Ziel ${goal.goal === "build" ? "+" : "−"}${formatWhole(goal.goal_kcal)}`;
+}
+
+// "Bilanz": the mean balance per day as the hero, coloured by its distance to the goal (#3606),
+// with the goal beside it, then Aufnahme, Verbrauch and Summe; the title row names the dates and the
+// days with a balance (#3704).
+function nutritionBalanceCard(week, goal) {
   const dayCount = week.days.length;
-  document.querySelector("#nutritionWeekPeriod").textContent = `${nutritionExpenditureDate(week.start_date)} – ${nutritionExpenditureDate(week.end_date)}`;
-  const totals = document.querySelector("#nutritionWeekTotals");
   const balance = week.balance_kcal;
-  let balanceLabel = "Bilanz";
-  if (balance != null) {
-    balanceLabel = "Ausgeglichene Bilanz";
-    if (balance > 0) balanceLabel = "Kalorienüberschuss";
-    if (balance < 0) balanceLabel = "Kaloriendefizit";
-  }
-  if (balance != null && week.balance_days < dayCount) balanceLabel = "Erfasste Teilbilanz";
-  const items = [[balanceLabel, balance, "kcal", week.balance_days, true],
-    ["Ø Kalorienbilanz pro Tag", week.balance_days > 0 && balance != null ? Math.sign(balance) * Math.round(Math.abs(balance / week.balance_days)) || 0 : null, "kcal", week.balance_days, true],
-    // The period balance's expenditure is the own day total (athlete decision, #3600); the card names it.
-    ...[["Ø Aufnahme", "intake_kcal", "kcal"], [week.expenditure_source === "own" ? "Ø Verbrauch aus deinen Daten" : "Ø Verbrauch", "expenditure_kcal", "kcal"], ["Ø Kohlenhydrate", "carbs_g", "g"], ["Ø Protein", "protein_g", "g"], ["Ø Fett", "fat_g", "g"], ["Ø Zucker", "sugar_g", "g"], ["Ø Salz", "salt_g", "g"]].map(([label, key, unit]) => [label, week.averages[key].value, unit, week.averages[key].days, false])];
-  totals.replaceChildren(...items.map(([label, value, unit, days, isBalance]) => {
-    const number = h("strong");
-    if (value == null) markValueMissing(number); else setValueWithUnit(number, nutritionWeekValue(value, unit, isBalance));
-    return h("div", "nutrition-total", number, h("span", null, label), h("small", null, `${days} von ${dayCount} Tagen${isBalance && days < dayCount ? " · Teilbilanz" : ""}`));
-  }));
-  document.querySelector("#nutritionWeekStatus").textContent = week.balance_days === dayCount ? `Alle ${dayCount} Tage auswertbar.` : `${week.balance_days} von ${dayCount} Tagen mit Aufnahme und Gesamtverbrauch auswertbar. Für die übrigen Tage bleibt die Bilanz offen.`;
+  const average = week.balance_days > 0 && balance != null ? Math.sign(balance) * Math.round(Math.abs(balance / week.balance_days)) || 0 : null;
+  const distance = verlaufGoalDistance(average, goal);
+  const number = h("strong");
+  if (average == null) markValueMissing(number); else setValueWithUnit(number, nutritionWeekValue(average, "kcal", true));
+  const aim = nutritionGoalText(goal);
+  const hero = h("p", { className: "verlauf-hero", dataset: distance ? { goalDistance: distance } : {} }, number, h("small", null, "Ø pro Tag"), aim ? h("small", "verlauf-goal", aim) : null);
+  const period = `${nutritionExpenditureDate(week.start_date).slice(0, 6)}–${nutritionExpenditureDate(week.end_date)} · ${week.balance_days}/${dayCount} Tage erfasst`;
+  // The period balance's expenditure is the own day total (athlete decision, #3600).
+  const tiles = [nutritionStatTile("Aufnahme", week.averages.intake_kcal.value, "kcal", "Ø pro Tag"),
+    nutritionStatTile("Verbrauch", week.averages.expenditure_kcal.value, "kcal", week.expenditure_source === "own" ? "Ø pro Tag · aus deinen Daten" : "Ø pro Tag"),
+    nutritionStatTile("Summe", balance, "kcal", null, true)];
+  return h("section", { className: "analysis-chart-card", dataset: { verlaufCard: "balance" } }, verlaufHead("Bilanz", period), hero, h("div", "stat-tiles is-three", tiles));
+}
+
+// The parts that depend on the energy goal, drawn again when the read that holds it arrives.
+function renderNutritionGoalParts(week) {
+  const goal = energyRead?.goal || null;
+  document.querySelector("#nutritionWeekBalance").replaceChildren(nutritionBalanceCard(week, goal));
   const chartDays = nutritionChartDays(week.days);
-  document.querySelector("#nutritionWeekChartHeading").textContent = dayCount === 84 ? "Wochendurchschnitte" : "Tagesverlauf";
   const scale = Math.max(1, ...chartDays.flatMap((day) => [day.intake_kcal, day.expenditure_kcal].filter((value) => Number.isFinite(value) && value >= 0)));
-  document.querySelector("#nutritionWeekChart").replaceChildren(...nutritionChartRows(chartDays).map((entry) => (entry.empty ? nutritionEmptyRunRow(entry) : nutritionChartDayRow(entry.day, scale))));
+  document.querySelector("#nutritionWeekChart").replaceChildren(...nutritionChartRows(chartDays).map((entry) => (entry.empty ? nutritionEmptyRunRow(entry) : nutritionChartDayRow(entry.day, scale, goal))));
+}
+
+let nutritionWeekShown = null;
+
+function renderNutritionWeek(week) {
+  nutritionWeekShown = week;
+  document.querySelector("#nutritionWeekStatus").textContent = "";
+  document.querySelector("#nutritionWeekMacros").replaceChildren(nutritionMacroCard(week));
+  document.querySelector("#nutritionWeekChartHeading").textContent = week.days.length > 28 ? "Wochendurchschnitte" : "Tagesverlauf";
+  document.querySelector("#nutritionWeekChartPeriod").textContent = verlaufPeriod().label;
   document.querySelector("#nutritionWeekChartSection").hidden = false;
+  // The fit cards, the Bilanz and the rows, which take the goal from the same read.
   renderNutritionFit();
   document.querySelector("#nutritionWeekDays").replaceChildren(...week.days.map((day) => h("tr", null,
     h("th", { scope: "row" }, nutritionExpenditureDate(day.date).slice(0, 5)),
@@ -442,18 +492,19 @@ function isCurrentNutritionWeekLoad(sequence, generation, cacheEpoch, expectedRo
 }
 
 async function loadNutritionWeek(sequence, generation, preserve = false, expectedRoute = null, expectedView = null, throwOnError = false) {
-  const path = `/api/nutrition/week?days=${nutritionHistoryPeriod === "twelveWeeks" ? 84 : 14}`;
+  const path = `/api/nutrition/week?days=${verlaufPeriod().days}`;
   renderNutritionHistoryPeriod();
   const cacheEpoch = viewCacheEpoch;
   const status = document.querySelector("#nutritionWeekStatus");
   const cached = showCachedNutritionView(path, renderNutritionWeek);
   if (!cached && !preserve) {
     status.textContent = "Wochenübersicht wird geladen…";
-    document.querySelector("#nutritionWeekTotals").replaceChildren();
+    nutritionWeekShown = null;
+    document.querySelector("#nutritionWeekBalance").replaceChildren();
+    document.querySelector("#nutritionWeekMacros").replaceChildren();
     document.querySelector("#nutritionWeekDays").replaceChildren();
     document.querySelector("#nutritionWeekChart").replaceChildren();
     document.querySelector("#nutritionWeekChartSection").hidden = true;
-    document.querySelector("#nutritionWeekPeriod").textContent = "";
     document.querySelector("#nutritionWeekDetails").hidden = true;
   }
   try {
@@ -555,7 +606,7 @@ const nutritionRefresh = AppViewRefresh.create({
     const path = "/api/nutrition/refresh";
     if (route === "nutrition/products") return { path, body: { area: "products" } };
     if (route === "nutrition/body") return { path, body: { area: "body" } };
-    if (route === "nutrition/week") return { path, body: { area: "week", days: nutritionHistoryPeriod === "twelveWeeks" ? 84 : 14 } };
+    if (route === "nutrition/week") return { path, body: { area: "week", days: verlaufPeriod().days } };
     return { path, body: { area: "diary", date: document.querySelector("#nutritionDate").value || todayIso() } };
   },
   getViewKey: (route) => {
@@ -598,7 +649,8 @@ function resetNutritionView() {
   document.querySelector("#nutritionProductUseDialog")?.close();
   nutritionProductForUse = null;
   document.querySelector("#nutritionDate").value = "";
-  for (const id of ["nutritionWeekPeriod", "nutritionWeekStatus", "nutritionWeekTotals", "nutritionWeekDays", "nutritionWeekChart", "nutritionEntries", "nutritionTotals", "nutritionEnergy", "nutritionStatus", "nutritionProducts", "nutritionLookupResult", "nutritionProductStatus"]) document.getElementById(id)?.replaceChildren();
+  nutritionWeekShown = null;
+  for (const id of ["nutritionWeekBalance", "nutritionWeekStatus", "nutritionWeekMacros", "nutritionWeekDays", "nutritionWeekChart", "nutritionEntries", "nutritionTotals", "nutritionEnergy", "nutritionStatus", "nutritionProducts", "nutritionLookupResult", "nutritionProductStatus"]) document.getElementById(id)?.replaceChildren();
   document.querySelector("#nutritionLookupResult").hidden = true;
   document.querySelector("#nutritionWeekChartSection").hidden = true;
   const editor = document.querySelector("#nutritionExtraction"); if (editor) { editor.replaceChildren(); editor.hidden = true; }

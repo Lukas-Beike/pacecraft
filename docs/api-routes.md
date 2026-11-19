@@ -407,8 +407,12 @@ and `split` adds `resting_source` (`katch_mcardle` or `device`),
 exceeds the adaptive TDEE's mean band over at least 4 shared windows,
 else null), `outlined` (`best`, else the source with the lowest
 `mean_error_kcal`: the one source the diary outlines, `goal` prices and
-Verlauf names for both periods, #3613), `fit` (`shared_windows`, `windows`, `min_windows`,
-`reference_band_kcal`), `strength` (the day's strength sessions with `rpe`, local first, the
+Verlauf names for every period, #3613), `fit` (`shared_windows`, `windows`, `min_windows`,
+`reference_band_kcal`), `fit_scale` (Verlauf's periods `28d`, `91d` and
+`182d`, #3704: `days`, `own_days`, `span_start`, `span_end`, `own_kcal`,
+`own_band_kcal`, `sources`, `weeks`, `weeks_with_data` and `deficit`, the
+deficit card of that period with the fields below, null when its weigh-ins
+do not suffice), `strength` (the day's strength sessions with `rpe`, local first, the
 `met` it set and `kcal`, #3530), `flagged` (meals marked as estimated: `days` in
 the latest window, `unflagged` from the latest window without any
 flagged day or null, `corrected` with the learned per-entry correction
@@ -445,7 +449,8 @@ share, else `prior`), `fat_share` (`share_pct`, `prior_pct` and
 measurement used, else null), `fat_pct_end` (the last one, else the
 latest skinfold or null), `fat_date_start` and `fat_date_end` (their
 days: the phase's span, which can start before the window, #3598),
-`weight_last_kg` (the window's last weigh-in), `fat_change_kg`, `fat_share_pct` (of the
+`weight_last_kg` (the window's last weigh-in), `weight_date_start` and
+`weight_date_end` (the first and last weigh-in, #3704), `fat_change_kg`, `fat_share_pct` (of the
 weight change, null below 0.05 kg), `stored_kcal` (over the span),
 `uncertainty` (`fat_share`, `weight_scatter`, or `unstable` when
 overlapping windows contradict each other, #3614), `total_kcal` (the window's
@@ -1487,8 +1492,8 @@ Errors: none beyond the common ones.
 Request: JSON body `{"area": string, "date": "YYYY-MM-DD", "days": integer}` and
 no other key. `area` is `diary`, `week`, `body` or `products`. `date` is
 optional: today for `diary` and `body`, yesterday for `week`; for `week` and
-`body` it must not lie in the future. `days` is `14` or `84` (default `14` for
-`week`, `84` for `body`) and ends at `date`. `diary` refreshes the Garmin energy
+`body` it must not lie in the future. `days` is `28`, `91` or `182` for `week`
+(default `28`) and `14` or `84` for `body` (default `84`), and ends at `date`. `diary` refreshes the Garmin energy
 expenditure of that day, `week` the Garmin daily totals, `body` the Garmin
 weight; `products` only reads the local products and ignores `date` and `days`.
 
@@ -1502,8 +1507,8 @@ products). `week` and `body`: the Garmin result, `status` (`ok` or `partial`),
 
 Errors: 400 "Ungültiger Ernährungsbereich." for another `area`; 400 "Ungültiger
 Anfrageinhalt." for another key; 400 "Ungültiges Datumsformat '{value}'.
-Erwartet wird YYYY-MM-DD." for an invalid `date`; 400 "Der Zeitraum muss 14 oder
-84 Tage umfassen."; 400 "Das Datum darf nicht in der Zukunft liegen."; 503
+Erwartet wird YYYY-MM-DD." for an invalid `date`; 400 "Der Zeitraum muss 28, 91
+oder 182 Tage umfassen." (`week`) or "... 14 oder 84 Tage ..." (`body`); 400 "Das Datum darf nicht in der Zukunft liegen."; 503
 `provider_busy` "Garmin wird bereits aktualisiert."
 
 ### `GET /api/nutrition/session-fuelling`
@@ -1536,7 +1541,7 @@ deleted `session_id`.
 
 ### `GET /api/nutrition/week`
 
-Request: query `days` (integer, default `7`; `7`, `14` or `84`).
+Request: query `days` (integer, default `7`; `7`, `28`, `91` or `182`).
 
 Response: 200 `{"ok": true, "start_date", "end_date", "days", "averages",
 "balance_kcal", "balance_days", "expenditure_source"}`. Each item of `days`
@@ -1547,7 +1552,7 @@ fields; unknown values are `null`. `averages` gives `{"value", "days"}` per
 field.
 
 Errors: 400 "Ungültiger Zeitraum." for a non-integer `days`; 400 "Zeitraum muss
-7, 14 oder 84 Tage umfassen." for another number.
+7, 28, 91 oder 182 Tage umfassen." for another number.
 
 ### `POST /api/nutrition/yazio/check`
 

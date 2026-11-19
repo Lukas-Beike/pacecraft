@@ -314,19 +314,24 @@ test("'Offene Kalorien' head the diary's energy card, else a link to the goal (#
   assert.equal(energyGoalText({ energy_goal: "hold" }), "Halten");
 });
 
-const DEFICIT_CARD_FUNCTIONS = ["energyFatSharePrior", "energyFatShareRule", "DEFICIT_UNCERTAINTY", "DEFICIT_GOAL_STATUS", "deficitDecimal", "deficitSigned", "deficitDay", "deficitSpan", "deficitGoalBar", "deficitBoxes", "deficitText", "ESTIMATE_MISSING", "deficitIntake", "energyDeficitCard"];
+const DEFICIT_CARD_FUNCTIONS = ["energyFatSharePrior", "energyFatShareRule", "DEFICIT_UNCERTAINTY", "DEFICIT_GOAL_STATUS", "deficitDecimal", "deficitSigned", "deficitDay", "deficitSpan", "deficitGoalBar", "deficitBoxes", "deficitText", "ESTIMATE_MISSING", "deficitIntake", "deficitSpanDays", "deficitFatBox", "VERLAUF_PERIODS", "verlaufPeriod", "verlaufHead", "energyKcalText", "energyFlaggedText", "energyDeficitCard"];
 
 test("Verlauf's deficit card: hero, goal marker, boxes and text agree, measured and the prior alone (#3548, #3555)", () => {
   const { h } = extractFunctions("components.js", ["h", "SVG_NS", "svgNode"], { document: fakeDocument() });
   const AppFormat = require("../public/format.js");
-  const { energyDeficitCard } = extractFunctions("analysis.js", ["energyKcalRange", "energyKcalSpan", "energyFlaggedRows", ...DEFICIT_CARD_FUNCTIONS], {
+  const { energyDeficitCard: drawDeficit } = extractFunctions("analysis.js", ["energyKcalRange", "energyKcalSpan", "energyInfoId", "energyInfoButton", ...DEFICIT_CARD_FUNCTIONS], {
     h, AppFormat, formatWhole: (v) => AppFormat.number(Math.round(v), { digits: 0 }),
+    bindAnalysisPopover: (button, info) => { button.dataset.popoverTarget = info.id; },
   });
+  // The read holds the card per period (#3704); these tests draw the 4 weeks'.
+  const energyDeficitCard = ({ deficit, ...read }) => drawDeficit({ ...read, fit_scale: { "28d": { deficit } } }, "28d");
   const measured = { days: 28, deficit_kcal: 565, band_kcal: 235, method: "measured", span_days: 28, weight_start_kg: 91.2, weight_end_kg: 89.2, weight_change_kg: -2.0, fat_pct_start: 15.5, fat_pct_end: 14.1, fat_date_start: "2026-10-07", fat_date_end: "2026-11-13", weight_last_kg: 89.2, fat_change_kg: -1.6, fat_share_pct: 80, fat_share: { share_pct: 80, prior_pct: 70, measured_pct: 28 }, stored_kcal: -15820, uncertainty: "fat_share", total_kcal: 3800, device_total_kcal: 3100, goal: { goal: "lose", goal_kcal: 500, status: "in" } };
   const rows = [{ source: "device", label: "Garmin" }];
   const card = energyDeficitCard({ rows, deficit: measured });
   assert.equal(card.dataset.energyDeficit, "measured");
-  assert.equal(textOf(card.children[0]), "Dein Defizit, letzte 28 Tage");
+  // One title row for every Verlauf card: the title left, the period right (#3704).
+  assert.equal(textOf(card.children[0]), "Defizit aus Gewicht und Körperfett4 Wochen");
+  assert.equal(card.children[0].className, "verlauf-head");
   assert.match(textOf(card.children[1]), /^≈ 565 kcalpro Tag aus den Reserven330–800/);
   assert.equal(textOf(card.children[3]), "Ziel: 500 kcal Defizit · ✓ im Ziel");
   // #3596: the bar's span and markers carry their positions (330–800 with the goal 500 and the
@@ -339,13 +344,16 @@ test("Verlauf's deficit card: hero, goal marker, boxes and text agree, measured 
   const boxes = card.children[4].children.map(textOf);
   // #3598: an end weight that differs from the last weigh-in at the shown precision is named "aktuell".
   const current = energyDeficitCard({ rows, deficit: { ...measured, weight_last_kg: 89.4 } });
-  assert.equal(textOf(current.children[4].children[0]), "Gewicht−2,0 kg91,2 → 89,2 (aktuell)");
+  assert.equal(textOf(current.children[4].children[0]), "Gewicht−2,0 kg91,2 → 89,2 kg (aktuell)");
   // #3598: the readings span the phase, so the Körperfett box names its own dates.
-  assert.deepEqual(boxes, ["Gewicht−2,0 kg91,2 → 89,2", "Körperfett15,5 → 14,1 %07.10. → 13.11.", "davon Fett≈ 1,6 kg≈ 80 % · Faustregel 70 %, zu 28 % gemessen", "pro Tag≈ 565 kcal15.820 kcal ÷ 28 Tage"]);
+  // #3704: Gewicht and Körperfett are built alike: title, change, from → to, dates.
+  assert.deepEqual(boxes, ["Gewicht−2,0 kg91,2 → 89,2 kg", "Körperfett−1,4 %-Pkt.15,5 → 14,1 %07.10. → 13.11.", "davon Fett≈ 1,6 kg≈ 80 % · Faustregel 70 %, zu 28 % gemessen", "pro Tag≈ 565 kcal15.820 kcal ÷ 28 Tage"]);
+  const dated = energyDeficitCard({ rows, deficit: { ...measured, weight_start_kg: 92.2, weight_end_kg: 88.8, weight_change_kg: -3.4, weight_last_kg: 88.8, weight_date_start: "2026-10-22", weight_date_end: "2026-11-18" } });
+  assert.deepEqual(dated.children[4].children.slice(0, 2).map((box) => box.children.map(textOf)), [["Gewicht", "−3,4 kg", "92,2 → 88,8 kg", "22.10. → 18.11."], ["Körperfett", "−1,4 %-Pkt.", "15,5 → 14,1 %", "07.10. → 13.11."]]);
   // #3618 item 4: the weight box shows the fitted change the fat box takes 80 % of (−2,08 → −2,1 and
   // −1,7), not the difference of the rounded ends (−2,0).
   const fitted = energyDeficitCard({ rows, deficit: { ...measured, weight_change_kg: -2.1, fat_change_kg: -1.7 } });
-  assert.deepEqual(fitted.children[4].children.slice(0, 3).map(textOf), ["Gewicht−2,1 kg91,2 → 89,2", "Körperfett15,5 → 14,1 %07.10. → 13.11.", "davon Fett≈ 1,7 kg≈ 80 % · Faustregel 70 %, zu 28 % gemessen"]);
+  assert.deepEqual(fitted.children[4].children.slice(0, 3).map(textOf), ["Gewicht−2,1 kg91,2 → 89,2 kg", "Körperfett−1,4 %-Pkt.15,5 → 14,1 %07.10. → 13.11.", "davon Fett≈ 1,7 kg≈ 80 % · Faustregel 70 %, zu 28 % gemessen"]);
   // #3606: two lines, the facts the boxes lack.
   assert.equal(textOf(card.children[5]), "Echter Verbrauch: ≈ 3.800 kcal am Tag (Garmin: 3.100).");
   assert.equal(textOf(card.children[6]), "Unsicher vor allem: Fettanteil (Faustregel und Messungen).");
@@ -379,21 +387,28 @@ test("Verlauf's deficit card: hero, goal marker, boxes and text agree, measured 
   // The prior alone: one measurement, the rule of thumb's share, a surplus, and no goal.
   const prior = { ...measured, method: "prior", deficit_kcal: -300, stored_kcal: 8400, weight_start_kg: 70, weight_end_kg: 71, weight_change_kg: 1, weight_last_kg: 71, fat_pct_start: null, fat_date_start: null, fat_pct_end: 12, fat_change_kg: 0.7, fat_share_pct: 70, fat_share: { share_pct: 70, prior_pct: 70, measured_pct: 0 }, goal: null };
   const surplus = energyDeficitCard({ rows, deficit: prior });
-  assert.equal(textOf(surplus.children[0]), "Dein Überschuss, letzte 28 Tage");
+  assert.equal(textOf(surplus.children[0]), "Defizit aus Gewicht und Körperfett4 Wochen");
   assert.match(textOf(surplus.children[1]), /pro Tag in die Speicher/);
-  assert.deepEqual(surplus.children[2].children.map(textOf), ["Gewicht+1,0 kg70,0 → 71,0", "Körperfettnur eine Messungvom 13.11.", "davon Fett≈ 0,7 kg≈ 70 % · Faustregel 70 %", "pro Tag≈ 300 kcal8.400 kcal ÷ 28 Tage"]);
+  assert.deepEqual(surplus.children[2].children.map(textOf), ["Gewicht+1,0 kg70,0 → 71,0 kg", "Körperfett–nur eine Messungvom 13.11.","davon Fett≈ 0,7 kg≈ 70 % · Faustregel 70 %", "pro Tag≈ 300 kcal8.400 kcal ÷ 28 Tage"]);
   assert.equal(textOf(surplus.children[3]), "Echter Verbrauch: ≈ 3.800 kcal am Tag (Garmin: 3.100).");
   assert.equal(surplus.dataset.goalDistance, undefined, "no goal, no distance class");
   // Two readings that do not weigh yet keep the rule of thumb but are not "missing" (Gitar on #3581).
   const light = energyDeficitCard({ rows, deficit: { ...measured, method: "prior", fat_share: { share_pct: 70, prior_pct: 70, measured_pct: 0 } } });
-  assert.equal(textOf(light.children[4].children[1]), "Körperfett15,5 → 14,1 %07.10. → 13.11.");
+  assert.equal(textOf(light.children[4].children[1]), "Körperfett−1,4 %-Pkt.15,5 → 14,1 %07.10. → 13.11.");
+  // The flagged-meal values of the latest 28 days sit behind the card's "i" (#3704).
+  const flaggedRead = { rows, flagged: { days: 2, unflagged: { total_kcal: 2650, total_band_kcal: 130, end: "2026-10-24" }, corrected: null, bias_pct: null } };
+  const [, info, tooltip] = energyDeficitCard({ ...flaggedRead, deficit: measured }).children[0].children;
+  assert.equal(textOf(info), "i");
+  assert.equal(textOf(tooltip), "Verbrauch, Ø 28 Tage, ohne geschätzte Tage (bis 24.10.): 2.650 kcal (2.520–2.780) · mit gelernter Korrektur: noch nicht gelernt");
+  assert.equal(energyDeficitCard({ ...flaggedRead, deficit: measured }).children.length, card.children.length, "no table under the card");
+  assert.equal(energyDeficitCard({ rows, deficit: measured, flagged: { days: 0 } }).children[0].children.length, 2, "no flagged day, no i");
   // A span reaching past 0 into a surplus is signed, not clamped (Gitar on #3562).
   const small = energyDeficitCard({ rows, deficit: { ...measured, deficit_kcal: 100, band_kcal: 235 } });
   assert.match(textOf(small.children[1]), /−135 bis 335zwischen −135 und 335 kcal$/);
   assert.equal(energyDeficitCard({ rows, deficit: null }), null);
 });
 
-const ENERGY_CARD_FUNCTIONS = ["ENERGY_INSUFFICIENT", "ENERGY_STEP_SOURCES", "ENERGY_PARTS", "ENERGY_LEARNED", "energyRowParts", "FIT_SOURCE_NAMES", "energyFitSigned", "energyKcalRange", "energyKcalSpan", "energyKcal", "energyNeatInputs", "energyBodyText", "energyBasisText", "energyBiasText", "energyInfoId", "ENERGY_DAY_NOTE", "energyInfo", "energySplitValue", "energyStrengthNote", "energyStandNote", "energyPartText", "energySplitBar", "energySourceLine", "energyUsage"];
+const ENERGY_CARD_FUNCTIONS = ["ENERGY_INSUFFICIENT", "ENERGY_STEP_SOURCES", "ENERGY_PARTS", "ENERGY_LEARNED", "energyRowParts", "FIT_SOURCE_NAMES", "energyFitSigned", "energyKcalRange", "energyKcalSpan", "energyKcal", "energyNeatInputs", "energyBodyText", "energyBasisText", "energyBiasText", "energyInfoId", "ENERGY_DAY_NOTE", "energyInfoButton", "energyInfo", "energySplitValue", "energyStrengthNote", "energyStandNote", "energyPartText", "energySplitBar", "energySourceLine", "energyUsage"];
 const ENERGY_CARD_GLOBALS = (h) => ({
   bindAnalysisPopover: (button, info) => { button.dataset.popoverTarget = info.id; },
   h, formatWhole: (v) => String(v), dateLabel: (v) => v, analysisValue: (v, unit) => `${v} ${unit}`, AppFormat: require("../public/format.js"),
@@ -401,7 +416,7 @@ const ENERGY_CARD_GLOBALS = (h) => ({
 
 test("the diary's usage card draws the outlined source's parts, its day total and the info behind the small i (#3252, #3703)", () => {
   const { h } = extractFunctions("components.js", ["h", "SVG_NS", "svgNode"], { document: fakeDocument() });
-  const { energyUsage, energyBasisText, energyDeficitCard } = extractFunctions("analysis.js", [...ENERGY_CARD_FUNCTIONS, "energyFlaggedRows", ...DEFICIT_CARD_FUNCTIONS], ENERGY_CARD_GLOBALS(h));
+  const { energyUsage, energyBasisText, energyDeficitCard } = extractFunctions("analysis.js", [...ENERGY_CARD_FUNCTIONS, ...DEFICIT_CARD_FUNCTIONS], ENERGY_CARD_GLOBALS(h));
   const split = { resting_kcal: 1839, neat_kcal: 250, sport_kcal: 350, tef_kcal: 250 };
   const read = {
     end: "2026-11-14", windows: ["2026-11-07", "2026-11-14"], best: "katch_mcardle", outlined: "katch_mcardle", day_partial: true,
@@ -461,19 +476,15 @@ test("the diary's usage card draws the outlined source's parts, its day total an
   // 28-day deficit card in Verlauf (#3548); the per-entry bias joins the popover.
   const flagged = { days: 2, unflagged: { total_kcal: 2650, total_band_kcal: 130, end: "2026-10-24" }, corrected: { total_kcal: 2760, total_band_kcal: 160 }, bias_pct: 12, bias_band_pct: 9 };
   const deficit = { days: 28, deficit_kcal: 565, band_kcal: 235, method: "measured", span_days: 28, weight_start_kg: 91.2, weight_end_kg: 89.2, weight_change_kg: -2.0, fat_pct_start: 15.5, fat_pct_end: 14.1, fat_change_kg: -1.6, fat_share_pct: 80, fat_share: { share_pct: 80, prior_pct: 70, measured_pct: 28 }, stored_kcal: -15820, uncertainty: "fat_share", total_kcal: 3800, device_total_kcal: 3100, goal: null };
-  const flaggedTable = (flags) => energyDeficitCard({ ...read, deficit, flagged: flags }).children.at(-1);
-  const flaggedRows = flaggedTable(flagged).children[1].children;
-  assert.deepEqual(flaggedRows.map((row) => [textOf(row.children[0]), textOf(row.children[1]), textOf(row.children[2])]), [["ohne geschätzte Tage (bis 24.10.)", "–", span(2650, 2520, 2780)], ["mit gelernter Korrektur", "–", span(2760, 2600, 2920)]]);
-  const [noClean, learnedNoTotal] = flaggedTable({ ...flagged, unflagged: null, corrected: null }).children[1].children;
-  assert.equal(textOf(noClean.children[2]), "kein sauberer Zeitraum");
+  const flaggedInfoText = (flags) => textOf(energyDeficitCard({ ...read, fit_scale: { "28d": { deficit } }, flagged: flags }, "28d").children[0].children[2]);
+  assert.equal(flaggedInfoText(flagged), "Verbrauch, Ø 28 Tage, ohne geschätzte Tage (bis 24.10.): 2650 kcal (2520–2780) · mit gelernter Korrektur: 2760 kcal (2600–2920)");
+  assert.match(flaggedInfoText({ ...flagged, unflagged: null, corrected: null }), /: kein sauberer Zeitraum · /);
   // #3616: a learned bias without the latest total shows "–"; until it is learned the row says so.
-  assert.equal(textOf(learnedNoTotal.children[2]), "–");
-  const notLearned = flaggedTable({ ...flagged, corrected: null, bias_pct: null, bias_band_pct: null }).children[1].children.at(-1);
-  assert.equal(textOf(notLearned.children[2]), "noch nicht gelernt");
-  assert.notEqual(flaggedTable({ ...flagged, days: 0 }).tagName, "TABLE", "no flagged day, no table");
+  assert.match(flaggedInfoText({ ...flagged, corrected: null }), /mit gelernter Korrektur: –$/);
+  assert.match(flaggedInfoText({ ...flagged, corrected: null, bias_pct: null, bias_band_pct: null }), /mit gelernter Korrektur: noch nicht gelernt$/);
   // The diary's day card carries no 28-day row (#3531).
   assert.equal(energyUsage({ ...read, flagged }).children[2].children.length, energyUsage(read).children[2].children.length);
-  assert.equal(energyDeficitCard(read), null, "no store estimate, no card");
+  assert.equal(energyDeficitCard(read, "28d"), null, "no store estimate, no card");
   const [, , flaggedInfo] = energyUsage({ ...read, flagged }).children[0].children;
   assert.match(textOf(flaggedInfo), /Geschätzte Mahlzeiten wirken im Mittel 12 % höher als erfasst \(± 9 %\)$/);
 });
@@ -917,59 +928,67 @@ test("a body receipt names the Garmin outcome and puts the day back on undo (#34
   assert.equal(weightReceipt("2026-11-15", "gelöscht")("removed").text, "Gewicht gelöscht und in Garmin Connect entfernt.");
 });
 
+const FIT_FUNCTIONS = ["VERLAUF_PERIODS", "verlaufPeriod", "verlaufHead", "FIT_SOURCE_NAMES", "FIT_COLORS", "deficitDay", "energyKcalRange", "energyKcalSpan", "energyFitSources", "energyFitSigned", "energyFitSpan", "energyFitVerdict", "energyFitDomain", "energyFitMark", "energyFitLane", "energyFitAxis", "energyFitOwnRow", "energyFitSourceRow", "energyFitNoteText", "energyFitScale"];
+
 test("the fit scale names the own value, sorts the sources nearest first and signs their distance (#3397)", () => {
   const { h } = extractFunctions("components.js", ["h", "SVG_NS", "svgNode"], { document: fakeDocument() });
-  const { energyFitScale } = extractFunctions("analysis.js", ["FIT_PERIOD_NAMES", "FIT_SOURCE_NAMES", "FIT_COLORS", "deficitDay", "energyKcalRange", "energyKcalSpan", "energyFitSources", "energyFitSigned", "energyFitSpan", "energyFitVerdict", "energyFitDomain", "energyFitMark", "energyFitLabel", "energyFitLane", "energyFitAxis", "energyFitOwnRow", "energyFitSourceRow", "energyFitNoteText", "energyFitScale"], {
-    h, formatWhole: (v) => String(v),
+  const { energyFitScale } = extractFunctions("analysis.js", [...FIT_FUNCTIONS], {
+    h, formatWhole: (v) => String(v), nutritionHistoryPeriod: "28d",
   });
   const scale = {
-    days: 84, own_days: 84, own_kcal: 2726, own_band_kcal: 454, weeks: 12, weeks_with_data: 3, span_start: "2026-08-21", span_end: "2026-11-13",
+    days: 91, own_days: 91, own_kcal: 2726, own_band_kcal: 454, weeks: 13, weeks_with_data: 3, span_start: "2026-08-21", span_end: "2026-11-13",
     sources: [
       { source: "katch_mcardle", total_kcal: 3768 },
       { source: "cunningham", total_kcal: 3930 },
       { source: "device", label: "Garmin Connect", total_kcal: 3157 },
     ],
   };
-  const card = energyFitScale({ best: null, outlined: "device", fit_scale: { "12w": scale } }, "12w");
-  const [, verdict, , list, note] = card.children;
+  const card = energyFitScale({ best: null, outlined: "device", fit_scale: { "91d": scale } }, "91d");
+  const [head, verdict, , list, note] = card.children;
+  // The shared title row: the title left, the period right (#3704).
+  assert.equal(textOf(head), "Welche Quelle trifft dein Gewicht?3 Monate");
   // Not yet distinguishable: the outlined source is named, with its signed distance, and not called
   // certain; the sentence names the weigh-ins' span the sources average over (#3613).
   assert.equal(textOf(verdict), "Vom 21.08. bis 13.11. verbrauchst du rund 2726 kcal am Tag. Am besten bisher: Garmin Connect (+431) – noch nicht sicher.");
   const rows = list.children;
   assert.deepEqual(rows.map((row) => row.dataset.fitSource), ["own", "device", "katch_mcardle", "cunningham"]);
   // #3478: the own value carries its band as the low–high span, with a spoken form.
-  assert.deepEqual(rows.map((row) => textOf(row.children[1])), ["27262272–3180zwischen 2272 und 3180 kcal", "3157 (+431)", "3768 (+1042)", "3930 (+1204)"]);
+  // #3704: the row's label left, its lane in the middle and its value right.
+  assert.deepEqual(rows.map((row) => row.children.length), [3, 3, 3, 3]);
+  assert.deepEqual(rows.map((row) => textOf(row.children[2])), ["27262272–3180zwischen 2272 und 3180 kcal", "3157 (+431)", "3768 (+1042)", "3930 (+1204)"]);
   // +431 lies inside the ±454 band, the formulas outside.
   assert.deepEqual(rows.slice(1).map((row) => row.dataset.inside), ["true", "false", "false"]);
-  assert.equal(textOf(note), "kcal pro Tag, Ø letzte 12 Wochen. Grünes Band: so genau kennt die App deinen echten Verbrauch – liegt eine Quelle darin, trifft sie. 3 von 12 Wochen mit Daten.");
+  assert.equal(textOf(note), "kcal pro Tag, Ø 3 Monate. Grünes Band: so genau kennt die App deinen echten Verbrauch – liegt eine Quelle darin, trifft sie. 3 von 13 Wochen mit Daten.");
   // Distinguishable by the 12-week rule: the nearest is named as fitting, with "mehr"/"weniger".
-  const sure = energyFitScale({ best: "device", outlined: "device", fit_scale: { "12w": { ...scale, sources: [{ source: "device", label: "Garmin Connect", total_kcal: 2600 }] } } }, "12w");
+  const sure = energyFitScale({ best: "device", outlined: "device", fit_scale: { "91d": { ...scale, sources: [{ source: "device", label: "Garmin Connect", total_kcal: 2600 }] } } }, "91d");
   assert.equal(textOf(sure.children[1]), "Vom 21.08. bis 13.11. verbrauchst du rund 2726 kcal am Tag. Am besten trifft Garmin Connect dein Gewicht, mit 126 kcal weniger.");
   // One rule (#3613): the sentence names the outlined source even where another dot lies nearer.
-  const outlined = energyFitScale({ best: null, outlined: "katch_mcardle", fit_scale: { "12w": scale } }, "12w");
+  const outlined = energyFitScale({ best: null, outlined: "katch_mcardle", fit_scale: { "91d": scale } }, "91d");
   assert.match(textOf(outlined.children[1]), / Am besten bisher: Katch-McArdle \(\+1042\) – noch nicht sicher\.$/);
-  // 14 days: the own value comes from the latest 4 weeks, and the note says so.
-  const short = energyFitScale({ best: null, outlined: "device", fit_scale: { "14d": { ...scale, days: 14, own_days: 28, weeks: 2, weeks_with_data: 1, span_start: null, span_end: null } } }, "14d");
+  // 4 weeks: without the weigh-ins' span the sentence names the period.
+  const short = energyFitScale({ best: null, outlined: "device", fit_scale: { "28d": { ...scale, days: 28, own_days: 28, weeks: 4, weeks_with_data: 1, span_start: null, span_end: null } } }, "28d");
   assert.match(textOf(short.children[1]), /^In den letzten 4 Wochen verbrauchst du rund 2726 kcal.* Am besten bisher: Garmin Connect \(\+431\)/);
-  assert.match(textOf(short.children.at(-1)), /^kcal pro Tag, Ø letzte 14 Tage, dein Wert aus 4 Wochen\. .* 1 von 2 Wochen mit Daten\.$/);
+  assert.match(textOf(short.children.at(-1)), /^kcal pro Tag, Ø 4 Wochen\. .* 1 von 4 Wochen mit Daten\.$/);
+  const half = energyFitScale({ best: null, outlined: "device", fit_scale: { "182d": { ...scale, days: 182, own_days: 182, weeks: 26, span_start: null, span_end: null } } }, "182d");
+  assert.match(textOf(half.children[1]), /^In den letzten 6 Monaten verbrauchst du rund 2726 kcal/);
   // Without an own estimate the verdict says what is missing; the sources still show, unsigned.
-  const none = energyFitScale({ best: null, fit_scale: { "12w": { ...scale, own_kcal: null, own_band_kcal: null } } }, "12w");
+  const none = energyFitScale({ best: null, fit_scale: { "91d": { ...scale, own_kcal: null, own_band_kcal: null } } }, "91d");
   assert.equal(textOf(none.children[1]), "Für einen Vergleich fehlen noch genug vollständig erfasste Tage und Wiegungen.");
-  assert.deepEqual(none.children[3].children.map((row) => textOf(row.children[1])), ["3157", "3768", "3930"]);
+  assert.deepEqual(none.children[3].children.map((row) => textOf(row.children[2])), ["3157", "3768", "3930"]);
 });
 
-test("the Verlauf sentence names the server's outlined source, in both periods (#3613)", () => {
+test("the Verlauf sentence names the server's outlined source, in every period (#3613)", () => {
   const { h } = extractFunctions("components.js", ["h", "SVG_NS", "svgNode"], { document: fakeDocument() });
-  const { energyFitScale } = extractFunctions("analysis.js", ["FIT_PERIOD_NAMES", "FIT_SOURCE_NAMES", "FIT_COLORS", "deficitDay", "energyKcalRange", "energyKcalSpan","energyFitSources", "energyFitSigned", "energyFitSpan", "energyFitVerdict", "energyFitDomain", "energyFitMark", "energyFitLabel", "energyFitLane", "energyFitAxis", "energyFitOwnRow", "energyFitSourceRow", "energyFitNoteText", "energyFitScale"], {
-    h, formatWhole: (v) => String(v),
+  const { energyFitScale } = extractFunctions("analysis.js", [...FIT_FUNCTIONS], {
+    h, formatWhole: (v) => String(v), nutritionHistoryPeriod: "28d",
   });
   // The rows' mean errors would rank Garmin first; the server's one rule names Cunningham.
   const rows = [{ source: "katch_mcardle", mean_error_kcal: 300 }, { source: "cunningham", mean_error_kcal: 250 }, { source: "device", mean_error_kcal: 100 }, { source: "own", mean_error_kcal: 0 }];
   const scale = (days, own) => ({ days, own_days: own, own_kcal: 2700, own_band_kcal: 300, weeks: days / 7, weeks_with_data: 2, span_start: null, span_end: null,
     sources: [{ source: "katch_mcardle", total_kcal: 2690 }, { source: "cunningham", total_kcal: 2900 }, { source: "device", label: "Garmin Connect", total_kcal: 2710 }] });
   for (const best of [null, "cunningham"]) {
-    const read = { best, outlined: "cunningham", rows, fit_scale: { "14d": scale(14, 28), "12w": scale(84, 84) } };
-    for (const key of ["14d", "12w"]) {
+    const read = { best, outlined: "cunningham", rows, fit_scale: { "28d": scale(28, 28), "91d": scale(91, 91), "182d": scale(182, 182) } };
+    for (const key of ["28d", "91d", "182d"]) {
       const named = energyFitScale(read, key).children[1].children.find((node) => node?.tagName === "B" && textOf(node) !== "2700 kcal am Tag");
       assert.equal(textOf(named), "Cunningham");
     }

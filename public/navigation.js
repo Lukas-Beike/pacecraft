@@ -46,7 +46,7 @@ const NAV_VIEWS = (() => {
     "plan/season": view([...PLAN_READS, "/api/profile"], [...PLAN_ACTIONS, "Erneut laden"], ENTRIES),
     nutrition: diary,
     "nutrition/diary": diary,
-    "nutrition/week": view(["/api/nutrition/week"], ["Ernährung aktualisieren", ...PERIODS, "Tageswerte anzeigen"], ENTRIES),
+    "nutrition/week": view(["/api/nutrition/week"], ["Ernährung aktualisieren", "4 Wochen", "3 Monate", "6 Monate", "Tageswerte anzeigen"], ENTRIES),
     "nutrition/products": view(["/api/nutrition/products?scope=all", "/api/nutrition/products/refresh-all"], ["Barcode scannen", "Nährwerttabelle fotografieren", "Produkt manuell erfassen", "Suchen", "Alle aktualisieren", "Aufräumen"], ENTRIES),
     analysis: sport,
     "analysis/running": sport,

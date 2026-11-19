@@ -3,7 +3,7 @@ const { test } = require("node:test");
 const { extractFunctions, fakeDocument, textOf } = require("./frontend-harness.cjs");
 
 
-const WEEK = ["nutritionChartDays", "nutritionChartRows", "nutritionEmptyRunRow", "nutritionChartDayRow", "nutritionWeekValue", "renderNutritionWeek"];
+const WEEK = ["nutritionChartDays", "nutritionChartRows", "nutritionEmptyRunRow", "nutritionWeekValue"];
 const context = extractFunctions("nutrition.js", WEEK);
 
 // Gitar #3269: the energy table lives in the diary since #3252.
@@ -60,13 +60,19 @@ test("a diary card marks an estimated meal and its button flips the flag", async
 });
 
 test("weekly chart averages observed days independently and preserves empty weeks", () => {
-  const days = Array.from({ length: 84 }, (_, index) => ({ date: new Date(Date.UTC(2026, 0, index + 1)).toISOString().slice(0, 10), intake_kcal: null, expenditure_kcal: null }));
+  const days = Array.from({ length: 91 }, (_, index) => ({ date: new Date(Date.UTC(2026, 0, index + 1)).toISOString().slice(0, 10), intake_kcal: null, expenditure_kcal: null, balance_kcal: null }));
   days[0].intake_kcal = 0;
   days[1].intake_kcal = 2000;
   days[1].expenditure_kcal = 2400;
-  days[83].expenditure_kcal = 2100;
+  days[1].balance_kcal = -400;
+  days[90].expenditure_kcal = 2100;
   const weeks = context.nutritionChartDays(days);
-  assert.equal(weeks.length, 12);
+  // 3 months are 13 weeks and 6 months 26; 4 weeks keep their days (#3704).
+  assert.equal(weeks.length, 13);
+  assert.equal(context.nutritionChartDays(Array.from({ length: 182 }, () => ({ date: "2026-01-01" }))).length, 26);
+  assert.equal(weeks[0].balance_kcal_days, 1);
+  assert.equal(weeks[0].balance_kcal, -400);
+  assert.equal(weeks[1].balance_kcal, null);
   assert.equal(weeks[0].intake_kcal, 1000);
   assert.equal(weeks[0].intake_kcal_days, 2);
   assert.equal(weeks[0].expenditure_kcal_days, 1);
@@ -74,30 +80,55 @@ test("weekly chart averages observed days independently and preserves empty week
   assert.equal(weeks[0].expenditure_kcal, 2400);
   assert.equal(weeks[1].intake_kcal, null);
   assert.equal(weeks[1].expenditure_kcal, null);
-  assert.equal(weeks[11].expenditure_kcal, 2100);
+  assert.equal(weeks[12].expenditure_kcal, 2100);
   assert.equal(weeks[0].date, days[0].date);
-  assert.equal(weeks[11].end_date, days[83].date);
-  assert.equal(context.nutritionChartDays(days.slice(0, 14)).length, 14);
+  assert.equal(weeks[12].end_date, days[90].date);
+  assert.equal(context.nutritionChartDays(days.slice(0, 28)).length, 28);
 });
 
-test("history displays daily balance from paired days alongside the total", () => {
-  const document = fakeDocument();
+const BALANCE = ["NUTRITION_WEEK_MACROS", "nutritionStatTile", "nutritionMacroCard", "nutritionGoalText", "nutritionBalanceCard", "nutritionWeekValue", "nutritionChartSeries", "nutritionChartBalance", "nutritionChartDayRow"];
+
+// #3704: the Bilanz card's hero is the mean balance per day, coloured by its distance to the goal.
+test("the Bilanz and Makros cards: hero by goal distance, three tiles, no empty Zucker or Salz tile", () => {
   const markValueMissing = (node, text = "nicht erfasst") => { node.textContent = text; node.missing = true; return node; };
   const setValueWithUnit = (node, text) => { node.textContent = text; };
-  const ctx = extractFunctions("nutrition.js", WEEK, { document, markValueMissing, setValueWithUnit, nutritionExpenditureDate: (date) => date, AppFormat: { number: (value) => Math.round(value).toLocaleString("de-DE") }, renderNutritionFit: () => {} });
-  for (const [count, balance, paired, expected] of [[14, -4468, 14, "-319 kcal"], [84, -600, 3, "-200 kcal"], [14, 300, 3, "+100 kcal"], [14, 3, 14, "0 kcal"], [14, -5, 14, "0 kcal"], [14, -7, 14, "-1 kcal"], [14, 0, 2, "0 kcal"], [84, null, 0, "nicht erfasst"]]) {
-    const averages = Object.fromEntries(["intake_kcal", "expenditure_kcal", "carbs_g", "protein_g", "fat_g", "sugar_g", "salt_g"].map((key) => [key, { value: null, days: 0 }]));
-    ctx.renderNutritionWeek({ days: Array(count).fill({ date: "2026-01-01" }), start_date: "start", end_date: "end", balance_kcal: balance, balance_days: paired, averages });
-    const tiles = document.nodes.get("#nutritionWeekTotals").children;
-    assert.equal(tiles[1].children[0].textContent, expected);
-    assert.equal(textOf(tiles[1].children[1]), "Ø Kalorienbilanz pro Tag");
-    assert.match(textOf(tiles[1].children[2]), new RegExp(`^${paired} von ${count} Tagen`));
-    assert.equal(tiles[0].style.gridColumn, undefined);
-  }
-  // #3600: the expenditure card names the own day totals it averages.
-  const averages = Object.fromEntries(["intake_kcal", "expenditure_kcal", "carbs_g", "protein_g", "fat_g", "sugar_g", "salt_g"].map((key) => [key, { value: null, days: 0 }]));
-  for (const [source, label] of [["own", "Ø Verbrauch aus deinen Daten"], ["device", "Ø Verbrauch"]]) {
-    ctx.renderNutritionWeek({ days: Array(14).fill({ date: "2026-01-01" }), start_date: "start", end_date: "end", balance_kcal: null, balance_days: 0, averages, expenditure_source: source });
-    assert.equal(textOf(document.nodes.get("#nutritionWeekTotals").children[3].children[1]), label);
-  }
+  const { h } = extractFunctions("components.js", ["h", "SVG_NS", "svgNode"], { document: fakeDocument() });
+  const verlauf = extractFunctions("analysis.js", ["VERLAUF_PERIODS", "verlaufPeriod", "verlaufHead", "verlaufGoalDistance"], { h, nutritionHistoryPeriod: "28d" });
+  const ctx = extractFunctions("nutrition.js", BALANCE, {
+    h, markValueMissing, setValueWithUnit, nutritionExpenditureDate: (date) => date.split("-").reverse().join("."),
+    AppFormat: { number: (value) => Math.round(value).toLocaleString("de-DE") }, formatWhole: (value) => String(value),
+    verlaufPeriod: verlauf.verlaufPeriod, verlaufHead: verlauf.verlaufHead, verlaufGoalDistance: verlauf.verlaufGoalDistance,
+  });
+  const averages = (days) => ({ intake_kcal: { value: 2200, days }, expenditure_kcal: { value: 2500, days }, carbs_g: { value: 250, days }, protein_g: { value: 120, days }, fat_g: { value: 70, days }, sugar_g: { value: null, days: 0 }, salt_g: { value: 5.5, days: 3 } });
+  const week = (balance, paired) => ({ days: Array(28).fill({ date: "2026-01-01" }), start_date: "2026-10-22", end_date: "2026-11-18", balance_kcal: balance, balance_days: paired, averages: averages(paired), expenditure_source: "own" });
+  const lose = { goal: "lose", goal_kcal: 300 };
+  // −8,400 over 28 days is −300 a day: the goal itself, "near".
+  const card = ctx.nutritionBalanceCard(week(-8400, 28), lose);
+  assert.equal(textOf(card.children[0]), "Bilanz22.10.–18.11.2026 · 28/28 Tage erfasst");
+  const hero = card.children[1];
+  assert.equal(hero.dataset.goalDistance, "near");
+  assert.equal(textOf(hero), "-300 kcalØ pro TagZiel −300");
+  assert.deepEqual(card.children[2].children.map(textOf), ["Aufnahme2.200 kcalØ pro Tag", "Verbrauch2.500 kcalØ pro Tag · aus deinen Daten", "Summe-8.400 kcal"]);
+  // 200 off the goal is "mid", more than 350 "far"; a surplus against a loss goal is far.
+  assert.equal(ctx.nutritionBalanceCard(week(-2800, 28), lose).children[1].dataset.goalDistance, "mid");
+  assert.equal(ctx.nutritionBalanceCard(week(11200, 28), lose).children[1].dataset.goalDistance, "far");
+  assert.equal(textOf(ctx.nutritionBalanceCard(week(11200, 28), { goal: "build", goal_kcal: 400 }).children[1]), "+400 kcalØ pro TagZiel +400");
+  // Without a goal the hero keeps its own colour and names none; a partial period names its days.
+  const free = ctx.nutritionBalanceCard(week(-600, 3), null);
+  assert.deepEqual(free.children[1].dataset, {});
+  assert.equal(textOf(free.children[1]), "-200 kcalØ pro Tag");
+  assert.match(textOf(free.children[0]), /3\/28 Tage erfasst$/);
+  assert.equal(ctx.nutritionBalanceCard(week(null, 0), lose).children[1].children[0].missing, true);
+  // Zucker and Salz show only when logged on any day of the period: no empty tile.
+  const macros = ctx.nutritionMacroCard(week(-8400, 28));
+  assert.equal(textOf(macros.children[0]), "Makros4 Wochen · Ø pro Tag");
+  assert.deepEqual(macros.children[1].children.map((tile) => textOf(tile.children[0])), ["Kohlenhydrate", "Protein", "Fett", "Salz"]);
+  assert.equal(macros.children[1].children.some((tile) => tile.children[1].missing), false);
+  // A Tagesverlauf row: its two bars and the balance on the right, coloured by the goal distance.
+  const day = { date: "2026-10-22", intake_kcal: 2000, expenditure_kcal: 2300, balance_kcal: -300 };
+  const row = ctx.nutritionChartDayRow(day, 2300, lose);
+  assert.deepEqual(row.children[1].children.map((bars) => bars.className), ["nutrition-week-chart-series is-intake", "nutrition-week-chart-series is-expenditure"]);
+  assert.equal(row.children[2].dataset.goalDistance, "near");
+  assert.equal(textOf(row.children[2]), "-300");
+  assert.deepEqual(ctx.nutritionChartDayRow({ ...day, balance_kcal: null }, 2300, lose).children[2].dataset, {});
 });

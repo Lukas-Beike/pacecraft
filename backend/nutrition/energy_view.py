@@ -536,6 +536,7 @@ def energy_view(
     body_missing: str | None = None,
     day: date | None = None,
     goal: Mapping[str, str] | None = None,
+    fit_inputs: EnergyInputs | None = None,
 ) -> dict[str, Any]:
     """The source rows of ``day``, each source's fit over the windows, and the basis.
 
@@ -545,7 +546,9 @@ def energy_view(
     #3395); "Aus deinen Daten" takes its resting rate from the latest 28-day
     window and the day's other parts like the formula rows, and its 28-day row
     with every part's mean is ``own_window``, for Verlauf (#3531). ``goal`` is
-    the profile's energy goal, priced on the shown day (#3547).
+    the profile's energy goal, priced on the shown day (#3547). ``fit_inputs``
+    is the longer history of Verlauf's 6-month period (#3704); the daily view
+    reads ``inputs`` only.
     """
     trend = weight_trend(
         {d: v.weight_kg for d, v in inputs.days.items() if v.weight_kg is not None}
@@ -689,7 +692,7 @@ def energy_view(
         },
         # "Welche Quelle trifft dein Gewicht?" per Verlauf period (#3397).
         "fit_scale": {
-            key: _fit_scale(inputs, trend, health, latest, days)
+            key: _fit_scale(fit_inputs or inputs, trend, health, latest, days, goal)
             for key, days in FIT_PERIODS.items()
         },
         "skinfold_missing": body_missing,
@@ -765,6 +768,8 @@ def _measured_terms(store: StoredEnergy) -> dict[str, Any]:
         "fat_date_start": day(store.fat_date_start),
         "fat_date_end": day(store.fat_date_end),
         "weight_last_kg": one(store.weight_last_kg),
+        "weight_date_start": day(store.weight_date_start),
+        "weight_date_end": day(store.weight_date_end),
     }
 
 
@@ -1135,7 +1140,8 @@ def selected_day(text: str | None, today: date) -> date | None:
 
 # Verlauf's periods; the own estimate needs the rules' spans, so a period shorter
 # than a window takes it from the latest window (orchestrator, #3397).
-FIT_PERIODS: Final = {"14d": 14, "12w": 84}
+# Verlauf's three periods: 4 weeks, 3 and 6 months (athlete decision, #3704).
+FIT_PERIODS: Final = {"28d": 28, "91d": 91, "182d": 182}
 
 
 def _fit_scale(
@@ -1144,8 +1150,10 @@ def _fit_scale(
     health: Mapping[str, Mapping[str, Any]],
     latest: EnergyWindow,
     days: int,
+    goal: Mapping[str, str] | None = None,
 ) -> dict[str, Any]:
-    """Each source's mean daily total over ``days`` against the own estimate.
+    """Each source's mean daily total over ``days`` against the own estimate,
+    and the period's deficit card (#3704).
 
     ``own_days`` names the span of the own value and its band. A period with
     its own value averages every source over that value's days: the complete
@@ -1153,6 +1161,7 @@ def _fit_scale(
     ``span_end`` (#3613).
     """
     period = period_window(inputs, latest.end, days, latest.calibration_factor)
+    deficit_window = latest if days == latest.days else period
     own = period if days >= latest.days else latest
     body = resolve_body(inputs, trend, latest.end)
     basis = period
@@ -1206,6 +1215,10 @@ def _fit_scale(
         "sources": sources,
         "weeks": days // 7,
         "weeks_with_data": _weeks_with_data(inputs, latest.end, days),
+        # The same rules over the period's weigh-ins; the 28 days are the latest window.
+        "deficit": _deficit(
+            deficit_window, _device_prediction(health, deficit_window)[2], goal
+        ),
     }
 
 
@@ -1399,7 +1412,14 @@ def read_energy_view(
     start = history_start(end)
     last = max(end, day)
     inputs, costs = read_energy_inputs(db, sources, start, last, older_day=day)
-    health = sources.daily_health(db, min(start, day), last)
+    # Verlauf's longest period reaches back past the 12 windows (#3704).
+    fit_start = min(start, end - timedelta(days=max(FIT_PERIODS.values()) - 1))
+    fit_inputs = (
+        read_energy_inputs(db, sources, fit_start, last, older_day=day)[0]
+        if fit_start < start
+        else None
+    )
+    health = sources.daily_health(db, min(fit_start, day), last)
     windows = energy_windows(inputs, end)
     _, missing = skinfold_state(db, sources, inputs, day)
     # The bias comes from the windows already built, not a second build (Gitar).
@@ -1412,6 +1432,7 @@ def read_energy_view(
         body_missing=missing,
         day=day,
         goal=sources.profile(),
+        fit_inputs=fit_inputs,
     )
     # Digestion counts kcal without macros at 10 %, so it is estimated (#3617).
     view["tef_estimated"] = inputs.days.get(day, DayInputs()).uncovered_kcal > 0

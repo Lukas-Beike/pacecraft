@@ -222,6 +222,9 @@ class StoredEnergy(NamedTuple):
     # The prior of the fat share and its source (#3684).
     fat_prior: float = FAT_SHARE_PRIOR
     fat_prior_source: str = "fallback"
+    # The first and last weigh-in the stored energy rests on (#3704).
+    weight_date_start: date | None = None
+    weight_date_end: date | None = None
 
 
 @dataclass(frozen=True)
@@ -575,6 +578,8 @@ def _stored_energy(
         ys[-1],
         share.prior,
         share.prior_source,
+        weighins[0],
+        weighins[-1],
     )
 
 

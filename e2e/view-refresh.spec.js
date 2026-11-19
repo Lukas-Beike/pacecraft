@@ -38,14 +38,14 @@ test("@responsive view refresh targets its active area and ignores stale views",
   await expect(page.locator("#nutritionRefreshStatus")).toHaveText("Teilweise aktualisiert.");
 
   await page.evaluate(() => AppRouter.navigate("nutrition/week", { historyMode: "none" }));
-  await page.getByRole("button", { name: "12 Wochen", exact: true }).click();
-  await expect(nutritionRefresh).toHaveAttribute("aria-label", "Ernährung aktualisieren: Verlauf, 12 Wochen");
+  await page.getByRole("button", { name: "6 Monate", exact: true }).click();
+  await expect(nutritionRefresh).toHaveAttribute("aria-label", "Ernährung aktualisieren: Verlauf, 6 Monate");
   holdNutritionRefresh = true;
   releaseRefresh = null;
   await nutritionRefresh.click();
   await expect.poll(() => typeof releaseRefresh).toBe("function");
   expect(posts.filter((post) => post.path === "/api/nutrition/refresh")).toHaveLength(2);
-  await page.getByRole("button", { name: "Letzte 14 Tage", exact: true }).click();
+  await page.getByRole("button", { name: "4 Wochen", exact: true }).click();
   releaseRefresh();
   await expect(nutritionRefresh).toBeEnabled();
   await expect(page.locator("#nutritionRefreshStatus")).toBeEmpty();
@@ -64,8 +64,8 @@ test("@responsive view refresh targets its active area and ignores stale views",
   expect(posts).toEqual([
     { path: "/api/analysis/refresh", body: { area: "load", days: 84 } },
     { path: "/api/nutrition/refresh", body: { area: "diary", date: "2026-10-19" } },
-    { path: "/api/nutrition/refresh", body: { area: "week", days: 84 } },
-    { path: "/api/nutrition/refresh", body: { area: "week", days: 14 } },
+    { path: "/api/nutrition/refresh", body: { area: "week", days: 182 } },
+    { path: "/api/nutrition/refresh", body: { area: "week", days: 28 } },
   ]);
   expect(broadRefreshes).toEqual([]);
 });

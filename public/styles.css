@@ -6,6 +6,9 @@
 
 :root {
   color-scheme: dark;
+  /* Intake is blue and expenditure the accent green wherever they are drawn (#3704). */
+  --energy-intake: var(--blue);
+  --energy-expenditure: var(--accent);
   --bg: #0c0d0f;
   --status-bar-band: #0c0d0f;
   --surface: #17181b;
@@ -1708,7 +1711,7 @@ button:focus-visible, a:focus-visible, summary:focus-visible {
 .nutrition-tools > .nutrition-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .nutrition-tools > .nutrition-actions > .push-button { grid-column: 1 / -1; }
 #nutritionWeekDetails > summary { display: flex; align-items: center; min-height: 44px; cursor: pointer; }
-.nutrition-week-chart-day.is-empty { padding: 6px 0; color: var(--muted); }
+.nutrition-week-chart-day.is-empty { grid-template-columns: auto minmax(0, 1fr); padding: 6px 0; color: var(--muted); }
 @media (min-width: 700px) { .nutrition-totals { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
 
 #nutritionPanel button { min-width: 44px; min-height: 44px; }
@@ -1723,25 +1726,42 @@ button:focus-visible, a:focus-visible, summary:focus-visible {
 .nutrition-tools { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; margin: 20px 0; padding: 16px; }
 .nutrition-tools[hidden] { display: none; }
 .nutrition-tools h3, .nutrition-tools p { margin: 0; }
-.nutrition-tools .nutrition-week-period { color: var(--ink); font-size: 1.1rem; font-weight: 700; }
 .nutrition-week-table { overflow-x: auto; margin-top: 12px; }
 .nutrition-week-table table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
 .nutrition-week-table th, .nutrition-week-table td { padding: 8px 4px; text-align: right; border-bottom: 1px solid var(--line); }
 .nutrition-week-table th:first-child, .nutrition-week-table td:first-child { text-align: left; }
-#nutritionWeek .nutrition-total small { display: block; margin-top: 4px; }
-.nutrition-week-chart { min-width: 0; margin-top: 6px; }
-.nutrition-week-chart h4 { margin: 0 0 8px; }
-.nutrition-week-legend { display: flex; gap: 16px; color: var(--muted); font-size: .8rem; }
-.nutrition-week-legend span::before { display: inline-block; width: 10px; height: 10px; margin-right: 6px; border-radius: 2px; background: var(--chart-series-1); content: ""; }
-.nutrition-week-legend span + span::before { background: var(--chart-series-3); }
+/* Verlauf (#3704): one card, one title row, one stat tile for every section. */
+#nutritionWeek:not([hidden]) { display: grid; gap: 12px; }
+#nutritionWeek > div { display: contents; }
+#nutritionWeekStatus:empty { display: none; }
+.verlauf-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; margin: 0 0 12px; }
+.verlauf-head h3 { margin: 0; font-size: 1rem; }
+.verlauf-period { margin-left: auto; color: var(--muted); font-size: .75rem; font-variant-numeric: tabular-nums; }
+.verlauf-hero { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; margin: 0 0 12px; }
+.verlauf-hero strong { font-size: 1.8rem; font-variant-numeric: tabular-nums; }
+.verlauf-hero small { color: var(--muted); }
+.verlauf-goal { margin-left: auto; }
+.verlauf-hero[data-goal-distance] strong { color: var(--goal-colour); }
+.stat-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 7.5rem), 1fr)); gap: 8px; }
+.stat-tiles.is-three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.stat-tile, .energy-deficit-flow li { display: grid; align-content: start; gap: 2px; min-width: 0; padding: 10px; border-radius: 10px; background: var(--surface-raised); overflow-wrap: anywhere; }
+.stat-tile > span { color: var(--muted); font-size: .75rem; }
+.stat-tile strong { font-size: 1.15rem; font-variant-numeric: tabular-nums; }
+.stat-tile small { color: var(--muted); font-size: .75rem; }
+.nutrition-week-chart { min-width: 0; }
+.nutrition-week-legend { display: flex; gap: 16px; margin: 0; color: var(--muted); font-size: .8rem; }
+.nutrition-week-legend span::before { display: inline-block; width: 10px; height: 10px; margin-right: 6px; border-radius: 2px; background: var(--energy-intake); content: ""; }
+.nutrition-week-legend span + span::before { background: var(--energy-expenditure); }
 .nutrition-week-chart-days { display: grid; margin-top: 12px; }
-.nutrition-week-chart-day { display: grid; grid-template-columns: minmax(48px, auto) minmax(0, 1fr); gap: 4px 10px; padding: 9px 0; border-top: 1px solid var(--line); font-size: .78rem; }
-.nutrition-week-chart-day > strong { grid-row: span 2; align-self: center; }
+.nutrition-week-chart-day { display: grid; grid-template-columns: minmax(40px, auto) minmax(0, 1fr) minmax(40px, auto); align-items: center; gap: 4px 10px; padding: 9px 0; border-top: 1px solid var(--line); font-size: .78rem; }
+.nutrition-week-chart-bars { display: grid; gap: 4px; min-width: 0; }
+.nutrition-week-chart-balance { text-align: right; font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.nutrition-week-chart-balance[data-goal-distance] { color: var(--goal-colour); }
 .nutrition-week-chart-series { display: grid; grid-template-columns: minmax(0, 1fr) minmax(76px, auto); align-items: center; gap: 8px; }
 .nutrition-week-chart-series > span:last-child { text-align: right; white-space: nowrap; }
 .nutrition-week-chart-track { display: block; height: 12px; border-radius: 3px; background: var(--translucent-surface); }
-.nutrition-week-chart-bar { display: block; height: 100%; border-radius: inherit; background: var(--chart-series-1); }
-.nutrition-week-chart-series.is-expenditure .nutrition-week-chart-bar { background: var(--chart-series-3); }
+.nutrition-week-chart-bar { display: block; height: 100%; border-radius: inherit; background: var(--energy-intake); }
+.nutrition-week-chart-series.is-expenditure .nutrition-week-chart-bar { background: var(--energy-expenditure); }
 .nutrition-week-chart-track.is-missing { background: repeating-linear-gradient(135deg, var(--line), var(--line) 2px, var(--transparent) 2px, var(--transparent) 6px); }
 .nutrition-search { display: grid; gap: 6px; }
 .nutrition-search-row { display: flex; gap: 8px; align-items: center; }
@@ -1837,7 +1857,7 @@ button:focus-visible, a:focus-visible, summary:focus-visible {
 .energy-goal { display: grid; gap: 6px; margin: 0 0 14px; }
 .energy-goal > p { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; margin: 0; }
 .energy-goal strong { font-size: 1.4rem; font-variant-numeric: tabular-nums; }
-.energy-goal progress { width: 100%; height: 10px; accent-color: var(--accent); border: 0; border-radius: 5px; overflow: hidden; }
+.energy-goal progress { width: 100%; height: 10px; accent-color: var(--energy-intake); border: 0; border-radius: 5px; overflow: hidden; }
 .energy-goal-items { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 2px 12px; margin: 0; padding: 0; list-style: none; color: var(--muted); font-size: .85rem; }
 .energy-usage { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); }
 .energy-usage-head { display: flex; align-items: center; gap: 6px; margin: 0 0 8px; }
@@ -1850,7 +1870,6 @@ button:focus-visible, a:focus-visible, summary:focus-visible {
 .energy-total { padding-top: 4px; border-top: 1px solid var(--line); font-weight: 700; }
 .energy-source { color: var(--muted); }
 /* Verlauf's deficit card (#3548): hero, goal bar, the boxes with arrows, and the text. */
-[data-energy-deficit] h3 { margin: 0 0 8px; font-size: 1rem; }
 .energy-deficit-hero { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; margin: 0 0 12px; }
 .energy-deficit-hero strong { font-size: 1.8rem; font-variant-numeric: tabular-nums; }
 .energy-deficit-hero small { color: var(--muted); }
@@ -1868,7 +1887,8 @@ button:focus-visible, a:focus-visible, summary:focus-visible {
 [data-goal-distance] .energy-deficit-mark { background: var(--goal-colour); }
 .energy-deficit-status { margin: 0 0 12px; font-size: .9rem; }
 .energy-deficit-flow { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 18px; margin: 0 0 12px; padding: 0; list-style: none; }
-.energy-deficit-flow li { position: relative; display: grid; align-content: start; gap: 2px; min-width: 0; padding: 8px; border: 1px solid var(--line); border-radius: 10px; overflow-wrap: anywhere; }
+.energy-deficit-flow li { position: relative; }
+.energy-deficit-flow li strong { font-size: 1.15rem; font-variant-numeric: tabular-nums; }
 .energy-deficit-flow li small { color: var(--muted); font-size: .75rem; }
 .energy-deficit-flow li + li::before { content: "→"; position: absolute; left: -15px; top: 50%; transform: translateY(-50%); color: var(--muted); }
 @media (max-width: 560px) {
@@ -1877,27 +1897,23 @@ button:focus-visible, a:focus-visible, summary:focus-visible {
 }
 .energy-deficit-text { margin: 0 0 6px; }
 .energy-deficit-uncertainty { color: var(--muted); }
-[data-energy] .energy-flag-row th { padding-left: 18px; color: var(--muted); font-size: .8rem; }
 /* "Welche Quelle trifft dein Gewicht?" as one kcal scale (#3397, A2). */
 .energy-fit-verdict { margin: 4px 0 12px; font-size: .86rem; line-height: 1.4; }
 .energy-fit-verdict b { color: var(--accent); }
-.energy-fit-axis { position: relative; height: 18px; margin: 0 8px 4px calc(min(30%, 112px) + 8px); color: var(--muted); font-size: .72rem; }
+.energy-fit-axis { position: relative; height: 18px; margin: 0 calc(5.5rem + 8px) 4px calc(min(30%, 112px) + 8px); color: var(--muted); font-size: .72rem; }
 .energy-fit-tick { position: absolute; transform: translateX(-50%); }
 .energy-fit-rows { display: grid; gap: 10px; margin: 0; padding: 0; list-style: none; }
-.energy-fit-row { display: grid; grid-template-columns: min(30%, 112px) minmax(0, 1fr); gap: 8px; align-items: center; font-size: .8rem; }
+.energy-fit-row { display: grid; grid-template-columns: min(30%, 112px) minmax(0, 1fr) 5.5rem; gap: 8px; align-items: center; font-size: .8rem; }
 .energy-fit-name { min-width: 0; overflow-wrap: anywhere; }
 .energy-fit-name::before { content: ""; display: inline-block; width: 9px; height: 9px; margin-right: 6px; border-radius: 50%; background: var(--fit-color, var(--accent)); vertical-align: middle; }
-.energy-fit-lane { position: relative; height: 26px; margin-right: 8px; }
+.energy-fit-lane { position: relative; height: 26px; }
 .energy-fit-band { position: absolute; top: 0; bottom: 0; border-inline: 1px dashed var(--accent); background: var(--success-surface); }
 .energy-fit-band.is-faint { background: var(--accent-wash); }
 .energy-fit-own { position: absolute; top: 0; bottom: 0; width: 2px; margin-left: -1px; background: var(--accent); }
 .energy-fit-point { position: absolute; top: 7px; width: 12px; height: 12px; margin-left: -6px; border-radius: 50%; background: var(--fit-color); }
-.energy-fit-label { position: absolute; top: 5px; color: var(--ink); font-size: .72rem; font-weight: 700; white-space: nowrap; }
+.energy-fit-value { color: var(--ink); font-weight: 700; font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
 /* An energy band as its low–high span under the estimate: small, muted, on one line (#3478). */
 .energy-span { display: block; color: var(--muted); font-size: .72rem; font-weight: 400; white-space: nowrap; }
-.energy-fit-row[data-fit-source="own"] .energy-fit-lane { height: 40px; }
-/* The band's dashed edge stops behind the span, so it never reads as a sign. */
-.energy-fit-label .energy-span { width: fit-content; padding-inline: 2px; border-radius: 3px; background: var(--surface); }
 .energy-fit [data-color="1"] { --fit-color: var(--chart-series-1); }
 .energy-fit [data-color="2"] { --fit-color: var(--chart-series-2); }
 .energy-fit [data-color="3"] { --fit-color: var(--chart-series-3); }
