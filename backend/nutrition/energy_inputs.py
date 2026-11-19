@@ -362,15 +362,9 @@ def session_cost(
         else 0.0
     )
     if sport in FOOT_SPORTS and mass:
-        cost = (
-            energy.running_cost_j_per_kg_m
-            if sport in RUN_SPORTS
-            else energy.walking_cost_j_per_kg_m
-        )
-        joules = sum(run * cost(grade) for run, grade in _graded(sources, db, summary))
-        return SessionCost(
-            day, mass * joules / energy.J_PER_KCAL, "minetti", steps, climb
-        )
+        kcal = _foot_kcal(sources, db, summary, sport, mass)
+        method = "minetti" if kcal is not None else "unknown"
+        return SessionCost(day, kcal, method, steps, climb)
     if sport in STRENGTH_SPORTS:
         # Its MET follows its session RPE (#3530), the general one without.
         met = energy.strength_met(rpe)
@@ -383,6 +377,27 @@ def session_cost(
         return SessionCost(day, kcal, method, steps, climb, rpe, met)
     kcal, method = _timed_cost(summary, sport, duration, rmr, hr_cost, mass, day)
     return SessionCost(day, kcal, method, steps, climb)
+
+
+def _foot_kcal(
+    sources: EnergySources,
+    db: Any,
+    summary: Mapping[str, Any],
+    sport: str,
+    mass: float,
+) -> float | None:
+    """A run's or walk's net kcal from Minetti's cost over its graded
+    distance; without any distance it is unknown, not 0 (#3617 item 4)."""
+    graded = _graded(sources, db, summary)
+    if not graded:
+        return None
+    cost = (
+        energy.running_cost_j_per_kg_m
+        if sport in RUN_SPORTS
+        else energy.walking_cost_j_per_kg_m
+    )
+    joules = sum(run * cost(grade) for run, grade in graded)
+    return mass * joules / energy.J_PER_KCAL
 
 
 def _session_steps(
@@ -611,6 +626,19 @@ def _skinfold_sds(measurements: Sequence[SkinfoldMeasurement]) -> dict[date, flo
         m.measured_on: sd
         for m in measurements
         if (sd := measurement_sd_pct(m, own)) is not None
+    }
+
+
+def skinfold_body_fats(
+    measurements: Iterable[SkinfoldMeasurement], since: date
+) -> dict[date, float]:
+    """Every complete skinfold measurement on or after ``since`` with a body
+    fat, by day (#3617 item 2): a reading followed by another within the same
+    week counts too, not only the newest one per weekly checkpoint."""
+    return {
+        m.measured_on: m.body_fat_pct
+        for m in measurements
+        if m.measured_on >= since and m.body_fat_pct is not None
     }
 
 

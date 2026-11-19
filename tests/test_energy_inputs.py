@@ -27,6 +27,7 @@ from backend.nutrition.energy_inputs import (
     diagnostics,
     energy_basis,
     read_energy_inputs,
+    skinfold_body_fats,
 )
 from backend.nutrition.energy_view import read_energy_view
 
@@ -177,6 +178,31 @@ class EnergyInputsReaderTests(unittest.TestCase):
             0.15 * (rest.days[DAY1].neat_kcal or 0.0),
             rest.days[DAY1].activity_error_kcal or 0.0,
         )
+
+    def test_a_foot_session_without_a_distance_is_unknown(self) -> None:
+        # #3617 item 4: no distance and no stream is no cost, so the session is
+        # unknown, not 0 kcal; its recorded steps still leave everyday.
+        run = {"id": "run", "sport": "run", "started_at_local": "2026-10-03T07:00:00",
+               "moving_duration_s": 1800, "steps": 4000}  # fmt: skip
+        inputs, costs = read_energy_inputs(None, sources(sessions=[run]), DAY1, DAY3)
+        self.assertEqual(
+            ("unknown", None, 4000.0), (costs[0].method, costs[0].kcal, costs[0].steps)
+        )
+        self.assertIsNone(inputs.days[DAY3].sport_kcal)
+
+    def test_every_skinfold_reading_counts_not_one_per_week(self) -> None:
+        # #3617 item 2: two readings in one week both count; one before the
+        # lookback and one without a body fat do not.
+        found = skinfold_body_fats(
+            [
+                SkinfoldMeasurement(DAY4, Sex.MALE, {}, 12.0),
+                SkinfoldMeasurement(DAY2, Sex.MALE, {}, 12.5),
+                SkinfoldMeasurement(DAY1, Sex.MALE, {}, None),
+                SkinfoldMeasurement(date(2026, 9, 1), Sex.MALE, {}, 14.0),
+            ],
+            DAY1,
+        )
+        self.assertEqual({DAY4: 12.0, DAY2: 12.5}, found)
 
     def test_a_day_without_sessions_has_sport_zero(self) -> None:
         # Known to be zero, not unknown: 70 x 10,000 x 0.747 x 2.01 = 1,051,029 J
