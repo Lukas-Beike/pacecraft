@@ -172,6 +172,43 @@ class EnergyViewTests(unittest.TestCase):
             view["body"],
         )
 
+    def test_each_formula_learns_its_everyday_term_and_shows_it_once_checked(
+        self,
+    ) -> None:
+        # #3577: the window's own TDEE 2,700 less its raw activity 600 and
+        # digestion 250 is 1,850. Katch-McArdle lacks 1,850 - 1,838.8 = 11.2,
+        # Cunningham overshoots by 146. One window, SD 150 / 1.96 = 76.53,
+        # overlap-inflated precision 4.2685e-5, prior 1.6e-5: variance 17,040,
+        # so 8.15 for Katch-McArdle, -106.2 for Cunningham (shown as 0), band
+        # 1.96 x 130.5 = 256.
+        plain = energy_view(inputs(), [window(END, 2700.0, 1850.0)], garmin())
+        self.assertEqual(
+            {
+                "katch_mcardle": {"kcal": 8, "raw_kcal": 8, "band_kcal": 256, "windows": 1},
+                "cunningham": {"kcal": 0, "raw_kcal": -106, "band_kcal": 256, "windows": 1},
+                "checked": None,
+            },
+            plain["learned_everyday"],
+        )  # fmt: skip
+        # Before the athlete's check no row carries it.
+        self.assertEqual(2689, row(plain, "katch_mcardle")["total_kcal"])
+        self.assertNotIn("learned_kcal", row(plain, "katch_mcardle")["split"])
+        checked = energy_view(
+            inputs(), [window(END, 2700.0, 1850.0)], garmin(),
+            goal={"learned_everyday_checked": "2026-11-19"},
+        )  # fmt: skip
+        km, cunningham = row(checked, "katch_mcardle"), row(checked, "cunningham")
+        self.assertEqual((2697, 8), (km["total_kcal"], km["split"]["learned_kcal"]))
+        self.assertEqual(0, cunningham["split"]["learned_kcal"])
+        self.assertEqual("2026-11-19", checked["learned_everyday"]["checked"])
+        # The comparison with the weight stays on the raw rows.
+        for source in ("katch_mcardle", "cunningham"):
+            self.assertEqual(
+                row(plain, source)["mean_error_kcal"],
+                row(checked, source)["mean_error_kcal"],
+            )
+        self.assertEqual(plain["fit_scale"], checked["fit_scale"])
+
     def test_unmeasured_everyday_energy_is_named_never_resting(self) -> None:
         # #3550 (athlete decision 2026-11-18): 300 kcal/day of everyday energy
         # the steps do not see lifts the residual to 2,139 over Katch-McArdle's

@@ -149,6 +149,8 @@ SECTION_FIELDS = {
         r"|newest_skinfold_age_days|body_resolved|body_missing|body_source"
         r"|body_source_windows\.(skinfold|entered|device|profile|none)"
         r"|today_resting_days_back"
+        # Formulas whose learned everyday fit lies below 0 (#3577).
+        r"|learned_everyday_negative"
         # Days of the last week whose Garmin summary names its wellness end (#3530).
         r"|wellness_end_days"
         # Past days of the latest window whose summary ended early (#3612).

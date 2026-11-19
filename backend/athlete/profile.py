@@ -52,8 +52,11 @@ ENERGY_GOAL_KCAL = (0, 1500)
 # test, or adopted from the estimate) and where it comes from; empty means not
 # set. Only the athlete sets them, through the profile form or the API: the Coach
 # can read them but never write them.
+# The date the athlete took the learned everyday term of the energy table's
+# formula rows over (#3577); empty until checked. Only the athlete sets it.
+LEARNED_EVERYDAY_FIELD = "learned_everyday_checked"
 COACH_READ_ONLY_FIELDS = frozenset(
-    {FIRST_THRESHOLD_FIELD, FIRST_THRESHOLD_ORIGIN_FIELD}
+    {FIRST_THRESHOLD_FIELD, FIRST_THRESHOLD_ORIGIN_FIELD, LEARNED_EVERYDAY_FIELD}
 )
 
 DEFAULT_PROFILE = {
@@ -86,6 +89,7 @@ DEFAULT_PROFILE = {
     "fueling_tolerance": "",
     "energy_goal": "",
     "energy_goal_kcal": "",
+    LEARNED_EVERYDAY_FIELD: "",
     FIRST_THRESHOLD_FIELD: "",
     FIRST_THRESHOLD_ORIGIN_FIELD: "",
     **dict.fromkeys(PREFERRED_SOURCE_FIELDS, ""),
@@ -182,6 +186,21 @@ def _normalize_sex(result: dict[str, str], *, strict: bool) -> None:
     if strict:
         raise AppError(400, "Unbekanntes Geschlecht; erlaubt: male, female oder leer.")
     result["sex"] = ""
+
+
+def _normalize_learned_check(result: dict[str, str], *, strict: bool) -> None:
+    """Keep an ISO date or empty; reject (strict) anything else, else clear it."""
+    value = result[LEARNED_EVERYDAY_FIELD].strip()
+    try:
+        result[LEARNED_EVERYDAY_FIELD] = (
+            date.fromisoformat(value).isoformat() if value else ""
+        )
+    except ValueError:
+        if strict:
+            raise AppError(
+                400, "Das Prüfdatum muss ein Datum (JJJJ-MM-TT) sein."
+            ) from None
+        result[LEARNED_EVERYDAY_FIELD] = ""
 
 
 def _normalize_energy_goal(result: dict[str, str], *, strict: bool) -> None:
@@ -323,6 +342,7 @@ def normalize_profile(
     _normalize_sex(result, strict=validate_timezone)
     _normalize_birth_year(result, strict=validate_timezone)
     _normalize_energy_goal(result, strict=validate_timezone)
+    _normalize_learned_check(result, strict=validate_timezone)
     _normalize_first_threshold(result, strict=validate_timezone)
     _normalize_numbers(result, previous, strict=validate_timezone)
     return result
