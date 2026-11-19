@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 import math
+import statistics
 import unittest
 from dataclasses import replace
 from datetime import date, timedelta
-from typing import Any
+from typing import Any, cast
 
 from backend.canonical.vocabulary import ProviderId
 from backend.errors import AppError
@@ -16,6 +17,7 @@ from backend.nutrition.energy_balance import (
     EnergyWindow,
     Estimate,
     StoredEnergy,
+    energy_windows,
     history_start,
 )
 from backend.nutrition.energy_inputs import EnergySources
@@ -1107,6 +1109,41 @@ class SelectedDayTests(unittest.TestCase):
                 )
         # 1,850 own resting + 250 everyday + 0 sport + 250 digestion.
         self.assertEqual((2350, None), (totals[rest_day], totals[empty]))
+
+    def test_twelve_weeks_follow_each_window_s_resting_rate(self) -> None:
+        # #3641: a true expenditure rising from 2,300 to 3,000 kcal over 120
+        # days at a logged 2,600; the latest window's rate for every day
+        # overstated the 12-week deficit.
+        weight, days = 80.0, {}
+        truth = {}
+        for n in range(120):
+            day = END - timedelta(days=119 - n)
+            truth[day] = 2300.0 + 700.0 * n / 119
+            # The prior fat share's 7,153.5 kcal per kg (Hall 2008).
+            weight += (2600.0 - truth[day]) / 7153.5
+            days[day] = DayInputs(
+                intake_kcal=2600.0, protein_g=150.0, carbohydrate_g=300.0,
+                fat_g=80.0, entries=3, weight_kg=weight, activity_kcal=600.0,
+                activity_error_kcal=60.0, neat_kcal=250.0, sport_kcal=350.0,
+            )  # fmt: skip
+        source = EnergyInputs(days, {}, rmr_kcal=1500.0)
+        windows = energy_windows(source, END)
+        period = [END - timedelta(days=n) for n in range(84)]
+        totals = own_day_totals(source, windows, {}, period)
+        balance = statistics.fmean(2600.0 - cast(float, totals[d]) for d in period)
+        true_balance = statistics.fmean(2600.0 - truth[d] for d in period)
+        # The latest window's rate on all 84 days: its own days' total.
+        latest_rule = 2600.0 - cast(float, totals[END])
+        band = statistics.fmean(
+            cast(Estimate, w.adaptive_tdee).band_kcal for w in windows
+        )
+        self.assertLessEqual(abs(balance - true_balance), band)
+        self.assertGreater(abs(latest_rule - true_balance), band)
+        # The last 14 days lie in the latest window: its rate, as before.
+        latest_total = cast(float, totals[END])
+        self.assertTrue(all(totals[d] == latest_total for d in period[:14]))
+        # Older days follow their own (lower) window.
+        self.assertLess(cast(float, totals[period[-1]]), latest_total)
 
     def test_a_day_without_a_session_has_sport_zero_not_a_mean(self) -> None:
         rest_day = END - timedelta(days=1)
