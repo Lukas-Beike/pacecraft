@@ -1,15 +1,15 @@
 const { test, expect } = require("@playwright/test");
 
 // #3099, #3252: the energy table sits in the diary, its explanation behind the small "i". The
-// fixture has no skinfold: with a weigh-in and a profile body fat, the formula rows fall back
-// to the scale's or the profile's body fat and name it (#3362).
+// fixture has no skinfold: with a weigh-in and a body fat entered in Körper, the formula rows
+// fall back to the entered body fat and name it (#3362, #3402; the profile holds none, #3640).
 test("@responsive the diary shows the energy table and explains it behind the info button", async ({ page }) => {
   await page.goto("/#nutrition/diary");
   await expect(page.locator("#nutritionEnergy [data-energy]")).toBeVisible();
   await page.evaluate(async () => {
     const day = new Date(Date.now() - 3 * 864e5).toISOString().slice(0, 10);
     await api("/api/body/weight", { method: "PUT", body: JSON.stringify({ date: day, kg: 72 }) });
-    await api("/api/profile", { method: "PUT", body: JSON.stringify({ body_fat_pct: "18,5" }) });
+    await api("/api/body/body-fat", { method: "PUT", body: JSON.stringify({ date: day, pct: 18.5 }) });
   });
   const energy = page.waitForResponse((response) => new URL(response.url()).pathname === "/api/body/energy");
   await page.reload();
@@ -20,9 +20,9 @@ test("@responsive the diary shows the energy table and explains it behind the in
   expect(device.label).not.toContain("Schätzung");
   const card = page.locator("#nutritionEnergy [data-energy]");
   await expect(card.locator("tbody tr[data-energy-source]")).toHaveCount(4);
-  // A body fat saved in the profile is a dated 3-site skinfold reading (#3477, #3557).
-  expect(read.body.source).toBe("skinfold");
-  expect(read.body.label).toBe("Hautfalten");
+  // The body fat entered in Körper, named "Lokal" (#3402).
+  expect(read.body.source).toBe("entered");
+  expect(read.body.label).toBe("Lokal");
   // The diary opens on today, whose rows are still partial (#3395).
   const kfa = `KFA: ${read.body.label} · bis jetzt`;
   // Today's Garmin rest names the full day it comes from, if any (#3443).
