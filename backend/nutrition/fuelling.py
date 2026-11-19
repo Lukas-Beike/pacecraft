@@ -147,7 +147,9 @@ def pre_race_carbohydrates(
     if duration_s <= 0:
         return []
     minutes = duration_s / _MINUTES
-    kind, days, per_kg = ("loading", 2, (10, 12)) if minutes > 90 else ("daily", 1, (7, 12))
+    kind, days, per_kg = (
+        ("loading", 2, (10, 12)) if minutes > 90 else ("daily", 1, (7, 12))
+    )
     result: list[dict[str, Any]] = [
         {
             "kind": kind,

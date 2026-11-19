@@ -655,14 +655,19 @@ class FlaggedMealsAndCalibrationTests(unittest.TestCase):
         # 300 has precision 4 / 100^2 = 4e-4, overlap-inflated to 1e-4; the
         # prior 0 +- 250 adds 1.6e-5: posterior variance 1 / 1.16e-4 = 8,620.7,
         # mean 8,620.7 x 1e-4 x 300 = 258.62, band 1.96 x 92.85 = 181.98.
-        fit = balance.fit_learned_everyday([(300.0, 100.0)] * 4)
+        fit = balance.fit_learned_everyday([(300.0, 100.0, 1.0)] * 4)
         assert fit is not None
         self.assertAlmostEqual(258.62, fit.raw_kcal, places=2)
         self.assertAlmostEqual(258.62, fit.kcal, places=2)
         self.assertAlmostEqual(181.98, fit.band_kcal, places=2)
         self.assertEqual(4, fit.windows)
+        # #3687: an older window weighs by its age, as in the 12-week base.
+        aged = balance.fit_learned_everyday([(300.0, 100.0, 1.0), (0.0, 100.0, 0.5)])
+        level = balance.fit_learned_everyday([(300.0, 100.0, 1.0), (0.0, 100.0, 1.0)])
+        assert aged is not None and level is not None
+        self.assertGreater(aged.raw_kcal, level.raw_kcal)
         # A row that overshoots keeps its negative fit; it shows as 0.
-        under = balance.fit_learned_everyday([(-200.0, 100.0)] * 4)
+        under = balance.fit_learned_everyday([(-200.0, 100.0, 1.0)] * 4)
         assert under is not None
         self.assertAlmostEqual(-172.41, under.raw_kcal, places=2)
         self.assertEqual(0.0, under.kcal)
@@ -753,6 +758,83 @@ class FlaggedMealsAndCalibrationTests(unittest.TestCase):
                 biases.append(bias[0])
         self.assertAlmostEqual(biases[0], biases[1], places=6)
         self.assertAlmostEqual(biases[0], biases[2], places=6)
+
+
+def drifting(truth_of: Callable[[int], float], days: int = 120) -> balance.EnergyInputs:
+    """A logged 2,600 kcal on every day against a true expenditure that follows
+    ``truth_of``; the weight follows the true balance."""
+    weight, out = 80.0, {}
+    for n in range(days):
+        weight += (2600.0 - truth_of(n)) / DENSITY
+        out[END - timedelta(days=days - 1 - n)] = balance.DayInputs(
+            intake_kcal=2600.0, protein_g=150, carbohydrate_g=300, fat_g=80,
+            entries=3, weight_kg=weight, activity_kcal=600.0,
+            activity_error_kcal=60.0,
+        )  # fmt: skip
+    return balance.EnergyInputs(out, {}, rmr_kcal=1700.0, rmr_source="katch_mcardle")
+
+
+class TwelveWeekBaseTests(unittest.TestCase):
+    """#3687: the daily estimate rests on the stable windows of 12 weeks."""
+
+    def base(self, inputs: balance.EnergyInputs) -> balance.Base:
+        base = balance.twelve_week_base(balance.energy_windows(inputs, END))
+        assert base is not None
+        return base
+
+    def test_a_water_step_moves_the_base_far_less_than_its_window(self) -> None:
+        # 1 kg of water and glycogen two weeks before the view's end (#3614).
+        steady, step = series(constant(2400.0)), series(constant(2400.0), step_at=106)
+        on_window = abs(
+            balance.energy_windows(step, END)[-1].derived_rmr.kcal
+            - balance.energy_windows(steady, END)[-1].derived_rmr.kcal
+        )
+        moved = abs(self.base(step).estimate.kcal - self.base(steady).estimate.kcal)
+        self.assertGreater(on_window, 300)
+        self.assertLess(moved, on_window / 3)
+
+    def test_a_true_change_shows_half_in_about_six_weeks(self) -> None:
+        # The true expenditure drops by 300 kcal/day six weeks before the end.
+        before = self.base(drifting(lambda n: 2600.0)).estimate.kcal
+        after = self.base(drifting(lambda n: 2600.0 - 300.0 * (n >= 78))).estimate.kcal
+        self.assertAlmostEqual(-150.0, after - before, delta=60.0)
+
+    def test_every_window_unstable_keeps_the_base_and_flags_it(self) -> None:
+        # Amended #3687: unstable windows weigh less through their widened band
+        # (#3614) but stay in; the base is flagged only when all are unstable.
+        steady = balance.energy_windows(series(constant(2400.0)), END)
+        windows = [replace(w, stable=False) for w in steady]
+        base = balance.twelve_week_base(windows)
+        stable = balance.twelve_week_base(steady)
+        assert base is not None and stable is not None
+        self.assertEqual(stable.estimate, base.estimate)
+        self.assertEqual((True, 12), (base.unstable, base.windows))
+        self.assertFalse(stable.unstable)
+        self.assertIsNone(balance.twelve_week_base([]))
+
+    def test_the_weights_are_precision_times_a_six_week_half_life(self) -> None:
+        def window(back: int, kcal: float, band: float) -> balance.EnergyWindow:
+            return replace(
+                bias_window(0.0, 600.0, back),
+                derived_rmr=balance.Estimate(kcal, band),
+            )
+
+        # Equal bands: the window 42 days older weighs half.
+        base = balance.twelve_week_base(
+            [window(42, 1600.0, 100.0), window(0, 1900.0, 100.0)]
+        )
+        assert base is not None
+        self.assertAlmostEqual(1800.0, base.estimate.kcal)
+        self.assertAlmostEqual(1.5, base.weight_sum)
+        self.assertEqual((2, False), (base.windows, base.unstable))
+        # Overlap inflation: never narrower than one window's band.
+        self.assertGreaterEqual(base.estimate.band_kcal, 100.0 * 0.95)
+        # Twice the band, a quarter of the precision.
+        equal_age = balance.twelve_week_base(
+            [window(0, 1600.0, 200.0), window(0, 1900.0, 100.0)]
+        )
+        assert equal_age is not None
+        self.assertAlmostEqual(1840.0, equal_age.estimate.kcal)
 
 
 if __name__ == "__main__":
