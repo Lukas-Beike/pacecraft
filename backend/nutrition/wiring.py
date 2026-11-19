@@ -29,6 +29,7 @@ from backend.nutrition.energy_inputs import (
     own_resting,
     recent_fat_pct,
     session_streams,
+    skinfold_body_fats,
     weighin_counts,
     weighins,
 )
@@ -180,14 +181,11 @@ def build_nutrition(ctx: AppContext) -> NutritionServices:
             )
 
         def body_fat(db: Any, start: date, end: date) -> dict[date, float]:
-            """Skinfold body fat in effect at each weekly window end, and the
-            profile's dated skinfold values of the lookback (#3557)."""
+            """Every skinfold body fat of the lookback (#3617 item 2), over the
+            profile's dated skinfold values of the same days (#3557)."""
             since = start - timedelta(days=RESTING_LOOKBACK_DAYS)
             found = saved(profile_body_fat_history, db, since, end)
-            for weeks in range((end - start).days // 7 + 1):
-                skinfold = skinfolds.skinfold_on(db, end - timedelta(days=7 * weeks))
-                if skinfold is not None and skinfold.body_fat_pct is not None:
-                    found[skinfold.measured_on] = skinfold.body_fat_pct
+            found.update(skinfold_body_fats(skinfolds.measurements_on(db, end), since))
             return found
 
         return EnergySources(

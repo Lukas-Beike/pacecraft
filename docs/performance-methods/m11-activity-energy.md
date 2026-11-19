@@ -1,8 +1,8 @@
 # M11 — Own activity energy, net of resting metabolism
 
 - **Card:** M11
-- **Card version:** 4
-- **Method ID:** activity-energy v4 (#3100, #3187, #3255, #3611)
+- **Card version:** 5
+- **Method ID:** activity-energy v5 (#3100, #3187, #3255, #3611, #3617)
 - **Status:** methods implemented (`backend/performance/activity_energy.py`); daily wiring, adaptive TDEE and display follow (#3100, #3099)
 - **Classification:** model estimate
 - **Literature checked:** 2026-11-15
@@ -141,6 +141,8 @@ formula rows' everyday energy runs low. M12's own row names that remainder
 ## Minimum data and stop rules
 
 - Running needs distance and altitude streams; without altitude the grade is 0.
+  A run, walk or hike without any distance is unknown, not 0 kcal; its
+  recorded steps still leave everyday (#3617).
 - Cycling needs the session's work (kJ) or a power stream.
 - Flex-HR needs 20 power sessions over at least two heart-rate levels, else
   Keytel; Keytel needs weight, age and sex, else no value.
@@ -195,7 +197,7 @@ formula rows' everyday energy runs low. M12's own row names that remainder
 | Constant | Value | Module | Code comment |
 | --- | --- | --- | --- |
 | `METHOD_ID` | `'activity-energy'` | `backend/performance/activity_energy.py` |  |
-| `METHOD_VERSION` | `4` | `backend/performance/activity_energy.py` | Bump when a formula or constant below changes the estimate. |
+| `METHOD_VERSION` | `5` | `backend/performance/activity_energy.py` | Bump when a formula or constant below changes the estimate. |
 | `J_PER_KCAL` | `4184.0` | `backend/performance/activity_energy.py` | Joules per kilocalorie (thermochemical calorie). |
 | `GRAVITY` | `9.81` | `backend/performance/activity_energy.py` | Standard gravity, m/s^2, for the vertical work of floors. |
 | `MINETTI_WALKING` | `(280.5, -58.7, -76.8, 51.9, 19.6, 2.5)` | `backend/performance/activity_energy.py` | Minetti et al. 2002: the running fit (MINETTI_RUNNING, its gradient range and the 200 m grade span come from grade_adjustment, #3187), and the same fit for walking. |
