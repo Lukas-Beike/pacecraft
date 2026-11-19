@@ -1512,7 +1512,7 @@ Streams, record message 20 (`_stream_set`, `_kept_records`, `_RECORD_CHANNEL_FIE
 | `step_length_m` | record `step_length` (85) | /10 mm, then /1000 to m; 0 is a gap | |
 | `respiration_rate_brpm` | record `enhanced_respiration_rate` (108) | /100 breaths per minute | Version 10. A value outside 1 to 100 (0 included) is a gap without an issue, so it never makes a Garmin fetch partial. |
 | `performance_condition` | record field 90 (undocumented) | unscaled points | Version 12, only when `recorded_by` is `garmin`. A value outside -20 to +20 is a gap without an issue. Read as Garmin's performance condition from a count-only probe (#3374): present only in runs and rides, always in range, mostly falling. |
-| `stamina_137_pct`, `stamina_138_pct` | record fields 137 and 138 (undocumented) | unscaled percent | Version 12, only when `recorded_by` is `garmin`. Outside 0 to 100 is a gap without an issue. Garmin's current and potential stamina, in an order the probe has not resolved yet (#3374). |
+| `stamina_137_pct`, `stamina_138_pct` | record fields 137 and 138 (undocumented) | unscaled percent | Version 12, only when `recorded_by` is `garmin`. Outside 0 to 100 is a gap without an issue. Probably Garmin's stamina values, but not identified as current and potential: potential stamina never lies below current, yet in production (2026-11-19) field 137 stayed at or above 138 in only 16 of 25 runs and 8 of 16 rides, 138 above 137 in 4 runs, and 13 files crossed. They therefore keep the neutral names "Ausdauer A" (137) and "Ausdauer B" (138) (#3374). |
 | `grade_pct` | none | | Not produced. |
 | `moving` | none | | Not produced. |
 | `resolution` | | `full` | Fixed. |
