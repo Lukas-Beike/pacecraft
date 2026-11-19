@@ -20,7 +20,11 @@ from datetime import date, timedelta
 from itertools import pairwise
 from typing import Any, NamedTuple, cast
 
-from backend.performance.activity_energy import TEF_ERROR_KCAL, tef_kcal
+from backend.performance.activity_energy import (
+    TEF_ERROR_KCAL,
+    TEF_UNCOVERED,
+    tef_kcal,
+)
 
 METHOD_ID = "adaptive-expenditure"
 # Bump when a formula or constant below changes the estimate.
@@ -149,6 +153,8 @@ class DayInputs:
     # The day summary ended before midnight (#3612): its activity is unknown,
     # its NEAT holds only today's part so far.
     unfinished: bool = False
+    # Logged kcal its entries' macros do not cover (#3617 item 3).
+    uncovered_kcal: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -293,7 +299,9 @@ def energy_density(share: float) -> float:
 
 
 def day_tef(day: DayInputs) -> float:
-    return tef_kcal(day.protein_g, day.carbohydrate_g, day.fat_g)
+    """The macros' thermic effect plus 10 % of the kcal they do not cover."""
+    macros = tef_kcal(day.protein_g, day.carbohydrate_g, day.fat_g)
+    return macros + TEF_UNCOVERED * day.uncovered_kcal
 
 
 def is_complete(day: DayInputs, rmr_kcal: float | None) -> bool:

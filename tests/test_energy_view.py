@@ -1134,6 +1134,21 @@ class SelectedDayTests(unittest.TestCase):
         self.assertIsNone(km["total_kcal"])
         self.assertEqual(1839, km["resting_kcal"])
 
+    def test_kcal_without_macros_adds_estimated_digestion(self) -> None:
+        # #3617 item 3: 2,000 kcal of which the macros cover 870 add 10 % of the
+        # other 1,130 to the macros' 0.25 x 200 + 0.10 x 400 + 0.015 x 270 =
+        # 94.05 kcal, so digestion is 207.05; the read marks it estimated.
+        day = END - timedelta(days=3)
+        partly = DayInputs(
+            weight_kg=80.0, activity_kcal=250.0, neat_kcal=250.0, sport_kcal=0.0,
+            intake_kcal=2000.0, protein_g=50.0, carbohydrate_g=100.0, fat_g=30.0,
+            entries=3, uncovered_kcal=1130.0,
+        )  # fmt: skip
+        km = row(self.view(day, {day: partly}), "katch_mcardle")
+        self.assertEqual(207, km["split"]["tef_kcal"])
+        self.assertTrue(read_energy_view(None, sources(), DAY3, DAY1)["tef_estimated"])
+        self.assertFalse(read_energy_view(None, sources(), DAY3)["tef_estimated"])
+
     def test_today_without_any_data_yet_totals_its_resting_alone(self) -> None:
         # #3494: early morning there are no steps, sessions or meals yet; today
         # they count 0 so far, a past day with the same gaps has no total.
