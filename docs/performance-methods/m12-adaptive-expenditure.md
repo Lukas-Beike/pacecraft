@@ -84,9 +84,11 @@ estimate. It never rewrites logged values and never falls back to a formula.
    windows unstable; each unstable window's band, the derived resting rate's
    and `SE_store` take its largest such difference in quadrature
    (`SE_store` as difference / `t`). The deficit card then reads
-   "Geschätzter Verbrauch" and names "Gewichtssprung (Wasser, Glykogen)" as
-   the main uncertainty. `is_stable(window)` is the check a fit over windows
-   uses to skip unstable ones.
+   "Geschätzter Verbrauch" and "Unsicher vor allem: Wasser im Gewicht, die
+   Wochen widersprechen sich". `is_stable(window)` is the check a fit over windows
+   uses to skip unstable ones. The check needs each window's TDEE, so a
+   window with weigh-ins but too few logged days ("Nur Waage", #3603) gets
+   only the autocorrelation factor, never the unstable flag.
 6. **Calibration factor `k`:** the least-squares slope of `TDEE − TEF` on the
    uncalibrated M11 activity over the windows, combined with the prior 1 ± 0.10
    as a precision-weighted mean, then clamped to 0.85–1.15. It stays 1 with
@@ -242,7 +244,7 @@ bias that is the same on every day is not visible in the band.
 - "Mit gelernter Korrektur geschätzter Mahlzeiten: X (L–H)", once `b` exists.
 - "Geschätzte Mahlzeiten wirken im Mittel X % niedriger/höher als erfasst (± Y)".
 - "Datenbasis zu gering", with the reason.
-- "Geschätzter Verbrauch" instead of "Echter Verbrauch" for an unstable window, with "Gewichtssprung (Wasser, Glykogen)" as the main uncertainty (#3614).
+- "Geschätzter Verbrauch" instead of "Echter Verbrauch" for an unstable window, with "Unsicher vor allem: Wasser im Gewicht, die Wochen widersprechen sich" (#3614).
 
 ## Forbidden statements
 

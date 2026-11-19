@@ -1942,7 +1942,7 @@ function energyTableHead() {
 // "Dein Defizit, letzte 28 Tage" (#3548) replaces Verlauf's 28-day own row: the energy per day
 // from the body stores as the hero, the goal marker, the boxes weight and body fat → fat → kcal per
 // day, and a short text (the athlete asked for it), with the flagged-meal rows under it.
-const DEFICIT_UNCERTAINTY = { fat_share: "Fettanteil (Faustregel und Messungen)", weight_scatter: "Schwankungen der Wiegungen", unstable: "Gewichtssprung (Wasser, Glykogen): die Wochen widersprechen sich" };
+const DEFICIT_UNCERTAINTY = { fat_share: "Fettanteil (Faustregel und Messungen)", weight_scatter: "Schwankungen der Wiegungen", unstable: "Wasser im Gewicht, die Wochen widersprechen sich" };
 const DEFICIT_GOAL_STATUS = { in: "✓ im Ziel", under: "unter Ziel", over: "über Ziel" };
 
 function deficitDecimal(value) {
