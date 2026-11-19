@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import unittest
+from datetime import UTC, date, datetime, timedelta
 from types import SimpleNamespace
-from unittest.mock import Mock, patch
+from typing import Any
+from unittest.mock import MagicMock, Mock, patch
 
 from backend.nutrition import wiring as nutrition_wiring
 from backend.providers.model_seam import ModelRequest
@@ -35,6 +37,51 @@ class NutritionBuilderTests(unittest.TestCase):
         self.assertIsNotNone(diary)
         self.ctx.database.assert_called_with()
         self.assertIs(services.food_mirror(), services.food_mirror())
+
+    def test_the_period_balance_reads_yesterdays_history_once_per_change(self) -> None:
+        # #3630: the week summary's own day totals read the 12-week history; it
+        # is kept until a commit changes rows, as the session summaries are, so
+        # a second Verlauf read does not price every session again.
+        services = self.make_services()
+        manager = MagicMock()
+        manager.read_revision.return_value = 7
+        manager.holds_lease.return_value = False
+        self.ctx.database.return_value = manager
+        self.ctx.clock.now.return_value = datetime(2026, 11, 19, 12, tzinfo=UTC)
+        end = date(2026, 11, 18)
+        days = [end - timedelta(days=n) for n in range(14)]
+        history: tuple[Mock, Mock, dict[str, Any]] = (Mock(), Mock(), {})
+        with (
+            patch.object(nutrition_wiring, "own_history", return_value=history) as read,
+            patch.object(
+                nutrition_wiring,
+                "own_totals",
+                side_effect=lambda *args: dict.fromkeys(args[-1], 1.0),
+            ) as totals,
+        ):
+            own = services.diary_service().sync_status._own_day_totals
+            assert own is not None
+            self.assertEqual(dict.fromkeys(days, 1.0), own(days))
+            own([*days, *(end - timedelta(days=n) for n in range(14, 84))])
+            self.assertEqual((1, end), (read.call_count, read.call_args.args[2]))
+            self.assertIs(history[0], totals.call_args.args[0])
+            # A commit reads again.
+            manager.read_revision.return_value = 8
+            own(days)
+            self.assertEqual(2, read.call_count)
+            # A new day reads the history ending on the new yesterday.
+            self.ctx.clock.now.return_value = datetime(2026, 11, 20, 1, tzinfo=UTC)
+            own(days)
+            self.assertEqual(
+                (3, date(2026, 11, 19)), (read.call_count, read.call_args.args[2])
+            )
+            # A period reaching before the history reads it directly.
+            with patch.object(
+                nutrition_wiring, "read_own_day_totals", return_value={}
+            ) as direct:
+                own([date(2026, 6, 1)])
+            direct.assert_called_once()
+            self.assertEqual(3, read.call_count)
 
     def test_intervals_sync_uses_the_current_config_and_a_fresh_diary(self) -> None:
         services = self.make_services()
