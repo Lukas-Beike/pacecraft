@@ -66,7 +66,6 @@ class GarminServices:
     sync_state_service: Callable[[], garmin.GarminSyncStateService]
     strength_push_service: Callable[[], Any]
     sdk_write_ready: Callable[[], bool]
-    body_export: Callable[[Any], Any]
     # Mirrors the athlete's entered body days to Garmin Connect (#3403).
     body_push_service: Callable[[], Any]
     remote_reader: Callable[[], GarminRemoteReader]
@@ -198,13 +197,6 @@ def build_garmin(
             gate=resync_gate,
             write_ready=sdk_write_ready_now,
             run_zones=run_zones,
-        )
-
-    def body_export(profile: Any) -> Any:
-        from backend.sync.garmin_profile_body_export import GarminProfileBodyExport
-
-        return GarminProfileBodyExport(
-            profile, remote_reader(), fixture_loader(), tokens
         )
 
     def body_push_service() -> Any:
@@ -420,7 +412,6 @@ def build_garmin(
         sync_state_service,
         strength_push_service,
         sdk_write_ready_now,
-        body_export,
         body_push_service,
         remote_reader,
         check_stored_login,

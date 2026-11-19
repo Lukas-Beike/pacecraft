@@ -49,6 +49,30 @@ class CoachProfileUpdateTests(unittest.TestCase):
         self.assertEqual(raised.exception.reason, "profile_conflict")
         self.profile.save.assert_not_called()
 
+    def test_weight_and_body_fat_are_not_profile_fields_for_the_coach(self):
+        # #3640: Körper owns them; the Coach neither writes nor sees the stored
+        # profile values, which are no current value.
+        self.profile.get.return_value = {
+            "name": "Athlete", "weight_kg": "80", "body_fat_pct": "15"
+        }  # fmt: skip
+        for field in ("weight_kg", "body_fat_pct"):
+            with self.subTest(field=field), self.assertRaises(AppError) as raised:
+                self.service.apply(
+                    {
+                        "changes": [
+                            {"field": field, "expected_value": "80", "value": "79"}
+                        ]
+                    },
+                    self.intent,
+                )
+            self.assertEqual(raised.exception.reason, "tool_arguments_invalid")
+        self.profile.save.assert_not_called()
+        result = self.service.apply(
+            {"changes": [{"field": "name", "expected_value": "Athlete", "value": "A"}]},
+            self.intent,
+        )
+        self.assertEqual({"name": "A"}, result["profile"])
+
     def test_valid_batch_saves_only_selected_fields(self):
         result = self.service.apply(
             {

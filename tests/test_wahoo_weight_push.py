@@ -86,6 +86,19 @@ class WahooWeightPushTests(unittest.TestCase):
             {"sent": 4, "failed": 0, "retried": 0, "pending": 0}, self.counts()
         )
 
+    def test_an_undo_leaves_the_restored_weight_for_the_next_refresh(self):
+        # #3640: a Coach turn undo writes to no provider; it marks the weight
+        # pending, and the next Wahoo refresh sends the then-newest entry.
+        self.weights.save({"date": DAY.isoformat(), "kg": 80.4})
+        self.assertEqual([80.4], self.client.weights)
+        with self.manager.unit_of_work():
+            # The undo put an earlier value back inside its own transaction.
+            self.push.mark_restored()
+        self.assertEqual([80.4], self.client.weights)
+        self.assertEqual("sent", self.push.retry_pending())
+        self.assertEqual([80.4, 80.4], self.client.weights)
+        self.assertIsNone(self.push.retry_pending())
+
     def test_no_write_without_an_entered_weight(self):
         # Removing every entry writes nothing; a body fat never reaches Wahoo.
         self.weights.save({"date": DAY.isoformat(), "kg": 80.4})

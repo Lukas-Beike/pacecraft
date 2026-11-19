@@ -113,13 +113,10 @@ class CurrentPerformanceMetricsTests(unittest.TestCase):
             {"weight_kg": 80},
             garmin,
         )
-        # Garmin's dated measurement wins the recency rule (#1668); the undated
-        # profile weight stays an alternative. The Intervals weight is no source.
-        weight = dict(result["weight_kg"])
-        alternatives = weight.pop("alternatives")
-        self.assertTrue(weight.pop("conflict"))
-        self.assertEqual(weight, garmin["weight_kg"])
-        self.assertEqual([item["value"] for item in alternatives], [80])
+        # Garmin's dated measurement is the weight (#1668); the profile's stored
+        # weight is no source, not even an alternative (#3640), and neither is
+        # the Intervals weight.
+        self.assertEqual(dict(result["weight_kg"]), garmin["weight_kg"])
         # Garmin's FTP and max HR are the values; the Intervals settings are not
         # alternatives.
         self.assertEqual(result["cycling_ftp_watts"], garmin["cycling_ftp_watts"])
@@ -128,7 +125,9 @@ class CurrentPerformanceMetricsTests(unittest.TestCase):
             result["cycling_vo2max_ml_kg_min"], garmin["cycling_vo2max_ml_kg_min"]
         )
 
-    def test_intervals_settings_give_no_current_value_but_the_profile_does(self):
+    def test_intervals_settings_give_no_current_value_and_the_profile_only_height(
+        self,
+    ):
         snapshot = {
             "athlete": {
                 "weight": 78,
@@ -169,9 +168,9 @@ class CurrentPerformanceMetricsTests(unittest.TestCase):
             empty_garmin(),
             canonical=wahoo_canonical(),
         )
-        self.assertEqual(result["weight_kg"]["value"], 80)
-        self.assertEqual(result["weight_kg"]["source"], "Manuell")
-        self.assertEqual(result["body_fat_pct"]["value"], 20)
+        # #3640: weight and body fat come from Körper, not the profile.
+        self.assertIsNone(result["weight_kg"]["value"])
+        self.assertIsNone(result["body_fat_pct"]["value"])
         self.assertEqual(result["height_cm"]["value"], 170)
         for key in (
             "cycling_ftp_watts",
@@ -295,8 +294,10 @@ class CurrentPerformanceMetricsTests(unittest.TestCase):
         garmin = empty_garmin()
         before = copy.deepcopy((snapshot, profile, garmin))
         result = snapshot_metrics(snapshot, profile, garmin)
-        self.assertEqual(result["weight_kg"]["value"], 72)
-        self.assertEqual(result["body_fat_pct"]["value"], 20)
+        # #3640: the profile's stored body values are no source.
+        self.assertIsNone(result["weight_kg"]["value"])
+        self.assertIsNone(result["body_fat_pct"]["value"])
+        self.assertEqual(result["height_cm"]["value"], 175)
         self.assertIsNone(result["run_threshold_pace_seconds_per_km"]["value"])
         self.assertEqual((snapshot, profile, garmin), before)
 
@@ -386,16 +387,18 @@ class WahooFallbackPrecedenceTests(unittest.TestCase):
         self.assertEqual(302, without_wahoo["cycling_ftp_watts"]["value"])
         self.assertNotIn("alternatives", without_wahoo["cycling_ftp_watts"])
 
-    def test_manual_profile_weight_beats_wahoo_weight(self):
+    def test_the_profile_weight_and_body_fat_are_no_source(self):
+        # #3640: Körper owns them; the stored profile values never win.
         result = snapshot_metrics(
             snapshot_with(),
-            {"weight_kg": 80},
+            {"weight_kg": 80, "body_fat_pct": 15},
             empty_garmin(),
             canonical=wahoo_canonical(weight=78.5),
         )
 
-        self.assertEqual(80, result["weight_kg"]["value"])
-        self.assertEqual("Manuell", result["weight_kg"]["source"])
+        self.assertEqual(78.5, result["weight_kg"]["value"])
+        self.assertEqual(WAHOO_LABEL, result["weight_kg"]["source"])
+        self.assertIsNone(result["body_fat_pct"]["value"])
 
     def test_wahoo_weight_is_used_when_nothing_else_is_stored(self):
         result = snapshot_metrics(

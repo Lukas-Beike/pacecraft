@@ -686,18 +686,18 @@ Evidence:
 - `tests/test_performance_chart_history.py:test_daily_weekly_view_metrics_reach_the_newest_measurement`
 - `tests/test_garmin_analysis_refresh.py:test_targeted_weekly_view_metrics_request_daily_readings`; running tolerance shares the weekly grouping in `public/analysis.js`. Gap: the exact daily `groupMap` key shape is inferred from the SDK docstring and existing weekly handling, not from a captured live payload.
 
-### Requirement: Profile body fat is shown in the Body overview
-The Body overview SHALL show a valid saved body-fat profile value labelled as profile data, without projecting it into dated measurement history.
+### Requirement: Körper owns the current weight and body fat
+The system SHALL take the current weight and body fat only from the body records (Körper's entries and skinfolds, and the providers' measurements), never from a value stored in the athlete profile (athlete decision, #3640). The profile's stored values and their change history stay data: their history counts as dated weigh-ins and skinfold readings (#3557).
 
-#### Scenario: Profile value exists
-- **WHEN** the saved profile contains valid body fat
-- **THEN** the overview shows that value and labels it as profile data.
+#### Scenario: Only the profile holds a value
+- **WHEN** the profile still stores a weight or body fat and no body record exists
+- **THEN** the current value is missing with its existing reason; the profile value is neither the value nor an alternative.
 
-#### Scenario: No profile value exists
-- **WHEN** the profile has no valid body-fat value
-- **THEN** the overview shows the latest eligible Garmin body-fat reading when available.
+#### Scenario: A body record exists
+- **WHEN** Körper or a provider holds a weight or body fat
+- **THEN** that record is the current value under its source rule, whatever the profile stores.
 
-Evidence: `public/analysis.js`; `tests/analysis-presentation.test.cjs::body overview uses profile body fat without creating a dated measurement`, `tests/analysis-presentation.test.cjs::body overview falls back to Garmin when the profile fat is absent`.
+Evidence: `backend/performance/current_metrics.py:_body_candidates`, `backend/nutrition/energy_inputs.py:_body_fat`, `backend/nutrition/macro_context.py:body_weight`; `tests/test_performance_current_metrics.py::test_the_profile_weight_and_body_fat_are_no_source`, `tests/test_energy_inputs.py::BodyFatFallbackTests`, `tests/test_nutrition_macro_ranges.py::test_body_weight_keeps_its_source_and_has_no_profile_fallback`.
 
 ### Requirement: Performance inputs come from canonical observations only
 The system SHALL read the performance inputs only from canonical observations and activity summaries; the body history carries Garmin weight and body fat. Performance readers SHALL NOT read snapshot wellness rows or stored Intervals.icu wellness days. Without canonical inputs these values SHALL be absent.

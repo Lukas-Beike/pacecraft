@@ -216,8 +216,6 @@
             <label>Trainingserfahrung<textarea name="training_background" rows="3" placeholder="Erfahrung, Trainingshistorie, Stärken und Schwächen…"></textarea></label>
             <div class="form-grid">
             <label>Größe (cm)<input name="height_cm" type="number" min="50" max="250" step="0.1"></label>
-            <label>Gewicht (kg)<input name="weight_kg" type="number" min="20" max="300" step="0.1"></label>
-            <label>Körperfettanteil (%)<input name="body_fat_pct" type="number" min="1" max="70" step="0.1"></label>
             <label>Geschlecht<select name="sex"><option value="">Nicht gesetzt (männlich angenommen)</option><option value="male">Männlich</option><option value="female">Weiblich</option></select></label>
             <label>Geburtsjahr<input name="birth_year" type="number" min="1920" max="2010" step="1" inputmode="numeric"></label>
             </div>
@@ -284,7 +282,6 @@
             </div>
             <label>Wetter-/Urlaubsstandort<input name="weather_location" placeholder="Stadt oder PLZ, z. B. Münster"></label>
           </details>
-          <button id="retryBodyGarmin" type="button" class="secondary-button" hidden>Körperwerte erneut an Garmin senden</button>
           <div class="save-bar"><span id="profileDirtyIndicator" class="dirty-indicator" hidden>Ungespeichert</span><span class="save-clean">Gespeichert</span><button type="submit">Athletenkontext speichern</button></div>
         </form>
         <form id="zoneForm" hidden></form>

@@ -125,7 +125,8 @@ competition:<id>, local_competitions (competition creation/sync), local_profile,
 activity_feedback, local_nutrition (diary/meals/templates), local_nutrition_product (new product),
 local_nutrition_gaps (filling only empty product values),
 nutrition_product:<id> (editing that product), nutrition_template:<id> (editing that saved meal),
-local_equipment, local_activity_session, artifact:<id>, adaptive_replan:<id>, change:<id>,
+local_equipment, local_activity_session, local_body (weight and body fat in Körper),
+artifact:<id>, adaptive_replan:<id>, change:<id>,
 sync_job:<id>, __SCOPE_TOKENS__.
 Use exact existing object tokens for edits.
 An external write requires the athlete's corresponding synchronization request

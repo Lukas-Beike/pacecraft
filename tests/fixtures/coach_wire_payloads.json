@@ -107,6 +107,7 @@
           },
           "domain": {
            "enum": [
+            "body",
             "checkin",
             "competition",
             "nutrition",

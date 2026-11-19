@@ -40,6 +40,9 @@ _FULLY_TRACKED_TOOLS = frozenset(
         "save_equipment",
         "assign_activity_equipment",
         "log_equipment_maintenance",
+        # Their Garmin and Wahoo writes follow the local value (#3640).
+        "save_body_entry",
+        "delete_body_entry",
     }
 )
 

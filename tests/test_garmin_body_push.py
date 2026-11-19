@@ -234,6 +234,22 @@ class GarminBodyPushTests(unittest.TestCase):
             self.counts(),
         )  # fmt: skip
 
+    def test_an_undo_leaves_the_day_pending_without_counting_a_failure(self):
+        # #3640 (Gitar): an undo writes nothing to Garmin; it leaves the day for
+        # the next refresh, and no failed push is counted for it.
+        self.weights.save({"date": "2026-11-15", "kg": 80.4})
+        before = self.counts()
+        with self.manager.unit_of_work():
+            self.push.mark_restored(DAY)
+        self.assertEqual(RemoteLinkState.PENDING, self.link().sync_state)
+        after = self.counts()
+        self.assertEqual(
+            (before["failed"], before["pending_days"] + 1),
+            (after["failed"], after["pending_days"]),
+        )
+        self.assertEqual(1, self.push.retry_pending())
+        self.assertEqual(RemoteLinkState.SYNCED, self.link().sync_state)
+
     def test_a_rate_limit_keeps_the_local_save_and_a_paced_retry_follows(self):
         self.sdk.fail = _HttpError(429, f"Too many requests {SECRET}")
         with self.assertLogs("intervals_coach", logging.WARNING) as logs:

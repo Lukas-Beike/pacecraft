@@ -19,6 +19,8 @@ from backend.errors import AppError
 RELEASED_AUDIT_FIELDS = {
     "activity_feedback": frozenset(["rows"]),
     "activity_session": frozenset(["sessions"]),
+    # #3640: an entered weight or body fat of one day.
+    "body_entry": frozenset(["date", "value"]),
     "checkin": frozenset(
         [
             "availability_notes",

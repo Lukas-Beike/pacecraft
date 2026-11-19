@@ -433,7 +433,6 @@ class CompositionRootTests(ServerTestCase):
                 self.assertIsNot(factory(), factory())
         self.assertTrue(callable(garmin.strength_push_service()._configured))
         self.assertIsInstance(garmin.sdk_write_ready(), bool)
-        self.assertIsNotNone(garmin.body_export(server.ATHLETE_DATA.profile()))
         self.assertIsInstance(garmin.change_check(), GarminChangeCheck)
         self.assertIs(garmin.change_check(), garmin.change_check())
 

@@ -214,6 +214,19 @@ class EnergyInputsReaderTests(unittest.TestCase):
         self.assertAlmostEqual(day.neat_kcal or 0.0, 270.897, places=2)
         self.assertAlmostEqual(day.activity_kcal or 0.0, 270.897, places=2)
 
+    def test_the_profile_weight_prices_nothing_without_a_weigh_in(self) -> None:
+        # #3640: without any weigh-in the mass is unknown, whatever the profile
+        # holds; it priced the sessions before.
+        def unweighed(src: EnergySources) -> EnergySources:
+            return replace(src, weights=lambda _db, _s, _e: {})
+
+        plain, plain_costs = read_energy_inputs(None, unweighed(sources()), DAY1, DAY3)
+        stored = unweighed(sources(profile={"height_cm": "180", "weight_kg": "80"}))
+        held, held_costs = read_energy_inputs(None, stored, DAY1, DAY3)
+        self.assertEqual(plain_costs, held_costs)
+        self.assertEqual(plain.days, held.days)
+        self.assertTrue(all(cost.kcal is None for cost in held_costs if cost.steps))
+
     def test_own_resting_rate_first_garmin_only_as_fallback(self) -> None:
         own, _ = read_energy_inputs(None, sources(), DAY1, DAY3)
         self.assertEqual((own.rmr_kcal, own.rmr_source), (1680.0, "katch_mcardle"))
@@ -604,11 +617,11 @@ class StoreAdapterTests(unittest.TestCase):
         carried = 0.8 * trend[first] + 0.3 * (trend[end] - trend[first])
         self.assertAlmostEqual(carried, body["lean_mass_kg"], places=6)
         self.assertAlmostEqual(66.8, body["lean_mass_kg"], delta=0.05)
-        # A profile value has no date: its percentage applies to the day.
-        profile = replace(inputs, body_fat_pct={}, profile_body_fat_pct=20.0)
-        body = energy_inputs.resolve_body(profile, trend, end)
-        assert body is not None
-        self.assertAlmostEqual(0.8 * trend[end], body["lean_mass_kg"], places=6)
+        # Without a dated reading there is no body: the profile's stored body
+        # fat is no source (#3640).
+        self.assertIsNone(
+            energy_inputs.resolve_body(replace(inputs, body_fat_pct={}), trend, end)
+        )
 
     def test_the_resting_reference_carries_the_same_lean_mass(self) -> None:
         # Gitar on #3642: the own Katch-McArdle takes the lean mass the formula
@@ -794,12 +807,15 @@ PROFILE_FAT = {"height_cm": "180", "birth_year": "1990", "body_fat_pct": "18,5"}
 
 
 class BodyFatFallbackTests(unittest.TestCase):
-    """#3362, #3402: skinfold, entered, device or scale, then the profile; labelled."""
+    """#3362, #3402: skinfold, entered, device or scale; labelled. The profile's
+    stored body fat is no source (#3640)."""
 
     def body(self, src: EnergySources) -> dict[str, Any] | None:
         return read_energy_view(None, src, DAY3)["body"]
 
-    def test_skinfold_beats_entered_beats_device_beats_profile(self) -> None:
+    def test_skinfold_beats_entered_beats_device_and_the_profile_never_counts(
+        self,
+    ) -> None:
         cases = [
             (
                 skinfold_sources(
@@ -823,7 +839,7 @@ class BodyFatFallbackTests(unittest.TestCase):
             ),
             (
                 skinfold_sources([], profile=PROFILE_FAT),
-                ("profile", "Profil", 18.5, None),
+                (None, None, None, None),
             ),
         ]
         for src, expected in cases:
@@ -846,11 +862,11 @@ class BodyFatFallbackTests(unittest.TestCase):
             device={OLD: 20.0},
             profile=PROFILE_FAT,
         )
-        self.assertEqual("profile", (self.body(old) or {}).get("source"))
-        without_profile = skinfold_sources([folds_on(OLD)], device={OLD: 20.0})
-        view = read_energy_view(None, without_profile, DAY3)
-        self.assertIsNone(view["body"])
-        self.assertEqual("skinfold_too_old", view["skinfold_missing"])
+        # The profile's stored body fat fills nothing (#3640): the reason stays.
+        for src in (old, skinfold_sources([folds_on(OLD)], device={OLD: 20.0})):
+            view = read_energy_view(None, src, DAY3)
+            self.assertIsNone(view["body"])
+            self.assertEqual("skinfold_too_old", view["skinfold_missing"])
 
     def test_without_any_source_the_reason_stays(self) -> None:
         view = read_energy_view(None, skinfold_sources([]), DAY3)
@@ -860,7 +876,8 @@ class BodyFatFallbackTests(unittest.TestCase):
         self.assertIsNone(katch["resting_kcal"])
 
     def test_a_fallback_fills_both_formula_rows(self) -> None:
-        view = read_energy_view(None, skinfold_sources([], profile=PROFILE_FAT), DAY3)
+        src = skinfold_sources([], device={DAY2: 20.0}, profile=PROFILE_FAT)
+        view = read_energy_view(None, src, DAY3)
         self.assertIsNone(view["skinfold_missing"])
         for source in ("katch_mcardle", "cunningham"):
             row = next(r for r in view["rows"] if r["source"] == source)
@@ -902,9 +919,8 @@ class BodyFatFallbackTests(unittest.TestCase):
         self.assertEqual(0, basis["learned_everyday_negative"])
         counts = basis["body_source_windows"]
         self.assertEqual(12, sum(counts.values()))
-        self.assertEqual(
-            {"skinfold", "entered", "device", "profile", "none"}, set(counts)
-        )
+        # The profile is no body source any more (#3640).
+        self.assertEqual({"skinfold", "entered", "device", "none"}, set(counts))
         # The latest window has the device value; older windows lack a weight.
         self.assertGreaterEqual(counts["device"], 1)
         self.assertGreaterEqual(counts["none"], 1)

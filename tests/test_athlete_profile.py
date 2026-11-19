@@ -85,10 +85,10 @@ class AthleteProfileTests(unittest.TestCase):
 
     def test_known_values_are_stringified_trimmed_and_limited(self):
         result = normalize_profile(
-            {"name": "  Ada  ", "weight_kg": 72, "goals": " x " * 5000}
+            {"name": "  Ada  ", "height_cm": 180, "goals": " x " * 5000}
         )
         self.assertEqual(result["name"], "Ada")
-        self.assertEqual(result["weight_kg"], "72")
+        self.assertEqual(result["height_cm"], "180")
         self.assertEqual(len(result["goals"]), 4000)
         self.assertEqual(result["goals"], (" x " * 5000).strip()[:4000])
 
@@ -96,38 +96,51 @@ class AthleteProfileTests(unittest.TestCase):
         for strict in (False, True):
             with self.subTest(strict=strict):
                 result = normalize_profile(
-                    {"weight_kg": None, "sex": None, "name": None},
+                    {"height_cm": None, "sex": None, "name": None},
                     validate_timezone=strict,
                 )
                 self.assertEqual(
-                    (result["weight_kg"], result["sex"], result["name"]), ("", "", "")
+                    (result["height_cm"], result["sex"], result["name"]), ("", "", "")
                 )
 
     def test_strict_number_fields_read_comma_decimals_and_store_normalized_text(self):
         result = normalize_profile(
-            {
-                "weight_kg": " 72,5 ",
-                "height_cm": "180.0",
-                "body_fat_pct": 14,
-                "sleep_target_hours": "7,5",
-            },
+            {"height_cm": " 180,5 ", "sleep_target_hours": "7,5"},
             validate_timezone=True,
         )
         self.assertEqual(
-            (
-                result["weight_kg"],
-                result["height_cm"],
-                result["body_fat_pct"],
-                result["sleep_target_hours"],
-            ),
-            ("72.5", "180", "14", "7.5"),
+            (result["height_cm"], result["sleep_target_hours"]), ("180.5", "7.5")
         )
+
+    def test_a_save_keeps_the_stored_weight_and_body_fat_and_takes_no_new_ones(self):
+        # #3640: Körper owns weight and body fat. The stored profile values stay
+        # as data (#3557 reads their history), and no save changes them.
+        stored = normalize_profile({"weight_kg": "80", "body_fat_pct": "15"})
+        for incoming in (
+            {"weight_kg": "82", "body_fat_pct": "14"},
+            {"weight_kg": "", "body_fat_pct": None},
+            {"weight_kg": "viel", "body_fat_pct": "0"},
+            {},
+        ):
+            with self.subTest(incoming=incoming):
+                saved = normalize_profile(
+                    {**incoming, "name": "Ada"}, validate_timezone=True, previous=stored
+                )
+                self.assertEqual(
+                    ("Ada", "80", "15"),
+                    (saved["name"], saved["weight_kg"], saved["body_fat_pct"]),
+                )
+        # Without a stored value a save leaves them empty.
+        fresh = normalize_profile(
+            {"weight_kg": "82", "body_fat_pct": "14"},
+            validate_timezone=True,
+            previous=normalize_profile({}),
+        )
+        self.assertEqual(("", ""), (fresh["weight_kg"], fresh["body_fat_pct"]))
 
     def test_strict_number_fields_reject_text_and_out_of_range_values(self):
         cases = {
-            "weight_kg": ("72 kg", "19.9", "300.1", "nan", "1,234", "abc"),
-            "height_cm": ("1,80 m", "49", "251"),
-            "body_fat_pct": ("0.9", "70.1", "viel"),
+            "height_cm": ("1,80 m", "49", "251", "nan", "abc"),
             "sleep_target_hours": ("3,9", "12.1", "inf", "acht"),
         }
         for field, values in cases.items():
@@ -137,12 +150,8 @@ class AthleteProfileTests(unittest.TestCase):
                         normalize_profile({field: value}, validate_timezone=True)
                     self.assertEqual(raised.exception.status, 400)
         for field, edge in (
-            ("weight_kg", "20"),
-            ("weight_kg", "300"),
             ("height_cm", "50"),
             ("height_cm", "250"),
-            ("body_fat_pct", "1"),
-            ("body_fat_pct", "70"),
             ("sleep_target_hours", "4"),
             ("sleep_target_hours", "12"),
         ):
@@ -199,10 +208,10 @@ class AthleteProfileTests(unittest.TestCase):
         saved = normalize_profile(
             {**stored, "name": "Ada"}, validate_timezone=True, previous=stored
         )
-        self.assertEqual(saved["weight_kg"], "72 kg")
+        self.assertEqual((saved["weight_kg"], saved["height_cm"]), ("72 kg", "tall"))
         with self.assertRaises(AppError):
             normalize_profile(
-                {**stored, "weight_kg": "73 kg"},
+                {**stored, "height_cm": "taller"},
                 validate_timezone=True,
                 previous=stored,
             )

@@ -160,47 +160,53 @@ class ProfileServiceTests(unittest.TestCase):
         )
 
     def test_patch_applies_partial_writes_to_the_current_stored_profile(self):
-        self.service.save({"name": "Ada", "weight_kg": "60", "goals": "Base"})
+        self.service.save({"name": "Ada", "height_cm": "180", "goals": "Base"})
 
         # A second caller that read an older snapshot must not erase fields it did not send.
-        self.service.patch({"weight_kg": "62"})
+        self.service.patch({"height_cm": "181"})
         saved = self.service.patch({"goals": "Threshold"})
 
         self.assertEqual(saved["name"], "Ada")
-        self.assertEqual(saved["weight_kg"], "62")
+        self.assertEqual(saved["height_cm"], "181")
         self.assertEqual(saved["goals"], "Threshold")
         self.assertEqual(self.service.get(), saved)
 
-    def test_patch_with_only_weight_keeps_name_and_normalizes_changed_field(self):
+    def test_patch_with_only_height_keeps_name_and_normalizes_changed_field(self):
         self.service.save({"name": "Ada", "timezone": "UTC"})
 
-        saved = self.service.patch({"weight_kg": "  61.5 "})
+        saved = self.service.patch({"height_cm": "  180,5 "})
 
         self.assertEqual(saved["name"], "Ada")
         self.assertEqual(saved["timezone"], "UTC")
-        self.assertEqual(saved["weight_kg"], "61.5")
+        self.assertEqual(saved["height_cm"], "180.5")
 
-    def test_patch_validates_body_input_and_keeps_a_legacy_value_it_does_not_touch(
-        self,
-    ):
+    def test_patch_keeps_the_stored_weight_and_body_fat_as_data(self):
+        # #3640: Körper owns them; a stored value (a legacy spelling too) stays,
+        # and no patch, valid or not, changes it or adds a history entry for it.
         self.key_values.set(
             self.db,
             "profile",
-            json.dumps({**DEFAULT_PROFILE, "name": "Ada", "weight_kg": "72 kg"}),
-        )
+            json.dumps(
+                {**DEFAULT_PROFILE, "name": "Ada", "weight_kg": "72 kg",
+                 "body_fat_pct": "15"}
+            ),
+        )  # fmt: skip
 
         renamed = self.service.patch({"name": "Ada B"})
-        self.assertEqual(renamed["weight_kg"], "72 kg")
-        with self.assertRaises(AppError):
-            self.service.patch({"weight_kg": "seventy"})
-        saved = self.service.patch(
-            {"weight_kg": None, "sleep_target_hours": "7,5", "height_cm": 180}
-        )
-
         self.assertEqual(
-            (saved["weight_kg"], saved["sleep_target_hours"], saved["height_cm"]),
-            ("", "7.5", "180"),
+            ("72 kg", "15"), (renamed["weight_kg"], renamed["body_fat_pct"])
         )
+        for body in (
+            {"weight_kg": "seventy"},
+            {"weight_kg": "70", "body_fat_pct": None},
+        ):
+            with self.subTest(body=body):
+                saved = self.service.patch({**body, "sleep_target_hours": "7,5"})
+                self.assertEqual(
+                    ("72 kg", "15", "7.5"),
+                    (saved["weight_kg"], saved["body_fat_pct"],
+                     saved["sleep_target_hours"]),
+                )  # fmt: skip
         self.assertEqual(self.service.get(), saved)
 
     def test_patch_rejects_non_object_payload(self):

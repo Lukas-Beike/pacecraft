@@ -16,6 +16,7 @@ from backend.activities.zone_settings import (
     zone_source_name,
 )
 from backend.athlete.local_date import iso_date_prefix
+from backend.athlete.profile import coach_profile
 from backend.athlete.zones import EDITABLE_SPORTS, public_configuration
 from backend.calendar import local as calendar_local
 from backend.canonical.activity_summary import (
@@ -927,7 +928,8 @@ class CoachStructuredContextService:
     ) -> dict[str, Any]:
         garmin_label = _source_label(ProviderId.GARMIN)
         context = {
-            "durable_profile": self._performance_reader.profile()
+            # The stored weight and body fat are no current value (#3640).
+            "durable_profile": coach_profile(self._performance_reader.profile())
             if "durable_profile" in included
             else None,
             "target_competitions": self._planning_reader.competitions()

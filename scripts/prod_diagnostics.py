@@ -147,7 +147,7 @@ SECTION_FIELDS = {
         r"|windows_with_estimate|calibration_windows|days|logged_days|flagged_days"
         r"|weighins|sessions|unpriced_sessions|rmr_source|skinfolds_with_body_fat"
         r"|newest_skinfold_age_days|body_resolved|body_missing|body_source"
-        r"|body_source_windows\.(skinfold|entered|device|profile|none)"
+        r"|body_source_windows\.(skinfold|entered|device|none)"
         r"|today_resting_days_back"
         # Formulas whose learned everyday fit lies below 0 (#3577).
         r"|learned_everyday_negative"
@@ -245,8 +245,8 @@ STATES |= {
     "no_weight",
     "invalid",
     "skinfold",
+    "entered",
     "device",
-    "profile",
     # NEAT's step length source (#3611).
     "walks",
     "height",

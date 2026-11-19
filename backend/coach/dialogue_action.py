@@ -51,6 +51,8 @@ LOCAL_BROAD_SCOPES = frozenset(
         "local_nutrition_gaps",
         "local_equipment",
         "local_activity_session",
+        # Körper's weight and body fat (#3640).
+        "local_body",
     }
 )
 

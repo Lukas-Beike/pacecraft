@@ -359,30 +359,20 @@ def _entered(observations: Iterable[Observation]) -> tuple[Candidate, ...]:
     return (Candidate(None, value, newest.observed_on, newest),)
 
 
-def _profile_candidate(value: Any) -> tuple[Candidate, ...]:
-    number = as_number(value)
-    return () if number is None else (Candidate(None, float(number)),)
-
-
 def _body_candidates(
     kind: MetricKind,
     garmin_body: Iterable[Observation],
-    profile_value: Any,
     wahoo: Observation | None = None,
     entered: Iterable[Observation] = (),
 ) -> tuple[Candidate, ...]:
     """Weight or body fat of each source, in source order.
 
     Garmin's latest measurement and the athlete's newest entered weight are
-    dated; the profile and Wahoo's profile weight are not.
+    dated; Wahoo's profile weight is not. The athlete profile's stored values
+    are no source: Körper owns weight and body fat (#3640).
     """
     garmin = next((item for item in garmin_body if item.kind is kind), None)
-    return (
-        *_dated(garmin),
-        *_entered(entered),
-        *_profile_candidate(profile_value),
-        *_undated(wahoo),
-    )
+    return (*_dated(garmin), *_entered(entered), *_undated(wahoo))
 
 
 def _performance_body_metrics(
@@ -398,7 +388,6 @@ def _performance_body_metrics(
         _body_candidates(
             MetricKind.WEIGHT,
             garmin_body,
-            profile.get("weight_kg"),
             canonical.wahoo_weight,
             canonical.entered_weights,
         ),
@@ -408,10 +397,7 @@ def _performance_body_metrics(
     body_fat = resolve_candidates(
         MetricKind.BODY_FAT,
         _body_candidates(
-            MetricKind.BODY_FAT,
-            garmin_body,
-            profile.get("body_fat_pct"),
-            entered=canonical.entered_body_fats,
+            MetricKind.BODY_FAT, garmin_body, entered=canonical.entered_body_fats
         ),
         as_of=as_of,
         preferences=canonical.preferences,

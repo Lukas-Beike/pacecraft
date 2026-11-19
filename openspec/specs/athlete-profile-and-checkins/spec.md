@@ -82,8 +82,12 @@ Evidence:
 The system SHALL preserve unsubmitted profile fields on the profile patch API and require exact expected field values for a Coach batch, with atomic rejection of stale or invalid batches.
 
 #### Scenario: Profile patch
-- **WHEN** `/api/profile` receives a valid partial update such as weight only
+- **WHEN** `/api/profile` receives a valid partial update such as height only
 - **THEN** it merges against the profile read in the transaction and preserves saved names, preferences and other omitted fields.
+
+#### Scenario: Weight and body fat are no profile fields
+- **WHEN** a profile save or a Coach `update_profile` names `weight_kg` or `body_fat_pct`
+- **THEN** the save keeps the stored values and adds no history entry for them, and the Coach batch is rejected as invalid; Körper enters both (athlete decision, #3640).
 
 #### Scenario: Coach partial update
 - **WHEN** `update_profile` supplies distinct known fields with their current expected values and local-profile authority
@@ -93,7 +97,7 @@ The system SHALL preserve unsubmitted profile fields on the profile patch API an
 - **WHEN** any expected value differs, a field is unknown/duplicated, or operation/scope authorization is missing
 - **THEN** the whole Coach batch is rejected without applying earlier fields.
 
-Evidence: `backend/athlete/profile.py:ProfileService.patch`; `backend/http_api/athlete_put.py:AthletePutRoutes.routes`; `backend/coach/profile_update.py:CoachProfileUpdateService.apply`; `tests/test_athlete_profile_service.py:test_patch_with_only_weight_keeps_name_and_normalizes_changed_field`; `tests/test_coach_profile_update.py:test_valid_batch_saves_only_selected_fields`, `tests/test_coach_profile_update.py:test_later_field_conflict_aborts_entire_batch`, `tests/test_coach_profile_update.py:test_authorization_precedes_profile_read_and_write`.
+Evidence: `backend/athlete/profile.py:ProfileService.patch`; `backend/http_api/athlete_put.py:AthletePutRoutes.routes`; `backend/coach/profile_update.py:CoachProfileUpdateService.apply`; `tests/test_athlete_profile_service.py:test_patch_with_only_height_keeps_name_and_normalizes_changed_field`, `tests/test_athlete_profile_service.py:test_patch_keeps_the_stored_weight_and_body_fat_as_data`; `tests/test_coach_profile_update.py:test_weight_and_body_fat_are_not_profile_fields_for_the_coach`, `tests/test_coach_profile_update.py:test_valid_batch_saves_only_selected_fields`, `tests/test_coach_profile_update.py:test_later_field_conflict_aborts_entire_batch`, `tests/test_coach_profile_update.py:test_authorization_precedes_profile_read_and_write`.
 
 ### Requirement: AP3 Location invalidation on profile save and undo
 The system SHALL invalidate location-derived weather state only when the saved weather location changes, within the transaction of the profile save or of the undo that restores a profile. A profile save never writes competitions; they change only through the competition service.
@@ -488,23 +492,41 @@ Profil SHALL order its closed sections Person, Ziele & Woche, Zonen & Schwellen,
 
 Evidence: `public/settings.js::renderZoneOverview`, `public/settings.js::openZoneEditor`, `public/settings.js::renderZoneWarnings`, `public/settings.js::thresholdRows`, `public/performance-view.js::withFirstThresholds`, `public/index.html`; `tests/zone-overview.test.cjs`, `tests/analysis-presentation.test.cjs`, `e2e/zones-thresholds.spec.js`.
 
+### Requirement: Coach body entries
+
+The Coach SHALL record the athlete's weight and body fat as Körper entries through the same entry service as the Körper dialogs, never in the profile (athlete decision, #3640). `save_body_entry` saves one day's value (`kind` `weight` or `body_fat`); `delete_body_entry` removes one. Both run only in a turn started by the athlete's own message, under scope `local_body` and write-gate domain `body`.
+
+#### Scenario: A new day's value
+- **WHEN** the athlete states a weight or body fat for a day without an entry
+- **THEN** the entry is saved, the turn shows a receipt with whole-turn undo, and Garmin Connect (and Wahoo for a weight) receive it after the turn commits.
+
+#### Scenario: Changing or removing an entered value
+- **WHEN** the call would replace (`replace: true`) or remove a day's entry
+- **THEN** the write gate needs the athlete's confirmed request to change or delete in `body`; a save without `replace` on such a day is refused (`body_entry_exists`).
+
+#### Scenario: Undo
+- **WHEN** the turn is undone
+- **THEN** each day is put back as it was (the previous value, or no entry), the day is left pending for Garmin's next refresh and, for a weight, the Wahoo profile weight is left pending for Wahoo's next refresh; the undo itself writes to no provider.
+
+Evidence: `backend/coach/athlete_record_tools.py:CoachAthleteRecordToolService._execute_body`, `backend/athlete/body_entry.py:BodyEntryHistory`, `backend/coach/write_gate.py:_removes_records`; `tests/test_coach_athlete_record_tools.py::test_the_body_tools_record_through_the_koerper_entries`, `tests/test_body_entry.py::test_each_change_is_recorded_and_undo_puts_the_day_back`.
+
 ### Requirement: Profile form save contract
 
 A profile save SHALL send only the fields whose text differs from the values the form was rendered with, SHALL refuse to save before those values exist, and SHALL treat the save as confirmed only when every sent field comes back as text; otherwise the draft stays dirty with "Die Profilbestätigung ist unvollständig. Der Entwurf bleibt erhalten.".
 
 #### Scenario: Form bounds
 - **WHEN** the form validates a value
-- **THEN** height is 50 to 250 cm, weight 20 to 300 kg, body fat 1 to 70 %, the first threshold 60 to 220 bpm or 40 to 100 %, and the sleep target 4 to 12 hours in quarter hours
+- **THEN** height is 50 to 250 cm, the first threshold 60 to 220 bpm or 40 to 100 %, and the sleep target 4 to 12 hours in quarter hours
 
 #### Scenario: Body values
-- **WHEN** weight or body fat changed
-- **THEN** the save asks for the Garmin export and reports its outcome (sent, invalid, unavailable, superseded, rejected, uncertain); "Körperwerte erneut an Garmin senden" is offered only after invalid, unavailable or rejected, never after a lost response
+- **WHEN** the profile form is shown
+- **THEN** it has no weight or body-fat field and the save sends no Garmin export; Körper enters both, and its entries reach Garmin through the body push (#3403, #3640)
 
 #### Scenario: First threshold
 - **WHEN** a measured value is saved, or an estimate is adopted with "Übernehmen"
 - **THEN** the entry fields are cleared and the stored percent is shown; adopting over a measured value asks "Gemessenen Wert ersetzen?"
 
-Evidence: `public/settings.js::determineChangedProfileFields`; `public/settings.js::profileSaveConfirmed`; `public/settings.js::handleProfileSaveOutcome`; `public/settings.js::retryBodyGarmin`; `public/settings.js::adoptFirstThreshold`; `public/index.html` (profile form). Tests: `tests/frontend-write-safety.test.cjs::profile save sends only the fields the athlete edited`; `tests/frontend-write-safety.test.cjs::known failed body export offers explicit retry; unknown outcome does not`; `tests/first-threshold-estimate.test.cjs::the form is clean again when the adopted value was its only edit`.
+Evidence: `public/settings.js::determineChangedProfileFields`; `public/settings.js::profileSaveConfirmed`; `public/settings.js::adoptFirstThreshold`; `public/index.html` (profile form). Tests: `tests/frontend-write-safety.test.cjs::profile save sends only the fields the athlete edited`; `tests/frontend-write-safety.test.cjs::a profile save sends no Garmin export and reports its own failure`; `e2e/body-analysis.spec.js::the profile holds no weight or body fat and Körper still enters both`; `tests/first-threshold-estimate.test.cjs::the form is clean again when the adopted value was its only edit`.
 
 ### Requirement: Zone save and removal
 
