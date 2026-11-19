@@ -161,6 +161,22 @@ class FatShareBlendTests(unittest.TestCase):
         self.assertAlmostEqual(0.28, weights[0], delta=0.01)
         self.assertAlmostEqual(0.73, weights[1], delta=0.02)
 
+    def test_readings_that_do_not_weigh_keep_both_and_the_prior(self) -> None:
+        # Gitar on #3581: a flat weight keeps both readings for the card, and a
+        # weight below the label's 1 % stays "prior" as the label shows.
+        inputs, _ = self.phase(4, every=14)
+        flat = {d: 80.0 for d in inputs.days}
+        share = balance.fat_share(inputs, flat, END)
+        self.assertEqual(
+            (0.70, 0.0, 20.0), (share.share, share.measured_weight, share.pct_first)
+        )
+        self.assertIsNotNone(share.pct_last)
+        inputs, trend = self.phase(2, every=14)
+        weights = {d: v.weight_kg for d, v in inputs.days.items() if v.weight_kg}
+        store = balance._stored_energy(inputs, trend, weights, END)
+        self.assertEqual(("prior", 20.0), (store.method, store.fat_pct_start))
+        self.assertGreater(store.measured_weight, 0)
+
     def test_the_store_carries_its_terms_and_a_narrow_band(self) -> None:
         # #3548 boxes and #3555: the window's weigh-in slope at the blended
         # share; two readings 14 days apart no longer widen the band to about

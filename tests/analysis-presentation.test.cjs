@@ -329,6 +329,10 @@ test("Verlauf's deficit card: hero, goal marker, boxes and text agree, measured 
   assert.match(textOf(surplus.children[1]), /pro Tag in die Speicher/);
   assert.deepEqual(surplus.children[2].children.map(textOf), ["Gewicht+1,0 kg70,0 → 71,0", "Körperfettnur eine Messung", "davon Fett≈ 0,7 kg≈ 70 % · Faustregel 70 %", "pro Tag≈ 300 kcal8.400 kcal ÷ 28 Tage"]);
   assert.equal(textOf(surplus.children[3]), "Du hast 1,0 kg zugenommen. Ohne zweite Körperfettmessung schätzt die Faustregel davon etwa 70 % als Fett – etwa 0,7 kg. Das entspricht einem Überschuss von etwa 300 kcal pro Tag. Dein echter Verbrauch lag damit bei rund 3.800 kcal (Garmin: 3.100).");
+  // Two readings that do not weigh yet keep the rule of thumb but are not "missing" (Gitar on #3581).
+  const light = energyDeficitCard({ rows, deficit: { ...measured, method: "prior", fat_share: { share_pct: 70, prior_pct: 70, measured_pct: 0 } } });
+  assert.equal(textOf(light.children[4].children[1]), "Körperfett15,5 → 14,1 %");
+  assert.match(textOf(light.children[5]), /von 15,5 % auf 14,1 % gesunken\. Die Messungen wiegen darin noch kaum, die Faustregel schätzt davon etwa 70 % als Fett/);
   // A span reaching past 0 into a surplus is signed, not clamped (Gitar on #3562).
   const small = energyDeficitCard({ rows, deficit: { ...measured, deficit_kcal: 100, band_kcal: 235 } });
   assert.match(textOf(small.children[1]), /−135 bis 335zwischen −135 und 335 kcal$/);

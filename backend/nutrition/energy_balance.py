@@ -369,7 +369,7 @@ def fat_share(inputs: EnergyInputs, trend: Mapping[date, float], end: date) -> F
     weights = [trend[d] for d in days]
     weight_slope, sxx = _slope(xs, weights)
     if abs(weight_slope) * (xs[-1] - xs[0]) < MIN_FAT_SHARE_WEIGHT_CHANGE_KG:
-        return prior._replace(pct_last=series[days[-1]])
+        return prior._replace(pct_first=series[days[0]], pct_last=series[days[-1]])
     fat_slope, _ = _slope(
         xs, [w * series[d] / 100.0 for w, d in zip(weights, days, strict=True)]
     )
@@ -421,7 +421,8 @@ def _stored_energy(
     return StoredEnergy(
         density * slope,
         math.hypot(scatter, split),
-        "measured" if share.measured_weight > 0 else "prior",
+        # The same whole percent the label shows (Gitar on #3581).
+        "measured" if round(100 * share.measured_weight) >= 1 else "prior",
         round(span),
         first,
         first + slope * span,

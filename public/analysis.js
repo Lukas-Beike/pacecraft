@@ -1953,9 +1953,8 @@ function deficitGoalBar(card) {
 
 function deficitBoxes(card) {
   const change = card.weight_end_kg - card.weight_start_kg;
-  const measured = card.method === "measured";
   let fat = card.fat_pct_end == null ? "keine Messung" : "nur eine Messung";
-  if (measured) fat = `${deficitDecimal(card.fat_pct_start)} → ${deficitDecimal(card.fat_pct_end)} %`;
+  if (card.fat_pct_start != null) fat = `${deficitDecimal(card.fat_pct_start)} → ${deficitDecimal(card.fat_pct_end)} %`;
   const box = (kind, title, value, note) => h("li", { dataset: { deficitBox: kind } }, h("small", null, title), h("strong", null, value), note && h("small", null, note));
   return h("ol", "energy-deficit-flow",
     box("weight", "Gewicht", `${deficitSigned(change)} kg`, `${deficitDecimal(card.weight_start_kg)} → ${deficitDecimal(card.weight_end_kg)}`),
@@ -1972,9 +1971,11 @@ function deficitText(card, deviceLabel) {
   const fatKg = deficitDecimal(Math.abs(card.fat_change_kg));
   const moved = card.fat_pct_end <= card.fat_pct_start ? "gesunken" : "gestiegen";
   const share = card.fat_share?.share_pct ?? "–";
-  const fat = card.method === "measured"
-    ? `, dein Körperfett ist von ${deficitDecimal(card.fat_pct_start)} % auf ${deficitDecimal(card.fat_pct_end)} % ${moved}. Faustregel und Messungen zusammen nehmen davon etwa ${share} % als Fett – etwa ${fatKg} kg.`
-    : `. Ohne zweite Körperfettmessung schätzt die Faustregel davon etwa ${share} % als Fett – etwa ${fatKg} kg.`;
+  // Two readings that do not weigh yet (few, close together, or a flat weight) keep the rule of thumb (Gitar on #3581).
+  const readings = `, dein Körperfett ist von ${deficitDecimal(card.fat_pct_start)} % auf ${deficitDecimal(card.fat_pct_end)} % ${moved}.`;
+  let fat = `. Ohne zweite Körperfettmessung schätzt die Faustregel davon etwa ${share} % als Fett – etwa ${fatKg} kg.`;
+  if (card.method === "measured") fat = `${readings} Faustregel und Messungen zusammen nehmen davon etwa ${share} % als Fett – etwa ${fatKg} kg.`;
+  else if (card.fat_pct_start != null) fat = `${readings} Die Messungen wiegen darin noch kaum, die Faustregel schätzt davon etwa ${share} % als Fett – etwa ${fatKg} kg.`;
   const balance = `Das entspricht einem ${card.deficit_kcal >= 0 ? "Defizit" : "Überschuss"} von etwa ${formatWhole(Math.abs(card.deficit_kcal))} kcal pro Tag.`;
   const device = card.device_total_kcal == null ? "" : ` (${deviceLabel || "Gerät"}: ${formatWhole(card.device_total_kcal)})`;
   return `${weight}${fat} ${balance} Dein echter Verbrauch lag damit bei rund ${formatWhole(card.total_kcal)} kcal${device}.`;
