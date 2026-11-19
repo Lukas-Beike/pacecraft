@@ -602,6 +602,29 @@ class StoreAdapterTests(unittest.TestCase):
             basis["latest_window_weighin_sources"],
         )
 
+    def test_the_source_offset_averages_each_source_s_residual(self) -> None:
+        # #3638: flat weight, Garmin on even days 0.6 kg above the app's on odd
+        # days: around each window's line Garmin sits about +0.3, the app -0.3.
+        end = date(2026, 11, 18)
+        days = {
+            end - timedelta(days=n): DayInputs(
+                intake_kcal=2500.0, entries=3, weight_kg=80.0 + 0.6 * (n % 2 == 0)
+            )
+            for n in range(60)
+        }
+        inputs = EnergyInputs(days, {}, rmr_kcal=1600.0)
+        windows = energy_windows(inputs, end, weeks=2)
+        by_day = {d: ("garmin" if (end - d).days % 2 == 0 else "app") for d in days}
+        self.assertEqual(
+            {"mixed_windows": 2, "mean_residual_kg": {"app": -0.3, "garmin": 0.3}},
+            energy_inputs.source_offset(inputs, windows, by_day),
+        )
+        # One source only: no mixed window, no means.
+        self.assertEqual(
+            {"mixed_windows": 0, "mean_residual_kg": {"app": None, "garmin": None}},
+            energy_inputs.source_offset(inputs, windows, dict.fromkeys(days, "app")),
+        )
+
     def test_session_streams_take_the_first_stream_set(self) -> None:
         laps = SimpleNamespace(detail=object())
         streams = SimpleNamespace(

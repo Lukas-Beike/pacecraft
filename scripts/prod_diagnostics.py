@@ -167,6 +167,9 @@ SECTION_FIELDS = {
         # Windows failing the neighbour check, their largest spread and the
         # weigh-in days per source over their span (#3614).
         r"|unstable_windows|largest_unstable_spread_kcal"
+        # Windows mixing both weigh-in sources and each source's mean residual
+        # around their lines, to 0.1 kg (#3638).
+        r"|weighin_source_offset\.(mixed_windows|mean_residual_kg\.(app|garmin))"
         r"|unstable_span_weighin_sources(\.(by_source\.(app|garmin)"
         r"|dropped_days\.(garmin|wahoo|intervals)))?"
         # The walks behind NEAT's step length and its source (#3611).
