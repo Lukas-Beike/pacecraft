@@ -243,6 +243,20 @@ class SelectModulesTests(unittest.TestCase):
                 self.assertIsNotNone(modules)
                 self.assertIn("test_activity_detail_store", modules)
 
+    def test_a_daily_health_kind_change_selects_the_tests_counting_its_reads(self):
+        # #3592: both modules count one read per daily-health kind; the services
+        # they build import the module, so the import closure selects them.
+        modules, _reason = changed_tests.select_modules(
+            ["backend/performance/daily_health.py"]
+        )
+        self.assertIsNotNone(modules)
+        for module in (
+            "test_performance_canonical_parity",
+            "test_planning_canonical_recovery",
+        ):
+            with self.subTest(module=module):
+                self.assertIn(module, modules)
+
     def test_repository_selection_is_narrower_than_the_suite(self):
         modules, _reason = changed_tests.select_modules(
             ["backend/nutrition/macro_ranges.py"]
