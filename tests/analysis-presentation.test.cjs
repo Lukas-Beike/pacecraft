@@ -2,6 +2,16 @@ const assert = require("node:assert/strict");
 const { test } = require("node:test");
 const { extractFunctions, FakeElement, fakeDocument, textOf } = require("./frontend-harness.cjs");
 
+test("h() applies a style object to the element's own style instead of replacing it (#3596)", () => {
+  const { h } = extractFunctions("components.js", ["h", "SVG_NS", "svgNode"], { document: fakeDocument() });
+  const node = h("span", { className: "mark", style: { left: "40%", width: "10%" } });
+  // A browser drops an object assigned to `style`; the element's own style must carry the values.
+  assert.equal(typeof node.style.setProperty, "function", "the element's own style object stays");
+  assert.deepEqual([node.style.left, node.style.width], ["40%", "10%"]);
+  // A style text still sets the attribute as before.
+  assert.equal(h("span", { style: "color: red" }).style, "color: red");
+});
+
 test("analysis popovers stay inside the viewport on narrow screens and flip above when needed", () => {
   const { analysisPopoverPosition } = extractFunctions("analysis.js", ["analysisPopoverPosition"]);
   const viewport = { width: 360, height: 640 };
@@ -318,6 +328,13 @@ test("Verlauf's deficit card: hero, goal marker, boxes and text agree, measured 
   assert.equal(textOf(card.children[0]), "Dein Defizit, letzte 28 Tage");
   assert.match(textOf(card.children[1]), /^≈ 565 kcalpro Tag aus den Reserven330–800/);
   assert.equal(textOf(card.children[3]), "Ziel: 500 kcal Defizit · ✓ im Ziel");
+  // #3596: the bar's span and markers carry their positions (330–800 with the goal 500 and the
+  // estimate 565 on a 230–900 scale), on each element's own style, as a browser applies them.
+  const [band, estimate, target] = card.children[2].children;
+  const at = (kcal) => `${((kcal - 230) / (900 - 230)) * 100}%`;
+  assert.deepEqual([band.style.left, estimate.style.left, target.style.left], [at(330), at(565), at(500)]);
+  assert.equal(band.style.width, `calc(${at(800)} - ${at(330)})`);
+  assert.ok(Object.hasOwn(band.style, "setProperty") || typeof band.style.setProperty === "function", "the element keeps its own style object");
   const boxes = card.children[4].children.map(textOf);
   assert.deepEqual(boxes, ["Gewicht−2,0 kg91,2 → 89,2", "Körperfett15,5 → 14,1 %", "davon Fett≈ 1,6 kg≈ 80 % · Faustregel 70 %, zu 28 % gemessen", "pro Tag≈ 565 kcal15.820 kcal ÷ 28 Tage"]);
   assert.equal(textOf(card.children[5]), "Du hast 2,0 kg abgenommen, dein Körperfett ist von 15,5 % auf 14,1 % gesunken. Faustregel und Messungen zusammen nehmen davon etwa 80 % als Fett – etwa 1,6 kg. Das entspricht einem Defizit von etwa 565 kcal pro Tag. Dein echter Verbrauch lag damit bei rund 3.800 kcal (Garmin: 3.100).");

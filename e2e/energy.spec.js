@@ -400,6 +400,11 @@ for (const [method, deficit] of Object.entries(DEFICITS)) {
       }
       // Goal 500 lies left of the estimate 565.
       expect(marks["energy-deficit-goal"].left).toBeLessThan(marks["energy-deficit-mark"].left);
+      // #3596: each marker sits where its value puts it on the 230–900 kcal scale (330–800 ± 100).
+      const bar = await card.locator(".energy-deficit-bar").boundingBox();
+      const share = (name) => ((marks[name].left + marks[name].right) / 2 - bar.x) / bar.width;
+      expect(Math.abs(share("energy-deficit-mark") - (565 - 230) / 670)).toBeLessThan(0.03);
+      expect(Math.abs(share("energy-deficit-goal") - (500 - 230) / 670)).toBeLessThan(0.03);
     } else {
       await expect(boxes.nth(1)).toContainText("nur eine Messung");
       await expect(boxes.nth(2)).toContainText("≈ 70 % · Faustregel 70 %");
