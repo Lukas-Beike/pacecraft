@@ -34,7 +34,6 @@ from backend.athlete.profile import LEARNED_EVERYDAY_FIELD
 from backend.canonical.vocabulary import ProviderId
 from backend.errors import AppError
 from backend.nutrition.energy_balance import (
-    FAT_SHARE_PRIOR,
     Base,
     DayInputs,
     EnergyInputs,
@@ -1080,14 +1079,16 @@ def _own_window_row(
     }
 
 
-def _fat_share_view(store: StoredEnergy | None) -> dict[str, int] | None:
-    """The blended fat share in percent, its prior and the measurements'
-    weight, shown as "Faustregel 70 %, zu X % gemessen" (#3555)."""
+def _fat_share_view(store: StoredEnergy | None) -> dict[str, int | str] | None:
+    """The blended fat share in percent, its prior with its source and the
+    measurements' weight, shown as "Forbes 57 %, zu X % gemessen" (#3555,
+    #3684)."""
     if store is None:
         return None
     return {
         "share_pct": round(100 * store.fat_share),
-        "prior_pct": round(100 * FAT_SHARE_PRIOR),
+        "prior_pct": round(100 * store.fat_prior),
+        "prior_source": store.fat_prior_source,
         "measured_pct": round(100 * store.measured_weight),
     }
 

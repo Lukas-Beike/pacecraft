@@ -996,6 +996,14 @@ def diagnostics(
         "latest_window_insufficient": latest.insufficient if latest else None,
         "windows": len(windows),
         "windows_with_estimate": sum(1 for w in windows if w.adaptive_tdee),
+        # The fat share's prior: Forbes at the current fat mass or the 70 %
+        # fallback, and its whole percent (#3684).
+        "fat_prior_source": latest.store.fat_prior_source
+        if latest and latest.store
+        else None,
+        "fat_prior_pct": round(100 * latest.store.fat_prior)
+        if latest and latest.store
+        else None,
         # Windows failing the neighbour check and their largest unexplained
         # difference, to the nearest 100 kcal (#3614).
         "unstable_windows": sum(1 for w in windows if not is_stable(w)),

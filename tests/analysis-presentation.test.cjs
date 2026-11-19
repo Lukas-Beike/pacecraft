@@ -313,7 +313,7 @@ test("'Heute noch essen' heads the diary's energy card, else a link to the goal 
   assert.equal(energyGoalText({ energy_goal: "hold" }), "Halten");
 });
 
-const DEFICIT_CARD_FUNCTIONS = ["energyFatShareRule", "DEFICIT_UNCERTAINTY", "DEFICIT_GOAL_STATUS", "deficitDecimal", "deficitSigned", "deficitDay", "deficitSpan", "deficitGoalBar", "deficitBoxes", "deficitText", "ESTIMATE_MISSING", "deficitIntake", "energyDeficitCard"];
+const DEFICIT_CARD_FUNCTIONS = ["energyFatSharePrior", "energyFatShareRule", "DEFICIT_UNCERTAINTY", "DEFICIT_GOAL_STATUS", "deficitDecimal", "deficitSigned", "deficitDay", "deficitSpan", "deficitGoalBar", "deficitBoxes", "deficitText", "ESTIMATE_MISSING", "deficitIntake", "energyDeficitCard"];
 
 test("Verlauf's deficit card: hero, goal marker, boxes and text agree, measured and the prior alone (#3548, #3555)", () => {
   const { h } = extractFunctions("components.js", ["h", "SVG_NS", "svgNode"], { document: fakeDocument() });
@@ -348,6 +348,10 @@ test("Verlauf's deficit card: hero, goal marker, boxes and text agree, measured 
   // #3606: two lines, the facts the boxes lack.
   assert.equal(textOf(card.children[5]), "Echter Verbrauch: ≈ 3.800 kcal am Tag (Garmin: 3.100).");
   assert.equal(textOf(card.children[6]), "Unsicher vor allem: Fettanteil (Faustregel und Messungen).");
+  // #3684: the prior follows Forbes at the current fat mass; the box and the sentence name it.
+  const forbes = energyDeficitCard({ rows, deficit: { ...measured, fat_share: { share_pct: 63, prior_pct: 57, prior_source: "forbes", measured_pct: 28 } } });
+  assert.match(textOf(forbes.children[4].children[2]), /Forbes 57 %, zu 28 % gemessen$/);
+  assert.equal(textOf(forbes.children[6]), "Unsicher vor allem: Fettanteil (Forbes und Messungen).");
   // #3606: the read's distance class colours the card; without a goal there is none.
   assert.equal(card.dataset.goalDistance, undefined, "the fixture's goal has no distance class yet");
   const far = energyDeficitCard({ rows, deficit: { ...measured, goal: { ...measured.goal, status: "over", distance: "far" } } });

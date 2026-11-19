@@ -934,7 +934,12 @@ class DeficitCardTests(unittest.TestCase):
                 # days give 18 dof, t = 2.101; 2.101 x 120 = 252.
                 "band_kcal": 252,
                 "method": "measured",
-                "fat_share": {"share_pct": 80, "prior_pct": 70, "measured_pct": 28},
+                "fat_share": {
+                    "share_pct": 80,
+                    "prior_pct": 70,
+                    "prior_source": "fallback",
+                    "measured_pct": 28,
+                },
                 "span_days": 28,
                 "weight_start_kg": 91.2,
                 "weight_end_kg": 89.2,
@@ -973,7 +978,12 @@ class DeficitCardTests(unittest.TestCase):
                 -300,
                 "prior",
                 None,
-                {"share_pct": 70, "prior_pct": 70, "measured_pct": 0},
+                {
+                    "share_pct": 70,
+                    "prior_pct": 70,
+                    "prior_source": "fallback",
+                    "measured_pct": 0,
+                },
             ),
             (
                 prior["deficit_kcal"],
