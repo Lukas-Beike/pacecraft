@@ -1345,8 +1345,12 @@ STRENGTH = {
 
 
 def day_scenario(
-    today: dict[str, Any] | None, sessions: list[dict[str, Any]], meals: int
+    today: dict[str, Any] | None,
+    sessions: list[dict[str, Any]],
+    meals: int,
+    yesterday: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
+    """Today's view; with ``yesterday``'s summary, yesterday's view instead."""
     start = history_start(SCENARIO_END)
     days = [start + timedelta(days=n) for n in range((SCENARIO_END - start).days + 1)]
     meal = {"kcal": 900.0, "protein_g": 50.0, "carbs_g": 100.0, "fat_g": 30.0}
@@ -1359,6 +1363,8 @@ def day_scenario(
     diary += [{**meal, "meal_date": SCENARIO_TODAY.isoformat()}] * meals
     if today is not None:
         health[SCENARIO_TODAY.isoformat()] = today
+    if yesterday is not None:
+        health[SCENARIO_END.isoformat()] = yesterday
 
     def within(items: list[dict[str, Any]], key: str, s: date, e: date) -> list:
         return [i for i in items if s <= date.fromisoformat(i[key][:10]) <= e]
@@ -1376,7 +1382,7 @@ def day_scenario(
             profile=lambda: {"height_cm": "180"},
         ),
         SCENARIO_END,
-        SCENARIO_TODAY,
+        SCENARIO_TODAY if yesterday is None else SCENARIO_END,
     )
 
 
@@ -1457,6 +1463,34 @@ class EnergyDayScenarioTests(unittest.TestCase):
                     rest + katch["total_kcal"] - katch["resting_kcal"],
                 )
                 self.assertNotEqual(window["total_kcal"], own["total_kcal"])
+
+    def test_a_past_day_whose_summary_ended_before_its_session(self) -> None:
+        # #3612: yesterday's summary ended at 12:18, before the 17:00 session.
+        # Its everyday is unknown and still missing, not near 0, and the day
+        # leaves the 28-day means; Garmin's split stays within its total.
+        session = {**STRENGTH, "started_at_local": f"{SCENARIO_END}T17:00:00"}
+        summary = {"steps": 4000.0, "floors": 2.0, "resting_kcal": 900.0,
+                   "active_kcal": 120.0, "calories": 1020.0,
+                   "wellness_end_min": 738.0}  # fmt: skip
+        past = day_scenario(None, [session], 0, yesterday=summary)
+        whole = day_scenario(None, [], 0, yesterday={**summary, "steps": 8000.0,
+                             "floors": 5.0, "wellness_end_min": 1440.0})  # fmt: skip
+        self.assertFalse(past["day_partial"])
+        self.assertEqual({"as_of": "12:18", "behind": True}, past["wellness"])
+        for source in (*FORMULAS, "own"):
+            item = row(past, source)
+            with self.subTest(source=source):
+                self.assertIsNone(item["split"]["neat_kcal"])
+                self.assertIn("neat", item["pending_parts"])
+                self.assertIsNone(item["total_kcal"])
+        device = row(past, "device")
+        self.assertIn("neat", device["pending_parts"])
+        counted = sum(device["split"][p] or 0 for p in DAY_PARTS)
+        self.assertLessEqual(device["resting_kcal"] + counted, device["total_kcal"])
+        for part in ("neat_kcal", "sport_kcal"):
+            self.assertEqual(
+                whole["own_window"]["split"][part], past["own_window"]["split"][part]
+            )
 
 
 if __name__ == "__main__":
