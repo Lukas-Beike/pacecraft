@@ -975,6 +975,11 @@ def diagnostics(
         # Windows failing the neighbour check and their largest unexplained
         # difference, to the nearest 100 kcal (#3614).
         "unstable_windows": sum(1 for w in windows if not is_stable(w)),
+        # Windows whose weigh-ins carry the store and that hold enough complete
+        # days, but whose complete days span too little to price (#3667).
+        "windows_span_short": sum(
+            1 for w in windows if w.insufficient == "logged_span"
+        ),
         "largest_unstable_spread_kcal": int(
             round(max(unexplained_spreads(inputs, windows), default=0.0), -2)
         ),
@@ -1017,7 +1022,7 @@ def _tdee(window: EnergyWindow) -> float:
 
 def _intake(window: EnergyWindow) -> float:
     """The window's mean logged intake: TDEE plus the stored energy per day."""
-    return _tdee(window) + (window.store.kcal_per_day if window.store else 0.0)
+    return window.intake_kcal if window.intake_kcal is not None else _tdee(window)
 
 
 def _activity_gap(a: EnergyWindow, b: EnergyWindow) -> float:

@@ -853,10 +853,7 @@ def _estimated_intake(
         return view
     fit, body = cast(LearnedEveryday, fit), cast(Mapping[str, Any], bodies[-1])
     activity = statistics.fmean(cast(float, w.activity_kcal_raw) for w in calibration)
-    eaten = sum(
-        cast(Estimate, w.adaptive_tdee).kcal + cast(StoredEnergy, w.store).kcal_per_day
-        for w in calibration
-    )
+    eaten = sum(cast(float, w.intake_kcal) for w in calibration)
     share = sum(cast(float, w.tef_kcal) for w in calibration) / eaten
     spent = (
         resting_energy(FORMULAS[ESTIMATE_FORMULA], body["lean_mass_kg"])
