@@ -156,7 +156,10 @@ class BodyRecencyTests(unittest.TestCase):
 
 
 class CurrentWeightChainTests(unittest.TestCase):
-    def test_garmin_weight_wins_over_the_profile_and_ignores_intervals(self) -> None:
+    def test_garmin_weight_wins_and_the_profile_and_intervals_are_no_source(
+        self,
+    ) -> None:
+        # #3640: the profile's stored weight is not even an alternative.
         garmin = _garmin({"weight": _garmin_weight("2026-05-03", 72800)})
         result = _current(
             _snapshot(
@@ -166,13 +169,10 @@ class CurrentWeightChainTests(unittest.TestCase):
             {"weight_kg": 81},
             garmin,
         )
-        weight = dict(result["weight_kg"])
-        alternatives = weight.pop("alternatives")
-        self.assertTrue(weight.pop("conflict"))
-        self.assertEqual(weight, garmin["weight_kg"])
+        self.assertEqual(dict(result["weight_kg"]), garmin["weight_kg"])
         self.assertEqual(_pair(result["weight_kg"]), (72.8, GARMIN))
         self.assertEqual(result["weight_kg"]["unit"], "kg")
-        self.assertEqual([item["value"] for item in alternatives], [81])
+        self.assertNotIn("alternatives", result["weight_kg"])
 
     def test_garmin_latest_dated_weight_is_used_regardless_of_list_order(
         self,
@@ -208,7 +208,8 @@ class CurrentWeightChainTests(unittest.TestCase):
         self.assertEqual(_pair(result["weight_kg"]), (71.5, GARMIN))
         self.assertNotIn("alternatives", result["weight_kg"])
 
-    def test_weight_is_the_profile_value_without_garmin(self) -> None:
+    def test_without_a_body_record_the_profile_weight_is_no_value(self) -> None:
+        # #3640: Körper owns the weight; the stored profile value never counts.
         cases = (
             (
                 "wellness",
@@ -223,7 +224,7 @@ class CurrentWeightChainTests(unittest.TestCase):
         for name, snapshot in cases:
             with self.subTest(source=name):
                 result = _current(snapshot, {"weight_kg": 81})
-                self.assertEqual(_pair(result["weight_kg"]), (81, PROFILE))
+                self.assertEqual(_pair(result["weight_kg"]), (None, None))
                 self.assertNotIn("alternatives", result["weight_kg"])
 
     def test_weight_is_empty_without_any_source(self) -> None:
@@ -263,7 +264,8 @@ class CurrentBodyMetricTests(unittest.TestCase):
         result = _current(garmin=garmin)
         self.assertEqual(_pair(result["body_fat_pct"]), (None, None))
 
-    def test_body_fat_is_the_profile_value_and_ignores_intervals(self) -> None:
+    def test_body_fat_ignores_intervals_and_the_profile(self) -> None:
+        # #3640: Körper owns the body fat; the stored profile value never counts.
         cases = (
             (
                 "wellness bodyFat",
@@ -280,7 +282,7 @@ class CurrentBodyMetricTests(unittest.TestCase):
         for name, snapshot in cases:
             with self.subTest(source=name):
                 result = _current(snapshot, {"body_fat_pct": 20})
-                self.assertEqual(_pair(result["body_fat_pct"]), (20, PROFILE))
+                self.assertEqual(_pair(result["body_fat_pct"]), (None, None))
                 self.assertNotIn("alternatives", result["body_fat_pct"])
                 self.assertEqual(result["body_fat_pct"]["unit"], "%")
 

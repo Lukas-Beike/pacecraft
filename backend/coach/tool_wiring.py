@@ -10,8 +10,10 @@ from __future__ import annotations
 import uuid
 from collections.abc import Callable, Collection
 from dataclasses import dataclass
+from datetime import date
 from functools import cache
 from pathlib import Path
+from typing import Any
 
 from backend.app.context import AppContext
 from backend.coach import limits as coach_limits
@@ -148,6 +150,23 @@ def build_coach_command_tools(
             nutrition_diary=ctx.nutrition.diary_service(),
         )
 
+    def body_entries(kind: str) -> Any:
+        """Körper's entry service, with the dialogs' writes once the Coach
+        turn commits: Garmin Connect (#3403) and, for a weight, Wahoo (#3559)."""
+
+        def changed(day: date) -> str:
+            def push() -> None:
+                if kind == "weight":
+                    ctx.wahoo.weight_push_service().start()
+                ctx.garmin.body_push_service().push(day)
+
+            ctx.database().after_commit(push)
+            return "scheduled"
+
+        if kind == "weight":
+            return ctx.athlete.weight_entries(changed)
+        return ctx.athlete.body_fat_entries(changed)
+
     def athlete_record_tool_service() -> CoachAthleteRecordToolService:
         athlete, nutrition = ctx.athlete, ctx.nutrition
         return CoachAthleteRecordToolService(
@@ -158,6 +177,7 @@ def build_coach_command_tools(
             nutrition.meal_library_service(),
             equipment=athlete.equipment(),
             session_corrections=athlete.session_corrections(),
+            body_entries=body_entries,
         )
 
     def profile_update_service() -> CoachProfileUpdateService:

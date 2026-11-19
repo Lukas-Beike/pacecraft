@@ -187,15 +187,25 @@ def _coach_steps_repaired(previous: dict[str, Any], current: dict[str, Any]) -> 
         return _alternative_planning_steps_repaired(previous, current)
     if not _profile_steps_repaired(previous, current):
         return False
+    scope_failure = _result(previous).get("reason") in {
+        "request_scope",
+        "request_object_missing",
+        "intent_scope_denied",
+    }
     scope_key = previous.get("scope_repair_key")
-    if (
-        _result(previous).get("reason")
-        in {"request_scope", "request_object_missing", "intent_scope_denied"}
-        and scope_key
-        and scope_key == current.get("scope_repair_key")
-    ):
+    if scope_failure and scope_key and scope_key == current.get("scope_repair_key"):
+        return True
+    # The same stored objects, however the retry named them in its scope (#3651).
+    objects = _repair_objects(previous)
+    if scope_failure and objects and objects == _repair_objects(current):
         return True
     return _matching_coach_steps_repaired(previous, current)
+
+
+def _repair_objects(entry: dict[str, Any]) -> list[str] | None:
+    repair_key = entry.get("repair_key")
+    objects = repair_key.get("objects") if isinstance(repair_key, dict) else None
+    return objects if isinstance(objects, list) and objects else None
 
 
 # A create refused because the record already exists saved nothing and needs

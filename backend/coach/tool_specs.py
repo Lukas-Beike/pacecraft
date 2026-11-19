@@ -25,6 +25,8 @@ PROFILE = "profile"
 COMPETITION = "competition"
 CHECKIN = "checkin"
 NUTRITION = "nutrition"
+# Körper's weight, body fat and skinfolds (#3640).
+BODY = "body"
 UNDO = "undo"
 REMOTE_INTERVALS = "remote_intervals"
 REMOTE_GARMIN = "remote_garmin"
@@ -305,6 +307,23 @@ TOOL_SPECS: tuple[ToolSpec, ...] = (
         action="Ernährungseintrag entfernen",
         deletes=True,
         requirements=(CA2, CA4),
+    ),
+    ToolSpec(
+        "save_body_entry",
+        ATHLETE_RECORDS,
+        domain=BODY,
+        done="Körperwert gespeichert",
+        action="Körperwert speichern",
+        requirements=("athlete-profile-and-checkins/Coach body entries",),
+    ),
+    ToolSpec(
+        "delete_body_entry",
+        ATHLETE_RECORDS,
+        domain=BODY,
+        done="Körperwert entfernt",
+        action="Körperwert entfernen",
+        deletes=True,
+        requirements=("athlete-profile-and-checkins/Coach body entries", CA4),
     ),
     ToolSpec(
         "save_equipment",

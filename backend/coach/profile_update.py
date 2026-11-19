@@ -5,9 +5,11 @@ from __future__ import annotations
 from typing import Any
 
 from backend.athlete.profile import (
+    BODY_FIELDS,
     COACH_READ_ONLY_FIELDS,
     DEFAULT_PROFILE,
     ProfileService,
+    coach_profile,
 )
 from backend.coach.authorization import authorized_operations, require_coach_scope
 from backend.db.manager import DatabaseManager
@@ -58,6 +60,8 @@ class CoachProfileUpdateService:
                     or not isinstance(change.get("field"), str)
                     or change["field"] not in DEFAULT_PROFILE
                     or change["field"] in COACH_READ_ONLY_FIELDS
+                    # Körper owns weight and body fat (#3640).
+                    or change["field"] in BODY_FIELDS
                     or change["field"] in seen
                     or any(
                         not isinstance(change.get(key), str) or len(change[key]) > 4000
@@ -83,5 +87,5 @@ class CoachProfileUpdateService:
             "ok": True,
             "stored_locally": True,
             "updated_fields": sorted(seen),
-            "profile": saved,
+            "profile": coach_profile(saved),
         }

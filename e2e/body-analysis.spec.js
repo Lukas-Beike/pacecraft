@@ -133,25 +133,18 @@ test("@responsive Body keeps old measurements dated and long gaps empty", async 
 });
 
 
-test("@responsive profile body save offers explicit retry after a known Garmin failure", async ({ page }) => {
-  const requests = [];
-  await page.route("**/api/profile", async (route) => {
-    if (route.request().method() !== "PUT") return route.continue();
-    const body = route.request().postDataJSON();
-    requests.push(body);
-    await route.fulfill({ json: { ...body, garmin_body_export: body.retry_body_to_garmin ? "success" : "unavailable" } });
-  });
+// #3640: weight and body fat are measurements Körper enters; the profile has no field for them.
+test("@responsive the profile holds no weight or body fat and Körper still enters both", async ({ page }) => {
   await page.goto("/#more/profile");
   const form = page.locator("#profileForm");
   await expect(form).toBeVisible();
   // Every profile section starts closed (#2262).
   await form.locator("> details.profile-section").first().locator(":scope > summary").click();
-  await form.locator('[name="weight_kg"]').fill("72");
-  await form.getByRole("button", { name: "Athletenkontext speichern" }).click();
-  const retry = page.locator("#retryBodyGarmin");
-  await expect(retry).toBeVisible();
-  expect(requests[0].sync_body_to_garmin).toBe(true);
-  await retry.click();
-  await expect(retry).toBeHidden();
-  expect(requests[1].retry_body_to_garmin).toBe(true);
+  await expect(form.locator('[name="height_cm"]')).toBeVisible();
+  await expect(form.locator('[name="weight_kg"], [name="body_fat_pct"]')).toHaveCount(0);
+  await expect(page.locator("#retryBodyGarmin")).toHaveCount(0);
+  await page.goto("/#nutrition/body");
+  const overview = page.locator("#bodyAnalysisCharts [data-body-overview]");
+  await expect(overview.getByRole("button", { name: "Gewicht eintragen" })).toBeVisible();
+  await expect(overview.getByRole("button", { name: "Körperfett eintragen" })).toBeVisible();
 });

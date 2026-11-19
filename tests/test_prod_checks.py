@@ -465,8 +465,9 @@ class ProdChecksTests(unittest.TestCase):
                 "latest_window_insufficient": "weight_span",
                 "body_resolved": False,
                 "body_missing": "no_skinfold",
-                "body_source": "profile",
-                "body_source_windows": {"skinfold": 0, "device": 2, "profile": 9},
+                # #3640: an entered body fat prints; the profile is no source.
+                "body_source": "entered",
+                "body_source_windows": {"skinfold": 0, "device": 2, "entered": 9},
                 "skinfolds_with_body_fat": 0,
                 "newest_skinfold_age_days": None,
                 "today_resting_days_back": 1,
@@ -495,8 +496,9 @@ class ProdChecksTests(unittest.TestCase):
         prefix = "energy_balance."
         for expected in (
             f'{prefix}body_missing "no_skinfold"',
-            f'{prefix}body_source "profile"',
+            f'{prefix}body_source "entered"',
             f"{prefix}body_source_windows.device 2",
+            f"{prefix}body_source_windows.entered 9",
             f"{prefix}body_resolved false",
             f'{prefix}rmr_source "{RESTING_FROM_SKINFOLDS}"',
             f'{prefix}latest_window_insufficient "weight_span"',

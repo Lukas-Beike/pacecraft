@@ -451,7 +451,13 @@ expenditure, null without enough logged meals) with
 null), `device_total_kcal` and `goal` (`goal`, `goal_kcal` and
 `status` `in` within 150 kcal per day of the goal either way, else
 `under` or `over`, and `distance` `near` (within 150), `mid` (within
-350) or `far` (#3606); null without a goal), and `wellness` (#3530; where Garmin's summary of `day` stands,
+350) or `far` (#3606); null without a goal), `estimated_intake` (#3604;
+null with enough logged days or without a store): `kcal` with its 95 %
+`band_kcal` (the calibrated Katch-McArdle expenditure less the stored
+energy, both null when `missing` names why: `calibration`,
+`calibration_age` (over 63 days), `weight_change` (over 4 %),
+`activity_change` (over 30 %), `body` or `activity`), and the last
+calibrating window's `calibration_end` with `calibration_age_days`, and `wellness` (#3530; where Garmin's summary of `day` stands,
 null when it is finished or names no end): `as_of` (`HH:MM`, its wellness
 end) and `behind` (true when a session of the day ends after it, so the
 summary's steps and active kcal leave it out; every row's everyday is
@@ -1813,8 +1819,8 @@ characters. Fields: `name`, `goals`, `sports`, `training_background`,
 `typical_weekly_volume`, `availability`, `constraints`, `equipment`,
 `training_preferences` and its `_running`, `_cycling`, `_swimming`,
 `_strength`, `_mobility` variants, `training_model` (`pyramidal`,
-`polarized`, `threshold`, `sweet_spot`), `performance_notes`, `weight_kg`
-(20 to 300), `body_fat_pct` (1 to 70), `height_cm` (50 to 250), `sex`
+`polarized`, `threshold`, `sweet_spot`), `performance_notes`, `height_cm`
+(50 to 250), `sex`
 (`male`, `female` or empty), `birth_year` (a whole year, 1920 to 2010),
 `coaching_style`, `timezone` (IANA name), `weather_location`,
 `sleep_target_hours` (4 to 12), `fueling_tolerance`, `energy_goal`
@@ -1827,24 +1833,20 @@ everyday term over, or empty; the Coach cannot set it, #3577),
 `preferred_source_thresholds`, `_body`, `_hrv`, `_resting_hr`, `_sleep`
 (`garmin` or empty). Instead of the percent, `first_threshold_hr` (bpm, 60
 to 220) with optional `first_threshold_on` (`YYYY-MM-DD`) is converted with
-the run threshold HR of that day and stored as `measured`. With
-`sync_body_to_garmin: true` a changed `weight_kg` or `body_fat_pct` is also
-exported to Garmin; with `retry_body_to_garmin: true` as well, the export
-runs even when unchanged. Neither flag is stored.
+the run threshold HR of that day and stored as `measured`. `weight_kg` and
+`body_fat_pct` are no profile fields (#3640): Körper enters them
+(`/api/body/weight`, `/api/body/body-fat`, skinfolds); a sent value is
+ignored and the stored one stays as data.
 
-Response: 200 with the saved profile (every field as a string); with
-`sync_body_to_garmin: true` also `garmin_body_export`: `unchanged`,
-`success`, `uncertain`, `rejected`, `unavailable`, `superseded` or
-`invalid`. The profile is saved before the export, whatever its outcome.
+Response: 200 with the saved profile (every field as a string).
 
 Errors: 400 "Die Zeitzone muss eine gültige IANA-Zeitzone sein."; 400
 "Unbekanntes Trainingsmodell; erlaubt: pyramidal, polarized, threshold,
 sweet_spot"; 400 "Unbekannte bevorzugte Quelle; erlaubt: garmin oder leer.";
 400 "Unbekanntes Geschlecht; erlaubt: male, female oder leer."; 400 "Das
-Geburtsjahr muss zwischen 1920 und 2010 liegen."; 400 "Das
-Gewicht muss zwischen 20 und 300 kg liegen.", "Die Größe muss zwischen 50
-und 250 cm liegen.", "Der Körperfettanteil muss zwischen 1 und 70 %
-liegen.", "Das Schlafziel muss zwischen 4 und 12 Stunden liegen."; 400
+Geburtsjahr muss zwischen 1920 und 2010 liegen."; 400 "Die Größe muss
+zwischen 50 und 250 cm liegen.", "Das Schlafziel muss zwischen 4 und 12
+Stunden liegen."; 400
 "Die Herkunft der ersten Schwelle muss gemessen oder geschätzt sein."; 400
 "Die gemessene erste Schwelle muss zwischen 40 und 100 % LSHF liegen."; 400
 "Die gemessene erste Schwelle muss zwischen 60 und 220 bpm liegen."; 400

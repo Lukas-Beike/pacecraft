@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import Any
 
 from backend.activities.feedback import ActivityFeedbackService
+from backend.athlete.body_entry import BodyEntryService
 from backend.athlete.checkins import CheckinService
 from backend.coach.authorization import (
     require_coach_scope,
@@ -23,6 +25,9 @@ _SESSION_TOOLS = frozenset(
     {"confirm_activity_session", "split_activity_session", "merge_activity_sessions"}
 )
 _NUTRITION_UNAVAILABLE = "NutritionService ist nicht verfügbar."
+# Körper's weight and body fat, recorded as the dialogs record them (#3640).
+_BODY_TOOLS = frozenset({"save_body_entry", "delete_body_entry"})
+_BODY_KEYS = {"weight": "kg", "body_fat": "pct"}
 
 
 class CoachAthleteRecordToolService:
@@ -38,7 +43,10 @@ class CoachAthleteRecordToolService:
         *,
         equipment: Any = None,
         session_corrections: Any = None,
+        body_entries: Callable[[str], BodyEntryService] | None = None,
     ) -> None:
+        # The Körper entry service of "weight" or "body_fat" (#3640).
+        self._body_entries = body_entries
         self._checkins = checkins
         self._activity_feedback = activity_feedback
         self._competitions = competitions
@@ -54,6 +62,8 @@ class CoachAthleteRecordToolService:
             return self._execute_equipment(name, arguments, intent)
         if name in _SESSION_TOOLS:
             return self._execute_session(name, arguments, intent)
+        if name in _BODY_TOOLS:
+            return self._execute_body(name, arguments, intent)
         if name in {
             "save_nutrition_template",
             "save_nutrition_product",
@@ -301,6 +311,49 @@ class CoachAthleteRecordToolService:
         if self._nutrition_meal_library is None:
             raise AppError(500, _NUTRITION_UNAVAILABLE)
         return self._nutrition_meal_library
+
+    def _execute_body(
+        self, name: str, arguments: dict[str, Any], intent: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Save or remove one day's weight or body fat in Körper (#3640).
+
+        An existing day's value changes only with ``replace``, which the write
+        gate treats as a removal: it needs the athlete's confirmed request.
+        """
+        self._authorize(
+            intent,
+            name,
+            "Die strukturierte Coach-Autorisierung erlaubt diese Körperwert-Änderung nicht.",
+        )
+        require_coach_scope(intent, "local_body")
+        kind = arguments.get("kind")
+        if kind not in _BODY_KEYS:
+            raise AppError(
+                400,
+                "Unbekannter Körperwert; erlaubt: weight oder body_fat.",
+                reason="tool_arguments_invalid",
+            )
+        if self._body_entries is None:
+            raise AppError(500, "Körperwerte sind nicht verfügbar.")
+        service = self._body_entries(kind)
+        day = str(arguments.get("date") or "")
+        if name == "delete_body_entry":
+            read = service.remove({"date": day, "confirmed": True})
+            return {"ok": True, "stored_locally": True, "kind": kind, "date": day,
+                    "remote": read.get("remote")}  # fmt: skip
+        if arguments.get("replace") is not True and any(
+            entry["date"] == day for entry in service.read()["entries"]
+        ):
+            raise AppError(
+                409,
+                "Für diesen Tag gibt es schon einen Wert; ihn zu ändern braucht "
+                "die ausdrückliche Bitte des Athleten.",
+                reason="body_entry_exists",
+            )
+        read = service.save({"date": day, _BODY_KEYS[kind]: arguments.get("value")})
+        value = next(e[_BODY_KEYS[kind]] for e in read["entries"] if e["date"] == day)
+        return {"ok": True, "stored_locally": True, "kind": kind, "date": day,
+                "value": value, "remote": read.get("remote")}  # fmt: skip
 
     @staticmethod
     def _authorize(intent: dict[str, Any], operation: str, message: str) -> None:

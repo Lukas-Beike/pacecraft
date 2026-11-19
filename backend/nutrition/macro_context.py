@@ -6,15 +6,13 @@ from datetime import date
 from typing import Any
 
 from backend.errors import AppError
-from backend.performance.current_metrics import PROFILE_SOURCE_LABEL, as_number
 
 
-def body_weight(
-    performance_service: Callable[[], Any], profile_service: Callable[[], Any]
-) -> dict[str, Any] | None:
-    """The resolved weight metric (``value``, ``source``), else the profile weight.
+def body_weight(performance_service: Callable[[], Any]) -> dict[str, Any] | None:
+    """The resolved weight metric (``value``, ``source``), else None.
 
-    Shared by the nutrition ranges and the race plan (#2803).
+    Shared by the nutrition ranges and the race plan (#2803). Körper's body
+    records carry it; the profile is no fallback (#3640).
     """
     try:
         performance = performance_service().performance_state()["performance"]
@@ -26,18 +24,16 @@ def body_weight(
         weight = None
     if isinstance(weight, dict) and weight.get("value") is not None:
         return weight
-    value = as_number(profile_service().get().get("weight_kg"))
-    return None if value is None else {"value": value, "source": PROFILE_SOURCE_LABEL}
+    return None
 
 
 def macro_context(
     performance_service: Callable[[], Any],
     plan_service: Callable[[], Any],
-    profile_service: Callable[[], Any],
     day: str,
 ) -> tuple[Any, Any]:
     """Weight and the training calendar around ``day`` (an ISO date)."""
-    weight = (body_weight(performance_service, profile_service) or {}).get("value")
+    weight = (body_weight(performance_service) or {}).get("value")
     try:
         calendar = plan_service().read_training_day(date.fromisoformat(day))
     except AppError, OSError, RuntimeError, ValueError:

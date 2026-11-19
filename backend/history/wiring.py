@@ -4,9 +4,11 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import date
 from typing import Any
 
 from backend.app.context import AppContext
+from backend.canonical.vocabulary import MetricKind
 from backend.db.repositories import ProfileRepository
 from backend.history.service import ChangeHistoryService
 from backend.history.undo_service import HistoryUndoService
@@ -22,6 +24,11 @@ def build_history(ctx: AppContext) -> HistoryServices:
     """Fresh services per call over the current database and domain owners."""
     profiles = ProfileRepository(ctx.key_values)
 
+    def restored(kind: MetricKind, day: date) -> None:
+        ctx.garmin.body_push_service().mark_restored(day)
+        if kind is MetricKind.WEIGHT:
+            ctx.wahoo.weight_push_service().mark_restored()
+
     def record_services() -> dict[str, Any]:
         athlete, nutrition = ctx.athlete, ctx.nutrition
         return {
@@ -33,6 +40,9 @@ def build_history(ctx: AppContext) -> HistoryServices:
             # The Coach's food gap fill is recorded and undone there.
             "food_database_entry": nutrition.food_mirror(),
             **athlete.equipment_history(),
+            # An undone body entry reaches Garmin and, for a weight, Wahoo with
+            # their next refresh (#3640).
+            "body_entry": athlete.body_entry_history(restored),
         }
 
     def change_history_service() -> ChangeHistoryService:

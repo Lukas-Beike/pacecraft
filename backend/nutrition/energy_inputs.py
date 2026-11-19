@@ -617,7 +617,6 @@ def read_energy_inputs(
 ) -> tuple[EnergyInputs, tuple[SessionCost, ...]]:
     """The days from ``start`` to ``end`` and the priced sessions behind them."""
     profile = sources.profile()
-    profile_weight = _number(profile.get("weight_kg"))
     health = sources.daily_health(db, start, end)
     # The first window looks 90 days back from its own end for a body fat,
     # so the weights reach back as far: each reading has its weight (Gitar).
@@ -630,7 +629,6 @@ def read_energy_inputs(
         body_fat_pct=dict(sources.body_fat(db, start, grace_end)),
         rmr_kcal=None,
         device_body_fat=dict(sources.device_body_fat(db, lookback, grace_end)),
-        profile_body_fat_pct=_profile_fat(profile.get("body_fat_pct")),
         skinfold_sd_pct=_skinfold_sds(sources.skinfolds(db, grace_end)),
     )
     rmr, rmr_source = _carried_resting(
@@ -650,10 +648,9 @@ def read_energy_inputs(
             sources,
             db,
             summary,
+            # Körper's weigh-ins carry the mass; the profile is none (#3640).
             _mass(
-                trend,
-                date.fromisoformat(str(summary["started_at_local"])[:10]),
-                profile_weight,
+                trend, date.fromisoformat(str(summary["started_at_local"])[:10]), None
             ),
             rmr,
             hr_cost,
@@ -673,7 +670,7 @@ def read_energy_inputs(
     while day <= end:
         days[day] = _day_inputs(
             day, entries.get(day, []), health.get(day.isoformat(), {}), weights,
-            trend, profile_weight, costs, step_m,
+            trend, costs, step_m,
         )  # fmt: skip
         day += timedelta(days=1)
     return replace(
@@ -742,15 +739,6 @@ def device_body_fats(
         for day, (value, source) in sorted(days.items())
         if source == APP_SOURCE or day not in skinfolds
     }
-
-
-def _profile_fat(value: Any) -> float | None:
-    """The profile's body fat (comma decimals allowed), 1 to 70 %, else None."""
-    try:
-        number = float(str(value).replace(",", "."))
-    except ValueError:
-        return None
-    return number if 1 <= number <= 70 else None
 
 
 # The formula rows that learn their everyday term (#3577).
@@ -901,11 +889,11 @@ def newest_resting(
     return None
 
 
-# The formula rows' body fat sources, in their order (athlete decisions, #3362, #3402).
-BODY_SOURCES = ("skinfold", "entered", "device", "profile")
+# The formula rows' body fat sources, in their order (athlete decisions, #3362,
+# #3402); the profile's stored value is none (#3640).
+BODY_SOURCES = ("skinfold", "entered", "device")
 _SKINFOLD_LABEL = "Hautfalten"
 _ENTERED_LABEL = "Lokal"
-_PROFILE_LABEL = "Profil"
 
 
 def _newest_within(values: Mapping[date, Any], day: date) -> date | None:
@@ -916,7 +904,7 @@ def _newest_within(values: Mapping[date, Any], day: date) -> date | None:
 
 
 def _body_fat(inputs: EnergyInputs, day: date) -> dict[str, Any] | None:
-    """The body fat in effect on ``day``: skinfold, entered, device or scale, profile."""
+    """The body fat in effect on ``day``: skinfold, entered, device or scale."""
     if (on := _newest_within(inputs.body_fat_pct, day)) is not None:
         return {"source": "skinfold", "label": _SKINFOLD_LABEL,
                 "measured_on": on, "body_fat_pct": inputs.body_fat_pct[on]}  # fmt: skip
@@ -935,9 +923,6 @@ def _body_fat(inputs: EnergyInputs, day: date) -> dict[str, Any] | None:
             )
             return {"source": source, "label": label, "measured_on": on,
                     "body_fat_pct": fat}  # fmt: skip
-    if inputs.profile_body_fat_pct is not None:
-        return {"source": "profile", "label": _PROFILE_LABEL, "measured_on": None,
-                "body_fat_pct": inputs.profile_body_fat_pct}  # fmt: skip
     return None
 
 
@@ -949,13 +934,13 @@ def resolve_body(
     A measurement up to ``BODY_GRACE_DAYS`` after ``day`` counts: the view
     ends yesterday because today's intake is partial, not the body (#3336).
     The body fat comes from the newest skinfold, else an entered one, else a
-    device or scale, else the profile (#3362, #3402); ``source`` and ``label``
+    device or scale (#3362, #3402; never the profile, #3640); ``source`` and ``label``
     name it.
 
     The lean mass is carried from the reading (#3617 item 1): the reading's
     weight x (1 - body fat), plus the lean share (1 - the blended fat share) of
     the weight change since, so a lost kilogram is not booked mostly as lean.
-    Without a dated reading (the profile) the body fat applies to the day.
+    Every source is dated since the profile's undated value left (#3640).
     """
     weighed = [d for d in trend if d <= day]
     fat = _body_fat(inputs, day)
@@ -964,18 +949,12 @@ def resolve_body(
     weight = trend[max(weighed)]
     on = fat["measured_on"]
     # A reading before the first weigh-in takes the first one after it.
-    at_reading = [d for d in trend if on is not None and d <= on] or (
-        [min(trend)] if on is not None else []
-    )
+    measured = trend[max([d for d in trend if d <= on] or [min(trend)])]
+    share = fat_share(inputs, trend, day).share
     try:
-        if not at_reading:
-            lean = lean_mass_kg(weight, fat["body_fat_pct"])
-        else:
-            measured = trend[max(at_reading)]
-            share = fat_share(inputs, trend, day).share
-            lean = lean_mass_kg(measured, fat["body_fat_pct"]) + (1.0 - share) * (
-                weight - measured
-            )
+        lean = lean_mass_kg(measured, fat["body_fat_pct"]) + (1.0 - share) * (
+            weight - measured
+        )
     except ValueError:
         return None
     return {**fat, "weight_kg": weight, "lean_mass_kg": lean}
@@ -1157,14 +1136,13 @@ def _day_inputs(
     health: Mapping[str, Any],
     weights: Mapping[date, float],
     trend: Mapping[date, float],
-    profile_weight: float | None,
     costs: Sequence[SessionCost],
     step_m: float | None,
 ) -> DayInputs:
     """One day's intake, flags, weigh-in and own activity (sessions + NEAT)."""
     today = [c for c in costs if c.day == day]
     steps, floors = _number(health.get("steps")), _number(health.get("floors"))
-    mass = _mass(trend, day, profile_weight)
+    mass = _mass(trend, day, None)
     session_steps = sum(c.steps for c in today)
     climb = sum(c.climb_m for c in today)
     neat = (

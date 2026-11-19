@@ -515,8 +515,8 @@ class EnteredWeightTests(unittest.TestCase):
 
     def test_an_entry_after_as_of_is_not_read(self) -> None:
         weight = self.current(_weight(72.5, AS_OF + timedelta(days=1), None))
-        # Only the undated profile value is left.
-        self.assertEqual((70.0, "Manuell"), (weight["value"], weight["source"]))
+        # Nothing is left: the profile's stored weight is no source (#3640).
+        self.assertEqual((None, None), (weight["value"], weight["source"]))
 
     def test_the_coach_reads_the_entered_weight_as_lokal(self) -> None:
         current = read_current_inputs(

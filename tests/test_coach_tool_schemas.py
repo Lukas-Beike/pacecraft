@@ -1,5 +1,6 @@
 import unittest
 
+from backend.athlete.profile import DEFAULT_PROFILE
 from backend.coach.tool_schemas import build_structured_tool_schemas
 
 EXECUTOR_CHANGE_FIELDS = {
@@ -120,6 +121,24 @@ class CoachToolSchemaTests(unittest.TestCase):
         self.assertNotIn("Intervals.icu", description)
         self.assertIn("any connected provider", description)
         self.assertIn("act_", description)
+
+    def test_the_profile_tool_offers_no_weight_or_body_fat(self):
+        # #3640: Körper owns them.
+        tools = build_structured_tool_schemas(
+            default_profile=DEFAULT_PROFILE,
+            checkin_text_limits={},
+            checkin_score_fields=(),
+            training_change_limit=366,
+            library_bulk_max_entries=100,
+            training_plan_statuses=(),
+        )
+        update = next(tool for tool in tools if tool["name"] == "update_profile")
+        change = update["parameters"]["properties"]["changes"]
+        fields = change["items"]["properties"]["field"]["enum"]
+        self.assertNotIn("weight_kg", fields)
+        self.assertNotIn("body_fat_pct", fields)
+        self.assertIn("height_cm", fields)
+        self.assertEqual(len(fields), change["maxItems"])
 
     def test_energy_read_names_the_formula_body_fat_source(self):
         # #3419: the formula rows' body fat comes from skinfolds, an entered

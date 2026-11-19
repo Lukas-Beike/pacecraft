@@ -41,6 +41,9 @@ ENTITY_TYPES = {
     "metric_export",
     # One run of the product cleanup with every product it removed (#3444).
     "nutrition_product_cleanup",
+    # A weight or body fat entered in Körper or by the Coach; its entity id is
+    # "<metric>:<ISO day>" (#3640).
+    "body_entry",
 }
 # A metric export to a provider; its entity id is "<provider>:<remote record>".
 # The write is remote, so it is shown but never undone.
@@ -377,6 +380,7 @@ def audit_projection_fields(entity_type: str) -> set[str]:
         "equipment_rule_apply": set(EQUIPMENT_RULE_APPLY_FIELDS),
         "equipment_maintenance": set(EQUIPMENT_MAINTENANCE_FIELDS),
         "nutrition_product_cleanup": {"operation_id", "days", "removed_at", "products"},
+        "body_entry": {"date", "value"},
         METRIC_EXPORT_ENTITY: set(METRIC_EXPORT_FIELDS),
     }
     try:

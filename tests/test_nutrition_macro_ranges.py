@@ -133,39 +133,34 @@ class MacroRangeTests(unittest.TestCase):
             (270, 450), macro_ranges(90, [planned], "2026-11-01", 2700)["carbs_g"]
         )
 
-    def test_context_keeps_profile_weight_when_plan_is_unavailable(self):
+    def test_context_keeps_the_weight_when_plan_is_unavailable(self):
         performance = Mock()
-        performance.performance_state.return_value = {"performance": {"metrics": {}}}
+        performance.performance_state.return_value = {
+            "performance": {"metrics": {"weight_kg": {"value": 90}}}
+        }
         plan = Mock()
         plan.read_training_day.side_effect = RuntimeError("unavailable")
-        profile = Mock()
-        profile.get.return_value = {"weight_kg": "90"}
         with self.assertLogs("intervals_coach", level="WARNING"):
             self.assertEqual(
                 (90, None),
-                macro_context(
-                    lambda: performance, lambda: plan, lambda: profile, "2026-11-02"
-                ),
+                macro_context(lambda: performance, lambda: plan, "2026-11-02"),
             )
 
-    def test_body_weight_keeps_its_source_and_falls_back_to_the_profile(self):
+    def test_body_weight_keeps_its_source_and_has_no_profile_fallback(self):
+        # #3640: the weight comes from the body records only; without one it is missing.
         performance = Mock()
         garmin = {"value": 71.5, "source": "Garmin"}
         performance.performance_state.return_value = {
             "performance": {"metrics": {"weight_kg": garmin}}
         }
-        profile = Mock()
-        profile.get.return_value = {"weight_kg": "90"}
-        self.assertEqual(garmin, body_weight(lambda: performance, lambda: profile))
+        self.assertEqual(garmin, body_weight(lambda: performance))
+        performance.performance_state.return_value = {
+            "performance": {"metrics": {"weight_kg": {"value": None}}}
+        }
+        self.assertIsNone(body_weight(lambda: performance))
         performance.performance_state.side_effect = RuntimeError("busy")
         with self.assertLogs("intervals_coach", level="WARNING"):
-            self.assertEqual(
-                {"value": 90, "source": "Manuell"},
-                body_weight(lambda: performance, lambda: profile),
-            )
-        profile.get.return_value = {}
-        with self.assertLogs("intervals_coach", level="WARNING"):
-            self.assertIsNone(body_weight(lambda: performance, lambda: profile))
+            self.assertIsNone(body_weight(lambda: performance))
 
     def test_context_reads_only_the_requested_day_not_the_full_plan(self):
         performance = Mock()
@@ -175,7 +170,7 @@ class MacroRangeTests(unittest.TestCase):
         plan = Mock()
         plan.read_training_day.return_value = [self.workout(120)]
         weight, calendar = macro_context(
-            lambda: performance, lambda: plan, lambda: Mock(), "2026-11-02"
+            lambda: performance, lambda: plan, "2026-11-02"
         )
         self.assertEqual(90, weight)
         plan.read_training_day.assert_called_once_with(date(2026, 11, 2))

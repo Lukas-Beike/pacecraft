@@ -23,6 +23,7 @@ _DELETE_TOOLS = (
     "delete_activity_feedback",
     "delete_nutrition_entry",
     "delete_nutrition_template",
+    "delete_body_entry",
 )
 
 
@@ -380,6 +381,30 @@ class DestructiveTierTests(unittest.TestCase):
                     tool, "weg damit", classifier=_Classifier(_verdict([domain], True))
                 )
                 self.assertTrue(confirmed.allowed, confirmed)
+
+    def test_replacing_an_entered_body_value_is_a_delete_in_body(self):
+        # #3640: a new day's weight is a local write; changing an existing one
+        # removes the old value and needs the athlete's confirmed request.
+        new = {"kind": "weight", "date": "2026-11-19", "value": 80, "replace": False}
+        replace = {**new, "replace": True}
+        self.assertEqual(gate.call_impact("save_body_entry", new), frozenset())
+        self.assertTrue(_check("save_body_entry", "80 kg", arguments=new).allowed)
+        self.assertEqual(gate.call_impact("save_body_entry", replace), {"delete"})
+        self.assertEqual(
+            "impact_not_confirmed",
+            _check("save_body_entry", "80 kg", arguments=replace).reason,
+        )
+        for verdict, allowed in (
+            (_verdict(["body"], True), True),
+            (_verdict(["profile"], True), False),
+            (_verdict(["body"]), False),
+        ):
+            with self.subTest(verdict=verdict):
+                decision = _check(
+                    "save_body_entry", "korrigier auf 80 kg",
+                    classifier=_Classifier(verdict), arguments=replace,
+                )  # fmt: skip
+                self.assertEqual(allowed, decision.allowed, decision)
 
     def test_delete_confirmation_is_bound_to_its_domain(self):
         verdict = gate.ImpactVerdict(

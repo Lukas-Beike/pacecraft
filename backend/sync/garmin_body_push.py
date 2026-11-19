@@ -378,6 +378,14 @@ class GarminBodyPushService:
                 extra={"event": "garmin_body_push_state_failed"},
             )
 
+    def mark_restored(self, day: date) -> None:
+        """An undo put the day back (#3640): the next Garmin refresh mirrors it
+        (``retry_pending``); the undo itself writes nothing to Garmin, so no
+        outcome is counted (Gitar)."""
+        with self._database_manager.reader() as db:
+            link = self._links.get(db, KIND, day.isoformat(), GARMIN)
+        self._store(day, _Day.of(link), done=False)
+
     def _mark_pending(self, day: date, *, linked_only: bool = False) -> bool:
         """Keep the day pending; with ``linked_only`` only a day Garmin holds."""
         with self._database_manager.reader() as db:

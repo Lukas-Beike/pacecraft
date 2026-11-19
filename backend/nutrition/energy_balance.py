@@ -28,7 +28,7 @@ from backend.performance.activity_energy import (
 
 METHOD_ID = "adaptive-expenditure"
 # Bump when a formula or constant below changes the estimate.
-METHOD_VERSION = 18
+METHOD_VERSION = 19
 # Days per window and windows per week of the rolling view (#3099, #3100).
 WINDOW_DAYS = 28
 # A day's current weight is the least-squares line through the weigh-ins of
@@ -170,9 +170,8 @@ class EnergyInputs:
     step_m: float | None = None
     step_source: str | None = None
     # The formula rows' body fat without a skinfold (#3362): a device's or
-    # scale's per day with its provider, then the profile's.
+    # scale's per day with its provider; never the profile's (#3640).
     device_body_fat: Mapping[date, tuple[float, Any]] = field(default_factory=dict)
-    profile_body_fat_pct: float | None = None
     # The athlete's own SD of one skinfold body fat, from repeat readings;
     # None until there are enough, then the default applies (#3556).
     # Per measurement day, with its own median gain (Gitar on #3622).
