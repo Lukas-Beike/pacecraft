@@ -12,6 +12,7 @@ Exit 0: done; 1: refused (ambiguous or missing checkbox, open checkboxes or an
 open PR on close); 2: bad input or a failed gh call. Close ticks the open boxes
 under an `Acceptance criteria` or `Acceptance` heading, except each --pending
 one (its evidence comes later, #3222), and accepts an issue a merge already closed.
+Its summary gets each merged linked PR's line balance from the merge commit (#3650).
 """
 
 from __future__ import annotations
@@ -25,6 +26,7 @@ from typing import Any
 
 from gh_cli import CliError, gh, gh_json, positive_int, read_body
 from issue_status import CHECKBOX, linked_pulls, open_boxes, open_checkboxes
+from line_balance import balance
 
 IN_PROGRESS = "in progress"
 
@@ -79,8 +81,31 @@ def blockers(number: int) -> tuple[dict[str, Any], list[str]]:
     return issue, found
 
 
+def merged_balance(number: int) -> str:
+    """The line balance of each merged PR linked to the issue, read from its
+    merge commit as the ledger line is, so the summary never states a branch's
+    older count (#3650); empty without a merged PR."""
+    lines = []
+    for pull in linked_pulls(number, gh_json):
+        if pull["state"] != "MERGED":
+            continue
+        view = gh_json("pr", "view", str(pull["number"]), "--json", "mergeCommit")
+        sha = (view.get("mergeCommit") or {}).get("oid")
+        if not sha:
+            continue
+        counts = balance(commit=sha)
+        parts = ", ".join(
+            f"{name} +{counts[name][0]} / -{counts[name][1]}"
+            for name in ("production", "tests", "other")
+        )
+        lines.append(f"- PR #{pull['number']} ({sha[:10]}): {parts}")
+    if not lines:
+        return ""
+    return "\n**Line balance** (from the merge commits):\n" + "\n".join(lines) + "\n"
+
+
 def close(number: int, body_file: str, pending: tuple[str, ...] = ()) -> int:
-    read_body(body_file)
+    checked = read_body(body_file)
     issue, found = blockers(number)
     if found:
         print(f"refused: #{number} is not done")
@@ -97,9 +122,15 @@ def close(number: int, body_file: str, pending: tuple[str, ...] = ()) -> int:
     if len(kept) != len(found_boxes):
         return 1
     criteria = [box for box in criteria if box not in kept]
+    # Read before any write, so a failed count changes nothing (#3650).
+    text = checked.rstrip("\n") + "\n"
+    text += merged_balance(number)
     if criteria:
         write_ticked(number, body, criteria)
-    gh("issue", "comment", str(number), "--body-file", body_file)
+    with tempfile.TemporaryDirectory() as tmp:
+        summary = Path(tmp) / "summary.md"
+        summary.write_text(text, encoding="utf-8", newline="")
+        gh("issue", "comment", str(number), "--body-file", str(summary))
     edit(number, "--remove-label", IN_PROGRESS)
     is_open = issue["state"] == "OPEN"
     # A merged "Closes #N" PR has usually closed the issue already.

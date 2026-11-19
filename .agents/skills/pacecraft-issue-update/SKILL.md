@@ -22,14 +22,16 @@ python scripts/issue_update.py close <n> --body-file <summary-file> [--pending "
 - `start` assigns `@me` and adds the `in progress` label; `finish` removes it.
 - `tick` checks exactly one open `- [ ]` or `* [ ]` box whose text starts with
   `--part` (case-insensitive) and rewrites the body through a temporary file.
-- `close` posts the summary, ticks the open boxes under an `Acceptance criteria`
+- `close` posts the summary with each merged linked PR's line balance appended,
+  read from its merge commit (#3650), ticks the open boxes under an `Acceptance criteria`
   or `Acceptance` heading (the summary carries their evidence), removes `in progress` and
   closes, also an issue a merged `Closes #n` PR already closed; it refuses while
   another open checkbox (a part) or an open PR linking it (issue-status rule) remains.
   Its last line names what it did (`#n: ticked 2, summary posted, 'in progress'
   label cleared; was already closed`): do not post the summary again. After an
   exit 2 the summary may already be posted: look at the issue and finish the
-  rest with `label`/`finish` instead of rerunning `close`.
+  rest with `label`/`finish` instead of rerunning `close`. A failed line-balance
+  read exits 2 before any write, so then rerun `close`.
 - `close --pending "<start>"` (repeatable) leaves that one criterion open, for
   evidence only a later release can give; the summary names it, and the output
   lists it as `left open, evidence pending`. No or several matches refuse before
