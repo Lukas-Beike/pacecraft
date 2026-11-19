@@ -212,6 +212,14 @@ class IssueLinkStepTests(unittest.TestCase):
                 self.assertNotEqual(result.returncode, 0)
                 self.assertIn("completes #7", result.stdout)
                 self.assertNotIn("will close", result.stdout)
+        # Another repository's issue with the same number is a different issue
+        # (Gitar on #3682).
+        for other in (
+            "Part of #7\n\nCloses octo/other#7",
+            "Part of #7\n\nCloses https://github.com/octo/other/issues/7",
+        ):
+            with self.subTest(other=other):
+                self.assertEqual(self.run_step(other, "", base="feat/x").returncode, 0)
         # The quoted phrase names the issue itself, not a longer number.
         result = self.run_step(
             "Part of #3\n\nCloses #36 and closes #3", "", base="feat/x"
