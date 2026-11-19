@@ -200,7 +200,7 @@ class EnergyInputsReaderTests(unittest.TestCase):
              "latest_window_weighins": None,
              "latest_window_insufficient": None, "windows": 0,
              "windows_with_estimate": 0,
-             "store_method_windows": {"measured": 0, "forbes": 0},
+             "fat_share_measured_windows": {"0": 0, "1-24": 0, "25-49": 0, "50-100": 0},
              "calibration_windows": 0,
              "days": 3, "logged_days": 2, "flagged_days": 1, "weighins": 1,
              "sessions": 4, "unpriced_sessions": 1, "rmr_source": "garmin"},

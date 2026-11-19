@@ -430,12 +430,14 @@ day's logged kcal) and `remaining_kcal` (target minus eaten, negative
 above it; null without a total), and `deficit` (#3548; the latest
 window's energy per day from the body stores, null without an
 estimate): `days`, `deficit_kcal` (negative for a surplus) with its 95 %
-`band_kcal`, `method` (`measured` or `forbes`), `span_days`,
-`weight_start_kg`, `weight_end_kg`, `fat_pct_start` (null for Forbes),
-`fat_pct_end` (Forbes: the latest measurement or null),
-`fat_change_kg`, `fat_share_pct` (of the weight change, null below
-0.05 kg), `stored_kcal` (over the span), `uncertainty` (`body_fat`,
-`fat_share` or `weight_scatter`), `total_kcal` (the window's
+`band_kcal`, `method` (`measured` when measurements weigh in the fat
+share, else `prior`), `fat_share` (`share_pct`, `prior_pct` and
+`measured_pct`, the measurements' weight, #3555), `span_days`,
+`weight_start_kg`, `weight_end_kg`, `fat_pct_start` (the first
+measurement used, else null), `fat_pct_end` (the last one, else the
+latest skinfold or null), `fat_change_kg`, `fat_share_pct` (of the
+weight change, null below 0.05 kg), `stored_kcal` (over the span),
+`uncertainty` (`fat_share` or `weight_scatter`), `total_kcal` (the window's
 expenditure), `device_total_kcal` and `goal` (`goal`, `goal_kcal` and
 `status` `in`, `under` or `over` the goal within the band; null without
 a goal).

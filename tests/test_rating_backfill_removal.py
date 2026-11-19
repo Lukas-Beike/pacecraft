@@ -14,12 +14,14 @@ from backend.errors import AppError
 from backend.sync.executor import SyncJobExecutor
 from backend.sync.jobs import JOB_TYPES
 from backend.sync.rating_backfill_removal import (
+    RETIRED_PROBE_KEY,
     RETIRED_STATE_KEY,
     STATE_KEY,
     RatingBackfillRemoval,
 )
 
 NOW = "2026-11-11T08:00:00+00:00"
+PROBE = json.dumps({"counts": {"garmin": {"run": {"files": 25}}}, "seen": ["ab12"]})
 RETIRED_JOB_TYPE = "rating_backfill"
 FINISHED = json.dumps({"finished": True, "backfilled": 12, "skipped_ids": ["7"]})
 
@@ -57,6 +59,9 @@ class RatingBackfillRemovalTests(SyncQueueFixtureMixin, unittest.TestCase):
     def seed(self) -> None:
         with self.manager.unit_of_work() as db:
             self.key_values.set(db, RETIRED_STATE_KEY, FINISHED)
+            # The retired FIT value probe's counts and file hashes (#3396).
+            self.key_values.set(db, RETIRED_PROBE_KEY, PROBE)
+            self.key_values.set(db, "fit_inventory", "{}")
             self.key_values.set(db, "stream_backfill_state:garmin", "{}")
             self.key_values.set(db, "garmin_rating_backfill_state_other", "kept")
             for stream in ("rating_history", "stream_history"):
@@ -85,6 +90,7 @@ class RatingBackfillRemovalTests(SyncQueueFixtureMixin, unittest.TestCase):
         self.assertTrue(report.done)
         self.assertEqual(
             [
+                ("fit_inventory",),
                 ("garmin_rating_backfill_state_other",),
                 (STATE_KEY,),
                 ("stream_backfill_state:garmin",),
@@ -101,9 +107,23 @@ class RatingBackfillRemovalTests(SyncQueueFixtureMixin, unittest.TestCase):
         with self.manager.reader() as db:
             state = json.loads(self.key_values.get(db, STATE_KEY) or "{}")
         self.assertEqual(
-            {"state_keys": 1, "cursors": 1},
+            {"state_keys": 2, "cursors": 1},
             state["removed"],
         )
+
+    def test_a_database_done_with_version_1_removes_the_probe_key_once(self) -> None:
+        # #3396: the stage ran before the probe retired; version 2 runs it again.
+        with self.manager.unit_of_work() as db:
+            self.key_values.set(
+                db, STATE_KEY, json.dumps({"version": 1, "status": "complete"})
+            )
+            self.key_values.set(db, RETIRED_PROBE_KEY, PROBE)
+
+        self.assertEqual(1, self.run_stage().items)
+        self.assertEqual(
+            [], self.rows(f"SELECT key FROM kv WHERE key = '{RETIRED_PROBE_KEY}'")
+        )
+        self.assertEqual(0, self.run_stage().items)
 
     def test_a_database_without_the_keys_completes_and_a_rerun_changes_nothing(
         self,

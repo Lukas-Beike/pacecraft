@@ -136,16 +136,6 @@ SECTION_FIELDS = {
         r"|unknown)\.(files|(messages|unmapped_fields|developer_fields)\.[0-9.]+"
         r"|new_decodes\.[a-z_]+(\.(in_bounds|out_of_bounds))?)"
     ),
-    # Files per origin and sport whose probed field is present, in or out of its
-    # expected range, constant or falling, and which stamina field is the higher
-    # one (#3374, a temporary probe).
-    "fit_value_probe": re.compile(
-        r"status|(garmin|wahoo|strava|zwift|manual|upload|unknown)\."
-        r"(ride|run|swim|walk|hike|strength|row|nordic_ski|alpine_ski|yoga|other"
-        r"|unknown)\.(files|(perf_condition_20_90|perf_condition_140_1"
-        r"|stamina_20_137|stamina_20_138)\.(present|in_range|out_of_range|constant"
-        r"|falling)|stamina_order\.(137_ge_138|138_ge_137|mixed))"
-    ),
     # Chest-strap runs of 60 days by DFA-a1 method (#3273).
     "dfa_series": re.compile(
         r"status|runs|with_series|unreadable_series|before_series|without_result"
@@ -157,7 +147,9 @@ SECTION_FIELDS = {
         r"|weighins|sessions|unpriced_sessions|rmr_source|skinfolds_with_body_fat"
         r"|newest_skinfold_age_days|body_resolved|body_missing|body_source"
         r"|body_source_windows\.(skinfold|entered|device|profile|none)"
-        r"|today_resting_days_back|store_method_windows\.(measured|forbes)"
+        r"|today_resting_days_back"
+        # Estimated windows by the measurements' weight in their fat share (#3555).
+        r"|fat_share_measured_windows\.(0|1-24|25-49|50-100)"
         # Weigh-in days per source and dropped days per provider (#3557).
         r"|latest_window_weighin_sources\.(by_source\.(app|garmin)"
         r"|dropped_days\.(garmin|wahoo|intervals))"

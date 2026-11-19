@@ -33,10 +33,12 @@ from backend.canonical.vocabulary import ProviderId
 from backend.errors import AppError
 from backend.nutrition.energy_balance import (
     BAND_Z,
+    FAT_SHARE_PRIOR,
     DayInputs,
     EnergyInputs,
     EnergyWindow,
     Estimate,
+    StoredEnergy,
     day_tef,
     energy_windows,
     history_start,
@@ -579,6 +581,7 @@ def _deficit(
         "deficit_kcal": _round(deficit),
         "band_kcal": _round(band),
         "method": store.method,
+        "fat_share": _fat_share_view(store),
         "span_days": store.days,
         "weight_start_kg": round(store.weight_start_kg, 1),
         "weight_end_kg": round(store.weight_end_kg, 1),
@@ -589,7 +592,7 @@ def _deficit(
         if store.fat_pct_end is None
         else round(store.fat_pct_end, 1),
         "fat_change_kg": round(store.fat_change_kg, 1),
-        # The fat share of the weight change; Forbes' rule of thumb shows it.
+        # The fat share of the weight change (#3555).
         "fat_share_pct": round(100 * store.fat_change_kg / change)
         if abs(change) >= 0.05
         else None,
@@ -683,9 +686,9 @@ def _own_day_row(
         "pending_parts": pending,
         # The days the resting rate comes from, shown as "Ruhe aus 28 Tagen".
         "window_days": latest.days,
-        # "measured" from two dated body fat measurements, else "forbes";
-        # None without an estimate (#3477).
-        "store_method": latest.store_method,
+        # The blended fat share of the weight change; None without an
+        # estimate (#3555).
+        "fat_share": _fat_share_view(latest.store),
     }
 
 
@@ -719,7 +722,19 @@ def _own_window_row(
         "split": split,
         # A window method: its days, shown as "Ø pro Tag, letzte 28 Tage" (#3395, #3513).
         "window_days": latest.days,
-        "store_method": latest.store_method,
+        "fat_share": _fat_share_view(latest.store),
+    }
+
+
+def _fat_share_view(store: StoredEnergy | None) -> dict[str, int] | None:
+    """The blended fat share in percent, its prior and the measurements'
+    weight, shown as "Faustregel 70 %, zu X % gemessen" (#3555)."""
+    if store is None:
+        return None
+    return {
+        "share_pct": round(100 * store.fat_share),
+        "prior_pct": round(100 * FAT_SHARE_PRIOR),
+        "measured_pct": round(100 * store.measured_weight),
     }
 
 

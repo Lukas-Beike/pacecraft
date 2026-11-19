@@ -144,21 +144,6 @@ def report(messages=40):
             },
             "act_secret": {"ride": {"files": 1}},
         },
-        "fit_value_probe": {
-            "status": "ready",
-            "garmin": {
-                "run": {
-                    "files": 24,
-                    "perf_condition_20_90.present": 20,
-                    "perf_condition_20_90.in_range": 19,
-                    "stamina_20_137.falling": 22,
-                    "stamina_20_137.mean": 61,
-                    "stamina_order.137_ge_138": 21,
-                    "stamina_order.ratio": 3,
-                    "note text": 1,
-                },
-            },
-        },
     }
 
 
@@ -394,30 +379,6 @@ class ProdChecksTests(unittest.TestCase):
                 {"counts": {"external_calendar_events": 20}, "memory": {}}, None
             ),
             [("info", "count external_calendar_events 20")],
-        )
-
-    def test_the_value_probe_section_prints_only_its_file_counts(self):
-        # #3374: the probe's counts per field, never a value (an unknown key such
-        # as a mean is not printed).
-        code, text = self.run_main(
-            prod_diagnostics, "--url", self.url, "--password-file", str(self.secret),
-            "--section", "fit_value_probe",
-        )  # fmt: skip
-        self.assertEqual(code, 0)
-        prefix = "info fit_value_probe.garmin.run."
-        self.assertEqual(
-            text.splitlines(),
-            [
-                "ok health",
-                "ok logout 200",
-                f"{prefix}files 24",
-                f"{prefix}perf_condition_20_90.in_range 19",
-                f"{prefix}perf_condition_20_90.present 20",
-                f"{prefix}stamina_20_137.falling 22",
-                # #3374: which stamina field holds the higher value, files only.
-                f"{prefix}stamina_order.137_ge_138 21",
-                'info fit_value_probe.status "ready"',
-            ],
         )
 
     def test_section_prints_only_allow_listed_fields_in_path_order(self):

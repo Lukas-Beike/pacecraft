@@ -750,11 +750,9 @@ def diagnostics(
         "latest_window_insufficient": latest.insufficient if latest else None,
         "windows": len(windows),
         "windows_with_estimate": sum(1 for w in windows if w.adaptive_tdee),
-        # How each estimated window split fat and lean mass (#3477).
-        "store_method_windows": {
-            method: sum(1 for w in windows if w.store_method == method)
-            for method in ("measured", "forbes")
-        },
+        # The measurements' weight in each estimated window's fat share, as
+        # bands of whole percent (#3555): counts only.
+        "fat_share_measured_windows": _measured_weight_bands(windows),
         "calibration_windows": latest.calibration_windows if latest else 0,
         "days": len(inputs.days),
         "logged_days": sum(1 for d in days if d.entries),
@@ -774,6 +772,22 @@ def _rpe(
         return None
     rating = session_rating(summary, feedback.get(stored_activity_key(summary)))
     return None if isinstance(rating, str) else rating[0]
+
+
+MEASURED_WEIGHT_BANDS = (
+    ("0", 0, 1),
+    ("1-24", 1, 25),
+    ("25-49", 25, 50),
+    ("50-100", 50, 101),
+)
+
+
+def _measured_weight_bands(windows: Sequence[EnergyWindow]) -> dict[str, int]:
+    weights = [round(100 * w.store.measured_weight) for w in windows if w.store]
+    return {
+        band: sum(1 for p in weights if low <= p < high)
+        for band, low, high in MEASURED_WEIGHT_BANDS
+    }
 
 
 def _day_inputs(

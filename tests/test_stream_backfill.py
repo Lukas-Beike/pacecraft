@@ -78,7 +78,6 @@ from backend.sync.refresh import sync_job_error_class
 from backend.sync.stream_backfill import (
     BLOCKED_PERSONAL_API,
     FAILURE_LIMIT,
-    FIT_VALUE_PROBE_KEY,
     StreamBackfillService,
     StreamCandidate,
     StreamReplay,
@@ -86,8 +85,6 @@ from backend.sync.stream_backfill import (
     count_fit_file,
     fit_inventory_counts,
     fit_new_decode_counts,
-    fit_value_probe_counts,
-    fit_value_probe_report,
     select_stream_candidates,
     state_key,
     stop_error,
@@ -629,96 +626,16 @@ class WahooBackfillTests(unittest.TestCase):
             with self.subTest(label):
                 self.assertEqual(expected, fit_new_decode_counts(data))
 
-    def test_the_value_probe_counts_files_by_range_constancy_and_fall(self) -> None:
-        # #3374, athlete 2026-11-17: probe Garmin's undocumented performance
-        # condition (20.90, 140.1, expected -20..+20) and stamina (20.137 and
-        # 20.138, expected 0..100) before anything is shown. Files only.
-        def probe_fit(rows, condition=None):
-            builder = FitBuilder().define(0, 20, [(253, UINT32), (90, SINT8)])
-            builder.define(1, 20, [(253, UINT32), (137, UINT8), (138, UINT8)])
-            for index, (pc, stamina, potential) in enumerate(rows):
-                builder.data(
-                    0, {253: 1000 + index, **({90: pc} if pc is not None else {})}
-                )
-                builder.data(1, {253: 1000 + index, 137: stamina, 138: potential})
-            if condition is not None:
-                builder.define(2, 140, [(1, SINT8)])
-                builder.data(2, {1: condition})
-            return builder.build()
-
-        self.assertEqual(
-            {
-                "perf_condition_20_90.present": 1,
-                "perf_condition_20_90.in_range": 1,
-                "stamina_20_137.present": 1,
-                "stamina_20_137.in_range": 1,
-                "stamina_20_137.falling": 1,
-                "stamina_20_138.present": 1,
-                "stamina_20_138.in_range": 1,
-                "stamina_20_138.constant": 1,
-                "stamina_order.137_ge_138": 1,
-                "perf_condition_140_1.present": 1,
-                "perf_condition_140_1.out_of_range": 1,
-            },
-            fit_value_probe_counts(
-                probe_fit([(-3, 100, 80), (2, 91, 80), (5, 84, 80)], condition=40)
-            ),
-        )
-        # One value outside the range marks the file out of range, not in range.
-        self.assertEqual(
-            {
-                "perf_condition_20_90.present": 1,
-                "perf_condition_20_90.out_of_range": 1,
-                "stamina_20_137.present": 1,
-                "stamina_20_137.out_of_range": 1,
-                "stamina_20_137.falling": 1,
-                "stamina_20_138.present": 1,
-                "stamina_20_138.in_range": 1,
-                "stamina_order.137_ge_138": 1,
-            },
-            fit_value_probe_counts(probe_fit([(-21, 101, 0), (None, 99, 3)])),
-        )
-        # Which stamina field is the potential one (never below the current one)
-        # is counted over the records holding both: one direction in every record,
-        # both when all are equal, else mixed.
-        for label, rows, order in (
-            ("138 above", [(None, 70, 80), (None, 60, 75)], {"138_ge_137"}),
-            ("equal", [(None, 80, 80), (None, 72, 72)], {"137_ge_138", "138_ge_137"}),
-            ("crossing", [(None, 90, 80), (None, 60, 75)], {"mixed"}),
-        ):
-            with self.subTest(label):
-                counts = fit_value_probe_counts(probe_fit(rows))
-                self.assertEqual(
-                    {f"stamina_order.{key}" for key in order},
-                    {key for key in counts if key.startswith("stamina_order.")},
-                )
-        self.assertEqual({}, fit_value_probe_counts(fit_bytes(laps=1)))
-        self.assertEqual({}, fit_value_probe_counts(b"not a fit file"))
-
-    def test_the_value_probe_counts_files_the_inventory_has_seen(self) -> None:
-        # The replay re-reads files the inventory already counted; the probe has
-        # its own seen hashes, so it counts each of them once all the same.
+    def test_a_read_file_feeds_the_inventory_only(self) -> None:
+        # #3396: the FIT value probe of #3374 is retired; counting a file writes
+        # the inventory and no probe key, and counts it once.
         env = self.env
         seed(env, GARMIN, 21, date(2026, 11, 3), recorded_by=RecordingOrigin.GARMIN)
         builder = FitBuilder().define(0, 20, [(253, UINT32), (90, SINT8)])
         data = builder.data(0, {253: 1000, 90: 3}).build()
         count_fit_file(env.db, env.key_values, GARMIN, "21", data)
-        # As after the release: the inventory has seen the file, the probe has not.
-        env.key_values.set(env.db, FIT_VALUE_PROBE_KEY, "{}")
         count_fit_file(env.db, env.key_values, GARMIN, "21", data)
-        count_fit_file(env.db, env.key_values, GARMIN, "21", data)
-        self.assertEqual(
-            {
-                "garmin": {
-                    "ride": {
-                        "files": 1,
-                        "perf_condition_20_90.present": 1,
-                        "perf_condition_20_90.in_range": 1,
-                    }
-                }
-            },
-            fit_value_probe_report(env.db, env.key_values),
-        )
+        self.assertIsNone(env.key_values.get(env.db, "fit_value_probe"))
         self.assertEqual(
             1, fit_inventory_counts(env.db, env.key_values)["garmin"]["ride"]["files"]
         )

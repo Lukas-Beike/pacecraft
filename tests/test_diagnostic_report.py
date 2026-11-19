@@ -234,7 +234,6 @@ class DiagnosticReportServiceTests(unittest.TestCase):
                 "backup",
                 "stream_backfill",
                 "fit_inventory",
-                "fit_value_probe",
                 "dfa_series",
                 "garmin_detail_fallback",
                 "mapper_replay",
@@ -267,8 +266,8 @@ class DiagnosticReportServiceTests(unittest.TestCase):
         self.assertEqual(report["canonical_backfill"], {"status": "unavailable"})
         # Counts only, per recording origin and sport; empty before any file (#2220).
         self.assertEqual(report["fit_inventory"], {})
-        # The temporary value probe likewise (#3374).
-        self.assertEqual(report["fit_value_probe"], {})
+        # The retired value probe of #3374 is gone (#3396).
+        self.assertNotIn("fit_value_probe", report)
         # Chest-strap runs by DFA-a1 method, counts only (#3273).
         self.assertEqual(
             report["dfa_series"],
@@ -438,8 +437,8 @@ class DiagnosticReportServiceTests(unittest.TestCase):
         # The session rebundle state is one more read, the FIT inventory one more (#2220).
         # The newest app backup is one more (#2996), the Garmin detail fallback
         # counts one more (#3122), the mapper replay size the backfill state and the
-        # mapping issue kinds (#2220), the FIT value probe one more (#3374).
-        self.assertEqual(self.key_values.get.call_count, 23)
+        # mapping issue kinds (#2220); the retired FIT value probe no more (#3396).
+        self.assertEqual(self.key_values.get.call_count, 22)
 
     def test_storage_and_recovery_copies_are_sizes_and_ages_only(self):
         # Stat only: sizes, free space and the newest copy's age; no name or path.

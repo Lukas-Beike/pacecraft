@@ -713,9 +713,11 @@ class EnergyGoalTests(unittest.TestCase):
         self.assertEqual(("lose", 500), (goal["goal"], goal["goal_kcal"]))
 
 
+# #3555: a share of 0.80, 28 % of it from the measurements.
 MEASURED = StoredEnergy(
-    -565.0, 120.0, "measured", 28, 91.2, 89.2, -1.6, 15.5, 14.1, "body_fat"
-)
+    -565.0, 120.0, "measured", 28, 91.2, 89.2, -1.6, 15.5, 14.1, "fat_share",
+    0.80, 0.28,
+)  # fmt: skip
 
 
 class DeficitCardTests(unittest.TestCase):
@@ -737,6 +739,7 @@ class DeficitCardTests(unittest.TestCase):
                 "deficit_kcal": 565,
                 "band_kcal": 235,
                 "method": "measured",
+                "fat_share": {"share_pct": 80, "prior_pct": 70, "measured_pct": 28},
                 "span_days": 28,
                 "weight_start_kg": 91.2,
                 "weight_end_kg": 89.2,
@@ -745,25 +748,37 @@ class DeficitCardTests(unittest.TestCase):
                 "fat_change_kg": -1.6,
                 "fat_share_pct": 80,
                 "stored_kcal": -15820,
-                "uncertainty": "body_fat",
+                "uncertainty": "fat_share",
                 "total_kcal": 3800,
                 "device_total_kcal": 3120,
                 "goal": None,
             },
             card,
         )
-        # Forbes has one percentage at most; a surplus is a negative deficit.
-        forbes = self.view(
+        # The prior alone has one percentage at most; a surplus is a
+        # negative deficit.
+        prior = self.view(
             MEASURED._replace(
                 kcal_per_day=300.0,
-                method="forbes",
+                method="prior",
                 fat_pct_start=None,
-                uncertainty="fat_share",
+                fat_share=0.70,
+                measured_weight=0.0,
             )
         )
         self.assertEqual(
-            (-300, "forbes", None),
-            (forbes["deficit_kcal"], forbes["method"], forbes["fat_pct_start"]),
+            (
+                -300,
+                "prior",
+                None,
+                {"share_pct": 70, "prior_pct": 70, "measured_pct": 0},
+            ),
+            (
+                prior["deficit_kcal"],
+                prior["method"],
+                prior["fat_pct_start"],
+                prior["fat_share"],
+            ),
         )
         self.assertIsNone(self.view(None))
 
