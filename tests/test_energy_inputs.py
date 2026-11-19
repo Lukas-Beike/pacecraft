@@ -586,6 +586,52 @@ class StoreAdapterTests(unittest.TestCase):
         self.assertEqual(reference, body["weight_kg"])
         self.assertAlmostEqual(80.17, reference or 0.0, places=2)
 
+    def test_the_lean_mass_is_carried_from_the_reading(self) -> None:
+        # #3617 item 1: 20 % at 85 kg forty days ago (68 kg lean), then 0.1 kg
+        # a day lost. With one reading the share is the prior 0.70, so 30 % of
+        # the 4 kg is lean: 68 - 1.2 = 66.8 kg, not 81 kg x 80 % = 64.8 kg.
+        end = date(2026, 11, 15)
+        first = end - timedelta(days=40)
+        weights = {first + timedelta(days=n): 85.0 - 0.1 * n for n in range(41)}
+        inputs = EnergyInputs(
+            {d: DayInputs(weight_kg=w) for d, w in weights.items()},
+            {first: 20.0},
+            rmr_kcal=1700.0,
+        )
+        trend = weight_trend(weights)
+        body = energy_inputs.resolve_body(inputs, trend, end)
+        assert body is not None
+        carried = 0.8 * trend[first] + 0.3 * (trend[end] - trend[first])
+        self.assertAlmostEqual(carried, body["lean_mass_kg"], places=6)
+        self.assertAlmostEqual(66.8, body["lean_mass_kg"], delta=0.05)
+        # A profile value has no date: its percentage applies to the day.
+        profile = replace(inputs, body_fat_pct={}, profile_body_fat_pct=20.0)
+        body = energy_inputs.resolve_body(profile, trend, end)
+        assert body is not None
+        self.assertAlmostEqual(0.8 * trend[end], body["lean_mass_kg"], places=6)
+
+    def test_the_resting_reference_carries_the_same_lean_mass(self) -> None:
+        # Gitar on #3642: the own Katch-McArdle takes the lean mass the formula
+        # rows carry; the reading lies before the read start, and the weights
+        # reach back to it, so it keeps its own weight (85 kg, 68 kg lean).
+        first = DAY3 - timedelta(days=40)
+        weights = {first + timedelta(days=n): 85.0 - 0.1 * n for n in range(41)}
+        rated = replace(
+            sources(),
+            resting=lambda _db, _day: (1500.0, energy_inputs.RESTING_FROM_SKINFOLDS),
+            weights=lambda _db, s, e: {d: w for d, w in weights.items() if s <= d <= e},
+            body_fat=lambda _db, _s, _e: {first: 20.0},
+        )
+        inputs, _ = read_energy_inputs(None, rated, DAY1, DAY3)
+        body = energy_inputs.resolve_body(inputs, weight_trend(weights), DAY3)
+        assert body is not None
+        self.assertAlmostEqual(66.8, body["lean_mass_kg"], delta=0.05)
+        # Katch-McArdle 370 + 21.6 x lean, the same lean mass as the rows.
+        self.assertAlmostEqual(
+            370 + 21.6 * body["lean_mass_kg"], inputs.rmr_kcal or 0.0, places=6
+        )
+        self.assertEqual(energy_inputs.RESTING_FROM_SKINFOLDS, inputs.rmr_source)
+
     def test_energy_basis_counts_the_latest_window_weighin_sources(self) -> None:
         # #3557: counts only, read over the latest 28-day window.
         seen: list[tuple[date, date]] = []
@@ -600,6 +646,29 @@ class StoreAdapterTests(unittest.TestCase):
         self.assertEqual(
             {"by_source": {"app": 9, "garmin": 2}, "dropped_days": {"wahoo": 28}},
             basis["latest_window_weighin_sources"],
+        )
+
+    def test_the_source_offset_averages_each_source_s_residual(self) -> None:
+        # #3638: flat weight, Garmin on even days 0.6 kg above the app's on odd
+        # days: around each window's line Garmin sits about +0.3, the app -0.3.
+        end = date(2026, 11, 18)
+        days = {
+            end - timedelta(days=n): DayInputs(
+                intake_kcal=2500.0, entries=3, weight_kg=80.0 + 0.6 * (n % 2 == 0)
+            )
+            for n in range(60)
+        }
+        inputs = EnergyInputs(days, {}, rmr_kcal=1600.0)
+        windows = energy_windows(inputs, end, weeks=2)
+        by_day = {d: ("garmin" if (end - d).days % 2 == 0 else "app") for d in days}
+        self.assertEqual(
+            {"mixed_windows": 2, "mean_residual_kg": {"app": -0.3, "garmin": 0.3}},
+            energy_inputs.source_offset(inputs, windows, by_day),
+        )
+        # One source only: no mixed window, no means.
+        self.assertEqual(
+            {"mixed_windows": 0, "mean_residual_kg": {"app": None, "garmin": None}},
+            energy_inputs.source_offset(inputs, windows, dict.fromkeys(days, "app")),
         )
 
     def test_session_streams_take_the_first_stream_set(self) -> None:

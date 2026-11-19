@@ -22,6 +22,7 @@ class FakeGh:
         self.body, self.state, self.pulls = body, state, list(pulls)
         self.calls = []
         self.edited_body = None
+        self.comment_body = None
 
     def __call__(self, argv, **_kwargs):
         self.calls.append(argv)
@@ -30,10 +31,15 @@ class FakeGh:
             data = {"body": self.body, "state": self.state}
         elif sub == ["pr", "list"]:
             data = self.pulls
+        elif sub == ["pr", "view"]:
+            data = {"mergeCommit": {"oid": f"{argv[3]:0>40}"}}
         else:
             if "--body-file" in argv and sub == ["issue", "edit"]:
                 path = argv[argv.index("--body-file") + 1]
                 self.edited_body = Path(path).read_bytes().decode("utf-8")
+            if "--body-file" in argv and sub == ["issue", "comment"]:
+                path = argv[argv.index("--body-file") + 1]
+                self.comment_body = Path(path).read_text(encoding="utf-8")
             return subprocess.CompletedProcess(argv, 0, "", "")
         return subprocess.CompletedProcess(argv, 0, json.dumps(data), "")
 
@@ -41,7 +47,7 @@ class FakeGh:
         return [
             c[1:4]
             for c in self.calls
-            if c[1:3] not in (["issue", "view"], ["pr", "list"])
+            if c[1:3] not in (["issue", "view"], ["pr", "list"], ["pr", "view"])
         ]
 
 
@@ -55,8 +61,10 @@ class IssueUpdateTests(unittest.TestCase):
     def run_script(self, *args, **fake_args):
         fake = FakeGh(**fake_args)
         out, err = io.StringIO(), io.StringIO()
+        counts = {"production": (3, 1), "tests": (2, 0), "other": (1, 1)}
         with (
             mock.patch.object(gh_cli.subprocess, "run", fake),
+            mock.patch.object(issue_update, "balance", return_value=counts),
             redirect_stdout(out),
             redirect_stderr(err),
         ):
@@ -193,8 +201,14 @@ class IssueUpdateTests(unittest.TestCase):
                 ["issue", "close", "12"],
             ],
         )
-        self.assertIn("--body-file", fake.calls[2])
         self.assertIn("#12 in:body", fake.calls[1])
+        # #3650: the merged PR's balance comes from its merge commit, after
+        # the summary; the open PRs add none.
+        self.assertEqual(
+            "Done: script and tests.\n\n**Line balance** (from the merge commits):\n"
+            "- PR #5 (0000000000): production +3 / -1, tests +2 / -0, other +1 / -1\n",
+            fake.comment_body,
+        )
 
     def test_close_after_a_closing_merge_comments_and_unlabels_only(self):
         code, out, _, fake = self.run_script(
@@ -210,6 +224,24 @@ class IssueUpdateTests(unittest.TestCase):
         self.assertEqual(
             fake.writes(), [["issue", "comment", "12"], ["issue", "edit", "12"]]
         )
+        # Without a merged PR the summary goes out as written (#3650).
+        self.assertEqual("Done: script and tests.\n", fake.comment_body)
+        # A failed balance read writes nothing, so a rerun is clean (#3650).
+        fake = FakeGh(body="## Acceptance\n- [ ] Works\n", pulls=[
+            {"number": 5, "state": "MERGED", "title": "t", "body": "Closes #12"}
+        ])  # fmt: skip
+        with (
+            mock.patch.object(gh_cli.subprocess, "run", fake),
+            mock.patch.object(
+                issue_update, "balance", side_effect=gh_cli.CliError("no commit")
+            ),
+            redirect_stdout(io.StringIO()),
+            redirect_stderr(io.StringIO()),
+        ):
+            self.assertEqual(
+                2, issue_update.main(["close", "12", "--body-file", str(self.file)])
+            )
+        self.assertEqual([], fake.writes())
         # #2691: unticked acceptance criteria do not refuse; the summary covers
         # them and close ticks them, boxes above the criteria stay unchanged;
         # #2799: a plain "Acceptance" heading holds criteria too.

@@ -1765,7 +1765,7 @@ function energyBiasText(flagged) {
   return `Geschätzte Mahlzeiten wirken im Mittel ${formatWhole(Math.abs(flagged.bias_pct))} % ${direction} als erfasst (± ${formatWhole(flagged.bias_band_pct)} %)`;
 }
 
-const ENERGY_DAY_NOTE = "Alle Zeilen zeigen den gewählten Tag (Sport 0 ohne Einheit, Verdauung nur mit erfassten Mahlzeiten, heute bis jetzt); Aus deinen Daten nimmt die Ruhe aus den letzten 28 Tagen und Alltag, Sport und Verdauung wie die Formeln, das Mittel der 28 Tage steht im Verlauf";
+const ENERGY_DAY_NOTE = "Alle Zeilen zeigen den gewählten Tag (Sport 0 ohne Einheit, Verdauung nur mit erfassten Mahlzeiten, heute bis jetzt); Aus deinen Daten nimmt die Ruhe aus den letzten 28 Tagen und Alltag, Sport und Verdauung wie die Formeln; Heute noch essen zieht das Gegessene vom Tag gesamt der umrandeten Quelle ab, das Defizit der letzten 28 Tage steht im Verlauf";
 
 function energyInfo(read) {
   const text = [ENERGY_DAY_NOTE, energyBasisText(read), energyNeatInputs(read.basis?.neat), energyBiasText(read.flagged)].filter(Boolean).join(" · ");
@@ -1871,7 +1871,7 @@ function energyStandNote(stand) {
   return ` (Stand ${stand.as_of}${stand.behind ? ", Garmin hängt hinterher" : ""})`;
 }
 
-function energySplitRow(row, strength = "", reference = null, stand = null) {
+function energySplitRow(row, strength = "", reference = null, stand = null, tefEstimated = false) {
   const split = row.split;
   const parts = energyRowParts(split);
   const total = split ? parts.reduce((sum, [key]) => sum + (split[key] || 0), 0) : 0;
@@ -1881,7 +1881,8 @@ function energySplitRow(row, strength = "", reference = null, stand = null) {
     const name = energyPartName(row, key, label, reference);
     if (key === "resting_kcal" && row.resting_implausible) return `${name} ${ENERGY_IMPLAUSIBLE} (${ENERGY_IMPLAUSIBLE_REASON})`;
     const band = bands[key] != null && split[key] != null ? ` (${energyKcalRange(split[key], bands[key]).join("–")})` : "";
-    const notes = { sport_kcal: strength ? ` (${strength})` : "", neat_kcal: energyStandNote(stand) };
+    // Digestion of kcal without macros is estimated (#3617); Garmin has none.
+    const notes = { sport_kcal: strength ? ` (${strength})` : "", neat_kcal: energyStandNote(stand), tef_kcal: tefEstimated && split.tef_kcal != null ? " (geschätzt)" : "" };
     const note = notes[key] || "";
     return `${name} ${energySplitValue(key, split[key], row.source, row.pending_parts?.includes(part))}${band}${note}`;
   }).join(" · ");
@@ -1990,7 +1991,7 @@ function energyTable(read) {
     return [h("tr", { dataset: fit ? { energySource: source, fit } : { energySource: source } },
       h("th", { scope: "row", dataset: { color: String(color) } }, label ?? row.label, ...energyRowNote(read, source, row)),
       ...energyValueCells(read, source, row)), energySplitRow(row, source === "device" ? "" : energyStrengthNote(read.strength),
-        energyReferenceName(read, row.split?.resting_source), read.wellness)].filter(Boolean);
+        energyReferenceName(read, row.split?.resting_source), read.wellness, source !== "device" && read.tef_estimated)].filter(Boolean);
   });
   return h("table", { className: "current-performance-table" }, h("caption", null, "Energieverbrauch ", ...energyInfo(read)),
     energyTableHead(), h("tbody", null, rows));

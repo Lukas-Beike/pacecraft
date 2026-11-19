@@ -29,9 +29,9 @@ task commits, the [pr](../pr/SKILL.md) workflow through verified merge, and
 maintenance of the delivered issue only, all through
 [issue-update](../pacecraft-issue-update/SKILL.md): `start` at the beginning; a
 `comment` recording each athlete decision; `tick` for a merged part; at the end
-`close` with a summary comment holding the real line balance
-([line-balance](../pacecraft-line-balance/SKILL.md)), the evidence for each
-acceptance criterion and any deviation; it ticks the criteria, refuses while
+`close` with a summary comment holding the evidence for each acceptance
+criterion and any deviation; it appends each merged PR's line balance from its
+merge commit, ticks the criteria, refuses while
 [issue-status](../pacecraft-issue-status/SKILL.md) shows an open part or PR, and
 removes the label, also after a merge already closed the issue. It does not authorize releases, deployment, provider writes, or
 changes to other issues. Missing requirement decisions, failed checks, and the

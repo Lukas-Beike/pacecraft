@@ -41,6 +41,7 @@ from backend.nutrition.energy_balance import (
     LearnedEveryday,
     below_former_share,
     energy_windows,
+    fat_share,
     fit_learned_everyday,
     history_start,
     is_complete,
@@ -92,6 +93,10 @@ class EnergySources:
     feedback: FeedbackLookup | None = None
     # The weigh-in counts per source and dropped days per provider (#3557).
     weighin_counts: Callable[[Any, date, date], Mapping[str, Any]] = field(
+        default=lambda _db, _start, _end: {}
+    )
+    # Each weigh-in day's source, ``app`` or ``garmin`` (#3638).
+    weighin_sources: Callable[[Any, date, date], Mapping[date, str]] = field(
         default=lambda _db, _start, _end: {}
     )
 
@@ -248,6 +253,56 @@ def weighin_counts(
             s: sources.count(s) for s in (APP_SOURCE, ProviderId.GARMIN.value)
         },
         "dropped_days": {p: len(d) for p, d in sorted(dropped.items())},
+    }
+
+
+def weighin_sources(
+    observations: Iterable[Observation], app: Mapping[date, float] | None = None
+) -> dict[date, str]:
+    """Each weigh-in day's source after the source rule (#3557, #3638)."""
+    return {day: source for day, (_, source) in sourced(observations, app)[0].items()}
+
+
+def source_offset(
+    inputs: EnergyInputs,
+    windows: Sequence[EnergyWindow],
+    sources_by_day: Mapping[date, str],
+) -> dict[str, Any]:
+    """Whether Garmin's fallback weigh-ins sit apart from the app's (#3638).
+
+    Over the windows with a stored-energy estimate that hold weigh-ins of both
+    sources, each weigh-in's residual around its window's least-squares line,
+    averaged per source and rounded to 0.1 kg; a systematic offset between the
+    two reads as a step, which the slope prices as tissue. Counts and rounded
+    means only.
+    """
+    residuals: dict[str, list[float]] = {APP_SOURCE: [], ProviderId.GARMIN.value: []}
+    mixed = 0
+    for window in windows:
+        span = [window.end - timedelta(days=n) for n in range(window.days)]
+        points = [
+            (d, weight)
+            for d in sorted(span)
+            if (weight := inputs.days[d].weight_kg if d in inputs.days else None)
+            is not None
+        ]
+        kinds = [sources_by_day.get(d) for d, _ in points]
+        if window.store is None or not set(residuals) <= set(kinds):
+            continue
+        mixed += 1
+        line = statistics.linear_regression(
+            [float((d - points[0][0]).days) for d, _ in points], [w for _, w in points]
+        )
+        for (d, weight), kind in zip(points, kinds, strict=True):
+            if kind in residuals:
+                at = line.intercept + line.slope * (d - points[0][0]).days
+                residuals[kind].append(weight - at)
+    return {
+        "mixed_windows": mixed,
+        "mean_residual_kg": {
+            kind: round(statistics.fmean(values), 1) if values else None
+            for kind, values in residuals.items()
+        },
     }
 
 
@@ -564,9 +619,23 @@ def read_energy_inputs(
     profile = sources.profile()
     profile_weight = _number(profile.get("weight_kg"))
     health = sources.daily_health(db, start, end)
-    rmr, rmr_source = _resting(sources, db, end, health)
-    weights = dict(sources.weights(db, start, end))
+    # The first window looks 90 days back from its own end for a body fat,
+    # so the weights reach back as far: each reading has its weight (Gitar).
+    lookback = start - timedelta(days=RESTING_LOOKBACK_DAYS)
+    grace_end = end + timedelta(days=BODY_GRACE_DAYS)
+    weights = dict(sources.weights(db, lookback, end))
     trend = weight_trend(weights)
+    body = EnergyInputs(
+        days={},
+        body_fat_pct=dict(sources.body_fat(db, start, grace_end)),
+        rmr_kcal=None,
+        device_body_fat=dict(sources.device_body_fat(db, lookback, grace_end)),
+        profile_body_fat_pct=_profile_fat(profile.get("body_fat_pct")),
+        skinfold_sd_pct=_skinfold_sds(sources.skinfolds(db, grace_end)),
+    )
+    rmr, rmr_source = _carried_resting(
+        _resting(sources, db, end, health), body, trend, end
+    )
     sessions = list(sources.sessions(db, start, end))
     step_m, step_source = _step_length(sessions, _height_m(profile))
     rides = [s for s in sessions if str(s.get("sport") or "") in RIDE_SPORTS]
@@ -607,18 +676,32 @@ def read_energy_inputs(
             trend, profile_weight, costs, step_m,
         )  # fmt: skip
         day += timedelta(days=1)
-    grace_end = end + timedelta(days=BODY_GRACE_DAYS)
-    body_fat = dict(sources.body_fat(db, start, grace_end))
-    # The first window looks 90 days back from its own end.
-    lookback = start - timedelta(days=RESTING_LOOKBACK_DAYS)
-    device = dict(sources.device_body_fat(db, lookback, grace_end))
-    inputs = EnergyInputs(days, body_fat, rmr, rmr_source, step_m, step_source)
     return replace(
-        inputs,
-        device_body_fat=device,
-        profile_body_fat_pct=_profile_fat(profile.get("body_fat_pct")),
-        skinfold_sd_pct=_skinfold_sds(sources.skinfolds(db, grace_end)),
+        body,
+        days=days,
+        rmr_kcal=rmr,
+        rmr_source=rmr_source,
+        step_m=step_m,
+        step_source=step_source,
     ), costs
+
+
+def _carried_resting(
+    found: tuple[float | None, str | None],
+    body: EnergyInputs,
+    trend: Mapping[date, float],
+    end: date,
+) -> tuple[float | None, str | None]:
+    """The own Katch-McArdle with the lean mass the formula rows carry from
+    the reading (#3617 item 1, Gitar on #3642); Garmin's fallback stays."""
+    rmr, source = found
+    if source not in (RESTING_FROM_SKINFOLDS, RESTING_FROM_BODY_FAT):
+        return rmr, source
+    resolved = resolve_body(body, trend, end)
+    if resolved is None:
+        return rmr, source
+    lean = resolved["lean_mass_kg"]
+    return resting_energy(RestingFormula.KATCH_MCARDLE, lean), source
 
 
 def _skinfold_sds(measurements: Sequence[SkinfoldMeasurement]) -> dict[date, float]:
@@ -752,6 +835,13 @@ def energy_basis(db: Any, sources: EnergySources, today: date) -> dict[str, Any]
             if latest
             else None
         }
+        | {
+            "weighin_source_offset": source_offset(
+                inputs,
+                windows,
+                sources.weighin_sources(db, history_start(end), end),
+            )
+        }
         | skinfold_diagnostics(skinfolds, missing, end, bodies)
         # The walks behind NEAT's step length and their suspected causes (#3611).
         | {
@@ -854,21 +944,38 @@ def _body_fat(inputs: EnergyInputs, day: date) -> dict[str, Any] | None:
 def resolve_body(
     inputs: EnergyInputs, trend: Mapping[date, float], day: date
 ) -> dict[str, Any] | None:
-    """The body fat in effect on ``day`` with the trend weight's lean mass.
+    """The body fat in effect on ``day`` with the lean mass it gives that day.
 
     A measurement up to ``BODY_GRACE_DAYS`` after ``day`` counts: the view
     ends yesterday because today's intake is partial, not the body (#3336).
     The body fat comes from the newest skinfold, else an entered one, else a
     device or scale, else the profile (#3362, #3402); ``source`` and ``label``
     name it.
+
+    The lean mass is carried from the reading (#3617 item 1): the reading's
+    weight x (1 - body fat), plus the lean share (1 - the blended fat share) of
+    the weight change since, so a lost kilogram is not booked mostly as lean.
+    Without a dated reading (the profile) the body fat applies to the day.
     """
     weighed = [d for d in trend if d <= day]
     fat = _body_fat(inputs, day)
     if not weighed or fat is None:
         return None
     weight = trend[max(weighed)]
+    on = fat["measured_on"]
+    # A reading before the first weigh-in takes the first one after it.
+    at_reading = [d for d in trend if on is not None and d <= on] or (
+        [min(trend)] if on is not None else []
+    )
     try:
-        lean = lean_mass_kg(weight, fat["body_fat_pct"])
+        if not at_reading:
+            lean = lean_mass_kg(weight, fat["body_fat_pct"])
+        else:
+            measured = trend[max(at_reading)]
+            share = fat_share(inputs, trend, day).share
+            lean = lean_mass_kg(measured, fat["body_fat_pct"]) + (1.0 - share) * (
+                weight - measured
+            )
     except ValueError:
         return None
     return {**fat, "weight_kg": weight, "lean_mass_kg": lean}
@@ -1031,6 +1138,19 @@ def _measured_weight_bands(windows: Sequence[EnergyWindow]) -> dict[str, int]:
     }
 
 
+def _uncovered_kcal(entries: Sequence[Mapping[str, Any]]) -> float:
+    """The day's logged kcal its entries' known macros do not cover (#3617)."""
+    return sum(
+        energy.uncovered_kcal(
+            _number(e.get("kcal")) or 0.0,
+            _number(e.get("protein_g")) or 0.0,
+            _number(e.get("carbs_g")) or 0.0,
+            _number(e.get("fat_g")) or 0.0,
+        )
+        for e in entries
+    )
+
+
 def _day_inputs(
     day: date,
     entries: Sequence[Mapping[str, Any]],
@@ -1071,6 +1191,7 @@ def _day_inputs(
         protein_g=sum(_number(e.get("protein_g")) or 0.0 for e in entries),
         carbohydrate_g=sum(_number(e.get("carbs_g")) or 0.0 for e in entries),
         fat_g=sum(_number(e.get("fat_g")) or 0.0 for e in entries),
+        uncovered_kcal=_uncovered_kcal(entries),
         entries=len(entries),
         flagged=any(bool(e.get("estimate_uncertain")) for e in entries),
         flagged_kcal=sum(

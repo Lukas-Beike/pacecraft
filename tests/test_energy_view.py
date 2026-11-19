@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 import math
+import statistics
 import unittest
 from dataclasses import replace
 from datetime import date, timedelta
-from typing import Any
+from typing import Any, cast
 
 from backend.canonical.vocabulary import ProviderId
 from backend.errors import AppError
@@ -16,6 +17,7 @@ from backend.nutrition.energy_balance import (
     EnergyWindow,
     Estimate,
     StoredEnergy,
+    energy_windows,
     history_start,
 )
 from backend.nutrition.energy_inputs import EnergySources
@@ -1108,6 +1110,47 @@ class SelectedDayTests(unittest.TestCase):
         # 1,850 own resting + 250 everyday + 0 sport + 250 digestion.
         self.assertEqual((2350, None), (totals[rest_day], totals[empty]))
 
+    def test_twelve_weeks_follow_each_window_s_resting_rate(self) -> None:
+        # #3641: a true expenditure rising from 2,300 to 3,000 kcal over 120
+        # days at a logged 2,600; the latest window's rate for every day
+        # overstated the 12-week deficit.
+        weight, days = 80.0, {}
+        truth = {}
+        for n in range(120):
+            day = END - timedelta(days=119 - n)
+            truth[day] = 2300.0 + 700.0 * n / 119
+            # The prior fat share's 7,153.5 kcal per kg (Hall 2008).
+            weight += (2600.0 - truth[day]) / 7153.5
+            days[day] = DayInputs(
+                intake_kcal=2600.0, protein_g=150.0, carbohydrate_g=300.0,
+                fat_g=80.0, entries=3, weight_kg=weight, activity_kcal=600.0,
+                activity_error_kcal=60.0, neat_kcal=250.0, sport_kcal=350.0,
+            )  # fmt: skip
+        source = EnergyInputs(days, {}, rmr_kcal=1500.0)
+        windows = energy_windows(source, END)
+        period = [END - timedelta(days=n) for n in range(84)]
+        totals = own_day_totals(source, windows, {}, period)
+        balance = statistics.fmean(2600.0 - cast(float, totals[d]) for d in period)
+        true_balance = statistics.fmean(2600.0 - truth[d] for d in period)
+        # The latest window's rate on all 84 days: its own days' total.
+        latest_rule = 2600.0 - cast(float, totals[END])
+        band = statistics.fmean(
+            cast(Estimate, w.adaptive_tdee).band_kcal for w in windows
+        )
+        self.assertLessEqual(abs(balance - true_balance), band)
+        self.assertGreater(abs(latest_rule - true_balance), band)
+        # The last 14 days lie in the latest window: its rate, as before.
+        latest_total = cast(float, totals[END])
+        self.assertTrue(all(totals[d] == latest_total for d in period[:14]))
+        # Older days follow their own (lower) window.
+        self.assertLess(cast(float, totals[period[-1]]), latest_total)
+        # The diary's own day row is the same value for an old and a recent
+        # day (Gitar on #3647).
+        for day in (period[-1], period[40], END):
+            with self.subTest(day=day):
+                view = energy_view(source, windows, {}, day=day)
+                self.assertEqual(totals[day], row(view, "own")["total_kcal"])
+
     def test_a_day_without_a_session_has_sport_zero_not_a_mean(self) -> None:
         rest_day = END - timedelta(days=1)
         quiet = DayInputs(weight_kg=80.0, activity_kcal=250.0, neat_kcal=250.0,
@@ -1133,6 +1176,21 @@ class SelectedDayTests(unittest.TestCase):
         self.assertIsNone(km["split"]["tef_kcal"])
         self.assertIsNone(km["total_kcal"])
         self.assertEqual(1839, km["resting_kcal"])
+
+    def test_kcal_without_macros_adds_estimated_digestion(self) -> None:
+        # #3617 item 3: 2,000 kcal of which the macros cover 870 add 10 % of the
+        # other 1,130 to the macros' 0.25 x 200 + 0.10 x 400 + 0.015 x 270 =
+        # 94.05 kcal, so digestion is 207.05; the read marks it estimated.
+        day = END - timedelta(days=3)
+        partly = DayInputs(
+            weight_kg=80.0, activity_kcal=250.0, neat_kcal=250.0, sport_kcal=0.0,
+            intake_kcal=2000.0, protein_g=50.0, carbohydrate_g=100.0, fat_g=30.0,
+            entries=3, uncovered_kcal=1130.0,
+        )  # fmt: skip
+        km = row(self.view(day, {day: partly}), "katch_mcardle")
+        self.assertEqual(207, km["split"]["tef_kcal"])
+        self.assertTrue(read_energy_view(None, sources(), DAY3, DAY1)["tef_estimated"])
+        self.assertFalse(read_energy_view(None, sources(), DAY3)["tef_estimated"])
 
     def test_today_without_any_data_yet_totals_its_resting_alone(self) -> None:
         # #3494: early morning there are no steps, sessions or meals yet; today

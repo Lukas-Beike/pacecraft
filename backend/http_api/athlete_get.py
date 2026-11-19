@@ -287,8 +287,10 @@ class AthleteGetRoutes:
         `flagged_days`, `weighins`, `insufficient`, `windows_with_estimate`,
         `rmr_source`, and `neat` with `days`, `steps_per_day`,
         `session_steps_per_day`, `floors_per_day`, `step_length_m` and
-        `step_length_source` (`walks` or `height`) over the latest window's days
-        with steps, or null), `body` (the formula rows' body fat: `source`
+        `step_length_source` (`walks` or `height`) of the shown day, whose steps,
+        floors and sessions price the source rows' NEAT, or null without steps;
+        the windows take each day's own NEAT, #3395, #3618), `body` (the formula
+        rows' body fat: `source`
         `skinfold`, `device` or `profile` in this order, its `label`, `date` (null
         for the profile), `body_fat_pct` and `lean_mass_kg`, or null; a skinfold or
         device value counts from 90 days before up to a day after `end`) and
