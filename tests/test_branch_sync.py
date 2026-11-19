@@ -346,6 +346,19 @@ class BranchSyncTests(unittest.TestCase):
             git(self.work, "log", "-1", "--format=%s"),
         )
 
+    def test_a_second_bump_commit_is_never_bumped_twice(self):
+        # Gitar on #3702: develop 10 -> 11, the branch 10 -> 11 then 11 -> 12.
+        # The second commit's card no longer holds develop's own number, so it
+        # stops for a person instead of running ahead to v13.
+        self.method_on_both_sides(develop=11, branch=11)
+        method_files(self.work, 12, "#1, #2, #4", "fix: four again")
+        with mock.patch.object(branch_sync, "regenerate", regenerated_table):
+            code, out, _ = self.sync("--bump-method")
+        self.assertEqual(1, code)
+        self.assertIn(CARD, out)
+        self.assertNotIn("v13", (self.work / CARD).read_text("utf-8"))
+        git(self.work, "rebase", "--abort")
+
     def test_a_failed_bump_leaves_the_branch_as_it_was(self):
         # Gitar on #3702: a generator failing during --bump-method resets to
         # the pre-rebase head with a clean tree, as a refusal does.

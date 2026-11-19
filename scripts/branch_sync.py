@@ -149,6 +149,10 @@ BLOCK = re.compile(
 # --bump-method: both sides bumped to the same number take upstream's + 1
 # instead of stopping for a person (#3698).
 BUMP_ON_TOP = [False]
+# The target's version numbers of the file being merged, by line prefix: the +1
+# applies only while HEAD's side still holds the target's own number, so a
+# later replayed bump commit is never bumped again (Gitar on #3702).
+TARGET_NUMBERS: dict[str, int] = {}
 
 
 def bumped(ours: str, base: str, theirs: str) -> str | None:
@@ -164,7 +168,7 @@ def bumped(ours: str, base: str, theirs: str) -> str | None:
     # Both bumped to the same number: the code line merged silently there, so
     # the card stays a conflict for a person rather than run ahead (#3649).
     same = int(o[2]) == int(t[2]) != int(b[2])
-    if same and not BUMP_ON_TOP[0]:
+    if same and not (BUMP_ON_TOP[0] and TARGET_NUMBERS.get(o[1]) == int(o[2])):
         return None
     number = int(o[2]) + 1 if same else int(o[2]) + int(t[2]) - int(b[2])
     if pattern is VERSION:
@@ -222,7 +226,20 @@ def merged_block(match: re.Match[str]) -> str:
     return "".join(f"{line}\n" for line in lines)
 
 
-def resolve_versions(root: Path, conflicts: list[str]) -> list[str]:
+def target_numbers(onto: str, name: str) -> dict[str, int]:
+    """The version numbers of ``name`` on the target, by line prefix."""
+    try:
+        text = git("show", f"{onto}:{name}")
+    except CliError:
+        return {}
+    return {
+        m[1]: int(m[2])
+        for line in text.splitlines()
+        if (m := VERSION.match(line) or METHOD_ID.match(line))
+    }
+
+
+def resolve_versions(root: Path, conflicts: list[str], onto: str = "") -> list[str]:
     """Resolve conflicts that lie only in method version lines, adding the
     replayed commit's bump to upstream's (#3649); returns the files still
     conflicted. Other blocks stay for the generated-text rule or a person."""
@@ -231,6 +248,8 @@ def resolve_versions(root: Path, conflicts: list[str]) -> list[str]:
         try:
             git("checkout", "--conflict=diff3", "--", name)
             text = (root / name).read_text(encoding="utf-8")
+            TARGET_NUMBERS.clear()
+            TARGET_NUMBERS.update(target_numbers(onto, name) if onto else {})
         except CliError, OSError, UnicodeDecodeError:
             left.append(name)  # deleted, renamed or not text: a person decides
             continue
@@ -391,14 +410,13 @@ def rebased(onto: str, upstream: str | None = None) -> bool:
 def bump_on_top(onto: str, files: list[str]) -> None:
     """Set each absorbed version line to the target's number + 1, regenerate
     the method cards' tables and commit it (--bump-method, #3698)."""
-    root = Path(git("rev-parse", "--show-toplevel").strip())
+    root = Path(git("rev-parse", "--show-toplevel").strip()).resolve()
     for name in files:
-        target = {
-            m[1]: int(m[2])
-            for line in git("show", f"{onto}:{name}").splitlines()
-            if (m := VERSION.match(line) or METHOD_ID.match(line))
-        }
-        text = (root / name).read_text(encoding="utf-8")
+        path = (root / name).resolve()
+        if not path.is_relative_to(root):
+            raise CliError(f"{name} lies outside the repository")
+        target = target_numbers(onto, name)
+        text = path.read_text(encoding="utf-8")
         for prefix, number in target.items():
             text = re.sub(
                 rf"^{re.escape(prefix)}{number}\b",
@@ -406,7 +424,7 @@ def bump_on_top(onto: str, files: list[str]) -> None:
                 text,
                 flags=re.MULTILINE,
             )
-        (root / name).write_text(text, encoding="utf-8", newline="")
+        path.write_text(text, encoding="utf-8", newline="")
     cards = tuple(
         d
         for d in regenerate_docs.GENERATED
@@ -437,7 +455,7 @@ def replayed(onto: str, upstream: str | None) -> bool:
         conflicts = git("diff", "--name-only", "--diff-filter=U").splitlines()
         if not conflicts:
             raise error
-        conflicts = resolve_versions(root, conflicts)
+        conflicts = resolve_versions(root, conflicts, onto)
         if conflicts and not resolve_generated(root, conflicts):
             return stopped(onto, conflicts, error)
         try:
