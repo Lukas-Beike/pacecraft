@@ -50,7 +50,6 @@ from backend.performance.local_tss import (
     session_loads,
 )
 from backend.performance.session_rpe_load import FeedbackLookup, feedback_by_session
-from backend.performance.source_policy import NO_PREFERENCES, SourcePreferences
 from backend.sync.canonical_backfill import BatchReport
 from backend.sync.canonical_table_reader import CanonicalTableReader
 
@@ -59,8 +58,6 @@ _LOGGER = logging.getLogger("intervals_coach")
 STAGE: Final = "local_load"
 STATE_KEY: Final = "local_load_state"
 DERIVED_LABEL: Final = "derived"
-
-type Preferences = Callable[[Any], SourcePreferences]
 
 
 def _summaries(
@@ -196,7 +193,6 @@ class LocalLoadStage:
         key_values: KeyValueRepository,
         zone_provider: Callable[[], tzinfo | None],
         clock: Callable[[], str],
-        preferences: Preferences = lambda _db: NO_PREFERENCES,
         reader: CanonicalTableReader | None = None,
         session_feedback: FeedbackLookup | None = None,
         athlete_sex: Callable[[Any], str | None] = lambda _db: None,
@@ -206,7 +202,6 @@ class LocalLoadStage:
         self._key_values = key_values
         self._zone_provider = zone_provider
         self._clock = clock
-        self._preferences = preferences
         self._reader = reader or CanonicalTableReader()
 
     @property
@@ -224,7 +219,6 @@ class LocalLoadStage:
             ],
             reader.zone_configurations(db),
             reader.observations(db, MetricKind.RESTING_HR),
-            preferences=self._preferences(db),
         )
         now = self._clock()
         summaries = _summaries(reader, db, self._zone_provider())

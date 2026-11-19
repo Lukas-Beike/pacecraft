@@ -386,7 +386,6 @@ every named number the code fixes. A test fails when it is out of date.
 | `WAHOO_CURRENT_MAX_AGE_DAYS` | `90` | `backend/performance/source_policy.py` | A Wahoo FTP or weight observed longer ago than this is history, not the current value. |
 | `GARMIN_THRESHOLD_MAX_AGE_DAYS` | `180` | `backend/performance/source_policy.py` | A Garmin threshold observed longer ago than this is history, not current. |
 | `FAMILY_LOOKBACK_DAYS` | `84` | `backend/performance/source_policy.py` | Days, ending on the latest day read, of recovery history every reader uses. |
-| `RECENCY_TIE_DAYS` | `1` | `backend/performance/source_policy.py` |  |
 | `STALE_AFTER_DAYS` | `56` | `backend/performance/threshold_staleness.py` | Athlete decision 2026-11-07: eight weeks. |
 | `REASON_STALE` | `'stale'` | `backend/performance/threshold_staleness.py` |  |
 | `REASON_EXPIRED` | `'expired'` | `backend/performance/threshold_staleness.py` |  |

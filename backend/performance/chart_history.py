@@ -161,13 +161,12 @@ def analysis_history(
             garmin_ftp=garmin_canonical.performance_history.get(
                 "cycling_ftp_watts", {}
             ),
-            preferences=canonical.preferences,
         ),
         "provider_metrics": _canonical_provider_metrics(
             garmin, start, today, garmin_canonical
         ),
         "metrics": series,
-        "preferred_providers": preferred_providers(canonical.preferences),
+        "preferred_providers": preferred_providers(),
     }
 
 

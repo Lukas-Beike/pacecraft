@@ -20,7 +20,6 @@ from backend.canonical.domain_records import ZoneConfiguration
 from backend.canonical.records import Observation
 from backend.canonical.vocabulary import Environment, ProviderId, Sport
 from backend.performance.local_tss import THRESHOLD_KINDS, DatedThresholds, Threshold
-from backend.performance.source_policy import NO_PREFERENCES, SourcePreferences
 
 
 def own_configurations(
@@ -37,7 +36,6 @@ def own_configurations(
 def dated_thresholds(
     observations: Iterable[Observation],
     configurations: Iterable[ZoneConfiguration],
-    preferences: SourcePreferences = NO_PREFERENCES,
 ) -> DatedThresholds:
     """The thresholds by day from non-Intervals observations and configurations."""
     return DatedThresholds(
@@ -48,7 +46,6 @@ def dated_thresholds(
             and item.provenance.provider is not ProviderId.INTERVALS
         ],
         own_configurations(configurations),
-        preferences=preferences,
     )
 
 

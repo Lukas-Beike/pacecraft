@@ -49,7 +49,7 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from types import MappingProxyType
-from typing import Any, Final
+from typing import Final
 
 from backend.canonical.records import Observation
 from backend.canonical.vocabulary import MetricKind, ProviderId, SourceKind, Sport
@@ -179,70 +179,6 @@ DAILY_RULES: Final[Mapping[MetricKind, SourceRule]] = MappingProxyType(
     }
 )
 
-# The athlete's preferred source per metric group (#1668), a local profile setting.
-# Each group lists its kinds and the providers the athlete may prefer for it; a
-# stored value of another provider (such as "intervals") is ignored. Only groups
-# where a preference changes the result have one (athlete decision 2026-11-11,
-# #2084): Garmin already leads thresholds, HRV, resting HR and sleep, so their
-# stored profile values are kept but read nowhere. "body" left with #3640:
-# Körper's weigh-in rule (``backend.athlete.body_records``) decides the weight
-# and body fat, so its stored value is kept but read nowhere either.
-PREFERENCE_GROUPS: Final[
-    Mapping[str, tuple[frozenset[MetricKind], tuple[ProviderId, ...]]]
-] = MappingProxyType({})
-# Profile field of each group's preference; an empty value keeps the default order.
-PREFERENCE_PROFILE_FIELDS: Final[Mapping[str, str]] = MappingProxyType(
-    {group: f"preferred_source_{group}" for group in PREFERENCE_GROUPS}
-)
-type SourcePreferences = Mapping[str, ProviderId]
-NO_PREFERENCES: Final[SourcePreferences] = MappingProxyType({})
-
-
-def preferences_from_profile(profile: Mapping[str, Any]) -> SourcePreferences:
-    """Return the valid preferred sources of a profile; others are ignored."""
-    result: dict[str, ProviderId] = {}
-    for group, field_name in PREFERENCE_PROFILE_FIELDS.items():
-        raw = profile.get(field_name)
-        allowed = {provider.value: provider for provider in PREFERENCE_GROUPS[group][1]}
-        if isinstance(raw, str) and raw in allowed:
-            result[group] = allowed[raw]
-    return MappingProxyType(result)
-
-
-def preferred_source(
-    kind: MetricKind, preferences: SourcePreferences
-) -> ProviderId | None:
-    """Return the athlete's preferred provider for ``kind``'s group, if any."""
-    for group, (kinds, _) in PREFERENCE_GROUPS.items():
-        if kind in kinds:
-            return preferences.get(group)
-    return None
-
-
-def _preferred_first(
-    order: tuple[Source, ...], kind: MetricKind, preferences: SourcePreferences
-) -> tuple[Source, ...]:
-    """Move the preferred provider to the front, behind a leading local value.
-
-    A local value elsewhere in the order (the undated profile weight) keeps its
-    place among the rest.
-    """
-    preferred = preferred_source(kind, preferences)
-    if preferred is None or preferred not in order:
-        return order
-    lead: tuple[Source, ...] = (None,) if order and order[0] is None else ()
-    rest = tuple(item for item in order[len(lead) :] if item is not preferred)
-    return (*lead, preferred, *rest)
-
-
-def _preferred_providers(
-    order: tuple[ProviderId, ...], kind: MetricKind, preferences: SourcePreferences
-) -> tuple[ProviderId, ...]:
-    return tuple(
-        item for item in _preferred_first(order, kind, preferences) if item is not None
-    )
-
-
 # Days, ending on the latest day read, of recovery history every reader uses.
 FAMILY_LOOKBACK_DAYS: Final = 84
 
@@ -346,11 +282,8 @@ def select_current(
     *,
     sport: Sport | None = None,
     as_of: date | None = None,
-    preferences: SourcePreferences = NO_PREFERENCES,
 ) -> Observation | None:
     """Return the current observation for ``kind`` under its source rule.
-
-    ``preferences`` is the athlete's preferred source per metric group.
 
     ``sport`` restricts the candidates to observations for that sport. Sport-scoped
     kinds require a sport, because legacy readers always select per sport; passing
@@ -368,20 +301,17 @@ def select_current(
     if sport is None and kind in _SPORT_SCOPED:
         raise ValueError(f"{kind.value} is sport-scoped and needs a sport")
     observations = tuple(observations)
-    providers = _preferred_providers(rule.order, kind, preferences)
     candidates = _eligible(observations, kind, rule, sport, as_of)
     bests = [
         best
-        for provider in providers
+        for provider in rule.order
         if (best := _provider_best(candidates, provider, kind)) is not None
     ]
     return bests[0] if bests else None
 
 
 def select_daily(
-    observations: Iterable[Observation],
-    kind: MetricKind,
-    preferences: SourcePreferences = NO_PREFERENCES,
+    observations: Iterable[Observation], kind: MetricKind
 ) -> Mapping[date, Observation]:
     """Return the per-day observation for ``kind`` under its daily rule.
 
@@ -394,7 +324,7 @@ def select_daily(
     if rule is None:
         return {}
     observations = tuple(observations)
-    providers = _preferred_providers(rule.order, kind, preferences)
+    providers = rule.order
     first_by_day: dict[tuple[date, ProviderId], Observation] = {}
     for observation in observations:
         provider = observation.provenance.provider
@@ -431,33 +361,10 @@ LOCAL_FIRST_KINDS: Final[frozenset[MetricKind]] = frozenset(
 SPORT_ORDERS: Final[Mapping[tuple[MetricKind, Sport], tuple[ProviderId, ...]]] = (
     MappingProxyType({(MetricKind.FTP, Sport.RUN): (_GARMIN,)})
 )
-# Weight and body fat (athlete decision 2026-11-04): the most recent measurement
-# across sources wins; within ``RECENCY_TIE_DAYS`` of the newest one, a device
-# measurement precedes a provider report, which precedes an athlete entry; a weight
-# the athlete entered on the newest day wins it (athlete decision 2026-11-16). Undated
-# values (the local profile, Wahoo's profile weight) are only fallbacks, in this
-# order. None stands for the local profile value.
-RECENCY_ORDERS: Final[Mapping[MetricKind, tuple[ProviderId | None, ...]]] = (
-    MappingProxyType(
-        {
-            MetricKind.WEIGHT: (_GARMIN, None, _WAHOO),
-            MetricKind.BODY_FAT: (_GARMIN, None),
-        }
-    )
-)
-RECENCY_TIE_DAYS: Final = 1
-_MEASUREMENT_RANK: Final[Mapping[SourceKind, int]] = MappingProxyType(
-    {SourceKind.DEVICE_MEASURED: 0, SourceKind.PROVIDER_REPORTED: 1}
-)
 # Relative difference above which two sources' current values are a conflict.
 CONFLICT_TOLERANCE: Final[Mapping[MetricKind, float]] = MappingProxyType(
     dict.fromkeys(LOCAL_FIRST_KINDS, 0.03)
 )
-# Absolute difference above which two current values are a conflict.
-ABSOLUTE_CONFLICT_TOLERANCE: Final[Mapping[MetricKind, float]] = MappingProxyType(
-    {MetricKind.WEIGHT: 1.5, MetricKind.BODY_FAT: 2.0}
-)
-
 # None stands for the athlete's own, locally confirmed value.
 type Source = ProviderId | None
 
@@ -485,34 +392,22 @@ class Resolved:
     conflict: bool
 
 
-def source_order(
-    kind: MetricKind,
-    sport: Sport | None = None,
-    preferences: SourcePreferences = NO_PREFERENCES,
-) -> tuple[Source, ...]:
+def source_order(kind: MetricKind, sport: Sport | None = None) -> tuple[Source, ...]:
     """Return the sources of ``kind`` in precedence order; empty without a rule.
 
-    The athlete's preferred provider of the kind's group comes first, behind a
-    locally confirmed value.
+    A locally confirmed value comes first for ``LOCAL_FIRST_KINDS``.
     """
     rule = CURRENT_RULES.get(kind)
     if rule is None:
         return ()
-    if kind in RECENCY_ORDERS:
-        return _preferred_first(RECENCY_ORDERS[kind], kind, preferences)
     order = SPORT_ORDERS.get((kind, sport), rule.order) if sport else rule.order
-    full = (None, *order) if kind in LOCAL_FIRST_KINDS else order
-    return _preferred_first(full, kind, preferences)
+    return (None, *order) if kind in LOCAL_FIRST_KINDS else order
 
 
-def preferred_provider(
-    kind: MetricKind, preferences: SourcePreferences = NO_PREFERENCES
-) -> ProviderId | None:
-    """Return the provider displays prefer: the athlete's, else the rule's first."""
+def preferred_provider(kind: MetricKind) -> ProviderId | None:
+    """Return the provider displays prefer: the rule's first."""
     rule = CURRENT_RULES.get(kind)
-    if rule is None:
-        return None
-    return preferred_source(kind, preferences) or rule.order[0]
+    return None if rule is None else rule.order[0]
 
 
 def _candidate_current(
@@ -540,35 +435,26 @@ def resolve_candidates(
     *,
     as_of: date | None,
     sport: Sport | None = None,
-    preferences: SourcePreferences = NO_PREFERENCES,
 ) -> Resolved | None:
     """Resolve one metric from each source's own current value under its rule.
-
-    ``preferences`` puts the athlete's preferred provider first (``source_order``);
-    for ``RECENCY_ORDERS`` kinds its value wins over a newer one of another source.
 
     The first candidate of each source counts. Candidates outside their source's
     bounds or age limit (on ``as_of``; None applies none) are dropped. The first
     remaining source in ``source_order`` wins; the others stay as alternatives in
-    that order. ``RECENCY_ORDERS`` kinds rank by recency instead (``_by_recency``).
-    A conflict is an alternative that differs from the winner by more than the
-    kind's ``CONFLICT_TOLERANCE`` or ``ABSOLUTE_CONFLICT_TOLERANCE``. Garmin's
+    that order. A conflict is an alternative that differs from the winner by more
+    than the kind's ``CONFLICT_TOLERANCE``. Garmin's
     value of the same day as a winning athlete entry is left out (#3464). ``sport``
     selects a ``SPORT_ORDERS`` entry. None without any current candidate.
     """
     rule = CURRENT_RULES.get(kind)
     if rule is None:
         return None
-    order = source_order(kind, sport, preferences)
+    order = source_order(kind, sport)
     first: dict[Source, Candidate] = {}
     for candidate in candidates:
         if candidate.source in order and _candidate_current(candidate, rule, as_of):
             first.setdefault(candidate.source, candidate)
     ranked = [first[source] for source in order if source in first]
-    if kind in RECENCY_ORDERS:
-        preferred = preferred_source(kind, preferences)
-        ranked = _by_recency(ranked)
-        ranked.sort(key=lambda item: item.source is not preferred or preferred is None)
     if not ranked:
         return None
     winner, *alternatives = ranked
@@ -591,21 +477,10 @@ def _conflict(
     kind: MetricKind, winner: Candidate, alternatives: Iterable[Candidate]
 ) -> bool:
     relative = CONFLICT_TOLERANCE.get(kind)
-    absolute = ABSOLUTE_CONFLICT_TOLERANCE.get(kind)
-    if relative is not None:
-        allowed = relative * abs(winner.value)
-    elif absolute is not None:
-        allowed = absolute
-    else:
+    if relative is None:
         return False
+    allowed = relative * abs(winner.value)
     return any(abs(item.value - winner.value) > allowed for item in alternatives)
-
-
-def _measurement_rank(candidate: Candidate) -> int:
-    """Device measurement 0, provider report 1, athlete entry or local value 2."""
-    if candidate.source is None or candidate.observation is None:
-        return 2
-    return _MEASUREMENT_RANK.get(candidate.observation.provenance.source_kind, 2)
 
 
 def _entered(candidate: Candidate) -> bool:
@@ -616,28 +491,3 @@ def _entered(candidate: Candidate) -> bool:
         and observation is not None
         and observation.provenance.source_kind is SourceKind.ATHLETE_ENTERED
     )
-
-
-def _by_recency(ranked: list[Candidate]) -> list[Candidate]:
-    """Order dated candidates by recency and measurement kind, undated ones last.
-
-    ``ranked`` is in source order, which breaks the remaining ties.
-    """
-    days = [item.observed_on for item in ranked if item.observed_on is not None]
-    if not days:
-        return ranked
-    newest = max(days)
-
-    def key(position: int) -> tuple[int, int, int, int]:
-        item = ranked[position]
-        if item.observed_on is None:
-            return (2, 0, 0, position)
-        recent = (newest - item.observed_on).days <= RECENCY_TIE_DAYS
-        rank = _measurement_rank(item) if recent else 0
-        if _entered(item) and item.observed_on == newest:
-            # The athlete set this day's value: it wins over a measurement of the
-            # same or the day before (athlete decision 2026-11-16, #3252).
-            rank = -1
-        return (0 if recent else 1, rank, -item.observed_on.toordinal(), position)
-
-    return [ranked[position] for position in sorted(range(len(ranked)), key=key)]

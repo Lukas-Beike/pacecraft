@@ -21,7 +21,6 @@ from backend.performance.canonical_recovery import (
     read_recovery_inputs,
 )
 from backend.performance.personal_recovery import personal_recovery
-from backend.performance.source_policy import NO_PREFERENCES, SourcePreferences
 from backend.runtime.ports import ObservationReader
 
 _USABLE: Final = {"ok", "provisional"}
@@ -60,7 +59,6 @@ def overnight_signals(
 def overnight_reader(
     database_manager: Any,
     observation_reader: Callable[[], ObservationReader],
-    source_preferences: Callable[[Any], SourcePreferences] | None,
     today: Callable[[], date],
 ) -> Callable[[], dict[str, dict[str, Any]]]:
     """A reader of this morning's signals in its own read transaction."""
@@ -69,14 +67,7 @@ def overnight_reader(
         day = today()
         with database_manager.reader() as db:
             recovery = read_recovery_inputs(
-                resolve_reader(observation_reader(), db),
-                db,
-                as_of=day,
-                preferences=(
-                    NO_PREFERENCES
-                    if source_preferences is None
-                    else source_preferences(db)
-                ),
+                resolve_reader(observation_reader(), db), db, as_of=day
             )
         return overnight_signals(recovery, day)
 

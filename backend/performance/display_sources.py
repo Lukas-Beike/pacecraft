@@ -15,11 +15,7 @@ from types import MappingProxyType
 from typing import Final
 
 from backend.canonical.vocabulary import MetricKind, ProviderId
-from backend.performance.source_policy import (
-    NO_PREFERENCES,
-    SourcePreferences,
-    preferred_provider,
-)
+from backend.performance.source_policy import preferred_provider
 
 _DISPLAY_KINDS: Final[Mapping[str, MetricKind]] = {
     "weight_kg": MetricKind.WEIGHT,
@@ -39,24 +35,16 @@ _DISPLAY_ONLY: Final[Mapping[str, ProviderId]] = {
 }
 
 
-def _derived(
-    preferences: SourcePreferences = NO_PREFERENCES,
-) -> Mapping[str, ProviderId]:
+def _derived() -> Mapping[str, ProviderId]:
     table: dict[str, ProviderId] = dict(_DISPLAY_ONLY)
     for key, kind in _DISPLAY_KINDS.items():
-        provider = preferred_provider(kind, preferences)
+        provider = preferred_provider(kind)
         if provider is None:
             raise ValueError(f"{kind.value} has no source rule")
         table[key] = provider
     return MappingProxyType(table)
 
 
-def preferred_providers(
-    preferences: SourcePreferences = NO_PREFERENCES,
-) -> dict[str, str]:
-    """Return the preference table as payload values: metric key to provider id.
-
-    The athlete's preferred source of a metric group replaces the rule's first
-    provider for that group's display keys.
-    """
-    return {key: provider.value for key, provider in _derived(preferences).items()}
+def preferred_providers() -> dict[str, str]:
+    """Return the preference table as payload values: metric key to provider id."""
+    return {key: provider.value for key, provider in _derived().items()}

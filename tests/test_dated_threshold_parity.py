@@ -51,7 +51,6 @@ from backend.performance.local_tss import (
     LocalLoad,
     session_local_load,
 )
-from backend.performance.source_policy import NO_PREFERENCES
 from backend.performance.threshold_staleness import ThresholdStalenessService
 from backend.planning.load_checks import load_thresholds
 from backend.planning.planned_unit_load import resolve_thresholds
@@ -193,7 +192,6 @@ class WatchLthrParityTests(unittest.TestCase):
             lambda: StubReader(self.observations),
             lambda: DAY,
             zone_configurations=lambda _db: self.configurations,
-            preferences=lambda _db: NO_PREFERENCES,
         )
         with mock.patch.object(
             canonical_domain_store, "local_zone_saved_days", return_value={}
@@ -206,7 +204,6 @@ class WatchLthrParityTests(unittest.TestCase):
             lambda: StubReader(self.observations),
             lambda: DAY,
             zone_configurations=lambda _db: old_set,
-            preferences=lambda _db: NO_PREFERENCES,
         )
         with mock.patch.object(
             canonical_domain_store, "local_zone_saved_days", return_value={}

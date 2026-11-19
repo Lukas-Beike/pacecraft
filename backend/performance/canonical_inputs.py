@@ -39,10 +39,6 @@ from backend.performance.garmin_canonical import (
     GarminCanonicalMetrics,
     read_garmin_state,
 )
-from backend.performance.source_policy import (
-    NO_PREFERENCES,
-    SourcePreferences,
-)
 from backend.runtime.ports import (
     ActivityMaxHrReader,
     ActivityRowAndSummaryReader,
@@ -91,8 +87,6 @@ class CanonicalPerformanceInputs:
     pending: bool = False
     backfill_failed: bool = False
     activities_synced_at: str | None = None
-    # The athlete's preferred source per metric group, read with these inputs.
-    preferences: SourcePreferences = NO_PREFERENCES
 
 
 # The inputs of a consumer without a canonical source: every value is unknown.
@@ -118,16 +112,8 @@ class CanonicalPerformanceSource:
     serving: Callable[[], CanonicalReadStatus] | None = None
     activity_summaries: Callable[[], ActivityRowAndSummaryReader] | None = None
     coverage: Callable[[], ProviderCoverageReader] | None = None
-    # Reads the athlete's preferred sources inside the caller's unit of work.
-    source_preferences: Callable[[Any], SourcePreferences] | None = None
     # Reads Körper's current weight and body fat (#3640); without it, unknown.
     current_body: BodyReader | None = None
-
-    def preferences_in(self, db: Any) -> SourcePreferences:
-        """Return the athlete's preferred sources; none without an accessor."""
-        if self.source_preferences is None:
-            return NO_PREFERENCES
-        return self.source_preferences(db)
 
     def activity_summary_reader(self) -> ActivityRowAndSummaryReader | None:
         """Return the configured activity summary reader, if any."""
@@ -251,7 +237,6 @@ def inputs_for_snapshot(
             activity_reader=source.activity_summary_reader(),
             as_of=as_of,
             include_local_load=True,
-            preferences=source.preferences_in(db),
             body=source.current_body,
         ),
     )
@@ -341,12 +326,7 @@ class _CarriedRows:
     recovery: CanonicalRecoveryInputs
     local_load_days: Mapping[str, float] | None
 
-    def inputs(
-        self,
-        *,
-        current: CanonicalCurrentInputs,
-        preferences: SourcePreferences = NO_PREFERENCES,
-    ) -> CanonicalPerformanceInputs:
+    def inputs(self, *, current: CanonicalCurrentInputs) -> CanonicalPerformanceInputs:
         return CanonicalPerformanceInputs(
             current=current,
             recovery=self.recovery,
@@ -355,7 +335,6 @@ class _CarriedRows:
             daily_health=self.daily_health,
             body=self.body,
             local_load_days=self.local_load_days,
-            preferences=preferences,
         )
 
 
@@ -366,13 +345,9 @@ def read_performance_inputs(
     activity_reader: ActivitySummaryReader | None = None,
     as_of: date,
     include_local_load: bool = False,
-    preferences: SourcePreferences = NO_PREFERENCES,
     body: BodyReader | None = None,
 ) -> CanonicalPerformanceInputs | None:
     """Read canonical activity summaries and provider values in one selected unit.
-
-    ``preferences`` (the athlete's preferred sources) is applied by every
-    selection over these inputs and carried with them.
 
     No snapshot section is read. None means no activity reader.
     ``as_of`` is the athlete-local day. ``include_local_load``
@@ -398,14 +373,11 @@ def read_performance_inputs(
             reader, db, start=as_of - timedelta(days=DAILY_HEALTH_DAYS), end=as_of
         ),
         body=read_body_inputs(reader, db, as_of),
-        recovery=read_recovery_inputs(reader, db, as_of=as_of, preferences=preferences),
+        recovery=read_recovery_inputs(reader, db, as_of=as_of),
         local_load_days=activity_reader.local_load_days(db)
         if include_local_load and isinstance(activity_reader, LocalLoadDayReader)
         else None,
     )
     return carried.inputs(
-        current=read_current_inputs(
-            reader, db, as_of=as_of, preferences=preferences, body=body
-        ),
-        preferences=preferences,
+        current=read_current_inputs(reader, db, as_of=as_of, body=body)
     )

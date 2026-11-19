@@ -166,7 +166,6 @@ class ActivityAnalysisReadService(ActivityReadService):
                     activity_reader=reader,
                     as_of=as_of,
                     include_local_load=True,
-                    preferences=source.preferences_in(db),
                 ),
             )
             summaries = None if canonical is None else canonical.activities
@@ -506,7 +505,6 @@ def _session_zone_settings(
                 for item in reader.observations(db, kind)
             ],
             configurations,
-            source.preferences_in(db),
         )
         return zone_settings_for(
             record.sport,
