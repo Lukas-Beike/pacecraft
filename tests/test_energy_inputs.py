@@ -586,6 +586,30 @@ class StoreAdapterTests(unittest.TestCase):
         self.assertEqual(reference, body["weight_kg"])
         self.assertAlmostEqual(80.17, reference or 0.0, places=2)
 
+    def test_the_lean_mass_is_carried_from_the_reading(self) -> None:
+        # #3617 item 1: 20 % at 85 kg forty days ago (68 kg lean), then 0.1 kg
+        # a day lost. With one reading the share is the prior 0.70, so 30 % of
+        # the 4 kg is lean: 68 - 1.2 = 66.8 kg, not 81 kg x 80 % = 64.8 kg.
+        end = date(2026, 11, 15)
+        first = end - timedelta(days=40)
+        weights = {first + timedelta(days=n): 85.0 - 0.1 * n for n in range(41)}
+        inputs = EnergyInputs(
+            {d: DayInputs(weight_kg=w) for d, w in weights.items()},
+            {first: 20.0},
+            rmr_kcal=1700.0,
+        )
+        trend = weight_trend(weights)
+        body = energy_inputs.resolve_body(inputs, trend, end)
+        assert body is not None
+        carried = 0.8 * trend[first] + 0.3 * (trend[end] - trend[first])
+        self.assertAlmostEqual(carried, body["lean_mass_kg"], places=6)
+        self.assertAlmostEqual(66.8, body["lean_mass_kg"], delta=0.05)
+        # A profile value has no date: its percentage applies to the day.
+        profile = replace(inputs, body_fat_pct={}, profile_body_fat_pct=20.0)
+        body = energy_inputs.resolve_body(profile, trend, end)
+        assert body is not None
+        self.assertAlmostEqual(0.8 * trend[end], body["lean_mass_kg"], places=6)
+
     def test_energy_basis_counts_the_latest_window_weighin_sources(self) -> None:
         # #3557: counts only, read over the latest 28-day window.
         seen: list[tuple[date, date]] = []
