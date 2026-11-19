@@ -1,8 +1,8 @@
 # M12 — Adaptive daily expenditure from intake and the weight trend
 
 - **Card:** M12
-- **Card version:** 6
-- **Method ID:** adaptive-expenditure v6 (#3100, #3187, #3255, #3552, #3551, #3553)
+- **Card version:** 7
+- **Method ID:** adaptive-expenditure v7 (#3100, #3187, #3255, #3552, #3551, #3553, #3555)
 - **Status:** method implemented (`backend/nutrition/energy_balance.py`); the reader, diagnostics and display follow (#3100, #3099)
 - **Classification:** model estimate
 - **Literature checked:** 2026-11-15
@@ -32,9 +32,14 @@ estimate. It never rewrites logged values and never falls back to a formula.
    and of the energy density, and the resting reference uses the same weight.
 2. **Energy density of a weight change:**
    `ρ = p × 9,441 + (1 − p) × 1,816` kcal/kg (39.5 MJ/kg fat and 7.6 MJ/kg lean,
-   R68). The fat share `p = FM / (FM + 10.4 kg)` follows Forbes' curve as used by
-   R68, with FM from the latest skinfold body fat. Without skinfolds,
-   `p = 0.75` (about 7,535 kcal/kg).
+   R68). The fat share `p` blends a prior 0.70 ± 0.15 with the measured share
+   by their precisions (athlete decision, #3555): the slope of the fat mass
+   (current weight × body fat) over the slope of the weight, through all
+   dated body fat values of one method up to the window's end, each with a
+   repeatability of 2 percentage points. Its SD is the fat mass's SD over
+   `sqrt(Σ(t − t̄)²)` and the weight slope; the posterior SD enters the band.
+   With fewer than two values 14 days apart, or under 0.1 kg of weight
+   change between them, `p = 0.70` (about 7,154 kcal/kg).
 3. **Stored energy per day:** `ρ × slope`, the least-squares slope of the
    window's own weigh-ins in kg/day. The current weight only supplies the
    mass for `ρ`.
@@ -136,9 +141,11 @@ bias that is the same on every day is not visible in the band.
 
 ## Deviations from the studied procedure
 
-- R68 runs a dynamic model. This uses its tissue energy densities and Forbes'
-  share on the window's net change only.
-- The fat share without skinfolds is a fixed assumption.
+- R68 runs a dynamic model. This uses its tissue energy densities on the
+  window's net change only.
+- The prior fat share 0.70 ± 0.15 is a product assumption between Forbes'
+  curve (about 0.55 at this body fat) and 0.80 for strength training with
+  high protein (#3555 review).
 
 ## Minimum data and stop rules
 
@@ -161,8 +168,9 @@ bias that is the same on every day is not visible in the band.
 | Rule | Value | Tag | Rationale |
 | --- | --- | --- | --- |
 | Fat / lean energy density | 9,441 / 1,816 kcal/kg | source | R68 (39.5 / 7.6 MJ/kg) |
-| Forbes constant | 10.4 kg | source | R68, Forbes' curve |
-| Fat share without skinfolds | 0.75 | product assumption | about 7,535 kcal/kg, near the common 7,700 |
+| Prior fat share | 0.70 ± 0.15 | product assumption | between Forbes' curve and 0.80 for strength training with high protein (#3555) |
+| Body fat repeatability | 2 percentage points | product assumption | upper end of the review's 1.5-2 for self-measured skinfolds (#3555) |
+| Minimum weight change for a measured share | 0.1 kg | product assumption | below it the share divides by noise |
 | Current weight | 28-day line at the latest weigh-in; mean below 3 weigh-ins or 7 days | product assumption | no lag on a steady change, damps single readings (#3551) |
 | Window / step | 28 / 7 days | product assumption | #3099, #3100 |
 | Complete day | ≥ 2 entries, ≥ 70 % of resting + TEF | product assumption | excludes clearly partial logging without dropping long training days (#3553) |
@@ -213,7 +221,7 @@ bias that is the same on every day is not visible in the band.
 | Constant | Value | Module | Code comment |
 | --- | --- | --- | --- |
 | `METHOD_ID` | `'adaptive-expenditure'` | `backend/nutrition/energy_balance.py` |  |
-| `METHOD_VERSION` | `6` | `backend/nutrition/energy_balance.py` | Bump when a formula or constant below changes the estimate. |
+| `METHOD_VERSION` | `7` | `backend/nutrition/energy_balance.py` | Bump when a formula or constant below changes the estimate. |
 | `WINDOW_DAYS` | `28` | `backend/nutrition/energy_balance.py` | Days per window and windows per week of the rolling view (#3099, #3100). |
 | `CURRENT_WEIGHT_DAYS` | `28` | `backend/nutrition/energy_balance.py` | A day's current weight is the least-squares line through the weigh-ins of this many days up to it, at its latest weigh-in, so a steady change has no lag (#3551); with fewer weigh-ins or a shorter span, their mean. |
 | `MIN_LINE_WEIGHINS` | `3` | `backend/nutrition/energy_balance.py` |  |
@@ -226,14 +234,14 @@ bias that is the same on every day is not visible in the band.
 | `FORMER_DAY_SHARE` | `0.6` | `backend/nutrition/energy_balance.py` | The former rule's share of the day's whole expenditure (resting + own activity + TEF); only the diagnostics count the complete days it dropped. |
 | `FAT_KCAL_PER_KG` | `9441.0` | `backend/nutrition/energy_balance.py` | Hall 2008 (Int J Obes 32:573): 39.5 MJ per kg fat and 7.6 MJ per kg lean tissue, in kcal/kg. |
 | `LEAN_KCAL_PER_KG` | `1816.0` | `backend/nutrition/energy_balance.py` |  |
-| `FORBES_CONSTANT_KG` | `10.4` | `backend/nutrition/energy_balance.py` | Forbes' curve as used by Hall 2008: the fat share of a weight change is FM / (FM + 10.4 kg), FM the fat mass in kg. |
-| `DEFAULT_FAT_SHARE` | `0.75` | `backend/nutrition/energy_balance.py` | Fat share of a weight change without a body-fat measurement: 0.75 gives about 7,500 kcal/kg, near the common 7,700 (product assumption). |
+| `FAT_SHARE_PRIOR` | `0.7` | `backend/nutrition/energy_balance.py` | The fat share of a weight change is a precision-weighted blend of a prior and the slope of the phase's measured fat mass (athlete decision, #3555): the prior 0.70 +- 0.15 lies between Forbes' curve (about 0.55 at this body fat) and the 0.80 of strength training with high protein, and covers both. |
+| `FAT_SHARE_PRIOR_SD` | `0.15` | `backend/nutrition/energy_balance.py` |  |
+| `BODY_FAT_REPEATABILITY_PCT` | `2.0` | `backend/nutrition/energy_balance.py` | Repeatability of one self-measured body fat value (percentage points, SD): the upper end of the review's 1.5-2 for skinfolds (#3555). |
+| `MIN_FAT_SHARE_WEIGHT_CHANGE_KG` | `0.1` | `backend/nutrition/energy_balance.py` | Below this weight change between the first and last measurement the measured share divides by noise, so the prior stands alone (product assumption). |
 | `FLAGGED_DAY_UNCERTAINTY` | `0.25` | `backend/nutrition/energy_balance.py` | Extra uncertainty of a flagged (estimated) meal: a share of its logged kcal. |
 | `BAND_Z` | `1.96` | `backend/nutrition/energy_balance.py` | Two-sided 95 % band multiplier. |
 | `T_QUANTILE_95` | `{1: 12.706, 2: 4.303, 3: 3.182, 4: 2.776, 5: 2.571, 6: 2.447, 7: 2.365, 8: 2.306, 9: 2.262, 10: 2... (sha256 e00a81c5)` | `backend/nutrition/energy_balance.py` | Two-sided 95 % Student t quantiles by degrees of freedom (standard table); a window's band uses the smaller of its intake (days - 1) and weight-slope (weigh-ins - 2) degrees of freedom, BAND_Z beyond the table (#3187 item 10). |
-| `FAT_SHARE_SD` | `0.144` | `backend/nutrition/energy_balance.py` | Uncertainty of the fat share of a weight change (SD), so the energy density enters the band: a share between 0.5 and 1.0 taken as uniform, 0.5 / sqrt(12) (product assumption, #3187 item 10). |
-| `MEASURED_FAT_SD_PCT` | `1.0` | `backend/nutrition/energy_balance.py` | Precision of one body fat measurement by the same method (percentage points, test-retest), the band of a measured fat-mass change (#3477). |
-| `MIN_FAT_SPAN_DAYS` | `14` | `backend/nutrition/energy_balance.py` | The shortest span between the first and last measurement of a measured change: a shorter one divides the measurement noise by too few days. |
+| `MIN_FAT_SPAN_DAYS` | `14` | `backend/nutrition/energy_balance.py` | The shortest span between the first and last measurement that informs the share: a shorter one divides the measurement noise by too few days. |
 | `CALIBRATION_PRIOR_SD` | `0.1` | `backend/nutrition/energy_balance.py` | The one activity calibration factor: prior 1 +- 0.10, clamped to 0.85-1.15, fitted on complete windows of the last 12 weeks (method comment, #3100). |
 | `CALIBRATION_BOUNDS` | `(0.85, 1.15)` | `backend/nutrition/energy_balance.py` |  |
 | `MIN_CALIBRATION_WINDOWS` | `4` | `backend/nutrition/energy_balance.py` | Windows needed before the factor moves from 1, and before a flagged-meal bias is estimated. |

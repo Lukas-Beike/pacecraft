@@ -13,8 +13,9 @@ from backend.performance.activity_energy import TEF_ERROR_KCAL
 
 END = date(2026, 11, 15)
 TRUE_TDEE = 2600.0
-# Default composition: 0.75 x 9,441 + 0.25 x 1,816 = 7,534.75 kcal/kg.
-DENSITY = 7534.75
+# The prior fat share alone (#3555): 0.70 x 9,441 + 0.30 x 1,816 = 7,153.5 kcal/kg.
+DENSITY = 7153.5
+BAND_Z = balance.BAND_Z
 
 
 def constant(value: float) -> Callable[[int], float]:
@@ -65,11 +66,9 @@ def series(
 
 
 class CompositionAndTrendTests(unittest.TestCase):
-    def test_energy_density_follows_forbes_and_hall(self) -> None:
-        self.assertAlmostEqual(balance.energy_density(80.0, None), DENSITY)
-        # 75 kg at 15 %: fat mass 11.25 kg, share 11.25 / 21.65 = 0.51963;
-        # 0.51963 x 9,441 + 0.48037 x 1,816 = 5,778.2 kcal/kg.
-        self.assertAlmostEqual(balance.energy_density(75.0, 15.0), 5778.2, places=0)
+    def test_energy_density_follows_the_share_and_hall(self) -> None:
+        self.assertAlmostEqual(balance.energy_density(0.70), DENSITY)
+        self.assertAlmostEqual(balance.energy_density(1.0), 9441.0)
 
     def test_the_current_weight_follows_a_steady_change_without_lag(self) -> None:
         # #3551: 80 kg today after a steady loss (or gain) of 1 kg per week,
@@ -98,108 +97,95 @@ class CompositionAndTrendTests(unittest.TestCase):
         self.assertEqual(balance.weight_trend({}), {})
 
 
-class MeasuredFatChangeTests(unittest.TestCase):
-    """#3477: two dated body fat measurements of one method give the measured
-    fat-mass change; otherwise Forbes stays."""
+class FatShareBlendTests(unittest.TestCase):
+    """#3555: the fat share blends the prior 0.70 +- 0.15 with the slope of the
+    phase's measured fat mass, weighted by their precisions."""
 
-    START = END - timedelta(days=27)
-
-    def inputs(self, skinfolds=None, device=None) -> balance.EnergyInputs:
-        return balance.EnergyInputs(
-            {}, skinfolds or {}, rmr_kcal=1700.0, device_body_fat=device or {}
+    def phase(self, weeks: int, every: int = 7, true_share: float = 0.80):
+        """85 kg losing 0.5 kg/week; body fat measured every ``every`` days as if
+        ``true_share`` of the loss were fat (from 20 %), without noise."""
+        first = END - timedelta(days=7 * weeks)
+        days, fats = {}, {}
+        for n in range(7 * weeks + 1):
+            day = first + timedelta(days=n)
+            weight = 85.0 - 0.5 * n / 7
+            days[day] = balance.DayInputs(weight_kg=weight)
+            if n % every == 0:
+                fat_mass = 17.0 + true_share * (weight - 85.0)
+                fats[day] = 100.0 * fat_mass / weight
+        inputs = balance.EnergyInputs(days, fats, rmr_kcal=1700.0)
+        trend = balance.weight_trend(
+            {d: v.weight_kg for d, v in days.items() if v.weight_kg is not None}
         )
+        return inputs, trend
 
-    def test_two_skinfolds_give_the_measured_change(self) -> None:
-        weights = {self.START: 80.0, END: 78.0}
-        measured = balance._measured_store(
-            self.inputs({self.START: 20.0, END: 19.0}), weights, self.START, END
-        )
-        assert measured is not None
-        # Fat 16.0 -> 14.82 kg (-1.18), lean the rest of -2.0 kg (-0.82):
-        # (-1.18 x 9,441 - 0.82 x 1,816) / 27 days = -467.8 kcal/day.
-        self.assertAlmostEqual(measured[0], -467.8, places=1)
-        # 1 percentage point per measurement: hypot(80, 78) x 1 % = 1.117 kg
-        # of fat, x (9,441 - 1,816) / 27 = 315.5 kcal/day.
-        self.assertAlmostEqual(measured[1], 315.5, places=1)
-
-    def test_one_measurement_or_mixed_methods_keep_forbes(self) -> None:
-        weights = {self.START: 80.0, END: 78.0}
-        for inputs in (
-            self.inputs({END: 19.0}),
-            # A skinfold and an entered value are never mixed.
-            self.inputs({self.START: 20.0}, {END: (19.0, None)}),
-            # Outside the window it does not count.
-            self.inputs({self.START - timedelta(days=1): 20.0, END: 19.0}),
-            # Two values one day apart would divide the noise by one day (Gitar).
-            self.inputs(
-                device={END - timedelta(days=1): (20.0, None), END: (19.5, None)}
-            ),
-        ):
-            with self.subTest(inputs.body_fat_pct):
-                self.assertIsNone(
-                    balance._measured_store(inputs, weights, self.START, END)
+    def test_without_two_measurements_the_prior_stands_alone(self) -> None:
+        inputs, trend = self.phase(4)
+        for fats in ({}, {END: 19.0}):
+            with self.subTest(fats=fats):
+                share = balance.fat_share(
+                    replace(inputs, body_fat_pct=fats), trend, END
                 )
-        # Two entered values (the profile history counts as entered) do count.
-        entered = self.inputs(device={self.START: (20.0, None), END: (19.0, None)})
-        self.assertIsNotNone(balance._measured_store(entered, weights, self.START, END))
+                self.assertEqual((0.70, 0.15, 0.0), share[:3])
+        # A skinfold and an entered value are never mixed into one slope.
+        mixed = replace(
+            inputs,
+            body_fat_pct={END - timedelta(days=21): 20.0},
+            device_body_fat={END: (19.0, None)},
+        )
+        self.assertEqual(0.0, balance.fat_share(mixed, trend, END).measured_weight)
 
-    def test_the_store_carries_its_terms_for_the_deficit_card(self) -> None:
-        # #3548: the boxes show weight, body fat, the fat kg and the span.
-        weights = {self.START: 80.0, END: 78.0}
-        measured = balance._measured_store(
-            self.inputs({self.START: 20.0, END: 19.0}), weights, self.START, END
-        )
-        assert measured is not None
-        self.assertEqual(
-            ("measured", 27, 80.0, 78.0, 20.0, 19.0, "body_fat"),
-            (
-                measured.method,
-                measured.days,
-                measured.weight_start_kg,
-                measured.weight_end_kg,
-                measured.fat_pct_start,
-                measured.fat_pct_end,
-                measured.uncertainty,
-            ),
-        )
-        self.assertAlmostEqual(measured.fat_change_kg, -1.18, places=2)
-        # Forbes: the fitted line from the first to the last weigh-in, the
-        # share from the latest body fat, which is its only percentage.
-        line = {self.START + timedelta(days=n): 80.0 - n / 13.5 for n in range(28)}
-        forbes = balance._stored_energy(
-            self.inputs({END: 19.0}), balance.weight_trend(line), line, self.START, END
-        )
-        self.assertEqual(
-            ("forbes", 27, None, 19.0),
-            (forbes.method, forbes.days, forbes.fat_pct_start, forbes.fat_pct_end),
-        )
-        self.assertAlmostEqual(forbes.weight_start_kg, 80.0, places=6)
-        self.assertAlmostEqual(forbes.weight_end_kg, 78.0, places=6)
-        share = balance.fat_share(78.0, 19.0)
-        self.assertAlmostEqual(forbes.fat_change_kg, -2.0 * share, places=1)
-        # A straight line has no scatter: the fat share is the main uncertainty.
-        self.assertEqual("fat_share", forbes.uncertainty)
+    def test_two_readings_14_days_apart_stay_near_the_prior(self) -> None:
+        # Repeatability 2 points: 84 kg x 2 % = 1.68 kg of fat per reading over
+        # a 1 kg loss give the measured share an SD of about 2.4, so it weighs
+        # little and the share stays near 0.70 with a narrow band.
+        inputs, trend = self.phase(2, every=14)
+        share = balance.fat_share(inputs, trend, END)
+        self.assertLess(share.measured_weight, 0.01)
+        self.assertAlmostEqual(0.70, share.share, delta=0.01)
+        self.assertAlmostEqual(0.15, share.sd, delta=0.001)
+
+    def test_weekly_readings_weigh_more_the_longer_they_run(self) -> None:
+        weights = []
+        for weeks in (12, 24):
+            inputs, trend = self.phase(weeks)
+            share = balance.fat_share(inputs, trend, END)
+            weights.append(share.measured_weight)
+            # The share moves from the prior towards the measured 0.80.
+            self.assertGreater(share.share, 0.70)
+            self.assertLess(share.share, 0.80)
+            self.assertLess(share.sd, 0.15)
+        # 12 weeks, 13 readings: measured SD 2 % x 82 kg / sqrt(sxx = 8,918
+        # days^2) / 0.0714 kg/day = 0.243, weight 0.15^2 / (0.15^2 + 0.243^2) =
+        # 0.28; 24 weeks, 25 readings: sxx 61,250, SD 0.091, weight 0.73.
+        self.assertAlmostEqual(0.28, weights[0], delta=0.01)
+        self.assertAlmostEqual(0.73, weights[1], delta=0.02)
+
+    def test_the_store_carries_its_terms_and_a_narrow_band(self) -> None:
+        # #3548 boxes and #3555: the window's weigh-in slope at the blended
+        # share; two readings 14 days apart no longer widen the band to about
+        # +-1,400 kcal (the former rule's 1 point over 14 days).
+        inputs, trend = self.phase(4, every=14)
+        weights = {d: v.weight_kg for d, v in inputs.days.items() if v.weight_kg}
+        window = {d: w for d, w in weights.items() if d > END - timedelta(days=28)}
+        store = balance._stored_energy(inputs, trend, window, END)
+        self.assertEqual("measured", store.method)
+        self.assertEqual(27, store.days)
         self.assertAlmostEqual(
-            forbes.kcal_per_day * 27,
-            forbes.fat_change_kg * balance.FAT_KCAL_PER_KG
-            + (-2.0 - forbes.fat_change_kg) * balance.LEAN_KCAL_PER_KG,
-            delta=40,
+            store.weight_end_kg - store.weight_start_kg, -27 / 14, places=6
         )
-
-    def test_the_window_names_its_method(self) -> None:
-        inputs = series(constant(2100.0), days=28)
-        first, last = min(inputs.days), max(inputs.days)
-        for fats, method in (({}, "forbes"), ({first: 20.0, last: 19.5}, "measured")):
-            with self.subTest(method):
-                window = balance._window(
-                    replace(inputs, body_fat_pct=fats),
-                    balance.weight_trend(
-                        {d: v.weight_kg for d, v in inputs.days.items() if v.weight_kg}
-                    ),
-                    END,
-                    1.0,
-                )
-                self.assertEqual(method, window.store_method)
+        self.assertAlmostEqual(
+            store.fat_change_kg, -27 / 14 * store.fat_share, places=6
+        )
+        self.assertLess(BAND_Z * store.sd, 200)
+        self.assertEqual("fat_share", store.uncertainty)
+        prior = balance._stored_energy(
+            replace(inputs, body_fat_pct={}), trend, window, END
+        )
+        self.assertEqual(
+            ("prior", 0.70, 0.0), (prior.method, prior.fat_share, prior.measured_weight)
+        )
+        self.assertAlmostEqual(prior.kcal_per_day, -0.5 / 7 * DENSITY, places=6)
 
 
 class CompleteDayTests(unittest.TestCase):
@@ -290,7 +276,7 @@ class AdaptiveTdeeTests(unittest.TestCase):
         self.assertAlmostEqual(tdee.kcal, TRUE_TDEE, delta=60)
         self.assertEqual(balance.history_start(END), END - timedelta(days=104))
         # Losing 500 kcal/day from the first weigh-in: the weight falls by
-        # 500 / 7,534.75 kg a day, which the weigh-ins' slope sees from day one,
+        # 500 / 7,153.5 kg a day, which the weigh-ins' slope sees from day one,
         # so even the window starting at the first weigh-in shows 2,600.
         losing = balance.energy_windows(series(constant(2100.0), days=41), END)
         for window in losing[-3:]:
@@ -303,12 +289,12 @@ class AdaptiveTdeeTests(unittest.TestCase):
         self.assertEqual(balance.t_quantile(35), 2.042)
         self.assertEqual(balance.t_quantile(500), 1.96)
         # Losing 500 kcal/day with exact weigh-ins and constant intake: only the
-        # density term is left. Slope 500 / 7,534.75 = 0.066359 kg/day; density
-        # SD 0.144 x (9,441 - 1,816) = 1,098.0 kcal/kg; 72.862 kcal/day. 28 days
-        # and 28 weigh-ins give min(27, 26) dof: t = 2.056, band 149.80 kcal.
+        # density term is left. Slope 500 / 7,153.5 = 0.069896 kg/day; the prior
+        # share's SD 0.15 x (9,441 - 1,816) = 1,143.75 kcal/kg; 79.943 kcal/day.
+        # 28 days and 28 weigh-ins give min(27, 26) dof: t = 2.056, band 164.36.
         window = balance.energy_windows(series(constant(2100.0)), END, weeks=1)[-1]
         assert window.adaptive_tdee is not None
-        self.assertAlmostEqual(window.adaptive_tdee.band_kcal, 149.80, delta=0.05)
+        self.assertAlmostEqual(window.adaptive_tdee.band_kcal, 164.36, delta=0.05)
 
     def test_incomplete_days_are_dropped(self) -> None:
         day = balance.DayInputs(intake_kcal=800, entries=3, activity_kcal=600)

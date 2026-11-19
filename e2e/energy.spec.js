@@ -93,7 +93,7 @@ test("@responsive the own row names everyday energy the steps do not see", async
       errors_kcal: [], mean_error_kcal: null, pending_parts: [], split: { resting_kcal: 1839, ...parts } };
     const own = { source: "own", resting_kcal: 1839, resting_band_kcal: 219, resting_implausible: false, total_kcal: 2989, total_band_kcal: 150,
       split: { resting_kcal: 1839, ...parts, resting_source: "katch_mcardle", unmeasured_kcal: 300, unmeasured_band_kcal: 150 },
-      pending_parts: [], window_days: 28, store_method: "forbes" };
+      pending_parts: [], window_days: 28, fat_share: { share_pct: 70, prior_pct: 70, measured_pct: 0 } };
     const others = data.rows.filter((row) => !["katch_mcardle", "own"].includes(row.source));
     await route.fulfill({ response, json: { ...data, rows: [katch, ...others, own] } });
   });
@@ -342,14 +342,16 @@ for (const theme of ["light", "dark"]) {
   });
 }
 
-// #3548: Verlauf's deficit card for both store methods. The read's deficit is shaped here (the
+// #3548, #3555: Verlauf's deficit card with measurements in the fat share and with the prior alone. The read's deficit is shaped here (the
 // values come from the method tests); its hero, boxes and text must agree.
 const DEFICITS = {
   measured: { days: 28, deficit_kcal: 565, band_kcal: 235, method: "measured", span_days: 28, weight_start_kg: 91.2, weight_end_kg: 89.2,
-    fat_pct_start: 15.5, fat_pct_end: 14.1, fat_change_kg: -1.6, fat_share_pct: 80, stored_kcal: -15820, uncertainty: "body_fat",
+    fat_pct_start: 15.5, fat_pct_end: 14.1, fat_change_kg: -1.6, fat_share_pct: 80, fat_share: { share_pct: 80, prior_pct: 70, measured_pct: 28 },
+    stored_kcal: -15820, uncertainty: "fat_share",
     total_kcal: 3800, device_total_kcal: 3100, goal: { goal: "lose", goal_kcal: 500, status: "in" } },
-  forbes: { days: 28, deficit_kcal: 420, band_kcal: 260, method: "forbes", span_days: 27, weight_start_kg: 80.4, weight_end_kg: 78.9,
-    fat_pct_start: null, fat_pct_end: 18, fat_change_kg: -0.9, fat_share_pct: 60, stored_kcal: -11340, uncertainty: "fat_share",
+  prior: { days: 28, deficit_kcal: 420, band_kcal: 260, method: "prior", span_days: 27, weight_start_kg: 80.4, weight_end_kg: 78.9,
+    fat_pct_start: null, fat_pct_end: 18, fat_change_kg: -1.1, fat_share_pct: 70, fat_share: { share_pct: 70, prior_pct: 70, measured_pct: 0 },
+    stored_kcal: -11340, uncertainty: "fat_share",
     total_kcal: 3300, device_total_kcal: 2950, goal: null },
 };
 for (const [method, deficit] of Object.entries(DEFICITS)) {
@@ -377,7 +379,8 @@ for (const [method, deficit] of Object.entries(DEFICITS)) {
     await expect(text).toContainText(`rund ${deficit.total_kcal.toLocaleString("de-DE")} kcal`);
     if (method === "measured") {
       await expect(boxes.nth(1)).toContainText("15,5 → 14,1 %");
-      await expect(text).toContainText("von 15,5 % auf 14,1 % gesunken – etwa 1,6 kg Fett");
+      await expect(text).toContainText("von 15,5 % auf 14,1 % gesunken. Faustregel und Messungen zusammen nehmen davon etwa 80 % als Fett – etwa 1,6 kg");
+      await expect(boxes.nth(2)).toContainText("Faustregel 70 %, zu 28 % gemessen");
       await expect(card.locator(".energy-deficit-status")).toHaveText("Ziel: 500 kcal Defizit · ✓ im Ziel");
       // The span is drawn, and the estimate and the goal marker sit inside it, in their order.
       const marks = await card.locator(".energy-deficit-bar").evaluate((bar) => Object.fromEntries([...bar.children].map((node) => {
@@ -394,8 +397,8 @@ for (const [method, deficit] of Object.entries(DEFICITS)) {
       expect(marks["energy-deficit-goal"].left).toBeLessThan(marks["energy-deficit-mark"].left);
     } else {
       await expect(boxes.nth(1)).toContainText("nur eine Messung");
-      await expect(boxes.nth(2)).toContainText("Faustregel ≈ 60 %");
-      await expect(text).toContainText("Faustregel davon etwa 60 % als Fett – etwa 0,9 kg");
+      await expect(boxes.nth(2)).toContainText("≈ 70 % · Faustregel 70 %");
+      await expect(text).toContainText("Faustregel davon etwa 70 % als Fett – etwa 1,1 kg");
       await expect(card.locator(".energy-deficit-bar")).toHaveCount(0);
     }
     // The boxes stay inside the card, also on a phone.

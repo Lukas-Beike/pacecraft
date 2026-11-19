@@ -1837,14 +1837,22 @@ function energyMissingCell(reason) {
 
 // Under a row's name: the formulas' body fat source, "bis jetzt" for today, and where the own
 // row's resting rate comes from: the last 28 days (#3531).
-// The own row also names how its weight change split into fat and lean mass (#3477).
-const ENERGY_STORE_METHODS = { measured: "Fettanteil gemessen", forbes: "Fettanteil geschätzt (Forbes)" };
+// The own row also names how its weight change split into fat and lean mass: the rule of thumb
+// blended with the measurements, and their weight in it (athlete decision, #3555).
+function energyFatShareRule(share) {
+  const prior = `Faustregel ${share.prior_pct} %`;
+  return share.measured_pct > 0 ? `${prior}, zu ${share.measured_pct} % gemessen` : prior;
+}
+
+function energyFatShareNote(share) {
+  return share ? `Fettanteil: ${energyFatShareRule(share)}` : "";
+}
 
 function energyRowNote(read, source, row) {
   if (source === "own") {
     // Split (#3550): Ruhe is the named reference, so the 28 days give the rest above it.
     const origin = `${row.split?.unmeasured_kcal == null ? "Ruhe" : "nicht erfasster Alltag"} aus ${row.window_days} Tagen`;
-    const parts = [row.window_days ? origin : "", ENERGY_STORE_METHODS[row.store_method] || "", read.day_partial ? "bis jetzt" : ""].filter(Boolean);
+    const parts = [row.window_days ? origin : "", energyFatShareNote(row.fat_share), read.day_partial ? "bis jetzt" : ""].filter(Boolean);
     return parts.length ? [h("small", null, parts.join(" · "))] : [];
   }
   const parts = [ENERGY_FORMULAS.has(source) && read.body ? `KFA: ${read.body.label}` : "", energyRestingFrom(read, row), read.day_partial ? "bis jetzt" : ""].filter(Boolean);
@@ -1895,7 +1903,7 @@ function energyTableHead() {
 // "Dein Defizit, letzte 28 Tage" (#3548) replaces Verlauf's 28-day own row: the energy per day
 // from the body stores as the hero, the goal marker, the boxes weight and body fat → fat → kcal per
 // day, and a short text (the athlete asked for it), with the flagged-meal rows under it.
-const DEFICIT_UNCERTAINTY = { body_fat: "Messfehler des Körperfetts", fat_share: "Fettanteil nur geschätzt (Faustregel)", weight_scatter: "Schwankungen der Wiegungen" };
+const DEFICIT_UNCERTAINTY = { fat_share: "Fettanteil (Faustregel und Messungen)", weight_scatter: "Schwankungen der Wiegungen" };
 const DEFICIT_GOAL_STATUS = { in: "✓ im Ziel", under: "unter Ziel", over: "über Ziel" };
 
 function deficitDecimal(value) {
@@ -1952,7 +1960,7 @@ function deficitBoxes(card) {
   return h("ol", "energy-deficit-flow",
     box("weight", "Gewicht", `${deficitSigned(change)} kg`, `${deficitDecimal(card.weight_start_kg)} → ${deficitDecimal(card.weight_end_kg)}`),
     box("body_fat", "Körperfett", fat, null),
-    box("fat", "davon Fett", `≈ ${deficitDecimal(Math.abs(card.fat_change_kg))} kg`, measured || card.fat_share_pct == null ? null : `Faustregel ≈ ${card.fat_share_pct} %`),
+    box("fat", "davon Fett", `≈ ${deficitDecimal(Math.abs(card.fat_change_kg))} kg`, card.fat_share ? `≈ ${card.fat_share.share_pct} % · ${energyFatShareRule(card.fat_share)}` : null),
     box("kcal", "pro Tag", `≈ ${formatWhole(Math.abs(card.deficit_kcal))} kcal`, `${formatWhole(Math.abs(card.stored_kcal))} kcal ÷ ${card.span_days} Tage`));
 }
 
@@ -1963,9 +1971,10 @@ function deficitText(card, deviceLabel) {
   const weight = change <= 0 ? `Du hast ${kg} kg abgenommen` : `Du hast ${kg} kg zugenommen`;
   const fatKg = deficitDecimal(Math.abs(card.fat_change_kg));
   const moved = card.fat_pct_end <= card.fat_pct_start ? "gesunken" : "gestiegen";
+  const share = card.fat_share?.share_pct ?? "–";
   const fat = card.method === "measured"
-    ? `, dein Körperfett ist von ${deficitDecimal(card.fat_pct_start)} % auf ${deficitDecimal(card.fat_pct_end)} % ${moved} – etwa ${fatKg} kg Fett.`
-    : `. Ohne zweite Körperfettmessung schätzt die Faustregel davon etwa ${card.fat_share_pct ?? "–"} % als Fett – etwa ${fatKg} kg.`;
+    ? `, dein Körperfett ist von ${deficitDecimal(card.fat_pct_start)} % auf ${deficitDecimal(card.fat_pct_end)} % ${moved}. Faustregel und Messungen zusammen nehmen davon etwa ${share} % als Fett – etwa ${fatKg} kg.`
+    : `. Ohne zweite Körperfettmessung schätzt die Faustregel davon etwa ${share} % als Fett – etwa ${fatKg} kg.`;
   const balance = `Das entspricht einem ${card.deficit_kcal >= 0 ? "Defizit" : "Überschuss"} von etwa ${formatWhole(Math.abs(card.deficit_kcal))} kcal pro Tag.`;
   const device = card.device_total_kcal == null ? "" : ` (${deviceLabel || "Gerät"}: ${formatWhole(card.device_total_kcal)})`;
   return `${weight}${fat} ${balance} Dein echter Verbrauch lag damit bei rund ${formatWhole(card.total_kcal)} kcal${device}.`;

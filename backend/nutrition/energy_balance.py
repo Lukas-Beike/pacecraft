@@ -23,7 +23,7 @@ from backend.performance.activity_energy import TEF_ERROR_KCAL, tef_kcal
 
 METHOD_ID = "adaptive-expenditure"
 # Bump when a formula or constant below changes the estimate.
-METHOD_VERSION = 6
+METHOD_VERSION = 7
 # Days per window and windows per week of the rolling view (#3099, #3100).
 WINDOW_DAYS = 28
 # A day's current weight is the least-squares line through the weigh-ins of
@@ -51,12 +51,18 @@ FORMER_DAY_SHARE = 0.6
 # tissue, in kcal/kg.
 FAT_KCAL_PER_KG = 9441.0
 LEAN_KCAL_PER_KG = 1816.0
-# Forbes' curve as used by Hall 2008: the fat share of a weight change is
-# FM / (FM + 10.4 kg), FM the fat mass in kg.
-FORBES_CONSTANT_KG = 10.4
-# Fat share of a weight change without a body-fat measurement: 0.75 gives about
-# 7,500 kcal/kg, near the common 7,700 (product assumption).
-DEFAULT_FAT_SHARE = 0.75
+# The fat share of a weight change is a precision-weighted blend of a prior
+# and the slope of the phase's measured fat mass (athlete decision, #3555):
+# the prior 0.70 +- 0.15 lies between Forbes' curve (about 0.55 at this body
+# fat) and the 0.80 of strength training with high protein, and covers both.
+FAT_SHARE_PRIOR = 0.70
+FAT_SHARE_PRIOR_SD = 0.15
+# Repeatability of one self-measured body fat value (percentage points, SD):
+# the upper end of the review's 1.5-2 for skinfolds (#3555).
+BODY_FAT_REPEATABILITY_PCT = 2.0
+# Below this weight change between the first and last measurement the measured
+# share divides by noise, so the prior stands alone (product assumption).
+MIN_FAT_SHARE_WEIGHT_CHANGE_KG = 0.1
 # Extra uncertainty of a flagged (estimated) meal: a share of its logged kcal.
 FLAGGED_DAY_UNCERTAINTY = 0.25
 # Two-sided 95 % band multiplier.
@@ -72,15 +78,8 @@ T_QUANTILE_95 = {
     26: 2.056, 27: 2.052, 28: 2.048, 29: 2.045, 30: 2.042, 40: 2.021,
     60: 2.000, 120: 1.980,
 }  # fmt: skip
-# Uncertainty of the fat share of a weight change (SD), so the energy density
-# enters the band: a share between 0.5 and 1.0 taken as uniform, 0.5 / sqrt(12)
-# (product assumption, #3187 item 10).
-FAT_SHARE_SD = 0.144
-# Precision of one body fat measurement by the same method (percentage points,
-# test-retest), the band of a measured fat-mass change (#3477).
-MEASURED_FAT_SD_PCT = 1.0
-# The shortest span between the first and last measurement of a measured
-# change: a shorter one divides the measurement noise by too few days.
+# The shortest span between the first and last measurement that informs the
+# share: a shorter one divides the measurement noise by too few days.
 MIN_FAT_SPAN_DAYS = 14
 # The one activity calibration factor: prior 1 +- 0.10, clamped to 0.85-1.15,
 # fitted on complete windows of the last 12 weeks (method comment, #3100).
@@ -156,12 +155,16 @@ class StoredEnergy(NamedTuple):
     weight_start_kg: float
     weight_end_kg: float
     fat_change_kg: float
-    # Measured: the two measurements; Forbes: only the latest one, if any.
+    # The first and last measurement that informed the share, else only the
+    # latest one, if any.
     fat_pct_start: float | None
     fat_pct_end: float | None
-    # The main source of the error: "body_fat" (measurement), "fat_share"
-    # (Forbes' split) or "weight_scatter" (the weigh-ins around their line).
+    # The main source of the error: "fat_share" (the blended split) or
+    # "weight_scatter" (the weigh-ins around their line).
     uncertainty: str
+    # The blended fat share and the measurements' weight in it, 0 to 1 (#3555).
+    fat_share: float = FAT_SHARE_PRIOR
+    measured_weight: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -198,9 +201,6 @@ class EnergyWindow:
     sport_kcal: float | None = None
     # The k applied to this window's activity (1.0 while it stays the prior).
     calibration_factor: float = 1.0
-    # How the stored energy split fat and lean mass: "measured" from two dated
-    # body fat measurements, else "forbes"; None without an estimate (#3477).
-    store_method: str | None = None
     # Its terms for the deficit card (#3548); None without an estimate.
     store: StoredEnergy | None = None
     # The mean of the days' activity errors, uncalibrated (#3552): a method's
@@ -248,17 +248,8 @@ def _line_at_latest(points: Sequence[tuple[date, float]]) -> float:
     return mean_y - sxy / sxx * mean_x
 
 
-def fat_share(weight_kg: float, body_fat_pct: float | None) -> float:
-    """Fat share of a weight change: Forbes' curve, else the default."""
-    if body_fat_pct is None:
-        return DEFAULT_FAT_SHARE
-    fat_mass = weight_kg * body_fat_pct / 100.0
-    return fat_mass / (fat_mass + FORBES_CONSTANT_KG)
-
-
-def energy_density(weight_kg: float, body_fat_pct: float | None) -> float:
-    """kcal per kg of weight change for the current body composition (Hall 2008)."""
-    share = fat_share(weight_kg, body_fat_pct)
+def energy_density(share: float) -> float:
+    """kcal per kg of weight change with this fat share (Hall 2008)."""
     return share * FAT_KCAL_PER_KG + (1.0 - share) * LEAN_KCAL_PER_KG
 
 
@@ -337,45 +328,63 @@ def _fat_series(inputs: EnergyInputs) -> list[dict[date, float]]:
     return [dict(inputs.body_fat_pct), entered, device]
 
 
-def _measured_store(
-    inputs: EnergyInputs, weights: Mapping[date, float], start: date, end: date
-) -> StoredEnergy | None:
-    """Stored energy per day from the measured fat-mass change, and its error.
+class FatShare(NamedTuple):
+    """The blended fat share of a weight change, its SD, the measurements'
+    weight in it (0 to 1) and the first and last measurement used (#3555)."""
 
-    The first method with two dated measurements in the window gives the fat
-    mass (weight x body fat, the weigh-in nearest each day) at its first and
-    last one; lean mass is the rest of the weight change (athlete decision,
-    #3477). Methods are never mixed. None without two measurements at least
-    ``MIN_FAT_SPAN_DAYS`` apart (Gitar).
+    share: float
+    sd: float
+    measured_weight: float = 0.0
+    pct_first: float | None = None
+    pct_last: float | None = None
+
+
+def _slope(xs: Sequence[float], ys: Sequence[float]) -> tuple[float, float]:
+    """The least-squares slope and the spread of ``xs`` (sum of squares)."""
+    mean_x, mean_y = statistics.fmean(xs), statistics.fmean(ys)
+    sxx = sum((x - mean_x) ** 2 for x in xs)
+    sxy = sum((x - mean_x) * (y - mean_y) for x, y in zip(xs, ys, strict=True))
+    return sxy / sxx, sxx
+
+
+def fat_share(inputs: EnergyInputs, trend: Mapping[date, float], end: date) -> FatShare:
+    """The fat share of a weight change up to ``end``: the prior blended with
+    the measured one by their precisions (athlete decision, #3555).
+
+    The measured share is the slope of the fat mass (the day's current weight x
+    body fat) over the slope of the weight, through all measurements of one
+    method up to ``end`` that have a current weight; each fat mass carries the
+    repeatability ``BODY_FAT_REPEATABILITY_PCT``. Its weight grows with the
+    number of measurements and their span; with fewer than two at least
+    ``MIN_FAT_SPAN_DAYS`` apart, or no weight change, the prior stands alone.
     """
+    prior = FatShare(FAT_SHARE_PRIOR, FAT_SHARE_PRIOR_SD)
     for series in _fat_series(inputs):
-        days = sorted(d for d in series if start <= d <= end)
+        days = sorted(d for d in series if d <= end and d in trend)
         if len(days) >= 2 and (days[-1] - days[0]).days >= MIN_FAT_SPAN_DAYS:
             break
     else:
-        return None
-
-    def masses(day: date) -> tuple[float, float]:
-        nearest = min(weights, key=lambda w: (abs((w - day).days), w))
-        return weights[nearest], weights[nearest] * series[day] / 100.0
-
-    (weight0, fat0), (weight1, fat1) = masses(days[0]), masses(days[-1])
-    span = (days[-1] - days[0]).days
-    fat_change = fat1 - fat0
-    lean_change = (weight1 - weight0) - fat_change
-    stored = (fat_change * FAT_KCAL_PER_KG + lean_change * LEAN_KCAL_PER_KG) / span
-    fat_sd = math.hypot(weight0, weight1) * MEASURED_FAT_SD_PCT / 100.0
-    return StoredEnergy(
-        stored,
-        fat_sd * (FAT_KCAL_PER_KG - LEAN_KCAL_PER_KG) / span,
-        "measured",
-        span,
-        weight0,
-        weight1,
-        fat_change,
+        return prior._replace(pct_last=_latest_body_fat(inputs, end))
+    xs = [float((d - days[0]).days) for d in days]
+    weights = [trend[d] for d in days]
+    weight_slope, sxx = _slope(xs, weights)
+    if abs(weight_slope) * (xs[-1] - xs[0]) < MIN_FAT_SHARE_WEIGHT_CHANGE_KG:
+        return prior._replace(pct_last=series[days[-1]])
+    fat_slope, _ = _slope(
+        xs, [w * series[d] / 100.0 for w, d in zip(weights, days, strict=True)]
+    )
+    fat_sd = statistics.fmean(weights) * BODY_FAT_REPEATABILITY_PCT / 100.0
+    measured_sd = fat_sd / math.sqrt(sxx) / abs(weight_slope)
+    precision = 1.0 / measured_sd**2
+    total = precision + 1.0 / FAT_SHARE_PRIOR_SD**2
+    weight = precision / total
+    share = weight * fat_slope / weight_slope + (1.0 - weight) * FAT_SHARE_PRIOR
+    return FatShare(
+        min(1.0, max(0.0, share)),
+        1.0 / math.sqrt(total),
+        weight,
         series[days[0]],
         series[days[-1]],
-        "body_fat",
     )
 
 
@@ -383,34 +392,28 @@ def _stored_energy(
     inputs: EnergyInputs,
     trend: Mapping[date, float],
     weights: Mapping[date, float],
-    start: date,
     end: date,
 ) -> StoredEnergy:
     """Stored energy per day over the weigh-ins, its standard error and how fat
-    and lean mass were split: measured from two dated body fat measurements
-    (#3477), else Forbes.
+    and lean mass were split.
 
-    Forbes: the least-squares slope of the window's own weigh-ins, at the
-    energy density of the body composition at the last one. The error combines
-    the slope's standard error with the density's (``FAT_SHARE_SD``). Unlike
-    the trend's change the slope has no warm-up lag after the first weigh-in.
+    The least-squares slope of the window's own weigh-ins, at the energy
+    density of the blended fat share (#3555). The error combines the slope's
+    standard error with the share's. Unlike the trend's change the slope has
+    no warm-up lag after the first weigh-in.
     """
-    if measured := _measured_store(inputs, weights, start, end):
-        return measured
     weighins = sorted(weights)
-    last = weighins[-1]
-    body_fat = _latest_body_fat(inputs, last)
-    density = energy_density(trend[last], body_fat)
     xs = [float((d - weighins[0]).days) for d in weighins]
     ys = [weights[d] for d in weighins]
+    slope, sxx = _slope(xs, ys)
     mean_x, mean_y = statistics.fmean(xs), statistics.fmean(ys)
-    sxx = sum((x - mean_x) ** 2 for x in xs)
-    slope = sum((x - mean_x) * (y - mean_y) for x, y in zip(xs, ys, strict=True)) / sxx
     residuals = [
         y - (mean_y + slope * (x - mean_x)) for x, y in zip(xs, ys, strict=True)
     ]
     slope_se = math.sqrt(sum(r * r for r in residuals) / max(1, len(xs) - 2) / sxx)
-    density_sd = FAT_SHARE_SD * (FAT_KCAL_PER_KG - LEAN_KCAL_PER_KG)
+    share = fat_share(inputs, trend, end)
+    density = energy_density(share.share)
+    density_sd = share.sd * (FAT_KCAL_PER_KG - LEAN_KCAL_PER_KG)
     scatter, split = abs(density * slope_se), abs(slope * density_sd)
     span = xs[-1] - xs[0]
     # The fitted line's weights at the first and the last weigh-in.
@@ -418,14 +421,16 @@ def _stored_energy(
     return StoredEnergy(
         density * slope,
         math.hypot(scatter, split),
-        "forbes",
+        "measured" if share.measured_weight > 0 else "prior",
         round(span),
         first,
         first + slope * span,
-        slope * span * fat_share(trend[last], body_fat),
-        None,
-        body_fat,
+        slope * span * share.share,
+        share.pct_first,
+        share.pct_last,
         "fat_share" if split >= scatter else "weight_scatter",
+        share.share,
+        share.measured_weight,
     )
 
 
@@ -454,7 +459,7 @@ def _window(
     reason = _insufficient(len(complete), weighins)
     tdee = unflagged = derived = store = None
     if reason is None:
-        store = _stored_energy(inputs, trend, weights, start, end)
+        store = _stored_energy(inputs, trend, weights, end)
         everything = [(v.intake_kcal or 0.0, v.flagged_kcal) for v in complete.values()]
         tdee = _tdee(everything, store.kcal_per_day, store.sd, len(weighins))
         unflagged = tdee if flagged == 0 else None
@@ -483,7 +488,6 @@ def _window(
         neat_kcal=None if neat_raw is None else neat_raw * factor,
         sport_kcal=None if sport_raw is None else sport_raw * factor,
         calibration_factor=factor,
-        store_method=store.method if store else None,
         store=store,
         flagged_kcal_per_day=statistics.fmean(
             [v.flagged_kcal for v in complete.values()]
