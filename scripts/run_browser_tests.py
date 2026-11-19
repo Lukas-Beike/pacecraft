@@ -811,15 +811,37 @@ def source_digest(root, names):
 
 def image_matches_source(processes, containers, image_id, root):
     """Compare the image's /app copy with the working tree; None when unknown,
-    printing why, so a stalled check is not read as a stale image (#3610)."""
-    script = (
-        inspect.getsource(source_digest)
-        + f"print(source_digest('/app', {list(APPLICATION_SOURCES)!r}))"
-    )
+    printing why, so a stalled check is not read as a stale image (#3610).
+
+    A check that could not start or did not finish runs once more, logged; only
+    that run's real answer counts. A mismatch or a check that ran without an
+    answer is never retried (#3610)."""
 
     def unknown(reason):
         print(f"Image source check: {reason}", file=sys.stderr, flush=True)
 
+    for attempt in (1, 2):
+        try:
+            code, output = run_source_check(processes, containers, image_id)
+            break
+        except RunnerError as error:
+            if attempt == 2:
+                return unknown(str(error))
+            unknown(f"{error}; retrying once")
+    if code:
+        return unknown(f"source check exited with code {code}")
+    if not re.fullmatch(r"[a-f0-9]{64}", output.strip()):
+        return unknown("source check printed no digest")
+    return output.strip() == source_digest(root, APPLICATION_SOURCES)
+
+
+def run_source_check(processes, containers, image_id):
+    """The digest container's exit code and output; RunnerError names why it
+    could not start or did not finish."""
+    script = (
+        inspect.getsource(source_digest)
+        + f"print(source_digest('/app', {list(APPLICATION_SOURCES)!r}))"
+    )
     try:
         cid = containers.create(
             "acb-" + containers.run_id + "-source",
@@ -837,19 +859,15 @@ def image_matches_source(processes, containers, image_id, root):
             ],
         )
     except RunnerError as error:
-        return unknown(f"source check could not start: {error}")
+        raise RunnerError(f"source check could not start: {error}") from error
     try:
-        code, output = processes.run(["docker", "start", "--attach", cid])
+        return processes.run(["docker", "start", "--attach", cid])
     except RunnerError as error:
-        return unknown(f"source check did not finish: {error}")
+        raise RunnerError(f"source check did not finish: {error}") from error
     finally:
-        # Removed also after a timeout, so a second compare (--build) can use the name (#3243).
+        # Removed also after a timeout, so a retry or a second compare (--build)
+        # can use the name (#3243).
         containers.remove(cid)
-    if code:
-        return unknown(f"source check exited with code {code}")
-    if not re.fullmatch(r"[a-f0-9]{64}", output.strip()):
-        return unknown("source check printed no digest")
-    return output.strip() == source_digest(root, APPLICATION_SOURCES)
 
 
 def reserve_ports(count):
