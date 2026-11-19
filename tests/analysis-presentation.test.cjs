@@ -350,6 +350,10 @@ test("Verlauf's deficit card: hero, goal marker, boxes and text agree, measured 
   assert.equal(far.dataset.goalDistance, "far");
   const unknown = energyDeficitCard({ rows, deficit: { ...measured, device_total_kcal: null } });
   assert.equal(textOf(unknown.children[5]), "Echter Verbrauch: ≈ 3.800 kcal am Tag.");
+  // #3603 ("Nur Waage"): without logged meals the card keeps the store; the expenditure says why it is missing.
+  const scaleOnly = energyDeficitCard({ rows, deficit: { ...measured, total_kcal: null, expenditure_missing: "intake_days" } });
+  assert.match(textOf(scaleOnly.children[1]), /^≈ 565 kcal/);
+  assert.equal(textOf(scaleOnly.children[5]), "Echter Verbrauch: braucht erfasste Mahlzeiten.");
   // The prior alone: one measurement, the rule of thumb's share, a surplus, and no goal.
   const prior = { ...measured, method: "prior", deficit_kcal: -300, stored_kcal: 8400, weight_start_kg: 70, weight_end_kg: 71, weight_last_kg: 71, fat_pct_start: null, fat_date_start: null, fat_pct_end: 12, fat_change_kg: 0.7, fat_share_pct: 70, fat_share: { share_pct: 70, prior_pct: 70, measured_pct: 0 }, goal: null };
   const surplus = energyDeficitCard({ rows, deficit: prior });

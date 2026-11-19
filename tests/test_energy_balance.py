@@ -272,6 +272,42 @@ class CompleteDayTests(unittest.TestCase):
         self.assertEqual(28, window.complete_days)
 
 
+class ScaleOnlyTests(unittest.TestCase):
+    """#3603 ("Nur Waage"): the stored energy needs weigh-ins, not logged meals."""
+
+    def unlogged(self, intake: float) -> balance.EnergyInputs:
+        logged = series(constant(intake))
+        days = {
+            d: replace(
+                v, intake_kcal=None, entries=0, protein_g=0, carbohydrate_g=0, fat_g=0
+            )
+            for d, v in logged.days.items()
+        }
+        return replace(logged, days=days)
+
+    def test_daily_weigh_ins_without_meals_give_the_store_and_its_band(self) -> None:
+        logged = balance.energy_windows(series(constant(2100.0)), END, weeks=1)[-1]
+        alone = balance.energy_windows(self.unlogged(2100.0), END, weeks=1)[-1]
+        assert logged.store is not None and alone.store is not None
+        # The same store and band as with full logging; no expenditure.
+        self.assertEqual(
+            (logged.store.kcal_per_day, logged.store.sd),
+            (alone.store.kcal_per_day, alone.store.sd),
+        )
+        self.assertEqual(
+            ("intake_days", None, None),
+            (alone.insufficient, alone.adaptive_tdee, alone.derived_rmr),
+        )
+
+    def test_too_few_weigh_ins_still_give_no_store(self) -> None:
+        sparse = series(constant(2100.0), weigh_every=5)
+        days = {
+            d: replace(v, intake_kcal=None, entries=0) for d, v in sparse.days.items()
+        }
+        window = balance.energy_windows(replace(sparse, days=days), END, weeks=1)[-1]
+        self.assertIsNone(window.store)
+
+
 class AdaptiveTdeeTests(unittest.TestCase):
     def assert_recovers_tdee(self, inputs: balance.EnergyInputs) -> None:
         window = balance.energy_windows(inputs, END, weeks=1)[-1]

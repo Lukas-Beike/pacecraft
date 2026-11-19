@@ -428,8 +428,8 @@ total), `total_kcal` (that row's `total_kcal` of `day`), `target_kcal`
 (the total minus the deficit or plus the surplus), `eaten_kcal` (the
 day's logged kcal) and `remaining_kcal` (target minus eaten, negative
 above it; null without a total), and `deficit` (#3548; the latest
-window's energy per day from the body stores, null without an
-estimate): `days`, `deficit_kcal` (negative for a surplus) with its 95 %
+window's energy per day from the body stores, null when its weigh-ins
+do not suffice; logged meals are not needed, #3603): `days`, `deficit_kcal` (negative for a surplus) with its 95 %
 `band_kcal`, `method` (`measured` when measurements weigh in the fat
 share, else `prior`), `fat_share` (`share_pct`, `prior_pct` and
 `measured_pct`, the measurements' weight, #3555), `span_days`,
@@ -440,7 +440,9 @@ days: the phase's span, which can start before the window, #3598),
 `weight_last_kg` (the window's last weigh-in), `fat_change_kg`, `fat_share_pct` (of the
 weight change, null below 0.05 kg), `stored_kcal` (over the span),
 `uncertainty` (`fat_share` or `weight_scatter`), `total_kcal` (the window's
-expenditure), `device_total_kcal` and `goal` (`goal`, `goal_kcal` and
+expenditure, null without enough logged meals) with
+`expenditure_missing` (then its reason, such as `intake_days`, else
+null), `device_total_kcal` and `goal` (`goal`, `goal_kcal` and
 `status` `in` within 150 kcal per day of the goal either way, else
 `under` or `over`, and `distance` `near` (within 150), `mid` (within
 350) or `far` (#3606); null without a goal), and `wellness` (#3530; where Garmin's summary of `day` stands,

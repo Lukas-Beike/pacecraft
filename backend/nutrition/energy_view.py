@@ -499,12 +499,12 @@ def energy_view(
         health, sessions, day_window, device_prediction[0] if device_rest else None
     )
     stand = wellness_stand(health.get(day_window.end.isoformat(), {}), sessions)
+    # A summary that leaves a session out has no everyday yet (#3530), on a
+    # past day either, so the split stays within the total (#3612).
+    lagging = bool((stand or {}).get("behind"))
+    device_neat = None if lagging else device_neat
     day_predictions[DEVICE], behind = _garmin_behind(
-        device_prediction,
-        # A summary that leaves a session out has no everyday yet (#3530).
-        None if (stand or {}).get("behind") else device_neat,
-        device_sport,
-        bool(device_rest),
+        device_prediction, device_neat, device_sport, bool(device_rest) or lagging
     )
     pending[1].extend(behind)
     rows = []
@@ -651,9 +651,11 @@ def _deficit(
     latest: EnergyWindow, device_total: float | None, goal: Mapping[str, str] | None
 ) -> dict[str, Any] | None:
     """'Dein Defizit, letzte 28 Tage' (#3548): the energy per day from (deficit)
-    or into (surplus) the body stores, with the terms of its boxes."""
+    or into (surplus) the body stores, with the terms of its boxes. The weigh-ins
+    alone carry it; without enough logged meals the expenditure is null and
+    ``expenditure_missing`` names why ("Nur Waage", #3603)."""
     store, tdee = latest.store, latest.adaptive_tdee
-    if store is None or tdee is None:
+    if store is None:
         return None
     deficit, band = -store.kcal_per_day, BAND_Z * store.sd
     change = store.weight_end_kg - store.weight_start_kg
@@ -674,7 +676,8 @@ def _deficit(
         else None,
         "stored_kcal": _round(store.kcal_per_day * store.days),
         "uncertainty": store.uncertainty,
-        "total_kcal": _round(tdee.kcal),
+        "total_kcal": _round(tdee.kcal) if tdee else None,
+        "expenditure_missing": None if tdee else latest.insufficient,
         "device_total_kcal": _round(device_total),
         "goal": _goal_status(deficit, goal),
     }
@@ -763,8 +766,8 @@ def _own_day_row(
         # The days the resting rate comes from, shown as "Ruhe aus 28 Tagen".
         "window_days": latest.days,
         # The blended fat share of the weight change; None without an
-        # estimate (#3555).
-        "fat_share": _fat_share_view(latest.store),
+        # estimate (#3555), even when the weigh-ins give a store (#3603).
+        "fat_share": _fat_share_view(latest.store if latest.adaptive_tdee else None),
     }
 
 
@@ -798,7 +801,7 @@ def _own_window_row(
         "split": split,
         # A window method: its days, shown as "Ø pro Tag, letzte 28 Tage" (#3395, #3513).
         "window_days": latest.days,
-        "fat_share": _fat_share_view(latest.store),
+        "fat_share": _fat_share_view(latest.store if latest.adaptive_tdee else None),
     }
 
 
@@ -823,6 +826,9 @@ def _day_window(inputs: EnergyInputs, latest: EnergyWindow, day: date) -> Energy
     never shown for one day.
     """
     values = inputs.days.get(day, DayInputs())
+    # A past day whose summary ended early has no known everyday (#3612);
+    # today's so far is _so_far's.
+    neat = None if values.unfinished and day <= latest.end else values.neat_kcal
     return cast(
         EnergyWindow,
         replace(
@@ -831,7 +837,7 @@ def _day_window(inputs: EnergyInputs, latest: EnergyWindow, day: date) -> Energy
             days=1,
             activity_kcal_raw=values.activity_kcal,
             activity_error_kcal_raw=values.activity_error_kcal,
-            neat_kcal_raw=values.neat_kcal,
+            neat_kcal_raw=neat,
             sport_kcal_raw=values.sport_kcal,
             tef_kcal=day_tef(values) if values.entries else None,
         ),
@@ -920,11 +926,12 @@ def _so_far(
     steps, sport without any session, digestion without any meal (otherwise
     the meals logged so far). An unknown part (an unpriced session, steps
     without a step length) stays unknown. Garmin's everyday and sport have
-    no data while its day has no active kcal. Past days are unchanged.
+    no data while its day has no active kcal. A past day keeps its parts; one
+    whose summary ended early shows its unknown everyday as missing (#3612).
     """
-    if not today:
-        return window, ([], [])
     day = day or DayInputs()
+    if not today:
+        return window, (["neat"] if day.unfinished else [], [])
     # The day summary lags behind the activity, so its everyday has not arrived
     # yet either (#3530): it ends before a session does, or, without its end
     # time, it has fewer day steps than the sessions' own.
@@ -966,7 +973,8 @@ def _garmin_behind(
     """Today Garmin's day summary can lag behind its activity: its active kcal
     is then below the session's, and everyday would come out negative. The
     row then counts the session so far and shows everyday as not there yet,
-    instead of "–" (#3530)."""
+    instead of "–" (#3530); so does a past day whose summary ended before
+    its session (#3612)."""
     resting = prediction[0]
     if not today or resting is None or neat is not None or sport is None:
         return prediction, []
