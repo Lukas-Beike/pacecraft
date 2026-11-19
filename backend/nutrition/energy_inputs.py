@@ -42,6 +42,8 @@ from backend.canonical.vocabulary import ProviderId, StreamChannel
 from backend.db.activity_detail_store import detail_sets_for_session
 from backend.nutrition.energy_balance import (
     BAND_Z,
+    CURRENT_WEIGHT_DAYS,
+    WINDOW_DAYS,
     DayInputs,
     EnergyInputs,
     EnergyWindow,
@@ -610,10 +612,14 @@ def read_energy_inputs(
         )  # fmt: skip
         day += timedelta(days=1)
     if older_day is not None and older_day < start:
+        # The day with the weigh-ins its current weight needs (Gitar on #3671).
+        weighed_from = older_day - timedelta(days=CURRENT_WEIGHT_DAYS - 1)
         old, old_costs = read_energy_inputs(
-            db, sources, older_day, older_day, basis=basis
-        )
+            db, sources, weighed_from, min(older_day, start - timedelta(days=1)),
+            basis=basis,
+        )  # fmt: skip
         days, costs = {**old.days, **days}, old_costs + costs
+        body = _with_older_readings(body, old, start)
     return replace(
         body,
         days=days,
@@ -622,6 +628,26 @@ def read_energy_inputs(
         step_m=step_m,
         step_source=step_source,
     ), costs
+
+
+def _with_older_readings(
+    body: EnergyInputs, old: EnergyInputs, start: date
+) -> EnergyInputs:
+    """The span's body fat readings plus the older day's from before the
+    earliest day any window looks at, so the old day finds its own body and
+    no window changes (Gitar on #3671)."""
+    reach = start + timedelta(days=WINDOW_DAYS - 1 - RESTING_LOOKBACK_DAYS)
+    return replace(
+        body,
+        body_fat_pct={
+            **{d: v for d, v in old.body_fat_pct.items() if d < reach},
+            **body.body_fat_pct,
+        },
+        device_body_fat={
+            **{d: v for d, v in old.device_body_fat.items() if d < reach},
+            **body.device_body_fat,
+        },
+    )
 
 
 def _span_basis(

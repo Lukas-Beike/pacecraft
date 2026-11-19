@@ -694,9 +694,33 @@ class EnergyViewTests(unittest.TestCase):
         # The span's 6,000 m over 8,000 steps: 0.75 m.
         self.assertEqual(0.75, alone.step_m)
         self.assertEqual((alone.rmr_kcal, alone.step_m), (added.rmr_kcal, added.step_m))
-        self.assertEqual(set(alone.days) | {old}, set(added.days))
+        # The old day comes with the 27 days before it its weight trend needs.
+        before = {old - timedelta(days=n) for n in range(28)}
+        self.assertEqual(set(alone.days) | before, set(added.days))
         # The old day's walk is priced too, with the span's basis.
         self.assertIn(old, {cost.day for cost in costs})
+        # Gitar on #3671: an entered body fat before the span's lookback but
+        # within the old day's 90 days still gives that day its body; no
+        # window reaches it, so the windows stay as they are.
+        entered = old - timedelta(days=10)
+
+        def fats(_db: Any, s: date, e: date) -> dict[date, tuple[float, Any]]:
+            return {entered: (19.0, None)} if s <= entered <= e else {}
+
+        weighed = {DAY1: 70.0, old - timedelta(days=5): 72.0}
+        with_fat = replace(
+            walking,
+            device_body_fat=fats,
+            weights=lambda _db, s, e: {d: w for d, w in weighed.items() if s <= d <= e},
+        )
+        opened = read_energy_view(None, with_fat, DAY3, old)
+        body = opened["body"]
+        assert body is not None
+        self.assertEqual(entered.isoformat(), body["date"])
+        whole = read_energy_view(None, with_fat, DAY3)
+        self.assertEqual(
+            (whole["windows"], whole["fit"]), (opened["windows"], opened["fit"])
+        )
 
 
 LOSE = {"energy_goal": "lose", "energy_goal_kcal": "500"}
