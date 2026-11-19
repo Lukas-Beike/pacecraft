@@ -310,19 +310,22 @@ for (const theme of ["light", "dark"]) {
       for (const row of data.rows) if (row.source !== "own") row.mean_error_kcal = { katch_mcardle: 1042, cunningham: 1204, device: 431 }[row.source];
       // Every row carries its split, so the outlined row has its bar and detail line (#3476).
       for (const row of data.rows) row.split ??= { resting_kcal: 1650, neat_kcal: 520, sport_kcal: 610, tef_kcal: 230 };
-      await route.fulfill({ response, json: { ...data, best: null, fit_scale: { "14d": fitScale(14, 28, 2690, 720), "12w": fitScale(84, 84, 2726, 454) } } })
+      // #3613: the server names the one outlined source; 12 weeks name the weigh-ins' span.
+      const twelve = { ...fitScale(84, 84, 2726, 454), span_start: "2026-08-21", span_end: "2026-11-13" };
+      await route.fulfill({ response, json: { ...data, best: null, outlined: "device", fit_scale: { "14d": fitScale(14, 28, 2690, 720), "12w": twelve } } })
         .catch((error) => { if (!GONE.test(String(error))) throw error; });
     });
     await page.goto("/#nutrition/week");
     const card = page.locator("#nutritionFitScale [data-energy-fit]");
     await expect(card).toHaveAttribute("data-energy-fit", "14d");
-    await expect(card.locator(".energy-fit-verdict")).toHaveText(/^In den letzten 4 Wochen verbrauchst du rund 2\.690 kcal am Tag\. Am nächsten: Garmin Connect \(\+467\) – noch nicht sicher\.$/);
+    await expect(card.locator(".energy-fit-verdict")).toHaveText(/^In den letzten 4 Wochen verbrauchst du rund 2\.690 kcal am Tag\. Am besten bisher: Garmin Connect \(\+467\) – noch nicht sicher\.$/);
     await expect(card.locator("[data-energy-fit-note]")).toContainText("Ø letzte 14 Tage, dein Wert aus 4 Wochen");
     // Above the Tagesverlauf.
     const [cardBox, chartBox] = await Promise.all([card.boundingBox(), page.locator("#nutritionWeekChartSection").boundingBox()]);
     expect(cardBox.y + cardBox.height).toBeLessThanOrEqual(chartBox.y);
     await page.getByRole("button", { name: "12 Wochen" }).click();
-    await expect(card).toHaveAttribute("data-energy-fit", "12w");    await expect(card.locator(".energy-fit-row")).toHaveText([/^Deine Daten2\.7262\.272–3\.180zwischen 2\.272 und 3\.180 kcal$/, /^Garmin Connect3\.157 \(\+431\)$/, /^Katch-McArdle3\.768 \(\+1\.042\)$/, /^Cunningham3\.930 \(\+1\.204\)$/]);
+    await expect(card).toHaveAttribute("data-energy-fit", "12w");
+    await expect(card.locator(".energy-fit-verdict")).toHaveText(/^Vom 21\.08\. bis 13\.11\. verbrauchst du rund 2\.726 kcal am Tag\. Am besten bisher: Garmin Connect \(\+431\) – noch nicht sicher\.$/);    await expect(card.locator(".energy-fit-row")).toHaveText([/^Deine Daten2\.7262\.272–3\.180zwischen 2\.272 und 3\.180 kcal$/, /^Garmin Connect3\.157 \(\+431\)$/, /^Katch-McArdle3\.768 \(\+1\.042\)$/, /^Cunningham3\.930 \(\+1\.204\)$/]);
     await expect(card.locator(".energy-fit-row[data-inside='true']")).toHaveCount(1);
     // At 360 px nothing in a lane overlaps another label or leaves the card.
     await page.setViewportSize({ width: 360, height: 800 });

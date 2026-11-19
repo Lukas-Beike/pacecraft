@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import math
 import statistics
-from collections.abc import Mapping, Sequence
+from collections.abc import Container, Mapping, Sequence
 from dataclasses import replace
 from datetime import date, timedelta
 from typing import Any, Final, cast
@@ -99,16 +99,17 @@ def _formula_prediction(
 
 
 def _device_prediction(
-    health: Mapping[str, Mapping[str, Any]], window: EnergyWindow
+    health: Mapping[str, Mapping[str, Any]],
+    window: EnergyWindow,
+    only: Container[date] | None = None,
 ) -> Prediction:
-    """Garmin's mean resting and total values over the window's days. A day
-    whose summary ended early holds part of its day and leaves a mean of
-    several days (#3597); the shown day keeps its own values and its Stand."""
+    """Garmin's mean resting and total values over the window's days, or over
+    ``only`` those of them. A day whose summary ended early holds part of its
+    day and leaves a mean of several days (#3597); the shown day keeps its own
+    values and its Stand."""
     start = window.end - timedelta(days=window.days - 1)
-    days = [
-        health.get((start + timedelta(days=n)).isoformat(), {})
-        for n in range(window.days)
-    ]
+    dates = [start + timedelta(days=n) for n in range(window.days)]
+    days = [health.get(d.isoformat(), {}) for d in dates if only is None or d in only]
     if window.days > 1:
         days = [day for day in days if complete_garmin_day(day)]
 
@@ -590,6 +591,8 @@ def energy_view(
                 "pending_parts": pending[name == DEVICE],
             }
         )
+    # Ranked on the raw rows, before the learned term enters them (#3613).
+    outlined = _outlined(rows, best)
     # The formula rows' learned everyday term (#3577); it enters their shown
     # day totals only after the athlete's check, never the fit above.
     learned = learned_everyday(windows, bodies)
@@ -625,6 +628,9 @@ def energy_view(
         "windows": [w.end.isoformat() for w in windows],
         "rows": rows,
         "best": best,
+        # The one source the diary outlines, the goal prices and Verlauf's
+        # sentence names for both periods (athlete decision, #3613).
+        "outlined": outlined,
         "fit": fit,
         "flagged": _flagged_view(windows, bias),
         "basis": {
@@ -648,7 +654,7 @@ def energy_view(
         "own_window": _unmeasured(
             _own_window_row(shown, implausible, latest), shown, reference
         ),
-        "goal": _energy_goal(rows, best, goal, inputs.days.get(day_window.end)),
+        "goal": _energy_goal(rows, outlined, goal, inputs.days.get(day_window.end)),
         # Per formula row, with its sign kept in raw_kcal; checked is the
         # date the athlete took it over, else None (#3577).
         "learned_everyday": {
@@ -922,7 +928,7 @@ def _learned_view(fit: LearnedEveryday | None) -> dict[str, Any] | None:
 
 def _energy_goal(
     rows: Sequence[Mapping[str, Any]],
-    best: str | None,
+    source: str | None,
     profile: Mapping[str, str] | None,
     day: DayInputs | None,
 ) -> dict[str, Any] | None:
@@ -936,7 +942,6 @@ def _energy_goal(
     except ValueError:
         kcal = 0
     kcal *= abs(_GOAL_SIGN[kind])
-    source = _outlined(rows, best)
     total = next((r["total_kcal"] for r in rows if r["source"] == source), None)
     eaten = round(day.intake_kcal or 0) if day else 0
     target = None if total is None else total + _GOAL_SIGN[kind] * kcal
@@ -1093,26 +1098,60 @@ def _fit_scale(
 ) -> dict[str, Any]:
     """Each source's mean daily total over ``days`` against the own estimate.
 
-    ``own_days`` names the span of the own value and its band.
+    ``own_days`` names the span of the own value and its band. A period with
+    its own value averages every source over that value's days: the complete
+    days between its first and last weigh-in, named by ``span_start`` and
+    ``span_end`` (#3613).
     """
     period = period_window(inputs, latest.end, days, latest.calibration_factor)
     own = period if days >= latest.days else latest
     body = resolve_body(inputs, trend, latest.end)
+    basis = period
+    chosen: set[date] | None = None
+    weighed: list[date] = []
+    if own is period and period.adaptive_tdee is not None:
+        logged = {
+            d: v
+            for n in range(days)
+            if (v := inputs.days.get(d := latest.end - timedelta(days=n)))
+        }
+        weighed = sorted(d for d, v in logged.items() if v.weight_kg is not None)
+        chosen = {
+            d
+            for d, v in logged.items()
+            if weighed
+            and weighed[0] <= d <= weighed[-1]
+            and is_complete(v, inputs.rmr_kcal)
+        }
+        # Every weigh-in stays for the stored energy; only the chosen days keep
+        # their meals and activity, for the own value and the sources alike.
+        weights = {
+            d: DayInputs(weight_kg=v.weight_kg)
+            for d, v in inputs.days.items()
+            if v.weight_kg is not None
+        }
+        only = cast(
+            EnergyInputs,
+            replace(inputs, days={**weights, **{d: logged[d] for d in chosen}}),
+        )
+        basis = own = period_window(only, latest.end, days, latest.calibration_factor)
     sources = [
-        {"source": name, "total_kcal": _round(_formula_prediction(f, body, period)[2])}
+        {"source": name, "total_kcal": _round(_formula_prediction(f, body, basis)[2])}
         for name, f in FORMULAS.items()
     ]
     sources.append(
         {
             "source": DEVICE,
             "label": _device_label(health, period),
-            "total_kcal": _round(_device_prediction(health, period)[2]),
+            "total_kcal": _round(_device_prediction(health, period, chosen)[2]),
         }
     )
     tdee = own.adaptive_tdee
     return {
         "days": days,
         "own_days": own.days,
+        "span_start": weighed[0].isoformat() if weighed else None,
+        "span_end": weighed[-1].isoformat() if weighed else None,
         "own_kcal": _round(tdee.kcal) if tdee else None,
         "own_band_kcal": _round(tdee.band_kcal) if tdee else None,
         "sources": sources,
