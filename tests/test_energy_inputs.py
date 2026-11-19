@@ -312,6 +312,36 @@ class EnergyInputsReaderTests(unittest.TestCase):
         }
         counted = energy_basis(None, sources(health=health), DAY3)
         self.assertEqual(1, counted["wellness_end_days"])
+        # #3612: unfinished past days of the latest window; today is still counting.
+        self.assertEqual(0, counted["latest_window_unfinished_days"])
+        health[DAY2.isoformat()] = {**HEALTH[DAY2.isoformat()], "wellness_end_min": 738}
+        counted = energy_basis(None, sources(health=health), DAY3)
+        self.assertEqual(1, counted["latest_window_unfinished_days"])
+
+    def test_a_summary_that_ended_early_leaves_the_day_s_activity_unknown(
+        self,
+    ) -> None:
+        # #3612: day 1's summary ended at 12:18, so its steps cover half the
+        # day: its activity is unknown and leaves the windows' means, while its
+        # NEAT so far stays for today. Its logging is unchanged.
+        health: dict[str, dict[str, Any]] = {
+            **HEALTH,
+            DAY1.isoformat(): {**HEALTH["2026-10-01"], "wellness_end_min": 738.0},
+        }
+        inputs, _ = read_energy_inputs(None, sources(health=health), DAY1, DAY3)
+        full, _ = read_energy_inputs(None, sources(), DAY1, DAY3)
+        day, whole = inputs.days[DAY1], full.days[DAY1]
+        self.assertEqual((True, None), (day.unfinished, day.activity_kcal))
+        self.assertEqual(whole.neat_kcal, day.neat_kcal)
+        self.assertEqual(
+            (whole.intake_kcal, whole.entries), (day.intake_kcal, day.entries)
+        )
+        # A day without a stored end time, or one that ran to midnight, is unchanged.
+        for end in (None, 1440.0):
+            health[DAY1.isoformat()]["wellness_end_min"] = end
+            inputs, _ = read_energy_inputs(None, sources(health=health), DAY1, DAY3)
+            with self.subTest(end=end):
+                self.assertEqual(whole, inputs.days[DAY1])
 
     def test_run_grade_comes_from_the_streams(self) -> None:
         streams = {

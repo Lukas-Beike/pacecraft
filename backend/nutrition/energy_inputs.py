@@ -584,6 +584,17 @@ def energy_basis(db: Any, sources: EnergySources, end: date) -> dict[str, Any]:
                 1 for day in week.values() if day.get("wellness_end_min") is not None
             )
         }
+        # Past days of the latest window whose summary ended early (#3612).
+        | {
+            "latest_window_unfinished_days": sum(
+                1
+                for when, day in inputs.days.items()
+                if day.unfinished
+                and latest.end - timedelta(days=latest.days) < when < end
+            )
+            if latest
+            else None
+        }
     )
 
 
@@ -844,7 +855,10 @@ def _day_inputs(
     # Unknown stays unknown: NEAT without steps or an unpriced session (#3187).
     priced = [c.kcal for c in today if c.kcal is not None]
     sport = sum(priced) if len(priced) == len(today) else None
-    activity = neat + sport if neat is not None and sport is not None else None
+    # A summary that ended early holds part of its day (#3612): no activity,
+    # so the day leaves the windows' means.
+    unfinished = not complete_garmin_day(health)
+    activity = None if unfinished or neat is None or sport is None else neat + sport
     # From the parts that are known, so today's so-far total keeps a priced
     # session's error before the steps arrive (Gitar on #3567).
     error = energy.activity_error_kcal(
@@ -874,4 +888,5 @@ def _day_inputs(
         floors=None
         if floors is None
         else energy.floors_outside_sessions(floors, climb),
+        unfinished=unfinished,
     )

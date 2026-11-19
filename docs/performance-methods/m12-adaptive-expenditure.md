@@ -1,8 +1,8 @@
 # M12 — Adaptive daily expenditure from intake and the weight trend
 
 - **Card:** M12
-- **Card version:** 10
-- **Method ID:** adaptive-expenditure v10 (#3100, #3187, #3255, #3552, #3551, #3553, #3555, #3554, #3586, #3603)
+- **Card version:** 11
+- **Method ID:** adaptive-expenditure v11 (#3100, #3187, #3255, #3552, #3551, #3553, #3555, #3554, #3586, #3603, #3612)
 - **Status:** method implemented (`backend/nutrition/energy_balance.py`); the reader, diagnostics and display follow (#3100, #3099)
 - **Classification:** model estimate
 - **Literature checked:** 2026-11-15
@@ -122,7 +122,11 @@ noise widens it.
 
 28-day windows ending weekly over the last 12 weeks. Intake comes from the
 diary, the weight from canonical weigh-ins, body fat from skinfold
-measurements (#3099), and the activity and TEF terms from M11.
+measurements (#3099), and the activity and TEF terms from M11. A day whose
+Garmin summary ended before midnight holds part of its steps, so its activity
+is unknown and it leaves the window's activity means; its intake still counts
+(#3612). The diagnostics count such past days of the latest window
+(`latest_window_unfinished_days`).
 
 Weigh-ins come only from the app (athlete decision, #3557): weights entered
 in the app and the profile's weights from the change history, dated by the
@@ -235,7 +239,7 @@ bias that is the same on every day is not visible in the band.
 | Constant | Value | Module | Code comment |
 | --- | --- | --- | --- |
 | `METHOD_ID` | `'adaptive-expenditure'` | `backend/nutrition/energy_balance.py` |  |
-| `METHOD_VERSION` | `10` | `backend/nutrition/energy_balance.py` | Bump when a formula or constant below changes the estimate. |
+| `METHOD_VERSION` | `11` | `backend/nutrition/energy_balance.py` | Bump when a formula or constant below changes the estimate. |
 | `WINDOW_DAYS` | `28` | `backend/nutrition/energy_balance.py` | Days per window and windows per week of the rolling view (#3099, #3100). |
 | `CURRENT_WEIGHT_DAYS` | `28` | `backend/nutrition/energy_balance.py` | A day's current weight is the least-squares line through the weigh-ins of this many days up to it, at its latest weigh-in, so a steady change has no lag (#3551); with fewer weigh-ins or a shorter span, their mean. |
 | `MIN_LINE_WEIGHINS` | `3` | `backend/nutrition/energy_balance.py` |  |
