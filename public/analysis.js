@@ -1969,12 +1969,11 @@ function energyRestingFrom(read, row) {
   return from === yesterday.toISOString().slice(0, 10) ? "Ruhe wie gestern" : `Ruhe vom ${from.slice(8, 10)}.${from.slice(5, 7)}.`;
 }
 
-// The 12-week evaluation outlines one row (#3397): solid for the distinguishable best source,
-// dashed for the nearest one while none is distinguishable yet; the own row is never outlined.
+// The server's one outlined source (#3613): solid while distinguishable as best, dashed while it
+// is only the nearest so far; the own row is never outlined.
 function energyFitMarker(read, source) {
-  if (read.best) return read.best === source ? "best" : null;
-  const ranked = read.rows.filter((row) => row.source !== "own" && row.mean_error_kcal != null).sort((a, b) => a.mean_error_kcal - b.mean_error_kcal);
-  return ranked[0]?.source === source ? "nearest" : null;
+  if (!read.outlined || read.outlined !== source) return null;
+  return read.best ? "best" : "nearest";
 }
 
 function energyValueCells(read, source, row) {
@@ -2190,22 +2189,25 @@ function energyFitSigned(diff) {
   return `${sign}${formatWhole(Math.abs(diff))}`;
 }
 
-function energyFitSpan(days) {
-  if (days >= 84) return "Über 12 Wochen";
-  if (days === 14) return "In den letzten 14 Tagen";
-  return `In den letzten ${days / 7} Wochen`;
+// The weigh-ins' span the sources average over (#3613), else the period the own value covers.
+function energyFitSpan(scale) {
+  if (scale.span_start && scale.span_end) return `Vom ${deficitDay(scale.span_start)} bis ${deficitDay(scale.span_end)}`;
+  if (scale.own_days >= 84) return "Über 12 Wochen";
+  if (scale.own_days === 14) return "In den letzten 14 Tagen";
+  return `In den letzten ${scale.own_days / 7} Wochen`;
 }
 
-// The verdict names the own value and the nearest source; certain only by the 12-week rule (#3187).
+// The verdict names the own value and the server's one outlined source with its distance in this
+// period (athlete decision, #3613); certain only by the 12-week rule (#3187).
 function energyFitVerdict(read, scale, sources) {
   if (scale.own_kcal == null) return h("p", { className: "energy-fit-verdict" }, "Für einen Vergleich fehlen noch genug vollständig erfasste Tage und Wiegungen.");
-  const parts = [`${energyFitSpan(scale.own_days)} verbrauchst du rund `, h("b", null, `${formatWhole(scale.own_kcal)} kcal am Tag`), "."];
-  const nearest = sources[0];
-  if (nearest) {
-    const more = nearest.diff >= 0 ? "mehr" : "weniger";
-    parts.push(read.best === nearest.source
-      ? [" Am nächsten liegt ", h("b", null, nearest.name), ` mit ${formatWhole(Math.abs(nearest.diff))} kcal ${more}.`]
-      : [" Am nächsten: ", h("b", null, nearest.name), ` (${energyFitSigned(nearest.diff)}) – noch nicht sicher.`]);
+  const parts = [`${energyFitSpan(scale)} verbrauchst du rund `, h("b", null, `${formatWhole(scale.own_kcal)} kcal am Tag`), "."];
+  const named = sources.find((item) => item.source === read.outlined);
+  if (named) {
+    const more = named.diff >= 0 ? "mehr" : "weniger";
+    parts.push(read.best === named.source
+      ? [" Am besten trifft ", h("b", null, named.name), ` dein Gewicht, mit ${formatWhole(Math.abs(named.diff))} kcal ${more}.`]
+      : [" Am besten bisher: ", h("b", null, named.name), ` (${energyFitSigned(named.diff)}) – noch nicht sicher.`]);
   }
   return h("p", { className: "energy-fit-verdict" }, ...parts.flat());
 }

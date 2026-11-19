@@ -405,7 +405,9 @@ the resting reference, its `resting_kcal` and band are the reference's
 and `split` adds `resting_source` (`katch_mcardle` or `device`),
 `unmeasured_kcal` and `unmeasured_band_kcal`, #3550), `best` (the source whose lead over the next
 exceeds the adaptive TDEE's mean band over at least 4 shared windows,
-else null), `fit` (`shared_windows`, `windows`, `min_windows`,
+else null), `outlined` (`best`, else the source with the lowest
+`mean_error_kcal`: the one source the diary outlines, `goal` prices and
+Verlauf names for both periods, #3613), `fit` (`shared_windows`, `windows`, `min_windows`,
 `reference_band_kcal`), `strength` (the day's strength sessions with `rpe`, local first, the
 `met` it set and `kcal`, #3530), `flagged` (meals marked as estimated: `days` in
 the latest window, `unflagged` from the latest window without any
@@ -424,8 +426,7 @@ device value counts from 90 days before up to a day after `end`) and
 `skinfold_missing` (why the formula rows are empty: `no_skinfold`,
 `skinfold_too_old`, `no_birth_year`, `no_weight` or `invalid`; null with a
 body), and `goal` (#3547; null without the profile's `energy_goal`):
-`goal`, `goal_kcal` (0 for `hold`), `source` (the outlined row: `best`,
-else the source with the lowest `mean_error_kcal`; null without its
+`goal`, `goal_kcal` (0 for `hold`), `source` (`outlined`; null without its
 total), `total_kcal` (that row's `total_kcal` of `day`), `target_kcal`
 (the total minus the deficit or plus the surplus), `eaten_kcal` (the
 day's logged kcal) and `remaining_kcal` (target minus eaten, negative

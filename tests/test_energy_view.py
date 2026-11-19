@@ -718,11 +718,14 @@ class EnergyGoalTests(unittest.TestCase):
         view = energy_view(inputs(), windows(), garmin(total=2700.0), goal=LOSE)
         self.assertIsNone(view["best"])
         self.assertEqual("device", view["goal"]["source"])
+        # #3613: the read names that one source for the outline and Verlauf.
+        self.assertEqual("device", view["outlined"])
         self.assertEqual(
             row(view, "device")["total_kcal"] - 500, view["goal"]["target_kcal"]
         )
         best = energy_view(inputs(), windows(), garmin(), goal=LOSE)
         self.assertEqual("katch_mcardle", best["goal"]["source"])
+        self.assertEqual("katch_mcardle", best["outlined"])
         # Without any fit the goal has no basis yet, but is still the goal.
         none = energy_view(inputs({}), [window(END, None)], {}, goal=LOSE)["goal"]
         self.assertEqual(
@@ -1129,14 +1132,50 @@ class FitScaleTests(unittest.TestCase):
             (long["days"], long["own_days"], long["weeks"], long["weeks_with_data"]),
         )
         self.assertEqual(3120, device(short)["total_kcal"])
-        # The fixture holds 60 days: 59 at 3,120 and one at 6,000 = 3,168.
+        # Without an own value the sources keep the period's days: the fixture
+        # holds 60, 59 at 3,120 and one at 6,000 = 3,168; no span is named.
         self.assertEqual(3168, device(long)["total_kcal"])
+        self.assertEqual((None, None), (long["span_start"], short["span_start"]))
         self.assertEqual(
             ["katch_mcardle", "cunningham", "device"],
             [s["source"] for s in long["sources"]],
         )
         # Too few logged days for the rules: no own value, never a guess.
         self.assertEqual((None, None), (long["own_kcal"], long["own_band_kcal"]))
+
+    def test_twelve_weeks_average_the_sources_over_the_own_value_s_days(self) -> None:
+        # #3613: the own value stands on the complete days between the period's
+        # first and last weigh-in; every source averages over those days only.
+        logged = DayInputs(
+            weight_kg=80.0, intake_kcal=2500.0, entries=3, activity_kcal=500.0,
+            neat_kcal=250.0, sport_kcal=250.0, protein_g=150.0,
+        )  # fmt: skip
+        own_days = {END - timedelta(days=n): logged for n in range(0, 40, 2)}
+        weighed = {
+            END - timedelta(days=n): DayInputs(weight_kg=80.0) for n in range(41)
+        }
+        base = replace(inputs(), days={**weighed, **own_days})
+        health = garmin()
+        # A complete day before the first weigh-in and a day without meals.
+        before = END - timedelta(days=50)
+        unlogged = END - timedelta(days=11)
+        extra = {
+            before: replace(logged, weight_kg=None, activity_kcal=1600.0),
+            unlogged: DayInputs(weight_kg=80.0, activity_kcal=3000.0),
+        }
+        busy = {**health, before.isoformat(): {"resting_kcal": 1745.0, "calories": 9000.0},
+                unlogged.isoformat(): {"resting_kcal": 1745.0, "calories": 6000.0}}  # fmt: skip
+        plain = energy_view(base, [window(END, 2700.0)], health)["fit_scale"]["12w"]
+        mixed = energy_view(
+            replace(base, days={**base.days, **extra}), [window(END, 2700.0)], busy
+        )["fit_scale"]["12w"]
+        self.assertIsNotNone(mixed["own_kcal"])
+        self.assertEqual(plain["sources"], mixed["sources"])
+        self.assertEqual(3120, mixed["sources"][-1]["total_kcal"])
+        self.assertEqual(
+            ((END - timedelta(days=40)).isoformat(), END.isoformat()),
+            (mixed["span_start"], mixed["span_end"]),
+        )
 
 
 class SelectedDayTests(unittest.TestCase):

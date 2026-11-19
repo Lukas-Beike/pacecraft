@@ -395,7 +395,7 @@ test("the energy table shows bands, outlines the best source, and the basis", ()
     h, formatWhole: (v) => String(v), dateLabel: (v) => v, analysisValue: (v, unit) => `${v} ${unit}`, AppFormat: require("../public/format.js"),
   });
   const read = {
-    end: "2026-11-14", windows: ["2026-11-07", "2026-11-14"], best: "katch_mcardle",
+    end: "2026-11-14", windows: ["2026-11-07", "2026-11-14"], best: "katch_mcardle", outlined: "katch_mcardle",
     fit: { shared_windows: 4, windows: 12, min_windows: 4, reference_band_kcal: 120 },
     rows: [
       { source: "katch_mcardle", resting_kcal: 1839, resting_band_kcal: 219, total_kcal: 2689, total_band_kcal: 227, errors_kcal: [null, 11], mean_error_kcal: 11 },
@@ -415,7 +415,7 @@ test("the energy table shows bands, outlines the best source, and the basis", ()
   assert.match(textOf(tooltip), /Ruhe aus deinen Daten ist ein Rest/);
   const rows = table.children[2].children;
   // #3397: the best source's row is outlined (solid), no chip; while none is distinguishable the
-  // nearest by the 12-week fit is outlined dashed; the own row never.
+  // server's outlined source, the nearest by the 12-week fit (#3613), is dashed; the own row never.
   assert.equal(textOf(rows[0].children[0]), "Katch-McArdleKFA: Hautfalten");
   assert.equal(rows[0].dataset.fit, "best");
   // #3478: a band shows as the estimate with its low–high span below, spoken as "zwischen … und … kcal".
@@ -429,7 +429,7 @@ test("the energy table shows bands, outlines the best source, and the basis", ()
   assert.equal(textOf(rows[3].children[2]), span(2700, 2580, 2820));
   const undecided = energyTable({ ...read, best: null }).children[2].children.filter((row) => row.dataset.energySource);
   assert.deepEqual(undecided.map((row) => row.dataset.fit), ["nearest", undefined, undefined, undefined]);
-  const unfitted = energyTable({ ...read, best: null, rows: read.rows.map((row) => ({ ...row, mean_error_kcal: null })) }).children[2].children;
+  const unfitted = energyTable({ ...read, best: null, outlined: null }).children[2].children;
   assert.ok(unfitted.every((row) => row.dataset.fit === undefined), "no fit, no outline");
   const note = energyBasisText(read);
   assert.match(note, /24 von 28 Tagen vollständig .* KFA 15 % \(Hautfalten vom 2026-11-04\), fettfreie Masse 68 kg/);
@@ -1014,21 +1014,22 @@ test("the table labels today's rows bis jetzt, the own row its 28 days, and miss
 
 test("the fit scale names the own value, sorts the sources nearest first and signs their distance (#3397)", () => {
   const { h } = extractFunctions("components.js", ["h", "SVG_NS", "svgNode"], { document: fakeDocument() });
-  const { energyFitScale } = extractFunctions("analysis.js", ["FIT_PERIOD_NAMES", "FIT_SOURCE_NAMES", "FIT_COLORS", "energyKcalRange", "energyKcalSpan", "energyFitSources", "energyFitSigned", "energyFitSpan", "energyFitVerdict", "energyFitDomain", "energyFitMark", "energyFitLabel", "energyFitLane", "energyFitAxis", "energyFitOwnRow", "energyFitSourceRow", "energyFitNoteText", "energyFitScale"], {
+  const { energyFitScale } = extractFunctions("analysis.js", ["FIT_PERIOD_NAMES", "FIT_SOURCE_NAMES", "FIT_COLORS", "deficitDay", "energyKcalRange", "energyKcalSpan", "energyFitSources", "energyFitSigned", "energyFitSpan", "energyFitVerdict", "energyFitDomain", "energyFitMark", "energyFitLabel", "energyFitLane", "energyFitAxis", "energyFitOwnRow", "energyFitSourceRow", "energyFitNoteText", "energyFitScale"], {
     h, formatWhole: (v) => String(v),
   });
   const scale = {
-    days: 84, own_days: 84, own_kcal: 2726, own_band_kcal: 454, weeks: 12, weeks_with_data: 3,
+    days: 84, own_days: 84, own_kcal: 2726, own_band_kcal: 454, weeks: 12, weeks_with_data: 3, span_start: "2026-08-21", span_end: "2026-11-13",
     sources: [
       { source: "katch_mcardle", total_kcal: 3768 },
       { source: "cunningham", total_kcal: 3930 },
       { source: "device", label: "Garmin Connect", total_kcal: 3157 },
     ],
   };
-  const card = energyFitScale({ best: null, fit_scale: { "12w": scale } }, "12w");
+  const card = energyFitScale({ best: null, outlined: "device", fit_scale: { "12w": scale } }, "12w");
   const [, verdict, , list, note] = card.children;
-  // Not yet distinguishable: the nearest is named, with its signed distance, and not called certain.
-  assert.equal(textOf(verdict), "Über 12 Wochen verbrauchst du rund 2726 kcal am Tag. Am nächsten: Garmin Connect (+431) – noch nicht sicher.");
+  // Not yet distinguishable: the outlined source is named, with its signed distance, and not called
+  // certain; the sentence names the weigh-ins' span the sources average over (#3613).
+  assert.equal(textOf(verdict), "Vom 21.08. bis 13.11. verbrauchst du rund 2726 kcal am Tag. Am besten bisher: Garmin Connect (+431) – noch nicht sicher.");
   const rows = list.children;
   assert.deepEqual(rows.map((row) => row.dataset.fitSource), ["own", "device", "katch_mcardle", "cunningham"]);
   // #3478: the own value carries its band as the low–high span, with a spoken form.
@@ -1037,16 +1038,39 @@ test("the fit scale names the own value, sorts the sources nearest first and sig
   assert.deepEqual(rows.slice(1).map((row) => row.dataset.inside), ["true", "false", "false"]);
   assert.equal(textOf(note), "kcal pro Tag, Ø letzte 12 Wochen. Grünes Band: so genau kennt die App deinen echten Verbrauch – liegt eine Quelle darin, trifft sie. 3 von 12 Wochen mit Daten.");
   // Distinguishable by the 12-week rule: the nearest is named as fitting, with "mehr"/"weniger".
-  const sure = energyFitScale({ best: "device", fit_scale: { "12w": { ...scale, sources: [{ source: "device", label: "Garmin Connect", total_kcal: 2600 }] } } }, "12w");
-  assert.equal(textOf(sure.children[1]), "Über 12 Wochen verbrauchst du rund 2726 kcal am Tag. Am nächsten liegt Garmin Connect mit 126 kcal weniger.");
+  const sure = energyFitScale({ best: "device", outlined: "device", fit_scale: { "12w": { ...scale, sources: [{ source: "device", label: "Garmin Connect", total_kcal: 2600 }] } } }, "12w");
+  assert.equal(textOf(sure.children[1]), "Vom 21.08. bis 13.11. verbrauchst du rund 2726 kcal am Tag. Am besten trifft Garmin Connect dein Gewicht, mit 126 kcal weniger.");
+  // One rule (#3613): the sentence names the outlined source even where another dot lies nearer.
+  const outlined = energyFitScale({ best: null, outlined: "katch_mcardle", fit_scale: { "12w": scale } }, "12w");
+  assert.match(textOf(outlined.children[1]), / Am besten bisher: Katch-McArdle \(\+1042\) – noch nicht sicher\.$/);
   // 14 days: the own value comes from the latest 4 weeks, and the note says so.
-  const short = energyFitScale({ best: null, fit_scale: { "14d": { ...scale, days: 14, own_days: 28, weeks: 2, weeks_with_data: 1 } } }, "14d");
-  assert.match(textOf(short.children[1]), /^In den letzten 4 Wochen verbrauchst du rund 2726 kcal/);
+  const short = energyFitScale({ best: null, outlined: "device", fit_scale: { "14d": { ...scale, days: 14, own_days: 28, weeks: 2, weeks_with_data: 1, span_start: null, span_end: null } } }, "14d");
+  assert.match(textOf(short.children[1]), /^In den letzten 4 Wochen verbrauchst du rund 2726 kcal.* Am besten bisher: Garmin Connect \(\+431\)/);
   assert.match(textOf(short.children.at(-1)), /^kcal pro Tag, Ø letzte 14 Tage, dein Wert aus 4 Wochen\. .* 1 von 2 Wochen mit Daten\.$/);
   // Without an own estimate the verdict says what is missing; the sources still show, unsigned.
   const none = energyFitScale({ best: null, fit_scale: { "12w": { ...scale, own_kcal: null, own_band_kcal: null } } }, "12w");
   assert.equal(textOf(none.children[1]), "Für einen Vergleich fehlen noch genug vollständig erfasste Tage und Wiegungen.");
   assert.deepEqual(none.children[3].children.map((row) => textOf(row.children[1])), ["3157", "3768", "3930"]);
+});
+
+test("the outlined row is the source the Verlauf sentence names, in both periods (#3613)", () => {
+  const { h } = extractFunctions("components.js", ["h", "SVG_NS", "svgNode"], { document: fakeDocument() });
+  const { energyFitMarker, energyFitScale } = extractFunctions("analysis.js", ["FIT_PERIOD_NAMES", "FIT_SOURCE_NAMES", "FIT_COLORS", "deficitDay", "energyKcalRange", "energyKcalSpan", "energyFitMarker", "energyFitSources", "energyFitSigned", "energyFitSpan", "energyFitVerdict", "energyFitDomain", "energyFitMark", "energyFitLabel", "energyFitLane", "energyFitAxis", "energyFitOwnRow", "energyFitSourceRow", "energyFitNoteText", "energyFitScale"], {
+    h, formatWhole: (v) => String(v),
+  });
+  // The rows' mean errors would rank Garmin first; the server's one rule names Cunningham.
+  const rows = [{ source: "katch_mcardle", mean_error_kcal: 300 }, { source: "cunningham", mean_error_kcal: 250 }, { source: "device", mean_error_kcal: 100 }, { source: "own", mean_error_kcal: 0 }];
+  const scale = (days, own) => ({ days, own_days: own, own_kcal: 2700, own_band_kcal: 300, weeks: days / 7, weeks_with_data: 2, span_start: null, span_end: null,
+    sources: [{ source: "katch_mcardle", total_kcal: 2690 }, { source: "cunningham", total_kcal: 2900 }, { source: "device", label: "Garmin Connect", total_kcal: 2710 }] });
+  for (const best of [null, "cunningham"]) {
+    const read = { best, outlined: "cunningham", rows, fit_scale: { "14d": scale(14, 28), "12w": scale(84, 84) } };
+    const outlined = ["katch_mcardle", "cunningham", "device", "own"].filter((source) => energyFitMarker(read, source));
+    assert.deepEqual(outlined, ["cunningham"]);
+    for (const key of ["14d", "12w"]) {
+      const named = energyFitScale(read, key).children[1].children.find((node) => node?.tagName === "B" && textOf(node) !== "2700 kcal am Tag");
+      assert.equal(textOf(named), "Cunningham");
+    }
+  }
 });
 
 test("one merged body series names each day's source in the overview and the table (#3464)", () => {
