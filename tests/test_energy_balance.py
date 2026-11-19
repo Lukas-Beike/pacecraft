@@ -582,6 +582,24 @@ class FlaggedMealsAndCalibrationTests(unittest.TestCase):
         self.assertAlmostEqual(balance.calibration_factor(noisy), 1.000277, places=6)
         self.assertEqual(balance.calibration_factor(exact[:3]), 1.0)
 
+    def test_the_learned_everyday_term_is_shrunk_and_keeps_its_sign(self) -> None:
+        # #3577: four windows 300 kcal/day over the row, each SD 100. The mean
+        # 300 has precision 4 / 100^2 = 4e-4, overlap-inflated to 1e-4; the
+        # prior 0 +- 250 adds 1.6e-5: posterior variance 1 / 1.16e-4 = 8,620.7,
+        # mean 8,620.7 x 1e-4 x 300 = 258.62, band 1.96 x 92.85 = 181.98.
+        fit = balance.fit_learned_everyday([(300.0, 100.0)] * 4)
+        assert fit is not None
+        self.assertAlmostEqual(258.62, fit.raw_kcal, places=2)
+        self.assertAlmostEqual(258.62, fit.kcal, places=2)
+        self.assertAlmostEqual(181.98, fit.band_kcal, places=2)
+        self.assertEqual(4, fit.windows)
+        # A row that overshoots keeps its negative fit; it shows as 0.
+        under = balance.fit_learned_everyday([(-200.0, 100.0)] * 4)
+        assert under is not None
+        self.assertAlmostEqual(-172.41, under.raw_kcal, places=2)
+        self.assertEqual(0.0, under.kcal)
+        self.assertIsNone(balance.fit_learned_everyday([]))
+
     def test_the_bias_fit_takes_activity_only_where_it_can(self) -> None:
         # #3586: flagged meals 20 % larger than logged, TDEE = 2,600 - 0.2 x.
         def window(x: float, activity: float | None) -> balance.EnergyWindow:

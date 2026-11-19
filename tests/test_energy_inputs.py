@@ -19,6 +19,7 @@ from backend.nutrition.energy_balance import (
     DayInputs,
     EnergyInputs,
     EnergyWindow,
+    Estimate,
     energy_windows,
     weight_trend,
 )
@@ -796,6 +797,31 @@ class BodyFatFallbackTests(unittest.TestCase):
             row = next(r for r in view["rows"] if r["source"] == source)
             self.assertIsNotNone(row["resting_kcal"])
 
+    def test_learned_everyday_fits_each_formula_and_counts_negatives(self) -> None:
+        # #3577: one estimated window, own TDEE 2,700 less activity 600 and
+        # digestion 250 is 1,850 against Katch-McArdle 1,838.8 (68 kg lean)
+        # and Cunningham 1,996: one fit above 0, one below.
+        body = {"lean_mass_kg": 68.0}
+        estimated = EnergyWindow(
+            DAY3, 28, 28, 0, 28, 600.0, 600.0, 250.0,
+            Estimate(2700.0, 120.0), None, Estimate(1850.0, 150.0), None,
+        )  # fmt: skip
+        empty = replace(estimated, adaptive_tdee=None, derived_rmr=None)
+        fits = energy_inputs.learned_everyday([empty, estimated], [body, body])
+        km, cunningham = fits["katch_mcardle"], fits["cunningham"]
+        assert km is not None and cunningham is not None
+        self.assertEqual((8, 1), (round(km.raw_kcal), km.windows))
+        self.assertLess(cunningham.raw_kcal, 0)
+        # A window that fails the neighbour check (#3614) teaches nothing.
+        unstable = replace(estimated, stable=False)
+        self.assertIsNone(
+            energy_inputs.learned_everyday([unstable], [body])["katch_mcardle"]
+        )
+        # Without a body at a window's end it has no fit.
+        self.assertIsNone(
+            energy_inputs.learned_everyday([estimated], [None])["cunningham"]
+        )
+
     def test_the_diagnostics_count_the_body_sources(self) -> None:
         basis = energy_basis(
             None, skinfold_sources([], device={DAY2: 20.0}, profile=PROFILE_FAT), DAY3
@@ -803,6 +829,8 @@ class BodyFatFallbackTests(unittest.TestCase):
         self.assertEqual("device", basis["body_source"])
         # #3443: DAY2's resting is 0, so today's Garmin rest comes from DAY1.
         self.assertEqual(2, basis["today_resting_days_back"])
+        # #3577: no estimated window, so no learned everyday fit below 0.
+        self.assertEqual(0, basis["learned_everyday_negative"])
         counts = basis["body_source_windows"]
         self.assertEqual(12, sum(counts.values()))
         self.assertEqual(

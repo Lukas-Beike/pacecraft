@@ -24,7 +24,7 @@ from backend.performance.activity_energy import TEF_ERROR_KCAL, tef_kcal
 
 METHOD_ID = "adaptive-expenditure"
 # Bump when a formula or constant below changes the estimate.
-METHOD_VERSION = 13
+METHOD_VERSION = 14
 # Days per window and windows per week of the rolling view (#3099, #3100).
 WINDOW_DAYS = 28
 # A day's current weight is the least-squares line through the weigh-ins of
@@ -101,6 +101,9 @@ WINDOW_OVERLAP_INFLATION = WINDOW_DAYS / 7
 # their band holds the difference. 2.576 / 1.96 turns the 95 % t into 99 %.
 MAX_RESIDUAL_AUTOCORRELATION = 0.8
 STABILITY_BAND_RATIO = 2.576 / 1.96
+# The learned everyday term of a formula row (#3577): the own total's excess over
+# the row, shrunk towards 0 with this SD (kcal/day, product assumption).
+LEARNED_EVERYDAY_PRIOR_SD = 250.0
 
 
 @dataclass(frozen=True)
@@ -862,6 +865,38 @@ def history_start(end: date, weeks: int = 12) -> date:
 def flagged_meal_bias(inputs: EnergyInputs, end: date) -> tuple[float, float] | None:
     """Mean misestimate of flagged entries, in % of their logged kcal, with its band."""
     return windows_bias(energy_windows(inputs, end))
+
+
+class LearnedEveryday(NamedTuple):
+    """A formula row's learned everyday term (#3577): the shrunken fit with its
+    sign kept (``raw_kcal``), the value shown (never below 0), its 95 % band
+    and the windows it was fitted over."""
+
+    raw_kcal: float
+    kcal: float
+    band_kcal: float
+    windows: int
+
+
+def fit_learned_everyday(
+    points: Sequence[tuple[float, float]],
+) -> LearnedEveryday | None:
+    """The precision-weighted mean of each window's excess (value, SD), its
+    variance inflated for the windows' overlap and shrunk towards 0 with
+    ``LEARNED_EVERYDAY_PRIOR_SD`` (#3577); None without a window."""
+    usable = [(value, sd) for value, sd in points if sd > 0]
+    if not usable:
+        return None
+    weights = [1.0 / sd**2 for _, sd in usable]
+    mean = sum(w * value for w, (value, _) in zip(weights, usable, strict=True)) / sum(
+        weights
+    )
+    precision = sum(weights) / WINDOW_OVERLAP_INFLATION
+    posterior_var = 1.0 / (precision + 1.0 / LEARNED_EVERYDAY_PRIOR_SD**2)
+    raw = posterior_var * precision * mean
+    return LearnedEveryday(
+        raw, max(0.0, raw), BAND_Z * math.sqrt(posterior_var), len(usable)
+    )
 
 
 def windows_bias(windows: Sequence[EnergyWindow]) -> tuple[float, float] | None:

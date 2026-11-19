@@ -1,8 +1,8 @@
 # M12 — Adaptive daily expenditure from intake and the weight trend
 
 - **Card:** M12
-- **Card version:** 13
-- **Method ID:** adaptive-expenditure v13 (#3100, #3187, #3255, #3552, #3551, #3553, #3555, #3554, #3586, #3603, #3612, #3614, #3617)
+- **Card version:** 14
+- **Method ID:** adaptive-expenditure v14 (#3100, #3187, #3255, #3552, #3551, #3553, #3555, #3554, #3586, #3603, #3612, #3614, #3617, #3577)
 - **Status:** method implemented (`backend/nutrition/energy_balance.py`); the reader, diagnostics and display follow (#3100, #3099)
 - **Classification:** model estimate
 - **Literature checked:** 2026-11-15
@@ -118,8 +118,19 @@ estimate. It never rewrites logged values and never falls back to a formula.
    own row shows Ruhe at the reference (with its band) and the excess as
    "nicht erfasster Alltag" with the residual's band; the total and the
    other rows are unchanged. It is a named remainder, not an estimate: it
-   also carries logging and activity-model errors. Learning it as an offset
-   for the formula rows is a later step (athlete decision 2026-11-18).
+   also carries logging and activity-model errors.
+   **Learned everyday term (#3577):** per formula row f, each estimated
+   window that passes the neighbour check (#3614) gives `u_f = TDEE − raw activity − TEF − resting_f`, what the
+   row lacks against the own total at the rows' k = 1, with the derived
+   resting rate's SD. Their precision-weighted mean, its variance
+   inflated ×4 for the windows' overlap, is shrunk towards 0 ± 250
+   kcal/day (product assumption); the band is 95 %. A fit below 0 keeps
+   its sign in the read and a counts-only diagnostic and shows as 0.
+   Only after the athlete has taken it over (a dated profile check)
+   does each formula row carry it as "gelernter Alltag" in its split
+   and day total, and so in "Heute noch essen"; the fit with the
+   weight, its hit rate and the outlined source keep comparing the raw
+   rows, so learning cannot make them meet the weight by construction.
    The table's small "i"
    shows NEAT's inputs over the window: steps per day, the steps sessions
    take out, the step length with its source and the floors outside
@@ -277,7 +288,7 @@ bias that is the same on every day is not visible in the band.
 | Constant | Value | Module | Code comment |
 | --- | --- | --- | --- |
 | `METHOD_ID` | `'adaptive-expenditure'` | `backend/nutrition/energy_balance.py` |  |
-| `METHOD_VERSION` | `13` | `backend/nutrition/energy_balance.py` | Bump when a formula or constant below changes the estimate. |
+| `METHOD_VERSION` | `14` | `backend/nutrition/energy_balance.py` | Bump when a formula or constant below changes the estimate. |
 | `WINDOW_DAYS` | `28` | `backend/nutrition/energy_balance.py` | Days per window and windows per week of the rolling view (#3099, #3100). |
 | `CURRENT_WEIGHT_DAYS` | `28` | `backend/nutrition/energy_balance.py` | A day's current weight is the least-squares line through the weigh-ins of this many days up to it, at its latest weigh-in, so a steady change has no lag (#3551); with fewer weigh-ins or a shorter span, their mean. |
 | `MIN_LINE_WEIGHINS` | `3` | `backend/nutrition/energy_balance.py` |  |
@@ -304,4 +315,5 @@ bias that is the same on every day is not visible in the band.
 | `MIN_BIAS_WINDOWS` | `4` | `backend/nutrition/energy_balance.py` |  |
 | `MAX_RESIDUAL_AUTOCORRELATION` | `0.8` | `backend/nutrition/energy_balance.py` | A weight step from water or glycogen is not tissue (#3614): weigh-ins whose scatter persists widen the slope's error by the AR(1) factor, with the lag-1 autocorrelation capped here (factor 3 at most); overlapping windows that differ beyond the 99 % band of the days they do not share are unstable and their band holds the difference. 2.576 / 1.96 turns the 95 % t into 99 %. |
 | `STABILITY_BAND_RATIO` | `2.576 / 1.96` | `backend/nutrition/energy_balance.py` |  |
+| `LEARNED_EVERYDAY_PRIOR_SD` | `250.0` | `backend/nutrition/energy_balance.py` | The learned everyday term of a formula row (#3577): the own total's excess over the row, shrunk towards 0 with this SD (kcal/day, product assumption). |
 <!-- END GENERATED CONSTANTS -->

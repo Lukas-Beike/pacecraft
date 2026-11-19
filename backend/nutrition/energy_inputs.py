@@ -34,11 +34,14 @@ from backend.canonical.records import Observation
 from backend.canonical.vocabulary import ProviderId, StreamChannel
 from backend.db.activity_detail_store import detail_sets_for_session
 from backend.nutrition.energy_balance import (
+    BAND_Z,
     DayInputs,
     EnergyInputs,
     EnergyWindow,
+    LearnedEveryday,
     below_former_share,
     energy_windows,
+    fit_learned_everyday,
     history_start,
     is_complete,
     is_stable,
@@ -667,6 +670,44 @@ def _profile_fat(value: Any) -> float | None:
     return number if 1 <= number <= 70 else None
 
 
+# The formula rows that learn their everyday term (#3577).
+LEARNED_FORMULAS: Final = {
+    "katch_mcardle": RestingFormula.KATCH_MCARDLE,
+    "cunningham": RestingFormula.CUNNINGHAM,
+}
+
+
+def learned_everyday(
+    windows: Sequence[EnergyWindow], bodies: Sequence[Mapping[str, Any] | None]
+) -> dict[str, LearnedEveryday | None]:
+    """Each formula row's learned everyday term (#3577), fitted per formula
+    over the estimated windows with a body at their end: the window's own TDEE
+    less its uncalibrated activity, digestion and the formula's resting rate,
+    what the row lacks against the own total at the rows' k = 1; its SD is
+    the derived resting rate's."""
+    fits: dict[str, LearnedEveryday | None] = {}
+    for name, formula in LEARNED_FORMULAS.items():
+        points = [
+            (
+                window.adaptive_tdee.kcal
+                - window.activity_kcal_raw
+                - window.tef_kcal
+                - resting_energy(formula, body["lean_mass_kg"]),
+                window.derived_rmr.band_kcal / BAND_Z,
+            )
+            for window, body in zip(windows, bodies, strict=True)
+            if body is not None
+            and window.adaptive_tdee is not None
+            and window.derived_rmr is not None
+            and window.activity_kcal_raw is not None
+            and window.tef_kcal is not None
+            # A window that fails the neighbour check (#3614) teaches nothing.
+            and is_stable(window)
+        ]
+        fits[name] = fit_learned_everyday(points)
+    return fits
+
+
 def energy_basis(db: Any, sources: EnergySources, today: date) -> dict[str, Any]:
     """The diagnostics counts of the 12-week view (#3100).
 
@@ -719,6 +760,14 @@ def energy_basis(db: Any, sources: EnergySources, today: date) -> dict[str, Any]
                 _height_m(sources.profile()),
             ),
             "step_source": inputs.step_source,
+        }
+        # Formulas whose learned everyday fit lies below 0, shown as 0 (#3577).
+        | {
+            "learned_everyday_negative": sum(
+                1
+                for fit in learned_everyday(windows, bodies).values()
+                if fit is not None and fit.raw_kcal < 0
+            )
         }
         # How many days back today's Garmin Ruhe comes from, None = none (#3443).
         | {"today_resting_days_back": (today - found[0]).days if found else None}

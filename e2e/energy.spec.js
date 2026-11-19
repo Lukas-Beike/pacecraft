@@ -107,6 +107,40 @@ test("@responsive the own row names everyday energy the steps do not see", async
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBeTruthy();
 });
 
+// #3577: the learned everyday term is offered under the table; "Übernehmen" stores the dated
+// check in the profile with a receipt and undo, and the formula rows then carry it.
+test("@responsive the learned everyday term is taken over with a receipt and undo", async ({ page }) => {
+  const fit = (kcal) => ({ kcal, raw_kcal: kcal, band_kcal: 180, windows: 4 });
+  await page.route("**/api/body/energy*", async (route) => {
+    const response = await route.fetch();
+    const data = await response.json();
+    const profile = await (await page.request.get("/api/profile")).json();
+    const checked = (profile.profile || profile).learned_everyday_checked || null;
+    const rows = data.rows.map((row) => (row.source === "katch_mcardle" && checked
+      ? { ...row, split: { ...(row.split || { resting_kcal: 1839, neat_kcal: 220, sport_kcal: 0, tef_kcal: 250, shared: {} }), learned_kcal: 480, learned_band_kcal: 180 } }
+      : row));
+    await route.fulfill({ response, json: { ...data, rows, learned_everyday: { katch_mcardle: fit(480), cunningham: fit(330), checked } } });
+  });
+  await page.goto("/#nutrition/diary");
+  const card = page.locator("#nutritionEnergy [data-energy]");
+  const offered = card.locator("[data-learned='offered']");
+  await expect(offered).toContainText("Gelernter Alltag aus 4 Fenstern");
+  // "Noch nicht" stores nothing and hides the buttons for this view (Gitar on #3637).
+  await offered.getByRole("button", { name: "Noch nicht" }).click();
+  await expect(card.locator("[data-learned='offered'] button")).toHaveCount(0);
+  await expect(card.locator("[data-learned='offered']")).toContainText("Gelernter Alltag aus 4 Fenstern");
+  await page.reload();
+  await expect(offered).toContainText("Katch-McArdle +480 kcal/Tag (300–660) · Cunningham +330 (150–510)");
+  await offered.getByRole("button", { name: "Übernehmen" }).click();
+  await expect(page.locator("#toast")).toContainText("Gelernter Alltag übernommen.");
+  await expect(card.locator("[data-learned='checked']")).toContainText("übernommen am");
+  await expect(card.locator(".energy-split [data-part='learned']")).toHaveCount(1);
+  await page.locator("#toast").getByRole("button", { name: "Rückgängig" }).click();
+  await expect(card.locator("[data-learned='offered']")).toBeVisible();
+  await expect(card.locator(".energy-split [data-part='learned']")).toHaveCount(0);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBeTruthy();
+});
+
 // #3397: which source meets the weight moved to Verlauf; tapping the body-fat row opens the
 // body fat dialog (#3402).
 test("@responsive Körper opens the body fat dialog from body fat and no longer holds the fit", async ({ page }) => {

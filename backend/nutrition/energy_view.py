@@ -29,6 +29,7 @@ from backend.athlete.body_composition import (
     resting_band,
     resting_energy,
 )
+from backend.athlete.profile import LEARNED_EVERYDAY_FIELD
 from backend.canonical.vocabulary import ProviderId
 from backend.errors import AppError
 from backend.nutrition.energy_balance import (
@@ -37,6 +38,7 @@ from backend.nutrition.energy_balance import (
     EnergyInputs,
     EnergyWindow,
     Estimate,
+    LearnedEveryday,
     StoredEnergy,
     day_tef,
     energy_density,
@@ -50,6 +52,7 @@ from backend.nutrition.energy_balance import (
 )
 from backend.nutrition.energy_inputs import (
     EnergySources,
+    learned_everyday,
     newest_resting,
     read_energy_inputs,
     resolve_body,
@@ -538,6 +541,11 @@ def energy_view(
                 "pending_parts": pending[name == DEVICE],
             }
         )
+    # The formula rows' learned everyday term (#3577); it enters their shown
+    # day totals only after the athlete's check, never the fit above.
+    learned = learned_everyday(windows, bodies)
+    checked = (goal or {}).get(LEARNED_EVERYDAY_FIELD) or None
+    _add_learned(rows, learned, checked)
     # Only the device row is named by the read; the client names the others.
     rows[list(predictions).index(DEVICE)].update(
         label=_device_label(health, day_window), **device_rest
@@ -589,6 +597,12 @@ def energy_view(
             _own_window_row(shown, implausible, latest), shown, reference
         ),
         "goal": _energy_goal(rows, best, goal, inputs.days.get(day_window.end)),
+        # Per formula row, with its sign kept in raw_kcal; checked is the
+        # date the athlete took it over, else None (#3577).
+        "learned_everyday": {
+            **{name: _learned_view(fit) for name, fit in learned.items()},
+            "checked": checked,
+        },
         # Where Garmin's day summary of the shown day stands (#3530).
         "wellness": stand,
         "deficit": _deficit(latest, predictions[DEVICE][-1][2], goal),
@@ -704,6 +718,43 @@ def _outlined(rows: Sequence[Mapping[str, Any]], best: str | None) -> str | None
         r for r in rows if r["source"] != "own" and r["mean_error_kcal"] is not None
     ]
     return min(ranked, key=lambda r: r["mean_error_kcal"])["source"] if ranked else None
+
+
+def _add_learned(
+    rows: Sequence[dict[str, Any]],
+    learned: Mapping[str, LearnedEveryday | None],
+    checked: str | None,
+) -> None:
+    """Once ``checked``, each formula row carries its learned everyday term
+    (#3577): a split part of its own and in the day total."""
+    for row in rows:
+        fit = learned.get(str(row["source"])) if checked else None
+        if fit is None or row["split"] is None:
+            continue
+        kcal = round(fit.kcal)
+        row["split"] = {
+            **row["split"],
+            "learned_kcal": kcal,
+            "learned_band_kcal": round(fit.band_kcal),
+        }
+        if row["total_kcal"] is not None:
+            row["total_kcal"] += kcal
+        # Its uncertainty widens the day total's band (review, #3577).
+        if row["total_band_kcal"] is not None:
+            row["total_band_kcal"] = round(
+                math.hypot(row["total_band_kcal"], fit.band_kcal)
+            )
+
+
+def _learned_view(fit: LearnedEveryday | None) -> dict[str, Any] | None:
+    if fit is None:
+        return None
+    return {
+        "kcal": round(fit.kcal),
+        "raw_kcal": round(fit.raw_kcal),
+        "band_kcal": round(fit.band_kcal),
+        "windows": fit.windows,
+    }
 
 
 def _energy_goal(
