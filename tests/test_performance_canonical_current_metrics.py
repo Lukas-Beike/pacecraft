@@ -464,6 +464,19 @@ class CurrentBodyReadTests(unittest.TestCase):
         )
         self.assertNotIn("alternatives", body_fat)
 
+    def test_a_device_body_fat_names_its_provider(self) -> None:
+        # #3683: #3670 dropped the provider; a client may read it.
+        fat = MetricKind.BODY_FAT
+        device = self.current(
+            _weight(18.0, AS_OF, ProviderId.GARMIN, fat), metric="body_fat_pct"
+        )
+        self.assertEqual(
+            ("Garmin Connect", "garmin"),
+            (device["source"], device["source_provider"]),
+        )
+        entered = self.current(_weight(14.3, AS_OF, None, fat), metric="body_fat_pct")
+        self.assertIsNone(entered["source_provider"])
+
     def test_the_entry_wins_its_day_and_the_weight_reads_aktuell(self) -> None:
         # The weigh-in rule (#3557): Garmin's value of the entry's day is a copy.
         weight = self.current(
