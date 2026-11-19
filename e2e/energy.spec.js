@@ -27,10 +27,11 @@ test("@responsive the diary shows the energy table and explains it behind the in
   const kfa = `KFA: ${read.body.label} · bis jetzt`;
   // Today's Garmin rest names the full day it comes from, if any (#3443).
   const deviceNote = device.resting_from ? `${device.label}Ruhe ` : `${device.label}`;
-  // Today the own row names its base (#3687): 12 weeks, flagged when every window in it is unstable.
+  // Today the own row names its base (#3687): 12 weeks, flagged when every window in it is unstable;
+  // without an estimated window there is no base and it keeps "Ruhe aus 28 Tagen".
   const own = read.rows.find((row) => row.source === "own");
-  const basis = { "12w": "Basis: 12 Wochen", "12w_unstable": "Basis: 12 Wochen (unsicher)" }[own.basis];
-  expect(basis).toBeTruthy();
+  const basis = { "12w": "Ruhe aus 12 Wochen", "12w_unstable": "Ruhe aus 12 Wochen (unsicher)" }[own.basis] ?? "Ruhe aus 28 Tagen";
+  expect(own.basis ?? null).toBe(read.base ? own.basis : null);
   await expect(card.locator("tbody th")).toHaveText([`Katch-McArdle${kfa}`, `Cunningham${kfa}`, new RegExp(`^${deviceNote}.*bis jetzt$`), `Aus deinen Daten${basis} · bis jetzt`]);
   // #3478: the estimate with its low–high span on one line below it, and no "±" left in the energy views.
   const resting = card.locator("[data-energy-source='katch_mcardle'] td").first();
@@ -257,7 +258,7 @@ test("@responsive the energy table follows the diary date: sport per day, today 
   // #3530: every row's Alltag names where Garmin's day summary stands.
   await expect(card.locator("tr.energy-split-row").filter({ hasText: "(Stand 12:18)" })).toHaveCount(await card.locator("tr.energy-split-row").count());
   // #3531: the own row shows the selected day; today its resting rate rests on the 12-week base (#3687).
-  await expect(card.locator("tr[data-energy-source='own'] th small")).toHaveText("Basis: 12 Wochen · bis jetzt");
+  await expect(card.locator("tr[data-energy-source='own'] th small")).toHaveText("Ruhe aus 12 Wochen · bis jetzt");
   const today = await page.locator("#nutritionDate").inputValue();
   await page.getByRole("button", { name: "Vorheriger Tag" }).click();
   await expect(page.locator("#nutritionDate")).not.toHaveValue(today);
