@@ -23,7 +23,7 @@ from backend.performance.activity_energy import TEF_ERROR_KCAL, tef_kcal
 
 METHOD_ID = "adaptive-expenditure"
 # Bump when a formula or constant below changes the estimate.
-METHOD_VERSION = 5
+METHOD_VERSION = 6
 # Days per window and windows per week of the rolling view (#3099, #3100).
 WINDOW_DAYS = 28
 # A day's current weight is the least-squares line through the weigh-ins of
@@ -37,10 +37,16 @@ MIN_LINE_SPAN_DAYS = 7
 MIN_COMPLETE_DAYS = 14
 MIN_WEIGHINS = 8
 MIN_WEIGHT_SPAN_DAYS = 21
-# A day counts as complete with this many diary entries and at least this share
-# of the day's own expenditure estimate (resting + own activity + TEF).
+# A day counts as complete with this many diary entries.
 MIN_DAY_ENTRIES = 2
-MIN_DAY_SHARE = 0.6
+# A complete day also needs an intake of at least this share of the resting rate plus the day's
+# TEF (#3553): independent of its training, so a fully logged long day counts;
+# an intake below it lies far beneath any planned deficit, so meals are missing
+# (product assumption).
+MIN_DAY_REST_SHARE = 0.7
+# The former rule's share of the day's whole expenditure (resting + own
+# activity + TEF); only the diagnostics count the complete days it dropped.
+FORMER_DAY_SHARE = 0.6
 # Hall 2008 (Int J Obes 32:573): 39.5 MJ per kg fat and 7.6 MJ per kg lean
 # tissue, in kcal/kg.
 FAT_KCAL_PER_KG = 9441.0
@@ -261,13 +267,22 @@ def day_tef(day: DayInputs) -> float:
 
 
 def is_complete(day: DayInputs, rmr_kcal: float | None) -> bool:
-    """Enough entries and intake for the day's own expenditure estimate."""
+    """Enough entries, and an intake of at least ``MIN_DAY_REST_SHARE`` of the
+    resting rate plus the day's TEF, whatever the day's training (#3553)."""
     if day.intake_kcal is None or day.entries < MIN_DAY_ENTRIES:
         return False
-    if rmr_kcal is None or day.activity_kcal is None:
+    if rmr_kcal is None:
         return True
+    return day.intake_kcal >= MIN_DAY_REST_SHARE * (rmr_kcal + day_tef(day))
+
+
+def below_former_share(day: DayInputs, rmr_kcal: float | None) -> bool:
+    """Whether the former activity-scaled rule would have dropped the day: its
+    intake below ``FORMER_DAY_SHARE`` of resting + activity + TEF (#3553)."""
+    if day.intake_kcal is None or rmr_kcal is None or day.activity_kcal is None:
+        return False
     expected = rmr_kcal + day.activity_kcal + day_tef(day)
-    return day.intake_kcal >= MIN_DAY_SHARE * expected
+    return day.intake_kcal < FORMER_DAY_SHARE * expected
 
 
 def _latest_body_fat(inputs: EnergyInputs, day: date) -> float | None:
