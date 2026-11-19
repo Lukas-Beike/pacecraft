@@ -137,9 +137,12 @@ class EnergyViewTests(unittest.TestCase):
         # #3531: the day row's total is its 28-day resting rate plus the day's
         # 600 activity and 250 digestion, with the resting band; the 28-day row
         # keeps the window's TDEE and its band.
+        # #3550: the residual 1,850 exceeds Katch-McArdle's 1,839, so Ruhe is
+        # that reference with its band and the 11 kcal above it are "nicht
+        # erfasster Alltag" in the split; the day total stays.
         own = row(view, "own")
         self.assertEqual(
-            (1850, 150, 2700, 150),
+            (1839, 219, 2700, 150),
             (
                 own["resting_kcal"],
                 own["resting_band_kcal"],
@@ -161,6 +164,44 @@ class EnergyViewTests(unittest.TestCase):
             },
             view["body"],
         )
+
+    def test_unmeasured_everyday_energy_is_named_never_resting(self) -> None:
+        # #3550 (athlete decision 2026-11-18): 300 kcal/day of everyday energy
+        # the steps do not see lifts the residual to 2,139 over Katch-McArdle's
+        # 1,838.8 (band 218.78). The own row shows Ruhe at that reference and
+        # the 300 kcal above it as "nicht erfasster Alltag" with the residual's
+        # band; its day total (2,139 + 600 + 250) and every other row stay.
+        lifted = energy_view(inputs(), [window(END, 3000.0, 2139.0)], garmin())
+        plain = energy_view(inputs(), [window(END, 2700.0, 1839.0)], garmin())
+        own = row(lifted, "own")
+        self.assertEqual(
+            (1839, 219, 2989, 150),
+            (
+                own["resting_kcal"],
+                own["resting_band_kcal"],
+                own["total_kcal"],
+                own["total_band_kcal"],
+            ),
+        )
+        self.assertEqual(
+            (1839, "katch_mcardle", 300, 150),
+            (
+                own["split"]["resting_kcal"],
+                own["split"]["resting_source"],
+                own["split"]["unmeasured_kcal"],
+                own["split"]["unmeasured_band_kcal"],
+            ),
+        )
+        # Their values stay; only their distance to the own total moves.
+        shown = ("resting_kcal", "resting_band_kcal", "total_kcal", "split")
+        for source in ("katch_mcardle", "cunningham", "device"):
+            self.assertEqual(
+                [row(plain, source)[key] for key in shown],
+                [row(lifted, source)[key] for key in shown],
+            )
+        # At or below the reference nothing is split.
+        self.assertNotIn("unmeasured_kcal", row(plain, "own")["split"])
+        self.assertEqual(1839, row(plain, "own")["resting_kcal"])
 
     def test_a_lead_beyond_the_band_over_four_shared_windows_fits_best(self) -> None:
         # Errors per window: Katch-McArdle |2,688.8 - 2,700| = 11, Cunningham 146,
@@ -347,21 +388,27 @@ class EnergyViewTests(unittest.TestCase):
         )
         self.assertEqual(
             {
-                "resting_kcal": 1850,
+                "resting_kcal": 1839,
                 "neat_kcal": 262,
                 "sport_kcal": 368,
                 "tef_kcal": 250,
                 "shared": {"neat": False, "sport": False, "tef": True},
+                "resting_source": "katch_mcardle",
+                "unmeasured_kcal": 11,
+                "unmeasured_band_kcal": 150,
             },
             view["own_window"]["split"],
         )
         self.assertEqual(
             {
-                "resting_kcal": 1850,
+                "resting_kcal": 1839,
                 "neat_kcal": 250,
                 "sport_kcal": 350,
                 "tef_kcal": 250,
                 "shared": {"neat": True, "sport": True, "tef": True},
+                "resting_source": "katch_mcardle",
+                "unmeasured_kcal": 11,
+                "unmeasured_band_kcal": 150,
             },
             row(view, "own")["split"],
         )
@@ -1080,7 +1127,7 @@ class SelectedDayTests(unittest.TestCase):
                     [own["split"][part] for part in parts],
                 )
                 self.assertEqual(
-                    (1850, 150, sport, total, 150, 28),
+                    (1839, 219, sport, total, 150, 28),
                     (
                         own["resting_kcal"],
                         own["resting_band_kcal"],
@@ -1092,7 +1139,7 @@ class SelectedDayTests(unittest.TestCase):
                 )
                 window_row = view["own_window"]
                 self.assertEqual(
-                    (2700, 1850, 28),
+                    (2700, 1839, 28),
                     (
                         window_row["total_kcal"],
                         window_row["resting_kcal"],
@@ -1101,7 +1148,7 @@ class SelectedDayTests(unittest.TestCase):
                 )
         # A day without its parts (no meals, no activity) has no own day total.
         bare = row(self.view(END - timedelta(days=5)), "own")
-        self.assertEqual((1850, None), (bare["resting_kcal"], bare["total_kcal"]))
+        self.assertEqual((1839, None), (bare["resting_kcal"], bare["total_kcal"]))
 
 
 # One synthetic day walks the table from morning to evening through the API's
@@ -1229,9 +1276,11 @@ class EnergyDayScenarioTests(unittest.TestCase):
                 for part in DAY_PARTS:
                     self.assertEqual(katch["split"][part], own["split"][part])
                 self.assertEqual(window["resting_kcal"], own["resting_kcal"])
+                # #3550: Ruhe plus "nicht erfasster Alltag" is the residual.
+                rest = own["resting_kcal"] + own["split"].get("unmeasured_kcal", 0)
                 self.assertEqual(
                     own["total_kcal"],
-                    own["resting_kcal"] + katch["total_kcal"] - katch["resting_kcal"],
+                    rest + katch["total_kcal"] - katch["resting_kcal"],
                 )
                 self.assertNotEqual(window["total_kcal"], own["total_kcal"])
 

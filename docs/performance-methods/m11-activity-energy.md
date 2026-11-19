@@ -118,6 +118,11 @@ Laboratory treadmill and ergometer values transfer imperfectly to outdoor
 terrain, wind and stops. GPS altitude is noisy; the 20 m merge limits it.
 Gross efficiency varies with work rate (lower below about 100 W). The flex-HR
 line is calibrated on power-derived cost, not calorimetry (weak evidence).
+NEAT counts only the walking of steps and floors; standing, housework,
+carrying, unrecorded cycling and stop-and-go movement have no term, so the
+formula rows' everyday energy runs low. M12's own row names that remainder
+"nicht erfasster Alltag" where its residual exceeds the resting reference
+(#3550); a learned offset follows once enough data exists.
 
 ## Deviations from the studied procedure
 

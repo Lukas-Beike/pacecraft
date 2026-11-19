@@ -285,6 +285,48 @@ def _gated_resting(
     return None, True
 
 
+def _resting_reference(
+    own: Prediction, device: Prediction
+) -> tuple[str, float, float | None] | None:
+    """The gate's resting reference (own Katch-McArdle, else Garmin) with its
+    band and source, or None without either."""
+    for source, prediction in (("katch_mcardle", own), (DEVICE, device)):
+        if prediction[0] is not None:
+            return source, prediction[0], prediction[1]
+    return None
+
+
+def _unmeasured(
+    row: dict[str, Any],
+    shown: Estimate | None,
+    reference: tuple[str, float, float | None] | None,
+) -> dict[str, Any]:
+    """The own row with its residual split into Ruhe and "nicht erfasster
+    Alltag" where it exceeds the resting reference (athlete decision, #3550).
+
+    Ruhe is then the reference with its band; the rest carries the residual's
+    band. The day total and every other row stay as they are.
+    """
+    split = row["split"]
+    if shown is None or reference is None or split is None:
+        return row
+    source, rest, band = reference
+    # A residual within half a kcal of the reference is not split (#3550).
+    if shown.kcal - rest < 0.5:
+        return row
+    return row | {
+        "resting_kcal": _round(rest),
+        "resting_band_kcal": _round(band),
+        "split": split
+        | {
+            "resting_kcal": _round(rest),
+            "resting_source": source,
+            "unmeasured_kcal": _round(shown.kcal - rest),
+            "unmeasured_band_kcal": _round(shown.band_kcal),
+        },
+    }
+
+
 def _neat_basis(inputs: EnergyInputs, window: EnergyWindow) -> dict[str, Any] | None:
     """NEAT's inputs per day over the window's days with steps (#3255)."""
     start = window.end - timedelta(days=window.days - 1)
@@ -448,7 +490,16 @@ def energy_view(
     shown, implausible = _gated_resting(
         latest.derived_rmr, predictions["katch_mcardle"][-1], predictions[DEVICE][-1]
     )
-    rows.append(_own_day_row(shown, implausible, latest, day_window, pending[False]))
+    reference = _resting_reference(
+        predictions["katch_mcardle"][-1], predictions[DEVICE][-1]
+    )
+    rows.append(
+        _unmeasured(
+            _own_day_row(shown, implausible, latest, day_window, pending[False]),
+            shown,
+            reference,
+        )
+    )
     return {
         "end": latest.end.isoformat(),
         # The day the source rows show; after ``end`` (today) it is partial.
@@ -477,7 +528,9 @@ def energy_view(
         "skinfold_missing": body_missing,
         "body": _public_body(day_body),
         # The 28-day row with every part's mean, shown in Verlauf only (#3531).
-        "own_window": _own_window_row(shown, implausible, latest),
+        "own_window": _unmeasured(
+            _own_window_row(shown, implausible, latest), shown, reference
+        ),
         "goal": _energy_goal(rows, best, goal, inputs.days.get(day_window.end)),
         "deficit": _deficit(latest, predictions[DEVICE][-1][2], goal),
     }
