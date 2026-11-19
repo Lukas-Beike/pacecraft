@@ -169,6 +169,8 @@ SECTION_FIELDS = {
         # Windows failing the neighbour check, their largest spread and the
         # weigh-in days per source over their span (#3614).
         r"|unstable_windows|largest_unstable_spread_kcal"
+        # The fat share's prior source and percent (#3684).
+        r"|fat_prior_source|fat_prior_pct"
         # Windows whose complete days span too little to price (#3667).
         r"|windows_span_short"
         # Windows mixing both weigh-in sources and each source's mean residual

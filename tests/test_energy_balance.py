@@ -115,8 +115,9 @@ class CompositionAndTrendTests(unittest.TestCase):
 
 
 class FatShareBlendTests(unittest.TestCase):
-    """#3555: the fat share blends the prior 0.70 +- 0.15 with the slope of the
-    phase's measured fat mass, weighted by their precisions."""
+    """#3555: the fat share blends the prior (+- 0.15) with the slope of the
+    phase's measured fat mass, weighted by their precisions; the prior is
+    Forbes' FM / (FM + 10.4) at the current fat mass, else 0.70 (#3684)."""
 
     def phase(self, weeks: int, every: int = 7, true_share: float = 0.80):
         """85 kg losing 0.5 kg/week; body fat measured every ``every`` days as if
@@ -136,14 +137,47 @@ class FatShareBlendTests(unittest.TestCase):
         )
         return inputs, trend
 
+    def test_the_prior_follows_forbes_at_the_current_fat_mass(self) -> None:
+        # #3684: FM / (FM + 10.4): 12 kg of fat give 0.536, 30 kg 0.743; no
+        # body fat falls back to 0.70; 2 kg and 200 kg clamp to 0.40 and 0.85.
+        inputs, trend = self.phase(4)
+        weight = trend[END]
+        for fat_kg, expected, source in (
+            (12.0, 12.0 / 22.4, "forbes"),
+            (30.0, 30.0 / 40.4, "forbes"),
+            (2.0, 0.40, "forbes"),
+            (60.0, 0.85, "forbes"),
+            (None, 0.70, "fallback"),
+        ):
+            with self.subTest(fat_kg=fat_kg):
+                fats = {} if fat_kg is None else {END: 100.0 * fat_kg / weight}
+                prior, origin = balance.fat_share_prior(
+                    replace(inputs, body_fat_pct=fats), trend, END
+                )
+                self.assertAlmostEqual(expected, prior, places=4)
+                self.assertEqual(source, origin)
+
+    def test_the_blend_is_unchanged_apart_from_the_prior(self) -> None:
+        # #3684: the measurements' weight is the same, and the share is that
+        # weight times the measured 0.80 plus the rest times the new prior.
+        inputs, trend = self.phase(12)
+        share = balance.fat_share(inputs, trend, END)
+        self.assertAlmostEqual(0.28, share.measured_weight, delta=0.01)
+        blended = (
+            share.measured_weight * 0.80 + (1 - share.measured_weight) * share.prior
+        )
+        self.assertAlmostEqual(blended, share.share, places=6)
+
     def test_without_two_measurements_the_prior_stands_alone(self) -> None:
         inputs, trend = self.phase(4)
-        for fats in ({}, {END: 19.0}):
+        # 83 kg at 19 % on END: 15.77 kg of fat, Forbes 15.77 / 26.17 = 0.603.
+        for fats, prior in (({}, 0.70), ({END: 19.0}, 15.77 / 26.17)):
             with self.subTest(fats=fats):
                 share = balance.fat_share(
                     replace(inputs, body_fat_pct=fats), trend, END
                 )
-                self.assertEqual((0.70, 0.15, 0.0), share[:3])
+                self.assertAlmostEqual(prior, share.share, places=4)
+                self.assertEqual((0.15, 0.0), (share.sd, share.measured_weight))
         # A skinfold and an entered value are never mixed into one slope.
         mixed = replace(
             inputs,
@@ -175,11 +209,14 @@ class FatShareBlendTests(unittest.TestCase):
     def test_two_readings_14_days_apart_stay_near_the_prior(self) -> None:
         # Repeatability 2 points: 84 kg x 2 % = 1.68 kg of fat per reading over
         # a 1 kg loss give the measured share an SD of about 2.4, so it weighs
-        # little and the share stays near 0.70 with a narrow band.
+        # little and the share stays near the prior with a narrow band: Forbes
+        # at 84 kg and 16.2 kg of fat, 16.2 / 26.6 = 0.609 (#3684).
         inputs, trend = self.phase(2, every=14)
         share = balance.fat_share(inputs, trend, END)
         self.assertLess(share.measured_weight, 0.01)
-        self.assertAlmostEqual(0.70, share.share, delta=0.01)
+        self.assertEqual("forbes", share.prior_source)
+        self.assertAlmostEqual(16.2 / 26.6, share.prior, places=3)
+        self.assertAlmostEqual(share.prior, share.share, delta=0.01)
         self.assertAlmostEqual(0.15, share.sd, delta=0.001)
 
     def test_weekly_readings_weigh_more_the_longer_they_run(self) -> None:
@@ -189,7 +226,7 @@ class FatShareBlendTests(unittest.TestCase):
             share = balance.fat_share(inputs, trend, END)
             weights.append(share.measured_weight)
             # The share moves from the prior towards the measured 0.80.
-            self.assertGreater(share.share, 0.70)
+            self.assertGreater(share.share, share.prior)
             self.assertLess(share.share, 0.80)
             self.assertLess(share.sd, 0.15)
         # 12 weeks, 13 readings: measured SD 2 % x 82 kg / sqrt(sxx = 8,918
@@ -233,9 +270,11 @@ class FatShareBlendTests(unittest.TestCase):
         inputs, _ = self.phase(4, every=14)
         flat = {d: 80.0 for d in inputs.days}
         share = balance.fat_share(inputs, flat, END)
-        self.assertEqual(
-            (0.70, 0.0, 20.0), (share.share, share.measured_weight, share.pct_first)
-        )
+        # Forbes at the flat 80 kg and the latest reading, 15.4 kg of fat at
+        # 83 kg (18.55 %): 80 x 0.1855 = 14.84 kg, 14.84 / 25.24 (#3684).
+        fat = 80.0 * 15.4 / 83.0
+        self.assertAlmostEqual(fat / (fat + 10.4), share.share, places=4)
+        self.assertEqual((0.0, 20.0), (share.measured_weight, share.pct_first))
         self.assertIsNotNone(share.pct_last)
         inputs, trend = self.phase(2, every=14)
         weights = {d: v.weight_kg for d, v in inputs.days.items() if v.weight_kg}
@@ -259,7 +298,9 @@ class FatShareBlendTests(unittest.TestCase):
         self.assertAlmostEqual(
             store.fat_change_kg, -27 / 14 * store.fat_share, places=6
         )
-        self.assertLess(BAND_Z * store.sd, 200)
+        # Below the old +-1,400 by far; the water term (#3690) alone adds
+        # 1.96 x 7,153.5 x 0.51 kg / 27 days = 265 in quadrature.
+        self.assertLess(BAND_Z * store.sd, 400)
         self.assertEqual("fat_share", store.uncertainty)
         prior = balance._stored_energy(
             replace(inputs, body_fat_pct={}), trend, window, END
@@ -406,13 +447,42 @@ class AdaptiveTdeeTests(unittest.TestCase):
         self.assertEqual(balance.t_quantile(6), 2.447)
         self.assertEqual(balance.t_quantile(35), 2.042)
         self.assertEqual(balance.t_quantile(500), 1.96)
-        # Losing 500 kcal/day with exact weigh-ins and constant intake: only the
-        # density term is left. Slope 500 / 7,153.5 = 0.069896 kg/day; the prior
-        # share's SD 0.15 x (9,441 - 1,816) = 1,143.75 kcal/kg; 79.943 kcal/day.
-        # 28 days and 28 weigh-ins give min(27, 26) dof: t = 2.056, band 164.36.
+        # Losing 500 kcal/day with exact weigh-ins and constant intake: the
+        # density and the water terms are left. Slope 500 / 7,153.5 = 0.069896
+        # kg/day; the prior share's SD 0.15 x (9,441 - 1,816) = 1,143.75
+        # kcal/kg gives 79.943 kcal/day; the water term (#3690) 7,153.5 x
+        # (1 / 1.96) kg / 27 days = 135.17 kcal/day; in quadrature 157.04.
+        # 28 days and 28 weigh-ins give min(27, 26) dof: t = 2.056, band 322.88.
         window = balance.energy_windows(series(constant(2100.0)), END, weeks=1)[-1]
         assert window.adaptive_tdee is not None
-        self.assertAlmostEqual(window.adaptive_tdee.band_kcal, 164.36, delta=0.05)
+        self.assertAlmostEqual(window.adaptive_tdee.band_kcal, 322.88, delta=0.05)
+
+    def test_the_store_slope_is_robust_to_an_edge_step_or_spike(self) -> None:
+        # #3690: losing 0.07 kg/day over 28 daily weigh-ins; a 1 kg water drop
+        # three days before the end, or one 2 kg reading on the last day,
+        # moves the Theil-Sen slope less than least squares; a clean line is
+        # the same for both.
+        xs = [float(n) for n in range(28)]
+        line = [80.0 - 0.07 * x for x in xs]
+        self.assertAlmostEqual(balance._theil_sen(xs, line)[0], -0.07, places=9)
+        self.assertAlmostEqual(balance._slope(xs, line)[0], -0.07, places=9)
+        step = [y - (1.0 if x >= 25 else 0.0) for x, y in zip(xs, line, strict=True)]
+        spike = [*line[:-1], line[-1] + 2.0]
+        for name, ys in (("step", step), ("spike", spike)):
+            with self.subTest(name):
+                robust = abs(balance._theil_sen(xs, ys)[0] + 0.07)
+                squares = abs(balance._slope(xs, ys)[0] + 0.07)
+                self.assertLess(robust, squares / 2)
+
+    def test_the_band_covers_a_water_step_near_the_edge(self) -> None:
+        # #3690: 1 kg of water 4 days before the end of a steady window; the
+        # stored energy reads part of it as tissue, and the band with its water
+        # term (1.96 x 7,153.5 x 0.51 kg / 27 days = 265) covers the error.
+        inputs = series(constant(TRUE_TDEE), step_at=116)
+        window = balance.energy_windows(inputs, END, weeks=1)[-1]
+        tdee = window.adaptive_tdee
+        assert tdee is not None
+        self.assertLessEqual(abs(tdee.kcal - TRUE_TDEE), tdee.band_kcal)
 
     def test_a_weight_step_widens_the_band_and_flags_the_window(self) -> None:
         # 1 kg of water and glycogen 13 days before END, mid-window of the
@@ -422,7 +492,7 @@ class AdaptiveTdeeTests(unittest.TestCase):
         latest = stepped[-1]
         assert latest.adaptive_tdee is not None and latest.store is not None
         error = latest.adaptive_tdee.kcal - TRUE_TDEE
-        self.assertLess(error, -300)
+        self.assertLess(error, -250)
         self.assertFalse(balance.is_stable(latest))
         self.assertLessEqual(abs(error), latest.adaptive_tdee.band_kcal)
         # The store error carries it too, so the deficit card's band covers it.
@@ -839,7 +909,9 @@ class TwelveWeekBaseTests(unittest.TestCase):
         assert stepped is not None and level is not None
         on_window = abs(stepped.kcal - level.kcal)
         moved = abs(self.base(step).estimate.kcal - self.base(steady).estimate.kcal)
-        self.assertGreater(on_window, 300)
+        # The Theil-Sen slope (#3690) reads a mid-window step at about 300,
+        # least squares at about 380; the base still moves far less.
+        self.assertGreater(on_window, 250)
         self.assertLess(moved, on_window / 3)
 
     def test_a_true_change_shows_half_in_about_six_weeks(self) -> None:

@@ -934,7 +934,12 @@ class DeficitCardTests(unittest.TestCase):
                 # days give 18 dof, t = 2.101; 2.101 x 120 = 252.
                 "band_kcal": 252,
                 "method": "measured",
-                "fat_share": {"share_pct": 80, "prior_pct": 70, "measured_pct": 28},
+                "fat_share": {
+                    "share_pct": 80,
+                    "prior_pct": 70,
+                    "prior_source": "fallback",
+                    "measured_pct": 28,
+                },
                 "span_days": 28,
                 "weight_start_kg": 91.2,
                 "weight_end_kg": 89.2,
@@ -973,7 +978,12 @@ class DeficitCardTests(unittest.TestCase):
                 -300,
                 "prior",
                 None,
-                {"share_pct": 70, "prior_pct": 70, "measured_pct": 0},
+                {
+                    "share_pct": 70,
+                    "prior_pct": 70,
+                    "prior_source": "fallback",
+                    "measured_pct": 0,
+                },
             ),
             (
                 prior["deficit_kcal"],
@@ -1371,7 +1381,11 @@ class SelectedDayTests(unittest.TestCase):
             cast(Estimate, w.adaptive_tdee).band_kcal for w in windows
         )
         self.assertLessEqual(abs(balance - true_balance), band)
-        self.assertGreater(abs(latest_rule - true_balance), band)
+        # The latest window's rate on all days misses by about 170 kcal/day:
+        # beyond the band before the water term widened it (#3690), still far
+        # beyond the per-window rule's own error.
+        self.assertGreater(abs(latest_rule - true_balance), 150)
+        self.assertLess(abs(balance - true_balance), 50)
         # The last 14 days lie in the latest window: its rate, as before.
         latest_total = cast(float, totals[END])
         self.assertTrue(all(totals[d] == latest_total for d in period[:14]))

@@ -397,7 +397,7 @@ for (const theme of ["light", "dark"]) {
 const DEFICITS = {
   measured: { days: 28, deficit_kcal: 565, band_kcal: 235, method: "measured", span_days: 28, weight_start_kg: 91.2, weight_end_kg: 89.2, weight_change_kg: -2.0,
     fat_pct_start: 15.5, fat_pct_end: 14.1, fat_date_start: "2026-10-07", fat_date_end: "2026-11-13", weight_last_kg: 89.2,
-    fat_change_kg: -1.6, fat_share_pct: 80, fat_share: { share_pct: 80, prior_pct: 70, measured_pct: 28 },
+    fat_change_kg: -1.6, fat_share_pct: 80, fat_share: { share_pct: 80, prior_pct: 57, prior_source: "forbes", measured_pct: 28 },
     stored_kcal: -15820, uncertainty: "fat_share",
     total_kcal: 3800, device_total_kcal: 3100, goal: { goal: "lose", goal_kcal: 500, status: "in", distance: "near" } },
   prior: { days: 28, deficit_kcal: 420, band_kcal: 260, method: "prior", span_days: 27, weight_start_kg: 80.4, weight_end_kg: 78.9, weight_change_kg: -1.5,
@@ -435,7 +435,8 @@ for (const [method, deficit] of Object.entries(DEFICITS)) {
       await expect(boxes.nth(1)).toContainText("15,5 → 14,1 %");
       // #3598: the readings span the phase, not the 28 days, and the box says so.
       await expect(boxes.nth(1)).toContainText("07.10. → 13.11.");
-      await expect(boxes.nth(2)).toContainText("Faustregel 70 %, zu 28 % gemessen");
+      // #3684: the prior follows Forbes at the current fat mass.
+      await expect(boxes.nth(2)).toContainText("Forbes 57 %, zu 28 % gemessen");
       await expect(card.locator(".energy-deficit-status")).toHaveText("Ziel: 500 kcal Defizit · ✓ im Ziel");
       // #3606: 65 kcal from the goal is "near": the number and the mark take the accent colour.
       await expect(card).toHaveAttribute("data-goal-distance", "near");
