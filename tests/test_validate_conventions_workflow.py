@@ -203,9 +203,9 @@ class IssueLinkStepTests(unittest.TestCase):
         for spelling in (
             "Part of: #7\n\nCloses #7",
             "Part  of #7\n\nCloses #8\n\nFixed #7",
-            "Part of #7\n\nclose: Lukas-Beike/pacecraft#7",
-            "Part of #7\n\nResolved https://github.com/Lukas-Beike/pacecraft/issues/7",
-            "Part of Lukas-Beike/pacecraft#7\n\nCloses #07",
+            "Part of #7\n\nclose: example/ai-coach#7",
+            "Part of #7\n\nResolved https://github.com/example/ai-coach/issues/7",
+            "Part of example/ai-coach#7\n\nCloses #07",
         ):
             with self.subTest(spelling=spelling):
                 result = self.run_step(spelling, "", base="feat/x")
