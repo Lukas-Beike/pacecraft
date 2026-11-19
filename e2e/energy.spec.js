@@ -438,6 +438,26 @@ for (const [method, deficit] of Object.entries(DEFICITS)) {
   });
 }
 
+// #3603 ("Nur Waage"): without logged meals the weigh-ins still carry the card; only the
+// expenditure is missing and says why.
+test("@responsive the deficit card stays without logged meals", async ({ page }) => {
+  const deficit = { ...DEFICITS.measured, total_kcal: null, expenditure_missing: "intake_days" };
+  await page.route("**/api/body/energy*", async (route) => {
+    try {
+      const response = await route.fetch();
+      await route.fulfill({ response, json: { ...(await response.json()), deficit } });
+    } catch (error) {
+      if (!GONE.test(String(error))) throw error;
+    }
+  });
+  await page.goto("/#nutrition/week");
+  const card = page.locator("#nutritionFitScale [data-energy-deficit]");
+  await expect(card.locator(".energy-deficit-hero strong")).toHaveText("≈ 565 kcal");
+  await expect(card.locator("[data-deficit-box]")).toHaveCount(4);
+  await expect(card.locator(".energy-deficit-text")).toHaveText("Echter Verbrauch: braucht erfasste Mahlzeiten.");
+  await expect(card.locator(".energy-deficit-status")).toHaveText("Ziel: 500 kcal Defizit · ✓ im Ziel");
+});
+
 // #3547: without a goal the diary links to it; the goal row in Körper sets it, and the diary's energy
 // card then opens with "Heute noch essen" from the outlined source's day total.
 test("@responsive the energy goal is set in Körper and priced in the diary", async ({ page }) => {

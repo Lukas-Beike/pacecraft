@@ -23,7 +23,7 @@ from backend.performance.activity_energy import TEF_ERROR_KCAL, tef_kcal
 
 METHOD_ID = "adaptive-expenditure"
 # Bump when a formula or constant below changes the estimate.
-METHOD_VERSION = 9
+METHOD_VERSION = 10
 # Days per window and windows per week of the rolling view (#3099, #3100).
 WINDOW_DAYS = 28
 # A day's current weight is the least-squares line through the weigh-ins of
@@ -323,6 +323,26 @@ def _insufficient(complete_days: int, weighins: Sequence[date]) -> str | None:
     """Why a window has no estimate, or None when its basis is enough."""
     if complete_days < MIN_COMPLETE_DAYS:
         return "intake_days"
+    return _weighins_short(weighins)
+
+
+def _scale_store(
+    inputs: EnergyInputs,
+    trend: Mapping[date, float],
+    weights: Mapping[date, float],
+    end: date,
+    share: FatShare | None,
+) -> StoredEnergy | None:
+    """The window's stored energy whenever its weigh-ins carry it, logged meals
+    or not ("Nur Waage", #3603)."""
+    if _weighins_short(sorted(weights)):
+        return None
+    return _stored_energy(inputs, trend, weights, end, share)
+
+
+def _weighins_short(weighins: Sequence[date]) -> str | None:
+    """Why the weigh-ins cannot carry the stored energy, or None. The store
+    needs no logged meals ("Nur Waage", athlete decision, #3603)."""
     if len(weighins) < MIN_WEIGHINS:
         return "weighins"
     if (weighins[-1] - weighins[0]).days < MIN_WEIGHT_SPAN_DAYS:
@@ -487,9 +507,10 @@ def _window(
         statistics.fmean([day_tef(v) for v in complete.values()]) if complete else None
     )
     reason = _insufficient(len(complete), weighins)
-    tdee = unflagged = derived = store = None
-    if reason is None:
-        store = _stored_energy(inputs, trend, weights, end, share)
+    # The stored energy needs weigh-ins only; the expenditure also logged meals (#3603).
+    store = _scale_store(inputs, trend, weights, end, share)
+    tdee = unflagged = derived = None
+    if reason is None and store is not None:
         everything = [(v.intake_kcal or 0.0, v.flagged_kcal) for v in complete.values()]
         tdee = _tdee(everything, store.kcal_per_day, store.sd, len(weighins))
         unflagged = tdee if flagged == 0 else None

@@ -808,7 +808,12 @@ MEASURED_WEIGHT_BANDS = (
 
 
 def _measured_weight_bands(windows: Sequence[EnergyWindow]) -> dict[str, int]:
-    weights = [round(100 * w.store.measured_weight) for w in windows if w.store]
+    # Estimated windows only: a store without logged meals has no estimate (#3603).
+    weights = [
+        round(100 * w.store.measured_weight)
+        for w in windows
+        if w.store and w.adaptive_tdee is not None
+    ]
     return {
         band: sum(1 for p in weights if low <= p < high)
         for band, low, high in MEASURED_WEIGHT_BANDS
