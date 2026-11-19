@@ -461,7 +461,7 @@ test("the energy table shows bands, outlines the best source, and the basis", ()
 
 test("split A draws one stacked bar per row and hatches only the parts the backend marks shared", () => {
   const { h } = extractFunctions("components.js", ["h", "SVG_NS", "svgNode"], { document: fakeDocument() });
-  const { energySplitRow, energySplitLegend } = extractFunctions("analysis.js", ["ENERGY_IMPLAUSIBLE", "ENERGY_IMPLAUSIBLE_REASON", "ENERGY_PARTS", "ENERGY_UNMEASURED", "energyRowParts", "energyPartName", "energyKcalRange", "energySplitValue", "energyStandNote", "energySplitRow", "energySplitLegend"], { h, formatWhole: (v) => String(v) });
+  const { energySplitRow, energySplitLegend } = extractFunctions("analysis.js", ["ENERGY_IMPLAUSIBLE", "ENERGY_IMPLAUSIBLE_REASON", "ENERGY_PARTS", "ENERGY_UNMEASURED", "ENERGY_LEARNED", "energyRowParts", "energyPartName", "energyKcalRange", "energySplitValue", "energyStandNote", "energySplitRow", "energySplitLegend"], { h, formatWhole: (v) => String(v) });
   const split = (resting, neat, sport, tef, shared) => ({ resting_kcal: resting, neat_kcal: neat, sport_kcal: sport, tef_kcal: tef, shared });
   const device = { source: "device", resting_band_kcal: null, split: split(1745, 610, 765, null, { neat: false, sport: false, tef: false }) };
   // Calibrated (k != 1): only digestion is computed alike for every row.
@@ -508,6 +508,26 @@ test("split A draws one stacked bar per row and hatches only the parts the backe
   assert.equal(textOf(liftedRow.children[0].children[1]), "Ruhe wie Katch-McArdle 1839 (1620–2058) · nicht erfasster Alltag 300 (150–450) · Alltag 250 · Sport 350 · Verdauung 250");
   assert.deepEqual([...liftedRow.children[0].children[0].children].map((part) => part.dataset.part), ["resting", "unmeasured", "neat", "sport", "tef"]);
   assert.deepEqual([...energySplitLegend({ rows: [device, lifted] }).children].map((item) => textOf(item)), ["Ruhe", "nicht erfasster Alltag", "Alltag", "Sport", "Verdauung", "gleich berechnet"]);
+  // #3577: a checked formula row carries its learned everyday term after Alltag, with its band.
+  const learnedRow = { source: "katch_mcardle", resting_band_kcal: 219, split: { ...split(1839, 220, 350, 250, { neat: true, sport: true, tef: true }), learned_kcal: 480, learned_band_kcal: 180 } };
+  const drawn = energySplitRow(learnedRow);
+  assert.equal(textOf(drawn.children[0].children[1]), "Ruhe 1839 (1620–2058) · Alltag 220 · gelernter Alltag 480 (300–660) · Sport 350 · Verdauung 250");
+  assert.deepEqual([...drawn.children[0].children[0].children].map((part) => part.dataset.part), ["resting", "neat", "learned", "sport", "tef"]);
+  assert.deepEqual([...energySplitLegend({ rows: [learnedRow, lifted] }).children].map((item) => textOf(item)), ["Ruhe", "nicht erfasster Alltag", "Alltag", "gelernter Alltag", "Sport", "Verdauung", "gleich berechnet"]);
+});
+
+test("the learned everyday line offers the check, then names its date (#3577)", () => {
+  const { h } = extractFunctions("components.js", ["h", "SVG_NS", "svgNode"], { document: fakeDocument() });
+  const { energyLearnedLine } = extractFunctions("analysis.js", ["ENERGY_LEARNED_FORMULAS", "energyLearnedDeferred", "energyKcalRange", "energyLearnedLine"], {
+    h, formatWhole: (v) => String(v), dateLabel: (v) => `am-${v}`, todayIso: () => "2026-11-19", saveLearnedCheck: () => {}, renderDiaryEnergy: () => {},
+  });
+  const fit = (kcal, band) => ({ kcal, raw_kcal: kcal, band_kcal: band, windows: 4 });
+  const offered = energyLearnedLine({ learned_everyday: { katch_mcardle: fit(480, 180), cunningham: fit(330, 180), checked: null } });
+  assert.equal(textOf(offered.children[0]), "Gelernter Alltag aus 4 FensternKatch-McArdle +480 kcal/Tag (300–660) · Cunningham +330 (150–510)");
+  assert.deepEqual([...offered.children[1].children].map((button) => textOf(button)), ["Übernehmen", "Noch nicht"]);
+  const checked = energyLearnedLine({ learned_everyday: { katch_mcardle: fit(480, 180), cunningham: null, checked: "2026-11-19" } });
+  assert.equal(textOf(checked), "Gelernter Alltag übernommen am am-2026-11-19aus 4 Fenstern, wird mit jedem Fenster genauer");
+  assert.equal(energyLearnedLine({ learned_everyday: { katch_mcardle: null, cunningham: null, checked: null } }), null);
 });
 
 test("a reset drops the energy read in flight, so a pre-save answer is never shown", async () => {

@@ -732,7 +732,11 @@ def _add_learned(
         if fit is None or row["split"] is None:
             continue
         kcal = round(fit.kcal)
-        row["split"] = {**row["split"], "learned_kcal": kcal}
+        row["split"] = {
+            **row["split"],
+            "learned_kcal": kcal,
+            "learned_band_kcal": round(fit.band_kcal),
+        }
         if row["total_kcal"] is not None:
             row["total_kcal"] += kcal
 
