@@ -23,7 +23,7 @@ from backend.performance.activity_energy import TEF_ERROR_KCAL, tef_kcal
 
 METHOD_ID = "adaptive-expenditure"
 # Bump when a formula or constant below changes the estimate.
-METHOD_VERSION = 7
+METHOD_VERSION = 8
 # Days per window and windows per week of the rolling view (#3099, #3100).
 WINDOW_DAYS = 28
 # A day's current weight is the least-squares line through the weigh-ins of
@@ -89,6 +89,10 @@ CALIBRATION_BOUNDS = (0.85, 1.15)
 # bias is estimated.
 MIN_CALIBRATION_WINDOWS = 4
 MIN_BIAS_WINDOWS = 4
+# Neighbouring windows share 21 of their 28 days, so a fit over them holds about
+# a quarter of the information its window count suggests: the variance of the
+# k and b slopes is inflated by WINDOW_DAYS / 7 before the shrinkage (#3554).
+WINDOW_OVERLAP_INFLATION = WINDOW_DAYS / 7
 
 
 @dataclass(frozen=True)
@@ -393,14 +397,16 @@ def _stored_energy(
     trend: Mapping[date, float],
     weights: Mapping[date, float],
     end: date,
+    share: FatShare | None = None,
 ) -> StoredEnergy:
     """Stored energy per day over the weigh-ins, its standard error and how fat
     and lean mass were split.
 
     The least-squares slope of the window's own weigh-ins, at the energy
-    density of the blended fat share (#3555). The error combines the slope's
-    standard error with the share's. Unlike the trend's change the slope has
-    no warm-up lag after the first weigh-in.
+    density of the blended fat share (#3555): ``share``, the phase's one share
+    the windows of a view share (#3554), else the one up to ``end``. The error
+    combines the slope's standard error with the share's. Unlike the trend's
+    change the slope has no warm-up lag after the first weigh-in.
     """
     weighins = sorted(weights)
     xs = [float((d - weighins[0]).days) for d in weighins]
@@ -411,7 +417,7 @@ def _stored_energy(
         y - (mean_y + slope * (x - mean_x)) for x, y in zip(xs, ys, strict=True)
     ]
     slope_se = math.sqrt(sum(r * r for r in residuals) / max(1, len(xs) - 2) / sxx)
-    share = fat_share(inputs, trend, end)
+    share = share or fat_share(inputs, trend, end)
     density = energy_density(share.share)
     density_sd = share.sd * (FAT_KCAL_PER_KG - LEAN_KCAL_PER_KG)
     scatter, split = abs(density * slope_se), abs(slope * density_sd)
@@ -442,6 +448,7 @@ def _window(
     factor: float,
     calibration_windows: int = 0,
     length: int = WINDOW_DAYS,
+    share: FatShare | None = None,
 ) -> EnergyWindow:
     start = end - timedelta(days=length - 1)
     span = [start + timedelta(days=n) for n in range(length)]
@@ -460,7 +467,7 @@ def _window(
     reason = _insufficient(len(complete), weighins)
     tdee = unflagged = derived = store = None
     if reason is None:
-        store = _stored_energy(inputs, trend, weights, end)
+        store = _stored_energy(inputs, trend, weights, end, share)
         everything = [(v.intake_kcal or 0.0, v.flagged_kcal) for v in complete.values()]
         tdee = _tdee(everything, store.kcal_per_day, store.sd, len(weighins))
         unflagged = tdee if flagged == 0 else None
@@ -543,8 +550,9 @@ def calibration_factor(windows: Sequence[EnergyWindow]) -> float:
     """The one activity factor: slope of (TDEE - TEF) on activity, shrunk to 1.
 
     Ordinary least squares over the windows with a basis gives the slope and
-    its variance; the posterior mean with the prior 1 +- 0.10 is clamped to
-    0.85-1.15. Without enough windows, or without spread in activity, it is 1.
+    its variance, inflated for the windows' overlap (#3554); the posterior mean
+    with the prior 1 +- 0.10 is clamped to 0.85-1.15. Without enough windows, or
+    without spread in activity, it is 1.
     """
     points = _calibration_points(windows)
     if len(points) < MIN_CALIBRATION_WINDOWS:
@@ -558,7 +566,7 @@ def calibration_factor(windows: Sequence[EnergyWindow]) -> float:
     slope = sum((x - mean_x) * (y - mean_y) for x, y in points) / sxx
     residual = [y - (mean_y + slope * (x - mean_x)) for x, y in points]
     dof = max(1, len(points) - 2)
-    slope_var = sum(r * r for r in residual) / dof / sxx
+    slope_var = sum(r * r for r in residual) / dof / sxx * WINDOW_OVERLAP_INFLATION
     prior_precision = 1.0 / CALIBRATION_PRIOR_SD**2
     if slope_var <= 0:
         posterior = slope
@@ -578,16 +586,20 @@ def energy_windows(
 
     It works on whatever history ``inputs`` holds, so logged days from before
     the first read count at once; older windows without a basis give reasons.
+    Every window takes the phase's one fat share up to ``end``, so a measurement
+    that arrives mid-phase does not put a step into the windows that ``k`` and
+    ``b`` are fitted over (#3554).
     """
     weights = {
         d: v.weight_kg for d, v in inputs.days.items() if v.weight_kg is not None
     }
     trend = weight_trend(weights)
+    share = fat_share(inputs, trend, end)
     ends = [end - timedelta(days=7 * n) for n in range(weeks)][::-1]
-    uncalibrated = [_window(inputs, trend, e, 1.0) for e in ends]
+    uncalibrated = [_window(inputs, trend, e, 1.0, share=share) for e in ends]
     factor = calibration_factor(uncalibrated)
     used = len(_calibration_points(uncalibrated))
-    windows = [_window(inputs, trend, e, factor, used) for e in ends]
+    windows = [_window(inputs, trend, e, factor, used, share=share) for e in ends]
     bias = _bias(windows)
     if bias is None:
         return tuple(windows)
@@ -646,5 +658,6 @@ def _bias(windows: Sequence[EnergyWindow]) -> tuple[float, float] | None:
         return None
     slope = sum((x - mean_x) * (y - mean_y) for x, y in points) / sxx
     residual = [y - (mean_y + slope * (x - mean_x)) for x, y in points]
-    slope_sd = math.sqrt(sum(r * r for r in residual) / max(1, len(points) - 2) / sxx)
-    return -slope, BAND_Z * slope_sd
+    # The windows overlap, so their slope is less certain than OLS says (#3554).
+    slope_var = sum(r * r for r in residual) / max(1, len(points) - 2) / sxx
+    return -slope, BAND_Z * math.sqrt(slope_var * WINDOW_OVERLAP_INFLATION)

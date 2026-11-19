@@ -155,6 +155,8 @@ SECTION_FIELDS = {
         r"|dropped_days\.(garmin|wahoo|intervals))"
         # Complete days the former activity-scaled rule dropped (#3553).
         r"|latest_window_former_rule_days"
+        # The fit's estimated windows per store rule (#3554).
+        r"|calibration_store_methods\.(measured|prior)"
     ),
     # The entered body days mirrored to Garmin Connect, counts only (#3403).
     "garmin_body_push": re.compile(
