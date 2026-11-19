@@ -1,8 +1,8 @@
 # M12 — Adaptive daily expenditure from intake and the weight trend
 
 - **Card:** M12
-- **Card version:** 23
-- **Method ID:** adaptive-expenditure v23 (#3100, #3187, #3255, #3552, #3551, #3553, #3555, #3554, #3586, #3603, #3612, #3614, #3617, #3577, #3616, #3618, #3604, #3667, #3687, #3689, #3684)
+- **Card version:** 24
+- **Method ID:** adaptive-expenditure v24 (#3100, #3187, #3255, #3552, #3551, #3553, #3555, #3554, #3586, #3603, #3612, #3614, #3617, #3577, #3616, #3618, #3604, #3667, #3687, #3689, #3684, #3690)
 - **Status:** method implemented (`backend/nutrition/energy_balance.py`, the weigh-in line in `backend/athlete/body_records.py`, #3640); the reader, diagnostics and display follow (#3100, #3099)
 - **Classification:** model estimate
 - **Literature checked:** 2026-11-15
@@ -53,8 +53,12 @@ estimate. It never rewrites logged values and never falls back to a formula.
    the view takes this one phase-wide share, so a measurement that arrives
    mid-phase moves all windows alike and puts no step into the windows
    that `k` and `b` are fitted over (#3554).
-3. **Stored energy per day:** `ρ × slope`, the least-squares slope of the
-   window's own weigh-ins in kg/day. The current weight only supplies the
+3. **Stored energy per day:** `ρ × slope`, the Theil-Sen slope (median of
+   the pairwise slopes) of the window's own weigh-ins in kg/day (#3690): a
+   single bad weigh-in or a water step near the window's edge moves it far
+   less than least squares, which agrees on clean data (synthetic, 0.3 kg
+   daily scatter: a 2 kg edge reading 156 vs 49 kcal/day, a 1 kg step 3 days
+   from the edge 147 vs 109, mid-window steps alike, clean RMS 66 vs 69). The current weight only supplies the
    mass for `ρ`. The measured share's weight grows with the number and span
    of the measurements and with the square of the rate of weight change: its
    SD divides by that rate, so a slow change leaves the prior (#3618).
@@ -76,8 +80,10 @@ estimate. It never rewrites logged values and never falls back to a formula.
    the flagged kcal the logged kcal of each day's flagged entries and `t`
    the two-sided 95 % Student quantile for the smaller of `n − 1` and
    `weigh-ins − 2` degrees of freedom (1.96 beyond 120). `SE_store` combines
-   `ρ` times the slope's standard error with the slope times the density's
-   SD, the blended fat share's posterior SD × (9,441 − 1,816) kcal/kg:
+   `ρ` times the slope's standard error (from the residuals around that
+   line), an unmodelled water and glycogen term `ρ × 0.51 kg / span` (about
+   ±1 kg over a window at 95 %, Fable review, #3690) and the slope times the
+   density's SD, the blended fat share's posterior SD × (9,441 − 1,816) kcal/kg:
    0.15 × 7,625 = 1,144 kcal/kg while only the prior applies, less as the
    measurements weigh in (#3555, #3618). The slope's standard error carries the AR(1) factor
    `√((1 + r) / (1 − r))` of the lag-1 autocorrelation `r` of the weigh-ins
@@ -326,6 +332,7 @@ bias that is the same on every day is not visible in the band.
 | Flagged-meal bias gate | band ≤ ± 25 points, ≥ 2 independent windows | product assumption | overlapping windows hold about a quarter of the information (#3616) |
 | Band | t quantile, 1.96 beyond 120 dof | product assumption | two-sided 95 %, standard t table (#3187 item 10); the deficit card uses the same (#3614) |
 | Residual autocorrelation cap | 0.8 (factor 3 at most) | product assumption | AR(1) factor for persisting weigh-in scatter (#3614) |
+| Water and glycogen term | ±1 kg over a window (95 %), SD 0.51 kg | product assumption | about 2 of 3.4 kg early in a cut can be water, glycogen and gut content (Fable review, #3690) |
 | Stability band | 2.576 / 1.96 × t | product assumption | about 99 % per pair, so flat series are rarely flagged across up to 6 neighbour pairs (#3614) |
 | Fat share SD for the density | 0.144 | product assumption | share 0.5-1.0 uniform; the density's uncertainty in the band |
 | Estimated intake limits | calibration ≤ 63 days old, weight ± 4 %, activity ± 30 % | product assumption | the resting rate adapts over a lasting deficit; the 12-week view reaches 77 days (#3604) |
@@ -373,7 +380,7 @@ bias that is the same on every day is not visible in the band.
 | Constant | Value | Module | Code comment |
 | --- | --- | --- | --- |
 | `METHOD_ID` | `'adaptive-expenditure'` | `backend/nutrition/energy_balance.py` |  |
-| `METHOD_VERSION` | `23` | `backend/nutrition/energy_balance.py` | Bump when a formula or constant below changes the estimate. |
+| `METHOD_VERSION` | `24` | `backend/nutrition/energy_balance.py` | Bump when a formula or constant below changes the estimate. |
 | `WINDOW_DAYS` | `28` | `backend/nutrition/energy_balance.py` | Days per window and windows per week of the rolling view (#3099, #3100). |
 | `MIN_COMPLETE_DAYS` | `14` | `backend/nutrition/energy_balance.py` | A window needs this many complete logging days, weigh-ins and days between its first and last weigh-in; otherwise it gives its reason, never a formula. |
 | `MIN_WEIGHINS` | `8` | `backend/nutrition/energy_balance.py` |  |
@@ -386,6 +393,7 @@ bias that is the same on every day is not visible in the band.
 | `FAT_SHARE_PRIOR` | `0.7` | `backend/nutrition/energy_balance.py` | The fat share of a weight change is a precision-weighted blend of a prior and the slope of the phase's measured fat mass (athlete decision, #3555). The prior follows Forbes' curve at the current fat mass, FM / (FM + 10.4 kg) (Forbes 1987, Hall 2008), clamped to 0.40-0.85, with SD 0.15; without a body fat it falls back to 0.70 (athlete decision, #3684). |
 | `FAT_SHARE_PRIOR_SD` | `0.15` | `backend/nutrition/energy_balance.py` |  |
 | `FORBES_FAT_MASS_KG` | `10.4` | `backend/nutrition/energy_balance.py` |  |
+| `WATER_KG_SD` | `1.0 / 1.96` | `backend/nutrition/energy_balance.py` | Water, glycogen and gut content the weigh-ins cannot tell from tissue: about 1 kg (95 %) over a window, as early in a cut about 2 of 3.4 kg in 27 days can be (Fable review, #3690); its SD, priced at the tissue density over the window's span, enters the stored energy's error in quadrature. |
 | `FAT_SHARE_PRIOR_BOUNDS` | `(0.4, 0.85)` | `backend/nutrition/energy_balance.py` |  |
 | `BODY_FAT_REPEATABILITY_PCT` | `2.0` | `backend/nutrition/energy_balance.py` | Repeatability of one self-measured body fat value (percentage points, SD): the upper end of the review's 1.5-2 for skinfolds (#3555). |
 | `MIN_FAT_SHARE_WEIGHT_CHANGE_KG` | `0.1` | `backend/nutrition/energy_balance.py` | Below this weight change between the first and last measurement the measured share divides by noise, so the prior stands alone (product assumption). |
