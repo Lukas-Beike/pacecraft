@@ -130,6 +130,11 @@ class CoachToolSchemaTests(unittest.TestCase):
         for source in ("skinfold", "entered", "device", "profile"):
             self.assertIn(source, energy)
         self.assertIn("body.label", energy)
+        # #3618 item 6: the Verlauf parts of the read say what they mean.
+        for field in ("deficit", "fit_scale", "goal", "wellness"):
+            with self.subTest(field=field):
+                self.assertRegex(energy, rf"\b{field} (is|holds)\b")
+        self.assertIn("unflagged.end", energy)
 
     def test_session_tools_name_the_total_time_as_a_strength_duration(self):
         # #2317: rest between sets is part of a strength session's work.
