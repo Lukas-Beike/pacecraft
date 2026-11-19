@@ -687,7 +687,7 @@ Evidence:
 - `tests/test_garmin_analysis_refresh.py:test_targeted_weekly_view_metrics_request_daily_readings`; running tolerance shares the weekly grouping in `public/analysis.js`. Gap: the exact daily `groupMap` key shape is inferred from the SDK docstring and existing weekly handling, not from a captured live payload.
 
 ### Requirement: Körper owns the current weight and body fat
-The system SHALL take the current weight and body fat only from the body records (Körper's entries and skinfolds, and the providers' measurements), never from a value stored in the athlete profile (athlete decision, #3640). The profile's stored values and their change history stay data: their history counts as dated weigh-ins and skinfold readings (#3557).
+The system SHALL take the current weight and body fat only from the body records (Körper's entries and skinfolds, and the providers' measurements), never from a value stored in the athlete profile (athlete decision, #3640). The profile's stored values and their change history stay data: their history counts as dated weigh-ins and skinfold readings (#3557). Every calculation SHALL use the energy view's rules for both.
 
 #### Scenario: Only the profile holds a value
 - **WHEN** the profile still stores a weight or body fat and no body record exists
@@ -697,7 +697,15 @@ The system SHALL take the current weight and body fat only from the body records
 - **WHEN** Körper or a provider holds a weight or body fat
 - **THEN** that record is the current value under its source rule, whatever the profile stores.
 
-Evidence: `backend/performance/current_metrics.py:_body_candidates`, `backend/nutrition/energy_inputs.py:_body_fat`, `backend/nutrition/macro_context.py:body_weight`; `tests/test_performance_current_metrics.py::test_the_profile_weight_and_body_fat_are_no_source`, `tests/test_energy_inputs.py::BodyFatFallbackTests`, `tests/test_nutrition_macro_ranges.py::test_body_weight_keeps_its_source_and_has_no_profile_fallback`.
+#### Scenario: A calculation reads the current weight and body fat
+- **WHEN** the reference ranges, the race plan, session fuelling or the Coach's metrics and threshold weight read them
+- **THEN** the weight is the weigh-in line of the read day under the weigh-in source rule, labelled "aktuell", and the body fat is the newest skinfold, else an entered value, else a device's, each within 90 days, with its source label and day.
+
+#### Scenario: Only Wahoo's stored profile weight exists
+- **WHEN** the only weight is Wahoo's stored profile weight
+- **THEN** the current weight is missing; Wahoo's stored weight never counts as a weigh-in (#3557).
+
+Evidence: `backend/athlete/body_records.py:read_current_body`, `backend/athlete/body_records.py:body_fat_on`, `backend/performance/current_metrics.py:_performance_body_metrics`, `backend/nutrition/macro_context.py:body_weight`; `tests/test_performance_current_metrics.py::test_the_profile_and_wahoo_weight_and_the_profile_body_fat_are_no_source`, `tests/test_body_records.py::CurrentBodyTests`, `tests/test_performance_canonical_current_metrics.py::CurrentBodyReadTests`, `tests/test_energy_inputs.py::BodyFatFallbackTests`, `tests/test_nutrition_macro_ranges.py::test_body_weight_keeps_its_source_and_has_no_profile_fallback`.
 
 ### Requirement: Performance inputs come from canonical observations only
 The system SHALL read the performance inputs only from canonical observations and activity summaries; the body history carries Garmin weight and body fat. Performance readers SHALL NOT read snapshot wellness rows or stored Intervals.icu wellness days. Without canonical inputs these values SHALL be absent.
