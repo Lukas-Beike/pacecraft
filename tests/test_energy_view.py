@@ -749,6 +749,15 @@ class DeficitCardTests(unittest.TestCase):
             (card["deficit_kcal"], card["band_kcal"], card["total_kcal"]),
         )
         self.assertEqual("intake_days", card["expenditure_missing"])
+        # Without an estimate the own rows name no fat share (Gitar, #3620).
+        self.assertEqual(
+            (None, None, None),
+            (
+                row(view, "own")["total_kcal"],
+                row(view, "own")["fat_share"],
+                view["own_window"]["fat_share"],
+            ),
+        )
         # Maintenance: a flat weight is near 0 and within "Halten".
         flat = replace(latest, store=MEASURED._replace(kcal_per_day=-40.0))
         hold = energy_view(

@@ -766,8 +766,8 @@ def _own_day_row(
         # The days the resting rate comes from, shown as "Ruhe aus 28 Tagen".
         "window_days": latest.days,
         # The blended fat share of the weight change; None without an
-        # estimate (#3555).
-        "fat_share": _fat_share_view(latest.store),
+        # estimate (#3555), even when the weigh-ins give a store (#3603).
+        "fat_share": _fat_share_view(latest.store if latest.adaptive_tdee else None),
     }
 
 
@@ -801,7 +801,7 @@ def _own_window_row(
         "split": split,
         # A window method: its days, shown as "Ø pro Tag, letzte 28 Tage" (#3395, #3513).
         "window_days": latest.days,
-        "fat_share": _fat_share_view(latest.store),
+        "fat_share": _fat_share_view(latest.store if latest.adaptive_tdee else None),
     }
 
 
