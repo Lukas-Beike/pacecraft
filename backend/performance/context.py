@@ -341,7 +341,6 @@ def current_performance_context(
         canonical=current,
         activities=activities,
         garmin_thresholds=_garmin_canonical(canonical).thresholds,
-        garmin_body=_garmin_canonical(canonical).body,
         as_of=today,
     )
     feedback = feedback_by_session(

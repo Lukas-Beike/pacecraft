@@ -284,7 +284,9 @@ class ProviderReviewTests(unittest.TestCase):
                 # Recovery values come only from observations (#1411).
                 canonical=recovery_only_inputs(garmin),
             )
-            for key in ("cycling_ftp_watts", "weight_kg"):
+            # The weight is Körper's weigh-in line now (#3640), with no
+            # Garmin freshness; the FTP keeps Garmin's.
+            for key in ("cycling_ftp_watts",):
                 data = public["metrics"][key]
                 self.assertEqual(data["freshness"], "stale")
                 self.assertEqual(data["fetched_at"], first["synced_at"])

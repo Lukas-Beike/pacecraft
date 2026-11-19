@@ -184,18 +184,12 @@ DAILY_RULES: Final[Mapping[MetricKind, SourceRule]] = MappingProxyType(
 # stored value of another provider (such as "intervals") is ignored. Only groups
 # where a preference changes the result have one (athlete decision 2026-11-11,
 # #2084): Garmin already leads thresholds, HRV, resting HR and sleep, so their
-# stored profile values are kept but read nowhere. "body" makes Garmin win over
-# a newer local or Wahoo measurement.
+# stored profile values are kept but read nowhere. "body" left with #3640:
+# Körper's weigh-in rule (``backend.athlete.body_records``) decides the weight
+# and body fat, so its stored value is kept but read nowhere either.
 PREFERENCE_GROUPS: Final[
     Mapping[str, tuple[frozenset[MetricKind], tuple[ProviderId, ...]]]
-] = MappingProxyType(
-    {
-        "body": (
-            frozenset({MetricKind.WEIGHT, MetricKind.BODY_FAT}),
-            (_GARMIN,),
-        ),
-    }
-)
+] = MappingProxyType({})
 # Profile field of each group's preference; an empty value keeps the default order.
 PREFERENCE_PROFILE_FIELDS: Final[Mapping[str, str]] = MappingProxyType(
     {group: f"preferred_source_{group}" for group in PREFERENCE_GROUPS}

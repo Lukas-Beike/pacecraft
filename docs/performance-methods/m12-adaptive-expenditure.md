@@ -3,7 +3,7 @@
 - **Card:** M12
 - **Card version:** 19
 - **Method ID:** adaptive-expenditure v19 (#3100, #3187, #3255, #3552, #3551, #3553, #3555, #3554, #3586, #3603, #3612, #3614, #3617, #3577, #3616, #3618, #3604)
-- **Status:** method implemented (`backend/nutrition/energy_balance.py`); the reader, diagnostics and display follow (#3100, #3099)
+- **Status:** method implemented (`backend/nutrition/energy_balance.py`, the weigh-in line in `backend/athlete/body_records.py`, #3640); the reader, diagnostics and display follow (#3100, #3099)
 - **Classification:** model estimate
 - **Literature checked:** 2026-11-15
 - **Review:** blocked
@@ -335,9 +335,6 @@ bias that is the same on every day is not visible in the band.
 | `METHOD_ID` | `'adaptive-expenditure'` | `backend/nutrition/energy_balance.py` |  |
 | `METHOD_VERSION` | `19` | `backend/nutrition/energy_balance.py` | Bump when a formula or constant below changes the estimate. |
 | `WINDOW_DAYS` | `28` | `backend/nutrition/energy_balance.py` | Days per window and windows per week of the rolling view (#3099, #3100). |
-| `CURRENT_WEIGHT_DAYS` | `28` | `backend/nutrition/energy_balance.py` | A day's current weight is the least-squares line through the weigh-ins of this many days up to it, at its latest weigh-in, so a steady change has no lag (#3551); with fewer weigh-ins or a shorter span, their mean. |
-| `MIN_LINE_WEIGHINS` | `3` | `backend/nutrition/energy_balance.py` |  |
-| `MIN_LINE_SPAN_DAYS` | `7` | `backend/nutrition/energy_balance.py` |  |
 | `MIN_COMPLETE_DAYS` | `14` | `backend/nutrition/energy_balance.py` | A window needs this many complete logging days, weigh-ins and days between its first and last weigh-in; otherwise it gives its reason, never a formula. |
 | `MIN_WEIGHINS` | `8` | `backend/nutrition/energy_balance.py` |  |
 | `MIN_WEIGHT_SPAN_DAYS` | `21` | `backend/nutrition/energy_balance.py` |  |
@@ -365,4 +362,12 @@ bias that is the same on every day is not visible in the band.
 | `MAX_RESIDUAL_AUTOCORRELATION` | `0.8` | `backend/nutrition/energy_balance.py` | A weight step from water or glycogen is not tissue (#3614): weigh-ins whose scatter persists widen the slope's error by the AR(1) factor, with the lag-1 autocorrelation capped here (factor 3 at most); overlapping windows that differ beyond the 99 % band of the days they do not share are unstable and their band holds the difference. 2.576 / 1.96 turns the 95 % t into 99 %. |
 | `STABILITY_BAND_RATIO` | `2.576 / 1.96` | `backend/nutrition/energy_balance.py` |  |
 | `LEARNED_EVERYDAY_PRIOR_SD` | `250.0` | `backend/nutrition/energy_balance.py` | The learned everyday term of a formula row (#3577): the own total's excess over the row, shrunk towards 0 with this SD (kcal/day, product assumption). |
+| `CURRENT_WEIGHT_DAYS` | `28` | `backend/athlete/body_records.py` | A day's current weight is the least-squares line through the weigh-ins of this many days up to it, at its latest weigh-in, so a steady change has no lag (#3551); with fewer weigh-ins or a shorter span, their mean. |
+| `MIN_LINE_WEIGHINS` | `3` | `backend/athlete/body_records.py` |  |
+| `MIN_LINE_SPAN_DAYS` | `7` | `backend/athlete/body_records.py` |  |
+| `RESTING_LOOKBACK_DAYS` | `90` | `backend/athlete/body_records.py` | How far back a weigh-in or body fat still counts for a current value. |
+| `BODY_GRACE_DAYS` | `1` | `backend/athlete/body_records.py` | A skinfold taken up to a day after the view's end still counts (#3336). |
+| `APP_SOURCE` | `'app'` | `backend/athlete/body_records.py` | The weigh-in source rule (athlete decisions, #3557): the app's own records, entered (no provider) or a dated profile value (app), win their day; Garmin's are copies of them and fill only a day without one. Any other provider's value, such as Wahoo's stored profile weight, never counts. |
+| `SKINFOLD_LABEL` | `'Hautfalten'` | `backend/athlete/body_records.py` |  |
+| `ENTERED_LABEL` | `'Lokal'` | `backend/athlete/body_records.py` |  |
 <!-- END GENERATED CONSTANTS -->

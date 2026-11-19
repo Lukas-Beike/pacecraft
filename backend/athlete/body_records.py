@@ -11,15 +11,18 @@ from __future__ import annotations
 
 import statistics
 from bisect import bisect_left, bisect_right
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
+from dataclasses import dataclass
 from datetime import date, timedelta
 from typing import Any, Final
 
 from backend.athlete.measurements import finite_float
+from backend.athlete.profile import profile_body_fat_history, profile_weight_history
 from backend.athlete.skinfolds import SkinfoldMeasurement
 from backend.canonical.records import Observation
-from backend.canonical.vocabulary import ProviderId
+from backend.canonical.vocabulary import MetricKind, ProviderId
 from backend.providers.source_labels import SourceView, provider_label
+from backend.runtime.ports import ObservationReader
 
 # A day's current weight is the least-squares line through the weigh-ins of
 # this many days up to it, at its latest weigh-in, so a steady change has no
@@ -221,3 +224,45 @@ def body_fat_on(
             return {"source": source, "label": label, "measured_on": on,
                     "body_fat_pct": fat}  # fmt: skip
     return None
+
+
+@dataclass(frozen=True)
+class CurrentBody:
+    """The current weight (the weigh-in line) and the body fat in effect
+    (``body_fat_on``) on one day; None where Körper has no record."""
+
+    weight_kg: float | None = None
+    body_fat: Mapping[str, Any] | None = None
+
+
+NO_BODY: Final = CurrentBody()
+
+
+def read_current_body(
+    reader: ObservationReader,
+    db: Any,
+    day: date,
+    skinfolds: Callable[[Any, date], Sequence[SkinfoldMeasurement]],
+) -> CurrentBody:
+    """The current weight and body fat on ``day`` from the body records of the
+    last 90 days, by the energy view's rules (#3640): the weigh-ins under the
+    source rule, with the profile's dated values (#3557), and the skinfolds,
+    the profile's dated skinfolds and the measured body fats. Only a database
+    holds the profile's change history."""
+    since = day - timedelta(days=RESTING_LOOKBACK_DAYS)
+    until = day + timedelta(days=BODY_GRACE_DAYS)
+    history = hasattr(db, "execute")
+    weights = profile_weight_history(db, since) if history else {}
+    folds = profile_body_fat_history(db, since) if history else {}
+    weight = current_weight(
+        reader.observations(db, MetricKind.WEIGHT, start=since, end=day),
+        {d: kg for d, kg in weights.items() if d <= day},
+        day,
+    )
+    skinfold = {d: pct for d, pct in folds.items() if d <= until}
+    skinfold.update(skinfold_body_fats(skinfolds(db, until), since))
+    measured = device_body_fats(
+        reader.observations(db, MetricKind.BODY_FAT, start=since, end=until),
+        folds,
+    )
+    return CurrentBody(weight, body_fat_on(skinfold, measured, day))
