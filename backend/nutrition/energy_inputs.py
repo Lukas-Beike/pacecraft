@@ -575,6 +575,12 @@ def energy_basis(db: Any, sources: EnergySources, end: date) -> dict[str, Any]:
         | skinfold_diagnostics(skinfolds, missing, end, bodies)
         # How many days back today's Garmin Ruhe comes from, None = none (#3443).
         | {"today_resting_days_back": (end - found[0]).days if found else None}
+        # Days of the last week whose Garmin summary names its wellness end (#3530).
+        | {
+            "wellness_end_days": sum(
+                1 for day in week.values() if day.get("wellness_end_min") is not None
+            )
+        }
     )
 
 

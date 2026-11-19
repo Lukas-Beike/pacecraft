@@ -328,8 +328,9 @@ class DailyPlanningCanonicalWiringTests(unittest.TestCase):
         self.assertEqual(manager.units, 1)
         self.assertEqual(reader.selected, 1)
         self.assertEqual({call[1:] for call in reader.calls}, {WINDOW})
-        # Five recovery kinds, then the five daily totals; no Intervals load.
-        self.assertEqual(len(reader.calls), 10)
+        # Five recovery kinds, then the five daily totals and the wellness end
+        # (#3530); no Intervals load.
+        self.assertEqual(len(reader.calls), 11)
         by_date = {day["date"]: day for day in result}
         self.assertEqual(by_date[DAY]["recovery"]["resting_hr"], 49)
         self.assertEqual(by_date[OTHER_DAY]["recovery"]["sleep_score"], 80)
@@ -422,6 +423,8 @@ class CanonicalPlanningEndToEndTests(CanonicalReadFixture):
                 "daily_energy_total",
                 "daily_energy_active",
                 "daily_energy_resting",
+                # Where the day summary's wellness data ends (#3530).
+                "daily_wellness_end",
             },
         )
 

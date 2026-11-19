@@ -2,6 +2,7 @@
 
 import re
 from collections.abc import Mapping
+from datetime import UTC, date, datetime, time, tzinfo
 from itertools import islice
 from typing import Any
 
@@ -117,6 +118,62 @@ def _nested_value(record: Mapping[str, Any], path: tuple[str, ...]) -> Any:
             return None
         value = value.get(key)
     return value
+
+
+# The day summary's wellness end time (#3530): the range endpoint nests it,
+# the per-day summary keeps it flat; local clock time, so no timezone is needed.
+# Each path with whether it is local clock time; the nested key is primary
+# (Fable on #3530), local before GMT, then the flat names as aliases only.
+_WELLNESS_END_PATHS: tuple[tuple[tuple[str, ...], bool], ...] = (
+    (("wellnessChronology", "endTimestampLocal"), True),
+    (("wellnessChronology", "endTimestampGmt"), False),
+    (("endTimestampLocal",), True),
+    (("endTimestampGmt",), False),
+    (("wellnessEndTimeLocal",), True),
+    (("wellnessEndTimeGmt",), False),
+)
+# The mapper's derived field: minutes after the day's local midnight.
+GARMIN_WELLNESS_END_MINUTE = "wellnessEndMinuteLocal"
+_MINUTES_PER_DAY = 1440
+
+
+def _local_end(raw: object, local: bool, zone: tzinfo) -> datetime | None:
+    """The end as naive local clock time: local ISO text as is; GMT ISO text
+    and epoch milliseconds (always UTC) in ``zone``; else None."""
+    if isinstance(raw, int | float) and not isinstance(raw, bool):
+        try:
+            return (
+                datetime.fromtimestamp(raw / 1000, UTC)
+                .astimezone(zone)
+                .replace(tzinfo=None)
+            )
+        except OverflowError, OSError, ValueError:
+            return None
+    if not isinstance(raw, str):
+        return None
+    try:
+        end = datetime.fromisoformat(raw.strip())
+    except ValueError:
+        return None
+    if local and end.tzinfo is None:
+        return end
+    aware = end if end.tzinfo is not None else end.replace(tzinfo=UTC)
+    return aware.astimezone(zone).replace(tzinfo=None)
+
+
+def wellness_end_minute(
+    record: Mapping[str, Any], day: date, zone: tzinfo
+) -> float | None:
+    """Minutes after ``day``'s local midnight in ``zone`` where the record's
+    wellness data ends, capped at the next midnight (1440); None when
+    unreadable or not after the day's midnight (#3530)."""
+    for path, local in _WELLNESS_END_PATHS:
+        end = _local_end(_nested_value(record, path), local, zone)
+        if end is None:
+            continue
+        minutes = (end - datetime.combine(day, time())).total_seconds() / 60
+        return min(minutes, _MINUTES_PER_DAY) if minutes > 0 else None
+    return None
 
 
 def flatten_daily_summary(record: Mapping[str, Any]) -> Mapping[str, Any]:

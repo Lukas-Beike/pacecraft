@@ -451,8 +451,13 @@ def energy_view(
     device_neat, device_sport = _device_split(
         health, sessions, day_window, device_prediction[0] if device_rest else None
     )
+    stand = wellness_stand(health.get(day_window.end.isoformat(), {}), sessions)
     day_predictions[DEVICE], behind = _garmin_behind(
-        device_prediction, device_neat, device_sport, bool(device_rest)
+        device_prediction,
+        # A summary that leaves a session out has no everyday yet (#3530).
+        None if (stand or {}).get("behind") else device_neat,
+        device_sport,
+        bool(device_rest),
     )
     pending[1].extend(behind)
     rows = []
@@ -538,6 +543,8 @@ def energy_view(
             _own_window_row(shown, implausible, latest), shown, reference
         ),
         "goal": _energy_goal(rows, best, goal, inputs.days.get(day_window.end)),
+        # Where Garmin's day summary of the shown day stands (#3530).
+        "wellness": stand,
         "deficit": _deficit(latest, predictions[DEVICE][-1][2], goal),
     }
 
@@ -849,9 +856,13 @@ def _so_far(
     if not today:
         return window, ([], [])
     day = day or DayInputs()
-    # Fewer day steps than the sessions' own: the day summary lags behind the
-    # activity, so its everyday has not arrived yet either (#3530).
-    behind = day.steps is not None and day.session_steps > day.steps
+    # The day summary lags behind the activity, so its everyday has not arrived
+    # yet either (#3530): it ends before a session does, or, without its end
+    # time, it has fewer day steps than the sessions' own.
+    stand = wellness_stand(garmin_day, sessions)
+    behind = (stand or {}).get("behind") or (
+        day.steps is not None and day.session_steps > day.steps
+    )
     absent = {
         "neat": (window.neat_kcal_raw is None and day.steps is None) or behind,
         "sport": window.sport_kcal_raw is None and not sessions,
@@ -891,6 +902,31 @@ def _garmin_behind(
     if not today or resting is None or neat is not None or sport is None:
         return prediction, []
     return (resting, None, resting + sport, None), ["neat"]
+
+
+MINUTES_PER_DAY: Final = 1440
+
+
+def wellness_stand(
+    garmin_day: Mapping[str, Any], sessions: Sequence[Mapping[str, Any]]
+) -> dict[str, Any] | None:
+    """Where Garmin's day summary stands (#3530): its wellness end as "HH:MM"
+    while the day is not finished, and whether a session of the day ends after
+    it, so the summary's steps and active kcal leave that session out."""
+    end = _number(garmin_day.get("wellness_end_min"))
+    if end is None or end >= MINUTES_PER_DAY:
+        return None
+    later = False
+    for summary in sessions:
+        start = str(summary.get("started_at_local") or "")
+        seconds = _number(summary.get("elapsed_duration_s")) or _number(
+            summary.get("moving_duration_s")
+        )
+        if len(start) >= 16 and start[11:16].replace(":", "").isdigit():
+            minute = int(start[11:13]) * 60 + int(start[14:16]) + (seconds or 0) / 60
+            later = later or minute > end
+    whole = int(end)
+    return {"as_of": f"{whole // 60:02d}:{whole % 60:02d}", "behind": later}
 
 
 def _part_so_far(

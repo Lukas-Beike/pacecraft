@@ -177,6 +177,7 @@ Each kind has exactly one canonical unit (`MetricKind.unit`) and a plausibility 
 | `run_threshold_power` | `W` | 0 to 2,500 | Legacy: run FTP before Garmin health mapper 17; now FTP with sport run. | none | unproduced by providers |
 | `daily_energy_total` | `kcal` | 0 to 20,000 | Total energy expenditure of the day. | `garmin_health_mapping.py` | read |
 | `daily_energy_active` | `kcal` | 0 to 20,000 | Active energy expenditure of the day. | `garmin_health_mapping.py` | read |
+| `daily_wellness_end` | `min` | 1 to 1,440 | Where the day summary's wellness data ends, in minutes after the day's local midnight; 1,440 for a finished day. | `garmin_health_mapping.py` | read |
 | `steps` | `count` | 0 to 200,000 | Step count of the day. | `garmin_health_mapping.py` | read |
 | `floors` | `count` | 0 to 1,000 | Floors climbed in the day. | `garmin_health_mapping.py` | read |
 | `stress` | `score` | 0 to 100 | Garmin daily physiological stress level. | `garmin_health_mapping.py` | export only: no reader |
@@ -1765,7 +1766,7 @@ Conventions used in the tables of this part:
 
 Status: Live. `map_garmin_health` is called per stored element by `canonical_plans.py` (ingest and re-projection,
 one-element list per list section, the record itself for single-record sections) and by `snapshot_projection.py`.
-Mapper version: **25** (`MAPPER_VERSION`). Also carries the versions of `garmin_training_mapping.py` (the six
+Mapper version: **26** (`MAPPER_VERSION`; 26 maps the day summary's wellness end, #3530). Also carries the versions of `garmin_training_mapping.py` (the six
 training sections and the endurance `groupMap`, see "Training sections" below), which is replayed by this module.
 Inputs: the Garmin snapshot as a mapping section name → record or list of records (`GARMIN_HEALTH_SECTION_NAMES`);
 `zone` = athlete zone (`ZoneInfo`), `retrieved_at` = fetch time of that section (`garmin_section_retrieved_at`: the
@@ -1972,6 +1973,7 @@ and `""` are dropped; a nested `calories` mapping is removed): `calories.burnedT
 | `floors` | `floorsAscended` → `floors_ascended` → `floors` → `floorsUp` → `floors_up` | count, rounded, bounds 0 to 1000, 0 kept | Src `device_measured`. |
 | `daily_energy_total` | `totalKilocalories` → `total_kilocalories` → `totalCalories` → `total_calories` → `calories` | kcal, bounds above 0 to 20000 | Src `provider_reported`; provider total, never estimated; 0 rejected. |
 | `daily_energy_active` | `activeKilocalories` → `active_kilocalories` → `activeCalories` → `active_calories` → `activeCaloriesBurned` → `active_calories_burned` | kcal, 0 kept | Src `provider_reported`. |
+| `daily_wellness_end` | primary `wellnessChronology.endTimestampLocal` → `wellnessChronology.endTimestampGmt`; aliases `endTimestampLocal` → `endTimestampGmt` → `wellnessEndTimeLocal` → `wellnessEndTimeGmt`. ISO text (a `…Local` value as local clock time, a `…Gmt` or offset value converted) or epoch milliseconds (UTC) | minutes after the record day's local midnight in the profile's timezone, capped at 1,440; unreadable or not after midnight is no value (`wellness_end_minute`) | Src `provider_reported`. Version 26 (#3530). |
 | `daily_energy_resting` | `bmrKilocalories` → `bmr_kilocalories` → `bmrCalories` → `bmr_calories` → `restingKilocalories` → `resting_kilocalories` → `restingCalories` → `resting_calories` → `basalMetabolicRateKilocalories` | kcal, 0 rejected | Src `provider_reported`; agg `total`. The collector completes range rows that lack it from the per-day `get_user_summary` (summary keys win on overlap, `_with_resting_energy`). |
 | `stress` | `averageStressLevel` | score 0 to 100, 0 kept | Src `provider_reported`; agg `mean`. Garmin's daily mean stress. |
 

@@ -103,6 +103,7 @@ class CanonicalVocabularyTests(unittest.TestCase):
                 "run_threshold_power": "W",
                 "daily_energy_total": "kcal",
                 "daily_energy_active": "kcal",
+                "daily_wellness_end": "min",
                 "steps": "count",
                 "floors": "count",
                 "stress": "score",

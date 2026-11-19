@@ -440,7 +440,11 @@ weight change, null below 0.05 kg), `stored_kcal` (over the span),
 `uncertainty` (`fat_share` or `weight_scatter`), `total_kcal` (the window's
 expenditure), `device_total_kcal` and `goal` (`goal`, `goal_kcal` and
 `status` `in`, `under` or `over` the goal within the band; null without
-a goal).
+a goal), and `wellness` (#3530; where Garmin's summary of `day` stands,
+null when it is finished or names no end): `as_of` (`HH:MM`, its wellness
+end) and `behind` (true when a session of the day ends after it, so the
+summary's steps and active kcal leave it out; every row's everyday is
+then not there yet, in `pending_parts`).
 
 Errors: 400 "Das Datum fehlt oder ist ungültig."; 400 "Der Tag liegt in
 der Zukunft.".

@@ -100,6 +100,7 @@ METRIC_BOUNDS: Final[Mapping[MetricKind, tuple[float, float]]] = {
     MetricKind.RUN_THRESHOLD_POWER: (0.0, 2_500.0),
     MetricKind.DAILY_ENERGY_TOTAL: (0.0, 20_000.0),
     MetricKind.DAILY_ENERGY_ACTIVE: (0.0, 20_000.0),
+    MetricKind.DAILY_WELLNESS_END: (1.0, 1_440.0),
     MetricKind.STEPS: (0.0, 200_000.0),
     MetricKind.FLOORS: (0.0, 1_000.0),
     MetricKind.STRESS: (0.0, 100.0),
