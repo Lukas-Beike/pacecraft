@@ -16,7 +16,7 @@ import statistics
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from datetime import date, timedelta
-from typing import Any, Final
+from typing import Any, Final, NamedTuple
 
 from backend.athlete.body_composition import (
     RestingFormula,
@@ -529,10 +529,32 @@ def _resting(
     return statistics.fmean(device), ProviderId.GARMIN.value
 
 
+class SpanBasis(NamedTuple):
+    """What a read span fixes for every day it prices: the resting reference,
+    the step length and the flex-HR line (#3617 item 6)."""
+
+    rmr: float | None
+    rmr_source: str | None
+    step_m: float | None
+    step_source: str | None
+    flex: energy.FlexHrFit | None
+
+
 def read_energy_inputs(
-    db: Any, sources: EnergySources, start: date, end: date
+    db: Any,
+    sources: EnergySources,
+    start: date,
+    end: date,
+    older_day: date | None = None,
+    basis: SpanBasis | None = None,
 ) -> tuple[EnergyInputs, tuple[SessionCost, ...]]:
-    """The days from ``start`` to ``end`` and the priced sessions behind them."""
+    """The days from ``start`` to ``end`` and the priced sessions behind them.
+
+    An ``older_day`` before ``start`` is added with this span's resting
+    reference, step length and flex-HR line, so opening an old diary day
+    does not change the span's own values (#3617 item 6). ``basis`` gives
+    them from outside instead of reading them.
+    """
     profile = sources.profile()
     health = sources.daily_health(db, start, end)
     # The first window looks 90 days back from its own end for a body fat,
@@ -548,13 +570,12 @@ def read_energy_inputs(
         device_body_fat=dict(sources.device_body_fat(db, lookback, grace_end)),
         skinfold_sd_pct=_skinfold_sds(sources.skinfolds(db, grace_end)),
     )
-    rmr, rmr_source = _carried_resting(
-        _resting(sources, db, end, health), body, trend, end
-    )
     sessions = list(sources.sessions(db, start, end))
-    step_m, step_source = _step_length(sessions, _height_m(profile))
-    rides = [s for s in sessions if str(s.get("sport") or "") in RIDE_SPORTS]
-    flex = _flex_fit(rides, rmr) if rmr is not None else None
+    if basis is None:
+        basis = _span_basis(
+            _resting(sources, db, end, health), body, trend, end, sessions, profile
+        )
+    rmr, rmr_source, step_m, step_source, flex = basis
     hr_cost = _heart_rate_cost(flex, profile, rmr or 0.0)
     feedback = feedback_by_session(
         [s for s in sessions if str(s.get("sport") or "") in STRENGTH_SPORTS],
@@ -588,6 +609,11 @@ def read_energy_inputs(
             trend, costs, step_m,
         )  # fmt: skip
         day += timedelta(days=1)
+    if older_day is not None and older_day < start:
+        old, old_costs = read_energy_inputs(
+            db, sources, older_day, older_day, basis=basis
+        )
+        days, costs = {**old.days, **days}, old_costs + costs
     return replace(
         body,
         days=days,
@@ -596,6 +622,22 @@ def read_energy_inputs(
         step_m=step_m,
         step_source=step_source,
     ), costs
+
+
+def _span_basis(
+    found: tuple[float | None, str | None],
+    body: EnergyInputs,
+    trend: Mapping[date, float],
+    end: date,
+    sessions: Sequence[Mapping[str, Any]],
+    profile: Mapping[str, Any],
+) -> SpanBasis:
+    """The span's resting reference, step length and flex-HR line."""
+    rmr, rmr_source = _carried_resting(found, body, trend, end)
+    step_m, step_source = _step_length(sessions, _height_m(profile))
+    rides = [s for s in sessions if str(s.get("sport") or "") in RIDE_SPORTS]
+    flex = _flex_fit(rides, rmr) if rmr is not None else None
+    return SpanBasis(rmr, rmr_source, step_m, step_source, flex)
 
 
 def _carried_resting(

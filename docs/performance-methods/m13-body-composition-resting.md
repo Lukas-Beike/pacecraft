@@ -1,8 +1,8 @@
 # M13 — Body fat from 3-site skinfolds and resting energy from lean mass
 
 - **Card:** M13
-- **Card version:** 4
-- **Method ID:** body-composition-resting v4 (#3099, #3551, #3617)
+- **Card version:** 5
+- **Method ID:** body-composition-resting v5 (#3099, #3551, #3617)
 - **Status:** method implemented (`backend/athlete/body_composition.py`, `backend/athlete/skinfolds.py`); the energy table that shows it is in review (#3180)
 - **Classification:** model estimate
 - **Literature checked:** 2026-11-16
@@ -30,7 +30,7 @@ These stand beside Garmin's resting value and the derived resting rate of M12 as
    - Katch-McArdle: `370 + 21.6 × LBM`. This is the general equation of Cunningham 1991 (R73).
    - Cunningham: `500 + 22 × LBM`, as proposed in the abstract of R72. Its regression in the results section is `501.6 + 21.6 × LBM`.
 5. **Fixed gap between the two rows:** Katch-McArdle is numerically Cunningham 1991, so the two rows always differ by `(500 + 22 L) − (370 + 21.6 L) = 130 + 0.4 L` kcal/day. That is about 146 kcal at 40 kg and 162 kcal at 80 kg of lean mass (about 155 at 62 kg). Which of them fits better therefore decides only this offset, not two independent methods (#3187 item 9).
-6. **Band of a formula's resting energy (nominal 95 %):** `√((0.10 × resting)² + (1.96 × slope × weight × 3.5 / 100)²)`. The first term is the formula's own individual error (R72). The second carries the skinfold body fat's standard error (3.5 percentage points) through the lean mass. The band of the daily total adds the day's M11 activity error (each session by its method's share, the everyday energy by the step length's 15 %) and the TEF error of 80 kcal/day in quadrature, as M12 does for the derived resting rate (#3552).
+6. **Band of a formula's resting energy:** `√((0.10 × resting)² + (1.96 × slope × weight × 3.5 / 100)²)`. The first term is the formula's own individual error (R72), taken as a half-width as the source states it; R72 gives it as a typical individual error, about one standard deviation, so this term covers about 68 %, not 95 % (#3617). The second term is a 95 % half-width. The second carries the skinfold body fat's standard error (3.5 percentage points) through the lean mass. The band of the daily total adds the day's M11 activity error (each session by its method's share, the everyday energy by the step length's 15 %) and the TEF error of 80 kcal/day in quadrature, as M12 does for the derived resting rate (#3552).
 7. **Daily total of a formula row:** the formula's resting energy plus the same uncalibrated M11 own activity and TEF for both rows. The two rows therefore differ only in the resting formula.
 
 ## Sources
@@ -103,7 +103,7 @@ None of these is a validation in this athlete or in trained endurance athletes a
 | Density to body fat | 495 / D − 450 | source | R71 |
 | Katch-McArdle | 370 + 21.6 × LBM | source | R73 |
 | Cunningham | 500 + 22 × LBM | source | R72, abstract |
-| Formula error (95 %) | 10 % of the resting value | source | R72: a 10 % individual prediction error |
+| Formula error (half-width, about 68 %) | 10 % of the resting value | source | R72: a 10 % individual prediction error, about one SD; kept as the half-width, its coverage labelled (#3617) |
 | Skinfold body fat SE | 3.5 percentage points | product assumption | middle of the commonly cited 3.4–3.9 for R69/R70; not verified in the abstracts |
 | Activity term in the daily band | each part's M11 method share, plus TEF 80 kcal/day | product assumption | upper end of M11's stated errors, as M12's derived resting rate (#3552) |
 | Fit: shared windows | ≥ 4 | product assumption | athlete decision on #3187; 12 windows overlap and hold about 3–4 independent periods |
@@ -148,10 +148,10 @@ None of these is a validation in this athlete or in trained endurance athletes a
 | Constant | Value | Module | Code comment |
 | --- | --- | --- | --- |
 | `METHOD_ID` | `'body-composition-resting'` | `backend/athlete/body_composition.py` |  |
-| `METHOD_VERSION` | `4` | `backend/athlete/body_composition.py` | Bump with the M13 card version when a formula or constant below changes. |
+| `METHOD_VERSION` | `5` | `backend/athlete/body_composition.py` | Bump with the M13 card version when a formula or constant below changes. |
 | `SKINFOLD_BOUNDS_MM` | `(2.0, 80.0)` | `backend/athlete/body_composition.py` | A fold outside this range is a typing error, not a measurement (mm). |
 | `SKINFOLD_AGES` | `(18, 80)` | `backend/athlete/body_composition.py` | Accepted ages. The equations were fitted on men aged 18-61 and women aged 18-55; the methods document names that range. |
-| `RESTING_FORMULA_ERROR` | `0.1` | `backend/athlete/body_composition.py` | Half-width of the nominal 95 % band of a formula's resting energy, as a share of it: Cunningham 1980 expects a 10 % prediction error for an individual (#3187). |
+| `RESTING_FORMULA_ERROR` | `0.1` | `backend/athlete/body_composition.py` | Half-width of a formula's resting band from its own error, as a share of it: Cunningham 1980 expects a 10 % prediction error for an individual (#3187), about one standard deviation, so this term covers about 68 %, not 95 %; kept, and its coverage labelled on M13 (#3617). |
 | `SKINFOLD_BODY_FAT_SE` | `3.5` | `backend/athlete/body_composition.py` | Standard error of the 3-site body fat in percentage points: the middle of the commonly cited 3.4-3.9 for the Jackson-Pollock equations (product assumption). |
 | `BAND_Z` | `1.96` | `backend/athlete/body_composition.py` |  |
 | `LOCAL_LABEL` | `'Lokal'` | `backend/athlete/skinfolds.py` |  |

@@ -20,7 +20,7 @@ from backend.nutrition.energy_balance import (
     energy_windows,
     history_start,
 )
-from backend.nutrition.energy_inputs import EnergySources
+from backend.nutrition.energy_inputs import EnergySources, read_energy_inputs
 from backend.nutrition.energy_view import (
     energy_view,
     own_day_totals,
@@ -660,6 +660,43 @@ class EnergyViewTests(unittest.TestCase):
         # 70 kg at 12 %: 61.6 kg lean mass, Katch-McArdle 370 + 21.6 x 61.6.
         self.assertEqual(1701, row(view, "katch_mcardle")["resting_kcal"])
         self.assertEqual(DAY1.isoformat(), view["body"]["date"])
+
+    def test_an_old_diary_day_leaves_the_twelve_weeks_unchanged(self) -> None:
+        # #3617 item 6: opening a day before the 12-week span reads the span as
+        # it is and adds that day with the span's step length, flex-HR line and
+        # resting reference; the windows and the fit do not move.
+        old = history_start(DAY3) - timedelta(days=20)
+        start = history_start(DAY3)
+        # A walk on the span's last day and one on the old day with another
+        # step length: only the span's walk may set the step length.
+        walks: list[dict[str, Any]] = [
+            {"id": "w1", "sport": "walk", "started_at_local": f"{DAY3}T09:00:00",
+             "moving_duration_s": 3600, "distance_m": 6000, "steps": 8000},
+            {"id": "w0", "sport": "walk", "started_at_local": f"{old}T09:00:00",
+             "moving_duration_s": 3600, "distance_m": 6000, "steps": 7000},
+        ]  # fmt: skip
+
+        def dated(_db: Any, s: date, e: date) -> list[dict[str, Any]]:
+            return [
+                w
+                for w in walks
+                if s <= date.fromisoformat(w["started_at_local"][:10]) <= e
+            ]
+
+        walking = replace(sources(), sessions=dated)
+        span = read_energy_view(None, walking, DAY3)
+        opened = read_energy_view(None, walking, DAY3, old)
+        self.assertEqual(span["windows"], opened["windows"])
+        self.assertEqual(span["fit"], opened["fit"])
+        self.assertEqual(old.isoformat(), opened["day"])
+        alone, _ = read_energy_inputs(None, walking, start, DAY3)
+        added, costs = read_energy_inputs(None, walking, start, DAY3, older_day=old)
+        # The span's 6,000 m over 8,000 steps: 0.75 m.
+        self.assertEqual(0.75, alone.step_m)
+        self.assertEqual((alone.rmr_kcal, alone.step_m), (added.rmr_kcal, added.step_m))
+        self.assertEqual(set(alone.days) | {old}, set(added.days))
+        # The old day's walk is priced too, with the span's basis.
+        self.assertIn(old, {cost.day for cost in costs})
 
 
 LOSE = {"energy_goal": "lose", "energy_goal_kcal": "500"}
