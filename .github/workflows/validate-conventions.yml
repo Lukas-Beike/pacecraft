@@ -106,12 +106,31 @@ jobs:
             echo "The PR body must name its issue with 'Closes #N' (completes it) or 'Part of #N' (one of several PRs)."
             exit 1
           fi
+          closes="$(grep -oiE '(^|[^[:alnum:]_])(closes|fixes|resolves) #[0-9]+' <<< "${PR_BODY:-}" \
+            | grep -oE '[0-9]+$' | sed 's/^0*//' | sort -u || true)"
+          # A part PR that also names its issue with a closing keyword closes it on
+          # merge, as "The follow-up (Closes #3640)" in #3657 did (#3673). Both
+          # sides read every spelling GitHub links: any keyword form, a colon,
+          # any blanks, owner/repo#N and an issue URL (bypass review of #3673).
+          issue_ref='[[:space:]]+(([[:alnum:]_.-]+/[[:alnum:]_.-]+)?#|https://github\.com/[^/[:space:]]+/[^/[:space:]]+/issues/)[0-9]+'
+          keyword='(close[sd]?|fix(e[sd])?|resolve[sd]?):?'
+          # Negated phrases ("does not close #N") stay with the #2648 check below.
+          affirmed="$(sed -E "s/(not|never|n't)[[:space:]]+${keyword}//Ig" <<< "${PR_BODY:-}")"
+          closing="$(grep -oiE "(^|[^[:alnum:]_])${keyword}${issue_ref}" <<< "$affirmed" \
+            | grep -oE '[0-9]+$' | sed 's/^0*//' | sort -u || true)"
+          parts="$(grep -oiE "(^|[^[:alnum:]_])part[[:space:]]+of:?${issue_ref}" <<< "${PR_BODY:-}" \
+            | grep -oE '[0-9]+$' | sed 's/^0*//' | sort -u || true)"
+          both="$(comm -12 <(printf '%s\n' $parts) <(printf '%s\n' $closing) | grep . || true)"
+          for issue in $both; do
+            phrase="$(grep -oiE "(^|[^[:alnum:]_])${keyword}${issue_ref}" <<< "$affirmed" \
+              | grep -E "[^0-9]0*${issue}\$" | head -1 | sed -E 's/^[^[:alpha:]]+//' || true)"
+            echo "The body says 'Part of #$issue' and also '$phrase'; GitHub closes #$issue on merge. Use a closing keyword only in the PR that completes it; describe a follow-up as 'the follow-up PR completes #$issue'."
+          done
+          [[ -z "$both" ]] || exit 1
           # GitHub closes every issue its keyword parser finds, also in "does not
           # close #N"; each one must be meant with "Closes/Fixes/Resolves #N" (#2648).
           # Closing references exist only for PRs into the default branch.
           [[ "${BASE_REF:-}" == "${DEFAULT_BRANCH:-}" ]] || exit 0
-          closes="$(grep -oiE '(^|[^[:alnum:]_])(closes|fixes|resolves) #[0-9]+' <<< "${PR_BODY:-}" \
-            | grep -oE '[0-9]+$' | sed 's/^0*//' | sort -u || true)"
           # Every closing phrase GitHub may parse, also negated ones like "does not close #N".
           expected="$(grep -oiE '(^|[^[:alnum:]_])(close[sd]?|fix(e[sd])?|resolve[sd]?):? *#[0-9]+' <<< "${PR_BODY:-}" \
             | grep -oE '[0-9]+$' | sed 's/^0*//' | sort -u || true)"
