@@ -127,6 +127,8 @@ test("the card detail shows only the connection state, without a scope note", ()
   assert.equal(disconnected.detail, "");
   globalThis.AppFormat = { dateTime: () => "16.10.2026, 09:00" };
   try {
+    // A disconnected card names no date, even with a stored connection time.
+    assert.equal(wahooConnectionView({ wahoo: { configured: true, connected: false, connected_at: "2026-10-16T07:00:00Z" } }).detail, "");
     // A full grant names no scope; only a missing user_write is said (#3677).
     const connected = wahooConnectionView({ wahoo: { configured: true, connected: true, scope: "user_read user_write", connected_at: "2026-10-16T07:00:00Z" } });
     assert.equal(connected.detail, "Verbunden seit 16.10.2026, 09:00");
