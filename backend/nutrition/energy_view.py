@@ -1130,7 +1130,10 @@ def _fit_scale(
             for d, v in inputs.days.items()
             if v.weight_kg is not None
         }
-        only = replace(inputs, days={**weights, **{d: logged[d] for d in chosen}})
+        only = cast(
+            EnergyInputs,
+            replace(inputs, days={**weights, **{d: logged[d] for d in chosen}}),
+        )
         basis = own = period_window(only, latest.end, days, latest.calibration_factor)
     sources = [
         {"source": name, "total_kcal": _round(_formula_prediction(f, body, basis)[2])}
