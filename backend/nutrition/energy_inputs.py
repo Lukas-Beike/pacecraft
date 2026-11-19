@@ -16,7 +16,7 @@ import statistics
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from datetime import date, timedelta
-from typing import Any, Final, NamedTuple
+from typing import Any, Final, NamedTuple, cast
 
 from backend.athlete.body_composition import (
     RestingFormula,
@@ -43,19 +43,25 @@ from backend.canonical.vocabulary import ProviderId, StreamChannel
 from backend.db.activity_detail_store import detail_sets_for_session
 from backend.nutrition.energy_balance import (
     BAND_Z,
+    BASE_DAYS,
     WINDOW_DAYS,
+    Base,
     DayInputs,
     EnergyInputs,
     EnergyWindow,
+    Estimate,
     LearnedEveryday,
+    age_weight,
     below_former_share,
     day_tef,
     energy_windows,
     fat_share,
     fit_learned_everyday,
     history_start,
+    independent_windows,
     is_complete,
     is_stable,
+    twelve_week_base,
     unexplained_spreads,
 )
 from backend.performance import activity_energy as energy
@@ -705,27 +711,37 @@ def learned_everyday(
     over the estimated windows with a body at their end: the window's own TDEE
     less its uncalibrated activity, digestion and the formula's resting rate,
     what the row lacks against the own total at the rows' k = 1; its SD is
-    the derived resting rate's."""
+    the derived resting rate's. It learns from the 12-week base's windows
+    (#3687, #3689): each weighs by its precision and age, an unstable one less
+    through its widened band (#3614), and it qualifies with enough stable
+    windows that share no day."""
     fits: dict[str, LearnedEveryday | None] = {}
+    end = windows[-1].end if windows else None
+    used = [
+        (window, body)
+        for window, body in zip(windows, bodies, strict=True)
+        if body is not None
+        and window.adaptive_tdee is not None
+        and window.derived_rmr is not None
+        and window.activity_kcal_raw is not None
+        and window.tef_kcal is not None
+        and (cast(date, end) - window.end).days < BASE_DAYS
+    ]
+    # Independence counts only the windows the fit uses (Gitar, #3693).
+    independent = independent_windows([window for window, _ in used])
     for name, formula in LEARNED_FORMULAS.items():
         points = [
             (
-                window.adaptive_tdee.kcal
-                - window.activity_kcal_raw
-                - window.tef_kcal
+                cast(Estimate, window.adaptive_tdee).kcal
+                - cast(float, window.activity_kcal_raw)
+                - cast(float, window.tef_kcal)
                 - resting_energy(formula, body["lean_mass_kg"]),
-                window.derived_rmr.band_kcal / BAND_Z,
+                cast(Estimate, window.derived_rmr).band_kcal / BAND_Z,
+                age_weight(window.end, cast(date, end)),
             )
-            for window, body in zip(windows, bodies, strict=True)
-            if body is not None
-            and window.adaptive_tdee is not None
-            and window.derived_rmr is not None
-            and window.activity_kcal_raw is not None
-            and window.tef_kcal is not None
-            # A window that fails the neighbour check (#3614) teaches nothing.
-            and is_stable(window)
+            for window, body in used
         ]
-        fits[name] = fit_learned_everyday(points)
+        fits[name] = fit_learned_everyday(points, independent)
     return fits
 
 
@@ -955,6 +971,14 @@ def _former_rule_days(inputs: EnergyInputs, window: EnergyWindow | None) -> int 
     )
 
 
+def _base_counts(base: Base | None) -> dict[str, int]:
+    return {
+        "base_windows": base.windows if base else 0,
+        "base_weight_sum_tenths": round(10 * base.weight_sum) if base else 0,
+        "base_unstable": int(bool(base and base.unstable)),
+    }
+
+
 def diagnostics(
     inputs: EnergyInputs,
     costs: Sequence[SessionCost],
@@ -975,6 +999,9 @@ def diagnostics(
         # Windows failing the neighbour check and their largest unexplained
         # difference, to the nearest 100 kcal (#3614).
         "unstable_windows": sum(1 for w in windows if not is_stable(w)),
+        # The daily estimate's 12-week base (#3687): the windows it averages,
+        # their age-weight sum in tenths, and 1 when every one is unstable.
+        **_base_counts(twelve_week_base(windows)),
         # Windows whose weigh-ins carry the store and that hold enough complete
         # days, but whose complete days span too little to price (#3667).
         "windows_span_short": sum(

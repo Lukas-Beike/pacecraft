@@ -181,13 +181,16 @@ class EnergyViewTests(unittest.TestCase):
         # digestion 250 is 1,850. Katch-McArdle lacks 1,850 - 1,838.8 = 11.2,
         # Cunningham overshoots by 146. One window, SD 150 / 1.96 = 76.53,
         # overlap-inflated precision 4.2685e-5, prior 1.6e-5: variance 17,040,
-        # so 8.15 for Katch-McArdle, -106.2 for Cunningham (shown as 0), band
-        # 1.96 x 130.5 = 256.
+        # so 8.15 for Katch-McArdle, -106.2 for Cunningham (a reduction since
+        # #3689), band 1.96 x 130.5 = 256; its posterior SD 130.5 <= 150
+        # qualifies it with one window.
         plain = energy_view(inputs(), [window(END, 2700.0, 1850.0)], garmin())
         self.assertEqual(
             {
-                "katch_mcardle": {"kcal": 8, "raw_kcal": 8, "band_kcal": 256, "windows": 1},
-                "cunningham": {"kcal": 0, "raw_kcal": -106, "band_kcal": 256, "windows": 1},
+                "katch_mcardle": {"kcal": 8, "raw_kcal": 8, "band_kcal": 256, "windows": 1,
+                                  "independent": 1, "qualified": True},
+                "cunningham": {"kcal": -106, "raw_kcal": -106, "band_kcal": 256, "windows": 1,
+                               "independent": 1, "qualified": True},
                 "checked": None,
             },
             plain["learned_everyday"],
@@ -203,8 +206,24 @@ class EnergyViewTests(unittest.TestCase):
         self.assertEqual((2697, 8), (km["total_kcal"], km["split"]["learned_kcal"]))
         # The total's band adds the learned term's: hypot(240.55, 255.94) = 351.2.
         self.assertEqual(351, km["total_band_kcal"])
-        self.assertEqual(0, cunningham["split"]["learned_kcal"])
+        # #3689: an overshooting formula is reduced by its negative term.
+        self.assertEqual(
+            (-106, 2846 - 106),
+            (cunningham["split"]["learned_kcal"], cunningham["total_kcal"]),
+        )
         self.assertEqual("2026-11-19", checked["learned_everyday"]["checked"])
+        # #3689: a wide fit from too few independent windows is not applied,
+        # though the athlete's check stays stored and takes effect once it is.
+        wide = replace(window(END, 2700.0, 1850.0), derived_rmr=Estimate(1850.0, 600.0))
+        unready = energy_view(
+            inputs(), [wide], garmin(), goal={"learned_everyday_checked": "2026-11-19"}
+        )
+        self.assertEqual(
+            (False, "2026-11-19"),
+            (unready["learned_everyday"]["katch_mcardle"]["qualified"],
+             unready["learned_everyday"]["checked"]),
+        )  # fmt: skip
+        self.assertNotIn("learned_kcal", row(unready, "katch_mcardle")["split"])
         # The comparison with the weight stays on the raw rows.
         for source in ("katch_mcardle", "cunningham"):
             self.assertEqual(
@@ -1263,6 +1282,45 @@ class SelectedDayTests(unittest.TestCase):
         return energy_view(
             source, [window(END, 2700.0, 1850.0)], garmin(), day=day, **kw
         )
+
+    def test_today_rests_on_the_twelve_week_base_and_a_past_day_on_its_window(
+        self,
+    ) -> None:
+        # #3687: equal bands of 150, the older window 42 days back weighs half:
+        # (1,850 + 0.5 x 1,650) / 1.5 = 1,783.3. Its band: SD 150 / 1.96 x
+        # sqrt(1.25) / 1.5 x sqrt(28 / 7) = 114.08, band 223.6.
+        older = window(END - timedelta(days=42), 2700.0, 1650.0)
+        latest = window(END, 2700.0, 1850.0)
+        today = END + timedelta(days=1)
+        view = energy_view(inputs(), [older, latest], garmin(), day=today)
+        own = row(view, "own")
+        self.assertEqual((1783, "12w"), (own["resting_kcal"], own["basis"]))
+        self.assertEqual(
+            {"kcal": 1783, "band_kcal": 224, "windows": 2, "weight_sum": 1.5,
+             "unstable": False},
+            view["base"],
+        )  # fmt: skip
+        # A past day keeps its own window (#3641), so the period balance and
+        # the diary agree on it (#3600).
+        past = energy_view(inputs(), [older, latest], garmin(), day=END)
+        own_past = row(past, "own")
+        # Its 1,850 exceeds Katch-McArdle's 1,839, so 11 are unmeasured (#3550).
+        self.assertEqual(
+            (1839, 11, None),
+            (own_past["resting_kcal"], own_past["split"]["unmeasured_kcal"],
+             own_past["basis"]),
+        )  # fmt: skip
+        # Today's period-balance total takes the same base.
+        totals = own_day_totals(inputs(), [older, latest], garmin(), [today, END])
+        self.assertEqual(own_past["total_kcal"], totals[END])
+        full = with_intake(inputs(), today, intake_kcal=2400.0, activity_kcal=600.0,
+                           neat_kcal=250.0, sport_kcal=350.0, protein_g=150.0,
+                           entries=3)  # fmt: skip
+        on_base = own_day_totals(full, [older, latest], garmin(), [today])[today]
+        on_latest = own_day_totals(full, [latest], garmin(), [today])[today]
+        assert on_base is not None and on_latest is not None
+        # One window alone is its own base: 1,850; with the older one 1,783.
+        self.assertAlmostEqual(1783 - 1850, on_base - on_latest, delta=1)
 
     def test_the_period_balance_takes_each_day_s_own_row_total(self) -> None:
         # #3600: the period balance reads the own day totals per day, and each

@@ -35,6 +35,7 @@ from backend.canonical.vocabulary import ProviderId
 from backend.errors import AppError
 from backend.nutrition.energy_balance import (
     FAT_SHARE_PRIOR,
+    Base,
     DayInputs,
     EnergyInputs,
     EnergyWindow,
@@ -48,6 +49,7 @@ from backend.nutrition.energy_balance import (
     is_complete,
     is_stable,
     period_window,
+    twelve_week_base,
     window_t,
     windows_bias,
 )
@@ -304,14 +306,47 @@ def _own_resting(
     latest: EnergyWindow,
     body: Mapping[str, Any] | None,
     health: Mapping[str, Mapping[str, Any]],
+    base: Base | None = None,
 ) -> tuple[Estimate | None, bool]:
-    """The own row's resting rate from the latest window, gated against its
-    Katch-McArdle (``body`` at the window's end), else Garmin (#3255, #3531)."""
+    """The own row's resting rate from the latest window, or from the 12-week
+    ``base`` when given (#3687), gated against the window's Katch-McArdle
+    (``body`` at its end), else Garmin (#3255, #3531)."""
     return _gated_resting(
-        latest.derived_rmr,
+        latest.derived_rmr if base is None else base.estimate,
         _formula_prediction(FORMULAS["katch_mcardle"], body, latest),
         _device_prediction(health, latest),
     )
+
+
+def _base_for(
+    windows: Sequence[EnergyWindow], base: Base | None, day: date
+) -> Base | None:
+    """The 12-week base for today and the days after the latest window (#3687);
+    a past day keeps the window holding it (#3641)."""
+    return base if windows and day > windows[-1].end else None
+
+
+def _base_view(base: Base | None) -> dict[str, Any] | None:
+    """The base's own resting rate with its band, the windows it averages,
+    their age-weight sum and whether every one is unstable (#3687)."""
+    if base is None:
+        return None
+    return {
+        "kcal": _round(base.estimate.kcal),
+        "band_kcal": _round(base.estimate.band_kcal),
+        "windows": base.windows,
+        "weight_sum": round(base.weight_sum, 2),
+        "unstable": base.unstable,
+    }
+
+
+def _basis(base: Base | None) -> str | None:
+    """What the own row's resting rate rests on: the 12-week base ("12w"), or
+    flagged when every window in it is unstable ("12w_unstable"), else the
+    day's own window (None)."""
+    if base is None:
+        return None
+    return "12w_unstable" if base.unstable else "12w"
 
 
 def own_day_totals(
@@ -328,15 +363,15 @@ def own_day_totals(
 
     A day's window is the estimated one holding it with the nearest middle, so
     the latest window's rate prices only its last 17 days and 12 weeks follow
-    each window's (#3641); a day after the latest (today) takes the latest.
+    each window's (#3641); a day after the latest (today) takes the 12-week
+    base (#3687).
     """
     trend = weight_trend(
         {d: v.weight_kg for d, v in inputs.days.items() if v.weight_kg is not None}
     )
-    resting = {
-        w.end: _own_resting(w, resolve_body(inputs, trend, w.end), health)
-        for w in windows
-    }
+    bodies = {w.end: resolve_body(inputs, trend, w.end) for w in windows}
+    resting = {w.end: _own_resting(w, bodies[w.end], health) for w in windows}
+    base = twelve_week_base(windows)
     totals: dict[date, float | None] = {}
     for day in days:
         window = _holding(windows, day)
@@ -344,6 +379,8 @@ def own_day_totals(
             totals[day] = None
             continue
         shown, implausible = resting[window.end]
+        if (based := _base_for(windows, base, day)) is not None:
+            shown, implausible = _own_resting(window, bodies[window.end], health, based)
         day_window = _day_window(inputs, window, day)
         row = _own_day_row(shown, implausible, window, day_window, [])
         totals[day] = row["total_kcal"]
@@ -357,16 +394,20 @@ def _own_day(
     day: EnergyWindow,
     pending: list[str],
     reference: tuple[str, float, float | None] | None,
+    base: Base | None = None,
 ) -> dict[str, Any]:
     """The diary's own day row, its resting rate from the day's own window as
-    the period balance's (#3641), split at the day's resting reference."""
+    the period balance's (#3641), today from the 12-week base (#3687), split at
+    the day's resting reference."""
     own = _holding(windows, day.end)
+    based = _base_for(windows, base, day.end)
     shown, implausible = (
         (None, False)
         if own is None
-        else _own_resting(own, bodies[windows.index(own)], health)
+        else _own_resting(own, bodies[windows.index(own)], health, based)
     )
     row = _own_day_row(shown, implausible, own or windows[-1], day, pending)
+    row["basis"] = _basis(based)
     return _unmeasured(row, shown, reference)
 
 
@@ -602,6 +643,7 @@ def energy_view(
     rows[list(predictions).index(DEVICE)].update(
         label=_device_label(health, day_window), **device_rest
     )
+    base = twelve_week_base(windows)
     shown, implausible = _own_resting(latest, bodies[-1], health)
     # The day row splits at the reference shown beside it that day; the
     # 28-day row at the latest window's, as the gate (#3550).
@@ -618,10 +660,13 @@ def energy_view(
             _resting_reference(
                 day_predictions["katch_mcardle"], day_predictions[DEVICE]
             ),
+            base,
         )
     )
     return {
         "end": latest.end.isoformat(),
+        # The daily estimate's 12-week base (#3687), named "12-Wochen-Basis".
+        "base": _base_view(base),
         # The day the source rows show; after ``end`` (today) it is partial.
         "day": day_window.end.isoformat(),
         "day_partial": day_window.end > latest.end,
@@ -892,10 +937,12 @@ def _add_learned(
     checked: str | None,
 ) -> None:
     """Once ``checked``, each formula row carries its learned everyday term
-    (#3577): a split part of its own and in the day total."""
+    (#3577): a split part of its own and in the day total, a negative one as a
+    reduction; only while the term qualifies (#3689), the check staying
+    stored until it does."""
     for row in rows:
         fit = learned.get(str(row["source"])) if checked else None
-        if fit is None or row["split"] is None:
+        if fit is None or not fit.qualified or row["split"] is None:
             continue
         kcal = round(fit.kcal)
         row["split"] = {
@@ -920,6 +967,10 @@ def _learned_view(fit: LearnedEveryday | None) -> dict[str, Any] | None:
         "raw_kcal": round(fit.raw_kcal),
         "band_kcal": round(fit.band_kcal),
         "windows": fit.windows,
+        # Stable windows sharing no day, and whether it may be offered and
+        # applied; until then the line reads "noch nicht gelernt" (#3689).
+        "independent": fit.independent,
+        "qualified": fit.qualified,
     }
 
 

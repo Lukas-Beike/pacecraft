@@ -204,9 +204,10 @@ def body_fat_on(
 ) -> dict[str, Any] | None:
     """The body fat in effect on ``day``: the newest skinfold, else an entered
     one, else a device's or scale's (``device_body_fats``), each within the
-    lookback; ``source`` and ``label`` name it, ``measured_on`` its day."""
+    lookback; ``source`` and ``label`` name it, ``measured_on`` its day and
+    ``provider`` a device's provider (None for the athlete's own, #3683)."""
     if (on := _newest_within(skinfolds, day)) is not None:
-        return {"source": "skinfold", "label": SKINFOLD_LABEL,
+        return {"source": "skinfold", "label": SKINFOLD_LABEL, "provider": None,
                 "measured_on": on, "body_fat_pct": skinfolds[on]}  # fmt: skip
     for source in ("entered", "device"):
         values = {
@@ -221,8 +222,8 @@ def body_fat_on(
                 if provider is None
                 else provider_label(provider, SourceView.BODY_HISTORY)
             )
-            return {"source": source, "label": label, "measured_on": on,
-                    "body_fat_pct": fat}  # fmt: skip
+            return {"source": source, "label": label, "provider": provider,
+                    "measured_on": on, "body_fat_pct": fat}  # fmt: skip
     return None
 
 

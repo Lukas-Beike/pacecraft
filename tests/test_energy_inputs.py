@@ -241,6 +241,7 @@ class EnergyInputsReaderTests(unittest.TestCase):
              "latest_window_insufficient": None, "windows": 0,
              "windows_with_estimate": 0,
              "unstable_windows": 0, "largest_unstable_spread_kcal": 0,
+             "base_windows": 0, "base_weight_sum_tenths": 0, "base_unstable": 0,
              "windows_span_short": 0,
              "fat_share_measured_windows": {"0": 0, "1-24": 0, "25-49": 0, "50-100": 0},
              "calibration_windows": 0,
@@ -952,11 +953,20 @@ class BodyFatFallbackTests(unittest.TestCase):
         assert km is not None and cunningham is not None
         self.assertEqual((8, 1), (round(km.raw_kcal), km.windows))
         self.assertLess(cunningham.raw_kcal, 0)
-        # A window that fails the neighbour check (#3614) teaches nothing.
+        # #3689: it learns from the 12-week base's windows, so an unstable one
+        # (#3614) teaches through its own band, but counts as no independent one.
         unstable = replace(estimated, stable=False)
-        self.assertIsNone(
-            energy_inputs.learned_everyday([unstable], [body])["katch_mcardle"]
-        )
+        learned = energy_inputs.learned_everyday([unstable], [body])["katch_mcardle"]
+        assert learned is not None
+        self.assertEqual((8, 0), (round(learned.raw_kcal), learned.independent))
+        # Independence counts only the windows the fit uses (Gitar, #3693): the
+        # oldest of three windows four weeks apart has no body at its end.
+        spaced = [replace(estimated, end=DAY3 - timedelta(days=n)) for n in (56, 28, 0)]
+        used = energy_inputs.learned_everyday(spaced, [None, body, body])[
+            "katch_mcardle"
+        ]
+        assert used is not None
+        self.assertEqual(2, used.independent)
         # Without a body at a window's end it has no fit.
         self.assertIsNone(
             energy_inputs.learned_everyday([estimated], [None])["cunningham"]

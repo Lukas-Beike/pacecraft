@@ -180,6 +180,52 @@ class IssueLinkStepTests(unittest.TestCase):
             ).stdout,
         )
 
+    def test_part_of_and_a_closing_keyword_for_one_issue_fail(self):
+        # #3657 said "Part of #3640" and, in prose, "The follow-up (Closes
+        # #3640)"; GitHub closed #3640 on merge (#3673).
+        body = (
+            "- **The follow-up (Closes #3640):** switches the calculations.\n\n"
+            "Part of #3640."
+        )
+        result = self.run_step(body, "3640\n")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("#3640", result.stdout)
+        self.assertIn("Part of #3640", result.stdout)
+        self.assertIn("Closes #3640", result.stdout)
+        # Another issue's closing line beside a part link stays fine.
+        self.assertEqual(
+            self.run_step("Part of #12\n\nCloses #13", "13\n").returncode, 0
+        )
+        # Also into another base branch, where GitHub parses nothing.
+        self.assertNotEqual(self.run_step(body, "", base="feat/x").returncode, 0)
+        # Bypass review: every spelling GitHub links counts on both sides, and
+        # the advice itself holds no closing keyword.
+        for spelling in (
+            "Part of: #7\n\nCloses #7",
+            "Part  of #7\n\nCloses #8\n\nFixed #7",
+            "Part of #7\n\nclose: example/ai-coach#7",
+            "Part of #7\n\nResolved https://github.com/example/ai-coach/issues/7",
+            "Part of example/ai-coach#7\n\nCloses #07",
+        ):
+            with self.subTest(spelling=spelling):
+                result = self.run_step(spelling, "", base="feat/x")
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn("completes #7", result.stdout)
+                self.assertNotIn("will close", result.stdout)
+        # Another repository's issue with the same number is a different issue
+        # (Gitar on #3682).
+        for other in (
+            "Part of #7\n\nCloses octo/other#7",
+            "Part of #7\n\nCloses https://github.com/octo/other/issues/7",
+        ):
+            with self.subTest(other=other):
+                self.assertEqual(self.run_step(other, "", base="feat/x").returncode, 0)
+        # The quoted phrase names the issue itself, not a longer number.
+        result = self.run_step(
+            "Part of #3\n\nCloses #36 and closes #3", "", base="feat/x"
+        )
+        self.assertIn("'closes #3';", result.stdout)
+
     def test_a_late_parse_is_waited_for(self):
         # The first read misses #2148 although the body names it (#2648 review).
         with tempfile.TemporaryDirectory() as temp:

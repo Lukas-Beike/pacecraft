@@ -28,7 +28,7 @@ from backend.performance.activity_energy import (
 
 METHOD_ID = "adaptive-expenditure"
 # Bump when a formula or constant below changes the estimate.
-METHOD_VERSION = 20
+METHOD_VERSION = 22
 # Days per window and windows per week of the rolling view (#3099, #3100).
 WINDOW_DAYS = 28
 # A window needs this many complete logging days, weigh-ins and days between
@@ -101,6 +101,11 @@ MIN_INDEPENDENT_BIAS_WINDOWS = 2
 # a quarter of the information its window count suggests: the variance of the
 # k and b slopes is inflated by WINDOW_DAYS / 7 before the shrinkage (#3554).
 WINDOW_OVERLAP_INFLATION = WINDOW_DAYS / 7
+# The daily estimate rests on the estimated windows of the last 12 weeks, each
+# weighted by its precision and by its age, halved every 6 weeks (athlete
+# decision, #3687): a water or glycogen step largely cancels out over them.
+BASE_DAYS = 84
+BASE_HALF_LIFE_DAYS = 42
 # A weight step from water or glycogen is not tissue (#3614): weigh-ins whose
 # scatter persists widen the slope's error by the AR(1) factor, with the lag-1
 # autocorrelation capped here (factor 3 at most); overlapping windows that
@@ -111,6 +116,12 @@ STABILITY_BAND_RATIO = 2.576 / 1.96
 # The learned everyday term of a formula row (#3577): the own total's excess over
 # the row, shrunk towards 0 with this SD (kcal/day, product assumption).
 LEARNED_EVERYDAY_PRIOR_SD = 250.0
+# A formula can overshoot too, so the term may reduce a row, down to this floor
+# (kcal/day); it is offered and applied only with this many stable windows that
+# share no day, or a posterior SD up to this (kcal/day) (#3689).
+LEARNED_EVERYDAY_FLOOR = -250.0
+LEARNED_EVERYDAY_MIN_INDEPENDENT = 3
+LEARNED_EVERYDAY_MAX_SD = 150.0
 
 
 @dataclass(frozen=True)
@@ -755,6 +766,68 @@ def is_stable(window: EnergyWindow) -> bool:
     return window.stable
 
 
+class Base(NamedTuple):
+    """The daily estimate's own resting rate (#3687): its estimate, the windows
+    it averages, the sum of their age weights, and ``unstable`` when every one
+    of them failed the neighbour check (#3614)."""
+
+    estimate: Estimate
+    windows: int
+    weight_sum: float
+    unstable: bool
+
+
+def age_weight(window_end: date, end: date) -> float:
+    """A window's weight by its age: halved every ``BASE_HALF_LIFE_DAYS`` from
+    its end to the view's end (#3687)."""
+    return 0.5 ** ((end - window_end).days / BASE_HALF_LIFE_DAYS)
+
+
+def weighted_mean(points: Sequence[tuple[float, float, float]]) -> tuple[float, float]:
+    """The mean of (value, SD, age weight) points weighted by precision times age,
+    and its SD, inflated for the windows' overlap like k and b (#3554)."""
+    weights = [age / sd**2 for _, sd, age in points]
+    total = sum(weights)
+    mean = sum(w * value for w, (value, _, _) in zip(weights, points, strict=True))
+    variance = (
+        sum((w * sd) ** 2 for w, (_, sd, _) in zip(weights, points, strict=True))
+        / total**2
+    )
+    return mean / total, math.sqrt(variance * WINDOW_OVERLAP_INFLATION)
+
+
+def twelve_week_base(windows: Sequence[EnergyWindow]) -> Base | None:
+    """The daily estimate's base (athlete decision, #3687, amended): the own
+    resting rate of every estimated window ending within ``BASE_DAYS`` of the
+    latest, each weighted by its precision and its age. An unstable window
+    (#3614) carries its widened band, so it weighs less without being dropped:
+    a water step averages out, a real change arrives within weeks. Flagged
+    ``unstable`` when every window is; None without an estimate."""
+    end = windows[-1].end if windows else None
+    used = [
+        w
+        for w in windows
+        if w.derived_rmr is not None and (cast(date, end) - w.end).days < BASE_DAYS
+    ]
+    if not used:
+        return None
+    points = [
+        (
+            cast(Estimate, w.derived_rmr).kcal,
+            cast(Estimate, w.derived_rmr).band_kcal / BAND_Z,
+            age_weight(w.end, cast(date, end)),
+        )
+        for w in used
+    ]
+    mean, sd = weighted_mean(points)
+    return Base(
+        Estimate(mean, BAND_Z * sd),
+        len(used),
+        sum(age for _, _, age in points),
+        not any(is_stable(w) for w in used),
+    )
+
+
 def _difference_terms(
     inputs: EnergyInputs, window: EnergyWindow
 ) -> tuple[dict[date, float], float, dict[date, float], float]:
@@ -896,34 +969,56 @@ def flagged_meal_bias(inputs: EnergyInputs, end: date) -> tuple[float, float] | 
 
 class LearnedEveryday(NamedTuple):
     """A formula row's learned everyday term (#3577): the shrunken fit with its
-    sign kept (``raw_kcal``), the value shown (never below 0), its 95 % band
-    and the windows it was fitted over."""
+    sign kept (``raw_kcal``), the value shown and applied (floored at
+    ``LEARNED_EVERYDAY_FLOOR``, #3689), its 95 % band, the windows it was
+    fitted over, how many of the stable ones share no day, and whether it
+    qualifies to be offered and applied."""
 
     raw_kcal: float
     kcal: float
     band_kcal: float
     windows: int
+    independent: int = 0
+    qualified: bool = False
 
 
 def fit_learned_everyday(
-    points: Sequence[tuple[float, float]],
+    points: Sequence[tuple[float, float, float]], independent: int = 0
 ) -> LearnedEveryday | None:
-    """The precision-weighted mean of each window's excess (value, SD), its
-    variance inflated for the windows' overlap and shrunk towards 0 with
-    ``LEARNED_EVERYDAY_PRIOR_SD`` (#3577); None without a window."""
-    usable = [(value, sd) for value, sd in points if sd > 0]
+    """The mean of each window's excess (value, SD, age weight), weighted by
+    precision and age as the 12-week base (#3687), its variance inflated for
+    the windows' overlap and shrunk towards 0 with ``LEARNED_EVERYDAY_PRIOR_SD``
+    by the conjugate normal update (#3577); None without a window. It
+    qualifies with ``LEARNED_EVERYDAY_MIN_INDEPENDENT`` stable windows that
+    share no day, or a posterior SD of ``LEARNED_EVERYDAY_MAX_SD`` (#3689)."""
+    usable = [point for point in points if point[1] > 0]
     if not usable:
         return None
-    weights = [1.0 / sd**2 for _, sd in usable]
-    mean = sum(w * value for w, (value, _) in zip(weights, usable, strict=True)) / sum(
-        weights
-    )
-    precision = sum(weights) / WINDOW_OVERLAP_INFLATION
+    mean, sd = weighted_mean(usable)
+    precision = 1.0 / sd**2
     posterior_var = 1.0 / (precision + 1.0 / LEARNED_EVERYDAY_PRIOR_SD**2)
     raw = posterior_var * precision * mean
     return LearnedEveryday(
-        raw, max(0.0, raw), BAND_Z * math.sqrt(posterior_var), len(usable)
+        raw,
+        max(LEARNED_EVERYDAY_FLOOR, raw),
+        BAND_Z * math.sqrt(posterior_var),
+        len(usable),
+        independent,
+        independent >= LEARNED_EVERYDAY_MIN_INDEPENDENT
+        or math.sqrt(posterior_var) <= LEARNED_EVERYDAY_MAX_SD,
     )
+
+
+def independent_windows(windows: Sequence[EnergyWindow]) -> int:
+    """The stable estimated windows that share no day, counted from the latest
+    back (#3689): the next counts only once it ends a full window earlier."""
+    count, before = 0, None
+    for window in reversed(windows):
+        if window.derived_rmr is None or not is_stable(window):
+            continue
+        if before is None or (before - window.end).days >= window.days:
+            count, before = count + 1, window.end
+    return count
 
 
 def windows_bias(windows: Sequence[EnergyWindow]) -> tuple[float, float] | None:
