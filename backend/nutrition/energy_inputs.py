@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import math
 import statistics
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from datetime import date, timedelta
 from typing import Any, Final, NamedTuple, cast
@@ -745,6 +745,24 @@ def learned_everyday(
     return fits
 
 
+def _learned_counts(fits: Iterable[LearnedEveryday | None]) -> dict[str, Any]:
+    """The formula rows' learned everyday terms below 0 (#3577) and per
+    state (#3723): none (no estimate), provisional or qualified."""
+    fits = list(fits)
+    state = {"none": 0, "provisional": 0, "qualified": 0}
+    for fit in fits:
+        if fit is None:
+            state["none"] += 1
+        else:
+            state["qualified" if fit.qualified else "provisional"] += 1
+    return {
+        "learned_everyday_negative": sum(
+            1 for fit in fits if fit is not None and fit.raw_kcal < 0
+        ),
+        "learned_everyday_state": state,
+    }
+
+
 def energy_basis(db: Any, sources: EnergySources, today: date) -> dict[str, Any]:
     """The diagnostics counts of the 12-week view (#3100).
 
@@ -807,14 +825,9 @@ def energy_basis(db: Any, sources: EnergySources, today: date) -> dict[str, Any]
             ),
             "step_source": inputs.step_source,
         }
-        # Formulas whose learned everyday fit lies below 0, shown as 0 (#3577).
-        | {
-            "learned_everyday_negative": sum(
-                1
-                for fit in learned_everyday(windows, bodies).values()
-                if fit is not None and fit.raw_kcal < 0
-            )
-        }
+        # Formulas whose learned everyday fit lies below 0, shown as 0 (#3577),
+        # and per state: none, provisional or qualified (#3723).
+        | _learned_counts(learned_everyday(windows, bodies).values())
         # How many days back today's Garmin Ruhe comes from, None = none (#3443).
         | {"today_resting_days_back": (today - found[0]).days if found else None}
         # Days of the last week whose Garmin summary names its wellness end (#3530).

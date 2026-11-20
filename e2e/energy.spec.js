@@ -27,7 +27,7 @@ test("@responsive the diary shows Offene Kalorien and the outlined source's part
   });
   await shapeEnergy(page, (data) => ({ ...data, day_partial: true, outlined: "cunningham", best: null, goal: GOAL, wellness: { as_of: "12:18", behind: false },
     strength: [{ rpe: 8, met: 5, kcal: 210 }], tef_estimated: true,
-    rows: [...data.rows.filter((row) => row.source !== "cunningham"), formulaRow("cunningham", { resting_kcal: 1700, neat_kcal: 250, learned_kcal: 220, learned_band_kcal: 180, sport_kcal: 350, tef_kcal: 200 })] }));
+    rows: [...data.rows.filter((row) => row.source !== "cunningham"), formulaRow("cunningham", { resting_kcal: 1700, neat_kcal: 250, learned_kcal: 220, learned_band_kcal: 180, learned_provisional: true, sport_kcal: 350, tef_kcal: 200 })] }));
   const energy = page.waitForResponse((response) => new URL(response.url()).pathname === "/api/body/energy");
   await page.reload();
   const read = await (await energy).json();
@@ -42,7 +42,8 @@ test("@responsive the diary shows Offene Kalorien and the outlined source's part
   await expect(card.locator(".energy-split [data-part]")).toHaveCount(5);
   await expect(card.locator(".energy-parts li")).toHaveText([
     // #3719: Schritte & Treppen and Verdauung show the number only; the "i" names the time and the estimate.
-    "Ruhe1.700", "Schritte & Treppen250", "Übriger Alltag+220", "Sport350 (Kraft RPE 8, MET 5)", "Verdauung200", /^Tag gesamt2\.720/,
+    // #3723: the provisional learned everyday is named so and in the total, 1.700 + 250 + 220 + 350 + 200.
+    "Ruhe1.700", "Schritte & Treppen250", "Übriger Alltag (vorläufig)+220", "Sport350 (Kraft RPE 8, MET 5)", "Verdauung200", /^Tag gesamt2\.720/,
   ]);
   // #3478: the day total with its low–high span on one line below it, and no "±" left in the energy views.
   const shown = card.locator(".energy-total .energy-span [aria-hidden]");
@@ -100,8 +101,9 @@ test("@responsive the learned Übriger Alltag is taken over with a receipt and u
     const data = await response.json();
     const profile = await (await page.request.get("/api/profile")).json();
     const checked = (profile.profile || profile).learned_everyday_checked || null;
-    const rows = data.rows.map((row) => (row.source === "katch_mcardle" && checked
-      ? { ...row, split: { ...(row.split || { resting_kcal: 1839, neat_kcal: 220, sport_kcal: 0, tef_kcal: 250, shared: {} }), learned_kcal: 480, learned_band_kcal: 180 } }
+    // #3723: before the check the row counts it provisionally, after it with its sign.
+    const rows = data.rows.map((row) => (row.source === "katch_mcardle"
+      ? { ...row, split: { ...(row.split || { resting_kcal: 1839, neat_kcal: 220, sport_kcal: 0, tef_kcal: 250, shared: {} }), learned_kcal: 480, learned_band_kcal: 180, learned_provisional: !checked } }
       : row));
     await route.fulfill({ response, json: { ...data, rows, outlined: "katch_mcardle", learned_everyday: { katch_mcardle: fit(480), cunningham: fit(330), checked } } });
   });
@@ -109,6 +111,7 @@ test("@responsive the learned Übriger Alltag is taken over with a receipt and u
   const card = page.locator("#nutritionEnergy [data-energy]");
   const offered = card.locator("[data-learned='offered']");
   await expect(offered).toContainText("Übriger Alltag aus 4 Fenstern");
+  await expect(card.locator(".energy-parts [data-part='learned']")).toHaveText("Übriger Alltag (vorläufig)+480");
   // "Noch nicht" stores nothing and hides the buttons for this view (Gitar on #3637).
   await offered.getByRole("button", { name: "Noch nicht" }).click();
   await expect(card.locator("[data-learned='offered'] button")).toHaveCount(0);
@@ -123,7 +126,7 @@ test("@responsive the learned Übriger Alltag is taken over with a receipt and u
   await expect(card.locator(".energy-source")).toHaveText("Quelle: Katch-McArdle mit übrigem Alltag");
   await page.locator("#toast").getByRole("button", { name: "Rückgängig" }).click();
   await expect(card.locator("[data-learned='offered']")).toBeVisible();
-  await expect(card.locator(".energy-split [data-part='learned']")).toHaveCount(0);
+  await expect(card.locator(".energy-parts [data-part='learned']")).toHaveText("Übriger Alltag (vorläufig)+480");
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBeTruthy();
 });
 
@@ -241,7 +244,8 @@ test("@responsive the energy card follows the diary date: sport per day, today b
 const fitScale = (days, ownDays, own, band) => ({
   days, own_days: ownDays, own_kcal: own, own_band_kcal: band, weeks: days / 7, weeks_with_data: Math.min(3, days / 7),
   sources: [
-    { source: "katch_mcardle", total_kcal: 3768 },
+    // #3723: Katch-McArdle with a provisional learned everyday, Cunningham without an estimate.
+    { source: "katch_mcardle", total_kcal: 3768, learned_total_kcal: 3948, learned_qualified: false },
     { source: "cunningham", total_kcal: 3930 },
     { source: "device", label: "Garmin Connect", total_kcal: 3157 },
   ],
@@ -283,8 +287,25 @@ for (const theme of ["light", "dark"]) {
     expect(cardBox.y + cardBox.height).toBeLessThanOrEqual(chartBox.y);
     await page.getByRole("button", { name: "3 Monate" }).click();
     await expect(card).toHaveAttribute("data-energy-fit", "91d");
-    await expect(card.locator(".energy-fit-verdict")).toHaveText(/^Vom 21\.08\. bis 13\.11\. verbrauchst du rund 2\.726 kcal am Tag\. Am besten bisher: Garmin Connect \(\+431\) – noch nicht sicher\.$/);    await expect(card.locator(".energy-fit-row")).toHaveText([/^Deine Daten2\.7262\.272–3\.180zwischen 2\.272 und 3\.180 kcal$/, /^Garmin Connect3\.157 \(\+431\)$/, /^Katch-McArdle3\.768 \(\+1\.042\)$/, /^Cunningham3\.930 \(\+1\.204\)$/]);
+    await expect(card.locator(".energy-fit-verdict")).toHaveText(/^Vom 21\.08\. bis 13\.11\. verbrauchst du rund 2\.726 kcal am Tag\. Am besten bisher: Garmin Connect \(\+431\) – noch nicht sicher\.$/);    await expect(card.locator(".energy-fit-row")).toHaveText([/^Deine Daten2\.7262\.272–3\.180zwischen 2\.272 und 3\.180 kcal$/, /^Garmin Connect3\.157 \(\+431\)$/, /^Katch-McArdle3\.768 \(\+1\.042\)mit Alltag ≈ 3\.948 \(\+1\.222\)$/, /^Cunningham3\.930 \(\+1\.204\)$/]);
     await expect(card.locator(".energy-fit-row[data-inside='true']")).toHaveCount(1);
+    // #3723: a ring and its connector only on the formula row with an estimate, the ring at the
+    // "mit Alltag" value on the scale the dots share; the legend names it provisional.
+    for (const [source, count] of [["katch_mcardle", 1], ["cunningham", 0], ["device", 0]]) {
+      const row = card.locator(`.energy-fit-row[data-fit-source='${source}']`);
+      await expect(row.locator(".energy-fit-learned")).toHaveCount(count);
+      await expect(row.locator(".energy-fit-link")).toHaveCount(count);
+    }
+    const ring = await card.evaluate((element) => {
+      const at = (selector) => { const box = element.querySelector(selector).getBoundingClientRect(); return box.left + box.width / 2; };
+      const row = ".energy-fit-row[data-fit-source='katch_mcardle']";
+      return { raw: at(`${row} .energy-fit-point`), learned: at(`${row} .energy-fit-learned`), cunningham: at(".energy-fit-row[data-fit-source='cunningham'] .energy-fit-point") };
+    });
+    // One linear scale: the ring sits (3948 - 3768) / (3930 - 3768) of the way from Katch's dot to Cunningham's.
+    expect(ring.learned - ring.raw).toBeCloseTo(((3948 - 3768) / (3930 - 3768)) * (ring.cunningham - ring.raw), 0);
+    await expect(card.locator("[data-energy-fit-legend]")).toHaveText("Formel alleinmit Alltag (vorläufig)");
+    // At the project's own width first, for the PR's screenshot review (#3723).
+    if (theme === "light") await card.screenshot({ path: test.info().outputPath("Fit-project-width.png") });
     // At 360 px a row's value stays right of its lane and inside the card.
     await page.setViewportSize({ width: 360, height: 800 });
     const clashes = await card.evaluate((element) => {
@@ -294,6 +315,9 @@ for (const theme of ["light", "dark"]) {
         const lane = row.querySelector(".energy-fit-lane").getBoundingClientRect();
         const value = row.querySelector(".energy-fit-value").getBoundingClientRect();
         if (value.left < lane.right - 1 || value.right > box.right + 1) found.push(`${value.left}-${value.right} outside`);
+        // #3723: the "mit Alltag" line stays inside its value column.
+        const learned = row.querySelector("[data-fit-learned]")?.getBoundingClientRect();
+        if (learned && (learned.left < value.left - 1 || learned.right > value.right + 1)) found.push(`mit Alltag ${learned.left}-${learned.right} outside`);
       }
       const ticks = [...element.querySelectorAll(".energy-fit-tick")].map((tick) => tick.getBoundingClientRect());
       ticks.slice(1).forEach((tick, index) => { if (tick.left < ticks[index].right) found.push("ticks overlap"); });

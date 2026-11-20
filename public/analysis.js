@@ -1788,12 +1788,15 @@ function energyStrengthNote(strength) {
   }).join("; ");
 }
 
-// A checked formula row's learned term follows its Schritte & Treppen (#3577).
+// A formula row's learned term follows its Schritte & Treppen (#3577), "vorläufig" until the
+// athlete takes over a qualified term (#3723).
 const ENERGY_LEARNED = ["learned_kcal", "learned", "Übriger Alltag"];
 
 function energyRowParts(split) {
   const [resting, neat, ...rest] = ENERGY_PARTS;
-  return [resting, neat, ...(split?.learned_kcal == null ? [] : [ENERGY_LEARNED]), ...rest];
+  if (split?.learned_kcal == null) return [resting, neat, ...rest];
+  const [key, part, label] = ENERGY_LEARNED;
+  return [resting, neat, [key, part, split.learned_provisional ? `${label} (vorläufig)` : label], ...rest];
 }
 
 // The learned term under the card (#3577): offered with "Übernehmen" until the athlete
@@ -1803,14 +1806,14 @@ let energyLearnedDeferred = false;
 
 function energyLearnedLine(read) {
   const learned = read.learned_everyday;
-  const fits = ENERGY_LEARNED_FORMULAS.filter(([key]) => learned?.[key]);
-  if (!fits.length) return null;
-  const windows = Math.max(...fits.map(([key]) => learned[key].windows));
+  if (!learned) return null;
+  const fits = ENERGY_LEARNED_FORMULAS.filter(([key]) => learned[key]);
   const head = h("strong", null, "Übriger Alltag");
-  // #3689: offered and applied only once it qualifies; an earlier check stays stored.
-  if (!fits.some(([key]) => learned[key].qualified)) {
-    return h("div", { className: "energy-learned", dataset: { learned: "pending" } }, h("p", null, head, " noch nicht gelernt"));
-  }
+  // #3723: without an estimate it is not learned and counts 0; with one, the row shows it
+  // "vorläufig", so the line has nothing to add until a term qualifies (#3689).
+  if (!fits.length) return h("div", { className: "energy-learned", dataset: { learned: "pending" } }, h("p", null, head, " noch nicht gelernt"));
+  if (!fits.some(([key]) => learned[key].qualified)) return null;
+  const windows = Math.max(...fits.map(([key]) => learned[key].windows));
   if (learned.checked) {
     return h("div", { className: "energy-learned", dataset: { learned: "checked" } }, h("p", null, head, ` übernommen am ${dateLabel(learned.checked)}`, h("br"),
       h("small", null, `aus ${windows} Fenstern, wird mit jedem Fenster genauer`)));
@@ -2190,7 +2193,7 @@ function energyFitVerdict(read, scale, sources) {
 }
 
 function energyFitDomain(scale, sources) {
-  const values = sources.map((item) => item.total_kcal);
+  const values = sources.flatMap((item) => (item.learned_total_kcal == null ? [item.total_kcal] : [item.total_kcal, item.learned_total_kcal]));
   if (scale.own_kcal != null) values.push(scale.own_kcal - (scale.own_band_kcal || 0), scale.own_kcal + (scale.own_band_kcal || 0));
   const low = Math.floor(Math.min(...values) / 500) * 500;
   const high = Math.max(low + 500, Math.ceil(Math.max(...values) / 500) * 500);
@@ -2234,14 +2237,36 @@ function energyFitOwnRow(domain, scale) {
   return h("li", { className: "energy-fit-row", dataset: { fitSource: "own" } }, h("span", "energy-fit-name", "Deine Daten"), lane, value);
 }
 
+function energyFitLabel(scale, total) {
+  return scale.own_kcal == null ? formatWhole(total) : `${formatWhole(total)} (${energyFitSigned(total - scale.own_kcal)})`;
+}
+
 // A source row: its name left, one lane with its dot, "value (signed distance)" right; inside marks
-// a distance within the own band.
+// a distance within the own band. A formula row with a learned everyday adds a ring at its total
+// with it, linked to the dot, and "mit Alltag ≈ …" under its value (#3723).
 function energyFitSourceRow(domain, scale, item) {
+  const color = FIT_COLORS[item.source];
   const lane = energyFitLane(domain, scale, true);
-  const label = item.diff == null ? formatWhole(item.total_kcal) : `${formatWhole(item.total_kcal)} (${energyFitSigned(item.diff)})`;
-  lane.append(energyFitMark("energy-fit-point", domain.at(item.total_kcal), null, FIT_COLORS[item.source]));
+  const value = h("span", "energy-fit-value", energyFitLabel(scale, item.total_kcal));
+  const learned = item.learned_total_kcal;
+  if (learned != null) {
+    const [from, to] = [domain.at(item.total_kcal), domain.at(learned)];
+    lane.append(energyFitMark("energy-fit-link", Math.min(from, to), Math.abs(to - from), color));
+    value.append(h("span", { className: "energy-span", dataset: { fitLearned: "" } }, `mit Alltag ≈ ${energyFitLabel(scale, learned)}`));
+  }
+  lane.append(energyFitMark("energy-fit-point", domain.at(item.total_kcal), null, color));
+  if (learned != null) lane.append(energyFitMark("energy-fit-learned", domain.at(learned), null, color));
   const inside = item.diff != null && scale.own_band_kcal != null && Math.abs(item.diff) <= scale.own_band_kcal;
-  return h("li", { className: "energy-fit-row", dataset: { fitSource: item.source, inside: String(inside) } }, h("span", { className: "energy-fit-name", dataset: { color: String(FIT_COLORS[item.source]) } }, item.name), lane, h("span", "energy-fit-value", label));
+  return h("li", { className: "energy-fit-row", dataset: { fitSource: item.source, inside: String(inside) } }, h("span", { className: "energy-fit-name", dataset: { color: String(color) } }, item.name), lane, value);
+}
+
+// The legend under the rows once a ring is shown; "(vorläufig)" until every shown term qualifies.
+function energyFitLegend(sources) {
+  const learned = sources.filter((item) => item.learned_total_kcal != null);
+  if (!learned.length) return null;
+  const ring = learned.every((item) => item.learned_qualified) ? "mit Alltag" : "mit Alltag (vorläufig)";
+  return h("div", { className: "energy-fit-legend", dataset: { energyFitLegend: "" } },
+    h("span", null, h("i", "is-full"), "Formel allein"), h("span", null, h("i", "is-ring"), ring));
 }
 
 function energyFitNoteText(scale, key) {
@@ -2258,7 +2283,7 @@ function energyFitScale(read, key) {
     const domain = energyFitDomain(scale, sources);
     const rows = sources.map((item) => energyFitSourceRow(domain, scale, item));
     if (scale.own_kcal != null) rows.unshift(energyFitOwnRow(domain, scale));
-    card.append(energyFitAxis(domain), h("ul", "energy-fit-rows", rows));
+    card.append(energyFitAxis(domain), h("ul", "energy-fit-rows", rows), ...[energyFitLegend(sources)].filter(Boolean));
   }
   card.append(h("p", { className: "analysis-reference-note", dataset: { energyFitNote: "" } }, energyFitNoteText(scale, key)));
   return card;

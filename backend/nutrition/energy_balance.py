@@ -28,7 +28,7 @@ from backend.performance.activity_energy import (
 
 METHOD_ID = "adaptive-expenditure"
 # Bump when a formula or constant below changes the estimate.
-METHOD_VERSION = 24
+METHOD_VERSION = 25
 # Days per window and windows per week of the rolling view (#3099, #3100).
 WINDOW_DAYS = 28
 # A window needs this many complete logging days, weigh-ins and days between

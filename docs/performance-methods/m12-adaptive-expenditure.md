@@ -1,8 +1,8 @@
 # M12 — Adaptive daily expenditure from intake and the weight trend
 
 - **Card:** M12
-- **Card version:** 24
-- **Method ID:** adaptive-expenditure v24 (#3100, #3187, #3255, #3552, #3551, #3553, #3555, #3554, #3586, #3603, #3612, #3614, #3617, #3577, #3616, #3618, #3604, #3667, #3687, #3689, #3684, #3690)
+- **Card version:** 25
+- **Method ID:** adaptive-expenditure v25 (#3100, #3187, #3255, #3552, #3551, #3553, #3555, #3554, #3586, #3603, #3612, #3614, #3617, #3577, #3616, #3618, #3604, #3667, #3687, #3689, #3684, #3690, #3723)
 - **Status:** method implemented (`backend/nutrition/energy_balance.py`, the weigh-in line in `backend/athlete/body_records.py`, #3640); the reader, diagnostics and display follow (#3100, #3099)
 - **Classification:** model estimate
 - **Literature checked:** 2026-11-15
@@ -154,13 +154,22 @@ estimate. It never rewrites logged values and never falls back to a formula.
    floor of −250 kcal/day; a fit below 0 also counts in a counts-only
    diagnostic. It is offered and applied only with at least 3 stable
    windows that share no day, or a posterior SD of 150 kcal/day or less;
-   until then the line reads "noch nicht gelernt", and an earlier check
-   stays stored and takes effect once it qualifies (#3689).
-   Only after the athlete has taken it over (a dated profile check)
-   does each formula row carry it as "Übriger Alltag" in its split
-   and day total, and so in "Offene Kalorien"; the fit with the
+   an earlier check stays stored and takes effect once it qualifies
+   (#3689). Once the athlete has taken a qualified term over (a dated
+   profile check), each formula row carries it with its sign as
+   "Übriger Alltag" in its split, day total and band, and so in
+   "Offene Kalorien". Until then a row with an estimate carries its
+   current point estimate floored at 0 as "Übriger Alltag (vorläufig)",
+   with the same band; without an estimate the line reads "noch nicht
+   gelernt" and it counts 0 (athlete decision, #3723). The fit with the
    weight, its hit rate and the outlined source keep comparing the raw
    rows, so learning cannot make them meet the weight by construction.
+   Verlauf's source card ("Welche Quelle trifft dein Gewicht?", #3723)
+   keeps each formula row's raw total, distance and rank, and adds that
+   row's total with its own learned term, check or not: the qualified term
+   with its sign, else the provisional point estimate floored at 0, drawn
+   as a ring linked to the raw dot, under "mit Alltag ≈" and labelled
+   "vorläufig" until every shown term qualifies; the device row has none.
    The diary card's small "i"
    shows NEAT's inputs over the window: steps per day, the steps sessions
    take out, the step length with its source and the floors outside
@@ -382,7 +391,7 @@ bias that is the same on every day is not visible in the band.
 | Constant | Value | Module | Code comment |
 | --- | --- | --- | --- |
 | `METHOD_ID` | `'adaptive-expenditure'` | `backend/nutrition/energy_balance.py` |  |
-| `METHOD_VERSION` | `24` | `backend/nutrition/energy_balance.py` | Bump when a formula or constant below changes the estimate. |
+| `METHOD_VERSION` | `25` | `backend/nutrition/energy_balance.py` | Bump when a formula or constant below changes the estimate. |
 | `WINDOW_DAYS` | `28` | `backend/nutrition/energy_balance.py` | Days per window and windows per week of the rolling view (#3099, #3100). |
 | `MIN_COMPLETE_DAYS` | `14` | `backend/nutrition/energy_balance.py` | A window needs this many complete logging days, weigh-ins and days between its first and last weigh-in; otherwise it gives its reason, never a formula. |
 | `MIN_WEIGHINS` | `8` | `backend/nutrition/energy_balance.py` |  |

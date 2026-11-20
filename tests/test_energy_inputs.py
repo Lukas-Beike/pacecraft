@@ -1007,6 +1007,11 @@ class BodyFatFallbackTests(unittest.TestCase):
         self.assertEqual(2, basis["today_resting_days_back"])
         # #3577: no estimated window, so no learned everyday fit below 0.
         self.assertEqual(0, basis["learned_everyday_negative"])
+        # #3723: without an estimate both formula rows count as none.
+        self.assertEqual(
+            {"none": 2, "provisional": 0, "qualified": 0},
+            basis["learned_everyday_state"],
+        )
         counts = basis["body_source_windows"]
         self.assertEqual(12, sum(counts.values()))
         # The profile is no body source any more (#3640).
