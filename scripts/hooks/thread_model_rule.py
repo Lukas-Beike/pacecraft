@@ -108,9 +108,16 @@ def main(rule_file=RULE_FILE):
         return 2
     text = ", ".join(f"{model} up to effort {effort}" for model, effort in rule.items())
     text += f"; runtime mode {allowed_mode} or inherited"
-    for model, effort, mode in requested(
-        str(payload.get("tool_name") or ""), payload.get("tool_input") or {}
-    ):
+    try:
+        threads = list(
+            requested(
+                str(payload.get("tool_name") or ""), payload.get("tool_input") or {}
+            )
+        )
+    except AttributeError, TypeError:
+        print("Blocked: unreadable thread launch input.", file=sys.stderr)
+        return 2
+    for model, effort, mode in threads:
         problem = violation(model, effort, rule, mode, allowed_mode)
         if problem:
             print(

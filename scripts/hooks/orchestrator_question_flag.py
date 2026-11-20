@@ -1,16 +1,19 @@
-"""Claude Code PostToolUse hook: flag a lane's open ORCHESTRATOR: line (#3753).
+"""Claude Code PostToolUse hook: flag a lane's open ORCHESTRATOR: question (#3753).
 
-After a `t3_thread_read`, it adds a note to the reader's context when the page
-shows a lane assistant item whose text was cut off (the question may sit past
-the cut) or whose `ORCHESTRATOR:` line no later user message answers while the
-lane is idle or the line asks a question. It only advises: it never blocks and
-stays silent on any input it cannot read.
+After a `t3_thread_read` of a thread's newest page, it adds a note to the
+reader's context when the newest assistant item was cut off (a question may
+sit past the cut) or when an assistant line starting with `ORCHESTRATOR:` asks
+a question that no later user message on the page answers. Reads of older
+pages or of the rest of one item are skipped: their later answers are not on
+the page. It only advises: it never blocks and stays silent on input it
+cannot read.
 """
 
 import json
 import sys
 
 MARK = "ORCHESTRATOR:"
+PAGED = ("itemId", "textOffset", "beforePosition", "afterPosition")
 
 
 def _pages(value):
@@ -36,40 +39,48 @@ def _pages(value):
 def notes(page):
     thread = page.get("thread") or {}
     name = thread.get("title") or thread.get("threadId") or "thread"
-    idle = thread.get("status") != "running"
     items = sorted(
         (item for item in page["items"] if isinstance(item, dict)),
-        key=lambda item: item.get("position") or 0,
+        key=lambda item: int(item.get("position") or 0),
     )
+    replies = [i for i, item in enumerate(items) if item.get("type") == "user_message"]
+    last_reply = replies[-1] if replies else -1
+    mine = [
+        i for i, item in enumerate(items) if item.get("type") == "assistant_message"
+    ]
     found = []
-    for index, item in enumerate(items):
-        if item.get("type") != "assistant_message":
-            continue
-        text = str(item.get("text") or "")
-        if item.get("textTruncated"):
-            found.append(
-                f"{name}: item {item.get('itemId')} is cut off; read the rest with "
-                f"itemId and textOffset={item.get('nextTextOffset')} before judging it."
-            )
-        lines = [line.strip() for line in text.splitlines() if MARK in line]
-        answered = any(
-            later.get("type") == "user_message" for later in items[index + 1 :]
+    if mine and items[mine[-1]].get("textTruncated"):
+        newest = items[mine[-1]]
+        found.append(
+            f"{name}: newest item {newest.get('itemId')} is cut off; read the rest "
+            f"with itemId and textOffset={newest.get('nextTextOffset')}."
         )
-        if lines and not answered and (idle or any("?" in line for line in lines)):
-            found.append(f"{name}: unanswered {lines[-1][:300]}")
+    open_text = "\n".join(
+        str(items[index].get("text") or "") for index in mine if index > last_reply
+    )
+    lines = (line.strip().lstrip("-*>` ").strip() for line in open_text.splitlines())
+    found.extend(
+        f"{name}: unanswered {line[:300]}"
+        for line in lines
+        if line.startswith(MARK) and "?" in line
+    )
     return found
 
 
 def main():
     try:
         payload = json.loads(sys.stdin.buffer.read().decode("utf-8-sig"))
-        found = [
-            note
-            for page in _pages(payload.get("tool_response"))
-            for note in notes(page)
-        ]
-    except ValueError, AttributeError, TypeError:
+        if any(key in (payload.get("tool_input") or {}) for key in PAGED):
+            return 0
+        pages = list(_pages(payload.get("tool_response")))
+    except ValueError, AttributeError, TypeError, RecursionError:
         return 0
+    found = []
+    for page in pages:
+        try:
+            found.extend(notes(page))
+        except ValueError, AttributeError, TypeError:
+            continue
     if found:
         context = "Lane report check (#3753):\n- " + "\n- ".join(dict.fromkeys(found))
         print(

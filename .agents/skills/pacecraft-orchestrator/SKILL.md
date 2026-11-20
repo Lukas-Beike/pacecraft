@@ -159,7 +159,7 @@ idle (#3668). Read each lane's newest item whole: `maxCharsPerItem` 20000,
 and while it shows `textTruncated`, read on with its `itemId` and
 `textOffset` set to `nextTextOffset`; a question past the cut left a lane
 idle for 45 minutes (#3753). Look in it for `ORCHESTRATOR:` lines; the
-thread-read hook names cut-off items and unanswered lines.
+thread-read hook names a cut-off newest item and unanswered questions.
 Read each lane's runs too, not only its last message: `t3_thread_read` with
 `runLimit: 3`, judging the newest run that started (`startedAt` set; a queued
 run comes first). A lane with `pendingRequestCount` above 0 gets its request

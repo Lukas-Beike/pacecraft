@@ -1,4 +1,4 @@
-"""The thread-read hook flags a lane's cut-off or unanswered ORCHESTRATOR: line."""
+"""The thread-read hook flags a lane's cut-off item or unanswered ORCHESTRATOR: question."""
 
 import json
 import subprocess
@@ -22,17 +22,28 @@ def item(position, kind, text, cut_at=None):
     }
 
 
-def read(items, status="idle", wrap=True):
-    page = {"thread": {"title": "Lane L1", "status": status}, "items": items}
-    response = [{"type": "text", "text": json.dumps(page)}] if wrap else page
-    payload = {"tool_name": "mcp__t3-code__t3_thread_read", "tool_response": response}
-    result = subprocess.run(
+def run(raw):
+    return subprocess.run(
         [sys.executable, str(HOOK)],
-        input=json.dumps(payload),
+        input=raw,
         capture_output=True,
         text=True,
         check=False,
         timeout=30,
+    )
+
+
+def read(items, wrap=True, tool_input=None):
+    page = {"thread": {"title": "Lane L1"}, "items": items}
+    response = [{"type": "text", "text": json.dumps(page)}] if wrap else page
+    result = run(
+        json.dumps(
+            {
+                "tool_name": "mcp__t3-code__t3_thread_read",
+                "tool_input": tool_input or {"threadId": "t"},
+                "tool_response": response,
+            }
+        )
     )
     if not result.stdout.strip():
         return result.returncode, ""
@@ -41,48 +52,69 @@ def read(items, status="idle", wrap=True):
 
 
 class OrchestratorQuestionFlagTests(unittest.TestCase):
-    def test_unanswered_line_of_an_idle_lane_is_flagged(self):
+    def test_unanswered_question_is_flagged_with_its_own_line(self):
         code, context = read(
             [
                 item(1, "user_message", "start"),
-                item(2, "assistant_message", "Done.\nORCHESTRATOR: keep 7 copies?"),
+                item(
+                    2,
+                    "assistant_message",
+                    "Done.\n**ORCHESTRATOR: keep 7 copies?**\nORCHESTRATOR: on #9",
+                ),
             ]
         )
         self.assertEqual(code, 0)
         self.assertIn("Lane L1: unanswered ORCHESTRATOR: keep 7 copies?", context)
+        self.assertNotIn("on #9", context)
 
-    def test_question_of_a_running_lane_is_flagged_a_report_is_not(self):
-        question = [item(1, "assistant_message", "ORCHESTRATOR: split it?")]
-        report = [item(1, "assistant_message", "ORCHESTRATOR: claimed #1")]
-        self.assertIn("unanswered", read(question, "running")[1])
-        self.assertEqual(read(report, "running"), (0, ""))
-        self.assertIn("unanswered", read(report, "idle", wrap=False)[1])
+    def test_reports_and_mentions_are_not_questions(self):
+        for text in (
+            "ORCHESTRATOR: claimed #1",
+            "I report with an ORCHESTRATOR: prefix, right?",
+        ):
+            with self.subTest(text=text):
+                items = [item(1, "assistant_message", text)]
+                self.assertEqual(read(items, wrap=False), (0, ""))
 
-    def test_a_later_user_message_answers_the_line(self):
+    def test_a_later_user_message_answers_the_question(self):
         items = [
             item(1, "assistant_message", "ORCHESTRATOR: split it?"),
             item(2, "user_message", "Yes, split it."),
+            item(3, "assistant_message", "Splitting."),
         ]
         self.assertEqual(read(items), (0, ""))
 
-    def test_cut_off_lane_item_names_the_offset(self):
+    def test_only_the_cut_off_newest_item_is_named(self):
         _code, context = read(
-            [item(1, "user_message", "go"), item(2, "assistant_message", "Long", 20000)]
+            [
+                item(1, "assistant_message", "Old", 200),
+                item(2, "user_message", "go"),
+                item(3, "assistant_message", "Long", 20000),
+            ]
         )
-        self.assertIn("item-2 is cut off", context)
+        self.assertIn("item-3 is cut off", context)
         self.assertIn("textOffset=20000", context)
+        self.assertNotIn("item-1", context)
+
+    def test_older_pages_and_item_continuations_are_skipped(self):
+        items = [item(1, "assistant_message", "ORCHESTRATOR: split it?", 500)]
+        for tool_input in (
+            {"threadId": "t", "itemId": "item-1", "textOffset": 200},
+            {"threadId": "t", "beforePosition": 40},
+        ):
+            with self.subTest(tool_input=tool_input):
+                self.assertEqual(read(items, tool_input=tool_input), (0, ""))
 
     def test_unreadable_input_stays_silent(self):
-        for raw in ("not json", json.dumps({"tool_response": "plain text"})):
+        for raw in (
+            "not json",
+            json.dumps({"tool_response": "plain text"}),
+            json.dumps(
+                {"tool_response": {"thread": "x", "items": [{"position": "a"}]}}
+            ),
+        ):
             with self.subTest(raw=raw):
-                result = subprocess.run(
-                    [sys.executable, str(HOOK)],
-                    input=raw,
-                    capture_output=True,
-                    text=True,
-                    check=False,
-                    timeout=30,
-                )
+                result = run(raw)
                 self.assertEqual((result.returncode, result.stdout), (0, ""))
 
 

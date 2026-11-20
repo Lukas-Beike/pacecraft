@@ -100,6 +100,17 @@ class ThreadModelRuleHookTests(unittest.TestCase):
         }
         self.assertEqual(run_hook(payload, OPUS_LOW).returncode, 2)
 
+    def test_malformed_launch_input_fails_closed(self):
+        for tool_input in ({"threads": ["x"]}, {"threads": [{"target": "x"}]}):
+            with self.subTest(tool_input=tool_input):
+                payload = {
+                    "tool_name": "mcp__t3-code__create_threads",
+                    "tool_input": tool_input,
+                }
+                result = run_hook(payload, OPUS_LOW)
+                self.assertEqual(result.returncode, 2)
+                self.assertIn("unreadable thread launch input", result.stderr)
+
     def test_missing_or_invalid_rule_fails_closed(self):
         for rule in (
             None,
