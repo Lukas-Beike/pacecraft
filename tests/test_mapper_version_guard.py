@@ -14,7 +14,9 @@ pass. A code change updates only the fingerprint when replaying the stored
 records gives the same output, for example a refactor, a new enum member, or a
 mapping of a section or field that no stored record carries yet (#2880); say so
 in the PR. Otherwise bump the version first. Run this module to print the
-current table.
+current table; ``--write`` rewrites ``PINNED`` from it after a bump and refuses
+a fingerprint change without one, unless ``--fingerprint-only MODULE`` names a
+module whose change, by the clauses here, maps nothing differently (#3743).
 
 Third named clause, the self-versioned additive field (#3273, approved by the
 athlete after a Fable review): a code change may also update only the
@@ -282,6 +284,49 @@ def current_table() -> dict[str, tuple[tuple[int, ...], str]]:
     return table
 
 
+def write_refusals(
+    table: dict[str, tuple[tuple[int, ...], str]],
+    pinned: dict[str, tuple[tuple[int, ...], str]],
+    fingerprint_only: frozenset[str] = frozenset(),
+) -> list[str]:
+    """The modules ``--write`` refuses: a changed fingerprint without a bump of
+    every replaying version, unless named as a fingerprint-only change. A module
+    new to the replayed set is pinned as it is: its owners' own rows carry the
+    bump check."""
+    refused = []
+    for module, (versions, digest) in sorted(table.items()):
+        if module not in pinned:
+            continue
+        pinned_versions, pinned_digest = pinned[module]
+        if digest == pinned_digest or module in fingerprint_only:
+            continue
+        bumped = len(versions) == len(pinned_versions) and all(
+            now != before for now, before in zip(versions, pinned_versions, strict=True)
+        )
+        if not bumped:
+            refused.append(module)
+    return refused
+
+
+def pinned_source(source: str, table: dict[str, tuple[tuple[int, ...], str]]) -> str:
+    """``source`` with its ``PINNED`` table replaced by ``table``."""
+    node = next(
+        item
+        for item in ast.parse(source).body
+        if isinstance(item, ast.AnnAssign)
+        and isinstance(item.target, ast.Name)
+        and item.target.id == "PINNED"
+    )
+    lines = source.splitlines(keepends=True)
+    body = "".join(
+        f'    "{module}": (\n        {versions!r},\n        "{digest}",\n    ),\n'
+        for module, (versions, digest) in sorted(table.items())
+    )
+    block = f"PINNED: Final[dict[str, tuple[tuple[int, ...], str]]] = {{\n{body}}}\n"
+    assert node.end_lineno is not None
+    return "".join(lines[: node.lineno - 1]) + block + "".join(lines[node.end_lineno :])
+
+
 class MapperVersionGuardTests(unittest.TestCase):
     def test_every_mapping_module_is_registered(self) -> None:
         modules = {path.stem for path in PROVIDERS.glob("*_mapping.py")}
@@ -325,14 +370,41 @@ class MapperVersionGuardTests(unittest.TestCase):
                         [],
                         f"{module} changed without bumping the MAPPER_VERSION of "
                         f"{', '.join(unbumped)}; bump each so stored records "
-                        "replay, then update PINNED (a change that maps nothing "
-                        "differently only updates the fingerprint)",
+                        "replay, then update PINNED with `python "
+                        "tests/test_mapper_version_guard.py --write` (a change "
+                        "that maps nothing differently only updates the "
+                        "fingerprint: add --fingerprint-only MODULE)",
                     )
                 self.assertEqual(
                     (versions, digest),
                     (pinned_versions, pinned_digest),
-                    f"update PINNED[{module!r}] to the new version and fingerprint",
+                    f"update PINNED[{module!r}] to the new version and fingerprint: "
+                    "python tests/test_mapper_version_guard.py --write",
                 )
+
+    def test_write_refuses_a_fingerprint_change_without_a_bump(self) -> None:
+        # #3743: --write keeps the "bump first" rule.
+        pinned = {"a": ((1, 2), "old"), "b": ((3,), "same"), "c": ((5,), "old")}
+        table = {"a": ((2, 3), "new"), "b": ((3,), "same"), "c": ((5,), "new")}
+        self.assertEqual(write_refusals(table, pinned), ["c"])
+        self.assertEqual(write_refusals(table, pinned, frozenset({"c"})), [])
+        # A bump of only one of two replaying versions is refused too.
+        partial = {"a": ((2, 2), "new"), "b": ((3,), "same"), "c": ((5,), "old")}
+        self.assertEqual(write_refusals(partial, pinned), ["a"])
+        # A module new to the replayed set is pinned as it is.
+        added = table | {"new_helper": ((2, 3), "fresh")}
+        self.assertEqual(write_refusals(added, pinned), ["c"])
+
+    def test_write_rewrites_only_the_pinned_table(self) -> None:
+        source = Path(__file__).read_text(encoding="utf-8")
+        # The current table round-trips to this very file when nothing changed.
+        self.assertEqual(pinned_source(source, PINNED), source)
+        changed = dict(PINNED) | {"garmin_weight_walk": ((99,), "x" * 64)}
+        rewritten = pinned_source(source, changed)
+        self.assertIn('"garmin_weight_walk": (\n        (99,),', rewritten)
+        self.assertEqual(
+            rewritten.split("PINNED: Final")[0], source.split("PINNED: Final")[0]
+        )
 
     def test_docstring_and_comment_edits_keep_the_fingerprint(self) -> None:
         code = 'def f(x):\n    """Doc."""\n    return x + 1  # note\n'
@@ -342,6 +414,36 @@ class MapperVersionGuardTests(unittest.TestCase):
         self.assertNotEqual(fingerprint(code), fingerprint(changed))
 
 
+def main(argv: list[str]) -> int:
+    """Print the current table, or rewrite ``PINNED`` with ``--write`` (#3743)."""
+    import argparse
+
+    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser.add_argument("--write", action="store_true")
+    parser.add_argument("--fingerprint-only", action="append", default=[])
+    args = parser.parse_args(argv)
+    table = current_table()
+    if not args.write:
+        for name, row in table.items():
+            print(f"    {name!r}: {row!r},")
+        return 0
+    refused = write_refusals(table, PINNED, frozenset(args.fingerprint_only))
+    if refused:
+        print("refused, bump the replaying MAPPER_VERSION first: " + ", ".join(refused))
+        return 1
+    path = Path(__file__)
+    # LF as stored (.gitattributes), so nothing outside PINNED changes on Windows.
+    path.write_text(
+        pinned_source(path.read_text(encoding="utf-8"), table),
+        encoding="utf-8",
+        newline="\n",
+    )
+    changed = sorted(name for name, row in table.items() if PINNED.get(name) != row)
+    print("PINNED updated: " + (", ".join(changed) or "nothing changed"))
+    return 0
+
+
 if __name__ == "__main__":
-    for name, row in current_table().items():
-        print(f"    {name!r}: {row!r},")
+    import sys
+
+    raise SystemExit(main(sys.argv[1:]))
