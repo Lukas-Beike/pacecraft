@@ -38,10 +38,11 @@ TEMPLATE = re.compile(r"\.env\.example(?![\w.-])", re.IGNORECASE)
 # file in its own process; every other mention is blocked.
 # Matched after quotes are dropped and `/./` collapsed: the folder, any word
 # starting with s below `userdata` (globs, braces), a `..` path, a short name,
-# and `userdata` itself or a glob over it.
+# and the `.t3` or `.t3/userdata` folder itself or a glob over it (a search for
+# the bare word passes).
 SECRETS = re.compile(
     r"userdata[/\\]+s[\w*?\[{~]|userdata[/\\]\S*\.\.|userda~\d"
-    r"|\buserdata[/\\]*(?=$|[\s;|&),*?\[{])",
+    r"|(?:^|[\s/\\~=:])\.t3(?:[/\\]+userdata)?[/\\]*(?=$|[\s;|&),*?\[{])",
     re.IGNORECASE,
 )
 QUOTES = re.compile(r"[\"'`]")

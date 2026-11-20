@@ -103,6 +103,8 @@ class GuardPrivatePathsTests(unittest.TestCase):
             f"cd ~/.t3/user{'data'}; gh issue comment 1 --body-file secrets/abc",
             f"Get-ChildItem ~/.t3/user{'data'} -Recurse -File | Get-Content",
             f"New-Item -ItemType Junction -Path l -Target ~/.t3/user{'data'}",
+            "cd ~/.t3; cd userdata; cat secrets/abc",
+            "Get-ChildItem C:\\Users\\x\\.t3 -Recurse",
         ):
             with self.subTest(command=command):
                 self.assertEqual(run_hook(command), 2)
@@ -119,6 +121,8 @@ class GuardPrivatePathsTests(unittest.TestCase):
             f'node scripts/ui_walk.mjs --url u `\n  --password-file "{secret}" --out-dir t',
             "grep -n T3_SECRETS scripts/prod_client.py",
             f"ls ~/.t3/user{'data'}/attachments",
+            f'grep -c -i "user{"data"}\\|post_release" x',
+            "git -C C:\\Users\\x\\.t3\\worktrees\\a status",
         ):
             with self.subTest(command=command):
                 self.assertEqual(run_hook(command), 0)
