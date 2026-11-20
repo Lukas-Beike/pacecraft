@@ -33,6 +33,35 @@ PRIVATE = tuple(
     )
 )
 TEMPLATE = re.compile(r"\.env\.example(?![\w.-])", re.IGNORECASE)
+# T3's secret folder holds APP_PASSWORD, the login and database key (#3758). Its
+# path may only be the --password-file value of a prod script, which reads the
+# file in its own process; every other mention is blocked.
+SECRETS = re.compile(r"userdata[/\\]+secrets", re.IGNORECASE)
+SEGMENTS = re.compile(r"&&|\|\||[;|&\n]")
+SECRET_RUN = re.compile(
+    r"(?:(?:py|python[\d.]*(?:exe)?)\s+(?:\.[/\\])?scripts[/\\]prod_[a-z]+\.py"
+    r"|node(?:\.exe)?\s+(?:\.[/\\])?scripts[/\\](?:ui_walk|post_release_actions)\.mjs)"
+    r"(?=\s)",
+    re.IGNORECASE,
+)
+# A literal value only: no expansion, substitution or redirection inside it.
+PASSWORD_FILE = re.compile(
+    r"\s--password-file(?:=|\s+)(?:\"[^\"$`]*\"|'[^']*'|[^\s\"'$`()<>]+)(?=\s|$)"
+)
+
+
+def secret_mention_allowed(command: str) -> bool:
+    """True when every secret-folder path is a prod script's --password-file value."""
+    for segment in SEGMENTS.split(command):
+        if not SECRETS.search(segment):
+            continue
+        if not SECRET_RUN.match(segment.strip()) or SECRETS.search(
+            PASSWORD_FILE.sub(" ", segment)
+        ):
+            return False
+    return True
+
+
 PYTHON_WORD = r"(?:^|[\s\"'&|;(])(?:py|python[\d.]*)(?:\.exe)?"
 PYTHON = re.compile(PYTHON_WORD + r"(?=[\s\"'])", re.IGNORECASE)
 SERVER = tuple(
@@ -128,6 +157,14 @@ def main() -> int:
             "directory's local settings file, which can hold live secrets (#3076). "
             "Set DATA_DIR to a temporary directory in the same command, in a checkout "
             "without such a file, or test through tests/run_tests.py.",
+            file=sys.stderr,
+        )
+        return 2
+    if not secret_mention_allowed(command):
+        print(
+            "Blocked: the command names T3's secret folder, which holds the app "
+            "password and database key (#3758). Pass its file only as --password-file "
+            "to scripts/prod_*.py, scripts/ui_walk.mjs or scripts/post_release_actions.mjs.",
             file=sys.stderr,
         )
         return 2
