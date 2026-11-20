@@ -36,10 +36,21 @@ TEMPLATE = re.compile(r"\.env\.example(?![\w.-])", re.IGNORECASE)
 # T3's secret folder holds APP_PASSWORD, the login and database key (#3758). Its
 # path may only be the --password-file value of a prod script, which reads the
 # file in its own process; every other mention is blocked.
-SECRETS = re.compile(r"userdata[/\\]+secrets", re.IGNORECASE)
+# Matched after quotes are dropped and `/./` collapsed: the folder, any word
+# starting with s below `userdata` (globs, braces), a `..` path, a short name,
+# and `userdata` itself or a glob over it.
+SECRETS = re.compile(
+    r"userdata[/\\]+s[\w*?\[{~]|userdata[/\\]\S*\.\.|userda~\d"
+    r"|\buserdata[/\\]*(?=$|[\s;|&),*?\[{])",
+    re.IGNORECASE,
+)
+QUOTES = re.compile(r"[\"'`]")
+DOT_SEGMENT = re.compile(r"[/\\]\.(?=[/\\])")
+CONTINUATION = re.compile(r"[\\`]\r?\n")
 SEGMENTS = re.compile(r"&&|\|\||[;|&\n]")
 SECRET_RUN = re.compile(
-    r"(?:(?:py|python[\d.]*(?:exe)?)\s+(?:\.[/\\])?scripts[/\\]prod_[a-z]+\.py"
+    r"(?:py(?:thon\d*(?:\.\d+)*)?(?:\.exe)?(?:\s+-[\w.]+)*\s+"
+    r"(?:\.[/\\])?scripts[/\\]prod_(?:diagnostics|guards|logs)\.py"
     r"|node(?:\.exe)?\s+(?:\.[/\\])?scripts[/\\](?:ui_walk|post_release_actions)\.mjs)"
     r"(?=\s)",
     re.IGNORECASE,
@@ -50,12 +61,16 @@ PASSWORD_FILE = re.compile(
 )
 
 
+def names_secrets(text: str) -> bool:
+    return bool(SECRETS.search(DOT_SEGMENT.sub("", QUOTES.sub("", text))))
+
+
 def secret_mention_allowed(command: str) -> bool:
     """True when every secret-folder path is a prod script's --password-file value."""
-    for segment in SEGMENTS.split(command):
-        if not SECRETS.search(segment):
+    for segment in SEGMENTS.split(CONTINUATION.sub(" ", command)):
+        if not names_secrets(segment):
             continue
-        if not SECRET_RUN.match(segment.strip()) or SECRETS.search(
+        if not SECRET_RUN.match(segment.strip()) or names_secrets(
             PASSWORD_FILE.sub(" ", segment)
         ):
             return False
@@ -164,7 +179,9 @@ def main() -> int:
         print(
             "Blocked: the command names T3's secret folder, which holds the app "
             "password and database key (#3758). Pass its file only as --password-file "
-            "to scripts/prod_*.py, scripts/ui_walk.mjs or scripts/post_release_actions.mjs.",
+            "to scripts/prod_diagnostics.py, prod_guards.py, prod_logs.py, "
+            "ui_walk.mjs or post_release_actions.mjs. If you only mention the path "
+            "(for example in a commit message), pass the text through a file.",
             file=sys.stderr,
         )
         return 2

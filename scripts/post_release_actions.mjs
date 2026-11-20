@@ -134,7 +134,8 @@ async function main() {
   try {
     input = parseInput(process.argv.slice(2));
   } catch (error) {
-    console.log(`FAIL ${error.message}`);
+    // A file-system error names a path; never print it.
+    console.log(`FAIL ${error.syscall ? SECRET_MISSING : error.message}`);
     return 2;
   }
   const { chromium } = await import("@playwright/test");

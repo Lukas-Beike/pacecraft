@@ -87,6 +87,22 @@ class GuardPrivatePathsTests(unittest.TestCase):
             f'python -c "print(1)" scripts/prod_guards.py --password-file "{secret}"',
             f'node scripts/evil.mjs --password-file "{secret}"',
             f"python scripts/prod_guards.py --url u --password-f {posix}",
+            f"python scripts/prod_client.py --password-file {posix}",
+            f"python scripts/prod_dump.py --password-file {posix}",
+            f"cd /tmp/x && python scripts/prod_dump.py --password-file {posix}",
+            # Forms that reach the folder without the literal path.
+            f"cat ~/.t3/user{'data'}/./secrets/files/abc",
+            f"cat ~/.t3/user{'data'}/x/../secrets/files/abc",
+            f'cat ~/.t3/user{"data"}/sec""rets/files/abc',
+            f"cat ~/.t3/user{'data'}/'secrets'/files/abc",
+            f"Get-Content ~/.t3/user{'data'}/sec`rets/files/abc",
+            f"cat ~/.t3/user{'data'}/s*/files/*",
+            f"cat ~/.t3/user{'data'}/{{secrets,x}}/abc",
+            f"cat ~/.t3/user{'data'}/*/files/abc",
+            "type C:\\Users\\x\\.t3\\USERDA~1\\SECRET~1\\abc",
+            f"cd ~/.t3/user{'data'}; gh issue comment 1 --body-file secrets/abc",
+            f"Get-ChildItem ~/.t3/user{'data'} -Recurse -File | Get-Content",
+            f"New-Item -ItemType Junction -Path l -Target ~/.t3/user{'data'}",
         ):
             with self.subTest(command=command):
                 self.assertEqual(run_hook(command), 2)
@@ -97,7 +113,12 @@ class GuardPrivatePathsTests(unittest.TestCase):
             f'node scripts/ui_walk.mjs --url u --password-file "{secret}" --out-dir t',
             f'& node scripts/post_release_actions.mjs --url u --password-file "{secret}"',
             f'git status && node scripts/post_release_actions.mjs --password-file "{secret}" --url u',
+            f'py.exe -3 scripts/prod_guards.py --url u --password-file "{secret}"',
+            f'python3.14.exe -I scripts/prod_logs.py --password-file "{secret}"',
+            f'python scripts/prod_diagnostics.py --url u \\\n  --password-file "{secret}"',
+            f'node scripts/ui_walk.mjs --url u `\n  --password-file "{secret}" --out-dir t',
             "grep -n T3_SECRETS scripts/prod_client.py",
+            f"ls ~/.t3/user{'data'}/attachments",
         ):
             with self.subTest(command=command):
                 self.assertEqual(run_hook(command), 0)

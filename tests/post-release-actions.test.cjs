@@ -11,10 +11,12 @@ const SCRIPT = path.join(ROOT, "scripts", "post_release_actions.mjs");
 const load = () => import(pathToFileURL(SCRIPT).href);
 const PASSWORD = "synthetic-password-for-a-test";
 
-// A synthetic secret file in the temp directory, which the script accepts like T3's folder.
+// Synthetic secret files in the temp directory, which the script accepts like T3's folder.
+const SECRET_DIR = fs.mkdtempSync(path.join(os.tmpdir(), "post-release-"));
+test.after(() => fs.rmSync(SECRET_DIR, { recursive: true, force: true }));
+let secretCount = 0;
 function secretFile(text) {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "post-release-"));
-  const file = path.join(dir, "secret");
+  const file = path.join(SECRET_DIR, `secret-${(secretCount += 1)}`);
   fs.writeFileSync(file, text);
   return file;
 }

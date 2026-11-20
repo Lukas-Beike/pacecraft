@@ -19,7 +19,7 @@ a command line, a tool argument, or output. T3 stores the delivered secret
 file under `~/.t3/userdata/secrets`; pass that path as `--password-file` to
 the scripts that take one (they read it only from there or the system temp
 directory), and never read, print or copy the file; the shell guard blocks
-any other use of that folder (#3758). Result files, saved logs and screenshots stay in
+other mentions of that folder it can recognise in the command text (#3758). Result files, saved logs and screenshots stay in
 the session scratchpad (the system temp directory; the scripts refuse other
 paths) and are never committed. The
 previous release's results come from the session notes. Whether the release

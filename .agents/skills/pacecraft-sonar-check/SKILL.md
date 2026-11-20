@@ -46,5 +46,7 @@ python scripts/sonar_check.py --pr <number>
   line) to the PR body; do not restructure the guard. A new kind of read or write,
   or any other rule, needs its own decision.
 - A new script that needs a secret takes `--password-file` through `secretPath`
-  of `scripts/ui_walk.mjs`, the one shape the shell guard allows for T3's secret
-  folder (#3758); a piped secret file is blocked there.
+  of `scripts/ui_walk.mjs` and joins the script list in
+  `scripts/hooks/guard_private_paths.py` (`SECRET_RUN`): the shell guard allows
+  T3's secret folder only as that value (#3758), so a piped secret file is
+  blocked. Its `secretPath` read is the accepted S8707 shape above.
