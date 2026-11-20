@@ -484,6 +484,31 @@ test("@responsive the energy goal is set in Körper and priced in the diary", as
   await expect(page).toHaveURL(/#nutrition\/body$/);
   const dialog = page.locator("#energyGoalDialog");
   await expect(dialog).toBeVisible();
+  // #3757: the goal control is the app's segmented control: one row of three segments at every
+  // width, the radio hidden under its whole label, the checked segment highlighted.
+  const segments = dialog.locator(".appearance-control label");
+  await expect(segments).toHaveText(["Abnehmen", "Halten", "Aufbauen"]);
+  const layout = await segments.evaluateAll((labels) => labels.map((label) => ({
+    top: Math.round(label.getBoundingClientRect().top),
+    opacity: getComputedStyle(label.querySelector("input")).opacity,
+    background: getComputedStyle(label).backgroundColor,
+  })));
+  expect(new Set(layout.map((item) => item.top)).size).toBe(1);
+  expect(layout.map((item) => item.opacity)).toEqual(["0", "0", "0"]);
+  expect(layout[1].background).toBe(layout[2].background);
+  expect(layout[0].background).not.toBe(layout[1].background);
+  // A tap near a segment's edge selects that segment only.
+  const build = await segments.nth(2).boundingBox();
+  await page.mouse.click(build.x + 4, build.y + build.height - 4);
+  expect(await dialog.locator("input[name='goal']:checked").getAttribute("value")).toBe("build");
+  await segments.nth(0).click();
+  expect(await dialog.locator("input[name='goal']:checked").getAttribute("value")).toBe("lose");
+  // Keyboard focus shows the focus ring on the segment.
+  await dialog.locator("input[name='goal'][value='lose']").focus();
+  await page.keyboard.press("ArrowRight");
+  await expect(segments.nth(1)).toHaveCSS("outline-style", "solid");
+  await page.keyboard.press("ArrowLeft");
+  await dialog.screenshot({ path: test.info().outputPath("Energieziel.png") });
   // Any whole kcal the API accepts can be entered (Gitar on #3558).
   await dialog.getByLabel("Defizit pro Tag (kcal)").fill("420");
   expect(await dialog.getByLabel("Defizit pro Tag (kcal)").evaluate((input) => input.validity.valid)).toBeTruthy();
