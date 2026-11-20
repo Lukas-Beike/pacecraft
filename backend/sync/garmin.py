@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import json
 from collections.abc import Callable, Iterable
-from datetime import date, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
-from typing import Any
+from typing import Any, Final
 
 from backend.activities.duplicates import deduplicate_api_records
 from backend.athlete.local_date import iso_date_prefix
@@ -26,6 +26,7 @@ from backend.errors import AppError
 from backend.observability import Redactor
 from backend.performance.freshness import GarminSyncStatus
 from backend.provider_credentials import GARMIN_PERSONAL_KEY_REJECTED_KEY
+from backend.providers.garmin import WEIGHT_READ_DAYS, merge_weight_snapshots
 from backend.providers.garmin_capability import (
     GARMIN_LAST_RATE_LIMIT_KEY,
     RATE_LIMITED,
@@ -35,6 +36,7 @@ from backend.providers.garmin_capability import (
 )
 from backend.providers.garmin_fields import GARMIN_SLEEP_DATE_KEYS
 from backend.providers.garmin_gear_fields import garmin_gear_id
+from backend.providers.garmin_health_mapping import weigh_in_days
 from backend.sync.canonical_ingest import DeletionWindow, fetch_deletion_window
 from backend.sync.daily import DailySyncMarkerService
 from backend.sync.garmin_payload_metrics import (
@@ -57,6 +59,9 @@ SDK_THRESHOLD_SOURCES = ("cycling_ftp", "cycling_ftp_history", "running_threshol
 SDK_THRESHOLD_FAILURES_KEY = "garmin_sdk_threshold_failures"
 GARMIN_INITIAL_SYNC_DAYS = 84
 GARMIN_CATCHUP_MAX_DAYS = 90
+# The one-off weigh-in re-read after #3718: 6 months, once, marked in the state.
+WEIGHT_REFETCH_DAYS: Final = 182
+WEIGHT_REFETCH_KEY: Final = "weight_refetch"
 # The days of Garmin read-window sections that the performance views load.
 RECENT_VIEW_DAYS = 90
 # The first refresh of a local day re-reads this many days, so values a watch
@@ -327,6 +332,13 @@ class GarminPayloadService:
         """Return whether no refresh has read the daily metrics on this local day."""
         return _daily_metrics_due(self.state(), self._local_today())
 
+    def weight_refetch_due(self) -> bool:
+        """Return whether the one-off 6-month weigh-in re-read is still due (#3718)."""
+        provider_sync = self.state().get("provider_sync")
+        return not (
+            isinstance(provider_sync, dict) and provider_sync.get(WEIGHT_REFETCH_KEY)
+        )
+
     def body_battery_reconciliation_due(self) -> bool:
         """Return whether no sync has reconciled Body Battery on this local day."""
         return _body_battery_reconciliation_due(self.state(), self._local_today())
@@ -481,6 +493,7 @@ class GarminPayloadService:
                     if previous_sync.get(key)
                 }
             )
+        _merge_weight(payload, provider_sync, previous)
         # A run without the Body Battery reconciliation keeps the day it last ran.
         if (
             "body_battery_reconciled_on" not in provider_sync
@@ -520,6 +533,47 @@ class GarminPayloadService:
         payload["performance_history"] = window["performance_history"]
         payload["provider_metrics"] = window["provider_metrics"]
         return payload
+
+
+def _merge_weight(
+    payload: dict[str, Any], provider_sync: dict[str, Any], previous: dict[str, Any]
+) -> None:
+    """Merge this run's weigh-in answer into the stored ones (#3718).
+
+    The answer replaces the stored readings of its read window, so a weigh-in
+    deleted in Garmin there goes; readings outside the window stay. An answer
+    without any weigh-in cannot be told from a partial failure, so it changes
+    nothing and leaves the re-read due. A window longer than the regular read is
+    the one-off 6-month re-read: its marker counts the weigh-in days it added.
+    """
+    # A run without the weigh-in re-read keeps its marker.
+    previous_sync = previous.get("provider_sync")
+    if isinstance(previous_sync, dict) and previous_sync.get(WEIGHT_REFETCH_KEY):
+        provider_sync.setdefault(WEIGHT_REFETCH_KEY, previous_sync[WEIGHT_REFETCH_KEY])
+    window = provider_sync.get("weight_window")
+    if not payload.get("weight") or not isinstance(window, dict):
+        return
+    try:
+        start = date.fromisoformat(str(window["start"]))
+        end = date.fromisoformat(str(window["end"]))
+    except KeyError, ValueError:
+        return
+    now = datetime.now(UTC)
+    if not weigh_in_days({"weight": payload["weight"]}, now):
+        del payload["weight"]
+        del provider_sync["weight_window"]
+        return
+    stored = previous.get("weight")
+    payload["weight"] = merge_weight_snapshots(
+        payload["weight"], stored, window=(start, end)
+    )
+    if (end - start).days + 1 > WEIGHT_READ_DAYS:
+        before = weigh_in_days({"weight": stored or []}, now)
+        after = weigh_in_days({"weight": payload["weight"]}, now)
+        provider_sync[WEIGHT_REFETCH_KEY] = {
+            "state": "finished",
+            "added_days": len(after - before),
+        }
 
 
 def _overlaid(window: dict[str, Any], payload: dict[str, Any]) -> dict[str, Any]:
