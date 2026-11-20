@@ -2119,6 +2119,12 @@ function energyFlaggedText(flagged) {
 // The read's loading or failure card, or null once it is there; the first call starts the read.
 // The diary asks for its day (#3395); Körper's fit does not depend on the day (`null`), so it takes
 // any read there is and never shows a diary day's note (Gitar #3423).
+// While Verlauf shows 6 Monate, every read asks for them, so a diary day's read serves both and
+// neither resets the other's (Gitar, #3712).
+function longPeriodShown() {
+  return document.querySelector("#nutritionFitScale") && verlaufPeriod().key === "182d" ? "182d" : null;
+}
+
 function energyPending(day = null, period = null) {
   if (day && day > timezoneDateKey(state.data?.profile?.timezone, new Date())) {
     return h("section", "analysis-chart-card", h("p", "empty", "Tag liegt in der Zukunft"));
@@ -2126,7 +2132,7 @@ function energyPending(day = null, period = null) {
   if (energyRead && day !== null && energyReadDay !== day) resetEnergy();
   if (energyRead && period && energyReadPeriod !== period) resetEnergy();
   if (!energyRead) {
-    loadEnergy(day ?? "", period);
+    loadEnergy(day ?? "", period ?? longPeriodShown());
     return h("section", "analysis-chart-card", createLoadingState("Energieverbrauch wird geladen…"));
   }
   return energyRead.failed ? h("section", "analysis-chart-card", h("p", "empty", "Energieverbrauch konnte nicht geladen werden.")) : null;
@@ -2266,7 +2272,7 @@ function renderNutritionFit() {
   const slot = document.querySelector("#nutritionFitScale");
   if (!slot) return;
   const key = verlaufPeriod().key;
-  const pending = energyPending(null, key === "182d" ? key : null);
+  const pending = energyPending(null, longPeriodShown());
   slot.replaceChildren(...(pending ? [pending] : [energyDeficitCard(energyRead, key), energyFitScale(energyRead, key)].filter(Boolean)));
   if (nutritionWeekShown) renderNutritionGoalParts(nutritionWeekShown);
 }
