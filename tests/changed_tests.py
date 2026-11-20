@@ -145,6 +145,28 @@ def _path_literals(value: str) -> set[str]:
     return {literal.strip("/"), base} - {""}
 
 
+def _scans(tree: ast.AST) -> bool:
+    """Whether a module scans directories (#3727).
+
+    A scan is a call: ``os.walk(...)``, ``path.rglob(...)``, or a bare
+    ``listdir(...)`` imported from os, glob or pathlib. A variable or a method
+    named ``walk``, and ``ast.walk``, are no directory scan.
+    """
+    calls = [node.func for node in ast.walk(tree) if isinstance(node, ast.Call)]
+    if any(_attribute_scan(func) for func in calls):
+        return True
+    imported = {
+        alias.asname or alias.name
+        for node in ast.walk(tree)
+        if isinstance(node, ast.ImportFrom) and node.module in SCAN_MODULES
+        for alias in node.names
+    }
+    return any(
+        isinstance(func, ast.Name) and func.id in SCAN_CALLS & imported
+        for func in calls
+    )
+
+
 def _attribute_scan(func: ast.expr) -> bool:
     """Whether a call's function is a scanning method, ``ast.walk`` aside."""
     return (
@@ -162,12 +184,7 @@ class _Source:
         tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
         self.imports: set[str] = set()
         self.literals: set[str] = set()
-        self.scans = False
-        # A scan is a call: ``os.walk(...)``, ``path.rglob(...)``, or a bare
-        # ``listdir(...)`` imported from os, glob or pathlib. A variable or a
-        # method named ``walk``, and ``ast.walk``, are no directory scan (#3727).
-        bare_calls: set[str] = set()
-        scan_imports: set[str] = set()
+        self.scans = _scans(tree)
         for node in ast.walk(tree):
             if isinstance(node, ast.Import):
                 self.imports.update(alias.name for alias in node.names)
@@ -175,17 +192,8 @@ class _Source:
                 base = self._absolute(node)
                 self.imports.add(base)
                 self.imports.update(f"{base}.{alias.name}" for alias in node.names)
-                if base in SCAN_MODULES:
-                    scan_imports.update(
-                        alias.asname or alias.name for alias in node.names
-                    )
-            elif isinstance(node, ast.Call):
-                self.scans = self.scans or _attribute_scan(node.func)
-                if isinstance(node.func, ast.Name) and node.func.id in SCAN_CALLS:
-                    bare_calls.add(node.func.id)
             elif isinstance(node, ast.Constant) and isinstance(node.value, str):
                 self.literals.update(_path_literals(node.value))
-        self.scans = self.scans or bool(bare_calls & scan_imports)
 
         # Path segments of the path-like literals, for the fixture rule.
         self.segments = {
