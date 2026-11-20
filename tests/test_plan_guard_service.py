@@ -733,6 +733,20 @@ class PlanBriefTests(unittest.TestCase):
             today=TODAY,
         )
         self.assertEqual("unknown", brief["season_phase"]["phase"])
+        # The infection hint (M14) is only in the brief when it shows.
+        self.assertNotIn("infection_hint", brief)
+        hint = {"method": "infection-hint-v1", "status": "hint"}
+        self.assertEqual(
+            hint,
+            build_planning_brief(
+                progress={},
+                completed=[],
+                competitions=[],
+                training_model="pyramidal",
+                today=TODAY,
+                infection_hint=hint,
+            )["infection_hint"],
+        )
 
     def test_brief_section_only_for_plan_kinds(self) -> None:
         for kind in ("plan_week", "plan_block", "adjust_week"):

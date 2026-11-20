@@ -327,10 +327,14 @@ class DailyPlanningCanonicalWiringTests(unittest.TestCase):
         result = _build(service, {"recent_wellness": []})
         self.assertEqual(manager.units, 1)
         self.assertEqual(reader.selected, 1)
-        self.assertEqual({call[1:] for call in reader.calls}, {WINDOW})
+        self.assertEqual({call[1:] for call in reader.calls[:11]}, {WINDOW})
         # Five recovery kinds, then the five daily totals and the wellness end
-        # (#3530); no Intervals load.
-        self.assertEqual(len(reader.calls), 11)
+        # (#3530); no Intervals load. Then the infection hint's three night
+        # kinds over its own baseline history (M14, #3762).
+        self.assertEqual(
+            [call[0] for call in reader.calls[11:]],
+            [MetricKind.RESPIRATION_RATE, MetricKind.RESTING_HR, MetricKind.HRV_RMSSD],
+        )
         by_date = {day["date"]: day for day in result}
         self.assertEqual(by_date[DAY]["recovery"]["resting_hr"], 49)
         self.assertEqual(by_date[OTHER_DAY]["recovery"]["sleep_score"], 80)
@@ -425,6 +429,8 @@ class CanonicalPlanningEndToEndTests(CanonicalReadFixture):
                 "daily_energy_resting",
                 # Where the day summary's wellness data ends (#3530).
                 "daily_wellness_end",
+                # The infection hint's night breathing rate (M14, #3762).
+                "respiration_rate",
             },
         )
 

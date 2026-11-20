@@ -301,8 +301,12 @@ def build_planning_brief(
     lessons: Sequence[Mapping[str, Any]] = (),
     last_tests: Mapping[str, Any] | None = None,
     complaints: Sequence[Mapping[str, Any]] = (),
+    infection_hint: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Compact deterministic brief for plan_week, plan_block and adjust_week turns."""
+    """Compact deterministic brief for plan_week, plan_block and adjust_week turns.
+
+    A shown infection hint (M14, #3762) is information only; no check reads it.
+    """
     weeks = [
         item for item in progress.get("week_list", []) if item.get("status") != "future"
     ][-BRIEF_WEEKS:]
@@ -346,6 +350,7 @@ def build_planning_brief(
             "last_tests": dict(last_tests or {}),
             "complaints": [dict(item) for item in complaints],
             "complaints_source": COMPLAINTS_SOURCE,
+            **({"infection_hint": dict(infection_hint)} if infection_hint else {}),
         }
     )
 
@@ -456,6 +461,7 @@ class PlanGuardService:
         # unchecked, as for a guard built without the library (#2379).
         self._templates: Callable[[], Mapping[str, Mapping[str, Any]]] | None = None
         self._history = history or BriefHistory()
+        self._infection_hint: Callable[[], Mapping[str, Any] | None] = lambda: None
         self._return_stage: Callable[[], int | None] = lambda: None
         self._profile = profile
         self._planned_units = planned_units
@@ -556,6 +562,13 @@ class PlanGuardService:
     ) -> PlanGuardService:
         """Enforce the stage of the return after an illness pause (#2042)."""
         self._return_stage = return_stage
+        return self
+
+    def with_infection_hint(
+        self, infection_hint: Callable[[], Mapping[str, Any] | None]
+    ) -> PlanGuardService:
+        """Show today's infection hint (M14, #3762) in the brief; no check reads it."""
+        self._infection_hint = infection_hint
         return self
 
     def _current_return_stage(self) -> int | None:
@@ -686,4 +699,5 @@ class PlanGuardService:
                 today,
             ),
             complaints=self._complaints(),
+            infection_hint=self._infection_hint(),
         )
