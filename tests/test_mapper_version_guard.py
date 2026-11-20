@@ -290,10 +290,14 @@ def write_refusals(
     fingerprint_only: frozenset[str] = frozenset(),
 ) -> list[str]:
     """The modules ``--write`` refuses: a changed fingerprint without a bump of
-    every replaying version, unless named as a fingerprint-only change."""
+    every replaying version, unless named as a fingerprint-only change. A module
+    new to the replayed set is pinned as it is: its owners' own rows carry the
+    bump check."""
     refused = []
     for module, (versions, digest) in sorted(table.items()):
-        pinned_versions, pinned_digest = pinned.get(module, ((), ""))
+        if module not in pinned:
+            continue
+        pinned_versions, pinned_digest = pinned[module]
         if digest == pinned_digest or module in fingerprint_only:
             continue
         bumped = len(versions) == len(pinned_versions) and all(
@@ -387,6 +391,9 @@ class MapperVersionGuardTests(unittest.TestCase):
         # A bump of only one of two replaying versions is refused too.
         partial = {"a": ((2, 2), "new"), "b": ((3,), "same"), "c": ((5,), "old")}
         self.assertEqual(write_refusals(partial, pinned), ["a"])
+        # A module new to the replayed set is pinned as it is.
+        added = table | {"new_helper": ((2, 3), "fresh")}
+        self.assertEqual(write_refusals(added, pinned), ["c"])
 
     def test_write_rewrites_only_the_pinned_table(self) -> None:
         source = Path(__file__).read_text(encoding="utf-8")
@@ -425,8 +432,11 @@ def main(argv: list[str]) -> int:
         print("refused, bump the replaying MAPPER_VERSION first: " + ", ".join(refused))
         return 1
     path = Path(__file__)
+    # LF as stored (.gitattributes), so nothing outside PINNED changes on Windows.
     path.write_text(
-        pinned_source(path.read_text(encoding="utf-8"), table), encoding="utf-8"
+        pinned_source(path.read_text(encoding="utf-8"), table),
+        encoding="utf-8",
+        newline="\n",
     )
     changed = sorted(name for name, row in table.items() if PINNED.get(name) != row)
     print("PINNED updated: " + (", ".join(changed) or "nothing changed"))
