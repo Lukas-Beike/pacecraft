@@ -800,6 +800,9 @@ def _deficit(
         "span_days": store.days,
         "weight_start_kg": round(store.weight_start_kg, 1),
         "weight_end_kg": round(store.weight_end_kg, 1),
+        # A long period's start and end are its edge means, with their counts
+        # (#3739); null for the 4 weeks' line.
+        "edge_weighins": list(store.edge_weighins) if store.edge_weighins else None,
         # The fitted change, not the rounded ends', so the boxes add up (#3618).
         "weight_change_kg": round(change, 1),
         # kcal per kg of weight change at the blended share, for the goal's

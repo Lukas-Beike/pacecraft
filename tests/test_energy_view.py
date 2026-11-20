@@ -996,8 +996,10 @@ class DeficitCardTests(unittest.TestCase):
 
     def test_the_deficit_follows_the_selected_period(self) -> None:
         # #3704: a steady loss of 0.1 kg a day prices at 0.1 x 7,154 kcal/kg (the
-        # 70 % rule of thumb) = 715 kcal a day over every period, and each
-        # period's boxes span its own weigh-ins: 27, 90 and 181 days.
+        # 70 % rule of thumb) = 715 kcal a day over every period. 4 weeks span
+        # their weigh-ins (27 days, the line); 3 and 6 months the mean days of
+        # their first and last 14 daily weigh-ins, 6.5 days inside each end
+        # (#3739): 90 - 13 = 77 and 181 - 13 = 168 days, the half days rounded up.
         days = {
             END - timedelta(days=n): DayInputs(weight_kg=80.0 + 0.1 * n)
             for n in range(190)
@@ -1007,10 +1009,10 @@ class DeficitCardTests(unittest.TestCase):
         view = energy_view(
             source, energy_windows(source, END), garmin(), fit_inputs=source
         )
-        for key, span, change, first in (
-            ("28d", 27, -2.7, 27),
-            ("91d", 90, -9.0, 90),
-            ("182d", 181, -18.1, 181),
+        for key, span, change, first, last in (
+            ("28d", 27, -2.7, 27, 0),
+            ("91d", 77, -7.7, 83, 6),
+            ("182d", 168, -16.8, 174, 6),
         ):
             with self.subTest(period=key):
                 card = view["fit_scale"][key]["deficit"]
@@ -1021,9 +1023,12 @@ class DeficitCardTests(unittest.TestCase):
                 self.assertEqual(
                     (
                         (END - timedelta(days=first)).isoformat(),
-                        END.isoformat(),
+                        (END - timedelta(days=last)).isoformat(),
                     ),
                     (card["weight_date_start"], card["weight_date_end"]),
+                )
+                self.assertEqual(
+                    None if key == "28d" else [14, 14], card["edge_weighins"]
                 )
         # The latest 28 days stay the read's own deficit.
         self.assertEqual(view["deficit"], view["fit_scale"]["28d"]["deficit"])
@@ -1078,6 +1083,8 @@ class DeficitCardTests(unittest.TestCase):
                 "span_days": 28,
                 "weight_start_kg": 91.2,
                 "weight_end_kg": 89.2,
+                # 4 weeks keep the line: no edge means (#3739).
+                "edge_weighins": None,
                 "weight_change_kg": -2.0,
                 # 80 % at 9,441 and 20 % at 1,816 kcal/kg (#3618 item 7).
                 "kcal_per_kg": 7916,

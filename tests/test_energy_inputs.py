@@ -1012,6 +1012,8 @@ class BodyFatFallbackTests(unittest.TestCase):
             {"none": 2, "provisional": 0, "qualified": 0},
             basis["learned_everyday_state"],
         )
+        # #3739: too few weigh-ins for a 3-month store, so no edge counts.
+        self.assertIsNone(basis["deficit_edge_weighins_91d"])
         counts = basis["body_source_windows"]
         self.assertEqual(12, sum(counts.values()))
         # The profile is no body source any more (#3640).

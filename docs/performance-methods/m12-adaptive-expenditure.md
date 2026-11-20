@@ -1,8 +1,8 @@
 # M12 — Adaptive daily expenditure from intake and the weight trend
 
 - **Card:** M12
-- **Card version:** 25
-- **Method ID:** adaptive-expenditure v25 (#3100, #3187, #3255, #3552, #3551, #3553, #3555, #3554, #3586, #3603, #3612, #3614, #3617, #3577, #3616, #3618, #3604, #3667, #3687, #3689, #3684, #3690, #3723)
+- **Card version:** 26
+- **Method ID:** adaptive-expenditure v26 (#3100, #3187, #3255, #3552, #3551, #3553, #3555, #3554, #3586, #3603, #3612, #3614, #3617, #3577, #3616, #3618, #3604, #3667, #3687, #3689, #3684, #3690, #3723, #3739)
 - **Status:** method implemented (`backend/nutrition/energy_balance.py`, the weigh-in line in `backend/athlete/body_records.py`, #3640); the reader, diagnostics and display follow (#3100, #3099)
 - **Classification:** model estimate
 - **Literature checked:** 2026-11-15
@@ -58,7 +58,17 @@ estimate. It never rewrites logged values and never falls back to a formula.
    single bad weigh-in or a water step near the window's edge moves it far
    less than least squares, which agrees on clean data (synthetic, 0.3 kg
    daily scatter: a 2 kg edge reading 156 vs 49 kcal/day, a 1 kg step 3 days
-   from the edge 147 vs 109, mid-window steps alike, clean RMS 66 vs 69). The current weight only supplies the
+   from the edge 147 vs 109, mid-window steps alike, clean RMS 66 vs 69).
+   A Verlauf period longer than one window (3 and 6 months) takes the
+   difference of two measured means instead (athlete decision, #3739):
+   the weigh-ins of its first and last 14 days (an edge without one starts
+   at the first weigh-in, or ends at the last), over the days between the
+   two mean dates. A flat-then-steep course drags one line far past any
+   weigh-in at the start; the means stay on measured weights. Each mean's
+   standard error is the two edges' pooled SD (one weigh-in's water SD
+   when nothing pools) over the root of its count, so a sparse edge widens
+   the band; the water term and the fat share stay. When the edges do not
+   come apart, the line prices the period. The current weight only supplies the
    mass for `ρ`. The measured share's weight grows with the number and span
    of the measurements and with the square of the rate of weight change: its
    SD divides by that rate, so a slow change leaves the prior (#3618).
@@ -391,7 +401,7 @@ bias that is the same on every day is not visible in the band.
 | Constant | Value | Module | Code comment |
 | --- | --- | --- | --- |
 | `METHOD_ID` | `'adaptive-expenditure'` | `backend/nutrition/energy_balance.py` |  |
-| `METHOD_VERSION` | `25` | `backend/nutrition/energy_balance.py` | Bump when a formula or constant below changes the estimate. |
+| `METHOD_VERSION` | `26` | `backend/nutrition/energy_balance.py` | Bump when a formula or constant below changes the estimate. |
 | `WINDOW_DAYS` | `28` | `backend/nutrition/energy_balance.py` | Days per window and windows per week of the rolling view (#3099, #3100). |
 | `MIN_COMPLETE_DAYS` | `14` | `backend/nutrition/energy_balance.py` | A window needs this many complete logging days, weigh-ins and days between its first and last weigh-in; otherwise it gives its reason, never a formula. |
 | `MIN_WEIGHINS` | `8` | `backend/nutrition/energy_balance.py` |  |
@@ -405,6 +415,7 @@ bias that is the same on every day is not visible in the band.
 | `FAT_SHARE_PRIOR_SD` | `0.15` | `backend/nutrition/energy_balance.py` |  |
 | `FORBES_FAT_MASS_KG` | `10.4` | `backend/nutrition/energy_balance.py` |  |
 | `WATER_KG_SD` | `1.0 / 1.96` | `backend/nutrition/energy_balance.py` | Water, glycogen and gut content the weigh-ins cannot tell from tissue: about 1 kg (95 %) over a window, as early in a cut about 2 of 3.4 kg in 27 days can be (Fable review, #3690); its SD, priced at the tissue density over the window's span, enters the stored energy's error in quadrature. |
+| `EDGE_DAYS` | `14` | `backend/nutrition/energy_balance.py` | A period longer than one window prices its weight change from the mean of the weigh-ins in its first and last this many days, not a line through all of them, which a flat-then-steep course drags far past any weigh-in (athlete decision, #3739). |
 | `FAT_SHARE_PRIOR_BOUNDS` | `(0.4, 0.85)` | `backend/nutrition/energy_balance.py` |  |
 | `BODY_FAT_REPEATABILITY_PCT` | `2.0` | `backend/nutrition/energy_balance.py` | Repeatability of one self-measured body fat value (percentage points, SD): the upper end of the review's 1.5-2 for skinfolds (#3555). |
 | `MIN_FAT_SHARE_WEIGHT_CHANGE_KG` | `0.1` | `backend/nutrition/energy_balance.py` | Below this weight change between the first and last measurement the measured share divides by noise, so the prior stands alone (product assumption). |

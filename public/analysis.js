@@ -2030,10 +2030,12 @@ function deficitFatBox(card) {
 function deficitBoxes(card) {
   // The fitted change, which the fat and kcal boxes take too, not the rounded ends' (#3618).
   const change = card.weight_change_kg;
-  const current = card.weight_last_kg != null && deficitDecimal(card.weight_last_kg) !== deficitDecimal(card.weight_end_kg) ? " (aktuell)" : "";
+  // A long period's ends are the means of its first and last 14 days of weigh-ins, marked "Ø" (#3739).
+  const mean = card.edge_weighins ? "Ø " : "";
+  const current = !mean && card.weight_last_kg != null && deficitDecimal(card.weight_last_kg) !== deficitDecimal(card.weight_end_kg) ? " (aktuell)" : "";
   const box = (kind, title, value, ...notes) => h("li", { dataset: { deficitBox: kind } }, h("small", null, title), h("strong", null, value), ...notes.filter(Boolean).map((note) => h("small", null, note)));
   return h("ol", "energy-deficit-flow",
-    box("weight", "Gewicht", `${deficitSigned(change)} kg`, `${deficitDecimal(card.weight_start_kg)} → ${deficitDecimal(card.weight_end_kg)} kg${current}`, deficitSpanDays(card.weight_date_start, card.weight_date_end)),
+    box("weight", "Gewicht", `${deficitSigned(change)} kg`, `${mean}${deficitDecimal(card.weight_start_kg)} → ${mean}${deficitDecimal(card.weight_end_kg)} kg${current}`, deficitSpanDays(card.weight_date_start, card.weight_date_end)),
     box("body_fat", "Körperfett", ...deficitFatBox(card)),
     box("fat", "davon Fett", `≈ ${deficitDecimal(Math.abs(card.fat_change_kg))} kg`, card.fat_share ? `≈ ${card.fat_share.share_pct} % · ${energyFatShareRule(card.fat_share)}` : null),
     box("kcal", "pro Tag", `≈ ${formatWhole(Math.abs(card.deficit_kcal))} kcal`, `${formatWhole(Math.abs(card.stored_kcal))} kcal ÷ ${card.span_days} Tage`));
