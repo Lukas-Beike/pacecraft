@@ -46,6 +46,12 @@ TRAINING_STATUS: Final = "training_status"
 WEEKLY_TRAINING_STATUS: Final = "weekly_training_status"
 RUNNING_TOLERANCE: Final = "running_tolerance"
 TRAINING_READINESS_HISTORY: Final = "training_readiness_history"
+# The per-day history of the two single-day sections and the section each element
+# is read as (#3729): every element is that section's answer plus a ``calendarDate``.
+DAILY_TRAINING_HISTORY: Final[dict[str, str]] = {
+    "daily_training_status_history": DAILY_TRAINING_STATUS,
+    "training_load_balance_history": TRAINING_LOAD_BALANCE,
+}
 TRAINING_SECTIONS: Final = (
     DAILY_TRAINING_STATUS,
     TRAINING_LOAD_BALANCE,
@@ -53,6 +59,7 @@ TRAINING_SECTIONS: Final = (
     WEEKLY_TRAINING_STATUS,
     RUNNING_TOLERANCE,
     TRAINING_READINESS_HISTORY,
+    *DAILY_TRAINING_HISTORY,
 )
 
 _ACUTE_DTO: Final = "acuteTrainingLoadDTO"
@@ -334,6 +341,8 @@ def unresolved_device_record(section: str, payload: object) -> bool:
 
 def training_values(section: str, payload: object) -> list[TrainingValue]:
     """Return the values one training section reports; unreadable rows yield none."""
+    if section in DAILY_TRAINING_HISTORY:
+        return history_values(section, payload)
     if section == DAILY_TRAINING_STATUS:
         return list(
             _device_values(
@@ -414,3 +423,19 @@ def endurance_group_values(payload: object) -> list[TrainingValue]:
             if group.get(field) is not None:
                 values.append(TrainingValue(day, kind, group[field], field, kind.value))
     return values
+
+
+def history_values(section: str, payload: object) -> list[TrainingValue]:
+    """The values of a per-day history section: each element read as its base
+    section's answer (``DAILY_TRAINING_HISTORY``, #3729)."""
+    base = DAILY_TRAINING_HISTORY[section]
+    elements = payload if isinstance(payload, list) else [payload]
+    return [value for element in elements for value in training_values(base, element)]
+
+
+def answer_day(section: str, answer: object) -> str | None:
+    """The newest day a single-day section's answer reports values for, or None."""
+    newest = max(
+        (value.day for value in training_values(section, answer)), default=None
+    )
+    return None if newest is None else newest.isoformat()

@@ -41,6 +41,10 @@ from backend.providers.garmin_capability import (
 from backend.providers.garmin_fields import GARMIN_SLEEP_DATE_KEYS
 from backend.providers.garmin_gear_fields import garmin_gear_id
 from backend.providers.garmin_health_mapping import weigh_in_days
+from backend.providers.garmin_training_mapping import (
+    DAILY_TRAINING_HISTORY,
+    answer_day,
+)
 from backend.sync.canonical_ingest import DeletionWindow, fetch_deletion_window
 from backend.sync.daily import DailySyncMarkerService
 from backend.sync.garmin_payload_metrics import (
@@ -69,6 +73,10 @@ WEIGHT_REFETCH_KEY: Final = "weight_refetch"
 # The one-off 6-month re-read of the range-capable training history (#3729).
 TRAINING_REFETCH_KEY: Final = "training_refetch"
 TRAINING_REFETCH_DAYS: Final = 182
+# The day-by-day re-read of the daily training status and load balance (#3729):
+# at most this many earlier days per daily run, back to 182 days before its start.
+DAILY_TRAINING_REFETCH_KEY: Final = "daily_training_refetch"
+DAILY_TRAINING_BATCH_DAYS: Final = 14
 # The days of Garmin read-window sections that the performance views load.
 RECENT_VIEW_DAYS = 90
 # The first refresh of a local day re-reads this many days, so values a watch
@@ -353,6 +361,16 @@ class GarminPayloadService:
             isinstance(provider_sync, dict) and provider_sync.get(TRAINING_REFETCH_KEY)
         )
 
+    def daily_training_batch(self) -> tuple[str, ...]:
+        """The earlier days the next daily run reads day by day (#3729), newest first."""
+        marker = _daily_training_marker(self.state(), self._local_today())
+        if marker["state"] != "pending":
+            return ()
+        cursor = date.fromisoformat(marker["cursor"])
+        floor = date.fromisoformat(marker["floor"])
+        span = min(DAILY_TRAINING_BATCH_DAYS, (cursor - floor).days + 1)
+        return tuple((cursor - timedelta(days=i)).isoformat() for i in range(span))
+
     def body_battery_reconciliation_due(self) -> bool:
         """Return whether no sync has reconciled Body Battery on this local day."""
         return _body_battery_reconciliation_due(self.state(), self._local_today())
@@ -511,6 +529,11 @@ class GarminPayloadService:
         # The marker counts the answer's own days, so it runs before the merge.
         _mark_training_refetch(payload, provider_sync, previous)
         _merge_training_answers(payload, previous)
+        _record_daily_training(payload)
+        provider_sync[DAILY_TRAINING_REFETCH_KEY] = _advance_daily_training(
+            _daily_training_marker(previous, today),
+            provider_sync.pop("daily_training_read", None),
+        )
         # A run without the Body Battery reconciliation keeps the day it last ran.
         if (
             "body_battery_reconciled_on" not in provider_sync
@@ -664,26 +687,83 @@ def _merged_days(incoming: Any, stored: Any) -> Any:
     return kept_rows + list(incoming)
 
 
+def _record_daily_training(payload: dict[str, Any]) -> None:
+    """Copy the current daily status and load balance into their per-day history."""
+    for history, base in DAILY_TRAINING_HISTORY.items():
+        answer = payload.get(base)
+        if not isinstance(answer, dict):
+            continue
+        day = answer_day(base, answer)
+        if day is not None:
+            payload.setdefault(history, []).insert(0, {**answer, "calendarDate": day})
+
+
+def _daily_training_marker(state: dict[str, Any], today: date) -> dict[str, Any]:
+    """The stored day-by-day re-read marker, or a new one starting yesterday."""
+    provider_sync = state.get("provider_sync")
+    marker = (
+        provider_sync.get(DAILY_TRAINING_REFETCH_KEY)
+        if isinstance(provider_sync, dict)
+        else None
+    )
+    if isinstance(marker, dict) and marker.get("state") in ("pending", "finished"):
+        return dict(marker)
+    return {
+        "state": "pending",
+        "cursor": (today - timedelta(days=1)).isoformat(),
+        "floor": (today - timedelta(days=TRAINING_REFETCH_DAYS - 1)).isoformat(),
+        "added_days": 0,
+    }
+
+
+def _advance_daily_training(marker: dict[str, Any], read: Any) -> dict[str, Any]:
+    """Move the cursor past the days this run read; below the floor it is finished."""
+    days = read.get("days") if isinstance(read, dict) else None
+    if marker["state"] != "pending" or not days:
+        return marker
+    cursor = date.fromisoformat(min(days)) - timedelta(days=1)
+    finished = cursor < date.fromisoformat(marker["floor"])
+    return marker | {
+        "state": "finished" if finished else "pending",
+        "cursor": cursor.isoformat(),
+        "added_days": int(marker.get("added_days") or 0) + len(days),
+    }
+
+
 def summarize_history_refetch(db: Any) -> dict[str, Any]:
-    """Counts only (#3729): the one-off training history re-read's state, the days
-    it added and the days still due."""
-    provider_sync = garmin_store.read_state(db).get("provider_sync")
+    """Counts only (#3729): each history re-read's state, the days it added and
+    the days still due."""
+    state = garmin_store.read_state(db)
+    provider_sync = state.get("provider_sync")
     marker = (
         provider_sync.get(TRAINING_REFETCH_KEY)
         if isinstance(provider_sync, dict)
         else None
     )
+    daily = _daily_training_marker(state, datetime.now(UTC).date())
+    pending = daily["state"] == "pending"
+    due = (
+        (date.fromisoformat(daily["cursor"]) - date.fromisoformat(daily["floor"])).days
+        + 1
+        if pending
+        else 0
+    )
+    days = {
+        "daily_training_state": daily["state"],
+        "daily_training_added_days": daily["added_days"],
+        "daily_training_due_days": max(due, 0),
+    }
     if not isinstance(marker, dict):
         return {
             "training_state": "pending",
             "training_added_days": None,
             "training_due_days": TRAINING_REFETCH_DAYS,
-        }
+        } | days
     return {
         "training_state": str(marker.get("state")),
         "training_added_days": marker.get("added_days"),
         "training_due_days": 0,
-    }
+    } | days
 
 
 def _overlaid(window: dict[str, Any], payload: dict[str, Any]) -> dict[str, Any]:

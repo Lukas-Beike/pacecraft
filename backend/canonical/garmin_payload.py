@@ -40,6 +40,10 @@ MERGE_SECTIONS: Final = (
     # Each changed zone set is kept with its first-fetch day (``fetchedOn``), so
     # the zones valid on an earlier day keep applying to the sessions of that day.
     "heart_rate_zones",
+    # One element per day of the daily training status and the load balance, whose
+    # current answers hold only one day (#3729).
+    "daily_training_status_history",
+    "training_load_balance_history",
 )
 # The provider's current answer replaces the stored one.
 REPLACE_SECTIONS: Final = (

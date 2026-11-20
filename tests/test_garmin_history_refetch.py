@@ -132,13 +132,13 @@ class TrainingHistoryRefetchTests(unittest.TestCase):
 
     def test_the_reread_runs_once_and_its_days_outlive_the_regular_read(self) -> None:
         self.assertTrue(self.service.training_refetch_due())
-        self.assertEqual(
-            self.counts(),
+        self.assertLessEqual(
             {
                 "training_state": "pending",
                 "training_added_days": None,
                 "training_due_days": TRAINING_REFETCH_DAYS,
-            },
+            }.items(),
+            self.counts().items(),
         )
         client = _Client([OLD, RECENT])
 
@@ -147,13 +147,13 @@ class TrainingHistoryRefetchTests(unittest.TestCase):
         wide = (TODAY - timedelta(days=TRAINING_REFETCH_DAYS - 1)).isoformat()
         self.assertIn((wide, TODAY.isoformat()), client.calls)
         self.assertFalse(self.service.training_refetch_due())
-        self.assertEqual(
-            self.counts(),
+        self.assertLessEqual(
             {
                 "training_state": "finished",
                 "training_added_days": 2,
                 "training_due_days": 0,
-            },
+            }.items(),
+            self.counts().items(),
         )
         # A later regular read keeps the marker and the earlier days of both shapes.
         self.sync(_Client([RECENT]))
