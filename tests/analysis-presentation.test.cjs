@@ -408,7 +408,7 @@ test("Verlauf's deficit card: hero, goal marker, boxes and text agree, measured 
   assert.equal(energyDeficitCard({ rows, deficit: null }), null);
 });
 
-const ENERGY_CARD_FUNCTIONS = ["ENERGY_INSUFFICIENT", "ENERGY_STEP_SOURCES", "ENERGY_PARTS", "ENERGY_LEARNED", "energyRowParts", "FIT_SOURCE_NAMES", "energyFitSigned", "energyKcalRange", "energyKcalSpan", "energyKcal", "energyNeatInputs", "energyBodyText", "energyBasisText", "energyBiasText", "energyInfoId", "ENERGY_DAY_NOTE", "energyInfoButton", "energyInfo", "energySplitValue", "energyStrengthNote", "energyStandNote", "energyPartText", "energySplitBar", "energySourceLine", "energyUsage"];
+const ENERGY_CARD_FUNCTIONS = ["ENERGY_INSUFFICIENT", "ENERGY_STEP_SOURCES", "ENERGY_PARTS", "ENERGY_LEARNED", "energyRowParts", "FIT_SOURCE_NAMES", "energyFitSigned", "energyKcalRange", "energyKcalSpan", "energyKcal", "energyNeatInputs", "energyBodyText", "energyBasisText", "energyBiasText", "energyInfoId", "ENERGY_DAY_NOTE", "energyInfoButton", "energyStandNote", "energyTefNote", "energyInfo", "energySplitValue", "energyStrengthNote", "energyPartText", "energySplitBar", "energySourceLine", "energyUsage"];
 const ENERGY_CARD_GLOBALS = (h) => ({
   bindAnalysisPopover: (button, info) => { button.dataset.popoverTarget = info.id; },
   h, formatWhole: (v) => String(v), dateLabel: (v) => v, analysisValue: (v, unit) => `${v} ${unit}`, AppFormat: require("../public/format.js"),
@@ -507,27 +507,37 @@ test("the usage card names each part, its note and what has no data yet, with th
   const reduced = usage({ ...cunningham, split: split(1839, 220, 350, 250, { learned_kcal: -106 }) });
   assert.equal(lines(reduced)[2], "Übriger Alltag−106");
   assert.deepEqual([...reduced.children[1].children].map((part) => part.dataset.part), ["resting", "neat", "sport", "tef"], "a reduction has no segment");
-  // #3530: Garmin's day summary ends at 12:18, so Schritte & Treppen name the time; behind a later session, also that.
+  // #3530, #3719: Garmin's day summary ends at 12:18; the row shows the number only, the "i" names the time
+  // and, behind a later session, also that.
+  const info = (card) => textOf(card.children[0].children[2]);
   const device = { source: "device", label: "Garmin Connect", split: split(1745, 610, 765, null) };
-  assert.equal(lines(usage(device, { wellness: { as_of: "12:18", behind: false } }))[1], "Schritte & Treppen610 (Stand 12:18)");
-  const waiting = { ...device, pending_parts: ["neat"] };
-  assert.equal(lines(usage(waiting, { wellness: { as_of: "12:18", behind: true } }))[1], "Schritte & Treppennoch keine Daten (Stand 12:18, Garmin hängt hinterher)");
+  const synced = usage(device, { wellness: { as_of: "12:18", behind: false } });
+  assert.equal(lines(synced)[1], "Schritte & Treppen610");
+  assert.match(info(synced), / · Schritte & Treppen nach dem letzten Garmin-Abruf, Stand 12:18$/);
+  const waiting = usage({ ...device, pending_parts: ["neat"] }, { wellness: { as_of: "12:18", behind: true } });
+  assert.equal(lines(waiting)[1], "Schritte & Treppennoch keine Daten");
+  assert.match(info(waiting), /Stand 12:18, Garmin hängt hinterher/);
   assert.equal(lines(usage(device, { wellness: null }))[1], "Schritte & Treppen610");
+  assert.doesNotMatch(info(usage(device, { wellness: null })), /Garmin-Abruf/);
   // #3530: a strength session's RPE and the MET it set follow the Sport part, on the formula rows only.
   const note = energyStrengthNote([{ rpe: 8, met: 5, kcal: 210 }, { rpe: null, met: 3.5, kcal: 131 }]);
   assert.equal(note, "Kraft RPE 8, MET 5; Kraft ohne RPE, MET 3,5");
   assert.equal(lines(usage(cunningham, { strength: [{ rpe: 8, met: 5, kcal: 210 }] }))[2], "Sport350 (Kraft RPE 8, MET 5)");
   assert.equal(lines(usage(device, { strength: [{ rpe: 8, met: 5, kcal: 210 }] }))[2], "Sport765");
   assert.equal(energyStrengthNote(undefined), "");
-  // #3617 item 3: digestion of kcal without macros reads as estimated.
-  assert.equal(lines(usage(cunningham, { tef_estimated: true }))[3], "Verdauung250 (geschätzt)");
+  // #3617 item 3, #3719: digestion of kcal without macros is estimated; the "i" says so, the row shows the number.
+  const estimated = usage(cunningham, { tef_estimated: true });
+  assert.equal(lines(estimated)[3], "Verdauung250");
+  assert.match(info(estimated), / · Verdauung geschätzt, wo Mahlzeiten keine Makros haben$/);
+  assert.doesNotMatch(info(usage(cunningham)), /Verdauung geschätzt/);
+  assert.doesNotMatch(info(usage(device, { tef_estimated: true })), /Verdauung geschätzt/, "Garmin has no digestion part");
   // #3494: today a part whose input has not arrived counts 0 and says so; an unknown part stays "–" (Gitar #3495),
   // a missing digestion reads "nicht erfasst", Garmin has none.
   const early = (source, pending, parts) => ({ source, pending_parts: pending, split: split(1800, ...parts) });
   assert.deepEqual(lines(usage(early("katch_mcardle", ["neat", "sport", "tef"], [0, 0, 0]))).slice(0, 4), ["Ruhe1800", "Schritte & Treppennoch keine Daten", "Sportnoch keine Daten", "Verdauungnoch keine Daten"]);
   assert.deepEqual(lines(usage(early("device", ["neat", "sport"], [null, null, null]))).slice(0, 4), ["Ruhe1800", "Schritte & Treppennoch keine Daten", "Sportnoch keine Daten", "Verdauung–"]);
   assert.deepEqual(lines(usage(early("katch_mcardle", [], [null, null, null]))).slice(0, 4), ["Ruhe1800", "Schritte & Treppen–", "Sport–", "Verdauungnicht erfasst"]);
-  // A part still waiting for its data is not also "geschätzt".
+  // A part still waiting for its data shows only that.
   assert.equal(lines(usage({ ...early("katch_mcardle", ["tef"], [0, 0, 0]), source: "katch_mcardle" }, { tef_estimated: true }))[3], "Verdauungnoch keine Daten");
   // The bar names the same parts for a screen reader.
   assert.equal(drawn.children[1].attributes["aria-label"], "Ruhe 1839 · Schritte & Treppen 220 · Übriger Alltag +480 · Sport 350 · Verdauung 250");
