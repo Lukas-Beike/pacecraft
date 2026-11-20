@@ -1766,7 +1766,7 @@ Conventions used in the tables of this part:
 
 Status: Live. `map_garmin_health` is called per stored element by `canonical_plans.py` (ingest and re-projection,
 one-element list per list section, the record itself for single-record sections) and by `snapshot_projection.py`.
-Mapper version: **26** (`MAPPER_VERSION`; 26 maps the day summary's wellness end, #3530). Also carries the versions of `garmin_training_mapping.py` (the six
+Mapper version: **27** (`MAPPER_VERSION`; 26 maps the day summary's wellness end, #3530; 27 maps weights only from the weigh-in lists, #3718). Also carries the versions of `garmin_training_mapping.py` (the six
 training sections and the endurance `groupMap`, see "Training sections" below), which is replayed by this module.
 Inputs: the Garmin snapshot as a mapping section name → record or list of records (`GARMIN_HEALTH_SECTION_NAMES`);
 `zone` = athlete zone (`ZoneInfo`), `retrieved_at` = fetch time of that section (`garmin_section_retrieved_at`: the
@@ -1950,7 +1950,7 @@ First truthy section wins (`weight_payload`: `weight`, `weigh_ins`, `weighIns`).
 entered); a record's day is the first present of `calendarDate` → `summaryDate` → `date` → `timestampGMT` →
 `timestamp` (`WALK_DATE_KEYS`), inherited from the nearest dated ancestor when absent. Observed
 `garmin_personal_weight_range` (`dailyWeightSummaries[].latestWeight`, plus `totalAverage` and `nextDateWeight`
-objects: `nextDateWeight` is visited and mapped as a dated weigh-in outside the requested range, weight and body fat; the undated aggregate `totalAverage` is not entered, so it maps nothing and reports no issue, #2467).
+objects: `totalAverage` (#2467), `previousDateWeight` and `nextDateWeight` (#3718) are not entered, so they map nothing and report no issue; the latter two are readings outside the requested range that the stored envelope merges across fetches. Each item of a reading or daily-summary list is walked with its own visit budget, #3718).
 
 | Canonical field | Provider key(s) | Unit / conversion | Notes |
 |---|---|---|---|
@@ -2032,12 +2032,11 @@ Source record id `personal_records:<day>:<kind>`.
 Rows `{date, metrics: {...}}` written by the sync from its own earlier values (plus daily FTP history); mapped
 **fill-only** (`canonical_plans.py` passes `fill_only` for this section: a value never replaces one a dedicated
 section wrote for the same natural key). Day = `date`; unreadable = `INVALID_TYPE`; a `metrics` value that is not a
-positive number = `INVALID_NUMBER`. All values Src `provider_reported` (the history weight copies the latest weigh-in
-without its source type, so it is not claimed as a scale value). Id `performance_history:<date>[:idx]:<key>`.
+positive number = `INVALID_NUMBER`. All values Src `provider_reported`. The history's `weight_kg` copy is not mapped:
+only the weight section's weigh-ins are weights (#3718). Id `performance_history:<date>[:idx]:<key>`.
 
 | Canonical field | Provider key(s) | Unit / conversion | Notes |
 |---|---|---|---|
-| `weight` | `weight_kg` | kg | |
 | `ftp` (sport `ride`) | `cycling_ftp_watts` | W | |
 | `vo2max` (sport `ride`) | `cycling_vo2max_ml_kg_min` | ml/kg/min | |
 | `vo2max` (sport `run`) | `running_vo2max_ml_kg_min` | ml/kg/min | |

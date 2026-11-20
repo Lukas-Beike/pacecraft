@@ -1773,7 +1773,7 @@ function energyInfoButton(label, text) {
 }
 
 function energyInfo(read) {
-  const text = [ENERGY_DAY_NOTE, energyBasisText(read), energyNeatInputs(read.basis?.neat), energyBiasText(read.flagged)].filter(Boolean).join(" · ");
+  const text = [ENERGY_DAY_NOTE, energyBasisText(read), energyNeatInputs(read.basis?.neat), energyStandNote(read.wellness), energyTefNote(read), energyBiasText(read.flagged)].filter(Boolean).join(" · ");
   return energyInfoButton("Energieverbrauch: Informationen", text);
 }
 
@@ -1855,25 +1855,24 @@ async function saveLearnedCheck(day, button) {
   }
 }
 
-// Garmin's day summary ends early (#3530): the Schritte & Treppen come from it, so it names the time,
-// and that a session after it is not in it yet.
+// Garmin's day summary ends early (#3530): the Schritte & Treppen come from it, so the "i" names
+// the time, and that a session after it is not in it yet; the row shows the number only (#3719).
 function energyStandNote(stand) {
   if (!stand?.as_of) return "";
-  return ` (Stand ${stand.as_of}${stand.behind ? ", Garmin hängt hinterher" : ""})`;
+  return `Schritte & Treppen nach dem letzten Garmin-Abruf, Stand ${stand.as_of}${stand.behind ? ", Garmin hängt hinterher" : ""}`;
 }
 
-// One part's value with its note: the Garmin day summary's time, the strength session, and
-// digestion of kcal without macros as estimated (#3617); Garmin has no digestion part.
+// Digestion of kcal without macros is estimated (#3617); the "i" says so, not the row (#3719).
+function energyTefNote(read) {
+  return read.tef_estimated && read.outlined !== "device" ? "Verdauung geschätzt, wo Mahlzeiten keine Makros haben" : "";
+}
+
+// One part's value with the strength session's note on the formula rows (#3530).
 function energyPartText(read, row, [key, part]) {
   const split = row.split;
-  const formula = row.source !== "device";
-  const strength = formula ? energyStrengthNote(read.strength) : "";
+  const strength = row.source !== "device" ? energyStrengthNote(read.strength) : "";
   const pending = row.pending_parts?.includes(part);
-  const notes = {
-    sport_kcal: strength ? ` (${strength})` : "",
-    neat_kcal: energyStandNote(read.wellness),
-    tef_kcal: formula && read.tef_estimated && split.tef_kcal != null && !pending ? " (geschätzt)" : "",
-  };
+  const notes = { sport_kcal: strength ? ` (${strength})` : "" };
   // The learned term may be negative, a reduction (#3689).
   const value = key === "learned_kcal" ? energyFitSigned(split[key]) : energySplitValue(key, split[key], row.source, pending);
   return `${value}${notes[key] || ""}`;

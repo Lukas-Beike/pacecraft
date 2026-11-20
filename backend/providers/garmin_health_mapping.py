@@ -37,11 +37,12 @@ Mapped sections and their canonical kinds:
   biometric range endpoint gives its day in ``from`` and its FTP in ``value``; a
   bare ``value`` elsewhere is not FTP.
 * ``performance_history``: the app's accumulated Garmin values, each row on the
-  day its value was measured (athlete decision 2026-10-26). Weight, FTP, VO2MAX,
+  day its value was measured (athlete decision 2026-10-26). FTP, VO2MAX,
   thresholds, readiness and race predictions keep their kinds and units (the
   threshold pace in seconds per kilometre becomes m/s), so a day a dedicated
   section also reports shares that observation. The max heart rate keys include
-  an activity-derived fallback rather than a Garmin value and are not mapped.
+  an activity-derived fallback rather than a Garmin value and are not mapped,
+  and neither is its weight copy: only the weight section's weigh-ins are weights.
 * ``heart_rate_zones``: MAX_HR for each sport category (cycling, running or
   generic). Every object under a record is read for ``maxHeartRateUsed``,
   ``maxHeartRate`` or ``maxHR``, with the legacy category terms and the legacy
@@ -49,7 +50,9 @@ Mapped sections and their canonical kinds:
   OUT_OF_RANGE, so 251 to 260 bpm are not mapped.
 * ``weight``, ``weigh_ins`` or ``weighIns`` (the first truthy one wins, as in the
   legacy ``or`` chain): WEIGHT in kilograms and BODY_FAT in percent. Nested records
-  are searched with the legacy reader's depth, visit and list limits.
+  are searched with the legacy reader's depth, visit and list limits; each item of
+  a reading or daily-summary list gets its own visit budget. The range answer's
+  ``totalAverage``, ``previousDateWeight`` and ``nextDateWeight`` are no weigh-ins.
 * ``daily_stats``: STEPS, FLOORS, DAILY_ENERGY_TOTAL, DAILY_ENERGY_ACTIVE and
   DAILY_ENERGY_RESTING (kcal, a provider total, never estimated when absent), with
   the aliases of ``backend.providers.garmin_fields``, and STRESS, Garmin's daily mean
@@ -216,7 +219,9 @@ from backend.providers.garmin_training_mapping import (
 )
 from backend.providers.garmin_weight_walk import (
     BODY_FAT_SKIP_KEYS,
+    READING_LIST_KEYS,
     WALK_DATE_KEYS,
+    WEIGHT_SECTIONS,
     WEIGHT_SKIP_KEYS,
     alnum_key,
     walk_records,
@@ -251,7 +256,10 @@ from backend.providers.garmin_weight_walk import (
 # choice used, so a valid reading is no longer hidden or dropped (#2884).
 # Version 26: a day summary also maps where its wellness data ends, in minutes
 # after the day's local midnight (DAILY_WELLNESS_END, #3530).
-MAPPER_VERSION: Final = 26
+# Version 27: only weigh-ins are weights (#3718): the performance-history copy and
+# the out-of-window readings of a range answer map none, and each reading of a
+# stored weight envelope gets its own walk budget, so older weigh-ins are kept.
+MAPPER_VERSION: Final = 27
 GARMIN_LABEL: Final = "Garmin Connect"
 
 _DATE_FIELD: Final = "calendarDate"
@@ -339,10 +347,9 @@ _HISTORY_METRICS: Final = "metrics"
 _HISTORY_PACE: Final = "run_threshold_pace_seconds_per_km"
 _METRES_PER_KM: Final = 1000.0
 # Legacy performance-history keys and the kind, sport and source kind each holds.
-# The history weight copies the latest weigh-in without its source type, so it
-# may be a manual entry and is never claimed as a scale measurement.
+# The history's ``weight_kg`` copy is not mapped: the weight section holds the
+# weigh-ins, and the copy outlives a reading Garmin no longer returns (#3718).
 _HISTORY_KINDS: Final[Mapping[str, tuple[MetricKind, Sport | None, SourceKind]]] = {
-    "weight_kg": (MetricKind.WEIGHT, None, SourceKind.PROVIDER_REPORTED),
     "cycling_ftp_watts": (MetricKind.FTP, Sport.RIDE, SourceKind.PROVIDER_REPORTED),
     "cycling_vo2max_ml_kg_min": (
         MetricKind.VO2MAX,
@@ -1142,6 +1149,7 @@ class _WeightWalk:
             skip_keys=self._skip,
             resolve_day=_own_day,
             marker_keys=_LATEST_WEIGHT_KEYS,
+            list_keys=READING_LIST_KEYS,
         ):
             if self._body_fat:
                 self._body_fat_candidate(walked.record, walked.day, walked.ordinal)
@@ -1786,6 +1794,19 @@ class _HealthMapping:
 
     def issue(self, record_ref: str | None, field: str, reason: IssueReason) -> None:
         self.issues.append(MappingIssue(record_ref, field, reason))
+
+
+def weigh_in_days(sections: Mapping[str, object], retrieved_at: datetime) -> set[str]:
+    """The ISO days of the weigh-ins in ``sections``' weight answer (#3718)."""
+    return {
+        o.observed_on.isoformat()
+        for o in map_garmin_health(
+            {name: sections[name] for name in WEIGHT_SECTIONS if name in sections},
+            zone=UTC,
+            retrieved_at=retrieved_at,
+        ).records
+        if o.kind is MetricKind.WEIGHT
+    }
 
 
 def map_garmin_health(

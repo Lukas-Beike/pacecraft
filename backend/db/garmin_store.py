@@ -37,7 +37,7 @@ from backend.canonical.section_items import (
     unwrapped,
     wrapped,
 )
-from backend.canonical.vocabulary import ProviderId
+from backend.canonical.vocabulary import MetricKind, ProviderId
 from backend.db import canonical_domain_store, canonical_store
 from backend.db.canonical_store import WriteOutcome
 from backend.observability import sanitized_provider_payload
@@ -439,3 +439,64 @@ def read_state(db: Any) -> dict[str, Any]:
     except ValueError, RecursionError:
         return {}
     return value if isinstance(value, dict) else {}
+
+
+def weight_origin_counts(
+    db: Any, version: int, answer_days: Iterable[str] = ()
+) -> dict[str, Any]:
+    """Counts only (#3718): Garmin weight rows by origin, never a value or a day.
+
+    The origin is the section of the row's source record: the weigh-in list (the
+    weight walk's ``weight:`` ids), the performance history, or other. A row is
+    ``current`` when it is active at ``version``, the health mapper's current one:
+    once the re-projection after a bump completed, the rows the readers serve.
+    Days are counted before the first current weigh-in-list day (all without one).
+    ``answer_days`` are the weigh-in days of the stored weight answer; the counts
+    compare them with the current weigh-in-list days over the answer's span.
+    """
+    rows = db.execute(
+        "SELECT source_record_id, state, mapper_version, observed_on FROM observations "
+        "WHERE provider = ? AND metric = ? AND sport IS NULL",
+        (GARMIN_PROVIDER, MetricKind.WEIGHT.value),
+    ).fetchall()
+    found = [
+        (
+            _weight_origin(row["source_record_id"]),
+            row["state"] == _ACTIVE and row["mapper_version"] == version,
+            str(row["observed_on"]),
+        )
+        for row in rows
+    ]
+    first = min((d for o, s, d in found if s and o == "weigh_in_list"), default=None)
+    counts: dict[str, Any] = {"current": {}, "not_current": {}}
+    early: dict[str, set[str]] = {"current": set(), "not_current": set()}
+    for origin, served, day in found:
+        group = "current" if served else "not_current"
+        counts[group][origin] = counts[group].get(origin, 0) + 1
+        if first is None or day < first:
+            early[group].add(day)
+    answer = set(answer_days)
+    listed = {d for o, s, d in found if s and o == "weigh_in_list"}
+    span = {d for d in listed if answer and min(answer) <= d <= max(answer)}
+    return (
+        counts
+        | {
+            f"{group}_days_before_first_weighin_list_day": len(days)
+            for group, days in early.items()
+        }
+        | {
+            "answer_weighin_days": len(answer),
+            "answer_days_without_current_row": len(answer - listed),
+            "current_list_days_in_answer_span": len(span),
+            "current_list_days_before_answer": len(
+                {d for d in listed if answer and d < min(answer)}
+            ),
+        }
+    )
+
+
+def _weight_origin(source_record_id: object) -> str:
+    section = str(source_record_id).partition(":")[0]
+    if section == "weight":
+        return "weigh_in_list"
+    return "performance_history" if section == "performance_history" else "other"

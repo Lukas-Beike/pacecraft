@@ -8,6 +8,8 @@ from __future__ import annotations
 import sqlite3
 import tempfile
 import unittest
+from dataclasses import replace
+from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Any
 
@@ -18,8 +20,9 @@ from backend.canonical.section_items import (
     record_id,
     split_section,
 )
-from backend.db import garmin_store
+from backend.db import canonical_store, garmin_store
 from backend.db.schema import initialize_schema
+from backend.providers.garmin_health_mapping import map_garmin_health
 
 NOW = "2026-10-10T08:00:00+00:00"
 FETCHED = "2026-10-10T07:00:00+00:00"
@@ -148,6 +151,50 @@ class GarminStoreTests(unittest.TestCase):
 
     def test_every_item_section_is_a_known_section(self) -> None:
         self.assertLessEqual(ITEM_SECTIONS, SECTIONS)
+
+    def test_weight_origins_count_rows_and_days_before_the_weigh_in_list(self) -> None:
+        # #3718: counts only; a history copy and an old-version row are no weigh-ins.
+        mapped = map_garmin_health(
+            {
+                "weight": [
+                    {"calendarDate": "2026-09-12", "weight": 72.0},
+                    {"calendarDate": "2026-09-01", "weight": 73.0},
+                ]
+            },
+            zone=UTC,
+            retrieved_at=datetime(2026, 10, 10, tzinfo=UTC),
+        ).records
+        stray = replace(
+            mapped[0],
+            observed_on=date(2026, 8, 14),
+            provenance=replace(
+                mapped[0].provenance,
+                source_record_id="performance_history:2026-08-14:weight_kg",
+            ),
+        )
+        for observation, version in ((mapped[0], 5), (mapped[1], 4), (stray, 4)):
+            canonical_store.upsert_observation(
+                self.db, observation, mapper_version=version, now=NOW
+            )
+
+        counts = garmin_store.weight_origin_counts(
+            self.db, 5, {"2026-09-10", "2026-09-12", "2026-09-14"}
+        )
+
+        self.assertEqual(
+            counts,
+            {
+                "current": {"weigh_in_list": 1},
+                "not_current": {"weigh_in_list": 1, "performance_history": 1},
+                "current_days_before_first_weighin_list_day": 0,
+                "not_current_days_before_first_weighin_list_day": 2,
+                # The stored answer's days against the current list days.
+                "answer_weighin_days": 3,
+                "answer_days_without_current_row": 2,
+                "current_list_days_in_answer_span": 1,
+                "current_list_days_before_answer": 0,
+            },
+        )
 
 
 if __name__ == "__main__":

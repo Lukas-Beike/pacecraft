@@ -15,6 +15,7 @@ from zoneinfo import ZoneInfo
 
 from canonical_consumer_cases import MAX_METRICS_DAILY
 
+from backend.athlete.body_records import weighins
 from backend.canonical.mapping import IssueReason, MappingResult
 from backend.canonical.records import Observation
 from backend.canonical.section_items import split_section
@@ -28,10 +29,12 @@ from backend.canonical.vocabulary import (
 )
 from backend.providers import canonical_plans
 from backend.providers.canonical_plans import garmin_morning_keys
+from backend.providers.garmin import merge_weight_snapshots
 from backend.providers.garmin_health_mapping import (
     GARMIN_LABEL,
     MAPPER_VERSION,
     map_garmin_health,
+    weigh_in_days,
 )
 from backend.providers.garmin_personal import wrap_daily_sleep
 from backend.providers.garmin_status_mapping import map_garmin_status_codes
@@ -1986,7 +1989,8 @@ class EnduranceScoreTests(unittest.TestCase):
 
 
 class PerformanceHistoryTests(unittest.TestCase):
-    """The app's accumulated Garmin values keep their measurement day and kind."""
+    """The app's accumulated Garmin values keep their measurement day and kind;
+    the history's weight copy is no weigh-in (#3718)."""
 
     def test_each_value_is_an_observation_of_its_day(self) -> None:
         result = _map(
@@ -2016,7 +2020,6 @@ class PerformanceHistoryTests(unittest.TestCase):
                 ("readiness", 64.0, "2026-08-02", "-"),
                 ("threshold_pace", 4.0, "2026-08-02", "run"),
                 ("vo2max", 52.0, "2026-08-02", "run"),
-                ("weight", 71.4, "2026-08-02", "-"),
             ],
         )
         self.assertEqual(_issues(result), [])
@@ -2041,6 +2044,83 @@ class PerformanceHistoryTests(unittest.TestCase):
                 IssueReason.INVALID_NUMBER,
             ],
         )
+
+
+def _weigh_in(day: str, grams: float, pk: int) -> dict[str, object]:
+    """One reading in the range answer's ``latestWeight`` shape, with null fields."""
+    return {
+        "samplePk": pk,
+        "calendarDate": day,
+        "weight": grams,
+        "sourceType": "INDEX_SCALE",
+        "timestampGMT": f"{day}T06:00:00",
+        **dict.fromkeys(("bmi", "bodyFat", "bodyWater", "boneMass", "muscleMass")),
+        **dict.fromkeys(("physiqueRating", "visceralFat", "metabolicAge")),
+    }
+
+
+def _summaries(start: date, days: int) -> list[dict[str, object]]:
+    return [
+        {
+            "summaryDate": (day := (start + timedelta(days=i)).isoformat()),
+            "numOfWeightEntries": 1,
+            "latestWeight": _weigh_in(day, 72000.0, i),
+            "allWeightMetrics": [_weigh_in(day, 72000.0, i)],
+        }
+        for i in range(days)
+    ]
+
+
+class WeighInOnlyTests(unittest.TestCase):
+    """#3718: only Garmin's weigh-ins are weights, and a long envelope keeps them all."""
+
+    def weight_days(self, sections: object) -> list[str]:
+        return sorted(
+            {
+                o.observed_on.isoformat()
+                for o in _map(sections).records
+                if o.kind is MetricKind.WEIGHT
+            }
+        )
+
+    def test_history_weight_on_a_day_without_a_weigh_in_is_no_weigh_in(self) -> None:
+        sections = {
+            "performance_history": [
+                {"date": "2026-08-14", "metrics": {"weight_kg": 76.0}}
+            ],
+            "weight": [{"dailyWeightSummaries": _summaries(date(2026, 9, 12), 1)}],
+        }
+        self.assertEqual(self.weight_days(sections), ["2026-09-12"])
+        # The weigh-in line, and so the 6-month deficit, starts at the real one.
+        self.assertEqual(list(weighins(_map(sections).records)), [date(2026, 9, 12)])
+
+    def test_out_of_window_readings_of_a_range_answer_are_no_weigh_ins(self) -> None:
+        envelope = {
+            "dailyWeightSummaries": _summaries(date(2026, 9, 12), 1),
+            "previousDateWeight": _weigh_in("2026-08-14", 76000.0, 90),
+            "nextDateWeight": _weigh_in("2026-10-01", 71000.0, 91),
+            "totalAverage": {"from": 0, "until": 0, "weight": 76000.0},
+        }
+        self.assertEqual(self.weight_days({"weight": [envelope]}), ["2026-09-12"])
+
+    def test_weigh_in_days_name_the_answer_days_only(self) -> None:
+        sections = {
+            "weight": [{"dailyWeightSummaries": _summaries(date(2026, 9, 12), 2)}],
+            "performance_history": [
+                {"date": "2026-08-14", "metrics": {"weight_kg": 76.0}}
+            ],
+        }
+        self.assertEqual(
+            weigh_in_days(sections, RETRIEVED_AT), {"2026-09-12", "2026-09-13"}
+        )
+
+    def test_a_long_stored_envelope_keeps_every_weigh_in(self) -> None:
+        # One budget for the whole envelope kept only its newest ~59 days.
+        summaries = _summaries(date(2026, 5, 1), 180)
+        merged = merge_weight_snapshots([{"dailyWeightSummaries": summaries}], None)
+        days = self.weight_days({"weight": merged})
+        self.assertEqual(len(days), 180)
+        self.assertEqual(days[0], "2026-05-01")
 
 
 _AFTERNOON = {
@@ -2361,7 +2441,7 @@ class PersonalApiShapeTests(unittest.TestCase):
 
 class ContractTests(unittest.TestCase):
     def test_mapper_version_is_pinned(self) -> None:
-        self.assertEqual(MAPPER_VERSION, 26)
+        self.assertEqual(MAPPER_VERSION, 27)
 
     def test_non_mapping_sections_yield_one_issue(self) -> None:
         for sections in (["sleep"], "sleep", None, 5):
