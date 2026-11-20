@@ -2033,7 +2033,7 @@ Rows `{date, metrics: {...}}` written by the sync from its own earlier values (p
 **fill-only** (`canonical_plans.py` passes `fill_only` for this section: a value never replaces one a dedicated
 section wrote for the same natural key). Day = `date`; unreadable = `INVALID_TYPE`; a `metrics` value that is not a
 positive number = `INVALID_NUMBER`. All values Src `provider_reported`. The history's `weight_kg` copy is not mapped:
-only the weight section's weigh-ins are weights (#3718). Id `performance_history:<date>[:idx]:<key>`.
+only the weight section's weigh-ins are weights (#3718), and the sync no longer writes it into new entries (#3728). Id `performance_history:<date>[:idx]:<key>`.
 
 | Canonical field | Provider key(s) | Unit / conversion | Notes |
 |---|---|---|---|
