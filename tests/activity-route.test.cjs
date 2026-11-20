@@ -113,3 +113,17 @@ test("a ride shows its speed in km/h", () => {
   assert.equal(text(headRow.children[3]), "km/h");
   assert.equal(text(toggle.children[1].children[0].children[1].children[0].children[3]), "28,8");
 });
+
+test("a ride on a run's loop shows no pace", () => {
+  const visits = [
+    { activity_id: "run2", date: "2025-06-03", sport: "run", avg_speed_mps: 2.5 },
+    { activity_id: "ride1", date: "2025-06-02", sport: "ride", avg_speed_mps: 8 },
+    { activity_id: "run1", date: "2025-06-01", sport: "run", avg_speed_mps: 2.5 },
+  ];
+  const charts = [];
+  const content = new FakeElement("div");
+  loadRenderRoute(charts)({ ...ROUTE, visits }, async () => ({}), content, { sport: "run", activity_id: "run2" });
+  assert.deepEqual(charts[0].values, [400, null, 400]);
+  const body = content.children[0].children[2].children[1].children[0].children[1];
+  assert.equal(text(body.children[1].children[3]), "–");
+});

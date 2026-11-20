@@ -87,7 +87,7 @@ generated from the `covers` declarations; regenerate it with
 
 `get_activity_details` returns a recognised route as `route` with `label`,
 `repeat_index`, `repeat_count`, `route_id` and `history`. `history` lists the
-session's own visit and up to five visits before it, newest first. Each visit has
+session's own visit and up to five visits of its sport before it, newest first. Each visit has
 `activity_id`, `date`, `sport`, `moving_duration_s`, `distance_m`, `avg_hr`,
 `avg_speed_mps` and the activity weather's `temperature_c`. A missing value is
 null, and a ride with power has no speeds. The block never holds a coordinate or

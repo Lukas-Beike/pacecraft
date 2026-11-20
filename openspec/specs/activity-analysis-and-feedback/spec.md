@@ -278,7 +278,7 @@ The system SHALL group repeated rides and runs with a stored GPS track that are 
 
 #### Scenario: Route history
 - **WHEN** a session with a recognised route is opened in the activity view or read by `get_activity_details`
-- **THEN** the view shows a "Pace je Besuch" chart (speed in km/h for other sports) and below it an open "Alle N Besuche ansehen" table of every visit, newest first, six at a time with "Ältere Besuche": date, moving duration, average heart rate, pace or speed and the activity weather's temperature, missing values as "–", the session's own visit marked; the Coach's `route.history` holds the session's visit and up to five before it with the same values, without speeds for a ride with power
+- **THEN** the view shows a "Pace je Besuch" chart (speed in km/h for other sports) and below it an open "Alle N Besuche ansehen" table of every visit, newest first, six at a time with "Ältere Besuche": date, moving duration, average heart rate, pace or speed and the activity weather's temperature, missing values as "–", the session's own visit marked; a visit of another sport on the same loop shows no pace or speed; the Coach's `route.history` holds the session's visit and up to five of its sport before it with the same values, without speeds for a ride with power
 
 #### Scenario: Repeats of one loop
 - **WHEN** several outdoor sessions, or sessions of unknown environment, follow the same loop, also with GPS jitter or in the reverse direction: distances within 10 %, start in or beside the other's start (or end) cell and a Jaccard overlap of the coarse grid cells of at least 0.6

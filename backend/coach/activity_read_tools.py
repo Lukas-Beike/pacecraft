@@ -276,12 +276,18 @@ def _route_history(detail: Mapping[str, Any]) -> None:
     """The Coach's short route history: this visit and the ones before it (#3763).
 
     The calendar lists every visit; the Coach reads the session against the
-    last ``ROUTE_HISTORY_VISITS`` visits up to it, newest first.
+    last ``ROUTE_HISTORY_VISITS`` visits of its sport up to it, newest first.
     """
     route, session = detail.get("route"), detail.get("session") or {}
     if not isinstance(route, dict):
         return
-    visits = route.pop("visits", None) or []
+    # A loop both run and ridden compares only the session's own sport.
+    sport = session.get("sport")
+    visits = [
+        visit
+        for visit in route.pop("visits", None) or []
+        if visit.get("sport") in (None, sport)
+    ]
     own = session.get("activity_id")
     start = next(
         (n for n, visit in enumerate(visits) if visit.get("activity_id") == own), 0

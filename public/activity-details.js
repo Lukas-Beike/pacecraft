@@ -302,9 +302,11 @@
     return value == null || !Number.isFinite(number) ? "–" : AppFormat.number(number, { digits });
   }
 
-  // Pace in s/km for foot sports, else km/h; a missing or zero speed stays a gap.
+  // Pace in s/km for foot sports, else km/h; a missing or zero speed, or a visit of another
+  // sport on the same loop, stays a gap.
   function routeVisitOutput(visit, pace) {
     const speed = Number(visit.avg_speed_mps);
+    if (visit.sport && PACE_SPORTS.has(visit.sport) !== pace) return null;
     if (visit.avg_speed_mps == null || !Number.isFinite(speed) || speed <= 0) return null;
     return pace ? 1000 / speed : speed * 3.6;
   }
@@ -316,7 +318,8 @@
     const unit = pace ? "s/km" : "km/h";
     const title = pace ? "Pace je Besuch" : "Geschwindigkeit je Besuch";
     const chart = analysisChart(title, [{ label: title, legendLabel: title, unit, color: 0, cadenceDays: 1, points }], unit, points[0].date, points.at(-1).date, "Durchschnitt je Besuch.", { showLegend: false });
-    chart?.querySelector(".analysis-chart-table")?.remove();
+    // The visit table below replaces the chart's own "Werte ansehen".
+    chart?.querySelector("details")?.remove();
     return chart;
   }
 

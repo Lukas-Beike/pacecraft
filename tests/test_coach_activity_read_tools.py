@@ -439,6 +439,22 @@ class CoachActivityReadToolServiceTests(unittest.TestCase):
         self.assertEqual(
             [{"activity_id": "act_1", "avg_hr": 141}], oldest["route"]["history"]
         )
+        # A ride on the same loop is no peer of a run: its speed never reaches the run's copy.
+        mixed = {
+            "session": {"activity_id": "act_3", "sport": "run"},
+            "route": {
+                "visits": [
+                    {"activity_id": "act_4", "sport": "ride", "avg_speed_mps": 9.0},
+                    {"activity_id": "act_3", "sport": "run"},
+                    {"activity_id": "act_2", "sport": "run"},
+                ]
+            },
+        }
+        _route_history(mixed)
+        self.assertEqual(
+            ["act_3", "act_2"],
+            [visit["activity_id"] for visit in mixed["route"]["history"]],
+        )
         without = {"session": {"activity_id": "act_1"}, "route": {"label": "Strecke 1"}}
         _route_history(without)
         self.assertEqual([], without["route"]["history"])

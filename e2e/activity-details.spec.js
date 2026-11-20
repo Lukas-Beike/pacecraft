@@ -229,6 +229,8 @@ test("@responsive calendar details show the route history chart first and every 
   await expect(card.getByRole("button", { name: "Umbenennen" })).toBeVisible();
   await expect(card.locator(".analysis-chart-card h3")).toHaveText("Pace je Besuch");
   await expect(card.locator("details.activity-values > summary")).toHaveText("Alle 8 Besuche ansehen");
+  // The visit table replaces the chart's own value list: one toggle only.
+  await expect(card.locator("details")).toHaveCount(1);
   const rows = card.locator(".route-visits tbody tr");
   await expect(rows).toHaveCount(6);
   await expect(rows.nth(1)).toHaveAttribute("aria-current", "true");
