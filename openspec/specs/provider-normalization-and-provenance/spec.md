@@ -735,6 +735,14 @@ Garmin sections SHALL be stored as one raw record per element (`<section>/<key>`
 - **WHEN** a rolling section such as max metrics or readiness no longer returns an older day
 - **THEN** that day's observation stays active.
 
+#### Scenario: One-off training history re-read
+- **WHEN** the first current Garmin refresh after #3729 reads the historic training sections
+- **THEN** endurance score, running tolerance, readiness history and weekly training status are read over 182 days instead of 90, once: a marker in the Garmin state records the days it added after an answer with days and no failed training section; a failed or empty answer leaves it due, and a historical window never re-reads.
+
+#### Scenario: Replaced section keeps earlier days
+- **WHEN** a replacing write carries dated elements
+- **THEN** it removes only the stored elements of days inside its own day span (and the stored undated elements when it carries one), so a stored earlier day keeps its element and every re-projection after a mapper bump still serves it (#3729); an answer without a dated element and the gear inventory replace the whole section.
+
 #### Scenario: Element without a day in a windowed prune
 - **WHEN** a windowed prune meets a stored element without a day
 - **THEN** the element is kept, unless it is the weight envelope that the kept elements replace.
@@ -746,6 +754,8 @@ Evidence:
 - `tests/test_garmin_snapshot_writer.py:test_sections_are_stored_per_element_and_state_stays_small`
 - `tests/test_observation_retirement.py:test_a_garmin_element_pruned_from_a_complete_window_is_retired`
 - `tests/test_observation_retirement.py:test_a_replace_prune_keeps_the_history_of_a_rolling_section`
+- `tests/test_canonical_backfill.py:ReplacedSectionHistoryTests`
+- `tests/test_garmin_history_refetch.py:TrainingHistoryRefetchTests`
 
 ### Requirement: Text fallback for unknown activity types
 A Garmin activity whose type key is outside the type table SHALL be classified from the space-joined type key and activity name by ordered, case-insensitive substring terms; the first matching group wins and no match is `other`.

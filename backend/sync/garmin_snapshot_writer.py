@@ -162,11 +162,29 @@ class GarminSnapshotWriter:
     def _replace(db: Any, section: str, value: Any) -> None:
         """Drop the stored elements a non-empty current answer no longer holds.
 
-        A gear inventory is only present after a successful read, so an empty
-        list is a real answer there and clears the stored items.
+        A dated answer replaces only the stored days inside its own day span (and
+        the stored undated elements when it holds one), so earlier days stay and
+        every re-projection still emits them (#3729). An answer without a dated
+        element, and the gear inventory, replace the whole section. A gear
+        inventory is only present after a successful read, so an empty list is a
+        real answer there and clears the stored items.
         """
-        if value or (section == "gear" and value == []):
-            garmin_store.prune_section(db, section, _identifiers(section, value))
+        if not value and not (section == "gear" and value == []):
+            return
+        items = split_section(value)
+        days = sorted(item.observed_on for item in items if item.observed_on)
+        keep = {record_id(section, item.key) for item in items}
+        if section == "gear" or not days:
+            garmin_store.prune_section(db, section, keep)
+            return
+        garmin_store.prune_section(
+            db,
+            section,
+            keep,
+            start=days[0],
+            end=days[-1],
+            undated=any(item.observed_on is None for item in items),
+        )
 
     @staticmethod
     def _prune(db: Any, section: str, value: Any, window: tuple[date, date]) -> None:

@@ -16,7 +16,7 @@ from backend.canonical.garmin_payload import (
     REPLACE_SECTIONS,
     SECTIONS,
 )
-from backend.canonical.section_items import merge_records
+from backend.canonical.section_items import merge_records, split_section
 from backend.canonical.vocabulary import GARMIN_ID
 from backend.config import Config
 from backend.db import garmin_store
@@ -26,7 +26,11 @@ from backend.errors import AppError
 from backend.observability import Redactor
 from backend.performance.freshness import GarminSyncStatus
 from backend.provider_credentials import GARMIN_PERSONAL_KEY_REJECTED_KEY
-from backend.providers.garmin import WEIGHT_READ_DAYS, merge_weight_snapshots
+from backend.providers.garmin import (
+    TRAINING_HISTORY_SECTIONS,
+    WEIGHT_READ_DAYS,
+    merge_weight_snapshots,
+)
 from backend.providers.garmin_capability import (
     GARMIN_LAST_RATE_LIMIT_KEY,
     RATE_LIMITED,
@@ -62,6 +66,9 @@ GARMIN_CATCHUP_MAX_DAYS = 90
 # The one-off weigh-in re-read after #3718: 6 months, once, marked in the state.
 WEIGHT_REFETCH_DAYS: Final = 182
 WEIGHT_REFETCH_KEY: Final = "weight_refetch"
+# The one-off 6-month re-read of the range-capable training history (#3729).
+TRAINING_REFETCH_KEY: Final = "training_refetch"
+TRAINING_REFETCH_DAYS: Final = 182
 # The days of Garmin read-window sections that the performance views load.
 RECENT_VIEW_DAYS = 90
 # The first refresh of a local day re-reads this many days, so values a watch
@@ -339,6 +346,13 @@ class GarminPayloadService:
             isinstance(provider_sync, dict) and provider_sync.get(WEIGHT_REFETCH_KEY)
         )
 
+    def training_refetch_due(self) -> bool:
+        """Return whether the one-off 6-month training history re-read is due (#3729)."""
+        provider_sync = self.state().get("provider_sync")
+        return not (
+            isinstance(provider_sync, dict) and provider_sync.get(TRAINING_REFETCH_KEY)
+        )
+
     def body_battery_reconciliation_due(self) -> bool:
         """Return whether no sync has reconciled Body Battery on this local day."""
         return _body_battery_reconciliation_due(self.state(), self._local_today())
@@ -494,6 +508,7 @@ class GarminPayloadService:
                 }
             )
         _merge_weight(payload, provider_sync, previous)
+        _mark_training_refetch(payload, provider_sync, previous)
         # A run without the Body Battery reconciliation keeps the day it last ran.
         if (
             "body_battery_reconciled_on" not in provider_sync
@@ -574,6 +589,73 @@ def _merge_weight(
             "state": "finished",
             "added_days": len(after - before),
         }
+
+
+def _mark_training_refetch(
+    payload: dict[str, Any], provider_sync: dict[str, Any], previous: dict[str, Any]
+) -> None:
+    """Mark the one-off training history re-read once it answered (#3729).
+
+    A run that read the long window marks it when no training section failed and
+    at least one returned days; the marker counts the days the stored sections
+    did not hold. A run without the re-read keeps the stored marker.
+    """
+    previous_sync = previous.get("provider_sync")
+    if isinstance(previous_sync, dict) and previous_sync.get(TRAINING_REFETCH_KEY):
+        provider_sync.setdefault(
+            TRAINING_REFETCH_KEY, previous_sync[TRAINING_REFETCH_KEY]
+        )
+    if not isinstance(provider_sync.get("training_window"), dict):
+        return
+    failed = {
+        error.get("source")
+        for error in payload.get("errors") or []
+        if isinstance(error, dict)
+    }
+    if failed & set(TRAINING_HISTORY_SECTIONS):
+        return
+    added = {
+        (name, day)
+        for name in TRAINING_HISTORY_SECTIONS
+        for day in _section_days(payload.get(name))
+    }
+    if not added:
+        return
+    stored = {
+        (name, day)
+        for name in TRAINING_HISTORY_SECTIONS
+        for day in _section_days(previous.get(name))
+    }
+    provider_sync[TRAINING_REFETCH_KEY] = {
+        "state": "finished",
+        "added_days": len({day for _name, day in added - stored}),
+    }
+
+
+def summarize_history_refetch(db: Any) -> dict[str, Any]:
+    """Counts only (#3729): the one-off training history re-read's state, the days
+    it added and the days still due."""
+    provider_sync = garmin_store.read_state(db).get("provider_sync")
+    marker = (
+        provider_sync.get(TRAINING_REFETCH_KEY)
+        if isinstance(provider_sync, dict)
+        else None
+    )
+    if not isinstance(marker, dict):
+        return {
+            "training_state": "pending",
+            "training_added_days": None,
+            "training_due_days": TRAINING_REFETCH_DAYS,
+        }
+    return {
+        "training_state": str(marker.get("state")),
+        "training_added_days": marker.get("added_days"),
+        "training_due_days": 0,
+    }
+
+
+def _section_days(value: Any) -> set[str]:
+    return {item.observed_on for item in split_section(value or []) if item.observed_on}
 
 
 def _overlaid(window: dict[str, Any], payload: dict[str, Any]) -> dict[str, Any]:

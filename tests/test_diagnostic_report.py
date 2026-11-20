@@ -228,6 +228,7 @@ class DiagnosticReportServiceTests(unittest.TestCase):
                 "lt1_ride_coverage",
                 "curve_build",
                 "garmin_body_push",
+                "garmin_history_refetch",
                 "wahoo_weight_push",
                 "garmin_strength_push",
                 "recovery_copies",
@@ -405,8 +406,9 @@ class DiagnosticReportServiceTests(unittest.TestCase):
         # the DFA-a1 method counts of chest-strap runs add one (#3273); the
         # entered weights add one (#3252), the entered body fats one (#3402); the
         # Garmin body push adds its counts and its links (#3403); the Wahoo
-        # weight push adds its state (#3559).
-        self.assertEqual(len(self.db.queries), 47)
+        # weight push adds its state (#3559); the Garmin history re-read reads
+        # the Garmin state (#3729).
+        self.assertEqual(len(self.db.queries), 48)
         self.assertEqual(
             [query.rsplit("FROM ", 1)[1] for query in count_queries],
             [
@@ -424,6 +426,8 @@ class DiagnosticReportServiceTests(unittest.TestCase):
                 # The Garmin body push counts (#3403).
                 "kv WHERE key = ?",
                 # The Wahoo weight push state (#3559).
+                "kv WHERE key = ?",
+                # The Garmin history re-read marker in the Garmin state (#3729).
                 "kv WHERE key = ?",
                 "provider_sync_cursors WHERE provider=? AND stream=?",
             ],

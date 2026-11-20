@@ -16,10 +16,10 @@ from support import garmin_services, make_config
 
 from backend.config import Config
 from backend.errors import AppError
-from backend.providers.garmin import WEIGHT_READ_DAYS
+from backend.providers.garmin import HISTORY_READ_DAYS, WEIGHT_READ_DAYS
 from backend.sync import garmin
 from backend.sync.executor import GarminSyncJobOwner
-from backend.sync.garmin import WEIGHT_REFETCH_DAYS
+from backend.sync.garmin import TRAINING_REFETCH_DAYS, WEIGHT_REFETCH_DAYS
 from backend.sync.garmin_service import (
     GarminMorningRemoteReader,
     GarminRemoteReader,
@@ -91,10 +91,12 @@ class _PayloadService:
         known_activity_ids: frozenset[str] = frozenset(),
         body_battery_due: bool = False,
         weight_refetch_due: bool = False,
+        training_refetch_due: bool = False,
     ) -> None:
         self.payload = payload or {}
         self._body_battery_due = body_battery_due
         self._weight_refetch_due = weight_refetch_due
+        self._training_refetch_due = training_refetch_due
         self._daily_metrics_due = daily_metrics_due
         self._daily_metrics_retry_due = daily_metrics_retry_due
         self._known_activity_ids = known_activity_ids
@@ -113,6 +115,9 @@ class _PayloadService:
 
     def weight_refetch_due(self) -> bool:
         return self._weight_refetch_due
+
+    def training_refetch_due(self) -> bool:
+        return self._training_refetch_due
 
     def known_activity_ids(self, days: int) -> frozenset[str]:
         return self._known_activity_ids
@@ -173,9 +178,11 @@ class _RemoteReader:
         rated_activity_ids=frozenset(),
         body_battery_reconcile_days=0,
         weight_days=WEIGHT_READ_DAYS,
+        history_days=HISTORY_READ_DAYS,
     ):
         self.arguments = (days, end_date, cancel_event, include_recovery)
         self.weight_days = weight_days
+        self.history_days = history_days
         self.daily_metrics = (include_daily_metrics, known_activity_ids)
         self.body_battery_days = body_battery_reconcile_days
         status("Garmin: Zeitraum 1/1 wird synchronisiert…")
@@ -387,6 +394,23 @@ class GarminSyncServiceTests(unittest.TestCase):
             days=20, end_date=date(2026, 9, 1)
         )
         self.assertEqual(self.remote.weight_days, WEIGHT_READ_DAYS)
+
+    def test_the_6_month_training_reread_runs_only_in_a_due_current_run(self):
+        # #3729: the first current run reads 6 months of training history once.
+        self.make_service(payload=_PayloadService(training_refetch_due=True)).sync(
+            days=2
+        )
+        self.assertEqual(self.remote.history_days, TRAINING_REFETCH_DAYS)
+
+        self.make_service(payload=_PayloadService(training_refetch_due=False)).sync(
+            days=2
+        )
+        self.assertEqual(self.remote.history_days, HISTORY_READ_DAYS)
+
+        self.make_service(payload=_PayloadService(training_refetch_due=True)).sync(
+            days=20, end_date=date(2026, 9, 1)
+        )
+        self.assertEqual(self.remote.history_days, HISTORY_READ_DAYS)
 
     def test_backfill_runs_after_a_successful_remote_sync_and_reports_counts(self):
         counts = {"status": "completed", "fetched": 2, "empty": 0, "remaining": 0}

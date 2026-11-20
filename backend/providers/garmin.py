@@ -47,6 +47,16 @@ CapabilitySuccess = Callable[[str], None]
 # The weigh-in days a current run reads, ending today; the read window is recorded
 # (``weight_window``) so the sync merges the answer into the stored weigh-ins.
 WEIGHT_READ_DAYS: Final = 90
+# The days the historic training reads cover, ending today; a longer window is
+# recorded (``training_window``) for the one-off re-read of #3729.
+HISTORY_READ_DAYS: Final = 90
+# The range-capable training sections the one-off re-read widens (#3729).
+TRAINING_HISTORY_SECTIONS: Final = (
+    "endurance_score",
+    "running_tolerance",
+    "training_readiness_history",
+    "weekly_training_status",
+)
 
 
 @dataclass(frozen=True)
@@ -69,6 +79,8 @@ class GarminCollectionOptions:
     body_battery_reconcile_days: int = 0
     # Days of weigh-ins to read, ending today (#3718).
     weight_days: int = WEIGHT_READ_DAYS
+    # Days of the range-capable training history to read, ending today (#3729).
+    history_days: int = HISTORY_READ_DAYS
 
 
 # Garmin serves at most this many days of Body Battery reports per request.
@@ -1261,9 +1273,15 @@ def _collect_historic_metrics(
     capability_allowed: CapabilityAllowed | None,
     capability_failure: CapabilityFailure | None,
     capability_success: CapabilitySuccess | None,
-) -> None:
-    """Fetch optional, bounded historical metrics with explicit SDK semantics."""
-    start = today - timedelta(days=89)
+    history_days: int = HISTORY_READ_DAYS,
+) -> dict[str, Any]:
+    """Fetch optional, bounded historical metrics with explicit SDK semantics.
+
+    The training sections read ``history_days``; a window longer than the regular
+    one is returned as ``{"training_window": ...}`` for ``provider_sync``.
+    """
+    start = today - timedelta(days=HISTORY_READ_DAYS - 1)
+    wide = today - timedelta(days=history_days - 1)
     end = today
     requests = (
         (
@@ -1282,29 +1300,25 @@ def _collect_historic_metrics(
             getattr(client, "get_endurance_score", None),
             # Weekly buckets are keyed by their week start and hide newer days;
             # the analysis view picks the latest daily reading per week itself.
-            lambda fetch: fetch(
-                start.isoformat(), end.isoformat(), aggregation="daily"
-            ),
+            lambda fetch: fetch(wide.isoformat(), end.isoformat(), aggregation="daily"),
             "daily",
         ),
         (
             "running_tolerance",
             getattr(client, "get_running_tolerance", None),
-            lambda fetch: fetch(
-                start.isoformat(), end.isoformat(), aggregation="daily"
-            ),
+            lambda fetch: fetch(wide.isoformat(), end.isoformat(), aggregation="daily"),
             "daily",
         ),
         (
             "training_readiness_history",
             getattr(client, "get_training_readiness_range", None),
-            lambda fetch: fetch(start.isoformat(), end.isoformat()),
+            lambda fetch: fetch(wide.isoformat(), end.isoformat()),
             "daily",
         ),
         (
             "weekly_training_status",
             getattr(client, "get_weekly_training_status", None),
-            lambda fetch: fetch(start.isoformat(), end.isoformat()),
+            lambda fetch: fetch(wide.isoformat(), end.isoformat()),
             "weekly",
         ),
     )
@@ -1326,7 +1340,9 @@ def _collect_historic_metrics(
             stats.update({"complete": False, "paused": True, "status": "paused"})
             continue
         details = {
-            "window_start": start.isoformat(),
+            "window_start": (
+                wide if key in TRAINING_HISTORY_SECTIONS else start
+            ).isoformat(),
             "window_end": end.isoformat(),
             "aggregation": aggregation,
         }
@@ -1345,6 +1361,9 @@ def _collect_historic_metrics(
             capability_failure,
             capability_success,
         )
+    if history_days <= HISTORY_READ_DAYS:
+        return {}
+    return {"training_window": {"start": wide.isoformat(), "end": end.isoformat()}}
 
 
 def _fetch_historic_metric(
@@ -1900,8 +1919,9 @@ def collect_garmin_data(
             or collection_options.include_recovery
             or collection_options.include_current_metrics
         )
+    training_window: dict[str, Any] = {}
     if include_historic_metrics:
-        _collect_historic_metrics(
+        training_window = _collect_historic_metrics(
             client,
             today,
             payload,
@@ -1912,8 +1932,13 @@ def collect_garmin_data(
             capability_allowed,
             capability_failure,
             capability_success,
+            collection_options.history_days,
         )
-    provider_sync: dict[str, Any] = {"pagination": pagination, **weight_window}
+    provider_sync: dict[str, Any] = {
+        "pagination": pagination,
+        **weight_window,
+        **training_window,
+    }
     _record_device_sync(
         provider_sync,
         client,
