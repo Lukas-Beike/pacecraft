@@ -475,7 +475,7 @@ def weight_origin_counts(
         counts[group][origin] = counts[group].get(origin, 0) + 1
         if first is None or day < first:
             early[group].add(day)
-    answer = set(answer_days)
+    answer = _last_read_days(db, answer_days)
     listed = {d for o, s, d in found if s and o == "weigh_in_list"}
     span = {d for d in listed if answer and min(answer) <= d <= max(answer)}
     return (
@@ -494,6 +494,22 @@ def weight_origin_counts(
         }
         | _weight_refetch(db)
     )
+
+
+def _last_read_days(db: Any, answer_days: Iterable[str]) -> set[str]:
+    """The stored weigh-in days inside the last recorded read window.
+
+    The stored envelope merges every read (#3718), so only its last window is
+    the weight endpoint's answer; without a recorded window all days count.
+    """
+    provider_sync = read_state(db).get("provider_sync")
+    window = (
+        provider_sync.get("weight_window") if isinstance(provider_sync, dict) else None
+    )
+    days = set(answer_days)
+    if not isinstance(window, dict) or not window.get("start") or not window.get("end"):
+        return days
+    return {d for d in days if str(window["start"]) <= d <= str(window["end"])}
 
 
 def _weight_refetch(db: Any) -> dict[str, Any]:

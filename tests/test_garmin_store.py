@@ -199,6 +199,19 @@ class GarminStoreTests(unittest.TestCase):
             },
         )
 
+        # The merged store holds every read; only the last window is the answer.
+        window = {"start": "2026-09-11", "end": "2026-09-20"}
+        garmin_store.write_state(
+            self.db, {"provider_sync": {"weight_window": window}}, now=NOW
+        )
+        counts = garmin_store.weight_origin_counts(
+            self.db, 5, {"2026-09-10", "2026-09-12", "2026-09-14"}
+        )
+        self.assertEqual(
+            (counts["answer_weighin_days"], counts["answer_days_without_current_row"]),
+            (2, 1),
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
