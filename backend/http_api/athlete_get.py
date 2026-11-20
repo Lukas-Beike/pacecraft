@@ -342,14 +342,22 @@ class AthleteGetRoutes:
         null when it is finished or names no end): `as_of` (`HH:MM`, its wellness
         end) and `behind` (true when a session of the day ends after it, so the
         summary's steps and active kcal leave it out; every row's everyday is
-        then not there yet, in `pending_parts`).
+        then not there yet, in `pending_parts`). `fit_scale` holds `28d` and
+        `91d`; `period=182d` adds `182d` with the 6 months' own read, which no
+        other request pays for (#3711).
 
         Errors: 400 "Das Datum fehlt oder ist ungültig."; 400 "Der Tag liegt in
         der Zukunft.".
         """
         if self._energy_view is not None:
             days = request.query.get("date") or []
-            handler.send_json(200, self._energy_view(days[0] if days else None))
+            periods = request.query.get("period") or []
+            handler.send_json(
+                200,
+                self._energy_view(
+                    days[0] if days else None, periods[0] if periods else None
+                ),
+            )
 
     def _preview(self, handler: Any, _request: RouteRequest) -> None:
         """Preview of the context the Coach receives.

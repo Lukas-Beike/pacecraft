@@ -35,14 +35,17 @@ const colourOf = (page, name) => page.evaluate((token) => {
   return colour;
 }, name);
 
-async function routeVerlauf(page) {
+// The server reads 6 months only for `period=182d` (#3711), so the mock answers them only then.
+async function routeVerlauf(page, periods = []) {
   await page.route("**/api/nutrition/week?days=*", (route) => route.fulfill({ json: weekRead(Number(new URL(route.request().url()).searchParams.get("days"))) }));
   await page.route("**/api/body/energy*", async (route) => {
     try {
+      const period = new URL(route.request().url()).searchParams.get("period");
+      periods.push(period);
       const response = await route.fetch();
       const read = await response.json();
       await route.fulfill({ response, json: { ...read, goal: { goal: "lose", goal_kcal: 300, source: "device", total_kcal: 2600, target_kcal: 2300, eaten_kcal: 0, remaining_kcal: 2300 },
-        fit_scale: { "28d": fitRead(28, 565), "91d": fitRead(91, 480), "182d": fitRead(182, 410) } } });
+        fit_scale: { "28d": fitRead(28, 565), "91d": fitRead(91, 480), ...(period === "182d" ? { "182d": fitRead(182, 410) } : {}) } } });
     } catch (error) {
       if (!GONE.test(String(error))) throw error;
     }
@@ -51,7 +54,8 @@ async function routeVerlauf(page) {
 
 // #3704: one card layout, the three periods and the two colours.
 test("@responsive Verlauf is five cards in one layout that follow the period (#3704)", async ({ page }) => {
-  await routeVerlauf(page);
+  const periods = [];
+  await routeVerlauf(page, periods);
   await page.goto("/#nutrition/week");
   const root = page.locator("#nutritionWeek");
   await expect(root.locator(".analysis-chart-card")).toHaveCount(5);
@@ -105,10 +109,12 @@ test("@responsive Verlauf is five cards in one layout that follow the period (#3
   await expect(root.locator(".analysis-chart-card > .verlauf-head > .verlauf-period").nth(2)).toHaveText("3 Monate");
   await expect(deficit.locator(".energy-deficit-hero strong")).toHaveText("≈ 480 kcal");
   await expect(root.locator("[data-energy-fit]")).toHaveAttribute("data-energy-fit", "91d");
+  expect(periods.filter(Boolean)).toEqual([]);
   await root.getByRole("button", { name: "6 Monate", exact: true }).click();
   await expect(root.locator(".nutrition-week-chart-day")).toHaveCount(26);
   await expect(deficit.locator(".energy-deficit-hero strong")).toHaveText("≈ 410 kcal");
   await expect(root.locator("[data-energy-fit]")).toHaveAttribute("data-energy-fit", "182d");
+  expect(periods.filter(Boolean)).toEqual(["182d"]);
   await expect(root.locator('[data-verlauf-card="balance"] .verlauf-period')).toContainText(/\/182 Tage erfasst$/);
   await root.getByText("Tageswerte anzeigen", { exact: true }).click();
   await expect(root.locator("#nutritionWeekDays tr")).toHaveCount(182);

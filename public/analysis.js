@@ -1678,6 +1678,7 @@ let energyRequest = null;
 let energyGeneration = 0;
 // The diary day the read holds (#3395); a picked other day reads again.
 let energyReadDay = null;
+let energyReadPeriod = null;
 
 function energyDay() {
   return document.querySelector("#nutritionDate")?.value || "";
@@ -1690,11 +1691,14 @@ function resetEnergy() {
   energyGeneration += 1;
 }
 
-function loadEnergy(day = energyDay()) {
+// Only Verlauf's 6 Monate ask for `period=182d`, whose own read no other request pays for (#3711).
+function loadEnergy(day = energyDay(), period = null) {
   if (energyRequest) return;
   const generation = energyGeneration;
   energyReadDay = day;
-  energyRequest = api(day ? `/api/body/energy?date=${day}` : "/api/body/energy")
+  energyReadPeriod = period;
+  const query = [day && `date=${day}`, period && `period=${period}`].filter(Boolean).join("&");
+  energyRequest = api(query ? `/api/body/energy?${query}` : "/api/body/energy")
     .then((read) => { if (generation === energyGeneration) energyRead = read; })
     .catch(() => { if (generation === energyGeneration) energyRead = { failed: true }; })
     .finally(() => {
@@ -2115,13 +2119,20 @@ function energyFlaggedText(flagged) {
 // The read's loading or failure card, or null once it is there; the first call starts the read.
 // The diary asks for its day (#3395); Körper's fit does not depend on the day (`null`), so it takes
 // any read there is and never shows a diary day's note (Gitar #3423).
-function energyPending(day = null) {
+// While Verlauf shows 6 Monate, every read asks for them, so a diary day's read serves both and
+// neither resets the other's (Gitar, #3712).
+function longPeriodShown() {
+  return document.querySelector("#nutritionFitScale") && verlaufPeriod().key === "182d" ? "182d" : null;
+}
+
+function energyPending(day = null, period = null) {
   if (day && day > timezoneDateKey(state.data?.profile?.timezone, new Date())) {
     return h("section", "analysis-chart-card", h("p", "empty", "Tag liegt in der Zukunft"));
   }
   if (energyRead && day !== null && energyReadDay !== day) resetEnergy();
+  if (energyRead && period && energyReadPeriod !== period) resetEnergy();
   if (!energyRead) {
-    loadEnergy(day ?? "");
+    loadEnergy(day ?? "", period ?? longPeriodShown());
     return h("section", "analysis-chart-card", createLoadingState("Energieverbrauch wird geladen…"));
   }
   return energyRead.failed ? h("section", "analysis-chart-card", h("p", "empty", "Energieverbrauch konnte nicht geladen werden.")) : null;
@@ -2260,8 +2271,8 @@ function energyFitScale(read, key) {
 function renderNutritionFit() {
   const slot = document.querySelector("#nutritionFitScale");
   if (!slot) return;
-  const pending = energyPending(null);
   const key = verlaufPeriod().key;
+  const pending = energyPending(null, longPeriodShown());
   slot.replaceChildren(...(pending ? [pending] : [energyDeficitCard(energyRead, key), energyFitScale(energyRead, key)].filter(Boolean)));
   if (nutritionWeekShown) renderNutritionGoalParts(nutritionWeekShown);
 }
