@@ -1900,10 +1900,10 @@ button:focus-visible, a:focus-visible, summary:focus-visible {
 /* "Welche Quelle trifft dein Gewicht?" as one kcal scale (#3397, A2). */
 .energy-fit-verdict { margin: 4px 0 12px; font-size: .86rem; line-height: 1.4; }
 .energy-fit-verdict b { color: var(--accent); }
-.energy-fit-axis { position: relative; height: 18px; margin: 0 calc(5.5rem + 8px) 4px calc(min(30%, 112px) + 8px); color: var(--muted); font-size: .72rem; }
+.energy-fit-axis { position: relative; height: 18px; margin: 0 calc(6.6rem + 8px) 4px calc(min(30%, 112px) + 8px); color: var(--muted); font-size: .72rem; }
 .energy-fit-tick { position: absolute; transform: translateX(-50%); }
 .energy-fit-rows { display: grid; gap: 10px; margin: 0; padding: 0; list-style: none; }
-.energy-fit-row { display: grid; grid-template-columns: min(30%, 112px) minmax(0, 1fr) 5.5rem; gap: 8px; align-items: center; font-size: .8rem; }
+.energy-fit-row { display: grid; grid-template-columns: min(30%, 112px) minmax(0, 1fr) 6.6rem; gap: 8px; align-items: center; font-size: .8rem; }
 .energy-fit-name { min-width: 0; overflow-wrap: anywhere; }
 .energy-fit-name::before { content: ""; display: inline-block; width: 9px; height: 9px; margin-right: 6px; border-radius: 50%; background: var(--fit-color, var(--accent)); vertical-align: middle; }
 .energy-fit-lane { position: relative; height: 26px; }
@@ -1911,9 +1911,17 @@ button:focus-visible, a:focus-visible, summary:focus-visible {
 .energy-fit-band.is-faint { background: var(--accent-wash); }
 .energy-fit-own { position: absolute; top: 0; bottom: 0; width: 2px; margin-left: -1px; background: var(--accent); }
 .energy-fit-point { position: absolute; top: 7px; width: 12px; height: 12px; margin-left: -6px; border-radius: 50%; background: var(--fit-color); }
+.energy-fit-learned { position: absolute; top: 7px; width: 12px; height: 12px; margin-left: -6px; box-sizing: border-box; border: 2px solid var(--fit-color); border-radius: 50%; background: var(--surface); }
+.energy-fit-link { position: absolute; top: 12px; height: 2px; background: var(--fit-color); opacity: .45; }
+.energy-fit-legend { display: flex; flex-wrap: wrap; gap: 4px 16px; margin-top: 10px; color: var(--muted); font-size: .74rem; }
+.energy-fit-legend i { display: inline-block; width: 10px; height: 10px; box-sizing: border-box; margin-right: 5px; border-radius: 50%; vertical-align: -1px; }
+.energy-fit-legend .is-full { background: var(--muted); }
+.energy-fit-legend .is-ring { border: 2px solid var(--muted); }
 .energy-fit-value { color: var(--ink); font-weight: 700; font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
 /* An energy band as its low–high span under the estimate: small, muted, on one line (#3478). */
 .energy-span { display: block; color: var(--muted); font-size: .72rem; font-weight: 400; white-space: nowrap; }
+/* "mit Alltag ≈ …" wraps inside the value column (#3723). */
+.energy-fit-value [data-fit-learned] { white-space: normal; }
 .energy-fit [data-color="1"] { --fit-color: var(--chart-series-1); }
 .energy-fit [data-color="2"] { --fit-color: var(--chart-series-2); }
 .energy-fit [data-color="3"] { --fit-color: var(--chart-series-3); }

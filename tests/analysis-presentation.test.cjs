@@ -507,6 +507,10 @@ test("the usage card names each part, its note and what has no data yet, with th
   const reduced = usage({ ...cunningham, split: split(1839, 220, 350, 250, { learned_kcal: -106 }) });
   assert.equal(lines(reduced)[2], "Übriger Alltag−106");
   assert.deepEqual([...reduced.children[1].children].map((part) => part.dataset.part), ["resting", "neat", "sport", "tef"], "a reduction has no segment");
+  // #3723: until a qualified term is taken over, the row counts the provisional estimate and says so.
+  const provisional = usage({ ...cunningham, split: split(1839, 220, 350, 250, { learned_kcal: 172, learned_provisional: true }) });
+  assert.equal(lines(provisional)[2], "Übriger Alltag (vorläufig)+172");
+  assert.match(provisional.children[1].attributes["aria-label"], / · Übriger Alltag \(vorläufig\) \+172 · /);
   // #3530, #3719: Garmin's day summary ends at 12:18; the row shows the number only, the "i" names the time
   // and, behind a later session, also that.
   const info = (card) => textOf(card.children[0].children[2]);
@@ -554,14 +558,16 @@ test("the learned everyday line offers the check, then names its date (#3577)", 
   assert.deepEqual([...offered.children[1].children].map((button) => textOf(button)), ["Übernehmen", "Noch nicht"]);
   const checked = energyLearnedLine({ learned_everyday: { katch_mcardle: fit(480, 180), cunningham: null, checked: "2026-11-19" } });
   assert.equal(textOf(checked), "Übriger Alltag übernommen am am-2026-11-19aus 4 Fenstern, wird mit jedem Fenster genauer");
-  assert.equal(energyLearnedLine({ learned_everyday: { katch_mcardle: null, cunningham: null, checked: null } }), null);
+  // #3723: without any estimate the term is not learned yet and counts 0.
+  assert.equal(textOf(energyLearnedLine({ learned_everyday: { katch_mcardle: null, cunningham: null, checked: null } })), "Übriger Alltag noch nicht gelernt");
   // #3689: an overshooting formula's term is a reduction, signed.
   const reduced = energyLearnedLine({ learned_everyday: { katch_mcardle: fit(-106, 256), cunningham: null, checked: null } });
   assert.match(textOf(reduced.children[0]), /Katch-McArdle −106 kcal\/Tag \(-362–150\)$/);
-  // #3689: until it qualifies it is neither offered nor applied, also after an earlier check.
+  // #3689: until it qualifies it is not offered, also after an earlier check; the row already
+  // shows it as "vorläufig" (#3723), so the line has nothing to add.
   for (const checkedOn of [null, "2026-11-19"]) {
     const unready = energyLearnedLine({ learned_everyday: { katch_mcardle: fit(172, 439, false), cunningham: fit(90, 439, false), checked: checkedOn } });
-    assert.equal(textOf(unready), "Übriger Alltag noch nicht gelernt");
+    assert.equal(unready, null);
   }
 });
 
@@ -938,7 +944,7 @@ test("a body receipt names the Garmin outcome and puts the day back on undo (#34
   assert.equal(weightReceipt("2026-11-15", "gelöscht")("removed").text, "Gewicht gelöscht und in Garmin Connect entfernt.");
 });
 
-const FIT_FUNCTIONS = ["VERLAUF_PERIODS", "verlaufPeriod", "verlaufHead", "FIT_SOURCE_NAMES", "FIT_COLORS", "deficitDay", "energyKcalRange", "energyKcalSpan", "energyFitSources", "energyFitSigned", "energyFitSpan", "energyFitVerdict", "energyFitDomain", "energyFitMark", "energyFitLane", "energyFitAxis", "energyFitOwnRow", "energyFitSourceRow", "energyFitNoteText", "energyFitScale"];
+const FIT_FUNCTIONS = ["VERLAUF_PERIODS", "verlaufPeriod", "verlaufHead", "FIT_SOURCE_NAMES", "FIT_COLORS", "deficitDay", "energyKcalRange", "energyKcalSpan", "energyFitSources", "energyFitSigned", "energyFitSpan", "energyFitVerdict", "energyFitDomain", "energyFitMark", "energyFitLane", "energyFitAxis", "energyFitOwnRow", "energyFitLabel", "energyFitSourceRow", "energyFitLegend", "energyFitNoteText", "energyFitScale"];
 
 test("the fit scale names the own value, sorts the sources nearest first and signs their distance (#3397)", () => {
   const { h } = extractFunctions("components.js", ["h", "SVG_NS", "svgNode"], { document: fakeDocument() });
@@ -985,6 +991,23 @@ test("the fit scale names the own value, sorts the sources nearest first and sig
   const none = energyFitScale({ best: null, fit_scale: { "91d": { ...scale, own_kcal: null, own_band_kcal: null } } }, "91d");
   assert.equal(textOf(none.children[1]), "Für einen Vergleich fehlen noch genug vollständig erfasste Tage und Wiegungen.");
   assert.deepEqual(none.children[3].children.map((row) => textOf(row.children[2])), ["3157", "3768", "3930"]);
+  // #3723: a formula row with a learned everyday adds "mit Alltag ≈", ranked and signed on the raw
+  // total; the legend says "vorläufig" until every shown term qualifies.
+  const withLearned = (qualified) => ({ ...scale, sources: [{ source: "katch_mcardle", total_kcal: 3768, learned_total_kcal: 3948, learned_qualified: qualified }, ...scale.sources.slice(1)] });
+  const learned = energyFitScale({ best: null, outlined: "device", fit_scale: { "91d": withLearned(false) } }, "91d");
+  const learnedRows = learned.children[3].children;
+  assert.deepEqual(learnedRows.map((row) => row.dataset.fitSource), ["own", "device", "katch_mcardle", "cunningham"]);
+  assert.equal(textOf(learnedRows[2].children[2]), "3768 (+1042)mit Alltag ≈ 3948 (+1222)");
+  assert.equal(textOf(learned.children[4]), "Formel alleinmit Alltag (vorläufig)");
+  const qualified = energyFitScale({ best: null, outlined: "device", fit_scale: { "91d": withLearned(true) } }, "91d");
+  assert.equal(textOf(qualified.children[4]), "Formel alleinmit Alltag");
+  // A term of 0 keeps the line but draws no ring over the dot (review on #3723).
+  const marks = (row) => row.children[1].children.map((node) => node.className);
+  assert.deepEqual(marks(learnedRows[2]), ["energy-fit-band is-faint", "energy-fit-link", "energy-fit-point", "energy-fit-learned"]);
+  const zero = energyFitScale({ best: null, outlined: "device", fit_scale: { "91d": { ...scale, sources: [{ source: "katch_mcardle", total_kcal: 3768, learned_total_kcal: 3768, learned_qualified: false }, ...scale.sources.slice(1)] } } }, "91d");
+  const zeroRow = zero.children[3].children[2];
+  assert.deepEqual(marks(zeroRow), ["energy-fit-band is-faint", "energy-fit-point"]);
+  assert.equal(textOf(zeroRow.children[2]), "3768 (+1042)mit Alltag ≈ 3768 (+1042)");
 });
 
 test("the Verlauf sentence names the server's outlined source, in every period (#3613)", () => {

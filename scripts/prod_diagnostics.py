@@ -151,6 +151,8 @@ SECTION_FIELDS = {
         r"|today_resting_days_back"
         # Formulas whose learned everyday fit lies below 0 (#3577).
         r"|learned_everyday_negative"
+        # The formula rows' learned everyday per state, counts only (#3723).
+        r"|learned_everyday_state\.(none|provisional|qualified)"
         # The daily estimate's 12-week base, counts only (#3687).
         r"|base_windows|base_weight_sum_tenths|base_unstable"
         # Days of the last week whose Garmin summary names its wellness end (#3530).
