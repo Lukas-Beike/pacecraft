@@ -1,3 +1,4 @@
 {
-  "allowed": {"opus": "high", "fable": "high"}
+  "allowed": {"opus": "high", "fable": "high"},
+  "runtimeMode": "full-access"
 }

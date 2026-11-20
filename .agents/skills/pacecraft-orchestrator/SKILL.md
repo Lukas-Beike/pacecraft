@@ -21,7 +21,8 @@ athlete, English in the repository, every question through AskUserQuestion as
 [deliver-issue](../deliver-issue/SKILL.md#working-with-the-athlete) words it, UI
 questions only with rendered mockups), the hard limits from `AGENTS.md`, how
 to reach you (your thread id and its `environmentId` when the lane runs on
-another machine), and the closing sentence. Every lane claims an item before
+another machine; every ask as an `ORCHESTRATOR:` message and the first line
+of the lane's final message, #3753), and the closing sentence. Every lane claims an item before
 its first edit, as deliver-issue's parallel-work check says, and posts
 "claimed #N" to you; answer a second claim on the same issue with a stop to the
 later lane. Local commits show neither as a PR nor as a pushed branch (a lane
@@ -29,8 +30,9 @@ skipped #3342 while another held unpushed work for it; #3383). Launch every
 lane in your own runtime mode (`runtimeMode: full-access`), so its
 `t3_thread_send` reaches you: T3 refuses a send to a thread with a broader
 mode, and lane L21 in `auto` never reached the full-access V9 (#3668, the
-reverse of #2309). A lane that still cannot message your thread writes its
-reports in its own thread, prefixed `ORCHESTRATOR:`, and keeps building.
+reverse of #2309); the launch hook refuses any other explicit mode (#3753). A
+lane that still cannot message your thread writes its reports in its own
+thread, prefixed `ORCHESTRATOR:`, and keeps building.
 
 Extra scope for a lane gets its own issue with one owner and claim; never add
 "also check X" to a lane message while X is or may be assigned elsewhere (two
@@ -153,7 +155,11 @@ line (#3457). Each check: run [status-snapshot](../pacecraft-status-snapshot/SKI
 read every lane's thread, and check the `develop` push runs of new merges.
 Read idle lane threads too, newest `ORCHESTRATOR:` lines first: a lane that
 cannot message you reports only there, and a report found late left the lane
-idle (#3668).
+idle (#3668). Read each lane's newest item whole: `maxCharsPerItem` 20000,
+and while it shows `textTruncated`, read on with its `itemId` and
+`textOffset` set to `nextTextOffset`; a question past the cut left a lane
+idle for 45 minutes (#3753). Look in it for `ORCHESTRATOR:` lines; the
+thread-read hook names cut-off items and unanswered lines.
 Read each lane's runs too, not only its last message: `t3_thread_read` with
 `runLimit: 3`, judging the newest run that started (`startedAt` set; a queued
 run comes first). A lane with `pendingRequestCount` above 0 gets its request

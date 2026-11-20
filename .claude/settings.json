@@ -72,6 +72,19 @@
           }
         ]
       }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "mcp__t3-code__t3_thread_read",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python \"$env:CLAUDE_PROJECT_DIR/scripts/hooks/orchestrator_question_flag.py\"",
+            "shell": "powershell",
+            "timeout": 10
+          }
+        ]
+      }
     ]
   }
 }
