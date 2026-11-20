@@ -1,10 +1,11 @@
 """Report the develop push workflow runs for a merged PR's merge commit.
 
-    python scripts/develop_run_check.py (--pr N | --sha SHA)
+    python scripts/develop_run_check.py (--pr N | --sha SHA) [--wait MINUTES]
 
 One line per workflow. Exit 0: every run completed green; 1: a run failed, or
 the PR is not merged; 2: bad input or a failed gh call; 3: a run is pending or
-none has started yet. A run cancelled by a newer develop push follows the
+none has started yet. `--wait` polls every 30 s while the answer would be 3,
+up to that many minutes, and prints the last poll's lines (#3721). A run cancelled by a newer develop push follows the
 newest push run of its workflow, which contains the commit, and reports that
 run's state instead (#2956). Failed runs get hints: a newer push run of the same
 workflow supersedes it (never rerun a superseded run), and otherwise the
@@ -15,11 +16,15 @@ caller can judge a flake.
 from __future__ import annotations
 
 import argparse
+import contextlib
+import io
 import sys
+import time
 
 from gh_cli import CliError, gh_json, positive_int
 
 FIELDS = "databaseId,workflowName,status,conclusion,url,headSha,createdAt"
+POLL_SECONDS = 30
 GREEN = {"success", "skipped", "neutral"}
 
 
@@ -120,7 +125,22 @@ def main(argv: list[str] | None = None) -> int:
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument("--pr", type=positive_int)
     group.add_argument("--sha")
+    parser.add_argument("--wait", type=positive_int, metavar="MINUTES")
     args = parser.parse_args(argv)
+    deadline = time.monotonic() + 60 * (args.wait or 0)
+    while True:
+        # Only the last poll's lines are printed (#3721).
+        lines = io.StringIO()
+        with contextlib.redirect_stdout(lines):
+            code = check(args)
+        if code != 3 or time.monotonic() + POLL_SECONDS > deadline:
+            print(lines.getvalue(), end="")
+            return code
+        time.sleep(POLL_SECONDS)
+
+
+def check(args: argparse.Namespace) -> int:
+    """One look at the merge commit's push runs; the exit code of main."""
     try:
         sha = args.sha or merge_sha(args.pr)
         runs = latest_per_workflow(list_runs("--commit", sha))

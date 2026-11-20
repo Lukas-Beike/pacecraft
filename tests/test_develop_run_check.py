@@ -99,6 +99,45 @@ class DevelopRunCheckTests(unittest.TestCase):
         code, out, _, _ = check("--sha", SHA, runs=[])
         self.assertEqual((code, "no develop push runs" in out), (3, True))
 
+    def test_wait_polls_pending_runs_until_green_or_the_end(self):
+        # #3721: --wait polls while the answer would be 3, on a fake clock.
+        pending = [run_record(1, *CI, status="in_progress", conclusion=None)]
+        clock = [0.0]
+
+        def sleep(seconds):
+            clock[0] += seconds
+
+        def check_waiting(minutes, turn_green_after):
+            fake = FakeGh(runs=pending)
+            real = fake.__call__
+
+            def calls(argv, **kwargs):
+                if len(fake.calls) >= turn_green_after:
+                    fake.runs = [run_record(1, *CI)]
+                return real(argv, **kwargs)
+
+            out = io.StringIO()
+            with (
+                mock.patch.object(gh_cli.subprocess, "run", calls),
+                mock.patch.object(develop_run_check.time, "sleep", sleep),
+                mock.patch.object(
+                    develop_run_check.time, "monotonic", lambda: clock[0]
+                ),
+                redirect_stdout(out),
+            ):
+                code = develop_run_check.main(["--sha", SHA, "--wait", str(minutes)])
+            return code, out.getvalue(), fake
+
+        code, out, fake = check_waiting(5, turn_green_after=3)
+        self.assertEqual(code, 0)
+        self.assertEqual(out, "CI: green (success) https://example.test/runs/1\n")
+        self.assertEqual(len(fake.calls), 4)  # pending, pending, pending, green
+        clock[0] = 0.0
+        code, out, fake = check_waiting(2, turn_green_after=10**6)
+        self.assertEqual((code, out.count("CI: pending")), (3, 1))
+        self.assertLessEqual(clock[0], 120)
+        self.assertEqual(len(fake.calls), 5)  # polls at 0, 30, 60, 90, 120 s
+
     def test_failure_beats_pending(self):
         runs = [
             run_record(1, *CI, conclusion="failure"),
