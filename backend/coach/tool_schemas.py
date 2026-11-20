@@ -48,8 +48,8 @@ UNIT_NAME: dict[str, Any] = {
     "type": "string",
     "description": (
         "Short: type and core numbers, no filler adjectives, for example "
-        '"Schwellenlauf 3 × 9 min" or "Lockerer Lauf 40 min", not '
-        '"Kontrollierter Schwellenlauf – 3 x 9 Minuten". Rename existing units '
+        """"Schwellenlauf 3 × 9 min" or "Lockerer Lauf 40 min", not """
+        """"Kontrollierter Schwellenlauf – 3 x 9 Minuten". Rename existing units """
         "only when the athlete asks."
     ),
 }

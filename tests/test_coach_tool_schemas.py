@@ -144,18 +144,20 @@ class CoachToolSchemaTests(unittest.TestCase):
         self.assertIn("height_cm", fields)
         self.assertEqual(len(fields), change["maxItems"])
 
-    def test_descriptions_need_no_escaped_apostrophes(self):
-        # #3750: a description in a single-quoted literal broke the module on
-        # every plain apostrophe an edit added; long texts use triple quotes.
+    def test_schema_texts_take_an_apostrophe_without_escaping(self):
+        # #3750: a single-quoted literal (the formatter keeps one only where
+        # the text holds double quotes) broke the module on every apostrophe an
+        # edit added; such texts are triple-quoted. f-strings count too.
         source = (ROOT / "backend" / "coach" / "tool_schemas.py").read_text(
             encoding="utf-8"
         )
-        escaped = [
+        opening = {tokenize.STRING, getattr(tokenize, "FSTRING_START", tokenize.STRING)}
+        single = [
             token.start[0]
             for token in tokenize.generate_tokens(io.StringIO(source).readline)
-            if token.type == tokenize.STRING and "\\'" in token.string
+            if token.type in opening and token.string.lstrip("rRbBuUfF").startswith("'")
         ]
-        self.assertEqual([], escaped)
+        self.assertEqual([], single)
 
     def test_energy_read_names_the_formula_body_fat_source(self):
         # #3419: the formula rows' body fat comes from skinfolds, an entered
