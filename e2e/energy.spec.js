@@ -41,7 +41,8 @@ test("@responsive the diary shows Offene Kalorien and the outlined source's part
   await expect(card.locator(".energy-usage h3")).toHaveText("Verbrauch heute · bis jetzt");
   await expect(card.locator(".energy-split [data-part]")).toHaveCount(5);
   await expect(card.locator(".energy-parts li")).toHaveText([
-    "Ruhe1.700", "Schritte & Treppen250 (Stand 12:18)", "Übriger Alltag+220", "Sport350 (Kraft RPE 8, MET 5)", "Verdauung200 (geschätzt)", /^Tag gesamt2\.720/,
+    // #3719: Schritte & Treppen and Verdauung show the number only; the "i" names the time and the estimate.
+    "Ruhe1.700", "Schritte & Treppen250", "Übriger Alltag+220", "Sport350 (Kraft RPE 8, MET 5)", "Verdauung200", /^Tag gesamt2\.720/,
   ]);
   // #3478: the day total with its low–high span on one line below it, and no "±" left in the energy views.
   const shown = card.locator(".energy-total .energy-span [aria-hidden]");
@@ -71,6 +72,8 @@ test("@responsive the diary shows Offene Kalorien and the outlined source's part
   await expect(tooltip).toBeVisible();
   await expect(tooltip).toContainText("Datenbasis zu gering");
   await expect(tooltip).toContainText(`(${read.body.label}`);
+  await expect(tooltip).toContainText("Schritte & Treppen nach dem letzten Garmin-Abruf, Stand 12:18");
+  await expect(tooltip).toContainText("Verdauung geschätzt, wo Mahlzeiten keine Makros haben");
   await expect(page.locator("#nutritionExpenditure")).toHaveCount(0);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBeTruthy();
 });
@@ -206,8 +209,9 @@ test("@responsive the energy card follows the diary date: sport per day, today b
   await expect(card.locator(".energy-usage h3")).toHaveText("Verbrauch heute · bis jetzt");
   await expect(card.locator(".energy-parts [data-part='sport']")).toHaveText(/^Sport0/);
   await expect(card.locator(".energy-parts [data-part='tef']")).toHaveText("Verdauungnicht erfasst");
-  // #3530: Schritte & Treppen name where Garmin's day summary stands.
-  await expect(card.locator(".energy-parts [data-part='neat']")).toHaveText("Schritte & Treppen250 (Stand 12:18)");
+  // #3530, #3719: where Garmin's day summary stands is in the "i", not on the row.
+  await expect(card.locator(".energy-parts [data-part='neat']")).toHaveText("Schritte & Treppen250");
+  await expect(card.locator(".analysis-info-tooltip")).toContainText("Stand 12:18");
   const today = await page.locator("#nutritionDate").inputValue();
   await page.getByRole("button", { name: "Vorheriger Tag" }).click();
   await expect(page.locator("#nutritionDate")).not.toHaveValue(today);
