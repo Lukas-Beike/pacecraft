@@ -204,6 +204,26 @@ class BackfillFixture(unittest.TestCase):
         with manager.unit_of_work() as db:
             self.key_values.set(db, key, value)
 
+    @contextmanager
+    def bumped_health_version(self) -> Any:
+        """Complete the backfill, then re-project at the next Garmin health version.
+
+        A real bump raises both the replay version (``_MAPPER_VERSIONS``) and the
+        version the plans stamp on observations (``GARMIN_HEALTH_VERSION``); a
+        test that checks served observations bumps through this helper, since
+        patching the replay version alone leaves the observations at the old
+        version (#3742).
+        """
+        self.run_to_completion(self.make_backfill())
+        key = (GARMIN, HEALTH_KIND)
+        version = canonical_plans._MAPPER_VERSIONS[key] + 1
+        with (
+            patch.dict(canonical_plans._MAPPER_VERSIONS, {key: version}),
+            patch.object(canonical_plans, "GARMIN_HEALTH_VERSION", version),
+        ):
+            self.run_to_completion(self.make_backfill())
+            yield
+
     def set_garmin(self, manager: DatabaseManager, payload: Any) -> None:
         with manager.unit_of_work() as db:
             GarminSnapshotWriter(self.key_values, lambda: ZONE).write(db, payload)
@@ -1218,6 +1238,9 @@ class ReprojectionTests(BackfillFixture):
                     MetricKind.RACE_PREDICTION_HALF,
                     MetricKind.RACE_PREDICTION_FULL,
                     MetricKind.ENDURANCE_SCORE,
+                    # The range answer's day-keyed groupMap (#3744).
+                    MetricKind.ENDURANCE_SCORE_GROUP_AVERAGE,
+                    MetricKind.ENDURANCE_SCORE_GROUP_MAX,
                 )
             },
         )
@@ -2813,23 +2836,12 @@ class ReplacedSectionHistoryTests(BackfillFixture):
         )
         return sum(1 for row in rows if row["mapper_version"] == version)
 
-    @contextmanager
-    def bumped(self) -> Any:
-        """Complete the backfill, then re-project at the next health version."""
-        self.run_to_completion(self.make_backfill())
-        key = (GARMIN, HEALTH_KIND)
-        version = canonical_plans._MAPPER_VERSIONS[key] + 1
-        with (
-            patch.dict(canonical_plans._MAPPER_VERSIONS, {key: version}),
-            patch.object(canonical_plans, "GARMIN_HEALTH_VERSION", version),
-        ):
-            self.run_to_completion(self.make_backfill())
-            yield
-
     def test_earlier_days_stay_served_after_a_mapper_bump(self) -> None:
         # Sections stored one element per day; a single-record current answer
-        # keeps one element under a fixed key and is overwritten in place.
-        for section in ("endurance_score", "running_tolerance"):
+        # keeps one element under a fixed key and is overwritten in place, and a
+        # mapping answer (the endurance score's groupMap) keeps its days through
+        # the sync's merge (tests/test_garmin_history_refetch.py, #3744).
+        for section in ("running_tolerance",):
             with self.subTest(section=section):
                 self.manager = self.open_manager(f"{section}.db")
                 self.store(
@@ -2839,12 +2851,12 @@ class ReplacedSectionHistoryTests(BackfillFixture):
                     section, _dated(section, self.C), "2026-09-20T12:00:00+00:00"
                 )
 
-                with self.bumped():
+                with self.bumped_health_version():
                     self.assertGreater(self.served(self.A), 0)
                     self.assertGreater(self.served(self.C), 0)
 
     def test_a_day_the_answer_drops_inside_its_span_goes(self) -> None:
-        section = "endurance_score"
+        section = "running_tolerance"
         days = (self.A, self.B, self.C)
         self.store(
             section,
@@ -2857,15 +2869,15 @@ class ReplacedSectionHistoryTests(BackfillFixture):
             "2026-09-21T12:00:00+00:00",
         )
 
-        with self.bumped():
+        with self.bumped_health_version():
             self.assertEqual(self.served(self.B), 0)
             self.assertGreater(self.served(self.A), 0)
             self.assertGreater(self.served(self.C), 0)
 
     def test_an_empty_answer_changes_nothing(self) -> None:
-        section = "endurance_score"
+        section = "running_tolerance"
         self.store(section, _dated(section, self.A), "2026-09-01T12:00:00+00:00")
         self.store(section, [], "2026-09-20T12:00:00+00:00")
 
-        with self.bumped():
+        with self.bumped_health_version():
             self.assertGreater(self.served(self.A), 0)
