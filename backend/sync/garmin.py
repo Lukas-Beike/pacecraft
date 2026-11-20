@@ -44,6 +44,7 @@ from backend.providers.garmin_health_mapping import weigh_in_days
 from backend.providers.garmin_training_mapping import (
     DAILY_TRAINING_HISTORY,
     answer_day,
+    history_element,
 )
 from backend.sync.canonical_ingest import DeletionWindow, fetch_deletion_window
 from backend.sync.daily import DailySyncMarkerService
@@ -530,10 +531,7 @@ class GarminPayloadService:
         _mark_training_refetch(payload, provider_sync, previous)
         _merge_training_answers(payload, previous)
         _record_daily_training(payload)
-        provider_sync[DAILY_TRAINING_REFETCH_KEY] = _advance_daily_training(
-            _daily_training_marker(previous, today),
-            provider_sync.pop("daily_training_read", None),
-        )
+        _advance_daily_training(provider_sync, previous, today)
         # A run without the Body Battery reconciliation keeps the day it last ran.
         if (
             "body_battery_reconciled_on" not in provider_sync
@@ -696,10 +694,8 @@ def _record_daily_training(payload: dict[str, Any]) -> None:
         day = answer_day(base, answer)
         if day is not None:
             # One element per day: the current answer replaces a batch copy of it.
-            payload[history] = [{**answer, "calendarDate": day}] + [
-                row
-                for row in payload.get(history) or []
-                if row.get("calendarDate") != day
+            payload[history] = [history_element(answer, day)] + [
+                row for row in payload.get(history) or [] if record_day(row) != day
             ]
 
 
@@ -721,18 +717,31 @@ def _daily_training_marker(state: dict[str, Any], today: date) -> dict[str, Any]
     }
 
 
-def _advance_daily_training(marker: dict[str, Any], read: Any) -> dict[str, Any]:
-    """Move the cursor past the days this run read; below the floor it is finished."""
+def _advance_daily_training(
+    provider_sync: dict[str, Any], previous: dict[str, Any], today: date
+) -> None:
+    """Move the stored cursor past the days this run read; below the floor the
+    re-read is finished. The marker is stored once a batch read days, and then
+    carried by every run."""
+    read = provider_sync.pop("daily_training_read", None)
     days = read.get("days") if isinstance(read, dict) else None
-    if marker["state"] != "pending" or not days:
-        return marker
-    cursor = date.fromisoformat(min(days)) - timedelta(days=1)
-    finished = cursor < date.fromisoformat(marker["floor"])
-    return marker | {
-        "state": "finished" if finished else "pending",
-        "cursor": cursor.isoformat(),
-        "added_days": int(marker.get("added_days") or 0) + len(days),
-    }
+    previous_sync = previous.get("provider_sync")
+    stored = isinstance(previous_sync, dict) and DAILY_TRAINING_REFETCH_KEY in (
+        previous_sync
+    )
+    marker = _daily_training_marker(previous, today)
+    if marker["state"] == "pending" and days:
+        cursor = date.fromisoformat(min(days)) - timedelta(days=1)
+        marker |= {
+            "state": "finished"
+            if cursor < date.fromisoformat(marker["floor"])
+            else "pending",
+            "cursor": cursor.isoformat(),
+            "added_days": int(marker.get("added_days") or 0) + len(days),
+        }
+    elif not stored:
+        return
+    provider_sync[DAILY_TRAINING_REFETCH_KEY] = marker
 
 
 def summarize_history_refetch(db: Any) -> dict[str, Any]:

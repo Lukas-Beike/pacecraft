@@ -439,3 +439,8 @@ def answer_day(section: str, answer: object) -> str | None:
         (value.day for value in training_values(section, answer)), default=None
     )
     return None if newest is None else newest.isoformat()
+
+
+def history_element(answer: Mapping[str, Any], day: str) -> dict[str, Any]:
+    """A single-day answer as its day's history element (#3729)."""
+    return {**answer, "calendarDate": day}

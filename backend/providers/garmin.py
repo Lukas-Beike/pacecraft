@@ -27,6 +27,7 @@ from backend.providers.garmin_fields import (
     first_present,
     flatten_daily_summary,
 )
+from backend.providers.garmin_training_mapping import history_element
 from backend.providers.garmin_weight_walk import WALK_DATE_KEYS
 
 try:
@@ -1445,7 +1446,7 @@ def _read_daily_training_days(
         for key, answer in answers.items():
             if isinstance(answer, dict) and answer:
                 payload.setdefault(f"{key}_history", []).append(
-                    {**answer, "calendarDate": day}
+                    history_element(answer, day)
                 )
         done.append(day)
     return {"daily_training_read": {"days": done, "failed": failed}}
