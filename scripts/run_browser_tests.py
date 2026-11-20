@@ -1829,7 +1829,8 @@ def main(argv=None, pinned=None):
                         if current is False:
                             raise RunnerError(
                                 f"{args.image} does not match the application source of "
-                                f"this checkout; rebuild it with {rebuild}"
+                                f"this checkout; rebuild it with {rebuild} "
+                                "or pass --build"
                             )
                         # Children against an image of unknown state stayed "pending"
                         # without an error line (#3243): unknown stops the run as well.
