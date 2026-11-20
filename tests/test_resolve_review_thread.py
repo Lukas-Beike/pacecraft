@@ -467,6 +467,8 @@ class GuardHookTests(unittest.TestCase):
             "''eval ls ';' python scripts/r*.py 1 PRRT_abc",
             "python -m mypy --python-executable scripts/r*.py x.py",
             "ls\rpython scripts/r*.py 1 PRRT_abc",
+            "ls'/../x' scripts/r*.py 1 PRRT_abc",
+            'cat"" scripts/r*.py',
         ):
             with self.subTest(command):
                 self.assertEqual(self.decide(command), 2)
