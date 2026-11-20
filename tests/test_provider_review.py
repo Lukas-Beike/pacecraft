@@ -248,9 +248,8 @@ class ProviderReviewTests(unittest.TestCase):
         payloads = server.GARMIN_ASSEMBLY.payload_service()
         payloads.prepare_remote(first)
         history = first["performance_history"]
-        self.assertEqual(
-            [row["date"] for row in history], ["2026-08-30", "2026-08-31", "2026-09-01"]
-        )
+        # The weigh-in day gets no history entry: the weight is not copied (#3728).
+        self.assertEqual([row["date"] for row in history], ["2026-08-30", "2026-09-01"])
         save_garmin(first)
         for failed in (True, False):
             second = {
