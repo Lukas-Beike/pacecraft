@@ -469,10 +469,9 @@ calibrating window's `calibration_end` with `calibration_age_days`, and `wellnes
 null when it is finished or names no end): `as_of` (`HH:MM`, its wellness
 end) and `behind` (true when a session of the day ends after it, so the
 summary's steps and active kcal leave it out; every row's everyday is
-then not there yet, in `pending_parts`).
-
-`fit_scale` holds `28d` and `91d`; `period=182d` adds `182d` with the
-6 months' own read, which no other request pays for (#3711).
+then not there yet, in `pending_parts`). `fit_scale` holds `28d` and
+`91d`; `period=182d` adds `182d` with the 6 months' own read, which no
+other request pays for (#3711).
 
 Errors: 400 "Das Datum fehlt oder ist ungültig."; 400 "Der Tag liegt in
 der Zukunft.".
