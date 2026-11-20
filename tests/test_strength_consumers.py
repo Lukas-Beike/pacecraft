@@ -10,8 +10,10 @@ import sqlite3
 import unittest
 from datetime import UTC, date, datetime
 from typing import Any
+from unittest.mock import Mock, patch
 
 from backend.activities.calendar_projection import workout_compliance
+from backend.activities.strength_progress import strength_progress
 from backend.activities.strength_sets import (
     plan_comparison,
     select_strength_sets,
@@ -38,8 +40,9 @@ from backend.coach.activity_read_tools import _strength_plan
 from backend.db import row_factory
 from backend.db.activity_detail_store import StoredDetailSet, replace_detail_set
 from backend.db.schema import initialize_schema
+from backend.performance import report_service
+from backend.performance.report_service import TrainingReportReadService
 from backend.planning.leg_strength import classify, completed_unit
-from backend.planning.strength_progress import strength_progress
 
 STAMP = "2026-11-07T08:00:00+00:00"
 ACTIVE = StrengthSetType.ACTIVE
@@ -441,6 +444,138 @@ class ProgressionTests(unittest.TestCase):
                 ("2026-10-28", 77.5, 5, 3),
             ],
         )
+
+    def test_analyse_lifts_the_planning_caps(self) -> None:
+        # #3764: the planning brief keeps 6 sessions and 10 exercises; Analyse › Kraft
+        # lists every session and exercise of its window.
+        rows = [
+            {
+                "started_at_local": f"2026-10-{day:02d}T18:00:00",
+                "strength_sets": {
+                    "exercises": [
+                        {
+                            "name": f"EX_{index}",
+                            "sets": 3,
+                            "top_kg": 20.0 + day,
+                            "top_reps": 8,
+                        }
+                        for index in range(12)
+                    ]
+                },
+            }
+            for day in range(1, 9)
+        ]
+        capped = strength_progress(rows)
+        self.assertEqual(
+            (len(capped["exercises"]), len(capped["exercises"][0]["sessions"])), (10, 6)
+        )
+        full = strength_progress(rows, max_sessions=None, max_exercises=None)
+        self.assertEqual(
+            (len(full["exercises"]), len(full["exercises"][0]["sessions"])), (12, 8)
+        )
+        self.assertEqual(
+            full["exercises"][0]["sessions"][0],
+            {"date": "2026-10-08", "sets": 3, "top_kg": 28.0, "top_reps": 8},
+        )
+
+
+class StrengthAnalysisTests(unittest.TestCase):
+    """Analyse › Kraft (#3764): twelve calendar weeks from the stored sets only."""
+
+    def test_weeks_count_sessions_and_exercises_list_their_top_sets(self) -> None:
+        squat = {
+            "exercises": [
+                {
+                    "name": "BARBELL_BACK_SQUAT",
+                    "category": "SQUAT",
+                    "sets": 4,
+                    "top_kg": 80.0,
+                    "top_reps": 5,
+                }
+            ]
+        }
+        pull = {
+            "exercises": [
+                {
+                    "name": "PULL_UP",
+                    "category": "PULL_UP",
+                    "sets": 3,
+                    "top_kg": None,
+                    "top_reps": 8,
+                }
+            ]
+        }
+        summaries = [
+            {
+                "sport": "strength",
+                "started_at_local": "2026-11-19T18:00:00",
+                "strength_sets": squat,
+            },
+            {
+                "sport": "strength",
+                "started_at_local": "2026-11-17T18:00:00",
+                "strength_sets": pull,
+            },
+            # A strength session without stored sets still counts as a session.
+            {"sport": "strength", "started_at_local": "2026-11-10T18:00:00"},
+            {
+                "sport": "strength",
+                "started_at_local": "2026-09-01T18:00:00",
+                "strength_sets": squat,
+            },
+            # Outside the window, and another sport.
+            {
+                "sport": "strength",
+                "started_at_local": "2026-08-30T18:00:00",
+                "strength_sets": squat,
+            },
+            {"sport": "run", "started_at_local": "2026-11-18T07:00:00"},
+        ]
+        service = TrainingReportReadService(
+            read_plan=dict,
+            read_checkins=list,
+            read_feedback=lambda _ids: [],
+            today=lambda: date(2026, 11, 20),
+            canonical=Mock(),
+        )
+        with patch.object(
+            report_service,
+            "activity_summaries_with_sync_time",
+            return_value=(summaries, None),
+        ):
+            result = service.strength()
+        self.assertEqual((result["start"], result["end"]), ("2026-08-31", "2026-11-20"))
+        self.assertEqual(len(result["weeks"]), 12)
+        counts = {week["week_start"]: week["sessions"] for week in result["weeks"]}
+        self.assertEqual(
+            (
+                counts["2026-08-31"],
+                counts["2026-11-09"],
+                counts["2026-11-16"],
+                counts["2026-10-05"],
+            ),
+            (1, 1, 2, 0),
+        )
+        by_name = {item["exercise"]: item for item in result["exercises"]}
+        self.assertEqual(
+            [
+                (s["date"], s["top_kg"], s["top_reps"])
+                for s in by_name["BARBELL_BACK_SQUAT"]["sessions"]
+            ],
+            [("2026-11-19", 80.0, 5), ("2026-09-01", 80.0, 5)],
+        )
+        self.assertEqual(by_name["PULL_UP"]["sessions"][0]["top_kg"], None)
+        # Stored set values only: no strength load and no estimated 1RM.
+        self.assertEqual(
+            {
+                key
+                for item in result["exercises"]
+                for session in item["sessions"]
+                for key in session
+            },
+            {"date", "sets", "top_kg", "top_reps"},
+        )
+        self.assertEqual(set(result), {"start", "end", "source", "weeks", "exercises"})
 
 
 class SessionReadTests(unittest.TestCase):

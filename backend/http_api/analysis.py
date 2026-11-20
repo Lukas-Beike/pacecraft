@@ -45,6 +45,13 @@ class AnalysisRoutes:
             ),
             Route(
                 "GET",
+                "/api/analysis/strength",
+                Access.SESSION,
+                self._strength,
+                heavy=True,
+            ),
+            Route(
+                "GET",
                 "/api/analysis/week-review",
                 Access.SESSION,
                 self._week_review,
@@ -105,6 +112,22 @@ class AnalysisRoutes:
         week = given[0] if given else "current"
         reports = self._reports()
         handler.send_json(200, reports.report.week_review(week, reports.timezone()))
+
+    def _strength(self, handler: Any, _request: RouteRequest) -> None:
+        """Analyse › Kraft: top sets per exercise over twelve weeks (#3764).
+
+        Request: no query, no body.
+
+        Response: 200 with `start`, `end` (the twelve calendar weeks up to
+        today), `source`, `weeks` (`week_start`, `sessions`: completed strength
+        sessions, 0 without one) and `exercises` (`exercise`, `category`,
+        `leg`, `sessions` newest first with `date`, `sets`, `top_kg` and
+        `top_reps`; null where the stored set has none). From stored sets
+        only: no strength load, no estimated 1RM.
+
+        Errors: none beyond the common ones.
+        """
+        handler.send_json(200, self._reports().report.strength())
 
     def _running_dynamics(self, handler: Any, request: RouteRequest) -> None:
         """Running dynamics against the athlete's own runs at the same pace (#2829).

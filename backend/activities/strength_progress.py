@@ -22,8 +22,17 @@ SOURCE: Final = (
 )
 
 
-def strength_progress(completed: Iterable[Mapping[str, Any]]) -> dict[str, Any]:
-    """The last sessions per exercise, newest exercises first."""
+def strength_progress(
+    completed: Iterable[Mapping[str, Any]],
+    *,
+    max_sessions: int | None = MAX_SESSIONS,
+    max_exercises: int | None = MAX_EXERCISES,
+) -> dict[str, Any]:
+    """The last sessions per exercise, newest exercises first.
+
+    The planning brief keeps its caps; Analyse › Kraft (#3764) lifts them
+    (None) for its window.
+    """
     rows = sorted(
         (row for row in completed if isinstance(row.get("strength_sets"), Mapping)),
         key=lambda row: str(row.get("started_at_local") or ""),
@@ -46,7 +55,7 @@ def strength_progress(completed: Iterable[Mapping[str, Any]]) -> dict[str, Any]:
                 },
             )
             sessions = entry["sessions"]
-            if len(sessions) < MAX_SESSIONS and (
+            if (max_sessions is None or len(sessions) < max_sessions) and (
                 not sessions or sessions[-1]["date"] != day
             ):
                 sessions.append(
@@ -57,4 +66,4 @@ def strength_progress(completed: Iterable[Mapping[str, Any]]) -> dict[str, Any]:
                         "top_reps": exercise.get("top_reps"),
                     }
                 )
-    return {"source": SOURCE, "exercises": list(exercises.values())[:MAX_EXERCISES]}
+    return {"source": SOURCE, "exercises": list(exercises.values())[:max_exercises]}
