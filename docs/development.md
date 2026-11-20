@@ -39,8 +39,11 @@ that fails blocks the command, and each guard still runs on its own.
 `.claude/agents/` defines the `explorer` (Haiku, low effort, read-only),
 `implementer` (Sonnet, medium), and `reviewer` (Sonnet, medium, read-only)
 subagents. `scripts/hooks/thread_model_rule.py` blocks a T3 thread launch whose
-model or effort the rule in `scripts/hooks/thread-model-rule.json` does not
-allow; an effort above `high` is refused whatever the file says.
+model, effort or explicit runtime mode the rule in
+`scripts/hooks/thread-model-rule.json` does not allow; an effort above `high` is
+refused whatever the file says. After each `t3_thread_read`,
+`scripts/hooks/orchestrator_question_flag.py` notes a lane item that was cut
+off or an `ORCHESTRATOR:` question no later message answers.
 
 Sessions default to `medium` effort (`effortLevel` in `.claude/settings.json`);
 raise it with `/effort high` for tricky work. Agents may not go above `high`

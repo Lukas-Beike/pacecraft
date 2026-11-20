@@ -5,7 +5,10 @@ model name fragment (case-insensitive, e.g. "opus") to the highest effort
 allowed for it. Edit that file to change the rule; no code change is needed.
 Effort above "high" is never allowed without the athlete's explicit approval,
 whatever the file says. A launch that inherits the model or effort is checked
-only on the parts it sets. Exit code 2 blocks the call and returns the message.
+only on the parts it sets. "runtimeMode" names the only mode a launch may set
+explicitly, so a lane can message the full-access orchestrator (#3753); an
+omitted or "inherit" mode passes. Exit code 2 blocks the call and returns the
+message.
 """
 
 import json
@@ -18,13 +21,17 @@ CAP = "high"
 
 
 def load_rule(path=RULE_FILE):
-    rule = json.loads(path.read_text(encoding="utf-8"))["allowed"]
+    """Return ({model fragment: max effort}, the allowed explicit runtime mode)."""
+    data = json.loads(path.read_text(encoding="utf-8"))
+    rule, mode = data["allowed"], data["runtimeMode"]
     if not rule or not all(
         isinstance(model, str) and model and effort in EFFORTS
         for model, effort in rule.items()
     ):
         raise ValueError("allowed must map model fragments to an effort level")
-    return {model.lower(): effort for model, effort in rule.items()}
+    if not isinstance(mode, str) or not mode:
+        raise ValueError("runtimeMode must name a mode")
+    return {model.lower(): effort for model, effort in rule.items()}, mode
 
 
 def _effort(options):
@@ -45,17 +52,27 @@ def _effort(options):
 
 
 def requested(tool_name, tool_input):
-    """Yield (model, effort) for each thread the call would start."""
+    """Yield (model, effort, runtime mode) for each thread the call would start."""
     if tool_name.endswith("t3_thread_launch"):
         selection = tool_input.get("modelSelection") or {}
-        yield selection.get("model"), _effort(selection.get("options"))
+        yield (
+            selection.get("model"),
+            _effort(selection.get("options")),
+            tool_input.get("runtimeMode"),
+        )
     elif tool_name.endswith("create_threads"):
         for thread in tool_input.get("threads") or []:
             target = (thread or {}).get("target") or {}
-            yield target.get("model"), _effort(target.get("options"))
+            yield (
+                target.get("model"),
+                _effort(target.get("options")),
+                (thread or {}).get("runtimeMode"),
+            )
 
 
-def violation(model, effort, rule):
+def violation(model, effort, rule, mode=None, allowed_mode=None):
+    if mode not in (None, "inherit", allowed_mode):
+        return f"runtime mode {mode} is not allowed (use {allowed_mode} or inherit)"
     if effort is not None and (
         effort not in EFFORTS or EFFORTS.index(effort) > EFFORTS.index(CAP)
     ):
@@ -82,7 +99,7 @@ def main(rule_file=RULE_FILE):
         print("Blocked: unreadable hook input.", file=sys.stderr)
         return 2
     try:
-        rule = load_rule(rule_file)
+        rule, allowed_mode = load_rule(rule_file)
     except (OSError, ValueError, KeyError, TypeError, AttributeError) as error:
         print(
             f"Blocked: thread model rule {rule_file.name} is missing or invalid ({error}).",
@@ -90,10 +107,18 @@ def main(rule_file=RULE_FILE):
         )
         return 2
     text = ", ".join(f"{model} up to effort {effort}" for model, effort in rule.items())
-    for model, effort in requested(
-        str(payload.get("tool_name") or ""), payload.get("tool_input") or {}
-    ):
-        problem = violation(model, effort, rule)
+    text += f"; runtime mode {allowed_mode} or inherited"
+    try:
+        threads = list(
+            requested(
+                str(payload.get("tool_name") or ""), payload.get("tool_input") or {}
+            )
+        )
+    except AttributeError, TypeError:
+        print("Blocked: unreadable thread launch input.", file=sys.stderr)
+        return 2
+    for model, effort, mode in threads:
+        problem = violation(model, effort, rule, mode, allowed_mode)
         if problem:
             print(
                 f"Blocked: {problem}. New threads must use: {text} (scripts/hooks/{rule_file.name}).",
