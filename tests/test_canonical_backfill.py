@@ -175,6 +175,26 @@ class FakeDatabase:
         return nullcontext(Mock())
 
 
+@contextmanager
+def bumped_health_version(case: BackfillFixture) -> Any:
+    """Complete ``case``'s backfill, then re-project at the next Garmin health version.
+
+    A real bump raises both the replay version (``_MAPPER_VERSIONS``) and the
+    version the plans stamp on observations (``GARMIN_HEALTH_VERSION``); a test
+    that checks served observations bumps through this helper, since patching the
+    replay version alone leaves the observations at the old version (#3742).
+    """
+    case.run_to_completion(case.make_backfill())
+    key = (GARMIN, HEALTH_KIND)
+    version = canonical_plans._MAPPER_VERSIONS[key] + 1
+    with (
+        patch.dict(canonical_plans._MAPPER_VERSIONS, {key: version}),
+        patch.object(canonical_plans, "GARMIN_HEALTH_VERSION", version),
+    ):
+        case.run_to_completion(case.make_backfill())
+        yield
+
+
 class BackfillFixture(unittest.TestCase):
     def setUp(self) -> None:
         # Provider-neutral re-projection runs over Intervals.icu-shaped records too.
@@ -203,26 +223,6 @@ class BackfillFixture(unittest.TestCase):
     def set_kv(self, manager: DatabaseManager, key: str, value: str) -> None:
         with manager.unit_of_work() as db:
             self.key_values.set(db, key, value)
-
-    @contextmanager
-    def bumped_health_version(self) -> Any:
-        """Complete the backfill, then re-project at the next Garmin health version.
-
-        A real bump raises both the replay version (``_MAPPER_VERSIONS``) and the
-        version the plans stamp on observations (``GARMIN_HEALTH_VERSION``); a
-        test that checks served observations bumps through this helper, since
-        patching the replay version alone leaves the observations at the old
-        version (#3742).
-        """
-        self.run_to_completion(self.make_backfill())
-        key = (GARMIN, HEALTH_KIND)
-        version = canonical_plans._MAPPER_VERSIONS[key] + 1
-        with (
-            patch.dict(canonical_plans._MAPPER_VERSIONS, {key: version}),
-            patch.object(canonical_plans, "GARMIN_HEALTH_VERSION", version),
-        ):
-            self.run_to_completion(self.make_backfill())
-            yield
 
     def set_garmin(self, manager: DatabaseManager, payload: Any) -> None:
         with manager.unit_of_work() as db:
@@ -2837,23 +2837,17 @@ class ReplacedSectionHistoryTests(BackfillFixture):
         return sum(1 for row in rows if row["mapper_version"] == version)
 
     def test_earlier_days_stay_served_after_a_mapper_bump(self) -> None:
-        # Sections stored one element per day; a single-record current answer
+        # A section stored one element per day. A single-record current answer
         # keeps one element under a fixed key and is overwritten in place, and a
         # mapping answer (the endurance score's groupMap) keeps its days through
         # the sync's merge (tests/test_garmin_history_refetch.py, #3744).
-        for section in ("running_tolerance",):
-            with self.subTest(section=section):
-                self.manager = self.open_manager(f"{section}.db")
-                self.store(
-                    section, _dated(section, self.A), "2026-09-01T12:00:00+00:00"
-                )
-                self.store(
-                    section, _dated(section, self.C), "2026-09-20T12:00:00+00:00"
-                )
+        section = "running_tolerance"
+        self.store(section, _dated(section, self.A), "2026-09-01T12:00:00+00:00")
+        self.store(section, _dated(section, self.C), "2026-09-20T12:00:00+00:00")
 
-                with self.bumped_health_version():
-                    self.assertGreater(self.served(self.A), 0)
-                    self.assertGreater(self.served(self.C), 0)
+        with bumped_health_version(self):
+            self.assertGreater(self.served(self.A), 0)
+            self.assertGreater(self.served(self.C), 0)
 
     def test_a_day_the_answer_drops_inside_its_span_goes(self) -> None:
         section = "running_tolerance"
@@ -2869,7 +2863,7 @@ class ReplacedSectionHistoryTests(BackfillFixture):
             "2026-09-21T12:00:00+00:00",
         )
 
-        with self.bumped_health_version():
+        with bumped_health_version(self):
             self.assertEqual(self.served(self.B), 0)
             self.assertGreater(self.served(self.A), 0)
             self.assertGreater(self.served(self.C), 0)
@@ -2879,5 +2873,5 @@ class ReplacedSectionHistoryTests(BackfillFixture):
         self.store(section, _dated(section, self.A), "2026-09-01T12:00:00+00:00")
         self.store(section, [], "2026-09-20T12:00:00+00:00")
 
-        with self.bumped_health_version():
+        with bumped_health_version(self):
             self.assertGreater(self.served(self.A), 0)
