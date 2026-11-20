@@ -31,11 +31,14 @@ def run_record(
 
 
 class FakeGh:
-    def __init__(self, pr=MERGED, runs=(), jobs=()):
+    def __init__(self, pr=MERGED, runs=(), jobs=(), later=()):
         self.pr, self.runs, self.jobs = pr, list(runs), list(jobs)
+        # (call count, runs): from that call on, the run list is those runs.
+        self.later = dict(later)
         self.calls = []
 
     def __call__(self, argv, **_kwargs):
+        self.runs = self.later.get(len(self.calls), self.runs)
         self.calls.append(argv)
         if argv[1:3] == ["pr", "view"]:
             return subprocess.CompletedProcess(argv, 0, json.dumps(self.pr), "")
@@ -52,11 +55,18 @@ class FakeGh:
         return subprocess.CompletedProcess(argv, 1, "", "unexpected call")
 
 
-def check(*args, **fake_kwargs):
+def check(*args, clock=None, **fake_kwargs):
+    """Run main against a fake gh; ``clock`` (a one-item list of seconds) is
+    the fake time that --wait reads and sleeps on."""
     fake = FakeGh(**fake_kwargs)
+    clock = clock if clock is not None else [0.0]
     out, err = io.StringIO(), io.StringIO()
     with (
         mock.patch.object(gh_cli.subprocess, "run", fake),
+        mock.patch.object(develop_run_check, "monotonic", lambda: clock[0]),
+        mock.patch.object(
+            develop_run_check, "sleep", lambda s: clock.__setitem__(0, clock[0] + s)
+        ),
         redirect_stdout(out),
         redirect_stderr(err),
     ):
@@ -100,43 +110,34 @@ class DevelopRunCheckTests(unittest.TestCase):
         self.assertEqual((code, "no develop push runs" in out), (3, True))
 
     def test_wait_polls_pending_runs_until_green_or_the_end(self):
-        # #3721: --wait polls while the answer would be 3, on a fake clock.
+        # #3721: --wait polls while the answer would be 3, on a fake clock;
+        # --pr resolves the merge commit once.
         pending = [run_record(1, *CI, status="in_progress", conclusion=None)]
-        clock = [0.0]
-
-        def sleep(seconds):
-            clock[0] += seconds
-
-        def check_waiting(minutes, turn_green_after):
-            fake = FakeGh(runs=pending)
-            real = fake.__call__
-
-            def calls(argv, **kwargs):
-                if len(fake.calls) >= turn_green_after:
-                    fake.runs = [run_record(1, *CI)]
-                return real(argv, **kwargs)
-
-            out = io.StringIO()
-            with (
-                mock.patch.object(gh_cli.subprocess, "run", calls),
-                mock.patch.object(develop_run_check.time, "sleep", sleep),
-                mock.patch.object(
-                    develop_run_check.time, "monotonic", lambda: clock[0]
-                ),
-                redirect_stdout(out),
-            ):
-                code = develop_run_check.main(["--sha", SHA, "--wait", str(minutes)])
-            return code, out.getvalue(), fake
-
-        code, out, fake = check_waiting(5, turn_green_after=3)
+        green = [run_record(1, *CI)]
+        failed = [run_record(1, *CI, conclusion="failure")]
+        code, out, _, fake = check(
+            "--pr", "5", "--wait", "5", runs=pending, later=[(4, green)]
+        )
         self.assertEqual(code, 0)
         self.assertEqual(out, "CI: green (success) https://example.test/runs/1\n")
-        self.assertEqual(len(fake.calls), 4)  # pending, pending, pending, green
-        clock[0] = 0.0
-        code, out, fake = check_waiting(2, turn_green_after=10**6)
+        self.assertEqual(
+            [c[1:3] for c in fake.calls], [["pr", "view"]] + [["run", "list"]] * 4
+        )
+        clock = [0.0]
+        code, out, _, fake = check(
+            "--sha", SHA, "--wait", "2", clock=clock, runs=pending
+        )
         self.assertEqual((code, out.count("CI: pending")), (3, 1))
-        self.assertLessEqual(clock[0], 120)
-        self.assertEqual(len(fake.calls), 5)  # polls at 0, 30, 60, 90, 120 s
+        self.assertIn("still pending after 2 min", out)
+        self.assertEqual((len(fake.calls), clock[0]), (5, 120))  # 0, 30, ..., 120 s
+        # A run that fails while waiting ends the wait at once.
+        code, out, _, fake = check(
+            "--sha", SHA, "--wait", "5", runs=pending, later=[(1, failed)]
+        )
+        self.assertEqual((code, "CI: failed" in out), (1, True))
+        self.assertNotIn("still pending", out)
+        # Without --wait one pending look is the answer.
+        self.assertEqual(check("--sha", SHA, runs=pending)[3].calls.__len__(), 1)
 
     def test_failure_beats_pending(self):
         runs = [

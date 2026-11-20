@@ -4,10 +4,11 @@
 
 One line per workflow. Exit 0: every run completed green; 1: a run failed, or
 the PR is not merged; 2: bad input or a failed gh call; 3: a run is pending or
-none has started yet. `--wait` polls every 30 s while the answer would be 3,
-up to that many minutes, and prints the last poll's lines (#3721). A run cancelled by a newer develop push follows the
-newest push run of its workflow, which contains the commit, and reports that
-run's state instead (#2956). Failed runs get hints: a newer push run of the same
+none has started yet. `--wait` polls every 30 s while the answer would be 3
+(or a gh call failed), up to that many minutes, prints the last poll's lines
+and, when time ran out, a "still pending" line (#3721). A run cancelled by a
+newer develop push follows the newest push run of its workflow, which contains
+the commit, and reports that run's state instead (#2956). Failed runs get hints: a newer push run of the same
 workflow supersedes it (never rerun a superseded run), and otherwise the
 previous push run's conclusion and the failed job names are listed so the
 caller can judge a flake.
@@ -19,7 +20,7 @@ import argparse
 import contextlib
 import io
 import sys
-import time
+from time import monotonic, sleep
 
 from gh_cli import CliError, gh_json, positive_int
 
@@ -127,22 +128,33 @@ def main(argv: list[str] | None = None) -> int:
     group.add_argument("--sha")
     parser.add_argument("--wait", type=positive_int, metavar="MINUTES")
     args = parser.parse_args(argv)
-    deadline = time.monotonic() + 60 * (args.wait or 0)
+    try:
+        sha = args.sha or merge_sha(args.pr)
+    except NotMerged as exc:
+        print(f"refused: {exc}")
+        return 1
+    except (CliError, KeyError, TypeError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    deadline = monotonic() + 60 * (args.wait or 0)
     while True:
         # Only the last poll's lines are printed (#3721).
         lines = io.StringIO()
         with contextlib.redirect_stdout(lines):
-            code = check(args)
-        if code != 3 or time.monotonic() + POLL_SECONDS > deadline:
+            code = check(sha)
+        # While waiting, a failed gh call counts as one more pending poll.
+        again = code == 3 or (code == 2 and args.wait is not None)
+        if not again or monotonic() + POLL_SECONDS > deadline:
             print(lines.getvalue(), end="")
+            if again and args.wait:
+                print(f"still pending after {args.wait} min; check again")
             return code
-        time.sleep(POLL_SECONDS)
+        sleep(POLL_SECONDS)
 
 
-def check(args: argparse.Namespace) -> int:
-    """One look at the merge commit's push runs; the exit code of main."""
+def check(sha: str) -> int:
+    """One look at the commit's push runs; the exit code of main."""
     try:
-        sha = args.sha or merge_sha(args.pr)
         runs = latest_per_workflow(list_runs("--commit", sha))
         if not runs:
             print(f"pending: no develop push runs for {sha[:8]} yet")
@@ -154,9 +166,6 @@ def check(args: argparse.Namespace) -> int:
         if "failed" in states:
             return 1
         return 3 if "pending" in states else 0
-    except NotMerged as exc:
-        print(f"refused: {exc}")
-        return 1
     except (CliError, KeyError, TypeError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
