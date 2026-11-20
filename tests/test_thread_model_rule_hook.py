@@ -27,7 +27,7 @@ def run_hook(payload, rule=None):
         )
 
 
-def launch(model=None, effort=None):
+def launch(model=None, effort=None, mode=None):
     selection = {}
     if model is not None:
         selection["model"] = model
@@ -36,17 +36,26 @@ def launch(model=None, effort=None):
     tool_input = (
         {"title": "t", "modelSelection": selection} if selection else {"title": "t"}
     )
+    if mode is not None:
+        tool_input["runtimeMode"] = mode
     return {"tool_name": "mcp__t3-code__t3_thread_launch", "tool_input": tool_input}
 
 
-OPUS_LOW = json.dumps({"allowed": {"opus": "low"}})
+def rule_json(allowed, mode="full-access"):
+    return json.dumps({"allowed": allowed, "runtimeMode": mode})
+
+
+OPUS_LOW = rule_json({"opus": "low"})
 
 
 class ThreadModelRuleHookTests(unittest.TestCase):
     def test_repository_rule_is_opus_and_fable_up_to_high(self):
         self.assertEqual(
             json.loads(RULE.read_text(encoding="utf-8")),
-            {"allowed": {"opus": "high", "fable": "high"}},
+            {
+                "allowed": {"opus": "high", "fable": "high"},
+                "runtimeMode": "full-access",
+            },
         )
         rule = RULE.read_text(encoding="utf-8")
         for payload, code in (
@@ -91,8 +100,26 @@ class ThreadModelRuleHookTests(unittest.TestCase):
         }
         self.assertEqual(run_hook(payload, OPUS_LOW).returncode, 2)
 
+    def test_malformed_launch_input_fails_closed(self):
+        for tool_input in ({"threads": ["x"]}, {"threads": [{"target": "x"}]}):
+            with self.subTest(tool_input=tool_input):
+                payload = {
+                    "tool_name": "mcp__t3-code__create_threads",
+                    "tool_input": tool_input,
+                }
+                result = run_hook(payload, OPUS_LOW)
+                self.assertEqual(result.returncode, 2)
+                self.assertIn("unreadable thread launch input", result.stderr)
+
     def test_missing_or_invalid_rule_fails_closed(self):
-        for rule in (None, "{}", '{"allowed": {"opus": "huge"}}', "not json"):
+        for rule in (
+            None,
+            "{}",
+            rule_json({"opus": "huge"}),
+            json.dumps({"allowed": {"opus": "low"}}),
+            rule_json({"opus": "low"}, ""),
+            "not json",
+        ):
             with self.subTest(rule=rule):
                 result = run_hook(launch("claude-opus-5-5", "low"), rule)
                 self.assertEqual(result.returncode, 2)
@@ -101,11 +128,11 @@ class ThreadModelRuleHookTests(unittest.TestCase):
     def test_editing_the_rule_changes_the_result(self):
         payload = launch("claude-sonnet-5-5", "high")
         self.assertEqual(run_hook(payload, OPUS_LOW).returncode, 2)
-        rule = json.dumps({"allowed": {"sonnet": "high"}})
+        rule = rule_json({"sonnet": "high"})
         self.assertEqual(run_hook(payload, rule).returncode, 0)
 
     def test_effort_without_a_model_must_fit_the_strictest_limit(self):
-        rule = json.dumps({"allowed": {"opus": "low", "sonnet": "high"}})
+        rule = rule_json({"opus": "low", "sonnet": "high"})
         self.assertEqual(run_hook(launch(effort="high"), rule).returncode, 2)
         self.assertEqual(run_hook(launch(effort="low"), rule).returncode, 0)
         self.assertEqual(
@@ -113,10 +140,35 @@ class ThreadModelRuleHookTests(unittest.TestCase):
         )
 
     def test_effort_above_high_stays_blocked_whatever_the_rule(self):
-        rule = json.dumps({"allowed": {"opus": "max"}})
+        rule = rule_json({"opus": "max"})
         result = run_hook(launch("claude-opus-5-5", "xhigh"), rule)
         self.assertEqual(result.returncode, 2)
         self.assertIn("above the high cap", result.stderr)
+
+    def test_explicit_runtime_mode_must_be_the_configured_one(self):
+        def created(*modes):
+            threads = [
+                {"title": "t"} if m is None else {"runtimeMode": m} for m in modes
+            ]
+            return {
+                "tool_name": "mcp__t3-code__create_threads",
+                "tool_input": {"threads": threads},
+            }
+
+        for payload, code in (
+            (launch("claude-opus-5-5", "low", "full-access"), 0),
+            (launch("claude-opus-5-5", "low"), 0),
+            (launch(mode="auto"), 2),
+            (launch(mode="approval-required"), 2),
+            (launch(mode="auto-accept-edits"), 2),
+            (created(None, "inherit", "full-access"), 0),
+            (created("full-access", "auto"), 2),
+        ):
+            with self.subTest(payload=payload):
+                result = run_hook(payload, OPUS_LOW)
+                self.assertEqual(result.returncode, code)
+                if code:
+                    self.assertIn("runtime mode", result.stderr)
 
 
 if __name__ == "__main__":
