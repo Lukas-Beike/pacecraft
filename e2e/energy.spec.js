@@ -336,19 +336,13 @@ for (const theme of ["light", "dark"]) {
     await page.goto("/#nutrition/diary");
     await expect(page.locator("#nutritionEnergy .energy-source")).toHaveText(/^Quelle: (?!Katch|Cunningham).+/);
     await expect(page.locator("#nutritionEnergy")).not.toContainText("passt am besten");
-    // The diary renders sections above the card after it, which moves it; a capture taken while it
-    // moves shows what was at its old place, without an error to retry on (#3736). So the capture
-    // waits until the card's box holds still, then takes it once.
+    // The day's totals render after the card and push it down; a capture taken before shows the
+    // macro cards in its place, without an error to retry on (#3736). So it waits for the day to
+    // render, and retries only a capture whose node a late energy read replaced.
     if (theme === "light") {
-      const card = page.locator("#nutritionEnergy [data-energy]");
-      await card.scrollIntoViewIfNeeded();
-      await expect.poll(async () => {
-        const before = await card.boundingBox();
-        await page.waitForTimeout(300);
-        const after = await card.boundingBox();
-        return Boolean(before && after) && ["x", "y", "width", "height"].every((key) => before[key] === after[key]);
-      }).toBe(true);
-      await card.screenshot({ path: test.info().outputPath("Energieverbrauch.png") });
+      await expect(page.locator("#nutritionStatus")).not.toHaveText("Ernährung wird geladen…");
+      await expect(page.locator("#nutritionTotals")).not.toBeEmpty();
+      await expect(() => page.locator("#nutritionEnergy [data-energy]").screenshot({ path: test.info().outputPath("Energieverbrauch.png"), timeout: 5_000 })).toPass();
     }
   });
 }
