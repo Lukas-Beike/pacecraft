@@ -8,6 +8,7 @@ import functools
 import json
 import sys
 import unittest
+from datetime import timedelta
 from pathlib import Path
 from unittest.mock import Mock, patch
 
@@ -2010,6 +2011,39 @@ class CoachToolCoverageTests(DialogueHarness, unittest.TestCase):
         )
         day = self.run_tool("read_nutrition", {"date": "2026-09-07"})
         self.assertEqual(day["entry_count"], 1)
+
+    def test_the_energy_read_takes_the_asked_day(self):
+        # #3755: the read takes the asked day, as the diary's GET does; without
+        # one it stays yesterday, and a future day is refused like the route.
+        today = server.ATHLETE_CLOCK.now().date()
+        energy = self.run_tool("read_nutrition", {"energy": True})["energy"]
+        self.assertEqual((today - timedelta(days=1)).isoformat(), energy["day"])
+        energy_today = self.run_tool(
+            "read_nutrition", {"energy": True, "date": today.isoformat()}
+        )["energy"]
+        self.assertEqual(
+            (today.isoformat(), True),
+            (energy_today["day"], energy_today["day_partial"]),
+        )
+        diary = server.APP.nutrition.energy_view(today.isoformat())
+        self.assertEqual(diary["goal"], energy_today["goal"])
+        self.assertEqual(diary["rows"], energy_today["rows"])
+        tomorrow = (today + timedelta(days=1)).isoformat()
+        future, _ = self.turn(
+            message_for("read_nutrition"),
+            [
+                lambda _: self.call(
+                    "read_nutrition", {"energy": True, "date": tomorrow}
+                ),
+                {"output_text": "Synthetischer Ergebnistext."},
+            ],
+        )
+        self.assertEqual("failed", future["status"])
+        self.assertEqual(
+            "Der Tag liegt in der Zukunft.",
+            future["command_receipts"][0]["result"].get("error"),
+            future["command_receipts"][0]["result"],
+        )
 
     @covers(
         "save_nutrition_template:success",

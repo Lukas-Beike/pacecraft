@@ -114,7 +114,7 @@ class CoachReadToolService:
         nutrition_diary: Callable[[], NutritionDiaryService] | None = None,
         nutrition_meal_library: Callable[[], NutritionMealLibraryService] | None = None,
         context_service: Callable[[], Any] | None = None,
-        energy_view: Callable[[], dict[str, Any]] | None = None,
+        energy_view: Callable[[str | None], dict[str, Any]] | None = None,
     ) -> None:
         self._energy_view = energy_view
         self._profile_service = profile_service
@@ -417,7 +417,9 @@ class CoachReadToolService:
 
     def _read_nutrition(self, arguments: dict[str, Any]) -> dict[str, Any]:
         if arguments.get("energy") is True and self._energy_view is not None:
-            return {"ok": True, "energy": self._energy_view()}
+            # The view of the asked day, as the diary reads it (#3755); without
+            # a date, yesterday.
+            return {"ok": True, "energy": self._energy_view(arguments.get("date"))}
         if not self._nutrition_diary or not self._nutrition_meal_library:
             return {"ok": False, "error": "NutritionService ist nicht verfügbar."}
         service = self._nutrition_diary()
