@@ -197,10 +197,11 @@ class GarminSnapshotWriter:
             ACTIVITIES_SECTION,
             DAILY_SUMMARY_SECTION,
         ):
+            keep = _identifiers(section, value)
             garmin_store.prune_section(
                 db,
                 section,
-                _identifiers(section, value),
+                keep,
                 start=window[0].isoformat(),
                 end=window[1].isoformat(),
                 undated=section in WEIGHT_SECTIONS,
@@ -209,7 +210,7 @@ class GarminSnapshotWriter:
                 garmin_store.retire_window_orphans(
                     db,
                     section,
-                    _identifiers(section, value),
+                    keep,
                     window[0].isoformat(),
                     window[1].isoformat(),
                 )

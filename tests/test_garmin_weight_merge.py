@@ -169,6 +169,12 @@ class WeightMergeTests(unittest.TestCase):
         self.assertEqual({row["summaryDate"] for row in summaries}, {OLD, LATEST})
         self.assertEqual(self.weight_days(), [OLD, LATEST])
 
+    def test_a_kept_weigh_in_moves_to_the_changed_envelope(self) -> None:
+        self.sync(_Client({RECENT: 2}))
+        self.sync(_Client({RECENT: 2, LATEST: 3}))
+
+        self.assertEqual(self.weight_days(), [RECENT, LATEST])
+
     def test_an_orphan_of_an_earlier_envelope_heals_on_the_next_sync(self) -> None:
         self.sync(_Client({OLD: 1, RECENT: 2}), WEIGHT_REFETCH_DAYS)
         self.sync(_Client({OLD: 1, LATEST: 3}), without_window=True)
