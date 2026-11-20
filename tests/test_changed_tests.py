@@ -40,6 +40,8 @@ FILES = {
     "tests/test_os_walk.py": "import os\nNAME = 'vendor'\nFILES = os.walk(NAME)\n",
     "tests/test_bare_listdir.py": "from os import listdir\n"
     "NAME = 'vendor'\nFILES = listdir(NAME)\n",
+    "tests/test_aliased_glob.py": "from glob import glob as g\n"
+    "NAME = 'vendor'\nFILES = g(NAME + '/*')\n",
     "tests/test_docs.py": "DOC = 'README.md'\n",
     "tests/test_tool.py": "from tools import helper\n",
     "tests/test_lazy.py": "def load():\n    from backend.app import old\n",
@@ -167,6 +169,7 @@ class SelectModulesTests(unittest.TestCase):
         vendor = self.select("vendor/notes.txt")
         self.assertIn("test_os_walk", vendor)
         self.assertIn("test_bare_listdir", vendor)
+        self.assertIn("test_aliased_glob", vendor)
         self.assertNotIn("test_named_walk", vendor)
 
     def test_changed_test_selects_itself_and_unrelated_paths_only_repo_checks(self):

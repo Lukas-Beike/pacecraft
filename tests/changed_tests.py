@@ -155,16 +155,16 @@ def _scans(tree: ast.AST) -> bool:
     calls = [node.func for node in ast.walk(tree) if isinstance(node, ast.Call)]
     if any(_attribute_scan(func) for func in calls):
         return True
+    # The local names of scanning functions imported from those modules, so an
+    # alias (``from glob import glob as g``) counts too.
     imported = {
         alias.asname or alias.name
         for node in ast.walk(tree)
         if isinstance(node, ast.ImportFrom) and node.module in SCAN_MODULES
         for alias in node.names
+        if alias.name in SCAN_CALLS
     }
-    return any(
-        isinstance(func, ast.Name) and func.id in SCAN_CALLS & imported
-        for func in calls
-    )
+    return any(isinstance(func, ast.Name) and func.id in imported for func in calls)
 
 
 def _attribute_scan(func: ast.expr) -> bool:
