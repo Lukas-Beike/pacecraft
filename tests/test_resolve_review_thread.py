@@ -423,6 +423,33 @@ class GuardHookTests(unittest.TestCase):
             "ln -s scripts abc; python abc*/r*.py",
             "cmd /c mklink /j abc scripts && python abc*/r*.py",
             "ln -s scripts abc\npython abc*/r*.py",
+            # Bypass reviews of #3759: a glob still counts wherever a program
+            # other than a known inert one, or a construct, can run a word.
+            "cat scripts/r*.py | python - 2671 PRRT_a1",
+            "echo 'python scripts/r*.py 2671 PRRT_a1' | bash",
+            "cp scripts/r*.py x.py && python x.py 2671 PRRT_a1",
+            "env -u FOO python scripts/r*.py 2671 PRRT_a1",
+            "timeout -s KILL 60 python scripts/r*.py 2671 PRRT_a1",
+            "/usr/bin/env python scripts/r*.py 2671 PRRT_a1",
+            "sudo -u root python scripts/r*.py 2671 PRRT_a1",
+            "uv run --with pkg python scripts/r*.py 2671 PRRT_a1",
+            "pypy3 scripts/r*.py 2671 PRRT_a1",
+            "python3.14t scripts/r*.py 2671 PRRT_a1",
+            "coverage run scripts/r*.py 2671 PRRT_a1",
+            "poetry run python scripts/r*.py 2671 PRRT_a1",
+            "git bisect run python scripts/r*.py 2671 PRRT_a1",
+            "git rebase --exec 'python scripts/r*.py 1 x' HEAD~1",
+            "git -c alias.x='!python scripts/r*.py' x",
+            "GIT_SSH_COMMAND='python scripts/r*.py' git fetch",
+            "python scripts/r*.py 2671 PRRT_a1 -m mypy",
+            "if true; then python scripts/r*.py 2671 PRRT_a1; fi",
+            "! python scripts/r*.py 2671 PRRT_a1",
+            "<# x #> python scripts/r*.py 2671 PRRT_a1",
+            'echo "C:\\"; python scripts/r*.py 2671 PRRT_a1; echo "D:\\"',
+            "awk 'BEGIN{system(\"python scripts/r*.py 1 x\")}'",
+            "$g = 'python'; & $g scripts/r*.py 2671 PRRT_a1",
+            "$cat scripts/r*.py",
+            "python $'scripts/resolve_review_\\x54hread.py' 2671 PRRT_a1",
         ):
             with self.subTest(command):
                 self.assertEqual(self.decide(command), 2)
@@ -490,12 +517,19 @@ class GuardHookTests(unittest.TestCase):
         for command in (
             "gh api graphql -f query=\"mutation{resolveReview'Thread'(input:{})}\"",
             "gh api GraphQL -F query=@q.txt -f x=RESOLVEREVIEWTHREAD",
+            't=Thread; gh api graphql -f query="mutation{resolveReview$t(input:{})}"',
+            'curl https://api.github.com/graphql -d \'{"query":"resolveReviewThread"}\'',
+            "gh api graphql -f query='mutation{resolveReview\\u0054hread(input:{})}'",
         ):
             with self.subTest(command):
                 self.assertEqual(self.decide(command), 2)
-        self.assertEqual(
-            self.decide("gh api graphql -f query='{ viewer { login } }'"), 0
-        )
+        for command in (
+            "gh api graphql -f query='{ viewer { login } }'",
+            "git commit -m 'docs: graphql resolveReviewThread note'",
+            "rg -n 'graphql.*resolveReviewThread' docs",
+        ):
+            with self.subTest(command):
+                self.assertEqual(self.decide(command), 0)
 
     def test_the_run_is_compared_with_develop_by_content(self):
         calls = []

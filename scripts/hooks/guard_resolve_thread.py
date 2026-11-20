@@ -9,8 +9,9 @@ entry in `scripts/` (tracked, ignored or untracked) can shadow a module the run
 imports (#3072). Other scripts, the hooks and non-Python files may differ.
 The name matches in any case, through quotes, escapes, globs and short names,
 and input without a command string blocks (#3367). Globs, variables and short
-names count only in words the shell runs, unless the command can run an
-argument (#3759); a direct GraphQL resolve mutation blocks. Exit code 2 blocks the call;
+names are not read when every simple command starts with a program that runs
+no argument (`git`, `ls`, `gh`, `python -m mypy`, ...; #3759), and a direct
+GraphQL resolve mutation blocks. Exit code 2 blocks the call;
 the message names the word that matched, as the hook read it (#3459).
 """
 
@@ -312,7 +313,9 @@ def matching_word(command: str) -> str | None:
     order, whatever stands between them, count as the name."""
     raw = unicodedata.normalize("NFKC", command).casefold()
     text = unescaped(raw)
-    if any(NAME in unquoted(form) for form in (raw, text)):
+    # An escape can also decode to a capital letter (#3759 review).
+    decoded = unescaped(unicodedata.normalize("NFKC", command)).casefold()
+    if any(NAME in unquoted(form) for form in (raw, text, decoded)):
         return NAME
     # ripgrep's `--pre` and `--hostname-bin` run a program on its files (#3509).
     try:
@@ -322,124 +325,99 @@ def matching_word(command: str) -> str | None:
     forms = (text, bare, unquoted(bare), unquoted(bare, blanks=False))
     if any(RG_RUNS.search(form) for form in forms):
         return RG_BLOCKED
-    if GRAPHQL.search(forms[2]) and RESOLVE_MUTATION in forms[2]:
+    if any(
+        GRAPHQL.search(form) and RESOLVE_MUTATION in form
+        for form in (forms[2], unquoted(decoded))
+    ):
         return GRAPHQL_BLOCKED
-    # Globs and variables count only where the shell runs them (#3759): the
-    # command words, or every word when the command can run an argument.
-    words = executed_words(text)
-    if words is None:
-        return reaching_word(text, raw)
-    return next((found for word in words if (found := reaching_word(word, raw))), None)
+    # Globs, variables and short names in the arguments of programs that never
+    # run an argument cannot reach the script (#3759); any other command is
+    # read word by word as before.
+    if only_inert_programs(text):
+        return None
+    return reaching_word(text, raw)
 
 
-# The direct resolve mutation, outside the script (#3759).
-GRAPHQL = re.compile(r"graphql")
-RESOLVE_MUTATION = "resolvereviewthread"
+# The direct resolve mutation through an API call, outside the script (#3759);
+# `resolvereview` also catches a name finished by a variable.
+GRAPHQL = re.compile(
+    r"\b(?:api|curl|wget|irm|iwr|invoke-restmethod|invoke-webrequest)\b.*graphql",
+    re.DOTALL,
+)
+RESOLVE_MUTATION = "resolvereview"
 GRAPHQL_BLOCKED = "the resolve mutation"
-# Constructs that can run a word that is not a command word: loops, pipes into
-# code, code strings, substitutions, links and assignments that a later word
-# expands; with any of them every word is read as before (#3759).
-RUNS_ARGUMENTS = re.compile(
-    r"(?<![\w.:-])(?:for|foreach|foreach-object|while|until|select|xargs|parallel"
-    r"|eval|exec|iex|invoke-expression|invoke-command|start-process|saps|source"
-    r"|read|set|ln|mklink|new-item|ni|alias|set-alias|function|filter|watch|find"
-    r"|-exec|-execdir|-ok|-okdir|-c|-e|-command|-encodedcommand|-file|/c|/k|%|\?)"
-    r"(?![\w-])"
-    r"|(?<![\w$])[a-z_]\w*\+?=[^\s;&|]*[*?\[{$%]|\$[\w:]+\s*\+?="
-    # A subshell or PowerShell subexpression can hand its output to a command.
-    r"|\("
+# Programs that never run a file named in their arguments (#3759). A command
+# whose every simple command starts with one of them, or with `python -m` and
+# an inert module, skips the glob, variable and short-name readings.
+INERT_PROGRAMS = frozenset(
+    {"git", "ls", "dir", "cat", "type", "head", "tail", "wc", "grep", "rg"}
+    | {"echo", "printf", "cp", "copy", "mv", "move", "ruff", "gh", "jq", "uniq"}
+    | {"cut", "diff", "mkdir", "touch", "cd", "pwd", "true", "false"}
+    | {"get-content", "gc", "select-string", "sls", "get-childitem", "gci"}
+    | {"test-path", "write-output", "write-host"}
 )
-SUBSTITUTION = re.compile(r"\$\(|`|[<>]\(|[\"'=]!")
-QUOTED = re.compile(r"'[^']*'|\"[^\"]*\"")
-# A command word holding any of these is read from elsewhere.
-INDIRECT = re.compile(r"[$%`{}()@]")
-# Words before the command word that only start it.
-WRAPPERS = frozenset(
-    {"env", "nohup", "time", "sudo", "command", "builtin", "nice", "timeout"}
-    | {"stdbuf", "start", "call", ".", "npx", "uv", "uvx", "pipx", "npm", "run"}
-)
-INTERPRETER = re.compile(
-    r"(?:python[\d.]*w?|py|pyw|node|nodejs|deno|bun|bash|sh|zsh|dash|ksh|fish"
-    r"|pwsh|powershell|cmd|ruby|perl|php|wsl|busybox)(?:\.exe)?"
-)
-# Modules run with `python -m` that never run a file named as an argument.
+PYTHONS = frozenset({"python", "python3", "py"})
 INERT_MODULES = frozenset({"mypy", "ruff", "compileall", "py_compile"})
-# Shell tokens: a quoted run, an escaped character, a separator, blanks, a
-# redirection, a comment start, plain characters; a lone quote never closes.
-TOKENS = re.compile(
-    r"'[^']*'|\"(?:[^\"\\]|\\.)*\"|\\.?|[;&|()\n]|[^\S\n]+|[<>#]|[^\s'\"\\;&|()<>#]+|['\"]"
+# Options and constructs by which one of those programs, or the shell around
+# it, still runs a word: read every word when any of them appears outside
+# quotes, or a substitution, a quote whose end PowerShell reads differently, or
+# a `!` alias appears anywhere.
+RUNS_ARGUMENTS = re.compile(
+    r"(?<![\w-])(?:-c|-x|--exec|--extcmd|bisect|filter-branch|--upload-pack"
+    r"|--receive-pack|--hostname-bin|alias|extension|--shell)(?![\w-])|[{%`]"
 )
+UNREADABLE = re.compile(r"\$\(|`|[<>]\(|\\\"|[\"'=]!")
+QUOTED = re.compile(r"'[^']*'|\"[^\"]*\"")
+# Shell tokens: a quoted run, an escaped character, a separator, blanks,
+# plain characters; a lone quote never closes.
+TOKENS = re.compile(
+    r"'[^']*'|\"[^\"]*\"|\\.?|[;&|()<>\n]|[^\S\n]+|[^\s'\"\\;&|()<>]+|['\"]"
+)
+# A command word the shell takes from a variable, a glob or a short name.
+INDIRECT = re.compile(r"[$%*?\[~]")
 
 
-def command_segments(text: str) -> list[list[str]] | None:
-    """The simple commands of ``text`` as word lists, quotes kept inside the
-    words; comments dropped. None when a quote stays open."""
+def program(word: str) -> str:
+    """A command word as a program name: unquoted, last path part, no `.exe`."""
+    return re.split(r"[/\\]", unquoted(word, "/"))[-1].removesuffix(".exe")
+
+
+def simple_commands(text: str) -> list[list[str]] | None:
+    """The simple commands of ``text`` as token lists without redirections;
+    None when a quote stays open."""
     segments: list[list[str]] = [[]]
-    word, comment = "", False
+    redirect = False
     for token in (match[0] for match in TOKENS.finditer(text)):
         if token in ("'", '"'):
             return None
-        comment = (comment or (token == "#" and not word)) and token != "\n"
-        if comment:
-            continue
-        if not (token.isspace() or token in "<>;&|()"):
-            word += token
-            continue
-        segments[-1].append(word)
-        word = ""
-        if token == "\n" or not token.isspace():
+        if token in "<>" or (redirect and token == "&"):
+            # A redirection's target is a file, not a command (`2>&1` too).
+            redirect = True
+        elif token in "\n;&|()":
             segments.append([])
-    segments[-1].append(word)
-    # Braces of a group or script block start no word of their own.
-    return [[w for w in segment if w not in ("", "{", "}")] for segment in segments]
+        elif not token.isspace():
+            segments[-1] += [] if redirect else [token]
+            redirect = False
+    return [words for words in segments if words]
 
 
-def segment_runs(segment: list[str]) -> list[str] | None:
-    """The words one simple command runs: its command word and, after an
-    interpreter, each word that is not an option (only the module after
-    `python -m` with an inert module). None when a run word is indirect."""
-    index = 0
-    while index < len(segment) and (
-        unquoted(segment[index]) in WRAPPERS
-        or ("=" in segment[index] and segment[index].partition("=")[0].isidentifier())
-        or (index and unquoted(segment[index])[:1] in "-0123456789")
-    ):
-        index += 1
-    runs = segment[index : index + 1]
-    if not runs:
-        return []
-    # A command word with a glob or short name may resolve to an interpreter.
-    if re.search(r"[*?\[~]", runs[0]):
-        return None
-    # The last path part, a backslash read as an escape and as a separator.
-    names = {unquoted(runs[0]).split("/")[-1], unquoted(runs[0], "/").split("/")[-1]}
-    if any(INTERPRETER.fullmatch(name) for name in names):
-        rest = segment[index + 1 :]
-        module = next(
-            (rest[i + 1] for i, word in enumerate(rest[:-1]) if word == "-m"), None
-        )
-        if module is not None and unquoted(module) in INERT_MODULES:
-            runs = [module]
-        else:
-            runs += [word for word in rest if not unquoted(word).startswith("-")]
-    return None if any(INDIRECT.search(word) for word in runs) else runs
-
-
-def executed_words(text: str) -> list[str] | None:
-    """The words the command runs, or None when an argument can run as well,
-    so every word has to be read."""
-    if SUBSTITUTION.search(text) or RUNS_ARGUMENTS.search(QUOTED.sub(" ", text)):
-        return None
-    segments = command_segments(text)
-    if segments is None:
-        return None
-    words: list[str] = []
-    for segment in segments:
-        runs = segment_runs(segment)
-        if runs is None:
-            return None
-        words += runs
-    return words
+def only_inert_programs(text: str) -> bool:
+    """Every simple command of ``text`` starts with an inert program."""
+    if UNREADABLE.search(text) or RUNS_ARGUMENTS.search(QUOTED.sub(" ", text)):
+        return False
+    commands = simple_commands(text)
+    if commands is None:
+        return False
+    for words in commands:
+        if INDIRECT.search(words[0]):
+            return False
+        name = program(words[0])
+        module = words[2:3] if words[1:2] == ["-m"] else []
+        if name not in INERT_PROGRAMS and not (
+            name in PYTHONS and module and module[0] in INERT_MODULES
+        ):
+            return False
+    return True
 
 
 def reaching_word(text: str, raw: str) -> str | None:
