@@ -484,6 +484,38 @@ test("@responsive the energy goal is set in Körper and priced in the diary", as
   await expect(page).toHaveURL(/#nutrition\/body$/);
   const dialog = page.locator("#energyGoalDialog");
   await expect(dialog).toBeVisible();
+  // #3757: the goal control is the app's segmented control: one row of three segments at every
+  // width, the radio hidden under its whole label, the checked segment highlighted.
+  const segments = dialog.locator(".appearance-control label");
+  await expect(segments).toHaveText(["Abnehmen", "Halten", "Aufbauen"]);
+  const layout = await segments.evaluateAll((labels) => labels.map((label) => ({
+    top: Math.round(label.getBoundingClientRect().top),
+    opacity: getComputedStyle(label.querySelector("input")).opacity,
+    background: getComputedStyle(label).backgroundColor,
+  })));
+  expect(new Set(layout.map((item) => item.top)).size).toBe(1);
+  expect(layout.map((item) => item.opacity)).toEqual(["0", "0", "0"]);
+  expect(layout[1].background).toBe(layout[2].background);
+  expect(layout[0].background).not.toBe(layout[1].background);
+  // The hidden radio covers its whole segment, so a tap near the edge hits it and selects that
+  // segment only; the highlight follows the checked one.
+  const build = await segments.nth(2).boundingBox();
+  const radio = await dialog.getByRole("radio", { name: "Aufbauen" }).boundingBox();
+  for (const key of ["x", "y", "width", "height"]) expect(Math.abs(radio[key] - build[key])).toBeLessThan(1);
+  await page.mouse.click(build.x + 4, build.y + build.height - 4);
+  await expect(dialog.getByRole("radio", { name: "Aufbauen" })).toBeChecked();
+  const backgrounds = () => segments.evaluateAll((labels) => labels.map((label) => getComputedStyle(label).backgroundColor));
+  const [lose, hold, built] = await backgrounds();
+  expect(lose).toBe(hold);
+  expect(built).not.toBe(hold);
+  await segments.nth(0).click();
+  await expect(dialog.getByRole("radio", { name: "Abnehmen" })).toBeChecked();
+  // Keyboard focus shows the focus ring on the segment.
+  await page.keyboard.press("ArrowRight");
+  await expect(segments.nth(1)).toHaveCSS("outline-style", "solid");
+  await page.keyboard.press("ArrowLeft");
+  await expect(dialog.getByRole("radio", { name: "Abnehmen" })).toBeChecked();
+  await dialog.screenshot({ path: test.info().outputPath("Energieziel.png") });
   // Any whole kcal the API accepts can be entered (Gitar on #3558).
   await dialog.getByLabel("Defizit pro Tag (kcal)").fill("420");
   expect(await dialog.getByLabel("Defizit pro Tag (kcal)").evaluate((input) => input.validity.valid)).toBeTruthy();
