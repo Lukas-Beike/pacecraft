@@ -2249,13 +2249,15 @@ function energyFitSourceRow(domain, scale, item) {
   const lane = energyFitLane(domain, scale, true);
   const value = h("span", "energy-fit-value", energyFitLabel(scale, item.total_kcal));
   const learned = item.learned_total_kcal;
-  if (learned != null) {
+  // A term of 0 would put the ring over the dot, so only the line names it (review, #3723).
+  const ring = learned != null && learned !== item.total_kcal;
+  if (learned != null) value.append(h("span", { className: "energy-span", dataset: { fitLearned: "" } }, `mit Alltag ≈ ${energyFitLabel(scale, learned)}`));
+  if (ring) {
     const [from, to] = [domain.at(item.total_kcal), domain.at(learned)];
     lane.append(energyFitMark("energy-fit-link", Math.min(from, to), Math.abs(to - from), color));
-    value.append(h("span", { className: "energy-span", dataset: { fitLearned: "" } }, `mit Alltag ≈ ${energyFitLabel(scale, learned)}`));
   }
   lane.append(energyFitMark("energy-fit-point", domain.at(item.total_kcal), null, color));
-  if (learned != null) lane.append(energyFitMark("energy-fit-learned", domain.at(learned), null, color));
+  if (ring) lane.append(energyFitMark("energy-fit-learned", domain.at(learned), null, color));
   const inside = item.diff != null && scale.own_band_kcal != null && Math.abs(item.diff) <= scale.own_band_kcal;
   return h("li", { className: "energy-fit-row", dataset: { fitSource: item.source, inside: String(inside) } }, h("span", { className: "energy-fit-name", dataset: { color: String(color) } }, item.name), lane, value);
 }

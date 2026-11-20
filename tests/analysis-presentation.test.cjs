@@ -1001,6 +1001,13 @@ test("the fit scale names the own value, sorts the sources nearest first and sig
   assert.equal(textOf(learned.children[4]), "Formel alleinmit Alltag (vorläufig)");
   const qualified = energyFitScale({ best: null, outlined: "device", fit_scale: { "91d": withLearned(true) } }, "91d");
   assert.equal(textOf(qualified.children[4]), "Formel alleinmit Alltag");
+  // A term of 0 keeps the line but draws no ring over the dot (review on #3723).
+  const marks = (row) => row.children[1].children.map((node) => node.className);
+  assert.deepEqual(marks(learnedRows[2]), ["energy-fit-band is-faint", "energy-fit-link", "energy-fit-point", "energy-fit-learned"]);
+  const zero = energyFitScale({ best: null, outlined: "device", fit_scale: { "91d": { ...scale, sources: [{ source: "katch_mcardle", total_kcal: 3768, learned_total_kcal: 3768, learned_qualified: false }, ...scale.sources.slice(1)] } } }, "91d");
+  const zeroRow = zero.children[3].children[2];
+  assert.deepEqual(marks(zeroRow), ["energy-fit-band is-faint", "energy-fit-point"]);
+  assert.equal(textOf(zeroRow.children[2]), "3768 (+1042)mit Alltag ≈ 3768 (+1042)");
 });
 
 test("the Verlauf sentence names the server's outlined source, in every period (#3613)", () => {

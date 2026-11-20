@@ -636,8 +636,9 @@ def energy_view(
         )
     # Ranked on the raw rows, before the learned term enters them (#3613).
     outlined = _outlined(rows, best)
-    # The formula rows' learned everyday term (#3577); it enters their shown
-    # day totals only after the athlete's check, never the fit above.
+    # The formula rows' learned everyday term (#3577): it enters their shown
+    # day totals, provisionally until the athlete's check (#3723), never the
+    # fit above.
     learned = learned_everyday(windows, bodies)
     checked = (goal or {}).get(LEARNED_EVERYDAY_FIELD) or None
     _add_learned(rows, learned, checked)
@@ -954,7 +955,7 @@ def _add_learned(
         if fit is None or row["split"] is None:
             continue
         applied = bool(checked) and fit.qualified
-        kcal = round(fit.kcal) if applied else max(0, round(fit.kcal))
+        kcal = _learned_kcal(fit, applied)
         row["split"] = {
             **row["split"],
             "learned_kcal": kcal,
@@ -1254,27 +1255,24 @@ def _fit_scale(
     }
 
 
-def learned_term(fit: LearnedEveryday | None) -> tuple[int, bool] | None:
-    """The learned everyday a formula row counts (#3723), with whether it
-    qualified: the qualified term with its sign, else the provisional point
-    estimate floored at 0; None without an estimate."""
-    if fit is None:
-        return None
+def _learned_kcal(fit: LearnedEveryday, applied: bool) -> int:
+    """The learned everyday a formula row counts (#3723): an applied term with
+    its sign, else the provisional point estimate floored at 0."""
     kcal = round(fit.kcal)
-    return (kcal, True) if fit.qualified else (max(0, kcal), False)
+    return kcal if applied else max(0, kcal)
 
 
 def _with_learned(
     source: dict[str, Any], fit: LearnedEveryday | None
 ) -> dict[str, Any]:
-    """A source-card formula row with its 'mit Alltag' total (#3723)."""
-    term = learned_term(fit)
-    if term is None or source["total_kcal"] is None:
+    """A source-card formula row with its 'mit Alltag' total (#3723): the
+    qualified term applies here before the athlete's check."""
+    if fit is None or source["total_kcal"] is None:
         return source
     return {
         **source,
-        "learned_total_kcal": source["total_kcal"] + term[0],
-        "learned_qualified": term[1],
+        "learned_total_kcal": source["total_kcal"] + _learned_kcal(fit, fit.qualified),
+        "learned_qualified": fit.qualified,
     }
 
 
