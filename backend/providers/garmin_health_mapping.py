@@ -221,6 +221,7 @@ from backend.providers.garmin_weight_walk import (
     BODY_FAT_SKIP_KEYS,
     READING_LIST_KEYS,
     WALK_DATE_KEYS,
+    WEIGHT_SECTIONS,
     WEIGHT_SKIP_KEYS,
     alnum_key,
     walk_records,
@@ -1793,6 +1794,19 @@ class _HealthMapping:
 
     def issue(self, record_ref: str | None, field: str, reason: IssueReason) -> None:
         self.issues.append(MappingIssue(record_ref, field, reason))
+
+
+def weigh_in_days(sections: Mapping[str, object], retrieved_at: datetime) -> set[str]:
+    """The ISO days of the weigh-ins in ``sections``' weight answer (#3718)."""
+    return {
+        o.observed_on.isoformat()
+        for o in map_garmin_health(
+            {name: sections[name] for name in WEIGHT_SECTIONS if name in sections},
+            zone=UTC,
+            retrieved_at=retrieved_at,
+        ).records
+        if o.kind is MetricKind.WEIGHT
+    }
 
 
 def map_garmin_health(

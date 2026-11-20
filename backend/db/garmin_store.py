@@ -441,7 +441,9 @@ def read_state(db: Any) -> dict[str, Any]:
     return value if isinstance(value, dict) else {}
 
 
-def weight_origin_counts(db: Any, version: int) -> dict[str, Any]:
+def weight_origin_counts(
+    db: Any, version: int, answer_days: Iterable[str] = ()
+) -> dict[str, Any]:
     """Counts only (#3718): Garmin weight rows by origin, never a value or a day.
 
     The origin is the section of the row's source record: the weigh-in list (the
@@ -449,6 +451,8 @@ def weight_origin_counts(db: Any, version: int) -> dict[str, Any]:
     ``current`` when it is active at ``version``, the health mapper's current one:
     once the re-projection after a bump completed, the rows the readers serve.
     Days are counted before the first current weigh-in-list day (all without one).
+    ``answer_days`` are the weigh-in days of the stored weight answer; the counts
+    compare them with the current weigh-in-list days over the answer's span.
     """
     rows = db.execute(
         "SELECT source_record_id, state, mapper_version, observed_on FROM observations "
@@ -471,10 +475,24 @@ def weight_origin_counts(db: Any, version: int) -> dict[str, Any]:
         counts[group][origin] = counts[group].get(origin, 0) + 1
         if first is None or day < first:
             early[group].add(day)
-    return counts | {
-        f"{group}_days_before_first_weighin_list_day": len(days)
-        for group, days in early.items()
-    }
+    answer = set(answer_days)
+    listed = {d for o, s, d in found if s and o == "weigh_in_list"}
+    span = {d for d in listed if answer and min(answer) <= d <= max(answer)}
+    return (
+        counts
+        | {
+            f"{group}_days_before_first_weighin_list_day": len(days)
+            for group, days in early.items()
+        }
+        | {
+            "answer_weighin_days": len(answer),
+            "answer_days_without_current_row": len(answer - listed),
+            "current_list_days_in_answer_span": len(span),
+            "current_list_days_before_answer": len(
+                {d for d in listed if answer and d < min(answer)}
+            ),
+        }
+    )
 
 
 def _weight_origin(source_record_id: object) -> str:

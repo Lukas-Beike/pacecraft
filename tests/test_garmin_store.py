@@ -177,7 +177,9 @@ class GarminStoreTests(unittest.TestCase):
                 self.db, observation, mapper_version=version, now=NOW
             )
 
-        counts = garmin_store.weight_origin_counts(self.db, 5)
+        counts = garmin_store.weight_origin_counts(
+            self.db, 5, {"2026-09-10", "2026-09-12", "2026-09-14"}
+        )
 
         self.assertEqual(
             counts,
@@ -186,6 +188,11 @@ class GarminStoreTests(unittest.TestCase):
                 "not_current": {"weigh_in_list": 1, "performance_history": 1},
                 "current_days_before_first_weighin_list_day": 0,
                 "not_current_days_before_first_weighin_list_day": 2,
+                # The stored answer's days against the current list days.
+                "answer_weighin_days": 3,
+                "answer_days_without_current_row": 2,
+                "current_list_days_in_answer_span": 1,
+                "current_list_days_before_answer": 0,
             },
         )
 

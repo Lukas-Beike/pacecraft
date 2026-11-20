@@ -34,6 +34,7 @@ from backend.providers.garmin_health_mapping import (
     GARMIN_LABEL,
     MAPPER_VERSION,
     map_garmin_health,
+    weigh_in_days,
 )
 from backend.providers.garmin_personal import wrap_daily_sleep
 from backend.providers.garmin_status_mapping import map_garmin_status_codes
@@ -2101,6 +2102,17 @@ class WeighInOnlyTests(unittest.TestCase):
             "totalAverage": {"from": 0, "until": 0, "weight": 76000.0},
         }
         self.assertEqual(self.weight_days({"weight": [envelope]}), ["2026-09-12"])
+
+    def test_weigh_in_days_name_the_answer_days_only(self) -> None:
+        sections = {
+            "weight": [{"dailyWeightSummaries": _summaries(date(2026, 9, 12), 2)}],
+            "performance_history": [
+                {"date": "2026-08-14", "metrics": {"weight_kg": 76.0}}
+            ],
+        }
+        self.assertEqual(
+            weigh_in_days(sections, RETRIEVED_AT), {"2026-09-12", "2026-09-13"}
+        )
 
     def test_a_long_stored_envelope_keeps_every_weigh_in(self) -> None:
         # One budget for the whole envelope kept only its newest ~59 days.

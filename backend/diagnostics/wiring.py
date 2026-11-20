@@ -18,6 +18,7 @@ from backend.performance.pace_at_hr import LT1_DAYS, ride_band_coverage
 from backend.providers.garmin_health_mapping import (
     MAPPER_VERSION as GARMIN_HEALTH_VERSION,
 )
+from backend.providers.garmin_health_mapping import weigh_in_days
 from backend.runtime import clock as runtime_clock
 
 
@@ -78,7 +79,12 @@ def build_diagnostics(ctx: AppContext) -> DiagnosticsServices:
                     ctx.nutrition.energy_basis(db)
                     | {
                         "garmin_weight_origins": garmin_store.weight_origin_counts(
-                            db, GARMIN_HEALTH_VERSION
+                            db,
+                            GARMIN_HEALTH_VERSION,
+                            weigh_in_days(
+                                garmin_store.read_sections(db, ["weight"]),
+                                ctx.clock.now(),
+                            ),
                         )
                     }
                 ),

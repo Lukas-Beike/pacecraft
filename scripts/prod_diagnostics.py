@@ -190,7 +190,9 @@ SECTION_FIELDS = {
         # list day (#3718).
         r"|garmin_weight_origins\.((current|not_current)\.(weigh_in_list"
         r"|performance_history|other)"
-        r"|(current|not_current)_days_before_first_weighin_list_day)"
+        r"|(current|not_current)_days_before_first_weighin_list_day"
+        r"|answer_weighin_days|answer_days_without_current_row"
+        r"|current_list_days_in_answer_span|current_list_days_before_answer)"
     ),
     # The entered body days mirrored to Garmin Connect, counts only (#3403).
     "garmin_body_push": re.compile(
