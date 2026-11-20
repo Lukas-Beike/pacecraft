@@ -37,7 +37,7 @@ from backend.canonical.section_items import (
     unwrapped,
     wrapped,
 )
-from backend.canonical.vocabulary import ProviderId
+from backend.canonical.vocabulary import MetricKind, ProviderId
 from backend.db import canonical_domain_store, canonical_store
 from backend.db.canonical_store import WriteOutcome
 from backend.observability import sanitized_provider_payload
@@ -439,3 +439,45 @@ def read_state(db: Any) -> dict[str, Any]:
     except ValueError, RecursionError:
         return {}
     return value if isinstance(value, dict) else {}
+
+
+def weight_origin_counts(db: Any, version: int) -> dict[str, Any]:
+    """Counts only (#3718): Garmin weight rows by origin, never a value or a day.
+
+    The origin is the section of the row's source record: the weigh-in list (the
+    weight walk's ``weight:`` ids), the performance history, or other. A row is served when it is
+    active at ``version``, the health mapper's current one. Days are counted before
+    the first served weigh-in-list day (all days without one).
+    """
+    rows = db.execute(
+        "SELECT source_record_id, state, mapper_version, observed_on FROM observations "
+        "WHERE provider = ? AND metric = ? AND sport IS NULL",
+        (GARMIN_PROVIDER, MetricKind.WEIGHT.value),
+    ).fetchall()
+    found = [
+        (
+            _weight_origin(row["source_record_id"]),
+            row["state"] == _ACTIVE and row["mapper_version"] == version,
+            str(row["observed_on"]),
+        )
+        for row in rows
+    ]
+    first = min((d for o, s, d in found if s and o == "weigh_in_list"), default=None)
+    counts: dict[str, Any] = {"served": {}, "not_served": {}}
+    early: dict[str, set[str]] = {"served": set(), "not_served": set()}
+    for origin, served, day in found:
+        group = "served" if served else "not_served"
+        counts[group][origin] = counts[group].get(origin, 0) + 1
+        if first is None or day < first:
+            early[group].add(day)
+    return counts | {
+        f"{group}_days_before_first_weighin_list_day": len(days)
+        for group, days in early.items()
+    }
+
+
+def _weight_origin(source_record_id: object) -> str:
+    section = str(source_record_id).partition(":")[0]
+    if section == "weight":
+        return "weigh_in_list"
+    return "performance_history" if section == "performance_history" else "other"

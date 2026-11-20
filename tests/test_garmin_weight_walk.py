@@ -105,6 +105,29 @@ class WalkLimitTests(unittest.TestCase):
 
         self.assertEqual(len(records), WALK_MAX_VISITS)
 
+    def test_each_listed_reading_gets_its_own_visit_budget(self) -> None:
+        # #3718: without ``list_keys`` the first reading uses up the second's budget.
+        heavy = {f"k{index}": 1 for index in range(WALK_MAX_VISITS - 1)}
+        payload = [{"readings": [dict(heavy), dict(heavy)]}]
+
+        shared = _walk(payload)
+        split = list(
+            walk_records(
+                payload,
+                skip_keys=NO_SKIP,
+                resolve_day=_day,
+                list_keys=frozenset({"readings"}),
+            )
+        )
+
+        self.assertEqual(len(shared), 2)
+        self.assertEqual([record.list_index for record in split], [0, 0, 1])
+
+    def test_out_of_window_readings_are_skipped(self) -> None:
+        for name in ("previousdateweight", "nextdateweight"):
+            self.assertIn(name, WEIGHT_SKIP_KEYS)
+            self.assertIn(name, BODY_FAT_SKIP_KEYS)
+
     def test_list_items_are_capped(self) -> None:
         payload: list[Any] = [{} for _ in range(WALK_MAX_LIST_ITEMS + 100)]
 
