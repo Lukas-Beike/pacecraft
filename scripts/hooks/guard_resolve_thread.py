@@ -371,13 +371,14 @@ INERT_MODULES = frozenset({"mypy", "ruff", "compileall", "py_compile"})
 # Options by which one of those programs still runs a word, also abbreviated
 # or with an attached value, read with and without quotes (#3759 reviews).
 RUNS_ARGUMENTS = re.compile(
-    r"(?<![\w-])(?:-[cxo]\S*|--(?:exe|ext|upl|rec|open|hostname|shell|pre)\S*"
+    r"(?<![\w-])(?:-[cxo]\S*"
+    r"|--(?:exe|ext|upl|rec|open|hostname|shell|pre|python|config)\S*"
     r"|alias|extension|config|bisect|submodule|foreach)(?![\w-])|[{%]"
 )
 # Text whose words the shells may split differently than this reading:
 # escapes, comments, history and alias marks, ANSI-C, substitutions and
 # typographic quotes PowerShell closes on.
-UNREADABLE = re.compile(r"\\|#|!|`|\$[('\"]|[<>]\(|[‘’“”]")
+UNREADABLE = re.compile(r"\\|#|!|`|\r|\$[('\"]|[<>]\(|[‘’“”]")
 QUOTED = re.compile(r"'[^']*'|\"[^\"]*\"")
 # Shell tokens: a quoted run, a separator, blanks, plain characters; a lone
 # quote never closes.
@@ -406,11 +407,12 @@ def simple_commands(text: str) -> list[list[str]] | None:
     for token in (match[0] for match in TOKENS.finditer(text)):
         if token in ("'", '"'):
             return None
-        if token in "<>" or (redirect and token == "&"):
+        if token in ("<", ">") or (redirect and token == "&"):
             # A redirection's target is a file, not a command (`2>&1` too).
             redirect = True
-        elif token in "\n;&|()":
+        elif token in ("\n", ";", "&", "|", "(", ")"):
             segments.append([])
+            redirect = False
         elif not token.isspace():
             segments[-1] += [] if redirect else [token]
             redirect = False

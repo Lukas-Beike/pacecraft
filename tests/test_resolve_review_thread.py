@@ -463,6 +463,10 @@ class GuardHookTests(unittest.TestCase):
             "git rebase -xpython scripts/r*.py HEAD~1",
             "git rebase --exe 'python scripts/r*.py' HEAD~1",
             "git grep -Opython x scripts/r*.py",
+            "echo '' ; eval ls ';' python 'scripts/resolve_review_t*' 1 PRRT_abc",
+            "''eval ls ';' python scripts/r*.py 1 PRRT_abc",
+            "python -m mypy --python-executable scripts/r*.py x.py",
+            "ls\rpython scripts/r*.py 1 PRRT_abc",
         ):
             with self.subTest(command):
                 self.assertEqual(self.decide(command), 2)
