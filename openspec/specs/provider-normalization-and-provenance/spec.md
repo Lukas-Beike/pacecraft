@@ -259,7 +259,7 @@ The system SHALL keep FTP and threshold sport scope, Garmin scaled running speed
 
 #### Scenario: Garmin performance values at ingest
 - **WHEN** the Garmin sync merges a fetched payload into the performance history
-- **THEN** it reads the latest-value sections through the Garmin health mapper and keeps cycling FTP and running threshold power within 50 to 700 W, threshold heart rate within 80 to 230 bpm, the profile maximum heart rate within 80 to 250 bpm and VO2max within 20 to 100, and drops other values; a race prediction counts within 60 to 100,000 s (a larger number is read as milliseconds), a threshold pace within 120 to 900 s/km (a value below 1 is read as 100 / value, below 20 as metres per second) and a weight within 30 to 300 kg (pounds x 0.45359237, an undeclared value above 300 as grams).
+- **THEN** it reads the latest-value sections through the Garmin health mapper and keeps cycling FTP and running threshold power within 50 to 700 W, threshold heart rate within 80 to 230 bpm, the profile maximum heart rate within 80 to 250 bpm and VO2max within 20 to 100, and drops other values; a race prediction counts within 60 to 100,000 s (a larger number is read as milliseconds), and a threshold pace within 120 to 900 s/km (a value below 1 is read as 100 / value, below 20 as metres per second). The weight is not written into the history: the weight section keeps the weigh-ins themselves (#3728); entries stored earlier keep their weight, which the mapper ignores.
 
 #### Scenario: Performance history retention
 - **WHEN** the merge stores the performance history
@@ -284,6 +284,7 @@ Added evidence:
 - `tests/test_garmin_health_parity.py:test_race_predictions_match_legacy_seconds`
 - `tests/test_garmin_health_parity.py:test_threshold_pace_converts_to_legacy_seconds_per_kilometre`
 - `tests/test_performance_history.py:test_historical_ftp_rows_are_added_without_backfilling_current_ftp`
+- `tests/test_performance_history.py:test_current_metrics_and_readiness_filter_by_current_freshness`
 - `tests/test_performance_history.py:test_retains_sorted_last_90_dates_and_uses_explicit_current_date`
 - `tests/test_provider_garmin_metric_history.py:test_missing_capabilities_are_explained_without_failing_other_sources`
 

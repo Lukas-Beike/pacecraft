@@ -16,11 +16,12 @@ from backend.performance import freshness as performance_freshness
 from backend.performance.garmin_canonical import garmin_metrics_of
 from backend.performance.garmin_metrics import garmin_performance_metrics
 from backend.providers.garmin_health_mapping import map_garmin_health
-from backend.providers.garmin_weight_walk import WEIGHT_SECTIONS
 from backend.sync import garmin_metric_history
 from backend.sync.garmin_payload_metrics import garmin_source_observed_at
 
 # The sections the history records, read as the current Garmin metrics read them.
+# The weight is not among them: the weight section keeps the weigh-ins themselves,
+# and a copy outlived the readings Garmin no longer returns (#3718, #3728).
 _CURRENT_SECTIONS: Final = (
     "max_metrics",
     "race_predictions",
@@ -28,7 +29,6 @@ _CURRENT_SECTIONS: Final = (
     "cycling_ftp",
     "heart_rate_zones",
     "readiness",
-    *WEIGHT_SECTIONS,
 )
 # The plausible window of a historical FTP value.
 _FTP_HISTORY_RANGE: Final = (20, 2000)

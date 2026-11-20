@@ -56,6 +56,8 @@ class PerformanceHistoryTests(unittest.TestCase):
         )
 
     def test_current_metrics_and_readiness_filter_by_current_freshness(self):
+        # #3728: a current weigh-in is no history value; the weight section
+        # keeps the weigh-ins themselves.
         payload = {
             "weight": [{"date": "2026-08-31", "weightKg": 72}],
             "readiness": [{"calendarDate": "2026-08-31", "score": 85}],
@@ -67,7 +69,7 @@ class PerformanceHistoryTests(unittest.TestCase):
         append_garmin_performance_history(payload, None, date(2026, 9, 1))
         self.assertEqual(
             payload["performance_history"],
-            [{"date": "2026-08-31", "metrics": {"weight_kg": 72.0, "readiness": 85}}],
+            [{"date": "2026-08-31", "metrics": {"readiness": 85}}],
         )
 
     def test_unreadable_colon_text_is_absent_and_valid_values_are_kept(self):
