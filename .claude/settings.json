@@ -21,6 +21,8 @@
       "Edit(./data/**)",
       "Edit(//**/ai-coach/data/**)",
       "Edit(//**/pacecraft/data/**)",
+      "Read(//**/.t3/userdata/secrets/**)",
+      "Edit(//**/.t3/userdata/secrets/**)",
       "Bash(git reset --soft origin/*)",
       "PowerShell(git reset --soft origin/*)",
       "Bash(npx *modern-web-guidance*)",

@@ -37,6 +37,7 @@ class GuardShellTests(unittest.TestCase):
         # One command per guard, each blocked by that guard alone.
         for command, guard in (
             ("cat .env", "guard_private_paths"),
+            ("cat ~/.t3/userdata/secrets/files/x", "guard_private_paths"),
             ("git reset --hard", "guard_destructive_git"),
             ("python - <<'EOF'\nprint('a\\\\b')\nEOF", "guard_shell_backslashes"),
             (
