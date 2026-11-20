@@ -84,7 +84,7 @@ test("product editor follows the barcode result before the product lists", () =>
 });
 
 // The product page: one merged list in two sections (#2267).
-const LIST_FUNCTIONS = ["NUTRITION_FIELD_NAMES", "NUTRITION_SOURCE_NAMES", "NUTRITION_PRODUCT_SECTIONS", "nutritionProductSectionsOpen", "nutritionProductSearchShown", "nutritionProductSectionsBeforeSearch", "nutritionIsDatabaseProduct", "nutritionMissingFields", "nutritionProductDate", "nutritionOriginText", "nutritionIncompleteMark", "nutritionProductSection", "nutritionUsageCount", "nutritionShortDay", "nutritionLastUseText", "nutritionProductSizes", "nutritionProductCard", "renderNutritionProducts", "appendNutritionProductActions", "nutritionFavoriteButton", "normalizeNutritionProduct", "nutritionDatabaseSource"];
+const LIST_FUNCTIONS = ["NUTRITION_FIELD_NAMES", "NUTRITION_SOURCE_NAMES", "NUTRITION_PRODUCT_SECTIONS", "nutritionProductSectionsOpen", "nutritionProductSearchShown", "nutritionProductSectionsBeforeSearch", "nutritionIsDatabaseProduct", "nutritionMissingFields", "nutritionProductDate", "nutritionOriginText", "nutritionIncompleteMark", "nutritionProductSection", "nutritionUsageCount", "nutritionShortDay", "nutritionLastUseText", "nutritionProductSizes", "nutritionProductCard", "renderNutritionProducts", "appendNutritionProductActions", "nutritionFavoriteButton", "normalizeNutritionProduct", "nutritionDatabaseSource", "handleNutritionRoute"];
 const OWN = { id: "own-1", name: "Whey", brand: "Fixture", barcode: "4000000000017", basis_amount: 100, basis_unit: "g", origin: "own", fetched_at: null, favorite: 1, kcal: 380, carbs_g: 5, protein_g: 72, fat_g: 6, sugar_g: 2, fiber_g: 1, salt_g: 0.1, missing_fields: [] };
 const FOOD = { id: "off:4006381333931", name: "Haferdrink", brand: "Beispiel", barcode: "4006381333931", basis_amount: 100, basis_unit: "ml", origin: "open_food_facts", source: "open_food_facts", fetched_at: "2026-10-01T08:00:00+00:00", favorite: 0, kcal: 46, carbs_g: 6.7, protein_g: 1, fat_g: 1.5, sugar_g: null, fiber_g: 0, salt_g: null, missing_fields: ["sugar_g", "salt_g"] };
 
@@ -98,7 +98,7 @@ function listContext() {
     document,
     api: async () => ({}),
     useNutritionProduct() {}, saveNutritionProduct() {}, refreshNutritionProduct() {}, deleteNutritionProduct() {}, reloadNutritionProducts() {},
-    showNutritionProductError() {},
+    showNutritionProductError() {}, stopNutritionBarcode() {},
   });
   return { context, target: targets["#nutritionProducts"], lookup: targets["#nutritionLookupResult"] };
 }
@@ -126,6 +126,10 @@ test("an opened section stays open on the next render until the page is left", (
   target.children[0].open = true;
   context.renderNutritionProducts([OWN, FOOD]);
   assert.deepEqual(target.children.map((section) => section.open), [true, true]);
+  // Leaving the page closes them, though their nodes stay until the next render.
+  context.handleNutritionRoute("nutrition/diary");
+  context.renderNutritionProducts([OWN, FOOD]);
+  assert.deepEqual(target.children.map((section) => section.open), [false, false]);
 });
 
 test("a new search opens sections with hits once, keeps toggles, and ends as before", () => {
