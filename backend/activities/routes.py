@@ -245,22 +245,30 @@ def label_of(index: Mapping[str, Any], route_id: str) -> str:
 
 def route_block(index: Mapping[str, Any], session_id: str) -> dict[str, Any] | None:
     """The compact block of one session: label, repeat count and opaque id."""
+    members = route_members(index, session_id)
+    if not members:
+        return None
+    entry = index["sessions"][session_id]
+    own = (str(entry.get("at") or ""), session_id)
+    return {
+        "label": label_of(index, entry["route"]),
+        "repeat_index": sum(1 for member in members if member <= own),
+        "repeat_count": len(members),
+        "route_id": entry["route"],
+    }
+
+
+def route_members(index: Mapping[str, Any], session_id: str) -> list[tuple[str, str]]:
+    """The (start, session id) visits of the session's route, oldest first."""
     entry = index["sessions"].get(session_id)
     route_id = entry.get("route") if isinstance(entry, Mapping) else None
     if not isinstance(route_id, str) or route_id not in index["routes"]:
-        return None
-    members = sorted(
+        return []
+    return sorted(
         (str(item.get("at") or ""), key)
         for key, item in index["sessions"].items()
         if item.get("route") == route_id
     )
-    own = (str(entry.get("at") or ""), session_id)
-    return {
-        "label": label_of(index, route_id),
-        "repeat_index": sum(1 for member in members if member <= own),
-        "repeat_count": len(members),
-        "route_id": route_id,
-    }
 
 
 def clean_name(value: object) -> str | None:

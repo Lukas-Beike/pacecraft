@@ -7,7 +7,8 @@ const { pathToFileURL } = require("node:url");
 // or kind does not match the app's markup fails here and not first in production (#3065).
 // A step the fixture cannot satisfy is named with its reason; it must keep skipping for that reason.
 // The fixture's runs carry no running dynamics; how many runs the shown week holds depends on the day.
-const FIXTURE_SKIPS = { "Kalender: Laufdynamik": /^skip \(none of [1-9]\d* has it\)$/ };
+// The fixture stores no GPS tracks, so no run has a recognised route (#3763).
+const FIXTURE_SKIPS = { "Kalender: Laufdynamik": /^skip \(none of [1-9]\d* has it\)$/, "Kalender: Streckenhistorie": /^skip \(none of [1-9]\d* has it\)$/ };
 
 test("@responsive every UI walk step passes on the fixture app", async ({ page, request }) => {
   const { VIEWS, STEPS, runStep } = await import(pathToFileURL(path.join(__dirname, "..", "scripts", "ui_walk.mjs")).href);

@@ -63,7 +63,7 @@
     content.replaceChildren();
     const session = payload.session || {};
     renderMetadata(session, metricValues(payload), content, payload.weather);
-    renderRoute(payload.route, api, content);
+    renderRoute(payload.route, api, content, session);
     content.append(...providerNotes(payload));
     renderSeries(session, payload.streams, content);
     renderLaps(payload.laps, content);
@@ -280,15 +280,85 @@
     content.append(h("p", null, values.join(" · ")));
   }
 
-  // The recognised route of the session as "label, n. Mal"; the athlete can rename it.
-  function renderRoute(route, api, content) {
+  const ROUTE_VISIT_PAGE = 6;
+  const PACE_SPORTS = new Set(["run", "walk", "hike"]);
+
+  // A visit's date: day and month this year, with a short year before it.
+  function routeVisitDate(value) {
+    const [year, month, day] = String(value || "").split("-");
+    if (!day) return "–";
+    return year === String(new Date().getFullYear()) ? `${day}.${month}.` : `${day}.${month}.${year.slice(2)}`;
+  }
+
+  function routeVisitClock(seconds) {
+    const value = Number(seconds);
+    if (seconds == null || !Number.isFinite(value) || value <= 0) return "–";
+    const total = Math.round(value);
+    return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, "0")}`;
+  }
+
+  function routeVisitNumber(value, digits = 0) {
+    const number = Number(value);
+    return value == null || !Number.isFinite(number) ? "–" : AppFormat.number(number, { digits });
+  }
+
+  // Pace in s/km for foot sports, else km/h; a missing or zero speed stays a gap.
+  function routeVisitOutput(visit, pace) {
+    const speed = Number(visit.avg_speed_mps);
+    if (visit.avg_speed_mps == null || !Number.isFinite(speed) || speed <= 0) return null;
+    return pace ? 1000 / speed : speed * 3.6;
+  }
+
+  // Pace (or speed) per visit over time, drawn like the Analyse charts; the table below holds the values.
+  function routeVisitChart(visits, pace) {
+    const points = visits.map((visit) => ({ date: visit.date, value: routeVisitOutput(visit, pace) })).filter((point) => point.date).reverse();
+    if (typeof analysisChart !== "function" || points.length < 2) return null;
+    const unit = pace ? "s/km" : "km/h";
+    const title = pace ? "Pace je Besuch" : "Geschwindigkeit je Besuch";
+    const chart = analysisChart(title, [{ label: title, legendLabel: title, unit, color: 0, cadenceDays: 1, points }], unit, points[0].date, points.at(-1).date, "Durchschnitt je Besuch.", { showLegend: false });
+    chart?.querySelector(".analysis-chart-table")?.remove();
+    return chart;
+  }
+
+  // Every visit, newest first, a page at a time; the session's own visit is marked.
+  function routeVisitTable(visits, pace, sessionId) {
+    const body = h("tbody");
+    const more = h("button", { className: "secondary-button", type: "button" }, "Ältere Besuche");
+    let shown = 0;
+    const page = () => {
+      for (const visit of visits.slice(shown, shown + ROUTE_VISIT_PAGE)) {
+        const output = routeVisitOutput(visit, pace);
+        let outputText = "–";
+        if (output != null) outputText = pace ? routeVisitClock(output) : routeVisitNumber(output, 1);
+        const row = h("tr", null,
+          h("th", { scope: "row" }, routeVisitDate(visit.date)),
+          h("td", null, routeVisitClock(visit.moving_duration_s)),
+          h("td", null, routeVisitNumber(visit.avg_hr)),
+          h("td", null, outputText),
+          h("td", null, routeVisitNumber(visit.temperature_c)));
+        if (visit.activity_id === sessionId) row.setAttribute("aria-current", "true");
+        body.append(row);
+      }
+      shown += ROUTE_VISIT_PAGE;
+      more.hidden = shown >= visits.length;
+    };
+    more.addEventListener("click", page);
+    page();
+    const head = h("thead", null, h("tr", null, ["Datum", "Dauer", "HF", pace ? "/km" : "km/h", "°C"].map((label) => h("th", { scope: "col" }, label))));
+    const scroll = h("div", "table-scroll", h("table", "race-predictions-table route-visits", head, body));
+    return h("details", { className: "activity-values", open: true }, h("summary", null, `Alle ${visits.length} Besuche ansehen`), scroll, more);
+  }
+
+  // The recognised route of the session: its name and visit with a rename action, then the
+  // pace or speed of every visit as a chart and a table (#3763). Never a coordinate.
+  function renderRoute(route, api, content, session = {}) {
     if (!route) return;
-    const line = h("p");
+    const line = h("div", "activity-route-head");
     let label = route.label;
     const show = () => {
       const rename = h("button", { className: "secondary-button", type: "button" }, "Umbenennen");
       rename.addEventListener("click", edit);
-      line.replaceChildren(`${label}, ${route.repeat_index}. Mal `, rename);
+      line.replaceChildren(h("h3", null, `${label} · ${route.repeat_index}. von ${route.repeat_count} Besuchen`), rename);
     };
     const edit = () => {
       const input = h("input", { maxLength: 60, required: true, value: label, "aria-label": "Streckenname" });
@@ -305,7 +375,16 @@
       });
       line.replaceChildren(form); input.focus();
     };
-    show(); content.append(line);
+    show();
+    const card = h("section", "activity-route", line);
+    const visits = Array.isArray(route.visits) ? route.visits : [];
+    if (visits.length) {
+      const pace = PACE_SPORTS.has(session.sport);
+      const chart = routeVisitChart(visits, pace);
+      if (chart) card.append(chart);
+      card.append(routeVisitTable(visits, pace, session.activity_id));
+    }
+    content.append(card);
   }
 
   const COVERAGE_LABELS = { power_w: "Leistung", heart_rate_bpm: "Herzfrequenz", speed_mps: "Geschwindigkeit", altitude_m: "Höhe", distance_m: "Distanz", grade_pct: "Steigung", cadence_rpm: "Kadenz", respiration_rate_brpm: "Atemfrequenz", performance_condition: "Leistungszustand", stamina_137_pct: "Ausdauer A", stamina_138_pct: "Ausdauer B" };
@@ -638,5 +717,5 @@
 
   globalThis.addEventListener("popstate", () => { if (dialog) close(false); });
 
-  globalThis.ActivityDetails = { open, close, requestDetails, cadenceDisplay, metricValues, runningDynamics, RUNNING_DYNAMICS, formDriftLines, providerNotes, refreshActions, weatherTemperature };
+  globalThis.ActivityDetails = { open, close, requestDetails, cadenceDisplay, metricValues, runningDynamics, RUNNING_DYNAMICS, formDriftLines, providerNotes, refreshActions, weatherTemperature, renderRoute };
 })();

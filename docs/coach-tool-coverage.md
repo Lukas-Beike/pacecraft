@@ -85,6 +85,16 @@ generated from the `covers` declarations; regenerate it with
 | `update_training_plan` | `archive`, `delete`, `update` | `test_requested_draft_commit_and_metadata_lifecycle` |
 <!-- END GENERATED TOOL TABLE -->
 
+`get_activity_details` returns a recognised route as `route` with `label`,
+`repeat_index`, `repeat_count`, `route_id` and `history`. `history` lists the
+session's own visit and up to five visits before it, newest first. Each visit has
+`activity_id`, `date`, `sport`, `moving_duration_s`, `distance_m`, `avg_hr`,
+`avg_speed_mps` and the activity weather's `temperature_c`. A missing value is
+null, and a ride with power has no speeds. The block never holds a coordinate or
+cell. `test_the_route_history_is_this_visit_and_the_five_before_it` and
+`test_a_ride_reaches_the_coach_in_the_athletes_signal_order` in
+`tests/test_coach_activity_read_tools.py` cover it (#3763).
+
 ## Failure and conversation coverage
 
 - **Every write tool carrying `_request`:** `test_every_mutating_tool_rejects_missing_user_authorization_without_effect` drives the real chat loop with missing provenance and compares all affected athlete tables before/after. Clarification and cancellation have their distinct dialogue-only contracts.

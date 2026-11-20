@@ -274,7 +274,11 @@ The system SHALL set a run's or ride's execution against comparable earlier sess
 Evidence: `backend/performance/comparable_sessions.py:comparable_sessions`, `backend/performance/session_execution.py:comparison_metrics`, `backend/performance/mean_max_curve.py:SessionCurveReader.curves`, `backend/db/activity_detail_store.py:lap_set_keys`, `backend/coach/activity_read_tools.py:CoachActivityReadToolService._session_checks`; `tests/test_comparable_sessions.py`, `tests/test_coach_session_checks.py:ComparableSessionsCheckTests`, `tests/test_mean_max_curve.py:SessionExecutionCurveTests`.
 
 ### Requirement: Recognised routes of outdoor sessions
-The system SHALL group repeated rides and runs with a stored GPS track that are not known to be indoor or virtual (an unknown environment, such as Garmin's generic running and cycling types, counts) into routes and give the activity view and the Coach only a route label, visit number, visit count and opaque id. The athlete SHALL be able to rename a route.
+The system SHALL group repeated rides and runs with a stored GPS track that are not known to be indoor or virtual (an unknown environment, such as Garmin's generic running and cycling types, counts) into routes and give the activity view and the Coach only a route label, visit number, visit count, opaque id and the route's visits with their own session values, never a coordinate or cell. The athlete SHALL be able to rename a route.
+
+#### Scenario: Route history
+- **WHEN** a session with a recognised route is opened in the activity view or read by `get_activity_details`
+- **THEN** the view shows a "Pace je Besuch" chart (speed in km/h for other sports) and below it an open "Alle N Besuche ansehen" table of every visit, newest first, six at a time with "Ältere Besuche": date, moving duration, average heart rate, pace or speed and the activity weather's temperature, missing values as "–", the session's own visit marked; the Coach's `route.history` holds the session's visit and up to five before it with the same values, without speeds for a ride with power
 
 #### Scenario: Repeats of one loop
 - **WHEN** several outdoor sessions, or sessions of unknown environment, follow the same loop, also with GPS jitter or in the reverse direction: distances within 10 %, start in or beside the other's start (or end) cell and a Jaccard overlap of the coarse grid cells of at least 0.6
@@ -302,7 +306,7 @@ The system SHALL group repeated rides and runs with a stored GPS track that are 
 
 Detailed contract: the index is the key-value record `activity_routes` (`next`, `routes.<id>.{name, ref}`, `sessions.<id>.{h, at, route}`) and its state `activity_routes_state` (`status`, `method_version`, counts only). The stage places at most 50 changed sessions per batch; a session is changed when the hash of its start, distance and stream content hashes differs. The rename route's request, response and errors are in `docs/api-routes.md`.
 
-Evidence: `backend/activities/routes.py:same_route`, `backend/sync/activity_routes.py:ActivityRoutesStage`, `backend/activities/route_store.py:ActivityRouteService`, `backend/performance/activity_read_service.py:ActivityAnalysisReadService.detail`; `tests/test_activity_routes.py`, `tests/test_activity_read_service.py:test_detail_carries_only_the_route_label_and_repeat_count`, `tests/activity-route.test.cjs`.
+Evidence: `backend/activities/routes.py:same_route`, `backend/sync/activity_routes.py:ActivityRoutesStage`, `backend/activities/route_store.py:ActivityRouteService`, `backend/activities/route_store.py:stored_route_visits`, `backend/coach/activity_read_tools.py:_route_history`, `backend/performance/activity_read_service.py:ActivityAnalysisReadService.detail`; `tests/test_activity_routes.py`, `tests/test_activity_read_service.py:test_detail_carries_only_the_route_label_and_repeat_count`, `tests/activity-route.test.cjs`.
 
 Added evidence:
 - `backend/activities/routes.py:fingerprint`

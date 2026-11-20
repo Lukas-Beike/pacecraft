@@ -579,6 +579,39 @@ class ActivityReadServiceTests(unittest.TestCase):
         text = json.dumps(result)
         for needle in ("51.98", "7.65", "latitude", "longitude", "fingerprint"):
             self.assertNotIn(needle, text)
+        # With the session summaries the block lists the visits (#3763).
+        summary = {
+            "id": "act_new",
+            "started_at_local": "2026-09-20T08:00:00",
+            "sport": "run",
+            "moving_duration_s": 1500.0,
+            "avg_hr": 148.0,
+        }
+        listed = self.detail_service(
+            snapshot, session_summaries=lambda: [summary]
+        ).detail(
+            "new",
+            garmin_status=NO_GARMIN_SYNC_STATUS,
+            profile={},
+            today=date(2026, 9, 20),
+            validation=False,
+        )
+        visits = listed["route"]["visits"]
+        self.assertEqual(
+            [("act_new", "2026-09-20", 1500.0, 148.0, None)],
+            [
+                (
+                    v["activity_id"],
+                    v["date"],
+                    v["moving_duration_s"],
+                    v["avg_hr"],
+                    v["temperature_c"],
+                )
+                for v in visits
+            ],
+        )
+        for needle in ("51.98", "7.65", "latitude", "longitude", "fingerprint"):
+            self.assertNotIn(needle, json.dumps(listed))
 
     def test_detail_service_requires_a_canonical_source(self):
         with self.assertRaises(TypeError):

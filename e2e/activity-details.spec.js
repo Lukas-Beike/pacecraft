@@ -207,6 +207,39 @@ test("@responsive calendar details show running step frequency and cycling caden
   await expect(ride.getByRole("img", { name: /^Kadenz: Ø 86/ })).toBeVisible();
 });
 
+test("@responsive calendar details show the route history chart first and every visit below it", async ({ page }) => {
+  // #3763 (athlete: layout B): "Pace je Besuch", then the open visit table, newest first, six at a time.
+  const visits = Array.from({ length: 8 }, (_, index) => ({
+    activity_id: `act_route_${8 - index}`, date: `2026-10-${String(17 - index).padStart(2, "0")}`, sport: "run",
+    moving_duration_s: 2400 + index * 10, avg_hr: index === 1 ? null : 150 - index, avg_speed_mps: 2.7 - index * 0.02, temperature_c: 10 + index,
+  }));
+  await page.route(/\/api\/activities\//, (route) => route.fulfill({ json: {
+    session: { activity_id: "act_route_7", sport: "run" },
+    metrics: {},
+    route: { label: "Hausrunde", repeat_index: 7, repeat_count: 8, route_id: "r1", visits },
+    detail_data: { providers: [] },
+  } }));
+  await page.goto("/#plan/overview");
+  await expect(page.locator("#appShell")).toBeVisible();
+  await page.waitForFunction(() => state.initialStateLoaded);
+  await renderCalendarSessions(page, [{ id: "act_route_7", name: "Synthetic route run", sport: "run", started_at_local: "2026-10-16T07:00:00", moving_duration_s: 2410 }]);
+  const details = await openSessionDetails(page, "Synthetic route run");
+  const card = details.locator(".activity-route");
+  await expect(card.getByRole("heading", { name: "Hausrunde · 7. von 8 Besuchen" })).toBeVisible();
+  await expect(card.getByRole("button", { name: "Umbenennen" })).toBeVisible();
+  await expect(card.locator(".analysis-chart-card h3")).toHaveText("Pace je Besuch");
+  await expect(card.locator("details.activity-values > summary")).toHaveText("Alle 8 Besuche ansehen");
+  const rows = card.locator(".route-visits tbody tr");
+  await expect(rows).toHaveCount(6);
+  await expect(rows.nth(1)).toHaveAttribute("aria-current", "true");
+  await expect(rows.nth(1).locator("td").nth(1)).toHaveText("–");
+  await card.getByRole("button", { name: "Ältere Besuche" }).click();
+  await expect(rows).toHaveCount(8);
+  await expect(card.getByRole("button", { name: "Ältere Besuche" })).toBeHidden();
+  const text = await card.textContent();
+  expect(text).not.toMatch(/latitude|longitude|51\.|cell/i);
+});
+
 test("@responsive calendar details chart running dynamics per second and retry a failed read", async ({ page }) => {
   let fail = true;
   const times = Array.from({ length: 30 }, (_, index) => index * 10);

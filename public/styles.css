@@ -1802,6 +1802,10 @@ button:focus-visible, a:focus-visible, summary:focus-visible {
 .activity-series svg text { fill: var(--muted); font-size: 11px; }
 .activity-series .activity-gridline { stroke: var(--line); stroke-width: 1; stroke-dasharray: 3 3; }
 .activity-values { margin-top: 8px; }
+.activity-route { display: grid; gap: 10px; margin-top: 12px; }
+.activity-route-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.activity-route-head h3 { margin: 0; }
+.route-visits tr[aria-current="true"] > * { color: var(--accent); font-weight: 700; }
 .activity-feedback-form { display: grid; gap: 10px; margin-top: 8px; }
 .activity-feedback-form label { display: grid; gap: 5px; color: var(--muted); font-size: .8rem; }
 .activity-feedback-form input, .activity-feedback-form textarea { width: 100%; }

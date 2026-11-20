@@ -25,6 +25,7 @@ from backend.coach.activity_read_tools import (
     RAW_SPEED_NOTE,
     VIRTUAL_SPEED_NOTE,
     CoachActivityReadToolService,
+    _route_history,
     _without_virtual_speed,
     resolve_session,
 )
@@ -392,6 +393,7 @@ class CoachActivityReadToolServiceTests(unittest.TestCase):
                         }
                     ],
                 },
+                "route": {"history": [{"avg_speed_mps": 10.5, "avg_hr": 140}]},
             }
 
         cases = (
@@ -406,6 +408,7 @@ class CoachActivityReadToolServiceTests(unittest.TestCase):
             self.assertIn("distance_m", found["metrics"])
             self.assertNotIn("speed_mps", found["streams"]["channels"])
             self.assertEqual(found["laps"]["laps"], [{"distance_m": 400}])
+            self.assertEqual(found["route"]["history"], [{"avg_hr": 140}])
             self.assertEqual(found["speed_note"], note)
         raw = detail("ride", "outdoor", power=False)
         _without_virtual_speed(raw)
@@ -414,6 +417,31 @@ class CoachActivityReadToolServiceTests(unittest.TestCase):
         run = detail("run", "outdoor")
         _without_virtual_speed(run)
         self.assertEqual(run, detail("run", "outdoor"))
+
+    def test_the_route_history_is_this_visit_and_the_five_before_it(self):
+        # #3763: the calendar lists every visit, newest first; the Coach reads
+        # the session against at most six visits ending with it.
+        visits = [
+            {"activity_id": f"act_{n}", "avg_hr": 140 + n} for n in range(9, 0, -1)
+        ]
+        detail = {
+            "session": {"activity_id": "act_8"},
+            "route": {"label": "Strecke 1", "visits": visits},
+        }
+        _route_history(detail)
+        self.assertNotIn("visits", detail["route"])
+        self.assertEqual(
+            ["act_8", "act_7", "act_6", "act_5", "act_4", "act_3"],
+            [visit["activity_id"] for visit in detail["route"]["history"]],
+        )
+        oldest = {"session": {"activity_id": "act_1"}, "route": {"visits": visits}}
+        _route_history(oldest)
+        self.assertEqual(
+            [{"activity_id": "act_1", "avg_hr": 141}], oldest["route"]["history"]
+        )
+        without = {"session": {"activity_id": "act_1"}, "route": {"label": "Strecke 1"}}
+        _route_history(without)
+        self.assertEqual([], without["route"]["history"])
 
     def test_detail_of_an_old_session_carries_its_planned_units(self):
         planned = _PlannedUnits("2026-09-12", "2026-09-13", "2026-09-14", "2026-09-16")
