@@ -473,6 +473,8 @@ class ProdChecksTests(unittest.TestCase):
                 "today_resting_days_back": 1,
                 # #3577: formulas whose learned everyday fit lies below 0.
                 "learned_everyday_negative": 1,
+                # #3723: the formula rows' learned everyday per state.
+                "learned_everyday_state": {"none": 0, "provisional": 1, "qualified": 1},
                 # #3530: days whose Garmin summary names its wellness end.
                 "wellness_end_days": 6,
                 # #3557: weigh-in days per source, dropped days per provider.
@@ -516,6 +518,8 @@ class ProdChecksTests(unittest.TestCase):
             f"{prefix}newest_skinfold_age_days null",
             f"{prefix}today_resting_days_back 1",
             f"{prefix}learned_everyday_negative 1",
+            f"{prefix}learned_everyday_state.provisional 1",
+            f"{prefix}learned_everyday_state.qualified 1",
             f"{prefix}wellness_end_days 6",
             f"{prefix}latest_window_weighin_sources.by_source.app 12",
             f"{prefix}latest_window_weighin_sources.by_source.garmin 3",

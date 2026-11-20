@@ -259,7 +259,7 @@ The system SHALL keep FTP and threshold sport scope, Garmin scaled running speed
 
 #### Scenario: Garmin performance values at ingest
 - **WHEN** the Garmin sync merges a fetched payload into the performance history
-- **THEN** it reads the latest-value sections through the Garmin health mapper and keeps cycling FTP and running threshold power within 50 to 700 W, threshold heart rate within 80 to 230 bpm, the profile maximum heart rate within 80 to 250 bpm and VO2max within 20 to 100, and drops other values; a race prediction counts within 60 to 100,000 s (a larger number is read as milliseconds), a threshold pace within 120 to 900 s/km (a value below 1 is read as 100 / value, below 20 as metres per second) and a weight within 30 to 300 kg (pounds x 0.45359237, an undeclared value above 300 as grams).
+- **THEN** it reads the latest-value sections through the Garmin health mapper and keeps cycling FTP and running threshold power within 50 to 700 W, threshold heart rate within 80 to 230 bpm, the profile maximum heart rate within 80 to 250 bpm and VO2max within 20 to 100, and drops other values; a race prediction counts within 60 to 100,000 s (a larger number is read as milliseconds), and a threshold pace within 120 to 900 s/km (a value below 1 is read as 100 / value, below 20 as metres per second). The weight is not written into the history: the weight section keeps the weigh-ins themselves (#3728); entries stored earlier keep their weight, which the mapper ignores.
 
 #### Scenario: Performance history retention
 - **WHEN** the merge stores the performance history
@@ -284,6 +284,7 @@ Added evidence:
 - `tests/test_garmin_health_parity.py:test_race_predictions_match_legacy_seconds`
 - `tests/test_garmin_health_parity.py:test_threshold_pace_converts_to_legacy_seconds_per_kilometre`
 - `tests/test_performance_history.py:test_historical_ftp_rows_are_added_without_backfilling_current_ftp`
+- `tests/test_performance_history.py:test_current_metrics_and_readiness_filter_by_current_freshness`
 - `tests/test_performance_history.py:test_retains_sorted_last_90_dates_and_uses_explicit_current_date`
 - `tests/test_provider_garmin_metric_history.py:test_missing_capabilities_are_explained_without_failing_other_sources`
 
@@ -734,6 +735,18 @@ Garmin sections SHALL be stored as one raw record per element (`<section>/<key>`
 - **WHEN** a rolling section such as max metrics or readiness no longer returns an older day
 - **THEN** that day's observation stays active.
 
+#### Scenario: One-off training history re-read
+- **WHEN** the first current Garmin refresh after #3729 reads the historic training sections
+- **THEN** after the regular 90-day read, endurance score, running tolerance, readiness history and weekly training status are read once more over 182 days, without touching the capability state: a marker in the Garmin state records the days the answers added; a failed or empty re-read leaves it due and keeps the regular answer, and a historical window never re-reads. A mapping-shaped answer (the endurance score's `groupMap` by day, the weekly status's dated rows) keeps the stored days outside its own day span, and an answer without days keeps the stored ones.
+
+#### Scenario: Per-day history of the daily training values
+- **WHEN** a Garmin refresh reads the daily training status or the four-week load balance, which answer for one day only
+- **THEN** the answer is also kept as that day's element of `daily_training_status_history` or `training_load_balance_history`, which the health mapper maps as its base section (acute and chronic load, their ratio, the load balance values and targets); the first daily run of each day reads at most 14 earlier days of both back to 182 days before the re-read started, a failed call ends that run's batch with its cursor kept, and the marker counts the days read and the days still due (#3729).
+
+#### Scenario: Replaced section keeps earlier days
+- **WHEN** a replacing write carries dated elements
+- **THEN** it removes only the stored elements of days inside its own day span (and the stored undated elements when it carries one), so a stored earlier day keeps its element and every re-projection after a mapper bump still serves it (#3729); an answer without a dated element and the gear inventory replace the whole section.
+
 #### Scenario: Element without a day in a windowed prune
 - **WHEN** a windowed prune meets a stored element without a day
 - **THEN** the element is kept, unless it is the weight envelope that the kept elements replace.
@@ -745,6 +758,8 @@ Evidence:
 - `tests/test_garmin_snapshot_writer.py:test_sections_are_stored_per_element_and_state_stays_small`
 - `tests/test_observation_retirement.py:test_a_garmin_element_pruned_from_a_complete_window_is_retired`
 - `tests/test_observation_retirement.py:test_a_replace_prune_keeps_the_history_of_a_rolling_section`
+- `tests/test_canonical_backfill.py:ReplacedSectionHistoryTests`
+- `tests/test_garmin_history_refetch.py:TrainingHistoryRefetchTests`
 
 ### Requirement: Text fallback for unknown activity types
 A Garmin activity whose type key is outside the type table SHALL be classified from the space-joined type key and activity name by ordered, case-insensitive substring terms; the first matching group wins and no match is `other`.

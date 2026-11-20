@@ -105,6 +105,11 @@ def row(view: dict[str, Any], source: str) -> dict[str, Any]:
     return next(r for r in view["rows"] if r["source"] == source)
 
 
+def learned_kcal(item: dict[str, Any]) -> int:
+    """A formula row's learned everyday part in its total, 0 without (#3723)."""
+    return int((item["split"] or {}).get("learned_kcal") or 0)
+
+
 class EnergyViewTests(unittest.TestCase):
     def test_rows_price_rest_from_lean_mass_with_a_band(self) -> None:
         # 80 kg at 15 % body fat: 68 kg lean mass. Katch-McArdle 370 + 21.6 x 68
@@ -113,10 +118,14 @@ class EnergyViewTests(unittest.TestCase):
         # = 233.27. The day adds the raw own activity 600 and TEF 250, its band
         # the activity's M11 error 60 and digestion's 80 (#3552):
         # hypot(218.78, 60, 80) = 240.55, hypot(233.27, 60, 80) = 253.80.
+        # #3723: the provisional learned everyday (Katch-McArdle +8, Cunningham
+        # -106 counted 0) adds to the total, its band 255.94 to the band:
+        # hypot(240.55, 255.94) = 351.2; Cunningham's band, 254 before (its
+        # unrounded inputs), gives hypot(254, 256) = 360.6.
         view = energy_view(inputs(), [window(END, 2700.0, 1850.0)], garmin())
         km, cunningham = row(view, "katch_mcardle"), row(view, "cunningham")
         self.assertEqual(
-            (1839, 219, 2689, 241),
+            (1839, 219, 2689 + 8, 351),
             (
                 km["resting_kcal"],
                 km["resting_band_kcal"],
@@ -125,7 +134,7 @@ class EnergyViewTests(unittest.TestCase):
             ),
         )
         self.assertEqual(
-            (1996, 233, 2846, 254),
+            (1996, 233, 2846, 361),
             (
                 cunningham["resting_kcal"],
                 cunningham["resting_band_kcal"],
@@ -195,25 +204,37 @@ class EnergyViewTests(unittest.TestCase):
             },
             plain["learned_everyday"],
         )  # fmt: skip
-        # Before the athlete's check no row carries it.
-        self.assertEqual(2689, row(plain, "katch_mcardle")["total_kcal"])
-        self.assertNotIn("learned_kcal", row(plain, "katch_mcardle")["split"])
+
+        # #3723: before the athlete's check each row counts the provisional
+        # estimate floored at 0: Katch-McArdle 2,689 + 8, its band widened as
+        # below; Cunningham's -106 counts 0, so its 2,846 stays.
+        def learned(view: dict[str, Any], source: str) -> tuple[Any, ...]:
+            shown = row(view, source)
+            split = shown["split"]
+            return (
+                shown["total_kcal"],
+                shown["total_band_kcal"],
+                split.get("learned_kcal"),
+                split.get("learned_provisional"),
+            )
+
+        self.assertEqual((2697, 351, 8, True), learned(plain, "katch_mcardle"))
+        total, _, kcal, provisional = learned(plain, "cunningham")
+        self.assertEqual((2846, 0, True), (total, kcal, provisional))
         checked = energy_view(
             inputs(), [window(END, 2700.0, 1850.0)], garmin(),
             goal={"learned_everyday_checked": "2026-11-19"},
         )  # fmt: skip
-        km, cunningham = row(checked, "katch_mcardle"), row(checked, "cunningham")
-        self.assertEqual((2697, 8), (km["total_kcal"], km["split"]["learned_kcal"]))
+        # Checked and qualified it counts with its sign, no longer provisional.
         # The total's band adds the learned term's: hypot(240.55, 255.94) = 351.2.
-        self.assertEqual(351, km["total_band_kcal"])
+        self.assertEqual((2697, 351, 8, False), learned(checked, "katch_mcardle"))
         # #3689: an overshooting formula is reduced by its negative term.
-        self.assertEqual(
-            (-106, 2846 - 106),
-            (cunningham["split"]["learned_kcal"], cunningham["total_kcal"]),
-        )
+        total, _, kcal, provisional = learned(checked, "cunningham")
+        self.assertEqual((2846 - 106, -106, False), (total, kcal, provisional))
         self.assertEqual("2026-11-19", checked["learned_everyday"]["checked"])
-        # #3689: a wide fit from too few independent windows is not applied,
-        # though the athlete's check stays stored and takes effect once it is.
+        # #3689: a wide fit from too few independent windows is not applied with
+        # its sign, though the athlete's check stays stored and takes effect once
+        # it qualifies; until then it counts provisionally (#3723).
         wide = replace(window(END, 2700.0, 1850.0), derived_rmr=Estimate(1850.0, 600.0))
         unready = energy_view(
             inputs(), [wide], garmin(), goal={"learned_everyday_checked": "2026-11-19"}
@@ -223,7 +244,12 @@ class EnergyViewTests(unittest.TestCase):
             (unready["learned_everyday"]["katch_mcardle"]["qualified"],
              unready["learned_everyday"]["checked"]),
         )  # fmt: skip
-        self.assertNotIn("learned_kcal", row(unready, "katch_mcardle")["split"])
+        wide_kcal = unready["learned_everyday"]["katch_mcardle"]["kcal"]
+        self.assertGreater(wide_kcal, 0)
+        total, _, kcal, provisional = learned(unready, "katch_mcardle")
+        self.assertEqual(
+            (2689 + wide_kcal, wide_kcal, True), (total, kcal, provisional)
+        )
         # The comparison with the weight stays on the raw rows.
         for source in ("katch_mcardle", "cunningham"):
             self.assertEqual(
@@ -231,6 +257,65 @@ class EnergyViewTests(unittest.TestCase):
                 row(checked, source)["mean_error_kcal"],
             )
         self.assertEqual(plain["fit_scale"], checked["fit_scale"])
+        # #3723: the source card keeps each raw total and adds its 'mit Alltag'
+        # total, check or not: the qualified term with its sign, else the
+        # provisional estimate floored at 0; none on the device row. Two
+        # logged days give the period its formula totals.
+        logged = DayInputs(
+            weight_kg=80.0, intake_kcal=2500.0, entries=3, activity_kcal=500.0
+        )
+        period = replace(
+            inputs(),
+            days={**inputs().days, END: logged, END - timedelta(days=30): logged},
+        )
+
+        def scale(fitted: EnergyWindow) -> tuple[dict[str, Any], dict[str, Any]]:
+            view = energy_view(period, [fitted], garmin())
+            sources = {
+                s["source"]: (
+                    s["total_kcal"],
+                    s.get("learned_total_kcal"),
+                    s.get("learned_qualified"),
+                )
+                for s in view["fit_scale"]["28d"]["sources"]
+            }
+            return view, sources
+
+        qualified, raw = scale(window(END, 2700.0, 1850.0))
+        # Katch-McArdle 2,339 + 8, Cunningham 2,496 - 106 (the terms above).
+        self.assertEqual(
+            {
+                "katch_mcardle": (2339, 2347, True),
+                "cunningham": (2496, 2390, True),
+                "device": (3120, None, None),
+            },
+            raw,
+        )
+        unqualified, provisional = scale(wide)
+        terms = unqualified["learned_everyday"]
+        self.assertGreater(terms["katch_mcardle"]["kcal"], 0)
+        self.assertLess(terms["cunningham"]["kcal"], 0)
+        self.assertEqual(
+            {
+                "katch_mcardle": (2339, 2339 + terms["katch_mcardle"]["kcal"], False),
+                # A negative provisional estimate counts 0.
+                "cunningham": (2496, 2496, False),
+                "device": (3120, None, None),
+            },
+            provisional,
+        )
+        # The ranking stays on the raw rows.
+        self.assertEqual(
+            (qualified["best"], qualified["outlined"]),
+            (unqualified["best"], unqualified["outlined"]),
+        )
+        # Without an estimate no row carries a 'mit Alltag' total.
+        empty, none = scale(window(END, None, None))
+        self.assertIsNone(empty["learned_everyday"]["katch_mcardle"])
+        self.assertEqual({None}, {total for _, total, _ in none.values()})
+        # Nor does the diary's: it is not learned yet and counts 0 (#3723).
+        for source in ("katch_mcardle", "cunningham"):
+            self.assertEqual((None, None), learned(empty, source)[2:])
 
     def test_unmeasured_everyday_energy_is_named_never_resting(self) -> None:
         # #3550 (athlete decision 2026-11-18): 300 kcal/day of everyday energy
@@ -259,13 +344,25 @@ class EnergyViewTests(unittest.TestCase):
                 own["split"]["unmeasured_band_kcal"],
             ),
         )
-        # Their values stay; only their distance to the own total moves.
-        shown = ("resting_kcal", "resting_band_kcal", "total_kcal", "split")
+
+        # Their values stay; only their distance to the own total moves, and
+        # the learned everyday the formula rows learn from it (#3723).
+        def raw(view: dict[str, Any], source: str) -> list[Any]:
+            item = row(view, source)
+            split = {
+                key: value
+                for key, value in item["split"].items()
+                if not key.startswith("learned_")
+            }
+            total = item["total_kcal"] - learned_kcal(item)
+            return [item["resting_kcal"], item["resting_band_kcal"], total, split]
+
         for source in ("katch_mcardle", "cunningham", "device"):
-            self.assertEqual(
-                [row(plain, source)[key] for key in shown],
-                [row(lifted, source)[key] for key in shown],
-            )
+            self.assertEqual(raw(plain, source), raw(lifted, source))
+        self.assertGreater(
+            learned_kcal(row(lifted, "katch_mcardle")),
+            learned_kcal(row(plain, "katch_mcardle")),
+        )
         # At or below the reference nothing is split.
         self.assertNotIn("unmeasured_kcal", row(plain, "own")["split"])
         self.assertEqual(1839, row(plain, "own")["resting_kcal"])
@@ -441,7 +538,8 @@ class EnergyViewTests(unittest.TestCase):
         # Formula rows: resting by formula, then the raw own everyday 250, sport
         # 350 and TEF 250, all computed alike. The own 28-day row (own_window,
         # #3531): the residual 1,850 and the calibrated 262.5 / 367.5 (k = 1.05),
-        # so only TEF is alike; the own day row takes the formula rows' parts.
+        # so only TEF is alike; the own day row takes the formula rows' parts,
+        # not their provisional learned everyday (#3723).
         view = energy_view(inputs(), [window(END, 2700.0, 1850.0)], garmin())
         self.assertEqual(
             {
@@ -450,6 +548,9 @@ class EnergyViewTests(unittest.TestCase):
                 "sport_kcal": 350,
                 "tef_kcal": 250,
                 "shared": {"neat": True, "sport": True, "tef": True},
+                "learned_kcal": 8,
+                "learned_band_kcal": 256,
+                "learned_provisional": True,
             },
             row(view, "katch_mcardle")["split"],
         )
@@ -1448,9 +1549,9 @@ class SelectedDayTests(unittest.TestCase):
         self.assertEqual(
             (250, 0, 250), (split["neat_kcal"], split["sport_kcal"], split["tef_kcal"])
         )
-        # 1,838.8 + 250 + 0 + 250.
+        # 1,838.8 + 250 + 0 + 250, plus the provisional learned everyday 8 (#3723).
         self.assertEqual(
-            2339,
+            2339 + 8,
             row(self.view(rest_day, {rest_day: quiet}), "katch_mcardle")["total_kcal"],
         )
         with_session = row(self.view(END), "katch_mcardle")["split"]
@@ -1488,7 +1589,9 @@ class SelectedDayTests(unittest.TestCase):
         bare = DayInputs(weight_kg=80.0)
         view = self.view(today, {today: bare})
         km = row(view, "katch_mcardle")
-        self.assertEqual(km["resting_kcal"], km["total_kcal"])
+        # With the provisional learned everyday, which needs no data of the day (#3723).
+        self.assertEqual(km["resting_kcal"] + learned_kcal(km), km["total_kcal"])
+        self.assertEqual(8, learned_kcal(km))
         parts = ("neat_kcal", "sport_kcal", "tef_kcal")
         self.assertEqual((0, 0, 0), tuple(km["split"][key] for key in parts))
         self.assertEqual(["neat", "sport", "tef"], km["pending_parts"])
@@ -1534,7 +1637,10 @@ class SelectedDayTests(unittest.TestCase):
         self.assertEqual(0, km["split"]["neat_kcal"])
         split = km["split"]
         self.assertEqual(
-            km["resting_kcal"] + split["sport_kcal"] + (split["tef_kcal"] or 0),
+            km["resting_kcal"]
+            + split["sport_kcal"]
+            + (split["tef_kcal"] or 0)
+            + learned_kcal(km),
             km["total_kcal"],
         )
         past = END - timedelta(days=2)
@@ -1890,12 +1996,15 @@ class EnergyDayScenarioTests(unittest.TestCase):
                 with self.subTest(phase=phase, source=item["source"]):
                     self.assertTrue(view["day_partial"])
                     self.assertIsNotNone(item["total_kcal"])
-        # Early morning a formula row's total is its rest alone; without a
-        # session sport is 0, not open.
+        # Early morning a formula row's total is its rest and its provisional
+        # learned everyday (#3723); without a session sport is 0, not open.
         for source in FORMULAS:
             item = row(self.morning, source)
             with self.subTest(phase="morning", source=source):
-                self.assertEqual(item["resting_kcal"], item["total_kcal"])
+                self.assertGreater(learned_kcal(item), 0)
+                self.assertEqual(
+                    item["resting_kcal"] + learned_kcal(item), item["total_kcal"]
+                )
                 self.assertEqual(["neat", "tef"], sorted(item["pending_parts"]))
                 self.assertEqual(0, item["split"]["sport_kcal"])
 
@@ -1913,7 +2022,10 @@ class EnergyDayScenarioTests(unittest.TestCase):
             with self.subTest(source=source):
                 self.assertIn("neat", item["pending_parts"])
                 counted = sum(item["split"][p] or 0 for p in DAY_PARTS)
-                self.assertEqual(item["resting_kcal"] + counted, item["total_kcal"])
+                self.assertEqual(
+                    item["resting_kcal"] + counted + learned_kcal(item),
+                    item["total_kcal"],
+                )
                 self.assertNotIn("neat", later["pending_parts"])
                 self.assertGreater(later["split"]["neat_kcal"], 0)
 
@@ -1926,11 +2038,15 @@ class EnergyDayScenarioTests(unittest.TestCase):
                 for part in DAY_PARTS:
                     self.assertEqual(katch["split"][part], own["split"][part])
                 self.assertEqual(window["resting_kcal"], own["resting_kcal"])
-                # #3550: Ruhe plus "übriger Alltag" is the residual.
+                # #3550: Ruhe plus "übriger Alltag" is the residual; the formula
+                # row's learned everyday is no day part of the own row (#3723).
                 rest = own["resting_kcal"] + own["split"].get("unmeasured_kcal", 0)
                 self.assertEqual(
                     own["total_kcal"],
-                    rest + katch["total_kcal"] - katch["resting_kcal"],
+                    rest
+                    + katch["total_kcal"]
+                    - katch["resting_kcal"]
+                    - learned_kcal(katch),
                 )
                 self.assertNotEqual(window["total_kcal"], own["total_kcal"])
 

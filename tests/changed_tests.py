@@ -99,6 +99,8 @@ SERVER_WIRED_PATHS = ("server.py", "backend/http_api/", "backend/runtime/")
 SCAN_CALLS = frozenset(
     {"glob", "iglob", "rglob", "iterdir", "walk", "listdir", "scandir"}
 )
+# The modules whose scanning functions a bare call names after a from-import.
+SCAN_MODULES = frozenset({"os", "glob", "pathlib"})
 COMPOSITION_ROOT = "server"
 
 
@@ -143,6 +145,37 @@ def _path_literals(value: str) -> set[str]:
     return {literal.strip("/"), base} - {""}
 
 
+def _scans(tree: ast.AST) -> bool:
+    """Whether a module scans directories (#3727).
+
+    A scan is a call: ``os.walk(...)``, ``path.rglob(...)``, or a bare
+    ``listdir(...)`` imported from os, glob or pathlib. A variable or a method
+    named ``walk``, and ``ast.walk``, are no directory scan.
+    """
+    calls = [node.func for node in ast.walk(tree) if isinstance(node, ast.Call)]
+    if any(_attribute_scan(func) for func in calls):
+        return True
+    # The local names of scanning functions imported from those modules, so an
+    # alias (``from glob import glob as g``) counts too.
+    imported = {
+        alias.asname or alias.name
+        for node in ast.walk(tree)
+        if isinstance(node, ast.ImportFrom) and node.module in SCAN_MODULES
+        for alias in node.names
+        if alias.name in SCAN_CALLS
+    }
+    return any(isinstance(func, ast.Name) and func.id in imported for func in calls)
+
+
+def _attribute_scan(func: ast.expr) -> bool:
+    """Whether a call's function is a scanning method, ``ast.walk`` aside."""
+    return (
+        isinstance(func, ast.Attribute)
+        and func.attr in SCAN_CALLS
+        and not (isinstance(func.value, ast.Name) and func.value.id == "ast")
+    )
+
+
 class _Source:
     def __init__(self, path: Path, root: Path):
         self.module = _module_name(path, root)
@@ -151,7 +184,7 @@ class _Source:
         tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
         self.imports: set[str] = set()
         self.literals: set[str] = set()
-        self.scans = False
+        self.scans = _scans(tree)
         for node in ast.walk(tree):
             if isinstance(node, ast.Import):
                 self.imports.update(alias.name for alias in node.names)
@@ -159,10 +192,6 @@ class _Source:
                 base = self._absolute(node)
                 self.imports.add(base)
                 self.imports.update(f"{base}.{alias.name}" for alias in node.names)
-            elif isinstance(node, ast.Attribute) and node.attr in SCAN_CALLS:
-                self.scans = True
-            elif isinstance(node, ast.Name) and node.id in SCAN_CALLS:
-                self.scans = True  # from os import listdir; from glob import glob
             elif isinstance(node, ast.Constant) and isinstance(node.value, str):
                 self.literals.update(_path_literals(node.value))
 

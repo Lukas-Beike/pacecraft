@@ -636,8 +636,9 @@ def energy_view(
         )
     # Ranked on the raw rows, before the learned term enters them (#3613).
     outlined = _outlined(rows, best)
-    # The formula rows' learned everyday term (#3577); it enters their shown
-    # day totals only after the athlete's check, never the fit above.
+    # The formula rows' learned everyday term (#3577): it enters their shown
+    # day totals, provisionally until the athlete's check (#3723), never the
+    # fit above.
     learned = learned_everyday(windows, bodies)
     checked = (goal or {}).get(LEARNED_EVERYDAY_FIELD) or None
     _add_learned(rows, learned, checked)
@@ -694,7 +695,7 @@ def energy_view(
         # A period inside the 12-week read takes it; 6 Monate needs its own read,
         # given only when Verlauf asks for it (#3711).
         "fit_scale": {
-            key: _fit_scale(given, trend, health, latest, days, goal)
+            key: _fit_scale(given, trend, health, latest, days, goal, learned)
             for key, (given, days) in _period_inputs(
                 inputs, fit_inputs, latest.end
             ).items()
@@ -944,19 +945,22 @@ def _add_learned(
     learned: Mapping[str, LearnedEveryday | None],
     checked: str | None,
 ) -> None:
-    """Once ``checked``, each formula row carries its learned everyday term
-    (#3577): a split part of its own and in the day total, a negative one as a
-    reduction; only while the term qualifies (#3689), the check staying
-    stored until it does."""
+    """Each formula row with an estimate carries its learned everyday term
+    (#3577, #3723): a split part of its own and in the day total. Once
+    ``checked`` and qualified (#3689) it counts with its sign, a negative one
+    as a reduction; until then the provisional point estimate floored at 0,
+    marked ``learned_provisional``."""
     for row in rows:
-        fit = learned.get(str(row["source"])) if checked else None
-        if fit is None or not fit.qualified or row["split"] is None:
+        fit = learned.get(str(row["source"]))
+        if fit is None or row["split"] is None:
             continue
-        kcal = round(fit.kcal)
+        applied = bool(checked) and fit.qualified
+        kcal = _learned_kcal(fit, applied)
         row["split"] = {
             **row["split"],
             "learned_kcal": kcal,
             "learned_band_kcal": round(fit.band_kcal),
+            "learned_provisional": not applied,
         }
         if row["total_kcal"] is not None:
             row["total_kcal"] += kcal
@@ -1171,9 +1175,12 @@ def _fit_scale(
     latest: EnergyWindow,
     days: int,
     goal: Mapping[str, str] | None = None,
+    learned: Mapping[str, LearnedEveryday | None] | None = None,
 ) -> dict[str, Any]:
     """Each source's mean daily total over ``days`` against the own estimate,
-    and the period's deficit card (#3704).
+    and the period's deficit card (#3704). A formula row with a learned
+    everyday estimate also carries its total with it (#3723); its own total
+    and the ranking stay raw.
 
     ``own_days`` names the span of the own value and its band. A period with
     its own value averages every source over that value's days: the complete
@@ -1214,7 +1221,13 @@ def _fit_scale(
         )
         basis = own = period_window(only, latest.end, days, latest.calibration_factor)
     sources = [
-        {"source": name, "total_kcal": _round(_formula_prediction(f, body, basis)[2])}
+        _with_learned(
+            {
+                "source": name,
+                "total_kcal": _round(_formula_prediction(f, body, basis)[2]),
+            },
+            (learned or {}).get(name),
+        )
         for name, f in FORMULAS.items()
     ]
     sources.append(
@@ -1239,6 +1252,27 @@ def _fit_scale(
         "deficit": _deficit(
             deficit_window, _device_prediction(health, deficit_window)[2], goal
         ),
+    }
+
+
+def _learned_kcal(fit: LearnedEveryday, applied: bool) -> int:
+    """The learned everyday a formula row counts (#3723): an applied term with
+    its sign, else the provisional point estimate floored at 0."""
+    kcal = round(fit.kcal)
+    return kcal if applied else max(0, kcal)
+
+
+def _with_learned(
+    source: dict[str, Any], fit: LearnedEveryday | None
+) -> dict[str, Any]:
+    """A source-card formula row with its 'mit Alltag' total (#3723): the
+    qualified term applies here before the athlete's check."""
+    if fit is None or source["total_kcal"] is None:
+        return source
+    return {
+        **source,
+        "learned_total_kcal": source["total_kcal"] + _learned_kcal(fit, fit.qualified),
+        "learned_qualified": fit.qualified,
     }
 
 

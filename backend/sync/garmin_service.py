@@ -21,6 +21,7 @@ from backend.providers import garmin as garmin_adapter
 from backend.providers import garmin_morning
 from backend.providers import http as provider_http
 from backend.providers.garmin import (
+    HISTORY_READ_DAYS,
     WEIGHT_READ_DAYS,
     ExternalCall,
     GarminClientFactory,
@@ -45,7 +46,11 @@ from backend.providers.garmin_wellness_history import (
     WellnessHistoryHooks,
     collect_wellness_history,
 )
-from backend.sync.garmin import GARMIN_RECONCILIATION_DAYS, WEIGHT_REFETCH_DAYS
+from backend.sync.garmin import (
+    GARMIN_RECONCILIATION_DAYS,
+    TRAINING_REFETCH_DAYS,
+    WEIGHT_REFETCH_DAYS,
+)
 from backend.sync.garmin_snapshot_writer import (
     ANALYSIS_SOURCES,
     DAYTIME_SOURCES,
@@ -283,6 +288,8 @@ class GarminRemoteReader:
         rated_activity_ids: frozenset[str] = frozenset(),
         body_battery_reconcile_days: int = 0,
         weight_days: int = WEIGHT_READ_DAYS,
+        history_days: int = HISTORY_READ_DAYS,
+        daily_training_days: tuple[str, ...] = (),
     ) -> tuple[dict[str, Any], list[tuple[date, date]]]:
         today = end_date or self._local_today()
         windows = split_date_windows(
@@ -323,6 +330,8 @@ class GarminRemoteReader:
                     rated_activity_ids=rated_activity_ids,
                     body_battery_reconcile_days=body_battery_reconcile_days,
                     weight_days=weight_days,
+                    history_days=history_days,
+                    daily_training_days=daily_training_days,
                 ),
             )
         finally:
@@ -1197,6 +1206,8 @@ class GarminSyncSource:
         rated_activity_ids: frozenset[str] = frozenset(),
         body_battery_reconcile_days: int = 0,
         weight_days: int = WEIGHT_READ_DAYS,
+        history_days: int = HISTORY_READ_DAYS,
+        daily_training_days: tuple[str, ...] = (),
     ) -> tuple[dict[str, Any], list[tuple[date, date]] | None, str | None, str]:
         if self.fixture_enabled():
             payload = self._fixture_loader.load(days)
@@ -1212,6 +1223,8 @@ class GarminSyncSource:
             rated_activity_ids=rated_activity_ids,
             body_battery_reconcile_days=body_battery_reconcile_days,
             weight_days=weight_days,
+            history_days=history_days,
+            daily_training_days=daily_training_days,
         )
         return payload, windows, None, windows[0][0].isoformat()
 
@@ -1468,6 +1481,16 @@ class GarminSyncService:
             return WEIGHT_REFETCH_DAYS
         return WEIGHT_READ_DAYS
 
+    def _history_days(self, end_date: date | None) -> int:
+        """The training history span: 6 months once in a current run (#3729)."""
+        if end_date is None and self._payload_service.training_refetch_due():
+            return TRAINING_REFETCH_DAYS
+        return HISTORY_READ_DAYS
+
+    def _daily_training_days(self, reconcile: bool) -> tuple[str, ...]:
+        """Once a day: up to 14 earlier days of the daily training values (#3729)."""
+        return self._payload_service.daily_training_batch() if reconcile else ()
+
     def _body_battery_reconcile_days(self, end_date: date | None) -> int:
         """The Body Battery span of a current run: once per local day, else none."""
         if end_date is None and self._payload_service.body_battery_reconciliation_due():
@@ -1512,6 +1535,8 @@ class GarminSyncService:
             # so a missed morning or a partial day total is replaced by the full one.
             body_battery_reconcile_days=self._body_battery_reconcile_days(end_date),
             weight_days=self._weight_days(end_date),
+            history_days=self._history_days(end_date),
+            daily_training_days=self._daily_training_days(reconcile),
         )
         self._raise_if_cancelled(cancel_event)
         payload = (

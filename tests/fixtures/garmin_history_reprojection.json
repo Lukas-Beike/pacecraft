@@ -386,8 +386,8 @@
    "weight|None|2026-10-10|70.65|kg|device_measured|garmin|Garmin Connect|None|None|None|{}|active|weight:2026-10-10:0|weight/~bc5a6c95c238d1bd61bc20d38ae32e3a|2026-10-10T07:00:00+02:00",
    "weight|None|2026-10-12|70.35|kg|device_measured|garmin|Garmin Connect|None|None|None|{}|active|weight:2026-10-12:0|weight/~4f2db87ec1d6c385fa8fe5d0f03c1c21|2026-10-12T07:00:00+02:00"
   ],
-  "raw_records": 64,
-  "raw_records_sha256": "29eb7994c3cab2289a47d68dafaf19a94dd60597782ad9591899df57e361fe39"
+  "raw_records": 115,
+  "raw_records_sha256": "8eab70a4cb99cdc0995c0f24ff90498d1841d6132094d9a3f294fa601f9c2987"
  },
  "performance_history": [
   {
@@ -446,8 +446,7 @@
     "run_threshold_hr_bpm": 166,
     "run_threshold_pace_seconds_per_km": 278,
     "run_threshold_watts": 285,
-    "running_vo2max_ml_kg_min": 57,
-    "weight_kg": 72
+    "running_vo2max_ml_kg_min": 57
    }
   },
   {
@@ -462,8 +461,7 @@
     "run_threshold_hr_bpm": 167,
     "run_threshold_pace_seconds_per_km": 277,
     "run_threshold_watts": 286,
-    "running_vo2max_ml_kg_min": 57.2,
-    "weight_kg": 71.85
+    "running_vo2max_ml_kg_min": 57.2
    }
   },
   {
@@ -476,8 +474,7 @@
     "run_5k_seconds": 1272,
     "run_half_marathon_seconds": 6102,
     "run_marathon_seconds": 12998,
-    "running_vo2max_ml_kg_min": 57.4,
-    "weight_kg": 71.7
+    "running_vo2max_ml_kg_min": 57.4
    }
   },
   {
@@ -511,8 +508,7 @@
     "run_threshold_hr_bpm": 167,
     "run_threshold_pace_seconds_per_km": 275,
     "run_threshold_watts": 289,
-    "running_vo2max_ml_kg_min": 57.8,
-    "weight_kg": 71.4
+    "running_vo2max_ml_kg_min": 57.8
    }
   },
   {
@@ -544,8 +540,7 @@
     "run_threshold_hr_bpm": 166,
     "run_threshold_pace_seconds_per_km": 273,
     "run_threshold_watts": 291,
-    "running_vo2max_ml_kg_min": 58.2,
-    "weight_kg": 71.1
+    "running_vo2max_ml_kg_min": 58.2
    }
   },
   {
@@ -588,8 +583,7 @@
     "run_threshold_hr_bpm": 166,
     "run_threshold_pace_seconds_per_km": 271,
     "run_threshold_watts": 294,
-    "running_vo2max_ml_kg_min": 58.8,
-    "weight_kg": 70.65
+    "running_vo2max_ml_kg_min": 58.8
    }
   },
   {
@@ -606,8 +600,7 @@
     "run_threshold_hr_bpm": 168,
     "run_threshold_pace_seconds_per_km": 270,
     "run_threshold_watts": 296,
-    "running_vo2max_ml_kg_min": 59.2,
-    "weight_kg": 70.35
+    "running_vo2max_ml_kg_min": 59.2
    }
   }
  ],
@@ -622,7 +615,7 @@
   "2026-10-08": "a76be1b98019f067782f8f1679daaa03cedf0de98b7545b7fc96dbfde4270efc",
   "2026-10-09": "122a3626022f6afe29cd62d1f01964aaff38d5df3331262207791ef863653a92",
   "2026-10-10": "8fcdf5bb086e1fa2691b90a088c16b306f2a261a4be0e5c41b81210e6c082b55",
-  "2026-10-11": "afc2b2e59388f79b282683931c2032c0e70ab084ab82e7b51acd014cebea2a6a",
+  "2026-10-11": "fad3f317bb93f9a83712eb430cb95eff9002e9b95ea6255e0df8b90f7ccab1c6",
   "2026-10-12": "49933d8cf9dd7bd71d15441b4840348de84d5225ebbb88bf39df7304e968e09a"
  }
 }

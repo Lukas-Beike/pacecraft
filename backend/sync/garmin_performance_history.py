@@ -30,6 +30,10 @@ _CURRENT_SECTIONS: Final = (
     "readiness",
     *WEIGHT_SECTIONS,
 )
+# The current metrics the history does not copy: the weight section keeps the
+# weigh-ins themselves, and a copy outlived the readings Garmin no longer
+# returns (#3718, #3728).
+_NOT_HISTORY: Final = frozenset({"weight_kg"})
 # The plausible window of a historical FTP value.
 _FTP_HISTORY_RANGE: Final = (20, 2000)
 
@@ -45,7 +49,8 @@ def append_garmin_performance_history(
     unique = _merged_history(history)
     for key, data in current_garmin_metrics(payload, current_date).items():
         if (
-            data.get("value") is None
+            key in _NOT_HISTORY
+            or data.get("value") is None
             or data.get("freshness") != "current"
             or not data.get("observed_at")
         ):

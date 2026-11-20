@@ -82,6 +82,22 @@ def record_day(value: object) -> str | None:
     return None
 
 
+def answer_days(value: object) -> set[str]:
+    """The days a provider answer holds: its dated rows and day-keyed entries.
+
+    A list yields its rows' days; a mapping its keys when they are days (a
+    ``groupMap``), else the days of its values, searched the same way (#3729).
+    """
+    if isinstance(value, list):
+        return {day for row in value if (day := record_day(row))}
+    if not isinstance(value, Mapping):
+        return set()
+    keys = {str(key) for key in value if record_day({"date": str(key)})}
+    if keys:
+        return keys
+    return set().union(*(answer_days(item) for item in value.values()), set())
+
+
 def _is_day(text: str) -> bool:
     try:
         return date.fromisoformat(text).isoformat() == text

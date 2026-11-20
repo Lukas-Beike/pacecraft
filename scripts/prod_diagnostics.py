@@ -151,6 +151,8 @@ SECTION_FIELDS = {
         r"|today_resting_days_back"
         # Formulas whose learned everyday fit lies below 0 (#3577).
         r"|learned_everyday_negative"
+        # The formula rows' learned everyday per state, counts only (#3723).
+        r"|learned_everyday_state\.(none|provisional|qualified)"
         # The daily estimate's 12-week base, counts only (#3687).
         r"|base_windows|base_weight_sum_tenths|base_unstable"
         # Days of the last week whose Garmin summary names its wellness end (#3530).
@@ -194,6 +196,11 @@ SECTION_FIELDS = {
         r"|answer_weighin_days|answer_days_without_current_row"
         r"|current_list_days_in_answer_span|current_list_days_before_answer"
         r"|refetch_state|refetch_added_days)"
+    ),
+    # The one-off Garmin history re-reads, counts only (#3729).
+    "garmin_history_refetch": re.compile(
+        r"status|(daily_)?training_state|(daily_)?training_added_days"
+        r"|(daily_)?training_due_days"
     ),
     # The entered body days mirrored to Garmin Connect, counts only (#3403).
     "garmin_body_push": re.compile(
