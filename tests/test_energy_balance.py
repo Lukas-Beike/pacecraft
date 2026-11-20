@@ -474,6 +474,89 @@ class AdaptiveTdeeTests(unittest.TestCase):
                 squares = abs(balance._slope(xs, ys)[0] + 0.07)
                 self.assertLess(robust, squares / 2)
 
+    def test_long_periods_take_the_edge_means_not_the_line(self) -> None:
+        # #3739: flat at 90 kg until 30 days before END, then -0.2 kg a day,
+        # every weigh-in ±0.3 kg in turn. The first 14 days of 3 and of 6 months
+        # average 90.0; the last 14 (k = 0..13) 90 - 0.2 x 23.5 = 85.3, so both
+        # change by -4.7 kg, where the line through all weigh-ins does not.
+        def course(k: int) -> float:
+            noise = 0.3 if k % 2 else -0.3
+            return (90.0 if k >= 30 else 90.0 - 0.2 * (30 - k)) + noise
+
+        def period(days: int, keep: Callable[[int], bool] = lambda _k: True):
+            weights = {
+                END - timedelta(days=k): balance.DayInputs(weight_kg=course(k))
+                for k in range(190)
+                if keep(k)
+            }
+            inputs = balance.EnergyInputs(weights, {}, None)
+            window = balance.period_window(inputs, END, days, 1.0)
+            assert window.store is not None
+            span = {END - timedelta(days=k): course(k) for k in range(days) if keep(k)}
+            return window.store, balance._line_change(span)
+
+        for days, first_day in ((91, 83), (182, 174)):
+            store, line = period(days)
+            with self.subTest(days=days):
+                self.assertEqual((14, 14), store.edge_weighins)
+                self.assertAlmostEqual(90.0, store.weight_start_kg, places=9)
+                self.assertAlmostEqual(85.3, store.weight_end_kg, places=9)
+                self.assertGreater(abs(line.slope * line.span + 4.7), 1.0)
+                # Each edge's mean day, 6.5 days inside, the half day rounded up.
+                self.assertEqual(
+                    (END - timedelta(days=first_day), END - timedelta(days=6)),
+                    (store.weight_date_start, store.weight_date_end),
+                )
+        # An edge with fewer weigh-ins (4 of the last 14 days) widens the band.
+        dense, _ = period(91)
+        sparse, _ = period(91, lambda k: k >= 14 or k % 4 == 0)
+        self.assertEqual((14, 4), sparse.edge_weighins)
+        self.assertGreater(sparse.sd, dense.sd)
+        # A period without weigh-ins in its first 14 days starts its edge at the
+        # first weigh-in: 70 days before END, mean day 63.5 → 63 days before.
+        late = balance.period_window(
+            balance.EnergyInputs(
+                {
+                    END - timedelta(days=k): balance.DayInputs(weight_kg=course(k))
+                    for k in range(71)
+                },
+                {},
+                None,
+            ),
+            END,
+            91,
+            1.0,
+        ).store
+        assert late is not None
+        self.assertEqual((14, 14), late.edge_weighins)
+        self.assertEqual(END - timedelta(days=63), late.weight_date_start)
+        # 4 weeks keep the line for their store: its slope, weigh-in span and
+        # ends, no edges (the card shows 7-day means beside it, #3739).
+        four, line = period(28)
+        self.assertIsNone(four.edge_weighins)
+        self.assertEqual(27, four.days)
+        self.assertAlmostEqual(
+            balance.energy_density(four.fat_share) * line.slope, four.kcal_per_day
+        )
+        self.assertAlmostEqual(
+            line.slope * line.span, four.weight_end_kg - four.weight_start_kg
+        )
+        # Their 7-day edges (athlete decision, #3739): k = 21..27 average
+        # 90 - 0.2 x 6 + 0.3 / 7 = 88.842857, k = 0..6 90 - 0.2 x 27 - 0.3 / 7
+        # = 84.557143, on the mean days END - 24 and END - 3.
+        start = END - timedelta(days=27)
+        shown = balance.edge_change(
+            {END - timedelta(days=k): course(k) for k in range(28)}, start, END, 7
+        )
+        assert shown is not None
+        self.assertEqual((7, 7), shown.edges)
+        self.assertAlmostEqual(88.842857, shown.first_kg, places=5)
+        self.assertAlmostEqual(-4.285714, shown.slope * shown.span, places=5)
+        self.assertEqual(
+            (END - timedelta(days=24), END - timedelta(days=3)),
+            (shown.day_first, shown.day_last),
+        )
+
     def test_the_band_covers_a_water_step_near_the_edge(self) -> None:
         # #3690: 1 kg of water 4 days before the end of a steady window; the
         # stored energy reads part of it as tissue, and the band with its water

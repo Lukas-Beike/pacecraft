@@ -153,6 +153,8 @@ SECTION_FIELDS = {
         r"|learned_everyday_negative"
         # The formula rows' learned everyday per state, counts only (#3723).
         r"|learned_everyday_state\.(none|provisional|qualified)"
+        # The 3-month deficit's weigh-ins per edge window, counts only (#3739).
+        r"|deficit_edge_weighins_91d(\.(first|last))?"
         # The daily estimate's 12-week base, counts only (#3687).
         r"|base_windows|base_weight_sum_tenths|base_unstable"
         # Days of the last week whose Garmin summary names its wellness end (#3530).

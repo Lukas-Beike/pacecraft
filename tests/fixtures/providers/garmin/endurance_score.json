@@ -1,6 +1,8 @@
-[
-  {
-    "calendarDate": "2026-10-05",
-    "overallScore": 6850
+{
+  "calendarDate": "2026-10-05",
+  "overallScore": 6850,
+  "groupMap": {
+    "2026-10-04": {"groupAverage": 6820, "groupMax": 6880},
+    "2026-10-05": {"groupAverage": 6850, "groupMax": 6900}
   }
-]
+}

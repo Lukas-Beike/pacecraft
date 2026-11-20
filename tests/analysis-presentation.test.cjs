@@ -350,6 +350,9 @@ test("Verlauf's deficit card: hero, goal marker, boxes and text agree, measured 
   assert.deepEqual(boxes, ["Gewicht−2,0 kg91,2 → 89,2 kg", "Körperfett−1,4 %-Pkt.15,5 → 14,1 %07.10. → 13.11.", "davon Fett≈ 1,6 kg≈ 80 % · Faustregel 70 %, zu 28 % gemessen", "pro Tag≈ 565 kcal15.820 kcal ÷ 28 Tage"]);
   const dated = energyDeficitCard({ rows, deficit: { ...measured, weight_start_kg: 92.2, weight_end_kg: 88.8, weight_change_kg: -3.4, weight_last_kg: 88.8, weight_date_start: "2026-10-22", weight_date_end: "2026-11-18" } });
   assert.deepEqual(dated.children[4].children.slice(0, 2).map((box) => box.children.map(textOf)), [["Gewicht", "−3,4 kg", "92,2 → 88,8 kg", "22.10. → 18.11."], ["Körperfett", "−1,4 %-Pkt.", "15,5 → 14,1 %", "07.10. → 13.11."]]);
+  // #3739: a long period's ends are its edge means, marked "Ø", with their mean dates and no "aktuell".
+  const edges = energyDeficitCard({ rows, deficit: { ...measured, days: 91, edge_weighins: [12, 9], weight_start_kg: 93.5, weight_end_kg: 89.1, weight_change_kg: -4.4, weight_last_kg: 88.6, weight_date_start: "2026-08-27", weight_date_end: "2026-11-13" } });
+  assert.deepEqual(edges.children[4].children[0].children.map(textOf), ["Gewicht", "−4,4 kg", "Ø 93,5 → Ø 89,1 kg", "27.08. → 13.11."]);
   // #3618 item 4: the weight box shows the fitted change the fat box takes 80 % of (−2,08 → −2,1 and
   // −1,7), not the difference of the rounded ends (−2,0).
   const fitted = energyDeficitCard({ rows, deficit: { ...measured, weight_change_kg: -2.1, fat_change_kg: -1.7 } });

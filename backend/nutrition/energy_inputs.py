@@ -44,6 +44,9 @@ from backend.db.activity_detail_store import detail_sets_for_session
 from backend.nutrition.energy_balance import (
     BAND_Z,
     BASE_DAYS,
+    EDGE_DAYS,
+    MIN_WEIGHINS,
+    MIN_WEIGHT_SPAN_DAYS,
     WINDOW_DAYS,
     Base,
     DayInputs,
@@ -54,6 +57,7 @@ from backend.nutrition.energy_balance import (
     age_weight,
     below_former_share,
     day_tef,
+    edge_change,
     energy_windows,
     fat_share,
     fit_learned_everyday,
@@ -745,6 +749,24 @@ def learned_everyday(
     return fits
 
 
+def _edge_counts(inputs: EnergyInputs, end: date) -> dict[str, int] | None:
+    """The 3-month deficit's weigh-ins per edge window (#3739), null when its
+    weigh-ins carry no store (the window minimum) or its edges do not come
+    apart (Gitar on #3749)."""
+    start = end - timedelta(days=90)
+    weights = {
+        d: v.weight_kg
+        for d, v in inputs.days.items()
+        if v.weight_kg is not None and start <= d <= end
+    }
+    days = sorted(weights)
+    if len(days) < MIN_WEIGHINS or (days[-1] - days[0]).days < MIN_WEIGHT_SPAN_DAYS:
+        return None
+    change = edge_change(weights, start, end, EDGE_DAYS)
+    edges = change.edges if change else None
+    return {"first": edges[0], "last": edges[1]} if edges else None
+
+
 def _learned_counts(fits: Iterable[LearnedEveryday | None]) -> dict[str, Any]:
     """The formula rows' learned everyday terms below 0 (#3577) and per
     state (#3723): none (no estimate), provisional or qualified."""
@@ -828,6 +850,9 @@ def energy_basis(db: Any, sources: EnergySources, today: date) -> dict[str, Any]
         # Formulas whose learned everyday fit lies below 0, shown as 0 (#3577),
         # and per state: none, provisional or qualified (#3723).
         | _learned_counts(learned_everyday(windows, bodies).values())
+        # The weigh-ins in the 3-month deficit's first and last edge, null when
+        # the line prices it (#3739); 6 months need a longer read.
+        | {"deficit_edge_weighins_91d": _edge_counts(inputs, end)}
         # How many days back today's Garmin Ruhe comes from, None = none (#3443).
         | {"today_resting_days_back": (today - found[0]).days if found else None}
         # Days of the last week whose Garmin summary names its wellness end (#3530).

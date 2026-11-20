@@ -996,8 +996,12 @@ class DeficitCardTests(unittest.TestCase):
 
     def test_the_deficit_follows_the_selected_period(self) -> None:
         # #3704: a steady loss of 0.1 kg a day prices at 0.1 x 7,154 kcal/kg (the
-        # 70 % rule of thumb) = 715 kcal a day over every period, and each
-        # period's boxes span its own weigh-ins: 27, 90 and 181 days.
+        # 70 % rule of thumb) = 715 kcal a day over every period. 4 weeks price
+        # it over their weigh-ins (27 days, the line) and show the means of
+        # their first and last 7: 3 days inside each end, a change of 21 x 0.1;
+        # 3 and 6 months take the mean days of their first and last 14 daily
+        # weigh-ins, 6.5 days inside each end (#3739): 90 - 13 = 77 and
+        # 181 - 13 = 168 days, the half days rounded up.
         days = {
             END - timedelta(days=n): DayInputs(weight_kg=80.0 + 0.1 * n)
             for n in range(190)
@@ -1007,10 +1011,10 @@ class DeficitCardTests(unittest.TestCase):
         view = energy_view(
             source, energy_windows(source, END), garmin(), fit_inputs=source
         )
-        for key, span, change, first in (
-            ("28d", 27, -2.7, 27),
-            ("91d", 90, -9.0, 90),
-            ("182d", 181, -18.1, 181),
+        for key, span, change, first, last in (
+            ("28d", 27, -2.1, 24, 3),
+            ("91d", 77, -7.7, 83, 6),
+            ("182d", 168, -16.8, 174, 6),
         ):
             with self.subTest(period=key):
                 card = view["fit_scale"][key]["deficit"]
@@ -1021,9 +1025,12 @@ class DeficitCardTests(unittest.TestCase):
                 self.assertEqual(
                     (
                         (END - timedelta(days=first)).isoformat(),
-                        END.isoformat(),
+                        (END - timedelta(days=last)).isoformat(),
                     ),
                     (card["weight_date_start"], card["weight_date_end"]),
+                )
+                self.assertEqual(
+                    [7, 7] if key == "28d" else [14, 14], card["edge_weighins"]
                 )
         # The latest 28 days stay the read's own deficit.
         self.assertEqual(view["deficit"], view["fit_scale"]["28d"]["deficit"])
@@ -1050,6 +1057,16 @@ class DeficitCardTests(unittest.TestCase):
         self.assertAlmostEqual(
             card["fat_change_kg"], card["weight_change_kg"] * 0.80, delta=0.05
         )
+
+    def test_edge_means_take_their_band_t_from_the_edges(self) -> None:
+        # #3739 review: an edge store's SD rests on the edges' pooled dof, n1 +
+        # n2 - 2, not on the window's: 2 + 2 weigh-ins give t(2) = 4.303, so
+        # 4.303 x 120 = 516; 14 + 14 give t(26) = 2.056, 247; one each pools
+        # nothing, so z: 1.96 x 120 = 235. The line keeps the window's t(18).
+        for edges, band in (((2, 2), 516), ((14, 14), 247), ((1, 1), 235), (None, 252)):
+            with self.subTest(edges=edges):
+                card = self.view(MEASURED._replace(edge_weighins=edges))
+                self.assertEqual(band, card["band_kcal"])
 
     def test_the_card_shows_the_stores_terms_and_the_real_expenditure(self) -> None:
         # #3598: the readings span the phase (from 07.10.), not the window, and
@@ -1078,6 +1095,8 @@ class DeficitCardTests(unittest.TestCase):
                 "span_days": 28,
                 "weight_start_kg": 91.2,
                 "weight_end_kg": 89.2,
+                # A store without weigh-in dates has no edge means (#3739).
+                "edge_weighins": None,
                 "weight_change_kg": -2.0,
                 # 80 % at 9,441 and 20 % at 1,816 kcal/kg (#3618 item 7).
                 "kcal_per_kg": 7916,

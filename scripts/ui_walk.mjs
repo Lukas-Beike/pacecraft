@@ -288,7 +288,7 @@ export const STEPS = [
   { view: "nutrition", name: "Ernährung: Körper", covers: "Body analysis", pre: [tab("nutrition", "body")], ready: "#bodyAnalysisCharts [data-body-metric] svg", kind: "chart" },
   { view: "nutrition", name: "Ernährung: Körperwerte", covers: "#3402 weight and body fat with their pencils", pre: [tab("nutrition", "body")], ready: "#bodyAnalysisCharts [data-body-overview] [data-metric='weight_kg'] th small", kind: "text" },
   { view: "nutrition", name: "Ernährung: Energieverbrauch", covers: "#3099 #3252 energy card in the diary, #3550 übriger Alltag, #3577 Übriger Alltag, #3703 one source, #3723 provisional Übriger Alltag", pre: [tab("nutrition", "diary")], ready: "#nutritionEnergy [data-energy] .energy-usage", kind: "text" },
-  { view: "nutrition", name: "Ernährung: Welche Quelle trifft", covers: "#3397 fit scale under Verlauf, #3723 mit Alltag ring", pre: [tab("nutrition", "week")], ready: "#nutritionFitScale [data-energy-fit] [data-energy-fit-note]", kind: "text" },
+  { view: "nutrition", name: "Ernährung: Welche Quelle trifft", covers: "#3397 fit scale under Verlauf, #3723 mit Alltag ring, #3739 deficit edge means", pre: [tab("nutrition", "week")], ready: "#nutritionFitScale [data-energy-fit] [data-energy-fit-note]", kind: "text" },
   { view: "more", name: "Mehr: Ausrüstung", covers: "#2935 equipment", pre: [tab("more", "equipment")], ready: "#equipmentItems .equipment-card", kind: "text" },
   { view: "more", name: "Mehr: Ausrüstung Standard", covers: "#3014 default equipment", pre: [tab("more", "equipment")], ready: "#equipmentItems .equipment-rules select", kind: "options" },
   // The current release's entry: a listed change, or only its collapsed "Technik (n)" (2.1.20).
