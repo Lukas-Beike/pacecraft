@@ -99,6 +99,10 @@ class GarminSnapshotWriter:
         if garmin_payload_retrieved_at(payload, zone=zone) is not None:
             for section in REPLACE_SECTIONS:
                 self._replace(db, section, payload.get(section))
+        weight_window = _weight_read_window(payload)
+        if weight_window is not None:
+            # A merged weigh-in answer replaces its read window (#3754).
+            self._prune(db, "weight", payload["weight"], weight_window)
         self._patch_state(db, payload)
         coverage = garmin_ingest_coverage(db, payload, zone=zone)
         if coverage is not None and not _current_activity_read(
@@ -193,14 +197,23 @@ class GarminSnapshotWriter:
             ACTIVITIES_SECTION,
             DAILY_SUMMARY_SECTION,
         ):
+            keep = _identifiers(section, value)
             garmin_store.prune_section(
                 db,
                 section,
-                _identifiers(section, value),
+                keep,
                 start=window[0].isoformat(),
                 end=window[1].isoformat(),
                 undated=section in WEIGHT_SECTIONS,
             )
+            if section in WEIGHT_SECTIONS:
+                garmin_store.retire_window_orphans(
+                    db,
+                    section,
+                    keep,
+                    window[0].isoformat(),
+                    window[1].isoformat(),
+                )
 
     @staticmethod
     def _patch_state(db: Any, payload: Mapping[str, Any]) -> None:
@@ -228,6 +241,23 @@ def complete_activity_read_window(
     except KeyError, TypeError, ValueError:
         return None
     return start, end
+
+
+def _weight_read_window(payload: Mapping[str, Any]) -> tuple[date, date] | None:
+    """Return the read window of this run's merged weigh-in answer, if any.
+
+    The sync drops the window with an answer without weigh-ins (#3718), so a
+    failed or empty read retires nothing.
+    """
+    window = (payload.get("provider_sync") or {}).get("weight_window")
+    if not payload.get("weight") or not isinstance(window, Mapping):
+        return None
+    try:
+        return date.fromisoformat(str(window["start"])), date.fromisoformat(
+            str(window["end"])
+        )
+    except KeyError, ValueError:
+        return None
 
 
 def _current_activity_read(

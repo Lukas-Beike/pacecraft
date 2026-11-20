@@ -38,13 +38,15 @@ python scripts/sonar_check.py --pr <number>
 - The one exception to "do not suppress": `jssecurity:S8707` in
   `scripts/ui_walk.mjs` at the call sites the athlete accepted (#2319, #2538):
   `--out-dir` through `scratchPath` and the fixed file names written under it,
-  `--password-file` through `secretPath`, and `--compare` through `scratchPath`.
+  `--password-file` through `secretPath` (also in `scripts/post_release_actions.mjs`),
+  and `--compare` through `scratchPath`.
   The taint analysis does not see these guards. Read the flagged line, confirm the
   guard's return value reaches `fs` unchanged (no later join with CLI input), mark
   the issue false positive with that reason and add an evidence line (rule, file,
   line) to the PR body; do not restructure the guard. A new kind of read or write,
   or any other rule, needs its own decision.
-- A new script that needs a secret reads it from stdin, not from a path argument,
-  so it adds no S8707 call site (#3249), as `scripts/post_release_actions.mjs`:
-  `Get-Content -Raw -Encoding utf8 "<file>" | node <script>` in PowerShell, with
-  `$OutputEncoding = [Text.UTF8Encoding]::new($false)` first.
+- A new script that needs a secret takes `--password-file` through `secretPath`
+  of `scripts/ui_walk.mjs` and joins the script list in
+  `scripts/hooks/guard_private_paths.py` (`SECRET_RUN`): the shell guard allows
+  T3's secret folder only as that value (#3758), so a piped secret file is
+  blocked. Its `secretPath` read is the accepted S8707 shape above.

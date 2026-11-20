@@ -7,17 +7,14 @@ description: Base skill. The allowed post-release Coach action in the running ap
 
 Needs the repository's Playwright install (`npm ci` and
 `npx playwright install chromium` once). The app address and the secret file
-come from the session at run time. The shell pipes the secret file to the
-script's stdin, so no path reaches the script and the password never appears in
-an argument, the output or the agent's context; a terminal on stdin is refused.
+come from the session at run time. The script reads the secret file in its own
+process (only from the system temp directory or T3's secret folder), so the
+password never appears in an argument, the output or the agent's context; the
+shell guard allows the secret path only as this `--password-file` value (#3758).
 
 ```powershell
-# Windows PowerShell pipes text in $OutputEncoding (ASCII by default); UTF-8 keeps every character.
-$OutputEncoding = [Text.UTF8Encoding]::new($false)
-Get-Content -Raw -Encoding utf8 "<secret file>" | node scripts/post_release_actions.mjs --url <app address>
+node scripts/post_release_actions.mjs --url <app address> --password-file "<secret file>"
 ```
-
-In Bash, redirect instead: `node scripts/post_release_actions.mjs --url <app address> < "<secret file>"`.
 
 It logs in, asks the Coach one fixed German question (what is planned
 tomorrow, a constant in the script) in the Coach view, and checks that the

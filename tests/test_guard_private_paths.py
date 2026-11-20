@@ -66,6 +66,70 @@ class GuardPrivatePathsTests(unittest.TestCase):
             with self.subTest(command=command):
                 self.assertEqual(run_hook(command), 0)
 
+    def test_secret_folder_is_blocked_outside_a_prod_script_password_file(self) -> None:
+        # T3's secret folder holds the app password and database key (#3758).
+        secret = "C:\\Users\\x\\.t3\\user" + "data\\secrets\\files\\abc"
+        posix = "~/.t3/user" + "data/secrets/files/abc"
+        for command in (
+            f'cat "{posix}"',
+            f"head -1 {posix}",
+            f'Get-Content -Raw "{secret}"',
+            f'Get-Content -Raw "{secret}" | node scripts/post_release_actions.mjs --url u',
+            f'node scripts/post_release_actions.mjs --url u < "{posix}"',
+            f'gh pr comment 1 --body-file "{secret}"',
+            f"ls ~/.t3/user{'data'}/secrets",
+            f"cd ~/.t3 && cat user{'data'}/secrets/files/abc",
+            f'python scripts/prod_guards.py --url u --password-file "{secret}"; cat "{secret}"',
+            f'python scripts/prod_guards.py --url u --password-file "$(cat {posix})"',
+            f"python scripts/prod_guards.py --url u --password-file {posix} --out {posix}",
+            f"python scripts/prod_guards.py --url u --password-file={posix}x`whoami`",
+            f'python scripts/other.py --password-file "{secret}"',
+            f'python -c "print(1)" scripts/prod_guards.py --password-file "{secret}"',
+            f'node scripts/evil.mjs --password-file "{secret}"',
+            f"python scripts/prod_guards.py --url u --password-f {posix}",
+            f"python scripts/prod_client.py --password-file {posix}",
+            f"python scripts/prod_dump.py --password-file {posix}",
+            f"cd /tmp/x && python scripts/prod_dump.py --password-file {posix}",
+            # Forms that reach the folder without the literal path.
+            f"cat ~/.t3/user{'data'}/./secrets/files/abc",
+            f"cat ~/.t3/user{'data'}/x/../secrets/files/abc",
+            f'cat ~/.t3/user{"data"}/sec""rets/files/abc',
+            f"cat ~/.t3/user{'data'}/'secrets'/files/abc",
+            f"Get-Content ~/.t3/user{'data'}/sec`rets/files/abc",
+            f"cat ~/.t3/user{'data'}/s*/files/*",
+            f"cat ~/.t3/user{'data'}/{{secrets,x}}/abc",
+            f"cat ~/.t3/user{'data'}/*/files/abc",
+            "type C:\\Users\\x\\.t3\\USERDA~1\\SECRET~1\\abc",
+            f"cd ~/.t3/user{'data'}; gh issue comment 1 --body-file secrets/abc",
+            f"Get-ChildItem ~/.t3/user{'data'} -Recurse -File | Get-Content",
+            f"New-Item -ItemType Junction -Path l -Target ~/.t3/user{'data'}",
+            "cd ~/.t3; cd userdata; cat secrets/abc",
+            f"cd ~/.t?/user{'data'}; cat secrets/abc",
+            f"cd ~/.t*/user{'data'} && cat secrets/*",
+            "cd ~/.t*; cat user*/secrets/abc",
+            "Get-ChildItem C:\\Users\\x\\.t3 -Recurse",
+        ):
+            with self.subTest(command=command):
+                self.assertEqual(run_hook(command), 2)
+        for command in (
+            f'python scripts/prod_diagnostics.py --url u --password-file "{secret}"',
+            f"python scripts/prod_logs.py --url u --password-file={posix} --since x",
+            f"py .\\scripts\\prod_guards.py --url u --password-file '{secret}'",
+            f'node scripts/ui_walk.mjs --url u --password-file "{secret}" --out-dir t',
+            f'& node scripts/post_release_actions.mjs --url u --password-file "{secret}"',
+            f'git status && node scripts/post_release_actions.mjs --password-file "{secret}" --url u',
+            f'py.exe -3 scripts/prod_guards.py --url u --password-file "{secret}"',
+            f'python3.14.exe -I scripts/prod_logs.py --password-file "{secret}"',
+            f'python scripts/prod_diagnostics.py --url u \\\n  --password-file "{secret}"',
+            f'node scripts/ui_walk.mjs --url u `\n  --password-file "{secret}" --out-dir t',
+            "grep -n T3_SECRETS scripts/prod_client.py",
+            f"ls ~/.t3/user{'data'}/attachments",
+            f'grep -c -i "user{"data"}\\|post_release" x',
+            "git -C C:\\Users\\x\\.t3\\worktrees\\a status",
+        ):
+            with self.subTest(command=command):
+                self.assertEqual(run_hook(command), 0)
+
     def test_unreadable_input_is_blocked(self) -> None:
         result = subprocess.run(
             [sys.executable, str(HOOK)],
