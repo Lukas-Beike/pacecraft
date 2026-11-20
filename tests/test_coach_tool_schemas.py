@@ -1,3 +1,5 @@
+import io
+import tokenize
 import unittest
 from pathlib import Path
 
@@ -141,6 +143,19 @@ class CoachToolSchemaTests(unittest.TestCase):
         self.assertNotIn("body_fat_pct", fields)
         self.assertIn("height_cm", fields)
         self.assertEqual(len(fields), change["maxItems"])
+
+    def test_descriptions_need_no_escaped_apostrophes(self):
+        # #3750: a description in a single-quoted literal broke the module on
+        # every plain apostrophe an edit added; long texts use triple quotes.
+        source = (ROOT / "backend" / "coach" / "tool_schemas.py").read_text(
+            encoding="utf-8"
+        )
+        escaped = [
+            token.start[0]
+            for token in tokenize.generate_tokens(io.StringIO(source).readline)
+            if token.type == tokenize.STRING and "\\'" in token.string
+        ]
+        self.assertEqual([], escaped)
 
     def test_energy_read_names_the_formula_body_fat_source(self):
         # #3419: the formula rows' body fat comes from skinfolds, an entered
