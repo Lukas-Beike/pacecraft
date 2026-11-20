@@ -190,9 +190,9 @@ cryptography==50.0.2 \
     --hash=sha256:fa8f5efb344d6908a1ce62f4a24e2e5780f825d6f53f5f50ec5ffacac72936cb \
     --hash=sha256:fdd28f912fccfec1846a94e2e1e8f9b0012f557f0c46fe4f3eb0d7a87afcf90b
     # via pyjwt
-graphifyy==0.9.112 \
-    --hash=sha256:67aad04f70aa3afc9ff6961f82d7cca5b04fb6b9446a3cddcb7b16483fbdb59b \
-    --hash=sha256:ad6a9152fb6d9c5d85a77ffcaf29e18c5634a7d5ca474edb218cbc68b062241d
+graphifyy==0.9.113 \
+    --hash=sha256:62f8483e536c9200f93665f9c61df6489436ab087432e0a0a738bd88096e0491 \
+    --hash=sha256:a679ccb1823579e7cf73a2bfa52cc63181579e47db6fd9b4b7eb2156ead7b592
     # via -r requirements-graphify.in
 h11==0.16.0 \
     --hash=sha256:4e35b956cf45792e4caa5885e69fba00bdbc6ffafbfa020300e549b208ee5ff1 \
