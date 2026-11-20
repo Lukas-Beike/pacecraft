@@ -489,10 +489,10 @@ class ProdChecksTests(unittest.TestCase):
                 "step_walks": {"walks": 9, "used": 6, "former_implausible": 7},
                 # #3718: Garmin's weight rows by origin, days before the list.
                 "garmin_weight_origins": {
-                    "served": {"weigh_in_list": 40},
-                    "not_served": {"performance_history": 2},
-                    "served_days_before_first_weighin_list_day": 0,
-                    "not_served_days_before_first_weighin_list_day": 1,
+                    "current": {"weigh_in_list": 40},
+                    "not_current": {"performance_history": 2},
+                    "current_days_before_first_weighin_list_day": 0,
+                    "not_current_days_before_first_weighin_list_day": 1,
                 },
                 "planted": "never printed",
             }
@@ -522,10 +522,10 @@ class ProdChecksTests(unittest.TestCase):
             f'{prefix}step_source "walks"',
             f"{prefix}step_walks.used 6",
             f"{prefix}step_walks.former_implausible 7",
-            f"{prefix}garmin_weight_origins.served.weigh_in_list 40",
-            f"{prefix}garmin_weight_origins.not_served.performance_history 2",
-            f"{prefix}garmin_weight_origins.served_days_before_first_weighin_list_day 0",
-            f"{prefix}garmin_weight_origins.not_served_days_before_first_weighin_list_day 1",
+            f"{prefix}garmin_weight_origins.current.weigh_in_list 40",
+            f"{prefix}garmin_weight_origins.not_current.performance_history 2",
+            f"{prefix}garmin_weight_origins.current_days_before_first_weighin_list_day 0",
+            f"{prefix}garmin_weight_origins.not_current_days_before_first_weighin_list_day 1",
         ):
             self.assertIn(expected, lines)
         self.assertFalse(any("planted" in line for line in lines))

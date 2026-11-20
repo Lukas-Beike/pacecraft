@@ -7,6 +7,7 @@ from dataclasses import dataclass
 
 from backend.app.context import AppContext
 from backend.coach.service import command_receipt
+from backend.db import garmin_store
 from backend.diagnostics.history import CoachDiagnosticHistoryService
 from backend.diagnostics.logs import RecentLogEntriesService
 from backend.diagnostics.report import (
@@ -14,6 +15,9 @@ from backend.diagnostics.report import (
     DiagnosticReportService,
 )
 from backend.performance.pace_at_hr import LT1_DAYS, ride_band_coverage
+from backend.providers.garmin_health_mapping import (
+    MAPPER_VERSION as GARMIN_HEALTH_VERSION,
+)
 from backend.runtime import clock as runtime_clock
 
 
@@ -69,7 +73,15 @@ def build_diagnostics(ctx: AppContext) -> DiagnosticsServices:
                 slowest_routes=ctx.route_timings.summary,
                 session_reports=ctx.session_report_counts.summary,
                 heavy_read_gate=ctx.heavy_read_gate.summary,
-                energy_balance=lambda db: ctx.nutrition.energy_basis(db),
+                # Garmin's weight rows by origin join the counts (#3718).
+                energy_balance=lambda db: (
+                    ctx.nutrition.energy_basis(db)
+                    | {
+                        "garmin_weight_origins": garmin_store.weight_origin_counts(
+                            db, GARMIN_HEALTH_VERSION
+                        )
+                    }
+                ),
                 expenditure_gaps=lambda db: (
                     ctx.nutrition.diary_service().sync_status.expenditure_gaps(db)
                 ),

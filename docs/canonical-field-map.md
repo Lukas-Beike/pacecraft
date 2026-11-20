@@ -1766,7 +1766,7 @@ Conventions used in the tables of this part:
 
 Status: Live. `map_garmin_health` is called per stored element by `canonical_plans.py` (ingest and re-projection,
 one-element list per list section, the record itself for single-record sections) and by `snapshot_projection.py`.
-Mapper version: **26** (`MAPPER_VERSION`; 26 maps the day summary's wellness end, #3530). Also carries the versions of `garmin_training_mapping.py` (the six
+Mapper version: **27** (`MAPPER_VERSION`; 26 maps the day summary's wellness end, #3530; 27 maps weights only from the weigh-in lists, #3718). Also carries the versions of `garmin_training_mapping.py` (the six
 training sections and the endurance `groupMap`, see "Training sections" below), which is replayed by this module.
 Inputs: the Garmin snapshot as a mapping section name → record or list of records (`GARMIN_HEALTH_SECTION_NAMES`);
 `zone` = athlete zone (`ZoneInfo`), `retrieved_at` = fetch time of that section (`garmin_section_retrieved_at`: the

@@ -182,10 +182,10 @@ class GarminStoreTests(unittest.TestCase):
         self.assertEqual(
             counts,
             {
-                "served": {"weigh_in_list": 1},
-                "not_served": {"weigh_in_list": 1, "performance_history": 1},
-                "served_days_before_first_weighin_list_day": 0,
-                "not_served_days_before_first_weighin_list_day": 2,
+                "current": {"weigh_in_list": 1},
+                "not_current": {"weigh_in_list": 1, "performance_history": 1},
+                "current_days_before_first_weighin_list_day": 0,
+                "not_current_days_before_first_weighin_list_day": 2,
             },
         )
 

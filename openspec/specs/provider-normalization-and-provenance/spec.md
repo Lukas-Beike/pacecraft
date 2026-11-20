@@ -216,7 +216,7 @@ The system SHALL normalize Garmin health and body values to canonical units usin
 
 #### Scenario: Only Garmin weigh-ins are weights
 - **WHEN** a Garmin payload carries a weight outside its weigh-in lists: the performance-history copy, or a range answer's `previousDateWeight`, `nextDateWeight` or `totalAverage`
-- **THEN** it maps no weight, so no day without a real weigh-in gets one (#3718); each reading or daily summary of a stored weight envelope is searched with its own walk budget, so every stored weigh-in maps.
+- **THEN** it maps no weight, so no day without a real weigh-in gets one (#3718); each reading or daily summary of a stored weight envelope is searched with its own walk budget, so the stored weigh-ins map up to the walk's list limit of 500 readings or daily summaries per list.
 
 #### Scenario: Different HRV windows
 - **WHEN** a payload has only a weekly HRV average and no last-night value

@@ -31,11 +31,13 @@ BODY_FAT_SKIP_KEYS: Final = (
 # The lists of readings or daily summaries; each item gets its own visit budget, so
 # a stored envelope that merges many fetches keeps its older weigh-ins (#3718).
 READING_LIST_KEYS: Final = frozenset(
-    {*WEIGHT_SECTIONS, "dailyWeightSummaries", "dateWeightList"}
+    {"weight", "weighins", "dailyweightsummaries", "dateweightlist"}
 )
 WALK_MAX_DEPTH: Final = 20
 WALK_MAX_VISITS: Final = 2000
 WALK_MAX_LIST_ITEMS: Final = 500
+# The ceiling of one walk over all its per-item budgets (#3718).
+WALK_MAX_TOTAL_VISITS: Final = 50 * WALK_MAX_VISITS
 
 
 def alnum_key(value: object) -> str:
@@ -84,9 +86,10 @@ def walk_records[DayT](
     ``resolve_day`` returns a record's own day, or None to inherit the nearest dated
     ancestor's day. A child whose ``alnum_key`` is in ``skip_keys`` is not entered.
     A child under a key in ``marker_keys`` is marked. Depth, visit and list limits
-    match the legacy reader, and scalar values count as visits. With ``list_keys``,
-    each item of the root list and of a list under one of those keys is walked with
-    its own visit budget, so one reading cannot use up the next one's (#3718).
+    match the legacy reader, and scalar values count as visits. With ``list_keys``
+    (compared as ``alnum_key``), each item of the root list and of a list under one
+    of those keys is walked with its own visit budget, so one reading cannot use up
+    the next one's (#3718); ``WALK_MAX_TOTAL_VISITS`` caps the whole walk.
     """
     walk = _Walk(skip_keys, resolve_day, marker_keys, list_keys)
     if list_keys and isinstance(payload, list):
@@ -108,6 +111,7 @@ class _Walk[DayT]:
         self._marker_keys = marker_keys
         self._list_keys = list_keys
         self._visits = 0
+        self._total = 0
         self._ordinal = 0
 
     def items(
@@ -128,9 +132,14 @@ class _Walk[DayT]:
         list_index: int | None,
         marked: bool,
     ) -> Iterator[WalkedRecord[DayT]]:
-        if depth > WALK_MAX_DEPTH or self._visits >= WALK_MAX_VISITS:
+        if (
+            depth > WALK_MAX_DEPTH
+            or self._visits >= WALK_MAX_VISITS
+            or self._total >= WALK_MAX_TOTAL_VISITS
+        ):
             return
         self._visits += 1
+        self._total += 1
         if isinstance(value, Mapping):
             ordinal = self._ordinal
             self._ordinal += 1
@@ -139,9 +148,10 @@ class _Walk[DayT]:
                 day = inherited
             yield WalkedRecord(value, day, ordinal, list_index, marked)
             for key, child in value.items():
-                if alnum_key(key) in self._skip_keys:
+                name = alnum_key(key)
+                if name in self._skip_keys:
                     continue
-                if key in self._list_keys and isinstance(child, list):
+                if name in self._list_keys and isinstance(child, list):
                     if depth < WALK_MAX_DEPTH and self._visits < WALK_MAX_VISITS:
                         yield from self.items(
                             child, day, depth + 1, marked or key in self._marker_keys

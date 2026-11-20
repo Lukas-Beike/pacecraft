@@ -22,7 +22,6 @@ from backend.athlete.body_records import (
 )
 from backend.athlete.profile import profile_body_fat_history, profile_weight_history
 from backend.canonical.vocabulary import MetricKind
-from backend.db import garmin_store
 from backend.db.manager import kept_until_change
 from backend.db.repositories import (
     NutritionProductRepository,
@@ -57,9 +56,6 @@ from backend.nutrition.product_refresh import ProductRefreshRunner
 from backend.nutrition.sync import IntervalsNutritionSyncService
 from backend.nutrition.web_search import NutritionWebSearchService
 from backend.performance.daily_health import read_daily_health_by_date
-from backend.providers.garmin_health_mapping import (
-    MAPPER_VERSION as GARMIN_HEALTH_VERSION,
-)
 from backend.providers.intervals import IntervalsApiClient
 from backend.providers.model_seam import ModelRequest, ModelTurn
 from backend.providers.open_food_facts import OpenFoodFactsClient
@@ -303,14 +299,8 @@ def build_nutrition(ctx: AppContext) -> NutritionServices:
         ),
         diary_service=diary_service,
         intervals_sync_service=intervals_sync_service,
-        # Garmin's weight rows by origin join the counts (#3718).
-        energy_basis=lambda db: (
-            energy_basis(db, energy_sources(), ctx.clock.now().date())
-            | {
-                "garmin_weight_origins": garmin_store.weight_origin_counts(
-                    db, GARMIN_HEALTH_VERSION
-                )
-            }
+        energy_basis=lambda db: energy_basis(
+            db, energy_sources(), ctx.clock.now().date()
         ),
         energy_view=energy_view,
         product_refresh=ProductRefreshRunner(

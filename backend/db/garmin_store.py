@@ -445,9 +445,10 @@ def weight_origin_counts(db: Any, version: int) -> dict[str, Any]:
     """Counts only (#3718): Garmin weight rows by origin, never a value or a day.
 
     The origin is the section of the row's source record: the weigh-in list (the
-    weight walk's ``weight:`` ids), the performance history, or other. A row is served when it is
-    active at ``version``, the health mapper's current one. Days are counted before
-    the first served weigh-in-list day (all days without one).
+    weight walk's ``weight:`` ids), the performance history, or other. A row is
+    ``current`` when it is active at ``version``, the health mapper's current one:
+    once the re-projection after a bump completed, the rows the readers serve.
+    Days are counted before the first current weigh-in-list day (all without one).
     """
     rows = db.execute(
         "SELECT source_record_id, state, mapper_version, observed_on FROM observations "
@@ -463,10 +464,10 @@ def weight_origin_counts(db: Any, version: int) -> dict[str, Any]:
         for row in rows
     ]
     first = min((d for o, s, d in found if s and o == "weigh_in_list"), default=None)
-    counts: dict[str, Any] = {"served": {}, "not_served": {}}
-    early: dict[str, set[str]] = {"served": set(), "not_served": set()}
+    counts: dict[str, Any] = {"current": {}, "not_current": {}}
+    early: dict[str, set[str]] = {"current": set(), "not_current": set()}
     for origin, served, day in found:
-        group = "served" if served else "not_served"
+        group = "current" if served else "not_current"
         counts[group][origin] = counts[group].get(origin, 0) + 1
         if first is None or day < first:
             early[group].add(day)
