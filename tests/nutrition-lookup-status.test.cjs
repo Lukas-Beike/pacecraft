@@ -122,6 +122,10 @@ test("an opened section stays open on the next render until the page is left", (
   target.children[1].listeners.toggle();
   context.renderNutritionProducts([OWN, FOOD]);
   assert.deepEqual(target.children.map((section) => section.open), [false, true]);
+  // #3735: a section opened just before a re-render, its toggle event not run yet, stays open.
+  target.children[0].open = true;
+  context.renderNutritionProducts([OWN, FOOD]);
+  assert.deepEqual(target.children.map((section) => section.open), [true, true]);
 });
 
 test("a new search opens sections with hits once, keeps toggles, and ends as before", () => {

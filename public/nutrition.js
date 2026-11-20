@@ -1065,6 +1065,8 @@ let nutritionProductSectionsBeforeSearch = null;
 function renderNutritionProducts(products, { local = true, targetId = "#nutritionProducts", search = "" } = {}) {
   const target = document.querySelector(targetId);
   if (!target) return;
+  // A section opened just before this render keeps its state even before its toggle event ran (#3735).
+  for (const node of [...target.children]) if (node.dataset?.section in nutritionProductSectionsOpen) nutritionProductSectionsOpen[node.dataset.section] = node.open;
   target.replaceChildren();
   if (!products?.length) { target.textContent = "Keine Produkte gefunden."; return; }
   const items = products.map(normalizeNutritionProduct);
