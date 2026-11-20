@@ -1375,8 +1375,11 @@ def _reread_training_history(
 
     It runs after the regular read, whose answer stays when this one fails or
     holds no day, and it touches no capability state; a paused source is not read
-    and counts as failed, so the re-read stays due. Returns ``training_window`` and the sections
-    whose re-read failed (``training_refetch_failed``) for ``provider_sync``.
+    and counts as failed, so the re-read stays due. A section that answers
+    without days is neither failed nor answered, so it cannot keep the re-read
+    due forever (#3756). Returns ``training_window``, the sections whose re-read
+    failed (``training_refetch_failed``) and those that answered with days
+    (``training_refetch_answered``) for ``provider_sync``.
     """
     if days <= HISTORY_READ_DAYS:
         return {}
@@ -1387,7 +1390,8 @@ def _reread_training_history(
         "training_readiness_history": ("get_training_readiness_range", {}),
         "weekly_training_status": ("get_weekly_training_status", {}),
     }
-    failed = []
+    failed: list[str] = []
+    answered: list[str] = []
     for key, (method, extra) in calls.items():
         fetch = getattr(client, method, None)
         if not callable(fetch):
@@ -1406,11 +1410,11 @@ def _reread_training_history(
             continue
         if answer_days(value):
             payload[key] = value
-        else:
-            failed.append(key)
+            answered.append(key)
     return {
         "training_window": {"start": start, "end": end},
         "training_refetch_failed": failed,
+        "training_refetch_answered": answered,
     }
 
 

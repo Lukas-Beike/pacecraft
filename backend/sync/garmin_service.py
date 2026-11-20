@@ -50,6 +50,7 @@ from backend.sync.garmin import (
     GARMIN_RECONCILIATION_DAYS,
     TRAINING_REFETCH_DAYS,
     WEIGHT_REFETCH_DAYS,
+    merge_training_answer,
 )
 from backend.sync.garmin_snapshot_writer import (
     ANALYSIS_SOURCES,
@@ -1022,10 +1023,15 @@ class GarminTargetedRefreshService:
                 else previous
             )
             snapshot[source] = garmin_morning.merge_garmin_records(incoming, retained)
-        elif is_complete or not isinstance(old, dict):
-            snapshot[source] = incoming
         else:
-            snapshot[source] = {**old, **incoming}
+            # A training history answer keeps the 6-month re-read's days
+            # outside this read's span (#3756).
+            merged = merge_training_answer(source, incoming, old)
+            snapshot[source] = (
+                merged
+                if is_complete or not isinstance(old, dict)
+                else {**old, **merged}
+            )
 
     @staticmethod
     def _record_analysis_source_status(
