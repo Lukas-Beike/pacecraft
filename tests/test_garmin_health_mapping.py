@@ -95,6 +95,11 @@ EXPECTED_FIXTURE_ROWS: list[tuple[str, float, str, str]] = [
     ("race_prediction_half", 6150.0, "2026-10-11", "run"),
     ("race_prediction_full", 13050.0, "2026-10-11", "run"),
     ("endurance_score", 6850.0, "2026-10-05", "-"),
+    # The range answer's day-keyed groupMap (#3744).
+    ("endurance_score_group_average", 6820.0, "2026-10-04", "-"),
+    ("endurance_score_group_average", 6850.0, "2026-10-05", "-"),
+    ("endurance_score_group_max", 6880.0, "2026-10-04", "-"),
+    ("endurance_score_group_max", 6900.0, "2026-10-05", "-"),
     ("body_battery_charged", 72.0, "2026-10-09", "-"),
     ("body_battery_drained", 55.0, "2026-10-09", "-"),
     ("body_battery_charged", 68.0, "2026-10-10", "-"),
