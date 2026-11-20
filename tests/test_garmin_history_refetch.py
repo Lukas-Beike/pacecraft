@@ -10,7 +10,9 @@ from __future__ import annotations
 import unittest
 from dataclasses import replace
 from datetime import UTC, date, timedelta
+from contextlib import nullcontext
 from typing import Any
+from unittest.mock import Mock
 
 from support import temp_database
 
@@ -27,6 +29,7 @@ from backend.sync.garmin import (
     GarminPayloadService,
     summarize_history_refetch,
 )
+from backend.sync.garmin_service import GarminTargetedRefreshService
 from backend.sync.garmin_snapshot_writer import GarminSnapshotWriter
 from backend.sync.state import SyncStateRepository
 
@@ -45,11 +48,18 @@ class _Client:
     """Garmin's training history by day; each range read answers the days inside it."""
 
     def __init__(
-        self, days: list[str], fail_wide: bool = False, empty_wide: bool = False
+        self,
+        days: list[str],
+        fail_wide: bool = False,
+        empty_wide: bool = False,
+        weekly: bool = False,
     ) -> None:
         self.days = days
         self.fail_wide = fail_wide
         self.empty_wide = empty_wide
+        if weekly:
+            # A section that answers without days (#3756).
+            self.get_weekly_training_status = self._weekly
         self.calls: list[tuple[str, str]] = []
 
     def get_activities_by_date(self, start: str, end: str) -> list[Any]:
@@ -81,6 +91,10 @@ class _Client:
             {"calendarDate": day, "toleranceScore": 72}
             for day in self._inside(start, end)
         ]
+
+    def _weekly(self, start: str, end: str) -> Any:
+        self.calls.append((start, end))
+        return {}
 
 
 class TrainingHistoryRefetchTests(unittest.TestCase):
@@ -119,6 +133,30 @@ class TrainingHistoryRefetchTests(unittest.TestCase):
         payload = self.service.prepare_remote(payload)
         with self.database.unit_of_work() as db:
             GarminSnapshotWriter(self.key_values, lambda: UTC).write(db, payload)
+
+    def refresh_performance(self, groupmap: dict[str, Any]) -> None:
+        """One complete targeted Analyse refresh of the endurance score."""
+        reader = Mock()
+        reader.fetch_analysis_data.return_value = (
+            {"endurance_score": {"overallScore": 7000, "groupMap": groupmap}},
+            {"endurance_score": True},
+        )
+        coordination = Mock()
+        coordination.acquire.return_value = True
+        coordination.operation.return_value = nullcontext()
+        service = GarminTargetedRefreshService(
+            reader,
+            self.database,
+            GarminSnapshotWriter(self.key_values, lambda: UTC),
+            self.service,
+            coordination,
+            lambda: NOW,
+            lambda: True,
+        )
+        result = service.refresh_analysis(
+            "performance", TODAY - timedelta(days=HISTORY_READ_DAYS - 1), TODAY
+        )
+        self.assertEqual(result["status"], "ok")
 
     def counts(self) -> dict[str, Any]:
         with self.database.reader() as db:
@@ -163,6 +201,28 @@ class TrainingHistoryRefetchTests(unittest.TestCase):
         self.assertEqual(
             {row["calendarDate"] for row in stored["running_tolerance"]}, {OLD, RECENT}
         )
+
+    def test_a_targeted_refresh_keeps_the_reread_days_outside_its_span(self) -> None:
+        self.sync(_Client([OLD, RECENT]), TRAINING_REFETCH_DAYS)
+
+        self.refresh_performance({RECENT: {"groupAverage": 7100, "groupMax": 7200}})
+
+        group_map = self.stored()["endurance_score"]["groupMap"]
+        self.assertEqual(set(group_map), {OLD, RECENT})
+        # Inside its span the refresh answer wins.
+        self.assertEqual(group_map[RECENT]["groupAverage"], 7100)
+        self.assertEqual(group_map[OLD]["groupAverage"], 6800)
+
+    def test_a_section_without_days_does_not_keep_the_reread_due(self) -> None:
+        client = _Client([OLD, RECENT], weekly=True)
+        self.sync(client, TRAINING_REFETCH_DAYS)
+
+        self.assertFalse(self.service.training_refetch_due())
+        self.assertEqual(self.counts()["training_state"], "finished")
+        # The sync widens its read only while the re-read is due, so later days
+        # run no extra calls; a regular read keeps the marker.
+        self.sync(_Client([RECENT], weekly=True))
+        self.assertFalse(self.service.training_refetch_due())
 
     def test_a_failed_or_empty_reread_stays_due_and_keeps_the_regular_read(
         self,

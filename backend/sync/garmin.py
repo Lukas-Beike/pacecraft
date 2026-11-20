@@ -620,8 +620,9 @@ def _mark_training_refetch(
     """Mark the one-off training history re-read once it answered (#3729).
 
     A run that read the long window marks it when no training section failed and
-    at least one returned days; the marker counts the days the stored sections
-    did not hold. A run without the re-read keeps the stored marker.
+    at least one answered with days; a section that answers without days does not
+    keep it due (#3756). The marker counts the days the stored sections did not
+    hold. A run without the re-read keeps the stored marker.
     """
     previous_sync = previous.get("provider_sync")
     if isinstance(previous_sync, dict) and previous_sync.get(TRAINING_REFETCH_KEY):
@@ -630,15 +631,15 @@ def _mark_training_refetch(
         )
     if not isinstance(provider_sync.get("training_window"), dict):
         return
-    if provider_sync.get("training_refetch_failed"):
+    if provider_sync.get("training_refetch_failed") or not provider_sync.get(
+        "training_refetch_answered"
+    ):
         return
     added = {
         (name, day)
         for name in TRAINING_HISTORY_SECTIONS
         for day in answer_days(payload.get(name))
     }
-    if not added:
-        return
     stored = {
         (name, day)
         for name in TRAINING_HISTORY_SECTIONS
@@ -660,11 +661,19 @@ def _merge_training_answers(payload: dict[str, Any], previous: dict[str, Any]) -
     """
     for name in TRAINING_HISTORY_SECTIONS:
         incoming, stored = payload.get(name), previous.get(name)
-        if isinstance(incoming, dict) and incoming and isinstance(stored, dict):
-            payload[name] = {
-                key: _merged_days(value, stored.get(key))
-                for key, value in incoming.items()
-            }
+        payload[name] = merge_training_answer(incoming, stored)
+
+
+def merge_training_answer(incoming: Any, stored: Any) -> Any:
+    """A mapping-shaped training answer with the stored days outside its span.
+
+    Any other answer comes back unchanged (#3729, #3756).
+    """
+    if isinstance(incoming, dict) and incoming and isinstance(stored, dict):
+        return {
+            key: _merged_days(value, stored.get(key)) for key, value in incoming.items()
+        }
+    return incoming
 
 
 def _merged_days(incoming: Any, stored: Any) -> Any:
