@@ -167,6 +167,29 @@ def prune_section(
     return len(stale)
 
 
+def retire_window_orphans(
+    db: Any, section: str, keep: set[str], start: str, end: str
+) -> None:
+    """Retire the window-day observations of a section's owners not in ``keep``.
+
+    A complete read of the window asserts it; this also heals rows an earlier
+    element left behind after its raw record was already replaced (#3754).
+    """
+    prefix = f"{section}/"
+    owners = {
+        str(row["owner_record_id"])
+        for row in db.execute(
+            "SELECT DISTINCT owner_record_id FROM observations WHERE provider = ? "
+            "AND state = 'active' AND observed_on BETWEEN ? AND ? "
+            "AND (owner_record_id = ? OR substr(owner_record_id, 1, ?) = ?)",
+            (GARMIN_PROVIDER, start, end, section, len(prefix), prefix),
+        )
+    }
+    now = datetime.now(UTC).isoformat()
+    for owner in sorted(owners - keep):
+        _retire_window_observations(db, owner, start, end, now)
+
+
 def _retire_window_observations(
     db: Any, owner: str, start: str, end: str, now: str
 ) -> None:

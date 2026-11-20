@@ -22,7 +22,10 @@ from backend.providers.garmin import (
     collect_garmin_data,
 )
 from backend.sync.garmin import WEIGHT_REFETCH_DAYS, GarminPayloadService
-from backend.sync.garmin_snapshot_writer import GarminSnapshotWriter
+from backend.sync.garmin_snapshot_writer import (
+    NUTRITION_SOURCES,
+    GarminSnapshotWriter,
+)
 from backend.sync.state import SyncStateRepository
 
 TODAY = date(2026, 11, 20)
@@ -82,7 +85,13 @@ class WeightMergeTests(unittest.TestCase):
             self.database, self.key_values, sync_state, lambda: TODAY
         )
 
-    def sync(self, client: _Client, weight_days: int = WEIGHT_READ_DAYS) -> None:
+    def sync(
+        self,
+        client: _Client,
+        weight_days: int = WEIGHT_READ_DAYS,
+        *,
+        without_window: bool = False,
+    ) -> None:
         """Collect, prepare and store one regular sync, as the Garmin service does."""
         payload = collect_garmin_data(
             client,
@@ -99,6 +108,9 @@ class WeightMergeTests(unittest.TestCase):
             ),
         )
         payload = self.service.prepare_remote(payload)
+        if without_window:
+            # The write of a release before #3754: no windowed weigh-in prune.
+            payload["provider_sync"].pop("weight_window", None)
         with self.database.unit_of_work() as db:
             GarminSnapshotWriter(self.key_values, lambda: UTC).write(db, payload)
 
@@ -155,6 +167,41 @@ class WeightMergeTests(unittest.TestCase):
             stored = garmin_store.read_sections(db, ["weight"])["weight"]
         summaries = stored[0]["dailyWeightSummaries"]
         self.assertEqual({row["summaryDate"] for row in summaries}, {OLD, LATEST})
+        self.assertEqual(self.weight_days(), [OLD, LATEST])
+
+    def test_a_kept_weigh_in_moves_to_the_changed_envelope(self) -> None:
+        self.sync(_Client({RECENT: 2}))
+        self.sync(_Client({RECENT: 2, LATEST: 3}))
+
+        self.assertEqual(self.weight_days(), [RECENT, LATEST])
+
+    def test_an_orphan_of_an_earlier_envelope_heals_on_the_next_sync(self) -> None:
+        self.sync(_Client({OLD: 1, RECENT: 2}), WEIGHT_REFETCH_DAYS)
+        self.sync(_Client({OLD: 1, LATEST: 3}), without_window=True)
+        self.assertEqual(self.weight_days(), [OLD, RECENT, LATEST])
+
+        self.sync(_Client({OLD: 1, LATEST: 3}))
+
+        self.assertEqual(self.weight_days(), [OLD, LATEST])
+
+    def test_an_orphan_heals_on_a_targeted_weight_refresh(self) -> None:
+        self.sync(_Client({OLD: 1, RECENT: 2}), WEIGHT_REFETCH_DAYS)
+        self.sync(_Client({OLD: 1, LATEST: 3}), without_window=True)
+        start = TODAY - timedelta(days=WEIGHT_READ_DAYS - 1)
+        with self.database.reader() as db:
+            stored = garmin_store.read_sections(db, ["weight"])["weight"]
+
+        with self.database.unit_of_work() as db:
+            GarminSnapshotWriter(self.key_values, lambda: UTC).write_refresh(
+                db,
+                fetched_at=NOW,
+                sections={"weight": stored},
+                view={},
+                windows={"weight": (start, TODAY)},
+                allowed=NUTRITION_SOURCES,
+            )
+
+        self.assertEqual(self.weight_days(), [OLD, LATEST])
 
     def test_an_answer_without_weigh_ins_changes_nothing(self) -> None:
         # It cannot be told from a partial Garmin failure (#3718).
