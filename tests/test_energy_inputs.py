@@ -926,17 +926,28 @@ class BodyFatFallbackTests(unittest.TestCase):
             self.assertIsNone(view["body"])
             self.assertEqual("skinfold_too_old", view["skinfold_missing"])
 
-    def test_kept_period_inputs_give_the_same_view(self) -> None:
-        # #3704: the wiring keeps Verlauf's long read until the rows change; a
-        # kept read yields the very view a fresh one does, for any diary day.
+    def test_the_six_months_are_read_only_when_asked_for(self) -> None:
+        # #3711: the 182-day read doubled every energy read on prod; it runs
+        # only when Verlauf asks for 6 Monate, and 4 Wochen and 3 Monate lie
+        # inside the 12-week read. Everything else in the view is the same.
         src = skinfold_sources([folds_on(DAY1)])
-        kept = read_fit_inputs(None, src, DAY3)
-        for day in (DAY3, DAY3 + timedelta(days=1), DAY1):
-            with self.subTest(day=day):
-                self.assertEqual(
-                    read_energy_view(None, src, DAY3, day),
-                    read_energy_view(None, src, DAY3, day, lambda: kept),
-                )
+        calls: list[int] = []
+
+        def long() -> Any:
+            calls.append(1)
+            return read_fit_inputs(None, src, DAY3)
+
+        plain = read_energy_view(None, src, DAY3)
+        asked = read_energy_view(None, src, DAY3, None, long)
+        self.assertEqual(["28d", "91d"], sorted(plain["fit_scale"]))
+        self.assertEqual(["182d", "28d", "91d"], sorted(asked["fit_scale"]))
+        self.assertEqual(1, len(calls))
+        self.assertEqual(
+            {k: v for k, v in asked.items() if k != "fit_scale"},
+            {k: v for k, v in plain.items() if k != "fit_scale"},
+        )
+        for key in ("28d", "91d"):
+            self.assertEqual(plain["fit_scale"][key], asked["fit_scale"][key])
 
     def test_without_any_source_the_reason_stays(self) -> None:
         view = read_energy_view(None, skinfold_sources([]), DAY3)
