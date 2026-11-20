@@ -42,7 +42,8 @@ TEMPLATE = re.compile(r"\.env\.example(?![\w.-])", re.IGNORECASE)
 # the bare word passes).
 SECRETS = re.compile(
     r"userdata[/\\]+s[\w*?\[{~]|userdata[/\\]\S*\.\.|userda~\d"
-    r"|(?:^|[\s/\\~=:])\.t3(?:[/\\]+userdata)?[/\\]*(?=$|[\s;|&),*?\[{])",
+    r"|[/\\]userdata[/\\]*(?=$|[\s;|&),*?\[{])"
+    r"|(?:^|[\s/\\~=:])\.t[3*?\[][\]*?]*(?:[/\\]+userdata)?[/\\]*(?=$|[\s;|&),*?\[{])",
     re.IGNORECASE,
 )
 QUOTES = re.compile(r"[\"'`]")

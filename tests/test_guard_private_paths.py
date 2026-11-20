@@ -104,6 +104,9 @@ class GuardPrivatePathsTests(unittest.TestCase):
             f"Get-ChildItem ~/.t3/user{'data'} -Recurse -File | Get-Content",
             f"New-Item -ItemType Junction -Path l -Target ~/.t3/user{'data'}",
             "cd ~/.t3; cd userdata; cat secrets/abc",
+            f"cd ~/.t?/user{'data'}; cat secrets/abc",
+            f"cd ~/.t*/user{'data'} && cat secrets/*",
+            "cd ~/.t*; cat user*/secrets/abc",
             "Get-ChildItem C:\\Users\\x\\.t3 -Recurse",
         ):
             with self.subTest(command=command):
