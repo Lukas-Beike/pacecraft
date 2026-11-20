@@ -2030,7 +2030,7 @@ function deficitFatBox(card) {
 function deficitBoxes(card) {
   // The fitted change, which the fat and kcal boxes take too, not the rounded ends' (#3618).
   const change = card.weight_change_kg;
-  // A long period's ends are the means of its first and last 14 days of weigh-ins, marked "Ø" (#3739).
+  // Edge means (the first and last 7 days' weigh-ins, 14 for 3 and 6 months) are marked "Ø" (#3739).
   const mean = card.edge_weighins ? "Ø " : "";
   const current = !mean && card.weight_last_kg != null && deficitDecimal(card.weight_last_kg) !== deficitDecimal(card.weight_end_kg) ? " (aktuell)" : "";
   const box = (kind, title, value, ...notes) => h("li", { dataset: { deficitBox: kind } }, h("small", null, title), h("strong", null, value), ...notes.filter(Boolean).map((note) => h("small", null, note)));

@@ -68,7 +68,10 @@ estimate. It never rewrites logged values and never falls back to a formula.
    standard error is the two edges' pooled SD (one weigh-in's water SD
    when nothing pools) over the root of its count, so a sparse edge widens
    the band; the water term and the fat share stay. When the edges do not
-   come apart, the line prices the period. The 4 weeks keep the line for
+   come apart, the line prices the period. The period's own TDEE (the
+   source card's "Deine Daten") takes the same edge rate, so the card's
+   deficit and expenditure stay one estimate; the deficit band takes t
+   from the edges' pooled dof (z when nothing pools). The 4 weeks keep the line for
    the stored energy and its band, but their card shows the means of the
    first and last 7 days' weigh-ins as start and end and their difference
    as the weight change, with the fat change as its share (athlete
@@ -420,7 +423,7 @@ bias that is the same on every day is not visible in the band.
 | `FORBES_FAT_MASS_KG` | `10.4` | `backend/nutrition/energy_balance.py` |  |
 | `WATER_KG_SD` | `1.0 / 1.96` | `backend/nutrition/energy_balance.py` | Water, glycogen and gut content the weigh-ins cannot tell from tissue: about 1 kg (95 %) over a window, as early in a cut about 2 of 3.4 kg in 27 days can be (Fable review, #3690); its SD, priced at the tissue density over the window's span, enters the stored energy's error in quadrature. |
 | `EDGE_DAYS` | `14` | `backend/nutrition/energy_balance.py` | A period longer than one window prices its weight change from the mean of the weigh-ins in its first and last this many days, not a line through all of them, which a flat-then-steep course drags far past any weigh-in (athlete decision, #3739). |
-| `SHORT_EDGE_DAYS` | `7` | `backend/nutrition/energy_balance.py` | The 4 weeks keep the line for their deficit and band, but show the mean weigh-ins of their first and last this many days as start, end and change (athlete decision, #3739). |
+| `SHORT_EDGE_DAYS` | `7` | `backend/nutrition/energy_balance.py` | The 4 weeks keep the line for their deficit and band, but their card shows the mean weigh-ins of their first and last this many days as start, end and change (athlete decision, #3739). |
 | `FAT_SHARE_PRIOR_BOUNDS` | `(0.4, 0.85)` | `backend/nutrition/energy_balance.py` |  |
 | `BODY_FAT_REPEATABILITY_PCT` | `2.0` | `backend/nutrition/energy_balance.py` | Repeatability of one self-measured body fat value (percentage points, SD): the upper end of the review's 1.5-2 for skinfolds (#3555). |
 | `MIN_FAT_SHARE_WEIGHT_CHANGE_KG` | `0.1` | `backend/nutrition/energy_balance.py` | Below this weight change between the first and last measurement the measured share divides by noise, so the prior stands alone (product assumption). |

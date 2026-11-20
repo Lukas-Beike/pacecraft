@@ -44,6 +44,7 @@ from backend.db.activity_detail_store import detail_sets_for_session
 from backend.nutrition.energy_balance import (
     BAND_Z,
     BASE_DAYS,
+    EDGE_DAYS,
     WINDOW_DAYS,
     Base,
     DayInputs,
@@ -54,6 +55,7 @@ from backend.nutrition.energy_balance import (
     age_weight,
     below_former_share,
     day_tef,
+    edge_change,
     energy_windows,
     fat_share,
     fit_learned_everyday,
@@ -61,7 +63,6 @@ from backend.nutrition.energy_balance import (
     independent_windows,
     is_complete,
     is_stable,
-    period_window,
     twelve_week_base,
     unexplained_spreads,
 )
@@ -747,9 +748,16 @@ def learned_everyday(
 
 
 def _edge_counts(inputs: EnergyInputs, end: date) -> dict[str, int] | None:
-    """The 3-month deficit's weigh-ins per edge window (#3739)."""
-    store = period_window(inputs, end, 91, 1.0).store
-    edges = store.edge_weighins if store else None
+    """The 3-month deficit's weigh-ins per edge window (#3739), null without
+    weigh-ins or when its edges do not come apart."""
+    start = end - timedelta(days=90)
+    weights = {
+        d: v.weight_kg
+        for d, v in inputs.days.items()
+        if v.weight_kg is not None and start <= d <= end
+    }
+    change = edge_change(weights, start, end, EDGE_DAYS) if weights else None
+    edges = change.edges if change else None
     return {"first": edges[0], "last": edges[1]} if edges else None
 
 

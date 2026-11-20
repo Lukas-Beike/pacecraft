@@ -1058,6 +1058,16 @@ class DeficitCardTests(unittest.TestCase):
             card["fat_change_kg"], card["weight_change_kg"] * 0.80, delta=0.05
         )
 
+    def test_edge_means_take_their_band_t_from_the_edges(self) -> None:
+        # #3739 review: an edge store's SD rests on the edges' pooled dof, n1 +
+        # n2 - 2, not on the window's: 2 + 2 weigh-ins give t(2) = 4.303, so
+        # 4.303 x 120 = 516; 14 + 14 give t(26) = 2.056, 247; one each pools
+        # nothing, so z: 1.96 x 120 = 235. The line keeps the window's t(18).
+        for edges, band in (((2, 2), 516), ((14, 14), 247), ((1, 1), 235), (None, 252)):
+            with self.subTest(edges=edges):
+                card = self.view(MEASURED._replace(edge_weighins=edges))
+                self.assertEqual(band, card["band_kcal"])
+
     def test_the_card_shows_the_stores_terms_and_the_real_expenditure(self) -> None:
         # #3598: the readings span the phase (from 07.10.), not the window, and
         # the window ends on its last weigh-in.
@@ -1085,7 +1095,7 @@ class DeficitCardTests(unittest.TestCase):
                 "span_days": 28,
                 "weight_start_kg": 91.2,
                 "weight_end_kg": 89.2,
-                # 4 weeks keep the line: no edge means (#3739).
+                # A store without weigh-in dates has no edge means (#3739).
                 "edge_weighins": None,
                 "weight_change_kg": -2.0,
                 # 80 % at 9,441 and 20 % at 1,816 kcal/kg (#3618 item 7).

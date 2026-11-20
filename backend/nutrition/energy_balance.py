@@ -68,9 +68,9 @@ WATER_KG_SD = 1.0 / 1.96
 # them, which a flat-then-steep course drags far past any weigh-in (athlete
 # decision, #3739).
 EDGE_DAYS = 14
-# The 4 weeks keep the line for their deficit and band, but show the mean
-# weigh-ins of their first and last this many days as start, end and change
-# (athlete decision, #3739).
+# The 4 weeks keep the line for their deficit and band, but their card shows
+# the mean weigh-ins of their first and last this many days as start, end and
+# change (athlete decision, #3739).
 SHORT_EDGE_DAYS = 7
 FAT_SHARE_PRIOR_BOUNDS = (0.40, 0.85)
 # Repeatability of one self-measured body fat value (percentage points, SD):
@@ -538,9 +538,10 @@ def fat_share(inputs: EnergyInputs, trend: Mapping[date, float], end: date) -> F
     )
 
 
-class _WeightChange(NamedTuple):
+class WeightChange(NamedTuple):
     """A weight course's slope (kg/day) with its standard error, the weight it
-    starts from, the days it spans and their first and last day."""
+    starts from, the days it spans and their first and last day; with edge
+    means, the weigh-ins in each edge (#3739)."""
 
     slope: float
     slope_se: float
@@ -551,7 +552,7 @@ class _WeightChange(NamedTuple):
     edges: tuple[int, int] | None = None
 
 
-def _line_change(weights: Mapping[date, float]) -> _WeightChange:
+def _line_change(weights: Mapping[date, float]) -> WeightChange:
     """The Theil-Sen line of the weigh-ins (#3690): its slope, the slope's
     standard error scaled for persisting scatter (#3614), and its weight at the
     first weigh-in. Unlike the trend's change it has no warm-up lag."""
@@ -562,7 +563,7 @@ def _line_change(weights: Mapping[date, float]) -> _WeightChange:
     slope, intercept = _theil_sen(xs, ys)
     residuals = [y - (intercept + slope * x) for x, y in zip(xs, ys, strict=True)]
     slope_se = math.sqrt(sum(r * r for r in residuals) / max(1, len(xs) - 2) / sxx)
-    return _WeightChange(
+    return WeightChange(
         slope,
         slope_se * _persistence(residuals),
         intercept,
@@ -572,13 +573,13 @@ def _line_change(weights: Mapping[date, float]) -> _WeightChange:
     )
 
 
-def _edge(weights: Mapping[date, float], low: date, high: date) -> list[date]:
-    return [d for d in sorted(weights) if low <= d <= high]
+def _edge(weighins: Sequence[date], low: date, high: date) -> list[date]:
+    return [d for d in weighins if low <= d <= high]
 
 
-def _edge_change(
+def edge_change(
     weights: Mapping[date, float], start: date, end: date, days: int
-) -> _WeightChange | None:
+) -> WeightChange | None:
     """The change between the mean weigh-ins of the window's first and last
     ``days`` (athlete decision, #3739); None when the first edge does not end
     before the last begins.
@@ -591,11 +592,11 @@ def _edge_change(
     """
     weighins = sorted(weights)
     width = timedelta(days=days - 1)
-    first = _edge(weights, start, start + width) or _edge(
-        weights, weighins[0], weighins[0] + width
+    first = _edge(weighins, start, start + width) or _edge(
+        weighins, weighins[0], weighins[0] + width
     )
-    last = _edge(weights, end - width, end) or _edge(
-        weights, weighins[-1] - width, weighins[-1]
+    last = _edge(weighins, end - width, end) or _edge(
+        weighins, weighins[-1] - width, weighins[-1]
     )
     if first[-1] >= last[0]:
         return None
@@ -610,7 +611,7 @@ def _edge_change(
     at = [statistics.fmean((d - weighins[0]).days for d in e) for e in (first, last)]
     span = at[1] - at[0]
     se = math.hypot(sd / math.sqrt(len(first)), sd / math.sqrt(len(last)))
-    return _WeightChange(
+    return WeightChange(
         (means[1] - means[0]) / span,
         se / span,
         means[0],
@@ -634,21 +635,19 @@ def _stored_energy(
 
     The weight change of the window's own weigh-ins: a period longer than one
     window (from ``start``) takes the means of its first and last
-    ``EDGE_DAYS`` (#3739), else the Theil-Sen line (#3690), whose window shows
-    the means of its first and last ``SHORT_EDGE_DAYS`` as start, end and
-    change. It is priced at the energy density of the blended fat share
+    ``EDGE_DAYS`` (#3739), else the Theil-Sen line (#3690). It is priced at
+    the energy density of the blended fat share
     (#3555): ``share``, the phase's one share the windows of a view share
     (#3554), else the one up to ``end``. The error combines the change's
     standard error with the share's and an unmodelled water term
     (``WATER_KG_SD``, #3690).
     """
-    long = start is not None and (end - start).days >= WINDOW_DAYS
-    edges = start and _edge_change(
-        weights, start, end, EDGE_DAYS if long else SHORT_EDGE_DAYS
+    edges = (
+        edge_change(weights, start, end, EDGE_DAYS)
+        if start is not None and (end - start).days >= WINDOW_DAYS
+        else None
     )
-    change = (edges if long else None) or _line_change(weights)
-    # The weights the card shows: the edge means where they come apart.
-    shown = edges or change
+    change = edges or _line_change(weights)
     slope, slope_se, span = change.slope, change.slope_se, change.span
     share = share or fat_share(inputs, trend, end)
     density = energy_density(share.share)
@@ -657,18 +656,18 @@ def _stored_energy(
     # Water the weigh-ins cannot tell from tissue widens the error; the label
     # still names the larger of the measured terms (#3690).
     water = abs(density) * WATER_KG_SD / max(1.0, span)
-    # The shown start and end, and the fat change as their share, so the
-    # card's boxes add up (#3618).
-    first, shown_change = shown.first_kg, shown.slope * shown.span
+    # The line's weight at the first weigh-in, or the first edge's mean.
+    first = change.first_kg
     return StoredEnergy(
         density * slope,
         math.hypot(scatter, split, water),
         # The same whole percent the label shows (Gitar on #3581).
         "measured" if round(100 * share.measured_weight) >= 1 else "prior",
-        round(span),
+        # The days between the dates the card names (#3739).
+        (change.day_last - change.day_first).days,
         first,
-        first + shown_change,
-        shown_change * share.share,
+        first + slope * span,
+        slope * span * share.share,
         share.pct_first,
         share.pct_last,
         "fat_share" if split >= scatter else "weight_scatter",
@@ -679,9 +678,9 @@ def _stored_energy(
         weights[max(weights)],
         share.prior,
         share.prior_source,
-        shown.day_first,
-        shown.day_last,
-        shown.edges,
+        change.day_first,
+        change.day_last,
+        change.edges,
     )
 
 

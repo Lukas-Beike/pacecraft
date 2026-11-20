@@ -394,6 +394,7 @@ for (const [method, deficit] of Object.entries(DEFICITS)) {
       await page.getByRole("button", { name: "3 Monate" }).click();
       await expect(card.locator(".verlauf-head")).toHaveText("Defizit aus Gewicht und Körperfett3 Monate");
       await expect(boxes.nth(0).locator("strong, small")).toHaveText(["Gewicht", "−4,4 kg", "Ø 93,5 → Ø 89,1 kg", "27.08. → 13.11."]);
+      await card.screenshot({ path: test.info().outputPath("Defizit-3-Monate.png") });
       await page.getByRole("button", { name: "4 Wochen" }).click();
       await expect(boxes.nth(0).locator("strong, small")).toHaveText(["Gewicht", "−2,0 kg", "Ø 91,2 → Ø 89,2 kg", "17.10. → 13.11."]);
       await expect(boxes.nth(1).locator("strong, small")).toHaveText(["Körperfett", "−1,4 %-Pkt.", "15,5 → 14,1 %", "07.10. → 13.11."]);

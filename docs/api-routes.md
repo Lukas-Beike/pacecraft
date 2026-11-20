@@ -442,15 +442,19 @@ do not suffice; logged meals are not needed, #3603): `days`, `deficit_kcal` (neg
 `band_kcal`, `method` (`measured` when measurements weigh in the fat
 share, else `prior`), `fat_share` (`share_pct`, `prior_pct` and
 `measured_pct`, the measurements' weight, #3555), `span_days`,
-`weight_start_kg`, `weight_end_kg` (the fitted line's ends),
-`weight_change_kg` (its change, which the fat change is a share of,
+`weight_start_kg`, `weight_end_kg` (the means of the weigh-ins in the
+first and last 7 days, 14 for 3 and 6 months, with `edge_weighins`
+their counts; the line's ends, and `edge_weighins` null, where the
+edges do not come apart; #3739),
+`weight_change_kg` (their change, which the fat change is a share of,
 #3618), `kcal_per_kg` (per kg of weight change at the blended share,
 #3618), `fat_pct_start` (the first
 measurement used, else null), `fat_pct_end` (the last one, else the
 latest skinfold or null), `fat_date_start` and `fat_date_end` (their
 days: the phase's span, which can start before the window, #3598),
 `weight_last_kg` (the window's last weigh-in), `weight_date_start` and
-`weight_date_end` (the first and last weigh-in, #3704), `fat_change_kg`, `fat_share_pct` (of the
+`weight_date_end` (the edges' mean days, else the first and last
+weigh-in, #3704, #3739), `fat_change_kg`, `fat_share_pct` (of the
 weight change, null below 0.05 kg), `stored_kcal` (over the span),
 `uncertainty` (`fat_share`, `weight_scatter`, or `unstable` when
 overlapping windows contradict each other, #3614), `total_kcal` (the window's
