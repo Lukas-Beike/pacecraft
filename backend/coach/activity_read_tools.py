@@ -71,6 +71,8 @@ _LIST_OMITTED_KEYS: Final = frozenset(
 )
 # A reference's start time matches a session starting this close to it (#3084).
 START_TIME_TOLERANCE_MIN: Final = 30
+# The route visits the Coach reads with a session: it and the ones before it (#3763).
+ROUTE_HISTORY_VISITS: Final = 6
 # Without a date the newest session of this many days is analysed.
 NEWEST_SESSION_DAYS: Final = 30
 # Sessions offered back when a reference is not unique.
@@ -254,14 +256,43 @@ def _without_virtual_speed(detail: dict[str, Any]) -> None:
     else:
         detail["speed_note"] = RAW_SPEED_NOTE
         return
-    channels = (detail.get("streams") or {}).get("channels")
-    # The v1 document nests its laps: {"lap_source", "source", "laps": [...]}.
-    laps = (detail.get("laps") or {}).get("laps") or ()
-    for part in (detail.get("metrics"), channels, *laps):
+    for part in _speed_parts(detail):
         if isinstance(part, dict):
             for key in [key for key in part if "speed" in key]:
                 del part[key]
     detail["speed_note"] = note
+
+
+def _speed_parts(detail: Mapping[str, Any]) -> tuple[Any, ...]:
+    """The parts of a detail that may carry a speed, the route visits included."""
+    channels = (detail.get("streams") or {}).get("channels")
+    # The v1 document nests its laps: {"lap_source", "source", "laps": [...]}.
+    laps = (detail.get("laps") or {}).get("laps") or ()
+    history = (detail.get("route") or {}).get("history") or ()
+    return (detail.get("metrics"), channels, *laps, *history)
+
+
+def _route_history(detail: Mapping[str, Any]) -> None:
+    """The Coach's short route history: this visit and the ones before it (#3763).
+
+    The calendar lists every visit; the Coach reads the session against the
+    last ``ROUTE_HISTORY_VISITS`` visits of its sport up to it, newest first.
+    """
+    route, session = detail.get("route"), detail.get("session") or {}
+    if not isinstance(route, dict):
+        return
+    # A loop both run and ridden compares only the session's own sport.
+    sport = session.get("sport")
+    visits = [
+        visit
+        for visit in route.pop("visits", None) or []
+        if visit.get("sport") in (None, sport)
+    ]
+    own = session.get("activity_id")
+    start = next(
+        (n for n, visit in enumerate(visits) if visit.get("activity_id") == own), 0
+    )
+    route["history"] = visits[start : start + ROUTE_HISTORY_VISITS]
 
 
 def _has_power(detail: Mapping[str, Any]) -> bool:
@@ -427,6 +458,7 @@ class CoachActivityReadToolService:
             # Per-second running dynamics are for the calendar's charts; the Coach
             # reads their averages from the metrics.
             detail.pop("running_dynamics_streams", None)
+            _route_history(detail)
             # The provider-values section repeats the effect metrics (#2831).
             effect = detail.pop("training_effect", None)
             _without_virtual_speed(detail)

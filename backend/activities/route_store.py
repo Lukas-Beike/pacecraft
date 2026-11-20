@@ -8,12 +8,13 @@ and removed with them; readers get ``route_block`` only.
 from __future__ import annotations
 
 import json
-from collections.abc import Callable
+from collections.abc import Callable, Mapping, Sequence
 from typing import Any, Final
 
 from backend.activities import routes
 from backend.db.repositories import KeyValueRepository
 from backend.errors import NOT_FOUND_ERROR, AppError
+from backend.weather.activity_weather_store import session_temperatures
 
 INDEX_KEY: Final = "activity_routes"
 STATE_KEY: Final = "activity_routes_state"
@@ -58,6 +59,45 @@ def clear_routes(key_values: KeyValueRepository, db: Any) -> None:
 def stored_route_block(db: Any, session_id: str) -> dict[str, Any] | None:
     """The route block of one session, or None without a recognised route."""
     return routes.route_block(load_index(db), session_id)
+
+
+def stored_route_visits(
+    db: Any, session_id: str, summaries: Sequence[Mapping[str, Any]]
+) -> list[dict[str, Any]]:
+    """Every visit of the session's route, newest first (#3763).
+
+    Each visit carries the session's own metrics and the activity weather's
+    temperature; a value the session lacks stays None. Never a coordinate.
+    """
+    members = routes.route_members(load_index(db), session_id)
+    ids = [member for _at, member in members]
+    wanted = set(ids)
+    by_id = {
+        summary.get("id"): summary
+        for summary in summaries
+        if summary.get("id") in wanted
+    }
+    temperatures = session_temperatures(db, ids)
+    return [
+        _visit(member, at, by_id.get(member) or {}, temperatures.get(member))
+        for at, member in reversed(members)
+    ]
+
+
+def _visit(
+    session_id: str, at: str, summary: Mapping[str, Any], temperature: float | None
+) -> dict[str, Any]:
+    started = summary.get("started_at_local") or at
+    return {
+        "activity_id": session_id,
+        "date": str(started)[:10] or None,
+        "sport": summary.get("sport"),
+        "moving_duration_s": summary.get("moving_duration_s"),
+        "distance_m": summary.get("distance_m"),
+        "avg_hr": summary.get("avg_hr"),
+        "avg_speed_mps": summary.get("avg_speed_mps"),
+        "temperature_c": temperature,
+    }
 
 
 class ActivityRouteService:
