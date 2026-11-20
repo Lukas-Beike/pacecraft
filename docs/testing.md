@@ -31,7 +31,10 @@ segment (loaders build fixture paths from parts); a fixture in a subdirectory
 such as `tests/fixtures/chart-golden/` also needs that subdirectory named the
 same way, unless one of those modules scans directories. A glob literal such as
 `backend/**/*.py` names its directory (`backend`) for a module that scans, so
-`test_source_encoding` runs for changes under the roots it globs (#2887).
+`test_source_encoding` runs for changes under the roots it globs (#2887). A
+module scans when it calls a scanning function: `os.walk(...)`,
+`path.rglob(...)`, or a bare `listdir(...)` imported from `os`, `glob` or
+`pathlib`; a variable named `walk` or `ast.walk` is no scan (#3727).
 Every change also selects
 `test_line_endings` and `test_ai_docs_contract`, which check tracked files
 across the repository. The slow tooling modules
