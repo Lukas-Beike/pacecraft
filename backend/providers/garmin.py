@@ -27,6 +27,7 @@ from backend.providers.garmin_fields import (
     first_present,
     flatten_daily_summary,
 )
+from backend.providers.garmin_training_mapping import history_element
 from backend.providers.garmin_weight_walk import WALK_DATE_KEYS
 
 try:
@@ -81,6 +82,8 @@ class GarminCollectionOptions:
     weight_days: int = WEIGHT_READ_DAYS
     # Days of the range-capable training history to read, ending today (#3729).
     history_days: int = HISTORY_READ_DAYS
+    # Earlier ISO days whose daily training status and load balance to read (#3729).
+    daily_training_days: tuple[str, ...] = ()
 
 
 # Garmin serves at most this many days of Body Battery reports per request.
@@ -1411,6 +1414,44 @@ def _reread_training_history(
     }
 
 
+def _read_daily_training_days(
+    client: Any, payload: dict[str, Any], days: tuple[str, ...], external_call: Any
+) -> dict[str, Any]:
+    """Read the daily training status and load balance of earlier ``days`` (#3729).
+
+    Each answer is stored as one history element with its ``calendarDate``. The
+    first failed call ends the batch; the days read before it count. Returns
+    ``daily_training_read`` (the days read and whether a call failed).
+    """
+    if not days:
+        return {}
+    calls = (
+        ("daily_training_status", "get_daily_training_status"),
+        ("training_load_balance", "get_training_four_week_load_balance"),
+    )
+    done: list[str] = []
+    failed = False
+    for day in days:
+        answers: dict[str, Any] = {}
+        try:
+            for key, method in calls:
+                fetch = getattr(client, method, None)
+                if callable(fetch):
+                    answers[key] = external_call(
+                        "garmin", key, partial(fetch, day), {"day": day}
+                    )
+        except Exception:  # noqa: BLE001 - the batch ends; the cursor stays.
+            failed = True
+            break
+        for key, answer in answers.items():
+            if isinstance(answer, dict) and answer:
+                payload.setdefault(f"{key}_history", []).append(
+                    history_element(answer, day)
+                )
+        done.append(day)
+    return {"daily_training_read": {"days": done, "failed": failed}}
+
+
 def _fetch_historic_metric(
     key,
     fetch,
@@ -1986,10 +2027,14 @@ def collect_garmin_data(
             external_call,
             capability_allowed,
         )
+    daily_read = _read_daily_training_days(
+        client, payload, collection_options.daily_training_days, external_call
+    )
     provider_sync: dict[str, Any] = {
         "pagination": pagination,
         **weight_window,
         **training_window,
+        **daily_read,
     }
     _record_device_sync(
         provider_sync,

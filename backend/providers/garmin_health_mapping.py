@@ -259,7 +259,9 @@ from backend.providers.garmin_weight_walk import (
 # Version 27: only weigh-ins are weights (#3718): the performance-history copy and
 # the out-of-window readings of a range answer map none, and each reading of a
 # stored weight envelope gets its own walk budget, so older weigh-ins are kept.
-MAPPER_VERSION: Final = 27
+# Version 28: the per-day history of the daily training status and the load
+# balance maps each day's answer as its base section (#3729).
+MAPPER_VERSION: Final = 28
 GARMIN_LABEL: Final = "Garmin Connect"
 
 _DATE_FIELD: Final = "calendarDate"

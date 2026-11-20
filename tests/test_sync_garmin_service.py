@@ -119,6 +119,9 @@ class _PayloadService:
     def training_refetch_due(self) -> bool:
         return self._training_refetch_due
 
+    def daily_training_batch(self) -> tuple[str, ...]:
+        return ("2026-09-19", "2026-09-18")
+
     def known_activity_ids(self, days: int) -> frozenset[str]:
         return self._known_activity_ids
 
@@ -179,10 +182,12 @@ class _RemoteReader:
         body_battery_reconcile_days=0,
         weight_days=WEIGHT_READ_DAYS,
         history_days=HISTORY_READ_DAYS,
+        daily_training_days=(),
     ):
         self.arguments = (days, end_date, cancel_event, include_recovery)
         self.weight_days = weight_days
         self.history_days = history_days
+        self.daily_training_days = daily_training_days
         self.daily_metrics = (include_daily_metrics, known_activity_ids)
         self.body_battery_days = body_battery_reconcile_days
         status("Garmin: Zeitraum 1/1 wird synchronisiert…")
@@ -394,6 +399,21 @@ class GarminSyncServiceTests(unittest.TestCase):
             days=20, end_date=date(2026, 9, 1)
         )
         self.assertEqual(self.remote.weight_days, WEIGHT_READ_DAYS)
+
+    def test_the_daily_training_batch_is_read_only_in_the_days_first_current_run(
+        self,
+    ):
+        # #3729: the day-by-day re-read runs with the daily reconciliation.
+        self.make_service(payload=_PayloadService(daily_metrics_due=True)).sync(days=2)
+        self.assertEqual(self.remote.daily_training_days, ("2026-09-19", "2026-09-18"))
+
+        self.make_service(payload=_PayloadService(daily_metrics_due=False)).sync(days=2)
+        self.assertEqual(self.remote.daily_training_days, ())
+
+        self.make_service(payload=_PayloadService(daily_metrics_due=True)).sync(
+            days=20, end_date=date(2026, 9, 1)
+        )
+        self.assertEqual(self.remote.daily_training_days, ())
 
     def test_the_6_month_training_reread_runs_only_in_a_due_current_run(self):
         # #3729: the first current run reads 6 months of training history once.
