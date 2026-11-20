@@ -71,10 +71,10 @@ def main():
     try:
         payload = json.loads(sys.stdin.buffer.read().decode("utf-8-sig"))
         if any(key in (payload.get("tool_input") or {}) for key in PAGED):
-            return 0
+            return
         pages = list(_pages(payload.get("tool_response")))
     except ValueError, AttributeError, TypeError, RecursionError:
-        return 0
+        return
     found = []
     for page in pages:
         try:
@@ -93,8 +93,7 @@ def main():
                 }
             )
         )
-    return 0
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    main()
