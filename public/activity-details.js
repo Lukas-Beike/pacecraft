@@ -335,7 +335,8 @@
         if (output != null) outputText = pace ? routeVisitClock(output) : routeVisitNumber(output, 1);
         const row = h("tr", null,
           h("th", { scope: "row" }, routeVisitDate(visit.date)),
-          h("td", null, routeVisitClock(visit.moving_duration_s)),
+          // A visit over an hour reads h:mm:ss, like the session duration.
+          h("td", null, Number(visit.moving_duration_s) > 0 ? AppFormat.clock(visit.moving_duration_s) : "–"),
           h("td", null, routeVisitNumber(visit.avg_hr)),
           h("td", null, outputText),
           h("td", null, routeVisitNumber(visit.temperature_c)));

@@ -7,7 +7,10 @@ function text(item) {
 }
 
 const NAMES = ["ROUTE_VISIT_PAGE", "PACE_SPORTS", "routeVisitDate", "routeVisitClock", "routeVisitNumber", "routeVisitOutput", "routeVisitChart", "routeVisitTable", "renderRoute"];
-const FORMAT = { number: (value, { digits }) => Number(value).toFixed(digits).replace(".", ",") };
+const FORMAT = {
+  number: (value, { digits }) => Number(value).toFixed(digits).replace(".", ","),
+  clock: (seconds) => { const t = Math.round(seconds); const hh = Math.floor(t / 3600); const mm = Math.floor((t % 3600) / 60); const ss = String(t % 60).padStart(2, "0"); return hh ? `${hh}:${String(mm).padStart(2, "0")}:${ss}` : `${mm}:${ss}`; },
+};
 
 function loadRenderRoute(charts = []) {
   const document = fakeDocument();
@@ -101,7 +104,7 @@ test("visits show as a pace chart and a paged table with the session marked", ()
 test("a ride shows its speed in km/h", () => {
   const visits = [
     { activity_id: "b", date: "2025-06-02", avg_speed_mps: 8 },
-    { activity_id: "a", date: "2025-06-01", avg_speed_mps: 7.5 },
+    { activity_id: "a", date: "2025-06-01", avg_speed_mps: 7.5, moving_duration_s: 7530 },
   ];
   const charts = [];
   const content = new FakeElement("div");
@@ -112,6 +115,8 @@ test("a ride shows its speed in km/h", () => {
   const headRow = toggle.children[1].children[0].children[0].children[0];
   assert.equal(text(headRow.children[3]), "km/h");
   assert.equal(text(toggle.children[1].children[0].children[1].children[0].children[3]), "28,8");
+  // A visit over an hour reads h:mm:ss (Gitar on #3775).
+  assert.equal(text(toggle.children[1].children[0].children[1].children[1].children[1]), "2:05:30");
 });
 
 test("a ride on a run's loop shows no pace", () => {
