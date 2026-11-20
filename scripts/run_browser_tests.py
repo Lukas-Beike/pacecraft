@@ -1825,20 +1825,22 @@ def main(argv=None, pinned=None):
                             }
                         )
                         # A stale image would run new specs against old app code (#2644).
-                        rebuild = f"docker build -t {args.image} ."
+                        # --build rebuilds only when needed (#3106, #3737); after
+                        # it ran, naming it again would loop.
+                        rebuild = f"rebuild it with docker build -t {args.image} ." + (
+                            "" if args.build else " or pass --build"
+                        )
                         if current is False:
                             raise RunnerError(
                                 f"{args.image} does not match the application source of "
-                                f"this checkout; rebuild it with {rebuild} "
-                                "or pass --build"
+                                f"this checkout; {rebuild}"
                             )
                         # Children against an image of unknown state stayed "pending"
                         # without an error line (#3243): unknown stops the run as well.
                         if current is None:
                             raise RunnerError(
                                 f"could not compare {args.image} with the application "
-                                f"source of this checkout; rebuild it with {rebuild} "
-                                "or pass --build"
+                                f"source of this checkout; {rebuild}"
                             )
                         browser = verify_browser(
                             ROOT, args, node, versions, processes, containers, private

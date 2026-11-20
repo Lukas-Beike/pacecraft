@@ -778,6 +778,7 @@ class BrowserRunnerTests(unittest.TestCase):
         self.assertNotEqual(code, 0)
         self.assertIn(build, fake.commands)
         self.assertIn("does not match", value["error"])
+        self.assertNotIn("pass --build", value["error"])  # #3737: already passed
         self.assertFalse(fake.ids)
         # A current image is never rebuilt.
         fake = FakeProcesses()

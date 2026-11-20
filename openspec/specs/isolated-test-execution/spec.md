@@ -49,7 +49,7 @@ Regular CI browser jobs SHALL use a prepared, immutable browser environment cont
 
 #### Scenario: Local application image is stale
 - **WHEN** the application image's copy of `requirements.txt`, `server.py`, `backend/` or `public/` differs from the working tree
-- **THEN** the run stops before any fixture starts and names the rebuild command and `--build`, which rebuilds only when needed; when the comparison is not possible it stops the same way
+- **THEN** the run stops before any fixture starts and names the rebuild command and, in a run without `--build`, that option, which rebuilds only when needed; when the comparison is not possible it stops the same way
 
 Evidence: `scripts/browser_environment.json` (version and digest pin), the `Pull immutable prepared browser environment` step of `.github/workflows/publish-container.yml`, `package-lock.json`; `tests/test_browser_runner.py::BrowserRunnerTests.test_missing_or_mismatched_locked_toolchain_fails_without_fallback`, `tests/test_browser_runner.py::BrowserRunnerTests.test_prepared_compatibility_requires_declared_version_and_observed_revision`, `tests/test_browser_runner.py::BrowserRunnerTests.test_outdated_application_image_stops_before_any_fixture`.
 
