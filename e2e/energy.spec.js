@@ -27,6 +27,8 @@ test("@responsive the diary shows Offene Kalorien and the outlined source's part
   });
   await shapeEnergy(page, (data) => ({ ...data, day_partial: true, outlined: "cunningham", best: null, goal: GOAL, wellness: { as_of: "12:18", behind: false },
     strength: [{ rpe: 8, met: 5, kcal: 210 }], tef_estimated: true,
+    // #3723: a provisional estimate, not yet qualified, as the row below counts it.
+    learned_everyday: { katch_mcardle: null, cunningham: { kcal: 220, raw_kcal: 220, band_kcal: 180, windows: 2, independent: 1, qualified: false }, checked: null },
     rows: [...data.rows.filter((row) => row.source !== "cunningham"), formulaRow("cunningham", { resting_kcal: 1700, neat_kcal: 250, learned_kcal: 220, learned_band_kcal: 180, learned_provisional: true, sport_kcal: 350, tef_kcal: 200 })] }));
   const energy = page.waitForResponse((response) => new URL(response.url()).pathname === "/api/body/energy");
   await page.reload();
@@ -56,6 +58,10 @@ test("@responsive the diary shows Offene Kalorien and the outlined source's part
   });
   expect(spanLines).toBe(1);
   await expect(card.locator(".energy-source")).toHaveText("Quelle: Cunningham mit übrigem Alltag");
+  // The row already names it "vorläufig", so no learned line follows (#3723).
+  await expect(card.locator(".energy-learned")).toHaveCount(0);
+  // For the PR's screenshot review (#3723).
+  await card.screenshot({ path: test.info().outputPath("Tagebuch-vorlaeufig.png") });
   await expect(card).not.toContainText("±");
   await expect(page.locator("#nutritionEnergy table")).toHaveCount(0);
   await expect(card.locator(".analysis-reference-note")).toHaveCount(0);
