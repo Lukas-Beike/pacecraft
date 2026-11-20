@@ -494,13 +494,6 @@ class GarminPayloadService:
                 }
             )
         _merge_weight(payload, provider_sync, previous)
-        # A run without the weigh-in re-read keeps its marker (#3718).
-        if (
-            WEIGHT_REFETCH_KEY not in provider_sync
-            and isinstance(previous_sync, dict)
-            and previous_sync.get(WEIGHT_REFETCH_KEY)
-        ):
-            provider_sync[WEIGHT_REFETCH_KEY] = previous_sync[WEIGHT_REFETCH_KEY]
         # A run without the Body Battery reconciliation keeps the day it last ran.
         if (
             "body_battery_reconciled_on" not in provider_sync
@@ -553,6 +546,10 @@ def _merge_weight(
     nothing and leaves the re-read due. A window longer than the regular read is
     the one-off 6-month re-read: its marker counts the weigh-in days it added.
     """
+    # A run without the weigh-in re-read keeps its marker.
+    previous_sync = previous.get("provider_sync")
+    if isinstance(previous_sync, dict) and previous_sync.get(WEIGHT_REFETCH_KEY):
+        provider_sync.setdefault(WEIGHT_REFETCH_KEY, previous_sync[WEIGHT_REFETCH_KEY])
     window = provider_sync.get("weight_window")
     if not payload.get("weight") or not isinstance(window, dict):
         return

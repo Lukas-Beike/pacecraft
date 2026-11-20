@@ -1176,8 +1176,12 @@ def _collect_current_metrics(
     warn: WarningLogger | None,
     include_daily: bool = True,
     weight_days: int = WEIGHT_READ_DAYS,
-) -> None:
-    """Read the current metrics; ``include_daily`` adds the slowly changing ones."""
+) -> dict[str, Any]:
+    """Read the current metrics; ``include_daily`` adds the slowly changing ones.
+
+    Returns the weigh-in read window as ``{"weight_window": ...}`` for the
+    collection's ``provider_sync``, or nothing without a weigh-in reader.
+    """
     if include_daily:
         _collect_profile_metrics(client, payload, external_call, redact, warn)
     max_metrics_start = today - timedelta(days=89)
@@ -1241,6 +1245,9 @@ def _collect_current_metrics(
             redact,
             warn,
         )
+        window = {"start": weight_start.isoformat(), "end": today.isoformat()}
+        return {"weight_window": window}
+    return {}
 
 
 def _collect_historic_metrics(
@@ -1874,8 +1881,9 @@ def collect_garmin_data(
     read_daily = collection_options.include_daily_metrics or _reads_new_activity(
         payload, collection_options.known_activity_ids
     )
+    weight_window: dict[str, Any] = {}
     if collection_options.include_current_metrics:
-        _collect_current_metrics(
+        weight_window = _collect_current_metrics(
             client,
             today,
             payload,
@@ -1905,7 +1913,7 @@ def collect_garmin_data(
             capability_failure,
             capability_success,
         )
-    provider_sync: dict[str, Any] = {"pagination": pagination}
+    provider_sync: dict[str, Any] = {"pagination": pagination, **weight_window}
     _record_device_sync(
         provider_sync,
         client,
@@ -1917,12 +1925,6 @@ def collect_garmin_data(
     )
     if _reconciles_body_battery(collection_options) and "body_battery" in pagination:
         provider_sync["body_battery_reconciled_on"] = today.isoformat()
-    if collection_options.include_current_metrics and payload.get("weight"):
-        start = today - timedelta(days=collection_options.weight_days - 1)
-        provider_sync["weight_window"] = {
-            "start": start.isoformat(),
-            "end": today.isoformat(),
-        }
     payload["provider_sync"] = provider_sync
     _validate_current_metrics(payload, redact, warn)
     if collection_options.include_current_metrics:
