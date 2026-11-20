@@ -17,7 +17,7 @@ from functools import partial
 from typing import Any, Final
 
 from backend.canonical.garmin_payload import ACTIVITY_RATINGS_SECTION
-from backend.canonical.section_items import record_day
+from backend.canonical.section_items import answer_days, record_day
 from backend.canonical.vocabulary import GARMIN_ID
 from backend.providers.garmin_fields import (
     GARMIN_ACTIVE_KCAL_ALIASES,
@@ -47,6 +47,16 @@ CapabilitySuccess = Callable[[str], None]
 # The weigh-in days a current run reads, ending today; the read window is recorded
 # (``weight_window``) so the sync merges the answer into the stored weigh-ins.
 WEIGHT_READ_DAYS: Final = 90
+# The days the historic training reads cover, ending today; a longer window is
+# recorded (``training_window``) for the one-off re-read of #3729.
+HISTORY_READ_DAYS: Final = 90
+# The range-capable training sections the one-off re-read widens (#3729).
+TRAINING_HISTORY_SECTIONS: Final = (
+    "endurance_score",
+    "running_tolerance",
+    "training_readiness_history",
+    "weekly_training_status",
+)
 
 
 @dataclass(frozen=True)
@@ -69,6 +79,8 @@ class GarminCollectionOptions:
     body_battery_reconcile_days: int = 0
     # Days of weigh-ins to read, ending today (#3718).
     weight_days: int = WEIGHT_READ_DAYS
+    # Days of the range-capable training history to read, ending today (#3729).
+    history_days: int = HISTORY_READ_DAYS
 
 
 # Garmin serves at most this many days of Body Battery reports per request.
@@ -1263,7 +1275,7 @@ def _collect_historic_metrics(
     capability_success: CapabilitySuccess | None,
 ) -> None:
     """Fetch optional, bounded historical metrics with explicit SDK semantics."""
-    start = today - timedelta(days=89)
+    start = today - timedelta(days=HISTORY_READ_DAYS - 1)
     end = today
     requests = (
         (
@@ -1345,6 +1357,58 @@ def _collect_historic_metrics(
             capability_failure,
             capability_success,
         )
+
+
+def _reread_training_history(
+    client: Any,
+    today: date,
+    payload: dict[str, Any],
+    days: int,
+    external_call: Any,
+    allowed: CapabilityAllowed | None,
+) -> dict[str, Any]:
+    """Read the training sections once more over ``days`` when it exceeds the
+    regular window (#3729).
+
+    It runs after the regular read, whose answer stays when this one fails or
+    holds no day, and it touches no capability state; a paused source is not read
+    and counts as failed, so the re-read stays due. Returns ``training_window`` and the sections
+    whose re-read failed (``training_refetch_failed``) for ``provider_sync``.
+    """
+    if days <= HISTORY_READ_DAYS:
+        return {}
+    start, end = (today - timedelta(days=days - 1)).isoformat(), today.isoformat()
+    calls = {
+        "endurance_score": ("get_endurance_score", {"aggregation": "daily"}),
+        "running_tolerance": ("get_running_tolerance", {"aggregation": "daily"}),
+        "training_readiness_history": ("get_training_readiness_range", {}),
+        "weekly_training_status": ("get_weekly_training_status", {}),
+    }
+    failed = []
+    for key, (method, extra) in calls.items():
+        fetch = getattr(client, method, None)
+        if not callable(fetch):
+            continue
+        if allowed is not None and not allowed(key):
+            failed.append(key)
+            continue
+        details = {"window_start": start, "window_end": end, **extra}
+        try:
+            value = external_call(
+                "garmin", key, partial(fetch, start, end, **extra), details
+            )
+            _validate_historic_metric(value, key)
+        except Exception:  # noqa: BLE001 - the regular answer stays.
+            failed.append(key)
+            continue
+        if answer_days(value):
+            payload[key] = value
+        else:
+            failed.append(key)
+    return {
+        "training_window": {"start": start, "end": end},
+        "training_refetch_failed": failed,
+    }
 
 
 def _fetch_historic_metric(
@@ -1900,6 +1964,7 @@ def collect_garmin_data(
             or collection_options.include_recovery
             or collection_options.include_current_metrics
         )
+    training_window: dict[str, Any] = {}
     if include_historic_metrics:
         _collect_historic_metrics(
             client,
@@ -1913,7 +1978,19 @@ def collect_garmin_data(
             capability_failure,
             capability_success,
         )
-    provider_sync: dict[str, Any] = {"pagination": pagination, **weight_window}
+        training_window = _reread_training_history(
+            client,
+            today,
+            payload,
+            collection_options.history_days,
+            external_call,
+            capability_allowed,
+        )
+    provider_sync: dict[str, Any] = {
+        "pagination": pagination,
+        **weight_window,
+        **training_window,
+    }
     _record_device_sync(
         provider_sync,
         client,

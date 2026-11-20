@@ -197,6 +197,10 @@ SECTION_FIELDS = {
         r"|current_list_days_in_answer_span|current_list_days_before_answer"
         r"|refetch_state|refetch_added_days)"
     ),
+    # The one-off Garmin history re-reads, counts only (#3729).
+    "garmin_history_refetch": re.compile(
+        r"status|training_state|training_added_days|training_due_days"
+    ),
     # The entered body days mirrored to Garmin Connect, counts only (#3403).
     "garmin_body_push": re.compile(
         r"status|sent|removed|failed|retried|linked_days|pending_days"

@@ -6,6 +6,7 @@ import hashlib
 import itertools
 import json
 import logging
+import re
 import threading
 import time
 import unittest
@@ -2783,3 +2784,88 @@ def _unlink_sessions(db: Any) -> None:
         "UPDATE activity_sessions SET state = 'active', merged_into = NULL "
         "WHERE state = 'duplicate'"
     )
+
+
+def _dated(section: str, day: str) -> Any:
+    """A Garmin fixture with every ISO day replaced by ``day``."""
+    text = (FIXTURES / "garmin" / f"{section}.json").read_text(encoding="utf-8")
+    return json.loads(re.sub(r"\d{4}-\d{2}-\d{2}", day, text))
+
+
+class ReplacedSectionHistoryTests(BackfillFixture):
+    """#3729: a replaced section keeps the stored days outside its new answer."""
+
+    A, B, C = "2026-09-01", "2026-09-10", "2026-09-20"
+
+    def store(self, section: str, value: Any, synced_at: str) -> None:
+        self.set_garmin(
+            self.manager, garmin_payload(**{section: value}) | {"synced_at": synced_at}
+        )
+
+    def served(self, day: str) -> int:
+        """Day ``day``'s Garmin rows the reader serves after the last completed run."""
+        with self.manager.reader() as db:
+            version = completed_observation_versions(self.key_values, db)[GARMIN]
+        rows = self.rows(
+            "SELECT mapper_version FROM observations WHERE provider = 'garmin' "
+            "AND observed_on = ? AND state = 'active'",
+            (day,),
+        )
+        return sum(1 for row in rows if row["mapper_version"] == version)
+
+    @contextmanager
+    def bumped(self) -> Any:
+        """Complete the backfill, then re-project at the next health version."""
+        self.run_to_completion(self.make_backfill())
+        key = (GARMIN, HEALTH_KIND)
+        version = canonical_plans._MAPPER_VERSIONS[key] + 1
+        with (
+            patch.dict(canonical_plans._MAPPER_VERSIONS, {key: version}),
+            patch.object(canonical_plans, "GARMIN_HEALTH_VERSION", version),
+        ):
+            self.run_to_completion(self.make_backfill())
+            yield
+
+    def test_earlier_days_stay_served_after_a_mapper_bump(self) -> None:
+        # Sections stored one element per day; a single-record current answer
+        # keeps one element under a fixed key and is overwritten in place.
+        for section in ("endurance_score", "running_tolerance"):
+            with self.subTest(section=section):
+                self.manager = self.open_manager(f"{section}.db")
+                self.store(
+                    section, _dated(section, self.A), "2026-09-01T12:00:00+00:00"
+                )
+                self.store(
+                    section, _dated(section, self.C), "2026-09-20T12:00:00+00:00"
+                )
+
+                with self.bumped():
+                    self.assertGreater(self.served(self.A), 0)
+                    self.assertGreater(self.served(self.C), 0)
+
+    def test_a_day_the_answer_drops_inside_its_span_goes(self) -> None:
+        section = "endurance_score"
+        days = (self.A, self.B, self.C)
+        self.store(
+            section,
+            [_dated(section, day)[0] for day in days],
+            "2026-09-20T12:00:00+00:00",
+        )
+        self.store(
+            section,
+            [_dated(section, day)[0] for day in (self.A, self.C)],
+            "2026-09-21T12:00:00+00:00",
+        )
+
+        with self.bumped():
+            self.assertEqual(self.served(self.B), 0)
+            self.assertGreater(self.served(self.A), 0)
+            self.assertGreater(self.served(self.C), 0)
+
+    def test_an_empty_answer_changes_nothing(self) -> None:
+        section = "endurance_score"
+        self.store(section, _dated(section, self.A), "2026-09-01T12:00:00+00:00")
+        self.store(section, [], "2026-09-20T12:00:00+00:00")
+
+        with self.bumped():
+            self.assertGreater(self.served(self.A), 0)

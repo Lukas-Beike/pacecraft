@@ -62,7 +62,11 @@ from backend.sync.activity_routes import summarize_activity_routes
 from backend.sync.activity_weather import summarize_activity_weather
 from backend.sync.external_calendar import ExternalCalendarSyncService
 from backend.sync.freshness import ProviderFreshnessService
-from backend.sync.garmin import GarminFixtureLoader, GarminSyncStateService
+from backend.sync.garmin import (
+    GarminFixtureLoader,
+    GarminSyncStateService,
+    summarize_history_refetch,
+)
 from backend.sync.garmin_activity_details import (
     detail_fallback_counts,
     detail_replay_size,
@@ -435,6 +439,10 @@ class DiagnosticReportService:
                 # The entered body days mirrored to Garmin, counts only (#3403).
                 "garmin_body_push": section(
                     "garmin_body_push", lambda: summarize_body_push(db)
+                ),
+                # The one-off Garmin history re-reads, counts only (#3729).
+                "garmin_history_refetch": section(
+                    "garmin_history_refetch", lambda: summarize_history_refetch(db)
                 ),
                 # The Wahoo profile-weight write, counts only (#3559).
                 "wahoo_weight_push": section(
