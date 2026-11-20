@@ -17,8 +17,8 @@ MAX_SESSIONS: Final = 6
 MAX_EXERCISES: Final = 10
 SOURCE: Final = (
     "Executed strength sets of completed sessions (Garmin exercise sets, else the "
-    "FIT set messages); top set = heaviest weight with its reps; never added to "
-    "endurance load"
+    "FIT set messages); top set = heaviest weight with its reps, or the most "
+    "reps for an exercise without weight; never added to endurance load"
 )
 
 

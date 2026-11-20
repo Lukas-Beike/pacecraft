@@ -453,6 +453,9 @@ every named number the code fixes. A test fails when it is out of date.
 | `LABEL` | `'Zoneneinstellungen'` | `backend/activities/stream_zones.py` |  |
 | `MIN_GAP_S` | `30.0` | `backend/activities/stream_zones.py` |  |
 | `GAP_FACTOR` | `3.0` | `backend/activities/stream_zones.py` |  |
+| `MAX_SESSIONS` | `6` | `backend/activities/strength_progress.py` |  |
+| `MAX_EXERCISES` | `10` | `backend/activities/strength_progress.py` |  |
+| `SOURCE` | `'Executed strength sets of completed sessions (Garmin exercise sets, else the FIT set messages); ... (sha256 3efc0851)` | `backend/activities/strength_progress.py` |  |
 | `MAX_EXERCISES` | `20` | `backend/activities/strength_sets.py` |  |
 | `STRENGTH_KEY` | `'strength_sets'` | `backend/activities/strength_sets.py` |  |
 | `SOURCE` | `'derived'` | `backend/activities/workout_load.py` |  |

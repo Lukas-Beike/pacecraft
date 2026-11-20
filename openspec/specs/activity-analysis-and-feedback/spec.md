@@ -59,7 +59,7 @@ A session SHALL use exactly one stored strength set list: Garmin's exercise sets
 
 #### Scenario: Summary
 - **WHEN** the list is summarised
-- **THEN** it reports `source`, `provider`, `active_sets`, `total_reps`, `volume_kg` (reps times kg, one decimal), `leg`, `by_category`, `unrecognized_sets` and at most 20 exercises in order of first appearance (`omitted_exercises` for the rest), each with `sets`, `top_kg` and `top_reps`.
+- **THEN** it reports `source`, `provider`, `active_sets`, `total_reps`, `volume_kg` (reps times kg, one decimal), `leg`, `by_category`, `unrecognized_sets` and at most 20 exercises in order of first appearance (`omitted_exercises` for the rest), each with `sets`, `top_kg` and `top_reps` (the heaviest weighted set, or the set with the most reps when no set carries a weight).
 
 #### Scenario: Leg session
 - **WHEN** an exercise has the category squat, deadlift, lunge, leg curl, calf raise, hip raise, hip swing, olympic lift, plyo or total body

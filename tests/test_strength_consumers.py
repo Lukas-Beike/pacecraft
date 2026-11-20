@@ -445,6 +445,42 @@ class ProgressionTests(unittest.TestCase):
             ],
         )
 
+    def test_an_exercise_without_weight_keeps_its_most_reps_as_top_set(self) -> None:
+        # #3764 review: stored pull-ups carry no weight (the FIT mapping keeps 0 kg as
+        # None); their top set is the set with the most reps, so Kraft can chart it.
+        pull = ExerciseCategory.PULL_UP
+        summary = strength_summary(
+            stored(
+                set_list(
+                    [(ACTIVE, pull, "PULL_UP", reps, None, None) for reps in (6, 8, 7)]
+                )
+            ),
+            set_list=False,
+        )
+        progress = strength_progress(
+            [{"started_at_local": "2026-11-17T18:00:00", "strength_sets": summary}]
+        )
+        self.assertEqual(
+            progress["exercises"][0]["sessions"],
+            [{"date": "2026-11-17", "sets": 3, "top_kg": None, "top_reps": 8}],
+        )
+        # A weighted set still wins over more reps without weight.
+        mixed = strength_summary(
+            stored(
+                set_list(
+                    [
+                        (ACTIVE, pull, "PULL_UP", 12, None, None),
+                        (ACTIVE, pull, "PULL_UP", 5, 10.0, None),
+                    ]
+                )
+            ),
+            set_list=False,
+        )
+        self.assertEqual(
+            (mixed["exercises"][0]["top_kg"], mixed["exercises"][0]["top_reps"]),
+            (10.0, 5),
+        )
+
     def test_analyse_lifts_the_planning_caps(self) -> None:
         # #3764: the planning brief keeps 6 sessions and 10 exercises; Analyse › Kraft
         # lists every session and exercise of its window.
