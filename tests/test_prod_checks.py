@@ -495,6 +495,8 @@ class ProdChecksTests(unittest.TestCase):
                     "not_current_days_before_first_weighin_list_day": 1,
                     "answer_weighin_days": 30,
                     "answer_days_without_current_row": 0,
+                    "refetch_state": "finished",
+                    "refetch_added_days": 12,
                 },
                 "planted": "never printed",
             }
@@ -530,6 +532,8 @@ class ProdChecksTests(unittest.TestCase):
             f"{prefix}garmin_weight_origins.not_current_days_before_first_weighin_list_day 1",
             f"{prefix}garmin_weight_origins.answer_weighin_days 30",
             f"{prefix}garmin_weight_origins.answer_days_without_current_row 0",
+            f'{prefix}garmin_weight_origins.refetch_state "finished"',
+            f"{prefix}garmin_weight_origins.refetch_added_days 12",
         ):
             self.assertIn(expected, lines)
         self.assertFalse(any("planted" in line for line in lines))
