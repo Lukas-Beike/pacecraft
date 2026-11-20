@@ -34,6 +34,9 @@ from backend.athlete.profile import LEARNED_EVERYDAY_FIELD
 from backend.canonical.vocabulary import ProviderId
 from backend.errors import AppError
 from backend.nutrition.energy_balance import (
+    BAND_Z,
+    SHORT_EDGE_DAYS,
+    WINDOW_DAYS,
     Base,
     DayInputs,
     EnergyInputs,
@@ -41,13 +44,16 @@ from backend.nutrition.energy_balance import (
     Estimate,
     LearnedEveryday,
     StoredEnergy,
+    WeightChange,
     day_tef,
+    edge_change,
     energy_density,
     energy_windows,
     history_start,
     is_complete,
     is_stable,
     period_window,
+    t_quantile,
     twelve_week_base,
     window_t,
     windows_bias,
@@ -715,7 +721,9 @@ def energy_view(
         },
         # Where Garmin's day summary of the shown day stands (#3530).
         "wellness": stand,
-        "deficit": _deficit(latest, predictions[DEVICE][-1][2], goal),
+        "deficit": _deficit(
+            latest, predictions[DEVICE][-1][2], goal, _short_edges(inputs, latest)
+        ),
         # Without enough logged days, the intake from weight and activity (#3604).
         "estimated_intake": _estimated_intake(
             latest, windows, bodies, learned.get(ESTIMATE_FORMULA)
@@ -778,18 +786,57 @@ def _measured_terms(store: StoredEnergy) -> dict[str, Any]:
     }
 
 
+def _short_edges(inputs: EnergyInputs, window: EnergyWindow) -> WeightChange | None:
+    """The 4 weeks' shown weights: the means of the weigh-ins the store rests
+    on in their first and last ``SHORT_EDGE_DAYS`` (athlete decision, #3739);
+    None for a longer period, whose store carries its own edges."""
+    store = window.store
+    if window.days > WINDOW_DAYS or store is None or store.weight_date_start is None:
+        return None
+    low, high = store.weight_date_start, store.weight_date_end or window.end
+    weights = {
+        d: v.weight_kg
+        for d, v in inputs.days.items()
+        if v.weight_kg is not None and low <= d <= high
+    }
+    start = window.end - timedelta(days=window.days - 1)
+    return edge_change(weights, start, window.end, SHORT_EDGE_DAYS) if weights else None
+
+
+def _deficit_t(window: EnergyWindow, store: StoredEnergy) -> float:
+    """The deficit band's t: an edge store's pooled dof (#3739; none to pool
+    means one weigh-in's assumed SD, so z), else the TDEE's own (#3614)."""
+    if not store.edge_weighins:
+        return window_t(window)
+    dof = sum(store.edge_weighins) - 2
+    return t_quantile(dof) if dof else BAND_Z
+
+
 def _deficit(
-    latest: EnergyWindow, device_total: float | None, goal: Mapping[str, str] | None
+    latest: EnergyWindow,
+    device_total: float | None,
+    goal: Mapping[str, str] | None,
+    shown: WeightChange | None = None,
 ) -> dict[str, Any] | None:
     """'Dein Defizit, letzte 28 Tage' (#3548): the energy per day from (deficit)
     or into (surplus) the body stores, with the terms of its boxes. The weigh-ins
     alone carry it; without enough logged meals the expenditure is null and
-    ``expenditure_missing`` names why ("Nur Waage", #3603)."""
+    ``expenditure_missing`` names why ("Nur Waage", #3603). ``shown`` replaces
+    the store's start, end and change on the card (the 4 weeks' edge means,
+    #3739); the deficit and its band stay the store's."""
     store, tdee = latest.store, latest.adaptive_tdee
     if store is None:
         return None
-    # The TDEE's own t quantile, one band rule for both (#3614).
-    deficit, band = -store.kcal_per_day, window_t(latest) * store.sd
+    deficit, band = -store.kcal_per_day, _deficit_t(latest, store) * store.sd
+    if shown:
+        store = store._replace(
+            weight_start_kg=shown.first_kg,
+            weight_end_kg=shown.first_kg + shown.slope * shown.span,
+            fat_change_kg=shown.slope * shown.span * store.fat_share,
+            weight_date_start=shown.day_first,
+            weight_date_end=shown.day_last,
+            edge_weighins=shown.edges,
+        )
     change = store.weight_end_kg - store.weight_start_kg
     return {
         "days": latest.days,
@@ -800,7 +847,11 @@ def _deficit(
         "span_days": store.days,
         "weight_start_kg": round(store.weight_start_kg, 1),
         "weight_end_kg": round(store.weight_end_kg, 1),
-        # The fitted change, not the rounded ends', so the boxes add up (#3618).
+        # The start and end are edge means with their weigh-in counts: 7 days
+        # for 4 weeks, 14 for longer periods (#3739); null where the edges do
+        # not come apart and the line's ends show.
+        "edge_weighins": list(store.edge_weighins) if store.edge_weighins else None,
+        # The ends' unrounded change, so the boxes add up (#3618).
         "weight_change_kg": round(change, 1),
         # kcal per kg of weight change at the blended share, for the goal's
         # weekly weight (#3618).
@@ -1250,7 +1301,10 @@ def _fit_scale(
         "weeks_with_data": _weeks_with_data(inputs, latest.end, days),
         # The same rules over the period's weigh-ins; the 28 days are the latest window.
         "deficit": _deficit(
-            deficit_window, _device_prediction(health, deficit_window)[2], goal
+            deficit_window,
+            _device_prediction(health, deficit_window)[2],
+            goal,
+            _short_edges(inputs, deficit_window),
         ),
     }
 

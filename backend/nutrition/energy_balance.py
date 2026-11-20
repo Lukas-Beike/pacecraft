@@ -28,7 +28,7 @@ from backend.performance.activity_energy import (
 
 METHOD_ID = "adaptive-expenditure"
 # Bump when a formula or constant below changes the estimate.
-METHOD_VERSION = 25
+METHOD_VERSION = 26
 # Days per window and windows per week of the rolling view (#3099, #3100).
 WINDOW_DAYS = 28
 # A window needs this many complete logging days, weigh-ins and days between
@@ -63,6 +63,15 @@ FORBES_FAT_MASS_KG = 10.4
 # can be (Fable review, #3690); its SD, priced at the tissue density over the
 # window's span, enters the stored energy's error in quadrature.
 WATER_KG_SD = 1.0 / 1.96
+# A period longer than one window prices its weight change from the mean of the
+# weigh-ins in its first and last this many days, not a line through all of
+# them, which a flat-then-steep course drags far past any weigh-in (athlete
+# decision, #3739).
+EDGE_DAYS = 14
+# The 4 weeks keep the line for their deficit and band, but their card shows
+# the mean weigh-ins of their first and last this many days as start, end and
+# change (athlete decision, #3739).
+SHORT_EDGE_DAYS = 7
 FAT_SHARE_PRIOR_BOUNDS = (0.40, 0.85)
 # Repeatability of one self-measured body fat value (percentage points, SD):
 # the upper end of the review's 1.5-2 for skinfolds (#3555).
@@ -222,9 +231,13 @@ class StoredEnergy(NamedTuple):
     # The prior of the fat share and its source (#3684).
     fat_prior: float = FAT_SHARE_PRIOR
     fat_prior_source: str = "fallback"
-    # The first and last weigh-in the stored energy rests on (#3704).
+    # The first and last weigh-in the stored energy rests on (#3704); with edge
+    # means, the mean dates of the two edge windows (#3739).
     weight_date_start: date | None = None
     weight_date_end: date | None = None
+    # A long period's weigh-ins in its first and last edge window, whose means
+    # are weight_start_kg and weight_end_kg; None for the line (#3739).
+    edge_weighins: tuple[int, int] | None = None
 
 
 @dataclass(frozen=True)
@@ -382,12 +395,13 @@ def _scale_store(
     weights: Mapping[date, float],
     end: date,
     share: FatShare | None,
+    start: date | None = None,
 ) -> StoredEnergy | None:
     """The window's stored energy whenever its weigh-ins carry it, logged meals
-    or not ("Nur Waage", #3603)."""
+    or not ("Nur Waage", #3603); ``start``, its first day, sets its edge means (#3739)."""
     if _weighins_short(sorted(weights)):
         return None
-    return _stored_energy(inputs, trend, weights, end, share)
+    return _stored_energy(inputs, trend, weights, end, share, start)
 
 
 def _weighins_short(weighins: Sequence[date]) -> str | None:
@@ -524,23 +538,24 @@ def fat_share(inputs: EnergyInputs, trend: Mapping[date, float], end: date) -> F
     )
 
 
-def _stored_energy(
-    inputs: EnergyInputs,
-    trend: Mapping[date, float],
-    weights: Mapping[date, float],
-    end: date,
-    share: FatShare | None = None,
-) -> StoredEnergy:
-    """Stored energy per day over the weigh-ins, its standard error and how fat
-    and lean mass were split.
+class WeightChange(NamedTuple):
+    """A weight course's slope (kg/day) with its standard error, the weight it
+    starts from, the days it spans and their first and last day; with edge
+    means, the weigh-ins in each edge (#3739)."""
 
-    The Theil-Sen slope of the window's own weigh-ins (#3690), at the energy
-    density of the blended fat share (#3555): ``share``, the phase's one share
-    the windows of a view share (#3554), else the one up to ``end``. The error
-    combines the slope's standard error with the share's and an unmodelled
-    water term (``WATER_KG_SD``, #3690). Unlike the trend's change the slope
-    has no warm-up lag after the first weigh-in.
-    """
+    slope: float
+    slope_se: float
+    first_kg: float
+    span: float
+    day_first: date
+    day_last: date
+    edges: tuple[int, int] | None = None
+
+
+def _line_change(weights: Mapping[date, float]) -> WeightChange:
+    """The Theil-Sen line of the weigh-ins (#3690): its slope, the slope's
+    standard error scaled for persisting scatter (#3614), and its weight at the
+    first weigh-in. Unlike the trend's change it has no warm-up lag."""
     weighins = sorted(weights)
     xs = [float((d - weighins[0]).days) for d in weighins]
     ys = [weights[d] for d in weighins]
@@ -548,23 +563,108 @@ def _stored_energy(
     slope, intercept = _theil_sen(xs, ys)
     residuals = [y - (intercept + slope * x) for x, y in zip(xs, ys, strict=True)]
     slope_se = math.sqrt(sum(r * r for r in residuals) / max(1, len(xs) - 2) / sxx)
-    slope_se *= _persistence(residuals)
+    return WeightChange(
+        slope,
+        slope_se * _persistence(residuals),
+        intercept,
+        xs[-1],
+        weighins[0],
+        weighins[-1],
+    )
+
+
+def _edge(weighins: Sequence[date], low: date, high: date) -> list[date]:
+    return [d for d in weighins if low <= d <= high]
+
+
+def edge_change(
+    weights: Mapping[date, float], start: date, end: date, days: int
+) -> WeightChange | None:
+    """The change between the mean weigh-ins of the window's first and last
+    ``days`` (athlete decision, #3739); None when the first edge does not end
+    before the last begins.
+
+    An edge without a weigh-in starts at the period's first weigh-in, or ends
+    at its last. The rate is the difference over the days between the edges'
+    mean dates. Each mean's standard error is the edges' pooled SD (one
+    weigh-in's ``WATER_KG_SD`` without a spread to pool) over the root of its
+    count, so a sparse edge widens the band.
+    """
+    weighins = sorted(weights)
+    width = timedelta(days=days - 1)
+    first = _edge(weighins, start, start + width) or _edge(
+        weighins, weighins[0], weighins[0] + width
+    )
+    last = _edge(weighins, end - width, end) or _edge(
+        weighins, weighins[-1] - width, weighins[-1]
+    )
+    if first[-1] >= last[0]:
+        return None
+    edges = [[weights[d] for d in first], [weights[d] for d in last]]
+    means = [statistics.fmean(edge) for edge in edges]
+    dof = sum(len(edge) - 1 for edge in edges)
+    squares = sum(
+        (y - mean) ** 2 for edge, mean in zip(edges, means, strict=True) for y in edge
+    )
+    sd = math.sqrt(squares / dof) if dof else WATER_KG_SD
+    # Each edge's mean day, in days after the first weigh-in.
+    at = [statistics.fmean((d - weighins[0]).days for d in e) for e in (first, last)]
+    span = at[1] - at[0]
+    se = math.hypot(sd / math.sqrt(len(first)), sd / math.sqrt(len(last)))
+    return WeightChange(
+        (means[1] - means[0]) / span,
+        se / span,
+        means[0],
+        span,
+        weighins[0] + timedelta(days=math.floor(at[0] + 0.5)),
+        weighins[0] + timedelta(days=math.floor(at[1] + 0.5)),
+        (len(first), len(last)),
+    )
+
+
+def _stored_energy(
+    inputs: EnergyInputs,
+    trend: Mapping[date, float],
+    weights: Mapping[date, float],
+    end: date,
+    share: FatShare | None = None,
+    start: date | None = None,
+) -> StoredEnergy:
+    """Stored energy per day over the weigh-ins, its standard error and how fat
+    and lean mass were split.
+
+    The weight change of the window's own weigh-ins: a period longer than one
+    window (from ``start``) takes the means of its first and last
+    ``EDGE_DAYS`` (#3739), else the Theil-Sen line (#3690). It is priced at
+    the energy density of the blended fat share
+    (#3555): ``share``, the phase's one share the windows of a view share
+    (#3554), else the one up to ``end``. The error combines the change's
+    standard error with the share's and an unmodelled water term
+    (``WATER_KG_SD``, #3690).
+    """
+    edges = (
+        edge_change(weights, start, end, EDGE_DAYS)
+        if start is not None and (end - start).days >= WINDOW_DAYS
+        else None
+    )
+    change = edges or _line_change(weights)
+    slope, slope_se, span = change.slope, change.slope_se, change.span
     share = share or fat_share(inputs, trend, end)
     density = energy_density(share.share)
     density_sd = share.sd * (FAT_KCAL_PER_KG - LEAN_KCAL_PER_KG)
     scatter, split = abs(density * slope_se), abs(slope * density_sd)
-    span = xs[-1] - xs[0]
     # Water the weigh-ins cannot tell from tissue widens the error; the label
     # still names the larger of the measured terms (#3690).
     water = abs(density) * WATER_KG_SD / max(1.0, span)
-    # The fitted line's weights at the first and the last weigh-in.
-    first = intercept + slope * xs[0]
+    # The line's weight at the first weigh-in, or the first edge's mean.
+    first = change.first_kg
     return StoredEnergy(
         density * slope,
         math.hypot(scatter, split, water),
         # The same whole percent the label shows (Gitar on #3581).
         "measured" if round(100 * share.measured_weight) >= 1 else "prior",
-        round(span),
+        # The days between the dates the card names (#3739).
+        (change.day_last - change.day_first).days,
         first,
         first + slope * span,
         slope * span * share.share,
@@ -575,11 +675,12 @@ def _stored_energy(
         share.measured_weight,
         share.day_first,
         share.day_last,
-        ys[-1],
+        weights[max(weights)],
         share.prior,
         share.prior_source,
-        weighins[0],
-        weighins[-1],
+        change.day_first,
+        change.day_last,
+        change.edges,
     )
 
 
@@ -619,6 +720,7 @@ def _logged_basis(
     window: tuple[Mapping[date, float], Mapping[date, DayInputs], StoredEnergy | None],
     end: date,
     share: FatShare | None,
+    start: date | None = None,
 ) -> tuple[dict[date, float], str | None, StoredEnergy | None]:
     """The weigh-ins of the complete days' span, why the window has no
     expenditure (the minimum basis on that span, #3667) and the store the
@@ -637,7 +739,7 @@ def _logged_basis(
         reason = "logged_span"
     if len(logged) == len(weights):
         return logged, reason, store
-    return logged, reason, _scale_store(inputs, trend, logged, end, share)
+    return logged, reason, _scale_store(inputs, trend, logged, end, share, start)
 
 
 def _window(
@@ -664,10 +766,11 @@ def _window(
         statistics.fmean([day_tef(v) for v in complete.values()]) if complete else None
     )
     # The stored energy needs weigh-ins only; the expenditure also logged meals
-    # (#3603): the deficit card keeps the window's whole span.
-    store = _scale_store(inputs, trend, weights, end, share)
+    # (#3603): the deficit card keeps the window's whole span; its start sets
+    # the edge means (#3739).
+    store = _scale_store(inputs, trend, weights, end, share, start)
     logged, reason, intake_store = _logged_basis(
-        inputs, trend, (weights, complete, store), end, share
+        inputs, trend, (weights, complete, store), end, share, start
     )
     tdee = unflagged = derived = intake = None
     if reason is None and intake_store is not None:
@@ -719,7 +822,8 @@ def period_window(
     """One window of ``days`` ending on ``end``, by the same rules and calibration.
 
     The fit scale's periods (#3397); a period too short for the rules has no
-    own estimate, as any window.
+    own estimate, as any window. One longer than a window prices its weight
+    change from its edge means (#3739).
     """
     weights = {
         d: v.weight_kg for d, v in inputs.days.items() if v.weight_kg is not None

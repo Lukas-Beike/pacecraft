@@ -475,6 +475,8 @@ class ProdChecksTests(unittest.TestCase):
                 "learned_everyday_negative": 1,
                 # #3723: the formula rows' learned everyday per state.
                 "learned_everyday_state": {"none": 0, "provisional": 1, "qualified": 1},
+                # #3739: the 3-month deficit's weigh-ins per edge window.
+                "deficit_edge_weighins_91d": {"first": 12, "last": 9},
                 # #3530: days whose Garmin summary names its wellness end.
                 "wellness_end_days": 6,
                 # #3557: weigh-in days per source, dropped days per provider.
@@ -520,6 +522,8 @@ class ProdChecksTests(unittest.TestCase):
             f"{prefix}learned_everyday_negative 1",
             f"{prefix}learned_everyday_state.provisional 1",
             f"{prefix}learned_everyday_state.qualified 1",
+            f"{prefix}deficit_edge_weighins_91d.first 12",
+            f"{prefix}deficit_edge_weighins_91d.last 9",
             f"{prefix}wellness_end_days 6",
             f"{prefix}latest_window_weighin_sources.by_source.app 12",
             f"{prefix}latest_window_weighin_sources.by_source.garmin 3",
