@@ -996,10 +996,12 @@ class DeficitCardTests(unittest.TestCase):
 
     def test_the_deficit_follows_the_selected_period(self) -> None:
         # #3704: a steady loss of 0.1 kg a day prices at 0.1 x 7,154 kcal/kg (the
-        # 70 % rule of thumb) = 715 kcal a day over every period. 4 weeks span
-        # their weigh-ins (27 days, the line); 3 and 6 months the mean days of
-        # their first and last 14 daily weigh-ins, 6.5 days inside each end
-        # (#3739): 90 - 13 = 77 and 181 - 13 = 168 days, the half days rounded up.
+        # 70 % rule of thumb) = 715 kcal a day over every period. 4 weeks price
+        # it over their weigh-ins (27 days, the line) and show the means of
+        # their first and last 7: 3 days inside each end, a change of 21 x 0.1;
+        # 3 and 6 months take the mean days of their first and last 14 daily
+        # weigh-ins, 6.5 days inside each end (#3739): 90 - 13 = 77 and
+        # 181 - 13 = 168 days, the half days rounded up.
         days = {
             END - timedelta(days=n): DayInputs(weight_kg=80.0 + 0.1 * n)
             for n in range(190)
@@ -1010,7 +1012,7 @@ class DeficitCardTests(unittest.TestCase):
             source, energy_windows(source, END), garmin(), fit_inputs=source
         )
         for key, span, change, first, last in (
-            ("28d", 27, -2.7, 27, 0),
+            ("28d", 27, -2.1, 24, 3),
             ("91d", 77, -7.7, 83, 6),
             ("182d", 168, -16.8, 174, 6),
         ):
@@ -1028,7 +1030,7 @@ class DeficitCardTests(unittest.TestCase):
                     (card["weight_date_start"], card["weight_date_end"]),
                 )
                 self.assertEqual(
-                    None if key == "28d" else [14, 14], card["edge_weighins"]
+                    [7, 7] if key == "28d" else [14, 14], card["edge_weighins"]
                 )
         # The latest 28 days stay the read's own deficit.
         self.assertEqual(view["deficit"], view["fit_scale"]["28d"]["deficit"])

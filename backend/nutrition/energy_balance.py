@@ -68,6 +68,10 @@ WATER_KG_SD = 1.0 / 1.96
 # them, which a flat-then-steep course drags far past any weigh-in (athlete
 # decision, #3739).
 EDGE_DAYS = 14
+# The 4 weeks keep the line for their deficit and band, but show the mean
+# weigh-ins of their first and last this many days as start, end and change
+# (athlete decision, #3739).
+SHORT_EDGE_DAYS = 7
 FAT_SHARE_PRIOR_BOUNDS = (0.40, 0.85)
 # Repeatability of one self-measured body fat value (percentage points, SD):
 # the upper end of the review's 1.5-2 for skinfolds (#3555).
@@ -394,7 +398,7 @@ def _scale_store(
     start: date | None = None,
 ) -> StoredEnergy | None:
     """The window's stored energy whenever its weigh-ins carry it, logged meals
-    or not ("Nur Waage", #3603); ``start`` marks a long period (#3739)."""
+    or not ("Nur Waage", #3603); ``start``, its first day, sets its edge means (#3739)."""
     if _weighins_short(sorted(weights)):
         return None
     return _stored_energy(inputs, trend, weights, end, share, start)
@@ -573,11 +577,11 @@ def _edge(weights: Mapping[date, float], low: date, high: date) -> list[date]:
 
 
 def _edge_change(
-    weights: Mapping[date, float], start: date, end: date
+    weights: Mapping[date, float], start: date, end: date, days: int
 ) -> _WeightChange | None:
-    """A long period's change between the mean weigh-ins of its first and last
-    ``EDGE_DAYS`` (athlete decision, #3739); None when the first edge does
-    not end before the last begins, so the line prices it.
+    """The change between the mean weigh-ins of the window's first and last
+    ``days`` (athlete decision, #3739); None when the first edge does not end
+    before the last begins.
 
     An edge without a weigh-in starts at the period's first weigh-in, or ends
     at its last. The rate is the difference over the days between the edges'
@@ -586,7 +590,7 @@ def _edge_change(
     count, so a sparse edge widens the band.
     """
     weighins = sorted(weights)
-    width = timedelta(days=EDGE_DAYS - 1)
+    width = timedelta(days=days - 1)
     first = _edge(weights, start, start + width) or _edge(
         weights, weighins[0], weighins[0] + width
     )
@@ -629,16 +633,22 @@ def _stored_energy(
     and lean mass were split.
 
     The weight change of the window's own weigh-ins: a period longer than one
-    window (``start`` set) takes its edge means (#3739), else the Theil-Sen
-    line (#3690). It is priced at the energy density of the blended fat share
+    window (from ``start``) takes the means of its first and last
+    ``EDGE_DAYS`` (#3739), else the Theil-Sen line (#3690), whose window shows
+    the means of its first and last ``SHORT_EDGE_DAYS`` as start, end and
+    change. It is priced at the energy density of the blended fat share
     (#3555): ``share``, the phase's one share the windows of a view share
     (#3554), else the one up to ``end``. The error combines the change's
     standard error with the share's and an unmodelled water term
     (``WATER_KG_SD``, #3690).
     """
-    change = (_edge_change(weights, start, end) if start else None) or _line_change(
-        weights
+    long = start is not None and (end - start).days >= WINDOW_DAYS
+    edges = start and _edge_change(
+        weights, start, end, EDGE_DAYS if long else SHORT_EDGE_DAYS
     )
+    change = (edges if long else None) or _line_change(weights)
+    # The weights the card shows: the edge means where they come apart.
+    shown = edges or change
     slope, slope_se, span = change.slope, change.slope_se, change.span
     share = share or fat_share(inputs, trend, end)
     density = energy_density(share.share)
@@ -647,8 +657,9 @@ def _stored_energy(
     # Water the weigh-ins cannot tell from tissue widens the error; the label
     # still names the larger of the measured terms (#3690).
     water = abs(density) * WATER_KG_SD / max(1.0, span)
-    # The line's weight at the first weigh-in, or the first edge's mean.
-    first = change.first_kg
+    # The shown start and end, and the fat change as their share, so the
+    # card's boxes add up (#3618).
+    first, shown_change = shown.first_kg, shown.slope * shown.span
     return StoredEnergy(
         density * slope,
         math.hypot(scatter, split, water),
@@ -656,8 +667,8 @@ def _stored_energy(
         "measured" if round(100 * share.measured_weight) >= 1 else "prior",
         round(span),
         first,
-        first + slope * span,
-        slope * span * share.share,
+        first + shown_change,
+        shown_change * share.share,
         share.pct_first,
         share.pct_last,
         "fat_share" if split >= scatter else "weight_scatter",
@@ -668,9 +679,9 @@ def _stored_energy(
         weights[max(weights)],
         share.prior,
         share.prior_source,
-        change.day_first,
-        change.day_last,
-        change.edges,
+        shown.day_first,
+        shown.day_last,
+        shown.edges,
     )
 
 
@@ -740,7 +751,6 @@ def _window(
     calibration_windows: int = 0,
     length: int = WINDOW_DAYS,
     share: FatShare | None = None,
-    edge_start: date | None = None,
 ) -> EnergyWindow:
     start = end - timedelta(days=length - 1)
     span = [start + timedelta(days=n) for n in range(length)]
@@ -757,11 +767,11 @@ def _window(
         statistics.fmean([day_tef(v) for v in complete.values()]) if complete else None
     )
     # The stored energy needs weigh-ins only; the expenditure also logged meals
-    # (#3603): the deficit card keeps the window's whole span. A long period
-    # (``edge_start``) takes its edge means (#3739).
-    store = _scale_store(inputs, trend, weights, end, share, edge_start)
+    # (#3603): the deficit card keeps the window's whole span; its start sets
+    # the edge means (#3739).
+    store = _scale_store(inputs, trend, weights, end, share, start)
     logged, reason, intake_store = _logged_basis(
-        inputs, trend, (weights, complete, store), end, share, edge_start
+        inputs, trend, (weights, complete, store), end, share, start
     )
     tdee = unflagged = derived = intake = None
     if reason is None and intake_store is not None:
@@ -819,10 +829,7 @@ def period_window(
     weights = {
         d: v.weight_kg for d, v in inputs.days.items() if v.weight_kg is not None
     }
-    start = end - timedelta(days=days - 1) if days > WINDOW_DAYS else None
-    return _window(
-        inputs, weight_trend(weights), end, factor, length=days, edge_start=start
-    )
+    return _window(inputs, weight_trend(weights), end, factor, length=days)
 
 
 def _split(active: Sequence[DayInputs]) -> tuple[float | None, float | None]:

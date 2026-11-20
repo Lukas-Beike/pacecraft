@@ -346,7 +346,7 @@ for (const theme of ["light", "dark"]) {
 const DEFICITS = {
   measured: { days: 28, deficit_kcal: 565, band_kcal: 235, method: "measured", span_days: 28, weight_start_kg: 91.2, weight_end_kg: 89.2, weight_change_kg: -2.0,
     fat_pct_start: 15.5, fat_pct_end: 14.1, fat_date_start: "2026-10-07", fat_date_end: "2026-11-13", weight_last_kg: 89.2,
-    weight_date_start: "2026-10-17", weight_date_end: "2026-11-13",
+    weight_date_start: "2026-10-17", weight_date_end: "2026-11-13", edge_weighins: [7, 7],
     fat_change_kg: -1.6, fat_share_pct: 80, fat_share: { share_pct: 80, prior_pct: 57, prior_source: "forbes", measured_pct: 28 },
     stored_kcal: -15820, uncertainty: "fat_share",
     total_kcal: 3800, device_total_kcal: 3100, goal: { goal: "lose", goal_kcal: 500, status: "in", distance: "near" } },
@@ -389,13 +389,13 @@ for (const [method, deficit] of Object.entries(DEFICITS)) {
     await expect(card.locator(".energy-deficit-uncertainty")).toHaveText(/^Unsicher vor allem: .+\.$/);
     if (method === "measured") {
       // #3704: Gewicht and Körperfett are built alike: change, from → to, dates.
-      await expect(boxes.nth(0).locator("strong, small")).toHaveText(["Gewicht", "−2,0 kg", "91,2 → 89,2 kg", "17.10. → 13.11."]);
+      await expect(boxes.nth(0).locator("strong, small")).toHaveText(["Gewicht", "−2,0 kg", "Ø 91,2 → Ø 89,2 kg", "17.10. → 13.11."]);
       // #3739: 3 months show the measured edge means, marked "Ø", on their mean dates.
       await page.getByRole("button", { name: "3 Monate" }).click();
       await expect(card.locator(".verlauf-head")).toHaveText("Defizit aus Gewicht und Körperfett3 Monate");
       await expect(boxes.nth(0).locator("strong, small")).toHaveText(["Gewicht", "−4,4 kg", "Ø 93,5 → Ø 89,1 kg", "27.08. → 13.11."]);
       await page.getByRole("button", { name: "4 Wochen" }).click();
-      await expect(boxes.nth(0).locator("strong, small")).toHaveText(["Gewicht", "−2,0 kg", "91,2 → 89,2 kg", "17.10. → 13.11."]);
+      await expect(boxes.nth(0).locator("strong, small")).toHaveText(["Gewicht", "−2,0 kg", "Ø 91,2 → Ø 89,2 kg", "17.10. → 13.11."]);
       await expect(boxes.nth(1).locator("strong, small")).toHaveText(["Körperfett", "−1,4 %-Pkt.", "15,5 → 14,1 %", "07.10. → 13.11."]);
       // #3598: the readings span the phase, not the 28 days, and the box says so.
       await expect(boxes.nth(1)).toContainText("07.10. → 13.11.");
