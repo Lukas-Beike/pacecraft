@@ -14,7 +14,7 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 from functools import partial
-from typing import Any
+from typing import Any, Final
 
 from backend.canonical.garmin_payload import ACTIVITY_RATINGS_SECTION
 from backend.canonical.section_items import record_day
@@ -44,6 +44,11 @@ CapabilityFailure = Callable[[str, BaseException], None]
 CapabilitySuccess = Callable[[str], None]
 
 
+# The weigh-in days a current run reads, ending today; the read window is recorded
+# (``weight_window``) so the sync merges the answer into the stored weigh-ins.
+WEIGHT_READ_DAYS: Final = 90
+
+
 @dataclass(frozen=True)
 class GarminCollectionOptions:
     include_recovery: bool = True
@@ -62,6 +67,8 @@ class GarminCollectionOptions:
     # Days of Body Battery reports to read again, ending today; ``0`` reads none.
     # Needs ``include_recovery`` and ``include_current_metrics``.
     body_battery_reconcile_days: int = 0
+    # Days of weigh-ins to read, ending today (#3718).
+    weight_days: int = WEIGHT_READ_DAYS
 
 
 # Garmin serves at most this many days of Body Battery reports per request.
@@ -1168,6 +1175,7 @@ def _collect_current_metrics(
     redact: Redact,
     warn: WarningLogger | None,
     include_daily: bool = True,
+    weight_days: int = WEIGHT_READ_DAYS,
 ) -> None:
     """Read the current metrics; ``include_daily`` adds the slowly changing ones."""
     if include_daily:
@@ -1223,7 +1231,7 @@ def _collect_current_metrics(
         _collect_threshold_metrics(client, payload, external_call, redact, warn)
     fetch = getattr(client, "get_weigh_ins", None)
     if callable(fetch):
-        weight_start = today - timedelta(days=89)
+        weight_start = today - timedelta(days=weight_days - 1)
         _collect_optional_metric(
             payload,
             "weight",
@@ -1875,6 +1883,7 @@ def collect_garmin_data(
             redact,
             warn,
             include_daily=read_daily,
+            weight_days=collection_options.weight_days,
         )
     include_historic_metrics = collection_options.include_historic_metrics
     if include_historic_metrics is None:
@@ -1908,6 +1917,12 @@ def collect_garmin_data(
     )
     if _reconciles_body_battery(collection_options) and "body_battery" in pagination:
         provider_sync["body_battery_reconciled_on"] = today.isoformat()
+    if collection_options.include_current_metrics and payload.get("weight"):
+        start = today - timedelta(days=collection_options.weight_days - 1)
+        provider_sync["weight_window"] = {
+            "start": start.isoformat(),
+            "end": today.isoformat(),
+        }
     payload["provider_sync"] = provider_sync
     _validate_current_metrics(payload, redact, warn)
     if collection_options.include_current_metrics:

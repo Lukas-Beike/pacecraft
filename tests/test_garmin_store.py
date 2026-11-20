@@ -193,6 +193,9 @@ class GarminStoreTests(unittest.TestCase):
                 "answer_days_without_current_row": 2,
                 "current_list_days_in_answer_span": 1,
                 "current_list_days_before_answer": 0,
+                # No re-read yet (#3718).
+                "refetch_state": "pending",
+                "refetch_added_days": None,
             },
         )
 

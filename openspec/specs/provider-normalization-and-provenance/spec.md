@@ -214,6 +214,10 @@ The system SHALL normalize Garmin health and body values to canonical units usin
 - **WHEN** a Garmin weigh-in declares `sourceType` `MANUAL`
 - **THEN** its weight is provider-reported and recorded by manual entry rather than a device measurement.
 
+#### Scenario: Stored Garmin weigh-ins outlive the regular read
+- **WHEN** a regular Garmin refresh reads its weigh-in window (90 days, or 182 days once in the first current run after #3718, marked in the Garmin state)
+- **THEN** the answer is merged into the stored weigh-ins: it replaces the stored readings of its window, so a weigh-in deleted in Garmin there goes, and readings outside the window stay; a failed read changes nothing and leaves the one-off re-read due.
+
 #### Scenario: Only Garmin weigh-ins are weights
 - **WHEN** a Garmin payload carries a weight outside its weigh-in lists: the performance-history copy, or a range answer's `previousDateWeight`, `nextDateWeight` or `totalAverage`
 - **THEN** it maps no weight, so no day without a real weigh-in gets one (#3718); each reading or daily summary of a stored weight envelope is searched with its own walk budget, so the stored weigh-ins map up to the walk's list limit of 500 readings or daily summaries per list.
@@ -232,7 +236,7 @@ The system SHALL normalize Garmin health and body values to canonical units usin
 
 Detailed contract: Zero SHALL remain valid for sleep score, steps, floors, and active energy where implemented, while absent or invalid measurements remain unknown.
 
-Evidence: `backend/providers/garmin_health_mapping.py:map_garmin_health`; `tests/test_garmin_health_mapping.py:test_weight_converts_declared_units_to_kilograms`, `tests/test_garmin_health_mapping.py:test_wake_up_reading_wins_regardless_of_list_order`, `tests/test_garmin_health_mapping.py:test_manual_weigh_in_is_provider_reported_and_recorded_by_manual`, `tests/test_garmin_health_mapping.py:WeighInOnlyTests`, `tests/test_garmin_health_mapping.py:test_hrv_prefers_last_night_and_ignores_weekly_average`, `tests/test_garmin_health_mapping.py:test_zero_sleep_score_is_kept`, `tests/test_garmin_health_mapping.py:SleepNightValueTests`, `tests/test_garmin_health_mapping.py:test_daily_stats_map_counts_and_energy_with_units`.
+Evidence: `backend/providers/garmin_health_mapping.py:map_garmin_health`, `backend/sync/garmin.py:_merge_weight`; `tests/test_garmin_health_mapping.py:test_weight_converts_declared_units_to_kilograms`, `tests/test_garmin_health_mapping.py:test_wake_up_reading_wins_regardless_of_list_order`, `tests/test_garmin_health_mapping.py:test_manual_weigh_in_is_provider_reported_and_recorded_by_manual`, `tests/test_garmin_health_mapping.py:WeighInOnlyTests`, `tests/test_garmin_weight_merge.py:WeightMergeTests`, `tests/test_garmin_health_mapping.py:test_hrv_prefers_last_night_and_ignores_weekly_average`, `tests/test_garmin_health_mapping.py:test_zero_sleep_score_is_kept`, `tests/test_garmin_health_mapping.py:SleepNightValueTests`, `tests/test_garmin_health_mapping.py:test_daily_stats_map_counts_and_energy_with_units`.
 
 ### Requirement: Current thresholds and dated special metrics
 The system SHALL keep FTP and threshold sport scope, Garmin scaled running speed conversion to canonical m/s, display conversion to seconds/km, date-bearing historical FTP, running race-prediction seconds, and endurance-score wrapper normalization. An undated current Garmin FTP, running threshold, zone maximum, or prediction may use the fetch's local day only in its implemented current-value path. Undated current FTP SHALL never invent historical FTP.

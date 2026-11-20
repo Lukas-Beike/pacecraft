@@ -492,7 +492,23 @@ def weight_origin_counts(
                 {d for d in listed if answer and d < min(answer)}
             ),
         }
+        | _weight_refetch(db)
     )
+
+
+def _weight_refetch(db: Any) -> dict[str, Any]:
+    """The one-off 6-month weigh-in re-read: ``pending`` or ``finished`` and the
+    weigh-in days it added (#3718)."""
+    provider_sync = read_state(db).get("provider_sync")
+    marker = (
+        provider_sync.get("weight_refetch") if isinstance(provider_sync, dict) else None
+    )
+    if not isinstance(marker, dict):
+        return {"refetch_state": "pending", "refetch_added_days": None}
+    return {
+        "refetch_state": str(marker.get("state")),
+        "refetch_added_days": marker.get("added_days"),
+    }
 
 
 def _weight_origin(source_record_id: object) -> str:

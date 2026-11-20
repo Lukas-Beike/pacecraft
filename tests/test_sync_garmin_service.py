@@ -16,8 +16,10 @@ from support import garmin_services, make_config
 
 from backend.config import Config
 from backend.errors import AppError
+from backend.providers.garmin import WEIGHT_READ_DAYS
 from backend.sync import garmin
 from backend.sync.executor import GarminSyncJobOwner
+from backend.sync.garmin import WEIGHT_REFETCH_DAYS
 from backend.sync.garmin_service import (
     GarminMorningRemoteReader,
     GarminRemoteReader,
@@ -88,9 +90,11 @@ class _PayloadService:
         daily_metrics_retry_due: bool = False,
         known_activity_ids: frozenset[str] = frozenset(),
         body_battery_due: bool = False,
+        weight_refetch_due: bool = False,
     ) -> None:
         self.payload = payload or {}
         self._body_battery_due = body_battery_due
+        self._weight_refetch_due = weight_refetch_due
         self._daily_metrics_due = daily_metrics_due
         self._daily_metrics_retry_due = daily_metrics_retry_due
         self._known_activity_ids = known_activity_ids
@@ -106,6 +110,9 @@ class _PayloadService:
 
     def body_battery_reconciliation_due(self) -> bool:
         return self._body_battery_due
+
+    def weight_refetch_due(self) -> bool:
+        return self._weight_refetch_due
 
     def known_activity_ids(self, days: int) -> frozenset[str]:
         return self._known_activity_ids
@@ -165,8 +172,10 @@ class _RemoteReader:
         known_activity_ids=None,
         rated_activity_ids=frozenset(),
         body_battery_reconcile_days=0,
+        weight_days=WEIGHT_READ_DAYS,
     ):
         self.arguments = (days, end_date, cancel_event, include_recovery)
+        self.weight_days = weight_days
         self.daily_metrics = (include_daily_metrics, known_activity_ids)
         self.body_battery_days = body_battery_reconcile_days
         status("Garmin: Zeitraum 1/1 wird synchronisiert…")
@@ -362,6 +371,22 @@ class GarminSyncServiceTests(unittest.TestCase):
             days=20, end_date=date(2026, 9, 1)
         )
         self.assertEqual(self.remote.body_battery_days, 0)
+
+    def test_the_6_month_weigh_in_reread_runs_only_in_a_due_current_run(self):
+        # #3718: the first current run reads 6 months of weigh-ins once.
+        self.make_service(payload=_PayloadService(weight_refetch_due=True)).sync(days=2)
+        self.assertEqual(self.remote.weight_days, WEIGHT_REFETCH_DAYS)
+
+        self.make_service(payload=_PayloadService(weight_refetch_due=False)).sync(
+            days=2
+        )
+        self.assertEqual(self.remote.weight_days, WEIGHT_READ_DAYS)
+
+        # A historical window never re-reads the weigh-ins.
+        self.make_service(payload=_PayloadService(weight_refetch_due=True)).sync(
+            days=20, end_date=date(2026, 9, 1)
+        )
+        self.assertEqual(self.remote.weight_days, WEIGHT_READ_DAYS)
 
     def test_backfill_runs_after_a_successful_remote_sync_and_reports_counts(self):
         counts = {"status": "completed", "fetched": 2, "empty": 0, "remaining": 0}
