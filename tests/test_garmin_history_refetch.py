@@ -8,9 +8,9 @@ clients only, no Garmin account or token.
 from __future__ import annotations
 
 import unittest
+from contextlib import nullcontext
 from dataclasses import replace
 from datetime import UTC, date, timedelta
-from contextlib import nullcontext
 from typing import Any
 from unittest.mock import Mock
 

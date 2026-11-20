@@ -660,16 +660,21 @@ def _merge_training_answers(payload: dict[str, Any], previous: dict[str, Any]) -
     List answers keep their earlier days through the writer's span prune.
     """
     for name in TRAINING_HISTORY_SECTIONS:
-        incoming, stored = payload.get(name), previous.get(name)
-        payload[name] = merge_training_answer(incoming, stored)
+        if name in payload:
+            payload[name] = merge_training_answer(
+                name, payload[name], previous.get(name)
+            )
 
 
-def merge_training_answer(incoming: Any, stored: Any) -> Any:
-    """A mapping-shaped training answer with the stored days outside its span.
-
-    Any other answer comes back unchanged (#3729, #3756).
-    """
-    if isinstance(incoming, dict) and incoming and isinstance(stored, dict):
+def merge_training_answer(name: str, incoming: Any, stored: Any) -> Any:
+    """A mapping-shaped training history answer with the stored days outside its
+    span; any other answer comes back unchanged (#3729, #3756)."""
+    if (
+        name in TRAINING_HISTORY_SECTIONS
+        and isinstance(incoming, dict)
+        and incoming
+        and isinstance(stored, dict)
+    ):
         return {
             key: _merged_days(value, stored.get(key)) for key, value in incoming.items()
         }
