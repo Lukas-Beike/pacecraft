@@ -45,6 +45,8 @@ from backend.nutrition.energy_balance import (
     BAND_Z,
     BASE_DAYS,
     EDGE_DAYS,
+    MIN_WEIGHINS,
+    MIN_WEIGHT_SPAN_DAYS,
     WINDOW_DAYS,
     Base,
     DayInputs,
@@ -748,15 +750,19 @@ def learned_everyday(
 
 
 def _edge_counts(inputs: EnergyInputs, end: date) -> dict[str, int] | None:
-    """The 3-month deficit's weigh-ins per edge window (#3739), null without
-    weigh-ins or when its edges do not come apart."""
+    """The 3-month deficit's weigh-ins per edge window (#3739), null when its
+    weigh-ins carry no store (the window minimum) or its edges do not come
+    apart (Gitar on #3749)."""
     start = end - timedelta(days=90)
     weights = {
         d: v.weight_kg
         for d, v in inputs.days.items()
         if v.weight_kg is not None and start <= d <= end
     }
-    change = edge_change(weights, start, end, EDGE_DAYS) if weights else None
+    days = sorted(weights)
+    if len(days) < MIN_WEIGHINS or (days[-1] - days[0]).days < MIN_WEIGHT_SPAN_DAYS:
+        return None
+    change = edge_change(weights, start, end, EDGE_DAYS)
     edges = change.edges if change else None
     return {"first": edges[0], "last": edges[1]} if edges else None
 

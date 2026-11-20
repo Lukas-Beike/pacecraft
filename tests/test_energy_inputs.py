@@ -1014,6 +1014,16 @@ class BodyFatFallbackTests(unittest.TestCase):
         )
         # #3739: too few weigh-ins for a 3-month store, so no edge counts.
         self.assertIsNone(basis["deficit_edge_weighins_91d"])
+        # Gitar on #3749: two weigh-ins 80 days apart come apart as edges but
+        # carry no store (8 needed), so they count nothing; 5 at each end do.
+        end = date(2026, 11, 15)
+
+        def edges(days: list[int]) -> dict[str, int] | None:
+            weights = {end - timedelta(days=n): DayInputs(weight_kg=80.0) for n in days}
+            return energy_inputs._edge_counts(EnergyInputs(weights, {}, None), end)
+
+        self.assertIsNone(edges([0, 80]))
+        self.assertEqual({"first": 5, "last": 5}, edges([*range(5), *range(80, 85)]))
         counts = basis["body_source_windows"]
         self.assertEqual(12, sum(counts.values()))
         # The profile is no body source any more (#3640).
