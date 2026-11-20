@@ -10,7 +10,11 @@ from typing import Any
 
 from backend.app.context import AppContext
 from backend.athlete.profile import DEFAULT_PROFILE
-from backend.backup.automatic import AutomaticBackups, backup_directory
+from backend.backup.automatic import (
+    DEFAULT_DIRECTORY,
+    AutomaticBackups,
+    backup_directory,
+)
 from backend.backup.database import (
     EXPORT_TIME_LIMIT_SECONDS,
     MAX_BACKUP_BYTES,
@@ -44,6 +48,9 @@ class BackupServices:
     restore_service: Callable[[], DatabaseRestoreService]
     # None when ``BACKUP_DIR=off`` (#3760).
     automatic_backups: Callable[[], AutomaticBackups | None]
+    # Every directory that may hold automatic copies, also when switched off:
+    # the confirmed purge and the startup sweep (#3760).
+    automatic_backup_copies: Callable[[], AutomaticBackups]
 
 
 def build_backup(ctx: AppContext) -> BackupServices:
@@ -121,6 +128,21 @@ def build_backup(ctx: AppContext) -> BackupServices:
             directory, ctx.database_path().name, backup_service, ctx.logger
         )
 
+    def automatic_backup_copies() -> AutomaticBackups:
+        default = ctx.data_dir() / DEFAULT_DIRECTORY
+        directory = backup_directory(ctx.config().backup_dir, ctx.data_dir())
+        return AutomaticBackups(
+            directory or default,
+            ctx.database_path().name,
+            backup_service,
+            ctx.logger,
+            earlier=(default,),
+        )
+
     return BackupServices(
-        backup_service, restore_validation_service, restore_service, automatic_backups
+        backup_service,
+        restore_validation_service,
+        restore_service,
+        automatic_backups,
+        automatic_backup_copies,
     )

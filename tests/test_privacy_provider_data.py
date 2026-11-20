@@ -27,13 +27,13 @@ from canonical_domain_support import (
 )
 from canonical_domain_support import provenance as domain_provenance
 
+from backend.backup.automatic import AutomaticBackups
 from backend.backup.export import (
     PRIVACY_EXPORT_FORMAT_VERSION,
     PRIVACY_EXPORT_JSONL_FILES,
     PrivacyArchiveExportConfig,
     PrivacyArchiveExportService,
 )
-from backend.backup.automatic import AutomaticBackups
 from backend.backup.recovery_copies import RecoveryCopies
 from backend.canonical.activity_detail import (
     ActivityLap,

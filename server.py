@@ -455,6 +455,7 @@ ACTIVITY_READS = build_activity_reads(
     unit_thresholds=PLAN_GUARD.planned_unit_estimator,
 )
 HISTORY = build_history(APP)
+BACKUP = build_backup(APP)
 
 
 PRIVACY = build_privacy(
@@ -474,10 +475,11 @@ PRIVACY = build_privacy(
     cancel_coach_turns=lambda: (
         APP.coach_conversation.reset_service().cancel_running_turns()
     ),
-    log_files=lambda: DIAGNOSTICS.recent_log_entries_service(),
-    automatic_backups=lambda: BACKUP.automatic_backups(),
+    files_beside_database=lambda: (
+        DIAGNOSTICS.recent_log_entries_service(),
+        BACKUP.automatic_backup_copies(),
+    ),
 )
-BACKUP = build_backup(APP)
 
 
 def initialise_database() -> None:
@@ -1020,6 +1022,8 @@ def main() -> None:
         app_config.refuse_wrong_database_key(error, LOGGER)
         raise
     remove_orphaned_staging_files(DATA_DIR, LOGGER)
+    for directory in BACKUP.automatic_backup_copies().directories():
+        remove_orphaned_staging_files(directory, LOGGER)
     server = http_server.CoachHTTPServer(
         ("0.0.0.0", CONFIG_HOLDER.value.port), HTTP_API.request_handler_class()
     )

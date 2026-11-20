@@ -135,15 +135,20 @@ def build_sync_schedulers(
             ctx.database().checkpoint_wal()
 
     def housekeeping() -> None:
-        """Prune finished jobs, purge archived library templates (#3141), then
-        write the nightly backup when it is due (#3760)."""
-        ctx.sync_job_queue.service().prune_finished()
-        with ctx.maintenance.operation(), background_writer():
-            ctx.planning.workout_library().purge_archived()
+        """Write the nightly backup when it is due (#3760), first so a failing
+        later step never skips it; then prune finished jobs and purge archived
+        library templates (#3141)."""
         automatic = ctx.backup.automatic_backups() if ctx.backup else None
         if automatic is not None:
             with ctx.maintenance.operation():
-                automatic.run_nightly(ctx.clock.now(), record_backup_failure)
+                with ctx.database().reader() as db:
+                    last_failure = ctx.key_values.get(db, AUTOMATIC_FAILURE_KEY)
+                automatic.run_nightly(
+                    ctx.clock.now(), last_failure, record_backup_failure
+                )
+        ctx.sync_job_queue.service().prune_finished()
+        with ctx.maintenance.operation(), background_writer():
+            ctx.planning.workout_library().purge_archived()
 
     def record_backup_failure(value: dict[str, Any]) -> None:
         with ctx.database().unit_of_work() as db:

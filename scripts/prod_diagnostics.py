@@ -99,7 +99,10 @@ SECTION_FIELDS = {
         r"status|available|count|newest_age_hours|total_bytes"
     ),
     # The newest backup the app made (#2996).
-    "backup": re.compile(r"status|known|age_hours|bytes|verified"),
+    "backup": re.compile(
+        r"status|known|age_hours|bytes|verified|automatic\.(enabled|nightly_count"
+        r"|newest_age_hours|premigration_present|last_failure_age_hours)"
+    ),
     # The all-time curve build (#2852) and its stored curves (#2821).
     "curve_build": re.compile(
         r"status|available|builds|failures|last_build_s|building_s|failed_age_s"
@@ -657,12 +660,28 @@ def shown_lines(
 
 
 def backup_state(section: Any) -> dict[str, Any]:
-    """Known, verified, age and size of the newest app backup; nothing else."""
+    """Known, verified, age and size of the newest app backup, and the
+    automatic copies' counts and ages (#3760); nothing else."""
     if not isinstance(section, dict):
         return {"known": False}
     state: dict[str, Any] = {"known": section.get("known") is True}
     state["verified"] = section.get("verified") is True
     state |= numbers({key: section.get(key) for key in ("age_hours", "bytes")})
+    automatic = section.get("automatic")
+    if isinstance(automatic, dict):
+        state["automatic"] = {
+            "enabled": automatic.get("enabled") is True,
+            "premigration_present": automatic.get("premigration_present") is True,
+        } | numbers(
+            {
+                key: automatic.get(key)
+                for key in (
+                    "nightly_count",
+                    "newest_age_hours",
+                    "last_failure_age_hours",
+                )
+            }
+        )
     return state
 
 

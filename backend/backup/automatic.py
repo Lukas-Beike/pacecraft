@@ -13,7 +13,8 @@ import logging
 import re
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
+from fnmatch import fnmatchcase
 from datetime import time as clock_time
 from pathlib import Path
 from typing import Any, Final
@@ -30,6 +31,10 @@ PREMIGRATION: Final = "premigration"
 NIGHTLY_KEEP: Final = 7
 NIGHTLY_TIME: Final = clock_time(3, 30)
 FAILURE_KEY: Final = "database_backup_automatic_failure"
+# A failed nightly copy is retried after this pause, not on every 5-minute pass.
+RETRY_AFTER: Final = timedelta(hours=1)
+# The snapshot a copy is staged in until its checks passed (backup.database).
+_STAGING_PATTERN: Final = ".database-backup-*.tmp*"
 
 
 @dataclass(frozen=True)
@@ -40,7 +45,8 @@ class _Copy:
 
 
 class AutomaticBackups:
-    """The automatic copies of one database in one backup directory."""
+    """The automatic copies of one database: written into ``directory``; the
+    purge also reads the ``earlier`` directories (#3760)."""
 
     def __init__(
         self,
@@ -48,8 +54,10 @@ class AutomaticBackups:
         database_name: str,
         backup: Callable[[Path], DatabaseBackupService],
         logger: logging.Logger,
+        earlier: tuple[Path, ...] = (),
     ) -> None:
         self._directory = directory
+        self._directories = tuple(dict.fromkeys((directory, *earlier)))
         self._backup = backup
         self._logger = logger
         self._pattern = re.compile(
@@ -58,14 +66,13 @@ class AutomaticBackups:
         )
         self._database_name = database_name
 
+    def directories(self) -> tuple[Path, ...]:
+        return self._directories
+
     def copies(self) -> list[_Copy]:
-        """The verified copies, oldest first; the directory may not exist yet."""
+        """The verified copies, oldest first; a directory may not exist yet."""
         found = []
-        try:
-            entries = list(self._directory.iterdir())
-        except OSError:
-            return []
-        for path in entries:
+        for path in self._entries():
             match = self._pattern.fullmatch(path.name)
             if match and path.is_file():
                 made = datetime.strptime(match["made"] + "+0000", "%Y%m%d%H%M%S%z")
@@ -90,19 +97,25 @@ class AutomaticBackups:
             return False
         zone = local_now.tzinfo or UTC
         return not any(
-            copy.kind == NIGHTLY and copy.made.astimezone(zone).date() == local_now.date()
+            copy.kind == NIGHTLY
+            and copy.made.astimezone(zone).date() == local_now.date()
             for copy in self.copies()
         )
 
     def run_nightly(
         self,
         local_now: datetime,
+        last_failure: str | None,
         record_failure: Callable[[dict[str, Any]], None],
     ) -> bool:
-        """Write the nightly copy when due; a failure is logged and recorded."""
-        if not self.nightly_due(local_now):
-            return False
+        """Write the nightly copy when due; a failure is logged and recorded,
+        and the next attempt waits an hour."""
         now = datetime.now(UTC)
+        failed_at = _failure_time(last_failure)
+        if not self.nightly_due(local_now) or (
+            failed_at is not None and now - failed_at < RETRY_AFTER
+        ):
+            return False
         try:
             self.write(NIGHTLY, now)
         except Exception as exc:  # noqa: BLE001 - a failed copy never stops the app.
@@ -141,11 +154,8 @@ class AutomaticBackups:
         """Counts and ages only; never a name, path or content."""
         copies = self.copies()
         nightly = [copy for copy in copies if copy.kind == NIGHTLY]
-        try:
-            failed_at = datetime.fromisoformat(json.loads(failure or "null")["at"])
-            failure_age: float | None = _hours(now, failed_at)
-        except TypeError, ValueError, KeyError:
-            failure_age = None
+        failed_at = _failure_time(failure)
+        failure_age = None if failed_at is None else _hours(now, failed_at)
         return {
             "enabled": True,
             "nightly_count": len(nightly),
@@ -155,8 +165,28 @@ class AutomaticBackups:
         }
 
     def erase(self) -> RecoveryCopyErasure:
-        """Delete every automatic copy (the athlete's confirmed purge, #3760)."""
-        return RecoveryCopies.remove([copy.path for copy in self.copies()])
+        """Delete every automatic copy and an interrupted copy's staging file
+        (the athlete's confirmed purge, #3760)."""
+        staged = [
+            path for path in self._entries() if fnmatchcase(path.name, _STAGING_PATTERN)
+        ]
+        return RecoveryCopies.remove([copy.path for copy in self.copies()] + staged)
+
+    def _entries(self) -> list[Path]:
+        found = []
+        for directory in self._directories:
+            try:
+                found.extend(path for path in directory.iterdir() if path.is_file())
+            except OSError:
+                continue
+        return found
+
+
+def _failure_time(failure: str | None) -> datetime | None:
+    try:
+        return datetime.fromisoformat(json.loads(failure or "null")["at"])
+    except TypeError, ValueError, KeyError:
+        return None
 
 
 def _hours(now: datetime, then: datetime) -> float:

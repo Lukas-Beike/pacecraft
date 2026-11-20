@@ -52,9 +52,7 @@ class AutomaticBackupTests(unittest.TestCase):
             db.execute("INSERT INTO records VALUES ('kept')")
         self.logger = Mock()
         self.failures: list[dict] = []
-        self.backups = AutomaticBackups(
-            self.directory, NAME, self.service, self.logger
-        )
+        self.backups = AutomaticBackups(self.directory, NAME, self.service, self.logger)
 
     def service(self, directory: Path) -> DatabaseBackupService:
         return DatabaseBackupService(
@@ -74,19 +72,22 @@ class AutomaticBackupTests(unittest.TestCase):
         return sorted(path.name for path in self.directory.iterdir())
 
     def test_the_nightly_copy_runs_once_from_0330_local_time(self) -> None:
-        early = datetime(2026, 11, 20, 3, 29, tzinfo=ZONE)
-        self.assertFalse(self.backups.run_nightly(early, self.failures.append))
+        # The copy is stamped with the real time, so the test day is today.
+        early = datetime.now(ZONE).replace(hour=3, minute=29)
+        self.assertFalse(self.backups.run_nightly(early, None, self.failures.append))
         self.assertFalse(self.directory.exists())
 
-        late = early + timedelta(minutes=1)
-        self.assertTrue(self.backups.run_nightly(late, self.failures.append))
-        self.assertFalse(self.backups.run_nightly(late, self.failures.append))
+        late = early.replace(hour=23, minute=59)
+        self.assertTrue(self.backups.run_nightly(late, None, self.failures.append))
+        self.assertFalse(self.backups.run_nightly(late, None, self.failures.append))
 
         [name] = self.names()
         self.assertRegex(name, rf"^{NAME}\.auto-nightly-\d{{14}}$")
         copy = sqlite3.connect(self.directory / name)
         self.addCleanup(copy.close)
-        self.assertEqual(copy.execute("SELECT value FROM records").fetchall(), [("kept",)])
+        self.assertEqual(
+            copy.execute("SELECT value FROM records").fetchall(), [("kept",)]
+        )
         self.assertEqual(self.failures, [])
 
     def test_a_failed_copy_is_recorded_and_leaves_no_file(self) -> None:
@@ -98,19 +99,29 @@ class AutomaticBackupTests(unittest.TestCase):
         backups = AutomaticBackups(self.directory, NAME, failing, self.logger)
         night = datetime(2026, 11, 20, 4, 0, tzinfo=ZONE)
 
-        self.assertFalse(backups.run_nightly(night, self.failures.append))
+        self.assertFalse(backups.run_nightly(night, None, self.failures.append))
 
         self.assertEqual([failure["kind"] for failure in self.failures], ["nightly"])
         self.assertEqual(backups.copies(), [])
         self.assertTrue(backups.nightly_due(night))
+        # The next attempt waits an hour, not the next 5-minute pass.
+        recent = json.dumps(self.failures[0])
+        self.assertFalse(backups.run_nightly(night, recent, self.failures.append))
+        self.assertEqual(len(self.failures), 1)
+        older = json.dumps({"at": "2026-11-19T01:00:00+00:00", "kind": "nightly"})
+        self.assertFalse(backups.run_nightly(night, older, self.failures.append))
+        self.assertEqual(len(self.failures), 2)
         extra = self.logger.error.call_args.kwargs["extra"]
         self.assertEqual(extra["context"]["error_class"], "RuntimeError")
 
     def test_a_failed_pre_migration_copy_stops_the_migration(self) -> None:
         backups = AutomaticBackups(
-            self.directory, NAME, lambda _d: Mock(**{
-                "write_verified_copy.side_effect": OSError("share gone")
-            }), self.logger
+            self.directory,
+            NAME,
+            lambda _d: Mock(
+                **{"write_verified_copy.side_effect": OSError("share gone")}
+            ),
+            self.logger,
         )
         with self.assertRaises(RuntimeError):
             backups.before_migration(32)
@@ -164,10 +175,19 @@ class AutomaticBackupTests(unittest.TestCase):
         self.backups.write("nightly", datetime(2026, 11, 20, 3, 0, tzinfo=UTC))
         self.backups.before_migration(32)
         (self.directory / "unrelated.txt").write_bytes(b"x")
+        # An interrupted copy's staging file, and a copy in the default
+        # directory after BACKUP_DIR moved or was switched off.
+        (self.directory / ".database-backup-abc.tmp").write_bytes(b"x")
+        moved = self.root / "share"
+        moved.mkdir()
+        purge = AutomaticBackups(
+            moved, NAME, self.service, self.logger, earlier=(self.directory,)
+        )
+        self.assertEqual(purge.directories(), (moved, self.directory))
 
-        erased = self.backups.erase()
+        erased = purge.erase()
 
-        self.assertEqual((erased.removed, erased.failed), (2, 0))
+        self.assertEqual((erased.removed, erased.failed), (3, 0))
         self.assertEqual(self.names(), ["unrelated.txt"])
 
     def test_a_copy_passes_the_restore_validation(self) -> None:
