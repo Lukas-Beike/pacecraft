@@ -137,6 +137,24 @@ class DailyTrainingHistoryTests(unittest.TestCase):
 
         self.assertEqual(self.history_days(), {TODAY.isoformat()})
 
+    def test_a_day_read_twice_in_one_run_is_stored_once(self) -> None:
+        # Review of #3729: the current answer dated yesterday meets the batch's
+        # first day; the history keeps one element for it.
+        yesterday = (TODAY - timedelta(days=1)).isoformat()
+
+        class _Yesterday(_Client):
+            def get_daily_training_status(self, day: str) -> Any:
+                return _answer("daily_training_status", min(day, yesterday))
+
+        self.sync(_Yesterday(), (yesterday,))
+
+        with self.database.reader() as db:
+            rows = db.execute(
+                "SELECT COUNT(*) AS n FROM provider_records WHERE source_record_id "
+                "LIKE 'daily_training_status_history/%'"
+            ).fetchone()["n"]
+        self.assertEqual(rows, 1)
+
     def test_a_batch_reads_14_earlier_days_and_moves_the_cursor(self) -> None:
         batch = self.service.daily_training_batch()
         yesterday = TODAY - timedelta(days=1)

@@ -695,7 +695,12 @@ def _record_daily_training(payload: dict[str, Any]) -> None:
             continue
         day = answer_day(base, answer)
         if day is not None:
-            payload.setdefault(history, []).insert(0, {**answer, "calendarDate": day})
+            # One element per day: the current answer replaces a batch copy of it.
+            payload[history] = [{**answer, "calendarDate": day}] + [
+                row
+                for row in payload.get(history) or []
+                if row.get("calendarDate") != day
+            ]
 
 
 def _daily_training_marker(state: dict[str, Any], today: date) -> dict[str, Any]:
