@@ -16,7 +16,7 @@ from backend.canonical.garmin_payload import (
     REPLACE_SECTIONS,
     SECTIONS,
 )
-from backend.canonical.section_items import merge_records, split_section
+from backend.canonical.section_items import merge_records, record_day
 from backend.canonical.vocabulary import GARMIN_ID
 from backend.config import Config
 from backend.db import garmin_store
@@ -508,7 +508,9 @@ class GarminPayloadService:
                 }
             )
         _merge_weight(payload, provider_sync, previous)
+        # The marker counts the answer's own days, so it runs before the merge.
         _mark_training_refetch(payload, provider_sync, previous)
+        _merge_training_answers(payload, previous)
         # A run without the Body Battery reconciliation keeps the day it last ran.
         if (
             "body_battery_reconciled_on" not in provider_sync
@@ -607,29 +609,71 @@ def _mark_training_refetch(
         )
     if not isinstance(provider_sync.get("training_window"), dict):
         return
-    failed = {
-        error.get("source")
-        for error in payload.get("errors") or []
-        if isinstance(error, dict)
-    }
-    if failed & set(TRAINING_HISTORY_SECTIONS):
+    if provider_sync.get("training_refetch_failed"):
         return
     added = {
         (name, day)
         for name in TRAINING_HISTORY_SECTIONS
-        for day in _section_days(payload.get(name))
+        for day in _answer_days(payload.get(name))
     }
     if not added:
         return
     stored = {
         (name, day)
         for name in TRAINING_HISTORY_SECTIONS
-        for day in _section_days(previous.get(name))
+        for day in _answer_days(previous.get(name))
     }
     provider_sync[TRAINING_REFETCH_KEY] = {
         "state": "finished",
         "added_days": len({day for _name, day in added - stored}),
     }
+
+
+def _merge_training_answers(payload: dict[str, Any], previous: dict[str, Any]) -> None:
+    """Keep the stored days of a mapping-shaped training answer (#3729).
+
+    A mapping answer (the endurance score's ``groupMap`` by day, the weekly
+    status's dated row list) is one stored element, so the stored days outside
+    the new answer's day span are merged into it; inside the span the answer wins.
+    List answers keep their earlier days through the writer's span prune.
+    """
+    for name in TRAINING_HISTORY_SECTIONS:
+        incoming, stored = payload.get(name), previous.get(name)
+        if isinstance(incoming, dict) and incoming and isinstance(stored, dict):
+            payload[name] = {
+                key: _merged_days(value, stored.get(key))
+                for key, value in incoming.items()
+            }
+
+
+def _merged_days(incoming: Any, stored: Any) -> Any:
+    """``incoming`` plus the ``stored`` days outside its own day span; an
+    ``incoming`` without days keeps the stored days (#3729)."""
+    if type(incoming) is not type(stored):
+        return incoming
+    days = _answer_days(incoming)
+    if not days:
+        return stored if _answer_days(stored) else incoming
+    first, last = min(days), max(days)
+    if isinstance(incoming, dict):
+        kept = {k: v for k, v in stored.items() if not first <= str(k) <= last}
+        return {**kept, **incoming}
+    kept_rows = [
+        row for row in stored if not first <= (record_day(row) or first) <= last
+    ]
+    return kept_rows + list(incoming)
+
+
+def _answer_days(value: Any) -> set[str]:
+    """The days a training answer holds: its dated rows and day-keyed entries."""
+    if isinstance(value, list):
+        return {day for row in value if (day := record_day(row))}
+    if not isinstance(value, dict):
+        return set()
+    keys = {str(key) for key in value if record_day({"date": str(key)})}
+    if keys:
+        return keys
+    return set().union(*(_answer_days(item) for item in value.values()), set())
 
 
 def summarize_history_refetch(db: Any) -> dict[str, Any]:
@@ -652,10 +696,6 @@ def summarize_history_refetch(db: Any) -> dict[str, Any]:
         "training_added_days": marker.get("added_days"),
         "training_due_days": 0,
     }
-
-
-def _section_days(value: Any) -> set[str]:
-    return {item.observed_on for item in split_section(value or []) if item.observed_on}
 
 
 def _overlaid(window: dict[str, Any], payload: dict[str, Any]) -> dict[str, Any]:

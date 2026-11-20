@@ -1,7 +1,8 @@
 """The one-off 6-month re-read of Garmin's range-capable training history (#3729).
 
-Synthetic answers shaped after the fixtures; temporary SQLite and fake clients
-only, no Garmin account or token.
+Synthetic answers in the shapes the training mapper reads (the endurance score's
+``groupMap`` by day, running tolerance as dated rows); temporary SQLite and fake
+clients only, no Garmin account or token.
 """
 
 from __future__ import annotations
@@ -13,6 +14,7 @@ from typing import Any
 
 from support import temp_database
 
+from backend.db import garmin_store
 from backend.db.repositories import KeyValueRepository
 from backend.db.schema import initialize_schema
 from backend.providers.garmin import (
@@ -32,6 +34,7 @@ TODAY = date(2026, 11, 20)
 NOW = "2026-11-20T12:00:00+00:00"
 OLD = (TODAY - timedelta(days=150)).isoformat()
 RECENT = (TODAY - timedelta(days=10)).isoformat()
+REGULAR_START = (TODAY - timedelta(days=HISTORY_READ_DAYS - 1)).isoformat()
 
 
 def _external_call(_service: str, _source: str, call: Any, _details: Any) -> Any:
@@ -39,11 +42,11 @@ def _external_call(_service: str, _source: str, call: Any, _details: Any) -> Any
 
 
 class _Client:
-    """Garmin's endurance scores by day; each range read answers the days inside it."""
+    """Garmin's training history by day; each range read answers the days inside it."""
 
-    def __init__(self, days: list[str], fail: bool = False) -> None:
+    def __init__(self, days: list[str], fail_wide: bool = False) -> None:
         self.days = days
-        self.fail = fail
+        self.fail_wide = fail_wide
         self.calls: list[tuple[str, str]] = []
 
     def get_activities_by_date(self, start: str, end: str) -> list[Any]:
@@ -55,14 +58,23 @@ class _Client:
     def get_hrv_data_range(self, start: str, end: str) -> list[Any]:
         return []
 
-    def get_endurance_score(self, start: str, end: str, aggregation: str) -> Any:
+    def _inside(self, start: str, end: str) -> list[str]:
         self.calls.append((start, end))
-        if self.fail:
-            raise RuntimeError("rate limited")
+        if self.fail_wide and start < REGULAR_START:
+            raise RuntimeError("range too long")
+        return [day for day in self.days if start <= day <= end]
+
+    def get_endurance_score(self, start: str, end: str, aggregation: str) -> Any:
+        days = self._inside(start, end)
+        return {
+            "overallScore": 6850,
+            "groupMap": {day: {"groupAverage": 6800, "groupMax": 6900} for day in days},
+        }
+
+    def get_running_tolerance(self, start: str, end: str, aggregation: str) -> Any:
         return [
-            {"calendarDate": day, "overallScore": 6850}
-            for day in self.days
-            if start <= day <= end
+            {"calendarDate": day, "toleranceScore": 72}
+            for day in self._inside(start, end)
         ]
 
 
@@ -101,7 +113,13 @@ class TrainingHistoryRefetchTests(unittest.TestCase):
         with self.database.reader() as db:
             return summarize_history_refetch(db)
 
-    def test_the_reread_runs_once_and_counts_its_days(self) -> None:
+    def stored(self) -> dict[str, Any]:
+        with self.database.reader() as db:
+            return garmin_store.read_sections(
+                db, ["endurance_score", "running_tolerance"]
+            )
+
+    def test_the_reread_runs_once_and_its_days_outlive_the_regular_read(self) -> None:
         self.assertTrue(self.service.training_refetch_due())
         self.assertEqual(
             self.counts(),
@@ -115,8 +133,8 @@ class TrainingHistoryRefetchTests(unittest.TestCase):
 
         self.sync(client, TRAINING_REFETCH_DAYS)
 
-        start = (TODAY - timedelta(days=TRAINING_REFETCH_DAYS - 1)).isoformat()
-        self.assertEqual(client.calls, [(start, TODAY.isoformat())])
+        wide = (TODAY - timedelta(days=TRAINING_REFETCH_DAYS - 1)).isoformat()
+        self.assertIn((wide, TODAY.isoformat()), client.calls)
         self.assertFalse(self.service.training_refetch_due())
         self.assertEqual(
             self.counts(),
@@ -126,26 +144,26 @@ class TrainingHistoryRefetchTests(unittest.TestCase):
                 "training_due_days": 0,
             },
         )
-        # A later regular read keeps the marker and the older day's element.
+        # A later regular read keeps the marker and the earlier days of both shapes.
         self.sync(_Client([RECENT]))
         self.assertFalse(self.service.training_refetch_due())
-        with self.database.reader() as db:
-            days = {
-                row["observed_on"]
-                for row in db.execute(
-                    "SELECT observed_on FROM provider_records "
-                    "WHERE source_record_id LIKE 'endurance_score/%'"
-                )
-            }
-        self.assertEqual(days, {OLD, RECENT})
+        stored = self.stored()
+        self.assertEqual(set(stored["endurance_score"]["groupMap"]), {OLD, RECENT})
+        self.assertEqual(
+            {row["calendarDate"] for row in stored["running_tolerance"]}, {OLD, RECENT}
+        )
 
-    def test_a_failed_or_empty_reread_stays_due(self) -> None:
-        for client in (_Client([OLD], fail=True), _Client([])):
-            with self.subTest(fail=client.fail):
+    def test_a_failed_or_empty_reread_stays_due_and_keeps_the_regular_read(
+        self,
+    ) -> None:
+        for client in (_Client([OLD, RECENT], fail_wide=True), _Client([])):
+            with self.subTest(fail_wide=client.fail_wide):
                 self.sync(client, TRAINING_REFETCH_DAYS)
 
                 self.assertTrue(self.service.training_refetch_due())
                 self.assertEqual(self.counts()["training_state"], "pending")
+        # The regular 90-day read of the failed run was stored.
+        self.assertIn(RECENT, self.stored()["endurance_score"]["groupMap"])
 
 
 if __name__ == "__main__":

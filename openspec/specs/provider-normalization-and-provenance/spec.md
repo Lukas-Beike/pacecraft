@@ -737,7 +737,7 @@ Garmin sections SHALL be stored as one raw record per element (`<section>/<key>`
 
 #### Scenario: One-off training history re-read
 - **WHEN** the first current Garmin refresh after #3729 reads the historic training sections
-- **THEN** endurance score, running tolerance, readiness history and weekly training status are read over 182 days instead of 90, once: a marker in the Garmin state records the days it added after an answer with days and no failed training section; a failed or empty answer leaves it due, and a historical window never re-reads.
+- **THEN** after the regular 90-day read, endurance score, running tolerance, readiness history and weekly training status are read once more over 182 days, without touching the capability state: a marker in the Garmin state records the days the answers added; a failed or empty re-read leaves it due and keeps the regular answer, and a historical window never re-reads. A mapping-shaped answer (the endurance score's `groupMap` by day, the weekly status's dated rows) keeps the stored days outside its own day span, and an answer without days keeps the stored ones.
 
 #### Scenario: Replaced section keeps earlier days
 - **WHEN** a replacing write carries dated elements

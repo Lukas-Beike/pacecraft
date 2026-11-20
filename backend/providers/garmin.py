@@ -1273,15 +1273,9 @@ def _collect_historic_metrics(
     capability_allowed: CapabilityAllowed | None,
     capability_failure: CapabilityFailure | None,
     capability_success: CapabilitySuccess | None,
-    history_days: int = HISTORY_READ_DAYS,
-) -> dict[str, Any]:
-    """Fetch optional, bounded historical metrics with explicit SDK semantics.
-
-    The training sections read ``history_days``; a window longer than the regular
-    one is returned as ``{"training_window": ...}`` for ``provider_sync``.
-    """
+) -> None:
+    """Fetch optional, bounded historical metrics with explicit SDK semantics."""
     start = today - timedelta(days=HISTORY_READ_DAYS - 1)
-    wide = today - timedelta(days=history_days - 1)
     end = today
     requests = (
         (
@@ -1300,25 +1294,29 @@ def _collect_historic_metrics(
             getattr(client, "get_endurance_score", None),
             # Weekly buckets are keyed by their week start and hide newer days;
             # the analysis view picks the latest daily reading per week itself.
-            lambda fetch: fetch(wide.isoformat(), end.isoformat(), aggregation="daily"),
+            lambda fetch: fetch(
+                start.isoformat(), end.isoformat(), aggregation="daily"
+            ),
             "daily",
         ),
         (
             "running_tolerance",
             getattr(client, "get_running_tolerance", None),
-            lambda fetch: fetch(wide.isoformat(), end.isoformat(), aggregation="daily"),
+            lambda fetch: fetch(
+                start.isoformat(), end.isoformat(), aggregation="daily"
+            ),
             "daily",
         ),
         (
             "training_readiness_history",
             getattr(client, "get_training_readiness_range", None),
-            lambda fetch: fetch(wide.isoformat(), end.isoformat()),
+            lambda fetch: fetch(start.isoformat(), end.isoformat()),
             "daily",
         ),
         (
             "weekly_training_status",
             getattr(client, "get_weekly_training_status", None),
-            lambda fetch: fetch(wide.isoformat(), end.isoformat()),
+            lambda fetch: fetch(start.isoformat(), end.isoformat()),
             "weekly",
         ),
     )
@@ -1340,9 +1338,7 @@ def _collect_historic_metrics(
             stats.update({"complete": False, "paused": True, "status": "paused"})
             continue
         details = {
-            "window_start": (
-                wide if key in TRAINING_HISTORY_SECTIONS else start
-            ).isoformat(),
+            "window_start": start.isoformat(),
             "window_end": end.isoformat(),
             "aggregation": aggregation,
         }
@@ -1361,9 +1357,51 @@ def _collect_historic_metrics(
             capability_failure,
             capability_success,
         )
-    if history_days <= HISTORY_READ_DAYS:
+
+
+def _reread_training_history(
+    client: Any,
+    today: date,
+    payload: dict[str, Any],
+    days: int,
+    external_call: Any,
+    allowed: CapabilityAllowed | None,
+) -> dict[str, Any]:
+    """Read the training sections once more over ``days`` when it exceeds the
+    regular window (#3729).
+
+    It runs after the regular read, whose answer stays when this one fails, and
+    it touches no capability state; a paused source is not read. Returns ``training_window`` and the sections
+    whose re-read failed (``training_refetch_failed``) for ``provider_sync``.
+    """
+    if days <= HISTORY_READ_DAYS:
         return {}
-    return {"training_window": {"start": wide.isoformat(), "end": end.isoformat()}}
+    start, end = (today - timedelta(days=days - 1)).isoformat(), today.isoformat()
+    calls = {
+        "endurance_score": ("get_endurance_score", {"aggregation": "daily"}),
+        "running_tolerance": ("get_running_tolerance", {"aggregation": "daily"}),
+        "training_readiness_history": ("get_training_readiness_range", {}),
+        "weekly_training_status": ("get_weekly_training_status", {}),
+    }
+    failed = []
+    for key, (method, extra) in calls.items():
+        fetch = getattr(client, method, None)
+        if not callable(fetch) or (allowed is not None and not allowed(key)):
+            continue
+        details = {"window_start": start, "window_end": end, **extra}
+        try:
+            value = external_call(
+                "garmin", key, partial(fetch, start, end, **extra), details
+            )
+            _validate_historic_metric(value, key)
+        except Exception:  # noqa: BLE001 - the regular answer stays.
+            failed.append(key)
+            continue
+        payload[key] = value
+    return {
+        "training_window": {"start": start, "end": end},
+        "training_refetch_failed": failed,
+    }
 
 
 def _fetch_historic_metric(
@@ -1921,7 +1959,7 @@ def collect_garmin_data(
         )
     training_window: dict[str, Any] = {}
     if include_historic_metrics:
-        training_window = _collect_historic_metrics(
+        _collect_historic_metrics(
             client,
             today,
             payload,
@@ -1932,7 +1970,14 @@ def collect_garmin_data(
             capability_allowed,
             capability_failure,
             capability_success,
+        )
+        training_window = _reread_training_history(
+            client,
+            today,
+            payload,
             collection_options.history_days,
+            external_call,
+            capability_allowed,
         )
     provider_sync: dict[str, Any] = {
         "pagination": pagination,
