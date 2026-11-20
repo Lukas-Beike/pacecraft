@@ -17,7 +17,7 @@ from functools import partial
 from typing import Any, Final
 
 from backend.canonical.garmin_payload import ACTIVITY_RATINGS_SECTION
-from backend.canonical.section_items import record_day
+from backend.canonical.section_items import answer_days, record_day
 from backend.canonical.vocabulary import GARMIN_ID
 from backend.providers.garmin_fields import (
     GARMIN_ACTIVE_KCAL_ALIASES,
@@ -1370,8 +1370,9 @@ def _reread_training_history(
     """Read the training sections once more over ``days`` when it exceeds the
     regular window (#3729).
 
-    It runs after the regular read, whose answer stays when this one fails, and
-    it touches no capability state; a paused source is not read. Returns ``training_window`` and the sections
+    It runs after the regular read, whose answer stays when this one fails or
+    holds no day, and it touches no capability state; a paused source is not read
+    and counts as failed, so the re-read stays due. Returns ``training_window`` and the sections
     whose re-read failed (``training_refetch_failed``) for ``provider_sync``.
     """
     if days <= HISTORY_READ_DAYS:
@@ -1386,7 +1387,10 @@ def _reread_training_history(
     failed = []
     for key, (method, extra) in calls.items():
         fetch = getattr(client, method, None)
-        if not callable(fetch) or (allowed is not None and not allowed(key)):
+        if not callable(fetch):
+            continue
+        if allowed is not None and not allowed(key):
+            failed.append(key)
             continue
         details = {"window_start": start, "window_end": end, **extra}
         try:
@@ -1397,7 +1401,10 @@ def _reread_training_history(
         except Exception:  # noqa: BLE001 - the regular answer stays.
             failed.append(key)
             continue
-        payload[key] = value
+        if answer_days(value):
+            payload[key] = value
+        else:
+            failed.append(key)
     return {
         "training_window": {"start": start, "end": end},
         "training_refetch_failed": failed,

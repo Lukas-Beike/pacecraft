@@ -16,7 +16,7 @@ from backend.canonical.garmin_payload import (
     REPLACE_SECTIONS,
     SECTIONS,
 )
-from backend.canonical.section_items import merge_records, record_day
+from backend.canonical.section_items import answer_days, merge_records, record_day
 from backend.canonical.vocabulary import GARMIN_ID
 from backend.config import Config
 from backend.db import garmin_store
@@ -614,14 +614,14 @@ def _mark_training_refetch(
     added = {
         (name, day)
         for name in TRAINING_HISTORY_SECTIONS
-        for day in _answer_days(payload.get(name))
+        for day in answer_days(payload.get(name))
     }
     if not added:
         return
     stored = {
         (name, day)
         for name in TRAINING_HISTORY_SECTIONS
-        for day in _answer_days(previous.get(name))
+        for day in answer_days(previous.get(name))
     }
     provider_sync[TRAINING_REFETCH_KEY] = {
         "state": "finished",
@@ -651,9 +651,9 @@ def _merged_days(incoming: Any, stored: Any) -> Any:
     ``incoming`` without days keeps the stored days (#3729)."""
     if type(incoming) is not type(stored):
         return incoming
-    days = _answer_days(incoming)
+    days = answer_days(incoming)
     if not days:
-        return stored if _answer_days(stored) else incoming
+        return stored if answer_days(stored) else incoming
     first, last = min(days), max(days)
     if isinstance(incoming, dict):
         kept = {k: v for k, v in stored.items() if not first <= str(k) <= last}
@@ -662,18 +662,6 @@ def _merged_days(incoming: Any, stored: Any) -> Any:
         row for row in stored if not first <= (record_day(row) or first) <= last
     ]
     return kept_rows + list(incoming)
-
-
-def _answer_days(value: Any) -> set[str]:
-    """The days a training answer holds: its dated rows and day-keyed entries."""
-    if isinstance(value, list):
-        return {day for row in value if (day := record_day(row))}
-    if not isinstance(value, dict):
-        return set()
-    keys = {str(key) for key in value if record_day({"date": str(key)})}
-    if keys:
-        return keys
-    return set().union(*(_answer_days(item) for item in value.values()), set())
 
 
 def summarize_history_refetch(db: Any) -> dict[str, Any]:

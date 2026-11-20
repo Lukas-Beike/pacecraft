@@ -44,9 +44,12 @@ def _external_call(_service: str, _source: str, call: Any, _details: Any) -> Any
 class _Client:
     """Garmin's training history by day; each range read answers the days inside it."""
 
-    def __init__(self, days: list[str], fail_wide: bool = False) -> None:
+    def __init__(
+        self, days: list[str], fail_wide: bool = False, empty_wide: bool = False
+    ) -> None:
         self.days = days
         self.fail_wide = fail_wide
+        self.empty_wide = empty_wide
         self.calls: list[tuple[str, str]] = []
 
     def get_activities_by_date(self, start: str, end: str) -> list[Any]:
@@ -62,6 +65,8 @@ class _Client:
         self.calls.append((start, end))
         if self.fail_wide and start < REGULAR_START:
             raise RuntimeError("range too long")
+        if self.empty_wide and start < REGULAR_START:
+            return []
         return [day for day in self.days if start <= day <= end]
 
     def get_endurance_score(self, start: str, end: str, aggregation: str) -> Any:
@@ -89,7 +94,12 @@ class TrainingHistoryRefetchTests(unittest.TestCase):
             self.database, self.key_values, sync_state, lambda: TODAY
         )
 
-    def sync(self, client: _Client, history_days: int = HISTORY_READ_DAYS) -> None:
+    def sync(
+        self,
+        client: _Client,
+        history_days: int = HISTORY_READ_DAYS,
+        allowed: Any = None,
+    ) -> None:
         """Collect, prepare and store one regular sync, as the Garmin service does."""
         payload = collect_garmin_data(
             client,
@@ -99,6 +109,7 @@ class TrainingHistoryRefetchTests(unittest.TestCase):
             synced_at=NOW,
             external_call=_external_call,
             redact=lambda _text: "redacted",
+            capability_allowed=allowed,
             options=replace(
                 GarminCollectionOptions(),
                 include_historic_metrics=True,
@@ -164,6 +175,29 @@ class TrainingHistoryRefetchTests(unittest.TestCase):
                 self.assertEqual(self.counts()["training_state"], "pending")
         # The regular 90-day read of the failed run was stored.
         self.assertIn(RECENT, self.stored()["endurance_score"]["groupMap"])
+
+    def test_an_empty_reread_keeps_the_regular_answer(self) -> None:
+        # Gitar #3734: an empty wide answer must not replace the regular one.
+        self.sync(_Client([OLD, RECENT], empty_wide=True), TRAINING_REFETCH_DAYS)
+
+        self.assertTrue(self.service.training_refetch_due())
+        stored = self.stored()
+        self.assertEqual(set(stored["endurance_score"]["groupMap"]), {RECENT})
+        self.assertEqual(
+            {row["calendarDate"] for row in stored["running_tolerance"]}, {RECENT}
+        )
+
+    def test_a_paused_section_leaves_the_reread_due(self) -> None:
+        # Gitar #3734: a section the capability state pauses is not re-read, so
+        # the re-read is not finished.
+        self.sync(
+            _Client([OLD, RECENT]),
+            TRAINING_REFETCH_DAYS,
+            allowed=lambda key: key != "running_tolerance",
+        )
+
+        self.assertTrue(self.service.training_refetch_due())
+        self.assertNotIn("running_tolerance", self.stored())
 
 
 if __name__ == "__main__":
