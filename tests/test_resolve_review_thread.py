@@ -319,8 +319,9 @@ class GuardHookTests(unittest.TestCase):
             "echo x # it's\npython scripts/r["
             + "a" * 300
             + "' 'e]solve_review_thread.py",
-            # Brackets swallowed again and again past the readings' work cap block.
-            "echo '" + "[" * 4000 + "]'",
+            # Brackets swallowed again and again past the readings' work cap
+            # block where the shell runs the word.
+            "python '" + "[" * 4000 + "]'",
             "python {scripts/r,x}*.py 2671 PRRT_a1",
             "python scripts/@(resolve|x)_review_thread.py 2671 PRRT_a1",
             "python scripts/@(res@(olve))_review_thread.py 2671 PRRT_a1",
@@ -461,9 +462,40 @@ class GuardHookTests(unittest.TestCase):
             "grep -n x backend/providers/garmin*/*.py",
             "ls docs/perf*/m1*.md",
             "gh pr view 1 --json state -q '.state+\" \"+.title'",
+            # #3759: globs and variables in words the shell does not run.
+            "git add scripts/*.py",
+            "ls scripts/*.py",
+            "ruff format --check scripts/*.py",
+            "python -m mypy scripts/*.py",
+            "git ls-files 'scripts/*'",
+            'echo "$a/$b"',
+            'cp "$src"/* "$dst"/',
+            "ls $d/*",
+            "ls */*.py",
+            'gh run list -q \'.[] | .name+" "+(.conclusion//"-")\'',
+            "echo '" + "[" * 4000 + "]'",
         ):
             with self.subTest(command):
                 self.assertEqual(self.decide(command), 0)
+
+    def test_the_direct_resolve_mutation_blocks(self):
+        # #3759: the resolve mutation runs only inside the script.
+        err = io.StringIO()
+        command = (
+            "gh api graphql -f query='mutation { resolveReviewThread("
+            'input: {threadId: "PRRT_x"}) { thread { isResolved } } }\''
+        )
+        self.assertEqual(self.decide(command, err=err), 2)
+        self.assertIn("direct GraphQL resolve mutation", err.getvalue())
+        for command in (
+            "gh api graphql -f query=\"mutation{resolveReview'Thread'(input:{})}\"",
+            "gh api GraphQL -F query=@q.txt -f x=RESOLVEREVIEWTHREAD",
+        ):
+            with self.subTest(command):
+                self.assertEqual(self.decide(command), 2)
+        self.assertEqual(
+            self.decide("gh api graphql -f query='{ viewer { login } }'"), 0
+        )
 
     def test_the_run_is_compared_with_develop_by_content(self):
         calls = []

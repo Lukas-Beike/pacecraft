@@ -8,7 +8,9 @@ any `scripts/` module it imports match origin/develop byte for byte, and no
 entry in `scripts/` (tracked, ignored or untracked) can shadow a module the run
 imports (#3072). Other scripts, the hooks and non-Python files may differ.
 The name matches in any case, through quotes, escapes, globs and short names,
-and input without a command string blocks (#3367). Exit code 2 blocks the call;
+and input without a command string blocks (#3367). Globs, variables and short
+names count only in words the shell runs, unless the command can run an
+argument (#3759); a direct GraphQL resolve mutation blocks. Exit code 2 blocks the call;
 the message names the word that matched, as the hook read it (#3459).
 """
 
@@ -320,6 +322,128 @@ def matching_word(command: str) -> str | None:
     forms = (text, bare, unquoted(bare), unquoted(bare, blanks=False))
     if any(RG_RUNS.search(form) for form in forms):
         return RG_BLOCKED
+    if GRAPHQL.search(forms[2]) and RESOLVE_MUTATION in forms[2]:
+        return GRAPHQL_BLOCKED
+    # Globs and variables count only where the shell runs them (#3759): the
+    # command words, or every word when the command can run an argument.
+    words = executed_words(text)
+    if words is None:
+        return reaching_word(text, raw)
+    return next((found for word in words if (found := reaching_word(word, raw))), None)
+
+
+# The direct resolve mutation, outside the script (#3759).
+GRAPHQL = re.compile(r"graphql")
+RESOLVE_MUTATION = "resolvereviewthread"
+GRAPHQL_BLOCKED = "the resolve mutation"
+# Constructs that can run a word that is not a command word: loops, pipes into
+# code, code strings, substitutions, links and assignments that a later word
+# expands; with any of them every word is read as before (#3759).
+RUNS_ARGUMENTS = re.compile(
+    r"(?<![\w.:-])(?:for|foreach|foreach-object|while|until|select|xargs|parallel"
+    r"|eval|exec|iex|invoke-expression|invoke-command|start-process|saps|source"
+    r"|read|set|ln|mklink|new-item|ni|alias|set-alias|function|filter|watch|find"
+    r"|-exec|-execdir|-ok|-okdir|-c|-e|-command|-encodedcommand|-file|/c|/k|%|\?)"
+    r"(?![\w-])"
+    r"|(?<![\w$])[a-z_]\w*\+?=[^\s;&|]*[*?\[{$%]|\$[\w:]+\s*\+?="
+    # A subshell or PowerShell subexpression can hand its output to a command.
+    r"|\("
+)
+SUBSTITUTION = re.compile(r"\$\(|`|[<>]\(|[\"'=]!")
+QUOTED = re.compile(r"'[^']*'|\"[^\"]*\"")
+# A command word holding any of these is read from elsewhere.
+INDIRECT = re.compile(r"[$%`{}()@]")
+# Words before the command word that only start it.
+WRAPPERS = frozenset(
+    {"env", "nohup", "time", "sudo", "command", "builtin", "nice", "timeout"}
+    | {"stdbuf", "start", "call", ".", "npx", "uv", "uvx", "pipx", "npm", "run"}
+)
+INTERPRETER = re.compile(
+    r"(?:python[\d.]*w?|py|pyw|node|nodejs|deno|bun|bash|sh|zsh|dash|ksh|fish"
+    r"|pwsh|powershell|cmd|ruby|perl|php|wsl|busybox)(?:\.exe)?"
+)
+# Modules run with `python -m` that never run a file named as an argument.
+INERT_MODULES = frozenset({"mypy", "ruff", "compileall", "py_compile"})
+# Shell tokens: a quoted run, an escaped character, a separator, blanks, a
+# redirection, a comment start, plain characters; a lone quote never closes.
+TOKENS = re.compile(
+    r"'[^']*'|\"(?:[^\"\\]|\\.)*\"|\\.?|[;&|()\n]|[^\S\n]+|[<>#]|[^\s'\"\\;&|()<>#]+|['\"]"
+)
+
+
+def command_segments(text: str) -> list[list[str]] | None:
+    """The simple commands of ``text`` as word lists, quotes kept inside the
+    words; comments dropped. None when a quote stays open."""
+    segments: list[list[str]] = [[]]
+    word, comment = "", False
+    for token in (match[0] for match in TOKENS.finditer(text)):
+        if token in ("'", '"'):
+            return None
+        comment = (comment or (token == "#" and not word)) and token != "\n"
+        if comment:
+            continue
+        if not (token.isspace() or token in "<>;&|()"):
+            word += token
+            continue
+        segments[-1].append(word)
+        word = ""
+        if token == "\n" or not token.isspace():
+            segments.append([])
+    segments[-1].append(word)
+    # Braces of a group or script block start no word of their own.
+    return [[w for w in segment if w not in ("", "{", "}")] for segment in segments]
+
+
+def segment_runs(segment: list[str]) -> list[str] | None:
+    """The words one simple command runs: its command word and, after an
+    interpreter, each word that is not an option (only the module after
+    `python -m` with an inert module). None when a run word is indirect."""
+    index = 0
+    while index < len(segment) and (
+        unquoted(segment[index]) in WRAPPERS
+        or ("=" in segment[index] and segment[index].partition("=")[0].isidentifier())
+        or (index and unquoted(segment[index])[:1] in "-0123456789")
+    ):
+        index += 1
+    runs = segment[index : index + 1]
+    if not runs:
+        return []
+    # A command word with a glob or short name may resolve to an interpreter.
+    if re.search(r"[*?\[~]", runs[0]):
+        return None
+    # The last path part, a backslash read as an escape and as a separator.
+    names = {unquoted(runs[0]).split("/")[-1], unquoted(runs[0], "/").split("/")[-1]}
+    if any(INTERPRETER.fullmatch(name) for name in names):
+        rest = segment[index + 1 :]
+        module = next(
+            (rest[i + 1] for i, word in enumerate(rest[:-1]) if word == "-m"), None
+        )
+        if module is not None and unquoted(module) in INERT_MODULES:
+            runs = [module]
+        else:
+            runs += [word for word in rest if not unquoted(word).startswith("-")]
+    return None if any(INDIRECT.search(word) for word in runs) else runs
+
+
+def executed_words(text: str) -> list[str] | None:
+    """The words the command runs, or None when an argument can run as well,
+    so every word has to be read."""
+    if SUBSTITUTION.search(text) or RUNS_ARGUMENTS.search(QUOTED.sub(" ", text)):
+        return None
+    segments = command_segments(text)
+    if segments is None:
+        return None
+    words: list[str] = []
+    for segment in segments:
+        runs = segment_runs(segment)
+        if runs is None:
+            return None
+        words += runs
+    return words
+
+
+def reaching_word(text: str, raw: str) -> str | None:
+    """The word of ``text`` that reaches the script in any of its readings."""
     # Also every bash bracket expression as `?`, read with quotes, and without
     # them from the first `[` and from each `[` an earlier bracket swallowed, so
     # no quote, comment, substitution or stray `[` before a class can hide it:
@@ -573,6 +697,14 @@ def decide() -> int:
             "Blocked: ripgrep's --pre, --hostname-bin and RIPGREP_CONFIG_PATH run "
             "a program on the files it searches, which can run the review-thread "
             "resolve script (#3509); search without them.",
+            file=sys.stderr,
+        )
+        return 2
+    if word == GRAPHQL_BLOCKED:
+        print(
+            "Blocked: a review thread is resolved only through "
+            "`python scripts/resolve_review_thread.py <pr> <PRRT_id>`, never by a "
+            "direct GraphQL resolve mutation (#2629, #3759).",
             file=sys.stderr,
         )
         return 2
