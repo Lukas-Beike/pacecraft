@@ -691,9 +691,13 @@ def energy_view(
             "neat": _neat_basis(inputs, day_window),
         },
         # "Welche Quelle trifft dein Gewicht?" per Verlauf period (#3397).
+        # A period inside the 12-week read takes it; 6 Monate needs its own read,
+        # given only when Verlauf asks for it (#3711).
         "fit_scale": {
-            key: _fit_scale(fit_inputs or inputs, trend, health, latest, days, goal)
-            for key, days in FIT_PERIODS.items()
+            key: _fit_scale(given, trend, health, latest, days, goal)
+            for key, (given, days) in _period_inputs(
+                inputs, fit_inputs, latest.end
+            ).items()
         },
         "skinfold_missing": body_missing,
         "body": _public_body(day_body),
@@ -1142,6 +1146,22 @@ def selected_day(text: str | None, today: date) -> date | None:
 # than a window takes it from the latest window (orchestrator, #3397).
 # Verlauf's three periods: 4 weeks, 3 and 6 months (athlete decision, #3704).
 FIT_PERIODS: Final = {"28d": 28, "91d": 91, "182d": 182}
+# The one period past the 12-week read, asked for by Verlauf (#3711).
+LONG_PERIOD: Final = "182d"
+
+
+def _period_inputs(
+    inputs: EnergyInputs, fit_inputs: EnergyInputs | None, end: date
+) -> dict[str, tuple[EnergyInputs, int]]:
+    """Each Verlauf period's inputs: a period inside the 12-week read takes it;
+    6 Monate needs ``fit_inputs``, its own read, and is left out without it."""
+    history_days = (end - history_start(end)).days + 1
+    periods = {}
+    for key, days in FIT_PERIODS.items():
+        given = inputs if days <= history_days else fit_inputs
+        if given is not None:
+            periods[key] = (given, days)
+    return periods
 
 
 def _fit_scale(
@@ -1424,8 +1444,9 @@ def read_energy_view(
     """Read the 12-week history ending on ``end`` and build the view of ``day``.
 
     ``day`` (default ``end``) may be today, after ``end``, or before the history.
-    ``fit_inputs`` serves Verlauf's periods' inputs (``read_fit_inputs``) a
-    caller keeps; without it they are read here.
+    ``fit_inputs`` serves the 6 months' inputs (``read_fit_inputs``) when
+    Verlauf asks for that period; without it the view has the periods inside
+    the 12-week read only, so no other read pays for them (#3711).
     """
     day = day or end
     # The 12-week span stays fixed; an older diary day is read beside it with
@@ -1433,10 +1454,10 @@ def read_energy_view(
     start = history_start(end)
     last = max(end, day)
     inputs, costs = read_energy_inputs(db, sources, start, last, older_day=day)
-    # Verlauf's longest period reaches back past the 12 windows (#3704); its
-    # read costs as much again, so a caller keeps it until the rows change.
-    first = fit_start(end)
-    periods = fit_inputs() if fit_inputs else read_fit_inputs(db, sources, end)
+    # Verlauf's 6 months reach back past the 12 windows (#3704); their read
+    # costs as much again, so it runs only when asked for (#3711).
+    periods = fit_inputs() if fit_inputs else None
+    first = fit_start(end) if periods is not None else start
     health = sources.daily_health(db, min(first, day), last)
     windows = energy_windows(inputs, end)
     _, missing = skinfold_state(db, sources, inputs, day)

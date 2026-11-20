@@ -39,6 +39,7 @@ from backend.nutrition.energy_inputs import (
     session_streams,
 )
 from backend.nutrition.energy_view import (
+    LONG_PERIOD,
     OwnHistory,
     own_history,
     read_energy_view,
@@ -258,7 +259,9 @@ def build_nutrition(ctx: AppContext) -> NutritionServices:
     # commit changes rows, as the 12-week history is (#3630, #3704).
     kept_periods = kept_until_change(ctx.database, yesterdays_periods)
 
-    def energy_view(day_text: str | None = None) -> dict[str, Any]:
+    def energy_view(
+        day_text: str | None = None, period: str | None = None
+    ) -> dict[str, Any]:
         # The windows end yesterday: today's intake and Garmin totals are still
         # partial. The source rows show the chosen diary day (#3395), else yesterday.
         today = ctx.clock.now().date()
@@ -269,8 +272,10 @@ def build_nutrition(ctx: AppContext) -> NutritionServices:
             kept_end, inputs = kept_periods()
             return inputs if kept_end == end else yesterdays_periods()[1]
 
+        # Only Verlauf's 6 Monate needs the longer read (#3711).
+        long = periods if period == LONG_PERIOD else None
         with ctx.database().reader() as db:
-            return read_energy_view(db, energy_sources(), end, day, periods)
+            return read_energy_view(db, energy_sources(), end, day, long)
 
     def intervals_sync_service() -> IntervalsNutritionSyncService:
         config = ctx.config()

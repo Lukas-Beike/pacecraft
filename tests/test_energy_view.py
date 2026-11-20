@@ -902,7 +902,10 @@ class DeficitCardTests(unittest.TestCase):
             for n in range(190)
         }
         source = replace(inputs(body_fat={}), days=days)
-        view = energy_view(source, energy_windows(source, END), garmin())
+        # 6 Monate come with their own inputs, asked for by Verlauf (#3711).
+        view = energy_view(
+            source, energy_windows(source, END), garmin(), fit_inputs=source
+        )
         for key, span, change, first in (
             ("28d", 27, -2.7, 27),
             ("91d", 90, -9.0, 90),
@@ -1244,7 +1247,9 @@ class FitScaleTests(unittest.TestCase):
             "resting_kcal": 1745.0,
             "calories": 6000.0,
         }
-        view = energy_view(replace(source, days=days), [window(END, 2700.0)], health)
+        given = replace(source, days=days)
+        # 6 Monate come with their own inputs, asked for by Verlauf (#3711).
+        view = energy_view(given, [window(END, 2700.0)], health, fit_inputs=given)
         self.assertEqual(
             ["28d", "91d", "182d"],
             list(view["fit_scale"]),
