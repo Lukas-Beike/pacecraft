@@ -91,11 +91,11 @@ def walk_records[DayT](
     of those keys is walked with its own visit budget, so one reading cannot use up
     the next one's (#3718); ``WALK_MAX_TOTAL_VISITS`` caps the whole walk.
     """
-    walk = _Walk(skip_keys, resolve_day, marker_keys, list_keys)
+    walker = _Walk(skip_keys, resolve_day, marker_keys, list_keys)
     if list_keys and isinstance(payload, list):
-        yield from walk.items(payload, None, 0, False)
+        yield from walker.items(payload, None, 0, False)
     else:
-        yield from walk.visit(payload, None, 0, None, False)
+        yield from walker.visit(payload, None, 0, None, False)
 
 
 class _Walk[DayT]:
@@ -117,12 +117,23 @@ class _Walk[DayT]:
     def items(
         self, values: list[Any], inherited: DayT | None, depth: int, marked: bool
     ) -> Iterator[WalkedRecord[DayT]]:
-        """Walk each list item with a fresh visit budget, then restore the caller's."""
+        """Walk the list at ``depth``, each item with a fresh visit budget; the
+        list itself costs the caller one visit, as ``visit`` counts it."""
+        if self._spent(depth):
+            return
         spent = self._visits
+        self._total += 1
         for index, item in enumerate(values[:WALK_MAX_LIST_ITEMS]):
             self._visits = 0
             yield from self.visit(item, inherited, depth + 1, index, marked)
         self._visits = spent + 1
+
+    def _spent(self, depth: int) -> bool:
+        return (
+            depth > WALK_MAX_DEPTH
+            or self._visits >= WALK_MAX_VISITS
+            or self._total >= WALK_MAX_TOTAL_VISITS
+        )
 
     def visit(
         self,
@@ -132,11 +143,7 @@ class _Walk[DayT]:
         list_index: int | None,
         marked: bool,
     ) -> Iterator[WalkedRecord[DayT]]:
-        if (
-            depth > WALK_MAX_DEPTH
-            or self._visits >= WALK_MAX_VISITS
-            or self._total >= WALK_MAX_TOTAL_VISITS
-        ):
+        if self._spent(depth):
             return
         self._visits += 1
         self._total += 1
@@ -147,23 +154,26 @@ class _Walk[DayT]:
             if day is None:
                 day = inherited
             yield WalkedRecord(value, day, ordinal, list_index, marked)
-            for key, child in value.items():
-                name = alnum_key(key)
-                if name in self._skip_keys:
-                    continue
-                if name in self._list_keys and isinstance(child, list):
-                    if depth < WALK_MAX_DEPTH and self._visits < WALK_MAX_VISITS:
-                        yield from self.items(
-                            child, day, depth + 1, marked or key in self._marker_keys
-                        )
-                else:
-                    yield from self.visit(
-                        child,
-                        day,
-                        depth + 1,
-                        list_index,
-                        marked or key in self._marker_keys,
-                    )
+            yield from self._children(value, day, depth + 1, list_index, marked)
         elif isinstance(value, list):
             for index, item in enumerate(value[:WALK_MAX_LIST_ITEMS]):
                 yield from self.visit(item, inherited, depth + 1, index, marked)
+
+    def _children(
+        self,
+        record: Mapping[str, Any],
+        day: DayT | None,
+        depth: int,
+        list_index: int | None,
+        marked: bool,
+    ) -> Iterator[WalkedRecord[DayT]]:
+        """Walk a record's children at ``depth``; a reading list gets ``items``."""
+        for key, child in record.items():
+            name = alnum_key(key)
+            if name in self._skip_keys:
+                continue
+            below = marked or key in self._marker_keys
+            if name in self._list_keys and isinstance(child, list):
+                yield from self.items(child, day, depth, below)
+            else:
+                yield from self.visit(child, day, depth, list_index, below)
