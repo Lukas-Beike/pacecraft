@@ -548,9 +548,10 @@ def _merge_weight(
     """Merge this run's weigh-in answer into the stored ones (#3718).
 
     The answer replaces the stored readings of its read window, so a weigh-in
-    deleted in Garmin there goes; readings outside the window stay. A window
-    longer than the regular read is the one-off 6-month re-read: its marker
-    counts the weigh-in days it added.
+    deleted in Garmin there goes; readings outside the window stay. An answer
+    without any weigh-in cannot be told from a partial failure, so it changes
+    nothing and leaves the re-read due. A window longer than the regular read is
+    the one-off 6-month re-read: its marker counts the weigh-in days it added.
     """
     window = provider_sync.get("weight_window")
     if not payload.get("weight") or not isinstance(window, dict):
@@ -560,12 +561,16 @@ def _merge_weight(
         end = date.fromisoformat(str(window["end"]))
     except KeyError, ValueError:
         return
+    now = datetime.now(UTC)
+    if not weigh_in_days({"weight": payload["weight"]}, now):
+        del payload["weight"]
+        del provider_sync["weight_window"]
+        return
     stored = previous.get("weight")
     payload["weight"] = merge_weight_snapshots(
         payload["weight"], stored, window=(start, end)
     )
     if (end - start).days + 1 > WEIGHT_READ_DAYS:
-        now = datetime.now(UTC)
         before = weigh_in_days({"weight": stored or []}, now)
         after = weigh_in_days({"weight": payload["weight"]}, now)
         provider_sync[WEIGHT_REFETCH_KEY] = {

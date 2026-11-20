@@ -29,6 +29,7 @@ TODAY = date(2026, 11, 20)
 NOW = "2026-11-20T12:00:00+00:00"
 OLD = (TODAY - timedelta(days=150)).isoformat()
 RECENT = (TODAY - timedelta(days=10)).isoformat()
+LATEST = (TODAY - timedelta(days=5)).isoformat()
 
 
 def _summary(day: str, pk: int) -> dict[str, Any]:
@@ -146,13 +147,31 @@ class WeightMergeTests(unittest.TestCase):
         self.assertEqual(self.weight_days(), [OLD, RECENT])
 
     def test_a_weigh_in_deleted_in_garmin_inside_the_window_goes(self) -> None:
+        # The answer still holds another weigh-in of the window: a full answer.
+        self.sync(_Client({OLD: 1, RECENT: 2}), WEIGHT_REFETCH_DAYS)
+        self.sync(_Client({OLD: 1, LATEST: 3}))
+
+        with self.database.reader() as db:
+            stored = garmin_store.read_sections(db, ["weight"])["weight"]
+        summaries = stored[0]["dailyWeightSummaries"]
+        self.assertEqual({row["summaryDate"] for row in summaries}, {OLD, LATEST})
+
+    def test_an_answer_without_weigh_ins_changes_nothing(self) -> None:
+        # It cannot be told from a partial Garmin failure (#3718).
         self.sync(_Client({OLD: 1, RECENT: 2}), WEIGHT_REFETCH_DAYS)
         self.sync(_Client({OLD: 1}))
 
         with self.database.reader() as db:
             stored = garmin_store.read_sections(db, ["weight"])["weight"]
         summaries = stored[0]["dailyWeightSummaries"]
-        self.assertEqual({row["summaryDate"] for row in summaries}, {OLD})
+        self.assertEqual({row["summaryDate"] for row in summaries}, {OLD, RECENT})
+        self.assertEqual(self.weight_days(), [OLD, RECENT])
+
+    def test_an_empty_reread_stays_due(self) -> None:
+        self.sync(_Client({}), WEIGHT_REFETCH_DAYS)
+
+        self.assertTrue(self.service.weight_refetch_due())
+        self.assertEqual(self.marker()["refetch_state"], "pending")
 
     def test_a_failed_reread_stays_due(self) -> None:
         self.sync(_Client({OLD: 1}, fail=True), WEIGHT_REFETCH_DAYS)

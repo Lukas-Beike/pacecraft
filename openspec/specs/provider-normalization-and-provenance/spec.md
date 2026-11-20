@@ -216,7 +216,7 @@ The system SHALL normalize Garmin health and body values to canonical units usin
 
 #### Scenario: Stored Garmin weigh-ins outlive the regular read
 - **WHEN** a regular Garmin refresh reads its weigh-in window (90 days, or 182 days once in the first current run after #3718, marked in the Garmin state)
-- **THEN** the answer is merged into the stored weigh-ins: it replaces the stored readings of its window, so a weigh-in deleted in Garmin there goes, and readings outside the window stay; a failed read changes nothing and leaves the one-off re-read due.
+- **THEN** the answer is merged into the stored weigh-ins: it replaces the stored readings of its window, so a weigh-in deleted in Garmin there goes while the answer holds another weigh-in, and readings outside the window stay; a failed read or an answer without any weigh-in changes nothing and leaves the one-off re-read due.
 
 #### Scenario: Only Garmin weigh-ins are weights
 - **WHEN** a Garmin payload carries a weight outside its weigh-in lists: the performance-history copy, or a range answer's `previousDateWeight`, `nextDateWeight` or `totalAverage`
