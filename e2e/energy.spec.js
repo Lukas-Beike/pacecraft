@@ -336,8 +336,20 @@ for (const theme of ["light", "dark"]) {
     await page.goto("/#nutrition/diary");
     await expect(page.locator("#nutritionEnergy .energy-source")).toHaveText(/^Quelle: (?!Katch|Cunningham).+/);
     await expect(page.locator("#nutritionEnergy")).not.toContainText("passt am besten");
-    // A late read can still re-render the card mid-capture, so the capture is retried.
-    if (theme === "light") await expect(() => page.locator("#nutritionEnergy [data-energy]").screenshot({ path: test.info().outputPath("Energieverbrauch.png"), timeout: 5_000 })).toPass();
+    // The diary renders sections above the card after it, which moves it; a capture taken while it
+    // moves shows what was at its old place, without an error to retry on (#3736). So the capture
+    // waits until the card's box holds still, then takes it once.
+    if (theme === "light") {
+      const card = page.locator("#nutritionEnergy [data-energy]");
+      await card.scrollIntoViewIfNeeded();
+      await expect.poll(async () => {
+        const before = await card.boundingBox();
+        await page.waitForTimeout(300);
+        const after = await card.boundingBox();
+        return Boolean(before && after) && ["x", "y", "width", "height"].every((key) => before[key] === after[key]);
+      }).toBe(true);
+      await card.screenshot({ path: test.info().outputPath("Energieverbrauch.png") });
+    }
   });
 }
 
