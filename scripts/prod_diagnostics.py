@@ -671,20 +671,24 @@ def backup_line(result: dict[str, Any], max_hours: float | None) -> tuple[str, s
 
     A schema release needs a backup younger than 24 h whose check passed
     (#2996); an unknown backup fails then, so the check never passes blind.
+    An automatic copy counts too: only a checked copy is kept (#3760).
     """
     state = result.get("backup") or {"known": False}
     age = state.get("age_hours")
+    automatic = state.get("automatic") or {}
+    auto_age = automatic.get("newest_age_hours")
     text = (
         f"backup {age} h old, {state.get('bytes')} bytes, verified {state.get('verified') is True}"
         if state.get("known") and age is not None
         else "backup unknown"
-    )
+    ) + (f", automatic {auto_age} h old" if auto_age is not None else "")
     if max_hours is None:
         return ("info", text)
     # A future record time (a clock that jumped back) never counts as fresh.
     ok = bool(state.get("known") and state.get("verified") is True) and (
         age is not None and 0 <= age < max_hours
     )
+    ok = ok or (isinstance(auto_age, (int, float)) and 0 <= auto_age < max_hours)
     return mark(ok, f"{text} (needs under {max_hours:g} h, verified)")
 
 

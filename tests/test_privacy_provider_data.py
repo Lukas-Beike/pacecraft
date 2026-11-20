@@ -33,6 +33,7 @@ from backend.backup.export import (
     PrivacyArchiveExportConfig,
     PrivacyArchiveExportService,
 )
+from backend.backup.automatic import AutomaticBackups
 from backend.backup.recovery_copies import RecoveryCopies
 from backend.canonical.activity_detail import (
     ActivityLap,
@@ -827,6 +828,27 @@ class PrivacyDeleteProviderTests(ProviderDataFixture):
         self.assertEqual((self.root / "intervals-coach.log").read_text(), "")
         self.assertTrue(keep.exists())
         self.assertTrue(self.database_path.exists())
+
+    def test_the_preview_counts_automatic_backups_and_the_delete_erases_them(self):
+        # Athlete decision 2026-11-20 (#3760): the purge also deletes them.
+        directory = self.root / "automatic-backups"
+        directory.mkdir()
+        name = self.database_path.name
+        for stamp in ("20261119033000", "20261120033000"):
+            (directory / f"{name}.auto-nightly-{stamp}").write_bytes(b"copy")
+        (directory / "unrelated.txt").write_text("keep")
+        backups = AutomaticBackups(directory, name, Mock(), Mock())
+        service = self.service(automatic_backups=backups)
+        counts = {
+            item["id"]: item["records"] for item in service.preview()["categories"]
+        }
+        self.assertEqual(counts["automatic_backups"], 2)
+
+        result = service.delete("LOKALE DATEN LÖSCHEN")
+
+        self.assertEqual(result["deleted_categories"]["automatic_backups"], 2)
+        self.assertEqual(result["automatic_backups_failed"], 0)
+        self.assertEqual([path.name for path in directory.iterdir()], ["unrelated.txt"])
 
     def test_a_recovery_copy_that_cannot_be_removed_is_reported_not_raised(self):
         self.seed_recovery_files()

@@ -306,8 +306,11 @@ function privacyDeleteLeftovers(result) {
   const copies = result.recovery_copies_failed
     ? ` ${result.recovery_copies_failed} Wiederherstellungskopie(n) im Datenordner konnten nicht gelöscht werden.`
     : "";
+  const backups = result.automatic_backups_failed
+    ? ` ${result.automatic_backups_failed} automatische Sicherung(en) konnten nicht gelöscht werden.`
+    : "";
   const logs = result.log_files_failed ? " Die Server-Protokolldateien konnten nicht gelöscht werden." : "";
-  return copies + logs;
+  return copies + backups + logs;
 }
 
 async function deletePrivacyData() {

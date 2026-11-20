@@ -6,6 +6,7 @@ configuration and the provider owners of the moment it was built.
 
 from __future__ import annotations
 
+import json
 import threading
 import time
 from collections.abc import Callable, Mapping
@@ -14,6 +15,7 @@ from typing import Any
 
 from backend.app.context import AppContext
 from backend.athlete.profile import ProfileService
+from backend.backup.automatic import FAILURE_KEY as AUTOMATIC_FAILURE_KEY
 from backend.db.manager import background_writer
 from backend.sync import scheduler
 from backend.sync.backfill_resume import BackfillChainResumer
@@ -133,10 +135,19 @@ def build_sync_schedulers(
             ctx.database().checkpoint_wal()
 
     def housekeeping() -> None:
-        """Prune finished jobs, then purge archived library templates (#3141)."""
+        """Prune finished jobs, purge archived library templates (#3141), then
+        write the nightly backup when it is due (#3760)."""
         ctx.sync_job_queue.service().prune_finished()
         with ctx.maintenance.operation(), background_writer():
             ctx.planning.workout_library().purge_archived()
+        automatic = ctx.backup.automatic_backups() if ctx.backup else None
+        if automatic is not None:
+            with ctx.maintenance.operation():
+                automatic.run_nightly(ctx.clock.now(), record_backup_failure)
+
+    def record_backup_failure(value: dict[str, Any]) -> None:
+        with ctx.database().unit_of_work() as db:
+            ctx.key_values.set(db, AUTOMATIC_FAILURE_KEY, json.dumps(value))
 
     def daily_loop() -> scheduler.DailySyncLoop:
         """The unstarted periodic loop and its stop event."""

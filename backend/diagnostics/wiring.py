@@ -100,6 +100,9 @@ def build_diagnostics(ctx: AppContext) -> DiagnosticsServices:
                     ctx.clock.now().date(),
                 ),
                 database_path=ctx.database_path,
+                automatic_backups=lambda: (
+                    ctx.backup.automatic_backups() if ctx.backup else None
+                ),
                 curve_build=lambda: ctx.performance.curve_build_state(),
             )
         )

@@ -14,6 +14,7 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 from backend.athlete.profile import ProfileService, timezone_name
+from backend.backup.automatic import FAILURE_KEY, AutomaticBackups
 from backend.backup.database import backup_summary
 from backend.backup.recovery_copies import RecoveryCopies
 from backend.calendar.external import ExternalCalendarReader
@@ -143,6 +144,8 @@ class DiagnosticReportDependencies:
     curve_build: Callable[[], dict[str, Any]] | None = None
     # The database file: its sizes, free space and recovery copies (#2848).
     database_path: Callable[[], Path] | None = None
+    # The automatic database copies, None when switched off (#3760).
+    automatic_backups: Callable[[], AutomaticBackups | None] | None = None
 
 
 # Large kv values whose stored size the report shows: the Garmin state, the
@@ -241,6 +244,18 @@ class DiagnosticReportService:
             utc_timestamp(now - timedelta(days=PUSH_WINDOW_DAYS)),
             utc_timestamp(now - timedelta(hours=STUCK_AFTER_HOURS)),
         )
+
+    def _backup(self, db: Any, now: datetime) -> dict[str, Any]:
+        """The newest downloaded backup and the automatic copies (#3760)."""
+        automatic = (
+            self._deps.automatic_backups() if self._deps.automatic_backups else None
+        )
+        return {
+            **backup_summary(self._deps.key_values, db, now),
+            "automatic": {"enabled": False}
+            if automatic is None
+            else automatic.summary(now, self._deps.key_values.get(db, FAILURE_KEY)),
+        }
 
     def _recovery_copies(self) -> dict[str, Any]:
         if self._deps.database_path is None:
@@ -386,9 +401,7 @@ class DiagnosticReportService:
                 # The newest backup the app made, before a schema release (#2996).
                 "backup": section(
                     "backup",
-                    lambda: backup_summary(
-                        deps.key_values, db, datetime.fromisoformat(deps.utc_now())
-                    ),
+                    lambda: self._backup(db, datetime.fromisoformat(deps.utc_now())),
                 ),
                 "configuration": section("configuration", configuration),
                 "openai": section(

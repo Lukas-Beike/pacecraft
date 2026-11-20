@@ -5,10 +5,12 @@ from __future__ import annotations
 import json
 from collections.abc import Callable
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 from backend.app.context import AppContext
 from backend.athlete.profile import DEFAULT_PROFILE
+from backend.backup.automatic import AutomaticBackups, backup_directory
 from backend.backup.database import (
     EXPORT_TIME_LIMIT_SECONDS,
     MAX_BACKUP_BYTES,
@@ -40,17 +42,19 @@ class BackupServices:
     backup_service: Callable[[], DatabaseBackupService]
     restore_validation_service: Callable[[], DatabaseRestoreValidationService]
     restore_service: Callable[[], DatabaseRestoreService]
+    # None when ``BACKUP_DIR=off`` (#3760).
+    automatic_backups: Callable[[], AutomaticBackups | None]
 
 
 def build_backup(ctx: AppContext) -> BackupServices:
     """Backup and restore over the live database; each call builds a fresh service."""
 
-    def backup_service() -> DatabaseBackupService:
+    def backup_service(directory: Path | None = None) -> DatabaseBackupService:
         return DatabaseBackupService(
             ctx.database(),
             DatabaseBackupConfig(
                 database_path=ctx.database_path(),
-                data_dir=ctx.data_dir(),
+                data_dir=directory or ctx.data_dir(),
                 maximum_bytes=MAX_BACKUP_BYTES,
                 minimum_free_bytes=MIN_EXPORT_FREE_BYTES,
                 time_limit_seconds=EXPORT_TIME_LIMIT_SECONDS,
@@ -109,4 +113,14 @@ def build_backup(ctx: AppContext) -> BackupServices:
             )
         )
 
-    return BackupServices(backup_service, restore_validation_service, restore_service)
+    def automatic_backups() -> AutomaticBackups | None:
+        directory = backup_directory(ctx.config().backup_dir, ctx.data_dir())
+        if directory is None:
+            return None
+        return AutomaticBackups(
+            directory, ctx.database_path().name, backup_service, ctx.logger
+        )
+
+    return BackupServices(
+        backup_service, restore_validation_service, restore_service, automatic_backups
+    )

@@ -215,6 +215,22 @@ class DatabaseBackupService:
         finally:
             snapshot.unlink(missing_ok=True)
 
+    def write_verified_copy(self, name: str) -> Path:
+        """Keep a checked snapshot in the configured directory under ``name``.
+
+        The snapshot is taken there and renamed only after its checks passed,
+        so a failure leaves no file under ``name`` (#3760).
+        """
+        deadline = self._config.monotonic() + self._config.time_limit_seconds
+        snapshot = self._snapshot(deadline)
+        target = self._config.data_dir / name
+        try:
+            snapshot.replace(target)
+        except OSError:
+            snapshot.unlink(missing_ok=True)
+            raise
+        return target
+
     def record_delivered(self) -> None:
         """Store the streamed backup as the newest one; never fails the backup.
 

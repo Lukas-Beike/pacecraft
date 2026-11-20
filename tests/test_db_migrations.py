@@ -488,6 +488,31 @@ class DatabaseSchemaGateTests(unittest.TestCase):
         self.assertEqual(list(db.iterdump()), before)
         self.assertTrue(database_schema_is_current(db))
 
+    def test_the_pre_migration_hook_runs_only_before_an_upgrade(self):
+        # #3760: a failed pre-migration backup leaves the database unchanged.
+        calls: list[int] = []
+        migrate_schema(self.current_database(), calls.append)
+        self.assertEqual(calls, [])
+
+        db = self.connect()
+        populated_baseline_database(db)
+        db.commit()
+        before = list(db.iterdump())
+
+        def fail(version: int) -> None:
+            calls.append(version)
+            raise RuntimeError("backup failed")
+
+        with self.assertRaises(RuntimeError):
+            migrate_schema(db, fail)
+        self.assertEqual(calls, [OLDEST_SUPPORTED_VERSION])
+        self.assertFalse(db.in_transaction)
+        self.assertEqual(list(db.iterdump()), before)
+
+        migrate_schema(db, calls.append)
+        self.assertEqual(calls, [OLDEST_SUPPORTED_VERSION] * 2)
+        self.assertTrue(database_schema_is_current(db))
+
     def test_populated_baseline_reaches_the_live_schema_with_its_rows(self):
         db = self.connect()
         populated_baseline_database(db)

@@ -57,6 +57,7 @@ def initialize_application_database(
     default_profile_json: str,
     settle_interrupted: Callable[[Any, str], None],
     retention_days: int,
+    before_migration: Callable[[int], None] | None = None,
 ) -> None:
     """Create and validate the application schema, then apply startup state."""
     if db.execute("PRAGMA user_version").fetchone()[
@@ -64,7 +65,7 @@ def initialize_application_database(
     ] == 0 and not database_schema_signature(db):
         initialize_schema(db)
     else:
-        migrate_schema(db)
+        migrate_schema(db, before_migration)
 
     if not database_schema_is_current(db):
         raise RuntimeError(

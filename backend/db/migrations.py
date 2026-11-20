@@ -54,13 +54,17 @@ class OlderSchemaError(RuntimeError):
     """The database predates the oldest supported schema; nothing was changed."""
 
 
-def migrate_schema(db: Any) -> None:
+def migrate_schema(
+    db: Any, before_upgrade: Callable[[int], None] | None = None
+) -> None:
     """Upgrade a supported schema to the current one, or reject it unchanged.
 
     The stored version and the frozen shape of the database are checked before
     any write. A supported shape is then upgraded step by step inside one
     savepoint. The caller owns the commit. DDL runs statement by statement,
     because executescript() would commit implicitly and break rollback.
+    ``before_upgrade`` gets the stored version right before an upgrade starts
+    (the pre-migration backup, #3760); when it raises, nothing is written.
     """
     version = db.execute("PRAGMA user_version").fetchone()["user_version"]
     if 0 < version < OLDEST_SUPPORTED_SCHEMA_VERSION:
@@ -75,6 +79,8 @@ def migrate_schema(db: Any) -> None:
         raise RuntimeError(_UNSUPPORTED_SCHEMA_MESSAGE)
     if shape == SHAPE_CURRENT:
         return
+    if before_upgrade is not None:
+        before_upgrade(version)
     if not db.in_transaction:
         db.execute("BEGIN IMMEDIATE")
     db.execute("SAVEPOINT schema_migration")
