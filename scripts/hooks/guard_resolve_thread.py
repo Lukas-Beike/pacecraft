@@ -333,7 +333,7 @@ def matching_word(command: str) -> str | None:
     # Globs, variables and short names in the arguments of programs that never
     # run an argument cannot reach the script (#3759); any other command is
     # read word by word as before.
-    if only_inert_programs(text):
+    if only_inert_programs(raw):
         return None
     return reaching_word(text, raw)
 
@@ -350,36 +350,52 @@ GRAPHQL_BLOCKED = "the resolve mutation"
 # whose every simple command starts with one of them, or with `python -m` and
 # an inert module, skips the glob, variable and short-name readings.
 INERT_PROGRAMS = frozenset(
-    {"git", "ls", "dir", "cat", "type", "head", "tail", "wc", "grep", "rg"}
-    | {"echo", "printf", "cp", "copy", "mv", "move", "ruff", "gh", "jq", "uniq"}
-    | {"cut", "diff", "mkdir", "touch", "cd", "pwd", "true", "false"}
-    | {"get-content", "gc", "select-string", "sls", "get-childitem", "gci"}
-    | {"test-path", "write-output", "write-host"}
+    {"ls", "dir", "cat", "type", "head", "tail", "wc", "grep", "rg", "echo"}
+    | {"printf", "cp", "copy", "mv", "move", "ruff", "jq", "uniq", "cut", "diff"}
+    | {"mkdir", "touch", "cd", "pwd", "true", "false", "get-content", "gc"}
+    | {"select-string", "sls", "get-childitem", "gci", "test-path"}
+    | {"write-output", "write-host"}
 )
+# git and gh only with a subcommand that runs no program of its own.
+INERT_SUBCOMMANDS = {
+    "git": frozenset(
+        {"status", "diff", "log", "show", "ls-files", "ls-tree", "rev-parse"}
+        | {"rev-list", "branch", "blame", "add", "cat-file", "merge-base"}
+    ),
+    "gh": frozenset(
+        {"pr", "issue", "run", "api", "repo", "release", "label", "search"}
+    ),
+}
 PYTHONS = frozenset({"python", "python3", "py"})
 INERT_MODULES = frozenset({"mypy", "ruff", "compileall", "py_compile"})
-# Options and constructs by which one of those programs, or the shell around
-# it, still runs a word: read every word when any of them appears outside
-# quotes, or a substitution, a quote whose end PowerShell reads differently, or
-# a `!` alias appears anywhere.
+# Options by which one of those programs still runs a word, also abbreviated
+# or with an attached value, read with and without quotes (#3759 reviews).
 RUNS_ARGUMENTS = re.compile(
-    r"(?<![\w-])(?:-c|-x|--exec|--extcmd|bisect|filter-branch|--upload-pack"
-    r"|--receive-pack|--hostname-bin|alias|extension|--shell)(?![\w-])|[{%`]"
+    r"(?<![\w-])(?:-[cxo]\S*|--(?:exe|ext|upl|rec|open|hostname|shell|pre)\S*"
+    r"|alias|extension|config|bisect|submodule|foreach)(?![\w-])|[{%]"
 )
-UNREADABLE = re.compile(r"\$\(|`|[<>]\(|\\\"|[\"'=]!")
+# Text whose words the shells may split differently than this reading:
+# escapes, comments, history and alias marks, ANSI-C, substitutions and
+# typographic quotes PowerShell closes on.
+UNREADABLE = re.compile(r"\\|#|!|`|\$[('\"]|[<>]\(|[‘’“”]")
 QUOTED = re.compile(r"'[^']*'|\"[^\"]*\"")
-# Shell tokens: a quoted run, an escaped character, a separator, blanks,
-# plain characters; a lone quote never closes.
-TOKENS = re.compile(
-    r"'[^']*'|\"[^\"]*\"|\\.?|[;&|()<>\n]|[^\S\n]+|[^\s'\"\\;&|()<>]+|['\"]"
-)
-# A command word the shell takes from a variable, a glob or a short name.
-INDIRECT = re.compile(r"[$%*?\[~]")
+# Shell tokens: a quoted run, a separator, blanks, plain characters; a lone
+# quote never closes.
+TOKENS = re.compile(r"'[^']*'|\"[^\"]*\"|[;&|()<>\n]|[^\S\n]+|[^\s'\";&|()<>]+|['\"]")
+# A bare program name: no path, variable, glob, short name or quote.
+PROGRAM = re.compile(r"[a-z][a-z0-9_-]*")
 
 
-def program(word: str) -> str:
-    """A command word as a program name: unquoted, last path part, no `.exe`."""
-    return re.split(r"[/\\]", unquoted(word, "/"))[-1].removesuffix(".exe")
+def inert(words: list[str]) -> bool:
+    """One simple command starts with an inert program."""
+    name, after = words[0], words[1:2]
+    if not PROGRAM.fullmatch(name):
+        return False
+    if name in INERT_SUBCOMMANDS:
+        return bool(after) and after[0] in INERT_SUBCOMMANDS[name]
+    if name in PYTHONS:
+        return after == ["-m"] and words[2:3] != [] and words[2] in INERT_MODULES
+    return name in INERT_PROGRAMS
 
 
 def simple_commands(text: str) -> list[list[str]] | None:
@@ -401,23 +417,15 @@ def simple_commands(text: str) -> list[list[str]] | None:
     return [words for words in segments if words]
 
 
-def only_inert_programs(text: str) -> bool:
-    """Every simple command of ``text`` starts with an inert program."""
-    if UNREADABLE.search(text) or RUNS_ARGUMENTS.search(QUOTED.sub(" ", text)):
+def only_inert_programs(raw: str) -> bool:
+    """Every simple command of ``raw`` (casefolded, escapes not decoded)
+    starts with an inert program."""
+    if UNREADABLE.search(raw) or any(
+        RUNS_ARGUMENTS.search(form) for form in (QUOTED.sub(" ", raw), unquoted(raw))
+    ):
         return False
-    commands = simple_commands(text)
-    if commands is None:
-        return False
-    for words in commands:
-        if INDIRECT.search(words[0]):
-            return False
-        name = program(words[0])
-        module = words[2:3] if words[1:2] == ["-m"] else []
-        if name not in INERT_PROGRAMS and not (
-            name in PYTHONS and module and module[0] in INERT_MODULES
-        ):
-            return False
-    return True
+    commands = simple_commands(raw)
+    return commands is not None and all(inert(words) for words in commands)
 
 
 def reaching_word(text: str, raw: str) -> str | None:

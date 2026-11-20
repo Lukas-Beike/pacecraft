@@ -450,6 +450,19 @@ class GuardHookTests(unittest.TestCase):
             "$g = 'python'; & $g scripts/r*.py 2671 PRRT_a1",
             "$cat scripts/r*.py",
             "python $'scripts/resolve_review_\\x54hread.py' 2671 PRRT_a1",
+            "ls \\x27 ; python scripts/r*.py 1 PRRT_x ; ls \\x27",
+            "ls #'\npython scripts/r*.py 1 PRRT_x\nls #'",
+            "echo $'\\'\\'' ; python scripts/r*.py 1 PRRT_x #'",
+            "ls <# ' #> ; python scripts\\RESOLV~1.PY 1 PRRT_x ; ls <# ' #>",
+            "ls 'a’; python scripts\\RESOLV~1.PY 1 PRRT_x; ls ‘b'",
+            "ls C:\\; python scripts\\RESOLV~1.PY 1 PRRT_x",
+            "ls .\\| python scripts\\RESOLV~1.PY 1 PRRT_x",
+            "git config core.fsmonitor 'python scripts/r*.py 1 PRRT_x'",
+            "./ls scripts/r*.py",
+            "git bis''ect run python scripts/r*.py 1 PRRT_x",
+            "git rebase -xpython scripts/r*.py HEAD~1",
+            "git rebase --exe 'python scripts/r*.py' HEAD~1",
+            "git grep -Opython x scripts/r*.py",
         ):
             with self.subTest(command):
                 self.assertEqual(self.decide(command), 2)
