@@ -414,12 +414,26 @@ test("reload recovers a partial write receipt and executable undo proposal", asy
   // Store the turn only for the reloaded page: the unloading page would otherwise
   // recover the receipt itself and clear the turn before the reload starts.
   await page.addInitScript(() => sessionStorage.setItem("coachPendingTurn", "fixture-persisted-turn"));
-  await page.route("**/api/chat/receipt?*", (route) => route.fulfill({ json: {
-    client_turn_id: "fixture-persisted-turn", status: "partial",
-    message: { id: 501, client_turn_id: "fixture-persisted-turn", content: "Check-in saved; summary unavailable." },
-    command_receipts: [{ tool: "save_checkin", result: { ok: true, status: "saved" } }],
-    proposed_actions: [{ id: "fixture-undo", action_type: "undo_change", status: "preview", target_system: "local", diff: [] }],
-  } }));
+  const undo = { id: "fixture-undo", action_type: "undo_change", status: "preview", target_system: "local", diff: [] };
+  let receiptServed = false;
+  await page.route("**/api/chat/receipt?*", (route) => {
+    receiptServed = true;
+    return route.fulfill({ json: {
+      client_turn_id: "fixture-persisted-turn", status: "partial",
+      message: { id: 501, client_turn_id: "fixture-persisted-turn", content: "Check-in saved; summary unavailable." },
+      command_receipts: [{ tool: "save_checkin", result: { ok: true, status: "saved" } }],
+      proposed_actions: [undo],
+    } });
+  });
+  // The server keeps the proposal its receipt names, so a history read after the receipt lists it
+  // too, newest first (#3777). Such a read is authoritative and replaces the proposals; without it
+  // the mocked one vanished whenever start-up loaded the chat after the receipt applied. Earlier
+  // reads stay the frozen fixture's, so the button still has to come from the receipt.
+  await page.route("**/api/chat/history?*", (route) => {
+    const history = fixture.get("/api/chat/history");
+    const proposals = (history.proposed_actions || []).filter((item) => item.id !== undo.id);
+    return route.fulfill({ json: receiptServed ? { ...history, proposed_actions: [undo, ...proposals] } : history });
+  });
   await page.reload();
   await expect(page.locator(".message.assistant").filter({ hasText: "Check-in saved; summary unavailable." })).toBeVisible();
   await expect(page.locator("#toast")).toContainText("Tages-Check-in gespeichert");
