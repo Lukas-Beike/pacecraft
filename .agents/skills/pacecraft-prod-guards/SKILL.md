@@ -7,7 +7,12 @@ description: Base skill. Confirm production still refuses an API request without
 
 ```powershell
 python scripts/prod_guards.py --url <app address> --password-file <secret file> [--min-tls-days 14]
+python scripts/prod_guards.py --check-secret --password-file <secret file>
 ```
+
+`--check-secret` sends nothing: `ok secret readable` (exit 0) or the
+`secret missing, empty or unreadable` line (exit 1); a release runs it first
+(#3768).
 
 The probes have no effect even if accepted: a diagnostics read without a
 session, and a logout of the probe's own session without the CSRF token. The

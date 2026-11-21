@@ -9,7 +9,7 @@ import sys
 import tempfile
 import threading
 import unittest
-from contextlib import redirect_stdout
+from contextlib import redirect_stderr, redirect_stdout
 from datetime import UTC, datetime, timedelta
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -1002,6 +1002,31 @@ class ProdChecksTests(unittest.TestCase):
         )
         self.assertEqual(code, 1)
         self.assertIn("FAIL no CSRF token -> 200", text)
+
+    def test_check_secret_reads_only_the_file(self):
+        # #3768: checked before a release dispatch, without any request (a
+        # Session would fail the test); run_main checks the secret is not printed.
+        with mock.patch.object(prod_guards, "Session", side_effect=AssertionError):
+            code, text = self.run_main(
+                prod_guards, "--check-secret", "--password-file", str(self.secret)
+            )
+            self.assertEqual((code, text.strip()), (0, "ok secret readable"))
+            empty = Path(self.tmp.name) / "empty-secret"
+            empty.write_text("\n", encoding="utf-8")
+            for path in (
+                empty,
+                Path(self.tmp.name) / "missing",
+                prod_client.ROOT / "x",
+            ):
+                with self.subTest(path=path):
+                    code, text = self.run_main(
+                        prod_guards, "--check-secret", "--password-file", str(path)
+                    )
+                    self.assertEqual(code, 1)
+                    self.assertIn("secret missing, empty or unreadable", text)
+        # Without --check-secret the address stays required.
+        with redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
+            prod_guards.main(["--password-file", str(self.secret)])
 
     def test_checks_warn_or_refuse_when_the_checkout_is_behind_develop(self):
         # A checkout one commit behind origin/develop, local state only (#3344).
