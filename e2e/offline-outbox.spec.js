@@ -6,6 +6,11 @@ const AxeBuilder = require("@axe-core/playwright").default;
 const WEIGHT = "**/api/body/weight";
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
+// The outbox does not use the service worker, which leaves /api/ requests to the network. Routing
+// misses requests that pass through a worker's fetch listener, so a blocked save sometimes went out
+// online (CI 44878160199, 44888018168); without the worker every route applies.
+test.use({ serviceWorkers: "block" });
+
 async function openWeightDialog(page) {
   // Under 500 px height only critical notices show text (#1784); the outbox line needs a tall screen.
   await page.setViewportSize({ width: page.viewportSize().width, height: 800 });
@@ -13,14 +18,10 @@ async function openWeightDialog(page) {
   const row = page.locator("tr[data-metric='weight_kg']");
   await expect(row).toBeVisible();
   await expect.poll(() => page.evaluate(() => Boolean(state.data) && state.loadPromise === null)).toBe(true);
-  // Always through the app's service worker, the path a page route missed in CI 44878160199.
-  await expect.poll(() => page.evaluate(() => Boolean(navigator.serviceWorker?.controller))).toBe(true);
   return row;
 }
 
 async function saveWeightOffline(page, row, kg) {
-  // The context route also catches the request when the app's service worker fetches it; a page
-  // route misses it once the worker controls the page, so the save went through online (CI 44878160199).
   await page.context().route(WEIGHT, (route) => (route.request().method() === "PUT" ? route.abort("internetdisconnected") : route.fallback()));
   await row.getByRole("button", { name: "Gewicht eintragen" }).click();
   await expect(page.locator("#weightDialog")).toBeVisible();
@@ -160,7 +161,6 @@ test("@responsive a rejected meal is edited in the product dialog and replaces t
   page.on("request", (request) => {
     if (request.method() === "POST" && new URL(request.url()).pathname === "/api/nutrition/entry") sent.push({ key: request.headers()["idempotency-key"], amount: request.postDataJSON().amount });
   });
-  await expect.poll(() => page.evaluate(() => Boolean(navigator.serviceWorker?.controller))).toBe(true);
   await page.context().route(ENTRY, (route) => (route.request().method() === "POST" ? route.abort("internetdisconnected") : route.fallback()));
   // A newly saved product opens its use dialog.
   await expect(page.locator("#nutritionProductUseDialog")).toBeVisible();
