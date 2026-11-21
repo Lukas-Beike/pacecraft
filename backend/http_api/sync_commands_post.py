@@ -49,8 +49,9 @@ class SyncCommandPostRoute:
 
         Response: 202 with the queued `competition_push` job for `intervals` (as
         `GET /api/sync/jobs/{id}`), requested by `user`, payload `reason`
-        `athlete_send`. A job of that type already queued or running is returned
-        instead of a second one.
+        `athlete_send`. A queued or running send of the same approval (the same
+        manifest) is returned instead of a second one; a send approving another
+        set gets its own job.
 
         Errors: 409 `not_configured` "Intervals.icu ist nicht eingerichtet.
         Zugangsdaten unter Mehr → Anbindungen hinterlegen." when Intervals.icu is
