@@ -110,6 +110,23 @@ def _metric_series(
     ]
 
 
+# The development charts' metrics a longer Analyse period reads (#3765).
+TREND_METRIC_KEYS = METRIC_KEYS[:4]
+
+
+def trend_metrics(
+    start: date, today: date, canonical: GarminCanonicalMetrics
+) -> dict[str, list[dict[str, Any]]]:
+    """The development metrics from ``start`` to ``today``, shaped like the history's."""
+    dates = [
+        (start + timedelta(days=i)).isoformat() for i in range((today - start).days + 1)
+    ]
+    return {
+        key: _metric_series(key, dates, start, today, canonical)
+        for key in TREND_METRIC_KEYS
+    }
+
+
 def analysis_history(
     garmin: GarminSyncStatus,
     today: date,

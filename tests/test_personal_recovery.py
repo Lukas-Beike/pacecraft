@@ -25,6 +25,27 @@ class PersonalRecoveryTests(unittest.TestCase):
             for i in range(nights + 1)
         ]
 
+    def test_a_longer_period_keeps_more_history_and_the_same_comparison(self):
+        # #3765: Analyse's 6 and 12 months plus the previous year ask for a longer
+        # history; the 42-day comparison range does not change with it.
+        inputs = mapped_recovery_inputs(
+            {}, self.rows(800), wellness_provider=ProviderId.GARMIN
+        )
+        short = personal_recovery({}, self.today, canonical=inputs)
+        long = personal_recovery({}, self.today, canonical=inputs, history_days=728)
+
+        def pulse(result):
+            return next(r for r in result["baselines"] if r["metric"] == "resting_hr")
+
+        self.assertEqual(len(pulse(short)["history"]), 84)
+        self.assertEqual(len(pulse(long)["history"]), 728)
+        self.assertEqual(
+            pulse(long)["history"][0]["date"],
+            (self.today - timedelta(days=727)).isoformat(),
+        )
+        for key in ("status", "nights", "lower", "upper", "position"):
+            self.assertEqual(pulse(short).get(key), pulse(long).get(key), key)
+
     def test_coverage_and_excluding_current_value_from_baseline(self):
         for nights, status in (
             (13, "insufficient_data"),

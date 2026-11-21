@@ -203,6 +203,8 @@ class BranchSyncTests(unittest.TestCase):
             (moved, 3, 2, 2),  # stays locked: fail loudly, ref named
             (clash, 1, 2, 0),  # a name conflict is permanent: no retry
             (packed, 1, 0, 1),  # retried once, then rebased
+            # #3798: an incomplete transfer (more forms in test_gh_cli).
+            ("error: https://x did not send all necessary objects", 1, 0, 1),
         ):
             left = [failures]
 

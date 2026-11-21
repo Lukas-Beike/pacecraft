@@ -132,7 +132,9 @@ test("@responsive recovery, power, training focus, season and calendar profiles 
   await expect(report.getByText(/Letzte 14 Tage:/)).toHaveCount(1);
   await periodControls.getByRole("button", { name: "12 Wochen" }).click();
   await expect(report.getByText(/Letzte 12 Wochen:/)).toHaveCount(1);
-  await expect(page.locator("#analysisHistoryCharts .analysis-period-controls")).toHaveCount(0);
+  // Entwicklung keeps its own period and "Vorjahr" controls (#3765), never the load period.
+  await expect(page.locator('#analysisHistoryCharts [aria-label="Zeitraum für Belastung"]')).toHaveCount(0);
+  await expect(page.locator("#analysisHistoryCharts .analysis-trend-controls")).toHaveCount(1);
   await expect(report.getByText("Leicht aerob", { exact: true })).toBeVisible();
   await expect(report.getByText("Hoch aerob", { exact: true })).toBeVisible();
   await expect(report.getByText("Anaerob", { exact: true })).toBeVisible();
@@ -196,7 +198,8 @@ test("@responsive recovery, power, training focus, season and calendar profiles 
       ...baselines.map((item) => ({ ...item, source: "Garmin Connect", history: item.history.map((point) => ({ ...point, value: 99 })) })),
     ] });
   });
-  await expect(recovery.locator(".analysis-period-controls")).toHaveCount(1);
+  // The period selector with the "Vorjahr" switch under it (#3765).
+  await expect(recovery.locator(".analysis-period-controls")).toHaveCount(2);
   await recovery.getByRole("button", { name: "12 Wochen", exact: true }).click();
   await expect(recovery.locator(".analysis-chart-card").first()).toContainText("Erholung · Letzte 12 Wochen");
   // Three baselines plus the fixture's Garmin readiness chart.

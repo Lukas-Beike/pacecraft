@@ -291,6 +291,10 @@ The system SHALL form personal recovery distributions separately by provider and
 - **WHEN** a comparison is provisional, `ok`, insufficient or stale
 - **THEN** the displayed state names the coverage or reason (for example fewer than 14 earlier nights or an outdated measurement) and the recovery UI shows no "confirmed" or equivalent validity wording for it.
 
+#### Scenario: Longer periods and the previous year
+- **WHEN** the athlete picks 6 or 12 months for Laufen, Radfahren or Erholung, or switches on "Vorjahr" (off by default)
+- **THEN** `GET /api/analysis/trend-history` (14, 84, 182 or 364 days) reads the stored Garmin development values and the personal recovery history over the period and 364 days before it, no provider is asked, the default view keeps its own read, the charts draw weekly values beyond 14 days, and the previous year's same days appear as a faint dashed line without value labels only where stored values exist; the 42-day comparison ranges do not change with the period
+
 #### Scenario: Shortfall is not sleep debt
 - **WHEN** the sleep goal shortfall is reported or summarized
 - **THEN** it is worded as the sum of known shortfalls against the athlete's own sleep goal over known nights, with missing nights and unrecorded naps noted as limits, and no output uses the term sleep debt or states a needed number of hours of recovery sleep.
@@ -305,6 +309,9 @@ Evidence:
 - `public/analysis.js:recoveryRollingNote`
 - `tests/test_rolling_hrv.py`
 - `tests/test_personal_recovery.py:test_coverage_and_excluding_current_value_from_baseline`
+- `tests/test_personal_recovery.py:test_a_longer_period_keeps_more_history_and_the_same_comparison`
+- `tests/test_week_review.py:test_a_longer_trend_period_reads_the_previous_year_on_demand`
+- `backend/performance/report_service.py:TrainingReportReadService.trend_history`
 - `tests/test_personal_recovery.py:test_future_stale_and_sdnn_nights_are_not_classified`
 - `tests/test_personal_recovery.py:test_deficit_uses_known_nights_and_never_offsets_with_long_sleep`
 - `tests/test_personal_recovery.py:test_device_change_restarts_the_comparison`

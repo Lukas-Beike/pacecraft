@@ -246,7 +246,8 @@
   An unadvanced return ends after 28 days.
 
 ## Performance Analytics, Metrics & Trends
-- **Historical Trends**: Trend lines for FTP, running threshold pace and VO2 max (last 12 calendar weeks), and for resting heart rate, heart rate variability (HRV) and body weight (14 days or 12 weeks).
+- **Historical Trends**: Trend lines for FTP, running threshold pace and VO2 max (12 weeks, 6 or 12 months; default 12 weeks), for sleep, resting heart rate and heart rate variability (HRV) (14 days, 12 weeks, 6 or 12 months; default 14 days), and for body weight (14 days or 12 weeks).
+  A "Vorjahr" switch under the period selector (off by default) adds the same weeks one year (52 weeks) earlier as a faint dashed line, only where stored values exist (#3765); only a longer period or the switch reads `GET /api/analysis/trend-history`, never a provider.
 - **Local Session Load**: Every session's TSS-scale load and intensity factor are computed locally with method M6 (`docs/performance-methods/m6-local-tss-load.md`): power against the FTP valid on that day, else run pace against the threshold pace, else heart rate as normalised Banister TRIMP (walking included) with the constants of the profile setting **Geschlecht** (male or female; not set uses the male constants, marked as an assumption in the Coach's session data).
   Strength takes its session-RPE load (elapsed minutes × RPE) times a personal TSS-per-AU factor: the median over the locally or Garmin-rated rides and runs of the last 365 days at a similar RPE (within 1 of the strength session's, else within 2), from at least 20 of them; unrated or uncalibrated strength gets none.
   Yoga and alpine ski get none.

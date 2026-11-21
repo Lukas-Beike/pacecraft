@@ -36,6 +36,8 @@ FETCH_ATTEMPTS = 3
 TRANSIENT_FETCH = re.compile(
     r"cannot lock ref '[^']+': is at \w+ but expected|\.lock': File exists"
     r"|Operation too slow|timed out"
+    # A transfer cut short beside a parallel fetch (#3798).
+    r"|did not send all necessary objects"
 )
 
 
@@ -60,7 +62,11 @@ GH_READ_COMMANDS = frozenset({"view", "list", "status", "checks", "diff", "searc
 
 
 class CliError(RuntimeError):
-    """A failed command or a refused input; the message is safe to print."""
+    """A failed command or a refused input; the message is safe to print.
+    ``stderr`` keeps a failed command's whole error output, for retry checks
+    only (None for a refused input)."""
+
+    stderr: str | None = None
 
 
 def _short_detail(detail: str) -> str:
@@ -140,7 +146,9 @@ def run(
         if "push" in args:
             # A refusing pre-push hook explains itself before git's generic line.
             detail = "\n".join([detail, *_push_refusal(done, lines)])
-        raise CliError(f"{program} {' '.join(args[:2])} failed: {detail}")
+        error = CliError(f"{program} {' '.join(args[:2])} failed: {detail}")
+        error.stderr = done.stderr or ""
+        raise error
     return done.stdout
 
 
@@ -165,7 +173,8 @@ def fetch(*refs: str, cwd: Path | None = None) -> None:
     """Fetch origin; retry while a parallel worktree holds a lock (#2828, #3378).
 
     Worktrees share one .git: a ref moved under a parallel fetch, a packed-refs
-    lock file, or a stalled transfer (aborted below 1 KB/s for 60 s) is retried.
+    lock file, a stalled transfer (aborted below 1 KB/s for 60 s), an
+    incomplete transfer or a failure without a message is retried.
     A ref name conflict and every other failure raise at once, so no caller
     goes on with a stale ref.
     """
@@ -180,10 +189,13 @@ def fetch(*refs: str, cwd: Path | None = None) -> None:
             git("fetch", "origin", *refs, cwd=cwd, env=env)
             return
         except CliError as exc:
-            if not TRANSIENT_FETCH.search(str(exc)) or attempt == FETCH_ATTEMPTS:
+            # Every line of git's output counts, and an empty one too (#3798).
+            output = str(exc) if exc.stderr is None else exc.stderr
+            transient = TRANSIENT_FETCH.search(output) or not output.strip()
+            if not transient or attempt == FETCH_ATTEMPTS:
                 raise
             print(
-                f"fetch hit a lock or stall (attempt {attempt}); retrying",
+                f"fetch failed transiently (attempt {attempt}); retrying",
                 file=sys.stderr,
             )
             time.sleep(attempt)
