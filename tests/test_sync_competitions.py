@@ -941,6 +941,14 @@ class CompetitionSyncReconcilerTests(unittest.TestCase):
                 ),
                 "http_400_target",
             ),
+            (
+                AppError(
+                    502,
+                    'Unrecognized field "x" (2 known properties: "target", "name")',
+                    upstream_status=400,
+                ),
+                "http_400",
+            ),
             (AppError(502, "secret text", reason="upstream_rejected"), "app_502_upstream_rejected"),
             (AppError(502, "secret text"), "app_502_none"),
             (AppError(502, "secret text", reason="Has Text!"), "app_502_none"),

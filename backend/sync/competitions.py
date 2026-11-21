@@ -569,9 +569,11 @@ _PAYLOAD_FIELDS = (
 
 
 def _rejected_field(message: str) -> str:
+    # Only the field-path form counts: a list of known properties quotes every
+    # field and must not name one (review on #3908).
     text = str(message or "")
     for field in _PAYLOAD_FIELDS:
-        if f'"{field}"' in text or f"'{field}'" in text:
+        if re.search(r"\[\s*[\"']" + field + r"[\"']\s*\]", text):
             return f"_{field}"
     return ""
 
