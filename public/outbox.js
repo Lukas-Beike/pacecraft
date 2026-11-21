@@ -8,6 +8,8 @@ const OUTBOX_DB_NAME = "pacecraft-outbox";
 const OUTBOX_STORE = "entries";
 // A server answer that says nothing about the entry itself: it stays waiting.
 const OUTBOX_UNDECIDED_STATUSES = new Set([401, 403, 408, 429]);
+// Server errors (5xx) for one entry before it is set aside as rejected, so later saves go on.
+const OUTBOX_SERVER_ATTEMPTS = 5;
 
 let outboxStorage = null;
 let outboxEntries = [];
@@ -124,19 +126,23 @@ async function saveOwnEntry({ kind, method, path, payload, label, send = api, qu
   }
 }
 
-// "sent", "rejected" (the server refused the entry itself) or "stop" (try again at the next trigger).
+// "sent", "rejected" (the server refused the entry, or failed it OUTBOX_SERVER_ATTEMPTS times),
+// "skipped" (discarded while in flight) or "stop" (try again at the next trigger).
 async function outboxSend(entry) {
   const epoch = outboxEpoch;
   try {
     await api(entry.path, { method: entry.method, body: JSON.stringify(entry.payload), headers: { "Idempotency-Key": entry.key } });
   } catch (error) {
     if (epoch !== outboxEpoch || error?.reason === "network_error") return "stop";
-    const refused = error?.status >= 400 && error.status < 500 && !OUTBOX_UNDECIDED_STATUSES.has(error.status);
     const serverError = error?.status >= 500;
+    const attempts = entry.attempts + 1;
+    // A server that keeps failing one entry must not hold back every later save (Gitar on #3816).
+    const refused = (error?.status >= 400 && error.status < 500 && !OUTBOX_UNDECIDED_STATUSES.has(error.status))
+      || (serverError && attempts >= OUTBOX_SERVER_ATTEMPTS);
     if (!refused && !serverError) return "stop";
-    // A discarded entry stays discarded, whatever its in-flight answer was.
-    if (!outboxEntries.some((item) => item.key === entry.key)) return "stop";
-    await outboxPut({ ...entry, attempts: entry.attempts + 1, last_error: error.message, state: refused ? "rejected" : entry.state });
+    // A discarded entry stays discarded, whatever its in-flight answer was; the pass goes on.
+    if (!outboxEntries.some((item) => item.key === entry.key)) return "skipped";
+    await outboxPut({ ...entry, attempts, last_error: error.message, state: refused ? "rejected" : entry.state });
     return refused ? "rejected" : "stop";
   }
   if (epoch !== outboxEpoch) return "stop";

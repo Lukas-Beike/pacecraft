@@ -193,3 +193,24 @@ test("an entry discarded during a pass is not sent and does not come back", asyn
   assert.deepEqual(created.requests.map((request) => JSON.parse(request.body).n), [1]);
   assert.equal(created.stored.size, 0);
 });
+
+// Gitar on #3816: a server that keeps failing one entry must not hold back later saves.
+test("an entry failing with server errors is set aside after five tries and the later ones go on", async () => {
+  let offline = true;
+  const { context, stored } = outbox(async (_path, options) => {
+    if (offline) throw networkError();
+    if (JSON.parse(options.body).n === 1) throw serverError(500, "Serverfehler");
+    return { ok: true };
+  });
+  await save(context, "weight", { n: 1 });
+  await save(context, "weight", { n: 2 });
+  await context.replayOutbox();
+  offline = false;
+  for (let pass = 0; pass < 4; pass += 1) await context.replayOutbox();
+  assert.equal(stored.size, 2, "four server errors keep both waiting in order");
+  await context.replayOutbox();
+  const left = [...stored.values()];
+  assert.equal(left.length, 1);
+  assert.equal(left[0].state, "rejected");
+  assert.equal(left[0].attempts, 5);
+});
