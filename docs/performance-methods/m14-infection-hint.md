@@ -1,7 +1,7 @@
 # M14 — Early infection hint from night values
 
 - **Card:** M14
-- **Card version:** 1
+- **Card version:** 2
 - **Method ID:** infection-hint-v1 (#3762)
 - **Status:** implemented (`backend/performance/infection_hint.py`), awaiting athlete review
 - **Classification:** descriptive statistic
@@ -49,8 +49,15 @@ an infection, illness, recovery or readiness state.
   Coach reads and in the planning brief. The note on today's calendar day shows
   only the unusual values with their usual range, for example "Infekt-Hinweis:
   Atemfrequenz 16,8/min (üblich 14,2–15) · Ruhepuls 58 bpm (üblich 49–52)"
-  (athlete decision); the limits stay with this card and the Coach. Nothing is
-  stored; the hint is computed on read.
+  (athlete decision); the limits stay with this card and the Coach. The hint is
+  computed on read.
+- Answers on the note (#3821, athlete decision): "Ich bin krank" records illness
+  in today's check-in, the same record a check-in or Coach turn writes, with
+  its receipt and undo; planning then pauses as for any reported illness,
+  through the adaptive preview and its approval. "Mir geht's gut" hides the
+  hint for today in the calendar, the Coach context and the planning brief;
+  only that day is stored, and a hint on a later day shows again. Once today
+  reports illness the note keeps its values without the two answers.
 
 ## Sources
 
@@ -99,7 +106,8 @@ athlete for this one athlete and is not validated for anyone.
   change).
 - Fewer than 2 known signals: no statement.
 - The hint never blocks, pauses or changes a plan or session; only the
-  athlete's own illness check-in starts the illness pause.
+  athlete's own illness check-in, including the answer "Ich bin krank", starts
+  the illness pause.
 
 ## Numeric rules
 

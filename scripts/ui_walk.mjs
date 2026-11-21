@@ -255,8 +255,9 @@ export const STEPS = [
   // week without any data yet (no plan, session, recovery value or check-in, early on a Monday) has
   // no card, so the step is optional.
   { view: "plan", name: "Kalender: Wochenrückblick", covers: "#3298 week review (formerly Analyse › Woche, #3000)", pre: ['.planned-view-switch button[data-view="week"]'], ready: '.planned-week .week-review[data-this-week="true"] .week-review-tile', kind: "numbers", optional: true },
-  // Shown only on a morning whose night values are clearly unusual (M14), so the step is optional.
-  { view: "plan", name: "Kalender: Infekt-Hinweis", covers: "#3762 infection hint", pre: ['.planned-view-switch button[data-view="week"]'], ready: ".planned-day.is-today [data-infection-hint]", kind: "numbers", optional: true },
+  // Shown only on a morning whose night values are clearly unusual (M14), so the step is optional. The values
+  // come with the two answers, "Mir geht's gut" (neutral) and "Ich bin krank" (filled); they are never pressed.
+  { view: "plan", name: "Kalender: Infekt-Hinweis", covers: "#3762 infection hint, #3821 answers", pre: ['.planned-view-switch button[data-view="week"]'], ready: ".planned-day.is-today [data-infection-hint]:has(.infection-hint-actions > button.secondary-button + button:not(.secondary-button))", kind: "numbers", optional: true },
   // A planned unit with equipment, with "Löschen" or with fuelling advice may lie in a later week (2.1.26).
   { view: "plan", name: "Kalender: Schuh/Rad geplant", covers: "#3011 planned equipment chip", each: PLANNED, ...LATER, ready: '.planned-entry[open] .planned-equipment-chip[aria-label*=": "]', kind: "text", optional: true },
   { view: "plan", name: "Kalender: geplante Einheit", covers: "#2189 planned session", pre: ['button[aria-label="Nächste Woche"]'], each: PLANNED, ready: ".planned-entry[open] .planned-entry-details", kind: "text", optional: true, post: ['button[aria-label="Vorherige Woche"]'] },

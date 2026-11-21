@@ -397,7 +397,7 @@ def build_plan_guard(ctx: AppContext) -> PlanGuardServices:
             }
         ).with_infection_hint(
             infection_hint_reader(
-                ctx.database(), lambda: ctx.canonical_read, local_date
+                ctx.database(), ctx.key_values, lambda: ctx.canonical_read, local_date
             )
         )
 

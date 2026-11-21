@@ -948,6 +948,8 @@ h2 {
 .planned-day-context { margin: 0; font-size: .75rem; line-height: 1.5; overflow-wrap: anywhere; }
 .planned-day-calendar, .planned-day-competition, .planned-day-day-status { color: var(--muted); }
 .planned-day-health { padding: 10px 12px; border: 1px solid var(--orange); border-radius: 10px; color: var(--ink); background: var(--surface); text-align: center; font-weight: 650; }
+.planned-day-health p { margin: 0; }
+.infection-hint-actions { margin: 10px 0 4px; }
 .planned-day-empty { margin: 0; padding-top: 6px; color: var(--subtle); font-size: .78rem; line-height: 1.5; }
 .planned-entry, .planned-group { --session-color: var(--planned-session-default); --session-on-color: var(--planned-session-default-on); overflow: hidden; border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--surface); }
 .planned-entry > summary, .planned-group > summary { position: relative; display: grid; gap: 4px; min-height: 48px; padding: 6px 10px; cursor: pointer; list-style: none; }

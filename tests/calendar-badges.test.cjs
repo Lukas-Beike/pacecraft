@@ -1,6 +1,6 @@
 const assert = require("node:assert/strict");
 const { test } = require("node:test");
-const { extractFunctions, FakeElement } = require("./frontend-harness.cjs");
+const { extractFunctions, FakeElement, fakeDocument, textOf } = require("./frontend-harness.cjs");
 
 function helpers() {
   return extractFunctions("plan-views.js", [
@@ -130,4 +130,82 @@ test("the infection hint names only each unusual value and its usual range, and 
   );
   assert.equal(infectionHintText({ status: "none", signals }), "");
   assert.equal(infectionHintText(undefined), "");
+});
+
+// #3821: "Mir geht's gut" hides the hint for its day, "Ich bin krank" records illness with a receipt and undo.
+function hintNote({ fail = null } = {}) {
+  const calls = [];
+  const announced = [];
+  const helpers = extractFunctions("plan-views.js", ["calendarMetricNumber", "infectionHintText", "infectionHintDismissed", "infectionHintReceipts", "infectionHintNote", "plannedMoveUndo"], {
+    document: fakeDocument(),
+    AppFormat: { number: (value, { digits }) => value.toFixed(digits).replace(".", ",") },
+    api: async (path, options) => {
+      calls.push([path, options.method, options.body]);
+      if (fail) throw fail;
+      return path.endsWith("/ill") ? { status: "ok", change: { id: "c1", after_hash: "h1" } } : { status: "ok" };
+    },
+    isSessionEndedError: () => false,
+    announcePlanChange: (text) => announced.push(text),
+    showPlannedDay: () => {},
+    load: async () => calls.push(["load"]),
+  });
+  const hint = { status: "hint", signals: [{ label: "Ruhepuls", value: 53, unit: "bpm", lower: 48, upper: 50, unusual: true }] };
+  return { ...helpers, calls, announced, hint };
+}
+const buttons = (note) => note.descendants().filter((node) => node.tag === "button");
+
+test("the infection hint offers 'Mir geht's gut' (neutral) and 'Ich bin krank' (filled) side by side", () => {
+  const { infectionHintNote, hint } = hintNote();
+  const note = infectionHintNote(hint, "2026-11-21", false);
+  assert.equal(note.dataset.infectionHint, "");
+  assert.equal(textOf(note.children[0]), "Infekt-Hinweis: Ruhepuls 53 bpm (üblich 48–50)");
+  assert.equal(note.children[1].className, "coach-action-card-actions infection-hint-actions");
+  assert.deepEqual(buttons(note).map((button) => [textOf(button), button.className]), [["Mir geht's gut", "secondary-button"], ["Ich bin krank", ""]]);
+  // A day that already reports illness keeps the values without the question.
+  assert.deepEqual(buttons(infectionHintNote(hint, "2026-11-21", true)), []);
+  assert.equal(infectionHintNote({ status: "none", signals: [] }, "2026-11-21", false), null);
+});
+
+test("a 'keine' or 'nein' illness answer still asks the infection hint question", () => {
+  const { reportsComplaint } = extractFunctions("plan-views.js", ["NO_COMPLAINT_ANSWERS", "reportsComplaint"]);
+  for (const answer of ["", "nein", "Keine.", " kein ", "gesund", "n/a"]) assert.equal(reportsComplaint(answer), false, answer);
+  for (const answer of ["Halsweh", "krank", "Schnupfen; Fieber"]) assert.equal(reportsComplaint(answer), true, answer);
+});
+
+test("'Mir geht's gut' hides the hint for that day only", async () => {
+  const { infectionHintNote, hint, calls, announced } = hintNote();
+  const [well] = buttons(infectionHintNote(hint, "2026-11-21", false));
+  await well.fire("click");
+  assert.deepEqual(calls, [["/api/infection-hint/well", "POST", "{\"date\":\"2026-11-21\"}"]]);
+  assert.deepEqual(announced, ["Infekt-Hinweis für heute ausgeblendet"]);
+  assert.equal(infectionHintNote(hint, "2026-11-21", false), null);
+  // A new hint on a later day shows again.
+  assert.notEqual(infectionHintNote(hint, "2026-11-22", false), null);
+});
+
+test("'Ich bin krank' shows the receipt with undo, and undo takes it back", async () => {
+  const { infectionHintNote, hint, calls } = hintNote();
+  const note = infectionHintNote(hint, "2026-11-21", false);
+  await buttons(note)[1].fire("click");
+  assert.deepEqual(calls, [["/api/infection-hint/ill", "POST", "{\"date\":\"2026-11-21\"}"], ["load"]]);
+  // After the reload the day reports illness: the receipt and its undo stay.
+  const ill = infectionHintNote(hint, "2026-11-21", true);
+  const [undo] = buttons(ill);
+  assert.equal(textOf(ill.children[1]), "Krankheit für heute gespeichert. Rückgängig");
+  await undo.fire("click");
+  assert.deepEqual(calls.slice(2), [["/api/change-history/undo", "POST", JSON.stringify({ change_id: "c1", expected_current_hash: "h1" })], ["load"]]);
+  assert.equal(textOf(infectionHintNote(hint, "2026-11-21", false).children[2]), "Zurückgenommen.");
+});
+
+test("offline, an answer is not queued: the note stays and shows the network message", async () => {
+  const offline = Object.assign(new Error("Keine Verbindung zum Server."), { status: 0, reason: "network_error" });
+  const { infectionHintNote, hint, calls } = hintNote({ fail: offline });
+  const note = infectionHintNote(hint, "2026-11-21", false);
+  const [well, sick] = buttons(note);
+  await sick.fire("click");
+  assert.deepEqual(calls, [["/api/infection-hint/ill", "POST", "{\"date\":\"2026-11-21\"}"]]);
+  assert.equal(textOf(note.children[2]), "Keine Verbindung zum Server.");
+  assert.equal(well.disabled || sick.disabled, false);
+  await well.fire("click");
+  assert.notEqual(infectionHintNote(hint, "2026-11-21", false), null);
 });

@@ -661,7 +661,8 @@
     }
   }
 
-  async function open(activity, { api, showDialog, edit = null }) {
+  // `backLabel` names where closing returns to; Analyse › Rekorde passes its own (#3847).
+  async function open(activity, { api, showDialog, edit = null, backLabel = "Zurück zum Kalender" }) {
     close(false);
     const activityId = String(activity.id ?? activity.activity_id ?? "");
     if (!activityId) return;
@@ -672,7 +673,7 @@
     history.pushState({ ...navigationState, activityDetail: activityId }, "", location.href);
     dialog = h("dialog", { className: "activity-detail-dialog", "aria-labelledby": "activityDetailTitle" });
     const title = h("h2", { id: "activityDetailTitle" }, activity.name || "Aktivitätsdetails");
-    const back = h("button", { className: "secondary-button", type: "button" }, "Zurück zum Kalender");
+    const back = h("button", { className: "secondary-button", type: "button" }, backLabel);
     back.addEventListener("click", close);
     const content = h("div");
     const status = h("p", "muted", "Lokale Daten werden geladen …");

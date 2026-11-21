@@ -88,6 +88,8 @@ handler's docstring. Regenerate it with
 | POST | `/api/garmin/login/mfa` | Session + CSRF | after access | Connect Garmin with credentials or an MFA code, or disconnect it. |
 | POST | `/api/garmin/sync` | Session + CSRF | after access | Queue a provider synchronization, or a targeted refresh of the external calendars or the weather. |
 | GET | `/api/health` | Public | no | Liveness and maintenance state. |
+| POST | `/api/infection-hint/ill` | Session + CSRF | after access | Answer today's infection hint with "Ich bin krank" (#3821). |
+| POST | `/api/infection-hint/well` | Session + CSRF | after access | Answer today's infection hint with "Mir geht's gut" (#3821). |
 | GET | `/api/library` | Session | no | Workout library page. |
 | POST | `/api/library/{id}/archive` | Session + CSRF | after access | Take a library entry out of the library after the athlete confirmed it. |
 | POST | `/api/library/{id}/schedule` | Session + CSRF | after access | Plan a library entry on one day as a local unit, without a remote write. |
@@ -1100,6 +1102,34 @@ Response: 200 with `status` (`"ok"`) and `maintenance` (`active` boolean,
 true during a restore; `running_operations` count).
 
 Errors: none beyond the common ones.
+
+### `POST /api/infection-hint/ill`
+
+Request: JSON body `{"date": "YYYY-MM-DD"}`, the day of the answered
+note. Records illness in today's check-in like a
+check-in or Coach turn: other answers stay and an earlier illness text
+is kept, the new text joining it. Planning then pauses as for any
+reported illness, through the adaptive preview and its approval.
+Nothing is written remotely.
+
+Response: 200 `{"status": "ok", "checkin", "change"}`; `checkin` is
+today's stored check-in, `change` the undo reference (`null` when the
+day already carried the text).
+
+Errors: 409 "Der Infekt-Hinweis gilt für einen anderen Tag. Bitte die
+Ansicht neu laden." when `date` is not the athlete's today.
+
+### `POST /api/infection-hint/well`
+
+Request: JSON body `{"date": "YYYY-MM-DD"}`, the day of the answered
+note. Hides the hint for today in the calendar, the
+Coach context and the planning brief; a hint on a later day shows again.
+Nothing else changes.
+
+Response: 200 `{"status": "ok", "dismissed": "YYYY-MM-DD"}`.
+
+Errors: 409 "Der Infekt-Hinweis gilt für einen anderen Tag. Bitte die
+Ansicht neu laden." when `date` is not the athlete's today.
 
 ### `GET /api/library`
 
