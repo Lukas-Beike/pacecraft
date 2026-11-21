@@ -72,6 +72,18 @@ def _only_local_fields_changed(
     )
 
 
+def _undo_reference(
+    change: dict[str, str] | None, wanted: bool
+) -> dict[str, dict[str, str] | None]:
+    """``{"change": undo reference}`` for the UI routes; nothing for the Coach."""
+    if not wanted:
+        return {}
+    reference = change and {
+        key: change[key] for key in change_history.UNDO_REFERENCE_FIELDS
+    }
+    return {"change": reference}
+
+
 def _coach_payload(arguments: Any) -> dict[str, Any]:
     if not isinstance(arguments, dict):
         raise AppError(400, "Die Wettkampfdaten müssen als Objekt übergeben werden.")
@@ -196,7 +208,8 @@ class CompetitionService:
             self._repository.create_local(db, normalized, self._now())
         return {**normalized, "sync_state": "local"}
 
-    def save(self, arguments: Any) -> dict[str, Any]:
+    def save(self, arguments: Any, *, with_change: bool = False) -> dict[str, Any]:
+        """Save one competition; ``with_change`` adds its undo reference (UI routes)."""
         now = self._now()
         value = _coach_payload(arguments)
         competition_id = _competition_id(value.get("id"))
@@ -237,7 +250,7 @@ class CompetitionService:
             else:
                 self._repository.create_local(db, normalized, now)
                 status = "created"
-            change_history.record_change(
+            change = change_history.record_change(
                 db,
                 "competition",
                 normalized["id"],
@@ -255,6 +268,7 @@ class CompetitionService:
             "competitions": all_competitions,
             # Counted by the Coach diagnostics (#3080).
             "created_despite_candidate": despite,
+            **_undo_reference(change, with_change),
         }
 
     def _same_day(
@@ -322,7 +336,9 @@ class CompetitionService:
         )
         raise error
 
-    def delete(self, competition_id: Any) -> dict[str, Any]:
+    def delete(
+        self, competition_id: Any, *, with_change: bool = False
+    ) -> dict[str, Any]:
         now = self._now()
         normalized_id = _competition_id(competition_id, required=True)
         with self._database_manager.unit_of_work() as db:
@@ -343,7 +359,7 @@ class CompetitionService:
                     event_date=row.get("event_date"),
                 )
             self._repository.delete(db, normalized_id)
-            change_history.record_change(
+            change = change_history.record_change(
                 db, "competition", normalized_id, "delete", row, None
             )
             all_competitions = self._repository.list(db)
@@ -352,6 +368,7 @@ class CompetitionService:
             "competition_id": normalized_id,
             "remote_sync_pending": remote_sync_pending,
             "competitions": all_competitions,
+            **_undo_reference(change, with_change),
         }
 
     def resolve_conflict(self, competition_id: Any, strategy: Any) -> dict[str, Any]:

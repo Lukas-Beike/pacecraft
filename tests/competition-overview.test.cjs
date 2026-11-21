@@ -11,6 +11,21 @@ test("competition distances retain unknown, zero and free-form values", () => {
   assert.equal(context.competitionDistance("Sprintdistanz"), "Sprintdistanz");
 });
 
+test("the competition dialog reads durations and kilometres the way the service stores them", () => {
+  for (const [text, seconds] of [["1:30:00", 5400], ["25:30", 1530], ["0:45:10", 2710], ["", null], ["  ", null]]) assert.equal(context.competitionDurationSeconds(text), seconds);
+  for (const text of ["90", "1:75", "a:10", "1:2:3:4", "1:-5"]) assert.equal(context.competitionDurationSeconds(text), undefined);
+  assert.equal(context.competitionDistanceInput(42195), "42,195");
+  assert.equal(context.competitionDistanceInput("10000"), "10");
+  assert.equal(context.competitionDistanceInput("Sprintdistanz"), "Sprintdistanz");
+  assert.equal(context.competitionDistanceInput(null), "");
+  assert.equal(context.competitionDistanceValue("42,2"), "42,2 km");
+  assert.equal(context.competitionDistanceValue("10 km"), "10 km");
+  assert.equal(context.competitionDistanceValue("Sprintdistanz"), "Sprintdistanz");
+  assert.equal(context.competitionSportChoice({ sport: "ride", environment: "virtual" }), "VirtualRide");
+  assert.equal(context.competitionSportChoice({ sport: "ride", environment: "outdoor" }), "Ride");
+  assert.equal(context.competitionSportChoice({ sport: "other", sport_detail: "Swimrun" }), null);
+});
+
 test("invalid event dates stay undated rather than rolling into another month", () => {
   for (const event_date of [null, "", "2026-02-30", "not-a-date"]) assert.equal(context.competitionDate({ event_date }, "2026-10-24"), false);
   assert.equal(context.competitionDate({ event_date: "2026-10-24" }, "2026-10-24"), true);

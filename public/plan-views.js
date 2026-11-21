@@ -2993,9 +2993,18 @@ function loadRacePlan(section, competition) {
 function competitionCard(competition, todayKey, openIds) {
   const sport = competition.sport_detail || competitionSportLabel(competition.sport, competition.environment);
   const when = AppFormat.relativeDay(competition.event_date, todayKey);
+  const edit = messageActionButton("edit", "Wettkampf bearbeiten");
+  edit.addEventListener("click", (event) => {
+    // The pencil sits in the summary: it must not open or close the card.
+    event.preventDefault();
+    event.stopPropagation();
+    openCompetitionDialog(competition);
+  });
   const summary = h("summary", null,
-    h("strong", null, `${competitionDate(competition, todayKey) ? dateLabel(competition.event_date) : "Datum unbekannt"} · ${competition.name || "Wettkampf"}`),
-    h("span", "competition-summary-facts", [sport, competitionDistance(competition.distance), `Priorität ${competition.priority || "B"}`, when].filter(Boolean).join(" · ")));
+    h("span", "competition-summary-main",
+      h("strong", null, `${competitionDate(competition, todayKey) ? dateLabel(competition.event_date) : "Datum unbekannt"} · ${competition.name || "Wettkampf"}`),
+      h("span", "competition-summary-facts", [sport, competitionDistance(competition.distance), `Priorität ${competition.priority || "B"}`, when].filter(Boolean).join(" · "))),
+    edit);
   const source = h("small", "competition-sync-state", competition.external_id ? "Intervals.icu" : "Lokal");
   if (competition.sync_state === "local_override") source.textContent = "Lokal geändert";
   const optional = [
@@ -3077,6 +3086,172 @@ function formatLocalCompetitionTime(value) {
   const raw = String(value || "");
   const match = /(?:T|\s)(\d{2}:\d{2})(?::\d{2})?/.exec(raw);
   return match ? match[1] : formatTime(value);
+}
+
+// The athlete's own competition entry (#3837): one dialog adds, edits and deletes a competition.
+const COMPETITION_SPORT_OPTIONS = { ride: "Ride", run: "Run", strength: "WeightTraining" };
+let competitionEdit = null;
+let competitionDialogBound = false;
+
+// "h:mm:ss" or "mm:ss" as seconds; empty is null, anything else undefined.
+function competitionDurationSeconds(text) {
+  const raw = String(text || "").trim();
+  if (!raw) return null;
+  const parts = raw.split(":");
+  if (parts.length < 2 || parts.length > 3 || !parts.every((part) => /^\d+$/.test(part)) || parts.slice(1).some((part) => Number(part) >= 60)) return undefined;
+  return parts.map(Number).reduce((total, part) => total * 60 + part, 0);
+}
+
+// The stored distance is metres; the dialog reads and writes kilometres.
+function competitionDistanceInput(value) {
+  if (value == null || String(value).trim() === "") return "";
+  const metres = Number(value);
+  if (!Number.isFinite(metres)) return String(value);
+  return metres < 0 ? "" : String(metres / 1000).replace(".", ",");
+}
+
+function competitionDistanceValue(text) {
+  const raw = String(text || "").trim();
+  return /^[\d.,\s]+$/.test(raw) ? `${raw} km` : raw;
+}
+
+function competitionSportChoice(competition) {
+  if (competition.sport === "ride" && ["virtual", "indoor"].includes(competition.environment)) return "VirtualRide";
+  return COMPETITION_SPORT_OPTIONS[competition.sport] || null;
+}
+
+function showCompetitionDialogStep(step) {
+  const confirming = step === "confirm";
+  $("#competitionDialogForm").hidden = confirming;
+  $("#competitionDialogConfirm").hidden = !confirming;
+  $("#competitionDialog").setAttribute("aria-labelledby", confirming ? "competitionDialogConfirmTitle" : "competitionDialogTitle");
+}
+
+function fillCompetitionDialog(competition) {
+  const form = $("#competitionDialogForm");
+  const stored = competition || {};
+  form.querySelector("option[data-kept]")?.remove();
+  let sport = competitionSportChoice(stored);
+  if (competition && !sport) {
+    // A sport the list does not offer stays as stored unless the athlete picks another.
+    form.elements.sport.append(h("option", { value: "keep", dataset: { kept: "" } }, stored.sport_detail || competitionSportLabel(stored.sport, stored.environment)));
+    sport = "keep";
+  }
+  sport ||= "Ride";
+  // The distance shown is km text; an untouched field is not sent back, so no rounding rewrites it.
+  const distance = competitionDistanceInput(stored.distance);
+  competitionEdit = competition ? { competition, sport, distance } : null;
+  const time = stored.starts_at_local ? formatLocalCompetitionTime(stored.starts_at_local) : "";
+  form.elements.name.value = stored.name || "";
+  form.elements.event_date.value = String(stored.event_date || "").slice(0, 10);
+  form.elements.start_time.value = time === "00:00" ? "" : time;
+  form.elements.sport.value = sport;
+  form.elements.priority.value = stored.priority || "B";
+  form.elements.distance.value = distance;
+  form.elements.target.value = stored.target || "";
+  form.elements.duration.value = stored.planned_duration_s == null ? "" : AppFormat.clock(stored.planned_duration_s);
+  form.elements.location.value = stored.location || "";
+  form.elements.course_profile.value = stored.course_profile || "";
+  form.elements.notes.value = stored.notes || "";
+  const result = competitionResult(stored.result);
+  $("#competitionDialogResult").hidden = !result;
+  $("#competitionDialogResult").replaceChildren(...(result ? [competitionFact("Ergebnis", result)] : []));
+  $("#competitionDialogRemove").hidden = !competition;
+  $("#competitionDialogStatus").textContent = "";
+  $("#competitionDialogConfirmStatus").textContent = "";
+  for (const button of $("#competitionDialog").querySelectorAll("button")) button.disabled = false;
+  showCompetitionDialogStep("form");
+}
+
+// The receipt stays in the toast with "Rückgängig" a little longer than a plain message.
+function showCompetitionReceipt(text, change) {
+  toast(text);
+  if (!change?.id) return;
+  const undo = h("button", { type: "button", className: "message-undo" }, "Rückgängig");
+  undo.addEventListener("click", async () => {
+    undo.disabled = true;
+    try {
+      await api("/api/change-history/undo", { method: "POST", body: JSON.stringify({ change_id: change.id, expected_current_hash: change.after_hash }) });
+      await load("/api/bootstrap?local=1", ["profile"]);
+      toast("Zurückgenommen.");
+    } catch (error) {
+      undo.disabled = false;
+      toast(error.message, true);
+    }
+  });
+  $("#toast")?.append(undo);
+  clearTimeout(toast.timer);
+  toast.timer = setTimeout(hideToast, 10000);
+}
+
+async function sendCompetition(path, payload, button, status, receipt) {
+  button.disabled = true;
+  let result;
+  try {
+    result = await api(path, { method: "PUT", body: JSON.stringify(payload) });
+  } catch (error) {
+    if (!isSessionEndedError(error)) status.textContent = error.message;
+    button.disabled = false;
+    return;
+  }
+  $("#competitionDialog").close();
+  await load("/api/bootstrap?local=1", ["profile"]);
+  showCompetitionReceipt(receipt(result), result.change);
+}
+
+function competitionDialogPayload(form) {
+  const duration = competitionDurationSeconds(form.elements.duration.value);
+  if (duration === undefined) return null;
+  const day = form.elements.event_date.value;
+  const time = form.elements.start_time.value;
+  const payload = {
+    name: form.elements.name.value,
+    event_date: day,
+    starts_at_local: time ? `${day}T${time}` : "",
+    priority: form.elements.priority.value,
+    target: form.elements.target.value,
+    planned_duration_s: duration,
+    location: form.elements.location.value,
+    course_profile: form.elements.course_profile.value,
+    notes: form.elements.notes.value,
+  };
+  if (!competitionEdit || form.elements.distance.value !== competitionEdit.distance) payload.distance = competitionDistanceValue(form.elements.distance.value);
+  if (!competitionEdit || form.elements.sport.value !== competitionEdit.sport) payload.sport = form.elements.sport.value;
+  if (competitionEdit) payload.id = competitionEdit.competition.id;
+  return payload;
+}
+
+function bindCompetitionDialog() {
+  const form = $("#competitionDialogForm");
+  if (competitionDialogBound || !form) return;
+  competitionDialogBound = true;
+  form.addEventListener("submit", (event) => {
+    event.preventDefault();
+    const status = $("#competitionDialogStatus");
+    const payload = competitionDialogPayload(form);
+    if (!payload) {
+      status.textContent = "Erwartete Dauer als h:mm:ss oder mm:ss angeben.";
+      return;
+    }
+    void sendCompetition("/api/competitions", payload, $("#competitionDialogSave"), status, () => "Wettkampf gespeichert.");
+  });
+  $("#competitionDialogCancel").addEventListener("click", () => $("#competitionDialog").close());
+  $("#competitionDialogRemove").addEventListener("click", () => {
+    const { name, event_date: day } = competitionEdit.competition;
+    $("#competitionDialogConfirmText").textContent = `„${name || "Wettkampf"}“ am ${dateLabel(day)} wird gelöscht. Bei Intervals.icu verschwindet er erst mit dem nächsten Sync, den du anstößt.`;
+    showCompetitionDialogStep("confirm");
+  });
+  $("#competitionDialogConfirmCancel").addEventListener("click", () => showCompetitionDialogStep("form"));
+  $("#competitionDialogConfirmRemove").addEventListener("click", () => {
+    void sendCompetition("/api/competitions/remove", { id: competitionEdit.competition.id, confirmed: true }, $("#competitionDialogConfirmRemove"), $("#competitionDialogConfirmStatus"),
+      (result) => (result.remote_sync_pending ? "Wettkampf gelöscht. Bei Intervals.icu verschwindet er mit dem nächsten Sync." : "Wettkampf gelöscht."));
+  });
+}
+
+function openCompetitionDialog(competition = null) {
+  bindCompetitionDialog();
+  fillCompetitionDialog(competition);
+  $("#competitionDialog").showModal();
 }
 
 

@@ -530,8 +530,22 @@ function isCurrentNutritionDayLoad(sequence, generation, cacheEpoch, dateInput, 
     && (!expectedDate || dateInput.value === expectedDate);
 }
 
+// The energy card's "gegessen" and its digestion come from its own read: once the day's entries
+// differ from the ones that read was drawn beside (kcal, macros, flags), it reads again, so no
+// card shows the old intake (#3852).
+let energyIntakeKey = null;
+
+function nutritionIntakeKey(day) {
+  return JSON.stringify([day.date, day.total_kcal, day.entries || []]);
+}
+
 function renderNutritionDay(day) {
   document.querySelector("#nutritionDate").value = day.date;
+  const intake = nutritionIntakeKey(day);
+  // Another day is read again by the energy card itself (#3395); only a changed intake of the
+  // same day drops the read here, so a day switch starts one read, not two.
+  if (energyIntakeKey !== null && energyIntakeKey !== intake && JSON.parse(energyIntakeKey)[0] === day.date) resetEnergy();
+  energyIntakeKey = intake;
   renderDiaryEnergy();
   document.querySelector("#nutritionStatus").textContent = day.entry_count ? "" : "Noch keine Mahlzeiten erfasst. Das bedeutet nicht, dass du nichts gegessen hast.";
   const totals = document.querySelector("#nutritionTotals");

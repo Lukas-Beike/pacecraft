@@ -12,6 +12,20 @@ from backend.http_api.route_table import Access, Route, RouteRequest
 SKINFOLDS_PATH = "/api/body/skinfolds"
 WEIGHT_PATH = "/api/body/weight"
 BODY_FAT_PATH = "/api/body/body-fat"
+COMPETITIONS_PATH = "/api/competitions"
+COMPETITION_FIELDS = (
+    "name",
+    "event_date",
+    "starts_at_local",
+    "sport",
+    "priority",
+    "distance",
+    "target",
+    "planned_duration_s",
+    "location",
+    "course_profile",
+    "notes",
+)
 
 
 class AthletePutRoutes:
@@ -29,7 +43,9 @@ class AthletePutRoutes:
         skinfold_service: Callable[[], Any] | None = None,
         weight_service: Callable[[], Any] | None = None,
         body_fat_service: Callable[[], Any] | None = None,
+        competition_service: Callable[[], Any] | None = None,
     ) -> None:
+        self._competition_service = competition_service
         self._weight_service = weight_service
         self._body_fat_service = body_fat_service
         self._profile_service = profile_service
@@ -98,7 +114,92 @@ class AthletePutRoutes:
                     self._remove_body_fat,
                 ),
             ]
+        if self._competition_service is not None:
+            routes += [
+                Route(
+                    "PUT",
+                    COMPETITIONS_PATH,
+                    Access.SESSION_CSRF,
+                    self._save_competition,
+                ),
+                Route(
+                    "PUT",
+                    f"{COMPETITIONS_PATH}/remove",
+                    Access.SESSION_CSRF,
+                    self._remove_competition,
+                ),
+            ]
         return routes
+
+    def _save_competition(self, handler: Any, _request: RouteRequest) -> None:
+        """Create or update one local competition the athlete entered.
+
+        Request: JSON body with `id` (an existing competition's UUID to update,
+        absent to create) and the fields `name`, `event_date` (`YYYY-MM-DD`),
+        `starts_at_local` (`YYYY-MM-DDTHH:MM` on that day, or empty), `sport`
+        (`Ride`, `VirtualRide`, `Run` or `WeightTraining`), `priority` (`A`, `B`
+        or `C`), `distance`, `target`, `planned_duration_s` (whole seconds, 0 to
+        604800, or null), `location`, `course_profile` and `notes`. On an update a
+        field not sent keeps its value and an empty one clears it; `sport` not
+        sent keeps sport, environment and detail. A new competition on the day of
+        a stored one of its sport is created anyway: the athlete chose it. Nothing
+        is written to Intervals.icu; the competition waits for the athlete's own
+        sync.
+
+        Response: 200 `{"status": "created" | "updated", "competition": object,
+        "competitions": object[], "change": object | null}`; `change` is the undo
+        reference (`id`, `entity_type`, `action`, `after_hash`) for
+        `POST /api/change-history/undo`, null when nothing changed.
+
+        Errors: 400 "Jeder Wettkampf benötigt einen Namen."; 400 "Der
+        Startzeitpunkt des Wettkampfs muss ein gültiges Datum sein."; 400
+        "Startzeit und Wettkampftag passen nicht zusammen: ..."; 400 "Die
+        Kategorie für ... muss RACE_A, RACE_B oder RACE_C sein."; 400 "Die
+        Wettkampfdauer muss zwischen 0 und 604800 Sekunden liegen."; 400 "Es können
+        maximal 20 anstehende Wettkämpfe gespeichert werden."; 400 "Ungültige lokale
+        Wettkampf-ID."; 404 "Wettkampf nicht gefunden.".
+
+        The route exists only where the competition service is configured.
+        """
+        service = self._competition_service
+        if service is None:
+            raise AppError(404, NOT_FOUND_ERROR)
+        payload = handler.read_json()
+        if not isinstance(payload, dict):
+            raise AppError(
+                400, "Die Wettkampfdaten müssen als Objekt übergeben werden."
+            )
+        arguments = {key: payload[key] for key in COMPETITION_FIELDS if key in payload}
+        if payload.get("id"):
+            arguments["competition_id"] = payload["id"]
+        else:
+            arguments["new_because"] = "Vom Athleten angelegt"
+        handler.send_json(200, service().save(arguments, with_change=True))
+
+    def _remove_competition(self, handler: Any, _request: RouteRequest) -> None:
+        """Delete one local competition.
+
+        Request: JSON body `{"id": "<competition UUID>", "confirmed": true}`.
+
+        Response: 200 `{"status": "deleted", "competition_id": string,
+        "remote_sync_pending": boolean, "competitions": object[], "change": object
+        | null}`; `remote_sync_pending` is true when a linked Intervals.icu event
+        waits for the athlete's next sync to be removed (nothing is deleted there
+        now); `change` as for `PUT /api/competitions`.
+
+        Errors: 400 "Das Löschen eines Wettkampfs muss bestätigt werden." unless
+        `confirmed` is `true`; 400 "Ungültige lokale Wettkampf-ID."; 404 "Wettkampf
+        nicht gefunden.".
+
+        The route exists only where the competition service is configured.
+        """
+        service = self._competition_service
+        if service is None:
+            raise AppError(404, NOT_FOUND_ERROR)
+        payload = handler.read_json()
+        if not isinstance(payload, dict) or payload.get("confirmed") is not True:
+            raise AppError(400, "Das Löschen eines Wettkampfs muss bestätigt werden.")
+        handler.send_json(200, service().delete(payload.get("id"), with_change=True))
 
     def _body_fats(self, handler: Any, _request: RouteRequest) -> None:
         """The body fats the athlete entered as a percentage, newest first.

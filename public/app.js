@@ -184,3 +184,4 @@ void AppRouter.syncFromHash();
 void bootstrapAuth();
 
 $("#competitionRetry").addEventListener("click", () => load("/api/bootstrap?local=1", ["profile"]));
+$("#competitionAdd").addEventListener("click", () => openCompetitionDialog());

@@ -400,10 +400,10 @@ test("profile invalid JSON and incomplete success preserve the dirty draft", asy
   for (const body of ["{", "<html>proxy error</html>", "{}"] ) {
     await page.route("**/api/profile", (route) => route.request().method() === "PUT"
       ? route.fulfill({ status: 200, contentType: "application/json", body }) : route.continue());
-    await page.getByLabel("Name", { exact: true }).fill("Unsaved fixture athlete");
+    await page.locator("#profileForm").getByLabel("Name", { exact: true }).fill("Unsaved fixture athlete");
     await page.getByRole("button", { name: "Athletenkontext speichern", exact: true }).click();
     await expect(page.locator("#profileDirtyIndicator")).toBeVisible();
-    await expect(page.getByLabel("Name", { exact: true })).toHaveValue("Unsaved fixture athlete");
+    await expect(page.locator("#profileForm").getByLabel("Name", { exact: true })).toHaveValue("Unsaved fixture athlete");
     await expect(page.locator("#toast")).not.toContainText("Athletenprofil gespeichert");
     await page.unroute("**/api/profile");
   }
