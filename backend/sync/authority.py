@@ -130,7 +130,9 @@ class PlanningAuthorityService:
         with self._database_manager.unit_of_work() as db:
             if competition_push_manifest(db) != expected_manifest:
                 raise AppError(
-                    409, "Der Wettkampfbestand hat sich seit der Freigabe geändert."
+                    409,
+                    "Der Wettkampfbestand hat sich seit der Freigabe geändert.",
+                    reason="approval_stale",
                 )
             rows = db.execute(
                 "SELECT id, sync_state, sync_conflict FROM competitions "

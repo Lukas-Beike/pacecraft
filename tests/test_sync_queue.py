@@ -172,6 +172,16 @@ class SyncJobQueueServiceTests(SyncQueueFixtureMixin, unittest.TestCase):
         self.assertEqual(resolved["attempts"], 0)
         self.assertTrue(self.wake_event.is_set())
         self.publisher.publish.assert_not_called()
+        # #3838: a job that failed on a stale approval is not re-run; it is sent anew.
+        with self.manager.unit_of_work() as db:
+            db.execute(
+                "UPDATE sync_jobs SET status='failed', error_class='approval_stale' WHERE id=?",
+                (queued["id"],),
+            )
+        stale = self._app_error(
+            lambda: self.service.resolve(queued["id"], {"action": "retry"})
+        )
+        self.assertEqual((stale.status, stale.reason), (409, "approval_stale"))
 
     @staticmethod
     def _app_error(action):

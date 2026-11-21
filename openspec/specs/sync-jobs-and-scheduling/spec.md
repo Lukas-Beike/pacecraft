@@ -326,12 +326,16 @@ A failed claim SHALL be queued again only when its error class is retryable and 
 - **THEN** the job is retried after 900 s (first failure) and 1800 s (second failure), and fails on the third.
 
 #### Scenario: Final classes
-- **WHEN** the class is `auth_required`, `invalid_configuration`, `client_error`, `unsupported_job`, `invalid_job_request`, `invalid_job_resolution` or `garmin_sdk_required`
+- **WHEN** the class is `auth_required`, `invalid_configuration`, `client_error`, `unsupported_job`, `invalid_job_request`, `invalid_job_resolution`, `garmin_sdk_required` or `approval_stale`
 - **THEN** the job fails at once and is never queued again automatically.
+
+#### Scenario: Stale competition approval
+- **WHEN** a competition sync's approved manifest no longer matches the pending competitions and deletions (reason `approval_stale`)
+- **THEN** the job fails with the class and freshness code `approval_stale`, and an explicit retry of that job is refused with 409 `approval_stale` "Die Freigabe ist veraltet. Bitte die Wettkämpfe neu senden."; a new send approves the current set (#3838).
 
 Detailed contract: HTTP 429 or a rate-limit reason maps to `rate_limited`; 401, 403 or an auth or reconnect reason to `auth_required`; 400 or a not-configured reason to `invalid_configuration`; a network reason or timeout to `network_error`; a busy local database to `database_busy`; a provider HTTP error to `temporary_error`; an unreadable provider answer to `client_error`; every other provider error to `temporary_error`.
 
-Evidence: `backend/sync/jobs.py:retry_delay`, `backend/sync/jobs.py:RETRYABLE_ERROR_CLASSES`, `backend/sync/jobs.py:SyncJobStore.requeue`, `backend/sync/job_outcomes.py:SyncJobOutcomeService.record_failure`, `backend/sync/refresh.py:sync_job_error_class`, `backend/sync/refresh.py:ProviderRefreshTracker.error_code`; `tests/test_sync_jobs.py:test_retry_backoff_is_bounded_and_classified`, `tests/test_sync_job_outcomes.py:test_a_provider_named_wait_delays_the_retry_up_to_the_cap`, `tests/test_sync_job_outcomes.py:test_a_garmin_sdk_requirement_is_final_and_never_requeued`.
+Evidence: `backend/sync/jobs.py:retry_delay`, `backend/sync/jobs.py:RETRYABLE_ERROR_CLASSES`, `backend/sync/jobs.py:SyncJobStore.requeue`, `backend/sync/job_outcomes.py:SyncJobOutcomeService.record_failure`, `backend/sync/refresh.py:sync_job_error_class`, `backend/sync/refresh.py:ProviderRefreshTracker.error_code`; `tests/test_sync_jobs.py:test_retry_backoff_is_bounded_and_classified`, `tests/test_sync_job_outcomes.py:test_a_provider_named_wait_delays_the_retry_up_to_the_cap`, `tests/test_sync_job_outcomes.py:test_a_garmin_sdk_requirement_is_final_and_never_requeued`, `tests/test_sync_refresh.py:test_sync_job_error_class_preserves_job_reasons_and_retry_classes`, `tests/test_sync_queue.py:test_resolve_validates_payload_missing_state_and_success`, `tests/test_sync_competitions.py:test_records_rejects_competition_changes_after_approval`.
 
 ### Requirement: Busy provider deferral
 A claimed job whose provider run reports `already_running` SHALL be queued again for 30 seconds later without charging the attempt of that claim. The deferral SHALL end 30 minutes after the first collision of that job in this process; after that the job SHALL take the normal retry path as a temporary error.

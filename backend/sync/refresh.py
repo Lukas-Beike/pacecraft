@@ -16,7 +16,14 @@ _PASSTHROUGH_JOB_REASONS = frozenset(
         "invalid_job_request",
         "invalid_job_resolution",
         "garmin_sdk_required",
+        # A changed competition set since the approval: final, sent anew (#3838).
+        "approval_stale",
     }
+)
+# Failures only the athlete resolves: no retry time is recorded for them; a
+# stale competition approval is sent anew, not retried (#3838).
+_NO_RETRY_CODES = frozenset(
+    {"auth_required", "invalid_configuration", "approval_stale"}
 )
 # The status a full resync gate rejection records: the provider is deliberately
 # held, which is not a provider error.
@@ -68,7 +75,7 @@ def retry_at(
     max_seconds: int,
     retry_after_seconds: int | None = None,
 ) -> str | None:
-    if current_error_code in {"auth_required", "invalid_configuration"}:
+    if current_error_code in _NO_RETRY_CODES:
         return None
     failures = 1 if current_error_code else 0
     for row in rows:
@@ -80,7 +87,7 @@ def retry_at(
             break
         if row["status"] != "error":
             continue
-        if row["error_code"] in {"auth_required", "invalid_configuration"}:
+        if row["error_code"] in _NO_RETRY_CODES:
             return None
         failures += 1
     if not failures:
@@ -247,8 +254,8 @@ class ProviderRefreshTracker:
     @staticmethod
     def error_code(error: BaseException) -> str:
         reason = str(getattr(error, "reason", "") or "").casefold()
-        if reason == "database_busy":
-            return "database_busy"
+        if reason in {"database_busy", "approval_stale"}:
+            return reason
         status = getattr(error, "status", None)
         message = str(getattr(error, "message", "") or "").casefold()
         if status == 429 or "rate" in reason or "rate limit" in message:

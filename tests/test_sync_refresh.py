@@ -50,6 +50,8 @@ class SyncRefreshTests(unittest.TestCase):
             (ProviderError(reason="unsupported_job"), "unsupported_job"),
             (ProviderError(reason="invalid_job_request"), "invalid_job_request"),
             (ProviderError(reason="invalid_job_resolution"), "invalid_job_resolution"),
+            # #3838: a stale competition approval is final, not a retryable error.
+            (ProviderError(reason="approval_stale", status=409), "approval_stale"),
             (TimeoutError("synthetic timeout"), "network_error"),
             (DatabaseBusyError("writer"), "database_busy"),
             (ProviderError(status=429), "rate_limited"),
@@ -138,15 +140,18 @@ class SyncRefreshTests(unittest.TestCase):
             max_seconds=25,
         )
         self.assertEqual(retry, "2026-01-01T00:00:20+00:00")
-        self.assertIsNone(
-            retry_at(
-                [],
-                current_error_code="auth_required",
-                now=now,
-                base_seconds=10,
-                max_seconds=25,
-            )
-        )
+        # A stale competition approval is sent anew, never retried (#3838).
+        for code in ("auth_required", "approval_stale"):
+            with self.subTest(code=code):
+                self.assertIsNone(
+                    retry_at(
+                        [],
+                        current_error_code=code,
+                        now=now,
+                        base_seconds=10,
+                        max_seconds=25,
+                    )
+                )
 
     def test_retry_at_ignores_skipped_rows_inside_a_failure_streak(self):
         now = datetime(2026, 1, 1, tzinfo=UTC)
