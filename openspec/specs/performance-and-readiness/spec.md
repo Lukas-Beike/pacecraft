@@ -1048,7 +1048,15 @@ The system SHALL derive per chest-strap recording the heart rate where the regre
 Evidence: `backend/canonical/dfa_alpha1.py:first_threshold`, `backend/canonical/dfa_alpha1.py:artifact_flags`, `backend/canonical/dfa_alpha1.py:alpha1`, `backend/canonical/dfa_alpha1.py:detrend`, `backend/performance/first_threshold_estimate.py:first_threshold_estimate`; `tests/test_dfa_alpha1.py:test_the_estimate_is_the_heart_rate_where_alpha1_reaches_075`, `tests/test_dfa_alpha1.py:test_a_steady_run_never_crosses_and_gives_no_estimate`, `tests/test_dfa_alpha1.py:test_too_few_windows_give_no_estimate`, `tests/test_dfa_alpha1.py:test_windows_with_a_fast_heart_rate_step_are_left_out`, `tests/test_first_threshold_estimate.py:test_five_agreeing_sessions_make_a_good_estimate`, `docs/performance-methods/m10-dfa-alpha1-first-threshold.md`.
 
 ### Requirement: Running step test gives both DFA-α1 thresholds for explicit adoption
-The system SHALL offer a running step test (M10 protocol P1, #3833) as a local library template the Coach creates on the athlete's request: 10 min warm-up, 3-minute pace stages rising by 0.5 km/h from 1.5 km/h below the current LT1 pace (9.5 km/h without one) to two stages beyond the current LT2 pace (6 to 10 stages), 10 min cool-down, with the chest-strap, HRV-recording, rested and not-ill preconditions on the unit. For a run paired with a unit from that template it SHALL show LT1 (alpha1 0.75) and LT2 (alpha1 0.5) from the run's stored window series, each with heart rate, the pace at that heart rate from the stage laps and its quality, or "nicht erreicht" with the reason; only a `good` value SHALL be offered for adoption, through the existing first threshold and LT2 adoption paths, never automatically.
+The system SHALL offer a running step test (M10 protocol P1, #3833) as a local library template the Coach creates on the athlete's request. For a completed test it SHALL show LT1 (alpha1 0.75) and LT2 (alpha1 0.5) with heart rate, pace and quality, or "nicht erreicht" with the reason, and offer only a `good` value for adoption through the existing paths, never automatically.
+
+#### Scenario: Protocol steps
+- **WHEN** the step test template is built
+- **THEN** it holds a 10 min warm-up, 3-minute stages rising by 0.5 km/h, each held as a ±3 % pace band, from 1.5 km/h below the current LT1 pace (9.5 km/h without a plausible one) to two stages beyond the current LT2 pace (6 to 10 stages), and a 10 min cool-down; the unit names the chest strap, HRV recording, rested and not-ill preconditions and the place (treadmill at 1 % or a track, the same for every test)
+
+#### Scenario: Separate test rhythm
+- **WHEN** a step test was completed
+- **THEN** it does not count as the last run test, so the critical-speed test reminder keeps its own rhythm
 
 #### Scenario: Protocol from the athlete's paces
 - **WHEN** the Coach creates the step test with an LT1 pace of 5:00 /km and an LT2 pace of 4:40 /km
