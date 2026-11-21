@@ -28,7 +28,12 @@ python scripts/run_browser_tests.py --project all --keep-going
   projection change affects the specs of every view that shows the read, not
   the files the diff touches: grep `e2e/` for the view's data selectors (such
   as `data-body-metric`) and check `e2e/fixture_runtime.py` for seeded rows the
-  change starts or stops serving (#3315). A change to `STEPS` in
+  change starts or stops serving (#3315). A UI change that adds, removes or
+  relabels a segment, control or shared component runs the specs that assert
+  it: grep `e2e/` for the changed ids, classes and visible labels (such as
+  `data-analysis-segment`, `analysis-period-controls` or the button text).
+  Specs far from the change assert exact segment lists and control counts
+  (#3819). A change to `STEPS` in
   `scripts/ui_walk.mjs` also runs `e2e/ui-walk-fixture.spec.js` on at least one
   project: it runs every walk step against the fixture and fails a step the
   fixture cannot satisfy (#3416). `--list` resolves the
