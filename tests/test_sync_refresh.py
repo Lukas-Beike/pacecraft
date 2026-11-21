@@ -50,6 +50,8 @@ class SyncRefreshTests(unittest.TestCase):
             (ProviderError(reason="unsupported_job"), "unsupported_job"),
             (ProviderError(reason="invalid_job_request"), "invalid_job_request"),
             (ProviderError(reason="invalid_job_resolution"), "invalid_job_resolution"),
+            # #3838: a stale competition approval is final, not a retryable error.
+            (ProviderError(reason="approval_stale", status=409), "approval_stale"),
             (TimeoutError("synthetic timeout"), "network_error"),
             (DatabaseBusyError("writer"), "database_busy"),
             (ProviderError(status=429), "rate_limited"),

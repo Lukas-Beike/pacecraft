@@ -80,8 +80,12 @@ class CompetitionSyncReconciler:
                 expected_manifest is not None
                 and competition_push_manifest(db) != expected_manifest
             ):
+                # A stale approval is local, not a provider error, and never
+                # retried: the athlete sends again (#3838).
                 raise AppError(
-                    409, "Der Wettkampfbestand hat sich seit der Freigabe geändert."
+                    409,
+                    "Der Wettkampfbestand hat sich seit der Freigabe geändert.",
+                    reason="approval_stale",
                 )
             tombstones = [
                 dict(row)

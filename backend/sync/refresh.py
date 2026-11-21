@@ -16,6 +16,8 @@ _PASSTHROUGH_JOB_REASONS = frozenset(
         "invalid_job_request",
         "invalid_job_resolution",
         "garmin_sdk_required",
+        # A changed competition set since the approval: final, sent anew (#3838).
+        "approval_stale",
     }
 )
 # The status a full resync gate rejection records: the provider is deliberately
@@ -247,8 +249,8 @@ class ProviderRefreshTracker:
     @staticmethod
     def error_code(error: BaseException) -> str:
         reason = str(getattr(error, "reason", "") or "").casefold()
-        if reason == "database_busy":
-            return "database_busy"
+        if reason in {"database_busy", "approval_stale"}:
+            return reason
         status = getattr(error, "status", None)
         message = str(getattr(error, "message", "") or "").casefold()
         if status == 429 or "rate" in reason or "rate limit" in message:

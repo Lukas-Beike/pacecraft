@@ -127,6 +127,10 @@ class SyncJobInvalidStateError(RuntimeError):
     """Raised when a job cannot make the requested state transition."""
 
 
+class SyncJobStaleApprovalError(SyncJobInvalidStateError):
+    """Raised when a retry would re-run an approval the data has outgrown."""
+
+
 class SyncJobTransitionError(SyncJobInvalidStateError):
     """Raised when a guarded job transition is invalid or lost a race."""
 
@@ -1302,10 +1306,12 @@ class SyncJobStore:
         now = self._now()
         with self._database_manager.unit_of_work() as db:
             job = db.execute(
-                "SELECT status FROM sync_jobs WHERE id=?", (job_id,)
+                "SELECT status, error_class FROM sync_jobs WHERE id=?", (job_id,)
             ).fetchone()
             if job is None:
                 raise SyncJobNotFoundError(job_id)
+            if job["error_class"] == "approval_stale":
+                raise SyncJobStaleApprovalError(job_id)
             if job["status"] not in {"failed", "partial"}:
                 raise SyncJobInvalidStateError(
                     "Only failed or partial sync jobs can be resolved."

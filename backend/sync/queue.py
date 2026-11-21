@@ -17,6 +17,7 @@ from backend.sync.jobs import (
     SyncJobInvalidOperationError,
     SyncJobInvalidStateError,
     SyncJobNotFoundError,
+    SyncJobStaleApprovalError,
     SyncJobStore,
     normalize_sync_job_request,
 )
@@ -156,6 +157,12 @@ class SyncJobQueueService:
                 404,
                 "Synchronisationsjob nicht gefunden.",
                 reason="sync_job_not_found",
+            ) from exc
+        except SyncJobStaleApprovalError as exc:
+            raise AppError(
+                409,
+                "Die Freigabe ist veraltet. Bitte die Wettkämpfe neu senden.",
+                reason="approval_stale",
             ) from exc
         except SyncJobInvalidStateError as exc:
             raise AppError(
