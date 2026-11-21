@@ -609,6 +609,11 @@ class QualityBaselineTests(unittest.TestCase):
                 '    r"(?:\'[^\']*\'|\\"[^\\"]*\\"|[^\\s\'\\";&|()<>])+"  # NOSONAR',
                 '    r"|[;&|()<>\\n]|[^\\S\\n]+|[\'\\"]"',
                 ")",
+                # ... but not on a later line of the pattern, as in Sonar.
+                "LATER = re.compile(",
+                '    r"(?:\'[^\']*\'|\\"[^\\"]*\\"|[^\\s\'\\";&|()<>])+"',
+                '    r"|[;&|()<>\\n]|[^\\S\\n]+|[\'\\"]"  # NOSONAR',
+                ")",
             ]
         )
         found = self.python_findings({"scripts/sample.py": source}, regexes=True)
@@ -622,6 +627,7 @@ class QualityBaselineTests(unittest.TestCase):
                 ("eslint", "scripts/sample.py", 2, rule),
                 ("eslint", "scripts/sample.py", 4, rule),
                 ("eslint", "scripts/sample.py", 7, "sonarjs/regex-complexity"),
+                ("eslint", "scripts/sample.py", 12, "sonarjs/regex-complexity"),
             ],
         )
         # Without Node (CI's quality job) the step is skipped like ESLint.

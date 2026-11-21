@@ -558,7 +558,8 @@ def _regex_patterns(tree: ast.AST) -> list[tuple[int, str, range]]:
         )
         literal = given[0] if given else None
         if isinstance(literal, ast.Constant) and isinstance(literal.value, str):
-            lines = range(literal.lineno, (literal.end_lineno or literal.lineno) + 1)
+            # Sonar reports on the line where the literal starts (Gitar, #3810).
+            lines = range(literal.lineno, literal.lineno + 1)
             found.extend([] if verbose else [(node.lineno, literal.value, lines)])
     return found
 
