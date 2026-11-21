@@ -50,7 +50,7 @@
         <ul>
           <li><b>Garmin and Wahoo in</b><span>Activities, sleep, HRV and thresholds</span></li>
           <li><b>Intervals.icu out</b><span>Only when you ask, never read</span></li>
-          <li><b>Encrypted database</b><span>SQLCipher on your own server</span></li>
+          <li><b>Encrypted database</b><span>SQLCipher, verified nightly backups</span></li>
           <li><b>Open source</b><span>AGPL-3.0, built for one athlete</span></li>
         </ul>
       </div>
@@ -62,11 +62,11 @@
         <p class="section-lede">One place for the plan, the sessions behind it and the conversation about both.</p>
         <div class="features">
           <article class="feature"><span class="tag">COACH</span><h3>Chat that knows your week</h3><p>Ask in plain language or with photos and files. Every change the coach makes comes with a receipt and an undo.</p></article>
-          <article class="feature"><span class="tag">PLANNING</span><h3>Local calendar and library</h3><p>Plan running, cycling and strength. Replanning changes future sessions only after you approve a preview.</p></article>
-          <article class="feature"><span class="tag">ANALYSIS</span><h3>Load, performance, recovery</h3><p>Fitness, fatigue and form, current thresholds, sleep and HRV trends, and every session down to full-resolution charts.</p></article>
-          <article class="feature"><span class="tag">METHODS</span><h3>Computed on your server</h3><p>Eight local performance methods, each with an evidence card that lists its limits and sources.</p></article>
+          <article class="feature"><span class="tag">PLANNING</span><h3>Local calendar and library</h3><p>Plan running, cycling and strength, and manage your competitions. Check-ins track complaints by body area; a recurring one reaches planning as a note. Replanning changes future sessions only after you approve a preview.</p></article>
+          <article class="feature"><span class="tag">ANALYSIS</span><h3>Load, performance, recovery</h3><p>Fitness, fatigue and form, thresholds, sleep and HRV trends, strength top sets, all-time records and the history of each recurring route, over 4 weeks to 12 months.</p></article>
+          <article class="feature"><span class="tag">METHODS</span><h3>Computed on your server</h3><p>Fourteen local performance methods, each with an evidence card that lists its limits and sources. They include an early infection hint from night values and a running step test for both thresholds.</p></article>
           <article class="feature"><span class="tag">STRENGTH</span><h3>Named exercises, on your watch</h3><p>Structured strength workouts with named exercises, sent to your Garmin watch when you ask.</p></article>
-          <article class="feature"><span class="tag">NUTRITION</span><h3>Diary with context</h3><p>Local food databases, saved meals and products, and your Garmin energy use next to what you ate.</p></article>
+          <article class="feature"><span class="tag">NUTRITION</span><h3>Diary with context</h3><p>Local food databases, saved meals and products with default times by meal type, and your Garmin energy use next to what you ate.</p></article>
           <article class="feature"><span class="tag">CONTEXT</span><h3>Weather and calendar</h3><p>Weather, air quality, pollen and your private calendar shape what the coach plans.</p></article>
           <article class="feature"><span class="tag">SOURCES</span><h3>Every value keeps its source</h3><p>A workout recorded by several devices becomes one session. Values are labelled Garmin, Wahoo, derived or AI estimate.</p></article>
         </div>
@@ -76,14 +76,14 @@
     <section class="screens" id="screens">
       <div class="wrap">
         <h2>The app</h2>
-        <p class="section-lede">An installable, offline-capable web app, built for the phone first. Five areas: Coach, Calendar, Analysis, Nutrition, More.</p>
+        <p class="section-lede">An installable, offline-capable web app, built for the phone first. Meals, weight, body fat and session feedback entered offline wait on the phone and are sent when the server is reachable. Five areas: Coach, Calendar, Analysis, Nutrition, More.</p>
         <ul class="shots">
           <li><figure class="shot"><img src="assets/screens/coach.png" width="780" height="1400" loading="lazy" alt="Coach chat with a question about the training week and the coach's answer."><figcaption><b>Coach</b>Ask, plan and change the week in one conversation.</figcaption></figure></li>
-          <li><figure class="shot"><img src="assets/screens/calendar.png" width="780" height="1400" loading="lazy" alt="Calendar showing one week with completed and planned sessions and their workout profiles."><figcaption><b>Calendar</b>Planned and completed sessions, week by week.</figcaption></figure></li>
-          <li><figure class="shot"><img src="assets/screens/load.png" width="780" height="1404" loading="lazy" alt="Analysis, load tab: training focus split into easy aerobic, high aerobic and anaerobic, and a weekly load chart."><figcaption><b>Load</b>Training focus and weekly load.</figcaption></figure></li>
-          <li><figure class="shot"><img src="assets/screens/performance.png" width="780" height="1404" loading="lazy" alt="Analysis, performance tab: current running and cycling thresholds, estimated values marked as estimates."><figcaption><b>Performance</b>Current thresholds, estimates marked as such.</figcaption></figure></li>
-          <li><figure class="shot"><img src="assets/screens/recovery.png" width="780" height="1404" loading="lazy" alt="Analysis, recovery tab: training readiness and sleep duration charts for the last 14 days."><figcaption><b>Recovery</b>Readiness and sleep over time.</figcaption></figure></li>
-          <li><figure class="shot"><img src="assets/screens/nutrition.png" width="780" height="1404" loading="lazy" alt="Nutrition diary: calories, carbohydrates, protein and fat for one day, with Garmin energy use below."><figcaption><b>Nutrition</b>Diary next to your energy use.</figcaption></figure></li>
+          <li><figure class="shot"><img src="assets/screens/calendar.png" width="780" height="1400" loading="lazy" alt="Calendar, week view with the week's totals and its completed and planned sessions."><figcaption><b>Calendar</b>Planned and completed sessions, week by week.</figcaption></figure></li>
+          <li><figure class="shot"><img src="assets/screens/load.png" width="780" height="1400" loading="lazy" alt="Analysis, Belastung tab: training focus split into easy aerobic, high aerobic and anaerobic, with the period selector."><figcaption><b>Load</b>Training focus and weekly load.</figcaption></figure></li>
+          <li><figure class="shot"><img src="assets/screens/running.png" width="780" height="1400" loading="lazy" alt="Analysis, Laufen tab: current running thresholds and the period selector 4 Wochen, 3, 6 and 12 Monate."><figcaption><b>Running</b>Current thresholds, one period selector.</figcaption></figure></li>
+          <li><figure class="shot"><img src="assets/screens/records.png" width="780" height="1400" loading="lazy" alt="Analysis, Rekorde tab: farthest and longest ride and the all-time power profile, each with its date."><figcaption><b>Records</b>All-time bests and single-activity records.</figcaption></figure></li>
+          <li><figure class="shot"><img src="assets/screens/nutrition.png" width="780" height="1400" loading="lazy" alt="Nutrition diary: calories, carbohydrates, protein and fat for one day."><figcaption><b>Nutrition</b>Diary next to your energy use.</figcaption></figure></li>
         </ul>
         <p class="note">Screenshots show the standard synthetic demo data, not a real athlete. The app interface is currently German.</p>
       </div>
@@ -92,7 +92,7 @@
     <section id="data">
       <div class="wrap">
         <h2>Data in, plans out</h2>
-        <p class="section-lede">Training data comes from Garmin and Wahoo. Plans and history live in your database. Intervals.icu is written only when you ask and never read; only the coach conversation goes to your configured OpenAI endpoint.</p>
+        <p class="section-lede">Training data comes from Garmin and Wahoo. Plans and history live in your database. Intervals.icu is written only when you ask and never read; only the coach conversation goes to the OpenAI or Claude endpoint you select.</p>
         <div class="flow">
           <div><h3>Garmin · Wahoo</h3><p>Activities, sleep, HRV, daily health and thresholds are read and bundled into one session per workout.</p></div>
           <div class="arrow" aria-hidden="true">→</div>
@@ -105,8 +105,8 @@
           <tbody>
             <tr><th scope="row">Garmin</th><td><span class="role in">In</span>Activities, details, sleep, HRV, daily health, thresholds. Official Personal API key, optional login for the rest.</td></tr>
             <tr><th scope="row">Wahoo</th><td><span class="role in">In</span>Activities and FIT files, cycling FTP, weight.</td></tr>
-            <tr><th scope="row">Intervals.icu</th><td><span class="role out">Out</span>Workouts, competitions, nutrition and thresholds, only on explicit synchronization. Never read.</td></tr>
-            <tr><th scope="row">OpenAI</th><td><span class="role">Coach</span>Responses API, or a compatible endpoint you configure. The key stays on the server.</td></tr>
+            <tr><th scope="row">Intervals.icu</th><td><span class="role out">Out</span>Workouts, competitions (one button sends them), nutrition and thresholds, only on explicit synchronization. Never read.</td></tr>
+            <tr><th scope="row">OpenAI, Claude</th><td><span class="role">Coach</span>The model you select: OpenAI Responses API (or a compatible endpoint) or the Anthropic Messages API, no fallback between them. Keys stay on the server.</td></tr>
             <tr><th scope="row">Open-Meteo, DWD, ICS</th><td><span class="role in">In</span>Weather, air quality, pollen and calendar constraints.</td></tr>
           </tbody>
         </table>

@@ -331,7 +331,11 @@ A failed claim SHALL be queued again only when its error class is retryable and 
 
 #### Scenario: Stale competition approval
 - **WHEN** a competition sync's approved manifest no longer matches the pending competitions and deletions (reason `approval_stale`)
-- **THEN** the job fails with the class and freshness code `approval_stale`, and an explicit retry of that job is refused with 409 `approval_stale` "Die Freigabe ist veraltet. Bitte die Wettkämpfe neu senden."; a new send approves the current set (#3838).
+- **THEN** the job fails with the class and freshness code `approval_stale`, and an explicit retry of that job is refused with 409 `approval_stale` "Die Freigabe ist veraltet. Bitte neu senden."; a new send approves the current set (#3838).
+
+#### Scenario: Stale nutrition approval
+- **WHEN** a nutrition export's approved days changed since the approval (reason `approval_stale`; a malformed approval is `invalid_job_request`)
+- **THEN** the job fails with that class, is not retried automatically, and an explicit retry is refused like a stale competition approval (#3891, `tests/test_nutrition_api_and_sync.py`). A plan push records per-unit errors under the final class `plan_push_error` instead.
 
 Detailed contract: HTTP 429 or a rate-limit reason maps to `rate_limited`; 401, 403 or an auth or reconnect reason to `auth_required`; 400 or a not-configured reason to `invalid_configuration`; a network reason or timeout to `network_error`; a busy local database to `database_busy`; a provider HTTP error to `temporary_error`; an unreadable provider answer to `client_error`; every other provider error to `temporary_error`.
 
