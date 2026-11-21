@@ -138,7 +138,8 @@ test("structured complaints show one line per area with days and severity", () =
     "1 Tag krank",
   ]);
   // Pain days without a structured complaint keep their count (review on #3766).
-  const textOnly = weekReviewCheckinTiles({ ...checkins, pain_days: 6 })[1].children[1].children.map(textOf);
+  // Gitar on #3806: counted by the server, also when a structured day has no pain text.
+  const textOnly = weekReviewCheckinTiles({ ...checkins, pain_text_days: 2 })[1].children[1].children.map(textOf);
   assert.equal(textOnly.at(-2), "2 Tage Schmerz (Text)");
   // Worse is the "down" (red) direction, better the "up" one.
   assert.equal(lines[0].children[1].dataset.direction, "down");

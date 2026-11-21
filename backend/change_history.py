@@ -476,6 +476,8 @@ _FIELDS_ADDED_TO_AUDIT: dict[str, tuple[tuple[str, ...], ...]] = {
     ),
     "planned_unit": (("starts_at_local",), FOCUS_KEYS, (TEMPLATE_ID,)),
     "workout_library": (FOCUS_KEYS,),
+    # #3766: structured complaints beside the check-in.
+    "checkin": (("complaints",),),
     # Competitions gained their location with schema v29 (#2803).
     "competition": (("location",),),
     # Gap fills of stored foods were recorded before the origin marks were.

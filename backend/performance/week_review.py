@@ -314,6 +314,12 @@ def _checkins(
         "pain_days": sum(
             reports_complaint(row.get("pain")) for row in rows if row.get("pain")
         ),
+        # Pain days told only in words, without a structured complaint (#3766).
+        "pain_text_days": sum(
+            reports_complaint(row.get("pain"))
+            for row in rows
+            if row.get("pain") and not row.get("complaints")
+        ),
         "illness_days": sum(
             reports_complaint(row.get("illness")) for row in rows if row.get("illness")
         ),
