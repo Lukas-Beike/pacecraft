@@ -653,7 +653,7 @@ The system SHALL require authentication for local activity/analysis reads, inclu
 
 #### Scenario: Refresh windows
 - **WHEN** an area is refreshed
-- **THEN** the window ends today: Garmin reads 42 days for `sessions`, 90 days for `performance`, the requested 14 or 84 days (default 14) for `recovery` and the requested days (default 84) for `load`; Wahoo reads 42 days for `sessions` and 90 days for `performance`.
+- **THEN** the window ends today: Garmin reads 42 days for `sessions`, 90 days for `performance`, the requested 28 or 91 days (default 28) for `recovery` and the requested days (default 91) for `load`; Wahoo reads 42 days for `sessions` and 90 days for `performance`.
 
 #### Scenario: Refresh result
 - **WHEN** the refresh returns (body in `docs/api-routes.md`)

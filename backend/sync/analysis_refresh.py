@@ -105,9 +105,9 @@ class AnalysisRefreshService:
         elif area == "performance":
             window_days = 90
         elif area == "recovery":
-            window_days = days or 14
+            window_days = days or 28
         else:
-            window_days = days or 84
+            window_days = days or 91
         start = end - timedelta(days=window_days - 1)
         return self._garmin_refresh().refresh_analysis(area, start, end)
 
@@ -115,7 +115,7 @@ class AnalysisRefreshService:
 def _validate_request(area: str, days: int | None) -> None:
     if area not in _SOURCE_NAMES:
         raise AppError(400, "Ungültiger Analysebereich.")
-    if days is not None and (area not in {"load", "recovery"} or days not in {14, 84}):
+    if days is not None and (area not in {"load", "recovery"} or days not in {28, 91}):
         raise AppError(400, "Ungültiger Analysezeitraum.")
 
 

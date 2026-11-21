@@ -62,7 +62,7 @@ test("@responsive view refresh targets its active area and ignores stale views",
   await expect(page.locator("#nutritionRefreshStatus")).toBeEmpty();
 
   expect(posts).toEqual([
-    { path: "/api/analysis/refresh", body: { area: "load", days: 84 } },
+    { path: "/api/analysis/refresh", body: { area: "load", days: 91 } },
     { path: "/api/nutrition/refresh", body: { area: "diary", date: "2026-10-19" } },
     { path: "/api/nutrition/refresh", body: { area: "week", days: 182 } },
     { path: "/api/nutrition/refresh", body: { area: "week", days: 28 } },

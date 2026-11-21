@@ -41,7 +41,7 @@ handler's docstring. Regenerate it with
 | GET | `/api/analysis/running-dynamics` | Session | no | Running dynamics against the athlete's own runs at the same pace (#2829). |
 | GET | `/api/analysis/strength` | Session | no | Analyse › Kraft: top sets per exercise over twelve weeks (#3764). |
 | GET | `/api/analysis/training-records` | Session | no | Analysis projection: power profiles or training records. |
-| GET | `/api/analysis/trend-history` | Session | no | A longer trend period with the previous year's same weeks (#3765). |
+| GET | `/api/analysis/trend-history` | Session | no | The history of a longer trend period: 3, 6 or 12 months. |
 | GET | `/api/analysis/trends` | Session | no | Pace at equal heart rate and recurring sessions, as the Coach reads them (#2802). |
 | GET | `/api/analysis/week-review` | Session | no | The local review of one ISO week against the week before (#2805). |
 | GET | `/api/auth/status` | Public | no | Current login status. |
@@ -327,13 +327,13 @@ Errors: none beyond the common ones.
 
 ### `GET /api/analysis/trend-history`
 
-Request: query `days`: `14`, `84`, `182` or `364`; no body. Read only
-when the athlete picks a longer period or switches on "Vorjahr".
+Request: query `days`: `91`, `182` or `365`; no body. Read only when the
+athlete picks 6 or 12 months (3 Monate is served by the performance state).
 
-Response: 200 with `start`, `end`, `days`, `previous_year_days` (364),
-`metrics` (the development metrics' dated Garmin values from
-`start` minus 364 days to `end`, shaped like the performance history's)
-and `personal_recovery` (its baselines' `history` over the same span).
+Response: 200 with `start`, `end`, `days`, `history` (shaped like
+`performance.history` over the span, with one body window named after it,
+for example `182d`), `training_focus` (that many days) and
+`personal_recovery` (its baselines' `history` over the same span).
 Stored values only; no provider request.
 
 Errors: 400 "Ungültiger Analysezeitraum." for another `days`.
@@ -444,8 +444,8 @@ exceeds the adaptive TDEE's mean band over at least 4 shared windows,
 else null), `outlined` (`best`, else the source with the lowest
 `mean_error_kcal`: the one source the diary outlines, `goal` prices and
 Verlauf names for every period, #3613), `fit` (`shared_windows`, `windows`, `min_windows`,
-`reference_band_kcal`), `fit_scale` (Verlauf's periods `28d`, `91d` and
-`182d`, #3704: `days`, `own_days`, `span_start`, `span_end`, `own_kcal`,
+`reference_band_kcal`), `fit_scale` (Verlauf's periods `28d`, `91d`,
+`182d` and `365d`, #3704: `days`, `own_days`, `span_start`, `span_end`, `own_kcal`,
 `own_band_kcal`, `sources`, `weeks`, `weeks_with_data` and `deficit`, the
 deficit card of that period with the fields below, null when its weigh-ins
 do not suffice), `strength` (the day's strength sessions with `rpe`, local first, the
@@ -510,8 +510,8 @@ null when it is finished or names no end): `as_of` (`HH:MM`, its wellness
 end) and `behind` (true when a session of the day ends after it, so the
 summary's steps and active kcal leave it out; every row's everyday is
 then not there yet, in `pending_parts`). `fit_scale` holds `28d` and
-`91d`; `period=182d` adds `182d` with the 6 months' own read, which no
-other request pays for (#3711).
+`91d`; `period=182d` or `period=365d` adds that period (6 or 12 months)
+with its own read, which no other request pays for (#3711).
 
 Errors: 400 "Das Datum fehlt oder ist ungültig."; 400 "Der Tag liegt in
 der Zukunft.".
@@ -1612,7 +1612,7 @@ Errors: none beyond the common ones.
 Request: JSON body `{"area": string, "date": "YYYY-MM-DD", "days": integer}` and
 no other key. `area` is `diary`, `week`, `body` or `products`. `date` is
 optional: today for `diary` and `body`, yesterday for `week`; for `week` and
-`body` it must not lie in the future. `days` is `28`, `91` or `182` for `week`
+`body` it must not lie in the future. `days` is `28`, `91`, `182` or `365` for `week`
 (default `28`) and `14` or `84` for `body` (default `84`), and ends at `date`. `diary` refreshes the Garmin energy
 expenditure of that day, `week` the Garmin daily totals, `body` the Garmin
 weight; `products` only reads the local products and ignores `date` and `days`.
@@ -1627,8 +1627,8 @@ products). `week` and `body`: the Garmin result, `status` (`ok` or `partial`),
 
 Errors: 400 "Ungültiger Ernährungsbereich." for another `area`; 400 "Ungültiger
 Anfrageinhalt." for another key; 400 "Ungültiges Datumsformat '{value}'.
-Erwartet wird YYYY-MM-DD." for an invalid `date`; 400 "Der Zeitraum muss 28, 91
-oder 182 Tage umfassen." (`week`) or "... 14 oder 84 Tage ..." (`body`); 400 "Das Datum darf nicht in der Zukunft liegen."; 503
+Erwartet wird YYYY-MM-DD." for an invalid `date`; 400 "Der Zeitraum muss 28, 91, 182
+oder 365 Tage umfassen." (`week`) or "... 14 oder 84 Tage ..." (`body`); 400 "Das Datum darf nicht in der Zukunft liegen."; 503
 `provider_busy` "Garmin wird bereits aktualisiert."
 
 ### `GET /api/nutrition/session-fuelling`
@@ -1661,7 +1661,7 @@ deleted `session_id`.
 
 ### `GET /api/nutrition/week`
 
-Request: query `days` (integer, default `7`; `7`, `28`, `91` or `182`).
+Request: query `days` (integer, default `7`; `7`, `28`, `91`, `182` or `365`).
 
 Response: 200 `{"ok": true, "start_date", "end_date", "days", "averages",
 "balance_kcal", "balance_days", "expenditure_source"}`. Each item of `days`
@@ -1672,7 +1672,7 @@ fields; unknown values are `null`. `averages` gives `{"value", "days"}` per
 field.
 
 Errors: 400 "Ungültiger Zeitraum." for a non-integer `days`; 400 "Zeitraum muss
-7, 28, 91 oder 182 Tage umfassen." for another number.
+7, 28, 91, 182 oder 365 Tage umfassen." for another number.
 
 ### `POST /api/nutrition/yazio/check`
 

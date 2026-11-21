@@ -1,8 +1,8 @@
 # M5 — Short- and long-term session-RPE load
 
 - **Card:** M5
-- **Card version:** 1
-- **Method ID:** smoothed-session-load v1 (`backend/performance/smoothed_load.py`, #1432)
+- **Card version:** 2
+- **Method ID:** smoothed-session-load v2 (`backend/performance/smoothed_load.py`, #1432)
 - **Status:** implemented as an estimate on the M1 daily load
 - **Classification:** model estimate
 - **Literature checked:** 2026-10-24
@@ -54,8 +54,12 @@ measured recovery times.
 
 Daily M1 AU of all sports, athlete-local days, from the first recorded session
 in the history window through the period end. The window starts 168 days (4τ)
-before the period, but never later than 251 days before today, so Coach and
+before the period, but never later than 258 days before today, so Coach and
 load tab seed the same day and agree for the same date.
+Version 2 (#3839) moved that limit from 251 to 258 days, so every period up to
+91 days (4 Wochen and 3 Monate) seeds on the same day. The athlete approved it
+on 2026-11-21 ("Ja, einheitlich"); on a 400-day daily history the values move
+by at most 0.9 AU (0.23 %), and on the golden history not at all.
 Local RPE first, a labelled provider RPE only without it (card M1).
 
 ## Measurement error and uncertainty
@@ -96,7 +100,7 @@ when treated as zero, which this method does not do.
 | Warm-up | 2τ days | product assumption | Leaves about 14 % of the start error. |
 | Rest day | 0 AU for a past day without a session | product assumption | Needed for the decay; a missed sync is indistinguishable from a rest day. |
 | Gap day | unrated or invalid session: state held, no value | product assumption | A missing rating is unknown, not zero (card M1). |
-| History window | 168 days before the period, at the latest 251 days before today | product assumption | Warm-up of 84 days plus 84 days again: an established athlete has values from the first day, start error below 2 %. |
+| History window | 168 days before the period, at the latest 258 days before today | product assumption | Warm-up of 84 days plus 84 days again: an established athlete has values from the first day, start error below 2 %. |
 | Model form | `E_t = exp(−1/τ) E_(t−1) + (1 − exp(−1/τ)) L_t` | source | R17 exponential response. |
 
 ## Allowed statements
@@ -133,7 +137,7 @@ when treated as zero, which this method does not do.
 | --- | --- | --- | --- |
 | `METRIC_ID` | `'smoothed_session_load'` | `backend/performance/smoothed_load.py` |  |
 | `METHOD_ID` | `'smoothed-session-load'` | `backend/performance/smoothed_load.py` |  |
-| `METHOD_VERSION` | `1` | `backend/performance/smoothed_load.py` |  |
+| `METHOD_VERSION` | `2` | `backend/performance/smoothed_load.py` |  |
 | `UNIT` | `'AU'` | `backend/performance/smoothed_load.py` |  |
 | `EVIDENCE_CARD` | `'docs/performance-methods/m5-smoothed-session-load.md'` | `backend/performance/smoothed_load.py` |  |
 | `SHORT_TAU_DAYS` | `7` | `backend/performance/smoothed_load.py` |  |

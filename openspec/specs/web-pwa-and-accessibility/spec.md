@@ -387,7 +387,7 @@ The client SHALL present domain-provided planning, performance, activity, and eq
 
 #### Scenario: Loading, empty, missing and failed reads
 - **WHEN** an analysis or session read is pending, has no data yet, lacks a single value, or fails
-- **THEN** a pending read shows a busy status line; an install without data shows one empty card per analysis tab with one action (the connections when no Garmin or Wahoo source is connected, "12 Wochen anzeigen" when a source is connected and the tab shows the 14-day period, otherwise a sync); a missing value reads "nicht erfasst" in a muted style; a failed or 15-second timed-out read shows a "Konnte nicht geladen werden." alert with an "Erneut versuchen" action and neither a permanent loading line nor the empty card.
+- **THEN** a pending read shows a busy status line; an install without data shows one empty card per analysis tab with one action (the connections when no Garmin or Wahoo source is connected, "3 Monate anzeigen" when a source is connected and the tab shows the 4-week period, otherwise a sync); a missing value reads "nicht erfasst" in a muted style; a failed or 15-second timed-out read shows a "Konnte nicht geladen werden." alert with an "Erneut versuchen" action and neither a permanent loading line nor the empty card.
 
 #### Scenario: Chart units and labels
 - **WHEN** an analysis chart plots daily values, weekly sums, or weekly means
@@ -431,7 +431,7 @@ Evidence:
 - `e2e/activity-details.spec.js::@responsive calendar details expand Garmin-style charts`
 - `e2e/activity-details.spec.js::@responsive calendar details show running step frequency and cycling cadence`
 - `e2e/analysis-info.spec.js::@responsive latest measurement stays visible without inventing measurements in empty weeks`
-- `e2e/analysis-info.spec.js::@responsive recovery uses independent scales, honest coverage over exactly fourteen days`
+- `e2e/analysis-info.spec.js::@responsive recovery uses independent scales, honest coverage over exactly four weeks`
 - `e2e/analysis-info.spec.js::@responsive steps and floors show per-day units, whole numbers and the plotted basis`
 - `e2e/calendar-detail-pane.spec.js::@responsive a planned unit lists its steps with zone and target range instead of the workout notation`
 - `e2e/calendar-detail-pane.spec.js::@responsive Löschen asks once in the card, deletes a planned unit and Rückgängig brings it back`
@@ -609,7 +609,7 @@ The Analyse tab SHALL show the segments Laufen, Radfahren, Kraft, Belastung, Erh
 
 #### Scenario: Empty card
 - **WHEN** every container of the active segment is empty
-- **THEN** one empty card shows the title "Noch keine Laufdaten", "Noch keine Raddaten", "Noch keine Belastungsdaten" or "Noch keine Erholungsdaten"; with a connected source and the 14-day period of Belastung or Erholung the cause is "Keine Daten in den letzten 14 Tagen." with the action "12 Wochen anzeigen", with a connected source otherwise "Noch keine Daten abgeglichen." with "Jetzt abgleichen", and without a source "Garmin oder Wahoo ist nicht verbunden." with "Anbindung einrichten".
+- **THEN** one empty card shows the title "Noch keine Laufdaten", "Noch keine Raddaten", "Noch keine Belastungsdaten" or "Noch keine Erholungsdaten"; with a connected source and the 4-week period of Belastung or Erholung the cause is "Keine Daten in den letzten 4 Wochen." with the action "3 Monate anzeigen", with a connected source otherwise "Noch keine Daten abgeglichen." with "Jetzt abgleichen", and without a source "Garmin oder Wahoo ist nicht verbunden." with "Anbindung einrichten".
 
 #### Scenario: Slow or failed read
 - **WHEN** an Analyse report or detail read takes longer than 15 seconds or fails
@@ -798,7 +798,11 @@ The chat SHALL follow new content only while the reader is within 48 px of the e
 - **WHEN** a reply starts while following
 - **THEN** its start is placed 16 px below the top and later text keeps the newest line 12 px above the composer
 
-Evidence: `public/coach.js::chatIsNearBottom`; `public/coach.js::chatScrollMovedUp`; `public/coach.js::updateChatJumpLabel`; `public/coach.js::appendHistoryPageButton`; `public/coach.js::mergeChatMessages`; `public/coach.js::scrollChatToResponseStart`. Tests: `e2e/coach-follow-latest.spec.js::a scrollbar drag upward during a stream stops following without a wheel gesture`; `e2e/coach-history-anchor.spec.js::automatic older chat loading keeps focus on the focused message action`.
+#### Scenario: Composer grows while following
+- **WHEN** the quick messages appear after more than six hours away (start, return from the background, or return to the Coach from another view) while the reader follows the newest message
+- **THEN** the newest message is scrolled back above the taller composer, and a reader who scrolled up keeps their position (#3862)
+
+Evidence: `public/shared.js::renderQuickMessageTemplates`; `public/shared.js::restoreRouteScroll`; `e2e/coach-message-cache.spec.js::the Coach opens and stays at the newest message through the fresh load and a view change`; `public/coach.js::chatIsNearBottom`; `public/coach.js::chatScrollMovedUp`; `public/coach.js::updateChatJumpLabel`; `public/coach.js::appendHistoryPageButton`; `public/coach.js::mergeChatMessages`; `public/coach.js::scrollChatToResponseStart`. Tests: `e2e/coach-follow-latest.spec.js::a scrollbar drag upward during a stream stops following without a wheel gesture`; `e2e/coach-history-anchor.spec.js::automatic older chat loading keeps focus on the focused message action`.
 
 ### Requirement: Proposal card contract
 
@@ -849,7 +853,7 @@ Evidence: `public/plan-views.js::plannedDayNoteSpecs`; `public/plan-views.js::re
 Every analysis chart SHALL pad its value axis by 12 % of the span (at least a unit-specific minimum), label only the latest, highest, lowest and first reading, and offer "Werte ansehen" with a table of the plotted values. Each day with a value SHALL be one inspectable marker; the chart is one tab stop on the latest day and arrow keys, Home and End move between days.
 
 #### Scenario: Weekly values
-- **WHEN** the 12-week period is shown
+- **WHEN** a period of 3, 6 or 12 months is shown
 - **THEN** each chart plots one value per week: the last value for acute and smoothed load, fitness and threshold pace, the sum for training time and session-RPE load, the mean for steps and floors, the median for VO2max, and every dated value for FTP
 
 #### Scenario: Info popover

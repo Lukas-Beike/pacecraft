@@ -1,6 +1,6 @@
 import unittest
 from datetime import UTC, date, datetime, timedelta
-from unittest.mock import Mock, patch
+from unittest.mock import MagicMock, Mock, patch
 
 from support import (
     GOLDEN_FIRST,
@@ -9,6 +9,7 @@ from support import (
     payload_digest,
 )
 
+from backend.errors import AppError
 from backend.http_api.public_performance import (
     PublicFeedbackStateService,
     PublicPerformanceStateService,
@@ -23,6 +24,98 @@ from backend.performance.training_focus import training_focus
 
 
 class PublicPerformanceStateTests(unittest.TestCase):
+    def trend_service(self, today):
+        profile_service = Mock(get=Mock(return_value={"timezone": "UTC"}))
+        garmin_payload_service = Mock(
+            sync_status_in=Mock(return_value=GarminSyncStatus())
+        )
+        source = MagicMock()
+        service = PublicPerformanceStateService(
+            garmin_payload_service,
+            profile_service,
+            Mock(),
+            lambda: today,
+            source,
+        )
+        return service, source
+
+    def test_a_longer_period_reads_its_own_history_on_demand(self):
+        today = date(2026, 11, 20)
+        service, _source = self.trend_service(today)
+        for days, activity_days in ((91, 365), (182, 365), (365, 533)):
+            with (
+                self.subTest(days=days),
+                patch(
+                    "backend.http_api.public_performance.read_performance_inputs",
+                    return_value=CanonicalPerformanceInputs(),
+                ) as read,
+                patch(
+                    "backend.http_api.public_performance.with_read_status",
+                    side_effect=lambda _source, _db, inputs: inputs,
+                ),
+            ):
+                result = service.trend_history(days)
+            start = today - timedelta(days=days - 1)
+            self.assertEqual(
+                (result["start"], result["end"], result["days"]),
+                (start.isoformat(), today.isoformat(), days),
+            )
+            self.assertNotIn("previous_year_days", result)
+            self.assertEqual(
+                {
+                    "start",
+                    "end",
+                    "days",
+                    "history",
+                    "training_focus",
+                    "personal_recovery",
+                },
+                set(result),
+            )
+            history = result["history"]
+            # The same shape as the base history, over the span, with its own body window.
+            self.assertEqual(
+                (history["start"], history["days"], len(history["load"]["points"])),
+                (start.isoformat(), days, days),
+            )
+            # 3 Monate is the base read, with both of its windows.
+            self.assertEqual(
+                list(history["body"]["windows"]),
+                ["28d", "91d"] if days == 91 else [f"{days}d"],
+            )
+            self.assertEqual(
+                {
+                    name: len(history[name]["days"])
+                    for name in (
+                        "session_rpe_load",
+                        "smoothed_session_load",
+                        "local_fitness_fatigue",
+                    )
+                },
+                dict.fromkeys(
+                    (
+                        "session_rpe_load",
+                        "smoothed_session_load",
+                        "local_fitness_fatigue",
+                    ),
+                    days,
+                ),
+            )
+            self.assertEqual(result["training_focus"]["start"], start.isoformat())
+            # The sessions reach back to the smoothed curves' seed day.
+            self.assertEqual(read.call_args.kwargs["history_days"], days)
+            self.assertEqual(read.call_args.kwargs["activity_days"], activity_days)
+
+    def test_another_period_is_refused(self):
+        service, _source = self.trend_service(date(2026, 11, 20))
+        for days in (None, 14, 84, 90, 364, 366):
+            with self.subTest(days=days), self.assertRaises(AppError) as raised:
+                service.trend_history(days)
+            self.assertEqual(
+                (raised.exception.status, str(raised.exception)),
+                (400, "Ungültiger Analysezeitraum."),
+            )
+
     def test_performance_state_projects_existing_snapshot_and_garmin_reads(self):
         garmin = GarminSyncStatus.from_state({"synced_at": "2026-09-22T09:00:00Z"})
         profile = {"timezone": "Europe/Berlin"}
@@ -56,17 +149,17 @@ class PublicPerformanceStateTests(unittest.TestCase):
         )
         self.assertEqual(
             (len(load["days"]), load["period"]["end"], load["sessions"]),
-            (84, today.isoformat(), []),
+            (91, today.isoformat(), []),
         )
         smoothed = result["performance"]["history"].pop("smoothed_session_load")
         self.assertEqual(
             (smoothed["status"], smoothed["reason"], len(smoothed["days"])),
-            ("insufficient_data", "no_sessions", 84),
+            ("insufficient_data", "no_sessions", 91),
         )
         fitness = result["performance"]["history"].pop("local_fitness_fatigue")
         self.assertEqual(
             (fitness["status"], fitness["reason"], len(fitness["days"])),
-            ("insufficient_data", "no_load", 84),
+            ("insufficient_data", "no_load", 91),
         )
         self.assertEqual(
             result,
@@ -77,19 +170,19 @@ class PublicPerformanceStateTests(unittest.TestCase):
                         garmin, today, canonical=EMPTY_PERFORMANCE_INPUTS
                     ),
                     "training_focus_periods": {
-                        "fortnight": training_focus(
+                        "28d": training_focus(
                             garmin,
                             today,
                             "Europe/Berlin",
                             activities=(),
-                            days=14,
+                            days=28,
                         ),
-                        "twelveWeeks": training_focus(
+                        "91d": training_focus(
                             garmin,
                             today,
                             "Europe/Berlin",
                             activities=(),
-                            days=84,
+                            days=91,
                         ),
                     },
                 },
@@ -238,9 +331,10 @@ class PublicPerformanceStateTests(unittest.TestCase):
                 "local_fitness_fatigue",
             )
         }
+        # 91 days (3 Monate); the first 84 days' own digest (the earlier window) is unchanged.
         self.assertEqual(
             payload_digest(curves),
-            "ac2253bd254b038ee356651a728bb92c11ecfee5c869fcfc4e25348e4305ecd8",
+            "532c775a9d3517c3e09d20c86c8b56b65d6168aa640f5868cb2d6fb893dda979",
         )
 
 

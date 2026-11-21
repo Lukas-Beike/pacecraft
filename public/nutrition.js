@@ -328,15 +328,15 @@ function renderNutritionHistoryPeriod() {
     root.append(analysisPeriodControls("Zeitraum für Ernährung", nutritionHistoryPeriod, (period) => {
       nutritionHistoryPeriod = period;
       void loadNutrition();
-    }, VERLAUF_PERIODS.map((item) => [item.key, item.label])));
+    }));
   }
   root.querySelectorAll("button").forEach((button, index) => {
-    button.setAttribute("aria-pressed", String(VERLAUF_PERIODS[index].key === nutritionHistoryPeriod));
+    button.setAttribute("aria-pressed", String(ANALYSIS_PERIODS[index].key === nutritionHistoryPeriod));
   });
   document.querySelector("#nutritionRefreshButton").setAttribute("aria-label", `Ernährung aktualisieren: Verlauf, ${verlaufPeriod().label}`);
 }
 
-// Up to 4 weeks show a row per day; 3 and 6 months a row per week, so the list stays short (#3704).
+// Up to 4 weeks show a row per day; 3, 6 and 12 months a row per week, so the list stays short (#3704).
 function nutritionChartDays(days) {
   if (days.length <= 28) return days;
   return Array.from({ length: Math.ceil(days.length / 7) }, (_, index) => {

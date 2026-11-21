@@ -1371,7 +1371,7 @@ class FitScaleTests(unittest.TestCase):
         # 6 Monate come with their own inputs, asked for by Verlauf (#3711).
         view = energy_view(given, [window(END, 2700.0)], health, fit_inputs=given)
         self.assertEqual(
-            ["28d", "91d", "182d"],
+            ["28d", "91d", "182d", "365d"],
             list(view["fit_scale"]),
         )
         short, long = view["fit_scale"]["28d"], view["fit_scale"]["91d"]

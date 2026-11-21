@@ -67,10 +67,12 @@ def run_main(module, argv, runner, git=None):
 class CheckChangedTests(unittest.TestCase):
     def test_runs_the_steps_in_order_with_the_base(self):
         runner = FakeRun()
-        code, out, _ = run_main(check_changed, ["--base", "origin/main"], runner)
+        code, out, err = run_main(check_changed, ["--base", "origin/main"], runner)
         self.assertEqual(code, 0)
         steps = [line.split()[1] for line in out.splitlines()]
         self.assertEqual(steps, ["tests", "compile", "quality"])
+        # #3865: each step is named on stderr as it starts, so a long run is not silent.
+        self.assertEqual(err.splitlines(), [f"running {step}" for step in steps])
         self.assertTrue(all(line.startswith("ok ") for line in out.splitlines()))
         first = runner.calls[0]
         self.assertEqual(first[0], sys.executable)
@@ -379,10 +381,12 @@ class FormatChangedTests(unittest.TestCase):
         with mock.patch.object(
             check_changed, "format_changed", return_value=["backend/x.py"]
         ) as formatted:
-            code, out, _err = run_main(check_changed, ["--fix-format"], runner)
+            code, out, err = run_main(check_changed, ["--fix-format"], runner)
         self.assertEqual(code, 0)
         formatted.assert_called_once_with("origin/develop")
         self.assertIn("formatted 1 changed Python file: backend/x.py", out)
+        # The format is named first, then each step (#3865).
+        self.assertEqual(err.splitlines()[:2], ["running format", "running tests"])
         # Without the flag nothing is formatted.
         with mock.patch.object(check_changed, "format_changed") as formatted:
             run_main(check_changed, [], FakeRun())

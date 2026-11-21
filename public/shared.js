@@ -160,7 +160,9 @@ function restoreRouteScroll(mainRoute, returningToChat, shouldFocusPlannedToday)
     if (!state.chatFollowLatest) state.chatResponseScrollPending = false;
     if (state.chatResponseScrollPending) scrollChatToResponseStart();
     else if (state.chatInitialScrollPending || state.chatCacheSyncing) scrollChatToLatest();
-    else if (!returningToChat || !restoreChatScrollPosition()) scrollChatToLatest();
+    // A reader who followed the newest message returns to it: the stored position predates
+    // a composer that grew meanwhile, such as with the quick messages (#3862).
+    else if (!returningToChat || state.chatFollowLatest || !restoreChatScrollPosition()) scrollChatToLatest();
     if (state.chatProposalRefreshPending) void refreshChatProposalsInBackground(state.chatContentVersion);
     return;
   }
@@ -194,7 +196,12 @@ function notePwaActivity() {
 
 function renderQuickMessageTemplates() {
   const root = $("#quickMessageTemplates");
-  if (root) root.hidden = !state.quickTemplatesVisible || state.busy;
+  const hidden = !state.quickTemplatesVisible || state.busy;
+  if (!root || root.hidden === hidden) return;
+  root.hidden = hidden;
+  // Shown after the jump to the newest message, the taller composer would cover it; a
+  // reader following the newest message stays there (#3862). Hiding them covers nothing.
+  if (!hidden && state.chatFollowLatest && !state.busy) scrollChatToLatest();
 }
 
 function updatePwaActivity() {
