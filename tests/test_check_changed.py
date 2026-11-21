@@ -164,7 +164,9 @@ class CheckChangedTests(unittest.TestCase):
         cases = [
             (["openspec/specs/performance-and-readiness/spec.md"], True),
             (["openspec/config.yaml"], True),
-            (["backend/x.py", "docs/operations.md"], False),
+            # Spec evidence names tests: a renamed test can break it.
+            (["tests/test_step_test.py"], True),
+            (["backend/x.py", "docs/operations.md", "tests/a.test.cjs"], False),
         ]
         for changed, expected in cases:
             with self.subTest(changed=changed):
@@ -175,7 +177,9 @@ class CheckChangedTests(unittest.TestCase):
                     for call in runner.calls
                     if "spec_validate.py" in " ".join(call)
                 ]
-                self.assertEqual(len(specs), int(expected))
+                self.assertEqual(
+                    specs, [[sys.executable, "scripts/spec_validate.py"]] * expected
+                )
                 self.assertEqual("ok specs" in out, expected)
                 self.assertEqual(code, 0)
         runner = FakeRun(failing=("scripts/spec_validate.py",))
@@ -288,6 +292,8 @@ class CheckChangedTests(unittest.TestCase):
         # Node tests follow the follow-up diff: no JS in it, none run.
         self.assertIn(("merge-base", "green1", "HEAD"), calls)
         self.assertNotIn("node-tests", out)
+        # The spec validation follows the whole branch against --base (#3880).
+        self.assertIn(("merge-base", "origin/main", "HEAD"), calls)
 
     def test_tests_since_refuses_head_an_unknown_or_a_rebased_commit(self):
         for argv, git_kwargs, reason in (
