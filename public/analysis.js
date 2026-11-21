@@ -1592,9 +1592,10 @@ async function openWeightDialog() {
   form.elements.date.value = timezoneDateKey(state.data?.profile?.timezone, new Date());
   document.querySelector("#weightDialogStatus").textContent = "";
   for (const button of form.querySelectorAll("button")) button.disabled = false;
-  document.querySelector("#weightDialog").showModal();
+  // Read before opening, so a late answer never overwrites what the athlete typed (#3829).
   try { weightRead = await api("/api/body/weight"); } catch { weightRead = { entries: [] }; }
   fillWeightDialog();
+  document.querySelector("#weightDialog").showModal();
 }
 
 // The receipt of a body change (#3403): what happened locally and at Garmin Connect, and the

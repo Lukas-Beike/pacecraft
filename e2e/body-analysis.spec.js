@@ -150,3 +150,23 @@ test("@responsive the profile holds no weight or body fat and Körper still ente
   await expect(overview.getByRole("button", { name: "Gewicht eintragen" })).toBeVisible();
   await expect(overview.getByRole("button", { name: "Körperfett eintragen" })).toBeVisible();
 });
+
+// #3829: the Gewicht dialog reads the day before it opens, so a slow read never wipes a typed weight.
+test("@responsive a weight typed right after the dialog opens is kept on a slow connection", async ({ page }) => {
+  await page.goto("/#nutrition/body");
+  const row = page.locator("tr[data-metric='weight_kg']");
+  await expect(row).toBeVisible();
+  await page.context().route("**/api/body/weight", async (route) => {
+    if (route.request().method() === "GET") await new Promise((resolve) => setTimeout(resolve, 1500));
+    await route.fallback();
+  });
+  await row.getByRole("button", { name: "Gewicht eintragen" }).click();
+  const dialog = page.locator("#weightDialog");
+  await expect(dialog).toBeVisible();
+  await page.locator("#weightDialogKg").fill("77.7");
+  // Longer than the delayed read: a fill after opening would have cleared the field by now.
+  await page.waitForTimeout(2000);
+  await expect(page.locator("#weightDialogKg")).toHaveValue("77.7");
+  await page.context().unroute("**/api/body/weight");
+  await dialog.getByRole("button", { name: "Abbrechen" }).click();
+});
