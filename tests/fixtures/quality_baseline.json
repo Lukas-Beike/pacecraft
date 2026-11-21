@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "base": "5124ae6b4e494f92157880cdcb5236f31a883089",
+  "base": "071baa2b1fd2d7ffd696eeae611dc96c14f4e9cd",
   "versions": {
     "ruff": "0.17.5",
     "mypy": "2.4.1"
@@ -1595,6 +1595,126 @@
       "path": "tests/navigation-state.test.cjs",
       "code": "sonarjs/no-nested-template-literals",
       "message_sha256": "97c9d913a81eae95a369b395aaae2aff303a4cfa89fdcd11cee7d0ee40a3bcaa"
+    },
+    {
+      "tool": "eslint",
+      "path": "scripts/hooks/guard_private_paths.py",
+      "code": "sonarjs/regex-complexity",
+      "message_sha256": "110c4cb3679cbc222e46c6d88ee0749affe5e8ca5767444cca954de32f3733ba"
+    },
+    {
+      "tool": "eslint",
+      "path": "backend/weather/recommendations.py",
+      "code": "sonarjs/regex-complexity",
+      "message_sha256": "2bd23d3a690d8e1fe000d5933efa0b28dc38690a15b9089c8757a09883b0a763"
+    },
+    {
+      "tool": "eslint",
+      "path": "scripts/hooks/guard_resolve_thread.py",
+      "code": "sonarjs/regex-complexity",
+      "message_sha256": "2f6d5590bc3f6e6189dc1a7308e1df410a83c478ab92d722b36cc1e8a6917df2"
+    },
+    {
+      "tool": "eslint",
+      "path": "tests/provider_coupling.py",
+      "code": "sonarjs/regex-complexity",
+      "message_sha256": "3bb8b51af075215f9c6bdb77cafd65a863428eb850401e88c31e65ae82dbe360"
+    },
+    {
+      "tool": "eslint",
+      "path": "scripts/prod_diagnostics.py",
+      "code": "sonarjs/regex-complexity",
+      "message_sha256": "6b0a99e5566f1cd2c37a43df02710a4b76efdade403951a85ccc4c00f8bc517a"
+    },
+    {
+      "tool": "eslint",
+      "path": "scripts/hooks/guard_shell_backslashes.py",
+      "code": "sonarjs/regex-complexity",
+      "message_sha256": "6c703abf818ebca77d6ae6a82b56096e11042f163edb08aa8d1207ddd5e8a748"
+    },
+    {
+      "tool": "eslint",
+      "path": "backend/coach/write_gate.py",
+      "code": "sonarjs/regex-complexity",
+      "message_sha256": "8866b62264d03f9689ceea3d2dce60703087007f752878e6cc580e4e636d4000"
+    },
+    {
+      "tool": "eslint",
+      "path": "scripts/gh_cli.py",
+      "code": "sonarjs/regex-complexity",
+      "message_sha256": "9117bd35a3831099712556380f43b3c5dbc858b68a9607ea7e2ff7e5a18b0d77"
+    },
+    {
+      "tool": "eslint",
+      "path": "backend/providers/wahoo_plan_mapping.py",
+      "code": "sonarjs/regex-complexity",
+      "message_sha256": "935e4d5e7bb872335dd8c20e93efc04f26585122c908a0850f67e42de0f6ad5f"
+    },
+    {
+      "tool": "eslint",
+      "path": "scripts/prod_diagnostics.py",
+      "code": "sonarjs/regex-complexity",
+      "message_sha256": "a10e1fa19586916e0ee634e54df46b95ec2b75509aa1e0362a35dc3577bfe51b"
+    },
+    {
+      "tool": "eslint",
+      "path": "scripts/hooks/guard_private_paths.py",
+      "code": "sonarjs/regex-complexity",
+      "message_sha256": "b5978930e26f5b96300d7ca33dfc7e1437d73ae3ad7324b1ddfed25efe13d910"
+    },
+    {
+      "tool": "eslint",
+      "path": "backend/planning/session_focus.py",
+      "code": "sonarjs/regex-complexity",
+      "message_sha256": "c57ccd4aaa854eea98f7506ae7b41231a10d3c835b5dabec72ea943a3d0ae20b"
+    },
+    {
+      "tool": "eslint",
+      "path": "scripts/prod_diagnostics.py",
+      "code": "sonarjs/regex-complexity",
+      "message_sha256": "c5896be3e93ba8ce97599da7571835d01a643ad759c5ab0c159f43ad9a733347"
+    },
+    {
+      "tool": "eslint",
+      "path": "backend/coach/write_gate.py",
+      "code": "sonarjs/regex-complexity",
+      "message_sha256": "cf91c4ab550de4b64f53b5642f8a2a3e434a948ea7284e379e9aa43e012ac621"
+    },
+    {
+      "tool": "eslint",
+      "path": "backend/coach/write_gate.py",
+      "code": "sonarjs/regex-complexity",
+      "message_sha256": "d898906c8291a94b2d019af5d0492f8c12a76d55c61623c2eba7c2ce8d408f00"
+    },
+    {
+      "tool": "eslint",
+      "path": "tests/coach_live_eval.py",
+      "code": "sonarjs/regex-complexity",
+      "message_sha256": "dc56e59e51be245ef9ad2fa3243e766655db163f11b0f1f682bd1f9da8f88783"
+    },
+    {
+      "tool": "eslint",
+      "path": "scripts/hooks/guard_resolve_thread.py",
+      "code": "sonarjs/regex-complexity",
+      "message_sha256": "e14566fc8b2667005a8064f231031b58eeca8b5912c6d62e0e670a4fa6279dfd"
+    },
+    {
+      "tool": "eslint",
+      "path": "tests/test_athlete_clock.py",
+      "code": "sonarjs/regex-complexity",
+      "message_sha256": "f401916718a2bc4877f2d121c794c1e86b1bec3efc1ca13655890fd10fad8c30"
+    },
+    {
+      "tool": "eslint",
+      "path": "tests/test_css_design_tokens.py",
+      "code": "sonarjs/regex-complexity",
+      "message_sha256": "f95c9ca5c0c76254115ea0ea29735d822cd3a5600aa290fe7b306be21aa11e5c"
+    },
+    {
+      "tool": "eslint",
+      "path": "scripts/prod_diagnostics.py",
+      "code": "sonarjs/regex-complexity",
+      "message_sha256": "fbc6ce3a4d23eeabe85161bd47db4a9c53b9db3523d8e201b946f221432b9f7d"
     },
     {
       "tool": "eslint",
