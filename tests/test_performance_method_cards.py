@@ -338,35 +338,55 @@ def version_problems(card: str) -> list[str]:
 # A changed number fails until the version is bumped (results change) or the pin
 # is renewed with the same version and a reason in the PR (a refactor).
 METHOD_NUMBER_PINS = {
-    "backend/activities/stream_zones.py": (1, "0997f5e886678d39"),
+    "backend/activities/stream_zones.py": (1, "82316f71249b825e"),
     "backend/athlete/body_composition.py": (5, "8d13a81b8c901c9c"),
-    "backend/canonical/dfa_alpha1.py": (3, "4286312ba066a4bd"),
-    "backend/nutrition/energy_balance.py": (26, "a054d0f51be16ada"),
-    "backend/performance/activity_energy.py": (8, "edef3472db64d376"),
+    "backend/canonical/dfa_alpha1.py": (3, "15f9cecd3bd14787"),
+    "backend/nutrition/energy_balance.py": (26, "133a07e43fdc5174"),
+    "backend/performance/activity_energy.py": (8, "29737ead83232fbf"),
     "backend/performance/canonical_session_analysis.py": (9, "5d5d195ef4d50e06"),
     "backend/performance/critical_power.py": (2, "c13f8b44f8df8be3"),
-    "backend/performance/fitness_fatigue.py": (1, "8f68b25e6f7f86ec"),
-    "backend/performance/form_drift.py": (1, "04ff2082470ab62b"),
-    "backend/performance/local_tss.py": (7, "c7357e59590e32ec"),
+    "backend/performance/fitness_fatigue.py": (1, "6c4b32888188ff3f"),
+    "backend/performance/form_drift.py": (1, "974248a978784012"),
+    "backend/performance/local_tss.py": (7, "7da9af9913a0ec5c"),
     "backend/performance/morning_battery_service.py": (1, "b52b0cf1b6965a40"),
-    "backend/performance/power_profile.py": (3, "01461fc5bbb73763"),
+    "backend/performance/power_profile.py": (3, "ea4854aa8f5c3b8c"),
     "backend/performance/session_metrics.py": (5, "57491cb2710b5ca7"),
     "backend/performance/session_rpe_load.py": (2, "7e3368a32fa787cc"),
-    "backend/performance/smoothed_load.py": (2, "bf7aaed9ffb6b292"),
-    "backend/planning/race_plan.py": (1, "dcd0ec3402986c2f"),
+    "backend/performance/smoothed_load.py": (2, "aac35004aec8956b"),
+    "backend/planning/race_plan.py": (1, "5c7d87b6d937b018"),
     "backend/sync/activity_routes.py": (1, "301570f9ec84277f"),
     "backend/weather/activity_weather_store.py": (2, "50ba7552149ae3ae"),
 }
 
 
 def method_numbers(source: str) -> str:
-    """A digest of a module's int and float literals in source order."""
+    """A digest of a module's int and float literals, with their sign, in source order."""
+
+    def number(node: ast.AST) -> bool:
+        return (
+            isinstance(node, ast.Constant)
+            and isinstance(node.value, (int, float))
+            and not isinstance(node.value, bool)
+        )
+
+    tree = ast.parse(source)
+    # `-0.5` is a negation around `0.5`: count it as one signed value, so a flipped
+    # sign changes the digest (Gitar).
+    negated = {
+        id(node.operand): node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.UnaryOp)
+        and isinstance(node.op, ast.USub)
+        and number(node.operand)
+    }
     found = sorted(
-        (node.lineno, node.col_offset, repr(node.value))
-        for node in ast.walk(ast.parse(source))
-        if isinstance(node, ast.Constant)
-        and isinstance(node.value, (int, float))
-        and not isinstance(node.value, bool)
+        (
+            node.lineno,
+            node.col_offset,
+            ("-" if id(node) in negated else "") + repr(node.value),
+        )
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Constant) and number(node)
     )
     text = " ".join(value for _, _, value in found)
     return hashlib.sha256(text.encode()).hexdigest()[:16]
@@ -404,6 +424,7 @@ class PerformanceMethodCardTests(unittest.TestCase):
                     "change, then renew this pin; a refactor renews it with the "
                     "same version and says why in the PR",
                 )
+        self.assertNotEqual(method_numbers("x = 0.5"), method_numbers("x = -0.5"))
         # The change that motivated it: M5's seed limit back at 251 days.
         source = (ROOT / "backend/performance/smoothed_load.py").read_text("utf-8")
         self.assertIn("timedelta(days=258)", source)
