@@ -224,7 +224,9 @@ class WeekReviewProjectionTests(unittest.TestCase):
         self.assertEqual(review["recovery"]["hrv"]["mean"], 61.0)
         self.assertEqual(review["load"]["this_week"]["sessions"], 0)
 
-    def test_pain_told_only_in_words_is_counted_beside_the_structured_days(self) -> None:
+    def test_pain_told_only_in_words_is_counted_beside_the_structured_days(
+        self,
+    ) -> None:
         # Gitar on #3806: a structured day without pain text must not hide a text-only day.
         review = week_review(
             monday=MONDAY,

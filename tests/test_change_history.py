@@ -745,7 +745,9 @@ class ChangeHistoryTests(unittest.TestCase):
         )
         self.assertIn("complaints", change_history.audit_projection_fields("checkin"))
         self.assertIn(
-            change_history.audit_hash(change_history.audit_projection("checkin", before)),
+            change_history.audit_hash(
+                change_history.audit_projection("checkin", before)
+            ),
             change_history.accepted_audit_hashes("checkin", value),
         )
 
