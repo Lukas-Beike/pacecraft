@@ -6,7 +6,7 @@ import sqlite3
 import unittest
 from datetime import date
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 from urllib.error import URLError
 
 from remote_link_fixtures import create_remote_links_table
@@ -673,6 +673,14 @@ class CompetitionSyncReconcilerTests(unittest.TestCase):
         self.assertIs(raised.exception, error)
         self.assertEqual(self.reconciler.records()[0][0]["id"], "tombstone")
         self.assertEqual(client.upsert_calls, [])
+        # A failing read of an event outside the fetched window is a delete step (#3838).
+        client.events = []
+        client.get_event = Mock(side_effect=AppError(502, "x", upstream_status=503))
+        with self.assertRaises(AppError):
+            service.sync()
+        with self.database_manager.manager.reader() as db:
+            kinds = summarize_competition_sync(db)["failure_kinds"]
+        self.assertEqual(kinds, {"delete.http_503": 1})
 
     def test_adopted_past_paired_race_is_reported_and_not_deleted(self):
         self.add_labelled_tombstone(

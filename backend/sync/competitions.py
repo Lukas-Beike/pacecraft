@@ -36,7 +36,7 @@ _COMPETITIONS = CompetitionRepository()
 # The content-free record of the current competition sync failure (#3838).
 FAILURE_KEY = "intervals_competition_sync_failure"
 _SLUG = re.compile(r"[a-z0-9_]{1,60}")
-_KIND = re.compile(r"[A-Za-z0-9_]{1,80}")
+_KIND = re.compile(r"\w{1,80}", re.ASCII)
 
 
 def _is_not_found(error: AppError) -> bool:
@@ -387,10 +387,11 @@ class CompetitionSyncService:
                 local_rows, tombstones, remote_events
             )
             outbound = list(plan["outbound"])
+            # The deletion check may read remote events; it belongs to the delete step.
+            step = "delete"
             delete_identifiers, skipped_deletions = self._checked_deletions(
                 client, tombstones, calendar_events
             )
-            step = "delete"
             deleted_remote = 0
             if tombstones:
                 if delete_identifiers:
