@@ -15,6 +15,11 @@ ENTITY_TYPE = "checkin"
 TAGS_KEY = "checkin_tags:"
 DAY_STATUS_KEY = "checkin_day_status:"
 COMPLAINTS_KEY = "checkin_complaints:"
+# The day the athlete answered the infection hint (M14) with "Mir geht's gut"
+# (#3821); the hint stays hidden on that day only.
+INFECTION_HINT_DISMISSED_KEY = "infection_hint_dismissed"
+# The illness text of the answer "Ich bin krank" to the infection hint (#3821).
+INFECTION_HINT_ILLNESS = "Infekt-Hinweis bestätigt"
 # Structured complaints (athlete decision on #3766): a fixed body-area list, the
 # side and a severity of 0-10, beside the free pain text.
 COMPLAINT_AREAS = (
@@ -310,26 +315,66 @@ class CheckinService:
             return None
         return {field: record[field] for field in change_history.UNDO_REFERENCE_FIELDS}
 
-    def add_illness_in_transaction(self, db: Any, illness: str, marker: str) -> None:
+    def add_illness_in_transaction(
+        self, db: Any, illness: str, marker: str = "", today: date | None = None
+    ) -> dict[str, str] | None:
         """Add an illness text and note marker to today's check-in, with history.
 
         Existing answers stay; the new text joins an existing illness text.
+        Returns the undo reference, or None when nothing changed.
         """
-        today = self._today()
+        today = today or self._today()
         day = today.isoformat()
         existing = self._repository.get(db, day) or {}
         known = str(existing.get("illness") or "").strip()
+        # A "keine"/"nein" answer is no illness text to keep (#3821).
+        known = known if reports_complaint(known) else ""
         combined = known or illness
         if known and illness and illness not in known:
             combined = f"{known}; {illness}"
         notes = str(existing.get("notes") or "").strip()
-        if marker not in notes:
+        if marker and marker not in notes:
             notes = f"{notes} · {marker}".strip(" ·")
         checkin = normalize_checkin(
             {**existing, "checkin_date": day, "illness": combined, "notes": notes},
             today=today,
         )
-        self._write(db, checkin)
+        return self._write(db, checkin)
+
+    def report_illness(self, day: Any) -> dict[str, Any]:
+        """Record illness for today from the answer "Ich bin krank" (#3821).
+
+        The same check-in record a check-in or Coach turn writes, with its undo
+        reference; planning then pauses as for any reported illness. ``day`` is
+        the day of the answered note; only today is written.
+        """
+        today = self._answer_day(day)
+        with self._manager.unit_of_work() as db:
+            change = self.add_illness_in_transaction(
+                db, INFECTION_HINT_ILLNESS, today=today
+            )
+        return self._saved(today.isoformat(), change)
+
+    def dismiss_infection_hint(self, day: Any) -> dict[str, Any]:
+        """Hide today's infection hint after "Mir geht's gut" (#3821).
+
+        A hint on a later day shows again; nothing else changes. ``day`` is the
+        day of the answered note; only today is written.
+        """
+        today = self._answer_day(day).isoformat()
+        with self._manager.unit_of_work() as db:
+            self._set_kv(db, INFECTION_HINT_DISMISSED_KEY, today)
+        return {"status": "ok", "dismissed": today}
+
+    def _answer_day(self, day: Any) -> date:
+        """Today, when the answered note is today's; a stale view is refused."""
+        today = self._today()
+        if day != today.isoformat():
+            raise AppError(
+                409,
+                "Der Infekt-Hinweis gilt für einen anderen Tag. Bitte die Ansicht neu laden.",
+            )
+        return today
 
     def _save_normalized(
         self,
@@ -349,13 +394,17 @@ class CheckinService:
                         if field not in clear_fields and checkin[field] in (None, ""):
                             checkin[field] = existing[field]
             change = self._write(db, checkin)
+        return self._saved(checkin["checkin_date"], change, checkin)
+
+    def _saved(
+        self,
+        day: str,
+        change: dict[str, str] | None,
+        fallback: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
         saved = next(
-            (
-                item
-                for item in self.list(365)
-                if item["checkin_date"] == checkin["checkin_date"]
-            ),
-            checkin,
+            (item for item in self.list(365) if item["checkin_date"] == day),
+            fallback,
         )
         return {"status": "ok", "checkin": saved, "change": change}
 

@@ -16,7 +16,7 @@ read. A new key needs no entry: it appears here when its write is added.
   `profile` is only set when absent.
 
 <!-- BEGIN GENERATED KEYS -->
-100 keys and 25 key patterns; `<value>` stands for a value the code computes.
+101 keys and 25 key patterns; `<value>` stands for a value the code computes.
 
 | Key | Written by | Deleted by | Export | Reset at start | Purge |
 | --- | --- | --- | --- | --- | --- |
@@ -79,6 +79,7 @@ read. A new key needs no entry: it appears here when its write is added.
 | `garmin_tokenstore_state` | backend/privacy.py:PrivacyDeleteService.delete<br>backend/sync/garmin_login.py:GarminTokenStore.clear | backend/sync/garmin_login.py:GarminTokenStore.store<br>backend/sync/garmin_login.py:GarminTokenStore.write_back | no | - | rewritten |
 | `gps_tracks_enabled` | backend/privacy.py:PrivacyDeleteService.delete<br>backend/privacy.py:PrivacyDeleteService.set_gps_tracks | - | yes | - | rewritten |
 | `idempotency:<value>` | backend/http_api/idempotency.py:IdempotencyStore.store | backend/http_api/idempotency.py:IdempotencyStore.store | yes | - | - |
+| `infection_hint_dismissed` | backend/athlete/checkins.py:CheckinService.dismiss_infection_hint | backend/athlete/checkins.py:CheckinService.dismiss_infection_hint | yes | - | - |
 | `intervals_competition_sync_failure` | backend/sync/competitions.py:CompetitionSyncService._record_failure<br>backend/sync/competitions.py:CompetitionSyncService.sync | - | yes | - | - |
 | `intervals_last_output_failed_at` | backend/sync/executor.py:IntervalsJobAdapter.execute | - | yes | - | - |
 | `intervals_last_output_ok_at` | backend/sync/executor.py:IntervalsJobAdapter.execute<br>backend/sync/state.py:SyncStateRepository.adopt_intervals_export_time | - | yes | - | - |

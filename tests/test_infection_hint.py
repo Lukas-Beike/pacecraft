@@ -10,13 +10,14 @@ from __future__ import annotations
 import unittest
 from dataclasses import replace
 from datetime import date, timedelta
+from types import SimpleNamespace
 
-from canonical_recovery_support import recovery_observation
+from canonical_recovery_support import RecordingReader, recovery_observation
 
 from backend.canonical.records import MeasurementContext, Observation
 from backend.canonical.vocabulary import MetricKind
 from backend.performance.canonical_recovery import CanonicalRecoveryInputs
-from backend.performance.infection_hint import infection_hint
+from backend.performance.infection_hint import infection_hint, read_shown_hint
 
 TODAY = date(2026, 10, 30)
 # Q1, Q3, median: breathing 14 / 15 / 14.5, resting HR 48 / 50 / 49, HRV 60 / 70 / 65.
@@ -214,6 +215,26 @@ class InfectionHintTests(unittest.TestCase):
         )
         self.assertEqual("none", hint["status"])
         self.assertNotIn("spo2", _unusual(hint))
+
+    def test_mir_gehts_gut_hides_the_hint_for_its_day_only(self) -> None:
+        # #3821: the answer is stored as the day (JSON); a later day's hint shows again.
+        inputs = _inputs(
+            {MetricKind.RESPIRATION_RATE: 16.0, MetricKind.RESTING_HR: 53.0}
+        )
+        reader = RecordingReader({k: list(v) for k, v in inputs.observations.items()})
+        for stored, shown in (
+            (None, True),
+            ('"2026-10-30"', False),
+            ('"2026-10-29"', True),
+        ):
+            with self.subTest(stored=stored):
+                key_values = SimpleNamespace(
+                    get=lambda db, key, stored=stored: (
+                        stored if key == "infection_hint_dismissed" else None
+                    )
+                )
+                hint = read_shown_hint(reader, "db", TODAY, key_values)
+                self.assertEqual(shown, hint is not None)
 
 
 if __name__ == "__main__":

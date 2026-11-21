@@ -19,10 +19,12 @@ check-in starts the illness pause. Computed on read, nothing is stored.
 
 from __future__ import annotations
 
+import json
 from collections.abc import Callable
 from datetime import date
 from typing import Any, Final
 
+from backend.athlete.checkins import INFECTION_HINT_DISMISSED_KEY
 from backend.canonical.vocabulary import MetricKind
 from backend.performance.canonical_inputs import resolve_reader
 from backend.performance.canonical_recovery import (
@@ -99,11 +101,17 @@ def infection_hint(recovery: CanonicalRecoveryInputs, today: date) -> dict[str, 
     }
 
 
-def read_shown_hint(reader: ObservationReader, db: Any, today: date) -> dict | None:
+def read_shown_hint(
+    reader: ObservationReader, db: Any, today: date, key_values: Any
+) -> dict | None:
     """Read the three night kinds once; the hint when it shows, else None.
 
-    A normal or unknown night gives no note. ``reader`` must already be resolved.
+    A normal or unknown night gives no note, nor a day the athlete answered with
+    "Mir geht's gut" (#3821). ``reader`` must already be resolved.
     """
+    dismissed = key_values.get(db, INFECTION_HINT_DISMISSED_KEY)
+    if dismissed and json.loads(dismissed) == today.isoformat():
+        return None
     kinds = tuple(signal[0] for signal in SIGNALS)
     hint = infection_hint(
         read_recovery_inputs(reader, db, as_of=today, kinds=kinds), today
@@ -113,6 +121,7 @@ def read_shown_hint(reader: ObservationReader, db: Any, today: date) -> dict | N
 
 def infection_hint_reader(
     database_manager: Any,
+    key_values: Any,
     observation_reader: Callable[[], ObservationReader],
     today: Callable[[], date],
 ) -> Callable[[], dict[str, Any] | None]:
@@ -121,6 +130,8 @@ def infection_hint_reader(
     def read() -> dict[str, Any] | None:
         day = today()
         with database_manager.reader() as db:
-            return read_shown_hint(resolve_reader(observation_reader(), db), db, day)
+            return read_shown_hint(
+                resolve_reader(observation_reader(), db), db, day, key_values
+            )
 
     return read
