@@ -24,6 +24,7 @@ from backend.http_api.nutrition import (
 )
 from backend.nutrition.contracts import nutrition_approval_item
 from backend.nutrition.sync import IntervalsNutritionSyncService
+from backend.sync.refresh import sync_job_error_class
 
 # server.py MAX_BODY_BYTES: the cap of every JSON route without its own.
 GLOBAL_BODY_BYTES = 1_000_000
@@ -435,10 +436,13 @@ class IntervalsNutritionSyncServiceTests(unittest.TestCase):
         approval = [{**nutrition.sync_status.approval_manifest.return_value[0]}]
         approval[0]["revision"] = 4
 
-        with self.assertRaises(AppError):
+        with self.assertRaises(AppError) as raised:
             IntervalsNutritionSyncService(config, api, nutrition).sync_approved(
                 approval
             )
+        # #3891: a stale approval is final, not a retryable provider error.
+        self.assertEqual("approval_stale", raised.exception.reason)
+        self.assertEqual("approval_stale", sync_job_error_class(raised.exception))
         api.put.assert_not_called()
         nutrition.sync_status.get_sync_snapshot.assert_not_called()
 

@@ -326,12 +326,16 @@ A failed claim SHALL be queued again only when its error class is retryable and 
 - **THEN** the job is retried after 900 s (first failure) and 1800 s (second failure), and fails on the third.
 
 #### Scenario: Final classes
-- **WHEN** the class is `auth_required`, `invalid_configuration`, `client_error`, `unsupported_job`, `invalid_job_request`, `invalid_job_resolution`, `garmin_sdk_required` or `approval_stale`
+- **WHEN** the class is `auth_required`, `invalid_configuration`, `client_error`, `unsupported_job`, `invalid_job_request`, `invalid_job_resolution`, `garmin_sdk_required`, `approval_stale`, `plan_commit_required`, `plan_changes_required` or `planning_revision_conflict`
 - **THEN** the job fails at once and is never queued again automatically.
 
 #### Scenario: Stale competition approval
 - **WHEN** a competition sync's approved manifest no longer matches the pending competitions and deletions (reason `approval_stale`)
 - **THEN** the job fails with the class and freshness code `approval_stale`, and an explicit retry of that job is refused with 409 `approval_stale` "Die Freigabe ist veraltet. Bitte die Wettkämpfe neu senden."; a new send approves the current set (#3838).
+
+#### Scenario: Stale nutrition or plan approval
+- **WHEN** a nutrition export's approved days changed (reason `approval_stale`; a malformed approval is `invalid_job_request`) or a plan push finds its plan changed or uncommitted (`plan_changes_required`, `plan_commit_required`, `planning_revision_conflict`)
+- **THEN** the job fails with that reason as its class and is not retried automatically (#3891, `tests/test_sync_refresh.py`, `tests/test_nutrition_api_and_sync.py`).
 
 Detailed contract: HTTP 429 or a rate-limit reason maps to `rate_limited`; 401, 403 or an auth or reconnect reason to `auth_required`; 400 or a not-configured reason to `invalid_configuration`; a network reason or timeout to `network_error`; a busy local database to `database_busy`; a provider HTTP error to `temporary_error`; an unreadable provider answer to `client_error`; every other provider error to `temporary_error`.
 

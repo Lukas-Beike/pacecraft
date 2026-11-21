@@ -52,6 +52,19 @@ class SyncRefreshTests(unittest.TestCase):
             (ProviderError(reason="invalid_job_resolution"), "invalid_job_resolution"),
             # #3838: a stale competition approval is final, not a retryable error.
             (ProviderError(reason="approval_stale", status=409), "approval_stale"),
+            # #3891: stale nutrition and plan approvals are final too.
+            (
+                ProviderError(reason="plan_commit_required", status=409),
+                "plan_commit_required",
+            ),
+            (
+                ProviderError(reason="plan_changes_required", status=409),
+                "plan_changes_required",
+            ),
+            (
+                ProviderError(reason="planning_revision_conflict", status=409),
+                "planning_revision_conflict",
+            ),
             (TimeoutError("synthetic timeout"), "network_error"),
             (DatabaseBusyError("writer"), "database_busy"),
             (ProviderError(status=429), "rate_limited"),
