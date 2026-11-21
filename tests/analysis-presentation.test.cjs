@@ -524,6 +524,13 @@ test("the usage card names each part, its note and what has no data yet, with th
   const waiting = usage({ ...device, pending_parts: ["neat"] }, { wellness: { as_of: "12:18", behind: true } });
   assert.equal(lines(waiting)[1], "Schritte & Treppennoch keine Daten");
   assert.match(info(waiting), /Stand 12:18, Garmin hängt hinterher/);
+  // #3784: the bar draws no segment for a part whose row says "noch keine Daten", and spreads only
+  // the counted parts; its spoken label still names the pending one.
+  const segments = [...waiting.children[1].children];
+  assert.deepEqual(segments.map((part) => part.dataset.part), ["resting", "sport"]);
+  assert.equal(segments[0].style.width, `${(1745 / (1745 + 765)) * 100}%`);
+  assert.match(waiting.children[1].attributes["aria-label"], /Schritte & Treppen noch keine Daten/);
+  assert.deepEqual([...synced.children[1].children].map((part) => part.dataset.part), ["resting", "neat", "sport"]);
   assert.equal(lines(usage(device, { wellness: null }))[1], "Schritte & Treppen610");
   assert.doesNotMatch(info(usage(device, { wellness: null })), /Garmin-Abruf/);
   // #3530: a strength session's RPE and the MET it set follow the Sport part, on the formula rows only.

@@ -1965,7 +1965,9 @@ function energyUsage(read) {
   const parts = energyRowParts(row.split);
   const texts = parts.map((part) => energyPartText(read, row, part));
   const items = parts.map(([, part, label], index) => h("li", { dataset: { part } }, h("span", null, label), h("span", null, texts[index])));
-  const bar = energySplitBar(row.split, parts, parts.map(([, , label], index) => `${label} ${texts[index]}`).join(" · "));
+  // A part whose data has not arrived says so in its row and draws no segment (#3784).
+  const drawn = parts.filter(([, part]) => !row.pending_parts?.includes(part));
+  const bar = energySplitBar(row.split, drawn, parts.map(([, , label], index) => `${label} ${texts[index]}`).join(" · "));
   const total = h("li", { className: "energy-total" }, h("span", null, "Tag gesamt"), h("span", null, energyKcal(row.total_kcal, row.total_band_kcal)));
   return h("div", { className: "energy-usage" }, head, bar, h("ul", "energy-parts", ...items, total), energySourceLine(row));
 }
