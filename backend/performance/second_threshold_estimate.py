@@ -69,9 +69,13 @@ class SessionSecondThreshold:
 
 
 def session_second_threshold(
-    result: ActivityDfaAlpha1, day: date
+    result: ActivityDfaAlpha1, day: date, *, late_drift: bool = True
 ) -> SessionSecondThreshold | None:
-    """The heart rate where one run's windows at or below 0.75 reach 0.5, or None."""
+    """The heart rate where one run's windows at or below 0.75 reach 0.5, or None.
+
+    ``late_drift`` False drops the late-drift rule, for a step test whose hardest
+    stages come last by design (#3833).
+    """
     if not result.series_evaluated:
         return None
     windows = [w for w in result.series if w.alpha1 <= THRESHOLD_ALPHA1]
@@ -102,7 +106,11 @@ def session_second_threshold(
         return None
     end = max(w.start_s for w in result.series)
     below = [w for w in windows if w.alpha1 < SECOND_ALPHA1]
-    if end > 0 and all(w.start_s >= (1 - LATE_SHARE) * end for w in below):
+    if (
+        late_drift
+        and end > 0
+        and all(w.start_s >= (1 - LATE_SHARE) * end for w in below)
+    ):
         return None
     good = (
         len(windows) >= GOOD_MIN_WINDOWS

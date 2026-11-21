@@ -88,6 +88,7 @@ from backend.http_api.sync_get import SyncGetRoutes
 from backend.http_api.wahoo import WahooGetRoutes, WahooPostRoutes
 from backend.nutrition.macro_context import body_weight, macro_context
 from backend.nutrition.session_fuelling import read_session_fuelling
+from backend.performance import step_test
 from backend.performance.canonical_current import read_zone_thresholds
 from backend.performance.canonical_inputs import (
     CanonicalPerformanceSource,
@@ -283,6 +284,9 @@ def build_public_state(
                         1000, include_archived=True
                     )
                 },
+                step_test_templates=lambda: step_test.template_ids(
+                    planning.workout_library().list(1000, include_archived=True)
+                ),
             )
         )
 
@@ -329,6 +333,13 @@ def _local_today(ctx: Any) -> Any:
 def _session_temperatures(ctx: Any, session_ids: list[str]) -> dict[str, float]:
     with ctx.database().reader() as db:
         return session_temperatures(db, session_ids)
+
+
+def _step_test(ctx: Any, activity_id: str) -> Any:
+    """The run step test result of one session (#3833), for an adoption."""
+    return ctx.activity_reads.activity_read().step_test_for(
+        activity_id, _local_today(ctx)
+    )
 
 
 def _session_rpe_load(ctx: Any, activity_id: str) -> Any:
@@ -551,10 +562,14 @@ def _athlete_write_routes(
         CredentialsPutRoutes(ctx.provider_credential_service, session_auth_service),
         EquipmentPostRoutes(athlete.equipment),
         FirstThresholdPostRoutes(
-            athlete.first_threshold, athlete.profile, ctx.database
+            athlete.first_threshold,
+            athlete.profile,
+            ctx.database,
+            step_test=lambda activity_id: _step_test(ctx, activity_id),
         ),
         SecondThresholdPostRoutes(
-            lambda: athlete.second_threshold(ctx.performance.curve_records)
+            lambda: athlete.second_threshold(ctx.performance.curve_records),
+            step_test=lambda activity_id: _step_test(ctx, activity_id),
         ),
         ActivityRoutePostRoutes(lambda: ctx.activity_routes),
         CalendarDecisionPostRoutes(lambda: ctx.external_calendar.decisions()),

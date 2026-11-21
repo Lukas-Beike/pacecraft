@@ -686,6 +686,17 @@ class LastTestsTests(unittest.TestCase):
         self.assertIn("session_focus test", result["source"])
         without_race = last_tests(units, [], completed, TODAY)
         self.assertEqual("2026-09-20", without_race["run"])
+        # A completed step test keeps its own rhythm: it does not reset the
+        # critical-speed reminder (athlete decision, #3833).
+        step_test = {
+            "date": "2026-10-20",
+            "sport": "run",
+            "session_focus": "test",
+            "test_protocol": "run_step_test",
+        }
+        self.assertEqual(
+            "2026-09-20", last_tests([*units, step_test], [], completed, TODAY)["run"]
+        )
 
 
 class PlanBriefTests(unittest.TestCase):

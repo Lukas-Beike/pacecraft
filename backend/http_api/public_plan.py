@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Collection, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date, timedelta
 from typing import Any
@@ -15,6 +15,7 @@ from backend.canonical.public_metrics import (
 )
 from backend.canonical.records import Observation
 from backend.db.manager import DatabaseManager
+from backend.performance import step_test
 from backend.performance.session_analysis_reads import calendar_profiles
 from backend.planning import calendar_read_model
 from backend.planning import season as planning_season
@@ -51,6 +52,8 @@ class PublicPlanDependencies:
     sport_thresholds: Callable[[Any], Sequence[Observation]] = lambda _db: ()
     # Library template names by id, for the planned units' "Vorlage" (#2379).
     template_names: Callable[[], Mapping[str, str]] = dict
+    # Ids of the library templates that hold the running step test (#3833).
+    step_test_templates: Callable[[], Collection[str]] = frozenset
 
 
 class PublicPlanStateService:
@@ -59,6 +62,7 @@ class PublicPlanStateService:
     def __init__(self, dependencies: PublicPlanDependencies) -> None:
         self._planned_units = dependencies.planned_units
         self._template_names = dependencies.template_names
+        self._step_test_templates = dependencies.step_test_templates
         self._activity_feedback = dependencies.activity_feedback
         self._weather = dependencies.weather
         self._adaptive_followup = dependencies.adaptive_followup
@@ -155,6 +159,7 @@ class PublicPlanStateService:
         local_planned = _with_template_names(
             self._template_names(),
             self._planned_units.list(500, push_state=True, trained_versions=True),
+            self._step_test_templates(),
         )
         canonical_planned = calendar_canonical.canonical_planned_workouts(local_planned)
         activities = self._activity_rows.compact() if self._activity_rows else []
@@ -206,11 +211,21 @@ class PublicPlanStateService:
         }
 
 
-def _with_template_names(names: Mapping[str, str], units: list[Any]) -> list[Any]:
-    """Each unit with the name of the library template it comes from (#2379)."""
-    return [
-        {**unit, "template_name": names[str(unit["template_id"])]}
-        if isinstance(unit, dict) and names.get(str(unit.get("template_id") or ""))
-        else unit
-        for unit in units
-    ]
+def _with_template_names(
+    names: Mapping[str, str],
+    units: list[Any],
+    step_tests: Collection[str] = frozenset(),
+) -> list[Any]:
+    """Each unit with the name of the library template it comes from (#2379).
+
+    A unit from a step-test template also names its protocol (#3833).
+    """
+    named = []
+    for unit in units:
+        template = str(unit.get("template_id") or "") if isinstance(unit, dict) else ""
+        if names.get(template):
+            unit = {**unit, "template_name": names[template]}
+        if template in step_tests:
+            unit = {**unit, "test_protocol": step_test.PROTOCOL}
+        named.append(unit)
+    return named

@@ -158,6 +158,13 @@ class WorkoutLibraryPlanService:
                         for key in FOCUS_KEYS
                         if source.get(key) is not None
                     },
+                    # The unit names its test protocol itself, so it outlives
+                    # the template (#3833).
+                    **(
+                        {"test_protocol": source["test_protocol"]}
+                        if source.get("test_protocol")
+                        else {}
+                    ),
                     "source": "library",
                     TEMPLATE_ID: str(request["library_workout_id"]),
                     "rationale": "Aus der lokalen Trainingsbibliothek übernommen.",

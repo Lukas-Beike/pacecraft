@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import functools
 import logging
 from collections.abc import Callable, Mapping
 from datetime import date
 from typing import Any
 from urllib.parse import unquote
 
+from backend.canonical.vocabulary import Sport
 from backend.http_api.route_table import Access, Route, RouteRequest
 from backend.performance.activity_read_service import ActivityAnalysisReadService
 from backend.performance.freshness import NO_GARMIN_SYNC_STATUS
@@ -84,6 +86,11 @@ class SyncGetRoutes:
         `strength_sets`, `analysis`, `detail_data` and more, plus `weather` and `route` when stored, and `data_scope`),
         `planned_adherence` for a run or ride the calendar pairs with a local
         planned unit (each step's time in target, the score and zone times),
+        `step_test` for a run paired with a step-test unit (#3833: `lt1` and
+        `lt2`, each `status` `ok` with `heart_rate_bpm`, `pace_seconds_per_km`
+        and `quality`, or `not_reached`/`unknown` with `reason`; `stages`,
+        `analysable_stages`, `artifact_share_pct`, `source`; `status` `no_rr`
+        without a stored DFA-α1 window series),
         and `session_bundle` (the session's provider copies and merge
         candidates; null when the session is not live).
 
@@ -100,8 +107,11 @@ class SyncGetRoutes:
             today=self._local_today(),
             validation=False,
         )
+        session: Mapping[str, Any] = payload.get("session") or {}
+        # One pairing for the comparison and the step test, only when needed (#3017).
+        paired = functools.cache(lambda: service.paired_planned_unit(session))
         try:
-            adherence = service.planned_adherence(payload)
+            adherence = service.planned_adherence(payload, paired)
         except Exception as exc:  # noqa: BLE001 - the comparison is optional; never fail the details
             _LOGGER.warning(
                 "planned step adherence unavailable: %s", type(exc).__name__
@@ -109,6 +119,17 @@ class SyncGetRoutes:
             adherence = None
         if adherence is not None:
             payload["planned_adherence"] = adherence
+        try:
+            tested = (
+                service.step_test(payload, paired())
+                if isinstance(session, dict) and session.get("sport") == Sport.RUN.value
+                else None
+            )
+        except Exception as exc:  # noqa: BLE001 - the step test is optional; never fail the details
+            _LOGGER.warning("step test unavailable: %s", type(exc).__name__)
+            tested = None
+        if tested is not None:
+            payload["step_test"] = tested
         # Performance validation belongs to the Coach's complete context.
         payload.pop("activity_validation", None)
         session_id = (payload.get("session") or {}).get("activity_id")

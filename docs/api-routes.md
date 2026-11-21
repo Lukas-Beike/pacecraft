@@ -197,6 +197,11 @@ Response: 200 with `ok`, the document (`contract`, `session`, `metrics`,
 `strength_sets`, `analysis`, `detail_data` and more, plus `weather` and `route` when stored, and `data_scope`),
 `planned_adherence` for a run or ride the calendar pairs with a local
 planned unit (each step's time in target, the score and zone times),
+`step_test` for a run paired with a step-test unit (#3833: `lt1` and
+`lt2`, each `status` `ok` with `heart_rate_bpm`, `pace_seconds_per_km`
+and `quality`, or `not_reached`/`unknown` with `reason`; `stages`,
+`analysable_stages`, `artifact_share_pct`, `source`; `status` `no_rr`
+without a stored DFA-α1 window series),
 and `session_bundle` (the session's provider copies and merge
 candidates; null when the session is not live).
 
@@ -1987,7 +1992,11 @@ gespeichert werden kann.".
 Request: JSON body `{"percent_lthr": number, "replace_measured": boolean}`.
 `percent_lthr` is required and must equal the current estimate from
 `GET /api/profile`; `replace_measured: true` is needed to replace a value
-stored with origin `measured`.
+stored with origin `measured`. Or `{"step_test": string, "heart_rate_bpm":
+number, "replace_measured": boolean}` adopts the good LT1 of the run step
+test with that session id (#3833) as percent of today's run threshold HR;
+`heart_rate_bpm` must equal `step_test.lt1.heart_rate_bpm` of
+`GET /api/activities/{id}`.
 
 Response: 200 `{"profile": object, "first_threshold_estimate": object,
 "adopted": boolean}`. The estimate is stored as percent of the run
@@ -1998,7 +2007,9 @@ Errors: 409 "Es liegt keine Schätzung der ersten Schwelle vor."; 409 "Die
 Schätzung hat sich geändert. Bitte die Anzeige aktualisieren." when
 `percent_lthr` differs from the current estimate; 409 "Ein gemessener Wert
 ist gespeichert. Zum Ersetzen bitte bestätigen." without
-`replace_measured`.
+`replace_measured`; 409 "Dieser Stufentest liefert keinen guten Wert der
+ersten Schwelle."; 409 "Ohne Schwellenpuls lässt sich der Wert nicht
+speichern."; 404 for an unknown session.
 
 ### `GET /api/providers/connections`
 
@@ -2304,10 +2315,13 @@ The route exists only where zone editing is configured.
 ### `POST /api/zones/lt2/adopt`
 
 Request: JSON body `{"sport": "run" | "ride", "source": "dfa_alpha1" |
-"critical_speed" | "critical_power", "value": "heart_rate" | "pace" |
-"power", "shown": number, "confirm_deviation": boolean, "replace_local":
-boolean}`. `shown` is the number `GET /api/profile` showed in
-`lt2_estimates` (bpm, s/km or W).
+"critical_speed" | "critical_power" | "step_test", "value": "heart_rate" |
+"pace" | "power", "shown": number, "confirm_deviation": boolean,
+"replace_local": boolean, "activity_id": string}`. `shown` is the number
+`GET /api/profile` showed in `lt2_estimates` (bpm, s/km or W); for
+`step_test` (runs, #3833) it is `step_test.lt2` of `GET
+/api/activities/{activity_id}`, adopted only when good, with the origin
+`dfa_alpha1`.
 
 Response: 200 `{"configuration": object, "change": object | null}`, the
 receipt of the local zone configuration saved from today with the zone

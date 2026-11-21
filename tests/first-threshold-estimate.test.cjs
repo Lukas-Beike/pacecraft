@@ -87,3 +87,21 @@ test("the form is clean again when the adopted value was its only edit", () => {
   assert.equal(context.state.profileDirty, false);
   assert.deepEqual(dirtyFlags, [["profileDirtyIndicator", false]]);
 });
+
+test("a step test's LT1 is adopted with the same refresh as the profile's estimate (#3833)", async () => {
+  const calls = [];
+  const result = { adopted: true, profile: { first_threshold_pct: "90" }, first_threshold_estimate: null };
+  const context = extractFunctions("plan-views.js", ["adoptStepTestValue"], {
+    state: { data: { profile: {} } },
+    api: async (url, options) => { calls.push(["api", url, JSON.parse(options.body)]); return result; },
+    applyAdoptedFirstThreshold: (value) => calls.push(["apply", value]),
+    invalidateContextPreview: () => calls.push(["invalidate"]),
+    toast: (text) => calls.push(["toast", text]),
+    load: async () => { calls.push(["load"]); },
+    requestConfirmation: async () => true,
+  });
+  await context.adoptStepTestValue("act_1", { key: "lt1", adopt: { heart_rate_bpm: 152 } }, { disabled: false });
+  assert.deepEqual(calls.map(([name]) => name), ["api", "apply", "invalidate", "toast", "load"]);
+  assert.deepEqual(calls[0][2], { step_test: "act_1", heart_rate_bpm: 152 });
+  assert.equal(calls[1][1], result);
+});

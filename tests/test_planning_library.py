@@ -44,6 +44,7 @@ EXPECTED_LIBRARY_FIELDS = {
     "remote_event_external_id",
     "remote_event_category",
     "category",
+    "test_protocol",
     "paired_event_id",
     "template_id",
 }
