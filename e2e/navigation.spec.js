@@ -1,5 +1,9 @@
 const { test, expect } = require("@playwright/test");
 
+// Routes miss requests that pass through the service worker's fetch listener; this spec
+// does not test the worker, so it is blocked and every route applies (#3842).
+test.use({ serviceWorkers: "block" });
+
 test("@responsive each hash navigation renders its target once", async ({ page }) => {
   await page.route("**/api/state/events*", (route) => route.abort());
   await page.goto("/");

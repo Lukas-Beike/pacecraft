@@ -1,6 +1,10 @@
 const { test, expect } = require("@playwright/test");
 const { stubSyncJobs } = require("./helpers/sync-jobs");
 
+// Routes miss requests that pass through the service worker's fetch listener; this spec
+// does not test the worker, so it is blocked and every route applies (#3842).
+test.use({ serviceWorkers: "block" });
+
 const HASH = "a".repeat(64);
 
 test("@responsive a changed Wahoo library workout offers the explicit send", async ({ page, request }) => {

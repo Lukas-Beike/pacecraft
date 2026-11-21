@@ -1,6 +1,10 @@
 const { test, expect } = require("@playwright/test");
 const { renderCalendarSessions, openSessionDetails } = require("./helpers/ui");
 
+// Routes miss requests that pass through the service worker's fetch listener; this spec
+// does not test the worker, so it is blocked and every route applies (#3842).
+test.use({ serviceWorkers: "block" });
+
 test("@responsive activity details preserve calendar without Coach shortcuts", async ({ page, request }) => {
   const seed = await request.get("/api/fixture/activity");
   expect(seed.ok()).toBeTruthy();

@@ -575,6 +575,62 @@ class ServerFrontendTests(ServerTestCase):
             "page.locator('#form').getByLabel(...)",
         )
 
+    def test_specs_that_fail_api_requests_block_the_service_worker(self):
+        # Routes miss requests that pass through the worker's fetch listener, so
+        # a blocked save went out online and develop went red twice (#3842).
+        worker_specs = {
+            "coach.spec.js": "waits for the worker to activate",
+            "contracts.spec.js": "checks the worker's cache",
+            "offline-errors.spec.js": "goes offline with the worker's cached shell",
+            "update-reload.spec.js": "drives the worker's controllerchange",
+        }
+        # An abort, a literal 4xx/5xx, or a status not written as a literal
+        # (a variable or `{ status }` shorthand) counts as failing (Gitar).
+        failing = re.compile(
+            r"route\.abort\(|status:\s*[45]\d\d|status:\s*[A-Za-z_]|[{,]\s*status\s*[,}]"
+        )
+
+        def unblocked(source: str) -> bool:
+            return (
+                ".route(" in source
+                and "/api/" in source
+                and bool(failing.search(source))
+                and 'serviceWorkers: "block"' not in source
+            )
+
+        self.assertTrue(unblocked('page.route("**/api/x", (route) => route.abort());'))
+        self.assertTrue(
+            unblocked('page.route("**/api/x", (r) => r.fulfill({ status, headers }));')
+        )
+        self.assertTrue(
+            unblocked('page.route("**/api/x", (r) => r.fulfill({ status: code }));')
+        )
+        self.assertFalse(
+            unblocked('page.route("**/api/x", (r) => r.fulfill({ status: 200 }));')
+        )
+        self.assertFalse(
+            unblocked(
+                'test.use({ serviceWorkers: "block" });\n'
+                'page.route("**/api/x", (route) => route.abort());'
+            )
+        )
+        e2e = server.PUBLIC_DIR.parent / "e2e"
+        missing = [
+            spec.name
+            for spec in sorted(e2e.glob("*.spec.js"))
+            if spec.name not in worker_specs
+            and unblocked(spec.read_text(encoding="utf-8"))
+        ]
+        self.assertEqual(
+            [],
+            missing,
+            'add test.use({ serviceWorkers: "block" }), or list the spec with '
+            "the reason it needs the worker",
+        )
+        for name in worker_specs:
+            source = (e2e / name).read_text(encoding="utf-8")
+            self.assertRegex(source, r"serviceWorker\b|setOffline", name)
+
     def test_browser_regression_contract_covers_routes_and_responsive_guards(
         self,
     ):

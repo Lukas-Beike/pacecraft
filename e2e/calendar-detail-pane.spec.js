@@ -2,6 +2,10 @@ const { test, expect } = require("./helpers/today");
 const { showCalendarDay } = require("./helpers/ui");
 const { openCalendar, renderSyntheticCalendar } = require("./helpers/calendar");
 
+// Routes miss requests that pass through the service worker's fetch listener; this spec
+// does not test the worker, so it is blocked and every route applies (#3842).
+test.use({ serviceWorkers: "block" });
+
 // One test per feature of an opened calendar card, in alphabetical order of the
 // title after its tag: a new feature goes to its own place, so parallel PRs do
 // not all append at the file end.

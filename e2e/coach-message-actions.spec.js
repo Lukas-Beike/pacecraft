@@ -1,6 +1,10 @@
 const { test, expect } = require("@playwright/test");
 const { captureReadFixture, installReadFixture } = require("./read-fixture");
 
+// Routes miss requests that pass through the service worker's fetch listener; this spec
+// does not test the worker, so it is blocked and every route applies (#3842).
+test.use({ serviceWorkers: "block" });
+
 let fixture;
 test.beforeAll(async ({ request }) => { fixture = await captureReadFixture(request); });
 test.beforeEach(async ({ page }) => { await installReadFixture(page, fixture); });

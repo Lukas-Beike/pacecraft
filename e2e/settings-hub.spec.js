@@ -3,6 +3,10 @@ const AxeBuilder = require("@axe-core/playwright").default;
 const { contrastRatio } = require("./helpers/ui");
 const { expandConnections } = require("./helpers/connections");
 
+// Routes miss requests that pass through the service worker's fetch listener; this spec
+// does not test the worker, so it is blocked and every route applies (#3842).
+test.use({ serviceWorkers: "block" });
+
 // #1788: touch-friendly sports chips, text status per connection, structured profile.
 
 async function openMore(page, segment) {

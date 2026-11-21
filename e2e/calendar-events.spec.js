@@ -3,6 +3,10 @@ const AxeBuilder = require("@axe-core/playwright").default;
 const { showCalendarDay } = require("./helpers/ui");
 const { openCalendar } = require("./helpers/calendar");
 
+// Routes miss requests that pass through the service worker's fetch listener; this spec
+// does not test the worker, so it is blocked and every route applies (#3842).
+test.use({ serviceWorkers: "block" });
+
 // Fake personal events on the next Tuesday, so the checked day and the one after share a week
 // on any weekday (#2708): one per impact, a weekly series and a title marker.
 async function renderEvents(page) {
