@@ -801,7 +801,15 @@ class CodexReviewWorkflowTests(unittest.TestCase):
             '[[ "$ONLY_BEHIND" == "true" && "$merge_state" != "BEHIND" ]]', rebase
         )
         # Rebase only, never a merge-style update; same-repository squash PRs only.
-        self.assertIn("--rebase", rebase)
+        self.assertIn(
+            'gh pr update-branch "$pull_request_number" \\\n'
+            '              --repo "$REPOSITORY" \\\n'
+            "              --rebase 2>&1",
+            rebase,
+        )
+        self.assertEqual(1, rebase.count("gh pr update-branch"))
+        # A scheduled run warns on a failed rebase; a push run fails the job.
+        self.assertIn('if [[ "$ONLY_BEHIND" != "true" ]]; then\n', rebase)
         self.assertIn("select(.isCrossRepository == false)", rebase)
         self.assertIn('select(.autoMergeRequest.mergeMethod == "SQUASH")', rebase)
         self.assertNotIn("gh pr merge", rebase)
