@@ -1173,6 +1173,14 @@ function addNutritionProductToCoachDraft() {
   jumpToLatestMessages();
 }
 
+// A meal of today that waits in the outbox keeps the time it was entered, not the later
+// time it is sent (review on #3761).
+function queuedMealPayload(body) {
+  if (body.meal_date !== todayIso()) return body;
+  const time = new Intl.DateTimeFormat("de-DE", { hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone: state.data?.profile?.timezone || undefined }).format(new Date());
+  return { ...body, meal_time: time };
+}
+
 async function addNutritionProductToMeal() {
   const use = nutritionProductUseAmount();
   const mealId = document.querySelector("#nutritionProductUseMeal").value;
@@ -1187,7 +1195,7 @@ async function addNutritionProductToMeal() {
     // A new meal waits in the outbox when the server cannot be reached; adding to a meal does not.
     const result = mealId
       ? await api("/api/nutrition/entry/add-product", { method: "POST", body: JSON.stringify(body) })
-      : await saveOwnEntry({ kind: "meal", method: "POST", path: "/api/nutrition/entry", payload: body, label: `„${use.product.name}“ als Snack` });
+      : await saveOwnEntry({ kind: "meal", method: "POST", path: "/api/nutrition/entry", payload: body, queuedPayload: queuedMealPayload(body), label: `„${use.product.name}“ als Snack` });
     if (generation !== state.sessionGeneration) return;
     closeNutritionProductUse();
     if (result.outboxEntry) {

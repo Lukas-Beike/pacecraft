@@ -85,6 +85,8 @@ test("a network failure leaves the entry and stops the pass; the next trigger se
   const { context, stored, requests } = outbox(async () => { if (offline) throw networkError(); return { ok: true }; });
   await save(context, "weight", { n: 1 });
   await save(context, "weight", { n: 2 });
+  // The second save queued behind the first and started a pass; let it end first.
+  await context.replayOutbox();
   requests.length = 0;
   await context.replayOutbox();
   assert.equal(requests.length, 1, "the pass stopped at the first failure");
@@ -151,4 +153,43 @@ test("logout and the purge clear the store and the strip line", async () => {
   await context.clearOutbox();
   assert.equal(stored.size, 0);
   assert.equal(strip.at(-1), null);
+});
+
+// Review on #3761: a new save never overtakes an older waiting entry.
+test("a save while an older entry waits queues behind it, and the pass keeps their order", async () => {
+  let offline = true;
+  const { context, stored, requests } = outbox(async () => { if (offline) throw networkError(); return { ok: true }; });
+  await save(context, "weight", { n: 1 });
+  offline = false;
+  const queued = await save(context, "weight", { n: 2 });
+  assert.ok(queued.outboxEntry, "the newer weight waits behind the older one");
+  await context.replayOutbox();
+  const sent = requests.filter((request) => !request.failed).map((request) => JSON.parse(request.body).n);
+  assert.deepEqual(sent.slice(-2), [1, 2]);
+  assert.equal(stored.size, 0);
+});
+
+test("an entry discarded during a pass is not sent and does not come back", async () => {
+  let offline = true;
+  let context;
+  let keys = [];
+  const created = outbox(async (_path, options) => {
+    if (offline) throw networkError();
+    // While the first entry is in flight the athlete discards both; its answer is a server error.
+    if (JSON.parse(options.body).n === 1) {
+      for (const key of keys) await context.outboxDiscard(key);
+      throw serverError(500);
+    }
+    return { ok: true };
+  });
+  context = created.context;
+  await save(context, "weight", { n: 1 });
+  await save(context, "weight", { n: 2 });
+  keys = [...created.stored.keys()];
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  created.requests.length = 0;
+  offline = false;
+  await context.replayOutbox();
+  assert.deepEqual(created.requests.map((request) => JSON.parse(request.body).n), [1]);
+  assert.equal(created.stored.size, 0);
 });

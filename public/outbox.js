@@ -12,7 +12,8 @@ const OUTBOX_UNDECIDED_STATUSES = new Set([401, 403, 408, 429]);
 let outboxStorage = null;
 let outboxEntries = [];
 let outboxLoaded = null;
-let outboxReplaying = false;
+// The passes run one after another: a trigger during a pass waits for it, then sends what is left.
+let outboxPasses = Promise.resolve();
 let outboxClock = 0;
 // Raised by a clear, so a send that finishes afterwards writes nothing back.
 let outboxEpoch = 0;
@@ -102,13 +103,22 @@ async function outboxRemove(key) {
 
 // Saves one entry of the athlete. A request that cannot reach the server is queued and answers
 // `{ outboxEntry }`; any server answer, and a device without storage, throws as before.
-async function saveOwnEntry({ kind, method, path, payload, label, send = api }) {
+async function saveOwnEntry({ kind, method, path, payload, label, send = api, queuedPayload = payload }) {
   const key = outboxKey();
+  // While older entries wait, a new one queues behind them, so a stale entry never
+  // overwrites a newer save (review on #3761); the pass then sends them in order.
+  if (outboxEntries.some((item) => item.state === "waiting")) {
+    const entry = { key, kind, method, path, payload: queuedPayload, label, created_at: outboxStamp(), attempts: 0, last_error: "", state: "waiting" };
+    if (await outboxPut(entry)) {
+      void replayOutbox();
+      return { outboxEntry: entry };
+    }
+  }
   try {
     return await send(path, { method, body: JSON.stringify(payload), headers: { "Idempotency-Key": key } });
   } catch (error) {
     if (error?.reason !== "network_error") throw error;
-    const entry = { key, kind, method, path, payload, label, created_at: outboxStamp(), attempts: 0, last_error: "", state: "waiting" };
+    const entry = { key, kind, method, path, payload: queuedPayload, label, created_at: outboxStamp(), attempts: 0, last_error: "", state: "waiting" };
     if (!await outboxPut(entry)) throw error;
     return { outboxEntry: entry };
   }
@@ -123,6 +133,8 @@ async function outboxSend(entry) {
     if (epoch !== outboxEpoch || error?.reason === "network_error") return "stop";
     const refused = error?.status >= 400 && error.status < 500 && !OUTBOX_UNDECIDED_STATUSES.has(error.status);
     if (!refused && !(error?.status >= 500)) return "stop";
+    // A discarded entry stays discarded, whatever its in-flight answer was.
+    if (!outboxEntries.some((item) => item.key === entry.key)) return "stop";
     await outboxPut({ ...entry, attempts: entry.attempts + 1, last_error: error.message, state: refused ? "rejected" : entry.state });
     return refused ? "rejected" : "stop";
   }
@@ -133,19 +145,21 @@ async function outboxSend(entry) {
 
 // Sends the waiting entries one at a time in creation order. A rejected entry is kept and the
 // later ones go on; a request that fails without a decision ends the pass.
-async function replayOutbox() {
-  if (outboxReplaying || !state.data || !navigator.onLine) return;
-  outboxReplaying = true;
+function replayOutbox() {
+  outboxPasses = outboxPasses.then(outboxPass, outboxPass);
+  return outboxPasses;
+}
+
+async function outboxPass() {
+  if (!state.data || !navigator.onLine) return;
   const sent = [];
-  try {
-    await outboxLoad();
-    for (const entry of outboxEntries.filter((item) => item.state === "waiting")) {
-      const outcome = await outboxSend(entry);
-      if (outcome === "sent") sent.push(entry);
-      else if (outcome === "stop") break;
-    }
-  } finally {
-    outboxReplaying = false;
+  await outboxLoad();
+  for (const entry of outboxEntries.filter((item) => item.state === "waiting")) {
+    // An entry discarded during the pass is not sent.
+    if (!outboxEntries.some((item) => item.key === entry.key)) continue;
+    const outcome = await outboxSend(entry);
+    if (outcome === "sent") sent.push(entry);
+    else if (outcome === "stop") break;
   }
   if (sent.length) outboxSentNotice(sent);
 }
