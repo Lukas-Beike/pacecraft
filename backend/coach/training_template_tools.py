@@ -8,6 +8,7 @@ from typing import Any
 from backend.coach.authorization import authorized_operations, require_coach_scope
 from backend.db.manager import DatabaseManager
 from backend.errors import STRUCTURED_AUTHORIZATION_ERROR, AppError
+from backend.performance import step_test
 from backend.planning.library import (
     find_similar_library_workout,
     normalized_workout_text,
@@ -47,6 +48,8 @@ class TrainingTemplateToolService:
                 reason="template_limit",
             )
 
+        # A step test is built by the server from the paces the Coach read (#3833).
+        templates = [_with_protocol(template) for template in templates]
         actions: list[tuple[str, str]] = []
         for template in templates:
             action = str(template.get("action") or "create").strip().casefold()
@@ -87,6 +90,32 @@ class TrainingTemplateToolService:
             # beside an existing one, with its reason.
             "created_despite_candidate": despite,
         }
+
+
+def _with_protocol(template: dict[str, Any]) -> dict[str, Any]:
+    """A create or update with ``step_test`` takes the server-built running step test.
+
+    An update renews the stages of an existing step-test template from today's paces.
+    """
+    paces = template.get("step_test")
+    if not isinstance(paces, dict):
+        return template
+    if str(template.get("action") or "create").strip().casefold() not in (
+        "create",
+        "update",
+    ):
+        raise AppError(
+            400,
+            "Den Stufentest nur anlegen oder erneuern.",
+            reason="invalid_template_action",
+        )
+    return {
+        key: value
+        for key, value in template.items()
+        if key in ("action", "local_id", "new_because")
+    } | step_test.protocol_template(
+        paces.get("lt1_pace_seconds_per_km"), paces.get("lt2_pace_seconds_per_km")
+    )
 
 
 def _existing_templates(

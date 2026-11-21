@@ -240,6 +240,74 @@ class TrainingTemplateToolTests(unittest.TestCase):
         )
         self.assertEqual(0, replaced["created_despite_candidate"])
 
+    def test_a_step_test_template_is_built_by_the_server(self) -> None:
+        # #3833: the Coach names the paces; steps, name and focus come from the protocol.
+        manager = temp_database(self, "library.db")
+        created: list[dict] = []
+        updated: list[tuple[str, dict]] = []
+
+        class Library:
+            def list(self, limit):
+                return []
+
+            def create_template(self, values):
+                created.append(values)
+                return {"local_id": "new"}
+
+            def update(self, local_id, values):
+                updated.append((local_id, values))
+                return {"local_id": local_id}
+
+        service = TrainingTemplateToolService(lambda: manager, Library)
+        intent = {
+            "operation": "manage_training_templates",
+            "authorization_scope": ["local_template", "library_workout:old"],
+        }
+        service.execute(
+            {
+                "templates": [
+                    {
+                        "action": "create",
+                        "name": "Eigener Name",
+                        "description": "- 30m Z2 Pace",
+                        "step_test": {
+                            "lt1_pace_seconds_per_km": None,
+                            "lt2_pace_seconds_per_km": None,
+                        },
+                    },
+                    {
+                        "action": "update",
+                        "local_id": "old",
+                        "step_test": {
+                            "lt1_pace_seconds_per_km": 300,
+                            "lt2_pace_seconds_per_km": 280,
+                        },
+                    },
+                ]
+            },
+            intent,
+        )
+        (template,) = created
+        self.assertEqual(template["name"], "Stufentest Laufen (LT1 und LT2)")
+        self.assertEqual(template["test_protocol"], "run_step_test")
+        self.assertEqual(template["session_focus"], "test")
+        # Stage 1 at 9.5 km/h is 6:19 /km; the Coach's own description is not kept.
+        self.assertIn("- 3m 6:19/km Pace", template["description"])
+        self.assertNotIn("step_test", template)
+        ((local_id, values),) = updated
+        self.assertEqual(local_id, "old")
+        self.assertEqual(values["duration_minutes"], 10 + 8 * 3 + 10)
+        with self.assertRaises(AppError) as refused:
+            service.execute(
+                {
+                    "templates": [
+                        {"action": "archive", "local_id": "old", "step_test": {}}
+                    ]
+                },
+                intent,
+            )
+        self.assertEqual(refused.exception.reason, "invalid_template_action")
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -11,6 +11,8 @@ const { pathToFileURL } = require("node:url");
 const FIXTURE_SKIPS = { "Kalender: Laufdynamik": /^skip \(none of [1-9]\d* has it\)$/, "Kalender: Streckenhistorie": /^skip \(none of [1-9]\d* has it\)$/, "Analyse: Kraft": /^skip \(none of 1 has it\)$/ };
 
 test("@responsive every UI walk step passes on the fixture app", async ({ page, request }) => {
+  // Every step of every view runs in one test; with the step test steps (#3833) it outgrew 60 s.
+  test.setTimeout(180_000);
   const { VIEWS, STEPS, runStep } = await import(pathToFileURL(path.join(__dirname, "..", "scripts", "ui_walk.mjs")).href);
   // One test walks every step, so its time grows with STEPS: the 35 steps at #3866 took 55-59 s
   // of the default 60 s on a Windows Docker host. A budget per step keeps the margin as steps are added.
@@ -29,13 +31,26 @@ test("@responsive every UI walk step passes on the fixture app", async ({ page, 
     const stored = calendar.find((entry) => entry.local_id && !entry.is_completed_activity && !entry.compliance?.actual_activity && entry.date > today && /ride|run/i.test(`${entry.type} ${entry.sport}`));
     const moved = (entry) => ({ ...entry, date: today, starts_at_local: entry.starts_at_local && `${today}${entry.starts_at_local.slice(10)}`, duration_minutes: 150, planned_duration_s: 9000 });
     // Completed units are not moved: on a Monday the walk's completed-unit steps page back themselves (`seek`).
-    data.training_calendar = calendar.map((entry) => (entry === stored ? moved(entry) : entry));
+    // The fixture plans no running step test (#3833): today's moved unit and the completed runs act as one.
+    const stepTest = (entry) => ({ ...entry, test_protocol: "run_step_test" });
+    const completedRun = (entry) => (entry.is_completed_activity || entry.compliance?.actual_activity) && /run/i.test(`${entry.type} ${entry.sport}`);
+    data.training_calendar = calendar.map((entry) => {
+      if (entry === stored) return stepTest(moved(entry));
+      return completedRun(entry) ? stepTest(entry) : entry;
+    });
     // The fixture's nights are ordinary, so today carries a synthetic infection hint (M14, #3762).
     const signal = (label, value, unit, lower, upper) => ({ label, value, unit, lower, upper, source: "Garmin Connect", unusual: true });
     const hint = { method: "infection-hint-v1", status: "hint", signals: [signal("Atemfrequenz", 17, "brpm", 14, 15), signal("Ruhepuls", 56, "bpm", 48, 51)], limits: "Keine Diagnose." };
     const days = (data.daily_planning_context || []).filter((day) => day.date !== today);
     data.daily_planning_context = [...days, { ...(data.daily_planning_context || []).find((day) => day.date === today), date: today, infection_hint: hint }];
     return route.fulfill({ json: data });
+  });
+  // Every session read carries a step test result, as a paired step-test run would (#3833).
+  await page.context().route(/\/api\/activities\/[^/?]+(\?|$)/, async (route) => {
+    const data = await (await route.fetch()).json();
+    const lt1 = { status: "ok", heart_rate_bpm: 152, pace_seconds_per_km: 320, quality: "good" };
+    const lt2 = { status: "not_reached", reason: "α1 blieb über 0,5." };
+    return route.fulfill({ json: { ...data, step_test: { protocol: "run_step_test", status: "ok", lt1, lt2, stages: 10, analysable_stages: 9, artifact_share_pct: 1.2, source: "abgeleitet" } } });
   });
   await page.goto("/");
   await expect(page.locator("#appShell")).toBeVisible();

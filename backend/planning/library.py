@@ -62,6 +62,8 @@ LIBRARY_WORKOUT_FIELDS = {
     "category",
     "paired_event_id",
     TEMPLATE_ID,
+    # The server-built test protocol a template holds (#3833).
+    "test_protocol",
     *FOCUS_KEYS,
 }
 

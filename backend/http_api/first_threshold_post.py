@@ -20,7 +20,9 @@ class FirstThresholdPostRoutes:
         first_threshold_service: Callable[[], FirstThresholdService],
         profile_service: Callable[[], ProfileService],
         database_manager: Callable[[], Any],
+        step_test: Callable[[str], Any] | None = None,
     ) -> None:
+        self._step_test = step_test
         self._first_threshold_service = first_threshold_service
         self._profile_service = profile_service
         self._database_manager = database_manager
@@ -34,7 +36,11 @@ class FirstThresholdPostRoutes:
         Request: JSON body `{"percent_lthr": number, "replace_measured": boolean}`.
         `percent_lthr` is required and must equal the current estimate from
         `GET /api/profile`; `replace_measured: true` is needed to replace a value
-        stored with origin `measured`.
+        stored with origin `measured`. Or `{"step_test": string, "heart_rate_bpm":
+        number, "replace_measured": boolean}` adopts the good LT1 of the run step
+        test with that session id (#3833) as percent of today's run threshold HR;
+        `heart_rate_bpm` must equal `step_test.lt1.heart_rate_bpm` of
+        `GET /api/activities/{id}`.
 
         Response: 200 `{"profile": object, "first_threshold_estimate": object,
         "adopted": boolean}`. The estimate is stored as percent of the run
@@ -45,12 +51,14 @@ class FirstThresholdPostRoutes:
         Schätzung hat sich geändert. Bitte die Anzeige aktualisieren." when
         `percent_lthr` differs from the current estimate; 409 "Ein gemessener Wert
         ist gespeichert. Zum Ersetzen bitte bestätigen." without
-        `replace_measured`.
+        `replace_measured`; 409 "Dieser Stufentest liefert keinen guten Wert der
+        ersten Schwelle."; 409 "Ohne Schwellenpuls lässt sich der Wert nicht
+        speichern."; 404 for an unknown session.
         """
         payload = handler.read_json()
         with (
             self._profile_service().mutation_coordinator,
             self._database_manager().unit_of_work(),
         ):
-            result = self._first_threshold_service().adopt(payload)
+            result = self._first_threshold_service().adopt(payload, self._step_test)
         handler.send_json(200, result)

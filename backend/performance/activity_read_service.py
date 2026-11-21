@@ -1,7 +1,7 @@
 """Completed-activity analysis combining activity reads and performance context."""
 
 import functools
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Collection, Mapping, Sequence
 from datetime import date, timedelta
 from typing import Any, Final
 from zoneinfo import ZoneInfo
@@ -21,9 +21,12 @@ from backend.athlete.profile import timezone_name
 from backend.calendar.canonical import canonical_planned_workouts
 from backend.canonical.activity_summary import legacy_activity_keys, stored_activity_key
 from backend.canonical.local_time import local_date
+from backend.canonical.planning_fields import TEMPLATE_ID
 from backend.canonical.records import ActivityRecord
-from backend.canonical.vocabulary import MetricKind
+from backend.canonical.vocabulary import MetricKind, Sport
+from backend.db import activity_detail_store
 from backend.errors import AppError
+from backend.performance import step_test
 from backend.performance.canonical_detail import (
     CanonicalDetailReader,
     RefreshableProviders,
@@ -43,7 +46,7 @@ from backend.performance.detail_envelope import (
     DetailEnvelopeReader,
     feedback_session_load,
 )
-from backend.performance.freshness import GarminSyncStatus
+from backend.performance.freshness import NO_GARMIN_SYNC_STATUS, GarminSyncStatus
 from backend.performance.local_tss import THRESHOLD_KINDS
 from backend.performance.personal_recovery import personal_recovery
 from backend.performance.planned_targets import planned_step_adherence, unit_steps
@@ -74,6 +77,7 @@ class ActivityAnalysisReadService(ActivityReadService):
         refreshable: RefreshableProviders = frozenset,
         planned_units: Callable[[], Any] | None = None,
         unit_thresholds: Callable[[], Any] | None = None,
+        step_test_templates: Callable[[], Collection[str]] = frozenset,
     ) -> None:
         super().__init__(
             database_manager,
@@ -89,6 +93,7 @@ class ActivityAnalysisReadService(ActivityReadService):
         self._refreshable = refreshable
         self._planned_units = planned_units
         self._unit_thresholds = unit_thresholds
+        self._step_test_templates = step_test_templates
 
     def planned_adherence(self, document: Mapping[str, Any]) -> dict[str, Any] | None:
         """A run's or ride's steps against its local planned unit (#2830).
@@ -110,18 +115,7 @@ class ActivityAnalysisReadService(ActivityReadService):
             or execution.get("status") != "ok"
         ):
             return None
-        try:
-            day = date.fromisoformat(iso_date_prefix(session.get("started_at_local")))
-        except ValueError:
-            return None
-        # One day around, so a provider link to a neighbouring day's unit counts.
-        first, last = day - timedelta(days=1), day + timedelta(days=1)
-        units = self._planned_units().list_between(first, last)
-        unit = paired_unit(
-            units,
-            self.summaries_between(first, last) or [],
-            session.get("activity_id"),
-        )
+        unit = self.paired_planned_unit(session)
         if unit is None:
             return None
         steps = unit_steps(unit)
@@ -135,6 +129,71 @@ class ActivityAnalysisReadService(ActivityReadService):
             streams=document.get("streams"),
             planned_unit_id=str(unit.get("id")),
         )
+
+    def paired_planned_unit(self, session: Mapping[str, Any]) -> dict[str, Any] | None:
+        """The local planned unit the calendar pairs with the session, if one."""
+        if self._planned_units is None:
+            return None
+        try:
+            day = date.fromisoformat(iso_date_prefix(session.get("started_at_local")))
+        except ValueError:
+            return None
+        # One day around, so a provider link to a neighbouring day's unit counts.
+        first, last = day - timedelta(days=1), day + timedelta(days=1)
+        return paired_unit(
+            self._planned_units().list_between(first, last),
+            self.summaries_between(first, last) or [],
+            session.get("activity_id"),
+        )
+
+    def step_test(
+        self, document: Mapping[str, Any], unit: Mapping[str, Any] | None
+    ) -> dict[str, Any] | None:
+        """LT1 and LT2 of a run paired with a step-test unit (#3833), else None.
+
+        The unit is a step test when its library template is one; the result
+        comes from the run's stored DFA-a1 window series and its stage laps.
+        """
+        session = document.get("session")
+        if (
+            unit is None
+            or not isinstance(session, Mapping)
+            or session.get("sport") != Sport.RUN.value
+            or str(unit.get(TEMPLATE_ID) or "") not in self._step_test_templates()
+        ):
+            return None
+        try:
+            day = date.fromisoformat(iso_date_prefix(session.get("started_at_local")))
+        except ValueError:
+            return None
+        session_id = str(session.get("activity_id") or "")
+        with self._canonical.database_manager().read_snapshot() as db:
+            rows = activity_detail_store.dfa_series_results(
+                db, since=day, until=day, sport=Sport.RUN
+            )
+        result = next(
+            (row.result for row in rows if row.session_id == session_id), None
+        )
+        laps = document.get("laps")
+        lap_rows = laps.get("laps") if isinstance(laps, Mapping) else None
+        return {
+            **step_test.evaluate(result, lap_rows or [], day),
+            "activity_id": session_id,
+        }
+
+    def step_test_for(self, activity_id: str, today: date) -> dict[str, Any] | None:
+        """The step-test result of one session by id, read for an adoption."""
+        document = self.detail(
+            activity_id,
+            garmin_status=NO_GARMIN_SYNC_STATUS,
+            profile={},
+            today=today,
+            validation=False,
+        )
+        session = document.get("session")
+        if not isinstance(session, Mapping):
+            return None
+        return self.step_test(document, self.paired_planned_unit(session))
 
     def _zone_settings_reader(
         self, profile: Mapping[str, Any]

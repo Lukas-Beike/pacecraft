@@ -84,6 +84,11 @@ class SyncGetRoutes:
         `strength_sets`, `analysis`, `detail_data` and more, plus `weather` and `route` when stored, and `data_scope`),
         `planned_adherence` for a run or ride the calendar pairs with a local
         planned unit (each step's time in target, the score and zone times),
+        `step_test` for a run paired with a step-test unit (#3833: `lt1` and
+        `lt2`, each `status` `ok` with `heart_rate_bpm`, `pace_seconds_per_km`
+        and `quality`, or `not_reached`/`unknown` with `reason`; `stages`,
+        `analysable_stages`, `artifact_share_pct`, `source`; `status` `no_rr`
+        without a stored DFA-α1 window series),
         and `session_bundle` (the session's provider copies and merge
         candidates; null when the session is not live).
 
@@ -109,6 +114,18 @@ class SyncGetRoutes:
             adherence = None
         if adherence is not None:
             payload["planned_adherence"] = adherence
+        try:
+            session = payload.get("session")
+            tested = (
+                service.step_test(payload, service.paired_planned_unit(session))
+                if isinstance(session, dict)
+                else None
+            )
+        except Exception as exc:  # noqa: BLE001 - the step test is optional; never fail the details
+            _LOGGER.warning("step test unavailable: %s", type(exc).__name__)
+            tested = None
+        if tested is not None:
+            payload["step_test"] = tested
         # Performance validation belongs to the Coach's complete context.
         payload.pop("activity_validation", None)
         session_id = (payload.get("session") or {}).get("activity_id")

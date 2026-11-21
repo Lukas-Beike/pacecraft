@@ -1,0 +1,218 @@
+"""Running step test (#3833, card M10, protocol P1): protocol and evaluation.
+
+Expected values come from the protocol and the design of the synthetic run, not
+from the code under test. Paces are 3600 / km/h: 9.5 km/h is 6:19 /km, 14 km/h
+4:17 /km. The RR stream of the step run is built like the M10 crossing test
+(tests/test_dfa_alpha1.py): AR(1) noise whose coefficient falls with heart rate,
+0.25 (alpha1 about 0.75) at 150 bpm and 0 (white noise, alpha1 0.5) at 165 bpm.
+Its stages hold 138 bpm plus 5 bpm per stage, so the designed LT1 lies between
+stage 3 (148 bpm) and stage 4 (153 bpm). The anti-correlated side of the noise
+reads high, so LT2 is checked against the stage band and the about ±10 bpm
+individual error of the 0.5 crossing (Rogers et al. 2021b).
+"""
+
+import random
+import unittest
+from datetime import date
+
+from backend.canonical import dfa_alpha1 as dfa
+from backend.canonical.activity_detail import ActivityDfaAlpha1, DfaWindow
+from backend.canonical.vocabulary import DfaQuality
+from backend.performance import step_test
+from backend.planning.session_focus import is_hard
+from backend.planning.workouts import validate_workout_description
+
+DAY = date(2026, 11, 20)
+
+
+def step_run(stages=10, *, seed=0, artifacts_every=0):
+    """RR intervals (ms) and stage laps of a step run: warm-up, stages, cool-down."""
+    rng = random.Random(seed)
+    plan = [(600.0, 120.0)]
+    plan += [(180.0, 138.0 + 5 * index) for index in range(stages)]
+    plan += [(600.0, 125.0)]
+    series, laps, noise, elapsed, rate, clock = [], [], 0.0, 0.0, 120.0, 0.0
+    for index, (length, target) in enumerate(plan):
+        end = clock + length
+        while elapsed < end:
+            rate += (target - rate) * 0.02
+            coefficient = max(-0.6, min(0.9, 0.25 * (165 - rate) / 15))
+            noise = coefficient * noise + rng.gauss(0, 1)
+            interval = 60_000 / rate + 12 * noise * (1 - coefficient**2) ** 0.5
+            series.append(interval)
+            elapsed += interval / 1000
+        stage = 0 < index < len(plan) - 1
+        laps.append(
+            {
+                "start_offset_s": clock,
+                "end_offset_s": end,
+                "kind": "work" if stage else ("warmup", "cooldown")[index > 0],
+                "avg_hr": target,
+                "avg_speed_mps": (9.5 + 0.5 * (index - 1)) / 3.6 if stage else 2.4,
+            }
+        )
+        clock = end
+    if artifacts_every:
+        for index in range(7, len(series), artifacts_every):
+            series[index] = 3000.0
+    return series, laps
+
+
+def evaluated(stages=10, **options):
+    series, laps = step_run(stages, **options)
+    return step_test.evaluate(dfa.first_threshold([series]), laps, DAY)
+
+
+class ProtocolTests(unittest.TestCase):
+    def test_without_stored_paces_stage_1_is_9_5_kmh_and_ten_stages_follow(
+        self,
+    ) -> None:
+        template = step_test.protocol_template(None, None)
+        lines = template["description"].splitlines()
+        self.assertEqual(lines[0], "- 10m 6:40-7:30/km Pace")
+        self.assertEqual(lines[1], "- 3m 6:19/km Pace")
+        self.assertEqual(lines[10], "- 3m 4:17/km Pace")
+        self.assertEqual(lines[11], "- 10m 6:40-7:30/km Pace")
+        self.assertEqual(
+            lines[-1],
+            "Ende: wenn die Stufe nicht mehr zu halten ist, spätestens nach Stufe 10.",
+        )
+        self.assertEqual(template["duration_minutes"], 50)
+        self.assertEqual(
+            (template["session_focus"], template["test_protocol"], template["target"]),
+            ("test", "run_step_test", "PACE"),
+        )
+        validate_workout_description(dict(template))
+
+    def test_stages_start_15_kmh_below_lt1_and_end_two_beyond_lt2(self) -> None:
+        # LT1 5:00 /km is 12 km/h, so stage 1 is 10.5 km/h (5:43 /km). LT2 4:40 /km
+        # is 12.86 km/h; stage 6 (13 km/h) is the first at or above it, so the
+        # test ends with stage 8 (14 km/h, 4:17 /km).
+        template = step_test.protocol_template(300, 280)
+        steps = [line for line in template["description"].splitlines() if "3m" in line]
+        self.assertEqual(len(steps), 8)
+        self.assertEqual(
+            (steps[0], steps[-1]), ("- 3m 5:43/km Pace", "- 3m 4:17/km Pace")
+        )
+        self.assertEqual(template["duration_minutes"], 10 + 8 * 3 + 10)
+        self.assertTrue(template["description"].endswith("nach Stufe 8."))
+        validate_workout_description(dict(template))
+
+    def test_at_most_ten_stages_and_implausible_paces_fall_back(self) -> None:
+        # LT1 5:20 /km starts at 9.75 km/h; LT2 4:25 /km needs stage 9, plus two is 11.
+        self.assertEqual(len(step_test.stage_speeds(320, 265)), 10)
+        self.assertEqual(step_test.stage_speeds(320, 265)[0], 9.8)
+        for paces in ((None, None), (20, None), ("5:00", True), (5000, 0)):
+            with self.subTest(paces=paces):
+                self.assertEqual(step_test.stage_speeds(*paces)[0], 9.5)
+                self.assertEqual(len(step_test.stage_speeds(*paces)), 10)
+
+    def test_the_step_test_is_a_hard_unit_for_the_plan_checks(self) -> None:
+        # Illness, back-to-back and return checks treat it as hard (#2083).
+        self.assertTrue(is_hard(step_test.protocol_template(None, None)))
+
+
+class EvaluationTests(unittest.TestCase):
+    def test_a_step_run_gives_lt1_and_lt2_at_the_designed_stages(self) -> None:
+        result = evaluated()
+        self.assertEqual(result["status"], "ok")
+        self.assertEqual((result["stages"], result["analysable_stages"]), (10, 10))
+        self.assertLessEqual(result["artifact_share_pct"], 1.0)
+        self.assertEqual(result["source"], "abgeleitet")
+        lt1, lt2 = result["lt1"], result["lt2"]
+        self.assertEqual((lt1["status"], lt1["quality"]), ("ok", "good"))
+        self.assertTrue(148 <= lt1["heart_rate_bpm"] <= 153)
+        # Between stage 3 (10.5 km/h, 343 s/km) and stage 4 (11 km/h, 327 s/km).
+        self.assertTrue(327 <= lt1["pace_seconds_per_km"] <= 343)
+        self.assertEqual((lt2["status"], lt2["quality"]), ("ok", "good"))
+        self.assertTrue(163 <= lt2["heart_rate_bpm"] <= 175)
+        self.assertGreater(lt2["heart_rate_bpm"], lt1["heart_rate_bpm"])
+        self.assertLess(lt2["pace_seconds_per_km"], lt1["pace_seconds_per_km"])
+
+    def test_a_run_stopped_early_says_which_threshold_it_did_not_reach(self) -> None:
+        # Four stages reach 153 bpm: alpha1 never reaches 0.5, LT1 gives nothing good.
+        result = evaluated(4)
+        self.assertEqual(result["lt2"]["status"], "not_reached")
+        self.assertIn("0,5", result["lt2"]["reason"])
+        self.assertNotEqual(result["lt1"].get("quality"), "good")
+        # A run whose windows all stay above 0.75 reaches neither threshold.
+        windows = tuple(
+            DfaWindow(
+                start_s=30.0 * i,
+                heart_rate_bpm=120 + i,
+                alpha1=1.1 - 0.01 * i,
+                artifact_share=0.0,
+            )
+            for i in range(20)
+        )
+        result = step_test.evaluate(
+            ActivityDfaAlpha1(None, 20, 0.0, None, 3, windows), [], DAY
+        )
+        self.assertEqual(result["lt1"]["status"], "not_reached")
+        self.assertIn("0,75", result["lt1"]["reason"])
+        self.assertEqual(result["lt2"]["status"], "not_reached")
+
+    def test_artifact_heavy_recordings_give_no_value_to_adopt(self) -> None:
+        # One beat in 15 (6.7 %) rejects every window: no window series at all.
+        self.assertEqual(evaluated(artifacts_every=15)["status"], "no_rr")
+        # One beat in 25 (4 %) keeps the windows but is above the good limit of 3 %.
+        result = evaluated(artifacts_every=25)
+        self.assertGreater(result["artifact_share_pct"], 3.0)
+        for key in ("lt1", "lt2"):
+            self.assertNotEqual(result[key].get("quality"), "good")
+        self.assertEqual(step_test.evaluate(None, [], DAY)["status"], "no_rr")
+
+    def test_fewer_than_six_analysable_stages_lower_the_quality(self) -> None:
+        series, laps = step_run()
+        result = dfa.first_threshold([series])
+        assert result is not None
+        # Only stages 1 to 5 are recorded as stage laps.
+        found = step_test.evaluate(result, laps[:6] + laps[-1:], DAY)
+        self.assertEqual(found["analysable_stages"], 5)
+        self.assertEqual(found["lt1"]["quality"], "low")
+        self.assertEqual(result.quality, DfaQuality.GOOD)
+
+    def test_the_pace_is_read_between_the_stages_around_the_heart_rate(self) -> None:
+        laps = [
+            {
+                "start_offset_s": 0,
+                "end_offset_s": 180,
+                "avg_hr": 140,
+                "avg_speed_mps": 3.0,
+            },
+            {
+                "start_offset_s": 180,
+                "end_offset_s": 360,
+                "avg_hr": 150,
+                "avg_speed_mps": 3.5,
+            },
+        ]
+        windows = tuple(
+            DfaWindow(
+                start_s=30.0 * i,
+                heart_rate_bpm=140 + i,
+                alpha1=0.9 - 0.05 * i,
+                artifact_share=0.0,
+            )
+            for i in range(10)
+        )
+        result = ActivityDfaAlpha1(145.0, 10, 0.0, DfaQuality.GOOD, 3, windows)
+        lt1 = step_test.evaluate(result, laps, DAY)["lt1"]
+        # 145 bpm is halfway: 3.25 m/s is 1000 / 3.25 = 307.7 s/km.
+        self.assertEqual(lt1["pace_seconds_per_km"], 308)
+        result = ActivityDfaAlpha1(160.0, 10, 0.0, DfaQuality.GOOD, 3, windows)
+        self.assertIsNone(
+            step_test.evaluate(result, laps, DAY)["lt1"]["pace_seconds_per_km"]
+        )
+
+    def test_only_step_test_templates_are_recognised(self) -> None:
+        templates = [
+            {"id": "a", "test_protocol": "run_step_test"},
+            {"id": "b"},
+            {"id": "c", "test_protocol": "other"},
+        ]
+        self.assertEqual(step_test.template_ids(templates), frozenset({"a"}))
+
+
+if __name__ == "__main__":
+    unittest.main()

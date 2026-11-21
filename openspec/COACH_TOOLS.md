@@ -525,6 +525,9 @@ effect `local_write`; gate domain `planning`; records counted from `templates`; 
 - `templates[].hr_cap.percent_lthr`* (number; ≥20; ≤120)
 - `templates[].hr_cap.low_percent_lthr`* (number; ≥20; ≤120)
 - `templates[].hr_cap.source`* (string; one of `"default"`, `"measured"`, `"estimated"`)
+- `templates[].step_test` (object/null)
+- `templates[].step_test.lt1_pace_seconds_per_km`* (number/null)
+- `templates[].step_test.lt2_pace_seconds_per_km`* (number/null)
 - `templates[].new_because` (string; ≥3 chars; ≤200 chars)
 - `_request`* (the envelope above)
 

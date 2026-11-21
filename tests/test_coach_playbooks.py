@@ -38,7 +38,8 @@ NEW_KINDS = (
 )
 
 
-KIND_WORD_BUDGET = 600
+# 640: the plan kinds name the running step test and its preconditions (#3833).
+KIND_WORD_BUDGET = 640
 # Per-block word budgets: a block that grows must justify it here.
 BLOCK_WORD_BUDGETS = {
     "_EVIDENCE": 60,
@@ -59,8 +60,8 @@ BLOCK_WORD_BUDGETS = {
     # One block per sport of the analysed session (#3038).
     "_RUN_SESSION": 75,
     "_RIDE_SESSION": 75,
-    # Test planning from planning_brief.last_tests (plan kinds only).
-    "_TESTS": 125,
+    # Test planning from planning_brief.last_tests and the step test (plan kinds only).
+    "_TESTS": 160,
     "_ANSWER": 55,
     "_NUTRITION": 520,
 }

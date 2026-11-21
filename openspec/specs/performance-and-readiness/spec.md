@@ -1046,3 +1046,16 @@ The system SHALL derive per chest-strap recording the heart rate where the regre
 - **THEN** its quality is `good`, else `low`; the athlete-level quality is `good` with at least 5 sessions that spread at most 5 percentage points.
 
 Evidence: `backend/canonical/dfa_alpha1.py:first_threshold`, `backend/canonical/dfa_alpha1.py:artifact_flags`, `backend/canonical/dfa_alpha1.py:alpha1`, `backend/canonical/dfa_alpha1.py:detrend`, `backend/performance/first_threshold_estimate.py:first_threshold_estimate`; `tests/test_dfa_alpha1.py:test_the_estimate_is_the_heart_rate_where_alpha1_reaches_075`, `tests/test_dfa_alpha1.py:test_a_steady_run_never_crosses_and_gives_no_estimate`, `tests/test_dfa_alpha1.py:test_too_few_windows_give_no_estimate`, `tests/test_dfa_alpha1.py:test_windows_with_a_fast_heart_rate_step_are_left_out`, `tests/test_first_threshold_estimate.py:test_five_agreeing_sessions_make_a_good_estimate`, `docs/performance-methods/m10-dfa-alpha1-first-threshold.md`.
+
+### Requirement: Running step test gives both DFA-α1 thresholds for explicit adoption
+The system SHALL offer a running step test (M10 protocol P1, #3833) as a local library template the Coach creates on the athlete's request: 10 min warm-up, 3-minute pace stages rising by 0.5 km/h from 1.5 km/h below the current LT1 pace (9.5 km/h without one) to two stages beyond the current LT2 pace (6 to 10 stages), 10 min cool-down, with the chest-strap, HRV-recording, rested and not-ill preconditions on the unit. For a run paired with a unit from that template it SHALL show LT1 (alpha1 0.75) and LT2 (alpha1 0.5) from the run's stored window series, each with heart rate, the pace at that heart rate from the stage laps and its quality, or "nicht erreicht" with the reason; only a `good` value SHALL be offered for adoption, through the existing first threshold and LT2 adoption paths, never automatically.
+
+#### Scenario: Protocol from the athlete's paces
+- **WHEN** the Coach creates the step test with an LT1 pace of 5:00 /km and an LT2 pace of 4:40 /km
+- **THEN** stage 1 is 10.5 km/h (5:43 /km) and the eighth stage, two beyond the first at or above LT2, is the last.
+
+#### Scenario: Not reached and quality
+- **WHEN** no window of the test reaches alpha1 0.5, or fewer than 6 stages hold an analysed window, or the recording's artifact share is above 3 %
+- **THEN** LT2 is "nicht erreicht" with its reason, or the value is `low` and nothing is offered for adoption.
+
+Evidence: `backend/performance/step_test.py:protocol_template`, `backend/performance/step_test.py:evaluate`, `backend/performance/activity_read_service.py:ActivityAnalysisReadService.step_test`, `backend/performance/first_threshold_service.py:FirstThresholdService.adopt`, `backend/performance/second_threshold_service.py:SecondThresholdService.adopt`, `public/plan-views.js:appendPlannedStepTest`; `tests/test_step_test.py`, `tests/test_first_threshold_estimate.py:test_a_good_step_test_lt1_is_adopted_only_on_request`, `tests/test_second_threshold_estimate.py:test_a_good_step_test_lt2_is_adopted_only_on_request_with_the_dfa_origin`, `docs/performance-methods/m10-dfa-alpha1-first-threshold.md`.

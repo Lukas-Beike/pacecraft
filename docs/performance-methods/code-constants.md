@@ -260,6 +260,7 @@ every named number the code fixes. A test fails when it is out of date.
 | `CONFIRM_DEVIATION_SHARE` | `0.05` | `backend/performance/second_threshold_service.py` | Above this share of the value in effect an adoption needs a second confirmation (F9). |
 | `NOTICE_BASELINE_KEY` | `'lt2_notice_baselines'` | `backend/performance/second_threshold_service.py` | The server-side baseline of the LT2 change notice (F10): per sport the values the athlete last saw, null for "unbekannt". |
 | `NOTICE_VALUES` | `{'run': ('provider_hr', 'provider_pace', 'dfa_hr', 'dfa_pace', 'cs_pace'), 'ride': ('provider_pow... (sha256 b92af6f4)` | `backend/performance/second_threshold_service.py` |  |
+| `STEP_TEST_SOURCE` | `'step_test'` | `backend/performance/second_threshold_service.py` | The run step test's LT2 (#3833), adopted with the DFA-a1 origin. |
 | `TARGET_BASIS_FTP_KEY` | `'ftp'` | `backend/performance/session_analysis.py` |  |
 | `METHOD` | `'time-weighted-session-analysis-v3'` | `backend/performance/session_analysis.py` | v2: Pa:HR of outdoor runs uses grade-adjusted speed (card M8 v2, #1770). v3: the steady-output rule reads the CV of 60 s rolling means (#1832). |
 | `GRADE_ADJUSTED_SPEED` | `'grade_adjusted_speed'` | `backend/performance/session_analysis.py` |  |
@@ -395,6 +396,25 @@ every named number the code fixes. A test fails when it is out of date.
 | `WAHOO_CURRENT_MAX_AGE_DAYS` | `90` | `backend/performance/source_policy.py` | A Wahoo FTP or weight observed longer ago than this is history, not the current value. |
 | `GARMIN_THRESHOLD_MAX_AGE_DAYS` | `180` | `backend/performance/source_policy.py` | A Garmin threshold observed longer ago than this is history, not current. |
 | `FAMILY_LOOKBACK_DAYS` | `84` | `backend/performance/source_policy.py` | Days, ending on the latest day read, of recovery history every reader uses. |
+| `PROTOCOL` | `'run_step_test'` | `backend/performance/step_test.py` |  |
+| `NAME` | `'Stufentest Laufen (LT1 und LT2)'` | `backend/performance/step_test.py` |  |
+| `WARMUP_MIN` | `10` | `backend/performance/step_test.py` |  |
+| `COOLDOWN_MIN` | `10` | `backend/performance/step_test.py` |  |
+| `STAGE_MIN` | `3` | `backend/performance/step_test.py` |  |
+| `STEP_KMH` | `0.5` | `backend/performance/step_test.py` |  |
+| `BELOW_LT1_KMH` | `1.5` | `backend/performance/step_test.py` |  |
+| `FALLBACK_START_KMH` | `9.5` | `backend/performance/step_test.py` |  |
+| `STAGES_BEYOND_LT2` | `2` | `backend/performance/step_test.py` |  |
+| `MAX_STAGES` | `10` | `backend/performance/step_test.py` |  |
+| `MIN_GOOD_STAGES` | `6` | `backend/performance/step_test.py` |  |
+| `EASY_RANGE_KMH` | `(1.5, 0.5)` | `backend/performance/step_test.py` | The warm-up and cool-down range lies this far below stage 1 (km/h). |
+| `PACE_BOUNDS_S` | `(150.0, 900.0)` | `backend/performance/step_test.py` | Plausible run paces (s/km); another value counts as unknown. |
+| `STAGE_LAP_S` | `(150.0, 210.0)` | `backend/performance/step_test.py` | A recorded lap of this length (s) is one stage; a shorter last one was not held. |
+| `END_NOTE` | `'Ende: wenn die Stufe nicht mehr zu halten ist, spätestens nach Stufe {last}.'` | `backend/performance/step_test.py` |  |
+| `SOURCE` | `'abgeleitet'` | `backend/performance/step_test.py` |  |
+| `LT1_NOT_REACHED` | `'α1 blieb über 0,75. Die Stufen waren nicht schnell genug.'` | `backend/performance/step_test.py` |  |
+| `LT2_NOT_REACHED` | `'α1 blieb über 0,5. Die letzten Stufen waren nicht schnell genug oder wurden abgebrochen.'` | `backend/performance/step_test.py` |  |
+| `NO_CROSSING` | `'keine klare Kreuzung'` | `backend/performance/step_test.py` |  |
 | `STALE_AFTER_DAYS` | `56` | `backend/performance/threshold_staleness.py` | Athlete decision 2026-11-07: eight weeks. |
 | `REASON_STALE` | `'stale'` | `backend/performance/threshold_staleness.py` |  |
 | `REASON_EXPIRED` | `'expired'` | `backend/performance/threshold_staleness.py` |  |

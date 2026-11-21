@@ -105,6 +105,22 @@ class SessionCrossingTests(unittest.TestCase):
             for i in range(4)
         ]
         self.assertIsNone(lt2.session_second_threshold(stored(tuple(windows)), TODAY))
+        # A step test is hard at its end by design (#3833): the drift rule is off.
+        windows += [
+            DfaWindow(
+                start_s=end - 30.0 * i,
+                heart_rate_bpm=171.0 + i,
+                alpha1=0.48 - i * 0.02,
+                artifact_share=0.0,
+            )
+            for i in range(4, 6)
+        ]
+        self.assertIsNone(lt2.session_second_threshold(stored(tuple(windows)), TODAY))
+        found = lt2.session_second_threshold(
+            stored(tuple(windows)), TODAY, late_drift=False
+        )
+        assert found is not None
+        self.assertAlmostEqual(found.bpm, 170.0, delta=1.0)
 
     def test_artifacts_lower_the_quality(self) -> None:
         found = lt2.session_second_threshold(stored(series(), share=0.04), TODAY)
@@ -490,6 +506,84 @@ class AdoptTests(unittest.TestCase):
                 zones, sport="run", source="dfa_alpha1", value="heart_rate", shown=169
             )
         self.assertEqual(raised.exception.reason, "lt2_zone_limits")
+
+    def test_a_good_step_test_lt2_is_adopted_only_on_request_with_the_dfa_origin(
+        self,
+    ) -> None:
+        # #3833: the run step test's LT2 goes through the same adoption path.
+        tests = {
+            "good": {
+                "lt2": {
+                    "status": "ok",
+                    "heart_rate_bpm": 171,
+                    "pace_seconds_per_km": 265,
+                    "quality": "good",
+                }
+            },
+            "low": {
+                "lt2": {
+                    "status": "ok",
+                    "heart_rate_bpm": 171,
+                    "pace_seconds_per_km": 265,
+                    "quality": "low",
+                }
+            },
+        }
+        reads = []
+
+        def reader(activity_id):
+            reads.append(activity_id)
+            return tests.get(activity_id)
+
+        zones = FakeZones(
+            zone("heart_rate", 165, percent=[80, 89, 94, 100, 103, 110], maximum=190)
+        )
+        service = SecondThresholdService(
+            Mock(), Mock(), Mock(), lambda _days: [], lambda: TODAY, zones=lambda: zones
+        )
+        self.assertEqual(zones.saved, [])
+        service.adopt(
+            {
+                "sport": "run",
+                "source": "step_test",
+                "value": "heart_rate",
+                "shown": 171,
+                "activity_id": "good",
+            },
+            reader,
+        )
+        (saved,) = zones.saved
+        self.assertEqual(saved["threshold"], 171)
+        self.assertEqual(saved["threshold_origin"], "dfa_alpha1")
+        for payload, reason in (
+            ({"activity_id": "low", "shown": 171}, "lt2_unknown"),
+            ({"activity_id": "good", "shown": 170}, "lt2_changed"),
+            ({"activity_id": "none", "shown": 171}, "lt2_unknown"),
+        ):
+            with self.subTest(payload=payload), self.assertRaises(AppError) as raised:
+                service.adopt(
+                    {
+                        "sport": "run",
+                        "source": "step_test",
+                        "value": "heart_rate",
+                        **payload,
+                    },
+                    reader,
+                )
+            self.assertEqual(raised.exception.reason, reason)
+        with self.assertRaises(AppError) as raised:
+            service.adopt(
+                {
+                    "sport": "ride",
+                    "source": "step_test",
+                    "value": "power",
+                    "shown": 1,
+                    "activity_id": "good",
+                },
+                reader,
+            )
+        self.assertEqual(raised.exception.status, 400)
+        self.assertEqual(len(zones.saved), 1)
 
     def test_unknown_sources_values_and_estimates_are_refused(self) -> None:
         zones = FakeZones(zone("power", 265, percent=[55, 75, 90, 105, 120, 150, 999]))

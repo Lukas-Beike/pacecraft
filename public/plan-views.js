@@ -67,11 +67,17 @@ function appendPlannedDescription(details, text) {
 
 // The planned steps as a list (#2447, mockup B): zone mark, duration or distance, zone, and the target
 // range of the zones in effect on the unit's day right-aligned; a step without a range shows none.
-function plannedStepList(profile) {
+// A step test names its steps (#3833): warm-up, the numbered stages, cool-down.
+function plannedStepList(profile, stepTest = false) {
   const segments = profile?.source === "planned" && Array.isArray(profile.segments) ? profile.segments : [];
   if (!segments.length || segments.length > 200) return null;
   const axis = profile.axis === "distance" ? "distance" : "duration";
-  const rows = segments.map((segment) => {
+  const stepName = (index) => {
+    if (!stepTest) return null;
+    if (index === 0) return "Einlaufen";
+    return index === segments.length - 1 ? "Auslaufen" : `Stufe ${index}`;
+  };
+  const rows = segments.map((segment, index) => {
     const zone = Number.isInteger(segment.zone) && segment.zone >= 1 && segment.zone <= 7 ? segment.zone : null;
     // The zone text is the written zone target ("Z1–Z2"); a percent or watt target shows its own text instead.
     const label = String(segment.label || "");
@@ -80,7 +86,7 @@ function plannedStepList(profile) {
     const range = plannedStepRange(segment.range) || (written ? "" : label.slice(0, 40));
     return h("li", { dataset: { zone: zone || "unknown" } },
       h("span", { className: "planned-step-mark", "aria-hidden": "true" }),
-      h("span", "planned-step-text", [plannedStepExtent(Number(segment[axis]), axis), zoneText].filter(Boolean).join(" · ")),
+      h("span", "planned-step-text", [plannedStepExtent(Number(segment[axis]), axis), stepName(index) || zoneText].filter(Boolean).join(" · ")),
       h("span", "planned-step-range", range));
   });
   return h("ol", { className: "planned-steps", "aria-label": "Ablauf" }, rows);
@@ -1513,6 +1519,82 @@ function showPlannedDay(dateKey) {
 
 // One slim bar of the session's time per zone with every zone's minutes below and the zone kind and source:
 // rides use power zones when they have them, every other sport heart-rate zones. No zones, no bar.
+// The running step test (#3833): LT1 and LT2 of the completed run from its DFA-α1 windows. Only a
+// good value offers "Übernehmen", through the existing adoption paths; nothing is adopted on its own.
+const STEP_TEST_PROTOCOL = "run_step_test";
+const STEP_TEST_PRECONDITION = "Nur mit Brustgurt und eingeschalteter HRV-Aufzeichnung auf der Uhr. Ausgeruht laufen, nicht nach einem harten Tag und nicht krank.";
+const STEP_TEST_ROWS = [["lt1", "LT1", "Erste Schwelle (LT1) · DFA-α1 0,75"], ["lt2", "LT2", "Anaerobe Schwelle (LT2) · DFA-α1 0,5"]];
+const STEP_TEST_QUALITY = { good: "gut", low: "niedrig" };
+const STEP_TEST_PERCENT = new Intl.NumberFormat("de-DE", { maximumFractionDigits: 1 });
+
+// Pure: the rows, notes and provenance line of one step-test result.
+function stepTestView(result) {
+  if (result?.status !== "ok") {
+    return { rows: [], notes: ["Keine RR-Intervalle: Brustgurt mit eingeschalteter HRV-Aufzeichnung nötig."], provenance: "" };
+  }
+  const rows = STEP_TEST_ROWS.map(([key, short, label]) => {
+    const value = result[key] || {};
+    if (value.status !== "ok") return { key, label, value: value.status === "not_reached" ? "nicht erreicht" : "nicht bestimmbar", quality: "", adopt: null };
+    const pace = Number.isFinite(value.pace_seconds_per_km) ? ` · ${AppFormat.clock(value.pace_seconds_per_km)} /km` : "";
+    return { key, short, label, value: `${value.heart_rate_bpm} bpm${pace}`, quality: STEP_TEST_QUALITY[value.quality] || "", adopt: value.quality === "good" ? value : null };
+  });
+  const notes = STEP_TEST_ROWS.filter(([key]) => result[key]?.status === "not_reached").map(([key, short]) => `${short} nicht erreicht: ${result[key].reason}`);
+  const provenance = ["Brustgurt", `${result.analysable_stages} von ${result.stages} Stufen auswertbar`, `${STEP_TEST_PERCENT.format(result.artifact_share_pct)} % Artefakte`, result.source].join(" · ");
+  return { rows, notes, provenance };
+}
+
+// Only a completed step-test unit gets the block, once per opened card.
+async function appendPlannedStepTest(details, activityId, entry) {
+  if (!activityId || entry.test_protocol !== STEP_TEST_PROTOCOL || details.querySelector(".planned-step-test")) return;
+  const box = h("div", "planned-step-test");
+  (details.querySelector(".planned-zone-time") || details.querySelector(".planned-actual-facts") || details.lastElementChild)?.after(box);
+  if (!box.isConnected) details.append(box);
+  let result;
+  try {
+    result = (await plannedSessionRead(activityId))?.step_test;
+  } catch {
+    box.remove();
+    return;
+  }
+  if (!result) {
+    box.remove();
+    return;
+  }
+  const view = stepTestView(result);
+  const rows = view.rows.map((row) => {
+    const action = h("td");
+    if (row.adopt) {
+      const button = h("button", { type: "button", className: "secondary-button" }, "Übernehmen");
+      button.addEventListener("click", () => { void adoptStepTestValue(activityId, row, button); });
+      action.append(button);
+    }
+    return h("tr", null, h("th", { scope: "row" }, row.label), h("td", null, row.value), h("td", null, row.quality), action);
+  });
+  box.replaceChildren(
+    rows.length ? h("table", "current-performance-table", h("tbody", null, rows)) : "",
+    ...view.notes.map((note) => h("p", "planned-day-context planned-day-health", note)),
+    view.provenance ? h("p", "planned-description", view.provenance) : "");
+}
+
+// LT1 goes to the profile's first threshold, LT2 to the run zones (heart rate and pace, chosen one by one).
+async function adoptStepTestValue(activityId, row, button) {
+  if (row.key === "lt2") {
+    const adopt = lt2AdoptValues("step_test", row.adopt);
+    await adoptLt2("run", { source: "step_test", sport: "run", activity_id: activityId, name: "Stufentest", adopt }, button);
+    return;
+  }
+  const profile = state.data?.profile || {};
+  const replacesMeasured = Boolean(profile.first_threshold_pct) && profile.first_threshold_origin === "measured";
+  if (replacesMeasured && !(await requestConfirmation("Der gemessene Wert wird durch den Wert aus dem Stufentest ersetzt.", { title: "Gemessenen Wert ersetzen?", confirmLabel: "Ersetzen" }))) return;
+  button.disabled = true;
+  try {
+    const result = await api("/api/profile/first-threshold/adopt", { method: "POST", body: JSON.stringify({ step_test: activityId, heart_rate_bpm: row.adopt.heart_rate_bpm, ...(replacesMeasured ? { replace_measured: true } : {}) }) });
+    toast(result.adopted === false ? "Wert aus dem Stufentest ist bereits übernommen" : "Erste Schwelle übernommen");
+    await load();
+  } catch (error) { toast(error.message, true); }
+  finally { button.disabled = false; }
+}
+
 async function appendPlannedZoneTime(details, activityId, ride) {
   const box = h("div", "planned-zone-time");
   const facts = details.querySelector(".planned-actual-facts");
@@ -1659,6 +1741,7 @@ function appendOpenedPlannedParts(details, head, entry, actual) {
   if (activityId && !details.querySelector(".planned-zone-time")) {
     void appendPlannedZoneTime(details, activityId, ["Radfahren", "Rad indoor"].includes(activitySportLabel(calendarSportType(actual))));
   }
+  void appendPlannedStepTest(details, activityId, entry);
   void appendPlannedEquipment(details, head, entry, actual);
 }
 
@@ -1797,7 +1880,9 @@ function plannedEquipmentReceipt(details, head, entry, actual, { change, message
 function appendPlannedUnitBody(details, entry, dateKey, todayKey) {
   const metrics = plannedSessionMetrics(entry);
   if (metrics) details.append(metrics);
-  const steps = plannedStepList(entry.workout_profile);
+  const stepTest = entry.test_protocol === STEP_TEST_PROTOCOL;
+  if (stepTest) details.append(h("p", { className: "planned-day-context planned-day-health", dataset: { stepTestNote: "" } }, STEP_TEST_PRECONDITION));
+  const steps = plannedStepList(entry.workout_profile, stepTest);
   if (steps) details.append(steps);
   details.append(...plannedUnitActions(entry, dateKey, todayKey));
   return steps;

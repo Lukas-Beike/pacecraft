@@ -717,6 +717,33 @@ class AdoptFlowTests(unittest.TestCase):
         self.assertEqual(stored[FIRST_THRESHOLD_ORIGIN_FIELD], ORIGIN_ESTIMATED)
         self.assertEqual(stored[FIRST_THRESHOLD_FIELD], f"{view['percent_lthr']:g}")
 
+    def test_a_good_step_test_lt1_is_adopted_only_on_request(self) -> None:
+        # #3833: 153 bpm of a 170 bpm threshold HR is 90 %, stored as estimated.
+        tests: dict[str, dict[str, Any]] = {
+            "good": {"lt1": {"status": "ok", "heart_rate_bpm": 153, "quality": "good"}},
+            "low": {"lt1": {"status": "ok", "heart_rate_bpm": 153, "quality": "low"}},
+            "missing": {"lt1": {"status": "not_reached", "reason": "x"}},
+        }
+        self.assertEqual(self.profile.get()[FIRST_THRESHOLD_FIELD], "")
+        for payload in (
+            {"step_test": "low", "heart_rate_bpm": 153},
+            {"step_test": "missing", "heart_rate_bpm": 153},
+            {"step_test": "good", "heart_rate_bpm": 152},
+            {"step_test": "unknown", "heart_rate_bpm": 153},
+        ):
+            with self.subTest(payload=payload), self.assertRaises(AppError) as raised:
+                self.service.adopt(payload, lambda key: tests.get(key))
+            self.assertEqual(raised.exception.status, 409)
+        self.assertEqual(history(self), [])
+        outcome = self.service.adopt(
+            {"step_test": "good", "heart_rate_bpm": 153}, lambda key: tests.get(key)
+        )
+        self.assertTrue(outcome["adopted"])
+        stored = self.profile.get()
+        self.assertEqual(stored[FIRST_THRESHOLD_FIELD], "90")
+        self.assertEqual(stored[FIRST_THRESHOLD_ORIGIN_FIELD], ORIGIN_ESTIMATED)
+        self.assertEqual(len(history(self)), 1)
+
     def test_a_manual_entry_or_edit_resets_the_origin_to_measured(self) -> None:
         seed(self)
         self.service.adopt({"percent_lthr": 90.0})
@@ -800,15 +827,19 @@ class RouteTests(unittest.TestCase):
         service = Mock()
         service.adopt.return_value = {"profile": {}, "first_threshold_estimate": None}
         profile = Mock(mutation_coordinator=threading.RLock())
+        step_test = Mock()
         routes = FirstThresholdPostRoutes(
             lambda: service,
             lambda: profile,
             lambda: MagicMock(),
+            step_test=step_test,
         )
         handler = Mock()
         handler.read_json.return_value = {"percent_lthr": 90.0}
         self.assertTrue(dispatch_route(routes, handler, ADOPT_PATH, method="POST"))
-        service.adopt.assert_called_once_with({"percent_lthr": 90.0})
+        # The step test reader goes with the request (#3833); the service reads it.
+        service.adopt.assert_called_once_with({"percent_lthr": 90.0}, step_test)
+        step_test.assert_not_called()
         handler.send_json.assert_called_once_with(
             200, {"profile": {}, "first_threshold_estimate": None}
         )
