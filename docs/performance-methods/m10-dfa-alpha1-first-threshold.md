@@ -164,7 +164,10 @@ step-test template:
 Limits: the individual error of the 0.5 crossing is about ±10 bpm (R76), so
 LT2 especially is an estimate to review, not a lab value; LT1 holds only when
 rested (R77); the studies used treadmills, and outdoor wind, slope and pace
-control add error.
+control add error. Place (decision for #3833): a treadmill at 1 % incline
+first, else a 400 m track with the watch's track run mode, a flat loop only as
+a fallback, and the same place for every repeat test, so tests stay
+comparable.
 
 ## Sources
 

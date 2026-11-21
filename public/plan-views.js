@@ -1522,7 +1522,7 @@ function showPlannedDay(dateKey) {
 // The running step test (#3833): LT1 and LT2 of the completed run from its DFA-α1 windows. Only a
 // good value offers "Übernehmen", through the existing adoption paths; nothing is adopted on its own.
 const STEP_TEST_PROTOCOL = "run_step_test";
-const STEP_TEST_PRECONDITION = "Nur mit Brustgurt und eingeschalteter HRV-Aufzeichnung auf der Uhr. Ausgeruht laufen, nicht nach einem harten Tag und nicht krank.";
+const STEP_TEST_PRECONDITION = "Nur mit Brustgurt und eingeschalteter HRV-Aufzeichnung auf der Uhr. Ausgeruht laufen, nicht nach einem harten Tag und nicht krank. Laufband (1 % Steigung) oder Bahn im Modus Bahnlauf; alle Tests am selben Ort.";
 const STEP_TEST_ROWS = [["lt1", "LT1", "Erste Schwelle (LT1) · DFA-α1 0,75"], ["lt2", "LT2", "Anaerobe Schwelle (LT2) · DFA-α1 0,5"]];
 const STEP_TEST_QUALITY = { good: "gut", low: "niedrig" };
 const STEP_TEST_PERCENT = new Intl.NumberFormat("de-DE", { maximumFractionDigits: 1 });
