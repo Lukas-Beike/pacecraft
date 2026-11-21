@@ -34,6 +34,11 @@ python scripts/pr_merge.py <pr> [--wait <minutes>] [--allow-behind]
   files). Rebase and rerun; `--allow-behind` skips the check. Behind develop
   in other files only, and develop moving during CI after arming, are
   accepted.
+- After arming it rebases a PR GitHub reports BEHIND develop, and with `--wait`
+  once more after its first finished CI round (#3872): the develop push's
+  auto-rebase ran before arming, and GitHub runs the scheduled fallback only
+  every few hours. Rebase only (`update-branch`, `update_method=rebase`, pinned
+  to the head); a refused rebase is reported and arming stands.
 - `--wait` polls about every 20 seconds in the same turn until the PR is merged
   or closed, a check fails, or new feedback arrives (#2795): a person's comment
   or review, a status bot's review that requests changes, or any unresolved
