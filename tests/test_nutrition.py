@@ -406,8 +406,13 @@ class NutritionRepositoryAndServiceTests(unittest.TestCase):
         self.assertEqual(entry["meal_date"], "2026-09-23")
         self.assertEqual(entry["logged_at"], "2026-09-23T12:00:00")
         self.assertFalse(entry["logged_time_known"])
+        dinner = self.service.log_template(
+            template["id"], meal_date="2026-09-23", meal_type="dinner"
+        )
+        self.assertEqual(dinner["logged_at"], "2026-09-23T18:00:00")
+        self.assertTrue(dinner["logged_time_known"])
 
-    def test_template_without_meal_time_stores_unknown_time_and_keeps_meal_type(
+    def test_template_without_meal_time_takes_type_default_and_keeps_meal_type(
         self,
     ) -> None:
         template = self.library.save_template(
@@ -419,10 +424,13 @@ class NutritionRepositoryAndServiceTests(unittest.TestCase):
                 "source": "coach",
             }
         )
-        unknown = self.service.log_template(template["id"], meal_date="2026-09-23")
-        self.assertFalse(unknown["logged_time_known"])
-        self.assertEqual(unknown["meal_type"], "breakfast")
-        self.assertFalse(self.service.get_meal(unknown["id"])["logged_time_known"])
+        defaulted = self.service.log_template(template["id"], meal_date="2026-09-23")
+        self.assertTrue(defaulted["logged_time_known"])
+        self.assertEqual(defaulted["logged_at"], "2026-09-23T09:00:00")
+        self.assertEqual(defaulted["meal_type"], "breakfast")
+        self.assertEqual(
+            self.service.get_meal(defaulted["id"])["logged_at"], "2026-09-23T09:00:00"
+        )
         known = self.service.log_template(
             template["id"], meal_date="2026-09-23", meal_time="13:05"
         )

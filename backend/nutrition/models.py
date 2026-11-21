@@ -22,6 +22,13 @@ MAX_KCAL = 10000
 MAX_MACRO_G = 1000.0
 MAX_DESCRIPTION_LEN = 500
 MEAL_DATE_REQUIRED = "meal_date ist erforderlich."
+# A main meal named without a time takes its type's default time (athlete, #3834);
+# a snack has none and keeps the entry time.
+DEFAULT_MEAL_TIMES = {
+    "breakfast": "09:00:00",
+    "lunch": "12:00:00",
+    "dinner": "18:00:00",
+}
 # Whole-kcal text such as "1.200" is grouped thousands, never 1.2 kcal.
 _DOT_GROUPED_THOUSANDS = re.compile(r"[+-]?[1-9]\d{0,2}\.\d{3}", re.ASCII)
 
@@ -56,6 +63,12 @@ def validate_iso_date(value: Any) -> str:
         raise AppError(
             400, f"Ungültiges Datumsformat '{value}'. Erwartet wird YYYY-MM-DD."
         ) from exc
+
+
+def default_meal_logged_at(meal_date: str, meal_type: Any) -> str | None:
+    """The default ``logged_at`` of a main meal on ``meal_date``; None for other types."""
+    clock = DEFAULT_MEAL_TIMES.get(str(meal_type or "").strip().lower())
+    return f"{meal_date}T{clock}" if clock else None
 
 
 def meal_type_from_hour(hour: int) -> str:
@@ -252,9 +265,14 @@ def _normalize_logged_time(
     raw: dict[str, Any], meal_date: str, default_time: str | None
 ) -> tuple[str, bool]:
     logged_time_known = _logged_time_known_flag(raw.get("logged_time_known"))
-    value = raw.get("logged_at") or raw.get("meal_time") or default_time
+    value = raw.get("logged_at") or raw.get("meal_time")
+    typed_default = default_meal_logged_at(meal_date, raw.get("meal_type"))
     if logged_time_known and value:
         logged_at = _normalize_logged_at(meal_date, value)
+    elif logged_time_known and typed_default:
+        logged_at = typed_default
+    elif logged_time_known and default_time:
+        logged_at = _normalize_logged_at(meal_date, default_time)
     elif logged_time_known:
         # A meal for another day without a named time has none.
         logged_at, logged_time_known = f"{meal_date}T12:00:00", False

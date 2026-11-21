@@ -1251,7 +1251,9 @@ Request: JSON body, either `components` alone or one meal. Meal fields:
 `food_ingredients` or `components` supply it), optional `carbs_g`, `protein_g`,
 `fat_g` (0 to 1000, or `carbs`, `carbohydrates`, `protein`, `fat`), `meal_date`
 (or `date`, default today), `meal_time` (or `logged_at`; a time or an ISO
-timestamp), `logged_time_known` (boolean; `false` needs `meal_type`),
+timestamp; without one `breakfast`, `lunch` and `dinner` take 09:00, 12:00
+and 18:00, other types today the current time, else no known time),
+`logged_time_known` (boolean; `false` needs `meal_type`),
 `estimate_uncertain` (boolean, default false: the amounts were estimated),
 `meal_type` (`breakfast`, `lunch`, `dinner`, `snack`, `pre_session`,
 `during_session`; default derived from the time, never a session slot),
