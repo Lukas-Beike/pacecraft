@@ -132,6 +132,19 @@ test("ui walk steps press only opening controls and name the feature they cover 
   for (const label of ["Details", "Nächste Woche", "Laufen", ""]) assert.equal(walk.refusedLabel(label), false, label);
 });
 
+// #3886: a step newer than the running release is skipped with an info line, not a FAIL.
+test("ui walk skips a step whose since is newer than the running release", async () => {
+  const walk = await load();
+  const step = { name: "Neu", since: "2.2.12" };
+  assert.deepEqual(walk.releaseSkip(step, "2.2.11"), { status: "skip", ms: 0, why: "not in 2.2.11" });
+  assert.deepEqual(walk.releaseSkip(step, "1.9.20"), { status: "skip", ms: 0, why: "not in 1.9.20" });
+  for (const running of ["2.2.12", "2.10.0", null]) assert.equal(walk.releaseSkip(step, running), null, running);
+  assert.equal(walk.releaseSkip({ name: "Alt" }, "2.2.11"), null);
+  const lines = walk.reportLines({ loadMs: {}, errors: {}, calendar: {}, marks: null, steps: { "phone Neu": { status: "skip", ms: 0, why: "not in 2.2.11", covers: "#1" } } });
+  assert.ok(lines.includes("info phone Neu skipped: not in 2.2.11"));
+  for (const item of walk.STEPS.filter((entry) => entry.since)) assert.match(item.since, /^\d+\.\d+\.\d+$/, item.name);
+});
+
 test("ui walk reports each step and flags one that passed before and is skipped now (#3009)", async () => {
   const walk = await load();
   const result = {

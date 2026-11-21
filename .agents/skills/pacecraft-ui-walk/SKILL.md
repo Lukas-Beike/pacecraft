@@ -63,7 +63,10 @@ To add a step, append one object to `STEPS`: `view`, `name`, `covers` (feature o
 issue), optional `pre` (open once), `each` (candidates tried in turn) and `opens`
 (open inside the candidate), `seek` (a paging control pressed, at most six
 times, while no candidate has the element) with `unseek` (pressed as often
-afterwards), `ready` (selector), `kind`, `optional`, `absent`.
+afterwards), `ready` (selector), `kind`, `optional`, `absent`, and `since`: the
+first release version that carries the feature (the next release when the step
+is added). A walk against an older release prints `info <step> skipped: not in
+<version>` instead of a FAIL; the e2e fixture walk runs every step (#3886).
 Controls are limited to opening, expanding, paging and tab controls
 (`isOpener`), and a label that names save, sync, send, delete, export, undo or
 settings is refused; choosing a select value is never part of a step. The

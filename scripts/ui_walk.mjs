@@ -204,7 +204,8 @@ async function walkCalendar(page, shot) {
 // options: a select with two or more options, text: any). `absent` = [scope, text] marks a candidate
 // whose data does not exist; a visible `never` element fails the step once it is ready. `optional`
 // steps depend on recorded data: with none they are skipped, and a later walk compares ok before /
-// skipped now as a FAIL. A new user-visible function adds its step here.
+// skipped now as a FAIL. A new user-visible function adds its step here, with `since`: the first
+// release that carries it, so a walk of an older release skips it instead of failing (#3886).
 // Controls are limited to opening, expanding and paging ones (isOpener); the label guard stops the rest.
 export const STEP_KINDS = ["chart", "numbers", "options", "text"];
 const OPENERS = [
@@ -306,7 +307,7 @@ export const STEPS = [
   { view: "more", name: "Mehr: Ausrüstung Standard", covers: "#3014 default equipment", pre: [tab("more", "equipment")], ready: "#equipmentItems .equipment-rules select", kind: "options" },
   // The current release's entry: a listed change, or only its collapsed "Technik (n)" (2.1.20).
   // Read-only: the walk checks that "Wettkämpfe senden" is there and never presses it (#3838).
-  { view: "more", name: "Mehr: Wettkämpfe senden", covers: "#3838 competition send button", pre: [tab("more", "connections")], opens: ["#connection-intervals > summary"], ready: "#competitionSendButton", kind: "text", optional: true },
+  { view: "more", name: "Mehr: Wettkämpfe senden", covers: "#3838 competition send button", since: "2.2.12", pre: [tab("more", "connections")], opens: ["#connection-intervals > summary"], ready: "#competitionSendButton", kind: "text", optional: true },
   { view: "more", name: "Mehr: Betrieb, Änderungen", covers: "#2908 changelog", pre: [tab("more", "operations")], ready: ".release-changelog > ul > li, .release-changelog > .release-technical > summary", kind: "text", optional: true },
 ];
 
@@ -437,6 +438,26 @@ export async function runStep(page, { pre = [], post = [], unseek, ...step }, ca
   }
 }
 
+// A step newer than the running release is not checked (#3886): the walk runs from develop, where a
+// feature merged after the release already has its step. Without a readable version every step runs.
+// The skip outcome for such a step, else null (the step runs).
+export function releaseSkip(step, running) {
+  if (!step.since || !running) return null;
+  const parts = (version) => version.split(".").map(Number);
+  const [have, need] = [parts(running), parts(step.since)];
+  for (let index = 0; index < Math.max(have.length, need.length); index += 1) {
+    const diff = (have[index] || 0) - (need[index] || 0);
+    if (diff) return diff > 0 ? null : { status: "skip", ms: 0, why: `not in ${running}` };
+  }
+  return null;
+}
+
+// The running release, from the diagnostics the logged-in walk may read; null when unreadable.
+async function runningVersion(page) {
+  const version = await page.request.get("/api/diagnostics").then((response) => (response.ok() ? response.json() : null)).then((report) => report?.app?.version).catch(() => null);
+  return typeof version === "string" && /^\d+(\.\d+){1,3}$/.test(version) ? version : null;
+}
+
 // A step that passed in the previous walk and skips now runs once more after RETRY_WAIT_MS: right after a
 // deploy its data may still be loading (2.1.50). Skipped twice stays the compare FAIL (#3540).
 export const RETRY_WAIT_MS = 20000;
@@ -494,6 +515,7 @@ async function walk({ chromium, url, password, outDir, earlier = {} }) {
       // Every error counts against a step: login, a view (with its calendar walk), or the rest.
       result.errors[`${name} login`] = errors.length;
       result.curves ??= await waitForCurves(page);
+      result.version ??= await runningVersion(page);
       let counted = errors.length;
       const shot = async (label) => writeFresh(outDir, `${name}-${label}.png`, await page.screenshot({ fullPage: false }));
       for (const route of VIEWS) {
@@ -504,7 +526,8 @@ async function walk({ chromium, url, password, outDir, earlier = {} }) {
         // The steps start in the calendar's initial week; the calendar walk pages away from it.
         for (const step of STEPS.filter((item) => item.view === route)) {
           const key = `${name} ${step.name}`;
-          result.steps[key] = { ...(await retriedStep(() => runStep(page, step), earlier[key], pause)), covers: step.covers };
+          const run = async () => releaseSkip(step, result.version) ?? runStep(page, step);
+          result.steps[key] = { ...(await retriedStep(run, earlier[key], pause)), covers: step.covers };
         }
         if (route === "plan") result.calendar[name] = await walkCalendar(page, shot);
         result.errors[`${name} ${route}`] = errors.length - counted;
