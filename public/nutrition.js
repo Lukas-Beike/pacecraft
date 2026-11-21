@@ -530,12 +530,13 @@ function isCurrentNutritionDayLoad(sequence, generation, cacheEpoch, dateInput, 
     && (!expectedDate || dateInput.value === expectedDate);
 }
 
-// The energy card's "gegessen" comes from its own read: once the day's intake differs from the
-// one that read was drawn beside, it reads again, so no card shows the old intake (#3852).
+// The energy card's "gegessen" and its digestion come from its own read: once the day's entries
+// differ from the ones that read was drawn beside (kcal, macros, flags), it reads again, so no
+// card shows the old intake (#3852).
 let energyIntakeKey = null;
 
 function nutritionIntakeKey(day) {
-  return JSON.stringify([day.date, day.total_kcal, (day.entries || []).map((item) => [item.id, item.kcal, item.meal_date])]);
+  return JSON.stringify([day.date, day.total_kcal, day.entries || []]);
 }
 
 function renderNutritionDay(day) {
