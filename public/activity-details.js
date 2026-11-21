@@ -178,7 +178,11 @@
         status.textContent = result.activity_feedback ? "Feedback gespeichert. " : "Feedback entfernt. ";
         if (result.change?.id) status.append(feedbackUndoButton(api, result.change, activityId, status, () => ++loadGeneration, (response, generation) => { shown = previous; fill(previous); resetEnergy(); void applyLoad(generation, response); }));
         void applyLoad(generation, result);
-      } catch (error) { status.textContent = error.message; } finally { save.disabled = false; }
+      } catch (error) {
+        // A queued entry gone meanwhile: the next save goes out as a new one (review on #3817).
+        if (error?.reason === "outbox_entry_gone") replaces = null;
+        status.textContent = error.message;
+      } finally { save.disabled = false; }
     });
   }
 

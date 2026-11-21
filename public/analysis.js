@@ -1558,6 +1558,8 @@ function showSkinfoldResult() {
 }
 
 function fillBodyFatDialog() {
+  // While editing a queued entry the typed value stays and Löschen stays hidden (review on #3817).
+  if (bodyFatOutboxEdit) return;
   const form = document.querySelector("#bodyFatDialogForm");
   const day = form.elements.date.value;
   const entry = bodyFatEntries.find((item) => item.date === day);
@@ -1647,6 +1649,8 @@ function bindBodyFatDialog() {
 let weightRead = null;
 
 function fillWeightDialog() {
+  // While editing a queued entry the typed value stays and Löschen stays hidden (review on #3817).
+  if (weightOutboxEdit) return;
   const form = document.querySelector("#weightDialogForm");
   const entry = weightRead?.entries.find((item) => item.date === form.elements.date.value);
   form.elements.kg.value = entry ? String(entry.kg) : "";

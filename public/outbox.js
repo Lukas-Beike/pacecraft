@@ -109,7 +109,7 @@ async function outboxRemove(key) {
 async function saveOwnEntry({ kind, method, path, payload, label, send = api, queuedPayload = payload, replaces = null }) {
   if (replaces) {
     const entry = await outboxReplace(replaces, { payload: queuedPayload, label });
-    if (!entry) throw new Error("Der Eintrag wurde inzwischen verworfen oder gesendet.");
+    if (!entry) throw Object.assign(new Error("Der Eintrag wurde inzwischen verworfen oder gesendet."), { reason: "outbox_entry_gone" });
     void replayOutbox();
     return { outboxEntry: entry };
   }
