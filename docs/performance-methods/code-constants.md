@@ -408,6 +408,7 @@ every named number the code fixes. A test fails when it is out of date.
 | `MAX_STAGES` | `10` | `backend/performance/step_test.py` |  |
 | `MIN_GOOD_STAGES` | `6` | `backend/performance/step_test.py` |  |
 | `EASY_RANGE_KMH` | `(1.5, 0.5)` | `backend/performance/step_test.py` | The warm-up and cool-down range lies this far below stage 1 (km/h). |
+| `STAGE_PACE_BAND` | `0.03` | `backend/performance/step_test.py` | Each stage's pace band, ±3 % around its pace (athlete decision, #3833). |
 | `PACE_BOUNDS_S` | `(150.0, 540.0)` | `backend/performance/step_test.py` | Plausible run paces (s/km); another value counts as unknown. |
 | `STAGE_LAP_S` | `(150.0, 210.0)` | `backend/performance/step_test.py` | A recorded lap of this length (s) is one stage; a shorter last one was not held. |
 | `END_NOTE` | `'Ende: wenn die Stufe nicht mehr zu halten ist, spätestens nach Stufe {last}.'` | `backend/performance/step_test.py` |  |

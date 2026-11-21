@@ -46,6 +46,8 @@ MAX_STAGES: Final = 10
 MIN_GOOD_STAGES: Final = 6
 # The warm-up and cool-down range lies this far below stage 1 (km/h).
 EASY_RANGE_KMH: Final = (1.5, 0.5)
+# Each stage's pace band, ±3 % around its pace (athlete decision, #3833).
+STAGE_PACE_BAND: Final = 0.03
 # Plausible run paces (s/km); another value counts as unknown.
 PACE_BOUNDS_S: Final = (150.0, 540.0)
 # A recorded lap of this length (s) is one stage; a shorter last one was not held.
@@ -75,6 +77,12 @@ def _pace(kmh: float) -> str:
     return f"{seconds // 60}:{seconds % 60:02d}/km"
 
 
+def _stage_band(kmh: float) -> str:
+    """The stage's pace band, faster end first: "6:08-6:30/km" for 6:19."""
+    fast = _pace(kmh / (1 - STAGE_PACE_BAND)).removesuffix("/km")
+    return f"{fast}-{_pace(kmh / (1 + STAGE_PACE_BAND))}"
+
+
 def stage_speeds(lt1_pace: object, lt2_pace: object) -> list[float]:
     """The stage speeds in km/h from the LT1 and LT2 paces (s/km), or the fallback."""
     lt1 = _speed_kmh(lt1_pace)
@@ -99,7 +107,7 @@ def protocol_template(lt1_pace: object, lt2_pace: object) -> dict[str, Any]:
     easy = f"{_pace(easy_high).removesuffix('/km')}-{_pace(easy_low)} Pace"
     lines = [
         f"- {WARMUP_MIN}m {easy}",
-        *(f"- {STAGE_MIN}m {_pace(speed)} Pace" for speed in speeds),
+        *(f"- {STAGE_MIN}m {_stage_band(speed)} Pace" for speed in speeds),
         f"- {COOLDOWN_MIN}m {easy}",
         "",
         END_NOTE.format(last=len(speeds)),

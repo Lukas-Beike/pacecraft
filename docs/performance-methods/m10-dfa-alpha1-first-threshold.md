@@ -115,7 +115,9 @@ creates with `manage_training_templates` `step_test`; the explicit Garmin sync
 sends its steps, nothing else writes remotely):
 
 1. Warm-up 10 min from 1.5 to 0.5 km/h slower than stage 1 (slower than LT1).
-2. Stages of 3 min with pace targets, each 0.5 km/h faster. Stage 1 lies
+2. Stages of 3 min with pace targets, each 0.5 km/h faster and held as a
+   band of ±3 % around the stage pace (6:08–6:30 /km for 6:19; athlete
+   decision), so the watch alerts only when clearly off. Stage 1 lies
    1.5 km/h below the current run LT1 pace (rounded to 0.1 km/h); without a
    plausible LT1 pace (2:30 to 9:00 /km) it is 9.5 km/h (6:19 /km).
 3. The stages run to the second stage beyond the first one at or above the
@@ -126,7 +128,9 @@ sends its steps, nothing else writes remotely):
 5. The unit names the preconditions: a chest strap that records RR intervals,
    HRV recording switched on in the watch, rested, not after a hard day, not
    ill. The Coach plans it only on the athlete's request and under the same
-   preconditions; as a `test` unit it is hard for the plan checks.
+   preconditions; as a `test` unit it is hard for the plan checks. It does
+   not reset the reminder for the run critical-speed test; each test keeps its
+   own rhythm (athlete decision).
 
 Why 3 minutes and +0.5 km/h: the VT2 validation of the 0.5 crossing (R76) used
 3-minute treadmill stages. With the 120 s windows every 30 s and at most 8 bpm
@@ -397,6 +401,7 @@ comparable.
 | `MAX_STAGES` | `10` | `backend/performance/step_test.py` |  |
 | `MIN_GOOD_STAGES` | `6` | `backend/performance/step_test.py` |  |
 | `EASY_RANGE_KMH` | `(1.5, 0.5)` | `backend/performance/step_test.py` | The warm-up and cool-down range lies this far below stage 1 (km/h). |
+| `STAGE_PACE_BAND` | `0.03` | `backend/performance/step_test.py` | Each stage's pace band, ±3 % around its pace (athlete decision, #3833). |
 | `PACE_BOUNDS_S` | `(150.0, 540.0)` | `backend/performance/step_test.py` | Plausible run paces (s/km); another value counts as unknown. |
 | `STAGE_LAP_S` | `(150.0, 210.0)` | `backend/performance/step_test.py` | A recorded lap of this length (s) is one stage; a shorter last one was not held. |
 | `END_NOTE` | `'Ende: wenn die Stufe nicht mehr zu halten ist, spätestens nach Stufe {last}.'` | `backend/performance/step_test.py` |  |

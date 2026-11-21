@@ -72,8 +72,9 @@ class ProtocolTests(unittest.TestCase):
         template = step_test.protocol_template(None, None)
         lines = template["description"].splitlines()
         self.assertEqual(lines[0], "- 10m 6:40-7:30/km Pace")
-        self.assertEqual(lines[1], "- 3m 6:19/km Pace")
-        self.assertEqual(lines[10], "- 3m 4:17/km Pace")
+        # Each stage holds a band of ±3 % around its pace (athlete decision).
+        self.assertEqual(lines[1], "- 3m 6:08-6:30/km Pace")
+        self.assertEqual(lines[10], "- 3m 4:09-4:25/km Pace")
         self.assertEqual(lines[11], "- 10m 6:40-7:30/km Pace")
         self.assertEqual(
             lines[-1],
@@ -94,7 +95,7 @@ class ProtocolTests(unittest.TestCase):
         steps = [line for line in template["description"].splitlines() if "3m" in line]
         self.assertEqual(len(steps), 8)
         self.assertEqual(
-            (steps[0], steps[-1]), ("- 3m 5:43/km Pace", "- 3m 4:17/km Pace")
+            (steps[0], steps[-1]), ("- 3m 5:33-5:53/km Pace", "- 3m 4:09-4:25/km Pace")
         )
         self.assertEqual(template["duration_minutes"], 10 + 8 * 3 + 10)
         self.assertTrue(template["description"].endswith("nach Stufe 8."))
