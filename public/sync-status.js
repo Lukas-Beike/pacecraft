@@ -190,6 +190,8 @@ async function pollSyncStatus() {
   try {
     const status = await api("/api/sync/status", { signal: controller.signal });
     handleSyncStatus(status);
+    // The server answered with a valid session: entries that waited offline go out.
+    void replayOutbox();
     scheduleSyncPoll(status.running ? SYNC_POLL_ACTIVE_MS : SYNC_POLL_IDLE_MS);
   } catch (error) {
     if (error.name !== "AbortError") scheduleSyncPoll(SYNC_POLL_RETRY_MS);

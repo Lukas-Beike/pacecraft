@@ -366,10 +366,11 @@ async function login(event) {
 
 async function logout() {
   if (!await confirmDiscardChanges()) return;
-  const confirmed = await requestConfirmation("Du wirst auf diesem Gerät abgemeldet. Deine Daten bleiben verschlüsselt gespeichert.", { title: "Abmelden?" });
+  const confirmed = await requestConfirmation(`Du wirst auf diesem Gerät abgemeldet. Deine Daten bleiben verschlüsselt gespeichert.${outboxLossNote()}`, { title: "Abmelden?" });
   if (!confirmed) return;
   try {
     await api("/api/logout", { method: "POST", body: "{}" });
+    await clearOutbox();
   } catch (error) {
     // api() has already shown the login for a 401 or an ended session; any other failure
     // leaves the server session valid, so the app stays open and the athlete can retry.

@@ -648,6 +648,7 @@ function deviceSession(request) {
     renderChatAttachments() {}, showAccessibleDialog() {}, renderConnectivityStatus() {}, renderMaintenanceStatus() {},
     setChatCacheSyncing() {}, retryBootstrapAuth() {}, showAppShellLoading() {}, notePwaActivity() {},
     confirmDiscardChanges: async () => true, requestConfirmation: async () => true,
+    outboxLossNote: () => "", clearOutbox: async () => {},
     toast() {}, setLoginError(message) { harness.loginErrors.push(message); },
   });
   extractFunctions("auth.js", ["showLogin", "showStateSnapshot", "bootstrapAuth", "logout", "login", "loginErrorMessage"], context);

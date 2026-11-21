@@ -256,7 +256,13 @@ class NutritionPostRoutes:
     def routes(self) -> list[Route]:
         return (
             [
-                Route("POST", path, Access.SESSION_CSRF, handle)
+                Route(
+                    "POST",
+                    path,
+                    Access.SESSION_CSRF,
+                    handle,
+                    replayable=path == NUTRITION_ENTRY_PATH,
+                )
                 for path, handle in (
                     ("/api/nutrition/yazio/check", self._check_yazio),
                     (NUTRITION_ENTRY_PATH, self._create),
@@ -407,7 +413,8 @@ class NutritionPostRoutes:
         (`id`, `meal_date`, `logged_at`, `meal_type`, `description`, `kcal`, the macros,
         `source`, `nutrition_basis`, `sync_state`, `logged_time_known`,
         `estimate_uncertain`), `change` the
-        undo reference.
+        undo reference. A repeated `Idempotency-Key` header (UUID) answers the stored
+        result and writes nothing; the same key on another path answers 409.
 
         Errors: 400 "Beschreibung der Mahlzeit ist erforderlich."; 400 "Kalorienangabe
         (kcal) ist erforderlich."; 400 "Kalorien müssen zwischen 0 und 10000 liegen.";

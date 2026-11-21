@@ -22,6 +22,7 @@ from backend.errors import (
     public_error_contract,
     public_error_payload,
 )
+from backend.http_api.idempotency import IdempotencyStore, valid_key
 from backend.http_api.requests import (
     read_body as read_request_body,
 )
@@ -31,7 +32,7 @@ from backend.http_api.requests import (
 from backend.http_api.requests import (
     read_json as read_request_json,
 )
-from backend.http_api.route_table import Access, RouteRequest, RouteTable
+from backend.http_api.route_table import Access, Route, RouteRequest, RouteTable
 from backend.http_api.static_assets import StaticAssetService
 from backend.observability import (
     RouteTimings,
@@ -78,6 +79,8 @@ class HttpRequestHandlerDependencies:
     static_asset_service: StaticAssetService
     route_timings: RouteTimings = field(default_factory=RouteTimings)
     heavy_read_gate: HeavyReadGate = field(default_factory=HeavyReadGate)
+    # Answers a repeated ``Idempotency-Key`` of a replayable route (#3761).
+    idempotency: IdempotencyStore | None = None
 
 
 class RequestHandler(BaseHTTPRequestHandler):
@@ -88,6 +91,8 @@ class RequestHandler(BaseHTTPRequestHandler):
     _dispatch_started_at: float | None = None
     # Ends the current heavy read before its response is sent (#3125).
     _release_heavy_read: Callable[[], None] | None = None
+    # The store, key and path of the keyed request whose 2xx answer is stored when sent.
+    _idempotent_request: tuple[IdempotencyStore, str, str] | None = None
     server_version: str
     client_disconnect_errors = (
         BrokenPipeError,
@@ -324,7 +329,7 @@ class RequestHandler(BaseHTTPRequestHandler):
             self.auth_service.require_csrf(self, current)
             if route is None:
                 raise AppError(404, NOT_FOUND_ERROR)
-            route.handle(self, self._request(path, params, current))
+            self._handle(route, self._request(path, params, current))
 
     def _put(self, path: str) -> None:
         # The maintenance gate answers before authentication.
@@ -335,7 +340,30 @@ class RequestHandler(BaseHTTPRequestHandler):
             if found is None:
                 raise AppError(404, NOT_FOUND_ERROR)
             route, params = found
-            route.handle(self, self._request(path, params, session))
+            self._handle(route, self._request(path, params, session))
+
+    def _handle(self, route: Route, request: RouteRequest) -> None:
+        """Run a route; a replayable one with a valid ``Idempotency-Key`` is kept.
+
+        A stored result is answered without running the handler. Otherwise the
+        handler runs and ``send_json`` stores its 2xx answer just before it is
+        sent (#3761). An absent or invalid key is today's behaviour.
+        """
+        store = self.dependencies.idempotency if route.replayable else None
+        key = valid_key(self.headers.get("Idempotency-Key")) if store else None
+        if store is None or key is None:
+            route.handle(self, request)
+            return
+        with store.lock:
+            stored = store.lookup(key, request.path)
+            if stored is not None:
+                self.send_json(*stored)
+                return
+            self._idempotent_request = (store, key, request.path)
+            try:
+                route.handle(self, request)
+            finally:
+                self._idempotent_request = None
 
     def send_sse_headers(self, *, persistent: bool = True) -> None:
         self.dependencies.response_transport.send_sse_headers(
@@ -391,6 +419,16 @@ class RequestHandler(BaseHTTPRequestHandler):
     ) -> None:
         if self._release_heavy_read:  # the read is done; the send runs outside
             self._release_heavy_read()
+        if self._idempotent_request and 200 <= status < 300:
+            store, key, path = self._idempotent_request
+            self._idempotent_request = None
+            try:
+                store.store(key, path, status, payload)
+            except Exception:
+                self.dependencies.logger.exception(
+                    "Idempotency result not stored",
+                    extra={"event": "idempotency_store_failed"},
+                )
         self.dependencies.response_transport.send_json(self, status, payload, headers)
 
     def _send_app_error(self, error: AppError, method: str) -> None:

@@ -1813,6 +1813,9 @@ button:focus-visible, a:focus-visible, summary:focus-visible {
 .activity-feedback-form { display: grid; gap: 10px; margin-top: 8px; }
 .activity-feedback-form label { display: grid; gap: 5px; color: var(--muted); font-size: .8rem; }
 .activity-feedback-form input, .activity-feedback-form textarea { width: 100%; }
+.outbox-list { display: grid; gap: 8px; margin: 8px 0; padding: 0; list-style: none; }
+.outbox-list li { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.outbox-text { flex: 1 1 100%; overflow-wrap: anywhere; }
 .activity-bundle-list { display: grid; gap: 6px; margin: 8px 0; padding-left: 1.2em; }
 .activity-bundle-list li { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 @media (max-width: 420px) {

@@ -50,6 +50,17 @@ HEAVY_READ_ROUTES = frozenset(
         "/api/performance",
     }
 )
+# The athlete's own entries that an offline outbox may send again with an
+# ``Idempotency-Key`` header (#3761); the server answers a repeated key from its
+# stored result. A route joins only by a decision here.
+REPLAYABLE_ROUTES = frozenset(
+    {
+        ("POST", "/api/nutrition/entry"),
+        ("PUT", "/api/body/weight"),
+        ("PUT", "/api/body/body-fat"),
+        ("POST", "/api/activities/{id}/feedback"),
+    }
+)
 PUBLIC_API_ROUTES = frozenset(
     {
         ("GET", "/api/health"),
@@ -94,6 +105,9 @@ class Route:
     # GET only: a view read over the history that runs one at a time
     # (``HeavyReadGate``, #3029).
     heavy: bool = False
+    # POST and PUT only: answers a repeated ``Idempotency-Key`` from its stored
+    # result (``IdempotencyStore``, #3761).
+    replayable: bool = False
 
     def __post_init__(self) -> None:
         if not isinstance(self.access, Access):
@@ -106,6 +120,10 @@ class Route:
             raise ValueError(f"{self.method} {self.path} public status is not reviewed")
         if self.heavy != (self.method == "GET" and self.path in HEAVY_READ_ROUTES):
             raise ValueError(f"{self.method} {self.path} heavy status is not decided")
+        if self.replayable != ((self.method, self.path) in REPLAYABLE_ROUTES):
+            raise ValueError(
+                f"{self.method} {self.path} replayable status is not decided"
+            )
 
 
 def _compile(path: str) -> re.Pattern[str]:

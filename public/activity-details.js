@@ -165,7 +165,9 @@
         const raw = rpe.value; const value = { activity_name: session?.name || "", activity_date: session?.started_at_local || "", notes: notes.value, deviation_reason: reason.value, session_rpe: raw === "" ? null : Number(raw), purpose: purpose.value || null };
         if (raw !== "" && (!Number.isFinite(value.session_rpe) || value.session_rpe < 0 || value.session_rpe > 10)) throw new Error("RPE muss zwischen 0 und 10 liegen.");
         const generation = ++loadGeneration;
-        const result = await api(`/api/activities/${encodeURIComponent(activityId)}/feedback`, { method: "POST", body: JSON.stringify(value) });
+        const path = `/api/activities/${encodeURIComponent(activityId)}/feedback`;
+        const result = await saveOwnEntry({ kind: "feedback", method: "POST", path, payload: value, label: `Feedback ${session?.name || "zur Einheit"}`, send: api });
+        if (result.outboxEntry) { status.textContent = "Feedback wartet, noch nicht gesendet."; return; }
         const previous = shown; shown = result.activity_feedback;
         // A strength session's RPE sets its energy (#3530): the next energy table reads it anew.
         resetEnergy();

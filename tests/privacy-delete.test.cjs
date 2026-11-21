@@ -18,7 +18,7 @@ async function deleteWith(result) {
       return result;
     },
     requestConfirmation: async () => "LOKALE DATEN LÖSCHEN",
-    downloadDatabaseBackup() {}, clearStateSnapshot() {}, invalidateProviderChecks() {}, loadProviderChecks: async () => {}, load: async () => {},
+    downloadDatabaseBackup() {}, clearStateSnapshot() {}, clearOutbox: async () => {}, invalidateProviderChecks() {}, loadProviderChecks: async () => {}, load: async () => {},
   });
   await context.deletePrivacyData();
   return { notice: nodes["#privacyDeleteNotice"], result: nodes["#privacyDeleteResult"], toasts, posts };
