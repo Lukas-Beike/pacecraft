@@ -354,6 +354,35 @@ class WeekReviewHttpTests(ServerTestCase):
         self.assertEqual({week["sessions"] for week in result["weeks"]}, {0})
         self.assertEqual(result["exercises"], [])
 
+    def test_a_longer_trend_period_reads_the_previous_year_on_demand(self) -> None:
+        # #3765: 14, 84, 182 or 364 days, read 364 days further back; another span is refused.
+        status, result = self.get("/api/analysis/trend-history?days=182")
+        self.assertEqual(status, 200)
+        start, end = (
+            date.fromisoformat(result["start"]),
+            date.fromisoformat(result["end"]),
+        )
+        self.assertEqual(
+            ((end - start).days + 1, result["previous_year_days"]), (182, 364)
+        )
+        for key in (
+            "cycling_ftp_watts",
+            "run_threshold_pace_seconds_per_km",
+            "cycling_vo2max_ml_kg_min",
+            "running_vo2max_ml_kg_min",
+        ):
+            points = result["metrics"][key][0]["points"]
+            self.assertEqual(len(points), 182 + 364, key)
+            self.assertEqual(
+                points[0]["date"], (start - timedelta(days=364)).isoformat()
+            )
+        self.assertIn("baselines", result["personal_recovery"])
+        for days in ("30", "365", "x", ""):
+            with self.subTest(days):
+                status, error = self.get(f"/api/analysis/trend-history?days={days}")
+                self.assertEqual(status, 400)
+                self.assertEqual(error["error"], "Ungültiger Analysezeitraum.")
+
     def test_a_past_week_is_reviewed_with_its_recovery_range_of_then(self) -> None:
         _status, current = self.get("/api/analysis/week-review")
         today = date.fromisoformat(current["effective_end"])

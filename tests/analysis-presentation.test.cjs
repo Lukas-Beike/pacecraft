@@ -1063,3 +1063,15 @@ test("one merged body series names each day's source in the overview and the tab
   const fold = merged([{ date: "2026-11-16", value: 14, source_label: "Garmin" }, { date: "2026-11-17", value: 13.5, source_label: "Hautfalten" }]);
   assert.equal(JSON.stringify(bodyOverviewReading("body_fat_pct", fold, preferred)), JSON.stringify({ value: 13.5, note: "Lokal (Hautfalten) · 2026-11-17" }));
 });
+
+test("the previous year's faint line carries no value labels (#3765)", () => {
+  const { analysisLabelledPoints, previousYearPoints } = extractFunctions("analysis.js", ["analysisValidPoint", "analysisLabelledPoints", "previousYearPoints", "PREVIOUS_YEAR_DAYS"], {
+    addDateKey: (key, days) => { const date = new Date(`${key}T12:00:00Z`); date.setUTCDate(date.getUTCDate() + days); return date.toISOString().slice(0, 10); },
+  });
+  const points = [{ date: "2026-11-01", value: 40 }, { date: "2026-11-08", value: 44 }];
+  assert.equal(analysisLabelledPoints({ points }).length, 2);
+  assert.equal(analysisLabelledPoints({ points, line: "faint" }).length, 0);
+  // The same weeks 52 weeks earlier move onto this period's dates; values outside stay out.
+  const stored = [{ date: "2025-11-01", value: 41 }, { date: "2025-11-09", value: 43 }, { date: "2025-06-01", value: 39 }];
+  assert.equal(JSON.stringify(previousYearPoints(stored, "2026-10-26", "2026-11-08")), JSON.stringify([{ date: "2026-10-31", value: 41 }, { date: "2026-11-08", value: 43 }]));
+});

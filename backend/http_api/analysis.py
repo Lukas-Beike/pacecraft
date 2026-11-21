@@ -52,6 +52,13 @@ class AnalysisRoutes:
             ),
             Route(
                 "GET",
+                "/api/analysis/trend-history",
+                Access.SESSION,
+                self._trend_history,
+                heavy=True,
+            ),
+            Route(
+                "GET",
                 "/api/analysis/week-review",
                 Access.SESSION,
                 self._week_review,
@@ -128,6 +135,27 @@ class AnalysisRoutes:
         Errors: none beyond the common ones.
         """
         handler.send_json(200, self._reports().report.strength())
+
+    def _trend_history(self, handler: Any, request: RouteRequest) -> None:
+        """A longer trend period with the previous year's same weeks (#3765).
+
+        Request: query `days`: `14`, `84`, `182` or `364`; no body. Read only
+        when the athlete picks a longer period or switches on "Vorjahr".
+
+        Response: 200 with `start`, `end`, `days`, `previous_year_days` (364),
+        `metrics` (the development metrics' dated Garmin values from
+        `start` minus 364 days to `end`, shaped like the performance history's)
+        and `personal_recovery` (its baselines' `history` over the same span).
+        Stored values only; no provider request.
+
+        Errors: 400 "Ungültiger Analysezeitraum." for another `days`.
+        """
+        given = request.query.get("days")
+        try:
+            days = int(given[0]) if given else None
+        except ValueError:
+            days = None
+        handler.send_json(200, self._reports().report.trend_history(days))
 
     def _running_dynamics(self, handler: Any, request: RouteRequest) -> None:
         """Running dynamics against the athlete's own runs at the same pace (#2829).

@@ -96,9 +96,13 @@ def read_recovery_inputs(
     db: Any,
     *,
     as_of: date,
+    history_days: int = RECOVERY_HISTORY_DAYS,
 ) -> CanonicalRecoveryInputs:
-    """Read every recovery kind once; ``reader`` must already be resolved."""
-    start = as_of - timedelta(days=RECOVERY_HISTORY_DAYS - 1)
+    """Read every recovery kind once; ``reader`` must already be resolved.
+
+    A longer Analyse period (#3765) reads more ``history_days``.
+    """
+    start = as_of - timedelta(days=max(history_days, RECOVERY_HISTORY_DAYS) - 1)
     return CanonicalRecoveryInputs(
         observations={
             kind: tuple(reader.observations(db, kind, start=start))
