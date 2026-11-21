@@ -129,6 +129,17 @@ question, while lane reports piled up (#3348). So:
 - Ask a blocking question once. Whether asked or parked, tell the affected
   lanes to continue with other work meanwhile, and pass each answer back to the
   lane that raised the question.
+- Pass an answer on with the chosen option's label and description verbatim,
+  in a quoted block, and your technical notes below it. Add no latitude the
+  option does not give; ask the athlete about a detail it leaves open. A relay
+  that added "pick the variant with fewer false alarms" led a lane to a stricter
+  rule than the chosen option stated (#3767). For example:
+
+  ```text
+  Athlete's choice for #N:
+  > Warn after 3 days: a warning appears when no weight was entered for 3 days.
+  Notes: the existing reminder card shows it; no new setting.
+  ```
 
 ## Merge rules
 
