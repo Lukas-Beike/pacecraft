@@ -1088,6 +1088,7 @@ class ServerDatabaseTests(ServerTestCase):
             {item[0] for item in privacy_module.PRIVACY_DELETE_SCOPE}
             | {
                 privacy_module.RECOVERY_COPIES_CATEGORY,
+                privacy_module.AUTOMATIC_BACKUPS_CATEGORY,
                 privacy_module.LOG_FILES_CATEGORY,
             },
         )
@@ -1107,6 +1108,7 @@ class ServerDatabaseTests(ServerTestCase):
             {item[0] for item in privacy_module.PRIVACY_DELETE_SCOPE}
             | {
                 privacy_module.RECOVERY_COPIES_CATEGORY,
+                privacy_module.AUTOMATIC_BACKUPS_CATEGORY,
                 privacy_module.LOG_FILES_CATEGORY,
             },
         )

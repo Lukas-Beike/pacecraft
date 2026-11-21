@@ -598,6 +598,22 @@ class QualityBaselineTests(unittest.TestCase):
                 'NAMED = re.search(r"(?P<k>\\{[^{}\\s]*(?:,|\\.\\.)[^{}\\s]*\\})", "x")',
                 'LOOSE = re.compile(r"\\{[^{}\\s]*(?:,|\\.\\.)[^{}\\s]*\\}", re.X)',
                 'MARKED = re.compile(r"\\{[^{}\\s]*(?:,|\\.\\.)[^{}\\s]*\\}")  # NOSONAR',
+                # #3792: python:S5843 (too complex) failed #3781 only in CI.
+                (
+                    "TOKENS = re.compile("
+                    'r"(?:\'[^\']*\'|\\"[^\\"]*\\"|[^\\s\'\\";&|()<>])+'
+                    '|[;&|()<>\\n]|[^\\S\\n]+|[\'\\"]")'
+                ),
+                # A NOSONAR on a line of a multi-line pattern suppresses it too.
+                "SPLIT = re.compile(",
+                '    r"(?:\'[^\']*\'|\\"[^\\"]*\\"|[^\\s\'\\";&|()<>])+"  # NOSONAR',
+                '    r"|[;&|()<>\\n]|[^\\S\\n]+|[\'\\"]"',
+                ")",
+                # ... but not on a later line of the pattern, as in Sonar.
+                "LATER = re.compile(",
+                '    r"(?:\'[^\']*\'|\\"[^\\"]*\\"|[^\\s\'\\";&|()<>])+"',
+                '    r"|[;&|()<>\\n]|[^\\S\\n]+|[\'\\"]"  # NOSONAR',
+                ")",
             ]
         )
         found = self.python_findings({"scripts/sample.py": source}, regexes=True)
@@ -610,6 +626,8 @@ class QualityBaselineTests(unittest.TestCase):
             [
                 ("eslint", "scripts/sample.py", 2, rule),
                 ("eslint", "scripts/sample.py", 4, rule),
+                ("eslint", "scripts/sample.py", 7, "sonarjs/regex-complexity"),
+                ("eslint", "scripts/sample.py", 12, "sonarjs/regex-complexity"),
             ],
         )
         # Without Node (CI's quality job) the step is skipped like ESLint.

@@ -133,7 +133,12 @@ def build_sync_schedulers(
             ctx.database().checkpoint_wal()
 
     def housekeeping() -> None:
-        """Prune finished jobs, then purge archived library templates (#3141)."""
+        """Write the nightly backup when it is due (#3760), first so a failing
+        later step never skips it; then prune finished jobs and purge archived
+        library templates (#3141)."""
+        if ctx.backup is not None:
+            with ctx.maintenance.operation():
+                ctx.backup.run_nightly()
         ctx.sync_job_queue.service().prune_finished()
         with ctx.maintenance.operation(), background_writer():
             ctx.planning.workout_library().purge_archived()

@@ -282,6 +282,28 @@ Restore SHALL keep the live database as a recovery copy beside the new one, and 
 
 Evidence: `backend/backup/recovery_copies.py::RecoveryCopies`, `backend/backup/recovery_copies.py::RecoveryCopies.prune_restore_copies`; `backend/backup/restore.py::DatabaseRestoreService._copy_previous`, `backend/backup/restore.py::DatabaseRestoreService._prune_older_copies`; `backend/backup/restore_validation.py::DatabaseRestoreValidationService.verify_copy`. Tests: `tests/test_database_restore_service.py::test_two_restores_keep_only_the_newest_recovery_copy`; `tests/test_database_restore_service.py::test_an_unverified_or_failed_restore_keeps_every_recovery_copy`; `tests/test_database_restore_service.py::test_a_copy_taken_beside_an_unflushed_wal_keeps_the_older_copies`; `tests/test_recovery_copies.py::test_pruning_keeps_the_newest_restore_copy_and_every_other_file`; `tests/test_database_restore_validation.py::test_verify_copy_needs_the_whole_file_and_the_current_schema`; `tests/test_db_encrypted_upgrade_matrix.py::test_an_encrypted_backup_at_the_baseline_restores_the_same_rows`; `tests/test_privacy_provider_data.py::test_the_preview_counts_recovery_copies_and_the_delete_erases_them`; `tests/test_privacy_provider_data.py::test_a_recovery_copy_that_cannot_be_removed_is_reported_not_raised`; `tests/test_diagnostic_report.py::test_storage_and_recovery_copies_are_sizes_and_ages_only`.
 
+### Requirement: Automatic verified backups
+
+The app SHALL keep verified encrypted copies of the database without athlete action: one each night from 03:30 local time and one right before every schema migration, in `<data dir>/automatic-backups` unless `BACKUP_DIR` names another directory or is `off` (athlete, 2026-11-20, #3760).
+
+#### Scenario: Nightly copy
+- **WHEN** the periodic loop runs at or after 03:30 local time and the backup directory holds no nightly copy from that local day
+- **THEN** it writes the backup download's snapshot (same key, integrity and foreign key checks) into that directory and renames it to `<database name>.auto-nightly-<14 digits>` only after the checks passed; a failure is logged with its error class, recorded for the diagnostics, retried an hour later and never blocks the app
+
+#### Scenario: Before a migration
+- **WHEN** startup finds a supported older schema that will be upgraded
+- **THEN** a verified copy named `<database name>.auto-premigration-v<stored version>-<14 digits>` is written before the migration transaction starts; if it fails, the migration does not start, startup fails and the database is unchanged; a current, new or refused schema takes no copy
+
+#### Scenario: Retention
+- **WHEN** a new copy is verified
+- **THEN** nightly copies beyond the newest 7, or for a pre-migration copy the older pre-migration copies, are deleted; other files are never touched
+
+#### Scenario: Restore and erasure
+- **WHEN** the athlete restores an automatic copy or confirms the local erasure
+- **THEN** the copy restores through the existing upload workflow, and the erasure counts and deletes every automatic copy (`automatic_backups`, failures in `automatic_backups_failed`)
+
+Evidence: `backend/backup/automatic.py::AutomaticBackups`; `backend/backup/database.py::DatabaseBackupService.write_verified_copy`; `backend/db/migrations.py::migrate_schema`; `backend/sync/scheduler_wiring.py` (`housekeeping`); `backend/privacy.py::PrivacyDeleteService`. Tests: `tests/test_automatic_backups.py`; `tests/test_db_migrations.py::test_the_pre_migration_hook_runs_only_before_an_upgrade`; `tests/test_privacy_provider_data.py::test_the_preview_counts_automatic_backups_and_the_delete_erases_them`.
+
 ### Requirement: Truthful post-restore recovery
 
 After replacing the database, restore SHALL refresh credential-derived configuration, resume interrupted sync and Coach jobs, restart canonical backfill and wake workers; resume failures SHALL be reported as restored_resume_failed rather than as an untouched invalid backup.
@@ -314,7 +336,7 @@ Local privacy deletion SHALL require the exact backend confirmation text before 
 
 #### Scenario: Files beside the database
 - **WHEN** local erasure completes
-- **THEN** the legacy Garmin token file and the `.env` file stay, and recovery copies and purge marker files are deleted (next scenario)
+- **THEN** the legacy Garmin token file and the `.env` file stay, and recovery copies, purge marker files and the automatic backup copies are deleted (next scenario)
 
 #### Scenario: Delete fails midway
 - **WHEN** a table deletion fails within the local transaction
@@ -330,11 +352,11 @@ Local privacy deletion SHALL require the exact backend confirmation text before 
 
 #### Scenario: Preview payload
 - **WHEN** the preview is requested
-- **THEN** it holds `status` "preview", `confirmation_text`, `categories` (`id`, `label`, `records`: the categories of `PRIVACY_DELETE_SCOPE` in order, then `recovery_copies`, then `server_logs`), `remote_untouched` (German sentences on Intervals.icu, Garmin, Wahoo and the external calendar) and `openai_conversation` (German text)
+- **THEN** it holds `status` "preview", `confirmation_text`, `categories` (`id`, `label`, `records`: the categories of `PRIVACY_DELETE_SCOPE` in order, then `recovery_copies`, `automatic_backups` and `server_logs`), `remote_untouched` (German sentences on Intervals.icu, Garmin, Wahoo and the external calendar) and `openai_conversation` (German text)
 
 #### Scenario: Order of the steps
 - **WHEN** the exact confirmation is supplied and the maintenance gate is taken, which cancels a running Coach turn first
-- **THEN** the steps run in this order: ask OpenAI to delete the stored conversation, cancel a pending Garmin login, disconnect Wahoo and revoke its grant, one transaction with secure deletion that deletes every row of every table of the scope and the whole key/value store and then writes `garmin_tokenstore_state`, the default profile, the GPS setting `0` only when it was already switched off (absent otherwise, which means on) and the planning reset mark, then after the commit the space reclaim, the recovery copies and markers, the credential refresh and last the log files
+- **THEN** the steps run in this order: ask OpenAI to delete the stored conversation, cancel a pending Garmin login, disconnect Wahoo and revoke its grant, one transaction with secure deletion that deletes every row of every table of the scope and the whole key/value store and then writes `garmin_tokenstore_state`, the default profile, the GPS setting `0` only when it was already switched off (absent otherwise, which means on) and the planning reset mark, then after the commit the space reclaim, the recovery copies and markers, the automatic backup copies, the credential refresh and last the log files
 
 #### Scenario: Local transaction fails after the remote steps
 - **WHEN** the local transaction fails after the OpenAI deletion and the Wahoo revoke ran
@@ -342,7 +364,7 @@ Local privacy deletion SHALL require the exact backend confirmation text before 
 
 #### Scenario: Result payload
 - **WHEN** the erasure completes
-- **THEN** it answers `status` "ok", `local_data_deleted` true, `deleted_categories` (count per category, recovery copies and server logs included), `recovery_copies_failed`, `log_files_failed`, `remote_delete_attempted`, `remote_conversation_deleted`, `wahoo_revoke_attempted`, `wahoo_revoked` and `remote_untouched`
+- **THEN** it answers `status` "ok", `local_data_deleted` true, `deleted_categories` (count per category, recovery copies, automatic backups and server logs included), `recovery_copies_failed`, `automatic_backups_failed`, `log_files_failed`, `remote_delete_attempted`, `remote_conversation_deleted`, `wahoo_revoke_attempted`, `wahoo_revoked` and `remote_untouched`
 
 #### Scenario: Login sessions
 - **WHEN** the erasure commits

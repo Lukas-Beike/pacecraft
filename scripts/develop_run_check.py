@@ -2,7 +2,8 @@
 
     python scripts/develop_run_check.py (--pr N | --sha SHA) [--wait MINUTES]
 
-One line per workflow. Exit 0: every run completed green; 1: a run failed, or
+`--sha` takes a full or an abbreviated hex SHA; GitHub resolves a short one
+(#3796). One line per workflow. Exit 0: every run completed green; 1: a run failed, or
 the PR is not merged; 2: bad input or a failed gh call; 3: a run is pending or
 none has started yet. `--wait` polls every 30 s while the answer would be 3
 (or a gh call failed), up to that many minutes, prints the last poll's lines
@@ -19,10 +20,11 @@ from __future__ import annotations
 import argparse
 import contextlib
 import io
+import re
 import sys
 from time import monotonic, sleep
 
-from gh_cli import CliError, gh_json, positive_int
+from gh_cli import CliError, gh, gh_json, positive_int
 
 FIELDS = "databaseId,workflowName,status,conclusion,url,headSha,createdAt"
 POLL_SECONDS = 30
@@ -121,6 +123,22 @@ def report(runs: dict[str, dict], history: list[dict]) -> list[str]:
     return states
 
 
+def full_sha(sha: str) -> str:
+    """The full commit SHA: `gh run list --commit` matches only all 40
+    characters, so an abbreviated one never found a run (#3796)."""
+    sha = sha.lower()
+    if not re.fullmatch(r"[0-9a-f]{4,40}", sha):
+        raise CliError(f"not a commit SHA: {sha!r}")
+    if len(sha) == 40:
+        return sha
+    # GitHub resolves a unique prefix without a local fetch.
+    try:
+        full = gh("api", f"repos/{{owner}}/{{repo}}/commits/{sha}", "--jq", ".sha")
+    except CliError as exc:
+        raise CliError(f"unknown commit {sha!r} ({exc})") from exc
+    return full.strip()
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     group = parser.add_mutually_exclusive_group(required=True)
@@ -129,7 +147,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--wait", type=positive_int, metavar="MINUTES")
     args = parser.parse_args(argv)
     try:
-        sha = args.sha or merge_sha(args.pr)
+        sha = full_sha(args.sha) if args.sha else merge_sha(args.pr)
     except NotMerged as exc:
         print(f"refused: {exc}")
         return 1

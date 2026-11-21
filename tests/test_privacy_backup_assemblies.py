@@ -45,7 +45,10 @@ class PrivacyBuilderTests(unittest.TestCase):
             "cancel_garmin_login": Mock(name="cancel_garmin_login"),
             "disconnect_wahoo": Mock(name="disconnect_wahoo"),
             "cancel_coach_turns": Mock(name="cancel_coach_turns"),
-            "log_files": Mock(name="log_files"),
+            "files_beside_database": Mock(
+                name="files_beside_database",
+                return_value=(Mock(name="log_files"), Mock(name="automatic")),
+            ),
         }
         return arguments, build_privacy(**arguments)
 
@@ -76,7 +79,7 @@ class PrivacyBuilderTests(unittest.TestCase):
             "cancel_garmin_login",
             "disconnect_wahoo",
             "cancel_coach_turns",
-            "log_files",
+            "files_beside_database",
         ):
             arguments[name].assert_not_called()
         first = services.archive_export_service()
@@ -141,7 +144,9 @@ class PrivacyBuilderTests(unittest.TestCase):
         )
         self.assertIs(dependencies.disconnect_wahoo, arguments["disconnect_wahoo"])
         self.assertIs(dependencies.cancel_coach_turns, arguments["cancel_coach_turns"])
-        self.assertIs(dependencies.log_files, arguments["log_files"].return_value)
+        log_files, automatic = arguments["files_beside_database"].return_value
+        self.assertIs(dependencies.log_files, log_files)
+        self.assertIs(dependencies.automatic_backups, automatic)
         self.assertIs(dependencies.utc_now, runtime_clock.utc_now)
         assert dependencies.recovery_copies is not None
         self.assertEqual(dependencies.recovery_copies._data_dir, Path("temporary-data"))

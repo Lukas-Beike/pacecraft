@@ -24,6 +24,8 @@ CHECKIN_FIELDS = (
     "available_minutes",
     "availability_notes",
     "notes",
+    # Structured complaints by area, side and severity (#3766).
+    "complaints",
 )
 WEATHER_FIELDS = (
     "date",

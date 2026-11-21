@@ -115,3 +115,45 @@ test("a running week shows no change in time and load, and a week without data s
   const empty = { ...review, plan: { planned: 0 }, load: { this_week: { sessions: 0 }, week_before: {} } };
   assert.deepEqual(weekReviewTileTexts(empty, 0, true), []);
 });
+
+// #3766 (athlete: layout A): a wide tile, one line per area and side, a worsening in red.
+test("structured complaints show one line per area with days and severity", () => {
+  const functions = [...WEEK_REVIEW_FUNCTIONS, "COMPLAINT_AREA_LABELS", "COMPLAINT_SIDE_LABELS", "complaintLabel", "weekReviewComplaintTile"];
+  const { weekReviewCheckinTiles } = extractFunctions("plan-views.js", functions, { document: fakeDocument(), AppFormat: { number: (value) => String(value) } });
+  const checkins = {
+    entered: 5, days: 7, pain_days: 3, illness_days: 1, scores: {},
+    complaints: [
+      { area: "achilles", side: "right", days: 3, dates: ["2026-11-09", "2026-11-11", "2026-11-13"], first_severity: 3, last_severity: 5 },
+      { area: "knee", side: "left", days: 1, dates: ["2026-11-09"], first_severity: 2, last_severity: 2 },
+      { area: "lower_back", side: "none", days: 2, dates: ["2026-11-11", "2026-11-12"], first_severity: 4, last_severity: 3 },
+    ],
+  };
+  const tile = weekReviewCheckinTiles(checkins)[1];
+  assert.match(tile.className, /week-review-wide/);
+  const lines = tile.children[1].children;
+  assert.deepEqual(lines.map(textOf), [
+    "Achillessehne rechts · 3 Tage · Stärke 3 → 5",
+    "Knie links · 1 Tag · Stärke 2/10",
+    "unterer Rücken · 2 Tage · Stärke 4 → 3",
+    "1 Tag krank",
+  ]);
+  // Pain days without a structured complaint keep their count (review on #3766).
+  // Gitar on #3806: counted by the server, also when a structured day has no pain text.
+  const textOnly = weekReviewCheckinTiles({ ...checkins, pain_text_days: 2 })[1].children[1].children.map(textOf);
+  assert.equal(textOnly.at(-2), "2 Tage Schmerz (Text)");
+  // Worse is the "down" (red) direction, better the "up" one.
+  assert.equal(lines[0].children[1].dataset.direction, "down");
+  assert.equal(lines[2].children[1].dataset.direction, "up");
+  // Without structured complaints the tile keeps its counts.
+  assert.equal(textOf(weekReviewCheckinTiles({ ...checkins, complaints: [] })[1]), "Beschwerden3 Tage Schmerz, 1 Tag krank");
+});
+
+test("the calendar day names area, side and severity before the athlete's words", () => {
+  const { plannedDayNotes } = extractFunctions("plan-views.js", ["COMPLAINT_AREA_LABELS", "COMPLAINT_SIDE_LABELS", "complaintLabel", "plannedDayNotes"], {
+    document: fakeDocument(), plannedDayNoteSpecs: () => [],
+  });
+  const note = (checkin) => textOf(plannedDayNotes({ checkin }, [], "2026-11-17"));
+  assert.equal(note({ pain: "zieht beim Anlaufen", complaints: [{ area: "achilles", side: "right", severity: 5 }] }), "Beschwerden: Achillessehne rechts 5/10 · zieht beim Anlaufen");
+  assert.equal(note({ pain: "Knie" }), "Verletzung/Beschwerden: Knie");
+  assert.equal(note({ illness: "Schnupfen", complaints: [{ area: "calf", side: "both", severity: 2 }] }), "Krankheit: Schnupfen · Beschwerden: Wade beidseitig 2/10");
+});

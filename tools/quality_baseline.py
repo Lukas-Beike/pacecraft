@@ -51,6 +51,12 @@ DUPLICATE_LITERAL_EXCLUSIONS = (
 # Sonar's python:S8786 (super-linear regex): the patterns of these re calls go
 # through Sonar's own engine, sonarjs/super-linear-regex (#3381).
 SLOW_REGEX_RULE = "sonarjs/super-linear-regex"
+# python:S5843 (regex too complex, threshold 20) failed #3781 only in CI
+# (#3792); sonarjs/regex-complexity is the same check.
+REGEX_RULES = {
+    SLOW_REGEX_RULE: "Super-linear regular expression",
+    "sonarjs/regex-complexity": "Too complex regular expression",
+}
 REGEX_CALLS = frozenset(
     {"compile", "search", "match", "fullmatch", "sub", "subn", "split", "findall"}
     | {"finditer"}
@@ -60,7 +66,7 @@ REGEX_ESLINT_CONFIG = """import { createRequire } from "node:module";
 const load = createRequire(__MODULES__ + "/_");
 export default [{ files: ["*.mjs"], plugins: { sonarjs: load("eslint-plugin-sonarjs") },
   languageOptions: { ecmaVersion: "latest", sourceType: "module" },
-  rules: { "sonarjs/super-linear-regex": "error" } }];
+  rules: { "sonarjs/super-linear-regex": "error", "sonarjs/regex-complexity": "error" } }];
 """
 # Sonar's css:S4666 (Stylelint no-duplicate-selectors): the same selector list in
 # the same at-rule context twice. Like the cognitive counter it is this module's
@@ -528,8 +534,9 @@ def duplicated_literal_diagnostics(tree: ast.AST, path: str, source: str) -> lis
     return diagnostics
 
 
-def _regex_patterns(tree: ast.AST) -> list[tuple[int, str]]:
-    """(line, pattern) of each literal pattern an re call compiles; a verbose one
+def _regex_patterns(tree: ast.AST) -> list[tuple[int, str, range]]:
+    """(call line, pattern, the pattern's own lines) of each literal pattern an
+    re call compiles; a verbose one
     (re.X) is left out, as its whitespace and comments are no pattern syntax."""
     found = []
     for node in ast.walk(tree):
@@ -551,7 +558,9 @@ def _regex_patterns(tree: ast.AST) -> list[tuple[int, str]]:
         )
         literal = given[0] if given else None
         if isinstance(literal, ast.Constant) and isinstance(literal.value, str):
-            found.extend([] if verbose else [(node.lineno, literal.value)])
+            # Sonar reports on the line where the literal starts (Gitar, #3810).
+            lines = range(literal.lineno, literal.lineno + 1)
+            found.extend([] if verbose else [(node.lineno, literal.value, lines)])
     return found
 
 
@@ -565,8 +574,9 @@ def _javascript_pattern(pattern: str) -> str:
 
 
 def python_regex_diagnostics(root: Path, files: list[str]) -> list[dict] | None:
-    """Sonar's python:S8786 through sonarjs/super-linear-regex; None if ESLint is
-    not installed. A pattern JavaScript cannot read is skipped by the rule."""
+    """Sonar's python:S8786 and python:S5843 through sonarjs/super-linear-regex
+    and sonarjs/regex-complexity; None if ESLint is not installed. A pattern
+    JavaScript cannot read is skipped by the rules."""
     script = eslint_script()
     if script is None:
         return None
@@ -574,11 +584,12 @@ def python_regex_diagnostics(root: Path, files: list[str]) -> list[dict] | None:
     for path in files:
         source = (root / path).read_text(encoding="utf-8")
         lines = source.splitlines()
-        # Sonar suppresses an issue on a line marked NOSONAR (Gitar on #3388).
+        # Sonar suppresses an issue on a line marked NOSONAR (Gitar on #3388),
+        # on the call line or a line of the pattern itself (#3792).
         patterns.extend(
             (path, line, text)
-            for line, text in _regex_patterns(ast.parse(source, path))
-            if "NOSONAR" not in lines[line - 1]
+            for line, text, own in _regex_patterns(ast.parse(source, path))
+            if not any("NOSONAR" in lines[n - 1] for n in {line, *own})
         )
     if not patterns:
         return []
@@ -602,7 +613,11 @@ def python_regex_diagnostics(root: Path, files: list[str]) -> list[dict] | None:
     diagnostics = []
     for item in json.loads(output)[0]["messages"]:
         path, line, text = patterns[item["line"] - 1]
-        message = f"Super-linear regular expression {text}"
+        code = item.get("ruleId")
+        if code not in REGEX_RULES:
+            # A parse or plugin error is no finding; it must not become debt.
+            raise RuntimeError(f"ESLint regex check failed: {code or 'no rule'}")
+        message = f"{REGEX_RULES[code]} {text}"
         # ESLint's finding, so the step is skipped like ESLint where Node is not
         # installed (CI's quality job), and so are its baseline entries.
         diagnostics.append(
@@ -611,7 +626,7 @@ def python_regex_diagnostics(root: Path, files: list[str]) -> list[dict] | None:
                 "path": path,
                 "line": line,
                 "column": 1,
-                "code": SLOW_REGEX_RULE,
+                "code": code,
                 "message_sha256": hashlib.sha256(message.encode()).hexdigest(),
             }
         )

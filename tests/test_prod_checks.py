@@ -317,6 +317,18 @@ class ProdChecksTests(unittest.TestCase):
                 "FAIL",
             ),
             "unknown": ({"backup": prod_diagnostics.backup_state(None)}, "FAIL"),
+            # An automatic copy that recent passes without a download (#3760).
+            "automatic": (
+                {
+                    "backup": prod_diagnostics.backup_state(
+                        {
+                            "known": False,
+                            "automatic": {"enabled": True, "newest_age_hours": 5.0},
+                        }
+                    )
+                },
+                "ok",
+            ),
             "future": (
                 {
                     "backup": prod_diagnostics.backup_state(

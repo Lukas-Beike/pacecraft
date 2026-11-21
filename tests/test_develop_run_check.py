@@ -13,7 +13,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 import develop_run_check
 import gh_cli
 
-MERGED = {"mergedAt": "2026-11-11T10:00:00Z", "mergeCommit": {"oid": "abc12345def"}}
+# A full SHA: gh run list --commit matches only all 40 characters (#3796).
+FULL_SHA = "abc12345def" + "0" * 29
+MERGED = {"mergedAt": "2026-11-11T10:00:00Z", "mergeCommit": {"oid": FULL_SHA}}
 
 
 def run_record(
@@ -40,6 +42,15 @@ class FakeGh:
     def __call__(self, argv, **_kwargs):
         self.runs = self.later.get(len(self.calls), self.runs)
         self.calls.append(argv)
+        if argv[1:2] == ["api"] and "/commits/" in argv[2]:
+            # GitHub resolves only the fixture commit's prefixes (HTTP 422 else).
+            known = FULL_SHA.startswith(argv[2].rsplit("/", 1)[1])
+            return subprocess.CompletedProcess(
+                argv,
+                0 if known else 1,
+                FULL_SHA + "\n" if known else "",
+                "" if known else "HTTP 422: No commit found for SHA",
+            )
         if argv[1:3] == ["pr", "view"]:
             return subprocess.CompletedProcess(argv, 0, json.dumps(self.pr), "")
         if argv[1:3] == ["run", "list"]:
@@ -74,7 +85,7 @@ def check(*args, clock=None, **fake_kwargs):
     return code, out.getvalue(), err.getvalue(), fake
 
 
-SHA = "abc12345def"
+SHA = FULL_SHA
 CI = ("CI", SHA, "2026-11-11T10:01:00Z")
 FAILED_JOBS = [
     {"name": "tests (3.14)", "conclusion": "failure"},
@@ -210,6 +221,32 @@ class DevelopRunCheckTests(unittest.TestCase):
                 self.assertEqual(code, 1)
                 self.assertIn("CI: failed (cancelled)", out)
                 self.assertNotIn("newer push run at", out)
+
+    def test_an_abbreviated_sha_is_resolved_to_the_full_commit(self):
+        # #3796: the short form never matched a run before.
+        runs = [run_record(1, *CI)]
+        code, out, _, fake = check("--sha", SHA[:10], runs=runs)
+        self.assertEqual((code, "CI: green" in out), (0, True))
+        listing = next(c for c in fake.calls if c[1:3] == ["run", "list"])
+        self.assertEqual(listing[listing.index("--commit") + 1], FULL_SHA)
+        # Uppercase is the same SHA; a full one needs no lookup.
+        code, _, _, fake = check("--sha", SHA.upper(), runs=runs)
+        self.assertEqual(code, 0)
+        self.assertFalse([c for c in fake.calls if c[1:2] == ["api"]])
+        for sha, reason in (
+            (
+                "fff1234",
+                "unknown commit 'fff1234' (gh api repos/{owner}/{repo}/commits/fff1234 failed: HTTP 422",
+            ),
+            ("develop", "not a commit SHA: 'develop'"),
+            ("HEAD~1", "not a commit SHA"),
+            ("-h", "not a commit SHA"),
+        ):
+            with self.subTest(sha=sha):
+                code, _, err, fake = check(f"--sha={sha}", runs=runs)
+                self.assertEqual(code, 2)
+                self.assertIn(reason, err)
+                self.assertFalse([c for c in fake.calls if c[1:3] == ["run", "list"]])
 
     def test_bad_input_and_failed_gh_exit_two(self):
         for args in (["--pr", "0"], ["--pr", "x"], [], ["--pr", "1", "--sha", "a"]):

@@ -155,6 +155,54 @@ class PlanCheckRuleTests(unittest.TestCase):
         hard = unit("a", "2026-11-04", "run", planned_intensity=0.9)
         self.assertTrue(check([hard], illness="Fieber")[0]["blocking"])
 
+    def test_a_recurring_complaint_is_a_note_per_area_and_never_blocks(self) -> None:
+        # #3766 (athlete): only illness blocks; a recurring complaint is named.
+        achilles = {
+            "area": "achilles",
+            "side": "right",
+            "days": 3,
+            "dates": ["2026-10-22", "2026-10-29", "2026-11-03"],
+            "first_severity": 3,
+            "last_severity": 5,
+        }
+        knee = {
+            **achilles,
+            "area": "knee",
+            "side": "left",
+            "days": 2,
+            "last_severity": 5,
+        }
+        hard = unit("a", "2026-11-04", "run", planned_intensity=0.9)
+        found = plan_checks.check_plan(
+            today=TODAY,
+            units=[hard],
+            completed=[],
+            competitions=[],
+            complaints=[achilles, knee],
+        )
+        notes = [item for item in found if item["code"] == "complaint_recurring"]
+        self.assertEqual(2, len(notes))
+        self.assertFalse(any(item["blocking"] for item in notes))
+        self.assertEqual(
+            "Recurring complaint: achilles (right) on 3 of the last 14 days, severity 3 -> 5.",
+            notes[0]["message"],
+        )
+        self.assertEqual("achilles", notes[0]["evidence"]["area"])
+        # One note per area and side.
+        keys = {plan_checks.finding_key(item) for item in notes}
+        self.assertEqual(
+            {
+                ("complaint_recurring", "achilles", "right"),
+                ("complaint_recurring", "knee", "left"),
+            },
+            keys,
+        )
+        self.assertEqual(("complaint_recurring",), plan_checks.STANDING_NOTE_CODES)
+        self.assertEqual(
+            [],
+            [item for item in check([hard]) if item["code"] == "complaint_recurring"],
+        )
+
     def test_run_spike_counts_a_run_completed_today(self) -> None:
         today = [run_done("2026-11-02", 60)]
         self.assertEqual(

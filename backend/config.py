@@ -184,6 +184,8 @@ class Config:
     yazio_country: str = ""
     yazio_credential_generation: int = 0
     sync_history_earliest_date: date = DEFAULT_SYNC_HISTORY_EARLIEST_DATE
+    # ``BACKUP_DIR``: empty uses the data directory's default, ``off`` disables (#3760).
+    backup_dir: str = ""
     trusted_proxies: tuple[ipaddress.IPv4Network | ipaddress.IPv6Network, ...] = ()
     invalid_trusted_proxies: int = 0
 
@@ -330,6 +332,7 @@ def load_config(
         app_password=value("APP_PASSWORD", ""),
         secure_cookies=_env_bool(target, "COOKIE_SECURE"),
         data_retention_days=_env_int(target, "DATA_RETENTION_DAYS", -1),
+        backup_dir=_env_text(target, "BACKUP_DIR", ""),
         wahoo_client_id=value("WAHOO_CLIENT_ID", "").strip(),
         wahoo_client_secret=value("WAHOO_CLIENT_SECRET", "").strip(),
         wahoo_redirect_uri=value("WAHOO_REDIRECT_URI", "").strip(),

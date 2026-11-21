@@ -78,6 +78,7 @@ docker compose up -d
    - **Container Path `/data`**: `/mnt/user/appdata/ai-coach/data` (Read/Write)
    - Upgrading from the former `ai-coach` image keeps this data path unchanged; only the repository and container name change to `pacecraft`.
    - **Environment Variables**: Add `APP_PASSWORD`, `OPENAI_API_KEY`, `INTERVALS_API_KEY`, `TZ`, etc.
+   - **Automatic backups**: without any setting the app keeps verified encrypted copies in `automatic-backups` inside the data path (nightly and before each schema migration). To keep them on another disk, add a container path such as `/backups` mapped to a share and set `BACKUP_DIR=/backups`; `BACKUP_DIR=off` switches them off ([operations](operations.md)).
    - **Icon URL**: `https://raw.githubusercontent.com/Lukas-Beike/pacecraft/main/public/logo.png`
 3. **Save and Start**: Start the container and check `docker logs -f pacecraft`.
 

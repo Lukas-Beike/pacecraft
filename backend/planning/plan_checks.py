@@ -39,6 +39,10 @@ Rules (references are observational or practice-based, not individual advice):
   stepwise return after an approved pause (``illness_return``) it also flags a
   session above the current stage's level (stage 1 easy, stage 2 up to moderate)
   today and tomorrow.
+- complaint_recurring: a body area and side the check-ins report on at least
+  3 days of the last 14, or whose severity rose by at least 2 points there
+  (``checkins.recurring_complaints``); one note per area and side, never a block
+  (athlete decision #3766, matching "only illness blocks").
 """
 
 from __future__ import annotations
@@ -102,7 +106,11 @@ FINDING_CODES = (
     "template_missing",
     "template_mismatch",
     "template_scaled",
+    "complaint_recurring",
 )
+# Notes that come from the athlete's own check-ins, not from the write: the guard
+# names them on every plan write while they hold (#3766).
+STANDING_NOTE_CODES = ("complaint_recurring",)
 # Only the health rule blocks a write. The load rules are notes the Coach must
 # name: their evidence is observational or practice-based, or (taper) the
 # evidence is strong but the 20 % floor is a local choice, not a proven limit.
@@ -140,6 +148,7 @@ EVIDENCE = {
     "template_missing": "athlete rule: planned units come only from the training library",
     "template_mismatch": "athlete rule: a variant keeps its template's exercises or steps",
     "template_scaled": "athlete rule: a variant only scales load and intensity",
+    "complaint_recurring": "athlete's own check-ins; 3-of-14-days and 2-point thresholds are product rules, not medical limits",
 }
 _RULE_TEXT = {
     "run_spike": "planned run more than 10 % (warning above 30 %) longer than the longest run of the last 30 days.",
@@ -161,6 +170,7 @@ _RULE_TEXT = {
     "template_missing": "a unit the Coach created or changed without the template_id of a library template.",
     "template_mismatch": "a unit whose exercises or steps differ from its library template beyond load and intensity.",
     "template_scaled": "a unit planned from a library template with scaled load or intensity.",
+    "complaint_recurring": "a body area and side reported on 3+ of the last 14 days or 2+ severity points worse there (non-blocking).",
 }
 RULE_SUMMARY = {
     code: f"{'Blocks' if code in (*BLOCKING_CODES, *REQUIRED_CODES) else 'Note'}: {text}"
@@ -866,6 +876,30 @@ def _calendar_findings(
     return findings
 
 
+def _complaint_findings(complaints: Sequence[Mapping[str, Any]]) -> list[dict]:
+    """One note per recurring or worsening complaint; it names, never blocks (#3766)."""
+    return [
+        _finding(
+            "complaint_recurring",
+            [],
+            f"Recurring complaint: {item['area']} ({item['side']}) on {item['days']} "
+            f"of the last 14 days, severity {item['first_severity']} -> {item['last_severity']}.",
+            {
+                key: item[key]
+                for key in (
+                    "area",
+                    "side",
+                    "days",
+                    "dates",
+                    "first_severity",
+                    "last_severity",
+                )
+            },
+        )
+        for item in complaints
+    ]
+
+
 def check_plan(
     *,
     today: date,
@@ -877,6 +911,7 @@ def check_plan(
     expects_strength: bool = False,
     calendar_events: Sequence[Mapping[str, Any]] = (),
     return_stage: int | None = None,
+    complaints: Sequence[Mapping[str, Any]] = (),
 ) -> list[dict[str, Any]]:
     """Return all findings for the resulting future planned units.
 
@@ -904,6 +939,7 @@ def check_plan(
         *_missing_taper(units, completed, competitions, today),
         *illness_findings,
         *_return_stage_hard(units, return_stage, today, flagged),
+        *_complaint_findings(complaints),
     ]
 
 
@@ -934,6 +970,10 @@ def finding_key(finding: Mapping[str, Any]) -> tuple[Any, ...]:
     }:
         evidence = finding["evidence"]
         return (finding["code"], tuple(finding["local_ids"]), evidence["content"])
+    if finding["code"] == "complaint_recurring":
+        # One note per area and side.
+        evidence = finding["evidence"]
+        return (finding["code"], evidence["area"], evidence["side"])
     if finding["code"] == "load_unknown":
         # One note for the plan: unrelated edits must not repeat it.
         return (finding["code"],)

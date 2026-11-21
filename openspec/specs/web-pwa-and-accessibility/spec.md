@@ -857,6 +857,6 @@ Betrieb & Diagnose SHALL read the newest 250 log entries and show each as "[time
 
 #### Scenario: Privacy deletion result
 - **WHEN** the deletion succeeded
-- **THEN** a failed remote OpenAI conversation delete or Wahoo revocation is named, and so are recovery copies and server log files that could not be removed
+- **THEN** a failed remote OpenAI conversation delete or Wahoo revocation is named, and so are recovery copies, automatic backups and server log files that could not be removed
 
 Evidence: `public/views.js::renderReleaseChangelog`, `public/views.js::releaseChangeGroups`, `e2e/navigation.spec.js::@responsive Betrieb & Diagnose lists the release changes from the image as plain text, a build without them keeps the version line`, `tests/copy-labels.test.cjs::release changes are grouped as Neu, Verbessert, Behoben and the rest, without type and pull request number`; `public/diagnostics.js::loadLogs`; `public/diagnostics.js::formatLogEntry`; `public/diagnostics.js::downloadServerLogs`; `public/settings.js::downloadDatabaseBackup`; `public/settings.js::saveGpsTracks`; `public/settings.js::deleteGpsTracks`; `public/settings.js::deletePrivacyData`. Tests: `e2e/downloads.spec.js::settings and diagnostics downloads carry the Pacecraft name`; `e2e/first-threshold-gps.spec.js::the GPS-tracks switch takes clicks once loaded and a failed save restores the confirmed state`; `e2e/history-undo.spec.js::history panel is absent while diagnosis and logs remain available`.

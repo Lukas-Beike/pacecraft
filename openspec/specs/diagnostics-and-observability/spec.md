@@ -161,7 +161,7 @@ The diagnostic report SHALL include the state of the local method passes as coun
 
 #### Scenario: Newest app backup
 - **WHEN** the report is generated
-- **THEN** `backup` reports `known` false until a backup download through the app has finished, and afterwards the newest such backup's age in hours, size in bytes and `verified` (its integrity and foreign key checks passed); never a name, path or content (#2996)
+- **THEN** `backup` reports `known` false until a backup download through the app has finished, and afterwards the newest such backup's age in hours, size in bytes and `verified` (its integrity and foreign key checks passed), and `backup.automatic`: `enabled` and, when on, `nightly_count`, `newest_age_hours`, `premigration_present` and `last_failure_age_hours` of the automatic copies (#3760); never a name, path or content (#2996)
 
 #### Scenario: Storage and runtime health
 - **WHEN** the report is generated
