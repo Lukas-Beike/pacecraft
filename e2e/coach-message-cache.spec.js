@@ -213,6 +213,101 @@ test("a reader who scrolls before the start has loaded keeps their position @res
   await page.unrouteAll({ behavior: "ignoreErrors" });
 });
 
+// #3862: the Coach opens at the newest message from the cache and stays there when the fresh
+// history arrives, also after another view; a reader who scrolled up keeps their position.
+test("the Coach opens and stays at the newest message through the fresh load and a view change @responsive", async ({ page }) => {
+  let delayed = false;
+  let gate = heldGate();
+  await routeConversation(page, () => delayed, () => gate.wait());
+  const newestInView = (messageId) => page.evaluate((id) => {
+    const message = document.querySelector(`#messages [data-message-id="${id}"]`)?.getBoundingClientRect();
+    const composerTop = document.querySelector("#chatForm").getBoundingClientRect().top;
+    return Boolean(message) && message.bottom > 0 && message.bottom <= Math.min(composerTop, window.innerHeight) + 1;
+  }, messageId);
+  const settle = () => page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+
+  await page.goto("/#coach");
+  await expect.poll(() => page.evaluate(() => state.initialStateLoaded)).toBe(true);
+  await expect.poll(() => newestInView(LAST_ID)).toBe(true);
+  await expect.poll(() => page.evaluate(() => Boolean(localStorage.getItem("coach-state-snapshot")))).toBe(true);
+
+  // A cached start whose fresh history is the same conversation: newest in view before and after.
+  delayed = true;
+  await page.reload();
+  await expect(page.locator(`#messages [data-message-id="${LAST_ID}"]`)).toBeAttached();
+  await expect.poll(() => newestInView(LAST_ID)).toBe(true);
+  gate.release();
+  await expect.poll(() => page.evaluate(() => state.initialStateLoaded)).toBe(true);
+  await settle();
+  await expect.poll(() => newestInView(LAST_ID)).toBe(true);
+
+  // A cached start whose fresh history brings a newer reply: the view follows it.
+  gate = heldGate();
+  await page.reload();
+  await expect.poll(() => newestInView(LAST_ID)).toBe(true);
+  const newer = LAST_ID + 1;
+  conversation.push({ id: newer, role: "assistant", content: `Coach Cache ${newer}\n\n${"Neue Antwort. ".repeat(20)}`, created_at: "2026-10-02T11:00:00Z" });
+  try {
+    gate.release();
+    await expect.poll(() => page.evaluate(() => state.initialStateLoaded)).toBe(true);
+    await expect(page.locator(`#messages [data-message-id="${newer}"]`)).toBeAttached();
+    await settle();
+    await expect.poll(() => newestInView(newer)).toBe(true);
+
+    // Another view and back: the Coach opens at the newest message again.
+    await page.evaluate(() => { location.hash = "#plan"; });
+    await expect(page.locator("#chatPanel")).not.toHaveClass(/active/);
+    await page.evaluate(() => { location.hash = "#coach"; });
+    await expect(page.locator("#chatPanel")).toHaveClass(/active/);
+    await settle();
+    await expect.poll(() => newestInView(newer)).toBe(true);
+
+    // A reader who scrolled up during a cached start keeps their place when the fresh history arrives.
+    gate = heldGate();
+    await page.reload();
+    await expect.poll(() => newestInView(newer)).toBe(true);
+    await page.mouse.wheel(0, -1500);
+    await expect.poll(() => page.evaluate(() => state.chatFollowLatest)).toBe(false);
+    await settle();
+    const readerScroll = await page.evaluate(() => window.scrollY);
+    gate.release();
+    await expect.poll(() => page.evaluate(() => state.initialStateLoaded)).toBe(true);
+    await settle();
+    expect(await newestInView(newer)).toBe(false);
+    expect(Math.abs(await page.evaluate(() => window.scrollY) - readerScroll)).toBeLessThanOrEqual(2);
+    await expect(page.locator("#chatJumpToComposer")).toBeVisible();
+
+    // A start after more than six hours away shows the quick messages in the composer;
+    // the taller composer must not cover the newest message (#3862).
+    const away = () => page.evaluate(() => localStorage.setItem("intervals-coach-last-pwa-activity", String(Date.now() - 7 * 60 * 60 * 1000)));
+    // The page stores its own activity on pagehide, so the pause is set before the next start's scripts.
+    await page.addInitScript(() => {
+      if (sessionStorage.getItem("e2e-away") !== "1") return;
+      sessionStorage.removeItem("e2e-away");
+      localStorage.setItem("intervals-coach-last-pwa-activity", String(Date.now() - 7 * 60 * 60 * 1000));
+    });
+    await page.evaluate(() => sessionStorage.setItem("e2e-away", "1"));
+    await page.reload();
+    await expect.poll(() => page.evaluate(() => state.initialStateLoaded)).toBe(true);
+    await expect(page.locator("#quickMessageTemplates")).toBeVisible();
+    await settle();
+    await expect.poll(() => newestInView(newer)).toBe(true);
+
+    // The same when the app returns from the background after such a pause.
+    await page.evaluate(() => { document.querySelector("#quickMessageTemplates").hidden = true; state.quickTemplatesVisible = false; });
+    await page.evaluate(() => window.scrollTo({ top: document.documentElement.scrollHeight, behavior: "auto" }));
+    await expect.poll(() => newestInView(newer)).toBe(true);
+    await away();
+    await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
+    await expect(page.locator("#quickMessageTemplates")).toBeVisible();
+    await settle();
+    await expect.poll(() => newestInView(newer)).toBe(true);
+  } finally {
+    conversation.pop();
+    await page.unrouteAll({ behavior: "ignoreErrors" });
+  }
+});
+
 test("a failed fresh chat load ends the sync note and keeps the cached messages @responsive", async ({ page }) => {
   let failing = false;
   await page.route("**/api/chat/history?*", async (route) => {

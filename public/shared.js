@@ -194,7 +194,12 @@ function notePwaActivity() {
 
 function renderQuickMessageTemplates() {
   const root = $("#quickMessageTemplates");
-  if (root) root.hidden = !state.quickTemplatesVisible || state.busy;
+  const hidden = !state.quickTemplatesVisible || state.busy;
+  if (!root || root.hidden === hidden) return;
+  root.hidden = hidden;
+  // Shown after the jump to the newest message, the taller composer would cover it; a
+  // reader following the newest message stays there (#3862). Hiding them covers nothing.
+  if (!hidden && state.chatFollowLatest && !state.busy) scrollChatToLatest();
 }
 
 function updatePwaActivity() {
