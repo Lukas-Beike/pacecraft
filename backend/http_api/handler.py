@@ -95,6 +95,8 @@ class RequestHandler(BaseHTTPRequestHandler):
     _idempotent_request: tuple[IdempotencyStore, str, str] | None = None
     # Answers held until the keyed request's transaction commits (#3761).
     _held_answers: list[tuple[int, Any, Any]] | None = None
+    # The keyed request's body, read before its transaction takes the writer.
+    _read_body_json: dict[str, Any] | None = None
     server_version: str
     client_disconnect_errors = (
         BrokenPipeError,
@@ -382,6 +384,8 @@ class RequestHandler(BaseHTTPRequestHandler):
                 finally:
                     self._idempotent_request = None
                 return
+            # Read the body first, so a slow client never holds the writer (Gitar on #3816).
+            self._read_body_json = self.read_json()
             self._held_answers = []
             try:
                 with store.transaction():
@@ -390,6 +394,7 @@ class RequestHandler(BaseHTTPRequestHandler):
             finally:
                 self._idempotent_request = None
                 self._held_answers = None
+                self._read_body_json = None
             for answer in held:
                 self.dependencies.response_transport.send_json(self, *answer)
 
@@ -429,6 +434,9 @@ class RequestHandler(BaseHTTPRequestHandler):
         )
 
     def read_json(self, max_bytes: int | None = None) -> dict[str, Any]:
+        if self._read_body_json is not None:
+            body, self._read_body_json = self._read_body_json, None
+            return body
         if max_bytes is None:
             max_bytes = self.dependencies.max_body_bytes
         return read_request_json(
