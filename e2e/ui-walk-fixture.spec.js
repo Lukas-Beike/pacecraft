@@ -12,8 +12,8 @@ const FIXTURE_SKIPS = { "Kalender: Laufdynamik": /^skip \(none of [1-9]\d* has i
 
 test("@responsive every UI walk step passes on the fixture app", async ({ page, request }) => {
   const { VIEWS, STEPS, runStep } = await import(pathToFileURL(path.join(__dirname, "..", "scripts", "ui_walk.mjs")).href);
-  // One test walks every step, so the default 60 s shrinks with each new step: 30 steps took
-  // 55-59 s on a Windows Docker host (#3866). A budget per step keeps a hang caught and the margin kept.
+  // One test walks every step, so its time grows with STEPS: the 35 steps at #3866 took 55-59 s
+  // of the default 60 s on a Windows Docker host. A budget per step keeps the margin as steps are added.
   test.setTimeout(Math.max(60_000, STEPS.length * 6_000));
   expect((await request.get("/api/fixture/demo")).ok()).toBeTruthy();
   // The app's own today: the profile's zone, else the browser's (the same process as this runner).
