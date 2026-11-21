@@ -374,15 +374,17 @@ def method_numbers(source: str) -> str:
 
 def method_modules() -> dict[str, int]:
     """Each backend module with a top-level METHOD_VERSION, and that version."""
-    found = {}
+    found: dict[str, int] = {}
     for path in sorted((ROOT / "backend").rglob("*.py")):
         for node in ast.parse(path.read_text("utf-8")).body:
             target = getattr(node, "target", None) or next(
                 iter(getattr(node, "targets", [])), None
             )
             value = getattr(node, "value", None)
-            if getattr(target, "id", None) == "METHOD_VERSION" and isinstance(
-                value, ast.Constant
+            if (
+                getattr(target, "id", None) == "METHOD_VERSION"
+                and isinstance(value, ast.Constant)
+                and isinstance(value.value, int)
             ):
                 found[path.relative_to(ROOT).as_posix()] = value.value
     return found
