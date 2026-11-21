@@ -919,7 +919,8 @@ test("@responsive a longer period keeps each sport tab to its own sport", async 
 });
 
 // #3828: a redraw that only redraws the history (here the phone/desktop width change) applies the shown tab itself.
-test("a width change keeps each sport tab to its own sport", async ({ page }) => {
+test("a width change keeps each sport tab to its own sport", async ({ page, request }) => {
+  expect((await request.get("/api/fixture/demo")).ok()).toBeTruthy();
   await page.setViewportSize({ width: 1024, height: 800 });
   await page.goto("/#analysis/running");
   await expect(page.locator("#appShell")).toBeVisible();
