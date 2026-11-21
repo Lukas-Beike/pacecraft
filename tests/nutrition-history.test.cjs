@@ -132,3 +132,15 @@ test("the Bilanz and Makros cards: hero by goal distance, three tiles, no empty 
   assert.equal(textOf(row.children[2]), "-300");
   assert.deepEqual(ctx.nutritionChartDayRow({ ...day, balance_kcal: null }, 2300, lose).children[2].dataset, {});
 });
+
+// #3852: the energy read follows every change of the day's entries the read consumes, not only kcal.
+test("the diary's intake key changes with kcal, macros or the estimate flag of an entry", () => {
+  const { nutritionIntakeKey } = extractFunctions("nutrition.js", ["nutritionIntakeKey"]);
+  const meal = { id: "a", kcal: 640, protein_g: 20, carbs_g: 90, fat_g: 15, estimate_uncertain: false };
+  const day = (entry) => ({ date: "2026-11-21", total_kcal: entry.kcal, entries: [entry] });
+  const shown = nutritionIntakeKey(day(meal));
+  assert.equal(nutritionIntakeKey(day({ ...meal })), shown);
+  for (const change of [{ kcal: 700 }, { protein_g: 40 }, { estimate_uncertain: true }]) {
+    assert.notEqual(nutritionIntakeKey(day({ ...meal, ...change })), shown, JSON.stringify(change));
+  }
+});
