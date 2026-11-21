@@ -766,7 +766,7 @@ class CodexReviewWorkflowTests(unittest.TestCase):
             "- name: Rebase eligible pull requests", 1
         )[0]
         self.assertIn("branches:\n      - develop", workflow)
-        self.assertIn("schedule:\n    - cron: '23 * * * *'", workflow)
+        self.assertIn("schedule:\n    - cron: '*/10 * * * *'", workflow)
         self.assertNotIn("workflow_dispatch", workflow)
         self.assertNotIn("pull_request", workflow.split("jobs:", 1)[0])
         # The checkout is the pushed develop commit; PR files are only data.
@@ -789,11 +789,22 @@ class CodexReviewWorkflowTests(unittest.TestCase):
         self.assertNotIn("--method PUT", align)
         self.assertNotIn("pip install", align)
         self.assertNotIn("git push", workflow)
+        rebase = workflow.split("- name: Rebase eligible pull requests", 1)[1]
         self.assertIn(
-            "if: ${{ !cancelled() && github.event_name == 'push' "
-            "&& steps.branch-app-token.outcome == 'success' }}",
-            workflow,
+            "if: ${{ !cancelled() && steps.branch-app-token.outcome == 'success' }}",
+            rebase,
         )
+        # A scheduled run rebases only armed PRs still BEHIND, such as one armed
+        # after the last develop push (#3854); a push rebases every armed PR.
+        self.assertIn("ONLY_BEHIND: ${{ github.event_name == 'schedule' }}", rebase)
+        self.assertIn(
+            '[[ "$ONLY_BEHIND" == "true" && "$merge_state" != "BEHIND" ]]', rebase
+        )
+        # Rebase only, never a merge-style update; same-repository squash PRs only.
+        self.assertIn("--rebase", rebase)
+        self.assertIn("select(.isCrossRepository == false)", rebase)
+        self.assertIn('select(.autoMergeRequest.mergeMethod == "SQUASH")', rebase)
+        self.assertNotIn("gh pr merge", rebase)
 
     def test_native_review_removes_legacy_release_dispatch(self):
         root = Path(__file__).resolve().parents[1]
