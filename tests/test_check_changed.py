@@ -227,6 +227,63 @@ class CheckChangedTests(unittest.TestCase):
         self.assertEqual(code, 2)
         self.assertEqual(out.count(" is not installed."), 4)
 
+    @staticmethod
+    def since_git(changed, calls, ancestor=True, known=True):
+        """A git that resolves commits, answers the ancestor check, and diffs."""
+        diff = fake_git(changed)
+
+        def git(*args, **kwargs):
+            calls.append(args)
+            if args[0] == "rev-parse":
+                if not known:
+                    raise gh_cli.CliError("git rev-parse failed: fatal: bad revision")
+                name = args[-1].split("^")[0]
+                return "head0\n" if name == "HEAD" else name
+            if args[:2] == ("merge-base", "--is-ancestor") and not ancestor:
+                raise gh_cli.CliError("git merge-base failed: no output")
+            return diff(*args, **kwargs)
+
+        return git
+
+    def test_tests_since_selects_tests_only_from_the_follow_up_diff(self):
+        # #3813: a follow-up commit after a green full run reruns its tests only.
+        runner, calls = FakeRun(), []
+        code, out, _ = run_main(
+            check_changed,
+            ["--tests-since", "green1", "--base", "origin/main"],
+            runner,
+            self.since_git(["backend/x.py"], calls),
+        )
+        self.assertEqual(code, 0)
+        self.assertEqual(runner.calls[0][-3:], ["--changed", "--base", "green1"])
+        self.assertEqual(runner.calls[2][1:], ["tools/quality_baseline.py"])
+        self.assertIn(("merge-base", "--is-ancestor", "green1", "HEAD"), calls)
+        # Node tests follow the follow-up diff: no JS in it, none run.
+        self.assertIn(("merge-base", "green1", "HEAD"), calls)
+        self.assertNotIn("node-tests", out)
+
+    def test_tests_since_refuses_head_an_unknown_or_a_rebased_commit(self):
+        for argv, git_kwargs, reason in (
+            (["--tests-since", "HEAD"], {}, "is HEAD"),
+            (["--tests-since", "nope"], {"known": False}, "bad revision"),
+            (["--tests-since", "old"], {"ancestor": False}, "not an ancestor"),
+            (
+                ["--tests-since", "old", "--fix-format"],
+                {"ancestor": False},
+                "not an ancestor",
+            ),
+        ):
+            with self.subTest(argv=argv):
+                runner, calls = FakeRun(), []
+                git = self.since_git(["backend/x.py"], calls, **git_kwargs)
+                with mock.patch.object(check_changed, "format_step") as fmt:
+                    code, _, err = run_main(check_changed, argv, runner, git)
+                self.assertEqual(code, 2)
+                self.assertIn(reason, err)
+                self.assertEqual(runner.calls, [])
+                fmt.assert_not_called()
+                self.assertFalse([c for c in calls if c[0] == "diff"])
+
     def test_unknown_base_is_exit_two(self):
         def git(*_args, **_kwargs):
             raise gh_cli.CliError("git merge-base failed: bad revision")

@@ -1,6 +1,12 @@
 """Run the local checks for a change: affected tests, compile, quality, JS tests.
 
     python scripts/check_changed.py [--base origin/develop] [--js] [--fix-format]
+        [--tests-since SHA]
+
+--tests-since selects the Python, Node and workflow checks from SHA...HEAD
+only (the head of a green full run of this branch, an ancestor of HEAD, not
+HEAD); --fix-format still formats the files changed against --base, and
+compile and quality always cover the whole tree (#3813).
 
 --fix-format first formats the changed Python files with the ratchet's Ruff and
 names them; unchanged files, baselined ones included, are never touched (#3382).
@@ -12,7 +18,8 @@ temporary file with its full output. Node tests run with --js or when the diff a
 base touches a .js, .cjs or .mjs file. A changed workflow under
 .github/workflows/ is linted with the pinned actionlint image in Docker, as CI
 does (#3377); without Docker that step is reported as unrun. Exit 0: all
-passed; 1: a step failed; 2: bad base ref or a tool is missing.
+passed; 1: a step failed; 2: bad base ref, a refused --tests-since or a
+tool is missing.
 """
 
 from __future__ import annotations
@@ -253,11 +260,15 @@ def format_step(base: str) -> int:
 
 
 def build_steps(
-    base: str, js: bool, workflows: list[str] | None = None
+    base: str,
+    js: bool,
+    workflows: list[str] | None = None,
+    tests_base: str | None = None,
 ) -> list[tuple[str, list[str]]]:
     python = sys.executable
+    selection = tests_base or base
     steps = [
-        ("tests", [python, "tests/run_tests.py", "--changed", "--base", base]),
+        ("tests", [python, "tests/run_tests.py", "--changed", "--base", selection]),
         (
             "compile",
             [python, "-m", "compileall", "-q", "server.py", "backend", "tests"],
@@ -276,6 +287,22 @@ def build_steps(
     return steps
 
 
+def since_green_run(sha: str, root: Path = ROOT) -> None:
+    """Refuse a --tests-since commit this branch was not built on, or HEAD
+    itself: after a rebase the earlier green run tested other develop code, and
+    HEAD would select no test at all (#3813)."""
+    commit = git("rev-parse", "--verify", f"{sha}^{{commit}}", cwd=root).strip()
+    if commit == git("rev-parse", "HEAD", cwd=root).strip():
+        raise CliError(f"--tests-since {sha} is HEAD; pass the green run's head")
+    try:
+        git("merge-base", "--is-ancestor", commit, "HEAD", cwd=root)
+    except CliError:
+        raise CliError(
+            f"--tests-since {sha} is not an ancestor of HEAD (rebased since?); "
+            "run without it"
+        ) from None
+
+
 def main(argv: list[str] | None = None) -> int:
     # Step output can hold characters a cp1252 console cannot encode (#2637);
     # like spec_validate.py and pr_state.py, write UTF-8 and never crash on it.
@@ -290,9 +317,18 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="first format the changed Python files, and only those (#3382)",
     )
+    parser.add_argument(
+        "--tests-since",
+        metavar="SHA",
+        help="select tests from SHA...HEAD only: the head of a green full run of "
+        "this branch, before small follow-up commits (#3813)",
+    )
     args = parser.parse_args(argv)
     try:
-        changed = changed_files(args.base)
+        if args.tests_since:
+            since_green_run(args.tests_since)
+        # Node tests and actionlint follow the test selection's diff.
+        changed = changed_files(args.tests_since or args.base)
         formatted = format_step(args.base) if args.fix_format else 0
     except CliError as exc:
         print(f"error: {exc}", file=sys.stderr)
@@ -307,7 +343,7 @@ def main(argv: list[str] | None = None) -> int:
             and (ROOT / path).is_file()
         }
     )
-    steps = build_steps(args.base, js, workflows)
+    steps = build_steps(args.base, js, workflows, args.tests_since)
     return max(run_steps(steps, {"quality": quality_env()}), formatted)
 
 
