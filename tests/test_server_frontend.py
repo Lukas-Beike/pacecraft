@@ -584,7 +584,11 @@ class ServerFrontendTests(ServerTestCase):
             "offline-errors.spec.js": "goes offline with the worker's cached shell",
             "update-reload.spec.js": "drives the worker's controllerchange",
         }
-        failing = re.compile(r"route\.abort\(|status:\s*[45]\d\d")
+        # An abort, a literal 4xx/5xx, or a status not written as a literal
+        # (a variable or `{ status }` shorthand) counts as failing (Gitar).
+        failing = re.compile(
+            r"route\.abort\(|status:\s*[45]\d\d|status:\s*[A-Za-z_]|[{,]\s*status\s*[,}]"
+        )
 
         def unblocked(source: str) -> bool:
             return (
@@ -595,6 +599,15 @@ class ServerFrontendTests(ServerTestCase):
             )
 
         self.assertTrue(unblocked('page.route("**/api/x", (route) => route.abort());'))
+        self.assertTrue(
+            unblocked('page.route("**/api/x", (r) => r.fulfill({ status, headers }));')
+        )
+        self.assertTrue(
+            unblocked('page.route("**/api/x", (r) => r.fulfill({ status: code }));')
+        )
+        self.assertFalse(
+            unblocked('page.route("**/api/x", (r) => r.fulfill({ status: 200 }));')
+        )
         self.assertFalse(
             unblocked(
                 'test.use({ serviceWorkers: "block" });\n'

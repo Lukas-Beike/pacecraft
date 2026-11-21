@@ -1,6 +1,10 @@
 const { test, expect } = require("@playwright/test");
 const { stubSyncJobs } = require("./helpers/sync-jobs");
 
+// Routes miss requests that pass through the service worker's fetch listener; this spec
+// does not test the worker, so it is blocked and every route applies (#3842).
+test.use({ serviceWorkers: "block" });
+
 test("@responsive the week button removes old Garmin and Wahoo entries although no unit waits for a sync", async ({ page, request }) => {
   test.setTimeout(180_000);
   expect((await request.get("/api/fixture/demo")).ok()).toBeTruthy();

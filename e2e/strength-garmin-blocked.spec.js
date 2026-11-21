@@ -1,6 +1,10 @@
 const { test, expect } = require("@playwright/test");
 const { showCalendarDay } = require("./helpers/ui");
 
+// Routes miss requests that pass through the service worker's fetch listener; this spec
+// does not test the worker, so it is blocked and every route applies (#3842).
+test.use({ serviceWorkers: "block" });
+
 test("@responsive a strength unit says why it does not reach Garmin and offers the fix", async ({ page, request }) => {
   test.setTimeout(180_000);
   expect((await request.get("/api/fixture/demo")).ok()).toBeTruthy();
