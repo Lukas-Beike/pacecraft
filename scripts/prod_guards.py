@@ -23,24 +23,19 @@ import sys
 import time
 from urllib.parse import urlsplit
 
-from prod_client import (
-    SECRET_MISSING,
-    ProdError,
-    Session,
-    checkout_current,
-    secret_path,
-)
+from prod_client import ProdError, Session, checkout_current, read_secret
 
 
 def check_secret(path: str) -> int:
     """Exit 0 when the secret file lies in an allowed folder, is readable and
     not empty, else 1; its content is neither kept nor printed (#3768)."""
     try:
-        ok = bool(secret_path(path).read_text(encoding="utf-8").strip())
-    except ProdError, OSError, UnicodeDecodeError:
-        ok = False
-    print("ok secret readable" if ok else f"FAIL {SECRET_MISSING}")
-    return 0 if ok else 1
+        read_secret(path)
+    except ProdError as exc:
+        print(f"FAIL {exc}")
+        return 1
+    print("ok secret readable")
+    return 0
 
 
 def tls_days(url: str, ca_file: str | None) -> float:
