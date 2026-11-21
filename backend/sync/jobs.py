@@ -205,8 +205,8 @@ ITEM_ORDER = (
 )
 # Items that finished successfully are never rewritten by a later failure or retry.
 _SETTLED_ITEMS = "status NOT IN ('completed', 'skipped')"
-# Only automatic requesters coalesce; an explicit user or coach request always
-# queues. A "backfill" continuation carries the next chunk's end_date cursor, so it
+# Only automatic requesters coalesce; an explicit user or coach request queues,
+# unless it passes `coalesce` (then it joins only an identical request). A "backfill" continuation carries the next chunk's end_date cursor, so it
 # is never folded into another job: that would drop the cursor and stop the chain.
 _COALESCED_REQUESTERS = frozenset({"scheduler", "startup", "connection"})
 _COALESCED_TYPES = frozenset({"refresh", *BACKFILL_JOB_TYPES})
@@ -850,14 +850,21 @@ class SyncJobStore:
         job_id = str(self._uuid_factory())
 
         with self._database_manager.unit_of_work() as db:
-            if coalesce or (
+            automatic = (
                 normalized["type"] in _COALESCED_TYPES
                 and requested in _COALESCED_REQUESTERS
-            ):
+            )
+            if coalesce or automatic:
+                # An explicit request joins only the same request: another approval
+                # (an older competition manifest) must not swallow this one (#3838).
+                same = "" if automatic else " AND payload=?"
                 existing = db.execute(
                     "SELECT * FROM sync_jobs WHERE provider=? AND type=? "
-                    "AND status IN ('queued', 'running') ORDER BY created_at, id LIMIT 1",
-                    (normalized["provider"], normalized["type"]),
+                    "AND status IN ('queued', 'running')"
+                    + same
+                    + " ORDER BY created_at, id LIMIT 1",
+                    (normalized["provider"], normalized["type"])
+                    + (() if automatic else (payload_json,)),
                 ).fetchone()
                 if existing:
                     current, items = read_job(db, existing["id"])

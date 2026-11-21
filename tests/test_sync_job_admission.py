@@ -157,6 +157,12 @@ class ConfiguredProviderTests(unittest.TestCase):
         _, again = self.endpoint.send_competitions()
         self.assertEqual(job["id"], again["id"])
         self.assertEqual(1, stored_jobs(self.database))
+        # A press approving another set never joins the older approval.
+        changed = [{**MANIFEST[0], "sha256": "c" * 64}]
+        with mock.patch.object(self.endpoint, "_competition_manifest", lambda: changed):
+            _, other = self.endpoint.send_competitions()
+        self.assertNotEqual(job["id"], other["id"])
+        self.assertEqual(2, stored_jobs(self.database))
 
     def test_unknown_provider_is_a_validation_error_not_a_job(self) -> None:
         with self.assertRaises(AppError) as caught:
