@@ -159,6 +159,31 @@ class CheckChangedTests(unittest.TestCase):
                     )
                     self.assertGreater(len(node[0]), 3)
 
+    def test_a_changed_spec_is_validated_strictly_as_in_ci(self):
+        # #3880: a too long requirement first failed CI's ai-docs job (#3878).
+        cases = [
+            (["openspec/specs/performance-and-readiness/spec.md"], True),
+            (["openspec/config.yaml"], True),
+            (["backend/x.py", "docs/operations.md"], False),
+        ]
+        for changed, expected in cases:
+            with self.subTest(changed=changed):
+                runner = FakeRun()
+                code, out, _ = run_main(check_changed, [], runner, fake_git(changed))
+                specs = [
+                    call
+                    for call in runner.calls
+                    if "spec_validate.py" in " ".join(call)
+                ]
+                self.assertEqual(len(specs), int(expected))
+                self.assertEqual("ok specs" in out, expected)
+                self.assertEqual(code, 0)
+        runner = FakeRun(failing=("scripts/spec_validate.py",))
+        changed = fake_git(["openspec/specs/x/spec.md"])
+        code, out, _ = run_main(check_changed, [], runner, changed)
+        self.assertEqual(code, 1)
+        self.assertIn("FAILED specs", out)
+
     def test_a_changed_workflow_is_linted_with_the_pinned_actionlint(self):
         # #3377: the same image and flags as .github/workflows/workflow-lint.yml.
         lint = (check_changed.ROOT / ".github/workflows/workflow-lint.yml").read_text(

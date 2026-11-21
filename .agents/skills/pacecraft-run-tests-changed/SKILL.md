@@ -34,6 +34,9 @@ python scripts/check_changed.py [--base origin/develop] [--js] [--fix-format]
   `workflow-lint.yml` in Docker (#3377). Without Docker, or with its daemon
   down, it prints `unrun actionlint: <reason>` and does not change the exit
   code; report it as an unrun check.
+- When the diff touches `openspec/`, a `specs` step runs
+  `scripts/spec_validate.py`, the strict main-spec validation of CI's
+  `ai-docs` job (#3880).
 - The quality step uses this checkout's `node_modules` for ESLint, as the
   pre-push hook does: a fresh worktree without `npm ci` fails it here with the
   `npm ci` hint, not later at the push (#2832).

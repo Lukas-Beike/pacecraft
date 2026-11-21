@@ -19,7 +19,9 @@ unittest FAIL/ERROR lines, the last lines of its output, and the path of a
 temporary file with its full output. Node tests run with --js or when the diff against the
 base touches a .js, .cjs or .mjs file. A changed workflow under
 .github/workflows/ is linted with the pinned actionlint image in Docker, as CI
-does (#3377); without Docker that step is reported as unrun. Exit 0: all
+does (#3377); without Docker that step is reported as unrun. A change under
+openspec/ runs `scripts/spec_validate.py`, the strict validation of the main
+specs CI runs (#3880). Exit 0: all
 passed; 1: a step failed; 2: bad base ref, a refused --tests-since or a
 tool is missing.
 """
@@ -42,6 +44,7 @@ from gh_cli import CliError, git
 ROOT = Path(__file__).resolve().parents[1]
 JS_SUFFIXES = (".js", ".cjs", ".mjs")
 WORKFLOWS = ".github/workflows/"
+SPECS = "openspec/"
 # The image and flags of .github/workflows/workflow-lint.yml (#3377); a test
 # keeps them equal.
 ACTIONLINT = [
@@ -272,6 +275,7 @@ def build_steps(
     js: bool,
     workflows: list[str] | None = None,
     tests_base: str | None = None,
+    specs: bool = False,
 ) -> list[tuple[str, list[str]]]:
     python = sys.executable
     selection = tests_base or base
@@ -292,6 +296,8 @@ def build_steps(
         mount = f"{ROOT}:/repo"
         docker = ["docker", "run", "--rm", "-v", mount, "-w", "/repo"]
         steps.append(("actionlint", [*docker, *ACTIONLINT, *workflows]))
+    if specs:
+        steps.append(("specs", [python, "scripts/spec_validate.py"]))
     return steps
 
 
@@ -351,7 +357,8 @@ def main(argv: list[str] | None = None) -> int:
             and (ROOT / path).is_file()
         }
     )
-    steps = build_steps(args.base, js, workflows, args.tests_since)
+    specs = any(path.startswith(SPECS) for path in changed)
+    steps = build_steps(args.base, js, workflows, args.tests_since, specs)
     return max(run_steps(steps, {"quality": quality_env()}), formatted)
 
 
