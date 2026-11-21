@@ -56,6 +56,10 @@ Daily M1 AU of all sports, athlete-local days, from the first recorded session
 in the history window through the period end. The window starts 168 days (4τ)
 before the period, but never later than 258 days before today, so Coach and
 load tab seed the same day and agree for the same date.
+Version 2 (#3839) moved that limit from 251 to 258 days, so every period up to
+91 days (4 Wochen and 3 Monate) seeds on the same day. The athlete approved it
+on 2026-11-21 ("Ja, einheitlich"); on a 400-day daily history the values move
+by at most 0.9 AU (0.23 %), and on the golden history not at all.
 Local RPE first, a labelled provider RPE only without it (card M1).
 
 ## Measurement error and uncertainty
