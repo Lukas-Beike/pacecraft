@@ -4,14 +4,19 @@ on:
   push:
     branches:
       - develop
-  # Dependabot can open a tool bump after the last develop push; the schedule
-  # aligns it without waiting. Scheduled runs use the default branch, develop.
+  # Dependabot can open a tool bump, and a PR can arm auto-merge, after the last
+  # develop push; the schedule aligns and rebases them without waiting (#3854).
+  # Scheduled runs use the default branch, develop. No pull-request trigger:
+  # this job holds the app token.
   schedule:
-    - cron: '23 * * * *'
+    - cron: '*/10 * * * *'
 
 permissions:
   contents: read
 
+# One group, so a push run and a scheduled run never update the same PR at
+# once. A newer queued run replaces a queued push run; the next scheduled run
+# then rebases what is still behind, at most one interval later (#3854).
 concurrency:
   group: auto-rebase-develop
   cancel-in-progress: false
@@ -113,13 +118,15 @@ jobs:
             exit 1
           fi
       - name: Rebase eligible pull requests
-        # A failed alignment must not block rebasing the other pull requests;
-        # only a develop push can make them stale.
-        if: ${{ !cancelled() && github.event_name == 'push' && steps.branch-app-token.outcome == 'success' }}
+        # A failed alignment must not block rebasing the other pull requests.
+        # A develop push makes every armed PR stale; a scheduled run rebases only
+        # those still BEHIND, such as one armed after the last push (#3854).
+        if: ${{ !cancelled() && steps.branch-app-token.outcome == 'success' }}
         env:
           # App-authored updates emit synchronize events and start fresh CI.
           GH_TOKEN: ${{ steps.branch-app-token.outputs.token }}
           REPOSITORY: ${{ github.repository }}
+          ONLY_BEHIND: ${{ github.event_name == 'schedule' }}
         shell: bash
         run: |
           set -euo pipefail
@@ -132,14 +139,14 @@ jobs:
               --base develop \
               --state open \
               --limit 1000 \
-              --json number,headRefName,isCrossRepository,autoMergeRequest,mergeable \
+              --json number,headRefName,isCrossRepository,autoMergeRequest,mergeable,mergeStateStatus \
               --jq '
                 .[]
                 | select(.isCrossRepository == false)
                 | select(.autoMergeRequest != null)
                 | select(.autoMergeRequest.mergeMethod == "SQUASH")
                 | select(.mergeable != "CONFLICTING")
-                | [.number, .headRefName]
+                | [.number, .headRefName, .mergeStateStatus]
                 | @tsv
               '
           )"
@@ -155,7 +162,10 @@ jobs:
 
           failed=0
           for pull_request in "${pull_requests[@]}"; do
-            IFS=$'\t' read -r pull_request_number head_ref <<< "$pull_request"
+            IFS=$'\t' read -r pull_request_number head_ref merge_state <<< "$pull_request"
+            if [[ "$ONLY_BEHIND" == "true" && "$merge_state" != "BEHIND" ]]; then
+              continue
+            fi
             echo "Rebasing PR #$pull_request_number ($head_ref) onto develop."
             rebase_output=""
             if ! rebase_output="$(gh pr update-branch "$pull_request_number" \
@@ -172,5 +182,9 @@ jobs:
 
           if ((failed > 0)); then
             echo "Could not rebase $failed pull request(s); see the warnings above."
-            exit 1
+            # A scheduled run only warns: a lasting failure would fail every run;
+            # the next develop push fails the job and reports it.
+            if [[ "$ONLY_BEHIND" != "true" ]]; then
+              exit 1
+            fi
           fi
