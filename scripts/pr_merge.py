@@ -210,16 +210,20 @@ def _arm_once(number: int, pr: dict[str, Any]) -> str:
     return f"already clean, merged {pr['headRefOid'][:10]} directly"
 
 
-def rebase_if_behind(number: int, pr: dict[str, Any]) -> bool:
-    """Rebase an armed PR GitHub reports BEHIND develop; True when it asked to.
+def rebase_if_behind(number: int, pr: dict[str, Any]) -> str:
+    """Rebase an armed PR GitHub reports BEHIND develop; the head it rebased, or "".
 
     The develop push's auto-rebase ran before this PR was armed, and GitHub runs
     the scheduled fallback only every few hours (#3872). Rebase only, pinned to
     the read head, never a merge-style update; a refusal (a conflict, a moved
-    head) is reported and leaves the PR as it is.
+    head) is reported and leaves the PR as it is. A PR GitHub reports BLOCKED
+    (a pending required check outranks BEHIND) is left to the --wait recheck.
     """
+    if pr.get("mergeStateStatus") == "UNKNOWN":
+        # GitHub computes it lazily, as right after a push; one more read.
+        pr = view(number)
     if pr.get("state") != "OPEN" or pr.get("mergeStateStatus") != "BEHIND":
-        return False
+        return ""
     head = pr["headRefOid"]
     try:
         gh(
@@ -229,9 +233,9 @@ def rebase_if_behind(number: int, pr: dict[str, Any]) -> bool:
         )  # fmt: skip
     except CliError as exc:
         print(f"could not rebase #{number} onto develop: {exc}")
-        return False
+        return ""
     print(f"PR #{number} was behind develop: rebase of {head[:10]} requested")
-    return True
+    return head
 
 
 def pushed_over(branch: str) -> tuple[str, set[str]]:
@@ -305,16 +309,19 @@ def open_threads(number: int, pr: dict[str, Any]) -> bool:
 
 
 def ci_round_rebase(
-    number: int, pr: dict[str, Any], checks: list[tuple[str, str]]
+    number: int, pr: dict[str, Any], checks: list[tuple[str, str]], rebased: str
 ) -> bool:
-    """Whether the PR's CI round has finished green; then a BEHIND PR is rebased."""
+    """Whether a CI round of a current head has finished green; then a BEHIND PR
+    is rebased. The head just rebased is not current: GitHub answers the
+    update-branch request asynchronously, so its finished round is the old one."""
     finished = bool(checks) and all(outcome == "passed" for _, outcome in checks)
-    if finished:
+    if finished and pr.get("headRefOid") != rebased:
         rebase_if_behind(number, pr)
-    return finished
+        return True
+    return False
 
 
-def wait(number: int, minutes: int, seen: int) -> int:
+def wait(number: int, minutes: int, seen: int, rebased: str = "") -> int:
     polls = minutes * POLLS_PER_MINUTE + 1
     rechecked = False
     for poll in range(polls):
@@ -325,8 +332,6 @@ def wait(number: int, minutes: int, seen: int) -> int:
             return 0
         checks = [check_outcome(check) for check in pr.get("statusCheckRollup") or []]
         failing = [name for name, outcome in checks if outcome == "failing"]
-        # Once, after the first CI round finished: develop may have moved during it (#3872).
-        rechecked = rechecked or ci_round_rebase(number, pr, checks)
         if pr.get("state") == "CLOSED" or failing:
             print(f"PR #{number} {pr.get('state')}; failing: {failing}; read pr-state")
             return 1
@@ -334,6 +339,8 @@ def wait(number: int, minutes: int, seen: int) -> int:
         if feedback(pr) > seen or thread_open(number):
             refuse(number, pr, f"new feedback on PR #{number}; read pr-state")
             return 1
+        # Once, after the first CI round finished: develop may have moved during it (#3872).
+        rechecked = rechecked or ci_round_rebase(number, pr, checks, rebased)
         if poll < polls - 1:
             time.sleep(60 / POLLS_PER_MINUTE)
     print(f"PR #{number} still open after {minutes} min")
@@ -383,6 +390,7 @@ def main(argv: list[str] | None = None) -> int:
         if pr.get("baseRefName") != "develop":
             print(f"refused: base is {pr.get('baseRefName')}, not develop")
             return 1
+        rebased = ""
         if pr.get("state") == "OPEN":
             gated = arming_gates(args.number, pr, current=current, minutes=args.wait)
             if isinstance(gated, int):
@@ -394,14 +402,16 @@ def main(argv: list[str] | None = None) -> int:
                 return arming_gates(args.number, fresh, current=current, minutes=0)
 
             try:
-                print(f"PR #{args.number}: {arm(args.number, pr, recheck)}")
+                armed = arm(args.number, pr, recheck)
             except GateRefused as refused:
                 return refused.code
+            print(f"PR #{args.number}: {armed}")
             # The state read before arming: BEHIND blocks the merge until a rebase.
-            rebase_if_behind(args.number, pr)
+            merged = armed.startswith(("merged", "already clean"))
+            rebased = "" if merged else rebase_if_behind(args.number, pr)
             if args.wait <= 0:
                 return 0
-        return wait(args.number, max(args.wait, 0), feedback(pr))
+        return wait(args.number, max(args.wait, 0), feedback(pr), rebased)
     except (CliError, KeyError, TypeError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2

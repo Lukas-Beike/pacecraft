@@ -456,6 +456,35 @@ class PrMergeTests(unittest.TestCase):
         )  # fmt: skip
         self.assertEqual(code, 0)
         self.assertEqual(updates(calls), [update])
+        # A head GitHub has not rated yet (UNKNOWN) is read once more.
+        calls = []
+        run(
+            self, 7, calls=calls,
+            views=[view(mergeStateStatus="UNKNOWN"), view(mergeStateStatus="BEHIND")],
+        )  # fmt: skip
+        self.assertEqual(updates(calls), [update])
+        # Rebased at arming: the old head's finished round does not use up the
+        # recheck; the new head's finished round does (#3872 review).
+        newer = [*update[:-1], "expected_head_sha=beefcafe"]
+        calls = []
+        code, _, _, _ = run(
+            self, 7, "--wait", 5, calls=calls, views=[
+                view(mergeStateStatus="BEHIND"),
+                view(mergeStateStatus="BEHIND", **armed),
+                view(mergeStateStatus="BEHIND", headRefOid="beefcafe", **armed),
+                view(state="MERGED"),
+            ],
+        )  # fmt: skip
+        self.assertEqual(code, 0)
+        self.assertEqual(updates(calls), [update, newer])
+        # A PR merged directly at arming is not rebased.
+        calls = []
+        code, _, writes, _ = run(
+            self, 7, views=[view(mergeStateStatus="BEHIND")], auto_error=CLEAN,
+            calls=calls,
+        )  # fmt: skip
+        self.assertEqual((code, writes[-1]), (0, ["pr", "merge", "7", *PIN]))
+        self.assertEqual(updates(calls), [])
         # Never a merge-style update.
         self.assertFalse(any("update_method=merge" in " ".join(c) for c in calls))
 
