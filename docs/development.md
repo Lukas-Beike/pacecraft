@@ -126,7 +126,8 @@ string literal used three times in one file (`python:S1192`, with
 sonar-python's exclusions: under 5 characters, word-like, formatting or colour
 literals, docstrings, f-strings, decorators, annotations, and files named
 `test*`; #3381). The patterns of `re` calls go through `eslint-plugin-sonarjs`'s
-`super-linear-regex` (`python:S8786`, an `eslint` finding, #3381). Ruff's
+`super-linear-regex` (`python:S8786`, an `eslint` finding, #3381) and
+`regex-complexity` (`python:S5843`, #3792). Ruff's
 `PLR0913` reports a function with more than 13 parameters, `self` not
 counted, as Sonar's `python:S107` does (#3316). It
 reports a selector list repeated in the same at-rule context of `public/*.css`

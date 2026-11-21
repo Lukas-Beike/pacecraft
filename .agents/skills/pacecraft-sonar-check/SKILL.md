@@ -22,7 +22,8 @@ python scripts/sonar_check.py --pr <number>
 - The quality ratchet (`python tools/quality_baseline.py`, also in the pre-push
   hook) checks these Sonar rules locally, new findings only: `python:S3776`,
   `python:S3358`, `python:S1192` (sonar-python's exclusions, files named `test*`
-  skipped), `python:S8786` (the `re` patterns through sonarjs), `css:S4666`, and
+  skipped), `python:S8786` and `python:S5843` (the `re` patterns through
+  sonarjs, #3792), `css:S4666`, and
   through `eslint-plugin-sonarjs` `S3776`, `S3358`, `S4624`, `S8786` and
   `S4036` for JavaScript (#3271, #3381). Every other rule, and
   `jssecurity:S8707`, is checked only in CI. So is the server-side `pythonbugs`

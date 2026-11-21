@@ -51,6 +51,12 @@ DUPLICATE_LITERAL_EXCLUSIONS = (
 # Sonar's python:S8786 (super-linear regex): the patterns of these re calls go
 # through Sonar's own engine, sonarjs/super-linear-regex (#3381).
 SLOW_REGEX_RULE = "sonarjs/super-linear-regex"
+# python:S5843 (regex too complex, threshold 20) failed #3781 only in CI
+# (#3792); sonarjs/regex-complexity is the same check.
+REGEX_RULES = {
+    SLOW_REGEX_RULE: "Super-linear regular expression",
+    "sonarjs/regex-complexity": "Too complex regular expression",
+}
 REGEX_CALLS = frozenset(
     {"compile", "search", "match", "fullmatch", "sub", "subn", "split", "findall"}
     | {"finditer"}
@@ -60,7 +66,7 @@ REGEX_ESLINT_CONFIG = """import { createRequire } from "node:module";
 const load = createRequire(__MODULES__ + "/_");
 export default [{ files: ["*.mjs"], plugins: { sonarjs: load("eslint-plugin-sonarjs") },
   languageOptions: { ecmaVersion: "latest", sourceType: "module" },
-  rules: { "sonarjs/super-linear-regex": "error" } }];
+  rules: { "sonarjs/super-linear-regex": "error", "sonarjs/regex-complexity": "error" } }];
 """
 # Sonar's css:S4666 (Stylelint no-duplicate-selectors): the same selector list in
 # the same at-rule context twice. Like the cognitive counter it is this module's
@@ -602,7 +608,8 @@ def python_regex_diagnostics(root: Path, files: list[str]) -> list[dict] | None:
     diagnostics = []
     for item in json.loads(output)[0]["messages"]:
         path, line, text = patterns[item["line"] - 1]
-        message = f"Super-linear regular expression {text}"
+        code = item.get("ruleId") or SLOW_REGEX_RULE
+        message = f"{REGEX_RULES.get(code, 'Regular expression')} {text}"
         # ESLint's finding, so the step is skipped like ESLint where Node is not
         # installed (CI's quality job), and so are its baseline entries.
         diagnostics.append(
@@ -611,7 +618,7 @@ def python_regex_diagnostics(root: Path, files: list[str]) -> list[dict] | None:
                 "path": path,
                 "line": line,
                 "column": 1,
-                "code": SLOW_REGEX_RULE,
+                "code": code,
                 "message_sha256": hashlib.sha256(message.encode()).hexdigest(),
             }
         )
