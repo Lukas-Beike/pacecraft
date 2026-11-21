@@ -3,6 +3,10 @@ const { test, expect } = require("./helpers/today");
 const { setEntryOpen, showCalendarDay } = require("./helpers/ui");
 const { openCalendar, renderSyntheticCalendar, waitForOlderSessions } = require("./helpers/calendar");
 
+// Routes miss requests that pass through the service worker's fetch listener; this spec
+// does not test the worker, so it is blocked and every route applies (#3842).
+test.use({ serviceWorkers: "block" });
+
 test("@responsive compact calendar week shows one week, groups repeats and keeps one conflict style", async ({ page, request }, testInfo) => {
   await openCalendar(page, request);
   const days = await renderSyntheticCalendar(page);

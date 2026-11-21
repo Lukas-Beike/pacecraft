@@ -1,5 +1,9 @@
 const { test, expect } = require("@playwright/test");
 
+// Routes miss requests that pass through the service worker's fetch listener; this spec
+// does not test the worker, so it is blocked and every route applies (#3842).
+test.use({ serviceWorkers: "block" });
+
 // Marks the stored snapshot as written by earlier assets before the app scripts read it.
 async function simulateUpdate(page) {
   await page.addInitScript(() => {

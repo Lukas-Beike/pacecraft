@@ -1,6 +1,10 @@
 const { test, expect } = require("@playwright/test");
 const AxeBuilder = require("@axe-core/playwright").default;
 
+// Routes miss requests that pass through the service worker's fetch listener; this spec
+// does not test the worker, so it is blocked and every route applies (#3842).
+test.use({ serviceWorkers: "block" });
+
 // #3273: LT2 from the provider beside the local estimates, adoption per value (F8), the
 // second step above 5 % (F9) and the change notice in the status strip (F10).
 const PROVIDER_HR = { key: "garmin|heart_rate|run||2026-11-09", source: "garmin", label: "Garmin", sport: "run", metric: "heart_rate", environment: null, valid_from: "2026-11-09", valid_until: null, threshold: 158, maximum: 186, limits: [130, 145, 155, 158, 186], percent_limits: null, percent_basis: null, threshold_origin: null };

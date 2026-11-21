@@ -1,5 +1,9 @@
 const { test, expect } = require("@playwright/test");
 
+// Routes miss requests that pass through the service worker's fetch listener; this spec
+// does not test the worker, so it is blocked and every route applies (#3842).
+test.use({ serviceWorkers: "block" });
+
 // The day read still projects today's expenditure from persisted Garmin days; the diary shows the
 // energy table in place of the former expenditure card (#3252), so this checks the API.
 test("@responsive nutrition projects today's expenditure from persisted Garmin days", async ({ request }) => {

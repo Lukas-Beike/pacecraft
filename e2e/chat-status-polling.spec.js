@@ -1,5 +1,9 @@
 const { test, expect } = require("@playwright/test");
 
+// Routes miss requests that pass through the service worker's fetch listener; this spec
+// does not test the worker, so it is blocked and every route applies (#3842).
+test.use({ serviceWorkers: "block" });
+
 // Coach status polling is timer-driven. The clock is installed before navigation so the app's
 // own timers run on Playwright's clock, and quiet observation windows are advanced with
 // runFor() instead of waiting on wall-clock time.

@@ -1,5 +1,9 @@
 const { test, expect } = require("@playwright/test");
 
+// Routes miss requests that pass through the service worker's fetch listener; this spec
+// does not test the worker, so it is blocked and every route applies (#3842).
+test.use({ serviceWorkers: "block" });
+
 // The week read of a period, shaped here (the values come from the backend tests): `count` closed
 // days ending 2026-10-06, every ninth without a logged intake.
 const weekRead = (count) => {

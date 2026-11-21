@@ -2,6 +2,10 @@ const { test, expect } = require("@playwright/test");
 const AxeBuilder = require("@axe-core/playwright").default;
 const { waitForSettledState } = require("./helpers/settled-state");
 
+// Routes miss requests that pass through the service worker's fetch listener; this spec
+// does not test the worker, so it is blocked and every route applies (#3842).
+test.use({ serviceWorkers: "block" });
+
 async function performanceFixture(page, changes, route = "running") {
   await page.route("**/api/performance", async (request) => {
     const response = await request.fetch();
