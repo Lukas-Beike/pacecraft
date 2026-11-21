@@ -3138,14 +3138,16 @@ function fillCompetitionDialog(competition) {
     sport = "keep";
   }
   sport ||= "Ride";
-  competitionEdit = competition ? { competition, sport } : null;
+  // The distance shown is km text; an untouched field is not sent back, so no rounding rewrites it.
+  const distance = competitionDistanceInput(stored.distance);
+  competitionEdit = competition ? { competition, sport, distance } : null;
   const time = stored.starts_at_local ? formatLocalCompetitionTime(stored.starts_at_local) : "";
   form.elements.name.value = stored.name || "";
   form.elements.event_date.value = String(stored.event_date || "").slice(0, 10);
   form.elements.start_time.value = time === "00:00" ? "" : time;
   form.elements.sport.value = sport;
   form.elements.priority.value = stored.priority || "B";
-  form.elements.distance.value = competitionDistanceInput(stored.distance);
+  form.elements.distance.value = distance;
   form.elements.target.value = stored.target || "";
   form.elements.duration.value = stored.planned_duration_s == null ? "" : AppFormat.clock(stored.planned_duration_s);
   form.elements.location.value = stored.location || "";
@@ -3207,13 +3209,13 @@ function competitionDialogPayload(form) {
     event_date: day,
     starts_at_local: time ? `${day}T${time}` : "",
     priority: form.elements.priority.value,
-    distance: competitionDistanceValue(form.elements.distance.value),
     target: form.elements.target.value,
     planned_duration_s: duration,
     location: form.elements.location.value,
     course_profile: form.elements.course_profile.value,
     notes: form.elements.notes.value,
   };
+  if (!competitionEdit || form.elements.distance.value !== competitionEdit.distance) payload.distance = competitionDistanceValue(form.elements.distance.value);
   if (!competitionEdit || form.elements.sport.value !== competitionEdit.sport) payload.sport = form.elements.sport.value;
   if (competitionEdit) payload.id = competitionEdit.competition.id;
   return payload;

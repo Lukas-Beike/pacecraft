@@ -28,6 +28,16 @@ async function addCompetition(page, fields) {
   await expect(dialog).toBeHidden();
 }
 
+// A test that fails partway must not leave its competitions for the next one (review on #3837).
+test.afterEach(async ({ page }) => {
+  await page.evaluate(async () => {
+    const { competitions = [] } = await api("/api/bootstrap?local=1");
+    for (const item of competitions.filter((entry) => String(entry.name || "").startsWith("E2E "))) {
+      await api("/api/competitions/remove", { method: "PUT", body: JSON.stringify({ id: item.id, confirmed: true }) });
+    }
+  }).catch(() => null);
+});
+
 const card = (page, name) => page.locator("#competitionList details.competition-card").filter({ hasText: name });
 
 async function removeFromDialog(page, name) {
