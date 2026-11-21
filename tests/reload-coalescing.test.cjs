@@ -77,6 +77,7 @@ function frontend({ eventSource = false } = {}) {
     crypto: { randomUUID: () => "test" },
     document: { scripts: [], currentScript: { src: "" }, visibilityState: "visible" },
     navigator: { onLine: true },
+    replayOutbox() {},
     performance: { now: () => clock.now },
     Date: { now: () => clock.now, parse: Date.parse },
     sessionStorage: { getItem: () => null, setItem() {}, removeItem() {} },

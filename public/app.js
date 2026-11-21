@@ -167,6 +167,7 @@ globalThis.addEventListener("beforeunload", (event) => {
 });
 registerServiceWorker();
 setupConnectivityStatus();
+setupOutbox();
 renderNotificationStatus();
 setupSyncStatusMonitoring();
 scheduleMobileViewportLayout();

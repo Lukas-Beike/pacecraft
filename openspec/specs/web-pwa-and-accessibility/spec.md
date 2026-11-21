@@ -86,7 +86,7 @@ The PWA SHALL advertise a standalone manifest named "Pacecraft · AI Coach" (sho
 
 #### Scenario: Offline or slow navigation
 - **WHEN** navigation cannot reach the server or exceeds the shell's short network wait and a cached page exists
-- **THEN** the cached shell can start; API writes are not queued for later delivery and loaded data freshness remains governed by `view-refresh-and-client-state`.
+- **THEN** the cached shell can start; API writes are not queued for later delivery, except the four own-entry saves of the offline outbox (`offline-outbox` requirement below), and loaded data freshness remains governed by `view-refresh-and-client-state`.
 
 Evidence: `public/service-worker.js` (install/activate/fetch listeners, `CACHE`, `ASSETS`, `VERSIONED_ASSETS`), `public/manifest.webmanifest`, `public/notifications.js::registerServiceWorker`, `public/notifications.js::reloadForUpdateWhenSafe`; `e2e/contracts.spec.js::fresh service worker keeps the current shell available offline`, `tests/test_server_frontend.py::ServerFrontendTests.test_pwa_asset_versions_match_service_worker_precache`, `e2e/update-reload.spec.js::a service worker update keeps a typed draft and reloads once it is cleared`, `tests/test_server_frontend.py::ServerFrontendTests.test_service_worker_caches_only_versioned_static_assets_and_not_api`, `tests/test_server_frontend.py::ServerFrontendTests.test_nutrition_and_view_refresh_assets_are_served_as_immutable_javascript`, `e2e/offline-errors.spec.js::the offline banner states that changes are not saved and promises no later delivery @responsive`. The manifest name and short name have no covering test.
 
@@ -119,8 +119,33 @@ The client SHALL keep the application behind the required login dialog until suc
 
 Evidence: `public/auth.js::installLoginDialogGuards`, `public/auth.js::loginErrorMessage`, `public/auth.js::logout`, `public/auth.js::showLogin`, `public/sync-status.js::renderMaintenanceStatus`; `e2e/login-dialog.spec.js::Escape keeps the login dialog open and logout shows it again @responsive`, `public/auth.js::bootstrapAuth`, `public/auth.js::retryBootstrapAuth`, `public/auth.js::showAppShellLoading`, `tests/frontend-failure-paths.test.cjs::a failed logout request keeps the app open, reports the error and allows a retry`, `e2e/update-start.spec.js::a start after an update without a reachable server shows the stored data @responsive`, `tests/login-errors.test.cjs::a rate-limited login names the wait from Retry-After`, `tests/login-errors.test.cjs::a lasting server error keeps its own message instead of asking to retry`.
 
+### Requirement: Offline outbox keeps the athlete's own entries until they are sent
+The client SHALL keep a new meal from the product dialog, a weight, a body fat percentage and a session feedback in the device database (IndexedDB) when the request could not reach the server, show them as not yet sent, and send each exactly once when the app is reachable again. Without IndexedDB a save SHALL fail with the offline error as before.
+
+#### Scenario: Save without a connection
+- **WHEN** the athlete saves a weight while the server cannot be reached
+- **THEN** the dialog closes with "wartet, noch nicht gesendet" and the strip shows "1 Eintrag wartet" with a list offering "Erneut senden" and "Verwerfen".
+
+#### Scenario: Only unreachable saves are queued
+- **WHEN** the server answers a save with any status, or the request is a Coach message, sync, refresh, deletion, product change or undo
+- **THEN** nothing is queued and the normal message shows.
+
+#### Scenario: Replay
+- **WHEN** the app starts, the browser comes back online or the status polling reaches the server
+- **THEN** the waiting entries are sent one at a time in creation order with the session and CSRF token, each with its first `Idempotency-Key`; a network failure stops the pass, and the server answers a repeated key on the same path from its stored result without writing and refuses it on another path with 409.
+
+#### Scenario: Refused entry
+- **WHEN** a waiting entry is answered with a 4xx other than 401, 403, 408 and 429
+- **THEN** it stays as "abgelehnt" with the server's message, later entries go on, and the athlete can resend or discard it.
+
+#### Scenario: Logout and purge
+- **WHEN** the athlete logs out or confirms the local data purge
+- **THEN** the outbox is cleared; a 401 keeps it.
+
+Evidence: `public/outbox.js`, `public/status-strip.js::statusStripAction`, `public/sync-status.js::pollSyncStatus`, `public/auth.js::logout`, `public/settings.js::deletePrivacyData`, `backend/http_api/idempotency.py::IdempotencyStore`, `backend/http_api/handler.py::RequestHandler._handle`; `tests/outbox.test.cjs`, `tests/test_idempotency.py::IdempotencyHttpTests`, `e2e/offline-outbox.spec.js`.
+
 ### Requirement: One status strip ranks the notices above every screen
-The client SHALL show at most one status strip above every screen: the most severe notice as text, the others behind a count button. Severity SHALL rank the start loading notice, which shows alone, then maintenance, offline, OpenAI key, Coach error, data load failure, provider attention, Garmin hint, thresholds, the Intervals.icu key hint, which appears only when nothing else does and can be dismissed, and due equipment.
+The client SHALL show at most one status strip above every screen: the most severe notice as text, the others behind a count button. Severity SHALL rank the start loading notice, which shows alone, then maintenance, offline, outbox entries, OpenAI key, Coach error, data load failure, provider attention, Garmin hint, thresholds, the Intervals.icu key hint, which appears only when nothing else does and can be dismissed, and due equipment.
 
 #### Scenario: Age of device data
 - **WHEN** the offline or load-failure notice shows data from the device
@@ -318,7 +343,7 @@ The client SHALL expose operations through their explicit controls, keep downloa
 
 #### Scenario: Timeout, network failure, or persistent error
 - **WHEN** an operational request cannot be confirmed
-- **THEN** an error toast remains readable and dismissible, and the UI does not announce success or promise offline deferred delivery.
+- **THEN** an error toast remains readable and dismissible, and the UI does not announce success or promise offline deferred delivery, except for an entry kept in the offline outbox, which reads as not yet sent.
 
 Evidence: `public/diagnostics.js::loadLogs`, `public/diagnostics.js::deleteDiagnostics`, `public/settings.js::restoreDatabaseBackup`, `public/settings.js::deletePrivacyData`, `public/settings.js::downloadPrivacyExport`, `public/shared.js::toast`; `e2e/privacy-delete.spec.js::the deletion stays locked while the backup before deletion is running`, `e2e/state-events.spec.js::short-lived status connections back off while logs and diagnostics stay usable`, `e2e/privacy-delete.spec.js::local data deletion requires the exact confirmation text`, `e2e/toast.spec.js::@responsive error toasts are readable, dismissible and stay above the coach composer`, `e2e/offline-errors.spec.js::a failed request without a server response shows an honest German message @responsive`. Backend diagnostic sanitization and restore validation belong to their own domains.
 

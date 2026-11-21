@@ -1173,6 +1173,14 @@ function addNutritionProductToCoachDraft() {
   jumpToLatestMessages();
 }
 
+// A meal of today that waits in the outbox keeps the time it was entered, not the later
+// time it is sent (review on #3761).
+function queuedMealPayload(body) {
+  if (body.meal_date !== todayIso()) return body;
+  const time = new Intl.DateTimeFormat("de-DE", { hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone: state.data?.profile?.timezone || undefined }).format(new Date());
+  return { ...body, meal_time: time };
+}
+
 async function addNutritionProductToMeal() {
   const use = nutritionProductUseAmount();
   const mealId = document.querySelector("#nutritionProductUseMeal").value;
@@ -1184,9 +1192,16 @@ async function addNutritionProductToMeal() {
     const body = mealId
       ? { id: mealId, product_id: use.product.id, amount: Number(use.amount), unit: use.unit }
       : { product_id: use.product.id, amount: Number(use.amount), unit: use.unit, meal_type: "snack", meal_date: document.querySelector("#nutritionDate").value || todayIso(), source: "manual" };
-    const result = await api(mealId ? "/api/nutrition/entry/add-product" : "/api/nutrition/entry", { method: "POST", body: JSON.stringify(body) });
+    // A new meal waits in the outbox when the server cannot be reached; adding to a meal does not.
+    const result = mealId
+      ? await api("/api/nutrition/entry/add-product", { method: "POST", body: JSON.stringify(body) })
+      : await saveOwnEntry({ kind: "meal", method: "POST", path: "/api/nutrition/entry", payload: body, queuedPayload: queuedMealPayload(body), label: `„${use.product.name}“ als Snack` });
     if (generation !== state.sessionGeneration) return;
     closeNutritionProductUse();
+    if (result.outboxEntry) {
+      document.querySelector("#nutritionProductStatus").textContent = `„${use.product.name}“ wartet, noch nicht gesendet.`;
+      return;
+    }
     // The list shows the new use in the product's count (#3435); its reload
     // clears the status line, so the receipt follows it.
     await reloadNutritionProducts();

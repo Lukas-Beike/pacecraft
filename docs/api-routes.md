@@ -210,7 +210,9 @@ JSON body, every field optional, an omitted field keeps its stored value:
 to 10 or `null`), `deviation_reason` (string, cut to 500 characters),
 `purpose` (`training`, `race`, `commute`, `warmup`, `cooldown`, or `null`
 or `""` to clear), `activity_name` (cut to 200) and `activity_date` (cut
-to 40). Clearing every content field removes the feedback.
+to 40). Clearing every content field removes the feedback. A repeated
+`Idempotency-Key` header (UUID) answers the stored result and writes
+nothing; the same key on another path answers 409.
 
 Response: 200 `{"status": "ok", "activity_feedback", "change",
 "session_rpe_load"}`. `activity_feedback` is the effective feedback
@@ -384,7 +386,9 @@ Errors: none beyond the common ones.
 ### `PUT /api/body/body-fat`
 
 Request: JSON body `{"date": "YYYY-MM-DD", "pct": number}`, 2 to 70 %
-(comma decimals allowed). The date must not be in the future.
+(comma decimals allowed). The date must not be in the future. A repeated
+`Idempotency-Key` header (UUID) answers the stored result and writes
+nothing; the same key on another path answers 409.
 
 Response: 200 as `GET /api/body/body-fat`.
 
@@ -562,7 +566,9 @@ Errors: none beyond the common ones.
 ### `PUT /api/body/weight`
 
 Request: JSON body `{"date": "YYYY-MM-DD", "kg": number}`, 30 to 300 kg
-(comma decimals allowed). The date must not be in the future.
+(comma decimals allowed). The date must not be in the future. A repeated
+`Idempotency-Key` header (UUID) answers the stored result and writes
+nothing; the same key on another path answers 409.
 
 Response: 200 as `GET /api/body/weight`.
 
@@ -1265,7 +1271,8 @@ Response: 200 `{"ok": true, "entry", "change"}`; `entry` is the stored entry
 (`id`, `meal_date`, `logged_at`, `meal_type`, `description`, `kcal`, the macros,
 `source`, `nutrition_basis`, `sync_state`, `logged_time_known`,
 `estimate_uncertain`), `change` the
-undo reference.
+undo reference. A repeated `Idempotency-Key` header (UUID) answers the stored
+result and writes nothing; the same key on another path answers 409.
 
 Errors: 400 "Beschreibung der Mahlzeit ist erforderlich."; 400 "Kalorienangabe
 (kcal) ist erforderlich."; 400 "Kalorien müssen zwischen 0 und 10000 liegen.";

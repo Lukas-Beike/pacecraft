@@ -7,15 +7,16 @@ const STATUS_SOURCE_RANK = {
   loading: 0,
   maintenance: 1,
   offline: 2,
-  openai: 3,
-  coach_error: 4,
-  load_failure: 5,
-  provider: 6,
-  provider_key: 7,
-  thresholds: 8,
-  lt2: 9,
-  intervals_key: 10,
-  equipment: 11,
+  outbox: 3,
+  openai: 4,
+  coach_error: 5,
+  load_failure: 6,
+  provider: 7,
+  provider_key: 8,
+  thresholds: 9,
+  lt2: 10,
+  intervals_key: 11,
+  equipment: 12,
 };
 const STATUS_STAND_REFRESH_MS = 60_000;
 
@@ -65,6 +66,12 @@ function statusStripLine(item) {
 
 function statusStripAction(item) {
   if (!item.action) return null;
+  // An action that opens something on the page is a button, not a link.
+  if (item.action.onClick) {
+    const button = h("button", { type: "button", className: "secondary-button status-strip-action" }, item.action.label);
+    button.addEventListener("click", item.action.onClick);
+    return button;
+  }
   const dataset = item.action.connection ? { connection: item.action.connection } : null;
   const link = h("a", { className: "status-strip-action", href: item.action.href, dataset }, item.action.label);
   // Opening a notice can settle it, as the LT2 change notice does (#3273).

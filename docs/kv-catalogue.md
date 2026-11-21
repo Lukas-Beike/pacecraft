@@ -16,7 +16,7 @@ read. A new key needs no entry: it appears here when its write is added.
   `profile` is only set when absent.
 
 <!-- BEGIN GENERATED KEYS -->
-99 keys and 24 key patterns; `<value>` stands for a value the code computes.
+99 keys and 25 key patterns; `<value>` stands for a value the code computes.
 
 | Key | Written by | Deleted by | Export | Reset at start | Purge |
 | --- | --- | --- | --- | --- | --- |
@@ -78,6 +78,7 @@ read. A new key needs no entry: it appears here when its write is added.
 | `garmin_sync_status` | backend/sync/garmin_service.py:GarminSyncLifecycleState.set_sync_status | - | no | - | - |
 | `garmin_tokenstore_state` | backend/privacy.py:PrivacyDeleteService.delete<br>backend/sync/garmin_login.py:GarminTokenStore.clear | backend/sync/garmin_login.py:GarminTokenStore.store<br>backend/sync/garmin_login.py:GarminTokenStore.write_back | no | - | rewritten |
 | `gps_tracks_enabled` | backend/privacy.py:PrivacyDeleteService.delete<br>backend/privacy.py:PrivacyDeleteService.set_gps_tracks | - | yes | - | rewritten |
+| `idempotency:<value>` | backend/http_api/idempotency.py:IdempotencyStore.store | backend/http_api/idempotency.py:IdempotencyStore.store | yes | - | - |
 | `intervals_last_output_failed_at` | backend/sync/executor.py:IntervalsJobAdapter.execute | - | yes | - | - |
 | `intervals_last_output_ok_at` | backend/sync/executor.py:IntervalsJobAdapter.execute<br>backend/sync/state.py:SyncStateRepository.adopt_intervals_export_time | - | yes | - | - |
 | `last_chat_reset_at` | backend/coach/conversation.py:CoachConversationResetService._reset_local | - | yes | - | - |
@@ -146,6 +147,7 @@ read. A new key needs no entry: it appears here when its write is added.
 
 - every key is deleted by `backend/privacy.py:PrivacyDeleteService.delete`
 - `garmin_capability_` is deleted by prefix by `backend/providers/garmin_capability.py:clear_capability_state`
+- `idempotency:` is deleted by prefix by `backend/http_api/idempotency.py:IdempotencyStore.store`
 - `nutrition_product_cleanup:` is deleted by prefix by `backend/nutrition/product_cleanup.py:ProductCleanupService._prune_runs`
 - `garmin_snapshot` is left out of the export; nothing writes it
 - `garmin_snapshot_legacy` is left out of the export; nothing writes it
