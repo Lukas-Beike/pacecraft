@@ -14,7 +14,7 @@ from backend.activities.activity_summary import (
 from backend.activities.detail_contract import measured_order
 from backend.activities.matching import match_planned_workouts
 from backend.activities.read_service import ActivityReadService, ActivitySummarySource
-from backend.activities.route_store import stored_route_block
+from backend.activities.route_store import stored_route_block, stored_route_visits
 from backend.activities.zone_settings import ZoneSettings
 from backend.athlete.local_date import iso_date_prefix
 from backend.athlete.profile import timezone_name
@@ -347,7 +347,7 @@ class ActivityAnalysisReadService(ActivityReadService):
         if weather is not None:
             document["weather"] = weather
         if route is not None:
-            document["route"] = route
+            document["route"] = self._with_route_visits(route, session_id)
         recovery = _recovery_before(inputs.get("canonical"), document["session"])
         if recovery is not None:
             document["recovery_before"] = recovery
@@ -355,6 +355,18 @@ class ActivityAnalysisReadService(ActivityReadService):
         _add_purpose(document["session"], summary)
         document.update(_summary_blocks(summary))
         return {"ok": True, **document, "data_scope": _data_scope(document, records)}
+
+    def _with_route_visits(
+        self, route: dict[str, Any], session_id: str
+    ) -> dict[str, Any]:
+        """The route block with every visit of the route (#3763)."""
+        if self._session_summaries is None:
+            return route
+        # The summaries come from their own cached read, outside the detail's snapshot.
+        summaries = self._session_summaries()
+        with self._database_manager.read_snapshot() as db:
+            route["visits"] = stored_route_visits(db, session_id, summaries)
+        return route
 
 
 def _recovery_before(

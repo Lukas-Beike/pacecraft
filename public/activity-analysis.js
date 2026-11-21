@@ -387,7 +387,9 @@
     if (payload?.metrics?.efficiency_factor?.unit) metrics.efficiency_factor_unit = payload.metrics.efficiency_factor.unit;
     const dynamics = runningDynamicsSection(activity, metrics, payload && { panel, token, activityId: payload.session?.activity_id });
     const planned = payload?.planned_adherence;
-    panel.append(...[overview(activity, metrics, Boolean(dynamics), payload?.weather), adherence(planned), dynamics, providerEffect(payload?.training_effect)].filter(Boolean));
+    panel.append(overview(activity, metrics, Boolean(dynamics), payload?.weather));
+    ActivityDetails.renderRoute(payload?.route, api, panel, session);
+    panel.append(...[adherence(planned), dynamics, providerEffect(payload?.training_effect)].filter(Boolean));
     const driftLines = ActivityDetails.formDriftLines(payload?.analysis?.form_drift);
     if (driftLines.length) panel.append(h("div", null, driftLines.map((line) => h("p", null, line))));
     // The running dynamics share the time axis of the other channels.

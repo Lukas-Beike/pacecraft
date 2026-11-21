@@ -277,6 +277,8 @@ export const STEPS = [
   // The chip shows "…" until its read; once loaded its label names the choice ("Rad: …").
   { view: "plan", name: "Kalender: Schuh/Rad", covers: "#3011 equipment chip", each: DONE, ...EARLIER, ready: '.planned-entry[open] .planned-equipment-chip[aria-label*=": "]', kind: "text", optional: true },
   // A week with a run that shows running dynamics may lie further back.
+  // A recognised route needs a repeated outdoor track, so the walk may find none (#3763).
+  detail("Kalender: Streckenhistorie", "#3763 route history", ".planned-entry[open] .activity-route .route-visits tbody tr", "text", { optional: true, each: ".planned-entry.is-completed[data-sport='Laufen'] > summary" }),
   detail("Kalender: Laufdynamik", "#2910 running dynamics", ".planned-entry[open] .activity-dynamics-value", "numbers", { optional: true, each: ".planned-entry.is-completed[data-sport='Laufen'] > summary" }),
   // The sport cards are tables: a measured value is a cell with a digit; a missing one is marked and has none.
   ...[["running", "Laufen", "#runningBestEfforts td:not(.value-missing)", "numbers"], ["cycling", "Radfahren", "#cyclingPowerProfile td:not(.value-missing)", "numbers"], ["load", "Belastung", "#analysisLoadCharts svg", "chart"], ["recovery", "Erholung", "#personalRecovery svg", "chart"]]

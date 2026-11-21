@@ -404,6 +404,63 @@ class StageTests(StageCase):
         self.assertEqual("Strecke 2", other["label"])
         self.assertEqual((1, 1), (other["repeat_index"], other["repeat_count"]))
 
+    def test_visits_list_every_session_of_the_route_newest_first(self) -> None:
+        for number in (1, 2, 3):
+            add_outdoor_session(self.manager, number, loop(seed=number))
+        add_outdoor_session(self.manager, 4, loop(seed=4, centre_east=True))
+        self._run_stage()
+        summaries: list[dict[str, Any]] = [
+            {
+                "id": "act_g1",
+                "started_at_local": "2026-09-01T07:00:00",
+                "sport": "run",
+                "moving_duration_s": 2400.0,
+                "distance_m": 6000.0,
+                "avg_hr": 150.0,
+                "avg_speed_mps": 2.5,
+            },
+            {
+                "id": "act_g3",
+                "started_at_local": "2026-09-03T07:00:00",
+                "avg_hr": 146.0,
+            },
+            {"id": "act_g4", "started_at_local": "2026-09-04T07:00:00"},
+        ]
+        with (
+            mock.patch.object(
+                route_store, "session_temperatures", return_value={"act_g1": 14.5}
+            ) as temperatures,
+            self.manager.reader() as db,
+        ):
+            visits = route_store.stored_route_visits(db, "act_g2", summaries)
+        self.assertEqual(
+            ["act_g1", "act_g2", "act_g3"], sorted(temperatures.call_args.args[1])
+        )
+        self.assertEqual(
+            ["act_g3", "act_g2", "act_g1"], [v["activity_id"] for v in visits]
+        )
+        self.assertEqual(
+            {
+                "activity_id": "act_g1",
+                "date": "2026-09-01",
+                "sport": "run",
+                "moving_duration_s": 2400.0,
+                "distance_m": 6000.0,
+                "avg_hr": 150.0,
+                "avg_speed_mps": 2.5,
+                "temperature_c": 14.5,
+            },
+            visits[2],
+        )
+        # A session without a summary keeps its index start date; missing values stay None.
+        self.assertEqual("2026-09-02", visits[1]["date"])
+        self.assertIsNone(visits[1]["avg_hr"])
+        self.assertIsNone(visits[0]["temperature_c"])
+        with self.manager.reader() as db:
+            self.assertEqual(
+                [], route_store.stored_route_visits(db, "unknown", summaries)
+            )
+
     def test_a_stored_intervals_track_never_makes_a_route(self) -> None:
         # Intervals.icu is output only (#1685, #2148): its stored track of a
         # session is no route input, so the session stays without one.
@@ -706,8 +763,10 @@ class PrivacySweepTests(StageCase):
         assert reference is not None
         with self.manager.reader() as db:
             diagnostics = summarize_activity_routes(self.key_values, db)
+            visits = route_store.stored_route_visits(db, "act_g2", [])
         texts = [
-            json.dumps(item, sort_keys=True) for item in (block, renamed, diagnostics)
+            json.dumps(item, sort_keys=True)
+            for item in (block, renamed, diagnostics, visits)
         ]
         texts.append("\n".join(logs.output))
         texts.extend(repr(getattr(record, "context", "")) for record in logs.records)
