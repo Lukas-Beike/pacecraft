@@ -414,12 +414,26 @@ test("reload recovers a partial write receipt and executable undo proposal", asy
   // Store the turn only for the reloaded page: the unloading page would otherwise
   // recover the receipt itself and clear the turn before the reload starts.
   await page.addInitScript(() => sessionStorage.setItem("coachPendingTurn", "fixture-persisted-turn"));
+  const undo = { id: "fixture-undo", action_type: "undo_change", status: "preview", target_system: "local", diff: [] };
   await page.route("**/api/chat/receipt?*", (route) => route.fulfill({ json: {
     client_turn_id: "fixture-persisted-turn", status: "partial",
     message: { id: 501, client_turn_id: "fixture-persisted-turn", content: "Check-in saved; summary unavailable." },
     command_receipts: [{ tool: "save_checkin", result: { ok: true, status: "saved" } }],
-    proposed_actions: [{ id: "fixture-undo", action_type: "undo_change", status: "preview", target_system: "local", diff: [] }],
+    proposed_actions: [undo],
   } }));
+  // The server keeps the proposal its receipt names, so its history lists it too (#3777). A
+  // history load that starts after the receipt applied is authoritative and replaces the
+  // proposals; without this route it dropped the mocked one whenever start-up ran in that order.
+  await page.route("**/api/chat/history?*", async (route) => {
+    try {
+      const response = await route.fetch();
+      const history = await response.json();
+      await route.fulfill({ response, json: { ...history, proposed_actions: [...(history.proposed_actions || []).filter((item) => item.id !== undo.id), undo] } });
+    } catch (error) {
+      // A read of the page before the reload is gone with it and needs no answer.
+      if (!/Response has been disposed|Target page, context or browser has been closed|Route is already handled/.test(String(error))) throw error;
+    }
+  });
   await page.reload();
   await expect(page.locator(".message.assistant").filter({ hasText: "Check-in saved; summary unavailable." })).toBeVisible();
   await expect(page.locator("#toast")).toContainText("Tages-Check-in gespeichert");
