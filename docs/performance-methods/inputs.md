@@ -39,7 +39,7 @@ Consumer trace (method `session-rpe-load` v2, `backend/performance/session_rpe_l
 - Report: `training_report` carries `session_rpe_load` per session, day, week
   and sport from one summary per canonical session and the session's effective
   feedback (`backend/performance/report_service.py`); the public performance
-  history carries the load tab's 84 days (`backend/http_api/public_performance.py`),
+  history carries the load tab's 91 days (`backend/http_api/public_performance.py`),
   the activity detail the session value (`backend/performance/detail_envelope.py`).
 - Coach: feedback tools (`backend/coach/athlete_record_tools.py`,
   `backend/coach/tool_schemas.py`); `session_rpe_load` in `get_training_report`

@@ -128,11 +128,11 @@ test("@responsive recovery, power, training focus, season and calendar profiles 
   expect(controlsBox.y).toBeLessThan(reportBox.y);
   expect(reportBox.y - (controlsBox.y + controlsBox.height)).toBeGreaterThanOrEqual(8);
   expect(reportBox.y).toBeLessThan((await page.locator("#analysisLoadCharts").boundingBox()).y);
-  await periodControls.getByRole("button", { name: "Letzte 14 Tage" }).click();
-  await expect(report.getByText(/Letzte 14 Tage:/)).toHaveCount(1);
-  await periodControls.getByRole("button", { name: "12 Wochen" }).click();
-  await expect(report.getByText(/Letzte 12 Wochen:/)).toHaveCount(1);
-  // Entwicklung keeps its own period and "Vorjahr" controls (#3765), never the load period.
+  await periodControls.getByRole("button", { name: "4 Wochen" }).click();
+  await expect(report.getByText(/Letzte 4 Wochen:/)).toHaveCount(1);
+  await periodControls.getByRole("button", { name: "3 Monate" }).click();
+  await expect(report.getByText(/Letzte 3 Monate:/)).toHaveCount(1);
+  // Entwicklung keeps its own period controls (#3839), never the load period.
   await expect(page.locator('#analysisHistoryCharts [aria-label="Zeitraum für Belastung"]')).toHaveCount(0);
   await expect(page.locator("#analysisHistoryCharts .analysis-trend-controls")).toHaveCount(1);
   await expect(report.getByText("Leicht aerob", { exact: true })).toBeVisible();
@@ -159,9 +159,9 @@ test("@responsive recovery, power, training focus, season and calendar profiles 
   const periods = await page.evaluate(() => {
     const history = state.data.performance.history;
     const focus = state.data.performance.training_focus;
-    const bodyWindow = history.body.windows["12w"];
+    const bodyWindow = history.body.windows["91d"];
     return {
-      expected: `${dateLabel(addDateKey(history.end, -((new Date(`${history.end}T12:00:00Z`).getUTCDay() + 6) % 7) - 77))} bis ${dateLabel(history.end)}`,
+      expected: `${dateLabel(addDateKey(history.end, -((new Date(`${history.end}T12:00:00Z`).getUTCDay() + 6) % 7) - 84))} bis ${dateLabel(history.end)}`,
       expectedBody: `${dateLabel(bodyWindow.start)} bis ${dateLabel(bodyWindow.end)}`,
       same: focus.end === history.end && focus.start === addDateKey(history.end, -27),
       titles: [...document.querySelectorAll("#analysisHistoryCharts svg > title")].map((node) => node.textContent),
@@ -184,7 +184,7 @@ test("@responsive recovery, power, training focus, season and calendar profiles 
   // The fixture's Garmin readiness is canonical history, so its chart joins the three baselines.
   await expect(recovery.getByRole("heading", { name: /^Trainingsbereitschaft/ })).toHaveCount(1);
   await expect(recovery.locator("svg")).toHaveCount(4);
-  await expect(recovery.locator(".analysis-chart-card").first()).toContainText("Erholung · Letzte 14 Tage");
+  await expect(recovery.locator(".analysis-chart-card").first()).toContainText("Erholung · Letzte 4 Wochen");
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBeTruthy();
 
   await page.evaluate(() => {
@@ -198,10 +198,10 @@ test("@responsive recovery, power, training focus, season and calendar profiles 
       ...baselines.map((item) => ({ ...item, source: "Garmin Connect", history: item.history.map((point) => ({ ...point, value: 99 })) })),
     ] });
   });
-  // The period selector with the "Vorjahr" switch under it (#3765).
-  await expect(recovery.locator(".analysis-period-controls")).toHaveCount(2);
-  await recovery.getByRole("button", { name: "12 Wochen", exact: true }).click();
-  await expect(recovery.locator(".analysis-chart-card").first()).toContainText("Erholung · Letzte 12 Wochen");
+  // The one period selector (#3839).
+  await expect(recovery.locator(".analysis-period-controls")).toHaveCount(1);
+  await recovery.getByRole("button", { name: "3 Monate", exact: true }).click();
+  await expect(recovery.locator(".analysis-chart-card").first()).toContainText("Erholung · Letzte 3 Monate");
   // Three baselines plus the fixture's Garmin readiness chart.
   await expect(recovery.locator(".analysis-subchart")).toHaveCount(4);
 

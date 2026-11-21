@@ -87,7 +87,7 @@ class ProviderIdPayloadTests(unittest.TestCase):
                 "cycling_ftp_watts"
             ],
         )
-        metrics = result["windows"]["14d"]["metrics"]
+        metrics = result["windows"]["28d"]["metrics"]
 
         self.assertEqual(
             [item["source_provider"] for item in metrics["weight_kg"]], ["garmin"]

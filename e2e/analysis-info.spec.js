@@ -169,7 +169,7 @@ test("@responsive current performance groups real values by sport before the cha
   await expect(root).toBeHidden();
 });
 
-test("@responsive recovery uses independent scales, honest coverage over exactly fourteen days", async ({ page }) => {
+test("@responsive recovery uses independent scales, honest coverage over exactly four weeks", async ({ page }) => {
   // Only the injected baselines: the fixture's own Garmin readiness chart is left out.
   await performanceFixture(page, (performance) => ({ history: { ...performance.history, provider_metrics: { ...performance.history.provider_metrics, training_readiness_history: undefined } }, personal_recovery: {
     as_of: "2026-10-02", sleep_target_hours: 8,
@@ -189,12 +189,12 @@ test("@responsive recovery uses independent scales, honest coverage over exactly
   await expect(root).toContainText("Garmin Connect · RMSSD");
   await expect(root.locator("svg")).toHaveCount(2);
   await expect(root.locator(".analysis-secondary-axis, .analysis-extremum")).toHaveCount(0);
-  await expect(root.getByRole("heading", { name: /^Erholung · Letzte 14 Tage/ })).toBeVisible();
-  await expect(root.getByRole("button", { name: "Erholung · Letzte 14 Tage: Informationen", exact: true })).toBeVisible();
-  // One period selector with its "Vorjahr" switch (#3765), no load period.
+  await expect(root.getByRole("heading", { name: /^Erholung · Letzte 4 Wochen/ })).toBeVisible();
+  await expect(root.getByRole("button", { name: "Erholung · Letzte 4 Wochen: Informationen", exact: true })).toBeVisible();
+  // One period selector (#3839), no load period.
   await expect(root.locator(".analysis-trend-controls")).toHaveCount(1);
-  await expect(root.locator(".analysis-period-controls")).toHaveCount(2);
-  await root.getByRole("button", { name: "Erholung · Letzte 14 Tage: Informationen", exact: true }).click();
+  await expect(root.locator(".analysis-period-controls")).toHaveCount(1);
+  await root.getByRole("button", { name: "Erholung · Letzte 4 Wochen: Informationen", exact: true }).click();
   const info = root.locator(".analysis-info-tooltip:popover-open");
   await expect(info).toContainText("Im Bereich deiner früheren Werte · 50 ms–60 ms");
   await expect(info).toContainText("Vergleich mit 28 früheren Nächten.");
@@ -275,14 +275,14 @@ async function chartLabelCollisions(svg) {
   });
 }
 
-test("@responsive Garmin acute load switches fourteen days and twelve weeks with real gaps", async ({ page }) => {
+test("@responsive Garmin acute load switches four weeks and three months with real gaps", async ({ page }) => {
   const points = Array.from({ length: 90 }, (_, index) => ({ date: new Date(Date.UTC(2026, 6, 3 + index)).toISOString().slice(0, 10), value: index >= 38 && index <= 44 ? null : 300 + index }));
   await performanceFixture(page, { history: { start: points[0].date, end: points.at(-1).date, load: { source: "Garmin Connect", points }, training_time: { source: "Garmin Connect, Wahoo", points: points.map((point) => ({ ...point, value: point.value == null ? null : 1 })) }, metrics: {} } }, "load");
   const loadRoot = page.locator("#analysisLoadCharts");
   await expect(loadRoot.locator("svg")).toHaveCount(2);
   const root = loadRoot.locator(".analysis-chart-card").first();
   // Acute load is a rolling state: one line with dots, no bars (#1782).
-  await expect(root.locator("circle[data-series='0']")).toHaveCount(11);
+  await expect(root.locator("circle[data-series='0']")).toHaveCount(12);
   await expect(root.locator("rect.analysis-series-bar")).toHaveCount(0);
   await expect(root.locator(".analysis-axis-unit")).toHaveText("Belastungspunkte · Wochenstand");
   expect(await root.locator(".analysis-date-tick").allTextContents()).toEqual(expect.arrayContaining([expect.stringMatching(/^\d{2}\.\d{2}$/)]));
@@ -290,11 +290,11 @@ test("@responsive Garmin acute load switches fourteen days and twelve weeks with
   await expect(root.locator("path[data-series='0']")).toHaveAttribute("d", /M.*L/);
   await expect(root).not.toContainText("Fitness");
   const time = loadRoot.locator(".analysis-chart-card").nth(1);
-  await expect(time.locator("rect.analysis-series-bar")).toHaveCount(11);
+  await expect(time.locator("rect.analysis-series-bar")).toHaveCount(12);
   await expect(time.locator("circle[data-series], path[data-series]")).toHaveCount(0);
   await expect(time.locator(".analysis-axis-unit")).toHaveText("h · Wochensumme");
-  await page.locator("#analysisLoadPeriod").getByRole("button", { name: "Letzte 14 Tage", exact: true }).click();
-  await expect(root.locator("circle[data-series='0']")).toHaveCount(14);
+  await page.locator("#analysisLoadPeriod").getByRole("button", { name: "4 Wochen", exact: true }).click();
+  await expect(root.locator("circle[data-series='0']")).toHaveCount(28);
   await expect(root.locator(".analysis-axis-unit")).toHaveText("Belastungspunkte · Tageswert");
   for (const svg of await loadRoot.locator("svg").all()) {
     const collisions = await chartLabelCollisions(svg);
@@ -302,8 +302,8 @@ test("@responsive Garmin acute load switches fourteen days and twelve weeks with
     expect(collisions.labels).toBeLessThanOrEqual(4);
     expect(collisions).toMatchObject({ outside: 0, onMarks: 0, onLabels: 0 });
   }
-  await page.locator("#analysisLoadPeriod").getByRole("button", { name: "12 Wochen", exact: true }).click();
-  await expect(root.locator("circle[data-series='0']")).toHaveCount(11);
+  await page.locator("#analysisLoadPeriod").getByRole("button", { name: "3 Monate", exact: true }).click();
+  await expect(root.locator("circle[data-series='0']")).toHaveCount(12);
   const geometry = await root.locator("svg").evaluate((element) => {
     const dots = [...element.querySelectorAll("circle[data-series]")].map((dot) => [Number(dot.getAttribute("cx")), Number(dot.getAttribute("cy"))]);
     const path = element.querySelector("path[data-series]").getAttribute("d");
@@ -413,7 +413,7 @@ test("@responsive a history chart is one tab stop with arrow-key navigation insi
   await performanceFixture(page, { history: { start: "2026-09-01", end: "2026-09-15", load: { points: [] }, metrics: {
     run_threshold_pace_seconds_per_km: [{ source: "Garmin Connect", points: [{ date: "2026-09-01", value: 300 }, { date: "2026-09-08", value: 295 }, { date: "2026-09-15", value: 290 }] }],
   } } });
-  await expect(page.getByRole("region", { name: "Leistungsentwicklung der letzten 12 Wochen" })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Leistungsentwicklung" })).toBeVisible();
   const chart = page.locator("#analysisHistoryCharts svg");
   const markers = chart.locator(".analysis-day-marker");
   await expect(markers).toHaveCount(3);
@@ -438,9 +438,9 @@ test("@responsive repeated performance values are labelled once without a normal
     cycling_ftp_watts: [{ source: "Garmin Connect", points }],
   } } }, "cycling");
   const root = page.locator("#analysisHistoryCharts");
-  // One period selector with its "Vorjahr" switch (#3765), no load period.
+  // One period selector (#3839), no load period.
   await expect(root.locator(".analysis-trend-controls")).toHaveCount(1);
-  await expect(root.locator(".analysis-period-controls")).toHaveCount(2);
+  await expect(root.locator(".analysis-period-controls")).toHaveCount(1);
   expect((await root.locator(".analysis-point-value").allTextContents()).sort()).toEqual(["200", "210"]);
   await expect(root.locator('circle[data-series="0"]')).toHaveCount(30);
   await expect(root.locator(".analysis-current-line")).toHaveCount(0);
@@ -461,9 +461,9 @@ test("@responsive performance keeps dated FTP values and weekly medians independ
     run_threshold_pace_seconds_per_km: [{ source: "Garmin Connect", points: points.slice(1).map((point) => ({ ...point, value: 500 - point.value })) }],
   } } }, "cycling");
   const root = page.locator("#analysisHistoryCharts");
-  // One period selector with its "Vorjahr" switch (#3765), no load period.
+  // One period selector (#3839), no load period.
   await expect(root.locator(".analysis-trend-controls")).toHaveCount(1);
-  await expect(root.locator(".analysis-period-controls")).toHaveCount(2);
+  await expect(root.locator(".analysis-period-controls")).toHaveCount(1);
   const ftp = root.locator(".analysis-subchart").filter({ has: page.getByRole("heading", { name: "Leistungsschwelle · FTP", exact: true }) });
   await ftp.getByText("Werte ansehen", { exact: true }).click();
   await expect(ftp.locator("tbody tr")).toHaveCount(5);
@@ -478,7 +478,7 @@ test("@responsive performance keeps dated FTP values and weekly medians independ
   await pace.getByText("Werte ansehen", { exact: true }).click();
   await expect(pace.locator("tbody td:nth-child(2)")).toHaveText([/4:50 min\/km/, /4:50 min\/km/]);
   await page.evaluate(async () => { await AppRouter.navigate("analysis/load", { historyMode: "replace" }); });
-  await page.locator("#analysisLoadPeriod").getByRole("button", { name: "Letzte 14 Tage", exact: true }).click();
+  await page.locator("#analysisLoadPeriod").getByRole("button", { name: "4 Wochen", exact: true }).click();
   await page.evaluate(async () => { await AppRouter.navigate("analysis/cycling", { historyMode: "replace" }); });
   await expect(ftp.locator("tbody tr")).toHaveCount(5);
   await expect(vo2max.locator("tbody tr")).toHaveCount(2);
@@ -489,9 +489,9 @@ test("@responsive latest measurement stays visible without inventing measurement
     running_vo2max_ml_kg_min: [{ source: "Garmin Connect", points: [{ date: "2026-09-20", value: 49 }] }],
   } } });
   const root = page.locator("#analysisHistoryCharts");
-  // One period selector with its "Vorjahr" switch (#3765), no load period.
+  // One period selector (#3839), no load period.
   await expect(root.locator(".analysis-trend-controls")).toHaveCount(1);
-  await expect(root.locator(".analysis-period-controls")).toHaveCount(2);
+  await expect(root.locator(".analysis-period-controls")).toHaveCount(1);
   await expect(root.locator("svg")).toHaveCount(0);
   await expect(root.locator(".analysis-current-line")).toHaveCount(0);
   await expect(root.locator(".analysis-point-value")).toHaveCount(0);
@@ -783,8 +783,57 @@ test("@responsive Kraft without stored sets shows the one empty card", async ({ 
   await expect(page.locator("#strengthAnalysis")).toBeHidden();
 });
 
-test("@responsive longer trend periods and the previous year are read only on demand", async ({ page, request }) => {
-  // #3765 (athlete: layout A): a "Vorjahr" switch under the period selector, off by default.
+const PERIOD_BUTTONS = ["4 Wochen", "3 Monate", "6 Monate", "12 Monate"];
+
+// #3839: one period set on every Analyse and Ernährung selector; Vorjahr is gone.
+test("@responsive every period control offers the same four periods and no Vorjahr", async ({ page }) => {
+  await page.goto("/#analysis/load");
+  await expect(page.locator("#appShell")).toBeVisible();
+  await page.waitForFunction(() => state.loadedAreas.has("performance") && !state.loadPromise);
+  const controls = [
+    ["analysis/load", "Zeitraum für Belastung", "3 Monate", async (label, weekly) => {
+      await expect(page.locator("#analysisLoadCharts .analysis-axis-unit").first()).toHaveText(`Belastungspunkte · ${weekly ? "Wochenstand" : "Tageswert"}`);
+      await expect(page.locator("#sessionPerformance").getByText(new RegExp(`Letzte ${label}:`))).toHaveCount(1);
+    }],
+    ["analysis/running", "Zeitraum für Entwicklung", "3 Monate", async (label, weekly, weeks) => {
+      await expect(page.locator("#analysisHistoryCharts").getByText(new RegExp(`Letzte ${weeks} Kalenderwochen`)).first()).toBeAttached();
+    }],
+    // Laufen and Radfahren share the one development period, left on 12 Monate by Laufen.
+    ["analysis/cycling", "Zeitraum für Entwicklung", "12 Monate", async (label, weekly, weeks) => {
+      await expect(page.locator("#analysisHistoryCharts").getByText(new RegExp(`Letzte ${weeks} Kalenderwochen`)).first()).toBeAttached();
+    }],
+    ["analysis/recovery", "Zeitraum für Erholung", "4 Wochen", async (label) => {
+      await expect(page.locator("#personalRecovery").getByRole("heading", { name: new RegExp(`^Erholung · Letzte ${label}`) })).toBeVisible();
+    }],
+    ["nutrition/week", "Zeitraum für Ernährung", "4 Wochen", async (label) => {
+      await expect(page.locator("#nutritionWeekChartPeriod")).toHaveText(label);
+    }],
+    ["nutrition/body", "Zeitraum für Körper", "3 Monate", async (label, weekly) => {
+      await expect(page.locator("#bodyAnalysisCharts [data-body-metric]").first()).toBeVisible();
+      await expect(page.locator("#bodyAnalysisCharts .analysis-week-caption")).toHaveCount(weekly ? await page.locator("#bodyAnalysisCharts [data-body-metric]").count() : 0);
+    }],
+  ];
+  for (const [route, name, initial, follows] of controls) {
+    await test.step(route, async () => {
+      await page.evaluate(async (target) => { await AppRouter.navigate(target, { historyMode: "replace" }); }, route);
+      const group = page.getByRole("group", { name, exact: true });
+      await expect(group.getByRole("button")).toHaveText(PERIOD_BUTTONS);
+      await expect(group.getByRole("button", { name: initial, exact: true })).toHaveAttribute("aria-pressed", "true");
+      await expect(page.getByRole("button", { name: "Vorjahr" })).toHaveCount(0);
+      for (const [index, label] of PERIOD_BUTTONS.entries()) {
+        await group.getByRole("button", { name: label, exact: true }).click();
+        for (const other of PERIOD_BUTTONS) {
+          await expect(group.getByRole("button", { name: other, exact: true })).toHaveAttribute("aria-pressed", String(other === label));
+        }
+        await follows(label, index > 0, [4, 13, 26, 52][index]);
+      }
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    });
+  }
+});
+
+test("@responsive longer trend periods are read only on demand", async ({ page, request }) => {
+  // #3839: 4 Wochen (Erholung) and 3 Monate (the rest) come with the state; the rest asks once.
   expect((await request.get("/api/fixture/demo")).ok()).toBeTruthy();
   const requested = [];
   const shift = (key, days) => { const date = new Date(`${key}T12:00:00Z`); date.setUTCDate(date.getUTCDate() + days); return date.toISOString().slice(0, 10); };
@@ -792,51 +841,46 @@ test("@responsive longer trend periods and the previous year are read only on de
     const days = Number(new URL(route.request().url()).searchParams.get("days"));
     requested.push(days);
     // A failed longer read shows its note instead of an unexplained short window.
-    if (days === 364) return route.fulfill({ status: 503, json: { error: "E2E fixture: nicht erreichbar" } });
+    if (days === 365) return route.fulfill({ status: 503, json: { error: "E2E fixture: nicht erreichbar" } });
     const performance = await page.evaluate(() => state.data.performance);
-    const recovery = structuredClone(performance.personal_recovery);
-    // The stored history plus the same values one year earlier, so the previous year has data.
-    for (const baseline of recovery.baselines || []) baseline.history = [...baseline.history.map((point) => ({ ...point, date: shift(point.date, -364) })), ...baseline.history];
-    const end = recovery.as_of || performance.history.end;
-    await route.fulfill({ json: { start: shift(end, 1 - days), end, days, previous_year_days: 364, metrics: performance.history.metrics, personal_recovery: recovery } });
+    const end = performance.personal_recovery.as_of || performance.history.end;
+    await route.fulfill({ json: { start: shift(end, 1 - days), end, days, history: performance.history, training_focus: performance.training_focus, personal_recovery: performance.personal_recovery } });
   });
   await page.goto("/#analysis/recovery");
   await expect(page.locator("#appShell")).toBeVisible();
   await page.waitForFunction(() => state.loadedAreas.has("performance") && !state.loadPromise);
   const recovery = page.locator("#personalRecovery");
-  await expect(recovery.getByRole("heading", { name: /^Erholung · Letzte 14 Tage/ })).toBeVisible();
-  const toggle = recovery.getByRole("button", { name: "Vorjahr", exact: true });
-  await expect(toggle).toHaveAttribute("aria-pressed", "false");
+  await expect(recovery.getByRole("heading", { name: /^Erholung · Letzte 4 Wochen/ })).toBeVisible();
   expect(requested).toEqual([]);
-  await recovery.getByRole("button", { name: "6 Monate" }).click();
+  // The base read's baselines hold 84 days, so Erholung's 3 Monate read their own history.
+  await recovery.getByRole("button", { name: "3 Monate", exact: true }).click();
+  await expect(recovery.getByRole("heading", { name: /^Erholung · Letzte 3 Monate/ })).toBeVisible();
+  await expect.poll(() => requested).toEqual([91]);
+  await recovery.getByRole("button", { name: "6 Monate", exact: true }).click();
   await expect(recovery.getByRole("heading", { name: /^Erholung · Letzte 6 Monate/ })).toBeVisible();
-  await expect.poll(() => requested).toEqual([182]);
-  await expect(recovery.locator('svg path[data-line="faint"]')).toHaveCount(0);
-  await recovery.getByRole("button", { name: "Vorjahr", exact: true }).click();
-  await expect(recovery.getByRole("button", { name: "Vorjahr", exact: true })).toHaveAttribute("aria-pressed", "true");
-  await expect(recovery.locator('svg path[data-line="faint"]').first()).toBeVisible();
-  await expect(recovery.locator(".analysis-chart-legend").getByText("Vorjahr").first()).toBeVisible();
+  await expect.poll(() => requested).toEqual([91, 182]);
+  await expect(recovery.getByRole("button", { name: "Vorjahr" })).toHaveCount(0);
   await page.evaluate(async () => { await AppRouter.navigate("analysis/running", { historyMode: "replace" }); });
   const development = page.locator("#analysisHistoryCharts");
-  await development.getByRole("button", { name: "12 Monate" }).click();
-  await expect.poll(() => requested).toContain(364);
+  // 3 Monate need no long read: the state holds them.
+  await development.getByRole("button", { name: "3 Monate", exact: true }).click();
+  expect(requested).toEqual([91, 182]);
+  await development.getByRole("button", { name: "12 Monate", exact: true }).click();
+  await expect.poll(() => requested).toContain(365);
   await expect(development.getByText("Der längere Zeitraum konnte nicht geladen werden.")).toBeVisible();
-  await expect(development.getByRole("button", { name: "Vorjahr", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await expect(development.getByRole("button", { name: "12 Monate", exact: true })).toHaveAttribute("aria-pressed", "true");
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
 });
 
-// #3824: a re-render for "Vorjahr" or a longer period must keep the other sport's group hidden.
-test("@responsive Vorjahr and a longer period keep each sport tab to its own sport", async ({ page, request }) => {
+// #3824: a re-render after a longer period's read must keep the other sport's group hidden.
+test("@responsive a longer period keeps each sport tab to its own sport", async ({ page, request }) => {
   expect((await request.get("/api/fixture/demo")).ok()).toBeTruthy();
   await page.route("**/api/analysis/trend-history**", async (route) => {
     const days = Number(new URL(route.request().url()).searchParams.get("days"));
     const performance = await page.evaluate(() => state.data.performance);
     const end = performance.history.end;
     const start = new Date(`${end}T12:00:00Z`); start.setUTCDate(start.getUTCDate() + 1 - days);
-    // Stored values one year earlier too, as production has them, so the previous-year lines draw.
-    const shift = (key) => { const date = new Date(`${key}T12:00:00Z`); date.setUTCDate(date.getUTCDate() - 364); return date.toISOString().slice(0, 10); };
-    const metrics = Object.fromEntries(Object.entries(performance.history.metrics || {}).map(([key, series]) => [key, series.map((item) => ({ ...item, points: [...item.points.map((point) => ({ ...point, date: shift(point.date) })), ...item.points] }))]));
-    await route.fulfill({ json: { start: start.toISOString().slice(0, 10), end, days, previous_year_days: 364, metrics, personal_recovery: performance.personal_recovery } });
+    await route.fulfill({ json: { start: start.toISOString().slice(0, 10), end, days, history: performance.history, training_focus: performance.training_focus, personal_recovery: performance.personal_recovery } });
   });
   await page.goto("/#analysis/running");
   await expect(page.locator("#appShell")).toBeVisible();
@@ -845,14 +889,14 @@ test("@responsive Vorjahr and a longer period keep each sport tab to its own spo
   await expect(page.locator("[data-analysis-section='development-Lauf']")).toBeVisible();
   // Checked right after the long read's re-render, not polled: a later unrelated re-render must not hide the bug.
   const answered = page.waitForResponse((response) => response.url().includes("/api/analysis/trend-history"));
-  await development.getByRole("button", { name: "Vorjahr", exact: true }).click();
+  await development.getByRole("button", { name: "6 Monate", exact: true }).click();
   await answered;
   await page.waitForTimeout(300);
-  await expect(development.getByRole("button", { name: "Vorjahr", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await expect(development.getByRole("button", { name: "6 Monate", exact: true })).toHaveAttribute("aria-pressed", "true");
   expect(await page.locator("[data-analysis-section='development-Lauf']").isVisible()).toBe(true);
   expect(await page.locator("[data-analysis-section='development-Rad']").isVisible()).toBe(false);
   expect(await development.getByRole("heading", { name: /Leistungsschwelle · FTP/ }).isVisible()).toBe(false);
-  // Every drawn series in the running tab is a running one, the previous year's lines included.
+  // Every drawn series in the running tab is a running one.
   const shownLabels = await page.evaluate(() => [...document.querySelectorAll("#analysisHistoryCharts svg circle title")]
     .filter((title) => title.closest("[data-analysis-sport]")?.checkVisibility())
     .map((title) => title.textContent));
@@ -860,8 +904,8 @@ test("@responsive Vorjahr and a longer period keep each sport tab to its own spo
   expect(shownLabels.filter((label) => !label.startsWith("Lauf"))).toEqual([]);
   // The mirror case: Radfahren with a longer period shows no running group.
   await page.evaluate(async () => { await AppRouter.navigate("analysis/cycling", { historyMode: "replace" }); });
-  const longer = page.waitForResponse((response) => response.url().includes("/api/analysis/trend-history?days=364"));
-  await development.getByRole("button", { name: "12 Monate" }).click();
+  const longer = page.waitForResponse((response) => response.url().includes("/api/analysis/trend-history?days=365"));
+  await development.getByRole("button", { name: "12 Monate", exact: true }).click();
   await longer;
   await page.waitForTimeout(300);
   expect(await page.locator("[data-analysis-section='development-Rad']").isVisible()).toBe(true);

@@ -147,7 +147,7 @@ The system SHALL summarize the supported 28-day training focus from recorded hea
 
 #### Scenario: Category map and periods
 - **WHEN** a session's `training_effect_label` is read
-- **THEN** `RECOVERY`, `AEROBIC_BASE` and `LOW_AEROBIC` count as `low_aerobic`; `TEMPO`, `THRESHOLD`, `LACTATE_THRESHOLD`, `VO2_MAX`, `VO2MAX` and `HIGH_AEROBIC` as `high_aerobic`; `ANAEROBIC_CAPACITY`, `SPEED` and `ANAEROBIC` as `anaerobic`; any other label, or a missing load, stays unclassified; the focus is served for 28 days in the performance context and for 14 and 84 days in `/api/performance` as `training_focus_periods.fortnight` and `.twelveWeeks`.
+- **THEN** `RECOVERY`, `AEROBIC_BASE` and `LOW_AEROBIC` count as `low_aerobic`; `TEMPO`, `THRESHOLD`, `LACTATE_THRESHOLD`, `VO2_MAX`, `VO2MAX` and `HIGH_AEROBIC` as `high_aerobic`; `ANAEROBIC_CAPACITY`, `SPEED` and `ANAEROBIC` as `anaerobic`; any other label, or a missing load, stays unclassified; the focus is served for 28 days in the performance context and for 28 and 91 days in `/api/performance` as `training_focus_periods["28d"]` and `["91d"]`, and for 182 or 365 days in `/api/analysis/trend-history` as `training_focus`.
 
 Evidence: `backend/performance/training_focus.py:training_focus`, `backend/performance/training_report.py:zone_distribution`; `tests/test_training_focus.py:test_recorded_hr_and_power_zones_remain_separate_and_bounded`, `tests/test_training_focus.py:test_activity_without_identity_is_not_a_session`, `tests/test_training_report.py:test_sensor_zones_stay_separate_and_strength_is_not_classified_as_endurance`. Added evidence: `tests/test_training_focus.py:test_focus_uses_exactly_four_weeks_including_today`, `tests/analysis-presentation.test.cjs` (zone distributions list the highest zone first and draw pace zones after power), `e2e/training-feature-panels.spec.js` (training focus draws pace-zone time after power zones).
 
@@ -156,7 +156,7 @@ The system SHALL provide bounded dated performance and provider-metric histories
 
 #### Scenario: Stored history without new sync
 - **WHEN** raw dated FTP or other supported provider history is already stored
-- **THEN** local history projection can expose it without another provider call, within its 90-day chart window.
+- **THEN** local history projection can expose it without another provider call, within its 91-day chart window.
 
 #### Scenario: Current estimate but no history
 - **WHEN** a current race prediction or FTP exists without dated historical measurements
@@ -188,7 +188,7 @@ The system SHALL provide bounded dated performance and provider-metric histories
 
 #### Scenario: History payload
 - **WHEN** the analysis history is composed
-- **THEN** `performance.history` covers the 90 days ending today (`start`, `end`, `days`) and carries `load` (Garmin's acute load per day), `daily_activity`, `training_time` (per day the hours of the sessions' leading durations, each above 0 and at most 86400 s, two decimals, source "Garmin Connect, Wahoo"), `metrics` (one Garmin series each for `cycling_ftp_watts`, `run_threshold_pace_seconds_per_km`, both VO2max keys and the four race predictions, a value outside its kind's plausibility bounds left as a gap), `provider_metrics`, `body` and `preferred_providers`; a day without a value is a point with value null.
+- **THEN** `performance.history` covers the 91 days ending today (`start`, `end`, `days`) and carries `load` (Garmin's acute load per day), `daily_activity`, `training_time` (per day the hours of the sessions' leading durations, each above 0 and at most 86400 s, two decimals, source "Garmin Connect, Wahoo"), `metrics` (one Garmin series each for `cycling_ftp_watts`, `run_threshold_pace_seconds_per_km`, both VO2max keys and the four race predictions, a value outside its kind's plausibility bounds left as a gap), `provider_metrics`, `body` and `preferred_providers`; a day without a value is a point with value null.
 
 #### Scenario: Provider charts
 - **WHEN** `provider_metrics` is composed
@@ -292,8 +292,8 @@ The system SHALL form personal recovery distributions separately by provider and
 - **THEN** the displayed state names the coverage or reason (for example fewer than 14 earlier nights or an outdated measurement) and the recovery UI shows no "confirmed" or equivalent validity wording for it.
 
 #### Scenario: Longer periods and the previous year
-- **WHEN** the athlete picks 6 or 12 months for Laufen, Radfahren or Erholung, or switches on "Vorjahr" (off by default)
-- **THEN** `GET /api/analysis/trend-history` (14, 84, 182 or 364 days) reads the stored Garmin development values and the personal recovery history over the period and 364 days before it, no provider is asked, the default view keeps its own read, the charts draw weekly values beyond 14 days, and the previous year's same days appear as a faint dashed line without value labels only where stored values exist; the 42-day comparison ranges do not change with the period
+- **WHEN** the athlete picks 3, 6 or 12 months for Erholung, or 6 or 12 months for Belastung, Laufen, Radfahren or Körper
+- **THEN** `GET /api/analysis/trend-history` (91, 182 or 365 days) reads the history of that span shaped like `performance.history` (with one body window named after it), its training focus and the personal recovery history, no provider is asked, the default view keeps its own read, 4 Wochen draw days and every longer period calendar weeks, and no previous-year comparison exists; the 42-day comparison ranges do not change with the period
 
 #### Scenario: Shortfall is not sleep debt
 - **WHEN** the sleep goal shortfall is reported or summarized
@@ -310,7 +310,7 @@ Evidence:
 - `tests/test_rolling_hrv.py`
 - `tests/test_personal_recovery.py:test_coverage_and_excluding_current_value_from_baseline`
 - `tests/test_personal_recovery.py:test_a_longer_period_keeps_more_history_and_the_same_comparison`
-- `tests/test_week_review.py:test_a_longer_trend_period_reads_the_previous_year_on_demand`
+- `tests/test_week_review.py:test_a_longer_trend_period_reads_its_own_span_on_demand`
 - `backend/performance/report_service.py:TrainingReportReadService.trend_history`
 - `tests/test_personal_recovery.py:test_future_stale_and_sdnn_nights_are_not_classified`
 - `tests/test_personal_recovery.py:test_deficit_uses_known_nights_and_never_offsets_with_long_sleep`
@@ -417,7 +417,7 @@ The system SHALL retain dated weight/body-fat histories and daily energy/count m
 
 #### Scenario: Body history windows and series
 - **WHEN** `body` is composed
-- **THEN** it has `version` 1, `default_window` `12w` and the windows `14d` and `12w` (84 days), each with `weight_kg`, `body_fat_pct` and `cycling_w_per_kg` as lists of series; a series has daily `points` and `weekly` rows over fixed 7-day buckets from the window start (the bucket's latest value to two decimals, `count`, `dates`); per day the last Garmin reading inside its bounds counts, a timed reading after an untimed one (a time without a zone is read as UTC), weight within 30 to 300 kg and body fat within 2 to 70 % to two decimals, and a future day never counts.
+- **THEN** it has `version` 1, `default_window` `91d` and the windows `28d` and `91d`, each with `weight_kg`, `body_fat_pct` and `cycling_w_per_kg` as lists of series; a series has daily `points` and `weekly` rows over fixed 7-day buckets from the window start (the bucket's latest value to two decimals, `count`, `dates`); per day the last Garmin reading inside its bounds counts, a timed reading after an untimed one (a time without a zone is read as UTC), weight within 30 to 300 kg and body fat within 2 to 70 % to two decimals, and a future day never counts.
 
 #### Scenario: Power-to-weight point
 - **WHEN** a day holds a Garmin FTP
@@ -746,7 +746,7 @@ Evidence: `backend/performance/canonical_inputs.py:read_performance_inputs`, `ba
 
 #### Scenario: Body
 - **WHEN** the canonical backfill has completed
-- **THEN** `performance` is the current performance context plus `history` (the 90-day analysis history and, for the 84 days ending today, `session_rpe_load` without its session list, `smoothed_session_load` and `local_fitness_fatigue`) and `training_focus_periods` (`fortnight` of 14 and `twelveWeeks` of 84 days), and `garmin` is the public Garmin projection.
+- **THEN** `performance` is the current performance context plus `history` (the 91-day analysis history and, for the 91 days ending today, `session_rpe_load` without its session list, `smoothed_session_load` and `local_fitness_fatigue`) and `training_focus_periods` (`28d` of 28 and `91d` of 91 days), and `garmin` is the public Garmin projection.
 
 #### Scenario: Inputs
 - **WHEN** the performance inputs are read
@@ -868,7 +868,7 @@ The system SHALL compute the M1 session-RPE load (`session-rpe-load` v2) as elap
 - **WHEN** a Monday-to-Sunday week starts before the period or ends after it
 - **THEN** it carries `partial_period: true`; sessions without a sport are summed under `unknown`, and the public performance history serves the result with an empty `sessions` list.
 
-Detailed contract: each result names `metric_id`, `method_id`, `method_version`, unit, status (`descriptive` or `insufficient_data`), period with timezone, computation time, method note, limits and the evidence card `docs/performance-methods/m1-session-rpe-load.md`. Per session it lists RPE, source and label, duration in minutes and, for a local rating with a recorded rating time, `rated_minutes_after_end`. Values are rounded to one decimal only for output. The Coach training report carries it for the report period, the public performance history for the load tab's 84 days, where the PWA draws a separate AU chart with its coverage. The Coach SHALL name the inputs and source and SHALL NOT derive injury risk, readiness or ramp statements from AU.
+Detailed contract: each result names `metric_id`, `method_id`, `method_version`, unit, status (`descriptive` or `insufficient_data`), period with timezone, computation time, method note, limits and the evidence card `docs/performance-methods/m1-session-rpe-load.md`. Per session it lists RPE, source and label, duration in minutes and, for a local rating with a recorded rating time, `rated_minutes_after_end`. Values are rounded to one decimal only for output. The Coach training report carries it for the report period, the public performance history for the load tab's 91 days, where the PWA draws a separate AU chart with its coverage. The Coach SHALL name the inputs and source and SHALL NOT derive injury risk, readiness or ramp statements from AU.
 
 Evidence: `backend/performance/session_rpe_load.py`, `backend/performance/training_report.py:training_report`, `backend/performance/report_service.py:TrainingReportReadService`, `backend/http_api/public_performance.py:PublicPerformanceStateService`, `backend/coach/prompt.py`, `public/analysis.js:appendSessionRpeLoadChart`; `tests/test_session_rpe_load.py`, `e2e/activity-details.spec.js`.
 
@@ -892,14 +892,14 @@ The system SHALL compute the M5 short- and long-term load (`smoothed-session-loa
 - **THEN** the curves are identical to those without them.
 
 #### Scenario: Coach report and load tab agree
-- **WHEN** the same date is read through an 84-day period and through a 7-day period
+- **WHEN** the same date is read through a 91-day period and through a 7-day period
 - **THEN** both recursions start on the first recorded session of the same history window, rated or not, and show the same value.
 
 #### Scenario: Sync time
 - **WHEN** the last activity sync time is missing, has no UTC offset or cannot be parsed
 - **THEN** the first open day is today; otherwise it is the earlier of today and the date of the sync instant in the profile time zone; the local fitness curve (M7) uses the same first open day.
 
-Detailed contract: values appear 2τ days after the first session of the history window, which starts 168 days before the period and never later than 251 days before today. Each result names `metric_id` `smoothed_session_load`, `method_id`, `method_version`, unit AU, status `estimate` or `insufficient_data` with reason `warmup` or `no_sessions`, period, parameters, per-state day coverage, the latest valued day, per-day `state`, `load`, `short` and `long`, method note, limits and the card `docs/performance-methods/m5-smoothed-session-load.md`. The Coach training report carries it for all-sport reports, the public performance history for the load tab's 84 days, where the PWA draws one AU chart of both curves. The Coach SHALL name the AU basis and coverage.
+Detailed contract: values appear 2τ days after the first session of the history window, which starts 168 days before the period and never later than 258 days before today. Each result names `metric_id` `smoothed_session_load`, `method_id`, `method_version`, unit AU, status `estimate` or `insufficient_data` with reason `warmup` or `no_sessions`, period, parameters, per-state day coverage, the latest valued day, per-day `state`, `load`, `short` and `long`, method note, limits and the card `docs/performance-methods/m5-smoothed-session-load.md`. The Coach training report carries it for all-sport reports, the public performance history for the load tab's 91 days, where the PWA draws one AU chart of both curves. The Coach SHALL name the AU basis and coverage.
 
 Evidence: `backend/performance/smoothed_load.py:ewma_walk`, `backend/performance/training_report.py:training_report`, `backend/http_api/public_performance.py:PublicPerformanceStateService`; `tests/test_smoothed_load.py`, `tests/test_performance_coach_ui_parity.py`
 
@@ -1026,7 +1026,7 @@ The system SHALL compute M7 `local-fitness-fatigue` v1 on read as the exponentia
 - **WHEN** the first load day is less than 84 days old, or a day from the last sync on has no session
 - **THEN** fatigue has no value before day 14, fitness and form none before day 84, and the open day has no value while the state is held.
 
-Detailed contract: each result names `metric_id` `local_fitness_fatigue`, `method_id`, `method_version`, unit `TSS/d`, status `estimate` or `insufficient_data` with reason `warmup` or `no_load`, period, parameters with the input load method, per-state day coverage (`loaded`, `incomplete`, `rest`, `open`, `no_history`), the count of sessions without a load, the latest valued day, per-day `state`, `load`, `fitness`, `fatigue` and `form`, method note, limits and the card `docs/performance-methods/m7-local-fitness-fatigue.md`. The loads come from `LocalLoadDayReader`, summed per stored local day. The Coach training report carries it for all-sport reports, the public performance history for the load tab's 84 days, where the PWA draws one chart of the three curves labelled as locally computed.
+Detailed contract: each result names `metric_id` `local_fitness_fatigue`, `method_id`, `method_version`, unit `TSS/d`, status `estimate` or `insufficient_data` with reason `warmup` or `no_load`, period, parameters with the input load method, per-state day coverage (`loaded`, `incomplete`, `rest`, `open`, `no_history`), the count of sessions without a load, the latest valued day, per-day `state`, `load`, `fitness`, `fatigue` and `form`, method note, limits and the card `docs/performance-methods/m7-local-fitness-fatigue.md`. The loads come from `LocalLoadDayReader`, summed per stored local day. The Coach training report carries it for all-sport reports, the public performance history for the load tab's 91 days, where the PWA draws one chart of the three curves labelled as locally computed.
 
 Evidence: `backend/performance/fitness_fatigue.py:local_fitness_window`, `backend/performance/smoothed_load.py:ewma_walk`, `backend/sync/local_load.py:daily_local_loads`, `backend/performance/training_report.py:training_report`, `backend/http_api/public_performance.py:PublicPerformanceStateService`, `public/analysis.js:appendLocalFitnessChart`; `tests/test_fitness_fatigue.py`, `tests/test_local_load_store.py`, `tests/test_performance_coach_ui_parity.py`, `e2e/analysis-info.spec.js`, `docs/performance-methods/m7-local-fitness-fatigue.md`.
 

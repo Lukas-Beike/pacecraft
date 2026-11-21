@@ -25,9 +25,9 @@ function bodyHistory() {
     cycling_w_per_kg: [make("Garmin Connect", "cycling_w_per_kg", (index) => (280 + index) / 70)],
   };
   const end = dates.at(-1);
-  return { start, end, load: { points: [] }, metrics: {}, body: { version: 1, default_window: "12w", preferred_providers: { weight_kg: "garmin", body_fat_pct: "garmin", cycling_w_per_kg: "garmin" }, windows: {
-    "14d": { start: dates.at(-14), end, days: 14, metrics: Object.fromEntries(Object.entries(metrics).map(([key, values]) => [key, values.map((item) => ({ ...item, points: item.points.slice(-14) }))])) },
-    "12w": { start, end, days: 84, metrics },
+  return { start, end, load: { points: [] }, metrics: {}, body: { version: 1, default_window: "91d", preferred_providers: { weight_kg: "garmin", body_fat_pct: "garmin", cycling_w_per_kg: "garmin" }, windows: {
+    "28d": { start: dates.at(-28), end, days: 28, metrics: Object.fromEntries(Object.entries(metrics).map(([key, values]) => [key, values.map((item) => ({ ...item, points: item.points.slice(-28) }))])) },
+    "91d": { start, end, days: 84, metrics },
   } } };
 }
 
@@ -67,9 +67,9 @@ test("@responsive Body plots measurements and W/kg appears only in the cycling t
   // #3450: a weekly mark sits on its rolling week's start, so the axis reads in weeks and keeps the first mark off the value axis.
   await expect(missing.locator(".analysis-week-caption")).toHaveText("Woche ab");
   expect(Math.min(...await missing.locator("circle[data-series='0']").evaluateAll((dots) => dots.map((dot) => Number(dot.getAttribute("cx")))))).toBeGreaterThan(60);
-  await root.getByRole("button", { name: "Letzte 14 Tage", exact: true }).click();
-  await expect(root.locator("[data-body-metric='weight_kg'] circle[data-series='0']")).toHaveCount(14);
-  await expect(root.locator("[data-body-metric='body_fat_pct'] circle[data-series='0']")).toHaveCount(14);
+  await root.getByRole("button", { name: "4 Wochen", exact: true }).click();
+  await expect(root.locator("[data-body-metric='weight_kg'] circle[data-series='0']")).toHaveCount(28);
+  await expect(root.locator("[data-body-metric='body_fat_pct'] circle[data-series='0']")).toHaveCount(28);
   await expect(root.locator("circle[data-series='1']")).toHaveCount(0);
   await expect(overview.locator("[data-metric='weight_kg'] td").first()).toHaveText("71,8 kg");
   await page.evaluate(() => {
@@ -79,7 +79,7 @@ test("@responsive Body plots measurements and W/kg appears only in the cycling t
   // A profile body fat is not KFA (#3252, #3336): the row still has no value.
   await expect(root.locator("[data-body-overview] [data-metric='body_fat_pct'] td").first()).toHaveText("—");
   await expect(root.locator("[data-body-overview] [data-metric='body_fat_pct'] th small")).toHaveCount(0);
-  await expect(root.locator("[data-body-metric='body_fat_pct'] circle[data-series='0']")).toHaveCount(14);
+  await expect(root.locator("[data-body-metric='body_fat_pct'] circle[data-series='0']")).toHaveCount(28);
   await page.evaluate(() => { state.data.profile.body_fat_pct = ""; });
   await page.evaluate(() => {
     const body = structuredClone(state.data.performance.history.body);
@@ -126,7 +126,7 @@ test("@responsive Body keeps old measurements dated and long gaps empty", async 
   await expect(root.locator("[data-body-overview] caption")).toHaveText("Körperwerte");
   await expect(root.locator("[data-body-overview] th small")).toHaveText(["Garmin Connect · 14.08.2026"]);
   await expect(root.locator("[data-body-metric='weight_kg'] circle[data-series='0']")).toHaveCount(2);
-  await root.getByRole("button", { name: "Letzte 14 Tage", exact: true }).click();
+  await root.getByRole("button", { name: "4 Wochen", exact: true }).click();
   await expect(root.locator("[data-body-metric]")).toHaveCount(0);
   await expect(root).not.toContainText("Keine Daten");
   await expect(root.locator("[data-body-overview] th small")).toHaveText(["Garmin Connect · 14.08.2026"]);

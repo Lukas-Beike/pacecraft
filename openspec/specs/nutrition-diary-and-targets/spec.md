@@ -214,7 +214,7 @@ The system SHALL expose a separate running-day full-day expenditure projection o
 Evidence: `backend/performance/daily_health.py::_projection_reference`, `backend/performance/daily_health.py::_projected_expenditure`, `public/nutrition.js::renderNutritionExpenditure`; `tests/test_nutrition_garmin_expenditure.py::NutritionGarminExpenditureTests.test_today_projects_persisted_resting_reference_with_current_active_energy`. Projection edge branches are inspected source evidence; this is not evidence of adaptive nutrition targets.
 
 ### Requirement: Nutrition body view preserves observations and gaps
-The client SHALL expose body history under nutrition with selectable 14-day and 12-week periods, render server-preferred body measurements, and preserve measurement dates and gaps. Detailed body-series and derived power-to-weight calculation remain governed by the performance domain.
+The client SHALL expose body history under nutrition with the selectable periods 4 Wochen, 3, 6 and 12 Monate, render server-preferred body measurements, and preserve measurement dates and gaps. Detailed body-series and derived power-to-weight calculation remain governed by the performance domain.
 
 #### Scenario: Open body history
 - **WHEN** the athlete navigates to `#nutrition/body`
@@ -286,7 +286,7 @@ Detailed contract: the fat range is 20 to 30 percent of the recorded kcal divide
 Evidence: `backend/nutrition/macro_ranges.py`, `backend/http_api/nutrition.py`, `public/nutrition.js`; `tests/test_nutrition_macro_ranges.py::test_ambiguous_zone_range_uses_light_fallback`, `tests/test_nutrition_macro_ranges.py::test_multiple_sessions_and_exact_high_intensity_cutoff`, `tests/test_nutrition_macro_ranges.py::test_completed_activity_uses_actual_day_and_skips_missed_plan`, `tests/test_nutrition_macro_ranges.py::test_context_keeps_the_weight_when_plan_is_unavailable`, `tests/test_nutrition_api_and_sync.py`, `tests/nutrition-macro-ranges.test.cjs::marks complete values outside a range and avoids premature low warnings`, `e2e/nutrition-macro-ranges.spec.js`.
 
 ### Requirement: Nutrition history shows average daily calorie balance
-The nutrition history SHALL show a signed average daily calorie balance alongside the total balance for the 4-week, 3-month and 6-month views (28, 91 and 182 days), with the count of days used and the period's day count.
+The nutrition history SHALL show a signed average daily calorie balance alongside the total balance for the 4-week, 3-month, 6-month and 12-month views (28, 91, 182 and 365 days), with the count of days used and the period's day count.
 
 #### Scenario: Complete deficit period
 - **WHEN** all 28 days have intake and expenditure and their total balance is -8,932 kcal

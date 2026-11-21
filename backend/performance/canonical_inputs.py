@@ -20,6 +20,7 @@ from backend.canonical.records import Observation
 from backend.canonical.vocabulary import MetricKind, ProviderId, Sport
 from backend.performance.canonical_body import (
     EMPTY_BODY_INPUTS,
+    WINDOW_DAYS,
     CanonicalBodyInputs,
     read_body_inputs,
 )
@@ -30,6 +31,7 @@ from backend.performance.canonical_current import (
     read_current_inputs,
 )
 from backend.performance.canonical_recovery import (
+    RECOVERY_HISTORY_DAYS,
     CanonicalRecoveryInputs,
     read_recovery_inputs,
 )
@@ -346,13 +348,16 @@ def read_performance_inputs(
     as_of: date,
     include_local_load: bool = False,
     body: BodyReader | None = None,
+    history_days: int | None = None,
+    activity_days: int = ACTIVITY_HISTORY_DAYS,
 ) -> CanonicalPerformanceInputs | None:
     """Read canonical activity summaries and provider values in one selected unit.
 
     No snapshot section is read. None means no activity reader.
     ``as_of`` is the athlete-local day. ``include_local_load``
     also reads the whole-history local load per day (``local_load_days``);
-    otherwise it stays None.
+    otherwise it stays None. A longer Analyse period reads ``history_days`` of
+    body and recovery values and ``activity_days`` of activities.
     """
     reader = resolve_reader(reader, db)
     if not isinstance(reader, ReadOnceObservationReader):
@@ -361,7 +366,7 @@ def read_performance_inputs(
         None
         if activity_reader is None
         else activity_reader.activity_summaries(
-            db, start=as_of - timedelta(days=ACTIVITY_HISTORY_DAYS - 1)
+            db, start=as_of - timedelta(days=activity_days - 1)
         )
     )
     if activities is None:
@@ -372,8 +377,13 @@ def read_performance_inputs(
         daily_health=read_daily_health_by_date(
             reader, db, start=as_of - timedelta(days=DAILY_HEALTH_DAYS), end=as_of
         ),
-        body=read_body_inputs(reader, db, as_of),
-        recovery=read_recovery_inputs(reader, db, as_of=as_of),
+        body=read_body_inputs(reader, db, as_of, history_days or WINDOW_DAYS),
+        recovery=read_recovery_inputs(
+            reader,
+            db,
+            as_of=as_of,
+            history_days=history_days or RECOVERY_HISTORY_DAYS,
+        ),
         local_load_days=activity_reader.local_load_days(db)
         if include_local_load and isinstance(activity_reader, LocalLoadDayReader)
         else None,

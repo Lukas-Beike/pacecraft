@@ -193,12 +193,12 @@ class AnalysisHistoryTests(unittest.TestCase):
         }
         result = analysis_history(snapshot, {}, date(2026, 10, 2))
         points = result["load"]["points"]
-        self.assertEqual(len(points), 90)
+        self.assertEqual(len(points), 91)
         self.assertEqual(points[-1], {"date": "2026-10-02", "value": None})
-        self.assertEqual(result["load"]["start"], "2026-07-05")
+        self.assertEqual(result["load"]["start"], "2026-07-04")
         self.assertEqual(result["load"]["end"], "2026-10-02")
         self.assertIsNone(points[-2]["value"])
-        self.assertEqual(result["start"], "2026-07-05")
+        self.assertEqual(result["start"], "2026-07-04")
 
     def test_training_time_sums_each_activity_and_keeps_unknown_days_missing(
         self,
@@ -230,7 +230,7 @@ class AnalysisHistoryTests(unittest.TestCase):
         }
         self.assertEqual(points["2026-10-01"], 1.5)
         self.assertIsNone(points["2026-10-02"])
-        self.assertEqual(len(points), 90)
+        self.assertEqual(len(points), 91)
 
     def test_training_time_counts_strength_with_its_total_time(self):
         # #2317: strength leads with the elapsed time, a run keeps its moving time.
@@ -277,7 +277,7 @@ class AnalysisHistoryTests(unittest.TestCase):
             {"training_status": snapshot["raw_provider_data"]["garmin"]},
             date(2026, 10, 2),
         )
-        self.assertEqual(result["load"]["points"][5]["value"], 30)
+        self.assertEqual(result["load"]["points"][6]["value"], 30)
         self.assertEqual(result["load"]["points"][-2]["value"], 40)
         self.assertNotIn("untrusted content", str(result))
 
@@ -365,7 +365,7 @@ class AnalysisHistoryTests(unittest.TestCase):
             result["metrics"]["cycling_ftp_watts"][0]["points"][-2]["value"]
         )
         self.assertEqual(
-            len(analysis_history(None, {}, date(2026, 10, 2))["load"]["points"]), 90
+            len(analysis_history(None, {}, date(2026, 10, 2))["load"]["points"]), 91
         )
 
     def test_race_prediction_history_is_dated_and_keeps_missing_days_missing(self):
@@ -427,7 +427,7 @@ class DailyActivityHistoryTests(unittest.TestCase):
         )["daily_activity"]
         self.assertEqual("Garmin Connect", result["source"])
         self.assertEqual("garmin", result["source_provider"])
-        self.assertEqual(90, len(result["steps"]))
+        self.assertEqual(91, len(result["steps"]))
         by_day = {item["date"]: item["value"] for item in result["steps"]}
         self.assertEqual(8200, by_day["2026-10-01"])
         self.assertEqual(0, by_day["2026-10-02"])

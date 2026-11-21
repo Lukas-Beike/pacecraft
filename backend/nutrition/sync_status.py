@@ -23,7 +23,7 @@ from backend.runtime.ports import ObservationReader
 # Closed days the expenditure gap counts of the diagnostics cover (#3157).
 EXPENDITURE_GAP_DAYS = 90
 # The week summary's lengths: a week, and Verlauf's 4 weeks, 3 and 6 months (#3704).
-WEEK_PERIODS = (7, 28, 91, 182)
+WEEK_PERIODS = (7, 28, 91, 182, 365)
 
 # The "Aus deinen Daten" day total per day, None where it has no value (#3600).
 type OwnDayTotals = Callable[[list[date]], Mapping[date, float | None]]
@@ -144,7 +144,7 @@ class NutritionSyncStatusService:
         "Aus deinen Daten" day total (athlete decision, #3600), named by
         ``expenditure_source``; a day without one stays open."""
         if type(day_count) is not int or day_count not in WEEK_PERIODS:
-            raise AppError(400, "Zeitraum muss 7, 28, 91 oder 182 Tage umfassen.")
+            raise AppError(400, "Zeitraum muss 7, 28, 91, 182 oder 365 Tage umfassen.")
         today = self._local_now().date()
         dates = [
             (today - timedelta(days=offset)).isoformat()

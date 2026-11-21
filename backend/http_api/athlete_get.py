@@ -281,8 +281,8 @@ class AthleteGetRoutes:
         else null), `outlined` (`best`, else the source with the lowest
         `mean_error_kcal`: the one source the diary outlines, `goal` prices and
         Verlauf names for every period, #3613), `fit` (`shared_windows`, `windows`, `min_windows`,
-        `reference_band_kcal`), `fit_scale` (Verlauf's periods `28d`, `91d` and
-        `182d`, #3704: `days`, `own_days`, `span_start`, `span_end`, `own_kcal`,
+        `reference_band_kcal`), `fit_scale` (Verlauf's periods `28d`, `91d`,
+        `182d` and `365d`, #3704: `days`, `own_days`, `span_start`, `span_end`, `own_kcal`,
         `own_band_kcal`, `sources`, `weeks`, `weeks_with_data` and `deficit`, the
         deficit card of that period with the fields below, null when its weigh-ins
         do not suffice), `strength` (the day's strength sessions with `rpe`, local first, the
@@ -347,8 +347,8 @@ class AthleteGetRoutes:
         end) and `behind` (true when a session of the day ends after it, so the
         summary's steps and active kcal leave it out; every row's everyday is
         then not there yet, in `pending_parts`). `fit_scale` holds `28d` and
-        `91d`; `period=182d` adds `182d` with the 6 months' own read, which no
-        other request pays for (#3711).
+        `91d`; `period=182d` or `period=365d` adds that period (6 or 12 months)
+        with its own read, which no other request pays for (#3711).
 
         Errors: 400 "Das Datum fehlt oder ist ungültig."; 400 "Der Tag liegt in
         der Zukunft.".

@@ -78,7 +78,8 @@ test("@responsive an unfinished week keeps one mark in its own week slot, labell
     if (testInfo.project.name === "mobile") await card.screenshot({ path: testInfo.outputPath(`${name.replaceAll(" ", "-")}.png`) });
     const { marks, labels } = await chartGeometry(card.locator("svg"));
     for (const [key, points] of marks) {
-      expect.soft(points.length, name).toBe(12);
+      // 3 Monate are 13 weeks; the LT1 line stays at the server's 12 weeks.
+      expect.soft(points.length, name).toBe(key === "1" && name === "Schwellenpace" ? 12 : 13);
       const gaps = points.slice(1).map((point, index) => point.x - points[index].x);
       expect.soft(Math.max(...gaps) - Math.min(...gaps), `${name}: one mark per week slot`).toBeLessThan(1);
       const newest = points.at(-1);

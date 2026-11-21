@@ -8,9 +8,10 @@ from typing import Any
 
 from backend.canonical.activity_summary import summary_local_date
 from backend.canonical.vocabulary import ProviderId
-from backend.errors import DatabaseBusyError
+from backend.errors import AppError, DatabaseBusyError
 from backend.performance import context as performance_context
 from backend.performance.canonical_inputs import (
+    ACTIVITY_HISTORY_DAYS,
     EMPTY_PERFORMANCE_INPUTS,
     CanonicalPerformanceInputs,
     CanonicalPerformanceSource,
@@ -19,10 +20,11 @@ from backend.performance.canonical_inputs import (
     resolve_reader,
     with_read_status,
 )
-from backend.performance.chart_history import analysis_history
+from backend.performance.chart_history import ANALYSIS_DAYS, analysis_history
 from backend.performance.fitness_fatigue import local_fitness_window
 from backend.performance.freshness import NO_GARMIN_SYNC_STATUS, GarminSyncStatus
 from backend.performance.garmin_canonical import GarminCanonicalMetrics
+from backend.performance.personal_recovery import personal_recovery
 from backend.performance.session_rpe_load import (
     FeedbackLookup,
     feedback_by_session,
@@ -35,6 +37,10 @@ from backend.performance.smoothed_load import (
 )
 from backend.performance.training_focus import training_focus
 from backend.runtime.ports import ObservationReader
+
+# Analyse's longer periods: 3 Monate is the base read's own span; 6 and 12 Monate
+# are read on demand.
+TREND_DAYS = frozenset({91, 182, 365})
 
 
 class PublicPerformanceStateService:
@@ -101,6 +107,63 @@ class PublicPerformanceStateService:
                 observations=reader,
                 first_thresholds=first_thresholds,
             )
+
+    def trend_history(self, days: Any) -> dict[str, Any]:
+        """The history of a longer Analyse period: 3, 6 or 12 months (``TREND_DAYS``).
+
+        Shaped like ``performance.history`` (with its own body window), plus the
+        training focus and the personal recovery of that span, so the browser
+        swaps the source. Read on demand only; the default view keeps its own read.
+        """
+        if days not in TREND_DAYS:
+            raise AppError(400, "Ungültiger Analysezeitraum.")
+        source = self._canonical
+        if source is None:
+            raise AppError(503, "Die Analyse ist nicht verfügbar.")
+        today = self._today()
+        timezone = str(self._profile_service.get().get("timezone") or "UTC")
+        # The smoothed curves need the weeks before the span; their activities are read from there.
+        first = history_start(today - timedelta(days=days - 1), today)
+        with source.database_manager().read_snapshot() as db:
+            garmin = self._garmin_payload_service.sync_status_in(db)
+            reader = read_once(resolve_reader(source.observation_reader(), db))
+            read = read_performance_inputs(
+                reader,
+                db,
+                activity_reader=source.activity_summary_reader(),
+                as_of=today,
+                include_local_load=True,
+                history_days=days,
+                activity_days=max(ACTIVITY_HISTORY_DAYS, (today - first).days + 1),
+            )
+            inputs = with_read_status(source, db, read) or EMPTY_PERFORMANCE_INPUTS
+        return {
+            "start": (today - timedelta(days=days - 1)).isoformat(),
+            "end": today.isoformat(),
+            "days": days,
+            "history": {
+                **analysis_history(garmin, today, canonical=inputs, days=days),
+                **(
+                    {
+                        "session_rpe_load": None,
+                        "smoothed_session_load": None,
+                        "local_fitness_fatigue": None,
+                    }
+                    if inputs.pending
+                    else self._session_loads(inputs, today, timezone, days)
+                ),
+            },
+            "training_focus": training_focus(
+                garmin,
+                today,
+                timezone,
+                activities=inputs.activities or (),
+                days=days,
+            ),
+            "personal_recovery": personal_recovery(
+                {}, today, canonical=inputs.recovery, history_days=days
+            ),
+        }
 
     def from_inputs(
         self,
@@ -178,7 +241,7 @@ class PublicPerformanceStateService:
                     activities=inputs.activities or (),
                     days=days,
                 )
-                for period, days in (("fortnight", 14), ("twelveWeeks", 84))
+                for period, days in (("28d", 28), ("91d", ANALYSIS_DAYS))
             },
         }
         return {
@@ -231,10 +294,14 @@ class PublicPerformanceStateService:
         }
 
     def _session_loads(
-        self, inputs: CanonicalPerformanceInputs, today: date, timezone: str
+        self,
+        inputs: CanonicalPerformanceInputs,
+        today: date,
+        timezone: str,
+        days: int = ANALYSIS_DAYS,
     ) -> dict[str, dict[str, Any]]:
-        """Session-RPE load, its smoothed curves and the local fitness of 12 weeks."""
-        start = today - timedelta(days=_SESSION_RPE_LOAD_DAYS - 1)
+        """Session-RPE load, its smoothed curves and the local fitness of ``days``."""
+        start = today - timedelta(days=days - 1)
         # One feedback read for both: the smoothed curves need the earlier weeks.
         summaries = [
             summary
@@ -279,10 +346,6 @@ class PublicPerformanceStateService:
                 computed_at=computed_at,
             ),
         }
-
-
-# The load tab's longest window: the current and the 11 previous ISO weeks.
-_SESSION_RPE_LOAD_DAYS = 84
 
 
 class PublicFeedbackStateService:

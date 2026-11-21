@@ -146,7 +146,7 @@ class BodyHistoryCharacterizationTests(unittest.TestCase):
         }
         result = body_history(snapshot, garmin, TODAY)
         point = _point(
-            _body_series(result, "14d", "cycling_w_per_kg", GARMIN), "2026-05-04"
+            _body_series(result, "28d", "cycling_w_per_kg", GARMIN), "2026-05-04"
         )
         self.assertEqual(point["weight_source"], GARMIN)
         self.assertEqual(point["weight_kg"], 72)
@@ -165,7 +165,7 @@ class BodyHistoryCharacterizationTests(unittest.TestCase):
         }
         result = body_history({}, garmin, TODAY)
         garmin_point = _point(
-            _body_series(result, "14d", "cycling_w_per_kg", GARMIN), "2026-05-04"
+            _body_series(result, "28d", "cycling_w_per_kg", GARMIN), "2026-05-04"
         )
         self.assertEqual(garmin_point["weight_source"], GARMIN)
         self.assertEqual(garmin_point["weight_kg"], 70)
@@ -177,7 +177,7 @@ class BodyHistoryCharacterizationTests(unittest.TestCase):
     ) -> None:
         def garmin_point(garmin: dict[str, Any], day: str) -> dict[str, Any]:
             result = body_history({}, garmin, TODAY)
-            return _point(_body_series(result, "14d", "cycling_w_per_kg", GARMIN), day)
+            return _point(_body_series(result, "28d", "cycling_w_per_kg", GARMIN), day)
 
         seven_days_old = garmin_point(
             {
@@ -223,18 +223,18 @@ class BodyHistoryCharacterizationTests(unittest.TestCase):
             "performance_history": [_performance_ftp("2026-05-04", 300)],
         }
         result = body_history(snapshot, garmin, TODAY)
-        for window in ("14d", "12w"):
+        for window in ("28d", "91d"):
             for metric in ("weight_kg", "body_fat_pct"):
                 for series in result["windows"][window]["metrics"][metric]:
                     self.assertTrue(all(p["value"] is None for p in series["points"]))
         point = _point(
-            _body_series(result, "14d", "cycling_w_per_kg", GARMIN), "2026-05-04"
+            _body_series(result, "28d", "cycling_w_per_kg", GARMIN), "2026-05-04"
         )
         self.assertIsNone(point["value"])
         self.assertNotIn("weight_kg", point)
         self.assertEqual(
             _point(
-                _body_series(result, "14d", "cycling_w_per_kg", GARMIN), "2026-05-04"
+                _body_series(result, "28d", "cycling_w_per_kg", GARMIN), "2026-05-04"
             )["ftp_watts"],
             300,
         )
@@ -257,7 +257,7 @@ class BodyHistoryCharacterizationTests(unittest.TestCase):
             ],
         }
         result = body_history(snapshot, garmin, TODAY)
-        for window in ("14d", "12w"):
+        for window in ("28d", "91d"):
             for metric in ("weight_kg", "body_fat_pct", "cycling_w_per_kg"):
                 for series in result["windows"][window]["metrics"][metric]:
                     with self.subTest(
@@ -316,7 +316,7 @@ class BodyHistoryCharacterizationTests(unittest.TestCase):
             with self.subTest(winner=winner):
                 result = body_history({}, {**base, **extra}, TODAY)
                 point = _point(
-                    _body_series(result, "14d", "cycling_w_per_kg", GARMIN),
+                    _body_series(result, "28d", "cycling_w_per_kg", GARMIN),
                     "2026-05-04",
                 )
                 self.assertEqual(point["ftp_watts"], expected_watts)
@@ -341,7 +341,7 @@ class BodyHistoryCharacterizationTests(unittest.TestCase):
             any(
                 "ftp_watts" in point
                 for point in _body_series(
-                    bare_scalar, "14d", "cycling_w_per_kg", GARMIN
+                    bare_scalar, "28d", "cycling_w_per_kg", GARMIN
                 )["points"]
             )
         )
@@ -358,7 +358,7 @@ class BodyHistoryCharacterizationTests(unittest.TestCase):
             TODAY,
             retrieved_at=SYNC_DAY_BEFORE,
         )
-        series = _body_series(dated_by_freshness, "14d", "cycling_w_per_kg", GARMIN)
+        series = _body_series(dated_by_freshness, "28d", "cycling_w_per_kg", GARMIN)
         point = _point(series, "2026-05-03")
         self.assertEqual(point["ftp_watts"], 300)
         self.assertEqual(point["observed_at"], "2026-05-03")
@@ -372,7 +372,7 @@ class BodyHistoryCharacterizationTests(unittest.TestCase):
             "recent_wellness": [_wellness("2026-05-04", weight=70, eftp=260)],
         }
         result = body_history(snapshot, {}, TODAY)
-        for window in ("14d", "12w"):
+        for window in ("28d", "91d"):
             with self.subTest(window=window):
                 series = result["windows"][window]["metrics"]["cycling_w_per_kg"]
                 self.assertEqual([item["source"] for item in series], [GARMIN])
@@ -394,27 +394,27 @@ class AnalysisHistoryCharacterizationTests(unittest.TestCase):
             "performance_history": [_performance_ftp("2026-05-04", 300)],
         }
         result = analysis_history(snapshot, garmin, TODAY)
-        self.assertEqual(result["start"], "2026-02-04")
+        self.assertEqual(result["start"], "2026-02-03")
         self.assertEqual(result["end"], "2026-05-04")
-        self.assertEqual(result["days"], 90)
+        self.assertEqual(result["days"], 91)
         self.assertEqual(
             (result["load"]["source"], result["load"]["start"], result["load"]["end"]),
-            (GARMIN, "2026-02-04", "2026-05-04"),
+            (GARMIN, "2026-02-03", "2026-05-04"),
         )
-        self.assertEqual(len(result["load"]["points"]), 90)
+        self.assertEqual(len(result["load"]["points"]), 91)
         self.assertEqual(result["training_time"]["source"], "Garmin Connect, Wahoo")
-        self.assertEqual(len(result["training_time"]["points"]), 90)
+        self.assertEqual(len(result["training_time"]["points"]), 91)
         self.assertEqual(set(result["metrics"]), set(ANALYSIS_METRIC_KEYS))
         for key in ANALYSIS_METRIC_KEYS:
             with self.subTest(metric=key):
                 sources = result["metrics"][key]
                 self.assertEqual(len(sources), 1)
                 self.assertEqual(sources[0]["source"], GARMIN)
-                self.assertEqual(len(sources[0]["points"]), 90)
+                self.assertEqual(len(sources[0]["points"]), 91)
         body_sources = {
             metric: sorted(
                 item["source"]
-                for item in result["body"]["windows"]["12w"]["metrics"][metric]
+                for item in result["body"]["windows"]["91d"]["metrics"][metric]
             )
             for metric in ("weight_kg", "cycling_w_per_kg")
         }
@@ -531,13 +531,13 @@ class AnalysisHistoryCharacterizationTests(unittest.TestCase):
         )["load"]["points"]
         self.assertEqual(_point_value(reversed_points, "2026-05-03"), 475)
 
-    def test_garmin_metric_keeps_last_valid_value_and_starts_at_eighty_nine_days(
+    def test_garmin_metric_keeps_last_valid_value_and_starts_at_ninety_days(
         self,
     ) -> None:
         garmin = {
             "performance_history": [
-                {"date": "2026-02-03", "metrics": {"cycling_vo2max_ml_kg_min": 50}},
-                {"date": "2026-02-04", "metrics": {"cycling_vo2max_ml_kg_min": 51}},
+                {"date": "2026-02-02", "metrics": {"cycling_vo2max_ml_kg_min": 50}},
+                {"date": "2026-02-03", "metrics": {"cycling_vo2max_ml_kg_min": 51}},
                 {"date": "2026-05-03", "metrics": {"cycling_vo2max_ml_kg_min": 57}},
                 {
                     "date": "2026-05-03",
@@ -548,7 +548,7 @@ class AnalysisHistoryCharacterizationTests(unittest.TestCase):
         points = _analysis_points(
             analysis_history(None, garmin, TODAY), "cycling_vo2max_ml_kg_min"
         )
-        self.assertEqual(points[0], {"date": "2026-02-04", "value": 51})
+        self.assertEqual(points[0], {"date": "2026-02-03", "value": 51})
         # Quirk: an invalid later row is ignored. Canonical reads (#1415): a second
         # valid row of the same day (55 before 57) is not part of the fixture, as
         # canonical observations of one day have no stable last-row order.
@@ -571,7 +571,7 @@ class AnalysisHistoryCharacterizationTests(unittest.TestCase):
         result = analysis_history(snapshot, {}, TODAY)
         self.assertNotIn("cycling_eftp_watts", result["metrics"])
         self.assertNotIn("cycling_power_profile", result)
-        body_series = result["body"]["windows"]["12w"]["metrics"]["cycling_w_per_kg"]
+        body_series = result["body"]["windows"]["91d"]["metrics"]["cycling_w_per_kg"]
         self.assertEqual([item["source"] for item in body_series], [GARMIN])
         self.assertFalse(
             any("ftp_watts" in point for point in body_series[0]["points"])

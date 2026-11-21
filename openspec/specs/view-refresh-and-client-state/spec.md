@@ -125,7 +125,7 @@ The client SHALL use the active analysis/nutrition refresh endpoint and selected
 
 #### Scenario: Analysis refresh
 - **WHEN** the athlete refreshes load, recovery, sessions, or performance
-- **THEN** the request names the active analysis area and applicable fourteen/eighty-four-day period; the relevant reports are reread under the analysis contract.
+- **THEN** the request names the active analysis area and applicable 28/91-day period; the relevant reports are reread under the analysis contract.
 
 #### Scenario: Nutrition refresh
 - **WHEN** the athlete refreshes diary, history, body, or products

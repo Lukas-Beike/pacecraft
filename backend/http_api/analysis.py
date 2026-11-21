@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import Any
 
 from backend.errors import AppError
@@ -14,9 +15,11 @@ class AnalysisRoutes:
         self,
         reports: Any,
         refresh: Any = None,
+        trend_history: Callable[[Any], dict[str, Any]] | None = None,
     ):
         self._reports = reports
         self._refresh = refresh
+        self._trend_history_read = trend_history
 
     def routes(self) -> list[Route]:
         return [
@@ -137,15 +140,15 @@ class AnalysisRoutes:
         handler.send_json(200, self._reports().report.strength())
 
     def _trend_history(self, handler: Any, request: RouteRequest) -> None:
-        """A longer trend period with the previous year's same weeks (#3765).
+        """The history of a longer trend period: 3, 6 or 12 months.
 
-        Request: query `days`: `14`, `84`, `182` or `364`; no body. Read only
-        when the athlete picks a longer period or switches on "Vorjahr".
+        Request: query `days`: `91`, `182` or `365`; no body. Read only when the
+        athlete picks 6 or 12 months (3 Monate is served by the performance state).
 
-        Response: 200 with `start`, `end`, `days`, `previous_year_days` (364),
-        `metrics` (the development metrics' dated Garmin values from
-        `start` minus 364 days to `end`, shaped like the performance history's)
-        and `personal_recovery` (its baselines' `history` over the same span).
+        Response: 200 with `start`, `end`, `days`, `history` (shaped like
+        `performance.history` over the span, with one body window named after it,
+        for example `182d`), `training_focus` (that many days) and
+        `personal_recovery` (its baselines' `history` over the same span).
         Stored values only; no provider request.
 
         Errors: 400 "Ungültiger Analysezeitraum." for another `days`.
@@ -155,7 +158,9 @@ class AnalysisRoutes:
             days = int(given[0]) if given else None
         except ValueError:
             days = None
-        handler.send_json(200, self._reports().report.trend_history(days))
+        if self._trend_history_read is None:
+            raise AppError(503, "Der Analysezeitraum ist nicht verfügbar.")
+        handler.send_json(200, self._trend_history_read(days))
 
     def _running_dynamics(self, handler: Any, request: RouteRequest) -> None:
         """Running dynamics against the athlete's own runs at the same pace (#2829).

@@ -84,7 +84,7 @@ test("current W/kg uses the preferred provider's newest point and falls back to 
   const { currentPerformanceValues } = extractFunctions("performance-view.js", ["currentPerformanceValues"], { isPreferredSource, analysisValidPoint });
   const garmin = (points) => ({ source: "Garmin Connect", source_provider: "garmin", points });
   const intervals = (points) => ({ source: "Intervals.icu eFTP", source_provider: "intervals", points });
-  const history = (series, preferred) => ({ body: { preferred_providers: preferred, windows: { "12w": { metrics: { cycling_w_per_kg: series } } } } });
+  const history = (series, preferred) => ({ body: { preferred_providers: preferred, windows: { "91d": { metrics: { cycling_w_per_kg: series } } } } });
   const wPerKg = (series, preferred) => currentPerformanceValues({}, history(series, preferred)).cycling_w_per_kg;
 
   const older = wPerKg([garmin([{ date: "2026-10-10", value: 3.1 }]), intervals([{ date: "2026-10-14", value: 3.3 }, { date: "2026-10-15", value: 3.4 }])], { cycling_w_per_kg: "garmin" });
@@ -159,7 +159,7 @@ test("an analysis segment is empty only when every content container reports no 
 test("the analysis empty card offers one action that depends on the connected sources", () => {
   const state = { data: {} };
   const { analysisEmptyCard, analysisDataSourceConnected } = extractFunctions("analysis.js", ["analysisDataSourceConnected", "analysisSegmentPeriod", "analysisEmptyCard"], {
-    state, document: fakeDocument(), analysisRefresh() {}, analysisHistoryPeriod: "twelveWeeks", recoveryHistoryPeriod: "fortnight",
+    state, document: fakeDocument(), analysisRefresh() {}, analysisHistoryPeriod: "91d", recoveryHistoryPeriod: "28d",
     ANALYSIS_EMPTY_TITLES: { load: "Noch keine Belastungsdaten", recovery: "Noch keine Erholungsdaten" },
     createEmptyState: (title, cause, action) => ({ title, cause, action }),
   });
@@ -169,9 +169,9 @@ test("the analysis empty card offers one action that depends on the connected so
   assert.equal(analysisDataSourceConnected(state.data), true);
   const connected = analysisEmptyCard("load");
   assert.deepEqual([connected.cause, connected.action.tag, textOf(connected.action), Object.values(connected.action._listenerCounts).reduce((sum, count) => sum + count, 0)], ["Noch keine Daten abgeglichen.", "button", "Jetzt abgleichen", 1]);
-  // An empty 14-day window may hide older data, so it offers the 12-week view instead of a sync.
+  // An empty 4-week window may hide older data, so it offers the 3-month view instead of a sync.
   const shortWindow = analysisEmptyCard("recovery");
-  assert.deepEqual([shortWindow.title, shortWindow.cause, textOf(shortWindow.action)], ["Noch keine Erholungsdaten", "Keine Daten in den letzten 14 Tagen.", "12 Wochen anzeigen"]);
+  assert.deepEqual([shortWindow.title, shortWindow.cause, textOf(shortWindow.action)], ["Noch keine Erholungsdaten", "Keine Daten in den letzten 4 Wochen.", "3 Monate anzeigen"]);
   state.data = {};
   assert.equal(textOf(analysisEmptyCard("recovery").action), "Anbindung einrichten", "without a source the period does not matter");
   assert.equal(analysisDataSourceConnected({ garmin: { configured: true } }), true);
@@ -206,7 +206,8 @@ function bodyOverviewHarness(root, reads, profile = { body_fat_pct: "18.5" }) {
     ENERGY_GOAL_NAMES: { lose: "Abnehmen", hold: "Halten", build: "Aufbauen" }, openEnergyGoalDialog: () => {},
     isPreferredSource: (item, preferred) => item.source_provider === preferred,
     analysisValidPoint: (p) => p.value != null, dateLabel: (v) => v, analysisValue: (v, unit) => `${v} ${unit}`,
-    analysisPeriodControls: () => new FakeElement("nav"), bodyHistoryPeriod: "twelveWeeks", bodyMetricChart: () => null,
+    analysisPeriodControls: () => new FakeElement("nav"), bodyHistoryPeriod: "91d", bodyMetricChart: () => null,
+    analysisPeriod: (key) => ({ key }), trendHistoryFor: () => null, BASE_PERIOD_DAYS: 91,
     energyBodyCards: () => [], loadSkinfolds: () => {}, openBodyFatDialog: () => {}, openWeightDialog: () => {},
     bodyEditButton: (label) => Object.assign(new FakeElement("button"), { label }),
     get skinfoldRead() { return reads.skinfolds; },
@@ -314,7 +315,7 @@ test("'Offene Kalorien' head the diary's energy card, else a link to the goal (#
   assert.equal(energyGoalText({ energy_goal: "hold" }), "Halten");
 });
 
-const DEFICIT_CARD_FUNCTIONS = ["energyFatSharePrior", "energyFatShareRule", "DEFICIT_UNCERTAINTY", "DEFICIT_GOAL_STATUS", "deficitDecimal", "deficitSigned", "deficitDay", "deficitSpan", "deficitGoalBar", "deficitBoxes", "deficitText", "ESTIMATE_MISSING", "deficitIntake", "deficitSpanDays", "deficitFatBox", "VERLAUF_PERIODS", "verlaufPeriod", "verlaufHead", "energyKcalText", "energyFlaggedText", "energyDeficitCard"];
+const DEFICIT_CARD_FUNCTIONS = ["energyFatSharePrior", "energyFatShareRule", "DEFICIT_UNCERTAINTY", "DEFICIT_GOAL_STATUS", "deficitDecimal", "deficitSigned", "deficitDay", "deficitSpan", "deficitGoalBar", "deficitBoxes", "deficitText", "ESTIMATE_MISSING", "deficitIntake", "deficitSpanDays", "deficitFatBox", "ANALYSIS_PERIODS", "analysisPeriod", "verlaufPeriod", "verlaufHead", "energyKcalText", "energyFlaggedText", "energyDeficitCard"];
 
 test("Verlauf's deficit card: hero, goal marker, boxes and text agree, measured and the prior alone (#3548, #3555)", () => {
   const { h } = extractFunctions("components.js", ["h", "SVG_NS", "svgNode"], { document: fakeDocument() });
@@ -957,7 +958,7 @@ test("a body receipt names the Garmin outcome and puts the day back on undo (#34
   assert.equal(weightReceipt("2026-11-15", "gelöscht")("removed").text, "Gewicht gelöscht und in Garmin Connect entfernt.");
 });
 
-const FIT_FUNCTIONS = ["VERLAUF_PERIODS", "verlaufPeriod", "verlaufHead", "FIT_SOURCE_NAMES", "FIT_COLORS", "deficitDay", "energyKcalRange", "energyKcalSpan", "energyFitSources", "energyFitSigned", "energyFitSpan", "energyFitVerdict", "energyFitDomain", "energyFitMark", "energyFitLane", "energyFitAxis", "energyFitOwnRow", "energyFitLabel", "energyFitSourceRow", "energyFitLegend", "energyFitNoteText", "energyFitScale"];
+const FIT_FUNCTIONS = ["ANALYSIS_PERIODS", "analysisPeriod", "verlaufPeriod", "verlaufHead", "FIT_SOURCE_NAMES", "FIT_COLORS", "deficitDay", "energyKcalRange", "energyKcalSpan", "energyFitSources", "energyFitSigned", "energyFitSpan", "energyFitVerdict", "energyFitDomain", "energyFitMark", "energyFitLane", "energyFitAxis", "energyFitOwnRow", "energyFitLabel", "energyFitSourceRow", "energyFitLegend", "energyFitNoteText", "energyFitScale"];
 
 test("the fit scale names the own value, sorts the sources nearest first and signs their distance (#3397)", () => {
   const { h } = extractFunctions("components.js", ["h", "SVG_NS", "svgNode"], { document: fakeDocument() });
@@ -1064,14 +1065,12 @@ test("one merged body series names each day's source in the overview and the tab
   assert.equal(JSON.stringify(bodyOverviewReading("body_fat_pct", fold, preferred)), JSON.stringify({ value: 13.5, note: "Lokal (Hautfalten) · 2026-11-17" }));
 });
 
-test("the previous year's faint line carries no value labels (#3765)", () => {
-  const { analysisLabelledPoints, previousYearPoints } = extractFunctions("analysis.js", ["analysisValidPoint", "analysisLabelledPoints", "previousYearPoints", "PREVIOUS_YEAR_DAYS"], {
-    addDateKey: (key, days) => { const date = new Date(`${key}T12:00:00Z`); date.setUTCDate(date.getUTCDate() + days); return date.toISOString().slice(0, 10); },
-  });
-  const points = [{ date: "2026-11-01", value: 40 }, { date: "2026-11-08", value: 44 }];
-  assert.equal(analysisLabelledPoints({ points }).length, 2);
-  assert.equal(analysisLabelledPoints({ points, line: "faint" }).length, 0);
-  // The same weeks 52 weeks earlier move onto this period's dates; values outside stay out.
-  const stored = [{ date: "2025-11-01", value: 41 }, { date: "2025-11-09", value: 43 }, { date: "2025-06-01", value: 39 }];
-  assert.equal(JSON.stringify(previousYearPoints(stored, "2026-10-26", "2026-11-08")), JSON.stringify([{ date: "2026-10-31", value: 41 }, { date: "2026-11-08", value: 43 }]));
+test("one period table serves every Analyse and Ernährung selector (#3839)", () => {
+  const { ANALYSIS_PERIODS, analysisPeriod, analysisPeriodWeekly, trainingFocusPeriodLabel } = extractFunctions("analysis.js", ["ANALYSIS_PERIODS", "analysisPeriod", "analysisPeriodWeekly", "trainingFocusPeriodLabel"], {});
+  assert.equal(JSON.stringify(ANALYSIS_PERIODS.map((item) => [item.key, item.days, item.label])), JSON.stringify([["28d", 28, "4 Wochen"], ["91d", 91, "3 Monate"], ["182d", 182, "6 Monate"], ["365d", 365, "12 Monate"]]));
+  // 4 Wochen draw days, every longer period calendar weeks of 4, 13, 26 and 52.
+  assert.equal(JSON.stringify(ANALYSIS_PERIODS.map((item) => [analysisPeriodWeekly(item.key), item.weeks])), JSON.stringify([[false, 4], [true, 13], [true, 26], [true, 52]]));
+  assert.equal(analysisPeriod("unknown").key, "28d");
+  const focus = (days) => trainingFocusPeriodLabel({ start: "2026-01-01", end: new Date(Date.parse("2026-01-01") + (days - 1) * 86400000).toISOString().slice(0, 10) });
+  assert.equal(JSON.stringify([28, 91, 182, 365, 30].map(focus)), JSON.stringify(["Letzte 4 Wochen", "Letzte 3 Monate", "Letzte 6 Monate", "Letzte 12 Monate", "Letzte 30 Tage"]));
 });

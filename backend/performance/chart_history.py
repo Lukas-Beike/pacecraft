@@ -15,6 +15,9 @@ from backend.performance.garmin_canonical import GarminCanonicalMetrics
 from backend.providers.garmin_health_mapping import GARMIN_LABEL
 from backend.providers.source_labels import SESSION_SOURCES_LABEL
 
+# The base read: Belastung and Entwicklung serve 4 Wochen and 3 Monate from it.
+ANALYSIS_DAYS: Final = 91
+
 METRIC_KEYS = (
     "cycling_ftp_watts",
     "run_threshold_pace_seconds_per_km",
@@ -110,40 +113,23 @@ def _metric_series(
     ]
 
 
-# The development charts' metrics a longer Analyse period reads (#3765).
-TREND_METRIC_KEYS = METRIC_KEYS[:4]
-
-
-def trend_metrics(
-    start: date, today: date, canonical: GarminCanonicalMetrics
-) -> dict[str, list[dict[str, Any]]]:
-    """The development metrics from ``start`` to ``today``, shaped like the history's."""
-    dates = [
-        (start + timedelta(days=i)).isoformat() for i in range((today - start).days + 1)
-    ]
-    return {
-        key: _metric_series(key, dates, start, today, canonical)
-        for key in TREND_METRIC_KEYS
-    }
-
-
 def analysis_history(
     garmin: GarminSyncStatus,
     today: date,
     *,
     canonical: CanonicalPerformanceInputs,
+    days: int = ANALYSIS_DAYS,
 ) -> dict[str, Any]:
     """Use dated provider history, never backfill today's settings into the past.
 
     ``canonical`` supplies the activity summaries and Garmin
     history read through the canonical ports; ``garmin`` is the Garmin sync
-    status.
+    status. ``days`` is the span: the base read's 91 days (4 Wochen and 3 Monate)
+    with the body windows of both, or a longer period with its own body window.
     """
-    start = today - timedelta(days=89)
-    dates = [(start + timedelta(days=i)).isoformat() for i in range(90)]
-    load_end = today
-    load_start = load_end - timedelta(days=89)
-    load_dates = [(load_start + timedelta(days=i)).isoformat() for i in range(90)]
+    start = today - timedelta(days=days - 1)
+    dates = [(start + timedelta(days=i)).isoformat() for i in range(days)]
+    load_dates = dates
     activities = list(canonical.activities or ())
     garmin_canonical = canonical.garmin or GarminCanonicalMetrics()
     load = _load_history(load_dates, garmin_canonical)
@@ -154,7 +140,7 @@ def analysis_history(
     return {
         "start": dates[0],
         "end": dates[-1],
-        "days": 90,
+        "days": days,
         "load": {
             "source": GARMIN_LABEL,
             "source_provider": ProviderId.GARMIN.value,
@@ -178,6 +164,7 @@ def analysis_history(
             garmin_ftp=garmin_canonical.performance_history.get(
                 "cycling_ftp_watts", {}
             ),
+            periods=body.BODY_PERIODS if days == ANALYSIS_DAYS else (days,),
         ),
         "provider_metrics": _canonical_provider_metrics(
             garmin, start, today, garmin_canonical

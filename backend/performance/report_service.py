@@ -34,11 +34,9 @@ from backend.performance.canonical_inputs import (
     resolve_reader,
 )
 from backend.performance.canonical_recovery import read_recovery_inputs
-from backend.performance.chart_history import trend_metrics
 from backend.performance.comparisons import recurring_training_comparisons
 from backend.performance.critical_power import WINDOW_DAYS as CP_WINDOW_DAYS
 from backend.performance.critical_power import critical_power_speed
-from backend.performance.garmin_canonical import read_garmin_state
 from backend.performance.mean_max_curve import (
     SessionCurve,
     SessionCurveReader,
@@ -74,10 +72,6 @@ ANALYSIS_TREND_DAYS = 84
 PROGRESS_DAYS = frozenset({7, 28, 42, 56, 84})
 # Analyse › Kraft shows twelve calendar weeks like the endurance development (#3764).
 STRENGTH_WEEKS = 12
-# Analyse's trend periods (#3765): 14 Tage, 12 Wochen, 6 Monate (26 weeks) and
-# 12 Monate (52 weeks); the previous year's same weeks lie 52 weeks back.
-TREND_DAYS = frozenset({14, 84, 182, 364})
-PREVIOUS_YEAR_DAYS = 364
 
 
 def report_sport(value: Any) -> str | None:
@@ -815,37 +809,6 @@ class TrainingReportReadService:
                 for week, count in counts.items()
             ],
             "exercises": progress["exercises"],
-        }
-
-    def trend_history(self, days: Any) -> dict[str, Any]:
-        """A longer Analyse period with the previous year's same weeks (#3765).
-
-        ``days`` is one of ``TREND_DAYS``. The read reaches ``PREVIOUS_YEAR_DAYS``
-        further back, so the browser can draw the previous year only where values
-        are stored: the development metrics as dated Garmin values and the
-        personal recovery with its baselines' history over the whole span. Read
-        on demand only; the default view keeps its own read.
-        """
-        if days not in TREND_DAYS:
-            raise AppError(400, "Ungültiger Analysezeitraum.")
-        today = self._today()
-        start = today - timedelta(days=days - 1)
-        first = start - timedelta(days=PREVIOUS_YEAR_DAYS)
-        span = (today - first).days + 1
-        canonical = self._canonical
-        with canonical.database_manager().read_snapshot() as db:
-            reader = resolve_reader(canonical.observation_reader(), db)
-            recovery = read_recovery_inputs(reader, db, as_of=today, history_days=span)
-            garmin = read_garmin_state(reader, db).metrics
-        return {
-            "start": start.isoformat(),
-            "end": today.isoformat(),
-            "days": days,
-            "previous_year_days": PREVIOUS_YEAR_DAYS,
-            "metrics": trend_metrics(first, today, garmin),
-            "personal_recovery": personal_recovery(
-                {}, today, canonical=recovery, history_days=span
-            ),
         }
 
     def read(self, values: dict[str, Any], timezone: str = "UTC") -> dict[str, Any]:

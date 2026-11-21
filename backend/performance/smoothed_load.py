@@ -29,7 +29,7 @@ from backend.performance.session_rpe_load import session_load
 
 METRIC_ID: Final = "smoothed_session_load"
 METHOD_ID: Final = "smoothed-session-load"
-METHOD_VERSION: Final = 1
+METHOD_VERSION: Final = 2
 UNIT: Final = "AU"
 EVIDENCE_CARD: Final = "docs/performance-methods/m5-smoothed-session-load.md"
 SHORT_TAU_DAYS: Final = 7
@@ -63,10 +63,10 @@ STATE_NO_HISTORY: Final = "no_history"
 def history_start(start: date, today: date) -> date:
     """First day of the history the recursion reads.
 
-    Fixed by ``today`` for every period of the last 84 days, so Coach and UI seed
+    Fixed by ``today`` for every period of the last 91 days, so Coach and UI seed
     the same day and show the same value for the same date.
     """
-    return min(start - timedelta(days=LOOKBACK_DAYS), today - timedelta(days=251))
+    return min(start - timedelta(days=LOOKBACK_DAYS), today - timedelta(days=258))
 
 
 def complete_before(today: date, synced_at: str | None, timezone: str) -> date:

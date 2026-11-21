@@ -40,6 +40,21 @@ def _series(result, window, metric, source):
 
 
 class BodyHistoryTests(unittest.TestCase):
+    def test_a_longer_period_reads_one_window_named_after_its_days(self):
+        garmin = {"weight": [{"date": "2026-10-04", "weightKg": 72}]}
+        result = body_history({}, garmin, TODAY, periods=(365,))
+        self.assertEqual(list(result["windows"]), ["365d"])
+        self.assertEqual(result["default_window"], "365d")
+        window = result["windows"]["365d"]
+        self.assertEqual(
+            (window["start"], window["end"], window["days"]),
+            ("2025-10-07", "2026-10-06", 365),
+        )
+        self.assertEqual(len(window["metrics"]["weight_kg"][0]["points"]), 365)
+        base = body_history({}, garmin, TODAY)
+        self.assertEqual(list(base["windows"]), ["28d", "91d"])
+        self.assertEqual(base["default_window"], "91d")
+
     def test_windows_and_gaps_come_from_garmin_alone(self):
         result = body_history(
             {},
@@ -50,17 +65,17 @@ class BodyHistoryTests(unittest.TestCase):
             },
             TODAY,
         )
-        self.assertEqual(result["windows"]["14d"]["days"], 14)
-        self.assertEqual(result["windows"]["12w"]["days"], 84)
+        self.assertEqual(result["windows"]["28d"]["days"], 28)
+        self.assertEqual(result["windows"]["91d"]["days"], 91)
         for metric in ("weight_kg", "body_fat_pct"):
             self.assertEqual(
                 [
                     item["source"]
-                    for item in result["windows"]["14d"]["metrics"][metric]
+                    for item in result["windows"]["28d"]["metrics"][metric]
                 ],
                 ["Garmin Connect"],
             )
-        points = _series(result, "14d", "weight_kg", "Garmin Connect")["points"]
+        points = _series(result, "28d", "weight_kg", "Garmin Connect")["points"]
         self.assertEqual(points[-3]["value"], 72)
         self.assertEqual(points[-3]["synced_at"], "garmin-fetch")
         self.assertIsNone(points[-1]["value"])
@@ -89,7 +104,7 @@ class BodyHistoryTests(unittest.TestCase):
             },
         }
         result = body_history(snapshot, garmin, TODAY)
-        garmin_series = _series(result, "12w", "cycling_w_per_kg", "Garmin Connect")[
+        garmin_series = _series(result, "91d", "cycling_w_per_kg", "Garmin Connect")[
             "points"
         ]
         self.assertAlmostEqual(garmin_series[-1]["value"], 300 / 70, places=3)
@@ -97,12 +112,12 @@ class BodyHistoryTests(unittest.TestCase):
         self.assertEqual(
             [
                 item["source"]
-                for item in result["windows"]["12w"]["metrics"]["cycling_w_per_kg"]
+                for item in result["windows"]["91d"]["metrics"]["cycling_w_per_kg"]
             ],
             ["Garmin Connect"],
         )
         self.assertEqual(
-            _series(result, "12w", "cycling_w_per_kg", "Garmin Connect")[
+            _series(result, "91d", "cycling_w_per_kg", "Garmin Connect")[
                 "power_method"
             ],
             "FTP",
@@ -117,7 +132,7 @@ class BodyHistoryTests(unittest.TestCase):
             TODAY,
         )
         self.assertIsNone(
-            _series(too_old, "12w", "cycling_w_per_kg", "Garmin Connect")["points"][-1][
+            _series(too_old, "91d", "cycling_w_per_kg", "Garmin Connect")["points"][-1][
                 "value"
             ]
         )
@@ -137,7 +152,7 @@ class BodyHistoryTests(unittest.TestCase):
             },
             TODAY,
         )
-        points = _series(result, "14d", "cycling_w_per_kg", "Garmin Connect")["points"]
+        points = _series(result, "28d", "cycling_w_per_kg", "Garmin Connect")["points"]
         self.assertEqual(points[-2]["ftp_synced_at"], "history-fetch")
 
     def test_manual_profile_values_are_not_historical_and_invalid_garmin_values_drop(
@@ -151,7 +166,7 @@ class BodyHistoryTests(unittest.TestCase):
         self.assertTrue(
             all(
                 point["value"] is None
-                for point in _series(result, "14d", "weight_kg", "Garmin Connect")[
+                for point in _series(result, "28d", "weight_kg", "Garmin Connect")[
                     "points"
                 ]
             )
@@ -159,7 +174,7 @@ class BodyHistoryTests(unittest.TestCase):
         self.assertTrue(
             all(
                 point["value"] is None
-                for point in _series(result, "14d", "body_fat_pct", "Garmin Connect")[
+                for point in _series(result, "28d", "body_fat_pct", "Garmin Connect")[
                     "points"
                 ]
             )
@@ -171,7 +186,7 @@ class BodyHistoryTests(unittest.TestCase):
             TODAY,
             garmin_ftp={TODAY: 1500.0},
         )
-        points = _series(outlier, "14d", "cycling_w_per_kg", "Garmin Connect")["points"]
+        points = _series(outlier, "28d", "cycling_w_per_kg", "Garmin Connect")["points"]
         self.assertIsNone(points[-1]["value"])
 
     def test_garmin_daily_record_uses_latest_timestamp_and_converts_pounds(self):
@@ -217,8 +232,8 @@ class BodyHistoryTests(unittest.TestCase):
             GarminSyncStatus.from_state({}), TODAY, canonical=canonical
         )
         self.assertIn("body", result)
-        series = _series(result["body"], "12w", "cycling_w_per_kg", "Garmin Connect")
-        self.assertEqual(len(series["weekly"]), 12)
+        series = _series(result["body"], "91d", "cycling_w_per_kg", "Garmin Connect")
+        self.assertEqual(len(series["weekly"]), 13)
         self.assertEqual(
             series["weekly"][-1],
             {
@@ -245,7 +260,7 @@ class BodyHistoryTests(unittest.TestCase):
             {"cycling_ftp": nested, "weight": [{"date": "2026-10-06", "weightKg": 70}]},
             TODAY,
         )
-        series = _series(result, "14d", "cycling_w_per_kg", "Garmin Connect")
+        series = _series(result, "28d", "cycling_w_per_kg", "Garmin Connect")
         self.assertIsNone(series["points"][-1]["value"])
 
 

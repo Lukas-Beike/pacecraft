@@ -33,10 +33,10 @@ const NAV_VIEWS = (() => {
   const PLAN_ACTIONS = ["Kalender aktualisieren"];
   const ANALYSIS_ACTIONS = ["Analyse aktualisieren", "Jetzt abgleichen", "Anbindung einrichten"];
   const ALL_STATES = ["loading", "empty", "error", "notConfigured", "offline"];
-  const PERIODS = ["Letzte 14 Tage", "12 Wochen"];
+  const PERIODS = ["4 Wochen", "3 Monate", "6 Monate", "12 Monate"];
   const ENTRIES = ["loading", "empty", "error", "offline"];
   const sport = view(["/api/performance", "/api/analysis/power-profiles"], ANALYSIS_ACTIONS, ALL_STATES);
-  const period = view(["/api/performance"], [...ANALYSIS_ACTIONS, ...PERIODS, "12 Wochen anzeigen"], ALL_STATES);
+  const period = view(["/api/performance"], [...ANALYSIS_ACTIONS, ...PERIODS, "3 Monate anzeigen"], ALL_STATES);
   const overview = view([...PLAN_READS, "/api/activities?limit=100", "/api/analysis/week-review"], [...PLAN_ACTIONS, "Woche", "Monat", "Woche synchronisieren", "Verschieben", "Feedback", "Mit dem Coach analysieren", "Mit Coach lösen"], ALL_STATES);
   const diary = view(["/api/nutrition/day", "/api/body/energy"], ["Ernährung aktualisieren", "Vorheriger Tag", "Nächster Tag", "Heute", "Als geschätzt markieren", "Nicht geschätzt", "Löschen", "Rückgängig", "Erneut laden"], ENTRIES);
   const connections = view([...MORE_READS, "/api/providers/connections", "/api/nutrition/yazio/status"], ["Verbindung prüfen", "Mit Garmin anmelden", "Garmin trennen", "Wahoo verbinden", "Synchronisieren", "Speichern", "Entfernen"], ["loading", "error", "notConfigured", "offline"]);
@@ -48,7 +48,7 @@ const NAV_VIEWS = (() => {
     "plan/season": view([...PLAN_READS, "/api/profile"], [...PLAN_ACTIONS, "Erneut laden"], ENTRIES),
     nutrition: diary,
     "nutrition/diary": diary,
-    "nutrition/week": view(["/api/nutrition/week"], ["Ernährung aktualisieren", "4 Wochen", "3 Monate", "6 Monate", "Tageswerte anzeigen"], ENTRIES),
+    "nutrition/week": view(["/api/nutrition/week"], ["Ernährung aktualisieren", ...PERIODS, "Tageswerte anzeigen"], ENTRIES),
     "nutrition/products": view(["/api/nutrition/products?scope=all", "/api/nutrition/products/refresh-all"], ["Barcode scannen", "Nährwerttabelle fotografieren", "Produkt manuell erfassen", "Suchen", "Alle aktualisieren", "Aufräumen"], ENTRIES),
     analysis: sport,
     "analysis/running": sport,

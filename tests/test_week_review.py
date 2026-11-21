@@ -410,32 +410,39 @@ class WeekReviewHttpTests(ServerTestCase):
         self.assertEqual({week["sessions"] for week in result["weeks"]}, {0})
         self.assertEqual(result["exercises"], [])
 
-    def test_a_longer_trend_period_reads_the_previous_year_on_demand(self) -> None:
-        # #3765: 14, 84, 182 or 364 days, read 364 days further back; another span is refused.
-        status, result = self.get("/api/analysis/trend-history?days=182")
-        self.assertEqual(status, 200)
-        start, end = (
-            date.fromisoformat(result["start"]),
-            date.fromisoformat(result["end"]),
-        )
-        self.assertEqual(
-            ((end - start).days + 1, result["previous_year_days"]), (182, 364)
-        )
-        for key in (
-            "cycling_ftp_watts",
-            "run_threshold_pace_seconds_per_km",
-            "cycling_vo2max_ml_kg_min",
-            "running_vo2max_ml_kg_min",
-        ):
-            points = result["metrics"][key][0]["points"]
-            self.assertEqual(len(points), 182 + 364, key)
-            self.assertEqual(
-                points[0]["date"], (start - timedelta(days=364)).isoformat()
-            )
-        self.assertIn("baselines", result["personal_recovery"])
-        for days in ("30", "365", "x", ""):
-            with self.subTest(days):
-                status, error = self.get(f"/api/analysis/trend-history?days={days}")
+    def test_a_longer_trend_period_reads_its_own_span_on_demand(self) -> None:
+        # #3839: 91, 182 or 365 days of history shaped like the performance state's;
+        # another span is refused.
+        for days in (182, 365):
+            with self.subTest(days=days):
+                status, result = self.get(f"/api/analysis/trend-history?days={days}")
+                self.assertEqual(status, 200)
+                start, end = (
+                    date.fromisoformat(result["start"]),
+                    date.fromisoformat(result["end"]),
+                )
+                self.assertEqual((end - start).days + 1, days)
+                self.assertNotIn("previous_year_days", result)
+                history = result["history"]
+                self.assertEqual(
+                    (history["start"], history["days"]), (result["start"], days)
+                )
+                for key in (
+                    "cycling_ftp_watts",
+                    "run_threshold_pace_seconds_per_km",
+                    "cycling_vo2max_ml_kg_min",
+                    "running_vo2max_ml_kg_min",
+                ):
+                    points = history["metrics"][key][0]["points"]
+                    self.assertEqual(len(points), days, key)
+                    self.assertEqual(points[0]["date"], start.isoformat())
+                self.assertEqual(list(history["body"]["windows"]), [f"{days}d"])
+                self.assertEqual(len(history["load"]["points"]), days)
+                self.assertIn("baselines", result["personal_recovery"])
+                self.assertEqual(result["training_focus"]["start"], start.isoformat())
+        for given in ("14", "84", "364", "30", "x", ""):
+            with self.subTest(given):
+                status, error = self.get(f"/api/analysis/trend-history?days={given}")
                 self.assertEqual(status, 400)
                 self.assertEqual(error["error"], "Ungültiger Analysezeitraum.")
 

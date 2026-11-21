@@ -39,7 +39,8 @@ from backend.nutrition.energy_inputs import (
     session_streams,
 )
 from backend.nutrition.energy_view import (
-    LONG_PERIOD,
+    FIT_PERIODS,
+    LONG_PERIODS,
     OwnHistory,
     own_history,
     read_energy_view,
@@ -258,14 +259,20 @@ def build_nutrition(ctx: AppContext) -> NutritionServices:
             ),
         )
 
-    def yesterdays_periods() -> tuple[date, EnergyInputs | None]:
+    def yesterdays_periods(days: int) -> tuple[date, EnergyInputs | None]:
         end = ctx.clock.now().date() - timedelta(days=1)
         with ctx.database().reader() as db:
-            return end, read_fit_inputs(db, energy_sources(), end)
+            return end, read_fit_inputs(db, energy_sources(), end, days)
 
-    # Verlauf's 6 months cost as much as the rest of the read: kept until a
-    # commit changes rows, as the 12-week history is (#3630, #3704).
-    kept_periods = kept_until_change(ctx.database, yesterdays_periods)
+    # Verlauf's 6 and 12 months cost as much as the rest of the read: each is
+    # kept until a commit changes rows, as the 12-week history is (#3630,
+    # #3704), and 6 Monate never pays for 12 (#3839).
+    kept_periods = {
+        key: kept_until_change(
+            ctx.database, partial(yesterdays_periods, FIT_PERIODS[key])
+        )
+        for key in LONG_PERIODS
+    }
 
     def energy_view(
         day_text: str | None = None, period: str | None = None
@@ -276,14 +283,18 @@ def build_nutrition(ctx: AppContext) -> NutritionServices:
         day = selected_day(day_text, today)
         end = today - timedelta(days=1)
 
-        def periods() -> EnergyInputs | None:
-            kept_end, inputs = kept_periods()
-            return inputs if kept_end == end else yesterdays_periods()[1]
+        # Only Verlauf's 6 and 12 Monate need the longer read, each its own (#3711).
+        if period not in LONG_PERIODS:
+            with ctx.database().reader() as db:
+                return read_energy_view(db, energy_sources(), end, day)
+        days = FIT_PERIODS[period]
 
-        # Only Verlauf's 6 Monate needs the longer read (#3711).
-        long = periods if period == LONG_PERIOD else None
+        def periods() -> EnergyInputs | None:
+            kept_end, inputs = kept_periods[period]()
+            return inputs if kept_end == end else yesterdays_periods(days)[1]
+
         with ctx.database().reader() as db:
-            return read_energy_view(db, energy_sources(), end, day, long)
+            return read_energy_view(db, energy_sources(), end, day, periods, days)
 
     def intervals_sync_service() -> IntervalsNutritionSyncService:
         config = ctx.config()

@@ -543,6 +543,7 @@ def energy_view(
     day: date | None = None,
     goal: Mapping[str, str] | None = None,
     fit_inputs: EnergyInputs | None = None,
+    fit_days: int | None = None,
 ) -> dict[str, Any]:
     """The source rows of ``day``, each source's fit over the windows, and the basis.
 
@@ -553,7 +554,8 @@ def energy_view(
     window and the day's other parts like the formula rows, and its 28-day row
     with every part's mean is ``own_window``, for Verlauf (#3531). ``goal`` is
     the profile's energy goal, priced on the shown day (#3547). ``fit_inputs``
-    is the longer history of Verlauf's 6-month period (#3704); the daily view
+    is the longer history of Verlauf's 6- or 12-month period (#3704, #3839),
+    reaching back ``fit_days`` (default the longest period); the daily view
     reads ``inputs`` only.
     """
     trend = weight_trend(
@@ -703,7 +705,7 @@ def energy_view(
         "fit_scale": {
             key: _fit_scale(given, trend, health, latest, days, goal, learned)
             for key, (given, days) in _period_inputs(
-                inputs, fit_inputs, latest.end
+                inputs, fit_inputs, latest.end, fit_days
             ).items()
         },
         "skinfold_missing": body_missing,
@@ -1199,20 +1201,27 @@ def selected_day(text: str | None, today: date) -> date | None:
 
 # Verlauf's periods; the own estimate needs the rules' spans, so a period shorter
 # than a window takes it from the latest window (orchestrator, #3397).
-# Verlauf's three periods: 4 weeks, 3 and 6 months (athlete decision, #3704).
-FIT_PERIODS: Final = {"28d": 28, "91d": 91, "182d": 182}
-# The one period past the 12-week read, asked for by Verlauf (#3711).
-LONG_PERIOD: Final = "182d"
+# Verlauf's four periods: 4 weeks, 3, 6 and 12 months (athlete decisions, #3704, #3839).
+FIT_PERIODS: Final = {"28d": 28, "91d": 91, "182d": 182, "365d": 365}
+# The periods past the 12-week read, each asked for by Verlauf alone (#3711).
+LONG_PERIODS: Final = frozenset({"182d", "365d"})
 
 
 def _period_inputs(
-    inputs: EnergyInputs, fit_inputs: EnergyInputs | None, end: date
+    inputs: EnergyInputs,
+    fit_inputs: EnergyInputs | None,
+    end: date,
+    fit_days: int | None = None,
 ) -> dict[str, tuple[EnergyInputs, int]]:
     """Each Verlauf period's inputs: a period inside the 12-week read takes it;
-    6 Monate needs ``fit_inputs``, its own read, and is left out without it."""
+    6 and 12 Monate need ``fit_inputs``, their own read of ``fit_days``, and a
+    period it does not reach is left out (#3839)."""
     history_days = (end - history_start(end)).days + 1
+    reach = fit_days or max(FIT_PERIODS.values())
     periods = {}
     for key, days in FIT_PERIODS.items():
+        if days > reach:
+            continue
         given = inputs if days <= history_days else fit_inputs
         if given is not None:
             periods[key] = (given, days)
@@ -1507,16 +1516,20 @@ def own_history(
     return inputs, energy_windows(inputs, end), sources.daily_health(db, start, end)
 
 
-def fit_start(end: date) -> date:
-    """The first day Verlauf's longest period reads (#3704)."""
-    return min(history_start(end), end - timedelta(days=max(FIT_PERIODS.values()) - 1))
+def fit_start(end: date, days: int | None = None) -> date:
+    """The first day a Verlauf period of ``days`` reads (default the longest, #3704)."""
+    span = days or max(FIT_PERIODS.values())
+    return min(history_start(end), end - timedelta(days=span - 1))
 
 
-def read_fit_inputs(db: Any, sources: EnergySources, end: date) -> EnergyInputs | None:
-    """The inputs of Verlauf's periods ending on ``end``: their own read where
-    the longest reaches back past the 12 windows (#3704), else None. They
-    depend on the stored rows and ``end`` only, so a caller may keep them."""
-    first = fit_start(end)
+def read_fit_inputs(
+    db: Any, sources: EnergySources, end: date, days: int | None = None
+) -> EnergyInputs | None:
+    """The inputs of Verlauf's periods up to ``days`` ending on ``end``: their own
+    read where it reaches back past the 12 windows (#3704), else None. 6 Monate
+    reads 182 days, so it never pays for 12 Monate (#3839). They depend on the
+    stored rows, ``end`` and ``days`` only, so a caller may keep them."""
+    first = fit_start(end, days)
     if first >= history_start(end):
         return None
     return read_energy_inputs(db, sources, first, end)[0]
@@ -1528,6 +1541,7 @@ def read_energy_view(
     end: date,
     day: date | None = None,
     fit_inputs: Callable[[], EnergyInputs | None] | None = None,
+    fit_days: int | None = None,
 ) -> dict[str, Any]:
     """Read the 12-week history ending on ``end`` and build the view of ``day``.
 
@@ -1545,7 +1559,7 @@ def read_energy_view(
     # Verlauf's 6 months reach back past the 12 windows (#3704); their read
     # costs as much again, so it runs only when asked for (#3711).
     periods = fit_inputs() if fit_inputs else None
-    first = fit_start(end) if periods is not None else start
+    first = fit_start(end, fit_days) if periods is not None else start
     health = sources.daily_health(db, min(first, day), last)
     windows = energy_windows(inputs, end)
     _, missing = skinfold_state(db, sources, inputs, day)
@@ -1560,6 +1574,7 @@ def read_energy_view(
         day=day,
         goal=sources.profile(),
         fit_inputs=periods,
+        fit_days=fit_days,
     )
     # Digestion counts kcal without macros at 10 %, so it is estimated (#3617).
     view["tef_estimated"] = inputs.days.get(day, DayInputs()).uncovered_kcal > 0

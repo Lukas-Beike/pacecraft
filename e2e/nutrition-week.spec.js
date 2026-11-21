@@ -35,7 +35,7 @@ const colourOf = (page, name) => page.evaluate((token) => {
   return colour;
 }, name);
 
-// The server reads 6 months only for `period=182d` (#3711), so the mock answers them only then.
+// The server reads 6 and 12 months only for `period=182d` or `period=365d` (#3711), so the mock answers them only then.
 async function routeVerlauf(page, periods = []) {
   await page.route("**/api/nutrition/week?days=*", (route) => route.fulfill({ json: weekRead(Number(new URL(route.request().url()).searchParams.get("days"))) }));
   await page.route("**/api/body/energy*", async (route) => {
@@ -45,7 +45,7 @@ async function routeVerlauf(page, periods = []) {
       const response = await route.fetch();
       const read = await response.json();
       await route.fulfill({ response, json: { ...read, goal: { goal: "lose", goal_kcal: 300, source: "device", total_kcal: 2600, target_kcal: 2300, eaten_kcal: 0, remaining_kcal: 2300 },
-        fit_scale: { "28d": fitRead(28, 565), "91d": fitRead(91, 480), ...(period === "182d" ? { "182d": fitRead(182, 410) } : {}) } } });
+        fit_scale: { "28d": fitRead(28, 565), "91d": fitRead(91, 480), ...(period === "182d" || period === "365d" ? { "182d": fitRead(182, 410), "365d": fitRead(365, 380) } : {}) } } });
     } catch (error) {
       if (!GONE.test(String(error))) throw error;
     }
@@ -120,6 +120,15 @@ test("@responsive Verlauf is five cards in one layout that follow the period (#3
   await expect(root.locator("#nutritionWeekDays tr")).toHaveCount(182);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await root.screenshot({ path: test.info().outputPath("Verlauf-6-Monate.png") });
+  // 12 months: its own read (#3839), a row per week and its own deficit.
+  await root.getByRole("button", { name: "12 Monate", exact: true }).click();
+  await expect(root.locator(".nutrition-week-chart-day")).toHaveCount(53);
+  await expect(deficit.locator(".energy-deficit-hero strong")).toHaveText("≈ 380 kcal");
+  await expect(root.locator("[data-energy-fit]")).toHaveAttribute("data-energy-fit", "365d");
+  expect(periods.filter(Boolean)).toEqual(["182d", "365d"]);
+  await expect(root.locator('[data-verlauf-card="balance"] .verlauf-period')).toContainText(/\/365 Tage erfasst$/);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await root.screenshot({ path: test.info().outputPath("Verlauf-12-Monate.png") });
 });
 
 test("@responsive nutrition week shows coverage, signed balance and missing days without fueling", async ({ page }) => {
@@ -186,11 +195,11 @@ test("@responsive nutrition week shows coverage, signed balance and missing days
   await expect(week.locator("#nutritionWeekDetails")).toBeHidden();
 });
 
-test("@responsive nutrition history switches between 4 weeks, 3 and 6 months", async ({ page }) => {
+test("@responsive nutrition history switches between 4 weeks, 3, 6 and 12 months", async ({ page }) => {
   await page.goto("/#nutrition/week");
   const root = page.locator("#nutritionWeek");
   await expect(root.locator("#nutritionWeekChartHeading")).toHaveText("Tagesverlauf");
-  await expect(root.getByRole("button")).toHaveText(["4 Wochen", "3 Monate", "6 Monate"]);
+  await expect(root.getByRole("button")).toHaveText(["4 Wochen", "3 Monate", "6 Monate", "12 Monate"]);
   await expect(root.getByRole("button", { name: "4 Wochen", exact: true })).toHaveAttribute("aria-pressed", "true");
   await expect(root.locator("#nutritionWeekChartPeriod")).toHaveText("4 Wochen");
   await root.getByRole("button", { name: "3 Monate", exact: true }).click();
@@ -201,6 +210,9 @@ test("@responsive nutrition history switches between 4 weeks, 3 and 6 months", a
   await root.getByRole("button", { name: "6 Monate", exact: true }).click();
   await expect(root.locator("#nutritionWeekChartPeriod")).toHaveText("6 Monate");
   await expect(root.locator("#nutritionWeekDays tr")).toHaveCount(182);
+  await root.getByRole("button", { name: "12 Monate", exact: true }).click();
+  await expect(root.locator("#nutritionWeekChartPeriod")).toHaveText("12 Monate");
+  await expect(root.locator("#nutritionWeekDays tr")).toHaveCount(365);
   await page.reload();
   await expect(root.locator("#nutritionWeekChartHeading")).toHaveText("Tagesverlauf");
   await root.getByRole("button", { name: "4 Wochen", exact: true }).click();

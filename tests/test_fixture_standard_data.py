@@ -312,9 +312,9 @@ class StandardFixtureDataTests(StandardFixtureTestCase):
                 "cycling_ftp_watts"
             ],
         )
-        window = result["windows"]["12w"]
-        self.assertEqual(window["days"], 84)
-        self.assertEqual(len(window["metrics"]["weight_kg"][0]["points"]), 84)
+        window = result["windows"]["91d"]
+        self.assertEqual(window["days"], 91)
+        self.assertEqual(len(window["metrics"]["weight_kg"][0]["points"]), 91)
         self.assertTrue(
             any(
                 point["value"] is None
