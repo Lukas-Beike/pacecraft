@@ -83,7 +83,9 @@ test("@responsive Rekorde shows the single-activity records and opens a record's
   await expect(page.locator("#rideActivityRecords [data-activity-record='ride:elevation_gain_m'] td").first()).toHaveText("–");
   await expect(page.locator("#runActivityRecords [data-activity-record='run:distance_m'] td")).toHaveText(["32,1 km", "03.10.2026"]);
   await expect(page.locator("#runningBestEfforts")).toBeVisible();
-  await page.locator("#rideActivityRecords [data-activity-record='ride:distance_m'] button").click();
+  const open = page.locator("#rideActivityRecords [data-activity-record='ride:distance_m'] button");
+  await expect(open).toHaveAccessibleName("Weiteste Fahrt vom 01.10.2026 öffnen");
+  await open.click();
   await expect(page.locator(".activity-detail-dialog")).toBeVisible();
   await expect(page.locator("#activityDetailTitle")).toHaveText("Lange Runde");
 });

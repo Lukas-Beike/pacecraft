@@ -741,11 +741,11 @@ const ANALYSIS_PERFORMANCE_ROUTES = new Set(["analysis", "analysis/running", "an
 const CYCLING_POWER_PROFILE_DURATIONS = [[5, "5 Sekunden"], [15, "15 Sekunden"], [30, "30 Sekunden"], [60, "1 Minute"], [120, "2 Minuten"], [180, "3 Minuten"], [300, "5 Minuten"], [420, "7 Minuten"], [600, "10 Minuten"], [720, "12 Minuten"], [1200, "20 Minuten"], [1800, "30 Minuten"], [3600, "1 Stunde"]];
 
 // The date of a record opens its activity (#3826); a record without one keeps plain text.
-function recordDateCell(point) {
+function recordDateCell(point, label) {
   const cell = h("td");
   if (!point) return cell;
   if (!point.activity_id) { cell.append(dateLabel(point.date)); return cell; }
-  const open = h("button", { type: "button", className: "link-button" }, dateLabel(point.date));
+  const open = h("button", { type: "button", className: "link-button", "aria-label": `${label} vom ${dateLabel(point.date)} öffnen` }, dateLabel(point.date));
   open.addEventListener("click", () => void ActivityDetails.open({ activity_id: point.activity_id, name: point.name }, { api, showDialog: showAccessibleDialog }));
   cell.append(open);
   return cell;
@@ -770,7 +770,7 @@ function cyclingPowerProfileTable(result) {
     // Indoor rides count for power, marked as such (#3826).
     if (point?.environment === "indoor") cell.append(recordSourceChip("Indoor"));
     if (!point) markValueMissing(cell);
-    body.append(h("tr", { dataset: { powerDuration: String(duration) } }, h("th", { scope: "row" }, label), cell, recordDateCell(point)));
+    body.append(h("tr", { dataset: { powerDuration: String(duration) } }, h("th", { scope: "row" }, label), cell, recordDateCell(point, `Leistung ${label}`)));
   }
   const scroll = makeScrollRegionFocusable(h("div", "table-scroll"), "Leistung nach Dauer");
   scroll.append(h("table", "race-predictions-table", head, body));
@@ -983,14 +983,15 @@ function renderPowerProfile(result) {
   root.dataset.analysisEmpty = String(!hasValues);
 }
 
-// The experimental CP/CS line stays in its sport tab (#3826); a failed read leaves it out.
+// The experimental CP/CS line stays in its sport tab (#3826); a failed read leaves it out, marked failed
+// so the tab does not count as empty.
 function renderCriticalLines(result) {
   for (const [id, sport] of CRITICAL_LINES) {
     const root = document.getElementById(id);
     const hasValues = sport === "ride" ? cyclingPowerProfileHasValues(result) : (result?.all_time?.running?.distance || []).some((item) => item.seconds > 0);
     const line = result && criticalPowerLine(result, sport, hasValues);
     root.replaceChildren(...(line ? [line] : []));
-    root.dataset.analysisEmpty = String(!line);
+    root.dataset.analysisEmpty = result ? String(!line) : "failed";
   }
 }
 
@@ -1016,7 +1017,7 @@ function renderActivityRecords(result) {
       const record = records.find((item) => item.sport === sport && item.field === field && item.status === "ok");
       const cell = h("td", { title: record?.source }, record && activityRecordValue(record));
       if (record) values += 1; else markValueMissing(cell, "–");
-      body.append(h("tr", { dataset: { activityRecord: `${sport}:${field}` } }, h("th", { scope: "row" }, label), cell, recordDateCell(record)));
+      body.append(h("tr", { dataset: { activityRecord: `${sport}:${field}` } }, h("th", { scope: "row" }, label), cell, recordDateCell(record, label)));
     }
     const head = h("thead", null, h("tr", null, ["Rekord", "Wert", "Datum"].map((label) => h("th", { scope: "col" }, label))));
     const scroll = makeScrollRegionFocusable(h("div", "table-scroll"), title);
@@ -1051,7 +1052,7 @@ function renderRunningBestEfforts(result) {
     if (point && !own) cell.append(recordSourceChip(point.label));
     if (point) values += 1; else markValueMissing(cell, "–");
     // Garmin's personal record names no activity; its date stays plain text.
-    body.append(h("tr", { dataset: { runningBest: `distance:${meters}` } }, h("th", { scope: "row" }, label), cell, recordDateCell(own || (point && { date: point.date }))));
+    body.append(h("tr", { dataset: { runningBest: `distance:${meters}` } }, h("th", { scope: "row" }, label), cell, recordDateCell(own || (point && { date: point.date }), `Bestzeit ${label}`)));
   }
   const scroll = makeScrollRegionFocusable(h("div", "table-scroll"), "Lauf-Bestwerte");
   const head = h("thead", null, h("tr", null, ["Strecke", "Zeit", "Datum"].map((label) => h("th", { scope: "col" }, label))));
