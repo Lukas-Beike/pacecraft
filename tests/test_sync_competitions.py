@@ -101,9 +101,13 @@ class FakeRedactor:
 class FakeLogger:
     def __init__(self):
         self.exceptions = []
+        self.warnings = []
 
     def exception(self, message, **kwargs):
         self.exceptions.append((message, kwargs))
+
+    def warning(self, message, **kwargs):
+        self.warnings.append((message, kwargs))
 
 
 class FakePublisher:
@@ -925,6 +929,19 @@ class CompetitionSyncReconcilerTests(unittest.TestCase):
         self.assertEqual(logger.exceptions[0][0], "Competition synchronization failed")
         self.assertEqual(logger.exceptions[0][1]["exc_info"], True)
         self.assertEqual(lock.release_calls, 3)
+        # A failing failure record never hides the sync's own error (#3838).
+        with (
+            patch.object(self.reconciler, "reconcile", side_effect=error),
+            patch.object(service, "_record_failure", side_effect=OSError("disk")),
+            self.assertRaises(RuntimeError) as hidden,
+        ):
+            service.sync()
+        self.assertIs(hidden.exception, error)
+        self.assertEqual(lock.release_calls, 4)
+        self.assertEqual(len(logger.exceptions), 3)
+        self.assertEqual(
+            logger.warnings[0][0], "Competition sync failure record not stored"
+        )
 
 
 if __name__ == "__main__":

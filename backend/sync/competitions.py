@@ -440,7 +440,13 @@ class CompetitionSyncService:
         except Exception as exc:
             error = self._redactor.redact_text(str(exc))[:1000]
             self._set_kv(last_error_key(INTERVALS_ID), error)
-            self._record_failure(step, exc)
+            try:
+                self._record_failure(step, exc)
+            except Exception:  # noqa: BLE001 - the sync's own error must surface.
+                self._logger.warning(
+                    "Competition sync failure record not stored",
+                    extra={"event": "competition_sync_failure_record_failed"},
+                )
             self._logger.exception(
                 "Competition synchronization failed",
                 extra={
