@@ -74,6 +74,7 @@ OPTIONAL_DAY_KEYS = (
     "planned",
     "appointments",
     "activity_feedback",
+    "infection_hint",
 )
 PLANNED_FIELDS = (
     "id",
@@ -265,8 +266,12 @@ def build_daily_planning_context(
     activity_feedback: list[dict[str, Any]],
     today: date,
     calendar_window_days: int,
+    infection_hint: dict[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
-    """Combine already loaded date-specific signals without performing I/O."""
+    """Combine already loaded date-specific signals without performing I/O.
+
+    A shown infection hint (M14, #3762) belongs to today's day only.
+    """
     days: dict[str, dict[str, Any]] = {}
     _project_planned_days(days, planned)
     _project_checkin_days(days, checkins)
@@ -279,4 +284,6 @@ def build_daily_planning_context(
     _project_activity_feedback_days(days, activity_feedback)
     _project_weather_days(days, weather_days)
     _project_recovery_and_health_days(days, recovery_by_date, health_by_date)
+    if infection_hint:
+        _day(days, today.isoformat())["infection_hint"] = infection_hint
     return _sort_and_clean_daily_planning_days(days)

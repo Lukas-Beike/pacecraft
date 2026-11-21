@@ -27,6 +27,11 @@ test("@responsive every UI walk step passes on the fixture app", async ({ page, 
     const moved = (entry) => ({ ...entry, date: today, starts_at_local: entry.starts_at_local && `${today}${entry.starts_at_local.slice(10)}`, duration_minutes: 150, planned_duration_s: 9000 });
     // Completed units are not moved: on a Monday the walk's completed-unit steps page back themselves (`seek`).
     data.training_calendar = calendar.map((entry) => (entry === stored ? moved(entry) : entry));
+    // The fixture's nights are ordinary, so today carries a synthetic infection hint (M14, #3762).
+    const signal = (label, value, unit, lower, upper) => ({ label, value, unit, lower, upper, source: "Garmin Connect", unusual: true });
+    const hint = { method: "infection-hint-v1", status: "hint", signals: [signal("Atemfrequenz", 17, "brpm", 14, 15), signal("Ruhepuls", 56, "bpm", 48, 51)], limits: "Keine Diagnose." };
+    const days = (data.daily_planning_context || []).filter((day) => day.date !== today);
+    data.daily_planning_context = [...days, { ...(data.daily_planning_context || []).find((day) => day.date === today), date: today, infection_hint: hint }];
     return route.fulfill({ json: data });
   });
   await page.goto("/");

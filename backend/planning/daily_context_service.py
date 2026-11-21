@@ -8,6 +8,7 @@ from typing import Any
 
 from backend.performance.canonical_inputs import resolve_reader
 from backend.performance.daily_health import read_daily_health_by_date
+from backend.performance.infection_hint import read_shown_hint
 from backend.performance.load_context import read_local_fitness
 from backend.performance.planning_recovery import planning_recovery_view
 from backend.planning.context import build_daily_planning_context
@@ -54,8 +55,8 @@ class DailyPlanningContextService:
         db: Any,
         today: date,
         history: Any,
-    ) -> tuple[dict[str, dict[str, Any]], dict[str, dict[str, Any]]]:
-        """Recovery and daily-health views of the window ending on the local date.
+    ) -> tuple[dict[str, dict[str, Any]], dict[str, dict[str, Any]], dict | None]:
+        """Recovery, daily-health views and the shown infection hint (M14) of today.
 
         Sleep, HRV, resting HR, readiness, steps, floors and energy come from
         canonical observations; CTL, ATL and form from the local curve (M7). The reader is resolved once,
@@ -81,7 +82,11 @@ class DailyPlanningContextService:
                 timezone="UTC" if self._timezone is None else self._timezone(),
             )["days"],
         )
-        return recovery, read_daily_health_by_date(reader, db, start=start, end=today)
+        return (
+            recovery,
+            read_daily_health_by_date(reader, db, start=start, end=today),
+            read_shown_hint(reader, db, today),
+        )
 
     def build(
         self,
@@ -114,7 +119,7 @@ class DailyPlanningContextService:
             morning_battery_history = decode_history(
                 self._key_value_repository.get(db, _MORNING_BATTERY_HISTORY_KEY)
             )
-            recovery_by_date, health_by_date = self._recovery_by_date(
+            recovery_by_date, health_by_date, infection = self._recovery_by_date(
                 db, today, morning_battery_history
             )
 
@@ -128,4 +133,5 @@ class DailyPlanningContextService:
             activity_feedback=self._activity_feedback_service.list(500),
             today=today,
             calendar_window_days=self._calendar_window_days,
+            infection_hint=infection,
         )

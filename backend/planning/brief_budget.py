@@ -69,11 +69,14 @@ def _steps(brief: dict[str, Any]) -> list[tuple[str, Any]]:
 def fit_brief(
     brief: dict[str, Any], limit: int = BRIEF_CHARACTER_LIMIT
 ) -> dict[str, Any]:
-    """The brief within ``limit`` characters; dropped entry counts go to ``omitted``."""
+    """The brief within ``limit`` characters; dropped entry counts go to ``omitted``.
+
+    A brief fitted before keeps its counts when a later addition needs more room.
+    """
     if brief_size(brief) <= limit:
         return brief
     result = json.loads(json.dumps(brief))
-    omitted: dict[str, int] = {}
+    omitted: dict[str, int] = dict((result.get("omitted") or {}).get("counts") or {})
     for label, trim in _steps(result):
         while (
             brief_size({**result, "omitted": {"note": OMITTED_NOTE, "counts": omitted}})

@@ -24,6 +24,7 @@ of its own modules.
 | [M11](m11-activity-energy.md) | Own activity energy, net of resting metabolism | model estimate |
 | [M12](m12-adaptive-expenditure.md) | Adaptive daily expenditure from intake and the weight trend | model estimate |
 | [M13](m13-body-composition-resting.md) | Body fat from 3-site skinfolds and resting energy from lean mass | model estimate |
+| [M14](m14-infection-hint.md) | Early infection hint from night breathing rate, resting HR and HRV | descriptive statistic |
 
 M5 covers the smoothed load curves (#1432). M6 (#1725) replaces provider TSS
 with a local load; Banister TRIMP appears only as its heart-rate branch. M7

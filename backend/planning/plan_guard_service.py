@@ -456,6 +456,7 @@ class PlanGuardService:
         # unchecked, as for a guard built without the library (#2379).
         self._templates: Callable[[], Mapping[str, Mapping[str, Any]]] | None = None
         self._history = history or BriefHistory()
+        self._infection_hint: Callable[[], Mapping[str, Any] | None] = lambda: None
         self._return_stage: Callable[[], int | None] = lambda: None
         self._profile = profile
         self._planned_units = planned_units
@@ -556,6 +557,13 @@ class PlanGuardService:
     ) -> PlanGuardService:
         """Enforce the stage of the return after an illness pause (#2042)."""
         self._return_stage = return_stage
+        return self
+
+    def with_infection_hint(
+        self, infection_hint: Callable[[], Mapping[str, Any] | None]
+    ) -> PlanGuardService:
+        """Show today's infection hint (M14, #3762) in the brief; no check reads it."""
+        self._infection_hint = infection_hint
         return self
 
     def _current_return_stage(self) -> int | None:
@@ -667,7 +675,7 @@ class PlanGuardService:
         units = self._planned_units()
         completed = self._recent(today)
         competitions = self._competitions()
-        return build_planning_brief(
+        brief = build_planning_brief(
             progress=self._progress(),
             completed=completed,
             competitions=competitions,
@@ -687,3 +695,9 @@ class PlanGuardService:
             ),
             complaints=self._complaints(),
         )
+        # A shown infection hint (M14, #3762) is information only; no check reads it.
+        # It is never trimmed: the brief is fitted again with it, older entries go first.
+        infection_hint = self._infection_hint()
+        if not infection_hint:
+            return brief
+        return brief_budget.fit_brief({**brief, "infection_hint": dict(infection_hint)})

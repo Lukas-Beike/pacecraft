@@ -122,6 +122,31 @@ def personal_recovery(
     }
 
 
+def series_baseline(
+    canonical: CanonicalRecoveryInputs,
+    kind: MetricKind,
+    metric: str,
+    measurement: str,
+    today: date,
+) -> dict[str, Any] | None:
+    """One Garmin series compared exactly like the baselines above, or None.
+
+    Lets a method compare a series the recovery view does not show, such as the
+    breathing rate during sleep for the infection hint (#3762).
+    """
+    key = (ProviderId.GARMIN, metric, measurement)
+    groups: dict[tuple[ProviderId, str, str], dict[str, float]] = {}
+    window = ((today - timedelta(days=83)).isoformat(), today.isoformat())
+    daily = canonical.daily_observations(kind, ProviderId.GARMIN)
+    for day, observation in daily.items():
+        _add_record(groups, window, key, day.isoformat(), observation.value.value)
+    if key not in groups:
+        return None
+    contexts = {day.isoformat(): observation for day, observation in daily.items()}
+    cutoff = (today - timedelta(days=42)).isoformat()
+    return _baseline(key, groups[key], cutoff, today, contexts)
+
+
 def _add_record(
     groups: dict,
     window: tuple[str, str],
@@ -215,7 +240,9 @@ def _baseline(
         "observed_at": observed,
         "window_days": 42,
         "nights": len(prior),
-        "unit": {"sleep": "h", "hrv": "ms", "resting_hr": "bpm"}[metric],
+        "unit": {"sleep": "h", "hrv": "ms", "resting_hr": "bpm", "respiration": "brpm"}[
+            metric
+        ],
         "status": "insufficient_data",
         "history": [
             {"date": day, "value": value} for day, value in sorted(records.items())

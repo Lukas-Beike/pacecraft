@@ -21,6 +21,7 @@ from backend.db.repositories import (
     PlanningStateRepository,
     TrainingPlanRepository,
 )
+from backend.performance.infection_hint import infection_hint_reader
 from backend.planning import adaptive as planning_adaptive
 from backend.planning import changes as planning_changes
 from backend.planning.adaptive_preview_service import (
@@ -394,6 +395,10 @@ def build_plan_guard(ctx: AppContext) -> PlanGuardServices:
                 for item in ctx.planning.workout_library().list(1000)
                 if not item.get("date")
             }
+        ).with_infection_hint(
+            infection_hint_reader(
+                ctx.database(), lambda: ctx.canonical_read, local_date
+            )
         )
 
     return PlanGuardServices(plan_guard_service, planned_unit_estimator)

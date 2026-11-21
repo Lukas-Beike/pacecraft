@@ -32,6 +32,7 @@ CARD_NAMES = (
     "m11-activity-energy.md",
     "m12-adaptive-expenditure.md",
     "m13-body-composition-resting.md",
+    "m14-infection-hint.md",
 )
 FRONT_FIELDS = (
     "Card",
