@@ -1229,7 +1229,8 @@ class CompetitionRepository:
         now: str,
     ) -> None:
         db.execute(
-            "UPDATE competitions SET name=?, event_date=?, starts_at_local=?, sport=?, environment=?, sport_detail=?, priority=?, category=?, distance=?, target=?, description=?, planned_duration_s=?, notes=?, intervals_event_id=?, external_id=?, sync_dirty=0, sync_state='synced', sync_conflict='', last_synced_at=?, updated_at=? WHERE id=?",
+            # The goal is local only (#3908): adopting the remote event keeps it.
+            "UPDATE competitions SET name=?, event_date=?, starts_at_local=?, sport=?, environment=?, sport_detail=?, priority=?, category=?, distance=?, description=?, planned_duration_s=?, notes=?, intervals_event_id=?, external_id=?, sync_dirty=0, sync_state='synced', sync_conflict='', last_synced_at=?, updated_at=? WHERE id=?",
             (
                 data["name"],
                 data["event_date"],
@@ -1240,7 +1241,6 @@ class CompetitionRepository:
                 data["priority"],
                 data["category"],
                 data["distance"],
-                data["target"],
                 data["description"],
                 data["planned_duration_s"],
                 data["notes"],

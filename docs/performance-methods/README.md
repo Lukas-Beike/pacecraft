@@ -72,7 +72,11 @@ reached stays visible in API, UI and Coach.
   `released YYYY-MM-DD (athlete)`. Open points block only the affected
   physiological interpretation, not correct and limited descriptive output.
 - A method change bumps `Card version` together with the method version in
-  code. The language model never selects formulas or parameters.
+  code. The language model never selects formulas or parameters. A changed
+  number in a method module (a window, seed, coefficient or bound) fails
+  `METHOD_NUMBER_PINS` in `tests/test_performance_method_cards.py` until the
+  version is bumped, or the pin is renewed with the same version and a reason
+  when results do not change (#3894).
 
 ## Review procedure
 

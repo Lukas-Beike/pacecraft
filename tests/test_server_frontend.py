@@ -17,6 +17,44 @@ VERSIONED_ASSET_REF = re.compile(r'(?<=[="])(/[^"?\s]+)\?v=([0-9a-f]{10})(?=")')
 CACHE_NAME_PATTERN = r'const CACHE = "pacecraft-[0-9a-f]{10}";'
 
 
+VIEWPORT_CONDITION = r"project\.name|viewportSize\(\)"
+JUMP = re.compile(r"^\W*(continue|return)\b")
+ISSUE_NUMBER = re.compile(r"#\d{3,}")
+
+
+def jumps_after(line, end, following):
+    """Whether a `continue` or `return` follows the condition, braced or next line."""
+    rest = line[end:].split(")", 1)[-1]
+    if JUMP.match(rest):
+        return True
+    return rest.strip() in ("", "{") and bool(JUMP.match(following))
+
+
+def silent_viewport_skips(source):
+    """Lines whose project or viewport condition jumps past what follows (#3894).
+
+    Also a condition through an alias such as
+    `const mobile = testInfo.project.name === "mobile"` (Gitar).
+    A line that, or whose previous line, names an issue is allowed.
+    """
+    aliases = re.findall(
+        rf"(?:const|let|var)\s+(\w+)\s*=[^;\n]*(?:{VIEWPORT_CONDITION})", source
+    )
+    names = "".join(rf"|\b{re.escape(name)}\b" for name in aliases)
+    condition = re.compile(rf"\bif\s*\(.*(?:{VIEWPORT_CONDITION}{names})")
+    lines = source.splitlines()
+    found = []
+    for number, line in enumerate(lines, 1):
+        test = condition.search(line)
+        following = lines[number] if number < len(lines) else ""
+        named = ISSUE_NUMBER.search(line) or (
+            number > 1 and ISSUE_NUMBER.search(lines[number - 2])
+        )
+        if test and not named and jumps_after(line, test.end(), following):
+            found.append(number)
+    return found
+
+
 def versioned_asset_refs(markup):
     """Return every local ``/path?v=<hash>`` reference found in quoted markup or JS."""
     return [
@@ -575,6 +613,62 @@ class ServerFrontendTests(ServerTestCase):
             "page.locator('#form').getByLabel(...)",
         )
 
+    def test_specs_that_fail_api_requests_block_the_service_worker(self):
+        # Routes miss requests that pass through the worker's fetch listener, so
+        # a blocked save went out online and develop went red twice (#3842).
+        worker_specs = {
+            "coach.spec.js": "waits for the worker to activate",
+            "contracts.spec.js": "checks the worker's cache",
+            "offline-errors.spec.js": "goes offline with the worker's cached shell",
+            "update-reload.spec.js": "drives the worker's controllerchange",
+        }
+        # An abort, a literal 4xx/5xx, or a status not written as a literal
+        # (a variable or `{ status }` shorthand) counts as failing (Gitar).
+        failing = re.compile(
+            r"route\.abort\(|status:\s*[45]\d\d|status:\s*[A-Za-z_]|[{,]\s*status\s*[,}]"
+        )
+
+        def unblocked(source: str) -> bool:
+            return (
+                ".route(" in source
+                and "/api/" in source
+                and bool(failing.search(source))
+                and 'serviceWorkers: "block"' not in source
+            )
+
+        self.assertTrue(unblocked('page.route("**/api/x", (route) => route.abort());'))
+        self.assertTrue(
+            unblocked('page.route("**/api/x", (r) => r.fulfill({ status, headers }));')
+        )
+        self.assertTrue(
+            unblocked('page.route("**/api/x", (r) => r.fulfill({ status: code }));')
+        )
+        self.assertFalse(
+            unblocked('page.route("**/api/x", (r) => r.fulfill({ status: 200 }));')
+        )
+        self.assertFalse(
+            unblocked(
+                'test.use({ serviceWorkers: "block" });\n'
+                'page.route("**/api/x", (route) => route.abort());'
+            )
+        )
+        e2e = server.PUBLIC_DIR.parent / "e2e"
+        missing = [
+            spec.name
+            for spec in sorted(e2e.glob("*.spec.js"))
+            if spec.name not in worker_specs
+            and unblocked(spec.read_text(encoding="utf-8"))
+        ]
+        self.assertEqual(
+            [],
+            missing,
+            'add test.use({ serviceWorkers: "block" }), or list the spec with '
+            "the reason it needs the worker",
+        )
+        for name in worker_specs:
+            source = (e2e / name).read_text(encoding="utf-8")
+            self.assertRegex(source, r"serviceWorker\b|setOffline", name)
+
     def test_browser_regression_contract_covers_routes_and_responsive_guards(
         self,
     ):
@@ -601,6 +695,50 @@ class ServerFrontendTests(ServerTestCase):
         self.assertIn("width: 390, height: 844", playwright_config)
         self.assertIn("interactive-widget=resizes-content", markup)
         self.assertIn("globalThis.visualViewport", app_source)
+
+    def test_no_spec_skips_an_assertion_silently_by_viewport(self):
+        # A project or viewport condition that jumps past an assertion hides a
+        # failure on that viewport; skip the whole test with test.skip(condition,
+        # reason) instead, or name the issue that allows it on the line (#3894).
+        hidden = silent_viewport_skips
+        self.assertEqual(
+            [2],
+            hidden(
+                'for (const p of points) {\n  if (testInfo.project.name === "mobile")'
+                " continue;\n  expect(p).toBe(1);\n}"
+            ),
+        )
+        for shape in (
+            'if (testInfo.project.name === "mobile") { continue; }',
+            "if (page.viewportSize().width < 600) {\n  continue;\n}",
+            'if (testInfo.project.name === "mobile")\n  return;',
+        ):
+            with self.subTest(shape=shape):
+                self.assertEqual([1], hidden(shape))
+        self.assertEqual(
+            [2],
+            hidden(
+                'const mobile = testInfo.project.name === "mobile";\n'
+                "if (mobile && points.length > 12) continue;"
+            ),
+        )
+        self.assertEqual(
+            [],
+            hidden(
+                '// allowed by #1234\nif (testInfo.project.name === "mobile") continue;\n'
+                'test.skip(testInfo.project.name !== "desktop", "wide layout only");'
+            ),
+        )
+        found = [
+            f"{spec.name}:{number}"
+            for spec in sorted((server.PUBLIC_DIR.parent / "e2e").glob("*.spec.js"))
+            for number in hidden(spec.read_text(encoding="utf-8"))
+        ]
+        self.assertEqual(
+            [],
+            found,
+            "fix the cause or skip the whole test with test.skip(condition, reason)",
+        )
 
     def test_static_files_reject_path_traversal(self):
         static_assets = StaticAssetService(server.PUBLIC_DIR)

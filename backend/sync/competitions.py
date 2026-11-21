@@ -542,7 +542,7 @@ def failure_kind(error: BaseException) -> str:
     """A content-free kind: the HTTP status, the app reason or the error class."""
     if isinstance(error, AppError):
         if error.upstream_status is not None:
-            return f"http_{error.upstream_status}"
+            return f"http_{error.upstream_status}{_rejected_field(error.message)}"
         reason = error.reason or ""
         return f"app_{error.status}_{reason if _SLUG.fullmatch(reason) else 'none'}"
     if isinstance(error, HTTPError):
@@ -550,6 +550,32 @@ def failure_kind(error: BaseException) -> str:
     if isinstance(error, TimeoutError | ConnectionError | URLError):
         return "network"
     return f"local_{type(error).__name__}"
+
+
+# The event fields this sync sends; a rejection that names one in quotes (the API's
+# field path, such as ["target"]) adds only that name, never a value (#3908).
+_PAYLOAD_FIELDS = (
+    "target",
+    "start_date_local",
+    "category",
+    "type",
+    "distance",
+    "moving_time",
+    "external_id",
+    "description",
+    "name",
+    "id",
+)
+
+
+def _rejected_field(message: str) -> str:
+    # Only the field-path form counts: a list of known properties quotes every
+    # field and must not name one (review on #3908).
+    text = str(message or "")
+    for field in _PAYLOAD_FIELDS:
+        if re.search(r"\[\s*[\"']" + field + r"[\"']\s*\]", text):
+            return f"_{field}"
+    return ""
 
 
 def _failure_record(value: str | None) -> dict[str, Any]:

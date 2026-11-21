@@ -1,6 +1,10 @@
 const { test, expect } = require("@playwright/test");
 const { expandConnections } = require("./helpers/connections");
 
+// Routes miss requests that pass through the service worker's fetch listener; this spec
+// does not test the worker, so it is blocked and every route applies (#3842).
+test.use({ serviceWorkers: "block" });
+
 // The credential PUT is mocked: no value is stored and no provider is contacted.
 
 async function openCredentials(page) {

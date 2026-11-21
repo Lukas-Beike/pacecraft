@@ -1,6 +1,10 @@
 const { test, expect } = require("@playwright/test");
 const { expandConnections } = require("./helpers/connections");
 
+// Routes miss requests that pass through the service worker's fetch listener; this spec
+// does not test the worker, so it is blocked and every route applies (#3842).
+test.use({ serviceWorkers: "block" });
+
 test("@responsive Yazio shows a checked login and refreshes its local status", async ({ page }, testInfo) => {
   let status = { status: "unchecked", checked_at: null };
   await page.route("**/api/nutrition/yazio/status", (route) => route.fulfill({ json: status }));

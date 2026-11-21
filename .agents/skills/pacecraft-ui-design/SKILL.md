@@ -30,6 +30,12 @@ plain JavaScript, athlete data, and local-action contracts; see
   ask through AskUserQuestion with the recommendation first. Each question asks
   one decision with its own mockup set, and every option answers only that
   decision (layout and density are separate questions, at most four per call).
+  For an app-style mockup, start the demo fixture (`scripts/demo-container.ps1`)
+  and run `node scripts/mockup_capture.mjs --url <demo> --route <view> --out
+  <png in the scratchpad>`. A script piped in with `--inject - < part.js` draws the new part with the
+  app's own helpers (`h`, `analysisChart`, `analysisChartGroup`); `--selector`
+  captures one element, and `--width`, `--theme` and `--wait-for` set the rest
+  (#3820).
 - Give the primary decision visual priority. Group content by meaning, preserve
   reading order, and use spacing and typography before adding more cards, borders,
   decoration, or animation. Keep dense metrics readable on a narrow screen.

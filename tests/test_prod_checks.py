@@ -1138,6 +1138,10 @@ class ProdChecksTests(unittest.TestCase):
             '"unknown","type":"KeyError"}}\n'
             '{"level":"WARNING","event":"coach_tool_failed","context":{"tool":'
             '"x; rm -rf","reason":"secret=1"}}\n'
+            # #3903: a refused request binding counts by its rule's code.
+            '{"level":"WARNING","event":"coach_tool_failed","context":{"tool":'
+            '"save_nutrition_entry","reason":"request_invalid",'
+            '"validation_reason":"request_provenance","type":"AppError"}}\n'
             # #3475: failed external requests per service, status and code; a host
             # or error text never prints.
             '{"level":"WARNING","event":"external_request_failed","context":{"service":'
@@ -1160,7 +1164,10 @@ class ProdChecksTests(unittest.TestCase):
         self.assertNotIn("old", text)
         self.assertNotIn("token=abc", text)
         self.assertNotIn("payload", text)
-        self.assertIn("  WARNING coach_tool_failed 4", text)
+        self.assertIn("  WARNING coach_tool_failed 5", text)
+        self.assertIn(
+            "coach tool failed save_nutrition_entry request_provenance 1", text
+        )
         self.assertIn("coach tool failed read_nutrition tool_arguments_invalid 2", text)
         self.assertIn("coach tool failed unknown KeyError 1", text)
         self.assertIn("coach tool failed ? ? 1", text)

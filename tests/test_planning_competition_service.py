@@ -504,8 +504,15 @@ class CompetitionServiceTests(unittest.TestCase):
                 (json.dumps({"remote": remote}), competition_id),
             )
 
+        with self.manager.unit_of_work() as db:
+            db.execute(
+                "UPDATE competitions SET target='unter 3:30' WHERE id=?",
+                (competition_id,),
+            )
         adopted = self.service.resolve_conflict(competition_id, "adopt_remote")
         self.assertEqual(adopted["competition"]["name"], "Remote Marathon")
+        # #3908: the goal is local only; adopting the remote event keeps it.
+        self.assertEqual(adopted["competition"]["target"], "unter 3:30")
         self.assertEqual(adopted["competition"]["sync_state"], "synced")
         self.assertEqual(adopted["competition"]["intervals_event_id"], "81")
 

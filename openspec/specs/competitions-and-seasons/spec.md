@@ -90,11 +90,11 @@ The system SHALL keep remote pushes explicit and output-only (Intervals.icu rece
 
 #### Scenario: Named approved push
 - **WHEN** the athlete explicitly requests competition synchronization, and the manifest is frozen when the request runs
-- **THEN** outbound writes use stable identity and supported sport payloads, with concurrent local edits checked before marking captured records synced.
+- **THEN** outbound writes use stable identity and supported sport payloads, with concurrent local edits checked before marking captured records synced. The competition goal (`target`) is never sent as the event `target` (Intervals.icu's workout target type: AUTO, POWER, HR, PACE); it travels as the description's last line "Ziel: <goal>", and on read-back that line is dropped so it neither duplicates nor overwrites the local goal (#3908).
 
 #### Scenario: Conflict choice
 - **WHEN** a stored conflict is resolved as keep_local or adopt_remote
-- **THEN** keep-local retains a local override for a later explicit push, while adopt-remote requires a valid remote event and updates the local record; invalid strategy, corrupt/missing conflict or unavailable remote data fails explicitly.
+- **THEN** keep-local retains a local override for a later explicit push, while adopt-remote requires a valid remote event and updates the local record, keeping the local goal (#3908); invalid strategy, corrupt/missing conflict or unavailable remote data fails explicitly.
 
 #### Scenario: Remote race deletion only for app-owned future events
 - **WHEN** a competition sync deletes the remote race of a recorded deletion
@@ -110,7 +110,7 @@ The system SHALL keep remote pushes explicit and output-only (Intervals.icu rece
 
 #### Scenario: Content-free failure record
 - **WHEN** a sync fails
-- **THEN** it stores the failed step and a kind without provider text (`http_<status>`, `app_<status>_<reason>`, `network` or `local_<error class>`) and counts consecutive failures; the diagnostic report's `competition_sync` section shows them until a sync succeeds and clears the record (`tests/test_sync_competitions.py::test_failure_kind_names_the_status_reason_or_class_without_text`).
+- **THEN** it stores the failed step and a kind without provider text (`http_<status>`, with `_<field>` when the rejection quotes one of the sent field names such as `target`, `app_<status>_<reason>`, `network` or `local_<error class>`) and counts consecutive failures; the diagnostic report's `competition_sync` section shows them until a sync succeeds and clears the record (`tests/test_sync_competitions.py::test_failure_kind_names_the_status_reason_or_class_without_text`).
 
 #### Scenario: Athlete sends the competitions
 - **WHEN** Intervals.icu is configured, the Anbindungen card shows "Wettkämpfe senden" on its "Wettkämpfe" row, and the athlete presses it

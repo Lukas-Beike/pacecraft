@@ -49,6 +49,24 @@ class DocsVersionDriftTest(unittest.TestCase):
                     text, rf"[Vv]ersion {version} (adds|records|stores|gives)"
                 )
 
+    def test_readme_method_and_register_ranges_match_the_cards(self) -> None:
+        # The README said M1-M8 and R1-R53 while the cards had reached M14 and
+        # R77, and nothing failed (#3901).
+        methods = (ROOT / "docs/performance-methods/README.md").read_text(
+            encoding="utf-8"
+        )
+        highest = {
+            "M": max(map(int, re.findall(r"^\| \[M(\d+)\]", methods, re.MULTILINE))),
+            "R": max(map(int, re.findall(r"^\| R(\d+) ", methods, re.MULTILINE))),
+        }
+        for prefix, value in highest.items():
+            with self.subTest(prefix=prefix):
+                stated = documented("README.md", rf"{prefix}1-{prefix}(\d+)")
+                self.assertTrue(
+                    stated, f"README.md no longer states {prefix}1-{prefix}n"
+                )
+                self.assertEqual(set(stated), {value})
+
     def test_feature_list_lines_stay_short_enough_to_merge(self) -> None:
         # Git conflicts on whole lines; one sentence per line keeps parallel
         # features from colliding in one long bullet (#2864).

@@ -705,7 +705,7 @@ function trendHistoryNote(period) {
   return trendHistories.get(analysisPeriod(period).days)?.failed ? h("p", "muted", "Der längere Zeitraum konnte nicht geladen werden.") : null;
 }
 
-// The new groups start visible; the shown tab hides the other sport's again (#3824).
+// A long read's answer redraws the charts and the training focus of its period.
 function rerenderAnalysisTrend() {
   renderAnalysisHistory(state.data?.performance?.history);
   renderTrainingFocus(analysisTrainingFocus());
@@ -1146,6 +1146,7 @@ function renderAnalysisHistory(history) { // NOSONAR
     root.append(predictions, runningBest, powerProfile);
     for (const target of [root, loadRoot, enduranceRoot]) target.dataset.analysisEmpty = "true";
     Object.assign(root.dataset, { analysisEmptyRunning: "true", analysisEmptyCycling: "true" });
+    renderAnalysisSegmentsIfActive();
     return;
   }
   const end = history.end;
@@ -1247,6 +1248,8 @@ function renderAnalysisHistory(history) { // NOSONAR
   loadRoot.dataset.analysisEmpty = String(!loadRoot.childElementCount);
   enduranceRoot.dataset.analysisEmpty = String(!enduranceRoot.childElementCount);
   for (const target of [root, loadRoot, enduranceRoot]) target.querySelectorAll("details:not([data-analysis-section])").forEach((details) => { details.open = openDetails.has(`${details.closest("section")?.querySelector("h3,h4")?.textContent}:${details.querySelector("summary")?.textContent}`); });
+  // The new sport groups start visible: every redraw re-applies the shown tab itself, so no caller can forget it (#3824, #3828).
+  renderAnalysisSegmentsIfActive();
 }
 
 function sessionRpeSourceLabel(days, rated) {

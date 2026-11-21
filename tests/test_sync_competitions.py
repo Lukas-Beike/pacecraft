@@ -902,9 +902,56 @@ class CompetitionSyncReconcilerTests(unittest.TestCase):
         self.assertEqual(summary["failures"], 1)
         self.assertEqual(summary["failure_kinds"], {"fetch.local_RuntimeError": 1})
 
+    def test_a_competition_goal_is_never_sent_and_a_rejected_field_is_named(self):
+        # #3908: Intervals.icu answered 400 to the goal sent as the event `target`.
+        row = {**self.local_competition("goal"), "target": "unter 45 Minuten"}
+        self.insert_competition(row)
+        client = FakeCompetitionClient()
+        service = self.make_sync_service(client)
+        with self.database_manager.manager.reader() as db:
+            manifest = competition_push_manifest(db)
+        service.sync(expected_manifest=manifest)
+        self.assertNotIn("target", client.upsert_calls[0][0])
+        self.assertTrue(
+            client.upsert_calls[0][0]["description"].endswith("Ziel: unter 45 Minuten")
+        )
+        # A rejection that names a field is recorded with that name only.
+        rejected = AppError(
+            502,
+            'Intervals.icu weist die Anfrage zurück (400): secret ["target"]',
+            upstream_status=400,
+        )
+        with self.database_manager.manager.unit_of_work() as db:
+            db.execute("UPDATE competitions SET sync_dirty=1 WHERE id='goal'")
+            manifest = competition_push_manifest(db)
+        client.upsert_competition_events = Mock(side_effect=rejected)
+        with self.assertRaises(AppError):
+            service.sync(expected_manifest=manifest)
+        with self.database_manager.manager.reader() as db:
+            summary = summarize_competition_sync(db)
+        self.assertEqual({"upsert.http_400_target": 1}, summary["failure_kinds"])
+        self.assertNotIn("secret", self.stored_kv("intervals_competition_sync_failure"))
+
     def test_failure_kind_names_the_status_reason_or_class_without_text(self):
         cases = (
             (AppError(502, "secret text", upstream_status=422), "http_422"),
+            # #3908: a rejection naming one of our fields adds the name only.
+            (
+                AppError(
+                    502,
+                    'Abgelehnt: Cannot deserialize "unter 45" through Event["target"]',
+                    upstream_status=400,
+                ),
+                "http_400_target",
+            ),
+            (
+                AppError(
+                    502,
+                    'Unrecognized field "x" (2 known properties: "target", "name")',
+                    upstream_status=400,
+                ),
+                "http_400",
+            ),
             (AppError(502, "secret text", reason="upstream_rejected"), "app_502_upstream_rejected"),
             (AppError(502, "secret text"), "app_502_none"),
             (AppError(502, "secret text", reason="Has Text!"), "app_502_none"),

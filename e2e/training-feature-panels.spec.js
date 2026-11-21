@@ -2,6 +2,10 @@ const { test, expect } = require("@playwright/test");
 const { expandConnections } = require("./helpers/connections");
 const { showCalendarEntry } = require("./helpers/ui");
 
+// Routes miss requests that pass through the service worker's fetch listener; this spec
+// does not test the worker, so it is blocked and every route applies (#3842).
+test.use({ serviceWorkers: "block" });
+
 test("@responsive Garmin metric export sits in Anbindungen and shows its receipt", async ({ page }) => {
   await page.goto("/#more/connections");
   await expect(page.locator("#appShell")).toBeVisible();

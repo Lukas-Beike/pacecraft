@@ -2,6 +2,10 @@ const { test, expect } = require("@playwright/test");
 const AxeBuilder = require("@axe-core/playwright").default;
 const { waitForSettledState } = require("./helpers/settled-state");
 
+// Routes miss requests that pass through the service worker's fetch listener; this spec
+// does not test the worker, so it is blocked and every route applies (#3842).
+test.use({ serviceWorkers: "block" });
+
 // #1783: loading, not configured, no data yet and failed reads look different.
 const POWER_PROFILES = "/api/analysis/power-profiles";
 const ANALYSIS_TABS = [

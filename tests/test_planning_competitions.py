@@ -129,12 +129,8 @@ class PlanningCompetitionTests(unittest.TestCase):
         )
         self.assertEqual(
             competitions.competition_event_optional_payload(source),
-            {
-                "planned_duration_s": 3600,
-                "distance": 42.5,
-                "target": '{"pace":"4:30/km"}',
-                "id": 123,
-            },
+            # #3908: the goal stays local; Intervals.icu's `target` is an enum.
+            {"planned_duration_s": 3600, "distance": 42.5, "id": 123},
         )
         self.assertEqual(source, original)
         self.assertEqual(
@@ -152,12 +148,68 @@ class PlanningCompetitionTests(unittest.TestCase):
         self.assertEqual(competitions.competition_event_optional_payload({}), {})
         self.assertEqual(
             competitions.competition_event_optional_payload({"target": "Finish"}),
-            {"target": "Finish"},
+            {},
         )
         with self.assertRaises(ValueError):
             competitions.competition_event_optional_payload(
                 {"planned_duration_s": "bad"}
             )
+
+    def test_the_goal_travels_as_the_last_description_line(self) -> None:
+        # #3908, athlete decision: "Ziel: <goal>" in the description, never `target`.
+        base = {"id": "r", "event_date": "2026-10-04", "sport": "Running"}
+        cases = (
+            (
+                {"description": "Hinweis", "target": "unter 45"},
+                "Hinweis\n\nZiel: unter 45",
+            ),
+            ({"target": "unter 45"}, "Ziel: unter 45"),
+            # A multi-line goal (from the Coach) is sent as one line (Gitar on #3910).
+            ({"target": "unter 45\nohne Pause"}, "Ziel: unter 45 ohne Pause"),
+            ({"description": "Hinweis"}, "Hinweis"),
+        )
+        for extra, expected in cases:
+            with self.subTest(extra=extra):
+                payload = competitions.competition_event_payload({**base, **extra})
+                self.assertEqual(expected, payload["description"])
+                self.assertNotIn("target", payload)
+        long = competitions.competition_event_payload(
+            {**base, "description": "D" * 12010, "target": "unter 45"}
+        )["description"]
+        self.assertLessEqual(len(long), 12000)
+        self.assertTrue(long.endswith("\n\nZiel: unter 45"))
+        # Read back, the app's own last line neither duplicates nor becomes the goal.
+        owned = {
+            "date": "2026-10-04",
+            "name": "Race",
+            "type": "Run",
+            "external_id": competitions.competition_external_id("r"),
+            "description": "Hinweis\n\nZiel: unter 45",
+        }
+        remote = competitions.remote_competition_data(owned)
+        assert remote is not None
+        self.assertEqual(
+            ("Hinweis", "Hinweis"), (remote["description"], remote["notes"])
+        )
+        self.assertNotIn("target", remote)
+        # A hand-written event keeps its own "Ziel:" line; a stored conflict keeps the
+        # raw text, so adopting strips the app's line once, not the athlete's too.
+        manual = competitions.remote_competition_data({**owned, "external_id": "own"})
+        assert manual is not None
+        self.assertEqual("Hinweis\n\nZiel: unter 45", manual["description"])
+        stored = json.loads(
+            competitions.competition_conflict_payload(
+                {**owned, "id": "7"}, "identity_only", detected_at="t"
+            )
+        )["remote"]
+        self.assertEqual("Hinweis\n\nZiel: unter 45", stored["description"])
+        adopted = competitions.remote_competition_data(stored)
+        assert adopted is not None
+        self.assertEqual("Hinweis", adopted["description"])
+        self.assertEqual(
+            "Ziel: früh starten\nRest",
+            competitions.remote_description_without_goal("Ziel: früh starten\nRest"),
+        )
 
     def test_event_payload_fallbacks_limits_and_input_immutability(self) -> None:
         source = {
@@ -179,10 +231,13 @@ class PlanningCompetitionTests(unittest.TestCase):
         self.assertEqual(payload["start_date_local"], "2026-10-04T00:00:00")
         self.assertEqual(payload["type"], "Run")
         self.assertEqual(payload["name"], "N" * 200)
-        self.assertEqual(payload["description"], "D" * 12000)
+        # The long description gives way to the goal line, within the 12000 limit (#3908).
+        self.assertLessEqual(len(payload["description"]), 12000)
+        self.assertTrue(payload["description"].startswith("D" * 11000))
+        self.assertTrue(payload["description"].endswith('\n\nZiel: ["finish"]'))
         self.assertEqual(payload["external_id"], "intervals-coach-competition-race-id")
         self.assertEqual(payload["distance"], 10.5)
-        self.assertEqual(payload["target"], '["finish"]')
+        self.assertNotIn("target", payload)
         self.assertEqual(payload["moving_time"], 0)
         self.assertEqual(source, original)
         fallback = competitions.competition_event_payload(
@@ -277,7 +332,9 @@ class PlanningCompetitionTests(unittest.TestCase):
         self.assertEqual(result["category"], "RACE_C")
         self.assertEqual(result["distance"], "trail")
         self.assertEqual(result["planned_duration_s"], None)
-        self.assertEqual(len(result["target"]), 1000)
+        # #3908: the remote target is not read; the local goal keeps its limit.
+        self.assertNotIn("target", result)
+        self.assertEqual(len(competitions.competition_target({"p": "z" * 1100})), 1000)
         self.assertEqual(len(result["description"]), 12000)
         self.assertEqual(len(result["notes"]), 2000)
         self.assertEqual(source, original)
@@ -301,7 +358,8 @@ class PlanningCompetitionTests(unittest.TestCase):
             {"date": "2026-10-04", "name": "Race", "target": "Sub 2:00"}
         )
         assert text_target is not None
-        self.assertEqual(text_target["target"], "Sub 2:00")
+        # #3908: a remote `target` (a workout target type) is never read as the goal.
+        self.assertNotIn("target", text_target)
 
     def test_conflict_payload_has_explicit_timestamp_and_preserves_input(self) -> None:
         remote = {
