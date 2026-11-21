@@ -32,7 +32,7 @@ plain JavaScript, athlete data, and local-action contracts; see
   decision (layout and density are separate questions, at most four per call).
   For an app-style mockup, start the demo fixture (`scripts/demo-container.ps1`)
   and run `node scripts/mockup_capture.mjs --url <demo> --route <view> --out
-  <png in the scratchpad>`. An `--inject` script draws the new part with the
+  <png in the scratchpad>`. A script piped in with `--inject - < part.js` draws the new part with the
   app's own helpers (`h`, `analysisChart`, `analysisChartGroup`); `--selector`
   captures one element, and `--width`, `--theme` and `--wait-for` set the rest
   (#3820).

@@ -1,6 +1,5 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 
@@ -22,11 +21,11 @@ test("mockup capture reaches only the local demo and keeps its files in the temp
   assert.throws(() => options(["--url", "http://127.0.0.1:8123", "--route", "coach", "--out", out, "--width", "99"]), /280 to 1920/);
   assert.throws(() => options(["--url", "http://127.0.0.1:8123", "--route", "coach", "--out", out, "--theme", "blue"]), /light or dark/);
   assert.throws(() => options(["--url", "http://127.0.0.1:8123", "--out", out]), /required/);
-  // The inject script is read from the temp directory only.
-  const inject = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "mockup-")), "inject.js");
-  fs.writeFileSync(inject, "document.body.dataset.mockup = '1';");
-  const injected = options(["--url", "http://localhost:8123", "--route", "coach", "--out", out, "--inject", inject, "--wait-for", "#card"]);
-  assert.match(injected.inject, /mockup/);
-  assert.equal(injected.waitFor, "#card");
-  assert.throws(() => options(["--url", "http://localhost:8123", "--route", "coach", "--out", out, "--inject", SCRIPT]), /system temp directory/);
+  assert.equal(options(["--url", "http://localhost:8123", "--route", "coach", "--out", out, "--wait-for", "#card"]).waitFor, "#card");
+  // The inject script comes on standard input only, never from a file path (Sonar S8707).
+  const { injectScript } = await load();
+  assert.equal(injectScript("-", () => "document.body.dataset.mockup = '1';"), "document.body.dataset.mockup = '1';");
+  assert.throws(() => injectScript(SCRIPT, () => "x"), /standard input/);
+  assert.throws(() => injectScript("-", () => "  \n"), /empty script/);
+  assert.throws(() => options(["--url", "http://localhost:8123", "--route", "coach", "--out", out, "--inject", SCRIPT]), /standard input/);
 });

@@ -1,7 +1,7 @@
 // One app-style mockup from the disposable demo fixture (#3820).
 //
 //   node scripts/mockup_capture.mjs --url http://127.0.0.1:<port> --route analysis/running
-//     --out <png in the temp directory> [--inject <script in the temp directory>]
+//     --out <png in the temp directory> [--inject - < script.js]
 //     [--width 412] [--theme light|dark] [--selector <css>] [--wait-for <css>]
 //
 // Starts from `scripts/demo-container.ps1`: logs in with the demo's published fake
@@ -42,9 +42,19 @@ export function options(argv) {
     url, width, theme: values.theme, selector: values.selector, waitFor: values["wait-for"],
     route: String(values.route).replace(/^#?\/?/, ""),
     out: scratchPath(values.out),
-    inject: values.inject ? fs.readFileSync(scratchPath(values.inject), "utf8") : null,
+    inject: values.inject === undefined ? null : injectScript(values.inject, readStdin),
   };
 }
+
+// The inject script comes on standard input (`--inject -`), so no file path is read.
+export function injectScript(flag, read) {
+  if (flag !== "-") throw new Error("--inject - reads the script from standard input");
+  const script = read();
+  if (!script.trim()) throw new Error("--inject - got an empty script on standard input");
+  return script;
+}
+
+const readStdin = () => fs.readFileSync(0, "utf8");
 
 async function capture({ url, route, out, inject, width, theme, selector, waitFor }) {
   const { chromium } = await import("@playwright/test");
@@ -56,7 +66,8 @@ async function capture({ url, route, out, inject, width, theme, selector, waitFo
     await page.getByRole("button", { name: "Anmelden" }).click();
     await page.locator("#appShell").waitFor({ state: "visible", timeout: 30000 });
     await page.goto(`/#${route}`);
-    await page.waitForFunction(() => !globalThis.state?.loadPromise, null, { timeout: 30000 });
+    // `state` is a top-level const of a classic script: a global binding, not a property of globalThis (Gitar).
+    await page.waitForFunction("typeof state !== 'undefined' && Boolean(state.data) && !state.loadPromise", null, { timeout: 30000 });
     // A view's later reads (the event stream keeps the network busy) finish when this element shows.
     if (waitFor) await page.locator(waitFor).first().waitFor({ state: "visible", timeout: 30000 });
     if (inject) await page.evaluate(`(async () => {\n${inject}\n})()`);
