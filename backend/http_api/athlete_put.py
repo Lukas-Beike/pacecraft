@@ -67,6 +67,9 @@ class AthletePutRoutes:
                     Access.SESSION_CSRF,
                     self._save_weight,
                     replayable=True,
+                    # The local save is followed by the Garmin push in this
+                    # request; one value per day, so a repeat sets the same value.
+                    replay_with_write=False,
                 ),
                 Route(
                     "PUT",
@@ -84,6 +87,9 @@ class AthletePutRoutes:
                     Access.SESSION_CSRF,
                     self._save_body_fat,
                     replayable=True,
+                    # The local save is followed by the Garmin push in this
+                    # request; one value per day, so a repeat sets the same value.
+                    replay_with_write=False,
                 ),
                 Route(
                     "PUT",

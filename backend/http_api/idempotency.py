@@ -66,6 +66,10 @@ class IdempotencyStore:
             raise AppError(409, KEY_REUSED, reason="idempotency_key_reused")
         return status, payload
 
+    def transaction(self) -> Any:
+        """One unit of work; the handler's writes and the kept answer share it."""
+        return self._database().unit_of_work()
+
     def store(self, key: str, path: str, status: int, payload: Any) -> None:
         """Keep a 2xx result and drop the entries older than the retention."""
         value = json.dumps(

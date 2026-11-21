@@ -93,6 +93,8 @@ class RequestHandler(BaseHTTPRequestHandler):
     _release_heavy_read: Callable[[], None] | None = None
     # The store, key and path of the keyed request whose 2xx answer is stored when sent.
     _idempotent_request: tuple[IdempotencyStore, str, str] | None = None
+    # Answers held until the keyed request's transaction commits (#3761).
+    _held_answers: list[tuple[int, Any, Any]] | None = None
     server_version: str
     client_disconnect_errors = (
         BrokenPipeError,
@@ -353,9 +355,13 @@ class RequestHandler(BaseHTTPRequestHandler):
         """Around a route's handler: True when a kept answer was already sent.
 
         For a replayable route with a valid ``Idempotency-Key`` a stored result is
-        answered and the caller skips the handler; otherwise ``send_json`` keeps the
-        handler's 2xx answer just before it is sent (#3761). An absent or invalid
-        key is today's behaviour. The handler stays in the caller, after the
+        answered and the caller skips the handler (#3761). Otherwise the handler
+        runs inside one transaction that also keeps its 2xx answer, so a crash
+        leaves both the write and its key or neither; the answer is sent once that
+        transaction committed. A route whose write is followed by a remote push
+        (``replay_with_write=False``: weight and body fat, one value per day) keeps
+        its answer after its own commit instead. An absent or invalid key is
+        today's behaviour. The handler stays in the caller, after the
         authentication, CSRF and maintenance checks.
         """
         store = self.dependencies.idempotency if route.replayable else None
@@ -370,10 +376,22 @@ class RequestHandler(BaseHTTPRequestHandler):
                 yield True
                 return
             self._idempotent_request = (store, key, request.path)
+            if not route.replay_with_write:
+                try:
+                    yield False
+                finally:
+                    self._idempotent_request = None
+                return
+            self._held_answers = []
             try:
-                yield False
+                with store.transaction():
+                    yield False
+                held = self._held_answers
             finally:
                 self._idempotent_request = None
+                self._held_answers = None
+            for answer in held:
+                self.dependencies.response_transport.send_json(self, *answer)
 
     def send_sse_headers(self, *, persistent: bool = True) -> None:
         self.dependencies.response_transport.send_sse_headers(
@@ -429,6 +447,15 @@ class RequestHandler(BaseHTTPRequestHandler):
     ) -> None:
         if self._release_heavy_read:  # the read is done; the send runs outside
             self._release_heavy_read()
+        if self._held_answers is not None:
+            # Inside the keyed request's transaction: keep a 2xx answer with the
+            # write; a failure rolls both back. Sent after the commit.
+            if self._idempotent_request and 200 <= status < 300:
+                store, key, path = self._idempotent_request
+                self._idempotent_request = None
+                store.store(key, path, status, payload)
+            self._held_answers.append((status, payload, headers))
+            return
         if self._idempotent_request and 200 <= status < 300:
             store, key, path = self._idempotent_request
             self._idempotent_request = None

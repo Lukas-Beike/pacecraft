@@ -105,6 +105,9 @@ class Route:
     # GET only: a view read over the history that runs one at a time
     # (``HeavyReadGate``, #3029).
     heavy: bool = False
+    # Replayable only: keep the answer in the write's own transaction (#3761). A
+    # write followed by a remote push in the same request keeps it after commit.
+    replay_with_write: bool = True
     # POST and PUT only: answers a repeated ``Idempotency-Key`` from its stored
     # result (``IdempotencyStore``, #3761).
     replayable: bool = False
