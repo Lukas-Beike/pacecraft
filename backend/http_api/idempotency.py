@@ -79,8 +79,5 @@ class IdempotencyStore:
         )
         cutoff = (datetime.now(UTC) - RETENTION).isoformat()
         with self._database().unit_of_work() as db:
-            db.execute(
-                "DELETE FROM kv WHERE substr(key, 1, ?) = ? AND updated_at < ?",
-                (len(KEY_PREFIX), KEY_PREFIX, cutoff),
-            )
+            self._key_values.delete_prefix_before(db, KEY_PREFIX, cutoff)
             self._key_values.set(db, KEY_PREFIX + key, value)

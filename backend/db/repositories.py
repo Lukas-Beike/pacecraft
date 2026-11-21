@@ -934,6 +934,13 @@ class KeyValueRepository:
         # substr, not LIKE: "_" in a prefix would match any character.
         db.execute("DELETE FROM kv WHERE substr(key, 1, ?) = ?", (len(prefix), prefix))
 
+    def delete_prefix_before(self, db: Any, prefix: str, cutoff: str) -> None:
+        """Delete the keys of ``prefix`` last written before ``cutoff`` (#3761)."""
+        db.execute(
+            "DELETE FROM kv WHERE substr(key, 1, ?) = ? AND updated_at < ?",
+            (len(prefix), prefix, cutoff),
+        )
+
 
 class SessionRepository:
     """Persist authentication sessions without owning their transaction."""
