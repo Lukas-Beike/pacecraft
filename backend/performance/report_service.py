@@ -415,6 +415,17 @@ class TrainingProfileSelectionService:
             result["all_time"] = self._all_time_window(today)
         return result
 
+    def records(self) -> dict[str, Any]:
+        """The all-time records of Analyse › Rekorde, for the Coach (#3831).
+
+        The same window the cards read: ``status`` pending or failed before a
+        usable background build, ``stale`` while a newer one runs.
+        """
+        return {
+            "all_time": self._all_time_window(self._today()),
+            "scope": "Rekorde aller gespeicherten Einheiten wie in Analyse › Rekorde: beste Leistung je Dauer (outdoor und indoor getrennt), beste Laufzeiten je Strecke und activity_records (weiteste, längste und höchste Einzelfahrt ohne Indoor-Fahrten und Einzellauf). status pending oder failed heißt unbekannt, nicht kein Rekord; stale heißt, ein neuerer Stand wird gerade berechnet.",
+        }
+
     def _power_meter_changes(self) -> list[dict[str, Any]]:
         """The days a sport's power meter changed, newest first (#1869)."""
         if self._canonical is None:

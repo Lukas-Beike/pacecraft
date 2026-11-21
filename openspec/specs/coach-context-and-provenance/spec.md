@@ -184,8 +184,12 @@ The system SHALL provide read-only tools for exact local records and determinist
 - **THEN** it receives the bounded local recent view or sanitized exact-activity analysis; ordinary recent reads do not refresh the provider.
 
 #### Scenario: Selected deterministic report
-- **WHEN** `get_training_report` requests supported report, endurance, power-profile, tag-impact, season, comparison, body-history or sleep-timing-variability (`sleep_timing_variability`) sections
+- **WHEN** `get_training_report` requests supported report, endurance, power-profile, records, tag-impact, season, comparison, body-history or sleep-timing-variability (`sleep_timing_variability`) sections
 - **THEN** the tool uses the corresponding local analysis owners, bounds the combined result and reports completeness.
+
+#### Scenario: All-time records are the Rekorde cards' window
+- **WHEN** `get_training_report` selects `records`
+- **THEN** it returns the same all-time window Analyse › Rekorde reads (best power per duration and environment, running bests, and `activity_records` with date, activity id and source), and a pending or failed background build as `{"status": "pending"}` or `{"status": "failed"}`, never as missing records; `power_profiles` keeps its 90-day windows.
 
 #### Scenario: Sleep timing section is the context summary
 - **WHEN** `get_training_report` selects `sleep_timing_variability`
@@ -231,6 +235,8 @@ Evidence:
 - `backend/performance/comparable_sessions.py:equal_effort_trend`
 - `backend/performance/pace_at_hr.py:pace_at_heart_rate_trend`
 - `backend/performance/progress_report.py:weekly_progress`
+- `backend/performance/report_service.py:TrainingProfileSelectionService.records`
+- `tests/test_performance_coach_ui_parity.py:test_mean_max_curve_is_the_analysis_route_payload`
 - `backend/planning/block_review.py:block_lessons`
 - `backend/planning/block_review.py:block_review`
 - `tests/test_block_review.py`
@@ -379,7 +385,7 @@ The system SHALL offer the local read tools in every turn, also an advisory one,
 
 #### Scenario: Reports and records
 - **WHEN** `get_training_report` or `read_training_records` is called
-- **THEN** `get_training_report` defaults to the section `report`, or to `progress` for a window of 42, 56 or 84 days, accepts 1 to 10 of its ten sections, allows `progress`, `block_review` and the long windows only alone (400 "progress, block_review und 42, 56 oder 84 Tage nur allein abrufbar."), rejects an unknown section (400 "Unbekannter Analysebereich.") and returns each requested section with `projection {requested_sections, complete}` cut to 30,000 characters; `read_training_records` is cut to 30,000 characters; unwired report services fail with 503 "Trainingsberichte sind nicht verfügbar." or "Trainingsprotokolle sind nicht verfügbar."
+- **THEN** `get_training_report` defaults to the section `report`, or to `progress` for a window of 42, 56 or 84 days, accepts 1 to 10 of its eleven sections, allows `progress`, `block_review` and the long windows only alone (400 "progress, block_review und 42, 56 oder 84 Tage nur allein abrufbar."), rejects an unknown section (400 "Unbekannter Analysebereich.") and returns each requested section with `projection {requested_sections, complete}` cut to 30,000 characters; `read_training_records` is cut to 30,000 characters; unwired report services fail with 503 "Trainingsberichte sind nicht verfügbar." or "Trainingsprotokolle sind nicht verfügbar."
 
 #### Scenario: Planned units beside a session
 - **WHEN** `get_activity_details` returns a session

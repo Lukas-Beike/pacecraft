@@ -396,6 +396,7 @@ class CoachActivityReadToolService:
                 ),
                 "endurance": self._report_services.records.endurance,
                 "power_profiles": self._report_services.profiles.power_profiles,
+                "records": lambda: self._report_services.profiles.records(),
                 "tag_impact": lambda: self._report_services.derived.impact(
                     self._report_services.timezone()
                 ),
@@ -996,6 +997,7 @@ def _report_sections(arguments: dict[str, Any]) -> list[str]:
         "report",
         "endurance",
         "power_profiles",
+        "records",
         "tag_impact",
         "season",
         "comparisons",
