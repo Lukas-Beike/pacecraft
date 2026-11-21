@@ -319,8 +319,9 @@ class GuardHookTests(unittest.TestCase):
             "echo x # it's\npython scripts/r["
             + "a" * 300
             + "' 'e]solve_review_thread.py",
-            # Brackets swallowed again and again past the readings' work cap block.
-            "echo '" + "[" * 4000 + "]'",
+            # Brackets swallowed again and again past the readings' work cap
+            # block where the shell runs the word.
+            "python '" + "[" * 4000 + "]'",
             "python {scripts/r,x}*.py 2671 PRRT_a1",
             "python scripts/@(resolve|x)_review_thread.py 2671 PRRT_a1",
             "python scripts/@(res@(olve))_review_thread.py 2671 PRRT_a1",
@@ -422,6 +423,54 @@ class GuardHookTests(unittest.TestCase):
             "ln -s scripts abc; python abc*/r*.py",
             "cmd /c mklink /j abc scripts && python abc*/r*.py",
             "ln -s scripts abc\npython abc*/r*.py",
+            # Bypass reviews of #3759: a glob still counts wherever a program
+            # other than a known inert one, or a construct, can run a word.
+            "cat scripts/r*.py | python - 2671 PRRT_a1",
+            "echo 'python scripts/r*.py 2671 PRRT_a1' | bash",
+            "cp scripts/r*.py x.py && python x.py 2671 PRRT_a1",
+            "env -u FOO python scripts/r*.py 2671 PRRT_a1",
+            "timeout -s KILL 60 python scripts/r*.py 2671 PRRT_a1",
+            "/usr/bin/env python scripts/r*.py 2671 PRRT_a1",
+            "sudo -u root python scripts/r*.py 2671 PRRT_a1",
+            "uv run --with pkg python scripts/r*.py 2671 PRRT_a1",
+            "pypy3 scripts/r*.py 2671 PRRT_a1",
+            "python3.14t scripts/r*.py 2671 PRRT_a1",
+            "coverage run scripts/r*.py 2671 PRRT_a1",
+            "poetry run python scripts/r*.py 2671 PRRT_a1",
+            "git bisect run python scripts/r*.py 2671 PRRT_a1",
+            "git rebase --exec 'python scripts/r*.py 1 x' HEAD~1",
+            "git -c alias.x='!python scripts/r*.py' x",
+            "GIT_SSH_COMMAND='python scripts/r*.py' git fetch",
+            "python scripts/r*.py 2671 PRRT_a1 -m mypy",
+            "if true; then python scripts/r*.py 2671 PRRT_a1; fi",
+            "! python scripts/r*.py 2671 PRRT_a1",
+            "<# x #> python scripts/r*.py 2671 PRRT_a1",
+            'echo "C:\\"; python scripts/r*.py 2671 PRRT_a1; echo "D:\\"',
+            "awk 'BEGIN{system(\"python scripts/r*.py 1 x\")}'",
+            "$g = 'python'; & $g scripts/r*.py 2671 PRRT_a1",
+            "$cat scripts/r*.py",
+            "python $'scripts/resolve_review_\\x54hread.py' 2671 PRRT_a1",
+            "ls \\x27 ; python scripts/r*.py 1 PRRT_x ; ls \\x27",
+            "ls #'\npython scripts/r*.py 1 PRRT_x\nls #'",
+            "echo $'\\'\\'' ; python scripts/r*.py 1 PRRT_x #'",
+            "ls <# ' #> ; python scripts\\RESOLV~1.PY 1 PRRT_x ; ls <# ' #>",
+            "ls 'a’; python scripts\\RESOLV~1.PY 1 PRRT_x; ls ‘b'",
+            "ls C:\\; python scripts\\RESOLV~1.PY 1 PRRT_x",
+            "ls .\\| python scripts\\RESOLV~1.PY 1 PRRT_x",
+            "git config core.fsmonitor 'python scripts/r*.py 1 PRRT_x'",
+            "./ls scripts/r*.py",
+            "git bis''ect run python scripts/r*.py 1 PRRT_x",
+            "git rebase -xpython scripts/r*.py HEAD~1",
+            "git rebase --exe 'python scripts/r*.py' HEAD~1",
+            "git grep -Opython x scripts/r*.py",
+            "echo '' ; eval ls ';' python 'scripts/resolve_review_t*' 1 PRRT_abc",
+            "''eval ls ';' python scripts/r*.py 1 PRRT_abc",
+            "python -m mypy --python-executable scripts/r*.py x.py",
+            "ls\rpython scripts/r*.py 1 PRRT_abc",
+            "ls'/../x' scripts/r*.py 1 PRRT_abc",
+            'cat"" scripts/r*.py',
+            "j'ython' scripts/r*.py 1 PRRT_abc",
+            "uni'x' scripts/r*.py",
         ):
             with self.subTest(command):
                 self.assertEqual(self.decide(command), 2)
@@ -461,6 +510,44 @@ class GuardHookTests(unittest.TestCase):
             "grep -n x backend/providers/garmin*/*.py",
             "ls docs/perf*/m1*.md",
             "gh pr view 1 --json state -q '.state+\" \"+.title'",
+            # #3759: globs and variables in words the shell does not run.
+            "git add scripts/*.py",
+            "ls scripts/*.py",
+            "ruff format --check scripts/*.py",
+            "python -m mypy scripts/*.py",
+            "git ls-files 'scripts/*'",
+            'echo "$a/$b"',
+            'cp "$src"/* "$dst"/',
+            "ls $d/*",
+            "ls */*.py",
+            'gh run list -q \'.[] | .name+" "+(.conclusion//"-")\'',
+            "echo '" + "[" * 4000 + "]'",
+        ):
+            with self.subTest(command):
+                self.assertEqual(self.decide(command), 0)
+
+    def test_the_direct_resolve_mutation_blocks(self):
+        # #3759: the resolve mutation runs only inside the script.
+        err = io.StringIO()
+        command = (
+            "gh api graphql -f query='mutation { resolveReviewThread("
+            'input: {threadId: "PRRT_x"}) { thread { isResolved } } }\''
+        )
+        self.assertEqual(self.decide(command, err=err), 2)
+        self.assertIn("direct GraphQL resolve mutation", err.getvalue())
+        for command in (
+            "gh api graphql -f query=\"mutation{resolveReview'Thread'(input:{})}\"",
+            "gh api GraphQL -F query=@q.txt -f x=RESOLVEREVIEWTHREAD",
+            't=Thread; gh api graphql -f query="mutation{resolveReview$t(input:{})}"',
+            'curl https://api.github.com/graphql -d \'{"query":"resolveReviewThread"}\'',
+            "gh api graphql -f query='mutation{resolveReview\\u0054hread(input:{})}'",
+        ):
+            with self.subTest(command):
+                self.assertEqual(self.decide(command), 2)
+        for command in (
+            "gh api graphql -f query='{ viewer { login } }'",
+            "git commit -m 'docs: graphql resolveReviewThread note'",
+            "rg -n 'graphql.*resolveReviewThread' docs",
         ):
             with self.subTest(command):
                 self.assertEqual(self.decide(command), 0)
