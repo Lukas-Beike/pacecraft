@@ -550,9 +550,51 @@ function plannedDayNotes(dayContext, competitions, dateKey) {
       complaintText || (pain ? `Verletzung/Beschwerden: ${pain}` : ""),
     ].filter(Boolean).join(" · ")));
   }
-  const hint = infectionHintText(dayContext.infection_hint);
-  if (hint) notes.append(h("p", { className: "planned-day-context planned-day-health", dataset: { infectionHint: "" } }, hint));
+  const hint = infectionHintNote(dayContext.infection_hint, dateKey, Boolean(illness));
+  if (hint) notes.append(hint);
   return notes;
+}
+
+// The athlete's answer to the hint (#3821): "Mir geht's gut" hides it for that day, "Ich bin krank"
+// records illness for today like a check-in, with its receipt and undo. Neither is queued offline:
+// both are answers for today, so a failed request shows its message.
+const infectionHintDismissed = new Set();
+const infectionHintReceipts = new Map();
+
+function infectionHintNote(hint, dateKey, ill) {
+  const text = infectionHintText(hint);
+  if (!text || infectionHintDismissed.has(dateKey)) return null;
+  const status = h("p", { className: "planned-move-status", role: "status" });
+  const showReceipt = (receipt) => receipt && status.replaceChildren(receipt.text, ...(receipt.change?.id ? plannedMoveUndo(dateKey, receipt, status, infectionHintReceipts) : []));
+  showReceipt(infectionHintReceipts.get(dateKey));
+  const note = h("div", { className: "planned-day-context planned-day-health", dataset: { infectionHint: "" } }, h("p", null, text));
+  const well = h("button", { type: "button", className: "secondary-button" }, "Mir geht's gut");
+  const sick = h("button", { type: "button" }, "Ich bin krank");
+  const busy = (value) => { for (const button of [well, sick]) button.disabled = value; };
+  const answer = async (path, done) => {
+    busy(true);
+    try {
+      await done(await api(path, { method: "POST", body: "{}" }));
+    } catch (error) {
+      busy(false);
+      if (!isSessionEndedError(error)) status.replaceChildren(error.message);
+    }
+  };
+  well.addEventListener("click", () => answer("/api/infection-hint/well", () => {
+    infectionHintDismissed.add(dateKey);
+    note.remove();
+    announcePlanChange("Infekt-Hinweis für heute ausgeblendet");
+  }));
+  sick.addEventListener("click", () => answer("/api/infection-hint/ill", async (result) => {
+    const receipt = { text: "Krankheit für heute gespeichert.", change: result.change };
+    infectionHintReceipts.set(dateKey, receipt);
+    showReceipt(receipt);
+    await globalThis.load?.();
+  }));
+  // Once today reports illness the question is answered; the receipt keeps its undo.
+  if (!ill) note.append(h("div", "coach-action-card-actions infection-hint-actions", well, sick));
+  if (status.textContent || !ill) note.append(status);
+  return note;
 }
 
 // M14 (#3762): last night's values that left the usual range; never a block or a diagnosis.

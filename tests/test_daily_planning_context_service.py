@@ -194,7 +194,8 @@ class DailyPlanningContextServiceTests(unittest.TestCase):
         self.assertEqual(self.database_manager.unit_of_work_calls, 2)
         self.assertEqual(
             [key for _db, key in self.key_values.calls],
-            ["morning_body_battery_history"],
+            # The infection hint answered "Mir geht's gut" today stays hidden (#3821).
+            ["morning_body_battery_history", "infection_hint_dismissed"],
         )
         self.assertIs(self.key_values.calls[0][0], outer_db)
         self.assertEqual(self.checkins.calls, [30])

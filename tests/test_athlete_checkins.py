@@ -7,6 +7,7 @@ from backend import change_history
 from backend.athlete.checkins import (
     CHECKIN_SCORE_FIELDS,
     CHECKIN_TEXT_LIMITS,
+    INFECTION_HINT_ILLNESS,
     CheckinService,
     bounded_minutes,
     bounded_score,
@@ -589,6 +590,38 @@ class AthleteCheckinHistoryTests(unittest.TestCase):
         summary = change_summary([receipt])
         self.assertTrue(summary["undoable"])
         self.assertEqual(turn_changes([receipt]), changes)
+
+    def test_infection_hint_illness_is_the_check_in_record_and_undo_removes_it(self):
+        # #3821: "Ich bin krank" writes what a Coach check-in with the same text writes.
+        with change_history.collect_changes() as changes:
+            reported = self.service.report_illness()
+        self.assertEqual(reported["change"]["action"], "create")
+        self.assertEqual(reported["checkin"]["illness"], "Krank (Infekt-Hinweis)")
+        self.assertEqual([change["entity_type"] for change in changes], ["checkin"])
+        _undo(self.manager, self.service, changes)
+        self.assertEqual(self.service.list(365), [])
+        coach = self.service.save_coach({"illness": INFECTION_HINT_ILLNESS})
+        self.assertEqual(coach["checkin"], reported["checkin"])
+        self.assertEqual(
+            {**coach["change"], "id": None}, {**reported["change"], "id": None}
+        )
+
+    def test_infection_hint_illness_keeps_the_day_answers(self):
+        self.service.save({"soreness": 4, "illness": "Halsweh", "notes": "müde"})
+        reported = self.service.report_illness()["checkin"]
+        self.assertEqual(reported["illness"], "Halsweh; Krank (Infekt-Hinweis)")
+        self.assertEqual((reported["soreness"], reported["notes"]), (4, "müde"))
+
+    def test_mir_gehts_gut_stores_only_the_day(self):
+        self.assertEqual(
+            self.service.dismiss_infection_hint(),
+            {"status": "ok", "dismissed": TODAY.isoformat()},
+        )
+        with self.manager.unit_of_work() as db:
+            rows = [tuple(row) for row in db.execute("SELECT key, value FROM kv")]
+        self.assertEqual(rows, [("infection_hint_dismissed", '"2026-08-31"')])
+        self.assertEqual(self.service.list(365), [])
+        self.assertEqual(_history_rows(self.manager), [])
 
 
 class RecurringComplaintTests(unittest.TestCase):

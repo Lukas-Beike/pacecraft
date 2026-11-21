@@ -527,7 +527,10 @@ def _athlete_write_routes(
         ),
         AuthPostRoutes(session_auth_service, ctx.maintenance),
         FeedbackPostRoutes(
-            athlete.activity_feedback, rpe_load, athlete.session_corrections
+            athlete.activity_feedback,
+            rpe_load,
+            athlete.session_corrections,
+            athlete.checkin,
         ),
         HistoryUndoPostRoutes(
             history_undo,

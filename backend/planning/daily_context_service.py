@@ -85,7 +85,7 @@ class DailyPlanningContextService:
         return (
             recovery,
             read_daily_health_by_date(reader, db, start=start, end=today),
-            read_shown_hint(reader, db, today),
+            read_shown_hint(reader, db, today, self._key_value_repository),
         )
 
     def build(
