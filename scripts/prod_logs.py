@@ -29,7 +29,12 @@ CLEANUP = "garmin_past_workouts_removed"
 # Events counted per key: its label and, per key, the context fields read in
 # order, the first one set counting (#3460, #3475).
 KEYED: dict[str, tuple[str, tuple[tuple[str, ...], ...]]] = {
-    "coach_tool_failed": ("coach tool failed", (("tool",), ("reason", "type"))),
+    # A refused request binding names its rule (request_provenance, ...), which
+    # implies request_invalid (#3903).
+    "coach_tool_failed": (
+        "coach tool failed",
+        (("tool",), ("validation_reason", "reason", "type")),
+    ),
     "external_request_failed": (
         "external request failed",
         (("service",), ("status",), ("error_code", "reason", "error_type")),

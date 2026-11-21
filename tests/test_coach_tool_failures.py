@@ -70,6 +70,10 @@ class StructuredToolFailureTests(unittest.TestCase):
         self.assertEqual(args, ("Coach step failed",))
         self.assertEqual(kwargs["extra"]["event"], "coach_tool_failed")
         self.assertEqual(kwargs["extra"]["context"]["tool"], "read_profile")
+        # #3903: the log event names the refused rule's code, so the counts can say which.
+        self.assertEqual(
+            kwargs["extra"]["context"]["validation_reason"], "request_question"
+        )
 
     def test_non_app_error_uses_generic_text_and_does_not_leak_exception(self) -> None:
         result = self.project(RuntimeError("secret exception text"))
