@@ -36,6 +36,9 @@ FETCH_ATTEMPTS = 3
 TRANSIENT_FETCH = re.compile(
     r"cannot lock ref '[^']+': is at \w+ but expected|\.lock': File exists"
     r"|Operation too slow|timed out"
+    # A transfer cut short beside a parallel fetch, or one that failed without
+    # any message (#3798).
+    r"|did not send all necessary objects|failed: no output$"
 )
 
 
@@ -165,7 +168,8 @@ def fetch(*refs: str, cwd: Path | None = None) -> None:
     """Fetch origin; retry while a parallel worktree holds a lock (#2828, #3378).
 
     Worktrees share one .git: a ref moved under a parallel fetch, a packed-refs
-    lock file, or a stalled transfer (aborted below 1 KB/s for 60 s) is retried.
+    lock file, a stalled transfer (aborted below 1 KB/s for 60 s), an
+    incomplete transfer or a failure without a message is retried.
     A ref name conflict and every other failure raise at once, so no caller
     goes on with a stale ref.
     """
