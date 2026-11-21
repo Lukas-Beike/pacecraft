@@ -25,6 +25,7 @@ from backend.canonical.stored_sports import resolve_workout_sport
 from backend.canonical.vocabulary import Sport
 from backend.db import activity_detail_store
 from backend.errors import AppError
+from backend.performance.activity_records import activity_records, session_totals
 from backend.performance.canonical_inputs import (
     CanonicalPerformanceSource,
     activity_summaries_for,
@@ -266,9 +267,6 @@ class TrainingProfileSelectionService:
         with manager.read_snapshot() as db:
             sessions = _curve_sessions(canonical, db, None, self._today())
             session_ids = [str(summary.get("id") or "") for summary in sessions]
-            # No all-time reader (bests, running dynamics, LT1 history) names a
-            # temperature, and a weather row must not start a rebuild (#3036).
-            temperatures: dict[str, float] = {}
 
             def build() -> list[dict[str, Any]]:
                 curves: dict[str, SessionCurve] = {}
@@ -287,15 +285,13 @@ class TrainingProfileSelectionService:
                     curve_reader.store_changed(manager, found, stored)
                     self._pause(self._clock() - started)
                 curve_reader.drop_unlive(manager)
-                return [
-                    _curve_record(summary, curves, temperatures) for summary in sessions
-                ]
+                return [_all_time_record(summary, curves) for summary in sessions]
 
             # Room for every session's curve: a smaller memo would make the build
             # evict the recent windows' curves and recompute the whole history on
             # every rebuild (#2822).
             curve_reader.reserve(len(session_ids))
-            shown = [_curve_record(summary, {}, temperatures) for summary in sessions]
+            shown = [_all_time_record(summary, {}) for summary in sessions]
             # The session list decides the records; a new day alone builds nothing.
             return curve_reader.background_records(
                 db, session_ids, (None, shown), build
@@ -321,6 +317,8 @@ class TrainingProfileSelectionService:
         window = self._profile_window(rows, today, max(days, 1))
         # The cards read no id list; it would grow with the whole history.
         window["cache_coverage"].pop("eligible_activities")
+        # The longest and highest ride and run, beside the bests (#3826).
+        window["activity_records"] = activity_records(rows)
         # Values of an earlier read while a newer one runs; the cards ask again.
         window["stale"] = not every[1]
         return window
@@ -1091,6 +1089,17 @@ def _curve_record(
     if summary_is_race(summary):
         record["effort_context"] = "race"
     return record
+
+
+def _all_time_record(
+    summary: Mapping[str, Any], curves: Mapping[str, SessionCurve]
+) -> dict[str, Any]:
+    """An all-time record with its distance, moving time and elevation (#3826).
+
+    No all-time reader (bests, running dynamics, LT1 history) names a
+    temperature, and a weather row must not start a rebuild (#3036).
+    """
+    return {**_curve_record(summary, curves, {}), "totals": session_totals(summary)}
 
 
 def _records_fingerprint(records: list[dict[str, Any]]) -> str:
