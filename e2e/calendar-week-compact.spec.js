@@ -307,7 +307,10 @@ function weekReviewFor(week, today) {
     load: { this_week: running ? { duration_s: 2700, sessions: 1, training_load: 38 } : { duration_s: 27600, sessions: 6, training_load: 412 }, week_before: { duration_s: 24600, sessions: 5, training_load: 381 }, shares: null },
     recovery: running ? {} : { sleep: { mean: 7 + 5 / 60, nights: 7, unit: "h", source: "Garmin", week_before: 7.25 }, hrv: { mean: 62, nights: 7, unit: "ms", source: "Garmin", position: "within" } },
     notable: running ? [] : [{ date: end, name: "Langer Lauf", reason: "highest_load", training_load: 120 }],
-    checkins: running ? { entered: 0, days: 2, scores: {} } : { entered: 6, days: 7, pain_days: 0, illness_days: 0, scores: { motivation: 7 } },
+    checkins: running ? { entered: 0, days: 2, scores: {} } : { entered: 6, days: 7, pain_days: 2, illness_days: 0, scores: { motivation: 7 }, complaints: [
+      { area: "achilles", side: "right", days: 3, dates: [], first_severity: 3, last_severity: 5 },
+      { area: "knee", side: "left", days: 1, dates: [], first_severity: 2, last_severity: 2 },
+    ] },
   };
 }
 
@@ -357,9 +360,13 @@ test("@responsive the week review sits under a past or running week and follows 
   await expect(review.locator(".week-review-head span")).toHaveText(/^KW \d+$/);
   await expect(labels).toHaveText(["Plan", "Einheiten", "Zeit", "Belastung", "Schlaf Ø", "HRV Ø", "Check-ins", "Besondere Einheiten", "Beschwerden"]);
   await expect(review.locator(".week-review-tile").first()).toHaveText(/^Plan5 von 6verpasst: Mi Kraft$/);
-  await expect(review.locator(".week-review-change")).toHaveText(["+12 %", "+8 %", "−0:10"]);
+  await expect(review.locator(".week-review-change")).toHaveText(["+12 %", "+8 %", "−0:10", "3 → 5"]);
   await expect(review.getByText("im Normalbereich · Garmin")).toBeVisible();
-  await expect(review.locator(".week-review-wide li")).toHaveText(/^So Langer Lauf · höchste Belastung \(120\)$/);
+  await expect(review.locator(".week-review-wide").first().locator("li")).toHaveText(/^So Langer Lauf · höchste Belastung \(120\)$/);
+  // #3766 (athlete: layout A): one line per body area and side, a worsening in the danger colour.
+  const complaints = review.locator(".week-review-wide").last();
+  await expect(complaints.locator("li")).toHaveText(["Achillessehne rechts · 3 Tage · Stärke 3 → 5", "Knie links · 1 Tag · Stärke 2/10"]);
+  await expect(complaints.locator('.week-review-change[data-direction="down"]')).toHaveText("3 → 5");
   await expect(review).not.toContainText("Schätzung");
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBeTruthy();
   await review.screenshot({ path: testInfo.outputPath("week-review.png"), animations: "disabled" });

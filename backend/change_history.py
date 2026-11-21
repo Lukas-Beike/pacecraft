@@ -268,8 +268,8 @@ FOOD_DATABASE_ENTRY_FIELDS = (
     "fiber_g",
     "salt_g",
 )
-# One daily check-in; its entity id is the check-in date. The day status and the
-# tag answers live beside the row and are present only once the athlete set them.
+# One daily check-in; its entity id is the check-in date. The day status, the
+# tag answers and the complaints live beside the row and are present only once set.
 CHECKIN_FIELDS = (
     "checkin_date",
     "soreness",
@@ -284,6 +284,7 @@ CHECKIN_FIELDS = (
     "notes",
     "day_status",
     "tag_answers",
+    "complaints",
 )
 # One equipment item, with the fields the athlete or Coach edits; the revision, the
 # update time and the Garmin-owned mileage are left out so a provider sync keeps undo.

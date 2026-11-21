@@ -368,7 +368,11 @@ The system SHALL check the resulting future plan of every Coach tool write that 
 
 #### Scenario: Checked tools and rules
 - **WHEN** `apply_training_patch`, `apply_training_changes`, `replace_training_plan`, `apply_workout_library_plan`, `commit_training_plan` or the approved `apply_adaptive_replan` writes planned units
-- **THEN** the resulting plan is checked for run_spike (planned distance against the longest run of 30 days), load_spike and weekly_load_rise (planned load = duration x intensity^2 per sport, run and ride, against the stored M6 load of completed sessions), load_unknown, back_to_back_hard, strength_hard_same_day, missing_taper, illness_hard, intensity_distribution, leg_strength_before_key_session and leg_strength_frequency.
+- **THEN** the resulting plan is checked for run_spike (planned distance against the longest run of 30 days), load_spike and weekly_load_rise (planned load = duration x intensity^2 per sport, run and ride, against the stored M6 load of completed sessions), load_unknown, back_to_back_hard, strength_hard_same_day, missing_taper, illness_hard, intensity_distribution, leg_strength_before_key_session, leg_strength_frequency and complaint_recurring.
+
+#### Scenario: Recurring complaint note
+- **WHEN** the check-ins report the same body area and side on at least 3 of the last 14 days (today included), or its severity rose by at least 2 points from its first to its latest entry there
+- **THEN** the plan checks return one non-blocking `complaint_recurring` note per area and side naming the days and the severity, a worse latest severity is a new note, and the planning brief lists the same complaints under `complaints`; no complaint blocks or changes a plan, since only illness blocks (#3766).
 
 #### Scenario: Blocking violation
 - **WHEN** a Coach plan write would add an unaccepted illness_hard finding, or a strength_incomplete, focus_missing, hr_cap_invalid, template_missing or template_mismatch finding

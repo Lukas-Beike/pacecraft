@@ -165,6 +165,10 @@ The system SHALL preserve unknown versus confirmed day status and yes/no tags, c
 - **WHEN** a supplied tag is unknown or has a nonboolean answer
 - **THEN** it is rejected rather than interpreted as false or inferred from illness or missing activity data.
 
+#### Scenario: Structured complaints
+- **WHEN** a check-in supplies `complaints`, each with a body area from the fixed list (foot, ankle, achilles, calf, shin, knee, thigh_front, thigh_back, hip, groin, lower_back, upper_back_neck, shoulder, arm_elbow, hand_wrist, other), a side (left, right, both, none) and a severity of 0 to 10, at most 8 and each area and side once
+- **THEN** they are stored beside the day's row with the free pain text unchanged, omission keeps them, an empty list removes them, a Coach save shows a receipt whose undo restores the day's complaints, and an unknown area or side, a missing or out-of-range severity or a repeated area and side is rejected without a write (#3766)
+
 #### Scenario: Storage failure versus read failure
 - **WHEN** the upsert fails
 - **THEN** the transaction rolls back; if the save commits but its follow-up list fails, the committed check-in remains available for a later read.

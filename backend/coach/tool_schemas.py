@@ -11,6 +11,7 @@ from backend.activities.hr_cap import (
     SOURCES,
     cap_table_text,
 )
+from backend.athlete.checkins import COMPLAINT_AREAS, COMPLAINT_SIDES, MAX_COMPLAINTS
 from backend.athlete.profile import BODY_FIELDS, COACH_READ_ONLY_FIELDS
 from backend.canonical.vocabulary import Sport
 from backend.db.repositories import NUTRIENT_COLUMNS
@@ -864,6 +865,31 @@ def build_structured_tool_schemas(
                                 for tag in ("travel", "late_meal", "high_stress")
                             },
                             "description": "Only explicit yes/no answers. Missing tags are unknown, never false. A supplied object replaces the day tag answers; preserve other confirmed answers when correcting one.",
+                        },
+                        "complaints": {
+                            "type": "array",
+                            "maxItems": MAX_COMPLAINTS,
+                            "items": {
+                                "type": "object",
+                                "additionalProperties": False,
+                                "required": ["area", "side", "severity"],
+                                "properties": {
+                                    "area": {
+                                        "type": "string",
+                                        "enum": list(COMPLAINT_AREAS),
+                                    },
+                                    "side": {
+                                        "type": "string",
+                                        "enum": list(COMPLAINT_SIDES),
+                                    },
+                                    "severity": {
+                                        "type": "integer",
+                                        "minimum": 0,
+                                        "maximum": 10,
+                                    },
+                                },
+                            },
+                            "description": "Pain or niggles the athlete named in this message, one per body area and side (none for a midline area), severity 0-10 as stated; keep the words in pain. Never infer an area, side or severity the athlete did not give. A supplied list replaces the day's complaints; [] removes them. Omission keeps them.",
                         },
                         **{
                             field: {"type": "string", "maxLength": limit}

@@ -128,6 +128,7 @@ def _review() -> dict[str, Any]:
                 "stress": 4,
                 "soreness": 2,
                 "pain": "keine",
+                "complaints": [{"area": "knee", "side": "left", "severity": 2}],
             },
             {
                 "checkin_date": "2026-11-10",
@@ -135,9 +136,18 @@ def _review() -> dict[str, Any]:
                 "stress": 2,
                 "soreness": 4,
                 "pain": "Knie",
+                "complaints": [
+                    {"area": "achilles", "side": "right", "severity": 3},
+                    {"area": "knee", "side": "left", "severity": 4},
+                ],
             },
             {"checkin_date": "2026-11-12", "illness": "Schnupfen"},
-            {"checkin_date": "2026-11-05", "motivation": 1},
+            # The week before: not grouped into this week.
+            {
+                "checkin_date": "2026-11-05",
+                "motivation": 1,
+                "complaints": [{"area": "knee", "side": "left", "severity": 9}],
+            },
         ],
         timezone="",
     )
@@ -246,6 +256,25 @@ class WeekReviewProjectionTests(unittest.TestCase):
                 "days": 4,
                 "pain_days": 1,
                 "illness_days": 1,
+                # #3766: by area and side, the most days first, with their trend.
+                "complaints": [
+                    {
+                        "area": "knee",
+                        "side": "left",
+                        "dates": ["2026-11-09", "2026-11-10"],
+                        "first_severity": 2,
+                        "last_severity": 4,
+                        "days": 2,
+                    },
+                    {
+                        "area": "achilles",
+                        "side": "right",
+                        "dates": ["2026-11-10"],
+                        "first_severity": 3,
+                        "last_severity": 3,
+                        "days": 1,
+                    },
+                ],
                 "scores": {"soreness": 3.0, "stress": 3.0, "motivation": 7.0},
             },
         )

@@ -300,6 +300,7 @@ def build_planning_brief(
     all_day_events: Mapping[str, Sequence[Mapping[str, Any]]] | None = None,
     lessons: Sequence[Mapping[str, Any]] = (),
     last_tests: Mapping[str, Any] | None = None,
+    complaints: Sequence[Mapping[str, Any]] = (),
 ) -> dict[str, Any]:
     """Compact deterministic brief for plan_week, plan_block and adjust_week turns."""
     weeks = [
@@ -343,9 +344,17 @@ def build_planning_brief(
             "plan_checks": plan_checks.RULE_SUMMARY,
             "lessons": brief_lessons(lessons),
             "last_tests": dict(last_tests or {}),
+            "complaints": [dict(item) for item in complaints],
+            "complaints_source": COMPLAINTS_SOURCE,
         }
     )
 
+
+COMPLAINTS_SOURCE = (
+    "Athlete check-ins (#3766): body areas and sides reported on 3+ of the last "
+    "14 days or 2+ severity points worse there; a non-blocking note to name, "
+    "never a diagnosis or a reason to block a plan (only illness blocks)"
+)
 
 # Tests are planned every 6 to 8 weeks, so a longer look-back finds the last one.
 LAST_TEST_DAYS = 120
@@ -453,6 +462,7 @@ class PlanGuardService:
         self._completed = completed_activities
         self._competitions = competitions
         self._illness = illness
+        self._complaints: Callable[[], Sequence[Mapping[str, Any]]] = lambda: ()
         self._progress = progress
         self._training_model = training_model
         self._today = today
@@ -495,6 +505,7 @@ class PlanGuardService:
                 competitions=self._competitions(),
                 illness=self._reported_illness(),
                 return_stage=self._current_return_stage(),
+                complaints=self._complaints(),
                 thresholds=self._load_thresholds(),
                 expects_strength=self._expects_strength(),
                 calendar_events=self._events(),
@@ -525,6 +536,13 @@ class PlanGuardService:
         if self._illness_cache is None:
             self._illness_cache = (self._illness(),)
         return self._illness_cache[0]
+
+    def with_complaints(
+        self, complaints: Callable[[], Sequence[Mapping[str, Any]]]
+    ) -> PlanGuardService:
+        """Name recurring or worsening complaints in the checks and the brief (#3766)."""
+        self._complaints = complaints
+        return self
 
     def with_templates(
         self, templates: Callable[[], Mapping[str, Mapping[str, Any]]]
@@ -657,4 +675,5 @@ class PlanGuardService:
                 self._history.recent_completed(),
                 today,
             ),
+            complaints=self._complaints(),
         )

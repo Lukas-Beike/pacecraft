@@ -1,8 +1,8 @@
 """Pure athlete check-in validation and normalization helpers."""
 
 import json
-from collections.abc import Callable
-from datetime import date
+from collections.abc import Callable, Mapping, Sequence
+from datetime import date, timedelta
 from typing import Any
 
 from backend import change_history
@@ -10,9 +10,38 @@ from backend.db.repositories import CheckinRepository
 from backend.errors import AppError
 
 ENTITY_TYPE = "checkin"
-# The kv keys of the tag answers and the day status; the check-in date follows.
+# The kv keys of the tag answers, the day status and the structured complaints;
+# the check-in date follows.
 TAGS_KEY = "checkin_tags:"
 DAY_STATUS_KEY = "checkin_day_status:"
+COMPLAINTS_KEY = "checkin_complaints:"
+# Structured complaints (athlete decision on #3766): a fixed body-area list, the
+# side and a severity of 0-10, beside the free pain text.
+COMPLAINT_AREAS = (
+    "foot",
+    "ankle",
+    "achilles",
+    "calf",
+    "shin",
+    "knee",
+    "thigh_front",
+    "thigh_back",
+    "hip",
+    "groin",
+    "lower_back",
+    "upper_back_neck",
+    "shoulder",
+    "arm_elbow",
+    "hand_wrist",
+    "other",
+)
+COMPLAINT_SIDES = ("left", "right", "both", "none")
+MAX_COMPLAINTS = 8
+# A complaint recurs on this many days within the window, or worsens by this
+# many severity points between its first and latest entry there (athlete, #3766).
+RECURRING_DAYS = 3
+RECURRING_WINDOW_DAYS = 14
+WORSENING_POINTS = 2
 
 # Check-in answers that report no complaint (pain or illness).
 NO_COMPLAINT = frozenset(
@@ -99,6 +128,76 @@ def coach_clear_fields(value: Any) -> tuple[str, ...]:
     return tuple(value)
 
 
+def normalize_complaints(value: Any) -> list[dict[str, Any]]:
+    """The day's complaints: known area and side, severity 0-10, one per area and side."""
+    message = (
+        "Beschwerden brauchen Bereich, Seite und Stärke 0 bis 10, "
+        f"höchstens {MAX_COMPLAINTS} und jeden Bereich mit Seite nur einmal."
+    )
+    if not isinstance(value, list) or len(value) > MAX_COMPLAINTS:
+        raise AppError(400, message)
+    complaints: dict[tuple[str, str], dict[str, Any]] = {}
+    for item in value:
+        if not isinstance(item, dict) or set(item) != {"area", "side", "severity"}:
+            raise AppError(400, message)
+        area, side = item["area"], item["side"]
+        if area not in COMPLAINT_AREAS or side not in COMPLAINT_SIDES:
+            raise AppError(400, message)
+        severity = bounded_score(item["severity"])
+        if severity is None or (area, side) in complaints:
+            raise AppError(400, message)
+        complaints[(area, side)] = {"area": area, "side": side, "severity": severity}
+    return [complaints[key] for key in sorted(complaints)]
+
+
+def complaint_trends(
+    checkins: Sequence[Mapping[str, Any]], first: str, last: str
+) -> list[dict[str, Any]]:
+    """Per area and side: the days with an entry and the first and latest severity."""
+    trends: dict[tuple[str, str], dict[str, Any]] = {}
+    for row in sorted(checkins, key=lambda item: str(item.get("checkin_date"))):
+        day = str(row.get("checkin_date") or "")
+        if not first <= day <= last:
+            continue
+        for item in row.get("complaints") or ():
+            trend = trends.setdefault(
+                (item["area"], item["side"]),
+                {
+                    "area": item["area"],
+                    "side": item["side"],
+                    "dates": [],
+                    "first_severity": item["severity"],
+                },
+            )
+            trend["dates"].append(day)
+            trend["last_severity"] = item["severity"]
+    return [
+        {**trend, "days": len(trend["dates"])}
+        for trend in sorted(
+            trends.values(),
+            key=lambda item: (-len(item["dates"]), item["area"], item["side"]),
+        )
+    ]
+
+
+def recurring_complaints(
+    checkins: Sequence[Mapping[str, Any]], today: date
+) -> list[dict[str, Any]]:
+    """Complaints that recur or worsen in the last 14 days, today included (#3766).
+
+    A non-blocking planning note: the same area and side on at least
+    ``RECURRING_DAYS`` days, or a severity rise of at least ``WORSENING_POINTS``
+    from the first to the latest entry. Product rules, not medical limits.
+    """
+    first = (today - timedelta(days=RECURRING_WINDOW_DAYS - 1)).isoformat()
+    return [
+        trend
+        for trend in complaint_trends(checkins, first, today.isoformat())
+        if trend["days"] >= RECURRING_DAYS
+        or trend["last_severity"] - trend["first_severity"] >= WORSENING_POINTS
+    ]
+
+
 def normalize_checkin(value: Any, *, today: date) -> dict[str, Any]:
     if not isinstance(value, dict):
         raise AppError(400, "Das lokale Feedback muss ein Objekt sein.")
@@ -128,6 +227,8 @@ def normalize_checkin(value: Any, *, today: date) -> dict[str, Any]:
                 400, "Tags benötigen ausdrücklich bestätigte Ja-/Nein-Angaben."
             )
         result["tag_answers"] = dict(answers)
+    if "complaints" in value:
+        result["complaints"] = normalize_complaints(value["complaints"])
     for field in CHECKIN_SCORE_FIELDS:
         result[field] = bounded_score(value.get(field))
     result["available_minutes"] = bounded_minutes(value.get("available_minutes"))
@@ -159,19 +260,17 @@ class CheckinService:
 
     @staticmethod
     def _add_stored_answers(db: Any, row: dict[str, Any]) -> None:
-        """Add the tag answers and day status kept beside the row, when set."""
-        tags = db.execute(
-            "SELECT value FROM kv WHERE key=?",
-            (TAGS_KEY + row["checkin_date"],),
-        ).fetchone()
-        if tags:
-            row["tag_answers"] = json.loads(tags["value"])
-        status = db.execute(
-            "SELECT value FROM kv WHERE key=?",
-            (DAY_STATUS_KEY + row["checkin_date"],),
-        ).fetchone()
-        if status:
-            row["day_status"] = json.loads(status["value"])
+        """Add the tag answers, day status and complaints kept beside the row, when set."""
+        for key, field in (
+            (TAGS_KEY, "tag_answers"),
+            (DAY_STATUS_KEY, "day_status"),
+            (COMPLAINTS_KEY, "complaints"),
+        ):
+            stored = db.execute(
+                "SELECT value FROM kv WHERE key=?", (key + row["checkin_date"],)
+            ).fetchone()
+            if stored:
+                row[field] = json.loads(stored["value"])
 
     def _stored(self, db: Any, checkin_date: str) -> dict[str, Any] | None:
         """The stored check-in of one day as change history records it."""
@@ -200,6 +299,9 @@ class CheckinService:
             self._set_kv(db, DAY_STATUS_KEY + day, checkin["day_status"])
         if "tag_answers" in checkin:
             self._set_kv(db, TAGS_KEY + day, checkin["tag_answers"])
+        if "complaints" in checkin:
+            # An empty list removes the day's complaints.
+            self._set_kv(db, COMPLAINTS_KEY + day, checkin["complaints"] or None)
         after = self._stored(db, day)
         record = change_history.record_change(
             db, ENTITY_TYPE, day, "update" if before else "create", before, after
@@ -277,6 +379,7 @@ class CheckinService:
             self._repository.delete(db, entity_id)
             self._set_kv(db, DAY_STATUS_KEY + entity_id, None)
             self._set_kv(db, TAGS_KEY + entity_id, None)
+            self._set_kv(db, COMPLAINTS_KEY + entity_id, None)
             return None
         restored = {
             **dict.fromkeys(CHECKIN_SCORE_FIELDS + ("available_minutes",)),
@@ -289,6 +392,8 @@ class CheckinService:
         for key, field in ((DAY_STATUS_KEY, "day_status"), (TAGS_KEY, "tag_answers")):
             if field in target:
                 self._set_kv(db, key + entity_id, target[field])
+        # Complaints the target day did not have are removed with the undo.
+        self._set_kv(db, COMPLAINTS_KEY + entity_id, target.get("complaints") or None)
         return self._stored(db, entity_id)
 
     def save(self, value: Any) -> dict[str, Any]:

@@ -522,6 +522,14 @@ function calendarRpeLabel(value) {
   return Number.isFinite(number) && number >= 0 && number <= 10 ? calendarMetricNumber(number) : null;
 }
 
+// Structured complaints (#3766): the fixed body areas and sides in the athlete's words.
+const COMPLAINT_AREA_LABELS = Object.freeze({ foot: "Fuß", ankle: "Sprunggelenk", achilles: "Achillessehne", calf: "Wade", shin: "Schienbein", knee: "Knie", thigh_front: "Oberschenkel vorne", thigh_back: "Oberschenkel hinten", hip: "Hüfte", groin: "Leiste", lower_back: "unterer Rücken", upper_back_neck: "oberer Rücken/Nacken", shoulder: "Schulter", arm_elbow: "Arm/Ellbogen", hand_wrist: "Hand/Handgelenk", other: "Sonstiges" });
+const COMPLAINT_SIDE_LABELS = Object.freeze({ left: "links", right: "rechts", both: "beidseitig", none: "" });
+
+function complaintLabel(item) {
+  return [COMPLAINT_AREA_LABELS[item.area] || item.area, COMPLAINT_SIDE_LABELS[item.side] ?? ""].filter(Boolean).join(" ");
+}
+
 function plannedDayNotes(dayContext, competitions, dateKey) {
   const notes = h("div", "planned-day-notes");
   for (const { kind, icon, text } of plannedDayNoteSpecs(dayContext, competitions, dateKey)) {
@@ -533,10 +541,13 @@ function plannedDayNotes(dayContext, competitions, dateKey) {
   const checkin = dayContext.checkin && typeof dayContext.checkin === "object" ? dayContext.checkin : {};
   const illness = String(checkin.illness || "").trim();
   const pain = String(checkin.pain || "").trim();
-  if (illness || pain) {
+  const complaints = (Array.isArray(checkin.complaints) ? checkin.complaints : []).map((item) => `${complaintLabel(item)} ${item.severity}/10`);
+  // Area, side and severity come before the athlete's own words (#3766).
+  const complaintText = complaints.length ? `Beschwerden: ${[...complaints, pain].filter(Boolean).join(" · ")}` : "";
+  if (illness || pain || complaints.length) {
     notes.append(h("p", "planned-day-context planned-day-health", [
       illness ? `Krankheit: ${illness}` : "",
-      pain ? `Verletzung/Beschwerden: ${pain}` : "",
+      complaintText || (pain ? `Verletzung/Beschwerden: ${pain}` : ""),
     ].filter(Boolean).join(" · ")));
   }
   return notes;
@@ -2352,13 +2363,27 @@ function weekReviewRecoveryTiles(recovery) {
   return tiles;
 }
 
+// One line per body area and side (athlete: layout A, #3766): its days and its severity,
+// a worsening as a red change.
+function weekReviewComplaintTile(checkins) {
+  const lines = (checkins.complaints || []).map((item) => {
+    const days = `${item.days} ${item.days === 1 ? "Tag" : "Tage"}`;
+    const change = item.days > 1 && item.last_severity !== item.first_severity
+      ? weekReviewChange(`${item.first_severity} → ${item.last_severity}`, item.last_severity < item.first_severity)
+      : `${item.last_severity}/10`;
+    return h("li", null, `${complaintLabel(item)} · ${days} · Stärke `, change);
+  });
+  if (checkins.illness_days) lines.push(h("li", null, `${checkins.illness_days} ${checkins.illness_days === 1 ? "Tag" : "Tage"} krank`));
+  return h("div", "week-review-tile week-review-wide", h("small", null, "Beschwerden"), h("ul", null, lines));
+}
+
 function weekReviewCheckinTiles(checkins) {
   if (!checkins?.entered) return [];
   const scores = WEEK_REVIEW_SCORES.filter(([key]) => Number.isFinite(checkins.scores?.[key])).map(([key, label]) => `${label} ${AppFormat.number(checkins.scores[key])}`);
   const complaints = [checkins.pain_days && `${checkins.pain_days} ${checkins.pain_days === 1 ? "Tag" : "Tage"} Schmerz`, checkins.illness_days && `${checkins.illness_days} ${checkins.illness_days === 1 ? "Tag" : "Tage"} krank`].filter(Boolean);
   return [
     weekReviewTile("Check-ins", `${checkins.entered} von ${checkins.days}`, null, scores.length ? `Ø ${scores.join(" · ")}` : ""),
-    weekReviewTile("Beschwerden", complaints.join(", ") || "keine"),
+    checkins.complaints?.length ? weekReviewComplaintTile(checkins) : weekReviewTile("Beschwerden", complaints.join(", ") || "keine"),
   ];
 }
 
