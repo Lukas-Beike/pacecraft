@@ -866,5 +866,6 @@ test("@responsive Vorjahr and a longer period keep each sport tab to its own spo
   await page.waitForTimeout(300);
   expect(await page.locator("[data-analysis-section='development-Rad']").isVisible()).toBe(true);
   expect(await page.locator("[data-analysis-section='development-Lauf']").isVisible()).toBe(false);
-  expect(await page.locator("#runningBestEfforts").isVisible()).toBe(false);
+  // The running part of the sport tabs is the critical-speed line since the bests moved to Rekorde (#3826).
+  expect(await page.locator("#runningCriticalSpeed").isVisible()).toBe(false);
 });
