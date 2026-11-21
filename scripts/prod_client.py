@@ -97,6 +97,18 @@ def secret_path(path: str) -> Path:
     return target
 
 
+def read_secret(path: str) -> str:
+    """The password from an allowed secret file; ProdError(SECRET_MISSING) when
+    it is unreadable or empty, the path's own error when the path is refused."""
+    try:
+        password = secret_path(path).read_text(encoding="utf-8").strip()
+    except OSError, UnicodeDecodeError:
+        raise ProdError(SECRET_MISSING) from None
+    if not password:
+        raise ProdError(SECRET_MISSING)
+    return password
+
+
 def write_result(path: str | None, result: dict[str, Any]) -> None:
     if path:
         scratch_path(path).write_text(json.dumps(result, indent=2), encoding="utf-8")
@@ -164,12 +176,7 @@ class Session:
         return next((c.value for c in self.jar if c.name == name), None)
 
     def login(self, password_file: str) -> None:
-        try:
-            password = secret_path(password_file).read_text(encoding="utf-8").strip()
-        except OSError, UnicodeDecodeError:
-            raise ProdError(SECRET_MISSING) from None
-        if not password:
-            raise ProdError(SECRET_MISSING)
+        password = read_secret(password_file)
         code = self.status("POST", "/api/login", body={"password": password})
         del password
         if code != 200 or not self.cookie(CSRF_COOKIE):

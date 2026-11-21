@@ -2,6 +2,11 @@
 
     python scripts/prod_guards.py --url <app address> --password-file <secret file>
         [--min-tls-days 14] [--ca-file ca.pem] [--require-current]
+    python scripts/prod_guards.py --check-secret --password-file <secret file>
+
+`--check-secret` sends nothing: it only reports whether the secret file is
+readable and not empty (exit 0 ok, 1 missing), so a release checks it before
+dispatch (#3768).
 
 Probes have no effect even if accepted: a GET of diagnostics without a session,
 and a logout of the probe's own session without the CSRF token. For an https
@@ -18,7 +23,19 @@ import sys
 import time
 from urllib.parse import urlsplit
 
-from prod_client import ProdError, Session, checkout_current
+from prod_client import ProdError, Session, checkout_current, read_secret
+
+
+def check_secret(path: str) -> int:
+    """Exit 0 when the secret file lies in an allowed folder, is readable and
+    not empty, else 1; its content is neither kept nor printed (#3768)."""
+    try:
+        read_secret(path)
+    except ProdError as exc:
+        print(f"FAIL {exc}")
+        return 1
+    print("ok secret readable")
+    return 0
 
 
 def tls_days(url: str, ca_file: str | None) -> float:
@@ -41,13 +58,18 @@ def tls_days(url: str, ca_file: str | None) -> float:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--url", required=True)
+    target = parser.add_mutually_exclusive_group(required=True)
+    target.add_argument("--url")
+    # Only whether the secret file is readable and not empty; no request (#3768).
+    target.add_argument("--check-secret", action="store_true")
     parser.add_argument("--password-file", required=True)
     # Fewer days to certificate expiry fail the check (exit 1).
     parser.add_argument("--min-tls-days", type=float, default=14)
     parser.add_argument("--ca-file")
     parser.add_argument("--require-current", action="store_true")
     args = parser.parse_args(argv)
+    if args.check_secret:
+        return check_secret(args.password_file)
     if not checkout_current(args.require_current):
         return 2
     results: list[tuple[bool, str]] = []
