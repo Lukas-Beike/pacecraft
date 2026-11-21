@@ -917,3 +917,20 @@ test("@responsive a longer period keeps each sport tab to its own sport", async 
   // The running part of the sport tabs is the critical-speed line since the bests moved to Rekorde (#3826).
   expect(await page.locator("#runningCriticalSpeed").isVisible()).toBe(false);
 });
+
+// #3828: a redraw that only redraws the history (here the phone/desktop width change) applies the shown tab itself.
+test("a width change keeps each sport tab to its own sport", async ({ page }) => {
+  await page.setViewportSize({ width: 1024, height: 800 });
+  await page.goto("/#analysis/running");
+  await expect(page.locator("#appShell")).toBeVisible();
+  await page.waitForFunction(() => state.loadedAreas.has("performance") && !state.loadPromise);
+  await expect(page.locator("[data-analysis-section='development-Lauf']")).toBeVisible();
+  for (const width of [390, 1024]) {
+    await page.setViewportSize({ width, height: 800 });
+    await expect.poll(() => page.evaluate(() => globalThis.matchMedia("(max-width: 599px)").matches)).toBe(width < 600);
+    // Checked once right after the redraw, not polled, so a later re-render cannot hide the bug.
+    await page.waitForTimeout(300);
+    expect(await page.locator("[data-analysis-section='development-Lauf']").isVisible(), `${width}px`).toBe(true);
+    expect(await page.locator("[data-analysis-section='development-Rad']").isVisible(), `${width}px`).toBe(false);
+  }
+});
