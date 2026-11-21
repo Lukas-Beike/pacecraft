@@ -82,6 +82,28 @@ class NutritionBuilderTests(unittest.TestCase):
             self.assertIsNone(own([date(2026, 6, 1)])[date(2026, 6, 1)])
             self.assertEqual(4, read.call_count)
 
+    def test_the_diary_days_energy_read_is_never_kept(self) -> None:
+        # #3852: "gegessen" in Offene Kalorien is the day's intake at the time of
+        # the read; a second read after a meal write reads the day again, even
+        # within the same database revision, so it never shows the old intake.
+        services = self.make_services()
+        manager = MagicMock()
+        manager.read_revision.return_value = 7
+        manager.holds_lease.return_value = False
+        self.ctx.database.return_value = manager
+        self.ctx.clock.now.return_value = datetime(2026, 11, 19, 12, tzinfo=UTC)
+        reads = iter(({"goal": {"eaten_kcal": 640}}, {"goal": {"eaten_kcal": 0}}))
+        with patch.object(
+            nutrition_wiring, "read_energy_view", side_effect=lambda *args: next(reads)
+        ) as read:
+            self.assertEqual(
+                640, services.energy_view("2026-11-19")["goal"]["eaten_kcal"]
+            )
+            self.assertEqual(
+                0, services.energy_view("2026-11-19")["goal"]["eaten_kcal"]
+            )
+        self.assertEqual(2, read.call_count)
+
     def test_intervals_sync_uses_the_current_config_and_a_fresh_diary(self) -> None:
         services = self.make_services()
         with (

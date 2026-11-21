@@ -554,3 +554,31 @@ test("@responsive the energy goal is set in Körper and priced in the diary", as
   }
 });
 
+
+// #3852: "gegessen" in Offene Kalorien follows the diary totals after every meal write, with no
+// manual reload: a changed day intake reads the energy table again instead of keeping the old one.
+test("@responsive Offene Kalorien follow the diary totals after a meal is removed", async ({ page }) => {
+  await page.goto("/#nutrition/diary");
+  await expect(page.locator("#nutritionEnergy [data-energy]")).toBeVisible();
+  const today = await page.evaluate(() => todayIso());
+  const meal = await page.evaluate((day) => api("/api/nutrition/entry", { method: "POST", body: JSON.stringify({ meal_date: day, meal_type: "lunch", description: "Nudeln #3852", kcal: 640 }) }), today);
+  await page.evaluate(() => api("/api/profile", { method: "PUT", body: JSON.stringify({ energy_goal: "lose", energy_goal_kcal: "300" }) }));
+  try {
+    // The fixture's own total is shaped; "gegessen" stays the server's own count of the day.
+    await shapeEnergy(page, (data) => ({ ...data, goal: { ...GOAL, eaten_kcal: data.goal.eaten_kcal, remaining_kcal: GOAL.target_kcal - data.goal.eaten_kcal } }));
+    await page.reload();
+    const items = page.locator("#nutritionEnergy .energy-goal-items li").first();
+    const eaten = await page.evaluate((day) => api(`/api/nutrition/day?date=${day}`), today);
+    const shown = (kcal) => `gegessen ${new Intl.NumberFormat("de-DE").format(kcal)}`;
+    await expect(items).toHaveText(shown(eaten.total_kcal));
+    await page.getByRole("button", { name: "Mahlzeit löschen: Nudeln #3852" }).click();
+    await page.locator("#confirmationDialogAccept").click();
+    await expect(page.getByRole("button", { name: "Mahlzeit löschen: Nudeln #3852" })).toHaveCount(0);
+    await expect(items).toHaveText(shown(eaten.total_kcal - 640));
+  } finally {
+    await page.evaluate(async (id) => {
+      await api("/api/profile", { method: "PUT", body: JSON.stringify({ energy_goal: "", energy_goal_kcal: "" }) });
+      await api("/api/nutrition/entry/delete", { method: "POST", body: JSON.stringify({ id }) }).catch(() => null);
+    }, meal.id);
+  }
+});
