@@ -1939,7 +1939,8 @@ function energyPartText(read, row, [key, part]) {
 }
 
 function energySplitBar(split, parts, label) {
-  const total = parts.reduce((sum, [key]) => sum + (split[key] || 0), 0);
+  // Only drawn parts spread the bar: a reduction (a negative learned term) has no segment (#3784).
+  const total = parts.reduce((sum, [key]) => sum + Math.max(0, split[key] || 0), 0);
   const bar = h("div", { className: "energy-split", role: "img", "aria-label": label });
   for (const [key, part] of parts) {
     if (split[key] == null || split[key] <= 0) continue;

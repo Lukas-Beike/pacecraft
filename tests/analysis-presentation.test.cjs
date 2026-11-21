@@ -510,6 +510,9 @@ test("the usage card names each part, its note and what has no data yet, with th
   const reduced = usage({ ...cunningham, split: split(1839, 220, 350, 250, { learned_kcal: -106 }) });
   assert.equal(lines(reduced)[2], "Übriger Alltag−106");
   assert.deepEqual([...reduced.children[1].children].map((part) => part.dataset.part), ["resting", "neat", "sport", "tef"], "a reduction has no segment");
+  // #3784 review: nor does it shrink the spread, so the drawn segments fill the bar exactly.
+  const widths = [...reduced.children[1].children].map((part) => Number.parseFloat(part.style.width));
+  assert.ok(Math.abs(widths.reduce((sum, width) => sum + width, 0) - 100) < 1e-9, String(widths));
   // #3723: until a qualified term is taken over, the row counts the provisional estimate and says so.
   const provisional = usage({ ...cunningham, split: split(1839, 220, 350, 250, { learned_kcal: 172, learned_provisional: true }) });
   assert.equal(lines(provisional)[2], "Übriger Alltag (vorläufig)+172");
