@@ -105,7 +105,14 @@ async function outboxRemove(key) {
 
 // Saves one entry of the athlete. A request that cannot reach the server is queued and answers
 // `{ outboxEntry }`; any server answer, and a device without storage, throws as before.
-async function saveOwnEntry({ kind, method, path, payload, label, send = api, queuedPayload = payload }) {
+// With `replaces` (the edit of a rejected entry) nothing is sent directly: the entry is replaced in place.
+async function saveOwnEntry({ kind, method, path, payload, label, send = api, queuedPayload = payload, replaces = null }) {
+  if (replaces) {
+    const entry = await outboxReplace(replaces, { payload: queuedPayload, label });
+    if (!entry) throw Object.assign(new Error("Der Eintrag wurde inzwischen verworfen oder gesendet."), { reason: "outbox_entry_gone" });
+    void replayOutbox();
+    return { outboxEntry: entry };
+  }
   const key = outboxKey();
   // While older entries wait, a new one queues behind them, so a stale entry never
   // overwrites a newer save (review on #3761); the pass then sends them in order.
@@ -186,6 +193,42 @@ async function outboxResend(key) {
   if (entry && await outboxPut({ ...entry, state: "waiting" })) await replayOutbox();
 }
 
+// What the dialog of a rejected entry needs to edit it: the entry's key, the epoch it was read
+// in and its queued payload; null for any other entry.
+function outboxEditToken(key) {
+  const entry = outboxEntries.find((item) => item.key === key);
+  return entry?.state === "rejected" ? { key, epoch: outboxEpoch, kind: entry.kind, path: entry.path, payload: entry.payload } : null;
+}
+
+// Replaces a rejected entry by the edited one at the same place in the order (its created_at),
+// under a new key, because the server answers a repeated key with its stored result. Null when the
+// entry was discarded, sent or cleared meanwhile, so an edit never brings it back.
+async function outboxReplace({ key, epoch }, { payload, label }) {
+  await outboxLoad();
+  const entry = outboxEntries.find((item) => item.key === key);
+  if (epoch !== outboxEpoch || entry?.state !== "rejected") return null;
+  const next = { ...entry, key: outboxKey(), payload, label, attempts: 0, last_error: "", state: "waiting" };
+  if (!await outboxPut(next)) return null;
+  if (epoch !== outboxEpoch) { await outboxRemove(next.key); return null; }
+  await outboxRemove(key);
+  return next;
+}
+
+// A rejected queued feedback opens in its session's detail view, the form filled with its fields.
+function editQueuedFeedback(edit) {
+  const id = decodeURIComponent(/^\/api\/activities\/([^/]+)\/feedback$/.exec(edit.path)?.[1] ?? "");
+  if (!id) return;
+  return globalThis.ActivityDetails.open({ id, name: edit.payload.activity_name }, { api, showDialog: showAccessibleDialog, edit });
+}
+
+function outboxEdit(key) {
+  const edit = outboxEditToken(key);
+  if (!edit) return;
+  document.querySelector("#outboxDialog")?.close();
+  const open = { weight: openWeightDialog, "body-fat": openBodyFatDialog, meal: editQueuedMeal, feedback: editQueuedFeedback }[edit.kind];
+  void open?.(edit);
+}
+
 // Logout and the local data purge: nothing the athlete entered stays on the device.
 async function clearOutbox() {
   outboxEpoch += 1;
@@ -209,7 +252,9 @@ function outboxRow(entry) {
   resend.addEventListener("click", () => void outboxResend(entry.key));
   const discard = h("button", { type: "button", className: "secondary-button" }, "Verwerfen");
   discard.addEventListener("click", () => void outboxDiscard(entry.key));
-  return h("li", { dataset: { outboxKey: entry.key, state: entry.state } }, h("span", "outbox-text", h("strong", null, entry.label), ` ${text}`), resend, discard);
+  const edit = h("button", { type: "button", className: "secondary-button" }, "Bearbeiten");
+  edit.addEventListener("click", () => outboxEdit(entry.key));
+  return h("li", { dataset: { outboxKey: entry.key, state: entry.state } }, h("span", "outbox-text", h("strong", null, entry.label), ` ${text}`), ...(entry.state === "rejected" ? [edit] : []), resend, discard);
 }
 
 function renderOutbox() {

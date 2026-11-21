@@ -59,7 +59,7 @@
     return values;
   }
 
-  function render(payload, content, api, activityId, reload, notice) {
+  function render(payload, content, api, activityId, reload, notice, edit = null) {
     content.replaceChildren();
     const session = payload.session || {};
     renderMetadata(session, metricValues(payload), content, payload.weather);
@@ -74,7 +74,7 @@
     renderPower(payload, content);
     for (const item of payload.equipment || []) content.append(h("p", null, `Ausrüstung: ${item.name} · ${item.usage.distance_km} km${item.usage.maintenance_due ? " · persönliches Wartungsintervall erreicht" : ""}`));
     renderBundle(payload.session_bundle, api, content, reload, notice);
-    renderFeedback(payload.activity_feedback, session, api, activityId, content, payload.session_rpe_load);
+    renderFeedback(payload.activity_feedback, session, api, activityId, content, payload.session_rpe_load, edit);
   }
 
   // CR-10 anchors after Foster et al. 2001; the other steps have no verbal anchor.
@@ -129,7 +129,9 @@
     return `${text} · lange Unterbrechung, ${moving} min in Bewegung`;
   }
 
-  function renderFeedback(feedback, session, api, activityId, content, sessionLoad) {
+  // `edit` is a rejected queued feedback from the outbox (#3817): the form starts with its fields
+  // and its save replaces the queued entry once.
+  function renderFeedback(feedback, session, api, activityId, content, sessionLoad, edit = null) {
     const purpose = purposeSelect(feedback?.purpose, session?.purpose);
     const rpe = rpeSelect(feedback?.session_rpe);
     const reason = h("input", { name: "deviation_reason", maxLength: 500, value: feedback?.deviation_reason || "" });
@@ -143,6 +145,8 @@
     content.append(h("section", "activity-feedback", h("h3", null, "Dein Feedback"), load, form, status));
     let shown = feedback;
     const fill = (value) => { purpose.value = PURPOSES.some(([key]) => key === value?.purpose) ? value.purpose : ""; setRpe(rpe, value?.session_rpe); reason.value = value?.deviation_reason || ""; notes.value = value?.notes || ""; };
+    let replaces = edit;
+    if (edit) fill(edit.payload);
     // The save and undo responses carry the load recomputed from the saved feedback and its provider fallback.
     let loadGeneration = 0;
     // Only the newest request may write, so a slow save response cannot overwrite a later undo.
@@ -166,15 +170,19 @@
         if (raw !== "" && (!Number.isFinite(value.session_rpe) || value.session_rpe < 0 || value.session_rpe > 10)) throw new Error("RPE muss zwischen 0 und 10 liegen.");
         const generation = ++loadGeneration;
         const path = `/api/activities/${encodeURIComponent(activityId)}/feedback`;
-        const result = await saveOwnEntry({ kind: "feedback", method: "POST", path, payload: value, label: `Feedback ${session?.name || "zur Einheit"}`, send: api });
-        if (result.outboxEntry) { status.textContent = "Feedback wartet, noch nicht gesendet."; return; }
+        const result = await saveOwnEntry({ kind: "feedback", method: "POST", path, payload: value, label: `Feedback ${session?.name || "zur Einheit"}`, send: api, replaces });
+        if (result.outboxEntry) { replaces = null; status.textContent = "Feedback wartet, noch nicht gesendet."; return; }
         const previous = shown; shown = result.activity_feedback;
         // A strength session's RPE sets its energy (#3530): the next energy table reads it anew.
         resetEnergy();
         status.textContent = result.activity_feedback ? "Feedback gespeichert. " : "Feedback entfernt. ";
         if (result.change?.id) status.append(feedbackUndoButton(api, result.change, activityId, status, () => ++loadGeneration, (response, generation) => { shown = previous; fill(previous); resetEnergy(); void applyLoad(generation, response); }));
         void applyLoad(generation, result);
-      } catch (error) { status.textContent = error.message; } finally { save.disabled = false; }
+      } catch (error) {
+        // A queued entry gone meanwhile: the next save goes out as a new one (review on #3817).
+        if (error?.reason === "outbox_entry_gone") replaces = null;
+        status.textContent = error.message;
+      } finally { save.disabled = false; }
     });
   }
 
@@ -653,7 +661,7 @@
     }
   }
 
-  async function open(activity, { api, showDialog }) {
+  async function open(activity, { api, showDialog, edit = null }) {
     close(false);
     const activityId = String(activity.id ?? activity.activity_id ?? "");
     if (!activityId) return;
@@ -685,7 +693,8 @@
     async function load(notice) {
       const payload = await api(`/api/activities/${encodeURIComponent(activityId)}`);
       if (!isCurrent()) return;
-      render(payload, content, api, activityId, load, notice);
+      render(payload, content, api, activityId, load, notice, edit);
+      edit = null;
       title.textContent = payload.session?.name || activity.name || "Aktivitätsdetails";
       status.textContent = "";
       actions.replaceChildren(refreshActions(payload, {

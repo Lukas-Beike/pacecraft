@@ -138,6 +138,10 @@ The client SHALL keep a new meal from the product dialog, a weight, a body fat p
 - **WHEN** a waiting entry is answered with a 4xx other than 401, 403, 408 and 429
 - **THEN** it stays as "abgelehnt" with the server's message, later entries go on, and the athlete can resend or discard it.
 
+#### Scenario: Edit a refused entry
+- **WHEN** the athlete chooses "Bearbeiten" on an "abgelehnt" entry and saves in the dialog that opens, filled with the queued values
+- **THEN** the entry is replaced at the same place in the creation order, as waiting with its error cleared and a new `Idempotency-Key`, and a send pass starts; an entry discarded or cleared meanwhile is not brought back, and "Erneut senden" keeps the key.
+
 #### Scenario: Logout and purge
 - **WHEN** the athlete logs out or confirms the local data purge
 - **THEN** the outbox is cleared; a 401 keeps it.
