@@ -114,7 +114,7 @@ test("a badge shows its text as text and hides its glyph from screen readers", (
   assert.deepEqual(row.children.map((child) => child.className), ["planned-badge is-calendar", "planned-badge is-day-status"]);
 });
 
-test("the infection hint names each unusual value, its usual range and source, and only on a hint", () => {
+test("the infection hint names only each unusual value and its usual range, and only on a hint", () => {
   const { infectionHintText } = extractFunctions("plan-views.js", ["calendarMetricNumber", "infectionHintText"], {
     AppFormat: { number: (value, { digits }) => value.toFixed(digits).replace(".", ",") },
   });
@@ -126,7 +126,7 @@ test("the infection hint names each unusual value, its usual range and source, a
   ];
   assert.equal(
     infectionHintText({ status: "hint", signals, limits: "Keine Diagnose." }),
-    "Infekt-Hinweis: Atemfrequenz 16,2/min (Garmin Connect, üblich 14–15) · Ruhepuls 53 bpm (Garmin Connect, üblich 48–50). Keine Diagnose.",
+    "Infekt-Hinweis: Atemfrequenz 16,2/min (üblich 14–15) · Ruhepuls 53 bpm (üblich 48–50)",
   );
   assert.equal(infectionHintText({ status: "none", signals }), "");
   assert.equal(infectionHintText(undefined), "");

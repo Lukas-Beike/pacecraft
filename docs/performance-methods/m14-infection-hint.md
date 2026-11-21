@@ -45,8 +45,12 @@ an infection, illness, recovery or readiness state.
   heart rate median 50, Q1 49, Q3 51 (IQR 2): 54 is above 52 and 4 above the
   median, so unusual. Two of three unusual: the hint shows, whatever the HRV.
 - Output: each known value with its usual range (Q1 to Q3), median and source,
-  labelled as derived, plus the limits below. Nothing is stored; the hint is
-  computed on read.
+  labelled as derived, plus the limits below, in the daily planning context the
+  Coach reads and in the planning brief. The note on today's calendar day shows
+  only the unusual values with their usual range, for example "Infekt-Hinweis:
+  Atemfrequenz 16,8/min (üblich 14,2–15) · Ruhepuls 58 bpm (üblich 49–52)"
+  (athlete decision); the limits stay with this card and the Coach. Nothing is
+  stored; the hint is computed on read.
 
 ## Sources
 
