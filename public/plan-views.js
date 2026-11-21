@@ -2998,7 +2998,7 @@ function competitionCard(competition, todayKey, openIds) {
     // The pencil sits in the summary: it must not open or close the card.
     event.preventDefault();
     event.stopPropagation();
-    void openCompetitionDialog(competition);
+    openCompetitionDialog(competition);
   });
   const summary = h("summary", null,
     h("span", "competition-summary-main",
