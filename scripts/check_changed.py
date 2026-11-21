@@ -9,11 +9,12 @@ HEAD); --fix-format still formats the files changed against --base, and
 compile and quality always cover the whole tree (#3813).
 
 --fix-format first formats the changed Python files with the ratchet's Ruff and
-names them, then the steps run as without it; unchanged files, baselined ones included, are never touched (#3382).
+names them, then the steps run as without it; unchanged files, baselined
+ones included, are never touched (#3382).
 A changed file with a format baseline entry is formatted only in its changed
 lines, so its diff and its baseline entry stay as they are (#3526).
-Every step runs even after a failure; stderr names each step as it starts.
-One line per step; for each failed step its
+Every step runs even after a failure; stderr names each step, the format
+included, as it starts. One line per step; for each failed step its
 unittest FAIL/ERROR lines, the last lines of its output, and the path of a
 temporary file with its full output. Node tests run with --js or when the diff against the
 base touches a .js, .cjs or .mjs file. A changed workflow under
@@ -142,6 +143,7 @@ def run_steps(
     for name, argv in steps:
         # A step can take minutes (a wide test selection): name it as it starts,
         # on stderr, so a piped or backgrounded run is not silent (#3865).
+        sys.stdout.flush()
         print(f"running {name}", file=sys.stderr, flush=True)
         try:
             passed, seconds, output = run_step(argv, (envs or {}).get(name))
@@ -250,15 +252,17 @@ def _ruff_format(root: Path, files: list[str], *options: str) -> None:
 def format_step(base: str) -> int:
     """Run --fix-format as a step and report it: 0 done, 1 Ruff failed (a syntax
     error mid-edit), 2 Ruff missing; the other steps run either way."""
+    print("running format", file=sys.stderr, flush=True)
     try:
         files = format_changed(base)
     except (FormatFailed, MissingTool) as exc:
-        print(f"FAILED format (0.0s)\n  {exc}")
+        print(f"FAILED format (0.0s)\n  {exc}", flush=True)
         return 2 if isinstance(exc, MissingTool) else 1
     plural = "" if len(files) == 1 else "s"
     print(
         f"formatted {len(files)} changed Python file{plural}: "
-        + (", ".join(files) or "none")
+        + (", ".join(files) or "none"),
+        flush=True,
     )
     return 0
 

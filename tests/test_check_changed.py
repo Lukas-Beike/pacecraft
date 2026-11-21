@@ -381,10 +381,12 @@ class FormatChangedTests(unittest.TestCase):
         with mock.patch.object(
             check_changed, "format_changed", return_value=["backend/x.py"]
         ) as formatted:
-            code, out, _err = run_main(check_changed, ["--fix-format"], runner)
+            code, out, err = run_main(check_changed, ["--fix-format"], runner)
         self.assertEqual(code, 0)
         formatted.assert_called_once_with("origin/develop")
         self.assertIn("formatted 1 changed Python file: backend/x.py", out)
+        # The format is named first, then each step (#3865).
+        self.assertEqual(err.splitlines()[:2], ["running format", "running tests"])
         # Without the flag nothing is formatted.
         with mock.patch.object(check_changed, "format_changed") as formatted:
             run_main(check_changed, [], FakeRun())
