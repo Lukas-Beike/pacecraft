@@ -208,7 +208,8 @@ test("@responsive recovery, power, training focus, season and calendar profiles 
   await page.evaluate(async () => { await AppRouter.navigate("plan/season", { historyMode: "replace" }); });
   await expect(page.locator("#seasonPreparation .competition-card").filter({ hasText: "Fixture cycling target" }).first()).toBeVisible();
   await expect(page.locator("#seasonPreparation .competition-card[open]")).toHaveCount(0);
-  await expect(page.locator("#seasonPreparation svg, #seasonPreparation form")).toHaveCount(0);
+  // The cards hold no chart and no form; the pencil icon opens the competition dialog (#3837).
+  await expect(page.locator("#seasonPreparation svg:not(.message-action-icon), #seasonPreparation form")).toHaveCount(0);
 
   await page.evaluate(async () => { await AppRouter.navigate("plan/overview", { historyMode: "replace" }); });
   await expect(page.locator(".planned-week .planned-day").first()).toBeVisible();

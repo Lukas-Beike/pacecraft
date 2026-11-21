@@ -270,6 +270,9 @@ export const STEPS = [
   { view: "plan", name: "Kalender: Wochenansicht", covers: "#2189 week and month switch", pre: ['.planned-view-switch button[data-view="week"]'], ready: ".planned-week .planned-day", kind: "text" },
   // Read-only as well: the library card offers "Einplanen" and "Löschen"; the walk presses neither (#3028).
   { view: "plan", name: "Bibliothek: Einplanen, Löschen", covers: "#3028 library actions", pre: [tab("plan", "library")], opens: ["#library details.library-sport > summary"], ready: "#library .library-card .planned-activity-actions .danger-button", kind: "text", optional: true, post: [tab("plan", "overview")] },
+  // Read-only: the walk checks that "Hinzufügen" is there, it opens no dialog and saves nothing (#3837).
+  // Read-only: the walk checks that "Hinzufügen" is there, it opens no dialog and saves nothing (#3837).
+  { view: "plan", name: "Wettkämpfe: Hinzufügen", covers: "#3837 competition entry", pre: [tab("plan", "season")], ready: "#competitionAdd", kind: "text", post: [tab("plan", "overview")] },
   // Completed units: on a Monday the current week has none yet, so each step looks back for a unit that
   // has its element (`seek`) and returns to the current week (`unseek`).
   { view: "plan", name: "Kalender: Einheit öffnen", covers: "#2189 calendar agenda and detail", each: DONE, ...EARLIER, ready: ".planned-entry[open] .planned-entry-details", kind: "text" },

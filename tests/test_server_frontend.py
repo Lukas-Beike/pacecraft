@@ -457,9 +457,11 @@ class ServerFrontendTests(ServerTestCase):
         plan_markup = index[
             index.index('id="workoutsPanel"') : index.index('id="dataPanel"')
         ]
-        # Read-only: the retry and the refresh button (reload + shared calendar sync) are the only buttons.
-        self.assertEqual(plan_markup.count("<button"), 2)
+        # The calendar and library are read-only. The only buttons: the refresh button
+        # (reload + shared calendar sync), the competition add button (#3837) and the retry.
+        self.assertEqual(plan_markup.count("<button"), 3)
         self.assertIn('id="planRefreshButton"', plan_markup)
+        self.assertIn('id="competitionAdd" class="secondary-button"', plan_markup)
         self.assertIn('id="competitionRetry" type="button"', plan_markup)
         self.assertNotIn("planningEditDirty", state)
         self.assertNotIn("plannedWeekOpen", state)

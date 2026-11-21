@@ -67,6 +67,8 @@ handler's docstring. Regenerate it with
 | POST | `/api/coach/actions/cancel` | Session + CSRF | after access | Cancel a Coach proposal. |
 | POST | `/api/coach/actions/confirm` | Session + CSRF | after access | Confirm a Coach proposal. |
 | POST | `/api/coach/actions/execute` | Session + CSRF | after access | Execute a confirmed Coach proposal. |
+| PUT | `/api/competitions` | Session + CSRF | before access | Create or update one local competition the athlete entered. |
+| PUT | `/api/competitions/remove` | Session + CSRF | before access | Delete one local competition. |
 | GET | `/api/competitions/{id}/race-plan` | Session | no | Race plan of one stored competition, computed from local data. |
 | GET | `/api/context-preview` | Session | no | Preview of the context the Coach receives. |
 | GET | `/api/diagnostics` | Session | no | Diagnostic report. |
@@ -806,6 +808,51 @@ Coach-Auftrag ist nicht mehr gültig.", "Der freigegebene Coach-Auftrag
 gehört nicht mehr zu dieser Sitzung." or "Der ursprüngliche Nutzerauftrag
 ist nicht mehr verfügbar."; 503 "Die Coach-Aktionsausführung ist nicht
 verfügbar.". Validation errors of the underlying write are passed through.
+
+### `PUT /api/competitions`
+
+Request: JSON body with `id` (an existing competition's UUID to update,
+absent to create) and the fields `name`, `event_date` (`YYYY-MM-DD`),
+`starts_at_local` (`YYYY-MM-DDTHH:MM` on that day, or empty), `sport`
+(`Ride`, `VirtualRide`, `Run` or `WeightTraining`), `priority` (`A`, `B`
+or `C`), `distance`, `target`, `planned_duration_s` (whole seconds, 0 to
+604800, or null), `location`, `course_profile` and `notes`. On an update a
+field not sent keeps its value and an empty one clears it; `sport` not
+sent keeps sport, environment and detail. A new competition on the day of
+a stored one of its sport is created anyway: the athlete chose it. Nothing
+is written to Intervals.icu; the competition waits for the athlete's own
+sync.
+
+Response: 200 `{"status": "created" | "updated", "competition": object,
+"competitions": object[], "change": object | null}`; `change` is the undo
+reference (`id`, `entity_type`, `action`, `after_hash`) for
+`POST /api/change-history/undo`, null when nothing changed.
+
+Errors: 400 "Jeder Wettkampf benötigt einen Namen."; 400 "Der
+Startzeitpunkt des Wettkampfs muss ein gültiges Datum sein."; 400
+"Startzeit und Wettkampftag passen nicht zusammen: ..."; 400 "Die
+Kategorie für ... muss RACE_A, RACE_B oder RACE_C sein."; 400 "Die
+Wettkampfdauer muss zwischen 0 und 604800 Sekunden liegen."; 400 "Es können
+maximal 20 anstehende Wettkämpfe gespeichert werden."; 400 "Ungültige lokale
+Wettkampf-ID."; 404 "Wettkampf nicht gefunden.".
+
+The route exists only where the competition service is configured.
+
+### `PUT /api/competitions/remove`
+
+Request: JSON body `{"id": "<competition UUID>", "confirmed": true}`.
+
+Response: 200 `{"status": "deleted", "competition_id": string,
+"remote_sync_pending": boolean, "competitions": object[], "change": object
+| null}`; `remote_sync_pending` is true when a linked Intervals.icu event
+waits for the athlete's next sync to be removed (nothing is deleted there
+now); `change` as for `PUT /api/competitions`.
+
+Errors: 400 "Das Löschen eines Wettkampfs muss bestätigt werden." unless
+`confirmed` is `true`; 400 "Ungültige lokale Wettkampf-ID."; 404 "Wettkampf
+nicht gefunden.".
+
+The route exists only where the competition service is configured.
 
 ### `GET /api/competitions/{id}/race-plan`
 

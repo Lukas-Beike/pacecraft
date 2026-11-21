@@ -269,3 +269,36 @@ Evidence:
 - `tests/test_history_undo_service.py::test_legacy_profile_row_stays_undoable_and_later_edits_still_conflict`
 - `tests/test_planning_competition_service.py::test_a_location_only_edit_keeps_the_sync_state`
 - `tests/test_planning_competition_service.py::test_empty_values_clear_optional_fields_and_absent_ones_keep_them`
+
+### Requirement: CS15 Athlete competition entry
+The athlete SHALL add, edit and delete a competition in Kalender → Wettkämpfe through one dialog, over `PUT /api/competitions` and `PUT /api/competitions/remove`, which run the Coach's save and delete use cases with their validation and change history. The dialog is the athlete's own explicit action: it writes locally only and leaves any Intervals.icu removal to the next sync the athlete starts.
+
+#### Scenario: Add or edit
+- **WHEN** the athlete presses "Hinzufügen" or the pencil of any competition card (upcoming, undated or past) and saves
+- **THEN** the dialog sends the name, day, start time, sport, priority, distance (kilometres), target, expected duration (h:mm:ss or mm:ss), location, course profile and notes; a sport the dialog does not offer stays as stored unless another is chosen; a new competition on the day of a stored one is created as the athlete chose it; the list reloads and a receipt offers "Rückgängig" from the recorded change.
+
+#### Scenario: Derived result
+- **WHEN** the dialog opens a past competition that has a derived result
+- **THEN** the result shows as read-only text; nothing is entered or stored for it.
+
+#### Scenario: Delete with a second step
+- **WHEN** the athlete presses "Löschen" in the dialog
+- **THEN** the dialog asks "Wettkampf löschen?" with the name and day before it sends `confirmed: true`; the deletion keeps the remote tombstone and its undo.
+
+#### Scenario: Refusal
+- **WHEN** a write has no session (401), no CSRF token (403), an invalid field (400), no confirmation (400) or an unknown id (404), or the device is offline
+- **THEN** nothing is written and the dialog stays open with the message; competitions are not part of the offline outbox.
+
+Detailed contract: both routes answer the service result plus `change` (the undo reference `id`, `entity_type`, `action`, `after_hash`, or null); see `docs/api-routes.md`.
+
+Evidence:
+- `backend/http_api/athlete_put.py:AthletePutRoutes._save_competition`
+- `backend/http_api/athlete_put.py:AthletePutRoutes._remove_competition`
+- `backend/planning/competition_service.py:CompetitionService.save`
+- `public/plan-views.js:openCompetitionDialog`
+- `public/plan-views.js:competitionCard`
+- `tests/test_server_planning.py::CompetitionHttpRoutesTests.test_create_update_and_delete_with_undo_references`
+- `tests/test_server_planning.py::CompetitionHttpRoutesTests.test_invalid_input_unconfirmed_delete_and_unknown_id_are_refused`
+- `tests/test_server_planning.py::CompetitionHttpRoutesTests.test_the_routes_need_a_session_and_the_csrf_token`
+- `tests/competition-overview.test.cjs`
+- `e2e/competition-editor.spec.js`

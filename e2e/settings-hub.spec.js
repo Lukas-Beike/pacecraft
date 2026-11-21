@@ -48,7 +48,8 @@ test("@responsive the profile has five closed summarised sections and a save bar
   for (const section of await sections.all()) await expect(section).not.toHaveAttribute("open", "");
   for (const summary of await sections.locator("> summary .collapsible-summary-meta:not(#zoneSummary)").all()) expect((await summary.textContent()).trim()).not.toBe("");
   await sections.evaluateAll((nodes) => nodes.forEach((node) => { node.open = true; }));
-  await page.getByLabel("Name", { exact: true }).fill("Fixture Athlete");
+  // The profile's own field: the competition dialog has a "Name" too (#3837).
+  await page.locator("#profileForm").getByLabel("Name", { exact: true }).fill("Fixture Athlete");
   await page.evaluate(() => window.scrollTo(0, 0));
   const bar = page.locator(".save-bar");
   await expect(bar).toBeInViewport({ ratio: 1 });

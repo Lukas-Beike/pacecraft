@@ -83,7 +83,7 @@ test("@responsive competition summaries, saved details and archive stay compact 
   await expect(archive.locator(".competition-card").first()).toHaveAttribute("data-competition-id", "old");
   await expect(archive.locator("summary").filter({ hasText: "Alt" }).first()).toContainText("0 km");
   await expect(archive.locator(".race-plan")).toHaveCount(0);
-  await expect(root.locator("svg, form, .season-evidence")).toHaveCount(0);
+  await expect(root.locator("svg:not(.message-action-icon), form, .season-evidence")).toHaveCount(0);
   await expect(root).not.toContainText(/Wochenumfang|Szenarien vergleichen|Zieldistanzvergleich|Taper/);
   for (const theme of ["dark", "light"]) {
     await page.evaluate((theme) => { document.documentElement.dataset.theme = theme; document.documentElement.style.fontSize = "200%"; }, theme);
