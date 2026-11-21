@@ -406,6 +406,11 @@ class NutritionRepositoryAndServiceTests(unittest.TestCase):
         self.assertEqual(entry["meal_date"], "2026-09-23")
         self.assertEqual(entry["logged_at"], "2026-09-23T12:00:00")
         self.assertFalse(entry["logged_time_known"])
+        dinner = self.service.log_template(
+            template["id"], meal_date="2026-09-23", meal_type="dinner"
+        )
+        self.assertEqual(dinner["logged_at"], "2026-09-23T18:00:00")
+        self.assertTrue(dinner["logged_time_known"])
 
     def test_template_without_meal_time_takes_type_default_and_keeps_meal_type(
         self,

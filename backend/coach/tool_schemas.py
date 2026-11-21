@@ -1278,7 +1278,7 @@ def build_structured_tool_schemas(
                         "meal_time": {"type": "string"},
                         "logged_time_known": {
                             "type": "boolean",
-                            "description": "Omit it and the time when the athlete did not say when they ate; the meal type's default time then applies. False only when the athlete wants the time left unknown; then set meal_type. Defaults to true.",
+                            "description": "Only to make the time known or unknown. A changed meal_type alone moves a breakfast, lunch or dinner default time (09:00, 12:00, 18:00) to the new type's default; a named time stays.",
                         },
                         "estimate_uncertain": {
                             "type": "boolean",

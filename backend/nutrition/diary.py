@@ -208,9 +208,10 @@ class NutritionDiaryService:
                 "meal_date": meal_date,
                 "meal_time": meal_time,
                 # Without a time, an explicit template type takes its default time
-                # (#3834); a type guessed when the template was saved invents none.
+                # (#3834), as does a type named for this log; a type guessed when the
+                # template was saved invents none.
                 "logged_time_known": bool(
-                    meal_time or template.get("meal_type_explicit")
+                    meal_time or meal_type or template.get("meal_type_explicit")
                 ),
             }
             payload.pop("id")
