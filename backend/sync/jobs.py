@@ -817,8 +817,14 @@ class SyncJobStore:
         requested_by: str,
         operations: builtins.list[dict[str, Any]] | None,
         available_at: str | None,
+        *,
+        coalesce: bool = False,
     ) -> tuple[dict[str, Any], bool]:
-        """Persist a normalized, credential-free envelope and its items atomically."""
+        """Persist a normalized, credential-free envelope and its items atomically.
+
+        ``coalesce`` returns an active job of the same provider and type instead
+        of a second one, as the scheduler's refreshes always do (#3838).
+        """
         try:
             normalized = validate_job_request(
                 envelope.get("provider"),
@@ -844,7 +850,7 @@ class SyncJobStore:
         job_id = str(self._uuid_factory())
 
         with self._database_manager.unit_of_work() as db:
-            if (
+            if coalesce or (
                 normalized["type"] in _COALESCED_TYPES
                 and requested in _COALESCED_REQUESTERS
             ):

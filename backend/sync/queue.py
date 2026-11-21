@@ -93,6 +93,7 @@ class SyncJobQueueService:
         requested_by: str = "system",
         item_operations: builtins.list[dict[str, Any]] | None = None,
         available_at: str | None = None,
+        coalesce: bool = False,
     ) -> dict[str, Any]:
         """Validate and persist a job while maintenance drains all side effects."""
         with self._maintenance_gate.operation():
@@ -108,7 +109,11 @@ class SyncJobQueueService:
                 raise AppError(400, str(exc), reason="invalid_job_request") from exc
             try:
                 result, created = self._store.enqueue(
-                    envelope, requested_by, item_operations, available_at
+                    envelope,
+                    requested_by,
+                    item_operations,
+                    available_at,
+                    coalesce=coalesce,
                 )
             except SyncJobInvalidOperationError as exc:
                 raise AppError(400, str(exc), reason="invalid_job_request") from exc

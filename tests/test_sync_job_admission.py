@@ -153,6 +153,10 @@ class ConfiguredProviderTests(unittest.TestCase):
             {"reason": "athlete_send", "approval_manifest": MANIFEST},
             json.loads(row["payload"]),
         )
+        # A second press while the job is active joins it (#3838 design note).
+        _, again = self.endpoint.send_competitions()
+        self.assertEqual(job["id"], again["id"])
+        self.assertEqual(1, stored_jobs(self.database))
 
     def test_unknown_provider_is_a_validation_error_not_a_job(self) -> None:
         with self.assertRaises(AppError) as caught:

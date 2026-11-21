@@ -228,6 +228,8 @@ class SyncCommandEndpoint:
                 "approval_manifest": self._competition_manifest(),
             },
             requested_by="user",
+            # A second press while one runs joins it instead of sending twice.
+            coalesce=True,
         )
 
     def _require_provider_configured(self, provider: Any) -> None:
