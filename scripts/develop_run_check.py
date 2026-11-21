@@ -19,10 +19,11 @@ from __future__ import annotations
 import argparse
 import contextlib
 import io
+import re
 import sys
 from time import monotonic, sleep
 
-from gh_cli import CliError, gh_json, positive_int
+from gh_cli import CliError, gh_json, git, positive_int
 
 FIELDS = "databaseId,workflowName,status,conclusion,url,headSha,createdAt"
 POLL_SECONDS = 30
@@ -121,6 +122,19 @@ def report(runs: dict[str, dict], history: list[dict]) -> list[str]:
     return states
 
 
+def full_sha(sha: str) -> str:
+    """The full commit SHA: `gh run list --commit` matches only all 40
+    characters, so an abbreviated one never found a run (#3796)."""
+    if re.fullmatch(r"[0-9a-f]{40}", sha):
+        return sha
+    try:
+        return git("rev-parse", "--verify", "--quiet", f"{sha}^{{commit}}").strip()
+    except CliError:
+        raise CliError(
+            f"unknown commit {sha!r}: fetch origin or pass the full SHA"
+        ) from None
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     group = parser.add_mutually_exclusive_group(required=True)
@@ -129,7 +143,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--wait", type=positive_int, metavar="MINUTES")
     args = parser.parse_args(argv)
     try:
-        sha = args.sha or merge_sha(args.pr)
+        sha = full_sha(args.sha) if args.sha else merge_sha(args.pr)
     except NotMerged as exc:
         print(f"refused: {exc}")
         return 1
