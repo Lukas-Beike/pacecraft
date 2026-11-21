@@ -491,10 +491,22 @@ function renderProviderFreshness(data) {
       button.addEventListener("click", () => retryProvider(entry.provider, button));
       item.append(button);
     }
+    if (entry.provider === providerIds().intervals && entry.area === "competitions" && entry.configured) item.append(competitionSendButton());
     root.append(item);
   });
 }
 
+
+function competitionSendButton() {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.id = "competitionSendButton";
+  button.className = "secondary-button";
+  button.disabled = state.localSync.competitions;
+  button.textContent = button.disabled ? "Wird gesendet …" : "Wettkämpfe senden";
+  button.addEventListener("click", () => void sendCompetitions());
+  return button;
+}
 
 // Garmin and Wahoo set the local sync flag named by their provider id; the others have their own.
 function providerSyncKey(provider) {

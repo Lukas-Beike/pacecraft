@@ -112,6 +112,10 @@ The system SHALL keep remote pushes explicit and output-only (Intervals.icu rece
 - **WHEN** a sync fails
 - **THEN** it stores the failed step and a kind without provider text (`http_<status>`, `app_<status>_<reason>`, `network` or `local_<error class>`) and counts consecutive failures; the diagnostic report's `competition_sync` section shows them until a sync succeeds and clears the record (`tests/test_sync_competitions.py::test_failure_kind_names_the_status_reason_or_class_without_text`).
 
+#### Scenario: Athlete sends the competitions
+- **WHEN** Intervals.icu is configured, the Anbindungen card shows "Wettkämpfe senden" on its "Wettkämpfe" row, and the athlete presses it
+- **THEN** `POST /api/intervals/competitions/send` queues one `competition_push` job with the competition set of that moment as `approval_manifest` and reason `athlete_send` (409 `not_configured` without Intervals.icu), the button reads "Wird gesendet …" and is disabled until the job ends, and nothing is sent without a press (`tests/test_sync_job_admission.py::ConfiguredProviderTests::test_athlete_send_queues_the_competition_push_with_the_manifest`, `tests/test_sync_job_admission.py::UnconfiguredProviderTests::test_athlete_send_without_intervals_is_409_not_configured`, `tests/test_http_sync_commands_post.py::SyncCommandPostRouteTests::test_competition_send_is_a_csrf_session_route_without_a_body`, `e2e/settings-hub.spec.js` "sends the competitions once per press").
+
 #### Scenario: Result and tombstones
 - **WHEN** a run succeeds
 - **THEN** it returns `status: ok`, `synced_at`, `pushed`, `skipped`, `skipped_items`, `conflicts`, `deleted_remote`, `skipped_deletions` and `total`; the tombstone of a skipped deletion is removed like that of a deleted one, while a failed delete call keeps all tombstones; a manifest that changed since the approval answers 409 "Der Wettkampfbestand hat sich seit der Freigabe geändert.", and a row edited since it was read is left alone.

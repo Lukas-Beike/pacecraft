@@ -153,3 +153,37 @@ test("@responsive collapsible sections share one chevron and the page passes the
     expect(results.violations, `${segment} accessibility violations`).toEqual([]);
   }
 });
+
+test("@responsive the Intervals.icu card sends the competitions once per press and shows the running state", async ({ page }) => {
+  await page.route("**/api/bootstrap*", async (route) => {
+    const response = await route.fetch();
+    const body = await response.json();
+    const entry = { provider: body.provider_ids.intervals, label: "Wettkämpfe", area: "competitions", state: "fresh", configured: true, read_only: false, last_success_at: "2026-11-20T08:00:00+00:00" };
+    body.provider_freshness = [...(body.provider_freshness || []).filter((item) => item.area !== "competitions"), entry];
+    await route.fulfill({ response, json: body });
+  });
+  const posts = [];
+  let polls = 0;
+  await page.route("**/api/intervals/competitions/send", (route) => {
+    posts.push(route.request().method());
+    return route.fulfill({ status: 202, json: { id: "job-send", status: "queued", provider: "intervals", type: "competition_push" } });
+  });
+  await page.route("**/api/sync/jobs/job-send", (route) => {
+    polls += 1;
+    return route.fulfill({ json: { id: "job-send", status: polls < 2 ? "running" : "completed", items: [] } });
+  });
+  await openMore(page, "connections");
+  await expandConnections(page, ["intervals"]);
+  const send = page.locator("#freshness-intervals").getByRole("button", { name: "Wettkämpfe senden" });
+  await expect(send).toBeEnabled();
+  expect(posts).toEqual([]);
+  await send.click();
+  await expect(page.locator("#competitionSendButton")).toBeDisabled();
+  await expect(page.locator("#competitionSendButton")).toHaveText("Wird gesendet …");
+  await expect(page.locator("#toast")).toContainText("Wettkämpfe gesendet");
+  await expect(page.locator("#competitionSendButton")).toHaveText("Wettkämpfe senden");
+  await expect(page.locator("#competitionSendButton")).toBeEnabled();
+  expect(posts).toEqual(["POST"]);
+  await page.waitForLoadState("networkidle");
+  await page.unrouteAll({ behavior: "ignoreErrors" });
+});
