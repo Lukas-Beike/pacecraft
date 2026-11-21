@@ -96,12 +96,8 @@ class NutritionBuilderTests(unittest.TestCase):
         with patch.object(
             nutrition_wiring, "read_energy_view", side_effect=lambda *args: next(reads)
         ) as read:
-            self.assertEqual(
-                640, services.energy_view("2026-11-19")["goal"]["eaten_kcal"]
-            )
-            self.assertEqual(
-                0, services.energy_view("2026-11-19")["goal"]["eaten_kcal"]
-            )
+            self.assertEqual(640, services.energy_view()["goal"]["eaten_kcal"])
+            self.assertEqual(0, services.energy_view()["goal"]["eaten_kcal"])
         self.assertEqual(2, read.call_count)
 
     def test_intervals_sync_uses_the_current_config_and_a_fresh_diary(self) -> None:
