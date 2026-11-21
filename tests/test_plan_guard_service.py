@@ -21,7 +21,7 @@ from backend.coach.context_selection import select_coach_context
 from backend.coach.tool_execution_service import CoachStructuredToolExecutionService
 from backend.coach.tool_failures import CoachStructuredToolFailureService
 from backend.coach.tool_schemas import ACCEPT_PLAN_FINDINGS
-from backend.planning import calendar_load, plan_checks
+from backend.planning import brief_budget, calendar_load, plan_checks
 from backend.planning.load_checks import LoadThresholds
 from backend.planning.plan_guard_service import (
     IllnessNotConfirmedError,
@@ -183,6 +183,20 @@ class PlanGuardWriteTests(unittest.TestCase):
         hint = {"method": "infection-hint-v1", "status": "hint"}
         self.guard.with_infection_hint(lambda: hint)
         self.assertEqual(hint, self.guard.brief()["infection_hint"])
+        # A brief at its budget stays within it with the hint (Gitar, #3812), and
+        # the counts of the earlier fit are kept.
+        full = {
+            "calendar_busy_minutes": {f"2026-12-{day:02d}": 60 for day in range(1, 29)},
+            "omitted": {"note": "x", "counts": {"all_day_events": 2}},
+        }
+        limit = brief_budget.brief_size(full)
+        fitted = brief_budget.fit_brief(
+            {**full, "infection_hint": {"signals": ["a" * 200]}}, limit
+        )
+        self.assertLessEqual(brief_budget.brief_size(fitted), limit)
+        self.assertEqual(fitted["infection_hint"], {"signals": ["a" * 200]})
+        self.assertEqual(fitted["omitted"]["counts"]["all_day_events"], 2)
+        self.assertGreater(fitted["omitted"]["counts"]["calendar_busy_minutes"], 0)
         # It comes from the check-ins, not the write, so a write that changed nothing
         # about it still names it in its notes and is never blocked by it.
         before = self.guard.findings()

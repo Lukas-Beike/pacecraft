@@ -696,7 +696,8 @@ class PlanGuardService:
             complaints=self._complaints(),
         )
         # A shown infection hint (M14, #3762) is information only; no check reads it.
+        # It is never trimmed: the brief is fitted again with it, older entries go first.
         infection_hint = self._infection_hint()
-        if infection_hint:
-            brief["infection_hint"] = dict(infection_hint)
-        return brief
+        if not infection_hint:
+            return brief
+        return brief_budget.fit_brief({**brief, "infection_hint": dict(infection_hint)})
