@@ -177,19 +177,33 @@ class PlanningCompetitionTests(unittest.TestCase):
         self.assertLessEqual(len(long), 12000)
         self.assertTrue(long.endswith("\n\nZiel: unter 45"))
         # Read back, the app's own last line neither duplicates nor becomes the goal.
-        remote = competitions.remote_competition_data(
-            {
-                "date": "2026-10-04",
-                "name": "Race",
-                "type": "Run",
-                "description": "Hinweis\n\nZiel: unter 45",
-            }
-        )
+        owned = {
+            "date": "2026-10-04",
+            "name": "Race",
+            "type": "Run",
+            "external_id": competitions.competition_external_id("r"),
+            "description": "Hinweis\n\nZiel: unter 45",
+        }
+        remote = competitions.remote_competition_data(owned)
         assert remote is not None
         self.assertEqual(
             ("Hinweis", "Hinweis"), (remote["description"], remote["notes"])
         )
         self.assertNotIn("target", remote)
+        # A hand-written event keeps its own "Ziel:" line; a stored conflict keeps the
+        # raw text, so adopting strips the app's line once, not the athlete's too.
+        manual = competitions.remote_competition_data({**owned, "external_id": "own"})
+        assert manual is not None
+        self.assertEqual("Hinweis\n\nZiel: unter 45", manual["description"])
+        stored = json.loads(
+            competitions.competition_conflict_payload(
+                {**owned, "id": "7"}, "identity_only", detected_at="t"
+            )
+        )["remote"]
+        self.assertEqual("Hinweis\n\nZiel: unter 45", stored["description"])
+        adopted = competitions.remote_competition_data(stored)
+        assert adopted is not None
+        self.assertEqual("Hinweis", adopted["description"])
         self.assertEqual(
             "Ziel: früh starten\nRest",
             competitions.remote_description_without_goal("Ziel: früh starten\nRest"),

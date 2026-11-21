@@ -202,7 +202,11 @@ def resolve_competition_fields(token: str) -> dict[str, str | None]:
     }
 
 
-def remote_competition_data(event: dict[str, Any]) -> dict[str, Any] | None:
+def remote_competition_data(
+    event: dict[str, Any], *, strip_goal: bool = True
+) -> dict[str, Any] | None:
+    """The local fields of a remote race; ``strip_goal`` drops the app's own goal
+    line, only from an event this app owns and only once (#3908)."""
     event_date = remote_competition_date(event)
     name = str(event.get("name") or "").strip()[: COMPETITION_TEXT_LIMITS["name"]]
     sport = supported_competition_sport(
@@ -218,9 +222,13 @@ def remote_competition_data(event: dict[str, Any]) -> dict[str, Any] | None:
     )[:19]
     planned_duration_s = remote_competition_moving_time(event.get("planned_duration_s"))
     distance = remote_competition_distance(event.get("distance"))
-    description = remote_description_without_goal(event.get("description"))[
-        : COMPETITION_TEXT_LIMITS["description"]
-    ]
+    owned = str(event.get("external_id") or "").startswith(COMPETITION_EXTERNAL_PREFIX)
+    raw = event.get("description")
+    description = (
+        remote_description_without_goal(raw)
+        if strip_goal and owned
+        else str(raw or "").strip()
+    )[: COMPETITION_TEXT_LIMITS["description"]]
     return {
         "intervals_event_id": str(
             event.get("id") or event.get("intervals_event_id") or ""
@@ -242,7 +250,8 @@ def remote_competition_data(event: dict[str, Any]) -> dict[str, Any] | None:
 def competition_conflict_payload(
     remote: dict[str, Any], conflict_type: str, *, detected_at: str
 ) -> str:
-    data = remote_competition_data(remote) or {}
+    # The stored remote keeps its own text; the goal line is dropped once, on adopt.
+    data = remote_competition_data(remote, strip_goal=False) or {}
     data["external_id"] = str(
         remote.get("external_id") or data.get("external_id") or ""
     ).strip()[: COMPETITION_TEXT_LIMITS["external_id"]]
