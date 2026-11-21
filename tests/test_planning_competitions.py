@@ -129,12 +129,8 @@ class PlanningCompetitionTests(unittest.TestCase):
         )
         self.assertEqual(
             competitions.competition_event_optional_payload(source),
-            {
-                "planned_duration_s": 3600,
-                "distance": 42.5,
-                "target": '{"pace":"4:30/km"}',
-                "id": 123,
-            },
+            # #3908: the goal stays local; Intervals.icu's `target` is an enum.
+            {"planned_duration_s": 3600, "distance": 42.5, "id": 123},
         )
         self.assertEqual(source, original)
         self.assertEqual(
@@ -152,7 +148,7 @@ class PlanningCompetitionTests(unittest.TestCase):
         self.assertEqual(competitions.competition_event_optional_payload({}), {})
         self.assertEqual(
             competitions.competition_event_optional_payload({"target": "Finish"}),
-            {"target": "Finish"},
+            {},
         )
         with self.assertRaises(ValueError):
             competitions.competition_event_optional_payload(
@@ -182,7 +178,7 @@ class PlanningCompetitionTests(unittest.TestCase):
         self.assertEqual(payload["description"], "D" * 12000)
         self.assertEqual(payload["external_id"], "intervals-coach-competition-race-id")
         self.assertEqual(payload["distance"], 10.5)
-        self.assertEqual(payload["target"], '["finish"]')
+        self.assertNotIn("target", payload)
         self.assertEqual(payload["moving_time"], 0)
         self.assertEqual(source, original)
         fallback = competitions.competition_event_payload(
@@ -277,7 +273,9 @@ class PlanningCompetitionTests(unittest.TestCase):
         self.assertEqual(result["category"], "RACE_C")
         self.assertEqual(result["distance"], "trail")
         self.assertEqual(result["planned_duration_s"], None)
-        self.assertEqual(len(result["target"]), 1000)
+        # #3908: the remote target is not read; the local goal keeps its limit.
+        self.assertNotIn("target", result)
+        self.assertEqual(len(competitions.competition_target({"p": "z" * 1100})), 1000)
         self.assertEqual(len(result["description"]), 12000)
         self.assertEqual(len(result["notes"]), 2000)
         self.assertEqual(source, original)
@@ -301,7 +299,8 @@ class PlanningCompetitionTests(unittest.TestCase):
             {"date": "2026-10-04", "name": "Race", "target": "Sub 2:00"}
         )
         assert text_target is not None
-        self.assertEqual(text_target["target"], "Sub 2:00")
+        # #3908: a remote `target` (a workout target type) is never read as the goal.
+        self.assertNotIn("target", text_target)
 
     def test_conflict_payload_has_explicit_timestamp_and_preserves_input(self) -> None:
         remote = {

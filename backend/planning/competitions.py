@@ -108,8 +108,8 @@ def competition_event_optional_payload(competition: dict[str, Any]) -> dict[str,
         except ValueError:
             # Keep free-form values local instead of sending invalid API data.
             pass
-    if competition.get("target") not in (None, ""):
-        payload["target"] = competition_target(competition.get("target"))
+    # The goal stays local: Intervals.icu's event `target` is the workout target
+    # type (AUTO, POWER, HR, PACE), and free text there rejects the send (#3908).
     if competition.get("intervals_event_id"):
         remote_id = str(competition["intervals_event_id"])
         payload["id"] = int(remote_id) if remote_id.isdigit() else remote_id
@@ -209,7 +209,6 @@ def remote_competition_data(event: dict[str, Any]) -> dict[str, Any] | None:
         "priority": priority,
         "category": f"RACE_{priority}",
         "distance": distance,
-        "target": competition_target(event.get("target")),
         "description": description,
         "planned_duration_s": planned_duration_s,
         "notes": description[: COMPETITION_TEXT_LIMITS["notes"]],
