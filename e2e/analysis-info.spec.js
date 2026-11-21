@@ -81,9 +81,10 @@ test("@responsive standard demo shows one compact race table and sport-specific 
   const running = page.locator("[data-analysis-section='development-Lauf']");
   await expect(running).not.toContainText("Keine Daten");
   await expect(running.locator("#performancePredictions")).toHaveCount(1);
-  await expect(running.locator("#runningBestEfforts")).toHaveCount(1);
-  // The race predictions stand directly above the running bests (#2786).
-  expect(await page.locator("#runningBestEfforts").evaluate((element) => element.previousElementSibling?.id)).toBe("performancePredictions");
+  // The running bests moved to Rekorde; the critical-speed line stays below the race predictions (#3826).
+  await expect(running.locator("#runningBestEfforts")).toHaveCount(0);
+  await expect(running.locator("#runningCriticalSpeed")).toHaveCount(1);
+  expect(await page.locator("#runningCriticalSpeed").evaluate((element) => element.previousElementSibling?.id)).toBe("performancePredictions");
   // Laufen shows no cycling part (#2265).
   await expect(cycling).toBeHidden();
   await expect(page.locator("#currentPerformance [data-metric='cycling_w_per_kg']")).toBeHidden();
@@ -97,9 +98,9 @@ test("@responsive standard demo shows one compact race table and sport-specific 
   await expect(page.locator("#performanceWeightCharts")).toHaveCount(0);
   await page.evaluate(async () => { await AppRouter.navigate("analysis/cycling", { historyMode: "replace" }); });
   await expect(running).toBeHidden();
-  const powerProfile = cycling.locator("#cyclingPowerProfile");
-  await expect(powerProfile.locator("tbody tr")).toHaveCount(5);
-  await expect(powerProfile.locator("tbody td")).toHaveText(Array.from({ length: 5 }, () => [/^\d+(?:,\d+)? W$/, /^\d{2}\.\d{2}\.\d{4}$/]).flat());
+  // The power profile moved to Rekorde; the critical-power line stays in Radfahren (#3826).
+  await expect(cycling.locator("#cyclingPowerProfile")).toHaveCount(0);
+  await expect(cycling.locator("#cyclingCriticalPower")).toHaveCount(1);
   await expect(cycling.locator("[data-body-metric='cycling_w_per_kg']")).toHaveCount(0);
   await expect(page.locator("#currentPerformance [data-metric='cycling_w_per_kg']")).toBeVisible();
   await expect(cycling.locator(".analysis-group-title")).toHaveText("Entwicklung");

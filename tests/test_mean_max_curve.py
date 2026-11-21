@@ -1018,6 +1018,8 @@ class ProfileSelectionTests(unittest.TestCase):
         summaries = []
         self.add_ride(summaries, "act_old", day="2025-03-14", peak=450.0)
         self.add_ride(summaries, "act_recent", day="2026-10-10", peak=350.0)
+        summaries[0].update(distance_m=80000.0, sources={"distance_m": "Garmin"})
+        summaries[1].update(distance_m=40000.0, sources={"distance_m": "Garmin"})
         builds = []
         pauses = []
         ticks = itertools.count(0.0, 0.25)
@@ -1055,13 +1057,25 @@ class ProfileSelectionTests(unittest.TestCase):
         every, current = service.all_time_records()
         self.assertTrue(current)
         one_read = service.curve_records((self.day - date(2025, 3, 14)).days + 1)
-        self.assertCountEqual(one_read, [dict(record) for record in every])
+        # The all-time records add only each session's totals (#3826).
+        self.assertCountEqual(
+            one_read,
+            [{k: v for k, v in record.items() if k != "totals"} for record in every],
+        )
         cards = service.power_profiles(all_time=True)
         self.assertEqual([], builds)
         self.assertEqual((450.0, "act_old", "2025-03-14"), best(cards["all_time"]))
         self.assertEqual("2025-03-14", cards["all_time"]["date_start"])
         self.assertFalse(cards["all_time"]["stale"])
         self.assertEqual(2, cards["all_time"]["cache_coverage"]["power_records"])
+        # The single-activity records read the same all-time sessions (#3826).
+        longest = cards["all_time"]["activity_records"][0]
+        self.assertEqual(
+            ("ride", "distance_m", 80000.0, "act_old", "Garmin"),
+            tuple(
+                longest[k] for k in ("sport", "field", "value", "activity_id", "source")
+            ),
+        )
         # The 90-day window, the CP/CS input and the Coach's copy stay recent.
         self.assertEqual(
             (350.0, "act_recent", "2026-10-10"), best(cards["windows"]["90"])

@@ -41,6 +41,7 @@ every named number the code fixes. A test fails when it is out of date.
 | `METHOD_ERROR_SHARE` | `{'minetti': 0.1, 'power': 0.1, 'flex_hr': 0.15, 'keytel': 0.3, 'met': 0.5}` | `backend/performance/activity_energy.py` | The 95 % error of a session's net cost as a share of it, by M11 method: the upper end of each expected error (method comment on #3100, #3552): running (Minetti) +-8-10 %, cycling power +-10 %, flex-HR +-10-15 %, Keytel +-20-30 %, MET (strength) +-30-50 %. A method not listed takes the widest share. |
 | `STEP_ERROR_SHARE` | `0.15` | `backend/performance/activity_energy.py` | Everyday energy from steps carries the step length's +-10-15 %. |
 | `TEF_ERROR_KCAL` | `80.0` | `backend/performance/activity_energy.py` | Thermic effect of food: +-30-80 kcal per day, the upper end. |
+| `ACTIVITY_RECORD_FIELDS` | `('distance_m', 'moving_duration_s', 'elevation_gain_m')` | `backend/performance/activity_records.py` | The canonical summary fields a single session can set a record with. |
 | `ENTERED_LABEL` | `'eingetragen'` | `backend/performance/body.py` | The source of one day's value in the merged body series (#3464). |
 | `SKINFOLD_LABEL` | `'Hautfalten'` | `backend/performance/body.py` | The profile's earlier body fat values are 3-site skinfolds (#3557, #3569). |
 | `WINDOW_DAYS` | `84` | `backend/performance/canonical_body.py` |  |

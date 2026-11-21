@@ -24,9 +24,15 @@ async function mockReports(page, { pending = 0 } = {}) {
   await page.route(`**${ENDURANCE}`, (route) => route.fulfill({ json: { activities: [] } }));
   await page.route(`**${POWER_PROFILES}`, (route) => (pending-- > 0 ? route.fulfill({ json: { all_time: { status: "pending" } } }) : route.fulfill({ json: {
     all_time: { power: [
-      ...[5, 60, 300, 1200].map((duration_seconds) => ({ sport: "Ride", duration_seconds, watts: 250, status: "ok", date: "2026-10-01", source: "Intervals.icu" })),
-      { sport: "VirtualRide", duration_seconds: 3600, watts: 210, status: "ok", date: "2026-10-02", source: "Intervals.icu" },
-    ], running: { distance: [{ distance_meters: 5000, seconds: 1250, date: "2026-10-03", source: "Garmin" }] } },
+      ...[5, 60, 300, 1200].map((duration_seconds) => ({ sport: "ride", environment: "outdoor", duration_seconds, watts: 250, status: "ok", date: "2026-10-01", activity_id: "act_ride", source: "Garmin" })),
+      { sport: "ride", environment: "indoor", duration_seconds: 3600, watts: 210, status: "ok", date: "2026-10-02", activity_id: "act_indoor", source: "Wahoo" },
+    ], running: { distance: [{ distance_meters: 5000, seconds: 1250, date: "2026-10-03", activity_id: "act_run", source: "Garmin" }] },
+    activity_records: [
+      { sport: "ride", field: "distance_m", status: "ok", value: 182400, activity_id: "act_ride", name: "Lange Runde", date: "2026-10-01", source: "Garmin" },
+      { sport: "ride", field: "moving_duration_s", status: "ok", value: 22320, activity_id: "act_ride", name: "Lange Runde", date: "2026-10-01", source: "Garmin" },
+      { sport: "ride", field: "elevation_gain_m", status: "unknown" },
+      { sport: "run", field: "distance_m", status: "ok", value: 32100, activity_id: "act_run", name: "Langer Lauf", date: "2026-10-03", source: "Garmin" },
+    ] },
   } })));
   await page.route(`**${TRAINING_RECORDS}`, (route) => route.fulfill({ json: {
     equipment: { items: [], garmin_items: [] },
@@ -49,25 +55,48 @@ test("@responsive cycling power profile loads only on performance and keeps unkn
   await waitForInitialState(page);
   expect(reportCounts()).toEqual({ [ENDURANCE]: 0, [POWER_PROFILES]: 0, [TRAINING_RECORDS]: 0 });
 
-  await routeTo(page, "#analysis/cycling");
+  await routeTo(page, "#analysis/records");
   await expect(page.locator("#dataPanel")).toHaveClass(/active/);
   await expect(page.locator("#cyclingPowerProfile")).toBeVisible();
-  await expect(page.locator("#cyclingPowerProfile tbody tr")).toHaveCount(5);
+  // Every measured duration, unknown ones marked (#3826).
+  await expect(page.locator("#cyclingPowerProfile tbody tr")).toHaveCount(13);
   await expect(page.locator("#cyclingPowerProfile [data-power-duration='5'] td")).toHaveText(["250 W", "01.10.2026"]);
-  await expect(page.locator("#cyclingPowerProfile [data-power-duration='3600'] td")).toHaveText(["210 W", "02.10.2026"]);
+  await expect(page.locator("#cyclingPowerProfile [data-power-duration='15'] td").first()).toHaveText("nicht erfasst");
+  // An indoor ride counts for power with its chip.
+  await expect(page.locator("#cyclingPowerProfile [data-power-duration='3600'] td")).toHaveText(["210 WIndoor", "02.10.2026"]);
   await expect(page.locator("#cyclingPowerProfile")).not.toContainText("90 Tage");
-  expect(await page.locator("#cyclingPowerProfile").evaluate((element) => element.closest("[data-analysis-section]").dataset.analysisSection)).toBe("development-Rad");
+  expect(await page.locator("#cyclingPowerProfile").evaluate((element) => element.closest("#analysisRecords") !== null)).toBe(true);
   // The first answer said the all-time bests were still being read, so the card asked again.
   expect(reportCounts()).toEqual({ [ENDURANCE]: 0, [POWER_PROFILES]: 2, [TRAINING_RECORDS]: 0 });
 });
 
+// Rekorde (#3826): the single-activity records beside the bests, each date opening its activity.
+test("@responsive Rekorde shows the single-activity records and opens a record's activity", async ({ page }) => {
+  await mockReports(page);
+  await page.route("**/api/activities/act_ride", (route) => route.fulfill({ json: { session: { name: "Lange Runde" } } }));
+  await waitForInitialState(page);
+  await routeTo(page, "#analysis/records");
+  await expect(page.locator("[data-analysis-segment='records']")).toHaveAttribute("aria-current", "page");
+  await expect(page.locator("#analysisRecords h3")).toHaveText(["Radfahren", "Laufen"]);
+  await expect(page.locator("#rideActivityRecords [data-activity-record='ride:distance_m'] td")).toHaveText(["182,4 km", "01.10.2026"]);
+  await expect(page.locator("#rideActivityRecords [data-activity-record='ride:moving_duration_s'] td").first()).toHaveText("6:12:00");
+  await expect(page.locator("#rideActivityRecords [data-activity-record='ride:elevation_gain_m'] td").first()).toHaveText("–");
+  await expect(page.locator("#runActivityRecords [data-activity-record='run:distance_m'] td")).toHaveText(["32,1 km", "03.10.2026"]);
+  await expect(page.locator("#runningBestEfforts")).toBeVisible();
+  await page.locator("#rideActivityRecords [data-activity-record='ride:distance_m'] button").click();
+  await expect(page.locator(".activity-detail-dialog")).toBeVisible();
+  await expect(page.locator("#activityDetailTitle")).toHaveText("Lange Runde");
+});
+
 // The post-release walk's sport steps match what the cards render: tables, not charts (#3009).
-test("@responsive the walk's Laufen and Radfahren steps pass on the rendered cards", async ({ page }) => {
+test("@responsive the walk's Laufen, Radfahren and Rekorde steps pass on the rendered cards", async ({ page, request }) => {
   const { STEPS, runStep } = await import(pathToFileURL(path.join(__dirname, "..", "scripts", "ui_walk.mjs")).href);
+  // The sport tabs' cards are current values since the bests moved to Rekorde (#3826): the demo has them.
+  expect((await request.get("/api/fixture/demo")).ok()).toBeTruthy();
   await mockReports(page);
   await waitForInitialState(page);
   await routeTo(page, "#analysis/running");
-  for (const name of ["Analyse: Laufen", "Analyse: Radfahren"]) {
+  for (const name of ["Analyse: Laufen", "Analyse: Radfahren", "Analyse: Rekorde"]) {
     const outcome = await runStep(page, STEPS.find((step) => step.name === name));
     expect(outcome.status, `${name}: ${outcome.why}`).toBe("ok");
   }
@@ -76,11 +105,11 @@ test("@responsive the walk's Laufen and Radfahren steps pass on the rendered car
 test("@responsive cold start on performance fetches only the power profile", async ({ page }) => {
   await mockReports(page);
   const reportCounts = trackReportRequests(page);
-  await page.goto("/#analysis/cycling");
+  await page.goto("/#analysis/records");
   await expect(page.locator("#appShell")).toBeVisible();
   await page.waitForFunction(() => AppState.state.initialStateLoaded);
   await expect(page.locator("#cyclingPowerProfile")).toBeVisible();
-  await expect(page.locator("#cyclingPowerProfile tbody tr")).toHaveCount(5);
+  await expect(page.locator("#cyclingPowerProfile tbody tr")).toHaveCount(13);
   expect(reportCounts()).toEqual({ [ENDURANCE]: 0, [POWER_PROFILES]: 1, [TRAINING_RECORDS]: 0 });
 });
 
@@ -89,16 +118,16 @@ test("@responsive cycling power profile stays cached across navigation and chart
   const reportCounts = trackReportRequests(page);
   await waitForInitialState(page);
 
-  await routeTo(page, "#analysis/cycling");
+  await routeTo(page, "#analysis/records");
   await expect(page.locator("#cyclingPowerProfile")).toBeVisible();
-  await expect(page.locator("#cyclingPowerProfile tbody tr")).toHaveCount(5);
+  await expect(page.locator("#cyclingPowerProfile tbody tr")).toHaveCount(13);
   const afterFirstVisit = reportCounts();
   await page.evaluate(() => renderAnalysisHistory(state.data.performance.history));
-  await expect(page.locator("#cyclingPowerProfile tbody tr")).toHaveCount(5);
+  await expect(page.locator("#cyclingPowerProfile tbody tr")).toHaveCount(13);
 
   await routeTo(page, "#coach");
   await expect(page.locator("#chatPanel")).toHaveClass(/active/);
-  await routeTo(page, "#analysis/cycling");
+  await routeTo(page, "#analysis/records");
   await expect(page.locator("#dataPanel")).toHaveClass(/active/);
   await expect(page.locator("#cyclingPowerProfile")).toBeVisible();
   expect(reportCounts()).toEqual(afterFirstVisit);
@@ -115,7 +144,7 @@ test("@responsive running analysis shows no running technique card", async ({ pa
   await expect(page.locator("#dataPanel")).toHaveClass(/active/);
   // The view's report reads start together, so once the best efforts are drawn any card read was sent.
   await profiles;
-  await expect(page.locator("#runningBestEfforts")).toHaveAttribute("data-analysis-empty", /.+/);
+  await expect(page.locator("#runningCriticalSpeed")).toHaveAttribute("data-analysis-empty", /.+/);
   await expect(page.getByText("Lauftechnik je Monat")).toHaveCount(0);
   await expect(page.locator("#runningDynamicsTrend")).toHaveCount(0);
   expect(reads).toEqual([]);
