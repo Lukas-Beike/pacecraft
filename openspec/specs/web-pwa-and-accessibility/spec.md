@@ -798,7 +798,11 @@ The chat SHALL follow new content only while the reader is within 48 px of the e
 - **WHEN** a reply starts while following
 - **THEN** its start is placed 16 px below the top and later text keeps the newest line 12 px above the composer
 
-Evidence: `public/coach.js::chatIsNearBottom`; `public/coach.js::chatScrollMovedUp`; `public/coach.js::updateChatJumpLabel`; `public/coach.js::appendHistoryPageButton`; `public/coach.js::mergeChatMessages`; `public/coach.js::scrollChatToResponseStart`. Tests: `e2e/coach-follow-latest.spec.js::a scrollbar drag upward during a stream stops following without a wheel gesture`; `e2e/coach-history-anchor.spec.js::automatic older chat loading keeps focus on the focused message action`.
+#### Scenario: Composer grows while following
+- **WHEN** the quick messages appear after more than six hours away (start, return from the background, or return to the Coach from another view) while the reader follows the newest message
+- **THEN** the newest message is scrolled back above the taller composer, and a reader who scrolled up keeps their position (#3862)
+
+Evidence: `public/shared.js::renderQuickMessageTemplates`; `public/shared.js::restoreRouteScroll`; `e2e/coach-message-cache.spec.js::the Coach opens and stays at the newest message through the fresh load and a view change`; `public/coach.js::chatIsNearBottom`; `public/coach.js::chatScrollMovedUp`; `public/coach.js::updateChatJumpLabel`; `public/coach.js::appendHistoryPageButton`; `public/coach.js::mergeChatMessages`; `public/coach.js::scrollChatToResponseStart`. Tests: `e2e/coach-follow-latest.spec.js::a scrollbar drag upward during a stream stops following without a wheel gesture`; `e2e/coach-history-anchor.spec.js::automatic older chat loading keeps focus on the focused message action`.
 
 ### Requirement: Proposal card contract
 
