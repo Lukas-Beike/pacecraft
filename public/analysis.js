@@ -342,7 +342,7 @@ function appendAnalysisPointMark(svg, item, point, index, unit, scales, obstacle
     return;
   }
   const dot = svgNode("circle", { cx: x(point.date), cy: y(point.value), r: 2.5, "data-series": index, "data-color": item.color ?? index });
-  if (item.line === "faint") dot.setAttribute("data-line", "faint");
+  if (item.line === "faint") dot.dataset.line = "faint";
   dot.append(svgNode("title", {}, `${item.label} · ${dateLabel(point.date)}: ${analysisPointValue(item, point, unit)}`));
   svg.append(dot);
   obstacles.push({ left: x(point.date) - 3, right: x(point.date) + 3, top: y(point.value) - 3, bottom: y(point.value) + 3 });
