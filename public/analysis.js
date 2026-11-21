@@ -652,16 +652,22 @@ const PREVIOUS_YEAR_DAYS = 364;
 const trendHistories = new Map();
 
 // The stored long read of `days`, or null while it loads; `rerender` runs once it arrives.
+// A newer data version reloads it in the background while the older read stays drawn; a failed read is
+// kept as failed (no automatic retry) until the athlete picks a period or the switch again.
 function trendHistory(days, rerender) {
   const cached = trendHistories.get(days);
-  if (cached?.version === analysisReportVersionKey()) return cached.report;
-  if (!cached?.loading) {
-    trendHistories.set(days, { loading: true });
-    requestAnalysisReport(`/api/analysis/trend-history?days=${days}`)
-      .then((report) => { trendHistories.set(days, { report, version: analysisReportVersionKey() }); rerender(); })
-      .catch(() => { trendHistories.delete(days); });
-  }
-  return null;
+  const version = analysisReportVersionKey();
+  if (cached?.failed || cached?.loading || cached?.version === version) return cached?.report || null;
+  trendHistories.set(days, { ...cached, loading: true });
+  requestAnalysisReport(`/api/analysis/trend-history?days=${days}`)
+    .then((report) => { trendHistories.set(days, { report, version }); rerender(); })
+    .catch(() => { trendHistories.set(days, { failed: true }); rerender(); });
+  return cached?.report || null;
+}
+
+// A short line under the selector when the longer read failed.
+function trendHistoryNote(period) {
+  return trendHistories.get(TREND_PERIOD_DAYS[period])?.failed ? h("p", "muted", "Der längere Zeitraum konnte nicht geladen werden.") : null;
 }
 
 function trendHistoryNeeded(period) {
@@ -678,12 +684,17 @@ const TREND_PERIOD_BUTTONS = { fortnight: "Letzte 14 Tage", twelveWeeks: "12 Woc
 
 // The period buttons with the "Vorjahr" switch under them.
 function trendPeriodControls(label, value, periods, change) {
-  const controls = analysisPeriodControls(label, value, change, periods.map((period) => [period, TREND_PERIOD_BUTTONS[period]]));
+  // A choice retries a failed longer read.
+  const choose = (period) => {
+    for (const [days, entry] of trendHistories) if (entry.failed) trendHistories.delete(days);
+    change(period);
+  };
+  const controls = analysisPeriodControls(label, value, choose, periods.map((period) => [period, TREND_PERIOD_BUTTONS[period]]));
   const toggle = h("button", { className: "secondary-button", type: "button", "aria-pressed": String(previousYearShown) }, "Vorjahr");
-  toggle.addEventListener("click", () => { previousYearShown = !previousYearShown; change(value); });
+  toggle.addEventListener("click", () => { previousYearShown = !previousYearShown; choose(value); });
   const comparison = h("div", { className: "analysis-period-controls", "aria-label": "Vergleich mit dem Vorjahr" }, toggle);
   comparison.setAttribute("role", "group");
-  return h("div", "analysis-trend-controls", controls, comparison);
+  return h("div", "analysis-trend-controls", controls, comparison, trendHistoryNeeded(value) ? trendHistoryNote(value) : null);
 }
 // Report responses are reused per content version (state_versions) and in-flight requests are shared.
 const analysisReportCache = new Map();
@@ -711,6 +722,7 @@ function invalidateAnalysisReport(path) {
 
 function clearAnalysisReportCache() {
   analysisReportCache.clear();
+  trendHistories.clear();
 }
 
 let cyclingPowerProfileGeneration = 0;

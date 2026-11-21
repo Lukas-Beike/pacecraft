@@ -790,6 +790,8 @@ test("@responsive longer trend periods and the previous year are read only on de
   await page.route("**/api/analysis/trend-history**", async (route) => {
     const days = Number(new URL(route.request().url()).searchParams.get("days"));
     requested.push(days);
+    // A failed longer read shows its note instead of an unexplained short window.
+    if (days === 364) return route.fulfill({ status: 503, json: { error: "E2E fixture: nicht erreichbar" } });
     const performance = await page.evaluate(() => state.data.performance);
     const recovery = structuredClone(performance.personal_recovery);
     // The stored history plus the same values one year earlier, so the previous year has data.
@@ -817,6 +819,7 @@ test("@responsive longer trend periods and the previous year are read only on de
   const development = page.locator("#analysisHistoryCharts");
   await development.getByRole("button", { name: "12 Monate" }).click();
   await expect.poll(() => requested).toContain(364);
+  await expect(development.getByText("Der längere Zeitraum konnte nicht geladen werden.")).toBeVisible();
   await expect(development.getByRole("button", { name: "Vorjahr", exact: true })).toHaveAttribute("aria-pressed", "true");
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
 });
