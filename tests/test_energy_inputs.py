@@ -30,7 +30,7 @@ from backend.nutrition.energy_inputs import (
     energy_basis,
     read_energy_inputs,
 )
-from backend.nutrition.energy_view import read_energy_view, read_fit_inputs
+from backend.nutrition.energy_view import fit_start, read_energy_view, read_fit_inputs
 
 DAY1, DAY2, DAY3 = date(2026, 10, 1), date(2026, 10, 2), date(2026, 10, 3)
 DAY4 = date(2026, 10, 4)
@@ -948,6 +948,14 @@ class BodyFatFallbackTests(unittest.TestCase):
         )
         for key in ("28d", "91d"):
             self.assertEqual(plain["fit_scale"][key], asked["fit_scale"][key])
+        # #3839: 6 Monate reads its 182 days only and never pays for 12 Monate.
+        self.assertEqual(DAY3 - timedelta(days=181), fit_start(DAY3, 182))
+        self.assertEqual(DAY3 - timedelta(days=364), fit_start(DAY3))
+        half = read_energy_view(
+            None, src, DAY3, None, lambda: read_fit_inputs(None, src, DAY3, 182), 182
+        )
+        self.assertEqual(["182d", "28d", "91d"], sorted(half["fit_scale"]))
+        self.assertEqual(asked["fit_scale"]["182d"], half["fit_scale"]["182d"])
 
     def test_without_any_source_the_reason_stays(self) -> None:
         view = read_energy_view(None, skinfold_sources([]), DAY3)
