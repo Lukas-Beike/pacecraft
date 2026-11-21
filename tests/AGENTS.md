@@ -15,7 +15,9 @@
   stay mocked.
 
 - Format only the files you changed: `python scripts/check_changed.py
-  --fix-format` formats the changed Python files and nothing else. Never run
+  --fix-format` formats the changed Python files and no other file, then runs
+  the change's checks (affected tests, compile, quality), which can take
+  minutes; stderr names each step as it starts (#3865). Never run
   `ruff format tests` (or any whole folder); it rewrites unchanged, baselined
   files (#3382).
 - A test file named after a guarded script (such as the review-thread resolver's
