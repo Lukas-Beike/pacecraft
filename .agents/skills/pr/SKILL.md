@@ -125,9 +125,10 @@ also gets one adversarial bypass review before the PR (#3102).
   bypass review above. Write the content with Write/Edit instead of adding a
   shell exception: #3347 found a new bypass class in each of three review
   rounds and kept the guard. An approved loosening is an allowlist of known
-  safe command shapes that falls back to the full check for anything else,
-  never a list of constructs to watch for: #3781 started with such a list and
-  needed six review rounds (#3791).
+  safe command shapes (such as a listed program with a listed subcommand, in
+  text every shell splits the same way) that falls back to the full check for
+  anything else, never a list of constructs to watch for: #3781 spent two
+  review rounds on such a list before it switched (#3791).
 
 Fix valid findings with new commits and rerun the affected checks, then push. A
 finding you consider invalid needs concrete evidence (file and line, or the
