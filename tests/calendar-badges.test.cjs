@@ -166,11 +166,17 @@ test("the infection hint offers 'Mir geht's gut' (neutral) and 'Ich bin krank' (
   assert.equal(infectionHintNote({ status: "none", signals: [] }, "2026-11-21", false), null);
 });
 
+test("a 'keine' or 'nein' illness answer still asks the infection hint question", () => {
+  const { reportsComplaint } = extractFunctions("plan-views.js", ["NO_COMPLAINT_ANSWERS", "reportsComplaint"]);
+  for (const answer of ["", "nein", "Keine.", " kein ", "gesund", "n/a"]) assert.equal(reportsComplaint(answer), false, answer);
+  for (const answer of ["Halsweh", "krank", "Schnupfen; Fieber"]) assert.equal(reportsComplaint(answer), true, answer);
+});
+
 test("'Mir geht's gut' hides the hint for that day only", async () => {
   const { infectionHintNote, hint, calls, announced } = hintNote();
   const [well] = buttons(infectionHintNote(hint, "2026-11-21", false));
   await well.fire("click");
-  assert.deepEqual(calls, [["/api/infection-hint/well", "POST", "{}"]]);
+  assert.deepEqual(calls, [["/api/infection-hint/well", "POST", "{\"date\":\"2026-11-21\"}"]]);
   assert.deepEqual(announced, ["Infekt-Hinweis für heute ausgeblendet"]);
   assert.equal(infectionHintNote(hint, "2026-11-21", false), null);
   // A new hint on a later day shows again.
@@ -181,7 +187,7 @@ test("'Ich bin krank' shows the receipt with undo, and undo takes it back", asyn
   const { infectionHintNote, hint, calls } = hintNote();
   const note = infectionHintNote(hint, "2026-11-21", false);
   await buttons(note)[1].fire("click");
-  assert.deepEqual(calls, [["/api/infection-hint/ill", "POST", "{}"], ["load"]]);
+  assert.deepEqual(calls, [["/api/infection-hint/ill", "POST", "{\"date\":\"2026-11-21\"}"], ["load"]]);
   // After the reload the day reports illness: the receipt and its undo stay.
   const ill = infectionHintNote(hint, "2026-11-21", true);
   const [undo] = buttons(ill);
@@ -197,7 +203,7 @@ test("offline, an answer is not queued: the note stays and shows the network mes
   const note = infectionHintNote(hint, "2026-11-21", false);
   const [well, sick] = buttons(note);
   await sick.fire("click");
-  assert.deepEqual(calls, [["/api/infection-hint/ill", "POST", "{}"]]);
+  assert.deepEqual(calls, [["/api/infection-hint/ill", "POST", "{\"date\":\"2026-11-21\"}"]]);
   assert.equal(textOf(note.children[2]), "Keine Verbindung zum Server.");
   assert.equal(well.disabled || sick.disabled, false);
   await well.fire("click");

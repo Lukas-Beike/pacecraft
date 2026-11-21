@@ -550,7 +550,7 @@ function plannedDayNotes(dayContext, competitions, dateKey) {
       complaintText || (pain ? `Verletzung/Beschwerden: ${pain}` : ""),
     ].filter(Boolean).join(" · ")));
   }
-  const hint = infectionHintNote(dayContext.infection_hint, dateKey, Boolean(illness));
+  const hint = infectionHintNote(dayContext.infection_hint, dateKey, reportsComplaint(illness));
   if (hint) notes.append(hint);
   return notes;
 }
@@ -560,6 +560,15 @@ function plannedDayNotes(dayContext, competitions, dateKey) {
 // both are answers for today, so a failed request shows its message.
 const infectionHintDismissed = new Set();
 const infectionHintReceipts = new Map();
+
+// A "keine"/"nein" answer reports no complaint, as `reports_complaint` in backend/athlete/checkins.py.
+const NO_COMPLAINT_ANSWERS = new Set(["", "-", "keine", "kein", "nein", "nichts", "gesund", "none", "no", "n/a"]);
+function reportsComplaint(text) {
+  let answer = String(text || "").trim().toLowerCase();
+  while (answer && ".!,;:".includes(answer[0])) answer = answer.slice(1);
+  while (answer && ".!,;:".includes(answer.at(-1))) answer = answer.slice(0, -1);
+  return !NO_COMPLAINT_ANSWERS.has(answer.trim());
+}
 
 function infectionHintNote(hint, dateKey, ill) {
   const text = infectionHintText(hint);
@@ -574,7 +583,7 @@ function infectionHintNote(hint, dateKey, ill) {
   const answer = async (path, done) => {
     busy(true);
     try {
-      await done(await api(path, { method: "POST", body: "{}" }));
+      await done(await api(path, { method: "POST", body: JSON.stringify({ date: dateKey }) }));
     } catch (error) {
       busy(false);
       if (!isSessionEndedError(error)) status.replaceChildren(error.message);

@@ -25,7 +25,7 @@ class FeedbackPostRoutesTests(unittest.TestCase):
         handler.send_json.assert_not_called()
 
     def test_infection_hint_answers_use_the_check_in_service(self) -> None:
-        # #3821: both answers read no body and return the service's result.
+        # #3821: both answers pass the note's day and return the service's result.
         service = Mock()
         service.report_illness.return_value = {"status": "ok", "change": {"id": "1"}}
         service.dismiss_infection_hint.return_value = {"status": "ok"}
@@ -34,12 +34,13 @@ class FeedbackPostRoutesTests(unittest.TestCase):
             ("/api/infection-hint/ill", service.report_illness.return_value),
             ("/api/infection-hint/well", service.dismiss_infection_hint.return_value),
         ):
-            handler = SimpleNamespace(read_json=Mock(), send_json=Mock())
+            handler = SimpleNamespace(
+                read_json=Mock(return_value={"date": "2026-11-21"}), send_json=Mock()
+            )
             self.assertTrue(dispatch_route(routes, handler, path, method="POST"))
             handler.send_json.assert_called_once_with(200, result)
-            handler.read_json.assert_not_called()
-        service.report_illness.assert_called_once_with()
-        service.dismiss_infection_hint.assert_called_once_with()
+        service.report_illness.assert_called_once_with("2026-11-21")
+        service.dismiss_infection_hint.assert_called_once_with("2026-11-21")
 
 
 class ActivityFeedbackPostRouteTests(unittest.TestCase):

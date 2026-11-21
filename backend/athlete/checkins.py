@@ -327,6 +327,8 @@ class CheckinService:
         day = today.isoformat()
         existing = self._repository.get(db, day) or {}
         known = str(existing.get("illness") or "").strip()
+        # A "keine"/"nein" answer is no illness text to keep (#3821).
+        known = known if reports_complaint(known) else ""
         combined = known or illness
         if known and illness and illness not in known:
             combined = f"{known}; {illness}"
@@ -339,28 +341,40 @@ class CheckinService:
         )
         return self._write(db, checkin)
 
-    def report_illness(self) -> dict[str, Any]:
+    def report_illness(self, day: Any) -> dict[str, Any]:
         """Record illness for today from the answer "Ich bin krank" (#3821).
 
         The same check-in record a check-in or Coach turn writes, with its undo
-        reference; planning then pauses as for any reported illness.
+        reference; planning then pauses as for any reported illness. ``day`` is
+        the day of the answered note; only today is written.
         """
-        today = self._today()
+        today = self._answer_day(day)
         with self._manager.unit_of_work() as db:
             change = self.add_illness_in_transaction(
                 db, INFECTION_HINT_ILLNESS, today=today
             )
         return self._saved(today.isoformat(), change)
 
-    def dismiss_infection_hint(self) -> dict[str, Any]:
+    def dismiss_infection_hint(self, day: Any) -> dict[str, Any]:
         """Hide today's infection hint after "Mir geht's gut" (#3821).
 
-        A hint on a later day shows again; nothing else changes.
+        A hint on a later day shows again; nothing else changes. ``day`` is the
+        day of the answered note; only today is written.
         """
-        day = self._today().isoformat()
+        today = self._answer_day(day).isoformat()
         with self._manager.unit_of_work() as db:
-            self._set_kv(db, INFECTION_HINT_DISMISSED_KEY, day)
-        return {"status": "ok", "dismissed": day}
+            self._set_kv(db, INFECTION_HINT_DISMISSED_KEY, today)
+        return {"status": "ok", "dismissed": today}
+
+    def _answer_day(self, day: Any) -> date:
+        """Today, when the answered note is today's; a stale view is refused."""
+        today = self._today()
+        if day != today.isoformat():
+            raise AppError(
+                409,
+                "Der Infekt-Hinweis gilt für einen anderen Tag. Bitte die Ansicht neu laden.",
+            )
+        return today
 
     def _save_normalized(
         self,

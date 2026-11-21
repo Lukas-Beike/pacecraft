@@ -93,7 +93,8 @@ class FeedbackPostRoutes:
     def _ill(self, handler: Any, _request: RouteRequest) -> None:
         """Answer today's infection hint with "Ich bin krank" (#3821).
 
-        Request: no body is read. Records illness in today's check-in like a
+        Request: JSON body `{"date": "YYYY-MM-DD"}`, the day of the answered
+        note. Records illness in today's check-in like a
         check-in or Coach turn: other answers stay and an earlier illness text
         is kept, the new text joining it. Planning then pauses as for any
         reported illness, through the adaptive preview and its approval.
@@ -103,24 +104,31 @@ class FeedbackPostRoutes:
         today's stored check-in, `change` the undo reference (`null` when the
         day already carried the text).
 
-        Errors: none beyond the common ones.
+        Errors: 409 "Der Infekt-Hinweis gilt für einen anderen Tag. Bitte die
+        Ansicht neu laden." when `date` is not the athlete's today.
         """
         assert self._checkin_service is not None
-        handler.send_json(200, self._checkin_service().report_illness())
+        handler.send_json(
+            200, self._checkin_service().report_illness(_answer_day(handler))
+        )
 
     def _well(self, handler: Any, _request: RouteRequest) -> None:
         """Answer today's infection hint with "Mir geht's gut" (#3821).
 
-        Request: no body is read. Hides the hint for today in the calendar, the
+        Request: JSON body `{"date": "YYYY-MM-DD"}`, the day of the answered
+        note. Hides the hint for today in the calendar, the
         Coach context and the planning brief; a hint on a later day shows again.
         Nothing else changes.
 
         Response: 200 `{"status": "ok", "dismissed": "YYYY-MM-DD"}`.
 
-        Errors: none beyond the common ones.
+        Errors: 409 "Der Infekt-Hinweis gilt für einen anderen Tag. Bitte die
+        Ansicht neu laden." when `date` is not the athlete's today.
         """
         assert self._checkin_service is not None
-        handler.send_json(200, self._checkin_service().dismiss_infection_hint())
+        handler.send_json(
+            200, self._checkin_service().dismiss_infection_hint(_answer_day(handler))
+        )
 
     def _feedback(self, handler: Any, request: RouteRequest) -> None:
         """Save, edit or clear the athlete's feedback of one activity.
@@ -194,3 +202,9 @@ class FeedbackPostRoutes:
         else:
             raise AppError(400, "Unbekannte Korrektur.")
         return {**result, "session_bundle": service.bundle(result["activity_id"])}
+
+
+def _answer_day(handler: Any) -> Any:
+    """The ``date`` of the answered infection hint note, if the body names one."""
+    body = handler.read_json()
+    return body.get("date") if isinstance(body, dict) else None
