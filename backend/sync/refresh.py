@@ -20,6 +20,11 @@ _PASSTHROUGH_JOB_REASONS = frozenset(
         "approval_stale",
     }
 )
+# Failures only the athlete resolves: no retry time is recorded for them; a
+# stale competition approval is sent anew, not retried (#3838).
+_NO_RETRY_CODES = frozenset(
+    {"auth_required", "invalid_configuration", "approval_stale"}
+)
 # The status a full resync gate rejection records: the provider is deliberately
 # held, which is not a provider error.
 SKIPPED_OPERATION_REASONS = frozenset({"provider_resync_running"})
@@ -70,7 +75,7 @@ def retry_at(
     max_seconds: int,
     retry_after_seconds: int | None = None,
 ) -> str | None:
-    if current_error_code in {"auth_required", "invalid_configuration"}:
+    if current_error_code in _NO_RETRY_CODES:
         return None
     failures = 1 if current_error_code else 0
     for row in rows:
@@ -82,7 +87,7 @@ def retry_at(
             break
         if row["status"] != "error":
             continue
-        if row["error_code"] in {"auth_required", "invalid_configuration"}:
+        if row["error_code"] in _NO_RETRY_CODES:
             return None
         failures += 1
     if not failures:
