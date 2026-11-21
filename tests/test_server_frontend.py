@@ -658,6 +658,50 @@ class ServerFrontendTests(ServerTestCase):
         self.assertIn("interactive-widget=resizes-content", markup)
         self.assertIn("globalThis.visualViewport", app_source)
 
+    def test_no_spec_skips_an_assertion_silently_by_viewport(self):
+        # A project or viewport condition that jumps past an assertion hides a
+        # failure on that viewport; skip the whole test with test.skip(condition,
+        # reason) instead, or name the issue that allows it on the line (#3894).
+        silent = re.compile(
+            r"(project\.name|viewportSize\(\))[^;{]*\)\s*(continue|return)\b"
+        )
+        issue = re.compile(r"#\d{3,}")
+
+        def hidden(source: str) -> list[int]:
+            lines = source.splitlines()
+            return [
+                number
+                for number, line in enumerate(lines, 1)
+                if silent.search(line)
+                and not issue.search(line)
+                and not (number > 1 and issue.search(lines[number - 2]))
+            ]
+
+        self.assertEqual(
+            [2],
+            hidden(
+                'for (const p of points) {\n  if (testInfo.project.name === "mobile")'
+                " continue;\n  expect(p).toBe(1);\n}"
+            ),
+        )
+        self.assertEqual(
+            [],
+            hidden(
+                '// allowed by #1234\nif (testInfo.project.name === "mobile") continue;\n'
+                'test.skip(testInfo.project.name !== "desktop", "wide layout only");'
+            ),
+        )
+        found = [
+            f"{spec.name}:{number}"
+            for spec in sorted((server.PUBLIC_DIR.parent / "e2e").glob("*.spec.js"))
+            for number in hidden(spec.read_text(encoding="utf-8"))
+        ]
+        self.assertEqual(
+            [],
+            found,
+            "fix the cause or skip the whole test with test.skip(condition, reason)",
+        )
+
     def test_static_files_reject_path_traversal(self):
         static_assets = StaticAssetService(server.PUBLIC_DIR)
 

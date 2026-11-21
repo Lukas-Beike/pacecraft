@@ -333,7 +333,85 @@ def version_problems(card: str) -> list[str]:
     return problems
 
 
+# Every method module's numbers (its windows, seeds, coefficients, bounds) at its
+# METHOD_VERSION (#3894): M5's seed moved from 251 to 258 days without a check.
+# A changed number fails until the version is bumped (results change) or the pin
+# is renewed with the same version and a reason in the PR (a refactor).
+METHOD_NUMBER_PINS = {
+    "backend/activities/stream_zones.py": (1, "0997f5e886678d39"),
+    "backend/athlete/body_composition.py": (5, "8d13a81b8c901c9c"),
+    "backend/canonical/dfa_alpha1.py": (3, "4286312ba066a4bd"),
+    "backend/nutrition/energy_balance.py": (26, "a054d0f51be16ada"),
+    "backend/performance/activity_energy.py": (8, "edef3472db64d376"),
+    "backend/performance/canonical_session_analysis.py": (9, "5d5d195ef4d50e06"),
+    "backend/performance/critical_power.py": (2, "c13f8b44f8df8be3"),
+    "backend/performance/fitness_fatigue.py": (1, "8f68b25e6f7f86ec"),
+    "backend/performance/form_drift.py": (1, "04ff2082470ab62b"),
+    "backend/performance/local_tss.py": (7, "c7357e59590e32ec"),
+    "backend/performance/morning_battery_service.py": (1, "b52b0cf1b6965a40"),
+    "backend/performance/power_profile.py": (3, "01461fc5bbb73763"),
+    "backend/performance/session_metrics.py": (5, "57491cb2710b5ca7"),
+    "backend/performance/session_rpe_load.py": (2, "7e3368a32fa787cc"),
+    "backend/performance/smoothed_load.py": (2, "bf7aaed9ffb6b292"),
+    "backend/planning/race_plan.py": (1, "dcd0ec3402986c2f"),
+    "backend/sync/activity_routes.py": (1, "301570f9ec84277f"),
+    "backend/weather/activity_weather_store.py": (2, "50ba7552149ae3ae"),
+}
+
+
+def method_numbers(source: str) -> str:
+    """A digest of a module's int and float literals in source order."""
+    found = sorted(
+        (node.lineno, node.col_offset, repr(node.value))
+        for node in ast.walk(ast.parse(source))
+        if isinstance(node, ast.Constant)
+        and isinstance(node.value, (int, float))
+        and not isinstance(node.value, bool)
+    )
+    text = " ".join(value for _, _, value in found)
+    return hashlib.sha256(text.encode()).hexdigest()[:16]
+
+
+def method_modules() -> dict[str, int]:
+    """Each backend module with a top-level METHOD_VERSION, and that version."""
+    found = {}
+    for path in sorted((ROOT / "backend").rglob("*.py")):
+        for node in ast.parse(path.read_text("utf-8")).body:
+            target = getattr(node, "target", None) or next(
+                iter(getattr(node, "targets", [])), None
+            )
+            value = getattr(node, "value", None)
+            if getattr(target, "id", None) == "METHOD_VERSION" and isinstance(
+                value, ast.Constant
+            ):
+                found[path.relative_to(ROOT).as_posix()] = value.value
+    return found
+
+
 class PerformanceMethodCardTests(unittest.TestCase):
+    def test_method_numbers_change_only_with_their_version(self) -> None:
+        modules = method_modules()
+        self.assertEqual(sorted(METHOD_NUMBER_PINS), sorted(modules))
+        for module, version in modules.items():
+            with self.subTest(module=module):
+                digest = method_numbers((ROOT / module).read_text("utf-8"))
+                self.assertEqual(
+                    (version, digest),
+                    METHOD_NUMBER_PINS[module],
+                    "a method number changed: bump METHOD_VERSION if results "
+                    "change, then renew this pin; a refactor renews it with the "
+                    "same version and says why in the PR",
+                )
+        # The change that motivated it: M5's seed limit back at 251 days.
+        source = (ROOT / "backend/performance/smoothed_load.py").read_text("utf-8")
+        self.assertIn("timedelta(days=258)", source)
+        self.assertNotEqual(
+            method_numbers(
+                source.replace("timedelta(days=258)", "timedelta(days=251)")
+            ),
+            METHOD_NUMBER_PINS["backend/performance/smoothed_load.py"][1],
+        )
+
     def setUp(self) -> None:
         self.register = register_ids((CARDS_DIR / "README.md").read_text("utf-8"))
         self.known_ids = set(self.register)
