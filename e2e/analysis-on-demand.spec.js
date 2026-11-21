@@ -88,6 +88,11 @@ test("@responsive Rekorde shows the single-activity records and opens a record's
   await open.click();
   await expect(page.locator(".activity-detail-dialog")).toBeVisible();
   await expect(page.locator("#activityDetailTitle")).toHaveText("Lange Runde");
+  // Closing names and returns to Rekorde, not the calendar (#3847).
+  await page.locator(".activity-detail-dialog").getByRole("button", { name: "Zurück zu Rekorde" }).click();
+  await expect(page.locator(".activity-detail-dialog")).toHaveCount(0);
+  await expect(page).toHaveURL(/#analysis\/records$/);
+  await expect(open).toBeFocused();
 });
 
 // The post-release walk's sport steps match what the cards render: tables, not charts (#3009).

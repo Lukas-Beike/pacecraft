@@ -746,7 +746,7 @@ function recordDateCell(point, label) {
   if (!point) return cell;
   if (!point.activity_id) { cell.append(dateLabel(point.date)); return cell; }
   const open = h("button", { type: "button", className: "link-button", "aria-label": `${label} vom ${dateLabel(point.date)} öffnen` }, dateLabel(point.date));
-  open.addEventListener("click", () => void ActivityDetails.open({ activity_id: point.activity_id, name: point.name }, { api, showDialog: showAccessibleDialog }));
+  open.addEventListener("click", () => void ActivityDetails.open({ activity_id: point.activity_id, name: point.name }, { api, showDialog: showAccessibleDialog, backLabel: "Zurück zu Rekorde" }));
   cell.append(open);
   return cell;
 }
