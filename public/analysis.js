@@ -1407,7 +1407,7 @@ function bodyWeeklyPoints(points, start, end) {
 function bodyWindowStart(window, period) {
   const weeks = analysisPeriodWeekly(period) ? analysisPeriod(period).weeks : 0;
   const first = weeks ? addDateKey(window.end, -(weeks * 7 - 1)) : window.start;
-  return first > window.start ? first : window.start;
+  return [first, window.start].sort((a, b) => a.localeCompare(b)).at(-1);
 }
 
 function bodySeriesPoints(item, window, period = bodyHistoryPeriod) {
