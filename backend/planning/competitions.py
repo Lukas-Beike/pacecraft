@@ -108,12 +108,39 @@ def competition_event_optional_payload(competition: dict[str, Any]) -> dict[str,
         except ValueError:
             # Keep free-form values local instead of sending invalid API data.
             pass
-    if competition.get("target") not in (None, ""):
-        payload["target"] = competition_target(competition.get("target"))
+    # The goal stays local: Intervals.icu's event `target` is the workout target
+    # type (AUTO, POWER, HR, PACE), and free text there rejects the send (#3908).
     if competition.get("intervals_event_id"):
         remote_id = str(competition["intervals_event_id"])
         payload["id"] = int(remote_id) if remote_id.isdigit() else remote_id
     return payload
+
+
+# The goal travels as the description's last line (athlete decision, #3908);
+# Intervals.icu's `target` is the workout target type, never the goal.
+COMPETITION_GOAL_PREFIX = "Ziel: "
+
+
+def competition_description_with_goal(competition: dict[str, Any]) -> str:
+    """The sent description: the local text plus a "Ziel: <goal>" line when set."""
+    limit = COMPETITION_TEXT_LIMITS["description"]
+    text = str(competition.get("description") or competition.get("notes") or "")
+    goal = competition_target(competition.get("target"))
+    if not goal:
+        return text[:limit]
+    # One line, so the read-back finds it whole; the local goal keeps its form.
+    line = f"{COMPETITION_GOAL_PREFIX}{' '.join(goal.split())}"
+    # A long description gives way, so the goal line is always the last line.
+    body = text.rstrip()[: max(0, limit - len(line) - 2)].rstrip()
+    return f"{body}\n\n{line}" if body else line
+
+
+def remote_description_without_goal(value: Any) -> str:
+    """A remote description without the app's own trailing "Ziel:" line."""
+    lines = str(value or "").rstrip().split("\n")
+    if lines and lines[-1].startswith(COMPETITION_GOAL_PREFIX):
+        lines.pop()
+    return "\n".join(lines).strip()
 
 
 def competition_event_payload(competition: dict[str, Any]) -> dict[str, Any]:
@@ -132,9 +159,7 @@ def competition_event_payload(competition: dict[str, Any]) -> dict[str, Any]:
         ),
         "type": competition_provider_type(competition),
         "name": str(competition.get("name") or "Zielwettkampf")[:200],
-        "description": str(
-            competition.get("description") or competition.get("notes") or ""
-        )[:12000],
+        "description": competition_description_with_goal(competition),
         "external_id": str(
             competition.get("external_id")
             or competition_external_id(str(competition["id"]))
@@ -178,7 +203,11 @@ def resolve_competition_fields(token: str) -> dict[str, str | None]:
     }
 
 
-def remote_competition_data(event: dict[str, Any]) -> dict[str, Any] | None:
+def remote_competition_data(
+    event: dict[str, Any], *, strip_goal: bool = True
+) -> dict[str, Any] | None:
+    """The local fields of a remote race; ``strip_goal`` drops the app's own goal
+    line, only from an event this app owns and only once (#3908)."""
     event_date = remote_competition_date(event)
     name = str(event.get("name") or "").strip()[: COMPETITION_TEXT_LIMITS["name"]]
     sport = supported_competition_sport(
@@ -194,9 +223,13 @@ def remote_competition_data(event: dict[str, Any]) -> dict[str, Any] | None:
     )[:19]
     planned_duration_s = remote_competition_moving_time(event.get("planned_duration_s"))
     distance = remote_competition_distance(event.get("distance"))
-    description = str(event.get("description") or "").strip()[
-        : COMPETITION_TEXT_LIMITS["description"]
-    ]
+    owned = str(event.get("external_id") or "").startswith(COMPETITION_EXTERNAL_PREFIX)
+    raw = event.get("description")
+    description = (
+        remote_description_without_goal(raw)
+        if strip_goal and owned
+        else str(raw or "").strip()
+    )[: COMPETITION_TEXT_LIMITS["description"]]
     return {
         "intervals_event_id": str(
             event.get("id") or event.get("intervals_event_id") or ""
@@ -209,7 +242,6 @@ def remote_competition_data(event: dict[str, Any]) -> dict[str, Any] | None:
         "priority": priority,
         "category": f"RACE_{priority}",
         "distance": distance,
-        "target": competition_target(event.get("target")),
         "description": description,
         "planned_duration_s": planned_duration_s,
         "notes": description[: COMPETITION_TEXT_LIMITS["notes"]],
@@ -219,7 +251,8 @@ def remote_competition_data(event: dict[str, Any]) -> dict[str, Any] | None:
 def competition_conflict_payload(
     remote: dict[str, Any], conflict_type: str, *, detected_at: str
 ) -> str:
-    data = remote_competition_data(remote) or {}
+    # The stored remote keeps its own text; the goal line is dropped once, on adopt.
+    data = remote_competition_data(remote, strip_goal=False) or {}
     data["external_id"] = str(
         remote.get("external_id") or data.get("external_id") or ""
     ).strip()[: COMPETITION_TEXT_LIMITS["external_id"]]
