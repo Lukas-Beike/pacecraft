@@ -63,6 +63,29 @@ class GhCliRunTests(unittest.TestCase):
         self.assertEqual(self.run_gh(fake, "api", "repos/o/r/pulls/3"), "ok")
         self.assertEqual(len(calls), 2)
 
+    def test_fetch_retries_an_incomplete_or_silent_transfer_from_git_output(self):
+        # #3798: the cause may follow another error line, or git says nothing.
+        incomplete = (
+            "fatal: bad object 1111\n"
+            "error: https://x did not send all necessary objects"
+        )
+        for stderr in (incomplete, "", "  \n"):
+            with self.subTest(stderr=stderr):
+                fake, calls = outcomes((1, stderr), (0, ""))
+                with mock.patch.object(gh_cli.subprocess, "run", fake):
+                    gh_cli.fetch("develop")
+                self.assertEqual(len(calls), 2)
+        # A permanent message still fails at once.
+        fake, calls = outcomes(
+            (1, "fatal: 'origin' does not appear to be a git repository")
+        )
+        with (
+            mock.patch.object(gh_cli.subprocess, "run", fake),
+            self.assertRaises(gh_cli.CliError),
+        ):
+            gh_cli.fetch("develop")
+        self.assertEqual(len(calls), 1)
+
     def test_a_4xx_and_a_failed_write_are_not_retried(self):
         for args, stderr in (
             (("issue", "view", "9"), "HTTP 404: Not Found"),
