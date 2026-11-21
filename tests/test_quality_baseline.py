@@ -604,6 +604,11 @@ class QualityBaselineTests(unittest.TestCase):
                     'r"(?:\'[^\']*\'|\\"[^\\"]*\\"|[^\\s\'\\";&|()<>])+'
                     '|[;&|()<>\\n]|[^\\S\\n]+|[\'\\"]")'
                 ),
+                # A NOSONAR on a line of a multi-line pattern suppresses it too.
+                "SPLIT = re.compile(",
+                '    r"(?:\'[^\']*\'|\\"[^\\"]*\\"|[^\\s\'\\";&|()<>])+"  # NOSONAR',
+                '    r"|[;&|()<>\\n]|[^\\S\\n]+|[\'\\"]"',
+                ")",
             ]
         )
         found = self.python_findings({"scripts/sample.py": source}, regexes=True)

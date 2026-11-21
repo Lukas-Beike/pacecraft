@@ -74,6 +74,8 @@ const sonarOnly = {
     // pull requests only in CI (#3381).
     "sonarjs/super-linear-regex": "error",
     "sonarjs/no-os-command-from-path": "error",
+    // S5843 (regex too complex) failed #3781 only in CI (#3792).
+    "sonarjs/regex-complexity": "error",
   },
 };
 // A call to a helper declared nowhere is a runtime ReferenceError (#3016).

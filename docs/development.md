@@ -137,7 +137,8 @@ also checks the JavaScript Sonar analyzes (`public/*.js`, the `scripts/` and
 `tools/` modules, the `e2e/` specs, `tests/*.cjs` and the root `*.cjs`, #3058)
 for Sonar's cognitive complexity above 15 (S3776), nested ternaries (S3358),
 nested template literals (S4624, #3271), super-linear regular expressions
-(S8786) and commands found through `PATH` (S4036, #3381) through
+(S8786), too complex ones (S5843, #3792) and commands found through `PATH`
+(S4036, #3381) through
 `eslint-plugin-sonarjs`; Sonar's
 Set-membership rule (S7776) needs `eslint-plugin-unicorn`, which this repository
 does not install, so it stays Sonar-only. It checks the page scripts for

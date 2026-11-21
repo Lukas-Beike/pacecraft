@@ -24,8 +24,8 @@ python scripts/sonar_check.py --pr <number>
   `python:S3358`, `python:S1192` (sonar-python's exclusions, files named `test*`
   skipped), `python:S8786` and `python:S5843` (the `re` patterns through
   sonarjs, #3792), `css:S4666`, and
-  through `eslint-plugin-sonarjs` `S3776`, `S3358`, `S4624`, `S8786` and
-  `S4036` for JavaScript (#3271, #3381). Every other rule, and
+  through `eslint-plugin-sonarjs` `S3776`, `S3358`, `S4624`, `S8786`, `S5843`
+  and `S4036` for JavaScript (#3271, #3381, #3792). Every other rule, and
   `jssecurity:S8707`, is checked only in CI. So is the server-side `pythonbugs`
   engine (`pythonbugs:S2583`, `S2589` and the rest, flow analysis such as a list
   a worker thread fills read as "always empty"): neither this CLI nor the
