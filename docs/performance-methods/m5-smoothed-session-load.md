@@ -2,7 +2,7 @@
 
 - **Card:** M5
 - **Card version:** 2
-- **Method ID:** smoothed-session-load v1 (`backend/performance/smoothed_load.py`, #1432)
+- **Method ID:** smoothed-session-load v2 (`backend/performance/smoothed_load.py`, #1432)
 - **Status:** implemented as an estimate on the M1 daily load
 - **Classification:** model estimate
 - **Literature checked:** 2026-10-24

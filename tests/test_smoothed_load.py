@@ -53,7 +53,7 @@ def reference(loads: list[float], tau: int) -> float:
 M5_TOTALS = {
     "metric_id": "smoothed_session_load",
     "method_id": "smoothed-session-load",
-    "method_version": 1,
+    "method_version": 2,
     "unit": "AU",
     "status": "estimate",
     "reason": None,
