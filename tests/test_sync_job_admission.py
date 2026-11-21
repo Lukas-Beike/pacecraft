@@ -8,6 +8,7 @@ No network, no real ``.env``, no data directory and no provider account.
 
 from __future__ import annotations
 
+import json
 import threading
 import unittest
 from datetime import UTC, datetime
@@ -34,6 +35,7 @@ NOW = datetime(2026, 11, 9, 12, 0, tzinfo=UTC)
 WORKOUT_ID = "11111111-1111-4111-8111-111111111111"
 ENTRIES = [{"library_workout_id": WORKOUT_ID, "expected_payload_hash": "a" * 64}]
 JOBS = "/api/sync/jobs"
+MANIFEST = [{"type": "competition", "id": "race-1", "sha256": "b" * 64}]
 
 
 def _body(provider: Any) -> dict[str, Any]:
@@ -91,6 +93,7 @@ def build_endpoint(
         {"intervals": 90},
         -1,
         provider_configured=lambda provider_id: configured[provider_id](),
+        competition_manifest=lambda: MANIFEST,
     )
     return endpoint, database
 
@@ -133,6 +136,34 @@ class ConfiguredProviderTests(unittest.TestCase):
 
                 self.assertEqual(202, status)
 
+    def test_athlete_send_queues_the_competition_push_with_the_manifest(self) -> None:
+        status, job = self.endpoint.send_competitions()
+
+        self.assertEqual(202, status)
+        self.assertEqual(
+            (INTERVALS_ID, "competition_push"), (job["provider"], job["type"])
+        )
+        self.assertEqual("user", job["requested_by"])
+        stored = self.database.reader()
+        with stored as db:
+            row = db.execute(
+                "SELECT payload FROM sync_jobs WHERE id=?", (job["id"],)
+            ).fetchone()
+        self.assertEqual(
+            {"reason": "athlete_send", "approval_manifest": MANIFEST},
+            json.loads(row["payload"]),
+        )
+        # A second press while the job is active joins it (#3838 design note).
+        _, again = self.endpoint.send_competitions()
+        self.assertEqual(job["id"], again["id"])
+        self.assertEqual(1, stored_jobs(self.database))
+        # A press approving another set never joins the older approval.
+        changed = [{**MANIFEST[0], "sha256": "c" * 64}]
+        with mock.patch.object(self.endpoint, "_competition_manifest", lambda: changed):
+            _, other = self.endpoint.send_competitions()
+        self.assertNotEqual(job["id"], other["id"])
+        self.assertEqual(2, stored_jobs(self.database))
+
     def test_unknown_provider_is_a_validation_error_not_a_job(self) -> None:
         with self.assertRaises(AppError) as caught:
             self.endpoint.execute(JOBS, _body("unknown"))
@@ -160,6 +191,19 @@ class UnconfiguredProviderTests(unittest.TestCase):
                     DEFAULT_PROVIDER_REGISTRY.get(provider).not_configured_message,
                     caught.exception.message,
                 )
+        self.assertEqual(0, stored_jobs(self.database))
+
+    def test_athlete_send_without_intervals_is_409_not_configured(self) -> None:
+        with self.assertRaises(AppError) as caught:
+            self.endpoint.send_competitions()
+
+        self.assertEqual(
+            (409, "not_configured"), (caught.exception.status, caught.exception.reason)
+        )
+        self.assertEqual(
+            DEFAULT_PROVIDER_REGISTRY.get(INTERVALS_ID).not_configured_message,
+            caught.exception.message,
+        )
         self.assertEqual(0, stored_jobs(self.database))
 
 

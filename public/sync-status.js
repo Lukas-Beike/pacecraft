@@ -253,6 +253,7 @@ const PROVIDER_FRESHNESS_ERRORS = {
   database_busy: "Lokale Datenbank kurz ausgelastet",
   invalid_configuration: "Ungültige Konfiguration",
   provider_error: "Providerfehler",
+  approval_stale: "Freigabe veraltet",
   upstream_auth: globalThis.AppApi.messageForReason("upstream_auth"),
   upstream_rate_limited: globalThis.AppApi.messageForReason("upstream_rate_limited"),
   upstream_unavailable: globalThis.AppApi.messageForReason("upstream_unavailable"),
@@ -273,7 +274,7 @@ function coachProviderLabel(provider) {
 }
 
 
-const NON_RETRYABLE_PROVIDER_ERRORS = Object.freeze(["auth_required", "invalid_configuration"]);
+const NON_RETRYABLE_PROVIDER_ERRORS = Object.freeze(["auth_required", "invalid_configuration", "approval_stale"]);
 
 
 // A busy local database is not a provider problem; the next refresh repeats the read.
@@ -317,6 +318,12 @@ function garminKeyHint(garmin) {
   return { text: parts.join(" · "), urgent };
 }
 
+// The banner names the one action that helps: a stale competition approval is sent anew (#3838).
+function providerAttentionDetail(entries, labels) {
+  if (entries.every((entry) => entry.error_code === "approval_stale")) return "Wettkämpfe neu senden: „Wettkämpfe senden“ in der Intervals.icu-Karte.";
+  return labels.length === 1 ? `${labels[0]} benötigt manuelles Eingreifen.` : `${labels.length} Anbindungen benötigen manuelles Eingreifen.`;
+}
+
 function renderProviderAttention(data) {
   const providers = (Array.isArray(data.provider_freshness) ? data.provider_freshness : [])
     .filter(providerRequiresManualAttention);
@@ -335,7 +342,7 @@ function renderProviderAttention(data) {
     provider = {
       level: hardError ? "critical" : "warning",
       title: "Anbindung benötigt Aufmerksamkeit",
-      detail: labels.length === 1 ? `${labels[0]} benötigt manuelles Eingreifen.` : `${labels.length} Anbindungen benötigen manuelles Eingreifen.`,
+      detail: providerAttentionDetail(others, labels),
       action: ids.length === 1 ? { ...connections, connection: ids[0] } : connections,
     };
   }
@@ -491,10 +498,22 @@ function renderProviderFreshness(data) {
       button.addEventListener("click", () => retryProvider(entry.provider, button));
       item.append(button);
     }
+    if (entry.provider === providerIds().intervals && entry.area === "competitions" && entry.configured) item.append(competitionSendButton());
     root.append(item);
   });
 }
 
+
+function competitionSendButton() {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.id = "competitionSendButton";
+  button.className = "secondary-button";
+  button.disabled = state.localSync.competitions;
+  button.textContent = button.disabled ? "Wird gesendet …" : "Wettkämpfe senden";
+  button.addEventListener("click", () => void sendCompetitions());
+  return button;
+}
 
 // Garmin and Wahoo set the local sync flag named by their provider id; the others have their own.
 function providerSyncKey(provider) {

@@ -318,8 +318,23 @@ class CompetitionSyncReconcilerTests(unittest.TestCase):
         with self.database_manager.unit_of_work() as db:
             db.execute("UPDATE competitions SET name='Changed' WHERE id='local-1'")
 
-        with self.assertRaises(AppError):
+        with self.assertRaises(AppError) as raised:
             self.reconciler.records(approved_manifest)
+        # #3838: a stale approval is its own local reason, never a provider error.
+        self.assertEqual(
+            (409, "approval_stale"),
+            (raised.exception.status, raised.exception.reason),
+        )
+        # The production failure: the job's run records it as the local step, and
+        # a fresh approval of the current set sends.
+        service = self.make_sync_service(FakeCompetitionClient())
+        with self.assertRaises(AppError):
+            service.sync(expected_manifest=approved_manifest)
+        with self.database_manager.manager.reader() as db:
+            kinds = summarize_competition_sync(db)["failure_kinds"]
+            fresh = competition_push_manifest(db)
+        self.assertEqual({"local_records.app_409_approval_stale": 1}, kinds)
+        self.assertEqual("ok", service.sync(expected_manifest=fresh)["status"])
 
     def test_clear_tombstones_requires_matching_id_and_created_at(self):
         self.insert_tombstone("same-id", "remote-old", None, "old")

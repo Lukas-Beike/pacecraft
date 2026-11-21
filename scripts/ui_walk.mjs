@@ -305,6 +305,8 @@ export const STEPS = [
   { view: "more", name: "Mehr: Ausrüstung", covers: "#2935 equipment", pre: [tab("more", "equipment")], ready: "#equipmentItems .equipment-card", kind: "text" },
   { view: "more", name: "Mehr: Ausrüstung Standard", covers: "#3014 default equipment", pre: [tab("more", "equipment")], ready: "#equipmentItems .equipment-rules select", kind: "options" },
   // The current release's entry: a listed change, or only its collapsed "Technik (n)" (2.1.20).
+  // Read-only: the walk checks that "Wettkämpfe senden" is there and never presses it (#3838).
+  { view: "more", name: "Mehr: Wettkämpfe senden", covers: "#3838 competition send button", pre: [tab("more", "connections")], opens: ["#connection-intervals > summary"], ready: "#competitionSendButton", kind: "text", optional: true },
   { view: "more", name: "Mehr: Betrieb, Änderungen", covers: "#2908 changelog", pre: [tab("more", "operations")], ready: ".release-changelog > ul > li, .release-changelog > .release-technical > summary", kind: "text", optional: true },
 ];
 

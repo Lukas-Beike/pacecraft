@@ -127,6 +127,10 @@ class SyncJobInvalidStateError(RuntimeError):
     """Raised when a job cannot make the requested state transition."""
 
 
+class SyncJobStaleApprovalError(SyncJobInvalidStateError):
+    """Raised when a retry would re-run an approval the data has outgrown."""
+
+
 class SyncJobTransitionError(SyncJobInvalidStateError):
     """Raised when a guarded job transition is invalid or lost a race."""
 
@@ -205,8 +209,8 @@ ITEM_ORDER = (
 )
 # Items that finished successfully are never rewritten by a later failure or retry.
 _SETTLED_ITEMS = "status NOT IN ('completed', 'skipped')"
-# Only automatic requesters coalesce; an explicit user or coach request always
-# queues. A "backfill" continuation carries the next chunk's end_date cursor, so it
+# Only automatic requesters coalesce; an explicit user or coach request queues,
+# unless it passes `coalesce` (then it joins only an identical request). A "backfill" continuation carries the next chunk's end_date cursor, so it
 # is never folded into another job: that would drop the cursor and stop the chain.
 _COALESCED_REQUESTERS = frozenset({"scheduler", "startup", "connection"})
 _COALESCED_TYPES = frozenset({"refresh", *BACKFILL_JOB_TYPES})
@@ -817,8 +821,14 @@ class SyncJobStore:
         requested_by: str,
         operations: builtins.list[dict[str, Any]] | None,
         available_at: str | None,
+        *,
+        coalesce: bool = False,
     ) -> tuple[dict[str, Any], bool]:
-        """Persist a normalized, credential-free envelope and its items atomically."""
+        """Persist a normalized, credential-free envelope and its items atomically.
+
+        ``coalesce`` returns an active job of the same provider and type instead
+        of a second one, as the scheduler's refreshes always do (#3838).
+        """
         try:
             normalized = validate_job_request(
                 envelope.get("provider"),
@@ -844,14 +854,21 @@ class SyncJobStore:
         job_id = str(self._uuid_factory())
 
         with self._database_manager.unit_of_work() as db:
-            if (
+            automatic = (
                 normalized["type"] in _COALESCED_TYPES
                 and requested in _COALESCED_REQUESTERS
-            ):
+            )
+            if coalesce or automatic:
+                # An explicit request joins only the same request: another approval
+                # (an older competition manifest) must not swallow this one (#3838).
+                same = "" if automatic else " AND payload=?"
                 existing = db.execute(
                     "SELECT * FROM sync_jobs WHERE provider=? AND type=? "
-                    "AND status IN ('queued', 'running') ORDER BY created_at, id LIMIT 1",
-                    (normalized["provider"], normalized["type"]),
+                    "AND status IN ('queued', 'running')"
+                    + same
+                    + " ORDER BY created_at, id LIMIT 1",
+                    (normalized["provider"], normalized["type"])
+                    + (() if automatic else (payload_json,)),
                 ).fetchone()
                 if existing:
                     current, items = read_job(db, existing["id"])
@@ -1289,10 +1306,12 @@ class SyncJobStore:
         now = self._now()
         with self._database_manager.unit_of_work() as db:
             job = db.execute(
-                "SELECT status FROM sync_jobs WHERE id=?", (job_id,)
+                "SELECT status, error_class FROM sync_jobs WHERE id=?", (job_id,)
             ).fetchone()
             if job is None:
                 raise SyncJobNotFoundError(job_id)
+            if job["error_class"] == "approval_stale":
+                raise SyncJobStaleApprovalError(job_id)
             if job["status"] not in {"failed", "partial"}:
                 raise SyncJobInvalidStateError(
                     "Only failed or partial sync jobs can be resolved."

@@ -17,6 +17,7 @@ from backend.sync.jobs import (
     SyncJobInvalidOperationError,
     SyncJobInvalidStateError,
     SyncJobNotFoundError,
+    SyncJobStaleApprovalError,
     SyncJobStore,
     normalize_sync_job_request,
 )
@@ -93,6 +94,7 @@ class SyncJobQueueService:
         requested_by: str = "system",
         item_operations: builtins.list[dict[str, Any]] | None = None,
         available_at: str | None = None,
+        coalesce: bool = False,
     ) -> dict[str, Any]:
         """Validate and persist a job while maintenance drains all side effects."""
         with self._maintenance_gate.operation():
@@ -108,7 +110,11 @@ class SyncJobQueueService:
                 raise AppError(400, str(exc), reason="invalid_job_request") from exc
             try:
                 result, created = self._store.enqueue(
-                    envelope, requested_by, item_operations, available_at
+                    envelope,
+                    requested_by,
+                    item_operations,
+                    available_at,
+                    coalesce=coalesce,
                 )
             except SyncJobInvalidOperationError as exc:
                 raise AppError(400, str(exc), reason="invalid_job_request") from exc
@@ -151,6 +157,12 @@ class SyncJobQueueService:
                 404,
                 "Synchronisationsjob nicht gefunden.",
                 reason="sync_job_not_found",
+            ) from exc
+        except SyncJobStaleApprovalError as exc:
+            raise AppError(
+                409,
+                "Die Freigabe ist veraltet. Bitte die Wettkämpfe neu senden.",
+                reason="approval_stale",
             ) from exc
         except SyncJobInvalidStateError as exc:
             raise AppError(

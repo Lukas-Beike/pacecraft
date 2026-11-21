@@ -64,6 +64,14 @@ function syncWahoo() {
   }, { lock: { wahoo: true }, busyText: "Synchronisierung läuft…", invalidate: true, rerender: true });
 }
 
+// The athlete's press approves the competition set it shows; the server queues the one competition job.
+function sendCompetitions() {
+  return runAction($("#competitionSendButton"), async () => {
+    const job = await runSyncJob("/api/intervals/competitions/send", "{}", "Wettkämpfe konnten nicht gesendet werden.", true);
+    return `Wettkämpfe ${partially(job)}gesendet`;
+  }, { lock: { competitions: true }, busyText: "Wird gesendet …", invalidate: true, rerender: true });
+}
+
 function fullResyncButtonSelector(source) {
   return `#${source}FullResyncButton`;
 }

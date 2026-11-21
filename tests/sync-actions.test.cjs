@@ -55,6 +55,14 @@ test("a busy local database never asks for manual attention", () => {
   }
 });
 
+// #3838: a stale competition approval needs the athlete's new send, and the banner names it.
+test("a stale competition approval asks for a new send", () => {
+  assert.equal(requiresManualAttention({ configured: true, state: "stale", error_code: "approval_stale", next_retry_at: null }), true);
+  const { providerAttentionDetail } = extractFunctions("sync-status.js", ["providerAttentionDetail"]);
+  assert.match(providerAttentionDetail([{ error_code: "approval_stale" }], ["Intervals.icu"]), /„Wettkämpfe senden“/);
+  assert.equal(providerAttentionDetail([{ error_code: "network_error" }], ["Garmin"]), "Garmin benötigt manuelles Eingreifen.");
+});
+
 test("a provider failure without a scheduled retry still asks for manual attention", () => {
   assert.equal(requiresManualAttention({ configured: true, state: "error", error_code: "network_error", next_retry_at: null }), true);
   assert.equal(requiresManualAttention({ configured: true, state: "stale", error_code: "auth_required", next_retry_at: null }), true);
