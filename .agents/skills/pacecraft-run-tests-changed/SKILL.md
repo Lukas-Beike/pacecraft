@@ -9,7 +9,15 @@ From the repository root:
 
 ```powershell
 python scripts/check_changed.py [--base origin/develop] [--js] [--fix-format]
+                                [--tests-since <sha>]
 ```
+
+- `--tests-since <sha>` selects tests from `<sha>...HEAD` only; format,
+  compile, quality, Node and workflow checks still use `--base`. Use it only
+  after a green full run of this branch, with that run's head as `<sha>`, for
+  small follow-up commits (review or ratchet fixes); it refuses a `<sha>` that
+  is not an ancestor of `HEAD`, so after a rebase run without it. CI still runs
+  the full suite on every head (#3813).
 
 - `--fix-format` first formats the changed Python files (committed, staged,
   unstaged and new against the base) with the ratchet's own Ruff and names them.

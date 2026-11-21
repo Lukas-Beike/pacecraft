@@ -227,6 +227,43 @@ class CheckChangedTests(unittest.TestCase):
         self.assertEqual(code, 2)
         self.assertEqual(out.count(" is not installed."), 4)
 
+    def test_tests_since_selects_tests_only_from_the_follow_up_diff(self):
+        # #3813: a follow-up commit after a green full run reruns its tests only.
+        runner = FakeRun()
+        calls = []
+        changed = fake_git(["backend/x.py", "public/app.js"])
+
+        def git(*args, **kwargs):
+            calls.append(args)
+            return changed(*args, **kwargs)
+
+        code, out, _ = run_main(
+            check_changed,
+            ["--tests-since", "green1", "--base", "origin/main"],
+            runner,
+            git,
+        )
+        self.assertEqual(code, 0)
+        self.assertEqual(runner.calls[0][-3:], ["--changed", "--base", "green1"])
+        self.assertEqual(runner.calls[2][1:], ["tools/quality_baseline.py"])
+        # The other steps still read the diff against --base (here: JS changed).
+        self.assertIn(("merge-base", "--is-ancestor", "green1", "HEAD"), calls)
+        self.assertIn(("merge-base", "origin/main", "HEAD"), calls)
+        self.assertIn("node-tests", out)
+
+        def rebased(*args, **kwargs):
+            if args[:2] == ("merge-base", "--is-ancestor"):
+                raise gh_cli.CliError("git merge-base failed: no output")
+            return changed(*args, **kwargs)
+
+        runner = FakeRun()
+        code, _, err = run_main(
+            check_changed, ["--tests-since", "old"], runner, rebased
+        )
+        self.assertEqual(code, 2)
+        self.assertIn("not an ancestor of HEAD", err)
+        self.assertEqual(runner.calls, [])
+
     def test_unknown_base_is_exit_two(self):
         def git(*_args, **_kwargs):
             raise gh_cli.CliError("git merge-base failed: bad revision")

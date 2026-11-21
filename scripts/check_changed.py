@@ -1,6 +1,11 @@
 """Run the local checks for a change: affected tests, compile, quality, JS tests.
 
     python scripts/check_changed.py [--base origin/develop] [--js] [--fix-format]
+        [--tests-since SHA]
+
+--tests-since selects the tests from SHA...HEAD only (the head of a green full
+run of this branch, an ancestor of HEAD); format, quality and the JS and
+workflow checks still compare with --base (#3813).
 
 --fix-format first formats the changed Python files with the ratchet's Ruff and
 names them; unchanged files, baselined ones included, are never touched (#3382).
@@ -253,11 +258,15 @@ def format_step(base: str) -> int:
 
 
 def build_steps(
-    base: str, js: bool, workflows: list[str] | None = None
+    base: str,
+    js: bool,
+    workflows: list[str] | None = None,
+    tests_base: str | None = None,
 ) -> list[tuple[str, list[str]]]:
     python = sys.executable
+    selection = tests_base or base
     steps = [
-        ("tests", [python, "tests/run_tests.py", "--changed", "--base", base]),
+        ("tests", [python, "tests/run_tests.py", "--changed", "--base", selection]),
         (
             "compile",
             [python, "-m", "compileall", "-q", "server.py", "backend", "tests"],
@@ -276,6 +285,18 @@ def build_steps(
     return steps
 
 
+def since_green_run(sha: str, root: Path = ROOT) -> None:
+    """Refuse a --tests-since commit this branch was not built on: after a
+    rebase the earlier green run tested other develop code (#3813)."""
+    try:
+        git("merge-base", "--is-ancestor", sha, "HEAD", cwd=root)
+    except CliError:
+        raise CliError(
+            f"--tests-since {sha} is not an ancestor of HEAD (rebased since?); "
+            "run without it"
+        ) from None
+
+
 def main(argv: list[str] | None = None) -> int:
     # Step output can hold characters a cp1252 console cannot encode (#2637);
     # like spec_validate.py and pr_state.py, write UTF-8 and never crash on it.
@@ -290,8 +311,16 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="first format the changed Python files, and only those (#3382)",
     )
+    parser.add_argument(
+        "--tests-since",
+        metavar="SHA",
+        help="select tests from SHA...HEAD only: the head of a green full run of "
+        "this branch, before small follow-up commits (#3813)",
+    )
     args = parser.parse_args(argv)
     try:
+        if args.tests_since:
+            since_green_run(args.tests_since)
         changed = changed_files(args.base)
         formatted = format_step(args.base) if args.fix_format else 0
     except CliError as exc:
@@ -307,7 +336,7 @@ def main(argv: list[str] | None = None) -> int:
             and (ROOT / path).is_file()
         }
     )
-    steps = build_steps(args.base, js, workflows)
+    steps = build_steps(args.base, js, workflows, args.tests_since)
     return max(run_steps(steps, {"quality": quality_env()}), formatted)
 
 
