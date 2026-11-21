@@ -132,7 +132,8 @@ async function outboxSend(entry) {
   } catch (error) {
     if (epoch !== outboxEpoch || error?.reason === "network_error") return "stop";
     const refused = error?.status >= 400 && error.status < 500 && !OUTBOX_UNDECIDED_STATUSES.has(error.status);
-    if (!refused && !(error?.status >= 500)) return "stop";
+    const serverError = error?.status >= 500;
+    if (!refused && !serverError) return "stop";
     // A discarded entry stays discarded, whatever its in-flight answer was.
     if (!outboxEntries.some((item) => item.key === entry.key)) return "stop";
     await outboxPut({ ...entry, attempts: entry.attempts + 1, last_error: error.message, state: refused ? "rejected" : entry.state });
