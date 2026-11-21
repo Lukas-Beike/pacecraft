@@ -213,6 +213,7 @@ every named number the code fixes. A test fails when it is out of date.
 | `PROFILE_WINDOW_DAYS` | `(28, 90)` | `backend/performance/report_service.py` | Analysis windows of the power and running profiles, shortest first. |
 | `ANALYSIS_TREND_DAYS` | `84` | `backend/performance/report_service.py` | Analyse shows the trends of the 12-week progress review (#2802). |
 | `PROGRESS_DAYS` | `frozenset({7, 28, 42, 56, 84})` | `backend/performance/report_service.py` |  |
+| `STRENGTH_WEEKS` | `12` | `backend/performance/report_service.py` | Analyse › Kraft shows twelve calendar weeks like the endurance development (#3764). |
 | `METHOD` | `'rolling-lnrmssd-v1'` | `backend/performance/rolling_hrv.py` |  |
 | `WINDOW_DAYS` | `7` | `backend/performance/rolling_hrv.py` |  |
 | `BASELINE_DAYS` | `42` | `backend/performance/rolling_hrv.py` |  |
@@ -452,6 +453,9 @@ every named number the code fixes. A test fails when it is out of date.
 | `LABEL` | `'Zoneneinstellungen'` | `backend/activities/stream_zones.py` |  |
 | `MIN_GAP_S` | `30.0` | `backend/activities/stream_zones.py` |  |
 | `GAP_FACTOR` | `3.0` | `backend/activities/stream_zones.py` |  |
+| `MAX_SESSIONS` | `6` | `backend/activities/strength_progress.py` |  |
+| `MAX_EXERCISES` | `10` | `backend/activities/strength_progress.py` |  |
+| `SOURCE` | `'Executed strength sets of completed sessions (Garmin exercise sets, else the FIT set messages); ... (sha256 3efc0851)` | `backend/activities/strength_progress.py` |  |
 | `MAX_EXERCISES` | `20` | `backend/activities/strength_sets.py` |  |
 | `STRENGTH_KEY` | `'strength_sets'` | `backend/activities/strength_sets.py` |  |
 | `SOURCE` | `'derived'` | `backend/activities/workout_load.py` |  |

@@ -39,6 +39,7 @@ handler's docstring. Regenerate it with
 | GET | `/api/analysis/power-profiles` | Session | no | Analysis projection: power profiles or training records. |
 | POST | `/api/analysis/refresh` | Session + CSRF | after access | Run a targeted refresh of one analysis area. |
 | GET | `/api/analysis/running-dynamics` | Session | no | Running dynamics against the athlete's own runs at the same pace (#2829). |
+| GET | `/api/analysis/strength` | Session | no | Analyse › Kraft: top sets per exercise over twelve weeks (#3764). |
 | GET | `/api/analysis/training-records` | Session | no | Analysis projection: power profiles or training records. |
 | GET | `/api/analysis/trends` | Session | no | Pace at equal heart rate and recurring sessions, as the Coach reads them (#2802). |
 | GET | `/api/analysis/week-review` | Session | no | The local review of one ISO week against the week before (#2805). |
@@ -303,6 +304,19 @@ band and per value; null without a stored run).
 
 Errors: 400 "Ungültige Aktivitäts-ID." for a missing id or one longer
 than 200 characters.
+
+### `GET /api/analysis/strength`
+
+Request: no query, no body.
+
+Response: 200 with `start`, `end` (the twelve calendar weeks up to
+today), `source`, `weeks` (`week_start`, `sessions`: completed strength
+sessions, 0 without one) and `exercises` (`exercise`, `category`,
+`leg`, `sessions` newest first with `date`, `sets`, `top_kg` and
+`top_reps`; null where the stored set has none). From stored sets
+only: no strength load, no estimated 1RM.
+
+Errors: none beyond the common ones.
 
 ### `GET /api/analysis/trends`
 

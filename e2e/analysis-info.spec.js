@@ -729,3 +729,47 @@ test("@responsive load tab draws the local fitness, fatigue and form chart", asy
   await expect(chart).toContainText("Lokal berechnet");
   await expect(chart).not.toContainText("Intervals");
 });
+
+test("@responsive Kraft shows sessions per week and a top-set chart with the last sessions per exercise", async ({ page }) => {
+  // #3764 (athlete: layout A): everything visible; stored sets only, gaps stay gaps.
+  const weeks = Array.from({ length: 12 }, (_, index) => {
+    const date = new Date(Date.UTC(2026, 7, 31 + index * 7));
+    return { week_start: date.toISOString().slice(0, 10), sessions: index % 3 === 0 ? 0 : 2 };
+  });
+  const session = (date, kg, reps) => ({ date, sets: 4, top_kg: kg, top_reps: reps });
+  await page.route("**/api/analysis/strength", (route) => route.fulfill({ json: {
+    start: "2026-08-31", end: "2026-11-20", source: "stored sets", weeks,
+    exercises: [
+      { exercise: "BARBELL_BACK_SQUAT", category: "squat", leg: true, sessions: [session("2026-11-17", 82.5, 5), session("2026-11-10", null, 5), session("2026-11-03", 80, 4), session("2026-10-27", 77.5, 5)] },
+      { exercise: "PULL_UP", category: "pull_up", leg: false, sessions: [session("2026-11-12", null, 8), session("2026-10-29", null, 7)] },
+    ],
+  } }));
+  await performanceFixture(page, {}, "strength");
+  const root = page.locator("#strengthAnalysis");
+  await expect(page.locator('[data-analysis-segment="strength"]')).toHaveAttribute("aria-current", "page");
+  await expect(root.getByRole("heading", { name: "Einheiten pro Woche" })).toBeVisible();
+  await expect(root.getByRole("heading", { name: "Top-Sätze" })).toBeVisible();
+  await expect(root.getByRole("heading", { name: "Kniebeuge – Barbell Back Squat" })).toBeVisible();
+  await expect(root.getByRole("heading", { name: "Klimmzug – Pull Up" })).toBeVisible();
+  const squat = root.locator("section").filter({ has: page.getByRole("heading", { name: "Kniebeuge – Barbell Back Squat" }) }).last();
+  const rows = squat.locator("table tbody tr");
+  await expect(rows).toHaveCount(3);
+  await expect(rows.nth(0)).toContainText("82,5 kg × 5");
+  // A session without a weight keeps its reps; the chart leaves the gap.
+  await expect(rows.nth(1)).toContainText("5 Wdh.");
+  await expect(root.locator("section").filter({ has: page.getByRole("heading", { name: "Klimmzug – Pull Up" }) }).last().locator("tbody tr").first()).toContainText("8 Wdh.");
+  await expect(root).not.toContainText(/1RM|Kraftlast/);
+  await expect(root.getByText("Werte ansehen")).toHaveCount(1);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+});
+
+test("@responsive Kraft without stored sets shows the one empty card", async ({ page }) => {
+  await page.route("**/api/analysis/strength", (route) => route.fulfill({ json: {
+    start: "2026-08-31", end: "2026-11-20", source: "stored sets",
+    weeks: Array.from({ length: 12 }, (_, index) => ({ week_start: new Date(Date.UTC(2026, 7, 31 + index * 7)).toISOString().slice(0, 10), sessions: 0 })),
+    exercises: [],
+  } }));
+  await performanceFixture(page, {}, "strength");
+  await expect(page.locator("#analysisEmptyState")).toContainText("Noch keine Kraftdaten");
+  await expect(page.locator("#strengthAnalysis")).toBeHidden();
+});

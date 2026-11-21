@@ -34,10 +34,12 @@ class Access(StrEnum):
 # auth, sync status, health and static files never take the gate. The trends
 # and the week review scan the history too; the activity list is a bounded
 # page (at most 250 sessions) and does not wait behind them (#3125). The energy
-# view prices 13 weeks of sessions from their streams (#3099).
+# view prices 13 weeks of sessions from their streams (#3099). Kraft reads
+# the session summaries like the week review (#3764).
 HEAVY_READ_ROUTES = frozenset(
     {
         "/api/analysis/power-profiles",
+        "/api/analysis/strength",
         "/api/analysis/training-records",
         "/api/analysis/trends",
         "/api/analysis/week-review",

@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from datetime import date, timedelta
 from typing import Any
 
+from backend.activities.strength_progress import strength_progress
 from backend.athlete.checkins import reports_complaint
 from backend.athlete.local_date import iso_date_prefix
 from backend.canonical.first_threshold import (
@@ -33,7 +34,6 @@ from backend.planning.load_checks import LoadThresholds, load_thresholds
 from backend.planning.running_week import unit_day as _unit_day
 from backend.planning.session_focus import session_focus
 from backend.planning.sport import planned_sport_environment
-from backend.planning.strength_progress import strength_progress
 
 PLAN_FINDINGS_ARGUMENT = "accept_plan_findings"
 BRIEF_WEEKS = 6

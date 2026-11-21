@@ -528,7 +528,7 @@ The calendar card of a completed session SHALL carry its single-session analysis
 
 #### Scenario: No sessions segment in Analyse
 - **WHEN** the athlete opens the Analyse tab or an old `#analysis/sessions` link
-- **THEN** Analyse shows Laufen, Radfahren, Belastung and Erholung only, and the old link opens the calendar overview instead.
+- **THEN** Analyse shows Laufen, Radfahren, Kraft, Belastung and Erholung only, and the old link opens the calendar overview instead.
 
 #### Scenario: Paging back without limit
 - **WHEN** the athlete pages back to a week before the configured weeks back and before the loaded sessions
@@ -552,7 +552,7 @@ Evidence:
 - `tests/test_coach_activity_read_tools.py:test_activity_detail_exposes_the_session_bundle_for_corrections`
 
 ### Requirement: Analyse is split by sport
-The Analyse tab SHALL show the segments Laufen, Radfahren, Belastung and Erholung in this order, without a Leistung segment. Laufen and Radfahren SHALL each show only their sport's current values, best efforts, development charts and estimates; Belastung and Erholung SHALL stay sport-independent. Every value and chart of the former Leistung segment SHALL appear in exactly one segment, and an old Leistung link SHALL open Laufen.
+The Analyse tab SHALL show the segments Laufen, Radfahren, Kraft, Belastung and Erholung in this order, without a Leistung segment. Laufen and Radfahren SHALL each show only their sport's current values, best efforts, development charts and estimates; Belastung and Erholung SHALL stay sport-independent. Every value and chart of the former Leistung segment SHALL appear in exactly one segment, and an old Leistung link SHALL open Laufen.
 
 #### Scenario: Laufen
 - **WHEN** the athlete opens Analyse › Laufen
@@ -561,6 +561,10 @@ The Analyse tab SHALL show the segments Laufen, Radfahren, Belastung and Erholun
 #### Scenario: Radfahren
 - **WHEN** the athlete opens Analyse › Radfahren
 - **THEN** it shows the cycling current values (LT2 FTP and heart rate as "Anaerobe Schwelle (LT2) · …", power per weight, LT1 power and heart rate as "Aerobe Schwelle (LT1) · …", VO2max), the all-time power profile (each best with its date in its own column) with its coverage note and the experimental critical-power line, and the development charts (FTP with the LT1 power line, VO2max); an LT1 point's readout names its heart rate and origin, and a week without three own steady sessions is a gap; no running value appears.
+
+#### Scenario: Kraft
+- **WHEN** the athlete opens Kraft and stored strength sets exist in the last twelve calendar weeks
+- **THEN** "Einheiten pro Woche" shows each week's completed strength sessions (0 without one), and the group "Top-Sätze" shows per exercise, from stored sets only and without strength load or estimated 1RM, a chart of each session's top set (weight, or reps without weight) and a "Letzte Einheiten" table of its last three sessions; a session without the value is a gap and the section shows its empty card without stored sets
 
 #### Scenario: Cross-sport values
 - **WHEN** the athlete opens Analyse › Belastung or Erholung
@@ -582,7 +586,7 @@ The Analyse tab SHALL show the segments Laufen, Radfahren, Belastung and Erholun
 - **WHEN** the power profile and the critical-power estimate are shown
 - **THEN** the table lists 5 s, 1 min, 5 min, 20 min and 1 h from the 90-day window, and the line "Experimentell · CP (28 Tage): …" (CS for running) names per fit CP and W′ (kJ) or CS and D′ with "(unsicher)", the count of race efforts, or "—" for a fit that is not `ok`.
 
-Evidence: `public/analysis.js::renderAnalysisSegments`, `public/analysis.js::renderRunningBestEfforts`, `public/analysis.js::criticalPowerLine`, `public/analysis.js::renderAnalysisHistory`, `public/performance-view.js::renderCurrentPerformance`, `public/navigation.js::routeFromHash`; `tests/analysis-presentation.test.cjs::an analysis segment is empty only when every content container reports no data`, `tests/analysis-presentation.test.cjs::current performance shows the status lines below its heading`, `e2e/performance-values.spec.js::@responsive Laufen and Radfahren each show only their sport`.
+Evidence: `public/analysis.js::renderAnalysisSegments`, `public/analysis.js::renderStrengthAnalysis`, `backend/performance/report_service.py::TrainingReportReadService.strength`, `public/analysis.js::renderRunningBestEfforts`, `public/analysis.js::criticalPowerLine`, `public/analysis.js::renderAnalysisHistory`, `public/performance-view.js::renderCurrentPerformance`, `public/navigation.js::routeFromHash`; `tests/analysis-presentation.test.cjs::an analysis segment is empty only when every content container reports no data`, `tests/analysis-presentation.test.cjs::current performance shows the status lines below its heading`, `e2e/performance-values.spec.js::@responsive Laufen and Radfahren each show only their sport`.
 
 ### Requirement: Calendar display range setting
 The system SHALL store how many weeks the training calendar shows back and ahead as `past_weeks` and `future_weeks`, each a whole number from 0 to 52 with defaults 1 and 4, stored under `calendar_display_past_weeks` and `calendar_display_future_weeks`. `PUT /api/settings/calendar-display` SHALL change only the values it names and return `status: "ok"` with both (contract in `docs/api-routes.md`).
