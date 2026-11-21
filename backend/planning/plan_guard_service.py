@@ -594,7 +594,9 @@ class PlanGuardService:
         it had still blocks.
 
         Notes are the new non-blocking findings plus accepted blocking ones; the
-        Coach names and justifies them in its answer.
+        Coach names and justifies them in its answer. A standing note, such as a
+        recurring complaint (#3766), comes from the athlete's check-ins rather than
+        the write, so it is named on every plan write while it holds.
         """
         gaps = {
             (item["code"], local_id)
@@ -602,9 +604,10 @@ class PlanGuardService:
             if item["code"] in inherited
             for local_id in item.get("local_ids") or ()
         }
+        after = self.findings()
         new = [
             item
-            for item in plan_checks.new_findings(before, self.findings())
+            for item in plan_checks.new_findings(before, after)
             if item["code"] not in waived
             and not (
                 item.get("local_ids")
@@ -623,6 +626,13 @@ class PlanGuardService:
         if blocking:
             raise PlanCheckError(blocking)
         self._require_illness_confirmation(new, accepted)
+        known = {plan_checks.finding_key(item) for item in new}
+        new += [
+            item
+            for item in after
+            if item["code"] in plan_checks.STANDING_NOTE_CODES
+            and plan_checks.finding_key(item) not in known
+        ]
         return [
             {
                 key: item[key]

@@ -308,8 +308,8 @@ function weekReviewFor(week, today) {
     recovery: running ? {} : { sleep: { mean: 7 + 5 / 60, nights: 7, unit: "h", source: "Garmin", week_before: 7.25 }, hrv: { mean: 62, nights: 7, unit: "ms", source: "Garmin", position: "within" } },
     notable: running ? [] : [{ date: end, name: "Langer Lauf", reason: "highest_load", training_load: 120 }],
     checkins: running ? { entered: 0, days: 2, scores: {} } : { entered: 6, days: 7, pain_days: 2, illness_days: 0, scores: { motivation: 7 }, complaints: [
-      { area: "achilles", side: "right", days: 3, dates: [], first_severity: 3, last_severity: 5 },
-      { area: "knee", side: "left", days: 1, dates: [], first_severity: 2, last_severity: 2 },
+      { area: "achilles", side: "right", days: 3, dates: [weekAfter(week, 0), weekAfter(week, 2), weekAfter(week, 4)], first_severity: 3, last_severity: 5 },
+      { area: "knee", side: "left", days: 1, dates: [weekAfter(week, 0)], first_severity: 2, last_severity: 2 },
     ] },
   };
 }

@@ -188,11 +188,16 @@ class PlanCheckRuleTests(unittest.TestCase):
             notes[0]["message"],
         )
         self.assertEqual("achilles", notes[0]["evidence"]["area"])
-        # One note per area and side; a worse severity is a new one.
+        # One note per area and side.
         keys = {plan_checks.finding_key(item) for item in notes}
-        self.assertEqual(2, len(keys))
-        worse = {**notes[0], "evidence": {**notes[0]["evidence"], "last_severity": 6}}
-        self.assertNotIn(plan_checks.finding_key(worse), keys)
+        self.assertEqual(
+            {
+                ("complaint_recurring", "achilles", "right"),
+                ("complaint_recurring", "knee", "left"),
+            },
+            keys,
+        )
+        self.assertEqual(("complaint_recurring",), plan_checks.STANDING_NOTE_CODES)
         self.assertEqual(
             [],
             [item for item in check([hard]) if item["code"] == "complaint_recurring"],

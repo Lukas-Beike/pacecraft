@@ -178,6 +178,14 @@ class PlanGuardWriteTests(unittest.TestCase):
         self.assertEqual(1, len(notes))
         self.assertFalse(notes[0]["blocking"])
         self.assertEqual([complaint], self.guard.brief()["complaints"])
+        # It comes from the check-ins, not the write, so a write that changed nothing
+        # about it still names it in its notes and is never blocked by it.
+        before = self.guard.findings()
+        written = self.guard.verify(before, [])
+        self.assertEqual(
+            ["complaint_recurring"],
+            [item["code"] for item in written if item["code"] == "complaint_recurring"],
+        )
 
     def test_rolled_back_write_publishes_nothing_and_committed_write_does(self) -> None:
         with self.assertRaises(PlanCheckError):

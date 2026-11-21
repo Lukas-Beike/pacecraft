@@ -108,6 +108,9 @@ FINDING_CODES = (
     "template_scaled",
     "complaint_recurring",
 )
+# Notes that come from the athlete's own check-ins, not from the write: the guard
+# names them on every plan write while they hold (#3766).
+STANDING_NOTE_CODES = ("complaint_recurring",)
 # Only the health rule blocks a write. The load rules are notes the Coach must
 # name: their evidence is observational or practice-based, or (taper) the
 # evidence is strong but the 20 % floor is a local choice, not a proven limit.
@@ -968,14 +971,9 @@ def finding_key(finding: Mapping[str, Any]) -> tuple[Any, ...]:
         evidence = finding["evidence"]
         return (finding["code"], tuple(finding["local_ids"]), evidence["content"])
     if finding["code"] == "complaint_recurring":
-        # One note per area and side; a worse severity is a new note.
+        # One note per area and side.
         evidence = finding["evidence"]
-        return (
-            finding["code"],
-            evidence["area"],
-            evidence["side"],
-            evidence["last_severity"],
-        )
+        return (finding["code"], evidence["area"], evidence["side"])
     if finding["code"] == "load_unknown":
         # One note for the plan: unrelated edits must not repeat it.
         return (finding["code"],)

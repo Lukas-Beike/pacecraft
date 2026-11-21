@@ -2373,6 +2373,10 @@ function weekReviewComplaintTile(checkins) {
       : `${item.last_severity}/10`;
     return h("li", null, `${complaintLabel(item)} · ${days} · Stärke `, change);
   });
+  // Free-text pain days beyond the structured ones keep their count.
+  const structured = new Set((checkins.complaints || []).flatMap((item) => item.dates || [])).size;
+  const textOnly = (checkins.pain_days || 0) - structured;
+  if (textOnly > 0) lines.push(h("li", null, `${textOnly} ${textOnly === 1 ? "Tag" : "Tage"} Schmerz (Text)`));
   if (checkins.illness_days) lines.push(h("li", null, `${checkins.illness_days} ${checkins.illness_days === 1 ? "Tag" : "Tage"} krank`));
   return h("div", "week-review-tile week-review-wide", h("small", null, "Beschwerden"), h("ul", null, lines));
 }

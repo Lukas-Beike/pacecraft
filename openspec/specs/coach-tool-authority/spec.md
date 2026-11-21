@@ -372,7 +372,7 @@ The system SHALL check the resulting future plan of every Coach tool write that 
 
 #### Scenario: Recurring complaint note
 - **WHEN** the check-ins report the same body area and side on at least 3 of the last 14 days (today included), or its severity rose by at least 2 points from its first to its latest entry there
-- **THEN** the plan checks return one non-blocking `complaint_recurring` note per area and side naming the days and the severity, a worse latest severity is a new note, and the planning brief lists the same complaints under `complaints`; no complaint blocks or changes a plan, since only illness blocks (#3766).
+- **THEN** the plan checks return one non-blocking `complaint_recurring` note per area and side naming the days and the severity, every Coach plan write names it among its notes while it holds (it comes from the check-ins, not the write), and the planning brief lists the same complaints under `complaints`; no complaint blocks or changes a plan, since only illness blocks (#3766).
 
 #### Scenario: Blocking violation
 - **WHEN** a Coach plan write would add an unaccepted illness_hard finding, or a strength_incomplete, focus_missing, hr_cap_invalid, template_missing or template_mismatch finding

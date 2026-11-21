@@ -591,10 +591,6 @@ class AthleteCheckinHistoryTests(unittest.TestCase):
         self.assertEqual(turn_changes([receipt]), changes)
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
 class RecurringComplaintTests(unittest.TestCase):
     """#3766 (athlete): 3 of the last 14 days, or 2+ severity points worse there."""
 
@@ -636,3 +632,7 @@ class RecurringComplaintTests(unittest.TestCase):
     def test_one_point_worse_on_two_days_is_no_note(self):
         rows = [self.day(0, ("knee", "left", 3)), self.day(3, ("knee", "left", 2))]
         self.assertEqual(recurring_complaints(rows, TODAY), [])
+
+
+if __name__ == "__main__":
+    unittest.main()

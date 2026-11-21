@@ -123,9 +123,9 @@ test("structured complaints show one line per area with days and severity", () =
   const checkins = {
     entered: 5, days: 7, pain_days: 3, illness_days: 1, scores: {},
     complaints: [
-      { area: "achilles", side: "right", days: 3, dates: [], first_severity: 3, last_severity: 5 },
-      { area: "knee", side: "left", days: 1, dates: [], first_severity: 2, last_severity: 2 },
-      { area: "lower_back", side: "none", days: 2, dates: [], first_severity: 4, last_severity: 3 },
+      { area: "achilles", side: "right", days: 3, dates: ["2026-11-09", "2026-11-11", "2026-11-13"], first_severity: 3, last_severity: 5 },
+      { area: "knee", side: "left", days: 1, dates: ["2026-11-09"], first_severity: 2, last_severity: 2 },
+      { area: "lower_back", side: "none", days: 2, dates: ["2026-11-11", "2026-11-12"], first_severity: 4, last_severity: 3 },
     ],
   };
   const tile = weekReviewCheckinTiles(checkins)[1];
@@ -137,6 +137,9 @@ test("structured complaints show one line per area with days and severity", () =
     "unterer Rücken · 2 Tage · Stärke 4 → 3",
     "1 Tag krank",
   ]);
+  // Pain days without a structured complaint keep their count (review on #3766).
+  const textOnly = weekReviewCheckinTiles({ ...checkins, pain_days: 6 })[1].children[1].children.map(textOf);
+  assert.equal(textOnly.at(-2), "2 Tage Schmerz (Text)");
   // Worse is the "down" (red) direction, better the "up" one.
   assert.equal(lines[0].children[1].dataset.direction, "down");
   assert.equal(lines[2].children[1].dataset.direction, "up");
