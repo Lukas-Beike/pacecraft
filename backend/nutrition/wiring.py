@@ -6,7 +6,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, replace
 from datetime import date, timedelta
 from functools import partial
-from typing import Any
+from typing import Any, Protocol
 
 from backend.activities.activity_reference import ActivityReferences
 from backend.app.context import AppContext
@@ -63,6 +63,14 @@ from backend.providers.yazio import YazioClient
 from backend.runtime import clock as runtime_clock
 
 
+class EnergyView(Protocol):
+    """The diary day's expenditure read: a day (`None`: yesterday) and the long period."""
+
+    def __call__(
+        self, day_text: str | None = None, period: str | None = None
+    ) -> dict[str, Any]: ...
+
+
 @dataclass(frozen=True)
 class NutritionServices:
     secret_values: Callable[[], tuple[str, ...]]
@@ -76,7 +84,7 @@ class NutritionServices:
     # Counts of the adaptive expenditure basis for the diagnostics (#3100).
     energy_basis: Callable[[Any], dict[str, Any]]
     # Resting and daily expenditure per source and their fit (#3099).
-    energy_view: Callable[[], dict[str, Any]]
+    energy_view: EnergyView
     # One run re-checking every product (#3299); stopped at shutdown.
     product_refresh: ProductRefreshRunner
 
