@@ -160,7 +160,9 @@ function restoreRouteScroll(mainRoute, returningToChat, shouldFocusPlannedToday)
     if (!state.chatFollowLatest) state.chatResponseScrollPending = false;
     if (state.chatResponseScrollPending) scrollChatToResponseStart();
     else if (state.chatInitialScrollPending || state.chatCacheSyncing) scrollChatToLatest();
-    else if (!returningToChat || !restoreChatScrollPosition()) scrollChatToLatest();
+    // A reader who followed the newest message returns to it: the stored position predates
+    // a composer that grew meanwhile, such as with the quick messages (#3862).
+    else if (!returningToChat || state.chatFollowLatest || !restoreChatScrollPosition()) scrollChatToLatest();
     if (state.chatProposalRefreshPending) void refreshChatProposalsInBackground(state.chatContentVersion);
     return;
   }

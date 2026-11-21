@@ -302,6 +302,19 @@ test("the Coach opens and stays at the newest message through the fresh load and
     await expect(page.locator("#quickMessageTemplates")).toBeVisible();
     await settle();
     await expect.poll(() => newestInView(newer)).toBe(true);
+
+    // The same pause while another view is open: returning to the Coach goes to the newest message.
+    await page.evaluate(() => { document.querySelector("#quickMessageTemplates").hidden = true; state.quickTemplatesVisible = false; });
+    await page.evaluate(() => { location.hash = "#plan"; });
+    await expect(page.locator("#chatPanel")).not.toHaveClass(/active/);
+    await away();
+    await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
+    await expect(page.locator("#quickMessageTemplates")).toBeAttached();
+    await page.evaluate(() => { location.hash = "#coach"; });
+    await expect(page.locator("#chatPanel")).toHaveClass(/active/);
+    await expect(page.locator("#quickMessageTemplates")).toBeVisible();
+    await settle();
+    await expect.poll(() => newestInView(newer)).toBe(true);
   } finally {
     conversation.pop();
     await page.unrouteAll({ behavior: "ignoreErrors" });
