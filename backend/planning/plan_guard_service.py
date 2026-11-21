@@ -301,12 +301,8 @@ def build_planning_brief(
     lessons: Sequence[Mapping[str, Any]] = (),
     last_tests: Mapping[str, Any] | None = None,
     complaints: Sequence[Mapping[str, Any]] = (),
-    infection_hint: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Compact deterministic brief for plan_week, plan_block and adjust_week turns.
-
-    A shown infection hint (M14, #3762) is information only; no check reads it.
-    """
+    """Compact deterministic brief for plan_week, plan_block and adjust_week turns."""
     weeks = [
         item for item in progress.get("week_list", []) if item.get("status") != "future"
     ][-BRIEF_WEEKS:]
@@ -350,7 +346,6 @@ def build_planning_brief(
             "last_tests": dict(last_tests or {}),
             "complaints": [dict(item) for item in complaints],
             "complaints_source": COMPLAINTS_SOURCE,
-            **({"infection_hint": dict(infection_hint)} if infection_hint else {}),
         }
     )
 
@@ -680,7 +675,7 @@ class PlanGuardService:
         units = self._planned_units()
         completed = self._recent(today)
         competitions = self._competitions()
-        return build_planning_brief(
+        brief = build_planning_brief(
             progress=self._progress(),
             completed=completed,
             competitions=competitions,
@@ -699,5 +694,9 @@ class PlanGuardService:
                 today,
             ),
             complaints=self._complaints(),
-            infection_hint=self._infection_hint(),
         )
+        # A shown infection hint (M14, #3762) is information only; no check reads it.
+        infection_hint = self._infection_hint()
+        if infection_hint:
+            brief["infection_hint"] = dict(infection_hint)
+        return brief
