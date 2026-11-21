@@ -83,8 +83,6 @@ test("@responsive an unfinished week keeps one mark in its own week slot, labell
       const gaps = points.slice(1).map((point, index) => point.x - points[index].x);
       expect.soft(Math.max(...gaps) - Math.min(...gaps), `${name}: one mark per week slot`).toBeLessThan(1);
       const newest = points.at(-1);
-      // 13 narrow bars at phone width leave a bar next to a much taller one no free label slot: labels avoid marks, so it is dropped.
-      if (key === "bar" && points.length > 12 && testInfo.project.name === "mobile" && name === "Schritte") continue;
       expect.soft(labels.some((label) => (label.series === key || key === "bar") && label.left <= newest.x && label.right >= newest.x && label.gap <= 20), `${name}: newest mark labelled`).toBe(true);
     }
   });

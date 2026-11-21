@@ -355,6 +355,16 @@ function analysisLabelledPoints(item) {
   return [...new Set([readings.at(-1), byValue.at(-1), byValue[0], readings[0]])];
 }
 
+// The drawn width of a 12px value label plus its 4px halo; 7px per character where no canvas measures,
+// which overstates a thousands point and leaves a short bar between taller ones unlabelled (#3839).
+let analysisLabelContext;
+function analysisLabelWidth(text) {
+  analysisLabelContext ??= globalThis.document?.createElement?.("canvas")?.getContext?.("2d") || null;
+  if (!analysisLabelContext) return text.length * 7 + 4;
+  analysisLabelContext.font = `12px ${getComputedStyle(document.body).fontFamily}`;
+  return Math.ceil(analysisLabelContext.measureText(text).width) + 4;
+}
+
 function analysisPointValueLabel(item, point, { index, unit, scales }) {
   const label = analysisValue(point.value, item.unit || unit).split(" ")[0];
   const { x, y } = scales;
@@ -363,7 +373,7 @@ function analysisPointValueLabel(item, point, { index, unit, scales }) {
     const { left, width } = analysisBarGeometry(item, point, scales);
     pointX = left + width / 2;
   }
-  return { label, x: pointX, width: label.length * 7 + 4, index, bars: Boolean(item.bars), pointY: item.bars ? Math.min(y(point.value), y(0)) : y(point.value) };
+  return { label, x: pointX, width: analysisLabelWidth(label), index, bars: Boolean(item.bars), pointY: item.bars ? Math.min(y(point.value), y(0)) : y(point.value) };
 }
 
 // The closest free box for a label that still spans its point: above or below it, centred or slid sideways.
