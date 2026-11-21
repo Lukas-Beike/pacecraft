@@ -108,9 +108,10 @@ def read_recovery_inputs(
         observations={
             kind: tuple(reader.observations(db, kind, start=start)) for kind in kinds
         },
+        # Only the full read needs the sleep periods; a selected read skips them.
         sleep_periods=(
             reader.sleep_periods(db, start=start - timedelta(days=1))
-            if isinstance(reader, SleepPeriodReader)
+            if isinstance(reader, SleepPeriodReader) and kinds == RECOVERY_KINDS
             else None
         ),
     )

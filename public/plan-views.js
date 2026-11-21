@@ -559,7 +559,7 @@ function plannedDayNotes(dayContext, competitions, dateKey) {
 function infectionHintText(hint) {
   if (hint?.status !== "hint" || !Array.isArray(hint.signals)) return "";
   const unit = (value) => (value === "brpm" ? "/min" : ` ${value}`);
-  const values = hint.signals.map((signal) => `${signal.label} ${calendarMetricNumber(signal.value)}${unit(signal.unit)} (${signal.source}, üblich ${calendarMetricNumber(signal.lower)}–${calendarMetricNumber(signal.upper)})`);
+  const values = hint.signals.filter((signal) => signal.unusual).map((signal) => `${signal.label} ${calendarMetricNumber(signal.value)}${unit(signal.unit)} (${signal.source}, üblich ${calendarMetricNumber(signal.lower)}–${calendarMetricNumber(signal.upper)})`);
   return `Infekt-Hinweis: ${values.join(" · ")}. ${hint.limits || ""}`.trim();
 }
 
