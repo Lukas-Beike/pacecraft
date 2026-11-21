@@ -382,8 +382,9 @@ UNREADABLE = re.compile(r"\\|#|!|`|\r|\$[('\"]|[<>]\(|[‘’“”]")
 QUOTED = re.compile(r"'[^']*'|\"[^\"]*\"")
 # Shell tokens: a quoted run, a separator, blanks, plain characters; a lone
 # quote never closes.
-# Tokens after each quoted run became `q`, so a word keeps its glued quoted
-# parts (`ls'x'` reads `lsq`, Gitar on #3781) and a lone quote stays.
+# Tokens after each quoted run became `@`, which no program name holds, so a
+# word with a glued quoted part (`ls'x'` reads `ls@`) is never a bare program
+# (Gitar on #3781) and a lone quote stays.
 TOKENS = re.compile(r"[^\s'\";&|()<>]+|[;&|()<>\n]|[^\S\n]+|['\"]")
 # A bare program name: no path, variable, glob, short name or quote.
 PROGRAM = re.compile(r"[a-z][a-z0-9_-]*")
@@ -406,7 +407,7 @@ def simple_commands(text: str) -> list[list[str]] | None:
     None when a quote stays open."""
     segments: list[list[str]] = [[]]
     redirect = False
-    for token in (match[0] for match in TOKENS.finditer(QUOTED.sub("q", text))):
+    for token in (match[0] for match in TOKENS.finditer(QUOTED.sub("@", text))):
         if token in ("'", '"'):
             return None
         if token in ("<", ">") or (redirect and token == "&"):

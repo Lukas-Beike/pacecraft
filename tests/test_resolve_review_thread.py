@@ -469,6 +469,8 @@ class GuardHookTests(unittest.TestCase):
             "ls\rpython scripts/r*.py 1 PRRT_abc",
             "ls'/../x' scripts/r*.py 1 PRRT_abc",
             'cat"" scripts/r*.py',
+            "j'ython' scripts/r*.py 1 PRRT_abc",
+            "uni'x' scripts/r*.py",
         ):
             with self.subTest(command):
                 self.assertEqual(self.decide(command), 2)
