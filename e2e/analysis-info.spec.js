@@ -81,9 +81,10 @@ test("@responsive standard demo shows one compact race table and sport-specific 
   const running = page.locator("[data-analysis-section='development-Lauf']");
   await expect(running).not.toContainText("Keine Daten");
   await expect(running.locator("#performancePredictions")).toHaveCount(1);
-  await expect(running.locator("#runningBestEfforts")).toHaveCount(1);
-  // The race predictions stand directly above the running bests (#2786).
-  expect(await page.locator("#runningBestEfforts").evaluate((element) => element.previousElementSibling?.id)).toBe("performancePredictions");
+  // The running bests moved to Rekorde; the critical-speed line stays below the race predictions (#3826).
+  await expect(running.locator("#runningBestEfforts")).toHaveCount(0);
+  await expect(running.locator("#runningCriticalSpeed")).toHaveCount(1);
+  expect(await page.locator("#runningCriticalSpeed").evaluate((element) => element.previousElementSibling?.id)).toBe("performancePredictions");
   // Laufen shows no cycling part (#2265).
   await expect(cycling).toBeHidden();
   await expect(page.locator("#currentPerformance [data-metric='cycling_w_per_kg']")).toBeHidden();
@@ -97,9 +98,9 @@ test("@responsive standard demo shows one compact race table and sport-specific 
   await expect(page.locator("#performanceWeightCharts")).toHaveCount(0);
   await page.evaluate(async () => { await AppRouter.navigate("analysis/cycling", { historyMode: "replace" }); });
   await expect(running).toBeHidden();
-  const powerProfile = cycling.locator("#cyclingPowerProfile");
-  await expect(powerProfile.locator("tbody tr")).toHaveCount(5);
-  await expect(powerProfile.locator("tbody td")).toHaveText(Array.from({ length: 5 }, () => [/^\d+(?:,\d+)? W$/, /^\d{2}\.\d{2}\.\d{4}$/]).flat());
+  // The power profile moved to Rekorde; the critical-power line stays in Radfahren (#3826).
+  await expect(cycling.locator("#cyclingPowerProfile")).toHaveCount(0);
+  await expect(cycling.locator("#cyclingCriticalPower")).toHaveCount(1);
   await expect(cycling.locator("[data-body-metric='cycling_w_per_kg']")).toHaveCount(0);
   await expect(page.locator("#currentPerformance [data-metric='cycling_w_per_kg']")).toBeVisible();
   await expect(cycling.locator(".analysis-group-title")).toHaveText("Entwicklung");
@@ -822,4 +823,49 @@ test("@responsive longer trend periods and the previous year are read only on de
   await expect(development.getByText("Der längere Zeitraum konnte nicht geladen werden.")).toBeVisible();
   await expect(development.getByRole("button", { name: "Vorjahr", exact: true })).toHaveAttribute("aria-pressed", "true");
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+});
+
+// #3824: a re-render for "Vorjahr" or a longer period must keep the other sport's group hidden.
+test("@responsive Vorjahr and a longer period keep each sport tab to its own sport", async ({ page, request }) => {
+  expect((await request.get("/api/fixture/demo")).ok()).toBeTruthy();
+  await page.route("**/api/analysis/trend-history**", async (route) => {
+    const days = Number(new URL(route.request().url()).searchParams.get("days"));
+    const performance = await page.evaluate(() => state.data.performance);
+    const end = performance.history.end;
+    const start = new Date(`${end}T12:00:00Z`); start.setUTCDate(start.getUTCDate() + 1 - days);
+    // Stored values one year earlier too, as production has them, so the previous-year lines draw.
+    const shift = (key) => { const date = new Date(`${key}T12:00:00Z`); date.setUTCDate(date.getUTCDate() - 364); return date.toISOString().slice(0, 10); };
+    const metrics = Object.fromEntries(Object.entries(performance.history.metrics || {}).map(([key, series]) => [key, series.map((item) => ({ ...item, points: [...item.points.map((point) => ({ ...point, date: shift(point.date) })), ...item.points] }))]));
+    await route.fulfill({ json: { start: start.toISOString().slice(0, 10), end, days, previous_year_days: 364, metrics, personal_recovery: performance.personal_recovery } });
+  });
+  await page.goto("/#analysis/running");
+  await expect(page.locator("#appShell")).toBeVisible();
+  await page.waitForFunction(() => state.loadedAreas.has("performance") && !state.loadPromise);
+  const development = page.locator("#analysisHistoryCharts");
+  await expect(page.locator("[data-analysis-section='development-Lauf']")).toBeVisible();
+  // Checked right after the long read's re-render, not polled: a later unrelated re-render must not hide the bug.
+  const answered = page.waitForResponse((response) => response.url().includes("/api/analysis/trend-history"));
+  await development.getByRole("button", { name: "Vorjahr", exact: true }).click();
+  await answered;
+  await page.waitForTimeout(300);
+  await expect(development.getByRole("button", { name: "Vorjahr", exact: true })).toHaveAttribute("aria-pressed", "true");
+  expect(await page.locator("[data-analysis-section='development-Lauf']").isVisible()).toBe(true);
+  expect(await page.locator("[data-analysis-section='development-Rad']").isVisible()).toBe(false);
+  expect(await development.getByRole("heading", { name: /Leistungsschwelle · FTP/ }).isVisible()).toBe(false);
+  // Every drawn series in the running tab is a running one, the previous year's lines included.
+  const shownLabels = await page.evaluate(() => [...document.querySelectorAll("#analysisHistoryCharts svg circle title")]
+    .filter((title) => title.closest("[data-analysis-sport]")?.checkVisibility())
+    .map((title) => title.textContent));
+  expect(shownLabels.length).toBeGreaterThan(0);
+  expect(shownLabels.filter((label) => !label.startsWith("Lauf"))).toEqual([]);
+  // The mirror case: Radfahren with a longer period shows no running group.
+  await page.evaluate(async () => { await AppRouter.navigate("analysis/cycling", { historyMode: "replace" }); });
+  const longer = page.waitForResponse((response) => response.url().includes("/api/analysis/trend-history?days=364"));
+  await development.getByRole("button", { name: "12 Monate" }).click();
+  await longer;
+  await page.waitForTimeout(300);
+  expect(await page.locator("[data-analysis-section='development-Rad']").isVisible()).toBe(true);
+  expect(await page.locator("[data-analysis-section='development-Lauf']").isVisible()).toBe(false);
+  // The running part of the sport tabs is the critical-speed line since the bests moved to Rekorde (#3826).
+  expect(await page.locator("#runningCriticalSpeed").isVisible()).toBe(false);
 });

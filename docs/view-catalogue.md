@@ -27,6 +27,7 @@ Default route: `#coach`. Navigation items: `#coach`, `#plan`, `#nutrition`, `#an
 | `#analysis` | `dataPanel` | `analysis` | `/api/performance`, `/api/analysis/power-profiles` | Analyse aktualisieren, Jetzt abgleichen, Anbindung einrichten | loading, empty, error, notConfigured, offline |
 | `#analysis/cycling` | `dataPanel` | `analysis` | `/api/performance`, `/api/analysis/power-profiles` | Analyse aktualisieren, Jetzt abgleichen, Anbindung einrichten | loading, empty, error, notConfigured, offline |
 | `#analysis/load` | `dataPanel` | `analysis` | `/api/performance` | Analyse aktualisieren, Jetzt abgleichen, Anbindung einrichten, Letzte 14 Tage, 12 Wochen, 12 Wochen anzeigen | loading, empty, error, notConfigured, offline |
+| `#analysis/records` | `dataPanel` | `analysis` | `/api/performance`, `/api/analysis/power-profiles` | Analyse aktualisieren, Jetzt abgleichen, Anbindung einrichten | loading, empty, error, notConfigured, offline |
 | `#analysis/recovery` | `dataPanel` | `analysis` | `/api/performance` | Analyse aktualisieren, Jetzt abgleichen, Anbindung einrichten, Letzte 14 Tage, 12 Wochen, 12 Wochen anzeigen | loading, empty, error, notConfigured, offline |
 | `#analysis/running` | `dataPanel` | `analysis` | `/api/performance`, `/api/analysis/power-profiles` | Analyse aktualisieren, Jetzt abgleichen, Anbindung einrichten | loading, empty, error, notConfigured, offline |
 | `#analysis/strength` | `dataPanel` | `analysis` | `/api/performance`, `/api/analysis/strength` | Analyse aktualisieren, Jetzt abgleichen, Anbindung einrichten | loading, empty, error, notConfigured, offline |
@@ -86,6 +87,7 @@ expression. Other inline status lines are not listed.
 | `renderStrengthAnalysis` | `createLoadingState` | Kraftdaten werden geladen… |  |
 | `renderStrengthAnalysis` | `createErrorState` | (computed) ` error.message ` |  |
 | `renderAnalysisTrends` | `createErrorState` | (computed) ` error.message ` |  |
+| `renderActivityRecords` | `markValueMissing` | – |  |
 | `renderRunningBestEfforts` | `markValueMissing` | – |  |
 | `energyPending` | `h(.empty)` | Tag liegt in der Zukunft |  |
 | `energyPending` | `createLoadingState` | Energieverbrauch wird geladen… |  |

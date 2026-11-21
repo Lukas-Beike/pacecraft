@@ -13,11 +13,15 @@ async function openWeightDialog(page) {
   const row = page.locator("tr[data-metric='weight_kg']");
   await expect(row).toBeVisible();
   await expect.poll(() => page.evaluate(() => Boolean(state.data) && state.loadPromise === null)).toBe(true);
+  // Always through the app's service worker, the path a page route missed in CI 44878160199.
+  await expect.poll(() => page.evaluate(() => Boolean(navigator.serviceWorker?.controller))).toBe(true);
   return row;
 }
 
 async function saveWeightOffline(page, row, kg) {
-  await page.route(WEIGHT, (route) => (route.request().method() === "PUT" ? route.abort("internetdisconnected") : route.fallback()));
+  // The context route also catches the request when the app's service worker fetches it; a page
+  // route misses it once the worker controls the page, so the save went through online (CI 44878160199).
+  await page.context().route(WEIGHT, (route) => (route.request().method() === "PUT" ? route.abort("internetdisconnected") : route.fallback()));
   await row.getByRole("button", { name: "Gewicht eintragen" }).click();
   await expect(page.locator("#weightDialog")).toBeVisible();
   // The dialog fills the day's stored value after it opens; wait for that before typing.
@@ -49,7 +53,7 @@ test("@responsive a weight saved offline waits, is sent once after reconnecting 
   expect(sent).toHaveLength(1);
   expect(sent[0]).toMatch(UUID);
 
-  await page.unroute(WEIGHT);
+  await page.context().unroute(WEIGHT);
   await page.evaluate(() => globalThis.dispatchEvent(new Event("online")));
   await expect(row.locator("td").first()).toContainText("123,4");
   await expect(page.locator("#statusStrip")).not.toContainText("wartet");
@@ -92,7 +96,7 @@ test("@responsive a waiting entry is listed and can be discarded, and nothing is
   await expect(dialog).toBeHidden();
   await expect(page.locator("#statusStrip")).not.toContainText("wartet");
 
-  await page.unroute(WEIGHT);
+  await page.context().unroute(WEIGHT);
   await page.evaluate(() => globalThis.dispatchEvent(new Event("online")));
   await expect(row.locator("td").first()).not.toContainText("81,2");
   expect(sent).toHaveLength(1);

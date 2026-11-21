@@ -51,9 +51,9 @@ test("@responsive performance keeps Garmin measurements and one cycling best per
   await expect(page.locator('#cyclingPowerProfile [data-power-duration="60"]')).toContainText("420 W");
   await expect(page.locator("#cyclingPowerProfile thead th")).toHaveText(["Dauer", "Leistung", "Datum"]);
   await expect(page.locator("#cyclingPowerProfile [data-power-profile-gap]")).toHaveText("Für 3 von 14 Radeinheiten fehlen vollständige Messreihen; die Bestwerte können höher liegen.");
-  await expect(page.locator("#cyclingPowerProfile [data-critical-power]")).toHaveText("Experimentell · CP (28 Tage): Rad outdoor CP 250 W · W′ 18 kJ (unsicher) · 1× Wettkampf · Rad indoor —");
-  // The running critical speed sits under the running best efforts (#2265).
-  await expect(page.locator("#runningBestEfforts [data-critical-power]")).toHaveText("Experimentell · CS (28 Tage): Lauf CS 4,12 m/s · D′ 200 m (unsicher)");
+  // The CP/CS lines stay in the sport tabs while the bests moved to Rekorde (#3826).
+  await expect(page.locator("#cyclingCriticalPower [data-critical-power]")).toHaveText("Experimentell · CP (28 Tage): Rad outdoor CP 250 W · W′ 18 kJ (unsicher) · 1× Wettkampf · Rad indoor —");
+  await expect(page.locator("#runningCriticalSpeed [data-critical-power]")).toHaveText("Experimentell · CS (28 Tage): Lauf CS 4,12 m/s · D′ 200 m (unsicher)");
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBeTruthy();
 });
 
@@ -77,7 +77,7 @@ test("@responsive Laufen and Radfahren each show only their sport", async ({ pag
   await page.goto("/#analysis/performance");
   await expect(page).toHaveURL(/#analysis\/running$/);
   const segments = page.locator("[data-analysis-segment]");
-  await expect(segments).toHaveText(["Laufen", "Radfahren", "Kraft", "Belastung", "Erholung"]);
+  await expect(segments).toHaveText(["Laufen", "Radfahren", "Kraft", "Belastung", "Erholung", "Rekorde"]);
   await expect(page.locator('[data-analysis-segment="running"]')).toHaveAttribute("aria-current", "page");
   const best = page.locator("#runningBestEfforts");
   // Running bests are the five race distances only; a missing best keeps its row with a dash (#2786).
@@ -104,6 +104,13 @@ test("@responsive Laufen and Radfahren each show only their sport", async ({ pag
   await expect(page.locator("#currentPerformance table[data-analysis-sport='ride']")).toBeVisible();
   for (const hidden of ["#runningBestEfforts", "#performancePredictions", "#currentPerformance table[data-analysis-sport='run']", "[data-analysis-section='development-Lauf']"]) await expect(page.locator(hidden)).toBeHidden();
   await expect(page.locator("#analysisRefreshButton")).toHaveAttribute("aria-label", "Analyse aktualisieren: Radfahren");
+  // The bests of both sports stand in Rekorde, without the sport tabs' values (#3826).
+  await page.locator('[data-analysis-segment="records"]').click();
+  await expect(page).toHaveURL(/#analysis\/records$/);
+  for (const shown of ["#cyclingPowerProfile", "#runningBestEfforts", "#rideActivityRecords", "#runActivityRecords"]) await expect(page.locator(shown)).toBeVisible();
+  for (const hidden of ["#currentPerformance", "#analysisHistoryCharts", "#cyclingCriticalPower", "#runningCriticalSpeed"]) await expect(page.locator(hidden)).toBeHidden();
+  await expect(page.locator("#analysisRefreshButton")).toHaveAttribute("aria-label", "Analyse aktualisieren: Rekorde");
+  await page.locator('[data-analysis-segment="cycling"]').click();
   // A sport without current values names it in its own segment.
   await page.locator('[data-analysis-segment="running"]').click();
   await page.evaluate(() => { renderCurrentPerformance({ cycling_ftp_watts: { value: 260, unit: "W" } }, state.data.performance.history); renderAnalysisSegments(state.route); });

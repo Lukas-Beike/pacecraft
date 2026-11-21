@@ -670,6 +670,12 @@ function trendHistoryNote(period) {
   return trendHistories.get(TREND_PERIOD_DAYS[period])?.failed ? h("p", "muted", "Der längere Zeitraum konnte nicht geladen werden.") : null;
 }
 
+// The new groups start visible; the shown tab hides the other sport's again (#3824).
+function rerenderDevelopment() {
+  renderAnalysisHistory(state.data?.performance?.history);
+  renderAnalysisSegmentsIfActive();
+}
+
 function trendHistoryNeeded(period) {
   return period !== "fortnight" && period !== "twelveWeeks" ? true : previousYearShown;
 }
@@ -727,10 +733,23 @@ function clearAnalysisReportCache() {
 
 let cyclingPowerProfileGeneration = 0;
 const ALL_TIME_RETRY_MS = 3000;
-// One power-profile read fills the cycling profile and the running best efforts (#2265).
-const PROFILE_CARDS = [["cyclingPowerProfile", "Leistungsprofil"], ["runningBestEfforts", "Bestwerte"]];
-const ANALYSIS_PERFORMANCE_ROUTES = new Set(["analysis", "analysis/running", "analysis/cycling"]);
-const CYCLING_POWER_PROFILE_DURATIONS = [[5, "5 Sekunden"], [60, "1 Minute"], [300, "5 Minuten"], [1200, "20 Minuten"], [3600, "1 Stunde"]];
+// One power-profile read fills the Rekorde cards (#3826) and the sport tabs' CP/CS lines (#2265).
+const PROFILE_CARDS = [["rideActivityRecords", "Einzelne Fahrt"], ["cyclingPowerProfile", "Leistungsprofil"], ["runActivityRecords", "Einzelner Lauf"], ["runningBestEfforts", "Bestwerte"]];
+const CRITICAL_LINES = [["cyclingCriticalPower", "ride"], ["runningCriticalSpeed", "run"]];
+const ANALYSIS_PERFORMANCE_ROUTES = new Set(["analysis", "analysis/running", "analysis/cycling", "analysis/records"]);
+// Every measured duration (athlete decision, #3826).
+const CYCLING_POWER_PROFILE_DURATIONS = [[5, "5 Sekunden"], [15, "15 Sekunden"], [30, "30 Sekunden"], [60, "1 Minute"], [120, "2 Minuten"], [180, "3 Minuten"], [300, "5 Minuten"], [420, "7 Minuten"], [600, "10 Minuten"], [720, "12 Minuten"], [1200, "20 Minuten"], [1800, "30 Minuten"], [3600, "1 Stunde"]];
+
+// The date of a record opens its activity (#3826); a record without one keeps plain text.
+function recordDateCell(point, label) {
+  const cell = h("td");
+  if (!point) return cell;
+  if (!point.activity_id) { cell.append(dateLabel(point.date)); return cell; }
+  const open = h("button", { type: "button", className: "link-button", "aria-label": `${label} vom ${dateLabel(point.date)} öffnen` }, dateLabel(point.date));
+  open.addEventListener("click", () => void ActivityDetails.open({ activity_id: point.activity_id, name: point.name }, { api, showDialog: showAccessibleDialog }));
+  cell.append(open);
+  return cell;
+}
 
 // Both cards show the all-time bests, each with its date (#2694).
 function cyclingPowerProfilePoint(result, duration) {
@@ -748,8 +767,10 @@ function cyclingPowerProfileTable(result) {
   for (const [duration, label] of CYCLING_POWER_PROFILE_DURATIONS) {
     const point = cyclingPowerProfilePoint(result, duration);
     const cell = h("td", { title: point?.source }, point && analysisValue(point.watts, "W"));
+    // Indoor rides count for power, marked as such (#3826).
+    if (point?.environment === "indoor") cell.append(recordSourceChip("Indoor"));
     if (!point) markValueMissing(cell);
-    body.append(h("tr", { dataset: { powerDuration: String(duration) } }, h("th", { scope: "row" }, label), cell, h("td", null, point ? dateLabel(point.date) : null)));
+    body.append(h("tr", { dataset: { powerDuration: String(duration) } }, h("th", { scope: "row" }, label), cell, recordDateCell(point, `Leistung ${label}`)));
   }
   const scroll = makeScrollRegionFocusable(h("div", "table-scroll"), "Leistung nach Dauer");
   scroll.append(h("table", "race-predictions-table", head, body));
@@ -779,7 +800,7 @@ function criticalPowerLine(result, sport, hasValues) {
   return line;
 }
 
-// Both profile cards show the read's loading state once, or its failure with a retry.
+// The Rekorde cards show the read's loading state once, or its failure with a retry.
 function showProfileCardsState(error) {
   for (const [id, title] of PROFILE_CARDS) {
     const target = document.getElementById(id);
@@ -865,10 +886,13 @@ async function renderCyclingPowerProfile() {
     if (allTime?.status === "pending") return;
     renderPowerProfile(result);
     renderRunningBestEfforts(result);
+    renderActivityRecords(result);
+    renderCriticalLines(result);
     renderAnalysisSegmentsIfActive();
   } catch (error) {
     if (generation === cyclingPowerProfileGeneration && session === state.sessionGeneration) {
       showProfileCardsState(error || new Error("Konnte nicht geladen werden."));
+      renderCriticalLines(null);
       renderAnalysisSegmentsIfActive();
     }
   }
@@ -948,19 +972,59 @@ function renderPowerProfile(result) {
   const root = document.getElementById("cyclingPowerProfile");
   root.replaceChildren(h("h4", null, "Leistungsprofil"));
   const hasValues = cyclingPowerProfileHasValues(result);
-  if (hasValues) {
-    root.append(h("p", "analysis-reference-note", "Beste gemessene Durchschnittsleistung · Rad und Indoor zusammen"));
-    root.append(cyclingPowerProfileTable(result));
-  } else root.append(h("p", "muted", "Noch keine Leistungsdaten."));
+  if (hasValues) root.append(cyclingPowerProfileTable(result));
+  else root.append(h("p", "muted", "Noch keine Leistungsdaten."));
   const coverage = result.all_time?.cache_coverage;
   if (coverage?.power_unknown_records > 0) {
     const gap = h("p", "analysis-reference-note", `Für ${coverage.power_unknown_records} von ${coverage.power_records} Radeinheiten fehlen vollständige Messreihen; die Bestwerte können höher liegen.`);
     gap.dataset.powerProfileGap = "true";
     root.append(gap);
   }
-  const criticalPower = criticalPowerLine(result, "ride", hasValues);
-  if (criticalPower) root.append(criticalPower);
-  root.dataset.analysisEmpty = String(!hasValues && !criticalPower);
+  root.dataset.analysisEmpty = String(!hasValues);
+}
+
+// The experimental CP/CS line stays in its sport tab (#3826); a failed read leaves it out, marked failed
+// so the tab does not count as empty.
+function renderCriticalLines(result) {
+  for (const [id, sport] of CRITICAL_LINES) {
+    const root = document.getElementById(id);
+    const hasValues = sport === "ride" ? cyclingPowerProfileHasValues(result) : (result?.all_time?.running?.distance || []).some((item) => item.seconds > 0);
+    const line = result && criticalPowerLine(result, sport, hasValues);
+    root.replaceChildren(...(line ? [line] : []));
+    root.dataset.analysisEmpty = result ? String(!line) : "failed";
+  }
+}
+
+// The longest and highest ride and run (#3826): outdoor rides only, every run.
+const ACTIVITY_RECORD_ROWS = {
+  ride: [["distance_m", "Weiteste Fahrt"], ["moving_duration_s", "Längste Fahrt"], ["elevation_gain_m", "Meiste Höhenmeter"]],
+  run: [["distance_m", "Weitester Lauf"], ["moving_duration_s", "Längster Lauf"], ["elevation_gain_m", "Meiste Höhenmeter"]],
+};
+
+function activityRecordValue(record) {
+  if (record.field === "distance_m") return analysisValue(record.value / 1000, "km");
+  if (record.field === "elevation_gain_m") return analysisValue(record.value, "m");
+  return AppFormat.clock(record.value);
+}
+
+function renderActivityRecords(result) {
+  const records = result?.all_time?.activity_records || [];
+  for (const [id, sport, title] of [["rideActivityRecords", "ride", "Einzelne Fahrt"], ["runActivityRecords", "run", "Einzelner Lauf"]]) {
+    const root = document.getElementById(id);
+    const body = h("tbody");
+    let values = 0;
+    for (const [field, label] of ACTIVITY_RECORD_ROWS[sport]) {
+      const record = records.find((item) => item.sport === sport && item.field === field && item.status === "ok");
+      const cell = h("td", { title: record?.source }, record && activityRecordValue(record));
+      if (record) values += 1; else markValueMissing(cell, "–");
+      body.append(h("tr", { dataset: { activityRecord: `${sport}:${field}` } }, h("th", { scope: "row" }, label), cell, recordDateCell(record, label)));
+    }
+    const head = h("thead", null, h("tr", null, ["Rekord", "Wert", "Datum"].map((label) => h("th", { scope: "col" }, label))));
+    const scroll = makeScrollRegionFocusable(h("div", "table-scroll"), title);
+    scroll.append(h("table", "race-predictions-table", head, body));
+    root.replaceChildren(h("h4", null, title), scroll);
+    root.dataset.analysisEmpty = String(!values);
+  }
 }
 
 // The fastest observed time per race distance of all stored sessions (#2694); running bests
@@ -987,14 +1051,13 @@ function renderRunningBestEfforts(result) {
     const cell = h("td", { title: point?.source }, point && AppFormat.clock(point.seconds));
     if (point && !own) cell.append(recordSourceChip(point.label));
     if (point) values += 1; else markValueMissing(cell, "–");
-    body.append(h("tr", { dataset: { runningBest: `distance:${meters}` } }, h("th", { scope: "row" }, label), cell, h("td", null, point ? dateLabel(point.date) : null)));
+    // Garmin's personal record names no activity; its date stays plain text.
+    body.append(h("tr", { dataset: { runningBest: `distance:${meters}` } }, h("th", { scope: "row" }, label), cell, recordDateCell(own || (point && { date: point.date }), `Bestzeit ${label}`)));
   }
   const scroll = makeScrollRegionFocusable(h("div", "table-scroll"), "Lauf-Bestwerte");
   const head = h("thead", null, h("tr", null, ["Strecke", "Zeit", "Datum"].map((label) => h("th", { scope: "col" }, label))));
   scroll.append(h("table", "race-predictions-table", head, body)); root.append(scroll);
-  const criticalSpeed = criticalPowerLine(result, "run", values > 0);
-  if (criticalSpeed) root.append(criticalSpeed);
-  root.dataset.analysisEmpty = String(!values && !criticalSpeed);
+  root.dataset.analysisEmpty = String(!values);
 }
 
 function equipmentRouteActive() {
@@ -1051,8 +1114,8 @@ function renderAnalysisHistory(history) { // NOSONAR
   const loadRoot = document.querySelector("#analysisLoadCharts");
   const enduranceRoot = document.querySelector("#performanceEnduranceCharts");
   const predictions = document.getElementById("performancePredictions");
-  const powerProfile = document.getElementById("cyclingPowerProfile");
-  const runningBest = document.getElementById("runningBestEfforts");
+  const powerProfile = document.getElementById("cyclingCriticalPower");
+  const runningBest = document.getElementById("runningCriticalSpeed");
   powerProfile.remove();
   predictions.remove();
   runningBest.remove();
@@ -1082,7 +1145,7 @@ function renderAnalysisHistory(history) { // NOSONAR
   const performanceStart = addDateKey(weekStart, -7 * (developmentWeeks - 1));
   // A longer period or the "Vorjahr" switch reads the long history once (#3765); until it arrives the
   // charts keep the default read.
-  const trend = trendHistoryNeeded(developmentPeriod) ? trendHistory(TREND_PERIOD_DAYS[developmentPeriod], () => renderAnalysisHistory(state.data?.performance?.history)) : null;
+  const trend = trendHistoryNeeded(developmentPeriod) ? trendHistory(TREND_PERIOD_DAYS[developmentPeriod], rerenderDevelopment) : null;
   const developmentMetrics = trend?.metrics || history.metrics;
   const load = history.load || { points: [] };
   const loadSeries = [{ label: "Akute Belastung", legendLabel: "Akute Belastung", source: load.source, unit: "", color: 0,
@@ -1143,7 +1206,7 @@ function renderAnalysisHistory(history) { // NOSONAR
   scheduleFirstThresholdRefresh(history.first_thresholds?.status);
   root.append(trendPeriodControls("Zeitraum für Entwicklung", developmentPeriod, ["twelveWeeks", "sixMonths", "twelveMonths"], (period) => {
     developmentPeriod = period;
-    renderAnalysisHistory(history);
+    rerenderDevelopment();
   }));
   // Each sport's development sits in its own segment, so the group is only "Entwicklung" (#2265).
   for (const [sport, primaryUnit, analysisSport] of [["Lauf", "s/km", "run"], ["Rad", "W", "ride"]]) {
@@ -1586,9 +1649,10 @@ async function openWeightDialog() {
   form.elements.date.value = timezoneDateKey(state.data?.profile?.timezone, new Date());
   document.querySelector("#weightDialogStatus").textContent = "";
   for (const button of form.querySelectorAll("button")) button.disabled = false;
-  document.querySelector("#weightDialog").showModal();
+  // Read before opening, so a late answer never overwrites what the athlete typed (#3829).
   try { weightRead = await api("/api/body/weight"); } catch { weightRead = { entries: [] }; }
   fillWeightDialog();
+  document.querySelector("#weightDialog").showModal();
 }
 
 // The receipt of a body change (#3403): what happened locally and at Garmin Connect, and the
@@ -2621,14 +2685,15 @@ async function renderTrainingRecords({ background = false } = {}) { // NOSONAR
 // without a marker, still loading or failed counts as not empty; period controls stay visible.
 // A container shared by both sports names the marker of the sport's part (#2265).
 const ANALYSIS_SEGMENT_CONTENT = {
-  running: [["currentPerformance", "analysisEmptyRunning"], ["analysisHistoryCharts", "analysisEmptyRunning"], ["performancePredictions"], ["runningBestEfforts"], ["runningRecurringSessions"]],
-  cycling: [["currentPerformance", "analysisEmptyCycling"], ["analysisHistoryCharts", "analysisEmptyCycling"], ["cyclingPowerProfile"], ["cyclingRecurringSessions"]],
+  running: [["currentPerformance", "analysisEmptyRunning"], ["analysisHistoryCharts", "analysisEmptyRunning"], ["performancePredictions"], ["runningCriticalSpeed"], ["runningRecurringSessions"]],
+  cycling: [["currentPerformance", "analysisEmptyCycling"], ["analysisHistoryCharts", "analysisEmptyCycling"], ["cyclingCriticalPower"], ["cyclingRecurringSessions"]],
+  records: [["rideActivityRecords"], ["cyclingPowerProfile"], ["runActivityRecords"], ["runningBestEfforts"]],
   load: [["sessionPerformance"], ["analysisLoadCharts"], ["trainingZoneCharts"], ["performanceEnduranceCharts"]],
   recovery: [["personalRecovery"]],
   strength: [["strengthAnalysis"]],
 };
-const ANALYSIS_EMPTY_TITLES = { running: "Noch keine Laufdaten", cycling: "Noch keine Raddaten", load: "Noch keine Belastungsdaten", recovery: "Noch keine Erholungsdaten", strength: "Noch keine Kraftdaten" };
-const ANALYSIS_SEGMENT_LABELS = { running: "Laufen", cycling: "Radfahren", strength: "Kraft", load: "Belastung", recovery: "Erholung" };
+const ANALYSIS_EMPTY_TITLES = { running: "Noch keine Laufdaten", cycling: "Noch keine Raddaten", load: "Noch keine Belastungsdaten", recovery: "Noch keine Erholungsdaten", strength: "Noch keine Kraftdaten", records: "Noch keine Rekorde" };
+const ANALYSIS_SEGMENT_LABELS = { running: "Laufen", cycling: "Radfahren", strength: "Kraft", load: "Belastung", recovery: "Erholung", records: "Rekorde" };
 const ANALYSIS_SEGMENT_SPORTS = { running: "run", cycling: "ride" };
 
 function analysisSegmentEmpty(segment) {
@@ -2684,7 +2749,7 @@ function renderAnalysisSegmentsIfActive() {
 }
 
 function renderAnalysisSegments(route = state.route) {
-  const segment = { "analysis/load": "load", "analysis/recovery": "recovery", "analysis/cycling": "cycling", "analysis/strength": "strength" }[route] || "running";
+  const segment = { "analysis/load": "load", "analysis/recovery": "recovery", "analysis/cycling": "cycling", "analysis/strength": "strength", "analysis/records": "records" }[route] || "running";
   const empty = renderAnalysisEmptyState(segment);
   document.getElementById("analysisRefreshButton").setAttribute("aria-label", `Analyse aktualisieren: ${ANALYSIS_SEGMENT_LABELS[segment]}`);
   const sport = empty ? null : ANALYSIS_SEGMENT_SPORTS[segment];
@@ -2701,6 +2766,7 @@ function renderAnalysisSegments(route = state.route) {
   document.getElementById("analysisLoadCharts").hidden = !load;
   document.getElementById("personalRecovery").hidden = segment !== "recovery";
   document.getElementById("strengthAnalysis").hidden = segment !== "strength" || empty;
+  document.getElementById("analysisRecords").hidden = segment !== "records" || empty;
   document.querySelectorAll("[data-analysis-segment]").forEach((link) => {
     const active = link.dataset.analysisSegment === segment;
     link.classList.toggle("active", active);
@@ -2714,7 +2780,7 @@ const analysisRefresh = AppViewRefresh.create({
   getRoute: () => state.route,
   getRequest: (route) => {
     // Laufen and Radfahren read the same performance values; the week review reads the sessions.
-    const area = { running: "performance", cycling: "performance", week: "sessions", strength: "sessions" }[route.split("/")[1]] || route.split("/")[1] || "performance";
+    const area = { running: "performance", cycling: "performance", records: "performance", week: "sessions", strength: "sessions" }[route.split("/")[1]] || route.split("/")[1] || "performance";
     const days = analysisRefreshDays(area);
     return { path: "/api/analysis/refresh", body: { area, ...(days ? { days } : {}) } };
   },
