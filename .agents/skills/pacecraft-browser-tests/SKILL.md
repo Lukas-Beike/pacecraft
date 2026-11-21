@@ -85,6 +85,11 @@ python scripts/run_browser_tests.py --project all --keep-going
   stale (no reports; rebuild as the message says); the output says which and how
   to rerun. Report what was not run.
 - Reports and traces can hold fixture data: never publish them.
+- A regression test for a wrong state that a later re-render corrects checks it
+  once, right after the triggering response or call (`waitForResponse`, then
+  `isVisible()`, or one `page.evaluate`), never with a polling `toBeHidden()`.
+  A poll waits until the next unrelated re-render hides the bug. Run it red
+  against the unfixed code first (#3824, #3828).
 - A stopped or killed run cannot clean up after itself. Each run holds a lock
   file in the system temp directory; the next run, or
   `python scripts/run_browser_tests.py --cleanup-stale`, removes the containers
