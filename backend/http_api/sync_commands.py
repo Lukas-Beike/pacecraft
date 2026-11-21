@@ -12,7 +12,7 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass, replace
 from typing import Any, cast
 
-from backend.canonical.vocabulary import ProviderId
+from backend.canonical.vocabulary import INTERVALS_ID, ProviderId
 from backend.errors import AppError
 from backend.sync.full_resync import FullProviderResyncService
 from backend.sync.provider_registry import DEFAULT_PROVIDER_REGISTRY
@@ -219,9 +219,9 @@ class SyncCommandEndpoint:
         """Queue the competition sync the athlete pressed, approving the set it shows now."""
         if self._competition_manifest is None:
             raise RuntimeError("The competition manifest reader is not wired.")
-        self._require_provider_configured("intervals")
+        self._require_provider_configured(INTERVALS_ID)
         return 202, self._queue.enqueue(
-            "intervals",
+            INTERVALS_ID,
             "competition_push",
             {
                 "reason": "athlete_send",
